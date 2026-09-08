@@ -1,3 +1,6 @@
+import { and, eq } from "drizzle-orm";
+import { hostDaemonSessions } from "@bb/db";
+import { handleHostRemoved } from "../../internal/session-owner-side-effects.js";
 import type { MachineLaunchStatus } from "@bb/server-contract";
 import { serverAccess } from "./server-access.js";
 import { randomUUID } from "node:crypto";
@@ -43,6 +46,21 @@ import {
 
 type Deps = ThreadProvisioningDeps;
 type MachineLifecycleDeps = Pick<Deps, "db" | "hub" | "logger">;
+
+function expireMachineSessions(deps: Deps, hostId: string): void {
+  for (const session of deps.db
+    .select({ id: hostDaemonSessions.id })
+    .from(hostDaemonSessions)
+    .where(
+      and(
+        eq(hostDaemonSessions.hostId, hostId),
+        eq(hostDaemonSessions.status, "active"),
+      ),
+    )
+    .all()) {
+    handleHostRemoved(deps, { hostId, sessionId: session.id });
+  }
+}
 
 interface ActiveOperation {
   controller: AbortController;
@@ -799,6 +817,7 @@ export async function cancelMachineLaunch(
         await serverAccess.release(deps, { key, hostId: removedHostId });
         deleteMachineProjectSources(deps, removedHostId);
         await deps.machineAuth.revokeHostAuthKeys({ hostId: removedHostId });
+        expireMachineSessions(deps, removedHostId);
         const host = getHost(deps.db, removedHostId);
         if (host !== null && host.destroyedAt === null) {
           updateHost(deps.db, deps.hub, removedHostId, {
@@ -1335,6 +1354,7 @@ async function removeMachine(deps: Deps, hostId: string): Promise<void> {
         await serverAccess.release(deps, { key: hostId, hostId });
         deleteMachineProjectSources(deps, hostId);
         await deps.machineAuth.revokeHostAuthKeys({ hostId });
+        expireMachineSessions(deps, hostId);
         const latest = getHost(deps.db, hostId);
         if (
           latest?.machineOperationId !== operationId ||

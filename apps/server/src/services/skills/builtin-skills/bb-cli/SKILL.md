@@ -57,6 +57,10 @@ BB_HOST_DAEMON_PORT only for an intentional non-default target.
   providers that accept `{}` use it when the flag is omitted
   (`bb environment providers --json` prints both facts). `--base-branch`
   belongs to `--new-environment worktree` only.
+- Enroll an existing machine with `bb machine create --provider manual`; run
+  the printed command on the target. `--no-wait` returns its launch ID and command.
+  Cancel with `bb machine cancel <launch-id>`. Removal revokes access; uninstall
+  manually on that box with `bb machine uninstall --host-id <host-id>`.
 - Create a standalone machine with `bb machine create --provider <id>`; use
   `--inputs <JSON>` for non-secret provider inputs and `--key` for retry identity.
 - List plugin-provisioned machine choices with `bb machine providers`. Create a

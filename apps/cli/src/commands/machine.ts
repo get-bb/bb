@@ -206,17 +206,44 @@ export function registerMachineCommands(
             projectId = matches[0].id;
           }
           controller.signal.throwIfAborted();
-          const launch = await sdk.hosts.submit({
+          let launch = await sdk.hosts.submit({
             machineProviderId,
             projectId,
             inputs,
             ...(key === undefined ? {} : { key }),
             signal: controller.signal,
           });
+          let command: string | null = null;
+          if (machineProviderId === "manual") {
+            while (launch.phase === "creating" && command === null) {
+              controller.signal.throwIfAborted();
+              command = (
+                await sdk.hosts.experimental_enrollmentCommand({
+                  id: launch.id,
+                  signal: controller.signal,
+                })
+              ).command;
+              if (command !== null) break;
+              await new Promise<void>((resolve) => setTimeout(resolve, 100));
+              launch = await sdk.hosts.launch({
+                id: launch.id,
+                signal: controller.signal,
+              });
+            }
+          }
           if (!opts.wait) {
-            if (!outputJson(opts, launch)) console.log(launch.id);
+            if (
+              !outputJson(
+                opts,
+                machineProviderId === "manual"
+                  ? { ...launch, command }
+                  : launch,
+              )
+            )
+              console.log([launch.id, command ?? launch.step].join("\n"));
             return;
           }
+          if (command !== null) console.error(command);
           console.error(`Following machine launch ${launch.id}`);
           let step = "";
           const host = await sdk.hosts.follow({
@@ -372,7 +399,8 @@ export function registerMachineCommands(
     .action(
       action(async (target: string, opts: MachineMutationCommandOptions) => {
         const sdk = createCliBbSdk(getUrl());
-        const hostId = resolveMachineId(await sdk.hosts.list(), target);
+        const hosts = await sdk.hosts.list();
+        const hostId = resolveMachineId(hosts, target);
         if (
           !opts.yes &&
           !(await confirmDestructiveAction(`Remove machine ${hostId}?`))
@@ -381,6 +409,13 @@ export function registerMachineCommands(
         const result = await sdk.hosts.delete({ hostId });
         if (outputJson(opts, result)) return;
         console.log(`Machine ${hostId} removed`);
+        if (
+          hosts.find((host) => host.id === hostId)?.machineProviderId ===
+          "manual"
+        )
+          console.log(
+            `Uninstall manually on the machine: bb machine uninstall --host-id ${hostId}`,
+          );
       }),
     );
 

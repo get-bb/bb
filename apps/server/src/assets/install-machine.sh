@@ -209,6 +209,13 @@ if [ ! -e "$HOME/.local/bin/bb" ] && [ ! -L "$HOME/.local/bin/bb" ]; then
   shim_file=$(mktemp "$HOME/.local/bin/.bb-machine.XXXXXX")
   node_path_quoted=$(printf '%s' "${node_bin%/*}" | sed "s/'/'\\''/g")
   printf '#!/bin/sh\nPATH=\047%s\047:"$PATH"\nexport PATH\n' "$node_path_quoted" > "$shim_file"
+  cli_path_quoted=$(printf '%s' "$data_dir/npm/bin/bb" | sed "s/'/'\\''/g")
+  cat >> "$shim_file" <<'BB_MACHINE_EXPLICIT_DATA'
+if [ -n "${BB_DATA_DIR:-}" ] && [ -x "$BB_DATA_DIR/npm/bin/bb" ]; then
+  exec "$BB_DATA_DIR/npm/bin/bb" "$@"
+fi
+BB_MACHINE_EXPLICIT_DATA
+  printf 'if [ -x \047%s\047 ]; then exec \047%s\047 "$@"; fi\n' "$cli_path_quoted" "$cli_path_quoted" >> "$shim_file"
   cat >> "$shim_file" <<'BB_MACHINE_CLI'
 unset BB_DATA_DIR
 for candidate in "$HOME"/.bb-machines/*/npm/bin/bb; do

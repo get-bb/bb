@@ -797,6 +797,7 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
           "Compose synchronous installerCommand argv plus private stdin, or bootstrap over a MachineExecutor; never put credentials in resource JSON or output",
           "Bootstrap preinstalled or installed daemons and restart an enrolled identity after snapshot restore",
           "Stream progress and honor abort signals for create, suspend, resume and remove",
+          "Keep credentials out of report.step and report.log: core persists progress and copies it into thread transcripts; manual enrollment commands are fetched transiently by authorized followers",
           "Prepare an encrypted v2 enrollment bundle with optional request headers; core upgrades pending v1 bundles on preparation",
           "Prepare enrollment, then await create.checkpoint(resource) immediately after allocation so cancellation can remove it without waiting for bootstrap; never checkpoint the bootstrap bundle",
           "Return a failed create with allocation: none only for definitive rejection before allocation; core skips allocation reconciliation and settles enrollment immediately",

@@ -105,6 +105,11 @@ export interface HostsArea {
     id: string;
     signal?: AbortSignal;
   }): Promise<MachineLaunchStatus>;
+  experimental_enrollmentCommand(args: {
+    id: string;
+    scope?: "launch" | "thread";
+    signal?: AbortSignal;
+  }): Promise<{ command: string | null }>;
   cancel(args: { id: string }): Promise<MachineLaunchStatus>;
   follow(args: {
     id: string;
@@ -154,6 +159,14 @@ export function createHostsArea(args: CreateSdkAreaArgs): HostsArea {
       return transport.readJson(
         transport.api.v1.hosts.launches[":id"].$get(
           { param: { id: input.id } },
+          ...signalRequestArgs(input.signal),
+        ),
+      );
+    },
+    async experimental_enrollmentCommand(input) {
+      return transport.readJson(
+        transport.api.v1.hosts.launches[":id"]["enrollment-command"].$get(
+          { param: { id: input.id }, query: { scope: input.scope } },
           ...signalRequestArgs(input.signal),
         ),
       );

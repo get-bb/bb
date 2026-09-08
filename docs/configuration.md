@@ -550,8 +550,15 @@ compatibility roots follow the related config and environment switches.
 
 ## Multi-machine
 
-Settings → Machines can enroll,
-rename, and remove machines; project settings can add a path or clone source on
+Settings → Machines offers Existing machine (the built-in `manual` provider)
+alongside installed cloud, SSH and Tailscale providers. Existing machine prints
+a private enrollment command and waits for the daemon. `bb machine create
+--provider manual` follows the same lifecycle; `--no-wait` returns the launch ID
+and command. Manual machines never suspend or retire automatically. Removal
+revokes access; run `bb machine uninstall --host-id <id>` on that machine to
+uninstall its daemon. The local host remains provider-less.
+
+Settings → Machines can also rename and remove machines; project settings can add a path or clone source on
 each machine; and thread creation can target any enrolled machine with a usable
 source. The CLI equivalents are `bb machine list`, `bb project create
 --machine <id-or-name> ...`, `bb project source add --machine <id-or-name>

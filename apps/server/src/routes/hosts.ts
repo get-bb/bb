@@ -1,3 +1,5 @@
+import { getMachineEnrollmentService } from "../services/machines/machine-services.js";
+import { manualEnrollmentCommand } from "../services/machines/manual-enrollment-command.js";
 import { serverAccess } from "../services/machines/server-access.js";
 import { getNonDestroyedHost, updateHost } from "@bb/db";
 import {
@@ -34,6 +36,7 @@ import {
 import { handleHostRemoved } from "../internal/session-owner-side-effects.js";
 import {
   submitMachine,
+  resolveThreadMachineLaunchKey,
   machineLaunchStatus,
   cancelMachineLaunch,
   getMachineProviderDetails,
@@ -118,6 +121,21 @@ export function registerHostRoutes(
   get(routes.launch, (context) => {
     assertHostManagementAllowed(context);
     return context.json(machineLaunchStatus(deps, context.req.param("id")));
+  });
+
+  get(routes.experimental_enrollmentCommand, async (context, query) => {
+    assertHostManagementAllowed(context);
+    context.header("Cache-Control", "no-store");
+    const id = context.req.param("id");
+    const launchId =
+      query.scope === "thread" ? resolveThreadMachineLaunchKey(deps, id) : id;
+    const bootstrap =
+      await getMachineEnrollmentService(deps).pendingBootstrapForLaunch(
+        launchId,
+      );
+    return context.json({
+      command: bootstrap === null ? null : manualEnrollmentCommand(bootstrap),
+    });
   });
 
   post(routes.cancelLaunch, async (context) => {

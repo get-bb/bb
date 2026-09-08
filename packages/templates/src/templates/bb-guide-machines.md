@@ -7,8 +7,11 @@ editingNotes: Keep the user-facing noun machine; internal APIs and types use Hos
 ---
 Machine commands
 
-A machine is a host daemon that can run thread environments. Add remote or
-plugin-provisioned machines under Settings → Machines.
+A host is an identity and daemon connection. A machine is a host with a
+provider-owned lifecycle. The local host has no machine provider. Every other
+host is a machine, including existing machines enrolled with the built-in
+`manual` provider (Existing machine). Add machines under Settings → Machines
+or from the composer machine picker.
 
 The server listens on loopback by default. Remote execution machines need
 a server access provider: paired bb Connect, or a configured direct URL reachable
@@ -212,3 +215,22 @@ Create DigitalOcean dev boxes from Settings → Machines or
 project. SDK creation uses `machineProviderId: "digitalocean", projectId: null,
 inputs: {}`. Enrolled boxes appear as machine sections in the composer picker;
 DigitalOcean contributes no new-machine/project-checkout shortcut row.
+
+Existing machines
+
+`bb machine create --provider manual` prints a private enrollment command and
+follows the launch until the daemon connects. Run that command on the target
+machine; it installs bb if needed. Server access is resolved through the selected
+default access provider, just like SSH or cloud machines. `--no-wait` returns the
+launch ID and command once enrollment is prepared; `--json` includes the command
+in `command`. This command is fetched transiently from the encrypted pending
+bundle; durable progress contains no credential. After enrollment or cancellation,
+the command endpoint returns nothing. Treat this short-lived command as a credential.
+
+Use `bb machine status <launch-id>` to recover progress and
+`bb machine cancel <launch-id>` to cancel and revoke enrollment/access. Stopping
+the CLI or closing the dialog only stops following; creation continues.
+Manual machines never idle-suspend or automatically retire and do not expose
+suspend/resume. Removing one revokes its server access without executing on the
+machine. Run `bb machine uninstall --host-id <host-id>` on that box, with its
+original `BB_DATA_DIR` if explicitly configured, to remove its installation.

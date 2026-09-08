@@ -351,6 +351,55 @@ describe("EnvironmentPickerUI", () => {
     );
   });
 
+  it("offers Existing machine alongside opted-in shortcuts without a DigitalOcean shortcut", () => {
+    const providers = [
+      "manual",
+      "ssh",
+      "modal",
+      "digitalocean",
+      "tailscale",
+    ].map((id) => ({
+      ...modalMachineProvider,
+      id,
+      displayName: id === "manual" ? "Existing machine" : id,
+      requires: { gitRemote: false },
+      supportsSuspend: false,
+      environmentRow:
+        id === "manual" || id === "digitalocean"
+          ? null
+          : { displayName: id, environmentProviderId: "project-checkout" },
+    }));
+    const onSelect = vi.fn();
+    render(
+      <EnvironmentPickerUI
+        value="provider:project-checkout"
+        sources={sources}
+        host={host}
+        isLocal
+        providers={[checkoutProvider]}
+        selectedProviderHostId={host.id}
+        onSelectProvider={vi.fn()}
+        machineProviders={providers}
+        onSelectMachineProvider={onSelect}
+        modal={false}
+      />,
+    );
+    fireEvent.pointerDown(screen.getByRole("button", { name: "Environment" }), {
+      button: 0,
+    });
+    for (const name of ["Existing machine", "ssh", "modal", "tailscale"])
+      expect(
+        screen.getByRole("menuitem", { name: new RegExp(name, "u") }),
+      ).toBeDefined();
+    expect(
+      screen.queryByRole("menuitem", { name: /digitalocean/u }),
+    ).toBeNull();
+    fireEvent.click(
+      screen.getByRole("menuitem", { name: /Existing machine/u }),
+    );
+    expect(onSelect).toHaveBeenCalledWith(providers[0]);
+  });
+
   it("puts machine-provider rows last after a separator", () => {
     render(
       <EnvironmentPickerUI

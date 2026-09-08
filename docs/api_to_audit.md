@@ -2736,3 +2736,24 @@ JSON at the provider boundary; the callback must honor cancellation and avoid
 secrets. `bb machine show --json` includes `providerDetails`. Stabilize after
 reviewing cost freshness, unavailable providers and bounded output on large
 accounts. No daemon wire fields change.
+
+## Transient manual enrollment command
+
+`@bb/sdk` exposes `hosts.experimental_enrollmentCommand({ id, scope?, signal? })`, backed
+by `GET /hosts/launches/:id/enrollment-command`. Authorized host-management
+followers receive `{ command: string | null }` with `Cache-Control: no-store`.
+Machine-gated callers are rejected. The server decrypts the pending bundle on
+demand, checks provider ownership, launch state, expiry and unused credentials,
+and returns null after exchange, cancellation or connection. Clients must keep
+it in transient view state, never progress events, logs, persisted query caches
+or transcripts. No new plugin registration contract was introduced.
+
+Stabilization requires authorization, settlement races, no-store and credential
+non-persistence coverage, plus a provider-neutral transient-action contract if
+other machine providers need this interaction.
+
+The enrollment command scope defaults to `launch`, which reads only that exact
+launch. With `scope: "thread"`, `id` identifies a thread and the server resolves
+its current launch through the machine replacement history on every request.
+Consumed original launches remain unavailable through launch scope. The thread
+picker uses thread scope; machine creation and CLI follow use launch scope.

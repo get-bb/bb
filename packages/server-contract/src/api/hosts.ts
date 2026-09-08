@@ -127,3 +127,10 @@ export type HostProviderCliInstallRequest = ProviderCliInstallRequest;
 
 export const hostProviderCliInstallEventSchema = providerCliInstallEventSchema;
 export type HostProviderCliInstallEvent = ProviderCliInstallEvent;
+
+export const machineEnrollmentCommandQuerySchema = z.object({
+  scope: z.enum(["launch", "thread"]).default("launch"),
+});
+export type MachineEnrollmentCommandQuery = z.input<
+  typeof machineEnrollmentCommandQuerySchema
+>;

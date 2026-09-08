@@ -1,0 +1,33 @@
+{
+  "name": "bb-plugin-machine-manual",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Enroll an existing machine by running a command",
+  "engines": {
+    "bb": ">=0.0"
+  },
+  "bb": {
+    "name": "Existing machine",
+    "description": "Enroll an existing machine by running a command",
+    "branding": {
+      "icon": "Terminal"
+    },
+    "server": "./server.ts",
+    "app": "./app.tsx"
+  },
+  "keywords": [
+    "bb-plugin"
+  ],
+  "scripts": {
+    "lint": "oxlint .",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@get-bb/plugin-sdk": "workspace:*",
+    "@types/node": "^22.0.0",
+    "@types/react": "^19.0.0",
+    "react": "^19.0.0",
+    "typescript": "npm:@typescript/typescript6@^6.0.2"
+  }
+}

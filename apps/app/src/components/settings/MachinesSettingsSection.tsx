@@ -27,7 +27,7 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@bb/shared-ui/tooltip";
-import { AddMachineDialog } from "@/components/dialogs/AddMachineDialog";
+import { CreateMachineDialog } from "@/components/dialogs/CreateMachineDialog";
 import { ConfirmDeleteDialog } from "@/components/dialogs/ConfirmDeleteDialog";
 import { appToast } from "@/components/ui/app-toast";
 import { MachineStatusDot } from "@/components/machines/MachineStatusDot";
@@ -437,14 +437,9 @@ export function MachinesSettingsSection() {
         )}
       </SettingsSection>
 
-      <AddMachineDialog
+      <CreateMachineDialog
         open={addDialogOpen}
         onOpenChange={setAddDialogOpen}
-        serverUrl={
-          systemConfig.data?.serverAccess.effectiveUrl ??
-          systemConfig.data?.serverUrl ??
-          null
-        }
       />
 
       <MachineRenameDialog
@@ -481,6 +476,14 @@ export function MachinesSettingsSection() {
               <DialogTitle>Remove {removeTarget.name}?</DialogTitle>
               <DialogDescription>
                 This revokes {removeTarget.name}'s access to this server.
+                {removeTarget.machineProviderId === "manual" ? (
+                  <span className="block mt-2">
+                    Uninstall manually on the machine:{" "}
+                    <code>
+                      bb machine uninstall --host-id {removeTarget.id}
+                    </code>
+                  </span>
+                ) : null}
                 Project checkouts stay on its disk, but its environments become
                 read-only history and it can't run new work until it's paired
                 again.
