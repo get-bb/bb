@@ -50,6 +50,10 @@ import {
 
 const SYSTEM_CONFIG = systemConfigResponseSchema.parse({
   ...configFixture,
+  machineGit: {
+    status: "not configured",
+    statusMessage: "gh is not logged in on the server",
+  },
   generalSettings: defaultAppSettings,
   experiments: { ...defaultExperiments, mobileApp: true },
   appearance: defaultAppTheme,
