@@ -1292,7 +1292,7 @@ describe("PluginDetail runtime health", () => {
     },
   );
 
-  it("keeps needs-configuration actionless because saving Settings retries it", () => {
+  it("sends needs-configuration to the plugin settings page instead of Reload", () => {
     renderRuntimeStatus("needs-configuration", {
       statusDetail: "An API token is required.",
       hasSettings: true,
@@ -1303,6 +1303,10 @@ describe("PluginDetail runtime health", () => {
     expect(alert.textContent).toContain(
       "Complete the Configuration section; bb reloads the plugin after you save.",
     );
+    const settingsLink = within(alert).getByRole("link", {
+      name: "Open settings",
+    });
+    expect(settingsLink.getAttribute("href")).toBe("/settings/plugins/github");
     expect(screen.queryByRole("button", { name: "Reload" })).toBeNull();
   });
 
@@ -1320,6 +1324,65 @@ describe("PluginDetail runtime health", () => {
       "Add the required configuration, then reload the plugin.",
     );
     expect(screen.getByRole("button", { name: "Reload" })).toBeTruthy();
+    expect(
+      within(alert).queryByRole("link", { name: "Open settings" }),
+    ).toBeNull();
+  });
+
+  it("links to a settings page contributed by the plugin frontend and keeps Reload", () => {
+    setPluginSlotRegistrations(
+      "github",
+      makePluginRegistrationSet({
+        settingsSections: [
+          { id: "accounts", title: "Accounts", component: () => null },
+        ],
+        navPanels: [],
+        threadPanelActions: [],
+        composerCustomizations: [],
+        pendingInteractions: [],
+        sidebarFooterActions: [],
+        fileOpeners: [],
+        messageDirectives: [],
+      }),
+    );
+
+    renderRuntimeStatus("needs-configuration", {
+      statusDetail: "Add and enable an account.",
+      hasSettings: false,
+    });
+
+    const alert = screen.getByRole("alert");
+    const settingsLink = within(alert).getByRole("link", {
+      name: "Open settings",
+    });
+    expect(settingsLink.getAttribute("href")).toBe("/settings/plugins/github");
+    expect(within(alert).getByRole("button", { name: "Reload" })).toBeTruthy();
+  });
+
+  it("does not offer a settings link for other runtime failures", () => {
+    setPluginSlotRegistrations(
+      "github",
+      makePluginRegistrationSet({
+        settingsSections: [
+          { id: "accounts", title: "Accounts", component: () => null },
+        ],
+        navPanels: [],
+        threadPanelActions: [],
+        composerCustomizations: [],
+        pendingInteractions: [],
+        sidebarFooterActions: [],
+        fileOpeners: [],
+        messageDirectives: [],
+      }),
+    );
+
+    renderRuntimeStatus("error");
+
+    const alert = screen.getByRole("alert");
+    expect(
+      within(alert).queryByRole("link", { name: "Open settings" }),
+    ).toBeNull();
+    expect(within(alert).getByRole("button", { name: "Reload" })).toBeTruthy();
   });
 
   it("reloads the affected plugin and reflects its pending state", async () => {

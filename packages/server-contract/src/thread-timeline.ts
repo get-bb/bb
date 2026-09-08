@@ -142,6 +142,7 @@ export type TimelineConversationRow = z.infer<
 
 export const timelineSystemOperationKindValues = [
   "generic",
+  "reasoning",
   "compaction",
   "context-clear",
   "parent-change",
@@ -159,6 +160,7 @@ export type TimelineSystemOperationKind = z.infer<
 >;
 const timelineGenericSystemOperationKindSchema = z.enum([
   "generic",
+  "reasoning",
   "compaction",
   "context-clear",
   "thread-provisioning",
@@ -205,6 +207,7 @@ export const timelineGenericOperationSystemRowSchema =
   timelineSystemRowBaseSchema.extend({
     systemKind: z.literal("operation"),
     operationKind: timelineGenericSystemOperationKindSchema,
+    reasoningId: z.string().optional(),
     completedAt: z.number().nullable(),
   });
 
@@ -267,8 +270,14 @@ const timelineRowPresentationField = {
 };
 
 export const timelineOutputPreviewSchema = z.object({
+  experimental_fullOutputAvailability: z.enum([
+    "available",
+    "detail-limit",
+    "retention-expired",
+  ]),
   totalChars: z.number().int().nonnegative(),
 });
+export type TimelineOutputPreview = z.infer<typeof timelineOutputPreviewSchema>;
 
 export const timelineCommandWorkRowSchema = timelineWorkRowBaseSchema.extend({
   workKind: z.literal("command"),
@@ -349,6 +358,21 @@ export const timelineImageViewWorkRowSchema = timelineWorkRowBaseSchema.extend({
 });
 export type TimelineImageViewWorkRow = z.infer<
   typeof timelineImageViewWorkRowSchema
+>;
+
+export const timelineImageGenerationWorkRowSchema =
+  timelineWorkRowBaseSchema.extend({
+    workKind: z.literal("image-generation"),
+    callId: z.string(),
+    prompt: z.string().nullable(),
+    path: z.string().nullable(),
+    error: z.string().nullable(),
+    transparentBackground: z.boolean(),
+    completedAt: z.number().nullable(),
+    ...timelineRowPresentationField,
+  });
+export type TimelineImageGenerationWorkRow = z.infer<
+  typeof timelineImageGenerationWorkRowSchema
 >;
 
 export const timelineFileReadWorkRowSchema = timelineWorkRowBaseSchema.extend({
@@ -529,6 +553,7 @@ export type TimelineWorkRow =
   | TimelineFileChangeWorkRow
   | TimelineWebSearchWorkRow
   | TimelineWebFetchWorkRow
+  | TimelineImageGenerationWorkRow
   | TimelineImageViewWorkRow
   | TimelineFileReadWorkRow
   | TimelineSearchWorkRow
@@ -545,6 +570,7 @@ export const timelineWorkRowSchema: z.ZodType<TimelineWorkRow> = z.union([
   timelineFileChangeWorkRowSchema,
   timelineWebSearchWorkRowSchema,
   timelineWebFetchWorkRowSchema,
+  timelineImageGenerationWorkRowSchema,
   timelineImageViewWorkRowSchema,
   timelineFileReadWorkRowSchema,
   timelineSearchWorkRowSchema,

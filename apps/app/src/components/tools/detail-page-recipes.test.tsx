@@ -95,6 +95,7 @@ import {
   makePluginListItem,
   makePluginRegistrationSet,
 } from "@/test/fixtures/plugins";
+import { buildMarkdownFileImageRouting } from "@/components/ui/markdown-file-image-routing";
 
 afterEach(() => {
   cleanup();
@@ -611,6 +612,33 @@ function renderSkill(files: readonly string[]) {
 }
 
 describe("Skill detail recipe", () => {
+  it("routes relative images from Markdown skill files", () => {
+    const markdownLinkRouting = buildMarkdownFileImageRouting({
+      path: "/skills/writing-voice/SKILL.md",
+      rootPath: "/skills/writing-voice",
+      threadId: null,
+      resolveRelativeSrc: (path) => `/skill-preview/${path}`,
+    });
+    render(
+      <SkillDetailView
+        title="writing-voice"
+        path="/skills/writing-voice/SKILL.md"
+        files={["SKILL.md"]}
+        selectedPath="SKILL.md"
+        onSelectFile={() => {}}
+        contentState={{
+          kind: "ready",
+          content: "![example](assets/example.png)",
+        }}
+        markdownLinkRouting={markdownLinkRouting}
+      />,
+    );
+
+    expect(
+      screen.getByRole("img", { name: "example" }).getAttribute("src"),
+    ).toBe("/skill-preview/assets/example.png");
+  });
+
   it("shows only Definition for a single-file skill", () => {
     const { container } = renderSkill(["/skills/writing-voice/SKILL.md"]);
 

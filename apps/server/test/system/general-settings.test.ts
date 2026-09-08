@@ -11,7 +11,10 @@ describe("general settings", () => {
       const response = await harness.app.request("/api/v1/system/config");
       expect(response.status).toBe(200);
       const body = systemConfigResponseSchema.parse(await readJson(response));
-      expect(body.generalSettings).toEqual(defaultAppSettings);
+      expect(body.generalSettings).toEqual({
+        ...defaultAppSettings,
+        showUnhandledProviderEvents: false,
+      });
       expect(body.primaryHostId).toBeNull();
     });
   });
@@ -30,12 +33,20 @@ describe("general settings", () => {
         }),
       });
       expect(put.status).toBe(200);
-      expect(appSettingsSchema.parse(await readJson(put))).toEqual({
+      expect(
+        appSettingsSchema
+          .extend({
+            showUnhandledProviderEvents:
+              appSettingsSchema.shape.showDiagnosticEvents,
+          })
+          .parse(await readJson(put)),
+      ).toEqual({
         ...defaultAppSettings,
         showKeyboardHints: false,
         steerActiveThreadOnEnter: true,
         providerOrder: ["pi", "codex"],
         defaultProviderId: "pi",
+        showUnhandledProviderEvents: false,
       });
       expect(getAppSettings(harness.db)).toEqual({
         ...defaultAppSettings,
@@ -51,6 +62,7 @@ describe("general settings", () => {
       );
       expect(parsedConfig.generalSettings).toEqual({
         ...defaultAppSettings,
+        showUnhandledProviderEvents: false,
         showKeyboardHints: false,
         steerActiveThreadOnEnter: true,
         providerOrder: ["pi", "codex"],
@@ -82,5 +94,42 @@ describe("general settings", () => {
       });
       expect(response.status).toBe(400);
     });
+  });
+});
+
+it("accepts old SDK payloads and round-trips edits through either setting name", async () => {
+  await withTestHarness(async (harness) => {
+    const { showDiagnosticEvents, ...legacy } = defaultAppSettings;
+    expect(showDiagnosticEvents).toBe(false);
+    const update = async (settings: object) => {
+      const response = await harness.app.request("/api/v1/settings/general", {
+        method: "PUT",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(settings),
+      });
+      expect(response.status).toBe(200);
+      return appSettingsSchema
+        .extend({
+          showUnhandledProviderEvents:
+            appSettingsSchema.shape.showDiagnosticEvents,
+        })
+        .parse(await readJson(response));
+    };
+    const enabled = await update({
+      ...legacy,
+      showUnhandledProviderEvents: true,
+    });
+    expect(enabled.showDiagnosticEvents).toBe(true);
+    const disabled = await update({
+      ...enabled,
+      showUnhandledProviderEvents: false,
+    });
+    expect(disabled.showDiagnosticEvents).toBe(false);
+    const newEnabled = await update({
+      ...disabled,
+      showDiagnosticEvents: true,
+    });
+    expect(newEnabled.showUnhandledProviderEvents).toBe(true);
+    expect(getAppSettings(harness.db).showDiagnosticEvents).toBe(true);
   });
 });

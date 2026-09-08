@@ -10,6 +10,7 @@ import {
   allProjectPathsQueryKeyPrefix,
   allSystemExecutionOptionsQueryKeyPrefix,
   allSystemProvidersQueryKeyPrefix,
+  allSystemThemesQueryKeyPrefix,
   allTerminalsQueryKeyPrefix,
   allThreadConversationOutlineQueryKeyPrefix,
   allThreadDetailBootstrapQueryKeyPrefix,
@@ -98,7 +99,10 @@ export function invalidateRealtimeQueriesFetchedBeforeInitialConnect({
 }
 
 export function invalidateSystemConfig({ queryClient }: QueryClientArg): void {
-  queryClient.invalidateQueries({ queryKey: systemConfigQueryKey() });
+  invalidateQueryKeys({
+    queryClient,
+    queryKeys: [systemConfigQueryKey(), allSystemThemesQueryKeyPrefix()],
+  });
 }
 
 export function invalidateSystemProviders({

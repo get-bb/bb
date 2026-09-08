@@ -40,6 +40,7 @@ import {
   threadTimelineTurnSummaryDetailsQueryKey,
 } from "./queries/query-keys";
 import { pluginContributionsQueryKey } from "./queries/query-keys";
+import { systemEnvironmentProvidersQueryKey } from "./queries/environment-provider-queries";
 import {
   createRealtimeCacheEffects,
   resolveThreadInvalidationDebounce,
@@ -243,6 +244,8 @@ describe("createRealtimeCacheEffects", () => {
       providerId: "codex",
     });
     queryClient.setQueryData(executionOptionsKey, {});
+    const environmentProvidersKey = systemEnvironmentProvidersQueryKey();
+    queryClient.setQueryData(environmentProvidersKey, []);
 
     effects.handleChanged({
       type: "changed",
@@ -254,6 +257,9 @@ describe("createRealtimeCacheEffects", () => {
       true,
     );
     expect(queryClient.getQueryState(commandsKey)?.isInvalidated).toBe(true);
+    expect(
+      queryClient.getQueryState(environmentProvidersKey)?.isInvalidated,
+    ).toBe(true);
     expect(queryClient.getQueryState(providersKey)?.isInvalidated).toBe(false);
     expect(queryClient.getQueryState(executionOptionsKey)?.isInvalidated).toBe(
       false,
@@ -1162,7 +1168,7 @@ describe("createRealtimeCacheEffects", () => {
     effects.dispose();
   });
 
-  it("refetches the active diff TOC and work-status queries but evicts the observer-less patch cache for work-status changes", async () => {
+  it("refetches the active diff TOC and work-status queries while retaining rendered patch cache for work-status changes", async () => {
     vi.useFakeTimers();
     const { effects, queryClient } = createRealtimeEffectsTestContext();
     const diffFilesKey = environmentDiffFilesQueryKey("env-1", "all", "main");
@@ -1217,7 +1223,11 @@ describe("createRealtimeCacheEffects", () => {
 
     expect(diffFilesQueryFn).toHaveBeenCalledTimes(1);
     expect(workStatusQueryFn).toHaveBeenCalledTimes(1);
-    expect(queryClient.getQueryData(diffPatchKey)).toBeUndefined();
+    expect(queryClient.getQueryData(diffPatchKey)).toEqual({
+      path: "file.ts",
+      patch: "diff --git a/file.ts b/file.ts\n",
+      truncated: false,
+    });
 
     unsubscribeDiffFiles();
     unsubscribeWorkStatus();

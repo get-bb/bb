@@ -664,7 +664,7 @@ describe("codex subagent activity correlation", () => {
   function subAgentActivity(args: {
     agentThreadId?: string;
     id: string;
-    kind: "started" | "interacted" | "interrupted";
+    kind: "started" | "interacted" | "interrupted" | "completed";
   }) {
     const agentThreadId = args.agentThreadId ?? "agent-thread-1";
     return {
@@ -719,6 +719,31 @@ describe("codex subagent activity correlation", () => {
         .translate(childTurnCompleted("child-turn-1"))
         .map((event) => event.type),
     ).toEqual(["turn/completed", "item/completed"]);
+  });
+
+  it("consumes completion activity notifications without duplicating the finished agent", () => {
+    const harness = createHarness();
+    harness.translate(subAgentActivity({ id: "spawn-1", kind: "started" }));
+    harness.translate(childTurnStarted("child-turn-1"));
+    const settled = harness.translate(childTurnCompleted("child-turn-1"));
+    expect(settled).toContainEqual(
+      expect.objectContaining({
+        type: "item/completed",
+        item: expect.objectContaining({
+          type: "delegation",
+          status: "completed",
+        }),
+      }),
+    );
+    const completion = subAgentActivity({
+      id: "subagent-completed-1",
+      kind: "completed",
+    });
+    expect(
+      harness.translate({ ...completion, method: "item/started" }),
+    ).toEqual([]);
+    expect(harness.translate(completion)).toEqual([]);
+    expect(harness.translate(completion)).toEqual([]);
   });
 
   it("materializes subagent activity as a nested delegation lifecycle", () => {

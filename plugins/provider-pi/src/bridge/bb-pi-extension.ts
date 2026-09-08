@@ -172,12 +172,7 @@ export default function bbExtension(pi) {
   let nextId = 0;
   let sessionContext = null;
 
-  // Non-blocking: libuv polls the pipe, so pi's process.exit is never held
-  // up by an outstanding read; EOF (the bridge ended its writer) closes it.
-  const bridgeIn = new Socket({ fd: BRIDGE_TO_CHILD_FD, readable: true, writable: false });
-  bridgeIn.on("error", () => undefined);
-  bridgeIn.unref();
-  readLines(bridgeIn, (line) => {
+  const onBridgeLine = (line) => {
     const trimmed = line.trim();
     if (!trimmed) return;
     let message;
@@ -200,7 +195,42 @@ export default function bbExtension(pi) {
     if (message.kind === "request") {
       void handleBridgeRequest(message);
     }
-  });
+  };
+  if (typeof Bun !== "undefined") {
+    // pi ships as a Bun-compiled binary, and Bun's net.Socket cannot attach
+    // to a borrowed stdio fd (the handle stays null and nothing is ever
+    // read), so the bridge channel is read through Bun's file stream instead.
+    void (async () => {
+      const decoder = new StringDecoder("utf8");
+      let pending = "";
+      try {
+        for await (const chunk of Bun.file(BRIDGE_TO_CHILD_FD).stream()) {
+          const text = typeof chunk === "string" ? chunk : decoder.write(chunk);
+          let start = 0;
+          for (;;) {
+            const index = text.indexOf("\n", start);
+            if (index === -1) {
+              pending += text.slice(start);
+              break;
+            }
+            const line = pending + text.slice(start, index);
+            pending = "";
+            start = index + 1;
+            onBridgeLine(line.endsWith("\r") ? line.slice(0, -1) : line);
+          }
+        }
+      } catch {
+        // The bridge is gone; nothing to report to.
+      }
+    })();
+  } else {
+    // Non-blocking: libuv polls the pipe, so pi's process.exit is never held
+    // up by an outstanding read; EOF (the bridge ended its writer) closes it.
+    const bridgeIn = new Socket({ fd: BRIDGE_TO_CHILD_FD, readable: true, writable: false });
+    bridgeIn.on("error", () => undefined);
+    bridgeIn.unref();
+    readLines(bridgeIn, onBridgeLine);
+  }
 
   async function handleBridgeRequest(message) {
     try {

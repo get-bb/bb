@@ -63,4 +63,15 @@ describe("BranchPicker search", () => {
         Node.DOCUMENT_POSITION_FOLLOWING,
     ).not.toBe(0);
   });
+
+  it("keeps an empty result in the branches section", () => {
+    render(
+      <BranchPicker value={null} options={[]} onChange={vi.fn()} modal={false} />,
+    );
+
+    fireEvent.click(screen.getByRole("combobox", { name: "Branch" }));
+
+    expect(screen.getByText("Branches")).toBeTruthy();
+    expect(screen.getByText("No branches found.").className).toContain("py-3");
+  });
 });

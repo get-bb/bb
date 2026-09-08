@@ -57,6 +57,7 @@ const THREAD_TIMELINE_TURN_SUMMARY_DETAILS_QUERY_KEY =
   "threadTimelineTurnSummaryDetails";
 const SYSTEM_PROVIDERS_QUERY_KEY = "systemProviders";
 const SYSTEM_CONFIG_QUERY_KEY = "systemConfig";
+const SYSTEM_THEME_QUERY_KEY = "systemTheme";
 export const SYSTEM_EXECUTION_OPTIONS_QUERY_KEY = "systemExecutionOptions";
 const SYSTEM_CLI_SKILLS_QUERY_KEY = "systemCliSkills";
 const SYSTEM_VERSION_QUERY_KEY = "systemVersion";
@@ -445,6 +446,8 @@ type AllSystemProvidersQueryKeyPrefix = readonly [
   typeof SYSTEM_PROVIDERS_QUERY_KEY,
 ];
 type SystemConfigQueryKey = readonly [typeof SYSTEM_CONFIG_QUERY_KEY];
+type SystemThemeQueryKey = readonly [typeof SYSTEM_THEME_QUERY_KEY, string];
+type AllSystemThemesQueryKeyPrefix = readonly [typeof SYSTEM_THEME_QUERY_KEY];
 type SystemCliSkillsQueryKey = readonly [typeof SYSTEM_CLI_SKILLS_QUERY_KEY];
 type SystemVersionQueryKey = readonly [typeof SYSTEM_VERSION_QUERY_KEY];
 type HostProviderCliStatusQueryKey = readonly [
@@ -1076,6 +1079,14 @@ export function systemCliSkillsQueryKey(): SystemCliSkillsQueryKey {
 
 export function systemConfigQueryKey(): SystemConfigQueryKey {
   return [SYSTEM_CONFIG_QUERY_KEY];
+}
+
+export function systemThemeQueryKey(themeId: string): SystemThemeQueryKey {
+  return [SYSTEM_THEME_QUERY_KEY, themeId];
+}
+
+export function allSystemThemesQueryKeyPrefix(): AllSystemThemesQueryKeyPrefix {
+  return [SYSTEM_THEME_QUERY_KEY];
 }
 
 export function systemVersionQueryKey(): SystemVersionQueryKey {

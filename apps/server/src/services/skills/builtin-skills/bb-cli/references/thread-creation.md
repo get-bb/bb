@@ -10,8 +10,19 @@
 - Select a target with `--environment`, `--new-environment`, `--base-branch`,
   or `--machine`. Select execution with `--provider`, `--model`,
   `--reasoning-level`, `--service-tier`, and `--permission-mode`.
+- List plugin-provisioned environment choices with `bb environment providers`. Add `--project <id>` and optionally `--machine <id>` to omit providers whose requirements are unmet; eligible providers retain setup or availability messages. Without a machine, the project listing includes providers eligible on any persistent machine.
+  Add `--project <id>` and `--machine <id-or-name>` (`--host` is an alias) to
+  resolve each provider's `available`, `setup-required`, or `unavailable`
+  status for that project and machine. `--json` includes availability, each
+  provider's `requires` facts, and its `inputs` JSON Schema or null. Providers
+  structurally ineligible for that project or projectless thread are omitted.
+  Pass the selected ID to `--environment-provider`. Add
+  `--environment-inputs <json>` only when the provider's schema does not accept
+  an empty object; otherwise the CLI supplies `{}` when the flag is omitted.
+  `--machine` picks the existing machine.
 - Omit `--base-branch` for bb's default. Explicit values are exact; use
-  `origin/<branch>` for a remote ref.
+  `origin/<branch>` for a remote ref. It applies to `--new-environment
+worktree` only; a provider takes its branch through `--environment-inputs`.
 - Spawn also accepts `--title`, `--origin-kind`, `--source-thread`,
   `--source-seq-end`, `--agent-context-seed`, and `--json`.
 - Add repeatable `--file <path>` / `--image <path>` flags for structured prompt
@@ -45,7 +56,7 @@
 - Add remote execution machines from Settings → Machines. Its one-line
   installer stores the account machine credential locally and configures
   both the daemon protocol and agent-launched `bb` CLI to traverse the account
-  gate; revoke a lost machine from the getbb.app dashboard. The installer uses
+  gate; revoke a lost machine from the getbb.app dashboard. It uses
   the server's exact `/install/bb-app.tgz` artifact and uses the npm registry
   only on a 404. It installs under the enrollment's bb data directory, without
   `sudo` or a global npm configuration, and enables daemon `--auto-update`.
@@ -68,9 +79,10 @@
   surface that sets it, and machine credentials are refused — so read it from
   `bb machine list --json` or `bb machine show` and ask the user to change it
   in the app.
-- `bb machine show`, `join-code`, `rename`, `retry-update`, and `remove` cover
-  the Settings → Machines lifecycle. Use `bb machine provider-cli
-status|install` to inspect or install provider CLIs on a selected machine.
+- `bb machine list`, `show`, `join-code`, `rename`, `retry-update`,
+  and `remove` cover the Settings →
+  Machines lifecycle. Use `bb machine provider-cli status|install` to inspect
+  or install provider CLIs on a selected machine.
 - `bb updates` runs the default `bb updates status` action. It aggregates BB and provider
   CLI update state across every machine — the CLI counterpart of Settings →
   Updates. `bb updates apply [--machine <id-or-name>]` runs every available
@@ -148,3 +160,12 @@ environment pull-request show <id>`. Diff commands require an explicit target
 Give spawned threads clear prompts: objective, constraints, expected deliverable,
 validation to perform, and what to report back. Ask for outcome, changed files
 or artifacts, validation performed, and blockers.
+
+`bb environment show <id>` includes the core-owned lifecycle phase, retirement deadline, and teardown status/attempt/message. Archive or delete the last live thread to begin its provider's retirement grace; unarchive cancels pending retirement. Teardown failures retry automatically. Checkout policy keeps its directory indefinitely.
+
+For paths a provider owns, bb runs `.bb-env-setup.sh` after create and
+`.bb-env-teardown.sh` before remove on that machine, with separate 15-minute
+timeouts. Setup failure fails the launch with output in provisioning progress;
+teardown script failure is logged and removal continues. Attaching a project
+checkout or personal workspace skips both hooks. Providers do not run these
+core hooks themselves.

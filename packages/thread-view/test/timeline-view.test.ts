@@ -8,6 +8,7 @@ import type {
   TimelineRowBase,
   TimelineRowStatus,
   TimelineToolWorkRow,
+  TimelineSystemRow,
 } from "@bb/server-contract";
 import {
   buildTimelineWorkSummaryLabel,
@@ -609,8 +610,14 @@ describe("buildTimelineViewRows", () => {
     expect(
       childSummary.children.map((child) => ({
         id: child.id,
-        callId: child.workKind === "command" ? child.callId : null,
-        command: child.workKind === "command" ? child.command : null,
+        callId:
+          child.kind === "work" && child.workKind === "command"
+            ? child.callId
+            : null,
+        command:
+          child.kind === "work" && child.workKind === "command"
+            ? child.command
+            : null,
       })),
     ).toEqual([
       {
@@ -742,5 +749,112 @@ describe("bundle activity intent dedupe", () => {
         intent.type === "read" ? intent.path : null,
       ),
     ).toEqual(["a", "a"]);
+  });
+});
+
+describe("reasoning within activity groups", () => {
+  function thought(
+    id: string,
+    seq: number,
+  ): Extract<TimelineSystemRow, { systemKind: "operation" }> & {
+    operationKind: "reasoning";
+  } {
+    return {
+      ...baseRow(id, {
+        sourceSeqStart: seq,
+        sourceSeqEnd: seq,
+        startedAt: seq,
+        createdAt: seq + 1,
+      }),
+      kind: "system",
+      systemKind: "operation",
+      operationKind: "reasoning",
+      status: "completed",
+      title: "Thought",
+      detail: "Consider the next change.",
+      completedAt: seq + 1,
+    };
+  }
+
+  it("keeps interleaved thoughts inside a closed exploration and edit step", () => {
+    const input = [
+      thought("before", 1),
+      commandRowReadingPaths(["src/app.ts"], 2),
+      thought("between", 3),
+      fileChangeRow({ id: "edit", sourceSeqStart: 4 }),
+      thought("after", 5),
+    ];
+    const liveRows = buildTimelineViewRows(input);
+    expect(liveRows.map((row) => row.kind)).toEqual([
+      "bundle-summary",
+      "bundle-summary",
+    ]);
+    expect(
+      buildTimelineWorkSummaryLabel(expectBundleSummaryRow(liveRows[0])),
+    ).toBe("Explored 1 file");
+    expect(
+      buildTimelineWorkSummaryLabel(expectBundleSummaryRow(liveRows[1])),
+    ).toBe("Edited 1 file");
+    const rows = buildTimelineViewRows([
+      ...input,
+      assistantRow({ id: "response", sourceSeqStart: 6 }),
+    ]);
+    const summary = expectStepSummaryRow(rows[0]);
+    expect(summary.children.map((row) => row.id)).toEqual(
+      input.map((row) => row.id),
+    );
+    expect(buildTimelineWorkSummaryLabel(summary)).toBe(
+      "Explored 1 file, edited 1 file",
+    );
+    expect(rows[1]?.id).toBe("response");
+  });
+
+  it("bundles live exploration across thoughts without counting them as work", () => {
+    const input = [
+      thought("before", 1),
+      commandRowReadingPaths(["a.ts"], 2),
+      thought("between", 3),
+      commandRowReadingPaths(["b.ts"], 4),
+      thought("after", 5),
+    ];
+    const rows = buildTimelineViewRows(input);
+    expect(rows).toHaveLength(1);
+    const summary = expectBundleSummaryRow(rows[0]);
+    expect(summary.children.map((row) => row.id)).toEqual(
+      input.map((row) => row.id),
+    );
+    expect(buildTimelineWorkSummaryLabel(summary)).toBe("Explored 2 files");
+  });
+
+  it("leaves thought-only sequences visible and does not cross warnings or messages", () => {
+    const first = thought("first", 1);
+    const second = thought("second", 2);
+    expect(
+      buildTimelineViewRows([first, second], { closedScope: true }),
+    ).toEqual([first, second]);
+    expect(buildTimelineViewRows([first, second])).toEqual([first, second]);
+    const warning: TimelineSystemRow = {
+      ...first,
+      id: "warning",
+      systemKind: "operation",
+      operationKind: "warning",
+    };
+    const rows = buildTimelineViewRows([
+      commandRowReadingPaths(["a.ts"], 0),
+      first,
+      warning,
+      commandRowReadingPaths(["b.ts"], 3),
+      second,
+      assistantRow({ id: "response", sourceSeqStart: 4 }),
+      commandRowReadingPaths(["c.ts"], 5),
+    ]);
+    expect(rows.map((row) => row.kind)).toEqual([
+      "bundle-summary",
+      "system",
+      "step-summary",
+      "conversation",
+      "work",
+    ]);
+    expect(rows[1]?.id).toBe("warning");
   });
 });

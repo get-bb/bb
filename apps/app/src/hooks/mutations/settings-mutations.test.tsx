@@ -92,7 +92,7 @@ describe("general settings mutation", () => {
     queryClient.setQueryData(providersKey, [{ id: "claude-code" }]);
     const nextSettings = {
       ...defaultAppSettings,
-      showUnhandledProviderEvents: true,
+      showDiagnosticEvents: true,
     };
     vi.mocked(sdk.system.updateGeneralSettings).mockResolvedValue(nextSettings);
     const { result } = renderHook(() => useUpdateGeneralSettings(), {

@@ -122,6 +122,7 @@ interface ClientTurnRejectedArgs extends EventFactoryRowOptions {
 
 interface ReasoningCompletedArgs extends ProviderTurnEventOptions {
   itemId?: string;
+  summary?: string;
   text: string;
 }
 
@@ -382,6 +383,9 @@ export interface TimelineEventFactory {
   reasoningDelta(
     args: ReasoningDeltaArgs,
   ): ThreadEventRowOfType<"item/reasoning/textDelta">;
+  reasoningSummaryDelta(
+    args: ReasoningDeltaArgs,
+  ): ThreadEventRowOfType<"item/reasoning/summaryTextDelta">;
   reasoningStarted(
     args?: ReasoningStartedArgs,
   ): ThreadEventRowOfType<"item/started">;
@@ -736,6 +740,9 @@ export function createTimelineEventFactory(
           item: {
             type: "contextCompaction",
             id: args.itemId ?? "compact-1",
+            ...(args.parentToolCallId
+              ? { parentToolCallId: args.parentToolCallId }
+              : {}),
           },
         },
       };
@@ -753,6 +760,9 @@ export function createTimelineEventFactory(
           item: {
             type: "contextCompaction",
             id: args.itemId ?? "compact-1",
+            ...(args.parentToolCallId
+              ? { parentToolCallId: args.parentToolCallId }
+              : {}),
           },
         },
       };
@@ -1275,7 +1285,7 @@ export function createTimelineEventFactory(
           item: {
             type: "reasoning",
             id: args.itemId ?? `reasoning-${base.seq}`,
-            summary: [],
+            summary: args.summary ? [args.summary] : [],
             content: [args.text],
             ...(args.parentToolCallId
               ? { parentToolCallId: args.parentToolCallId }
@@ -1297,6 +1307,12 @@ export function createTimelineEventFactory(
             ? { parentToolCallId: args.parentToolCallId }
             : {}),
         },
+      };
+    },
+    reasoningSummaryDelta(args) {
+      return {
+        ...this.reasoningDelta(args),
+        type: "item/reasoning/summaryTextDelta",
       };
     },
     reasoningStarted(args = {}) {
@@ -1415,8 +1431,8 @@ export function renderTimelineFixture(
       : args.projectionOptions.turnMessageDetail,
   });
   const commonProjectionOptions = {
-    includeProviderUnhandledOperations:
-      args.projectionOptions.includeProviderUnhandledOperations ?? false,
+    includeDiagnosticOperations:
+      args.projectionOptions.includeDiagnosticOperations ?? false,
     isLatestPage: true,
     threadStatus: args.projectionOptions.threadStatus ?? "idle",
     threadName: args.projectionOptions.threadName ?? "",

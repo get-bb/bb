@@ -8,7 +8,8 @@ import {
   listPublicHosts,
   type HostDaemonSessionRow,
 } from "@bb/db";
-import type { Environment, Host } from "@bb/domain";
+import type { EnvironmentRow } from "@bb/db";
+import type { Host } from "@bb/domain";
 import type { DbConnection } from "@bb/db";
 import type { NotificationHub } from "../../ws/hub.js";
 import { ApiError } from "../../errors.js";
@@ -35,7 +36,7 @@ interface HostLookupDeps {
 }
 
 interface ThreadEnvironmentLookupResult {
-  environment: Environment;
+  environment: EnvironmentRow;
   thread: ThreadRow;
 }
 
@@ -77,8 +78,8 @@ function toHostRecord(row: HostRow, status: Host["status"]): Host {
   return {
     id: row.id,
     name: row.name,
-    type: row.type,
     status,
+    type: row.type,
     maxPermissionMode: row.maxPermissionMode,
     lastSeenAt: row.lastSeenAt,
     lastRejectedProtocolVersion: row.lastRejectedProtocolVersion,
@@ -221,7 +222,7 @@ export function requirePublicThread(
 export function requireEnvironment(
   db: DbConnection,
   environmentId: string,
-): Environment {
+): EnvironmentRow {
   const environment = getEnvironment(db, environmentId);
   if (!environment) {
     throw new ApiError(404, "environment_not_found", "Environment not found");
@@ -232,7 +233,7 @@ export function requireEnvironment(
 export function requireReadyEnvironment(
   db: DbConnection,
   environmentId: string,
-): Environment & { path: string; status: "ready" } {
+): EnvironmentRow & { path: string; status: "ready" } {
   const environment = requireEnvironment(db, environmentId);
   if (environment.status !== "ready" || !environment.path) {
     throwEnvironmentNotReady(environment);
@@ -247,7 +248,7 @@ export function requireReadyEnvironment(
 function requireEnvironmentForThread(
   db: DbConnection,
   thread: ThreadRow,
-): Environment {
+): EnvironmentRow {
   if (!thread.environmentId) {
     throwThreadEnvironmentUnavailable(
       threadEnvironmentUnavailableDetails("never_attached", null),
@@ -256,7 +257,7 @@ function requireEnvironmentForThread(
   return requireEnvironment(db, thread.environmentId);
 }
 
-function ensureThreadEnvironmentAvailable(environment: Environment): void {
+function ensureThreadEnvironmentAvailable(environment: EnvironmentRow): void {
   const unavailableDetails = destroyedThreadEnvironmentDetails(environment);
   if (unavailableDetails) {
     throwThreadEnvironmentUnavailable(unavailableDetails);

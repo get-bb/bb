@@ -1,6 +1,7 @@
 import type {
   AppKeybindingOverrides,
   AppSettings,
+  AppSettingsUpdate,
   Experiments,
 } from "@bb/domain";
 import type { ProviderUsageResponse } from "@bb/host-daemon-contract";
@@ -63,7 +64,9 @@ export type SystemCliSkillsStatusResult = SystemCliSkillsStatusResponse;
 export type SystemInstallCliSkillsResult = SystemInstallCliSkillsResponse;
 export type SystemVoiceTranscriptionResult = SystemVoiceTranscriptionResponse;
 export type SystemUpdateExperimentsResult = Experiments;
-export type SystemUpdateGeneralSettingsResult = AppSettings;
+export type SystemUpdateGeneralSettingsResult = AppSettings & {
+  showUnhandledProviderEvents?: boolean;
+};
 export type SystemUpdateKeyboardSettingsResult = AppKeybindingOverrides;
 export type SystemUsageLimitsResult = ProviderUsageResponse;
 export interface SystemProviderStatesArgs extends SystemProvidersQuery {
@@ -90,7 +93,7 @@ export interface SystemArea {
   ): Promise<SystemVoiceTranscriptionResult>;
   updateExperiments(args: Experiments): Promise<SystemUpdateExperimentsResult>;
   updateGeneralSettings(
-    args: AppSettings,
+    args: AppSettingsUpdate,
   ): Promise<SystemUpdateGeneralSettingsResult>;
   updateKeyboardSettings(
     args: AppKeybindingOverrides,

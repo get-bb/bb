@@ -26,6 +26,11 @@ function surfaceIds(groupId: string): string[] {
 }
 
 describe("product-map surfaces", () => {
+  it("describes environment selections using only existing enrolled machines", () => {
+    const surface = JSON.stringify(SURFACES_BY_ID.get("environment-providers"));
+    expect(surface).toContain("existing enrolled machine");
+    expect(surface).not.toContain("newly provider-created machine");
+  });
   it("keeps app-window annotations in column-major visual reading order", () => {
     const ordered = [
       "sidebar-navigation",
@@ -185,6 +190,24 @@ describe("surface cross-references", () => {
 });
 
 describe("surface card copy", () => {
+  it("lists every environment orchestration symbol and lifecycle event", () => {
+    const environmentProviders = SURFACES_BY_ID.get("environment-providers");
+    expect(environmentProviders?.apiSymbols).toEqual(
+      expect.arrayContaining([
+        "PluginEnvironmentProviderCreateContext",
+        "PluginEnvironmentProviderProgress",
+        "PluginEnvironmentProviderRemoveContext",
+        "experimental_useBranches",
+        "experimental_useCheckoutState",
+      ]),
+    );
+    expect(environmentProviders?.firstParty).toContain("Project checkout");
+
+    const eventCopy = SURFACES_BY_ID.get("thread-events")?.bullets.join(" ");
+    expect(eventCopy).toContain("unarchived");
+    expect(eventCopy).toContain("cancelled before dispatch");
+  });
+
   it("follows the lead-then-bullets template", () => {
     for (const group of SURFACE_GROUPS) {
       for (const surface of group.surfaces) {

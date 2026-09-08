@@ -13,25 +13,7 @@ env:
   SERVER_URL: "http://127.0.0.1:41999"
 ---
 - runFlow: ../subflows/launch-app.yaml
-# No profiles yet, so the entry route redirects to add-server.
-- extendedWaitUntil:
-    visible: "Connect to a bb server"
-    timeout: 30000
-- tapOn:
-    id: "server-url-input"
-- inputText: "${SERVER_URL}"
-- tapOn:
-    id: "server-label-input"
-- inputText: "E2E backend"
-# Tapping static text dismisses the keyboard.
-- tapOn: "Server URL"
-- tapOn:
-    id: "add-server-submit"
-# Saving activates the profile, and the entry route sends it to the shell.
-- extendedWaitUntil:
-    visible:
-      id: "shell-webview"
-    timeout: 30000
+- runFlow: ../subflows/pair-direct-server.yaml
 # Page content, not native chrome: the shell is really rendering the server's
 # web interface.
 - extendedWaitUntil:

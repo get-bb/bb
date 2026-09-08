@@ -222,6 +222,8 @@ function formatWorkBody(
       return lines;
     case "web-fetch":
       return lines;
+    case "image-generation":
+      return lines;
     case "image-view":
       return lines;
     case "file-read":
@@ -310,6 +312,10 @@ function formatWorkSummaryDetails(
   const lines: string[] = [];
   const childContext = nestedContext(context, null);
   for (const child of row.children) {
+    if (child.kind === "system") {
+      lines.push(formatRow(child, childContext));
+      continue;
+    }
     if (
       (child.workKind === "command" ||
         child.workKind === "file-read" ||

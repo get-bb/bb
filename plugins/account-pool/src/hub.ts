@@ -69,6 +69,7 @@ interface HubOptions {
   accounts: AccountStore;
   quotas: QuotaStore;
   affinity: PoolAffinityStore;
+  maxAffinityBindings: number;
   hubTokens: HubTokenStore;
   getSettings: () => HubSettings;
   adapters: ReadonlyMap<PoolProvider, ProviderAdapter>;
@@ -77,6 +78,7 @@ interface HubOptions {
   usageRefreshIntervalMs: number;
   drainTimeoutMs: number;
   onAccountsChanged: () => void;
+  onUpstreamError: (provider: PoolProvider, error: unknown) => void;
 }
 
 interface SelectedAccount {
@@ -88,6 +90,11 @@ interface SelectedAccount {
 
 interface ActiveAccount {
   accountId: string;
+}
+
+interface PacingFlight {
+  heldUntil: number;
+  result: Promise<void>;
 }
 
 interface RoutingAttempt {
@@ -130,6 +137,7 @@ export class AccountPoolHub {
   private readonly activeControllers = new Set<AbortController>();
   private readonly refreshes = new Map<string, SecretFlight>();
   private readonly refreshBackoffs = new Map<string, RefreshBackoff>();
+  private readonly pacingByAccount = new Map<string, PacingFlight>();
   private affinityBindings = new Map<string, AccountBinding>();
   private activeAccounts = new Map<PoolProvider, ActiveAccount>();
   private readonly usageRefreshes = new Map<string, Promise<void>>();
@@ -144,6 +152,7 @@ export class AccountPoolHub {
       MAX_AFFINITY_BINDINGS,
     );
     this.activeAccounts = this.options.affinity.loadActiveAccounts();
+    this.pacingByAccount.clear();
     this.stopped = new AbortController();
     this.accepting = true;
     while (!signal.aborted) {
@@ -348,9 +357,25 @@ export class AccountPoolHub {
           signal,
         );
         if (selected === null) break;
+        let pacing: PacingFlight | null = null;
         const heldMs = (selected.quota.heldUntil ?? 0) - this.options.now();
+        let activePacing = this.pacingByAccount.get(selected.account.id);
+        if (
+          activePacing !== undefined &&
+          (activePacing.heldUntil !== selected.quota.heldUntil || heldMs <= 0)
+        ) {
+          this.releasePacing(selected.account.id, activePacing);
+          activePacing = undefined;
+        }
         if (heldMs > 0) {
-          if (heldMs > MAX_INLINE_HOLD_MS || waited.has(selected.account.id)) {
+          if (activePacing !== undefined) {
+            pacing = activePacing;
+            waited.add(selected.account.id);
+            await abortable(activePacing.result, signal);
+          } else if (
+            heldMs > MAX_INLINE_HOLD_MS ||
+            waited.has(selected.account.id)
+          ) {
             failure = {
               status: 429,
               message:
@@ -366,10 +391,11 @@ export class AccountPoolHub {
             attempted.add(selected.account.id);
             previousAccountId = selected.account.id;
             continue;
+          } else {
+            waited.add(selected.account.id);
+            await waitForDelay(heldMs, signal);
+            continue;
           }
-          waited.add(selected.account.id);
-          await waitForDelay(heldMs, signal);
-          continue;
         }
         previousAccountId = selected.account.id;
         attempted.add(selected.account.id);
@@ -389,6 +415,10 @@ export class AccountPoolHub {
             signal,
           );
         } catch (error) {
+          if (pacing !== null) {
+            this.releasePacing(selected.account.id, pacing);
+            pacing = null;
+          }
           signal.throwIfAborted();
           if (error instanceof TransientOAuthRefreshError) {
             failure = { status: 503, message: error.message, headers: {} };
@@ -411,6 +441,10 @@ export class AccountPoolHub {
               adapter,
             );
           } catch (error) {
+            if (pacing !== null) {
+              this.releasePacing(selected.account.id, pacing);
+              pacing = null;
+            }
             signal.throwIfAborted();
             if (!(error instanceof UpstreamConnectionError)) throw error;
             failure = {
@@ -434,6 +468,10 @@ export class AccountPoolHub {
             this.options.now(),
           );
           this.options.quotas.put(observed);
+          if (pacing !== null && !response.ok) {
+            this.releasePacing(selected.account.id, pacing);
+            pacing = null;
+          }
           if (response.status === 429) {
             if (adapter.isQuotaRejection(response.headers)) {
               await this.discardUpstream(upstream, false);
@@ -443,14 +481,20 @@ export class AccountPoolHub {
               response.headers.get("retry-after"),
               this.options.now(),
             );
+            const heldUntil = this.options.now() + waitMs;
             this.options.quotas.put({
               ...observed,
-              heldUntil: this.options.now() + waitMs,
+              heldUntil,
             });
             if (!paced && waitMs <= MAX_INLINE_HOLD_MS) {
               paced = true;
+              pacing = {
+                heldUntil,
+                result: waitForDelay(waitMs, this.stopped.signal),
+              };
+              this.pacingByAccount.set(selected.account.id, pacing);
               await this.discardUpstream(upstream, false);
-              await waitForDelay(waitMs, signal);
+              await abortable(pacing.result, signal);
               continue;
             }
             if (!selected.keepAffinity) {
@@ -746,7 +790,7 @@ export class AccountPoolHub {
         this.affinityBindings.set(affinityKey, binding);
       }
     }
-    while (this.affinityBindings.size > MAX_AFFINITY_BINDINGS) {
+    while (this.affinityBindings.size > this.options.maxAffinityBindings) {
       const oldest = this.affinityBindings.keys().next();
       if (!oldest.done) {
         this.affinityBindings.delete(oldest.value);
@@ -978,8 +1022,12 @@ export class AccountPoolHub {
             : { body: upstreamBody }),
           signal: controller.signal,
         })
-        .catch(() => {
-          throw new UpstreamConnectionError("Upstream connection failed.");
+        .catch((cause: unknown) => {
+          if (!controller.signal.aborted)
+            this.options.onUpstreamError(adapter.provider, cause);
+          throw new UpstreamConnectionError("Upstream connection failed.", {
+            cause,
+          });
         });
       return { response, controller, release };
     } catch (error) {
@@ -1087,6 +1135,11 @@ export class AccountPoolHub {
     this.options.quotas.put({ ...quota, error: message.slice(0, 1_000) });
   }
 
+  private releasePacing(accountId: string, pacing: PacingFlight): void {
+    if (this.pacingByAccount.get(accountId) === pacing)
+      this.pacingByAccount.delete(accountId);
+  }
+
   private adapter(provider: PoolProvider): ProviderAdapter {
     const adapter = this.options.adapters.get(provider);
     if (adapter === undefined)
@@ -1134,7 +1187,9 @@ export function createHub(options: {
   profileUrl?: string;
   usageRefreshIntervalMs?: number;
   drainTimeoutMs?: number;
+  maxAffinityBindings?: number;
   onAccountsChanged?: () => void;
+  onUpstreamError?: (provider: PoolProvider, error: unknown) => void;
 }): AccountPoolHub {
   const adapters: ReadonlyMap<PoolProvider, ProviderAdapter> = new Map([
     [
@@ -1159,6 +1214,7 @@ export function createHub(options: {
     accounts: options.accounts,
     quotas: options.quotas,
     affinity: options.affinity,
+    maxAffinityBindings: options.maxAffinityBindings ?? MAX_AFFINITY_BINDINGS,
     hubTokens: options.hubTokens,
     getSettings: options.getSettings,
     adapters,
@@ -1168,6 +1224,7 @@ export function createHub(options: {
       options.usageRefreshIntervalMs ?? DEFAULT_USAGE_REFRESH_INTERVAL_MS,
     drainTimeoutMs: options.drainTimeoutMs ?? 60_000,
     onAccountsChanged: options.onAccountsChanged ?? (() => {}),
+    onUpstreamError: options.onUpstreamError ?? (() => {}),
   });
 }
 

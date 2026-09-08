@@ -82,7 +82,7 @@ export const projectParityRows: ParityRowProjector = ({
     contextWindowEvents,
     events: compactThreadTimelineSummaryEvents(withMeta),
     options: {
-      includeProviderUnhandledOperations: true,
+      includeDiagnosticOperations: true,
       includeNestedRows: true,
       isLatestPage: true,
       providerId,

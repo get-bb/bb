@@ -1,5 +1,6 @@
 import type { IconSvgElement } from "@hugeicons/react-native";
 import {
+  AiBrain01Icon,
   AiBrowserIcon,
   AiContentGenerator01Icon,
   Alert02Icon,
@@ -73,6 +74,7 @@ import {
   FolderGitTwoIcon,
   FolderIcon,
   FolderRemoveIcon,
+  FolderSyncIcon,
   GitBranchIcon,
   GitForkIcon,
   GitMergeIcon,
@@ -266,6 +268,7 @@ const SectionAddStrokeRoundedIcon: IconSvgElement = [
 ];
 
 const ICON_MAP = {
+  AiBrain01: AiBrain01Icon,
   AiBrowser: AiBrowserIcon,
   AiContentGenerator01: AiContentGenerator01Icon,
   AlertCircle: AlertCircleIcon,
@@ -336,9 +339,11 @@ const ICON_MAP = {
   FolderEdit: FolderEditIcon,
   FolderExport: FolderExportIcon,
   FolderGit: FolderGitTwoIcon,
+  Folder02: Folder02Icon,
   FolderOpen: Folder02Icon,
   FolderMinus: FolderRemoveIcon,
   FolderPlus: FolderAddIcon,
+  FolderSync: FolderSyncIcon,
   Fork: GitForkIcon,
   GitBranch: GitBranchIcon,
   GitMerge: GitMergeIcon,

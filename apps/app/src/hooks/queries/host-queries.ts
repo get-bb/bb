@@ -24,6 +24,12 @@ export function useHosts(options?: QueryOptions) {
   });
 }
 
+export function selectPersistentHosts(
+  hosts: readonly Host[] | undefined,
+): Host[] {
+  return hosts ? [...hosts] : [];
+}
+
 export function selectPrimaryHost(
   hosts: readonly Host[] | undefined,
   primaryHostId: string | null,

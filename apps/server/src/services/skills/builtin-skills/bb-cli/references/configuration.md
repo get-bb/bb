@@ -10,6 +10,16 @@
   copy from the source checkout. It uses gitignore pattern syntax. bb copies
   the matches before it runs `.bb-env-setup.sh`.
 
+- Hooks require ownership confirmed by successful provider creation. Attached
+  checkout and personal-workspace paths skip both hooks. Server restart resumes
+  the saved hook operation; cleanup waits for daemon-confirmed termination
+  after a transport failure and retries while the daemon is unreachable.
+
+- Missing default environment plugins cause creation to fail before a thread is
+  inserted. Enable the plugin or explicitly select another environment.
+- Host-dependent environment preflight requires a connected machine. Directory
+  switching creates a core-owned attachment without claiming plugin provenance.
+
 ## App settings
 
 - Read `references/app-settings.md` for every general key, experiment, default,

@@ -23,6 +23,7 @@ import type {
   AppTheme,
   AppThemeSelection,
   AppSettings,
+  AppSettingsUpdate,
   AppKeybindingOverrides,
   Environment,
   Experiments,
@@ -35,7 +36,7 @@ import type {
   ThreadQueuedMessage,
 } from "@bb/domain";
 import {
-  appSettingsSchema,
+  appSettingsUpdateSchema,
   appKeybindingOverridesSchema,
   appThemeSelectionSchema,
   experimentsSchema,
@@ -171,6 +172,8 @@ import type {
   SystemInstallCliSkillsResponse,
   SystemExecutionOptionsQuery,
   SystemExecutionOptionsResponse,
+  SystemEnvironmentProvidersQuery,
+  SystemEnvironmentProvidersResponse,
   SystemProviderInfo,
   SystemProvidersQuery,
   SystemProviderStatesResponse,
@@ -223,6 +226,7 @@ import type {
   ThreadWithIncludesResponse,
   TimelineTurnSummaryDetailsQuery,
   TimelineTurnSummaryDetailsResponse,
+  ListEnvironmentsQuery,
   UpdateEnvironmentRequest,
   UpdateThreadSectionRequest,
   UpdateTerminalRequest,
@@ -303,6 +307,7 @@ import {
   setQueuedMessageGroupBoundaryRequestSchema,
   sendQueuedMessageRequestSchema,
   systemExecutionOptionsQuerySchema,
+  systemEnvironmentProvidersQuerySchema,
   systemProvidersQuerySchema,
   systemUsageLimitsQuerySchema,
   systemVersionQuerySchema,
@@ -327,6 +332,7 @@ import {
   systemCliSkillsStatusQuerySchema,
   systemInstallCliSkillsRequestSchema,
   timelineTurnSummaryDetailsQuerySchema,
+  listEnvironmentsQuerySchema,
   updateEnvironmentRequestSchema,
   updateHostRequestSchema,
   updateHostPermissionCeilingRequestSchema,
@@ -867,6 +873,24 @@ export const publicApiRoutes = {
   },
 
   environments: {
+    list: defineRoute({
+      path: "/environments",
+      method: "get",
+      request: optionalQueryRequest<EmptyInput, ListEnvironmentsQuery>(
+        listEnvironmentsQuerySchema,
+      ),
+      response: jsonResponse<Environment[]>(),
+    }),
+    delete: defineRoute({
+      path: "/environments/:id",
+      method: "delete",
+      request: noRequest<PathId>(),
+      response: [
+        jsonResponse<{ ok: true }>(),
+        jsonResponse<ApiError>({ status: 404 }),
+        jsonResponse<ApiError>({ status: 409 }),
+      ],
+    }),
     get: defineRoute({
       path: "/environments/:id",
       method: "get",
@@ -1484,8 +1508,12 @@ export const publicApiRoutes = {
     generalSettings: defineRoute({
       path: "/settings/general",
       method: "put",
-      request: jsonRequest<EmptyInput, AppSettings>(appSettingsSchema),
-      response: jsonResponse<AppSettings>(),
+      request: jsonRequest<EmptyInput, AppSettingsUpdate>(
+        appSettingsUpdateSchema,
+      ),
+      response: jsonResponse<
+        AppSettings & { showUnhandledProviderEvents?: boolean }
+      >(),
     }),
     keyboardSettings: defineRoute({
       path: "/settings/keyboard",
@@ -1514,6 +1542,18 @@ export const publicApiRoutes = {
       method: "get",
       request: noRequest(),
       response: jsonResponse<ThemeCatalogResponse>(),
+    }),
+    /**
+     * Resolve a built-in, custom, or plugin theme exactly as activating it
+     * would, without persisting anything. The Settings palette hover preview
+     * and `bb theme show <id>` read it; `faviconColor` echoes the stored
+     * appearance because the response is a full `AppTheme`.
+     */
+    resolveTheme: defineRoute({
+      path: "/settings/themes/:id",
+      method: "get",
+      request: noRequest<PathId>(),
+      response: jsonResponse<AppTheme>(),
     }),
     reloadConfig: defineRoute({
       path: "/system/config/reload",
@@ -1544,6 +1584,15 @@ export const publicApiRoutes = {
         systemExecutionOptionsQuerySchema,
       ),
       response: jsonResponse<SystemExecutionOptionsResponse>(),
+    }),
+    environmentProviders: defineRoute({
+      path: "/system/environment-providers",
+      method: "get",
+      request: optionalQueryRequest<
+        EmptyInput,
+        SystemEnvironmentProvidersQuery
+      >(systemEnvironmentProvidersQuerySchema),
+      response: jsonResponse<SystemEnvironmentProvidersResponse>(),
     }),
     providers: defineRoute({
       path: "/system/providers",

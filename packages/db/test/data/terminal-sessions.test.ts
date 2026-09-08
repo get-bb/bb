@@ -199,14 +199,12 @@ function setup(): TerminalSessionFixture {
     source: { type: "local_path", hostId: host.id, path: "/tmp/project" },
   });
   const environment = createEnvironment(db, noopNotifier, {
+      providerOwnsPath: false,
     projectId: project.id,
     hostId: host.id,
     path: "/tmp/workspace",
     status: "ready",
-    managed: false,
     isGitRepo: true,
-    isWorktree: false,
-    workspaceProvisionType: "unmanaged",
     branchName: "main",
     baseBranch: null,
     defaultBranch: "main",

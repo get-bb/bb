@@ -1,4 +1,10 @@
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { normalizeProjectPathInput } from "@bb/domain";
@@ -96,13 +102,33 @@ export function RemotePathBrowser({
 
   const entries = data?.entries ?? NO_ENTRIES;
   const scrollRef = useRef<HTMLDivElement>(null);
+  const getScrollElement = useCallback(() => scrollRef.current, []);
+  const estimateEntrySize = useCallback(
+    () => DIRECTORY_ENTRY_ROW_HEIGHT_PX,
+    [],
+  );
+  const getEntryKey = useCallback(
+    (index: number) => entries[index]?.path ?? index,
+    [entries],
+  );
   const entryVirtualizer = useVirtualizer({
     count: entries.length,
-    getScrollElement: () => scrollRef.current,
-    estimateSize: () => DIRECTORY_ENTRY_ROW_HEIGHT_PX,
-    getItemKey: (index) => entries[index]?.path ?? index,
+    getScrollElement,
+    estimateSize: estimateEntrySize,
+    getItemKey: getEntryKey,
     overscan: DIRECTORY_ENTRY_OVERSCAN_ROWS,
   });
+
+  const cancelCreatingFolder = () => {
+    setIsCreatingFolder(false);
+    setNewFolderError(null);
+  };
+
+  const navigateTo = (path: string) => {
+    cancelCreatingFolder();
+    entryVirtualizer.scrollToOffset(0);
+    setCurrentPath(path);
+  };
 
   const startCreatingFolder = () => {
     if (
@@ -118,16 +144,6 @@ export function RemotePathBrowser({
     setNewFolderName("");
     setNewFolderError(null);
     setIsCreatingFolder(true);
-  };
-
-  const cancelCreatingFolder = () => {
-    setIsCreatingFolder(false);
-    setNewFolderError(null);
-  };
-
-  const navigateTo = (path: string) => {
-    cancelCreatingFolder();
-    setCurrentPath(path);
   };
 
   const createFolder = useMutation({

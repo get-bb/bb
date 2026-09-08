@@ -12,6 +12,7 @@ import {
   getLatestThreadSequence,
   insertEvents,
   migrate,
+  migrateNextLegacyImageGenerationOutput,
   noopNotifier,
   upsertHost,
 } from "@bb/db";
@@ -403,7 +404,7 @@ function buildPage(
 ) {
   return buildThreadTimelineWithProfile(db, thread, {
     eventBudget,
-    includeProviderUnhandledOperations: false,
+    includeDiagnosticOperations: false,
     includeNestedRows: false,
     maxInlineOutputChars: 32_000,
     maxSeq: 0,
@@ -421,7 +422,7 @@ function buildNestedPage(
 ) {
   return buildThreadTimelineWithProfile(db, thread, {
     eventBudget,
-    includeProviderUnhandledOperations: false,
+    includeDiagnosticOperations: false,
     includeNestedRows: true,
     maxInlineOutputChars: 32_000,
     maxSeq: 0,
@@ -671,7 +672,7 @@ describe("in-turn timeline windows", () => {
     });
 
     const details = buildTimelineTurnSummaryDetails(db, thread, {
-      includeProviderUnhandledOperations: false,
+      includeDiagnosticOperations: false,
       sourceSeqEnd: turnRow.sourceSeqEnd,
       sourceSeqStart: turnRow.sourceSeqStart,
       turnId: turnRow.turnId,
@@ -805,7 +806,7 @@ describe("in-turn timeline windows", () => {
         expect(turnRowIds.has(row.id)).toBe(false);
         turnRowIds.add(row.id);
         const details = buildTimelineTurnSummaryDetails(db, thread, {
-          includeProviderUnhandledOperations: false,
+          includeDiagnosticOperations: false,
           sourceSeqEnd: row.sourceSeqEnd,
           sourceSeqStart: row.sourceSeqStart,
           turnId: row.turnId,
@@ -891,7 +892,7 @@ describe("in-turn timeline windows", () => {
     }
   });
 
-  it("caps stored outputs before it expands a byte-budget slice", () => {
+  it("uses bounded retained previews while it expands a byte-budget slice", () => {
     const { db, thread } = setup();
     seedTurns(db, thread, {
       completeLastTurn: true,
@@ -906,7 +907,7 @@ describe("in-turn timeline windows", () => {
       throw new Error("expected a turn row");
     }
     const details = buildTimelineTurnSummaryDetails(db, thread, {
-      includeProviderUnhandledOperations: false,
+      includeDiagnosticOperations: false,
       sourceSeqEnd: turnRow.sourceSeqEnd,
       sourceSeqStart: turnRow.sourceSeqStart,
       turnId: turnRow.turnId,
@@ -915,12 +916,11 @@ describe("in-turn timeline windows", () => {
       row.kind === "work" && row.workKind === "command" ? [row.output] : [],
     );
 
-    expect(commandOutputs.length).toBeGreaterThan(0);
-    expect(commandOutputs.length).toBeLessThan(150);
+    expect(commandOutputs).toHaveLength(150);
     expect(commandOutputs.every((output) => output.length < 33_000)).toBe(true);
     expect(
       commandOutputs.some((output) =>
-        output.includes("more characters truncated"),
+        output.includes("output truncated by retention policy"),
       ),
     ).toBe(true);
   });
@@ -950,7 +950,7 @@ describe("in-turn timeline windows", () => {
           expect(row.sourceSeqStart).toBeGreaterThan(4);
         }
         const details = buildTimelineTurnSummaryDetails(db, thread, {
-          includeProviderUnhandledOperations: false,
+          includeDiagnosticOperations: false,
           sourceSeqEnd: row.sourceSeqEnd,
           sourceSeqStart: row.sourceSeqStart,
           turnId: row.turnId,
@@ -1010,6 +1010,87 @@ describe("in-turn timeline windows", () => {
     expect(latest.profile.eventRowCount).toBe(0);
   });
 
+  it("renders a migrated oversized Codex image generation as a compact row", () => {
+    const { db, thread } = setup();
+    seedTurns(db, thread, { completeLastTurn: false, itemsPerTurn: [0] });
+    const migratedAt = Date.now() + 1_000;
+    const result = "encoded-image-" + "i".repeat(4 * 1024 * 1024);
+    insertEvents(db, noopNotifier, [
+      {
+        createdAt: migratedAt - 1,
+        threadId: thread.id,
+        sequence: getLatestThreadSequence(db, { threadId: thread.id }) + 1,
+        type: "provider/unhandled",
+        scope: turnScope("turn-1"),
+        providerThreadId,
+        itemId: null,
+        itemKind: null,
+        parentToolCallId: null,
+        data: JSON.stringify({
+          providerId: "codex",
+          rawType: "item/completed",
+          rawEvent: {
+            jsonrpc: "2.0",
+            method: "item/completed",
+            params: {
+              threadId: providerThreadId,
+              turnId: "turn-1",
+              item: {
+                type: "imageGeneration",
+                id: "legacy-generated-image",
+                status: "completed",
+                revisedPrompt: "Draw a production-shaped image",
+                savedPath: "/tmp/generated.png",
+                transparentBackground: false,
+                failure: null,
+                result,
+              },
+            },
+          },
+        }),
+      },
+    ]);
+
+    expect(
+      migrateNextLegacyImageGenerationOutput(db, {
+        limit: 10,
+        migratedAt,
+      }),
+    ).toMatchObject({
+      action: "migrated",
+      migratedRows: 1,
+      retained: true,
+      threadId: thread.id,
+    });
+    const page = buildNestedPage(db, thread, LARGE_BUDGET, null);
+    const rows = page.response.rows.flatMap((row) =>
+      row.kind === "turn" && row.children ? row.children : [row],
+    );
+    const imageRow = rows.find(
+      (row) => row.kind === "work" && row.workKind === "image-generation",
+    );
+
+    expect(imageRow).toMatchObject({
+      kind: "work",
+      workKind: "image-generation",
+      callId: "legacy-generated-image",
+      status: "completed",
+      prompt: "Draw a production-shaped image",
+      path: "/tmp/generated.png",
+    });
+    expect(JSON.stringify(page.response)).not.toContain(result);
+    expect(page.profile.eventDataBytes).toBeLessThan(
+      THREAD_TIMELINE_EVENT_DATA_BYTE_LIMIT,
+    );
+    expect(
+      rows.some(
+        (row) =>
+          row.kind === "system" &&
+          row.title === "Timeline event is too large to display",
+      ),
+    ).toBe(false);
+  });
+
   it("keeps a parented aggregate whole instead of bypassing the budget during closure", () => {
     const { db, thread } = setup();
     seedTurns(db, thread, {
@@ -1066,7 +1147,7 @@ describe("in-turn timeline windows", () => {
           continue;
         }
         const details = buildTimelineTurnSummaryDetails(db, thread, {
-          includeProviderUnhandledOperations: false,
+          includeDiagnosticOperations: false,
           sourceSeqEnd: row.sourceSeqEnd,
           sourceSeqStart: row.sourceSeqStart,
           turnId: row.turnId,
@@ -1393,7 +1474,7 @@ describe("timeline inline output reads", () => {
 
     const capped = buildThreadTimeline(db, thread, {
       eventBudget: LARGE_BUDGET,
-      includeProviderUnhandledOperations: false,
+      includeDiagnosticOperations: false,
       includeNestedRows: false,
       maxInlineOutputChars: 32_000,
       maxSeq: 0,
@@ -1401,7 +1482,7 @@ describe("timeline inline output reads", () => {
     });
     const uncapped = buildThreadTimeline(db, thread, {
       eventBudget: LARGE_BUDGET,
-      includeProviderUnhandledOperations: false,
+      includeDiagnosticOperations: false,
       includeNestedRows: false,
       maxInlineOutputChars: null,
       maxSeq: 0,
@@ -1426,9 +1507,79 @@ describe("timeline inline output reads", () => {
       throw new Error("expected command rows");
     }
     expect(uncappedRow.output).toBe(output);
-    expect(cappedRow.output).toBe(
-      `${"x".repeat(32_000)}\n…[18,000 more characters truncated]`,
+    expect(cappedRow.output).not.toBe(output);
+    expect(cappedRow.output.length).toBeLessThan(5_000);
+    expect(cappedRow.output.startsWith(output.slice(0, 2_048))).toBe(true);
+    expect(cappedRow.output.endsWith(output.slice(-2_048))).toBe(true);
+    expect(cappedRow.output).toContain("output truncated by retention policy");
+  });
+});
+
+describe("timeline retained output reads", () => {
+  it("keeps capped reads bounded and hydrates uncapped reads", () => {
+    const { db, thread } = setup();
+    seedTurns(db, thread, { completeLastTurn: false, itemsPerTurn: [1] });
+    const output = "x".repeat(50_000);
+    insertEvents(db, noopNotifier, [
+      {
+        threadId: thread.id,
+        sequence: 500,
+        type: "item/completed",
+        scope: turnScope("turn-1"),
+        providerThreadId,
+        itemId: "retained-command",
+        itemKind: "commandExecution",
+        parentToolCallId: null,
+        data: JSON.stringify({
+          item: {
+            type: "commandExecution",
+            id: "retained-command",
+            command: "cat large",
+            cwd: "/tmp/test",
+            status: "completed",
+            approvalStatus: null,
+            exitCode: 0,
+            aggregatedOutput: output,
+          },
+        }),
+      },
+    ]);
+
+    const capped = buildThreadTimeline(db, thread, {
+      eventBudget: LARGE_BUDGET,
+      includeDiagnosticOperations: false,
+      includeNestedRows: false,
+      maxInlineOutputChars: 32_000,
+      maxSeq: 500,
+      page: { kind: "latest", segmentLimit: 20 },
+    });
+    const uncapped = buildThreadTimeline(db, thread, {
+      eventBudget: LARGE_BUDGET,
+      includeDiagnosticOperations: false,
+      includeNestedRows: false,
+      maxInlineOutputChars: null,
+      maxSeq: 500,
+      page: { kind: "latest", segmentLimit: 20 },
+    });
+    const cappedRow = capped.rows.find(
+      (row) => row.kind === "work" && row.id.endsWith("retained-command"),
     );
+    const uncappedRow = uncapped.rows.find(
+      (row) => row.kind === "work" && row.id.endsWith("retained-command"),
+    );
+    if (
+      cappedRow?.kind !== "work" ||
+      cappedRow.workKind !== "command" ||
+      uncappedRow?.kind !== "work" ||
+      uncappedRow.workKind !== "command"
+    ) {
+      throw new Error("Expected retained command rows");
+    }
+    expect(cappedRow.output.length).toBeLessThan(5_000);
+    expect(cappedRow.output).toContain("output truncated by retention policy");
+    expect(uncappedRow.output).toBe(output);
+
+    db.$client.close();
   });
 });
 
@@ -1699,7 +1850,7 @@ function collectTurnDetailsAndChildren(
     byTurnId.set(row.turnId, {
       children: row.children ?? [],
       details: buildTimelineTurnSummaryDetails(db, thread, {
-        includeProviderUnhandledOperations: false,
+        includeDiagnosticOperations: false,
         sourceSeqEnd: row.sourceSeqEnd,
         sourceSeqStart: row.sourceSeqStart,
         turnId: row.turnId,
@@ -1754,16 +1905,42 @@ describe("turn details for an item that finishes in a later turn", () => {
       data: JSON.stringify({ reason: "manual-stop" }),
     });
     insertEvents(db, noopNotifier, events);
-    const before = buildNestedPage(db, thread, LARGE_BUDGET, null).response;
-    const beforeThought = before.rows.find(
+    const storedCount = events.length;
+    push({
+      ...base,
+      type: "client/turn/requested",
+      scope: threadScope(),
+      data: JSON.stringify({
+        direction: "outbound",
+        source: "tell",
+        initiator: "user",
+        request: { method: "turn/start", params: {} },
+        requestId: requestId(2),
+        senderThreadId: null,
+        input: [{ type: "text", text: "User message 2", mentions: [] }],
+        target: { kind: "new-turn" },
+        execution,
+      }),
+    });
+    insertEvents(db, noopNotifier, events.slice(storedCount));
+    const unfinishedLatest = buildPage(
+      db,
+      thread,
+      LARGE_BUDGET,
+      null,
+      1,
+    ).response;
+    const unfinishedOlder = buildNestedPage(
+      db,
+      thread,
+      LARGE_BUDGET,
+      unfinishedLatest.timelinePage.olderCursor!,
+    ).response;
+    const beforeThought = unfinishedOlder.rows.find(
       (row) => row.kind === "system" && row.title.startsWith("Thought for"),
     );
-    expect(beforeThought).toMatchObject({
-      detail: "Checking",
-      status: "interrupted",
-    });
+    expect(beforeThought).toMatchObject({ detail: "Checking" });
 
-    const storedCount = events.length;
     push({
       ...base,
       type: "item/completed",
@@ -1778,8 +1955,10 @@ describe("turn details for an item that finishes in a later turn", () => {
       type: "turn/completed",
       data: JSON.stringify({ status: "interrupted", providerThreadId }),
     });
-    insertEvents(db, noopNotifier, events.slice(storedCount));
+    insertEvents(db, noopNotifier, events.slice(-2));
 
+    const latest = buildPage(db, thread, LARGE_BUDGET, null, 1).response;
+    expect(latest.rows.some((row) => row.kind === "system")).toBe(false);
     const after = collectTurnDetailsAndChildren(db, thread).get(turnId);
     const thoughts = after?.details.filter(
       (row) => row.kind === "system" && row.title.startsWith("Thought for"),
@@ -1790,10 +1969,9 @@ describe("turn details for an item that finishes in a later turn", () => {
         detail: text,
         status: "interrupted",
         sourceSeqStart: firstSequence + 1,
-        sourceSeqEnd: firstSequence + 4,
+        sourceSeqEnd: firstSequence + 5,
       }),
     ]);
-    expect(after?.details).toEqual(after?.children);
     expect(collectTurnDetailsAndChildren(db, thread).get(turnId)).toEqual(
       after,
     );

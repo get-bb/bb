@@ -1,3 +1,7 @@
+import {
+  createUpstreamTransport,
+  transportErrorCode,
+} from "./upstream-transport.js";
 import path from "node:path";
 import type { BbPluginApi } from "@get-bb/plugin-sdk";
 import { registerPoolCli } from "./cli.js";
@@ -38,6 +42,7 @@ export interface AccountPoolPluginOptions {
   usageUrl?: string;
   usageRefreshIntervalMs?: number;
   drainTimeoutMs?: number;
+  maxAffinityBindings?: number;
   disposeTimeoutMs?: number;
   importCredentials?: () => Promise<ImportedClaudeCredentials>;
   importCodexCredentials?: () => Promise<ImportedCodexCredentials>;
@@ -93,13 +98,16 @@ export function createAccountPoolPlugin(
     const db = bb.storage.database();
     bb.storage.migrate(db, QUOTA_MIGRATIONS);
     const quotas = new QuotaStore(db);
+    const transport =
+      options.fetch === undefined ? createUpstreamTransport() : null;
+    const upstreamFetch = options.fetch ?? transport?.fetch;
     const hub = createHub({
       accounts,
       quotas,
       affinity: new PoolAffinityStore(db),
       hubTokens,
       getSettings: () => currentSettings,
-      fetch: options.fetch,
+      fetch: upstreamFetch,
       now,
       refreshUrl: options.refreshUrl,
       codexRefreshUrl: options.codexRefreshUrl,
@@ -110,9 +118,20 @@ export function createAccountPoolPlugin(
       importCodexCredentials: options.importCodexCredentials,
       usageRefreshIntervalMs: options.usageRefreshIntervalMs,
       drainTimeoutMs: options.drainTimeoutMs,
+      maxAffinityBindings: options.maxAffinityBindings,
+      onUpstreamError: (provider, error) =>
+        bb.log.warn(
+          `Account Pooler ${provider} transport failed: ${transportErrorCode(error)}.`,
+        ),
       onAccountsChanged: () =>
         bb.realtime.publish(ACCOUNT_POOL_ACCOUNTS_CHANGED, {}),
     });
+    if (transport !== null) {
+      bb.onDispose(async () => {
+        await hub.stop();
+        await transport.destroy();
+      });
+    }
     const operations = new PoolOperations(
       accounts,
       quotas,
@@ -127,7 +146,7 @@ export function createAccountPoolPlugin(
       (accountId) => hub.refreshUsage(accountId, true),
     );
     const login = new ClaudeOAuthLogin({
-      fetch: options.fetch,
+      fetch: upstreamFetch,
       now,
       authorizeUrl: options.oauthAuthorizeUrl,
       tokenUrl: options.oauthTokenUrl,
@@ -135,7 +154,7 @@ export function createAccountPoolPlugin(
       addAccount: (authenticated) => operations.addOAuth(authenticated),
     });
     const codexLogin = new CodexDeviceLogin({
-      fetch: options.fetch,
+      fetch: upstreamFetch,
       now,
       authBaseUrl: options.codexAuthBaseUrl,
       addAccount: (authenticated) => operations.addCodexOAuth(authenticated),

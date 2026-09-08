@@ -292,7 +292,7 @@ function buildPage(
 ) {
   return buildThreadTimelineWithProfile(db, thread, {
     eventBudget,
-    includeProviderUnhandledOperations: false,
+    includeDiagnosticOperations: false,
     includeNestedRows: false,
     maxInlineOutputChars: 32_000,
     maxSeq: 0,

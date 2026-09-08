@@ -120,18 +120,18 @@ function setup(status: ThreadStatus): Setup {
   migrate(db);
   const hub = new NotificationHub();
   const host = upsertHost(db, noopNotifier, {
+    type: "persistent",
     id: "host-lifecycle-outcome",
     name: "Lifecycle Outcome Host",
-    type: "persistent",
   });
   const { project } = createProject(db, noopNotifier, {
     name: "Lifecycle Outcome Project",
     source: { type: "local_path", hostId: host.id, path: "/tmp/lifecycle" },
   });
   const environment = createEnvironment(db, noopNotifier, {
+    providerOwnsPath: false,
     hostId: host.id,
     projectId: project.id,
-    workspaceProvisionType: "unmanaged",
     path: "/tmp/lifecycle/env",
     status: "ready",
   });

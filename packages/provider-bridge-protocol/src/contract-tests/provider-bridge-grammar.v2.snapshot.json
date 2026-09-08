@@ -226,6 +226,14 @@
       "path": "required",
       "cmd": "optional"
     },
+    "imageGeneration": {
+      "type": "required",
+      "prompt": "required",
+      "path": "required",
+      "result": "optional",
+      "error": "required",
+      "transparentBackground": "required"
+    },
     "imageView": {
       "type": "required",
       "path": "required"

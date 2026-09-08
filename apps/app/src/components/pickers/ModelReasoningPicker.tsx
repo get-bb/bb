@@ -1055,17 +1055,30 @@ export function ModelReasoningPicker({
                 <div className="shrink-0 border-t border-border" />
                 <div className="shrink-0 px-1 pb-1 pt-0">
                   <MenuSectionLabel>Reasoning</MenuSectionLabel>
-                  {activeReasoningOptions.map((option) => (
-                    <MenuRowButton
-                      key={option.value}
-                      label={option.label}
-                      selected={
-                        !isPreviewing && option.value === reasoningValue
-                      }
-                      disabled={previewSelectionBlocked}
-                      onClick={() => handleReasoningSelect(option.value)}
-                    />
-                  ))}
+                  <div
+                    role="group"
+                    aria-label="Reasoning"
+                    className="flex flex-wrap gap-1.5 px-2 pb-2"
+                  >
+                    {activeReasoningOptions.map((option) => (
+                      <button
+                        key={option.value}
+                        type="button"
+                        aria-pressed={
+                          !isPreviewing && option.value === reasoningValue
+                        }
+                        className={cn(
+                          "rounded-full border border-border px-3 py-1 text-xs whitespace-nowrap outline-none hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 aria-pressed:border-primary aria-pressed:bg-primary aria-pressed:text-primary-foreground",
+                          isCompactViewport && "min-h-9 text-sm",
+                          LIST_HOVER_TRANSITION,
+                        )}
+                        disabled={previewSelectionBlocked}
+                        onClick={() => handleReasoningSelect(option.value)}
+                      >
+                        {option.label}
+                      </button>
+                    ))}
+                  </div>
                 </div>
               </>
             ) : null}

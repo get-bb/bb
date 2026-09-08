@@ -77,8 +77,8 @@ describe("useSettingsNavState", () => {
       wrapper: wrapperFor("/settings/files"),
     });
 
-    expect(result.current.sections.map((section) => section.id)).toContain(
-      "files",
+    expect(result.current.sections).toContainEqual(
+      expect.objectContaining({ icon: "File", id: "files" }),
     );
   });
 

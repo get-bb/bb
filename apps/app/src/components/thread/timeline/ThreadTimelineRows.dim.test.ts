@@ -44,13 +44,30 @@ describe("pastRowDimClassName", () => {
     }
   });
 
-  it("recedes a completed system row", () => {
-    const row = viewRow([systemRow({ status: "completed" })]);
-    expect(row.kind).toBe("system");
-    expect(pastRowDimClassName({ ...inactiveScope, row })).toBe(
-      PAST_ROW_DIM_CLASS_NAME,
-    );
-  });
+  it.each(["generic", "reasoning"] as const)(
+    "recedes a completed %s system row",
+    (operationKind) => {
+      const row = viewRow([systemRow({ operationKind, status: "completed" })]);
+      expect(row.kind).toBe("system");
+      expect(pastRowDimClassName({ ...inactiveScope, row })).toBe(
+        PAST_ROW_DIM_CLASS_NAME,
+      );
+    },
+  );
+
+  it.each(["warning", "deprecation"] as const)(
+    "keeps completed %s rows readable",
+    (operationKind) => {
+      const row = viewRow([
+        systemRow({
+          systemKind: "operation",
+          operationKind,
+          status: "completed",
+        }),
+      ]);
+      expect(pastRowDimClassName({ ...inactiveScope, row })).toBeUndefined();
+    },
+  );
 
   it("keeps a still-running system row at full strength", () => {
     const row = viewRow([systemRow({ status: "pending" })]);

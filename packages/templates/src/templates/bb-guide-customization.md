@@ -20,7 +20,8 @@ app uses ~/.bb/theme/…). The folder name is the theme id.
   bb theme set <id> [--favicon-color <color>]
                                  Activate a theme, preserving the favicon color
                                  unless the flag supplies the complete selection
-  bb theme show [--css]          Print the active palette; --css dumps the CSS
+  bb theme show [id] [--css]     Print the active palette, or resolve <id> without
+                                 activating it; --css dumps the CSS
   bb theme reset                 Back to the default theme; preserve favicon color
   bb theme favicon set <color>   Set favicon color; preserve the active theme
   bb theme favicon reset         Reset favicon color; preserve the active theme
@@ -34,6 +35,9 @@ the bb-cli skill (references/theming.md).
 Favicon colors are `default`, `red`, `orange`, `yellow`, `green`, `teal`,
 `blue`, `purple`, and `pink`. Theme and favicon-only commands carry the other
 appearance value forward explicitly.
+
+Hovering a palette in Settings → Appearance previews it live in that window
+without saving; `bb theme show <id>` is the CLI counterpart.
 
 Add --json to any theme command for machine-readable output.
 
@@ -83,9 +87,11 @@ Turn it off to hide the delayed shortcut badges shown while holding Command or
 Control on macOS, or Control on Windows/Linux. Shortcut commands continue to
 work.
 
-Settings → General includes `showUnhandledProviderEvents`, which defaults to
-false in packaged builds. Turn it on to show raw provider events bb does not yet
-understand; development builds always show these diagnostic rows.
+Settings → General includes `showDiagnosticEvents`, which defaults to false
+in all builds. Turn it on to show provider environment resolution and unhandled
+provider events. Warnings, errors, and model fallback stay visible. Existing
+unhandled-event preferences are preserved. Set it with
+`bb settings general showDiagnosticEvents <true|false>`.
 
 Settings → General also includes `steerActiveThreadOnEnter`, which defaults to
 true for a new install. An earlier install with saved settings or work keeps
@@ -100,7 +106,7 @@ it on to hide every `customModels` entry from `~/.bb/config.json` in all model
 lists (pickers, `bb provider models`, and the SDK) during a screen share. The
 entries stay in the config file.
 
-Settings → General also includes `managedBranchPrefix`, which defaults to
+Settings → General includes `managedBranchPrefix`, which defaults to
 `bb/`. bb puts it in front of every branch name it creates for a worktree, so
 the default gives `bb/fix-login-flow-thr_ab12cd34ef`. Set `sawyer/wt-` to get
 `sawyer/wt-fix-login-flow-thr_ab12cd34ef`, or clear it for no prefix. bb rejects

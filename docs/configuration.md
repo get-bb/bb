@@ -204,12 +204,17 @@ bb concurrency-limit global [unlimited|<limit>] [--json]
 bb concurrency-limit host <host-id> [auto|<limit>] [--json]
 ```
 
-The "Show unhandled provider events" toggle in Settings → General exposes raw
-provider events that bb does not yet understand. It defaults to off in packaged
-builds because these diagnostic payloads are noisy. Development builds continue
-to show them regardless of the toggle. Set the persisted preference from an
-agent or terminal with
-`bb settings general showUnhandledProviderEvents <true|false>`.
+The "Show diagnostic events" toggle in Settings → General shows provider
+environment resolution and raw provider events that bb does not yet understand.
+It defaults to off in all builds. Warnings, errors, and model fallback remain
+visible. An existing unhandled-provider-events preference is preserved.
+Set it with `bb settings general showDiagnosticEvents <true|false>` or
+`bb.sdk.system.updateGeneralSettings` using the `showDiagnosticEvents` field.
+For older SDK callers, the general-settings API still accepts and returns
+`showUnhandledProviderEvents` as a deprecated alias. Both names control the same
+setting. When a read-modify-write payload contains conflicting values, the
+value changed from the saved setting wins. Hidden diagnostics do not count
+toward timeline event or byte limits.
 
 The "Default thread followup behavior" picker in Settings → General changes the
 active-thread composer shortcuts when no typeahead suggestion is active. A
@@ -234,8 +239,8 @@ and falls back to the provider default; the next send records that default, so
 select the custom model again after you turn streamer mode off. Set it with
 `bb settings general streamerMode <true|false>`.
 
-The "Worktree branch prefix" field in Settings → General sets the text bb puts
-in front of every branch name it creates for a managed worktree or a new
+The "New branch prefix" field in Settings → General sets the text bb
+puts in front of every branch name it creates for a managed worktree or a new
 checkout branch. It defaults to `bb/`, which produces
 `bb/fix-login-flow-thr_ab12cd34ef`. Change it to `sawyer/` to group your branches
 under your own namespace, or clear the field to create

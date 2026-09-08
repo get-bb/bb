@@ -33,7 +33,7 @@ function parseFaviconColor(value: string): FaviconColorPreference {
   return parsed.data;
 }
 
-function describeActive(theme: AppTheme): string {
+function describeTheme(theme: AppTheme): string {
   if (!isBuiltInThemeId(theme.themeId)) {
     const bytes = theme.customCss?.length ?? 0;
     return `Custom theme '${theme.themeId}' (${bytes} bytes)`;
@@ -101,7 +101,7 @@ export function registerThemeCommands(
           console.log(`${marker} ${entry.id.padEnd(24)} ${entry.name}`);
         }
         console.log("");
-        console.log(`Active: ${describeActive(catalog.active)}`);
+        console.log(`Active: ${describeTheme(catalog.active)}`);
         console.log(`Favicon color: ${catalog.active.faviconColor}`);
         console.log(`Code theme: ${describeCodeTheme(catalog.active)}`);
       }),
@@ -128,7 +128,7 @@ export function registerThemeCommands(
                 faviconColor: parseFaviconColor(opts.faviconColor),
               });
         if (outputJson(opts, updated)) return;
-        console.log(`Theme set to ${describeActive(updated)}`);
+        console.log(`Theme set to ${describeTheme(updated)}`);
       }),
     );
 
@@ -186,18 +186,23 @@ export function registerThemeCommands(
     );
 
   theme
-    .command("show")
-    .description("Show the active theme and favicon color")
-    .option("--css", "Print the active custom CSS (custom theme only)")
+    .command("show [id]")
+    .description(
+      "Show the active theme, or resolve a theme by id without activating it",
+    )
+    .option("--css", "Print the theme's CSS (custom and plugin themes only)")
     .option("--json", "Print machine-readable JSON output")
     .action(
-      action(async (opts: ThemeShowCommandOptions) => {
+      action(async (id: string | undefined, opts: ThemeShowCommandOptions) => {
         const sdk = createCliBbSdk(getUrl());
-        const active = await sdk.theme.get();
-        if (outputJson(opts, active)) return;
+        const theme =
+          id === undefined
+            ? await sdk.theme.get()
+            : await sdk.theme.resolve({ themeId: id });
+        if (outputJson(opts, theme)) return;
         if (opts.css) {
-          if (active.customCss !== null) {
-            console.log(active.customCss);
+          if (theme.customCss !== null) {
+            console.log(theme.customCss);
           } else {
             console.log(
               "// Built-in theme CSS is bundled in the app, not stored on disk.",
@@ -205,9 +210,13 @@ export function registerThemeCommands(
           }
           return;
         }
-        console.log(`Active: ${describeActive(active)}`);
-        console.log(`Favicon color: ${active.faviconColor}`);
-        console.log(`Code theme: ${describeCodeTheme(active)}`);
+        if (id === undefined) {
+          console.log(`Active: ${describeTheme(theme)}`);
+          console.log(`Favicon color: ${theme.faviconColor}`);
+        } else {
+          console.log(`Theme: ${describeTheme(theme)}`);
+        }
+        console.log(`Code theme: ${describeCodeTheme(theme)}`);
       }),
     );
 
@@ -220,7 +229,7 @@ export function registerThemeCommands(
         const sdk = createCliBbSdk(getUrl());
         const updated = await sdk.theme.set(defaultAppTheme.themeId);
         if (outputJson(opts, updated)) return;
-        console.log(`Theme reset to ${describeActive(updated)}`);
+        console.log(`Theme reset to ${describeTheme(updated)}`);
       }),
     );
 }

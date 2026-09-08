@@ -61,7 +61,7 @@ import {
 } from "../services/skills/skill-listing.js";
 import {
   createDaemonFileContentResponse,
-  remapDaemonFileRouteError,
+  serveDaemonFileContent,
   requestMatchesEntityTag,
 } from "../services/hosts/daemon-file-response.js";
 import { parseBoundedPositiveOptionalInteger } from "../services/lib/validation.js";
@@ -586,13 +586,16 @@ export function registerProjectRoutes(app: Hono, deps: AppDeps): void {
 
   del(routes.deleteSource, (context) => {
     const projectId = context.req.param("id");
-    requirePublicStandardProject(deps.db, projectId);
+    const project = requireProject(deps.db, projectId);
+    if (project.kind !== "standard") {
+      throw new ApiError(404, "project_not_found", "Project not found");
+    }
     requireProjectSource(deps, {
       projectId,
       sourceId: context.req.param("sourceId"),
     });
     const sourceCount = countProjectSources(deps.db, { projectId });
-    if (sourceCount <= 1) {
+    if (sourceCount <= 1 && project.deletedAt === null) {
       throw new ApiError(
         409,
         "invalid_request",
@@ -648,23 +651,19 @@ export function registerProjectRoutes(app: Hono, deps: AppDeps): void {
     });
     const filePath = parseSafeRelativeRoutePath(query.path);
 
-    try {
-      const result = await callHostRetryableOnlineRpc(deps, {
+    return serveDaemonFileContent(
+      deps,
+      {
         hostId: target.hostId,
-        timeoutMs: COMMAND_TIMEOUT_MS,
-        command: {
-          type: "host.read_file",
-          path: path.join(target.path, filePath.relativePath),
-          rootPath: target.path,
-        },
-      });
-      return createDaemonFileContentResponse(result, {
-        headers: { "x-bb-content-encoding": result.contentEncoding },
-        ifNoneMatch: context.req.header("if-none-match"),
-      });
-    } catch (error) {
-      return remapDaemonFileRouteError(error);
-    }
+        path: path.join(target.path, filePath.relativePath),
+        rootPath: target.path,
+      },
+      (result) =>
+        createDaemonFileContentResponse(result, {
+          headers: { "x-bb-content-encoding": result.contentEncoding },
+          ifNoneMatch: context.req.header("if-none-match"),
+        }),
+    );
   });
 
   get(routes.paths, async (context, query) => {

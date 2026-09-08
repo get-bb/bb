@@ -1,4 +1,6 @@
-import type { Environment, Thread } from "@bb/domain";
+import { withEnvironmentPathAdmission } from "../environments/path-admission.js";
+import type { EnvironmentRow } from "@bb/db";
+import type { Thread } from "@bb/domain";
 import type { DbConnection } from "@bb/db";
 import type { WorkSessionDeps } from "../../types.js";
 import { requireEnvironment } from "../lib/entity-lookup.js";
@@ -11,7 +13,7 @@ import {
 type ThreadCommandEnvironmentSource = Pick<Thread, "environmentId">;
 
 interface RequireThreadCommandEnvironmentArgs {
-  thread: ThreadCommandEnvironmentSource;
+  thread: ThreadCommandEnvironmentSource & Pick<Thread, "id">;
 }
 
 interface RequireThreadHostCommandEnvironmentArgs {
@@ -53,14 +55,18 @@ export function requireThreadHostCommandEnvironment(
 export async function requireThreadCommandEnvironment(
   deps: WorkSessionDeps,
   args: RequireThreadCommandEnvironmentArgs,
-): Promise<Environment> {
+): Promise<EnvironmentRow> {
   if (args.thread.environmentId !== null) {
     const environment = requireEnvironment(deps.db, args.thread.environmentId);
     const goneDetails = goneThreadEnvironmentDetails(environment);
-    if (goneDetails) {
+    if (goneDetails && environment.environmentProviderId === null) {
       throwThreadEnvironmentUnavailable(goneDetails);
     }
-    return environment;
+    return withEnvironmentPathAdmission(
+      deps,
+      { ...environment, threadId: args.thread.id },
+      () => environment,
+    );
   }
 
   throwThreadEnvironmentUnavailable(

@@ -27,6 +27,7 @@
   },
   "devDependencies": {
     "@bb/tsconfig": "workspace:*",
+    "@get-bb/plugin-sdk": "workspace:*",
     "@types/node": "^22.0.0",
     "@types/ws": "^8.18.1",
     "typescript": "npm:@typescript/typescript6@^6.0.2",

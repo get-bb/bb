@@ -1,3 +1,4 @@
+import { recheckEnvironmentLaunch } from "./services/threads/thread-environment-providers.js";
 import { registerDesktopBrowserRoutes } from "./routes/desktop-browsers.js";
 import { createNodeWebSocket } from "@hono/node-ws";
 import { createHash } from "node:crypto";
@@ -30,6 +31,13 @@ import {
 import { setPluginAgentContributions } from "./services/plugins/plugin-agent-contributions.js";
 import { setPluginThreadEventEmitter } from "./services/plugins/plugin-thread-events.js";
 import { setPluginHookProvider } from "./services/plugins/plugin-hook-registry.js";
+import {
+  setEnvironmentProviderRecheckHandler,
+  setEnvironmentLaunchRecheckHandler,
+  setPluginEnvironmentProviderBridge,
+} from "./services/plugins/plugin-environment-provider-registry.js";
+import { recheckEnvironmentProviderLaunches } from "./services/threads/thread-environment-providers.js";
+import { invalidateEnvironmentProviderAvailability } from "./services/environments/provider-availability.js";
 import { requestQueuedMessageDispatch } from "./services/threads/queued-message-dispatch.js";
 import { registerInternalEventRoutes } from "./internal/events.js";
 import { registerInternalHostRoutes } from "./internal/hosts.js";
@@ -574,6 +582,7 @@ export function createApp(
     onSettingsChanged: (pluginId) => {
       deps.providerNativeRoots.invalidate(pluginId);
       deps.providerRegistry.forgetAllInstalled();
+      invalidateEnvironmentProviderAvailability();
     },
     onPluginUnregistered: (pluginId) => {
       requestQueuedMessageDispatch(deps, {
@@ -603,6 +612,15 @@ export function createApp(
   // Bridge the dispatch pipeline to this service's hooks. Until this runs
   // there are no hooks, which is exactly the zero-overhead path.
   setPluginHookProvider(pluginService.hooks);
+  setPluginEnvironmentProviderBridge(pluginService.environmentProviders);
+  setEnvironmentLaunchRecheckHandler((threadId) =>
+    recheckEnvironmentLaunch(deps, threadId),
+  );
+  setEnvironmentProviderRecheckHandler((pluginId) => {
+    invalidateEnvironmentProviderAvailability();
+    deps.hub.notifySystem(["config-changed"]);
+    void recheckEnvironmentProviderLaunches(deps, pluginId);
+  });
   // Bridge runtime-config assembly to plugin skills + context (§4.4).
   setPluginAgentContributions(pluginService);
   const publicApi = new Hono();

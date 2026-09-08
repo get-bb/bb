@@ -59,7 +59,7 @@ type UpsertBufferedTextMessageArgs<
 
 interface ProjectReasoningTextEventArgs {
   identity: BufferedTextInstanceIdentity | null;
-  mode: "delta" | "final";
+  mode: "content-delta" | "final" | "summary-delta";
   state: ProjectionState;
   text: string | null;
 }
@@ -171,7 +171,13 @@ export function projectReasoningTextEvent(
 
   const buffer = getReasoningTextBuffer(args.state, messageKey);
 
-  if (args.mode === "delta") {
+  if (args.mode !== "final") {
+    const deltas = args.state.reasoningDeltaTextByKey.get(messageKey) ?? {
+      content: "",
+      summary: "",
+    };
+    deltas[args.mode === "summary-delta" ? "summary" : "content"] += args.text;
+    args.state.reasoningDeltaTextByKey.set(messageKey, deltas);
     appendVisibleTextBuffer(buffer, args.text);
     return true;
   }

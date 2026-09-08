@@ -1214,6 +1214,8 @@ export function createCodexEventTranslator(
     }
 
     switch (activity.item.kind) {
+      case "completed":
+        return [];
       case "started": {
         if (trackedSubAgentsByCallId.has(activity.item.id)) {
           return [];

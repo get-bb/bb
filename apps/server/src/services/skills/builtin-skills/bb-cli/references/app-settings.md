@@ -29,14 +29,13 @@ every window and client sees the same value.
 - The complete default table is in `docs/configuration.md` in the bb source
   repository.
 
-## Unhandled provider events
+## Diagnostic events
 
-- `showUnhandledProviderEvents` defaults to false. Set it with
-  `bb settings general showUnhandledProviderEvents <true|false|on|off>`.
-- When enabled, packaged builds show raw provider events that bb has persisted
-  but does not yet understand. These diagnostic payloads can be noisy.
-- Development builds always show unhandled provider events regardless of the
-  saved preference.
+- `showDiagnosticEvents` defaults to false in all builds. Set it with
+  `bb settings general showDiagnosticEvents <true|false|on|off>`.
+- Enables provider environment resolution and unhandled provider events in the
+  timeline. Warnings, errors, and model fallback stay visible regardless.
+- Existing unhandled-provider-events preferences carry over to this setting.
 
 ## Active-thread Enter behavior
 
@@ -65,7 +64,7 @@ every window and client sees the same value.
   provider default, and the next send records that default. Select the custom
   model again after you turn streamer mode off.
 
-## Worktree branch prefix
+## New branch prefix
 
 - `managedBranchPrefix` defaults to `bb/`. Set it with
   `bb settings general managedBranchPrefix <prefix>`.

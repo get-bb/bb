@@ -184,6 +184,7 @@ async function createFixture(args: {
   source?: "api-key" | "import";
   apiKey?: string;
   priority?: number;
+  beforePlugin?: (host: Fixture["host"]) => void;
 }): Promise<Fixture> {
   const dataDir = await mkdtemp(path.join(tmpdir(), "bb-account-pool-"));
   const host = createFakePluginHost({
@@ -199,6 +200,7 @@ async function createFixture(args: {
     usageUrl: "data:application/json,{}",
     ...args.options,
   });
+  args.beforePlugin?.(host);
   await plugin(host.bb);
   const accountMetadata = accountSchema.parse(
     await host.harness.behavior.callRpc("account.add", {
@@ -4798,7 +4800,7 @@ describe("Account Pool plugin", () => {
       }
     });
 
-    it("evicts the least recently used binding after 4096 sessions", async () => {
+    it("evicts the least recently used binding at capacity", async () => {
       let lastKey: string | null = null;
       let attempts = 0;
       const fixture = await createFixture({
@@ -4806,6 +4808,7 @@ describe("Account Pool plugin", () => {
         apiKey: "sk-first",
         options: {
           now: () => 1_800_000_000_000,
+          maxAffinityBindings: 4,
           fetch: async (_input, init) => {
             lastKey = new Headers(init?.headers).get("x-api-key");
             attempts += 1;
@@ -4836,7 +4839,7 @@ describe("Account Pool plugin", () => {
       );
       try {
         await movePoolToOtherAccount(fixture, "claude");
-        for (let index = 1; index < 4096; index += 1)
+        for (let index = 1; index < 4; index += 1)
           await send(`session-${index}`);
         const touched = await send("oldest");
         await send("newest");
@@ -4854,7 +4857,7 @@ describe("Account Pool plugin", () => {
       } finally {
         if (!held.bodyUsed) await held.body?.cancel();
       }
-    }, 20_000);
+    });
   });
 
   it("serializes refresh, writes new tokens with 0600 mode, and uses them", async () => {
@@ -5501,10 +5504,12 @@ describe("sequential pool recovery", () => {
 
   it("keeps a paced session on its account when another request arrives during a short hold", async () => {
     const attempts: Array<string | null> = [];
+    let now = 1_800_000_000_000;
     const fixture = await createFixture({
       upstreamUrl: "https://upstream.example",
       apiKey: "sk-first",
       options: {
+        now: () => now,
         fetch: async (_input, init) => {
           attempts.push(new Headers(init?.headers).get("x-api-key"));
           return attempts.length === 2
@@ -5534,7 +5539,12 @@ describe("sequential pool recovery", () => {
             ?.status,
         ).toBe("held");
       });
-      await (await send()).text();
+      const duringHold = send();
+      now += 249;
+      const duringHoldResponse = await duringHold;
+      expect(duringHoldResponse.status).toBe(200);
+      await duringHoldResponse.text();
+      now += 1;
       await (await paced).text();
       await (await send()).text();
       expect(attempts).toEqual([
@@ -5759,4 +5769,99 @@ describe("sequential pool recovery", () => {
         )[0]?.id,
     ).toBe(second.id);
   });
+});
+
+it("logs a sanitized transport cause when pooled fetch fails", async () => {
+  const fixture = await createFixture({
+    upstreamUrl: "https://upstream.example",
+    options: {
+      fetch: async () => {
+        throw new TypeError("fetch failed with private request data", {
+          cause: Object.assign(
+            new Error("The session has been destroyed: secret-token"),
+            {
+              code: "ERR_HTTP2_INVALID_SESSION",
+            },
+          ),
+        });
+      },
+    },
+  });
+  const response = await fixture.host.harness.behavior.fetchHttp(
+    "POST",
+    "/v1/messages",
+    {
+      headers: authHeaders(fixture.key),
+      body: "{}",
+    },
+  );
+  expect(response.status).toBe(502);
+  expect(await response.text()).not.toContain("secret-token");
+  expect(fixture.host.harness.inspection.logEntries).toContainEqual({
+    level: "warn",
+    message:
+      "Account Pooler claude transport failed: ERR_HTTP2_INVALID_SESSION.",
+  });
+  expect(
+    JSON.stringify(fixture.host.harness.inspection.logEntries),
+  ).not.toContain("secret-token");
+  expect(
+    JSON.stringify(fixture.host.harness.inspection.logEntries),
+  ).not.toContain("private request data");
+});
+
+it("drains a streamed response before disposing the owned transport", async () => {
+  const finish = deferred();
+  const upstream = await startUpstream(async (request, response) => {
+    await readRequestBody(request);
+    response.writeHead(200, { "content-type": "text/event-stream" });
+    response.write("first");
+    await finish.promise;
+    response.end("last");
+  });
+  cleanups.push(upstream.close);
+  const hooks: Array<() => void | Promise<void>> = [];
+  const fixture = await createFixture({
+    upstreamUrl: upstream.url,
+    beforePlugin(host) {
+      const register = host.bb.onDispose.bind(host.bb);
+      vi.spyOn(host.bb, "onDispose").mockImplementation((hook) => {
+        hooks.push(hook);
+        register(hook);
+      });
+    },
+  });
+  const response = await fixture.host.harness.behavior.fetchHttp(
+    "POST",
+    "/v1/messages",
+    {
+      headers: authHeaders(fixture.key),
+      body: "{}",
+    },
+  );
+  const reader = response.body?.getReader();
+  if (reader === undefined) throw new Error("Expected a stream");
+  expect(new TextDecoder().decode((await reader.read()).value)).toBe("first");
+  const disposeTransport = hooks[0];
+  if (disposeTransport === undefined)
+    throw new Error("Expected transport disposal");
+  const tail = reader.read().then(
+    (result) => ({
+      kind: "chunk",
+      text: new TextDecoder().decode(result.value),
+    }),
+    () => ({ kind: "error", text: "" }),
+  );
+  const disposing = disposeTransport();
+  try {
+    await new Promise<void>((resolve) => setImmediate(resolve));
+    finish.resolve();
+    expect(await tail).toEqual({ kind: "chunk", text: "last" });
+    expect((await reader.read()).done).toBe(true);
+    await disposing;
+  } finally {
+    finish.resolve();
+    await reader.cancel().catch(() => undefined);
+    await disposing;
+  }
 });

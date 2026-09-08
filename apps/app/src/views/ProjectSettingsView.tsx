@@ -1,3 +1,4 @@
+import { MachineStatusDot } from "@/components/machines/MachineStatusDot";
 import { useCallback, useMemo, useState } from "react";
 import { useParams } from "react-router-dom";
 import "@bb/shared-ui/icon-extended";
@@ -23,7 +24,6 @@ import {
   ProjectSourceDeleteDialog,
   type ProjectSourceDeleteDialogTarget,
 } from "@/components/dialogs/ProjectSourceDeleteDialog";
-import { MachineStatusDot } from "@/components/machines/MachineStatusDot";
 import {
   SettingsRowList,
   SettingsSection,
@@ -38,7 +38,7 @@ import {
   isHostPathMissing,
   useHostPathExistence,
 } from "@/hooks/queries/host-path-queries";
-import { useHosts } from "@/hooks/queries/host-queries";
+import { selectPersistentHosts, useHosts } from "@/hooks/queries/host-queries";
 import {
   useLocalPathPicker,
   type LocalPathSubmitParams,
@@ -61,7 +61,10 @@ export function ProjectSettingsView() {
     useState<ProjectMachineSetupDialogTarget | null>(null);
 
   const hostsQuery = useHosts();
-  const hosts = useMemo(() => hostsQuery.data ?? [], [hostsQuery.data]);
+  const hosts = useMemo(
+    () => selectPersistentHosts(hostsQuery.data),
+    [hostsQuery.data],
+  );
 
   const deleteSource = useDeleteLocalProjectSource();
   const addLocalSource = useAddLocalProjectSource();

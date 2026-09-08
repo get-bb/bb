@@ -14,8 +14,8 @@ const hosts: Host[] = [
   {
     id: "host-primary",
     name: "workstation",
-    type: "persistent",
     status: "connected",
+    type: "persistent",
     maxPermissionMode: "full",
     lastSeenAt: 1_700_000_000_000,
     lastRejectedProtocolVersion: null,
@@ -25,8 +25,8 @@ const hosts: Host[] = [
   {
     id: "host-remote",
     name: "laptop",
-    type: "persistent",
     status: "disconnected",
+    type: "persistent",
     maxPermissionMode: "full",
     lastSeenAt: null,
     lastRejectedProtocolVersion: null,

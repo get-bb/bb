@@ -722,6 +722,7 @@ function interruptPendingToolMessage(
       return;
     case "web-search":
     case "web-fetch":
+    case "image-generation":
     case "image-view":
     case "file-read":
     case "search":
