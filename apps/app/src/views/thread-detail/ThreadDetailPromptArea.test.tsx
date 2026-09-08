@@ -2,6 +2,7 @@
 
 import type {
   PendingInteraction,
+  ReasoningLevel,
   ResolvedThreadExecutionOptions,
   ThreadQueuedMessage,
   ThreadTimelineActivePromptMode,
@@ -71,6 +72,7 @@ const mocks = vi.hoisted(() => ({
   stopThreadMutate: vi.fn(),
   toastError: vi.fn(),
   unarchiveThreadMutate: vi.fn(),
+  updateThreadMutate: vi.fn(),
   uploadPromptAttachmentMutateAsync: vi.fn(),
   updateQueuedMessageMutateAsync: vi.fn(),
   useThreadDefaultExecutionOptions: vi.fn(),
@@ -126,7 +128,10 @@ vi.mock("@/components/promptbox/FollowUpPromptBox", async () => {
         model: {
           active?: { model: string } | null;
         };
-        reasoning: { value: string };
+        reasoning: {
+          value: string;
+          onChange: (value: ReasoningLevel) => void;
+        };
         serviceTier?: { value?: string };
       };
       executionReadOnly?: boolean;
@@ -175,6 +180,12 @@ vi.mock("@/components/promptbox/FollowUpPromptBox", async () => {
         </div>
         <div data-testid="selected-model">{execution.model.active?.model}</div>
         <div data-testid="selected-reasoning">{execution.reasoning.value}</div>
+        <button
+          type="button"
+          onClick={() => execution.reasoning.onChange("high")}
+        >
+          Select high reasoning
+        </button>
         <div data-testid="selected-service-tier">
           {execution.serviceTier?.value}
         </div>
@@ -557,6 +568,9 @@ vi.mock("@/hooks/mutations/thread-state-mutations", () => ({
     mutate: mocks.unarchiveThreadMutate,
     variables: null,
   }),
+  useUpdateThread: () => ({
+    mutate: mocks.updateThreadMutate,
+  }),
 }));
 
 vi.mock("@/hooks/queries/sidebar-navigation-query", () => ({
@@ -777,6 +791,26 @@ afterEach(() => {
 });
 
 describe("ThreadDetailPromptArea", () => {
+  it("persists a changed reasoning level as the thread default", () => {
+    mocks.defaultExecutionOptions = {
+      model: "gpt-5",
+      permissionMode: "auto",
+      reasoningLevel: "max",
+      serviceTier: "default",
+      source: "client/turn/requested",
+    };
+
+    renderPromptArea();
+    fireEvent.click(
+      screen.getByRole("button", { name: "Select high reasoning" }),
+    );
+
+    expect(mocks.updateThreadMutate).toHaveBeenCalledWith({
+      id: "thr_1",
+      reasoningLevel: "high",
+    });
+  });
+
   it("shows queued work while its message details are loading", () => {
     mocks.queuedMessages = undefined;
 
