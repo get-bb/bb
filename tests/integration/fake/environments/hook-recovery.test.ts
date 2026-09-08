@@ -103,7 +103,7 @@ function setup(
 it("disconnect during real setup retains the claim until daemon cancellation confirms termination", async () =>
   withTestHarness(async (harness) => {
     const path = await mkdtemp(join(tmpdir(), "bb-hook-disconnect-"));
-    const options = createDaemonHarness().dispatchOptions();
+    const options = createDaemonHarness().dispatchOptions({ dataDir: path });
     const remove = vi.fn(async () => ({ status: "removed" as const }));
     let online = false;
     let terminated = false;
@@ -192,7 +192,7 @@ it("disconnect during real setup retains the claim until daemon cancellation con
 it("restores a serialized database mid-setup and reconciles one daemon operation", async () =>
   withTestHarness(async (harness) => {
     const path = await mkdtemp(join(tmpdir(), "bb-hook-restart-"));
-    const options = createDaemonHarness().dispatchOptions();
+    const options = createDaemonHarness().dispatchOptions({ dataDir: path });
     const create = vi.fn(async () => ({
       status: "created" as const,
       path,
@@ -261,6 +261,72 @@ it("restores a serialized database mid-setup and reconciles one daemon operation
           options,
         ).catch(() => undefined);
       restored?.$client.close();
+      await rm(path, { recursive: true, force: true });
+    }
+  }));
+
+it("releases the claim after setup is dropped before dispatch and connectivity returns", async () =>
+  withTestHarness(async (harness) => {
+    const path = await mkdtemp(join(tmpdir(), "bb-hook-dropped-"));
+    const options = createDaemonHarness().dispatchOptions({ dataDir: path });
+    const remove = vi.fn(async () => ({ status: "removed" as const }));
+    let online = false;
+    let dropped: Parameters<typeof runDaemonHook>[0] | null = null;
+    try {
+      await writeFile(join(path, ".bb-env-setup.sh"), "echo unsafe > marker\n");
+      const fixture = setup(harness, {
+        create: async (context) => {
+          await context.experimental_claimPath(path);
+          return { status: "created", path, ownsPath: true };
+        },
+        remove,
+      });
+      registerTestHostRpcCapture(harness.deps, {
+        hostId: fixture.host.id,
+        sessionId: fixture.session.id,
+        onEnvironmentHook: async (command) => {
+          if (command.kind === "setup") {
+            dropped = command;
+            throw new Error("dropped before dispatch");
+          }
+          await runDaemonHook(command, options);
+        },
+        onEnvironmentHookCancel: async (operationId) => {
+          if (!online) throw new Error("daemon unreachable");
+          const result = await cancelDaemonHook(
+            { type: "environment.hook.cancel", operationId },
+            options,
+          );
+          expect(result).toEqual({ status: "never-started" });
+          return result;
+        },
+      });
+      fixture.ask();
+      await fixture.settled();
+      await expect(
+        cancelProviderLaunch(harness.deps, fixture.thread.id),
+      ).rejects.toThrow("daemon unreachable");
+      expect(fixture.row()).toMatchObject({
+        cancelPending: true,
+        claimPath: path,
+      });
+      expect(remove).not.toHaveBeenCalled();
+      online = true;
+      await cancelProviderLaunch(harness.deps, fixture.thread.id);
+      expect(remove).toHaveBeenCalledOnce();
+      expect(fixture.row()).toMatchObject({
+        cancelPending: false,
+        claimPath: null,
+      });
+      if (dropped === null) throw new Error("Missing dropped command");
+      await expect(
+        runDaemonHook(
+          dropped,
+          createDaemonHarness().dispatchOptions({ dataDir: path }),
+        ),
+      ).rejects.toThrow("cancelled before dispatch");
+      await expect(readFile(join(path, "marker"))).rejects.toThrow();
+    } finally {
       await rm(path, { recursive: true, force: true });
     }
   }));
