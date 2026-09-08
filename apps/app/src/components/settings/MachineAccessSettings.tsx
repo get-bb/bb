@@ -48,13 +48,17 @@ export function MachineAccessSettings() {
     (provider) => provider.id === access.defaultProviderId,
   );
   return (
-    <SettingsSection title="Machine access">
+    <SettingsSection
+      title="Machine access"
+      description="Choose how other machines connect to this server."
+      bodyClassName="space-y-5"
+    >
       {access?.providers.map((provider) =>
         provider.attention ? (
           <p
             key={provider.id}
             role="status"
-            className="text-sm text-destructive-text"
+            className="rounded-md bg-muted/40 px-3 py-2 text-xs text-destructive-text"
           >
             {provider.displayName}: {provider.attention}
           </p>
@@ -73,6 +77,7 @@ export function MachineAccessSettings() {
         controlPlacement="below"
       >
         <Input
+          className="max-w-lg"
           aria-label="Server URL reachable by machines"
           aria-invalid={error !== null}
           value={draft ?? value}
@@ -85,57 +90,51 @@ export function MachineAccessSettings() {
           }}
         />
       </SettingsWithControl>
-      <SettingsWithControl
-        label="Default machine access"
-        description={
-          selected
-            ? effective?.availability.status === "available"
-              ? "New machines use this access provider."
-              : (effective?.availability.message ??
-                "This access provider is not installed.")
-            : `Automatic: ${effective?.displayName ?? "configure an access provider"}`
-        }
-      >
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button variant="outline" disabled={disabled}>
-              {selected ? (effective?.displayName ?? selected) : "Automatic"}
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end">
-            <DropdownMenuItem
-              onSelect={() => {
-                if (settings)
-                  update.mutate({ ...settings, defaultMachineAccess: null });
-              }}
-            >
-              Automatic
-            </DropdownMenuItem>
-            {access?.providers.map((provider) => (
+      <div className="border-t border-border pt-5">
+        <SettingsWithControl
+          label="Default machine access"
+          description={
+            selected
+              ? effective?.availability.status === "available"
+                ? "New machines use this access provider."
+                : (effective?.availability.message ??
+                  "This access provider is not installed.")
+              : `Automatic: ${effective?.displayName ?? "configure an access provider"}`
+          }
+        >
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="outline" disabled={disabled}>
+                {selected ? (effective?.displayName ?? selected) : "Automatic"}
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
               <DropdownMenuItem
-                key={provider.id}
                 onSelect={() => {
                   if (settings)
-                    update.mutate({
-                      ...settings,
-                      defaultMachineAccess: provider.id,
-                    });
+                    update.mutate({ ...settings, defaultMachineAccess: null });
                 }}
               >
-                {provider.displayName}
+                Automatic
               </DropdownMenuItem>
-            ))}
-          </DropdownMenuContent>
-        </DropdownMenu>
-      </SettingsWithControl>
-      <SettingsWithControl
-        label="Machine Git credentials"
-        description={
-          config.data?.machineGit.statusMessage ?? "Checking server gh login"
-        }
-      >
-        <span>git: {config.data?.machineGit.status ?? "not configured"}</span>
-      </SettingsWithControl>
+              {access?.providers.map((provider) => (
+                <DropdownMenuItem
+                  key={provider.id}
+                  onSelect={() => {
+                    if (settings)
+                      update.mutate({
+                        ...settings,
+                        defaultMachineAccess: provider.id,
+                      });
+                  }}
+                >
+                  {provider.displayName}
+                </DropdownMenuItem>
+              ))}
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </SettingsWithControl>
+      </div>
     </SettingsSection>
   );
 }
