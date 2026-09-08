@@ -30,7 +30,7 @@ export function environmentHasLiveThreads(db: Connection, environmentId: string)
 }
 
 export function deleteFinishedEnvironmentLaunches(db: Connection): void {
-  db.delete(environmentLaunches).where(and(eq(environmentLaunches.cancelPending, false), ne(environmentLaunches.phase, "creating"), sql`(${environmentLaunches.environmentId} is not null or ${environmentLaunches.phase} = 'failed' or ${environmentLaunches.phase} = 'cancelled')`, sql`not exists (select 1 from ${threads} where ${threads.id} = ${environmentLaunches.threadId} and ${threads.deletedAt} is null)`)).run();
+  db.delete(environmentLaunches).where(and(eq(environmentLaunches.cancelPending, false), ne(environmentLaunches.phase, "creating"), sql`(${environmentLaunches.environmentId} is not null or ${environmentLaunches.phase} = 'cancelled')`, sql`not exists (select 1 from ${threads} where ${threads.id} = ${environmentLaunches.threadId} and ${threads.deletedAt} is null)`)).run();
 }
 
 export function claimEnvironmentLaunchPath(
@@ -48,28 +48,26 @@ export function claimEnvironmentLaunchPath(
         current.hostId === null
       )
         return false;
-      if (current.path !== null && current.path !== path) return false;
-      const competing = tx
-        .select({ threadId: environmentLaunches.threadId })
-        .from(environmentLaunches)
-        .where(
-          and(
-            eq(environmentLaunches.hostId, current.hostId),
-            eq(environmentLaunches.path, path),
-            ne(environmentLaunches.threadId, current.threadId),
-            isNull(environmentLaunches.environmentId),
-            or(
-              eq(environmentLaunches.phase, "creating"),
-              eq(environmentLaunches.phase, "ready"),
-              eq(environmentLaunches.cancelPending, true),
-            ),
-          ),
-        )
-        .limit(1)
-        .get();
-      if (competing !== undefined) return false;
-      return updateEnvironmentLaunch(tx, { ...current, path });
+      if (current.claimPath !== null && current.claimPath !== path) return false;
+      const competing = findEnvironmentLaunchPathClaim(tx, current.hostId, path, {threadId: current.threadId, attempt: current.attempt});
+      if (competing !== null) return false;
+      return updateEnvironmentLaunch(tx, { ...current, path, claimPath: path });
     },
     { behavior: "immediate" },
   );
+}
+
+export function findEnvironmentLaunchPathClaim(
+  db: Connection,
+  hostId: string,
+  path: string | null,
+  owner: { threadId: string; attempt: number } | null,
+): EnvironmentLaunchRow | null {
+  return db.select().from(environmentLaunches).where(and(
+    eq(environmentLaunches.hostId, hostId),
+    path === null ? sql`${environmentLaunches.claimPath} is not null` : eq(environmentLaunches.claimPath, path),
+    owner === null ? undefined : or(ne(environmentLaunches.threadId, owner.threadId), ne(environmentLaunches.attempt, owner.attempt)),
+    isNull(environmentLaunches.environmentId),
+    or(eq(environmentLaunches.phase, "creating"), eq(environmentLaunches.phase, "ready"), eq(environmentLaunches.phase, "failed"), eq(environmentLaunches.cancelPending, true)),
+  )).limit(1).get() ?? null;
 }

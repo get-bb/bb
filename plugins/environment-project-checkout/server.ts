@@ -183,7 +183,7 @@ export default async function checkoutPlugin(bb: BbPluginApi): Promise<void> {
       const hostId = context.host.id;
       const path = context.inputs.path ?? context.projectCheckout.path;
       const branchInput = context.inputs.branch;
-      if (!context.experimental_claimPath(path)) {
+      if (!(await context.experimental_claimPath(path))) {
         return {
           status: "failed",
           failure: "terminal",

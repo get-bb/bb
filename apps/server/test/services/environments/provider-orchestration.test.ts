@@ -1,3 +1,11 @@
+import { createThreadFromRequest } from "../../../src/services/threads/thread-create.js";
+import { encodeClientTurnRequestIdNumber } from "@bb/domain";
+import { requireThreadCommandEnvironment } from "../../../src/services/threads/thread-command-environment.js";
+import { ensureThreadProvisionEnvironmentReady } from "../../../src/services/threads/thread-provisioning-environment.js";
+import {
+  createMetadataPendingContext,
+  createEnvironmentPendingContext,
+} from "../../../src/services/threads/thread-provisioning-context.js";
 import { z } from "zod";
 import type { BbPluginApi } from "@get-bb/plugin-sdk";
 import { createFakePluginHost } from "@get-bb/plugin-sdk/testing";
@@ -5,6 +13,7 @@ import { handleUpdateEnvironmentDirectoryToolCall } from "../../../src/services/
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { eq } from "drizzle-orm";
 import {
+  claimEnvironmentLaunchPath,
   createEnvironment,
   environments,
   getEnvironment,
@@ -142,6 +151,182 @@ afterEach(() => {
 });
 
 describe("core environment orchestration", () => {
+  it.each(["new reuse", "reuse", "directory", "restored dispatch"])(
+    "refuses %s admission while another launch owns the checkout",
+    async (admission) =>
+      withTestHarness(async (harness) => {
+        const fixture = setup(harness, {
+          create: async (context) => {
+            await context.experimental_claimPath("/tmp/project");
+            return { status: "created", path: "/tmp/project", ownsPath: false };
+          },
+        });
+        fixture.ask();
+        await fixture.settled();
+        const target = createEnvironment(harness.db, harness.hub, {
+          projectId: fixture.context.project.id,
+          hostId: fixture.host.id,
+          path: "/tmp/project",
+          status: "ready",
+          providerOwnsPath: false,
+        });
+        const current = createEnvironment(harness.db, harness.hub, {
+          projectId: fixture.context.project.id,
+          hostId: fixture.host.id,
+          path: "/tmp/other",
+          status: "ready",
+          providerOwnsPath: false,
+        });
+        const thread = seedThread(harness.deps, {
+          projectId: fixture.context.project.id,
+          status: "starting",
+          environmentId:
+            admission === "restored dispatch" ? target.id : current.id,
+        });
+        const busy =
+          "Cannot checkout branch while another thread is using this workspace";
+        if (admission === "new reuse") {
+          await expect(
+            createThreadFromRequest(harness.deps, {
+              environment: { type: "reuse", environmentId: target.id },
+              input: [{ type: "text", text: "Start", mentions: [] }],
+              origin: "app",
+              projectId: fixture.context.project.id,
+              providerId: "codex",
+              model: "gpt-5",
+              startedOnBehalfOf: null,
+            }),
+          ).rejects.toThrow(busy);
+        } else if (admission === "directory") {
+          seedTurnStarted(harness.deps, {
+            environmentId: current.id,
+            providerThreadId: "provider_admission",
+            sequence: 1,
+            threadId: thread.id,
+            turnId: "turn_admission",
+          });
+          const result = await handleUpdateEnvironmentDirectoryToolCall(
+            harness.deps,
+            {
+              currentEnvironment: current,
+              thread,
+              turnId: "turn_admission",
+              input: { path: target.path },
+            },
+          );
+          expect(result).toMatchObject({
+            success: false,
+            contentItems: [{ type: "inputText", text: busy }],
+          });
+        } else if (admission === "restored dispatch") {
+          await expect(
+            requireThreadCommandEnvironment(harness.deps, { thread }),
+          ).rejects.toThrow(busy);
+          await expect(
+            requireThreadCommandEnvironment(harness.deps, {
+              thread: { ...fixture.thread, environmentId: target.id },
+            }),
+          ).resolves.toMatchObject({ id: target.id });
+        } else {
+          const context = createEnvironmentPendingContext(
+            createMetadataPendingContext({
+              clientRequestId: encodeClientTurnRequestIdNumber({ value: 1 }),
+              environmentIntent: { type: "reuse", environmentId: target.id },
+              execution: {
+                model: "gpt-5",
+                serviceTier: "default",
+                reasoningLevel: "medium",
+                permissionMode: "accept-edits",
+                source: "client/turn/requested",
+              },
+              fork: null,
+              input: [],
+              titleProvided: true,
+              seedWithoutRun: false,
+            }),
+          );
+          await expect(
+            ensureThreadProvisionEnvironmentReady(harness.deps, {
+              thread,
+              context,
+            }),
+          ).rejects.toThrow(busy);
+        }
+      }),
+  );
+
+  it("retains a failed claim through cleanup and releases it only after removal", async () =>
+    withTestHarness(async (harness) => {
+      let release = () => {};
+      const gate = new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      const fixture = setup(harness, {
+        create: async (context) => {
+          await context.experimental_claimPath("/tmp/project");
+          return {
+            status: "failed",
+            failure: "terminal",
+            message: "provision failed",
+          };
+        },
+        remove: async () => {
+          await gate;
+          return { status: "removed" };
+        },
+      });
+      fixture.ask();
+      await fixture.settled();
+      const second = {
+        ...fixture.row(),
+        threadId: "thr_competing",
+        phase: "creating" as const,
+        path: null,
+        claimPath: null,
+      };
+      saveEnvironmentLaunch(harness.db, second);
+      let cleanup: Promise<void> | undefined;
+      try {
+        expect(
+          claimEnvironmentLaunchPath(harness.db, second, "/tmp/project"),
+        ).toBe(false);
+        cleanup = cancelProviderLaunch(harness.deps, fixture.thread.id);
+        expect(
+          claimEnvironmentLaunchPath(harness.db, second, "/tmp/project"),
+        ).toBe(false);
+      } finally {
+        release();
+        await cleanup;
+      }
+      expect(
+        claimEnvironmentLaunchPath(harness.db, second, "/tmp/project"),
+      ).toBe(true);
+    }));
+
+  it("does not replace the canonical claim with a provider's trailing slash result", async () =>
+    withTestHarness(async (harness) => {
+      const fixture = setup(harness, {
+        create: async (context) => {
+          await context.experimental_claimPath("/tmp/project/");
+          return { status: "created", path: "/tmp/project/", ownsPath: false };
+        },
+      });
+      fixture.ask();
+      await fixture.settled();
+      const second = {
+        ...fixture.row(),
+        threadId: "thr_competing",
+        phase: "creating" as const,
+        path: null,
+        claimPath: null,
+      };
+      saveEnvironmentLaunch(harness.db, second);
+      expect(
+        claimEnvironmentLaunchPath(harness.db, second, "/tmp/project"),
+      ).toBe(false);
+      expect(fixture.row().path).toBe("/tmp/project/");
+    }));
+
   it("reserves a checkout before concurrent branch mutations until attachment", async () =>
     withTestHarness(async (harness) => {
       const fixture = setup(harness);
@@ -399,6 +584,7 @@ describe("core environment orchestration", () => {
         pathKey: "durable-path-key",
         hostId: null,
         path: null,
+        claimPath: null,
         ownsPath: true,
         mergeBaseBranch: null,
         resource: null,

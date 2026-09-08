@@ -1,3 +1,4 @@
+import { withEnvironmentPathAdmission } from "../environments/path-admission.js";
 import {
   deleteThread,
   getEnvironment,
@@ -338,10 +339,23 @@ async function createPendingThreadAndAttemptFirstDispatch(
     sendAt: number | undefined;
   },
 ) {
-  const thread = createThreadRecord(deps, {
-    request: args.request,
-    environmentId: args.environmentId,
-  });
+  const environment =
+    args.environmentId === null
+      ? null
+      : getEnvironment(deps.db, args.environmentId);
+  const create = () =>
+    createThreadRecord(deps, {
+      request: args.request,
+      environmentId: args.environmentId,
+    });
+  const thread =
+    environment === null
+      ? create()
+      : await withEnvironmentPathAdmission(
+          deps,
+          { ...environment, threadId: null },
+          create,
+        );
   let execution: Awaited<ReturnType<typeof buildExecutionOptions>>;
   try {
     if (

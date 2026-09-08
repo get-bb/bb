@@ -399,14 +399,16 @@ if (!initial.apiKey)
   );
 ```
 
-`create.experimental_claimPath(path)` atomically reserves a directory on the selected
+`await create.experimental_claimPath(path)` atomically reserves a directory on the selected
 host for this launch before workspace mutations. It returns false if another
 unattached launch holds the host/path, this attempt is no longer creating, or
 this attempt already reserved another path. Repeating the same claim succeeds.
-Core retains the durable claim through attachment, or until failed creation
-settles or cancellation cleanup completes. Check existing attached threads after
-claiming and before mutating a shared checkout. Claims use absolute paths with
-trailing slashes removed; providers must use a consistent host path spelling.
+Core retains the durable claim through attachment or completed cancellation
+cleanup, including after failed creation. Check existing attached threads after
+claiming and before mutating a shared checkout. Core resolves symlinks and filesystem case on the selected host, normalizes
+trailing slashes and stores the canonical claim separately from the returned
+display path. Reuse, directory switching and restored dispatch enforce claims;
+only the owning launch is exempt.
 Scoped discovery omits providers whose requirements are unmet; availability rows
 are only returned for eligible providers. Without a machine scope, discovery
 includes providers eligible on any persistent machine.

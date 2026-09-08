@@ -1,3 +1,4 @@
+import { withEnvironmentPathAdmission } from "../environments/path-admission.js";
 import { z } from "zod";
 import { DEFAULT_ENVIRONMENT_PROVIDER_ID } from "../environments/environment-provider-ids.js";
 import {
@@ -293,6 +294,22 @@ export async function handleUpdateEnvironmentDirectoryToolCall(
     return toolCallFailure(writableFailure);
   }
 
+  try {
+    await withEnvironmentPathAdmission(
+      deps,
+      {
+        hostId: args.currentEnvironment.hostId,
+        path: normalizedPath,
+        threadId: args.thread.id,
+      },
+      () => {},
+    );
+  } catch (error) {
+    return toolCallFailure(
+      error instanceof Error ? error.message : String(error),
+    );
+  }
+
   if (args.currentEnvironment.path === normalizedPath) {
     return toolCallSuccess(
       `This thread is already using ${normalizedPath} as its environment directory.`,
@@ -356,13 +373,25 @@ export async function handleUpdateEnvironmentDirectoryToolCall(
     createdEnvironment = true;
   }
 
-  const attachResult = attachReadyEnvironment(deps, {
-    currentEnvironment: args.currentEnvironment,
-    createdEnvironment,
-    targetEnvironment,
-    thread: args.thread,
-    turnId: args.turnId,
-  });
+  let attachResult: AttachEnvironmentResult;
+  try {
+    attachResult = await withEnvironmentPathAdmission(
+      deps,
+      { ...targetEnvironment, threadId: args.thread.id },
+      () =>
+        attachReadyEnvironment(deps, {
+          currentEnvironment: args.currentEnvironment,
+          createdEnvironment,
+          targetEnvironment,
+          thread: args.thread,
+          turnId: args.turnId,
+        }),
+    );
+  } catch (error) {
+    return toolCallFailure(
+      error instanceof Error ? error.message : String(error),
+    );
+  }
 
   switch (attachResult.kind) {
     case "attached":
