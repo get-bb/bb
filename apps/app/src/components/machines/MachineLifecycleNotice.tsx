@@ -24,7 +24,10 @@ export function MachineLifecycleNotice({
     !lifecycle ||
     (lifecycle.expiresAt === null &&
       lifecycle.retentionAt === null &&
-      lifecycle.lastSnapshotAt === null)
+      lifecycle.lastSnapshotAt === null &&
+      lifecycle.message === null &&
+      lifecycle.recoveryState !== "recoverable" &&
+      lifecycle.recoveryState !== "lost-since-last-snapshot")
   )
     return null;
   const approaching =
@@ -43,6 +46,15 @@ export function MachineLifecycleNotice({
         </p>
       )}
       {lifecycle.message && <p role="status">{lifecycle.message}</p>}
+      {!lifecycle.message &&
+        (lifecycle.recoveryState === "recoverable" ||
+          lifecycle.recoveryState === "lost-since-last-snapshot") && (
+          <p role="alert">
+            {lifecycle.recoveryState === "lost-since-last-snapshot"
+              ? "Machine preservation was lost. Explicit recovery is required."
+              : "Machine preservation failed. Recovery is required."}
+          </p>
+        )}
       {lifecycle.lastSnapshotAt !== null && (
         <p>Last saved {new Date(lifecycle.lastSnapshotAt).toLocaleString()}.</p>
       )}

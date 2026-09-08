@@ -51,3 +51,35 @@ it("keeps retention explicitly and delegates removal through the existing confir
   await waitFor(() => expect(kept).toBe(false));
   client.clear();
 });
+
+it.each(["Compute disappeared before preservation completed", null])(
+  "shows preservation loss without lifecycle dates: %s",
+  async (message) => {
+    vi.mocked(sdk.hosts.experimental_lifecycle).mockResolvedValue({
+      phase: "active",
+      expiresAt: null,
+      maintenanceAt: null,
+      lastSnapshotAt: null,
+      recoveryState: "lost-since-last-snapshot",
+      message,
+      retentionAt: null,
+      keep: true,
+    });
+    const client = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+    const view = render(
+      <QueryClientProvider client={client}>
+        <MachineLifecycleNotice hostId="lost" onRemove={() => {}} />
+      </QueryClientProvider>,
+    );
+    expect(
+      await view.findByText(
+        message ??
+          "Machine preservation was lost. Explicit recovery is required.",
+      ),
+    ).toBeTruthy();
+    expect(view.getByText("Remove machine")).toBeTruthy();
+    client.clear();
+  },
+);
