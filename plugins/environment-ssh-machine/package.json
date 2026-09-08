@@ -10,6 +10,9 @@
   "bb": {
     "name": "SSH machine",
     "description": "Add machines from the bb server's SSH config",
+    "branding": {
+      "icon": "Laptop"
+    },
     "server": "./server.ts",
     "app": "./app.tsx"
   },

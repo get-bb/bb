@@ -1,9 +1,11 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createFakePluginHost } from "@get-bb/plugin-sdk/testing";
+import type { JsonValue } from "@get-bb/plugin-sdk";
 import type { PluginMachineProviderCreateContext } from "@get-bb/plugin-sdk/machine-provider";
 import { createSshMachinePlugin } from "./server.js";
 import { sshMachineInputsSchema } from "./configuration.js";
 import type { SshExecRequest } from "./ssh-runner.js";
+import { uninstallCommand } from "./uninstall.js";
 
 const dispose: Array<() => Promise<void>> = [];
 afterEach(async () => {
@@ -31,7 +33,11 @@ async function setup() {
       signal: AbortSignal;
     }) => ({ hostId: "host_ssh" }),
   );
-  Object.assign(bb.experimental_machines, { bootstrap });
+  const prepareEnrollment = vi.fn(async (_request: { key: string }) => ({
+    hostId: "host_ssh",
+  }));
+  const checkpoint = vi.fn(async (_resource: JsonValue) => {});
+  Object.assign(bb.experimental_machines, { bootstrap, prepareEnrollment });
   await createSshMachinePlugin({
     ssh: { available: async () => true, exec },
     listTargets: async () => [],
@@ -41,7 +47,7 @@ async function setup() {
   const context: PluginMachineProviderCreateContext<
     {},
     typeof sshMachineInputsSchema
-  > = {
+  > & { checkpoint(resource: JsonValue): Promise<void> } = {
     key: "launch_one",
     attempt: 1,
     project: null,
@@ -49,8 +55,18 @@ async function setup() {
     inputs: { target: "dev@box" },
     signal: new AbortController().signal,
     report: { step() {}, log() {} },
+    checkpoint,
   };
-  return { bb, harness, exec, bootstrap, provider, context };
+  return {
+    bb,
+    harness,
+    exec,
+    bootstrap,
+    prepareEnrollment,
+    checkpoint,
+    provider,
+    context,
+  };
 }
 
 describe("SSH machine provider", () => {
@@ -97,6 +113,178 @@ describe("SSH machine provider", () => {
       status: "created",
       hostId: "host_ssh",
     });
+  });
+  it("records target ownership and checkpoints allocation before bootstrap", async () => {
+    const f = await setup();
+    f.prepareEnrollment.mockImplementationOnce(async ({ key }) => {
+      expect(await f.bb.storage.kv.get(`launch:${key}`)).toEqual({
+        version: 1,
+        key,
+        target: "dev@box",
+        hostId: null,
+        bootstrapStarted: false,
+      });
+      return { hostId: "host_ssh" };
+    });
+    f.bootstrap.mockImplementationOnce(async () => {
+      expect(f.checkpoint).toHaveBeenCalledWith({
+        version: 1,
+        key: "launch_one",
+        target: "dev@box",
+        hostId: "host_ssh",
+      });
+      expect(await f.bb.storage.kv.get("launch:launch_one")).toMatchObject({
+        hostId: null,
+      });
+      return { hostId: "host_ssh" };
+    });
+    expect(await f.provider.create(f.context)).toMatchObject({
+      status: "created",
+    });
+  });
+  it("does not bootstrap when cancellation arrives during the allocation checkpoint", async () => {
+    const f = await setup();
+    const controller = new AbortController();
+    f.checkpoint.mockImplementationOnce(async () => {
+      controller.abort();
+    });
+    await expect(
+      f.provider.create({ ...f.context, signal: controller.signal }),
+    ).rejects.toBeDefined();
+    expect(f.prepareEnrollment).toHaveBeenCalledWith({ key: "launch_one" });
+    expect(f.checkpoint).toHaveBeenCalledWith({
+      version: 1,
+      key: "launch_one",
+      target: "dev@box",
+      hostId: "host_ssh",
+    });
+    expect(f.bootstrap).not.toHaveBeenCalled();
+    expect(await f.bb.storage.kv.get("launch:launch_one")).toMatchObject({
+      hostId: null,
+    });
+    expect(await f.provider.create(f.context)).toMatchObject({
+      status: "created",
+    });
+    expect(f.bootstrap).toHaveBeenCalledOnce();
+  });
+  it("removes a checkpointed reservation without SSH when bootstrap never started", async () => {
+    const f = await setup();
+    const controller = new AbortController();
+    f.checkpoint.mockImplementationOnce(async () => {
+      controller.abort();
+    });
+    await expect(
+      f.provider.create({ ...f.context, signal: controller.signal }),
+    ).rejects.toBeDefined();
+    const resource = f.checkpoint.mock.calls[0]?.[0];
+    if (resource === undefined)
+      throw new Error("Allocation was not checkpointed");
+    expect(
+      await f.provider.remove({
+        hostId: "host_ssh",
+        resource,
+        signal: f.context.signal,
+        report: f.context.report,
+      }),
+    ).toEqual({ status: "removed" });
+    expect(f.exec).not.toHaveBeenCalled();
+    expect(f.bootstrap).not.toHaveBeenCalled();
+    expect(await f.bb.storage.kv.get("launch:launch_one")).toBeUndefined();
+  });
+  it("removes an allocated checkpoint when bootstrap is cancelled before success", async () => {
+    const f = await setup();
+    const controller = new AbortController();
+    f.bootstrap.mockImplementationOnce(async () => {
+      controller.abort();
+      throw new Error("bootstrap cancelled");
+    });
+    await expect(
+      f.provider.create({ ...f.context, signal: controller.signal }),
+    ).rejects.toThrow("bootstrap cancelled");
+    const resource = f.checkpoint.mock.calls[0]?.[0];
+    if (resource === undefined)
+      throw new Error("Allocation was not checkpointed");
+    expect(
+      await f.provider.remove({
+        hostId: "host_ssh",
+        resource,
+        signal: f.context.signal,
+        report: f.context.report,
+      }),
+    ).toEqual({ status: "removed" });
+    expect(f.exec).toHaveBeenCalledOnce();
+    expect(await f.bb.storage.kv.get("launch:launch_one")).toBeUndefined();
+  });
+  it("retains prior installation ownership when a retry is cancelled at its checkpoint", async () => {
+    const f = await setup();
+    f.bootstrap.mockRejectedValueOnce(new Error("connection failed"));
+    expect(await f.provider.create(f.context)).toMatchObject({
+      status: "failed",
+    });
+    const controller = new AbortController();
+    f.checkpoint.mockImplementationOnce(async () => {
+      controller.abort();
+    });
+    await expect(
+      f.provider.create({ ...f.context, signal: controller.signal }),
+    ).rejects.toBeDefined();
+    const resource = f.checkpoint.mock.calls[1]?.[0];
+    if (resource === undefined)
+      throw new Error("Allocation was not checkpointed");
+    expect(
+      await f.provider.remove({
+        hostId: "host_ssh",
+        resource,
+        signal: f.context.signal,
+        report: f.context.report,
+      }),
+    ).toEqual({ status: "removed" });
+    expect(f.exec).toHaveBeenCalledOnce();
+  });
+  it("treats legacy pending records as potentially installed during cleanup", async () => {
+    const f = await setup();
+    const resource = {
+      version: 1,
+      key: "launch_one",
+      target: "dev@box",
+      hostId: "host_ssh",
+    };
+    await f.bb.storage.kv.set("launch:launch_one", {
+      ...resource,
+      hostId: null,
+    });
+    expect(
+      await f.provider.remove({
+        hostId: "host_ssh",
+        resource,
+        signal: f.context.signal,
+        report: f.context.report,
+      }),
+    ).toEqual({ status: "removed" });
+    expect(f.exec).toHaveBeenCalledOnce();
+  });
+  it("keeps incomplete checkpoints retryable and rejects a different bootstrap identity", async () => {
+    const f = await setup();
+    f.bootstrap.mockResolvedValueOnce({ hostId: "host_other" });
+    expect(await f.provider.create(f.context)).toMatchObject({
+      status: "failed",
+    });
+    expect(await f.bb.storage.kv.get("launch:launch_one")).toMatchObject({
+      hostId: null,
+    });
+    expect(await f.provider.create(f.context)).toMatchObject({
+      status: "created",
+      hostId: "host_ssh",
+    });
+    expect(f.checkpoint).toHaveBeenCalledTimes(2);
+  });
+  it("does not install if the durable checkpoint fails", async () => {
+    const f = await setup();
+    f.checkpoint.mockRejectedValueOnce(new Error("checkpoint unavailable"));
+    expect(await f.provider.create(f.context)).toMatchObject({
+      status: "failed",
+    });
+    expect(f.bootstrap).not.toHaveBeenCalled();
   });
   it("allows typed targets when config contains no aliases", async () => {
     const f = await setup();
@@ -145,13 +333,7 @@ describe("SSH machine provider", () => {
     expect(f.exec).toHaveBeenLastCalledWith(
       "dev@box",
       expect.objectContaining({
-        command: [
-          "sh",
-          "-c",
-          'exec "$HOME/.local/bin/bb" machine uninstall --host-id "$1"',
-          "bb",
-          "host_ssh",
-        ],
+        command: uninstallCommand("host_ssh"),
       }),
     );
   });

@@ -20,6 +20,10 @@ The SDK can make the same selection using `sdk.hosts.create({ machineProviderId:
 
 Machines stay enrolled until explicitly removed; they never retire or suspend automatically. `bb machine remove <host-id>` invokes the core local `bb machine uninstall --host-id <id>` command over SSH. Core verifies the installed host identity, canonical data directory, service or daemon process, and port reservation ownership before removing the daemon installation. The remote machine and project checkouts outside that installation remain available. A failed uninstall retains the launch record for cleanup retries.
 
+Before installation, the plugin reserves the core enrollment identity and checkpoints its target, key, and host ID. Cancellation can therefore clean up an allocation even when bootstrap never returns successfully. The pending launch record stays distinct from a completed machine until bootstrap returns the reserved identity.
+
+Removal skips remote work only when the durable launch record proves bootstrap never started. Otherwise it uses the core lifecycle shim; the installer publishes this shim before any installation side effects, so a missing shim is a safe no-op. An existing broken shim or an ownership refusal remains a cleanup failure.
+
 Completed launch records remain durable until removal, so replay after a server crash reuses the same host. In-progress retries reuse the core enrollment key. A key cannot be reused for a different SSH target. Failed creation does not run speculative uninstall.
 
 ## Development

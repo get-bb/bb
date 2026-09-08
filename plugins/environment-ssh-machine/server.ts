@@ -7,6 +7,7 @@ import {
 import { sshMachineRpcContract } from "./contract.js";
 import { SSH_MACHINE_PROVIDER_ID } from "./provider-id.js";
 import { readSshHostAliases } from "./ssh-config.js";
+import { uninstallCommand } from "./uninstall.js";
 import {
   openSshRunner,
   type SshExecRequest,
@@ -24,6 +25,7 @@ const resourceSchema = z
 
 const launchSchema = resourceSchema.extend({
   hostId: z.string().min(1).nullable(),
+  bootstrapStarted: z.boolean().default(true),
 });
 
 function errorMessage(error: unknown): string {
@@ -57,11 +59,14 @@ export function createSshMachinePlugin(deps: {
       },
       async create(context) {
         try {
+          context.signal.throwIfAborted();
           const target = sshMachineInputsSchema.parse(context.inputs).target;
           const storageKey = `launch:${context.key}`;
           const stored = await bb.storage.kv.get(storageKey);
+          let bootstrapStarted = false;
           if (stored !== undefined) {
             const resource = launchSchema.parse(stored);
+            bootstrapStarted = resource.bootstrapStarted;
             if (resource.target !== target || resource.key !== context.key) {
               return {
                 status: "failed",
@@ -69,15 +74,46 @@ export function createSshMachinePlugin(deps: {
                 message: "SSH launch key already belongs to another target.",
               };
             }
-            if (resource.hostId !== null)
-              return { status: "created", hostId: resource.hostId, resource };
+            if (resource.hostId !== null) {
+              const completed = {
+                version: 1,
+                key: resource.key,
+                target: resource.target,
+                hostId: resource.hostId,
+              };
+              await context.checkpoint(completed);
+              context.signal.throwIfAborted();
+              return {
+                status: "created",
+                hostId: resource.hostId,
+                resource: completed,
+              };
+            }
           }
           await bb.storage.kv.set(storageKey, {
             version: 1,
             key: context.key,
             target,
             hostId: null,
+            bootstrapStarted,
           });
+          const enrollment = await bb.experimental_machines.prepareEnrollment({
+            key: context.key,
+          });
+          const resource = {
+            version: 1,
+            key: context.key,
+            target,
+            hostId: enrollment.hostId,
+          };
+          await context.checkpoint(resource);
+          context.signal.throwIfAborted();
+          await bb.storage.kv.set(storageKey, {
+            ...resource,
+            hostId: null,
+            bootstrapStarted: true,
+          });
+          context.signal.throwIfAborted();
           context.report.step(`Connecting to SSH target ${target}…`);
           const { hostId } = await bb.experimental_machines.bootstrap({
             key: context.key,
@@ -88,7 +124,8 @@ export function createSshMachinePlugin(deps: {
             report: context.report,
             signal: context.signal,
           });
-          const resource = { version: 1, key: context.key, target, hostId };
+          if (hostId !== resource.hostId)
+            throw new Error("SSH bootstrap returned another machine identity.");
           await bb.storage.kv.set(storageKey, resource);
           return { status: "created", hostId, resource };
         } catch (error) {
@@ -105,17 +142,28 @@ export function createSshMachinePlugin(deps: {
           const resource = resourceSchema.parse(context.resource);
           if (resource.hostId !== context.hostId)
             throw new Error("SSH resource belongs to another machine.");
+          const storageKey = `launch:${resource.key}`;
+          const stored = await bb.storage.kv.get(storageKey);
+          if (stored !== undefined) {
+            const launch = launchSchema.parse(stored);
+            if (
+              launch.target !== resource.target ||
+              launch.key !== resource.key ||
+              (launch.hostId !== null && launch.hostId !== resource.hostId)
+            )
+              throw new Error(
+                "SSH launch belongs to another machine or target.",
+              );
+            if (launch.hostId === null && !launch.bootstrapStarted) {
+              await bb.storage.kv.delete(storageKey);
+              return { status: "removed" };
+            }
+          }
           context.report.step(
             `Stopping and uninstalling bb on ${resource.target}…`,
           );
           const result = await deps.ssh.exec(resource.target, {
-            command: [
-              "sh",
-              "-c",
-              'exec "$HOME/.local/bin/bb" machine uninstall --host-id "$1"',
-              "bb",
-              context.hostId,
-            ],
+            command: uninstallCommand(context.hostId),
             timeoutMs: 120_000,
             signal: context.signal,
           });
@@ -123,7 +171,7 @@ export function createSshMachinePlugin(deps: {
             throw new Error(
               `SSH uninstall exited ${result.exitCode}: ${result.stderr.trim() || result.stdout.trim()}`,
             );
-          await bb.storage.kv.delete(`launch:${resource.key}`);
+          await bb.storage.kv.delete(storageKey);
           return { status: "removed" };
         } catch (error) {
           if (context.signal.aborted) throw error;
