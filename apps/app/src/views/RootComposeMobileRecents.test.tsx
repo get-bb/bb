@@ -4,6 +4,8 @@ import type { ThreadListEntry } from "@bb/domain";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import type { ReactNode } from "react";
+import { Provider, createStore } from "jotai";
+import { collapsedThreadIdsAtom } from "@/components/sidebar/sidebarCollapsedAtoms";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, describe, expect, it } from "vitest";
 import type { SystemEnvironmentProvider } from "@bb/server-contract";
@@ -32,12 +34,26 @@ const personalProvider: SystemEnvironmentProvider = {
   inputs: null,
 };
 
-function TestProviders({ children }: { children: ReactNode }) {
+function TestProviders({
+  children,
+  store = createStore(),
+}: {
+  children: ReactNode;
+  store?: ReturnType<typeof createStore>;
+}) {
   return (
-    <QueryClientProvider client={new QueryClient()}>
-      <MemoryRouter>{children}</MemoryRouter>
-    </QueryClientProvider>
+    <Provider store={store}>
+      <QueryClientProvider client={new QueryClient()}>
+        <MemoryRouter>{children}</MemoryRouter>
+      </QueryClientProvider>
+    </Provider>
   );
+}
+
+function storeWithCollapsedThreads(threadIds: string[]) {
+  const store = createStore();
+  store.set(collapsedThreadIdsAtom, threadIds);
+  return store;
 }
 
 function makeThread(overrides: Partial<ThreadListEntry> = {}): ThreadListEntry {
@@ -351,13 +367,8 @@ describe("mobile recents hierarchy interaction", () => {
   ])(
     "renders child-only $label state on a collapsed parent",
     ({ child, label }) => {
-      window.localStorage.setItem(
-        "bb.sidebar.collapsedThreads",
-        JSON.stringify(["thr_parent"]),
-      );
-
       render(
-        <TestProviders>
+        <TestProviders store={storeWithCollapsedThreads(["thr_parent"])}>
           <RootComposeMobileRecents
             highlightedThreadId={null}
             projectNamesById={new Map()}
@@ -389,13 +400,8 @@ describe("mobile recents hierarchy interaction", () => {
       "bb.promptbox.contents-proj_mobile-thr_child-3",
       JSON.stringify({ text: "Continue child work", attachments: [] }),
     );
-    window.localStorage.setItem(
-      "bb.sidebar.collapsedThreads",
-      JSON.stringify(["thr_parent"]),
-    );
-
     render(
-      <TestProviders>
+      <TestProviders store={storeWithCollapsedThreads(["thr_parent"])}>
         <RootComposeMobileRecents
           highlightedThreadId={null}
           projectNamesById={new Map()}
@@ -427,13 +433,9 @@ describe("mobile recents hierarchy interaction", () => {
   });
 
   it("reveals a highlighted thread whose parent is collapsed", () => {
-    window.localStorage.setItem(
-      "bb.sidebar.collapsedThreads",
-      JSON.stringify(["thr_parent"]),
-    );
-
+    const store = storeWithCollapsedThreads(["thr_parent"]);
     render(
-      <TestProviders>
+      <TestProviders store={store}>
         <RootComposeMobileRecents
           highlightedThreadId="thr_child"
           projectNamesById={new Map()}
@@ -457,9 +459,7 @@ describe("mobile recents hierarchy interaction", () => {
     );
 
     expect(screen.getByText("Audit folder query paths")).not.toBeNull();
-    expect(window.localStorage.getItem("bb.sidebar.collapsedThreads")).toBe(
-      "[]",
-    );
+    expect(store.get(collapsedThreadIdsAtom)).toEqual([]);
   });
 
   it("de-emphasizes the provider tile on child rows only", () => {

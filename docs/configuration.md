@@ -653,8 +653,7 @@ reach a server that has never stored a key uploads the value it finds in the
 old browser storage once, then deletes that copy, so an existing layout
 survives the upgrade; a second device that loses that race adopts the server
 value. A change on one device reaches every other connected window through the
-`ui-preferences-changed` broadcast without a reload. Collapsed rows and
-sections still live in the browser and move to the server in a follow-up.
+`ui-preferences-changed` broadcast without a reload.
 
 Sidebar width and open state stay in the browser because they depend on the
 window size.
