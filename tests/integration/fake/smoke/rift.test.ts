@@ -1,5 +1,6 @@
 import { spawnSync } from "node:child_process";
-import { access } from "node:fs/promises";
+import { access, realpath } from "node:fs/promises";
+import { getEnvironment, getEnvironmentLaunch } from "@bb/db";
 import { threadSchema } from "@bb/domain";
 import { describe, expect, it } from "vitest";
 import { withHarness } from "../../helpers/harness.js";
@@ -61,6 +62,13 @@ describe("Rift environment integration", () => {
         expect(environment.branchName).toBe("bb/rift-integration");
         if (environment.path === null) throw new Error("Rift copy missing");
         await access(environment.path);
+        const canonicalPath = await realpath(environment.path);
+        expect(getEnvironment(harness.db, environment.id)?.canonicalPath).toBe(
+          canonicalPath,
+        );
+        expect(getEnvironmentLaunch(harness.db, thread.id)?.claimPath).toBe(
+          canonicalPath,
+        );
       }),
   );
 });

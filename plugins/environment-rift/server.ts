@@ -97,6 +97,13 @@ export default async function riftPlugin(bb: BbPluginApi): Promise<void> {
             message: result.message,
           };
         }
+        if (!(await context.experimental_claimPath(result.path))) {
+          return {
+            status: "failed",
+            failure: "terminal",
+            message: "The Rift workspace path is already in use",
+          };
+        }
         return {
           status: "created",
           path: result.path,

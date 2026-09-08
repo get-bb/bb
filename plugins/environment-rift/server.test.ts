@@ -7,7 +7,7 @@ import {
   makeThreadResponse,
   type FakePluginHarness,
 } from "@get-bb/plugin-sdk/testing";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { RIFT_ENVIRONMENT_PROVIDER_ID } from "./provider-id.js";
 import plugin, { riftInputsSchema } from "./server.js";
 
@@ -78,7 +78,7 @@ async function setup(
     gitRemote: null,
     inputs: { branch: { kind: "default" }, copy: "all" },
     suggestedBranchName: "bb/test",
-    experimental_claimPath: () => true,
+    experimental_claimPath: async () => true,
     attempt: 1,
     pathKey: THREAD_ID,
     rebuild: false,
@@ -130,6 +130,35 @@ describe("Rift provider", () => {
         pathKey: THREAD_ID,
       }),
     ]);
+  });
+  it("retries the canonical path claim after recovering a completed copy", async () => {
+    const f = await setup();
+    const claim = vi
+      .fn()
+      .mockRejectedValueOnce(new Error("Host disconnected"))
+      .mockResolvedValueOnce(true);
+    const context = { ...f.context, experimental_claimPath: claim };
+    expect(await f.provider.create(context)).toMatchObject({
+      status: "failed",
+      failure: "transient",
+    });
+    expect(await f.provider.create(context)).toMatchObject({
+      status: "created",
+    });
+    expect(claim.mock.calls).toEqual([[RIFT_PATH], [RIFT_PATH]]);
+  });
+  it("refuses a completed copy whose path claim is held elsewhere", async () => {
+    const f = await setup();
+    expect(
+      await f.provider.create({
+        ...f.context,
+        experimental_claimPath: async () => false,
+      }),
+    ).toEqual({
+      status: "failed",
+      failure: "terminal",
+      message: "The Rift workspace path is already in use",
+    });
   });
   it.each([true, false])(
     "checks host CLI availability: %s",
