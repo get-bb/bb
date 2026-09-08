@@ -163,9 +163,6 @@ function MachineRow({
           className="flex min-w-0 flex-1 items-center rounded-md outline-none focus-visible:ring-2 focus-visible:ring-ring"
         >
           <div className="min-w-0 flex-1 space-y-1">
-            {host.machineProviderId ? (
-              <MachineProviderDetails hostId={host.id} />
-            ) : null}
             <div className="flex min-w-0 items-center gap-1.5">
               <span className="min-w-0 truncate text-sm font-medium text-foreground">
                 {host.name}
@@ -210,6 +207,9 @@ function MachineRow({
                 </span>
               )}
             </div>
+            {host.machineProviderId ? (
+              <MachineProviderDetails hostId={host.id} />
+            ) : null}
           </div>
         </Link>
         <div className="flex shrink-0 items-center gap-1">
