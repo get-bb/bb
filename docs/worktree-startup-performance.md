@@ -58,8 +58,11 @@ its own cached outputs. This ordering prevents server cleanup from deleting
 new plugin output and prevents deleted plugins or assets from surviving an
 overlaid Turbo cache restore.
 
-Plugin sources, manifests, assets, build tooling, dependency versions, and
-upstream task hashes invalidate the packaging cache. Packaging runs from the
+Package-default inputs cover server files automatically. Existing upstream
+server/SDK task hashes cover build tooling and dependencies. Explicit external
+inputs cover the plugins tree and the authoritative app version manifest.
+The server's package-level Turbo config inherits the shared build definition
+and overrides only output ownership, avoiding a duplicate build input list. Packaging runs from the
 same repository-root working directory as the original launcher. A plugin edit
 still rebuilds the whole plugin packaging task. Turbo shares its local task
 cache between worktrees of the same repository on this host; no new cache

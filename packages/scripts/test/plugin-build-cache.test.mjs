@@ -26,6 +26,9 @@ it("cleans obsolete plugins and assets before restoring an older Turbo build", a
       await readFile(new URL("turbo.json", repoRoot), "utf8"),
     );
     expect(error).toBeUndefined();
+    const serverConfig = JSON.parse(
+      await readFile(new URL("apps/server/turbo.json", repoRoot), "utf8"),
+    );
     const serverPackage = JSON.parse(
       await readFile(new URL("apps/server/package.json", repoRoot), "utf8"),
     );
@@ -88,7 +91,7 @@ it("cleans obsolete plugins and assets before restoring an older Turbo build", a
       JSON.stringify({
         tasks: {
           "@bb/server#build": {
-            outputs: config.tasks["@bb/server#build"].outputs,
+            outputs: serverConfig.tasks.build.outputs,
           },
           "@get-bb/plugin-sdk#build": { outputs: [] },
           "@bb/server#clean:plugins": config.tasks["@bb/server#clean:plugins"],
