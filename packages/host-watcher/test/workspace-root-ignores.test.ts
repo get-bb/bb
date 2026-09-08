@@ -241,7 +241,10 @@ describe("workspace root watch events inside nested heavy directories (#1779)", 
           changedPaths.filter(
             (changedPath) =>
               changedPath.includes(`${path.sep}node_modules${path.sep}`) ||
-              changedPath.includes(`${path.sep}.git${path.sep}`),
+              path
+                .relative(realRoot, changedPath)
+                .split(path.sep)
+                .indexOf(".git") > 0,
           ),
         ).toEqual([]);
       } finally {
