@@ -4,7 +4,7 @@ import {
 } from "../environments/provider-orchestration.js";
 import {
   listLiveThreadsInEnvironment,
-  listUnarchivedAssignedChildThreads,
+  listNonDeletedChildThreads,
   listUnarchivedHiddenSourceThreads,
 } from "@bb/db";
 import type { EnvironmentRow } from "@bb/db";
@@ -159,18 +159,44 @@ export function archiveThreadAndChildren(
   deps: AppDeps,
   args: ArchiveThreadAndChildrenArgs,
 ): string[] {
-  const childThreads = listUnarchivedAssignedChildThreads(deps.db, {
-    parentThreadId: args.parentThread.id,
-  });
-  const hiddenSourceThreads = listUnarchivedHiddenSourceThreads(deps.db, {
-    sourceThreadId: args.parentThread.id,
-  });
-  const threads: ArchiveThreadWithLifecycleEffectsArgs["thread"][] = [
-    ...childThreads,
-    ...hiddenSourceThreads,
-  ].filter((thread) => thread.id !== args.parentThread.id);
-  if (args.parentThread.archivedAt === null) {
-    threads.push(args.parentThread);
+  type ArchiveCandidate = Pick<
+    Thread,
+    "id" | "environmentId" | "status" | "archivedAt"
+  >;
+  const pending: { thread: ArchiveCandidate; expanded: boolean }[] = [
+    { thread: args.parentThread, expanded: false },
+  ];
+  const visited = new Set<string>();
+  const threads: ArchiveCandidate[] = [];
+
+  while (pending.length > 0) {
+    const entry = pending.pop();
+    if (!entry) {
+      break;
+    }
+    const { thread, expanded } = entry;
+    if (expanded) {
+      if (thread.archivedAt === null) {
+        threads.push(thread);
+      }
+      continue;
+    }
+    if (visited.has(thread.id)) {
+      continue;
+    }
+    visited.add(thread.id);
+    pending.push({ thread, expanded: true });
+    const descendants = [
+      ...listNonDeletedChildThreads(deps.db, {
+        parentThreadId: thread.id,
+      }),
+      ...listUnarchivedHiddenSourceThreads(deps.db, {
+        sourceThreadId: thread.id,
+      }),
+    ];
+    for (const descendant of descendants.reverse()) {
+      pending.push({ thread: descendant, expanded: false });
+    }
   }
   const archivedThreadIds: string[] = [];
 
