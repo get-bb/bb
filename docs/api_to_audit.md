@@ -2682,3 +2682,26 @@ across sweeps and restarts, including subsequent access release failures.
 Stabilization requires crash/abort coverage before submission, after submission but
 before checkpoint, eventual vendor discovery, and access-release retry coverage for
 each shipped provider.
+
+### Machine resume allocation checkpoint
+
+`PluginMachineProviderResumeContext.checkpoint(resource): Promise<void>` on the
+experimental machine-provider contract persists a bounded allocation recovery
+record before bootstrap. It is not a filesystem save, and daemon-connected is
+not agent-ready: checkout setup and provider authentication remain core work.
+Core fences provider ownership, lifecycle phase and a persisted operation ID;
+stale resume, suspend and removal completions cannot replace newer state. Restart
+uses the checkpoint with the same enrollment key. Stabilization requires real-DB
+crash recovery after allocation/before bootstrap, competing lifecycle operations,
+wrong-owner rejection and no duplicate enrollment. Standalone launch submission
+is durable; SDK submit/launch/follow/cancel match CLI create/status/cancel.
+
+Definitive pre-allocation rejection uses `PluginMachineProviderCreateResult`
+with `status: "failed"` and `allocation: "none"`. Absence means the allocation
+outcome is unknown. Core skips vendor reconciliation only for that explicit
+result and still settles enrollment, access and the pending host. Providers
+must persist the rejection before returning so restart cannot allocate twice.
+Automatic unresolved cleanup retries stop after a 30-minute launch window;
+unresolved cleanup remains recorded. An explicit cancel retries cleanup even
+after automatic retries are exhausted. Stabilization requires distinguishing
+definitive vendor rejection from transport timeouts and ambiguous submissions.

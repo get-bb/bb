@@ -803,6 +803,7 @@ function rewindEnvironmentProvidersMigration(db: DbConnection): void {
   }
   for (const column of [
     "machine_provider_id",
+    "machine_operation_id",
     "server_access_provider_id",
     "server_access_grant_id",
     "resource",

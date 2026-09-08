@@ -72,6 +72,12 @@ for later lifecycle operations. `allocateTarget` and `disconnectTarget` above
 stand for provider-owned allocation, transport, and idempotent cleanup; removal
 must handle a checkpointed target whose daemon was never installed or enrolled.
 Core owns enrollment, identity files, and daemon installation internals.
+A definitive rejection before allocation returns `{ status: "failed", failure:
+"terminal", allocation: "none", message }`; persist that rejection first. Core
+skips allocation reconciliation and settles enrollment/access/the pending host.
+Omit `allocation` for unknown outcomes such as timeouts. Automatic unresolved
+cleanup retries are bounded to a 30-minute launch window; unresolved cleanup
+remains recorded for operator reconciliation.
 
 An `environmentRow` is optional. Providers without one, such as SSH, require
 `--environment-provider <id>` alongside `bb thread spawn --new-machine <id>`.
@@ -83,6 +89,19 @@ Suspend receives `checkpoint(resource)`, which synchronously
 persists a recoverable private resource before destructive cleanup. Use it
 after creating a recovery artifact and before terminating the live machine or
 deleting an older artifact. A replay receives the last checkpoint.
+Resume receives an awaitable `checkpoint(resource)`. Call it immediately after
+restoring or allocating compute and before bootstrap. Core fences the provider
+owner, lifecycle phase and persisted operation ID, and restart passes the last
+checkpoint back with the same enrollment identity. A stale callback rejects.
+Allocation checkpoints are recovery records, not filesystem saves: providers
+must create any filesystem snapshot themselves. Daemon-connected is not
+agent-ready; checkout setup and provider authentication still need to complete.
+
+Standalone `bb machine create` and `bb.sdk.hosts.create` submit a durable launch
+and follow its progress. `create --no-wait` / `hosts.submit` return the launch ID;
+`machine status` / `hosts.launch` poll it. Only `machine cancel` / `hosts.cancel`
+explicitly cancel; closing a client or aborting its signal stops following.
+
 Retirement is either last-thread plus a grace period or never. Removal always
 cascades through the machine's environment providers before machine remove;
 failures persist and retry after `removeRetryMs`.

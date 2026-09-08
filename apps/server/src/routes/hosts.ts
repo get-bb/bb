@@ -33,7 +33,9 @@ import {
 } from "../services/hosts/online-rpc.js";
 import { handleHostRemoved } from "../internal/session-owner-side-effects.js";
 import {
-  createMachine,
+  submitMachine,
+  machineLaunchStatus,
+  cancelMachineLaunch,
   requestMachineResume,
   requestMachineRemoval,
   requestMachineSuspension,
@@ -108,11 +110,21 @@ export function registerHostRoutes(
 
   post(routes.create, async (context, payload) => {
     assertHostManagementAllowed(context);
-    const host = await createMachine(deps, {
-      ...payload,
-      signal: context.req.raw.signal,
-    });
+    const host = await submitMachine(deps, payload);
     return context.json(host, 201);
+  });
+
+  get(routes.launch, (context) => {
+    assertHostManagementAllowed(context);
+    return context.json(machineLaunchStatus(deps, context.req.param("id")));
+  });
+
+  post(routes.cancelLaunch, async (context) => {
+    assertHostManagementAllowed(context);
+    const key = context.req.param("id");
+    machineLaunchStatus(deps, key);
+    await cancelMachineLaunch(deps, key, false, true);
+    return context.json(machineLaunchStatus(deps, key));
   });
 
   post(routes.createJoinCode, async (context, payload) => {

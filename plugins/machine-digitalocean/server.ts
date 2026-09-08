@@ -20,7 +20,10 @@ const resourceSchema = z
   })
   .strict();
 const intentSchema = z
-  .object({ dropletId: z.number().int().positive().nullable() })
+  .object({
+    dropletId: z.number().int().positive().nullable(),
+    rejected: z.boolean().default(false),
+  })
   .strict();
 const WAIT_MS = 600_000;
 class AllocationError extends Error {}
@@ -108,6 +111,14 @@ export function createDigitalOceanPlugin(deps: {
           const stored = await bb.storage.kv.get<unknown>(intentKey);
           const intent =
             stored === undefined ? null : intentSchema.parse(stored);
+          if (intent?.rejected)
+            return {
+              status: "failed",
+              failure: "terminal",
+              allocation: "none",
+              message:
+                "DigitalOcean rejected this allocation; correct configuration and use a new creation key.",
+            };
           const signal = AbortSignal.any([
             context.signal,
             AbortSignal.timeout(WAIT_MS),
@@ -148,10 +159,29 @@ export function createDigitalOceanPlugin(deps: {
             signal.throwIfAborted();
             await bb.storage.kv.set(intentKey, { dropletId: null });
             context.report.step("Creating the DigitalOcean Droplet…");
-            droplet = await api.create(
-              { name, ...inputsSchema.parse(context.inputs), userData },
-              signal,
-            );
+            try {
+              droplet = await api.create(
+                { name, ...inputsSchema.parse(context.inputs), userData },
+                signal,
+              );
+            } catch (error) {
+              if (
+                error instanceof VendorError &&
+                [400, 401, 403, 404, 422].includes(error.status)
+              ) {
+                await bb.storage.kv.set(intentKey, {
+                  dropletId: null,
+                  rejected: true,
+                });
+                return {
+                  status: "failed",
+                  failure: "terminal",
+                  allocation: "none",
+                  message: error.message,
+                };
+              }
+              throw error;
+            }
           }
           const resource = {
             version: 1,
@@ -195,6 +225,7 @@ export function createDigitalOceanPlugin(deps: {
         const stored = await bb.storage.kv.get<unknown>(`allocation/${name}`);
         if (stored === undefined) return { status: "removed" };
         const intent = intentSchema.parse(stored);
+        if (intent.rejected) return { status: "removed" };
         const api = await vendor();
         const droplet =
           intent.dropletId === null

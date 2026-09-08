@@ -1,8 +1,10 @@
+import type { MachineLaunchStatus } from "@bb/server-contract";
 import { serverAccess } from "./server-access.js";
 import { randomUUID } from "node:crypto";
 import { z } from "zod";
 import {
   deleteProjectSource,
+  settleMachineEnrollments,
   getHost,
   getMachineLaunch,
   listEnvironments,
@@ -62,6 +64,7 @@ const createResultSchema = z.discriminatedUnion("status", [
   z.object({
     status: z.literal("failed"),
     failure: z.enum(["terminal", "transient"]),
+    allocation: z.literal("none").optional(),
     message: z.string().min(1),
   }),
 ]);
@@ -173,10 +176,19 @@ function lifecycleReporter(
   deps: MachineLifecycleDeps,
   hostId: string,
 ): PluginMachineProviderProgress {
+  const owner = getHost(deps.db, hostId);
   return {
     step: (text) => {
       const current = getHost(deps.db, hostId);
-      if (current === null || current.destroyedAt !== null) return;
+      if (
+        current === null ||
+        current.destroyedAt !== null ||
+        owner === null ||
+        current.machineOperationId !== owner.machineOperationId ||
+        current.machineProviderId !== owner.machineProviderId ||
+        current.phase !== owner.phase
+      )
+        return;
       updateHost(deps.db, deps.hub, hostId, {
         teardownMessage: text.slice(0, 500),
       });
@@ -283,6 +295,10 @@ async function runCreate(
         row.failure = result.failure;
         row.message = result.message;
         row.failedAt = Date.now();
+        if (result.allocation === "none" && row.resource === null) {
+          row.cleanupResourceRemoved = true;
+          row.cancelPending = true;
+        }
         if (result.failure === "transient") row.transientFailures += 1;
       });
       return;
@@ -364,11 +380,25 @@ function startCreate(
   record: PluginMachineProviderRecord,
   launch: MachineLaunchRow,
 ): ActiveOperation {
-  return runTrackedOperation({
+  const operation = runTrackedOperation({
     map: operations(createOperations, deps.db),
     key: `${launch.key}:${launch.attempt}`,
     run: (signal) => runCreate(deps, record, launch, signal),
   });
+  void operation.done
+    .then(async () => {
+      const current = getMachineLaunch(deps.db, launch.key);
+      if (current?.phase === "failed" && current.failure === "terminal") {
+        await cancelMachineLaunch(deps, launch.key, true);
+      }
+    })
+    .catch((error: unknown) => {
+      deps.logger.warn(
+        { key: launch.key, error: errorMessage(error) },
+        "Machine creation cleanup failed",
+      );
+    });
+  return operation;
 }
 
 export async function parseMachineProviderInputs(
@@ -683,16 +713,29 @@ export async function cancelMachineLaunch(
   deps: Deps,
   key: string,
   preserveFailure = false,
+  forceRetry = false,
 ): Promise<void> {
   let row = getMachineLaunch(deps.db, key);
   if (row === null || row.phase === "ready") return;
-  if (row.phase !== "cancelled") {
+  if (
+    row.phase !== "cancelled" &&
+    !(
+      row.phase === "failed" &&
+      row.cleanupResourceRemoved &&
+      !row.cancelPending
+    )
+  ) {
     row = {
       ...row,
       phase: preserveFailure ? "failed" : "cancelled",
       cancelPending: true,
     };
     updateMachineLaunchAttempt(deps.db, row);
+  }
+  if (row.cleanupResourceRemoved && !row.cancelPending) return;
+  if (row.hostId !== null) {
+    settleMachineEnrollments(deps.db, row.hostId);
+    await deps.machineAuth.revokeHostEnrollKeys({ hostId: row.hostId });
   }
   const create = operations(createOperations, deps.db).get(
     `${row.key}:${row.attempt}`,
@@ -705,7 +748,9 @@ export async function cancelMachineLaunch(
   if (
     row === null ||
     !row.cancelPending ||
-    (row.cleanupRetryAt !== null && row.cleanupRetryAt > Date.now())
+    (!forceRetry &&
+      row.cleanupRetryAt !== null &&
+      row.cleanupRetryAt > Date.now())
   )
     return;
   const record = getMachineProvider(row.providerId);
@@ -716,39 +761,43 @@ export async function cancelMachineLaunch(
     run: async (signal) => {
       let current = getMachineLaunch(deps.db, key);
       if (current === null || !current.cancelPending) return;
-      if (!current.cleanupResourceRemoved) {
-        if (current.resource === null) {
-          const launch = current;
-          const invocation = await invokeMachineProvider(
-            record,
-            "machine cleanup reconciliation",
-            () =>
-              record.provider.experimental_reconcileCleanup({
-                key: launch.key,
-                report: launchReporter(deps, launch),
-                signal,
-              }),
-          );
-          if (!invocation.ok) throw new Error(invocation.error);
-          const result = removeResultSchema.parse(invocation.value);
-          if (result.status === "failed") throw new Error(result.message);
-        } else {
-          if (current.hostId === null)
-            throw new Error("Machine cleanup has no reserved host");
-          await removeResource(deps, record, {
-            hostId: current.hostId,
-            resource: current.resource,
-            signal,
-          });
+      let allocationError: Error | null = null;
+      try {
+        if (!current.cleanupResourceRemoved) {
+          if (current.resource === null) {
+            const launch = current;
+            const invocation = await invokeMachineProvider(
+              record,
+              "machine cleanup reconciliation",
+              () =>
+                record.provider.experimental_reconcileCleanup({
+                  key: launch.key,
+                  report: launchReporter(deps, launch),
+                  signal,
+                }),
+            );
+            if (!invocation.ok) throw new Error(invocation.error);
+            const result = removeResultSchema.parse(invocation.value);
+            if (result.status === "failed") throw new Error(result.message);
+          } else {
+            if (current.hostId === null)
+              throw new Error("Machine cleanup has no reserved host");
+            await removeResource(deps, record, {
+              hostId: current.hostId,
+              resource: current.resource,
+              signal,
+            });
+          }
+          current = { ...current, cleanupResourceRemoved: true };
+          updateMachineLaunchAttempt(deps.db, current);
         }
-        current = { ...current, cleanupResourceRemoved: true };
-        updateMachineLaunchAttempt(deps.db, current);
+      } catch (error) {
+        allocationError = new Error(errorMessage(error));
       }
       const removedHostId = current.hostId;
       if (removedHostId !== null) {
         await serverAccess.release(deps, { key, hostId: removedHostId });
         deleteMachineProjectSources(deps, removedHostId);
-        await deps.machineAuth.revokeHostEnrollKeys({ hostId: removedHostId });
         await deps.machineAuth.revokeHostAuthKeys({ hostId: removedHostId });
         const host = getHost(deps.db, removedHostId);
         if (host !== null && host.destroyedAt === null) {
@@ -764,6 +813,8 @@ export async function cancelMachineLaunch(
           deps.hub.notifyHost(removedHostId, ["host-disconnected"]);
         }
       }
+
+      if (allocationError !== null) throw allocationError;
       updateMachineLaunchAttempt(deps.db, {
         ...current,
         cancelPending: false,
@@ -779,65 +830,105 @@ export async function cancelMachineLaunch(
     if (current !== null && current.cancelPending) {
       updateMachineLaunchAttempt(deps.db, {
         ...current,
-        cleanupRetryAt: Date.now() + record.provider.policy.removeRetryMs,
+        cleanupRetryAt:
+          Date.now() - current.startedAt >= 30 * 60_000
+            ? Number.MAX_SAFE_INTEGER
+            : Date.now() + record.provider.policy.removeRetryMs,
       });
     }
     throw error;
   }
 }
 
-export async function createMachine(
+export function machineLaunchStatus(
+  deps: Deps,
+  key: string,
+): MachineLaunchStatus {
+  const row = getMachineLaunch(deps.db, key);
+  if (row === null)
+    throw new ApiError(
+      404,
+      "machine_launch_not_found",
+      "Machine launch not found",
+    );
+  return {
+    id: row.key,
+    phase: row.phase,
+    hostId: row.hostId,
+    step: row.stepText,
+    log: row.pendingLog,
+    message: row.message,
+    cancelPending: row.cancelPending,
+  };
+}
+
+export async function submitMachine(
   deps: Deps,
   args: {
     key?: string;
     machineProviderId: string;
     projectId: string | null;
     inputs: JsonValue | null;
-    signal?: AbortSignal;
   },
-): Promise<Host> {
+): Promise<MachineLaunchStatus> {
   const key = args.key ?? `machine-${randomUUID()}`;
   const prepared = await prepareMachineProviderSelection(deps, args);
+  const decision = askMachineLaunch(deps, {
+    key,
+    record: prepared.record,
+    projectId: args.projectId,
+    inputs: prepared.inputs,
+  });
+  if (
+    decision.action === "reject" &&
+    getMachineLaunch(deps.db, key)?.phase === "ready"
+  )
+    throw new ApiError(409, "machine_provider_rejected", decision.message);
+  return machineLaunchStatus(deps, key);
+}
+
+export async function createMachine(
+  deps: Deps,
+  args: Parameters<typeof submitMachine>[1] & { signal?: AbortSignal },
+): Promise<Host> {
+  const launch = await submitMachine(deps, args);
   for (;;) {
-    if (args.signal?.aborted) {
-      await cancelMachineLaunch(deps, key);
+    args.signal?.throwIfAborted();
+    const status = machineLaunchStatus(deps, launch.id);
+    if (status.phase === "ready" && status.hostId !== null) {
+      const host = getHost(deps.db, status.hostId);
+      if (host !== null) return machineHostResponse(host, deps);
+    }
+    if (status.phase === "failed" || status.phase === "cancelled") {
       throw new ApiError(
         409,
-        "request_cancelled",
-        "Machine creation cancelled",
+        "machine_provider_rejected",
+        status.message ?? "Machine creation cancelled",
       );
     }
-    const decision = askMachineLaunch(deps, {
-      key,
-      record: prepared.record,
-      projectId: args.projectId,
-      inputs: prepared.inputs,
-    });
-    if (decision.action === "ready") return decision.host;
-    if (decision.action === "reject") {
-      try {
-        await cancelMachineLaunch(deps, key, true);
-      } catch (error) {
-        deps.logger.warn(
-          { key, error: errorMessage(error) },
-          "Machine creation cleanup will retry",
-        );
-      }
-      throw new ApiError(409, "machine_provider_rejected", decision.message);
-    }
-    await new Promise<void>((resolve) => {
-      const done = () => {
-        clearTimeout(timer);
-        args.signal?.removeEventListener("abort", done);
-        resolve();
-      };
-      const timer = setTimeout(
-        done,
-        Math.max(0, Math.min(250, decision.sendAt - Date.now())),
-      );
-      args.signal?.addEventListener("abort", done, { once: true });
-    });
+    await new Promise<void>((resolve) => setTimeout(resolve, 250));
   }
+}
+
+function lifecycleOwns(
+  current: ReturnType<typeof getHost>,
+  providerId: string,
+  operationId: string,
+  phase:
+    | NonNullable<ReturnType<typeof getHost>>["phase"]
+    | NonNullable<ReturnType<typeof getHost>>["phase"][],
+): current is NonNullable<ReturnType<typeof getHost>> {
+  return (
+    current !== null &&
+    current.destroyedAt === null &&
+    current.removalStartedAt === null &&
+    current.machineProviderId === providerId &&
+    current.machineOperationId === operationId &&
+    operationId.startsWith(`${getMachineProvider(providerId)?.pluginId}:`) &&
+    (Array.isArray(phase)
+      ? phase.includes(current.phase)
+      : current.phase === phase)
+  );
 }
 
 async function suspendMachine(deps: Deps, hostId: string): Promise<void> {
@@ -868,6 +959,7 @@ async function suspendMachine(deps: Deps, hostId: string): Promise<void> {
   if (row.resource === null) {
     throw new Error(`Machine "${hostId}" has no provider resource`);
   }
+  const operationId = `${record.pluginId}:${randomUUID()}`;
   const suspend = record.provider.suspend;
   const resource = row.resource;
   const operation = runTrackedOperation({
@@ -876,6 +968,7 @@ async function suspendMachine(deps: Deps, hostId: string): Promise<void> {
     run: async (signal) => {
       updateHost(deps.db, deps.hub, hostId, {
         phase: "suspending",
+        machineOperationId: operationId,
         teardownMessage: null,
         teardownStatus: null,
       });
@@ -892,10 +985,10 @@ async function suspendMachine(deps: Deps, hostId: string): Promise<void> {
               const parsed = resourceSchema.parse(checkpoint);
               const current = getHost(deps.db, hostId);
               if (
-                current === null ||
-                current.destroyedAt !== null ||
-                current.machineProviderId !== record.provider.id ||
-                (current.phase !== "suspending" && current.phase !== "retiring")
+                !lifecycleOwns(current, record.provider.id, operationId, [
+                  "suspending",
+                  "retiring",
+                ])
               ) {
                 throw new Error(`Machine "${hostId}" is no longer active`);
               }
@@ -909,10 +1002,10 @@ async function suspendMachine(deps: Deps, hostId: string): Promise<void> {
       const result = resourceResultSchema.parse(invocation.value);
       const current = getHost(deps.db, hostId);
       if (
-        current === null ||
-        current.destroyedAt !== null ||
-        current.machineProviderId !== record.provider.id ||
-        (current.phase !== "suspending" && current.phase !== "retiring")
+        !lifecycleOwns(current, record.provider.id, operationId, [
+          "suspending",
+          "retiring",
+        ])
       ) {
         return;
       }
@@ -1047,12 +1140,17 @@ async function resumeMachineWithIntent(
   if (row.resource === null) {
     throw new Error(`Machine "${hostId}" has no provider resource`);
   }
+  const operationId = `${record.pluginId}:${randomUUID()}`;
+  const phase = row.phase;
   const resume = record.provider.resume;
   const resource = row.resource;
   const operation = runTrackedOperation({
     map: operations(resumeOperations, deps.db),
     key: hostId,
     run: async (signal) => {
+      updateHost(deps.db, deps.hub, hostId, {
+        machineOperationId: operationId,
+      });
       const invocation = await invokeMachineProvider(
         record,
         "machine resume",
@@ -1060,6 +1158,18 @@ async function resumeMachineWithIntent(
           resume({
             hostId,
             resource,
+            checkpoint: async (checkpoint) => {
+              const parsed = resourceSchema.parse(checkpoint);
+              const current = getHost(deps.db, hostId);
+              if (
+                !lifecycleOwns(current, record.provider.id, operationId, phase)
+              ) {
+                throw new Error(
+                  `Machine "${hostId}" resume no longer owns this resource`,
+                );
+              }
+              updateHost(deps.db, deps.hub, hostId, { resource: parsed });
+            },
             report: lifecycleReporter(deps, hostId),
             signal,
           }),
@@ -1067,12 +1177,7 @@ async function resumeMachineWithIntent(
       if (!invocation.ok) throw new Error(invocation.error);
       const result = resourceResultSchema.parse(invocation.value);
       const current = getHost(deps.db, hostId);
-      if (
-        current === null ||
-        current.destroyedAt !== null ||
-        current.machineProviderId !== record.provider.id ||
-        !["suspending", "suspended", "retiring"].includes(current.phase)
-      ) {
+      if (!lifecycleOwns(current, record.provider.id, operationId, phase)) {
         return;
       }
       const keepRetiring =
@@ -1105,6 +1210,8 @@ export function requestMachineRemoval(deps: Deps, hostId: string): boolean {
   if (machineHasLiveThreads(deps.db, hostId)) return false;
   updateHost(deps.db, deps.hub, hostId, {
     phase: "retiring",
+    machineOperationId:
+      row.phase === "suspending" ? row.machineOperationId : null,
     retireAt: Date.now(),
     teardownStatus: null,
     teardownMessage: null,
@@ -1173,9 +1280,11 @@ async function removeMachine(deps: Deps, hostId: string): Promise<void> {
     return;
   }
   const resource = row.resource;
+  const operationId = `${record.pluginId}:${randomUUID()}`;
   const attempt = row.teardownAttempt + 1;
   updateHost(deps.db, deps.hub, hostId, {
     removalStartedAt: row.removalStartedAt ?? Date.now(),
+    machineOperationId: operationId,
     teardownAttempt: attempt,
     teardownStatus: "running",
     teardownMessage: null,
@@ -1190,9 +1299,26 @@ async function removeMachine(deps: Deps, hostId: string): Promise<void> {
           resource,
           signal,
         });
+        const current = getHost(deps.db, hostId);
+        if (
+          current?.machineOperationId !== operationId ||
+          current.machineProviderId !== record.provider.id ||
+          current.phase !== "retiring" ||
+          getMachineProvider(record.provider.id)?.pluginId !== record.pluginId
+        )
+          return;
+        settleMachineEnrollments(deps.db, hostId);
+        await deps.machineAuth.revokeHostEnrollKeys({ hostId });
         await serverAccess.release(deps, { key: hostId, hostId });
         deleteMachineProjectSources(deps, hostId);
         await deps.machineAuth.revokeHostAuthKeys({ hostId });
+        const latest = getHost(deps.db, hostId);
+        if (
+          latest?.machineOperationId !== operationId ||
+          latest.phase !== "retiring" ||
+          getMachineProvider(record.provider.id)?.pluginId !== record.pluginId
+        )
+          return;
         updateHost(deps.db, deps.hub, hostId, {
           destroyedAt: Date.now(),
           phase: "destroyed",
@@ -1204,6 +1330,14 @@ async function removeMachine(deps: Deps, hostId: string): Promise<void> {
         });
         deps.hub.notifyHost(hostId, ["host-disconnected"]);
       } catch (error) {
+        const current = getHost(deps.db, hostId);
+        if (
+          current?.machineOperationId !== operationId ||
+          current.machineProviderId !== record.provider.id ||
+          current.phase !== "retiring" ||
+          getMachineProvider(record.provider.id)?.pluginId !== record.pluginId
+        )
+          return;
         updateHost(deps.db, deps.hub, hostId, {
           teardownStatus: "failed",
           teardownMessage: errorMessage(error),
@@ -1364,6 +1498,21 @@ export async function sweepMachineLifecycles(deps: Deps): Promise<void> {
   }
   const pending: Promise<void>[] = [];
   for (const launch of listMachineLaunchesByPhase(deps.db, "failed")) {
+    if (
+      launch.failure === "transient" &&
+      launch.transientFailures <= TRANSIENT_RETRY_LIMIT &&
+      !launch.cancelPending
+    ) {
+      const record = getMachineProvider(launch.providerId);
+      if (record !== undefined)
+        askMachineLaunch(deps, {
+          key: launch.key,
+          record,
+          projectId: launch.projectId,
+          inputs: launch.inputs,
+        });
+      continue;
+    }
     if (
       (launch.failure === "terminal" ||
         launch.transientFailures > TRANSIENT_RETRY_LIMIT) &&

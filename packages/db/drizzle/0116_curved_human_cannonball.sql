@@ -1,0 +1,1 @@
+ALTER TABLE `hosts` ADD `machine_operation_id` text;

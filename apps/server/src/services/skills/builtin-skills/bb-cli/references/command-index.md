@@ -68,6 +68,8 @@ This index lists every command path that the core CLI registers. Read the task-s
 - `bb machine stop`
 - `bb machine uninstall`
 - `bb machine create`
+- `bb machine status`
+- `bb machine cancel`
 - `bb machine list`
 - `bb machine show`
 - `bb machine join-code`
@@ -280,3 +282,5 @@ environment. Add `--environment-provider <id>` when the machine provider has no
 - `bb browser close`
 - `bb browser capture`
 - `bb browser watch`
+
+Machine creation is durable: `create --no-wait` returns the launch ID, `status <launch-id>` polls it, and `cancel <launch-id>` explicitly cancels it. SIGINT only stops following.

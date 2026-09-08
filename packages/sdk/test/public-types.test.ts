@@ -273,6 +273,10 @@ type ExpectedFilesKey =
 type ExpectedGuideKey = "render";
 
 type ExpectedHostsKey =
+  | "submit"
+  | "launch"
+  | "follow"
+  | "cancel"
   | "cloneDefaultPath"
   | "create"
   | "createJoinCode"

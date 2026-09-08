@@ -238,6 +238,7 @@ export {
   listHosts,
   listNonDestroyedHostsByIds,
   listPublicHosts,
+  settleMachineEnrollments,
   updateHost,
   deleteHost,
 } from "./hosts.js";

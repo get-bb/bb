@@ -71,8 +71,15 @@ show` report the current limit.
 Standalone create does not create a thread or workspace. Without `--project`,
 creation is global; project selectors accept an exact name or ID. Omitted inputs
 are null; supply JSON when the provider schema requires it. Omit `--key` to let
-the server generate one, or supply a stable key for retries. SIGINT aborts create
-and exits 130; core cleans up any checkpointed allocation.
+the server generate one, or supply a stable key for retries. Creation is durable:
+`--no-wait` returns the launch ID immediately; otherwise the CLI follows progress.
+SIGINT stops following and exits 130 while creation continues. Use
+`bb machine status <launch-id>` to poll and `bb machine cancel <launch-id>`
+to explicitly cancel and clean up, including retrying cleanup after automatic
+reconciliation has stopped. The SDK provides `hosts.submit`, `hosts.launch`,
+`hosts.follow`, and `hosts.cancel`; `hosts.create` submits and follows. Aborting
+a caller signal never cancels the server operation. A connected daemon does not
+yet imply an agent-ready checkout and authenticated provider.
 
 Suspend and resume are available only when the machine provider implements
 both operations. Retry cleanup is accepted only for a retiring machine whose

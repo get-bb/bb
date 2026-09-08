@@ -31,4 +31,22 @@ describe("cloud-init delivery", () => {
       cloudInit({ command: ["true"], stdin: "x".repeat(64 * 1024) }),
     ).toThrow("64 KiB");
   });
+  it("frees the Node archive from /run before installing the systemd service", () => {
+    const config = z
+      .object({
+        runcmd: z.array(z.tuple([z.string(), z.string(), z.string()])),
+      })
+      .parse(
+        JSON.parse(
+          cloudInit({ command: ["install-daemon"], stdin: "" }).slice(
+            "#cloud-config\n".length,
+          ),
+        ),
+      );
+    const script = config.runcmd[0]![2];
+    const extraction = script.indexOf("tar -xJf");
+    const cleanup = script.indexOf("rm -f /run/bb-node.tar.xz", extraction);
+    expect(cleanup).toBeGreaterThan(extraction);
+    expect(cleanup).toBeLessThan(script.indexOf("'install-daemon'"));
+  });
 });

@@ -307,7 +307,13 @@ export function createMachineEnrollmentService(
               bootstrap.expiresAt !== row.expiresAt
             )
               throw new Error("Pending machine enrollment identity is invalid");
-            if (await hasUnusedEnrollmentCredential(row.hostId, bootstrap.credential, now)) {
+            if (
+              await hasUnusedEnrollmentCredential(
+                row.hostId,
+                bootstrap.credential,
+                now,
+              )
+            ) {
               return {
                 id: row.id,
                 hostId: row.hostId,
@@ -393,8 +399,23 @@ export function createMachineEnrollmentService(
         const key = JSON.stringify([owner, initial.key]);
         await serialized(key, async () => {
           const row = rowForId(enrollmentId);
-          if (row.state === "enrolled" || hasIssuedDaemonCredential(row.hostId))
+          if (row.state === "cancelled") return;
+          if (
+            row.state === "enrolled" ||
+            hasIssuedDaemonCredential(row.hostId)
+          ) {
+            deps.db
+              .update(machineEnrollments)
+              .set({
+                state: "enrolled",
+                encryptedBootstrap: null,
+                expiresAt: null,
+                updatedAt: Date.now(),
+              })
+              .where(eq(machineEnrollments.id, row.id))
+              .run();
             return;
+          }
           await deps.machineAuth.revokeHostEnrollKeys({ hostId: row.hostId });
           if (hasIssuedDaemonCredential(row.hostId)) return;
           deps.db

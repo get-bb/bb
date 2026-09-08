@@ -342,6 +342,8 @@ export function createModalSandboxPlugin(
             tags: { bbMachineKey: resource.key },
           });
         }
+        resource = { ...resource, sandboxId: sandbox.sandboxId };
+        await context.checkpoint(resource);
         const { hostId } = await bb.experimental_machines.bootstrap({
           key: resource.key,
           executor: createSandboxExecutor(sandbox),

@@ -20,6 +20,7 @@ export interface UpsertHostInput {
 }
 
 export interface UpdateHostInput {
+  machineOperationId?: string | null;
   destroyedAt?: number | null;
   lastRejectedProtocolVersion?: number | null;
   maxPermissionMode?: PermissionMode;
@@ -179,6 +180,11 @@ export function listNonDestroyedHostsByIds(
     .all();
 }
 
+export function settleMachineEnrollments(db: DbConnection, hostId: string): void {
+  db.update(machineEnrollments).set({ state: "cancelled", encryptedBootstrap: null, expiresAt: null, updatedAt: Date.now() })
+    .where(and(eq(machineEnrollments.hostId, hostId), or(ne(machineEnrollments.state, "cancelled"), isNotNull(machineEnrollments.encryptedBootstrap), isNotNull(machineEnrollments.expiresAt)))).run();
+}
+
 export function updateHost(
   db: DbConnection,
   notifier: DbNotifier,
@@ -191,6 +197,7 @@ export function updateHost(
   }
 
   const now = Date.now();
+  if (input.destroyedAt != null) settleMachineEnrollments(db, hostId);
   db.update(hosts)
     .set({
       ...(input.destroyedAt !== undefined
@@ -209,6 +216,7 @@ export function updateHost(
       ...(input.machineProviderSelection !== undefined
         ? { machineProviderSelection: input.machineProviderSelection }
         : {}),
+      ...(input.machineOperationId !== undefined ? { machineOperationId: input.machineOperationId } : {}),
       ...(input.phase !== undefined ? { phase: input.phase } : {}),
       ...(input.resource !== undefined ? { resource: input.resource } : {}),
       ...(input.removalStartedAt !== undefined
@@ -247,6 +255,7 @@ export function deleteHost(
     return false;
   }
 
+  settleMachineEnrollments(db, hostId);
   db.delete(hosts).where(eq(hosts.id, hostId)).run();
   notifier.notifyHost(existing.id, ["host-disconnected"]);
   return true;

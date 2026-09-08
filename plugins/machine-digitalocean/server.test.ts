@@ -2,7 +2,12 @@ import type { JsonValue } from "@get-bb/plugin-sdk";
 import { createFakePluginHost } from "@get-bb/plugin-sdk/testing";
 import { describe, expect, it, vi } from "vitest";
 import { createDigitalOceanPlugin } from "./server.js";
-import { allocationName, type Droplet, type Vendor } from "./vendor.js";
+import {
+  VendorError,
+  allocationName,
+  type Droplet,
+  type Vendor,
+} from "./vendor.js";
 
 const context = () => ({
   key: "creation-key",
@@ -212,7 +217,7 @@ describe("DigitalOcean machine provider", () => {
       ...context(),
       hostId: created.hostId,
       resource: created.resource,
-      checkpoint() {},
+      async checkpoint() {},
     };
     await test.provider.suspend?.(lifecycle);
     await test.provider.suspend?.(lifecycle);
@@ -275,3 +280,28 @@ it("reconciles uncertain tag allocations without create or enrollment", async ()
   expect(test.waitForConnection).not.toHaveBeenCalled();
   await test.harness.lifecycle.dispose();
 });
+
+it.each([400, 401, 403, 404, 422])(
+  "settles definitive HTTP %s allocation rejection without reconciliation",
+  async (status) => {
+    const test = await setup();
+    test.api.create.mockRejectedValueOnce(new VendorError(status));
+    await expect(test.provider.create(context())).resolves.toMatchObject({
+      status: "failed",
+      failure: "terminal",
+      allocation: "none",
+    });
+    const finds = test.api.find.mock.calls.length;
+    await expect(
+      test.provider.experimental_reconcileCleanup(context()),
+    ).resolves.toEqual({ status: "removed" });
+    await expect(test.provider.create(context())).resolves.toMatchObject({
+      status: "failed",
+      allocation: "none",
+    });
+    expect(test.api.find).toHaveBeenCalledTimes(finds);
+    expect(test.api.create).toHaveBeenCalledOnce();
+    expect(test.api.destroy).not.toHaveBeenCalled();
+    await test.harness.lifecycle.dispose();
+  },
+);

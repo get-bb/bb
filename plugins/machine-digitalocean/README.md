@@ -26,7 +26,12 @@ The plugin prepares core enrollment, obtains the public installer command, and
 passes its private stdin through cloud-init user data. Cloud-init writes the
 bundle to a root-owned 0600 file, feeds it to the installer, removes the file,
 and suppresses installer output. It first installs the official x64 Node 22.23.2
-binary (with npm), verifies its pinned SHA-256, and adds `/usr/local/bin` to PATH.
+binary (with npm), verifies its pinned SHA-256, removes the downloaded archive
+before service installation, and adds `/usr/local/bin` to PATH. On the 512 MB
+Ubuntu image, retaining the archive in `/run` exhausted systemd’s free-space
+safety buffer and prevented daemon service installation. The default 4 GB size
+is suitable for running agents; a 512 MB image can bootstrap but was observed
+killing the daemon under memory pressure after connection.
 Core's installer enrolls the machine and
 installs the persistent service. Credentials are absent from plugin progress,
 resource records, allocation intents, and command arguments. DigitalOcean and

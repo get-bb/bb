@@ -59,6 +59,16 @@ export const createMachineRequestSchema = z
   .strict();
 export type CreateMachineRequest = z.infer<typeof createMachineRequestSchema>;
 
+export interface MachineLaunchStatus {
+  id: string;
+  phase: "creating" | "ready" | "failed" | "cancelled";
+  hostId: string | null;
+  step: string;
+  log: string;
+  message: string | null;
+  cancelPending: boolean;
+}
+
 export const createHostJoinCodeResponseSchema = z.object({
   joinCode: z.string().min(1),
   hostId: z.string().min(1),

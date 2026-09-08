@@ -49,7 +49,7 @@ export type PluginMachineProviderCreateContext<
 > = PluginMachineProviderValidateContext<R, S> & {
   key: string;
   attempt: number;
-  /** Persist an allocated resource after preparing enrollment, before bootstrap. Never include a bootstrap bundle. */
+  /** Await the allocation recovery record after preparing enrollment, before bootstrap. This is not a filesystem save. Never include a bootstrap bundle. Daemon connection does not imply agent readiness. */
   checkpoint(resource: JsonValue): Promise<void>;
   report: PluginMachineProviderProgress;
   signal: AbortSignal;
@@ -57,7 +57,13 @@ export type PluginMachineProviderCreateContext<
 
 export type PluginMachineProviderCreateResult =
   | { status: "created"; hostId: string; resource: JsonValue }
-  | { status: "failed"; failure: "transient" | "terminal"; message: string };
+  | {
+      status: "failed";
+      failure: "transient" | "terminal";
+      message: string;
+      /** Definitive rejection before allocation. Omit when allocation may have occurred. */
+      allocation?: "none";
+    };
 
 export interface PluginMachineProviderLifecycleContext {
   hostId: string;
@@ -68,6 +74,11 @@ export interface PluginMachineProviderLifecycleContext {
 
 export interface PluginMachineProviderSuspendContext extends PluginMachineProviderLifecycleContext {
   checkpoint(resource: JsonValue): void;
+}
+
+export interface PluginMachineProviderResumeContext extends PluginMachineProviderLifecycleContext {
+  /** Await the allocation recovery record before bootstrap. Core fences ownership, phase and operation; restart reuses this record and enrollment. This does not save the filesystem or establish agent readiness. */
+  checkpoint(resource: JsonValue): Promise<void>;
 }
 
 export interface PluginMachineProviderResourceResult {
@@ -125,7 +136,7 @@ export interface PluginMachineProviderDefinition<
     context: PluginMachineProviderSuspendContext,
   ): Promise<PluginMachineProviderResourceResult>;
   resume?(
-    context: PluginMachineProviderLifecycleContext,
+    context: PluginMachineProviderResumeContext,
   ): Promise<PluginMachineProviderResourceResult>;
   remove(
     context: PluginMachineProviderLifecycleContext,

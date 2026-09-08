@@ -18,6 +18,7 @@ interface MachineListCommandOptions {
 
 interface MachineCreateCommandOptions extends MachineListCommandOptions {
   provider: string;
+  wait: boolean;
   key?: string;
   inputs?: string;
 }
@@ -159,6 +160,7 @@ export function registerMachineCommands(
   machine
     .command("create")
     .description("Create a machine using an installed provider")
+    .option("--no-wait", "Return the durable launch ID immediately")
     .requiredOption("--provider <id>", "Machine provider ID")
     .option(
       "--key <idempotency-key>",
@@ -204,24 +206,68 @@ export function registerMachineCommands(
             projectId = matches[0].id;
           }
           controller.signal.throwIfAborted();
-          const host = await sdk.hosts.create({
+          const launch = await sdk.hosts.submit({
             machineProviderId,
             projectId,
             inputs,
             ...(key === undefined ? {} : { key }),
             signal: controller.signal,
           });
-          controller.signal.throwIfAborted();
+          if (!opts.wait) {
+            if (!outputJson(opts, launch)) console.log(launch.id);
+            return;
+          }
+          console.error(`Following machine launch ${launch.id}`);
+          let step = "";
+          const host = await sdk.hosts.follow({
+            id: launch.id,
+            signal: controller.signal,
+            onProgress: (status) => {
+              if (status.step !== step) {
+                step = status.step;
+                console.error(step);
+              }
+            },
+          });
           if (!outputJson(opts, host))
             console.log(`Machine ${host.id} created`);
         } catch (error) {
           if (controller.signal.aborted) {
-            throw new CliExitError("Machine creation cancelled.", 130);
+            throw new CliExitError(
+              "Stopped following; creation continues. Use bb machine cancel <launch-id> to cancel.",
+              130,
+            );
           }
           throw error;
         } finally {
           process.off("SIGINT", cancel);
         }
+      }),
+    );
+
+  machine
+    .command("cancel <launch-id>")
+    .description("Explicitly cancel a durable machine launch")
+    .option("--json", "Print machine-readable JSON output")
+    .action(
+      action(async (id: string, opts: MachineListCommandOptions) => {
+        const result = await createCliBbSdk(getUrl()).hosts.cancel({ id });
+        if (!outputJson(opts, result))
+          console.log(`${result.id}: ${result.phase}`);
+      }),
+    );
+
+  machine
+    .command("status <launch-id>")
+    .description("Show durable machine launch progress")
+    .option("--json", "Print machine-readable JSON output")
+    .action(
+      action(async (id: string, opts: MachineListCommandOptions) => {
+        const result = await createCliBbSdk(getUrl()).hosts.launch({ id });
+        if (!outputJson(opts, result))
+          console.log(
+            `${result.id}: ${result.phase} — ${result.message ?? result.step}`,
+          );
       }),
     );
 

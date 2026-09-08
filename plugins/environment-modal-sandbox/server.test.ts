@@ -321,7 +321,7 @@ describe("Modal machine provider", () => {
       resource: created.resource,
       report,
       signal: new AbortController().signal,
-      checkpoint() {},
+      async checkpoint() {},
     };
     const suspended = await harness.provider.suspend?.(context);
     if (suspended === undefined) throw new Error("suspend not registered");
@@ -435,7 +435,7 @@ describe("Modal machine provider", () => {
       resource: created.resource,
       report,
       signal: new AbortController().signal,
-      checkpoint() {},
+      async checkpoint() {},
     };
     const suspended = await harness.provider.suspend?.(lifecycleContext);
     expect(suspended?.resource).toMatchObject({
@@ -468,6 +468,45 @@ describe("Modal machine provider", () => {
     expect(harness.backend.deletedSnapshots).toEqual(["image-1"]);
   });
 
+  it("awaits the resume allocation checkpoint before bootstrap and recovers without allocating again", async () => {
+    const harness = await setup();
+    const created = await harness.provider.create(createContext());
+    if (created.status !== "created") throw new Error(created.message);
+    const context = {
+      hostId: HOST_ID,
+      resource: created.resource,
+      report,
+      signal: new AbortController().signal,
+      checkpoint: vi.fn(async (_resource: JsonValue) => {}),
+    };
+    const suspended = await harness.provider.suspend?.(context);
+    if (suspended === undefined) throw new Error("suspend missing");
+    let persisted: JsonValue | null = null;
+    harness.bootstrap.mockClear();
+    await expect(
+      harness.provider.resume?.({
+        ...context,
+        resource: suspended.resource,
+        checkpoint: async (resource) => {
+          persisted = resource;
+          throw new Error("crash after durable checkpoint");
+        },
+      }),
+    ).rejects.toThrow("crash after durable checkpoint");
+    expect(harness.bootstrap).not.toHaveBeenCalled();
+    if (persisted === null) throw new Error("checkpoint missing");
+    expect(persisted).toMatchObject({ sandboxId: "sandbox-2" });
+    const resumed = await harness.provider.resume?.({
+      ...context,
+      resource: persisted,
+    });
+    expect(resumed?.resource).toMatchObject({ sandboxId: "sandbox-2" });
+    expect(context.checkpoint.mock.invocationCallOrder[0]).toBeLessThan(
+      harness.bootstrap.mock.invocationCallOrder[0]!,
+    );
+    expect(harness.bootstrap).toHaveBeenCalledOnce();
+  });
+
   it("checkpoints a restorable snapshot before termination and recovers a crashed suspend", async () => {
     const harness = await setup(SETTINGS, { crashAfterTerminateOnce: true });
     const created = await harness.provider.create(createContext());
@@ -497,7 +536,7 @@ describe("Modal machine provider", () => {
         resource: checkpoint,
         report,
         signal: new AbortController().signal,
-        checkpoint() {},
+        async checkpoint() {},
       }),
     ).resolves.toEqual({ resource: checkpoint });
   });
@@ -511,7 +550,7 @@ describe("Modal machine provider", () => {
       resource: created.resource,
       report,
       signal: new AbortController().signal,
-      checkpoint() {},
+      async checkpoint() {},
     };
 
     await expect(harness.provider.suspend?.(lifecycleContext)).rejects.toThrow(
@@ -540,7 +579,7 @@ describe("Modal machine provider", () => {
       resource: created.resource,
       report,
       signal: new AbortController().signal,
-      checkpoint() {},
+      async checkpoint() {},
     };
     const firstSuspension = await harness.provider.suspend?.(lifecycleContext);
     if (firstSuspension === undefined)

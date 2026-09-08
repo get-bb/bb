@@ -145,9 +145,5 @@
   "machine-digitalocean": {
     "category": "environments",
     "screenshots": []
-  },
-  "machine-e2b": {
-    "category": "environments",
-    "screenshots": []
   }
 }

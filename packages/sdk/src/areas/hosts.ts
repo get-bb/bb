@@ -3,6 +3,7 @@ import type { Host } from "@bb/domain";
 import type {
   CreateHostJoinCodeResponse,
   CreateMachineRequest,
+  MachineLaunchStatus,
   HostCloneDefaultPathQuery,
   HostCloneDefaultPathResponse,
   HostDirectoryListing,
@@ -96,6 +97,17 @@ export type MachineProviderListResult = SystemMachineProvider[];
 
 export interface HostsArea {
   create(args: MachineCreateArgs): Promise<Host>;
+  submit(args: MachineCreateArgs): Promise<MachineLaunchStatus>;
+  launch(args: {
+    id: string;
+    signal?: AbortSignal;
+  }): Promise<MachineLaunchStatus>;
+  cancel(args: { id: string }): Promise<MachineLaunchStatus>;
+  follow(args: {
+    id: string;
+    signal?: AbortSignal;
+    onProgress?: (status: MachineLaunchStatus) => void;
+  }): Promise<Host>;
   createJoinCode(): Promise<HostCreateJoinCodeResult>;
   delete(args: HostDeleteArgs): Promise<HostDeleteResult>;
   directory(args: HostDirectoryArgs): Promise<HostDirectoryResult>;
@@ -124,6 +136,37 @@ export function createHostsArea(args: CreateSdkAreaArgs): HostsArea {
   const { transport } = args;
   return {
     async create(input) {
+      const launch = await this.submit(input);
+      return this.follow({ id: launch.id, signal: input.signal });
+    },
+    async launch(input) {
+      return transport.readJson(
+        transport.api.v1.hosts.launches[":id"].$get(
+          { param: { id: input.id } },
+          ...signalRequestArgs(input.signal),
+        ),
+      );
+    },
+    async cancel(input) {
+      return transport.readJson(
+        transport.api.v1.hosts.launches[":id"].cancel.$post({
+          param: { id: input.id },
+        }),
+      );
+    },
+    async follow(input) {
+      for (;;) {
+        input.signal?.throwIfAborted();
+        const status = await this.launch(input);
+        input.onProgress?.(status);
+        if (status.phase === "ready" && status.hostId !== null)
+          return this.get({ hostId: status.hostId, signal: input.signal });
+        if (status.phase === "failed" || status.phase === "cancelled")
+          throw new Error(status.message ?? "Machine creation cancelled");
+        await new Promise<void>((resolve) => setTimeout(resolve, 1000));
+      }
+    },
+    async submit(input) {
       return transport.readJson(
         transport.api.v1.hosts.$post(
           {

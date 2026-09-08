@@ -259,6 +259,7 @@ import {
   createProjectRequestSchema,
   createHostJoinCodeRequestSchema,
   createMachineRequestSchema,
+  type MachineLaunchStatus,
   createProjectSourceRequestSchema,
   createQueuedMessageRequestSchema,
   queuedMessageListQuerySchema,
@@ -716,7 +717,19 @@ export const publicApiRoutes = {
       request: jsonRequest<EmptyInput, CreateMachineRequest>(
         createMachineRequestSchema,
       ),
-      response: jsonResponse<Host>({ status: 201 }),
+      response: jsonResponse<MachineLaunchStatus>({ status: 201 }),
+    }),
+    launch: defineRoute({
+      path: "/hosts/launches/:id",
+      method: "get",
+      request: noRequest<PathId>(),
+      response: jsonResponse<MachineLaunchStatus>(),
+    }),
+    cancelLaunch: defineRoute({
+      path: "/hosts/launches/:id/cancel",
+      method: "post",
+      request: noRequest<PathId>(),
+      response: jsonResponse<MachineLaunchStatus>(),
     }),
     createJoinCode: defineRoute({
       path: "/hosts/join-codes",

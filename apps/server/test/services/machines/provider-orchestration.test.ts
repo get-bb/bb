@@ -5,6 +5,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { eq } from "drizzle-orm";
 import {
   createProjectSource,
+  machineEnrollments,
   createEnvironment,
   getDefaultProjectSource,
   getEnvironment,
@@ -29,6 +30,8 @@ import {
 import { z } from "zod";
 import {
   askMachineLaunch,
+  submitMachine,
+  resumeMachine,
   cancelMachineLaunch,
   createMachine,
   prepareMachineProviderSelection,
@@ -125,6 +128,7 @@ function adoptMachine(
 }
 
 afterEach(() => {
+  vi.restoreAllMocks();
   vi.useRealTimers();
   setPluginMachineProviderBridge(undefined);
   setPluginEnvironmentProviderBridge(undefined);
@@ -480,7 +484,6 @@ describe("core machine provider orchestration", () => {
                   phase: "failed",
                   failure: "terminal",
                   hostId: reserved.id,
-                  resource,
                   message: expect.stringContaining("instead of reserved host"),
                 });
               });
@@ -2423,3 +2426,355 @@ it("retains a persisted removal claim after restart even when live work is resto
       removalStartedAt: 10_000,
     });
   }));
+
+it("returns a durable launch before allocation and client disconnect does not cancel", async () =>
+  withTestHarness(async (harness) => {
+    const { host } = seedHostSession(harness.deps, {
+      id: "durable-disconnect",
+    });
+    const release = createDeferredPromise<void>();
+    let providerSignal: AbortSignal | undefined;
+    installMachineProvider(
+      machineDeclaration(host.id, {
+        create: async ({ signal }) => {
+          providerSignal = signal;
+          await release.promise;
+          return {
+            status: "created",
+            hostId: host.id,
+            resource: { allocated: true },
+          };
+        },
+      }),
+    );
+    const controller = new AbortController();
+    const response = await harness.app.request("/api/v1/hosts", {
+      method: "POST",
+      signal: controller.signal,
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        key: "disconnect",
+        machineProviderId: "test-machine",
+        projectId: null,
+        inputs: null,
+      }),
+    });
+    expect(response.status).toBe(201);
+    expect(await response.json()).toMatchObject({
+      id: "disconnect",
+      phase: "creating",
+    });
+    controller.abort();
+    expect(providerSignal?.aborted).toBe(false);
+    release.resolve();
+    await expect
+      .poll(() => getMachineLaunch(harness.db, "disconnect")?.phase)
+      .toBe("ready");
+    const status = await harness.app.request(
+      "/api/v1/hosts/launches/disconnect",
+    );
+    expect(await status.json()).toMatchObject({
+      phase: "ready",
+      hostId: host.id,
+    });
+  }));
+
+it("explicit cancel settles enrollment, tombstones pending hosts and aborts creation", async () =>
+  withTestHarness(async (harness) => {
+    const { host } = seedHostSession(harness.deps, { id: "explicit-cancel" });
+    seedPendingEnrollment(harness, host.id, "explicit-cancel");
+    const started = createDeferredPromise<void>();
+    installMachineProvider(
+      machineDeclaration(host.id, {
+        create: async ({ key, signal }) => {
+          updateMachineLaunchAttempt(harness.db, {
+            key,
+            attempt: 1,
+            hostId: host.id,
+          });
+          started.resolve();
+          await new Promise<void>((resolve) =>
+            signal.addEventListener("abort", () => resolve(), { once: true }),
+          );
+          signal.throwIfAborted();
+          throw new Error("unreachable");
+        },
+      }),
+    );
+    await submitMachine(harness.deps, {
+      key: "explicit-cancel",
+      machineProviderId: "test-machine",
+      projectId: null,
+      inputs: null,
+    });
+    await started.promise;
+    vi.spyOn(serverAccess, "release").mockImplementation(async () => {
+      expect(
+        (await harness.app.request(`/api/v1/hosts/${host.id}`)).status,
+      ).toBe(200);
+    });
+    const response = await harness.app.request(
+      "/api/v1/hosts/launches/explicit-cancel/cancel",
+      { method: "POST" },
+    );
+    expect(await response.json()).toMatchObject({
+      phase: "cancelled",
+      cancelPending: false,
+    });
+    expectSettledEnrollment(harness, host.id);
+    expect((await harness.app.request(`/api/v1/hosts/${host.id}`)).status).toBe(
+      404,
+    );
+  }));
+
+function seedPendingEnrollment(
+  harness: TestAppHarness,
+  hostId: string,
+  key: string,
+): void {
+  harness.db
+    .insert(machineEnrollments)
+    .values({
+      id: `enroll-${key}`,
+      owner: "test-plugin",
+      key,
+      hostId,
+      state: "pending",
+      encryptedBootstrap: "encrypted-fixture",
+      expiresAt: Date.now() + 600000,
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+    })
+    .run();
+}
+
+function expectSettledEnrollment(
+  harness: TestAppHarness,
+  hostId: string,
+): void {
+  expect(
+    harness.db
+      .select()
+      .from(machineEnrollments)
+      .where(eq(machineEnrollments.hostId, hostId))
+      .get(),
+  ).toMatchObject({
+    state: "cancelled",
+    encryptedBootstrap: null,
+    expiresAt: null,
+  });
+}
+
+it("definitive pre-allocation rejection fails immediately without reconciliation or a ghost host", async () =>
+  withTestHarness(async (harness) => {
+    const { host } = seedHostSession(harness.deps, { id: "rejected-create" });
+    seedPendingEnrollment(harness, host.id, "rejected-create");
+    const reconcile = vi.fn(async () => ({ status: "removed" as const }));
+    const create = vi.fn(async ({ key }: { key: string }) => {
+      updateMachineLaunchAttempt(harness.db, {
+        key,
+        attempt: 1,
+        hostId: host.id,
+      });
+      return {
+        status: "failed" as const,
+        failure: "terminal" as const,
+        allocation: "none" as const,
+        message: "Vendor rejected allocation",
+      };
+    });
+    installMachineProvider(
+      machineDeclaration(host.id, {
+        create,
+        experimental_reconcileCleanup: reconcile,
+      }),
+    );
+    await submitMachine(harness.deps, {
+      key: "rejected-create",
+      machineProviderId: "test-machine",
+      projectId: null,
+      inputs: null,
+    });
+    await expect
+      .poll(
+        () =>
+          getMachineLaunch(harness.db, "rejected-create")
+            ?.cleanupResourceRemoved,
+      )
+      .toBe(true);
+    await sweepMachineLifecycles(harness.deps);
+    expect(create).toHaveBeenCalledOnce();
+    expect(reconcile).not.toHaveBeenCalled();
+    expect(getMachineLaunch(harness.db, "rejected-create")).toMatchObject({
+      phase: "failed",
+      cancelPending: false,
+    });
+    expectSettledEnrollment(harness, host.id);
+    expect((await harness.app.request(`/api/v1/hosts/${host.id}`)).status).toBe(
+      404,
+    );
+  }));
+
+it("removal settles enrollment and repeating settlement is idempotent", async () =>
+  withTestHarness(async (harness) => {
+    const { host } = seedHostSession(harness.deps, { id: "remove-enrollment" });
+    seedPendingEnrollment(harness, host.id, "remove-enrollment");
+    installMachineProvider(machineDeclaration(host.id));
+    adoptMachine(harness, host.id);
+    expect(requestMachineRemoval(harness.deps, host.id)).toBe(true);
+    await sweepProviderMachine(harness.deps, host.id);
+    expectSettledEnrollment(harness, host.id);
+    const settled = harness.db.select().from(machineEnrollments).all();
+    await sweepProviderMachine(harness.deps, host.id);
+    expect(harness.db.select().from(machineEnrollments).all()).toEqual(settled);
+  }));
+
+it("resume crash after checkpoint recovers the allocation and preserves one enrollment", async () =>
+  withTestHarness(async (harness) => {
+    const { host } = seedHostSession(harness.deps, { id: "resume-checkpoint" });
+    seedPendingEnrollment(harness, host.id, "resume-checkpoint");
+    adoptMachine(harness, host.id, { snapshot: "saved" });
+    updateHost(harness.db, harness.hub, host.id, {
+      phase: "suspended",
+      suspendedAt: Date.now(),
+    });
+    let allocations = 0;
+    installMachineProvider(
+      machineDeclaration(host.id, {
+        suspend: async ({ resource }) => ({ resource }),
+        resume: async ({ resource, checkpoint }) => {
+          if (allocations === 0) {
+            allocations++;
+            await checkpoint({ snapshot: "saved", sandbox: "restored" });
+            throw new Error("crash before bootstrap");
+          }
+          expect(resource).toEqual({ snapshot: "saved", sandbox: "restored" });
+          return { resource };
+        },
+      }),
+    );
+    await expect(resumeMachine(harness.deps, host.id)).rejects.toThrow(
+      "crash before bootstrap",
+    );
+    const token = getHost(harness.db, host.id)?.machineOperationId;
+    await resumeMachine(harness.deps, host.id);
+    expect(allocations).toBe(1);
+    expect(getHost(harness.db, host.id)?.machineOperationId).not.toBe(token);
+    expect(getHost(harness.db, host.id)?.resource).toEqual({
+      snapshot: "saved",
+      sandbox: "restored",
+    });
+    expect(harness.db.select().from(machineEnrollments).all()).toHaveLength(1);
+  }));
+
+it.each(["owner", "operation", "removal", "phase"])(
+  "rejects stale resume checkpoints and completion after competing %s",
+  async (change) =>
+    withTestHarness(async (harness) => {
+      const { host } = seedHostSession(harness.deps, {
+        id: `resume-fence-${change}`,
+      });
+      adoptMachine(harness, host.id, { snapshot: "saved" });
+      updateHost(harness.db, harness.hub, host.id, {
+        phase: "suspended",
+        suspendedAt: Date.now(),
+      });
+      installMachineProvider(
+        machineDeclaration(host.id, {
+          suspend: async ({ resource }) => ({ resource }),
+          resume: async ({ checkpoint }) => {
+            if (change === "owner")
+              updateHost(harness.db, harness.hub, host.id, {
+                machineProviderId: "new-owner",
+              });
+            if (change === "operation")
+              updateHost(harness.db, harness.hub, host.id, {
+                machineOperationId: "new-operation",
+              });
+            if (change === "phase")
+              updateHost(harness.db, harness.hub, host.id, { phase: "active" });
+            if (change === "removal")
+              requestMachineRemoval(harness.deps, host.id);
+            updateHost(harness.db, harness.hub, host.id, {
+              resource: { newer: true },
+            });
+            await expect(checkpoint({ stale: true })).rejects.toThrow(
+              "no longer owns",
+            );
+            return { resource: { staleCompletion: true } };
+          },
+        }),
+      );
+      await resumeMachine(harness.deps, host.id);
+      expect(getHost(harness.db, host.id)?.resource).toEqual({ newer: true });
+    }),
+);
+
+it("bounds unresolved allocation cleanup retries and keeps the failed host tombstoned", async () =>
+  withTestHarness(async (harness) => {
+    const { host } = seedHostSession(harness.deps, { id: "bounded-reconcile" });
+    seedPendingEnrollment(harness, host.id, "bounded-reconcile");
+    const reconcile = vi.fn(async () => ({
+      status: "failed" as const,
+      message: "Allocation outcome unknown",
+    }));
+    installMachineProvider(
+      machineDeclaration(host.id, { experimental_reconcileCleanup: reconcile }),
+    );
+    seedReadyLaunch(harness, { key: "bounded-reconcile", hostId: host.id });
+    updateHost(harness.db, harness.hub, host.id, { machineProviderId: null });
+    updateMachineLaunchAttempt(harness.db, {
+      key: "bounded-reconcile",
+      attempt: 1,
+      phase: "failed",
+      failure: "terminal",
+      resource: null,
+      startedAt: Date.now() - 31 * 60_000,
+      cleanupResourceRemoved: false,
+    });
+    await expect(
+      cancelMachineLaunch(harness.deps, "bounded-reconcile", true),
+    ).rejects.toThrow("Allocation outcome unknown");
+    for (let n = 0; n < 3; n++) await sweepMachineLifecycles(harness.deps);
+    expect(reconcile).toHaveBeenCalledOnce();
+    expectSettledEnrollment(harness, host.id);
+    expect((await harness.app.request(`/api/v1/hosts/${host.id}`)).status).toBe(
+      404,
+    );
+    await expect(
+      cancelMachineLaunch(harness.deps, "bounded-reconcile", true, true),
+    ).rejects.toThrow("Allocation outcome unknown");
+    expect(reconcile).toHaveBeenCalledTimes(2);
+  }));
+
+it.each(["owner", "operation", "phase"])(
+  "fences removal completion after competing %s",
+  async (change) =>
+    withTestHarness(async (harness) => {
+      const { host } = seedHostSession(harness.deps, {
+        id: `remove-fence-${change}`,
+      });
+      adoptMachine(harness, host.id, { allocated: true });
+      installMachineProvider(
+        machineDeclaration(host.id, {
+          remove: async () => {
+            updateHost(harness.db, harness.hub, host.id, {
+              resource: { newer: true },
+              ...(change === "owner" ? { machineProviderId: "new-owner" } : {}),
+              ...(change === "operation"
+                ? { machineOperationId: "new-operation" }
+                : {}),
+              ...(change === "phase" ? { phase: "active" as const } : {}),
+            });
+            return { status: "removed" };
+          },
+        }),
+      );
+      requestMachineRemoval(harness.deps, host.id);
+      await sweepProviderMachine(harness.deps, host.id);
+      expect(getHost(harness.db, host.id)).toMatchObject({
+        resource: { newer: true },
+        destroyedAt: null,
+      });
+    }),
+);
