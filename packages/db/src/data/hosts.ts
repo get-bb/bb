@@ -160,8 +160,13 @@ export function listHosts(db: DbConnection) {
 export function listPublicHosts(db: DbConnection) {
   return db.select().from(hosts).where(and(
     isNull(hosts.destroyedAt),
-    or(isNotNull(hosts.lastSeenAt), notExists(db.select({ id: machineEnrollments.id }).from(machineEnrollments).where(eq(machineEnrollments.hostId, hosts.id)))),
-    notExists(db.select({ key: machineLaunches.key }).from(machineLaunches).where(and(eq(machineLaunches.hostId, hosts.id), ne(machineLaunches.phase, "ready")))),
+    or(
+      and(isNotNull(hosts.serverAccessProviderId), isNull(hosts.serverAccessGrantId), isNotNull(hosts.teardownMessage)),
+      and(
+        or(isNotNull(hosts.lastSeenAt), notExists(db.select({ id: machineEnrollments.id }).from(machineEnrollments).where(eq(machineEnrollments.hostId, hosts.id)))),
+        notExists(db.select({ key: machineLaunches.key }).from(machineLaunches).where(and(eq(machineLaunches.hostId, hosts.id), ne(machineLaunches.phase, "ready")))),
+      ),
+    ),
   )).all();
 }
 

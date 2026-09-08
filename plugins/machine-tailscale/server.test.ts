@@ -384,7 +384,11 @@ describe("Tailscale lifecycle and access", () => {
       id: "host_test",
       serverUrl: "https://server.example.ts.net:8443",
     });
-    await f.access.release({ key: "launch", grantId: grant.id });
+    await f.access.release({
+      key: "launch",
+      hostId: "host_test",
+      grantId: grant.id,
+    });
     expect(await f.access.availability()).toEqual({ status: "available" });
     f.serveStatus.mockResolvedValue("{}");
     expect(await f.access.availability()).toMatchObject({

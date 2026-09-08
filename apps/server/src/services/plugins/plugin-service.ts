@@ -1627,8 +1627,25 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
     serverAccessProviders: {
       list: listPluginServerAccessProviders,
       invoke: async (pluginId, run) => {
-        const outcome = await invokeWrapped(pluginId, "server access", run);
-        if (!outcome.ok) throw new Error("Server access provider failed");
+        let recoveryMessage: string | null = null;
+        const outcome = await invokeWrapped(
+          pluginId,
+          "server access",
+          async () => {
+            try {
+              return await run();
+            } catch (error) {
+              if (
+                error instanceof Error &&
+                error.name === "experimental_ServerAccessRecoveryError"
+              )
+                recoveryMessage = error.message;
+              throw error;
+            }
+          },
+        );
+        if (!outcome.ok)
+          throw new Error(recoveryMessage ?? "Server access provider failed");
         return outcome.value;
       },
     },

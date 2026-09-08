@@ -37,6 +37,23 @@ const bootstrapSchema = z.strictObject({
   credential: z.string().min(1),
   expiresAt: z.number().finite().positive(),
 });
+const legacyBootstrapSchema = bootstrapSchema
+  .omit({ version: true, headers: true })
+  .extend({
+    version: z.literal(1),
+    client: z.discriminatedUnion("kind", [
+      z.object({ kind: z.literal("direct") }),
+      z.object({
+        kind: z.literal("connect"),
+        machineCode: z.string().min(1),
+        expiresAt: z.number().positive(),
+      }),
+    ]),
+  });
+const acceptedBootstrapSchema = z.union([
+  bootstrapSchema,
+  legacyBootstrapSchema,
+]);
 const configSchema = z.looseObject({
   serverUrl: serverUrlSchema.optional(),
   serverHeaders: z.record(z.string(), z.string()).optional(),
@@ -197,9 +214,9 @@ export async function enrollMachine(
     if (value === null) throw new Error("Bootstrap file was not found");
     input = value;
   }
-  let bootstrap: z.infer<typeof bootstrapSchema>;
+  let bootstrap: z.infer<typeof acceptedBootstrapSchema>;
   try {
-    bootstrap = bootstrapSchema.parse(JSON.parse(input));
+    bootstrap = acceptedBootstrapSchema.parse(JSON.parse(input));
   } catch {
     throw new Error("Invalid machine enrollment bootstrap");
   }
@@ -289,6 +306,51 @@ export async function enrollMachine(
       throw new Error("Machine enrollment bootstrap has expired");
     const fetchFn = runtime.fetchFn ?? fetch;
     const signal = AbortSignal.timeout(60_000);
+    if (bootstrap.version === 1) {
+      await atomicWrite(join(dataDir, "host-id"), `${bootstrap.hostId}\n`);
+      let headers = config.serverHeaders;
+      if (
+        bootstrap.client.kind === "connect" &&
+        !headers?.["x-bb-connect-machine"]
+      ) {
+        if (bootstrap.client.expiresAt <= Date.now())
+          throw new Error("Machine access code has expired");
+        const base = new URL(serverUrl);
+        base.hostname = base.hostname.split(".").slice(1).join(".");
+        const response = await fetchFn(
+          new URL("/api/connect/redeem-machine", base),
+          {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({ code: bootstrap.client.machineCode }),
+            signal,
+          },
+        );
+        if (!response.ok)
+          throw new Error(`Machine redeem failed (${response.status})`);
+        const redeemed = z
+          .object({ credential: z.string().min(1), serverUrl: serverUrlSchema })
+          .parse(await response.json());
+        if (normalizeUrl(redeemed.serverUrl) !== serverUrl)
+          throw new Error("Machine access code belongs to a different server");
+        headers = { "x-bb-connect-machine": redeemed.credential };
+      }
+      const { client, ...fields } = bootstrap;
+      bootstrap = {
+        ...fields,
+        version: 2,
+        ...(client.kind === "connect" ? { headers } : {}),
+      };
+      await atomicWrite(
+        join(dataDir, "config.json"),
+        `${JSON.stringify({ ...config, serverUrl, serverHeaders: bootstrap.headers })}\n`,
+      );
+      if (options.bootstrapFile)
+        await atomicWrite(
+          options.bootstrapFile,
+          `${JSON.stringify(bootstrap)}\n`,
+        );
+    }
     config = { ...config, serverUrl, serverHeaders: bootstrap.headers };
     await atomicWrite(
       join(dataDir, "config.json"),

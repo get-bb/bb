@@ -3,6 +3,14 @@ import {
   createFakePluginHost,
   type FakePluginHost,
 } from "@get-bb/plugin-sdk/testing";
+import {
+  createConnection,
+  migrate,
+  getPluginKvValue,
+  setPluginKvValue,
+  deletePluginKvValue,
+  pluginKv,
+} from "@bb/db";
 import { registerServerAccess } from "./server-access.js";
 
 const credential = {
@@ -21,10 +29,26 @@ const request = {
 };
 const key = "server-access-grant:host-pending";
 const hosts: FakePluginHost[] = [];
+const databases: ReturnType<typeof createConnection>[] = [];
 function setup() {
   const host = createFakePluginHost({
     pluginId: "connect",
     sdk: { hosts: { get: async () => ({ connectMachineId: null }) } },
+  });
+  const db = createConnection(":memory:");
+  migrate(db);
+  databases.push(db);
+  Object.assign(host.bb.storage.kv, {
+    get: async (key: string) => {
+      const value = getPluginKvValue(db, "connect", key);
+      return value === undefined ? undefined : JSON.parse(value);
+    },
+    set: async (key: string, value: unknown) => {
+      setPluginKvValue(db, "connect", key, JSON.stringify(value));
+    },
+    delete: async (key: string) => {
+      deletePluginKvValue(db, "connect", key);
+    },
   });
   hosts.push(host);
   registerServerAccess(host.bb, tunnel);
@@ -76,6 +100,7 @@ function cloud() {
 }
 afterEach(async () => {
   for (const host of hosts.splice(0)) await host.harness.lifecycle.dispose();
+  for (const db of databases.splice(0)) db.$client.close();
   vi.unstubAllGlobals();
   vi.restoreAllMocks();
 });
@@ -95,10 +120,15 @@ describe("Connect server-owned machine access", () => {
     const restarted = await original.harness.lifecycle.reload((bb) =>
       registerServerAccess(bb, tunnel),
     );
+    Object.assign(restarted.bb.storage.kv, original.bb.storage.kv);
     hosts.push(restarted);
     expect(await provider(restarted).acquire(request)).toEqual(grant);
     expect(api.fetchMock).toHaveBeenCalledTimes(2);
-    await provider(restarted).release({ key: request.key, grantId: grant.id });
+    await provider(restarted).release({
+      key: request.key,
+      hostId: request.hostId,
+      grantId: grant.id,
+    });
     expect(api.active()).toBe(false);
     expect(await restarted.bb.storage.kv.get(key)).toBeUndefined();
   });
@@ -108,15 +138,21 @@ describe("Connect server-owned machine access", () => {
     await provider(original).acquire(request);
     api.failRevoke(true);
     await expect(
-      provider(original).release({ key: request.key, grantId: request.hostId }),
+      provider(original).release({
+        key: request.key,
+        hostId: request.hostId,
+        grantId: request.hostId,
+      }),
     ).rejects.toThrow("503");
     const restarted = await original.harness.lifecycle.reload((bb) =>
       registerServerAccess(bb, tunnel),
     );
+    Object.assign(restarted.bb.storage.kv, original.bb.storage.kv);
     hosts.push(restarted);
     api.failRevoke(false);
     await provider(restarted).release({
       key: request.key,
+      hostId: request.hostId,
       grantId: request.hostId,
     });
     expect(api.active()).toBe(false);
@@ -126,12 +162,179 @@ describe("Connect server-owned machine access", () => {
     cloud();
     const host = setup();
     await provider(host).acquire(request);
-    registerServerAccess(host.bb, { ...tunnel, getCredential: () => null });
+    const restarted = await host.harness.lifecycle.reload((bb) =>
+      registerServerAccess(bb, { ...tunnel, getCredential: () => null }),
+    );
+    Object.assign(restarted.bb.storage.kv, host.bb.storage.kv);
+    hosts.push(restarted);
     await expect(
-      provider(host).release({ key: request.key, grantId: request.hostId }),
+      provider(restarted).release({
+        key: request.key,
+        hostId: request.hostId,
+        grantId: request.hostId,
+      }),
     ).rejects.toThrow("Pair this bb instance");
     expect(await host.bb.storage.kv.get(key)).toMatchObject({
       connectMachineId: "cloud-id",
     });
   });
+});
+
+it("moves plaintext grants into secret settings before replacing SQLite metadata", async () => {
+  const host = setup();
+  cloud();
+  const grant = {
+    id: request.hostId,
+    serverUrl: credential.serverUrl,
+    headers: { "x-bb-connect-machine": "bbcm_private" },
+  };
+  await host.bb.storage.kv.set(key, { connectMachineId: "cloud-id", grant });
+  expect(await provider(host).acquire(request)).toEqual(grant);
+  const rows = databases.at(-1)!.select().from(pluginKv).all();
+  expect(JSON.stringify(rows)).not.toContain("bbcm_private");
+  expect(await host.bb.storage.kv.get(key)).toEqual({
+    grantId: request.hostId,
+    connectMachineId: "cloud-id",
+  });
+  await provider(host).release({
+    key: request.key,
+    hostId: request.hostId,
+    grantId: grant.id,
+  });
+});
+
+it.each([true, false])(
+  "reconciles lost redemption responses with lookup available=%s without blindly minting",
+  async (available) => {
+    const host = setup();
+    const active = new Set<string>();
+    let minted = 0;
+    let redeemed = 0;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = String(input);
+        if (url.endsWith("/machine-code") && init?.method === "GET") {
+          return available
+            ? Response.json({ consumed: true, machineId: "device-1" })
+            : new Response("<!doctype html><title>bb</title>", {
+                headers: { "content-type": "text/html" },
+              });
+        }
+        if (url.endsWith("/machine-code")) {
+          minted++;
+          return Response.json({
+            code: `CODE-${minted}`,
+            expiresInMs: 600000,
+            serverUrl: credential.serverUrl,
+          });
+        }
+        if (url.endsWith("/redeem-machine")) {
+          const id = `device-${++redeemed}`;
+          active.add(id);
+          if (redeemed === 1)
+            throw new Error("Response lost after Cloud commit");
+          return Response.json({
+            credential: "private-bearer",
+            machineId: id,
+            serverUrl: credential.serverUrl,
+          });
+        }
+        active.delete(JSON.parse(String(init?.body)).machineId);
+        return Response.json({ ok: true });
+      }),
+    );
+    await expect(provider(host).acquire(request)).rejects.toThrow(
+      "Cloud device may need dashboard revocation",
+    );
+    if (available) {
+      await provider(host).acquire(request);
+      await provider(host).release({
+        key: request.key,
+        hostId: request.hostId,
+        grantId: request.hostId,
+      });
+      expect(active.size).toBe(0);
+    } else {
+      await expect(provider(host).acquire(request)).rejects.toThrow(
+        "Cloud device may need dashboard revocation",
+      );
+      await expect(
+        provider(host).release({
+          key: request.key,
+          hostId: request.hostId,
+          grantId: null,
+        }),
+      ).rejects.toThrow("Cloud device may need dashboard revocation");
+      expect(minted).toBe(1);
+      expect(redeemed).toBe(1);
+      expect(await host.bb.storage.kv.get(key)).toMatchObject({
+        message: expect.stringContaining(
+          "Cloud device may need dashboard revocation",
+        ),
+      });
+    }
+    expect(
+      JSON.stringify(databases.at(-1)!.select().from(pluginKv).all()),
+    ).not.toContain("private-bearer");
+  },
+);
+
+it("serializes concurrent acquisitions so release revokes every created device", async () => {
+  const host = setup();
+  const api = cloud();
+  const grants = await Promise.all([
+    provider(host).acquire(request),
+    provider(host).acquire(request),
+  ]);
+  expect(grants[0]).toEqual(grants[1]);
+  expect(api.fetchMock).toHaveBeenCalledTimes(2);
+  await provider(host).release({
+    key: request.key,
+    hostId: request.hostId,
+    grantId: request.hostId,
+  });
+  expect(api.active()).toBe(false);
+});
+
+it("revokes a known device from SQLite metadata even if its secret is missing", async () => {
+  const host = setup();
+  const api = cloud();
+  await host.bb.storage.kv.set(key, {
+    connectMachineId: "cloud-id",
+    grantId: request.hostId,
+  });
+  await provider(host).release({
+    key: request.key,
+    hostId: request.hostId,
+    grantId: request.hostId,
+  });
+  expect(api.fetchMock).toHaveBeenCalledOnce();
+  expect(api.fetchMock.mock.calls[0]?.[0]).toBe(
+    "https://getbb.app/api/connect/revoke-machine",
+  );
+  expect(await host.bb.storage.kv.get(key)).toBeUndefined();
+});
+
+it("revokes both server-owned and delivered-v1 device identities after a pending bundle upgrade", async () => {
+  const host = setup();
+  cloud();
+  await provider(host).acquire(request);
+  host.harness.sdk.stub("hosts.get", async () => ({
+    connectMachineId: "legacy-delivered-device",
+  }));
+  const revoked: string[] = [];
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
+      revoked.push(JSON.parse(String(init?.body)).machineId);
+      return Response.json({ ok: true });
+    }),
+  );
+  await provider(host).release({
+    key: request.key,
+    hostId: request.hostId,
+    grantId: request.hostId,
+  });
+  expect(revoked).toEqual(["cloud-id", "legacy-delivered-device"]);
 });

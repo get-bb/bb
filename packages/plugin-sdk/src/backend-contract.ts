@@ -448,12 +448,18 @@ export interface ServerAccessProviderDeclaration {
     | Promise<
         import("./machine-provider.js").PluginMachineProviderAvailability
       >;
+  /** Throw an Error named experimental_ServerAccessRecoveryError to expose a deliberate user-safe recovery message. Ordinary failures are redacted. */
   acquire(context: {
     key: string;
     hostId: string;
     signal: AbortSignal;
   }): Promise<ServerAccessGrant>;
-  release(context: { key: string; grantId: string }): Promise<void>;
+  release(context: {
+    key: string;
+    hostId: string;
+    /** Null when acquisition was interrupted before a grant was returned. Reconcile using key and hostId. */
+    grantId: string | null;
+  }): Promise<void>;
 }
 
 export interface PluginServerAccess {

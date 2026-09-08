@@ -128,7 +128,7 @@ if [ -n "$bootstrap_env" ]; then
     if (!/^[A-Za-z_][A-Za-z0-9_]*$/u.test(name)) process.exit(2);
     try {
       const bundle = JSON.parse(process.env[name]);
-      if (bundle.version !== 2 || typeof bundle.hostId !== "string" || !bundle.hostId) process.exit(2);
+      if (![1, 2].includes(bundle.version) || typeof bundle.hostId !== "string" || !bundle.hostId) process.exit(2);
       process.stdout.write(bundle.hostId);
     } catch { process.exit(2); }
   ' "$bootstrap_env") || usage
@@ -432,6 +432,52 @@ complete_step "Using local host-daemon port $host_daemon_port"
 package_url="${server_url%/}/install/bb-app.tgz"
 package_dir=$(mktemp -d "${TMPDIR:-/tmp}/bb-app.XXXXXX")
 package_file="$package_dir/bb-app.tgz"
+if [ -n "$bootstrap_env" ]; then
+  bootstrap_payload=$(BB_ENROLLMENT="$bootstrap_payload" node --input-type=module - "$data_dir/enrollment-bootstrap.json" <<'NODE'
+import { readFile, writeFile, rename } from "node:fs/promises";
+import { dirname, join } from "node:path";
+const path = process.argv[2];
+let bundle = JSON.parse(process.env.BB_ENROLLMENT);
+if (bundle.version === 1) {
+  if (bundle.expiresAt <= Date.now()) throw new Error("Machine enrollment bootstrap has expired");
+  let previous;
+  try { previous = JSON.parse(await readFile(path, "utf8")); } catch {}
+  if (!previous) {
+    try {
+      const config = JSON.parse(await readFile(join(dirname(path), "config.json"), "utf8"));
+      const hostId = (await readFile(join(dirname(path), "host-id"), "utf8")).trim();
+      if (hostId === bundle.hostId && new URL(config.serverUrl).href === new URL(bundle.serverUrl).href && config.serverHeaders?.["x-bb-connect-machine"]) {
+        previous = { ...bundle, version: 2, headers: config.serverHeaders };
+      }
+    } catch {}
+  }
+  let headers;
+  if (bundle.client?.kind === "connect") {
+    if (previous?.version === 2 && previous.hostId === bundle.hostId && previous.serverUrl === bundle.serverUrl && previous.credential === bundle.credential) {
+      headers = previous.headers;
+    } else {
+      if (bundle.client.expiresAt <= Date.now()) throw new Error("Machine access code has expired");
+      const base = new URL(bundle.serverUrl);
+      base.hostname = base.hostname.split(".").slice(1).join(".");
+      const response = await fetch(new URL("/api/connect/redeem-machine", base), {
+        method: "POST", headers: { "content-type": "application/json" },
+        body: JSON.stringify({ code: bundle.client.machineCode }), signal: AbortSignal.timeout(60000),
+      });
+      if (!response.ok) throw new Error(`Machine redeem failed (${response.status})`);
+      const result = await response.json();
+      if (typeof result.credential !== "string" || !result.credential || new URL(result.serverUrl).href !== new URL(bundle.serverUrl).href) throw new Error("Invalid machine access response");
+      headers = { "x-bb-connect-machine": result.credential };
+    }
+  } else if (bundle.client?.kind !== "direct") throw new Error("Invalid machine enrollment bootstrap");
+  const { client, ...fields } = bundle;
+  bundle = { ...fields, version: 2, ...(headers ? { headers } : {}) };
+}
+await writeFile(`${path}.tmp`, JSON.stringify(bundle), { mode: 0o600 });
+await rename(`${path}.tmp`, path);
+process.stdout.write(JSON.stringify(bundle));
+NODE
+  ) || exit 1
+fi
 access_config="$package_dir/access.curl"
 : > "$access_config"
 chmod 600 "$access_config"
@@ -580,6 +626,7 @@ if [ -n "$bootstrap_env" ]; then
   fi
   BB_ENROLLMENT="$bootstrap_payload" BB_DATA_DIR="$data_dir" "$bb_cli" machine enroll --bootstrap-env BB_ENROLLMENT
   bootstrap_payload=
+  rm -f "$data_dir/enrollment-bootstrap.json"
 fi
 
 if [ -n "$machine_code" ]; then

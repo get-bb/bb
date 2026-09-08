@@ -153,9 +153,28 @@ async function resolve(
       (entry) => entry.provider.id === providerId,
     );
     if (!record) throw new Error("Server access provider is unavailable");
-    const result = await invokeServerAccessProvider(record, () =>
-      record.provider.acquire(args),
-    );
+    deps.db
+      .update(hosts)
+      .set({ serverAccessProviderId: providerId })
+      .where(eq(hosts.id, args.hostId))
+      .run();
+    let result: ServerAccessGrant;
+    try {
+      result = await invokeServerAccessProvider(record, () =>
+        record.provider.acquire(args),
+      );
+    } catch (error) {
+      deps.db
+        .update(hosts)
+        .set({
+          teardownMessage:
+            error instanceof Error ? error.message : String(error),
+        })
+        .where(eq(hosts.id, args.hostId))
+        .run();
+      deps.hub.notifyHost(args.hostId, ["host-connected"]);
+      throw error;
+    }
     const parsed = grantSchema.safeParse(result);
     if (!parsed.success)
       throw new Error("Server access provider returned an invalid grant");
@@ -169,7 +188,11 @@ async function resolve(
   }
   deps.db
     .update(hosts)
-    .set({ serverAccessProviderId: providerId, serverAccessGrantId: grant.id })
+    .set({
+      serverAccessProviderId: providerId,
+      serverAccessGrantId: grant.id,
+      teardownMessage: null,
+    })
     .where(eq(hosts.id, args.hostId))
     .run();
   args.signal.throwIfAborted();
@@ -189,7 +212,7 @@ async function release(
     ? JSON.stringify([enrollment.owner, enrollment.key])
     : args.key;
   const host = getHost(deps.db, args.hostId);
-  if (!host?.serverAccessProviderId || !host.serverAccessGrantId) return;
+  if (!host?.serverAccessProviderId) return;
   if (host.serverAccessProviderId !== "direct") {
     const record = listServerAccessProviders().find(
       (entry) => entry.provider.id === host.serverAccessProviderId,
@@ -199,7 +222,8 @@ async function release(
     await invokeServerAccessProvider(record, () =>
       record.provider.release({
         key: acquisitionKey,
-        grantId: host.serverAccessGrantId!,
+        grantId: host.serverAccessGrantId,
+        hostId: args.hostId,
       }),
     );
   }

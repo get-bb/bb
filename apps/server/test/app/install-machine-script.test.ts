@@ -364,7 +364,7 @@ exec '${process.execPath}' "$@"
     expect(existsSync(join(fixture.dataDir, "install-daemon.pid"))).toBe(false);
   });
 
-  it.each([false, true])("enrolls privately with portable service selection (container=%s)", (container) => {
+  it.each([{ container: false, version: 1 }, { container: false, version: 2 }, { container: true, version: 1 }, { container: true, version: 2 }])("enrolls privately with portable service selection (%j)", ({ container, version }) => {
     const fixture = createFixture();
     writeCurlArtifactMock(fixture, 404);
     writeEnrollingBbApp(
@@ -393,7 +393,8 @@ fs.writeFileSync(path.join(process.env.BB_DATA_DIR, "config.json"), JSON.stringi
     const result = runScript(["--bootstrap-env", "TEST_BUNDLE"], fixture, {
       BB_INSTALL_SKIP_SERVICE: container ? "0" : "1",
       TEST_BUNDLE: JSON.stringify({
-        version: 2,
+        version,
+        ...(version === 1 ? { client: { kind: "direct" } } : {}),
         hostId: "host-test",
         serverUrl: "https://machine.getbb.app",
         credential: "private-bootstrap-test",
@@ -1246,3 +1247,67 @@ fi
     );
   });
 });
+
+it.each([1, 2])(
+  "upgrades installer v%s direct and Connect payloads before artifact download",
+  (version) => {
+    for (const kind of ["direct", "connect"]) {
+      const fixture = createFixture();
+      const source = readFileSync(SCRIPT_PATH, "utf8");
+      const program = source.split("<<'NODE'\n")[1]?.split("\nNODE")[0];
+      expect(program).toBeTruthy();
+      const path = join(fixture.dataDir, "bootstrap.json");
+      const payload = {
+        version,
+        hostId: "host-test",
+        serverUrl: "https://test.getbb.app",
+        credential: "bootstrap",
+        expiresAt: Date.now() + 60000,
+        ...(version === 1
+          ? {
+              client:
+                kind === "direct"
+                  ? { kind }
+                  : {
+                      kind,
+                      machineCode: "legacy",
+                      expiresAt: Date.now() + 60000,
+                    },
+            }
+          : kind === "connect"
+            ? { headers: { "x-bb-connect-machine": "private" } }
+            : {}),
+      };
+      const fetch = `globalThis.fetch = async (url, init) => { if (String(url) !== "https://getbb.app/api/connect/redeem-machine" || JSON.parse(init.body).code !== "legacy") throw new Error("Unexpected redemption"); return Response.json({ credential: "private", serverUrl: "https://test.getbb.app" }); };\n`;
+      const result = spawnSync(
+        process.execPath,
+        ["--input-type=module", "-", path],
+        {
+          input: fetch + program,
+          encoding: "utf8",
+          env: { ...process.env, BB_ENROLLMENT: JSON.stringify(payload) },
+        },
+      );
+      expect(result.status, result.stderr).toBe(0);
+      expect(JSON.parse(result.stdout)).toMatchObject({ version: 2 });
+      expect(JSON.parse(result.stdout).headers).toEqual(
+        kind === "connect" ? { "x-bb-connect-machine": "private" } : undefined,
+      );
+      writeFileSync(join(fixture.dataDir, "config.json"), JSON.stringify({ serverUrl: payload.serverUrl, serverHeaders: JSON.parse(result.stdout).headers }));
+      writeFileSync(join(fixture.dataDir, "host-id"), payload.hostId);
+      rmSync(path);
+      const retry = spawnSync(
+        process.execPath,
+        ["--input-type=module", "-", path],
+        {
+          input:
+            `globalThis.fetch = () => { throw new Error("Redeemed twice"); };\n` +
+            program,
+          encoding: "utf8",
+          env: { ...process.env, BB_ENROLLMENT: JSON.stringify(payload) },
+        },
+      );
+      expect(retry.status, retry.stderr).toBe(0);
+    }
+  },
+);

@@ -19,8 +19,26 @@ back to `Machine <first eight ID characters>`. Moving redemption to the server
 therefore does not change device naming. Production checks are recorded in the
 PR verification report; no caller name field is invented.
 
-Cloud code consumption and local persistence are separate operations. Acquire
-revokes the new device if persistence reports a failure. A process death after
-Cloud redemption but before persistence still requires Cloud-side idempotent
-redemption or lookup support to reconcile; a completed acquire is durably
-revocable before enrollment.
+Acquisition intent and credential-bearing grants use the SDK secret settings path
+(private 0600 files outside SQLite). KV holds only grant/device IDs, acquisition
+keys, hashed code IDs and recovery messages. Existing plaintext grants migrate to
+secret storage before their KV value is replaced with metadata.
+
+Intent is durable before redemption. After an interrupted request, acquire and
+release use authenticated GET /api/connect/machine-code with the original code
+in x-bb-connect-code. Cloud resolves the exact server-owned code to its device;
+the plugin revokes that device before requesting a replacement. Cloud must deploy
+the lookup and deterministic code-derived device identity together. Until then,
+lookup failure retains the intent and reports “Cloud device may need dashboard
+revocation” in machine status and Settings → Machines. Retries never silently
+mint a replacement while the original device is unresolved. Old randomly named
+devices cannot be resolved by this lookup and retain the same visible warning.
+
+Already delivered v1 bundles remain accepted by the CLI and installer. A legacy
+Connect client redeems once on the machine, saves the upgraded headers locally,
+and uses those headers for artifact download, enrollment and daemon requests.
+
+Release revokes both the stored grant device and any distinct trusted Cloud
+identity reported by the host. This covers a delivered v1 bundle redeemed after
+the server separately upgraded its pending copy; both identities are retained
+for retry until revocation completes.

@@ -180,3 +180,5 @@ persists them privately as `serverHeaders`; the launcher passes `BB_SERVER_HEADE
 to the daemon for enrollment, connection and runtime requests. Server-access
 plugins redeem provider codes on the server. Pending encrypted v1 bundles are
 upgraded by the server when prepared again.
+
+Delivered enrollment bundles from v1 remain valid until their expiry. The CLI accepts both file and environment forms, upgrades the bundle to v2 headers locally, and persists legacy Connect redemption before enrollment so a retry reuses it. The installer upgrades v1 environment bundles before authenticated artifact downloads.

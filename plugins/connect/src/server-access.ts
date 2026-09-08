@@ -1,5 +1,7 @@
-import type { BbPluginApi, ServerAccessGrant } from "@get-bb/plugin-sdk";
+import type { BbPluginApi } from "@get-bb/plugin-sdk";
 import { z } from "zod";
+import { createHash } from "node:crypto";
+import { lookupMachineCode } from "./machine-code.js";
 import type { ConnectTunnel } from "./tunnel.js";
 import { fetchMachineCode } from "./machine-code.js";
 import { revokeMachine } from "./revoke-machine.js";
@@ -14,6 +16,18 @@ const grantSchema = z.object({
   }),
 });
 
+const metadataSchema = z.object({
+  connectMachineId: z.string().optional(),
+  connectMachineIds: z.array(z.string()).optional(),
+  codeId: z.string().optional(),
+});
+
+function recoveryError(message: string): Error {
+  return Object.assign(new Error(message), {
+    name: "experimental_ServerAccessRecoveryError",
+  });
+}
+
 function grantKey(hostId: string): string {
   return `server-access-grant:${hostId}`;
 }
@@ -25,6 +39,90 @@ export function registerServerAccess(
     status(): { paired: boolean };
   },
 ) {
+  const secrets = bb.settings.define({
+    machineAccessSecrets: {
+      type: "string",
+      label: "Machine access credentials",
+      secret: true,
+    },
+  });
+  const intentSchema = z.object({
+    key: z.string(),
+    hostId: z.string(),
+    code: z.string(),
+    serverUrl: z.string().url(),
+  });
+  const stateSchema = z.record(
+    z.string(),
+    z.object({
+      result: grantSchema.optional(),
+      intent: intentSchema.optional(),
+    }),
+  );
+  let queue = Promise.resolve();
+  function serialized<T>(action: () => Promise<T>): Promise<T> {
+    const result = queue.then(action);
+    queue = result.then(
+      () => undefined,
+      () => undefined,
+    );
+    return result;
+  }
+  async function readState() {
+    const raw = (await secrets.get()).machineAccessSecrets;
+    try {
+      return stateSchema.parse(raw ? JSON.parse(raw) : {});
+    } catch {
+      throw new Error("Stored machine access credentials are invalid");
+    }
+  }
+  async function storeState(state: z.infer<typeof stateSchema>) {
+    await secrets.experimental_set({
+      machineAccessSecrets: JSON.stringify(state),
+    });
+  }
+  async function load(hostId: string) {
+    const state = await readState();
+    const legacy = grantSchema.safeParse(
+      await bb.storage.kv.get(grantKey(hostId)),
+    );
+    if (legacy.success) {
+      state[hostId] = { result: legacy.data };
+      await storeState(state);
+      await bb.storage.kv.set(grantKey(hostId), {
+        connectMachineId: legacy.data.connectMachineId,
+        grantId: legacy.data.grant.id,
+      });
+    }
+    return state;
+  }
+  async function reconcile(
+    hostId: string,
+    intent: z.infer<typeof intentSchema>,
+  ) {
+    const credential = tunnel.getCredential();
+    if (!credential)
+      throw new Error(
+        "Pair this bb instance with bb Cloud to revoke machine access",
+      );
+    try {
+      const status = await lookupMachineCode(credential, intent.code);
+      if (status.consumed && !status.machineId)
+        throw new Error("Device identity unavailable");
+      if (status.machineId) await revokeMachine(credential, status.machineId);
+      return status.consumed;
+    } catch {
+      const message =
+        "Cloud device may need dashboard revocation: interrupted machine access acquisition; retry after Cloud lookup is available";
+      await bb.storage.kv.set(grantKey(hostId), {
+        grantId: hostId,
+        key: intent.key,
+        codeId: createHash("sha256").update(intent.code).digest("hex"),
+        message,
+      });
+      throw recoveryError(message);
+    }
+  }
   bb.experimental_serverAccess.register({
     id: "connect",
     displayName: "bb Cloud",
@@ -35,52 +133,119 @@ export function registerServerAccess(
             status: "setup-required",
             message: "Pair this bb instance with bb Cloud",
           },
-    async acquire({ hostId, signal }) {
-      signal.throwIfAborted();
-      const existing = grantSchema.safeParse(
-        await bb.storage.kv.get(grantKey(hostId)),
-      );
-      if (existing.success) return existing.data.grant;
-      const credential = tunnel.getCredential();
-      if (!credential) throw new Error("Pair this bb instance with bb Cloud");
-      const code = await fetchMachineCode(credential);
-      const redeemed = await redeemMachineCode({
-        code: code.code,
-        serverUrl: code.serverUrl,
-      });
-      const grant: ServerAccessGrant = {
-        id: hostId,
-        serverUrl: redeemed.serverUrl,
-        headers: { "x-bb-connect-machine": redeemed.credential },
-      };
-      try {
+    acquire({ key, hostId, signal }) {
+      return serialized(async () => {
+        signal.throwIfAborted();
+        const state = await load(hostId);
+        const existing = state[hostId];
+        if (existing?.result) return existing.result.grant;
+        const credential = tunnel.getCredential();
+        if (!credential) throw new Error("Pair this bb instance with bb Cloud");
+        const metadata = metadataSchema.safeParse(
+          await bb.storage.kv.get(grantKey(hostId)),
+        );
+        if (!existing?.intent && metadata.success) {
+          if (metadata.data.connectMachineId)
+            await revokeMachine(credential, metadata.data.connectMachineId);
+          else if (metadata.data.codeId)
+            throw recoveryError(
+              "Cloud device may need dashboard revocation: acquisition secret is missing",
+            );
+        }
+        let intent = existing?.intent;
+        if (intent && (await reconcile(hostId, intent))) intent = undefined;
+        if (!intent) {
+          const code = await fetchMachineCode(credential);
+          intent = { key, hostId, code: code.code, serverUrl: code.serverUrl };
+        }
+        state[hostId] = { intent };
+        await storeState(state);
+        await bb.storage.kv.set(grantKey(hostId), {
+          grantId: hostId,
+          key,
+          codeId: createHash("sha256").update(intent.code).digest("hex"),
+        });
+        const pending = intent;
+        const redeemed = await redeemMachineCode(pending).catch(async () => {
+          const message =
+            "Cloud device may need dashboard revocation: interrupted machine access acquisition";
+          await bb.storage.kv.set(grantKey(hostId), {
+            grantId: hostId,
+            key,
+            codeId: createHash("sha256").update(pending.code).digest("hex"),
+            message,
+          });
+          throw recoveryError(message);
+        });
+        const grant = {
+          id: hostId,
+          serverUrl: redeemed.serverUrl,
+          headers: { "x-bb-connect-machine": redeemed.credential },
+        };
+        state[hostId] = {
+          result: {
+            connectMachineId: redeemed.machineId,
+            grant,
+          },
+        };
+        await storeState(state);
         await bb.storage.kv.set(grantKey(hostId), {
           connectMachineId: redeemed.machineId,
-          grant,
+          grantId: hostId,
         });
-      } catch (error) {
-        await revokeMachine(credential, redeemed.machineId);
-        throw error;
-      }
-      return grant;
+        return grant;
+      });
     },
-    async release({ grantId }) {
-      const stored = grantSchema.safeParse(
-        await bb.storage.kv.get(grantKey(grantId)),
-      );
-      const connectMachineId = stored.success
-        ? stored.data.connectMachineId
-        : (await bb.sdk.hosts.get({ hostId: grantId })).connectMachineId;
-      if (connectMachineId) {
-        const credential = tunnel.getCredential();
-        if (!credential)
-          throw new Error(
-            "Pair this bb instance with bb Cloud to revoke machine access",
+    release({ hostId: grantId }) {
+      return serialized(async () => {
+        const state = await load(grantId);
+        const stored = state[grantId];
+        if (stored?.intent) await reconcile(grantId, stored.intent);
+        const metadata = metadataSchema.safeParse(
+          await bb.storage.kv.get(grantKey(grantId)),
+        );
+        if (
+          !stored &&
+          metadata.success &&
+          metadata.data.codeId &&
+          !metadata.data.connectMachineId
+        ) {
+          throw recoveryError(
+            "Cloud device may need dashboard revocation: acquisition secret is missing",
           );
-        await revokeMachine(credential, connectMachineId);
-      }
-      await bb.storage.kv.delete(grantKey(grantId));
-      await bb.storage.kv.delete(`server-access-expiry:${grantId}`);
+        }
+        const connectMachineId =
+          stored?.result?.connectMachineId ??
+          (metadata.success ? metadata.data.connectMachineId : undefined);
+        const reportedMachineId = (await bb.sdk.hosts.get({ hostId: grantId }))
+          .connectMachineId;
+        const ids = [
+          ...new Set([
+            ...(connectMachineId ? [connectMachineId] : []),
+            ...(reportedMachineId ? [reportedMachineId] : []),
+            ...(metadata.success
+              ? (metadata.data.connectMachineIds ?? [])
+              : []),
+          ]),
+        ];
+        if (ids.length > 0) {
+          const credential = tunnel.getCredential();
+          if (!credential)
+            throw new Error(
+              "Pair this bb instance with bb Cloud to revoke machine access",
+            );
+          await bb.storage.kv.set(grantKey(grantId), {
+            grantId,
+            connectMachineId,
+            connectMachineIds: ids,
+          });
+          for (const id of ids) await revokeMachine(credential, id);
+        }
+        delete state[grantId];
+        await storeState(state);
+        await bb.storage.kv.delete(grantKey(grantId));
+        await bb.storage.kv.delete(`server-access-expiry:${grantId}`);
+      });
     },
   });
 }

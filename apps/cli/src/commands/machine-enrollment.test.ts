@@ -138,3 +138,99 @@ describe("machine enroll", () => {
     ).toMatchObject({ serverHeaders: headers });
   });
 });
+
+it.each([1, 2])(
+  "accepts delivered v%s direct and Connect bundles from file and environment",
+  async (version) => {
+    for (const kind of ["direct", "connect"]) {
+      for (const source of ["file", "env"]) {
+        const h = await harness();
+        const headers =
+          kind === "connect"
+            ? { "x-bb-connect-machine": "private-connect" }
+            : undefined;
+        const value = {
+          ...bundle(),
+          version,
+          serverUrl: "https://test.getbb.app",
+          ...(version === 1
+            ? {
+                client:
+                  kind === "direct"
+                    ? { kind }
+                    : {
+                        kind,
+                        machineCode: "legacy-code",
+                        expiresAt: Date.now() + 60000,
+                      },
+              }
+            : { headers }),
+        };
+        const path = join(h.dir, "bootstrap.json");
+        await writeFile(path, JSON.stringify(value));
+        h.env.BB_ENROLLMENT = JSON.stringify(value);
+        h.fetchFn.mockImplementation(async (url) =>
+          String(url).includes("/redeem-machine")
+            ? Response.json({
+                credential: "private-connect",
+                serverUrl: value.serverUrl,
+              })
+            : Response.json(
+                { hostId: "host_test", hostKey: "private-durable" },
+                { status: 201 },
+              ),
+        );
+        await expect(
+          enrollMachine(
+            source === "file"
+              ? { bootstrapFile: path }
+              : { bootstrapEnv: "BB_ENROLLMENT" },
+            { env: h.env, homeDir: h.dir, fetchFn: h.fetchFn },
+          ),
+        ).resolves.toEqual({ hostId: "host_test" });
+        const enroll = h.fetchFn.mock.calls.find(([url]) =>
+          String(url).includes("/internal/hosts/enroll"),
+        );
+        expect(
+          new Headers(enroll?.[1]?.headers).get("x-bb-connect-machine"),
+        ).toBe(kind === "connect" ? "private-connect" : null);
+        expect(
+          h.fetchFn.mock.calls.filter(([url]) =>
+            String(url).includes("redeem-machine"),
+          ),
+        ).toHaveLength(version === 1 && kind === "connect" ? 1 : 0);
+      }
+    }
+  },
+);
+
+it("reuses a v1 Connect upgrade after the enrollment response is lost", async () => {
+  const h = await harness();
+  const value = {
+    ...bundle(),
+    version: 1,
+    serverUrl: "https://test.getbb.app",
+    client: {
+      kind: "connect",
+      machineCode: "legacy",
+      expiresAt: Date.now() + 60000,
+    },
+  };
+  h.env.BB_ENROLLMENT = JSON.stringify(value);
+  h.fetchFn
+    .mockResolvedValueOnce(
+      Response.json({
+        credential: "private-connect",
+        serverUrl: value.serverUrl,
+      }),
+    )
+    .mockRejectedValueOnce(new Error("Response lost"));
+  await expect(h.run()).rejects.toThrow("Could not exchange");
+  h.env.BB_ENROLLMENT = JSON.stringify(value);
+  await h.run();
+  expect(
+    h.fetchFn.mock.calls.filter(([url]) =>
+      String(url).includes("redeem-machine"),
+    ),
+  ).toHaveLength(1);
+});

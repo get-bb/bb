@@ -3,6 +3,7 @@ import { join } from "node:path";
 import { eq } from "drizzle-orm";
 import {
   getMachineLaunch,
+  listPublicHosts,
   hosts,
   machineEnrollments,
   machineLaunches,
@@ -171,7 +172,11 @@ describe("production machine enrollment wiring", () => {
         }),
       ).rejects.toThrow("different plugin");
       expect(h.db.select().from(machineEnrollments).all()).toEqual([]);
-      acquire.mockRejectedValueOnce(new Error("access unavailable"));
+      acquire.mockRejectedValueOnce(
+        Object.assign(new Error("Cloud device may need dashboard revocation"), {
+          name: "experimental_ServerAccessRecoveryError",
+        }),
+      );
       await expect(
         api.experimental_machines.prepareEnrollment({
           key: "failure-launch",
@@ -181,11 +186,18 @@ describe("production machine enrollment wiring", () => {
       const reserved = getMachineLaunch(h.db, "failure-launch");
       expect(reserved?.hostId).toBeTruthy();
       expect(reserved?.resource).toEqual({ checkpoint: "preserve" });
+      expect(
+        listPublicHosts(h.db).find((host) => host.id === reserved?.hostId)
+          ?.teardownMessage,
+      ).toBe("Cloud device may need dashboard revocation");
       const enrollment = await api.experimental_machines.prepareEnrollment({
         key: "failure-launch",
         access: { providerId: "runtime-access" },
       });
       expect(enrollment.hostId).toBe(reserved?.hostId);
+      expect(
+        listPublicHosts(h.db).some((host) => host.id === reserved?.hostId),
+      ).toBe(false);
       await serverAccess.release(h.deps, {
         hostId: enrollment.hostId,
         key: enrollment.hostId,
@@ -193,6 +205,7 @@ describe("production machine enrollment wiring", () => {
       expect(release).toHaveBeenCalledWith({
         key: JSON.stringify(["enrollment-runtime", "failure-launch"]),
         grantId: "runtime-grant",
+        hostId: enrollment.hostId,
       });
       expect(
         h.db

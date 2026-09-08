@@ -111,12 +111,20 @@ failures persist and retry after `removeRetryMs`.
 
 `bb.experimental_serverAccess.register` declares id, displayName,
 availability, acquire({ key, hostId, signal }) returning a ServerAccessGrant,
-and release({ key, grantId }). Acquire is idempotent by key. Return `{ id, serverUrl, headers?: Record<string, string> }`; the grant serves runtime requests as well
+and release({ key, hostId, grantId }). Acquire is idempotent by key. Return `{ id, serverUrl, headers?: Record<string, string> }`; the grant serves runtime requests as well
 as enrolment. Acquire must redeem provider-specific codes server-side and persist
 the revocation identity before returning, so release works before enrolment.
 Direct grants omit headers. Bootstrap v2 carries the headers; pending encrypted
 v1 bundles are upgraded server-side on preparation. Host metadata stores the provider id and grant id; pending
 bootstrap credentials are encrypted separately by core.
+An Error named `experimental_ServerAccessRecoveryError` exposes its deliberate
+user-safe recovery message through the plugin boundary; ordinary errors stay
+redacted. Release receives a null grantId when acquire was interrupted. Core persists the
+provider before acquisition and retries release by key and hostId. Keep intent
+and credential-bearing grants in secret storage; only non-secret revocation
+metadata belongs in KV. Delivered v1 bundles upgrade locally to v2 headers in the
+CLI and installer, including one-time legacy Connect redemption.
+
 General settings select the default. Plugins can pass ServerAccessSelection
 to the machine enrolment/bootstrap APIs. The direct provider reads
 machineServerUrl, falling back to BB_EXTERNAL_URL. Declaring a URL does not

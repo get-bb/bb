@@ -1,5 +1,10 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { getHost, setAppSettings, upsertHost } from "@bb/db";
+import {
+  machineEnrollments,
+  getHost,
+  setAppSettings,
+  upsertHost,
+} from "@bb/db";
 import { defaultAppSettings } from "@bb/domain";
 import type { ServerAccessProviderDeclaration } from "@get-bb/plugin-sdk";
 import {
@@ -7,6 +12,7 @@ import {
   serverAccessStatus,
 } from "../../../src/services/machines/server-access.js";
 import { setServerAccessBridge } from "../../../src/services/plugins/plugin-server-access-registry.js";
+import { listPublicHostsWithStatus } from "../../../src/services/lib/entity-lookup.js";
 import { withTestHarness } from "../../helpers/test-app.js";
 
 const signal = new AbortController().signal;
@@ -145,5 +151,61 @@ describe("machine server access", () => {
         urlSource: "BB_EXTERNAL_URL",
       });
     });
+  });
+});
+
+it("keeps interrupted access visible and releases the acquisition without a returned grant", async () => {
+  await withTestHarness(async ({ deps }) => {
+    const message = "Cloud device may need dashboard revocation";
+    const release = vi
+      .fn()
+      .mockRejectedValueOnce(new Error(message))
+      .mockResolvedValue(undefined);
+    installProvider({
+      ...provider(),
+      acquire: async () => {
+        throw new Error(message);
+      },
+      release,
+    });
+    const host = upsertHost(deps.db, deps.hub, { name: "interrupted" })!;
+    deps.db
+      .insert(machineEnrollments)
+      .values({
+        id: "interrupted-enrollment",
+        owner: "test",
+        key: "k",
+        hostId: host.id,
+        state: "pending",
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
+      })
+      .run();
+    expect(
+      listPublicHostsWithStatus(deps).some((entry) => entry.id === host.id),
+    ).toBe(false);
+    await expect(
+      serverAccess.resolve(deps, { key: "k", hostId: host.id, signal }),
+    ).rejects.toThrow(message);
+    expect(getHost(deps.db, host.id)).toMatchObject({
+      serverAccessProviderId: "connect",
+      serverAccessGrantId: null,
+      teardownMessage: message,
+    });
+    expect(
+      listPublicHostsWithStatus(deps).find((entry) => entry.id === host.id)
+        ?.lifecycle.progress,
+    ).toBe(message);
+    await expect(
+      serverAccess.release(deps, { key: "k", hostId: host.id }),
+    ).rejects.toThrow(message);
+    expect(getHost(deps.db, host.id)?.serverAccessProviderId).toBe("connect");
+    await serverAccess.release(deps, { key: "k", hostId: host.id });
+    expect(release).toHaveBeenLastCalledWith({
+      key: JSON.stringify(["test", "k"]),
+      hostId: host.id,
+      grantId: null,
+    });
+    expect(getHost(deps.db, host.id)?.serverAccessProviderId).toBeNull();
   });
 });

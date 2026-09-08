@@ -2639,7 +2639,7 @@ first-party environment host module consumes them for checkout and worktree.
 
 `PluginServerAccess` registers server access through `ServerAccessProviderDeclaration`: id,
 displayName, availability, acquire({ key, hostId, signal }) and
-release({ key, grantId }). `ServerAccessGrant` carries `{ id, serverUrl, headers?: Record<string, string> }`.
+release({ key, hostId, grantId }). `ServerAccessGrant` carries `{ id, serverUrl, headers?: Record<string, string> }`.
 Machines attach these optional headers to enrollment, HTTP, WebSocket and runtime
 requests. A direct grant omits headers; access providers own credential redemption.
 `ServerAccessSelection` selects a provider explicitly. Core persists only
@@ -2650,6 +2650,14 @@ Connect, then an available direct URL. Access covers account-pool and other
 runtime requests after enrolment. Connect redeems Cloud codes server-side and persists connectMachineId with the
 grant before returning it, allowing release to revoke even before enrollment.
 Host detail retains connectMachineId from trusted gate metadata for legacy grants.
+
+An Error named `experimental_ServerAccessRecoveryError` exposes its deliberate
+user-safe recovery message through the plugin boundary; ordinary errors stay
+redacted. Release receives a null grantId when acquire was interrupted. Core persists the
+provider before acquisition and retries release by key and hostId. Keep intent
+and credential-bearing grants in secret storage; only non-secret revocation
+metadata belongs in KV. Delivered v1 bundles upgrade locally to v2 headers in the
+CLI and installer, including one-time legacy Connect redemption.
 
 Before stabilization, prove retry-safe acquire/release across process death,
 credential privacy and revocation, explicit and automatic defaults, expired
@@ -2708,7 +2716,8 @@ with `status: "failed"` and `allocation: "none"`. Absence means the allocation
 outcome is unknown. Core skips vendor reconciliation only for that explicit
 result and still settles enrollment, access and the pending host. Providers
 must persist the rejection before returning so restart cannot allocate twice.
-Automatic unresolved cleanup retries stop after a 30-minute launch window;
-unresolved cleanup remains recorded. An explicit cancel retries cleanup even
+Unknown-allocation reconciliation stops after a 30-minute launch window;
+unresolved cleanup remains recorded. Known resources and access release keep
+retrying at removeRetryMs indefinitely. An explicit cancel retries cleanup even
 after automatic retries are exhausted. Stabilization requires distinguishing
 definitive vendor rejection from transport timeouts and ambiguous submissions.
