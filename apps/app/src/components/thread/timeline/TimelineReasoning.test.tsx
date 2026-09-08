@@ -62,7 +62,7 @@ afterEach(() => {
 });
 
 describe("reasoning disclosure lifecycle", () => {
-  it("keeps expansion, the icon, and prose styling when the live indicator becomes a completed row", () => {
+  it("keeps expansion and prose styling while adding an icon when thinking completes", () => {
     const { container, rerender } = render(<Fixture phase="live" />);
     fireEvent.click(screen.getByRole("button", { name: "Thinking…" }));
     expect(
@@ -70,7 +70,7 @@ describe("reasoning disclosure lifecycle", () => {
         .getByRole("button", { name: "Thinking…" })
         .getAttribute("aria-expanded"),
     ).toBe("true");
-    expect(container.querySelector('[data-icon="AiBrain01"]')).not.toBeNull();
+    expect(container.querySelector('[data-icon="AiBrain01"]')).toBeNull();
     rerender(<Fixture phase="completed" />);
     expect(
       screen
@@ -89,9 +89,9 @@ describe("reasoning disclosure lifecycle", () => {
     ).toBe("false");
   });
 
-  it("does not inherit expansion for the next thought and keeps the icon before text arrives", () => {
+  it("does not inherit expansion for the next thought and omits the icon before text arrives", () => {
     const { container, rerender } = render(<Fixture phase="live" text="" />);
-    expect(container.querySelector('[data-icon="AiBrain01"]')).not.toBeNull();
+    expect(container.querySelector('[data-icon="AiBrain01"]')).toBeNull();
     expect(screen.queryByRole("button")).toBeNull();
     rerender(<Fixture phase="live" />);
     fireEvent.click(screen.getByRole("button", { name: "Thinking…" }));
