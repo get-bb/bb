@@ -1,3 +1,4 @@
+import { isLockfile } from "./catalogue/source-contract.js";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { readFile, lstat, realpath } from "node:fs/promises";
@@ -20,7 +21,7 @@ const split = (buffer: Buffer) =>
   buffer.toString("utf8").split("\0").filter(Boolean);
 const forbidden =
   /(^|\/)(?:\.git|\.env[^/]*|node_modules|\.cache|\.ssh|\.aws|\.config|\.npmrc|\.pypirc|credentials[^/]*)(\/|$)|\.(?:pem|key|p12)$/i;
-const lockfile = /(^|\/)(?:.*lock.*|go\.sum|Cargo\.lock)$/i;
+
 const evidence =
   /(^|\/)(?:AGENTS\.md|package\.json|.*lock.*|.*\.toml|.*\.mod|.*\.sum|\.nvmrc|\.node-version|Dockerfile[^/]*|\.bb-env-setup\.sh|\.bb-env-teardown\.sh|\.worktreeinclude|.*\.ya?ml)$/;
 export async function inspectSource(path: string, hostId: string) {
@@ -54,7 +55,7 @@ export async function inspectSource(path: string, hostId: string) {
       sha256: hash(data.data),
       bytes: data.data.length,
       mode: data.executable ? ("100755" as const) : ("100644" as const),
-      kind: lockfile.test(name) ? "lockfile" : "setup",
+      kind: isLockfile(name) ? "lockfile" : "setup",
     });
   }
   return {

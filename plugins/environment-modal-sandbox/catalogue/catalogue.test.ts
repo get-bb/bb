@@ -317,3 +317,31 @@ describe("Dockerfile extension subset", () => {
     );
   });
 });
+it("bounds log pages even when JSON escaping expands large chunks", () => {
+  const { store, input } = setup();
+  const { build } = store.start(input, hash("account"), "app");
+  for (let i = 0; i < 20; i++)
+    store.event(build.buildId, "log", "\u0001".repeat(65536));
+  const page = store.events(build.buildId, 0, 200);
+  expect(Buffer.byteLength(JSON.stringify(page))).toBeLessThan(1024 * 1024);
+  expect(page.events).toHaveLength(2);
+  expect(
+    store.events(build.buildId, page.nextCursor, 200).events[0]?.sequence,
+  ).toBe(3);
+});
+it("replays a completed request after staging expires and resets GC state after an explicit rebuild", () => {
+  const { store, input, advance } = setup();
+  const { build } = store.start(input, hash("account"), "app");
+  store.ready(build.buildId, "im-first", {});
+  advance(24 * 60 * 60 * 1000 + 1);
+  expect(store.start(input, hash("account"), "app").build.buildId).toBe(
+    build.buildId,
+  );
+  store.claimDeletion(build.buildId, 0);
+  store.deleted(build.buildId);
+  expect(store.images("p", null, 50)).toHaveLength(0);
+  store.ready(build.buildId, "im-rebuilt", {});
+  store.reference(build.buildId, "allocation", "new-machine");
+  expect(store.images("p", null, 50)).toHaveLength(1);
+  expect(store.protected(build.buildId)).toBe(true);
+});

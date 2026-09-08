@@ -155,9 +155,9 @@ export function createModalSandboxPlugin(
             "Selected Modal image is missing; explicitly rebuild before launch",
           );
         const project = catalogue.store.project(context.project.id);
-        catalogue.store.reference(buildId, "allocation", context.key);
         context.signal.throwIfAborted();
         await bb.experimental_machines.prepareEnrollment({ key: context.key });
+        catalogue.store.reference(buildId, "allocation", context.key);
         context.signal.throwIfAborted();
         let sandbox = await backend.fromName(build.appName, context.key);
         const intentKey = `allocation/${context.key}`;
@@ -319,7 +319,10 @@ export function createModalSandboxPlugin(
         const stored = await bb.storage.kv.get<unknown>(
           `allocation/${context.key}`,
         );
-        if (stored === undefined) return { status: "removed" };
+        if (stored === undefined) {
+          catalogue.store.release("allocation", context.key);
+          return { status: "removed" };
+        }
         const intent = allocationSchema.parse(stored);
         const resolved = await currentSettings();
         if (!resolved.ok)

@@ -892,14 +892,14 @@ export interface PluginInteractionRequest {
   timeoutMs?: number;
 }
 
-export interface ExperimentalPluginCliContinuation {
+export interface experimental_PluginCliContinuation {
   argv: string[];
   delayMs: number;
 }
 
 export interface PluginCliResult {
   /** Print this page, then request the next page until interrupted. */
-  experimental_continue?: ExperimentalPluginCliContinuation;
+  experimental_continue?: experimental_PluginCliContinuation;
   exitCode: number;
   stdout?: string;
   stderr?: string;
@@ -922,7 +922,7 @@ export interface PluginCliOutputLimitError {
 
 /** Normalized host result returned by the plugin CLI HTTP/testing boundary. */
 export interface PluginCliExecutionResult {
-  experimental_continue?: ExperimentalPluginCliContinuation;
+  experimental_continue?: experimental_PluginCliContinuation;
   exitCode: number;
   stdout: string;
   stderr: string;

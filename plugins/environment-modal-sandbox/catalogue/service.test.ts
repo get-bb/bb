@@ -42,7 +42,6 @@ async function fixture() {
       tokenId: "token-id",
       tokenSecret: "private-value",
       appName: "test-app",
-      image: "unused",
       environmentVariables: {},
       timeoutMs: 60000,
       idleMs: 60000,
@@ -50,6 +49,15 @@ async function fixture() {
       memoryMiB: 4096,
     }),
     () => backend,
+    Date.now,
+    async () => ({
+      metadata: {
+        sha256: hash("fixture"),
+        version: "test",
+        protocolVersion: 1,
+      },
+      data: Buffer.from("fixture"),
+    }),
   );
   registerCatalogueCli(host.bb, service);
   const recipe = await service.handlers["recipe.put"]({
@@ -181,4 +189,40 @@ it("returns structured CAS conflict errors through the real RPC boundary", async
     code: "conflict",
     message: expect.stringContaining("latest revision 1"),
   });
+});
+it("fences a late worker result after restart and reconciliation", async () => {
+  const test = await fixture();
+  let finish: (id: string) => void = () => {};
+  test.backend.build = async () =>
+    new Promise<string>((resolve) => {
+      finish = resolve;
+    });
+  const first = await test.service.handlers["build.start"](test.input);
+  const running = test.service.sweep();
+  await vi.waitFor(() =>
+    expect(test.service.store.build(first.buildId).state).toBe("building"),
+  );
+  test.service.store.restart();
+  test.backend.reconcile = async () => "im-reconciled";
+  await test.service.sweep();
+  finish("im-late-worker");
+  await running;
+  expect(test.service.store.build(first.buildId)).toMatchObject({
+    state: "ready",
+    imageId: "im-reconciled",
+  });
+});
+it("redacts credentials split across vendor log chunks", async () => {
+  const test = await fixture();
+  test.backend.build = async (_request, hooks) => {
+    hooks.log("private-");
+    hooks.log("value\n");
+    return "im-safe";
+  };
+  const first = await test.service.handlers["build.start"](test.input);
+  await test.service.sweep();
+  const page = test.service.store.events(first.buildId, 0, 200);
+  expect(JSON.stringify(page)).not.toContain("private-");
+  expect(JSON.stringify(page)).not.toContain("value");
+  expect(JSON.stringify(page)).toContain("[REDACTED]");
 });

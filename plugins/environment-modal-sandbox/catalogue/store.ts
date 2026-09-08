@@ -1,3 +1,4 @@
+import type { ArtifactMetadata } from "./artifact.js";
 import { randomUUID } from "node:crypto";
 import type { BbPluginApi } from "@get-bb/plugin-sdk";
 import { z } from "zod";
@@ -185,6 +186,7 @@ export class Catalogue {
     },
     accountIdentity: string,
     appName: string,
+    baseArtifact: ArtifactMetadata | null = null,
   ) {
     return this.db
       .transaction(() => {
@@ -197,13 +199,8 @@ export class Catalogue {
           context.manifest.revision !== input.revision
         )
           throw new CatalogueError(409, "Build recipe/context mismatch");
-        if (!context.uploaded || context.expiresAt <= this.now())
-          throw new CatalogueError(
-            409,
-            "Context is incomplete or expired; upload it again",
-          );
         const payloadHash = hash(
-          JSON.stringify({ input, accountIdentity, appName }),
+          JSON.stringify({ input, accountIdentity, appName, baseArtifact }),
         );
         const request = this.db
           .prepare(
@@ -219,6 +216,11 @@ export class Catalogue {
             );
           return { build: this.build(previous.build_id), reused: true };
         }
+        if (!context.uploaded || context.expiresAt <= this.now())
+          throw new CatalogueError(
+            409,
+            "Context is incomplete or expired; upload it again",
+          );
         const buildHash = hash(
           JSON.stringify({
             recipeHash: recipe.recipeHash,
@@ -226,6 +228,7 @@ export class Catalogue {
             files: context.manifest.files,
             platform: baseManifest.platform,
             builder: baseManifest.builder,
+            baseArtifact,
           }),
         );
         const match = this.db
@@ -253,6 +256,7 @@ export class Catalogue {
         } else {
           build = {
             buildId: `b_${randomUUID()}`,
+            baseArtifact,
             projectId: input.projectId,
             recipeId: input.recipeId,
             revision: input.revision,
@@ -317,6 +321,15 @@ export class Catalogue {
       })
       .immediate();
   }
+  lease(id: string) {
+    return z
+      .object({ lease: z.string().nullable() })
+      .parse(
+        this.db
+          .prepare("SELECT lease FROM builds WHERE id=? AND user_id=?")
+          .get(id, this.owner),
+      ).lease;
+  }
   restart() {
     this.db
       .transaction(() => {
@@ -325,6 +338,9 @@ export class Catalogue {
           .all(this.owner);
         for (const row of rows) {
           const build = this.build(idRow.parse(row).id);
+          this.db
+            .prepare("UPDATE builds SET lease=NULL WHERE id=? AND user_id=?")
+            .run(build.buildId, this.owner);
           this.saveBuild({
             ...build,
             state: "reconciling",
@@ -378,6 +394,11 @@ export class Catalogue {
           /(?:Bearer\s+\S+|(?:token|secret|password|api[_-]?key)\s*[=:]\s*\S+|https?:\/\/[^\s/]+:[^\s@]+@[^\s]+)/gi,
           "[REDACTED]",
         );
+        safe = safe.replace(
+          /'[A-Za-z0-9+/=]{512,}'/g,
+          "'[encoded file contents]'",
+        );
+        const clipped = Buffer.byteLength(safe) > 65536;
         safe = Buffer.from(safe).subarray(0, 65536).toString("utf8");
         const insert = (eventKind: string, value: string) => {
           build.lastEventSequence++;
@@ -393,6 +414,8 @@ export class Catalogue {
             );
         };
         insert(kind, safe);
+        if (clipped)
+          insert("truncated", "One log chunk exceeded the 64 KiB chunk limit");
         const total = z
           .object({ bytes: z.number() })
           .parse(
@@ -421,7 +444,7 @@ export class Catalogue {
     const build = this.build(id);
     const events = this.db
       .prepare(
-        "SELECT sequence,kind,text,time FROM build_events WHERE build_id=? AND sequence>? ORDER BY sequence LIMIT ?",
+        "SELECT sequence,kind,text,time FROM (SELECT sequence,kind,text,time,sum(bytes) OVER (ORDER BY sequence) AS page_bytes FROM build_events WHERE build_id=? AND sequence>?) WHERE page_bytes<=131072 ORDER BY sequence LIMIT ?",
       )
       .all(id, cursor, limit)
       .map((row) => eventSchema.parse(row));
@@ -439,7 +462,7 @@ export class Catalogue {
         const build = this.build(id);
         this.db
           .prepare(
-            "INSERT INTO images(build_id,user_id,image_id,manifest_json) VALUES (?,?,?,?) ON CONFLICT(build_id) DO UPDATE SET image_id=excluded.image_id,manifest_json=excluded.manifest_json",
+            "INSERT INTO images(build_id,user_id,image_id,manifest_json) VALUES (?,?,?,?) ON CONFLICT(build_id) DO UPDATE SET image_id=excluded.image_id,manifest_json=excluded.manifest_json,marked_at=NULL,deleting=0,deleted_at=NULL",
           )
           .run(id, this.owner, imageId, JSON.stringify(imageManifest));
         this.saveBuild({ ...build, state: "ready", imageId, failure: null });

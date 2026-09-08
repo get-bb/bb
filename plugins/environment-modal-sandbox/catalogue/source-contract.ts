@@ -2,6 +2,9 @@ import { defineRpcContract } from "@get-bb/plugin-sdk";
 import { z } from "zod";
 import { fileSchema, manifestSchema, sourceSchema } from "./model.js";
 
+export const isLockfile = (path: string) =>
+  /(^|\/)(?:.*lock.*|go\.sum|Cargo\.lock)$/i.test(path);
+
 export const inspectionSchema = z.object({
   source: sourceSchema,
   evidence: z.array(fileSchema.extend({ kind: z.string() })),

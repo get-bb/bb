@@ -1,3 +1,4 @@
+import { artifactMetadataSchema } from "./artifact.js";
 import { spawn } from "node:child_process";
 import { z } from "zod";
 import { createImageBackend, type ImageBackendFactory } from "./backend.js";
@@ -5,6 +6,9 @@ import { createImageBackend, type ImageBackendFactory } from "./backend.js";
 const requestSchema = z
   .object({
     credentials: z.object({ tokenId: z.string(), tokenSecret: z.string() }),
+    baseArtifact: z
+      .object({ metadata: artifactMetadataSchema, data: z.string() })
+      .nullable(),
     name: z.string(),
     appName: z.string(),
     dockerfileText: z.string(),
@@ -32,6 +36,12 @@ export async function runImageBuildWorker() {
         name: input.name,
         appName: input.appName,
         dockerfileText: input.dockerfileText,
+        baseArtifact: input.baseArtifact
+          ? {
+              metadata: input.baseArtifact.metadata,
+              data: Buffer.from(input.baseArtifact.data, "base64"),
+            }
+          : null,
         files: new Map(
           input.files.map((file) => [
             file.path,
@@ -119,6 +129,12 @@ export function createWorkerImageBackend(
               name: request.name,
               appName: request.appName,
               dockerfileText: request.dockerfileText,
+              baseArtifact: request.baseArtifact
+                ? {
+                    metadata: request.baseArtifact.metadata,
+                    data: request.baseArtifact.data.toString("base64"),
+                  }
+                : null,
               files: [...request.files].map(([path, file]) => ({
                 path,
                 data: file.data.toString("base64"),

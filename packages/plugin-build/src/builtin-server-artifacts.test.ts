@@ -80,6 +80,7 @@ describe("builtin server artifacts", () => {
       const root = await mkdtemp(join(repositoryRoot, ".builtin-server-test-"));
       tempDirs.push(root);
       const source = join(repositoryRoot, "plugins", pluginDir);
+      if (pluginDir === "environment-modal-sandbox") await cp(join(source, "catalogue"), join(root, "catalogue"), { recursive: true });
       const fileNames = (await readdir(source)).filter(
         (fileName) =>
           fileName === "package.json" ||

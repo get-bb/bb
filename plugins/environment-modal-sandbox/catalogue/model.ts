@@ -1,3 +1,4 @@
+import { artifactMetadataSchema } from "./artifact.js";
 import { experimental_PluginRpcConflict } from "@get-bb/plugin-sdk";
 import { createHash } from "node:crypto";
 import { z } from "zod";
@@ -98,6 +99,7 @@ export const buildStateSchema = z.enum([
   "reconciling",
 ]);
 export const buildSchema = z.object({
+  baseArtifact: artifactMetadataSchema.nullable().default(null),
   buildId: idSchema,
   projectId: idSchema,
   recipeId: idSchema,

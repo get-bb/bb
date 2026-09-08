@@ -589,7 +589,7 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
         apiSymbols: [
           "PluginCli",
           "PluginCliResult",
-          "ExperimentalPluginCliContinuation",
+          "experimental_PluginCliContinuation",
           "experimental_PluginRpcConflict",
         ],
         firstParty: [

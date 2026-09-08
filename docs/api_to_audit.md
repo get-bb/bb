@@ -2754,7 +2754,7 @@ launch. With `scope: "thread"`, `id` identifies a thread and the server resolves
 its current launch through the machine replacement history on every request.
 Consumed original launches remain unavailable through launch scope. The thread
 picker uses thread scope; machine creation and CLI follow use launch scope.
-## `PluginCliResult.experimental_continue` and `experimental_PluginRpcConflict`
+## `PluginCliResult.experimental_continue`, `experimental_PluginCliContinuation`, and `experimental_PluginRpcConflict`
 
 `experimental_continue: {argv, delayMs}` asks the invoking CLI to print the
 current bounded response and request the next page, waiting at most 60 seconds.

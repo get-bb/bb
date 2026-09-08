@@ -751,3 +751,24 @@ it("reconciles uncertain named allocations without creating or bootstrapping", a
   expect(test.prepareEnrollment).not.toHaveBeenCalled();
   await test.harness.lifecycle.dispose();
 });
+it("does not retain an image when enrollment preparation fails before allocation", async () => {
+  const test = await setup();
+  try {
+    const store = new Catalogue(test.bb.storage.database(), test.bb.storage);
+    test.prepareEnrollment.mockRejectedValueOnce(
+      new Error("Configure machine access"),
+    );
+    expect(await test.provider.create(createContext())).toMatchObject({
+      status: "failed",
+    });
+    expect(store.protected("test-build")).toBe(false);
+    store.reference("test-build", "allocation", "interrupted-before-intent");
+    await test.provider.experimental_reconcileCleanup(
+      createContext("interrupted-before-intent"),
+    );
+    expect(store.protected("test-build")).toBe(false);
+    expect(test.backend.creates).toHaveLength(0);
+  } finally {
+    await test.harness.lifecycle.dispose();
+  }
+});

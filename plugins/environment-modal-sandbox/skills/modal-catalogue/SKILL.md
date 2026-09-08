@@ -42,7 +42,8 @@ All commands accept `--json`; CLI and SDK use the typed `modalRpcContract` in
 
 The versioned base includes Node 22.19.0, Debian bookworm, npm, build tools, bb,
 Codex and Claude Code. Its credential-free provenance is in
-`/opt/bb-project/base-manifest.json`. Project Dockerfiles support RUN, COPY,
+`/opt/bb-project/base-manifest.json`; the exact server bb package SHA-256 and
+daemon protocol version are in `/opt/bb-project/image-manifest.json`. Project Dockerfiles support RUN, COPY,
 ENV, WORKDIR and ARG. FROM is supplied by bb. Other instructions, heredocs,
 flags, symlinks, submodules and LFS contexts are rejected with actionable errors.
 COPY supports literal regular-file paths; use JSON syntax for spaces.
@@ -53,3 +54,11 @@ build for the project. They pin image/account/app/resources/policy in v4 state.
 Verification/promotion, readiness setup, lifecycle enforcement and the Settings
 editor are subsequent implementation parts; stored smoke/setup/policy fields
 are their durable inputs, not evidence that readiness has passed.
+
+SDK callers import `modalRpcContract` from the plugin and call
+`bb.sdk.plugins.callRpc({pluginId:"environment-modal-sandbox", method:"build.get",
+input:{buildId}, outputSchema:modalRpcContract["build.get"].output})`.
+The RPC method names are `project.inspect`, `recipe.put/get/list`,
+`context.prepare/upload/complete`, `build.start/events/get/cancel`, `image.list/gc`,
+and `project.configure/show`. Context upload tokens are scoped transport credentials
+and never part of reusable image provenance.

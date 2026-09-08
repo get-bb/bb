@@ -1,3 +1,4 @@
+import type { BaseArtifact } from "./artifact.js";
 import { ModalClient, NotFoundError } from "modal";
 import { z } from "zod";
 import { baseCommands, baseManifest } from "./base.js";
@@ -9,6 +10,7 @@ export interface ImageBuildRequest {
   name: string;
   appName: string;
   dockerfileText: string;
+  baseArtifact: BaseArtifact | null;
   files: ReadonlyMap<string, { data: Buffer; executable: boolean }>;
 }
 export interface ImageBuildHooks {
@@ -72,7 +74,19 @@ export const createImageBackend: ImageBackendFactory = (credentials) => {
               const image = z
                 .object({ imageId: z.string().min(1) })
                 .safeParse(item.value);
-              if (image.success) hooks.allocated(image.data.imageId);
+              const request = z
+                .object({
+                  image: z.object({ dockerfileCommands: z.array(z.string()) }),
+                })
+                .safeParse(call.request);
+              if (
+                image.success &&
+                request.success &&
+                request.data.image.dockerfileCommands.some((command) =>
+                  command.includes("/opt/bb-project/image-manifest.json"),
+                )
+              )
+                hooks.allocated(image.data.imageId);
             }
             return item.value;
           }
@@ -87,8 +101,21 @@ export const createImageBackend: ImageBackendFactory = (credentials) => {
         const app = await client.apps.fromName(request.appName, {
           createIfMissing: true,
         });
+        const artifact = request.baseArtifact;
+        if (!artifact)
+          throw new Error(
+            "Build requires the server’s exact credential-free bb package; explicitly rebuild",
+          );
         const commands = [
           ...baseCommands,
+          ...translateDockerfile(
+            "COPY bb-app.tgz /tmp/bb-app.tgz",
+            new Map([
+              ["bb-app.tgz", { data: artifact.data, executable: false }],
+            ]),
+          ),
+          `RUN echo "${artifact.metadata.sha256}  /tmp/bb-app.tgz" | sha256sum -c - && npm install -g /tmp/bb-app.tgz && rm /tmp/bb-app.tgz`,
+          "RUN node --version && npm --version && git --version && python3 --version && bb --version && bb machine enroll --help && codex --version && claude --version",
           ...translateDockerfile(request.dockerfileText, request.files),
           "RUN mkdir -p /opt/bb-project && printf '%s' " +
             quote(
@@ -96,6 +123,7 @@ export const createImageBackend: ImageBackendFactory = (credentials) => {
                 version: 1,
                 name: request.name,
                 base: baseManifest.version,
+                bbPackage: artifact.metadata,
               }),
             ) +
             " > /opt/bb-project/image-manifest.json",

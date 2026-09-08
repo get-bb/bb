@@ -9,6 +9,7 @@ Read the installed declarations for exact current signatures.
 - `PLUGIN_CLI_OUTPUT_MAX_BYTES`
 - `defineRpcContract`
 - `experimental_defineHostEntry`
+- `experimental_PluginRpcConflict`
 - `BbContext`
 - `BbNavigate`
 - `BbPluginApi`
@@ -131,6 +132,7 @@ Read the installed declarations for exact current signatures.
 - `PluginCliOutputLimitError`
 - `PluginCliRegistration`
 - `PluginCliResult`
+- `experimental_PluginCliContinuation`
 - `PluginCodeThemeData`
 - `PluginCodeThemeState`
 - `PluginCodeThemeTokenRule`
@@ -337,6 +339,7 @@ Read the installed declarations for exact current signatures.
 ## `@get-bb/plugin-sdk/host`
 
 - `experimental_defineHostEntry`
+- `experimental_PluginRpcConflict`
 - `experimental_filterResolvedNativeRoots`
 - `experimental_killProcessesWithCwdUnder` — reap processes whose cwd is under a
   workspace a provider is tearing down, before removing the directory

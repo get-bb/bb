@@ -8,8 +8,8 @@ Choose Modal sandbox in a project's environment picker to create a machine,
 have core clone and register that project's checkout, and run the thread through
 the Project checkout provider. The machine remains a normal bb execution
 target, so later threads can create Git worktrees or use other environment
-providers on the same sandbox. You can also create a projectless sandbox from
-Settings → Machines → Add machine and configure project sources later.
+providers on the same sandbox. New machines require a project and an explicitly
+built catalogue image. Pass its `buildId` to `bb machine create`.
 
 Creation prepares enrollment before vendor allocation and awaits a core resource
 checkpoint as soon as the allocation ID is known. The checkpoint contains no
@@ -18,6 +18,27 @@ that checkpoint without rerunning creation, enrollment, or bootstrap.
 Core owns project checkout setup and source registration after the machine
 connects, using the `project-checkout` environment row. Agent-provider
 installation and login are configured independently of the machine provider.
+
+## Project images
+
+Use `bb modal project inspect`, `recipe put --stdin --expected-revision 0`,
+`context upload`, and `image build --key` to create a project image. All commands
+support `--json`; `image logs BUILD --follow` streams bounded cursor pages.
+Recipes live in plugin SQLite storage. Context uploads contain tracked files at
+an identified commit plus an explicitly reviewed dirty overlay. See the bundled
+[command reference](skills/modal-catalogue/SKILL.md) for flags and typed RPC names.
+
+The TypeScript builder prepends a versioned Debian bookworm / Node 22.19 base,
+installs pinned Codex and Claude Code CLIs, and embeds the server's credential-free
+bb CLI/daemon package with a verified SHA-256 and protocol version. Build provenance
+records that package digest. Project Dockerfiles support RUN, COPY, ENV, WORKDIR,
+and ARG; FROM and other instructions fail with a source-line error.
+Images contain no enrollment or agent login state. Credentials enter only during
+runtime bootstrap. Rebuilding requires an explicit request; inspection reports
+staleness. GC marks owned images, waits 60 seconds, and rechecks references before
+deletion. Machine allocations, project promotion pointers, and verification records
+protect builds. Readiness verification, promotion, and the settings editor are
+subsequent parts of Modal v1.0.
 
 ## Lifecycle
 
@@ -39,8 +60,8 @@ server or plugin crash.
 - A Modal API token. Set its two halves in the plugin's `tokenId` and
   `tokenSecret` settings.
 - A git remote when creating through the project picker, because core clones
-  and registers that project. Standalone machine creation does not need a
-  project.
+  and registers that project. Standalone machine creation still selects a
+  project build.
 - A URL the sandbox can reach this bb at.
 
 ## How the sandbox reaches this bb
@@ -51,7 +72,7 @@ enrollment, durable identity, daemon startup, and waiting for a connection.
 The plugin supplies Modal exec as the transport, including stdin for secret
 bootstrap data. It does not store enrollment credentials in machine resources.
 
-Creation calls bootstrap with the durable creation key and installs the daemon.
+Creation calls bootstrap with the durable creation key and the preinstalled daemon.
 Resume calls the same helper with the original key and a preinstalled daemon,
 including when a previous attempt left the sandbox running. Core reuses the
 identity and restarts the daemon when needed. The plugin has no `serverUrl`
@@ -68,7 +89,7 @@ its process timeout. Retries reuse the named sandbox and the bootstrap key.
 | `tokenId`              | yes      | The token id half of a Modal API token.                                       |
 | `tokenSecret`          | yes      | The token secret half of the same token.                                      |
 | `appName`              | no       | The Modal app for sandboxes. Defaults to `bb-sandboxes`.                      |
-| `image`                | no       | Registry tag with Node 22.19+, npm, git, curl, and build tools.               |
+| `environmentVariables` | no       | Secret JSON object injected into the sandbox.                                 |
 | `timeoutMinutes`       | no       | Modal sandbox timeout, 1–1440 minutes.                                        |
 | `idleMinutes`          | no       | Snapshot after this many idle minutes. Defaults to 15; 0 disables suspension. |
 | `cpu`                  | no       | Reserved cores. Blank uses Modal's default.                                   |

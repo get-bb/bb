@@ -4,21 +4,28 @@ import { modalRpcContract } from "./contract.js";
 import { CatalogueError } from "./model.js";
 import type { CatalogueService } from "./service.js";
 
-export const commandNames = [
-  "project inspect",
-  "recipe put",
-  "recipe show",
-  "recipe list",
-  "context upload",
-  "image build",
-  "image logs",
-  "image status",
-  "image cancel",
-  "image list",
-  "image gc",
-  "project configure",
-  "project show",
-];
+const commandFlags: Record<string, readonly string[]> = {
+  "project inspect": ["project", "environment"],
+  "recipe put": ["project", "expected-revision", "input-text", "json-input"],
+  "recipe show": ["project"],
+  "recipe list": ["cursor", "limit"],
+  "context upload": [
+    "project",
+    "environment",
+    "recipe",
+    "revision",
+    "reviewed-dirty-json",
+  ],
+  "image build": ["project", "recipe", "revision", "context", "key"],
+  "image logs": ["follow", "cursor", "limit"],
+  "image status": [],
+  "image cancel": [],
+  "image list": ["project", "cursor", "limit"],
+  "image gc": ["apply", "dry-run"],
+  "project configure": ["project", "expected-revision", "json-input"],
+  "project show": ["project"],
+};
+export const commandNames = Object.keys(commandFlags);
 export function registerCatalogueCli(
   bb: BbPluginApi,
   service: CatalogueService,
@@ -50,6 +57,29 @@ export function registerCatalogueCli(
             rest[i + 1] && !rest[i + 1]!.startsWith("--") ? rest[++i]! : "true",
           );
         }
+        const command = `${group} ${action}`;
+        const allowed = commandFlags[command];
+        if (!allowed)
+          throw new CatalogueError(400, `Commands: ${commandNames.join(", ")}`);
+        for (const flag of flags.keys()) {
+          if (flag !== "--json" && !allowed.includes(flag.slice(2)))
+            throw new CatalogueError(
+              400,
+              `Unknown flag ${flag} for ${command}`,
+            );
+        }
+        const expectsBuild = [
+          "image logs",
+          "image status",
+          "image cancel",
+        ].includes(command);
+        if (positional.length !== (expectsBuild ? 1 : 0))
+          throw new CatalogueError(
+            400,
+            expectsBuild
+              ? "Provide exactly one build ID"
+              : "Unexpected positional argument",
+          );
         const required = (name: string) => {
           const value = flags.get(`--${name}`);
           if (!value || value === "true")
@@ -150,7 +180,7 @@ export function registerCatalogueCli(
             const input = modalRpcContract["build.events"].input.parse({
               buildId: positional[0],
               cursor: Number(flags.get("--cursor") ?? 0),
-              limit: flags.has("--limit") ? number("limit") : 10,
+              limit: flags.has("--limit") ? number("limit") : 200,
             });
             const events = await service.handlers["build.events"](input);
             result = events;

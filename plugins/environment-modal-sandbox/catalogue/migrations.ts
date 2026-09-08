@@ -17,4 +17,6 @@ export const migrations = [
   `CREATE TABLE context_uploads (context_id TEXT PRIMARY KEY REFERENCES contexts(id), token_hash TEXT NOT NULL, host_id TEXT NOT NULL)`,
   `CREATE TABLE context_chunks (context_id TEXT NOT NULL REFERENCES contexts(id), path TEXT NOT NULL, offset INTEGER NOT NULL, data BLOB NOT NULL, PRIMARY KEY(context_id,path,offset))`,
   `CREATE TABLE source_observations (user_id TEXT NOT NULL, project_id TEXT NOT NULL, data TEXT NOT NULL CHECK(json_valid(data)), checked_at INTEGER NOT NULL, PRIMARY KEY(user_id,project_id))`,
+  `CREATE TABLE base_artifacts (hash TEXT PRIMARY KEY, metadata_json TEXT NOT NULL CHECK(json_valid(metadata_json)), data BLOB NOT NULL)`,
+  `CREATE INDEX contexts_expiry ON contexts(user_id,expiry)`,
 ];

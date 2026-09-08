@@ -1,7 +1,7 @@
 import { hash } from "./model.js";
 
 export const baseManifest = {
-  version: "bb-modal-v1.0.0",
+  version: "bb-modal-v1.0.1",
   platform: "linux/amd64",
   registry:
     "node:22.19.0-bookworm@sha256:afff6d8c97964a438d2e6a9c96509367e45d8bf93f790ad561a1eaea926303d9",
@@ -9,10 +9,10 @@ export const baseManifest = {
   distribution: "Debian bookworm",
   packages: ["git", "curl", "ca-certificates", "build-essential", "python3"],
   npmPackages: {
-    "bb-app": "0.42.1",
     "@openai/codex": "0.153.4",
     "@anthropic-ai/claude-code": "2.1.263",
   },
+  bbPackage: "server-host-artifact-with-recorded-sha256",
   builder: "modal@0.10.0",
   credentials: "none",
 } as const;
@@ -21,7 +21,7 @@ export const baseCommands = [
   `RUN npm install -g ${Object.entries(baseManifest.npmPackages)
     .map(([name, version]) => `${name}@${version}`)
     .join(" ")} && npm cache clean --force`,
-  "RUN node --version && npm --version && git --version && python3 --version && bb --version && codex --version && claude --version",
+
   `RUN mkdir -p /opt/bb-project && printf '%s' '${Buffer.from(JSON.stringify(baseManifest)).toString("base64")}' | base64 -d > /opt/bb-project/base-manifest.json`,
 ];
 export const baseDigest = hash(

@@ -3,12 +3,22 @@ import { setTimeout as delay } from "node:timers/promises";
 import type { BbPluginApi, PluginRpcHandlers } from "@get-bb/plugin-sdk";
 import { z } from "zod";
 import type { ResolvedSettings } from "../configuration.js";
+import {
+  fetchBaseArtifact,
+  artifactMetadataSchema,
+  type BaseArtifact,
+} from "./artifact.js";
 import { baseManifest } from "./base.js";
 import { createImageBackend, type ImageBackendFactory } from "./backend.js";
 import { acceptChunk, chunkSchema, contextFiles } from "./context.js";
 import { modalRpcContract } from "./contract.js";
 import { CatalogueError, hash, type Build } from "./model.js";
-import { inspectionSchema, sourceContract } from "./source-contract.js";
+import {
+  inspectionSchema,
+  sourceContract,
+  isLockfile,
+} from "./source-contract.js";
+import { createBuildLogWriter } from "./logs.js";
 import { Catalogue } from "./store.js";
 
 export const accountIdentity = (
@@ -21,6 +31,8 @@ export function createCatalogueService(
   settings: () => Promise<ResolvedSettings>,
   backendFactory: ImageBackendFactory = createImageBackend,
   now = Date.now,
+  loadArtifact: () => Promise<BaseArtifact> = () =>
+    fetchBaseArtifact(bb.server.loopbackBaseUrl),
 ) {
   const store = new Catalogue(bb.storage.database(), bb.storage, now);
   const hosts = bb.hosts.experimental_client({ contract: sourceContract });
@@ -124,10 +136,21 @@ export function createCatalogueService(
     "build.start": async (input) => {
       await assertProject(input.projectId);
       const resolved = await settings();
+      const artifact = await loadArtifact();
+      store.db
+        .prepare(
+          "INSERT INTO base_artifacts VALUES (?,?,?) ON CONFLICT(hash) DO NOTHING",
+        )
+        .run(
+          artifact.metadata.sha256,
+          JSON.stringify(artifact.metadata),
+          artifact.data,
+        );
       const { build, reused } = store.start(
         input,
         await accountIdentity(resolved, backendFactory),
         resolved.appName,
+        artifact.metadata,
       );
       if (
         reused &&
@@ -182,7 +205,17 @@ export function createCatalogueService(
         candidates.push({
           buildId: build.buildId,
           imageId: row.image_id,
-          markedAt: row.marked_at,
+          markedAt: dryRun
+            ? row.marked_at
+            : z
+                .object({ marked_at: z.number().nullable() })
+                .parse(
+                  store.db
+                    .prepare(
+                      "SELECT marked_at FROM images WHERE build_id=? AND user_id=?",
+                    )
+                    .get(build.buildId, store.owner),
+                ).marked_at,
           deleted,
         });
       }
@@ -237,7 +270,12 @@ export function createCatalogueService(
                 (file) =>
                   previous.find((before) => before.path === file.path)
                     ?.sha256 !== file.sha256,
-              )
+              ) ||
+            previous.some(
+              (before) =>
+                isLockfile(before.path) &&
+                !facts.evidence.some((file) => file.path === before.path),
+            )
           : null;
       return {
         ...project,
@@ -284,10 +322,42 @@ export function createCatalogueService(
     signal: AbortSignal,
   ) {
     const backend = backendFactory(resolved);
+    const lease = store.lease(build.buildId);
+    const currentLease = () =>
+      store.lease(build.buildId) === lease &&
+      store.build(build.buildId).state === "building";
     const recipe = store.recipe(build.projectId, build.revision);
+    const logs = createBuildLogWriter((kind, text) => {
+      if (currentLease())
+        store.event(build.buildId, kind, text, [
+          resolved.tokenId,
+          resolved.tokenSecret,
+        ]);
+    });
     try {
+      const row = build.baseArtifact
+        ? store.db
+            .prepare(
+              "SELECT metadata_json,data FROM base_artifacts WHERE hash=?",
+            )
+            .get(build.baseArtifact.sha256)
+        : null;
+      const artifact = row
+        ? z
+            .object({ metadata_json: z.string(), data: z.instanceof(Buffer) })
+            .parse(row)
+        : null;
+      const baseArtifact = artifact
+        ? {
+            metadata: artifactMetadataSchema.parse(
+              JSON.parse(artifact.metadata_json),
+            ),
+            data: artifact.data,
+          }
+        : null;
       const imageId = await backend.build(
         {
+          baseArtifact,
           name: build.name,
           appName: build.appName,
           dockerfileText: recipe.dockerfileText,
@@ -295,12 +365,9 @@ export function createCatalogueService(
         },
         {
           signal,
-          log: (text) =>
-            store.event(build.buildId, "log", text, [
-              resolved.tokenId,
-              resolved.tokenSecret,
-            ]),
+          log: (text) => logs.append(text),
           allocated: (imageId) => {
+            if (!currentLease()) return;
             store.db
               .transaction(() => {
                 const current = store.build(build.buildId);
@@ -324,14 +391,18 @@ export function createCatalogueService(
           },
         },
       );
+      logs.flush();
+      if (!currentLease()) return;
       store.ready(build.buildId, imageId, {
         version: 1,
         base: baseManifest,
+        bbPackage: build.baseArtifact,
         recipe,
         context: store.context(build.contextId).manifest,
       });
     } catch (error) {
-      const current = store.build(build.buildId);
+      logs.flush();
+      if (!currentLease()) return;
       const text = error instanceof Error ? error.message : String(error);
       store.event(build.buildId, "log", text, [
         resolved.tokenId,
