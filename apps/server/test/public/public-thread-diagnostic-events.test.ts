@@ -144,7 +144,7 @@ it("excludes hidden diagnostics before budgets and cache sequence selection, ret
         sequence,
         type: "provider/unhandled",
         data: {
-          providerId: "claude-code",
+          providerId: sequence === 4 ? "claude-code" : "custom-provider",
           rawType: "sdk/message",
           rawEvent: {
             jsonrpc: "2.0",

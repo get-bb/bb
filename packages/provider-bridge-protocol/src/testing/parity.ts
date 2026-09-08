@@ -800,6 +800,7 @@ const ROW_ID_FIELDS = [
   "requestId",
   "messageId",
   "rowId",
+  "reasoningId",
   "agentId",
   "taskId",
   "backgroundTaskId",

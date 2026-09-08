@@ -3157,8 +3157,7 @@ const isNotDiagnosticEvent = sql`(
   AND (
     ${events.type} <> 'provider/unhandled'
     OR COALESCE((
-      json_extract(${events.data}, '$.providerId') = 'claude-code'
-      AND json_extract(${events.data}, '$.rawEvent.method') = 'sdk/message'
+      json_extract(${events.data}, '$.rawEvent.method') = 'sdk/message'
       AND json_extract(${events.data}, '$.rawEvent.params.message.subtype')
         IN ('model_fallback', 'model_refusal_fallback')
       AND json_type(${events.data}, '$.rawEvent.params.message.original_model') = 'text'
