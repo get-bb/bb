@@ -7,7 +7,7 @@ export const SETTINGS_NAV_SECTIONS = [
   { icon: "Palette", id: "appearance", label: "Appearance" },
   { icon: "SlidersHorizontal", id: "keyboard", label: "Keyboard" },
   { icon: "ChartColumn", id: "usage", label: "Usage limits" },
-  { icon: "Folder", id: "files", label: "Files" },
+  { icon: "File", id: "files", label: "Files" },
   { icon: "Laptop", id: "machines", label: "Machines" },
   { icon: "PackageReceive", id: "updates", label: "Updates" },
   { icon: "ElectricPlugs", id: "plugins", label: "Installed plugins" },
