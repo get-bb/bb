@@ -1,3 +1,4 @@
+import { withEnvironmentPathAdmission } from "../environments/path-admission.js";
 import {
   attachProviderLaunch,
   restoreProviderLaunchContext,
@@ -622,11 +623,17 @@ async function ensureEnvironmentRequested(
     if (!environment) {
       throw new ApiError(404, "environment_not_found", "Environment not found");
     }
-    const context = attachThreadToEnvironment(deps, {
-      context: args.context,
-      environment,
-      thread: args.thread,
-    });
+    const attachableContext = args.context;
+    const context = await withEnvironmentPathAdmission(
+      deps,
+      { ...environment, threadId: args.thread.id },
+      () =>
+        attachThreadToEnvironment(deps, {
+          context: attachableContext,
+          environment,
+          thread: args.thread,
+        }),
+    );
     if (environment.status === "provisioning") {
       return attachActiveProvisioningEnvironment(deps, {
         context,
@@ -643,6 +650,11 @@ async function ensureEnvironmentRequested(
     if (!environment) {
       throw new ApiError(404, "environment_not_found", "Environment not found");
     }
+    await withEnvironmentPathAdmission(
+      deps,
+      { ...environment, threadId: args.thread.id },
+      () => {},
+    );
     return {
       context: args.context,
       environment,
@@ -655,16 +667,26 @@ async function ensureEnvironmentRequested(
     );
   }
 
+  const pendingContext = args.context;
   const plan = await resolveEnvironmentCreationPlan(deps, {
     intent: args.context.request.environmentIntent,
     producedBy: args.context.request.producedBy,
     thread: args.thread,
   });
-  return createProvisioningEnvironment(deps, {
-    context: args.context,
-    thread: args.thread,
-    ...plan,
-  });
+  return withEnvironmentPathAdmission(
+    deps,
+    {
+      hostId: plan.environmentInput.hostId,
+      path: args.context.request.environmentIntent.produced?.path ?? null,
+      threadId: args.thread.id,
+    },
+    () =>
+      createProvisioningEnvironment(deps, {
+        context: pendingContext,
+        thread: args.thread,
+        ...plan,
+      }),
+  );
 }
 
 interface PrepareTargetPendingArgs {

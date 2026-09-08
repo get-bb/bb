@@ -1,3 +1,4 @@
+import { withEnvironmentPathAdmission } from "../environments/path-admission.js";
 import type { EnvironmentRow } from "@bb/db";
 import type { Thread } from "@bb/domain";
 import type { DbConnection } from "@bb/db";
@@ -12,7 +13,7 @@ import {
 type ThreadCommandEnvironmentSource = Pick<Thread, "environmentId">;
 
 interface RequireThreadCommandEnvironmentArgs {
-  thread: ThreadCommandEnvironmentSource;
+  thread: ThreadCommandEnvironmentSource & Pick<Thread, "id">;
 }
 
 interface RequireThreadHostCommandEnvironmentArgs {
@@ -61,7 +62,11 @@ export async function requireThreadCommandEnvironment(
     if (goneDetails && environment.environmentProviderId === null) {
       throwThreadEnvironmentUnavailable(goneDetails);
     }
-    return environment;
+    return withEnvironmentPathAdmission(
+      deps,
+      { ...environment, threadId: args.thread.id },
+      () => environment,
+    );
   }
 
   throwThreadEnvironmentUnavailable(

@@ -744,7 +744,7 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
           "Reserve a shared checkout before mutation with create.experimental_claimPath; core holds the host/path claim through attachment or cleanup",
           "Name a branch the way bb would, from the suggestedBranchName core hands every create, and stream progress with report.step and report.log",
           "Honor create and remove abort signals; core aborts create before asking remove to clean everything under the same path key",
-          "Work on the existing or newly provider-created machine carried by the selection, returning the path it produced",
+          "Work on the existing enrolled machine carried by the selection, returning the path it produced",
           "Return an opaque JSON resource handle from a created launch; core keeps up to 16 KiB private in the database and gives it back to replacement creates and removal callbacks",
         ],
         apiSymbols: [

@@ -1,3 +1,4 @@
+import { canonicalEnvironmentPath } from "./path-admission.js";
 import {
   createMetadataPendingContext,
   threadProvisionCommonPayloadSchema,
@@ -236,19 +237,20 @@ async function runCreate(
         pathKey: launch.pathKey,
         attempt: launch.attempt,
         rebuild: previous !== null,
-        experimental_claimPath: (value) => {
+        experimental_claimPath: async (value) => {
           const path = z
             .string()
             .min(1)
             .startsWith("/")
             .refine((path) => !path.includes("\0"))
             .parse(value);
-          if (controller.signal.aborted) return false;
-          return claimEnvironmentLaunchPath(
-            deps.db,
-            launch,
-            path.replace(/\/+$/u, "") || "/",
+          const canonical = await canonicalEnvironmentPath(
+            deps,
+            context.host.id,
+            path,
           );
+          if (controller.signal.aborted) return false;
+          return claimEnvironmentLaunchPath(deps.db, launch, canonical);
         },
         previous:
           previous === null
@@ -451,6 +453,7 @@ export function askProviderLaunch(
       pathKey,
       hostId: context.host.id,
       path: null,
+      claimPath: null,
       ownsPath: true,
       mergeBaseBranch: null,
       resource: null,
@@ -553,6 +556,7 @@ async function runCancel(
     row.cancelPending = false;
     row.hostId = null;
     row.path = null;
+    row.claimPath = null;
     row.resource = null;
   });
 }
@@ -793,7 +797,9 @@ export function providerLaunchHasPendingWork(
   if (row.cancelPending) return true;
   return (
     row.environmentId === null &&
-    (row.phase === "creating" || row.phase === "ready")
+    (row.phase === "creating" ||
+      row.phase === "ready" ||
+      row.phase === "failed")
   );
 }
 
@@ -894,6 +900,7 @@ export function persistPendingProviderRequest(
     pathKey: threadId,
     hostId: intent.machine.hostId,
     path: null,
+    claimPath: null,
     ownsPath: true,
     mergeBaseBranch: null,
     resource: null,

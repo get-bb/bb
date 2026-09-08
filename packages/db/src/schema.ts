@@ -1060,6 +1060,7 @@ export const environmentLaunches = sqliteTable(
     pathKey: text("path_key").notNull(),
     hostId: text("host_id"),
     path: text("path"),
+    claimPath: text("claim_path"),
     ownsPath: integer("owns_path", { mode: "boolean" }).notNull(),
     mergeBaseBranch: text("merge_base_branch"),
     resource: text("resource", { mode: "json" }).$type<JsonValue>(),

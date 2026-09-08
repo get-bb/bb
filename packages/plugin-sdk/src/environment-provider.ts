@@ -62,7 +62,7 @@ export interface PluginEnvironmentProviderCreateContext<
   attempt: number;
   pathKey: string;
   rebuild: boolean;
-  experimental_claimPath(path: string): boolean;
+  experimental_claimPath(path: string): Promise<boolean>;
   /** Resource is private to this provider; null after completed removal. */
   previous: { environment: Environment; resource: JsonValue | null } | null;
   report: PluginEnvironmentProviderProgress;

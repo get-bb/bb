@@ -370,6 +370,19 @@ export function registerTestHostRpcCapture(
         });
         return;
       }
+      if (command.type === "host.canonical_path") {
+        deps.hub.recordHostOnlineRpcResponse({
+          message: hostDaemonOnlineRpcResponseMessageSchema.parse({
+            type: "host-rpc.response",
+            requestId: message.requestId,
+            commandType: command.type,
+            ok: true,
+            result: { path: path.resolve(command.path) },
+          }),
+          sessionId: args.sessionId,
+        });
+        return;
+      }
       if (respondToRuntimeWorkspaceFileCommand(deps, args, message)) {
         return;
       }

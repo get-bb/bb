@@ -34,6 +34,7 @@ import {
   writeHostSkill,
 } from "./command-handlers/list-skills.js";
 import {
+  canonicalHostPath,
   browseHostDirectory,
   checkHostPathsExist,
   listHostFiles,
@@ -610,6 +611,7 @@ const onlineRpcHandlers: OnlineRpcHandlerMap = {
     readGlobalSkillsStatus(command, {}),
   "host.inspect_git_source": inspectHostGitSource,
   "host.list_branch_options": listHostBranchOptions,
+  "host.canonical_path": canonicalHostPath,
   "host.file_metadata": readHostFileMetadata,
   "host.read_file": readHostFile,
   "host.read_file_relative": readHostRelativeFile,

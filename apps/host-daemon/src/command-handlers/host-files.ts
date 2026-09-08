@@ -252,3 +252,21 @@ async function pathExists(path: string): Promise<boolean> {
     return true;
   }
 }
+
+export async function canonicalHostPath(
+  command: CommandOf<"host.canonical_path">,
+): Promise<{ path: string }> {
+  let candidate = path.resolve(command.path);
+  const suffix: string[] = [];
+  for (;;) {
+    try {
+      return { path: path.join(await fs.realpath(candidate), ...suffix) };
+    } catch (error) {
+      if (!isFsErrorWithCode(error, "ENOENT")) throw error;
+      const parent = path.dirname(candidate);
+      if (parent === candidate) throw error;
+      suffix.unshift(path.basename(candidate));
+      candidate = parent;
+    }
+  }
+}

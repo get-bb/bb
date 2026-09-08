@@ -2518,7 +2518,9 @@ first-party environment host module consumes them for checkout and worktree.
    one `stopScript` that is correct everywhere.
 
 - `PluginEnvironmentProviderCreateContext.experimental_claimPath(path)`: durable,
-  atomic host/path reservation on the launch row before provider mutation; false
-  for competing claims or stale attempts. Released by attachment, settled failure,
-  or completed cancellation cleanup. Stabilize after restart, cancellation,
+  asynchronous atomic host/path reservation on the launch row before provider
+  mutation; resolves false for competing claims or stale attempts. Core resolves
+  the canonical path on the selected host and stores it separately from the
+  display path. Released by attachment or completed cancellation cleanup,
+  including after failure. Stabilize after restart, cancellation,
   competing checkout, and path-normalization behavior has been audited.
