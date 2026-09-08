@@ -1,17 +1,17 @@
 {
-  "name": "bb-plugin-environment-ssh-machine",
+  "name": "bb-plugin-machine-tailscale",
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "Add machines from the bb server's SSH config",
+  "description": "Discover tailnet machines and connect them privately to bb",
   "engines": {
     "bb": ">=0.0"
   },
   "bb": {
-    "name": "SSH machine",
-    "description": "Add machines from the bb server's SSH config",
+    "name": "Tailscale machines",
+    "description": "Discover tailnet machines and connect them privately to bb",
     "branding": {
-      "icon": "Terminal"
+      "icon": "./tailscale-logo.svg"
     },
     "server": "./server.ts",
     "app": "./app.tsx"
@@ -20,9 +20,9 @@
     "bb-plugin"
   ],
   "scripts": {
-    "lint": "oxlint .",
     "test": "vitest run --config vitest.config.ts",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "lint": "oxlint *.ts *.tsx"
   },
   "dependencies": {
     "zod": "^4.3.6",

@@ -149,5 +149,9 @@
   "machine-e2b": {
     "category": "environments",
     "screenshots": []
+  },
+  "machine-tailscale": {
+    "category": "environments",
+    "screenshots": []
   }
 }

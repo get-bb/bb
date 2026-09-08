@@ -141,6 +141,12 @@ paired Connect first, then direct when a URL exists. `bb settings show --json`
 includes provider availability and the effective selection. Machines use this
 access for ongoing runtime requests, including account-pool endpoints.
 
+The Tailscale plugin can supply private machine access without a Direct URL.
+Use `bb tailscale devices`, `bb tailscale status`, and `bb tailscale configure
+<port>` to discover devices and validate a dedicated existing HTTPS Serve
+mapping. Choose Tailscale explicitly; it is not selected by Automatic.
+The plugin skill documents SSH prerequisites and safe endpoint cleanup.
+
 ## Local daemon lifecycle
 
 `bb machine start|stop|uninstall --host-id <id>` starts, stops or removes an

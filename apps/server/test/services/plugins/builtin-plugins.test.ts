@@ -211,6 +211,7 @@ describe("builtin plugin reconciliation", () => {
     expect(optionalNames).toEqual([
       "machine-e2b",
       "environment-ssh-machine",
+      "machine-tailscale",
       "machine-digitalocean",
       "browser-automation",
       "environment-modal-sandbox",
