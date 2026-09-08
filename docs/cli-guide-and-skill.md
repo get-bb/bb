@@ -15,4 +15,4 @@ and completion persist across server restarts. Attached checkout and
 personal-workspace paths skip both hooks. These semantics apply equally to CLI,
 SDK, and app launches; see [worktrees.md](worktrees.md).
 
-The Machines settings creation drawer prepares an existing-machine command when access is ready, otherwise shows setup guidance. Under Other options, users can select a project before reviewing provider inputs; the selected project is passed to the same `hosts.submit`/`bb machine create --project` launch surface.
+The Machines settings creation drawer prepares an existing-machine command when access is ready, otherwise shows setup guidance. After access is ready, Choose a machine provider lets users select a project before reviewing provider inputs; the selected project is passed to the same `hosts.submit`/`bb machine create --project` launch surface.

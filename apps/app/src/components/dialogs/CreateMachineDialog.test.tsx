@@ -57,9 +57,11 @@ vi.mock("@/lib/ws", () => ({
 afterEach(() => {
   cleanup();
   vi.clearAllMocks();
+  accessState.ready = false;
 });
 
-it("lists manual alongside other providers and never mints a legacy join code", async () => {
+it("lists manual alongside other providers once access is ready and never mints a legacy join code", async () => {
+  accessState.ready = true;
   vi.mocked(sdk.hosts.listProviders).mockResolvedValue(
     ["manual", "ssh", "modal", "digitalocean", "tailscale"].map((id) => ({
       id,
@@ -119,11 +121,10 @@ it("lists manual alongside other providers and never mints a legacy join code", 
     </MemoryRouter>,
     { wrapper },
   );
-  expect(
-    await screen.findByText("Another machine cannot use this address."),
-  ).toBeTruthy();
-  expect(sdk.hosts.submit).not.toHaveBeenCalled();
-  fireEvent.click(screen.getByRole("button", { name: "Other options" }));
+  await screen.findByRole("button", { name: "Copy command" });
+  fireEvent.click(
+    screen.getByRole("button", { name: "Choose a machine provider" }),
+  );
   fireEvent.click(
     await screen.findByRole("button", { name: "Existing machine" }),
   );
@@ -177,4 +178,28 @@ it("prepares the manual command immediately when access is ready", async () => {
   } finally {
     accessState.ready = false;
   }
+});
+
+it("offers access alternatives, not machine providers, while remote access is missing", async () => {
+  const { wrapper } = createQueryClientTestHarness();
+  render(
+    <MemoryRouter>
+      <CreateMachineDialog open onOpenChange={() => {}} />
+    </MemoryRouter>,
+    { wrapper },
+  );
+  expect(
+    (
+      await screen.findByRole("link", { name: "Set up bb connect" })
+    ).getAttribute("href"),
+  ).toBe("/settings/plugins/connect");
+  expect(
+    screen
+      .getByRole("link", { name: "Other ways to connect" })
+      .getAttribute("href"),
+  ).toBe("/settings/machines#advanced-machine-settings");
+  expect(
+    screen.queryByRole("button", { name: "Choose a machine provider" }),
+  ).toBeNull();
+  expect(sdk.hosts.submit).not.toHaveBeenCalled();
 });

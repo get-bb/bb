@@ -129,6 +129,10 @@ function CreateMachineContent({
   const createMachine = useMutation({
     meta: { showErrorToast: false },
     mutationFn: async () => {
+      if (!accessReady)
+        throw new Error(
+          "Configure a reachable server address before adding a machine.",
+        );
       if (selectedMachineProvider === null) {
         throw new Error("Select a machine provider.");
       }
@@ -187,6 +191,7 @@ function CreateMachineContent({
   }, [otherOptions, accessReady, selectedMachineProvider, createMachine]);
 
   const showOtherOptions = async () => {
+    if (!accessReady) return;
     if (launchId && createMachine.isPending)
       await sdk.hosts.cancel({ id: launchId });
     createController.current?.abort();
@@ -196,13 +201,13 @@ function CreateMachineContent({
     createKey.current = null;
     createMachine.reset();
   };
-  const otherOptionsLink = (
+  const providerOptionsLink = (
     <button
       type="button"
       onClick={() => void showOtherOptions()}
       className="text-xs text-subtle-foreground underline underline-offset-2 hover:text-foreground"
     >
-      Other options
+      Choose a machine provider
     </button>
   );
 
@@ -219,7 +224,7 @@ function CreateMachineContent({
         </DialogDescription>
       </DialogHeader>
       <div className="space-y-3">
-        {!otherOptions && !accessReady && (
+        {!accessReady && (
           <div
             role="status"
             className="space-y-3 rounded-md border border-border bg-muted/30 p-3"
@@ -258,11 +263,19 @@ function CreateMachineContent({
                   }
                 >
                   {access?.defaultProviderId === "connect"
-                    ? "Set up remote access"
+                    ? "Set up bb connect"
                     : "Configure machine access"}
                 </Link>
               </Button>
-              {otherOptionsLink}
+              {access?.defaultProviderId === "connect" && (
+                <Link
+                  to="/settings/machines#advanced-machine-settings"
+                  onClick={() => onOpenChange(false)}
+                  className="text-xs text-subtle-foreground underline underline-offset-2 hover:text-foreground"
+                >
+                  Other ways to connect
+                </Link>
+              )}
             </div>
           </div>
         )}
@@ -291,7 +304,7 @@ function CreateMachineContent({
               Preparing enrollment command…
             </p>
           )}
-        {otherOptions && (machineProviders?.length ?? 0) > 0 ? (
+        {otherOptions && accessReady && (machineProviders?.length ?? 0) > 0 ? (
           <div className="space-y-2">
             <div className="space-y-1 rounded-md border border-border p-1">
               {machineProviders?.map((provider) => {
@@ -454,7 +467,7 @@ function CreateMachineContent({
               ? "Waiting for the machine to connect…"
               : ""}
           </p>
-          {otherOptionsLink}
+          {providerOptionsLink}
         </div>
       )}
       <DialogFooter>
