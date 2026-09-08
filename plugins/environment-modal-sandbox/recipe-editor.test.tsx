@@ -52,6 +52,6 @@ it("never presents an unchecked source as fresh and combines changed inputs", ()
     }),
   ).toContain("Dockerfile and lockfiles changed");
   expect(stalenessLabel({ ...state, lockfilesChanged: false })).toContain(
-    "match the usable image",
+    "match the recorded build",
   );
 });

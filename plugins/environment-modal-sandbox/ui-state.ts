@@ -12,7 +12,7 @@ export function stalenessLabel(value: Staleness): string {
   if (value.lockfilesChanged) return "Lockfiles changed — rebuild explicitly";
   if (value.lockfilesChanged === null)
     return value.reason ?? "Source not checked";
-  return "Dockerfile and lockfiles match the usable image";
+  return "Dockerfile and lockfiles match the recorded build";
 }
 
 export function runningHourlyEstimate(cpuCores: number, memoryMiB: number) {
