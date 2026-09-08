@@ -17,6 +17,7 @@ const accessState = vi.hoisted(() => ({ ready: false }));
 vi.mock("@/hooks/queries/system-queries", () => ({
   useSystemConfig: () => ({
     data: {
+      serverUrl: "http://127.0.0.1:19635",
       serverAccess: {
         defaultProviderId: "connect",
         effectiveUrl: null,
@@ -118,7 +119,9 @@ it("lists manual alongside other providers and never mints a legacy join code", 
     </MemoryRouter>,
     { wrapper },
   );
-  expect(await screen.findByText("Set up machine access first.")).toBeTruthy();
+  expect(
+    await screen.findByText("Another machine cannot use this address."),
+  ).toBeTruthy();
   expect(sdk.hosts.submit).not.toHaveBeenCalled();
   fireEvent.click(screen.getByRole("button", { name: "Other options" }));
   fireEvent.click(

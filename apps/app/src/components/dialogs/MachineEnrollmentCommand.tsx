@@ -38,14 +38,15 @@ export function MachineEnrollmentCommand({
   }, [id, scope]);
   if (command === null) return null;
   return (
-    <div className="space-y-2 p-3">
-      <p className="text-sm">Run on the target machine:</p>
-      <pre className="whitespace-pre-wrap break-all rounded-md border border-border p-3 font-mono text-xs">
+    <div className="overflow-hidden rounded-md border border-border bg-muted/30">
+      <pre className="whitespace-pre-wrap break-all p-3 font-mono text-xs">
         {command}
       </pre>
-      <Button variant="outline" size="sm" onClick={() => void copy()}>
-        {copied ? "Copied" : "Copy command"}
-      </Button>
+      <div className="flex justify-end border-t border-border px-3 py-2">
+        <Button variant="outline" size="sm" onClick={() => void copy()}>
+          {copied ? "Copied" : "Copy command"}
+        </Button>
+      </div>
     </div>
   );
 }

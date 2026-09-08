@@ -64,6 +64,12 @@ function CreateMachineContent({
     access?.defaultProviderId === "direct" &&
     access.effectiveUrl !== null &&
     isLocalOnlyUrl(access.effectiveUrl);
+  const serverUrl =
+    access?.defaultProviderId === "direct"
+      ? access.effectiveUrl
+      : config.data?.serverUrl;
+  const unreachableUrl =
+    serverUrl && isLocalOnlyUrl(serverUrl) ? serverUrl : null;
   const accessReady =
     accessProvider?.availability.status === "available" && !localUrl;
   const createController = useRef<AbortController | null>(null);
@@ -180,6 +186,26 @@ function CreateMachineContent({
     }
   }, [otherOptions, accessReady, selectedMachineProvider, createMachine]);
 
+  const showOtherOptions = async () => {
+    if (launchId && createMachine.isPending)
+      await sdk.hosts.cancel({ id: launchId });
+    createController.current?.abort();
+    setOtherOptions(true);
+    setSelectedMachineProvider(null);
+    setLaunchId(null);
+    createKey.current = null;
+    createMachine.reset();
+  };
+  const otherOptionsLink = (
+    <button
+      type="button"
+      onClick={() => void showOtherOptions()}
+      className="text-xs text-subtle-foreground underline underline-offset-2 hover:text-foreground"
+    >
+      Other options
+    </button>
+  );
+
   return (
     <>
       <DialogHeader>
@@ -187,7 +213,9 @@ function CreateMachineContent({
         <DialogDescription>
           {otherOptions
             ? "Choose how to add your machine."
-            : "Run a command on another computer to connect it to bb."}
+            : !accessReady
+              ? "Pair a machine to run projects and threads on it."
+              : "Run this command on the machine you want to add. It installs bb and keeps the machine connected to this server."}
         </DialogDescription>
       </DialogHeader>
       <div className="space-y-3">
@@ -197,34 +225,45 @@ function CreateMachineContent({
             className="space-y-3 rounded-md border border-border bg-muted/30 p-3"
           >
             <p className="text-sm font-medium">
-              {localUrl
+              {unreachableUrl
                 ? "Another machine cannot use this address."
-                : "Set up machine access first."}
+                : "Remote access isn't ready yet."}
             </p>
             <p className="text-xs text-subtle-foreground">
-              {localUrl
-                ? `The server URL ${access?.effectiveUrl} points to the machine that runs the command. Choose an address other machines can reach.`
-                : access?.defaultProviderId === "connect"
-                  ? "Connect this server with bb connect, then come back here to copy the enrollment command."
-                  : accessProvider?.availability.status !== "available"
-                    ? (accessProvider?.availability.message ??
-                      "Choose how machines can reach the server in Advanced settings.")
-                    : "Checking machine access…"}
+              {unreachableUrl ? (
+                <>
+                  The pairing command would target{" "}
+                  <span className="font-mono">{unreachableUrl}</span>, which
+                  points to the machine that runs it, not to this bb. Set up
+                  remote access first, then come back here to get a pairing
+                  command that works from anywhere.
+                </>
+              ) : access?.defaultProviderId === "connect" ? (
+                "Other machines need a reachable address for this server. Set up remote access first, then come back here to copy the pairing command."
+              ) : accessProvider?.availability.status !== "available" ? (
+                (accessProvider?.availability.message ??
+                "Choose a reachable server address in Advanced settings.")
+              ) : (
+                "Checking remote access…"
+              )}
             </p>
-            <Button asChild size="sm" variant="outline">
-              <Link
-                onClick={() => onOpenChange(false)}
-                to={
-                  access?.defaultProviderId === "connect"
-                    ? getPluginConfigurationRoutePath({ pluginId: "connect" })
-                    : "/settings/machines#advanced-machine-settings"
-                }
-              >
-                {access?.defaultProviderId === "connect"
-                  ? "Set up remote access"
-                  : "Configure machine access"}
-              </Link>
-            </Button>
+            <div className="flex flex-wrap items-center gap-3">
+              <Button asChild size="sm" variant="outline">
+                <Link
+                  onClick={() => onOpenChange(false)}
+                  to={
+                    access?.defaultProviderId === "connect"
+                      ? getPluginConfigurationRoutePath({ pluginId: "connect" })
+                      : "/settings/machines#advanced-machine-settings"
+                  }
+                >
+                  {access?.defaultProviderId === "connect"
+                    ? "Set up remote access"
+                    : "Configure machine access"}
+                </Link>
+              </Button>
+              {otherOptionsLink}
+            </div>
           </div>
         )}
         {!otherOptions && createMachine.isError && (
@@ -394,7 +433,7 @@ function CreateMachineContent({
           </div>
         ) : null}
 
-        {createMachine.isPending && progress ? (
+        {otherOptions && createMachine.isPending && progress ? (
           <div className="space-y-2">
             <pre
               role="status"
@@ -408,24 +447,17 @@ function CreateMachineContent({
       {open && createMachine.isPending && launchId ? (
         <MachineEnrollmentCommand id={launchId} scope="launch" />
       ) : null}
+      {!otherOptions && accessReady && (
+        <div className="flex items-center justify-between gap-3">
+          <p role="status" className="text-xs text-subtle-foreground">
+            {createMachine.isPending && launchId
+              ? "Waiting for the machine to connect…"
+              : ""}
+          </p>
+          {otherOptionsLink}
+        </div>
+      )}
       <DialogFooter>
-        {!otherOptions && (
-          <Button
-            variant="ghost"
-            onClick={async () => {
-              if (launchId && createMachine.isPending)
-                await sdk.hosts.cancel({ id: launchId });
-              createController.current?.abort();
-              setOtherOptions(true);
-              setSelectedMachineProvider(null);
-              setLaunchId(null);
-              createKey.current = null;
-              createMachine.reset();
-            }}
-          >
-            Other options
-          </Button>
-        )}
         {createMachine.isPending && launchId ? (
           <Button
             variant="outline"
@@ -439,7 +471,7 @@ function CreateMachineContent({
           </Button>
         ) : null}
         <Button variant="ghost" onClick={() => onOpenChange(false)}>
-          Done
+          Close
         </Button>
       </DialogFooter>
     </>
