@@ -271,7 +271,8 @@ export function MachineEnvironmentSettings() {
               aria-label={`Variable name ${index + 1}`}
               placeholder="KEY"
               value={row.name}
-              disabled={disabled || row.existing}
+              disabled={disabled}
+              readOnly={row.existing}
               aria-invalid={touched.has(row.id) && issues[index] !== null}
               onBlur={() =>
                 setTouched((current) => new Set(current).add(row.id))
