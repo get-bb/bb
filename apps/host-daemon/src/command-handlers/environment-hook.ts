@@ -7,11 +7,17 @@ import {
   runTeardownScript,
 } from "../environment-lifecycle-script.js";
 
-const operations = new WeakMap<object, Map<string, AbortController>>();
+interface HookOperation {
+  controller: AbortController;
+  done: Promise<Record<string, never>>;
+  path: string;
+  kind: "setup" | "teardown";
+}
+const operations = new WeakMap<object, Map<string, HookOperation>>();
 
 function controllers(
   options: CommandDispatchOptions,
-): Map<string, AbortController> {
+): Map<string, HookOperation> {
   let active = operations.get(options.runtimeManager);
   if (active === undefined) {
     active = new Map();
@@ -25,11 +31,16 @@ export async function runEnvironmentHook(
   options: CommandDispatchOptions,
 ): Promise<Record<string, never>> {
   const active = controllers(options);
-  if (active.has(command.operationId))
-    throw new Error("Environment hook is already running");
+  const existing = active.get(command.operationId);
+  if (existing !== undefined) {
+    if (existing.path !== command.path || existing.kind !== command.kind)
+      throw new Error("Environment hook identity mismatch");
+    return existing.done;
+  }
+  if (command.resumeOnly)
+    throw new Error("Environment hook operation is unknown; cleanup pending");
   const controller = new AbortController();
-  active.set(command.operationId, controller);
-  try {
+  const done = (async (): Promise<Record<string, never>> => {
     const run = command.kind === "setup" ? runSetupScript : runTeardownScript;
     await run({
       workspacePath: command.path,
@@ -48,15 +59,24 @@ export async function runEnvironmentHook(
         }),
     });
     return {};
-  } finally {
-    active.delete(command.operationId);
-  }
+  })();
+  active.set(command.operationId, {
+    controller,
+    done,
+    path: command.path,
+    kind: command.kind,
+  });
+  return done;
 }
 
 export async function cancelEnvironmentHook(
   command: CommandOf<"environment.hook.cancel">,
   options: CommandDispatchOptions,
 ): Promise<Record<string, never>> {
-  controllers(options).get(command.operationId)?.abort();
+  const operation = controllers(options).get(command.operationId);
+  if (operation === undefined)
+    throw new Error("Environment hook operation is unknown; cleanup pending");
+  operation.controller.abort();
+  await operation.done.catch(() => undefined);
   return {};
 }

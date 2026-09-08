@@ -9,6 +9,8 @@ Keep the discoverable surfaces in sync whenever you add or change a `bb` CLI com
 Environment lifecycle hooks are core policy: bb runs `.bb-env-setup.sh` after
 an environment provider creates an owned path, and `.bb-env-teardown.sh` before
 provider removal. Each has a 15-minute timeout; setup failure fails provisioning,
-while reported teardown failure never blocks removal. Attached checkout and
+while reported teardown script failure does not block removal. Transport failure
+keeps cleanup pending until the daemon confirms hook termination. Hook identity
+and completion persist across server restarts. Attached checkout and
 personal-workspace paths skip both hooks. These semantics apply equally to CLI,
 SDK, and app launches; see [worktrees.md](worktrees.md).

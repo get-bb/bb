@@ -1,3 +1,5 @@
+import { environmentHookOperations } from "@bb/db";
+import { eq } from "drizzle-orm";
 import { randomUUID } from "node:crypto";
 import type { EnvironmentHookProgressMessage } from "@bb/host-daemon-contract";
 import type { PluginEnvironmentProviderProgress } from "@get-bb/plugin-sdk/environment-provider";
@@ -33,6 +35,7 @@ export function reportEnvironmentHookProgress(
 export async function runEnvironmentHook(
   deps: WorkSessionDeps,
   args: {
+    id: string;
     hostId: string;
     path: string;
     kind: "setup" | "teardown";
@@ -46,7 +49,29 @@ export async function runEnvironmentHook(
     active = new Map();
     reports.set(deps.db, active);
   }
-  const operationId = randomUUID();
+  const existing = deps.db
+    .select()
+    .from(environmentHookOperations)
+    .where(eq(environmentHookOperations.id, args.id))
+    .get();
+  if (existing?.finishedAt != null) {
+    if (existing.error !== null && args.kind === "setup")
+      throw new Error(existing.error);
+    return;
+  }
+  const operationId = existing?.operationId ?? randomUUID();
+  if (existing === undefined)
+    deps.db
+      .insert(environmentHookOperations)
+      .values({
+        id: args.id,
+        operationId,
+        hostId: args.hostId,
+        path: args.path,
+        kind: args.kind,
+        startedAt: Date.now(),
+      })
+      .run();
   active.set(operationId, { hostId: args.hostId, report: args.report });
   const abort = (): void => {
     void callHostOnlineRpc(deps, {
@@ -67,14 +92,21 @@ export async function runEnvironmentHook(
       timeoutMs: HOOK_TIMEOUT_MS + TRANSPORT_GRACE_MS,
       command: {
         type: "environment.hook.run",
+        resumeOnly: existing !== undefined,
         operationId,
         path: args.path,
         kind: args.kind,
         timeoutMs: HOOK_TIMEOUT_MS,
       },
     });
+    deps.db
+      .update(environmentHookOperations)
+      .set({ finishedAt: Date.now() })
+      .where(eq(environmentHookOperations.id, args.id))
+      .run();
     args.signal.throwIfAborted();
   } catch (error) {
+    await cancelPendingEnvironmentHook(deps, args.id);
     if (args.kind === "setup") throw error;
     const text = error instanceof Error ? error.message : String(error);
     args.report.log(text);
@@ -86,4 +118,29 @@ export async function runEnvironmentHook(
     args.signal.removeEventListener("abort", abort);
     active.delete(operationId);
   }
+}
+
+export async function cancelPendingEnvironmentHook(
+  deps: WorkSessionDeps,
+  id: string,
+): Promise<void> {
+  const operation = deps.db
+    .select()
+    .from(environmentHookOperations)
+    .where(eq(environmentHookOperations.id, id))
+    .get();
+  if (operation === undefined || operation.finishedAt !== null) return;
+  await callHostOnlineRpc(deps, {
+    hostId: operation.hostId,
+    timeoutMs: TRANSPORT_GRACE_MS,
+    command: {
+      type: "environment.hook.cancel",
+      operationId: operation.operationId,
+    },
+  });
+  deps.db
+    .update(environmentHookOperations)
+    .set({ finishedAt: Date.now(), error: "Environment hook cancelled" })
+    .where(eq(environmentHookOperations.id, id))
+    .run();
 }

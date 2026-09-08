@@ -178,6 +178,37 @@ afterEach(() => {
 });
 
 describe("core environment orchestration", () => {
+  it("claim then terminal create failure never runs teardown in the original checkout", async () =>
+    withTestHarness(async (harness) => {
+      const hooks = vi.fn();
+      const remove = vi.fn(async () => ({ status: "removed" as const }));
+      const fixture = setup(harness, {
+        create: async (context) => {
+          expect(await context.experimental_claimPath("/tmp/project")).toBe(
+            true,
+          );
+          return {
+            status: "failed",
+            failure: "terminal",
+            message: "checkout create failed",
+          };
+        },
+        remove,
+      });
+      registerTestHostRpcCapture(harness.deps, {
+        hostId: fixture.host.id,
+        sessionId: fixture.session.id,
+        onEnvironmentHook: hooks,
+      });
+      fixture.ask();
+      await fixture.settled();
+      expect(fixture.row().ownsPath).toBe(false);
+      await cancelProviderLaunch(harness.deps, fixture.thread.id);
+      expect(remove).toHaveBeenCalledOnce();
+      expect(hooks).not.toHaveBeenCalled();
+      expect(fixture.row().claimPath).toBeNull();
+    }));
+
   it.each([true, false])(
     "runs core hooks only for ownsPath=%s, in provider order",
     async (ownsPath) =>
