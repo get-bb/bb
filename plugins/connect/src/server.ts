@@ -49,7 +49,7 @@ export default async function plugin(bb: BbPluginApi) {
       bb.realtime.publish(CONNECT_REALTIME_CHANNEL, status),
   });
 
-  registerServerAccess(bb, tunnel);
+  await registerServerAccess(bb, tunnel);
 
   const mobilePairing: MobilePairingGate = {
     enabled: async () => (await bb.sdk.system.config()).experiments.mobileApp,

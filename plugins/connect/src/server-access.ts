@@ -32,7 +32,7 @@ function grantKey(hostId: string): string {
   return `server-access-grant:${hostId}`;
 }
 
-export function registerServerAccess(
+export async function registerServerAccess(
   bb: BbPluginApi,
   tunnel: {
     getCredential: ConnectTunnel["getCredential"];
@@ -50,6 +50,7 @@ export function registerServerAccess(
     key: z.string(),
     hostId: z.string(),
     code: z.string(),
+    expiresAt: z.number().finite().nullable().default(null),
     serverUrl: z.string().url(),
   });
   const stateSchema = z.record(
@@ -123,6 +124,11 @@ export function registerServerAccess(
       throw recoveryError(message);
     }
   }
+  await serialized(async () => {
+    for (const key of await bb.storage.kv.list("server-access-grant:")) {
+      await load(key.slice("server-access-grant:".length));
+    }
+  });
   bb.experimental_serverAccess.register({
     id: "connect",
     displayName: "bb Cloud",
@@ -153,10 +159,24 @@ export function registerServerAccess(
             );
         }
         let intent = existing?.intent;
-        if (intent && (await reconcile(hostId, intent))) intent = undefined;
+        if (intent) {
+          const consumed = await reconcile(hostId, intent);
+          if (
+            consumed ||
+            intent.expiresAt === null ||
+            intent.expiresAt <= Date.now()
+          )
+            intent = undefined;
+        }
         if (!intent) {
           const code = await fetchMachineCode(credential);
-          intent = { key, hostId, code: code.code, serverUrl: code.serverUrl };
+          intent = {
+            key,
+            hostId,
+            code: code.code,
+            serverUrl: code.serverUrl,
+            expiresAt: code.expiresAt,
+          };
         }
         state[hostId] = { intent };
         await storeState(state);

@@ -10,6 +10,7 @@ import {
   setPluginKvValue,
   deletePluginKvValue,
   pluginKv,
+  listPluginKvKeys,
 } from "@bb/db";
 import { registerServerAccess } from "./server-access.js";
 
@@ -30,15 +31,20 @@ const request = {
 const key = "server-access-grant:host-pending";
 const hosts: FakePluginHost[] = [];
 const databases: ReturnType<typeof createConnection>[] = [];
-function setup() {
+async function setup(
+  beforeInit?: (host: FakePluginHost) => Promise<void>,
+  settings?: Record<string, string>,
+) {
   const host = createFakePluginHost({
     pluginId: "connect",
+    settings,
     sdk: { hosts: { get: async () => ({ connectMachineId: null }) } },
   });
   const db = createConnection(":memory:");
   migrate(db);
   databases.push(db);
   Object.assign(host.bb.storage.kv, {
+    list: async (prefix?: string) => listPluginKvKeys(db, "connect", prefix),
     get: async (key: string) => {
       const value = getPluginKvValue(db, "connect", key);
       return value === undefined ? undefined : JSON.parse(value);
@@ -51,7 +57,8 @@ function setup() {
     },
   });
   hosts.push(host);
-  registerServerAccess(host.bb, tunnel);
+  await beforeInit?.(host);
+  await registerServerAccess(host.bb, tunnel);
   return host;
 }
 function provider(host: FakePluginHost) {
@@ -107,7 +114,7 @@ afterEach(async () => {
 describe("Connect server-owned machine access", () => {
   it("persists redemption before enrollment and revokes after restart", async () => {
     const api = cloud();
-    const original = setup();
+    const original = await setup();
     const grant = await provider(original).acquire(request);
     expect(grant).toEqual({
       id: request.hostId,
@@ -134,7 +141,7 @@ describe("Connect server-owned machine access", () => {
   });
   it("retains the device ID on revoke failure and retries after restart", async () => {
     const api = cloud();
-    const original = setup();
+    const original = await setup();
     await provider(original).acquire(request);
     api.failRevoke(true);
     await expect(
@@ -160,7 +167,7 @@ describe("Connect server-owned machine access", () => {
   });
   it("retains the device ID when pairing is unavailable", async () => {
     cloud();
-    const host = setup();
+    const host = await setup();
     await provider(host).acquire(request);
     const restarted = await host.harness.lifecycle.reload((bb) =>
       registerServerAccess(bb, { ...tunnel, getCredential: () => null }),
@@ -181,7 +188,7 @@ describe("Connect server-owned machine access", () => {
 });
 
 it("moves plaintext grants into secret settings before replacing SQLite metadata", async () => {
-  const host = setup();
+  const host = await setup();
   cloud();
   const grant = {
     id: request.hostId,
@@ -206,7 +213,7 @@ it("moves plaintext grants into secret settings before replacing SQLite metadata
 it.each([true, false])(
   "reconciles lost redemption responses with lookup available=%s without blindly minting",
   async (available) => {
-    const host = setup();
+    const host = await setup();
     const active = new Set<string>();
     let minted = 0;
     let redeemed = 0;
@@ -281,7 +288,7 @@ it.each([true, false])(
 );
 
 it("serializes concurrent acquisitions so release revokes every created device", async () => {
-  const host = setup();
+  const host = await setup();
   const api = cloud();
   const grants = await Promise.all([
     provider(host).acquire(request),
@@ -298,7 +305,7 @@ it("serializes concurrent acquisitions so release revokes every created device",
 });
 
 it("revokes a known device from SQLite metadata even if its secret is missing", async () => {
-  const host = setup();
+  const host = await setup();
   const api = cloud();
   await host.bb.storage.kv.set(key, {
     connectMachineId: "cloud-id",
@@ -317,7 +324,7 @@ it("revokes a known device from SQLite metadata even if its secret is missing", 
 });
 
 it("revokes both server-owned and delivered-v1 device identities after a pending bundle upgrade", async () => {
-  const host = setup();
+  const host = await setup();
   cloud();
   await provider(host).acquire(request);
   host.harness.sdk.stub("hosts.get", async () => ({
@@ -338,3 +345,124 @@ it("revokes both server-owned and delivered-v1 device identities after a pending
   });
   expect(revoked).toEqual(["cloud-id", "legacy-delivered-device"]);
 });
+
+it("migrates every dormant plaintext grant before registering access", async () => {
+  const host = await setup(async (host) => {
+    for (const id of ["dormant-a", "dormant-b"]) {
+      await host.bb.storage.kv.set(`server-access-grant:${id}`, {
+        connectMachineId: `device-${id}`,
+        grant: {
+          id,
+          serverUrl: credential.serverUrl,
+          headers: { authorization: `private-${id}` },
+        },
+      });
+    }
+  });
+  expect(provider(host)).toBeDefined();
+  expect(
+    JSON.stringify(databases.at(-1)!.select().from(pluginKv).all()),
+  ).not.toContain("private-");
+  for (const id of ["dormant-a", "dormant-b"]) {
+    expect(
+      await provider(host).acquire({ ...request, hostId: id }),
+    ).toMatchObject({ headers: { authorization: `private-${id}` } });
+  }
+});
+
+it("leaves plaintext intact after a failed secret migration and retries next initialization", async () => {
+  await expect(
+    setup(async (host) => {
+      await host.bb.storage.kv.set(key, {
+        connectMachineId: "old-device",
+        grant: {
+          id: request.hostId,
+          serverUrl: credential.serverUrl,
+          headers: { authorization: "old-private" },
+        },
+      });
+      const define = host.bb.settings.define.bind(host.bb.settings);
+      vi.spyOn(host.bb.settings, "define").mockImplementation(
+        (descriptors) => ({
+          ...define(descriptors),
+          experimental_set: async () => {
+            throw new Error("Secret write failed");
+          },
+        }),
+      );
+    }),
+  ).rejects.toThrow("Secret write failed");
+  const host = hosts.at(-1)!;
+  expect(host.harness.registrations.serverAccessProviders.size).toBe(0);
+  expect(JSON.stringify(await host.bb.storage.kv.get(key))).toContain(
+    "old-private",
+  );
+  vi.restoreAllMocks();
+  const restarted = await host.harness.lifecycle.reload(async (bb) => {
+    Object.assign(bb.storage.kv, host.bb.storage.kv);
+    await registerServerAccess(bb, tunnel);
+  });
+  hosts.push(restarted);
+  expect(JSON.stringify(await restarted.bb.storage.kv.get(key))).not.toContain(
+    "old-private",
+  );
+  expect(await provider(restarted).acquire(request)).toMatchObject({
+    headers: { authorization: "old-private" },
+  });
+});
+
+it.each(["expired", "valid", "legacy"])(
+  "renews only definitively unconsumed expired or undated intents: %s",
+  async (age) => {
+    const host = await setup(undefined, {
+      machineAccessSecrets: JSON.stringify({
+        [request.hostId]: {
+          intent: {
+            key: request.key,
+            hostId: request.hostId,
+            code: "OLD-CODE",
+            serverUrl: credential.serverUrl,
+            ...(age === "legacy"
+              ? {}
+              : {
+                  expiresAt: Date.now() + (age === "expired" ? -1000 : 600000),
+                }),
+          },
+        },
+      }),
+    });
+    const issued: string[] = [];
+    const redeemed: string[] = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+        if (init?.method === "GET")
+          return Response.json({ consumed: false, machineId: null });
+        if (String(input).endsWith("/machine-code")) {
+          issued.push("NEW-CODE");
+          return Response.json({
+            code: "NEW-CODE",
+            expiresInMs: 600000,
+            serverUrl: credential.serverUrl,
+          });
+        }
+        expect(String(input)).toContain("/redeem-machine");
+        redeemed.push(JSON.parse(String(init?.body)).code);
+        return Response.json({
+          credential: "new-private",
+          machineId: "new-device",
+          serverUrl: credential.serverUrl,
+        });
+      }),
+    );
+    await expect(provider(host).acquire(request)).resolves.toMatchObject({
+      headers: { "x-bb-connect-machine": "new-private" },
+    });
+    expect(issued).toEqual(age === "valid" ? [] : ["NEW-CODE"]);
+    expect(redeemed).toEqual([age === "valid" ? "OLD-CODE" : "NEW-CODE"]);
+    expect(await host.bb.storage.kv.get(key)).toEqual({
+      connectMachineId: "new-device",
+      grantId: request.hostId,
+    });
+  },
+);

@@ -21,11 +21,14 @@ PR verification report; no caller name field is invented.
 
 Acquisition intent and credential-bearing grants use the SDK secret settings path
 (private 0600 files outside SQLite). KV holds only grant/device IDs, acquisition
-keys, hashed code IDs and recovery messages. Existing plaintext grants migrate to
-secret storage before their KV value is replaced with metadata.
+keys, hashed code IDs and recovery messages. All existing plaintext grants migrate
+during plugin initialization, before the provider is registered. Secret persistence succeeds before each KV value is
+replaced with metadata; a failed migration retries on the next initialization.
 
-Intent is durable before redemption. After an interrupted request, acquire and
-release use authenticated GET /api/connect/machine-code with the original code
+Intent, including code expiry, is durable before redemption. A lookup-confirmed
+unconsumed code is renewed when expired (or when legacy intent has no expiry);
+a still-valid code is reused. Ambiguous lookup results retain the recovery warning.
+After an interrupted request, acquire and release use authenticated GET /api/connect/machine-code with the original code
 in x-bb-connect-code. Cloud resolves the exact server-owned code to its device;
 the plugin revokes that device before requesting a replacement. Cloud must deploy
 the lookup and deterministic code-derived device identity together. Until then,
