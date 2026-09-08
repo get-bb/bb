@@ -4442,17 +4442,26 @@ describe("public thread data routes", () => {
       registerHostRpcResponder(harness, {
         hostId: host.id,
         sessionId: session.id,
-        handle: () => ({
-          ok: true,
-          result: {
-            path: `${environment.path}/public/chart.png`,
-            content: "iVBORw==",
-            contentEncoding: "base64",
-            mimeType: "image/png",
-            sizeBytes: 4,
-            sha256: "0".repeat(64),
-          },
-        }),
+        handle: (request) => {
+          expect(request.command).toMatchObject({
+            type: "host.read_file",
+            ifNoneMatch: {
+              kind: "sha256",
+              values: ["0".repeat(64)],
+            },
+          });
+          return {
+            ok: true,
+            result: {
+              path: `${environment.path}/public/chart.png`,
+              contentEncoding: "base64",
+              mimeType: "image/png",
+              sizeBytes: 4,
+              sha256: "0".repeat(64),
+              notModified: true,
+            },
+          };
+        },
       });
 
       const fileResponse = await harness.app.request(

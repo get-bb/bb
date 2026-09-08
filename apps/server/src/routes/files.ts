@@ -18,6 +18,7 @@ import {
 import {
   createDaemonFileContentResponse,
   type DaemonFileReadResult,
+  requireDaemonFileContentResult,
   remapDaemonFileRouteError,
   serveDaemonFileContent,
 } from "../services/hosts/daemon-file-response.js";
@@ -217,7 +218,7 @@ export function registerFileRoutes(app: Hono, deps: AppDeps): void {
             : {}),
         },
       });
-      return context.json(result);
+      return context.json(requireDaemonFileContentResult(result));
     } catch (error) {
       return remapDaemonFileRouteError(error);
     }
@@ -405,10 +406,14 @@ export function registerFileRoutes(app: Hono, deps: AppDeps): void {
     ) {
       throw new ApiError(400, "invalid_path", "Invalid preview path", false);
     }
+    const isHtmlPath = isHtmlMimeType(mimeTypes.lookup(rawPath) || null);
     return serveDaemonFileContent(
       deps,
       {
         hostId: lease.hostId,
+        ...(!isHtmlPath
+          ? { ifNoneMatch: context.req.header("if-none-match") }
+          : {}),
         path: joinHostPath(lease.rootPath, segments),
         rootPath: lease.rootPath,
       },

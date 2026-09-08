@@ -655,6 +655,7 @@ export function registerProjectRoutes(app: Hono, deps: AppDeps): void {
       deps,
       {
         hostId: target.hostId,
+        ifNoneMatch: context.req.header("if-none-match"),
         path: path.join(target.path, filePath.relativePath),
         rootPath: target.path,
       },

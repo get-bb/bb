@@ -496,7 +496,9 @@ describe("workspace command dispatch", () => {
     );
 
     expect(result.path).toBe(filePath);
-    expect(result.content).toBe("durable thread notes");
+    expect("content" in result ? result.content : undefined).toBe(
+      "durable thread notes",
+    );
     expect(result.contentEncoding).toBe("utf8");
     expect(result.sizeBytes).toBe("durable thread notes".length);
   });
@@ -516,7 +518,9 @@ describe("workspace command dispatch", () => {
     );
 
     expect(result.path).toBe(filePath);
-    expect(result.content).toBe("explicit host notes");
+    expect("content" in result ? result.content : undefined).toBe(
+      "explicit host notes",
+    );
     expect(result.contentEncoding).toBe("utf8");
     expect(result.sizeBytes).toBe("explicit host notes".length);
   });
@@ -558,7 +562,9 @@ describe("workspace command dispatch", () => {
     );
 
     expect(result.path).toBe(imagePath);
-    expect(result.content).toBe(imageBytes.toString("base64"));
+    expect("content" in result ? result.content : undefined).toBe(
+      imageBytes.toString("base64"),
+    );
     expect(result.contentEncoding).toBe("base64");
     expect(result.mimeType).toBe("image/png");
     expect(result.sizeBytes).toBe(imageBytes.length);
@@ -894,7 +900,7 @@ describe("workspace command dispatch", () => {
 
     expect(result.mimeType).toBe("image/svg+xml");
     expect(result.contentEncoding).toBe("utf8");
-    expect(result.content).toBe(svg);
+    expect("content" in result ? result.content : undefined).toBe(svg);
   });
 
   it("falls back to base64 for declared text files whose bytes are not valid utf8", async () => {
@@ -915,6 +921,8 @@ describe("workspace command dispatch", () => {
 
     expect(result.mimeType).toBe("text/plain");
     expect(result.contentEncoding).toBe("base64");
-    expect(result.content).toBe(bytes.toString("base64"));
+    expect("content" in result ? result.content : undefined).toBe(
+      bytes.toString("base64"),
+    );
   });
 });

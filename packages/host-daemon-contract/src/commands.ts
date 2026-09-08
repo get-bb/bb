@@ -409,12 +409,26 @@ const interactiveResolveCommandSchema = hostDaemonThreadTargetSchema
   })
   .strict();
 
+const hostReadFileIfNoneMatchSchema = z.discriminatedUnion("kind", [
+  z.object({ kind: z.literal("any") }).strict(),
+  z
+    .object({
+      kind: z.literal("sha256"),
+      values: z.array(z.string().regex(/^[a-f0-9]{64}$/u)).min(1),
+    })
+    .strict(),
+]);
+export type HostReadFileIfNoneMatch = z.infer<
+  typeof hostReadFileIfNoneMatchSchema
+>;
+
 const hostReadFileCommandSchema = z
   .object({
     type: z.literal("host.read_file"),
     path: z.string().min(1),
     rootPath: z.string().min(1).optional(),
     ref: z.string().min(1).optional(),
+    ifNoneMatch: hostReadFileIfNoneMatchSchema.optional(),
   })
   .superRefine((command, context) => {
     if (command.ref !== undefined && command.rootPath === undefined) {
@@ -959,6 +973,15 @@ const fileReadResultSchema = z.object({
   modifiedAtMs: z.number().nonnegative().optional(),
   sha256: z.string(),
 });
+
+const fileReadNotModifiedResultSchema = fileReadResultSchema
+  .omit({ content: true })
+  .extend({ notModified: z.literal(true) });
+
+const hostReadFileResultSchema = z.union([
+  fileReadResultSchema,
+  fileReadNotModifiedResultSchema,
+]);
 
 const fileWriteResultSchema = z.discriminatedUnion("outcome", [
   z
@@ -1717,7 +1740,7 @@ export const hostDaemonCommandRegistry = {
   "host.read_file": defineHostDaemonCommandDescriptor({
     type: "host.read_file",
     schema: hostReadFileCommandSchema,
-    resultSchema: fileReadResultSchema,
+    resultSchema: hostReadFileResultSchema,
     transport: "onlineRpc",
     retryable: true,
     flushEventsBeforeResult: false,

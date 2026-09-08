@@ -36,6 +36,7 @@ import {
 } from "../services/lib/entity-lookup.js";
 import { runLiveCommandAndWait } from "../services/hosts/live-command-wait.js";
 import { callHostRetryableOnlineRpc } from "../services/hosts/online-rpc.js";
+import { requireDaemonFileContentResult } from "../services/hosts/daemon-file-response.js";
 import { generateCommitMessage } from "../services/ai/commit-message.js";
 import { archiveEnvironmentThreads } from "../services/threads/thread-archive.js";
 import {
@@ -546,12 +547,13 @@ export function registerEnvironmentRoutes(app: Hono, deps: AppDeps): void {
         ...(ref !== undefined ? { ref } : {}),
       },
     });
+    const contentResult = requireDaemonFileContentResult(result);
     return context.json({
-      path: result.path,
-      content: result.content,
-      contentEncoding: result.contentEncoding,
-      ...(result.mimeType ? { mimeType: result.mimeType } : {}),
-      sizeBytes: result.sizeBytes,
+      path: contentResult.path,
+      content: contentResult.content,
+      contentEncoding: contentResult.contentEncoding,
+      ...(contentResult.mimeType ? { mimeType: contentResult.mimeType } : {}),
+      sizeBytes: contentResult.sizeBytes,
     });
   });
 

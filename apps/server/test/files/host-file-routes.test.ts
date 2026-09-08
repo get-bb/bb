@@ -101,11 +101,11 @@ describe("host file routes", () => {
               ok: true,
               result: {
                 path: "/notes/chart.png",
-                content: "iVBORw==",
                 contentEncoding: "base64",
                 mimeType: "image/png",
                 sha256: "d".repeat(64),
                 sizeBytes: 4,
+                notModified: true,
               },
             };
           }
@@ -159,7 +159,16 @@ describe("host file routes", () => {
       );
       expect(content.headers.get("x-content-type-options")).toBe("nosniff");
       await expect(content.text()).resolves.toContain("<h1>Report</h1>");
-      expect(commands.slice(-1)).toEqual([
+      expect(commands).toEqual([
+        {
+          type: "host.read_file",
+          path: "/notes/chart.png",
+          rootPath: "/notes",
+          ifNoneMatch: {
+            kind: "sha256",
+            values: ["d".repeat(64)],
+          },
+        },
         {
           type: "host.read_file",
           path: "/notes/report.html",

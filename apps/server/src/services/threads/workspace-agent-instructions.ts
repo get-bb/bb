@@ -5,6 +5,7 @@ import { COMMAND_TIMEOUT_MS } from "../../constants.js";
 import { ApiError } from "../../errors.js";
 import type { LoggedWorkSessionDeps, ServerLogger } from "../../types.js";
 import { callHostRetryableOnlineRpc } from "../hosts/online-rpc.js";
+import { requireDaemonFileContentResult } from "../hosts/daemon-file-response.js";
 import { isFsErrorWithCode } from "../lib/fs-errors.js";
 
 export const DATA_DIR_AGENT_INSTRUCTIONS_RELATIVE_PATH = "AGENTS.md";
@@ -75,10 +76,11 @@ export async function readWorkspaceAgentInstructions(
     throw error;
   }
 
+  const contentResult = requireDaemonFileContentResult(result);
   const content =
-    result.contentEncoding === "utf8"
-      ? result.content
-      : Buffer.from(result.content, "base64").toString("utf8");
+    contentResult.contentEncoding === "utf8"
+      ? contentResult.content
+      : Buffer.from(contentResult.content, "base64").toString("utf8");
   const trimmed = content.trim();
   return trimmed.length > 0 ? trimmed : null;
 }

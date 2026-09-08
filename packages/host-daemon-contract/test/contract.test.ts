@@ -545,6 +545,18 @@ const WORKSPACE_DIFF_PATCH_AVAILABLE_RESULT: JsonObject = {
 const ADDITIONAL_ONLINE_RPC_RESPONSE_ROUND_TRIP_CASES: OnlineRpcResponseRoundTripCase[] =
   [
     {
+      name: "host.read_file not-modified result",
+      commandType: "host.read_file",
+      result: {
+        path: "/tmp/preview.png",
+        contentEncoding: "base64",
+        mimeType: "image/png",
+        sizeBytes: 1024,
+        sha256: "a".repeat(64),
+        notModified: true,
+      },
+    },
+    {
       name: "workspace.status available result",
       commandType: "workspace.status",
       result: WORKSPACE_STATUS_AVAILABLE_RESULT,
@@ -655,6 +667,8 @@ const INTENTIONAL_OPTIONAL_HOST_DAEMON_FIELDS: Record<string, string> = {
     "project.clone omits targetPath when the daemon should derive its default checkout location for the project.",
   "hostDaemonOnlineRpcCommandSchema.expectedSha256":
     "host.write_file may omit expectedSha256 for unconditional writes; a hash is the compare-and-swap guard and null means create-only.",
+  "hostDaemonOnlineRpcCommandSchema.ifNoneMatch":
+    "host.read_file omits ifNoneMatch for unconditional reads; when present the daemon may omit unchanged file content.",
   "hostDaemonOnlineRpcCommandSchema.mode":
     "host.write_file may omit mode to preserve existing permissions; when present it only controls newly created files.",
   "hostDaemonOnlineRpcCommandSchema.mergeBaseBranch":
@@ -965,7 +979,7 @@ const CONTRIBUTED_ENV = [
 
 describe("host-daemon command schemas", () => {
   it("uses the current host-daemon protocol version", () => {
-    expect(HOST_DAEMON_PROTOCOL_VERSION).toBe(194);
+    expect(HOST_DAEMON_PROTOCOL_VERSION).toBe(195);
     expect(HOST_ARTIFACT_MAX_BYTES).toBe(256 * 1024 * 1024);
   });
 
@@ -1397,11 +1411,19 @@ describe("host-daemon command schemas", () => {
         type: "host.read_file",
         path: "/tmp/bb-data/thread-storage/thread-123/notes.md",
         rootPath: "/tmp/bb-data/thread-storage/thread-123",
+        ifNoneMatch: {
+          kind: "sha256",
+          values: ["a".repeat(64)],
+        },
       }),
     ).toMatchObject({
       type: "host.read_file",
       path: "/tmp/bb-data/thread-storage/thread-123/notes.md",
       rootPath: "/tmp/bb-data/thread-storage/thread-123",
+      ifNoneMatch: {
+        kind: "sha256",
+        values: ["a".repeat(64)],
+      },
     });
 
     expect(
@@ -2783,6 +2805,21 @@ describe("host-daemon command schemas", () => {
       path: "/tmp/bb-data/thread-storage/thread-123/notes.md",
       content: "# Notes",
       contentEncoding: "utf8",
+    });
+
+    expect(
+      hostDaemonOnlineRpcResultSchemaByType["host.read_file"].parse({
+        path: "/tmp/bb-data/thread-storage/thread-123/notes.md",
+        contentEncoding: "utf8",
+        mimeType: "text/markdown",
+        sizeBytes: 13,
+        sha256: "d".repeat(64),
+        notModified: true,
+      }),
+    ).toMatchObject({
+      path: "/tmp/bb-data/thread-storage/thread-123/notes.md",
+      sha256: "d".repeat(64),
+      notModified: true,
     });
 
     expect(

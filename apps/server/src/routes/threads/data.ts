@@ -259,6 +259,7 @@ async function serveThreadStorageRawFile(
     deps,
     {
       hostId: target.hostId,
+      ...(!isHtmlPreviewPath(filePath.relativePath) ? { ifNoneMatch } : {}),
       path: path.join(target.storagePath, filePath.relativePath),
       rootPath: target.storagePath,
     },
@@ -284,6 +285,7 @@ async function serveThreadWorktreeRawFile(
     deps,
     {
       hostId: environment.hostId,
+      ...(!isHtmlPreviewPath(filePath.relativePath) ? { ifNoneMatch } : {}),
       path: path.join(environment.path, filePath.relativePath),
       rootPath: environment.path,
     },
@@ -683,6 +685,7 @@ export function registerThreadDataRoutes(app: Hono, deps: AppDeps): void {
       deps,
       {
         hostId: target.hostId,
+        ifNoneMatch: context.req.header("if-none-match"),
         path: path.join(target.storagePath, query.path),
         rootPath: target.storagePath,
       },
@@ -706,6 +709,7 @@ export function registerThreadDataRoutes(app: Hono, deps: AppDeps): void {
       deps,
       {
         hostId: environment.hostId,
+        ifNoneMatch: context.req.header("if-none-match"),
         path: query.path,
       },
       (result) =>
