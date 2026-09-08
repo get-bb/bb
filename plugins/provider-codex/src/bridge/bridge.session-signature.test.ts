@@ -109,3 +109,38 @@ it("keeps an auto-reviewed session when only escalation intent changes", async (
     harness.messages.filter((message) => message.method === "session/replaced"),
   ).toEqual([]);
 }, 30_000);
+
+it.each<{ label: string; next: Record<string, string> }>([
+  { label: "rotation", next: { BB_MACHINE_VALUE: "rotated" } },
+  { label: "removal", next: {} },
+])(
+  "rebuilds the session after environment $label",
+  async ({ next }) => {
+    harness.sendRequest(1, "thread/start", {
+      threadId: THREAD_ID,
+      cwd: workspaceDir,
+      instructionMode: "append",
+      options: { ...sessionOptions, envVars: { BB_MACHINE_VALUE: "original" } },
+    });
+    const started = await harness.waitForResponse(1);
+    const providerThreadId = (started.result as { providerThreadId: string })
+      .providerThreadId;
+
+    harness.sendRequest(2, "turn/start", {
+      threadId: THREAD_ID,
+      providerThreadId,
+      clientRequestId: "creq_signature4",
+      input: [{ type: "text", text: "say hello", mentions: [] }],
+      options: { ...sessionOptions, envVars: next },
+    });
+    const turn = await harness.waitForResponse(2);
+
+    expect(turn.error).toBeUndefined();
+    expect(
+      harness.messages.filter(
+        (message) => message.method === "session/replaced",
+      ),
+    ).toHaveLength(1);
+  },
+  30_000,
+);

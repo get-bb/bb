@@ -1203,7 +1203,8 @@ Core resolves the environment for each agent turn, project-source clone, host
 setup call, and new BB terminal. User variables override built-ins; agent-provider
 contributions override host variables for agent turns. Existing terminals keep
 the environment they started with: open a new terminal after a change. Agent
-turns receive refreshed values on their next turn and after resume.
+turns receive refreshed values on their next turn and after resume. Codex rebuilds
+its loaded session from the existing conversation when the environment changes.
 
 The built-in GitHub row uses `gh auth token --hostname github.com` and `gh api
 --hostname github.com user` on the server host. It supplies `GH_TOKEN`, Git's
