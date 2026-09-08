@@ -21,7 +21,7 @@ const credential = {
 };
 const tunnel = {
   getCredential: () => credential,
-  status: () => ({ paired: true }),
+  status: () => ({ paired: true, url: credential.serverUrl }),
 };
 const request = {
   key: "launch-key",
@@ -521,6 +521,7 @@ it.each(["invalid-url", "invalid-headers", "unexpected-headers"])(
     );
     expect(await provider(host).availability()).toEqual({
       status: "available",
+      serverUrl: credential.serverUrl,
     });
     expect(
       await provider(host).acquire({ ...request, hostId: "valid" }),

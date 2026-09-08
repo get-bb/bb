@@ -32,7 +32,10 @@ const grantSchema: z.ZodType<ServerAccessGrant> = z
   })
   .strict();
 const availabilitySchema = z.discriminatedUnion("status", [
-  z.object({ status: z.literal("available") }),
+  z.object({
+    status: z.literal("available"),
+    serverUrl: reachableUrlSchema.optional(),
+  }),
   z.object({ status: z.literal("setup-required"), message: z.string() }),
   z.object({ status: z.literal("unavailable"), message: z.string() }),
 ]);

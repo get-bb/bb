@@ -40,7 +40,7 @@ export async function registerServerAccess(
   bb: BbPluginApi,
   tunnel: {
     getCredential: ConnectTunnel["getCredential"];
-    status(): { paired: boolean };
+    status(): { paired: boolean; url: string | null };
   },
 ) {
   const secrets = bb.storage.experimental_secrets;
@@ -150,13 +150,18 @@ export async function registerServerAccess(
       }
       return count > 0 ? `${count} legacy access records need attention` : null;
     },
-    availability: () =>
-      tunnel.status().paired
-        ? { status: "available" }
+    availability: () => {
+      const status = tunnel.status();
+      return status.paired
+        ? {
+            status: "available",
+            ...(status.url ? { serverUrl: status.url } : {}),
+          }
         : {
             status: "setup-required",
             message: "Pair this bb instance with bb connect",
-          },
+          };
+    },
     acquire({ key, hostId, signal }) {
       return serialized(async () => {
         signal.throwIfAborted();

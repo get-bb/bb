@@ -116,11 +116,24 @@ export function MachineAccessSettings() {
                   : "Not connected"}
             </p>
             <p className="text-xs text-subtle-foreground">
-              {effective?.availability.status === "available"
-                ? "Ready to add machines."
-                : effective?.availability.status === "unavailable"
-                  ? effective.availability.message
-                  : "Connect your getbb.app account to add machines."}
+              {effective?.availability.status === "available" ? (
+                effective.availability.serverUrl ? (
+                  <a
+                    href={effective.availability.serverUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="break-all underline decoration-border underline-offset-4 hover:text-foreground"
+                  >
+                    {effective.availability.serverUrl}
+                  </a>
+                ) : (
+                  "Ready to add machines."
+                )
+              ) : effective?.availability.status === "unavailable" ? (
+                effective.availability.message
+              ) : (
+                "Connect your getbb.app account to add machines."
+              )}
             </p>
           </div>
           <Button variant="outline" size="sm" asChild>

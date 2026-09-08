@@ -452,9 +452,13 @@ export interface ServerAccessProviderDeclaration {
   id: string;
   displayName: string;
   availability():
-    | import("./machine-provider.js").PluginMachineProviderAvailability
+    | (import("./machine-provider.js").PluginMachineProviderAvailability & {
+        serverUrl?: string;
+      })
     | Promise<
-        import("./machine-provider.js").PluginMachineProviderAvailability
+        import("./machine-provider.js").PluginMachineProviderAvailability & {
+          serverUrl?: string;
+        }
       >;
   /** Throw an Error named experimental_ServerAccessRecoveryError to expose a deliberate user-safe recovery message. Ordinary failures are redacted. */
   acquire(context: {

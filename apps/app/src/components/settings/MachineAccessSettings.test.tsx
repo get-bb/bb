@@ -23,7 +23,7 @@ function show(defaultProviderId: string, paired = false) {
             id: "connect",
             displayName: "bb connect",
             availability: paired
-              ? { status: "available" }
+              ? { status: "available", serverUrl: "https://test.getbb.app" }
               : { status: "setup-required", message: "Set up bb connect" },
             attention: paired ? "2 legacy access records need attention" : null,
           },
@@ -68,7 +68,11 @@ it("shows the URL input only for Manual", () => {
 it("retains diagnostics for paired Connect without showing setup", () => {
   show("connect", true);
   expect(screen.getByText("Connected")).toBeTruthy();
-  expect(screen.getByText("Ready to add machines.")).toBeTruthy();
+  expect(
+    screen
+      .getByRole("link", { name: "https://test.getbb.app" })
+      .getAttribute("href"),
+  ).toBe("https://test.getbb.app");
   expect(
     screen.getByRole("link", { name: "Manage" }).getAttribute("href"),
   ).toBe("/settings/plugins/connect");

@@ -130,7 +130,10 @@ export const serverAccessStatusSchema = z.object({
       id: z.string(),
       displayName: z.string(),
       availability: z.discriminatedUnion("status", [
-        z.object({ status: z.literal("available") }),
+        z.object({
+          status: z.literal("available"),
+          serverUrl: z.string().url().optional(),
+        }),
         z.object({ status: z.literal("setup-required"), message: z.string() }),
         z.object({ status: z.literal("unavailable"), message: z.string() }),
       ]),

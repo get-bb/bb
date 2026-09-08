@@ -44,6 +44,28 @@ function provider(): ServerAccessProviderDeclaration {
 }
 
 describe("machine server access", () => {
+  it.each([
+    ["https://test.getbb.app", true],
+    ["javascript:alert(1)", false],
+    ["https://user:private@test.getbb.app", false],
+  ])("validates the display URL %s", async (serverUrl, valid) => {
+    await withTestHarness(async ({ deps }) => {
+      installProvider({
+        ...provider(),
+        availability: () => ({ status: "available", serverUrl }),
+      });
+      const status = await serverAccessStatus(deps);
+      const access = status.providers.find((entry) => entry.id === "connect");
+      expect(access?.availability).toEqual(
+        valid
+          ? { status: "available", serverUrl }
+          : {
+              status: "unavailable",
+              message: "Server access provider is unavailable",
+            },
+      );
+    });
+  });
   it("surfaces access attention in Machines settings without changing availability", async () => {
     await withTestHarness(async ({ deps }) => {
       installProvider({

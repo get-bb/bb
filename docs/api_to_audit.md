@@ -2667,6 +2667,11 @@ cleared diagnostics, multiple providers, and no impact on provider selection.
 
 ## `bb.experimental_serverAccess.register`
 
+Availability may include an optional public `serverUrl` for display in Machines
+settings. Core validates HTTP(S) URLs without embedded credentials. This is
+display metadata, not a machine access grant. Audit provider URL safety before
+stabilizing this field.
+
 `PluginServerAccess` registers server access through `ServerAccessProviderDeclaration`: id,
 displayName, availability, acquire({ key, hostId, signal }) and
 release({ key, hostId, grantId }). `ServerAccessGrant` carries `{ id, serverUrl, headers?: Record<string, string> }`.
