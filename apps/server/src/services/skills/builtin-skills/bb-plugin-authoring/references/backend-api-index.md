@@ -78,7 +78,7 @@ Read the installed declarations for exact current signatures.
 - `ServerAccessGrant`
 - `ServerAccessClient`
 - `ServerAccessSelection`
-- `PluginMachines` — `bb.experimental_machines.register` and enrollment/bootstrap helpers (see backend-events.md, machine providers)
+- `PluginMachines` — `bb.experimental_machines.register` and enrollment/bootstrap helpers (see backend-machines.md)
 - `EnrollmentBootstrap` — private versioned enrollment bundle
 - `MachineEnrollment` — pending bundle or enrolled host identity
 - `MachineExecutorRequest` — argv, timeout, signal, optional private stdin

@@ -62,12 +62,12 @@ This index lists every command path that the core CLI registers. Read the task-s
 ## machine
 
 - `bb machine`
-- `bb machine providers [--project <id>] [--json]`
-- `bb machine enroll --bootstrap-file <path>` or `--bootstrap-env <NAME>`
-- `bb machine start --host-id <id> [--server-url <url>] [--data-dir <path>]`
-- `bb machine stop --host-id <id> [--server-url <url>] [--data-dir <path>]`
-- `bb machine uninstall --host-id <id> [--server-url <url>] [--data-dir <path>]`
-- `bb machine create --provider <id> [--key <idempotency-key>] [--inputs <JSON>] [--project <id-or-name>] [--json]`
+- `bb machine providers`
+- `bb machine enroll`
+- `bb machine start`
+- `bb machine stop`
+- `bb machine uninstall`
+- `bb machine create`
 - `bb machine list`
 - `bb machine show`
 - `bb machine join-code`

@@ -54,6 +54,7 @@ import { toEnvironmentResponse } from "../environments/environment-response.js";
 import type { ThreadProvisioningDeps } from "./thread-provisioning-environment.js";
 import { askMachineLaunch } from "../machines/provider-orchestration.js";
 import { getMachineProvider } from "../plugins/plugin-machine-provider-registry.js";
+import { ensureProjectSourceOnHost } from "../projects/project-source-setup.js";
 
 const PROVIDER_UNAVAILABLE_RETRY_MS = 30_000;
 
@@ -400,7 +401,30 @@ export async function resolveEnvironmentProvider(
       { details: { environmentProviderId: intent.environmentProviderId } },
     );
   }
-  const checkout = getProjectSourceByHost(deps.db, thread.projectId, host.id);
+  let checkout = getProjectSourceByHost(deps.db, thread.projectId, host.id);
+  if (machine.type === "new" && requires.projectCheckout && checkout === null) {
+    appendThreadProvisioningEvent(deps, {
+      threadId: thread.id,
+      environmentId: null,
+      provisioningId: context.state.provisioningId,
+      status: "active",
+      entries: launchEntries({
+        ask,
+        log: undefined,
+        now: Date.now(),
+        step: { text: "Setting up project on machine", status: "started" },
+      }),
+    });
+    checkout = await ensureProjectSourceOnHost(deps, {
+      projectId: project.id,
+      projectName: project.name,
+      hostId: host.id,
+      remoteUrl: project.gitRemoteUrl,
+    });
+    if (getThread(deps.db, thread.id)?.status !== "starting") {
+      throw new Error("Thread provisioning context is no longer active");
+    }
+  }
   const projectCheckout =
     checkout !== null && isLocalPathProjectSource(checkout)
       ? { path: checkout.path }

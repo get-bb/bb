@@ -514,7 +514,7 @@ describe("bb-plugin-authoring skill", () => {
 
   it("documents machine creation checkpoints and private bootstrap delivery", () => {
     expect(skillEntry).toContain("machine providers");
-    const backend = readReference("backend-events.md");
+    const backend = readReference("backend-machines.md");
     expect(backend).toContain("prepareEnrollment({ key })");
     expect(backend).toContain("await checkpoint(resource)");
     expect(backend).toContain("bb.experimental_machines.bootstrap({");

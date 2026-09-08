@@ -115,6 +115,16 @@ separately from `--machine-inputs <json>`. Machine inputs are persisted and
 readable by plugins; never put secrets there. Store credentials in plugin settings and pass only
 non-secret configuration or references.
 
+When `--new-machine` selects an environment provider requiring a project
+checkout, core clones the project's Git remote and registers a source on the
+connected machine before creating that environment. Existing sources are reused.
+Automatic setup uses a stable per-project target and shares concurrent setup on
+the same host. After a server restart, it registers a completed checkout whose
+remote matches instead of cloning again; a conflicting target is refused.
+The project needs a Git remote and the machine needs Git access to it. Choosing
+Personal workspace first does not clone a project. Standalone `bb machine create`
+does not set up a project source.
+
 For project creation and sources, `--root`/`--path` refers to a path on the
 selected connected machine. Omit the selector to keep the existing local CLI
 machine fallback (normally the primary machine). Pass `--clone` to source add

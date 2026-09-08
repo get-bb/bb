@@ -569,6 +569,16 @@ user removal. Inputs are
 persisted in `hosts.machine_provider_selection` and readable by every plugin.
 They must never contain secrets: credentials belong in plugin settings and
 inputs carry non-secret references such as a target name.
+For a new-machine environment request, after connection core reuses project
+source setup to clone the project's Git remote and register a source if the
+selected environment provider requires `projectCheckout` and the host lacks a
+source. Machine plugins do not clone projects. Existing sources and providers
+without that requirement, including personal workspace, bypass setup. Audit fresh
+hosts, clone failures, retries, and personal-workspace-first creation. Automatic
+setup serializes per project/host and uses a stable project-ID target, inspecting
+an existing target for the expected remote before registering it after a crash.
+Refuse mismatched targets without overwriting them. This adds
+no plugin API and does not change standalone machine creation.
 When `icon` is omitted, Machines and Add machine show no provider logo or
 provider badge, so the machine has the same presentation as a manually
 enrolled machine.

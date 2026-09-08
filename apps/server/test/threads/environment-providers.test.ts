@@ -13,6 +13,8 @@ import {
   getHost,
   getMachineLaunch,
   getDefaultProjectSource,
+  getProjectSourceByHost,
+  setProjectGitRemoteUrlIfMissing,
   getThread,
   listEnvironments,
   listEvents,
@@ -63,6 +65,9 @@ import {
 import { createMetadataPendingContext } from "../../src/services/threads/thread-provisioning-context.js";
 import {
   listQueuedThreadCommands,
+  listQueuedCommands,
+  waitForQueuedCommand,
+  reportQueuedCommandSuccess,
   registerTestHostRpcCapture,
 } from "../helpers/commands.js";
 import { readJson } from "../helpers/json.js";
@@ -1413,166 +1418,277 @@ describe("environment provider listing", () => {
 });
 
 describe("machine and environment provider composition", () => {
-  it("creates a machine plus checkout, then a worktree on the same machine", async () => {
-    await withTestHarness(async (harness) => {
-      const { host, session } = seedHostSession(harness.deps, {
-        id: "host-provider-composition",
-      });
-      const { project } = seedProjectWithSource(harness.deps, {
-        hostId: host.id,
-        path: WORKSPACE_PATH,
-      });
-      registerTestHostRpcCapture(harness, {
-        hostId: host.id,
-        sessionId: session.id,
-      });
-      const machineProvider = validatePluginMachineProviderDeclaration({
-        id: "test-machine",
-        displayName: "Test machine",
-        environmentRow: {
-          displayName: "Test machine",
-          environmentProviderId: "project-checkout",
-        },
-        policy: {
-          idleSuspendMs: null,
-          retire: { after: "never" },
-          removeRetryMs: 30_000,
-        },
-        create: async ({ key }) => ({
-          status: "created",
+  it.each(["missing", "existing", "personal-workspace"] as const)(
+    "composes a new machine with %s project source state",
+    async (sourceState) => {
+      await withTestHarness(async (harness) => {
+        const { host, session } = seedHostSession(harness.deps, {
+          id: "host-provider-composition",
+        });
+        const original = seedHostSession(harness.deps, {
+          id: "host-original-source",
+        });
+        const { project } = seedProjectWithSource(harness.deps, {
+          hostId: original.host.id,
+          path: "/original/project",
+        });
+        const remoteUrl = "https://example.test/team/project.git";
+        const environmentProviderId =
+          sourceState === "personal-workspace"
+            ? "personal-workspace"
+            : "project-checkout";
+        if (sourceState !== "personal-workspace") {
+          setProjectGitRemoteUrlIfMissing(
+            harness.db,
+            harness.hub,
+            project.id,
+            remoteUrl,
+          );
+        }
+        if (sourceState === "existing") {
+          createProjectSource(harness.db, harness.hub, {
+            projectId: project.id,
+            hostId: host.id,
+            type: "local_path",
+            path: WORKSPACE_PATH,
+          });
+        }
+        registerTestHostRpcCapture(harness, {
           hostId: host.id,
-          resource: { key },
-        }),
-        remove: async () => ({ status: "removed" }),
-      } satisfies PluginMachineProviderDeclaration);
-      const machineRecord = {
-        pluginId: "test-machine-plugin",
-        provider: machineProvider,
-      };
-      setPluginMachineProviderBridge({
-        listMachineProviders: () => [machineRecord],
-        getMachineProvider: (id) =>
-          id === machineProvider.id ? machineRecord : undefined,
-        invokeProvider: async (_pluginId, _label, run) => ({
-          ok: true,
-          value: await run(),
-        }),
-        decisionTimeoutMs: 10_000,
-      });
-      const worktreeContexts: TestEnvironmentProviderContext[] = [];
-      installTargets([
-        {
-          id: "project-checkout",
-          requiresProjectCheckout: true,
-          provision: () => ({
-            action: "ready",
-            environment: {
-              type: "host",
-              hostId: host.id,
-              path: WORKSPACE_PATH,
-              ownsPath: false,
-            },
-          }),
-        },
-        {
-          id: "git-worktree",
-          requiresProjectCheckout: true,
-          requiresGitCheckout: true,
-          inputs: z.object({
-            branch: z.object({ kind: z.literal("default") }),
-          }),
-          provision: (context) => {
-            worktreeContexts.push(context);
-            return {
-              action: "ready",
-              environment: {
-                type: "host",
-                hostId: host.id,
-                path: "/tmp/provider-composition-worktree",
-              },
-            };
+          sessionId: session.id,
+        });
+        const machineProvider = validatePluginMachineProviderDeclaration({
+          id: "test-machine",
+          displayName: "Test machine",
+          environmentRow: {
+            displayName: "Test machine",
+            environmentProviderId: "project-checkout",
           },
-        },
-      ]);
+          policy: {
+            idleSuspendMs: null,
+            retire: { after: "never" },
+            removeRetryMs: 30_000,
+          },
+          create: async ({ key }) => ({
+            status: "created",
+            hostId: host.id,
+            resource: { key },
+          }),
+          remove: async () => ({ status: "removed" }),
+        } satisfies PluginMachineProviderDeclaration);
+        const machineRecord = {
+          pluginId: "test-machine-plugin",
+          provider: machineProvider,
+        };
+        setPluginMachineProviderBridge({
+          listMachineProviders: () => [machineRecord],
+          getMachineProvider: (id) =>
+            id === machineProvider.id ? machineRecord : undefined,
+          invokeProvider: async (_pluginId, _label, run) => ({
+            ok: true,
+            value: await run(),
+          }),
+          decisionTimeoutMs: 10_000,
+        });
+        const checkoutContexts: TestEnvironmentProviderContext[] = [];
+        const worktreeContexts: TestEnvironmentProviderContext[] = [];
+        installTargets([
+          {
+            id: environmentProviderId,
+            requiresProjectCheckout: sourceState !== "personal-workspace",
+            provision: (context) => {
+              checkoutContexts.push(context);
+              return {
+                action: "ready",
+                environment: {
+                  type: "host",
+                  hostId: host.id,
+                  path: context.projectCheckout?.path ?? "/personal/workspace",
+                  ownsPath: false,
+                },
+              };
+            },
+          },
+          {
+            id: "git-worktree",
+            requiresProjectCheckout: true,
+            requiresGitCheckout: true,
+            inputs: z.object({
+              branch: z.object({ kind: z.literal("default") }),
+            }),
+            provision: (context) => {
+              worktreeContexts.push(context);
+              return {
+                action: "ready",
+                environment: {
+                  type: "host",
+                  hostId: host.id,
+                  path: "/tmp/provider-composition-worktree",
+                },
+              };
+            },
+          },
+        ]);
 
-      const checkoutThread = await createThreadFromRequest(harness.deps, {
-        environment: {
-          type: "provider",
-          environmentProviderId: "project-checkout",
+        const checkoutThread = await createThreadFromRequest(harness.deps, {
+          environment: {
+            type: "provider",
+            environmentProviderId,
+            machine: {
+              type: "new",
+              machineProviderId: "test-machine",
+              inputs: null,
+            },
+            inputs: null,
+          },
+          input: textInput("Create the machine"),
+          origin: "app",
+          projectId: project.id,
+          providerId: "codex",
+          model: "requested-model",
+          startedOnBehalfOf: null,
+        });
+        if (sourceState === "missing") {
+          const defaultPath = await waitForQueuedCommand(
+            harness,
+            ({ command }) => command.type === "project.clone_default_path",
+            3_000,
+          );
+          expect(defaultPath.command).toEqual({
+            type: "project.clone_default_path",
+            projectSlug: `project-${project.id}`,
+          });
+          await reportQueuedCommandSuccess(harness, defaultPath, {
+            path: WORKSPACE_PATH,
+          });
+          const exists = await waitForQueuedCommand(
+            harness,
+            ({ command }) => command.type === "host.paths_exist",
+          );
+          await reportQueuedCommandSuccess(harness, exists, {
+            existence: { [WORKSPACE_PATH]: false },
+          });
+          const clone = await waitForQueuedCommand(
+            harness,
+            ({ command }) => command.type === "project.clone",
+            3_000,
+          );
+          expect(checkoutContexts).toEqual([]);
+          expect(
+            getProjectSourceByHost(harness.db, project.id, host.id),
+          ).toBeNull();
+          expect(clone.row.hostId).toBe(host.id);
+          expect(clone.command).toEqual({
+            type: "project.clone",
+            remoteUrl,
+            projectSlug: project.name,
+            targetPath: WORKSPACE_PATH,
+          });
+          await reportQueuedCommandSuccess(harness, clone, {
+            path: WORKSPACE_PATH,
+            gitRemoteUrl: remoteUrl,
+          });
+        }
+        await vi.waitFor(
+          () => {
+            expect(
+              getThread(harness.db, checkoutThread.id)?.environmentId,
+            ).not.toBeNull();
+          },
+          { timeout: 3_000 },
+        );
+        expect(
+          getEnvironment(
+            harness.db,
+            getThread(harness.db, checkoutThread.id)?.environmentId ?? "",
+          )?.status,
+        ).toBe("ready");
+        const start = await waitForQueuedCommand(
+          harness,
+          ({ command }) =>
+            command.type === "thread.start" &&
+            command.threadId === checkoutThread.id,
+        );
+        await reportQueuedCommandSuccess(harness, start, {
+          providerThreadId: "provider-composition-thread",
+        });
+        expect(getThread(harness.db, checkoutThread.id)?.status).toBe("active");
+        if (sourceState === "personal-workspace") {
+          expect(checkoutContexts).toHaveLength(1);
+          expect(checkoutContexts[0]?.projectCheckout).toBeNull();
+          expect(
+            getProjectSourceByHost(harness.db, project.id, host.id),
+          ).toBeNull();
+          expect(listQueuedCommands(harness, "project.clone")).toEqual([]);
+          expect(
+            getEnvironment(
+              harness.db,
+              getThread(harness.db, checkoutThread.id)?.environmentId ?? "",
+            )?.path,
+          ).toBe("/personal/workspace");
+          return;
+        }
+        expect(checkoutContexts).toHaveLength(1);
+        expect(checkoutContexts[0]?.projectCheckout).toEqual({
+          path: WORKSPACE_PATH,
+        });
+        expect(
+          getProjectSourceByHost(harness.db, project.id, host.id),
+        ).toMatchObject({ path: WORKSPACE_PATH });
+        expect(listQueuedCommands(harness, "project.clone")).toEqual([]);
+        expect(getMachineLaunch(harness.db, checkoutThread.id)).toMatchObject({
+          phase: "ready",
+          hostId: host.id,
+        });
+        expect(getHost(harness.db, host.id)).toMatchObject({
+          machineProviderId: "test-machine",
+        });
+        const checkoutEnvironment = getEnvironment(
+          harness.db,
+          getThread(harness.db, checkoutThread.id)?.environmentId ?? "",
+        );
+        expect(checkoutEnvironment?.environmentProviderSelection).toEqual({
           machine: {
             type: "new",
             machineProviderId: "test-machine",
             inputs: null,
           },
           inputs: null,
-        },
-        input: textInput("Create the machine"),
-        origin: "app",
-        projectId: project.id,
-        providerId: "codex",
-        model: "requested-model",
-        startedOnBehalfOf: null,
-      });
-      await vi.waitFor(
-        () => {
-          expect(
-            getThread(harness.db, checkoutThread.id)?.environmentId,
-          ).not.toBeNull();
-        },
-        { timeout: 3_000 },
-      );
-      expect(getMachineLaunch(harness.db, checkoutThread.id)).toMatchObject({
-        phase: "ready",
-        hostId: host.id,
-      });
-      expect(getHost(harness.db, host.id)).toMatchObject({
-        machineProviderId: "test-machine",
-      });
-      const checkoutEnvironment = getEnvironment(
-        harness.db,
-        getThread(harness.db, checkoutThread.id)?.environmentId ?? "",
-      );
-      expect(checkoutEnvironment?.environmentProviderSelection).toEqual({
-        machine: {
-          type: "new",
-          machineProviderId: "test-machine",
-          inputs: null,
-        },
-        inputs: null,
-      });
+        });
 
-      const worktreeThread = await createThreadFromRequest(harness.deps, {
-        environment: {
-          type: "provider",
-          environmentProviderId: "git-worktree",
-          machine: { type: "existing", hostId: host.id },
-          inputs: { branch: { kind: "default" } },
-        },
-        input: textInput("Create a worktree"),
-        origin: "app",
-        projectId: project.id,
-        providerId: "codex",
-        model: "requested-model",
-        startedOnBehalfOf: null,
+        const worktreeThread = await createThreadFromRequest(harness.deps, {
+          environment: {
+            type: "provider",
+            environmentProviderId: "git-worktree",
+            machine: { type: "existing", hostId: host.id },
+            inputs: { branch: { kind: "default" } },
+          },
+          input: textInput("Create a worktree"),
+          origin: "app",
+          projectId: project.id,
+          providerId: "codex",
+          model: "requested-model",
+          startedOnBehalfOf: null,
+        });
+        await vi.waitFor(
+          () => {
+            expect(
+              getThread(harness.db, worktreeThread.id)?.environmentId,
+            ).not.toBeNull();
+          },
+          { timeout: 3_000 },
+        );
+        expect(worktreeContexts).toHaveLength(1);
+        expect(worktreeContexts[0]?.host.id).toBe(host.id);
+        expect(
+          getEnvironment(
+            harness.db,
+            getThread(harness.db, worktreeThread.id)?.environmentId ?? "",
+          )?.hostId,
+        ).toBe(host.id);
       });
-      await vi.waitFor(
-        () => {
-          expect(
-            getThread(harness.db, worktreeThread.id)?.environmentId,
-          ).not.toBeNull();
-        },
-        { timeout: 3_000 },
-      );
-      expect(worktreeContexts).toHaveLength(1);
-      expect(worktreeContexts[0]?.host.id).toBe(host.id);
-      expect(
-        getEnvironment(
-          harness.db,
-          getThread(harness.db, worktreeThread.id)?.environmentId ?? "",
-        )?.hostId,
-      ).toBe(host.id);
-    });
-  });
+    },
+  );
 });
 
 describe("core's worktree beside providers", () => {

@@ -18,6 +18,11 @@ that checkpoint without rerunning creation, enrollment, or bootstrap.
 The plugin also checkpoints the project source ID once registration completes;
 core owns teardown after creation failures.
 
+Core now sets up a missing project checkout after a new machine connects when
+the selected environment provider requires it. Modal retains its existing clone
+and source-registration path for this release; core reuses that registered
+source. New machine plugins can rely on core setup and need no clone logic.
+
 ## Lifecycle
 
 Core owns the machine lifecycle. After every live thread on the machine has
