@@ -786,6 +786,7 @@ function rewindEnvironmentRowFactsMigration(db: DbConnection): void {
 function rewindEnvironmentProvidersMigration(db: DbConnection): void {
   db.$client.exec("DROP TABLE IF EXISTS environment_launches");
   db.$client.exec("DROP TABLE IF EXISTS machine_launches");
+  db.$client.exec("DROP TABLE IF EXISTS machine_enrollments");
   db.$client.exec("DROP INDEX IF EXISTS environments_project_host_path_idx");
   const hostColumns = new Set(
     db.$client
@@ -802,6 +803,8 @@ function rewindEnvironmentProvidersMigration(db: DbConnection): void {
   }
   for (const column of [
     "machine_provider_id",
+    "server_access_provider_id",
+    "server_access_grant_id",
     "resource",
     "machine_provider_selection",
     "phase",
@@ -1776,6 +1779,8 @@ describe("migrate", () => {
         showUnhandledProviderEvents: true,
         providerOrder: [],
         defaultProviderId: null,
+        machineServerUrl: null,
+        defaultMachineAccess: null,
         streamerMode: false,
         managedBranchPrefix: "bb/",
       });
@@ -5837,5 +5842,4 @@ describe("environment providers migration", () => {
       closeConnection(db);
     }
   });
-
 });

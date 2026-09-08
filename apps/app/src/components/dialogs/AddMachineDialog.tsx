@@ -289,11 +289,20 @@ function AddMachineDialogContent({
     },
   });
   const mint = mintJoinCode.mutate;
-  useEffect(() => {
-    mint();
-  }, [mint]);
-
+  const resetMint = mintJoinCode.reset;
   const baselineHostIds = useRef<Set<string> | null>(null);
+  const latestHosts = useRef(hostsQuery.data);
+  latestHosts.current = hostsQuery.data;
+  useEffect(() => {
+    if (!open) return;
+    baselineHostIds.current =
+      latestHosts.current === undefined
+        ? null
+        : new Set(latestHosts.current.map((host) => host.id));
+    resetMint();
+    mint();
+  }, [open, mint, resetMint]);
+
   if (baselineHostIds.current === null && hostsQuery.data !== undefined) {
     baselineHostIds.current = new Set(hostsQuery.data.map((host) => host.id));
   }

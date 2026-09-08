@@ -49,6 +49,8 @@ export type PluginMachineProviderCreateContext<
 > = PluginMachineProviderValidateContext<R, S> & {
   key: string;
   attempt: number;
+  /** Persist an allocated resource after preparing enrollment, before bootstrap. Never include a bootstrap bundle. */
+  checkpoint(resource: JsonValue): Promise<void>;
   report: PluginMachineProviderProgress;
   signal: AbortSignal;
 };

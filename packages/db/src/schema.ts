@@ -1135,6 +1135,11 @@ export const machineLaunches = sqliteTable(
     resource: text("resource", { mode: "json" }).$type<JsonValue>(),
     stepText: text("step_text").notNull(),
     pendingLog: text("pending_log").notNull(),
+    cleanupResourceRemoved: integer("cleanup_resource_removed", {
+      mode: "boolean",
+    })
+      .notNull()
+      .default(false),
     cancelPending: integer("cancel_pending", { mode: "boolean" }).notNull(),
   },
   (table) => [index("machine_launches_phase_idx").on(table.phase)],

@@ -1,4 +1,3 @@
-import { getTableConfig } from "drizzle-orm/sqlite-core";
 import { eq } from "drizzle-orm";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -17,38 +16,6 @@ async function harness() {
   const dataDir = await mkdtemp(join(tmpdir(), "bb-enrollments-test-"));
   const db = createConnection(":memory:");
   migrate(db);
-  const columns = new Set(
-    db.$client
-      .prepare("PRAGMA table_info(hosts)")
-      .all()
-      .map((row) => {
-        if (
-          typeof row !== "object" ||
-          row === null ||
-          !("name" in row) ||
-          typeof row.name !== "string"
-        )
-          throw new Error("Invalid SQLite column metadata");
-        return row.name;
-      }),
-  );
-  if (!columns.has("server_access_provider_id"))
-    db.$client.exec(
-      "ALTER TABLE hosts ADD COLUMN server_access_provider_id TEXT",
-    );
-  if (columns.has("type"))
-    db.$client.exec("ALTER TABLE hosts DROP COLUMN type");
-  for (const column of getTableConfig(hosts).columns) {
-    if (!columns.has(column.name))
-      db.$client.exec(
-        `ALTER TABLE hosts ADD COLUMN "${column.name}" ${column.getSQLType()}`,
-      );
-  }
-  db.$client.exec(`CREATE TABLE IF NOT EXISTS machine_enrollments (
-    id TEXT PRIMARY KEY NOT NULL, owner TEXT NOT NULL, key TEXT NOT NULL,
-    host_id TEXT NOT NULL, state TEXT NOT NULL, created_at INTEGER NOT NULL,
-    updated_at INTEGER NOT NULL, encrypted_bootstrap TEXT, expires_at INTEGER, UNIQUE(owner, key), UNIQUE(host_id)
-  )`);
   cleanup.push(async () => {
     db.$client.close();
     await rm(dataDir, { recursive: true, force: true });

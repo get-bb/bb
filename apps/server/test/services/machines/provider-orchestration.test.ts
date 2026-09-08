@@ -1,3 +1,4 @@
+import { serverAccess } from "../../../src/services/machines/server-access.js";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { eq } from "drizzle-orm";
 import {
@@ -11,6 +12,7 @@ import {
   threads,
   updateHost,
   upsertMachineLaunch,
+  updateMachineLaunchAttempt,
 } from "@bb/db";
 import { hostSchema, type JsonValue, type Project } from "@bb/domain";
 import { createDeferredPromise } from "@bb/test-helpers";
@@ -301,6 +303,108 @@ describe("core machine provider orchestration", () => {
       expect(getHost(harness.db, host.id)).toMatchObject({
         destroyedAt: expect.any(Number),
         phase: "destroyed",
+      });
+    }));
+
+  it("removes checkpointed allocations without reconnecting and retries access independently", async () =>
+    withTestHarness(async (harness) => {
+      const { host } = seedHostSession(harness.deps, {
+        id: "host_checkpoint_cancel",
+      });
+      const checkpointed = createDeferredPromise<void>();
+      const create = vi.fn(
+        async (
+          context: Parameters<PluginMachineProviderDeclaration["create"]>[0],
+        ) => {
+          const row = getMachineLaunch(harness.db, context.key);
+          if (row === null) throw new Error("Missing launch");
+          updateMachineLaunchAttempt(harness.db, { ...row, hostId: host.id });
+          await context.checkpoint({ allocation: "vendor-id" });
+          checkpointed.resolve();
+          await new Promise<void>((_resolve, reject) => {
+            context.signal.addEventListener(
+              "abort",
+              () => reject(new Error("unreachable server")),
+              { once: true },
+            );
+          });
+          return {
+            status: "failed" as const,
+            failure: "terminal" as const,
+            message: "unreachable",
+          };
+        },
+      );
+      const remove = vi.fn(async () => ({ status: "removed" as const }));
+      const record = installMachineProvider(
+        machineDeclaration(host.id, { create, remove }),
+      );
+      askMachineLaunch(harness.deps, {
+        key: "checkpoint-cancel",
+        record,
+        projectId: null,
+        inputs: null,
+      });
+      await checkpointed.promise;
+      const revoke = vi
+        .spyOn(serverAccess, "release")
+        .mockRejectedValueOnce(new Error("revocation unavailable"));
+      await expect(
+        cancelMachineLaunch(harness.deps, "checkpoint-cancel"),
+      ).rejects.toThrow("revocation unavailable");
+      expect(getMachineLaunch(harness.db, "checkpoint-cancel")).toMatchObject({
+        cleanupResourceRemoved: true,
+        cancelPending: true,
+      });
+      await cancelMachineLaunch(harness.deps, "checkpoint-cancel");
+      expect(create).toHaveBeenCalledOnce();
+      expect(remove).toHaveBeenCalledOnce();
+      expect(remove).toHaveBeenCalledWith(
+        expect.objectContaining({
+          hostId: host.id,
+          resource: { allocation: "vendor-id" },
+        }),
+      );
+      expect(getHost(harness.db, host.id)?.phase).toBe("destroyed");
+      revoke.mockRestore();
+    }));
+
+  it("finalizes host cleanup when creation succeeds after cancellation", async () =>
+    withTestHarness(async (harness) => {
+      const { host } = seedHostSession(harness.deps, {
+        id: "host_late_cancel",
+      });
+      const remove = vi.fn(async () => ({ status: "removed" as const }));
+      const record = installMachineProvider(
+        machineDeclaration(host.id, {
+          create: ({ signal }) =>
+            new Promise((resolve) => {
+              signal.addEventListener(
+                "abort",
+                () =>
+                  resolve({
+                    status: "created",
+                    hostId: host.id,
+                    resource: { allocation: "late" },
+                  }),
+                { once: true },
+              );
+            }),
+          remove,
+        }),
+      );
+      askMachineLaunch(harness.deps, {
+        key: "late-cancel",
+        record,
+        projectId: null,
+        inputs: null,
+      });
+      await cancelMachineLaunch(harness.deps, "late-cancel");
+      expect(remove).toHaveBeenCalledOnce();
+      expect(getHost(harness.db, host.id)?.phase).toBe("destroyed");
+      expect(getMachineLaunch(harness.db, "late-cancel")).toMatchObject({
+        cancelPending: false,
+        cleanupResourceRemoved: true,
       });
     }));
 

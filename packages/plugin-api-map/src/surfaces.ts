@@ -797,6 +797,7 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
           "Compose installerCommand argv plus private stdin, or bootstrap over a MachineExecutor; never put credentials in resource JSON or output",
           "Bootstrap preinstalled or installed daemons and restart an enrolled identity after snapshot restore",
           "Stream progress and honor abort signals for create, suspend, resume and remove",
+          "Prepare enrollment, then await create.checkpoint(resource) immediately after allocation so cancellation can remove it without waiting for bootstrap; never checkpoint the bootstrap bundle",
           "Checkpoint a recoverable private resource during suspend before destructive cleanup",
           "Optionally declare suspend and resume together; core suspends after idle and resumes on the next send",
           "Choose last-thread plus grace retirement with environment-removal cascade, or never retirement with explicit user removal",

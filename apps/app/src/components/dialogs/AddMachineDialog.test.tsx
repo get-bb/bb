@@ -284,6 +284,72 @@ describe("AddMachineDialog", () => {
     ).toBeNull();
   });
 
+  it("refreshes pairing and the host baseline when a retained compact drawer reopens", async () => {
+    const media = vi
+      .spyOn(window, "matchMedia")
+      .mockImplementation((query) => ({
+        matches: query === "(max-width: 767px)",
+        media: query,
+        onchange: null,
+        addListener() {},
+        removeListener() {},
+        addEventListener() {},
+        removeEventListener() {},
+        dispatchEvent: () => false,
+      }));
+    try {
+      vi.mocked(sdk.hosts.createJoinCode)
+        .mockResolvedValueOnce({
+          joinCode: "first_code",
+          hostId: "first_host",
+          expiresAt: Date.now() + 900000,
+        })
+        .mockResolvedValueOnce({
+          joinCode: "second_code",
+          hostId: "second_host",
+          expiresAt: Date.now() + 900000,
+        });
+      vi.mocked(sdk.plugins.callRpc).mockResolvedValue({
+        code: "machine_code",
+        expiresAt: Date.now() + 600000,
+        serverUrl: "https://example.getbb.app",
+      });
+      vi.mocked(sdk.hosts.list).mockResolvedValue([existingHost]);
+      const { queryClient, wrapper } = createQueryClientTestHarness();
+      const content = (open: boolean) => (
+        <MemoryRouter>
+          <AddMachineDialog
+            open={open}
+            onOpenChange={vi.fn()}
+            serverUrl="https://direct.example"
+          />
+        </MemoryRouter>
+      );
+      const view = render(content(true), { wrapper });
+      await screen.findByText(/--join-code first_code/);
+      act(() =>
+        queryClient.setQueryData<Host[]>(hostsQueryKey(), [
+          existingHost,
+          host({ id: "first_host", name: "First machine" }),
+        ]),
+      );
+      await screen.findByText("First machine connected");
+      view.rerender(content(false));
+      view.rerender(content(true));
+      await screen.findByText(/--join-code second_code/);
+      expect(screen.queryByText("First machine connected")).toBeNull();
+      expect(
+        screen.getByText("Waiting for the machine to connect…"),
+      ).toBeDefined();
+      expect(sdk.hosts.createJoinCode).toHaveBeenCalledTimes(2);
+      expect(
+        document.getElementById("root")?.getAttribute("aria-hidden"),
+      ).not.toBe("true");
+    } finally {
+      media.mockRestore();
+    }
+  });
+
   it("falls back to direct pairing when connect is unpaired and ignores known hosts", async () => {
     vi.mocked(sdk.hosts.createJoinCode).mockResolvedValue({
       joinCode: "jc_test123",

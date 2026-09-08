@@ -555,7 +555,11 @@ resource is private to the provider and capped at 16 KiB.
 Core persists launch attempts and machine lifecycle state on hosts. It suspends
 an idle machine only when the provider declares both suspend and resume; a
 provider without that pair must set `idleSuspendMs: null`. Sending work resumes
-a suspended machine. Suspend can persist a recoverable resource before
+a suspended machine. Create must prepare enrollment before awaiting
+`PluginMachineProviderCreateContext.checkpoint(resource)` to persist an allocation
+on its launch. Cancellation removes this resource without waiting for enrollment,
+and records removal before retrying access revocation. The bootstrap bundle must
+never appear in resource JSON. Suspend can persist a recoverable resource before
 destructive cleanup with `checkpoint`. The experimental namespace carries the
 stability signal; supporting public types and declaration members stay
 unprefixed. A last-thread policy
@@ -580,15 +584,17 @@ and whether policies need per-machine overrides before dropping the prefix.
 
 **What it does.** Exports the typed contexts and results used by
 `bb.experimental_machines.register`: availability and validation, idempotent
-create with project/gitRemote/inputs/key/attempt/report/signal, optional paired
+create with project/gitRemote/inputs/key/attempt/checkpoint/report/signal, optional paired
 suspend/resume, remove, environment-row sugar, and retirement policy.
 
 **Audit before stabilizing.** Audit the same lifecycle, retry, privacy, and
 composition questions as `bb.experimental_machines`, whether an omitted icon
 should continue to suppress provider branding, plus whether suspend and
 resume need distinct result unions beyond an updated private resource. Audit
-the `PluginMachineProviderSuspendContext.checkpoint` durability and whether
-other lifecycle operations need the same checkpoint.
+both `PluginMachineProviderCreateContext.checkpoint` and
+`PluginMachineProviderSuspendContext.checkpoint` durability: cancellation before
+enrollment, a crash after allocation, same-key recovery without duplicate
+resources, and access-revocation retries after successful vendor removal.
 
 ## `app.slots.experimental_machineProviderInputs` (`@get-bb/plugin-sdk/app`)
 
@@ -2612,6 +2618,7 @@ credential privacy and revocation, explicit and automatic defaults, expired
 codes, removal while a provider is unavailable, and both enrolment and runtime
 traffic with independent direct and Connect consumers. Availability does not
 prove reachability from a remote machine.
+
 ## Machine enrollment and bootstrap
 
 `bb.experimental_machines.enrollments` exposes `prepare`, `waitForConnection`, and `cancel`; `prepareEnrollment` and `waitForConnection` also compose with `installerCommand` and `bootstrap`. Enrollment keys are scoped to the calling plugin and permanently retain their host identity. Pending credentials are single-use, short-lived, and encrypted at rest with a private server key; preparation after expiry reissues them, while an unexpired bundle survives a server restart. A successful exchange is recovered as `enrolled` after a server crash. Cancelling an enrolled identity preserves its durable credentials and runtime access.
