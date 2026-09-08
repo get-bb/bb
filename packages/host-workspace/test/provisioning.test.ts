@@ -633,7 +633,7 @@ describe("workspace provisioning", () => {
     }
   });
 
-  it("rolls back failed worktree setup scripts", async () => {
+  it.skipIf(process.platform === "win32")("rolls back failed worktree setup scripts", async () => {
     const sourceRepo = await initRepoWithOptionalSetup(
       "echo failing >&2\nexit 1\n",
     );
@@ -653,7 +653,7 @@ describe("workspace provisioning", () => {
     await expect(fs.stat(targetPath)).rejects.toThrow();
   });
 
-  it("runs worktree setup scripts concurrently after creating worktrees", async () => {
+  it.skipIf(process.platform === "win32")("runs worktree setup scripts concurrently after creating worktrees", async () => {
     const coordinationDir = await makeTempDir("bb-worktree-setup-concurrency-");
     const markerDir = path.join(coordinationDir, "markers");
     const releaseFile = path.join(coordinationDir, "release");
@@ -744,7 +744,7 @@ describe("workspace provisioning", () => {
     expect(result.stdout).toContain("Env Author <env@example.com>");
   });
 
-  it("streams setup script output and respects timeouts", async () => {
+  it.skipIf(process.platform === "win32")("streams setup script output and respects timeouts", async () => {
     const workspacePath = await makeTempDir("bb-setup-script-");
     await fs.writeFile(
       path.join(workspacePath, DEFAULT_ENV_SETUP_SCRIPT_NAME),
@@ -775,7 +775,7 @@ describe("workspace provisioning", () => {
     ).rejects.toThrow(/timed out/u);
   });
 
-  it("aborts setup scripts and emits cancellation progress", async () => {
+  it.skipIf(process.platform === "win32")("aborts setup scripts and emits cancellation progress", async () => {
     const workspacePath = await makeTempDir("bb-setup-abort-");
     const markerDir = await makeTempDir("bb-setup-abort-markers-");
     await fs.writeFile(
@@ -814,7 +814,7 @@ describe("workspace provisioning", () => {
     expect(entries).toContain("setup-cancelled:.bb-env-setup.sh cancelled");
   });
 
-  it("aborts setup scripts when the signal is aborted at listener registration", async () => {
+  it.skipIf(process.platform === "win32")("aborts setup scripts when the signal is aborted at listener registration", async () => {
     const workspacePath = await makeTempDir("bb-setup-listener-abort-");
     const markerDir = await makeTempDir("bb-setup-listener-abort-markers-");
     const completedMarker = path.join(markerDir, "completed-setup");
@@ -844,7 +844,7 @@ describe("workspace provisioning", () => {
     expect(entries).toContain("setup-cancelled:.bb-env-setup.sh cancelled");
   });
 
-  it("removes managed worktrees after setup script cancellation", async () => {
+  it.skipIf(process.platform === "win32")("removes managed worktrees after setup script cancellation", async () => {
     const markerDir = await makeTempDir("bb-worktree-abort-markers-");
     const sourceRepo = await initRepoWithOptionalSetup(
       [
@@ -889,7 +889,7 @@ describe("workspace provisioning", () => {
     expect(worktrees.stdout).not.toContain(targetPath);
   });
 
-  it("compacts carriage-return setup script progress in transcript output", async () => {
+  it.skipIf(process.platform === "win32")("compacts carriage-return setup script progress in transcript output", async () => {
     const workspacePath = await makeTempDir("bb-setup-progress-");
     await fs.writeFile(
       path.join(workspacePath, DEFAULT_ENV_SETUP_SCRIPT_NAME),
@@ -912,7 +912,7 @@ describe("workspace provisioning", () => {
     expect(outputEntries).toEqual(["progress done"]);
   });
 
-  it("closes setup script stdin so hooks do not block on input", async () => {
+  it.skipIf(process.platform === "win32")("closes setup script stdin so hooks do not block on input", async () => {
     const workspacePath = await makeTempDir("bb-setup-stdin-closed-");
     await fs.writeFile(
       path.join(workspacePath, DEFAULT_ENV_SETUP_SCRIPT_NAME),
@@ -929,7 +929,7 @@ describe("workspace provisioning", () => {
     expect(result.output).toContain("stdin-closed");
   });
 
-  it("scrubs inherited bb runtime env vars before running setup scripts", async () => {
+  it.skipIf(process.platform === "win32")("scrubs inherited bb runtime env vars before running setup scripts", async () => {
     vi.stubEnv("BB_DATA_DIR", "/tmp/leaked-bb-data");
     vi.stubEnv("BB_SERVER_PORT", "38886");
     vi.stubEnv("NODE_ENV", "development");
@@ -956,7 +956,7 @@ describe("workspace provisioning", () => {
     expect(result.output).toBe("missing|missing|missing|external-value\n");
   });
 
-  it("uses the resolved user-shell PATH for setup scripts", async () => {
+  it.skipIf(process.platform === "win32")("uses the resolved user-shell PATH for setup scripts", async () => {
     const workspacePath = await makeTempDir("bb-setup-shell-path-");
     const binPath = await makeTempDir("bb-setup-shell-bin-");
     const executablePath = path.join(binPath, "shell-path-tool");
@@ -982,6 +982,7 @@ describe("workspace provisioning", () => {
     expect(
       buildSetupScriptCommand({
         platform: "darwin",
+        scriptName: ".bb-env-setup.sh",
         scriptPath: "/tmp/.bb-env-setup.sh",
       }),
     ).toMatchObject({
@@ -991,13 +992,25 @@ describe("workspace provisioning", () => {
     });
   });
 
-  it("rejects POSIX shell setup scripts on Windows", () => {
-    expect(() =>
+  it("builds a PowerShell command for the Windows setup script", () => {
+    expect(
       buildSetupScriptCommand({
         platform: "win32",
-        scriptPath: "C:\\repo\\.bb-env-setup.sh",
+        scriptName: ".bb-env-setup.ps1",
+        scriptPath: "C:\\repo\\.bb-env-setup.ps1",
       }),
-    ).toThrow(/not supported on Windows/u);
+    ).toMatchObject({
+      command: "powershell.exe",
+      args: [
+        "-NoLogo",
+        "-NoProfile",
+        "-ExecutionPolicy",
+        "Bypass",
+        "-File",
+        "C:\\repo\\.bb-env-setup.ps1",
+      ],
+      text: "powershell.exe -NoProfile -ExecutionPolicy Bypass -File .bb-env-setup.ps1",
+    });
   });
 
   it("returns a no-op when the setup script is missing", async () => {
@@ -1016,7 +1029,7 @@ describe("workspace provisioning", () => {
     ).resolves.toEqual({ ran: false });
   });
 
-  it("runs teardown scripts before it removes managed worktrees", async () => {
+  it.skipIf(process.platform === "win32")("runs teardown scripts before it removes managed worktrees", async () => {
     const sourceRepo = await initRepoWithOptionalSetup();
     const markerPath = path.join(
       await makeTempDir("bb-teardown-marker-"),
@@ -1060,7 +1073,7 @@ describe("workspace provisioning", () => {
     await expect(fs.stat(targetPath)).rejects.toThrow();
   });
 
-  it("reports teardown failures and removes the worktree", async () => {
+  it.skipIf(process.platform === "win32")("reports teardown failures and removes the worktree", async () => {
     const sourceRepo = await initRepoWithOptionalSetup();
     await commitTeardownScript(
       sourceRepo,
@@ -1092,7 +1105,7 @@ describe("workspace provisioning", () => {
     await expect(fs.stat(targetPath)).rejects.toThrow();
   });
 
-  it("stops timed out teardown scripts and removes the worktree", async () => {
+  it.skipIf(process.platform === "win32")("stops timed out teardown scripts and removes the worktree", async () => {
     const sourceRepo = await initRepoWithOptionalSetup();
     await commitTeardownScript(
       sourceRepo,

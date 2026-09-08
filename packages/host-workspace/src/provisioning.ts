@@ -4,6 +4,8 @@ import { setTimeout as delay } from "node:timers/promises";
 import {
   DEFAULT_ENV_SETUP_SCRIPT_NAME,
   DEFAULT_ENV_TEARDOWN_SCRIPT_NAME,
+  WINDOWS_ENV_SETUP_SCRIPT_NAME,
+  WINDOWS_ENV_TEARDOWN_SCRIPT_NAME,
   WORKTREE_INCLUDE_FILE_NAME,
   createTerminalOutputLineReader,
   readTerminalOutputLines,
@@ -93,6 +95,7 @@ interface LifecycleScriptCommand {
 
 interface BuildLifecycleScriptCommandArgs {
   platform: NodeJS.Platform;
+  scriptName: string;
   scriptPath: string;
 }
 
@@ -255,10 +258,18 @@ export function buildSetupScriptCommand(
   args: BuildLifecycleScriptCommandArgs,
 ): LifecycleScriptCommand {
   if (args.platform === "win32") {
-    throw new WorkspaceError(
-      "setup_script_failed",
-      `POSIX shell setup scripts are not supported on Windows: ${DEFAULT_ENV_SETUP_SCRIPT_NAME}`,
-    );
+    return {
+      command: "powershell.exe",
+      args: [
+        "-NoLogo",
+        "-NoProfile",
+        "-ExecutionPolicy",
+        "Bypass",
+        "-File",
+        args.scriptPath,
+      ],
+      text: `powershell.exe -NoProfile -ExecutionPolicy Bypass -File ${args.scriptName}`,
+    };
   }
 
   return {
@@ -268,12 +279,22 @@ export function buildSetupScriptCommand(
   };
 }
 
-function buildTeardownScriptCommand(args: BuildLifecycleScriptCommandArgs) {
+function buildTeardownScriptCommand(
+  args: BuildLifecycleScriptCommandArgs,
+): LifecycleScriptCommand {
   if (args.platform === "win32") {
-    throw new WorkspaceError(
-      "setup_script_failed",
-      `POSIX shell teardown scripts are not supported on Windows: ${DEFAULT_ENV_TEARDOWN_SCRIPT_NAME}`,
-    );
+    return {
+      command: "powershell.exe",
+      args: [
+        "-NoLogo",
+        "-NoProfile",
+        "-ExecutionPolicy",
+        "Bypass",
+        "-File",
+        args.scriptPath,
+      ],
+      text: `powershell.exe -NoProfile -ExecutionPolicy Bypass -File ${args.scriptName}`,
+    };
   }
 
   return {
@@ -712,8 +733,16 @@ async function runLifecycleScript(
   }
   const command =
     args.kind === "setup"
-      ? buildSetupScriptCommand({ platform: process.platform, scriptPath })
-      : buildTeardownScriptCommand({ platform: process.platform, scriptPath });
+      ? buildSetupScriptCommand({
+          platform: process.platform,
+          scriptName: args.scriptName,
+          scriptPath,
+        })
+      : buildTeardownScriptCommand({
+          platform: process.platform,
+          scriptName: args.scriptName,
+          scriptPath,
+        });
   const startedAt = Date.now();
   emitStep({
     onProgress: args.onProgress,
@@ -886,7 +915,10 @@ export function runSetupScript(
   return runLifecycleScript({
     ...args,
     kind: "setup",
-    scriptName: DEFAULT_ENV_SETUP_SCRIPT_NAME,
+    scriptName:
+      process.platform === "win32"
+        ? WINDOWS_ENV_SETUP_SCRIPT_NAME
+        : DEFAULT_ENV_SETUP_SCRIPT_NAME,
   });
 }
 
@@ -906,7 +938,10 @@ export async function runTeardownScript(
       ...args,
       onProgress,
       kind: "teardown",
-      scriptName: DEFAULT_ENV_TEARDOWN_SCRIPT_NAME,
+      scriptName:
+        process.platform === "win32"
+          ? WINDOWS_ENV_TEARDOWN_SCRIPT_NAME
+          : DEFAULT_ENV_TEARDOWN_SCRIPT_NAME,
     });
   } catch (error) {
     if (!failureReported) {

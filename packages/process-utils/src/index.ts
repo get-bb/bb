@@ -1,5 +1,9 @@
 export * from "./plugin-process-paths.js";
-import type { ChildProcess, StdioOptions } from "node:child_process";
+import {
+  execFileSync,
+  type ChildProcess,
+  type StdioOptions,
+} from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { mkdirSync, writeFileSync } from "node:fs";
 import { lstat, readdir, readlink, realpath } from "node:fs/promises";
@@ -185,12 +189,30 @@ export function supportsProcessGroups(): boolean {
   return process.platform !== "win32";
 }
 
-export function killProcessGroup(args: KillProcessGroupArgs): void {
-  if (supportsProcessGroups() && args.child.pid !== undefined) {
+function killWindowsProcessTree(pid: number): void {
+  try {
+    execFileSync("taskkill", ["/pid", String(pid), "/T", "/F"], {
+      stdio: "ignore",
+      windowsHide: true,
+    });
+  } catch {
     try {
-      process.kill(-args.child.pid, args.signal);
+      process.kill(pid);
+    } catch {}
+  }
+}
+
+export function killProcessGroup(args: KillProcessGroupArgs): void {
+  const pid = args.child.pid;
+  if (supportsProcessGroups() && pid !== undefined) {
+    try {
+      process.kill(-pid, args.signal);
       return;
     } catch {}
+  }
+  if (process.platform === "win32" && pid !== undefined) {
+    killWindowsProcessTree(pid);
+    return;
   }
   args.child.kill(args.signal);
 }

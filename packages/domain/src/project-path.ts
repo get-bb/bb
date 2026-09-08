@@ -6,8 +6,6 @@ export const INVALID_PROJECT_PATH_MESSAGE =
   "Project path must be an absolute path.";
 export const PROJECT_PATH_ROOT_MESSAGE =
   "Project path must point to a project directory, not the filesystem root.";
-export const UNSUPPORTED_NATIVE_WINDOWS_PROJECT_PATH_MESSAGE =
-  "Native Windows paths are not supported. Use a POSIX path like /home/me/repo or /mnt/c/Users/me/repo.";
 
 export function isNativeWindowsProjectPath(path: string): boolean {
   const trimmedPath = path.trim();
@@ -22,13 +20,17 @@ export function isNativeWindowsProjectPath(path: string): boolean {
   );
 }
 
+function isWindowsFilesystemRoot(path: string): boolean {
+  return WINDOWS_DRIVE_ROOT_PATTERN.test(path);
+}
+
 export function isAbsoluteProjectPath(path: string): boolean {
   const trimmedPath = path.trim();
   if (!trimmedPath) {
     return false;
   }
 
-  return trimmedPath.startsWith("/");
+  return trimmedPath.startsWith("/") || isNativeWindowsProjectPath(trimmedPath);
 }
 
 export function normalizeProjectPathInput(path: string): string {
@@ -50,7 +52,9 @@ export function getProjectPathValidationMessage(path: string): string | null {
     return INVALID_PROJECT_PATH_MESSAGE;
   }
   if (isNativeWindowsProjectPath(normalizedPath)) {
-    return UNSUPPORTED_NATIVE_WINDOWS_PROJECT_PATH_MESSAGE;
+    return isWindowsFilesystemRoot(normalizedPath)
+      ? PROJECT_PATH_ROOT_MESSAGE
+      : null;
   }
   if (!isAbsoluteProjectPath(normalizedPath)) {
     return INVALID_PROJECT_PATH_MESSAGE;
@@ -63,15 +67,17 @@ export function getProjectPathValidationMessage(path: string): string | null {
 
 export function deriveProjectNameFromPath(path: string): string {
   const normalizedPath = normalizeProjectPathInput(path);
-  if (
-    !normalizedPath ||
-    normalizedPath === "/" ||
-    isNativeWindowsProjectPath(normalizedPath) ||
-    !isAbsoluteProjectPath(normalizedPath)
-  ) {
+  if (!normalizedPath) {
     return "";
   }
-
-  const segments = normalizedPath.split("/").filter(Boolean);
-  return segments.at(-1) ?? "";
+  if (isNativeWindowsProjectPath(normalizedPath)) {
+    if (isWindowsFilesystemRoot(normalizedPath)) {
+      return "";
+    }
+    return normalizedPath.split(/[\\/]+/u).filter(Boolean).at(-1) ?? "";
+  }
+  if (normalizedPath === "/" || !isAbsoluteProjectPath(normalizedPath)) {
+    return "";
+  }
+  return normalizedPath.split("/").filter(Boolean).at(-1) ?? "";
 }

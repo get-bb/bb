@@ -198,7 +198,7 @@ describe("resolveLocalBbExecutablePath", () => {
     );
   });
 
-  it("fails clearly when the built CLI entry is not executable", async () => {
+  it.skipIf(process.platform === "win32")("fails clearly when the built CLI entry is not executable", async () => {
     const { cliEntryPath } = await createFakeCliPackage({
       executable: false,
     });
@@ -407,6 +407,13 @@ describe("resolveUserShellPath", () => {
   });
 });
 
+function expectedBbCliEntry(directory: string): string {
+  return path.resolve(
+    directory,
+    process.platform === "win32" ? "bb.cmd" : "bb",
+  );
+}
+
 describe("prepareRuntimeShellEnv", () => {
   it("uses the daemon proxy URL without exporting its machine credential", () => {
     vi.stubEnv("BB_CONNECT_MACHINE_CREDENTIAL", "bbcm_durable_secret");
@@ -431,7 +438,7 @@ describe("prepareRuntimeShellEnv", () => {
       }),
     ).toEqual({
       PATH: `/tmp/bb-bin${delimiter}/usr/bin`,
-      BB_CLI: path.resolve("/tmp/bb-bin", "bb"),
+      BB_CLI: expectedBbCliEntry("/tmp/bb-bin"),
       BB_SERVER_URL: "http://127.0.0.1:3334",
       BB_HOST_DAEMON_PORT: "3002",
     });
@@ -462,7 +469,7 @@ describe("prepareRuntimeShellEnv", () => {
       }),
     ).toEqual({
       PATH: `/tmp/bb-bin${delimiter}/usr/local/bin:/usr/bin`,
-      BB_CLI: path.resolve("/tmp/bb-bin", "bb"),
+      BB_CLI: expectedBbCliEntry("/tmp/bb-bin"),
       BB_SERVER_URL: "http://127.0.0.1:3334",
       BB_HOST_DAEMON_PORT: "3002",
     });
@@ -477,7 +484,7 @@ describe("prepareRuntimeShellEnv", () => {
       }),
     ).toEqual({
       PATH: `/tmp/bb-bin${delimiter}/usr/bin`,
-      BB_CLI: path.resolve("/tmp/bb-bin", "bb"),
+      BB_CLI: expectedBbCliEntry("/tmp/bb-bin"),
       BB_SERVER_URL: "http://127.0.0.1:3334",
     });
   });

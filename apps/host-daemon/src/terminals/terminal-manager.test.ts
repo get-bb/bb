@@ -1398,25 +1398,12 @@ describe("TerminalManager", () => {
     ]);
   });
 
-  it("rejects native Windows opens", async () => {
-    const harness = createHarness();
-    const manager = new TerminalManager({
-      logger: {
-        debug: vi.fn(),
-        error: vi.fn(),
-        info: vi.fn(),
-        warn: vi.fn(),
-      },
-      platform: "win32",
-      ptyAdapter: harness.adapter,
-      runtimeManager: harness.runtimeManager,
-      sendMessage: (message) => {
-        harness.messages.push(message);
-        return true;
-      },
+  it("spawns PowerShell command mode with Windows command args", async () => {
+    const harness = createHarnessWithShell({
+      resolveShell: async () => "powershell.exe",
     });
 
-    await manager.handleMessage({
+    await harness.manager.handleMessage({
       type: "terminal.open",
       requestId: "open-1",
       terminalId: "term-1",
@@ -1431,19 +1418,46 @@ describe("TerminalManager", () => {
       },
       cols: 100,
       rows: 30,
-      start: DEFAULT_TERMINAL_START,
+      start: { mode: "command", command: "Write-Output hello" },
     });
 
-    expect(harness.adapter.spawned).toHaveLength(0);
-    expect(harness.messages).toEqual([
-      {
-        type: "terminal.error",
-        requestId: "open-1",
-        terminalId: "term-1",
-        code: "unsupported_platform",
-        message: "Native Windows terminals are not supported",
+    expect(harness.adapter.spawned).toHaveLength(1);
+    expect(harness.adapter.spawned[0]?.args).toMatchObject({
+      file: "powershell.exe",
+      args: ["-NoLogo", "-NoProfile", "-Command", "Write-Output hello"],
+    });
+    expect(harness.messages.some((message) => message.type === "terminal.error")).toBe(
+      false,
+    );
+  });
+
+  it("spawns cmd.exe command mode with Windows command args", async () => {
+    const harness = createHarnessWithShell({
+      resolveShell: async () => "C:\\Windows\\System32\\cmd.exe",
+    });
+
+    await harness.manager.handleMessage({
+      type: "terminal.open",
+      requestId: "open-1",
+      terminalId: "term-1",
+      threadId: "thr-1",
+      target: {
+        kind: "workspace",
+        environmentId: "env-1",
+        workspaceContext: {
+          workspacePath: "/tmp/terminal-workspace",
+          workspaceProvisionType: "unmanaged",
+        },
       },
-    ]);
+      cols: 100,
+      rows: 30,
+      start: { mode: "command", command: "echo hello" },
+    });
+
+    expect(harness.adapter.spawned[0]?.args).toMatchObject({
+      file: "C:\\Windows\\System32\\cmd.exe",
+      args: ["/d", "/s", "/c", "echo hello"],
+    });
   });
 
   it("runs commands in one persistent shell from the workspace cwd", async () => {

@@ -527,7 +527,7 @@ describe("provisionWorkspace", () => {
       expect(worktrees.stdout).not.toContain(targetPath);
     });
 
-    it("runs the supported setup script after provisioning", async () => {
+    it.skipIf(process.platform === "win32")("runs the supported setup script after provisioning", async () => {
       const repoPath = await initRepo({
         setupScript: "echo worktree-setup-ran > setup-marker.txt\n",
       });
@@ -550,7 +550,7 @@ describe("provisionWorkspace", () => {
       expect(marker.trim()).toBe("worktree-setup-ran");
     });
 
-    it("rolls back on setup script failure", async () => {
+    it.skipIf(process.platform === "win32")("rolls back on setup script failure", async () => {
       const repoPath = await initRepo({
         setupScript: "echo failing >&2\nexit 1\n",
       });

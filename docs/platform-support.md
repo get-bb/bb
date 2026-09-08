@@ -6,6 +6,7 @@
 
 - macOS persistent host
 - Linux persistent host
+- Windows native persistent host
 - Windows via Ubuntu on WSL2
 
 Minimum runtime: Node.js 22.19. Pi no longer sets the floor: its bridge is a
@@ -24,14 +25,24 @@ floor only, so a release line we have not tested yet still installs rather than
 failing hard on the day it ships. The `bb-app` npm `engines` field lists the
 tested lines, which npm surfaces as a warning rather than an install failure.
 
-Windows support means the Linux stack runs entirely inside WSL2:
+Windows support means either native Windows or the Linux stack inside WSL2.
+
+On native Windows:
+
+- all `bb` processes run in native Windows PowerShell or CMD
+- Node.js, Git, and provider CLIs are installed natively on Windows
+- local project paths use native Windows drive-letter and UNC paths
+- terminals run PowerShell (`pwsh`/`powershell.exe`) or `cmd.exe` through
+  ConPTY
+
+Inside WSL2:
 
 - all `bb` processes run inside the same Ubuntu WSL2 distro
 - Node.js, Git, provider CLIs, and pnpm for source-development flows are
   installed inside WSL2
 - local project paths use Linux-style absolute paths from inside WSL2
 - native Windows PowerShell, CMD, drive-letter paths, and UNC paths are not
-  supported product paths
+  supported product paths in the WSL2 flow
 
 ## Mobile app
 
@@ -113,7 +124,7 @@ Not available on the phone (use the web app or desktop for these):
 
 - Run `npx bb-app`, source checkout commands such as `pnpm install`,
   `pnpm dev`, `pnpm bb:dev`, and host-daemon commands from a WSL2 shell, not
-  from native Windows terminals.
+  from native Windows terminals, when using the WSL2 flow.
 - Repositories inside the WSL filesystem are recommended for best behavior.
 - `/mnt/c/...` mounted paths are deliberately supported so WSL2 users can keep
   working with existing Windows checkouts instead of relocating every repo into
@@ -121,13 +132,16 @@ Not available on the phone (use the web app or desktop for these):
   slower filesystem I/O and weaker file-watching behavior than the WSL
   filesystem.
 - Native Windows drive-letter and UNC paths are rejected at the app/server
-  boundary so unsupported input fails clearly.
+  boundary in the WSL2 flow so unsupported input fails clearly.
 
 ### Maintainer-only or best-effort surfaces
 
 - workspace-owned QA helpers under [`tests/qa/`](../tests/qa/)
 - dev restart internals that are not part of the shipped product path
-- native Windows PowerShell, CMD, and host-daemon runtime flows
+- native Windows source-development flows (`pnpm dev`, `pnpm install` from a
+  native Windows shell) are not part of the shipped product path; native
+  Windows support targets the `npx bb-app` package and enrolled host-daemon
+  flows
 
 ## Dependency Policy
 
@@ -172,9 +186,11 @@ rebuild the native dependency, for example `npm rebuild better-sqlite3`.
 
 ## Setup Hook Policy
 
-- The supported setup hook is POSIX `.bb-env-setup.sh`.
-- The supported teardown hook is POSIX `.bb-env-teardown.sh`.
-- The same shell-based hook contract is used across macOS, Linux, and WSL2.
+- The supported setup hook is POSIX `.bb-env-setup.sh` on macOS and Linux.
+- On native Windows the setup hook is PowerShell `.bb-env-setup.ps1`, run with
+  `powershell.exe -NoProfile -ExecutionPolicy Bypass -File`.
+- The supported teardown hook is POSIX `.bb-env-teardown.sh` on macOS and
+  Linux, and PowerShell `.bb-env-teardown.ps1` on native Windows.
 - No parallel `.bb-env-setup.ts` product-path mechanism is supported.
 - The `.worktreeinclude` copy step runs no shell. It works on every platform,
   including native Windows.

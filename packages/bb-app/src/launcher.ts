@@ -2,7 +2,7 @@
 import type { ChildProcess } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { spawn } from "node:child_process";
-import { existsSync, readdirSync, readFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import {
   access,
   mkdir,
@@ -1352,6 +1352,25 @@ export function resolveBbAppStartContext(
   };
 }
 
+function resolveBundledBbCliEntry(context: BbAppStartContext): string {
+  return join(
+    context.daemonBundleDir,
+    process.platform === "win32" ? "bb.cmd" : "bb",
+  );
+}
+
+function ensureWindowsBbCliShim(context: BbAppStartContext): void {
+  if (process.platform !== "win32") {
+    return;
+  }
+  const bbEntry = join(context.daemonBundleDir, "bb");
+  const shimPath = join(context.daemonBundleDir, "bb.cmd");
+  writeFileSync(
+    shimPath,
+    `@echo off\r\n"${process.execPath}" "${bbEntry}" %*\r\n`,
+  );
+}
+
 export async function resolveBbAppRuntimeState(
   args: ResolveBbAppRuntimeStateArgs,
 ): Promise<BbAppRuntimeState> {
@@ -1364,6 +1383,7 @@ export async function resolveBbAppRuntimeState(
     env: initialEnv,
     homeDir: args.homeDir,
   });
+  ensureWindowsBbCliShim(initialContext);
   const config = await readManagedConfig({ dataDir: initialContext.dataDir });
   const envFile = await readManagedEnvFile({ dataDir: initialContext.dataDir });
   const persistedEnv = applyManagedConfigEnv({
@@ -2610,7 +2630,7 @@ export function createServerEnv(args: CreateServerEnvArgs): NodeJS.ProcessEnv {
     ...args.env,
     BB_APP_VERSION: args.context.appVersion,
     [APP_SURFACE_ENV_NAME]: resolveServerAppSurface(args.env),
-    BB_CLI: join(args.context.daemonBundleDir, "bb"),
+    BB_CLI: resolveBundledBbCliEntry(args.context),
     BB_CLI_DIR: args.context.daemonBundleDir,
     BB_DATA_DIR: args.context.dataDir,
     BB_HOST_DAEMON_PORT: String(args.context.daemonPort),
@@ -2758,7 +2778,7 @@ export async function runBundledCliCommand(
   args: RunBundledCliCommandArgs,
 ): Promise<number> {
   const bbCliOverride = toOptionalString(args.env.BB_CLI);
-  const cliPath = bbCliOverride ?? join(args.context.daemonBundleDir, "bb");
+  const cliPath = bbCliOverride ?? resolveBundledBbCliEntry(args.context);
   const childProcess = spawn(cliPath, args.args, {
     cwd: process.cwd(),
     env: createCliEnv({ context: args.context, env: args.env }),

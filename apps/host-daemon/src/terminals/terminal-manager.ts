@@ -81,7 +81,6 @@ export interface TerminalManagerOptions {
   closeGracePeriodMs?: number;
   dataDir?: string;
   logger: HostDaemonLogger;
-  platform?: NodeJS.Platform;
   ptyAdapter?: TerminalPtyAdapter;
   resolveShell?: ResolveTerminalShell;
   runtimeManager: RuntimeManager;
@@ -327,7 +326,40 @@ function isNonEmptyString(value: string | undefined): value is string {
   return value !== undefined && value.length > 0;
 }
 
+function findExecutableOnPath(command: string): string | null {
+  const pathEntries = (process.env.PATH ?? "")
+    .split(path.delimiter)
+    .filter((entry) => entry.length > 0);
+  const extensions = (process.env.PATHEXT ?? ".EXE;.CMD;.BAT").split(";");
+  for (const directory of pathEntries) {
+    for (const extension of ["", ...extensions]) {
+      const candidate = path.join(directory, `${command}${extension}`);
+      if (existsSync(candidate)) {
+        return candidate;
+      }
+    }
+  }
+  return null;
+}
+
+function resolveWindowsTerminalShell(): string {
+  const configuredShell = process.env.SHELL?.trim();
+  if (configuredShell && configuredShell.length > 0) {
+    return configuredShell;
+  }
+  const powershell =
+    findExecutableOnPath("pwsh") ?? findExecutableOnPath("powershell.exe");
+  if (powershell !== null) {
+    return powershell;
+  }
+  return process.env.ComSpec?.trim() || "cmd.exe";
+}
+
 async function resolveDefaultTerminalShell(): Promise<string> {
+  if (process.platform === "win32") {
+    return resolveWindowsTerminalShell();
+  }
+
   const candidates = [
     process.env.SHELL,
     "/bin/zsh",
@@ -369,12 +401,32 @@ function terminalTitleFromCommand(command: string): string {
   return `${normalized.slice(0, 77)}...`;
 }
 
-function terminalSpawnArgsForStart(message: TerminalOpenMessage): string[] {
+function terminalSpawnArgsForStart(
+  message: TerminalOpenMessage,
+  shell: string,
+): string[] {
   switch (message.start.mode) {
     case "shell":
       return [];
-    case "command":
+    case "command": {
+      const shellName = path.basename(shell).toLowerCase();
+      if (
+        shellName === "cmd" ||
+        shellName === "cmd.exe" ||
+        shellName === "comspec"
+      ) {
+        return ["/d", "/s", "/c", message.start.command];
+      }
+      if (
+        shellName === "pwsh" ||
+        shellName === "pwsh.exe" ||
+        shellName === "powershell" ||
+        shellName === "powershell.exe"
+      ) {
+        return ["-NoLogo", "-NoProfile", "-Command", message.start.command];
+      }
       return ["-lc", message.start.command];
+    }
   }
 }
 
@@ -452,7 +504,6 @@ function consumePrimaryDeviceAttributesQueries(
 
 export class TerminalManager {
   private readonly closeGracePeriodMs: number;
-  private readonly platform: NodeJS.Platform;
   private readonly ptyAdapter: TerminalPtyAdapter;
   private readonly resolveShell: ResolveTerminalShell;
   private readonly terminalOperations = new Map<string, Promise<void>>();
@@ -465,7 +516,6 @@ export class TerminalManager {
   constructor(private readonly options: TerminalManagerOptions) {
     this.closeGracePeriodMs =
       options.closeGracePeriodMs ?? DEFAULT_TERMINAL_CLOSE_GRACE_PERIOD_MS;
-    this.platform = options.platform ?? process.platform;
     this.ptyAdapter = options.ptyAdapter ?? nodePtyAdapter;
     this.resolveShell = options.resolveShell ?? resolveDefaultTerminalShell;
   }
@@ -563,16 +613,6 @@ export class TerminalManager {
       return;
     }
 
-    if (this.platform === "win32") {
-      this.sendTerminalError({
-        code: "unsupported_platform",
-        message: "Native Windows terminals are not supported",
-        requestId: message.requestId,
-        terminalId: message.terminalId,
-      });
-      return;
-    }
-
     const openingEnvironmentId = terminalEnvironmentIdFromOpenMessage(message);
     this.openingTerminalEnvironmentIds.set(
       message.terminalId,
@@ -582,7 +622,7 @@ export class TerminalManager {
       const target = await this.resolveTerminalOpenTarget(message);
       const shell = await this.resolveShell();
       const pty = this.ptyAdapter.spawn({
-        args: terminalSpawnArgsForStart(message),
+        args: terminalSpawnArgsForStart(message, shell),
         cols: message.cols,
         cwd: target.cwd,
         env: buildTerminalEnv({

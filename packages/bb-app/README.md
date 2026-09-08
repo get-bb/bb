@@ -37,18 +37,22 @@ credentials. If you use multiple providers, you can mix and match per task.
 
 - macOS
 - Linux
+- Windows (native PowerShell or CMD)
 
 <details>
-<summary>Windows via Ubuntu on WSL2</summary>
+<summary>Windows notes</summary>
 
-Run all `bb` commands inside WSL2, install Node.js, Git, and your provider CLIs
-inside that WSL2 distro, and use Linux-style paths such as `/home/me/repo` or
-`/mnt/c/Users/me/repo`.
+Run `bb` from native Windows PowerShell or CMD, with Node.js, Git, and your
+provider CLIs installed on Windows. Project paths use native Windows
+drive-letter or UNC paths, and terminals run PowerShell (`pwsh`/`powershell.exe`)
+or `cmd.exe`.
 
-Native Windows PowerShell, CMD, drive-letter paths, and UNC paths are not
-supported product paths. Repos inside the WSL filesystem are recommended;
-`/mnt/c/...` is intentionally supported so you can keep an existing Windows
-checkout, but it is slower and less reliable for file watching.
+As an alternative, you can run all `bb` commands inside WSL2, install Node.js,
+Git, and your provider CLIs inside that WSL2 distro, and use Linux-style paths
+such as `/home/me/repo` or `/mnt/c/Users/me/repo`. Repos inside the WSL
+filesystem are recommended; `/mnt/c/...` is intentionally supported so you can
+keep an existing Windows checkout, but it is slower and less reliable for file
+watching.
 
 </details>
 

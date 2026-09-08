@@ -399,7 +399,7 @@ export async function resolveLocalBbExecutablePath(
 }
 
 function bbExecutableFileName(): string {
-  return "bb";
+  return process.platform === "win32" ? "bb.cmd" : "bb";
 }
 
 export function resolveBbExecutablePathInDirectory(

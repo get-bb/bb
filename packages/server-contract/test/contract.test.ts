@@ -1100,7 +1100,7 @@ describe("server-contract canonical schemas", () => {
         type: "local_path",
         path: " C:\\Users\\michael\\bb\\ ",
       }),
-    ).toThrow("Native Windows paths are not supported");
+    ).not.toThrow();
 
     expect(() =>
       contract.updateProjectSourceRequestSchema.parse({
