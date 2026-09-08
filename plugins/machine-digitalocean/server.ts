@@ -1,3 +1,4 @@
+import { cacheVendorInventory } from "./inventory-cache.js";
 import { devboxRpc, hostInput } from "./rpc.js";
 import type { BbPluginApi } from "@get-bb/plugin-sdk";
 import { setTimeout } from "node:timers/promises";
@@ -13,6 +14,7 @@ import {
   latestScheduledAction,
   pruneSnapshots,
   recordPower,
+  invalidatePendingSnapshot,
   sleepWithBackup,
 } from "./devbox.js";
 import {
@@ -57,13 +59,16 @@ export function createDigitalOceanPlugin(deps: {
         label: "DigitalOcean API token",
       },
     });
+    let client: { token: string; api: Vendor } | null = null;
     async function vendor() {
       const token = (await settings.get()).DIGITALOCEAN_TOKEN?.trim();
       if (!token)
         throw new AllocationError(
           "Configure the DIGITALOCEAN_TOKEN plugin setting.",
         );
-      return deps.vendor(token);
+      if (client?.token !== token)
+        client = { token, api: cacheVendorInventory(deps.vendor(token), now) };
+      return client.api;
     }
     async function owned(
       api: Vendor,
@@ -121,21 +126,39 @@ export function createDigitalOceanPlugin(deps: {
         await store.set(hostId, await store.get(hostId));
       }
       const state = await store.get(hostId);
-      const api = await vendor();
-      await owned(api, resource.dropletId, resource.key, signal);
-      const inventory = await api.inventory(resource.dropletId, signal);
-      if (
-        inventory.droplet?.status === "active" ||
-        inventory.droplet?.status === "off"
-      ) {
-        recordPower(state, inventory.droplet.status, now());
+      try {
+        const api = await vendor();
+        const inventory = await api.inventory(resource.dropletId, signal);
+        const name = allocationName(resource.key);
+        if (
+          inventory.droplet !== null &&
+          (inventory.droplet.name !== name ||
+            !inventory.droplet.tags.includes(name))
+        )
+          throw new AllocationError(
+            "DigitalOcean allocation ownership does not match.",
+          );
+        if (
+          inventory.droplet?.status === "active" ||
+          inventory.droplet?.status === "off"
+        )
+          recordPower(state, inventory.droplet.status, now());
+        const cost = computeCost(inventory, state, hostId, now());
+        const latest = state.snapshots.at(-1);
+        return {
+          summary: `${BILLING}. $${cost.monthlyEstimate.toFixed(2)}/month + account unassigned IPs $${cost.accountUnassignedIpMonthlyEstimate.toFixed(2)}/month. Snapshots: ${cost.snapshotGb.toFixed(2)} GB ($${cost.snapshotMonthlyEstimate.toFixed(2)}/month). Observed running ${cost.runningHoursObserved.toFixed(2)} h / off ${cost.offHoursObserved.toFixed(2)} h. Backup: ${state.backupStatus}${latest ? ` · ${latest.id}, ${latest.size_gigabytes} GB, ${latest.created_at}` : ""}.`,
+          values: { ...state, cost, inventoryError: null },
+        };
+      } catch {
+        return {
+          summary: `${BILLING}. Backup: ${state.backupStatus}. Inventory unavailable.`,
+          values: {
+            ...state,
+            cost: null,
+            inventoryError: "DigitalOcean inventory unavailable; retry later.",
+          },
+        };
       }
-      const cost = computeCost(inventory, state, hostId, now());
-      const latest = state.snapshots.at(-1);
-      return {
-        summary: `${BILLING}. $${cost.monthlyEstimate.toFixed(2)}/month + account unassigned IPs $${cost.accountUnassignedIpMonthlyEstimate.toFixed(2)}/month. Snapshots: ${cost.snapshotGb.toFixed(2)} GB ($${cost.snapshotMonthlyEstimate.toFixed(2)}/month). Observed running ${cost.runningHoursObserved.toFixed(2)} h / off ${cost.offHoursObserved.toFixed(2)} h. Backup: ${state.backupStatus}${latest ? ` · ${latest.id}, ${latest.size_gigabytes} GB, ${latest.created_at}` : ""}.`,
-        values: { ...state, cost },
-      };
     }
     const handlers = {
       async machines() {
@@ -167,18 +190,22 @@ export function createDigitalOceanPlugin(deps: {
           const state = await store.get(hostId);
           state.config = config;
           state.scheduleCursor = now();
+          state.scheduleRevision += 1;
           state.scheduleError = null;
           await store.set(hostId, state);
           return config;
         });
       },
       async sleep({ hostId }: z.infer<typeof hostInput>) {
-        await machine(hostId);
+        const { resource } = await machine(hostId);
         await bb.sdk.hosts.suspend({ hostId });
         const state = await store.get(hostId);
         return {
           ok: true as const,
+          power: state.power,
           backupStatus: state.backupStatus,
+          backupError: state.backupError,
+          details: await details(hostId, resource, AbortSignal.timeout(30_000)),
           snapshotId: state.snapshots.at(-1)?.id ?? null,
         };
       },
@@ -244,7 +271,7 @@ export function createDigitalOceanPlugin(deps: {
         else if (command === "sleep" || command === "snapshot-now") {
           const slept = await handlers.sleep(input);
           exitCode = slept.backupStatus === "off, backup failed" ? 1 : 0;
-          result = await handlers.status(input);
+          result = slept;
         } else if (command === "wake") result = await handlers.wake(input);
         else
           throw new Error(
@@ -253,6 +280,7 @@ export function createDigitalOceanPlugin(deps: {
         return { exitCode, stdout: JSON.stringify(result, null, 2) };
       },
     });
+    const scheduleClaims = new Set<string>();
     bb.background.schedule("devbox-schedules", "* * * * *", async () => {
       for (const hostId of await store.hosts()) {
         const state = await store.get(hostId);
@@ -262,25 +290,56 @@ export function createDigitalOceanPlugin(deps: {
           state.scheduleCursor,
           now(),
         );
-        if (!scheduled) continue;
+        if (!scheduled || scheduleClaims.has(hostId)) continue;
+        scheduleClaims.add(hostId);
         try {
           const { host } = await machine(hostId);
-          if (scheduled.action === "sleep" && host.lifecycle.phase === "active")
-            await bb.sdk.hosts.suspend({ hostId });
+          const desired = scheduled.action === "sleep" ? "suspended" : "active";
           if (
-            scheduled.action === "wake" &&
-            host.lifecycle.phase === "suspended"
+            host.lifecycle.phase !== "active" &&
+            host.lifecycle.phase !== "suspended"
           )
-            await bb.sdk.hosts.resume({ hostId });
-          const current = await store.get(hostId);
-          current.scheduleCursor = scheduled.at;
-          current.scheduleError = null;
-          await store.set(hostId, current);
+            continue;
+          const claim = await store.exclusive(hostId, async () => {
+            const current = await store.get(hostId);
+            if (
+              current.scheduleRevision !== state.scheduleRevision ||
+              current.scheduleCursor >= scheduled.at
+            )
+              return null;
+            return {
+              operation:
+                scheduled.action === "wake"
+                  ? bb.sdk.hosts.resume({ hostId })
+                  : host.lifecycle.phase === desired
+                    ? Promise.resolve()
+                    : bb.sdk.hosts.suspend({ hostId }),
+            };
+          });
+          if (!claim) continue;
+          await claim.operation;
+          const established = await bb.sdk.hosts.get({ hostId });
+          if (established.lifecycle.phase !== desired) continue;
+          await store.exclusive(hostId, async () => {
+            const current = await store.get(hostId);
+            if (current.scheduleRevision !== state.scheduleRevision) return;
+            current.scheduleCursor = Math.max(
+              current.scheduleCursor,
+              scheduled.at,
+            );
+            current.scheduleError = null;
+            await store.set(hostId, current);
+          });
         } catch {
-          const current = await store.get(hostId);
-          current.scheduleError =
-            "Scheduled action failed or machine is busy; retry next minute until superseded by the next scheduled action.";
-          await store.set(hostId, current);
+          await store.exclusive(hostId, async () => {
+            const current = await store.get(hostId);
+            if (current.scheduleRevision !== state.scheduleRevision) return;
+            current.scheduleError =
+              "Scheduled action failed or machine is busy; retry next minute until superseded by the next scheduled action.";
+            await store.set(hostId, current);
+          });
+        } finally {
+          scheduleClaims.delete(hostId);
         }
       }
     });
@@ -479,9 +538,11 @@ export function createDigitalOceanPlugin(deps: {
           );
           if (droplet === null)
             throw new AllocationError("DigitalOcean Droplet no longer exists.");
+          const state = await store.get(context.hostId);
+          invalidatePendingSnapshot(state);
+          await store.set(context.hostId, state);
           if (droplet.status !== "active")
             await api.power(droplet.id, "power_on", context.signal);
-          const state = await store.get(context.hostId);
           recordPower(state, "active", now());
           await store.set(context.hostId, state);
           const { hostId } =

@@ -39,7 +39,9 @@ Every sleep now quiesces through core, gracefully shuts down (`shutdown`), confi
 off, snapshots the disk and remains off. Busy threads and open terminals prevent
 sleep; finish work and close terminals first. Snapshot names encode host identity
 and UTC time. Metadata (ID, size and creation time) is durable before pruning.
-If backup fails after shutdown, status reads **off, backup failed**, the machine
+Snapshot intent belongs to a shutdown generation. After any wake, the next sleep
+creates a fresh backup; only retries within the same shutdown reconcile an
+uncertain submission. If backup fails after shutdown, status reads **off, backup failed**, the machine
 remains suspended and prior backups survive. Retry after waking. Snapshot now
 also sleeps the machine; it requires an active machine. This is disk backup,
 not a memory checkpoint. Attached volumes need separate protection.
@@ -64,6 +66,11 @@ Cost is labelled an estimate: live `/v2/sizes` rates, running/off observations,
 actual snapshot GB × $0.06/month and account-wide unassigned reserved IPv4 at
 $5/month are shown separately. Assigned IPs are free. Machine rows/details,
 `bb machine show --json`, and the plugin status/cost commands expose estimates.
+Account-wide rates, snapshots and reserved IPs are shared across callers for
+30 seconds; concurrent reads coalesce and mutations invalidate the cache.
+Sleep JSON always includes saved power/backup status and snapshot ID. Optional
+`details.values.cost` is null with `inventoryError` when inventory is unavailable;
+status and the UI also retain saved backup state during vendor outages.
 Tax, bandwidth, volumes and credits are excluded; this is not an invoice.
 
 ### Configure from a local thread
@@ -80,7 +87,9 @@ bb digitalocean configure <host-id> '{"idleMinutes":null,"retention":2,"schedule
 ```
 
 Configuration replaces all three fields; omitted fields get their documented
-defaults. Saving resets the schedule cursor to now. Commands are backed by the
+defaults. Saving resets the schedule cursor to now and invalidates previously selected
+runs. A run already dispatched through core may finish, but cannot overwrite
+the replacement configuration cursor. Commands are backed by the
 plugin RPC contract (`configure`, `configuration`, `machines`, `status`, `sleep`,
 `wake`) through `bb.sdk.plugins.callRpc`; `snapshot-now` aliases core-backed sleep.
 Core lifecycle SDK parity is `bb.sdk.hosts.suspend/resume`, and inventory is
@@ -90,7 +99,9 @@ The SDK's durable minute cron runs on the **always-on BB server**, never on the
 sleeping box. Weekdays use Sunday=0 through Saturday=6. Schedule times require an
 IANA timezone. On a missed run or restart, only the latest action in the past
 eight days runs; completed cursors are durable. Busy/failed actions retry next
-minute until superseded by a newer action. Nonexistent spring-DST times are
+minute until superseded by a newer action. A wake waits for an in-progress
+suspension; skipped transitional states remain pending. Waking an active box
+is a no-op. Nonexistent spring-DST times are
 skipped; repeated autumn times may run twice (already-off/on operations are
 skipped). Vendor lifecycle operations always route through core suspend/resume.
 

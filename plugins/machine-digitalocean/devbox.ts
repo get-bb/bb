@@ -35,6 +35,13 @@ const stateSchema = z.object({
   config: configSchema,
   snapshots: z.array(snapshotSchema),
   pendingSnapshot: z.string().nullable(),
+  shutdownGeneration: z.number().int().nonnegative().default(0),
+  pendingSnapshotGeneration: z
+    .number()
+    .int()
+    .nonnegative()
+    .nullable()
+    .default(null),
   backupStatus: z.enum(["none", "complete", "off, backup failed"]),
   backupError: z.string().nullable(),
   power: z.enum(["active", "off"]),
@@ -42,6 +49,7 @@ const stateSchema = z.object({
   runningMs: z.number().nonnegative(),
   offMs: z.number().nonnegative(),
   scheduleCursor: z.number(),
+  scheduleRevision: z.number().int().nonnegative().default(0),
   scheduleError: z.string().nullable(),
 });
 export type DevboxState = z.infer<typeof stateSchema>;
@@ -74,6 +82,8 @@ export function createDevboxStore(
             config: configSchema.parse({}),
             snapshots: [],
             pendingSnapshot: null,
+            shutdownGeneration: 0,
+            pendingSnapshotGeneration: null,
             backupStatus: "none",
             backupError: null,
             power: "active",
@@ -81,6 +91,7 @@ export function createDevboxStore(
             runningMs: 0,
             offMs: 0,
             scheduleCursor: now(),
+            scheduleRevision: 0,
             scheduleError: null,
           }
         : stateSchema.parse(stored);
@@ -98,11 +109,17 @@ export function createDevboxStore(
 }
 export type DevboxStore = ReturnType<typeof createDevboxStore>;
 
+export function invalidatePendingSnapshot(state: DevboxState) {
+  state.pendingSnapshot = null;
+  state.pendingSnapshotGeneration = null;
+}
+
 export function recordPower(
   state: DevboxState,
   power: "active" | "off",
   now: number,
 ) {
+  if (power === "active") invalidatePendingSnapshot(state);
   if (state.power === power) return;
   const elapsed = Math.max(0, now - state.powerSince);
   if (state.power === "active") state.runningMs += elapsed;
@@ -124,7 +141,12 @@ export async function sleepWithBackup(args: {
   const droplet = await api.get(dropletId, signal);
   if (!droplet) throw new Error("DigitalOcean Droplet no longer exists.");
   const wasOff = droplet.status === "off";
-  if (!wasOff) await api.power(dropletId, "shutdown", signal);
+  if (!wasOff) {
+    state.shutdownGeneration += 1;
+    invalidatePendingSnapshot(state);
+    await store.set(hostId, state);
+    await api.power(dropletId, "shutdown", signal);
+  }
   const off = await api.get(dropletId, signal);
   if (off?.status !== "off")
     throw new Error(
@@ -138,7 +160,10 @@ export async function sleepWithBackup(args: {
     state.pendingSnapshot === null
   )
     return state;
-  state.pendingSnapshot ??= `bb-devbox-${hostId}-${now()}`;
+  if (state.pendingSnapshotGeneration !== state.shutdownGeneration)
+    invalidatePendingSnapshot(state);
+  state.pendingSnapshot ??= `bb-devbox-${hostId}-${now()}-${state.shutdownGeneration}`;
+  state.pendingSnapshotGeneration = state.shutdownGeneration;
   await store.set(hostId, state);
   try {
     let snapshot = (await api.snapshots(signal)).find(
@@ -162,7 +187,7 @@ export async function sleepWithBackup(args: {
       ...state.snapshots.filter((item) => item.id !== snapshot.id),
       snapshot,
     ];
-    state.pendingSnapshot = null;
+    invalidatePendingSnapshot(state);
     state.backupStatus = "complete";
     state.backupError = null;
     await store.set(hostId, state);

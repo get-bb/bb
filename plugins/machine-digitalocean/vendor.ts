@@ -1,3 +1,4 @@
+import { createReadCache } from "./inventory-cache.js";
 import { snapshotSchema } from "./snapshot.js";
 import { createHash } from "node:crypto";
 import { setTimeout } from "node:timers/promises";
@@ -40,13 +41,26 @@ export class VendorError extends Error {
   }
 }
 
-export function createVendor(token: string, requestFetch: VendorFetch = fetch) {
+export function createVendor(
+  token: string,
+  requestFetch: VendorFetch = fetch,
+  now: () => number = Date.now,
+) {
+  const ratesCache = createReadCache<z.infer<typeof sizeSchema>[]>(now);
+  const snapshotsCache = createReadCache<Snapshot[]>(now);
+  const ipsCache = createReadCache<z.infer<typeof ipSchema>[]>(now);
+  function invalidate() {
+    ratesCache.clear();
+    snapshotsCache.clear();
+    ipsCache.clear();
+  }
   async function request(
     method: string,
     path: string,
     signal: AbortSignal,
     body?: object,
   ) {
+    if (method !== "GET") invalidate();
     const response = await requestFetch(
       `https://api.digitalocean.com/v2${path}`,
       {
@@ -58,7 +72,9 @@ export function createVendor(token: string, requestFetch: VendorFetch = fetch) {
         signal: AbortSignal.any([signal, AbortSignal.timeout(30_000)]),
         ...(body === undefined ? {} : { body: JSON.stringify(body) }),
       },
-    );
+    ).finally(() => {
+      if (method !== "GET") invalidate();
+    });
     if (response.status === 404 && (method === "GET" || method === "DELETE"))
       return null;
     if (!response.ok) throw new VendorError(response.status);
@@ -119,17 +135,24 @@ export function createVendor(token: string, requestFetch: VendorFetch = fetch) {
       if (!links?.pages?.next) return results;
     }
   }
-  return {
-    async snapshots(signal: AbortSignal) {
-      return pages(
+  function readSnapshots(signal: AbortSignal) {
+    return snapshotsCache.get("account", signal, (shared) =>
+      pages(
         "/snapshots?resource_type=droplet",
         "snapshots",
         snapshotSchema,
-        signal,
-      );
-    },
+        shared,
+      ),
+    );
+  }
+  return {
+    snapshots: readSnapshots,
     async snapshot(id: number, name: string, signal: AbortSignal) {
-      await action(id, { type: "snapshot", name }, signal);
+      try {
+        await action(id, { type: "snapshot", name }, signal);
+      } finally {
+        invalidate();
+      }
     },
     async deleteSnapshot(id: string, signal: AbortSignal) {
       await request("DELETE", `/snapshots/${encodeURIComponent(id)}`, signal);
@@ -137,14 +160,13 @@ export function createVendor(token: string, requestFetch: VendorFetch = fetch) {
     async inventory(id: number, signal: AbortSignal) {
       const [raw, sizes, snapshots, reservedIps] = await Promise.all([
         request("GET", `/droplets/${id}`, signal),
-        pages("/sizes", "sizes", sizeSchema, signal),
-        pages(
-          "/snapshots?resource_type=droplet",
-          "snapshots",
-          snapshotSchema,
-          signal,
+        ratesCache.get("account", signal, (shared) =>
+          pages("/sizes", "sizes", sizeSchema, shared),
         ),
-        pages("/reserved_ips", "reserved_ips", ipSchema, signal),
+        readSnapshots(signal),
+        ipsCache.get("account", signal, (shared) =>
+          pages("/reserved_ips", "reserved_ips", ipSchema, shared),
+        ),
       ]);
       return {
         droplet:

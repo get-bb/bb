@@ -36,7 +36,9 @@ Configuration example:
 also idle-stop. Retirement stays never. `retention`: 1–100, default 2; the global
 `snapshotRetention` setting sets new-machine defaults. `schedule`: null disables;
 otherwise Sunday=0, explicit IANA timezone and HH:mm times. Configuration saves
-reset the cursor. Omitted fields get defaults, so send the complete desired state.
+reset the cursor and invalidate undispatched runs. In-flight runs cannot
+overwrite a replacement configuration cursor. Wake waits for a pending sleep
+and is a no-op if already active. Omitted fields get defaults, so send the complete desired state.
 
 The durable minute schedule catches up only the latest action within eight days.
 Busy sleep retries next minute until superseded. Spring DST missing times skip;
@@ -54,6 +56,11 @@ volumes and credits. Do not describe sleep as compute cost savings.
 
 After sleep verify off and a snapshot ID/size. If status is `off, backup failed`,
 keep the machine off and preserve prior backups; report it clearly. Wake then
-retry sleep to reconcile. Removal deletes the Droplet and its plugin-owned
+retry sleep to create a fresh backup for the new shutdown generation. A retry
+without an intervening wake may reconcile the original uncertain submission.
+Sleep JSON preserves saved power/backup status even if optional inventory fails;
+`details.values.cost` is then null with `inventoryError`. Status/UI retain the
+same durable backup result. Inventory is coalesced and cached for 30 seconds,
+with invalidation after mutations. Removal deletes the Droplet and its plugin-owned
 snapshots only; verify cleanup through status/vendor inventory and exact 404s.
 Never delete user snapshots or unrelated resources.

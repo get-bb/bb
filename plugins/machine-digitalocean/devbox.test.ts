@@ -119,7 +119,11 @@ describe("durable devbox backups", () => {
       power: "off",
       backupStatus: "complete",
       snapshots: [
-        { id: "new", size_gigabytes: 2.5, name: "bb-devbox-host-test-1000000" },
+        {
+          id: "new",
+          size_gigabytes: 2.5,
+          name: "bb-devbox-host-test-1000000-1",
+        },
       ],
     });
   });
@@ -150,6 +154,32 @@ describe("durable devbox backups", () => {
     await sleepWithBackup(test.args);
     expect(test.api.snapshot).toHaveBeenCalledOnce();
     expect((await test.store.get("host-test")).backupStatus).toBe("complete");
+  });
+  it("creates a fresh shutdown-generation backup after waking from a lost snapshot response", async () => {
+    const test = setup();
+    test.api.snapshot.mockImplementationOnce(async (_id, name) => {
+      test.snapshots.push({ ...snapshot("1"), name });
+      throw new Error("response lost after vendor completion");
+    });
+    await sleepWithBackup(test.args);
+    expect((await test.store.get("host-test")).backupStatus).toBe(
+      "off, backup failed",
+    );
+    test.droplet.status = "active";
+    const restarted = createDevboxStore(test.kv);
+    await sleepWithBackup({ ...test.args, store: restarted });
+    expect(test.api.power).toHaveBeenCalledTimes(2);
+    expect(test.api.snapshot).toHaveBeenCalledTimes(2);
+    expect(test.api.snapshot.mock.calls.map((call) => call[1])).toEqual([
+      "bb-devbox-host-test-1000000-1",
+      "bb-devbox-host-test-1000000-2",
+    ]);
+    expect(await restarted.get("host-test")).toMatchObject({
+      backupStatus: "complete",
+      shutdownGeneration: 2,
+      pendingSnapshot: null,
+      snapshots: [{ id: "new", name: "bb-devbox-host-test-1000000-2" }],
+    });
   });
   it("prunes old owned snapshots only, after recording the new snapshot", async () => {
     const test = setup();

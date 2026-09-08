@@ -20,6 +20,9 @@ export const devboxRpc = defineRpcContract({
     input: hostInput,
     output: z.object({
       ok: z.literal(true),
+      power: z.enum(["active", "off"]),
+      backupError: z.string().nullable(),
+      details: z.object({ summary: z.string(), values: z.json() }),
       backupStatus: z.enum(["none", "complete", "off, backup failed"]),
       snapshotId: z.string().nullable(),
     }),

@@ -1,3 +1,4 @@
+import { createDevboxStore } from "./devbox.js";
 import {
   createConnection,
   migrate,
@@ -396,4 +397,287 @@ it("runs durable scheduled sleep and wake through core and retries a busy sleep"
   expect(phase).toBe("active");
   expect(test.api.power).not.toHaveBeenCalled();
   await test.harness.lifecycle.dispose();
+});
+
+async function scheduleSetup() {
+  let time = Date.parse("2026-09-07T18:59:00Z");
+  const t = await setup(() => time);
+  await t.provider.create(context());
+  let phase = "active";
+  const get = vi.fn(async () => ({
+    id: "host-1",
+    name: "Devbox",
+    status: "connected",
+    machineProviderId: "digitalocean",
+    machineProviderSelection: { inputs: {} },
+    maxPermissionMode: "full",
+    lastSeenAt: time,
+    lastRejectedProtocolVersion: null,
+    createdAt: time,
+    updatedAt: time,
+    connectMachineId: null,
+    lifecycle: {
+      phase,
+      suspendedAt: null,
+      retireAt: null,
+      progress: null,
+      teardown: null,
+    },
+  }));
+  t.harness.sdk.stub("hosts.get", get);
+  const suspend = vi.fn(async () => {
+    phase = "suspended";
+    return { ok: true as const };
+  });
+  const resume = vi.fn(async () => {
+    phase = "active";
+    return { ok: true as const };
+  });
+  t.harness.sdk.stub("hosts.suspend", suspend);
+  t.harness.sdk.stub("hosts.resume", resume);
+  await t.harness.behavior.callRpc("configure", {
+    hostId: "host-1",
+    config: {
+      schedule: {
+        weekdays: [1],
+        sleep: "19:00",
+        wake: "19:02",
+        timezone: "UTC",
+      },
+    },
+  });
+  return {
+    ...t,
+    get,
+    suspend,
+    resume,
+    setTime: (x: number) => {
+      time = x;
+    },
+    setPhase: (x: string) => {
+      phase = x;
+    },
+  };
+}
+
+function gate() {
+  let release = () => {};
+  const promise = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  return { promise, release };
+}
+
+it("keeps a scheduled wake pending while manual suspension is snapshotting", async () => {
+  const t = await scheduleSetup();
+  const store = createDevboxStore(t.bb.storage.kv);
+  const cursor = (await store.get("host-1")).scheduleCursor;
+  t.setPhase("suspending");
+  t.setTime(Date.parse("2026-09-07T19:02:00Z"));
+  await t.harness.behavior.runSchedule("devbox-schedules");
+  expect((await store.get("host-1")).scheduleCursor).toBe(cursor);
+  expect(t.resume).not.toHaveBeenCalled();
+  t.setPhase("suspended");
+  t.setTime(Date.parse("2026-09-07T19:03:00Z"));
+  await t.harness.behavior.runSchedule("devbox-schedules");
+  expect(t.resume).toHaveBeenCalledOnce();
+  expect((await store.get("host-1")).scheduleCursor).toBe(
+    Date.parse("2026-09-07T19:02:00Z"),
+  );
+  await t.harness.lifecycle.dispose();
+});
+
+it("routes scheduled wake through core even when suspension is exposed as active", async () => {
+  const t = await scheduleSetup();
+  const entered = gate();
+  const finish = gate();
+  t.resume.mockImplementationOnce(async () => {
+    entered.release();
+    await finish.promise;
+    return { ok: true };
+  });
+  t.setTime(Date.parse("2026-09-07T19:02:00Z"));
+  const run = t.harness.behavior.runSchedule("devbox-schedules");
+  await entered.promise;
+  expect(
+    (await createDevboxStore(t.bb.storage.kv).get("host-1")).scheduleCursor,
+  ).toBeLessThan(Date.parse("2026-09-07T19:02:00Z"));
+  finish.release();
+  await run;
+  expect(t.resume).toHaveBeenCalledOnce();
+  await t.harness.lifecycle.dispose();
+});
+
+it("invalidates a selected schedule when disabled during machine lookup", async () => {
+  const t = await scheduleSetup();
+  const entered = gate();
+  const finish = gate();
+  const original = t.get.getMockImplementation();
+  if (!original) throw new Error("missing lookup");
+  t.get.mockImplementationOnce(async () => {
+    entered.release();
+    await finish.promise;
+    return original();
+  });
+  t.setTime(Date.parse("2026-09-07T19:00:00Z"));
+  const run = t.harness.behavior.runSchedule("devbox-schedules");
+  await entered.promise;
+  t.setTime(Date.parse("2026-09-07T19:01:00Z"));
+  await t.harness.behavior.callRpc("configure", {
+    hostId: "host-1",
+    config: { schedule: null },
+  });
+  const saved = await createDevboxStore(t.bb.storage.kv).get("host-1");
+  finish.release();
+  await run;
+  expect(t.suspend).not.toHaveBeenCalled();
+  expect(await createDevboxStore(t.bb.storage.kv).get("host-1")).toEqual(saved);
+  await t.harness.lifecycle.dispose();
+});
+
+it("does not overwrite a replacement schedule cursor after an in-flight dispatch", async () => {
+  const t = await scheduleSetup();
+  const entered = gate();
+  const finish = gate();
+  t.suspend.mockImplementationOnce(async () => {
+    entered.release();
+    await finish.promise;
+    t.setPhase("suspended");
+    return { ok: true };
+  });
+  t.setTime(Date.parse("2026-09-07T19:00:00Z"));
+  const run = t.harness.behavior.runSchedule("devbox-schedules");
+  await entered.promise;
+  t.setTime(Date.parse("2026-09-07T19:01:00Z"));
+  await t.harness.behavior.callRpc("configure", {
+    hostId: "host-1",
+    config: { schedule: null },
+  });
+  const saved = await createDevboxStore(t.bb.storage.kv).get("host-1");
+  finish.release();
+  await run;
+  expect(await createDevboxStore(t.bb.storage.kv).get("host-1")).toEqual(saved);
+  await t.harness.lifecycle.dispose();
+});
+
+it("coalesces ten concurrent status calls into one vendor inventory fetch", async () => {
+  const t = await scheduleSetup();
+  const entered = gate();
+  const finish = gate();
+  const original = t.api.inventory.getMockImplementation();
+  if (!original) throw new Error("missing inventory");
+  t.api.inventory.mockImplementationOnce(async () => {
+    entered.release();
+    await finish.promise;
+    return original();
+  });
+  const reads = Promise.all(
+    Array.from({ length: 10 }, () =>
+      t.harness.behavior.callRpc("status", { hostId: "host-1" }),
+    ),
+  );
+  await entered.promise;
+  finish.release();
+  await reads;
+  expect(t.api.inventory).toHaveBeenCalledOnce();
+  await t.harness.behavior.callRpc("status", { hostId: "host-1" });
+  expect(t.api.inventory).toHaveBeenCalledOnce();
+  t.setTime(Date.parse("2026-09-07T19:00:00Z"));
+  await t.harness.behavior.callRpc("status", { hostId: "host-1" });
+  expect(t.api.inventory).toHaveBeenCalledTimes(2);
+  const created = await t.provider.create(context());
+  if (created.status !== "created") throw new Error("creation failed");
+  await t.provider.suspend?.({
+    ...context(),
+    hostId: "host-1",
+    resource: created.resource,
+    checkpoint() {},
+  });
+  await t.harness.behavior.callRpc("status", { hostId: "host-1" });
+  expect(t.api.inventory).toHaveBeenCalledTimes(3);
+  await t.harness.lifecycle.dispose();
+});
+
+it("returns durable off-backup-failed in CLI and status when inventory remains unavailable", async () => {
+  const t = await scheduleSetup();
+  const created = await t.provider.create(context());
+  if (created.status !== "created") throw new Error("creation failed");
+  t.suspend.mockImplementation(async () => {
+    await t.provider.suspend?.({
+      ...context(),
+      hostId: "host-1",
+      resource: created.resource,
+      checkpoint() {},
+    });
+    return { ok: true };
+  });
+  t.api.snapshots.mockRejectedValue(
+    new Error("DigitalOcean API returned HTTP 503."),
+  );
+  t.api.inventory.mockRejectedValue(
+    new Error("DigitalOcean API returned HTTP 503."),
+  );
+  const result = await t.harness.runCli(["sleep", "host-1", "--json"]);
+  expect(result.exitCode).toBe(1);
+  expect(JSON.parse(result.stdout ?? "null")).toMatchObject({
+    ok: true,
+    power: "off",
+    backupStatus: "off, backup failed",
+    snapshotId: null,
+    details: {
+      values: {
+        power: "off",
+        backupStatus: "off, backup failed",
+        cost: null,
+        inventoryError: expect.any(String),
+      },
+    },
+  });
+  expect(
+    await t.harness.behavior.callRpc("status", { hostId: "host-1" }),
+  ).toMatchObject({
+    values: {
+      power: "off",
+      backupStatus: "off, backup failed",
+      cost: null,
+      inventoryError: expect.any(String),
+    },
+  });
+  expect((await t.api.get())?.status).toBe("off");
+  await t.harness.lifecycle.dispose();
+});
+
+it("invalidates pending backup intent durably before an uncertain wake", async () => {
+  const t = await scheduleSetup();
+  const created = await t.provider.create(context());
+  if (created.status !== "created") throw new Error("creation failed");
+  const lifecycle = {
+    ...context(),
+    hostId: "host-1",
+    resource: created.resource,
+    checkpoint() {},
+  };
+  const original = t.api.snapshot.getMockImplementation();
+  if (!original) throw new Error("missing snapshot");
+  t.api.snapshot.mockImplementationOnce(async (id, name) => {
+    await original(id, name);
+    throw new Error("snapshot response lost");
+  });
+  await t.provider.suspend?.(lifecycle);
+  const store = createDevboxStore(t.bb.storage.kv);
+  expect((await store.get("host-1")).pendingSnapshot).not.toBeNull();
+  const power = t.api.power.getMockImplementation();
+  if (!power) throw new Error("missing power");
+  t.api.power.mockImplementationOnce(async (id, action) => {
+    expect((await store.get("host-1")).pendingSnapshot).toBeNull();
+    await power(id, action);
+    throw new Error("wake response lost");
+  });
+  await expect(t.provider.resume?.(lifecycle)).rejects.toThrow(
+    "wake response lost",
+  );
+  await t.provider.suspend?.(lifecycle);
+  expect(t.api.snapshot).toHaveBeenCalledTimes(2);
+  expect((await store.get("host-1")).backupStatus).toBe("complete");
+  await t.harness.lifecycle.dispose();
 });

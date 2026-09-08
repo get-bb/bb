@@ -159,3 +159,69 @@ describe("DigitalOcean REST adapter", () => {
     await expect(api.destroy(42, signal())).resolves.toBeUndefined();
   });
 });
+
+it("shares account inventory across concurrent hosts, expires after 30 seconds and invalidates every mutation", async () => {
+  let time = 0;
+  let status = "active";
+  const request = vi.fn<VendorFetch>(async (url, options) => {
+    const path = new URL(String(url)).pathname;
+    if (options?.method === "DELETE")
+      return new Response(null, { status: 204 });
+    if (path.endsWith("/actions")) {
+      const body = JSON.parse(String(options?.body));
+      if (body.type === "shutdown") status = "off";
+      if (body.type === "power_on") status = "active";
+      return response({ action: { id: 1, status: "completed" } });
+    }
+    if (path === "/v2/sizes")
+      return response({
+        sizes: [{ slug: "small", price_hourly: 0.006, price_monthly: 4 }],
+      });
+    if (path === "/v2/snapshots") return response({ snapshots: [] });
+    if (path === "/v2/reserved_ips") return response({ reserved_ips: [] });
+    return response({
+      droplet: {
+        ...droplet,
+        status,
+        created_at: "2026-09-07T00:00:00Z",
+        size_slug: "small",
+      },
+    });
+  });
+  const api = createVendor("secret", request, () => time);
+  const read = () => api.inventory(42, signal());
+  const count = (path: string) =>
+    request.mock.calls.filter(([url]) => new URL(String(url)).pathname === path)
+      .length;
+  await Promise.all(
+    Array.from({ length: 10 }, (_, i) => api.inventory(42 + i, signal())),
+  );
+  for (const path of ["/v2/sizes", "/v2/snapshots", "/v2/reserved_ips"])
+    expect(count(path)).toBe(1);
+  await read();
+  expect(count("/v2/sizes")).toBe(1);
+  time = 30_001;
+  await read();
+  expect(count("/v2/sizes")).toBe(2);
+  const mutations = [
+    () => api.snapshot(42, "backup", signal()),
+    () => api.deleteSnapshot("backup", signal()),
+    () => api.power(42, "shutdown", signal()),
+    () => api.destroy(42, signal()),
+    () =>
+      api.create(
+        { name, region: "nyc3", size: "small", userData: "" },
+        signal(),
+      ),
+  ];
+  for (const [index, mutate] of mutations.entries()) {
+    await mutate();
+    await read();
+    expect(count("/v2/sizes")).toBe(3 + index);
+  }
+  await createVendor("other-token", request, () => time).inventory(
+    42,
+    signal(),
+  );
+  expect(count("/v2/sizes")).toBe(8);
+});
