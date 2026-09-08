@@ -735,7 +735,7 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
           "Declare the project facts it consumes in one place — requires.projectCheckout, requires.gitCheckout, requires.gitRemote, requires.projectless — which structurally decides where the picker offers it",
           "Answer availability for each project and machine with available, setup-required, or unavailable; core bounds and caches the answer until settings change or the plugin rechecks",
           "Declare what it needs from the request as a zod inputs schema; bb parses the request with it before the thread exists, publishes it as JSON Schema for the CLI, and hands create the parsed value as inputs",
-          "Refuse a request it cannot serve with validate, at create time and with the same facts create gets, so the caller sees the provider's own message and no thread is created",
+          "Validate a resolved selection once before thread creation; host-dependent preflight requires connectivity, and create checks conditions that can change afterward",
           "Read the facts as typed values on the create context: host is always non-null, while projectCheckout and gitRemote are non-null exactly when required",
           "Render its own control for those inputs beside the picked provider with app.slots.experimental_environmentProviderInputs, reporting either ready inputs or a blocked reason",
           "Use experimental_BranchPicker for a standard branch choice, or compose experimental_useBranches with experimental_useCheckoutState when it needs checkout-aware branch selection",
@@ -746,7 +746,7 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
           "Name a branch the way bb would, from the suggestedBranchName core hands every create, and stream progress with report.step and report.log",
           "Honor create and remove abort signals; core aborts create before asking remove to clean everything under the same path key",
           "Work on the existing enrolled machine carried by the selection, returning the path it produced",
-          "Return an opaque JSON resource handle from a created launch; core keeps up to 16 KiB private in the database and gives it back to replacement creates and removal callbacks",
+          "Return an opaque JSON resource handle from a created launch; core keeps up to 16 KiB private and supplies it only to recovery and removal callbacks from the recorded owning plugin",
         ],
         apiSymbols: [
           "PluginEnvironments",

@@ -1,3 +1,4 @@
+import { aggregateEnvironmentProviderAvailability } from "@/hooks/queries/environment-provider-availability";
 import {
   useCallback,
   useEffect,
@@ -461,19 +462,26 @@ export function NewThreadComposer({
   );
 
   const { providers: registeredEnvironmentProviders } =
-    useSystemEnvironmentProviders({ projectId });
+    useSystemEnvironmentProviders();
   const environmentProvidersByHostId = useSystemEnvironmentProvidersByHost(
     projectId,
     availableHostIds,
   );
   const environmentProviders = useMemo(
     () =>
-      registeredEnvironmentProviders?.filter((provider) =>
+      aggregateEnvironmentProviderAvailability(
+        registeredEnvironmentProviders,
+        environmentProvidersByHostId,
+      )?.filter((provider) =>
         isProjectless
           ? !provider.requires.projectCheckout && !provider.requires.gitRemote
           : !provider.requires.projectless,
       ),
-    [isProjectless, registeredEnvironmentProviders],
+    [
+      isProjectless,
+      registeredEnvironmentProviders,
+      environmentProvidersByHostId,
+    ],
   );
   const seedSignature = JSON.stringify([
     resetKey ?? null,

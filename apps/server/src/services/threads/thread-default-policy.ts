@@ -1,3 +1,4 @@
+import { getEnvironmentProvider } from "../plugins/plugin-environment-provider-registry.js";
 import type {
   PermissionMode,
   ProjectExecutionDefaults,
@@ -214,6 +215,17 @@ export function buildProviderThreadExecutionDefaults(
   };
 }
 
+function requireDefaultEnvironmentProvider(id: string): string {
+  if (getEnvironmentProvider(id) === undefined) {
+    throw new ApiError(
+      409,
+      "environment_provider_rejected",
+      `The default environment provider "${id}" is unavailable. Enable its plugin or explicitly choose another environment.`,
+    );
+  }
+  return id;
+}
+
 export async function resolveProjectDefaultThreadEnvironment(
   deps: WorkSessionDeps,
   args: { projectId: string },
@@ -221,7 +233,9 @@ export async function resolveProjectDefaultThreadEnvironment(
   if (args.projectId === PERSONAL_PROJECT_ID) {
     return {
       type: "provider",
-      environmentProviderId: DEFAULT_ENVIRONMENT_PROVIDER_ID.personalWorkspace,
+      environmentProviderId: requireDefaultEnvironmentProvider(
+        DEFAULT_ENVIRONMENT_PROVIDER_ID.personalWorkspace,
+      ),
       machine: {
         type: "existing",
         hostId: requireConnectedPrimaryHostId(deps),
@@ -248,7 +262,9 @@ export async function resolveProjectDefaultThreadEnvironment(
   if (baseBranch === null) {
     return {
       type: "provider",
-      environmentProviderId: DEFAULT_ENVIRONMENT_PROVIDER_ID.projectCheckout,
+      environmentProviderId: requireDefaultEnvironmentProvider(
+        DEFAULT_ENVIRONMENT_PROVIDER_ID.projectCheckout,
+      ),
       machine: { type: "existing", hostId },
       inputs: checkoutProviderInputs(source.path, undefined),
     };
@@ -256,7 +272,9 @@ export async function resolveProjectDefaultThreadEnvironment(
 
   return {
     type: "provider",
-    environmentProviderId: DEFAULT_ENVIRONMENT_PROVIDER_ID.gitWorktree,
+    environmentProviderId: requireDefaultEnvironmentProvider(
+      DEFAULT_ENVIRONMENT_PROVIDER_ID.gitWorktree,
+    ),
     machine: { type: "existing", hostId },
     inputs: worktreeProviderInputs({ kind: "named", name: baseBranch }),
   };
@@ -297,7 +315,9 @@ export async function resolveCreateThreadEnvironment(
     }
     return {
       type: "provider",
-      environmentProviderId: DEFAULT_ENVIRONMENT_PROVIDER_ID.gitWorktree,
+      environmentProviderId: requireDefaultEnvironmentProvider(
+        DEFAULT_ENVIRONMENT_PROVIDER_ID.gitWorktree,
+      ),
       machine: { type: "existing", hostId: parentEnvironment.hostId },
       inputs: worktreeProviderInputs({ kind: "default" }),
     };
@@ -315,7 +335,9 @@ export async function resolveCreateThreadEnvironment(
   ) {
     return {
       type: "provider",
-      environmentProviderId: DEFAULT_ENVIRONMENT_PROVIDER_ID.personalWorkspace,
+      environmentProviderId: requireDefaultEnvironmentProvider(
+        DEFAULT_ENVIRONMENT_PROVIDER_ID.personalWorkspace,
+      ),
       machine: {
         type: "existing",
         hostId: requireHostEnvironmentId(environment),
@@ -327,7 +349,9 @@ export async function resolveCreateThreadEnvironment(
   if (hasLiveParent && isImplicitHostDefaultEnvironment(environment)) {
     return {
       type: "provider",
-      environmentProviderId: DEFAULT_ENVIRONMENT_PROVIDER_ID.gitWorktree,
+      environmentProviderId: requireDefaultEnvironmentProvider(
+        DEFAULT_ENVIRONMENT_PROVIDER_ID.gitWorktree,
+      ),
       machine: {
         type: "existing",
         hostId: requireHostEnvironmentId(environment),
@@ -344,7 +368,9 @@ export async function resolveCreateThreadEnvironment(
   ) {
     return {
       type: "provider",
-      environmentProviderId: DEFAULT_ENVIRONMENT_PROVIDER_ID.gitWorktree,
+      environmentProviderId: requireDefaultEnvironmentProvider(
+        DEFAULT_ENVIRONMENT_PROVIDER_ID.gitWorktree,
+      ),
       machine: environment.machine,
       inputs: worktreeProviderInputs({ kind: "default" }),
     };

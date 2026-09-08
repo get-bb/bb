@@ -159,7 +159,31 @@ async function invokePluginAvailability(
   return parsed.data;
 }
 
-export async function resolveGitCheckoutAvailability(
+const pendingGitInspections = new WeakMap<
+  object,
+  Map<string, Promise<GitCheckoutAvailability>>
+>();
+
+export function resolveGitCheckoutAvailability(
+  deps: WorkSessionDeps,
+  args: { hostId: string; path: string },
+): Promise<GitCheckoutAvailability> {
+  let pending = pendingGitInspections.get(deps.db);
+  if (pending === undefined) {
+    pending = new Map();
+    pendingGitInspections.set(deps.db, pending);
+  }
+  const key = JSON.stringify([args.hostId, args.path]);
+  const existing = pending.get(key);
+  if (existing !== undefined) return existing;
+  const result = inspectGitCheckoutAvailability(deps, args).finally(() =>
+    pending.delete(key),
+  );
+  pending.set(key, result);
+  return result;
+}
+
+async function inspectGitCheckoutAvailability(
   deps: WorkSessionDeps,
   args: { hostId: string; path: string },
 ): Promise<GitCheckoutAvailability> {

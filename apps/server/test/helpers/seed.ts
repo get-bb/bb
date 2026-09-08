@@ -149,6 +149,7 @@ export function seedEnvironment(
     path?: string | null;
     status?: EnvironmentStatus;
     environmentProviderId?: string;
+    environmentProviderPluginId?: string;
     environmentProviderInstanceKey?: string;
     environmentProviderSelection?: EnvironmentProviderSelection;
     providerOwnsPath?: boolean;
@@ -170,6 +171,7 @@ export function seedEnvironment(
       ? {
           environmentProvider: {
             environmentProviderId: args.environmentProviderId,
+            pluginId: args.environmentProviderPluginId,
             instanceKey: args.environmentProviderInstanceKey ?? null,
             selection: args.environmentProviderSelection ?? {
               machine: { type: "existing", hostId: args.hostId },

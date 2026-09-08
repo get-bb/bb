@@ -37,6 +37,7 @@ export function claimEnvironmentLaunchPath(
   db: DbConnection,
   launch: EnvironmentLaunchRow,
   path: string,
+  allowCancelled = false,
 ): boolean {
   return db.transaction(
     (tx) => {
@@ -44,7 +45,7 @@ export function claimEnvironmentLaunchPath(
       if (
         current === null ||
         current.attempt !== launch.attempt ||
-        current.phase !== "creating" ||
+        (current.phase !== "creating" && !(allowCancelled && current.phase === "cancelled")) ||
         current.hostId === null
       )
         return false;

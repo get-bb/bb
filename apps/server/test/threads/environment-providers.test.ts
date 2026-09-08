@@ -1,3 +1,4 @@
+import { resolveGitCheckoutAvailability } from "../../src/services/environments/provider-availability.js";
 import {
   providerOperations,
   type TestEnvironmentProviderContext,
@@ -174,7 +175,10 @@ function seedTargetFixture(
     path: WORKSPACE_PATH,
     ...(args.environmentProviderId === undefined
       ? {}
-      : { environmentProviderId: args.environmentProviderId }),
+      : {
+          environmentProviderId: args.environmentProviderId,
+          environmentProviderPluginId: PLUGIN_ID,
+        }),
   });
   return { environment, host, project, session };
 }
@@ -547,6 +551,7 @@ describe("environment providers are asked inside provisioning", () => {
       const attached = seedEnvironment(harness.deps, {
         branchName: "main",
         environmentProviderId: PROVIDER_ID,
+        environmentProviderPluginId: PLUGIN_ID,
         environmentProviderInstanceKey: "old-instance",
         environmentProviderSelection: {
           machine: { type: "existing", hostId: "old-host" },
@@ -858,6 +863,60 @@ describe("environment providers are asked inside provisioning", () => {
 });
 
 describe("provider validate at create time", () => {
+  it("shares concurrent Git inspections for the same host and path", async () => {
+    await withTestHarness(async (harness) => {
+      const { host, session } = seedHostSession(harness.deps, {
+        id: "host-inspection-dedupe",
+      });
+      const inspect = vi.fn();
+      registerTestHostRpcCapture(harness.deps, {
+        hostId: host.id,
+        sessionId: session.id,
+        onInspectGitSource: inspect,
+      });
+      const args = { hostId: host.id, path: WORKSPACE_PATH };
+      const results = await Promise.all(
+        Array.from({ length: 6 }, () =>
+          resolveGitCheckoutAvailability(harness.deps, args),
+        ),
+      );
+      expect(results).toHaveLength(6);
+      expect(inspect).toHaveBeenCalledOnce();
+      await resolveGitCheckoutAvailability(harness.deps, args);
+      expect(inspect).toHaveBeenCalledTimes(2);
+    });
+  });
+
+  it("rejects a missing implicit default before creating a thread", async () => {
+    await withTestHarness(async (harness) => {
+      installTargets([]);
+      const { host, project } = seedTargetFixture(
+        harness,
+        "host-disabled-default",
+      );
+      seedPrimaryHost(harness.deps, host.id);
+      const before = harness.db.$client
+        .prepare("select count(*) as count from threads")
+        .get();
+      await expect(
+        createThreadFromRequest(harness.deps, {
+          environment: { type: "project-default" },
+          input: textInput("test"),
+          origin: "cli",
+          projectId: project.id,
+          providerId: "codex",
+          model: "requested-model",
+          startedOnBehalfOf: null,
+        }),
+      ).rejects.toThrow("default environment provider");
+      expect(
+        harness.db.$client
+          .prepare("select count(*) as count from threads")
+          .get(),
+      ).toEqual(before);
+    });
+  });
+
   async function createFailure(
     harness: TestAppHarness,
     args: Parameters<typeof createTargetThread>[1],
@@ -910,7 +969,9 @@ describe("provider validate at create time", () => {
         inputs: CONTAINER_INPUTS,
         validate: (context) => {
           seen.push(context);
-          return { action: "accept" };
+          return seen.length === 1
+            ? { action: "accept" }
+            : { action: "refuse", message: "Validation ran after insertion" };
         },
         provision: () => ({ action: "wait", reason: "Creating…" }),
       });
@@ -924,7 +985,7 @@ describe("provider validate at create time", () => {
         inputs: { image: "ubuntu" },
       });
       expect(getThread(harness.db, created.id)?.status).toBe("starting");
-      expect(seen.length).toBeGreaterThanOrEqual(1);
+      expect(seen).toHaveLength(1);
       expect(seen[0]).toMatchObject({
         host: { id: host.id },
         project: { id: project.id },

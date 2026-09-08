@@ -31,6 +31,7 @@ export interface CreateEnvironmentInput {
   providerOwnsPath: boolean;
   environmentProvider?: {
     environmentProviderId: string;
+    pluginId?: string;
     instanceKey: string | null;
     selection: EnvironmentProviderSelection;
   } | null;
@@ -58,6 +59,7 @@ export function createEnvironment(
       mergeBaseBranch: input.mergeBaseBranch ?? null,
       environmentProviderId:
         input.environmentProvider?.environmentProviderId ?? null,
+      environmentProviderPluginId: input.environmentProvider?.pluginId ?? null,
       environmentProviderSelection:
         input.environmentProvider?.selection ?? null,
       environmentProviderInstanceKey:

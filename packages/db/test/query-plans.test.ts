@@ -1,3 +1,4 @@
+import { findEnvironmentLaunchPathClaim } from "../src/data/environment-launches.js";
 import { describe, expect, it } from "vitest";
 import { threadScope, turnScope } from "@bb/domain";
 import {
@@ -229,6 +230,29 @@ function assertEmittedQueryPlanUsesIndex(
 }
 
 describe("slow query index plans", () => {
+  it.each([null, "/tmp/claimed"])(
+    "indexes active launch claims for path %s",
+    (path) => {
+      const { db } = setup();
+      const captured = captureStatements(db, () => {
+        expect(
+          findEnvironmentLaunchPathClaim(db, "host_test", path, null),
+        ).toBeNull();
+      });
+      expect(captured).toHaveLength(1);
+      const query = captured[0]!;
+      const details = queryPlanDetails({
+        db,
+        params: query.params,
+        sql: query.sql,
+      });
+      expect(details).toContain(
+        "USING INDEX environment_launches_active_claim_idx",
+      );
+      expect(details).not.toContain("SCAN environment_launches");
+    },
+  );
+
   // Both queue indexes are PARTIAL. A partial index is only usable when the
   // query repeats its WHERE clause, so a refactor that drops one liveness
   // predicate from the query — or adds one to the index — silently degrades

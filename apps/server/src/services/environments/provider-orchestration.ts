@@ -1,3 +1,6 @@
+import { withEnvironmentCleanupSlot } from "./cleanup-concurrency.js";
+import { resolveProducedEnvironmentPlacement } from "../threads/thread-environment-placement.js";
+import { foreignProviderOwnedPathRefusal } from "../threads/workspace-path-claims.js";
 import {
   cancelPendingEnvironmentHook,
   runEnvironmentHook,
@@ -15,6 +18,7 @@ import {
   environmentHasLiveThreads,
   environments,
   getEnvironment,
+  findProjectEnvironmentByHostPath,
   getEnvironmentLaunch,
   claimEnvironmentLaunchPath,
   listCancelledEnvironmentLaunches,
@@ -45,7 +49,7 @@ import {
   getEnvironmentProvider,
   invokeEnvironmentProvider,
   listEnvironmentProviders,
-  requestEnvironmentProviderRecheck,
+  requestEnvironmentLaunchRecheck,
   type PluginEnvironmentProviderRecord,
 } from "../plugins/plugin-environment-provider-registry.js";
 import { applyLoggedEnvironmentLifecycleEvent } from "./lifecycle-outcome.js";
@@ -132,12 +136,11 @@ function mutateLaunch(
 
 function launchReporter(
   deps: Deps,
-  record: PluginEnvironmentProviderRecord,
   launch: EnvironmentLaunchRow,
 ): PluginEnvironmentProviderProgress {
   const update = (change: (row: EnvironmentLaunchRow) => void): void => {
     if (mutateLaunch(deps, launch, ["creating"], change))
-      requestEnvironmentProviderRecheck(record.pluginId);
+      requestEnvironmentLaunchRecheck(launch.threadId);
   };
   return {
     step: (text) =>
@@ -223,12 +226,15 @@ async function runCreate(
   const abort = () => controller.abort();
   outerSignal.addEventListener("abort", abort, { once: true });
   let changed = false;
+  mutateLaunch(deps, launch, ["creating"], (row) => {
+    row.hostId = context.host.id;
+  });
   try {
     const previous =
       context.environment === null
         ? null
         : getEnvironment(deps.db, context.environment.id);
-    const result =
+    let result =
       launch.ownsPath && launch.path !== null
         ? {
             status: "created" as const,
@@ -275,19 +281,82 @@ async function runCreate(
                           ? null
                           : previous.resource,
                     },
-              report: launchReporter(deps, record, launch),
+              report: launchReporter(deps, launch),
               signal: controller.signal,
             },
             record.provider.policy.createTimeoutMs,
             controller,
           );
     if (result.status === "created") {
+      try {
+        const canonical = await canonicalEnvironmentPath(
+          deps,
+          context.host.id,
+          result.path,
+        );
+        await resolveProducedEnvironmentPlacement(deps, {
+          environmentProviderId: record.provider.id,
+          inputs: context.inputs,
+          producedEnvironment: {
+            type: "host",
+            hostId: context.host.id,
+            ...result,
+            path: canonical,
+          },
+          projectId: context.project.id,
+        });
+        deps.db.transaction(
+          () => {
+            const refusal = foreignProviderOwnedPathRefusal(deps.db, {
+              dataDir: null,
+              hostId: context.host.id,
+              path: canonical,
+              projectId: context.project.id,
+            });
+            if (refusal !== null) throw new Error(refusal);
+            const claimed = claimEnvironmentLaunchPath(
+              deps.db,
+              launch,
+              canonical,
+              true,
+            );
+            if (!claimed)
+              throw new Error(
+                "Workspace path is already claimed by another launch.",
+              );
+            const existing = findProjectEnvironmentByHostPath(
+              deps.db,
+              context.project.id,
+              context.host.id,
+              canonical,
+            );
+            if (
+              existing !== null &&
+              existing.environmentProviderId !== null &&
+              (existing.environmentProviderId !== record.provider.id ||
+                existing.environmentProviderPluginId !== record.pluginId)
+            ) {
+              throw new Error(
+                "The workspace belongs to a different plugin or has no recorded owner.",
+              );
+            }
+          },
+          { behavior: "immediate" },
+        );
+        result = { ...result, path: canonical };
+      } catch (error) {
+        mutateLaunch(deps, launch, ["creating", "cancelled"], (row) => {
+          row.pathRejected = true;
+        });
+        throw error;
+      }
+      const produced = result;
       mutateLaunch(deps, launch, ["creating", "cancelled"], (row) => {
         row.hostId = context.host.id;
-        row.path = result.path;
-        row.ownsPath = result.ownsPath;
-        row.mergeBaseBranch = result.mergeBaseBranch ?? null;
-        row.resource = result.resource ?? null;
+        row.path = produced.path;
+        row.ownsPath = produced.ownsPath;
+        row.mergeBaseBranch = produced.mergeBaseBranch ?? null;
+        row.resource = produced.resource ?? null;
       });
       controller.signal.throwIfAborted();
       if (result.ownsPath) {
@@ -296,7 +365,7 @@ async function runCreate(
           hostId: context.host.id,
           path: result.path,
           kind: "setup",
-          report: launchReporter(deps, record, launch),
+          report: launchReporter(deps, launch),
           signal: controller.signal,
         });
       }
@@ -338,7 +407,7 @@ async function runCreate(
     });
   } finally {
     outerSignal.removeEventListener("abort", abort);
-    if (changed) requestEnvironmentProviderRecheck(record.pluginId);
+    if (changed) requestEnvironmentLaunchRecheck(launch.threadId);
   }
 }
 
@@ -383,6 +452,22 @@ export function askProviderLaunch(
     context.environment === null
       ? null
       : getEnvironment(deps.db, context.environment.id);
+  let row = getEnvironmentLaunch(deps.db, context.thread.id);
+  if (
+    (row !== null &&
+      row.attempt > 0 &&
+      row.providerPluginId !== record.pluginId) ||
+    (previous !== null &&
+      previous.environmentProviderId !== null &&
+      previous.environmentProviderPluginId !== record.pluginId)
+  ) {
+    return {
+      action: "reject",
+      message:
+        "The environment provider belongs to a different plugin or has no recorded owner.",
+      log: "",
+    };
+  }
   if (
     previous?.teardownStatus === "running" ||
     previous?.teardownStatus === "failed"
@@ -393,7 +478,6 @@ export function askProviderLaunch(
       sendAt: now + 1000,
       log: "",
     };
-  let row = getEnvironmentLaunch(deps.db, context.thread.id);
   const selected = { machine: context.machine, inputs: context.inputs };
   const retryableFailure =
     row?.phase === "failed" &&
@@ -476,6 +560,8 @@ export function askProviderLaunch(
     row = {
       threadId: context.thread.id,
       providerId: record.provider.id,
+      providerPluginId: record.pluginId,
+      pathRejected: false,
       attempt,
       phase: "creating",
       startedAt: now,
@@ -552,6 +638,8 @@ export function attachProviderLaunch(
   db.update(environments)
     .set({
       resource: row.resource,
+      environmentProviderPluginId: row.providerPluginId,
+      ...(row.path === null ? {} : { path: row.path }),
       retireAt: null,
       ...(row.claimPath === null ? {} : { canonicalPath: row.claimPath }),
     })
@@ -566,10 +654,22 @@ async function runCancel(
   signal: AbortSignal,
 ): Promise<void> {
   const record = getEnvironmentProvider(launch.providerId);
-  if (record === undefined)
+  if (
+    record === undefined ||
+    (launch.attempt > 0 && record.pluginId !== launch.providerPluginId)
+  )
     throw new Error(
       `Environment provider "${launch.providerId}" is unavailable.`,
     );
+  if (launch.pathRejected) {
+    mutateLaunch(deps, launch, ["cancelled"], (row) => {
+      row.cancelPending = false;
+      row.path = null;
+      row.claimPath = null;
+      row.resource = null;
+    });
+    return;
+  }
   await cancelPendingEnvironmentHook(
     deps,
     `launch:${launch.threadId}:${launch.attempt}:setup`,
@@ -644,10 +744,12 @@ export async function cancelProviderLaunch(
         create.controller.abort();
         await create.done;
       }
-      await runCancel(
-        deps,
-        getEnvironmentLaunch(deps.db, threadId) ?? cancelled,
-        signal,
+      await withEnvironmentCleanupSlot(deps.db, row.hostId, () =>
+        runCancel(
+          deps,
+          getEnvironmentLaunch(deps.db, threadId) ?? cancelled,
+          signal,
+        ),
       );
     },
   });
@@ -697,7 +799,11 @@ async function runRemove(
   )
     return;
   const record = getEnvironmentProvider(row.environmentProviderId);
-  if (record === undefined) return;
+  if (
+    record === undefined ||
+    record.pluginId !== row.environmentProviderPluginId
+  )
+    return;
   const write = (change: Partial<EnvironmentRow>): void => {
     deps.db
       .update(environments)
@@ -774,6 +880,17 @@ export async function sweepProviderEnvironment(
   deps: Deps,
   environmentId: string,
 ): Promise<void> {
+  const row = getEnvironment(deps.db, environmentId);
+  if (row === null) return;
+  await withEnvironmentCleanupSlot(deps.db, row.hostId, () =>
+    sweepProviderEnvironmentInSlot(deps, environmentId),
+  );
+}
+
+async function sweepProviderEnvironmentInSlot(
+  deps: Deps,
+  environmentId: string,
+): Promise<void> {
   const active = operations(removeOperations, deps.db).get(environmentId);
   if (active !== undefined) {
     await active.done;
@@ -800,6 +917,13 @@ export async function sweepProviderEnvironment(
   if (environmentHasLiveThreads(deps.db, environmentId)) {
     if (row.retireAt !== null && row.teardownStatus === null)
       write({ retireAt: null });
+    return;
+  }
+  if (record.pluginId !== row.environmentProviderPluginId) {
+    const teardownMessage =
+      "The environment provider belongs to a different plugin or has no recorded owner. Automatic removal is blocked.";
+    if (row.teardownMessage !== teardownMessage)
+      write({ teardownStatus: "failed", teardownMessage });
     return;
   }
   if (row.retireAt === null) {
@@ -844,27 +968,33 @@ export async function sweepProviderEnvironment(
 }
 
 export async function sweepProviderLifecycles(deps: Deps): Promise<void> {
+  const pending: Promise<void>[] = [];
   for (const row of listCancelledEnvironmentLaunches(deps.db)) {
-    void cancelProviderLaunch(deps, row.threadId).catch((error) => {
-      deps.logger.warn(
-        { threadId: row.threadId, error: message(error) },
-        "Environment cancellation will retry",
-      );
-    });
+    pending.push(
+      cancelProviderLaunch(deps, row.threadId).catch((error) => {
+        deps.logger.warn(
+          { threadId: row.threadId, error: message(error) },
+          "Environment cancellation will retry",
+        );
+      }),
+    );
   }
   for (const record of listEnvironmentProviders()) {
     for (const row of listProviderLifecycleEnvironments(
       deps.db,
       record.provider.id,
     )) {
-      void sweepProviderEnvironment(deps, row.id).catch((error) => {
-        deps.logger.warn(
-          { environmentId: row.id, error: message(error) },
-          "Environment removal will retry",
-        );
-      });
+      pending.push(
+        sweepProviderEnvironment(deps, row.id).catch((error) => {
+          deps.logger.warn(
+            { environmentId: row.id, error: message(error) },
+            "Environment removal will retry",
+          );
+        }),
+      );
     }
   }
+  await Promise.all(pending);
   deleteFinishedEnvironmentLaunches(deps.db);
 }
 
@@ -970,6 +1100,8 @@ export function persistPendingProviderRequest(
   saveEnvironmentLaunch(db, {
     threadId,
     providerId: intent.environmentProviderId,
+    providerPluginId: null,
+    pathRejected: false,
     attempt: 0,
     phase: "creating",
     startedAt: Date.now(),

@@ -63,3 +63,15 @@ export function setEnvironmentProviderRecheckHandler(
 export function requestEnvironmentProviderRecheck(pluginId: string): void {
   recheckHandler?.(pluginId);
 }
+
+let launchRecheckHandler: ((threadId: string) => void) | undefined;
+
+export function setEnvironmentLaunchRecheckHandler(
+  handler: ((threadId: string) => void) | undefined,
+): void {
+  launchRecheckHandler = handler;
+}
+
+export function requestEnvironmentLaunchRecheck(threadId: string): void {
+  launchRecheckHandler?.(threadId);
+}

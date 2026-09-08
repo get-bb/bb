@@ -104,6 +104,7 @@ interface RegisterTestHostRpcCaptureArgs {
   hostId: string;
   sessionId: string;
   queueBranchOptions?: boolean;
+  canonicalPath?: (path: string) => string;
   onEnvironmentHook?: (
     command: Extract<HostDaemonRpcCommand, { type: "environment.hook.run" }>,
   ) => Promise<void>;
@@ -424,7 +425,11 @@ export function registerTestHostRpcCapture(
             requestId: message.requestId,
             commandType: command.type,
             ok: true,
-            result: { path: path.resolve(command.path) },
+            result: {
+              path:
+                args.canonicalPath?.(command.path) ??
+                path.resolve(command.path),
+            },
           }),
           sessionId: args.sessionId,
         });

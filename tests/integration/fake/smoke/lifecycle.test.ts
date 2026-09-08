@@ -46,7 +46,7 @@ describe.sequential("fake provider smoke lifecycle integration", () => {
       const host = await waitForHostConnected(harness.api, DEFAULT_TIMEOUT_MS);
       expect(thread.environmentId).toBe(environment.id);
       expect(environment.status).toBe("ready");
-      expect(environment.path).toBe(harness.repoDir);
+      expect(environment.path).toBe(await fs.realpath(harness.repoDir));
       expect(environment.isGitRepo).toBe(true);
       expect(environment.environmentProviderId).toBe("project-checkout");
       expect(host.id).toBe(harness.hostId);

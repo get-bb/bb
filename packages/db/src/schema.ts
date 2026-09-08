@@ -456,6 +456,7 @@ export const environments = sqliteTable(
     defaultBranch: text("default_branch"),
     mergeBaseBranch: text("merge_base_branch"),
     environmentProviderId: text("environment_provider_id"),
+    environmentProviderPluginId: text("environment_provider_plugin_id"),
     providerOwnsPath: integer("provider_owns_path", { mode: "boolean" })
       .notNull()
       .default(false),
@@ -1049,6 +1050,10 @@ export const environmentLaunches = sqliteTable(
   {
     threadId: text("thread_id").primaryKey(),
     providerId: text("provider_id").notNull(),
+    providerPluginId: text("provider_plugin_id"),
+    pathRejected: integer("path_rejected", { mode: "boolean" })
+      .notNull()
+      .default(false),
     attempt: integer("attempt").notNull(),
     phase: text("phase")
       .$type<"creating" | "ready" | "failed" | "cancelled">()
@@ -1077,7 +1082,14 @@ export const environmentLaunches = sqliteTable(
     request: text("request", { mode: "json" }).$type<JsonValue>(),
     cancelPending: integer("cancel_pending", { mode: "boolean" }).notNull(),
   },
-  (table) => [index("environment_launches_phase_idx").on(table.phase)],
+  (table) => [
+    index("environment_launches_phase_idx").on(table.phase),
+    index("environment_launches_active_claim_idx")
+      .on(table.hostId, table.claimPath)
+      .where(
+        sql`${table.environmentId} is null and ${table.claimPath} is not null`,
+      ),
+  ],
 );
 
 export const environmentHookOperations = sqliteTable(

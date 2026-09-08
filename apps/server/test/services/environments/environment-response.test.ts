@@ -19,6 +19,7 @@ function makeRow(overrides: Partial<EnvironmentRow> = {}): EnvironmentRow {
     baseBranch: null,
     defaultBranch: "main",
     mergeBaseBranch: null,
+    environmentProviderPluginId: null,
     environmentProviderId: null,
     environmentProviderSelection: null,
     environmentProviderInstanceKey: null,

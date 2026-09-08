@@ -1,4 +1,8 @@
 import {
+  installFakeGitWorktreeProvider,
+  installFakePersonalWorkspaceProvider,
+} from "../helpers/environment-provider.js";
+import {
   PERSONAL_PROJECT_ID,
   type GitSourceInspection,
   type ProjectExecutionDefaults,
@@ -198,9 +202,10 @@ describe("resolveCreateThreadEnvironment", () => {
   async function resolveEnvironment(
     args: Parameters<typeof resolveCreateThreadEnvironment>[1],
   ) {
-    return withTestHarness((harness) =>
-      resolveCreateThreadEnvironment(harness.deps, args),
-    );
+    return withTestHarness((harness) => {
+      installFakeGitWorktreeProvider();
+      return resolveCreateThreadEnvironment(harness.deps, args);
+    });
   }
 
   it("defaults implicit child host environments to the worktree provider", async () => {
@@ -259,6 +264,7 @@ describe("resolveCreateThreadEnvironment", () => {
 
   it("uses a fresh worktree on the parent's machine for a project child", async () => {
     await withTestHarness(async (harness) => {
+      installFakeGitWorktreeProvider();
       const { host } = seedHostSession(harness.deps, {
         id: "host-project-child",
       });
@@ -334,6 +340,7 @@ describe("resolveCreateThreadEnvironment", () => {
     "shares personal child threads from $name",
     async ({ requestedEnvironment }) => {
       await withTestHarness(async (harness) => {
+        installFakeGitWorktreeProvider();
         await expect(
           resolveCreateThreadEnvironment(harness.deps, {
             parentThread: makeParentThread({
@@ -419,6 +426,7 @@ describe("resolveCreateThreadEnvironment", () => {
 
   it("gives a sub-thread of a project with no commits a worktree of the source", async () => {
     await withTestHarness(async (harness) => {
+      installFakeGitWorktreeProvider();
       const { host, session } = seedHostSession(harness.deps, {
         id: "host-default-order",
       });
@@ -474,6 +482,7 @@ describe("resolveCreateThreadEnvironment", () => {
 describe("resolveProjectDefaultThreadEnvironment", () => {
   it("uses a worktree for a Git project", async () => {
     await withTestHarness(async (harness) => {
+      installFakeGitWorktreeProvider();
       const { host, session } = seedHostSession(harness.deps, {
         id: "host-git-default",
       });
@@ -558,6 +567,7 @@ describe("resolveProjectDefaultThreadEnvironment", () => {
 
   it("uses the personal workspace with no project", async () => {
     await withTestHarness(async (harness) => {
+      installFakePersonalWorkspaceProvider();
       const { host } = seedHostSession(harness.deps, {
         id: "host-personal-default",
       });

@@ -788,6 +788,7 @@ function rewindEnvironmentProvidersMigration(db: DbConnection): void {
   db.$client.exec("DROP TABLE IF EXISTS environment_launches");
   db.$client.exec("DROP INDEX IF EXISTS environments_project_host_path_idx");
   const lifecycleColumns = [
+    "environment_provider_plugin_id",
     "canonical_path",
     "retire_at",
     "teardown_attempt",
@@ -5536,6 +5537,29 @@ describe("environment providers migration", () => {
       .get(threadId);
     return JSON.parse(row?.pendingStartContext ?? "null") as unknown;
   }
+
+  it("records bundled plugin owners while migrating legacy environments", () => {
+    const db = createMigratedConnection();
+    try {
+      seedPreProviderEnvironments(db);
+      migrate(db);
+      const rows = db.$client
+        .prepare<[], { provider: string; owner: string | null }>(
+          "SELECT DISTINCT environment_provider_id AS provider, environment_provider_plugin_id AS owner FROM environments ORDER BY provider",
+        )
+        .all();
+      expect(rows).toEqual([
+        { provider: "git-worktree", owner: "environment-git-worktree" },
+        {
+          provider: "personal-workspace",
+          owner: "environment-personal-workspace",
+        },
+        { provider: "project-checkout", owner: "environment-project-checkout" },
+      ]);
+    } finally {
+      db.$client.close();
+    }
+  });
 
   it("hands managed worktree, personal, and attached rows to their providers", () => {
     const db = createMigratedConnection();

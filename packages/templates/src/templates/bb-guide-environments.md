@@ -14,6 +14,12 @@ Worktree (a fresh Git worktree), and Personal workspace (a projectless workspace
 
 Making your repo work with bb:
 
+  If the default environment plugin is disabled or missing, creation fails
+  before inserting a thread. Enable the plugin or explicitly choose another
+  environment; BB does not silently replace an isolated worktree with a checkout.
+  Host-dependent preflight checks require the selected machine to be connected.
+  Directory switching creates a core-owned attachment with no provider identity.
+
   Commit a .bb-env-setup.sh script at the repo root when new bb worktrees need
   repo-specific setup. After bb creates a new managed worktree environment, it
   looks for .bb-env-setup.sh inside that new workspace. If the file is absent,
@@ -29,7 +35,8 @@ Making your repo work with bb:
   variable are removed, and bb does not inject BB_PROJECT_ID, BB_ENVIRONMENT_ID,
   or BB_SOURCE_PATH.
 
-  Core runs hooks only after create confirms ownsPath: true. Attached project
+  Core admits and claims the canonical path before hooks, and runs hooks only
+  after create confirms ownsPath: true. Attached project
   checkouts and personal workspaces never run hooks. Setup identity and state
   persist per launch attempt; server restart reconciles the same daemon
   operation instead of executing setup twice.

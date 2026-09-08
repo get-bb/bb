@@ -34,7 +34,6 @@ import { callHostRetryableOnlineRpc } from "../hosts/online-rpc.js";
 import {
   completeProviderSelection,
   resolveProducedEnvironmentPlacement,
-  validateProviderSelection,
 } from "./thread-environment-placement.js";
 import {
   forgetActiveThreadProvisionContext,
@@ -108,6 +107,20 @@ export function recheckEnvironmentProviderLaunches(
     ask.recheckRequested = true;
     ask.nextAskTimer = reaskLater(deps, ask, threadId, Date.now());
   }
+}
+
+export function recheckEnvironmentLaunch(
+  deps: ThreadProvisioningDeps,
+  targetThreadId: string,
+): void {
+  const entry = listActiveThreadProviderAsks().find(
+    ({ threadId }) => threadId === targetThreadId,
+  );
+  if (entry === undefined || entry.ask.recheckRequested) return;
+  const { ask, threadId } = entry;
+  if (ask.nextAskTimer !== null) clearTimeout(ask.nextAskTimer);
+  ask.recheckRequested = true;
+  ask.nextAskTimer = reaskLater(deps, ask, threadId, Date.now());
 }
 
 export function scheduledEnvironmentProviderAskCount(): number {
@@ -366,19 +379,9 @@ export async function resolveEnvironmentProvider(
       "works from this project's checkout on the machine, which is no longer configured",
     );
   }
-  try {
-    await validateProviderSelection(deps, record, {
-      hostId: host.id,
-      inputs: selection.inputs,
-      projectId: thread.projectId,
-    });
-  } catch (error) {
-    throw providerFailure(
-      intent.environmentProviderId,
-      record.pluginId,
-      error instanceof Error ? error.message : String(error),
-    );
-  }
+  intent.machine = selection.machine;
+  intent.inputs = selection.inputs;
+  intent.selectionResolved = true;
   const provisionContext = {
     thread: toThreadResponseFromThread(deps, { thread }),
     project,

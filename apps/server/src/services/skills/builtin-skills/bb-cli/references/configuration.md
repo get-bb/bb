@@ -15,6 +15,11 @@
   the saved hook operation; cleanup waits for daemon-confirmed termination
   after a transport failure and retries while the daemon is unreachable.
 
+- Missing default environment plugins cause creation to fail before a thread is
+  inserted. Enable the plugin or explicitly select another environment.
+- Host-dependent environment preflight requires a connected machine. Directory
+  switching creates a core-owned attachment without claiming plugin provenance.
+
 ## App settings
 
 - Read `references/app-settings.md` for every general key, experiment, default,

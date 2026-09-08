@@ -18,7 +18,10 @@ import {
   seedProjectWithSource,
 } from "../helpers/seed.js";
 import { withTestHarness, type TestAppHarness } from "../helpers/test-app.js";
-import { installFakeGitWorktreeProvider } from "../helpers/environment-provider.js";
+import {
+  installFakeGitWorktreeProvider,
+  installFakePersonalWorkspaceProvider,
+} from "../helpers/environment-provider.js";
 
 interface CreateThreadBodyOverrides {
   environment: unknown;
@@ -127,6 +130,7 @@ describe("project-default thread environment", () => {
 
   it("resolves the personal project to the personal provider on the primary host", async () => {
     await withTestHarness(async (harness) => {
+      installFakePersonalWorkspaceProvider();
       const { host } = seedHostSession(harness.deps, {
         id: "host-personal-default",
       });

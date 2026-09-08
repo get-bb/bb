@@ -42,6 +42,7 @@ import {
 } from "@/test/fixtures/projects";
 import { makeTerminalSession as makeTerminalSessionFixture } from "@/test/fixtures/terminal-sessions";
 import {
+  buildReuseThreadOptions,
   resolveProjectSourceGitDisabledReason,
   resolveRootComposeEffectiveEnvironmentValue,
 } from "./root-compose-environment-selection";
@@ -1167,4 +1168,19 @@ describe("canCreateRootComposeTerminal", () => {
       }),
     ).toBe(false);
   });
+});
+
+it("offers a core-owned directory attachment for reuse", () => {
+  const thread = makeThreadListEntry({
+    environmentId: "env_attachment",
+    environmentProviderId: null,
+    environmentPath: "/tmp/attached",
+  });
+  expect(buildReuseThreadOptions([thread])).toEqual([
+    expect.objectContaining({
+      environmentId: "env_attachment",
+      environmentProviderId: null,
+      path: "/tmp/attached",
+    }),
+  ]);
 });

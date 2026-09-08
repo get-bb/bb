@@ -56,7 +56,6 @@ export function buildReuseThreadOptions(
   const hostIdByEnvironmentId = new Map<string, string | null>();
   for (const thread of threads) {
     if (thread.environmentId === null) continue;
-    if (thread.environmentProviderId === null) continue;
     let bucket = threadsByEnvironmentId.get(thread.environmentId);
     if (!bucket) {
       bucket = [];

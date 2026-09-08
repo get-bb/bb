@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 
+import { aggregateEnvironmentProviderAvailability } from "./environment-provider-availability";
 import { cleanup, renderHook, waitFor } from "@testing-library/react";
 import type { SystemEnvironmentProvider } from "@bb/server-contract";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -71,5 +72,40 @@ describe("useSystemEnvironmentProviders", () => {
     });
 
     expect(result.current.providers).toBeUndefined();
+  });
+});
+
+describe("aggregate environment availability", () => {
+  it("keeps the worktree available when any host can serve it", () => {
+    const providers = [WORKTREE_PROVIDER];
+    const hosts = new Map<string, readonly SystemEnvironmentProvider[]>([
+      ["offline", [{ ...WORKTREE_PROVIDER, availability: null }]],
+      [
+        "setup",
+        [
+          {
+            ...WORKTREE_PROVIDER,
+            availability: { status: "setup-required", message: "Configure" },
+          },
+        ],
+      ],
+      [
+        "online",
+        [{ ...WORKTREE_PROVIDER, availability: { status: "available" } }],
+      ],
+    ]);
+    expect(
+      aggregateEnvironmentProviderAvailability(providers, hosts)?.[0]
+        ?.availability,
+    ).toEqual({ status: "available" });
+  });
+
+  it("waits for host availability before selecting a fallback", () => {
+    expect(
+      aggregateEnvironmentProviderAvailability(
+        [WORKTREE_PROVIDER],
+        new Map([["loading", undefined]]),
+      ),
+    ).toBeUndefined();
   });
 });

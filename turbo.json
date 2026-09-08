@@ -1,6 +1,7 @@
 {
   "$schema": "https://turbo.build/schema.json",
   "tasks": {
+    "@bb/db#db:generate": { "cache": false },
     "@bb/desktop#smoke:browser-broker": {
       "cache": false,
       "dependsOn": [

@@ -4,7 +4,6 @@ import {
   withEnvironmentPathAdmission,
 } from "../environments/path-admission.js";
 import { z } from "zod";
-import { DEFAULT_ENVIRONMENT_PROVIDER_ID } from "../environments/environment-provider-ids.js";
 import {
   createEnvironment,
   type EnvironmentRow,
@@ -20,11 +19,6 @@ import type { AppDeps } from "../../types.js";
 import { runLiveHostCommand } from "../hosts/live-command.js";
 import { appendThreadEventInTransaction } from "./thread-events.js";
 import { buildEnvironmentProvisionCommand } from "./thread-create-helpers.js";
-import { getEnvironmentProvider } from "../plugins/plugin-environment-provider-registry.js";
-import {
-  checkoutProviderInputs,
-  validateProviderSelection,
-} from "./thread-environment-placement.js";
 import { findHostDataDir } from "../lib/entity-lookup.js";
 import { foreignProviderOwnedPathRefusal } from "./workspace-path-claims.js";
 
@@ -233,17 +227,7 @@ async function provisionUnmanagedEnvironmentForPath(
     hostId: args.currentEnvironment.hostId,
     providerOwnsPath: false,
     status: "provisioning",
-    environmentProvider: {
-      environmentProviderId: DEFAULT_ENVIRONMENT_PROVIDER_ID.projectCheckout,
-      instanceKey: null,
-      selection: {
-        machine: {
-          type: "existing",
-          hostId: args.currentEnvironment.hostId,
-        },
-        inputs: checkoutProviderInputs(args.path, undefined),
-      },
-    },
+    environmentProvider: null,
   });
   const command = buildEnvironmentProvisionCommand({
     environmentId: environment.id,
@@ -360,22 +344,6 @@ export async function handleUpdateEnvironmentDirectoryToolCall(
     });
     if (refusal !== null) {
       return toolCallFailure(`${refusal}. Use a different directory.`);
-    }
-    const checkoutProvider = getEnvironmentProvider(
-      DEFAULT_ENVIRONMENT_PROVIDER_ID.projectCheckout,
-    );
-    if (checkoutProvider !== undefined) {
-      try {
-        await validateProviderSelection(deps, checkoutProvider, {
-          hostId: args.currentEnvironment.hostId,
-          inputs: { path: normalizedPath },
-          projectId: args.thread.projectId,
-        });
-      } catch (error) {
-        return toolCallFailure(
-          `${error instanceof Error ? error.message : String(error)}. Use a different directory.`,
-        );
-      }
     }
     const provisionedEnvironment = await provisionUnmanagedEnvironmentForPath(
       deps,

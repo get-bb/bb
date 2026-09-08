@@ -1,3 +1,4 @@
+import { recheckEnvironmentLaunch } from "./services/threads/thread-environment-providers.js";
 import { registerDesktopBrowserRoutes } from "./routes/desktop-browsers.js";
 import { createNodeWebSocket } from "@hono/node-ws";
 import { createHash } from "node:crypto";
@@ -32,6 +33,7 @@ import { setPluginThreadEventEmitter } from "./services/plugins/plugin-thread-ev
 import { setPluginHookProvider } from "./services/plugins/plugin-hook-registry.js";
 import {
   setEnvironmentProviderRecheckHandler,
+  setEnvironmentLaunchRecheckHandler,
   setPluginEnvironmentProviderBridge,
 } from "./services/plugins/plugin-environment-provider-registry.js";
 import { recheckEnvironmentProviderLaunches } from "./services/threads/thread-environment-providers.js";
@@ -611,6 +613,9 @@ export function createApp(
   // there are no hooks, which is exactly the zero-overhead path.
   setPluginHookProvider(pluginService.hooks);
   setPluginEnvironmentProviderBridge(pluginService.environmentProviders);
+  setEnvironmentLaunchRecheckHandler((threadId) =>
+    recheckEnvironmentLaunch(deps, threadId),
+  );
   setEnvironmentProviderRecheckHandler((pluginId) => {
     invalidateEnvironmentProviderAvailability();
     deps.hub.notifySystem(["config-changed"]);

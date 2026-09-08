@@ -405,18 +405,29 @@ beyond one live retry row per original request.
 
 **What it does.** Lets a plugin register a named place where threads can run.
 Provider ids are flat across plugins, and the first live registration wins.
+Launches and environments persist the creating plugin ID; a different plugin
+registering the same provider ID cannot recover or remove its resources.
+Migration assigns the three bundled owners explicitly and leaves unknown
+historical owners unassigned, preventing automatic adoption.
 
 A declaration has four eligibility facts in `requires` (`projectCheckout`,
 `gitCheckout`, `gitRemote`, `projectless`), all defaulted to
 false at registration. Optional `inputs` uses Standard Schema v1; core parses it
 at thread creation and persists the parsed JSON value. Optional `validate`
-runs after core eligibility checks and can accept or refuse before a thread is
-created.
+runs once after core eligibility checks and can accept or refuse before a thread
+is created. An unresolved intent recovered after provider registration validates
+once when resolved. Host-dependent preflight requires connectivity; creation
+must still check mutable conditions and report resource-operation failures.
 
 Core invokes `create` and `remove` and records results directly. Policy drives
 retries, cancellation and retirement; providers return resource-operation
 results. Created directories include explicit ownsPath. The core lifecycle
-table owns attempt identity and private resources. recheck schedules another
+table owns attempt identity and private resources. Core admits and claims the
+canonical returned path before lifecycle hooks and uses that path for execution.
+Rejected foreign paths are never passed to lifecycle hooks or provider removal.
+Cleanup permits four operations globally and one per host. Progress remains
+durable before reporting returns, but wakes only its launch without invalidating
+configuration or provider availability. recheck schedules another
 ask.
 
 Provider selections are accepted by the SDK, CLI, app, and automations. The

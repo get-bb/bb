@@ -446,7 +446,7 @@ async function hostPathPlacement(
       selectionResolved: true,
       produced: {
         hostId: args.hostId,
-        path: args.path,
+        path: canonicalPath,
         mergeBaseBranch: args.mergeBaseBranch,
         ownsPath: args.ownsPath,
       },

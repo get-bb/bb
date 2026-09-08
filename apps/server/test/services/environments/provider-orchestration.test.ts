@@ -1,3 +1,4 @@
+import { withEnvironmentCleanupSlot } from "../../../src/services/environments/cleanup-concurrency.js";
 import { registerTestHostRpcCapture } from "../../helpers/commands.js";
 import { reportEnvironmentHookProgress } from "../../../src/services/environments/environment-hooks.js";
 import { recordProvisionedEnvironmentWorkspace } from "@bb/db/internal-environment-lifecycle";
@@ -178,6 +179,177 @@ afterEach(() => {
 });
 
 describe("core environment orchestration", () => {
+  it("limits cleanup globally and per host, and releases slots after failures", async () =>
+    withTestHarness(async (harness) => {
+      let release: () => void = () => {};
+      const gate = new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      const activeHosts = new Set<string>();
+      const started: string[] = [];
+      let maximum = 0;
+      const pending = ["a", "a", "b", "c", "d", "e"].map((hostId) =>
+        withEnvironmentCleanupSlot(harness.db, hostId, async () => {
+          expect(activeHosts.has(hostId)).toBe(false);
+          activeHosts.add(hostId);
+          started.push(hostId);
+          maximum = Math.max(maximum, activeHosts.size);
+          await gate;
+          activeHosts.delete(hostId);
+          if (hostId === "b") throw new Error("cleanup failed");
+        }).catch((error: unknown) => {
+          expect(error).toBeInstanceOf(Error);
+          expect(String(error)).toContain("cleanup failed");
+        }),
+      );
+      try {
+        await expect.poll(() => started.length).toBe(4);
+        expect(started).toEqual(["a", "b", "c", "d"]);
+      } finally {
+        release();
+        await Promise.all(pending);
+      }
+      expect(started).toHaveLength(6);
+      expect(maximum).toBe(4);
+      expect(activeHosts.size).toBe(0);
+    }));
+
+  it("refuses a foreign path before setup and never hands it to cleanup", async () =>
+    withTestHarness(async (harness) => {
+      const hooks = vi.fn(async () => {});
+      const remove = vi.fn(async () => ({ status: "removed" as const }));
+      const fixture = setup(harness, {
+        create: async () => ({
+          status: "created",
+          path: "/tmp/foreign/work",
+          ownsPath: true,
+        }),
+        remove,
+      });
+      const foreign = seedProjectWithSource(harness.deps, {
+        hostId: fixture.host.id,
+        path: "/tmp/foreign",
+      });
+      createEnvironment(harness.db, harness.hub, {
+        projectId: foreign.project.id,
+        hostId: fixture.host.id,
+        path: "/tmp/foreign",
+        status: "ready",
+        providerOwnsPath: true,
+      });
+      registerTestHostRpcCapture(harness.deps, {
+        hostId: fixture.host.id,
+        sessionId: fixture.session.id,
+        onEnvironmentHook: hooks,
+      });
+      fixture.ask();
+      await fixture.settled();
+      expect(fixture.row()).toMatchObject({
+        phase: "failed",
+        pathRejected: true,
+      });
+      await cancelProviderLaunch(harness.deps, fixture.thread.id);
+      expect(hooks).not.toHaveBeenCalled();
+      expect(remove).not.toHaveBeenCalled();
+      expect(fixture.row().cancelPending).toBe(false);
+    }));
+
+  it("binds setup, attachment and removal to the canonical path", async () =>
+    withTestHarness(async (harness) => {
+      let destination = "/tmp/real-workspace";
+      const hooks: string[] = [];
+      const remove = vi.fn(async () => ({ status: "removed" as const }));
+      const fixture = setup(harness, {
+        policy: { retireGraceMs: 0 },
+        create: async () => ({
+          status: "created",
+          path: "/tmp/alias",
+          ownsPath: true,
+        }),
+        remove,
+      });
+      registerTestHostRpcCapture(harness.deps, {
+        hostId: fixture.host.id,
+        sessionId: fixture.session.id,
+        canonicalPath: (path) => (path === "/tmp/alias" ? destination : path),
+        onEnvironmentHook: async (command) => {
+          hooks.push(command.path);
+        },
+      });
+      fixture.ask();
+      await fixture.settled();
+      expect(fixture.row().path).toBe("/tmp/real-workspace");
+      const environmentId = fixture.attach();
+      destination = "/tmp/other-workspace";
+      await sweepProviderEnvironment(harness.deps, environmentId);
+      expect(hooks).toEqual(["/tmp/real-workspace", "/tmp/real-workspace"]);
+      expect(remove).toHaveBeenCalledWith(
+        expect.objectContaining({ path: "/tmp/real-workspace" }),
+      );
+    }));
+
+  it.each(["launch", "environment"])(
+    "preserves the original plugin owner of a %s",
+    async (kind) =>
+      withTestHarness(async (harness) => {
+        const fixture = setup(harness, { policy: { retireGraceMs: 0 } });
+        fixture.ask();
+        await fixture.settled();
+        const environmentId = kind === "environment" ? fixture.attach() : null;
+        const create = vi.fn(fixture.record.provider.create);
+        const remove = vi.fn(async () => ({ status: "removed" as const }));
+        const replacement = {
+          ...fixture.record,
+          pluginId: "replacement",
+          provider: { ...fixture.record.provider, create, remove },
+        };
+        setPluginEnvironmentProviderBridge({
+          listEnvironmentProviders: () => [replacement],
+          getEnvironmentProvider: () => replacement,
+          invokeProvider: async (_id, _label, run) => ({
+            ok: true,
+            value: await run(),
+          }),
+          decisionTimeoutMs: 10_000,
+        });
+        if (environmentId === null) {
+          expect(
+            askProviderLaunch(harness.deps, replacement, fixture.context, null),
+          ).toMatchObject({ action: "reject" });
+          await expect(
+            cancelProviderLaunch(harness.deps, fixture.thread.id),
+          ).rejects.toThrow();
+        } else {
+          await sweepProviderEnvironment(harness.deps, environmentId);
+          expect(
+            getEnvironment(harness.db, environmentId)?.teardownStatus,
+          ).not.toBe("removed");
+        }
+        expect(create).not.toHaveBeenCalled();
+        expect(remove).not.toHaveBeenCalled();
+      }),
+  );
+
+  it("persists verbose progress without broadcasting configuration changes", async () =>
+    withTestHarness(async (harness) => {
+      const fixture = setup(harness, {
+        create: async ({ report }) => {
+          for (let i = 0; i < 50; i += 1) report.log(`line ${i}\n`);
+          return { status: "created", path: "/tmp/progress", ownsPath: false };
+        },
+      });
+      const notify = vi.spyOn(harness.hub, "notifySystem");
+      fixture.ask();
+      await fixture.settled();
+      expect(fixture.row().pendingLog).toContain("line 49");
+      expect(
+        notify.mock.calls.some(([changes]) =>
+          changes.includes("config-changed"),
+        ),
+      ).toBe(false);
+      notify.mockRestore();
+    }));
+
   it("claim then terminal create failure never runs teardown in the original checkout", async () =>
     withTestHarness(async (harness) => {
       const hooks = vi.fn();
@@ -516,7 +688,7 @@ describe("core environment orchestration", () => {
       expect(
         claimEnvironmentLaunchPath(harness.db, second, "/tmp/project"),
       ).toBe(false);
-      expect(fixture.row().path).toBe("/tmp/project/");
+      expect(fixture.row().path).toBe("/tmp/project");
     }));
 
   it("preserves canonical identity after attachment for live checkout exclusion", async () =>
@@ -759,7 +931,7 @@ describe("core environment orchestration", () => {
     }));
 
   it.each(["removal", "cancellation"])(
-    "starts unrelated %s cleanup while the first operation is pending",
+    "queues same-host %s cleanup and waits for the bounded batch",
     async (kind) =>
       withTestHarness(async (harness) => {
         let release: () => void = () => {};
@@ -771,7 +943,7 @@ describe("core environment orchestration", () => {
           policy: { retireGraceMs: 0 },
           remove: async ({ pathKey }) => {
             calls.push(pathKey);
-            if (pathKey === fixture.thread.id) await gate;
+            await gate;
             return { status: "removed" };
           },
         });
@@ -816,16 +988,14 @@ describe("core environment orchestration", () => {
           enumerated = true;
         });
         try {
-          await expect.poll(() => calls).toContain(second.id);
-          await expect.poll(() => enumerated).toBe(true);
-          await sweepProviderLifecycles(harness.deps);
-          expect(calls.filter((id) => id === fixture.thread.id)).toHaveLength(
-            1,
-          );
+          await expect.poll(() => calls.length).toBe(1);
+          expect(enumerated).toBe(false);
         } finally {
           release();
           await sweep;
         }
+        expect(calls.sort()).toEqual([fixture.thread.id, second.id].sort());
+        expect(enumerated).toBe(true);
       }),
   );
 
@@ -861,6 +1031,8 @@ describe("core environment orchestration", () => {
       saveEnvironmentLaunch(harness.db, {
         threadId: fixture.thread.id,
         providerId: fixture.record.provider.id,
+        providerPluginId: fixture.record.pluginId,
+        pathRejected: false,
         attempt: 7,
         phase: "creating",
         startedAt: Date.now() - 1_000,
