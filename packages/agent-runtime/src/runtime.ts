@@ -251,14 +251,23 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
   let nextRequestId = 1;
   const threadIdentityRegistry = new RuntimeThreadIdentityRegistry();
   const threadRuntimeConfigs = new Map<string, ThreadRuntimeConfig>();
+  const threadSecrets = new Map<string, Set<string>>();
+  function rememberSecrets(
+    threadId: string,
+    entries: readonly AgentRuntimeContributedEnvEntry[],
+  ): void {
+    let values = threadSecrets.get(threadId);
+    if (!values) {
+      values = new Set();
+      threadSecrets.set(threadId, values);
+    }
+    for (const entry of entries) {
+      if (entry.secret && typeof entry.value === "string" && entry.value)
+        values.add(entry.value);
+    }
+  }
   function getSecrets(): string[] {
-    return [...threadRuntimeConfigs.values()].flatMap((config) =>
-      config.contributedEnv.flatMap((entry) =>
-        entry.secret && typeof entry.value === "string" && entry.value
-          ? [entry.value]
-          : [],
-      ),
-    );
+    return [...threadSecrets.values()].flatMap((values) => [...values]);
   }
   const eventRedactor = createThreadEventStreamRedactor(getSecrets);
   function redactSecrets(text: string): string {
@@ -700,6 +709,7 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
     threadId: string,
     config: ThreadRuntimeConfig,
   ): void {
+    rememberSecrets(threadId, config.contributedEnv);
     threadRuntimeConfigs.set(threadId, config);
   }
 
@@ -724,6 +734,7 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
     pendingTurnStarts.delete(threadId);
     threadGoalState.clearThread(threadId);
     threadRuntimeConfigs.delete(threadId);
+    threadSecrets.delete(threadId);
   }
 
   function beginThreadOperation(threadId: string): void {
@@ -2025,6 +2036,7 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
             watchdogFired: false,
           });
           markProviderSessionNotIdle(threadId);
+          rememberSecrets(threadId, resolvedContributedEnv);
           try {
             await sendCommand({
               proc,
@@ -2138,6 +2150,7 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
             plan: proc.adapter.buildCommandPlan(adapterCommand),
             providerId: pid,
           });
+          rememberSecrets(threadId, resolvedContributedEnv);
           try {
             await sendCommand({
               proc,

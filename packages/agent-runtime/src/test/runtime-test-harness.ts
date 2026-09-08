@@ -44,6 +44,7 @@ export const scriptedEchoBridgeModulePath = join(
 
 export interface ScriptedEchoLaunchScript {
   startDelayMs?: number;
+  turnStartResponseDelayMs?: number;
   answerStartWithoutIdentity?: boolean;
   archivedSession?: boolean;
   unarchiveFails?: boolean;

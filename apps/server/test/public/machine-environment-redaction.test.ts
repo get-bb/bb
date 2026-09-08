@@ -50,9 +50,14 @@ async function withStoredSecret(
   }
 }
 
-async function echoSecret(secret: string): Promise<ThreadEvent[]> {
+async function echoSecret(
+  secret: string,
+  beforeAck = false,
+): Promise<ThreadEvent[]> {
   const events: ThreadEvent[] = [];
   const stderr: string[] = [];
+  let acknowledged = false;
+  let earlyDeltas = 0;
   await withStoredSecret(secret, async (contributedEnv, workspacePath) => {
     let complete: () => void = () => {};
     const completed = new Promise<void>((resolve) => {
@@ -64,12 +69,15 @@ async function echoSecret(secret: string): Promise<ThreadEvent[]> {
         onStderr: (line) => stderr.push(line),
         onEvent: (event) => {
           events.push(event);
+          if (!acknowledged && event.type === "item/agentMessage/delta")
+            earlyDeltas += 1;
           if (event.type === "turn/completed") complete();
         },
       },
       launch: {
         scripted: {
           textDeltaChunkSize: 20,
+          turnStartResponseDelayMs: beforeAck ? 1000 : undefined,
           stderrChunksOnTurn: [secret.slice(0, 7), secret.slice(7) + "\n"],
         },
       },
@@ -81,7 +89,7 @@ async function echoSecret(secret: string): Promise<ThreadEvent[]> {
         threadId: "type",
         providerId: "fake",
         options,
-        contributedEnv,
+        contributedEnv: beforeAck ? [] : contributedEnv,
       });
       await runtime.runTurn({
         threadId: "type",
@@ -90,6 +98,8 @@ async function echoSecret(secret: string): Promise<ThreadEvent[]> {
         options,
         contributedEnv,
       });
+      acknowledged = true;
+      if (beforeAck) expect(earlyDeltas).toBeGreaterThan(0);
       await completed;
       await vi.waitFor(() => expect(stderr.join("")).toContain("[redacted]"));
       expect(stderr.join("")).not.toContain(secret);
@@ -130,6 +140,12 @@ it("redacts the stored secret type without changing protocol keys or identifiers
     expect.objectContaining({ type: "turn/completed", status: "completed" }),
   );
 }, 15_000);
+
+it("redacts a newly configured secret before the provider acknowledges the turn", async () => {
+  const events = await echoSecret("ghp_ROTATED_REVIEW_TOKEN", true);
+  expect(JSON.stringify(events)).not.toContain("ghp_ROTATED");
+  expect(JSON.stringify(events)).not.toContain("REVIEW_TOKEN");
+});
 
 it.each(["first-line\nsecond-line", "first-line\r\nsecond-line"])(
   "redacts a stored multiline secret after real node-pty CRLF conversion at every chunk boundary: %j",
