@@ -207,8 +207,8 @@ The built-in `manual` provider appears as Existing machine. `bb machine create -
 For paths a provider owns, bb runs `.bb-env-setup.sh` after create and
 `.bb-env-teardown.sh` before remove on that machine, with separate 15-minute
 timeouts. Setup failure fails the launch with output in provisioning progress;
-teardown script failure is logged and removal continues. Attaching a project
-checkout or personal workspace skips both hooks. Providers do not run these
+teardown script failure is logged and removal continues. Attaching a user-maintained project checkout or personal workspace skips both
+hooks. A fresh core clone on a new machine is owned and runs the hooks. Providers do not run these
 core hooks themselves.
 Use `bb machine ready MACHINE --provider PROVIDER --project PROJECT_ID --json`
 to check CLI installation, credential-route reachability and checkout setup before

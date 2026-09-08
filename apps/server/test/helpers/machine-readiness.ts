@@ -41,14 +41,4 @@ export async function answerMachineReadiness(harness: TestAppHarness) {
       loginCommand: null,
     },
   });
-  const workspace = await waitForQueuedCommand(
-    harness,
-    ({ command }) => command.type === "workspace.readiness.inspect",
-  );
-  await reportQueuedCommandSuccess(harness, workspace, {
-    commit: "commit",
-    dirty: [],
-    files: [],
-    abi: "linux/x64/node-127",
-  });
 }

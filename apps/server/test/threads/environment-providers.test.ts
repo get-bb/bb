@@ -1643,6 +1643,7 @@ describe("machine and environment provider composition", () => {
         expect(checkoutContexts).toHaveLength(1);
         expect(checkoutContexts[0]?.projectCheckout).toEqual({
           path: WORKSPACE_PATH,
+          experimental_ownsPath: sourceState === "missing",
         });
         expect(
           getProjectSourceByHost(harness.db, project.id, host.id),

@@ -6,6 +6,10 @@ import type { EnvironmentHookProgressMessage } from "@bb/host-daemon-contract";
 import type { PluginEnvironmentProviderProgress } from "@get-bb/plugin-sdk/environment-provider";
 import type { WorkSessionDeps } from "../../types.js";
 import { callHostOnlineRpc } from "../hosts/online-rpc.js";
+import {
+  beginEnvironmentSetupOutcome,
+  finishEnvironmentSetupOutcome,
+} from "./setup-outcomes.js";
 
 const HOOK_TIMEOUT_MS = 15 * 60 * 1000;
 const TRANSPORT_GRACE_MS = 6_000;
@@ -87,7 +91,11 @@ export async function runEnvironmentHook(
     );
   };
   args.signal.addEventListener("abort", abort, { once: true });
+  const identity = { hostId: args.hostId, path: args.path, operationId };
   try {
+    if (args.kind === "setup" && existing === undefined)
+      await beginEnvironmentSetupOutcome(deps, identity);
+    args.signal.throwIfAborted();
     await callHostOnlineRpc(deps, {
       hostId: args.hostId,
       timeoutMs: HOOK_TIMEOUT_MS + TRANSPORT_GRACE_MS,
@@ -110,9 +118,20 @@ export async function runEnvironmentHook(
       .where(eq(environmentHookOperations.id, args.id))
       .run();
     args.signal.throwIfAborted();
+    if (args.kind === "setup")
+      await finishEnvironmentSetupOutcome(deps, {
+        ...identity,
+        succeeded: true,
+      });
   } catch (error) {
     await cancelPendingEnvironmentHook(deps, args.id);
-    if (args.kind === "setup") throw error;
+    if (args.kind === "setup") {
+      await finishEnvironmentSetupOutcome(deps, {
+        ...identity,
+        succeeded: false,
+      });
+      throw error;
+    }
     const text = error instanceof Error ? error.message : String(error);
     args.report.log(text);
     deps.logger.warn(

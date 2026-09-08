@@ -374,6 +374,24 @@ export function registerTestHostRpcCapture(
         });
         return;
       }
+      if (command.type === "workspace.readiness.inspect") {
+        deps.hub.recordHostOnlineRpcResponse({
+          message: hostDaemonOnlineRpcResponseMessageSchema.parse({
+            type: "host-rpc.response",
+            requestId: message.requestId,
+            commandType: command.type,
+            ok: true,
+            result: {
+              commit: "fixture-commit",
+              dirty: [],
+              files: [],
+              abi: "linux/x64/node-127",
+            },
+          }),
+          sessionId: args.sessionId,
+        });
+        return;
+      }
       if (
         command.type === "environment.hook.run" ||
         command.type === "environment.hook.cancel"
