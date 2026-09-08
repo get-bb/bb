@@ -553,6 +553,7 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
           "dispatch-hook",
           "environment-providers",
           "machine-providers",
+          "server-access",
           "host-workers",
         ],
       },
@@ -822,7 +823,7 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
           "PluginMachineProviderResourceResult",
           "PluginMachineProviderRemoveResult",
         ],
-        firstParty: ["Modal sandbox"],
+        firstParty: ["Modal sandbox", "DigitalOcean", "E2B", "SSH machine"],
         experimental: true,
       },
       {

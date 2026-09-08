@@ -137,5 +137,17 @@
   "environment-modal-sandbox": {
     "category": "environments",
     "screenshots": []
+  },
+  "environment-ssh-machine": {
+    "category": "environments",
+    "screenshots": []
+  },
+  "machine-digitalocean": {
+    "category": "environments",
+    "screenshots": []
+  },
+  "machine-e2b": {
+    "category": "environments",
+    "screenshots": []
   }
 }

@@ -159,6 +159,9 @@ export const BUILTIN_PLUGINS = [
 }));
 
 export const OFFICIAL_PLUGINS = [
+  { name: "machine-e2b", pluginId: "machine-e2b", defaultEnabled: true },
+  { name: "environment-ssh-machine", pluginId: "environment-ssh-machine", defaultEnabled: true },
+  { name: "machine-digitalocean", pluginId: "machine-digitalocean", defaultEnabled: true },
   {
     name: "browser-automation",
     pluginId: "browser-automation",
