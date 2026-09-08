@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 import {
   createSecretStreamRedactor,
   operationEnvironment,
+  redactOperationSecrets,
+  redactOperationContent,
 } from "./operation-environment.js";
 
 describe("operation environment", () => {
@@ -46,4 +48,23 @@ describe("operation environment", () => {
       expect(output).toBe("before [redacted] after");
     }
   });
+});
+
+it("redacts complete clone diagnostics with newline conversion and overlapping secrets", () => {
+  expect(
+    redactOperationSecrets("first\r\nsecond redacted", [
+      "first\nsecond",
+      "redacted",
+    ]),
+  ).toBe("[redacted] [redacted]");
+});
+
+it("fails closed when content cannot be traversed", () => {
+  const value = Object.defineProperty({}, "text", {
+    enumerable: true,
+    get() {
+      throw new Error("secret");
+    },
+  });
+  expect(redactOperationContent(value, ["secret"])).toBe("[redacted]");
 });

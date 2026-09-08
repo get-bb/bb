@@ -1,3 +1,5 @@
+import { createSecretStreamRedactor } from "@bb/process-utils";
+import type { JsonValue } from "@bb/domain";
 import type { HostDaemonContributedEnvEntry } from "@bb/host-daemon-contract";
 
 export function operationEnvironment(
@@ -30,8 +32,33 @@ export function redactOperationSecrets(
   text: string,
   secrets: readonly string[],
 ): string {
-  for (const secret of secrets) text = text.replaceAll(secret, "[redacted]");
-  return text;
+  try {
+    const redactor = createSecretStreamRedactor(secrets);
+    return redactor.push(text) + redactor.flush();
+  } catch {
+    return "[redacted]";
+  }
 }
 
-export { createSecretStreamRedactor } from "@bb/process-utils";
+export function redactOperationContent(
+  value: JsonValue,
+  secrets: readonly string[],
+): JsonValue {
+  function visit(content: JsonValue): JsonValue {
+    if (typeof content === "string")
+      return redactOperationSecrets(content, secrets);
+    if (Array.isArray(content)) return content.map(visit);
+    if (content !== null && typeof content === "object")
+      return Object.fromEntries(
+        Object.entries(content).map(([key, entry]) => [key, visit(entry)]),
+      );
+    return content;
+  }
+  try {
+    return visit(value);
+  } catch {
+    return "[redacted]";
+  }
+}
+
+export { createSecretStreamRedactor };
