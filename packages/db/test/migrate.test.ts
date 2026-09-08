@@ -5551,6 +5551,7 @@ describe("environment providers migration", () => {
   const environmentProvidersMigrationWhen = 1788386943764;
 
   function seedPreProviderEnvironments(db: DbConnection): void {
+    db.$client.prepare("DROP TABLE retained_event_outputs").run();
     rewindEnvironmentRowFactsMigration(db);
     rewindEnvironmentProvidersMigration(db);
     db.$client

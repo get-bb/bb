@@ -3253,6 +3253,15 @@ const isNotDiagnosticEvent = sql`(
       AND json_type(${events.data}, '$.rawEvent.params.message.fallback_model') = 'text'
       AND length(json_extract(${events.data}, '$.rawEvent.params.message.fallback_model')) > 0
     ), 0)
+    OR CASE
+      WHEN instr(${events.data}, '"truncation"') = 0 THEN 0
+      WHEN json_valid(${events.data}) THEN
+        json_extract(${events.data}, '$.rawType') = 'item/completed'
+        AND json_extract(${events.data}, '$.rawEvent.method') = 'item/completed'
+        AND json_extract(${events.data}, '$.rawEvent.params.item.type') = 'imageGeneration'
+        AND json_type(${events.data}, '$.rawEvent.params.item.truncation.result') = 'object'
+      ELSE 0
+    END
   )
 )`;
 

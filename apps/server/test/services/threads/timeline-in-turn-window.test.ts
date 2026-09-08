@@ -1547,7 +1547,7 @@ describe("timeline retained output reads", () => {
 
     const capped = buildThreadTimeline(db, thread, {
       eventBudget: LARGE_BUDGET,
-      includeProviderUnhandledOperations: false,
+      includeDiagnosticOperations: false,
       includeNestedRows: false,
       maxInlineOutputChars: 32_000,
       maxSeq: 500,
@@ -1555,7 +1555,7 @@ describe("timeline retained output reads", () => {
     });
     const uncapped = buildThreadTimeline(db, thread, {
       eventBudget: LARGE_BUDGET,
-      includeProviderUnhandledOperations: false,
+      includeDiagnosticOperations: false,
       includeNestedRows: false,
       maxInlineOutputChars: null,
       maxSeq: 500,
