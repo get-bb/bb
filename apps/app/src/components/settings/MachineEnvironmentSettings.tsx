@@ -110,38 +110,40 @@ export function MachineEnvironmentSettings() {
     <SettingsSection
       title="Machine environment"
       description="Variables shared by enrolled machines. Changes apply to new agent turns, setup commands, and terminals."
-      bodyClassName="space-y-3"
+      bodyClassName="space-y-3 rounded-none border-0 bg-transparent p-0"
+      action={
+        <div className="flex flex-wrap gap-2">
+          <Button
+            size="sm"
+            variant="outline"
+            disabled={disabled}
+            onClick={() =>
+              setDraft([
+                ...rows,
+                {
+                  id: crypto.randomUUID(),
+                  existing: false,
+                  name: "",
+                  value: "",
+                  secret: true,
+                  note: null,
+                },
+              ])
+            }
+          >
+            Add variable
+          </Button>
+          <Button
+            size="sm"
+            variant="outline"
+            disabled={disabled}
+            onClick={() => setImportOpen(!importOpen)}
+          >
+            Import .env
+          </Button>
+        </div>
+      }
     >
-      <div className="flex flex-wrap gap-2">
-        <Button
-          size="sm"
-          variant="outline"
-          disabled={disabled}
-          onClick={() =>
-            setDraft([
-              ...rows,
-              {
-                id: crypto.randomUUID(),
-                existing: false,
-                name: "",
-                value: "",
-                secret: true,
-                note: null,
-              },
-            ])
-          }
-        >
-          Add variable
-        </Button>
-        <Button
-          size="sm"
-          variant="outline"
-          disabled={disabled}
-          onClick={() => setImportOpen(!importOpen)}
-        >
-          Import .env
-        </Button>
-      </div>
       {importOpen && (
         <div className="space-y-2 rounded-md border border-border p-3">
           <label className="block space-y-2 text-xs">
