@@ -64,3 +64,9 @@ same durable backup result. Inventory is coalesced and cached for 30 seconds,
 with invalidation after mutations. Removal deletes the Droplet and its plugin-owned
 snapshots only; verify cleanup through status/vendor inventory and exact 404s.
 Never delete user snapshots or unrelated resources.
+
+Create boxes in Settings → Machines or with `bb machine create --provider
+digitalocean --inputs '{}' --json`; no project is required. SDK: `bb.sdk.hosts.create`
+with `machineProviderId: "digitalocean", projectId: null, inputs: {}`. Enrolled
+boxes appear as machine sections in the composer picker. There is no DigitalOcean
+new-machine/project-checkout shortcut row.

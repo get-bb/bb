@@ -124,12 +124,9 @@ async function setup(now: () => number = Date.now) {
 }
 
 describe("DigitalOcean machine provider", () => {
-  it("declares checkout picker sugar without requiring a project for machine creation", async () => {
+  it("creates a standalone dev box without a project or composer shortcut", async () => {
     const test = await setup();
-    expect(test.provider.environmentRow).toEqual({
-      displayName: "DigitalOcean",
-      environmentProviderId: "project-checkout",
-    });
+    expect(test.provider.environmentRow).toBeNull();
     expect(test.provider.requires?.gitRemote ?? false).toBe(false);
     const request = context();
     expect(await test.provider.create(request)).toMatchObject({

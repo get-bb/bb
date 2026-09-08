@@ -347,10 +347,6 @@ export function createDigitalOceanPlugin(deps: {
       id: "digitalocean",
       displayName: "DigitalOcean",
       icon: "./digitalocean-logo.svg",
-      environmentRow: {
-        displayName: "DigitalOcean",
-        environmentProviderId: "project-checkout",
-      },
       inputs: inputsSchema,
       policy: {
         idleSuspendMs: null,

@@ -6,12 +6,22 @@ machines SDK using this provider. Configure project sources and agent credential
 on the resulting machine separately. The plugin does not create an environment
 provider or copy a project checkout.
 
-For a project with a Git remote, the DigitalOcean environment-picker row creates
-a machine and selects Project checkout. Core clones/registers the project source
-before creating the environment. This shortcut uses the same Region and Size
-inputs as standalone creation. Without a project Git remote the checkout shortcut
-is hidden; standalone creation and an explicit Personal workspace selection
-remain available because the machine provider itself requires no project.
+Create the dev box from Settings → Machines. Once enrolled, it appears as a
+machine section in the composer picker, like SSH/Tailscale machines. DigitalOcean
+does not declare a new-machine/project-checkout shortcut in that picker.
+Standalone CLI and SDK creation require no project:
+
+```sh
+bb machine create --provider digitalocean --inputs '{}' --json
+```
+
+```ts
+await bb.sdk.hosts.create({ machineProviderId: "digitalocean", projectId: null, inputs: {} });
+```
+
+Core requires an inputs object for providers with an input schema; an empty
+object selects the DigitalOcean defaults. Configure project sources or select
+Personal workspace on the enrolled machine separately.
 
 Set the secret plugin setting `DIGITALOCEAN_TOKEN`. The token needs Droplet read,
 create, update and delete permissions, image/snapshot read and delete, snapshot creation, reserved-IP read, and tag creation. Each launch
