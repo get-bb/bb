@@ -74,6 +74,29 @@ export function formatGitRemote(url: string): string {
   }
 }
 
+export interface ProjectReorderRequest {
+  order: string[];
+  previousProjectId: string | null;
+  nextProjectId: string | null;
+}
+
+export function buildProjectReorderRequest(
+  ids: readonly string[],
+  activeId: string,
+  overId: string,
+): ProjectReorderRequest | null {
+  if (activeId === overId) return null;
+  const from = ids.indexOf(activeId);
+  const to = ids.indexOf(overId);
+  if (from === -1 || to === -1) return null;
+  const order = arrayMove([...ids], from, to);
+  return {
+    order,
+    previousProjectId: order[to - 1] ?? null,
+    nextProjectId: order[to + 1] ?? null,
+  };
+}
+
 export function pluralize(count: number, singular: string): string {
   return `${count} ${count === 1 ? singular : `${singular}s`}`;
 }
@@ -283,21 +306,22 @@ export function ProjectsSettingsSection() {
     if (
       dragDisabled ||
       typeof event.active.id !== "string" ||
-      typeof event.over?.id !== "string" ||
-      event.active.id === event.over.id
+      typeof event.over?.id !== "string"
     ) {
       return;
     }
-    const from = projectIds.indexOf(event.active.id);
-    const to = projectIds.indexOf(event.over.id);
-    if (from === -1 || to === -1) return;
-    const next = arrayMove(projectIds, from, to);
-    setOptimisticOrder(next);
+    const request = buildProjectReorderRequest(
+      projectIds,
+      event.active.id,
+      event.over.id,
+    );
+    if (request === null) return;
+    setOptimisticOrder(request.order);
     reorderProject.mutate(
       {
         id: event.active.id,
-        previousProjectId: next[to - 1] ?? null,
-        nextProjectId: next[to + 1] ?? null,
+        previousProjectId: request.previousProjectId,
+        nextProjectId: request.nextProjectId,
       },
       { onError: () => setOptimisticOrder(null) },
     );
