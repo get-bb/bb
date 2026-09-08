@@ -622,4 +622,7 @@ export function installSafeProcessDiagnostics(
   };
 }
 
-export { createSecretStreamRedactor } from "./secret-redaction.js";
+export {
+  createSecretStreamRedactor,
+  redactSecretText,
+} from "./secret-redaction.js";

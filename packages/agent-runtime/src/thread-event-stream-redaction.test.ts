@@ -94,3 +94,26 @@ it("keeps short-secret matches out of structural fields and nested content keys"
     },
   });
 });
+
+it("preserves complete event strings ending in a secret prefix", () => {
+  const secret = "ghp_private-token";
+  const path = `/workspaces/${secret.slice(0, 8)}`;
+  const redactor = createThreadEventStreamRedactor(() => [secret]);
+  const event: ThreadEvent = {
+    type: "item/completed",
+    threadId: "thread",
+    providerThreadId: "provider",
+    scope: { kind: "turn", turnId: "turn" },
+    item: {
+      type: "toolCall",
+      id: "item",
+      tool: "fixture",
+      status: "completed",
+      arguments: { path },
+      result: { path, token: secret },
+    },
+  };
+  expect(redactor.push(event)).toMatchObject([
+    { item: { arguments: { path }, result: { path, token: "[redacted]" } } },
+  ]);
+});

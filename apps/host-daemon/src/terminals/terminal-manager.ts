@@ -102,6 +102,7 @@ interface ScrollbackEntry {
 }
 
 interface TerminalSession {
+  flushRedaction: () => string;
   closeReason: TerminalSessionCloseReason | null;
   closeTimeout: ReturnType<typeof setTimeout> | null;
   cols: number;
@@ -605,6 +606,7 @@ export class TerminalManager {
         rows: message.rows,
       });
       const session: TerminalSession = {
+        flushRedaction: () => redactor.flush(),
         closeReason: null,
         closeTimeout: null,
         cols: message.cols,
@@ -633,7 +635,6 @@ export class TerminalManager {
           this.handleTerminalOutput(session, redactor.push(data)),
         ),
         pty.onExit((event) => {
-          this.handleTerminalOutput(session, redactor.flush());
           void this.runTerminalOperation({
             operation: () =>
               this.finishTerminalSession({
@@ -960,6 +961,7 @@ export class TerminalManager {
     if (this.sessions.get(args.session.terminalId) !== args.session) {
       return;
     }
+    this.handleTerminalOutput(args.session, args.session.flushRedaction());
     if (args.session.pendingPrimaryDeviceAttributesQuery.length > 0) {
       this.bufferTerminalOutput(
         args.session,

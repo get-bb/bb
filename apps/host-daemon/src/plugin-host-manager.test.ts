@@ -241,6 +241,40 @@ describe("PluginHostManager", () => {
     ).toEqual({ before: null, after: null, token: null });
   });
 
+  it.each([
+    "ghp_private-token",
+    "first-line\nsecond-line",
+    "first-line\r\nsecond-line",
+  ])(
+    "preserves a structured RPC path ending in a secret prefix while redacting complete secrets: %j",
+    async (secret) => {
+      const manager = await createManager();
+      const path = `/workspaces/${secret.slice(0, 8)}`;
+      const result = await manager.call(
+        callCommand({
+          method: "echo",
+          input: {
+            path,
+            secret: secret.replaceAll("\r\n", "\n"),
+            crlf: secret.replaceAll("\r\n", "\n").replaceAll("\n", "\r\n"),
+          },
+          contributedEnv: [
+            {
+              name: "TEST_SECRET",
+              value: secret,
+              secret: true,
+              reason: "Probe",
+              source: { core: "machine-environment" },
+            },
+          ],
+        }),
+      );
+      expect(result).toMatchObject({
+        output: { input: { path, secret: "[redacted]", crlf: "[redacted]" } },
+      });
+    },
+  );
+
   it.each(["type", "true", "changed"])(
     "preserves worker RPC structure and identifiers when the secret is %s",
     async (secret) => {

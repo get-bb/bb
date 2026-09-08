@@ -1,5 +1,6 @@
 import {
   createSecretStreamRedactor,
+  redactSecretText,
   sanitizeInheritedChildProcessEnv,
 } from "@bb/process-utils";
 import type { JsonValue } from "@bb/domain";
@@ -39,8 +40,7 @@ export function redactOperationSecrets(
   secrets: readonly string[],
 ): string {
   try {
-    const redactor = createSecretStreamRedactor(secrets);
-    return redactor.push(text) + redactor.flush();
+    return redactSecretText(text, secrets);
   } catch {
     return "[redacted]";
   }

@@ -177,7 +177,14 @@ async function runLifecycleScript(
     stream.on("data", (chunk: Buffer) =>
       emit(redactor.push(decoder.write(chunk))),
     );
-    return () => emit(redactor.push(decoder.end()) + redactor.flush());
+    let ended = false;
+    const finish = () => {
+      if (ended) return;
+      ended = true;
+      emit(redactor.push(decoder.end()) + redactor.flush());
+    };
+    stream.once("end", finish);
+    return finish;
   });
 
   const timeout = setTimeout(() => {

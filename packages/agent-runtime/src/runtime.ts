@@ -1,6 +1,6 @@
 import path from "node:path";
 import { z } from "zod";
-import { createSecretStreamRedactor } from "@bb/process-utils";
+import { redactSecretText } from "@bb/process-utils";
 import {
   normalizeProviderThreadNameEvent,
   toProviderExternalThreadName,
@@ -271,8 +271,7 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
   }
   const eventRedactor = createThreadEventStreamRedactor(getSecrets);
   function redactSecrets(text: string): string {
-    const redactor = createSecretStreamRedactor(getSecrets);
-    return redactor.push(text) + redactor.flush();
+    return redactSecretText(text, getSecrets());
   }
   function reportStderr(
     ...[text, context]: Parameters<NonNullable<AgentRuntimeOptions["onStderr"]>>

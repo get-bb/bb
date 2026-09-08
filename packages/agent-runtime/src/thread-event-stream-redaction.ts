@@ -1,5 +1,8 @@
 import type { ThreadEvent } from "@bb/domain";
-import { createSecretStreamRedactor } from "@bb/process-utils";
+import {
+  createSecretStreamRedactor,
+  redactSecretText,
+} from "@bb/process-utils";
 import { redactThreadEventContent } from "./thread-event-redaction.js";
 
 type DeltaEvent = Extract<ThreadEvent, { delta: string; itemId: string }>;
@@ -79,10 +82,9 @@ export function createThreadEventStreamRedactor(
               )
             : [];
       const secrets = getSecrets();
-      const safe = redactThreadEventContent(event, (text) => {
-        const redactor = createSecretStreamRedactor(secrets);
-        return redactor.push(text) + redactor.flush();
-      });
+      const safe = redactThreadEventContent(event, (text) =>
+        redactSecretText(text, secrets),
+      );
       return [...flushed, safe];
     },
   };

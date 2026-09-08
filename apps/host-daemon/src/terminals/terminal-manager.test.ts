@@ -1352,6 +1352,33 @@ describe("TerminalManager", () => {
     ).resolves.toEqual(["env-1"]);
   });
 
+  it("flushes a buffered secret prefix when shutdown ends the stream without a PTY exit", async () => {
+    const harness = createHarness();
+    const pty = await openTerminal(harness, [
+      {
+        name: "GH_TOKEN",
+        value: "ghp_private-token",
+        secret: true,
+        reason: "Fixture",
+        source: { core: "machine-git" },
+      },
+    ]);
+    pty.emitData("before ghp_priv");
+    await harness.manager.shutdownAll();
+    const output = harness.messages
+      .flatMap((message) =>
+        message.type === "terminal.output"
+          ? [Buffer.from(message.chunk.dataBase64, "base64").toString("utf8")]
+          : [],
+      )
+      .join("");
+    expect(output).toBe("before [redacted]");
+    pty.emitExit(0);
+    expect(
+      harness.messages.filter((message) => message.type === "terminal.exited"),
+    ).toHaveLength(1);
+  });
+
   it("kills all terminals on shutdown", async () => {
     const harness = createHarness();
     const pty = await openTerminal(harness);
