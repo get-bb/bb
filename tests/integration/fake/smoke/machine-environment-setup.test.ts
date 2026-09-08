@@ -16,6 +16,16 @@ it.each([true, false])(
     withHarness(
       { builtinPlugins: ["environment-git-worktree"] },
       async (harness) => {
+        const provider = harness.server.providerRegistry.get("fake");
+        if (!provider) throw new Error("Missing scripted provider");
+        harness.server.providerRegistry.register({
+          ...provider,
+          info: {
+            ...provider.info,
+            id: "fake-installed",
+            maintenance: { ...provider.info.maintenance, installation: true },
+          },
+        });
         if (machine)
           updateHost(harness.db, harness.server.hub, harness.hostId, {
             machineProviderId: "manual",
@@ -63,6 +73,7 @@ it.each([true, false])(
           path: sourcePath,
         });
         const { environment } = await createReadyHostThread(harness, {
+          providerId: "fake-installed",
           projectId: project.id,
           workspace: { type: "managed-worktree" },
           timeoutMs: 30_000,
