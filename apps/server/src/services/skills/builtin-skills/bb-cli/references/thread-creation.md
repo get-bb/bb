@@ -5,8 +5,8 @@
 - Use `bb thread spawn --project <project-id> --prompt "..."` to create another
   thread. Pass the intended project explicitly; the CLI does not infer it from
   context variables. Omitted execution flags use remembered project defaults;
-  without a remembered model, bb uses the explicitly requested provider or
-  Codex and resolves its provider-reported default model on the target machine.
+  without a remembered model, bb resolves the selected provider and its reported
+  default model on the target machine.
 - Select a target with `--environment`, `--new-environment`, `--base-branch`,
   or `--machine`. Select execution with `--provider`, `--model`,
   `--reasoning-level`, `--service-tier`, and `--permission-mode`.
@@ -136,21 +136,10 @@ environment pull-request show <id>`. Diff commands require an explicit target
   (alias `--host`) or `--environment <id>` to inspect the machine where work
   will run; the selectors cannot be combined. With neither selector they
   intentionally inspect the primary machine.
-- Known ACP agents can appear automatically when their CLI is installed on the
-  host; for example `opencode`, `omp`, Grok Build's `grok` CLI, or Hermes'
-  `hermes` CLI on PATH appears as provider `acp-opencode`, `acp-omp`,
-  `acp-grok`, or `acp-hermes-agent`.
-- Cursor ACP threads discover project skills from `.cursor/skills`. This root
-  can link to `.agents/skills`. `bb skill list` shows linked Cursor skills under
-  `cursor-project` and keeps them read-only.
 - Top-level `customModels` in the same `config.json` registers extra picker
-  models. `providerId` accepts a built-in provider id or any `acp-*` provider
-  id. The provider must still accept the id: `claude-code` and `codex` accept
-  unlisted ids, while an ACP agent can reject an unknown id at session start.
-  OpenCode rejects unlisted ids; add the model to the OpenCode config instead
-  and bb discovers it automatically. An OpenCode agent is a session mode, not
-  a model, and cannot be selected through bb. This list also has no set/unset
-  CLI surface. Edit the JSON and restart BB.
+  models. Use a provider ID returned by the target host's catalog. Acceptance
+  of unlisted models is provider-specific; consult that provider's skill.
+  This list has no set/unset CLI surface. Edit the JSON and restart BB.
   The `streamerMode` General preference hides every entry from model lists.
 - Top-level `sharedSkillRoots` uses the same relative `user` and `project`
   paths. bb lists these skills as read-only. bb injects them into each provider,

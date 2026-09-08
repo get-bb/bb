@@ -173,6 +173,39 @@ const WORKSPACE_DIFF_AVAILABLE_RESULT: JsonObject = {
 };
 
 const ONLINE_RPC_RESPONSE_RESULT_FIXTURES: OnlineRpcResponseResultFixtures = {
+  "desktop.browser.list_instances": { instances: [] },
+  "desktop.browser.list_tabs": { tabs: [] },
+  "desktop.browser.create_tab": {
+    tab: {
+      tabId: "tab",
+      threadId: "thread",
+      title: "",
+      url: "about:blank",
+      profile: { kind: "personal" },
+      presentation: "hidden",
+      control: null,
+    },
+  },
+  "desktop.browser.reveal_tab": { ok: true },
+  "desktop.browser.close_tab": { ok: true },
+  "desktop.browser.capture_tab": {
+    mimeType: "image/jpeg",
+    width: 800,
+    height: 600,
+    base64: "",
+  },
+  "desktop.browser.acquire_control": {
+    lease: {
+      leaseId: "lease",
+      controllerLabel: "Agent",
+      expiresAt: 1700000000000,
+    },
+  },
+  "desktop.browser.open_connection": {
+    wsEndpoint: "ws://127.0.0.1:1234/scoped",
+    expiresAt: 1700000000000,
+  },
+  "desktop.browser.release_control": { ok: true },
   "plugin.host.call": { output: { ok: true } },
   "plugin.host.cancel": { cancelled: true },
   "plugin.host.dispose": { disposed: true },
@@ -942,7 +975,7 @@ const CONTRIBUTED_ENV = [
 
 describe("host-daemon command schemas", () => {
   it("uses the current host-daemon protocol version", () => {
-    expect(HOST_DAEMON_PROTOCOL_VERSION).toBe(180);
+    expect(HOST_DAEMON_PROTOCOL_VERSION).toBe(183);
     expect(HOST_ARTIFACT_MAX_BYTES).toBe(256 * 1024 * 1024);
   });
 

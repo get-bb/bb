@@ -1,3 +1,4 @@
+import { syncDesktopBrowserTabs } from "../services/desktop-browsers.js";
 import { heartbeatSession } from "@bb/db";
 import {
   hasHostDaemonWebSocketProtocol,
@@ -179,6 +180,19 @@ export function onDaemonSocketMessage(
         deps.sharedPorts.recordTunnelIdentity(
           args.hostId,
           result.data.identity,
+        );
+        return;
+      }
+      if (result.data.type === "desktop-browser.changed") {
+        syncDesktopBrowserTabs(
+          deps,
+          {
+            hostId: args.hostId,
+            instanceId: result.data.instanceId,
+            generation: result.data.generation,
+            threadId: result.data.threadId,
+          },
+          result.data.tabs,
         );
         return;
       }

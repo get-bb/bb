@@ -598,13 +598,24 @@ function ProviderUsageStatus({
           </p>
         ) : (
           <>
-            <div className="flex items-baseline justify-between gap-2">
-              <h2 className="truncate text-xs font-medium text-sidebar-foreground">
-                {activeProvider.displayName}
-              </h2>
+            <div className="flex min-w-0 items-start gap-2">
+              <div className="min-w-0 flex-1">
+                <h2 className="truncate text-xs font-medium text-sidebar-foreground">
+                  {activeProvider.displayName}
+                </h2>
+                {activeProvider.usage?.status === "ok" &&
+                activeProvider.usage.accountEmail !== null ? (
+                  <p
+                    title={activeProvider.usage.accountEmail}
+                    className="truncate text-2xs text-subtle-foreground"
+                  >
+                    {activeProvider.usage.accountEmail}
+                  </p>
+                ) : null}
+              </div>
               {activeProvider.usage?.status === "ok" &&
               activeProvider.usage.planLabel !== null ? (
-                <span className="shrink-0 rounded bg-sidebar-border px-1.5 py-0.5 text-xs text-muted-foreground">
+                <span className="ml-auto shrink-0 rounded-sm bg-sidebar-border/60 px-1 py-0.5 text-2xs leading-none text-subtle-foreground">
                   {activeProvider.usage.planLabel}
                 </span>
               ) : null}

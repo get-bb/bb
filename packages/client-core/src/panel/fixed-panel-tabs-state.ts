@@ -2,6 +2,8 @@ import { z } from "zod";
 import {
   BB_DESKTOP_BROWSER_MAX_TITLE_LENGTH,
   BB_DESKTOP_BROWSER_MAX_URL_LENGTH,
+  bbDesktopBrowserTargetSchema,
+  type BbDesktopBrowserTarget,
 } from "@bb/desktop-contract";
 import {
   terminalCreateTargetSchema,
@@ -117,6 +119,7 @@ const browserFixedPanelTabSchema = z
     environmentId: z.string().min(1).nullable().default(null),
     id: z.string().min(1),
     kind: z.literal("browser"),
+    desktopTarget: bbDesktopBrowserTargetSchema.optional(),
     title: z
       .string()
       .min(1)
@@ -256,6 +259,7 @@ export interface ThreadStorageFilePreviewFixedPanelTab {
 }
 
 export interface BrowserFixedPanelTab {
+  desktopTarget?: BbDesktopBrowserTarget;
   environmentId: string | null;
   id: string;
   kind: "browser";
@@ -719,6 +723,7 @@ function normalizeFixedPanelTabId(tab: FixedPanelTab): FixedPanelTab {
       return tab.id === id ? tab : { ...tab, id };
     }
     case "browser": {
+      if (tab.desktopTarget !== undefined) return tab;
       const idSegments = tab.id.split(":");
       const browserPath =
         idSegments.length === 3 && idSegments[0] === "browser"
@@ -1069,6 +1074,9 @@ export function areFixedPanelTabsEquivalent(
     case "browser":
       return (
         b.kind === "browser" &&
+        a.desktopTarget?.hostId === b.desktopTarget?.hostId &&
+        a.desktopTarget?.instanceId === b.desktopTarget?.instanceId &&
+        a.desktopTarget?.generation === b.desktopTarget?.generation &&
         a.environmentId === b.environmentId &&
         a.url === b.url &&
         a.title === b.title

@@ -16,6 +16,7 @@ export const usageWindowSchema = z.strictObject({
 export const providerUsageSchema = z.discriminatedUnion("status", [
   z.strictObject({
     status: z.literal("ok"),
+    accountEmail: z.nullable(nonemptyStringSchema),
     planLabel: z.nullable(nonemptyStringSchema),
     windows: z.array(usageWindowSchema),
   }),

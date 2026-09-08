@@ -104,6 +104,7 @@ describe("provider usage backend", () => {
               expiredHint: "Sign in to Claude Code again.",
               usage: {
                 status: "ok",
+                accountEmail: "dev@example.com",
                 planLabel: "Max",
                 windows: [
                   {

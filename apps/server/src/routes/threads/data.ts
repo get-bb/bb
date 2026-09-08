@@ -38,7 +38,7 @@ import { callHostRetryableOnlineRpc } from "../../services/hosts/online-rpc.js";
 import {
   createDaemonFileContentResponse,
   type DaemonFileReadResult,
-  remapDaemonFileRouteError,
+  serveDaemonFileContent,
 } from "../../services/hosts/daemon-file-response.js";
 import { requireThreadStoragePath } from "../../services/threads/thread-storage.js";
 import { toThreadQueuedMessage } from "../../services/threads/thread-queued-messages.js";
@@ -248,20 +248,15 @@ async function serveThreadStorageRawFile(
   const filePath = parseSafeRelativeRoutePath(rawPath);
   const target = await requireThreadStorageTarget(deps, { threadId });
 
-  try {
-    const result = await callHostRetryableOnlineRpc(deps, {
+  return serveDaemonFileContent(
+    deps,
+    {
       hostId: target.hostId,
-      timeoutMs: COMMAND_TIMEOUT_MS,
-      command: {
-        type: "host.read_file",
-        path: path.join(target.storagePath, filePath.relativePath),
-        rootPath: target.storagePath,
-      },
-    });
-    return createRawFilePreviewResponse(result, filePath.relativePath);
-  } catch (error) {
-    return remapDaemonFileRouteError(error);
-  }
+      path: path.join(target.storagePath, filePath.relativePath),
+      rootPath: target.storagePath,
+    },
+    (result) => createRawFilePreviewResponse(result, filePath.relativePath),
+  );
 }
 
 async function serveThreadWorktreeRawFile(
@@ -276,20 +271,15 @@ async function serveThreadWorktreeRawFile(
   }
   const environment = requireReadyEnvironment(deps.db, thread.environmentId);
 
-  try {
-    const result = await callHostRetryableOnlineRpc(deps, {
+  return serveDaemonFileContent(
+    deps,
+    {
       hostId: environment.hostId,
-      timeoutMs: COMMAND_TIMEOUT_MS,
-      command: {
-        type: "host.read_file",
-        path: path.join(environment.path, filePath.relativePath),
-        rootPath: environment.path,
-      },
-    });
-    return createRawFilePreviewResponse(result, filePath.relativePath);
-  } catch (error) {
-    return remapDaemonFileRouteError(error);
-  }
+      path: path.join(environment.path, filePath.relativePath),
+      rootPath: environment.path,
+    },
+    (result) => createRawFilePreviewResponse(result, filePath.relativePath),
+  );
 }
 
 export function registerThreadDataRoutes(app: Hono, deps: AppDeps): void {
@@ -653,22 +643,18 @@ export function registerThreadDataRoutes(app: Hono, deps: AppDeps): void {
       threadId: context.req.param("id"),
     });
 
-    try {
-      const result = await callHostRetryableOnlineRpc(deps, {
+    return serveDaemonFileContent(
+      deps,
+      {
         hostId: target.hostId,
-        timeoutMs: COMMAND_TIMEOUT_MS,
-        command: {
-          type: "host.read_file",
-          path: path.join(target.storagePath, query.path),
-          rootPath: target.storagePath,
-        },
-      });
-      return createDaemonFileContentResponse(result, {
-        ifNoneMatch: context.req.header("if-none-match"),
-      });
-    } catch (error) {
-      return remapDaemonFileRouteError(error);
-    }
+        path: path.join(target.storagePath, query.path),
+        rootPath: target.storagePath,
+      },
+      (result) =>
+        createDaemonFileContentResponse(result, {
+          ifNoneMatch: context.req.header("if-none-match"),
+        }),
+    );
   });
 
   get(routes.hostFileContent, async (context, query) => {
@@ -680,20 +666,16 @@ export function registerThreadDataRoutes(app: Hono, deps: AppDeps): void {
     }
     const environment = requireEnvironment(deps.db, thread.environmentId);
 
-    try {
-      const result = await callHostRetryableOnlineRpc(deps, {
+    return serveDaemonFileContent(
+      deps,
+      {
         hostId: environment.hostId,
-        timeoutMs: COMMAND_TIMEOUT_MS,
-        command: {
-          type: "host.read_file",
-          path: query.path,
-        },
-      });
-      return createDaemonFileContentResponse(result, {
-        ifNoneMatch: context.req.header("if-none-match"),
-      });
-    } catch (error) {
-      return remapDaemonFileRouteError(error);
-    }
+        path: query.path,
+      },
+      (result) =>
+        createDaemonFileContentResponse(result, {
+          ifNoneMatch: context.req.header("if-none-match"),
+        }),
+    );
   });
 }

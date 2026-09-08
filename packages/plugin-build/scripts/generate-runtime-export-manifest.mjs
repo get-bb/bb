@@ -41,6 +41,16 @@ const RUNTIME_MODULE_IDS = RUNTIME_SHIM_NPM_SPECIFIERS;
  * export lists come from esbuild metadata like the SDK facade's.
  */
 const RUNTIME_SOURCE_MODULES = {
+  "@bb/shared-ui/question-form-host": path.join(
+    scriptDir,
+    "..",
+    "..",
+    "shared-ui",
+    "src",
+    "components",
+    "ui",
+    "question-form-host.tsx",
+  ),
   "@bb/shared-ui/icon": path.join(
     scriptDir,
     "..",

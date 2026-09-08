@@ -62,6 +62,43 @@ describe("ConversationMessageContent assistant images", () => {
   });
 });
 
+describe("ConversationMessageContent user images", () => {
+  it("uses the same local image routing as assistant messages", () => {
+    render(
+      <MemoryRouter>
+        <RouteNavigationProvider>
+          <ConversationMessageContent
+            role="user"
+            attachments={null}
+            initiator="user"
+            mentions={[]}
+            originKind={null}
+            senderThreadId={null}
+            senderThreadTitle={null}
+            senderIsPluginSideChat={false}
+            systemMessageKind="unlabeled"
+            systemMessageSubject={null}
+            text="![diagram](output/diagram.png)"
+            threadId="thr_image"
+            turnRequest={{
+              isGrouped: false,
+              kind: "message",
+              status: "accepted",
+            }}
+            workspaceRootPath="/workspace"
+          />
+        </RouteNavigationProvider>
+      </MemoryRouter>,
+    );
+
+    expect(
+      screen.getByRole("img", { name: "diagram" }).getAttribute("src"),
+    ).toBe(
+      "/api/v1/threads/thr_image/host-files/content?path=%2Fworkspace%2Foutput%2Fdiagram.png",
+    );
+  });
+});
+
 describe("ConversationMessageContent assistant thread mentions", () => {
   it("renders an agent-authored thread token with the referenced thread title", () => {
     const mentionedThread = threadListEntry({

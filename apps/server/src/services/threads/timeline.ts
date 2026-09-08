@@ -737,6 +737,7 @@ function storedEventRowItemRef(row: StoredEventRow): ScopedItemRef {
 interface SequenceWindowItemRowsArgs extends TimelineWindowRowsArgs {
   beforeSequence: number | undefined;
   maxInlineOutputChars: InlineOutputCharLimit;
+  ownership: "later" | "origin";
   sequenceStart: number;
 }
 
@@ -781,8 +782,19 @@ function ensureSequenceWindowWholeItemRows(
   });
   const itemKeysOwnedByNewerWindow = new Set<string>();
   const itemsStartingBeforeWindow = new Map<string, ScopedItemRef>();
+  const sequenceEnd = args.beforeSequence ?? Infinity;
   for (const span of spans) {
     const key = scopedItemRefKey(span);
+    if (args.ownership === "origin") {
+      const openInLaterWindow =
+        span.completedSeq === null && span.maxSequence >= sequenceEnd;
+      if (span.minSequence < args.sequenceStart || openInLaterWindow) {
+        itemKeysOwnedByNewerWindow.add(key);
+      } else if ((span.completedSeq ?? -1) >= sequenceEnd) {
+        itemsStartingBeforeWindow.set(key, span);
+      }
+      continue;
+    }
     if (
       args.beforeSequence !== undefined &&
       span.maxSequence >= args.beforeSequence
@@ -814,7 +826,14 @@ function ensureSequenceWindowWholeItemRows(
     items: [...itemsStartingBeforeWindow.values()],
     maxInlineOutputChars: args.maxInlineOutputChars,
     threadId: args.threadId,
-  }).filter((row) => row.sequence < args.sequenceStart);
+  }).filter((row) =>
+    args.ownership === "origin"
+      ? row.sequence >= (args.beforeSequence ?? Infinity)
+      : row.sequence < args.sequenceStart,
+  );
+  if (args.ownership === "origin") {
+    return mergeStoredEventRowsById([...rows, ...backfillRows]);
+  }
 
   const completedItemKeys = new Set<string>();
   for (const row of [...rows, ...backfillRows]) {
@@ -1218,7 +1237,7 @@ function resolveTimelineSegmentWindow(
   return {
     beforeSequence: undefined,
     byteWindowSequenceStart: null,
-    requiresWholeItemClosure: bounds.sequenceWindowStart !== null,
+    requiresWholeItemClosure: bounds.knownHasOlderSegments === true,
     effectiveSegmentLimit: bounds.effectiveSegmentLimit,
     hasAnchors: true,
     sequenceWindowStart: bounds.sequenceWindowStart,
@@ -1271,21 +1290,23 @@ function selectStandardTimelineEventRows(
     threadId: thread.id,
   };
   const windowRows = listStoredTimelineWindowEventRows(db, windowArgs);
-  const wholeItemWindowRows = window.requiresWholeItemClosure
-    ? ensureSequenceWindowWholeItemRows(db, {
-        beforeSequence,
-        maxInlineOutputChars,
-        rows: windowRows,
-        sequenceStart,
-        threadId: thread.id,
-      })
-    : windowRows;
+  const wholeItemWindowRows =
+    window.requiresWholeItemClosure || page.kind === "older"
+      ? ensureSequenceWindowWholeItemRows(db, {
+          beforeSequence,
+          maxInlineOutputChars,
+          ownership: window.requiresWholeItemClosure ? "later" : "origin",
+          rows: windowRows,
+          sequenceStart,
+          threadId: thread.id,
+        })
+      : windowRows;
   const selectedRowsWithTurnStarts = ensureTimelineWindowTurnStartedRows(db, {
     threadId: thread.id,
     rows: wholeItemWindowRows,
   });
   const selectedRowsWithTurnLifecycle =
-    window.byteWindowSequenceStart === null
+    window.byteWindowSequenceStart === null && page.kind === "latest"
       ? selectedRowsWithTurnStarts
       : ensureSequenceWindowTurnCompletedRows(db, {
           threadId: thread.id,
@@ -1968,6 +1989,7 @@ export function buildTimelineTurnSummaryDetails(
   const wholeItemEventRows = ensureSequenceWindowWholeItemRows(db, {
     beforeSequence: detailsWindow.beforeSequence,
     maxInlineOutputChars: detailsInlineOutputLimit,
+    ownership: "later",
     rows: mergeStoredEventRowsById([...requestedTurnStartedRows, ...eventRows]),
     sequenceStart: detailsWindow.sequenceStart,
     threadId: thread.id,

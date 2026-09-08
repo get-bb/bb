@@ -61,7 +61,7 @@ import {
 } from "../services/skills/skill-listing.js";
 import {
   createDaemonFileContentResponse,
-  remapDaemonFileRouteError,
+  serveDaemonFileContent,
   requestMatchesEntityTag,
 } from "../services/hosts/daemon-file-response.js";
 import { parseBoundedPositiveOptionalInteger } from "../services/lib/validation.js";
@@ -648,23 +648,19 @@ export function registerProjectRoutes(app: Hono, deps: AppDeps): void {
     });
     const filePath = parseSafeRelativeRoutePath(query.path);
 
-    try {
-      const result = await callHostRetryableOnlineRpc(deps, {
+    return serveDaemonFileContent(
+      deps,
+      {
         hostId: target.hostId,
-        timeoutMs: COMMAND_TIMEOUT_MS,
-        command: {
-          type: "host.read_file",
-          path: path.join(target.path, filePath.relativePath),
-          rootPath: target.path,
-        },
-      });
-      return createDaemonFileContentResponse(result, {
-        headers: { "x-bb-content-encoding": result.contentEncoding },
-        ifNoneMatch: context.req.header("if-none-match"),
-      });
-    } catch (error) {
-      return remapDaemonFileRouteError(error);
-    }
+        path: path.join(target.path, filePath.relativePath),
+        rootPath: target.path,
+      },
+      (result) =>
+        createDaemonFileContentResponse(result, {
+          headers: { "x-bb-content-encoding": result.contentEncoding },
+          ifNoneMatch: context.req.header("if-none-match"),
+        }),
+    );
   });
 
   get(routes.paths, async (context, query) => {

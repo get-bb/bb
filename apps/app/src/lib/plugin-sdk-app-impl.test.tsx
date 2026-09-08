@@ -126,9 +126,10 @@ describe("plugin SDK Markdown", () => {
           onOpenLink={onOpenLink}
           onOpenLocalFileLink={onOpenLocalFileLink}
           resolveMentionLink={() => null}
+          threadId="thr_plugin"
           workspaceRootPath="/workspace"
         >
-          <Markdown content="Open [README](README.md) or [the docs](https://example.com/docs)." />
+          <Markdown content="Open [README](README.md), ![chart](images/chart.png), or [the docs](https://example.com/docs)." />
         </ThreadTimelineNavigationProvider>
       </AppNavigationHostProvider>,
     );
@@ -140,6 +141,9 @@ describe("plugin SDK Markdown", () => {
       lineRange: null,
       path: "/workspace/README.md",
     });
+    expect(screen.getByRole("img", { name: "chart" }).getAttribute("src")).toBe(
+      "/api/v1/threads/thr_plugin/host-files/content?path=%2Fworkspace%2Fimages%2Fchart.png",
+    );
 
     fireEvent.click(screen.getByRole("link", { name: "the docs" }));
     expect(openUrl).toHaveBeenCalledWith({

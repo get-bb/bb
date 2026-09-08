@@ -6,6 +6,7 @@ import {
 } from "./credentials.js";
 import type { ProviderAdapter } from "./provider-adapter.js";
 import {
+  fetchOAuthRefresh,
   filterRequestHeaders,
   mountedUpstreamUrl,
 } from "./provider-adapter.js";
@@ -72,9 +73,15 @@ export function createClaudeAdapter(options: {
         },
       };
     },
-    modelFamily: (body) => parseRequestBody(body).family,
-    prepareBody: (body, account) =>
-      parseRequestBody(body).forAccount(account.accountUuid),
+    parseRequest(body) {
+      const parsed = parseRequestBody(body);
+      return {
+        family: parsed.family,
+        affinityId: parsed.affinityId,
+        parentAffinityId: parsed.parentAffinityId,
+        forAccount: (account) => parsed.forAccount(account.accountUuid),
+      };
+    },
     upstreamUrl: (request, settings) =>
       mountedUpstreamUrl(request, settings.anthropicUpstreamBaseUrl),
     requestHeaders(inbound, _account, secret) {
@@ -96,27 +103,21 @@ export function createClaudeAdapter(options: {
       const secret = context.secret;
       if (
         secret.kind !== "oauth" ||
-        secret.expiresAt === null ||
-        secret.expiresAt > context.now() + REFRESH_WINDOW_MS
+        (!context.forceRefresh &&
+          (secret.expiresAt === null ||
+            secret.expiresAt > context.now() + REFRESH_WINDOW_MS))
       ) {
         return { secret, refreshed: false };
       }
-      const response = await context.fetch(options.refreshUrl, {
-        method: "POST",
-        headers: {
-          "content-type": "application/json",
-          accept: "application/json",
-        },
-        body: JSON.stringify({
-          grant_type: "refresh_token",
-          refresh_token: secret.refreshToken,
-          client_id: OAUTH_CLIENT_ID,
-        }),
-      });
-      if (!response.ok) {
-        throw new Error(`OAuth refresh failed with HTTP ${response.status}.`);
-      }
-      const parsed = refreshResponseSchema.parse(await response.json());
+      const parsed = refreshResponseSchema.parse(
+        JSON.parse(
+          await fetchOAuthRefresh(context, options.refreshUrl, {
+            grant_type: "refresh_token",
+            refresh_token: secret.refreshToken,
+            client_id: OAUTH_CLIENT_ID,
+          }),
+        ),
+      );
       const rawExpiresAt =
         parsed.expires_at ??
         (parsed.expires_in === undefined

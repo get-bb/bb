@@ -28,7 +28,10 @@ const noop = () => {};
 type BranchPickerStoryConfig = Omit<
   BranchPickerProps,
   "onChange" | "options" | "variant"
-> & { currentBranch?: string | null };
+> & {
+  branchOptions?: readonly string[];
+  currentBranch?: string | null;
+};
 
 interface BranchPickerStoryRowProps {
   label: string;
@@ -190,6 +193,7 @@ function BranchPickerStoryRow({
   const [state, setState] = useState(() =>
     getInitialBranchPickerStoryState({ picker }),
   );
+  const { branchOptions, ...branchPickerProps } = picker;
   const triggerLabel = getStoryTriggerLabel({ picker, state });
   const triggerTitle = getStoryTriggerTitle({ picker, state });
   const handleCreate = picker.onCreate
@@ -221,10 +225,10 @@ function BranchPickerStoryRow({
   return (
     <StoryRow label={label} hint={hint}>
       <BranchPicker
-        {...picker}
+        {...branchPickerProps}
         value={state.value}
         isCreatingNew={state.isCreatingNew}
-        options={branches}
+        options={branchOptions ?? branches}
         remoteOptions={includeRemoteOptions ? remoteBranches : undefined}
         triggerLabel={triggerLabel}
         triggerTitle={triggerTitle}
@@ -291,6 +295,38 @@ export function Overview() {
         label="open long branches"
         hint="branch names wrap inside the popover"
         picker={longBranchPicker}
+      />
+    </StoryCard>
+  );
+}
+
+export function EmptyStates() {
+  return (
+    <StoryCard labelWidth="190px">
+      <BranchPickerStoryRow
+        label="loading branches"
+        hint="branch options are still loading"
+        includeRemoteOptions={false}
+        picker={{
+          value: null,
+          loading: true,
+          branchOptions: [],
+          defaultOpen: true,
+          modal: false,
+          triggerLabel: "Loading branches...",
+        }}
+      />
+      <BranchPickerStoryRow
+        label="no branches found"
+        hint="the repository has no selectable branches"
+        includeRemoteOptions={false}
+        picker={{
+          value: null,
+          branchOptions: [],
+          defaultOpen: true,
+          modal: false,
+          triggerLabel: "Select branch",
+        }}
       />
     </StoryCard>
   );

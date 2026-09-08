@@ -112,8 +112,8 @@ describe("presentation-driven timeline rows", () => {
       title: "ls -la ~/.claude/ide",
       badge: {
         glyph: "SquareUnlock02",
-        label: "sandbox off",
-        hint: "Ran outside of sandbox",
+        label: "Outside of sandbox",
+        hint: "Outside of sandbox",
         tone: "destructive" as const,
       },
     };
@@ -146,8 +146,8 @@ describe("presentation-driven timeline rows", () => {
       />,
     );
     expect(markup.match(/data-icon="SquareUnlock02"/g) ?? []).toHaveLength(2);
-    expect(markup).toContain('aria-label="Ran outside of sandbox"');
-    expect(markup).toContain('title="Ran outside of sandbox"');
+    expect(markup).toContain('aria-label="Outside of sandbox"');
+    expect(markup).toContain('title="Outside of sandbox"');
     expect(markup).toContain("text-destructive-text");
   });
 

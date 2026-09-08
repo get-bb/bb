@@ -10,6 +10,7 @@ import {
 } from "react";
 import type {
   BbDesktopBrowserApi,
+  BbDesktopBrowserControl,
   BbDesktopBrowserFindInPageRequest,
   BbDesktopBrowserState,
   BbDesktopBrowserViewportBounds,
@@ -54,6 +55,7 @@ import { isLocalOnlyUrl } from "@/lib/loopback-hostname";
 
 interface BrowserTabContentProps {
   tabId: string;
+  existingOnly?: true;
   initialUrl: string;
   addressFocusRequest: BrowserAddressFocusRequest | null;
   onAddressFocusRequestConsumed?: (request: BrowserAddressFocusRequest) => void;
@@ -407,6 +409,7 @@ function BrowserPageLoadError({
 
 export function BrowserTabContent({
   tabId,
+  existingOnly,
   initialUrl,
   addressFocusRequest,
   onAddressFocusRequestConsumed,
@@ -436,6 +439,35 @@ export function BrowserTabContent({
   } = useBrowserHistory(threadId);
 
   const [state, setState] = useState<BbDesktopBrowserState | null>(null);
+  const [control, setControl] = useState<BbDesktopBrowserControl | null>(null);
+  useEffect(() => {
+    let current = true;
+    let receivedEvent = false;
+    setControl(null);
+    const accept = (next: {
+      tabId: string;
+      threadId: string;
+      control: BbDesktopBrowserControl | null;
+    }) => {
+      if (current && next.tabId === tabId && next.threadId === threadId)
+        setControl(next.control);
+    };
+    const unsubscribe = desktopBrowser?.onControl?.((next) => {
+      if (next.tabId !== tabId || next.threadId !== threadId) return;
+      receivedEvent = true;
+      accept(next);
+    });
+    void desktopBrowser
+      ?.getControl?.(tabId)
+      .then((next) => {
+        if (next !== null && !receivedEvent) accept(next);
+      })
+      .catch(() => undefined);
+    return () => {
+      current = false;
+      unsubscribe?.();
+    };
+  }, [desktopBrowser, tabId, threadId]);
   const [currentUrl, setCurrentUrl] = useState(initialUrl);
   const [addressDraft, setAddressDraft] = useState(initialUrl);
   const [isEditing, setIsEditing] = useState(false);
@@ -534,6 +566,8 @@ export function BrowserTabContent({
     registerBrowserView({ environmentId, tabId, threadId });
     desktopBrowser.attach({
       tabId,
+      threadId,
+      ...(existingOnly === true ? { existingOnly } : {}),
       url: mountUrl,
       bounds: initialBounds,
       visible: false,
@@ -601,6 +635,7 @@ export function BrowserTabContent({
     visibilityCoordinator,
     tabId,
     threadId,
+    existingOnly,
   ]);
 
   useEffect(() => {
@@ -870,6 +905,33 @@ export function BrowserTabContent({
         locationShortcut={locationShortcut}
         reloadShortcut={reloadShortcut}
       />
+      {control !== null ? (
+        <div
+          role="status"
+          className="flex shrink-0 items-center gap-3 border-b border-border bg-surface-recessed px-3 py-2 text-xs"
+        >
+          <span className="min-w-0 flex-1 truncate">
+            {control.controllerLabel} is controlling this tab
+          </span>
+          <button
+            type="button"
+            className="rounded px-2 py-1 hover:bg-state-hover"
+            onClick={() => desktopBrowser.releaseControl?.(tabId)}
+          >
+            Stop
+          </button>
+          <button
+            type="button"
+            className="rounded px-2 py-1 hover:bg-state-hover"
+            onClick={() => {
+              desktopBrowser.releaseControl?.(tabId);
+              desktopBrowser.focus?.(tabId);
+            }}
+          >
+            Take over
+          </button>
+        </div>
+      ) : null}
       {isFindOpen ? (
         <BrowserFindBar
           inputRef={findInputRef}

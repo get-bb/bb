@@ -1,6 +1,6 @@
 ---
 name: bb-plugin-authoring
-description: Write, build, test, and install BB plugins. Use whenever a task creates or changes a BB plugin, BB CLI command, agent tool, background service, provider, setting, panel, mention provider, file renderer, message action, or other Plugin SDK surface.
+description: "Create or change BB plugins and Plugin SDK extensions, including CLI commands, agent tools, providers, and UI surfaces."
 ---
 
 # Author BB plugins
@@ -12,14 +12,11 @@ Use the current SDK types and repository source as the contract. This skill
 routes to detailed references, but the installed BB version decides the exact
 API.
 
-## Start
+## Implement and verify
 
-1. Read repository instructions and the existing package.
-2. Decide whether the feature needs a backend, frontend, or both.
-3. Inspect the exact current SDK declaration before you implement a surface.
-4. Build with bb plugin build.
-5. Test the contract and the user workflow.
-6. Install or reload only when the task requires a live check.
+Inspect the affected package and current SDK declarations to select backend,
+frontend, or both. Build the plugin and verify the affected contracts and user
+workflow. Install or reload when a live check is needed for the requested work.
 
 Use bb plugin new <name> for a new plugin. The scaffold includes frontend files.
 Remove `bb.app` and those files when the plugin is headless.
@@ -84,6 +81,9 @@ the same change.
 - Keep secret settings on the server.
 - Treat frontend parameters and persisted values as untrusted input.
 - Return bounded CLI and agent-tool output.
+- Document plugin commands, settings, and operating constraints in the plugin's
+  own `skills/` directory. The core CLI skill owns generic plugin management,
+  not individual plugin behavior.
 - Dispose every service, schedule, listener, content script, and resource.
 - Use SDK host components and navigation for host-owned behavior.
 - Use vendored UI source for plugin-owned controls.

@@ -1,8 +1,23 @@
-import type {
-  PendingInteractionUserAnswer,
-  PendingInteractionUserQuestionQuestion,
-  UserQuestionPendingInteractionResolution,
-} from "@bb/domain";
+export interface QuestionOption {
+  value: string;
+  label: string;
+  description?: string;
+  preview?: string;
+}
+
+export interface Question {
+  id: string;
+  prompt: string;
+  shortLabel: string;
+  multiSelect: boolean;
+  allowFreeText: boolean;
+  options: readonly QuestionOption[];
+}
+
+export type QuestionAnswer = {
+  selected: string[];
+  freeText?: string;
+};
 
 export interface QuestionAnswerState {
   selected: string[];
@@ -12,14 +27,12 @@ export interface QuestionAnswerState {
 
 export type QuestionFormState = Record<string, QuestionAnswerState>;
 
-function questionHasOptions(
-  question: PendingInteractionUserQuestionQuestion,
-): boolean {
-  return (question.options?.length ?? 0) > 0;
+function questionHasOptions(question: Question): boolean {
+  return question.options.length > 0;
 }
 
 export function createInitialFormState(
-  questions: readonly PendingInteractionUserQuestionQuestion[],
+  questions: readonly Question[],
 ): QuestionFormState {
   const state: QuestionFormState = {};
   for (const question of questions) {
@@ -34,7 +47,7 @@ export function createInitialFormState(
 
 export function answerStateFor(
   formState: QuestionFormState,
-  question: PendingInteractionUserQuestionQuestion,
+  question: Question,
 ): QuestionAnswerState {
   return (
     formState[question.id] ?? {
@@ -46,29 +59,25 @@ export function answerStateFor(
 }
 
 function validSelectedValues(
-  question: PendingInteractionUserQuestionQuestion,
+  question: Question,
   selectedValues: readonly string[],
 ): string[] {
-  const optionValues = new Set(
-    (question.options ?? []).map((option) => option.value),
-  );
+  const optionValues = new Set(question.options.map((option) => option.value));
   return selectedValues.filter((value) => optionValues.has(value));
 }
 
 export function isQuestionAnswered(
-  question: PendingInteractionUserQuestionQuestion,
+  question: Question,
   state: QuestionAnswerState,
 ): boolean {
-  if (validSelectedValues(question, state.selected).length > 0) {
-    return true;
-  }
+  if (validSelectedValues(question, state.selected).length > 0) return true;
   return state.otherSelected && state.otherText.trim().length > 0;
 }
 
 function buildQuestionAnswer(
-  question: PendingInteractionUserQuestionQuestion,
+  question: Question,
   state: QuestionAnswerState,
-): PendingInteractionUserAnswer {
+): QuestionAnswer {
   const freeText = state.otherText.trim();
   const includeFreeText = state.otherSelected && freeText.length > 0;
   if (question.multiSelect) {
@@ -81,16 +90,37 @@ function buildQuestionAnswer(
   return { selected: validSelectedValues(question, state.selected) };
 }
 
-export function buildUserAnswerResolution(
-  questions: readonly PendingInteractionUserQuestionQuestion[],
+export function buildQuestionAnswers(
+  questions: readonly Question[],
   formState: QuestionFormState,
-): UserQuestionPendingInteractionResolution {
-  const answers: Record<string, PendingInteractionUserAnswer> = {};
+): Record<string, QuestionAnswer> {
+  const answers: Record<string, QuestionAnswer> = {};
   for (const question of questions) {
     answers[question.id] = buildQuestionAnswer(
       question,
       answerStateFor(formState, question),
     );
   }
-  return { kind: "user_answer", answers };
+  return answers;
+}
+
+export type QuestionShortcutChoice =
+  | { kind: "option"; value: string }
+  | { kind: "other" }
+  | null;
+
+export function resolveQuestionShortcutChoice(
+  question: Question,
+  index: number,
+): QuestionShortcutChoice {
+  const option = question.options[index];
+  if (option) return { kind: "option", value: option.value };
+  if (
+    index === question.options.length &&
+    question.options.length > 0 &&
+    question.allowFreeText
+  ) {
+    return { kind: "other" };
+  }
+  return null;
 }

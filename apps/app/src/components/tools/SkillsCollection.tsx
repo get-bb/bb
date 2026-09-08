@@ -31,6 +31,7 @@ import { skillScopeLabel } from "@/components/tools/skill-taxonomy";
 import type { ProviderInfo } from "@bb/domain";
 import { ProviderIconMark } from "@/components/settings/ProviderIconMark";
 import { getProviderIconInfo } from "@/lib/provider-icon";
+import type { MarkdownLinkRouting } from "@/components/ui/markdown-link-routing";
 
 type ResourceProviderFilter = "bb" | SkillProvider;
 export type ProviderRoster = ReadonlyMap<string, ProviderInfo>;
@@ -609,6 +610,7 @@ interface SkillDetailDialogViewProps {
   canDelete: boolean;
   canOpenInEditor: boolean;
   isDeleting: boolean;
+  markdownLinkRouting?: MarkdownLinkRouting;
   onEdit: () => void;
   onRetry: () => void;
   onDelete: () => void;
@@ -628,6 +630,7 @@ export function SkillDetailDialogView({
   canDelete,
   canOpenInEditor,
   isDeleting,
+  markdownLinkRouting,
   onEdit,
   onRetry,
   onDelete,
@@ -728,6 +731,7 @@ export function SkillDetailDialogView({
               : undefined
       }
       files={files.length > 0 ? files : ["SKILL.md"]}
+      markdownLinkRouting={markdownLinkRouting}
       selectedPath={selectedPath}
       onSelectFile={onSelectPath}
       contentState={

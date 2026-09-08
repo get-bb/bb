@@ -1,4 +1,5 @@
 export function isAllowedBrowserUrl(url: string): boolean {
+  if (url === "about:blank") return true;
   let parsed: URL;
   try {
     parsed = new URL(url);

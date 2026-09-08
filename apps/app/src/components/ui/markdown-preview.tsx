@@ -166,6 +166,11 @@ interface BuildLocalAwareUrlTransformArgs {
   localImageRouting: MarkdownLocalImageRouting | undefined;
 }
 
+interface ResolvedMarkdownLocalPath {
+  image: MarkdownPreviewLocalFileLink;
+  sourceKind: "absolute" | "relative";
+}
+
 interface MarkdownImageRendererArgs {
   alt: ComponentPropsWithoutRef<"img">["alt"];
   imageAttributes: MarkdownImageRenderAttributes;
@@ -451,25 +456,38 @@ function resolveMarkdownLocalPath(
   value: string,
   absolutePaths: MarkdownAbsoluteLocalFileLinkRouting,
   relativePaths: MarkdownRelativeLocalFileLinkRouting | undefined,
-): MarkdownPreviewLocalFileLink | null {
+): ResolvedMarkdownLocalPath | null {
   const absolutePath = parseLocalFileHref({
     absoluteLinks: absolutePaths,
     href: value,
   });
-  if (absolutePath !== null || relativePaths === undefined) {
-    return absolutePath;
+  if (absolutePath !== null) {
+    return {
+      image: absolutePath,
+      sourceKind: "absolute",
+    };
+  }
+  if (relativePaths === undefined) {
+    return null;
   }
 
   const resolvedHref = resolveRelativeLocalFileHref({
     href: value,
     ...relativePaths,
   });
-  return resolvedHref === null
+  if (resolvedHref === null) {
+    return null;
+  }
+  const relativePath = parseLocalFileHref({
+    absoluteLinks: absolutePaths,
+    href: resolvedHref,
+  });
+  return relativePath === null
     ? null
-    : parseLocalFileHref({
-        absoluteLinks: absolutePaths,
-        href: resolvedHref,
-      });
+    : {
+        image: relativePath,
+        sourceKind: "relative",
+      };
 }
 
 function buildLocalAwareUrlTransform({
@@ -512,7 +530,10 @@ function buildLocalAwareUrlTransform({
         localImageRouting.relativePaths,
       );
       if (localImage !== null) {
-        return localImageRouting.resolveSrc(localImage);
+        return localImageRouting.resolveSrc(
+          localImage.image,
+          localImage.sourceKind,
+        );
       }
     }
 

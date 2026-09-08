@@ -37,6 +37,7 @@ interface ReasoningTurnLifecycleState {
 
 export interface ReasoningProjectionState {
   finalizedReasoningKeys: Set<string>;
+  reasoningDeltaTextByKey: Map<string, { content: string; summary: string }>;
   reasoningMessagesAwaitingCompletion: Map<
     string,
     EventProjectionOperationMessage
@@ -95,6 +96,7 @@ interface FinalizeOpenReasoningLifecyclesForTurnArgs extends FinalizeOpenReasoni
 export function createReasoningProjectionState(): ReasoningProjectionState {
   return {
     openReasoningLifecyclesByKey: new Map(),
+    reasoningDeltaTextByKey: new Map(),
     reasoningTextBuffersByKey: new Map(),
     finalizedReasoningKeys: new Set(),
     reasoningMessagesAwaitingCompletion: new Map(),
@@ -250,6 +252,7 @@ export function finalizeReasoningLifecycle(
   }
 
   const messageKey = createBufferedTextInstanceKey(args.identity);
+  args.state.reasoningDeltaTextByKey.delete(messageKey);
   const message =
     args.state.reasoningMessagesAwaitingCompletion.get(messageKey);
   if (message) {

@@ -249,3 +249,17 @@ This index lists every command path that the core CLI registers. Read the task-s
 
 - `bb voice`
 - `bb voice transcribe`
+
+## browser
+
+- `bb browser`
+- `bb browser instances`
+- `bb browser tabs`
+- `bb browser create`
+- `bb browser acquire`
+- `bb browser connection`
+- `bb browser release`
+- `bb browser reveal`
+- `bb browser close`
+- `bb browser capture`
+- `bb browser watch`

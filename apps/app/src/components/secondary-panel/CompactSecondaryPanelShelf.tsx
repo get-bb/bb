@@ -18,7 +18,7 @@ import {
 } from "@/components/ui/secondary-panel-shelf-visibility";
 
 const SHELF_TRANSITION_CLASS =
-  "[transition:translate_220ms_cubic-bezier(0.32,0.72,0,1),width_220ms_cubic-bezier(0.32,0.72,0,1)]";
+  "[transition:translate_220ms_cubic-bezier(0.32,0.72,0,1),width_220ms_cubic-bezier(0.32,0.72,0,1)] motion-reduce:transition-none!";
 const SHELF_SETTLE_MS = 220;
 const SHELF_DRAG_SETTLE_TRANSITION =
   "translate 220ms cubic-bezier(0.32, 0.72, 0, 1)";
@@ -172,7 +172,7 @@ export function CompactSecondaryPanelShelf({
               : APP_OVERLAY_LAYER.secondaryPanel,
         }}
         className={cn(
-          "fixed inset-y-0 right-0 flex h-(--bb-shell-height) touch-pan-y select-none flex-col overflow-hidden border-l border-border-seam bg-background pt-[env(safe-area-inset-top)] pr-[env(safe-area-inset-right)] pb-[var(--bb-safe-area-bottom,env(safe-area-inset-bottom))] pl-[env(safe-area-inset-left)] outline-none",
+          "fixed inset-y-0 right-0 flex h-(--bb-shell-height) touch-pan-y flex-col overflow-hidden border-l border-border-seam bg-background pt-[env(safe-area-inset-top)] pr-[env(safe-area-inset-right)] pb-[var(--bb-safe-area-bottom,env(safe-area-inset-bottom))] pl-[env(safe-area-inset-left)] outline-none",
           "w-(--secondary-panel-width-mobile) data-[state=full]:w-full data-[state=full]:border-l-0",
           SHELF_TRANSITION_CLASS,
           "data-[state=closed]:invisible data-[state=closed]:[transition:visibility_0s_linear_220ms]",

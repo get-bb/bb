@@ -1,6 +1,6 @@
 ---
 name: workflows
-description: Execute a workflow script that orchestrates multiple subagents deterministically. Use when the user explicitly requests a workflow, multi-agent orchestration, parallel or sequential agent pipelines, structured agent outputs, or a durable background workflow run.
+description: "Author or run durable BB workflows when the user requests workflow execution or multi-agent orchestration."
 ---
 
 # BB workflows

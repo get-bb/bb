@@ -1023,7 +1023,9 @@ const ConversationRowContent = memo(function ConversationRowContent({
         systemMessageSubject={row.systemMessageSubject}
         pluginActions={rowPluginActions}
         text={row.text}
+        threadId={row.threadId}
         turnRequest={row.turnRequest}
+        workspaceRootPath={workspaceRootPath}
       />
     );
   }

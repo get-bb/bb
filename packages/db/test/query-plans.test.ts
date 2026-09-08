@@ -17,6 +17,7 @@ import {
   hasParentedEventCrossingSequence,
   insertEvents,
   listActiveBackgroundTaskCountsByThreadIds,
+  listItemEventSpansByItems,
   listLatestThreadStateEventRowsByThreadIds,
   listLatestOpenBackgroundTaskStateRowsForThread,
   listStoredConversationOutlineEventRows,
@@ -1129,6 +1130,19 @@ describe("slow query index plans", () => {
     expect(indexNames).not.toContain("events_thread_item_id_sequence_idx");
     expect(indexNames).not.toContain(
       "events_thread_turn_type_item_kind_item_idx",
+    );
+    const [statement] = captureStatements(db, () =>
+      listItemEventSpansByItems(db, {
+        threadId: "query-plan-thread",
+        items: ["turn-1", "turn-2"].map((turnId) => ({
+          itemId: turnId,
+          scopeKind: "turn",
+          turnId,
+        })),
+      }),
+    );
+    expect(queryPlanDetails({ db, ...statement! })).toContain(
+      "events_thread_turn_type_item_sequence_idx",
     );
 
     db.$client.close();

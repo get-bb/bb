@@ -1,6 +1,9 @@
 import { Buffer } from "node:buffer";
 import type { HostDaemonOnlineRpcResultByType } from "@bb/host-daemon-contract";
 import { ApiError } from "../../errors.js";
+import { COMMAND_TIMEOUT_MS } from "../../constants.js";
+import type { LoggedWorkSessionDeps } from "../../types.js";
+import { callHostRetryableOnlineRpc } from "./online-rpc.js";
 
 const OCTET_STREAM_MIME_TYPE = "application/octet-stream";
 const REVALIDATE_CACHE_CONTROL = "private, no-cache";
@@ -12,6 +15,24 @@ export type DaemonFileReadResult =
 interface CreateDaemonFileContentResponseOptions {
   headers?: HeadersInit;
   ifNoneMatch?: string | undefined;
+}
+
+export async function serveDaemonFileContent(
+  deps: LoggedWorkSessionDeps,
+  target: { hostId: string; path: string; rootPath?: string },
+  createResponse: (result: DaemonFileReadResult) => Response,
+): Promise<Response> {
+  const { hostId, ...file } = target;
+  try {
+    const result = await callHostRetryableOnlineRpc(deps, {
+      hostId,
+      timeoutMs: COMMAND_TIMEOUT_MS,
+      command: { type: "host.read_file", ...file },
+    });
+    return createResponse(result);
+  } catch (error) {
+    return remapDaemonFileRouteError(error);
+  }
 }
 
 function daemonFileEntityTag(result: DaemonFileReadResult): string {

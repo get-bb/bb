@@ -1,3 +1,23 @@
+import {
+  desktopBrowserHostRequestSchema,
+  desktopBrowserScopeSchema,
+  desktopBrowserCreateRequestSchema,
+  desktopBrowserAcquireRequestSchema,
+  desktopBrowserLeaseRequestSchema,
+  desktopBrowserTabRequestSchema,
+  type ExperimentalDesktopBrowserHostRequest,
+  type ExperimentalDesktopBrowserScope,
+  type ExperimentalDesktopBrowserCreateInput,
+  type ExperimentalDesktopBrowserAcquireInput,
+  type ExperimentalDesktopBrowserLeaseRequest,
+  type ExperimentalDesktopBrowserTabRequest,
+  type ExperimentalDesktopBrowserInstances,
+  type ExperimentalDesktopBrowserTabs,
+  type ExperimentalDesktopBrowserCreated,
+  type ExperimentalDesktopBrowserLease,
+  type ExperimentalDesktopBrowserConnection,
+  type ExperimentalDesktopBrowserCapture,
+} from "./api/desktop-browsers.js";
 import type { Hono } from "hono";
 import type {
   AppTheme,
@@ -600,6 +620,81 @@ export const publicApiRoutes = {
       method: "get",
       request: noRequest<PathPreviewAndFilePath>(),
       response: binaryResponse<Uint8Array>(),
+    }),
+  },
+
+  desktopBrowsers: {
+    listInstances: defineRoute({
+      path: "/desktop-browsers/instances",
+      method: "post",
+      request: jsonRequest<EmptyInput, ExperimentalDesktopBrowserHostRequest>(
+        desktopBrowserHostRequestSchema,
+      ),
+      response: jsonResponse<ExperimentalDesktopBrowserInstances>(),
+    }),
+    listTabs: defineRoute({
+      path: "/desktop-browsers/tabs",
+      method: "post",
+      request: jsonRequest<EmptyInput, ExperimentalDesktopBrowserScope>(
+        desktopBrowserScopeSchema,
+      ),
+      response: jsonResponse<ExperimentalDesktopBrowserTabs>(),
+    }),
+    createTab: defineRoute({
+      path: "/desktop-browsers/create",
+      method: "post",
+      request: jsonRequest<EmptyInput, ExperimentalDesktopBrowserCreateInput>(
+        desktopBrowserCreateRequestSchema,
+      ),
+      response: jsonResponse<ExperimentalDesktopBrowserCreated>(),
+    }),
+    acquireControl: defineRoute({
+      path: "/desktop-browsers/acquire",
+      method: "post",
+      request: jsonRequest<EmptyInput, ExperimentalDesktopBrowserAcquireInput>(
+        desktopBrowserAcquireRequestSchema,
+      ),
+      response: jsonResponse<ExperimentalDesktopBrowserLease>(),
+    }),
+    openConnection: defineRoute({
+      path: "/desktop-browsers/connection",
+      method: "post",
+      request: jsonRequest<EmptyInput, ExperimentalDesktopBrowserLeaseRequest>(
+        desktopBrowserLeaseRequestSchema,
+      ),
+      response: jsonResponse<ExperimentalDesktopBrowserConnection>(),
+    }),
+    releaseControl: defineRoute({
+      path: "/desktop-browsers/release",
+      method: "post",
+      request: jsonRequest<EmptyInput, ExperimentalDesktopBrowserLeaseRequest>(
+        desktopBrowserLeaseRequestSchema,
+      ),
+      response: jsonResponse<{ ok: true }>(),
+    }),
+    closeTab: defineRoute({
+      path: "/desktop-browsers/close",
+      method: "post",
+      request: jsonRequest<EmptyInput, ExperimentalDesktopBrowserTabRequest>(
+        desktopBrowserTabRequestSchema,
+      ),
+      response: jsonResponse<{ ok: true }>(),
+    }),
+    revealTab: defineRoute({
+      path: "/desktop-browsers/reveal",
+      method: "post",
+      request: jsonRequest<EmptyInput, ExperimentalDesktopBrowserTabRequest>(
+        desktopBrowserTabRequestSchema,
+      ),
+      response: jsonResponse<{ ok: true }>(),
+    }),
+    captureTab: defineRoute({
+      path: "/desktop-browsers/capture",
+      method: "post",
+      request: jsonRequest<EmptyInput, ExperimentalDesktopBrowserTabRequest>(
+        desktopBrowserTabRequestSchema,
+      ),
+      response: jsonResponse<ExperimentalDesktopBrowserCapture>(),
     }),
   },
 

@@ -39,6 +39,7 @@ function fireTouch(
 
 afterEach(() => {
   cleanup();
+  window.getSelection()?.removeAllRanges();
   vi.restoreAllMocks();
 });
 
@@ -162,6 +163,43 @@ describe("CompactSecondaryPanelShelf", () => {
     expect(onClose).toHaveBeenCalledTimes(1);
   });
 
+  it.each(["before touch", "after long press"])(
+    "preserves text selection established %s instead of dismissing",
+    (timing) => {
+      const { onClose } = renderShelf(true);
+      const shelf = screen.getByTestId("secondary-panel-shelf");
+      const body = screen.getByTestId("panel-body");
+      body.textContent = "Select this preview text";
+      Object.defineProperty(shelf, "clientWidth", { value: 300 });
+      const selectText = () => {
+        const range = document.createRange();
+        range.selectNodeContents(body);
+        window.getSelection()?.removeAllRanges();
+        window.getSelection()?.addRange(range);
+        expect(document.getSelection()?.toString()).toBe(
+          "Select this preview text",
+        );
+      };
+
+      if (timing === "before touch") selectText();
+      fireTouch(body, "touchstart", createTouch(60, 160));
+      if (timing === "after long press") selectText();
+      fireTouch(window, "touchmove", createTouch(240, 164));
+      fireTouch(window, "touchend", createTouch(240, 164));
+
+      expect(onClose).not.toHaveBeenCalled();
+      expect(window.getSelection()?.toString()).toBe(
+        "Select this preview text",
+      );
+
+      window.getSelection()?.removeAllRanges();
+      fireTouch(body, "touchstart", createTouch(60, 160));
+      fireTouch(window, "touchmove", createTouch(240, 164));
+      fireTouch(window, "touchend", createTouch(240, 164));
+      expect(onClose).toHaveBeenCalledTimes(1);
+    },
+  );
+
   it("ignores a closing swipe from the left browser edge", () => {
     const { onClose } = renderShelf(true);
     const shelf = screen.getByTestId("secondary-panel-shelf");
@@ -184,6 +222,10 @@ describe("CompactSecondaryPanelShelf", () => {
     expect(shelf.className).toContain(
       "data-[state=closed]:[transition:visibility_0s_linear_220ms]",
     );
+    expect(shelf.className).toContain("motion-reduce:transition-none!");
+    expect(
+      screen.getByTestId("secondary-panel-shelf-dismiss").className,
+    ).toContain("motion-reduce:transition-none!");
   });
 
   it("marks the shelf inert while closed and interactive while open", () => {

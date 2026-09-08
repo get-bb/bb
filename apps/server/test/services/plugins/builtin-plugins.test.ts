@@ -209,6 +209,7 @@ describe("builtin plugin reconciliation", () => {
   it("keeps official plugins bundled but out of the auto-install builtins", () => {
     const optionalNames = OFFICIAL_PLUGINS.map((plugin) => plugin.name);
     expect(optionalNames).toEqual([
+      "browser-automation",
       "github",
       "docs",
       "memory",

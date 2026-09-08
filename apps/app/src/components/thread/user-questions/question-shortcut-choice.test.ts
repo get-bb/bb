@@ -1,9 +1,10 @@
 import { describe, expect, it } from "vitest";
-import type { PendingInteractionUserQuestionQuestion } from "@bb/domain";
-import { resolveQuestionShortcutChoice } from "./UserQuestionInteractionContent";
+import type { Question } from "@bb/shared-ui/question-form-state";
+import { resolveQuestionShortcutChoice } from "@bb/shared-ui/question-form-state";
 
-const question: PendingInteractionUserQuestionQuestion = {
+const question: Question = {
   id: "question-1",
+  shortLabel: "Path",
   prompt: "Choose a path",
   multiSelect: false,
   options: [

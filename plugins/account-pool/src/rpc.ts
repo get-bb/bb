@@ -6,6 +6,7 @@ import {
   accountPoolConfigSetInputSchema,
   accountIdInputSchema,
   accountPriorityInputSchema,
+  accountReorderInputSchema,
   accountSchema,
   accountSummarySchema,
   bypassInputSchema,
@@ -50,6 +51,10 @@ export const accountPoolRpcContract = defineRpcContract({
   "account.setPriority": {
     input: accountPriorityInputSchema,
     output: z.object({ account: accountSchema.nullable() }).strict(),
+  },
+  "account.reorder": {
+    input: accountReorderInputSchema,
+    output: z.null(),
   },
   "account.refreshUsage": {
     input: z.object({ accountId: z.string().uuid() }).strict(),
@@ -134,6 +139,13 @@ export function createRpcHandlers(
     "account.refreshUsage": async ({ accountId }: { accountId: string }) => ({
       account: await operations.refreshUsage(accountId),
     }),
+    "account.reorder": async ({
+      provider,
+      accountIds,
+    }: z.infer<typeof accountReorderInputSchema>) => {
+      await operations.reorder(provider, accountIds);
+      return null;
+    },
     "routing.set": async ({
       provider,
       enabled,

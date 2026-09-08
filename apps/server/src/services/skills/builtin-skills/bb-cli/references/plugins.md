@@ -6,11 +6,6 @@
   it with services, schedules, HTTP/RPC endpoints, settings — and `bb` CLI
   subcommands that agents run through bash like any other command.
 - Use `bb plugin list` to inspect installed plugins and their current state.
-- The builtin Concurrency limit plugin exposes
-  `bb concurrency-limit status [--json]`,
-  `bb concurrency-limit global [unlimited|<limit>] [--json]`, and
-  `bb concurrency-limit host <host-id> [auto|<limit>] [--json]`. Automatic
-  host limits allow one thread per available processor.
 - **BB plugin catalog** (store under `/api/v1/plugin-catalog`):
   - The reserved **BB Official marketplace** has the name `bb-official`. It
     describes all plugins in the app bundle with a generated v2 document.

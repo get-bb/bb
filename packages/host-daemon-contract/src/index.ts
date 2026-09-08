@@ -11,3 +11,5 @@ export {
   TERMINAL_DATA_MAX_BYTES,
   TERMINAL_ROWS_MAX,
 } from "@bb/domain";
+
+export * from "./desktop-browser.js";

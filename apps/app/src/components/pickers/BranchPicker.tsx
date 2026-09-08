@@ -813,6 +813,7 @@ export function BranchPicker({
     loading ||
     showCreateItem ||
     hasBranchOptions ||
+    (!hasCurrentItem && !branchChooserDisabled) ||
     ((branchOptionsDisabled || createDisabled) &&
       options.length + remoteOptions.length > 0);
   const showOptionsSearch = showBranchChooser && !branchChooserDisabled;
@@ -1157,7 +1158,7 @@ export function BranchPicker({
                     )}
                   </>
                 ) : hasCurrentItem ? null : (
-                  <p className="px-2 py-6 text-center text-xs text-muted-foreground">
+                  <p className="px-2 py-3 text-center text-xs text-muted-foreground">
                     {loading ? "Loading branches..." : "No branches found."}
                   </p>
                 )}

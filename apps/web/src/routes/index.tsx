@@ -32,6 +32,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties, ReactNode } from "react";
 
 import changelogMd from "../../../../CHANGELOG.md?raw";
+import { RELEASE_META } from "../../../../changelog-metadata";
 import { initAnalytics, trackLandingEvent } from "../landing/analytics";
 import blackstoneLogo from "../assets/company-logos/blackstone.png";
 import datadogLogo from "../assets/company-logos/datadog.svg";
@@ -46,7 +47,7 @@ import shortcutLogo from "../assets/company-logos/shortcut.svg";
 import simileLogo from "../assets/company-logos/simile.svg";
 import hermesAvatar from "../assets/hermes-avatar.jpg";
 import vscodeIcon from "../assets/vscode.png";
-import { RELEASE_META, parseChangelog } from "../landing/changelog";
+import { parseChangelog } from "../landing/changelog";
 import { CommandButton } from "../landing/command-button";
 import {
   DiscordLink,

@@ -1,3 +1,4 @@
+import type { DesktopBrowserBroker } from "./desktop-browser-broker.js";
 import type { AgentRuntimeBridgeLaunch } from "@bb/agent-runtime";
 import type { AvailableModel } from "@bb/domain";
 import type { EventSinkInput } from "./event-sink.js";
@@ -47,6 +48,7 @@ export const noopEventSink: EventSink = {
 };
 
 export interface CommandDispatchOptions {
+  desktopBrowserBroker?: DesktopBrowserBroker;
   dataDir: string;
   logger: Pick<HostDaemonLogger, "debug" | "warn">;
   fetchProjectAttachment: FetchProjectAttachment;

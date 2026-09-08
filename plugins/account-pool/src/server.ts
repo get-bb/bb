@@ -23,6 +23,7 @@ import {
 import {
   AccountStore,
   HubTokenStore,
+  PoolAffinityStore,
   QUOTA_MIGRATIONS,
   QuotaStore,
   RoutingStore,
@@ -95,6 +96,7 @@ export function createAccountPoolPlugin(
     const hub = createHub({
       accounts,
       quotas,
+      affinity: new PoolAffinityStore(db),
       hubTokens,
       getSettings: () => currentSettings,
       fetch: options.fetch,

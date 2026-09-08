@@ -557,12 +557,13 @@ export function ToolsView({ pluginId }: { pluginId?: string } = {}) {
 
   if (
     activeSection === "plugins" &&
+    pluginId !== undefined &&
     new URLSearchParams(location.search).get("view") === "installed"
   ) {
     return (
       <Navigate
         replace
-        to={`${pluginId === undefined ? getToolsOwnedCollectionRoutePath("plugins") : getPluginDetailRoutePath({ pluginId, view: "installed" })}${location.hash}`}
+        to={`${getPluginDetailRoutePath({ pluginId, view: "installed" })}${location.hash}`}
       />
     );
   }

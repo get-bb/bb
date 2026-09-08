@@ -1,12 +1,8 @@
 import {
-  useLayoutEffect,
-  useMemo,
-  useRef,
-  useState,
-  type KeyboardEvent,
-  type ReactNode,
-} from "react";
-import { NavLink } from "react-router-dom";
+  PendingInteractionShell,
+  type PendingInteractionSourceThread,
+} from "./PendingInteractionShell";
+import { useMemo, useState, type ReactNode } from "react";
 import {
   assertNever,
   buildPendingInteractionApprovalResolution,
@@ -25,14 +21,12 @@ import {
   type PendingInteractionUserQuestionQuestion,
 } from "@bb/domain";
 import { Button } from "@bb/shared-ui/button";
-import { ExpandableLine } from "@/components/ui/expandable-line.js";
 import { Icon } from "@bb/shared-ui/icon";
 import { MarkdownPreview } from "@/components/ui/markdown-preview.js";
 import { getDetailScrollMaxHeightClass } from "@/components/ui/detail-scroll-size.js";
 import { UserQuestionAnswerForm } from "@/components/thread/user-questions/UserQuestionInteractionContent.js";
 import { useResolveThreadPendingInteraction } from "@/hooks/mutations/thread-interaction-mutations";
 import { PluginPendingInteractionComposer } from "@/components/plugin/PluginPendingInteractionComposer";
-import { PromptBannerActionButton } from "@/components/promptbox/banner/prompt-banner-actions";
 import {
   classifyInteractionRequest,
   type InteractionRequestView,
@@ -46,14 +40,9 @@ import { PluginCompactIconMask } from "@/components/plugin/PluginIcon";
 import { usePluginIconUrl } from "@/lib/plugin-logos";
 import { cn } from "@bb/shared-ui/lib/utils";
 
-interface ThreadPendingInteractionSourceThread {
-  href: string;
-  title: string;
-}
-
 interface ThreadPendingInteractionBannerProps {
   interaction: PendingInteraction;
-  sourceThread?: ThreadPendingInteractionSourceThread;
+  sourceThread?: PendingInteractionSourceThread;
   threadId: string;
 }
 
@@ -66,34 +55,19 @@ interface ApprovalPendingInteractionBannerProps {
   interaction: PendingInteraction;
   payload: ApprovalPendingInteractionPayload;
   subject: ApprovalBannerSubject;
-  sourceThread?: ThreadPendingInteractionSourceThread;
+  sourceThread?: PendingInteractionSourceThread;
   threadId: string;
 }
 
 interface UserQuestionPendingInteractionBannerProps {
   interaction: PendingInteraction;
   questions: readonly PendingInteractionUserQuestionQuestion[];
-  sourceThread?: ThreadPendingInteractionSourceThread;
+  sourceThread?: PendingInteractionSourceThread;
   threadId: string;
 }
 
-interface BannerShellProps {
-  label: string;
-  title?: string;
-  summary?: string | null;
-  initiallyExpanded: boolean;
-  errorMessage?: string | null;
-  footer?: (layout: BannerLayout) => ReactNode;
-  children?: (isExpanded: boolean) => ReactNode;
-  sourceThread?: ThreadPendingInteractionSourceThread;
-  testId: string;
-}
-
-type BannerLayout = "strip" | "card";
-
 interface ApprovalSubject {
   title: string;
-  summary: string | null;
   body: ReactNode;
 }
 
@@ -157,15 +131,8 @@ function PendingInteractionBanner({
           data-testid="plugin-request-banner"
           data-request-kind={request.kind}
         >
-          {sourceThread ? (
-            <NavLink
-              to={sourceThread.href}
-              className="mb-1 block text-xs text-muted-foreground no-underline hover:underline"
-            >
-              From child thread: {sourceThread.title}
-            </NavLink>
-          ) : null}
           <PluginPendingInteractionComposer
+            sourceThread={sourceThread}
             interaction={interaction}
             request={{
               pluginId: request.pluginId,
@@ -185,7 +152,7 @@ function PendingInteractionBanner({
 interface PlanReviewRequestBannerProps {
   interaction: PendingInteraction;
   request: Extract<InteractionRequestView, { kind: "plan_review" }>;
-  sourceThread?: ThreadPendingInteractionSourceThread;
+  sourceThread?: PendingInteractionSourceThread;
   threadId: string;
 }
 
@@ -220,24 +187,22 @@ function PlanReviewRequestBanner({
   };
   const { plan, planFilePath } = request.review;
   return (
-    <BannerShell
+    <PendingInteractionShell
       label="Plan review"
       title={approval.reason ?? "Ready to code?"}
-      summary={planFilePath ?? firstLine(plan)}
       initiallyExpanded={false}
       errorMessage={mutationErrorMessage}
       sourceThread={sourceThread}
       testId="plan-review-banner"
-      footer={(layout) => (
+      footer={
         <ApprovalDecisionButtons
           decisions={approval.availableDecisions}
           disabled={submitDisabled}
-          layout={layout}
           loadingDecision={isResolving ? submittedDecision : null}
           onDecide={submitDecision}
           subjectKind="plan"
         />
-      )}
+      }
     >
       {() => (
         <div
@@ -259,155 +224,7 @@ function PlanReviewRequestBanner({
           ) : null}
         </div>
       )}
-    </BannerShell>
-  );
-}
-
-function BannerShell({
-  label,
-  title,
-  summary,
-  initiallyExpanded,
-  errorMessage,
-  footer,
-  children,
-  sourceThread,
-  testId,
-}: BannerShellProps) {
-  const [isExpanded, setIsExpanded] = useState(initiallyExpanded);
-  const toggleRef = useRef<HTMLButtonElement>(null);
-  const shouldRestoreToggleFocusRef = useRef(false);
-  const collapsesOnEscape = !initiallyExpanded;
-  useLayoutEffect(() => {
-    if (!shouldRestoreToggleFocusRef.current) return;
-    shouldRestoreToggleFocusRef.current = false;
-    toggleRef.current?.focus();
-  }, [isExpanded]);
-  const handleKeyDown = (event: KeyboardEvent<HTMLElement>) => {
-    if (
-      event.key === "Escape" &&
-      isExpanded &&
-      collapsesOnEscape &&
-      !event.defaultPrevented
-    ) {
-      event.preventDefault();
-      event.stopPropagation();
-      shouldRestoreToggleFocusRef.current = true;
-      setIsExpanded(false);
-    }
-  };
-  const toggle = (
-    <button
-      ref={toggleRef}
-      type="button"
-      aria-expanded={isExpanded}
-      aria-label={isExpanded ? "Hide details" : "Show details"}
-      onClick={(event) => {
-        shouldRestoreToggleFocusRef.current =
-          document.activeElement === event.currentTarget;
-        setIsExpanded((value) => !value);
-      }}
-      className="flex size-7 shrink-0 items-center justify-center rounded-md text-muted-foreground hover:bg-state-hover hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-    >
-      <Icon
-        name="ChevronDown"
-        className={cn(
-          "size-3.5 transition-transform duration-200",
-          isExpanded ? "rotate-180" : undefined,
-        )}
-      />
-    </button>
-  );
-  const errorNode = errorMessage ? (
-    <div className="mx-3 mb-3 rounded-md border border-surface-destructive-border bg-surface-destructive px-2 py-1 text-xs text-destructive-text">
-      {errorMessage}
-    </div>
-  ) : null;
-  const sourceThreadLink = sourceThread ? (
-    <NavLink
-      to={sourceThread.href}
-      title={sourceThread.title}
-      className="min-w-24 shrink-[3] truncate text-xs text-subtle-foreground no-underline hover:underline"
-    >
-      From {sourceThread.title}
-    </NavLink>
-  ) : null;
-
-  return (
-    <section
-      aria-label={label}
-      data-testid={testId}
-      data-expanded={isExpanded ? "" : undefined}
-      onKeyDown={handleKeyDown}
-      className="@container mb-2 min-w-0 max-w-full rounded-lg border border-attention/40 bg-surface-raised-solid text-xs text-muted-foreground ring-[3px] ring-surface-attention"
-    >
-      {isExpanded ? (
-        <div className="flex items-center gap-2 border-b border-border-hairline py-1.5 pl-3 pr-1.5">
-          <AttentionDot />
-          <span className="shrink-0 text-sm font-semibold text-foreground">
-            {label}
-          </span>
-          {sourceThreadLink}
-          <span className="flex-1" />
-          {toggle}
-        </div>
-      ) : (
-        <div className="flex min-h-9 flex-wrap items-center gap-2 py-1 pl-3 pr-1.5 @2xl:flex-nowrap">
-          <AttentionDot />
-          <span
-            className="min-w-24 shrink truncate text-sm font-medium text-foreground"
-            title={title ?? label}
-          >
-            {title ?? label}
-          </span>
-          {summary ? (
-            <span
-              className="min-w-20 shrink-[2] truncate font-mono text-xs text-muted-foreground"
-              title={summary}
-            >
-              {summary}
-            </span>
-          ) : null}
-          {sourceThreadLink}
-          <span className="flex-1" />
-          {footer ? (
-            <div className="flex shrink-0 items-center gap-1.5">
-              {footer("strip")}
-            </div>
-          ) : null}
-          {toggle}
-        </div>
-      )}
-      <div hidden={!isExpanded} className="px-3 pb-3 pt-2.5">
-        {title ? (
-          <h3 className="min-w-0 text-sm font-medium text-foreground">
-            <ExpandableLine fullText={title} collapsedClassName="line-clamp-2">
-              {title}
-            </ExpandableLine>
-          </h3>
-        ) : null}
-        {children ? (
-          <div className={title ? "mt-2" : undefined}>
-            {children(isExpanded)}
-          </div>
-        ) : null}
-        {footer ? (
-          <div className="mt-3 flex flex-wrap items-center gap-2">
-            {footer("card")}
-          </div>
-        ) : null}
-      </div>
-      {errorNode}
-    </section>
-  );
-}
-
-function AttentionDot() {
-  return (
-    <span
-      aria-hidden="true"
-      className="size-2 shrink-0 rounded-full bg-attention ring-[3px] ring-surface-attention"
-    />
+    </PendingInteractionShell>
   );
 }
 
@@ -419,14 +236,6 @@ function unwrapBacktickedCommand(command: string): string {
     !trimmed.slice(1, -1).includes("`")
     ? trimmed.slice(1, -1)
     : command;
-}
-
-function firstLine(text: string): string | null {
-  const line = text
-    .split("\n")
-    .map((candidate) => candidate.trim())
-    .find((candidate) => candidate.length > 0);
-  return line ?? null;
 }
 
 function ApprovalPendingInteractionBanner({
@@ -469,27 +278,25 @@ function ApprovalPendingInteractionBanner({
   };
 
   return (
-    <BannerShell
+    <PendingInteractionShell
       label="Approval needed"
       title={view.title}
-      summary={view.summary}
       initiallyExpanded={false}
       errorMessage={mutationErrorMessage}
       sourceThread={sourceThread}
       testId="approval-banner"
-      footer={(layout) => (
+      footer={
         <ApprovalDecisionButtons
           decisions={payload.availableDecisions}
           disabled={submitDisabled}
-          layout={layout}
           loadingDecision={isResolving ? submittedDecision : null}
           onDecide={submitDecision}
           subjectKind={subject.kind}
         />
-      )}
+      }
     >
       {() => view.body}
-    </BannerShell>
+    </PendingInteractionShell>
   );
 }
 
@@ -502,32 +309,29 @@ function ThreadUserQuestionPendingInteractionBanner({
   const isResolving = interaction.status === "resolving";
 
   return (
-    <BannerShell
+    <PendingInteractionShell
       label={
         questions.length === 1 ? "Question" : `${questions.length} questions`
       }
-      summary={questions[0]?.prompt ?? null}
       initiallyExpanded
       sourceThread={sourceThread}
       testId="user-question-banner"
     >
-      {(isExpanded) => (
+      {() => (
         <UserQuestionAnswerForm
           interactionId={interaction.id}
           isResolving={isResolving}
           questions={questions}
-          shortcutsEnabled={isExpanded}
           threadId={threadId}
         />
       )}
-    </BannerShell>
+    </PendingInteractionShell>
   );
 }
 
 interface ApprovalDecisionButtonsProps {
   decisions: readonly PendingInteractionApprovalDecision[];
   disabled: boolean;
-  layout: BannerLayout;
   loadingDecision: PendingInteractionApprovalDecision | null;
   onDecide: (decision: PendingInteractionApprovalDecision) => void;
   subjectKind: PendingInteractionApprovalSubject["kind"];
@@ -536,7 +340,6 @@ interface ApprovalDecisionButtonsProps {
 function ApprovalDecisionButtons({
   decisions,
   disabled,
-  layout,
   loadingDecision,
   onDecide,
   subjectKind,
@@ -551,21 +354,15 @@ function ApprovalDecisionButtons({
       decision={decision}
       disabled={disabled}
       isLoading={loadingDecision === decision}
-      layout={layout}
       onClick={() => onDecide(decision)}
       subjectKind={subjectKind}
-      className={
-        layout === "card" && index === 0 && decision === "deny"
-          ? "mr-auto"
-          : undefined
-      }
+      className={index === 0 && decision === "deny" ? "mr-auto" : undefined}
     />
   ));
 }
 
 interface ApprovalDecisionButtonProps {
   className?: string;
-  layout: BannerLayout;
   decision: PendingInteractionApprovalDecision;
   disabled: boolean;
   isLoading: boolean;
@@ -578,7 +375,6 @@ function ApprovalDecisionButton({
   decision,
   disabled,
   isLoading,
-  layout,
   onClick,
   subjectKind,
 }: ApprovalDecisionButtonProps) {
@@ -586,22 +382,6 @@ function ApprovalDecisionButton({
   const spinner = isLoading ? (
     <Icon name="Spinner" className="size-3 animate-spin" />
   ) : null;
-  if (layout === "strip") {
-    return (
-      <PromptBannerActionButton
-        disabled={disabled}
-        onClick={onClick}
-        className={cn(
-          "gap-1",
-          compactApprovalDecisionButtonClass(decision),
-          className,
-        )}
-      >
-        {spinner}
-        {label}
-      </PromptBannerActionButton>
-    );
-  }
   return (
     <Button
       type="button"
@@ -615,19 +395,6 @@ function ApprovalDecisionButton({
       {label}
     </Button>
   );
-}
-
-function compactApprovalDecisionButtonClass(
-  decision: PendingInteractionApprovalDecision,
-): string | undefined {
-  switch (decision) {
-    case "allow_once":
-      return "border-foreground bg-foreground text-background hover:bg-foreground/90 hover:text-background";
-    case "allow_for_session":
-      return undefined;
-    case "deny":
-      return "border-transparent bg-transparent shadow-none";
-  }
 }
 
 function approvalDecisionButtonVariant(
@@ -792,7 +559,6 @@ function buildApprovalSubject({
         );
       return {
         title: payload.reason ?? "Do you want to run this command?",
-        summary: command ? firstLine(command) : null,
         body: command ? (
           <CommandPreview command={command} detailLines={detailLines} />
         ) : null,
@@ -803,7 +569,6 @@ function buildApprovalSubject({
         formatPendingInteractionSubjectDetailLines(interaction);
       return {
         title: payload.reason ?? "Do you want to make these changes?",
-        summary: subject.writeScope,
         body:
           detailLines.length > 0 ? (
             <ApprovalDetailList
@@ -818,7 +583,6 @@ function buildApprovalSubject({
         formatPendingInteractionSubjectDetailLines(interaction);
       return {
         title: payload.reason ?? "Do you want to grant this permission?",
-        summary: subject.toolName ?? detailLines[0] ?? null,
         body:
           detailLines.length > 0 ? (
             <ApprovalDetailList
@@ -832,7 +596,6 @@ function buildApprovalSubject({
       const ask = describePendingInteractionToolUse({ ...payload, subject });
       return {
         title: ask.title,
-        summary: ask.headline ?? ask.tool,
         body: <ToolUseAskCard ask={ask} />,
       };
     }

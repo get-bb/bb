@@ -138,6 +138,14 @@ export const threadTabSchema = z.discriminatedUnion("kind", [
       environmentId: z.string().min(1).nullable(),
       id: threadTabIdSchema,
       kind: z.literal("browser"),
+      desktopTarget: z
+        .object({
+          hostId: z.string().min(1),
+          instanceId: z.string().min(1),
+          generation: z.string().min(1),
+        })
+        .strict()
+        .optional(),
       title: z.string().min(1).max(THREAD_TAB_TITLE_MAX_LENGTH).nullable(),
       url: z.string().max(THREAD_TAB_URL_MAX_LENGTH),
     })

@@ -1,3 +1,4 @@
+import * as questionFormHost from "@bb/shared-ui/question-form-host";
 import * as react from "react";
 import * as reactDom from "react-dom";
 import * as reactDomClient from "react-dom/client";
@@ -198,6 +199,7 @@ interface BbPluginRuntime {
   tailwindMerge: unknown;
   classVarianceAuthority: unknown;
   sharedUiIcon: unknown;
+  questionFormHost: typeof questionFormHost;
 }
 
 type RuntimeHost = typeof globalThis & { __bbPluginRuntime?: BbPluginRuntime };
@@ -230,6 +232,7 @@ export function installPluginRuntime(): void {
     tailwindMerge,
     classVarianceAuthority,
     sharedUiIcon,
+    questionFormHost,
   };
 }
 

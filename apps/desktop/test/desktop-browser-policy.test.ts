@@ -6,16 +6,20 @@ import {
 } from "../src/desktop-browser-policy.js";
 
 describe("isAllowedBrowserUrl", () => {
-  it("allows http and https", () => {
+  it("allows http, https, and exact about:blank", () => {
     expect(isAllowedBrowserUrl("https://example.com")).toBe(true);
     expect(isAllowedBrowserUrl("http://example.com/path?q=1")).toBe(true);
+    expect(isAllowedBrowserUrl("about:blank")).toBe(true);
   });
 
-  it("blocks non-http(s) and unparseable URLs", () => {
+  it("blocks unsupported schemes and unparseable URLs", () => {
     expect(isAllowedBrowserUrl("file:///etc/passwd")).toBe(false);
     expect(isAllowedBrowserUrl("javascript:alert(1)")).toBe(false);
     expect(isAllowedBrowserUrl("data:text/html,<h1>x</h1>")).toBe(false);
-    expect(isAllowedBrowserUrl("about:blank")).toBe(false);
+    expect(isAllowedBrowserUrl("about:config")).toBe(false);
+    expect(isAllowedBrowserUrl("about:blank#fragment")).toBe(false);
+    expect(isAllowedBrowserUrl("about:blank?query")).toBe(false);
+    expect(isAllowedBrowserUrl(" about:blank")).toBe(false);
     expect(isAllowedBrowserUrl("not a url")).toBe(false);
     expect(isAllowedBrowserUrl("")).toBe(false);
   });
@@ -25,6 +29,7 @@ describe("browser IPC payload schemas", () => {
   it("rejects legacy layout fields in attach requests", () => {
     expect(
       bbDesktopBrowserAttachRequestSchema.safeParse({
+        threadId: "thread-1",
         tabId: "browser:abc",
         url: "",
         bounds: { x: 0, y: 0, width: 800, height: 600 },

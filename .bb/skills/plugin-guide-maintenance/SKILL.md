@@ -1,6 +1,6 @@
 ---
 name: plugin-guide-maintenance
-description: Keep the Plugin Guide accurate when a public Plugin SDK change affects its documented contract or an existing Guide annotation changes order, placement, target, or overlay ownership. Use for additions, changes, renames, stabilizations, or removals in @get-bb/plugin-sdk, app.slots.*, or BbPluginApi that affect a Guide card, fixture, or symbol list, and for annotation-only maintenance. Do not use for internal implementation or API work that leaves the Guide accurate.
+description: "Update Plugin Guide cards, fixtures, and annotations when public SDK contracts or Guide presentation change."
 ---
 
 # Maintain the Plugin Guide

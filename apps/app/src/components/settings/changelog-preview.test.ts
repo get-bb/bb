@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   CHANGELOG_ENTRIES,
   LATEST_CHANGELOG_ENTRY,
+  RELEASE_META,
   parseChangelogEntries,
 } from "./changelog-preview";
 
@@ -91,5 +92,13 @@ describe("LATEST_CHANGELOG_ENTRY", () => {
     expect(CHANGELOG_ENTRIES.length).toBeGreaterThan(0);
     expect(LATEST_CHANGELOG_ENTRY?.version).toMatch(/^\d+\.\d+\.\d+/);
     expect(LATEST_CHANGELOG_ENTRY?.sections.length).toBeGreaterThan(0);
+  });
+
+  it("has presentation metadata for the newest release", () => {
+    expect(
+      LATEST_CHANGELOG_ENTRY === null
+        ? undefined
+        : RELEASE_META[LATEST_CHANGELOG_ENTRY.version],
+    ).toBeDefined();
   });
 });

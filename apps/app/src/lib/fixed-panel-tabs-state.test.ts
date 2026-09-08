@@ -39,6 +39,38 @@ function makeInitialState(): FixedPanelTabsState {
 }
 
 describe("fixed-panel-tabs-state", () => {
+  it("preserves native browser identities and detects a reconnected desktop generation", () => {
+    const tab = {
+      ...createBrowserFixedPanelTab({
+        environmentId: null,
+        url: "https://example.com",
+      }),
+      id: "browser:native-generated-id:none",
+      desktopTarget: {
+        hostId: "host-1",
+        instanceId: "instance-1",
+        generation: "generation-1",
+      },
+    };
+    const state = createEmptyFixedPanelTabsState({
+      lastUsedAt: NOW,
+      secondary: { activeTabId: tab.id, isOpen: true, tabs: [tab] },
+    });
+    const parsed = parseFixedPanelTabsState({
+      initialValue: makeInitialState(),
+      now: NOW,
+      storedValue: JSON.stringify(state),
+    });
+    expect(parsed.secondary.tabs).toEqual([tab]);
+    expect(parsed.secondary.activeTabId).toBe(tab.id);
+    expect(
+      areFixedPanelTabsEquivalent(tab, {
+        ...tab,
+        desktopTarget: { ...tab.desktopTarget, generation: "generation-2" },
+      }),
+    ).toBe(false);
+  });
+
   it("parses current secondary tab state", () => {
     const now = 1_000;
     const workspaceTab = createWorkspaceFilePreviewFixedPanelTab({

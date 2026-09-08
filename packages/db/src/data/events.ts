@@ -37,6 +37,7 @@ import {
   getThreadEventScopeTurnId,
   parseStoredThreadEvent,
   systemThreadInterruptedReasonSchema,
+  threadEventTypeValues,
 } from "@bb/domain";
 import type {
   DbConnection,
@@ -66,6 +67,9 @@ export const STORED_TIMELINE_BYTE_PREFLIGHT_EVENT_LIMIT = 2_000;
 const SQLITE_MAX_VARIABLE_NUMBER = 32_766;
 const CLIENT_TURN_REQUEST_KEY_BATCH_SIZE = 995;
 const RESOLVED_ITEM_DELTA_PRUNE_BATCH_SIZE = 500;
+const ITEM_EVENT_TYPES = threadEventTypeValues.filter((type) =>
+  type.startsWith("item/"),
+);
 
 interface QueryInSqliteVariableBatchesArgs<TValue, TRow> {
   dedupeKey: (value: TValue) => string;
@@ -1607,6 +1611,7 @@ function dedupeScopedItemRefs(
 
 function scopedItemRefsPredicate(
   items: readonly ScopedItemRef[],
+  sharedPredicates: readonly SQL[] = [],
 ): SQL | undefined {
   const itemIds = [...new Set(items.map((item) => item.itemId))];
   const scopeGroups = new Map<
@@ -1632,6 +1637,7 @@ function scopedItemRefsPredicate(
   }
   const scopePredicates = [...scopeGroups.values()].map((group) =>
     and(
+      ...sharedPredicates,
       inArray(events.itemId, [...group.itemIds]),
       eq(events.scopeKind, group.scopeKind),
       group.turnId === null
@@ -1643,6 +1649,7 @@ function scopedItemRefsPredicate(
 }
 
 export interface ItemEventSpanRow {
+  completedSeq: number | null;
   itemId: string;
   maxSequence: number;
   minSequence: number;
@@ -1666,6 +1673,7 @@ export function listItemEventSpansByItems(
 
   return db
     .select({
+      completedSeq: sql<number | null>`MAX(CASE WHEN ${events.type} = 'item/completed' THEN ${events.sequence} END)`,
       itemId: sql<string>`${events.itemId}`,
       maxSequence: sql<number>`MAX(${events.sequence})`,
       minSequence: sql<number>`MIN(${events.sequence})`,
@@ -1673,7 +1681,12 @@ export function listItemEventSpansByItems(
       turnId: events.turnId,
     })
     .from(events)
-    .where(and(eq(events.threadId, args.threadId), scopedItemRefsPredicate(items)))
+    .where(
+      scopedItemRefsPredicate(items, [
+        eq(events.threadId, args.threadId),
+        inArray(events.type, ITEM_EVENT_TYPES),
+      ]),
+    )
     .groupBy(events.scopeKind, events.turnId, events.itemId)
     .all();
 }

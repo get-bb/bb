@@ -1,3 +1,4 @@
+import { desktopBrowserChangedSchema } from "./desktop-browser.js";
 import type { Hono } from "hono";
 import { hc } from "hono/client";
 import {
@@ -393,6 +394,15 @@ function commandRpcResponseSuccessSchemaFor<
 const hostDaemonOnlineRpcResponseSuccessSchema = z.discriminatedUnion(
   "commandType",
   [
+    onlineRpcResponseSuccessSchemaFor("desktop.browser.list_instances"),
+    onlineRpcResponseSuccessSchemaFor("desktop.browser.list_tabs"),
+    onlineRpcResponseSuccessSchemaFor("desktop.browser.create_tab"),
+    onlineRpcResponseSuccessSchemaFor("desktop.browser.reveal_tab"),
+    onlineRpcResponseSuccessSchemaFor("desktop.browser.close_tab"),
+    onlineRpcResponseSuccessSchemaFor("desktop.browser.capture_tab"),
+    onlineRpcResponseSuccessSchemaFor("desktop.browser.acquire_control"),
+    onlineRpcResponseSuccessSchemaFor("desktop.browser.open_connection"),
+    onlineRpcResponseSuccessSchemaFor("desktop.browser.release_control"),
     onlineRpcResponseSuccessSchemaFor("host.list_files"),
     onlineRpcResponseSuccessSchemaFor("host.list_paths"),
     onlineRpcResponseSuccessSchemaFor("host.mkdir"),
@@ -683,6 +693,7 @@ const hostDaemonTerminalErrorMessageSchema = z
   .strict();
 
 export const hostDaemonDaemonWsMessageSchema = z.union([
+  desktopBrowserChangedSchema,
   hostDaemonHeartbeatMessageSchema,
   hostDaemonEnvironmentChangeMessageSchema,
   hostDaemonEnvironmentMetadataChangeMessageSchema,

@@ -68,7 +68,7 @@ import {
 } from "./SelectableMessageProse.js";
 import type { ThreadTimelinePluginMessageAction } from "./types.js";
 import type { PromptDraftAttachment } from "@bb/client-core";
-import { buildThreadHostFileContentUrl } from "@/lib/file-content-urls";
+import { buildMarkdownMessageLinkRouting } from "@/components/ui/markdown-message-link-routing";
 
 interface ConversationMessageContentBaseProps {
   attachments: TimelineConversationAttachments | null;
@@ -78,6 +78,7 @@ interface ConversationMessageContentBaseProps {
   projectId?: string;
   resolveUserAttachmentImageSrc?: UserAttachmentImageSrcResolver;
   text: string;
+  workspaceRootPath?: string;
 }
 
 interface ConversationMessageContentUserProps extends ConversationMessageContentBaseProps {
@@ -98,6 +99,7 @@ interface ConversationMessageContentUserProps extends ConversationMessageContent
   senderIsPluginSideChat: boolean;
   systemMessageKind: TimelineUserConversationRow["systemMessageKind"];
   systemMessageSubject: TimelineUserConversationRow["systemMessageSubject"];
+  threadId?: string;
   turnRequest: TimelineUserConversationRow["turnRequest"];
 }
 
@@ -164,7 +166,9 @@ interface UserConversationMessageProps {
   systemMessageKind: TimelineUserConversationRow["systemMessageKind"];
   systemMessageSubject: TimelineUserConversationRow["systemMessageSubject"];
   text: string;
+  threadId?: string;
   turnRequest: TimelineUserConversationRow["turnRequest"];
+  workspaceRootPath?: string;
 }
 
 interface AssistantConversationMessageProps extends AssistantMessageRowIdentity {
@@ -188,19 +192,19 @@ interface AssistantConversationMessageProps extends AssistantMessageRowIdentity 
 }
 
 interface CollapsibleMessageTextProps {
+  linkRouting?: MarkdownLinkRouting;
   mentions: readonly PromptTextMention[];
   resolveMentionLink?: PromptMentionLinkResolver;
   resolveSegmentLinkHref?: TimelineTitleLinkResolver;
-  onOpenLink?: ThreadTimelineLinkHandler;
   text: string;
   mutePrefixLength?: number;
 }
 
 function CollapsibleMessageText({
+  linkRouting,
   mentions,
   resolveMentionLink,
   resolveSegmentLinkHref,
-  onOpenLink,
   text,
   mutePrefixLength,
 }: CollapsibleMessageTextProps) {
@@ -244,11 +248,6 @@ function CollapsibleMessageText({
     }),
     [body.mentions],
   );
-  const linkRouting = useMemo<MarkdownLinkRouting | undefined>(
-    () => (onOpenLink ? { onOpenLink } : undefined),
-    [onOpenLink],
-  );
-
   const isOverflowing = useIsOverflowing({
     elementRef: bodyRef,
     enabled: !isExpanded,
@@ -347,8 +346,20 @@ function UserConversationMessage({
   systemMessageKind,
   systemMessageSubject,
   text,
+  threadId,
   turnRequest,
+  workspaceRootPath,
 }: UserConversationMessageProps) {
+  const linkRouting = useMemo(
+    () =>
+      buildMarkdownMessageLinkRouting({
+        onOpenLink,
+        onOpenLocalFileLink,
+        threadId,
+        workspaceRootPath,
+      }),
+    [onOpenLink, onOpenLocalFileLink, threadId, workspaceRootPath],
+  );
   if (initiator === "agent" && senderThreadId !== null) {
     const body = generatedConversationBodySlice({ initiator, text });
     const bodyMentions = shiftMentionsToTextRange({
@@ -377,7 +388,9 @@ function UserConversationMessage({
         systemMessageKind={systemMessageKind}
         systemMessageSubject={systemMessageSubject}
         text={body.text}
+        threadId={threadId}
         turnRequest={turnRequest}
+        workspaceRootPath={workspaceRootPath}
       />
     );
   }
@@ -408,7 +421,9 @@ function UserConversationMessage({
         systemMessageKind={systemMessageKind}
         systemMessageSubject={systemMessageSubject}
         text={body.text}
+        threadId={threadId}
         turnRequest={turnRequest}
+        workspaceRootPath={workspaceRootPath}
       />
     );
   }
@@ -436,7 +451,7 @@ function UserConversationMessage({
                 mentions={mentions}
                 resolveMentionLink={resolveMentionLink}
                 resolveSegmentLinkHref={resolveSegmentLinkHref}
-                onOpenLink={onOpenLink}
+                linkRouting={linkRouting}
                 text={text}
                 mutePrefixLength={mutePrefixLength || undefined}
               />
@@ -494,41 +509,16 @@ function AssistantConversationMessage({
     () => (streaming ? splitStreamingMarkdown(text) : null),
     [streaming, text],
   );
-  const linkRouting = useMemo<MarkdownLinkRouting>(() => {
-    const localImage: NonNullable<MarkdownLinkRouting["localImage"]> = {
-      absolutePaths: {
-        kind: "trusted-host",
-      },
-      resolveSrc: ({ path }) => buildThreadHostFileContentUrl(threadId, path),
-    };
-    const routing: MarkdownLinkRouting = {
-      localImage,
-    };
-    if (workspaceRootPath !== undefined) {
-      localImage.relativePaths = {
-        baseDir: workspaceRootPath,
-        rootPath: workspaceRootPath,
-      };
-    }
-    if (onOpenLink) {
-      routing.onOpenLink = onOpenLink;
-    }
-    if (onOpenLocalFileLink) {
-      routing.localFile = {
-        absoluteLinks: {
-          kind: "trusted-host",
-        },
-        onOpenLink: onOpenLocalFileLink,
-      };
-      if (workspaceRootPath !== undefined) {
-        routing.localFile.relativeLinks = {
-          baseDir: workspaceRootPath,
-          rootPath: workspaceRootPath,
-        };
-      }
-    }
-    return routing;
-  }, [onOpenLink, onOpenLocalFileLink, threadId, workspaceRootPath]);
+  const linkRouting = useMemo(
+    () =>
+      buildMarkdownMessageLinkRouting({
+        onOpenLink,
+        onOpenLocalFileLink,
+        threadId,
+        workspaceRootPath,
+      }),
+    [onOpenLink, onOpenLocalFileLink, threadId, workspaceRootPath],
+  );
 
   const messageDirectiveRegistry = useMessageDirectiveRegistry();
   const openDirectiveWorkspaceFile = useMemo<
@@ -689,7 +679,9 @@ export function ConversationMessageContent(
         systemMessageKind={props.systemMessageKind}
         systemMessageSubject={props.systemMessageSubject}
         text={text}
+        threadId={props.threadId}
         turnRequest={props.turnRequest}
+        workspaceRootPath={props.workspaceRootPath}
       />
     );
   }

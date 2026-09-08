@@ -687,6 +687,25 @@ without disabling that account for other families. Imported and newly signed-in
 accounts retain their Anthropic account UUID, and the hub aligns a present
 `metadata.user_id` account component with the selected account.
 
+Accounts run sequentially per provider: lower priority numbers first, with ties
+following the order accounts were added. New conversations use the current
+account until it reaches the switch threshold or fails; the pool then advances
+to the next eligible account and wraps at the end. It keeps using that fallback
+even when an earlier account recovers. Existing conversations stay pinned while
+their account remains eligible. Short temporary rate limits wait on the same
+account once; longer holds return Retry-After for pinned conversations while new
+conversations can advance. A model-family limit detours only requests for that
+family without moving the session's main pin or the provider cursor. The cursor
+and session pins survive hub restarts. Session pins expire after 30 idle minutes,
+and the pool retains the 4,096 most recently used pins.
+
+Use the up/down arrows in Account Pooler settings, or
+`bb pool account reorder <claude|codex> <id>...`, to set the complete order for
+one provider. Include disabled accounts too. Reordering changes the next failover
+sequence without moving the current account. `bb pool account priority <id> <n>`
+sets an individual priority; the same operations are available through the
+`account.reorder` and `account.setPriority` plugin RPCs.
+
 Three plugin-owned configuration values control routing. `switchThreshold` is
 the shared or requested model-family quota fraction at which an account stops
 receiving matching traffic and defaults to `0.98`.
@@ -1079,9 +1098,10 @@ enrolled to other servers. Atomic reservations under
 
 ## Source Development
 
-For source development only, `pnpm dev`, `pnpm start:worktree`, and `pnpm start`
-load the repo-root dotenv cascade. Add a repo-root `.env` only when you need to
-override the defaults described above.
+For source development only, `pnpm dev`, `pnpm start:worktree`,
+`pnpm start:worktree-remote`, and `pnpm start` load the repo-root dotenv
+cascade. Add a repo-root `.env` only when you need to override the defaults
+described above.
 
 The standard [dotenv-cli](https://github.com/entropitor/dotenv-cli) cascade
 applies to source development. `pnpm dev` loads `.env`, `.env.local`,
@@ -1101,6 +1121,10 @@ disabled for this source-development command. Its worktree data directory,
 ports, inherited skills, listener host, absent Vite port, and telemetry policy
 take precedence over conflicting values saved in that instance's `config.json`
 or `env.json`.
+`pnpm start:worktree-remote` applies the same policy while binding the main
+server to `0.0.0.0` for direct access on a trusted network. The API is
+unauthenticated and permits command execution and file reads, so protect the
+port with a trusted network boundary such as Tailscale and a host firewall.
 `pnpm start` loads `.env`, `.env.local`, `.env.production`, and
 `.env.production.local`.
 
@@ -1125,3 +1149,16 @@ provider child. See [provider-bridge-protocol.md](provider-bridge-protocol.md),
 "Record mode", and [debugging-and-qa.md](debugging-and-qa.md). Raw recordings
 can contain secrets; redact them with `scripts/provider-recordings/redact.mjs`
 before you share them.
+
+## Browser Automation runtime
+
+Agents use `bb browser-automation` through its bundled skill. Screenshot results
+contain temporary JPEG paths and the browser host ID; remote captures can be
+fetched with `bb file read <path> --host <host-id> --json`. Read or copy images
+before closing the session, which deletes its temporary files.
+
+The Browser Automation plugin supports desktop attachment and headless Chrome on enrolled hosts. Cloud browsers are deferred. The plugin pins one exact `dev-browser` npm release (currently 1.0.0-rc.3) with per-platform binary digests in `plugins/browser-automation/runtime-pin.ts`; the pin, the verification steps, and the bump procedure are documented in `plugins/browser-automation/README.md`.
+
+On each selected browser host, the plugin's host worker installs that release automatically on first use under `<plugin host dataDir>/runtime/npm/`, using the host's `npm` with scripts disabled, verifying the registry signature and SLSA provenance, downloading the matching GitHub release binary, and checking its digest before launch. Later sessions reuse the verified install without network access. Headless mode discovers installed Chrome/Chromium or uses `<plugin host dataDir>/runtime/chrome`. These files belong to the plugin host storage directory; they are not paths on the server or invoking agent host, and the user's global npm installation is never modified. No runtime sandbox-disabling setting is provided.
+
+For isolated development smoke tests only, `DEV_BROWSER_SMOKE_BINARY` selects the absolute binary path for the runtime smoke, `DEV_BROWSER_SMOKE_CHROME` selects the absolute Chrome path, and `DEV_BROWSER_SMOKE_NO_SANDBOX=1` enables the fixture's no-sandbox wrapper where the test host requires it. The `smoke:install` task performs a real install of the pinned release into a disposable directory. These variables do not change normal plugin runtime behavior.

@@ -51,7 +51,8 @@ export function PluginsOverview({
   );
   const location = useLocation();
   const activeMode =
-    location.pathname.replace(/\/+$/u, "") === SETTINGS_PLUGINS_ROUTE_PATH
+    location.pathname.replace(/\/+$/u, "") === SETTINGS_PLUGINS_ROUTE_PATH ||
+    searchParams.get("view") === "installed"
       ? "installed"
       : "browse";
   const authorKey = searchParams.get("author");

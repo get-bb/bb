@@ -181,9 +181,10 @@ jobs:
 
       - name: Install AppImage FUSE runtime
         if: ${{ runner.os == 'Linux' }}
-        run: |
-          sudo apt-get update
-          sudo apt-get install --yes libfuse2t64
+        uses: ./.github/actions/install-appimage-fuse
+        timeout-minutes: 5
+        with:
+          package: libfuse2t64
 
       - name: Package Linux AppImage
         if: ${{ runner.os == 'Linux' }}

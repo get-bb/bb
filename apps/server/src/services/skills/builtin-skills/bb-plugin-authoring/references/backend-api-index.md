@@ -22,6 +22,11 @@ Read the installed declarations for exact current signatures.
 - `DiffViewMode`
 - `ExperimentalAppPanel`
 - `ExperimentalAppPanelSurface`
+- `ExperimentalDesktopBrowserAcquireInput`
+- `ExperimentalDesktopBrowserCreateInput`
+- `ExperimentalDesktopBrowserLease`
+- `ExperimentalDesktopBrowserScope`
+- `ExperimentalDesktopBrowsersArea`
 - `ExperimentalDiffFileContent`
 - `ExperimentalDiffFullFileContents`
 - `ExperimentalFileLinkProps`

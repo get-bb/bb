@@ -160,6 +160,17 @@ import {
 } from "./desktop-browser-view.js";
 import { resolveDesktopBrowserAppCommand } from "./desktop-browser-shortcuts.js";
 import { registerDesktopBrowserIpc } from "./desktop-browser-main-ipc.js";
+import {
+  createDesktopBrowserBroker,
+  type DesktopBrowserBroker,
+} from "./desktop-browser-broker.js";
+import { createDesktopBrowserBrokerClient } from "./desktop-browser-broker-client.js";
+import { bbDesktopBrowserTabRefSchema } from "@bb/desktop-contract";
+import {
+  BB_DESKTOP_BROWSER_TARGET_CHANNEL,
+  BB_DESKTOP_BROWSER_GET_CONTROL_CHANNEL,
+  BB_DESKTOP_BROWSER_RELEASE_CONTROL_CHANNEL,
+} from "./desktop-browser-ipc.js";
 import { parseDesktopSystemConfig } from "./desktop-system-config.js";
 import { ensurePackagedUserShellPath } from "./desktop-shell-path.js";
 import { resolveDesktopReloadShortcut } from "./desktop-reload-shortcut.js";
@@ -300,6 +311,10 @@ const logViewerCopyRequestSchema = z
 
 let desktopWindowFactory: DesktopWindowFactory | null = null;
 let desktopBrowserViewManager: DesktopBrowserViewManager | null = null;
+let desktopBrowserBroker: DesktopBrowserBroker | null = null;
+let desktopBrowserBrokerClient: ReturnType<
+  typeof createDesktopBrowserBrokerClient
+> | null = null;
 let currentAppKeybindings: AppKeybindings = [];
 let currentApplicationMenuAccelerators = DEFAULT_APPLICATION_MENU_ACCELERATORS;
 let desktopUpdateService: DesktopUpdateService | null = null;
@@ -998,6 +1013,8 @@ function startRemoteSystemConfigSync(serverUrl: string): void {
 function registerApplicationWindow(browserWindow: DesktopBrowserWindow): void {
   const webContentsId = browserWindow.webContents.id;
   applicationWindowWebContentsIds.add(webContentsId);
+  const nativeWindow = BrowserWindow.fromId(browserWindow.id);
+  if (nativeWindow !== null) desktopBrowserBroker?.registerWindow(nativeWindow);
   registerApplicationRendererReloadShortcut(
     (browserWindow as BrowserWindow).webContents,
   );
@@ -1009,6 +1026,7 @@ function registerApplicationWindow(browserWindow: DesktopBrowserWindow): void {
     sendDesktopWindowStateChanged(browserWindow);
   });
   browserWindow.on("closed", () => {
+    desktopBrowserBroker?.releaseWindow(webContentsId);
     applicationWindowWebContentsIds.delete(webContentsId);
   });
 }
@@ -1149,6 +1167,7 @@ function ensureDesktopMachineEnrolled(): void {
 }
 
 async function applyServerTarget(): Promise<void> {
+  desktopBrowserBrokerClient?.reconnect();
   if (serverTargetStore === null) {
     return;
   }
@@ -1549,6 +1568,8 @@ function handleBeforeQuit(event: Event): void {
 }
 
 async function finishQuit(): Promise<void> {
+  desktopBrowserBrokerClient?.stop();
+  desktopBrowserBroker?.dispose();
   stopSystemConfigSync();
   connectSessionRenewal?.stop();
   desktopUpdateService?.stop();
@@ -2202,6 +2223,49 @@ async function runDesktopApp(): Promise<void> {
     },
   });
   registerDesktopBrowserIpc(desktopBrowserViewManager);
+  desktopBrowserBroker = createDesktopBrowserBroker({
+    manager: desktopBrowserViewManager,
+    product: `Chrome/${process.versions.chrome}`,
+  });
+  ipcMain.handle(BB_DESKTOP_BROWSER_TARGET_CHANNEL, (event) => {
+    return applicationWindowWebContentsIds.has(event.sender.id)
+      ? (desktopBrowserBroker?.getTarget(event.sender.id) ?? null)
+      : null;
+  });
+  ipcMain.handle(
+    BB_DESKTOP_BROWSER_GET_CONTROL_CHANNEL,
+    (event, payload: unknown) => {
+      const parsed = bbDesktopBrowserTabRefSchema.safeParse(payload);
+      return parsed.success &&
+        applicationWindowWebContentsIds.has(event.sender.id)
+        ? (desktopBrowserBroker?.getControl(
+            event.sender.id,
+            parsed.data.tabId,
+          ) ?? null)
+        : null;
+    },
+  );
+  ipcMain.on(
+    BB_DESKTOP_BROWSER_RELEASE_CONTROL_CHANNEL,
+    (event, payload: unknown) => {
+      const parsed = bbDesktopBrowserTabRefSchema.safeParse(payload);
+      if (
+        parsed.success &&
+        applicationWindowWebContentsIds.has(event.sender.id)
+      )
+        desktopBrowserBroker?.takeOver(event.sender.id, parsed.data.tabId);
+    },
+  );
+  desktopBrowserBrokerClient = createDesktopBrowserBrokerClient({
+    broker: desktopBrowserBroker,
+    dataDir: resolveDataDirFromEnv({ env: process.env, homeDir: homedir() }),
+    getServerUrl() {
+      const target = serverTargetStore?.getTarget();
+      if (target?.kind === "connect") return target.server.url;
+      if (target?.kind === "custom") return target.url;
+      return currentRuntime?.serverUrl ?? builtinServerUrl;
+    },
+  });
   if (desktopUpdateSupport.versionCheck) {
     desktopUpdateService.start();
   }

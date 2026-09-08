@@ -10,6 +10,7 @@ import type { TimelineTitle, TimelineTitleSegment } from "@bb/thread-view";
 import { type IconName } from "@bb/shared-ui/icon";
 import { MarkdownPreview } from "@/components/ui/markdown-preview.js";
 import type { MarkdownLinkRouting } from "@/components/ui/markdown-link-routing.js";
+import { buildMarkdownMessageLinkRouting } from "@/components/ui/markdown-message-link-routing";
 import { cn } from "@bb/shared-ui/lib/utils";
 import type { PromptMentionLinkResolver } from "@/components/promptbox/editor/prompt-mention-link";
 import {
@@ -62,7 +63,9 @@ interface GeneratedConversationMessageProps {
   systemMessageKind: SystemMessageKind;
   systemMessageSubject: SystemMessageSubject | null;
   text: string;
+  threadId?: string;
   turnRequest: TimelineUserConversationRow["turnRequest"];
+  workspaceRootPath?: string;
 }
 
 type GeneratedConversationSourceKind = "agent" | "system";
@@ -447,7 +450,9 @@ export const GeneratedConversationMessage = memo(
     systemMessageKind,
     systemMessageSubject,
     text,
+    threadId,
     turnRequest,
+    workspaceRootPath,
   }: GeneratedConversationMessageProps) {
     const trimStartLength = text.length - text.trimStart().length;
     const messageText = text.trim();
@@ -461,9 +466,16 @@ export const GeneratedConversationMessage = memo(
       [mentions, messageText.length, trimStartLength],
     );
     const requestLabel = turnRequestLabel(turnRequest);
-    const linkRouting = useMemo<MarkdownLinkRouting | undefined>(() => {
-      return onOpenLink === undefined ? undefined : { onOpenLink };
-    }, [onOpenLink]);
+    const linkRouting = useMemo<MarkdownLinkRouting | undefined>(
+      () =>
+        buildMarkdownMessageLinkRouting({
+          onOpenLink,
+          onOpenLocalFileLink,
+          threadId,
+          workspaceRootPath,
+        }),
+      [onOpenLink, onOpenLocalFileLink, threadId, workspaceRootPath],
+    );
     const title = useMemo(
       () =>
         generatedConversationTitle({

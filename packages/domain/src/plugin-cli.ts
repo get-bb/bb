@@ -1,4 +1,5 @@
 export const RESERVED_BB_CLI_COMMANDS: readonly string[] = [
+  "browser",
   "environment",
   "file",
   "guide",

@@ -117,5 +117,9 @@
   "push-notifications": {
     "category": "notifications",
     "screenshots": []
+  },
+  "browser-automation": {
+    "category": "agents-and-providers",
+    "screenshots": []
   }
 }

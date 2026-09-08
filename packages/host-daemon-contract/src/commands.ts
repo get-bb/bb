@@ -1,4 +1,8 @@
 import {
+  desktopBrowserCommandSchemas,
+  desktopBrowserResultSchemas,
+} from "./desktop-browser.js";
+import {
   availableModelSchema,
   discoveredWorkspacePropertiesSchema,
   dynamicToolSchema,
@@ -1302,6 +1306,90 @@ function defineHostDaemonCommandDescriptor<
 }
 
 export const hostDaemonCommandRegistry = {
+  "desktop.browser.list_instances": defineHostDaemonCommandDescriptor({
+    type: "desktop.browser.list_instances",
+    schema: desktopBrowserCommandSchemas["desktop.browser.list_instances"],
+    resultSchema: desktopBrowserResultSchemas["desktop.browser.list_instances"],
+    transport: "onlineRpc",
+    retryable: false,
+    flushEventsBeforeResult: false,
+    envLane: null,
+  }),
+  "desktop.browser.list_tabs": defineHostDaemonCommandDescriptor({
+    type: "desktop.browser.list_tabs",
+    schema: desktopBrowserCommandSchemas["desktop.browser.list_tabs"],
+    resultSchema: desktopBrowserResultSchemas["desktop.browser.list_tabs"],
+    transport: "onlineRpc",
+    retryable: false,
+    flushEventsBeforeResult: false,
+    envLane: null,
+  }),
+  "desktop.browser.create_tab": defineHostDaemonCommandDescriptor({
+    type: "desktop.browser.create_tab",
+    schema: desktopBrowserCommandSchemas["desktop.browser.create_tab"],
+    resultSchema: desktopBrowserResultSchemas["desktop.browser.create_tab"],
+    transport: "onlineRpc",
+    retryable: false,
+    flushEventsBeforeResult: false,
+    envLane: null,
+  }),
+  "desktop.browser.reveal_tab": defineHostDaemonCommandDescriptor({
+    type: "desktop.browser.reveal_tab",
+    schema: desktopBrowserCommandSchemas["desktop.browser.reveal_tab"],
+    resultSchema: desktopBrowserResultSchemas["desktop.browser.reveal_tab"],
+    transport: "onlineRpc",
+    retryable: false,
+    flushEventsBeforeResult: false,
+    envLane: null,
+  }),
+  "desktop.browser.close_tab": defineHostDaemonCommandDescriptor({
+    type: "desktop.browser.close_tab",
+    schema: desktopBrowserCommandSchemas["desktop.browser.close_tab"],
+    resultSchema: desktopBrowserResultSchemas["desktop.browser.close_tab"],
+    transport: "onlineRpc",
+    retryable: false,
+    flushEventsBeforeResult: false,
+    envLane: null,
+  }),
+  "desktop.browser.capture_tab": defineHostDaemonCommandDescriptor({
+    type: "desktop.browser.capture_tab",
+    schema: desktopBrowserCommandSchemas["desktop.browser.capture_tab"],
+    resultSchema: desktopBrowserResultSchemas["desktop.browser.capture_tab"],
+    transport: "onlineRpc",
+    retryable: false,
+    flushEventsBeforeResult: false,
+    envLane: null,
+  }),
+  "desktop.browser.acquire_control": defineHostDaemonCommandDescriptor({
+    type: "desktop.browser.acquire_control",
+    schema: desktopBrowserCommandSchemas["desktop.browser.acquire_control"],
+    resultSchema:
+      desktopBrowserResultSchemas["desktop.browser.acquire_control"],
+    transport: "onlineRpc",
+    retryable: false,
+    flushEventsBeforeResult: false,
+    envLane: null,
+  }),
+  "desktop.browser.open_connection": defineHostDaemonCommandDescriptor({
+    type: "desktop.browser.open_connection",
+    schema: desktopBrowserCommandSchemas["desktop.browser.open_connection"],
+    resultSchema:
+      desktopBrowserResultSchemas["desktop.browser.open_connection"],
+    transport: "onlineRpc",
+    retryable: false,
+    flushEventsBeforeResult: false,
+    envLane: null,
+  }),
+  "desktop.browser.release_control": defineHostDaemonCommandDescriptor({
+    type: "desktop.browser.release_control",
+    schema: desktopBrowserCommandSchemas["desktop.browser.release_control"],
+    resultSchema:
+      desktopBrowserResultSchemas["desktop.browser.release_control"],
+    transport: "onlineRpc",
+    retryable: false,
+    flushEventsBeforeResult: false,
+    envLane: null,
+  }),
   "thread.rewind.discard": defineHostDaemonCommandDescriptor({
     type: "thread.rewind.discard",
     schema: threadRewindDiscardCommandSchema,
@@ -1803,7 +1891,9 @@ type HostDaemonRetryableOnlineRpcCommandSchema =
 type HostDaemonResultSchemaMapForTransport<
   Transport extends HostDaemonCommandTransport,
 > = {
-  [Descriptor in HostDaemonCommandDescriptorForTransport<Transport> as Descriptor["type"]]: Descriptor["resultSchema"];
+  [
+    Descriptor in HostDaemonCommandDescriptorForTransport<Transport> as Descriptor["type"]
+  ]: Descriptor["resultSchema"];
 };
 
 type HostDaemonCommandResultSchemaMap =

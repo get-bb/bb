@@ -778,7 +778,7 @@ async function smokeSdkPackage(tarballPath) {
     args: [
       "--input-type=module",
       "-e",
-      'import { BBSdk } from "bb-app"; if (typeof BBSdk !== "function") process.exit(1);',
+      'import { BBSdk } from "bb-app"; if (typeof BBSdk !== "function" || typeof new BBSdk().experimental_desktopBrowsers?.listInstances !== "function") process.exit(1);',
     ],
     command: "node",
     cwd: sdkDir,
@@ -792,6 +792,7 @@ async function smokeSdkPackage(tarballPath) {
       'const bb = new BBSdk({ baseUrl: "http://127.0.0.1:38886" });',
       "const error: typeof BbHttpError = BbHttpError;",
       "void bb.status.get();",
+      'void bb.experimental_desktopBrowsers.listInstances({ hostId: "smoke-host" });',
       "void error;",
       "",
     ].join("\n"),

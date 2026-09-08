@@ -9,10 +9,8 @@ import { PluginThreadChat } from "@/components/plugin/PluginThreadChat";
 import { PluginUrlLink } from "@/components/plugin/PluginUrlLink";
 import { ExperimentalFileLink } from "@/components/plugin/ExperimentalFileLink";
 import { MarkdownPreview } from "@/components/ui/markdown-preview";
-import type {
-  MarkdownLinkRouting,
-  MarkdownLocalFileLinkRouting,
-} from "@/components/ui/markdown-link-routing";
+import type { MarkdownLinkRouting } from "@/components/ui/markdown-link-routing";
+import { buildMarkdownMessageLinkRouting } from "@/components/ui/markdown-message-link-routing";
 import type { MarkdownPreviewLinkHandler } from "@/components/ui/markdown-link";
 import { useThreadTimelineNavigation } from "@/components/thread/timeline/ThreadTimelineNavigationContext";
 import { definePluginApp } from "./plugin-app-definition";
@@ -74,6 +72,7 @@ export const pluginSdkAppImplementation = installDeprecatedAliases(
 function PluginMarkdown({ content, className }: MarkdownProps) {
   const timelineNavigation = useThreadTimelineNavigation();
   const onOpenLocalFileLink = timelineNavigation?.onOpenLocalFileLink;
+  const threadId = timelineNavigation?.threadId;
   const workspaceRootPath = timelineNavigation?.workspaceRootPath;
   const navigation = useAppNavigationHost();
   const onOpenLink = useCallback<MarkdownPreviewLinkHandler>(
@@ -81,21 +80,15 @@ function PluginMarkdown({ content, className }: MarkdownProps) {
     [navigation],
   );
   const linkRouting = useMemo<MarkdownLinkRouting>(() => {
-    if (onOpenLocalFileLink === undefined) {
-      return { onOpenLink };
-    }
-    const localFile: MarkdownLocalFileLinkRouting = {
-      absoluteLinks: { kind: "trusted-host" },
-      onOpenLink: onOpenLocalFileLink,
-    };
-    if (workspaceRootPath !== undefined) {
-      localFile.relativeLinks = {
-        baseDir: workspaceRootPath,
-        rootPath: workspaceRootPath,
-      };
-    }
-    return { localFile, onOpenLink };
-  }, [onOpenLink, onOpenLocalFileLink, workspaceRootPath]);
+    return (
+      buildMarkdownMessageLinkRouting({
+        onOpenLink,
+        onOpenLocalFileLink,
+        threadId,
+        workspaceRootPath,
+      }) ?? { onOpenLink }
+    );
+  }, [onOpenLink, onOpenLocalFileLink, threadId, workspaceRootPath]);
 
   return (
     <MarkdownPreview

@@ -39,6 +39,8 @@ bb pool account list [--json]
 bb pool account remove <id>
 bb pool account enable <id>
 bb pool account disable <id>
+bb pool account priority <id> <n>
+bb pool account reorder <claude|codex> <id>...
 bb pool status [--json]
 bb pool routing <claude|codex> [--off]
 bb pool config
@@ -82,6 +84,25 @@ account. `bb pool config` prints the quota switch threshold and both upstream
 URLs. Use `bb pool config set <key> <value>` to change one; the two URL values
 are QA-only overrides. Upgrading from a build that stored these values through
 plugin settings resets the threshold and QA overrides to their defaults.
+
+Accounts run sequentially per provider: lower priority numbers first, with ties
+following the order accounts were added. New conversations use the current
+account until it reaches the switch threshold or fails; the pool then advances
+to the next eligible account and wraps at the end. It keeps using that fallback
+even when an earlier account recovers. Existing conversations stay pinned while
+their account remains eligible. Short temporary rate limits wait on the same
+account once; longer holds return Retry-After for pinned conversations while new
+conversations can advance. A model-family limit detours only requests for that
+family without moving the session's main pin or the provider cursor. The cursor
+and session pins survive hub restarts. Session pins expire after 30 idle minutes,
+and the pool retains the 4,096 most recently used pins.
+
+Use the up/down arrows in Account Pooler settings, or
+`bb pool account reorder <claude|codex> <id>...`, to set the complete order for
+one provider. Include disabled accounts too. Reordering changes the next failover
+sequence without moving the current account. `bb pool account priority <id> <n>`
+sets an individual priority; the same operations are available through the
+`account.reorder` and `account.setPriority` plugin RPCs.
 
 The builtin Keep Awake plugin prevents macOS idle sleep while bb is running.
 Its settings page lets you target all hosts or selected hosts. The CLI
