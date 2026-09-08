@@ -86,7 +86,10 @@ projectId: null, inputs: { deviceId, username } })`. Full inputs add
 `accessProviderId: "tailscale" | "default"`; defaults are filled at validation.
 The plugin's typed `tailscaleContract` exposes `devices(null)`,
 `accessStatus(null)`, and `configure({ port })` via public plugin RPC, matching
-the three CLI commands. Device ownership is reserved across concurrent
+the three CLI commands. External SDK consumers use
+`sdk.plugins.callRpc({ pluginId: "machine-tailscale", method: "accessStatus",
+input: null, outputSchema: accessStatusSchema })` (schema in `contract.ts`).
+Device ownership is reserved across concurrent
 Tailscale launches; core's remote identity guard protects cross-provider
 conflicts. Offline/renamed devices block cleanup until the original trusted
 target returns. Cancellation never stores bootstrap bundles in resource/KV

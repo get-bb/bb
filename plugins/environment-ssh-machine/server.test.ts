@@ -3,7 +3,7 @@ import { createFakePluginHost } from "@get-bb/plugin-sdk/testing";
 import type { JsonValue } from "@get-bb/plugin-sdk";
 import type { PluginMachineProviderCreateContext } from "@get-bb/plugin-sdk/machine-provider";
 import { createSshMachinePlugin } from "./server.js";
-import { sshMachineInputsSchema } from "bb-machine-ssh/configuration";
+import { sshMachineInputsSchema } from "./configuration.js";
 import type { SshExecRequest } from "bb-machine-ssh/ssh-runner";
 import { uninstallCommand } from "bb-machine-ssh/uninstall";
 

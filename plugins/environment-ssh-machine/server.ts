@@ -1,9 +1,7 @@
 import type { BbPluginApi } from "@get-bb/plugin-sdk";
 import { z } from "zod";
-import {
-  sshDestinationSchema,
-  sshMachineInputsSchema,
-} from "bb-machine-ssh/configuration";
+import { sshDestinationSchema } from "bb-machine-ssh/configuration";
+import { sshMachineInputsSchema } from "./configuration.js";
 import { sshMachineRpcContract } from "./contract.js";
 import { SSH_MACHINE_PROVIDER_ID } from "./provider-id.js";
 import { readSshHostAliases } from "./ssh-config.js";

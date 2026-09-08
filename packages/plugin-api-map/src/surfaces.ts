@@ -838,7 +838,13 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
           "PluginMachineProviderResourceResult",
           "PluginMachineProviderRemoveResult",
         ],
-        firstParty: ["Modal sandbox", "DigitalOcean", "E2B", "SSH machine"],
+        firstParty: [
+          "Modal sandbox",
+          "DigitalOcean",
+          "E2B",
+          "SSH machine",
+          "Tailscale",
+        ],
         experimental: true,
       },
       {
@@ -861,7 +867,7 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
           "ServerAccessClient",
           "ServerAccessSelection",
         ],
-        firstParty: ["Connect"],
+        firstParty: ["Connect", "Tailscale"],
         experimental: true,
       },
       {

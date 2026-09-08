@@ -30,8 +30,3 @@ export const sshDestinationSchema = z
     isSafeSshDestination,
     "Enter an SSH host alias or user@host without spaces or shell metacharacters.",
   );
-
-export const sshMachineInputsSchema = z
-  .object({ target: sshDestinationSchema })
-  .strict();
-export type SshMachineInputs = z.infer<typeof sshMachineInputsSchema>;
