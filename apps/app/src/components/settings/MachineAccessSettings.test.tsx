@@ -54,20 +54,20 @@ it("offers Connect setup without exposing the manual URL even when a URL exists"
       .getByRole("link", { name: "Set up bb connect" })
       .getAttribute("href"),
   ).toBe("/settings/plugins/connect");
+  expect(screen.getByText("Not connected")).toBeTruthy();
   expect(screen.queryByRole("textbox")).toBeNull();
   expect(screen.queryByText("Automatic")).toBeNull();
 });
 
 it("shows the URL input only for Manual", () => {
   show("direct");
-  expect(
-    screen.getByRole("textbox", { name: "Server URL reachable by machines" }),
-  ).toBeTruthy();
+  expect(screen.getByRole("textbox", { name: "Server address" })).toBeTruthy();
   expect(screen.queryByRole("link", { name: "Set up bb connect" })).toBeNull();
 });
 
 it("retains diagnostics for paired Connect without showing setup", () => {
   show("connect", true);
+  expect(screen.getByText("Connected")).toBeTruthy();
   expect(screen.getByRole("status").textContent).toBe(
     "bb connect: 2 legacy access records need attention",
   );

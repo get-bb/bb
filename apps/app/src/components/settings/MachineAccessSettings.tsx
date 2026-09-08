@@ -7,6 +7,7 @@ import { OptionPicker } from "@/components/pickers/OptionPicker";
 import { useSystemConfig } from "@/hooks/queries/system-queries";
 import { useUpdateGeneralSettings } from "@/hooks/mutations/settings-mutations";
 import {
+  SettingsBadge,
   SettingsSection,
   SettingsWithControl,
 } from "@/components/ui/settings-section";
@@ -48,7 +49,7 @@ export function MachineAccessSettings() {
     <SettingsSection
       title="Machine access"
       description="Choose how new machines connect to the server."
-      bodyClassName="space-y-5"
+      bodyClassName="space-y-4"
     >
       {access?.providers.map((provider) =>
         provider.attention ? (
@@ -61,21 +62,9 @@ export function MachineAccessSettings() {
           </p>
         ) : null,
       )}
-      <SettingsWithControl
-        label="Default machine access"
-        description={
-          selected === "connect"
-            ? "Connect machines without configuring a server URL."
-            : selected === "direct"
-              ? "Use your own server URL for new machine connections."
-              : effective?.availability.status === "available"
-                ? "New machines use this access provider."
-                : (effective?.availability.message ??
-                  "This access provider is not installed.")
-        }
-      >
+      <SettingsWithControl label="Connection method">
         <OptionPicker
-          label="Default machine access"
+          label="Connection method"
           value={selected}
           disabled={disabled}
           align="end"
@@ -85,7 +74,7 @@ export function MachineAccessSettings() {
                   {
                     value: "connect",
                     label: "bb connect",
-                    description: "Set up remote access.",
+                    description: "Use a private getbb.app address.",
                   },
                 ]
               : []),
@@ -93,11 +82,13 @@ export function MachineAccessSettings() {
               value: provider.id,
               label: provider.displayName,
               description:
-                provider.availability.status !== "available"
-                  ? provider.availability.message
+                provider.id === "connect"
+                  ? "Use a private getbb.app address."
                   : provider.id === "direct"
-                    ? "Use the server address configured below."
-                    : "Use this provider for new machine connections.",
+                    ? "Use your own domain or network address."
+                    : provider.availability.status !== "available"
+                      ? provider.availability.message
+                      : "Use this provider for new machine connections.",
             })),
           ]}
           onChange={(providerId) => {
@@ -109,34 +100,62 @@ export function MachineAccessSettings() {
           }}
         />
       </SettingsWithControl>
-      {selected === "connect" &&
-        effective?.availability.status !== "available" && (
-          <div className="flex flex-wrap items-center justify-between gap-3 border-t border-border pt-5">
-            <p className="text-sm text-muted-foreground">
-              Set up bb connect before adding a machine.
-            </p>
-            <Button variant="outline" size="sm" asChild>
-              <Link
-                to={getPluginConfigurationRoutePath({ pluginId: "connect" })}
-              >
-                Set up bb connect
-              </Link>
-            </Button>
+      {selected === "connect" && (
+        <div className="space-y-3 rounded-md bg-muted/30 p-3">
+          <p className="text-xs leading-relaxed text-subtle-foreground">
+            bb connect gives this server a private getbb.app address that your
+            other machines can reach.
+          </p>
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div className="min-w-0 space-y-1">
+              <SettingsBadge>
+                {effective?.availability.status === "available"
+                  ? "Connected"
+                  : effective?.availability.status === "unavailable"
+                    ? "Unavailable"
+                    : "Not connected"}
+              </SettingsBadge>
+              <p className="text-xs text-subtle-foreground">
+                {effective?.availability.status === "available"
+                  ? "Ready to add machines."
+                  : effective?.availability.status === "unavailable"
+                    ? effective.availability.message
+                    : "Link this server to your getbb.app account to get started."}
+              </p>
+            </div>
+            {effective?.availability.status !== "available" && (
+              <Button variant="outline" size="sm" asChild>
+                <Link
+                  to={getPluginConfigurationRoutePath({ pluginId: "connect" })}
+                >
+                  Set up bb connect
+                </Link>
+              </Button>
+            )}
           </div>
+        </div>
+      )}
+      {selected !== "connect" &&
+        selected !== "direct" &&
+        effective?.availability.status !== "available" && (
+          <p className="text-xs text-subtle-foreground">
+            {effective?.availability.message ??
+              "This connection method is not installed."}
+          </p>
         )}
       {selected === "direct" && (
-        <div className="border-t border-border pt-5">
+        <div className="space-y-3 rounded-md bg-muted/30 p-3">
           <SettingsWithControl
-            label="Server URL reachable by machines"
+            label="Server address"
             description={
               error ??
-              "Enter an HTTP or HTTPS address that new machines can reach, such as a LAN address or your own domain."
+              "Use your own domain or an address on a shared network. Every machine you add must be able to reach this address; localhost won’t work."
             }
             controlPlacement="below"
           >
             <Input
               className="max-w-lg"
-              aria-label="Server URL reachable by machines"
+              aria-label="Server address"
               aria-invalid={error !== null}
               value={draft ?? value}
               placeholder={access?.effectiveUrl ?? "https://bb.example.com"}
@@ -150,6 +169,10 @@ export function MachineAccessSettings() {
           </SettingsWithControl>
         </div>
       )}
+      <p className="text-xs text-subtle-foreground">
+        Changing this affects new machines only. Existing machines keep their
+        current connection.
+      </p>
     </SettingsSection>
   );
 }
