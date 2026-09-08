@@ -18,7 +18,7 @@ import {
 } from "../tooltip";
 import { cn } from "../../../lib/utils";
 
-function targetsResourceAction(target: EventTarget): boolean {
+export function targetsResourceAction(target: EventTarget): boolean {
   return (
     target instanceof Element &&
     target.closest("a, button, [data-row-action]") !== null
