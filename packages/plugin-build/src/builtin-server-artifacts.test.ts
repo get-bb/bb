@@ -73,12 +73,14 @@ describe("builtin server artifacts", () => {
     { pluginDir: "environment-project-checkout" },
     { pluginDir: "environment-git-worktree" },
     { pluginDir: "environment-personal-workspace" },
+    { pluginDir: "environment-modal-sandbox" },
   ])(
     "inlines the environment-provider runtime into the $pluginDir server entry",
     async ({ pluginDir }) => {
       const root = await mkdtemp(join(repositoryRoot, ".builtin-server-test-"));
       tempDirs.push(root);
       const source = join(repositoryRoot, "plugins", pluginDir);
+      if (pluginDir === "environment-modal-sandbox") await cp(join(source, "catalogue"), join(root, "catalogue"), { recursive: true });
       const fileNames = (await readdir(source)).filter(
         (fileName) =>
           fileName === "package.json" ||

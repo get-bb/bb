@@ -1279,3 +1279,25 @@ server gh credentials to machines; `true` enables them again. In Machines →
 Advanced settings, the automatic GH_TOKEN switch controls the same setting.
 This does not log the server out or suppress an explicit custom GH_TOKEN.
 Changes apply to new turns, setup commands and terminals.
+
+## Modal project image configuration
+
+`bb modal project configure --project X --expected-revision N --json-input JSON`
+stores project CPU cores, memory MiB, and idle/lifetime/retention policy with CAS.
+Defaults are 1 core, 4096 MiB, 15 idle minutes, 1440 lifetime minutes, and 30
+retention days. The resource records preserve these values for later lifecycle
+policy enforcement. Recipes and uploaded build inputs belong to plugin storage,
+not repository files. See the Modal catalogue skill for the command contract.
+
+Modal `project.configure` also accepts `usableBuildId: null` to clear the project's
+selected image with the same revision guard before explicit image cleanup.
+
+Modal machines default to a 15-minute idle pause, 24-hour compute lifetime and
+30-day retention after the last thread. Project policy changes apply to existing
+machines on the next lifecycle observation. Open terminals prevent idle pause,
+but deadline maintenance closes them. Inspect retention and keep a machine with
+`bb machine lifecycle MACHINE --keep --json`; explicit removal is still available.
+Preservation covers planned rotation. A server outage spanning the vendor deadline
+can lose changes since the last snapshot; lifecycle status reports this risk.
+
+Modal project catalogue Settings and commands are documented in [modal-sandboxes](../plugins/environment-modal-sandbox/skills/modal-sandboxes/SKILL.md). `bb modal account inspect`, `project sources`, and `project preflight` support `--json` and typed plugin RPC. Settings edits bb-owned Dockerfile text with revision checks, follows explicit builds, and verifies/promotes images for future launches. `bb machine lifecycle --remove --yes` complements keep/automatic-retention controls.
