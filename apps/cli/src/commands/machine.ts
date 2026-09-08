@@ -147,10 +147,12 @@ export function registerMachineCommands(
       "--bootstrap-env <name>",
       "Consume the bootstrap bundle from an environment variable",
     )
+    .option("--json", "Print machine-readable JSON output")
     .action(
-      action(async (options: MachineEnrollmentOptions) => {
+      action(async (options: MachineEnrollmentOptions & { json?: boolean }) => {
         const result = await enrollMachine(options);
-        console.log(`Machine ${result.hostId} enrolled`);
+        if (!outputJson(options, result))
+          console.log(`Machine ${result.hostId} enrolled`);
       }),
     );
 
@@ -158,7 +160,10 @@ export function registerMachineCommands(
     .command("create")
     .description("Create a machine using an installed provider")
     .requiredOption("--provider <id>", "Machine provider ID")
-    .option("--key <idempotency-key>", "Reuse a stable key when retrying creation")
+    .option(
+      "--key <idempotency-key>",
+      "Reuse a stable key when retrying creation",
+    )
     .option("--inputs <JSON>", "Provider inputs as JSON")
     .option("--project <id/name>", "Project ID or exact project name")
     .option("--json", "Print machine-readable JSON output")
@@ -207,7 +212,8 @@ export function registerMachineCommands(
             signal: controller.signal,
           });
           controller.signal.throwIfAborted();
-          if (!outputJson(opts, host)) console.log(`Machine ${host.id} created`);
+          if (!outputJson(opts, host))
+            console.log(`Machine ${host.id} created`);
         } catch (error) {
           if (controller.signal.aborted) {
             throw new CliExitError("Machine creation cancelled.", 130);

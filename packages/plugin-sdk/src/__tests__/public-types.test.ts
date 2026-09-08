@@ -11,6 +11,7 @@ type ExpectedBbPluginApiKey =
   | "experimental_environments"
   | "experimental_hooks"
   | "experimental_machines"
+  | "experimental_serverAccess"
   | "hosts"
   | "http"
   | "log"
@@ -122,6 +123,11 @@ const EXPECTED_BACKEND_ROOT_TYPE_EXPORTS = [
   "PluginThreadEventPayloads",
   "PluginTurnFailedEvent",
   "PluginUi",
+  "PluginServerAccess",
+  "ServerAccessClient",
+  "ServerAccessGrant",
+  "ServerAccessProviderDeclaration",
+  "ServerAccessSelection",
 ] as const;
 
 const EXPECTED_BACKEND_ROOT_VALUE_EXPORTS = [

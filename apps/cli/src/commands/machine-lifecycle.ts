@@ -15,6 +15,7 @@ import { promisify } from "node:util";
 import type { Command } from "commander";
 import { z } from "zod";
 import { action } from "../action.js";
+import { outputJson } from "./helpers.js";
 
 const exec = promisify(execFile);
 const identitySchema = z.object({ hostId: z.string().min(1) });
@@ -375,13 +376,22 @@ export function registerMachineLifecycleCommands(machine: Command): void {
         "--data-dir <path>",
         "Select an installer-owned machine directory",
       )
+      .option("--json", "Print machine-readable JSON output")
       .action(
-        action(async (options: LifecycleOptions) => {
+        action(async (options: LifecycleOptions & { json?: boolean }) => {
           await runMachineLifecycle(operation, {
             ...options,
             dataDir: options.dataDir ?? process.env.BB_DATA_DIR,
           });
-          console.log(`Machine ${options.hostId}: ${operation} complete.`);
+          if (
+            !outputJson(options, {
+              hostId: options.hostId,
+              operation,
+              status: "complete",
+            })
+          ) {
+            console.log(`Machine ${options.hostId}: ${operation} complete.`);
+          }
         }),
       );
   }

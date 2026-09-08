@@ -51,11 +51,11 @@ describe("internal session protocol version", () => {
           retryUpdate: false,
           serverProtocolVersion: HOST_DAEMON_PROTOCOL_VERSION,
         },
-        message: `Daemon protocol version 186 does not match server protocol version ${HOST_DAEMON_PROTOCOL_VERSION}`,
+        message: `Daemon protocol version 187 does not match server protocol version ${HOST_DAEMON_PROTOCOL_VERSION}`,
       });
       expect(
         getHost(server.db, "host-protocol")?.lastRejectedProtocolVersion,
-      ).toBe(186);
+      ).toBe(187);
 
       const preLocalApiPortProtocolVersion = 139;
       const oldDaemonResponse = await fetch(

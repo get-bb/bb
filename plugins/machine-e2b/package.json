@@ -12,7 +12,7 @@
     "description": "Run resumable bb machines in E2B sandboxes",
     "server": "./server.ts",
     "branding": {
-      "icon": "Box"
+      "icon": "PackageReceive"
     }
   },
   "keywords": [

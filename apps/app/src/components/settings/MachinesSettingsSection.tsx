@@ -436,7 +436,11 @@ export function MachinesSettingsSection() {
       <AddMachineDialog
         open={addDialogOpen}
         onOpenChange={setAddDialogOpen}
-        serverUrl={systemConfig.data?.serverUrl ?? null}
+        serverUrl={
+          systemConfig.data?.serverAccess.effectiveUrl ??
+          systemConfig.data?.serverUrl ??
+          null
+        }
       />
 
       <MachineRenameDialog

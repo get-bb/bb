@@ -108,7 +108,7 @@ export function AddMachineDialog({
 }: AddMachineDialogProps) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent>
+      <DialogContent className="max-h-[calc(100dvh-2rem)] overflow-y-auto">
         <AddMachineDialogContent
           open={open}
           onOpenChange={onOpenChange}
@@ -457,7 +457,7 @@ function AddMachineDialogContent({
                   >
                     {createMachine.isPending
                       ? "Creating machine…"
-                      : `Create ${selectedMachineProvider.displayName} machine`}
+                      : `Create ${selectedMachineProvider.displayName}${/machine$/iu.test(selectedMachineProvider.displayName) ? "" : " machine"}`}
                   </Button>
                 )}
                 {machineInputsBlocked === null ? null : (
