@@ -8,21 +8,12 @@ import {
   createJsonLocalStorage,
   type SyncStorage,
 } from "@/lib/browser-storage";
+import { createSyncedPreferenceAtom } from "@/lib/ui-preferences/synced-preference-atom";
 
 const COLLAPSED_PROJECTS_STORAGE_KEY = "bb.sidebar.collapsedProjects";
 const COLLAPSED_THREADS_STORAGE_KEY = "bb.sidebar.collapsedThreads";
 const COLLAPSED_ENVIRONMENTS_STORAGE_KEY = "bb.sidebar.collapsedEnvironments";
 const COLLAPSED_SIDEBAR_SECTIONS_STORAGE_KEY = "bb.sidebar.collapsedSections";
-const SIDEBAR_SECTION_ORDER_STORAGE_KEY = "bb.sidebar.sectionOrder";
-const SIDEBAR_MANUAL_SECTION_ORDER_STORAGE_KEY =
-  "bb.sidebar.manualSectionOrder";
-const LEGACY_SIDEBAR_FOLDER_SECTION_ORDER_STORAGE_KEY =
-  "bb.sidebar.folderSectionOrder";
-const SIDEBAR_MACHINE_SECTION_ORDER_STORAGE_KEY =
-  "bb.sidebar.machineSectionOrder";
-export const SIDEBAR_ORGANIZATION_MODE_STORAGE_KEY =
-  "bb.sidebar.organizationMode";
-const CHRONOLOGICAL_SORT_STORAGE_KEY = "bb.sidebar.chronologicalSort";
 const COLLAPSED_THREAD_SECTIONS_STORAGE_KEY =
   "bb.sidebar.collapsedThreadSections";
 const LEGACY_COLLAPSED_FOLDERS_STORAGE_KEY = "bb.sidebar.collapsedFolders";
@@ -34,12 +25,6 @@ export type {
 } from "@bb/client-core";
 
 export type { SidebarChronologicalSort, SidebarOrganizationMode };
-
-const DEFAULT_SIDEBAR_SECTION_ORDER: readonly string[] = [
-  "pinned",
-  "projects",
-  "threads",
-];
 
 function createLegacyMigratingStringArrayStorage(
   legacyKey: string,
@@ -87,17 +72,6 @@ function createLegacyMigratingStringArrayStorage(
   };
 }
 
-const sidebarManualSectionOrderStorage =
-  createLegacyMigratingStringArrayStorage(
-    LEGACY_SIDEBAR_FOLDER_SECTION_ORDER_STORAGE_KEY,
-    (item) =>
-      item === "folders"
-        ? "sections"
-        : item.startsWith("folder:")
-          ? `section:${item.slice("folder:".length)}`
-          : item,
-  );
-
 const collapsedThreadSectionsStorage = createLegacyMigratingStringArrayStorage(
   LEGACY_COLLAPSED_FOLDERS_STORAGE_KEY,
   (item) => item,
@@ -133,42 +107,25 @@ export const collapsedSidebarSectionIdsAtom = atomWithStorage<
   { getOnInit: true },
 );
 
-export const sidebarSectionOrderAtom = atomWithStorage<string[]>(
-  SIDEBAR_SECTION_ORDER_STORAGE_KEY,
-  [...DEFAULT_SIDEBAR_SECTION_ORDER],
-  createJsonLocalStorage<string[]>(),
-  { getOnInit: true },
+export const sidebarSectionOrderAtom = createSyncedPreferenceAtom(
+  "sidebar.sectionOrder",
 );
 
-export const sidebarManualSectionOrderAtom = atomWithStorage<string[]>(
-  SIDEBAR_MANUAL_SECTION_ORDER_STORAGE_KEY,
-  ["pinned", "sections", "threads"],
-  sidebarManualSectionOrderStorage,
-  { getOnInit: true },
+export const sidebarManualSectionOrderAtom = createSyncedPreferenceAtom(
+  "sidebar.manualSectionOrder",
 );
 
-export const sidebarMachineSectionOrderAtom = atomWithStorage<string[]>(
-  SIDEBAR_MACHINE_SECTION_ORDER_STORAGE_KEY,
-  ["pinned", "machines", "threads"],
-  createJsonLocalStorage<string[]>(),
-  { getOnInit: true },
+export const sidebarMachineSectionOrderAtom = createSyncedPreferenceAtom(
+  "sidebar.machineSectionOrder",
 );
 
-export const sidebarOrganizationModeAtom =
-  atomWithStorage<SidebarOrganizationMode>(
-    SIDEBAR_ORGANIZATION_MODE_STORAGE_KEY,
-    "project",
-    createJsonLocalStorage<SidebarOrganizationMode>(),
-    { getOnInit: true },
-  );
+export const sidebarOrganizationModeAtom = createSyncedPreferenceAtom(
+  "sidebar.organizationMode",
+);
 
-export const sidebarChronologicalSortAtom =
-  atomWithStorage<SidebarChronologicalSort>(
-    CHRONOLOGICAL_SORT_STORAGE_KEY,
-    "updated",
-    createJsonLocalStorage<SidebarChronologicalSort>(),
-    { getOnInit: true },
-  );
+export const sidebarChronologicalSortAtom = createSyncedPreferenceAtom(
+  "sidebar.chronologicalSort",
+);
 
 export const sidebarCollapsedThreadSectionsAtom = atomWithStorage<string[]>(
   COLLAPSED_THREAD_SECTIONS_STORAGE_KEY,

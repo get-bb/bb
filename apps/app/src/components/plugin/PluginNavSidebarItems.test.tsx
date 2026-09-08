@@ -773,7 +773,10 @@ describe("PluginNavSidebarItems", () => {
     expect(screen.getByTestId("sidebar-navigation-more-row")).not.toBeNull();
 
     unmount();
-    renderSidebarItems();
+    renderSidebarItems({
+      storedOrder: store.get(pluginNavPanelOrderAtom),
+      storedVisibleKeys: store.get(pluginNavVisiblePanelKeysAtom),
+    });
     expect(panelRowNames(labels)).toEqual(["Two", "Three", "Four"]);
     expect(screen.queryByRole("button", { name: "One" })).toBeNull();
 
@@ -804,8 +807,9 @@ describe("PluginNavSidebarItems", () => {
     });
 
     expect(visibleRowKeys()).toEqual(["__bb__/new-thread", "docs/main"]);
-    expect(store.get(pluginNavVisiblePanelKeysAtom)).toEqual([
-      "__bb__/new-thread",
+    expect(store.get(pluginNavVisiblePanelKeysAtom)).toEqual(["docs/main"]);
+    expect(store.get(pluginNavPanelOrderAtom)).toEqual([
+      "tasks/main",
       "docs/main",
     ]);
   });
@@ -821,13 +825,11 @@ describe("PluginNavSidebarItems", () => {
 
     expect(visibleRowKeys()).toEqual(["__bb__/new-thread", "tasks/main"]);
     expect(store.get(pluginNavVisiblePanelKeysAtom)).toEqual([
-      "tasks/main",
       "__bb__/new-thread",
     ]);
     expect(store.get(pluginNavPanelOrderAtom)).toEqual([
       "__bb__/new-thread",
       "docs/main",
-      "tasks/main",
     ]);
   });
 

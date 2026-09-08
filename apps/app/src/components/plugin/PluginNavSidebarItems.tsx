@@ -275,29 +275,19 @@ function PluginNavSidebarItemList({
     [ordered, visibleKeys],
   );
 
-  useEffect(() => {
-    if (haveSameOrder(storedOrder, normalizedOrder)) return;
-    setStoredOrder(normalizedOrder);
-  }, [normalizedOrder, setStoredOrder, storedOrder]);
-
-  useEffect(() => {
-    if (
-      storedVisibleKeys === null ||
-      normalizedVisibleKeys === null ||
-      haveSameOrder(storedVisibleKeys, normalizedVisibleKeys)
-    ) {
-      return;
-    }
-    setStoredVisibleKeys(normalizedVisibleKeys);
-  }, [normalizedVisibleKeys, setStoredVisibleKeys, storedVisibleKeys]);
-
   const orderedKeys = useMemo(
     () => ordered.map(getPluginNavPanelKey),
     [ordered],
   );
 
+  const persistNormalizedOrder = useCallback(() => {
+    if (haveSameOrder(storedOrder, normalizedOrder)) return;
+    setStoredOrder(normalizedOrder);
+  }, [normalizedOrder, setStoredOrder, storedOrder]);
+
   const setPanelVisible = useCallback(
     (key: string, isVisible: boolean) => {
+      persistNormalizedOrder();
       setStoredVisibleKeys(
         togglePluginNavPanelVisibility(
           normalizedVisibleKeys ?? visibleKeys,
@@ -306,7 +296,12 @@ function PluginNavSidebarItemList({
         ),
       );
     },
-    [normalizedVisibleKeys, setStoredVisibleKeys, visibleKeys],
+    [
+      normalizedVisibleKeys,
+      persistNormalizedOrder,
+      setStoredVisibleKeys,
+      visibleKeys,
+    ],
   );
 
   const handleDragEnd = useCallback(

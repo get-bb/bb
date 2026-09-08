@@ -47,7 +47,6 @@ import {
 } from "@/lib/route-paths";
 import { splitLayoutAtom } from "@/lib/split-layout/atoms";
 import {
-  SIDEBAR_ORGANIZATION_MODE_STORAGE_KEY,
   sidebarOrganizationModeAtom,
   type SidebarOrganizationMode,
 } from "./sidebarCollapsedAtoms";
@@ -437,39 +436,8 @@ function OrganizationSidebar({
 
   useLayoutEffect(() => {
     setIsModeSeeded(false);
-
-    let localStorage: Storage | null = null;
-    let persistedMode: string | null = null;
-
-    if (typeof window !== "undefined") {
-      try {
-        localStorage = window.localStorage;
-        persistedMode = localStorage.getItem(
-          SIDEBAR_ORGANIZATION_MODE_STORAGE_KEY,
-        );
-      } catch {
-        localStorage = null;
-      }
-    }
-
     const unsubscribe = store.sub(sidebarOrganizationModeAtom, noop);
-
-    try {
-      store.set(sidebarOrganizationModeAtom, mode);
-    } finally {
-      if (localStorage) {
-        try {
-          if (persistedMode === null) {
-            localStorage.removeItem(SIDEBAR_ORGANIZATION_MODE_STORAGE_KEY);
-          } else {
-            localStorage.setItem(
-              SIDEBAR_ORGANIZATION_MODE_STORAGE_KEY,
-              persistedMode,
-            );
-          }
-        } catch {}
-      }
-    }
+    store.set(sidebarOrganizationModeAtom, mode);
 
     setIsModeSeeded(true);
 

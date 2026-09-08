@@ -3,7 +3,6 @@ import {
   arrangePluginNavPanelPreferences,
   arrangePluginNavPanels,
   getPluginNavPanelKey,
-  migrateLegacyHiddenPluginNavPanelOrder,
   togglePluginNavPanelVisibility,
 } from "./pluginNavSidebarOrder";
 
@@ -208,23 +207,6 @@ describe("arrangePluginNavPanelPreferences", () => {
     });
 
     expect(result.visibleKeys).toEqual(["__bb__/search-threads"]);
-  });
-});
-
-describe("legacy hidden-panel migration", () => {
-  it("moves hidden keys behind visible keys while preserving both orders", () => {
-    expect(
-      migrateLegacyHiddenPluginNavPanelOrder(
-        ["tasks/board", "docs/vault", "github/pulls", "docs/vault"],
-        ["tasks/board", "docs/vault"],
-      ),
-    ).toEqual(["github/pulls", "tasks/board", "docs/vault"]);
-  });
-
-  it("retains a hidden key missing from the stored order", () => {
-    expect(
-      migrateLegacyHiddenPluginNavPanelOrder(["github/pulls"], ["docs/vault"]),
-    ).toEqual(["github/pulls", "docs/vault"]);
   });
 });
 

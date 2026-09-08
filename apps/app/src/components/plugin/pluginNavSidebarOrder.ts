@@ -113,17 +113,3 @@ export function togglePluginNavPanelVisibility(
   }
   return normalized.filter((item) => item !== key);
 }
-
-export function migrateLegacyHiddenPluginNavPanelOrder(
-  order: readonly string[],
-  hiddenKeys: readonly string[],
-): string[] {
-  const uniqueOrder = [
-    ...new Set([...order, ...hiddenKeys].filter((key) => key.length > 0)),
-  ];
-  const hidden = new Set(hiddenKeys);
-  return [
-    ...uniqueOrder.filter((key) => !hidden.has(key)),
-    ...uniqueOrder.filter((key) => hidden.has(key)),
-  ];
-}
