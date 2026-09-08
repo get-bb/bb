@@ -147,16 +147,16 @@ instead of `--path` to clone the project's Git remote there; `--remote-url` and
 
 Set Machines → Server URL reachable by machines, or run `bb settings general
 machineServerUrl https://bb.example.com`. An unset value uses BB_EXTERNAL_URL.
-Machines settings show the effective URL and source. Set Default machine access with
+Select Manual to show the URL input. Set Default machine access with
 `bb settings general defaultMachineAccess direct` or `connect`; `null` uses
-paired Connect first, then direct when a URL exists. `bb settings show --json`
+bb connect, with setup required if unpaired. Manual never becomes the default implicitly. `bb settings show --json`
 includes provider availability and the effective selection. Machines use this
 access for ongoing runtime requests, including account-pool endpoints.
 
 The Tailscale plugin can supply private machine access without a Direct URL.
 Use `bb tailscale devices`, `bb tailscale status`, and `bb tailscale configure
 <port>` to discover devices and validate a dedicated existing HTTPS Serve
-mapping. Choose Tailscale explicitly; it is not selected by Automatic.
+mapping. Choose Tailscale explicitly; it is not selected by default.
 The plugin skill documents SSH prerequisites and safe endpoint cleanup.
 
 ## Local daemon lifecycle
@@ -246,7 +246,10 @@ from stdin, removing one trailing newline; values are never accepted in argv.
 `bb machine env unset NAME --json` removes an override. GH_TOKEN is always secret.
 Secret values use private files and are never returned by list or set.
 
-Settings → Machines → Machine environment has the same controls. User variables
+Settings → Machines → Machine environment edits variables inline. Add, remove,
+or import .env rows, then Save variables; Discard changes leaves saved values
+untouched. Saved secrets can be replaced but never revealed. The automatic
+GH_TOKEN row shows server login health; a custom GH_TOKEN overrides it. User variables
 override built-in values for all enrolled machine hosts, excluding local hosts.
 Agent-provider variables win over these host values for agent turns. Changes
 apply to the next turn, setup operation, or newly opened BB terminal; existing

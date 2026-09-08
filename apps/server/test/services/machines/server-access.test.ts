@@ -32,7 +32,7 @@ function installProvider(provider: ServerAccessProviderDeclaration) {
 function provider(): ServerAccessProviderDeclaration {
   return {
     id: "connect",
-    displayName: "bb Cloud",
+    displayName: "bb connect",
     availability: () => ({ status: "available" }),
     acquire: async ({ hostId }) => ({
       id: hostId,
@@ -83,6 +83,39 @@ describe("machine server access", () => {
       await expect(
         serverAccess.resolve(deps, { key: "k", hostId: host.id, signal }),
       ).rejects.toThrow("Configure");
+    });
+  });
+
+  it("requires Connect setup instead of silently falling back to a configured URL", async () => {
+    await withTestHarness(async ({ deps }) => {
+      vi.stubEnv("BB_EXTERNAL_URL", "https://direct.example.com");
+      installProvider({
+        ...provider(),
+        availability: () => ({
+          status: "setup-required",
+          message: "Set up bb connect",
+        }),
+      });
+      expect((await serverAccessStatus(deps)).defaultProviderId).toBe(
+        "connect",
+      );
+      const host = upsertHost(deps.db, deps.hub, { name: "test" })!;
+      await expect(
+        serverAccess.resolve(deps, { key: "k", hostId: host.id, signal }),
+      ).rejects.toThrow("Set up bb connect");
+      setAppSettings(deps.db, {
+        ...defaultAppSettings,
+        defaultMachineAccess: "direct",
+      });
+      expect(
+        (
+          await serverAccess.resolve(deps, {
+            key: "k",
+            hostId: host.id,
+            signal,
+          })
+        ).serverUrl,
+      ).toBe("https://direct.example.com");
     });
   });
 

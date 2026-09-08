@@ -122,7 +122,7 @@ export async function registerServerAccess(
     const credential = tunnel.getCredential();
     if (!credential)
       throw new Error(
-        "Pair this bb instance with bb Cloud to revoke machine access",
+        "Pair this bb instance with bb connect to revoke machine access",
       );
     try {
       const status = await lookupMachineCode(credential, intent.code);
@@ -149,7 +149,7 @@ export async function registerServerAccess(
   });
   bb.experimental_serverAccess.register({
     id: "connect",
-    displayName: "bb Cloud",
+    displayName: "bb connect",
     experimental_attention: async () => {
       let count = 0;
       for (const key of await bb.storage.kv.list("server-access-grant:")) {
@@ -163,7 +163,7 @@ export async function registerServerAccess(
         ? { status: "available" }
         : {
             status: "setup-required",
-            message: "Pair this bb instance with bb Cloud",
+            message: "Pair this bb instance with bb connect",
           },
     acquire({ key, hostId, signal }) {
       return serialized(async () => {
@@ -172,7 +172,8 @@ export async function registerServerAccess(
         const existing = state[hostId];
         if (existing?.result) return existing.result.grant;
         const credential = tunnel.getCredential();
-        if (!credential) throw new Error("Pair this bb instance with bb Cloud");
+        if (!credential)
+          throw new Error("Pair this bb instance with bb connect");
         const metadata = metadataSchema.safeParse(
           await bb.storage.kv.get(grantKey(hostId)),
         );
@@ -286,7 +287,7 @@ export async function registerServerAccess(
           const credential = tunnel.getCredential();
           if (!credential)
             throw new Error(
-              "Pair this bb instance with bb Cloud to revoke machine access",
+              "Pair this bb instance with bb connect to revoke machine access",
             );
           await bb.storage.kv.set(grantKey(grantId), {
             grantId,

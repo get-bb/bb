@@ -1197,9 +1197,9 @@ agent configuration is next assembled, not retroactively to existing text.
 Machines settings expose **Server URL reachable by machines** (`machineServerUrl`)
 and **Default machine access** (`defaultMachineAccess`). The URL must be HTTP
 or HTTPS without embedded credentials. An unset URL falls back to
-`BB_EXTERNAL_URL`. Machines displays the effective URL and its source; it does
-not claim the remote machine can reach it. An unset access provider selects
-paired Connect, otherwise direct when a URL exists. An explicit provider must
+`BB_EXTERNAL_URL`. The URL input appears when Manual is selected. An unset access provider selects
+bb connect, even when unpaired; Machines settings links to its setup. Choose
+Manual (`direct`) explicitly to use your own URL. An explicit provider must
 be installed and available. Configure these with `bb settings general
 machineServerUrl <url-or-null>` and `bb settings general defaultMachineAccess
 <provider-id-or-null>`. `bb settings show --json` reports the effective access

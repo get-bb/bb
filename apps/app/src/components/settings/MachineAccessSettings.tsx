@@ -1,4 +1,7 @@
 import { useState } from "react";
+import { Link } from "react-router-dom";
+import { Button } from "@bb/shared-ui/button";
+import { getPluginConfigurationRoutePath } from "@/lib/route-paths";
 import { Input } from "@bb/shared-ui/input";
 import { OptionPicker } from "@/components/pickers/OptionPicker";
 import { useSystemConfig } from "@/hooks/queries/system-queries";
@@ -37,14 +40,14 @@ export function MachineAccessSettings() {
       setError("Enter a valid HTTP or HTTPS URL without credentials");
     }
   };
-  const selected = settings?.defaultMachineAccess;
+  const selected = access?.defaultProviderId ?? "connect";
   const effective = access?.providers.find(
-    (provider) => provider.id === access.defaultProviderId,
+    (provider) => provider.id === selected,
   );
   return (
     <SettingsSection
       title="Machine access"
-      description="Choose how other machines connect to the server."
+      description="Choose how new machines connect to the server."
       bodyClassName="space-y-5"
     >
       {access?.providers.map((provider) =>
@@ -61,25 +64,31 @@ export function MachineAccessSettings() {
       <SettingsWithControl
         label="Default machine access"
         description={
-          selected
-            ? effective?.availability.status === "available"
-              ? "New machines use this access provider."
-              : (effective?.availability.message ??
-                "This access provider is not installed.")
-            : `Uses bb Cloud when paired, otherwise Direct URL. ${effective ? `Currently: ${effective.displayName}.` : "Pair bb Cloud or configure a direct server URL to get started."}`
+          selected === "connect"
+            ? "Connect machines without configuring a server URL."
+            : selected === "direct"
+              ? "Use your own server URL for new machine connections."
+              : effective?.availability.status === "available"
+                ? "New machines use this access provider."
+                : (effective?.availability.message ??
+                  "This access provider is not installed.")
         }
       >
         <OptionPicker
           label="Default machine access"
-          value={selected ?? "automatic"}
+          value={selected}
           disabled={disabled}
           align="end"
           options={[
-            {
-              value: "automatic",
-              label: "Automatic",
-              description: "Use bb Cloud when paired, otherwise Direct URL.",
-            },
+            ...(!access?.providers.some((provider) => provider.id === "connect")
+              ? [
+                  {
+                    value: "connect",
+                    label: "bb connect",
+                    description: "Set up remote access.",
+                  },
+                ]
+              : []),
             ...(access?.providers ?? []).map((provider) => ({
               value: provider.id,
               label: provider.displayName,
@@ -95,36 +104,52 @@ export function MachineAccessSettings() {
             if (settings)
               update.mutate({
                 ...settings,
-                defaultMachineAccess:
-                  providerId === "automatic" ? null : providerId,
+                defaultMachineAccess: providerId,
               });
           }}
         />
       </SettingsWithControl>
-      <div className="border-t border-border pt-5">
-        <SettingsWithControl
-          label="Server URL reachable by machines"
-          description={
-            error ??
-            "Used only by Direct URL access. Enter an address where other machines can already reach the server, such as a LAN address or your own domain. This does not set up networking; bb Cloud supplies its own address."
-          }
-          controlPlacement="below"
-        >
-          <Input
-            className="max-w-lg"
-            aria-label="Server URL reachable by machines"
-            aria-invalid={error !== null}
-            value={draft ?? value}
-            placeholder={access?.effectiveUrl ?? "https://bb.example.com"}
-            disabled={disabled}
-            onChange={(event) => setDraft(event.target.value)}
-            onBlur={() => void commitUrl()}
-            onKeyDown={(event) => {
-              if (event.key === "Enter") void commitUrl();
-            }}
-          />
-        </SettingsWithControl>
-      </div>
+      {selected === "connect" &&
+        effective?.availability.status !== "available" && (
+          <div className="flex flex-wrap items-center justify-between gap-3 border-t border-border pt-5">
+            <p className="text-sm text-muted-foreground">
+              Set up bb connect before adding a machine.
+            </p>
+            <Button variant="outline" size="sm" asChild>
+              <Link
+                to={getPluginConfigurationRoutePath({ pluginId: "connect" })}
+              >
+                Set up bb connect
+              </Link>
+            </Button>
+          </div>
+        )}
+      {selected === "direct" && (
+        <div className="border-t border-border pt-5">
+          <SettingsWithControl
+            label="Server URL reachable by machines"
+            description={
+              error ??
+              "Enter an HTTP or HTTPS address that new machines can reach, such as a LAN address or your own domain."
+            }
+            controlPlacement="below"
+          >
+            <Input
+              className="max-w-lg"
+              aria-label="Server URL reachable by machines"
+              aria-invalid={error !== null}
+              value={draft ?? value}
+              placeholder={access?.effectiveUrl ?? "https://bb.example.com"}
+              disabled={disabled}
+              onChange={(event) => setDraft(event.target.value)}
+              onBlur={() => void commitUrl()}
+              onKeyDown={(event) => {
+                if (event.key === "Enter") void commitUrl();
+              }}
+            />
+          </SettingsWithControl>
+        </div>
+      )}
     </SettingsSection>
   );
 }

@@ -91,7 +91,7 @@ export async function serverAccessStatus(deps: Dependencies) {
   providers.push({
     attention: null,
     id: "direct",
-    displayName: "Direct URL",
+    displayName: "Manual",
     availability:
       direct.url === null
         ? {
@@ -101,16 +101,7 @@ export async function serverAccessStatus(deps: Dependencies) {
         : { status: "available" },
   });
   const configured = getAppSettings(deps.db).defaultMachineAccess;
-  const defaultProviderId =
-    configured ??
-    (providers.some(
-      (entry) =>
-        entry.id === "connect" && entry.availability.status === "available",
-    )
-      ? "connect"
-      : direct.url !== null
-        ? "direct"
-        : null);
+  const defaultProviderId = configured ?? "connect";
   return {
     providers,
     defaultProviderId,
