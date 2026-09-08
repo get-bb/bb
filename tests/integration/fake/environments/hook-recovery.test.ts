@@ -2,11 +2,7 @@ import { mkdtemp, writeFile, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, expect, it, vi } from "vitest";
-import {
-  createConnection,
-  environmentHookOperations,
-  getEnvironmentLaunch,
-} from "@bb/db";
+import { createConnection, getEnvironmentLaunch } from "@bb/db";
 import { makeHost } from "@bb/test-helpers/domain-fixtures";
 import type { PluginEnvironmentProviderDeclaration } from "@get-bb/plugin-sdk";
 import { validatePluginEnvironmentProviderDeclaration } from "@get-bb/plugin-sdk/internal/host-policy";
@@ -108,6 +104,7 @@ it("disconnect during real setup retains the claim until daemon cancellation con
     let online = false;
     let terminated = false;
     let running: Promise<void> = Promise.resolve();
+    let operationId: string | null = null;
     try {
       await writeFile(
         join(path, ".bb-env-setup.sh"),
@@ -131,6 +128,7 @@ it("disconnect during real setup retains the claim until daemon cancellation con
             await runDaemonHook(command, options);
             return;
           }
+          operationId = command.operationId;
           running = runDaemonHook(command, options).then(
             () => undefined,
             () => {
@@ -173,15 +171,9 @@ it("disconnect during real setup retains the claim until daemon cancellation con
       });
       await expect(readFile(join(path, "completed"))).rejects.toThrow();
     } finally {
-      for (const operation of harness.db
-        .select()
-        .from(environmentHookOperations)
-        .all())
+      if (operationId !== null)
         await cancelDaemonHook(
-          {
-            type: "environment.hook.cancel",
-            operationId: operation.operationId,
-          },
+          { type: "environment.hook.cancel", operationId },
           options,
         ).catch(() => undefined);
       await running;
@@ -244,20 +236,11 @@ it("restores a serialized database mid-setup and reconciles one daemon operation
       expect(await readFile(join(path, "completed"), "utf8")).toBe(
         "completed\n",
       );
-      expect(
-        deps.db.select().from(environmentHookOperations).get()?.finishedAt,
-      ).toEqual(expect.any(Number));
     } finally {
       release?.();
-      for (const operation of harness.db
-        .select()
-        .from(environmentHookOperations)
-        .all())
+      for (const operationId of new Set(ids))
         await cancelDaemonHook(
-          {
-            type: "environment.hook.cancel",
-            operationId: operation.operationId,
-          },
+          { type: "environment.hook.cancel", operationId },
           options,
         ).catch(() => undefined);
       restored?.$client.close();
@@ -265,7 +248,7 @@ it("restores a serialized database mid-setup and reconciles one daemon operation
     }
   }));
 
-it("releases the claim after setup is dropped before dispatch and connectivity returns", async () =>
+it("retains the claim when the daemon cannot confirm whether setup started", async () =>
   withTestHarness(async (harness) => {
     const path = await mkdtemp(join(tmpdir(), "bb-hook-dropped-"));
     const options = createDaemonHarness().dispatchOptions({ dataDir: path });
@@ -297,7 +280,7 @@ it("releases the claim after setup is dropped before dispatch and connectivity r
             { type: "environment.hook.cancel", operationId },
             options,
           );
-          expect(result).toEqual({ status: "never-started" });
+          expect(result).toEqual({ status: "unknown" });
           return result;
         },
       });
@@ -312,19 +295,18 @@ it("releases the claim after setup is dropped before dispatch and connectivity r
       });
       expect(remove).not.toHaveBeenCalled();
       online = true;
-      await cancelProviderLaunch(harness.deps, fixture.thread.id);
-      expect(remove).toHaveBeenCalledOnce();
+      await expect(
+        cancelProviderLaunch(harness.deps, fixture.thread.id),
+      ).rejects.toThrow("outcome is unknown");
+      expect(remove).not.toHaveBeenCalled();
       expect(fixture.row()).toMatchObject({
-        cancelPending: false,
-        claimPath: null,
+        cancelPending: true,
+        claimPath: path,
       });
       if (dropped === null) throw new Error("Missing dropped command");
-      await expect(
-        runDaemonHook(
-          dropped,
-          createDaemonHarness().dispatchOptions({ dataDir: path }),
-        ),
-      ).rejects.toThrow("cancelled before dispatch");
+      await expect(runDaemonHook(dropped, options)).rejects.toThrow(
+        "cancelled before dispatch",
+      );
       await expect(readFile(join(path, "marker"))).rejects.toThrow();
     } finally {
       await rm(path, { recursive: true, force: true });

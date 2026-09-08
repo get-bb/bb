@@ -2,7 +2,7 @@ import {
   isProcessGroupAlive,
   killProcessGroup,
   sanitizeInheritedChildProcessEnv,
-  spawnPortablePipedProcess,
+  spawnPortableOutputProcess,
   supportsProcessGroups,
 } from "@bb/process-utils";
 import fs from "node:fs/promises";
@@ -27,7 +27,6 @@ export interface RunSetupScriptArgs {
   shellPath?: string;
   onProgress?: ProgressCallback;
   signal?: AbortSignal;
-  onProcessSpawn?: (pid: number) => void;
 }
 
 type RunTeardownScriptArgs = RunSetupScriptArgs;
@@ -126,15 +125,9 @@ async function runLifecycleScript(
     env: process.env,
     ...(args.shellPath !== undefined ? { shellPath: args.shellPath } : {}),
   });
-  const child = spawnPortablePipedProcess({
+  const child = spawnPortableOutputProcess({
     command: command.command,
-    args: [
-      "bash",
-      "-c",
-      'IFS= read -r permit && [ "$permit" = start ] && exec env bash "$1" </dev/null',
-      "bb-environment-hook",
-      scriptPath,
-    ],
+    args: command.args,
     cwd: args.workspacePath,
     detached: supportsProcessGroups(),
     env,
@@ -187,18 +180,6 @@ async function runLifecycleScript(
     }>((resolve, reject) => {
       child.on("error", reject);
       child.on("close", (exitCode, signal) => resolve({ exitCode, signal }));
-      child.stdin.on("error", reject);
-      try {
-        if (child.pid === undefined)
-          throw new Error("Environment hook process did not start");
-        args.onProcessSpawn?.(child.pid);
-        throwIfProvisionAborted(args.signal);
-        child.stdin.end("start\n");
-      } catch (error) {
-        child.stdin.destroy();
-        killProcessGroup({ child, signal: "SIGKILL" });
-        child.once("close", () => reject(error));
-      }
     });
 
     if (abortRequested || timedOut)

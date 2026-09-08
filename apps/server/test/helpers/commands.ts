@@ -109,7 +109,7 @@ interface RegisterTestHostRpcCaptureArgs {
   ) => Promise<void>;
   onEnvironmentHookCancel?: (
     operationId: string,
-  ) => Promise<void | { status: "never-started" | "terminated" }>;
+  ) => Promise<void | { status: "unknown" | "terminated" }>;
   gitBranchOptionsResult?: HostDaemonOnlineRpcResult<"host.list_branch_options">;
   onListBranchOptions?: (
     command: Extract<

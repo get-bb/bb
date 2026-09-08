@@ -37,12 +37,14 @@ Making your repo work with bb:
 
   Core admits and claims the path before hooks, and runs hooks only
   after create confirms ownsPath: true. Attached project
-  checkouts and personal workspaces never run hooks. Setup identity and state
-  persist per launch attempt; server restart reconciles the same daemon
-  operation instead of executing setup twice.
+  checkouts and personal workspaces never run hooks. Hook IDs derive from the launch attempt. A server restart can join the same
+  operation while the daemon remains alive. Hook state is held only in daemon
+  memory; a daemon restart leaves an interrupted hook outcome unknown.
 
   A non-zero exit, timeout, signal, or cancellation fails provisioning and bb
-  removes the new worktree. Keep optional setup steps non-fatal inside the
+  removes the new worktree after confirming the script has stopped. An unknown
+  hook outcome blocks automatic cleanup and requires inspection before recovery.
+  Keep optional setup steps non-fatal inside the
   script if the environment should still open. Provisioning progress reports
   "Running .bb-env-setup.sh" and then ".bb-env-setup.sh finished",
   ".bb-env-setup.sh failed", or ".bb-env-setup.sh cancelled".
@@ -57,8 +59,9 @@ Making your repo work with bb:
   signal reports failure in the destroy transcript, but bb removes the
   worktree after script termination. If transport fails, bb cancels the hook
   and confirms its process group has stopped before releasing the workspace.
-  An unreachable daemon leaves cleanup pending for retry. Durable daemon
-  cancellation records resolve never-started operations and prevent delayed execution.
+  An unreachable daemon leaves cleanup pending for retry. If the daemon no
+  longer knows the hook, cleanup remains blocked with an explicit unknown-outcome
+  error. There is no cross-restart script recovery or persisted process tracking.
   Teardown only runs for paths whose ownership was confirmed by create.
 
   New worktrees do not contain untracked files such as .env.local. To copy

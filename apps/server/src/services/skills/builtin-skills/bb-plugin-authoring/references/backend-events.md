@@ -249,8 +249,13 @@ Environment responses expose only the read-only lifecycle projection:
 phase, retireAt, and teardown status/attempt/message.
 Core runs `.bb-env-setup.sh` on the environment's host after `create` returns
 `ownsPath: true`, and `.bb-env-teardown.sh` before `remove`. Each has a separate
-15-minute timeout. Setup failure fails the launch and core cleans up; teardown
-failure is reported and removal continues. Hook output uses the launch report.
+15-minute timeout. Setup failure fails the launch; cleanup requires confirmed
+script termination. Teardown failure is reported and removal continues only
+after confirmed termination. Hook IDs reuse launch/environment identity and
+daemon memory deduplicates execution while that daemon is alive. If a daemon
+restart loses hook state, core reports an unknown outcome and blocks automatic
+cleanup instead of rerunning the script. No hook ledger or process records are
+persisted. Hook output uses the launch report.
 Providers must not call these hooks themselves. Attached paths (`ownsPath: false`)
 never run them. Provider-specific preparation runs inside `create` first (for
 example, Worktree copies `.worktreeinclude` files).

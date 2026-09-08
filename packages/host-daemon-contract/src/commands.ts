@@ -572,7 +572,7 @@ const MAX_NODE_TIMER_DELAY_MS = 2_147_483_647;
 const environmentHookRunCommandSchema = z
   .object({
     type: z.literal("environment.hook.run"),
-    resumeOnly: z.boolean().default(false),
+    resumeOnly: z.boolean(),
     operationId: z.string().min(1),
     path: z.string().min(1),
     kind: z.enum(["setup", "teardown"]),
@@ -1590,7 +1590,7 @@ export const hostDaemonCommandRegistry = {
     type: "environment.hook.cancel",
     schema: environmentHookCancelCommandSchema,
     resultSchema: z
-      .object({ status: z.enum(["never-started", "terminated"]) })
+      .object({ status: z.enum(["unknown", "terminated"]) })
       .strict(),
     transport: "onlineRpc",
     retryable: true,

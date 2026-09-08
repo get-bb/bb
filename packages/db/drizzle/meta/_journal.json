@@ -813,6 +813,13 @@
       "when": 1788890165866,
       "tag": "0115_colossal_silver_fox",
       "breakpoints": true
+    },
+    {
+      "idx": 116,
+      "version": "6",
+      "when": 1788892719663,
+      "tag": "0116_panoramic_zombie",
+      "breakpoints": true
     }
   ]
 }

@@ -335,6 +335,7 @@ async function runCreate(
           hostId: context.host.id,
           path: result.path,
           kind: "setup",
+          resumeOnly: launch.ownsPath && launch.path !== null,
           report: launchReporter(deps, launch),
           signal: controller.signal,
         });
@@ -634,16 +635,17 @@ async function runCancel(
     });
     return;
   }
-  await cancelPendingEnvironmentHook(
-    deps,
-    `launch:${launch.threadId}:${launch.attempt}:setup`,
-  );
   if (launch.ownsPath && launch.hostId !== null && launch.path !== null) {
+    await cancelPendingEnvironmentHook(deps, {
+      id: `launch:${launch.threadId}:${launch.attempt}:setup`,
+      hostId: launch.hostId,
+    });
     await runEnvironmentHook(deps, {
       id: `launch:${launch.threadId}:${launch.attempt}:teardown`,
       hostId: launch.hostId,
       path: launch.path,
       kind: "teardown",
+      resumeOnly: false,
       report: {
         step: () => undefined,
         log: (text) =>
@@ -753,6 +755,7 @@ async function runRemove(
   deps: Deps,
   environmentId: string,
   attempt: number,
+  resumeOnly: boolean,
   signal: AbortSignal,
 ): Promise<void> {
   const row = getEnvironment(deps.db, environmentId);
@@ -783,6 +786,7 @@ async function runRemove(
         hostId: row.hostId,
         path: row.path,
         kind: "teardown",
+        resumeOnly,
         report: {
           step: () => undefined,
           log: (text) =>
@@ -926,7 +930,8 @@ async function sweepProviderEnvironmentInSlot(
   const operation = runTrackedOperation({
     map: operations(removeOperations, deps.db),
     key: environmentId,
-    run: (signal) => runRemove(deps, environmentId, attempt, signal),
+    run: (signal) =>
+      runRemove(deps, environmentId, attempt, row.teardownAttempt > 0, signal),
   });
   await operation.done;
 }

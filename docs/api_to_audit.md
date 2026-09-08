@@ -428,6 +428,9 @@ results. Created directories include explicit ownsPath. The core lifecycle
 table owns attempt identity and private resources. Core admits and claims the
 returned path before lifecycle hooks and uses that path for execution.
 Rejected foreign paths are never passed to lifecycle hooks or provider removal.
+Hook execution is deduplicated in daemon memory using launch/environment IDs;
+there is no separate persisted hook ledger or process reconciliation. Recovery
+with unknown daemon hook state blocks automatic cleanup and requires inspection.
 Cleanup permits four operations globally and one per host. Progress remains
 durable before reporting returns, but wakes only its launch without invalidating
 configuration or provider availability. recheck schedules another

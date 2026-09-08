@@ -1090,17 +1090,3 @@ export const environmentLaunches = sqliteTable(
       ),
   ],
 );
-
-export const environmentHookOperations = sqliteTable(
-  "environment_hook_operations",
-  {
-    id: text("id").primaryKey(),
-    operationId: text("operation_id").notNull(),
-    hostId: text("host_id").notNull(),
-    path: text("path").notNull(),
-    kind: text("kind").$type<"setup" | "teardown">().notNull(),
-    startedAt: integer("started_at").notNull(),
-    finishedAt: integer("finished_at"),
-    error: text("error"),
-  },
-);

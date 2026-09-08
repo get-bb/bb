@@ -740,7 +740,7 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
           "Render its own control for those inputs beside the picked provider with app.slots.experimental_environmentProviderInputs, reporting either ready inputs or a blocked reason",
           "Use experimental_BranchPicker for a standard branch choice, or compose experimental_useBranches with experimental_useCheckoutState when it needs checkout-aware branch selection",
           "Run one idempotent long create call that returns a created directory or terminal/transient failure; core owns attempts and retry behavior; provider policy exposes only retirement grace and path-key strategy",
-          "Let bb run the repo setup hook after an owned-path create and teardown before removal; attached paths skip both hooks",
+          "Let bb run the repo setup hook after an owned-path create and teardown before removal; attached paths skip both hooks; unknown hook outcomes after daemon restart block automatic cleanup",
           "Use core's pathKey for stable resource identity; core records it as the environment instance key",
           "Reserve a shared checkout before mutation with create.experimental_claimPath; core holds the host/path claim through attachment or cleanup",
           "Name a branch the way bb would, from the suggestedBranchName core hands every create, and stream progress with report.step and report.log",
