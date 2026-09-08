@@ -110,6 +110,40 @@ afterEach(() => {
 });
 
 describe("EnvironmentPickerUI", () => {
+  it("omits providers absent from scoped eligibility and retains eligible setup rows", () => {
+    const setupProvider = {
+      ...optionalInputsProvider,
+      availability: {
+        status: "setup-required" as const,
+        message: "Configure credentials",
+      },
+    };
+    render(
+      <EnvironmentPickerUI
+        value="provider:project-checkout"
+        sources={sources}
+        host={host}
+        isLocal
+        providers={[checkoutProvider, branchProvider, setupProvider]}
+        onSelectProvider={vi.fn()}
+        providersByHostId={
+          new Map([[host.id, [checkoutProvider, setupProvider]]])
+        }
+        modal={false}
+      />,
+    );
+    fireEvent.pointerDown(screen.getByRole("button", { name: "Environment" }), {
+      button: 0,
+    });
+    expect(
+      screen.queryByRole("menuitem", { name: /New branch workspace/u }),
+    ).toBeNull();
+    expect(
+      screen.getByRole("menuitem", { name: /Optional sandbox/u }),
+    ).toBeTruthy();
+    expect(screen.getByText("Configure credentials")).toBeTruthy();
+  });
+
   it("omits a projectless-only provider from a project picker", () => {
     render(
       <EnvironmentPickerUI

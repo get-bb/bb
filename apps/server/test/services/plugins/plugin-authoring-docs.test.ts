@@ -230,9 +230,7 @@ const THREAD_EVENT_PAYLOAD_FIELDS = {
     "attemptNumber",
   ],
 } as const satisfies {
-  [
-    E in keyof PluginThreadEventPayloads
-  ]: readonly (keyof PluginThreadEventPayloads[E])[];
+  [E in keyof PluginThreadEventPayloads]: readonly (keyof PluginThreadEventPayloads[E])[];
 };
 
 type MissingThreadEventField = {
@@ -508,6 +506,16 @@ void _assertAllThreadChatMessageActionFieldsListed;
 describe("bb-plugin-authoring skill", () => {
   const skillEntry = readFileSync(SKILL_PATH, "utf8");
   const skill = readSkillTree();
+
+  it("does not advertise unshipped machine providers", () => {
+    for (const doc of [
+      skillEntry,
+      readReference("frontend-renderer-slots.md"),
+      readReference("backend-events.md"),
+    ]) {
+      expect(doc).not.toMatch(/machine providers?|custom-machine/);
+    }
+  });
 
   it("has frontmatter naming the skill after its directory", () => {
     expect(skillEntry).toMatch(/^---\nname: bb-plugin-authoring\n/);

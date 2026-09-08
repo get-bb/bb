@@ -8,6 +8,7 @@ import {
   createProjectSource,
   ensurePersonalProject,
   getEnvironment,
+  getEnvironmentLaunch,
   getDefaultProjectSource,
   getThread,
   listEnvironments,
@@ -362,14 +363,37 @@ describe("environment providers are asked inside provisioning", () => {
   it("attaches a ready answer through placement and tells the hook the environment intent", async () => {
     await withTestHarness(async (harness) => {
       const environmentIntents = installEnvironmentIntentProbe();
-      const { environment, host, project } = seedTargetFixture(
+      const { environment, host, project, session } = seedTargetFixture(
         harness,
         "host-target-ready",
         { environmentProviderId: PROVIDER_ID },
       );
+      let provisioningThreadId: string | null = null;
+      const refreshAssignments: Array<{
+        launch: string | null;
+        thread: string | null;
+      }> = [];
+      registerTestHostRpcCapture(harness, {
+        hostId: host.id,
+        sessionId: session.id,
+        onInspectGitSource: () => {
+          if (provisioningThreadId === null) return;
+          refreshAssignments.push({
+            launch:
+              getEnvironmentLaunch(harness.db, provisioningThreadId)
+                ?.environmentId ?? null,
+            thread:
+              getThread(harness.db, provisioningThreadId)?.environmentId ??
+              null,
+          });
+        },
+      });
       installTarget({
         inputs: CONTAINER_INPUTS,
-        provision: () => readyAt(host),
+        provision: (context) => {
+          provisioningThreadId = context.thread.id;
+          return readyAt(host);
+        },
       });
       const created = await createTargetThread(harness, {
         projectId: project.id,
@@ -381,6 +405,10 @@ describe("environment providers are asked inside provisioning", () => {
           environment.id,
         );
       });
+      expect(refreshAssignments).toEqual([{ launch: null, thread: null }]);
+      expect(getEnvironmentLaunch(harness.db, created.id)?.environmentId).toBe(
+        environment.id,
+      );
       expect(getThread(harness.db, created.id)?.status).toBe("starting");
       expect(environmentIntents).toEqual([
         {
@@ -1247,6 +1275,49 @@ describe("environment provider listing", () => {
     });
   });
 
+  it.each(["gitCheckout", "gitRemote", "host"])(
+    "omits providers with unmet %s requirements before availability",
+    async (requirement) => {
+      await withTestHarness(async (harness) => {
+        const availability = vi.fn(() => ({
+          status: "setup-required" as const,
+          message: "Configure credentials",
+        }));
+        installTarget({
+          requiresGitCheckout: requirement === "gitCheckout",
+          requiresGitRemote: requirement === "gitRemote",
+          availability,
+          provision: () => ({ action: "wait", reason: "…" }),
+        });
+        const { host, project, session } = seedTargetFixture(
+          harness,
+          "host-filter-requirements",
+        );
+        registerTestHostRpcCapture(harness, {
+          hostId: host.id,
+          sessionId: session.id,
+          gitSourceInspectionResult: {
+            checkout: { kind: "unknown", reason: "not a git repository" },
+            defaultBranch: null,
+            defaultBranchRelation: null,
+            isWorktree: false,
+            hasUncommittedChanges: false,
+            operation: { kind: "none" },
+            originDefaultBranch: null,
+          },
+        });
+        const hostId = requirement === "host" ? "missing-host" : host.id;
+        const body = await readJson(
+          await harness.app.request(
+            `/api/v1/system/environment-providers?projectId=${project.id}&hostId=${hostId}`,
+          ),
+        );
+        expect(body).toEqual({ providers: [] });
+        expect(availability).not.toHaveBeenCalled();
+      });
+    },
+  );
+
   it("recomputes core availability after a checkout is added", async () => {
     await withTestHarness(async (harness) => {
       let checks = 0;
@@ -1272,10 +1343,7 @@ describe("environment provider listing", () => {
       const before = (await readJson(await harness.app.request(path))) as {
         providers: Array<{ availability: unknown }>;
       };
-      expect(before.providers[0]?.availability).toEqual({
-        status: "unavailable",
-        message: "This project has no checkout on the selected machine.",
-      });
+      expect(before.providers).toEqual([]);
       expect(checks).toBe(0);
 
       createProjectSource(harness.db, harness.hub, {

@@ -170,7 +170,7 @@ Register resource operations with `bb.experimental_environments.register`.
 `icon` accepts host glyphs, plugin-relative assets, and this plugin's declared
 namespaced icons, just like agent providers. The provider listing includes a
 hashed `logoUrl` for assets. `app.slots.experimental_providerIcon` can override
-an environment or machine provider's icon by its provider ID.
+an environment provider's icon by its provider ID.
 
 ```ts
 bb.experimental_environments.register({
@@ -398,3 +398,15 @@ if (!initial.apiKey)
     "Set apiKey with `bb plugin config <id>`, then reload.",
   );
 ```
+
+`create.experimental_claimPath(path)` atomically reserves a directory on the selected
+host for this launch before workspace mutations. It returns false if another
+unattached launch holds the host/path, this attempt is no longer creating, or
+this attempt already reserved another path. Repeating the same claim succeeds.
+Core retains the durable claim through attachment, or until failed creation
+settles or cancellation cleanup completes. Check existing attached threads after
+claiming and before mutating a shared checkout. Claims use absolute paths with
+trailing slashes removed; providers must use a consistent host path spelling.
+Scoped discovery omits providers whose requirements are unmet; availability rows
+are only returned for eligible providers. Without a machine scope, discovery
+includes providers eligible on any persistent machine.

@@ -299,32 +299,6 @@ export async function handleUpdateEnvironmentDirectoryToolCall(
     );
   }
 
-  const refusal = foreignProviderOwnedPathRefusal(deps.db, {
-    dataDir: findHostDataDir(deps, args.currentEnvironment.hostId),
-    hostId: args.currentEnvironment.hostId,
-    path: normalizedPath,
-    projectId: args.thread.projectId,
-  });
-  if (refusal !== null) {
-    return toolCallFailure(`${refusal}. Use a different directory.`);
-  }
-  const checkoutProvider = getEnvironmentProvider(
-    DEFAULT_ENVIRONMENT_PROVIDER_ID.projectCheckout,
-  );
-  if (checkoutProvider !== undefined) {
-    try {
-      await validateProviderSelection(deps, checkoutProvider, {
-        hostId: args.currentEnvironment.hostId,
-        inputs: { path: normalizedPath },
-        projectId: args.thread.projectId,
-      });
-    } catch (error) {
-      return toolCallFailure(
-        `${error instanceof Error ? error.message : String(error)}. Use a different directory.`,
-      );
-    }
-  }
-
   const existingEnvironment = findProjectEnvironmentByHostPath(
     deps.db,
     args.thread.projectId,
@@ -341,6 +315,31 @@ export async function handleUpdateEnvironmentDirectoryToolCall(
     }
     targetEnvironment = ready;
   } else {
+    const refusal = foreignProviderOwnedPathRefusal(deps.db, {
+      dataDir: findHostDataDir(deps, args.currentEnvironment.hostId),
+      hostId: args.currentEnvironment.hostId,
+      path: normalizedPath,
+      projectId: args.thread.projectId,
+    });
+    if (refusal !== null) {
+      return toolCallFailure(`${refusal}. Use a different directory.`);
+    }
+    const checkoutProvider = getEnvironmentProvider(
+      DEFAULT_ENVIRONMENT_PROVIDER_ID.projectCheckout,
+    );
+    if (checkoutProvider !== undefined) {
+      try {
+        await validateProviderSelection(deps, checkoutProvider, {
+          hostId: args.currentEnvironment.hostId,
+          inputs: { path: normalizedPath },
+          projectId: args.thread.projectId,
+        });
+      } catch (error) {
+        return toolCallFailure(
+          `${error instanceof Error ? error.message : String(error)}. Use a different directory.`,
+        );
+      }
+    }
     const provisionedEnvironment = await provisionUnmanagedEnvironmentForPath(
       deps,
       {

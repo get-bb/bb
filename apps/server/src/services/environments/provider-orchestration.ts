@@ -11,6 +11,7 @@ import {
   environments,
   getEnvironment,
   getEnvironmentLaunch,
+  claimEnvironmentLaunchPath,
   listCancelledEnvironmentLaunches,
   listProviderLifecycleEnvironments,
   saveEnvironmentLaunch,
@@ -235,6 +236,20 @@ async function runCreate(
         pathKey: launch.pathKey,
         attempt: launch.attempt,
         rebuild: previous !== null,
+        experimental_claimPath: (value) => {
+          const path = z
+            .string()
+            .min(1)
+            .startsWith("/")
+            .refine((path) => !path.includes("\0"))
+            .parse(value);
+          if (controller.signal.aborted) return false;
+          return claimEnvironmentLaunchPath(
+            deps.db,
+            launch,
+            path.replace(/\/+$/u, "") || "/",
+          );
+        },
         previous:
           previous === null
             ? null
@@ -555,17 +570,19 @@ export async function cancelProviderLaunch(
     cancelPending: true,
   };
   updateEnvironmentLaunch(deps.db, cancelled);
-  const create = operations(createOperations, deps.db).get(
-    `${row.threadId}:${row.attempt}`,
-  );
-  if (create !== undefined) {
-    create.controller.abort();
-    await create.done;
-  }
   const operation = runTrackedOperation({
     map: operations(cancelOperations, deps.db),
     key: threadId,
-    run: (signal) => runCancel(deps, cancelled, signal),
+    run: async (signal) => {
+      const create = operations(createOperations, deps.db).get(
+        `${row.threadId}:${row.attempt}`,
+      );
+      if (create !== undefined) {
+        create.controller.abort();
+        await create.done;
+      }
+      await runCancel(deps, cancelled, signal);
+    },
   });
   await operation.done;
 }
@@ -744,21 +761,25 @@ export async function sweepProviderEnvironment(
 
 export async function sweepProviderLifecycles(deps: Deps): Promise<void> {
   for (const row of listCancelledEnvironmentLaunches(deps.db)) {
-    try {
-      await cancelProviderLaunch(deps, row.threadId);
-    } catch (error) {
+    void cancelProviderLaunch(deps, row.threadId).catch((error) => {
       deps.logger.warn(
         { threadId: row.threadId, error: message(error) },
         "Environment cancellation will retry",
       );
-    }
+    });
   }
   for (const record of listEnvironmentProviders()) {
     for (const row of listProviderLifecycleEnvironments(
       deps.db,
       record.provider.id,
-    ))
-      await sweepProviderEnvironment(deps, row.id);
+    )) {
+      void sweepProviderEnvironment(deps, row.id).catch((error) => {
+        deps.logger.warn(
+          { environmentId: row.id, error: message(error) },
+          "Environment removal will retry",
+        );
+      });
+    }
   }
   deleteFinishedEnvironmentLaunches(deps.db);
 }

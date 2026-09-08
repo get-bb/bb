@@ -32,3 +32,44 @@ export function environmentHasLiveThreads(db: Connection, environmentId: string)
 export function deleteFinishedEnvironmentLaunches(db: Connection): void {
   db.delete(environmentLaunches).where(and(eq(environmentLaunches.cancelPending, false), ne(environmentLaunches.phase, "creating"), sql`(${environmentLaunches.environmentId} is not null or ${environmentLaunches.phase} = 'failed' or ${environmentLaunches.phase} = 'cancelled')`, sql`not exists (select 1 from ${threads} where ${threads.id} = ${environmentLaunches.threadId} and ${threads.deletedAt} is null)`)).run();
 }
+
+export function claimEnvironmentLaunchPath(
+  db: DbConnection,
+  launch: EnvironmentLaunchRow,
+  path: string,
+): boolean {
+  return db.transaction(
+    (tx) => {
+      const current = getEnvironmentLaunch(tx, launch.threadId);
+      if (
+        current === null ||
+        current.attempt !== launch.attempt ||
+        current.phase !== "creating" ||
+        current.hostId === null
+      )
+        return false;
+      if (current.path !== null && current.path !== path) return false;
+      const competing = tx
+        .select({ threadId: environmentLaunches.threadId })
+        .from(environmentLaunches)
+        .where(
+          and(
+            eq(environmentLaunches.hostId, current.hostId),
+            eq(environmentLaunches.path, path),
+            ne(environmentLaunches.threadId, current.threadId),
+            isNull(environmentLaunches.environmentId),
+            or(
+              eq(environmentLaunches.phase, "creating"),
+              eq(environmentLaunches.phase, "ready"),
+              eq(environmentLaunches.cancelPending, true),
+            ),
+          ),
+        )
+        .limit(1)
+        .get();
+      if (competing !== undefined) return false;
+      return updateEnvironmentLaunch(tx, { ...current, path });
+    },
+    { behavior: "immediate" },
+  );
+}
