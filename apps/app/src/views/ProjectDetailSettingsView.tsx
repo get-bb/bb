@@ -303,6 +303,16 @@ export function ProjectDetailSettingsView() {
     [localSourcePicker, pickerHostId, project],
   );
 
+  if (sidebarNavigationQuery.isError || hostsQuery.isError) {
+    return (
+      <LoadingShell>
+        <p className="text-sm text-destructive" role="alert">
+          Couldn't load this project.
+        </p>
+      </LoadingShell>
+    );
+  }
+
   if (projects === undefined || hostsQuery.data === undefined) {
     return (
       <LoadingShell>
@@ -444,7 +454,13 @@ export function ProjectDetailSettingsView() {
           title="Thread defaults"
           description={DEFAULTS_DESCRIPTION}
         >
-          {defaults === null ? (
+          {defaultsQuery.isError ? (
+            <p className="text-sm text-destructive" role="alert">
+              Couldn't load thread defaults.
+            </p>
+          ) : defaultsQuery.isPending ? (
+            <p className="text-sm text-muted-foreground">Loading…</p>
+          ) : defaults === null ? (
             <p className="text-sm text-muted-foreground">
               No threads have run here yet. The first thread's options become
               the defaults.
@@ -491,7 +507,7 @@ export function ProjectDetailSettingsView() {
 
         <SettingsSection
           title="Danger zone"
-          description={`Deleting ${project.name} removes its ${pluralize(project.threads.length, "thread")} from bb. Checkouts stay on disk.`}
+          description={`Deleting ${project.name} removes the project and every thread in it, including archived ones. Checkouts stay on disk.`}
         >
           <SettingsRowList>
             <SettingsRow>

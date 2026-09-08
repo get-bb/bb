@@ -1,4 +1,4 @@
-import { useMemo, useState, type CSSProperties } from "react";
+import { useEffect, useMemo, useState, type CSSProperties } from "react";
 import { Link } from "react-router-dom";
 import {
   closestCenter,
@@ -244,6 +244,9 @@ export function ProjectsSettingsSection() {
   const [optimisticOrder, setOptimisticOrder] = useState<string[] | null>(null);
 
   const serverProjects = sidebarNavigationQuery.data?.projects;
+  useEffect(() => {
+    setOptimisticOrder(null);
+  }, [serverProjects]);
   const projects = useMemo(() => {
     if (!serverProjects) return undefined;
     if (!optimisticOrder) return serverProjects;
@@ -296,7 +299,7 @@ export function ProjectsSettingsSection() {
         previousProjectId: next[to - 1] ?? null,
         nextProjectId: next[to + 1] ?? null,
       },
-      { onSettled: () => setOptimisticOrder(null) },
+      { onError: () => setOptimisticOrder(null) },
     );
   };
 
@@ -319,7 +322,11 @@ export function ProjectsSettingsSection() {
           </Button>
         }
       >
-        {projects === undefined ? (
+        {sidebarNavigationQuery.isError ? (
+          <p className="text-sm text-destructive" role="alert">
+            Couldn't load projects.
+          </p>
+        ) : projects === undefined ? (
           <p className="text-sm text-muted-foreground">Loading…</p>
         ) : projects.length === 0 ? (
           <p className="text-sm text-subtle-foreground">
@@ -369,6 +376,7 @@ export function ProjectsSettingsSection() {
         platform={quickCreateProject.platform}
         hostId={quickCreateProject.hostId}
         hostName={quickCreateProject.hostName}
+        hosts={quickCreateProject.hosts}
         onOpenChange={quickCreateProject.projectPathDialog.onOpenChange}
         onSubmit={quickCreateProject.submitProjectPath}
       />
