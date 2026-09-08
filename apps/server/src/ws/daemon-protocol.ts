@@ -1,3 +1,4 @@
+import { backfillEnvironmentPathIdentities } from "../services/environments/path-admission.js";
 import { syncDesktopBrowserTabs } from "../services/desktop-browsers.js";
 import { heartbeatSession } from "@bb/db";
 import {
@@ -82,6 +83,14 @@ export function onDaemonSocketOpen(
     "Daemon WebSocket opened",
   );
   deps.hub.registerDaemon(args.sessionId, args.hostId, args.socket);
+  void backfillEnvironmentPathIdentities(deps, args.hostId).catch(
+    (error: unknown) => {
+      deps.logger.warn(
+        { err: error, hostId: args.hostId },
+        "Environment canonical path backfill interrupted",
+      );
+    },
+  );
   deps.sharedPorts.pushCurrentSharedPortsForHost(args.hostId);
   deps.terminalSessions.expireDisconnectedHostTerminals({
     daemonSessionId: args.sessionId,
