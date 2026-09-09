@@ -55,6 +55,7 @@ import {
   threads,
 } from "../schema.js";
 import { createEventId } from "../ids.js";
+import { COMPLETED_EVENT_OUTPUT_TRUNCATION_THRESHOLD_CHARS } from "../retained-event-output.js";
 import { truncatedEventDataColumn } from "./event-output-truncation.js";
 import { deriveStoredEventItemFieldsFromSource } from "../stored-event-item-fields.js";
 import {
@@ -3254,12 +3255,21 @@ const isNotDiagnosticEvent = sql`(
       AND length(json_extract(${events.data}, '$.rawEvent.params.message.fallback_model')) > 0
     ), 0)
     OR CASE
-      WHEN instr(${events.data}, '"truncation"') = 0 THEN 0
+      WHEN instr(${events.data}, '"imageGeneration"') = 0 THEN 0
       WHEN json_valid(${events.data}) THEN
         json_extract(${events.data}, '$.rawType') = 'item/completed'
         AND json_extract(${events.data}, '$.rawEvent.method') = 'item/completed'
         AND json_extract(${events.data}, '$.rawEvent.params.item.type') = 'imageGeneration'
-        AND json_type(${events.data}, '$.rawEvent.params.item.truncation.result') = 'object'
+        AND (
+          json_type(${events.data}, '$.rawEvent.params.item.truncation.result') = 'object'
+          OR json_type(${events.data}, '$.rawEvent.params.item.result') IS NULL
+          OR json_type(${events.data}, '$.rawEvent.params.item.result') = 'null'
+          OR (
+            json_type(${events.data}, '$.rawEvent.params.item.result') = 'text'
+            AND length(json_extract(${events.data}, '$.rawEvent.params.item.result'))
+              <= ${COMPLETED_EVENT_OUTPUT_TRUNCATION_THRESHOLD_CHARS}
+          )
+        )
       ELSE 0
     END
   )

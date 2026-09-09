@@ -1010,6 +1010,86 @@ describe("in-turn timeline windows", () => {
     expect(latest.profile.eventRowCount).toBe(0);
   });
 
+  it("keeps bounded legacy image completions visible before and after migration sweeps", () => {
+    const { db, thread } = setup();
+    seedTurns(db, thread, { completeLastTurn: false, itemsPerTurn: [0] });
+    const migratedAt = Date.now() + 1_000;
+    const cases = [
+      { id: "short", result: "encoded-small", status: "completed" },
+      { id: "threshold", result: "i".repeat(32 * 1024), status: "completed" },
+      { id: "unicode", result: "画像".repeat(8 * 1024), status: "completed" },
+      { id: "empty", result: "", status: "failed" },
+      { id: "absent", result: undefined, status: "failed" },
+      { id: "null", result: null, status: "failed" },
+      { id: "large", result: "i".repeat(40_000), status: "completed" },
+      { id: "diagnostic", result: "", status: "failed" },
+    ];
+    const sequence = getLatestThreadSequence(db, { threadId: thread.id });
+    insertEvents(
+      db,
+      noopNotifier,
+      cases.map((item, index) => ({
+        createdAt: migratedAt - 1,
+        threadId: thread.id,
+        sequence: sequence + index + 1,
+        type: "provider/unhandled",
+        scope: turnScope("turn-1"),
+        providerThreadId,
+        itemId: null,
+        itemKind: null,
+        parentToolCallId: null,
+        data: JSON.stringify({
+          providerId: "codex",
+          rawType: "item/completed",
+          rawEvent: {
+            jsonrpc: "2.0",
+            method: "item/completed",
+            params: {
+              threadId: providerThreadId,
+              turnId: "turn-1",
+              item: {
+                ...item,
+                type:
+                  item.id === "diagnostic" ? "unrelated" : "imageGeneration",
+                revisedPrompt: "Draw an image",
+                savedPath: "/tmp/generated.png",
+                failure:
+                  item.status === "failed" ? { message: "Failed" } : null,
+              },
+            },
+          },
+        }),
+      })),
+    );
+    const expected = cases.slice(0, 6).map(({ id, status }) => ({
+      callId: id,
+      status: status === "failed" ? "error" : "completed",
+    }));
+    const visible = () =>
+      buildNestedPage(db, thread, LARGE_BUDGET, null)
+        .response.rows.flatMap((row) =>
+          row.kind === "turn" && row.children ? row.children : [row],
+        )
+        .filter(
+          (row) => row.kind === "work" && row.workKind === "image-generation",
+        )
+        .map((row) => ({ callId: row.callId, status: row.status }));
+    expect(visible()).toEqual(expected);
+    let migratedRows = 0;
+    for (let pass = 0; pass < cases.length; pass += 1) {
+      migratedRows += migrateNextLegacyImageGenerationOutput(db, {
+        limit: 100,
+        migratedAt,
+      }).migratedRows;
+    }
+    expect(migratedRows).toBe(1);
+    expect(visible()).toEqual([
+      ...expected,
+      { callId: "large", status: "completed" },
+    ]);
+    db.$client.close();
+  });
+
   it("renders a migrated oversized Codex image generation as a compact row", () => {
     const { db, thread } = setup();
     seedTurns(db, thread, { completeLastTurn: false, itemsPerTurn: [0] });
