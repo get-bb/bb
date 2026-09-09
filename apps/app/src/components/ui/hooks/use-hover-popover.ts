@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { useIsCompactViewport } from "@bb/shared-ui/hooks/use-compact-viewport";
 import { usePointerCoarse } from "@bb/shared-ui/hooks/use-pointer-coarse";
 
 interface HoverPopoverHandlers {
@@ -52,6 +53,8 @@ export function useHoverPopover({
   hoverableContent = true,
 }: UseHoverPopoverOptions = {}): UseHoverPopoverResult {
   const isPointerCoarse = usePointerCoarse();
+  const isCompactViewport = useIsCompactViewport();
+  const isPointerHoverDisabled = isPointerCoarse || isCompactViewport;
   const [open, setOpen] = useState(false);
   const [isFocusOverTrigger, setIsFocusOverTrigger] = useState(false);
   const [isFocusOverContent, setIsFocusOverContent] = useState(false);
@@ -68,7 +71,7 @@ export function useHoverPopover({
   }, []);
 
   useEffect(() => {
-    if (isPointerCoarse) return;
+    if (isPointerHoverDisabled) return;
 
     clearToggleTimeout();
 
@@ -106,7 +109,7 @@ export function useHoverPopover({
     closeDelayMs,
     isFocusOverContent,
     isFocusOverTrigger,
-    isPointerCoarse,
+    isPointerHoverDisabled,
     isPointerOverContent,
     isPointerOverTrigger,
     open,
@@ -134,7 +137,7 @@ export function useHoverPopover({
   );
 
   const triggerHoverProps = {
-    ...(isPointerCoarse
+    ...(isPointerHoverDisabled
       ? EMPTY_HOVER_PROPS
       : {
           onPointerEnter: () => {
@@ -149,7 +152,7 @@ export function useHoverPopover({
   };
 
   const contentHoverProps = {
-    ...(isPointerCoarse
+    ...(isPointerHoverDisabled
       ? EMPTY_HOVER_PROPS
       : hoverableContent
         ? {
