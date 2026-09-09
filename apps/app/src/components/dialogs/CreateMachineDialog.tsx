@@ -1,4 +1,3 @@
-import { Alert } from "@bb/shared-ui/alert";
 import { MachineAccessSettings } from "@/components/settings/MachineAccessSettings";
 import { useSystemConfig } from "@/hooks/queries/system-queries";
 import { isLocalOnlyUrl } from "@/lib/loopback-hostname";
@@ -84,19 +83,15 @@ function CreateMachineContent({
     return (
       <>
         <DialogHeader>
-          <DialogTitle>Add a machine</DialogTitle>
-          {loading && (
-            <DialogDescription>Checking machine access…</DialogDescription>
-          )}
+          <DialogTitle>
+            {loading ? "Add a machine" : "Set up machine access"}
+          </DialogTitle>
+          <DialogDescription className={loading ? undefined : "sr-only"}>
+            {loading
+              ? "Checking machine access…"
+              : "Choose how new machines connect to the server."}
+          </DialogDescription>
         </DialogHeader>
-        {!loading && !config.isError && (
-          <Alert role="status" className="border-0 bg-muted/50">
-            <Icon name="Info" className="size-4" />
-            <DialogDescription className="text-sm text-foreground">
-              Give your machines a way to reach the server before adding them.
-            </DialogDescription>
-          </Alert>
-        )}
         {config.isError ? (
           <p role="alert">
             Could not check machine access.{" "}
@@ -106,7 +101,10 @@ function CreateMachineContent({
           </p>
         ) : (
           !loading && (
-            <MachineAccessSettings onNavigate={() => onOpenChange(false)} />
+            <MachineAccessSettings
+              presentation="dialog"
+              onNavigate={() => onOpenChange(false)}
+            />
           )
         )}
       </>

@@ -14,8 +14,10 @@ import {
 
 export function MachineAccessSettings({
   onNavigate,
+  presentation = "settings",
 }: {
   onNavigate?: () => void;
+  presentation?: "settings" | "dialog";
 }) {
   const config = useSystemConfig();
   const update = useUpdateGeneralSettings();
@@ -64,8 +66,12 @@ export function MachineAccessSettings({
   );
   return (
     <SettingsSection
-      title="Machine access"
-      description="Choose how new machines connect to the server."
+      title={presentation === "dialog" ? "Connection method" : "Machine access"}
+      description={
+        presentation === "dialog"
+          ? undefined
+          : "Choose how new machines connect to the server."
+      }
       action={
         <OptionPicker
           modal={false}
@@ -107,7 +113,11 @@ export function MachineAccessSettings({
           }}
         />
       }
-      bodyClassName="space-y-3"
+      bodyClassName={
+        presentation === "dialog"
+          ? "space-y-3 border-0 bg-transparent p-0"
+          : "space-y-3"
+      }
     >
       {access?.providers.map((provider) =>
         provider.attention ? (
