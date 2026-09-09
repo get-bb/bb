@@ -74,6 +74,7 @@ function CreateMachineContent({
     accessProvider?.availability.status === "available" && !localUrl;
   const createController = useRef<AbortController | null>(null);
   const createKey = useRef<string | null>(null);
+  const [commandReady, setCommandReady] = useState(false);
   const [commandExpired, setCommandExpired] = useState(false);
   const [progress, setProgress] = useState("");
   const [launchId, setLaunchId] = useState<string | null>(null);
@@ -140,6 +141,7 @@ function CreateMachineContent({
         throw new Error("Select a machine provider.");
       }
       setCommandExpired(false);
+      setCommandReady(false);
       setProgress("");
       setLaunchId(null);
       const controller = new AbortController();
@@ -305,7 +307,7 @@ function CreateMachineContent({
           !createMachine.isError &&
           !launchId && (
             <p role="status" className="text-sm text-subtle-foreground">
-              Preparing enrollment command…
+              Preparing command…
             </p>
           )}
         {otherOptions && accessReady && alternativeProviders.length > 0 ? (
@@ -466,6 +468,7 @@ function CreateMachineContent({
           id={launchId}
           scope="launch"
           onExpired={() => setCommandExpired(true)}
+          onReadyChange={setCommandReady}
           onRegenerate={
             otherOptions
               ? undefined
@@ -482,7 +485,9 @@ function CreateMachineContent({
         <div className="flex items-center justify-between gap-3">
           <p role="status" className="text-xs text-subtle-foreground">
             {createMachine.isPending && launchId
-              ? "Waiting for the machine to connect…"
+              ? commandReady
+                ? "Waiting for the machine to connect…"
+                : "Preparing command…"
               : ""}
           </p>
           {alternativeProviders.length > 0 && providerOptionsLink}

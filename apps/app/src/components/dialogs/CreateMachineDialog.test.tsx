@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 
 import {
+  act,
   cleanup,
   fireEvent,
   render,
@@ -157,8 +158,14 @@ it("lists alternative providers without duplicating the manual command flow", as
   expect(sdk.hosts.createJoinCode).not.toHaveBeenCalled();
 });
 
-it("prepares the manual command immediately when access is ready", async () => {
+it("shows preparation until the command is available, then waits for the machine", async () => {
   accessState.ready = true;
+  let resolveCommand!: (value: { command: string; expiresAt: number }) => void;
+  vi.mocked(sdk.hosts.experimental_enrollmentCommand).mockReturnValue(
+    new Promise((resolve) => {
+      resolveCommand = resolve;
+    }),
+  );
   const { wrapper } = createQueryClientTestHarness();
   try {
     render(
@@ -167,7 +174,24 @@ it("prepares the manual command immediately when access is ready", async () => {
       </MemoryRouter>,
       { wrapper },
     );
+    await waitFor(() =>
+      expect(sdk.hosts.experimental_enrollmentCommand).toHaveBeenCalled(),
+    );
+    expect(screen.getByText("Preparing command…")).toBeTruthy();
+    expect(
+      screen.queryByText("Waiting for the machine to connect…"),
+    ).toBeNull();
+    await act(async () => {
+      resolveCommand({
+        command: "test-command",
+        expiresAt: Date.now() + 60_000,
+      });
+    });
     await screen.findByRole("button", { name: "Copy command" });
+    expect(
+      screen.getByText("Waiting for the machine to connect…"),
+    ).toBeTruthy();
+    expect(screen.queryByText("Preparing command…")).toBeNull();
     expect(sdk.hosts.submit).toHaveBeenCalledExactlyOnceWith(
       expect.objectContaining({ machineProviderId: "manual", projectId: null }),
     );

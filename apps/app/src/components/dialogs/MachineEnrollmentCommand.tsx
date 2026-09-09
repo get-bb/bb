@@ -8,11 +8,13 @@ export function MachineEnrollmentCommand({
   scope,
   onRegenerate,
   onExpired,
+  onReadyChange,
 }: {
   id: string;
   scope: "launch" | "thread";
   onRegenerate?: () => Promise<void>;
   onExpired?: () => void;
+  onReadyChange?: (ready: boolean) => void;
 }) {
   const [command, setCommand] = useState<string | null>(null);
   const [expiresAt, setExpiresAt] = useState<number | null>(null);
@@ -27,6 +29,9 @@ export function MachineEnrollmentCommand({
   useEffect(() => {
     if (expired) onExpired?.();
   }, [expired, onExpired]);
+  useEffect(() => {
+    onReadyChange?.(command !== null && !expired);
+  }, [command, expired, onReadyChange]);
   const { copy, copied } = useClipboardCopy({
     text: expired ? "" : (command ?? ""),
   });
