@@ -75,12 +75,25 @@ function reaskLater(
         return;
       }
       ask.nextAskTimer = null;
-      void advanceThreadProvisioning(deps, { threadId }).catch((error) => {
-        deps.logger.warn(
-          { threadId, ...runtimeErrorLogFields(deps.config, error) },
-          "Failed to re-ask an environment provider",
-        );
-      });
+      void advanceThreadProvisioning(deps, { threadId })
+        .catch((error) => {
+          deps.logger.warn(
+            { threadId, ...runtimeErrorLogFields(deps.config, error) },
+            "Failed to re-ask an environment provider",
+          );
+        })
+        .finally(() => {
+          const askIsActive = listActiveThreadProviderAsks().some(
+            (entry) => entry.threadId === threadId && entry.ask === ask,
+          );
+          if (
+            askIsActive &&
+            ask.recheckRequested &&
+            ask.nextAskTimer === null
+          ) {
+            ask.nextAskTimer = reaskLater(deps, ask, threadId, Date.now());
+          }
+        });
     },
     Math.min(Math.max(0, at - Date.now()), MAX_TIMER_DELAY_MS),
   );

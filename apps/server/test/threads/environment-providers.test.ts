@@ -508,6 +508,70 @@ describe("environment providers are asked inside provisioning", () => {
     });
   });
 
+  it("preserves a launch recheck that overlaps an in-flight provisioning advance", async () => {
+    await withTestHarness(async (harness) => {
+      const createReady = createDeferredPromise<void>();
+      const firstAdvanceFinished = createDeferredPromise<void>();
+      const releaseFirstAdvance = createDeferredPromise<void>();
+      const { environment, host, project } = seedTargetFixture(
+        harness,
+        "host-target-overlapping-recheck",
+        { environmentProviderId: PROVIDER_ID },
+      );
+      installTarget({
+        provision: async () => {
+          await createReady.promise;
+          return readyAt(host);
+        },
+      });
+
+      let pendingAdvance: Promise<void> | null = null;
+      let coalescedAdvanceCount = 0;
+      harness.deps.lifecycleDedupers.threadProvisionAdvance = {
+        run(_threadId, task) {
+          if (pendingAdvance !== null) {
+            coalescedAdvanceCount += 1;
+            return pendingAdvance;
+          }
+          const started = (async () => {
+            await task();
+            firstAdvanceFinished.resolve();
+            await releaseFirstAdvance.promise;
+          })();
+          pendingAdvance = started.finally(() => {
+            pendingAdvance = null;
+          });
+          return pendingAdvance;
+        },
+      };
+
+      try {
+        const created = await createTargetThread(harness, {
+          projectId: project.id,
+        });
+        await firstAdvanceFinished.promise;
+        createReady.resolve();
+        await vi.waitFor(() => {
+          expect(getEnvironmentLaunch(harness.db, created.id)?.phase).toBe(
+            "ready",
+          );
+        });
+        await vi.waitFor(() => {
+          expect(coalescedAdvanceCount).toBeGreaterThan(0);
+        });
+        releaseFirstAdvance.resolve();
+        await vi.waitFor(() => {
+          expect(getThread(harness.db, created.id)?.environmentId).toBe(
+            environment.id,
+          );
+        });
+      } finally {
+        createReady.resolve();
+        releaseFirstAdvance.resolve();
+      }
+    });
+  });
+
   it("refuses a host answer naming a path another provider's row holds", async () => {
     await withTestHarness(async (harness) => {
       const { host, project, session } = seedTargetFixture(
