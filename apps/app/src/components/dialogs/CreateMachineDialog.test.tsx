@@ -33,7 +33,7 @@ vi.mock("@/components/plugin/PluginSlotMount", () => ({
 }));
 vi.mock("@/lib/sdk", () => ({
   sdk: {
-    system: { config: vi.fn() },
+    system: { config: vi.fn(), updateGeneralSettings: vi.fn() },
     projects: { list: vi.fn().mockResolvedValue([]) },
     hosts: {
       submit: vi.fn(),
@@ -162,4 +162,52 @@ it("blocks provider selection until access is configured", async () => {
     screen.queryByRole("button", { name: "Plugin-owned setup" }),
   ).toBeNull();
   expect(sdk.hosts.submit).not.toHaveBeenCalled();
+});
+
+it("saves a manual address in the access gate and advances without reopening", async () => {
+  const config = await sdk.system.config();
+  config.serverAccess = {
+    defaultProviderId: "direct",
+    effectiveUrl: "http://127.0.0.1:19635",
+    urlSource: null,
+    providers: [
+      {
+        id: "direct",
+        displayName: "Manual",
+        attention: null,
+        availability: { status: "available" },
+      },
+    ],
+  };
+  vi.mocked(sdk.system.config).mockResolvedValue(config);
+  vi.mocked(sdk.system.updateGeneralSettings).mockImplementation(
+    async (settings) => {
+      vi.mocked(sdk.system.config).mockResolvedValue({
+        ...config,
+        generalSettings: { ...config.generalSettings, ...settings },
+        serverAccess: {
+          ...config.serverAccess,
+          effectiveUrl: settings.machineServerUrl,
+        },
+      });
+      return { ...config.generalSettings, ...settings };
+    },
+  );
+  show();
+  const address = await screen.findByRole("textbox", {
+    name: "Server address",
+  });
+  fireEvent.change(address, { target: { value: "http://localhost:3000" } });
+  fireEvent.click(screen.getByRole("button", { name: "Save address" }));
+  await screen.findByText(
+    "Other machines cannot reach localhost. Use a domain or shared-network address.",
+  );
+  expect(sdk.system.updateGeneralSettings).not.toHaveBeenCalled();
+  expect(screen.queryByRole("button", { name: "command-provider" })).toBeNull();
+  fireEvent.change(address, { target: { value: "https://bb.example.com" } });
+  fireEvent.click(screen.getByRole("button", { name: "Save address" }));
+  await screen.findByRole("button", { name: "command-provider" });
+  expect(sdk.system.updateGeneralSettings).toHaveBeenCalledWith(
+    expect.objectContaining({ machineServerUrl: "https://bb.example.com" }),
+  );
 });

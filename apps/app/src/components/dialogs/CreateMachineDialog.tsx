@@ -1,3 +1,5 @@
+import { MachineAccessSettings } from "@/components/settings/MachineAccessSettings";
+import { useSystemConfig } from "@/hooks/queries/system-queries";
 import { isLocalOnlyUrl } from "@/lib/loopback-hostname";
 import { MachineSetupProgress } from "./MachineSetupProgress";
 import { useEffect, useRef, useState } from "react";
@@ -53,10 +55,7 @@ function CreateMachineContent({
 }) {
   const { providers: loadedProviders } = useSystemMachineProviders();
   const providers = loadedProviders ?? [];
-  const config = useQuery({
-    queryKey: ["machine-setup-access"],
-    queryFn: () => sdk.system.config(),
-  });
+  const config = useSystemConfig();
   const { machineSetup } = usePluginSlots();
   const hosts = useHosts();
   const [selection, setSelection] = useState<string | null | undefined>();
@@ -88,7 +87,7 @@ function CreateMachineContent({
           <DialogDescription>
             {loading
               ? "Checking machine access…"
-              : "Set up machine access before adding a machine."}
+              : "Give your machines a way to reach the server before adding them."}
           </DialogDescription>
         </DialogHeader>
         {config.isError ? (
@@ -100,20 +99,7 @@ function CreateMachineContent({
           </p>
         ) : (
           !loading && (
-            <Button asChild variant="outline">
-              <Link
-                onClick={() => onOpenChange(false)}
-                to={
-                  access?.defaultProviderId === "connect"
-                    ? "/settings/plugins/connect"
-                    : "/settings/machines#advanced-machine-settings"
-                }
-              >
-                {access?.defaultProviderId === "connect"
-                  ? "Set up bb connect"
-                  : "Configure machine access"}
-              </Link>
-            </Button>
+            <MachineAccessSettings onNavigate={() => onOpenChange(false)} />
           )
         )}
       </>

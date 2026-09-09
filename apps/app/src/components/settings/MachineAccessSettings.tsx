@@ -1,3 +1,4 @@
+import { isLocalOnlyUrl } from "@/lib/loopback-hostname";
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { Button } from "@bb/shared-ui/button";
@@ -11,7 +12,11 @@ import {
   SettingsWithControl,
 } from "@/components/ui/settings-section";
 
-export function MachineAccessSettings() {
+export function MachineAccessSettings({
+  onNavigate,
+}: {
+  onNavigate?: () => void;
+}) {
   const config = useSystemConfig();
   const update = useUpdateGeneralSettings();
   const settings = config.data?.generalSettings;
@@ -32,6 +37,12 @@ export function MachineAccessSettings() {
           parsed.password
         )
           throw new Error("Enter an HTTP or HTTPS URL without credentials");
+        if (isLocalOnlyUrl(url)) {
+          setError(
+            "Other machines cannot reach localhost. Use a domain or shared-network address.",
+          );
+          return;
+        }
       }
       await update.mutateAsync({ ...settings, machineServerUrl: url || null });
       setDraft(null);
@@ -57,6 +68,7 @@ export function MachineAccessSettings() {
       description="Choose how new machines connect to the server."
       action={
         <OptionPicker
+          modal={false}
           label="Connection method"
           value={selected}
           disabled={disabled}
@@ -141,12 +153,15 @@ export function MachineAccessSettings() {
               ) : effective?.availability.status === "unavailable" ? (
                 effective.availability.message
               ) : (
-                "Connect your getbb.app account to add machines."
+                "bb connect gives the server a private address your machines can reach. Connect your getbb.app account to get started."
               )}
             </p>
           </div>
           <Button variant="outline" size="sm" asChild>
-            <Link to={getPluginConfigurationRoutePath({ pluginId: "connect" })}>
+            <Link
+              onClick={onNavigate}
+              to={getPluginConfigurationRoutePath({ pluginId: "connect" })}
+            >
               {effective?.availability.status === "available"
                 ? "Manage"
                 : "Set up bb connect"}
@@ -172,19 +187,28 @@ export function MachineAccessSettings() {
             }
             controlPlacement="below"
           >
-            <Input
-              className="max-w-lg"
-              aria-label="Server address"
-              aria-invalid={error !== null}
-              value={draft ?? value}
-              placeholder={access?.effectiveUrl ?? "https://bb.example.com"}
-              disabled={disabled}
-              onChange={(event) => setDraft(event.target.value)}
-              onBlur={() => void commitUrl()}
-              onKeyDown={(event) => {
-                if (event.key === "Enter") void commitUrl();
-              }}
-            />
+            <div className="flex max-w-xl flex-wrap items-center gap-2">
+              <Input
+                className="min-w-0 flex-1 basis-48"
+                aria-label="Server address"
+                aria-invalid={error !== null}
+                value={draft ?? value}
+                placeholder={access?.effectiveUrl ?? "https://bb.example.com"}
+                disabled={disabled}
+                onChange={(event) => setDraft(event.target.value)}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter") void commitUrl();
+                }}
+              />
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={disabled || draft === null || draft.trim() === value}
+                onClick={() => void commitUrl()}
+              >
+                {update.isPending ? "Saving…" : "Save address"}
+              </Button>
+            </div>
           </SettingsWithControl>
         </div>
       )}
