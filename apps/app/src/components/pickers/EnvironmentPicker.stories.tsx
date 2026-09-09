@@ -206,3 +206,28 @@ export function MachineMenu() {
     </StoryCard>
   );
 }
+
+export function ManyMachines() {
+  const hosts = Array.from({ length: 12 }, (_, index) =>
+    makeHost({ id: `host_scroll_${index}`, name: `Machine ${index + 1}` }),
+  );
+  return (
+    <EnvironmentPickerUI
+      value="provider:project-checkout"
+      sources={hosts.map((host, index) =>
+        makeSource(`src_scroll_${index}`, host.id, "/projects/bb"),
+      )}
+      host={hosts[0] ?? null}
+      isLocal={false}
+      providers={STORY_ENVIRONMENT_PROVIDERS}
+      onSelectProvider={noop}
+      machines={{
+        hosts,
+        localDaemonHostId: null,
+        primaryHostId: hosts[0]?.id ?? null,
+      }}
+      defaultOpen
+      modal={false}
+    />
+  );
+}

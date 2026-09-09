@@ -64,7 +64,9 @@ describe("MachinePickerUI", () => {
     expect(menu.className).toContain(
       "max-h-[min(var(--radix-dropdown-menu-content-available-height),calc(100dvh-0.5rem))]",
     );
-    expect(menu.className).toContain("overflow-y-auto");
+    expect(menu.className).toContain("overflow-auto");
+    expect(menu.className).toContain("overflow-x-hidden");
+    expect(menu.className).not.toContain("overflow-hidden");
     expect(menu.className).toContain("overscroll-contain");
   });
 
