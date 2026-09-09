@@ -58,14 +58,14 @@ export function CommunitySettingsSection() {
           label="Discord"
           description="Join the server for support, feedback, and announcements."
           href={DISCORD_INVITE_URL}
-          icon="Discord"
+          icon="DiscordLogo"
           openLabel="Join Discord"
         />
         <CommunityLinkRow
           label="GitHub"
           description="Source code, issues, and releases for the bb project."
           href={GITHUB_REPO_URL}
-          icon="Github"
+          icon="GithubLogo"
           openLabel="View on GitHub"
         />
       </div>
