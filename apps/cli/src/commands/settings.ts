@@ -3,12 +3,19 @@ import {
   appCommandIdSchema,
   appShortcutSchema,
   appSettingsSchema,
+  describeUiPreference,
   experimentKeySchema,
   experimentsSchema,
+  isUiPreferenceKey,
+  parseUiPreferenceValue,
+  UI_PREFERENCE_KEYS,
   type AppSettings,
   type AppShortcut,
   type Experiments,
+  type UiPreferenceKey,
+  type UiPreferenceValue,
 } from "@bb/domain";
+import { BbHttpError } from "@bb/sdk";
 import { action } from "../action.js";
 import { createCliBbSdk } from "../client.js";
 import { outputJson } from "./helpers.js";
@@ -107,6 +114,40 @@ function updateExperiment(
   });
 }
 
+function requireUiPreferenceKey(key: string): UiPreferenceKey {
+  if (isUiPreferenceKey(key)) return key;
+  throw new Error(
+    `Unknown UI preference '${key}'. Known preferences: ${UI_PREFERENCE_KEYS.join(", ")}.`,
+  );
+}
+
+function uiPreferenceValueCandidates(value: string): unknown[] {
+  try {
+    return [JSON.parse(value), value];
+  } catch {
+    return [value];
+  }
+}
+
+function parseUiPreferenceInput<Key extends UiPreferenceKey>(
+  key: Key,
+  value: string,
+): UiPreferenceValue<Key> {
+  let message = "";
+  for (const candidate of uiPreferenceValueCandidates(value)) {
+    const parsed = parseUiPreferenceValue(key, candidate);
+    if (parsed.success) return parsed.value;
+    message = parsed.message;
+  }
+  throw new Error(
+    `Invalid value '${value}' for '${key}': ${message}. Lists and null take JSON; plain strings may be unquoted.`,
+  );
+}
+
+function isUiPreferenceConflict(error: unknown): boolean {
+  return error instanceof BbHttpError && error.status === 409;
+}
+
 export function registerSettingsCommands(
   program: Command,
   getUrl: () => string,
@@ -169,6 +210,82 @@ export function registerSettingsCommands(
         );
         if (outputJson(opts, result)) return;
         console.log(`${key} updated`);
+      }),
+    );
+
+  const ui = settings
+    .command("ui")
+    .description(
+      "Manage server-synced UI preferences such as sidebar layout and navigation",
+    );
+  ui.command("list")
+    .description("List every UI preference with its value and revision")
+    .option("--json", "Print machine-readable JSON output")
+    .action(
+      action(async (opts: JsonOptions) => {
+        const result =
+          await createCliBbSdk(getUrl()).system.uiPreferences.list();
+        if (outputJson(opts, result)) return;
+        for (const key of UI_PREFERENCE_KEYS) {
+          const entry = result.preferences[key];
+          console.log(
+            `${key}  ${JSON.stringify(entry.value)}  (revision ${entry.revision})`,
+          );
+          console.log(`  ${describeUiPreference(key)}`);
+        }
+      }),
+    );
+  ui.command("get <key>")
+    .description("Show one UI preference")
+    .option("--json", "Print machine-readable JSON output")
+    .action(
+      action(async (keyInput: string, opts: JsonOptions) => {
+        const key = requireUiPreferenceKey(keyInput);
+        const { preferences } =
+          await createCliBbSdk(getUrl()).system.uiPreferences.list();
+        const entry = preferences[key];
+        if (outputJson(opts, { key, ...entry })) return;
+        console.log(JSON.stringify(entry.value));
+      }),
+    );
+  ui.command("set <key> <value>")
+    .description("Set a UI preference; lists and null take JSON")
+    .option("--json", "Print machine-readable JSON output")
+    .action(
+      action(async (keyInput: string, value: string, opts: JsonOptions) => {
+        const key = requireUiPreferenceKey(keyInput);
+        const parsedValue = parseUiPreferenceInput(key, value);
+        const sdk = createCliBbSdk(getUrl());
+        const write = async () => {
+          const { preferences } = await sdk.system.uiPreferences.list();
+          return sdk.system.uiPreferences.set({
+            expectedRevision: preferences[key].revision,
+            key,
+            value: parsedValue,
+          });
+        };
+        let result;
+        try {
+          result = await write();
+        } catch (error) {
+          if (!isUiPreferenceConflict(error)) throw error;
+          result = await write();
+        }
+        if (outputJson(opts, result)) return;
+        console.log(`${key} updated`);
+      }),
+    );
+  ui.command("reset <key>")
+    .description("Reset a UI preference to its default")
+    .option("--json", "Print machine-readable JSON output")
+    .action(
+      action(async (keyInput: string, opts: JsonOptions) => {
+        const key = requireUiPreferenceKey(keyInput);
+        const result = await createCliBbSdk(
+          getUrl(),
+        ).system.uiPreferences.reset({ key });
+        if (outputJson(opts, result)) return;
+        console.log(`${key} reset`);
       }),
     );
 

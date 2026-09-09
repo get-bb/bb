@@ -3,7 +3,14 @@ import { readFile } from "node:fs/promises";
 import { promisify } from "node:util";
 import { brotliCompress, constants as zlibConstants, gzip } from "node:zlib";
 import type { Context, Hono } from "hono";
+import type { createNodeWebSocket } from "@hono/node-ws";
+import type { WSContext, WSMessageReceive, WSEvents } from "hono/ws";
+import type {
+  ExperimentalPluginWebSocket,
+  ExperimentalPluginWebSocketHandlers,
+} from "@get-bb/plugin-sdk";
 import type { ServerRuntimeConfig } from "../types.js";
+import { ApiError } from "../errors.js";
 import {
   browserRequestProblem,
   type BrowserRequestProblem,
@@ -12,7 +19,10 @@ import type {
   PluginService,
   PluginWireLookup,
 } from "../services/plugins/plugin-service.js";
-import type { PluginMentionTrigger } from "../services/plugins/plugin-api.js";
+import type {
+  PluginMentionTrigger,
+  PluginWebSocketRouteRecord,
+} from "../services/plugins/plugin-api.js";
 import { PluginSettingsValidationError } from "../services/plugins/plugin-settings.js";
 import {
   createAppAssetCompressionCache,
@@ -34,6 +44,9 @@ interface PluginRoutesDeps {
 }
 
 type WireAuthProblem = BrowserRequestProblem | { status: 401; error: string };
+type UpgradeWebSocket = ReturnType<
+  typeof createNodeWebSocket
+>["upgradeWebSocket"];
 
 const compressBrotli = promisify(brotliCompress);
 const compressGzip = promisify(gzip);
@@ -166,14 +179,199 @@ function notRunningError(
   return `plugin "${id}" is not running (status: ${lookup.status}${detail})`;
 }
 
+function pluginWebSocket(socket: WSContext): ExperimentalPluginWebSocket {
+  return {
+    send(data) {
+      if (typeof data === "string") {
+        socket.send(data);
+        return;
+      }
+      const copy = new Uint8Array(data.byteLength);
+      copy.set(data);
+      socket.send(copy.buffer);
+    },
+    close(code, reason) {
+      socket.close(code, reason);
+    },
+    get readyState() {
+      return socket.readyState;
+    },
+  };
+}
+
+async function pluginWebSocketMessage(
+  data: WSMessageReceive,
+): Promise<string | Uint8Array> {
+  if (typeof data === "string") return data;
+  if (data instanceof Blob) return new Uint8Array(await data.arrayBuffer());
+  return new Uint8Array(data);
+}
+
+function pluginWebSocketError(event: Event): Error {
+  if ("error" in event && event.error instanceof Error) return event.error;
+  return new Error("WebSocket transport error");
+}
+
+function pluginWebSocketEvents(args: {
+  handlers: ExperimentalPluginWebSocketHandlers;
+  id: string;
+  plugins: PluginService;
+  route: PluginWebSocketRouteRecord;
+}): WSEvents {
+  const exposedSockets = new WeakMap<WSContext, ExperimentalPluginWebSocket>();
+  const eventQueues = new WeakMap<WSContext, Promise<void>>();
+  const expose = (socket: WSContext): ExperimentalPluginWebSocket => {
+    const existing = exposedSockets.get(socket);
+    if (existing !== undefined) return existing;
+    const created = pluginWebSocket(socket);
+    exposedSockets.set(socket, created);
+    return created;
+  };
+  const invoke = (
+    socket: WSContext,
+    event: "open" | "message" | "close" | "error",
+    run: () => void | Promise<void>,
+  ): void => {
+    const previous = eventQueues.get(socket) ?? Promise.resolve();
+    const current = args.plugins.invokeWebSocketEvent(
+      args.id,
+      args.route,
+      event,
+      async () => {
+        await previous;
+        await run();
+      },
+    );
+    eventQueues.set(socket, current);
+    void current.finally(() => {
+      if (eventQueues.get(socket) === current) eventQueues.delete(socket);
+    });
+  };
+  return {
+    onOpen(_event, socket) {
+      const exposed = expose(socket);
+      if (!args.route.active) {
+        exposed.close(1012, "Plugin reloaded or disabled");
+        return;
+      }
+      args.route.sockets.add(exposed);
+      if (args.handlers.onOpen !== undefined) {
+        invoke(socket, "open", () => args.handlers.onOpen?.(exposed));
+      }
+    },
+    onMessage(event, socket) {
+      const exposed = expose(socket);
+      if (
+        !args.route.active ||
+        !args.route.sockets.has(exposed) ||
+        args.handlers.onMessage === undefined
+      ) {
+        return;
+      }
+      invoke(socket, "message", async () =>
+        args.handlers.onMessage?.(
+          exposed,
+          await pluginWebSocketMessage(event.data),
+        ),
+      );
+    },
+    onClose(event, socket) {
+      const exposed = expose(socket);
+      if (!args.route.sockets.delete(exposed)) return;
+      if (args.handlers.onClose !== undefined) {
+        invoke(socket, "close", () =>
+          args.handlers.onClose?.(exposed, {
+            code: event.code,
+            reason: event.reason,
+          }),
+        );
+      }
+    },
+    onError(event, socket) {
+      if (args.handlers.onError === undefined) return;
+      const exposed = expose(socket);
+      invoke(socket, "error", () =>
+        args.handlers.onError?.(exposed, pluginWebSocketError(event)),
+      );
+    },
+  };
+}
+
 export function registerPluginRoutes(
   app: Hono,
   deps: PluginRoutesDeps,
   plugins: PluginService,
+  upgradeWebSocket?: UpgradeWebSocket,
 ): void {
   const appAssetCompressionCache = createAppAssetCompressionCache(
     MAX_CACHED_APP_ASSETS,
   );
+  const upgradePluginWebSocket = upgradeWebSocket?.(async (context) => {
+    const id = context.req.param("id");
+    const prefix = `/api/v1/plugins/${id}/http`;
+    const requestPath = context.req.path;
+    const subPath = requestPath.startsWith(prefix)
+      ? requestPath.slice(prefix.length) || "/"
+      : "/";
+    const lookup = plugins.getWebSocketRoute(id, subPath);
+    if (lookup.outcome === "unknown-plugin") {
+      throw new ApiError(404, "unknown_plugin", `unknown plugin "${id}"`);
+    }
+    if (lookup.outcome === "not-running") {
+      throw new ApiError(
+        503,
+        "plugin_not_running",
+        notRunningError(id, lookup),
+      );
+    }
+    if (lookup.outcome === "not-found") {
+      throw new ApiError(
+        404,
+        "unknown_plugin_websocket",
+        `plugin "${id}" has no websocket route for "${subPath}"`,
+      );
+    }
+    const auth = lookup.value.auth;
+    const problem =
+      auth === "local"
+        ? localAuthProblem(context, deps)
+        : auth === "token"
+          ? await tokenAuthProblem(context, plugins, id)
+          : null;
+    if (problem) {
+      throw new ApiError(
+        problem.status,
+        "plugin_websocket_unauthorized",
+        problem.error,
+      );
+    }
+    const fresh = plugins.getWebSocketRoute(id, subPath);
+    if (fresh.outcome !== "found" || fresh.value.auth !== auth) {
+      throw new ApiError(
+        503,
+        "plugin_reloaded",
+        `plugin "${id}" reloaded during the request — retry`,
+      );
+    }
+    const result = await plugins.invokeWebSocketRoute(id, fresh.value, {
+      request: context.req.raw,
+      url: new URL(context.req.url),
+      headers: context.req.raw.headers,
+    });
+    if (!result.ok) {
+      throw new ApiError(
+        500,
+        "plugin_websocket_failed",
+        `plugin websocket failed: ${result.error}`,
+      );
+    }
+    return pluginWebSocketEvents({
+      handlers: result.handlers,
+      id,
+      plugins,
+      route: fresh.value,
+    });
+  });
 
   app.get("/plugins", (context) => context.json({ plugins: plugins.list() }));
 
@@ -527,6 +725,14 @@ export function registerPluginRoutes(
     }
     return context.json({ ok: true, token });
   });
+
+  if (upgradePluginWebSocket !== undefined) {
+    app.get("/plugins/:id/http/*", (context, next) =>
+      context.req.header("upgrade")?.toLowerCase() === "websocket"
+        ? upgradePluginWebSocket(context, next)
+        : next(),
+    );
+  }
 
   app.all("/plugins/:id/http/*", async (context) => {
     const id = context.req.param("id");

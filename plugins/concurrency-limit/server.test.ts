@@ -38,8 +38,8 @@ function hostRecord(
   return {
     id,
     name,
-    type: "persistent",
     status,
+    type: "persistent",
     maxPermissionMode: "full",
     lastSeenAt: null,
     lastRejectedProtocolVersion: null,

@@ -1,3 +1,4 @@
+import { appendOutput, formatProcessOutput } from "./smoke-output.mjs";
 import { spawn } from "node:child_process";
 import { createServer } from "node:http";
 import { mkdtemp, readFile, rm } from "node:fs/promises";
@@ -20,8 +21,6 @@ const startupTimeoutMs = 20_000;
 const exitTimeoutMs = 5_000;
 const outputFlushTimeoutMs = 2_000;
 const postReadySettleMs = 300;
-const maxCapturedOutputCharacters = 20_000;
-
 function writeJson(response, body) {
   response.writeHead(200, {
     "content-type": "application/json",
@@ -215,26 +214,6 @@ async function startSmokeServer({
     port: address.port,
     preloadReady,
   };
-}
-
-function appendOutput(chunks, chunk) {
-  chunks.push(String(chunk));
-  let totalLength = chunks.reduce((total, value) => total + value.length, 0);
-  while (totalLength > maxCapturedOutputCharacters && chunks.length > 1) {
-    const removed = chunks.shift();
-    totalLength -= removed.length;
-  }
-}
-
-function formatProcessOutput({ stdout, stderr }) {
-  const stdoutText = stdout.join("").trim();
-  const stderrText = stderr.join("").trim();
-  return [
-    stdoutText.length > 0 ? `stdout:\n${stdoutText}` : "",
-    stderrText.length > 0 ? `stderr:\n${stderrText}` : "",
-  ]
-    .filter((part) => part.length > 0)
-    .join("\n\n");
 }
 
 async function waitForOutputFlush(child) {

@@ -11,7 +11,7 @@ import {
   DialogTitle,
 } from "@bb/shared-ui/dialog";
 import { Icon } from "@bb/shared-ui/icon";
-import { appToast } from "@/components/ui/app-toast.js";
+import { pluginToast } from "@/components/plugin/PluginNotificationDescription";
 import { pluginAdminErrorMessage } from "@/lib/plugin-admin-error";
 import { invalidatePluginList } from "@/hooks/cache-owners/plugin-cache-owner";
 import {
@@ -66,6 +66,7 @@ function UpdatePluginDialogContent({
   const [rolledBack, setRolledBack] = useState<PluginUpdateResult | null>(null);
 
   const update = useMutation({
+    meta: { showErrorToast: false },
     mutationFn: () => applyPluginUpdate(fetch, plugin.id),
     onSuccess: (result) => {
       invalidatePluginList({ queryClient });
@@ -74,21 +75,26 @@ function UpdatePluginDialogContent({
         return;
       }
       if (result.applied) {
-        appToast.success(`${name} updated`, {
-          description:
-            result.to !== null
-              ? `Now running ${displayPluginVersion(result.to.display)}.`
-              : undefined,
-        });
+        pluginToast.success(
+          "Plugin updated",
+          plugin,
+          "installed",
+          result.to !== null
+            ? `Now running ${displayPluginVersion(result.to.display)}.`
+            : undefined,
+        );
       } else {
-        appToast.message(`${name} is already up to date`);
+        pluginToast.message("Plugin is up to date", plugin, "installed");
       }
       onOpenChange(false);
     },
     onError: (error) => {
-      appToast.error(`Updating ${name} failed`, {
-        description: pluginAdminErrorMessage(error),
-      });
+      pluginToast.error(
+        "Plugin update failed",
+        plugin,
+        "installed",
+        pluginAdminErrorMessage(error),
+      );
     },
   });
 

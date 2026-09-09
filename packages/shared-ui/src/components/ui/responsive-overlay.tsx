@@ -21,6 +21,12 @@ export interface ResponsiveOverlayContextValue {
 
 const RESPONSIVE_DRAWER_REALIZE_FALLBACK_MS = 120;
 
+export const COMPACT_SHEET_CONTENT_STYLE: React.CSSProperties = {
+  width: "auto",
+  minWidth: "auto",
+  maxWidth: "none",
+};
+
 function resetDrawerKeyboardStyles(drawerElement: HTMLElement | null): void {
   if (drawerElement === null) return;
 
@@ -480,8 +486,7 @@ export function usePersistentOverlayFocus({
               }
               onAfterCloseAutoFocus?.();
             });
-            cancelDeferredFocus = () =>
-              ownerWindow.cancelAnimationFrame(frame);
+            cancelDeferredFocus = () => ownerWindow.cancelAnimationFrame(frame);
           }
         }
       }

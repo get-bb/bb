@@ -110,6 +110,8 @@ const pluginSettingDescriptorSchema = z.object({
   default: z.union([z.string(), z.number().finite(), z.boolean()]).optional(),
   options: z.array(z.string()).optional(),
 });
+const negativeNumberValuePattern =
+  /^-(?:0|[1-9]\d*)(?:\.\d+)?(?:[eE][+-]?\d+)?$/;
 const pluginSettingsResultSchema = z.object({
   ok: z.boolean(),
   error: z.string().optional(),
@@ -1560,6 +1562,8 @@ export function registerPluginCommands(
       "Show a plugin's settings, or change them: config <id> set <key> <value> | config <id> unset <key>",
     )
     .option("--json", "Output JSON")
+    .allowUnknownOption()
+    .allowExcessArguments()
     .action(
       action(
         async (
@@ -1568,7 +1572,28 @@ export function registerPluginCommands(
           key: string | undefined,
           value: string | undefined,
           opts: JsonOutputOptions,
+          command: Command,
         ) => {
+          const rawArgs = (program as Command & { rawArgs: string[] }).rawArgs;
+          const terminatorIndex = rawArgs.indexOf("--");
+          const valueIsOption =
+            value?.startsWith("-") === true &&
+            (terminatorIndex < 0 ||
+              terminatorIndex > rawArgs.lastIndexOf(value));
+          const valueIsUnknownOption =
+            valueIsOption &&
+            (actionName !== "set" || !negativeNumberValuePattern.test(value));
+          const unknownOption =
+            [id, actionName, key, ...command.args.slice(4)].find((argument) =>
+              argument?.startsWith("-"),
+            ) ?? (valueIsUnknownOption ? value : undefined);
+          if (unknownOption !== undefined)
+            command.error(`error: unknown option '${unknownOption}'`);
+          const expectedArgumentCount = actionName === "unset" ? 3 : 4;
+          if (command.args.length > expectedArgumentCount)
+            command.error(
+              `error: too many arguments for 'config'. Expected ${expectedArgumentCount} arguments but got ${command.args.length}.`,
+            );
           const settingsPath = `/${encodeURIComponent(id)}/settings`;
           if (actionName === undefined) {
             const result = pluginSettingsResultSchema.parse(
@@ -1617,6 +1642,9 @@ export function registerPluginCommands(
                 `Unknown setting "${key}"${known ? ` — known settings: ${known}` : ""}`,
               );
               process.exit(1);
+            }
+            if (valueIsOption && descriptor.type !== "number") {
+              command.error(`error: unknown option '${value}'`);
             }
             parsedValue = parseSettingValue(descriptor, key, value);
           }

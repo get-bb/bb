@@ -1,5 +1,7 @@
 export type { EmptyInput, Endpoint, Untyped } from "@bb/hono-typed-routes";
 
+export const THREAD_EVENT_LIST_PAGE_SIZE = 100;
+
 export type PathId = { param: { id: string } };
 export type PathProjectId = { param: { id: string } };
 export type PathThreadAndQueuedMessage = {

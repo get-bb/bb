@@ -4,7 +4,13 @@ import { experimental_scanPublicSdkOnly as scanPublicSdkOnly } from "@get-bb/plu
 import { describe, expect, it } from "vitest";
 
 const scan = scanPublicSdkOnly(dirname(fileURLToPath(import.meta.url)), {
-  allow: [/^(?:\.\.\/)+vitest\.shared\.js$/u, /^undici$/u, /^zod$/u],
+  allow: [
+    /^(?:\.\.\/)+vitest\.shared\.js$/u,
+    /^undici$/u,
+    /^zod$/u,
+    /^react$/u,
+    /^@testing-library\/react$/u,
+  ],
 });
 
 describe("push-notifications public SDK boundary", () => {

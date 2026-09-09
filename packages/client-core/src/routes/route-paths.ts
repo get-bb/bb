@@ -7,6 +7,7 @@ export const SETTINGS_SECTION_ROUTE_PATH = "/settings/:section";
 export const SETTINGS_PLUGINS_ROUTE_PATH = "/settings/plugins";
 export const SETTINGS_PLUGIN_ROUTE_PATH = "/settings/plugins/:pluginId";
 export const SETTINGS_MACHINE_ROUTE_PATH = "/settings/machines/:hostId";
+export const SETTINGS_PROJECT_ROUTE_PATH = "/settings/projects/:projectId";
 export const TOOLS_ROUTE_PATH = "/extensions";
 export const TOOLS_SKILLS_ROUTE_PATH = "/extensions/skills";
 export const TOOLS_SKILL_DETAIL_ROUTE_PATH =
@@ -46,7 +47,8 @@ const ROOT_COMPOSE_ROUTE_PATH = APP_ROOT_ROUTE_PATH;
 export const LEGACY_PROJECT_COMPOSE_ROUTE_PATH = "/projects/:projectId";
 export const PROJECTLESS_ARCHIVED_ROUTE_PATH = "/archived";
 const PROJECTLESS_THREAD_DETAIL_ROUTE_PATH = "/threads/:threadId";
-export const PROJECT_SETTINGS_ROUTE_PATH = "/projects/:projectId/settings";
+export const LEGACY_PROJECT_SETTINGS_ROUTE_PATH =
+  "/projects/:projectId/settings";
 export const PROJECT_ARCHIVED_ROUTE_PATH = "/projects/:projectId/archived";
 const THREAD_DETAIL_ROUTE_PATH = "/projects/:projectId/threads/:threadId";
 export const PLUGIN_PANEL_ROUTE_PATH = "/plugins/:pluginId/:panelPath/*";
@@ -84,6 +86,10 @@ export function getSettingsRoutePath(section?: string): string {
 
 export function getSettingsMachineRoutePath(hostId: string): string {
   return `/settings/machines/${encodeURIComponent(hostId)}`;
+}
+
+export function getSettingsProjectRoutePath(projectId: string): string {
+  return `/settings/projects/${encodeURIComponent(projectId)}`;
 }
 
 export function getSkillsRoutePath(): string {
@@ -130,7 +136,9 @@ export function getPluginDetailRoutePath({
   view,
 }: PluginDetailRoutePathArgs): string {
   const path = `${TOOLS_PLUGINS_ROUTE_PATH}/${encodeURIComponent(pluginId)}`;
-  return view === "installed" ? `${path}?view=installed` : path;
+  return view === "installed"
+    ? `${SETTINGS_PLUGINS_ROUTE_PATH}/${encodeURIComponent(pluginId)}?view=installed`
+    : path;
 }
 
 export function getPluginConfigurationRoutePath(
@@ -161,10 +169,6 @@ export function getAutomationEditRoutePath(
   args: AutomationDetailRoutePathArgs,
 ): string {
   return `${getAutomationDetailRoutePath(args)}/edit`;
-}
-
-export function getProjectSettingsRoutePath(projectId: string): string {
-  return `/projects/${projectId}/settings`;
 }
 
 interface PluginPanelRoutePathArgs {
@@ -201,6 +205,7 @@ const baseRoutePatterns: readonly string[] = [
   AUTH_CALLBACK_ROUTE_PATH,
   SETTINGS_ROUTE_PATH,
   SETTINGS_SECTION_ROUTE_PATH,
+  SETTINGS_PROJECT_ROUTE_PATH,
   SETTINGS_PLUGINS_ROUTE_PATH,
   SETTINGS_PLUGIN_ROUTE_PATH,
   TOOLS_ROUTE_PATH,
@@ -227,7 +232,7 @@ const baseRoutePatterns: readonly string[] = [
   AUTOMATION_EDIT_ROUTE_PATH,
   LEGACY_PROJECT_COMPOSE_ROUTE_PATH,
   PROJECTLESS_ARCHIVED_ROUTE_PATH,
-  PROJECT_SETTINGS_ROUTE_PATH,
+  LEGACY_PROJECT_SETTINGS_ROUTE_PATH,
   PROJECT_ARCHIVED_ROUTE_PATH,
   PROJECTLESS_THREAD_DETAIL_ROUTE_PATH,
   THREAD_DETAIL_ROUTE_PATH,

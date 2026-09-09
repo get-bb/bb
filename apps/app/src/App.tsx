@@ -13,6 +13,7 @@ import { RouteNavigationProvider } from "./components/ui/app-route-anchor";
 import { RouteNavigationIndicator } from "./components/ui/route-navigation-indicator";
 import { AppNavigationUrlHost } from "./lib/url-open-routing";
 import { NativeShellReporter } from "./lib/native-shell";
+import { UiPreferencesSync } from "@/lib/ui-preferences/UiPreferencesSync";
 import { AppFileExternalNavigationHost } from "./components/plugin/AppFileExternalNavigationHost";
 import { useAppTheme } from "./hooks/useAppTheme";
 import { useFaviconColorSync } from "./lib/favicon-color-preference";
@@ -35,10 +36,11 @@ import {
   LEGACY_TOOLS_SPLAT_ROUTE_PATH,
   PROJECT_ARCHIVED_ROUTE_PATH,
   PROJECTLESS_ARCHIVED_ROUTE_PATH,
-  PROJECT_SETTINGS_ROUTE_PATH,
+  LEGACY_PROJECT_SETTINGS_ROUTE_PATH,
   SETTINGS_PLUGIN_ROUTE_PATH,
   SETTINGS_PLUGINS_ROUTE_PATH,
   SETTINGS_MACHINE_ROUTE_PATH,
+  SETTINGS_PROJECT_ROUTE_PATH,
   SETTINGS_ROUTE_PATH,
   SETTINGS_SECTION_ROUTE_PATH,
   SKILLS_ROUTE_PATH,
@@ -52,11 +54,11 @@ import {
   getAutomationEditRoutePath,
   getAutomationsRoutePath,
   getSettingsRoutePath,
+  getSettingsProjectRoutePath,
   getSkillDetailRoutePath,
 } from "./lib/route-paths";
 import { AppCommandProvider } from "./components/commands/AppCommandProvider";
 import { ProviderCliInstallLogDialogHost } from "./components/provider-cli/provider-cli-install";
-import { PluginSettingsCompatibilityRoute } from "./components/settings/PluginSettingsCompatibilityRoute";
 import { RouteLoadingSkeleton } from "./components/ui/route-loading-skeleton";
 
 const SettingsView = lazy(() =>
@@ -69,19 +71,36 @@ const ToolsView = lazy(() =>
     default: m.ToolsView,
   })),
 );
+const ProjectDetailSettingsView = lazy(() =>
+  import("./views/ProjectDetailSettingsView").then((m) => ({
+    default: m.ProjectDetailSettingsView,
+  })),
+);
 const MachineSettingsView = lazy(() =>
   import("./views/MachineSettingsView").then((m) => ({
     default: m.MachineSettingsView,
   })),
 );
-const ProjectSettingsView = lazy(() =>
-  import("./views/ProjectSettingsView").then((m) => ({
-    default: m.ProjectSettingsView,
-  })),
-);
 const splitWorkspaceRouteModule = import("./views/SplitWorkspaceRoute");
 splitWorkspaceRouteModule.catch(() => {});
 const SplitWorkspaceRoute = lazy(() => splitWorkspaceRouteModule);
+
+function LegacyProjectSettingsRedirect() {
+  const { projectId } = useParams<{ projectId: string }>();
+  const { search, hash } = useLocation();
+  return (
+    <Navigate
+      to={{
+        pathname: projectId
+          ? getSettingsProjectRoutePath(projectId)
+          : getSettingsRoutePath("projects"),
+        search,
+        hash,
+      }}
+      replace
+    />
+  );
+}
 
 export function LegacyAutomationDetailRedirect() {
   const location = useLocation();
@@ -203,7 +222,7 @@ export function HashNavigationScroll() {
   return null;
 }
 
-function AppRoutes() {
+export function AppRoutes() {
   return (
     <AppLayout>
       <Suspense fallback={null}>
@@ -215,27 +234,20 @@ function AppRoutes() {
           />
           <Route
             path={SETTINGS_PLUGINS_ROUTE_PATH}
-            element={
-              <PluginSettingsCompatibilityRoute>
-                <SettingsView />
-              </PluginSettingsCompatibilityRoute>
-            }
+            element={<SettingsView />}
           />
-          <Route
-            path={SETTINGS_PLUGIN_ROUTE_PATH}
-            element={
-              <PluginSettingsCompatibilityRoute>
-                <SettingsView />
-              </PluginSettingsCompatibilityRoute>
-            }
-          />
+          <Route path={SETTINGS_PLUGIN_ROUTE_PATH} element={<SettingsView />} />
           <Route
             path={SETTINGS_MACHINE_ROUTE_PATH}
             element={<MachineSettingsView />}
           />
           <Route
-            path={PROJECT_SETTINGS_ROUTE_PATH}
-            element={<ProjectSettingsView />}
+            path={SETTINGS_PROJECT_ROUTE_PATH}
+            element={<ProjectDetailSettingsView />}
+          />
+          <Route
+            path={LEGACY_PROJECT_SETTINGS_ROUTE_PATH}
+            element={<LegacyProjectSettingsRedirect />}
           />
           <Route
             path={PROJECT_ARCHIVED_ROUTE_PATH}
@@ -353,6 +365,7 @@ export function App() {
             <AppFileExternalNavigationHost>
               <HashNavigationScroll />
               <NativeShellReporter />
+              <UiPreferencesSync />
               <Routes>
                 <Route
                   path={AUTH_CALLBACK_ROUTE_PATH}

@@ -19,11 +19,10 @@ import {
   getThreadEventScopeTurnId,
   isStandaloneBuiltinCompactCommand,
   parseStoredThreadEvent,
-  permissionModeSchema,
   systemErrorEventDataSchema,
   threadScope,
   turnRequestEventDataSchema,
-  type PermissionMode,
+  WORKSPACE_PROVISIONING_STEP_KEYS,
 } from "@bb/domain";
 import { randomBytes } from "node:crypto";
 import type {
@@ -70,22 +69,6 @@ interface ThreadEventTransactionDeps {
 export interface TurnRequestRetryMarker {
   requestId: ClientTurnRequestId;
   attempt: number;
-}
-
-/**
- * A recorded permission mode narrowed to one the system still offers, or null.
- *
- * Persisted turns are historical facts, so a `client/turn/requested` can carry
- * a mode that has since been retired. Anything replaying such a turn — a retry
- * re-submitting it, a hook reading what it ran with — needs the current
- * vocabulary, and null (meaning "resolve it as usual") is the only honest
- * answer for a mode that no longer exists.
- */
-export function currentPermissionMode(
-  recorded: TurnRequestEventData["execution"]["permissionMode"],
-): PermissionMode | null {
-  const parsed = permissionModeSchema.safeParse(recorded);
-  return parsed.success ? parsed.data : null;
 }
 
 interface ClientTurnRequestedEventArgs {
@@ -159,7 +142,7 @@ interface AppendSystemErrorEventArgs {
 
 interface AppendThreadProvisioningEventArgs {
   entries: ProvisioningTranscriptEntry[];
-  environmentId: string;
+  environmentId: string | null;
   provisioningId: string;
   status: SystemThreadProvisioningStatus;
   threadId: string;
@@ -167,6 +150,7 @@ interface AppendThreadProvisioningEventArgs {
 
 interface BuildCwdBranchEntriesArgs {
   branchName: string | null;
+  headSha: string | null;
   path: string;
 }
 
@@ -730,19 +714,27 @@ export function buildCwdBranchEntries(
   const entries: ProvisioningTranscriptEntry[] = [
     {
       type: "step",
-      key: "workspace-path",
+      key: WORKSPACE_PROVISIONING_STEP_KEYS.workspacePath,
       text: `Using workspace: ${args.path}`,
       status: "completed",
       startedAt: now,
     },
   ];
   if (args.branchName) {
+    const sha = args.headSha;
     entries.push({
       type: "step",
-      key: "workspace-branch",
-      text: `Using branch: ${args.branchName}`,
+      key: WORKSPACE_PROVISIONING_STEP_KEYS.workspaceBranch,
+      text:
+        sha === null
+          ? `Using branch: ${args.branchName}`
+          : `Using branch: ${args.branchName} (${sha.slice(0, 7)})`,
       status: "completed",
       startedAt: now,
+      metadata:
+        sha === null
+          ? { branchName: args.branchName }
+          : { branchName: args.branchName, sha },
     });
   }
   return entries;

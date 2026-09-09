@@ -9,7 +9,7 @@ import {
 } from "@bb/shared-ui/tooltip";
 import { cn } from "@bb/shared-ui/lib/utils";
 import { useAppCommandHandler } from "@/components/commands/AppCommandProvider";
-import { appToast, type AppToastTone } from "@/components/ui/app-toast";
+import { appToast, iconForTone } from "@/components/ui/app-toast";
 import { copyTextToClipboard } from "@/lib/clipboard";
 import { formatRelativeTime } from "@/lib/relative-time";
 import {
@@ -26,21 +26,6 @@ interface NotificationRowProps {
   focused: boolean;
   notification: AppNotification;
   now: number;
-}
-
-function iconForTone(tone: AppToastTone): IconName {
-  switch (tone) {
-    case "success":
-      return "CircleCheck";
-    case "warning":
-      return "AlertTriangle";
-    case "error":
-      return "AlertCircle";
-    case "loading":
-      return "Loading";
-    case "message":
-      return "Info";
-  }
 }
 
 const ROW_ACTION_CLASS =

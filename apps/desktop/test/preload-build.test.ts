@@ -130,6 +130,7 @@ async function startDesktopSmokeServer(
             changelogPreview: false,
             editMessages: false,
             mobileApp: false,
+            sidebarProgressiveDisclosure: false,
             timelineWindowing: false,
           },
           featureFlags: {

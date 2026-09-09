@@ -1240,4 +1240,54 @@ describe("SidebarSplitContainer", () => {
       setItem.mock.calls.filter(([key]) => key === storageKey),
     ).toHaveLength(0);
   });
+
+  it("uses the canonical layout when localStorage rejects the read", () => {
+    const storageKey = sidebarSplitStorageKey(PANEL_STATE_ID);
+    const getItem = vi
+      .spyOn(Storage.prototype, "getItem")
+      .mockImplementation((key) => {
+        if (key === storageKey) {
+          throw new DOMException("blocked", "SecurityError");
+        }
+        return null;
+      });
+
+    renderContainer({
+      renderPane: ({ paneId }) => <div data-testid="only-pane">{paneId}</div>,
+      tabs: [TABS[0] as SidebarSplitTabDescriptor],
+    });
+
+    expect(screen.getByTestId("only-pane")).not.toBeNull();
+    expect(getItem).toHaveBeenCalledWith(storageKey);
+  });
+
+  it("keeps a changed layout in memory when localStorage quota is exhausted", () => {
+    const storageKey = sidebarSplitStorageKey(PANEL_STATE_ID);
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+
+    renderContainer({
+      renderPane: ({ group, onMoveActiveTabToSide }) => (
+        <button type="button" onClick={() => onMoveActiveTabToSide?.("right")}>
+          Split {group.activeTabId}
+        </button>
+      ),
+    });
+
+    const setItem = vi
+      .spyOn(Storage.prototype, "setItem")
+      .mockImplementation((key) => {
+        if (key === storageKey) {
+          throw new DOMException("quota", "QuotaExceededError");
+        }
+      });
+
+    expect(() =>
+      fireEvent.click(screen.getByRole("button", { name: "Split tab-a" })),
+    ).not.toThrow();
+
+    expect(document.querySelectorAll("[data-split-pane-id]")).toHaveLength(2);
+    expect(window.localStorage.getItem(storageKey)).toBeNull();
+    expect(warn).toHaveBeenCalledOnce();
+    expect(setItem).toHaveBeenCalledWith(storageKey, expect.any(String));
+  });
 });

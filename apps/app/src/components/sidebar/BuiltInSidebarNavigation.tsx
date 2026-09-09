@@ -1,9 +1,10 @@
-import type { ComponentProps, MouseEvent as ReactMouseEvent } from "react";
+import type { ComponentProps } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   type BuiltInSidebarNavEntry,
   ExtensionsNavSidebarItem,
   PluginNavSidebarItems,
+  type SidebarNavActivationModifiers,
 } from "@/components/plugin/PluginNavSidebarItems";
 import { useAppCommandRunner } from "@/components/commands/AppCommandProvider";
 import { Icon } from "@bb/shared-ui/icon";
@@ -50,7 +51,7 @@ export function BuiltInSidebarNavigation({
         />
       ),
       disabled: onNewChat === undefined,
-      onActivate: (event: ReactMouseEvent<HTMLButtonElement>) => {
+      onActivate: (event: SidebarNavActivationModifiers) => {
         if (event.metaKey || event.ctrlKey) {
           newThreadSplit?.openInSplit();
           return;

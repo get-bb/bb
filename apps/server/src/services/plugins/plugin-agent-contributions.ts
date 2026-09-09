@@ -1,4 +1,6 @@
 import type { ToolCallResponse } from "@bb/domain";
+import type { HostDaemonContributedEnvEntry } from "@bb/host-daemon-contract";
+import type { ExperimentalPluginProviderEnvContext } from "@get-bb/plugin-sdk";
 import type {
   PluginAgentConfigurationContext,
   PluginAgentToolContext,
@@ -20,7 +22,14 @@ type PluginAgentContributions = Pick<
   | "invokeAgentTool"
   | "resolveMention"
 > &
-  Partial<Pick<PluginService, "resolveAgentConfiguration">>;
+  Partial<
+    Pick<
+      PluginService,
+      | "resolveAgentConfiguration"
+      | "resolveProviderEnv"
+      | "resolveProviderEnvHealth"
+    >
+  >;
 
 let contributions: PluginAgentContributions | undefined;
 
@@ -58,6 +67,27 @@ export function listPluginInstructionContributions(): Array<{
   provider: (ctx: { threadId: string; projectId: string }) => string | null;
 }> {
   return contributions?.listInstructionContributions() ?? [];
+}
+
+export async function resolvePluginProviderEnv(args: {
+  providerId: string;
+  context: ExperimentalPluginProviderEnvContext;
+}): Promise<HostDaemonContributedEnvEntry[]> {
+  const active = contributions;
+  if (!active?.resolveProviderEnv) return [];
+  return (await active.resolveProviderEnv(args)).entries;
+}
+
+export async function resolvePluginProviderEnvHealth(args: {
+  providerId: string;
+  hostId: string;
+}) {
+  const active = contributions;
+  if (!active?.resolveProviderEnvHealth) return null;
+  return active.resolveProviderEnvHealth({
+    providerId: args.providerId,
+    context: { hostId: args.hostId },
+  });
 }
 
 export function findPluginAgentTool(

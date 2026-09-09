@@ -4,7 +4,6 @@ import type {
   PluginCatalogAuthor,
   PluginCatalogCollection,
   PluginCatalogCollectionMembership,
-  PluginCatalogInstallPlan,
   PluginCatalogResolvedSource,
   PluginCatalogSearchResult as SdkPluginCatalogSearchResult,
   PluginMarketplace,
@@ -97,20 +96,13 @@ export async function installCatalogPlugin(
   return createPluginsClient(fetchImpl).catalog.install(args);
 }
 
-async function fetchCatalogInstallPlan(
-  fetchImpl: FetchLike,
-  args: { entryId: string; marketplace?: string },
-): Promise<PluginCatalogInstallPlan> {
-  return createPluginsClient(fetchImpl).catalog.installPlan(args);
-}
-
 export function useCatalogInstallPlan(
   args: { entryId: string; marketplace?: string } | null,
 ) {
   const request = args ?? { entryId: "" };
   return useQuery({
     queryKey: pluginCatalogInstallPlanQueryKey(request),
-    queryFn: () => fetchCatalogInstallPlan(fetch, request),
+    queryFn: () => createPluginsClient(fetch).catalog.installPlan(request),
     enabled: args !== null,
     staleTime: 0,
     gcTime: 0,

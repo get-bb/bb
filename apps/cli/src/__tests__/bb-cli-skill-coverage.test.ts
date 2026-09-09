@@ -10,14 +10,14 @@ import {
 
 const COMMAND_INDEX_PATH = fileURLToPath(
   new URL(
-    "../../../server/src/services/skills/builtin-skills/bb-cli/references/command-index.md",
+    "../../../../plugins/bb-guide/skills/bb-cli/references/command-index.md",
     import.meta.url,
   ),
 );
 
 const BB_CLI_SKILL_ROOT = fileURLToPath(
   new URL(
-    "../../../server/src/services/skills/builtin-skills/bb-cli/",
+    "../../../../plugins/bb-guide/skills/bb-cli/",
     import.meta.url,
   ),
 );

@@ -10,7 +10,8 @@ Providers, outer→inner: `AppErrorBoundary` (main.tsx:60; class boundary, fallb
 | `/settings/plugins` | redirect → `/extensions/plugins?view=installed` |  |
 | `/settings/plugins/:pluginId` | SettingsView → PluginSettingsPage | plugin config |
 | `/settings/machines/:hostId` | MachineSettingsView | permission limit cards, details, rename/remove |
-| `/projects/:projectId/settings` | ProjectSettingsView | Project Sources list, add/edit/remove |
+| `/settings/projects/:projectId` | ProjectDetailSettingsView | project details, defaults, checkouts, rename/delete |
+| `/projects/:projectId/settings` | redirect → `/settings/projects/:projectId` | legacy bookmark compatibility; preserves query/hash |
 | `/projects/:projectId/archived`, `/archived` | redirect → `/settings/archived` |  |
 | `/extensions` → `/extensions/plugins`; `/extensions/plugins/:pluginId`; `/extensions/skills`, `/extensions/skills/library/:skillId`, `/extensions/skills/registry[/:id]` | ToolsView | Plugins browse/installed (`?view=installed|create`), Skills browse/library |
 | `/tools/*`, `/skills`, `/automations*` | legacy redirects | automations now `/plugins/automations/automations[/browse|/:projectId/:automationId[/edit]]` |
@@ -72,7 +73,7 @@ Path params via `useRouteState` (hooks/useRouteState.ts). Query: `?view=browse|i
 - apps/app/src/components/settings/settings-nav.tsx
 - apps/app/src/components/settings/SettingsSidebar.tsx
 - apps/app/src/views/MachineSettingsView.tsx
-- apps/app/src/views/ProjectSettingsView.tsx
+- apps/app/src/views/ProjectDetailSettingsView.tsx
 - apps/app/src/views/ToolsView.tsx
 - apps/app/src/components/tools/tools-navigation.ts
 - apps/app/src/components/tools/ToolsSidebar.tsx

@@ -48,6 +48,10 @@ function swipeToast(
   endX: number,
   endY: number,
   pointerTarget: HTMLElement = toastElement,
+  terminalEvent:
+    | "lostPointerCapture"
+    | "pointerCancel"
+    | "pointerUp" = "pointerUp",
 ): void {
   Object.defineProperty(toastElement, "setPointerCapture", {
     configurable: true,
@@ -69,12 +73,21 @@ function swipeToast(
     pointerId,
     pointerType: "touch",
   });
-  fireEvent.pointerUp(pointerTarget, {
+  const terminalEventInit = {
     clientX: endX,
     clientY: endY,
     pointerId,
     pointerType: "touch",
-  });
+  };
+  if (terminalEvent === "pointerCancel") {
+    fireEvent.pointerCancel(pointerTarget, terminalEventInit);
+    return;
+  }
+  if (terminalEvent === "lostPointerCapture") {
+    fireEvent.lostPointerCapture(pointerTarget, terminalEventInit);
+    return;
+  }
+  fireEvent.pointerUp(pointerTarget, terminalEventInit);
 }
 
 describe("AppToaster", () => {
@@ -132,6 +145,56 @@ describe("AppToaster", () => {
     swipeToast(toastElement, 1, 160, 100, 160, 180);
 
     expect(document.querySelector("[data-sonner-toast]")).toBe(toastElement);
+  });
+
+  it.each([
+    ["pointer cancellation", "pointerCancel"],
+    ["pointer capture loss", "lostPointerCapture"],
+  ] as const)("resets an interrupted swipe after %s", async (_, eventName) => {
+    await renderToaster(true);
+    const toastElement = document.querySelector<HTMLElement>(
+      "[data-sonner-toast]",
+    );
+    expect(toastElement).not.toBeNull();
+    if (toastElement === null) {
+      return;
+    }
+
+    swipeToast(toastElement, 1, 120, 100, 132, 100, toastElement, eventName);
+
+    await waitFor(() => {
+      expect(toastElement.dataset.swiping).toBe("false");
+      expect(toastElement.dataset.swiped).toBe("false");
+      expect(toastElement.style.getPropertyValue("--swipe-amount-x")).toBe(
+        "0px",
+      );
+      expect(toastElement.style.getPropertyValue("--swipe-amount-y")).toBe(
+        "0px",
+      );
+    });
+
+    act(() => {
+      toast("Short-lived after interruption", {
+        duration: 50,
+        id: `short-after-${eventName}`,
+      });
+    });
+
+    const findShortToast = () =>
+      Array.from(
+        document.querySelectorAll<HTMLElement>("[data-sonner-toast]"),
+      ).find(
+        (element) => element.textContent === "Short-lived after interruption",
+      );
+    await waitFor(() => {
+      expect(findShortToast()).toBeDefined();
+    });
+    await waitFor(
+      () => {
+        expect(findShortToast()).toBeUndefined();
+      },
+      { timeout: 1_000 },
+    );
   });
 
   it("keeps movement continuous while Sonner's axis update is batched", async () => {

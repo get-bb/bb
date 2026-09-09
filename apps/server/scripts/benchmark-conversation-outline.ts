@@ -90,7 +90,10 @@ function captureOutlineQuery(
     },
   });
   try {
-    listStoredConversationOutlineEventRows(db, { threadId });
+    listStoredConversationOutlineEventRows(db, {
+      sequenceStart: 0,
+      threadId,
+    });
   } finally {
     Object.defineProperty(raw, "prepare", {
       configurable: true,
@@ -208,10 +211,16 @@ async function main(): Promise<void> {
     });
 
     const queryDurations: number[] = [];
-    let selectedRows = listStoredConversationOutlineEventRows(db, { threadId });
+    let selectedRows = listStoredConversationOutlineEventRows(db, {
+      sequenceStart: 0,
+      threadId,
+    });
     for (let index = 0; index < rawIterations; index += 1) {
       const startedAt = performance.now();
-      selectedRows = listStoredConversationOutlineEventRows(db, { threadId });
+      selectedRows = listStoredConversationOutlineEventRows(db, {
+        sequenceStart: 0,
+        threadId,
+      });
       queryDurations.push(performance.now() - startedAt);
     }
 

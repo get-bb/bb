@@ -1,10 +1,14 @@
+import { randomUUID } from "node:crypto";
 import type { BbPluginApi } from "@get-bb/plugin-sdk";
 import { z } from "zod";
 import {
   addPushSubscriptionInputSchema,
+  CLIENT_NOTIFICATION_CHANNEL,
+  clientChannelSchema,
   DEFAULT_EXPO_PUSH_URL,
   pushNotificationsRpcContract,
   type AddPushSubscriptionInput,
+  type ClientNotification,
   type PushSubscriptionSummary,
 } from "./contract.js";
 import {
@@ -24,11 +28,16 @@ interface PushNotificationsPluginOptions {
 interface StatusView {
   enabled: true;
   subscriptionCount: number;
+  mobileEnabled: boolean;
+  webEnabled: boolean;
+  desktopEnabled: boolean;
   relayUrl: string;
   lastSendOutcome: LastSendOutcome;
 }
 
-function parseAddArguments(args: readonly string[]):
+function parseAddArguments(
+  args: readonly string[],
+):
   | { ok: true; value: AddPushSubscriptionInput }
   | { ok: false; message: string } {
   if (args.length !== 6) {
@@ -99,6 +108,9 @@ function formatLastOutcome(outcome: LastSendOutcome): string {
 function formatStatus(status: StatusView): string {
   return [
     `Enabled: ${status.enabled}`,
+    `Mobile: ${status.mobileEnabled}`,
+    `Web: ${status.webEnabled}`,
+    `Desktop: ${status.desktopEnabled}`,
     `Subscriptions: ${status.subscriptionCount}`,
     `Relay URL: ${status.relayUrl}`,
     `Last send: ${formatLastOutcome(status.lastSendOutcome)}`,
@@ -119,6 +131,27 @@ export function createPushNotificationsPlugin(
     bb: BbPluginApi,
   ): Promise<void> {
     const settings = bb.settings.define({
+      mobileEnabled: {
+        type: "boolean",
+        label: "Mobile notifications",
+        description:
+          "Send push messages to your registered phones and tablets.",
+        default: true,
+      },
+      webEnabled: {
+        type: "boolean",
+        label: "Web notifications",
+        description:
+          "Show system notifications while bb is open in a browser. Each browser needs notification permission.",
+        default: true,
+      },
+      desktopEnabled: {
+        type: "boolean",
+        label: "Desktop notifications",
+        description:
+          "Show system notifications while the bb desktop app is running.",
+        default: true,
+      },
       expoPushUrl: {
         type: "string",
         label: "Expo push relay URL",
@@ -129,13 +162,12 @@ export function createPushNotificationsPlugin(
     });
     const subscriptions = createPushSubscriptionStore(bb, {
       ...(options.now === undefined ? {} : { now: options.now }),
-      ...(options.createId === undefined
-        ? {}
-        : { createId: options.createId }),
+      ...(options.createId === undefined ? {} : { createId: options.createId }),
     });
     const sender = createPushSender({
       bb,
       subscriptions,
+      getDeliverySettings: () => settings.get(),
       getExpoPushUrl: async () => (await settings.get()).expoPushUrl,
       ...(options.fetch === undefined ? {} : { fetch: options.fetch }),
       ...(options.coalesceMs === undefined
@@ -145,19 +177,36 @@ export function createPushNotificationsPlugin(
     });
 
     async function status(): Promise<StatusView> {
-      const [{ expoPushUrl }, rows] = await Promise.all([
-        settings.get(),
-        subscriptions.list(),
-      ]);
+      const [{ expoPushUrl, mobileEnabled, webEnabled, desktopEnabled }, rows] =
+        await Promise.all([settings.get(), subscriptions.list()]);
       return {
         enabled: true,
         subscriptionCount: rows.length,
+        mobileEnabled,
+        webEnabled,
+        desktopEnabled,
         relayUrl: expoPushUrl,
         lastSendOutcome: sender.getLastOutcome(),
       };
     }
 
+    async function sendTest(channel: "web" | "desktop") {
+      const config = await settings.get();
+      if (!(channel === "web" ? config.webEnabled : config.desktopEnabled)) {
+        throw new Error(`${channel} notifications are disabled`);
+      }
+      bb.realtime.publish(CLIENT_NOTIFICATION_CHANNEL, {
+        id: randomUUID(),
+        title: "bb notifications are working",
+        body: "You’ll be notified when a thread needs your attention.",
+        threadId: null,
+        channels: [channel],
+      } satisfies ClientNotification);
+      return { ok: true as const };
+    }
+
     bb.rpc.register(pushNotificationsRpcContract, {
+      "notifications.test": ({ channel }) => sendTest(channel),
       "pushSubscriptions.list": async () => ({
         subscriptions: await subscriptions.listSummaries(),
       }),
@@ -172,8 +221,14 @@ export function createPushNotificationsPlugin(
 
     bb.cli.register({
       name: "push-notifications",
-      summary: "Manage mobile push notification delivery",
+      summary: "Manage mobile, web, and desktop notifications",
       commands: [
+        {
+          name: "test",
+          summary:
+            "Send a test to connected web or desktop clients with permission",
+          usage: "bb push-notifications test <web|desktop>",
+        },
         {
           name: "list",
           summary: "List registered push devices",
@@ -198,10 +253,26 @@ export function createPushNotificationsPlugin(
       ],
       async run(argv) {
         const [command, ...args] = argv;
+        if (command === "test" && args.length === 1) {
+          const channel = clientChannelSchema.safeParse(args[0]);
+          if (!channel.success)
+            return { exitCode: 1, stderr: "Use web or desktop" };
+          try {
+            await sendTest(channel.data);
+            return {
+              exitCode: 0,
+              stdout: `Test sent to connected ${channel.data} clients with notification permission`,
+            };
+          } catch (error) {
+            return {
+              exitCode: 1,
+              stderr: error instanceof Error ? error.message : String(error),
+            };
+          }
+        }
         if (
           command === "list" &&
-          (args.length === 0 ||
-            (args.length === 1 && args[0] === "--json"))
+          (args.length === 0 || (args.length === 1 && args[0] === "--json"))
         ) {
           const rows = await subscriptions.listSummaries();
           return {
@@ -233,22 +304,19 @@ export function createPushNotificationsPlugin(
         }
         if (
           command === "status" &&
-          (args.length === 0 ||
-            (args.length === 1 && args[0] === "--json"))
+          (args.length === 0 || (args.length === 1 && args[0] === "--json"))
         ) {
           const view = await status();
           return {
             exitCode: 0,
             stdout:
-              args[0] === "--json"
-                ? JSON.stringify(view)
-                : formatStatus(view),
+              args[0] === "--json" ? JSON.stringify(view) : formatStatus(view),
           };
         }
         return {
           exitCode: 1,
           stderr:
-            "Usage: bb push-notifications <list|add|remove|status> [options]",
+            "Usage: bb push-notifications <list|add|remove|status|test> [options]",
         };
       },
     });

@@ -401,6 +401,7 @@ export class DemoWorld {
     }
     return {
       rows,
+      contextBoundarySeq: null,
       maxSeq: seq,
       activePromptMode: null,
       activeThinking: null,

@@ -632,17 +632,20 @@ describe("buildCodexConfig", () => {
     });
   });
 
-  it("injects the bb thread id into the shell env and drops invalid keys", () => {
+  it("injects contributed environment into session params and drops invalid keys", () => {
     const config = configFor({
       ...FULL_OPTIONS,
       envVars: {
         "BAD.KEY": "ignored",
+        PLUGIN_API_URL: "http://127.0.0.1:3334/plugins/example/auth",
         TEST_VAR: "123",
       },
     });
 
     expect(config).toMatchObject({
       "shell_environment_policy.set.BB_THREAD_ID": "bb-thread-1",
+      "shell_environment_policy.set.PLUGIN_API_URL":
+        "http://127.0.0.1:3334/plugins/example/auth",
       "shell_environment_policy.set.TEST_VAR": "123",
     });
     expect(config).not.toMatchObject({

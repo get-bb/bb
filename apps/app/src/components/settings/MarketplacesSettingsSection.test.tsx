@@ -2,6 +2,10 @@
 
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import {
+  getNotifications,
+  resetNotificationStore,
+} from "@/lib/notifications/notification-store";
 import { createQueryClientTestHarness } from "@/test/queryClientTestHarness";
 import { MarketplacesSettingsSection } from "./MarketplacesSettingsSection";
 
@@ -40,7 +44,10 @@ interface RecordedRequest {
   init: RequestInit | undefined;
 }
 
-function stubFetch(marketplaces: unknown[]): RecordedRequest[] {
+function stubFetch(
+  marketplaces: unknown[],
+  addResponse = jsonResponse({ ok: true, marketplace: ACME }),
+): RecordedRequest[] {
   const requests: RecordedRequest[] = [];
   vi.stubGlobal(
     "fetch",
@@ -50,7 +57,7 @@ function stubFetch(marketplaces: unknown[]): RecordedRequest[] {
         return jsonResponse({ marketplaces });
       }
       if (url === "/api/v1/marketplaces") {
-        return jsonResponse({ ok: true, marketplace: ACME });
+        return addResponse;
       }
       if (
         url.startsWith("/api/v1/marketplaces/") &&
@@ -66,6 +73,7 @@ function stubFetch(marketplaces: unknown[]): RecordedRequest[] {
 
 afterEach(() => {
   cleanup();
+  resetNotificationStore();
   vi.unstubAllGlobals();
   vi.restoreAllMocks();
 });
@@ -90,6 +98,29 @@ describe("MarketplacesSettingsSection", () => {
       expect(JSON.parse(String(post?.init?.body))).toEqual({
         source: "https://acme.test/marketplace.json",
       });
+    });
+  });
+
+  it("retains one alert when adding a marketplace fails", async () => {
+    stubFetch(
+      [OFFICIAL],
+      jsonResponse({ error: "marketplace directory does not exist" }, 400),
+    );
+    const { wrapper } = createQueryClientTestHarness();
+    render(<MarketplacesSettingsSection />, { wrapper });
+
+    fireEvent.change(screen.getByLabelText("Marketplace source"), {
+      target: { value: "path:/missing-marketplace" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Add" }));
+
+    await vi.waitFor(() => {
+      expect(getNotifications()).toEqual([
+        expect.objectContaining({
+          title: "Adding the marketplace failed",
+          description: "marketplace directory does not exist",
+        }),
+      ]);
     });
   });
 

@@ -5,9 +5,10 @@ import { Fragment, useEffect } from "react";
 import type { ReactNode } from "react";
 
 import changelogMd from "../../../../CHANGELOG.md?raw";
+import { RELEASE_META } from "../../../../changelog-metadata";
 import { initAnalytics } from "../landing/analytics";
 import type { Release, ReleaseBlock } from "../landing/changelog";
-import { RELEASE_META, parseChangelog } from "../landing/changelog";
+import { parseChangelog } from "../landing/changelog";
 import { ChangelogInline } from "../landing/changelog-inline";
 import {
   EmailSignup,

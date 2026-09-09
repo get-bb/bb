@@ -17,8 +17,9 @@ import {
   TooltipTrigger,
 } from "../tooltip";
 import { cn } from "../../../lib/utils";
+import { COARSE_POINTER_HOVER_REVEAL_VISIBLE_CLASS } from "../coarse-pointer-visibility";
 
-function targetsResourceAction(target: EventTarget): boolean {
+export function targetsResourceAction(target: EventTarget): boolean {
   return (
     target instanceof Element &&
     target.closest("a, button, [data-row-action]") !== null
@@ -313,7 +314,10 @@ export function ResourceRowDetailChevron() {
   return (
     <Icon
       name="ChevronRight"
-      className="size-3.5 text-subtle-foreground opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100"
+      className={cn(
+        "size-3.5 text-subtle-foreground opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100",
+        COARSE_POINTER_HOVER_REVEAL_VISIBLE_CLASS,
+      )}
       aria-hidden
     />
   );

@@ -1275,14 +1275,9 @@ describe("public project skills route", () => {
           registrySkillId,
           scope,
         }));
-      expect(collidingSkills).toHaveLength(2);
+      expect(collidingSkills).toHaveLength(1);
       expect(collidingSkills).toEqual(
         expect.arrayContaining([
-          {
-            filePath: join(builtinCollisionDirectory, "SKILL.md"),
-            registrySkillId: null,
-            scope: "bb-builtin",
-          },
           {
             filePath: join(registrySkillDirectory, "SKILL.md"),
             registrySkillId: "github.com/vercel-labs/skills/find-skills",

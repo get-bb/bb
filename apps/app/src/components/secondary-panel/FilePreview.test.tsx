@@ -778,6 +778,7 @@ describe("FilePreview", () => {
   });
 
   it("mounts only the CSV rows near the viewport, not the whole 500x100 window", () => {
+    vi.useFakeTimers();
     mockCsvTableLayout();
     const columnCount = 120;
     const header = Array.from({ length: columnCount }, (_, i) => `col_${i}`);
@@ -810,6 +811,7 @@ describe("FilePreview", () => {
     if (!(scrollBox instanceof HTMLElement)) throw new Error("no scroll box");
     scrollBox.scrollTop = 499 * CSV_TEST_ROW_HEIGHT_PX;
     fireEvent.scroll(scrollBox);
+    act(() => vi.runOnlyPendingTimers());
     expect(screen.getByText("r499c0")).not.toBeNull();
     expect(screen.queryByText("r0c0")).toBeNull();
     expect(table.querySelectorAll("tbody tr[data-index]").length).toBeLessThan(

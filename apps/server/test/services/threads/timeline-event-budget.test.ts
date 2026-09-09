@@ -252,7 +252,7 @@ function walkAllFileChangeDiffs(
   for (let page = 0; page < 200; page += 1) {
     const response = buildThreadTimeline(db, thread, {
       eventBudget,
-      includeProviderUnhandledOperations: false,
+      includeDiagnosticOperations: false,
       includeNestedRows: true,
       maxInlineOutputChars: null,
       maxSeq: 0,
@@ -296,7 +296,7 @@ function walkAllPages(
   for (;;) {
     const response = buildThreadTimeline(db, thread, {
       eventBudget,
-      includeProviderUnhandledOperations: false,
+      includeDiagnosticOperations: false,
       includeNestedRows: true,
       maxInlineOutputChars: null,
       maxSeq: 0,
@@ -347,7 +347,7 @@ describe("timeline event budget", () => {
 
     const unbudgeted = buildThreadTimeline(db, thread, {
       eventBudget: LARGE_BUDGET,
-      includeProviderUnhandledOperations: false,
+      includeDiagnosticOperations: false,
       includeNestedRows: true,
       maxInlineOutputChars: null,
       maxSeq: 0,
@@ -357,7 +357,7 @@ describe("timeline event budget", () => {
 
     const budgeted = buildThreadTimeline(db, thread, {
       eventBudget: 100,
-      includeProviderUnhandledOperations: false,
+      includeDiagnosticOperations: false,
       includeNestedRows: true,
       maxInlineOutputChars: null,
       maxSeq: 0,
@@ -376,7 +376,7 @@ describe("timeline event budget", () => {
 
     const budgeted = buildThreadTimeline(db, thread, {
       eventBudget: 50,
-      includeProviderUnhandledOperations: false,
+      includeDiagnosticOperations: false,
       includeNestedRows: true,
       maxInlineOutputChars: null,
       maxSeq: 0,
@@ -411,7 +411,7 @@ describe("timeline event budget", () => {
 
     const page = { kind: "latest", segmentLimit: 20 } as const;
     const options = {
-      includeProviderUnhandledOperations: false,
+      includeDiagnosticOperations: false,
       includeNestedRows: true,
       maxInlineOutputChars: null,
       maxSeq: 0,

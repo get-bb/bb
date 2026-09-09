@@ -21,6 +21,7 @@ interface UseComposerExtensionControllerOptions {
   view: ComposerView;
   isFocused: boolean;
   isPrimary: boolean;
+  collapseIfFocused?(): boolean;
   focusDefault(): boolean;
 }
 
@@ -29,16 +30,18 @@ export function useComposerExtensionController({
   view,
   isFocused,
   isPrimary,
+  collapseIfFocused,
   focusDefault,
 }: UseComposerExtensionControllerOptions): ComposerExtensionController {
   const focus = useCallback(() => {
     if (!isFocused || !isPrimary) return false;
+    if (collapseIfFocused?.()) return true;
     if (host !== null) {
       host.focus();
       return true;
     }
     return focusDefault();
-  }, [focusDefault, host, isFocused, isPrimary]);
+  }, [collapseIfFocused, focusDefault, host, isFocused, isPrimary]);
   useAppCommandContext("promptAvailable", true);
   useAppCommandHandler("composer.focus", focus);
 

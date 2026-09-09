@@ -12,6 +12,7 @@ import { listSystemProviderInfos } from "./execution-options.js";
 import { resolveSystemLookupHostId } from "./host-lookup.js";
 import { resolveBridgeLaunchForProviderId } from "./provider-bridge-launch.js";
 import { mapProviderMaintenanceRequests } from "./provider-maintenance-concurrency.js";
+import { resolvePluginProviderEnvHealth } from "../plugins/plugin-agent-contributions.js";
 
 function unknownProviderState(
   provider: ProviderInfo,
@@ -67,10 +68,26 @@ async function getProviderState(
         "Provider readiness was not reported.",
       );
     }
-    return {
+    const health = {
       providerId: args.provider.id,
       displayName: args.provider.displayName,
       ...result.health,
+    };
+    if (health.status !== "unauthenticated" && health.status !== "expired") {
+      return health;
+    }
+    const contributed = await resolvePluginProviderEnvHealth({
+      providerId: args.provider.id,
+      hostId: args.hostId,
+    });
+    if (contributed === null) return health;
+    return {
+      ...health,
+      status: "ready",
+      statusMessage: contributed.statusMessage,
+      accountEmail: null,
+      planLabel: contributed.label,
+      loginCommand: null,
     };
   } catch {
     return unknownProviderState(

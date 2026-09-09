@@ -83,7 +83,7 @@ describe("host file routes", () => {
     });
   });
 
-  it("creates opaque path-shaped preview leases and serves sandboxed HTML", async () => {
+  it("revalidates preview files while keeping sandboxed HTML uncached", async () => {
     await withTestHarness(async (harness) => {
       const { host, session } = seedHostSession(harness.deps);
       seedPrimaryHost(harness.deps, host.id);
@@ -93,6 +93,22 @@ describe("host file routes", () => {
         sessionId: session.id,
         handle: (request) => {
           commands.push(request.command);
+          if (
+            request.command.type === "host.read_file" &&
+            request.command.path.endsWith(".png")
+          ) {
+            return {
+              ok: true,
+              result: {
+                path: "/notes/chart.png",
+                contentEncoding: "base64",
+                mimeType: "image/png",
+                sha256: "d".repeat(64),
+                sizeBytes: 4,
+                notModified: true,
+              },
+            };
+          }
           return {
             ok: true,
             result: {
@@ -124,14 +140,35 @@ describe("host file routes", () => {
         throw new Error("Preview response missing baseUrl");
       }
 
-      const content = await harness.app.request(`${lease.baseUrl}/report.html`);
+      const image = await harness.app.request(`${lease.baseUrl}/chart.png`, {
+        headers: { "if-none-match": `"${"d".repeat(64)}"` },
+      });
+      expect(image.status).toBe(304);
+      expect(image.headers.get("cache-control")).toBe("private, no-cache");
+
+      const content = await harness.app.request(
+        `${lease.baseUrl}/report.html`,
+        {
+          headers: { "if-none-match": `"${"c".repeat(64)}"` },
+        },
+      );
       expect(content.status).toBe(200);
+      expect(content.headers.get("cache-control")).toBe("no-store");
       expect(content.headers.get("content-security-policy")).toBe(
         "sandbox allow-scripts",
       );
       expect(content.headers.get("x-content-type-options")).toBe("nosniff");
       await expect(content.text()).resolves.toContain("<h1>Report</h1>");
       expect(commands).toEqual([
+        {
+          type: "host.read_file",
+          path: "/notes/chart.png",
+          rootPath: "/notes",
+          ifNoneMatch: {
+            kind: "sha256",
+            values: ["d".repeat(64)],
+          },
+        },
         {
           type: "host.read_file",
           path: "/notes/report.html",
