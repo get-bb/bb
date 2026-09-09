@@ -249,7 +249,7 @@ export function EnvironmentPickerUI({
           size="sm"
           aria-label="Environment"
           disabled={disabled}
-          data-promptbox-icon-only-control=""
+          data-promptbox-shrinkable-control=""
           className={cn(
             OPTION_BASE_CLASS_NAME,
             !disabled && OPTION_INTERACTIVE_CLASS_NAME,

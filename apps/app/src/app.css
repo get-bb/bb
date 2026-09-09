@@ -368,6 +368,10 @@
     [data-promptbox] [data-promptbox-icon-only-control] {
       flex-shrink: 0;
     }
+
+    [data-promptbox] [data-promptbox-shrinkable-control] {
+      flex-shrink: 1 !important;
+    }
   }
 
   @container promptbox-shell (max-width: 34rem) {
@@ -383,6 +387,10 @@
 
     [data-promptbox-shell] [data-promptbox-icon-only-control] {
       flex-shrink: 0;
+    }
+
+    [data-promptbox-shell] [data-promptbox-shrinkable-control] {
+      flex-shrink: 1 !important;
     }
 
     [data-promptbox-shell] [data-promptbox-project-control] {

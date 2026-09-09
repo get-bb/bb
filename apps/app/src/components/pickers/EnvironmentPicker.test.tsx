@@ -110,6 +110,40 @@ afterEach(() => {
 });
 
 describe("EnvironmentPickerUI", () => {
+  it("bounds arbitrary provider labels without changing selection", () => {
+    const verboseProvider = {
+      ...checkoutProvider,
+      displayName: "Project checkout with a deliberately long provider label",
+    };
+    const onSelectProvider = vi.fn();
+    render(
+      <EnvironmentPickerUI
+        value="provider:project-checkout"
+        sources={sources}
+        host={host}
+        isLocal
+        providers={[verboseProvider, branchProvider]}
+        selectedProviderHostId={host.id}
+        onSelectProvider={onSelectProvider}
+        className="shrink-0"
+        modal={false}
+      />,
+    );
+
+    const trigger = screen.getByRole("button", { name: "Environment" });
+    expect(trigger.dataset.promptboxShrinkableControl).toBe("");
+    expect(
+      trigger.querySelector<HTMLElement>("[data-promptbox-compact-label]")
+        ?.classList,
+    ).toContain("truncate");
+
+    fireEvent.pointerDown(trigger, { button: 0 });
+    fireEvent.click(
+      screen.getByRole("menuitem", { name: /New branch workspace/u }),
+    );
+    expect(onSelectProvider).toHaveBeenCalledWith(branchProvider, host.id);
+  });
+
   it("omits providers absent from scoped eligibility and retains eligible setup rows", () => {
     const setupProvider = {
       ...optionalInputsProvider,

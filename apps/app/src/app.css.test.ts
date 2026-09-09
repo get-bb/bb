@@ -14,6 +14,16 @@ describe("app.css chrome geometry", () => {
   });
 });
 
+describe("app.css compact prompt controls", () => {
+  it("lets designated controls shrink in both compact containers", () => {
+    expect(
+      css.match(
+        /\[data-promptbox(?:-shell)?\] \[data-promptbox-shrinkable-control\] \{\s*flex-shrink: 1 !important;\s*\}/g,
+      ),
+    ).toHaveLength(2);
+  });
+});
+
 describe("app.css sidebar drag cursor", () => {
   it("scopes the grabbing cursor to the sidebar panel on fine pointers only", () => {
     expect(css).not.toMatch(/body\[data-sidebar-dragging="true"\]\s*\*/);
