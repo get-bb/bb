@@ -28,13 +28,17 @@ interface BuildForkThreadRequestArgs extends ForkThreadCreateSeed {
   providerSupportsFork: boolean;
 }
 
-type ForkableThread = Pick<Thread, "environmentId" | "providerId">;
+type ForkableThread = Pick<Thread, "archivedAt" | "environmentId" | "providerId">;
 
 export function isThreadForkable(
   sourceThread: ForkableThread | null,
   providerSupportsFork: boolean,
 ): boolean {
-  if (sourceThread === null || sourceThread.environmentId === null) {
+  if (
+    sourceThread === null ||
+    sourceThread.environmentId === null ||
+    sourceThread.archivedAt !== null
+  ) {
     return false;
   }
   return providerSupportsFork;
@@ -53,15 +57,7 @@ export function buildForkThreadRequest({
   sourceSeqEnd,
   sourceThreadId,
 }: BuildForkThreadRequestArgs): AppCreateThreadRequest | null {
-  if (
-    !isThreadForkable(
-      {
-        environmentId,
-        providerId,
-      },
-      providerSupportsFork,
-    )
-  ) {
+  if (!providerSupportsFork) {
     return null;
   }
 

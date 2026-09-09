@@ -121,9 +121,11 @@ browser host. Relative paths use the invoking CLI working directory. Browser
 file reads/writes still occur on the browser's host; scripts are not run in the
 workspace directory.
 
-Desktop sessions create a tab in a dedicated automation profile. Acquiring control
-opens and focuses its browser panel. New pages created through the controller
-are also revealed and selected. Pass
+Desktop sessions create a tab in a dedicated automation profile. Acquiring
+control opens the side panel and selects its browser tab only when the owning
+thread is already focused. New or activated controller pages follow
+the same rule. Automation does not switch threads or bring the desktop window
+forward. Pass
 `--tab <tab-id>` only for an explicit handoff of an existing tab. This grants the
 existing profile's browsing authority, including its authenticated cookies;
 release preserves that tab and login. Plugin-created tabs in its dedicated

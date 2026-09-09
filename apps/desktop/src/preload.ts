@@ -1,6 +1,11 @@
 import { contextBridge, ipcRenderer, webFrame } from "electron";
 import { appCommandIdSchema } from "@bb/domain";
 import {
+  desktopBrowserImportOutcomeSchema,
+  desktopBrowserImportSourceSchema,
+} from "@bb/host-daemon-contract";
+import { z } from "zod";
+import {
   bbDesktopBrowserFindResultSchema,
   bbDesktopBrowserOpenTabRequestSchema,
   bbDesktopBrowserScopedOpenTabRequestSchema,
@@ -67,6 +72,9 @@ import {
   BB_DESKTOP_BROWSER_STATE_CHANNEL,
   BB_DESKTOP_BROWSER_STOP_CHANNEL,
   BB_DESKTOP_BROWSER_STOP_FIND_IN_PAGE_CHANNEL,
+  BB_DESKTOP_BROWSER_LIST_IMPORT_SOURCES_CHANNEL,
+  BB_DESKTOP_BROWSER_IMPORT_COOKIES_CHANNEL,
+  BB_DESKTOP_BROWSER_OPEN_FULL_DISK_ACCESS_SETTINGS_CHANNEL,
 } from "./desktop-browser-ipc.js";
 import {
   BB_DESKTOP_APP_COMMAND_CHANNEL,
@@ -321,6 +329,24 @@ const bbBrowserApi: BbDesktopBrowserApi = {
     return () => {
       browserFindResultListeners.delete(listener);
     };
+  },
+  async listImportSources() {
+    const payload: unknown = await ipcRenderer.invoke(
+      BB_DESKTOP_BROWSER_LIST_IMPORT_SOURCES_CHANNEL,
+    );
+    return z
+      .object({ sources: z.array(desktopBrowserImportSourceSchema) })
+      .parse(payload);
+  },
+  async importCookies(request) {
+    const payload: unknown = await ipcRenderer.invoke(
+      BB_DESKTOP_BROWSER_IMPORT_COOKIES_CHANNEL,
+      request,
+    );
+    return desktopBrowserImportOutcomeSchema.parse(payload);
+  },
+  openFullDiskAccessSettings() {
+    ipcRenderer.send(BB_DESKTOP_BROWSER_OPEN_FULL_DISK_ACCESS_SETTINGS_CHANNEL);
   },
 };
 

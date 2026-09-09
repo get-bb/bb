@@ -14,13 +14,7 @@ import {
 import { useNavigate, type NavigateOptions } from "react-router-dom";
 import { useStore } from "jotai";
 import { useIsCompactViewport } from "@bb/shared-ui/hooks/use-compact-viewport";
-import {
-  isRoutePath,
-  resolveRouteHref,
-  getThreadRoutePath,
-} from "@/lib/route-paths";
-import { desktopBrowserRevealAtom } from "@/lib/desktop-browser-presentation";
-import { sdk } from "@/lib/sdk";
+import { isRoutePath, resolveRouteHref } from "@/lib/route-paths";
 import { getDesktopBrowserApi } from "@/lib/bb-desktop";
 import { openPaneContentInSplit } from "@/lib/split-layout/openPaneContentInSplit";
 import { paneContentForPathname } from "@/views/thread-detail/splitThreadNavigation";
@@ -132,24 +126,6 @@ export function RouteNavigationProvider({
     },
     [isCompact, navigateRoute, store],
   );
-  useEffect(() => {
-    const api = getDesktopBrowserApi();
-    return api?.onReveal?.((request) => {
-      store.set(desktopBrowserRevealAtom, request);
-      void sdk.threads
-        .get({ threadId: request.threadId })
-        .then((thread) => {
-          if (store.get(desktopBrowserRevealAtom) === request)
-            navigateRoute(
-              getThreadRoutePath({
-                threadId: request.threadId,
-                projectId: thread.projectId,
-              }),
-            );
-        })
-        .catch(() => undefined);
-    });
-  }, [store, navigateRoute]);
   useEffect(() => {
     const browserApi = getDesktopBrowserApi();
     if (browserApi === null) {

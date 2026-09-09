@@ -244,17 +244,15 @@ afterEach(() => {
 });
 
 describe("PluginNavSidebarItems", () => {
-  it("shows placeholders on first launch and removes them when startup settles", () => {
+  it("keeps built-in actions visible without placeholders during startup", () => {
     resetPluginFrontendBootStateForTest();
     renderSidebarItems({
       builtInEntries: [builtInEntry("new-thread", "New thread")],
     });
     expect(
-      screen.getByRole("status", { name: "Loading plugins" }),
-    ).toBeTruthy();
-    expect(
-      screen.getByTestId("plugin-nav-loading-placeholders").children,
-    ).toHaveLength(3);
+      screen.queryByRole("status", { name: "Loading plugins" }),
+    ).toBeNull();
+    expect(screen.queryByTestId("plugin-nav-loading-placeholders")).toBeNull();
     expect(screen.getByRole("button", { name: "New thread" })).toBeTruthy();
     act(() => markPluginFrontendsSettled());
     expect(
@@ -277,11 +275,6 @@ describe("PluginNavSidebarItems", () => {
     renderSidebarItems();
     const row = screen.getByRole("button", { name: "Docs" });
     expect(row.getAttribute("aria-busy")).toBe("true");
-    expect(
-      screen
-        .getByTestId("plugin-nav-sidebar-items")
-        .classList.contains("bb-plugin-nav-loading"),
-    ).toBe(true);
     expect(screen.queryByTestId("plugin-nav-loading-placeholders")).toBeNull();
     act(() => {
       setPluginFrontendReconcilePending(true);
@@ -291,17 +284,12 @@ describe("PluginNavSidebarItems", () => {
     expect(screen.getByRole("button", { name: "Docs" })).toBe(row);
     expect(row.hasAttribute("aria-busy")).toBe(false);
     expect(
-      screen.getByRole("status", { name: "Loading plugins" }),
-    ).toBeTruthy();
+      screen.queryByRole("status", { name: "Loading plugins" }),
+    ).toBeNull();
     act(() => setPluginFrontendReconcilePending(false));
     expect(
       screen.queryByRole("status", { name: "Loading plugins" }),
     ).toBeNull();
-    expect(
-      screen
-        .getByTestId("plugin-nav-sidebar-items")
-        .classList.contains("bb-plugin-nav-loading"),
-    ).toBe(false);
   });
 
   it("collapses the entire subsection with zero traditional plugins", () => {
