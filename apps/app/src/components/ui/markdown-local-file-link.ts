@@ -191,7 +191,7 @@ function parseLineSuffix(value: string): LocalFileHrefParts | null {
 }
 
 function hasLikelyFileBasename(path: string): boolean {
-  const segments = path.split("/");
+  const segments = path.split(/[/\\]/u);
   const basename = segments[segments.length - 1] ?? "";
   return basename.startsWith(".") || basename.includes(".");
 }
@@ -211,18 +211,26 @@ function isValidAbsoluteLocalFilePath({
   path,
   requireLikelyFileBasename,
 }: LocalFilePathValidationArgs): boolean {
-  return (
-    path.startsWith("/") &&
-    !path.startsWith("//") &&
-    path !== "/" &&
-    !path.endsWith("/") &&
-    !path.includes("\n") &&
-    !path.includes("\r") &&
-    !path.includes("?") &&
-    !path.includes("#") &&
-    !hasControlCharacter(path) &&
-    (!requireLikelyFileBasename || hasLikelyFileBasename(path))
-  );
+  if (
+    path.length === 0 ||
+    path.trim() !== path ||
+    path.includes("\n") ||
+    path.includes("\r") ||
+    path.includes("?") ||
+    path.includes("#") ||
+    hasControlCharacter(path) ||
+    path.endsWith("/") ||
+    path.endsWith("\\")
+  ) {
+    return false;
+  }
+  const posixAbsolute =
+    path.startsWith("/") && !path.startsWith("//") && path !== "/";
+  const windowsAbsolute = /^[A-Za-z]:[\\/]/u.test(path);
+  if (!posixAbsolute && !windowsAbsolute) {
+    return false;
+  }
+  return !requireLikelyFileBasename || hasLikelyFileBasename(path);
 }
 
 function parseAbsoluteLocalFileHref(
@@ -232,8 +240,8 @@ function parseAbsoluteLocalFileHref(
   if (
     href.length === 0 ||
     href.trim() !== href ||
-    !href.startsWith("/") ||
-    href.startsWith("//")
+    href.startsWith("//") ||
+    (!href.startsWith("/") && !/^[A-Za-z]:[\\/]/u.test(href))
   ) {
     return null;
   }

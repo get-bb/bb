@@ -132,6 +132,28 @@ describe("parseLocalFileHref", () => {
     ).toBeNull();
   });
 
+  it("applies the same containment policy to native Windows paths", () => {
+    const workspace = {
+      kind: "contained",
+      rootPath: "C:\\Users\\me\\project",
+    } satisfies MarkdownAbsoluteLocalFileLinkRouting;
+    expect(
+      parseLocalFileHref({
+        absoluteLinks: workspace,
+        href: "C:/Users/me/project/docs/../README.md",
+      }),
+    ).toEqual({
+      lineRange: null,
+      path: "c:/Users/me/project/README.md",
+    });
+    expect(
+      parseLocalFileHref({
+        absoluteLinks: workspace,
+        href: "C:\\Users\\me\\outside.md",
+      }),
+    ).toBeNull();
+  });
+
   it("rejects hrefs that are not unambiguous absolute local files", () => {
     for (const href of [
       "apps/app/src/main.tsx",
@@ -252,6 +274,16 @@ describe("resolveRelativeLocalFileHref", () => {
         rootPath: "/storage/thr_1",
       }),
     ).toBe("/storage/thr_1/current/summary.md#L7");
+  });
+
+  it("normalizes relative paths against a native Windows base", () => {
+    expect(
+      resolveRelativeLocalFileHref({
+        baseDir: "C:\\Users\\me\\project\\docs",
+        href: "../canvas-demo.html",
+        rootPath: "C:\\Users\\me\\project",
+      }),
+    ).toBe("c:/Users/me/project/canvas-demo.html");
   });
 
   it("parses file line suffixes before checking URI schemes", () => {

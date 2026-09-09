@@ -1,3 +1,5 @@
+const WINDOWS_DRIVE_ABSOLUTE_PATH_PATTERN = /^[A-Za-z]:[\\/]/u;
+
 interface ResolveAbsoluteFilePathArgs {
   path: string;
   rootPath: string | null | undefined;
@@ -21,6 +23,10 @@ interface NormalizeAbsoluteFilePathArgs {
   path: string;
 }
 
+interface NormalizeSegmentsArgs {
+  path: string;
+}
+
 function trimTrailingSlash(path: string): string {
   if (path === "/") {
     return path;
@@ -32,17 +38,19 @@ function trimLeadingSlash(path: string): string {
   return path.replace(/^\/+/u, "");
 }
 
-function isAbsoluteFilePath(path: string): boolean {
-  return path.startsWith("/");
+function toForwardSlashPath(path: string): string {
+  return path.includes("\\") ? path.replace(/\\/g, "/") : path;
 }
 
-export function normalizeAbsoluteFilePath({
-  path,
-}: NormalizeAbsoluteFilePathArgs): string | null {
-  if (!isAbsoluteFilePath(path)) {
-    return null;
-  }
+function isAbsoluteFilePath(path: string): boolean {
+  return path.startsWith("/") || WINDOWS_DRIVE_ABSOLUTE_PATH_PATTERN.test(path);
+}
 
+function isWindowsRootPath(path: string): boolean {
+  return /^[A-Za-z]:$/u.test(path);
+}
+
+function normalizeSegments({ path }: NormalizeSegmentsArgs): string[] {
   const normalizedSegments: string[] = [];
   for (const segment of path.split("/")) {
     if (segment.length === 0 || segment === ".") {
@@ -56,10 +64,31 @@ export function normalizeAbsoluteFilePath({
     }
     normalizedSegments.push(segment);
   }
+  return normalizedSegments;
+}
 
+export function normalizeAbsoluteFilePath({
+  path,
+}: NormalizeAbsoluteFilePathArgs): string | null {
+  if (!isAbsoluteFilePath(path)) {
+    return null;
+  }
+
+  const slashPath = toForwardSlashPath(path);
+  if (slashPath.startsWith("/")) {
+    const normalizedSegments = normalizeSegments({ path: slashPath });
+    return normalizedSegments.length === 0
+      ? "/"
+      : `/${normalizedSegments.join("/")}`;
+  }
+
+  const drive = slashPath[0]!.toLowerCase();
+  const normalizedSegments = normalizeSegments({
+    path: slashPath.slice(3),
+  });
   return normalizedSegments.length === 0
-    ? "/"
-    : `/${normalizedSegments.join("/")}`;
+    ? `${drive}:`
+    : `${drive}:/${normalizedSegments.join("/")}`;
 }
 
 export function isAbsoluteFilePathWithinRoot({
@@ -78,6 +107,12 @@ export function isAbsoluteFilePathWithinRoot({
     return normalizedCandidatePath.startsWith("/");
   }
 
+  if (isWindowsRootPath(normalizedRootPath)) {
+    const candidate = normalizedCandidatePath.toLowerCase();
+    const root = normalizedRootPath.toLowerCase();
+    return candidate === root || candidate.startsWith(`${root}/`);
+  }
+
   return (
     normalizedCandidatePath === normalizedRootPath ||
     normalizedCandidatePath.startsWith(`${normalizedRootPath}/`)
@@ -92,8 +127,8 @@ export function buildAbsoluteFilePath({
     return path;
   }
 
-  const normalizedRootPath = trimTrailingSlash(rootPath);
-  const relativePath = trimLeadingSlash(path);
+  const normalizedRootPath = trimTrailingSlash(toForwardSlashPath(rootPath));
+  const relativePath = trimLeadingSlash(toForwardSlashPath(path));
   if (normalizedRootPath === "/") {
     return `/${relativePath}`;
   }
@@ -114,7 +149,14 @@ export function resolveAbsoluteFilePath({
 }
 
 export function getAbsoluteDirname({ path }: GetAbsoluteDirnameArgs): string {
-  const trimmed = trimTrailingSlash(path);
+  const slashPath = toForwardSlashPath(path);
+  const trimmed = slashPath === "/" ? slashPath : trimTrailingSlash(slashPath);
+  if (!trimmed.includes("/")) {
+    return /^[A-Za-z]:$/u.test(trimmed) ? trimmed : "/";
+  }
   const lastSlashIndex = trimmed.lastIndexOf("/");
-  return lastSlashIndex <= 0 ? "/" : trimmed.slice(0, lastSlashIndex);
+  if (lastSlashIndex === 0) {
+    return "/";
+  }
+  return trimmed.slice(0, lastSlashIndex);
 }
