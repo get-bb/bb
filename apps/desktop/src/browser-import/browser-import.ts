@@ -19,6 +19,7 @@ import {
   isSourceRunning,
   listSourceProfiles,
   resolveCookieDatabase,
+  resolveInstalledAppPath,
   BROWSER_IMPORT_SOURCES,
   type BrowserImportPathContext,
   type BrowserImportSourceDefinition,
@@ -41,6 +42,7 @@ export interface BrowserImportService {
 export interface CreateBrowserImportServiceArgs {
   context: BrowserImportPathContext;
   runSecretCommand?: SecretCommandRunner;
+  resolveIcon?: (appPath: string) => Promise<string | undefined>;
   log?: (message: string, details?: Record<string, unknown>) => void;
 }
 
@@ -125,10 +127,30 @@ export function createBrowserImportService(
   const { context } = args;
   const run = args.runSecretCommand ?? runSecretCommand;
 
+  const iconCache = new Map<string, Promise<string | undefined>>();
+
+  async function iconFor(
+    definition: BrowserImportSourceDefinition,
+  ): Promise<string | undefined> {
+    if (!args.resolveIcon) return undefined;
+    const appPath = await resolveInstalledAppPath(definition, context);
+    if (appPath === undefined) return undefined;
+    let pending = iconCache.get(appPath);
+    if (pending === undefined) {
+      pending = args.resolveIcon(appPath).catch(() => undefined);
+      iconCache.set(appPath, pending);
+    }
+    return pending;
+  }
+
   async function listSources(): Promise<DesktopBrowserImportSource[]> {
     const sources: DesktopBrowserImportSource[] = [];
     for (const definition of BROWSER_IMPORT_SOURCES) {
       const unavailable = await unavailableReason(definition, context);
+      const icon =
+        unavailable === "notInstalled" || unavailable === "unsupportedPlatform"
+          ? undefined
+          : await iconFor(definition);
       sources.push({
         id: definition.id,
         name: definition.name,
@@ -137,6 +159,7 @@ export function createBrowserImportService(
             ? await listSourceProfiles(definition, context)
             : [],
         ...(unavailable === undefined ? {} : { unavailable }),
+        ...(icon === undefined ? {} : { icon }),
       });
     }
     return sources;

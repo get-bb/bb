@@ -23,6 +23,7 @@ export interface BrowserImportSourceDefinition {
   keychainService?: string;
   keychainAccount?: string;
   linuxSecretApplication?: string;
+  macAppNames?: readonly string[];
 }
 
 function macApplicationSupport(
@@ -40,6 +41,7 @@ function chromiumSource(input: {
   macSegments: readonly string[];
   linuxSegments?: readonly string[];
   linuxSecretApplication?: string;
+  macAppNames: readonly string[];
 }): BrowserImportSourceDefinition {
   return {
     id: input.id,
@@ -48,6 +50,7 @@ function chromiumSource(input: {
     platforms: ["darwin", ...(input.linuxSegments ? ["linux" as const] : [])],
     keychainService: input.keychainService,
     keychainAccount: input.keychainAccount,
+    macAppNames: input.macAppNames,
     ...(input.linuxSecretApplication === undefined
       ? {}
       : { linuxSecretApplication: input.linuxSecretApplication }),
@@ -65,6 +68,7 @@ export const BROWSER_IMPORT_SOURCES: readonly BrowserImportSourceDefinition[] =
   [
     chromiumSource({
       id: "chrome",
+      macAppNames: ["Google Chrome.app"],
       name: "Google Chrome",
       keychainService: "Chrome Safe Storage",
       keychainAccount: "Chrome",
@@ -74,6 +78,7 @@ export const BROWSER_IMPORT_SOURCES: readonly BrowserImportSourceDefinition[] =
     }),
     chromiumSource({
       id: "chromium",
+      macAppNames: ["Chromium.app"],
       name: "Chromium",
       keychainService: "Chromium Safe Storage",
       keychainAccount: "Chromium",
@@ -83,6 +88,7 @@ export const BROWSER_IMPORT_SOURCES: readonly BrowserImportSourceDefinition[] =
     }),
     chromiumSource({
       id: "edge",
+      macAppNames: ["Microsoft Edge.app"],
       name: "Microsoft Edge",
       keychainService: "Microsoft Edge Safe Storage",
       keychainAccount: "Microsoft Edge",
@@ -92,6 +98,7 @@ export const BROWSER_IMPORT_SOURCES: readonly BrowserImportSourceDefinition[] =
     }),
     chromiumSource({
       id: "brave",
+      macAppNames: ["Brave Browser.app"],
       name: "Brave",
       keychainService: "Brave Safe Storage",
       keychainAccount: "Brave",
@@ -101,6 +108,7 @@ export const BROWSER_IMPORT_SOURCES: readonly BrowserImportSourceDefinition[] =
     }),
     chromiumSource({
       id: "vivaldi",
+      macAppNames: ["Vivaldi.app"],
       name: "Vivaldi",
       keychainService: "Vivaldi Safe Storage",
       keychainAccount: "Vivaldi",
@@ -110,6 +118,7 @@ export const BROWSER_IMPORT_SOURCES: readonly BrowserImportSourceDefinition[] =
     }),
     chromiumSource({
       id: "opera",
+      macAppNames: ["Opera.app"],
       name: "Opera",
       keychainService: "Opera Safe Storage",
       keychainAccount: "Opera",
@@ -119,6 +128,7 @@ export const BROWSER_IMPORT_SOURCES: readonly BrowserImportSourceDefinition[] =
     }),
     chromiumSource({
       id: "arc",
+      macAppNames: ["Arc.app"],
       name: "Arc",
       keychainService: "Arc Safe Storage",
       keychainAccount: "Arc",
@@ -129,6 +139,7 @@ export const BROWSER_IMPORT_SOURCES: readonly BrowserImportSourceDefinition[] =
       name: "Firefox",
       engine: "firefox",
       platforms: ["darwin", "linux"],
+      macAppNames: ["Firefox.app"],
       userDataDirectory: (context) =>
         context.platform === "darwin"
           ? macApplicationSupport(context, "Firefox")
@@ -139,6 +150,7 @@ export const BROWSER_IMPORT_SOURCES: readonly BrowserImportSourceDefinition[] =
       name: "Safari",
       engine: "safari",
       platforms: ["darwin"],
+      macAppNames: ["Safari.app"],
       userDataDirectory: (context) =>
         context.platform === "darwin"
           ? join(
@@ -575,4 +587,27 @@ export async function isSourceInstalled(
       return true;
   }
   return false;
+}
+
+export async function resolveInstalledAppPath(
+  definition: BrowserImportSourceDefinition,
+  context: BrowserImportPathContext,
+): Promise<string | undefined> {
+  if (context.platform !== "darwin") return undefined;
+  for (const name of definition.macAppNames ?? []) {
+    for (const root of [
+      "/Applications",
+      join(context.home, "Applications"),
+      "/System/Applications",
+      "/System/Cryptexes/App/System/Applications",
+    ]) {
+      const candidate = join(root, name);
+      try {
+        if ((await stat(candidate)).isDirectory()) return candidate;
+      } catch {
+        continue;
+      }
+    }
+  }
+  return undefined;
 }

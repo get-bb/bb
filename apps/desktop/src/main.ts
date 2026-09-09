@@ -2230,6 +2230,10 @@ async function runDesktopApp(): Promise<void> {
   registerDesktopBrowserIpc(desktopBrowserViewManager);
   const browserImportService = createBrowserImportService({
     context: { platform: process.platform, home: homedir() },
+    async resolveIcon(appPath) {
+      const image = await app.getFileIcon(appPath, { size: "normal" });
+      return image.isEmpty() ? undefined : image.toDataURL();
+    },
     log(message, details) {
       createDesktopLogger().info(
         `[desktop] ${message}${details ? ` ${JSON.stringify(details)}` : ""}`,

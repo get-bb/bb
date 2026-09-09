@@ -60,6 +60,11 @@ export const desktopBrowserImportSourceSchema = z
     name: z.string().min(1).max(64),
     profiles: z.array(desktopBrowserImportSourceProfileSchema).max(100),
     unavailable: desktopBrowserImportUnavailableReasonSchema.optional(),
+    icon: z
+      .string()
+      .max(256 * 1024)
+      .regex(/^data:image\/[a-z+]+;base64,/u)
+      .optional(),
   })
   .strict();
 export type DesktopBrowserImportSource = z.infer<

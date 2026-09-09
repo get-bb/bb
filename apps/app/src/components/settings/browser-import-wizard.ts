@@ -4,26 +4,68 @@ import type {
   DesktopBrowserImportSource,
 } from "@bb/host-daemon-contract";
 
-export type BrowserImportWizardStep =
-  | { step: "detecting" }
-  | { step: "chooseSource" }
-  | { step: "quit" }
-  | { step: "fullDiskAccess"; checked: boolean }
+export interface BrowserImportRecord {
+  at: number;
+  profileName: string;
+  imported: number;
+  skipped: number;
+  skippedDomains: readonly string[];
+}
+
+export type BrowserImportRecords = Readonly<
+  Partial<Record<DesktopBrowserImportSource["id"], BrowserImportRecord>>
+>;
+
+export const BROWSER_IMPORT_RECORDS_STORAGE_KEY = "bb:browser-import:records";
+
+export function readBrowserImportRecords(
+  storage: Pick<Storage, "getItem"> | null,
+): BrowserImportRecords {
+  try {
+    const raw = storage?.getItem(BROWSER_IMPORT_RECORDS_STORAGE_KEY);
+    if (!raw) return {};
+    const parsed: unknown = JSON.parse(raw);
+    if (typeof parsed !== "object" || parsed === null) return {};
+    const records: Partial<Record<string, BrowserImportRecord>> = {};
+    for (const [id, value] of Object.entries(parsed)) {
+      if (typeof value !== "object" || value === null) continue;
+      const record = value as Partial<BrowserImportRecord>;
+      if (
+        typeof record.at !== "number" ||
+        typeof record.profileName !== "string" ||
+        typeof record.imported !== "number" ||
+        typeof record.skipped !== "number" ||
+        !Array.isArray(record.skippedDomains)
+      )
+        continue;
+      records[id] = {
+        at: record.at,
+        profileName: record.profileName,
+        imported: record.imported,
+        skipped: record.skipped,
+        skippedDomains: record.skippedDomains.filter(
+          (domain): domain is string => typeof domain === "string",
+        ),
+      };
+    }
+    return records as BrowserImportRecords;
+  } catch {
+    return {};
+  }
+}
+
+export type BrowserImportDialogStep =
   | { step: "configure" }
+  | { step: "fullDiskAccess"; checked: boolean }
   | { step: "checking" }
   | { step: "importing" }
-  | {
-      step: "done";
-      imported: number;
-      skipped: number;
-      skippedDomains: readonly string[];
-    }
   | { step: "blocked"; reason: DesktopBrowserImportFailureReason };
 
-export function initialBrowserImportStep(
+export function initialDialogStep(
   source: DesktopBrowserImportSource,
-): BrowserImportWizardStep {
-  if (source.unavailable === "browserRunning") return { step: "quit" };
+): BrowserImportDialogStep {
+  if (source.unavailable === "browserRunning")
+    return { step: "blocked", reason: "browserRunning" };
   if (source.unavailable === "needsFullDiskAccess")
     return { step: "fullDiskAccess", checked: false };
   if (source.unavailable !== undefined)
@@ -33,49 +75,48 @@ export function initialBrowserImportStep(
   return { step: "configure" };
 }
 
-export function outcomeToBrowserImportStep(
-  outcome: DesktopBrowserImportOutcome,
-): BrowserImportWizardStep {
-  if (outcome.ok) {
-    return {
-      step: "done",
-      imported: outcome.imported,
-      skipped: outcome.skipped,
-      skippedDomains: outcome.skippedDomains,
-    };
-  }
-  if (outcome.reason === "browserRunning") return { step: "quit" };
-  if (outcome.reason === "needsFullDiskAccess")
+export function failedDialogStep(
+  reason: DesktopBrowserImportFailureReason,
+): BrowserImportDialogStep {
+  if (reason === "needsFullDiskAccess")
     return { step: "fullDiskAccess", checked: true };
-  return { step: "blocked", reason: outcome.reason };
+  return { step: "blocked", reason };
 }
 
-export function refreshedBrowserImportStep(
+export function sourceAfterFailure(
+  source: DesktopBrowserImportSource,
+  reason: DesktopBrowserImportFailureReason,
+): DesktopBrowserImportSource | null {
+  switch (reason) {
+    case "browserRunning":
+    case "needsFullDiskAccess":
+    case "needsKeychainApproval":
+    case "keychainItemMissing":
+      return { ...source, unavailable: reason };
+    default:
+      return null;
+  }
+}
+
+export function refreshedDialogStep(
   source: DesktopBrowserImportSource | undefined,
-  previous: BrowserImportWizardStep,
-): BrowserImportWizardStep {
+  previous: BrowserImportDialogStep,
+): BrowserImportDialogStep {
   if (source === undefined) return { step: "blocked", reason: "unknownSource" };
-  const next = initialBrowserImportStep(source);
+  const next = initialDialogStep(source);
   if (next.step === "fullDiskAccess" && previous.step === "fullDiskAccess")
     return { step: "fullDiskAccess", checked: true };
   return next;
 }
 
-export function canCloseBrowserImportWizard(
-  step: BrowserImportWizardStep,
-): boolean {
+export function canCloseDialog(step: BrowserImportDialogStep): boolean {
   return step.step !== "importing";
 }
 
-export function canReturnToSourceChoice(
-  step: BrowserImportWizardStep,
+export function needsProfileChoice(
+  source: DesktopBrowserImportSource,
 ): boolean {
-  return (
-    step.step === "configure" ||
-    step.step === "quit" ||
-    step.step === "fullDiskAccess" ||
-    step.step === "blocked"
-  );
+  return source.unavailable === undefined && source.profiles.length > 1;
 }
 
 export function preferredSourceProfileDirectory(
@@ -90,6 +131,20 @@ export function preferredSourceProfileDirectory(
   return source.profiles[0]?.directory ?? null;
 }
 
+export function recordFromOutcome(
+  outcome: DesktopBrowserImportOutcome & { ok: true },
+  profileName: string,
+  at: number,
+): BrowserImportRecord {
+  return {
+    at,
+    profileName,
+    imported: outcome.imported,
+    skipped: outcome.skipped,
+    skippedDomains: outcome.skippedDomains,
+  };
+}
+
 export function formatCookieCount(count: number): string {
   return `${count.toLocaleString()} ${count === 1 ? "cookie" : "cookies"}`;
 }
@@ -102,40 +157,7 @@ export function formatSkippedDomains(domains: readonly string[]): string {
   return `${domains.slice(0, 3).join(", ")} and ${domains.length - 3} more`;
 }
 
-export function describeSourceProfiles(
-  source: DesktopBrowserImportSource,
-): string {
-  if (source.unavailable === "notInstalled") return "Not found on this machine";
-  if (source.unavailable === "unsupportedPlatform")
-    return "Not supported on this platform";
-  if (source.unavailable === "needsFullDiskAccess")
-    return "Needs Full Disk Access to read its cookies";
-  if (source.unavailable === "browserRunning")
-    return "Quit it before importing";
-  if (source.profiles.length === 0) return "No profiles with cookies";
-  const names = source.profiles
-    .map((profile) =>
-      profile.cookieCount === undefined
-        ? profile.name
-        : `${profile.name} (${formatCookieCount(profile.cookieCount)})`,
-    )
-    .join(", ");
-  return `${source.profiles.length} ${
-    source.profiles.length === 1 ? "profile" : "profiles"
-  } · ${names}`;
-}
-
-export function isSourceSelectable(
-  source: DesktopBrowserImportSource,
-): boolean {
-  return (
-    source.unavailable === undefined ||
-    source.unavailable === "browserRunning" ||
-    source.unavailable === "needsFullDiskAccess"
-  );
-}
-
-export function detectedSources(
+export function listedSources(
   sources: readonly DesktopBrowserImportSource[],
 ): DesktopBrowserImportSource[] {
   return sources.filter(
@@ -145,22 +167,102 @@ export function detectedSources(
   );
 }
 
-export type SourceStatusTone = "ready" | "attention" | "muted";
+export type SourceRowTone = "ready" | "attention" | "idle";
 
-export function sourceStatus(source: DesktopBrowserImportSource): {
-  label: string;
-  tone: SourceStatusTone;
-} {
+export interface SourceRowPresentation {
+  status: string;
+  tone: SourceRowTone;
+  details: string[];
+  action: "import" | "recheck" | "grant" | "none";
+  actionLabel: string;
+}
+
+export function totalCookies(source: DesktopBrowserImportSource): number {
+  return source.profiles.reduce(
+    (sum, profile) => sum + (profile.cookieCount ?? 0),
+    0,
+  );
+}
+
+export function presentSourceRow(
+  source: DesktopBrowserImportSource,
+  record: BrowserImportRecord | undefined,
+): SourceRowPresentation {
+  const profileCount = source.profiles.length;
+  const profileLabel = `${profileCount} ${profileCount === 1 ? "profile" : "profiles"}`;
+  const cookies = totalCookies(source);
   switch (source.unavailable) {
-    case undefined:
-      return { label: "Ready", tone: "ready" };
     case "browserRunning":
-      return { label: "Quit first", tone: "attention" };
+      return {
+        status: `Running · quit ${source.name} to import`,
+        tone: "attention",
+        details: [],
+        action: "recheck",
+        actionLabel: "Recheck",
+      };
     case "needsFullDiskAccess":
-      return { label: "Needs permission", tone: "attention" };
-    case "notInstalled":
-      return { label: "Not installed", tone: "muted" };
+      return {
+        status: "Needs Full Disk Access",
+        tone: "attention",
+        details: [],
+        action: "grant",
+        actionLabel: "Grant access…",
+      };
+    case "needsKeychainApproval":
+      return {
+        status: "Needs Keychain access",
+        tone: "attention",
+        details: [],
+        action: "import",
+        actionLabel: "Import…",
+      };
+    case "keychainItemMissing":
+      return {
+        status: "No encryption key in Keychain",
+        tone: "idle",
+        details: [],
+        action: "recheck",
+        actionLabel: "Recheck",
+      };
+    case undefined:
+      break;
     default:
-      return { label: "Unavailable", tone: "muted" };
+      return {
+        status: "Unavailable",
+        tone: "idle",
+        details: [],
+        action: "none",
+        actionLabel: "Import…",
+      };
   }
+  if (profileCount === 0 || cookies === 0) {
+    return {
+      status: "No cookies yet",
+      tone: "idle",
+      details: profileCount === 0 ? [] : [profileLabel],
+      action: "none",
+      actionLabel: "Import…",
+    };
+  }
+  const details = record
+    ? [
+        `${record.profileName} · ${formatCookieCount(record.imported)} imported`,
+        ...(record.skipped > 0
+          ? [
+              `${record.skipped.toLocaleString()} skipped${
+                record.skippedDomains.length > 0
+                  ? ` (${formatSkippedDomains(record.skippedDomains)})`
+                  : ""
+              }`,
+            ]
+          : []),
+      ]
+    : [profileLabel, formatCookieCount(cookies)];
+  return {
+    status: "Ready",
+    tone: "ready",
+    details,
+    action: "import",
+    actionLabel: "Import…",
+  };
 }

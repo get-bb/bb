@@ -1,16 +1,17 @@
 import { describe, expect, it } from "vitest";
 import type { DesktopBrowserImportSource } from "@bb/host-daemon-contract";
 import {
-  canCloseBrowserImportWizard,
-  canReturnToSourceChoice,
-  describeSourceProfiles,
-  detectedSources,
+  canCloseDialog,
+  failedDialogStep,
   formatSkippedDomains,
-  initialBrowserImportStep,
-  isSourceSelectable,
-  outcomeToBrowserImportStep,
+  initialDialogStep,
+  listedSources,
+  needsProfileChoice,
   preferredSourceProfileDirectory,
-  refreshedBrowserImportStep,
+  presentSourceRow,
+  readBrowserImportRecords,
+  refreshedDialogStep,
+  sourceAfterFailure,
 } from "./browser-import-wizard";
 
 const ready: DesktopBrowserImportSource = {
@@ -22,113 +23,131 @@ const ready: DesktopBrowserImportSource = {
   ],
 };
 
-describe("browser import wizard steps", () => {
+describe("browser import dialog steps", () => {
   it("opens on the step matching the source's availability", () => {
-    expect(initialBrowserImportStep(ready)).toEqual({ step: "configure" });
+    expect(initialDialogStep(ready)).toEqual({ step: "configure" });
     expect(
-      initialBrowserImportStep({ ...ready, unavailable: "browserRunning" }),
-    ).toEqual({ step: "quit" });
+      initialDialogStep({ ...ready, unavailable: "browserRunning" }),
+    ).toEqual({ step: "blocked", reason: "browserRunning" });
     expect(
-      initialBrowserImportStep({
-        ...ready,
-        unavailable: "needsFullDiskAccess",
-      }),
+      initialDialogStep({ ...ready, unavailable: "needsFullDiskAccess" }),
     ).toEqual({ step: "fullDiskAccess", checked: false });
-    expect(
-      initialBrowserImportStep({ ...ready, unavailable: "notInstalled" }),
-    ).toEqual({ step: "blocked", reason: "notInstalled" });
-    expect(initialBrowserImportStep({ ...ready, profiles: [] })).toEqual({
+    expect(initialDialogStep({ ...ready, profiles: [] })).toEqual({
       step: "blocked",
       reason: "unknownSourceProfile",
     });
   });
 
-  it("routes outcomes to done, quit, permission, or blocked", () => {
-    expect(
-      outcomeToBrowserImportStep({
-        ok: true,
-        imported: 3,
-        skipped: 1,
-        skippedDomains: ["a.test"],
-      }),
-    ).toEqual({
-      step: "done",
-      imported: 3,
-      skipped: 1,
-      skippedDomains: ["a.test"],
+  it("routes failures and rechecks", () => {
+    expect(failedDialogStep("needsFullDiskAccess")).toEqual({
+      step: "fullDiskAccess",
+      checked: true,
+    });
+    expect(failedDialogStep("readFailed")).toEqual({
+      step: "blocked",
+      reason: "readFailed",
     });
     expect(
-      outcomeToBrowserImportStep({ ok: false, reason: "browserRunning" }),
-    ).toEqual({ step: "quit" });
-    expect(
-      outcomeToBrowserImportStep({ ok: false, reason: "needsFullDiskAccess" }),
-    ).toEqual({ step: "fullDiskAccess", checked: true });
-    expect(
-      outcomeToBrowserImportStep({ ok: false, reason: "readFailed" }),
-    ).toEqual({ step: "blocked", reason: "readFailed" });
-  });
-
-  it("marks a repeated permission denial as checked and blocks vanished sources", () => {
-    expect(
-      refreshedBrowserImportStep(
+      refreshedDialogStep(
         { ...ready, unavailable: "needsFullDiskAccess" },
         { step: "fullDiskAccess", checked: false },
       ),
     ).toEqual({ step: "fullDiskAccess", checked: true });
-    expect(refreshedBrowserImportStep(ready, { step: "quit" })).toEqual({
-      step: "configure",
-    });
-    expect(refreshedBrowserImportStep(undefined, { step: "quit" })).toEqual({
+    expect(refreshedDialogStep(undefined, { step: "configure" })).toEqual({
       step: "blocked",
       reason: "unknownSource",
     });
+    expect(canCloseDialog({ step: "importing" })).toBe(false);
+    expect(canCloseDialog({ step: "checking" })).toBe(true);
   });
 
-  it("only locks the dialog while importing", () => {
-    expect(canCloseBrowserImportWizard({ step: "importing" })).toBe(false);
-    expect(canCloseBrowserImportWizard({ step: "checking" })).toBe(true);
-  });
-
-  it("keeps the chosen profile when it survives a refresh", () => {
-    expect(preferredSourceProfileDirectory("Profile 1", ready)).toBe(
-      "Profile 1",
+  it("only opens a dialog for direct-import failures the user can fix", () => {
+    expect(sourceAfterFailure(ready, "browserRunning")?.unavailable).toBe(
+      "browserRunning",
     );
+    expect(sourceAfterFailure(ready, "readFailed")).toBeNull();
+  });
+
+  it("chooses profiles and lists only installed browsers", () => {
+    expect(needsProfileChoice(ready)).toBe(true);
+    expect(
+      needsProfileChoice({ ...ready, profiles: ready.profiles.slice(0, 1) }),
+    ).toBe(false);
     expect(preferredSourceProfileDirectory("gone", ready)).toBe("Default");
     expect(
-      preferredSourceProfileDirectory("gone", { ...ready, profiles: [] }),
-    ).toBeNull();
-  });
-
-  it("formats skipped domains and profile summaries", () => {
-    expect(formatSkippedDomains([])).toBe("");
-    expect(formatSkippedDomains(["a"])).toBe("a");
-    expect(formatSkippedDomains(["a", "b", "c"])).toBe("a, b and c");
-    expect(formatSkippedDomains(["a", "b", "c", "d", "e"])).toBe(
-      "a, b, c and 2 more",
-    );
-    expect(describeSourceProfiles(ready)).toBe(
-      "2 profiles · Person 1 (4,812 cookies), Work (1 cookie)",
-    );
-    expect(
-      describeSourceProfiles({ ...ready, unavailable: "notInstalled" }),
-    ).toBe("Not found on this machine");
-    expect(isSourceSelectable(ready)).toBe(true);
-    expect(
-      isSourceSelectable({ ...ready, unavailable: "needsFullDiskAccess" }),
-    ).toBe(true);
-    expect(isSourceSelectable({ ...ready, unavailable: "notInstalled" })).toBe(
-      false,
-    );
-    expect(
-      detectedSources([
+      listedSources([
         ready,
         { ...ready, id: "arc", unavailable: "notInstalled" },
         { ...ready, id: "safari", unavailable: "unsupportedPlatform" },
         { ...ready, id: "brave", unavailable: "browserRunning" },
       ]).map((source) => source.id),
     ).toEqual(["chrome", "brave"]);
-    expect(canReturnToSourceChoice({ step: "configure" })).toBe(true);
-    expect(canReturnToSourceChoice({ step: "importing" })).toBe(false);
-    expect(canReturnToSourceChoice({ step: "chooseSource" })).toBe(false);
+  });
+
+  it("presents rows by state and last import", () => {
+    expect(presentSourceRow(ready, undefined)).toEqual({
+      status: "Ready",
+      tone: "ready",
+      details: ["2 profiles", "4,813 cookies"],
+      action: "import",
+      actionLabel: "Import…",
+    });
+    expect(
+      presentSourceRow(ready, {
+        at: 1,
+        profileName: "Work",
+        imported: 10,
+        skipped: 2,
+        skippedDomains: ["a.test", "b.test"],
+      }).details,
+    ).toEqual(["Work · 10 cookies imported", "2 skipped (a.test and b.test)"]);
+    expect(
+      presentSourceRow({ ...ready, unavailable: "browserRunning" }, undefined),
+    ).toMatchObject({ action: "recheck", tone: "attention" });
+    expect(
+      presentSourceRow(
+        { ...ready, unavailable: "needsFullDiskAccess" },
+        undefined,
+      ),
+    ).toMatchObject({ action: "grant", actionLabel: "Grant access…" });
+    expect(
+      presentSourceRow(
+        { ...ready, profiles: [{ directory: "d", name: "n", cookieCount: 0 }] },
+        undefined,
+      ),
+    ).toMatchObject({ status: "No cookies yet", action: "none" });
+  });
+
+  it("reads persisted import records defensively", () => {
+    const storage = new Map<string, string>();
+    const fake = { getItem: (key: string) => storage.get(key) ?? null };
+    expect(readBrowserImportRecords(fake)).toEqual({});
+    storage.set("bb:browser-import:records", "not json");
+    expect(readBrowserImportRecords(fake)).toEqual({});
+    storage.set(
+      "bb:browser-import:records",
+      JSON.stringify({
+        chrome: {
+          at: 5,
+          profileName: "p",
+          imported: 1,
+          skipped: 0,
+          skippedDomains: ["x", 3],
+        },
+        firefox: { at: "bad" },
+      }),
+    );
+    expect(readBrowserImportRecords(fake)).toEqual({
+      chrome: {
+        at: 5,
+        profileName: "p",
+        imported: 1,
+        skipped: 0,
+        skippedDomains: ["x"],
+      },
+    });
+    expect(formatSkippedDomains(["a", "b", "c", "d"])).toBe(
+      "a, b, c and 1 more",
+    );
   });
 });

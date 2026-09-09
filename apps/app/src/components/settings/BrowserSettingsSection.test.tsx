@@ -11,15 +11,28 @@ import type { BbDesktopBrowserApi } from "@bb/desktop-contract";
 import type { DesktopBrowserImportSource } from "@bb/host-daemon-contract";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { BrowserSettingsSectionContent } from "./BrowserSettingsSection";
+import { BROWSER_IMPORT_RECORDS_STORAGE_KEY } from "./browser-import-wizard";
+
+vi.mock("@/components/ui/app-toast", () => ({
+  appToast: { success: vi.fn(), error: vi.fn() },
+}));
+
+const PNG = "data:image/png;base64,iVBORw0KGgo=";
 
 const sources: DesktopBrowserImportSource[] = [
   {
     id: "chrome",
     name: "Google Chrome",
+    icon: PNG,
     profiles: [
       { directory: "Default", name: "Person 1", cookieCount: 3 },
       { directory: "Profile 1", name: "Work", cookieCount: 1 },
     ],
+  },
+  {
+    id: "firefox",
+    name: "Firefox",
+    profiles: [{ directory: "Profiles/p1", name: "default", cookieCount: 9 }],
   },
   { id: "brave", name: "Brave", profiles: [], unavailable: "browserRunning" },
   { id: "arc", name: "Arc", profiles: [], unavailable: "notInstalled" },
@@ -58,12 +71,17 @@ function makeDesktopBrowser(
   };
 }
 
-function openDialog() {
-  fireEvent.click(screen.getByRole("button", { name: "Import cookies…" }));
+function rowButton(id: string): HTMLButtonElement {
+  const button = screen
+    .getByTestId(`browser-import-${id}`)
+    .querySelector("button");
+  if (!button) throw new Error(`no button in row ${id}`);
+  return button;
 }
 
 afterEach(() => {
   cleanup();
+  window.localStorage.clear();
 });
 
 describe("BrowserSettingsSectionContent", () => {
@@ -72,90 +90,92 @@ describe("BrowserSettingsSectionContent", () => {
     expect(
       screen.getByText("Only available in the BB desktop app."),
     ).toBeDefined();
-    expect(
-      screen.queryByRole("button", { name: "Import cookies…" }),
-    ).toBeNull();
   });
 
-  it("detects browsers when the import button is pressed and hides absent ones", async () => {
-    const desktopBrowser = makeDesktopBrowser();
-    render(<BrowserSettingsSectionContent desktopBrowser={desktopBrowser} />);
-    expect(desktopBrowser.listImportSources).not.toHaveBeenCalled();
-    openDialog();
+  it("lists installed browsers with icons and status, hiding absent ones", async () => {
+    render(
+      <BrowserSettingsSectionContent desktopBrowser={makeDesktopBrowser()} />,
+    );
     await waitFor(() =>
       expect(screen.getByText("Google Chrome")).toBeDefined(),
     );
-    expect(screen.getByText("Ready")).toBeDefined();
-    expect(screen.getByText("Quit first")).toBeDefined();
     expect(screen.queryByText("Arc")).toBeNull();
     expect(screen.queryByText("Safari")).toBeNull();
     expect(
-      screen.getByText("2 profiles · Person 1 (3 cookies), Work (1 cookie)"),
-    ).toBeDefined();
+      screen
+        .getByTestId("browser-import-chrome")
+        .querySelector("img")
+        ?.getAttribute("src"),
+    ).toBe(PNG);
+    expect(screen.getByText("2 profiles")).toBeDefined();
+    expect(screen.getByText("4 cookies")).toBeDefined();
+    expect(screen.getByText("Running · quit Brave to import")).toBeDefined();
+    expect(rowButton("brave").textContent).toBe("Recheck");
   });
 
-  it("walks browser choice, profile choice, and import, then reports the outcome", async () => {
+  it("imports a single-profile browser directly and records it in the row", async () => {
     const desktopBrowser = makeDesktopBrowser();
     render(<BrowserSettingsSectionContent desktopBrowser={desktopBrowser} />);
-    openDialog();
+    await waitFor(() => expect(screen.getByText("Firefox")).toBeDefined());
+    fireEvent.click(rowButton("firefox"));
     await waitFor(() =>
-      expect(screen.getByTestId("browser-import-source-chrome")).toBeDefined(),
+      expect(screen.getByText("default · 2 cookies imported")).toBeDefined(),
     );
-    fireEvent.click(screen.getByTestId("browser-import-source-chrome"));
+    expect(desktopBrowser.importCookies).toHaveBeenCalledWith({
+      sourceId: "firefox",
+      sourceProfileDirectory: "Profiles/p1",
+      profile: { kind: "personal" },
+    });
+    expect(screen.getByText("1 skipped (accounts.example.com)")).toBeDefined();
+    expect(screen.getByText("imported just now")).toBeDefined();
+    expect(
+      JSON.parse(
+        window.localStorage.getItem(BROWSER_IMPORT_RECORDS_STORAGE_KEY) ?? "{}",
+      ).firefox.imported,
+    ).toBe(2);
+  });
+
+  it("asks for a profile when a browser has several, then imports it", async () => {
+    const desktopBrowser = makeDesktopBrowser();
+    render(<BrowserSettingsSectionContent desktopBrowser={desktopBrowser} />);
+    await waitFor(() =>
+      expect(screen.getByText("Google Chrome")).toBeDefined(),
+    );
+    fireEvent.click(rowButton("chrome"));
     expect(screen.getByText("Import from Google Chrome")).toBeDefined();
     fireEvent.click(screen.getByRole("radio", { name: /Work/ }));
     fireEvent.click(screen.getByRole("button", { name: "Import 1 cookie" }));
     await waitFor(() =>
-      expect(screen.getByText("Imported 2 cookies")).toBeDefined(),
+      expect(screen.getByText("Work · 2 cookies imported")).toBeDefined(),
     );
-    expect(desktopBrowser.importCookies).toHaveBeenCalledWith({
-      sourceId: "chrome",
-      sourceProfileDirectory: "Profile 1",
-      profile: { kind: "personal" },
-    });
-    expect(screen.getByText("accounts.example.com")).toBeDefined();
-    fireEvent.click(screen.getByRole("button", { name: "Done" }));
-    await waitFor(() =>
-      expect(screen.getByText(/Last import: Google Chrome/)).toBeDefined(),
-    );
+    expect(screen.queryByText("Import from Google Chrome")).toBeNull();
   });
 
-  it("opens a running browser on the quit step, rechecks, and can go back", async () => {
+  it("rechecks a running browser from its row", async () => {
     const listImportSources = vi
       .fn()
       .mockResolvedValueOnce({ sources })
-      .mockResolvedValueOnce({
+      .mockResolvedValue({
         sources: sources.map((source) =>
           source.id === "brave"
             ? {
                 ...source,
                 unavailable: undefined,
-                profiles: [{ directory: "Default", name: "Default" }],
+                profiles: [
+                  { directory: "Default", name: "Default", cookieCount: 5 },
+                ],
               }
             : source,
         ),
-      })
-      .mockResolvedValue({ sources });
+      });
     render(
       <BrowserSettingsSectionContent
         desktopBrowser={makeDesktopBrowser({ listImportSources })}
       />,
     );
-    openDialog();
-    await waitFor(() =>
-      expect(screen.getByTestId("browser-import-source-brave")).toBeDefined(),
-    );
-    fireEvent.click(screen.getByTestId("browser-import-source-brave"));
-    expect(screen.getByText("Quit Brave to import")).toBeDefined();
-    fireEvent.click(screen.getByRole("button", { name: "I've quit it" }));
-    await waitFor(() =>
-      expect(screen.getByText("Import from Brave")).toBeDefined(),
-    );
-    fireEvent.click(screen.getByRole("button", { name: "Back" }));
-    await waitFor(() =>
-      expect(
-        screen.getByText("Import cookies from another browser"),
-      ).toBeDefined(),
-    );
+    await waitFor(() => expect(screen.getByText("Brave")).toBeDefined());
+    fireEvent.click(rowButton("brave"));
+    await waitFor(() => expect(rowButton("brave").textContent).toBe("Import…"));
+    expect(screen.getByText("5 cookies")).toBeDefined();
   });
 });
