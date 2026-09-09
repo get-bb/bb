@@ -343,7 +343,7 @@ export function CommandPalette({
       <DialogContent
         hideCloseButton
         aria-describedby={undefined}
-        className="top-[12%] max-w-[640px] translate-y-0 gap-0 overflow-hidden p-0 shadow-lg sm:rounded-xl"
+        className="top-[12%] max-w-[640px] translate-y-0 gap-0 p-0 shadow-lg sm:rounded-xl"
         onCloseAutoFocus={handleCloseAutoFocus}
         onEscapeKeyDown={(event) => {
           if (activeMode !== undefined) event.preventDefault();
