@@ -221,7 +221,6 @@ it.each(["personal", "legacy", "legacy-completed", "machine-auth"])(
             {
               name: "OPENAI_API_KEY",
               value: "SYNTHETIC_MACHINE_KEY",
-              secret: true,
               note: null,
             },
           );
