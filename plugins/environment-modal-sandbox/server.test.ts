@@ -701,9 +701,9 @@ it("reconciles uncertain named allocations without creating or bootstrapping", a
     appName: "bb",
     sandboxId: null,
   });
-  expect(
-    await test.provider.experimental_reconcileCleanup(request),
-  ).toMatchObject({ status: "failed" });
+  expect(await test.provider.reconcileCleanup(request)).toMatchObject({
+    status: "failed",
+  });
   test.backend.states.push({
     id: "uncertain",
     name: request.key,
@@ -832,6 +832,23 @@ it("exposes account connection checks through RPC and CLI without allocation", a
   ).toMatchObject({ exitCode: 0 });
   expect(await test.harness.behavior.runCli(["image", "build"])).toMatchObject({
     exitCode: 1,
+  });
+  expect(test.backend.image).not.toHaveBeenCalled();
+  expect(test.backend.creates).toHaveLength(0);
+});
+
+it("shows the shipped Dockerfile without credentials or cloud access", async () => {
+  const test = await setup({});
+  const dockerfile = readFileSync(
+    new URL("./Dockerfile", import.meta.url),
+    "utf8",
+  );
+  expect(await test.harness.behavior.callRpc("image.definition", {})).toEqual({
+    dockerfile,
+  });
+  expect(await test.harness.behavior.runCli(["image", "show"])).toMatchObject({
+    exitCode: 0,
+    stdout: dockerfile,
   });
   expect(test.backend.image).not.toHaveBeenCalled();
   expect(test.backend.creates).toHaveLength(0);

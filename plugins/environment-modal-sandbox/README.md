@@ -6,6 +6,11 @@ machine. The project picker exposes **New sandbox** under **New machine**.
 
 ## Standard image
 
+Settings displays the bundled Dockerfile, including its comments, as a read-only
+reference. `bb modal image show` prints the same file (`--json` returns
+`{dockerfile}`); SDK callers use `image.definition` through `modalRpcContract`.
+Viewing it needs no Modal credentials and does not start a build.
+
 The plugin ships a [Dockerfile](Dockerfile) with Debian, Node, Git/GitHub CLI,
 build tools, Python, ripgrep, jq, pnpm, Pi, Codex and Claude Code. It contains no BB
 daemon, project files, enrollment state or credentials. The image is named by the
@@ -45,7 +50,7 @@ environment settings.
 | `idleMinutes`            | Pause after idle, default 15; 0 disables idle suspension. |
 | `cpu`, `memoryMiB`       | Resource reservations; blank uses Modal defaults.         |
 
-Use `bb modal account inspect --json` or **Test connection** to validate credentials
+Use `bb modal account inspect --json` to validate credentials
 without allocating resources. Create with
 `bb machine create --provider modal-sandbox --project PROJECT --json`, or SDK
 `hosts.submit({machineProviderId:"modal-sandbox",projectId,key})`. Machine creation

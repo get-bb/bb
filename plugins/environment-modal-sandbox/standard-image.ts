@@ -10,19 +10,22 @@ export interface StandardImageRequest {
   report: PluginMachineProviderProgress;
 }
 
+export async function readStandardDockerfile() {
+  return readFile(new URL("./Dockerfile", import.meta.url), "utf8").catch(
+    async (error: unknown) => {
+      if (
+        !(error instanceof Error) ||
+        !("code" in error) ||
+        error.code !== "ENOENT"
+      )
+        throw error;
+      return readFile(new URL("../Dockerfile", import.meta.url), "utf8");
+    },
+  );
+}
+
 export async function readStandardImage() {
-  const dockerfile = await readFile(
-    new URL("./Dockerfile", import.meta.url),
-    "utf8",
-  ).catch(async (error: unknown) => {
-    if (
-      !(error instanceof Error) ||
-      !("code" in error) ||
-      error.code !== "ENOENT"
-    )
-      throw error;
-    return readFile(new URL("../Dockerfile", import.meta.url), "utf8");
-  });
+  const dockerfile = await readStandardDockerfile();
   const lines = dockerfile
     .replace(/\\\r?\n/g, " ")
     .split(/\r?\n/)

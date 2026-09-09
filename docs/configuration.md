@@ -1300,6 +1300,8 @@ Open terminals prevent idle pause but are closed by deadline maintenance.
 Preservation covers planned rotation; missing a vendor deadline can lose changes
 since the last snapshot.
 
+Settings displays the bundled Dockerfile read-only. `bb modal image show [--json]`
+returns the same file without credentials or cloud access.
 `bb modal account inspect --json` tests credentials without allocating resources.
 Create with `bb machine create --provider modal-sandbox --project PROJECT --json`.
 See [modal-sandboxes](../plugins/environment-modal-sandbox/skills/modal-sandboxes/SKILL.md)

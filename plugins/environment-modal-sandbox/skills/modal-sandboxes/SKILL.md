@@ -19,6 +19,10 @@ description: Connect Modal and create reusable cloud machines with the bundled s
    SDK: `hosts.submit({machineProviderId:"modal-sandbox",projectId,key})`.
    No image or build inputs are accepted. Use a stable creation key for retries.
 
+Settings shows the bundled Dockerfile as a read-only reference. `bb modal image
+show [--json]` reads the same file without requiring credentials or starting a
+build. Typed RPC: `image.definition` returns `{dockerfile}`.
+
 The plugin builds the bundled Dockerfile automatically on first launch and reuses
 its content-addressed image. The Dockerfile supplies tools, not the BB daemon.
 Core installs the matching daemon during initial bootstrap, then handles
