@@ -5232,14 +5232,10 @@ describe("Account Pool plugin", () => {
   });
 
   it("suppresses env and health only for the provider whose routing is off", async () => {
-    const upstream = await startUpstream((_request, response) => {
-      response.writeHead(200, { "content-type": "application/json" });
-      response.end("{}");
-    });
-    cleanups.push(upstream.close);
     const fixture = await createFixture({
-      upstreamUrl: upstream.url,
+      upstreamUrl: "https://upstream.example",
       options: {
+        fetch: async () => Response.json({}),
         codexUsageUrl: EMPTY_USAGE_URL,
         importCodexCredentials: async () => ({
           accessToken: "codex-access",
