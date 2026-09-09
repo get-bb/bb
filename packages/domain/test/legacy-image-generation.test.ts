@@ -53,6 +53,20 @@ describe("legacy image generation completion", () => {
     expect(parseLegacyImageGenerationCompletion(value)?.status).toBe(status);
   });
 
+  it("preserves native failed attempts with a nullable background", () => {
+    const { value } = completion({
+      status: "failed",
+      result: "",
+      savedPath: undefined,
+      transparentBackground: null,
+    });
+    expect(parseLegacyImageGenerationCompletion(value)).toMatchObject({
+      status: "failed",
+      path: null,
+      transparentBackground: false,
+    });
+  });
+
   it("rejects malformed and unknown envelopes", () => {
     expect(
       parseLegacyImageGenerationCompletion(

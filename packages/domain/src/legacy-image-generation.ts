@@ -51,6 +51,7 @@ export function parseLegacyImageGenerationCompletion(
     !(item.savedPath === undefined || typeof item.savedPath === "string") ||
     !(
       item.transparentBackground === undefined ||
+      item.transparentBackground === null ||
       typeof item.transparentBackground === "boolean"
     ) ||
     !(item.failure === null || jsonObject(item.failure) !== null)
