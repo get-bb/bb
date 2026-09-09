@@ -748,7 +748,10 @@ export const publicApiRoutes = {
       request: optionalQueryRequest<PathId, MachineEnrollmentCommandQuery>(
         machineEnrollmentCommandQuerySchema,
       ),
-      response: jsonResponse<{ command: string | null }>(),
+      response: jsonResponse<{
+        command: string | null;
+        expiresAt: number | null;
+      }>(),
     }),
     cancelLaunch: defineRoute({
       path: "/hosts/launches/:id/cancel",

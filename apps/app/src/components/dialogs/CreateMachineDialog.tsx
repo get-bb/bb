@@ -74,6 +74,7 @@ function CreateMachineContent({
     accessProvider?.availability.status === "available" && !localUrl;
   const createController = useRef<AbortController | null>(null);
   const createKey = useRef<string | null>(null);
+  const [commandExpired, setCommandExpired] = useState(false);
   const [progress, setProgress] = useState("");
   const [launchId, setLaunchId] = useState<string | null>(null);
   useEffect(() => {
@@ -138,6 +139,7 @@ function CreateMachineContent({
       if (selectedMachineProvider === null) {
         throw new Error("Select a machine provider.");
       }
+      setCommandExpired(false);
       setProgress("");
       setLaunchId(null);
       const controller = new AbortController();
@@ -281,7 +283,7 @@ function CreateMachineContent({
             </div>
           </div>
         )}
-        {!otherOptions && createMachine.isError && (
+        {!otherOptions && createMachine.isError && !commandExpired && (
           <div className="space-y-2">
             <p role="alert" className="text-xs text-destructive-text">
               {getMutationErrorMessage({
@@ -459,10 +461,24 @@ function CreateMachineContent({
           </div>
         ) : null}
       </div>
-      {open && createMachine.isPending && launchId ? (
-        <MachineEnrollmentCommand id={launchId} scope="launch" />
+      {open && launchId && (!otherOptions || createMachine.isPending) ? (
+        <MachineEnrollmentCommand
+          id={launchId}
+          scope="launch"
+          onExpired={() => setCommandExpired(true)}
+          onRegenerate={
+            otherOptions
+              ? undefined
+              : async () => {
+                  await sdk.hosts.cancel({ id: launchId });
+                  createController.current?.abort();
+                  createKey.current = null;
+                  createMachine.mutate();
+                }
+          }
+        />
       ) : null}
-      {!otherOptions && accessReady && (
+      {!otherOptions && accessReady && !commandExpired && (
         <div className="flex items-center justify-between gap-3">
           <p role="status" className="text-xs text-subtle-foreground">
             {createMachine.isPending && launchId

@@ -95,6 +95,7 @@ it("creates, cancels, and removes manual machines through the production lifecyc
           daemonKey = enrolled.hostKey;
           expect(await (await h.app.request(commandUrl)).json()).toEqual({
             command: null,
+            expiresAt: null,
           });
           const session = openSession(h.db, {
             hostId: enrollment.hostId,
@@ -149,6 +150,7 @@ it("creates, cancels, and removes manual machines through the production lifecyc
         }
         expect(await (await h.app.request(commandUrl)).json()).toEqual({
           command: null,
+          expiresAt: null,
         });
         expect(JSON.stringify(getMachineLaunch(h.db, key))).not.toContain(
           enrollment.bootstrap.credential,

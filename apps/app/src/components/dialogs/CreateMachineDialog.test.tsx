@@ -42,6 +42,7 @@ vi.mock("@/lib/sdk", async (importOriginal) => ({
       submit: vi.fn(),
       experimental_enrollmentCommand: vi.fn().mockResolvedValue({
         command: "bb machine enroll --bootstrap-env BB_ENROLLMENT",
+        expiresAt: Date.now() + 60_000,
       }),
       follow: vi.fn(),
       cancel: vi.fn(),

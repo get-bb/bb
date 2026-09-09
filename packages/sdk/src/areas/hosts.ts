@@ -121,7 +121,7 @@ export interface HostsArea {
     id: string;
     scope?: "launch" | "thread";
     signal?: AbortSignal;
-  }): Promise<{ command: string | null }>;
+  }): Promise<{ command: string | null; expiresAt: number | null }>;
   cancel(args: { id: string }): Promise<MachineLaunchStatus>;
   follow(args: {
     id: string;

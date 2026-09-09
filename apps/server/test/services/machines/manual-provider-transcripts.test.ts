@@ -90,6 +90,7 @@ it.each(["cancel", "enroll"])(
       } else await cancelMachineLaunch(h.deps, thread.id);
       expect(await (await h.app.request(url)).json()).toEqual({
         command: null,
+        expiresAt: null,
       });
       assertRedacted();
       await cancelMachineLaunch(h.deps, thread.id);
@@ -168,6 +169,7 @@ it("returns the current thread replacement command without reviving consumed lau
       for (const consumed of consumedKeys) {
         expect(await (await h.app.request(url(consumed))).json()).toEqual({
           command: null,
+          expiresAt: null,
         });
       }
       expect((await h.app.request(`${url(key)}?scope=invalid`)).status).toBe(
@@ -187,6 +189,9 @@ it("returns the current thread replacement command without reviving consumed lau
           .where(eq(machineEnrollments.id, enrollment.id))
           .run();
         expect((await install()).status).toBe(403);
+        const expiredCommand = await (await h.app.request(threadUrl)).json();
+        expect(expiredCommand.command).toBeNull();
+        expect(expiredCommand.expiresAt).toBeLessThan(Date.now());
         h.db
           .update(machineEnrollments)
           .set({ expiresAt: enrollment.expiresAt })
@@ -196,6 +201,7 @@ it("returns the current thread replacement command without reviving consumed lau
         expect((await install()).status).toBe(403);
         expect(await (await h.app.request(threadUrl)).json()).toEqual({
           command: null,
+          expiresAt: null,
         });
         break;
       }
@@ -220,6 +226,7 @@ it("returns the current thread replacement command without reviving consumed lau
       );
       expect(await (await h.app.request(threadUrl)).json()).toEqual({
         command: null,
+        expiresAt: null,
       });
       expect(requestMachineRemoval(h.deps, enrollment.hostId)).toBe(true);
       await sweepProviderMachine(h.deps, enrollment.hostId);
@@ -227,6 +234,7 @@ it("returns the current thread replacement command without reviving consumed lau
       key = `${thread.id}:replacement:${enrollment.hostId}`;
       expect(await (await h.app.request(threadUrl)).json()).toEqual({
         command: null,
+        expiresAt: null,
       });
       await advanceThreadProvisioning(h.deps, { threadId: thread.id });
     }

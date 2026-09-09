@@ -144,6 +144,11 @@ export function registerHostRoutes(
       );
     return context.json({
       command: bootstrap === null ? null : manualEnrollmentCommand(bootstrap),
+      expiresAt:
+        bootstrap?.expiresAt ??
+        getMachineEnrollmentService(deps).pendingEnrollmentExpiresAtForLaunch(
+          launchId,
+        ),
     });
   });
 

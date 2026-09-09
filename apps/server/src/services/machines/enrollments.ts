@@ -490,34 +490,37 @@ export function createMachineEnrollmentService(
       },
     };
   }
+  function readPendingManualEnrollment(launchId: string) {
+    return deps.db
+      .select({ enrollment: machineEnrollments, launch: machineLaunches })
+      .from(machineEnrollments)
+      .innerJoin(
+        machineLaunches,
+        and(
+          eq(machineEnrollments.key, machineLaunches.key),
+          eq(machineEnrollments.hostId, machineLaunches.hostId),
+        ),
+      )
+      .where(
+        and(
+          eq(machineLaunches.key, launchId),
+          eq(machineLaunches.providerId, "manual"),
+          eq(machineLaunches.phase, "creating"),
+          eq(machineLaunches.cancelPending, false),
+          eq(machineEnrollments.state, "pending"),
+        ),
+      )
+      .get();
+  }
   async function pendingBootstrapForLaunch(
     launchId: string,
   ): Promise<EnrollmentBootstrap | null> {
-    const read = () =>
-      deps.db
-        .select({ enrollment: machineEnrollments, launch: machineLaunches })
-        .from(machineEnrollments)
-        .innerJoin(
-          machineLaunches,
-          and(
-            eq(machineEnrollments.key, machineLaunches.key),
-            eq(machineEnrollments.hostId, machineLaunches.hostId),
-          ),
-        )
-        .where(
-          and(
-            eq(machineLaunches.key, launchId),
-            eq(machineLaunches.providerId, "manual"),
-            eq(machineLaunches.phase, "creating"),
-            eq(machineLaunches.cancelPending, false),
-            eq(machineEnrollments.state, "pending"),
-            gt(machineEnrollments.expiresAt, Date.now()),
-          ),
-        )
-        .get();
+    const read = () => readPendingManualEnrollment(launchId);
     const row = read();
     if (
       !row?.enrollment.encryptedBootstrap ||
+      row.enrollment.expiresAt === null ||
+      row.enrollment.expiresAt <= Date.now() ||
       row.enrollment.owner !== getMachineProvider("manual")?.pluginId ||
       deps.isConnected(row.enrollment.hostId) ||
       hasIssuedDaemonCredential(row.enrollment.hostId)
@@ -548,6 +551,17 @@ export function createMachineEnrollmentService(
   return {
     forOwner: scoped,
     pendingBootstrapForLaunch,
+    pendingEnrollmentExpiresAtForLaunch(launchId: string): number | null {
+      const row = readPendingManualEnrollment(launchId);
+      if (
+        !row ||
+        row.enrollment.owner !== getMachineProvider("manual")?.pluginId ||
+        deps.isConnected(row.enrollment.hostId) ||
+        hasIssuedDaemonCredential(row.enrollment.hostId)
+      )
+        return null;
+      return row.enrollment.expiresAt;
+    },
     async pendingBootstrapForCredential(
       credential: string,
     ): Promise<EnrollmentBootstrap | null> {

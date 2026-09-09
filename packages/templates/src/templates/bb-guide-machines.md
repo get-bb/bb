@@ -284,3 +284,8 @@ server gh credentials to machines; `true` enables them again. In Machines →
 Advanced settings, the automatic GH_TOKEN switch controls the same setting.
 This does not log the server out or suppress an explicit custom GH_TOKEN.
 Changes apply to new turns, setup commands and terminals.
+
+Manual enrollment commands display the server expiry timestamp as a countdown.
+After expiry, Add a machine offers Generate new command: it cancels the old
+attempt and creates a fresh one. The SDK enrollment-command response includes
+`expiresAt` (milliseconds since epoch), including when a pending code has expired.

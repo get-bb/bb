@@ -802,6 +802,7 @@ describe("ThreadDetailPromptArea", () => {
       .spyOn(sdk.hosts, "experimental_enrollmentCommand")
       .mockResolvedValue({
         command: "bb machine enroll --bootstrap-env PRIVATE_MANUAL_BUNDLE",
+        expiresAt: Date.now() + 60_000,
       });
     try {
       const thread = makeThread({
