@@ -36,6 +36,7 @@ import {
   setPluginSlotRegistrations,
 } from "@/lib/plugin-slots";
 import type { ChildThreadPendingAttention } from "@/hooks/queries/child-thread-pending-interactions";
+import type { ThreadPromptProviderAuthSection } from "@/components/promptbox/banner/ProviderAuthBanner";
 import {
   ThreadDetailPromptArea,
   type ThreadDetailSentMessageEdit,
@@ -692,6 +693,7 @@ interface RenderPromptAreaOptions {
   activeWorkflows?: TimelineWorkflowWorkRow[];
   goal?: ThreadTimelineGoal | null;
   modelFallback?: ThreadTimelineModelFallback | null;
+  providerAuthSection?: ThreadPromptProviderAuthSection | null;
   pendingInteractions?: readonly PendingInteraction[];
   childPendingInteractions?: readonly ChildThreadPendingAttention[];
   pendingInteractionsInitialLoading?: boolean;
@@ -705,6 +707,7 @@ function buildPromptAreaElement({
   activeWorkflows = [],
   goal = null,
   modelFallback = null,
+  providerAuthSection = null,
   pendingInteractions = [],
   childPendingInteractions = [],
   pendingInteractionsInitialLoading = false,
@@ -726,6 +729,7 @@ function buildPromptAreaElement({
       environmentGoneStatus={null}
       goal={goal}
       modelFallback={modelFallback}
+      providerAuthSection={providerAuthSection}
       isEnvironmentActionPending={false}
       onChangedFileClick={vi.fn()}
       parentThreadSection={null}
@@ -1768,5 +1772,31 @@ describe("ThreadDetailPromptArea", () => {
         },
       },
     });
+  });
+
+  it("offers provider sign-in above the composer when the last turn was unauthorized", () => {
+    const onSignIn = vi.fn();
+    renderPromptArea({
+      providerAuthSection: {
+        displayName: "Claude Code",
+        loginCommand: "claude /login",
+        canSignIn: true,
+        signingIn: false,
+        onSignIn,
+      },
+    });
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Sign in to Claude Code" }),
+    );
+    expect(onSignIn).toHaveBeenCalledOnce();
+  });
+
+  it("shows no sign-in banner while the provider is authorized", () => {
+    renderPromptArea();
+
+    expect(
+      screen.queryByRole("region", { name: "Claude Code sign-in required" }),
+    ).toBeNull();
   });
 });

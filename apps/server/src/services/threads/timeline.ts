@@ -1795,6 +1795,8 @@ function buildThreadTimelineInternal(
     goal: timeline.goal,
     modelFallback:
       options.page.kind === "latest" ? timeline.modelFallback : null,
+    providerAuthRequired:
+      options.page.kind === "latest" ? timeline.providerAuthRequired : null,
     contextWindowUsage:
       options.page.kind === "latest"
         ? (timeline.contextWindowUsage ?? undefined)

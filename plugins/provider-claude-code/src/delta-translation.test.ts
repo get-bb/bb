@@ -1910,6 +1910,155 @@ describe("claude error translation", () => {
     );
   });
 
+  it("classifies an expired Claude OAuth session as unauthorized", () => {
+    const harness = createClaudeDeltaHarness();
+
+    harness.translate({
+      jsonrpc: "2.0",
+      method: "sdk/message",
+      params: {
+        threadId: "claude-thread-1",
+        message: {
+          type: "assistant",
+          error: "authentication_failed",
+          isApiErrorMessage: true,
+          message: {
+            id: "assistant-1",
+            content: [
+              {
+                type: "text",
+                text: "Failed to authenticate: OAuth session expired and could not be refreshed",
+              },
+            ],
+            model: "<synthetic>",
+            stop_reason: "stop_sequence",
+            stop_sequence: "",
+          },
+        },
+      },
+    });
+
+    const events = harness.translate({
+      jsonrpc: "2.0",
+      method: "sdk/message",
+      params: {
+        threadId: "claude-thread-1",
+        message: {
+          type: "result",
+          subtype: "error_during_execution",
+          is_error: true,
+          errors: [
+            "Failed to authenticate: OAuth session expired and could not be refreshed",
+          ],
+          usage: {},
+          modelUsage: {},
+        },
+      },
+    });
+
+    expect(events).toContainEqual(
+      expect.objectContaining({
+        type: "provider/error",
+        scope: turnScope(TURN_1),
+        message: "Provider error",
+        errorInfo: {
+          category: "unauthorized",
+          providerCode: "authentication_failed",
+          httpStatusCode: null,
+        },
+      }),
+    );
+    expect(events).toContainEqual(
+      expect.objectContaining({
+        type: "turn/completed",
+        scope: turnScope(TURN_1),
+        status: "failed",
+      }),
+    );
+  });
+
+  it("does not carry an assistant error code into a later successful turn", () => {
+    const harness = createClaudeDeltaHarness();
+
+    harness.translate({
+      jsonrpc: "2.0",
+      method: "sdk/message",
+      params: {
+        threadId: "claude-thread-1",
+        message: {
+          type: "assistant",
+          error: "authentication_failed",
+          isApiErrorMessage: true,
+          message: {
+            id: "assistant-1",
+            content: [
+              {
+                type: "text",
+                text: "Failed to authenticate: OAuth session expired and could not be refreshed",
+              },
+            ],
+            model: "<synthetic>",
+            stop_reason: "stop_sequence",
+            stop_sequence: "",
+          },
+        },
+      },
+    });
+    harness.translate({
+      jsonrpc: "2.0",
+      method: "sdk/message",
+      params: {
+        threadId: "claude-thread-1",
+        message: {
+          type: "result",
+          subtype: "error_during_execution",
+          is_error: true,
+          errors: ["Failed to authenticate"],
+          usage: {},
+          modelUsage: {},
+        },
+      },
+    });
+    harness.acceptInput("creq_23456789af");
+    harness.translate({
+      jsonrpc: "2.0",
+      method: "sdk/message",
+      params: {
+        threadId: "claude-thread-1",
+        message: {
+          type: "assistant",
+          message: { id: "assistant-2", content: [] },
+        },
+      },
+    });
+
+    const events = harness.translate({
+      jsonrpc: "2.0",
+      method: "sdk/message",
+      params: {
+        threadId: "claude-thread-1",
+        message: {
+          type: "result",
+          subtype: "error_max_turns",
+          is_error: true,
+          errors: ["Reached the maximum number of turns"],
+          usage: {},
+          modelUsage: {},
+        },
+      },
+    });
+
+    expect(providerErrors(events)).toEqual([
+      expect.objectContaining({
+        errorInfo: {
+          category: "max-turns",
+          providerCode: "error_max_turns",
+          httpStatusCode: null,
+        },
+      }),
+    ]);
+  });
+
   it("preserves unknown Claude rate limit window keys", () => {
     const harness = createClaudeDeltaHarness();
 

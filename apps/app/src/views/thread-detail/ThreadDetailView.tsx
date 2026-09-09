@@ -7,7 +7,10 @@ import {
   type ReactNode,
 } from "react";
 import { nanoid } from "nanoid";
-import { useSystemProviderInfo } from "@/hooks/queries/system-queries";
+import {
+  useSystemProviderInfo,
+  useSystemProviderStates,
+} from "@/hooks/queries/system-queries";
 import { useNavigate } from "react-router-dom";
 import { useAtom } from "jotai";
 import { desktopBrowserRevealAtom } from "@/lib/desktop-browser-presentation";
@@ -36,6 +39,7 @@ import {
   type ThreadWithRuntime,
 } from "@bb/domain";
 import type {
+  CreateTerminalRequest,
   PullRequestMergeMethod,
   TerminalSession,
   TimelineRow,
@@ -861,6 +865,7 @@ function ThreadDetailViewInternal(props: ThreadRoutePathArgs) {
     loadOlderTimelineRows,
     modelFallback,
     pendingTodos,
+    providerAuthRequired,
     timelineError,
     timelineLoading,
     timelineRows,
@@ -971,6 +976,17 @@ function ThreadDetailViewInternal(props: ThreadRoutePathArgs) {
           providerId: thread?.providerId,
         },
   );
+  const providerStatesQuery = useSystemProviderStates({
+    enabled: providerAuthRequired !== null,
+    ...(thread?.environmentId ? { environmentId: thread.environmentId } : {}),
+    poll: false,
+  });
+  const providerAuthProviderState =
+    providerAuthRequired === null
+      ? null
+      : (providerStatesQuery.data?.providers.find(
+          (provider) => provider.providerId === thread?.providerId,
+        ) ?? null);
   const threadProviderPluginId = threadProviderInfo?.pluginId ?? null;
   const threadProviderContextValue = useMemo(
     () => ({
@@ -1619,31 +1635,69 @@ function ThreadDetailViewInternal(props: ThreadRoutePathArgs) {
     }
     return desktopInfo.onOpenNewTab(handleOpenNewTab);
   }, [handleOpenNewTab, isFocused]);
-  const handleStartTerminal = useCallback(() => {
-    if (!canCreateTerminal || createTerminal.isPending || !threadId) {
-      return;
+  const handleStartTerminal = useCallback(
+    (start?: CreateTerminalRequest["start"]) => {
+      if (!canCreateTerminal || createTerminal.isPending || !threadId) {
+        return;
+      }
+      const newTab = createNewTabFixedPanelTab();
+      void createTerminal
+        .mutateAsync({
+          threadId,
+          cols: DEFAULT_TERMINAL_COLS,
+          rows: DEFAULT_TERMINAL_ROWS,
+          ...(start === undefined ? {} : { start }),
+        })
+        .then((session) => {
+          closeTab(newTab.id);
+          setShouldAutoFocusTerminal(true);
+          setActiveFixedTerminal(session.id);
+          openCompactDrawer();
+        })
+        .catch(() => undefined);
+    },
+    [
+      canCreateTerminal,
+      closeTab,
+      createTerminal,
+      openCompactDrawer,
+      setActiveFixedTerminal,
+      threadId,
+    ],
+  );
+  const providerAuthLoginCommand =
+    providerAuthProviderState?.loginCommand ?? null;
+  const providerAuthSection = useMemo(() => {
+    if (providerAuthRequired === null || thread === undefined) {
+      return null;
     }
-    const newTab = createNewTabFixedPanelTab();
-    void createTerminal
-      .mutateAsync({
-        threadId,
-        cols: DEFAULT_TERMINAL_COLS,
-        rows: DEFAULT_TERMINAL_ROWS,
-      })
-      .then((session) => {
-        closeTab(newTab.id);
-        setShouldAutoFocusTerminal(true);
-        setActiveFixedTerminal(session.id);
-        openCompactDrawer();
-      })
-      .catch(() => undefined);
+    return {
+      displayName:
+        providerAuthProviderState?.displayName ??
+        threadProviderInfo?.displayName ??
+        thread.providerId,
+      loginCommand: providerAuthLoginCommand,
+      canSignIn: canCreateTerminal && providerAuthLoginCommand !== null,
+      signingIn: createTerminal.isPending,
+      onSignIn: () => {
+        if (providerAuthLoginCommand === null) {
+          return;
+        }
+        handleStartTerminal({
+          mode: "command",
+          command: providerAuthLoginCommand,
+        });
+      },
+    };
   }, [
     canCreateTerminal,
-    closeTab,
-    createTerminal,
-    openCompactDrawer,
-    setActiveFixedTerminal,
-    threadId,
+    createTerminal.isPending,
+    handleStartTerminal,
+    providerAuthLoginCommand,
+    providerAuthProviderState?.displayName,
+    providerAuthRequired,
+    thread,
+    threadProviderInfo?.displayName,
   ]);
   useAppCommandHandler("terminal.open", () => {
     if (
@@ -2568,6 +2622,7 @@ function ThreadDetailViewInternal(props: ThreadRoutePathArgs) {
       activePromptMode={activePromptMode}
       goal={goal}
       modelFallback={modelFallback}
+      providerAuthSection={providerAuthSection}
       activeWorkflows={activeWorkflows}
       activeBackgroundCommands={activeBackgroundCommands}
       parentThreadSection={parentThreadSection}

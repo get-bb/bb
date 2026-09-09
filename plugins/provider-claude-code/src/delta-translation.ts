@@ -24,6 +24,7 @@ import {
 } from "@get-bb/plugin-sdk/provider-bridge";
 import {
   claudeApiRetryMessageSchema,
+  claudeAssistantErrorMessageSchema,
   claudeAssistantMessageSchema,
   claudeBackgroundTasksChangedMessageSchema,
   claudeCompactBoundarySystemMessageSchema,
@@ -40,6 +41,7 @@ import {
   claudeUserMessageSchema,
   type ClaudeApiRetryMessage,
   type ClaudeAssistantMessage,
+  type ClaudeAssistantMessageError,
   type ClaudeRateLimitEvent,
   type ClaudeResultMessage,
 } from "./schemas.js";
@@ -388,6 +390,9 @@ interface ClaudeThreadDialectState {
     | (ClaudeModelFallbackTransition & { segment: number })
     | undefined;
   armedHardRateLimitRejection: { detail: string; segment: number } | undefined;
+  armedAssistantErrorCode:
+    | { code: ClaudeAssistantMessageError; segment: number }
+    | undefined;
   selectedModelContextWindow: number | null;
   suppressUnacceptedTurnStart: boolean;
   openCompaction: { segment: number } | undefined;
@@ -405,6 +410,7 @@ function createThreadState(): ClaudeThreadDialectState {
     latestProviderCheckpointId: undefined,
     lastModelFallback: undefined,
     armedHardRateLimitRejection: undefined,
+    armedAssistantErrorCode: undefined,
     selectedModelContextWindow: null,
     suppressUnacceptedTurnStart: false,
     openCompaction: undefined,
@@ -454,12 +460,14 @@ export function createClaudeDeltaTranslator(
     state.latestRequestContextTokens = undefined;
     state.latestProviderCheckpointId = undefined;
     state.armedHardRateLimitRejection = undefined;
+    state.armedAssistantErrorCode = undefined;
     state.startedTools.clear();
   }
 
   function mirrorCloseTurn(state: ClaudeThreadDialectState): void {
     state.mirror.turnOpen = false;
     state.armedHardRateLimitRejection = undefined;
+    state.armedAssistantErrorCode = undefined;
     state.startedTools.clear();
   }
 
@@ -842,6 +850,13 @@ export function createClaudeDeltaTranslator(
     if (providerCheckpointId !== undefined) {
       state.latestProviderCheckpointId = providerCheckpointId;
     }
+    const assistantError = claudeAssistantErrorMessageSchema.safeParse(event);
+    if (assistantError.success) {
+      state.armedAssistantErrorCode = {
+        code: assistantError.data.error,
+        segment: state.mirror.segment,
+      };
+    }
     const requestContextTokens = extractClaudeRequestContextTokens(message);
     if (requestContextTokens !== null) {
       state.latestRequestContextTokens = requestContextTokens;
@@ -1066,12 +1081,19 @@ export function createClaudeDeltaTranslator(
       state.mirror.turnOpen
         ? state.armedHardRateLimitRejection
         : undefined;
+    const armedAssistantErrorCode =
+      state.armedAssistantErrorCode?.segment === state.mirror.segment
+        ? state.armedAssistantErrorCode.code
+        : undefined;
     const resultFailed = isClaudeResultFailure(message);
     const failed = resultFailed || pendingHardRateLimitRejection !== undefined;
     if (failed) {
       const resultErrorInfo = buildClaudeProviderErrorInfo({
         httpStatusCode: message.api_error_status,
         resultSubtype: message.subtype,
+        ...(armedAssistantErrorCode === undefined
+          ? {}
+          : { code: armedAssistantErrorCode }),
       });
       const errorInfo =
         pendingHardRateLimitRejection === undefined
@@ -1092,6 +1114,7 @@ export function createClaudeDeltaTranslator(
       });
     }
     state.armedHardRateLimitRejection = undefined;
+    state.armedAssistantErrorCode = undefined;
     if (!failed && hasCompletionBlockingClaudeTasks(state.tasksById)) {
       return deltas;
     }

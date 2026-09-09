@@ -32,6 +32,7 @@ export interface UseThreadTimelineControllerResult {
   isLoadingOlderTimelineRows: boolean;
   loadOlderTimelineRows: () => Promise<void>;
   pendingTodos: ThreadTimelineResponse["pendingTodos"];
+  providerAuthRequired: ThreadTimelineResponse["providerAuthRequired"];
   timelineError: Error | null;
   timelineLoading: boolean;
   timelineRows: TimelineRow[];
@@ -212,6 +213,7 @@ export function useThreadTimelineController({
     isLoadingOlderTimelineRows,
     loadOlderTimelineRows,
     pendingTodos: latestTimeline?.pendingTodos ?? null,
+    providerAuthRequired: latestTimeline?.providerAuthRequired ?? null,
     timelineError,
     timelineLoading,
     timelineRows,

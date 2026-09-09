@@ -53,6 +53,10 @@ import { ThreadPromptModeCard } from "@/components/promptbox/banner/ThreadPrompt
 import { ThreadWorkflowCard } from "@/components/promptbox/banner/ThreadWorkflowCard";
 import { ThreadBackgroundCommandsCard } from "@/components/promptbox/banner/ThreadBackgroundCommandsCard";
 import { ThreadModelFallbackCard } from "@/components/promptbox/banner/ThreadModelFallbackCard";
+import {
+  ProviderAuthBanner,
+  type ThreadPromptProviderAuthSection,
+} from "@/components/promptbox/banner/ProviderAuthBanner";
 import { InlineMessageEditorFrame } from "@/components/promptbox/InlineMessageEditorFrame";
 import type {
   WorkspaceChangedFileSelection,
@@ -172,6 +176,7 @@ interface ThreadDetailPromptAreaProps {
   activePromptMode: ThreadTimelineActivePromptMode | null;
   goal: ThreadTimelineGoal | null;
   modelFallback: ThreadTimelineModelFallback | null;
+  providerAuthSection: ThreadPromptProviderAuthSection | null;
   activeWorkflows: TimelineWorkflowWorkRow[];
   activeBackgroundCommands: TimelineWorkflowWorkRow[];
   parentThreadSection: ThreadPromptParentThreadSection | null;
@@ -365,6 +370,7 @@ export function ThreadDetailPromptArea({
   activePromptMode,
   goal,
   modelFallback,
+  providerAuthSection,
   activeWorkflows,
   activeBackgroundCommands,
   parentThreadSection,
@@ -1597,6 +1603,9 @@ export function ThreadDetailPromptArea({
             threadId={thread.id}
           />
         ) : null}
+        {providerAuthSection ? (
+          <ProviderAuthBanner {...providerAuthSection} />
+        ) : null}
         {shouldHideComposer ? null : queuedMessagesPending ? (
           <QueuedMessagesPendingCard queuedMessageCount={queuedMessageCount} />
         ) : (
@@ -1651,6 +1660,7 @@ export function ThreadDetailPromptArea({
       activeBackgroundCommands,
       isBackgroundCommandsExpanded,
       modelFallback,
+      providerAuthSection,
       parentThreadSection,
       childThreadsSection,
       pullRequestSection,
