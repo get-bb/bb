@@ -89,8 +89,6 @@ export interface NewThreadEnvironmentConfig {
   onSelectProvider?: EnvironmentPickerUIProps["onSelectProvider"];
   machineProviders?: EnvironmentPickerUIProps["machineProviders"];
   selectedMachineProviderId?: string | null;
-  machineInputsControlProviderIds?: ReadonlySet<string>;
-  onSelectMachineProvider?: EnvironmentPickerUIProps["onSelectMachineProvider"];
 }
 
 export interface NewThreadWorktreeConfig {
@@ -454,10 +452,6 @@ export function ThreadEnvSlot({
         onSelectProvider={environment.onSelectProvider}
         machineProviders={environment.machineProviders}
         selectedMachineProviderId={environment.selectedMachineProviderId}
-        machineInputsControlProviderIds={
-          environment.machineInputsControlProviderIds
-        }
-        onSelectMachineProvider={environment.onSelectMachineProvider}
         className="shrink-0"
         muted
       />
@@ -508,15 +502,7 @@ export function ProjectlessEnvSlot({
         )
       : undefined;
   const showReuseEnvironmentPicker = parsedEnvironment?.type === "reuse";
-  const hasMachineProviderEnvironmentOptions =
-    environment.onSelectMachineProvider !== undefined &&
-    (environment.machineProviders?.length ?? 0) > 0;
-
-  if (
-    providers.length <= 1 &&
-    !showReuseEnvironmentPicker &&
-    !hasMachineProviderEnvironmentOptions
-  ) {
+  if (providers.length <= 1 && !showReuseEnvironmentPicker) {
     return <ProjectlessMachineSlot environment={environment} />;
   }
 
@@ -537,10 +523,6 @@ export function ProjectlessEnvSlot({
         onSelectProvider={environment.onSelectProvider}
         machineProviders={environment.machineProviders}
         selectedMachineProviderId={environment.selectedMachineProviderId}
-        machineInputsControlProviderIds={
-          environment.machineInputsControlProviderIds
-        }
-        onSelectMachineProvider={environment.onSelectMachineProvider}
         className="shrink-0"
         muted
       />

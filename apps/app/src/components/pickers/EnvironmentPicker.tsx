@@ -16,7 +16,6 @@ import {
   DropdownMenuGroup,
   DropdownMenuItem,
   DropdownMenuLabel,
-  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@bb/shared-ui/dropdown-menu";
 import {
@@ -43,7 +42,6 @@ import {
 } from "./environment-picker-value";
 import { selectHosts } from "@/hooks/queries/host-queries";
 import { providerInputsControlRequired } from "./environment-provider-inputs";
-import { machineProviderInputsControlRequired } from "./machine-provider-inputs";
 
 interface SelectedEnvironment {
   modeLabel: string;
@@ -83,30 +81,12 @@ export interface EnvironmentPickerUIProps {
   ) => void;
   machineProviders?: readonly SystemMachineProvider[];
   selectedMachineProviderId?: string | null;
-  machineInputsControlProviderIds?: ReadonlySet<string>;
-  onSelectMachineProvider?: (provider: SystemMachineProvider) => void;
 }
 
 export const PROVIDER_INPUTS_CONTROL_MISSING_REASON =
   "Needs its plugin's control";
 
 const NO_INPUTS_CONTROL_PROVIDER_IDS: ReadonlySet<string> = new Set();
-
-function machineProviderDisabledReason(
-  provider: SystemMachineProvider,
-  inputsControlProviderIds: ReadonlySet<string>,
-): string | null {
-  if (provider.availability?.status === "unavailable") {
-    return provider.availability.message;
-  }
-  if (
-    !inputsControlProviderIds.has(provider.id) &&
-    machineProviderInputsControlRequired(provider)
-  ) {
-    return PROVIDER_INPUTS_CONTROL_MISSING_REASON;
-  }
-  return null;
-}
 
 function providerValueSelected(
   value: string,
@@ -181,8 +161,6 @@ export function EnvironmentPickerUI({
   onSelectProvider,
   machineProviders: creatableMachineProviders = [],
   selectedMachineProviderId = null,
-  machineInputsControlProviderIds = NO_INPUTS_CONTROL_PROVIDER_IDS,
-  onSelectMachineProvider,
 }: EnvironmentPickerUIProps) {
   const availableMachines = useMemo(
     () =>
@@ -383,64 +361,8 @@ export function EnvironmentPickerUI({
             onSelectProvider={onSelectProvider}
           />
         )}
-        {onSelectMachineProvider === undefined ? null : (
-          <MachineProviderEnvironmentOptions
-            providers={creatableMachineProviders}
-            selectedProviderId={selectedMachineProviderId}
-            inputsControlProviderIds={machineInputsControlProviderIds}
-            onSelect={onSelectMachineProvider}
-          />
-        )}
       </DropdownMenuContent>
     </DropdownMenu>
-  );
-}
-
-function MachineProviderEnvironmentOptions({
-  providers,
-  selectedProviderId,
-  inputsControlProviderIds,
-  onSelect,
-}: {
-  providers: readonly SystemMachineProvider[];
-  selectedProviderId: string | null;
-  inputsControlProviderIds: ReadonlySet<string>;
-  onSelect: (provider: SystemMachineProvider) => void;
-}) {
-  const rows = providers.filter(
-    (provider) => provider.environmentRow !== null || provider.id === "manual",
-  );
-  if (rows.length === 0) return null;
-  return (
-    <>
-      <DropdownMenuSeparator />
-      <DropdownMenuGroup>
-        <DropdownMenuLabel>New machine</DropdownMenuLabel>
-        {rows.map((provider) => {
-          const disabledReason = machineProviderDisabledReason(
-            provider,
-            inputsControlProviderIds,
-          );
-          const description =
-            provider.availability?.status === "setup-required"
-              ? provider.availability.message
-              : (disabledReason ?? undefined);
-          return (
-            <MachineProviderMenuItem
-              key={provider.id}
-              provider={provider}
-              label={
-                provider.environmentRow?.displayName ?? provider.displayName
-              }
-              description={description}
-              selected={selectedProviderId === provider.id}
-              disabled={disabledReason !== null}
-              onSelect={() => onSelect(provider)}
-            />
-          );
-        })}
-      </DropdownMenuGroup>
-    </>
   );
 }
 
@@ -737,61 +659,6 @@ function EnvironmentMenuItem({
               {description}
             </span>
           ) : null}
-        </span>
-      </span>
-      <Icon
-        name="Check"
-        className={cn(
-          COARSE_POINTER_ICON_SIZE_CLASS,
-          "shrink-0",
-          selected ? "opacity-100" : "opacity-0",
-        )}
-      />
-    </DropdownMenuItem>
-  );
-}
-
-function MachineProviderMenuItem({
-  provider,
-  label,
-  description,
-  selected,
-  onSelect,
-  disabled,
-}: {
-  provider: SystemMachineProvider;
-  label: string;
-  description?: string;
-  selected: boolean;
-  onSelect: () => void;
-  disabled: boolean;
-}) {
-  return (
-    <DropdownMenuItem
-      disabled={disabled}
-      onSelect={() => {
-        if (!disabled) onSelect();
-      }}
-      className={cn(
-        "flex items-start justify-between gap-3 whitespace-normal",
-        LIST_HOVER_TRANSITION,
-      )}
-    >
-      <span className="flex min-w-0 flex-1 items-start gap-2">
-        <MachineProviderIcon
-          provider={provider}
-          className={cn(
-            "mt-px max-md:pointer-coarse:mt-0 text-muted-foreground",
-            COARSE_POINTER_COMPACT_ICON_SIZE_SHRINK_CLASS,
-          )}
-        />
-        <span className="flex min-w-0 flex-col">
-          <span className="whitespace-normal break-words text-xs">{label}</span>
-          {description === undefined ? null : (
-            <span className="mt-0.5 whitespace-normal break-words text-xs leading-snug text-muted-foreground">
-              {description}
-            </span>
-          )}
         </span>
       </span>
       <Icon

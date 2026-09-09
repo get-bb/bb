@@ -70,7 +70,6 @@ function EnvironmentOptionsStrip({
           selectedProviderHostId={HOST_IDS.local}
           onSelectProvider={noop}
           machineProviders={STORY_MACHINE_PROVIDERS}
-          onSelectMachineProvider={noop}
           muted
           modal={false}
           {...environment}

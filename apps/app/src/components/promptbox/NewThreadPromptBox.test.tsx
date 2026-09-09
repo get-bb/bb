@@ -236,7 +236,6 @@ describe("ProjectlessEnvSlot", () => {
       provider: SystemEnvironmentProvider,
       hostId: string | null,
     ) => void;
-    onSelectMachineProvider?: (provider: SystemMachineProvider) => void;
   }) {
     return {
       value: overrides.value ?? "provider:personal-workspace",
@@ -253,7 +252,6 @@ describe("ProjectlessEnvSlot", () => {
       selectedProviderHostId: host.id,
       onSelectProvider: overrides.onSelectProvider ?? vi.fn(),
       machineProviders: overrides.machineProviders,
-      onSelectMachineProvider: overrides.onSelectMachineProvider,
     };
   }
 
@@ -303,24 +301,18 @@ describe("ProjectlessEnvSlot", () => {
     expect(screen.queryByText("Modal sandbox")).toBeNull();
   });
 
-  it("shows machine-provider sugar after the personal workspace option", () => {
+  it("keeps the machine slot when only one environment is available", () => {
     render(
       <ProjectlessEnvSlot
         environment={makeEnvironment({
           providers: [personalProvider],
           machineProviders: [modalMachineProvider],
-          onSelectMachineProvider: vi.fn(),
         })}
         worktree={makeWorktree()}
       />,
     );
-
-    expect(screen.queryByRole("button", { name: "Machine" })).toBeNull();
-    const trigger = screen.getByRole("button", { name: "Environment" });
-    fireEvent.pointerDown(trigger, { button: 0 });
-    const items = screen.getAllByRole("menuitem");
-    expect(items[0]?.textContent).toContain("Personal workspace");
-    expect(items.at(-1)?.textContent).toContain("Modal sandbox");
+    expect(screen.getByRole("button", { name: "Machine" })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Environment" })).toBeNull();
   });
 
   it("shows the reused environment instead of the machine slot when a thread reuses one", () => {

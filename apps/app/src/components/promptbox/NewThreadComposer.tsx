@@ -28,7 +28,6 @@ import type {
   CreateExecutionInputSources,
   SidebarBootstrapResponse,
   SystemEnvironmentProvider,
-  SystemMachineProvider,
   SystemExecutionOptionsModelLoadError,
 } from "@bb/server-contract";
 import type { ProjectSelectorCreateProjectConfig } from "@/components/pickers/ProjectSelector";
@@ -761,37 +760,6 @@ export function NewThreadComposer({
     },
     [changeEnvironment],
   );
-  const handleSelectMachineProvider = useCallback(
-    (provider: SystemMachineProvider) => {
-      const current = parseEnvironmentValue(environmentSelectionValue);
-      const environmentProviderId =
-        provider.environmentRow?.environmentProviderId ??
-        (current?.type === "provider"
-          ? current.environmentProviderId
-          : environmentProviders?.find((entry) =>
-              isProjectless
-                ? entry.requires.projectless
-                : entry.id === PROJECT_CHECKOUT_ENVIRONMENT_PROVIDER_ID,
-            )?.id);
-      if (environmentProviderId === undefined) return;
-      changeEnvironment(encodeProviderValue(environmentProviderId), {
-        type: "new",
-        machineProviderId: provider.id,
-        inputs:
-          provider.inputs === null
-            ? null
-            : provider.acceptsEmptyInputs
-              ? {}
-              : null,
-      });
-    },
-    [
-      changeEnvironment,
-      environmentSelectionValue,
-      environmentProviders,
-      isProjectless,
-    ],
-  );
   const effectiveEnvironmentValue = useMemo(
     () =>
       resolveRootComposeEffectiveEnvironmentValue({
@@ -1038,22 +1006,6 @@ export function NewThreadComposer({
   ]);
 
   const machineProviderInputsSlots = pluginSlots.machineProviderInputs;
-  const machineInputsControlProviderIds = useMemo(() => {
-    const pluginIdByProviderId = new Map(
-      (machineProviders ?? []).map((provider) => [
-        provider.id,
-        provider.pluginId,
-      ]),
-    );
-    return new Set(
-      machineProviderInputsSlots
-        .filter(
-          (slot) =>
-            pluginIdByProviderId.get(slot.machineProviderId) === slot.pluginId,
-        )
-        .map((slot) => slot.machineProviderId),
-    );
-  }, [machineProviderInputsSlots, machineProviders]);
   const machineProviderInputsRegistration = useMemo(() => {
     if (selectedMachineProvider === undefined) {
       return undefined;
@@ -1667,8 +1619,6 @@ export function NewThreadComposer({
               onSelectProvider: handleSelectProvider,
               machineProviders: machineProviders ?? [],
               selectedMachineProviderId: selectedMachineProvider?.id ?? null,
-              machineInputsControlProviderIds,
-              onSelectMachineProvider: handleSelectMachineProvider,
               ...(!isProjectless && options.onRequestMachineSetup
                 ? { onRequestMachineSetup: options.onRequestMachineSetup }
                 : {}),
@@ -1756,7 +1706,6 @@ export function NewThreadComposer({
       handleProviderChange,
       handleReasoningChange,
       handleSelectProvider,
-      handleSelectMachineProvider,
       handleServiceTierChange,
       handleSubmit,
       handleWorktreeChange,
@@ -1797,7 +1746,6 @@ export function NewThreadComposer({
       machineProviderInputsSlot,
       environmentProvidersByHostId,
       inputsControlProviderIds,
-      machineInputsControlProviderIds,
       machineProviders,
       selectedMachineProvider,
       providerHostId,

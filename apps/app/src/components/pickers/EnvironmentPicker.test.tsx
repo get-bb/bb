@@ -385,56 +385,7 @@ describe("EnvironmentPickerUI", () => {
     );
   });
 
-  it("offers Manual machine setup alongside opted-in shortcuts without a DigitalOcean shortcut", () => {
-    const providers = [
-      "manual",
-      "ssh",
-      "modal",
-      "digitalocean",
-      "tailscale",
-    ].map((id) => ({
-      ...modalMachineProvider,
-      id,
-      displayName: id === "manual" ? "Manual machine setup" : id,
-      requires: { gitRemote: false },
-      supportsSuspend: false,
-      environmentRow:
-        id === "manual" || id === "digitalocean"
-          ? null
-          : { displayName: id, environmentProviderId: "project-checkout" },
-    }));
-    const onSelect = vi.fn();
-    render(
-      <EnvironmentPickerUI
-        value="provider:project-checkout"
-        sources={sources}
-        host={host}
-        isLocal
-        providers={[checkoutProvider]}
-        selectedProviderHostId={host.id}
-        onSelectProvider={vi.fn()}
-        machineProviders={providers}
-        onSelectMachineProvider={onSelect}
-        modal={false}
-      />,
-    );
-    fireEvent.pointerDown(screen.getByRole("button", { name: "Environment" }), {
-      button: 0,
-    });
-    for (const name of ["Manual machine setup", "ssh", "modal", "tailscale"])
-      expect(
-        screen.getByRole("menuitem", { name: new RegExp(name, "u") }),
-      ).toBeDefined();
-    expect(
-      screen.queryByRole("menuitem", { name: /digitalocean/u }),
-    ).toBeNull();
-    fireEvent.click(
-      screen.getByRole("menuitem", { name: /Manual machine setup/u }),
-    );
-    expect(onSelect).toHaveBeenCalledWith(providers[0]);
-  });
-
-  it("puts machine-provider rows last after a separator", () => {
+  it("only offers environments on existing machines", () => {
     render(
       <EnvironmentPickerUI
         value="provider:project-checkout"
@@ -445,23 +396,17 @@ describe("EnvironmentPickerUI", () => {
         selectedProviderHostId={host.id}
         onSelectProvider={vi.fn()}
         machineProviders={[modalMachineProvider]}
-        onSelectMachineProvider={vi.fn()}
         modal={false}
       />,
     );
-
     fireEvent.pointerDown(screen.getByRole("button", { name: "Environment" }), {
       button: 0,
     });
-
-    const menuItems = screen.getAllByRole("menuitem");
-    const modalItem = screen.getByRole("menuitem", {
-      name: /Modal sandbox/u,
-    });
-    const modalGroup = modalItem.closest('[role="group"]');
-    const separator = screen.getByRole("separator");
-    expect(menuItems.at(-1)).toBe(modalItem);
-    expect(modalGroup?.previousElementSibling).toBe(separator);
+    expect(screen.queryByText("New machine")).toBeNull();
+    expect(
+      screen.queryByRole("menuitem", { name: /Modal sandbox/u }),
+    ).toBeNull();
+    expect(screen.getAllByRole("menuitem")).toHaveLength(2);
   });
 });
 
