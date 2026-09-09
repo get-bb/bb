@@ -27,6 +27,7 @@ describe("parseCustomAcpAgents", () => {
         args: [],
         env: {},
         supportsManualCompaction: false,
+        supportsPlan: false,
       },
     ]);
   });
@@ -149,6 +150,7 @@ describe("customAcpAgentDefinition", () => {
           cwd: "/srv/amp",
           modelCli: { listArgs: [], primaryModels: [] },
           supportsManualCompaction: true,
+          supportsPlan: true,
         },
       ],
       reservedProviderIds: reserved,
@@ -165,6 +167,7 @@ describe("customAcpAgentDefinition", () => {
       cwd: "/srv/amp",
     });
     expect(definition.supportsManualCompaction).toBe(true);
+    expect(definition.supportsPlan).toBe(true);
     expect(definition.fork).toBe("none");
   });
 });
@@ -287,6 +290,7 @@ describe("acpProviderDeclaration", () => {
         args: [],
         env: {},
         supportsManualCompaction: false,
+        supportsPlan: false,
       }),
     );
 
@@ -294,5 +298,39 @@ describe("acpProviderDeclaration", () => {
       "Sign in to Amp on the machine, then reload.",
     );
     expect(declaration.maintenance?.usage).toBe(false);
+  });
+
+  it("offers the plan composer action only to agents that declare it", () => {
+    const byId = new Map(
+      KNOWN_ACP_AGENTS.map((agent) => [
+        agent.id,
+        acpProviderDeclaration(agent),
+      ]),
+    );
+    for (const agent of KNOWN_ACP_AGENTS) {
+      expect(byId.get(agent.id)?.composerActions).toEqual(
+        agent.id === "acp-omp" ? ["plan"] : [],
+      );
+    }
+    expect(byId.get("acp-omp")?.capabilities.fork).toBe("tip");
+
+    const [planningCustom] = parseCustomAcpAgents({
+      entries: [
+        {
+          id: "amp",
+          displayName: "Amp",
+          command: "amp",
+          supportsPlan: true,
+        },
+      ],
+      reservedProviderIds: reserved,
+    }).agents;
+    if (planningCustom === undefined) {
+      throw new Error("expected the agent to parse");
+    }
+    expect(
+      acpProviderDeclaration(customAcpAgentDefinition(planningCustom))
+        .composerActions,
+    ).toEqual(["plan"]);
   });
 });

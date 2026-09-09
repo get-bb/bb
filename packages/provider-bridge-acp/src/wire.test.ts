@@ -1,9 +1,11 @@
 import { describe, expect, it } from "vitest";
 import {
+  acpConfigStateResultSchema,
   acpInitializeResultSchema,
   acpRequestPermissionParamsSchema,
   acpSessionForkResultSchema,
   acpSessionNewResultSchema,
+  acpSessionUpdateSchema,
   acpToolCallUpdateEventSchema,
 } from "./wire.js";
 
@@ -150,6 +152,53 @@ describe("acpSessionNewResultSchema", () => {
     );
     expect(parsed.data.configOptions?.[1].category).toBeUndefined();
     expect(parsed.data.configOptions?.[1].options?.[0].name).toBeUndefined();
+  });
+
+  it("reads the session modes an agent reports", () => {
+    const parsed = acpSessionNewResultSchema.parse({
+      sessionId: "session-1",
+      modes: {
+        currentModeId: "default",
+        availableModes: [
+          { id: "default", name: "Default" },
+          {
+            id: "plan",
+            name: "Plan",
+            description: "Read-only planning",
+          },
+        ],
+      },
+    });
+
+    expect(parsed.modes?.currentModeId).toBe("default");
+    expect(parsed.modes?.availableModes.map((mode) => mode.id)).toEqual([
+      "default",
+      "plan",
+    ]);
+  });
+});
+
+describe("acpConfigStateResultSchema", () => {
+  it("carries session modes through a fork or config-state result", () => {
+    const parsed = acpConfigStateResultSchema.parse({
+      modes: {
+        currentModeId: "plan",
+        availableModes: [{ id: "default", name: "Default" }],
+      },
+    });
+
+    expect(parsed.modes?.currentModeId).toBe("plan");
+  });
+});
+
+describe("acpSessionUpdateSchema", () => {
+  it("accepts a current-mode update without swallowing it as other", () => {
+    const parsed = acpSessionUpdateSchema.parse({
+      sessionUpdate: "current_mode_update",
+      currentModeId: "plan",
+    });
+
+    expect(parsed.sessionUpdate).toBe("current_mode_update");
   });
 });
 
