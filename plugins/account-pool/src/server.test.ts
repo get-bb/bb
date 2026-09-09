@@ -736,6 +736,112 @@ describe("Account Pool plugin", () => {
     });
   });
 
+  it("cancels a Codex upstream read when the HTTP client aborts", async () => {
+    const dataDir = await mkdtemp(
+      path.join(tmpdir(), "bb-account-pool-codex-cancel-"),
+    );
+    let upstreamReadCanceled = false;
+    const upstreamFetch = async (
+      input: string | URL | Request,
+      init?: RequestInit,
+    ): Promise<Response> => {
+      if (String(input) === CODEX_USAGE_STUB_URL) return Response.json({});
+      const signal = init?.signal;
+      if (signal === undefined || signal === null) {
+        throw new Error("Expected the upstream request to carry a signal.");
+      }
+      const body = new ReadableStream<Uint8Array>({
+        start(controller) {
+          controller.enqueue(
+            new TextEncoder().encode(
+              'event: response.created\ndata: {"type":"response.created","response":{"id":"streaming"}}\n\n',
+            ),
+          );
+          signal.addEventListener(
+            "abort",
+            () => {
+              upstreamReadCanceled = true;
+              controller.error(signal.reason);
+            },
+            { once: true },
+          );
+        },
+      });
+      return new Response(body, {
+        headers: { "content-type": "text/event-stream" },
+      });
+    };
+    const host = createFakePluginHost({
+      pluginId: "account-pool",
+      dataDir,
+      sdk: sdkStubs(),
+    });
+    await host.bb.storage.kv.set("config", {
+      codexUpstreamBaseUrl: "https://example.com",
+    });
+    await createAccountPoolPlugin({
+      fetch: upstreamFetch,
+      codexUsageUrl: CODEX_USAGE_STUB_URL,
+      importCodexCredentials: async () => ({
+        accessToken: "access",
+        refreshToken: "refresh",
+        idToken: null,
+        accountId: "account",
+        email: null,
+        expiresAt: null,
+      }),
+    })(host.bb);
+    const service = host.harness.behavior.runService("hub");
+    cleanups.push(async () => {
+      service.controller.abort();
+      await service.done;
+      await host.harness.lifecycle.dispose();
+      await fs.rm(dataDir, { recursive: true, force: true });
+    });
+    await vi.waitFor(async () => {
+      expect(
+        statusSchema.parse(
+          await host.harness.behavior.callRpc("status.get", null),
+        ).accepting,
+      ).toBe(true);
+    });
+    await host.harness.behavior.callRpc("account.add", {
+      provider: "codex",
+      source: { kind: "import" },
+      label: null,
+      priority: 100,
+    });
+    const { token } = await resolveCodexToken(host);
+    const client = new AbortController();
+    const response = await host.harness.behavior.fetchHttp(
+      "POST",
+      "/v1/responses",
+      {
+        headers: {
+          "x-bb-account-pool-token": token,
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({ model: "gpt-5", input: [] }),
+        signal: client.signal,
+      },
+    );
+    expect(response.status).toBe(200);
+    const reader = response.body?.getReader();
+    if (reader === undefined) throw new Error("Expected a streaming body.");
+    const first = await reader.read();
+    expect(new TextDecoder().decode(first.value)).toContain("response.created");
+    client.abort(new Error("interrupted"));
+    await reader.cancel().catch(() => undefined);
+    await vi.waitFor(async () => {
+      expect(upstreamReadCanceled).toBe(true);
+      expect(
+        statusSchema.parse(
+          await host.harness.behavior.callRpc("status.get", null),
+        ).inFlight,
+      ).toBe(0);
+    });
+  });
+
   it("prunes token files for unenrolled hosts on startup and status", async () => {
     const dataDir = await mkdtemp(path.join(tmpdir(), "bb-pool-prune-"));
     const secretDir = path.join(

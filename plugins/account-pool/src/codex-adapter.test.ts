@@ -235,13 +235,14 @@ describe("codex header quotas", () => {
 });
 
 describe("requestHeaders", () => {
-  it("forwards Codex routing and internal headers but drops downstream auth", () => {
+  it("forwards Codex routing and lite-mode headers but drops downstream auth", () => {
     const headers = adapter.requestHeaders(
       new Headers({
         authorization: "Bearer downstream",
         "x-bb-account-pool-token": "machine-token",
         "x-codex-turn-state": "sticky",
         "x-openai-internal-codex-responses-lite": "true",
+        "x-openai-internal-other": "dropped",
         "openai-beta": "responses=experimental",
         "content-type": "application/json",
       }),
