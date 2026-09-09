@@ -1,8 +1,8 @@
 import type { BbPluginApi, MachineExecutorRequest } from "@get-bb/plugin-sdk";
 import { z } from "zod";
-import { openSshRunner, type SshRunner } from "bb-machine-ssh/ssh-runner";
-import { uninstallCommand } from "bb-machine-ssh/uninstall";
-import { sshDestinationSchema } from "bb-machine-ssh/configuration";
+import { openSshRunner, type SshRunner } from "./ssh-runner.js";
+import { uninstallCommand } from "./uninstall.js";
+import { sshDestinationSchema } from "./configuration.js";
 import { inputsSchema, tailscaleContract } from "./contract.js";
 import { createTailscaleClient, type TailscaleClient } from "./tailscale.js";
 import { registerAccess } from "./server-access.js";

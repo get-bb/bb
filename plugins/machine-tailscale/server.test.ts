@@ -14,7 +14,7 @@ import type {
   MachineEnrollmentRequest,
 } from "@get-bb/plugin-sdk";
 import type { PluginMachineProviderCreateContext } from "@get-bb/plugin-sdk/machine-provider";
-import type { SshExecRequest } from "bb-machine-ssh/ssh-runner";
+import type { SshExecRequest } from "./ssh-runner.js";
 import { createTailscalePlugin } from "./server.js";
 import { inputsSchema } from "./contract.js";
 import { parseStatus } from "./tailscale.js";

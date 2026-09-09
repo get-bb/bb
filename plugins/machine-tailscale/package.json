@@ -25,8 +25,7 @@
     "lint": "oxlint *.ts *.tsx"
   },
   "dependencies": {
-    "zod": "^4.3.6",
-    "bb-machine-ssh": "workspace:*"
+    "zod": "^4.3.6"
   },
   "devDependencies": {
     "@get-bb/plugin-sdk": "workspace:*",

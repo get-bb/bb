@@ -107,12 +107,12 @@ installation requires its checkpoint for identity-checked cleanup.
 ## Verification
 
 ```sh
-pnpm exec turbo run typecheck lint test --filter=bb-plugin-machine-tailscale --filter=bb-machine-ssh --filter=bb-plugin-environment-ssh-machine
+pnpm exec turbo run typecheck lint test --filter=bb-plugin-machine-tailscale
 ```
 
 Tests cover malformed/stale inventory, Serve routing/privacy/drift, retries,
 concurrent adoption, cancellation before/after installation, ownership-checked
-cleanup, private stdin and picker input/access behavior. Shared OpenSSH tests
+cleanup, private stdin and picker input/access behavior. OpenSSH tests
 retain strict host-key, quoting, timeout and process-output bounds.
 
 ## Logo and references
