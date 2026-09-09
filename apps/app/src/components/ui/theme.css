@@ -961,7 +961,7 @@ body.sidebar-resizing [data-sidebar="panel"] {
 
   .bb-thread-title .prompt-mention-pill {
     @apply min-w-10;
-    flex: 1 1 auto;
+    flex: 1 1 0%;
     max-width: max-content;
   }
 
