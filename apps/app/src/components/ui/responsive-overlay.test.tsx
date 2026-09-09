@@ -18,6 +18,7 @@ import {
   DialogTitle,
 } from "@bb/shared-ui/dialog";
 import { Popover, PopoverContent } from "@bb/shared-ui/popover";
+import { DropdownMenu, DropdownMenuContent } from "@bb/shared-ui/dropdown-menu";
 import {
   PersistentResponsiveDrawerShell,
   ResponsiveDrawerShell,
@@ -176,6 +177,67 @@ describe("responsive Popover", () => {
     view.rerender(content(focusRef));
     act(() => vi.advanceTimersByTime(120));
     expect(document.activeElement === focusRef.current).toBe(focused);
+  });
+
+  it("cancels caller widths on the compact sheet and keeps them on desktop", () => {
+    vi.useFakeTimers();
+    mockPointerCoarse(true);
+    const renderAt = (compact: boolean) =>
+      render(
+        <CompactViewportOverrideProvider isCompactViewport={compact}>
+          <Popover defaultOpen>
+            <PopoverContent
+              className="w-56 min-w-28 max-w-72"
+              style={{ width: "13rem", maxWidth: "13rem", color: "red" }}
+              data-testid="width-content"
+            >
+              <span>Option</span>
+            </PopoverContent>
+          </Popover>
+        </CompactViewportOverrideProvider>,
+      );
+
+    const compactView = renderAt(true);
+    act(() => vi.advanceTimersByTime(120));
+    const sheet = screen.getByTestId("width-content");
+    expect(sheet.style.width).toBe("auto");
+    expect(sheet.style.minWidth).toBe("auto");
+    expect(sheet.style.maxWidth).toBe("none");
+    expect(sheet.style.color).toBe("red");
+    compactView.unmount();
+
+    renderAt(false);
+    const desktop = screen.getByTestId("width-content");
+    expect(desktop.className).toContain("w-56");
+    expect(desktop.style.width).toBe("13rem");
+    expect(desktop.style.maxWidth).toBe("13rem");
+  });
+});
+
+describe("responsive DropdownMenu", () => {
+  it("keeps its compact width reset when the caller passes an inline style", () => {
+    vi.useFakeTimers();
+    mockPointerCoarse(true);
+    render(
+      <CompactViewportOverrideProvider isCompactViewport={true}>
+        <DropdownMenu defaultOpen>
+          <DropdownMenuContent
+            className="w-64"
+            style={{ maxWidth: "17rem", color: "red" }}
+            data-testid="menu-content"
+          >
+            <span>Item</span>
+          </DropdownMenuContent>
+        </DropdownMenu>
+      </CompactViewportOverrideProvider>,
+    );
+    act(() => vi.advanceTimersByTime(120));
+
+    const sheet = screen.getByTestId("menu-content");
+    expect(sheet.style.width).toBe("auto");
+    expect(sheet.style.minWidth).toBe("auto");
+    expect(sheet.style.maxWidth).toBe("none");
+    expect(sheet.style.color).toBe("red");
   });
 });
 

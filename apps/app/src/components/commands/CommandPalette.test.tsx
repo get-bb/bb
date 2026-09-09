@@ -306,6 +306,9 @@ function makeThread(
     },
     hasPendingInteraction: false,
     environmentHostId: null,
+    environmentPath: null,
+    environmentProviderId: null,
+    environmentIsWorktree: null,
     environmentName: null,
     environmentBranchName: null,
     environmentWorkspaceDisplayKind: "other",
@@ -433,7 +436,6 @@ describe("CommandPalette", () => {
     expectClasses(
       screen.getByTestId("command-palette"),
       "max-w-[640px]",
-      "overflow-hidden",
       "shadow-lg",
       "sm:rounded-xl",
     );
@@ -721,6 +723,51 @@ describe("CommandPalette", () => {
         screen.getByRole("button", { name: "Thread scope" }).textContent,
       ).toContain("All"),
     );
+  });
+
+  it("keeps scope options outside results clipping and selects Archived without closing the palette", async () => {
+    renderPalette();
+    openThreadSearch();
+    const input = await screen.findByRole("combobox", {
+      name: "Search threads",
+    });
+    const scope = screen.getByRole("button", { name: "Thread scope" });
+    fireEvent.click(scope);
+    const options = screen.getByRole("listbox", {
+      name: "Thread scope options",
+    });
+    for (
+      let ancestor = options.parentElement;
+      ancestor;
+      ancestor = ancestor.parentElement
+    ) {
+      expectNoClasses(
+        ancestor,
+        "overflow-hidden",
+        "overflow-clip",
+        "overflow-auto",
+      );
+    }
+    expect(options.closest("[data-palette-results-clip]")).toBeNull();
+    expectClasses(
+      input.closest("[data-palette-input-band]"),
+      "rounded-t-[inherit]",
+    );
+    expectClasses(
+      screen.getByTestId("command-palette").querySelector("[data-palette-footer]"),
+      "rounded-b-[inherit]",
+    );
+
+    const archived = within(options).getByRole("option", { name: "Archived" });
+    fireEvent.pointerDown(archived);
+    fireEvent.click(archived);
+
+    expect(scope.textContent).toContain("Archived");
+    expect(screen.getByTestId("command-palette")).toBeTruthy();
+    expect(
+      screen.queryByRole("listbox", { name: "Thread scope options" }),
+    ).toBeNull();
+    expect(document.activeElement).toBe(input);
   });
 
   it("opens the closed thread scope with Enter and returns to the input on the next Enter", async () => {

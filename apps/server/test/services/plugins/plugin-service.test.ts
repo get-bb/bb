@@ -14,14 +14,19 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import semver from "semver";
 import {
   createConnection,
+  createEnvironment,
+  createProject,
   getInstalledPlugin,
   migrate,
+  noopNotifier,
+  upsertHost,
   upsertInstalledPlugin,
   upsertPluginMarketplace,
   type DbConnection,
 } from "@bb/db";
 import { PLUGIN_SDK_VERSION, type SystemChangeKind } from "@bb/domain";
 import type { Logger } from "@bb/logger";
+import { pluginListResponseSchema } from "@bb/server-contract";
 import { createAiServiceRegistry } from "../../../src/services/ai/ai-service-registry.js";
 import {
   createPluginService,
@@ -169,6 +174,71 @@ describe("plugin service", () => {
     expect(entry.status).toBe("running");
     expect(service.getApi("greeter")).toBeDefined();
   });
+
+  it.each(["startup", "retry"])(
+    "reports starting while a %s factory is pending",
+    async (mode) => {
+      const rootDir = await writePlugin(workDir, {
+        name: "bb-plugin-starting",
+        serverSource: `export default function plugin() { throw new Error("failed"); }`,
+      });
+      expect((await service.installPath(rootDir)).status).toBe("error");
+      if (mode === "startup") {
+        await service.stop();
+        service = createTelemetryTrackedService([]);
+        expect(service.list()[0]).toMatchObject({
+          status: "starting",
+          statusDetail: null,
+        });
+      }
+      let release = () => {};
+      let entered = () => {};
+      const gate = new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      const loading = new Promise<void>((resolve) => {
+        entered = resolve;
+      });
+      vi.stubGlobal("__startingPluginGate", gate);
+      vi.stubGlobal("__startingPluginEntered", entered);
+      await writeFile(
+        join(rootDir, "server.ts"),
+        `export default async function plugin() {
+      globalThis.__startingPluginEntered();
+      await globalThis.__startingPluginGate;
+    }`,
+      );
+      const operation =
+        mode === "startup" ? service.start() : service.reload("starting");
+      try {
+        await loading;
+        const { plugins } = pluginListResponseSchema.parse({
+          plugins: service.list(),
+        });
+        expect(plugins[0]).toMatchObject({
+          status: "starting",
+          statusDetail: null,
+        });
+        expect(service.getHttpRoute("starting", "GET", "/")).toEqual({
+          outcome: "not-running",
+          status: "starting",
+          detail: null,
+        });
+        expect(await service.runCliCommand("starting", [], {})).toMatchObject({
+          exitCode: 1,
+          stderr: 'plugin "starting" is not running (status: starting)',
+        });
+      } finally {
+        release();
+        await operation;
+        vi.unstubAllGlobals();
+      }
+      expect(service.list()[0]).toMatchObject({
+        status: "running",
+        statusDetail: null,
+      });
+    },
+  );
 
   it("summarizes user-facing capabilities and drops the live ones when disabled", async () => {
     const rootDir = join(workDir, "bb-plugin-capabilities");
@@ -1203,6 +1273,44 @@ describe("plugin service", () => {
       expect.stringContaining("bb-managed workspace"),
     );
   });
+
+  it("does not warn for a plugin installed from a directory a provider only attached to", async () => {
+    const warnSpy = vi.spyOn(logger, "warn");
+    warnSpy.mockClear();
+    const checkoutRoot = await writePlugin(join(workDir, "checkout"), {
+      name: "bb-plugin-attached",
+      serverSource: `export default function plugin() {}`,
+    });
+    seedEnvironmentAtPath(db, {
+      path: dirname(checkoutRoot),
+      environmentProviderId: "project-checkout",
+      providerOwnsPath: false,
+    });
+
+    await service.installPath(checkoutRoot);
+    expect(warnSpy).not.toHaveBeenCalledWith(
+      expect.stringContaining("bb-managed workspace"),
+    );
+  });
+
+  it("warns for a plugin installed inside a directory a provider owns", async () => {
+    const warnSpy = vi.spyOn(logger, "warn");
+    warnSpy.mockClear();
+    const ownedRoot = await writePlugin(join(workDir, "owned"), {
+      name: "bb-plugin-owned",
+      serverSource: `export default function plugin() {}`,
+    });
+    seedEnvironmentAtPath(db, {
+      path: dirname(ownedRoot),
+      environmentProviderId: "git-worktree",
+      providerOwnsPath: true,
+    });
+
+    await service.installPath(ownedRoot);
+    expect(warnSpy).toHaveBeenCalledWith(
+      expect.stringContaining("bb-managed workspace"),
+    );
+  });
 });
 
 describe("plugins-changed broadcast", () => {
@@ -1263,3 +1371,36 @@ describe("plugins-changed broadcast", () => {
     expect(notifySystem).toHaveBeenCalledWith(["plugins-changed"]);
   });
 });
+
+function seedEnvironmentAtPath(
+  db: DbConnection,
+  args: {
+    environmentProviderId: string;
+    path: string;
+    providerOwnsPath: boolean;
+  },
+): void {
+  const host = upsertHost(db, noopNotifier, {
+    type: "persistent",
+    name: "Test host",
+  });
+  const { project } = createProject(db, noopNotifier, {
+    name: "Plugin source project",
+    source: { type: "local_path", hostId: host.id, path: args.path },
+  });
+  createEnvironment(db, noopNotifier, {
+    projectId: project.id,
+    hostId: host.id,
+    path: args.path,
+    status: "ready",
+    providerOwnsPath: args.providerOwnsPath,
+    environmentProvider: {
+      environmentProviderId: args.environmentProviderId,
+      instanceKey: null,
+      selection: {
+        machine: { type: "existing", hostId: host.id },
+        inputs: null,
+      },
+    },
+  });
+}

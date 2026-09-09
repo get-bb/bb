@@ -19,8 +19,13 @@ import {
   type ToolCallResponse,
 } from "@bb/domain";
 import {
+  type ExperimentalPluginWebSocketContext,
+  type ExperimentalPluginWebSocketHandlers,
   type PluginCliExecutionResult,
+  type ExperimentalPluginProviderEnvContext,
+  type ExperimentalPluginProviderEnvHealthContext,
   type PluginRpcError,
+  type PluginRpcErrorCode,
   type PluginRpcValidationIssue,
   type StandardSchemaV1,
   type StandardSchemaV1Issue,
@@ -34,6 +39,7 @@ import {
   PLUGIN_AGENT_TOOL_PARAMETERS_MAX_BYTES,
   RESERVED_AGENT_TOOL_NAMES,
   adoptHttpRouteResponse,
+  validatePluginProviderEnvEntries,
 } from "@get-bb/plugin-sdk/internal/host-policy";
 import {
   buildPluginApp,
@@ -102,6 +108,7 @@ import {
   type PluginHttpRouteRecord,
   type PluginMentionTrigger,
   type PluginRpcHandler,
+  type PluginWebSocketRouteRecord,
 } from "./plugin-api.js";
 import {
   syncPluginCommandsSkill,
@@ -124,6 +131,7 @@ import {
   type RegisterInstalledArgs,
 } from "./managed-plugin-artifacts.js";
 import type { PluginHookProvider } from "./plugin-hook-registry.js";
+import type { PluginEnvironmentProviderBridge } from "./plugin-environment-provider-registry.js";
 import { createPluginRegistration } from "./plugin-registration.js";
 import { createPluginRuntime, forgetMutableRoot } from "./plugin-runtime.js";
 import { createPluginUpdates } from "./plugin-updates.js";
@@ -145,6 +153,8 @@ import type {
   PluginUpdateCheckEntry,
   PluginWireLookup,
   PluginResolvedAgentConfiguration,
+  PluginResolvedProviderEnv,
+  PluginResolvedProviderEnvHealth,
 } from "./plugin-service-internal.js";
 export type {
   PluginAgentToolContribution,
@@ -175,6 +185,7 @@ export interface PluginService {
   events: PluginThreadEventEmitter;
   /** The hook chain the dispatch pipeline consults; registered in createApp. */
   hooks: PluginHookProvider;
+  environmentProviders: PluginEnvironmentProviderBridge;
   /**
    * Bind the in-process BB SDK to the running server. Call once the HTTP
    * listener is up, before start(): bb.sdk throws until this runs.
@@ -276,12 +287,30 @@ export interface PluginService {
     method: string,
     path: string,
   ): PluginWireLookup<PluginHttpRouteRecord>;
+  getWebSocketRoute(
+    id: string,
+    path: string,
+  ): PluginWireLookup<PluginWebSocketRouteRecord>;
   getRpcHandler(id: string, method: string): PluginWireLookup<PluginRpcHandler>;
   invokeHttpRoute(
     id: string,
     route: PluginHttpRouteRecord,
     context: Context,
   ): Promise<Response>;
+  invokeWebSocketRoute(
+    id: string,
+    route: PluginWebSocketRouteRecord,
+    context: ExperimentalPluginWebSocketContext,
+  ): Promise<
+    | { ok: true; handlers: ExperimentalPluginWebSocketHandlers }
+    | { ok: false; error: string }
+  >;
+  invokeWebSocketEvent(
+    id: string,
+    route: PluginWebSocketRouteRecord,
+    event: "open" | "message" | "close" | "error",
+    run: () => void | Promise<void>,
+  ): Promise<void>;
   invokeRpcHandler(
     id: string,
     method: string,
@@ -306,6 +335,14 @@ export interface PluginService {
     context: PluginAgentConfigurationContext;
     skillIdsByPlugin: ReadonlyMap<string, readonly string[]>;
   }): Promise<PluginResolvedAgentConfiguration>;
+  resolveProviderEnv(args: {
+    providerId: string;
+    context: ExperimentalPluginProviderEnvContext;
+  }): Promise<PluginResolvedProviderEnv>;
+  resolveProviderEnvHealth(args: {
+    providerId: string;
+    context: ExperimentalPluginProviderEnvHealthContext;
+  }): Promise<PluginResolvedProviderEnvHealth | null>;
   listInstructionContributions(): PluginInstructionContribution[];
   findAgentTool(
     name: string,
@@ -333,6 +370,7 @@ export interface PluginService {
 
 const DEFAULT_MENTION_SEARCH_TIMEOUT_MS = 2_000;
 const DEFAULT_MENTION_RESOLVE_TIMEOUT_MS = 10_000;
+const DEFAULT_PROVIDER_ENV_RESOLVE_TIMEOUT_MS = 5_000;
 /**
  * Per-handler decision box. A hook handler is on the dispatch hot path and
  * holds a server-wide lock while it runs, so it must decide in milliseconds;
@@ -371,6 +409,11 @@ async function settledWithin(
   }
 }
 
+type PluginRpcHandlerErrorCode = Extract<
+  PluginRpcErrorCode,
+  "invalid_input" | "handler_error" | "invalid_output" | "non_json_result"
+>;
+
 class PluginRpcBoundaryError extends Error {
   constructor(readonly rpcError: PluginRpcError) {
     super(rpcError.message);
@@ -406,7 +449,7 @@ function normalizeRpcIssues(
 }
 
 function rpcBoundaryFailure(
-  code: PluginRpcError["code"],
+  code: PluginRpcHandlerErrorCode,
   message: string,
   issues?: PluginRpcValidationIssue[],
 ): PluginRpcBoundaryError {
@@ -481,7 +524,7 @@ function normalizeRpcJsonResult(value: unknown): JsonValue {
       if (Array.isArray(current)) {
         return current.map((item, index) => visit(item, `${path}[${index}]`));
       }
-      const prototype = Object.getPrototypeOf(current) as object | null;
+      const prototype = Object.getPrototypeOf(current);
       if (prototype !== Object.prototype && prototype !== null) {
         throw rpcBoundaryFailure(
           "non_json_result",
@@ -828,6 +871,8 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
     deps.mentionSearchTimeoutMs ?? DEFAULT_MENTION_SEARCH_TIMEOUT_MS;
   const mentionResolveTimeoutMs =
     deps.mentionResolveTimeoutMs ?? DEFAULT_MENTION_RESOLVE_TIMEOUT_MS;
+  const providerEnvResolveTimeoutMs =
+    deps.providerEnvResolveTimeoutMs ?? DEFAULT_PROVIDER_ENV_RESOLVE_TIMEOUT_MS;
   const pluginHookTimeoutMs =
     deps.pluginHookTimeoutMs ?? DEFAULT_PLUGIN_HOOK_TIMEOUT_MS;
   const stabilizationWindowMs =
@@ -863,6 +908,7 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
     disposeOne,
     buildQueuedMessageEventEmitter,
     emitThreadEvent,
+    getStatus,
     handlerStats,
     handleUncaughtException,
     hungServices,
@@ -871,6 +917,8 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
     invokeWrapped,
     isBuiltinPluginId,
     listPluginHooks,
+    listPluginEnvironmentProviders,
+    getPluginEnvironmentProvider,
     isPackagedBuiltinEntry,
     loadAll,
     loaded,
@@ -1197,7 +1245,7 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
     return rows
       .sort((a, b) => a.id.localeCompare(b.id))
       .map((row) => {
-        const runtime = statuses.get(row.id);
+        const runtime = getStatus(row);
         const stats = handlerStats.get(row.id);
         const loadedPlugin = loaded.get(row.id);
         const cliRegistration = loadedPlugin?.handle.cli.registration;
@@ -1247,12 +1295,8 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
             (loadedPlugin !== undefined
               ? brandingAssets.get(row.id)?.compactIcon?.url
               : identity?.brandingAssets.compactIcon?.url) ?? null,
-          status: runtime?.status ?? (row.enabled ? "error" : "disabled"),
-          statusDetail: runtime
-            ? runtime.detail
-            : row.enabled
-              ? "not loaded"
-              : null,
+          status: runtime.status,
+          statusDetail: runtime.detail,
           handlerStats: stats
             ? { ...stats }
             : { count: 0, totalMs: 0, maxMs: 0, errorCount: 0 },
@@ -1518,6 +1562,11 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
           thread: buildThreadDto(thread),
         }));
       },
+      emitThreadUnarchived(thread) {
+        emitThreadEvent("thread.unarchived", () => ({
+          thread: buildThreadDto(thread),
+        }));
+      },
       emitThreadDeleted(thread) {
         emitThreadEvent("thread.deleted", () => ({
           thread: buildThreadDto(thread),
@@ -1532,6 +1581,7 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
       emitMessageQueued: buildQueuedMessageEventEmitter("message.queued"),
       emitMessageDispatched:
         buildQueuedMessageEventEmitter("message.dispatched"),
+      emitMessageCancelled: buildQueuedMessageEventEmitter("message.cancelled"),
       emitTurnFailed(threadId) {
         // Built lazily inside the emitter: with no listener the failure path
         // pays one map lookup and never touches the database.
@@ -1544,6 +1594,18 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
     hooks: {
       listHooks: listPluginHooks,
       invokeHook: async (pluginId, label, run) => {
+        const outcome = await invokeWrapped(pluginId, label, run);
+        return outcome.ok
+          ? { ok: true, value: outcome.value }
+          : { ok: false, error: outcome.error };
+      },
+      decisionTimeoutMs: pluginHookTimeoutMs,
+    },
+
+    environmentProviders: {
+      listEnvironmentProviders: listPluginEnvironmentProviders,
+      getEnvironmentProvider: getPluginEnvironmentProvider,
+      invokeProvider: async (pluginId, label, run) => {
         const outcome = await invokeWrapped(pluginId, label, run);
         return outcome.ok
           ? { ok: true, value: outcome.value }
@@ -2025,6 +2087,12 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
       );
     },
 
+    getWebSocketRoute(id, path) {
+      return wireLookup(id, (plugin) =>
+        plugin.handle.websocketRoutes.find((route) => route.path === path),
+      );
+    },
+
     getRpcHandler(id, method) {
       return wireLookup(id, (plugin) => plugin.handle.rpcHandlers.get(method));
     },
@@ -2045,6 +2113,44 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
       );
     },
 
+    async invokeWebSocketRoute(id, route, context) {
+      const outcome = await invokeWrapped(
+        id,
+        `websocket ${route.path} connect`,
+        () => {
+          const handlers = route.handler(context);
+          if (
+            typeof handlers !== "object" ||
+            handlers === null ||
+            Array.isArray(handlers)
+          ) {
+            throw new Error("websocket route handler must return an object");
+          }
+          for (const name of [
+            "onOpen",
+            "onMessage",
+            "onClose",
+            "onError",
+          ] as const) {
+            const callback = handlers[name];
+            if (callback !== undefined && typeof callback !== "function") {
+              throw new Error(
+                `websocket route handler ${name} must be a function`,
+              );
+            }
+          }
+          return handlers;
+        },
+      );
+      return outcome.ok
+        ? { ok: true, handlers: outcome.value }
+        : { ok: false, error: outcome.error };
+    },
+
+    async invokeWebSocketEvent(id, route, event, run) {
+      await invokeWrapped(id, `websocket ${route.path} ${event}`, run);
+    },
+
     async invokeRpcHandler(id, method, handler, input) {
       const outcome = await invokeWrapped(id, `rpc ${method}`, async () => {
         const parsedInput = await validateRpcValue(
@@ -2052,7 +2158,7 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
           input,
           "input",
         );
-        const result = await handler.handler(parsedInput as never);
+        const result = await handler.handler(parsedInput);
         const parsedOutput = await validateRpcValue(
           handler.outputSchema,
           result,
@@ -2098,9 +2204,7 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
       if (!plugin) {
         const row = getInstalledPlugin(deps.db, id);
         if (!row) return fail(`unknown plugin "${id}"`);
-        const runtime = statuses.get(id);
-        const status = runtime?.status ?? (row.enabled ? "error" : "disabled");
-        const detail = runtime?.detail ?? (row.enabled ? "not loaded" : null);
+        const { status, detail } = getStatus(row);
         return fail(
           `plugin "${id}" is not running (status: ${status}${detail ? ` — ${detail}` : ""})`,
         );
@@ -2218,6 +2322,107 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
       }
 
       return { tools, selectedSkillIdsByPlugin, dynamicInstructions };
+    },
+
+    async resolveProviderEnv({ providerId, context }) {
+      const entries: PluginResolvedProviderEnv["entries"] = [];
+      const ownerByName = new Map<string, string>();
+      for (const [pluginId, plugin] of loaded) {
+        const resolve = plugin.handle.providerEnvResolvers.get(providerId);
+        if (resolve === undefined) continue;
+        const outcome = await invokeWrapped(
+          pluginId,
+          `provider environment for ${providerId}`,
+          async () => {
+            let timer: NodeJS.Timeout | undefined;
+            try {
+              return await Promise.race([
+                Promise.resolve(resolve(context)).then((value) =>
+                  validatePluginProviderEnvEntries(value),
+                ),
+                new Promise<never>((_resolve, reject) => {
+                  timer = setTimeout(
+                    () =>
+                      reject(
+                        new Error(
+                          `timed out after ${providerEnvResolveTimeoutMs}ms`,
+                        ),
+                      ),
+                    providerEnvResolveTimeoutMs,
+                  );
+                  timer.unref?.();
+                }),
+              ]);
+            } finally {
+              if (timer !== undefined) clearTimeout(timer);
+            }
+          },
+        );
+        if (!outcome.ok) continue;
+        for (const entry of outcome.value) {
+          const earlierPluginId = ownerByName.get(entry.name);
+          if (earlierPluginId !== undefined) {
+            logger.error(
+              {
+                providerId,
+                name: entry.name,
+                winnerPluginId: earlierPluginId,
+                loserPluginId: pluginId,
+              },
+              "Plugin provider environment conflict; later contribution dropped",
+            );
+            continue;
+          }
+          ownerByName.set(entry.name, pluginId);
+          entries.push({ ...entry, source: { plugin: pluginId } });
+        }
+      }
+      return { entries };
+    },
+
+    async resolveProviderEnvHealth({ providerId, context }) {
+      for (const [pluginId, plugin] of loaded) {
+        if (!plugin.handle.providerEnvResolvers.has(providerId)) continue;
+        const resolve =
+          plugin.handle.providerEnvHealthResolvers.get(providerId);
+        if (resolve === undefined) continue;
+        const outcome = await invokeWrapped(
+          pluginId,
+          `provider environment health for ${providerId}`,
+          async () => {
+            let timer: NodeJS.Timeout | undefined;
+            try {
+              const value = await Promise.race([
+                Promise.resolve(resolve(context)),
+                new Promise<never>((_resolve, reject) => {
+                  timer = setTimeout(
+                    () =>
+                      reject(
+                        new Error(
+                          `timed out after ${providerEnvResolveTimeoutMs}ms`,
+                        ),
+                      ),
+                    providerEnvResolveTimeoutMs,
+                  );
+                  timer.unref?.();
+                }),
+              ]);
+              if (value === null) return null;
+              if (value.label.trim().length === 0) {
+                throw new Error("label must not be empty");
+              }
+              if (value.statusMessage.trim().length === 0) {
+                throw new Error("statusMessage must not be empty");
+              }
+              return value;
+            } finally {
+              if (timer !== undefined) clearTimeout(timer);
+            }
+          },
+        );
+        if (outcome.ok && outcome.value !== null) return outcome.value;
+      }
+      return null;
     },
 
     listInstructionContributions() {

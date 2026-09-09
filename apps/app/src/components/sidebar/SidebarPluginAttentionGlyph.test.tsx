@@ -60,7 +60,7 @@ describe("SidebarPluginAttentionGlyph", () => {
     expect(el.getAttribute("aria-label")).toBe(
       "Notify is incompatible: requires bb >=0.38.0 <0.39.0, this is 0.39.0",
     );
-    expect(el.getAttribute("href")).toBe("/extensions/plugins?view=installed");
+    expect(el.getAttribute("href")).toBe("/settings/plugins");
     expect(el.className).toContain("text-warning-text");
     expect(el.querySelector('[data-icon="AlertTriangle"]')).not.toBeNull();
   });

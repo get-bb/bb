@@ -256,10 +256,6 @@ const URI_SCHEME_PATTERN = /^[a-zA-Z][a-zA-Z0-9+.-]*:/u;
 
 const HOME_RELATIVE_PATH_PATTERN = /^~(?:[^/]*\/|$)/u;
 
-function isHomeRelativePath(path: string): boolean {
-  return HOME_RELATIVE_PATH_PATTERN.test(path);
-}
-
 export function resolveRelativeLocalFileHref({
   baseDir,
   href,
@@ -277,7 +273,7 @@ export function resolveRelativeLocalFileHref({
     parsedHref === null ||
     parsedHref.path.length === 0 ||
     parsedHref.path.startsWith("/") ||
-    isHomeRelativePath(parsedHref.path) ||
+    HOME_RELATIVE_PATH_PATTERN.test(parsedHref.path) ||
     parsedHref.path.startsWith("#") ||
     parsedHref.path.startsWith("?") ||
     URI_SCHEME_PATTERN.test(parsedHref.path)

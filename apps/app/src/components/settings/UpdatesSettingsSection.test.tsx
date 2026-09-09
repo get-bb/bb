@@ -334,7 +334,7 @@ describe("UpdatesSettingsSection", () => {
     expect(sdk.system.version).toHaveBeenCalledTimes(1);
   });
 
-  it("aligns Update all with the first machine heading", () => {
+  it("places fleet-wide Update all above every machine section", () => {
     useDesktopUpdateInfoMock.mockReturnValue({
       desktopApi: null,
       desktopInfo: null,
@@ -378,10 +378,23 @@ describe("UpdatesSettingsSection", () => {
       "[data-updates-machine]",
     );
     const homelabSection = homelabHeading.closest("[data-updates-machine]");
-    expect(workstationSection?.contains(bulkActions)).toBe(true);
+    const fleetHeading = screen.getByRole("heading", {
+      name: "Machine updates",
+    });
+    const fleetSection = fleetHeading.closest("section");
+    const fleetHeader = fleetSection?.firstElementChild;
+    const fleetBody = fleetSection?.children.item(1);
+    expect(fleetHeader?.contains(bulkActions)).toBe(true);
+    expect(fleetBody?.contains(workstationSection)).toBe(true);
+    expect(fleetBody?.contains(homelabSection)).toBe(true);
+    expect(workstationSection?.contains(bulkActions)).toBe(false);
     expect(homelabSection?.contains(bulkActions)).toBe(false);
     expect(bulkActions.querySelector('[data-icon="Download"]')).not.toBeNull();
-    expect(bulkActions.parentElement?.className).toContain("pr-4");
+    expect(
+      screen.getByText(
+        "Manage bb and provider CLI updates across all machines.",
+      ),
+    ).toBeDefined();
   });
 
   it("keeps the changelog preview behind its experiment", () => {
@@ -488,7 +501,7 @@ The canonical release summary.
     expect(changelog?.textContent).toContain("The canonical release summary.");
     expect(
       changelog?.querySelector('[data-changelog-version="9.9.9"]'),
-    ).not.toBeNull();
+    ).toBeNull();
     const changelogLabel = changelog?.querySelector("[data-changelog-label]");
     expect(changelogLabel?.className).toContain("rounded-sm");
     expect(changelogLabel?.className).not.toContain("rounded-full");
@@ -529,6 +542,12 @@ The canonical release summary.
     const dismissChangelog = screen.getByRole("button", {
       name: "Dismiss bb 9.9.9 changelog preview",
     });
+    const changelogHeader = changelog?.querySelector("[data-changelog-header]");
+    const changelogCard = changelogHeader?.closest("section");
+    expect(changelogPreview?.firstElementChild).toBe(changelogHeader);
+    expect(changelogHeader?.className).not.toContain("border-b");
+    expect(changelogHeader?.contains(dismissChangelog)).toBe(true);
+    expect(changelogCard?.contains(changelogPreview ?? null)).toBe(true);
     expect(dismissChangelog.querySelector('[data-icon="X"]')).not.toBeNull();
     fireEvent.click(
       screen.getByRole("button", {

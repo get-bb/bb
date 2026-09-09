@@ -12,6 +12,7 @@ import {
   lte,
   min,
   notExists,
+  ne,
   notInArray,
   or,
   sql,
@@ -352,19 +353,6 @@ export function listQueuedThreadMessages(
     .all();
 }
 
-function getQueuedThreadMessageForMutation(
-  db: DbQueryConnection,
-  id: string,
-): QueuedThreadMessageRow | null {
-  return (
-    db
-      .select()
-      .from(queuedThreadMessages)
-      .where(eq(queuedThreadMessages.id, id))
-      .get() ?? null
-  );
-}
-
 function getLastQueuedThreadMessage(
   db: DbQueryConnection,
   threadId: string,
@@ -453,7 +441,7 @@ function resolveQueuedThreadMessageNeighbor(
     return false;
   }
 
-  const neighbor = getQueuedThreadMessageForMutation(
+  const neighbor = getQueuedThreadMessage(
     db,
     args.neighborQueuedMessageId,
   );
@@ -478,7 +466,7 @@ function applyQueuedThreadMessageGroupBoundary(
     (queuedMessage) => queuedMessage.id === groupBoundaryQueuedMessageId,
   );
   if (boundaryIndex === -1) {
-    const claimedBoundary = getQueuedThreadMessageForMutation(
+    const claimedBoundary = getQueuedThreadMessage(
       db,
       groupBoundaryQueuedMessageId,
     );
@@ -640,7 +628,7 @@ export function updateQueuedThreadMessage(
 ): UpdateQueuedThreadMessageResult {
   const result = db.transaction(
     (tx): UpdateQueuedThreadMessageResult => {
-      const existing = getQueuedThreadMessageForMutation(tx, input.id);
+      const existing = getQueuedThreadMessage(tx, input.id);
       if (!existing || existing.threadId !== input.threadId) {
         return { kind: "not_found" };
       }
@@ -674,7 +662,7 @@ export function updateQueuedThreadMessage(
   return result;
 }
 
-export function getQueuedThreadMessage(db: DbConnection, id: string) {
+export function getQueuedThreadMessage(db: DbQueryConnection, id: string) {
   return (
     db
       .select()
@@ -792,13 +780,9 @@ export function listIdleThreadsWithQueuedMessages(
           notExists(manuallyStoppedQueuePauseQuery(db, threads.id)),
           isNotNull(queuedThreadMessages.systemNotice),
         ),
-        // A gone environment (destroying/destroyed) is never reprovisioned, so
-        // its queued rows can never drain. Leave them out of the sweep instead
-        // of failing the same send every cycle (#1789). A thread with NO
-        // environment is not that case — it has simply not provisioned yet.
         or(
           isNull(threads.environmentId),
-          notInArray(environments.status, ["destroying", "destroyed"]),
+          ne(environments.status, "destroyed"),
         ),
         // Only rows an idle thread actually unblocks. A thread whose only
         // queued row is waiting on a clock or a plugin is not a drain
@@ -926,7 +910,7 @@ export function claimQueuedThreadMessageGroup(
 ): ClaimedQueuedThreadMessageRow[] | null {
   const claimedQueuedMessages = db.transaction(
     (tx) => {
-      const existing = getQueuedThreadMessageForMutation(tx, id);
+      const existing = getQueuedThreadMessage(tx, id);
       if (!existing || isQueuedThreadMessageClaimed(existing)) {
         return null;
       }
@@ -1029,7 +1013,7 @@ export function reorderQueuedThreadMessage({
   try {
     result = db.transaction(
       (tx): ReorderQueuedThreadMessageResult => {
-        const movedQueuedMessage = getQueuedThreadMessageForMutation(
+        const movedQueuedMessage = getQueuedThreadMessage(
           tx,
           queuedMessageId,
         );
@@ -1937,7 +1921,7 @@ export function deleteQueuedThreadMessage(
 ) {
   const existing = db.transaction(
     (tx) => {
-      const existing = getQueuedThreadMessageForMutation(tx, id);
+      const existing = getQueuedThreadMessage(tx, id);
       if (!existing) return null;
       clearPreviousQueuedMessageGroupEdgeInTransaction(tx, existing);
       tx.delete(queuedThreadMessages)

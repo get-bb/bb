@@ -21,38 +21,22 @@ interface BuildPluginSettingsEntriesArgs {
   settingsSections: readonly PluginSettingsSectionOwner[];
 }
 
-export interface PluginSettingsEntryGroups {
-  all: readonly PluginSettingsEntry[];
-  configurable: readonly PluginSettingsEntry[];
-  other: readonly PluginSettingsEntry[];
-}
-
 export function buildPluginSettingsEntries(
   args: BuildPluginSettingsEntriesArgs,
-): PluginSettingsEntryGroups {
+): readonly PluginSettingsEntry[] {
   const pluginsWithCustomSettings = new Set(
     args.settingsSections.map((section) => section.pluginId),
   );
-  const categorizedEntries = args.installedPlugins
-    .map((plugin) => ({
-      entry: {
-        id: plugin.id,
-        label: plugin.name ?? plugin.id,
-        icon: plugin.icon,
-      },
-      configurable:
+  return args.installedPlugins
+    .filter(
+      (plugin) =>
         plugin.enabled &&
         (plugin.hasSettings || pluginsWithCustomSettings.has(plugin.id)),
+    )
+    .map((plugin) => ({
+      id: plugin.id,
+      label: plugin.name ?? plugin.id,
+      icon: plugin.icon,
     }))
-    .sort((left, right) => left.entry.label.localeCompare(right.entry.label));
-
-  return {
-    all: categorizedEntries.map(({ entry }) => entry),
-    configurable: categorizedEntries
-      .filter(({ configurable }) => configurable)
-      .map(({ entry }) => entry),
-    other: categorizedEntries
-      .filter(({ configurable }) => !configurable)
-      .map(({ entry }) => entry),
-  };
+    .sort((left, right) => left.label.localeCompare(right.label));
 }

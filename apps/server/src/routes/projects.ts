@@ -48,7 +48,6 @@ import {
   requirePublicStandardProject,
 } from "../services/lib/entity-lookup.js";
 import { PROMPT_HISTORY_ENTRY_LIMIT } from "@bb/domain";
-import { resolveCreateThreadExecutionDefaults } from "../services/threads/thread-default-policy.js";
 import { toThreadListEntryResponses } from "../services/threads/thread-runtime-display.js";
 import { callHostRetryableOnlineRpc } from "../services/hosts/online-rpc.js";
 import { runLiveHostCommand } from "../services/hosts/live-command.js";
@@ -61,7 +60,7 @@ import {
 } from "../services/skills/skill-listing.js";
 import {
   createDaemonFileContentResponse,
-  remapDaemonFileRouteError,
+  serveDaemonFileContent,
   requestMatchesEntityTag,
 } from "../services/hosts/daemon-file-response.js";
 import { parseBoundedPositiveOptionalInteger } from "../services/lib/validation.js";
@@ -244,12 +243,7 @@ function buildProjectsWithThreadsResponseFromRows(
   return projects.map((project) => ({
     ...project,
     threads: threadsByProjectId.get(project.id) ?? [],
-    defaultExecutionOptions: resolveCreateThreadExecutionDefaults(
-      deps.providerRegistry,
-      {
-        storedDefaults: defaultsByProjectId.get(project.id) ?? null,
-      },
-    ).executionDefaults,
+    defaultExecutionOptions: defaultsByProjectId.get(project.id) ?? null,
   }));
 }
 
@@ -395,15 +389,10 @@ export function registerProjectRoutes(app: Hono, deps: AppDeps): void {
     context.json(buildProjectResponses(deps, context.req.param("id"))[0]),
   );
 
-  get(routes.defaultExecutionOptions, (context, query) => {
+  get(routes.defaultExecutionOptions, (context) => {
     const projectId = context.req.param("id");
     requirePublicProject(deps.db, projectId);
-    const storedDefaults = getProjectExecutionDefaults(deps.db, { projectId });
-    return context.json(
-      resolveCreateThreadExecutionDefaults(deps.providerRegistry, {
-        storedDefaults,
-      }).executionDefaults,
-    );
+    return context.json(getProjectExecutionDefaults(deps.db, { projectId }));
   });
 
   get(routes.promptHistory, (context, query) => {
@@ -586,13 +575,16 @@ export function registerProjectRoutes(app: Hono, deps: AppDeps): void {
 
   del(routes.deleteSource, (context) => {
     const projectId = context.req.param("id");
-    requirePublicStandardProject(deps.db, projectId);
+    const project = requireProject(deps.db, projectId);
+    if (project.kind !== "standard") {
+      throw new ApiError(404, "project_not_found", "Project not found");
+    }
     requireProjectSource(deps, {
       projectId,
       sourceId: context.req.param("sourceId"),
     });
     const sourceCount = countProjectSources(deps.db, { projectId });
-    if (sourceCount <= 1) {
+    if (sourceCount <= 1 && project.deletedAt === null) {
       throw new ApiError(
         409,
         "invalid_request",
@@ -648,23 +640,20 @@ export function registerProjectRoutes(app: Hono, deps: AppDeps): void {
     });
     const filePath = parseSafeRelativeRoutePath(query.path);
 
-    try {
-      const result = await callHostRetryableOnlineRpc(deps, {
+    return serveDaemonFileContent(
+      deps,
+      {
         hostId: target.hostId,
-        timeoutMs: COMMAND_TIMEOUT_MS,
-        command: {
-          type: "host.read_file",
-          path: path.join(target.path, filePath.relativePath),
-          rootPath: target.path,
-        },
-      });
-      return createDaemonFileContentResponse(result, {
-        headers: { "x-bb-content-encoding": result.contentEncoding },
         ifNoneMatch: context.req.header("if-none-match"),
-      });
-    } catch (error) {
-      return remapDaemonFileRouteError(error);
-    }
+        path: path.join(target.path, filePath.relativePath),
+        rootPath: target.path,
+      },
+      (result) =>
+        createDaemonFileContentResponse(result, {
+          headers: { "x-bb-content-encoding": result.contentEncoding },
+          ifNoneMatch: context.req.header("if-none-match"),
+        }),
+    );
   });
 
   get(routes.paths, async (context, query) => {

@@ -144,10 +144,7 @@ export function Environment() {
         <RowStage>
           <EnvironmentRow
             thread={makeThread()}
-            environment={makeEnvironment({
-              isWorktree: false,
-              workspaceProvisionType: "unmanaged",
-            })}
+            environment={makeEnvironment({})}
             environmentDisplayHost={localEnvironmentDisplayHost}
           />
         </RowStage>
@@ -156,10 +153,7 @@ export function Environment() {
         <RowStage>
           <EnvironmentRow
             thread={makeThread()}
-            environment={makeEnvironment({
-              isWorktree: false,
-              workspaceProvisionType: "unmanaged",
-            })}
+            environment={makeEnvironment({})}
             environmentDisplayHost={remoteEnvironmentDisplayHost}
           />
         </RowStage>
@@ -170,8 +164,6 @@ export function Environment() {
             thread={makeThread()}
             environment={makeEnvironment({
               status: "provisioning",
-              isWorktree: false,
-              workspaceProvisionType: "managed-worktree",
             })}
             environmentDisplayHost={localEnvironmentDisplayHost}
           />
@@ -207,8 +199,6 @@ export function WorkspacePath() {
           <WorkspacePathRow
             environment={makeEnvironment({
               path: "/srv/repos/bb-linked-worktree",
-              managed: false,
-              workspaceProvisionType: "unmanaged",
             })}
           />
         </RowStage>
@@ -218,8 +208,6 @@ export function WorkspacePath() {
           <WorkspacePathRow
             environment={makeEnvironment({
               path: "/Users/michael/Projects/bb",
-              isWorktree: false,
-              workspaceProvisionType: "personal",
             })}
           />
         </RowStage>

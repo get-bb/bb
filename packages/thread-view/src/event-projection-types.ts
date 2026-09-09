@@ -18,6 +18,7 @@ export type {
   EventProjectionFileEditChange,
   EventProjectionFileEditMessage,
   EventProjectionFileReadMessage,
+  EventProjectionImageGenerationMessage,
   EventProjectionImageViewMessage,
   EventProjectionMessage,
   EventProjectionMessageBase,

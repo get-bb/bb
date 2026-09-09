@@ -23,6 +23,7 @@ import {
   type PluginNavPanelRegistration,
   type PluginNewThreadPanelProps,
   type PluginPendingInteractionProps,
+  type PluginEnvironmentProviderInputsProps,
   type PluginProviderIconRegistration,
   type PluginTimelineRendererProps,
   type PluginSettingDescriptor,
@@ -44,7 +45,7 @@ const REPO_ROOT = fileURLToPath(new URL("../../../../../", import.meta.url));
 
 const SKILL_ROOT = fileURLToPath(
   new URL(
-    "../../../src/services/skills/builtin-skills/bb-plugin-authoring/",
+    "../../../../../plugins/bb-guide/skills/bb-plugin-authoring/",
     import.meta.url,
   ),
 );
@@ -163,6 +164,7 @@ const BB_PLUGIN_API_KEYS = [
   "hosts",
   "experimental_aiServices",
   "experimental_hooks",
+  "experimental_environments",
   "sdk",
   "onDispose",
 ] as const satisfies readonly (keyof BbPluginApi)[];
@@ -212,10 +214,12 @@ const THREAD_EVENT_PAYLOAD_FIELDS = {
   "thread.idle": ["thread", "lastAssistantText"],
   "thread.failed": ["thread", "error"],
   "thread.archived": ["thread"],
+  "thread.unarchived": ["thread"],
   "thread.deleted": ["thread"],
   "interaction.pending": ["thread", "interaction"],
   "message.queued": ["entry"],
   "message.dispatched": ["entry"],
+  "message.cancelled": ["entry"],
   "turn.failed": [
     "threadId",
     "requestId",
@@ -260,6 +264,7 @@ type SlotPropsByName = {
   commandPaletteAction: PluginCommandPaletteActionContext;
   experimental_providerIcon: PluginProviderIconRegistration;
   experimental_timelineRenderer: PluginTimelineRendererProps;
+  experimental_environmentProviderInputs: PluginEnvironmentProviderInputsProps;
 };
 
 type MissingSlot = Exclude<keyof PluginAppSlots, keyof SlotPropsByName>;
@@ -270,6 +275,7 @@ const APP_BUILDER_FIELDS = [
   "slots",
   "composer",
   "contentScripts",
+  "experimental_sidebarFooter",
 ] as const satisfies readonly (keyof PluginAppBuilder)[];
 
 type MissingAppBuilderField = Exclude<
@@ -370,6 +376,12 @@ const FRONTEND_SLOT_PROP_FIELDS = {
     "presentation",
     "thread",
     "Original",
+  ],
+  experimental_environmentProviderInputs: [
+    "projectId",
+    "hostId",
+    "value",
+    "onChange",
   ],
 } as const satisfies {
   [S in keyof SlotPropsByName]: readonly (keyof SlotPropsByName[S])[];
@@ -495,6 +507,16 @@ describe("bb-plugin-authoring skill", () => {
   const skillEntry = readFileSync(SKILL_PATH, "utf8");
   const skill = readSkillTree();
 
+  it("does not advertise unshipped machine providers", () => {
+    for (const doc of [
+      skillEntry,
+      readReference("frontend-renderer-slots.md"),
+      readReference("backend-events.md"),
+    ]) {
+      expect(doc).not.toMatch(/machine providers?|custom-machine/);
+    }
+  });
+
   it("has frontmatter naming the skill after its directory", () => {
     expect(skillEntry).toMatch(/^---\nname: bb-plugin-authoring\n/);
   });
@@ -511,6 +533,16 @@ describe("bb-plugin-authoring skill", () => {
     for (const name of FRONTEND_RUNTIME_EXPORT_NAMES) {
       expect(skill, `${name} is not documented in the skill`).toContain(name);
     }
+  });
+
+  it("warns that environment provider inputs are persisted configuration, not credentials", () => {
+    const documented = readReference("backend-events.md").replace(/\s+/g, " ");
+    expect(documented).toContain(
+      "Parsed inputs are persisted on the environment and are readable by every plugin through the SDK, including after the environment is destroyed.",
+    );
+    expect(documented).toContain(
+      "They are configuration, not a credential store; keep credentials in secret settings.",
+    );
   });
 
   it("accounts for every @get-bb/plugin-sdk/app type export", () => {
@@ -601,6 +633,39 @@ describe("bb-plugin-authoring skill", () => {
         ).toContain(field);
       }
     }
+  });
+
+  it("keeps environment app symbols and composer and event guidance current", () => {
+    const frontendIndex = readReference("frontend-api-index.md");
+    const backendIndex = readReference("backend-api-index.md");
+    const appSymbols = [
+      "experimental_BranchPicker",
+      "BranchPickerProps",
+      "experimental_useBranches",
+      "UseBranchesArgs",
+      "BranchesState",
+      "experimental_useCheckoutState",
+      "UseCheckoutStateArgs",
+      "CheckoutState",
+      "PluginEnvironmentProviderInputsChange",
+      "PluginEnvironmentProviderInputsProps",
+      "PluginEnvironmentProviderInputsRegistration",
+    ];
+    for (const symbol of appSymbols) {
+      expect(frontendIndex).toContain(`\`${symbol}\``);
+      expect(backendIndex).not.toContain(`\`${symbol}\``);
+    }
+
+    expect(readReference("frontend-components.md")).not.toContain(
+      'workspace: { type: "personal" }',
+    );
+    expect(readReference("backend-events.md")).toContain("Twelve events.");
+    expect(readReference("backend-events.md")).toContain(
+      "The seven `thread.*` ones",
+    );
+    expect(readReference("testing.md")).toContain(
+      "Thread events are observe-only; there are exactly seven",
+    );
   });
 
   it("documents every navPanel registration field", () => {

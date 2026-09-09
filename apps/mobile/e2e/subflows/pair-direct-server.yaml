@@ -22,6 +22,13 @@ appId: app.getbb.mobile
       - tapOn:
           id: "add-server-submit"
 - extendedWaitUntil:
-    visible:
-      id: "shell-webview"
+    visible: ".*(Not now|Ask anything).*"
     timeout: 30000
+- runFlow:
+    when:
+      visible: "Not now"
+    commands:
+      - tapOn: "Not now"
+- assertNotVisible: "Not now"
+- assertVisible:
+    id: "shell-webview"

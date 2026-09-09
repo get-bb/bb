@@ -25,6 +25,7 @@ import { dimInactiveSplitsAtom } from "@/lib/split-layout/atoms";
 import { createSplitResizeSnapSession } from "@/lib/split-resize-snap";
 import { IframeDragGuardOverlay } from "@/lib/iframe-drag-guard";
 import { MACOS_APP_REGION_NO_DRAG_CLASS } from "@/lib/bb-desktop";
+import { withLocalStorage } from "@/lib/browser-storage";
 import {
   PaneContext,
   type PaneContextValue,
@@ -110,9 +111,7 @@ export function SidebarSplitContainer({
   const availableTabIds = useMemo(() => tabs.map((tab) => tab.id), [tabs]);
   const storageKey = sidebarSplitStorageKey(panelStateId);
   const [initialStorageValue] = useState<string | null>(() =>
-    typeof window === "undefined"
-      ? null
-      : window.localStorage.getItem(storageKey),
+    withLocalStorage((storage) => storage.getItem(storageKey), null),
   );
   const [state, setState] = useState<SidebarSplitState>(() => {
     const restored =
@@ -201,13 +200,17 @@ export function SidebarSplitContainer({
   }, [activeTabId, availableTabIds]);
 
   useEffect(() => {
-    pruneSidebarSplitStorage({
-      storage: window.localStorage,
-      now: Date.now(),
-    });
+    withLocalStorage(
+      (storage) =>
+        pruneSidebarSplitStorage({
+          storage,
+          now: Date.now(),
+        }),
+      undefined,
+    );
     lastPersistedValueRef.current = {
       storageKey,
-      value: window.localStorage.getItem(storageKey),
+      value: withLocalStorage((storage) => storage.getItem(storageKey), null),
     };
   }, [storageKey]);
 
@@ -226,13 +229,20 @@ export function SidebarSplitContainer({
     ) {
       return;
     }
-    if (persistedValue === null) {
-      window.localStorage.removeItem(storageKey);
-    } else {
-      window.localStorage.setItem(storageKey, persistedValue);
+    try {
+      if (persistedValue === null) {
+        window.localStorage.removeItem(storageKey);
+      } else {
+        window.localStorage.setItem(storageKey, persistedValue);
+      }
+      lastPersistedValueRef.current = { storageKey, value: persistedValue };
+    } catch (error) {
+      console.warn(
+        `[secondary-panel] could not persist split layout for ${panelStateId}; keeping it in memory only`,
+        error,
+      );
     }
-    lastPersistedValueRef.current = { storageKey, value: persistedValue };
-  }, [activeTabId, availableTabIds, state, storageKey]);
+  }, [activeTabId, availableTabIds, panelStateId, state, storageKey]);
 
   const commitState = useCallback(
     (

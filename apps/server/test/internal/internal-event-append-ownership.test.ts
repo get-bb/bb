@@ -30,9 +30,7 @@ import {
 import { createTestAppHarness } from "../helpers/test-app.js";
 import type { TestAppHarness } from "../helpers/test-app.js";
 
-interface SeedEventRouteArgs {
-  hostType?: "persistent";
-}
+interface SeedEventRouteArgs {}
 
 interface PostEventBatchArgs {
   harness: TestAppHarness;
@@ -53,9 +51,7 @@ async function postEventBatch(args: PostEventBatchArgs): Promise<Response> {
 
 function setupEventRoute(args: SeedEventRouteArgs = {}) {
   return createTestAppHarness().then((harness) => {
-    const { host, session } = seedHostSession(harness.deps, {
-      type: args.hostType,
-    });
+    const { host, session } = seedHostSession(harness.deps);
     const { project } = seedProjectWithSource(harness.deps, {
       hostId: host.id,
     });
@@ -108,7 +104,7 @@ describe("internal event append ownership", () => {
       expect(
         buildThreadTimeline(harness.db, thread, {
           eventBudget: 1_000_000,
-          includeProviderUnhandledOperations: true,
+          includeDiagnosticOperations: true,
           maxInlineOutputChars: null,
           maxSeq: 1,
           page: {
@@ -1036,7 +1032,7 @@ describe("interaction lifecycle records from the daemon", () => {
       );
       const questionRows = buildThreadTimeline(harness.db, thread, {
         eventBudget: 1_000_000,
-        includeProviderUnhandledOperations: true,
+        includeDiagnosticOperations: true,
         maxInlineOutputChars: null,
         maxSeq,
         page: { kind: "latest", segmentLimit: Number.MAX_SAFE_INTEGER },

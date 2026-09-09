@@ -217,7 +217,6 @@ function threadStartCommand(
     threadId: args.threadId,
     workspaceContext: {
       workspacePath: harness.workspacePath,
-      workspaceProvisionType: "unmanaged",
     },
     projectId: "project-stop-race",
     providerId: args.providerId ?? "fake",
@@ -238,6 +237,7 @@ function threadStartCommand(
     },
     instructions: "Be a helpful coding agent.",
     dynamicTools: [],
+    contributedEnv: [],
     injectedSkillSources: [],
     instructionMode: "append",
   };
@@ -268,13 +268,13 @@ function turnSubmitCommand(
       bridgeLaunch: harness.launch,
       workspaceContext: {
         workspacePath: harness.workspacePath,
-        workspaceProvisionType: "unmanaged",
       },
       projectId: "project-stop-race",
       providerId: "fake",
       providerThreadId: "prov-1",
       instructions: "Be a helpful coding agent.",
       dynamicTools: [],
+      contributedEnv: [],
       injectedSkillSources: [],
       instructionMode: "append",
     },
@@ -398,7 +398,6 @@ describe("thread.stop race semantics", () => {
     const entry = await harness.manager.ensureEnvironment({
       environmentId: ENVIRONMENT_ID,
       workspacePath: harness.workspacePath,
-      workspaceProvisionType: "unmanaged",
     });
     const healthyLaunch = await resolveRuntimeBridgeLaunch(
       harness.launch,

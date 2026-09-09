@@ -1,3 +1,4 @@
+import { SourceLoadingSkeleton } from "@/components/code/code-loading-skeletons";
 import {
   type CSSProperties,
   useEffect,
@@ -18,7 +19,7 @@ import { useAppCommandShortcut } from "@/components/commands/AppCommandProvider"
 import { AppCommandShortcutHint } from "@/components/commands/AppCommandShortcutHint";
 import type { MarkdownLinkRouting } from "@/components/ui/markdown-link-routing.js";
 import { MarkdownPreview } from "@/components/ui/markdown-preview.js";
-import { Skeleton } from "@bb/shared-ui/skeleton";
+import { ImageLightbox } from "@/components/ui/image-lightbox.js";
 import {
   Tooltip,
   TooltipContent,
@@ -522,7 +523,7 @@ function FilePreviewBody({
   onSelectionAddToChat,
 }: FilePreviewBodyProps) {
   if (state.kind === "loading") {
-    return <FilePreviewLoading />;
+    return <SourceLoadingSkeleton />;
   }
   if (state.kind === "empty") {
     return <FilePreviewMessage message="Empty file." />;
@@ -1040,12 +1041,23 @@ function CsvFilePreview({ file, onSelectionAddToChat }: CsvFilePreviewProps) {
 }
 
 function FilePreviewImage({ url, alt }: FilePreviewImageProps) {
+  const [isLightboxOpen, setIsLightboxOpen] = useState(false);
+
   return (
     <div className="pt-4">
-      <img
-        src={url}
-        alt={alt}
-        className="block max-h-[34rem] w-full object-contain"
+      <button
+        type="button"
+        className="block w-full cursor-zoom-in"
+        aria-label={`Open ${alt} in full screen preview`}
+        onClick={() => setIsLightboxOpen(true)}
+      >
+        <img src={url} alt={alt} className="mx-auto block h-auto max-w-full" />
+      </button>
+      <ImageLightbox
+        title={alt}
+        imageSrc={isLightboxOpen ? url : null}
+        imageAlt={alt}
+        onClose={() => setIsLightboxOpen(false)}
       />
     </div>
   );
@@ -1104,7 +1116,7 @@ function IframeFilePreview({ sandbox, title, url }: IframeFilePreviewTarget) {
     <div className="relative min-h-0 flex-1 overflow-hidden">
       {loadState === "loading" && showLoadingIndicator ? (
         <div className="absolute inset-x-0 top-0 z-10">
-          <FilePreviewLoading />
+          <SourceLoadingSkeleton />
         </div>
       ) : null}
       <iframe
@@ -1115,19 +1127,6 @@ function IframeFilePreview({ sandbox, title, url }: IframeFilePreviewTarget) {
         onLoad={() => setLoadState("loaded")}
         onError={() => setLoadState("error")}
       />
-    </div>
-  );
-}
-
-function FilePreviewLoading() {
-  return (
-    <div className="space-y-2 px-4 pt-4" aria-busy>
-      <Skeleton className="h-3 w-3/4 rounded-sm" />
-      <Skeleton className="h-3 w-full rounded-sm" />
-      <Skeleton className="h-3 w-5/6 rounded-sm" />
-      <Skeleton className="h-3 w-2/3 rounded-sm" />
-      <Skeleton className="h-3 w-full rounded-sm" />
-      <Skeleton className="h-3 w-3/5 rounded-sm" />
     </div>
   );
 }
@@ -1162,7 +1161,7 @@ function FilePreviewCode({
       overflow={lineOverflowMode}
       highlightedLines={highlightedLines}
       scrollToHighlightedLines
-      fallback={<FilePreviewLoading />}
+      fallback={<SourceLoadingSkeleton />}
       onSelectionAddToChat={onSelectionAddToChat}
     />
   );

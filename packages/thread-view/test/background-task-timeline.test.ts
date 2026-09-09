@@ -37,7 +37,7 @@ function buildTimeline(
     events,
     options: {
       includeNestedRows: options.includeNestedRows ?? true,
-      includeProviderUnhandledOperations: false,
+      includeDiagnosticOperations: false,
       isLatestPage: true,
       threadStatus: "idle",
       threadName: "",

@@ -1,9 +1,15 @@
 import type { ActiveThinking } from "@bb/domain";
 import type { EventMeta } from "./event-decode.js";
-import type { BuildEventProjectionMessagesOptions } from "./event-projection-types.js";
-import { finalizeProjectionKey } from "./assistant-stream-projection.js";
+import type {
+  BuildEventProjectionMessagesOptions,
+  EventProjectionMessage,
+  EventProjectionOperationMessage,
+} from "./event-projection-types.js";
+import { durationToCompactString, messageId } from "./format-helpers.js";
+import { eventProjectionMessageTurnScopeFields } from "./message-scope.js";
 import {
   createVisibleTextBuffer,
+  getVisibleTextBufferFullText,
   getVisibleTextBufferText,
   type VisibleTextBuffer,
 } from "./visible-text-buffer.js";
@@ -13,9 +19,11 @@ import {
 } from "./buffered-text-identity.js";
 
 interface ActiveThinkingLifecycle {
-  itemId: string;
   messageKey: string;
+  parentToolCallId: string | null;
+  sourceSeqStart: number;
   startedAt: number;
+  threadId: string;
   turnId: string;
   updatedAt: number;
   updatedSeq: number;
@@ -28,24 +36,69 @@ interface ReasoningTurnLifecycleState {
 
 export interface ReasoningProjectionState {
   finalizedReasoningKeys: Set<string>;
+  reasoningDeltaTextByKey: Map<string, { content: string; summary: string }>;
+  reasoningMessagesAwaitingCompletion: Map<
+    string,
+    EventProjectionOperationMessage
+  >;
   openReasoningLifecyclesByKey: Map<string, ActiveThinkingLifecycle>;
   reasoningTextBuffersByKey: Map<string, VisibleTextBuffer>;
 }
 
 interface ReasoningLifecycleHostState
-  extends ReasoningProjectionState, ReasoningTurnLifecycleState {}
+  extends ReasoningProjectionState, ReasoningTurnLifecycleState {
+  messages: EventProjectionMessage[];
+}
 
 interface UpsertReasoningLifecycleArgs {
   identity: BufferedTextInstanceIdentity | null;
   meta: EventMeta;
+  parentToolCallId: string | undefined;
   state: ReasoningLifecycleHostState;
+  threadId: string;
+}
+
+type ReasoningCompletionStatus = Extract<
+  EventProjectionOperationMessage["status"],
+  "completed" | "interrupted"
+>;
+
+const MAX_REASONING_DETAIL_CHARS = 32_000;
+const REASONING_DETAIL_TRUNCATION_SUFFIX_TAIL = " more characters truncated]";
+
+function truncateReasoningDetail(detail: string): string {
+  if (detail.length <= MAX_REASONING_DETAIL_CHARS) {
+    return detail;
+  }
+  const dropped = detail.length - MAX_REASONING_DETAIL_CHARS;
+  return `${detail.slice(0, MAX_REASONING_DETAIL_CHARS)}\n…[${dropped.toLocaleString("en-US")}${REASONING_DETAIL_TRUNCATION_SUFFIX_TAIL}`;
+}
+
+interface FinalizeReasoningLifecycleArgs {
+  identity: BufferedTextInstanceIdentity | null;
+  meta: EventMeta;
+  state: ReasoningLifecycleHostState;
+  status: ReasoningCompletionStatus;
+  text: string | null;
+}
+
+interface FinalizeOpenReasoningLifecyclesArgs {
+  meta: EventMeta;
+  state: ReasoningLifecycleHostState;
+  status: ReasoningCompletionStatus;
+}
+
+interface FinalizeOpenReasoningLifecyclesForTurnArgs extends FinalizeOpenReasoningLifecyclesArgs {
+  turnId: string;
 }
 
 export function createReasoningProjectionState(): ReasoningProjectionState {
   return {
     openReasoningLifecyclesByKey: new Map(),
+    reasoningDeltaTextByKey: new Map(),
     reasoningTextBuffersByKey: new Map(),
     finalizedReasoningKeys: new Set(),
+    reasoningMessagesAwaitingCompletion: new Map(),
   };
 }
 
@@ -98,7 +151,11 @@ export function buildProjectionActiveThinking(
   }
 
   return {
-    id: latestLifecycle.itemId,
+    id: messageId(
+      latestLifecycle.threadId,
+      "op",
+      `reasoning:${latestLifecycle.messageKey}`,
+    ),
     text: getActiveThinkingText(state, latestLifecycle.messageKey),
     startedAt: latestLifecycle.startedAt,
     updatedAt: latestLifecycle.updatedAt,
@@ -131,57 +188,121 @@ export function upsertReasoningLifecycle(
   }
 
   args.state.openReasoningLifecyclesByKey.set(messageKey, {
-    itemId: args.identity.itemId,
     messageKey,
+    parentToolCallId: args.parentToolCallId ?? null,
+    sourceSeqStart: args.meta.seq,
     startedAt: args.meta.createdAt,
+    threadId: args.threadId,
     turnId: args.identity.turnId,
     updatedAt: args.meta.createdAt,
     updatedSeq: args.meta.seq,
   });
 }
 
-export function trackReasoningTurn(
-  state: ReasoningTurnLifecycleState,
-  identity: BufferedTextInstanceIdentity | null,
-): void {
-  if (!identity || state.closedTurnIds.has(identity.turnId)) {
-    return;
+function finalizeReasoningLifecycleByKey(
+  args: FinalizeOpenReasoningLifecyclesArgs & { messageKey: string },
+): EventProjectionOperationMessage | null {
+  const lifecycle = args.state.openReasoningLifecyclesByKey.get(
+    args.messageKey,
+  );
+  const buffer = args.state.reasoningTextBuffersByKey.get(args.messageKey);
+  args.state.openReasoningLifecyclesByKey.delete(args.messageKey);
+  args.state.reasoningTextBuffersByKey.delete(args.messageKey);
+  args.state.finalizedReasoningKeys.add(args.messageKey);
+  if (!lifecycle || !buffer) {
+    return null;
   }
-  state.openTurnIds.add(identity.turnId);
+
+  const detail = getVisibleTextBufferFullText(buffer);
+  if (detail.trim().length === 0) {
+    return null;
+  }
+
+  const message: EventProjectionOperationMessage = {
+    kind: "operation",
+    id: messageId(
+      lifecycle.threadId,
+      "op",
+      `reasoning:${lifecycle.messageKey}`,
+    ),
+    threadId: lifecycle.threadId,
+    sourceSeqStart: lifecycle.sourceSeqStart,
+    sourceSeqEnd: args.meta.seq,
+    createdAt: args.meta.createdAt,
+    startedAt: lifecycle.startedAt,
+    completedAt: args.meta.createdAt,
+    ...eventProjectionMessageTurnScopeFields(lifecycle.turnId),
+    ...(lifecycle.parentToolCallId
+      ? { parentToolCallId: lifecycle.parentToolCallId }
+      : {}),
+    opType: "reasoning",
+    title: `Thought for ${durationToCompactString(
+      args.meta.createdAt - lifecycle.startedAt,
+    )}`,
+    detail: truncateReasoningDetail(detail),
+    status: args.status,
+  };
+  args.state.messages.push(message);
+  return message;
 }
 
 export function finalizeReasoningLifecycle(
-  state: ReasoningProjectionState,
-  identity: BufferedTextInstanceIdentity | null,
+  args: FinalizeReasoningLifecycleArgs,
 ): void {
-  if (!identity) {
+  if (!args.identity) {
     return;
   }
 
-  const messageKey = createBufferedTextInstanceKey(identity);
-  state.openReasoningLifecyclesByKey.delete(messageKey);
-  state.finalizedReasoningKeys.add(messageKey);
+  const messageKey = createBufferedTextInstanceKey(args.identity);
+  args.state.reasoningDeltaTextByKey.delete(messageKey);
+  const message =
+    args.state.reasoningMessagesAwaitingCompletion.get(messageKey);
+  if (message) {
+    args.state.reasoningMessagesAwaitingCompletion.delete(messageKey);
+    message.sourceSeqEnd = args.meta.seq;
+    if (args.text?.trim()) {
+      message.detail = truncateReasoningDetail(args.text);
+    }
+    return;
+  }
+
+  finalizeReasoningLifecycleByKey({
+    meta: args.meta,
+    state: args.state,
+    status: args.status,
+    messageKey,
+  });
+}
+
+function finalizeReasoningWithoutCompletion(
+  args: FinalizeOpenReasoningLifecyclesArgs & { messageKey: string },
+): void {
+  const message = finalizeReasoningLifecycleByKey(args);
+  if (message) {
+    args.state.reasoningMessagesAwaitingCompletion.set(
+      args.messageKey,
+      message,
+    );
+  }
 }
 
 export function finalizeOpenReasoningLifecycles(
-  state: ReasoningProjectionState,
+  args: FinalizeOpenReasoningLifecyclesArgs,
 ): void {
-  for (const messageKey of state.openReasoningLifecyclesByKey.keys()) {
-    state.finalizedReasoningKeys.add(messageKey);
+  for (const messageKey of args.state.openReasoningLifecyclesByKey.keys()) {
+    finalizeReasoningWithoutCompletion({ ...args, messageKey });
   }
-  state.openReasoningLifecyclesByKey.clear();
 }
 
 export function finalizeOpenReasoningLifecyclesForTurn(
-  state: ReasoningProjectionState,
-  turnId: string,
+  args: FinalizeOpenReasoningLifecyclesForTurnArgs,
 ): void {
-  for (const [messageKey, lifecycle] of state.openReasoningLifecyclesByKey) {
-    if (lifecycle.turnId !== turnId) {
+  for (const [messageKey, lifecycle] of args.state
+    .openReasoningLifecyclesByKey) {
+    if (lifecycle.turnId !== args.turnId) {
       continue;
     }
-    state.finalizedReasoningKeys.add(messageKey);
-    state.openReasoningLifecyclesByKey.delete(messageKey);
+    finalizeReasoningWithoutCompletion({ ...args, messageKey });
   }
 }
 
@@ -201,12 +322,4 @@ export function isReasoningProjectionKeyFinalized(
   messageKey: string,
 ): boolean {
   return state.finalizedReasoningKeys.has(messageKey);
-}
-
-export function finalizeReasoningTextBuffer(
-  state: ReasoningProjectionState,
-  messageKey: string,
-): void {
-  state.reasoningTextBuffersByKey.delete(messageKey);
-  finalizeProjectionKey(state.finalizedReasoningKeys, messageKey);
 }

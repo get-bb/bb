@@ -205,10 +205,18 @@ async function materializePackagedHostPackage(
     join(hostDaemonTarget, "bb-chunks"),
     { recursive: true },
   );
-  await copyFile(
-    join(packageRoot, "README.md"),
-    join(hostPackageRoot, "README.md"),
-  );
+  try {
+    await copyFile(
+      join(packageRoot, "README.md"),
+      join(hostPackageRoot, "README.md"),
+    );
+  } catch (error) {
+    if (
+      !(error instanceof Error && "code" in error && error.code === "ENOENT")
+    ) {
+      throw error;
+    }
+  }
   await writeFile(
     join(hostPackageRoot, "package.json"),
     `${JSON.stringify(hostPackageJson(packageJson), null, 2)}\n`,

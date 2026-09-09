@@ -2,7 +2,6 @@ import { useEffect, useState } from "react";
 import {
   assertNever,
   fileNameFromPath,
-  type TimelineImageViewViewWorkRow,
   type TimelineViewWorkRow,
 } from "@bb/thread-view";
 import { Button } from "@bb/shared-ui/button";
@@ -37,9 +36,14 @@ interface WorkRowBodyProps {
 
 type DetailLine = string | null;
 
-interface ImageViewWorkRowBodyProps {
+type ImageWorkRow = Extract<
+  TimelineViewWorkRow,
+  { workKind: "image-view" | "image-generation" }
+>;
+
+interface ImageWorkRowBodyProps {
   resolveImageViewSrc?: ThreadTimelineImageViewSrcResolver;
-  row: TimelineImageViewViewWorkRow;
+  row: ImageWorkRow;
 }
 
 interface CommandWorkRowBodyProps {
@@ -62,7 +66,7 @@ interface OutputPreviewNoteArgs {
 
 interface ResolveImageViewSourceArgs {
   resolveImageViewSrc: ThreadTimelineImageViewSrcResolver | undefined;
-  row: TimelineImageViewViewWorkRow;
+  row: ImageWorkRow;
 }
 
 function compactDetailLines(lines: readonly DetailLine[]): string[] {
@@ -78,31 +82,35 @@ function compactDetailLines(lines: readonly DetailLine[]): string[] {
 function resolveImageViewSource({
   resolveImageViewSrc,
   row,
-}: ResolveImageViewSourceArgs): string {
+}: ResolveImageViewSourceArgs): string | null {
+  if (!row.path || (row.workKind === "image-generation" && row.error)) {
+    return null;
+  }
   return resolveImageViewSrc
     ? resolveImageViewSrc({ path: row.path, threadId: row.threadId })
     : buildThreadHostFileContentUrl(row.threadId, row.path);
 }
 
-function ImageViewWorkRowBody({
-  resolveImageViewSrc,
-  row,
-}: ImageViewWorkRowBodyProps) {
+function ImageWorkRowBody({ resolveImageViewSrc, row }: ImageWorkRowBodyProps) {
   const [loadError, setLoadError] = useState(false);
   const [lightboxOpen, setLightboxOpen] = useState(false);
   const imageSrc = resolveImageViewSource({ resolveImageViewSrc, row });
-  const imageName = fileNameFromPath(row.path);
-  const imageAlt = `Viewed image: ${imageName}`;
+  const imageName = row.path ? fileNameFromPath(row.path) : "";
+  const imageAlt = `${row.workKind === "image-generation" ? "Generated" : "Viewed"} image: ${imageName}`;
 
   useEffect(() => {
     setLoadError(false);
     setLightboxOpen(false);
   }, [imageSrc, row.completedAt, row.status]);
 
-  if (loadError) {
+  if (loadError || !imageSrc) {
     return (
       <EmptyStatePanel className="rounded-lg">
-        <div>Image preview unavailable.</div>
+        <div className="whitespace-pre-wrap break-words">
+          {row.workKind === "image-generation" && row.error
+            ? row.error
+            : "Image preview unavailable."}
+        </div>
         <div className="mt-1 break-all font-mono text-xs">{row.path}</div>
       </EmptyStatePanel>
     );
@@ -143,6 +151,10 @@ function outputPreviewNoteText({
   switch (state) {
     case "streaming-preview":
       return `Preview of ${total}. The full output loads when this finishes.`;
+    case "limited-preview":
+      return `Preview of ${total}. The full output exceeds the detail response limit.`;
+    case "expired-preview":
+      return `Preview of ${total}. The full output is no longer available because its retention period ended.`;
     case "loading":
       return `Loading the full output (${total})…`;
     case "error":
@@ -270,12 +282,10 @@ export function WorkRowBody({
       return <PlanStepsWorkRowBody row={row} />;
     case "extension":
       return <PresentationDetail presentation={row.presentation} />;
+    case "image-generation":
     case "image-view":
       return (
-        <ImageViewWorkRowBody
-          row={row}
-          resolveImageViewSrc={resolveImageViewSrc}
-        />
+        <ImageWorkRowBody row={row} resolveImageViewSrc={resolveImageViewSrc} />
       );
     case "approval":
     case "web-search":

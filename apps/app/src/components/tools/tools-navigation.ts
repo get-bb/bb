@@ -1,6 +1,7 @@
 import type { IconName } from "@bb/shared-ui/icon";
 import { matchPath } from "react-router-dom";
 import {
+  SETTINGS_PLUGINS_ROUTE_PATH,
   getPluginsRoutePath,
   getRegistrySkillsRoutePath,
   getSkillsRoutePath,
@@ -54,6 +55,7 @@ const TOOLS_OWNED_COLLECTION_VIEW = {
 } as const satisfies Record<ToolsSectionId, string>;
 
 export function getToolsOwnedCollectionRoutePath(id: ToolsSectionId): string {
+  if (id === "plugins") return SETTINGS_PLUGINS_ROUTE_PATH;
   return `${TOOLS_SECTIONS[id].to}?view=${TOOLS_OWNED_COLLECTION_VIEW[id]}`;
 }
 
@@ -272,9 +274,9 @@ export const TOOLS_PAGES: readonly ToolsPageDefinition[] = [
   {
     id: "plugins-installed",
     section: "plugins",
-    label: `${TOOLS_OWNED_COLLECTION_LABEL.plugins} ${TOOLS_SECTIONS.plugins.label.toLowerCase()}`,
+    label: "Installed plugins",
     icon: "PackageReceive",
-    to: getToolsOwnedCollectionRoutePath("plugins"),
+    to: `${TOOLS_SECTIONS.plugins.to}?view=installed`,
   },
   {
     id: "skills-browse",
@@ -300,9 +302,7 @@ export function resolveToolsActivePage(
   for (const detail of DETAIL_ROUTES) {
     if (matchPath(detail.pattern, pathname) === null) continue;
     if (detail.section === "plugins") {
-      return view === TOOLS_OWNED_COLLECTION_VIEW.plugins
-        ? "plugins-installed"
-        : "plugins-browse";
+      return "plugins-browse";
     }
     return detail.collection.label === TOOLS_OWNED_COLLECTION_LABEL.skills
       ? "skills-library"

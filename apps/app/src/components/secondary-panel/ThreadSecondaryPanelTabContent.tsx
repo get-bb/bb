@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useMemo } from "react";
 import type { DiffPresentation } from "@/components/code/code-rendering";
 import type { WorkspaceDiffTarget } from "@bb/domain";
 import type { MarkdownLinkRouting } from "@/components/ui/markdown-link-routing.js";
@@ -6,6 +6,7 @@ import { Skeleton } from "@bb/shared-ui/skeleton";
 import { EmptyStatePanel } from "@bb/shared-ui/empty-state";
 import {
   useEnvironmentDiffFiles,
+  useEnvironment,
   useEnvironmentFilePreview,
 } from "@/hooks/queries/environment-queries";
 import { useProjectFilePreview } from "@/hooks/queries/project-queries";
@@ -15,7 +16,10 @@ import {
 } from "@/hooks/queries/thread-queries";
 import { useHostFilePreview } from "@/hooks/queries/host-file-preview-query";
 import {
+  buildProjectFileContentUrl,
   buildRawFilesystemHtmlContentUrl,
+  buildThreadHostFileContentUrl,
+  buildThreadStorageRawContentUrl,
   buildThreadWorktreeRawContentUrl,
 } from "@/lib/file-content-urls";
 import type {
@@ -32,6 +36,11 @@ import {
   SecondaryPanelFilePreview,
   ThreadStorageFilePreview,
 } from "./ThreadStorageFilePreview";
+import {
+  buildMarkdownFileImageRouting,
+  buildMarkdownLeaseImageRouting,
+} from "@/components/ui/markdown-file-image-routing";
+import { getAbsoluteDirname } from "@/lib/absolute-file-path";
 
 const GIT_DIFF_SKELETON_FILE_COUNT = 3;
 const PANEL_SCROLL_SLOT_CLASS =
@@ -72,9 +81,12 @@ interface ProjectFilePreviewTabContentProps {
   environmentId: string | null;
   hostId: string | null;
   lineRange: FilePreviewLineRange | null;
+  markdownLinkRouting?: MarkdownLinkRouting;
   onSelectionAddToChat?: (text: string) => void;
   onOpenInEditor?: (path: string) => void;
   projectId: string;
+  rootPath?: string | null;
+  threadId?: string | null;
 }
 
 interface HostFilePreviewTabContentProps {
@@ -309,6 +321,13 @@ export function WorkspaceFilePreviewTabContent({
   statusLabel,
   threadId,
 }: WorkspaceFilePreviewTabContentProps) {
+  const environmentQuery = useEnvironment(environmentId ?? null, {
+    enabled:
+      environmentId !== null &&
+      environmentId !== undefined &&
+      markdownLinkRouting?.localImage === undefined,
+    staleTime: 5_000,
+  });
   const {
     data: workspaceFilePreview,
     error: workspaceFilePreviewError,
@@ -318,6 +337,42 @@ export function WorkspaceFilePreviewTabContent({
   } = useEnvironmentFilePreview(environmentId, activePath, source, {
     enabled: isPanelOpen,
   });
+  const environmentRootPath = environmentQuery.data?.path ?? null;
+  const environmentProjectId = environmentQuery.data?.projectId;
+  const resolvedMarkdownLinkRouting = useMemo(() => {
+    if (
+      source === null ||
+      environmentId === null ||
+      environmentId === undefined ||
+      (!threadId && environmentProjectId === undefined)
+    ) {
+      return markdownLinkRouting;
+    }
+    return buildMarkdownFileImageRouting({
+      path: activePath,
+      rootPath: environmentRootPath,
+      threadId: threadId ?? null,
+      linkRouting: markdownLinkRouting,
+      resolveRelativeSrc: (path) => {
+        if (threadId && source.kind === "working-tree") {
+          return buildThreadWorktreeRawContentUrl(threadId, path);
+        }
+        return environmentProjectId === undefined
+          ? path
+          : buildProjectFileContentUrl(environmentProjectId, path, {
+              environmentId,
+            });
+      },
+    });
+  }, [
+    activePath,
+    environmentId,
+    environmentProjectId,
+    environmentRootPath,
+    markdownLinkRouting,
+    source,
+    threadId,
+  ]);
 
   return (
     <SecondaryPanelFilePreview
@@ -333,7 +388,7 @@ export function WorkspaceFilePreviewTabContent({
       isLoading={isWorkspaceFilePreviewLoading}
       isRefreshing={isWorkspaceFilePreviewFetching}
       lineRange={lineRange}
-      markdownLinkRouting={markdownLinkRouting}
+      markdownLinkRouting={resolvedMarkdownLinkRouting}
       onSelectionAddToChat={onSelectionAddToChat}
       onOpenInEditor={onOpenInEditor}
       onRefresh={() => void refetchWorkspaceFilePreview()}
@@ -349,9 +404,12 @@ export function ProjectFilePreviewTabContent({
   hostId,
   isPanelOpen,
   lineRange,
+  markdownLinkRouting,
   onSelectionAddToChat,
   onOpenInEditor,
   projectId,
+  rootPath = null,
+  threadId = null,
 }: ProjectFilePreviewTabContentProps) {
   const {
     data: projectFilePreview,
@@ -365,6 +423,30 @@ export function ProjectFilePreviewTabContent({
     { environmentId, hostId },
     { enabled: isPanelOpen },
   );
+  const resolvedMarkdownLinkRouting = useMemo(() => {
+    return buildMarkdownFileImageRouting({
+      path: activePath,
+      rootPath,
+      threadId,
+      linkRouting: markdownLinkRouting,
+      resolveRelativeSrc: (path) =>
+        buildProjectFileContentUrl(projectId, path, {
+          ...(environmentId !== null
+            ? { environmentId }
+            : hostId !== null
+              ? { hostId }
+              : {}),
+        }),
+    });
+  }, [
+    activePath,
+    environmentId,
+    hostId,
+    markdownLinkRouting,
+    projectId,
+    rootPath,
+    threadId,
+  ]);
 
   return (
     <SecondaryPanelFilePreview
@@ -375,6 +457,7 @@ export function ProjectFilePreviewTabContent({
       isLoading={isProjectFilePreviewLoading}
       isRefreshing={isProjectFilePreviewFetching}
       lineRange={lineRange}
+      markdownLinkRouting={resolvedMarkdownLinkRouting}
       onSelectionAddToChat={onSelectionAddToChat}
       onOpenInEditor={onOpenInEditor}
       onRefresh={() => void refetchProjectFilePreview()}
@@ -403,6 +486,18 @@ export function HostFilePreviewTabContent({
   } = useThreadHostFilePreview(threadId, environmentId, activePath, {
     enabled: isPanelOpen,
   });
+  const resolvedMarkdownLinkRouting = useMemo(() => {
+    return buildMarkdownFileImageRouting({
+      path: activePath,
+      rootPath:
+        markdownLinkRouting?.localFile?.relativeLinks?.rootPath ??
+        getAbsoluteDirname({ path: activePath }),
+      threadId,
+      linkRouting: markdownLinkRouting,
+      resolveRelativeSrc: (_relativePath, path) =>
+        buildThreadHostFileContentUrl(threadId, path),
+    });
+  }, [activePath, markdownLinkRouting, threadId]);
 
   return (
     <SecondaryPanelFilePreview
@@ -414,7 +509,7 @@ export function HostFilePreviewTabContent({
       isLoading={isHostFilePreviewLoading}
       isRefreshing={isHostFilePreviewFetching}
       lineRange={lineRange}
-      markdownLinkRouting={markdownLinkRouting}
+      markdownLinkRouting={resolvedMarkdownLinkRouting}
       onSelectionAddToChat={onSelectionAddToChat}
       onOpenInEditor={onOpenInEditor}
       onRefresh={() => void refetchHostFilePreview()}
@@ -437,6 +532,13 @@ export function HostScopedFilePreviewTabContent({
     isLoading,
     refetch,
   } = useHostFilePreview(hostId, activePath, { enabled: isPanelOpen });
+  const markdownLinkRouting = useMemo(() => {
+    return buildMarkdownLeaseImageRouting({
+      path: activePath,
+      rootPath: getAbsoluteDirname({ path: activePath }),
+      previewUrl: hostFilePreview?.url,
+    });
+  }, [activePath, hostFilePreview?.url]);
   return (
     <SecondaryPanelFilePreview
       activePath={activePath}
@@ -447,6 +549,7 @@ export function HostScopedFilePreviewTabContent({
       isLoading={isLoading}
       isRefreshing={isFetching}
       lineRange={lineRange}
+      markdownLinkRouting={markdownLinkRouting}
       onOpenInEditor={onOpenInEditor}
       onRefresh={() => void refetch()}
       statusLabel={null}
@@ -473,6 +576,16 @@ export function ThreadStorageFilePreviewTabContent({
   } = useThreadStorageFilePreview(threadId, activePath, {
     enabled: isPanelOpen,
   });
+  const resolvedMarkdownLinkRouting = useMemo(() => {
+    return buildMarkdownFileImageRouting({
+      path: activePath,
+      rootPath: null,
+      threadId,
+      linkRouting: markdownLinkRouting,
+      resolveRelativeSrc: (path) =>
+        buildThreadStorageRawContentUrl(threadId, path),
+    });
+  }, [activePath, markdownLinkRouting, threadId]);
 
   return (
     <ThreadStorageFilePreview
@@ -483,7 +596,7 @@ export function ThreadStorageFilePreviewTabContent({
       isLoading={isThreadStorageFilePreviewLoading}
       isRefreshing={isThreadStorageFilePreviewFetching}
       lineRange={lineRange}
-      markdownLinkRouting={markdownLinkRouting}
+      markdownLinkRouting={resolvedMarkdownLinkRouting}
       onSelectionAddToChat={onSelectionAddToChat}
       onOpenInEditor={onOpenInEditor}
       onRefresh={() => void refetchThreadStorageFilePreview()}

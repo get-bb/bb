@@ -76,7 +76,7 @@ export function PaletteShell({
   return (
     <>
       <div
-        className="border-b border-border bg-background px-3 py-2"
+        className="rounded-t-[inherit] border-b border-border bg-background px-3 py-2"
         data-palette-input-band
       >
         <div
@@ -140,7 +140,7 @@ export function PaletteShell({
       </div>
       <div
         aria-hidden
-        className="relative z-10 flex flex-wrap items-center gap-x-4 gap-y-1 border-t border-border bg-surface-recessed-soft-solid px-4 py-2 text-xs text-subtle-foreground"
+        className="relative z-10 flex flex-wrap items-center gap-x-4 gap-y-1 rounded-b-[inherit] border-t border-border bg-surface-recessed-soft-solid px-4 py-2 text-xs text-subtle-foreground"
         data-palette-footer
       >
         {footerKeys.map((hint) => (

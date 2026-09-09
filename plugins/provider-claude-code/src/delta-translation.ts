@@ -417,12 +417,14 @@ function createThreadState(): ClaudeThreadDialectState {
 
 export interface ClaudeDeltaTranslatorOptions {
   cwd?: string | undefined;
+  sandboxEnabled: boolean;
 }
 
 export function createClaudeDeltaTranslator(
-  options: ClaudeDeltaTranslatorOptions = {},
+  options: ClaudeDeltaTranslatorOptions,
 ) {
   const sessionCwd = options.cwd;
+  const sandboxEnabled = options.sandboxEnabled;
   const statesByThreadId = new Map<string, ClaudeThreadDialectState>();
   let injectedToolsByName = new Map<string, ClaudeInjectedTool>();
 
@@ -873,6 +875,7 @@ export function createClaudeDeltaTranslator(
         toolUseId: toolUse.id,
         input: toolUse.input,
         injectedTools: injectedToolsByName,
+        sandboxEnabled,
       });
       state.startedTools.set(toolUse.id, classified);
       deltas.push({

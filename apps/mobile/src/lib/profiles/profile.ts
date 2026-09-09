@@ -29,8 +29,6 @@ export const serverProfileSchema = z.discriminatedUnion("mode", [
 export type DirectServerProfile = z.infer<typeof directServerProfileSchema>;
 export type ConnectServerProfile = z.infer<typeof connectServerProfileSchema>;
 export type ServerProfile = z.infer<typeof serverProfileSchema>;
-export type ServerProfileMode = ServerProfile["mode"];
-
 export type NewServerProfile =
   | Omit<DirectServerProfile, "id" | "createdAt">
   | Omit<ConnectServerProfile, "id" | "createdAt">;

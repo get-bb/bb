@@ -167,6 +167,17 @@ describe("PluginSettingsForm", () => {
     expect(retries.step).toBe("any");
     expect(retries.value).toBe("3");
 
+    const badInput = vi
+      .spyOn(retries.validity, "badInput", "get")
+      .mockReturnValue(true);
+    fireEvent.change(retries, { target: { value: "" } });
+    fireEvent.blur(retries);
+    expect((await screen.findByRole("alert")).textContent).toContain(
+      "Enter a finite number",
+    );
+    expect(retries.value).toBe("3");
+    badInput.mockRestore();
+
     fireEvent.change(retries, { target: { value: "4.5" } });
     expect(requests.some((request) => request.init?.method === "PUT")).toBe(
       false,
@@ -636,6 +647,118 @@ describe("PluginSettingsPage", () => {
     ).toBeTruthy();
   });
 
+  it("shows a skeleton while the plugin list loads, then the real settings", async () => {
+    let resolveList: (response: Response) => void = () => {
+      throw new Error("Plugin list request did not start");
+    };
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string) => {
+        if (url === "/api/v1/plugins/linear/settings")
+          return jsonOk(SETTINGS_VIEW);
+        return new Promise<Response>((resolve) => {
+          resolveList = resolve;
+        });
+      }),
+    );
+
+    const { wrapper: QueryClientWrapper } = createQueryClientTestHarness();
+    render(
+      <MemoryRouter>
+        <QueryClientWrapper>
+          <PluginSettingsPage pluginId="linear" />
+        </QueryClientWrapper>
+      </MemoryRouter>,
+    );
+
+    const skeleton = await screen.findByTestId("plugin-settings-skeleton");
+    expect(skeleton.getAttribute("role")).toBe("status");
+    expect(screen.getByText("Loading plugin settings…")).toBeTruthy();
+
+    resolveList(jsonOk({ plugins: [installedPlugin(true)] }));
+
+    expect(await screen.findByRole("heading", { name: "Linear" })).toBeTruthy();
+    expect(screen.queryByTestId("plugin-settings-skeleton")).toBeNull();
+  });
+
+  it("reports a failed plugin list instead of a skeleton or a missing plugin", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => {
+        throw new Error("offline");
+      }),
+    );
+
+    const { wrapper: QueryClientWrapper } = createQueryClientTestHarness();
+    render(
+      <MemoryRouter>
+        <QueryClientWrapper>
+          <PluginSettingsPage pluginId="linear" />
+        </QueryClientWrapper>
+      </MemoryRouter>,
+    );
+
+    expect(
+      await screen.findByText("Could not load plugin settings."),
+    ).toBeTruthy();
+    expect(screen.queryByTestId("plugin-settings-skeleton")).toBeNull();
+  });
+
+  it("keeps loaded settings visible when a background plugin-list refresh fails", async () => {
+    let pluginListRequests = 0;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string) => {
+        if (url === "/api/v1/plugins/linear/settings") {
+          return jsonOk(SETTINGS_VIEW);
+        }
+        pluginListRequests += 1;
+        if (pluginListRequests === 1) {
+          return jsonOk({ plugins: [installedPlugin(true)] });
+        }
+        throw new Error("offline");
+      }),
+    );
+
+    const { queryClient, wrapper: QueryClientWrapper } =
+      createQueryClientTestHarness();
+    render(
+      <MemoryRouter>
+        <QueryClientWrapper>
+          <PluginSettingsPage pluginId="linear" />
+        </QueryClientWrapper>
+      </MemoryRouter>,
+    );
+
+    expect(await screen.findByRole("heading", { name: "Linear" })).toBeTruthy();
+
+    await queryClient.invalidateQueries();
+
+    expect(screen.getByRole("heading", { name: "Linear" })).toBeTruthy();
+    expect(screen.queryByText("Could not load plugin settings.")).toBeNull();
+  });
+
+  it("keeps the not-installed message free of loading affordances", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => jsonOk({ plugins: [] })),
+    );
+
+    const { wrapper: QueryClientWrapper } = createQueryClientTestHarness();
+    render(
+      <MemoryRouter>
+        <QueryClientWrapper>
+          <PluginSettingsPage pluginId="linear" />
+        </QueryClientWrapper>
+      </MemoryRouter>,
+    );
+
+    expect(
+      await screen.findByText("This plugin is not installed."),
+    ).toBeTruthy();
+    expect(screen.queryByTestId("plugin-settings-skeleton")).toBeNull();
+  });
+
   it("omits Configuration for an enabled plugin with no available settings", async () => {
     vi.stubGlobal(
       "fetch",
@@ -658,6 +781,87 @@ describe("PluginSettingsPage", () => {
     expect(
       container.querySelectorAll("[data-resource-detail-section]"),
     ).toHaveLength(1);
+  });
+
+  it("keeps a section-only plugin in Configuration with a flat surface", async () => {
+    function ConnectSettings() {
+      return <div>Custom connect settings</div>;
+    }
+    setPluginSlotRegistrations(
+      "connect",
+      makePluginRegistrationSet({
+        settingsSections: [
+          { id: "remote", title: "Remote access", component: ConnectSettings },
+        ],
+      }),
+    );
+    const connect = makeInstalledPlugin({
+      id: "connect",
+      name: "Connect",
+      enabled: true,
+      status: "running",
+      hasSettings: false,
+      provenance: "builtin",
+    });
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => jsonOk({ plugins: [connect] })),
+    );
+
+    const { wrapper: QueryClientWrapper } = createQueryClientTestHarness();
+    render(
+      <MemoryRouter>
+        <QueryClientWrapper>
+          <PluginSettingsPage pluginId="connect" />
+        </QueryClientWrapper>
+      </MemoryRouter>,
+    );
+
+    const section = await screen.findByText("Custom connect settings");
+    expect(section.closest(".overflow-hidden")).toBeNull();
+    expect(screen.getByRole("heading", { name: "Configuration" })).toBeTruthy();
+  });
+
+  it("keeps the recessed unavailable hint for a section-only plugin", async () => {
+    function ConnectSettings() {
+      return <div>Custom connect settings</div>;
+    }
+    setPluginSlotRegistrations(
+      "connect",
+      makePluginRegistrationSet({
+        settingsSections: [{ id: "remote", component: ConnectSettings }],
+      }),
+    );
+    const connect = makeInstalledPlugin({
+      id: "connect",
+      name: "Connect",
+      enabled: true,
+      status: "error",
+      hasSettings: false,
+      provenance: "builtin",
+    });
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => jsonOk({ plugins: [connect] })),
+    );
+
+    const { wrapper: QueryClientWrapper } = createQueryClientTestHarness();
+    render(
+      <MemoryRouter>
+        <QueryClientWrapper>
+          <PluginSettingsPage pluginId="connect" />
+        </QueryClientWrapper>
+      </MemoryRouter>,
+    );
+
+    const hint = await screen.findByText(
+      "Settings are unavailable while the plugin is error.",
+    );
+    expect(hint.closest(".overflow-hidden")?.className).toContain(
+      "bg-surface-recessed/70",
+    );
+    expect(screen.queryByText("Custom connect settings")).toBeNull();
+    expect(screen.getByRole("heading", { name: "Configuration" })).toBeTruthy();
   });
 });
 
@@ -761,7 +965,7 @@ describe("PluginSettingsDetail settings gating", () => {
     expect(fetchSpy).not.toHaveBeenCalled();
   });
 
-  it("renders a slot-only plugin configuration on the detail surface", async () => {
+  it("renders a slot-only plugin configuration without a recessed panel", async () => {
     function ConnectSettings() {
       return <div>Custom connect settings</div>;
     }
@@ -792,7 +996,8 @@ describe("PluginSettingsDetail settings gating", () => {
         name: "Remote access",
       }),
     ).toBeDefined();
-    expect(screen.getByText("Custom connect settings")).toBeDefined();
+    const section = screen.getByText("Custom connect settings");
+    expect(section.closest(".overflow-hidden")).toBeNull();
     expect(screen.queryByText("This plugin declares no settings.")).toBeNull();
   });
 });

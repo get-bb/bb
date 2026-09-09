@@ -1,3 +1,5 @@
+import { recheckEnvironmentLaunch } from "./services/threads/thread-environment-providers.js";
+import { registerDesktopBrowserRoutes } from "./routes/desktop-browsers.js";
 import { createNodeWebSocket } from "@hono/node-ws";
 import { createHash } from "node:crypto";
 import { readFile, stat } from "node:fs/promises";
@@ -16,6 +18,7 @@ import { registerHostRoutes } from "./routes/hosts.js";
 import { registerProjectRoutes } from "./routes/projects.js";
 import { registerThreadSectionRoutes } from "./routes/thread-sections.js";
 import { registerSystemRoutes } from "./routes/system.js";
+import { registerUiPreferenceRoutes } from "./routes/ui-preferences.js";
 import { registerTerminalRoutes } from "./routes/terminals.js";
 import { registerThreadRoutes } from "./routes/threads/index.js";
 import { registerQueueRoutes } from "./routes/queue.js";
@@ -29,6 +32,13 @@ import {
 import { setPluginAgentContributions } from "./services/plugins/plugin-agent-contributions.js";
 import { setPluginThreadEventEmitter } from "./services/plugins/plugin-thread-events.js";
 import { setPluginHookProvider } from "./services/plugins/plugin-hook-registry.js";
+import {
+  setEnvironmentProviderRecheckHandler,
+  setEnvironmentLaunchRecheckHandler,
+  setPluginEnvironmentProviderBridge,
+} from "./services/plugins/plugin-environment-provider-registry.js";
+import { recheckEnvironmentProviderLaunches } from "./services/threads/thread-environment-providers.js";
+import { invalidateEnvironmentProviderAvailability } from "./services/environments/provider-availability.js";
 import { requestQueuedMessageDispatch } from "./services/threads/queued-message-dispatch.js";
 import { registerInternalEventRoutes } from "./internal/events.js";
 import { registerInternalHostRoutes } from "./internal/hosts.js";
@@ -573,6 +583,7 @@ export function createApp(
     onSettingsChanged: (pluginId) => {
       deps.providerNativeRoots.invalidate(pluginId);
       deps.providerRegistry.forgetAllInstalled();
+      invalidateEnvironmentProviderAvailability();
     },
     onPluginUnregistered: (pluginId) => {
       requestQueuedMessageDispatch(deps, {
@@ -602,6 +613,15 @@ export function createApp(
   // Bridge the dispatch pipeline to this service's hooks. Until this runs
   // there are no hooks, which is exactly the zero-overhead path.
   setPluginHookProvider(pluginService.hooks);
+  setPluginEnvironmentProviderBridge(pluginService.environmentProviders);
+  setEnvironmentLaunchRecheckHandler((threadId) =>
+    recheckEnvironmentLaunch(deps, threadId),
+  );
+  setEnvironmentProviderRecheckHandler((pluginId) => {
+    invalidateEnvironmentProviderAvailability();
+    deps.hub.notifySystem(["config-changed"]);
+    void recheckEnvironmentProviderLaunches(deps, pluginId);
+  });
   // Bridge runtime-config assembly to plugin skills + context (§4.4).
   setPluginAgentContributions(pluginService);
   const publicApi = new Hono();
@@ -628,13 +648,15 @@ export function createApp(
   registerThreadSectionRoutes(publicApi, deps);
   registerFileRoutes(publicApi, deps);
   registerHostRoutes(publicApi, deps, pluginService);
+  registerDesktopBrowserRoutes(publicApi, deps);
   registerTerminalRoutes(publicApi, deps);
   registerEnvironmentRoutes(publicApi, deps);
   registerThreadRoutes(publicApi, deps);
   registerQueueRoutes(publicApi, deps);
   registerSystemRoutes(publicApi, deps, pluginService);
+  registerUiPreferenceRoutes(publicApi, deps);
   registerPluginCatalogRoutes(publicApi, pluginCatalogService);
-  registerPluginRoutes(publicApi, deps, pluginService);
+  registerPluginRoutes(publicApi, deps, pluginService, upgradeWebSocket);
   registerSkillsRegistryRoutes(publicApi, deps);
   app.route("/api/v1", publicApi);
   app.use("/api/v1/*", () => {

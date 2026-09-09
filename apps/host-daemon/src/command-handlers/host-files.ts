@@ -24,6 +24,7 @@ import {
   readFileFromGitRef,
   readFileMetadataForTransport,
   readRootRelativeFileForTransport,
+  type ReadFileContentForTransportResult,
 } from "./file-read.js";
 import { resolveNonSymlinkDirectoryPath } from "./root-path.js";
 
@@ -185,6 +186,14 @@ export async function checkHostPathsExist(
   return { existence: Object.fromEntries(entries) };
 }
 
+export function readHostFile(
+  command: CommandOf<"host.read_file"> & { ifNoneMatch?: undefined },
+  options?: Pick<CommandDispatchOptions, "runtimeManager">,
+): Promise<ReadFileContentForTransportResult>;
+export function readHostFile(
+  command: CommandOf<"host.read_file">,
+  options?: Pick<CommandDispatchOptions, "runtimeManager">,
+): Promise<HostDaemonOnlineRpcResult<"host.read_file">>;
 export async function readHostFile(
   command: CommandOf<"host.read_file">,
   options?: Pick<CommandDispatchOptions, "runtimeManager">,
@@ -200,6 +209,9 @@ export async function readHostFile(
     }
     assertSafeGitRef(command.ref);
     return readFileFromGitRef({
+      ...(command.ifNoneMatch !== undefined
+        ? { ifNoneMatch: command.ifNoneMatch }
+        : {}),
       rootPath: command.rootPath,
       resolvedPath: command.path,
       resultPath: command.path,
@@ -211,6 +223,9 @@ export async function readHostFile(
   }
 
   return readFileForTransport({
+    ...(command.ifNoneMatch !== undefined
+      ? { ifNoneMatch: command.ifNoneMatch }
+      : {}),
     resolvedPath: command.path,
     resultPath: command.path,
     ...(command.rootPath !== undefined ? { rootPath: command.rootPath } : {}),

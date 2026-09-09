@@ -163,7 +163,6 @@ export const marketplaceV2ManifestSchema = z
   });
 
 export type MarketplaceCategory = z.infer<typeof marketplaceCategorySchema>;
-export type MarketplaceCollection = z.infer<typeof marketplaceCollectionSchema>;
 export type MarketplaceV2Entry = z.infer<typeof marketplaceV2EntrySchema>;
 export type MarketplaceV2Manifest = z.infer<typeof marketplaceV2ManifestSchema>;
 

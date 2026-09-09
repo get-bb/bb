@@ -15,7 +15,7 @@ export function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-function resolveManifestPath(
+export function resolveManifestPath(
   rootDir: string,
   entry: string,
   label: string,

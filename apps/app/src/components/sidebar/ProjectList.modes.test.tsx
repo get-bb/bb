@@ -40,6 +40,10 @@ vi.mock("@/hooks/queries/host-queries", () => ({
   usePrimaryHost: vi.fn(() => undefined),
 }));
 
+vi.mock("@/hooks/queries/system-queries", () => ({
+  useSystemConfig: () => ({ data: undefined }),
+}));
+
 vi.mock("@bb/client-core", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@bb/client-core")>();
   return {
@@ -71,7 +75,6 @@ function ModeOrderProbe({ mode }: { mode: SidebarOrganizationMode }) {
     entitySectionIds: config.entitySectionIds,
     hasThreadsSection: config.hasThreadsSection,
     showPinnedSection: true,
-    isReady: true,
   });
 
   return <div data-testid={`${mode}-order`}>{order.join(",")}</div>;
@@ -155,7 +158,6 @@ function MachineModeProbe({ threads = [] }: { threads?: ThreadListEntry[] }) {
       draftThreadIds={new Set()}
       effectivePinnedThreadIds={new Set()}
       status="ready"
-      isReady
       showPinnedSection={false}
       pinnedSection={{ label: "Pinned", content: null }}
       threadsSection={{ label: "Threads" }}

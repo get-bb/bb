@@ -1,6 +1,11 @@
 import { useCallback, useMemo } from "react";
 import type { MarkdownProps, PluginSdkApp } from "@get-bb/plugin-sdk";
 import { PluginDiff } from "@/components/plugin/PluginDiff";
+import { PluginBranchPicker } from "@/components/plugin/PluginBranchPicker";
+import {
+  usePluginBranches,
+  usePluginCheckoutState,
+} from "@/components/plugin/usePluginBranchPickerState";
 import { PluginNewThreadComposer } from "@/components/plugin/PluginNewThreadComposer";
 import { PluginProviderModelPicker } from "@/components/plugin/PluginProviderModelPicker";
 import { PluginPermissionModePicker } from "@/components/plugin/PluginPermissionModePicker";
@@ -9,10 +14,8 @@ import { PluginThreadChat } from "@/components/plugin/PluginThreadChat";
 import { PluginUrlLink } from "@/components/plugin/PluginUrlLink";
 import { ExperimentalFileLink } from "@/components/plugin/ExperimentalFileLink";
 import { MarkdownPreview } from "@/components/ui/markdown-preview";
-import type {
-  MarkdownLinkRouting,
-  MarkdownLocalFileLinkRouting,
-} from "@/components/ui/markdown-link-routing";
+import type { MarkdownLinkRouting } from "@/components/ui/markdown-link-routing";
+import { buildMarkdownMessageLinkRouting } from "@/components/ui/markdown-message-link-routing";
 import type { MarkdownPreviewLinkHandler } from "@/components/ui/markdown-link";
 import { useThreadTimelineNavigation } from "@/components/thread/timeline/ThreadTimelineNavigationContext";
 import { definePluginApp } from "./plugin-app-definition";
@@ -59,6 +62,9 @@ export const pluginSdkAppImplementation = installDeprecatedAliases(
     experimental_NewThreadComposer: PluginNewThreadComposer,
     experimental_ProviderModelPicker: PluginProviderModelPicker,
     experimental_PermissionModePicker: PluginPermissionModePicker,
+    experimental_BranchPicker: PluginBranchPicker,
+    experimental_useBranches: usePluginBranches,
+    experimental_useCheckoutState: usePluginCheckoutState,
     experimental_SourceCode: PluginSourceCode,
     experimental_Diff: PluginDiff,
     experimental_useSidebarThreads: useSidebarThreads,
@@ -74,6 +80,7 @@ export const pluginSdkAppImplementation = installDeprecatedAliases(
 function PluginMarkdown({ content, className }: MarkdownProps) {
   const timelineNavigation = useThreadTimelineNavigation();
   const onOpenLocalFileLink = timelineNavigation?.onOpenLocalFileLink;
+  const threadId = timelineNavigation?.threadId;
   const workspaceRootPath = timelineNavigation?.workspaceRootPath;
   const navigation = useAppNavigationHost();
   const onOpenLink = useCallback<MarkdownPreviewLinkHandler>(
@@ -81,21 +88,15 @@ function PluginMarkdown({ content, className }: MarkdownProps) {
     [navigation],
   );
   const linkRouting = useMemo<MarkdownLinkRouting>(() => {
-    if (onOpenLocalFileLink === undefined) {
-      return { onOpenLink };
-    }
-    const localFile: MarkdownLocalFileLinkRouting = {
-      absoluteLinks: { kind: "trusted-host" },
-      onOpenLink: onOpenLocalFileLink,
-    };
-    if (workspaceRootPath !== undefined) {
-      localFile.relativeLinks = {
-        baseDir: workspaceRootPath,
-        rootPath: workspaceRootPath,
-      };
-    }
-    return { localFile, onOpenLink };
-  }, [onOpenLink, onOpenLocalFileLink, workspaceRootPath]);
+    return (
+      buildMarkdownMessageLinkRouting({
+        onOpenLink,
+        onOpenLocalFileLink,
+        threadId,
+        workspaceRootPath,
+      }) ?? { onOpenLink }
+    );
+  }, [onOpenLink, onOpenLocalFileLink, threadId, workspaceRootPath]);
 
   return (
     <MarkdownPreview

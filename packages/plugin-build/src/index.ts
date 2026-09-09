@@ -19,3 +19,5 @@ export {
   assertValidPluginIconSvg,
   assertValidPluginLogoSvg,
 } from "./svg-asset.js";
+
+export { resolveManifestPath } from "./plugin-manifest.js";

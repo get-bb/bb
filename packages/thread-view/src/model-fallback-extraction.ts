@@ -36,7 +36,6 @@ export function getProviderModelFallbackData(
   }
   if (
     event.type !== "provider/unhandled" ||
-    event.providerId !== "claude-code" ||
     event.rawEvent.method !== "sdk/message"
   ) {
     return null;

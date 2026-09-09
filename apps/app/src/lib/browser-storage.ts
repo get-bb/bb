@@ -31,10 +31,21 @@ interface StoredValueCodec<T> {
 }
 
 export function getLocalStorage(): Storage | null {
+  return withLocalStorage((storage) => storage, null);
+}
+
+export function withLocalStorage<T>(
+  operation: (storage: Storage) => T,
+  fallback: T,
+): T {
   if (typeof window === "undefined") {
-    return null;
+    return fallback;
   }
-  return window.localStorage;
+  try {
+    return operation(window.localStorage);
+  } catch {
+    return fallback;
+  }
 }
 
 function getSessionStorage(): Storage | null {
@@ -70,12 +81,13 @@ function subscribeToLocalStorageKey(
 }
 
 const localStorageStringStorage: SyncStringStorage = {
-  getItem: (key: string) => getLocalStorage()?.getItem(key) ?? null,
+  getItem: (key: string) =>
+    withLocalStorage((storage) => storage.getItem(key), null),
   setItem: (key: string, value: string) => {
-    getLocalStorage()?.setItem(key, value);
+    withLocalStorage((storage) => storage.setItem(key, value), undefined);
   },
   removeItem: (key: string) => {
-    getLocalStorage()?.removeItem(key);
+    withLocalStorage((storage) => storage.removeItem(key), undefined);
   },
   subscribe: (key: string, callback: StoredValueListener) =>
     subscribeToLocalStorageKey(key, callback),

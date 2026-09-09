@@ -87,10 +87,6 @@ function ownedRuntimePidFilePath(userDataPath: string): string {
   return join(userDataPath, OWNED_RUNTIME_PID_FILE_NAME);
 }
 
-function createNodeOwnedRuntimeProcessOps(): OwnedRuntimeProcessOps {
-  return createNodeVerifiedProcessOps();
-}
-
 export async function writeOwnedRuntimePidFile(
   args: WriteOwnedRuntimePidFileArgs,
 ): Promise<void> {
@@ -142,7 +138,7 @@ export async function readOwnedRuntimePidFile(
 export async function reapStaleOwnedRuntime(
   args: ReapStaleOwnedRuntimeArgs,
 ): Promise<ReapStaleOwnedRuntimeResult> {
-  const processOps = args.processOps ?? createNodeOwnedRuntimeProcessOps();
+  const processOps = args.processOps ?? createNodeVerifiedProcessOps();
   const pidFile = await readOwnedRuntimePidFile({
     userDataPath: args.userDataPath,
   });

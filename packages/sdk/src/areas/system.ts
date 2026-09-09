@@ -1,7 +1,10 @@
 import type {
   AppKeybindingOverrides,
   AppSettings,
+  AppSettingsUpdate,
   Experiments,
+  UiPreferenceKey,
+  UiPreferenceValue,
 } from "@bb/domain";
 import type { ProviderUsageResponse } from "@bb/host-daemon-contract";
 import type {
@@ -19,6 +22,8 @@ import type {
   SystemVersionQuery,
   SystemVersionResponse,
   SystemVoiceTranscriptionResponse,
+  UiPreferenceResponse,
+  UiPreferencesResponse,
 } from "@bb/server-contract";
 import { systemVoiceTranscriptionResponseSchema } from "@bb/server-contract";
 import { signalRequestArgs, type CreateSdkAreaArgs } from "./common.js";
@@ -63,7 +68,9 @@ export type SystemCliSkillsStatusResult = SystemCliSkillsStatusResponse;
 export type SystemInstallCliSkillsResult = SystemInstallCliSkillsResponse;
 export type SystemVoiceTranscriptionResult = SystemVoiceTranscriptionResponse;
 export type SystemUpdateExperimentsResult = Experiments;
-export type SystemUpdateGeneralSettingsResult = AppSettings;
+export type SystemUpdateGeneralSettingsResult = AppSettings & {
+  showUnhandledProviderEvents?: boolean;
+};
 export type SystemUpdateKeyboardSettingsResult = AppKeybindingOverrides;
 export type SystemUsageLimitsResult = ProviderUsageResponse;
 export interface SystemProviderStatesArgs extends SystemProvidersQuery {
@@ -71,6 +78,31 @@ export interface SystemProviderStatesArgs extends SystemProvidersQuery {
 }
 export type SystemProviderStatesResult = SystemProviderStatesResponse;
 export type SystemVersionResult = SystemVersionResponse;
+
+export interface SystemUiPreferencesArgs {
+  signal?: AbortSignal;
+}
+export type SystemUiPreferencesResult = UiPreferencesResponse;
+export interface SystemUpdateUiPreferenceArgs<Key extends UiPreferenceKey> {
+  expectedRevision: number;
+  key: Key;
+  value: UiPreferenceValue<Key>;
+}
+export interface SystemResetUiPreferenceArgs<Key extends UiPreferenceKey> {
+  key: Key;
+}
+export type SystemUiPreferenceResult<Key extends UiPreferenceKey> =
+  UiPreferenceResponse<Key>;
+
+export interface SystemUiPreferencesArea {
+  list(args?: SystemUiPreferencesArgs): Promise<SystemUiPreferencesResult>;
+  set<Key extends UiPreferenceKey>(
+    args: SystemUpdateUiPreferenceArgs<Key>,
+  ): Promise<SystemUiPreferenceResult<Key>>;
+  reset<Key extends UiPreferenceKey>(
+    args: SystemResetUiPreferenceArgs<Key>,
+  ): Promise<SystemUiPreferenceResult<Key>>;
+}
 
 export interface SystemArea {
   attention(args?: SystemAttentionArgs): Promise<SystemAttentionResult>;
@@ -88,9 +120,10 @@ export interface SystemArea {
   transcribeVoice(
     args: SystemVoiceTranscriptionArgs,
   ): Promise<SystemVoiceTranscriptionResult>;
+  uiPreferences: SystemUiPreferencesArea;
   updateExperiments(args: Experiments): Promise<SystemUpdateExperimentsResult>;
   updateGeneralSettings(
-    args: AppSettings,
+    args: AppSettingsUpdate,
   ): Promise<SystemUpdateGeneralSettingsResult>;
   updateKeyboardSettings(
     args: AppKeybindingOverrides,
@@ -110,7 +143,38 @@ function versionQuery(args: SystemVersionArgs | undefined): SystemVersionQuery {
 
 export function createSystemArea(args: CreateSdkAreaArgs): SystemArea {
   const { transport } = args;
+  const uiPreferences: SystemUiPreferencesArea = {
+    async list(input) {
+      return transport.readJson(
+        transport.api.v1.preferences.ui.$get(
+          {},
+          ...signalRequestArgs(input?.signal),
+        ),
+      );
+    },
+    async set(input) {
+      const body = await transport.readJson(
+        transport.api.v1.preferences.ui[":key"].$put({
+          json: {
+            expectedRevision: input.expectedRevision,
+            value: input.value,
+          },
+          param: { key: input.key },
+        }),
+      );
+      return body as UiPreferenceResponse<typeof input.key>;
+    },
+    async reset(input) {
+      const body = await transport.readJson(
+        transport.api.v1.preferences.ui[":key"].$delete({
+          param: { key: input.key },
+        }),
+      );
+      return body as UiPreferenceResponse<typeof input.key>;
+    },
+  };
   return {
+    uiPreferences,
     async attention(input) {
       return transport.readJson(
         transport.api.v1.system.attention.$get(

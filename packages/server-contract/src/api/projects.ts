@@ -12,6 +12,7 @@ import {
   threadListEntrySchema,
 } from "@bb/domain";
 import {
+  rejectMultipleWorkspaceSelectors,
   branchListQuerySchema,
   isCommaSeparatedIncludeQueryValue,
   pathListIncludeQueryValueSchema,
@@ -150,22 +151,10 @@ const projectWorkspaceRoutingFields = {
   ),
 } as const;
 
-function rejectMultipleProjectWorkspaceSelectors(
-  query: { environmentId?: string; hostId?: string },
-  context: z.RefinementCtx,
-): void {
-  if (query.environmentId !== undefined && query.hostId !== undefined) {
-    context.addIssue({
-      code: "custom",
-      message: "hostId and environmentId are mutually exclusive",
-    });
-  }
-}
-
 export const projectWorkspaceRoutingQuerySchema = z
   .object(projectWorkspaceRoutingFields)
   .partial()
-  .superRefine(rejectMultipleProjectWorkspaceSelectors);
+  .superRefine(rejectMultipleWorkspaceSelectors);
 export type ProjectWorkspaceRoutingQuery = z.infer<
   typeof projectWorkspaceRoutingQuerySchema
 >;
@@ -177,7 +166,7 @@ export const projectFilesQuerySchema = z
     limit: z.string().regex(/^\d+$/).optional(),
   })
   .partial()
-  .superRefine(rejectMultipleProjectWorkspaceSelectors);
+  .superRefine(rejectMultipleWorkspaceSelectors);
 export type ProjectFilesQuery = z.infer<typeof projectFilesQuerySchema>;
 
 export const projectPathsQuerySchema = z
@@ -194,7 +183,7 @@ export const projectPathsQuerySchema = z
     query: true,
     limit: true,
   })
-  .superRefine(rejectMultipleProjectWorkspaceSelectors);
+  .superRefine(rejectMultipleWorkspaceSelectors);
 export type ProjectPathsQuery = z.infer<typeof projectPathsQuerySchema>;
 
 export const projectFileContentQuerySchema = z
@@ -203,7 +192,7 @@ export const projectFileContentQuerySchema = z
     path: z.string().min(1),
   })
   .partial({ hostId: true, environmentId: true })
-  .superRefine(rejectMultipleProjectWorkspaceSelectors);
+  .superRefine(rejectMultipleWorkspaceSelectors);
 export type ProjectFileContentQuery = z.infer<
   typeof projectFileContentQuerySchema
 >;
@@ -335,7 +324,7 @@ export const projectCommandsQuerySchema = z
   })
   .partial({ hostId: true, environmentId: true })
   .strict()
-  .superRefine(rejectMultipleProjectWorkspaceSelectors);
+  .superRefine(rejectMultipleWorkspaceSelectors);
 export type ProjectCommandsQuery = z.infer<typeof projectCommandsQuerySchema>;
 
 export const skillScopeSchema = z.enum([
