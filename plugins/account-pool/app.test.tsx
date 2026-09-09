@@ -178,46 +178,48 @@ describe("Account Pool settings", () => {
     expect(slot.queryByText("7 day")).toBeNull();
   });
 
-  it("dispatches kebab actions to their RPC contracts", async () => {
-    const slot = render([account()], {
-      "account.disable": () => ({ account: null }),
-      "account.refreshUsage": () => ({ account: null }),
-      "account.remove": () => ({ removed: true }),
-    });
-    const open = async () => {
+  it.each([
+    {
+      action: "Disable",
+      method: "account.disable",
+      input: { id: account().id },
+    },
+    {
+      action: "Refresh usage",
+      method: "account.refreshUsage",
+      input: { accountId: account().id },
+    },
+  ])(
+    "dispatches $action to its RPC contract",
+    async ({ action, method, input }) => {
+      const slot = render([account()], {
+        [method]: () => ({ account: null }),
+      });
       fireEvent.pointerDown(
         await slot.findByRole("button", { name: "person@example.com actions" }),
       );
-    };
-    await open();
-    fireEvent.click(await slot.findByText("Disable"));
-    await waitFor(() =>
-      expect(slot.rpcCalls).toContainEqual({
-        method: "account.disable",
-        input: { id: account().id },
-      }),
+      fireEvent.click(await slot.findByText(action));
+      expect(slot.rpcCalls).toContainEqual({ method, input });
+    },
+  );
+
+  it("confirms Remove before dispatching its RPC contract", async () => {
+    const slot = render([account()], {
+      "account.remove": () => ({ removed: true }),
+    });
+    fireEvent.pointerDown(
+      await slot.findByRole("button", { name: "person@example.com actions" }),
     );
-    await open();
-    fireEvent.click(await slot.findByText("Refresh usage"));
-    await waitFor(() =>
-      expect(slot.rpcCalls).toContainEqual({
-        method: "account.refreshUsage",
-        input: { accountId: account().id },
-      }),
-    );
-    await open();
     fireEvent.click(await slot.findByText("Remove"));
     expect(await slot.findByText("Remove person@example.com?")).toBeTruthy();
     expect(slot.rpcCalls.some((call) => call.method === "account.remove")).toBe(
       false,
     );
     fireEvent.click(slot.getByRole("button", { name: "Remove" }));
-    await waitFor(() =>
-      expect(slot.rpcCalls).toContainEqual({
-        method: "account.remove",
-        input: { id: account().id },
-      }),
-    );
+    expect(slot.rpcCalls).toContainEqual({
+      method: "account.remove",
+      input: { id: account().id },
+    });
   });
 
   it("opens the correct provider sign-in flow from each Add account menu", async () => {

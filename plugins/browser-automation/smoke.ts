@@ -5,7 +5,6 @@ import {
   readFile,
   rm,
   symlink,
-  writeFile,
 } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
@@ -31,14 +30,7 @@ const version = z
     (await promisify(execFile)(runtimeBinary, ["--version"])).stdout.trim(),
   )
   .split(" ")[1]!;
-if (process.env.DEV_BROWSER_SMOKE_NO_SANDBOX === "1") {
-  const escaped = `'${resolve(chrome).replaceAll("'", "'\\''")}'`;
-  await writeFile(
-    join(dataDir, "runtime", "chrome"),
-    `#!/bin/sh\nexec ${escaped} --no-sandbox "$@"\n`,
-    { mode: 0o700 },
-  );
-} else await symlink(resolve(chrome), join(dataDir, "runtime", "chrome"));
+await symlink(resolve(chrome), join(dataDir, "runtime", "chrome"));
 const attachedBrowsers: ReturnType<typeof supervise>[] = [];
 const sessions: Awaited<ReturnType<typeof createRuntime>>[] = [];
 try {
@@ -122,6 +114,7 @@ try {
     join(dataDir, "runtime", "chrome"),
     [
       "--headless=new",
+      "--no-sandbox",
       "--remote-debugging-port=0",
       `--user-data-dir=${profile}`,
       "--no-first-run",

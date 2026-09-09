@@ -1,7 +1,9 @@
 import type { AvailableModel } from "@bb/domain";
 import {
   createAsyncDeduper,
+  createAsyncRerunner,
   type AsyncDeduper,
+  type AsyncRerunner,
 } from "./services/lib/async-deduper.js";
 import {
   createAsyncTtlMemo,
@@ -20,7 +22,7 @@ export interface LifecycleDedupers {
   environmentCleanupAdvance: AsyncDeduper<string, void>;
   providerModelList: AsyncTtlMemo<string, ProviderModelListMemoValue>;
   queuedMessageDispatch: AsyncDeduper<string, void>;
-  threadProvisionAdvance: AsyncDeduper<string, void>;
+  threadProvisionAdvance: AsyncRerunner<string>;
 }
 
 export function createLifecycleDedupers(): LifecycleDedupers {
@@ -31,6 +33,6 @@ export function createLifecycleDedupers(): LifecycleDedupers {
       ttlMs: PROVIDER_MODEL_LIST_MEMO_TTL_MS,
     }),
     queuedMessageDispatch: createAsyncDeduper<string, void>(),
-    threadProvisionAdvance: createAsyncDeduper<string, void>(),
+    threadProvisionAdvance: createAsyncRerunner<string>(),
   };
 }
