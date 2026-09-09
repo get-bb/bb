@@ -31,19 +31,10 @@ const availabilitySchema = z.discriminatedUnion("status", [
     .strict(),
 ]);
 
-let availabilityCache = new WeakMap<
-  PluginMachineProviderRecord["provider"],
-  Map<string, Promise<Availability>>
->();
-let emptyInputsCache = new WeakMap<
+const emptyInputsCache = new WeakMap<
   PluginMachineProviderRecord["provider"],
   Promise<boolean>
 >();
-
-export function invalidateMachineProviderAvailability(): void {
-  availabilityCache = new WeakMap();
-  emptyInputsCache = new WeakMap();
-}
 
 export function machineProviderAcceptsEmptyInputs(
   record: PluginMachineProviderRecord,
@@ -92,17 +83,7 @@ export async function resolveMachineProviderAvailability(
     project,
     gitRemote: project?.gitRemoteUrl ?? null,
   };
-  const key = JSON.stringify(context);
-  let providerCache = availabilityCache.get(record.provider);
-  if (providerCache === undefined) {
-    providerCache = new Map();
-    availabilityCache.set(record.provider, providerCache);
-  }
-  const cached = providerCache.get(key);
-  if (cached !== undefined) return cached;
-  const resolved = invokeAvailability(record, context);
-  providerCache.set(key, resolved);
-  return resolved;
+  return invokeAvailability(record, context);
 }
 
 async function invokeAvailability(

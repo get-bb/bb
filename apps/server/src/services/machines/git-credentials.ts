@@ -1,13 +1,11 @@
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
-import { and, eq } from "drizzle-orm";
-import { machineEnrollments, getAppSettings, type DbConnection } from "@bb/db";
 import type { HostDaemonContributedEnvEntry } from "@bb/host-daemon-contract";
 import { z } from "zod";
 
 const exec = promisify(execFile);
 
-export const githubCredentialHelper =
+const githubCredentialHelper =
   '!f() { test "$1" = get || exit 0; protocol=; host=; while IFS= read -r line && test -n "$line"; do case "$line" in protocol=*) protocol=${line#protocol=} ;; host=*) host=${line#host=} ;; esac; done; if test "$protocol" = https && test "$host" = github.com && test -n "$GH_TOKEN"; then printf "username=x-access-token\\npassword=%s\\n" "$GH_TOKEN"; fi; }; f';
 
 const gitConfig = [
@@ -21,21 +19,6 @@ const identitySchema = z.object({
   id: z.number().int().positive(),
   email: z.email().nullable(),
 });
-
-export function isEnrolledMachine(db: DbConnection, hostId: string): boolean {
-  return (
-    db
-      .select({ id: machineEnrollments.id })
-      .from(machineEnrollments)
-      .where(
-        and(
-          eq(machineEnrollments.hostId, hostId),
-          eq(machineEnrollments.state, "enrolled"),
-        ),
-      )
-      .get() !== undefined
-  );
-}
 
 async function runGh(args: string[]): Promise<string> {
   const { stdout } = await exec("gh", args, {
@@ -98,17 +81,6 @@ export async function resolveGitCredentials(
   } catch {
     return [];
   }
-}
-
-export async function resolveMachineGitEnv(
-  db: DbConnection,
-  hostId: string,
-  run = runGh,
-): Promise<HostDaemonContributedEnvEntry[]> {
-  return isEnrolledMachine(db, hostId) &&
-    getAppSettings(db).machineGitCredentialsEnabled
-    ? resolveGitCredentials(run)
-    : [];
 }
 
 export async function machineGitHealth(run = runGh) {

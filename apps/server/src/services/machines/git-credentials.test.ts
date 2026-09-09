@@ -1,16 +1,11 @@
 import { mergeHostAndProviderEnvironment } from "../hosts/host-environment.js";
-import { createConnection, migrate, machineEnrollments } from "@bb/db";
 import { execFile, spawn } from "node:child_process";
 import { promisify } from "node:util";
 import { mkdtemp, rm, mkdir, writeFile, readFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import {
-  resolveGitCredentials,
-  resolveMachineGitEnv,
-  machineGitHealth,
-} from "./git-credentials.js";
+import { resolveGitCredentials, machineGitHealth } from "./git-credentials.js";
 
 const exec = promisify(execFile);
 const cleanup: Array<() => Promise<void>> = [];
@@ -24,15 +19,6 @@ function gh(email: string | null = null) {
       ? "test-private-token\n"
       : JSON.stringify({ login: "octocat", id: 123, email }),
   );
-}
-
-function database() {
-  const db = createConnection(":memory:");
-  migrate(db);
-  cleanup.push(async () => {
-    db.$client.close();
-  });
-  return db;
 }
 
 async function gitEnv() {
@@ -71,36 +57,6 @@ function fill(
 }
 
 describe("machine Git environment", () => {
-  it("only contributes for enrolled machines and never queries gh for other hosts", async () => {
-    const db = database();
-    const run = gh();
-    for (const state of ["pending", "cancelled", "enrolled"] as const) {
-      db.insert(machineEnrollments)
-        .values({
-          id: state,
-          owner: "do",
-          key: state,
-          hostId: state,
-          state,
-          createdAt: 1,
-          updatedAt: 1,
-        })
-        .run();
-    }
-    for (const hostId of ["local", "pending", "cancelled"])
-      expect(await resolveMachineGitEnv(db, hostId, run)).toEqual([]);
-    expect(run).not.toHaveBeenCalled();
-    expect(await resolveMachineGitEnv(db, "enrolled", run)).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({
-          name: "GH_TOKEN",
-          value: "test-private-token",
-          secret: true,
-        }),
-      ]),
-    );
-  });
-
   it("lets agent-provider contributions override host credentials", async () => {
     const host = await resolveGitCredentials(gh());
     const provider = [

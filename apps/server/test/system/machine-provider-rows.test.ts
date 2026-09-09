@@ -10,6 +10,7 @@ import { systemMachineProvidersResponseSchema } from "@bb/server-contract";
 import { setPluginEnvironmentProviderBridge } from "../../src/services/plugins/plugin-environment-provider-registry.js";
 import { setPluginMachineProviderBridge } from "../../src/services/plugins/plugin-machine-provider-registry.js";
 import { completeProviderSelection } from "../../src/services/threads/thread-environment-placement.js";
+import { resolveMachineProviderAvailability } from "../../src/services/machines/provider-availability.js";
 import { createMachine } from "../../src/services/machines/provider-orchestration.js";
 import { seedHostSession, seedProjectWithSource } from "../helpers/seed.js";
 import { withTestHarness } from "../helpers/test-app.js";
@@ -197,4 +198,45 @@ describe("machine checkout picker rows", () => {
       });
     },
   );
+});
+
+it("rechecks availability after provider setup changes without restarting the plugin", async () => {
+  await withTestHarness(async (harness) => {
+    let configured = false;
+    const record = {
+      pluginId: "test-machine",
+      provider: validatePluginMachineProviderDeclaration({
+        id: "test-machine",
+        displayName: "Test machine",
+        policy,
+        availability: () =>
+          configured
+            ? { status: "available" }
+            : { status: "setup-required", message: "Connect your account" },
+        create: async () => ({
+          status: "created",
+          hostId: "test-host",
+          resource: {},
+        }),
+        reconcileCleanup: async () => ({ status: "removed" }),
+        remove: async () => ({ status: "removed" }),
+      }),
+    };
+    setPluginMachineProviderBridge({
+      listMachineProviders: () => [record],
+      getMachineProvider: () => record,
+      invokeProvider: async (_pluginId, _label, run) => ({
+        ok: true,
+        value: await run(),
+      }),
+      decisionTimeoutMs: 10_000,
+    });
+    expect(
+      await resolveMachineProviderAvailability(harness.deps, record, {}),
+    ).toEqual({ status: "setup-required", message: "Connect your account" });
+    configured = true;
+    expect(
+      await resolveMachineProviderAvailability(harness.deps, record, {}),
+    ).toEqual({ status: "available" });
+  });
 });
