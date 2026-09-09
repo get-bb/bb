@@ -640,16 +640,6 @@ export const threadSearchSegments = sqliteTable(
   ],
 );
 
-export const threadTimelineHistoryRevisions = sqliteTable(
-  "thread_timeline_history_revisions",
-  {
-    threadId: text("thread_id")
-      .primaryKey()
-      .references(() => threads.id, { onDelete: "cascade" }),
-    revision: integer("revision").notNull().default(0),
-  },
-);
-
 export const threadConversationOutlines = sqliteTable(
   "thread_conversation_outlines",
   {

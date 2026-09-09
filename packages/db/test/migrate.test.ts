@@ -779,12 +779,6 @@ function dropEnvironmentDestroyAttemptIdColumn(db: DbConnection): void {
 }
 
 function rewindEnvironmentRowFactsMigration(db: DbConnection): void {
-  db.$client.exec(`
-    DROP TRIGGER IF EXISTS timeline_history_event_updated;
-    DROP TRIGGER IF EXISTS timeline_history_event_deleted;
-    DROP TRIGGER IF EXISTS timeline_history_event_inserted;
-    DROP TABLE IF EXISTS thread_timeline_history_revisions;
-  `);
   const columns = new Set(
     db.$client
       .prepare<[], TableInfoRow>("PRAGMA table_info(environments)")

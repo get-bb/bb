@@ -442,7 +442,7 @@ describe("timeline event budget", () => {
     db.$client.close();
   });
 
-  it("pins a real endpoint walk while late events arrive and rejects edited history", async () => {
+  it("excludes later appends and continues endpoint pagination after an edit", async () => {
     const harness = await createTestAppHarness({
       featureFlags: { ...defaultFeatureFlags, timelineWindowEventBudget: 5 },
     });
@@ -531,7 +531,11 @@ describe("timeline event budget", () => {
       const stale = await harness.app.request(
         `/api/v1/threads/${thread.id}/timeline?includeNestedRows=true&${new URLSearchParams({ beforeAnchorSeq: String(originalCursor.anchorSeq), beforeAnchorId: originalCursor.anchorId })}`,
       );
-      expect(stale.status).toBe(400);
+      expect(stale.status).toBe(200);
+      const continued = threadTimelineResponseSchema.parse(await stale.json());
+      expect(continued.timelinePage.historySnapshot).toBe(
+        latest.timelinePage.historySnapshot,
+      );
     } finally {
       await harness.cleanup();
     }
@@ -577,7 +581,7 @@ describe("timeline event budget", () => {
     }
   });
 
-  it("invalidates suffix replacement even when the sequence tip is reused", () => {
+  it("continues after suffix replacement, anchor deletion and a reduced sequence tip", () => {
     const { db, thread } = setup();
     try {
       insertTurns(db, thread, 3, 2);
@@ -626,12 +630,23 @@ describe("timeline event budget", () => {
           }),
         },
       ]);
-      expect(() =>
-        buildThreadTimeline(db, thread, {
-          ...options,
-          page: { kind: "older", beforeCursor, segmentLimit: 1 },
-        }),
-      ).toThrow(/no longer available/);
+      const continued = buildThreadTimeline(db, thread, {
+        ...options,
+        page: { kind: "older", beforeCursor, segmentLimit: 1 },
+      });
+      expect(continued.timelinePage.historySnapshot).toBe(
+        latest.timelinePage.historySnapshot,
+      );
+      db.$client
+        .prepare("DELETE FROM events WHERE thread_id = ? AND sequence >= ?")
+        .run(thread.id, beforeCursor.anchorSeq);
+      const afterDeletion = buildThreadTimeline(db, thread, {
+        ...options,
+        page: { kind: "older", beforeCursor, segmentLimit: 1 },
+      });
+      expect(afterDeletion.timelinePage.historySnapshot).toBe(
+        latest.timelinePage.historySnapshot,
+      );
     } finally {
       db.$client.close();
     }

@@ -3,7 +3,6 @@ import type { TimelineRow } from "@bb/server-contract";
 import {
   getFirstParentedTimelineBoundarySequence,
   listTimelineOrderingContext,
-  getThreadTimelineHistoryRevision,
   type DbConnection,
 } from "@bb/db";
 
@@ -30,12 +29,7 @@ export function getTimelineGroupingContext(
     cache = new Map();
     orderingContexts.set(db, cache);
   }
-  const key = JSON.stringify([
-    args.threadId,
-    args.sequenceStart,
-    args.maxSeq,
-    getThreadTimelineHistoryRevision(db, args.threadId),
-  ]);
+  const key = JSON.stringify([args.threadId, args.sequenceStart, args.maxSeq]);
   const cached = cache.get(key);
   if (cached !== undefined) return cached;
   const context = listTimelineOrderingContext(db, args);

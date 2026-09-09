@@ -9,14 +9,18 @@ row IDs or sequence cuts. Keep display options unchanged throughout the walk.
 and display surface. A walk excludes subsequent appends. Earlier events can
 change grouping even after a turn completed, so a new latest snapshot replaces
 loaded rows instead of retaining an assumed immutable prefix. Discard older
-responses whose snapshot no longer matches. A legacy cursor, edited history,
-or incompatible grouping version returns HTTP 400 `invalid_request` with a
+responses whose snapshot no longer matches. A legacy cursor or incompatible
+grouping version returns HTTP 400 `invalid_request` with a
 message that the cursor is no longer available. Reload latest to restart.
 The new response fields are optional in the wire schemas so updated clients
 can still read an older server; absence identifies that legacy contract.
 Current servers always return the snapshot and detail continuation fields.
-Revision tracking is durable and needs no timeline backfill or materialized
-row index.
+The snapshot is a read boundary, not a retained copy of the history. Pagination
+continues on a best-effort basis when existing events are updated, deleted or
+replaced. Previously loaded pages can then disagree with later pages, leaving
+stale content, missing content or different grouping until history is reloaded.
+Deleted anchors remain usable sequence boundaries. No history-edit revision is
+stored or checked, and edits do not automatically reject an existing cursor.
 
 `timelinePage.contentPage`, when present, gives the group anchor and the
 half-open leaf interval `[start, end)` within `total` leaves. Ancestor summaries
@@ -42,6 +46,5 @@ The app loads the detail walk when expanding a summary. Tool output remains
 subject to the existing preview and retention rules.
 
 Content pagination does not freeze completed turns, persist projections,
-perform a backfill, or run work on event ingestion. The database stores only a
-history-edit revision per affected thread. Appended events are interpreted
-when a new snapshot is requested.
+perform a backfill, add database tables or triggers, or run work on event
+ingestion. Appended events are interpreted when a new snapshot is requested.

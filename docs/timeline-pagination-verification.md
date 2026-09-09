@@ -81,8 +81,8 @@ See [the pagination contract](timeline-pagination.md) for lifecycle semantics.
 
 A follow-up replaces the request-by-turn overlap loop with an ordered scan.
 Six database-backed cases cover accepted turns, overlapping alternatives and
-expired spans. Migration rewind fixtures also remove the revision table and
-its event triggers; all 54 migration tests pass.
+expired spans. The history-edit revision table and its triggers were subsequently removed
+when pagination across edits became best effort.
 
 A separate paired comparison against `51e0dc78d2` ran baseline/new/new/baseline
 with fresh databases and route caches. All 16 endpoint/client walks matched
@@ -99,3 +99,10 @@ These measurements do not establish a general endpoint latency improvement.
 The scan removes quadratic overlap comparisons without changing page content;
 query, decoding and grouping costs remain. An additional allocation-based leaf
 measurement experiment was discarded after mixed walk timings.
+
+Pagination now continues across history edits, suffix replacement, deleted
+anchors and reduced sequence tips. The endpoint regression expects continuation
+rather than HTTP 400. Canonical parity is required for unchanged history and
+walks with later appends; it is deliberately not guaranteed across edits.
+There is no revision table, event trigger or database migration in the final
+change. Existing message-edit notifications still invalidate request caches.

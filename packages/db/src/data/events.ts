@@ -52,7 +52,6 @@ import {
   promptHistoryEntries,
   threadDynamicContextFileStates,
   threadSearchSegments,
-  threadTimelineHistoryRevisions,
   threads,
 } from "../schema.js";
 import { createEventId } from "../ids.js";
@@ -1682,24 +1681,6 @@ export function listStoredDelegatingItemRowsByItemIds(
     .all();
 }
 
-export function isTimelineCursorSequencePresent(
-  db: DbConnection,
-  args: TimelineSegmentAnchorLookupArgs,
-): boolean {
-  const row = db
-    .select({ sequence: events.sequence })
-    .from(events)
-    .where(
-      and(
-        eq(events.threadId, args.threadId),
-        eq(events.sequence, args.sequence),
-      ),
-    )
-    .limit(1)
-    .get();
-  return row !== undefined;
-}
-
 export interface ScopedItemRef {
   itemId: string;
   scopeKind: ThreadEventScopeKind;
@@ -3222,13 +3203,6 @@ export function findStoredTimelineWindowByteBudgetFloor(
     return oversizedEvent;
   }
   return { eventDataBytes: includedDataBytes, kind: "fits" };
-}
-
-export function getThreadTimelineHistoryRevision(db: DbConnection, threadId: string): number {
-  return db.select({ revision: threadTimelineHistoryRevisions.revision })
-    .from(threadTimelineHistoryRevisions)
-    .where(eq(threadTimelineHistoryRevisions.threadId, threadId))
-    .get()?.revision ?? 0;
 }
 
 export function listStoredTimelineTurnEventRows(

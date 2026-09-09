@@ -1,10 +1,6 @@
 import { z } from "zod";
 import { threadStatusSchema, type Thread } from "@bb/domain";
-import {
-  getLatestThreadSequence,
-  getThreadTimelineHistoryRevision,
-  type DbConnection,
-} from "@bb/db";
+import { getLatestThreadSequence, type DbConnection } from "@bb/db";
 import type { TimelinePaginationCursor } from "@bb/server-contract";
 import { ApiError } from "../../errors.js";
 import type { ThreadTimelinePageRequest } from "./timeline-pagination.js";
@@ -12,7 +8,6 @@ import type { ThreadTimelinePageRequest } from "./timeline-pagination.js";
 const snapshotSchema = z.object({
   version: z.literal(1),
   threadId: z.string(),
-  revision: z.number().int().nonnegative(),
   maxSeq: z.number().int().nonnegative(),
   status: threadStatusSchema,
   surface: z.string(),
@@ -38,13 +33,11 @@ export function resolveTimelineSnapshot(
   surface: string,
   requestedMaxSeq?: number,
 ): TimelineSnapshot {
-  const revision = getThreadTimelineHistoryRevision(db, thread.id);
-  const maxSeq = getLatestThreadSequence(db, { threadId: thread.id });
   if (page.kind === "latest") {
+    const maxSeq = getLatestThreadSequence(db, { threadId: thread.id });
     return {
       version: 1,
       threadId: thread.id,
-      revision,
       maxSeq: Math.min(requestedMaxSeq ?? maxSeq, maxSeq),
       status: thread.status,
       surface,
@@ -70,12 +63,7 @@ export function resolveTimelineSnapshot(
           decoded.content.beforeSequence <= decoded.anchorSeq))
     )
       throw new Error("Cursor sequence mismatch");
-    if (
-      snapshot.threadId !== thread.id ||
-      snapshot.revision !== revision ||
-      snapshot.maxSeq > maxSeq ||
-      snapshot.surface !== surface
-    ) {
+    if (snapshot.threadId !== thread.id || snapshot.surface !== surface) {
       throw new Error("Stale snapshot");
     }
     return snapshot;

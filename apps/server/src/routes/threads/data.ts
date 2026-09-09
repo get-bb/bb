@@ -1,4 +1,4 @@
-import { getThreadTimelineHistoryRevision } from "@bb/db";
+import { clearTimelineOrderingContextCache } from "../../services/threads/timeline-context-order.js";
 import path from "node:path";
 import {
   getAppSettings,
@@ -308,6 +308,7 @@ export function registerThreadDataRoutes(app: Hono, deps: AppDeps): void {
       message.id !== undefined &&
       message.changes.includes("history-rewritten")
     ) {
+      clearTimelineOrderingContextCache(deps.db);
       timelineCache.invalidateThread(message.id);
       timelineLatestRowsCache.invalidateThread(message.id);
     }
@@ -350,7 +351,7 @@ export function registerThreadDataRoutes(app: Hono, deps: AppDeps): void {
     };
     const full = timelineCache.getOrBuild(
       thread.id,
-      `${getThreadTimelineHistoryRevision(deps.db, thread.id)}|${buildThreadTimelineCacheKey({ ...keyArgs, maxSeq })}`,
+      buildThreadTimelineCacheKey({ ...keyArgs, maxSeq }),
       () => {
         const { profile, response } = buildThreadTimelineWithProfile(
           deps.db,
