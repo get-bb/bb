@@ -4,15 +4,20 @@ const supervisor = `
 const { spawn } = require('node:child_process');
 const child = spawn(process.argv[1], process.argv.slice(2), { detached: true, stdio: 'ignore', env: process.env });
 let stopping = false;
+let childClosed = false;
 function kill(signal) { if (child.pid) { try { process.kill(-child.pid, signal); } catch {} } }
+function finish(code) {
+  if (childClosed) process.exit(code);
+  child.once('close', () => process.exit(code));
+}
 function stop() {
   if (stopping) return;
   stopping = true;
   kill('SIGTERM');
-  setTimeout(() => { kill('SIGKILL'); setTimeout(() => process.exit(0), 100); }, 1500);
+  setTimeout(() => { kill('SIGKILL'); finish(0); }, 1500);
 }
 child.on('error', () => process.exit(1));
-child.on('exit', () => { if (!stopping) { kill('SIGKILL'); process.exit(1); } });
+child.on('close', () => { childClosed = true; if (!stopping) { kill('SIGKILL'); process.exit(1); } });
 process.stdin.resume();
 process.stdin.on('end', stop);
 process.on('SIGTERM', stop);

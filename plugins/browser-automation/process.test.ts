@@ -1,9 +1,35 @@
-import { spawn } from "node:child_process";
+import { type ChildProcess, spawn } from "node:child_process";
+import { once } from "node:events";
 import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it, vi } from "vitest";
 import { supervise } from "./process.js";
+
+async function stopWorker(worker: ChildProcess): Promise<void> {
+  if (worker.exitCode !== null || worker.signalCode !== null) return;
+  const exited = once(worker, "exit");
+  worker.kill("SIGKILL");
+  await exited;
+}
+
+function killProcessGroup(pid: number): void {
+  try {
+    process.kill(-pid, "SIGKILL");
+  } catch {}
+  try {
+    process.kill(pid, "SIGKILL");
+  } catch {}
+}
+
+function isProcessAlive(pid: number): boolean {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch {
+    return false;
+  }
+}
 
 describe("process ownership", () => {
   it("worker death closes the supervisor pipe and kills its child", async () => {
@@ -17,15 +43,15 @@ describe("process ownership", () => {
       ["--import", "tsx", "--input-type=module", "-e", code],
       { stdio: "ignore" },
     );
+    let pid = 0;
     try {
-      let pid = 0;
       await vi.waitFor(
         async () => {
           pid = Number(await readFile(file, "utf8"));
         },
         { timeout: 5000 },
       );
-      worker.kill("SIGKILL");
+      await stopWorker(worker);
       await vi.waitFor(
         () => {
           expect(() => process.kill(pid, 0)).toThrow();
@@ -33,7 +59,8 @@ describe("process ownership", () => {
         { timeout: 5000 },
       );
     } finally {
-      worker.kill("SIGKILL");
+      await stopWorker(worker);
+      if (pid > 0 && isProcessAlive(pid)) killProcessGroup(pid);
       await rm(root, { recursive: true, force: true });
     }
   }, 12_000);
