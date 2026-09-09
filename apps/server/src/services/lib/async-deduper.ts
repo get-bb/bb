@@ -28,8 +28,9 @@ export function createAsyncDeduper<TKey, TValue>(): AsyncDeduper<TKey, TValue> {
 }
 
 export function createAsyncRerunner<TKey>(): AsyncRerunner<TKey> {
+  type Task = () => Promise<void>;
   type State = {
-    nextTask: (() => Promise<void>) | null;
+    nextTask: Task | null;
     promise: Promise<void>;
   };
   const pendingByKey = new Map<TKey, State>();
@@ -42,15 +43,26 @@ export function createAsyncRerunner<TKey>(): AsyncRerunner<TKey> {
         return pending.promise;
       }
 
+      let resolveCompletion: (() => void) | null = null;
+      let rejectCompletion: ((reason?: unknown) => void) | null = null;
+      const completion = new Promise<void>((resolve, reject) => {
+        resolveCompletion = resolve;
+        rejectCompletion = reject;
+      });
+      if (resolveCompletion === null || rejectCompletion === null) {
+        throw new Error("Failed to create rerunner completion promise");
+      }
       const state: State = {
-        nextTask: task,
-        promise: Promise.resolve(),
+        nextTask: null,
+        promise: completion,
       };
-      const drain = async (): Promise<void> => {
+      pendingByKey.set(key, state);
+
+      const drain = async (firstTask: Task): Promise<void> => {
         let failed = false;
         let firstError: unknown;
-        while (state.nextTask !== null) {
-          const nextTask = state.nextTask;
+        let nextTask: Task | null = firstTask;
+        while (nextTask !== null) {
           state.nextTask = null;
           try {
             await nextTask();
@@ -60,20 +72,17 @@ export function createAsyncRerunner<TKey>(): AsyncRerunner<TKey> {
               firstError = error;
             }
           }
+          nextTask = state.nextTask;
+        }
+        if (pendingByKey.get(key) === state) {
+          pendingByKey.delete(key);
         }
         if (failed) {
           throw firstError;
         }
       };
-      state.promise = Promise.resolve()
-        .then(drain)
-        .finally(() => {
-          if (pendingByKey.get(key) === state) {
-            pendingByKey.delete(key);
-          }
-        });
-      pendingByKey.set(key, state);
-      return state.promise;
+      void drain(task).then(resolveCompletion, rejectCompletion);
+      return completion;
     },
   };
 }

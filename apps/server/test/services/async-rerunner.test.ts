@@ -4,6 +4,40 @@ import { createLifecycleDedupers } from "../../src/lifecycle-dedupers.js";
 import { createAsyncRerunner } from "../../src/services/lib/async-deduper.js";
 
 describe("createAsyncRerunner", () => {
+  it("starts the first task synchronously", async () => {
+    const runner = createAsyncRerunner<string>();
+    const calls: string[] = [];
+
+    const completion = runner.run("thread", async () => {
+      calls.push("task");
+    });
+
+    expect(calls).toEqual(["task"]);
+    await completion;
+  });
+
+  it("runs a task requested as the completed drain is settling", async () => {
+    const runner = createAsyncRerunner<string>();
+    const calls: string[] = [];
+    const trailing = createDeferredPromise<void>();
+
+    const first = runner.run("thread", async () => {
+      calls.push("first");
+    });
+    queueMicrotask(() => {
+      queueMicrotask(() => {
+        void runner
+          .run("thread", async () => {
+            calls.push("trailing");
+          })
+          .then(trailing.resolve, trailing.reject);
+      });
+    });
+
+    await Promise.all([first, trailing.promise]);
+    expect(calls).toEqual(["first", "trailing"]);
+  });
+
   it("runs the latest task requested while the key is in flight", async () => {
     const runner = createLifecycleDedupers().threadProvisionAdvance;
     const firstStarted = createDeferredPromise<void>();
