@@ -1366,6 +1366,25 @@ export const hostDaemonCommandRegistry = {
     flushEventsBeforeResult: false,
     envLane: null,
   }),
+  "desktop.browser.list_import_sources": defineHostDaemonCommandDescriptor({
+    type: "desktop.browser.list_import_sources",
+    schema: desktopBrowserCommandSchemas["desktop.browser.list_import_sources"],
+    resultSchema:
+      desktopBrowserResultSchemas["desktop.browser.list_import_sources"],
+    transport: "onlineRpc",
+    retryable: false,
+    flushEventsBeforeResult: false,
+    envLane: null,
+  }),
+  "desktop.browser.import_cookies": defineHostDaemonCommandDescriptor({
+    type: "desktop.browser.import_cookies",
+    schema: desktopBrowserCommandSchemas["desktop.browser.import_cookies"],
+    resultSchema: desktopBrowserResultSchemas["desktop.browser.import_cookies"],
+    transport: "onlineRpc",
+    retryable: false,
+    flushEventsBeforeResult: false,
+    envLane: null,
+  }),
   "thread.rewind.discard": defineHostDaemonCommandDescriptor({
     type: "thread.rewind.discard",
     schema: threadRewindDiscardCommandSchema,
@@ -1878,9 +1897,7 @@ type HostDaemonRetryableOnlineRpcCommandSchema =
 type HostDaemonResultSchemaMapForTransport<
   Transport extends HostDaemonCommandTransport,
 > = {
-  [
-    Descriptor in HostDaemonCommandDescriptorForTransport<Transport> as Descriptor["type"]
-  ]: Descriptor["resultSchema"];
+  [Descriptor in HostDaemonCommandDescriptorForTransport<Transport> as Descriptor["type"]]: Descriptor["resultSchema"];
 };
 
 type HostDaemonCommandResultSchemaMap =

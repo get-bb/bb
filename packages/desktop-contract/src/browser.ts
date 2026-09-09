@@ -1,4 +1,10 @@
 import { z } from "zod";
+import {
+  desktopBrowserImportSelectionSchema,
+  desktopBrowserProfileSchema,
+  type DesktopBrowserImportOutcome,
+  type DesktopBrowserImportSource,
+} from "@bb/host-daemon-contract";
 
 export const BB_DESKTOP_BROWSER_MAX_URL_LENGTH = 4096;
 export const BB_DESKTOP_BROWSER_MAX_TITLE_LENGTH = 1024;
@@ -266,7 +272,24 @@ export type BbDesktopBrowserFindResultHandler = (
 ) => void;
 export type BbDesktopBrowserUnsubscribe = () => void;
 
+export const bbDesktopBrowserImportCookiesRequestSchema =
+  desktopBrowserImportSelectionSchema
+    .extend({ profile: desktopBrowserProfileSchema })
+    .strict();
+export type BbDesktopBrowserImportCookiesRequest = z.infer<
+  typeof bbDesktopBrowserImportCookiesRequestSchema
+>;
+export type BbDesktopBrowserImportSourcesResult = {
+  sources: DesktopBrowserImportSource[];
+};
+export type BbDesktopBrowserImportCookiesResult = DesktopBrowserImportOutcome;
+
 export interface BbDesktopBrowserApi {
+  listImportSources?(): Promise<BbDesktopBrowserImportSourcesResult>;
+  importCookies?(
+    request: BbDesktopBrowserImportCookiesRequest,
+  ): Promise<BbDesktopBrowserImportCookiesResult>;
+  openFullDiskAccessSettings?(): void;
   getTarget?(): Promise<BbDesktopBrowserTarget | null>;
   getControl?(tabId: string): Promise<BbDesktopBrowserControlState | null>;
   releaseControl?(tabId: string): void;

@@ -25,6 +25,7 @@ import type {
   DesktopBrowserNativeTab,
   DesktopBrowserViewManager,
 } from "./desktop-browser-view.js";
+import type { BrowserImportService } from "./browser-import/browser-import.js";
 
 interface BrokerWindow extends DesktopBrowserHostWindow {
   focus(): void;
@@ -52,6 +53,7 @@ interface ControlLease {
 export function createDesktopBrowserBroker(args: {
   manager: DesktopBrowserViewManager;
   product: string;
+  browserImport?: BrowserImportService;
 }) {
   const instances = new Map<string, InstanceEntry>();
   const leases = new Map<string, ControlLease>();
@@ -393,6 +395,22 @@ export function createDesktopBrowserBroker(args: {
       if (command.type === "desktop.browser.list_instances")
         return { instances: this.listInstances() };
       const instance = requireInstance(command);
+      if (command.type === "desktop.browser.list_import_sources") {
+        if (!args.browserImport)
+          throw new Error("Browser cookie import is unavailable");
+        return { sources: await args.browserImport.listSources() };
+      }
+      if (command.type === "desktop.browser.import_cookies") {
+        if (!args.browserImport)
+          throw new Error("Browser cookie import is unavailable");
+        return args.browserImport.importCookies(
+          {
+            sourceId: command.sourceId,
+            sourceProfileDirectory: command.sourceProfileDirectory,
+          },
+          args.manager.profileSession(command.profile),
+        );
+      }
       const scope = {
         hostWebContentsId: instance.window.webContents.id,
         threadId: command.threadId,

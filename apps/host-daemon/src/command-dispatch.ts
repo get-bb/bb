@@ -576,6 +576,16 @@ const onlineRpcHandlers: OnlineRpcHandlerMap = {
       throw new Error("Desktop browser broker unavailable");
     return options.desktopBrowserBroker.request(command);
   },
+  "desktop.browser.list_import_sources": async (command, options) => {
+    if (!options.desktopBrowserBroker)
+      throw new Error("Desktop browser broker unavailable");
+    return options.desktopBrowserBroker.request(command);
+  },
+  "desktop.browser.import_cookies": async (command, options) => {
+    if (!options.desktopBrowserBroker)
+      throw new Error("Desktop browser broker unavailable");
+    return options.desktopBrowserBroker.request(command);
+  },
   "connect-tunnel.ensure-identity": async (_command, options) => {
     if (!options.ensureConnectTunnelIdentity) {
       throw new Error("bb connect tunnel identity is unavailable");
