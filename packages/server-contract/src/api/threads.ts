@@ -26,6 +26,7 @@ import {
   threadTimelineModelFallbackSchema,
   threadTimelinePendingTodosSchema,
   threadEventTypeValues,
+  threadEnvVarsSchema,
   threadVisibilitySchema,
   threadWithRuntimeSchema,
 } from "@bb/domain";
@@ -107,6 +108,7 @@ export const createThreadRequestSchema = z
     reasoningLevel: reasoningLevelSchema.optional(),
     permissionMode: permissionModeInputSchema.optional(),
     executionInputSources: createExecutionInputSourcesSchema.optional(),
+    envVars: threadEnvVarsSchema.optional(),
     environment: createThreadEnvironmentArgsSchema,
     parentThreadId: z.string().min(1).optional(),
     sectionId: z.string().min(1).nullable().optional(),

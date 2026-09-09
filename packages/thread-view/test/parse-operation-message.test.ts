@@ -87,6 +87,11 @@ describe("parseOperationMessage operation titles", () => {
           value: { masked: true },
           reason: "Authenticate provider traffic",
         },
+        {
+          name: "MULTICA_TOKEN",
+          source: "thread",
+          value: { masked: true },
+        },
       ],
     };
     const message = parseOperationMessage(
@@ -106,7 +111,7 @@ describe("parseOperationMessage operation titles", () => {
       kind: "operation",
       title: "Provider environment resolved",
       detail:
-        "PLUGIN_TOKEN=•••••• (auth-proxy) — Authenticate provider traffic",
+        "PLUGIN_TOKEN=•••••• (auth-proxy) — Authenticate provider traffic\nMULTICA_TOKEN=•••••• (thread)",
     });
   });
 

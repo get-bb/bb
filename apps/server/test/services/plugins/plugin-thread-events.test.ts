@@ -275,6 +275,7 @@ describe("plugin thread lifecycle events", () => {
       const { environment, project } = seedThreadFixture(harness);
       const request: ThreadCreateServiceRequest = {
         environment: { type: "reuse", environmentId: environment.id },
+        envVars: {},
         input: [],
         origin: null,
         projectId: project.id,
@@ -320,6 +321,7 @@ describe("plugin thread lifecycle events", () => {
             environmentId: environment.id,
             request: {
               environment: { type: "reuse", environmentId: environment.id },
+              envVars: { MULTICA_TOKEN: "thread-secret" },
               input: [],
               origin: "plugin",
               originPluginId,
@@ -342,6 +344,7 @@ describe("plugin thread lifecycle events", () => {
         id: owned.id,
         visibility: "hidden",
       });
+      expect(JSON.stringify(recorded)).not.toContain("thread-secret");
     } finally {
       delete globals.__hiddenCreatedEvents;
       await cleanup();

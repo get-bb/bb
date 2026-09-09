@@ -2,10 +2,14 @@ import { Command } from "commander";
 import {
   jsonValueSchema,
   PERSONAL_PROJECT_ID,
+  threadEnvVarNameSchema,
+  threadEnvVarValueSchema,
+  threadEnvVarsSchema,
   threadVisibilitySchema,
   type GitBranchSelection,
   type Thread,
   type JsonValue,
+  type ThreadEnvVars,
 } from "@bb/domain";
 import type { CreateThreadEnvironmentArgs } from "@bb/server-contract";
 import { action } from "../../action.js";
@@ -42,6 +46,7 @@ interface ThreadSpawnCommandOptions {
   json?: boolean;
   project?: string;
   environment?: string;
+  env?: string[];
   newEnvironment?: string;
   environmentProvider?: string;
   environmentInputs?: string;
@@ -69,6 +74,46 @@ interface ThreadSpawnCommandOptions {
 
 export function looksLikePath(value: string): boolean {
   return value.includes("/") || value.startsWith(".") || value.startsWith("~");
+}
+
+export function parseThreadEnvVars(
+  values: readonly string[] | undefined,
+): ThreadEnvVars | undefined {
+  if (values === undefined || values.length === 0) return undefined;
+  const entries: [string, string][] = [];
+  const names = new Set<string>();
+  for (const entry of values) {
+    const separatorIndex = entry.indexOf("=");
+    if (separatorIndex === -1) {
+      throw new Error("Invalid --env entry. Expected KEY=VALUE.");
+    }
+    const name = entry.slice(0, separatorIndex);
+    const value = entry.slice(separatorIndex + 1);
+    const parsedName = threadEnvVarNameSchema.safeParse(name);
+    if (!parsedName.success) {
+      throw new Error(
+        `Invalid --env variable name '${name}': ${parsedName.error.issues[0]?.message ?? "is invalid"}.`,
+      );
+    }
+    if (names.has(parsedName.data)) {
+      throw new Error(`Duplicate --env variable '${parsedName.data}'.`);
+    }
+    const parsedValue = threadEnvVarValueSchema.safeParse(value);
+    if (!parsedValue.success) {
+      throw new Error(
+        `Invalid --env value for '${parsedName.data}': ${parsedValue.error.issues[0]?.message ?? "is invalid"}.`,
+      );
+    }
+    names.add(parsedName.data);
+    entries.push([parsedName.data, parsedValue.data]);
+  }
+  const parsed = threadEnvVarsSchema.safeParse(Object.fromEntries(entries));
+  if (!parsed.success) {
+    throw new Error(
+      `Invalid --env values: ${parsed.error.issues[0]?.message ?? "the environment is invalid"}.`,
+    );
+  }
+  return parsed.data;
 }
 
 export function requireHostId(hostId: string | null): string {
@@ -266,6 +311,12 @@ export function registerSpawnCommand(
       "Existing environment ID or unmanaged workspace path",
     )
     .option(
+      "--env <KEY=VALUE>",
+      "Set a per-thread environment variable (repeatable)",
+      collectOption,
+      [],
+    )
+    .option(
       "--new-environment <kind>",
       "Create a fresh environment of the given kind (personal or worktree)",
     )
@@ -410,6 +461,7 @@ export function registerSpawnCommand(
         const sendAt =
           opts.sendAt === undefined ? undefined : parseSendAt(opts.sendAt);
         const providerId = opts.provider?.trim();
+        const envVars = parseThreadEnvVars(opts.env);
 
         let thread: Thread;
         try {
@@ -418,6 +470,7 @@ export function registerSpawnCommand(
             origin: "cli",
             projectId,
             ...(providerId ? { providerId } : {}),
+            ...(envVars ? { envVars } : {}),
             ...(opts.model ? { model: opts.model } : {}),
             input: buildPromptInputs({
               message: opts.prompt,

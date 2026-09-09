@@ -168,12 +168,14 @@ literal `value` is forwarded as-is. `{ serverPath: "/..." }` is expanded by
 the selected host against its authenticated `BB_SERVER_URL`, which is the
 right form for a server route that must work from enrolled machines.
 
-Contributions override the host shell environment. If multiple plugins return
-the same name, the earlier registration wins and BB logs the conflict. A
-resolver that throws, times out after five seconds, or returns invalid entries
-contributes nothing for that command without blocking other plugins. Mark
-credentials and sensitive URLs with `secret: true`; BB passes the real value
-to the provider but masks it in `provider.env-resolved` timeline events.
+Contributions override the host shell environment. An explicit per-thread
+`envVars` value on `bb.sdk.threads.spawn` overrides a contribution with the
+same name. If multiple plugins return the same name, the earlier registration
+wins and BB logs the conflict. A resolver that throws, times out after five
+seconds, or returns invalid entries contributes nothing for that command
+without blocking other plugins. Mark credentials and sensitive URLs with
+`secret: true`; BB passes the real value to the provider but masks it in
+`provider.env-resolved` timeline events.
 
 When the contributed environment supplies credentials that replace a local
 login, pair the resolver with

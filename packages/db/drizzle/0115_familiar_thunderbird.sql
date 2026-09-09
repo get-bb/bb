@@ -1,0 +1,1 @@
+ALTER TABLE `threads` ADD `env_vars_json` text DEFAULT '{}' NOT NULL;

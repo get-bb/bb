@@ -505,6 +505,7 @@ export const threads = sqliteTable(
       onDelete: "set null",
     }),
     providerId: text("provider_id").notNull(),
+    envVarsJson: text("env_vars_json").notNull().default("{}"),
     modelOverride: text("model_override"),
     reasoningLevelOverride: text(
       "reasoning_level_override",

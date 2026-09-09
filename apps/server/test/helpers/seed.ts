@@ -33,6 +33,7 @@ import type {
   ThreadEventScope,
   ThreadEventItemType,
   ThreadEventType,
+  ThreadEnvVars,
   ThreadOriginKind,
   ThreadStatus,
   ThreadVisibility,
@@ -193,6 +194,7 @@ export function seedThread(
   args: {
     projectId: string;
     environmentId?: string | null;
+    envVars?: ThreadEnvVars;
     providerId?: string;
     status?: ThreadStatus;
     title?: string | null;
@@ -207,6 +209,7 @@ export function seedThread(
   return createThread(deps.db, deps.hub, {
     projectId: args.projectId,
     environmentId: args.environmentId ?? null,
+    ...(args.envVars !== undefined ? { envVars: args.envVars } : {}),
     providerId: args.providerId ?? "codex",
     status: args.status ?? "idle",
     title: args.title ?? "Test Thread",

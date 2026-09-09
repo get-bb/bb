@@ -192,6 +192,10 @@ describe("thread runtime config", () => {
         const thread = seedThread(harness.deps, {
           projectId: project.id,
           environmentId: environment.id,
+          envVars: {
+            MULTICA_TASK_ID: "task-123",
+            MULTICA_TOKEN: "token",
+          },
           providerId: "acp-custom",
         });
         seedThreadRuntimeState(harness.deps, {
@@ -234,6 +238,10 @@ describe("thread runtime config", () => {
         expect(startCommand.bridgeLaunch.providerOptions).toMatchObject({
           acpLaunchSpec: expectedSpec,
         });
+        expect(startCommand.envVars).toEqual({
+          MULTICA_TASK_ID: "task-123",
+          MULTICA_TOKEN: "token",
+        });
         expect(startCommand.dynamicTools).toEqual([
           expect.objectContaining({
             name: "update_environment_directory",
@@ -260,6 +268,10 @@ describe("thread runtime config", () => {
         expect(
           submitCommand.resumeContext.bridgeLaunch.providerOptions,
         ).toMatchObject({ acpLaunchSpec: expectedSpec });
+        expect(submitCommand.resumeContext.envVars).toEqual({
+          MULTICA_TASK_ID: "task-123",
+          MULTICA_TOKEN: "token",
+        });
         expect(submitCommand.resumeContext.dynamicTools).toEqual([
           expect.objectContaining({
             name: "update_environment_directory",

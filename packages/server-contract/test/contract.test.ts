@@ -87,6 +87,11 @@ const OPTIONAL_SERVER_FIELD_GROUPS: readonly OptionalServerFieldGroup[] = [
   },
   {
     reason:
+      "Thread creation may omit environment variables when it needs no process overrides; the server fills an empty map at the creation boundary.",
+    fields: ["createThreadRequestSchema.envVars"],
+  },
+  {
+    reason:
       "Fork creation requires only a source thread; all other fields either select an optional behavior or receive an explicit server-boundary default.",
     fields: [
       "forkThreadRequestSchema.agentContextSeed",
@@ -1340,6 +1345,34 @@ describe("server-contract canonical schemas", () => {
     });
     expect(parsed.startedOnBehalfOf).toBeNull();
     expect(parsed.originKind).toBeNull();
+  });
+
+  it("accepts bounded per-thread environment variables without defaulting omission", () => {
+    const base = {
+      projectId: "proj_123",
+      providerId: "codex",
+      origin: "sdk" as const,
+      input: [{ type: "text" as const, text: "Scripted start" }],
+      environment: {
+        type: "host" as const,
+        hostId: "host_abc",
+        workspace: { type: "unmanaged" as const, path: null },
+      },
+    };
+
+    expect(createThreadRequestSchema.parse(base).envVars).toBeUndefined();
+    expect(
+      createThreadRequestSchema.parse({
+        ...base,
+        envVars: { MULTICA_TASK_ID: "task-123", EMPTY: "" },
+      }).envVars,
+    ).toEqual({ MULTICA_TASK_ID: "task-123", EMPTY: "" });
+    expect(() =>
+      createThreadRequestSchema.parse({
+        ...base,
+        envVars: { BB_THREAD_ID: "override" },
+      }),
+    ).toThrow("reserved BB_ prefix");
   });
 
   it("accepts sdk as a thread creation origin", () => {

@@ -51,6 +51,36 @@ describe("provider event schema", () => {
     });
   });
 
+  it("requires thread environment values to stay masked in events", () => {
+    const event = {
+      type: "provider.env-resolved",
+      threadId: "thr_123",
+      providerThreadId: "provider-thread-123",
+      scope: { kind: "thread" },
+      entries: [
+        {
+          name: "MULTICA_TOKEN",
+          source: "thread",
+          value: { masked: true },
+        },
+      ],
+    };
+
+    expect(threadEventSchema.parse(event)).toMatchObject(event);
+    expect(() =>
+      threadEventSchema.parse({
+        ...event,
+        entries: [
+          {
+            name: "MULTICA_TOKEN",
+            source: "thread",
+            value: "thread-secret",
+          },
+        ],
+      }),
+    ).toThrow();
+  });
+
   it("uses clientRequestId for accepted input and user-message items", () => {
     expect(
       threadEventSchema.parse({

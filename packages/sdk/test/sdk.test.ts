@@ -1077,6 +1077,10 @@ describe("@bb/sdk", () => {
         hostId: "host_123",
         workspace: { type: "unmanaged", path: null },
       },
+      envVars: {
+        MULTICA_TASK_ID: "task-123",
+        MULTICA_TOKEN: "prefix=value",
+      },
       prompt: "Ship it",
     });
 
@@ -1087,6 +1091,10 @@ describe("@bb/sdk", () => {
           type: "host",
           hostId: "host_123",
           workspace: { type: "unmanaged", path: null },
+        },
+        envVars: {
+          MULTICA_TASK_ID: "task-123",
+          MULTICA_TOKEN: "prefix=value",
         },
         input: [{ type: "text", text: "Ship it", mentions: [] }],
         origin: "sdk",

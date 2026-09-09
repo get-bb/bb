@@ -124,6 +124,7 @@ function createTurnSubmitCommand(
       instructions: "Be a helpful coding agent.",
       dynamicTools: [],
       contributedEnv: [],
+      envVars: {},
       injectedSkillSources: [],
       instructionMode: "append",
     },
@@ -157,6 +158,7 @@ function createThreadStartCommand(): ThreadStartCommand {
     instructions: "Be a helpful coding agent.",
     dynamicTools: [],
     contributedEnv: [],
+    envVars: {},
     injectedSkillSources: [],
     instructionMode: "append",
   };

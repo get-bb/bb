@@ -102,17 +102,21 @@ interface FakeRuntimeThreadControls {
   ) => void;
 }
 
+type FakeRuntimeEnvironment = Readonly<Record<string, string>>;
+
 interface FakeRuntimeState {
   archivedBridgeLaunch: AgentRuntimeBridgeLaunch | undefined;
   archivedProviderId: string | undefined;
   archivedProviderThreadId: string | undefined;
   archivedThreadId: string | undefined;
   ranTurnClientRequestId: ClientTurnRequestId | undefined;
+  ranTurnEnvVars: FakeRuntimeEnvironment | undefined;
   ranTurnInput: PromptInput[] | undefined;
   ranTurnText: string | undefined;
   renamedTitle: string | undefined;
   resumedBridgeLaunch: AgentRuntimeBridgeLaunch | undefined;
   resumedEnvironmentId: string | undefined;
+  resumedEnvVars: FakeRuntimeEnvironment | undefined;
   resumedProviderThreadId: string | undefined;
   resumedThreadId: string | undefined;
   runningProviders: string[];
@@ -120,6 +124,7 @@ interface FakeRuntimeState {
   startedDynamicTools: DynamicTool[] | undefined;
   startedBridgeLaunch: AgentRuntimeBridgeLaunch | undefined;
   startedEnvironmentId: string | undefined;
+  startedEnvVars: FakeRuntimeEnvironment | undefined;
   startedInput: PromptInput[] | undefined;
   startedInputGroups: PromptInput[][] | undefined;
   startedInstructions: string | undefined;
@@ -262,11 +267,13 @@ export function createFakeRuntime() {
     archivedProviderThreadId: undefined,
     archivedThreadId: undefined,
     ranTurnClientRequestId: undefined,
+    ranTurnEnvVars: undefined,
     ranTurnInput: undefined,
     ranTurnText: undefined,
     renamedTitle: undefined,
     resumedBridgeLaunch: undefined,
     resumedEnvironmentId: undefined,
+    resumedEnvVars: undefined,
     resumedProviderThreadId: undefined,
     resumedThreadId: undefined,
     runningProviders: [],
@@ -274,6 +281,7 @@ export function createFakeRuntime() {
     startedDynamicTools: undefined,
     startedBridgeLaunch: undefined,
     startedEnvironmentId: undefined,
+    startedEnvVars: undefined,
     startedInput: undefined,
     startedInputGroups: undefined,
     startedInstructions: undefined,
@@ -318,6 +326,7 @@ export function createFakeRuntime() {
     async startThread(args) {
       state.startedBridgeLaunch = args.bridgeLaunch;
       state.startedEnvironmentId = args.environmentId;
+      state.startedEnvVars = args.envVars;
       state.startedThreadId = args.threadId;
       state.startedDynamicTools = args.dynamicTools;
       state.startedInput = args.input;
@@ -341,6 +350,7 @@ export function createFakeRuntime() {
     async resumeThread(args) {
       state.resumedBridgeLaunch = args.bridgeLaunch;
       state.resumedEnvironmentId = args.environmentId;
+      state.resumedEnvVars = args.envVars;
       state.resumedThreadId = args.threadId;
       state.resumedProviderThreadId = args.providerThreadId;
       const providerThreadId =
@@ -356,6 +366,7 @@ export function createFakeRuntime() {
       state.ranTurnText =
         firstInput?.type === "text" ? firstInput.text : undefined;
       state.ranTurnClientRequestId = args.clientRequestId;
+      state.ranTurnEnvVars = args.envVars;
       state.ranTurnInput = args.input;
       activeTurnsByThreadId.set(args.threadId, `turn-${nextTurnNumber++}`);
     },

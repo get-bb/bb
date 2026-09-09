@@ -22,6 +22,7 @@ Spawning:
     --model <model>                Model override
     --reasoning-level <level>      Reasoning level: low, medium, high, xhigh, max (provider-dependent)
     --environment <id-or-path>     Attach to an existing environment (ID or workspace path)
+    --env <KEY=VALUE>              Set a per-thread environment variable (repeatable)
     --new-environment <kind>       Create a fresh personal workspace or managed worktree
     --base-branch <branch>         Exact Git ref for a new managed worktree
                                    (--new-environment worktree only)
@@ -81,6 +82,13 @@ Spawning:
   --machine <id-or-name>` to see whether it is available, needs setup, or is
   unavailable and why. The first-party providers are Project checkout,
   Worktree, and Personal workspace.
+  --env splits on the first =, so values may contain = and may be empty. Names
+  use letters, numbers, and underscores, cannot begin with a number, and cannot
+  use bb's reserved BB_ prefix. A thread may carry up to 32 values; each value
+  is limited to 16 KiB and the serialized map to 64 KiB. Values override the
+  same names from the host shell or a plugin contribution and remain attached
+  to the thread across later turns and provider-session resumes. Duplicate
+  names and null bytes are rejected.
 
 Forking:
 

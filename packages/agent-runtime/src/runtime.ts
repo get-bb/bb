@@ -58,6 +58,7 @@ import type {
   AgentRuntimeBridgeLaunch,
   AgentRuntimeExecutionOptions,
   AgentRuntimeOptions,
+  AgentRuntimeShellEnvironment,
   ReapedIdleProviderSession,
 } from "./types.js";
 import {
@@ -197,6 +198,7 @@ interface ThreadRuntimeConfig {
   projectId?: string;
   providerId: string;
   sessionRestorable: boolean;
+  threadEnvVars: AgentRuntimeShellEnvironment;
 }
 
 interface RuntimeParsedMessageArgs {
@@ -1040,6 +1042,7 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
       providerThreadId: args.providerThreadId,
       providerId: currentConfig.providerId,
       contributedEnv: currentConfig.contributedEnv,
+      envVars: currentConfig.threadEnvVars,
       options: args.options,
       ...(resumeInstructions !== undefined
         ? { instructions: resumeInstructions }
@@ -1159,6 +1162,7 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
   function resolveRuntimeThreadEnvironment(args: {
     contributedEnv: readonly AgentRuntimeContributedEnvEntry[];
     environmentId: string;
+    envVars: AgentRuntimeShellEnvironment;
     projectId?: string;
     threadId: string;
   }): {
@@ -1170,6 +1174,7 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
       baseShellEnv: options.shellEnv,
       contributedEnv: args.contributedEnv,
       environmentId: args.environmentId,
+      envVars: args.envVars,
       projectId: args.projectId,
       threadStoragePath: resolveThreadStoragePath({
         options,
@@ -1469,6 +1474,7 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
       providerId,
       bridgeLaunch,
       contributedEnv = [],
+      envVars = {},
       clientRequestId,
       input,
       inputGroups,
@@ -1500,6 +1506,7 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
           const resolvedEnvironment = resolveRuntimeThreadEnvironment({
             contributedEnv,
             environmentId,
+            envVars,
             projectId,
             threadId,
           });
@@ -1523,6 +1530,7 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
             projectId,
             providerId,
             sessionRestorable: false,
+            threadEnvVars: envVars,
           });
 
           const providerExecutionContext = toProviderExecutionContext({
@@ -1610,6 +1618,7 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
               clientRequestId,
               options: execOpts,
               contributedEnv,
+              envVars,
               instructions,
             });
           }
@@ -1627,6 +1636,7 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
       projectId,
       providerId,
       contributedEnv = [],
+      envVars = {},
       sourceProviderThreadId,
       retainThroughProviderCheckpoint,
       bridgeLaunch,
@@ -1680,6 +1690,7 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
             const resolvedEnvironment = resolveRuntimeThreadEnvironment({
               contributedEnv,
               environmentId,
+              envVars,
               projectId,
               threadId,
             });
@@ -1798,6 +1809,7 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
       providerId,
       bridgeLaunch,
       contributedEnv = [],
+      envVars = {},
       options: execOpts,
       instructions,
       dynamicTools,
@@ -1825,6 +1837,7 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
           const resolvedEnvironment = resolveRuntimeThreadEnvironment({
             contributedEnv,
             environmentId,
+            envVars,
             projectId,
             threadId,
           });
@@ -1848,6 +1861,7 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
             projectId,
             providerId,
             sessionRestorable: false,
+            threadEnvVars: envVars,
           });
 
           if (providerThreadId) {
@@ -1923,6 +1937,7 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
       clientRequestId,
       options: execOpts,
       contributedEnv,
+      envVars,
       instructions,
     }) {
       return runThreadOperation({
@@ -1948,9 +1963,11 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
           }
           const resolvedContributedEnv =
             contributedEnv ?? currentConfig.contributedEnv;
+          const resolvedThreadEnvVars = envVars ?? currentConfig.threadEnvVars;
           const resolvedEnvironment = resolveRuntimeThreadEnvironment({
             contributedEnv: resolvedContributedEnv,
             environmentId: currentConfig.environmentId,
+            envVars: resolvedThreadEnvVars,
             projectId: currentConfig.projectId,
             threadId,
           });
@@ -2004,6 +2021,7 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
               contributedEnv: resolvedContributedEnv,
               envVars: resolvedEnvironment.envVars,
               options: execOpts,
+              threadEnvVars: resolvedThreadEnvVars,
             });
             if (environmentChanged) {
               emitResolvedProviderEnvironment({
@@ -2030,6 +2048,7 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
       clientRequestId,
       options: execOpts,
       contributedEnv,
+      envVars,
       instructions,
     }) {
       return runThreadOperation({
@@ -2066,9 +2085,11 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
           }
           const resolvedContributedEnv =
             contributedEnv ?? currentConfig.contributedEnv;
+          const resolvedThreadEnvVars = envVars ?? currentConfig.threadEnvVars;
           const resolvedEnvironment = resolveRuntimeThreadEnvironment({
             contributedEnv: resolvedContributedEnv,
             environmentId: currentConfig.environmentId,
+            envVars: resolvedThreadEnvVars,
             projectId: currentConfig.projectId,
             threadId,
           });
@@ -2117,6 +2138,7 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
               contributedEnv: resolvedContributedEnv,
               envVars: resolvedEnvironment.envVars,
               options: execOpts,
+              threadEnvVars: resolvedThreadEnvVars,
             });
             if (environmentChanged) {
               emitResolvedProviderEnvironment({

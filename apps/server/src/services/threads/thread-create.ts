@@ -478,7 +478,10 @@ export async function createThreadFromRequest(
       'originPluginId requires origin "plugin"',
     );
   }
-  const requestInput = { ...rawRequestInput };
+  const requestInput = {
+    ...rawRequestInput,
+    envVars: rawRequestInput.envVars ?? {},
+  };
   const pluginMentionContext = await resolvePluginMentionContextInputs(
     requestInput.input,
   );

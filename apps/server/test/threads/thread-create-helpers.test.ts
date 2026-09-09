@@ -149,6 +149,7 @@ describe("createThreadRecord", () => {
               environmentId: environment.id,
               type: "reuse",
             },
+            envVars: {},
             sectionId: sectionResult.section.id,
             input: [],
             origin: "app",

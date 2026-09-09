@@ -72,6 +72,31 @@ For the packaged app, prefer `bb-app config`, `bb-app env`, and launcher flags
 over shell variables. The environment remains the internal and deployment
 substrate, and source-development commands still load `.env` files.
 
+### Per-thread provider environment
+
+Use repeatable `--env KEY=VALUE` flags when process configuration belongs to
+one newly spawned thread instead of every provider on the machine:
+
+```bash
+bb thread spawn --project <id> --prompt "Work on the task" \
+  --env MULTICA_TASK_ID=task-123 \
+  --env MULTICA_TOKEN=token
+```
+
+SDK callers pass the equivalent `envVars` map to `threads.spawn`. These values
+override matching host-shell and plugin-contributed values, stay attached to
+the thread across later turns and provider-session resumes, and work when the
+thread runs on another enrolled machine. They do not mutate the host daemon's
+environment or become defaults for other threads.
+
+Names use portable shell-variable syntax and cannot begin with bb's reserved
+`BB_` prefix. A thread accepts at most 32 entries, 16 KiB per value, and 64 KiB
+for the serialized map. CLI values may be empty or contain `=`; duplicate names
+and null bytes are rejected. Values are omitted from thread API responses and
+masked in provider-environment timeline events. They are still supplied on the
+command line and stored with the thread in the server data directory, so treat
+shell history and access to that directory as sensitive.
+
 For source development, `pnpm dev` automatically injects
 `BB_DEV_CONNECT_BASE_URL=http://bb.localhost:<worktree-cloud-port>`. The
 Connect plugin accepts this loopback origin only when `NODE_ENV=development`

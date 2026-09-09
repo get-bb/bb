@@ -63,6 +63,7 @@ export {
   countThreads,
   countNonDeletedAssignedChildThreads,
   getThread,
+  getThreadEnvVars,
   getThreadExecutionOverride,
   hasActiveThreadAttention,
   setThreadExecutionOverride,

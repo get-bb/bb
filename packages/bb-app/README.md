@@ -128,6 +128,7 @@ const bb = new BBSdk();
 const thread = await bb.threads.spawn({
   projectId: "proj_personal",
   environment: { type: "host", workspace: { type: "personal" } },
+  envVars: { MULTICA_TASK_ID: "task-123" },
   prompt: "Summarize my active bb work.",
 });
 await bb.threads.wait({ threadId: String(thread.id), status: "idle" });
@@ -136,8 +137,10 @@ console.log(await bb.threads.output({ threadId: String(thread.id) }));
 
 `new BBSdk()` uses the same `BB_SERVER_URL` and bb config resolution as the
 CLI. Pass `new BBSdk({ baseUrl: "http://host:38886" })` for remote or test
-targets (see the remote-access note below). Scripts launched by bb already receive `BB_SERVER_URL` and
-`BB_THREAD_ID` in their environment.
+targets (see the remote-access note below). `envVars` applies process
+configuration to that thread across later turns and provider-session resumes.
+Names beginning with `BB_` are reserved. Scripts launched by bb already
+receive `BB_SERVER_URL` and `BB_THREAD_ID` in their environment.
 
 ## Provider Credentials
 

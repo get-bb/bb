@@ -806,6 +806,13 @@
       "when": 1788898395603,
       "tag": "0114_public_iron_lad",
       "breakpoints": true
+    },
+    {
+      "idx": 115,
+      "version": "6",
+      "when": 1788917778275,
+      "tag": "0115_familiar_thunderbird",
+      "breakpoints": true
     }
   ]
 }

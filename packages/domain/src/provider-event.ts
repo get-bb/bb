@@ -699,20 +699,30 @@ const unscopedProviderEventSchema = z.discriminatedUnion("type", [
     threadId: z.string(),
     providerThreadId: z.string(),
     entries: z.array(
-      z
-        .object({
-          name: z.string(),
-          source: z.union([
-            z.literal("shell"),
-            z.object({ plugin: z.string() }).strict(),
-          ]),
-          value: z.union([
-            z.string(),
-            z.object({ masked: z.literal(true) }).strict(),
-          ]),
-          reason: z.string().optional(),
-        })
-        .strict(),
+      z.union([
+        z
+          .object({
+            name: z.string(),
+            source: z.literal("thread"),
+            value: z.object({ masked: z.literal(true) }).strict(),
+            reason: z.string().optional(),
+          })
+          .strict(),
+        z
+          .object({
+            name: z.string(),
+            source: z.union([
+              z.literal("shell"),
+              z.object({ plugin: z.string() }).strict(),
+            ]),
+            value: z.union([
+              z.string(),
+              z.object({ masked: z.literal(true) }).strict(),
+            ]),
+            reason: z.string().optional(),
+          })
+          .strict(),
+      ]),
     ),
   }),
   z.object({

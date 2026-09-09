@@ -20,6 +20,13 @@
   `--environment-inputs <json>` only when the provider's schema does not accept
   an empty object; otherwise the CLI supplies `{}` when the flag is omitted.
   `--machine` picks the existing machine.
+- Add repeatable `--env KEY=VALUE` flags for process configuration that belongs
+  to the new thread. Values may be empty or contain `=`. Names must be portable
+  shell variable names and cannot use bb's reserved `BB_` prefix. The map is
+  limited to 32 entries, 16 KiB per value, and 64 KiB serialized. It overrides
+  matching host-shell or plugin-contributed values and survives later turns,
+  stops, and provider-session resumes. Duplicate names and null bytes are
+  rejected.
 - Omit `--base-branch` for bb's default. Explicit values are exact; use
   `origin/<branch>` for a remote ref. It applies to `--new-environment
 worktree` only; a provider takes its branch through `--environment-inputs`.

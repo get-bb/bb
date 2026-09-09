@@ -1,4 +1,4 @@
-import { getEnvironment, getHost, getProject } from "@bb/db";
+import { getEnvironment, getHost, getProject, getThreadEnvVars } from "@bb/db";
 import type {
   DynamicTool,
   InstructionMode,
@@ -8,6 +8,7 @@ import type {
   Thread,
   ThreadExecutionOptions,
   ThreadExecutionSource,
+  ThreadEnvVars,
   ThreadTurnInitiator,
   EnvironmentStatus,
 } from "@bb/domain";
@@ -78,6 +79,7 @@ interface ResolvePermissionEscalationArgs {
 export interface ResolvedThreadRuntimeCommandConfig {
   contributedEnv: HostDaemonContributedEnvEntry[];
   dynamicTools: DynamicTool[];
+  envVars: ThreadEnvVars;
   injectedSkillSources: HostDaemonInjectedSkillSource[];
   instructionMode: InstructionMode;
   instructions: string;
@@ -161,6 +163,10 @@ export async function resolveThreadRuntimeCommandConfig(
   const host = getHost(deps.db, args.environment.hostId);
   if (!host) {
     throw new ApiError(404, "host_not_found", "Host not found");
+  }
+  const envVars = getThreadEnvVars(deps.db, args.thread.id);
+  if (envVars === null) {
+    throw new ApiError(404, "thread_not_found", "Thread not found");
   }
 
   const [projectSkillSources, sharedSkills, workspaceAgentInstructions] =
@@ -311,6 +317,7 @@ export async function resolveThreadRuntimeCommandConfig(
   return {
     contributedEnv,
     dynamicTools,
+    envVars,
     injectedSkillSources,
     instructionMode: "append",
     instructions,

@@ -28,12 +28,19 @@ export function buildThreadShellEnvironment(
   };
 }
 
-export interface ResolvedThreadEnvironmentEntry {
-  name: string;
-  source: "shell" | { plugin: string };
-  value: string | { masked: true };
-  reason?: string;
-}
+export type ResolvedThreadEnvironmentEntry =
+  | {
+      name: string;
+      source: "thread";
+      value: { masked: true };
+      reason?: string;
+    }
+  | {
+      name: string;
+      source: "shell" | { plugin: string };
+      value: string | { masked: true };
+      reason?: string;
+    };
 
 export interface DroppedThreadEnvironmentContribution {
   name: string;
@@ -43,6 +50,7 @@ export interface DroppedThreadEnvironmentContribution {
 interface ResolveThreadEnvironmentArgs extends ThreadShellEnvironmentArgs {
   baseShellEnv: AgentRuntimeShellEnvironment | undefined;
   contributedEnv: readonly AgentRuntimeContributedEnvEntry[];
+  envVars: AgentRuntimeShellEnvironment;
 }
 
 export function resolveThreadEnvironment(args: ResolveThreadEnvironmentArgs): {
@@ -88,5 +96,21 @@ export function resolveThreadEnvironment(args: ResolveThreadEnvironmentArgs): {
       reason: contribution.reason,
     });
   }
-  return { droppedContributions, envVars, entries };
+  const threadEnvEntries = Object.entries(args.envVars).filter(
+    ([name]) => !name.startsWith("BB_"),
+  );
+  const resolvedEnvVars = {
+    ...envVars,
+    ...Object.fromEntries(threadEnvEntries),
+  };
+  for (const [name] of threadEnvEntries) {
+    const existingIndex = entries.findIndex((entry) => entry.name === name);
+    if (existingIndex !== -1) entries.splice(existingIndex, 1);
+    entries.push({
+      name,
+      source: "thread",
+      value: { masked: true },
+    });
+  }
+  return { droppedContributions, envVars: resolvedEnvVars, entries };
 }

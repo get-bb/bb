@@ -61,6 +61,8 @@ BB_HOST_DAEMON_PORT only for an intentional non-default target.
   installed providers by display name. Read or set `managedBranchPrefix`
   through `bb settings show` and `bb settings general <key> <value>`.
 - Query provider models on the machine that will run the thread.
+- Pass repeatable `--env KEY=VALUE` only when a spawned thread needs explicit,
+  durable process configuration; `BB_*` names are reserved by bb.
 - Prefer non-interactive commands and machine-readable output for automation.
 - Pass `--yes` for a confirmed destructive command in a non-interactive shell.
 - Treat plugin commands as normal top-level commands after installation.

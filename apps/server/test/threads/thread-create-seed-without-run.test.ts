@@ -281,6 +281,7 @@ describe("thread creation with startedOnBehalfOf (seed-without-run)", () => {
           hostId: host.id,
           workspace: { type: "unmanaged", path: "/tmp/normal-start-project" },
         },
+        envVars: { MULTICA_TASK_ID: "task-123" },
         input: textInput("Just start normally"),
         origin: "app",
         projectId: project.id,
@@ -297,7 +298,12 @@ describe("thread creation with startedOnBehalfOf (seed-without-run)", () => {
         ({ command }) =>
           command.type === "thread.start" && command.threadId === thread.id,
       );
-      expect(queuedStart.command.type).toBe("thread.start");
+      if (queuedStart.command.type !== "thread.start") {
+        throw new Error("Expected a thread.start command");
+      }
+      expect(queuedStart.command.envVars).toEqual({
+        MULTICA_TASK_ID: "task-123",
+      });
     });
   });
 });

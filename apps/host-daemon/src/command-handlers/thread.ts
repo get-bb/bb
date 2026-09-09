@@ -197,6 +197,7 @@ async function resumeThreadRuntimeIfMissing(
     providerThreadId: resumeContext.providerThreadId,
     providerId: resumeContext.providerId,
     contributedEnv: resumeContext.contributedEnv,
+    envVars: resumeContext.envVars,
     options: command.options,
     instructions: resumeContext.instructions,
     dynamicTools: resumeContext.dynamicTools,
@@ -243,6 +244,7 @@ export async function startThread(
       projectId: command.projectId,
       providerId: command.providerId,
       contributedEnv: command.contributedEnv,
+      envVars: command.envVars,
       clientRequestId: command.requestId,
       input: staged.input,
       ...(staged.inputGroups !== undefined
@@ -287,6 +289,7 @@ export async function prepareThreadRewind(
     projectId: command.projectId,
     providerId: command.providerId,
     contributedEnv: command.contributedEnv,
+    envVars: command.envVars,
     sourceProviderThreadId: command.sourceProviderThreadId,
     retainThroughProviderCheckpoint: command.retainThroughProviderCheckpoint,
     options: command.options,
@@ -353,6 +356,7 @@ async function runSubmittedTurn(
     clientRequestId: command.requestId,
     options: command.options,
     contributedEnv: command.resumeContext.contributedEnv,
+    envVars: command.resumeContext.envVars,
     instructions: command.resumeContext.instructions,
   });
   return { appliedAs: "new-turn" };
@@ -376,6 +380,7 @@ async function steerSubmittedTurn(
       clientRequestId: command.requestId,
       options: command.options,
       contributedEnv: command.resumeContext.contributedEnv,
+      envVars: command.resumeContext.envVars,
       instructions: command.resumeContext.instructions,
     });
 

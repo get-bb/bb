@@ -56,6 +56,7 @@ describe("prepareThreadRewind", () => {
       leaseId: "lease-1",
       projectId: "project-1",
       providerId: "codex",
+      envVars: { MULTICA_TASK_ID: "task-123" },
       sourceProviderThreadId: "provider-source-1",
       retainThroughProviderCheckpoint: "turn-before-edit",
       options: fullRuntimeOptions,
@@ -76,11 +77,21 @@ describe("prepareThreadRewind", () => {
           sourceProviderCheckpointId: "turn-before-edit",
           sourceProviderThreadId: "provider-source-1",
           threadId: "thread-1:rewind:lease-1",
+          options: expect.objectContaining({
+            envVars: expect.objectContaining({
+              MULTICA_TASK_ID: "task-123",
+            }),
+          }),
         }),
         expect.objectContaining({
           sourceProviderCheckpointId: "turn-before-edit",
           sourceProviderThreadId: "provider-source-1",
           threadId: "thread-1:rewind:lease-2",
+          options: expect.objectContaining({
+            envVars: expect.objectContaining({
+              MULTICA_TASK_ID: "task-123",
+            }),
+          }),
         }),
       ]);
       expect(events).toEqual([]);
