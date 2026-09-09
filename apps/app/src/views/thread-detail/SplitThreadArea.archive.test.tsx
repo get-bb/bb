@@ -20,6 +20,7 @@ import {
 import { PERSONAL_PROJECT_ID } from "@bb/domain";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { threadQueryKey } from "@/hooks/queries/query-keys";
+import { useThread } from "@/hooks/queries/thread-queries";
 import { useUnarchiveThread } from "@/hooks/mutations/thread-state-mutations";
 import { splitLayoutAtom } from "@/lib/split-layout/atoms";
 import type { SplitLayout } from "@/lib/split-layout";
@@ -75,10 +76,12 @@ vi.mock("@/components/commands/AppCommandProvider", () => ({
 vi.mock("./ThreadDetailView", () => ({
   ThreadDetailView: ({ threadId }: { threadId: string }) => {
     const pane = useContext(PaneContext);
+    const { data: thread } = useThread(threadId);
     return (
       <div
         data-testid={`pane-${threadId}`}
         data-focused={pane?.isFocused ? "true" : "false"}
+        data-archived={thread?.archivedAt !== null ? "true" : "false"}
       />
     );
   },
@@ -225,6 +228,9 @@ describe("SplitThreadArea archive pruning", () => {
         deletedAt: null,
       });
     });
+    await waitFor(() =>
+      expect(screen.getByTestId("pane-thr-b").dataset.archived).toBe("false"),
+    );
     fireEvent.click(screen.getByTestId("archive"));
     await waitFor(() =>
       expect(archivedAtOf(queryClient, "thr-b")).toBe(ARCHIVED_AT),

@@ -35,6 +35,7 @@ export {
   type FakeSdkOverrides,
 } from "./fake-sdk.js";
 export {
+  makeHostResponse,
   makeMessageDispatchHookContext,
   makePluginAgentConfigurationContext,
   makeQueueEntry,

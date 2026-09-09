@@ -2,7 +2,10 @@ import type {
   PluginEnvironmentProviderCreateContext,
   PluginEnvironmentProviderValidateContext,
 } from "@get-bb/plugin-sdk/environment-provider";
-import { createFakePluginHost } from "@get-bb/plugin-sdk/testing";
+import {
+  createFakePluginHost,
+  makeHostResponse,
+} from "@get-bb/plugin-sdk/testing";
 import { describe, expect, it } from "vitest";
 import { PROJECT_CHECKOUT_ENVIRONMENT_PROVIDER_ID } from "./provider-id.js";
 import plugin from "./server.js";
@@ -12,17 +15,7 @@ type Environment = NonNullable<
 >["environment"];
 type ThreadRow = { id: string; environmentId: string | null; status: string };
 
-const HOST: NonNullable<PluginEnvironmentProviderCreateContext["host"]> = {
-  id: "host-a",
-  name: "Fake machine",
-  status: "connected",
-  type: "persistent",
-  maxPermissionMode: "full",
-  lastSeenAt: null,
-  lastRejectedProtocolVersion: null,
-  createdAt: 0,
-  updatedAt: 0,
-};
+const HOST = makeHostResponse({ id: "host-a", name: "Fake machine" });
 const PROJECT: PluginEnvironmentProviderCreateContext["project"] = {
   id: "project-1",
   kind: "standard",

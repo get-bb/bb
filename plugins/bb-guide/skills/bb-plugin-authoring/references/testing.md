@@ -72,12 +72,12 @@ await harness.lifecycle.dispose(); // abort services, hooks LIFO, close database
 ```
 
 The exported `makePluginAgentConfigurationContext`,
-`makeMessageDispatchHookContext`, `makeThreadResponse`, `makeQueueEntry`, and
-`makeTurnFailedEvent` fixtures return complete deterministic SDK objects with
-partial overrides, including nested context members. Use them in behavioral
-tests so a new required contract field changes one shared default. Keep schema,
-serialization, and command-output fixtures explicit when their exact complete
-shape is the assertion.
+`makeMessageDispatchHookContext`, `makeHostResponse`, `makeThreadResponse`,
+`makeQueueEntry`, and `makeTurnFailedEvent` fixtures return complete
+deterministic SDK objects with partial overrides, including nested context
+members. Use them in behavioral tests so a new required contract field changes
+one shared default. Keep schema, serialization, and command-output fixtures
+explicit when their exact complete shape is the assertion.
 
 New tests should use the named views: `harness.behavior` drives host inputs,
 `harness.inspection` exposes observable state, and `harness.lifecycle` owns
