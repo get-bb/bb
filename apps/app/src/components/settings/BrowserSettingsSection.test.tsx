@@ -58,6 +58,10 @@ function makeDesktopBrowser(
   };
 }
 
+function openDialog() {
+  fireEvent.click(screen.getByRole("button", { name: "Import cookies…" }));
+}
+
 afterEach(() => {
   cleanup();
 });
@@ -68,32 +72,36 @@ describe("BrowserSettingsSectionContent", () => {
     expect(
       screen.getByText("Only available in the BB desktop app."),
     ).toBeDefined();
+    expect(
+      screen.queryByRole("button", { name: "Import cookies…" }),
+    ).toBeNull();
   });
 
-  it("lists importable browsers with readiness and hides unsupported ones", async () => {
-    render(
-      <BrowserSettingsSectionContent desktopBrowser={makeDesktopBrowser()} />,
-    );
+  it("detects browsers when the import button is pressed and hides absent ones", async () => {
+    const desktopBrowser = makeDesktopBrowser();
+    render(<BrowserSettingsSectionContent desktopBrowser={desktopBrowser} />);
+    expect(desktopBrowser.listImportSources).not.toHaveBeenCalled();
+    openDialog();
     await waitFor(() =>
       expect(screen.getByText("Google Chrome")).toBeDefined(),
     );
     expect(screen.getByText("Ready")).toBeDefined();
     expect(screen.getByText("Quit first")).toBeDefined();
-    expect(screen.getByText("Not installed")).toBeDefined();
+    expect(screen.queryByText("Arc")).toBeNull();
     expect(screen.queryByText("Safari")).toBeNull();
-    const arcRow = screen.getByTestId("browser-import-arc");
-    expect(arcRow.querySelector("button")?.hasAttribute("disabled")).toBe(true);
+    expect(
+      screen.getByText("2 profiles · Person 1 (3 cookies), Work (1 cookie)"),
+    ).toBeDefined();
   });
 
-  it("runs an import for the chosen profile and reports the outcome", async () => {
+  it("walks browser choice, profile choice, and import, then reports the outcome", async () => {
     const desktopBrowser = makeDesktopBrowser();
     render(<BrowserSettingsSectionContent desktopBrowser={desktopBrowser} />);
+    openDialog();
     await waitFor(() =>
-      expect(screen.getByText("Google Chrome")).toBeDefined(),
+      expect(screen.getByTestId("browser-import-source-chrome")).toBeDefined(),
     );
-    fireEvent.click(
-      screen.getByTestId("browser-import-chrome").querySelector("button")!,
-    );
+    fireEvent.click(screen.getByTestId("browser-import-source-chrome"));
     expect(screen.getByText("Import from Google Chrome")).toBeDefined();
     fireEvent.click(screen.getByRole("radio", { name: /Work/ }));
     fireEvent.click(screen.getByRole("button", { name: "Import 1 cookie" }));
@@ -106,9 +114,13 @@ describe("BrowserSettingsSectionContent", () => {
       profile: { kind: "personal" },
     });
     expect(screen.getByText("accounts.example.com")).toBeDefined();
+    fireEvent.click(screen.getByRole("button", { name: "Done" }));
+    await waitFor(() =>
+      expect(screen.getByText(/Last import: Google Chrome/)).toBeDefined(),
+    );
   });
 
-  it("opens on the quit step for a running browser and rechecks", async () => {
+  it("opens a running browser on the quit step, rechecks, and can go back", async () => {
     const listImportSources = vi
       .fn()
       .mockResolvedValueOnce({ sources })
@@ -122,20 +134,28 @@ describe("BrowserSettingsSectionContent", () => {
               }
             : source,
         ),
-      });
+      })
+      .mockResolvedValue({ sources });
     render(
       <BrowserSettingsSectionContent
         desktopBrowser={makeDesktopBrowser({ listImportSources })}
       />,
     );
-    await waitFor(() => expect(screen.getByText("Brave")).toBeDefined());
-    fireEvent.click(
-      screen.getByTestId("browser-import-brave").querySelector("button")!,
+    openDialog();
+    await waitFor(() =>
+      expect(screen.getByTestId("browser-import-source-brave")).toBeDefined(),
     );
+    fireEvent.click(screen.getByTestId("browser-import-source-brave"));
     expect(screen.getByText("Quit Brave to import")).toBeDefined();
     fireEvent.click(screen.getByRole("button", { name: "I've quit it" }));
     await waitFor(() =>
       expect(screen.getByText("Import from Brave")).toBeDefined(),
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Back" }));
+    await waitFor(() =>
+      expect(
+        screen.getByText("Import cookies from another browser"),
+      ).toBeDefined(),
     );
   });
 });

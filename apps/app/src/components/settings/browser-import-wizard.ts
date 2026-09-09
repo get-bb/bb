@@ -5,6 +5,8 @@ import type {
 } from "@bb/host-daemon-contract";
 
 export type BrowserImportWizardStep =
+  | { step: "detecting" }
+  | { step: "chooseSource" }
   | { step: "quit" }
   | { step: "fullDiskAccess"; checked: boolean }
   | { step: "configure" }
@@ -65,6 +67,17 @@ export function canCloseBrowserImportWizard(
   return step.step !== "importing";
 }
 
+export function canReturnToSourceChoice(
+  step: BrowserImportWizardStep,
+): boolean {
+  return (
+    step.step === "configure" ||
+    step.step === "quit" ||
+    step.step === "fullDiskAccess" ||
+    step.step === "blocked"
+  );
+}
+
 export function preferredSourceProfileDirectory(
   current: string | null,
   source: DesktopBrowserImportSource,
@@ -112,6 +125,42 @@ export function describeSourceProfiles(
   } · ${names}`;
 }
 
-export function isSourceListed(source: DesktopBrowserImportSource): boolean {
-  return source.unavailable !== "unsupportedPlatform";
+export function isSourceSelectable(
+  source: DesktopBrowserImportSource,
+): boolean {
+  return (
+    source.unavailable === undefined ||
+    source.unavailable === "browserRunning" ||
+    source.unavailable === "needsFullDiskAccess"
+  );
+}
+
+export function detectedSources(
+  sources: readonly DesktopBrowserImportSource[],
+): DesktopBrowserImportSource[] {
+  return sources.filter(
+    (source) =>
+      source.unavailable !== "unsupportedPlatform" &&
+      source.unavailable !== "notInstalled",
+  );
+}
+
+export type SourceStatusTone = "ready" | "attention" | "muted";
+
+export function sourceStatus(source: DesktopBrowserImportSource): {
+  label: string;
+  tone: SourceStatusTone;
+} {
+  switch (source.unavailable) {
+    case undefined:
+      return { label: "Ready", tone: "ready" };
+    case "browserRunning":
+      return { label: "Quit first", tone: "attention" };
+    case "needsFullDiskAccess":
+      return { label: "Needs permission", tone: "attention" };
+    case "notInstalled":
+      return { label: "Not installed", tone: "muted" };
+    default:
+      return { label: "Unavailable", tone: "muted" };
+  }
 }

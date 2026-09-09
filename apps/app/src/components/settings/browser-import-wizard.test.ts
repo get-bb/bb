@@ -2,10 +2,12 @@ import { describe, expect, it } from "vitest";
 import type { DesktopBrowserImportSource } from "@bb/host-daemon-contract";
 import {
   canCloseBrowserImportWizard,
+  canReturnToSourceChoice,
   describeSourceProfiles,
+  detectedSources,
   formatSkippedDomains,
   initialBrowserImportStep,
-  isSourceListed,
+  isSourceSelectable,
   outcomeToBrowserImportStep,
   preferredSourceProfileDirectory,
   refreshedBrowserImportStep,
@@ -110,8 +112,23 @@ describe("browser import wizard steps", () => {
     expect(
       describeSourceProfiles({ ...ready, unavailable: "notInstalled" }),
     ).toBe("Not found on this machine");
+    expect(isSourceSelectable(ready)).toBe(true);
     expect(
-      isSourceListed({ ...ready, unavailable: "unsupportedPlatform" }),
-    ).toBe(false);
+      isSourceSelectable({ ...ready, unavailable: "needsFullDiskAccess" }),
+    ).toBe(true);
+    expect(isSourceSelectable({ ...ready, unavailable: "notInstalled" })).toBe(
+      false,
+    );
+    expect(
+      detectedSources([
+        ready,
+        { ...ready, id: "arc", unavailable: "notInstalled" },
+        { ...ready, id: "safari", unavailable: "unsupportedPlatform" },
+        { ...ready, id: "brave", unavailable: "browserRunning" },
+      ]).map((source) => source.id),
+    ).toEqual(["chrome", "brave"]);
+    expect(canReturnToSourceChoice({ step: "configure" })).toBe(true);
+    expect(canReturnToSourceChoice({ step: "importing" })).toBe(false);
+    expect(canReturnToSourceChoice({ step: "chooseSource" })).toBe(false);
   });
 });

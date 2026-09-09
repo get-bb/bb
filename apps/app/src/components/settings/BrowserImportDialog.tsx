@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { BbDesktopBrowserApi } from "@bb/desktop-contract";
 import {
   DESKTOP_BROWSER_IMPORT_FAILURE_COPY,
@@ -18,64 +18,120 @@ import {
 import { cn } from "@bb/shared-ui/lib/utils";
 import {
   canCloseBrowserImportWizard,
+  canReturnToSourceChoice,
+  describeSourceProfiles,
+  detectedSources,
   formatCookieCount,
   formatSkippedDomains,
   initialBrowserImportStep,
+  isSourceSelectable,
   outcomeToBrowserImportStep,
   preferredSourceProfileDirectory,
   refreshedBrowserImportStep,
+  sourceStatus,
   type BrowserImportWizardStep,
+  type SourceStatusTone,
 } from "./browser-import-wizard";
 
 export interface BrowserImportDialogProps {
-  source: DesktopBrowserImportSource;
   desktopBrowser: BbDesktopBrowserApi;
   onClose: () => void;
-  onImported: () => void;
+  onImported: (source: DesktopBrowserImportSource) => void;
 }
 
 const TILE_CLASS =
-  "flex w-full items-center gap-2.5 rounded-md border px-3 py-2 text-left text-sm transition-colors hover:bg-state-hover";
+  "flex w-full items-center gap-2.5 rounded-md border px-3 py-2 text-left text-sm transition-colors hover:bg-state-hover disabled:cursor-default disabled:opacity-60 disabled:hover:bg-transparent";
 const TILE_SELECTED_CLASS =
   "border-surface-selected-border bg-surface-selected";
 const TILE_IDLE_CLASS = "border-border";
+const STATUS_CHIP_CLASS =
+  "shrink-0 rounded-full border px-2 py-0.5 text-2xs leading-none";
+const STATUS_TONE_CLASS: Record<SourceStatusTone, string> = {
+  ready: "border-success/40 bg-success/10 text-success-foreground",
+  attention: "border-warning/50 bg-warning/10 text-warning-text",
+  muted: "border-border bg-muted/40 text-subtle-foreground",
+};
 
 export function BrowserImportDialog({
-  source: initialSource,
   desktopBrowser,
   onClose,
   onImported,
 }: BrowserImportDialogProps) {
-  const [source, setSource] = useState(initialSource);
-  const [step, setStep] = useState<BrowserImportWizardStep>(() =>
-    initialBrowserImportStep(initialSource),
-  );
+  const [sources, setSources] = useState<DesktopBrowserImportSource[]>([]);
+  const [source, setSource] = useState<DesktopBrowserImportSource | null>(null);
+  const [step, setStep] = useState<BrowserImportWizardStep>({
+    step: "detecting",
+  });
   const [sourceProfileDirectory, setSourceProfileDirectory] = useState<
     string | null
-  >(() => preferredSourceProfileDirectory(null, initialSource));
+  >(null);
   const mounted = useRef(true);
+
+  const detect = useCallback(
+    (
+      next: (
+        refreshed: DesktopBrowserImportSource[],
+      ) => BrowserImportWizardStep,
+    ) => {
+      if (!desktopBrowser.listImportSources) {
+        setStep({ step: "blocked", reason: "unknownSource" });
+        return;
+      }
+      desktopBrowser
+        .listImportSources()
+        .then((result) => {
+          if (!mounted.current) return;
+          setSources(result.sources);
+          setStep(next(result.sources));
+        })
+        .catch(() => {
+          if (mounted.current)
+            setStep({ step: "blocked", reason: "readFailed" });
+        });
+    },
+    [desktopBrowser],
+  );
+
   useEffect(() => {
     mounted.current = true;
+    detect(() => ({ step: "chooseSource" }));
     return () => {
       mounted.current = false;
     };
-  }, []);
+  }, [detect]);
+
+  const chooseSource = (candidate: DesktopBrowserImportSource) => {
+    setSource(candidate);
+    setSourceProfileDirectory(preferredSourceProfileDirectory(null, candidate));
+    setStep(initialBrowserImportStep(candidate));
+  };
+
+  const backToSources = () => {
+    setSource(null);
+    setStep({ step: "detecting" });
+    detect(() => ({ step: "chooseSource" }));
+  };
 
   const runImport = () => {
-    if (sourceProfileDirectory === null || !desktopBrowser.importCookies) {
+    if (
+      source === null ||
+      sourceProfileDirectory === null ||
+      !desktopBrowser.importCookies
+    ) {
       setStep({ step: "blocked", reason: "unknownSourceProfile" });
       return;
     }
+    const target = source;
     setStep({ step: "importing" });
     desktopBrowser
       .importCookies({
-        sourceId: source.id,
+        sourceId: target.id,
         sourceProfileDirectory,
         profile: { kind: "personal" },
       })
       .then((outcome: DesktopBrowserImportOutcome) => {
         if (!mounted.current) return;
-        if (outcome.ok) onImported();
+        if (outcome.ok) onImported(target);
         setStep(outcomeToBrowserImportStep(outcome));
       })
       .catch(() => {
@@ -84,33 +140,35 @@ export function BrowserImportDialog({
   };
 
   const recheck = () => {
-    if (!desktopBrowser.listImportSources) return;
+    if (source === null) return;
     const previous = step;
+    const id = source.id;
     setStep({ step: "checking" });
-    desktopBrowser
-      .listImportSources()
-      .then((result) => {
-        if (!mounted.current) return;
-        const refreshed = result.sources.find(
-          (candidate) => candidate.id === source.id,
+    detect((refreshedSources) => {
+      const refreshed = refreshedSources.find(
+        (candidate) => candidate.id === id,
+      );
+      if (refreshed) {
+        setSource(refreshed);
+        setSourceProfileDirectory((current) =>
+          preferredSourceProfileDirectory(current, refreshed),
         );
-        if (refreshed) {
-          setSource(refreshed);
-          setSourceProfileDirectory((current) =>
-            preferredSourceProfileDirectory(current, refreshed),
-          );
-        }
-        setStep(refreshedBrowserImportStep(refreshed, previous));
-      })
-      .catch(() => {
-        if (mounted.current) setStep({ step: "blocked", reason: "readFailed" });
-      });
+      }
+      return refreshedBrowserImportStep(refreshed, previous);
+    });
   };
 
   const closable = canCloseBrowserImportWizard(step);
-  const selectedProfile = source.profiles.find(
+  const sourceName = source?.name ?? "browser";
+  const selectedProfile = source?.profiles.find(
     (profile) => profile.directory === sourceProfileDirectory,
   );
+  const detected = detectedSources(sources);
+  const backButton = canReturnToSourceChoice(step) ? (
+    <Button variant="ghost" onClick={backToSources} className="mr-auto">
+      Back
+    </Button>
+  ) : null;
 
   return (
     <Dialog
@@ -128,16 +186,89 @@ export function BrowserImportDialog({
           if (!closable) event.preventDefault();
         }}
       >
-        {step.step === "quit" ? (
+        {step.step === "detecting" ? (
+          <DialogHeader>
+            <DialogTitle>Looking for browsers…</DialogTitle>
+            <DialogDescription>
+              Checking which browsers on this machine have cookies to import.
+            </DialogDescription>
+          </DialogHeader>
+        ) : step.step === "chooseSource" ? (
           <>
             <DialogHeader>
-              <DialogTitle>Quit {source.name} to import</DialogTitle>
+              <DialogTitle>Import cookies from another browser</DialogTitle>
               <DialogDescription>
-                {source.name} is open, so its cookie database is locked. Quit
-                it, then continue.
+                Choose the browser whose signed-in sessions you want to copy
+                into the BB browser. This is a one-time copy; later logins stay
+                separate.
+              </DialogDescription>
+            </DialogHeader>
+            {detected.length === 0 ? (
+              <p className="text-sm text-subtle-foreground">
+                No supported browsers with cookies were found on this machine.
+              </p>
+            ) : (
+              <div
+                role="listbox"
+                aria-label="Detected browsers"
+                className="flex flex-col gap-1.5"
+              >
+                {detected.map((candidate) => {
+                  const status = sourceStatus(candidate);
+                  return (
+                    <button
+                      key={candidate.id}
+                      type="button"
+                      role="option"
+                      aria-selected={false}
+                      data-testid={`browser-import-source-${candidate.id}`}
+                      disabled={!isSourceSelectable(candidate)}
+                      className={cn(TILE_CLASS, TILE_IDLE_CLASS)}
+                      onClick={() => chooseSource(candidate)}
+                    >
+                      <span className="min-w-0 flex-1">
+                        <span className="flex min-w-0 items-center gap-2">
+                          <span className="truncate font-medium text-foreground">
+                            {candidate.name}
+                          </span>
+                          <span
+                            className={cn(
+                              STATUS_CHIP_CLASS,
+                              STATUS_TONE_CLASS[status.tone],
+                            )}
+                          >
+                            {status.label}
+                          </span>
+                        </span>
+                        <span className="block truncate text-xs text-subtle-foreground">
+                          {describeSourceProfiles(candidate)}
+                        </span>
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+            <DialogFooter>
+              <Button variant="outline" onClick={backToSources}>
+                Refresh
+              </Button>
+              <Button variant="outline" onClick={onClose}>
+                Cancel
+              </Button>
+            </DialogFooter>
+          </>
+        ) : step.step === "quit" ? (
+          <>
+            <DialogHeader>
+              <DialogTitle>Quit {sourceName} to import</DialogTitle>
+              <DialogDescription>
+                {sourceName} is open, so its cookie database is locked. Quit it,
+                then continue.
               </DialogDescription>
             </DialogHeader>
             <DialogFooter>
+              {backButton}
               <Button variant="outline" onClick={onClose}>
                 Cancel
               </Button>
@@ -147,11 +278,12 @@ export function BrowserImportDialog({
         ) : step.step === "fullDiskAccess" ? (
           <>
             <DialogHeader>
-              <DialogTitle>Allow Full Disk Access for Safari</DialogTitle>
+              <DialogTitle>Allow Full Disk Access for {sourceName}</DialogTitle>
               <DialogDescription>
-                Safari keeps its cookies in a protected folder. Turn on Full
-                Disk Access for BB in System Settings → Privacy &amp; Security,
-                then come back. You can turn it off again after the import.
+                {sourceName} keeps its cookies in a protected folder. Turn on
+                Full Disk Access for BB in System Settings → Privacy &amp;
+                Security, then come back. You can turn it off again after the
+                import.
               </DialogDescription>
             </DialogHeader>
             {step.checked ? (
@@ -161,9 +293,7 @@ export function BrowserImportDialog({
               </p>
             ) : null}
             <DialogFooter>
-              <Button variant="outline" onClick={onClose}>
-                Cancel
-              </Button>
+              {backButton}
               {desktopBrowser.openFullDiskAccessSettings ? (
                 <Button
                   variant="outline"
@@ -177,12 +307,12 @@ export function BrowserImportDialog({
           </>
         ) : step.step === "checking" ? (
           <DialogHeader>
-            <DialogTitle>Checking {source.name}…</DialogTitle>
+            <DialogTitle>Checking {sourceName}…</DialogTitle>
             <DialogDescription>This only takes a moment.</DialogDescription>
           </DialogHeader>
         ) : step.step === "importing" ? (
           <DialogHeader>
-            <DialogTitle>Importing from {source.name}…</DialogTitle>
+            <DialogTitle>Importing from {sourceName}…</DialogTitle>
             <DialogDescription>
               Reading and decrypting cookies. macOS may ask for Keychain access.
             </DialogDescription>
@@ -199,7 +329,7 @@ export function BrowserImportDialog({
               </DialogTitle>
               <DialogDescription>
                 {step.imported > 0
-                  ? `Added to your personal BB browser from ${source.name}${selectedProfile ? ` · ${selectedProfile.name}` : ""}.${step.skipped > 0 ? ` ${formatCookieCount(step.skipped)} skipped.` : ""}`
+                  ? `Added to your BB browser from ${sourceName}${selectedProfile ? ` · ${selectedProfile.name}` : ""}.${step.skipped > 0 ? ` ${formatCookieCount(step.skipped)} skipped.` : ""}`
                   : step.skipped > 0
                     ? "No cookies were imported."
                     : "There were no cookies to import."}
@@ -220,22 +350,27 @@ export function BrowserImportDialog({
               </div>
             ) : null}
             <DialogFooter>
+              <Button variant="outline" onClick={backToSources}>
+                Import another
+              </Button>
               <Button onClick={onClose}>Done</Button>
             </DialogFooter>
           </>
         ) : step.step === "blocked" ? (
           <>
             <DialogHeader>
-              <DialogTitle>Can't import from {source.name}</DialogTitle>
+              <DialogTitle>Can't import from {sourceName}</DialogTitle>
               <DialogDescription>
                 {DESKTOP_BROWSER_IMPORT_FAILURE_COPY[step.reason]}
               </DialogDescription>
             </DialogHeader>
             <DialogFooter>
+              {backButton}
               <Button variant="outline" onClick={onClose}>
                 Close
               </Button>
-              {isRetryableDesktopBrowserImportReason(step.reason) ? (
+              {source !== null &&
+              isRetryableDesktopBrowserImportReason(step.reason) ? (
                 <Button onClick={recheck}>Try again</Button>
               ) : null}
             </DialogFooter>
@@ -243,10 +378,9 @@ export function BrowserImportDialog({
         ) : (
           <>
             <DialogHeader>
-              <DialogTitle>Import from {source.name}</DialogTitle>
+              <DialogTitle>Import from {sourceName}</DialogTitle>
               <DialogDescription>
-                Choose which profile's cookies to copy into your personal BB
-                browser. This is a one-time copy; later logins stay separate.
+                Choose which profile's cookies to copy into your BB browser.
               </DialogDescription>
             </DialogHeader>
             <div
@@ -254,7 +388,7 @@ export function BrowserImportDialog({
               aria-label="Source profile"
               className="flex flex-col gap-1.5"
             >
-              {source.profiles.map((profile) => {
+              {(source?.profiles ?? []).map((profile) => {
                 const selected = profile.directory === sourceProfileDirectory;
                 return (
                   <button
@@ -299,6 +433,7 @@ export function BrowserImportDialog({
               encryption key; choose Allow to grant it once.
             </p>
             <DialogFooter>
+              {backButton}
               <Button variant="outline" onClick={onClose}>
                 Cancel
               </Button>
