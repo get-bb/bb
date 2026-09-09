@@ -16,6 +16,7 @@ import {
   createFakePluginHost,
   makeMessageDispatchHookContext,
   makePluginAgentConfigurationContext,
+  makeQueueEntry,
   makeThreadResponse,
 } from "../index.js";
 
@@ -683,6 +684,95 @@ describe("http", () => {
       ok: false,
       error: "plugin route failed: http route handler must return a Response",
     });
+  });
+
+  it("drives WebSocket lifecycle events and captures text and binary sends", async () => {
+    const { bb, harness } = createFakePluginHost();
+    const events: string[] = [];
+    bb.http.experimental_websocket(
+      "/socket",
+      (context) => ({
+        onOpen(socket) {
+          events.push(
+            `open:${context.url.searchParams.get("session")}:${context.headers.get("x-marker")}`,
+          );
+          socket.send("ready");
+        },
+        onMessage(socket, data) {
+          events.push(
+            typeof data === "string" ? data : `binary:${data.length}`,
+          );
+          socket.send(data);
+        },
+        onClose(_socket, event) {
+          events.push(`close:${event.code}:${event.reason}`);
+        },
+        onError(_socket, error) {
+          events.push(`error:${error.message}`);
+        },
+      }),
+      { auth: "none" },
+    );
+
+    const session = await harness.experimental_openWebSocket(
+      "/socket?session=s1",
+      { headers: { "x-marker": "test" } },
+    );
+    expect(harness.registrations.websocketRoutes).toHaveLength(1);
+    expect(session.sent).toEqual(["ready"]);
+    await session.receive("hello");
+    await session.receive(new Uint8Array([1, 2, 3]));
+    await session.error(new Error("transport"));
+    await session.close(1000, "done");
+
+    expect(session.sent).toEqual(["ready", "hello", new Uint8Array([1, 2, 3])]);
+    expect(session.closeCalls).toEqual([{ code: 1000, reason: "done" }]);
+    expect(session.readyState).toBe(3);
+    expect(events).toEqual([
+      "open:s1:test",
+      "hello",
+      "binary:3",
+      "error:transport",
+      "close:1000:done",
+    ]);
+  });
+
+  it("isolates WebSocket event failures and closes sessions on reload", async () => {
+    const { bb, harness } = createFakePluginHost();
+    const closed: string[] = [];
+    bb.http.experimental_websocket("/socket", () => ({
+      onMessage() {
+        throw new Error("message boom");
+      },
+      onClose(_socket, event) {
+        closed.push(`${event.code}:${event.reason}`);
+      },
+    }));
+    const session = await harness.experimental_openWebSocket("/socket");
+
+    await expect(session.receive("boom")).resolves.toBeUndefined();
+    expect(harness.logEntries.at(-1)?.message).toContain("message boom");
+    await harness.reload(() => {});
+
+    expect(session.closeCalls).toContainEqual({
+      code: 1012,
+      reason: "Plugin reloaded or disabled",
+    });
+    expect(session.readyState).toBe(3);
+    expect(closed).toEqual(["1012:Plugin reloaded or disabled"]);
+  });
+
+  it("rejects a throwing WebSocket factory", async () => {
+    const throwing = createFakePluginHost();
+    throwing.bb.http.experimental_websocket("/boom", () => {
+      throw new Error("factory boom");
+    });
+    await expect(
+      throwing.harness.experimental_openWebSocket("/boom"),
+    ).rejects.toThrow("factory boom");
+    expect(throwing.harness.logEntries.at(-1)?.message).toContain(
+      "factory boom",
+    );
   });
 });
 
@@ -1576,6 +1666,109 @@ describe("providers.register", () => {
   });
 });
 
+describe("providers.experimental_contributeEnv", () => {
+  it("round trips validated entries with the provider context", async () => {
+    const { bb, harness } = createFakePluginHost({ pluginId: "auth-proxy" });
+    const contexts: unknown[] = [];
+    bb.providers.experimental_contributeEnv("claude-code", (context) => {
+      contexts.push(context);
+      return [
+        {
+          name: "PLUGIN_API_URL",
+          value: { serverPath: "/plugins/auth-proxy/api" },
+          reason: "Route provider traffic through the plugin",
+          secret: true,
+        },
+      ];
+    });
+
+    await expect(
+      harness.behavior.resolveProviderEnv("claude-code", {
+        threadId: "thread-1",
+        projectId: "project-1",
+        hostId: "host-1",
+      }),
+    ).resolves.toEqual([
+      {
+        name: "PLUGIN_API_URL",
+        value: { serverPath: "/plugins/auth-proxy/api" },
+        reason: "Route provider traffic through the plugin",
+        secret: true,
+      },
+    ]);
+    expect(contexts).toEqual([
+      {
+        threadId: "thread-1",
+        projectId: "project-1",
+        hostId: "host-1",
+      },
+    ]);
+  });
+
+  it("resolves environment-backed provider health only beside an env resolver", async () => {
+    const first = createFakePluginHost();
+    first.bb.providers.experimental_contributeEnvHealth("claude-code", () => ({
+      label: "Proxied",
+      statusMessage: "Credentials are provided by a proxy.",
+    }));
+    await expect(
+      first.harness.behavior.resolveProviderEnvHealth("claude-code", {
+        hostId: "host-one",
+      }),
+    ).resolves.toBeNull();
+
+    const second = createFakePluginHost();
+    second.bb.providers.experimental_contributeEnv("claude-code", () => []);
+    second.bb.providers.experimental_contributeEnvHealth(
+      "claude-code",
+      ({ hostId }) =>
+        hostId === "host-one"
+          ? {
+              label: "Proxied",
+              statusMessage: "Credentials are provided by a proxy.",
+            }
+          : null,
+    );
+    await expect(
+      second.harness.behavior.resolveProviderEnvHealth("claude-code", {
+        hostId: "host-one",
+      }),
+    ).resolves.toEqual({
+      label: "Proxied",
+      statusMessage: "Credentials are provided by a proxy.",
+    });
+  });
+
+  it("fails a malformed resolver closed and rejects duplicate registration", async () => {
+    const { bb, harness } = createFakePluginHost();
+    bb.providers.experimental_contributeEnv("codex", () => [
+      {
+        name: "lowercase",
+        value: "hidden",
+        reason: "invalid name",
+        secret: false,
+      },
+    ]);
+    expect(() =>
+      bb.providers.experimental_contributeEnv("codex", () => []),
+    ).toThrow("already registered");
+
+    await expect(
+      harness.behavior.resolveProviderEnv("codex", {
+        threadId: "thread-1",
+        projectId: "project-1",
+        hostId: "host-1",
+      }),
+    ).resolves.toEqual([]);
+    expect(harness.inspection.logEntries.at(-1)).toMatchObject({
+      level: "warn",
+    });
+    expect(JSON.stringify(harness.inspection.logEntries)).not.toContain(
+      "hidden",
+    );
+  });
+});
+
 describe("experimental_aiServices.register", () => {
   const declaration = {
     id: "acme-ai",
@@ -1600,5 +1793,273 @@ describe("experimental_aiServices.register", () => {
     expect(() => bb.experimental_aiServices.register(declaration)).toThrow(
       /needs a bb\.host entry to run on: this plugin declares none/u,
     );
+  });
+});
+
+describe("environment targets", () => {
+  it("normalizes a registration and exposes it to the harness", async () => {
+    const { bb, harness } = createFakePluginHost();
+    const create = async () => ({
+      status: "failed" as const,
+      failure: "transient" as const,
+      message: "waiting",
+    });
+    const inputs = z.object({ image: z.string(), cpus: z.number().default(2) });
+    bb.experimental_environments.register({
+      id: "container",
+      displayName: "  Docker container  ",
+      requires: { gitRemote: true },
+      inputs,
+      create,
+      remove: async () => ({ status: "removed" }),
+    });
+    const target = harness.registrations.environmentProviders.get("container");
+    expect(target).toMatchObject({
+      id: "container",
+      displayName: "Docker container",
+      icon: null,
+      requires: {
+        projectCheckout: false,
+        gitCheckout: false,
+        gitRemote: true,
+        projectless: false,
+      },
+      inputsJsonSchema: {
+        type: "object",
+        properties: {
+          image: { type: "string" },
+          cpus: { type: "number", default: 2 },
+        },
+        required: ["image"],
+      },
+    });
+    expect(target?.inputs).toBe(inputs);
+    expect(target?.create).toBe(create);
+    await bb.experimental_environments.recheck();
+    expect(harness.recheckCount).toBe(1);
+  });
+
+  it("enforces environment icon ownership and rejects escaping asset paths", () => {
+    const { bb } = createFakePluginHost({
+      pluginId: "environment-test",
+      experimental_declaredIconNames: ["mark"],
+    });
+    const register = (icon: string) =>
+      bb.experimental_environments.register({
+        id: "env",
+        displayName: "Environment",
+        icon,
+        create: async () => ({
+          status: "failed",
+          failure: "transient",
+          message: "waiting",
+        }),
+        remove: async () => ({ status: "removed" }),
+      });
+    expect(() => register("environment-test/mark")).not.toThrow();
+    expect(() => register("other/mark")).toThrow("not an icon declared");
+    expect(() => register("environment-test/missing")).toThrow(
+      "not an icon declared",
+    );
+    expect(() => register("./../private.svg")).toThrow();
+    expect(() => register("/private.svg")).toThrow();
+  });
+
+  it("defaults every requirement to false", () => {
+    const { bb, harness } = createFakePluginHost();
+    bb.experimental_environments.register({
+      id: "plain",
+      displayName: "Plain",
+      create: async () => ({
+        status: "failed",
+        failure: "transient",
+        message: "waiting",
+      }),
+      remove: async () => ({ status: "removed" }),
+    });
+    expect(
+      harness.registrations.environmentProviders.get("plain"),
+    ).toMatchObject({
+      requires: {
+        projectCheckout: false,
+        gitCheckout: false,
+        gitRemote: false,
+        projectless: false,
+      },
+      inputs: null,
+      inputsJsonSchema: null,
+      availability: null,
+    });
+  });
+
+  it("refuses inputs that are not a Standard Schema validator", () => {
+    const { bb } = createFakePluginHost();
+    expect(() =>
+      bb.experimental_environments.register({
+        id: "ok",
+        displayName: "x",
+        // @ts-expect-error deliberately not a schema
+        inputs: { type: "object" },
+        create: async () => ({
+          status: "failed",
+          failure: "transient",
+          message: "waiting",
+        }),
+        remove: async () => ({ status: "removed" }),
+      }),
+    ).toThrow(/inputs that is not a Standard Schema v1 validator/);
+  });
+
+  it("refuses a bad id or a declaration without create", () => {
+    const { bb } = createFakePluginHost();
+    expect(() =>
+      bb.experimental_environments.register({
+        id: "bad id!",
+        displayName: "x",
+        create: async () => ({
+          status: "failed",
+          failure: "transient",
+          message: "waiting",
+        }),
+        remove: async () => ({ status: "removed" }),
+      }),
+    ).toThrow(/invalid environment provider id/);
+    for (const id of ["x", "Uppercase", "under_score"]) {
+      expect(() =>
+        bb.experimental_environments.register({
+          id,
+          displayName: "x",
+          create: async () => ({
+            status: "failed",
+            failure: "transient",
+            message: "waiting",
+          }),
+          remove: async () => ({ status: "removed" }),
+        }),
+      ).toThrow(/invalid environment provider id/);
+    }
+    expect(() =>
+      bb.experimental_environments.register(
+        // @ts-expect-error deliberately missing create
+        {
+          id: "ok",
+          displayName: "x",
+        },
+      ),
+    ).toThrow(/create/);
+  });
+
+  it("refuses a non-boolean requirement", () => {
+    const { bb } = createFakePluginHost();
+    expect(() =>
+      bb.experimental_environments.register({
+        id: "ok",
+        displayName: "x",
+        // @ts-expect-error deliberately not a boolean
+        requires: { gitRemote: "yes" },
+        create: async () => ({
+          status: "failed",
+          failure: "transient",
+          message: "waiting",
+        }),
+        remove: async () => ({ status: "removed" }),
+      }),
+    ).toThrow(/requires\.gitRemote that is not a boolean/);
+  });
+
+  it("refuses projectless together with a project requirement", () => {
+    const { bb } = createFakePluginHost();
+    expect(() =>
+      bb.experimental_environments.register({
+        id: "scratch",
+        displayName: "Scratch",
+        requires: { gitRemote: true, projectless: true },
+        create: async () => ({
+          status: "failed",
+          failure: "transient",
+          message: "waiting",
+        }),
+        remove: async () => ({ status: "removed" }),
+      }),
+    ).toThrow(/requires\.projectless together with a project requirement/);
+  });
+
+  it("refuses projectless together with projectCheckout", () => {
+    const { bb } = createFakePluginHost();
+    expect(() =>
+      bb.experimental_environments.register({
+        id: "scratch",
+        displayName: "Scratch",
+        requires: { projectCheckout: true, projectless: true },
+        create: async () => ({
+          status: "failed",
+          failure: "transient",
+          message: "waiting",
+        }),
+        remove: async () => ({ status: "removed" }),
+      }),
+    ).toThrow(/requires\.projectless together with a project requirement/);
+  });
+
+  it("normalizes a checkout provider that does not need git", () => {
+    const { bb, harness } = createFakePluginHost();
+    bb.experimental_environments.register({
+      id: "syncy",
+      displayName: "Syncy",
+      requires: { projectCheckout: true },
+      create: async () => ({
+        status: "failed",
+        failure: "transient",
+        message: "waiting",
+      }),
+      remove: async () => ({ status: "removed" }),
+    });
+    expect(
+      harness.registrations.environmentProviders.get("syncy"),
+    ).toMatchObject({
+      requires: {
+        projectCheckout: true,
+        gitCheckout: false,
+        gitRemote: false,
+        projectless: false,
+      },
+    });
+  });
+
+  it("normalizes a host-scoped checkout provider", () => {
+    const { bb, harness } = createFakePluginHost();
+    bb.experimental_environments.register({
+      id: "branchy",
+      displayName: "Branchy",
+      requires: { gitCheckout: true },
+      create: async () => ({
+        status: "failed",
+        failure: "transient",
+        message: "waiting",
+      }),
+      remove: async () => ({ status: "removed" }),
+    });
+    expect(
+      harness.registrations.environmentProviders.get("branchy"),
+    ).toMatchObject({
+      requires: {
+        projectCheckout: true,
+        gitCheckout: true,
+        gitRemote: false,
+        projectless: false,
+      },
+    });
+  });
+
+  it("delivers message.cancelled to a listener", async () => {
+    const { bb, harness } = createFakePluginHost();
+    const seen: string[] = [];
+    bb.events.on("message.cancelled", ({ entry }) => {
+      seen.push(entry.id);
+    });
+    await harness.emitThreadEvent("message.cancelled", {
+      entry: makeQueueEntry({ id: "qm_1" }),
+    });
+    expect(seen).toEqual(["qm_1"]);
   });
 });

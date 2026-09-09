@@ -9,6 +9,13 @@ import type { ResolvedSkillCatalogEntry } from "../skills/injected-skills.js";
 
 const BUILT_IN_PROVIDER_COMMANDS: ProviderCommand[] = [
   {
+    name: "clear",
+    source: "command",
+    origin: "builtin",
+    description: "Start fresh context in this thread",
+    argumentHint: null,
+  },
+  {
     name: "compact",
     source: "command",
     origin: "builtin",
@@ -94,7 +101,9 @@ export function buildCommandListResponse(
 ): CommandListResponse {
   return {
     commands: dedupeBySourceAndName([
-      ...(args.includeBuiltinCompact ? BUILT_IN_PROVIDER_COMMANDS : []),
+      ...BUILT_IN_PROVIDER_COMMANDS.filter(
+        (command) => command.name !== "compact" || args.includeBuiltinCompact,
+      ),
       ...args.skillCatalog.map(toSkillCommand),
       ...args.commands.map(toProviderCommand),
     ]).sort(compareCommands),

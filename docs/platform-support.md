@@ -83,7 +83,8 @@ Not available on the phone (use the web app or desktop for these):
 
 - `npx bb-app`
 - `npx --package bb-app bb ...`
-- source checkout package startup with `pnpm start` or `pnpm start:worktree`
+- source checkout package startup with `pnpm start`, `pnpm start:worktree`, or
+  `pnpm start:worktree-remote`
 - source checkout validation with `pnpm install`, `pnpm build`,
   `pnpm exec turbo run typecheck`, and `pnpm exec turbo run test`
 - app + server + host-daemon startup on supported persistent-host OSes

@@ -238,12 +238,6 @@ function forgetClosedPanelTab(
   return wasTop;
 }
 
-function buildRecentlyClosedPanelContextKey(
-  context: RecentlyClosedPanelContext,
-): RecentlyClosedPanelContextKey {
-  return JSON.stringify(context);
-}
-
 function isReopenablePanelTabOwnedByContext({
   context,
   tab: reopenableTab,
@@ -502,7 +496,7 @@ export function useThreadFileTabs({
     () =>
       recentlyClosedPanelContext === null
         ? null
-        : buildRecentlyClosedPanelContextKey(recentlyClosedPanelContext),
+        : JSON.stringify(recentlyClosedPanelContext),
     [recentlyClosedPanelContext],
   );
   const recentlyClosedPanelContextKeyRef = useRef(

@@ -713,20 +713,19 @@ describe("Theme Preview", () => {
       expect(found).not.toBeNull();
       return found as HTMLButtonElement;
     });
-    const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
-
     // Keyboard focus opens it, not just hover.
     fireEvent.focus(trigger);
     await waitFor(() => expect(document.querySelector("[data-tp-tooltip-content]")).not.toBeNull());
 
     // Pointer-out does not dismiss immediately: it survives normal movement.
+    vi.useFakeTimers();
     fireEvent.mouseLeave(trigger);
-    await act(async () => { await sleep(250); });
+    await act(async () => { await vi.advanceTimersByTimeAsync(699); });
     expect(document.querySelector("[data-tp-tooltip-content]")).not.toBeNull();
 
     // ...and is gone once the dismissal delay elapses.
-    await act(async () => { await sleep(700); });
-    await waitFor(() => expect(document.querySelector("[data-tp-tooltip-content]")).toBeNull());
+    await act(async () => { await vi.advanceTimersByTimeAsync(1); });
+    expect(document.querySelector("[data-tp-tooltip-content]")).toBeNull();
   });
 
   it("reports neutral contrast ratios without accessibility verdicts or authoring actions", async () => {

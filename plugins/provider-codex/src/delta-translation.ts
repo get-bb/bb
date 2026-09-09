@@ -39,6 +39,7 @@ import {
   collabAgentPresentation,
   commandPresentation,
   fileChangePresentation,
+  imageGenerationPresentation,
   imageViewPresentation,
   mcpToolPresentation,
   planStepsPresentation,
@@ -937,6 +938,28 @@ function translateCodexItemShape(
         status: "completed",
         approvalDenied: false,
       };
+    case "imageGeneration": {
+      const path = parsedItem.savedPath ?? null;
+      const prompt = parsedItem.revisedPrompt;
+      return {
+        kind: "translated",
+        shape: {
+          type: "imageGeneration",
+          prompt,
+          path,
+          ...(parsedItem.result.length === 0
+            ? {}
+            : { result: parsedItem.result }),
+          error:
+            parsedItem.failure === null
+              ? null
+              : "Image generation usage limit exceeded",
+          transparentBackground: parsedItem.transparentBackground ?? false,
+        },
+        presentation: imageGenerationPresentation({ path, prompt }),
+        ...toolStatusFields(parsedItem.status),
+      };
+    }
     case "reasoning":
       return {
         kind: "translated",

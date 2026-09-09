@@ -1,3 +1,4 @@
+import { appendOutput, formatProcessOutput } from "./smoke-output.mjs";
 import { execFile, spawn } from "node:child_process";
 import { createServer } from "node:net";
 import { mkdtemp, readFile, readdir, readlink, rm } from "node:fs/promises";
@@ -15,28 +16,6 @@ const startupTimeoutMs = 60_000;
 const exitTimeoutMs = 10_000;
 const outputFlushTimeoutMs = 2_000;
 const pollIntervalMs = 100;
-const maxCapturedOutputCharacters = 20_000;
-
-function appendOutput(chunks, chunk) {
-  chunks.push(String(chunk));
-  let totalLength = chunks.reduce((total, value) => total + value.length, 0);
-  while (totalLength > maxCapturedOutputCharacters && chunks.length > 1) {
-    const removed = chunks.shift();
-    totalLength -= removed.length;
-  }
-}
-
-function formatProcessOutput({ stdout, stderr }) {
-  const stdoutText = stdout.join("").trim();
-  const stderrText = stderr.join("").trim();
-  return [
-    stdoutText.length > 0 ? `stdout:\n${stdoutText}` : "",
-    stderrText.length > 0 ? `stderr:\n${stderrText}` : "",
-  ]
-    .filter((part) => part.length > 0)
-    .join("\n\n");
-}
-
 async function sleep(delayMs) {
   await new Promise((resolvePromise) => {
     setTimeout(resolvePromise, delayMs);

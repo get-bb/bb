@@ -105,16 +105,12 @@ function areDesktopInfoValuesEqual(
   );
 }
 
-function parseJsonPayload(payloadText: string): unknown {
-  return JSON.parse(payloadText);
-}
-
 export function parseDesktopVersionFeed(
   args: ParseDesktopVersionFeedArgs,
 ): DesktopVersionFeedParseResult {
   let payload: unknown;
   try {
-    payload = parseJsonPayload(args.payloadText);
+    payload = JSON.parse(args.payloadText);
   } catch (error) {
     return {
       kind: "malformed",

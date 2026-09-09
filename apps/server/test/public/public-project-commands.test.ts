@@ -311,6 +311,7 @@ describe("public project command typeahead route", () => {
       expect(response.status).toBe(200);
       const body = commandListResponseSchema.parse(await readJson(response));
       expect(body.commands.map((command) => command.name)).toEqual([
+        "clear",
         "vendor:review",
       ]);
       expect(stub.resolveRequests.map((request) => request.command)).toEqual([
@@ -396,6 +397,7 @@ describe("public project command typeahead route", () => {
       expect(response.status).toBe(200);
       const body = commandListResponseSchema.parse(await readJson(response));
       expect(body.commands.map((command) => command.name)).toEqual([
+        "clear",
         "after-the-wait",
       ]);
       const resolverCommand = stub.resolveRequests[0]?.command;
@@ -556,6 +558,13 @@ describe("public project command typeahead route", () => {
       const body = commandListResponseSchema.parse(await readJson(response));
       expect(body.commands).toEqual([
         {
+          name: "clear",
+          source: "command",
+          origin: "builtin",
+          description: "Start fresh context in this thread",
+          argumentHint: null,
+        },
+        {
           name: "compact",
           source: "command",
           origin: "builtin",
@@ -636,6 +645,7 @@ describe("public project command typeahead route", () => {
       expect(response.status).toBe(200);
       const body = commandListResponseSchema.parse(await readJson(response));
       expect(body.commands.map((command) => command.name)).toEqual([
+        "clear",
         "compact",
         "prd",
         "skill-installer",
@@ -683,6 +693,7 @@ describe("public project command typeahead route", () => {
         expect(response.status).toBe(200);
         const body = commandListResponseSchema.parse(await readJson(response));
         expect(body.commands.map((command) => command.name)).toEqual([
+          "clear",
           "compact",
           "stories",
         ]);
@@ -730,6 +741,7 @@ describe("public project command typeahead route", () => {
       expect(response.status).toBe(200);
       const body = commandListResponseSchema.parse(await readJson(response));
       expect(body.commands.map((command) => command.name)).toEqual([
+        "clear",
         "compact",
         "alpha-review-notes",
         "ottonomous:review",
@@ -793,6 +805,7 @@ describe("public project command typeahead route", () => {
       expect(response.status).toBe(200);
       const body = commandListResponseSchema.parse(await readJson(response));
       expect(body.commands.map((command) => command.name)).toEqual([
+        "clear",
         "compact",
         "bb-cli",
       ]);
@@ -828,6 +841,7 @@ describe("public project command typeahead route", () => {
       expect(response.status).toBe(200);
       const body = commandListResponseSchema.parse(await readJson(response));
       expect(body.commands.map((command) => command.name)).toEqual([
+        "clear",
         "compact",
         "user-only",
       ]);
@@ -872,6 +886,7 @@ describe("public project command typeahead route", () => {
       expect(response.status).toBe(200);
       const body = commandListResponseSchema.parse(await readJson(response));
       expect(body.commands.map((command) => command.name)).toEqual([
+        "clear",
         "compact",
         "user-only",
       ]);
@@ -911,6 +926,7 @@ describe("public project command typeahead route", () => {
       expect(response.status).toBe(200);
       const body = commandListResponseSchema.parse(await readJson(response));
       expect(body.commands.map((command) => command.name)).toEqual([
+        "clear",
         "compact",
         "user-only",
       ]);
@@ -945,6 +961,7 @@ describe("public project command typeahead route", () => {
       expect(response.status).toBe(200);
       const body = commandListResponseSchema.parse(await readJson(response));
       expect(body.commands.map((command) => command.name)).toEqual([
+        "clear",
         "compact",
         "home-skill",
       ]);
@@ -1015,6 +1032,7 @@ describe("public project command typeahead route", () => {
         await readJson(fullResponse),
       );
       expect(full.commands.map((command) => command.name)).toEqual([
+        "clear",
         "compact",
         "alpha",
         "bravo",

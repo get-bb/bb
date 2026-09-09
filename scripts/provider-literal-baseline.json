@@ -1,14 +1,13 @@
 {
   "_comment": "Provider-literal ratchet (G1). Per-file occurrence count of provider-ID references in core. May only go DOWN. Regenerate: node scripts/check-provider-literal-ratchet.mjs --write. Every counted file must have an `allowlist` entry (count, reason, owner, diesAt); the entries are authored by hand and survive --write. Delete this file and the guard when empty.",
-  "total": 15,
+  "total": 14,
   "files": {
     "apps/demo-server/src/fixtures/providers.ts": 3,
     "apps/demo-server/src/fixtures/world.ts": 2,
     "apps/server/src/services/threads/thread-edit-message.ts": 1,
     "packages/config/src/bb-app-managed-config.ts": 4,
     "packages/scripts/src/commands/archive-codex-tmp-bb-sessions.ts": 1,
-    "packages/scripts/src/lib/seed-perf-fixture.ts": 3,
-    "packages/thread-view/src/model-fallback-extraction.ts": 1
+    "packages/scripts/src/lib/seed-perf-fixture.ts": 3
   },
   "allowlist": {
     "apps/demo-server/src/fixtures/providers.ts": {
@@ -46,12 +45,6 @@
       "reason": "perf fixture generator: seeds threads for two providers so the timeline benchmark covers both shapes.",
       "owner": "owner-accepted (fixture)",
       "diesAt": "never (fixture)"
-    },
-    "packages/thread-view/src/model-fallback-extraction.ts": {
-      "count": 1,
-      "reason": "legacy persisted data: claude `sdk/message` model-fallback rows persisted before bb normalized them as provider/modelFallback.",
-      "owner": "provider-claude-code",
-      "diesAt": "legacy-tool-item-backfill migration (converts the old rows)"
     }
   }
 }

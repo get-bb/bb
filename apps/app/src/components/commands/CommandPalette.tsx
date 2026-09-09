@@ -101,7 +101,7 @@ export function CommandPalette({
       buildPluginSettingsEntries({
         installedPlugins,
         settingsSections: pluginSlots.settingsSections,
-      }).all,
+      }),
     [installedPlugins, pluginSlots.settingsSections],
   );
   const settingsActions = useMemo(

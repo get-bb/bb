@@ -475,6 +475,18 @@ describe("bb thread action command output", () => {
     );
   });
 
+  it("bb thread clear invokes the context clear action", async () => {
+    const post = vi.fn(async () => ({ ok: true }));
+    stubServerApi({ "v1.threads.:id.context.clear.$post": post });
+
+    await runCommand(["thread", "clear", "thread-clear"], register);
+
+    expect(post).toHaveBeenCalledWith({ param: { id: "thread-clear" } });
+    expect(collectLogLines(vi.mocked(console.log))).toContain(
+      "Thread thread-clear context cleared",
+    );
+  });
+
   it.each([
     ["cancel-plan", "plan.cancel", "exited Plan mode"],
     ["clear-goal", "goal.clear", "cleared its Goal"],

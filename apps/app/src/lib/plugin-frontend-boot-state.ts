@@ -4,6 +4,8 @@ type PluginFrontendBootPhase = "idle" | "booting" | "complete";
 
 let phase: PluginFrontendBootPhase = "idle";
 let settleFloorReached = false;
+let serverPluginsStarting = false;
+let reconcilePending = false;
 const listeners = new Set<() => void>();
 
 function notify(): void {
@@ -28,6 +30,18 @@ export function markPluginFrontendSettleFloorReached(): void {
   notify();
 }
 
+export function setServerPluginsStarting(starting: boolean): void {
+  if (serverPluginsStarting === starting) return;
+  serverPluginsStarting = starting;
+  notify();
+}
+
+export function setPluginFrontendReconcilePending(pending: boolean): void {
+  if (reconcilePending === pending) return;
+  reconcilePending = pending;
+  notify();
+}
+
 function subscribe(listener: () => void): () => void {
   listeners.add(listener);
   return () => {
@@ -36,11 +50,15 @@ function subscribe(listener: () => void): () => void {
 }
 
 function getSettledSnapshot(): boolean {
-  return phase === "complete" || (phase === "idle" && settleFloorReached);
+  return (
+    !serverPluginsStarting &&
+    !reconcilePending &&
+    (phase === "complete" || (phase === "idle" && settleFloorReached))
+  );
 }
 
 function getBootCompleteSnapshot(): boolean {
-  return phase === "complete";
+  return phase === "complete" && !serverPluginsStarting && !reconcilePending;
 }
 
 export function usePluginFrontendsSettled(): boolean {
@@ -62,4 +80,6 @@ export function usePluginFrontendBootComplete(): boolean {
 export function resetPluginFrontendBootStateForTest(): void {
   phase = "idle";
   settleFloorReached = false;
+  serverPluginsStarting = false;
+  reconcilePending = false;
 }

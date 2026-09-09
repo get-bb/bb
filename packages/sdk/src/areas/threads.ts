@@ -80,6 +80,7 @@ export const DEFAULT_THREAD_WAIT_POLL_INTERVAL_MS = 250;
 
 export interface ThreadListArgs {
   archived?: boolean;
+  environmentId?: string;
   sectionId?: string;
   hasParent?: boolean;
   includeHidden?: boolean;
@@ -529,6 +530,7 @@ export interface ThreadsArea {
   childSummary(args: ThreadStatusArgs): Promise<ThreadChildSummaryResult>;
   compact(args: ThreadActionArgs): Promise<ThreadCompactResult>;
   cancelPlan(args: ThreadActionArgs): Promise<ThreadBannerActionResult>;
+  clearContext(args: ThreadActionArgs): Promise<ThreadBannerActionResult>;
   clearGoal(args: ThreadActionArgs): Promise<ThreadBannerActionResult>;
   conversationOutline(
     args: ThreadStatusArgs,
@@ -587,6 +589,7 @@ export interface ThreadsArea {
 function listQuery(args: ThreadListArgs | undefined): ThreadListQuery {
   return {
     ...(args?.projectId ? { projectId: args.projectId } : {}),
+    ...(args?.environmentId ? { environmentId: args.environmentId } : {}),
     ...(args?.parentThreadId ? { parentThreadId: args.parentThreadId } : {}),
     ...(args?.sourceThreadId ? { sourceThreadId: args.sourceThreadId } : {}),
     ...(args?.sectionId ? { sectionId: args.sectionId } : {}),
@@ -1245,6 +1248,14 @@ export function createThreadsArea(args: CreateSdkAreaArgs): ThreadsArea {
     async compact(input) {
       await transport.readVoid(
         transport.api.v1.threads[":id"].compact.$post({
+          param: { id: input.threadId },
+        }),
+      );
+      return { ok: true };
+    },
+    async clearContext(input) {
+      await transport.readVoid(
+        transport.api.v1.threads[":id"].context.clear.$post({
           param: { id: input.threadId },
         }),
       );

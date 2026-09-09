@@ -823,12 +823,6 @@ export function promptEditorInlineContentFromValue(
   return content;
 }
 
-function mentionAttrsFromNode(
-  node: ProseMirrorNode,
-): PromptEditorMentionAttrs | null {
-  return parsePromptEditorMentionAttrs(node.attrs);
-}
-
 function markdownDelimitersForMarks(
   marks: readonly ProseMirrorNode["marks"][number][],
 ): { open: string; close: string } {
@@ -927,7 +921,7 @@ function serializePromptEditorNode(
       return;
     }
     if (node.type.name === "mention") {
-      const attrs = mentionAttrsFromNode(node);
+      const attrs = parsePromptEditorMentionAttrs(node.attrs);
       if (attrs) {
         const span = appendMarkedInlineText(
           attrs.serializedText,

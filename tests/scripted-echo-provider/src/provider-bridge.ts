@@ -49,8 +49,6 @@ const scriptedMethodSchema = z.enum([
   "thread/goal/clear",
   "skills/configure",
 ]);
-export type ScriptedMethod = z.infer<typeof scriptedMethodSchema>;
-
 export const scriptedEchoOptionsSchema = z
   .object({
     startDelayMs: z.number().int().nonnegative().optional(),

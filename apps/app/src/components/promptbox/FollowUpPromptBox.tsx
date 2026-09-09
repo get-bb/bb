@@ -54,6 +54,7 @@ import { usePointerCoarse } from "@bb/shared-ui/hooks/use-pointer-coarse";
 import { ThreadTimelineScrollToBottomButton } from "@/views/thread-detail/ThreadTimelineScrollToBottomButton";
 import { useOptionalPaneContext } from "@/views/thread-detail/PaneContext";
 import { ThreadContextWindowIndicator } from "@/components/thread/timeline";
+import { PROMPT_STACK_TRACK_CLASS } from "@/components/promptbox/banner/PromptStackCard";
 import { THREAD_PROMPT_CONTEXT_BANNER_ROW_HEIGHT } from "@/components/promptbox/banner/ThreadPromptContextBanner";
 import {
   isPlanModePrompt,
@@ -210,7 +211,7 @@ function FollowUpPromptBoxStackOnly({
     <PluginComposerViewProvider value={composerView}>
       <PluginComposerHostProvider value={pluginComposerHost ?? null}>
         <div data-promptbox-shell="" className="space-y-2">
-          <div className="grid gap-2">
+          <div className={`grid gap-2 ${PROMPT_STACK_TRACK_CLASS}`}>
             {composerScope ? (
               <ComposerBannersSlot>{stack}</ComposerBannersSlot>
             ) : (
@@ -290,13 +291,6 @@ function FollowUpPromptBoxWithComposer({
     promptBoxRef.current?.focusEnd();
     return promptBoxRef.current !== null;
   }, []);
-  const extensionController = useComposerExtensionController({
-    host: pluginComposerHost ?? null,
-    view: composerView,
-    isFocused: isFocusedPane,
-    isPrimary: isPrimaryComposer,
-    focusDefault,
-  });
   const voice = usePromptVoice(promptBoxRef);
   const isCompactViewport = useIsCompactViewport();
   const isPointerCoarse = usePointerCoarse();
@@ -554,6 +548,27 @@ function FollowUpPromptBoxWithComposer({
     setIsInteractionExpanded(false);
     setWidePromptBoxCollapsedFor(collapseResetKey);
   }, [cancelPendingFocusExpansion, cancelPendingFocusLoss, collapseResetKey]);
+  const collapseIfFocused = useCallback(() => {
+    const activeElement = document.activeElement;
+    if (
+      !(activeElement instanceof HTMLElement) ||
+      !composerInteractionRef.current?.contains(activeElement)
+    ) {
+      return false;
+    }
+    promptBoxRef.current?.captureHeightForLayoutChange();
+    activeElement.blur();
+    collapseWidePromptBox();
+    return true;
+  }, [collapseWidePromptBox]);
+  const extensionController = useComposerExtensionController({
+    host: pluginComposerHost ?? null,
+    view: composerView,
+    isFocused: isFocusedPane,
+    isPrimary: isPrimaryComposer,
+    collapseIfFocused,
+    focusDefault,
+  });
   useEffect(
     () => () => {
       cancelPendingFocusExpansion();
@@ -821,7 +836,10 @@ function DefaultFollowUpComposer({
         data-promptbox-shell=""
         className="space-y-2"
       >
-        <div ref={stackRef} className="grid gap-2">
+        <div
+          ref={stackRef}
+          className={`grid gap-2 ${PROMPT_STACK_TRACK_CLASS}`}
+        >
           {hasPluginComposerScope ? (
             <ComposerBannersSlot>{stack}</ComposerBannersSlot>
           ) : (

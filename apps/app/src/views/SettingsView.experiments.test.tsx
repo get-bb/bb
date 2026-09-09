@@ -8,6 +8,7 @@ afterEach(cleanup);
 function renderSection(overrides?: {
   onChangelogPreviewEnabledChange?: (enabled: boolean) => void;
   onMobileAppEnabledChange?: (enabled: boolean) => void;
+  onSidebarProgressiveDisclosureEnabledChange?: (enabled: boolean) => void;
   onTimelineWindowingEnabledChange?: (enabled: boolean) => void;
 }) {
   return render(
@@ -16,12 +17,16 @@ function renderSection(overrides?: {
       disabled={false}
       editMessagesEnabled={false}
       mobileAppEnabled={false}
+      sidebarProgressiveDisclosureEnabled={false}
       timelineWindowingEnabled={false}
       onChangelogPreviewEnabledChange={
         overrides?.onChangelogPreviewEnabledChange ?? vi.fn()
       }
       onEditMessagesEnabledChange={vi.fn()}
       onMobileAppEnabledChange={overrides?.onMobileAppEnabledChange ?? vi.fn()}
+      onSidebarProgressiveDisclosureEnabledChange={
+        overrides?.onSidebarProgressiveDisclosureEnabledChange ?? vi.fn()
+      }
       onTimelineWindowingEnabledChange={
         overrides?.onTimelineWindowingEnabledChange ?? vi.fn()
       }
@@ -41,6 +46,13 @@ describe("ExperimentsSettingsSection", () => {
     const onChange = vi.fn();
     renderSection({ onMobileAppEnabledChange: onChange });
     fireEvent.click(screen.getByLabelText("Mobile app"));
+    expect(onChange).toHaveBeenCalledWith(true);
+  });
+
+  it("reports sidebar progressive disclosure changes", () => {
+    const onChange = vi.fn();
+    renderSection({ onSidebarProgressiveDisclosureEnabledChange: onChange });
+    fireEvent.click(screen.getByLabelText("Sidebar progressive disclosure"));
     expect(onChange).toHaveBeenCalledWith(true);
   });
 

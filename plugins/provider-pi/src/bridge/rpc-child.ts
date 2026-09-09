@@ -43,6 +43,7 @@ export interface SpawnPiRpcChildArgs {
   onChannelMessage: (message: Record<string, unknown>) => void;
   onExit: (info: PiRpcChildExitInfo) => void;
   recordThreadId: string | null;
+  onExtensionUiRequest?: (request: Record<string, unknown>) => void;
 }
 
 export class PiRpcChildExitedError extends Error {
@@ -280,6 +281,15 @@ export class PiRpcChild {
     this.child.kill("SIGTERM");
   }
 
+  respondToExtensionUi(
+    id: string | number,
+    fields: Record<string, unknown>,
+  ): void {
+    this.writeStdin(
+      `${JSON.stringify({ type: "extension_ui_response", id, ...fields })}\n`,
+    );
+  }
+
   private endWriters(): void {
     try {
       this.child.stdin?.end();
@@ -345,13 +355,17 @@ export class PiRpcChild {
       return;
     }
     if (message.type === "extension_ui_request") {
-      this.writeStdin(
-        `${JSON.stringify({
-          type: "extension_ui_response",
-          id: message.id,
-          cancelled: true,
-        })}\n`,
-      );
+      if (this.args.onExtensionUiRequest) {
+        this.args.onExtensionUiRequest(message);
+      } else {
+        this.writeStdin(
+          `${JSON.stringify({
+            type: "extension_ui_response",
+            id: message.id,
+            cancelled: true,
+          })}\n`,
+        );
+      }
       return;
     }
     if (typeof message.type === "string") {

@@ -24,6 +24,16 @@ const REPO_PLUGINS_DIRECTORY_NAME = "plugins";
 
 export const BUILTIN_PLUGINS = [
   {
+    name: "bb-guide",
+    pluginId: "bb-guide",
+    defaultEnabled: true,
+  },
+  {
+    name: "account-pool",
+    pluginId: "account-pool",
+    defaultEnabled: false,
+  },
+  {
     name: "ask-user-question",
     pluginId: "ask-user-question",
     defaultEnabled: false,
@@ -36,6 +46,21 @@ export const BUILTIN_PLUGINS = [
   {
     name: "connect",
     pluginId: "connect",
+    defaultEnabled: true,
+  },
+  {
+    name: "environment-project-checkout",
+    pluginId: "environment-project-checkout",
+    defaultEnabled: true,
+  },
+  {
+    name: "environment-git-worktree",
+    pluginId: "environment-git-worktree",
+    defaultEnabled: true,
+  },
+  {
+    name: "environment-personal-workspace",
+    pluginId: "environment-personal-workspace",
     defaultEnabled: true,
   },
   {
@@ -77,6 +102,11 @@ export const BUILTIN_PLUGINS = [
     name: "provider-pi",
     pluginId: "provider-pi",
     defaultEnabled: true,
+  },
+  {
+    name: "provider-usage",
+    pluginId: "provider-usage",
+    defaultEnabled: false,
   },
   {
     name: "provider-acp",
@@ -128,14 +158,17 @@ export const BUILTIN_PLUGINS = [
     pluginId: "workflows",
     defaultEnabled: false,
   },
-].map(
-  (plugin): BundledPluginDefinition => ({
-    ...plugin,
-    autoInstall: true,
-  }),
-);
+].map((plugin): BundledPluginDefinition => ({
+  ...plugin,
+  autoInstall: true,
+}));
 
 export const OFFICIAL_PLUGINS = [
+  {
+    name: "browser-automation",
+    pluginId: "browser-automation",
+    defaultEnabled: false,
+  },
   {
     name: "github",
     pluginId: "github",
@@ -161,12 +194,10 @@ export const OFFICIAL_PLUGINS = [
     pluginId: "theme-preview",
     defaultEnabled: true,
   },
-].map(
-  (plugin): BundledPluginDefinition => ({
-    ...plugin,
-    autoInstall: false,
-  }),
-);
+].map((plugin): BundledPluginDefinition => ({
+  ...plugin,
+  autoInstall: false,
+}));
 
 export const BUNDLED_PLUGINS: readonly BundledPluginDefinition[] = [
   ...BUILTIN_PLUGINS,

@@ -48,6 +48,7 @@ import {
   threadPendingInteractionsResponseSchema,
   threadResponseSchema,
   threadTimelineResponseSchema,
+  THREAD_EVENT_LIST_PAGE_SIZE,
 } from "@bb/server-contract";
 
 export interface CreateHostThreadOptions {
@@ -61,6 +62,7 @@ export interface CreateHostThreadOptions {
   title?: string;
   workspace:
     | { type: "managed-worktree" }
+    | { type: "personal" }
     | { path: string | null; type: "unmanaged" };
 }
 
@@ -131,7 +133,7 @@ function defaultModelForProvider(providerId: string): string {
 function toWorkspaceArgs(
   workspace: CreateHostThreadOptions["workspace"],
 ): WorkspaceArgs {
-  if (workspace.type === "unmanaged") {
+  if (workspace.type === "unmanaged" || workspace.type === "personal") {
     return workspace;
   }
   return { ...workspace, baseBranch: { kind: "default" } };
@@ -391,12 +393,26 @@ export async function getThreadEvents(
   api: PublicApiClient,
   threadId: string,
 ): Promise<ThreadEventRow[]> {
-  const response = await api.threads[":id"].events.$get({
-    param: { id: threadId },
-    query: { limit: "10000" },
-  });
-  await expectStatus(response, 200, `get thread events ${threadId}`);
-  return threadEventRowSchema.array().parse(await response.json());
+  const rows: ThreadEventRow[] = [];
+  let afterSeq: string | undefined;
+  for (;;) {
+    const response = await api.threads[":id"].events.$get({
+      param: { id: threadId },
+      query: {
+        ...(afterSeq === undefined ? {} : { afterSeq }),
+        limit: String(THREAD_EVENT_LIST_PAGE_SIZE),
+        order: "asc",
+      },
+    });
+    await expectStatus(response, 200, `get thread events ${threadId}`);
+    const page = threadEventRowSchema.array().parse(await response.json());
+    rows.push(...page);
+    const last = page.at(-1);
+    if (last === undefined || page.length < THREAD_EVENT_LIST_PAGE_SIZE) {
+      return rows;
+    }
+    afterSeq = String(last.seq);
+  }
 }
 
 export async function getThreadOutput(

@@ -11,7 +11,10 @@ import { sdk } from "@/lib/sdk";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createQueryClientTestHarness } from "@/test/queryClientTestHarness";
 import { removeEnvironmentDiffPatchQueries } from "../cache-owners/query-cache";
-import { bumpAllDiffPatchEvictionGenerations } from "../cache-owners/environment-diff-patch-cache-owner";
+import {
+  bumpAllDiffPatchEvictionGenerations,
+  bumpDiffPatchFreshnessGeneration,
+} from "../cache-owners/environment-diff-patch-cache-owner";
 import { environmentDiffPatchQueryKey } from "./query-keys";
 import { HEAVY_PAYLOAD_GC_TIME_MS } from "./query-policies";
 import { useEnvironmentDiffPatches } from "./use-environment-diff-patches";
@@ -303,6 +306,144 @@ describe("useEnvironmentDiffPatches", () => {
       expect(state.patch).toBe(patch.patch);
     });
     expect(queryClient.getQueryData<DiffPatchEntry>(patchKey())).toEqual(patch);
+  });
+
+  it("refreshes a retained patch without returning its card to loading", async () => {
+    const { wrapper, queryClient } = createQueryClientTestHarness();
+    const currentPatch: DiffPatchEntry = {
+      path: PATH,
+      patch: "diff --git a/file.ts b/file.ts\n+current\n",
+      truncated: false,
+    };
+    const refreshedPatch: DiffPatchEntry = {
+      path: PATH,
+      patch: "diff --git a/file.ts b/file.ts\n+refreshed\n",
+      truncated: false,
+    };
+    const refresh = createDeferredPromise<EnvironmentDiffPatchResponse>();
+    vi.mocked(sdk.environments.diffPatch).mockReturnValue(refresh.promise);
+
+    const { result } = renderHook(
+      () => useEnvironmentDiffPatches(ENVIRONMENT_ID, { target: TARGET }),
+      { wrapper },
+    );
+    act(() => {
+      result.current.seedInitialPatches([currentPatch]);
+      bumpDiffPatchFreshnessGeneration(ENVIRONMENT_ID);
+      result.current.requestPaths({
+        visible: [PATH],
+        overscan: [],
+      });
+    });
+
+    await waitFor(() => {
+      expect(sdk.environments.diffPatch).toHaveBeenCalledTimes(1);
+    });
+    expect(result.current.getPatchState(PATH)).toMatchObject({
+      status: "loaded",
+      patch: currentPatch.patch,
+    });
+
+    await act(async () => {
+      refresh.resolve(availableResponse(refreshedPatch));
+      await refresh.promise;
+    });
+
+    await waitFor(() => {
+      expect(result.current.getPatchState(PATH)).toMatchObject({
+        status: "loaded",
+        patch: refreshedPatch.patch,
+      });
+    });
+    expect(queryClient.getQueryData<DiffPatchEntry>(patchKey())).toEqual(
+      refreshedPatch,
+    );
+  });
+
+  it("loads on demand after a failed generation becomes stale", async () => {
+    const { wrapper } = createQueryClientTestHarness();
+    const patch: DiffPatchEntry = {
+      path: PATH,
+      patch: "fresh",
+      truncated: false,
+    };
+    vi.mocked(sdk.environments.diffPatch)
+      .mockRejectedValueOnce(new Error("Failed to fetch"))
+      .mockResolvedValueOnce(availableResponse(patch));
+    const { result } = renderHook(
+      () => useEnvironmentDiffPatches(ENVIRONMENT_ID, { target: TARGET }),
+      { wrapper },
+    );
+
+    act(() => result.current.loadPath(PATH));
+    await waitFor(() =>
+      expect(result.current.getPatchState(PATH)).toMatchObject({
+        status: "error",
+        error: "Failed to fetch",
+      }),
+    );
+
+    act(() => bumpDiffPatchFreshnessGeneration(ENVIRONMENT_ID));
+    expect(result.current.getPatchState(PATH).status).toBe("idle");
+    act(() => result.current.loadPath(PATH));
+
+    await waitFor(() =>
+      expect(sdk.environments.diffPatch).toHaveBeenCalledTimes(2),
+    );
+    await waitFor(() =>
+      expect(result.current.getPatchState(PATH)).toMatchObject({
+        status: "loaded",
+        patch: patch.patch,
+      }),
+    );
+  });
+
+  it("rejects an older response and starts a newer request after a freshness change", async () => {
+    const { wrapper, queryClient } = createQueryClientTestHarness();
+    const staleRequest = createDeferredPromise<EnvironmentDiffPatchResponse>();
+    const freshRequest = createDeferredPromise<EnvironmentDiffPatchResponse>();
+    const stalePatch: DiffPatchEntry = {
+      path: PATH,
+      patch: "stale",
+      truncated: false,
+    };
+    const freshPatch: DiffPatchEntry = {
+      path: PATH,
+      patch: "fresh",
+      truncated: false,
+    };
+    vi.mocked(sdk.environments.diffPatch)
+      .mockReturnValueOnce(staleRequest.promise)
+      .mockReturnValueOnce(freshRequest.promise);
+    const { result } = renderHook(
+      () => useEnvironmentDiffPatches(ENVIRONMENT_ID, { target: TARGET }),
+      { wrapper },
+    );
+    act(() => {
+      result.current.requestPaths({ visible: [PATH], overscan: [] });
+    });
+    await waitFor(() =>
+      expect(sdk.environments.diffPatch).toHaveBeenCalledTimes(1),
+    );
+    act(() => {
+      bumpDiffPatchFreshnessGeneration(ENVIRONMENT_ID);
+      result.current.requestPaths({ visible: [PATH], overscan: [] });
+    });
+    await waitFor(() =>
+      expect(sdk.environments.diffPatch).toHaveBeenCalledTimes(2),
+    );
+    await act(async () => {
+      staleRequest.resolve(availableResponse(stalePatch));
+      await staleRequest.promise;
+    });
+    expect(queryClient.getQueryData(patchKey())).toBeUndefined();
+    await act(async () => {
+      freshRequest.resolve(availableResponse(freshPatch));
+      await freshRequest.promise;
+    });
+    await waitFor(() =>
+      expect(result.current.getPatchState(PATH).patch).toBe(freshPatch.patch),
+    );
   });
 });
 

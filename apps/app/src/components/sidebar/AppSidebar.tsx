@@ -18,7 +18,11 @@ import {
 import { ProjectList } from "./ProjectList";
 import { PluginThreadList } from "./PluginThreadList";
 import { useThreadListReplacement } from "./threadListProvider";
-import { PluginSidebarFooterActions } from "@/components/plugin/PluginSidebarFooterActions";
+import {
+  PluginSidebarFooterDisclosure,
+  PluginSidebarFooterItems,
+  usePluginSidebarFooterDisclosure,
+} from "@/components/plugin/PluginSidebarFooterItems";
 import { SidebarPluginAttentionGlyph } from "./SidebarPluginAttentionGlyph";
 import { SidebarUpdatesBadge } from "./SidebarUpdatesBadge";
 import { SidebarHistoryNavigationControls } from "./SidebarHistoryNavigationControls";
@@ -102,6 +106,7 @@ export function AppSidebar({
   );
   const isAppCommandModifierHeld = useIsAppCommandModifierHeld();
   const settingsShortcut = useAppCommandShortcut("settings.open");
+  const pluginSidebarFooter = usePluginSidebarFooterDisclosure();
 
   const handleNewChat = useCallback(() => {
     closeOnMobile();
@@ -269,7 +274,10 @@ export function AppSidebar({
       </SidebarContent>
       <SidebarFooter className="relative">
         <OverflowFade placement="above" tone="sidebar" size="sm" />
-        {}
+        <PluginSidebarFooterDisclosure
+          item={pluginSidebarFooter.activeItem}
+          onDismiss={pluginSidebarFooter.dismiss}
+        />
         <SidebarMenu className="flex-row flex-wrap-reverse items-center gap-1">
           <SidebarMenuItem className="min-w-0">
             <SidebarMenuButton
@@ -295,7 +303,15 @@ export function AppSidebar({
               </Link>
             </SidebarMenuButton>
           </SidebarMenuItem>
-          <PluginSidebarFooterActions onNavigate={closeOnMobile} />
+          <PluginSidebarFooterItems
+            activeDisclosureKey={pluginSidebarFooter.activeKey}
+            suppressedTooltipKey={pluginSidebarFooter.suppressedTooltipKey}
+            onTooltipSuppressionEnd={
+              pluginSidebarFooter.clearTooltipSuppression
+            }
+            onDisclosureCommand={pluginSidebarFooter.handleCommand}
+            onNavigate={closeOnMobile}
+          />
           <SidebarMenuItem className="min-w-0">
             <SidebarMenuButton
               className={SIDEBAR_FOOTER_ACTION_CLASS}

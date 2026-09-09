@@ -15,8 +15,15 @@
       ],
       "@get-bb/plugin-sdk/testing": [
         "../../packages/plugin-sdk/bundled-types/bb-plugin-sdk-testing.d.ts"
+      ],
+      "@get-bb/plugin-sdk/app": [
+        "../../packages/plugin-sdk/bundled-types/bb-plugin-sdk-app.d.ts"
+      ],
+      "@get-bb/plugin-sdk/testing/app": [
+        "../../packages/plugin-sdk/bundled-types/bb-plugin-sdk-testing-app.d.ts"
       ]
-    }
+    },
+    "jsx": "react-jsx"
   },
-  "include": ["*.ts"]
+  "include": ["*.ts", "*.tsx"]
 }

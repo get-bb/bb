@@ -160,6 +160,7 @@ function isEventProjectionCallMessage(
     case "extension":
     case "file-edit":
     case "file-read":
+    case "image-generation":
     case "image-view":
     case "plan-steps":
     case "search":
@@ -565,7 +566,6 @@ function buildFlatProjectionData(
   args: BuildFlatProjectionDataArgs,
 ): BuildFlatProjectionDataResult {
   const state = createProjectionState();
-  const shouldTrackActiveThinking = args.includeActiveThinking;
 
   const orderedEvents = args.events;
   const acceptedClientRequestById = buildAcceptedClientRequestById({
@@ -669,7 +669,7 @@ function buildFlatProjectionData(
           scope: decoded.scope,
         });
         onTurnCompleted({
-          completedAt: meta.createdAt,
+          meta,
           state,
           turnId: completedTurnId,
           status: decoded.status,
@@ -775,7 +775,6 @@ function buildFlatProjectionData(
         eventParentToolCallId,
         eventTurnId,
         meta,
-        shouldTrackActiveThinking,
         state,
       })
     ) {
@@ -907,7 +906,11 @@ function buildFlatProjectionData(
       continue;
     }
 
-    const compactionEvent = parseCompactionLifecycleEvent(decoded, meta);
+    const compactionEvent = parseCompactionLifecycleEvent(
+      decoded,
+      meta,
+      eventParentToolCallId,
+    );
     if (compactionEvent) {
       flushToolActivityBeforeNonToolMessage(state);
       if (compactionEvent.kind === "begin") {
@@ -931,8 +934,7 @@ function buildFlatProjectionData(
     }
 
     const operation = parseOperationMessage(decoded, meta, {
-      includeProviderUnhandledOperations:
-        args.options?.includeProviderUnhandledOperations,
+      includeDiagnosticOperations: args.options?.includeDiagnosticOperations,
       providerDisplayName: args.options?.providerDisplayName,
       threadName: args.options?.threadName ?? "",
     });

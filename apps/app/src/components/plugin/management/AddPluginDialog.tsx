@@ -18,6 +18,7 @@ import {
 import { Icon } from "@bb/shared-ui/icon";
 import { Input } from "@bb/shared-ui/input";
 import { appToast } from "@/components/ui/app-toast.js";
+import { pluginToast } from "@/components/plugin/PluginNotificationDescription";
 import { pluginAdminErrorMessage } from "@/lib/plugin-admin-error";
 import {
   applyInstalledPlugin,
@@ -34,6 +35,7 @@ import { CatalogEntryIcon, FullTrustWarning } from "./plugin-ui";
 export type AddPluginInitial = {
   entryId: string;
   marketplace: string;
+  pluginId: string;
   publisherLabel: string;
   displayName: string;
   icon: string | null;
@@ -248,6 +250,7 @@ function AddPluginDialogContent({
   const plan = planQuery.data;
 
   const install = useMutation({
+    meta: { showErrorToast: false },
     mutationFn: (body: NonNullable<typeof request>) =>
       body.kind === "catalog"
         ? installCatalogPlugin(fetch, {
@@ -262,14 +265,22 @@ function AddPluginDialogContent({
       applyInstalledPlugin({ queryClient, plugin });
       invalidatePluginList({ queryClient });
       invalidatePluginCatalogSearch({ queryClient });
-      appToast.success(`${initial?.displayName ?? "Plugin"} installed`);
+      pluginToast.success("Plugin installed", plugin, "installed");
       onOpenChange(false);
       onInstalled?.(plugin);
     },
     onError: (error) => {
-      appToast.error("Installing the plugin failed", {
-        description: pluginAdminErrorMessage(error),
-      });
+      const detail = pluginAdminErrorMessage(error);
+      if (initial === null) {
+        appToast.error("Plugin installation failed", { description: detail });
+        return;
+      }
+      pluginToast.error(
+        "Plugin installation failed",
+        { id: initial.pluginId, name: initial.displayName },
+        "catalog",
+        detail,
+      );
     },
   });
 

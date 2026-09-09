@@ -1,3 +1,4 @@
+import { rejectMultipleWorkspaceSelectors } from "./shared.js";
 import { z } from "zod";
 import {
   appSettingsSchema,
@@ -8,6 +9,7 @@ import {
   availableModelSchema,
   experimentsSchema,
   featureFlagsSchema,
+  jsonValueSchema,
   permissionModeSchema,
   pluginThemeMetaSchema,
   providerInfoSchema,
@@ -50,25 +52,13 @@ const systemProviderHostQueryFields = {
   environmentId: z.string().min(1),
 } as const;
 
-function rejectMultipleProviderHostSelectors(
-  query: { environmentId?: string; hostId?: string },
-  context: z.RefinementCtx,
-): void {
-  if (query.environmentId !== undefined && query.hostId !== undefined) {
-    context.addIssue({
-      code: "custom",
-      message: "hostId and environmentId are mutually exclusive",
-    });
-  }
-}
-
 export const systemProvidersQuerySchema = z
   .object({
     ...systemProviderHostQueryFields,
     capability: z.enum(["usage"]),
   })
   .partial()
-  .superRefine(rejectMultipleProviderHostSelectors);
+  .superRefine(rejectMultipleWorkspaceSelectors);
 export type SystemProvidersQuery = z.infer<typeof systemProvidersQuerySchema>;
 
 export const systemExecutionOptionsQuerySchema = z
@@ -77,7 +67,7 @@ export const systemExecutionOptionsQuerySchema = z
     providerId: z.string().min(1),
   })
   .partial()
-  .superRefine(rejectMultipleProviderHostSelectors);
+  .superRefine(rejectMultipleWorkspaceSelectors);
 export type SystemExecutionOptionsQuery = z.infer<
   typeof systemExecutionOptionsQuerySchema
 >;
@@ -134,7 +124,9 @@ export const systemAiServicesSchema = z.object({
 export type SystemAiServices = z.infer<typeof systemAiServicesSchema>;
 
 export const systemConfigResponseSchema = z.object({
-  generalSettings: appSettingsSchema,
+  generalSettings: appSettingsSchema.extend({
+    showUnhandledProviderEvents: z.boolean().optional(),
+  }),
   keybindings: appKeybindingsSchema,
   defaultKeybindings: appDefaultKeybindingsSchema,
   keybindingOverrides: appKeybindingOverridesSchema,
@@ -251,4 +243,61 @@ export type SystemInstallCliSkillsResponse = z.infer<
 >;
 export type SystemConfigReloadResponse = z.infer<
   typeof systemConfigReloadResponseSchema
+>;
+
+export const systemEnvironmentProviderSchema = z.object({
+  id: z.string().min(1),
+  displayName: z.string().min(1),
+  icon: z.string().min(1).nullable(),
+  logoUrl: z.string().min(1).nullable(),
+  pluginId: z.string().min(1),
+  requires: z.object({
+    projectCheckout: z.boolean(),
+    gitCheckout: z.boolean(),
+    gitRemote: z.boolean(),
+    projectless: z.boolean(),
+  }),
+  inputs: jsonValueSchema.nullable(),
+  acceptsEmptyInputs: z.boolean(),
+  availability: z
+    .discriminatedUnion("status", [
+      z.object({ status: z.literal("available") }),
+      z.object({
+        status: z.literal("setup-required"),
+        message: z.string().min(1),
+      }),
+      z.object({
+        status: z.literal("unavailable"),
+        message: z.string().min(1),
+      }),
+    ])
+    .nullable(),
+});
+export type SystemEnvironmentProvider = z.infer<
+  typeof systemEnvironmentProviderSchema
+>;
+
+export const systemEnvironmentProvidersResponseSchema = z.object({
+  providers: z.array(systemEnvironmentProviderSchema),
+});
+export type SystemEnvironmentProvidersResponse = z.infer<
+  typeof systemEnvironmentProvidersResponseSchema
+>;
+
+export const systemEnvironmentProvidersQuerySchema = z
+  .object({
+    projectId: z.string().min(1).optional(),
+    hostId: z.string().min(1).optional(),
+  })
+  .superRefine((query, context) => {
+    if (query.hostId !== undefined && query.projectId === undefined) {
+      context.addIssue({
+        code: "custom",
+        path: ["hostId"],
+        message: "hostId requires projectId",
+      });
+    }
+  });
+export type SystemEnvironmentProvidersQuery = z.infer<
+  typeof systemEnvironmentProvidersQuerySchema
 >;
