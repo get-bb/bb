@@ -1,5 +1,6 @@
 import { join } from "node:path";
 import {
+  MARKETPLACE_OVERVIEW_MAX_CHARS,
   marketplaceEntryV2Schema as domainMarketplaceEntryV2Schema,
   pluginCatalogCategory,
   pluginMarketplaceCategorySchema,
@@ -556,6 +557,21 @@ export function entryScreenshotUrls(
     }
     return [resolved.toString()];
   });
+}
+
+export function entryOverview(
+  entry: MarketplaceEntry,
+  warn?: (message: string) => void,
+): string | undefined {
+  if (!("overview" in entry) || entry.overview === undefined) return undefined;
+  const length = [...entry.overview.replace(/\n$/u, "")].length;
+  if (length > MARKETPLACE_OVERVIEW_MAX_CHARS) {
+    warn?.(
+      `marketplace entry "${entry.id}" overview text was skipped because it has ${length} characters; the maximum is ${MARKETPLACE_OVERVIEW_MAX_CHARS}`,
+    );
+    return undefined;
+  }
+  return entry.overview;
 }
 
 export function entryIconTinted(contentType: string): boolean {

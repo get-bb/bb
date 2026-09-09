@@ -5,6 +5,73 @@ interface PluginNavPanelIdentity {
   id: string;
 }
 
+export const BUILT_IN_SIDEBAR_NAVIGATION_KEYS = {
+  newThread: "__bb__/new-thread",
+  searchThreads: "__bb__/search-threads",
+  extensions: "__bb__/extensions",
+  skills: "__bb__/skills",
+  automations: "__bb__/automations",
+} as const;
+
+export const DEFAULT_HIDDEN_SIDEBAR_NAVIGATION_KEYS = [
+  BUILT_IN_SIDEBAR_NAVIGATION_KEYS.searchThreads,
+] as const;
+
+export const DEFAULT_BUILT_IN_SIDEBAR_NAVIGATION_ORDER = [
+  BUILT_IN_SIDEBAR_NAVIGATION_KEYS.newThread,
+  BUILT_IN_SIDEBAR_NAVIGATION_KEYS.searchThreads,
+  BUILT_IN_SIDEBAR_NAVIGATION_KEYS.extensions,
+  BUILT_IN_SIDEBAR_NAVIGATION_KEYS.skills,
+  BUILT_IN_SIDEBAR_NAVIGATION_KEYS.automations,
+] as const;
+
+export function seedSkillsNavigationPreference(
+  order: readonly string[],
+  visibleKeys: readonly string[] | null,
+): { order: string[]; visibleKeys: string[] | null } {
+  if (order.includes(BUILT_IN_SIDEBAR_NAVIGATION_KEYS.skills)) {
+    return {
+      order: [...order],
+      visibleKeys: visibleKeys === null ? null : [...visibleKeys],
+    };
+  }
+  const pluginsIndex = order.indexOf(
+    BUILT_IN_SIDEBAR_NAVIGATION_KEYS.extensions,
+  );
+  if (pluginsIndex === -1) {
+    return {
+      order: [...order],
+      visibleKeys: visibleKeys === null ? null : [...visibleKeys],
+    };
+  }
+  const nextOrder = [...order];
+  nextOrder.splice(
+    pluginsIndex + 1,
+    0,
+    BUILT_IN_SIDEBAR_NAVIGATION_KEYS.skills,
+  );
+  if (
+    visibleKeys === null ||
+    !visibleKeys.includes(BUILT_IN_SIDEBAR_NAVIGATION_KEYS.extensions) ||
+    visibleKeys.includes(BUILT_IN_SIDEBAR_NAVIGATION_KEYS.skills)
+  ) {
+    return {
+      order: nextOrder,
+      visibleKeys: visibleKeys === null ? null : [...visibleKeys],
+    };
+  }
+  const nextVisibleKeys = [...visibleKeys];
+  const visiblePluginsIndex = nextVisibleKeys.indexOf(
+    BUILT_IN_SIDEBAR_NAVIGATION_KEYS.extensions,
+  );
+  nextVisibleKeys.splice(
+    visiblePluginsIndex + 1,
+    0,
+    BUILT_IN_SIDEBAR_NAVIGATION_KEYS.skills,
+  );
+  return { order: nextOrder, visibleKeys: nextVisibleKeys };
+}
+
 export function getPluginNavPanelKey(panel: PluginNavPanelIdentity): string {
   return `${panel.pluginId}/${panel.id}`;
 }
@@ -12,57 +79,86 @@ export function getPluginNavPanelKey(panel: PluginNavPanelIdentity): string {
 interface ArrangePluginNavPanelsArgs<TPanel extends PluginNavPanelIdentity> {
   panels: readonly TPanel[];
   storedOrder: readonly string[];
-  hiddenKeys: readonly string[];
 }
 
 interface ArrangedPluginNavPanels<TPanel extends PluginNavPanelIdentity> {
-  visible: TPanel[];
-  hidden: TPanel[];
+  ordered: TPanel[];
   normalizedOrder: string[];
+}
+
+interface ArrangePluginNavPanelPreferencesArgs<
+  TPanel extends PluginNavPanelIdentity,
+> extends ArrangePluginNavPanelsArgs<TPanel> {
+  storedVisibleKeys: readonly string[] | null;
+  defaultHiddenKeys: readonly string[];
+}
+
+interface ArrangedPluginNavPanelPreferences<
+  TPanel extends PluginNavPanelIdentity,
+> extends ArrangedPluginNavPanels<TPanel> {
+  visible: TPanel[];
+  visibleKeys: string[];
+  normalizedVisibleKeys: string[] | null;
 }
 
 export function arrangePluginNavPanels<TPanel extends PluginNavPanelIdentity>({
   panels,
   storedOrder,
-  hiddenKeys,
 }: ArrangePluginNavPanelsArgs<TPanel>): ArrangedPluginNavPanels<TPanel> {
-  const { ordered, normalizedOrder } = arrangeByStoredOrder({
+  return arrangeByStoredOrder({
     items: panels,
     getId: getPluginNavPanelKey,
     storedOrder,
   });
+}
 
-  const hiddenSet = new Set(hiddenKeys);
-  const visible: TPanel[] = [];
-  const hidden: TPanel[] = [];
-  for (const panel of ordered) {
-    if (hiddenSet.has(getPluginNavPanelKey(panel))) hidden.push(panel);
-    else visible.push(panel);
+export function arrangePluginNavPanelPreferences<
+  TPanel extends PluginNavPanelIdentity,
+>({
+  panels,
+  storedOrder,
+  storedVisibleKeys,
+  defaultHiddenKeys,
+}: ArrangePluginNavPanelPreferencesArgs<TPanel>): ArrangedPluginNavPanelPreferences<TPanel> {
+  const { ordered, normalizedOrder } = arrangePluginNavPanels({
+    panels,
+    storedOrder,
+  });
+  const normalizedVisibleKeys =
+    storedVisibleKeys === null
+      ? null
+      : [...new Set(storedVisibleKeys.filter((key) => key.length > 0))];
+  const defaultHiddenKeySet = new Set(defaultHiddenKeys);
+  const visibleKeys =
+    normalizedVisibleKeys ??
+    ordered
+      .map(getPluginNavPanelKey)
+      .filter((key) => !defaultHiddenKeySet.has(key));
+  const visibleSet = new Set(visibleKeys);
+
+  return {
+    ordered,
+    normalizedOrder,
+    visible: ordered.filter((panel) =>
+      visibleSet.has(getPluginNavPanelKey(panel)),
+    ),
+    visibleKeys: ordered
+      .map(getPluginNavPanelKey)
+      .filter((key) => visibleSet.has(key)),
+    normalizedVisibleKeys,
+  };
+}
+
+export function togglePluginNavPanelVisibility(
+  visibleKeys: readonly string[],
+  key: string,
+  visible: boolean,
+): string[] {
+  const normalized = [
+    ...new Set(visibleKeys.filter((item) => item.length > 0)),
+  ];
+  if (visible) {
+    return normalized.includes(key) ? normalized : [...normalized, key];
   }
-
-  return { visible, hidden, normalizedOrder };
-}
-
-export function seedLeadingNavPanelKeys(
-  order: readonly string[],
-  leadingKeys: readonly string[],
-): string[] {
-  const next = [...order];
-  if (next.length === 0) return next;
-  const missing = leadingKeys.filter((key) => !next.includes(key));
-  return missing.length === 0 ? next : [...missing, ...next];
-}
-
-export function hidePluginNavPanel(
-  hiddenKeys: readonly string[],
-  key: string,
-): string[] {
-  return hiddenKeys.includes(key) ? [...hiddenKeys] : [...hiddenKeys, key];
-}
-
-export function showPluginNavPanel(
-  hiddenKeys: readonly string[],
-  key: string,
-): string[] {
-  return hiddenKeys.filter((hiddenKey) => hiddenKey !== key);
+  return normalized.filter((item) => item !== key);
 }

@@ -76,11 +76,15 @@ interface PaginatedTimelineRowsResult {
   rows: TimelineRow[];
 }
 
-function isTimelineSegmentAnchorRow(row: TimelineRow): boolean {
+function isTimelineSegmentAnchorRow(
+  row: TimelineRow,
+  contextBoundarySeq: number | null,
+): boolean {
   return (
-    row.kind === "conversation" &&
-    row.role === "user" &&
-    row.turnRequest.kind === "message"
+    row.sourceSeqStart === contextBoundarySeq ||
+    (row.kind === "conversation" &&
+      row.role === "user" &&
+      row.turnRequest.kind === "message")
   );
 }
 
@@ -103,13 +107,14 @@ function buildTimelineLogicalSegment(
 
 function buildTimelineLogicalSegments(
   rows: readonly TimelineRow[],
+  contextBoundarySeq: number | null,
 ): TimelineLogicalSegment[] {
   const segments: TimelineLogicalSegment[] = [];
   let currentRows: TimelineRow[] = [];
 
   for (const row of rows) {
     if (
-      isTimelineSegmentAnchorRow(row) &&
+      isTimelineSegmentAnchorRow(row, contextBoundarySeq) &&
       currentRows.length > 0 &&
       currentRows[0]?.sourceSeqStart !== row.sourceSeqStart
     ) {
@@ -129,6 +134,7 @@ function buildTimelineLogicalSegments(
 }
 
 interface PaginateTimelineRowsArgs {
+  contextBoundarySeq: number | null;
   sequenceWindowStart: TimelineSequenceWindowStart | null;
   knownHasOlderSegments: boolean | null;
   page: ThreadTimelinePageRequest;
@@ -138,8 +144,14 @@ interface PaginateTimelineRowsArgs {
 export function paginateTimelineRows(
   args: PaginateTimelineRowsArgs,
 ): PaginatedTimelineRowsResult {
-  const { knownHasOlderSegments, page, rows, sequenceWindowStart } = args;
-  const segments = buildTimelineLogicalSegments(rows);
+  const {
+    contextBoundarySeq,
+    knownHasOlderSegments,
+    page,
+    rows,
+    sequenceWindowStart,
+  } = args;
+  const segments = buildTimelineLogicalSegments(rows, contextBoundarySeq);
   if (sequenceWindowStart !== null) {
     return {
       hasOlderRows: true,

@@ -8,8 +8,14 @@ import {
   waitFor,
 } from "@testing-library/react";
 import { useContext, useLayoutEffect } from "react";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { threadsQueryKey } from "@/hooks/queries/query-keys";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { ThreadQueuedMessage } from "@bb/domain";
+import {
+  makeThreadListEntry,
+  makeThreadQueuedMessage,
+} from "@bb/test-helpers/domain-fixtures";
 import type { Active, DroppableContainer } from "@dnd-kit/core";
 import {
   QueuedMessagesList as QueuedMessagesListComponent,
@@ -71,23 +77,11 @@ function TypeaheadLayoutFixture({
 }
 
 function makeQueuedMessage(id: string, text: string): ThreadQueuedMessage {
-  return {
+  return makeThreadQueuedMessage({
     id,
     threadId: "thr_prompt_pills",
     content: [{ type: "text", text, mentions: [] }],
-    model: "gpt-5.5",
-    reasoningLevel: "medium",
-    permissionMode: "auto",
-    serviceTier: "default",
-    groupWithNext: false,
-    sendAt: null,
-    waitingOn: null,
-    failureReason: null,
-    payload: { kind: "inline" },
-    editable: true,
-    createdAt: 0,
-    updatedAt: 0,
-  };
+  });
 }
 
 function makeQueuedFileMessage(id: string, name: string): ThreadQueuedMessage {
@@ -169,6 +163,89 @@ afterEach(() => {
 });
 
 describe("QueuedMessagesList", () => {
+  it("labels non-user senders and refreshes their names from the thread cache", async () => {
+    const queryClient = new QueryClient();
+    const messages = [
+      makeQueuedMessage("q_user", "User follow-up"),
+      makeThreadQueuedMessage({
+        id: "q_agent",
+        initiator: "agent",
+        senderThreadId: "thr_sender",
+      }),
+      makeThreadQueuedMessage({
+        id: "q_system",
+        initiator: "system",
+        waitingOn: { kind: "provisioning" },
+      }),
+    ];
+    const { container, getByText, getByRole } = render(
+      <QueryClientProvider client={queryClient}>
+        <QueuedMessagesList
+          queuedMessages={messages}
+          sendDisabled={false}
+          actionDisabled={false}
+          processingMessageId={null}
+          processingAction={null}
+          onSend={noop}
+          onReorder={noop}
+          onSetGroupBoundary={noop}
+          onEdit={noop}
+          onDelete={noop}
+        />
+      </QueryClientProvider>,
+    );
+    expect(
+      container.querySelector(
+        '[data-queued-message-id="q_user"] [data-queued-message-sender]',
+      ),
+    ).toBeNull();
+    expect(
+      getByText("thr_sender").closest("[data-queued-message-metadata]"),
+    ).not.toBeNull();
+    expect(
+      getByText("System")
+        .closest("[data-queued-message-metadata]")
+        ?.querySelector("[data-queued-message-wait]"),
+    ).not.toBeNull();
+    expect(
+      getByText("thr_sender").closest(".prompt-mention-pill"),
+    ).not.toBeNull();
+    act(() => {
+      queryClient.setQueryData(threadsQueryKey(), [
+        makeThreadListEntry({ id: "thr_sender", title: "Code review" }),
+      ]);
+    });
+    await waitFor(() => expect(getByText("Code review")).toBeTruthy());
+    fireEvent.keyDown(
+      getByRole("button", { name: "Drag up to open the queue workspace" }),
+      { key: "ArrowUp" },
+    );
+    expect(getByText("Code review")).toBeTruthy();
+    expect(getByText("System")).toBeTruthy();
+    queryClient.clear();
+  });
+
+  it.each([
+    { initiator: "system" as const, senderThreadId: null, height: "104px" },
+    {
+      initiator: "agent" as const,
+      senderThreadId: "thr_sender",
+      height: "110px",
+    },
+  ])(
+    "reserves the metadata height for $initiator senders",
+    ({ initiator, senderThreadId, height }) => {
+      const { container } = renderQueuedMessages([
+        makeThreadQueuedMessage({ initiator, senderThreadId }),
+      ]);
+      expect(
+        container.querySelector<HTMLElement>(
+          'section[aria-label="Queued messages"]',
+        )?.style.height,
+      ).toBe(height);
+    },
+  );
+
   it("renders as a standalone card when it is not attached to the composer", () => {
     const { container } = renderQueuedMessages(
       [makeQueuedMessage("q_one", "First queued message")],

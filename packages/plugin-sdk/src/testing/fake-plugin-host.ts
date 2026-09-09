@@ -20,6 +20,8 @@ import {
   isStandardSchema,
   isZodSchemaLike,
   storePluginHook,
+  validatePluginEnvironmentProviderDeclaration,
+  type NormalizedPluginEnvironmentProvider,
   KV_VALUE_MAX_BYTES,
   MENTION_PROVIDER_ID_PATTERN,
   normalizeMentionProviderTriggers,
@@ -42,6 +44,7 @@ import {
   undeclaredIconProblem,
   validatePluginAiServiceDeclaration,
   validatePluginProviderDeclaration,
+  validatePluginProviderEnvEntries,
   validateSettingsUpdate,
   zodSchemaToJsonSchema,
   type NormalizedPluginProviderDeclaration,
@@ -61,6 +64,7 @@ import type {
   PluginCliExecutionResult,
   PluginCliResult,
   PluginHookHandler,
+  PluginEnvironments,
   PluginHookName,
   PluginHooks,
   PluginEvents,
@@ -79,6 +83,13 @@ import type {
   PluginAiServiceDeclaration,
   PluginAiServices,
   PluginProviderDeclaration,
+  ExperimentalPluginProviderEnvContext,
+  ExperimentalPluginProviderEnvEntry,
+  ExperimentalPluginProviderEnvHealth,
+  ExperimentalPluginProviderEnvHealthContext,
+  ExperimentalPluginWebSocket,
+  ExperimentalPluginWebSocketHandler,
+  ExperimentalPluginWebSocketHandlers,
   PluginProviders,
   PluginRealtime,
   PluginRpc,
@@ -164,6 +175,24 @@ export interface FakeHttpRouteRecord {
   handler: PluginHttpHandler;
 }
 
+export interface ExperimentalFakeWebSocketRouteRecord {
+  path: string;
+  auth: PluginHttpAuthMode;
+  handler: ExperimentalPluginWebSocketHandler;
+}
+
+export interface ExperimentalFakeWebSocketSession {
+  readonly sent: readonly (string | Uint8Array)[];
+  readonly closeCalls: readonly {
+    code: number | null;
+    reason: string | null;
+  }[];
+  readonly readyState: number;
+  receive(data: string | Uint8Array): Promise<void>;
+  close(code?: number, reason?: string): Promise<void>;
+  error(error: Error): Promise<void>;
+}
+
 export interface FakeScheduleRecord {
   name: string;
   cron: string;
@@ -236,6 +265,7 @@ export interface ExperimentalFakeHostRpcCall {
 export interface FakePluginRegistrations {
   settingsDescriptors: PluginSettingDescriptors;
   httpRoutes: FakeHttpRouteRecord[];
+  websocketRoutes: ExperimentalFakeWebSocketRouteRecord[];
   rpcMethods: string[];
   services: FakeServiceRecord[];
   schedules: FakeScheduleRecord[];
@@ -254,10 +284,31 @@ export interface FakePluginRegistrations {
   hooks: {
     [K in PluginHookName]: PluginHookHandler<K> | null;
   };
+  environmentProviders: ReadonlyMap<
+    string,
+    NormalizedPluginEnvironmentProvider
+  >;
   mentionProviders: FakeMentionProviderRecord[];
   /** Live provider registrations from `bb.providers.register`
    * (normalized declarations, registration order; dispose removes). */
   providerRegistrations: NormalizedPluginProviderDeclaration[];
+  providerEnvResolvers: ReadonlyMap<
+    string,
+    (
+      context: ExperimentalPluginProviderEnvContext,
+    ) =>
+      | Promise<readonly ExperimentalPluginProviderEnvEntry[]>
+      | readonly ExperimentalPluginProviderEnvEntry[]
+  >;
+  providerEnvHealthResolvers: ReadonlyMap<
+    string,
+    (
+      context: ExperimentalPluginProviderEnvHealthContext,
+    ) =>
+      | ExperimentalPluginProviderEnvHealth
+      | null
+      | Promise<ExperimentalPluginProviderEnvHealth | null>
+  >;
   /** Live AI-service registrations from `experimental_aiServices.register`
    * (normalized declarations, registration order; dispose removes). */
   aiServiceRegistrations: PluginAiServiceDeclaration[];
@@ -337,6 +388,11 @@ export interface FakePluginBehaviorDrivers {
     path: string,
     init?: RequestInit,
   ): Promise<Response>;
+  /** Open and drive an exact-match `bb.http.experimental_websocket` route. */
+  experimental_openWebSocket(
+    path: string,
+    init?: RequestInit,
+  ): Promise<ExperimentalFakeWebSocketSession>;
   /**
    * Start a registered background service once, deterministically. `done`
    * settles when `start` returns; abort `controller` to signal shutdown.
@@ -378,6 +434,14 @@ export interface FakePluginBehaviorDrivers {
     skills: string[];
     instructions: string | null;
   }>;
+  resolveProviderEnv(
+    providerId: string,
+    context: ExperimentalPluginProviderEnvContext,
+  ): Promise<ExperimentalPluginProviderEnvEntry[]>;
+  resolveProviderEnvHealth(
+    providerId: string,
+    context: ExperimentalPluginProviderEnvHealthContext,
+  ): Promise<ExperimentalPluginProviderEnvHealth | null>;
 }
 
 /** Reload/shutdown controls, kept separate from behavior and inspection. */
@@ -1010,10 +1074,9 @@ function createFakePluginHostInternal(
         );
       }
       const rows = database
-        .prepare<
-          [],
-          { id: number; statement_hash: string | null }
-        >("SELECT id, statement_hash FROM _bb_migrations ORDER BY id")
+        .prepare<[], { id: number; statement_hash: string | null }>(
+          "SELECT id, statement_hash FROM _bb_migrations ORDER BY id",
+        )
         .all();
       const applied = new Map<number, string | null>();
       for (const row of rows) applied.set(row.id, row.statement_hash);
@@ -1135,6 +1198,10 @@ function createFakePluginHostInternal(
 
   // --- http ---
   const httpRoutes: FakeHttpRouteRecord[] = [];
+  const websocketRoutes: ExperimentalFakeWebSocketRouteRecord[] = [];
+  const websocketSessions = new Set<{
+    closeForReload(): Promise<void>;
+  }>();
   const http: PluginHttp = {
     route(method, path, handler, opts) {
       assertLive();
@@ -1170,6 +1237,29 @@ function createFakePluginHostInternal(
         );
       }
       httpRoutes.push({ method: normalizedMethod, path, auth, handler });
+    },
+    experimental_websocket(path, handler, opts) {
+      assertLive();
+      if (typeof path !== "string" || !path.startsWith("/")) {
+        throw new Error(
+          `websocket route path must be a string starting with "/", got ${JSON.stringify(path)}`,
+        );
+      }
+      if (typeof handler !== "function") {
+        throw new Error(
+          `websocket route handler for ${path} must be a function`,
+        );
+      }
+      const auth = opts?.auth ?? "local";
+      if (auth !== "local" && auth !== "token" && auth !== "none") {
+        throw new Error(
+          `invalid auth mode "${String(auth)}" for websocket ${path} — use "local", "token", or "none"`,
+        );
+      }
+      if (websocketRoutes.some((route) => route.path === path)) {
+        throw new Error(`websocket route ${path} is already registered`);
+      }
+      websocketRoutes.push({ path, auth, handler });
     },
   };
 
@@ -1359,6 +1449,23 @@ function createFakePluginHostInternal(
   // --- agents ---
   const agentTools: FakeAgentToolRecord[] = [];
   const providerRegistrations: NormalizedPluginProviderDeclaration[] = [];
+  const providerEnvResolvers = new Map<
+    string,
+    (
+      context: ExperimentalPluginProviderEnvContext,
+    ) =>
+      | readonly ExperimentalPluginProviderEnvEntry[]
+      | Promise<readonly ExperimentalPluginProviderEnvEntry[]>
+  >();
+  const providerEnvHealthResolvers = new Map<
+    string,
+    (
+      context: ExperimentalPluginProviderEnvHealthContext,
+    ) =>
+      | ExperimentalPluginProviderEnvHealth
+      | null
+      | Promise<ExperimentalPluginProviderEnvHealth | null>
+  >();
   let agentConfigurationProvider:
     | ((context: PluginAgentConfigurationContext) => PluginAgentConfiguration)
     | null = null;
@@ -1682,12 +1789,18 @@ function createFakePluginHostInternal(
     "message.queued": [],
     "message.dispatched": [],
     "turn.failed": [],
+    "message.cancelled": [],
+    "thread.unarchived": [],
   };
   const hooks: {
     [K in PluginHookName]: PluginHookHandler<K> | null;
   } = {
     "message.dispatch": null,
   };
+  const environmentProviders = new Map<
+    string,
+    NormalizedPluginEnvironmentProvider
+  >();
   const disposeHooks: Array<() => void | Promise<void>> = [];
   const serviceControllers: AbortController[] = [];
   let nextInteractionId = 1;
@@ -1941,6 +2054,44 @@ function createFakePluginHostInternal(
     register(declaration) {
       return registerProviderDeclaration(declaration);
     },
+    experimental_contributeEnv(providerId, resolve) {
+      assertLive();
+      if (typeof providerId !== "string" || providerId.trim().length === 0) {
+        throw new Error(
+          "provider environment contribution requires a provider id",
+        );
+      }
+      if (providerEnvResolvers.has(providerId)) {
+        throw new Error(
+          `provider environment contribution for "${providerId}" is already registered`,
+        );
+      }
+      if (typeof resolve !== "function") {
+        throw new Error(
+          "provider environment contribution requires a resolver function",
+        );
+      }
+      providerEnvResolvers.set(providerId, resolve);
+    },
+    experimental_contributeEnvHealth(providerId, resolve) {
+      assertLive();
+      if (typeof providerId !== "string" || providerId.trim().length === 0) {
+        throw new Error(
+          "provider environment health contribution requires a provider id",
+        );
+      }
+      if (providerEnvHealthResolvers.has(providerId)) {
+        throw new Error(
+          `provider environment health contribution for "${providerId}" is already registered`,
+        );
+      }
+      if (typeof resolve !== "function") {
+        throw new Error(
+          "provider environment health contribution requires a resolver function",
+        );
+      }
+      providerEnvHealthResolvers.set(providerId, resolve);
+    },
   };
 
   const experimental_hooks: PluginHooks = {
@@ -1960,6 +2111,24 @@ function createFakePluginHostInternal(
     },
   };
 
+  const experimental_environments: PluginEnvironments = {
+    register(declaration) {
+      assertLive();
+      const target = validatePluginEnvironmentProviderDeclaration(declaration);
+      const problem =
+        target.icon === null
+          ? null
+          : undeclaredIconProblem(pluginId, declaredIconNames, target.icon);
+      if (problem !== null)
+        throw new Error(providerIconRefusalMessage(target.id, problem));
+      environmentProviders.set(target.id, target);
+    },
+    async recheck() {
+      assertLive();
+      requestedDrains += 1;
+    },
+  };
+
   const bb: BbPluginApi = {
     pluginId,
     log,
@@ -1975,6 +2144,7 @@ function createFakePluginHostInternal(
     ui,
     events,
     experimental_hooks,
+    experimental_environments,
     status,
     server,
     hosts,
@@ -1996,6 +2166,9 @@ function createFakePluginHostInternal(
       clearTimeout(pending.timer);
       pendingInteractions.delete(id);
       pending.resolve({ outcome: "cancelled", reason: "plugin-disposed" });
+    }
+    for (const session of [...websocketSessions]) {
+      await session.closeForReload();
     }
     // Host order (§3): services first, then hooks LIFO (isolated), then
     // vended database handles, then handle invalidation.
@@ -2045,6 +2218,7 @@ function createFakePluginHostInternal(
     registrations: {
       settingsDescriptors,
       httpRoutes,
+      websocketRoutes,
       get rpcMethods() {
         return [...rpcHandlers.keys()];
       },
@@ -2074,13 +2248,21 @@ function createFakePluginHostInternal(
           "message.dispatched":
             threadEventHandlers["message.dispatched"].length,
           "turn.failed": threadEventHandlers["turn.failed"].length,
+          "message.cancelled": threadEventHandlers["message.cancelled"].length,
+          "thread.unarchived": threadEventHandlers["thread.unarchived"].length,
         };
       },
       get hooks() {
         return { ...hooks };
       },
+      get environmentProviders() {
+        return new Map(environmentProviders);
+      },
+
       mentionProviders,
       providerRegistrations,
+      providerEnvResolvers,
+      providerEnvHealthResolvers,
       aiServiceRegistrations,
     },
     get pendingInteractions() {
@@ -2096,6 +2278,43 @@ function createFakePluginHostInternal(
       }
       for (const handler of [...hostWorkerExitSubscriptions]) {
         await handler({ hostId });
+      }
+    },
+    async resolveProviderEnv(providerId, context) {
+      assertLive();
+      const resolve = providerEnvResolvers.get(providerId);
+      if (resolve === undefined) return [];
+      try {
+        return validatePluginProviderEnvEntries(await resolve(context));
+      } catch (error) {
+        emitLog(
+          "warn",
+          `provider environment contribution failed: ${error instanceof Error ? error.message : String(error)}`,
+        );
+        return [];
+      }
+    },
+    async resolveProviderEnvHealth(providerId, context) {
+      assertLive();
+      if (!providerEnvResolvers.has(providerId)) return null;
+      const resolve = providerEnvHealthResolvers.get(providerId);
+      if (resolve === undefined) return null;
+      try {
+        const value = await resolve(context);
+        if (value === null) return null;
+        if (value.label.trim().length === 0) {
+          throw new Error("label must not be empty");
+        }
+        if (value.statusMessage.trim().length === 0) {
+          throw new Error("statusMessage must not be empty");
+        }
+        return value;
+      } catch (error) {
+        emitLog(
+          "warn",
+          `provider environment health contribution failed: ${error instanceof Error ? error.message : String(error)}`,
+        );
+        return null;
       }
     },
     async experimental_emitHostSignal(hostId, signal, payload) {
@@ -2236,6 +2455,146 @@ function createFakePluginHostInternal(
         }
       });
       return app.request(path, { ...init, method: normalizedMethod });
+    },
+
+    async experimental_openWebSocket(path, init) {
+      assertLive();
+      const url = new URL(path, "http://plugin.test");
+      const route = websocketRoutes.find(
+        (candidate) => candidate.path === url.pathname,
+      );
+      if (!route) {
+        throw new Error(
+          `no websocket route ${url.pathname} is registered — registered: ${
+            websocketRoutes.map((candidate) => candidate.path).join(", ") ||
+            "(none)"
+          }`,
+        );
+      }
+      const request = new Request(url, { ...init, method: "GET" });
+      let handlers: ExperimentalPluginWebSocketHandlers;
+      try {
+        handlers = route.handler({
+          request,
+          url,
+          headers: request.headers,
+        });
+        if (
+          typeof handlers !== "object" ||
+          handlers === null ||
+          Array.isArray(handlers)
+        ) {
+          throw new Error("websocket route handler must return an object");
+        }
+        for (const name of [
+          "onOpen",
+          "onMessage",
+          "onClose",
+          "onError",
+        ] as const) {
+          const callback = handlers[name];
+          if (callback !== undefined && typeof callback !== "function") {
+            throw new Error(
+              `websocket route handler ${name} must be a function`,
+            );
+          }
+        }
+      } catch (error) {
+        emitLog(
+          "warn",
+          `websocket ${route.path} connect failed: ${errorMessage(error)}`,
+        );
+        throw error;
+      }
+
+      const sent: Array<string | Uint8Array> = [];
+      const closeCalls: Array<{
+        code: number | null;
+        reason: string | null;
+      }> = [];
+      let readyState = 0;
+      let closeNotified = false;
+      let eventQueue = Promise.resolve();
+      const invoke = async (
+        event: "open" | "message" | "close" | "error",
+        run: () => void | Promise<void>,
+      ): Promise<void> => {
+        eventQueue = eventQueue.then(async () => {
+          try {
+            await run();
+          } catch (error) {
+            emitLog(
+              "warn",
+              `websocket ${route.path} ${event} failed: ${errorMessage(error)}`,
+            );
+          }
+        });
+        await eventQueue;
+      };
+      const socket: ExperimentalPluginWebSocket = {
+        send(data) {
+          sent.push(typeof data === "string" ? data : new Uint8Array(data));
+        },
+        close(code, reason) {
+          closeCalls.push({ code: code ?? null, reason: reason ?? null });
+          if (readyState < 2) readyState = 2;
+        },
+        get readyState() {
+          return readyState;
+        },
+      };
+      const notifyClose = async (
+        code: number,
+        reason: string,
+      ): Promise<void> => {
+        if (closeNotified) return;
+        closeNotified = true;
+        readyState = 3;
+        websocketSessions.delete(session);
+        if (handlers.onClose !== undefined) {
+          await invoke("close", () =>
+            handlers.onClose?.(socket, { code, reason }),
+          );
+        }
+      };
+      const session: ExperimentalFakeWebSocketSession & {
+        closeForReload(): Promise<void>;
+      } = {
+        sent,
+        closeCalls,
+        get readyState() {
+          return readyState;
+        },
+        async receive(data) {
+          if (readyState !== 1) {
+            throw new Error(
+              "cannot receive a websocket message while not open",
+            );
+          }
+          if (handlers.onMessage !== undefined) {
+            await invoke("message", () => handlers.onMessage?.(socket, data));
+          }
+        },
+        async close(code = 1000, reason = "") {
+          if (readyState < 2) socket.close(code, reason);
+          await notifyClose(code, reason);
+        },
+        async error(error) {
+          if (handlers.onError !== undefined) {
+            await invoke("error", () => handlers.onError?.(socket, error));
+          }
+        },
+        async closeForReload() {
+          socket.close(1012, "Plugin reloaded or disabled");
+          await notifyClose(1012, "Plugin reloaded or disabled");
+        },
+      };
+      websocketSessions.add(session);
+      readyState = 1;
+      if (handlers.onOpen !== undefined) {
+        await invoke("open", () => handlers.onOpen?.(socket));
+      }
+      return session;
     },
 
     runService(name) {

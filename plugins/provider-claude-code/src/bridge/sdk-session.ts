@@ -40,6 +40,7 @@ export interface SdkSessionOptions {
   plugins?: Options["plugins"];
   thinking?: Options["thinking"];
   settings?: Options["settings"];
+  extraArgs?: Options["extraArgs"];
   recordThreadId?: () => string;
 }
 
@@ -277,6 +278,7 @@ export class SdkSession {
       ...(this.options.plugins ? { plugins: this.options.plugins } : {}),
       ...(this.options.thinking ? { thinking: this.options.thinking } : {}),
       ...(this.options.settings ? { settings: this.options.settings } : {}),
+      ...(this.options.extraArgs ? { extraArgs: this.options.extraArgs } : {}),
     };
 
     try {

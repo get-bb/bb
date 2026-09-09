@@ -1,4 +1,4 @@
-import { getThread } from "@bb/db";
+import { archiveThread, getThread } from "@bb/db";
 import { threadSchema } from "@bb/domain";
 import {
   apiErrorSchema,
@@ -491,6 +491,104 @@ describe("public thread parenting routes", () => {
       expect(sideChat?.parentThreadId).toBeNull();
     });
   });
+
+  it.each([false, true])(
+    "archives all descendants once and preserves their parents (archived intermediary: %s)",
+    async (archivedIntermediary) => {
+      await withTestHarness(async (harness) => {
+        const { host } = seedHostSession(harness.deps);
+        const { project } = seedProjectWithSource(harness.deps, {
+          hostId: host.id,
+        });
+        const environment = seedEnvironment(harness.deps, {
+          hostId: host.id,
+          projectId: project.id,
+        });
+        const defaults = {
+          environmentId: environment.id,
+          projectId: project.id,
+        };
+        const root = seedThread(harness.deps, defaults);
+        const child = seedThread(harness.deps, {
+          ...defaults,
+          parentThreadId: root.id,
+        });
+        const grandchild = seedThread(harness.deps, {
+          ...defaults,
+          parentThreadId: child.id,
+        });
+        const greatGrandchild = seedThread(harness.deps, {
+          ...defaults,
+          parentThreadId: grandchild.id,
+        });
+        const hiddenFork = seedThread(harness.deps, {
+          ...defaults,
+          originKind: "fork",
+          visibility: "hidden",
+          sourceThreadId: child.id,
+          parentThreadId: child.id,
+        });
+        const forkChild = seedThread(harness.deps, {
+          ...defaults,
+          parentThreadId: hiddenFork.id,
+        });
+        if (archivedIntermediary) {
+          archiveThread(harness.db, harness.deps.hub, grandchild.id);
+        }
+        const unrelated = seedThread(harness.deps, defaults);
+        const visibleFork = seedThread(harness.deps, {
+          ...defaults,
+          originKind: "fork",
+          sourceThreadId: child.id,
+        });
+        const archived = [
+          root,
+          child,
+          grandchild,
+          greatGrandchild,
+          hiddenFork,
+          forkChild,
+        ];
+
+        const response = await harness.app.request(
+          `/api/v1/threads/${root.id}/archive-all`,
+          { method: "POST" },
+        );
+
+        expect(response.status).toBe(200);
+        const { archivedThreadIds } = threadArchiveAllResponseSchema.parse(
+          await readJson(response),
+        );
+        expect([...archivedThreadIds].sort()).toEqual(
+          archived
+            .filter(
+              (thread) => !archivedIntermediary || thread.id !== grandchild.id,
+            )
+            .map((thread) => thread.id)
+            .sort(),
+        );
+        for (const thread of archived) {
+          expect(getThread(harness.db, thread.id)).toMatchObject({
+            archivedAt: expect.any(Number),
+            parentThreadId: thread.parentThreadId,
+            sourceThreadId: thread.sourceThreadId,
+          });
+          if (
+            thread.parentThreadId !== null &&
+            archivedThreadIds.includes(thread.parentThreadId) &&
+            archivedThreadIds.includes(thread.id)
+          ) {
+            expect(archivedThreadIds.indexOf(thread.id)).toBeLessThan(
+              archivedThreadIds.indexOf(thread.parentThreadId),
+            );
+          }
+        }
+        for (const thread of [unrelated, visibleFork]) {
+          expect(getThread(harness.db, thread.id)?.archivedAt).toBeNull();
+        }
+      });
+    },
+  );
 
   it("excludes side chats from thread list results", async () => {
     await withTestHarness(async (harness) => {

@@ -8,6 +8,7 @@ import { MemoryRouter } from "react-router-dom";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import type { PluginTimelineRendererProps } from "@get-bb/plugin-sdk";
 import {
+  commandRow,
   ECHO_RECEIPT_PRESENTATION,
   extensionRow,
   planStepsRow,
@@ -16,7 +17,6 @@ import {
 import {
   resetPluginSlotStoreForTest,
   setPluginSlotRegistrations,
-  type PluginRegistrationSet,
 } from "@/lib/plugin-slots";
 import {
   resetPluginLogoStoreForTest,
@@ -25,21 +25,7 @@ import {
 import { resetAllCrashedPluginSlotsForTest } from "../../plugin/PluginSlotMount";
 import { ThreadProviderContext } from "../thread-provider-context";
 import { ThreadTimelineRows } from "./ThreadTimelineRows";
-
-function registrationSet(
-  overrides: Partial<PluginRegistrationSet>,
-): PluginRegistrationSet {
-  return {
-    homepageSections: [],
-    settingsSections: [],
-    navPanels: [],
-    threadPanelActions: [],
-    sidebarFooterActions: [],
-    fileOpeners: [],
-    messageDirectives: [],
-    ...overrides,
-  };
-}
+import { makePluginRegistrationSet as registrationSet } from "@/test/fixtures/plugins";
 
 const toMarkup = (ui: ReactElement) =>
   renderToStaticMarkup(<MemoryRouter>{ui}</MemoryRouter>);
@@ -117,6 +103,52 @@ describe("presentation-driven timeline rows", () => {
     expect(markup).toContain("Compute primes");
     expect(markup).toContain('data-icon="Code"');
     expect(markup).not.toContain("Ran tool");
+  });
+
+  it("renders a presentation badge as a labelled icon on command and exploration rows", () => {
+    const presentation = {
+      label: { pending: "Running command", completed: "Ran command" },
+      icon: { glyph: "Terminal" },
+      title: "ls -la ~/.claude/ide",
+      badge: {
+        glyph: "SquareUnlock02",
+        label: "Outside of sandbox",
+        hint: "Outside of sandbox",
+        tone: "destructive" as const,
+      },
+    };
+    const markup = toMarkup(
+      <ThreadTimelineRows
+        threadId="thr_main"
+        threadRuntimeDisplayStatus="idle"
+        workspaceRootPath={undefined}
+        timelineRows={[
+          commandRow({
+            id: "cmd_escaped",
+            command: "ls -la ~/.claude/ide",
+            presentation,
+          }),
+          commandRow({
+            id: "cmd_search",
+            command: "grep -rn pid ~/.claude/ide",
+            activityIntents: [
+              {
+                type: "search",
+                command: "grep -rn pid ~/.claude/ide",
+                query: "pid",
+                path: "~/.claude/ide",
+              },
+            ],
+            presentation,
+          }),
+          commandRow({ id: "cmd_plain", command: "ls -la src" }),
+        ]}
+      />,
+    );
+    expect(markup.match(/data-icon="SquareUnlock02"/g) ?? []).toHaveLength(2);
+    expect(markup).toContain('aria-label="Outside of sandbox"');
+    expect(markup).toContain('title="Outside of sandbox"');
+    expect(markup).toContain("text-destructive-text");
   });
 
   it("draws a plugin-declared icon as a tinted mask when the inventory has it, else the per-kind glyph", () => {

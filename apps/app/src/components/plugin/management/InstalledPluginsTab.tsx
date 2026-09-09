@@ -79,6 +79,7 @@ export function InstalledPluginRow({
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const toggle = useMutation({
+    meta: { showErrorToast: false },
     mutationFn: (enabled: boolean) =>
       setPluginEnabled(fetch, plugin.id, enabled),
     onError: (error, enabled) => {
@@ -103,7 +104,9 @@ export function InstalledPluginRow({
   const runtimeStatusToneClass =
     runtimeStatus?.tone === "error"
       ? "text-destructive-text"
-      : "text-warning-text";
+      : runtimeStatus?.tone === "warning"
+        ? "text-warning-text"
+        : "text-muted-foreground";
 
   const openDetail = () =>
     navigate(

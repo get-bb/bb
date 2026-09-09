@@ -10,27 +10,20 @@ import {
   useThreadTerminalController,
   type ThreadTerminalControllerArgs,
 } from "./useThreadTerminalController";
+import { makeTerminalSession } from "@/test/fixtures/terminal-sessions";
 
 vi.mock("@/lib/sdk", () => ({
   sdk: { terminals: { list: vi.fn() } },
 }));
 
-const session: TerminalSession = {
+const session: TerminalSession = makeTerminalSession({
   id: "term_1",
   threadId: "thr_1",
   environmentId: "env_1",
   hostId: "host_1",
-  title: "Terminal",
-  initialCwd: "/workspace",
-  cols: 100,
-  rows: 30,
-  status: "running",
-  exitCode: null,
-  closeReason: null,
   createdAt: 1,
   updatedAt: 1,
-  lastUserInputAt: null,
-};
+});
 
 interface PanelVisibility {
   isPanelOpen: boolean;

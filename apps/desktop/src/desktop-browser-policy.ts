@@ -1,4 +1,5 @@
 export function isAllowedBrowserUrl(url: string): boolean {
+  if (url === "about:blank") return true;
   let parsed: URL;
   try {
     parsed = new URL(url);
@@ -6,14 +7,6 @@ export function isAllowedBrowserUrl(url: string): boolean {
     return false;
   }
   return parsed.protocol === "http:" || parsed.protocol === "https:";
-}
-
-interface WindowOpenDecision {
-  openTabUrl: string | null;
-}
-
-export function resolveWindowOpenAction(url: string): WindowOpenDecision {
-  return { openTabUrl: isAllowedBrowserUrl(url) ? url : null };
 }
 
 interface PopupRateDecision {

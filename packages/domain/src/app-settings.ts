@@ -16,7 +16,7 @@ export const appSettingsSchema = z
   .object({
     showKeyboardHints: z.boolean(),
     steerActiveThreadOnEnter: z.boolean(),
-    showUnhandledProviderEvents: z.boolean(),
+    showDiagnosticEvents: z.boolean(),
     providerOrder: z.array(z.string().min(1)),
     defaultProviderId: z.string().min(1).nullable(),
     streamerMode: z.boolean(),
@@ -28,9 +28,19 @@ export type AppSettings = z.infer<typeof appSettingsSchema>;
 export const defaultAppSettings: AppSettings = {
   showKeyboardHints: true,
   steerActiveThreadOnEnter: true,
-  showUnhandledProviderEvents: false,
+  showDiagnosticEvents: false,
   providerOrder: [],
   defaultProviderId: null,
   streamerMode: false,
   managedBranchPrefix: DEFAULT_MANAGED_BRANCH_PREFIX,
 };
+
+export const appSettingsUpdateSchema = z.union([
+  appSettingsSchema.extend({
+    showUnhandledProviderEvents: z.boolean().optional(),
+  }),
+  appSettingsSchema.omit({ showDiagnosticEvents: true }).extend({
+    showUnhandledProviderEvents: z.boolean(),
+  }),
+]);
+export type AppSettingsUpdate = z.infer<typeof appSettingsUpdateSchema>;

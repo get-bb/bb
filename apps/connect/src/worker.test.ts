@@ -101,7 +101,8 @@ describe("parseClientProtocolVersion", () => {
   });
 });
 
-vi.mock("./session.js", () => ({
+vi.mock("./session.js", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("./session.js")>()),
   invalidateSessionCookie: vi.fn(),
   markMachineSeen: vi.fn(),
   parseCookie: vi.fn(),

@@ -4,6 +4,9 @@ import { usePreferredTheme } from "@/hooks/useTheme";
 
 const COMPACT_TOAST_TOP_OFFSET =
   "calc(env(safe-area-inset-top) + var(--bb-app-chrome-row-height) + 16px)";
+const COMPACT_TOAST_SWIPE_DIRECTIONS: NonNullable<
+  ToasterProps["swipeDirections"]
+> = ["top", "left", "right"];
 
 function withCompactTopOffset(
   offset: ToasterProps["offset"],
@@ -23,10 +26,14 @@ export function AppToaster({
   position = "bottom-right",
   offset,
   mobileOffset,
+  swipeDirections,
   ...props
 }: ToasterProps) {
   const theme = usePreferredTheme();
   const isCompactViewport = useIsCompactViewport();
+  const renderedSwipeDirections =
+    swipeDirections ??
+    (isCompactViewport ? COMPACT_TOAST_SWIPE_DIRECTIONS : undefined);
   return (
     <Toaster
       theme={theme}
@@ -34,10 +41,9 @@ export function AppToaster({
       {...props}
       offset={isCompactViewport ? withCompactTopOffset(offset) : offset}
       mobileOffset={
-        isCompactViewport
-          ? withCompactTopOffset(mobileOffset)
-          : mobileOffset
+        isCompactViewport ? withCompactTopOffset(mobileOffset) : mobileOffset
       }
+      swipeDirections={renderedSwipeDirections}
     />
   );
 }

@@ -23,6 +23,7 @@ export const sessionReplacedNotificationSchema = z
     providerThreadId: z.string().min(1).nullable(),
     reason: z.string().min(1),
     contextLost: z.boolean().default(false),
+    showRuntimeNote: z.boolean().default(false),
   })
   .passthrough();
 

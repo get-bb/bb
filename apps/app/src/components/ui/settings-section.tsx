@@ -3,6 +3,7 @@ import { cn } from "@bb/shared-ui/lib/utils";
 
 interface SettingsSectionProps {
   action?: ReactNode;
+  actionPlacement?: "inline" | "responsive";
   children: ReactNode;
   description?: string;
   title: ReactNode;
@@ -11,6 +12,7 @@ interface SettingsSectionProps {
 
 export function SettingsSection({
   action,
+  actionPlacement = "responsive",
   children,
   description,
   title,
@@ -20,8 +22,16 @@ export function SettingsSection({
     <section className="space-y-3">
       <div
         className={cn(
-          "flex flex-col gap-3 sm:flex-row sm:justify-between sm:gap-4",
-          description ? "sm:items-start" : "sm:items-center",
+          actionPlacement === "inline"
+            ? "flex flex-row justify-between gap-4"
+            : "flex flex-col gap-3 sm:flex-row sm:justify-between sm:gap-4",
+          description
+            ? actionPlacement === "inline"
+              ? "items-start"
+              : "sm:items-start"
+            : actionPlacement === "inline"
+              ? "items-center"
+              : "sm:items-center",
         )}
       >
         <div className="min-w-0">

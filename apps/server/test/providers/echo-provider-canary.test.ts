@@ -19,10 +19,7 @@ import {
   type ToolCallResponse,
 } from "@bb/domain";
 import { groupHostDaemonEvents } from "@bb/host-daemon-contract";
-import {
-  copyBuiltinSkills,
-  resolveBuiltinSkillsRootPath,
-} from "../../src/services/skills/builtin-skills-copy.js";
+import { resolveBuiltinPluginRootPath } from "../../src/services/plugins/builtin-registry.js";
 import { buildThreadStartCommand } from "../../src/services/threads/thread-commands.js";
 import { resolveExecutionOptions } from "../../src/services/threads/thread-runtime-config.js";
 import { internalAuthHeaders } from "../helpers/commands.js";
@@ -555,11 +552,12 @@ describe("echo-provider canary: plugin install → server command → runtime �
     });
   }, 120_000);
 
-  it("runs a turn with the built-in skills tier staged and sends the bridge only the requests it handles", async () => {
-    await copyBuiltinSkills({
-      skillsRootPath: resolveBuiltinSkillsRootPath(),
-      targetPath: harness.config.builtinSkillsRootPath,
+  it("runs a turn with the BB guide skills staged and sends the bridge only the requests it handles", async () => {
+    const guideRoot = resolveBuiltinPluginRootPath("bb-guide");
+    const guide = await harness.pluginService.install("builtin:bb-guide", {
+      kind: "root",
     });
+    expect(guide.status, guide.statusDetail ?? "").toBe("running");
     const entry = await harness.pluginService.installPath(ECHO_PLUGIN_ROOT);
     expect(entry.status, entry.statusDetail ?? "").toBe("running");
     const artifact = harness.deps.pluginHostArtifacts.get(PLUGIN_ID);
@@ -604,12 +602,16 @@ describe("echo-provider canary: plugin install → server command → runtime �
       throw new Error("expected an artifact launch");
     }
     expect(
-      command.injectedSkillSources
-        .filter((source) => source.sourceType === "builtin")
-        .map((source) => source.name),
-    ).toContain("bb-cli");
+      command.injectedSkillSources.map((source) => source.name).sort(),
+    ).toEqual([
+      "bb-cli",
+      "bb-plugin-authoring",
+      "skill-creator",
+      "submit-a-plugin",
+    ]);
+    expect(command.instructions).toContain("bb status");
 
-    const skillDirectoryRootPath = harness.config.builtinSkillsRootPath;
+    const skillDirectoryRootPath = join(guideRoot, "skills");
     const skillRoots: AgentRuntimeSkillRoot[] = [
       {
         id: "global-skills:canary",
@@ -681,7 +683,7 @@ describe("echo-provider canary: plugin install → server command → runtime �
       () =>
         runtimeEvents.filter((event) => event.type === "turn/completed")
           .length >= 2,
-      "the echo turn with the built-in tier staged",
+      "the echo turn with the BB guide skills staged",
     );
     expect(toolCalls.map((call) => call.tool)).toEqual(["echo_stamp"]);
 

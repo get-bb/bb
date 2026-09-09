@@ -1,5 +1,11 @@
 import { useCallback, useState, type ReactNode } from "react";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { threadsQueryKey } from "@/hooks/queries/query-keys";
 import type { ThreadQueuedMessage } from "@bb/domain";
+import {
+  makeThreadListEntry,
+  makeThreadQueuedMessage,
+} from "@bb/test-helpers/domain-fixtures";
 import {
   applyQueuedMessageReorder,
   type QueuedMessageReorderRequest,
@@ -69,24 +75,14 @@ function makeQueuedMessage({
     mimeType: "image/png",
     sizeBytes: 100_000 + index * 10_000,
   }));
-  return {
+  return makeThreadQueuedMessage({
     id,
     threadId: "thr_queue",
     content: [{ type: "text", text, mentions: [] }, ...attachmentChunks],
-    model: "gpt-5.5",
-    reasoningLevel: "medium",
-    permissionMode: "auto",
-    serviceTier: "default",
-    groupWithNext: false,
-    sendAt: null,
-    waitingOn: null,
-    failureReason: null,
-    payload: { kind: "inline" },
-    editable: true,
     createdAt: STORY_NOW - 4 * MINUTE_MS,
     updatedAt: STORY_NOW - 4 * MINUTE_MS,
     ...overrides,
-  };
+  });
 }
 
 const threadBusy = { kind: "thread-busy" } as const;
@@ -813,5 +809,47 @@ export function NarrowSurface() {
         </PromptStage>
       </StoryRow>
     </StoryCard>
+  );
+}
+
+export function SenderMetadata() {
+  const [queryClient] = useState(() => {
+    const client = new QueryClient();
+    client.setQueryData(threadsQueryKey(), [
+      makeThreadListEntry({ id: "thr_review", title: "Code review" }),
+    ]);
+    return client;
+  });
+  const messages = [
+    makeQueuedMessage({
+      id: "q_user",
+      text: "Please review the final changes.",
+    }),
+    makeQueuedMessage({
+      id: "q_agent",
+      text: "The review is complete. All checks passed.",
+      initiator: "agent",
+      senderThreadId: "thr_review",
+    }),
+    makeQueuedMessage({
+      id: "q_system",
+      text: "The background task has completed.",
+      initiator: "system",
+      waitingOn: { kind: "provisioning" },
+    }),
+  ];
+  return (
+    <QueryClientProvider client={queryClient}>
+      <StoryCard>
+        <StoryRow
+          label="sender metadata"
+          hint="Non-user senders share the second line with wait metadata."
+        >
+          <ResponsivePromptStage>
+            <StaticQueuedMessagesList queuedMessages={messages} />
+          </ResponsivePromptStage>
+        </StoryRow>
+      </StoryCard>
+    </QueryClientProvider>
   );
 }

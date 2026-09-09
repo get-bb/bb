@@ -6,6 +6,7 @@ import {
   isToolsRoutePath,
   SETTINGS_PLUGINS_ROUTE_PATH,
   SETTINGS_ROUTE_PATH,
+  LEGACY_PROJECT_SETTINGS_ROUTE_PATH,
 } from "@/lib/route-paths";
 
 interface AppSettingsRouteMemory {
@@ -23,8 +24,11 @@ function getLocationRoutePath(location: {
   return `${location.pathname}${location.search}${location.hash}`;
 }
 
-function isGlobalSettingsRoute(pathname: string): boolean {
-  return matchPath(`${SETTINGS_ROUTE_PATH}/*`, pathname) !== null;
+function isSettingsRoutePath(pathname: string): boolean {
+  return (
+    matchPath(`${SETTINGS_ROUTE_PATH}/*`, pathname) !== null ||
+    matchPath(LEGACY_PROJECT_SETTINGS_ROUTE_PATH, pathname) !== null
+  );
 }
 
 function isPluginSettingsCompatibilityRoute(pathname: string): boolean {
@@ -38,7 +42,7 @@ export function useAppSettingsRouteMemory(): AppSettingsRouteMemory {
     location.pathname,
   );
   const isSettingsRoute =
-    !isCompatibilityRoute && isGlobalSettingsRoute(location.pathname);
+    !isCompatibilityRoute && isSettingsRoutePath(location.pathname);
   const isCurrentToolsRoute = isToolsRoutePath(location.pathname);
   const lastAppRoutePathRef = useRef(
     isSettingsRoute || isCompatibilityRoute

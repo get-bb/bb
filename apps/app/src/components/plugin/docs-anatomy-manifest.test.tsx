@@ -22,6 +22,7 @@ import {
   setPluginSlotRegistrations,
 } from "@/lib/plugin-slots";
 import { sidebarNavigationQueryKey } from "@/hooks/queries/query-keys";
+import { makePluginRegistrationSet } from "@/test/fixtures/plugins";
 
 const REPO_ROOT = resolve(import.meta.dirname, "../../../../..");
 
@@ -82,30 +83,29 @@ function expectDocumentOrder(labeled: Array<[string, Element]>): void {
 }
 
 function registerTestPlugin() {
-  setPluginSlotRegistrations(TEST_PLUGIN_ID, {
-    homepageSections: [],
-    settingsSections: [],
-    navPanels: [
-      {
-        id: "anatomy-panel",
-        title: "Anatomy test panel",
-        icon: "Zap",
-        path: "anatomy",
-        component: () => null,
-      },
-    ],
-    threadPanelActions: [],
-    sidebarFooterActions: [
-      {
-        id: "anatomy-footer",
-        title: "Anatomy footer action",
-        icon: "Zap",
-        run: () => {},
-      },
-    ],
-    fileOpeners: [],
-    messageDirectives: [],
-  });
+  setPluginSlotRegistrations(
+    TEST_PLUGIN_ID,
+    makePluginRegistrationSet({
+      navPanels: [
+        {
+          id: "anatomy-panel",
+          title: "Anatomy test panel",
+          icon: "Zap",
+          path: "anatomy",
+          component: () => null,
+        },
+      ],
+      threadPanelActions: [],
+      sidebarFooterActions: [
+        {
+          id: "anatomy-footer",
+          title: "Anatomy footer action",
+          icon: "Zap",
+          run: () => {},
+        },
+      ],
+    }),
+  );
 }
 
 function renderAppSidebar() {
@@ -205,7 +205,7 @@ describe("docs anatomy manifest", () => {
 
     const footerSelectors: Record<string, () => Element | null> = {
       settings: () => footer!.querySelector('a[aria-label^="Settings"]'),
-      "plugin-footer-actions": () =>
+      "plugin-footer-items": () =>
         footer!.querySelector('button[aria-label="Anatomy footer action"]'),
       "bug-report": () => footer!.querySelector('[aria-label^="Report a bug"]'),
     };

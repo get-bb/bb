@@ -308,7 +308,9 @@ export function createBbAppProcessLaunch(
       "--input-type=module",
       "--eval",
       APPIMAGE_BRIDGE_BOOTSTRAP,
+      "--",
       args.bridgePath,
+      "--no-sandbox",
     ],
     env: {
       ...env,

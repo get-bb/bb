@@ -138,6 +138,12 @@ jobs:
           pnpm-version: ${{ env.PNPM_VERSION }}
           cache-prefix: test-${{ matrix.shard }}
 
+      - name: Setup Bun
+        if: ${{ matrix.shard == 'packages' }}
+        uses: oven-sh/setup-bun@735343b667d3e6f658f44d0eca948eb6282f2b76
+        with:
+          bun-version: "1.3.14"
+
       - name: Test
         run: pnpm exec turbo run test ${{ matrix.filter }} --cache-dir=.turbo/cache --output-logs=new-only --concurrency=4 ${{ matrix.args }}
 
@@ -181,9 +187,10 @@ jobs:
 
       - name: Install AppImage FUSE runtime
         if: ${{ runner.os == 'Linux' }}
-        run: |
-          sudo apt-get update
-          sudo apt-get install --yes libfuse2t64
+        uses: ./.github/actions/install-appimage-fuse
+        timeout-minutes: 5
+        with:
+          package: libfuse2t64
 
       - name: Package Linux AppImage
         if: ${{ runner.os == 'Linux' }}

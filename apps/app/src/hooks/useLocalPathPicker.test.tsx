@@ -2,6 +2,7 @@
 
 import { act, cleanup, renderHook, waitFor } from "@testing-library/react";
 import type { Host } from "@bb/domain";
+import { makeHost } from "@bb/test-helpers/domain-fixtures";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { useLocalPathPicker } from "./useLocalPathPicker";
 
@@ -24,7 +25,8 @@ vi.mock("@/hooks/useHostDaemon", () => ({
   }),
 }));
 
-vi.mock("@/hooks/queries/host-queries", () => ({
+vi.mock("@/hooks/queries/host-queries", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/hooks/queries/host-queries")>()),
   useHosts: () => ({ data: mocks.hosts, isPending: mocks.isLoadingHosts }),
   usePrimaryHost: () => mocks.primaryHost,
 }));
@@ -33,24 +35,17 @@ vi.mock("@/lib/sdk", () => ({
   sdk: { hosts: { pickFolder: mocks.pickFolder } },
 }));
 
-const atum: Host = {
+const atum = makeHost({
   id: "host_atum",
   name: "atum",
-  type: "persistent",
-  status: "connected",
-  lastSeenAt: null,
-  maxPermissionMode: "full",
-  lastRejectedProtocolVersion: null,
-  createdAt: 0,
-  updatedAt: 0,
-};
+});
 
 function host(
   id: string,
   name: string,
   status: Host["status"] = "connected",
 ): Host {
-  return { ...atum, id, name, status };
+  return makeHost({ ...atum, id, name, status });
 }
 
 beforeEach(() => {
@@ -151,6 +146,25 @@ describe("useLocalPathPicker openPathEntry", () => {
 
     expect(mocks.pickFolder).toHaveBeenCalled();
     expect(result.current.projectPathDialog.isOpen).toBe(false);
+  });
+
+  it("opens the dialog when the other connected machine came from a provider", () => {
+    mocks.hosts = [
+      atum,
+      makeHost({
+        id: "host_sandbox",
+        name: "Sandbox",
+        status: "connected",
+      }),
+    ];
+    const { result } = renderHook(() =>
+      useLocalPathPicker({ isPending: false, submit: vi.fn() }),
+    );
+
+    act(() => result.current.openPathEntry({ kind: "create" }));
+
+    expect(mocks.pickFolder).not.toHaveBeenCalled();
+    expect(result.current.projectPathDialog.isOpen).toBe(true);
   });
 
   it("opens the dialog while the machine list is still loading", () => {

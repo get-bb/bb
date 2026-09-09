@@ -389,6 +389,27 @@ describe("translateEvent", () => {
       }),
     ).toStrictEqual([]);
 
+    expect(
+      adapter.translateEvent({
+        jsonrpc: "2.0",
+        method: "session/replaced",
+        params: {
+          threadId: "thr_1",
+          providerThreadId: "p_2",
+          reason:
+            "Execution settings changed; the Claude session was rebuilt to apply them.",
+          contextLost: false,
+          showRuntimeNote: true,
+        },
+      }),
+    ).toMatchObject([
+      {
+        type: "provider/warning",
+        summary:
+          "Execution settings changed; the Claude session was rebuilt to apply them.",
+      },
+    ]);
+
     const events = adapter.translateEvent({
       jsonrpc: "2.0",
       method: "session/replaced",

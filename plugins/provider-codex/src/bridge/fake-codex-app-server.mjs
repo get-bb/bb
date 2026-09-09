@@ -165,8 +165,8 @@ const archivedThreadIds = new Set();
  * see the children die on release, archive, and bridge shutdown.
  */
 const processLogPath = script?.processLogPath ?? null;
-/** `startDelayMs`: answer `thread/start` only after this many milliseconds. */
-const startDelayMs = script?.startDelayMs ?? 0;
+const stallThreadStart = script?.stallThreadStart ?? false;
+const sigtermDelayMs = script?.sigtermDelayMs ?? 0;
 
 function logProcessStep(step) {
   if (processLogPath === null) {
@@ -175,11 +175,19 @@ function logProcessStep(step) {
   appendFileSync(processLogPath, `${step}:${process.pid}:${process.ppid}\n`);
 }
 
-logProcessStep("spawn");
-process.on("SIGTERM", () => {
+function exitCleanly() {
   logProcessStep("exit");
   process.exit(0);
+}
+
+process.on("SIGTERM", () => {
+  if (sigtermDelayMs > 0) {
+    setTimeout(exitCleanly, sigtermDelayMs);
+    return;
+  }
+  exitCleanly();
 });
+logProcessStep("spawn");
 let scriptedTurnIndex = 0;
 
 function readArchivedThreadIds() {
@@ -345,8 +353,8 @@ async function handleRequest(message) {
       respond(id, {});
       return;
     case "thread/start": {
-      if (startDelayMs > 0) {
-        await new Promise((resolve) => setTimeout(resolve, startDelayMs));
+      if (stallThreadStart) {
+        await new Promise(() => undefined);
       }
       threadCounter += 1;
       const threadId = `codex-fx-${process.pid}-${threadCounter}`;
@@ -556,6 +564,5 @@ stdinLines.on("line", (line) => {
   }
 });
 stdinLines.on("close", () => {
-  logProcessStep("exit");
-  process.exit(0);
+  exitCleanly();
 });

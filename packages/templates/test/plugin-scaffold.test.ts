@@ -82,6 +82,32 @@ describe("scaffoldPlugin SDK dependency", () => {
     await access(join(targetDir, "components", "ui", "checkbox.tsx"));
   });
 
+  it("writes a store overview that follows the marketplace content rules", async () => {
+    const targetDir = join(workDir, "bb-plugin-todo");
+    await scaffoldPlugin({
+      targetDir,
+      packageName: "bb-plugin-todo",
+      bbVersion: "0.9.0",
+    });
+
+    const overview = await readFile(
+      join(targetDir, "PLUGIN_OVERVIEW.md"),
+      "utf8",
+    );
+    expect(overview).toContain("bb todo list");
+    expect(overview).toMatch(/^[^#]/u);
+    expect([...overview].length).toBeGreaterThan(700);
+    expect([...overview].length).toBeLessThanOrEqual(4000);
+    const prose = overview
+      .replace(/```[\s\S]*?```/gu, "")
+      .replace(/`[^`]*`/gu, "");
+    expect(prose).not.toMatch(/<[A-Za-z!/?]|!\[/u);
+
+    const readme = await readFile(join(targetDir, "README.md"), "utf8");
+    expect(readme).toContain("## Store listing");
+    expect(readme).toContain("marketplace requires the file");
+  });
+
   it("uses the canonical id in a scoped package scaffold", async () => {
     const targetDir = join(workDir, "bb-plugin-scoped");
     await scaffoldPlugin({

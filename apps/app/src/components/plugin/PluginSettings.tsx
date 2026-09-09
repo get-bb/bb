@@ -1,4 +1,4 @@
-import { useEffect, useId, useState } from "react";
+import { useEffect, useId, useState, type FocusEvent } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { appToast } from "@/components/ui/app-toast.js";
 import { PluginSettingsSections } from "@/components/plugin/PluginSettingsSections";
@@ -15,6 +15,7 @@ import { Textarea } from "@bb/shared-ui/textarea";
 import { Link } from "react-router-dom";
 import { SettingsWithControl } from "@/components/ui/settings-section.js";
 import { getPluginDetailRoutePath } from "@/lib/route-paths";
+import { Skeleton } from "@bb/shared-ui/skeleton";
 import { Switch } from "@bb/shared-ui/switch";
 import {
   ResourceDetailConfigurationSection,
@@ -46,6 +47,7 @@ const DROPDOWN_CONTENT_CLASS =
 
 const MULTILINE_MIN_ROWS = 6;
 const MULTILINE_MAX_ROWS = 24;
+const INVALID_NUMBER_DRAFT = Symbol();
 const MULTILINE_TEXTAREA_CLASS =
   "max-h-96 min-h-32 w-full resize-y overflow-y-auto font-mono text-xs field-sizing-content";
 function multilineRows(value: string): number {
@@ -112,7 +114,7 @@ interface PluginSettingFieldProps {
   ariaInvalid: boolean;
   descriptor: PluginSettingFieldDescriptor;
   draft: string | boolean;
-  onBlur: () => void;
+  onBlur: (event: FocusEvent<HTMLInputElement | HTMLTextAreaElement>) => void;
   onChange: (value: string | boolean) => void;
   storedValue: unknown;
 }
@@ -310,7 +312,9 @@ function AutosavingPluginSetting({
   const draft = draftState.value;
   const save = useMutation({
     scope: { id: `plugin-setting:${pluginId}:${settingKey}` },
-    mutationFn: (value: string | boolean) => {
+    mutationFn: (value: string | boolean | typeof INVALID_NUMBER_DRAFT) => {
+      if (value === INVALID_NUMBER_DRAFT)
+        throw new Error("Enter a finite number");
       let settingValue: string | number | boolean | null = value;
       if (descriptor.type === "number") {
         const trimmed = typeof value === "string" ? value.trim() : "";
@@ -347,8 +351,15 @@ function AutosavingPluginSetting({
     }
   }
 
-  function saveDraft(): void {
+  function saveDraft(
+    event: FocusEvent<HTMLInputElement | HTMLTextAreaElement>,
+  ): void {
     if (descriptor.type !== "string" && descriptor.type !== "number") return;
+    if (descriptor.type === "number" && event.currentTarget.validity.badInput) {
+      setDraftState({ value: initialDraft, hasNewerDraft: false });
+      save.mutate(INVALID_NUMBER_DRAFT);
+      return;
+    }
     if (descriptor.type === "number") {
       const trimmed = typeof draft === "string" ? draft.trim() : "";
       const parsed = Number(trimmed);
@@ -438,16 +449,80 @@ const PLUGIN_STATUSES_WITH_SETTINGS = [
   "degraded",
 ];
 
+function PluginSettingsFieldSkeleton() {
+  return (
+    <div className="min-w-0 space-y-2">
+      <div className="flex h-5 items-center">
+        <Skeleton className="h-3.5 w-40 max-w-[60%]" />
+      </div>
+      <div className="flex h-4 items-center">
+        <Skeleton className="h-3 w-72 max-w-full" />
+      </div>
+    </div>
+  );
+}
+
+function PluginSettingsPageSkeleton() {
+  return (
+    <div
+      className="mx-auto w-full max-w-5xl"
+      data-testid="plugin-settings-skeleton"
+      role="status"
+      aria-busy="true"
+    >
+      <span className="sr-only">Loading plugin settings…</span>
+      <div aria-hidden>
+        <header className="flex items-center justify-between gap-4">
+          <div className="flex min-w-0 items-center gap-3">
+            <Skeleton className="size-9 shrink-0" />
+            <div className="min-w-0">
+              <div className="flex h-7 items-center">
+                <Skeleton className="h-4 w-44 max-w-full" />
+              </div>
+              <div className="flex h-4 items-center">
+                <Skeleton className="h-3 w-80 max-w-full" />
+              </div>
+            </div>
+          </div>
+          <Skeleton className="h-5 w-9 shrink-0 rounded-full" />
+        </header>
+        <ResourceDetailStack className="mt-6">
+          <ResourceDetailConfigurationSection
+            label={<Skeleton className="h-3.5 w-24" />}
+          >
+            <ResourceDetailPanel surface="recessed" className="px-3 py-3">
+              <div className="space-y-4">
+                <PluginSettingsFieldSkeleton />
+                <PluginSettingsFieldSkeleton />
+              </div>
+            </ResourceDetailPanel>
+          </ResourceDetailConfigurationSection>
+          <ResourceDetailOverviewSection
+            label={<Skeleton className="h-3.5 w-28" />}
+          >
+            <div className="flex h-5 items-center">
+              <Skeleton className="h-3 w-96 max-w-full" />
+            </div>
+          </ResourceDetailOverviewSection>
+        </ResourceDetailStack>
+      </div>
+    </div>
+  );
+}
+
 export function PluginSettingsPage({ pluginId }: { pluginId: string }) {
   const listQuery = usePluginList({ enabled: true });
   const plugin =
     listQuery.data?.plugins.find(
       (entry: PluginListItem) => entry.id === pluginId,
     ) ?? null;
-  if (listQuery.isFetching && listQuery.data === undefined) {
+  if (listQuery.data === undefined && !listQuery.isError) {
+    return <PluginSettingsPageSkeleton />;
+  }
+  if (listQuery.data === undefined && listQuery.isError) {
     return (
       <p className="text-sm text-muted-foreground" role="status">
-        Loading plugin settings…
+        Could not load plugin settings.
       </p>
     );
   }
@@ -465,6 +540,7 @@ function PluginSettingsContent({ plugin }: { plugin: PluginListItem }) {
   const queryClient = useQueryClient();
   const { settingsSections } = usePluginSlots();
   const toggle = useMutation({
+    meta: { showErrorToast: false },
     mutationFn: (enabled: boolean) =>
       setPluginEnabled(fetch, plugin.id, enabled),
     onError: (error, enabled) => {

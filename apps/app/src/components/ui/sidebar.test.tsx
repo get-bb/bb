@@ -422,6 +422,7 @@ describe("mobile sidebar shelf stacking", () => {
     expect(panel.className).toContain("data-[side=left]:border-r");
     expect(panel.className).toContain("data-[side=right]:border-l");
     expect(inset.className).toContain("max-md:z-30");
+    expect(inset.className).toContain("motion-reduce:transition-none!");
     expect(inset.dataset.sidebarShelf).toBe("closed");
 
     fireEvent.click(screen.getByRole("button", { name: "Toggle Sidebar" }));
@@ -441,9 +442,7 @@ describe("mobile sidebar shelf stacking", () => {
       throw new Error("Expected a page inset");
     }
 
-    expect(inset.className).not.toContain(
-      "data-[sidebar-shelf=open]:rounded",
-    );
+    expect(inset.className).not.toContain("data-[sidebar-shelf=open]:rounded");
     expect(inset.className).not.toContain("data-[panel-shelf=shelf]:rounded");
     expect(inset.className).not.toContain(
       "data-[sidebar-shelf=open]:overflow-hidden",
@@ -451,9 +450,7 @@ describe("mobile sidebar shelf stacking", () => {
     expect(inset.className).not.toContain(
       "data-[panel-shelf=shelf]:overflow-hidden",
     );
-    expect(inset.className).not.toContain(
-      "data-[sidebar-shelf=open]:shadow",
-    );
+    expect(inset.className).not.toContain("data-[sidebar-shelf=open]:shadow");
     expect(inset.className).not.toContain("data-[panel-shelf=shelf]:shadow");
   });
 
@@ -476,7 +473,7 @@ describe("mobile sidebar shelf stacking", () => {
 });
 
 describe("mobile sidebar persistence", () => {
-  it("closes from a left swipe that starts on the exposed main content", () => {
+  it("closes from an exposed-content swipe after committing the closed state", () => {
     vi.useFakeTimers();
     renderCompactSidebarHarness();
 
@@ -485,14 +482,30 @@ describe("mobile sidebar persistence", () => {
 
     const panel = getMobilePanel();
     const backdrop = screen.getByTestId("sidebar-mobile-backdrop");
+    const inset = document.querySelector('[data-sidebar="inset"]');
+    if (!(inset instanceof HTMLElement)) {
+      throw new Error("Expected a page inset");
+    }
+    const shelfStatesAtDragStyleClear: string[] = [];
+    const removeInsetAttribute = inset.removeAttribute.bind(inset);
+    vi.spyOn(inset, "removeAttribute").mockImplementation((name) => {
+      if (name === "data-vaul-animate") {
+        shelfStatesAtDragStyleClear.push(
+          inset.dataset.sidebarShelf ?? "missing",
+        );
+      }
+      removeInsetAttribute(name);
+    });
     expect(panel?.dataset.state).toBe("open");
 
     fireTouch(backdrop, "touchstart", createTouch(360, 160));
     fireTouch(window, "touchmove", createTouch(180, 164));
     fireTouchEnd(window, createTouch(180, 164));
+    expect(inset.getAttribute("data-vaul-animate")).toBe("false");
     settleMobileToggle();
 
     expect(panel?.dataset.state).toBe("closed");
+    expect(shelfStatesAtDragStyleClear).toEqual(["closed"]);
     act(() => {
       vi.advanceTimersByTime(400);
     });

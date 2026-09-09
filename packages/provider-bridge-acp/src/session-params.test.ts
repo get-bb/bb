@@ -150,7 +150,10 @@ describe("buildAcpSessionParams", () => {
         cwd: "/workspace",
         options: {
           ...BASE_OPTIONS,
-          envVars: { BB_THREAD_ID: "thread-1" },
+          envVars: {
+            BB_THREAD_ID: "thread-1",
+            CUSTOM_AGENT_TOKEN: "contributed-token",
+          },
         },
         parameterizedModelPicker: false,
         launchSpec: launchSpecFor({
@@ -172,7 +175,7 @@ describe("buildAcpSessionParams", () => {
       cwd: "/agent-home",
       agent: { command: "custom-agent", args: ["serve"] },
       envVars: {
-        CUSTOM_AGENT_TOKEN: "token",
+        CUSTOM_AGENT_TOKEN: "contributed-token",
         BB_THREAD_ID: "thread-1",
       },
       workspaceWriteRoots: ["/agent-home", "/extra-root"],

@@ -3,6 +3,8 @@ import path from "node:path";
 import { describe, expect, it } from "vitest";
 import { listBundledPluginRegistrations } from "../../src/services/plugins/builtin-registry.js";
 import { readPluginManifest } from "../../src/services/plugins/manifest.js";
+import { testLogger } from "../helpers/test-app.js";
+import { resolveProjectSkillSourceFromContent } from "../../src/services/skills/injected-skills.js";
 import { resolveBuiltinSkillsRootPath } from "../../src/services/skills/builtin-skills-copy.js";
 
 function skillDirectories(
@@ -32,15 +34,17 @@ function lineCount(text: string): number {
 
 describe("shipped skills", () => {
   it.each(SHIPPED_SKILLS)(
-    "%s uses concise frontmatter and one-level progressive disclosure",
+    "%s has loadable metadata and routed reference files",
     (expectedName, skillRoot) => {
       const skill = readFileSync(path.join(skillRoot, "SKILL.md"), "utf8");
-      const frontmatter = skill.match(
-        /^---\nname: ([^\n]+)\ndescription: ([^\n]+)\n---\n/,
-      );
+      const source = resolveProjectSkillSourceFromContent(testLogger, {
+        candidatePath: skillRoot,
+        content: skill,
+        directoryName: expectedName,
+      });
 
-      expect(frontmatter?.[1]).toBe(expectedName);
-      expect(frontmatter?.[2]).toMatch(/\bUse\b/);
+      expect(source).not.toBeNull();
+      expect(source?.name).toBe(expectedName);
       expect(lineCount(skill)).toBeLessThanOrEqual(500);
 
       const referencesRoot = path.join(skillRoot, "references");

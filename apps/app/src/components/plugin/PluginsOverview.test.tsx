@@ -13,7 +13,7 @@ import {
   Route,
   Routes,
   useLocation,
-  useSearchParams,
+  useNavigate,
 } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { focusManager } from "@tanstack/react-query";
@@ -30,11 +30,13 @@ vi.mock("@/components/plugin/PluginNewThreadComposer", () => ({
 }));
 
 function SwitchViewButton({ view }: { view: "browse" | "installed" }) {
-  const [, setSearchParams] = useSearchParams();
+  const navigate = useNavigate();
   return (
     <button
       type="button"
-      onClick={() => setSearchParams(view === "browse" ? {} : { view })}
+      onClick={() =>
+        navigate(view === "browse" ? "/plugins" : "/plugins?view=installed")
+      }
     >
       {`switch-to-${view}`}
     </button>
@@ -58,7 +60,7 @@ const AUTOMATIONS_PLUGIN = {
   statusDetail: null,
   description: "Schedule recurring and one-shot agent or script work.",
   name: "Automations",
-  icon: "Clock",
+  icon: "CalendarSync",
   iconUrl: null,
   logoUrl: null,
   logoDarkUrl: null,
@@ -396,7 +398,7 @@ describe("PluginsOverview", () => {
     ).toBeTruthy();
   });
 
-  it("opens installed resources on the canonical Tools detail route", async () => {
+  it("opens installed resources on the canonical Plugins detail route", async () => {
     installFetch();
     const { wrapper: QueryClientWrapper } = createQueryClientTestHarness();
     render(

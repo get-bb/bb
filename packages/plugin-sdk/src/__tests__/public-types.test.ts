@@ -8,6 +8,7 @@ type ExpectedBbPluginApiKey =
   | "cli"
   | "events"
   | "experimental_aiServices"
+  | "experimental_environments"
   | "experimental_hooks"
   | "hosts"
   | "http"
@@ -50,10 +51,19 @@ const EXPECTED_BACKEND_ROOT_TYPE_EXPORTS = [
   "PluginCliRegistration",
   "PluginCliResult",
   "PluginDispatchAttemptKind",
+  "PluginEnvironmentValidateDecision",
+  "PluginEnvironmentProviderDeclaration",
+  "PluginEnvironmentProviderRequirements",
+  "PluginEnvironments",
+  "PluginDispatchEnvironmentIntent",
   "PluginDispatchExecution",
   "PluginDispatchExecutionSources",
   "PluginDispatchInput",
   "PluginEvents",
+  "ExperimentalPluginWebSocket",
+  "ExperimentalPluginWebSocketContext",
+  "ExperimentalPluginWebSocketHandler",
+  "ExperimentalPluginWebSocketHandlers",
   "PluginHookHandler",
   "PluginHookName",
   "PluginHookSignatures",
@@ -74,6 +84,10 @@ const EXPECTED_BACKEND_ROOT_TYPE_EXPORTS = [
   "PluginProviderCapabilities",
   "PluginProviderComposerAction",
   "PluginProviderDeclaration",
+  "ExperimentalPluginProviderEnvContext",
+  "ExperimentalPluginProviderEnvEntry",
+  "ExperimentalPluginProviderEnvHealth",
+  "ExperimentalPluginProviderEnvHealthContext",
   "PluginProviderExtensionKindDeclaration",
   "PluginProviderFallbackModel",
   "PluginProviderMaintenance",

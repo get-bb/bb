@@ -11,12 +11,13 @@ import type {
   ExperimentalSidebarNavigationItem,
 } from "@get-bb/plugin-sdk";
 import { useLocation, useNavigate } from "react-router-dom";
-import { toast } from "sonner";
+import { cn } from "@bb/shared-ui/lib/utils";
 import {
   useAppCommandRunner,
   useAppCommandShortcut,
 } from "@/components/commands/AppCommandProvider";
 import { PluginReplacementSlot } from "@/components/plugin/PluginReplacementSlot";
+import { appToast } from "@/components/ui/app-toast";
 import { useSidebar } from "@/components/ui/sidebar";
 import { usePluginSlots } from "@/lib/plugin-slots";
 import { getPluginPanelRoutePath } from "@/lib/route-paths";
@@ -236,13 +237,16 @@ export function SidebarNavigationRegion(props: BuiltInSidebarNavigationProps) {
     <nav
       aria-label="Sidebar navigation"
       data-testid="sidebar-navigation-region"
+      className={cn(
+        props.compactCustomizeMode && "flex min-h-0 flex-1 flex-col",
+      )}
     >
       <PluginReplacementSlot
         replacement={replacement}
         original={original}
         slotKind={SIDEBAR_NAVIGATION_SLOT_KIND}
         onCrash={(pluginId) => {
-          toast.error("Sidebar navigation plugin crashed", {
+          appToast.error("Sidebar navigation plugin crashed", {
             description: `${title} (${pluginId}) stopped working, so bb's own navigation is back.`,
           });
         }}

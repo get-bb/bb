@@ -18,6 +18,7 @@ export {
 };
 
 export const pluginRuntimeStatusSchema = z.enum([
+  "starting",
   "running",
   "error",
   "incompatible",
@@ -398,6 +399,7 @@ export const pluginCatalogSearchResultSchema = z.object({
   categoryId: pluginCatalogCategoryIdSchema.optional(),
   category: z.string().optional(),
   screenshots: z.array(z.string()).default([]),
+  overview: z.string().optional(),
   collections: z.array(pluginCatalogCollectionMembershipSchema).default([]),
   publishedAt: z.iso.datetime({ offset: true }).optional(),
   updatedAt: z.iso.datetime({ offset: true }).optional(),

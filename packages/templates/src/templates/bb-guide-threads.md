@@ -22,8 +22,23 @@ Spawning:
     --model <model>                Model override
     --reasoning-level <level>      Reasoning level: low, medium, high, xhigh, max (provider-dependent)
     --environment <id-or-path>     Attach to an existing environment (ID or workspace path)
-    --new-environment <kind>       Create a new environment (worktree)
+    --new-environment <kind>       Create a fresh personal workspace or managed worktree
     --base-branch <branch>         Exact Git ref for a new managed worktree
+                                   (--new-environment worktree only)
+    --environment-provider <id>    Run on an environment provider by id (list them with
+                                   `bb environment providers`). The provider
+                                   provisions where the thread runs; its steps show in the
+                                   thread's workspace-setup block. Its `requires` names the
+                                   facts it consumes: `host` takes --machine (the local
+                                   machine by default); `gitCheckout` needs this project's
+                                   checkout on that machine to be a Git repository with
+                                   commits; `gitRemote` needs a project remote;
+                                   `projectless` serves only threads with no project.
+    --environment-inputs <json>    JSON value for an --environment-provider that declares
+                                   inputs; `bb environment providers --json` prints each
+                                   provider's inputs as JSON Schema (null when it takes
+                                   none). Required when the provider declares inputs,
+                                   refused when it does not
     --machine <id-or-name>         Run on a machine (--host is an alias)
     --service-tier <tier>          Service tier: fast, default
     --permission-mode <mode>       Permission mode: accept-edits, auto, or full
@@ -62,6 +77,10 @@ Spawning:
   machine resolution is unchanged.
   Omit --base-branch for bb's default. Explicit values are exact; use
   origin/<branch> for a remote ref.
+  Before selecting a provider, run `bb environment providers --project <id>
+  --machine <id-or-name>` to see whether it is available, needs setup, or is
+  unavailable and why. The first-party providers are Project checkout,
+  Worktree, and Personal workspace.
 
 Forking:
 
@@ -69,7 +88,9 @@ Forking:
 
     --prompt <prompt>              Optional first prompt; omit for an idle fork
     --source-seq-end <seq>         Fork after the source turn containing this event sequence (tip by default)
-    --workspace <mode>             isolated (default) or reuse
+    --environment <id-or-path>     Existing environment ID or unmanaged workspace path
+    --new-environment <kind>       Create a fresh personal workspace or managed worktree
+    --base-branch <branch>         Exact Git ref for a new worktree; omit for the project default
     --title <title>                Thread title
     --permission-mode <mode>       Inherit source by default; accepts accept-edits, auto, full
     --visibility <visibility>      visible (default) or hidden
@@ -83,9 +104,13 @@ Forking:
   inherited timeline both end with that turn (an anchor on a user message
   branches before it, like editing it). Without it a fork clones the session
   tip and inherits every completed turn. Providers that can only clone a whole
-  session accept an anchor only on the source's latest turn. Isolated forks
-  create a fresh managed worktree (or personal workspace for personal threads);
-  reuse attaches the source environment. Omit --prompt to create an idle fork.
+  session accept an anchor only on the source's latest turn. A fork reuses the
+  source environment by default. Use --new-environment personal for a fresh
+  personal workspace or --new-environment worktree for a fresh worktree on the
+  source machine; --environment can select another environment or unmanaged
+  path on that machine. A different machine is rejected because the source
+  provider session lives on its original machine. Omit --prompt to create an
+  idle fork.
 
 Editing a sent message (requires the default-on `editMessages` experiment):
 
@@ -106,6 +131,7 @@ Listing:
 
   bb thread list                           List threads
     --project <id>                         Filter by project
+    --environment <id>                     Filter by environment
     --parent-thread <id>                   Filter by parent thread
     --archived                             Show only archived threads
     --section <id>                         Filter by section
@@ -231,12 +257,17 @@ Messaging:
 
   bb thread stop [id]                      Stop work and release the agent runtime
   bb thread compact [id]                   Request compaction of an idle or errored thread's context
+  bb thread clear [id]                     Clear model context for an idle or failed thread
   bb thread cancel-plan [id]               Exit the provider's active Plan mode
   bb thread clear-goal [id]                Clear the provider's active Goal
     --self                                 Target current thread
 
   `thread compact` enqueues the same structured /compact turn used by the
   composer. Follow the thread timeline for the eventual compaction result.
+  `thread clear` keeps the BB thread, workspace, durable event history, and
+  sticky execution settings. Its active timeline starts at one visible
+  `Context cleared` boundary, and its next prompt starts a fresh provider
+  conversation in the same thread.
 
 Ownership:
 
@@ -290,6 +321,9 @@ Queued messages:
   bb thread queue reorder <thread-id> <message-id> [--after <id>] [--before <id>]
   bb thread queue group <thread-id> <boundary-id> --prefix <comma-separated-ids>
   bb thread queue delete <thread-id> <message-id>
+
+  The `Sender` column identifies agent threads and system notices; user messages
+  leave it blank. The SDK and `--json` include `initiator` and `senderThreadId`.
 
   A queued message is one that could not dispatch yet. Every one carries a
   typed reason in its `Waiting on` column: waiting for the current turn to
@@ -350,6 +384,10 @@ Lifecycle:
 
   bb thread delete <id>                    Delete permanently
     --yes                                  Skip confirmation
+
+  Deleting a thread removes its record immediately, but provider-owned
+  environment cleanup is asynchronous. Use `bb environment show <id>` to
+  inspect teardown until the lifecycle reaches destroyed.
 
 Read-only commands require a thread ID or --self where supported.
 Mutating thread lifecycle and messaging commands require an explicit ID or --self.

@@ -167,9 +167,7 @@ const DETAIL_ROUTES = [
   },
 ] as const;
 
-const BROWSE_ROUTES = [
-  ["skills", REGISTRY_SKILLS_ROUTE_PATH],
-] as const;
+const BROWSE_ROUTES = [["skills", REGISTRY_SKILLS_ROUTE_PATH]] as const;
 
 const ROOT_ROUTE_ALIASES: Record<ToolsSectionId, readonly string[]> = {
   skills: [],
@@ -266,9 +264,9 @@ export const PLUGIN_PAGES: readonly ResourcePageDefinition[] = [
   {
     id: "plugins-installed",
     section: "plugins",
-    label: `${TOOLS_OWNED_COLLECTION_LABEL.plugins} ${TOOLS_SECTIONS.plugins.label.toLowerCase()}`,
+    label: "Installed plugins",
     icon: "PackageReceive",
-    to: getToolsOwnedCollectionRoutePath("plugins"),
+    to: `${TOOLS_SECTIONS.plugins.to}?view=installed`,
   },
 ];
 
@@ -297,9 +295,7 @@ export function resolveToolsActivePage(
   for (const detail of DETAIL_ROUTES) {
     if (matchPath(detail.pattern, pathname) === null) continue;
     if (detail.section === "plugins") {
-      return view === TOOLS_OWNED_COLLECTION_VIEW.plugins
-        ? "plugins-installed"
-        : "plugins-browse";
+      return "plugins-browse";
     }
     return detail.collection.label === TOOLS_OWNED_COLLECTION_LABEL.skills
       ? "skills-library"

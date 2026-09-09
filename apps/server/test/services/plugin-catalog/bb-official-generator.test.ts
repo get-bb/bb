@@ -9,6 +9,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import {
   generateBbOfficialMarketplace,
   parseBbOfficialCatalogFields,
+  readBundledPluginOverview,
   readPluginGitDates,
 } from "../../../scripts/generate-bb-official-marketplace.js";
 import {
@@ -46,6 +47,15 @@ describe("bb-official marketplace generator", () => {
       raw,
       "generated marketplace",
     );
+    const fields = parseBbOfficialCatalogFields(
+      JSON.parse(
+        await readFile(
+          new URL("../../../../../plugins/bb-official.json", import.meta.url),
+          "utf8",
+        ),
+      ),
+      BUNDLED_PLUGINS,
+    );
 
     expect(catalog.name).toBe(BUNDLED_MARKETPLACE_NAME);
     expect(catalog.displayName).toBe("BB Official");
@@ -65,7 +75,7 @@ describe("bb-official marketplace generator", () => {
           candidate.source.bundled.plugin === plugin.name,
       );
       expect(entry?.id).toBe(plugin.pluginId);
-      expect(entry?.screenshots).toEqual([]);
+      expect(entry?.screenshots).toEqual(fields[plugin.name]?.screenshots);
       expect(entry?.author).toEqual({ name: "BB" });
     }
   });
@@ -86,6 +96,45 @@ describe("bb-official marketplace generator", () => {
         plugins,
       ),
     ).toThrow(/unknown bundled plugin blocks: gamma/u);
+  });
+
+  it("folds a bundled plugin PLUGIN_OVERVIEW.md into its entry and rejects unsafe text", async () => {
+    const root = await mkdtemp(path.join(tmpdir(), "bb-official-overview-"));
+    cleanup.push(root);
+    const pluginDirectory = path.join(root, "plugins", "sample");
+    await mkdir(pluginDirectory, { recursive: true });
+
+    expect(await readBundledPluginOverview(pluginDirectory, "sample")).toBe(
+      undefined,
+    );
+
+    await writeFile(
+      path.join(pluginDirectory, "PLUGIN_OVERVIEW.md"),
+      "\uFEFF# Sample\r\n\r\nDoes one thing.  \r\n\r\n",
+    );
+    expect(await readBundledPluginOverview(pluginDirectory, "sample")).toBe(
+      "# Sample\n\nDoes one thing.\n",
+    );
+
+    await writeFile(
+      path.join(pluginDirectory, "PLUGIN_OVERVIEW.md"),
+      "Run `bb keep-awake hosts <host-id>`.\n\n```sh\n<not html>\n```\n",
+    );
+    expect(
+      await readBundledPluginOverview(pluginDirectory, "sample"),
+    ).toContain("<host-id>");
+
+    for (const [text, message] of [
+      ["\n\n", /empty PLUGIN_OVERVIEW\.md/u],
+      [`${"a".repeat(4001)}\n`, /maximum is 4000/u],
+      ["Text <b>bold</b>\n", /raw HTML or an image/u],
+      ["![logo](https://example.com/logo.png)\n", /raw HTML or an image/u],
+    ] as const) {
+      await writeFile(path.join(pluginDirectory, "PLUGIN_OVERVIEW.md"), text);
+      await expect(
+        readBundledPluginOverview(pluginDirectory, "sample"),
+      ).rejects.toThrow(message);
+    }
   });
 
   it("names the generator task when the generated document is missing", async () => {
@@ -161,6 +210,10 @@ describe("bb-official marketplace generator", () => {
       }),
     );
     await writeFile(
+      path.join(origin, "plugins", "sample", "PLUGIN_OVERVIEW.md"),
+      "# Sample\n\nA long-form description.\n",
+    );
+    await writeFile(
       path.join(origin, "plugins", "bb-official.json"),
       JSON.stringify({
         sample: { category: "utilities", screenshots: [] },
@@ -201,6 +254,9 @@ describe("bb-official marketplace generator", () => {
     );
     expect(catalog.plugins[0]).not.toHaveProperty("publishedAt");
     expect(catalog.plugins[0]).not.toHaveProperty("updatedAt");
+    expect(catalog.plugins[0]?.overview).toBe(
+      "# Sample\n\nA long-form description.\n",
+    );
     expect(warnings).toHaveLength(1);
     expect(warnings[0]).toMatch(/complete Git history is unavailable/u);
   });

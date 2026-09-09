@@ -5,12 +5,12 @@ import { afterEach, describe, expect, it } from "vitest";
 import { MemoryRouter, Route, Routes, useLocation } from "react-router-dom";
 import { PluginSettingsCompatibilityRoute } from "./PluginSettingsCompatibilityRoute";
 
-function ToolsPluginsLocation() {
+function PluginsLocation() {
   const location = useLocation();
   return (
     <div>
-      Tools plugins
-      <output data-testid="tools-plugins-location">
+      Plugins
+      <output data-testid="plugins-location">
         {location.pathname}
         {location.search}
         {location.hash}
@@ -39,11 +39,8 @@ function renderRoute(path: string) {
             </PluginSettingsCompatibilityRoute>
           }
         />
-        <Route path="/plugins" element={<ToolsPluginsLocation />} />
-        <Route
-          path="/plugins/:pluginId"
-          element={<ToolsPluginsLocation />}
-        />
+        <Route path="/plugins" element={<PluginsLocation />} />
+        <Route path="/plugins/:pluginId" element={<PluginsLocation />} />
       </Routes>
     </MemoryRouter>,
   );
@@ -52,11 +49,11 @@ function renderRoute(path: string) {
 describe("PluginSettingsCompatibilityRoute", () => {
   afterEach(cleanup);
 
-  it("renders per-plugin settings pages in place — Settings owns them now", () => {
+  it("renders per-plugin settings pages in place", () => {
     renderRoute("/settings/plugins/example");
 
     expect(screen.getByText("Settings plugin detail")).toBeTruthy();
-    expect(screen.queryByText("Tools plugins")).toBeNull();
+    expect(screen.queryByText("Plugins")).toBeNull();
   });
 
   it.each(["/settings/plugins", "/settings/plugins/"])(
@@ -64,8 +61,8 @@ describe("PluginSettingsCompatibilityRoute", () => {
     (path) => {
       renderRoute(path);
 
-      expect(screen.getByText("Tools plugins")).toBeTruthy();
-      expect(screen.getByTestId("tools-plugins-location").textContent).toBe(
+      expect(screen.getByText("Plugins")).toBeTruthy();
+      expect(screen.getByTestId("plugins-location").textContent).toBe(
         "/plugins?view=installed",
       );
       expect(screen.queryByText("Settings plugin manager")).toBeNull();

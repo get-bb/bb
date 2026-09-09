@@ -223,10 +223,6 @@ function loadBaseImage(src: string): Promise<HTMLImageElement> {
 
 const STANDALONE_DISPLAY_MODE_QUERY = "(display-mode: standalone)";
 
-function isStandaloneDisplayMode(): boolean {
-  return getMediaQuerySnapshot(STANDALONE_DISPLAY_MODE_QUERY);
-}
-
 async function createFaviconHref({
   badge,
   baseHref,
@@ -286,7 +282,7 @@ let applyToken = 0;
 
 async function applyFaviconState(state: FaviconRenderState): Promise<void> {
   const token = ++applyToken;
-  if (isStandaloneDisplayMode()) return;
+  if (getMediaQuerySnapshot(STANDALONE_DISPLAY_MODE_QUERY)) return;
   const suffix = getFaviconVariantSuffix();
   const links = await Promise.all(
     FAVICON_SIZES.map(async (size): Promise<RenderedFaviconLink> => {

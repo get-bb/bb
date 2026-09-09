@@ -96,7 +96,6 @@ import {
   focusedPaneRoute,
   paneContentRoute,
   reconcileLayoutForContent,
-  reconcileRestoredLayoutForContent,
   threadPaneContent,
 } from "./splitThreadNavigation";
 import { ThreadDetailWorkerPoolProvider } from "./ThreadDetailWorkerPoolProvider";
@@ -277,7 +276,6 @@ function SplitThreadAreaContent({ routeContent }: SplitThreadAreaProps) {
   const dimsInactiveSplits = useAtomValue(dimInactiveSplitsAtom);
   const [maximizedPaneId, setMaximizedPaneIdAtom] =
     useAtom(maximizedPaneIdAtom);
-  const shouldReconcileRestoredLayout = useRef(true);
   const secondaryPanelRegistry = useMemo(
     () => createPaneSecondaryPanelRegistry(),
     [],
@@ -296,12 +294,8 @@ function SplitThreadAreaContent({ routeContent }: SplitThreadAreaProps) {
     if (currentContent === null) {
       return;
     }
-    const reconcile = shouldReconcileRestoredLayout.current
-      ? reconcileRestoredLayoutForContent
-      : reconcileLayoutForContent;
-    shouldReconcileRestoredLayout.current = false;
     setLayout((previous) =>
-      reconcile(previous, currentContent),
+      reconcileLayoutForContent(previous, currentContent),
     );
   }, [currentContent, setLayout]);
 

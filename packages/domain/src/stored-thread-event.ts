@@ -100,12 +100,6 @@ const storedTurnRequestEventDataSchema = turnRequestEventDataSchema
   })
   .superRefine(refineTurnRequestRetryMarker);
 
-function parseStoredTurnRequestEventData(
-  args: StoredThreadEventParseArgs,
-): StoredThreadEventParseArgs["data"] {
-  return storedTurnRequestEventDataSchema.parse(args.data);
-}
-
 function toStoredThreadEventData<TEvent extends ThreadEvent>(
   event: TEvent,
 ): StoredThreadEventDataFromEvent<TEvent> {
@@ -133,7 +127,7 @@ export function parseStoredThreadEvent(
     { turnId: getThreadEventScopeTurnId(scope) ?? null },
   );
   const eventData = storedTurnRequestTypeSet.has(stored.type)
-    ? parseStoredTurnRequestEventData({ ...args, data: stored.data })
+    ? storedTurnRequestEventDataSchema.parse(stored.data)
     : stored.data;
 
   return threadEventSchema.parse({

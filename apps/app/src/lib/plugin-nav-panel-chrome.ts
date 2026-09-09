@@ -17,7 +17,7 @@ const pluginNavPanelChromeSchema = z.object({
 
 export type PluginNavPanelChrome = z.infer<typeof pluginNavPanelChromeSchema>;
 
-interface PluginNavPanelChromeEntry {
+export interface PluginNavPanelChromeEntry {
   chrome: PluginNavPanelChrome;
   panel: PluginNavPanelSlot | null;
 }

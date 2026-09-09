@@ -9,11 +9,12 @@ import type {
   ThreadExecutionOptions,
   ThreadExecutionSource,
   ThreadTurnInitiator,
-  WorkspaceProvisionType,
   EnvironmentStatus,
 } from "@bb/domain";
-import type { HostDaemonInjectedSkillSource } from "@bb/host-daemon-contract";
-import { renderTemplate } from "@bb/templates";
+import type {
+  HostDaemonContributedEnvEntry,
+  HostDaemonInjectedSkillSource,
+} from "@bb/host-daemon-contract";
 import { ApiError } from "../../errors.js";
 import type { AppDeps, LoggedWorkSessionDeps } from "../../types.js";
 import { throwEnvironmentNotReady } from "../lib/lifecycle-api-errors.js";
@@ -27,6 +28,7 @@ import {
   listPluginInstructionContributions,
   getPluginSkillRootContributions,
   resolvePluginAgentConfiguration,
+  resolvePluginProviderEnv,
 } from "../plugins/plugin-agent-contributions.js";
 import { resolveSkillCatalog } from "../skills/skill-catalog.js";
 import { discoverPluginSkillIds } from "../skills/injected-skills.js";
@@ -39,11 +41,8 @@ import {
   readDataDirAgentInstructions,
   readWorkspaceAgentInstructions,
 } from "./workspace-agent-instructions.js";
+import { resolveDeprecatedWorkspaceProvisionType } from "../environments/environment-response.js";
 
-const STANDARD_AGENT_INSTRUCTIONS = renderTemplate(
-  "standardAgentAppendInstructions",
-  {},
-);
 const UPDATE_ENVIRONMENT_DIRECTORY_INSTRUCTIONS =
   "If the user asks you to move this thread to another checkout, worktree, or directory, make sure the target directory exists, then call `update_environment_directory` with its absolute path. After it succeeds, stop work in the current turn; future turns will run in the updated environment.";
 
@@ -54,7 +53,6 @@ export interface ThreadRuntimeCommandEnvironment {
   id: string;
   path: string | null;
   status: EnvironmentStatus;
-  workspaceProvisionType: WorkspaceProvisionType;
 }
 
 interface ResolveExecutionOptionsArgs {
@@ -78,6 +76,7 @@ interface ResolvePermissionEscalationArgs {
 }
 
 export interface ResolvedThreadRuntimeCommandConfig {
+  contributedEnv: HostDaemonContributedEnvEntry[];
   dynamicTools: DynamicTool[];
   injectedSkillSources: HostDaemonInjectedSkillSource[];
   instructionMode: InstructionMode;
@@ -86,7 +85,6 @@ export interface ResolvedThreadRuntimeCommandConfig {
   providerId: string;
   threadStoragePath: string;
   workspacePath: string;
-  workspaceProvisionType: WorkspaceProvisionType;
 }
 
 function requireWorkspacePath(
@@ -165,7 +163,6 @@ export async function resolveThreadRuntimeCommandConfig(
     throw new ApiError(404, "host_not_found", "Host not found");
   }
 
-  const { workspaceProvisionType } = args.environment;
   const [projectSkillSources, sharedSkills, workspaceAgentInstructions] =
     await Promise.all([
       resolveWorkspaceProjectSkills(deps, {
@@ -204,8 +201,10 @@ export async function resolveThreadRuntimeCommandConfig(
         id: environment.id,
         name: environment.name,
         path: environment.path,
-        workspaceProvisionType: environment.workspaceProvisionType,
         branchName: environment.branchName,
+        workspaceProvisionType: resolveDeprecatedWorkspaceProvisionType(
+          environment.environmentProviderId,
+        ),
       },
       host: { id: host.id, name: host.name },
       provider: {
@@ -224,6 +223,14 @@ export async function resolveThreadRuntimeCommandConfig(
     },
     skillIdsByPlugin,
   });
+  const contributedEnv = await resolvePluginProviderEnv({
+    providerId: args.thread.providerId,
+    context: {
+      threadId: args.thread.id,
+      projectId: project.id,
+      hostId: host.id,
+    },
+  });
   const injectedSkillSources = resolveSkillCatalog(deps, {
     projectSkillSources,
     sharedSkillSources: sharedSkills.runtimeSources,
@@ -239,7 +246,7 @@ export async function resolveThreadRuntimeCommandConfig(
   const dynamicTools = dynamicToolContributions.map(
     (contribution) => contribution.tool,
   );
-  const instructionSections = [STANDARD_AGENT_INSTRUCTIONS];
+  const instructionSections: string[] = [];
   for (const contribution of dynamicToolContributions) {
     if (!contribution.instructions) continue;
     if (contribution.pluginId === null) {
@@ -302,6 +309,7 @@ export async function resolveThreadRuntimeCommandConfig(
     threadId: args.thread.id,
   });
   return {
+    contributedEnv,
     dynamicTools,
     injectedSkillSources,
     instructionMode: "append",
@@ -310,6 +318,5 @@ export async function resolveThreadRuntimeCommandConfig(
     providerId: args.thread.providerId,
     threadStoragePath,
     workspacePath,
-    workspaceProvisionType,
   };
 }

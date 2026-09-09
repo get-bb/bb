@@ -414,6 +414,7 @@ interface RestartManagedProcessArgs {
 interface SuperviseFullStackProcessesArgs {
   context: BbAppStartContext;
   delayMilliseconds: DelayMillisecondsFn;
+  isHealthyServerAnswering?: (url: string) => Promise<boolean>;
   isShutdownRequested: () => boolean;
   processes: ManagedFullStackProcesses;
   startDaemon: StartManagedProcess;
@@ -681,14 +682,6 @@ function isManagedConfigValueKey(
   value: string,
 ): value is ManagedConfigValueKey {
   return MANAGED_CONFIG_KEY_VALUES.has(value);
-}
-
-function isPortableEnvName(value: string): boolean {
-  return PORTABLE_ENV_NAME_PATTERN.test(value);
-}
-
-function isSecretShapedEnvName(value: string): boolean {
-  return SECRET_SHAPED_ENV_NAME_PATTERN.test(value);
 }
 
 function supportedConfigKeysText(): string {
@@ -1575,7 +1568,7 @@ function resolveManagedConfigKey(rawKey: string): ManagedConfigKey {
   if (isManagedConfigValueKey(key)) {
     return key;
   }
-  if (isSecretShapedEnvName(key)) {
+  if (SECRET_SHAPED_ENV_NAME_PATTERN.test(key)) {
     throw new Error(
       `bb-app config does not store secrets. Use "bb-app env set ${key} <value>" instead.`,
     );
@@ -1616,7 +1609,7 @@ function unsetManagedConfigKey(
 
 function resolveManagedEnvKey(rawKey: string): string {
   const key = rawKey.trim();
-  if (!isPortableEnvName(key)) {
+  if (!PORTABLE_ENV_NAME_PATTERN.test(key)) {
     throw new Error(
       `Invalid env key "${rawKey}". Env keys must match ${PORTABLE_ENV_NAME_PATTERN.source}`,
     );
@@ -2304,6 +2297,21 @@ async function readServerHealthLaunchId(
     return health.success ? (health.data.launchId ?? null) : null;
   } catch {
     return null;
+  }
+}
+
+async function isHealthyServerAnswering(url: string): Promise<boolean> {
+  try {
+    const response = await fetch(url, {
+      signal: AbortSignal.timeout(HEALTH_CHECK_REQUEST_TIMEOUT_MS),
+    });
+    if (!response.ok) {
+      return false;
+    }
+    const health = serverHealthResponseSchema.safeParse(await response.json());
+    return health.success && health.data.ok;
+  } catch {
+    return false;
   }
 }
 
@@ -3174,6 +3182,29 @@ export async function superviseFullStackProcesses(
       return "shutdown";
     }
 
+    if (exitedProcess.processName === "server") {
+      if (args.processes.serverRun === serverRun) {
+        args.processes.serverRun = null;
+      }
+      if (
+        await (args.isHealthyServerAnswering ?? isHealthyServerAnswering)(
+          `${args.context.serverUrl}/health`,
+        )
+      ) {
+        log(
+          yellow("!"),
+          `${formatManagedProcessLabel(exitedProcess.processName)} exited with ${formatProcessExitResult(
+            exitedProcess.result,
+          )} - another server is healthy; stopping host daemon`,
+        );
+        await terminateManagedFullStackProcesses({
+          processes: args.processes,
+          signal: "SIGTERM",
+        });
+        return "stopped";
+      }
+    }
+
     log(
       yellow("!"),
       `${formatManagedProcessLabel(exitedProcess.processName)} exited with ${formatProcessExitResult(
@@ -3182,9 +3213,6 @@ export async function superviseFullStackProcesses(
     );
 
     if (exitedProcess.processName === "server") {
-      if (args.processes.serverRun === serverRun) {
-        args.processes.serverRun = null;
-      }
       await args.delayMilliseconds({
         ms: MANAGED_PROCESS_RESTART_RETRY_DELAY_MS,
       });

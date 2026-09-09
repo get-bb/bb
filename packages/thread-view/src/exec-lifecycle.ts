@@ -160,6 +160,7 @@ export function parseExecLifecycleEvent(
     const completedAt = kind === "end" ? meta.createdAt : null;
 
     const command = extractShellCommandFromString(decoded.item.command);
+    const presentation = decoded.item.presentation;
     return {
       kind,
       call: {
@@ -173,6 +174,7 @@ export function parseExecLifecycleEvent(
         completedAt,
         approvalStatus: itemStatusToApprovalStatus(decoded.item.approvalStatus),
         status,
+        ...(presentation ? { presentation } : {}),
         ...(parentToolCallId ? { parentToolCallId } : {}),
       },
     };

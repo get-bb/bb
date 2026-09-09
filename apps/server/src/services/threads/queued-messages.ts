@@ -77,7 +77,6 @@ import { recordAcceptedPromptHistoryEntry } from "../prompt-history.js";
 import { requireThreadCommandEnvironment } from "./thread-command-environment.js";
 import { applyLoggedThreadLifecycleEventInTransaction } from "./lifecycle-outcome.js";
 import { buildThreadStatusChangeMetadata } from "./thread-runtime-display.js";
-import { applyLoggedEnvironmentLifecycleEvent } from "../environments/lifecycle-outcome.js";
 import {
   goneThreadEnvironmentDetails,
   threadEnvironmentUnavailableDetails,
@@ -85,6 +84,10 @@ import {
 } from "../lib/lifecycle-api-errors.js";
 import { validatePromptAttachmentReferences } from "../projects/attachments.js";
 import { requestQueuedMessageDispatch } from "./queued-message-dispatch.js";
+import {
+  ThreadContextClearInProgressError,
+  withThreadSendGuard,
+} from "./thread-context-mutation-guard.js";
 
 interface SendQueuedMessageArgs {
   claimPolicy: QueuedThreadMessageGroupClaimPolicy;
@@ -150,44 +153,12 @@ async function requireReadyQueuedMessageEnvironment(
   thread: Thread,
 ) {
   const environment = await requireThreadCommandEnvironment(deps, { thread });
-  if (environment.status === "retiring") {
-    applyLoggedEnvironmentLifecycleEvent(deps, {
-      environmentId: environment.id,
-      event: { type: "retire.cancelled" },
-    });
-  }
-  return requireReadyThreadEnvironment(
-    getEnvironment(deps.db, environment.id) ?? environment,
-  );
+  return requireReadyThreadEnvironment(environment);
 }
 
 export interface CreateQueuedMessageForThreadArgs {
   payload: CreateQueuedMessageRequest;
   thread: Thread;
-}
-
-export function queuedMessagePayloadFromSendRequest(
-  payload: SendMessageRequest,
-): CreateQueuedMessageRequest {
-  return {
-    input: payload.input,
-    ...(payload.model !== undefined ? { model: payload.model } : {}),
-    ...(payload.serviceTier !== undefined
-      ? { serviceTier: payload.serviceTier }
-      : {}),
-    ...(payload.reasoningLevel !== undefined
-      ? { reasoningLevel: payload.reasoningLevel }
-      : {}),
-    ...(payload.permissionMode !== undefined
-      ? { permissionMode: payload.permissionMode }
-      : {}),
-    ...(payload.executionInputSources !== undefined
-      ? { executionInputSources: payload.executionInputSources }
-      : {}),
-    ...(payload.senderThreadId !== undefined
-      ? { senderThreadId: payload.senderThreadId }
-      : {}),
-  };
 }
 
 function admitQueuedMessage(
@@ -692,7 +663,9 @@ async function sendClaimedQueuedMessageForThread(
   if (notice) {
     return notice;
   }
-  const sent = await sendClaimedQueuedMessageForIdleProviderThread(deps, args);
+  const sent = await withThreadSendGuard(args.thread.id, () =>
+    sendClaimedQueuedMessageForIdleProviderThread(deps, args),
+  );
   if (sent) {
     return sent;
   }
@@ -803,7 +776,10 @@ export async function sendQueuedMessage(
     );
   } catch (error) {
     releaseQueuedMessageClaims(deps, queuedMessages);
-    if (isQueuedMessageAutoSendPausedError(error)) {
+    if (
+      isQueuedMessageAutoSendPausedError(error) ||
+      error instanceof ThreadContextClearInProgressError
+    ) {
       return toThreadQueuedMessage(queuedMessages[0]!);
     }
     throw error;
@@ -883,7 +859,8 @@ export async function sendNextQueuedMessageIfPresent(
     releaseQueuedMessageClaims(deps, nextQueuedMessages);
     if (
       isQueuedMessageClaimLostError(error) ||
-      isQueuedMessageAutoSendPausedError(error)
+      isQueuedMessageAutoSendPausedError(error) ||
+      error instanceof ThreadContextClearInProgressError
     ) {
       return false;
     }

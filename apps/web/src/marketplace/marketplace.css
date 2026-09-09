@@ -715,6 +715,100 @@ a.marketplace-detail-author:hover {
   letter-spacing: -0.01em;
 }
 
+.marketplace-overview-lead {
+  max-width: 62ch;
+  margin: 0;
+  color: var(--ink);
+  font-size: 17px;
+  line-height: 1.55;
+}
+
+.marketplace-overview-rule {
+  max-width: 720px;
+  margin: 16px 0;
+  border: 0;
+  border-top: 1px solid var(--border);
+}
+
+.marketplace-overview {
+  max-width: 62ch;
+  color: var(--dim);
+  font-size: 15px;
+  line-height: 1.6;
+  overflow-wrap: anywhere;
+}
+
+.marketplace-overview > :first-child {
+  margin-top: 0;
+}
+
+.marketplace-overview h3,
+.marketplace-overview h4,
+.marketplace-overview h5,
+.marketplace-overview h6 {
+  margin: 22px 0 6px;
+  color: var(--dim);
+  font-size: 11.5px;
+  font-weight: 650;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.marketplace-overview p,
+.marketplace-overview ul,
+.marketplace-overview ol,
+.marketplace-overview blockquote,
+.marketplace-overview pre {
+  margin: 0 0 10px;
+}
+
+.marketplace-overview ul,
+.marketplace-overview ol {
+  padding-left: 22px;
+}
+
+.marketplace-overview li {
+  margin-bottom: 4px;
+}
+
+.marketplace-overview blockquote {
+  padding-left: 12px;
+  border-left: 2px solid var(--border);
+  color: var(--dim);
+}
+
+.marketplace-overview code {
+  padding: 1px 5px;
+  border-radius: 5px;
+  background: var(--surface);
+  font-family: var(--font-mono);
+  font-size: 13px;
+}
+
+.marketplace-overview pre {
+  overflow-x: auto;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface);
+}
+
+.marketplace-overview pre code {
+  padding: 0;
+  background: none;
+}
+
+.marketplace-overview hr {
+  margin: 16px 0;
+  border: 0;
+  border-top: 1px solid var(--border);
+}
+
+.marketplace-overview a {
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
 .marketplace-author-teasers {
   display: flex;
   overflow: hidden;

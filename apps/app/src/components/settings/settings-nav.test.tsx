@@ -9,6 +9,7 @@ import { resetPluginSlotStoreForTest } from "@/lib/plugin-slots";
 import { createQueryClientTestHarness } from "@/test/queryClientTestHarness";
 import { pluginListQueryKey } from "@/hooks/queries/query-keys";
 import { useSettingsNavState } from "./settings-nav";
+import { makeInstalledPlugin } from "@/test/fixtures/plugins";
 
 const mocks = vi.hoisted(() => ({
   accessState: "unavailable",
@@ -32,37 +33,16 @@ function wrapperFor(path: string, plugins: readonly InstalledPlugin[] = []) {
 }
 
 function disabledPlugin(): InstalledPlugin {
-  return {
+  return makeInstalledPlugin({
     id: "linear",
     source: "path:/plugins/linear",
     rootDir: "/plugins/linear",
-    version: "0.1.0",
     enabled: false,
     status: "disabled",
-    statusDetail: null,
     description: "Linear integration",
     name: "Linear",
-    screenshots: [],
-    collections: [],
-    icon: null,
-    iconUrl: null,
-    logoUrl: null,
-    logoDarkUrl: null,
-    hasSettings: false,
-    handlerStats: { count: 0, totalMs: 0, maxMs: 0, errorCount: 0 },
-    services: [],
-    schedules: [],
-    cliCommand: null,
-    capabilities: [],
-    app: { hasApp: false, bundle: null },
-    provenance: "direct",
-    isOrphanedBuiltin: false,
-    publisherLabel: null,
     sourceDisplay: "path · /plugins/linear",
-    updateState: {},
-    providerIds: [],
-    icons: {},
-  };
+  });
 }
 
 afterEach(() => {
@@ -97,8 +77,8 @@ describe("useSettingsNavState", () => {
       wrapper: wrapperFor("/settings/files"),
     });
 
-    expect(result.current.sections.map((section) => section.id)).toContain(
-      "files",
+    expect(result.current.sections).toContainEqual(
+      expect.objectContaining({ icon: "File", id: "files" }),
     );
   });
 
@@ -113,24 +93,22 @@ describe("useSettingsNavState", () => {
     );
   });
 
-  it("keeps plugin management out of Settings", () => {
+  it("does not treat the legacy installed-plugin collection as a settings section", () => {
     const { result } = renderHook(() => useSettingsNavState(), {
-      wrapper: wrapperFor("/settings"),
+      wrapper: wrapperFor("/settings/plugins"),
     });
 
+    expect(result.current.hasUnknownSection).toBe(true);
     expect(result.current.sections.map((section) => section.id)).not.toContain(
       "plugins",
     );
   });
 
-  it("keeps a disabled plugin reachable in the secondary plugin group", () => {
+  it("omits disabled plugins from individual settings entries", () => {
     const { result } = renderHook(() => useSettingsNavState(), {
       wrapper: wrapperFor("/settings", [disabledPlugin()]),
     });
 
     expect(result.current.pluginEntries).toEqual([]);
-    expect(result.current.otherPluginEntries).toEqual([
-      { icon: null, id: "linear", label: "Linear" },
-    ]);
   });
 });

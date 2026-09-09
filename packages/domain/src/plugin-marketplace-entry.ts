@@ -2,6 +2,7 @@ import { z } from "zod";
 import { pluginCatalogCategoryIdSchema } from "./plugin-catalog-category.js";
 
 const MARKETPLACE_MAX_SCREENSHOTS = 6;
+export const MARKETPLACE_OVERVIEW_MAX_CHARS = 4000;
 const NAME_PATTERN = /^[a-z0-9][a-z0-9-]*$/u;
 const TAG_PATTERN = /^[a-z0-9]+(?:-[a-z0-9]+)*$/u;
 const GITHUB_LOGIN_PATTERN = /^[A-Za-z0-9](?:-?[A-Za-z0-9]){0,38}$/u;
@@ -188,6 +189,7 @@ export const marketplaceEntryV2Schema = z.object({
     .array(marketplaceScreenshotSchema)
     .max(MARKETPLACE_MAX_SCREENSHOTS)
     .optional(),
+  overview: z.string().min(1).optional(),
   publishedAt: marketplaceDateTimeSchema.optional(),
   updatedAt: marketplaceDateTimeSchema.optional(),
   ...marketplaceEntryMetadataShape(false),

@@ -24,10 +24,11 @@ import {
 } from "../src/hooks/useUpdateInventory";
 import { createAppQueryClient } from "../src/lib/query-client";
 import { makeSystemConfig } from "../src/test/fixtures/system-config";
-import { makeProviderInfo } from "../src/test/provider-info-fixture";
+import { makeProviderInfo } from "@bb/test-helpers/domain-fixtures";
 import { getSettingsRoutePath } from "../src/lib/route-paths";
 import {
   BbAppUpdateRows,
+  MachineUpdatesFleetSection,
   MachineUpdatesRows,
   MachineUpdatesSection,
   UpdateActionButton,
@@ -36,9 +37,11 @@ import {
   HOST_IDS,
   HOST_NAMES,
   PROJECT_IDS,
+  PROJECT_NAMES,
   STORY_PROJECT_SOURCES,
   makeHost,
   makeProject,
+  makeThreadListEntry,
   makeProviderCliStatus,
 } from "./story-fixtures";
 import codexLogoUrl from "../../../plugins/provider-codex/icons/codex.svg";
@@ -110,7 +113,31 @@ const remoteProviderStatus = {
 
 const project = makeProject({
   id: PROJECT_IDS.bb,
+  gitRemoteUrl: "git@github.com:get-bb/bb.git",
   sources: [...STORY_PROJECT_SOURCES],
+});
+const pierreProject = makeProject({
+  id: PROJECT_IDS.pierre,
+  name: PROJECT_NAMES.pierre,
+  gitRemoteUrl: "https://github.com/get-bb/pierre.git",
+  sources: [
+    {
+      id: "src_pierre_remote",
+      projectId: PROJECT_IDS.pierre,
+      type: "local_path",
+      hostId: HOST_IDS.remote,
+      path: "/home/michael/pierre",
+      isDefault: true,
+      createdAt: 0,
+      updatedAt: 0,
+    },
+  ],
+});
+const ingestProject = makeProject({
+  id: PROJECT_IDS.ingest,
+  name: PROJECT_NAMES.ingest,
+  gitRemoteUrl: null,
+  sources: [],
 });
 const personalProject = makeProject({
   id: PERSONAL_PROJECT_ID,
@@ -121,7 +148,28 @@ const personalProject = makeProject({
 
 const sidebarNavigation = {
   sections: [],
-  projects: [{ ...project, defaultExecutionOptions: null, threads: [] }],
+  projects: [
+    {
+      ...project,
+      defaultExecutionOptions: null,
+      threads: [
+        makeThreadListEntry({ id: "thr_bb_1", projectId: PROJECT_IDS.bb }),
+        makeThreadListEntry({ id: "thr_bb_2", projectId: PROJECT_IDS.bb }),
+        makeThreadListEntry({ id: "thr_bb_3", projectId: PROJECT_IDS.bb }),
+      ],
+    },
+    {
+      ...pierreProject,
+      defaultExecutionOptions: null,
+      threads: [
+        makeThreadListEntry({
+          id: "thr_pierre_1",
+          projectId: PROJECT_IDS.pierre,
+        }),
+      ],
+    },
+    { ...ingestProject, defaultExecutionOptions: null, threads: [] },
+  ],
   personalProject: {
     ...personalProject,
     defaultExecutionOptions: null,
@@ -180,22 +228,23 @@ const noop = () => {};
 export function SettingsUpdatesStory() {
   const navigate = useNavigate();
   return (
-    <div className="space-y-6">
+    <MachineUpdatesFleetSection
+      action={
+        <div role="toolbar" aria-label="Bulk update actions">
+          <UpdateActionButton
+            label="Update all 1 CLI tool"
+            tooltipLabel="Update all"
+            icon={UPDATE_ACTION_ICON}
+            visibleLabel="Update all"
+            variant="default"
+            onClick={noop}
+          />
+        </div>
+      }
+    >
       <MachineUpdatesSection
         machine={settingsUpdateMachine}
         isThisMachine={false}
-        action={
-          <div role="toolbar" aria-label="Bulk update actions">
-            <UpdateActionButton
-              label="Update all 1 CLI tool"
-              tooltipLabel="Update all"
-              icon={UPDATE_ACTION_ICON}
-              visibleLabel="Update all"
-              variant="default"
-              onClick={noop}
-            />
-          </div>
-        }
       >
         <BbAppUpdateRows
           systemVersion={systemVersion}
@@ -212,7 +261,7 @@ export function SettingsUpdatesStory() {
           onOpenProvider={() => navigate(getSettingsRoutePath("providers"))}
         />
       </MachineUpdatesSection>
-    </div>
+    </MachineUpdatesFleetSection>
   );
 }
 

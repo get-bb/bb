@@ -16,6 +16,7 @@ import { ThreadTitleMentionResourcesProvider } from "@/components/thread/ThreadT
 import { RouteNavigationProvider } from "@/components/ui/app-route-anchor";
 import type { TimelineTitleActionResolver } from "./TimelineTitleView";
 import { createQueryClientTestHarness } from "@/test/queryClientTestHarness";
+import { makeThreadListEntry as makeThreadListEntryFixture } from "@bb/test-helpers/domain-fixtures";
 import { GENERATED_MESSAGE_COLLAPSED_PREVIEW_CHAR_CAP } from "@bb/client-core";
 import { generatedConversationCollapsedPreview } from "./GeneratedConversationMessage";
 
@@ -71,7 +72,9 @@ function renderChildCompleted(text = MARKDOWN_BODY) {
           attachments={null}
           mentions={mentions}
           text={text}
+          threadId="thr_parent"
           turnRequest={{ kind: "message", status: "accepted" }}
+          workspaceRootPath="/workspace"
           projectId="proj_demo"
         />
       </RouteNavigationProvider>
@@ -85,6 +88,18 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
+describe("GeneratedConversationMessage images", () => {
+  it("routes images in generated system messages through the current thread", () => {
+    renderChildCompleted("![report](reports/result.png)");
+
+    expect(
+      screen.getByRole("img", { name: "report" }).getAttribute("src"),
+    ).toBe(
+      "/api/v1/threads/thr_parent/host-files/content?path=%2Fworkspace%2Freports%2Fresult.png",
+    );
+  });
+});
+
 const AGENT_BODY = "# notes\nedited path:src/app.ts here";
 const AGENT_PATH_TOKEN = "path:src/app.ts";
 const AGENT_PATH_START = AGENT_BODY.indexOf(AGENT_PATH_TOKEN);
@@ -96,48 +111,17 @@ const RAW_THREAD_BODY = `Continue in ${RAW_THREAD_ID}; exact code reference \`${
 function threadListEntry(
   overrides: Partial<ThreadListEntry> = {},
 ): ThreadListEntry {
-  return {
+  return makeThreadListEntryFixture({
     id: "thr_test",
     projectId: "proj_demo",
-    environmentId: null,
-    providerId: "codex",
     title: "Thread",
     titleFallback: "Thread",
-    sectionId: null,
-    status: "idle",
-    parentThreadId: null,
-    sourceThreadId: null,
-    originKind: null,
-    originPluginId: null,
-    visibility: "visible",
-    childOrigin: null,
-    archivedAt: null,
-    pinnedAt: null,
-    pinSortKey: null,
-    deletedAt: null,
     lastReadAt: 0,
     latestAttentionAt: 1,
     createdAt: 1,
     updatedAt: 1,
-    activity: {
-      activeWorkflowCount: 0,
-      activeBackgroundAgentCount: 0,
-      activeBackgroundCommandCount: 0,
-      activePlanModeCount: 0,
-      activeGoalCount: 0,
-    },
-    hasPendingInteraction: false,
-    environmentHostId: null,
-    environmentName: null,
-    environmentBranchName: null,
-    queuedWork: "none",
-    environmentWorkspaceDisplayKind: "other",
-    runtime: {
-      displayStatus: "idle",
-      hostReconnectGraceExpiresAt: null,
-    },
     ...overrides,
-  };
+  });
 }
 
 function renderAgentMessage(

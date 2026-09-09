@@ -18,7 +18,9 @@ import {
 import {
   createDaemonFileContentResponse,
   type DaemonFileReadResult,
+  requireDaemonFileContentResult,
   remapDaemonFileRouteError,
+  serveDaemonFileContent,
 } from "../services/hosts/daemon-file-response.js";
 import {
   assertUsableHostId,
@@ -132,19 +134,14 @@ async function serveRawFilesystemHtmlFile(
   const filePath = parseRawFilesystemPath(rawPath);
   assertHtmlPreviewPath(filePath);
   const { environment } = requirePublicThreadEnvironment(deps.db, threadId);
-  try {
-    const result = await callHostRetryableOnlineRpc(deps, {
+  return serveDaemonFileContent(
+    deps,
+    {
       hostId: environment.hostId,
-      timeoutMs: COMMAND_TIMEOUT_MS,
-      command: {
-        type: "host.read_file",
-        path: filePath,
-      },
-    });
-    return createRawFilesystemHtmlPreviewResponse(result);
-  } catch (error) {
-    return remapDaemonFileRouteError(error);
-  }
+      path: filePath,
+    },
+    createRawFilesystemHtmlPreviewResponse,
+  );
 }
 
 export function registerFileRoutes(app: Hono, deps: AppDeps): void {
@@ -221,7 +218,7 @@ export function registerFileRoutes(app: Hono, deps: AppDeps): void {
             : {}),
         },
       });
-      return context.json(result);
+      return context.json(requireDaemonFileContentResult(result));
     } catch (error) {
       return remapDaemonFileRouteError(error);
     }
@@ -409,28 +406,31 @@ export function registerFileRoutes(app: Hono, deps: AppDeps): void {
     ) {
       throw new ApiError(400, "invalid_path", "Invalid preview path", false);
     }
-    try {
-      const result = await callHostRetryableOnlineRpc(deps, {
+    const isHtmlPath = isHtmlMimeType(mimeTypes.lookup(rawPath) || null);
+    return serveDaemonFileContent(
+      deps,
+      {
         hostId: lease.hostId,
-        timeoutMs: COMMAND_TIMEOUT_MS,
-        command: {
-          type: "host.read_file",
-          path: joinHostPath(lease.rootPath, segments),
-          rootPath: lease.rootPath,
-        },
-      });
-      const headers = new Headers({
-        "cache-control": "no-store",
-        "x-content-type-options": "nosniff",
-      });
-      if (isHtmlMimeType(result.mimeType)) {
-        assertRawFilesystemHtmlPreviewResult(result);
-        headers.set("content-security-policy", HTML_PREVIEW_CSP);
-        headers.set("content-type", HTML_PREVIEW_CONTENT_TYPE);
-      }
-      return createDaemonFileContentResponse(result, { headers });
-    } catch (error) {
-      return remapDaemonFileRouteError(error);
-    }
+        ...(!isHtmlPath
+          ? { ifNoneMatch: context.req.header("if-none-match") }
+          : {}),
+        path: joinHostPath(lease.rootPath, segments),
+        rootPath: lease.rootPath,
+      },
+      (result) => {
+        const headers = new Headers({ "x-content-type-options": "nosniff" });
+        const isHtml = isHtmlMimeType(result.mimeType);
+        if (isHtml) {
+          assertRawFilesystemHtmlPreviewResult(result);
+          headers.set("cache-control", "no-store");
+          headers.set("content-security-policy", HTML_PREVIEW_CSP);
+          headers.set("content-type", HTML_PREVIEW_CONTENT_TYPE);
+        }
+        return createDaemonFileContentResponse(result, {
+          headers,
+          ifNoneMatch: isHtml ? undefined : context.req.header("if-none-match"),
+        });
+      },
+    );
   });
 }

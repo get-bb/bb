@@ -37,6 +37,7 @@ import {
   setPluginSlotRegistrations,
   type PluginRegistrationSet,
 } from "@/lib/plugin-slots";
+import { makePluginRegistrationSet as emptyRegistrationSet } from "@/test/fixtures/plugins";
 
 function InlineVis(props: PluginMessageDirectiveProps) {
   return (
@@ -97,22 +98,6 @@ function slot(
 ): PluginMessageDirectiveSlot {
   return {
     generation: 1,
-    ...overrides,
-  };
-}
-
-function emptyRegistrationSet(
-  overrides: Partial<PluginRegistrationSet> = {},
-): PluginRegistrationSet {
-  return {
-    homepageSections: [],
-    settingsSections: [],
-    navPanels: [],
-    threadPanelActions: [],
-    pendingInteractions: [],
-    sidebarFooterActions: [],
-    fileOpeners: [],
-    messageDirectives: [],
     ...overrides,
   };
 }

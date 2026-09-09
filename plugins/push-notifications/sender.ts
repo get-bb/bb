@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import type {
   BbPluginApi,
   PluginThreadEventPayloads,
@@ -5,7 +6,11 @@ import type {
 import { EnvHttpProxyAgent, fetch as undiciFetch } from "undici";
 import type { Dispatcher } from "undici";
 import { z } from "zod";
-import type { PushSubscription } from "./contract.js";
+import {
+  CLIENT_NOTIFICATION_CHANNEL,
+  type ClientNotification,
+  type PushSubscription,
+} from "./contract.js";
 import type { PushSubscriptionStore } from "./subscriptions.js";
 
 type ThreadResponse = PluginThreadEventPayloads["thread.idle"]["thread"];
@@ -128,6 +133,11 @@ export interface CreatePushSenderArgs {
   bb: BbPluginApi;
   subscriptions: PushSubscriptionStore;
   getExpoPushUrl(): Promise<string>;
+  getDeliverySettings(): Promise<{
+    mobileEnabled: boolean;
+    webEnabled: boolean;
+    desktopEnabled: boolean;
+  }>;
   fetch?: PushSenderFetch;
   coalesceMs?: number;
   now?: () => number;
@@ -154,9 +164,7 @@ function threadDisplayTitle(thread: ThreadResponse): string {
   return `Thread ${thread.id.slice(0, 8)}`;
 }
 
-function describePendingInteraction(
-  interaction: PendingInteraction,
-): string {
+function describePendingInteraction(interaction: PendingInteraction): string {
   const payload = interaction.payload;
   if (payload.kind === "user_question") {
     const prompt = firstLine(payload.questions[0]?.prompt ?? "");
@@ -317,18 +325,29 @@ export function createPushSender(args: CreatePushSenderArgs): PushSender {
       return;
     }
     const lastReadAt = thread.lastReadAt ?? 0;
-    if (
-      lastReadAt >= thread.latestAttentionAt &&
-      lastReadAt >= entry.eventAt
-    ) {
+    if (lastReadAt >= thread.latestAttentionAt && lastReadAt >= entry.eventAt) {
       return;
     }
     const resolved = await resolvePush(thread, entry);
     if (resolved === null) return;
-    const rows = await subscriptions.list();
-    if (rows.length === 0) return;
     const title = truncate(threadDisplayTitle(thread), PUSH_TITLE_MAX_LENGTH);
     const body = truncate(resolved.body, PUSH_BODY_MAX_LENGTH);
+    const config = await args.getDeliverySettings();
+    const channels: ClientNotification["channels"] = [];
+    if (config.webEnabled) channels.push("web");
+    if (config.desktopEnabled) channels.push("desktop");
+    if (channels.length > 0) {
+      bb.realtime.publish(CLIENT_NOTIFICATION_CHANNEL, {
+        id: randomUUID(),
+        title,
+        body,
+        threadId: thread.id,
+        channels,
+      } satisfies ClientNotification);
+    }
+    if (!config.mobileEnabled) return;
+    const rows = await subscriptions.list();
+    if (rows.length === 0) return;
     const serverUrl = bb.server.experimental_appUrl;
     const deliveries: Delivery[] = rows.map((subscription) => ({
       subscription,
@@ -407,11 +426,15 @@ export function createPushSender(args: CreatePushSenderArgs): PushSender {
     }
     if (parsed.data.errors && parsed.data.errors.length > 0) {
       const codes = parsed.data.errors.map((error) => error.code ?? "unknown");
-      bb.log.warn(`Expo push request was rejected with codes ${codes.join(", ")}`);
+      bb.log.warn(
+        `Expo push request was rejected with codes ${codes.join(", ")}`,
+      );
       return { sentCount: 0, failure: "relay rejected the request" };
     }
     if (parsed.data.data === undefined) {
-      bb.log.warn(`Expo push response returned no tickets with status ${status}`);
+      bb.log.warn(
+        `Expo push response returned no tickets with status ${status}`,
+      );
       return { sentCount: 0, failure: "relay returned no tickets" };
     }
     let sentCount = 0;

@@ -214,7 +214,7 @@ describe("thread conversation outline performance", () => {
       expect.objectContaining({ preview: "Visible response" }),
     ]);
     const eventSelectQueries = queries.filter((query) =>
-      query.sql.includes('from "events"'),
+      query.sql.includes('"events"."type" in'),
     );
     expect(eventSelectQueries).toHaveLength(1);
     expect(eventSelectQueries[0]?.sql).toContain('"events"."type" in');

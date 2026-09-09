@@ -38,35 +38,36 @@ import {
 import type { PluginCatalogSearchEntry } from "@/hooks/queries/plugin-catalog-queries";
 import { pluginSourceQueryKey } from "@/hooks/queries/query-keys";
 import type { PluginFrontendDiagnostic } from "@/lib/plugin-frontend";
+import {
+  makePluginListItem,
+  makePluginRegistrationSet,
+} from "@/test/fixtures/plugins";
 
-const GITHUB_PLUGIN = {
+vi.mock("react-resizable-panels", async () => {
+  const { createRequire } = await import("node:module");
+  const { dirname, join } = await import("node:path");
+  const require = createRequire(import.meta.url);
+  return require(
+    join(
+      dirname(require.resolve("react-resizable-panels/package.json")),
+      "dist/react-resizable-panels.browser.cjs.js",
+    ),
+  );
+});
+
+const GITHUB_PLUGIN = makePluginListItem({
   id: "github",
   source: "builtin:github",
   rootDir: "/Users/you/.bb/plugins/github",
-  version: "0.1.0",
-  enabled: true,
-  status: "running",
-  statusDetail: null,
   description: "Browse GitHub issues and pull requests in BB.",
   name: "GitHub",
   icon: "Github",
-  compactIconUrl: null,
-  logoUrl: null,
-  logoDarkUrl: null,
-  hasSettings: false,
-  handlerStats: { count: 0, totalMs: 0, maxMs: 0, errorCount: 0 },
-  services: [],
-  schedules: [],
-  cliCommand: null,
-  capabilities: [],
   app: { hasApp: true, bundle: null },
-  provenance: "catalog" as const,
-  isOrphanedBuiltin: false,
+  provenance: "catalog",
   catalogEntryId: "github",
   publisherLabel: "BB Official",
   sourceDisplay: "BB Official · GitHub",
-  updateState: EMPTY_PLUGIN_UPDATE_STATE,
-} satisfies PluginListItem;
+});
 
 const GITHUB_CATALOG_ENTRY = {
   entryId: "github",
@@ -285,7 +286,6 @@ describe("PluginDetail official catalog lifecycle", () => {
       screen.queryByRole("button", { name: "Uninstall GitHub" }),
     ).toBeNull();
 
-    expect(screen.getByText("About")).toBeTruthy();
     expect(screen.getByText("Release")).toBeTruthy();
     expect(
       screen.getByText("Browse GitHub issues and pull requests in BB."),
@@ -675,6 +675,7 @@ describe("BB Official plugin detail routing", () => {
         <Routes>
           <Route path="/plugins/*" element={<RoutedPluginsView />} />
         </Routes>
+        <HistoryBackButton />
       </MemoryRouter>,
       { wrapper: QueryClientWrapper },
     );
@@ -682,6 +683,11 @@ describe("BB Official plugin detail routing", () => {
     const card = await screen.findByRole("button", {
       name: "Open GitHub details",
     });
+    const panels = Array.from(document.querySelectorAll("[data-panel]"));
+    expect(panels).toHaveLength(2);
+    expect(panels[0]?.getAttribute("data-panel-size")).toBe("100.0");
+    expect(panels[1]?.getAttribute("data-panel-size")).toBe("0.0");
+    const search = screen.getByRole("textbox", { name: "Search plugins" });
     card.focus();
     fireEvent.click(card);
     expect(
@@ -691,97 +697,129 @@ describe("BB Official plugin detail routing", () => {
       screen.getByRole("textbox", { name: "Search plugins" }),
     ).toBeTruthy();
     expect(screen.getAllByRole("button", { name: /^Close /u })).toHaveLength(1);
+    expect(Array.from(document.querySelectorAll("[data-panel]"))).toEqual(
+      panels,
+    );
+    expect(screen.getByRole("textbox", { name: "Search plugins" })).toBe(
+      search,
+    );
 
     fireEvent.click(screen.getByRole("button", { name: "Close GitHub" }));
     await waitFor(() => {
-      expect(screen.getByTestId("route-path").textContent).toBe(
-        "/plugins",
-      );
+      expect(screen.getByTestId("route-path").textContent).toBe("/plugins");
       expect(document.activeElement).toBe(card);
     });
-  });
-
-  it("keeps related plugin navigation in the full-page detail", async () => {
-    const author = {
-      name: "BB",
-      github: "get-bb",
-      url: "https://github.com/get-bb",
-    };
-    const catalogEntries = [
-      { ...GITHUB_CATALOG_ENTRY, author, installed: true },
-      {
-        ...GITHUB_CATALOG_ENTRY,
-        entryId: "automations",
-        pluginId: "automations",
-        displayName: "Automations",
-        author,
-      },
-    ];
-    vi.stubGlobal(
-      "fetch",
-      vi.fn(async (input: RequestInfo | URL) => {
-        const url = String(input);
-        if (url === "/api/v1/plugins") {
-          return new Response(
-            JSON.stringify({
-              enabled: true,
-              plugins: [
-                {
-                  ...GITHUB_PLUGIN,
-                  iconUrl: null,
-                  screenshots: [],
-                  collections: [],
-                  providerIds: [],
-                  icons: {},
-                  updateState: {},
-                },
-              ],
-            }),
-            { headers: { "content-type": "application/json" } },
-          );
-        }
-        if (url.startsWith("/api/v1/plugin-catalog/search")) {
-          return new Response(
-            JSON.stringify({ results: catalogEntries, collections: [] }),
-            { headers: { "content-type": "application/json" } },
-          );
-        }
-        return new Response(JSON.stringify({ error: "not found" }), {
-          status: 404,
-          headers: { "content-type": "application/json" },
-        });
-      }),
+    expect(Array.from(document.querySelectorAll("[data-panel]"))).toEqual(
+      panels,
+    );
+    expect(panels[0]?.getAttribute("data-panel-size")).toBe("100.0");
+    expect(panels[1]?.getAttribute("data-panel-size")).toBe("0.0");
+    expect(screen.getByRole("textbox", { name: "Search plugins" })).toBe(
+      search,
     );
 
-    const { wrapper: QueryClientWrapper } = createQueryClientTestHarness();
-    render(
-      <MemoryRouter
-        initialEntries={["/plugins/github?view=installed"]}
-      >
-        <Routes>
-          <Route path="/plugins/*" element={<RoutedPluginsView />} />
-        </Routes>
-      </MemoryRouter>,
-      { wrapper: QueryClientWrapper },
-    );
-
-    fireEvent.click(
-      await screen.findByRole("button", {
-        name: "Open Automations details",
-      }),
-    );
+    fireEvent.click(screen.getByRole("button", { name: "Browser back" }));
     await waitFor(() => {
       expect(screen.getByTestId("route-path").textContent).toBe(
-        "/plugins/automations",
+        "/plugins/github",
       );
     });
-    expect(screen.getByTestId("route-search").textContent).toBe(
-      "?view=installed",
-    );
-    expect(
-      screen.queryByRole("button", { name: "Close Automations" }),
-    ).toBeNull();
   });
+
+  it.each(["/plugins/github?view=installed", "/plugins?view=installed"])(
+    "opens installed plugin settings from %s",
+    async (path) => {
+      const author = {
+        name: "BB",
+        github: "get-bb",
+        url: "https://github.com/get-bb",
+      };
+      const catalogEntries = [
+        { ...GITHUB_CATALOG_ENTRY, author, installed: true },
+        {
+          ...GITHUB_CATALOG_ENTRY,
+          entryId: "automations",
+          pluginId: "automations",
+          displayName: "Automations",
+          author,
+        },
+      ];
+      vi.stubGlobal(
+        "fetch",
+        vi.fn(async (input: RequestInfo | URL) => {
+          const url = String(input);
+          if (url === "/api/v1/plugins") {
+            return new Response(
+              JSON.stringify({
+                enabled: true,
+                plugins: [
+                  {
+                    ...GITHUB_PLUGIN,
+                    iconUrl: null,
+                    screenshots: [],
+                    collections: [],
+                    providerIds: [],
+                    icons: {},
+                    updateState: {},
+                  },
+                ],
+              }),
+              { headers: { "content-type": "application/json" } },
+            );
+          }
+          if (url.startsWith("/api/v1/plugin-catalog/search")) {
+            return new Response(
+              JSON.stringify({ results: catalogEntries, collections: [] }),
+              { headers: { "content-type": "application/json" } },
+            );
+          }
+          return new Response(JSON.stringify({ error: "not found" }), {
+            status: 404,
+            headers: { "content-type": "application/json" },
+          });
+        }),
+      );
+
+      const { wrapper: QueryClientWrapper } = createQueryClientTestHarness();
+      render(
+        <MemoryRouter initialEntries={[path]}>
+          <Routes>
+            <Route path="/plugins/*" element={<RoutedPluginsView />} />
+          </Routes>
+        </MemoryRouter>,
+        { wrapper: QueryClientWrapper },
+      );
+
+      if (path === "/plugins?view=installed") {
+        expect(
+          await screen.findByRole("textbox", {
+            name: "Search installed plugins",
+          }),
+        ).toBeTruthy();
+        expect(screen.getByTestId("route-path").textContent).toBe("/plugins");
+        fireEvent.click(
+          await screen.findByRole("button", { name: "GitHub plugin details" }),
+        );
+      }
+
+      fireEvent.click(
+        await screen.findByRole("button", {
+          name: "Open Automations details",
+        }),
+      );
+      await waitFor(() => {
+        expect(screen.getByTestId("route-path").textContent).toBe(
+          "/plugins/automations",
+        );
+      });
+      expect(screen.getByTestId("route-search").textContent).toBe(
+        "?view=installed",
+      );
+      expect(
+        screen.queryByRole("button", { name: "Close Automations" }),
+      ).toBeNull();
+    },
+  );
 
   it("opens an author from a card and returns to the prior Browse filters", async () => {
     const author = {
@@ -930,9 +968,7 @@ describe("BB Official plugin detail routing", () => {
     const authorLinks = screen.getAllByRole("link", { name: "BB" });
     fireEvent.click(authorLinks.at(-1)!);
     await waitFor(() => {
-      expect(screen.getByTestId("route-path").textContent).toBe(
-        "/plugins",
-      );
+      expect(screen.getByTestId("route-path").textContent).toBe("/plugins");
     });
     expect(await screen.findByRole("heading", { name: /^BB/u })).toBeTruthy();
     expect(
@@ -1124,7 +1160,12 @@ describe("PluginDetail runtime health", () => {
   function renderRuntimeStatus(
     status: Extract<
       PluginListItem["status"],
-      "error" | "incompatible" | "missing" | "needs-configuration" | "degraded"
+      | "starting"
+      | "error"
+      | "incompatible"
+      | "missing"
+      | "needs-configuration"
+      | "degraded"
     >,
     overrides: Partial<PluginListItem> = {},
   ) {
@@ -1162,6 +1203,16 @@ describe("PluginDetail runtime health", () => {
     );
     return { ...result, queryClient };
   }
+
+  it("shows startup as a neutral status without failure recovery", () => {
+    renderRuntimeStatus("starting", { statusDetail: null });
+    expect(screen.getByRole("status").textContent).toContain("Starting");
+    expect(screen.getByRole("status").textContent).toContain(
+      "The plugin is starting.",
+    );
+    expect(screen.queryByRole("alert")).toBeNull();
+    expect(screen.queryByRole("button", { name: "Reload" })).toBeNull();
+  });
 
   it("lifts a failed runtime status into a destructive alert above the content", () => {
     const { container } = renderRuntimeStatus("error");
@@ -1244,7 +1295,7 @@ describe("PluginDetail runtime health", () => {
     },
   );
 
-  it("keeps needs-configuration actionless because saving Settings retries it", () => {
+  it("sends needs-configuration to the plugin settings page instead of Reload", () => {
     renderRuntimeStatus("needs-configuration", {
       statusDetail: "An API token is required.",
       hasSettings: true,
@@ -1255,6 +1306,10 @@ describe("PluginDetail runtime health", () => {
     expect(alert.textContent).toContain(
       "Complete the Configuration section; bb reloads the plugin after you save.",
     );
+    const settingsLink = within(alert).getByRole("link", {
+      name: "Open settings",
+    });
+    expect(settingsLink.getAttribute("href")).toBe("/settings/plugins/github");
     expect(screen.queryByRole("button", { name: "Reload" })).toBeNull();
   });
 
@@ -1272,6 +1327,65 @@ describe("PluginDetail runtime health", () => {
       "Add the required configuration, then reload the plugin.",
     );
     expect(screen.getByRole("button", { name: "Reload" })).toBeTruthy();
+    expect(
+      within(alert).queryByRole("link", { name: "Open settings" }),
+    ).toBeNull();
+  });
+
+  it("links to a settings page contributed by the plugin frontend and keeps Reload", () => {
+    setPluginSlotRegistrations(
+      "github",
+      makePluginRegistrationSet({
+        settingsSections: [
+          { id: "accounts", title: "Accounts", component: () => null },
+        ],
+        navPanels: [],
+        threadPanelActions: [],
+        composerCustomizations: [],
+        pendingInteractions: [],
+        sidebarFooterActions: [],
+        fileOpeners: [],
+        messageDirectives: [],
+      }),
+    );
+
+    renderRuntimeStatus("needs-configuration", {
+      statusDetail: "Add and enable an account.",
+      hasSettings: false,
+    });
+
+    const alert = screen.getByRole("alert");
+    const settingsLink = within(alert).getByRole("link", {
+      name: "Open settings",
+    });
+    expect(settingsLink.getAttribute("href")).toBe("/settings/plugins/github");
+    expect(within(alert).getByRole("button", { name: "Reload" })).toBeTruthy();
+  });
+
+  it("does not offer a settings link for other runtime failures", () => {
+    setPluginSlotRegistrations(
+      "github",
+      makePluginRegistrationSet({
+        settingsSections: [
+          { id: "accounts", title: "Accounts", component: () => null },
+        ],
+        navPanels: [],
+        threadPanelActions: [],
+        composerCustomizations: [],
+        pendingInteractions: [],
+        sidebarFooterActions: [],
+        fileOpeners: [],
+        messageDirectives: [],
+      }),
+    );
+
+    renderRuntimeStatus("error");
+
+    const alert = screen.getByRole("alert");
+    expect(
+      within(alert).queryByRole("link", { name: "Open settings" }),
+    ).toBeNull();
+    expect(within(alert).getByRole("button", { name: "Reload" })).toBeTruthy();
   });
 
   it("reloads the affected plugin and reflects its pending state", async () => {
@@ -1313,37 +1427,38 @@ describe("PluginDetail runtime health", () => {
 describe("PluginDetail capability inventory", () => {
   it("lists each contributed capability and keeps health separate", async () => {
     const EmptySlot = () => null;
-    setPluginSlotRegistrations("capability-demo", {
-      homepageSections: [],
-      settingsSections: [
-        {
-          id: "preferences",
-          title: "Advanced preferences",
-          component: EmptySlot,
-        },
-      ],
-      navPanels: [
-        {
-          id: "run-monitor",
-          title: "Run monitor",
-          icon: "Workflow",
-          path: "runs",
-          component: EmptySlot,
-        },
-      ],
-      threadPanelActions: [],
-      composerCustomizations: [
-        {
-          id: "prompt-tools",
-          actions: [{ id: "enhance-prompt", component: EmptySlot }],
-        },
-      ],
-      pendingInteractions: [],
-      sidebarFooterActions: [],
-      fileOpeners: [],
-      messageDirectives: [],
-      messageActions: [],
-    });
+    setPluginSlotRegistrations(
+      "capability-demo",
+      makePluginRegistrationSet({
+        settingsSections: [
+          {
+            id: "preferences",
+            title: "Advanced preferences",
+            component: EmptySlot,
+          },
+        ],
+        navPanels: [
+          {
+            id: "run-monitor",
+            title: "Run monitor",
+            icon: "Workflow",
+            path: "runs",
+            component: EmptySlot,
+          },
+        ],
+        threadPanelActions: [],
+        composerCustomizations: [
+          {
+            id: "prompt-tools",
+            actions: [{ id: "enhance-prompt", component: EmptySlot }],
+          },
+        ],
+        pendingInteractions: [],
+        sidebarFooterActions: [],
+        fileOpeners: [],
+        messageDirectives: [],
+      }),
+    );
 
     const plugin = {
       ...GITHUB_PLUGIN,
@@ -1549,40 +1664,40 @@ describe("PluginDetail capability inventory", () => {
 
   it("names repeated product-titled surfaces by their actual capability", () => {
     const EmptySlot = () => null;
-    setPluginSlotRegistrations("simple-notes", {
-      homepageSections: [],
-      settingsSections: [],
-      navPanels: [
-        {
-          id: "docs",
-          title: "Docs",
-          icon: "FileText",
-          path: "docs",
-          component: EmptySlot,
-        },
-      ],
-      threadPanelActions: [
-        {
-          id: "document",
-          title: "Document",
-          icon: "FileText",
-          component: EmptySlot,
-        },
-      ],
-      composerCustomizations: [],
-      pendingInteractions: [],
-      sidebarFooterActions: [],
-      fileOpeners: [
-        {
-          id: "docs",
-          title: "Markdown",
-          extensions: ["md", "mdx", "markdown"],
-          component: EmptySlot,
-        },
-      ],
-      messageDirectives: [{ id: "docs", component: EmptySlot }],
-      messageActions: [],
-    });
+    setPluginSlotRegistrations(
+      "simple-notes",
+      makePluginRegistrationSet({
+        navPanels: [
+          {
+            id: "docs",
+            title: "Docs",
+            icon: "FileText",
+            path: "docs",
+            component: EmptySlot,
+          },
+        ],
+        threadPanelActions: [
+          {
+            id: "document",
+            title: "Document",
+            icon: "FileText",
+            component: EmptySlot,
+          },
+        ],
+        composerCustomizations: [],
+        pendingInteractions: [],
+        sidebarFooterActions: [],
+        fileOpeners: [
+          {
+            id: "docs",
+            title: "Markdown",
+            extensions: ["md", "mdx", "markdown"],
+            component: EmptySlot,
+          },
+        ],
+        messageDirectives: [{ id: "docs", component: EmptySlot }],
+      }),
+    );
     const { wrapper: QueryClientWrapper } = createQueryClientTestHarness();
     render(
       <MemoryRouter>

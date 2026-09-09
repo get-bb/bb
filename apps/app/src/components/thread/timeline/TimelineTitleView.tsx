@@ -13,6 +13,8 @@ import {
   type TimelineTitleTone,
 } from "@bb/thread-view";
 import { cn } from "@bb/shared-ui/lib/utils";
+import { Icon } from "@bb/shared-ui/icon";
+import { isIconName } from "./presentation-display.js";
 import { DiffStatsTally } from "@/components/ui/diff-stats-tally.js";
 import { RouteAnchor } from "@/components/ui/app-route-anchor.js";
 import { useSecondTick } from "@/hooks/useSecondTick";
@@ -69,15 +71,10 @@ function plainToneClass(tone: TimelineTitleTone): string {
   }
 }
 
-function decorationToneClass(tone: TimelineTitleTone): string {
-  switch (tone) {
-    case "default":
-      return "text-muted-foreground";
-    case "summary":
-      return "text-subtle-foreground";
-    default:
-      return assertNever(tone);
-  }
+function badgeToneClass(tone: "neutral" | "destructive"): string {
+  return tone === "destructive"
+    ? "text-destructive-text"
+    : "text-muted-foreground";
 }
 
 const STATUS_DECORATION_TONE_CLASS = "text-subtle-foreground";
@@ -198,7 +195,7 @@ function renderDecoration(
   index: number,
   tone: TimelineTitleTone,
 ): ReactNode {
-  const baseClass = cn("shrink-0 whitespace-pre", decorationToneClass(tone));
+  const baseClass = cn("shrink-0 whitespace-pre", plainToneClass(tone));
 
   switch (decoration.kind) {
     case "duration": {
@@ -287,6 +284,29 @@ function renderDecoration(
           hideZero
           className="shrink-0"
         />
+      );
+    }
+    case "badge": {
+      const badgeClass = badgeToneClass(decoration.tone);
+      if (!isIconName(decoration.glyph)) {
+        return (
+          <span key={index} className={cn(baseClass, badgeClass)}>
+            {decoration.label}
+          </span>
+        );
+      }
+      return (
+        <span
+          key={index}
+          className="inline-flex shrink-0 items-center"
+          title={decoration.hint}
+        >
+          <Icon
+            name={decoration.glyph}
+            className={cn("size-3.5", badgeClass)}
+            aria-label={decoration.hint}
+          />
+        </span>
       );
     }
     default:

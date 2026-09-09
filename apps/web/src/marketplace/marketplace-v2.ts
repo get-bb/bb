@@ -96,6 +96,7 @@ export const marketplaceV2EntrySchema = z.object({
     .array(screenshotUrlSchema)
     .transform((screenshots) => screenshots.slice(0, 6))
     .default([]),
+  overview: z.string().min(1).optional(),
   publishedAt: z.string().datetime({ offset: true }).optional(),
   updatedAt: z.string().datetime({ offset: true }).optional(),
 });
@@ -162,7 +163,6 @@ export const marketplaceV2ManifestSchema = z
   });
 
 export type MarketplaceCategory = z.infer<typeof marketplaceCategorySchema>;
-export type MarketplaceCollection = z.infer<typeof marketplaceCollectionSchema>;
 export type MarketplaceV2Entry = z.infer<typeof marketplaceV2EntrySchema>;
 export type MarketplaceV2Manifest = z.infer<typeof marketplaceV2ManifestSchema>;
 

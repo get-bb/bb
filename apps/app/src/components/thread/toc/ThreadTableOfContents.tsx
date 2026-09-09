@@ -28,6 +28,7 @@ interface ActiveItemIds {
 }
 
 interface ThreadTableOfContentsProps {
+  contextBoundarySeq: number | null;
   threadId: string;
   timelineRows: readonly TimelineRow[];
   hasOlderTimelineRows: boolean;
@@ -482,6 +483,7 @@ export function findActiveItemIds({
 }
 
 export function ThreadTableOfContents({
+  contextBoundarySeq,
   threadId,
   timelineRows,
   hasOlderTimelineRows,
@@ -494,9 +496,14 @@ export function ThreadTableOfContents({
   const outlineQuery = useThreadConversationOutline(threadId, {
     enabled: tocVisible && timelineRows.length > 0,
   });
+  const outlineItems =
+    contextBoundarySeq !== null &&
+    (outlineQuery.data?.maxSeq ?? -1) < contextBoundarySeq
+      ? undefined
+      : outlineQuery.data?.items;
   const senderThreadMetadataById = useSenderThreadMetadataById();
   const { agentItems, userItems } = useConversationTocItems({
-    outlineItems: outlineQuery.data?.items,
+    outlineItems,
     timelineRows,
   });
   const [open, setOpen] = useState(false);

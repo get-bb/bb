@@ -236,7 +236,24 @@ describe("createAgentRuntime lifecycle", () => {
 
     it("merges runtime shell env with per-thread context on start", async () => {
       const record = createScriptedEchoRequestRecord();
+      const events: ThreadEvent[] = [];
       const threadStorageRootPath = join(tmpDir, "thread-storage");
+      const contributedEnv = [
+        {
+          name: "PATH",
+          value: "/plugin/bin",
+          source: { plugin: "env-test" },
+          reason: "Use the plugin toolchain",
+          secret: false,
+        },
+        {
+          name: "AUTH_PROXY_URL",
+          value: { serverPath: "/plugins/env-test/auth" },
+          source: { plugin: "env-test" },
+          reason: "Use the authenticated server proxy",
+          secret: true,
+        },
+      ] as const;
       const runtime = createScriptedEchoRuntime({
         runtime: {
           workspacePath: tmpDir,
@@ -249,7 +266,7 @@ describe("createAgentRuntime lifecycle", () => {
             BB_SERVER_URL: "http://127.0.0.1:3334",
             BB_THREAD_ID: "wrong-thread",
           },
-          onEvent: () => undefined,
+          onEvent: (event) => events.push(event),
         },
       });
 
@@ -258,6 +275,7 @@ describe("createAgentRuntime lifecycle", () => {
         threadId: "t1",
         projectId: "p1",
         providerId: "fake",
+        contributedEnv,
         options: fullRuntimeOptions,
       });
 
@@ -269,7 +287,8 @@ describe("createAgentRuntime lifecycle", () => {
           cwd: tmpDir,
           options: expect.objectContaining({
             envVars: {
-              PATH: "/tmp/bb-bin:/usr/bin",
+              PATH: "/plugin/bin",
+              AUTH_PROXY_URL: "http://127.0.0.1:3334/plugins/env-test/auth",
               BB_HOST_DAEMON_PORT: "3002",
               BB_PROJECT_ID: "p1",
               BB_SERVER_URL: "http://127.0.0.1:3334",
@@ -278,6 +297,101 @@ describe("createAgentRuntime lifecycle", () => {
               BB_ENVIRONMENT_ID: "env-1",
             },
           }),
+        }),
+      );
+      expect(
+        events.find((event) => event.type === "provider.env-resolved"),
+      ).toMatchObject({
+        entries: expect.arrayContaining([
+          {
+            name: "PATH",
+            source: { plugin: "env-test" },
+            value: "/plugin/bin",
+            reason: "Use the plugin toolchain",
+          },
+          {
+            name: "AUTH_PROXY_URL",
+            source: { plugin: "env-test" },
+            value: { masked: true },
+            reason: "Use the authenticated server proxy",
+          },
+        ]),
+      });
+      expect(JSON.stringify(events)).not.toContain("/plugins/env-test/auth");
+
+      await runtime.runTurn({
+        clientRequestId: "creq_222222224c",
+        threadId: "t1",
+        input: [promptTextInput({ text: "follow up" })],
+        contributedEnv,
+        options: fullRuntimeOptions,
+      });
+      expect(
+        events.filter((event) => event.type === "provider.env-resolved"),
+      ).toHaveLength(1);
+
+      await runtime.shutdown();
+    });
+
+    it("drops unresolved server paths without preventing thread start", async () => {
+      const record = createScriptedEchoRequestRecord();
+      const events: ThreadEvent[] = [];
+      const runtime = createScriptedEchoRuntime({
+        runtime: {
+          workspacePath: tmpDir,
+          env: record.env,
+          shellEnv: { PATH: "/usr/bin" },
+          onEvent: (event) => events.push(event),
+        },
+      });
+
+      await runtime.startThread({
+        environmentId: "env-1",
+        threadId: "t1",
+        projectId: "p1",
+        providerId: "fake",
+        contributedEnv: [
+          {
+            name: "AUTH_PROXY_URL",
+            value: { serverPath: "/plugins/env-test/auth" },
+            source: { plugin: "env-test" },
+            reason: "Use the authenticated server proxy",
+            secret: true,
+          },
+        ],
+        options: fullRuntimeOptions,
+      });
+
+      const threadStart = record.last("thread/start");
+      expect(threadStart).toBeDefined();
+      expect(threadStart?.params).toEqual(
+        expect.objectContaining({
+          options: expect.objectContaining({
+            envVars: expect.not.objectContaining({
+              AUTH_PROXY_URL: expect.anything(),
+            }),
+          }),
+        }),
+      );
+      expect(
+        events.find((event) => event.type === "provider.env-resolved"),
+      ).toMatchObject({
+        entries: expect.arrayContaining([
+          {
+            name: "AUTH_PROXY_URL",
+            source: { plugin: "env-test" },
+            value: { masked: true },
+            reason:
+              "Use the authenticated server proxy (dropped: no BB_SERVER_URL)",
+          },
+        ]),
+      });
+      expect(events).toContainEqual(
+        expect.objectContaining({
+          type: "provider/warning",
+          category: "config",
+          summary:
+            'Dropped environment variable "AUTH_PROXY_URL" from plugin "env-test".',
         }),
       );
 

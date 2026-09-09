@@ -4,7 +4,6 @@ import type {
   PluginCatalogAuthor,
   PluginCatalogCollection,
   PluginCatalogCollectionMembership,
-  PluginCatalogInstallPlan,
   PluginCatalogResolvedSource,
   PluginCatalogSearchResult as SdkPluginCatalogSearchResult,
   PluginMarketplace,
@@ -97,20 +96,13 @@ export async function installCatalogPlugin(
   return createPluginsClient(fetchImpl).catalog.install(args);
 }
 
-async function fetchCatalogInstallPlan(
-  fetchImpl: FetchLike,
-  args: { entryId: string; marketplace?: string },
-): Promise<PluginCatalogInstallPlan> {
-  return createPluginsClient(fetchImpl).catalog.installPlan(args);
-}
-
 export function useCatalogInstallPlan(
   args: { entryId: string; marketplace?: string } | null,
 ) {
   const request = args ?? { entryId: "" };
   return useQuery({
     queryKey: pluginCatalogInstallPlanQueryKey(request),
-    queryFn: () => fetchCatalogInstallPlan(fetch, request),
+    queryFn: () => createPluginsClient(fetch).catalog.installPlan(request),
     enabled: args !== null,
     staleTime: 0,
     gcTime: 0,
@@ -228,6 +220,7 @@ export interface PluginCatalogSearchEntry {
   categoryId?: string;
   category?: string;
   screenshots: string[];
+  overview?: string;
   collections: PluginCatalogCollectionMembership[];
   publishedAt?: string;
   source: string;
@@ -258,6 +251,7 @@ function toPluginCatalogSearchEntry(
     ...(data.categoryId === undefined ? {} : { categoryId: data.categoryId }),
     ...(data.category === undefined ? {} : { category: data.category }),
     screenshots: data.screenshots,
+    ...(data.overview === undefined ? {} : { overview: data.overview }),
     collections: data.collections,
     ...(data.publishedAt === undefined
       ? {}

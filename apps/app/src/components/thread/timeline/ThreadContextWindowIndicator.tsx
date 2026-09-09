@@ -14,7 +14,7 @@ interface ThreadContextWindowIndicatorProps {
 
 const CONTEXT_WINDOW_POPOVER_CLOSE_DELAY_MS = 60;
 const CONTEXT_WINDOW_PANEL_CLASS_NAME =
-  "w-56 rounded-md border bg-popover p-2 text-popover-foreground shadow-md max-md:w-full max-md:rounded-none max-md:border-0 max-md:bg-transparent max-md:px-4 max-md:pt-2 max-md:pb-[max(1rem,env(safe-area-inset-bottom))] max-md:shadow-none";
+  "w-56 rounded-md border bg-popover p-2 text-popover-foreground shadow-md max-md:rounded-none max-md:border-0 max-md:bg-transparent max-md:px-4 max-md:pt-2 max-md:pb-[max(1rem,env(safe-area-inset-bottom))] max-md:shadow-none";
 
 export function ThreadContextWindowIndicator({
   usage,

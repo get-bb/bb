@@ -150,7 +150,6 @@ export function PluginsOverview({
 
   const installedActions = (
     <>
-      {plugins.length > 0 ? <CheckPluginUpdatesButton /> : null}
       <CreateWithTemplatesButton
         kind="plugin"
         label="New plugin"
@@ -220,6 +219,7 @@ export function PluginsOverview({
                     )
                   }
                 />
+                {plugins.length > 0 ? <CheckPluginUpdatesButton /> : null}
               </>
             }
           />

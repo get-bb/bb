@@ -16,6 +16,7 @@ import {
   ResourceRowDetailChevron,
 } from "@bb/shared-ui/resource-list";
 import type { PluginCatalogSearchEntry } from "@/hooks/queries/plugin-catalog-queries";
+import { PluginOverviewMarkdown } from "@/components/plugin/management/PluginOverviewMarkdown";
 import { CatalogEntryIconChip, PluginCategoryLabel } from "./plugin-ui";
 import { PluginAuthorAvatar } from "./PluginAuthorAvatar";
 import { PluginAuthorLink } from "./PluginAuthorLink";
@@ -212,25 +213,35 @@ function PluginScreenshotGallery({
   );
 }
 
+export function PluginOverviewLead({ description }: { description: string }) {
+  return (
+    <p
+      className="max-w-prose text-base leading-relaxed text-foreground"
+      data-plugin-summary=""
+    >
+      {description}
+    </p>
+  );
+}
+
 function PluginMarketplaceOverview({
   entry,
 }: {
   entry: PluginCatalogSearchEntry;
 }) {
-  if (entry.screenshots.length === 0 && entry.description.length === 0) {
-    return null;
-  }
   return (
     <section className="space-y-6" data-resource-detail-section="overview">
       <PluginScreenshotGallery entry={entry} />
-      {entry.description.length === 0 ? null : (
-        <div className="space-y-3">
-          <h2 className="text-sm font-medium text-foreground">About</h2>
-          <p className="max-w-none text-sm leading-relaxed text-muted-foreground">
-            {entry.description}
-          </p>
-        </div>
-      )}
+      <div className="space-y-3">
+        <PluginOverviewLead description={entry.description} />
+        {entry.overview === undefined ? null : (
+          <>
+            <hr className="border-t border-border" />
+            <h2 className="text-sm font-medium text-foreground">Overview</h2>
+            <PluginOverviewMarkdown markdown={entry.overview} />
+          </>
+        )}
+      </div>
     </section>
   );
 }

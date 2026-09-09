@@ -23,6 +23,90 @@ The builtin Custom instructions plugin adds a multiline editor under Settings
 → Custom instructions. Saved text is persisted on this bb host and included in
 agent task instructions; blank text contributes nothing.
 
+The builtin Account Pooler plugin is disabled on fresh installations. It stores
+Claude and Codex account tokens in per-account 0600 secret files and proxies
+provider API requests through the bb server. Enable it and add an account:
+
+```
+bb plugin enable account-pool
+bb pool account add --provider claude --login
+printf '%s\n' "$CLAUDE_AUTH_CODE" | bb pool account login-complete --session <id> --code-stdin
+bb pool account add --provider claude --import
+bb pool account add --provider codex --import
+printf '%s\n' "$ANTHROPIC_API_KEY" | bb pool account add --provider claude --api-key-stdin [--label <text>] [--priority <n>]
+bb pool account add --provider claude --api-key <key> [--label <text>] [--priority <n>]
+bb pool account list [--json]
+bb pool account remove <id>
+bb pool account enable <id>
+bb pool account disable <id>
+bb pool account priority <id> <n>
+bb pool account reorder <claude|codex> <id>...
+bb pool account refresh <id>
+bb pool status [--json]
+bb pool routing <claude|codex> [--off]
+bb pool config
+bb pool config set <anthropicUpstreamBaseUrl|codexUpstreamBaseUrl|switchThreshold> <value>
+bb pool token rotate --machine <id-or-name>
+bb pool bypass <thread-id> [--off]
+```
+
+Claude `--login` starts a ten-minute in-memory PKCE session, prints the browser
+sign-in URL and session ID, then exits. After sign-in, pipe the manual callback
+code to `account login-complete` with that session ID. The browser does not need
+to run on the bb server machine, and neither the code nor account tokens enter
+process arguments. Codex `--login` prints a device verification URL, one-time
+code, session ID, and an `account login-poll` command that waits for
+authorization. Both flows are available in the plugin settings page through
+the **Sign in to Claude** and **Sign in to Codex** buttons. The CLI Codex import
+path continues to read the bb server host's `~/.codex/auth.json`.
+
+The hub starts immediately, even before an account is configured, so newly
+added or enabled accounts are available without a plugin reload. With an
+enabled account whose secret file remains readable and valid, the plugin
+contributes its provider-specific server route and a distinct secret token to
+Claude Code or Codex sessions on every host. Claude Code also receives
+`ENABLE_TOOL_SEARCH=true` so tool search stays on through the hub. Codex
+receives `CODEX_OPENAI_BASE_URL` and the secret `CODEX_POOL_AUTH_TOKEN`; its
+app server uses those values without editing `~/.codex/config.toml`.
+Codex image generation and editing use the same authenticated pool route.
+Tokens are never printed. `status` prunes tokens for
+unenrolled machines and shows token timestamps plus recently routed threads
+whose machines need a local Claude login before the pool can be disabled
+safely. Rotation keeps the prior token valid for ten minutes. Agents should use
+`--api-key-stdin`, which reads exactly one non-empty key from piped standard
+input. The compatibility form `--api-key <key>` exposes the key in process
+arguments, shell history, and agent transcripts. Prefer `--import` when Claude
+Code is already signed in. OAuth quota refreshes on add or enable and every
+five minutes while the account is idle. Use `bb pool account refresh <id>` to
+request an immediate refresh for one account. Account tables add columns for
+the family buckets Anthropic reports, and JSON status exposes the same
+observations under `familyWeekly`. Selection skips an account only for a spent
+requested family while retaining it for other families. When Claude Code supplies an
+account UUID in `metadata.user_id`, the hub aligns it with the selected OAuth
+account. `bb pool config` prints the quota switch threshold and both upstream
+URLs. Use `bb pool config set <key> <value>` to change one; the two URL values
+are QA-only overrides. Upgrading from a build that stored these values through
+plugin settings resets the threshold and QA overrides to their defaults.
+
+Accounts run sequentially per provider: lower priority numbers first, with ties
+following the order accounts were added. New conversations use the current
+account until it reaches the switch threshold or fails; the pool then advances
+to the next eligible account and wraps at the end. It keeps using that fallback
+even when an earlier account recovers. Existing conversations stay pinned while
+their account remains eligible. Short temporary rate limits wait on the same
+account once; longer holds return Retry-After for pinned conversations while new
+conversations can advance. A model-family limit detours only requests for that
+family without moving the session's main pin or the provider cursor. The cursor
+and session pins survive hub restarts. Session pins expire after 30 idle minutes,
+and the pool retains the 4,096 most recently used pins.
+
+Use the up/down arrows in Account Pooler settings, or
+`bb pool account reorder <claude|codex> <id>...`, to set the complete order for
+one provider. Include disabled accounts too. Reordering changes the next failover
+sequence without moving the current account. `bb pool account priority <id> <n>`
+sets an individual priority; the same operations are available through the
+`account.reorder` and `account.setPriority` plugin RPCs.
+
 The builtin Keep Awake plugin prevents macOS idle sleep while bb is running.
 Its settings page lets you target all hosts or selected hosts. The CLI
 equivalents are:
@@ -346,9 +430,9 @@ rollback, and remove keep working per plugin.
 BB Official plugins
 
 BB's official plugins ship inside the app. The reserved `bb-official`
-marketplace describes these plugins with the standard v2 format, and they
-appear in Plugins → Browse plugins. Its catalog uses a local path. It never uses
-the network. `bb marketplace list` shows it first. You cannot add or remove it.
+marketplace describes these plugins with the standard v2 format. Its catalog
+uses a local path. It never uses the network. `bb marketplace list` shows it
+first. You cannot add or remove it.
 
 The plugins appear in the first Browse shelf, BB Official. They also appear in
 their category shelves. Install a plugin by its bare name or its qualified name.
@@ -367,8 +451,11 @@ bb stores the last catalog that it validated. An invalid manifest keeps that
 catalog. The app also includes a seed snapshot for the first offline start. A
 refresh changes discovery data and icons only. It never installs, updates, or
 runs plugin code. The server fetches and serves entry icons. The detail page
-loads screenshots from the URLs that the marketplace declares. An install
-uses the normal git or npm source pipeline. bb records the source marketplace.
+loads screenshots from the URLs that the marketplace declares. An entry can
+also carry a long-form markdown description. The detail page renders it below
+the short description, and `bb plugin search --json` returns it as `overview`.
+An install uses the normal git or npm source pipeline. bb records the source
+marketplace.
 
 The BB Community marketplace also publishes install counts beside its
 manifest, at https://getbb.app/marketplace/v1/stats.json. bb re-reads that
@@ -684,6 +771,14 @@ default. Scoped names such as `@acme/bb-plugin-hello` are also supported. The
 plugin id is the final package-name component minus `bb-plugin-`, so both forms
 use `hello`.
 
+The scaffold also writes `PLUGIN_OVERVIEW.md` beside package.json: the
+long-form store listing, shown in an Overview section under `bb.description` on
+the plugin detail page in the app and on getbb.app. It says the same thing as
+`bb.description` at length, so update both together. Keep it under 4000
+characters, use headings, paragraphs, emphasis, code, blockquotes, lists,
+thematic breaks, and absolute https links only, and do not open with a `#`
+title. A submission to the BB Community marketplace requires the file.
+
 Plugins can contribute palettes with `bb.themes`: an array of
 `{ id, name, description?, css, codeTheme? }`, where `css` is a
 plugin-relative `.css` file and optional `codeTheme` is
@@ -796,7 +891,7 @@ tw-animate-css utilities compile in plugin builds).
 For the complete authoring reference — exact signatures, working snippets
 for every surface, the reload lifecycle, testing tips, and gotchas — use
 the built-in `bb-plugin-authoring` skill (agents: it loads on demand;
-humans: apps/server/src/services/skills/builtin-skills/bb-plugin-authoring/
+humans: plugins/bb-guide/skills/bb-plugin-authoring/
 in a checkout). The builtin `inline-vis` plugin renders
 `::inline-vis{file="demo.html" height="480"}` through the sidebar's
 path-shaped, sandboxed worktree HTML iframe preview; `height` is optional.

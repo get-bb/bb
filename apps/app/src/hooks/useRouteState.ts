@@ -1,16 +1,12 @@
 import { useLocation, useMatch } from "react-router-dom";
 import { PERSONAL_PROJECT_ID } from "@bb/domain";
-import {
-  isSkillsRoutePath,
-  isToolsRoutePath,
-} from "@/lib/route-paths";
+import { isSkillsRoutePath, isToolsRoutePath } from "@/lib/route-paths";
 
 interface RouteState {
   projectId: string | undefined;
   threadId: string | undefined;
   isThreadView: boolean;
   isArchivedView: boolean;
-  isSettingsView: boolean;
   isToolsView: boolean;
   isSkillsView: boolean;
   isRootView: boolean;
@@ -26,7 +22,6 @@ export function useRouteState(): RouteState {
   const projectlessThreadMatch = useMatch("/threads/:threadId/*");
   const projectlessArchivedMatch = useMatch("/archived");
   const projectArchivedMatch = useMatch("/projects/:projectId/archived");
-  const projectSettingsMatch = useMatch("/projects/:projectId/settings");
   const isToolsPath =
     isToolsRoutePath(location.pathname) ||
     location.pathname === "/tools" ||
@@ -56,7 +51,6 @@ export function useRouteState(): RouteState {
       (Boolean(projectThreadMatch) && !isUnsupportedPersonalProjectThread),
     isArchivedView:
       Boolean(projectArchivedMatch) || Boolean(projectlessArchivedMatch),
-    isSettingsView: Boolean(projectSettingsMatch),
     isToolsView: isToolsPath || location.pathname === "/automations",
     isSkillsView: isSkillsRoutePath(location.pathname),
     isRootView,

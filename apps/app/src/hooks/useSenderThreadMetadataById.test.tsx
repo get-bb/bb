@@ -5,7 +5,7 @@ import { act, cleanup, renderHook, waitFor } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { afterEach, describe, expect, it } from "vitest";
 import { threadsQueryKey } from "@/hooks/queries/query-keys";
-import { makeThreadListEntry } from "@/test/fixtures/thread-list-entries";
+import { makeThreadListEntry } from "@bb/test-helpers/domain-fixtures";
 import { useSenderThreadMetadataById } from "./useSenderThreadMetadataById";
 
 function renderMetadataHook(queryClient: QueryClient) {

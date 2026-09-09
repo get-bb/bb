@@ -11,7 +11,7 @@ import type {
 import { COMPACT_VIEWPORT_QUERY } from "@bb/shared-ui/hooks/use-compact-viewport";
 import * as api from "@/lib/api";
 import { sdk } from "@/lib/sdk";
-import { makeThreadListEntry } from "@/test/fixtures/thread-list-entries";
+import { makeThreadListEntry } from "@bb/test-helpers/domain-fixtures";
 import { createQueryClientTestHarness } from "@/test/queryClientTestHarness";
 import { ARCHIVED_THREADS_PAGE_SIZE } from "./archived-threads-page-size";
 import {
@@ -38,6 +38,14 @@ import {
   useThreadStorageLocation,
   useThreadTimeline,
 } from "./thread-queries";
+import {
+  makeProjectWithThreadsResponse,
+  makeSidebarBootstrapResponse,
+} from "@/test/fixtures/projects";
+import {
+  makeThreadResponse,
+  makeThreadTimelineResponse,
+} from "@/test/fixtures/thread-responses";
 
 vi.mock("@/lib/api", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/lib/api")>();
@@ -66,33 +74,16 @@ vi.mock("@/hooks/useRealtimeSubscription", () => ({
 }));
 
 const THREAD_WITH_INCLUDES = {
-  id: "thread-1",
-  projectId: "project-1",
-  environmentId: null,
-  providerId: "codex",
-  title: "Thread",
-  titleFallback: "Thread",
-  sectionId: null,
-  status: "idle",
-  parentThreadId: null,
-  sourceThreadId: null,
-  originKind: null,
-  originPluginId: null,
-  visibility: "visible",
-  archivedAt: null,
-  pinnedAt: null,
-  deletedAt: null,
-  lastReadAt: null,
-  latestAttentionAt: 1,
-  createdAt: 1,
-  updatedAt: 1,
-  runtime: {
-    displayStatus: "idle",
-    hostReconnectGraceExpiresAt: null,
-  },
-  activeBackgroundAgentCount: 0,
-  canSpawnChild: true,
-  queuedMessageCount: 0,
+  ...makeThreadResponse({
+    id: "thread-1",
+    projectId: "project-1",
+    environmentId: null,
+    title: "Thread",
+    titleFallback: "Thread",
+    latestAttentionAt: 1,
+    createdAt: 1,
+    updatedAt: 1,
+  }),
   environment: null,
   host: null,
 } satisfies ThreadWithIncludesResponse;
@@ -101,33 +92,25 @@ function makeSidebarNavigation(
   projectThreads: ThreadListEntry[],
   personalThreads: ThreadListEntry[] = [],
 ): SidebarBootstrapResponse {
-  return {
-    sections: [],
+  return makeSidebarBootstrapResponse({
     projects: [
-      {
+      makeProjectWithThreadsResponse({
         id: "project-1",
-        kind: "standard",
         name: "Project",
-        gitRemoteUrl: null,
         createdAt: 1,
         updatedAt: 1,
-        sources: [],
         threads: projectThreads,
-        defaultExecutionOptions: null,
-      },
+      }),
     ],
-    personalProject: {
+    personalProject: makeProjectWithThreadsResponse({
       id: "proj_personal",
       kind: "personal",
       name: "Personal",
-      gitRemoteUrl: null,
       createdAt: 1,
       updatedAt: 1,
-      sources: [],
       threads: personalThreads,
-      defaultExecutionOptions: null,
-    },
-  };
+    }),
+  });
 }
 
 function mockMatchMedia(matching: readonly string[]) {
@@ -158,24 +141,17 @@ beforeEach(() => {
     hostId: "host-1",
     storageRootPath: "/tmp/thread-storage/thread-1",
   });
-  vi.mocked(sdk.threads.timeline).mockResolvedValue({
-    rows: [],
-    activePromptMode: null,
-    activeThinking: null,
-    activeWorkflows: [],
-    activeBackgroundCommands: [],
-    pendingTodos: null,
-    goal: null,
-    modelFallback: null,
-    timelinePage: {
-      kind: "latest",
-      segmentLimit: 100,
-      returnedSegmentCount: 0,
-      hasOlderRows: false,
-      olderCursor: null,
-    },
-    maxSeq: 0,
-  } satisfies ThreadTimelineResponse);
+  vi.mocked(sdk.threads.timeline).mockResolvedValue(
+    makeThreadTimelineResponse({
+      timelinePage: {
+        kind: "latest",
+        segmentLimit: 100,
+        returnedSegmentCount: 0,
+        hasOlderRows: false,
+        olderCursor: null,
+      },
+    }),
+  );
   vi.mocked(api.getThreadHostFilePreview).mockResolvedValue({
     kind: "text",
     path: "/tmp/log.txt",
@@ -217,7 +193,7 @@ describe("useThreadDetailBootstrap", () => {
   });
 
   it("uses the cached timeline sequence and merges a prefetched delta", async () => {
-    const previousTimeline = {
+    const previousTimeline = makeThreadTimelineResponse({
       rows: [
         {
           id: "row-1",
@@ -234,13 +210,6 @@ describe("useThreadDetailBootstrap", () => {
           status: null,
         },
       ],
-      activePromptMode: null,
-      activeThinking: null,
-      activeWorkflows: [],
-      activeBackgroundCommands: [],
-      pendingTodos: null,
-      goal: null,
-      modelFallback: null,
       timelinePage: {
         kind: "latest",
         segmentLimit: 100,
@@ -249,7 +218,7 @@ describe("useThreadDetailBootstrap", () => {
         olderCursor: null,
       },
       maxSeq: 7,
-    } satisfies ThreadTimelineResponse;
+    });
     vi.mocked(sdk.threads.timeline).mockResolvedValueOnce({
       ...previousTimeline,
       rows: [],

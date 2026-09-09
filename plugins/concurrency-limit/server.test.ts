@@ -2,22 +2,20 @@ import type {
   BbPluginApi,
   MessageDispatchHookContext,
   PluginDispatchAttemptKind,
-  PluginThreadEventPayloads,
 } from "@get-bb/plugin-sdk";
 import {
   createFakePluginHost,
+  makeHostResponse,
+  makeMessageDispatchHookContext,
   makeThreadResponse,
 } from "@get-bb/plugin-sdk/testing";
 import { describe, expect, it, vi } from "vitest";
 import plugin from "./server.js";
 
-type ThreadResponse = PluginThreadEventPayloads["thread.created"]["thread"];
-type HostRecord = Awaited<
-  ReturnType<BbPluginApi["sdk"]["hosts"]["list"]>
->[number];
 type RunningThread = Awaited<
   ReturnType<BbPluginApi["sdk"]["threads"]["listRunning"]>
 >[number];
+type HostResponse = ReturnType<typeof makeHostResponse>;
 type SdkSubscription = Parameters<BbPluginApi["sdk"]["subscribe"]>[0];
 type HostChangedSubscription = Extract<
   SdkSubscription,
@@ -31,31 +29,12 @@ function isHostChangedSubscription(
 }
 
 const PLUGIN_ID = "concurrency-limit";
-const PROJECT = {
-  id: "proj_1",
-  kind: "standard" as const,
-  name: "bb",
-  gitRemoteUrl: null,
-  createdAt: 1,
-  updatedAt: 1,
-};
-
 function hostRecord(
   id: string,
-  status: HostRecord["status"] = "connected",
+  status: "connected" | "disconnected" = "connected",
   name = id,
-): HostRecord {
-  return {
-    id,
-    name,
-    type: "persistent",
-    status,
-    maxPermissionMode: "full",
-    lastSeenAt: null,
-    lastRejectedProtocolVersion: null,
-    createdAt: 1,
-    updatedAt: 1,
-  };
+): HostResponse {
+  return makeHostResponse({ id, name, status });
 }
 
 function running(overrides: Partial<RunningThread> = {}): RunningThread {
@@ -65,48 +44,24 @@ function running(overrides: Partial<RunningThread> = {}): RunningThread {
 interface GateContextOverrides {
   hostId?: string | null;
   hostName?: string;
-  thread?: Partial<ThreadResponse>;
+  thread?: Partial<MessageDispatchHookContext["thread"]>;
   attempt?: PluginDispatchAttemptKind;
 }
 
-function dispatchContext(
-  overrides: GateContextOverrides = {},
-): MessageDispatchHookContext {
+function dispatchContext(overrides: GateContextOverrides = {}) {
   const hostId = overrides.hostId === undefined ? "host-a" : overrides.hostId;
-  return {
-    thread: makeThreadResponse({
+  return makeMessageDispatchHookContext({
+    thread: {
       id: "thr_1",
       status: "pending",
       ...overrides.thread,
-    }),
+    },
     attempt: overrides.attempt ?? "start-turn",
-    queuedMessage: null,
-    project: PROJECT,
-    environment: null,
     host:
       hostId === null
         ? null
-        : hostRecord(hostId, "connected", overrides.hostName ?? hostId),
-    input: { blocks: [], text: "go" },
-    requestedExecution: {
-      providerId: "codex",
-      model: null,
-      reasoningLevel: null,
-      serviceTier: null,
-      permissionMode: null,
-    },
-    executionSources: {
-      providerId: null,
-      model: null,
-      reasoningLevel: null,
-      serviceTier: null,
-      permissionMode: null,
-    },
-    origin: null,
-    originPluginId: null,
-    startedOnBehalfOf: null,
-    parentThreadId: null,
-  };
+        : { id: hostId, name: overrides.hostName ?? hostId },
+  });
 }
 
 interface SetupOptions {
@@ -115,7 +70,7 @@ interface SetupOptions {
     hostOverrides: Array<{ hostId: string; limit: number }>;
   };
   capacities?: Array<{ hostId: string; availableParallelism: number }>;
-  hosts?: HostRecord[] | (() => HostRecord[]);
+  hosts?: HostResponse[] | (() => HostResponse[]);
   running?: RunningThread[];
   detectedParallelism?: number;
   subscribe?: BbPluginApi["sdk"]["subscribe"];
@@ -297,7 +252,7 @@ describe("configuration", () => {
 
   it("detects a host when it connects after startup", async () => {
     const changes = hostChanges();
-    let status: HostRecord["status"] = "disconnected";
+    let status: HostResponse["status"] = "disconnected";
     const { harness } = await setup({
       hosts: () => [hostRecord("host-a", status)],
       subscribe: changes.subscribe,

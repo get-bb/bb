@@ -17,25 +17,15 @@ env:
   SERVER_URL: "http://127.0.0.1:41999"
 ---
 - runFlow: ../subflows/launch-app.yaml
-- extendedWaitUntil:
-    visible: "Connect to a bb server"
-    timeout: 30000
-- tapOn:
-    id: "server-url-input"
-- inputText: "${SERVER_URL}"
-- tapOn:
-    id: "server-label-input"
-- inputText: "E2E backend"
-- tapOn: "Server URL"
-- tapOn:
-    id: "add-server-submit"
+- runFlow: ../subflows/pair-direct-server.yaml
 # Pairing lands in the shell, which loads the page the server serves. The
 # composer is page content.
-- openLink: "bb://"
-- extendedWaitUntil:
-    visible:
-      id: "shell-webview"
-    timeout: 30000
+- runFlow:
+    file: ../subflows/open-bb-link.yaml
+    env:
+      LINK: "bb://"
+- assertVisible:
+    id: "shell-webview"
 - extendedWaitUntil:
     visible: ".*Ask anything.*"
     timeout: 60000
@@ -43,7 +33,10 @@ env:
 
 # A deep link resolves to one shell route carrying a web path; the page's own
 # router takes it from there.
-- openLink: "bb://threads"
+- runFlow:
+    file: ../subflows/open-bb-link.yaml
+    env:
+      LINK: "bb://threads"
 - extendedWaitUntil:
     visible:
       id: "shell-webview"
@@ -51,7 +44,10 @@ env:
 
 # Reach a thread and send a message, the plan's acceptance test. The seeded
 # "Idle thread" echoes through the fake provider adapter.
-- openLink: "bb://"
+- runFlow:
+    file: ../subflows/open-bb-link.yaml
+    env:
+      LINK: "bb://"
 - extendedWaitUntil:
     visible: ".*Idle thread.*"
     timeout: 60000
@@ -81,7 +77,10 @@ env:
 # discoverable entry; the failure screen and the Home Screen quick action are
 # the two that still work when the page will not load. Match on the row's text:
 # a WebView exposes no test ids to the accessibility tree.
-- openLink: "bb://settings"
+- runFlow:
+    file: ../subflows/open-bb-link.yaml
+    env:
+      LINK: "bb://settings"
 - extendedWaitUntil:
     visible:
       id: "shell-webview"

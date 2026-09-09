@@ -8,10 +8,15 @@ import type {
   ThreadTimelineResponse,
 } from "@bb/server-contract";
 import { createDeferredPromise } from "@bb/test-helpers";
+import { makeThreadQueuedMessage as makeThreadQueuedMessageFixture } from "@bb/test-helpers/domain-fixtures";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { BbHttpError, sdk } from "@/lib/sdk";
 import { wsManager } from "@/lib/ws";
 import { createQueryClientTestHarness } from "@/test/queryClientTestHarness";
+import {
+  makeThreadResponse as makeThreadResponseFixture,
+  makeThreadTimelineResponse,
+} from "@/test/fixtures/thread-responses";
 import {
   threadQueryKey,
   threadQueuedMessagesQueryKey,
@@ -61,73 +66,45 @@ vi.mock("@/lib/ws", () => ({
 function makeQueuedMessage(
   message: Partial<ThreadQueuedMessage> = {},
 ): ThreadQueuedMessage {
-  return {
+  return makeThreadQueuedMessageFixture({
     id: "qmsg-1",
     threadId: "thread-1",
-    content: [{ type: "text", text: "Queued message", mentions: [] }],
     model: "codex-test",
-    reasoningLevel: "medium",
-    permissionMode: "auto",
-    serviceTier: "default",
-    groupWithNext: false,
-    sendAt: null,
-    waitingOn: null,
-    failureReason: null,
-    payload: { kind: "inline" },
-    editable: true,
     createdAt: 1,
     updatedAt: 1,
     ...message,
-  };
+  });
 }
 
 function makeThreadResponse(
   thread: Partial<ThreadResponse> = {},
 ): ThreadResponse {
-  return {
+  return makeThreadResponseFixture({
     id: "thread-1",
     projectId: "project-1",
-    providerId: "codex",
     createdAt: 1,
     status: "pending",
     updatedAt: 1,
     lastReadAt: null,
     latestAttentionAt: 1,
     environmentId: null,
-    title: null,
-    titleFallback: null,
-    sectionId: null,
-    parentThreadId: null,
-    sourceThreadId: null,
-    originKind: null,
-    originPluginId: null,
-    visibility: "visible",
-    archivedAt: null,
-    pinnedAt: null,
-    deletedAt: null,
     runtime: {
       displayStatus: "pending",
       hostReconnectGraceExpiresAt: null,
     },
-    activeBackgroundAgentCount: 0,
     canSpawnChild: false,
     queuedMessageCount: 1,
     ...thread,
-  };
+  });
 }
 
 function makeBannerTimeline(): ThreadTimelineResponse {
-  return {
-    rows: [],
+  return makeThreadTimelineResponse({
     activePromptMode: {
       mode: "plan",
       providerId: "codex",
       prompt: "Plan the work",
     },
-    activeThinking: null,
-    activeWorkflows: [],
-    activeBackgroundCommands: [],
-    pendingTodos: null,
     goal: {
       sourceSeq: 1,
       updatedAt: 100,
@@ -137,16 +114,7 @@ function makeBannerTimeline(): ThreadTimelineResponse {
       tokensUsed: 100,
       timeUsedSeconds: 10,
     },
-    modelFallback: null,
-    maxSeq: 0,
-    timelinePage: {
-      kind: "latest",
-      segmentLimit: 20,
-      returnedSegmentCount: 0,
-      hasOlderRows: false,
-      olderCursor: null,
-    },
-  };
+  });
 }
 
 const executionInputSources = {

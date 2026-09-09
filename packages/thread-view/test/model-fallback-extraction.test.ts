@@ -74,39 +74,42 @@ describe("extractThreadTimelineModelFallback", () => {
     ).toBeNull();
   });
 
-  it("recognizes fallback events already persisted as provider/unhandled", () => {
-    expect(
-      extractThreadTimelineModelFallback([
-        event(7, {
-          type: "provider/unhandled",
-          threadId: "thread-1",
-          providerThreadId: "session-1",
-          providerId: "claude-code",
-          rawType: "sdk/system",
-          scope: { kind: "turn", turnId: "turn-1" },
-          rawEvent: {
-            jsonrpc: "2.0",
-            method: "sdk/message",
-            params: {
-              threadId: "thread-1",
-              message: {
-                type: "system",
-                subtype: "model_refusal_fallback",
-                original_model: "claude-fable-5",
-                fallback_model: "claude-opus-4-8",
-                content: "Switched to Opus after a refusal.",
+  it.each(["claude-code", "custom-provider"])(
+    "recognizes persisted fallback event shape from %s",
+    (providerId) => {
+      expect(
+        extractThreadTimelineModelFallback([
+          event(7, {
+            type: "provider/unhandled",
+            threadId: "thread-1",
+            providerThreadId: "session-1",
+            providerId,
+            rawType: "sdk/system",
+            scope: { kind: "turn", turnId: "turn-1" },
+            rawEvent: {
+              jsonrpc: "2.0",
+              method: "sdk/message",
+              params: {
+                threadId: "thread-1",
+                message: {
+                  type: "system",
+                  subtype: "model_refusal_fallback",
+                  original_model: "claude-fable-5",
+                  fallback_model: "claude-opus-4-8",
+                  content: "Switched to Opus after a refusal.",
+                },
               },
             },
-          },
-        }),
-      ]),
-    ).toEqual({
-      sourceSeq: 7,
-      detectedAt: 70,
-      originalModel: "claude-fable-5",
-      fallbackModel: "claude-opus-4-8",
-      reason: "refusal",
-      message: "Switched to Opus after a refusal.",
-    });
-  });
+          }),
+        ]),
+      ).toEqual({
+        sourceSeq: 7,
+        detectedAt: 70,
+        originalModel: "claude-fable-5",
+        fallbackModel: "claude-opus-4-8",
+        reason: "refusal",
+        message: "Switched to Opus after a refusal.",
+      });
+    },
+  );
 });

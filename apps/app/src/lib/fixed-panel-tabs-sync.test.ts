@@ -18,6 +18,7 @@ import {
   resetFixedPanelTabsStorageMaintenanceForTest,
   useFixedPanelTabsState,
   useFixedPanelTabsStorageMaintenance,
+  useSetFixedSecondaryPanelTab,
   useUpdateFixedPanelTabsState,
 } from "./fixed-panel-tabs";
 import { BbHttpError } from "./sdk";
@@ -62,6 +63,7 @@ afterEach(() => {
   cleanup();
   apiMocks.getThreadTabs.mockReset();
   apiMocks.updateThreadTabs.mockReset();
+  vi.restoreAllMocks();
   window.localStorage.clear();
 });
 
@@ -371,6 +373,35 @@ describe("fixed panel tab server sync", () => {
 });
 
 describe("fixed panel tab storage churn", () => {
+  it("keeps panel selection in memory when localStorage rejects the write", () => {
+    const threadId = "storage-write-failure";
+    const storageKey = getFixedPanelTabsStateStorageKey({ threadId });
+    const queryClient = createTestQueryClient();
+    const { result } = renderHook(
+      () => ({
+        selectPanel: useSetFixedSecondaryPanelTab(threadId, null),
+        state: useFixedPanelTabsState(threadId, null),
+      }),
+      { wrapper: createQueryWrapper(queryClient) },
+    );
+    const setItem = vi
+      .spyOn(Storage.prototype, "setItem")
+      .mockImplementation((key) => {
+        if (key === storageKey) {
+          throw new DOMException("quota", "QuotaExceededError");
+        }
+      });
+
+    act(() => result.current.selectPanel("thread-info"));
+
+    expect(result.current.state.secondary).toMatchObject({
+      activeTabId: createThreadInfoFixedPanelTab().id,
+      isOpen: true,
+    });
+    expect(window.localStorage.getItem(storageKey)).toBeNull();
+    expect(setItem).toHaveBeenCalledWith(storageKey, expect.any(String));
+  });
+
   it("does not rewrite localStorage when hydration and reconciliation leave the state unchanged", async () => {
     resetFixedPanelTabsStateForTest();
     const threadId = "sync-no-rewrite";

@@ -6,6 +6,8 @@ import {
   markPluginFrontendSettleFloorReached,
   markPluginFrontendsSettled,
   resetPluginFrontendBootStateForTest,
+  setServerPluginsStarting,
+  setPluginFrontendReconcilePending,
 } from "./plugin-frontend-boot-state";
 import {
   readLastKnownPluginNavPanelChrome,
@@ -18,6 +20,7 @@ import {
   setPluginSlotRegistrations,
   type PluginRegistrationSet,
 } from "./plugin-slots";
+import { makePluginRegistrationSet } from "@/test/fixtures/plugins";
 
 function Body() {
   return null;
@@ -26,15 +29,9 @@ function Body() {
 function registrations(
   navPanels: PluginRegistrationSet["navPanels"],
 ): PluginRegistrationSet {
-  return {
-    homepageSections: [],
-    settingsSections: [],
+  return makePluginRegistrationSet({
     navPanels,
-    threadPanelActions: [],
-    sidebarFooterActions: [],
-    fileOpeners: [],
-    messageDirectives: [],
-  };
+  });
 }
 
 const TASKS = {
@@ -140,6 +137,33 @@ describe("usePluginNavPanelChrome", () => {
 });
 
 describe("useRememberPluginNavPanelChrome", () => {
+  it("preserves the complete cache until server startup and the final frontend load finish", () => {
+    writeLastKnownPluginNavPanelChrome([TASKS, DOCS]);
+    setServerPluginsStarting(true);
+    markPluginFrontendsSettled();
+    renderHook(() => useRememberPluginNavPanelChrome());
+    expect(readLastKnownPluginNavPanelChrome()).toEqual([TASKS, DOCS]);
+    act(() => {
+      setPluginFrontendReconcilePending(true);
+      setServerPluginsStarting(false);
+      setPluginSlotRegistrations(
+        "tasks",
+        registrations([
+          {
+            id: "tasks",
+            path: "tasks",
+            title: "Tasks",
+            icon: "ListTodo",
+            component: Body,
+          },
+        ]),
+      );
+    });
+    expect(readLastKnownPluginNavPanelChrome()).toEqual([TASKS, DOCS]);
+    act(() => setPluginFrontendReconcilePending(false));
+    expect(readLastKnownPluginNavPanelChrome()).toEqual([TASKS]);
+  });
+
   it("writes the live panels only after frontends have settled, and follows later changes", () => {
     act(() =>
       setPluginSlotRegistrations(

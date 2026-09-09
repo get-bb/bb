@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { loadPluginApp, renderSlot } from "@get-bb/plugin-sdk/testing/app";
 import { COMPACT_VIEWPORT_QUERY } from "@bb/shared-ui/hooks/use-compact-viewport";
 import type { Task } from "../../shared/contract.js";
+import { makeTask } from "../../test-fixtures.js";
 
 window.matchMedia = (query: string) => ({
   matches: query === COMPACT_VIEWPORT_QUERY,
@@ -49,22 +50,17 @@ function task(
   priority: Task["priority"],
   dueDate: string | null,
 ): Task {
-  return {
+  return makeTask({
     id: `01HZZZZZZZZZZZZZZZZZZZZZT${number}`,
     projectId: PROJECT_ID,
     number,
     key: `TSK-${number}`,
     title: `Task ${number}`,
-    description: "",
     status,
     priority,
     dueDate,
-    parentTaskId: null,
     position: number,
-    createdAt: "2026-07-15T00:00:00.000Z",
-    updatedAt: "2026-07-15T00:00:00.000Z",
-    labelIds: [],
-  };
+  });
 }
 
 const tasks = [

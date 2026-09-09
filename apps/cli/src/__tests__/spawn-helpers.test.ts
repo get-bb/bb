@@ -97,7 +97,7 @@ describe("requireHostId", () => {
 describe("buildSpawnEnvironment", () => {
   const HOST_ID = "test-host-id";
 
-  it("returns unmanaged host with null path when no flags are provided", () => {
+  it("returns unmanaged host with null path when a host is explicit", () => {
     const result = buildSpawnEnvironment({
       defaultPersonalWorkspace: false,
       hostId: HOST_ID,
@@ -109,15 +109,12 @@ describe("buildSpawnEnvironment", () => {
     });
   });
 
-  it("returns personal workspace when personal project defaults are active", () => {
+  it("returns project-default when no environment flags are provided", () => {
     const result = buildSpawnEnvironment({
       defaultPersonalWorkspace: true,
       hostId: null,
     });
-    expect(result).toEqual({
-      type: "host",
-      workspace: { type: "personal" },
-    });
+    expect(result).toEqual({ type: "project-default" });
   });
 
   it("throws for unsupported managed environment kinds", () => {
@@ -143,6 +140,19 @@ describe("buildSpawnEnvironment", () => {
         type: "managed-worktree",
         baseBranch: { kind: "default" },
       },
+    });
+  });
+
+  it("returns personal for --new-environment personal with host", () => {
+    const result = buildSpawnEnvironment({
+      defaultPersonalWorkspace: false,
+      newEnvironmentKind: "personal",
+      hostId: HOST_ID,
+    });
+    expect(result).toEqual({
+      type: "host",
+      hostId: HOST_ID,
+      workspace: { type: "personal" },
     });
   });
 

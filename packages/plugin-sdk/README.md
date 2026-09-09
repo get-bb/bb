@@ -9,6 +9,18 @@ The authoritative contracts are the exported declarations in
 [`src/app-contract.ts`](src/app-contract.ts). Keep author-facing guidance in
 the built-in `bb-plugin-authoring` skill synchronized with those declarations.
 
+## Environment providers
+
+`bb.experimental_environments.register` lets plugins create and remove thread
+workspaces on enrolled machines. The type-only `./environment-provider` entry
+contains the resource-operation contract. Core owns durable launches,
+cancellation, retries, retirement, and teardown. Selections persist non-secret
+inputs alongside `machine: { type: "existing", hostId }`.
+
+The bundled Project checkout, Worktree, and Personal workspace plugins are the
+reference implementations. See the Plugin Guide for registration, availability,
+validation, lifecycle policy, and app inputs controls.
+
 ## Composer customization
 
 Composer UI extensions register through `app.composer.customize(...)`. A
@@ -117,16 +129,32 @@ npm install --save-dev react react-dom @testing-library/react jsdom # frontend t
 Backend example:
 
 ```ts
-import { createFakePluginHost } from "@get-bb/plugin-sdk/testing";
+import {
+  createFakePluginHost,
+  makePluginAgentConfigurationContext,
+} from "@get-bb/plugin-sdk/testing";
 import plugin from "./server.js";
 
 const host = createFakePluginHost({ pluginId: "notes" });
 await plugin(host.bb);
 
+await host.harness.behavior.resolveAgentConfiguration(
+  makePluginAgentConfigurationContext({
+    provider: { id: "codex" },
+  }),
+);
 await host.harness.behavior.callRpc("list", { query: "today" });
 expect(host.harness.inspection.registrations.rpcMethods).toContain("list");
 await host.harness.lifecycle.dispose();
 ```
+
+`makePluginAgentConfigurationContext`, `makeMessageDispatchHookContext`,
+`makeHostResponse`, `makeThreadResponse`, `makeQueueEntry`, and
+`makeTurnFailedEvent` return
+complete deterministic SDK objects. Pass partial overrides so a behavioral
+test shows only the values relevant to its scenario. Nested context
+members merge partial overrides against complete defaults, so required contract
+additions remain localized to the shared fixtures.
 
 `harness.behavior` contains deterministic host inputs (RPC/HTTP/CLI calls,
 events, settings, tools, interactions, and schedules), `harness.inspection`

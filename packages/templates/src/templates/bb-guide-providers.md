@@ -85,6 +85,12 @@ off during its bake period. Enable it with
 Changes apply on the next start, resume, or turn command and do not interrupt
 active work.
 
+Claude Code runs without its Claude in Chrome browser tools under bb by
+default. Enable them with
+`bb plugin config provider-claude-code set chromeEnabled true`. The host needs
+the Chrome extension and a claude.ai login. A change restarts the thread's
+Claude process before its next turn and keeps the conversation.
+
 Known ACP agents can appear automatically when their CLI is installed on the
 host. For example, opencode, omp, Grok Build's grok CLI, or Hermes' hermes CLI
 on PATH appears as provider acp-opencode, acp-omp, acp-grok, or

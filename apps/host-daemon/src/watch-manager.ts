@@ -1,6 +1,5 @@
 import type { DiscoveredWorkspaceProperties } from "@bb/domain";
 import {
-  getPersonalWorkspaceRoot,
   provisionWorkspace,
   type HostWorkspace,
   type ProvisionWorkspaceArgs,
@@ -91,12 +90,6 @@ function workspaceWatchKindsIncludeLocalState(
   );
 }
 
-function workspaceWatchKindsIncludeSharedRefs(
-  changeKinds: readonly WorkspaceStatusWatchChangeKind[],
-): boolean {
-  return changeKinds.includes("shared-git-refs-changed");
-}
-
 function sameWorkspaceTarget(
   current: HostDaemonWatchSetWorkspaceTarget,
   next: HostDaemonWatchSetWorkspaceTarget,
@@ -104,9 +97,7 @@ function sameWorkspaceTarget(
   return (
     current.environmentId === next.environmentId &&
     current.workspaceContext.workspacePath ===
-      next.workspaceContext.workspacePath &&
-    current.workspaceContext.workspaceProvisionType ===
-      next.workspaceContext.workspaceProvisionType
+      next.workspaceContext.workspacePath
   );
 }
 
@@ -239,14 +230,6 @@ export class WatchManager {
     try {
       const workspace = await this.provisionWorkspace(
         reconnectProvisionArgsFromWorkspaceContext({
-          environmentId: target.environmentId,
-          ...(this.options.dataDir
-            ? {
-                personalWorkspaceRoot: getPersonalWorkspaceRoot(
-                  this.options.dataDir,
-                ),
-              }
-            : {}),
           workspaceContext: target.workspaceContext,
         }),
       );
@@ -392,7 +375,7 @@ export class WatchManager {
       }
       if (
         args.entry.workspace.isGitRepo &&
-        workspaceWatchKindsIncludeSharedRefs(pendingKinds)
+        pendingKinds.includes("shared-git-refs-changed")
       ) {
         const nextSharedRefsFingerprint =
           await args.entry.workspace.getSharedGitRefsFingerprint();
@@ -441,14 +424,6 @@ export class WatchManager {
       return;
     }
     const provision = reconnectProvisionArgsFromWorkspaceContext({
-      environmentId: entry.target.environmentId,
-      ...(this.options.dataDir
-        ? {
-            personalWorkspaceRoot: getPersonalWorkspaceRoot(
-              this.options.dataDir,
-            ),
-          }
-        : {}),
       workspaceContext: entry.target.workspaceContext,
     });
     const workspace = await this.refreshWorkspace({

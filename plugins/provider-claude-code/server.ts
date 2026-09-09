@@ -35,6 +35,13 @@ export default function plugin(bb: BbPluginApi) {
         "Close a quiescent Claude Code process after 30 seconds and resume it on the next turn.",
       default: false,
     },
+    chromeEnabled: {
+      type: "boolean",
+      label: "Claude in Chrome",
+      description:
+        "Start Claude Code with the Claude in Chrome browser tools. Needs the Chrome extension and a claude.ai login on the host.",
+      default: false,
+    },
   });
 
   bb.providers.register({
@@ -94,6 +101,7 @@ export default function plugin(bb: BbPluginApi) {
         workflowsEnabled: context.settings.workflowsDisabled !== true,
         idleQueryReleaseEnabled:
           context.settings.idleQueryReleaseEnabled === true,
+        chromeEnabled: context.settings.chromeEnabled === true,
         ...(context.promptMode === "plan"
           ? { claudeCodePermissionMode: "plan" }
           : {}),

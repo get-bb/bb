@@ -11,6 +11,7 @@ import { resetAllCrashedPluginSlotsForTest } from "@/components/plugin/PluginSlo
 import { resetDeprecatedAliasWarningsForTests } from "@/lib/plugin-sdk-deprecated-aliases";
 import { PluginSourceCode } from "@/components/plugin/PluginSourceCode";
 import { SourceCodeHost } from "./SourceCodeHost";
+import { makePluginRegistrationSet } from "@/test/fixtures/plugins";
 
 const bbSourceCode = vi.hoisted(() => ({
   loaded: false,
@@ -38,16 +39,12 @@ const received: PluginSourceCodeRendererProps[] = [];
 function registerSourceCodeRenderer(
   component: (props: PluginSourceCodeRendererProps) => React.ReactNode,
 ) {
-  setPluginSlotRegistrations("demo", {
-    homepageSections: [],
-    settingsSections: [],
-    navPanels: [],
-    threadPanelActions: [],
-    sidebarFooterActions: [],
-    fileOpeners: [],
-    messageDirectives: [],
-    sourceCodeRenderers: [{ id: "source", title: "Demo source", component }],
-  });
+  setPluginSlotRegistrations(
+    "demo",
+    makePluginRegistrationSet({
+      sourceCodeRenderers: [{ id: "source", title: "Demo source", component }],
+    }),
+  );
 }
 
 beforeEach(() => {

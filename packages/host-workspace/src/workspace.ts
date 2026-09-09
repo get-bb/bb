@@ -321,10 +321,6 @@ function isMissingHeadRevisionError(stderr: string): boolean {
   );
 }
 
-function isNotGitRepositoryError(stderr: string): boolean {
-  return stderr.includes("not a git repository");
-}
-
 async function listWorkspaceFilesRecursively(
   args: ListWorkspaceFilesRecursivelyArgs,
 ): Promise<string[]> {
@@ -968,7 +964,7 @@ export class Workspace {
     }
     if (
       gitResult.exitCode === 128 ||
-      isNotGitRepositoryError(gitResult.stderr)
+      gitResult.stderr.includes("not a git repository")
     ) {
       const filePaths = await listWorkspaceFilesRecursively({
         dir: this.path,

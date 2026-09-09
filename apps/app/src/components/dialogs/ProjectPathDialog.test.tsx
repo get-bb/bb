@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
-import type { Host } from "@bb/domain";
+import { makeHost as host } from "@bb/test-helpers/domain-fixtures";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { ProjectPathDialog } from "./ProjectPathDialog";
 
@@ -32,19 +32,6 @@ vi.mock("@/components/dialogs/RemotePathBrowser", () => ({
     </button>
   ),
 }));
-
-function host(overrides: Partial<Host> & Pick<Host, "id" | "name">): Host {
-  return {
-    type: "persistent",
-    status: "connected",
-    lastSeenAt: null,
-    maxPermissionMode: "full",
-    lastRejectedProtocolVersion: null,
-    createdAt: 0,
-    updatedAt: 0,
-    ...overrides,
-  };
-}
 
 const atum = host({ id: "host_atum", name: "atum" });
 const kunst = host({ id: "host_kunst", name: "Kunst" });
@@ -127,6 +114,66 @@ describe("ProjectPathDialog machine selection", () => {
       { kind: "create" },
       "/home/deploy/repos/givecare",
       "host_atum",
+    );
+  });
+
+  it("includes provider-made hosts in the project setup machine picker", () => {
+    render(
+      <ProjectPathDialog
+        target={{ kind: "create" }}
+        platform="linux"
+        hostId={atum.id}
+        hostName={atum.name}
+        hosts={[
+          atum,
+          kunst,
+          host({
+            id: "host_modal",
+            name: "Modal sandbox 3f9a",
+          }),
+        ]}
+        onOpenChange={vi.fn()}
+        onSubmit={vi.fn()}
+      />,
+    );
+
+    fireEvent.pointerDown(screen.getByRole("button", { name: "Machine" }), {
+      button: 0,
+    });
+
+    expect(screen.getByRole("menuitem", { name: /Kunst/u })).toBeTruthy();
+    expect(
+      screen.getByRole("menuitem", { name: /Modal sandbox 3f9a/u }),
+    ).toBeTruthy();
+  });
+
+  it("uses a provider-made host as the only project machine", () => {
+    const onSubmit = vi.fn();
+    render(
+      <ProjectPathDialog
+        target={{ kind: "create" }}
+        platform="linux"
+        hostId="host_modal"
+        hostName="Modal sandbox 3f9a"
+        hosts={[
+          host({
+            id: "host_modal",
+            name: "Modal sandbox 3f9a",
+          }),
+        ]}
+        onOpenChange={vi.fn()}
+        onSubmit={onSubmit}
+      />,
+    );
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Choose folder on host_modal" }),
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Add project" }));
+    expect(onSubmit).toHaveBeenCalledWith(
+      { kind: "create" },
+      "/home/deploy/repos/givecare",
+      "host_modal",
     );
   });
 

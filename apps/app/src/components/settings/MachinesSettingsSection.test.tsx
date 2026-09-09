@@ -8,10 +8,11 @@ import {
   waitFor,
 } from "@testing-library/react";
 import type { Host } from "@bb/domain";
+import { makeHost } from "@bb/test-helpers/domain-fixtures";
 import { RETRY_ACTION_ICON } from "@bb/domain/update-state";
 import { HOST_DAEMON_PROTOCOL_VERSION } from "@bb/host-daemon-contract";
 import type { SystemConfigResponse } from "@bb/server-contract";
-import { MemoryRouter } from "react-router-dom";
+import { MemoryRouter, useLocation } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { sdk } from "@/lib/sdk";
 import { createQueryClientTestHarness } from "@/test/queryClientTestHarness";
@@ -49,16 +50,10 @@ vi.mock("@/hooks/useHostDaemon", () => ({
 const NOW = Date.now();
 
 function host(overrides: Partial<Host> & Pick<Host, "id" | "name">): Host {
-  return {
-    type: "persistent",
-    status: "connected",
+  return makeHost({
     lastSeenAt: NOW,
-    maxPermissionMode: "full",
-    lastRejectedProtocolVersion: null,
-    createdAt: 0,
-    updatedAt: 0,
     ...overrides,
-  };
+  });
 }
 
 const primaryHost = host({ id: "host_primary", name: "MacBook Pro" });
@@ -104,11 +99,17 @@ function stubSidebarBootstrapFetch(): void {
   );
 }
 
+function LocationProbe() {
+  const location = useLocation();
+  return <div data-testid="location">{location.pathname}</div>;
+}
+
 function renderSection() {
   const { wrapper } = createQueryClientTestHarness();
   return render(
     <MemoryRouter>
       <MachinesSettingsSection />
+      <LocationProbe />
     </MemoryRouter>,
     { wrapper },
   );
@@ -371,6 +372,46 @@ describe("MachinesSettingsSection", () => {
           )
         : false,
     ).toBe(true);
+  });
+
+  it("navigates to the machine detail route when the row caret is clicked", async () => {
+    vi.mocked(sdk.system.config).mockResolvedValue(systemConfig());
+    vi.mocked(sdk.hosts.list).mockResolvedValue([primaryHost, offlineHost]);
+    stubSidebarBootstrapFetch();
+
+    renderSection();
+
+    const machineLink = await screen.findByRole("link", {
+      name: "Open dev-vm",
+    });
+    const row = machineLink.closest("[data-machine-row]");
+    const caret = row?.querySelector('[data-icon="ChevronRight"]');
+    expect(caret).not.toBeNull();
+    if (caret === null || caret === undefined) return;
+
+    fireEvent.click(caret);
+
+    await waitFor(() => {
+      expect(screen.getByTestId("location").textContent).toBe(
+        "/settings/machines/host_remote",
+      );
+    });
+  });
+
+  it("keeps the row menu open without navigating when its trigger is clicked", async () => {
+    vi.mocked(sdk.system.config).mockResolvedValue(systemConfig());
+    vi.mocked(sdk.hosts.list).mockResolvedValue([primaryHost, offlineHost]);
+    stubSidebarBootstrapFetch();
+
+    renderSection();
+
+    await screen.findByText("dev-vm");
+    await openHostMenu("dev-vm");
+
+    expect(
+      await screen.findByRole("menuitem", { name: "Rename" }),
+    ).toBeDefined();
+    expect(screen.getByTestId("location").textContent).toBe("/");
   });
 
   it("renames a machine through the row menu", async () => {

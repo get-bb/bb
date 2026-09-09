@@ -6,7 +6,7 @@ import type {
   ParityAssembler,
   ParityRowProjector,
 } from "@bb/provider-bridge-protocol/testing/parity";
-import { createParityAssembler, projectParityRows } from "./index.js";
+import { projectParityRows } from "./index.js";
 
 export interface ParityLeg {
   checkoutRoot: string;
@@ -94,13 +94,4 @@ export async function loadParityLeg(checkoutRoot: string): Promise<ParityLeg> {
   throw new Error(
     `${root} has neither ${LEG_PACKAGE_ENTRY} nor a delta collector at ${COLLECTOR_CANDIDATES.join(" / ")}; is it a bb checkout with pnpm install run?`,
   );
-}
-
-export function currentParityLeg(checkoutRoot: string): ParityLeg {
-  return {
-    checkoutRoot: resolve(checkoutRoot),
-    createAssembler: createParityAssembler,
-    projectRows: projectParityRows,
-    source: "static",
-  };
 }

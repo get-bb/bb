@@ -44,6 +44,7 @@ import {
   type PluginListItem,
 } from "@/hooks/queries/plugin-settings-queries";
 import { useLocalOpenTargets } from "@/hooks/useLocalOpenTargets";
+import { pluginAdminErrorMessage } from "@/lib/plugin-admin-error";
 import {
   REGISTRY_SKILLS_ROUTE_PATH,
   SKILLS_ROUTE_PATH,
@@ -55,6 +56,7 @@ import { getToolsOwnedCollectionRoutePath } from "@/components/tools/tools-navig
 import { cn } from "@bb/shared-ui/lib/utils";
 import { SkillsLibrary } from "@/components/tools/SkillsLibrary";
 import { PluginIcon } from "@/components/plugin/PluginIcon";
+import { pluginToast } from "@/components/plugin/PluginNotificationDescription";
 import { SecondaryPanelLayout } from "@/components/secondary-panel/SecondaryPanelLayout";
 import { ThreadSecondaryPanel } from "@/components/secondary-panel/ThreadSecondaryPanel";
 import type { SecondaryPanelRenderableTab } from "@/components/secondary-panel/secondaryPanelTab";
@@ -155,6 +157,7 @@ function PluginDetailToolView({ pluginId }: { pluginId: string }) {
     ),
   });
   const pluginToggle = useMutation({
+    meta: { showErrorToast: false },
     mutationFn: async (plugin: PluginListItem) => {
       const action = plugin.enabled ? "disable" : "enable";
       try {
@@ -169,25 +172,27 @@ function PluginDetailToolView({ pluginId }: { pluginId: string }) {
     },
   });
   const pluginDelete = useMutation({
-    mutationFn: async (plugin: PluginListItem) => {
-      try {
-        await removePlugin(fetch, plugin.id);
-      } catch {
-        throw new Error("Failed to delete plugin");
-      }
-    },
+    meta: { showErrorToast: false },
+    mutationFn: (plugin: PluginListItem) => removePlugin(fetch, plugin.id),
     onSuccess: (_data, deletedPlugin) => {
-      appToast.success(
-        pluginIsLocalSource(deletedPlugin)
-          ? "Plugin removed from bb"
-          : "Plugin uninstalled",
+      const isLocal = pluginIsLocalSource(deletedPlugin);
+      pluginToast.success(
+        isLocal ? "Plugin removed from bb" : "Plugin uninstalled",
+        deletedPlugin,
+        "catalog",
       );
       setDeleteTarget(null);
       navigate(getToolsOwnedCollectionRoutePath("plugins"));
       return listQuery.refetch();
     },
-    onError: (error) => {
-      appToast.error(error instanceof Error ? error.message : String(error));
+    onError: (error, plugin) => {
+      const isLocal = pluginIsLocalSource(plugin);
+      pluginToast.error(
+        isLocal ? "Plugin removal failed" : "Plugin uninstall failed",
+        plugin,
+        "installed",
+        pluginAdminErrorMessage(error),
+      );
     },
   });
   const isLoading = listQuery.isFetching && listQuery.data === undefined;
@@ -367,6 +372,7 @@ function PluginDetailToolView({ pluginId }: { pluginId: string }) {
                 : {
                     entryId: installTarget.entryId,
                     marketplace: installTarget.marketplace,
+                    pluginId: installTarget.pluginId,
                     publisherLabel: installTarget.publisherLabel,
                     displayName: installTarget.displayName,
                     icon: installTarget.icon,
@@ -499,28 +505,27 @@ export function PluginsView({ pluginId }: { pluginId?: string } = {}) {
       isMainCollapsed: boolean;
       onToggleMainCollapse: () => void;
       resizablePanelId?: string;
-    }) =>
-      isPanelOpen ? (
-        <ThreadSecondaryPanel
-          activeTab={panelTab?.tab ?? null}
-          canUseGitUi={false}
-          metadataContent={null}
-          tabs={panelTabs}
-          fixedTabs={[]}
-          onTabReorder={() => undefined}
-          isOpen={isPanelOpen}
-          showConversationCollapseControl
-          showNewTabButton={false}
-          onPanelFocus={() => undefined}
-          onCollapse={closePanel}
-          onClose={closePanel}
-          onOpenNewTab={() => undefined}
-          isConversationCollapsed={isMainCollapsed}
-          onToggleConversationCollapse={onToggleMainCollapse}
-          renderAsDrawer={presentation === "drawer"}
-          resizablePanelId={resizablePanelId}
-        />
-      ) : null,
+    }) => (
+      <ThreadSecondaryPanel
+        activeTab={panelTab?.tab ?? null}
+        canUseGitUi={false}
+        metadataContent={null}
+        tabs={panelTabs}
+        fixedTabs={[]}
+        onTabReorder={() => undefined}
+        isOpen={isPanelOpen}
+        showConversationCollapseControl
+        showNewTabButton={false}
+        onPanelFocus={() => undefined}
+        onCollapse={closePanel}
+        onClose={closePanel}
+        onOpenNewTab={() => undefined}
+        isConversationCollapsed={isMainCollapsed}
+        onToggleConversationCollapse={onToggleMainCollapse}
+        renderAsDrawer={presentation === "drawer"}
+        resizablePanelId={resizablePanelId}
+      />
+    ),
     [closePanel, isPanelOpen, panelTab?.tab, panelTabs],
   );
 

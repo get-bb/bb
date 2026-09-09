@@ -13,6 +13,7 @@ import {
 } from "@bb/domain";
 import {
   publicApiRoutes,
+  THREAD_EVENT_LIST_PAGE_SIZE,
   typedRoutes,
   type PublicApiSchema,
   type ThreadConversationOutlineResponse,
@@ -38,7 +39,7 @@ import { callHostRetryableOnlineRpc } from "../../services/hosts/online-rpc.js";
 import {
   createDaemonFileContentResponse,
   type DaemonFileReadResult,
-  remapDaemonFileRouteError,
+  serveDaemonFileContent,
 } from "../../services/hosts/daemon-file-response.js";
 import { requireThreadStoragePath } from "../../services/threads/thread-storage.js";
 import { toThreadQueuedMessage } from "../../services/threads/thread-queued-messages.js";
@@ -227,47 +228,51 @@ function assertHtmlPreviewSize(relativePath: string, sizeBytes: number): void {
 function createRawFilePreviewResponse(
   result: DaemonFileReadResult,
   relativePath: string,
+  ifNoneMatch: string | undefined,
 ): Response {
   assertHtmlPreviewSize(relativePath, result.sizeBytes);
   const headers = new Headers({
-    "cache-control": RAW_FILE_NO_STORE_CACHE_CONTROL,
     "x-content-type-options": RAW_FILE_CONTENT_TYPE_OPTIONS,
   });
-  if (isHtmlPreviewPath(relativePath)) {
+  const isHtml = isHtmlPreviewPath(relativePath);
+  if (isHtml) {
+    headers.set("cache-control", RAW_FILE_NO_STORE_CACHE_CONTROL);
     headers.set("content-security-policy", GENERIC_HTML_PREVIEW_CSP);
     headers.set("content-type", RAW_FILE_HTML_CONTENT_TYPE);
   }
-  return createDaemonFileContentResponse(result, { headers });
+  return createDaemonFileContentResponse(result, {
+    headers,
+    ifNoneMatch: isHtml ? undefined : ifNoneMatch,
+  });
 }
 
 async function serveThreadStorageRawFile(
   deps: LoggedWorkSessionDeps,
   threadId: string,
   rawPath: string,
+  ifNoneMatch: string | undefined,
 ): Promise<Response> {
   const filePath = parseSafeRelativeRoutePath(rawPath);
   const target = await requireThreadStorageTarget(deps, { threadId });
 
-  try {
-    const result = await callHostRetryableOnlineRpc(deps, {
+  return serveDaemonFileContent(
+    deps,
+    {
       hostId: target.hostId,
-      timeoutMs: COMMAND_TIMEOUT_MS,
-      command: {
-        type: "host.read_file",
-        path: path.join(target.storagePath, filePath.relativePath),
-        rootPath: target.storagePath,
-      },
-    });
-    return createRawFilePreviewResponse(result, filePath.relativePath);
-  } catch (error) {
-    return remapDaemonFileRouteError(error);
-  }
+      ...(!isHtmlPreviewPath(filePath.relativePath) ? { ifNoneMatch } : {}),
+      path: path.join(target.storagePath, filePath.relativePath),
+      rootPath: target.storagePath,
+    },
+    (result) =>
+      createRawFilePreviewResponse(result, filePath.relativePath, ifNoneMatch),
+  );
 }
 
 async function serveThreadWorktreeRawFile(
   deps: LoggedWorkSessionDeps,
   threadId: string,
   rawPath: string,
+  ifNoneMatch: string | undefined,
 ): Promise<Response> {
   const filePath = parseSafeRelativeRoutePath(rawPath);
   const thread = requirePublicThread(deps.db, threadId);
@@ -276,20 +281,17 @@ async function serveThreadWorktreeRawFile(
   }
   const environment = requireReadyEnvironment(deps.db, thread.environmentId);
 
-  try {
-    const result = await callHostRetryableOnlineRpc(deps, {
+  return serveDaemonFileContent(
+    deps,
+    {
       hostId: environment.hostId,
-      timeoutMs: COMMAND_TIMEOUT_MS,
-      command: {
-        type: "host.read_file",
-        path: path.join(environment.path, filePath.relativePath),
-        rootPath: environment.path,
-      },
-    });
-    return createRawFilePreviewResponse(result, filePath.relativePath);
-  } catch (error) {
-    return remapDaemonFileRouteError(error);
-  }
+      ...(!isHtmlPreviewPath(filePath.relativePath) ? { ifNoneMatch } : {}),
+      path: path.join(environment.path, filePath.relativePath),
+      rootPath: environment.path,
+    },
+    (result) =>
+      createRawFilePreviewResponse(result, filePath.relativePath, ifNoneMatch),
+  );
 }
 
 export function registerThreadDataRoutes(app: Hono, deps: AppDeps): void {
@@ -299,6 +301,16 @@ export function registerThreadDataRoutes(app: Hono, deps: AppDeps): void {
   const routes = publicApiRoutes.threads;
   const timelineCache = createThreadTimelineCache();
   const timelineLatestRowsCache = createTimelineLatestRowsCache();
+  deps.hub.onChangedMessage((message) => {
+    if (
+      message.entity === "thread" &&
+      message.id !== undefined &&
+      message.changes.includes("history-rewritten")
+    ) {
+      timelineCache.invalidateThread(message.id);
+      timelineLatestRowsCache.invalidateThread(message.id);
+    }
+  });
   const slowTimelineBuildLogger = createSlowThreadTimelineBuildLogger({
     logger: deps.logger,
   });
@@ -313,14 +325,18 @@ export function registerThreadDataRoutes(app: Hono, deps: AppDeps): void {
     const page = parseThreadTimelinePage(query);
     const includeNestedRows = query.includeNestedRows === "true";
     const summaryOnly = query.summaryOnly === "true";
-    const maxSeq = getLatestThreadSequence(deps.db, { threadId: thread.id });
+
     const providerDisplayName = resolveThreadProviderDisplayName(
       deps,
       thread.providerId,
     );
-    const includeProviderUnhandledOperations =
-      deps.config.isDevelopment ||
-      getAppSettings(deps.db).showUnhandledProviderEvents;
+    const includeDiagnosticOperations = getAppSettings(
+      deps.db,
+    ).showDiagnosticEvents;
+    const maxSeq = getLatestThreadSequence(deps.db, {
+      threadId: thread.id,
+      excludeDiagnosticEvents: !includeDiagnosticOperations,
+    });
     const eventBudget = deps.config.featureFlags.timelineWindowEventBudget;
     const keyArgs = {
       threadId: thread.id,
@@ -330,9 +346,10 @@ export function registerThreadDataRoutes(app: Hono, deps: AppDeps): void {
       page,
       includeNestedRows,
       summaryOnly,
-      includeProviderUnhandledOperations,
+      includeDiagnosticOperations,
     };
     const full = timelineCache.getOrBuild(
+      thread.id,
       buildThreadTimelineCacheKey({ ...keyArgs, maxSeq }),
       () => {
         const { profile, response } = buildThreadTimelineWithProfile(
@@ -340,7 +357,7 @@ export function registerThreadDataRoutes(app: Hono, deps: AppDeps): void {
           thread,
           {
             eventBudget,
-            includeProviderUnhandledOperations,
+            includeDiagnosticOperations,
             includeNestedRows,
             maxInlineOutputChars: DEFAULT_MAX_INLINE_OUTPUT_CHARS,
             maxSeq,
@@ -372,12 +389,15 @@ export function registerThreadDataRoutes(app: Hono, deps: AppDeps): void {
     const previous =
       afterSequence === undefined
         ? undefined
-        : timelineLatestRowsCache.get(paramsKey, afterSequence);
+        : timelineLatestRowsCache.get(thread.id, paramsKey, afterSequence);
     const delta =
       previous === undefined
         ? undefined
         : computeTimelineRowDelta(previous.rows, full.rows);
-    timelineLatestRowsCache.set(paramsKey, { maxSeq, rows: full.rows });
+    timelineLatestRowsCache.set(thread.id, paramsKey, {
+      maxSeq,
+      rows: full.rows,
+    });
 
     return context.json(
       delta === undefined ? full : { ...full, rows: [], delta },
@@ -386,6 +406,7 @@ export function registerThreadDataRoutes(app: Hono, deps: AppDeps): void {
 
   get(routes.conversationOutline, (context) => {
     const thread = requirePublicThread(deps.db, context.req.param("id"));
+
     const maxSeq = getLatestThreadSequence(deps.db, { threadId: thread.id });
     const outlineSequence = getLatestStoredConversationOutlineSequence(
       deps.db,
@@ -429,12 +450,12 @@ export function registerThreadDataRoutes(app: Hono, deps: AppDeps): void {
 
   get(routes.timelineTurnSummaryDetails, (context, query) => {
     const thread = requirePublicThread(deps.db, context.req.param("id"));
-    const includeProviderUnhandledOperations =
-      deps.config.isDevelopment ||
-      getAppSettings(deps.db).showUnhandledProviderEvents;
+    const includeDiagnosticOperations = getAppSettings(
+      deps.db,
+    ).showDiagnosticEvents;
     return context.json(
       buildTimelineTurnSummaryDetails(deps.db, thread, {
-        includeProviderUnhandledOperations,
+        includeDiagnosticOperations,
         providerDisplayName: resolveThreadProviderDisplayName(
           deps,
           thread.providerId,
@@ -486,7 +507,12 @@ export function registerThreadDataRoutes(app: Hono, deps: AppDeps): void {
         threadId: context.req.param("id"),
         afterSeq: parseOptionalInteger(query.afterSeq, "afterSeq"),
         beforeSeq: parseOptionalInteger(query.beforeSeq, "beforeSeq"),
-        limit: parseOptionalInteger(query.limit, "limit") ?? 100,
+        limit: parseBoundedPositiveOptionalInteger({
+          defaultValue: THREAD_EVENT_LIST_PAGE_SIZE,
+          max: THREAD_EVENT_LIST_PAGE_SIZE,
+          name: "limit",
+          value: query.limit,
+        }),
         order: query.order,
         types: parseThreadEventTypes(query.types),
       }),
@@ -552,6 +578,7 @@ export function registerThreadDataRoutes(app: Hono, deps: AppDeps): void {
       deps,
       context.req.param("id"),
       context.req.param("filePath"),
+      context.req.header("if-none-match"),
     ),
   );
 
@@ -604,6 +631,7 @@ export function registerThreadDataRoutes(app: Hono, deps: AppDeps): void {
       deps,
       context.req.param("id"),
       context.req.param("filePath"),
+      context.req.header("if-none-match"),
     ),
   );
 
@@ -653,22 +681,19 @@ export function registerThreadDataRoutes(app: Hono, deps: AppDeps): void {
       threadId: context.req.param("id"),
     });
 
-    try {
-      const result = await callHostRetryableOnlineRpc(deps, {
+    return serveDaemonFileContent(
+      deps,
+      {
         hostId: target.hostId,
-        timeoutMs: COMMAND_TIMEOUT_MS,
-        command: {
-          type: "host.read_file",
-          path: path.join(target.storagePath, query.path),
-          rootPath: target.storagePath,
-        },
-      });
-      return createDaemonFileContentResponse(result, {
         ifNoneMatch: context.req.header("if-none-match"),
-      });
-    } catch (error) {
-      return remapDaemonFileRouteError(error);
-    }
+        path: path.join(target.storagePath, query.path),
+        rootPath: target.storagePath,
+      },
+      (result) =>
+        createDaemonFileContentResponse(result, {
+          ifNoneMatch: context.req.header("if-none-match"),
+        }),
+    );
   });
 
   get(routes.hostFileContent, async (context, query) => {
@@ -680,20 +705,17 @@ export function registerThreadDataRoutes(app: Hono, deps: AppDeps): void {
     }
     const environment = requireEnvironment(deps.db, thread.environmentId);
 
-    try {
-      const result = await callHostRetryableOnlineRpc(deps, {
+    return serveDaemonFileContent(
+      deps,
+      {
         hostId: environment.hostId,
-        timeoutMs: COMMAND_TIMEOUT_MS,
-        command: {
-          type: "host.read_file",
-          path: query.path,
-        },
-      });
-      return createDaemonFileContentResponse(result, {
         ifNoneMatch: context.req.header("if-none-match"),
-      });
-    } catch (error) {
-      return remapDaemonFileRouteError(error);
-    }
+        path: query.path,
+      },
+      (result) =>
+        createDaemonFileContentResponse(result, {
+          ifNoneMatch: context.req.header("if-none-match"),
+        }),
+    );
   });
 }

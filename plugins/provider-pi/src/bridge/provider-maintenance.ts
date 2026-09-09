@@ -1,9 +1,14 @@
 import { execFile } from "node:child_process";
+import { open, realpath } from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
 import { promisify } from "node:util";
 import {
   type ProviderHealthResult,
+  type ProviderInstallationCommand,
   type ProviderInstallationRunResult,
   type ProviderInstallationStatus,
+  experimental_commandOutput as commandOutput,
   experimental_compareVersions as compareVersions,
   experimental_formatCommand as formatCommand,
   experimental_installationVerification as installationVerification,
@@ -25,6 +30,104 @@ const INSTALL_GATE_TTL_MS = 30_000;
 type PiVersionProbe =
   | { version: string; failure: null }
   | { version: null; failure: string };
+
+function bunCommand(): string {
+  return process.platform === "win32" ? "bun.exe" : "bun";
+}
+
+function bunGlobalInstallCommand(
+  npmPackage: string,
+): ProviderInstallationCommand {
+  const command = bunCommand();
+  const args = ["add", "-g", `${npmPackage}@latest`];
+  return { command, args, displayCommand: formatCommand(command, args) };
+}
+
+function firstOutputLine(output: string | null): string | null {
+  return (
+    output
+      ?.split(/\r?\n/u)
+      .map((line) => line.trim())
+      .find(Boolean) ?? null
+  );
+}
+
+function pathIsInside(child: string, parent: string): boolean {
+  const relativePath = path.relative(path.resolve(parent), path.resolve(child));
+  return (
+    relativePath === "" ||
+    (!relativePath.startsWith("..") && !path.isAbsolute(relativePath))
+  );
+}
+
+function expandHomePath(value: string): string {
+  const home = os.homedir();
+  if (value.startsWith("$HOME/")) return path.join(home, value.slice(6));
+  if (value.startsWith("${HOME}/")) return path.join(home, value.slice(8));
+  if (value.startsWith("~/")) return path.join(home, value.slice(2));
+  return value;
+}
+
+async function shellExecTarget(executablePath: string): Promise<string | null> {
+  const handle = await open(executablePath, "r").catch(() => null);
+  if (handle === null) return null;
+  try {
+    const buffer = Buffer.alloc(8_192);
+    const { bytesRead } = await handle.read(buffer, 0, buffer.length, 0);
+    const source = buffer.subarray(0, bytesRead).toString("utf8");
+    if (!source.startsWith("#!")) return null;
+    for (const line of source.split(/\r?\n/u)) {
+      const match = line.match(/^\s*exec\s+(?:"([^"]+)"|'([^']+)'|(\S+))/u);
+      const target = match?.[1] ?? match?.[2] ?? match?.[3];
+      if (target !== undefined) return expandHomePath(target);
+    }
+    return null;
+  } finally {
+    await handle.close();
+  }
+}
+
+async function isBunManagedPi(executablePath: string | null): Promise<boolean> {
+  if (executablePath === null) return false;
+  const bunBin = firstOutputLine(
+    await commandOutput(bunCommand(), ["pm", "bin", "-g"]),
+  );
+  if (bunBin === null) return false;
+  if (pathIsInside(executablePath, bunBin)) return true;
+  const bunPi = path.join(
+    bunBin,
+    process.platform === "win32" ? "pi.exe" : "pi",
+  );
+  const [resolvedExecutable, resolvedBunPi] = await Promise.all([
+    realpath(executablePath).catch(() => null),
+    realpath(bunPi).catch(() => null),
+  ]);
+  if (
+    resolvedExecutable !== null &&
+    (pathIsInside(resolvedExecutable, bunBin) ||
+      resolvedExecutable === resolvedBunPi)
+  ) {
+    return true;
+  }
+  const delegatedTarget = await shellExecTarget(executablePath);
+  if (delegatedTarget === null) return false;
+  if (path.resolve(delegatedTarget) === path.resolve(bunPi)) return true;
+  const resolvedDelegatedTarget = await realpath(delegatedTarget).catch(
+    () => null,
+  );
+  return (
+    resolvedDelegatedTarget !== null &&
+    resolvedDelegatedTarget === resolvedBunPi
+  );
+}
+
+async function piGlobalInstallCommand(
+  executablePath: string | null,
+): Promise<ProviderInstallationCommand> {
+  return (await isBunManagedPi(executablePath))
+    ? bunGlobalInstallCommand(PI_NPM_PACKAGE)
+    : npmGlobalInstallCommand(PI_NPM_PACKAGE);
+}
 
 export async function probePiVersion(): Promise<PiVersionProbe> {
   const launch = resolvePiLaunch(process.env);
@@ -92,6 +195,15 @@ export async function getPiProviderInstallationStatus(): Promise<ProviderInstall
     : needsUpdate || versionUnsupported
       ? "update"
       : null;
+  const installAction: ProviderInstallationStatus["installAction"] =
+    actionKind === null
+      ? null
+      : {
+          kind: actionKind,
+          label: actionKind === "install" ? "Install" : "Update",
+          command: (await piGlobalInstallCommand(resolvedExecutable))
+            .displayCommand,
+        };
 
   return {
     executableName: "pi",
@@ -107,14 +219,7 @@ export async function getPiProviderInstallationStatus(): Promise<ProviderInstall
     minimumSupportedVersion: PI_MINIMUM_SUPPORTED_VERSION,
     npmPackageName: PI_NPM_PACKAGE,
     npmGlobalPackageVersion: npmGlobal.npmGlobalPackageVersion,
-    installAction:
-      actionKind === null
-        ? null
-        : {
-            kind: actionKind,
-            label: actionKind === "install" ? "Install" : "Update",
-            command: npmGlobalInstallCommand(PI_NPM_PACKAGE).displayCommand,
-          },
+    installAction,
     needsUpdate,
     versionUnsupported,
   };
@@ -132,7 +237,7 @@ export async function getPiProviderInstallationRun(
   }
   return {
     available: true,
-    command: npmGlobalInstallCommand(PI_NPM_PACKAGE),
+    command: await piGlobalInstallCommand(status.executablePath),
     verification: installationVerification(status, action),
   };
 }

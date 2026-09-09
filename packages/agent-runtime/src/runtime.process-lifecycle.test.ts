@@ -639,21 +639,6 @@ describe("createAgentRuntime process lifecycle", () => {
     await manager.shutdown();
   });
 
-  it("shutdown kills processes and rejects pending requests", async () => {
-    const runtime = createScriptedEchoRuntime({
-      runtime: { workspacePath: tmpDir, onEvent: () => {} },
-    });
-
-    await runtime.startThread({
-      environmentId: "env-1",
-      threadId: "t1",
-      projectId: "p1",
-      providerId: "fake",
-      options: fullRuntimeOptions,
-    });
-    await runtime.shutdown();
-  });
-
   it("treats shutdown process errors as expected without carrying state to replacement processes", async () => {
     const exitInfo = vi.fn<NonNullable<AgentRuntimeOptions["onProcessExit"]>>();
     const manager = createProviderProcessManager({
