@@ -34,7 +34,6 @@ A project maps to a code repository. All threads belong to a project.
 Discovery:
 
   bb project branches <id> --host <id>   List branches for a machine source
-    --refresh                            Wait for remote refs before listing
   bb project paths <id>                   Search workspace paths
   bb project files <id>                   List workspace files
   bb project content <id> <path>          Read file content (binary is base64)
@@ -85,3 +84,5 @@ Sources:
     --default
 
   bb project source delete <projectId> <sourceId>
+
+Project source deletion remains available while a project is pending deletion so providers can finish cleanup. A live project must retain at least one source; a deleting project may remove its last source.

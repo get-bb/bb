@@ -1,11 +1,11 @@
 import { useMemo } from "react";
 import type { WorkspacePathEntry } from "@bb/server-contract";
-import { useDebounceValue } from "usehooks-ts";
 import { useEnvironmentPathSuggestions } from "./queries/environment-queries";
 import { useProjectPathSuggestions } from "./queries/project-queries";
 import { useThreadStoragePaths } from "./queries/thread-queries";
 import { isProjectlessProjectId } from "@/lib/route-paths";
 import type { PathListOptions } from "@/lib/path-list-options";
+import { useDebouncedValue } from "./useDebouncedValue";
 
 export const PATH_SUGGESTION_DEBOUNCE_MS = 120;
 
@@ -146,7 +146,7 @@ export function usePathSuggestions(
 ): UsePathSuggestionsResult {
   const limit = args.limit ?? DEFAULT_PATH_SUGGESTION_LIMIT;
   const oversampleLimit = limit * SOURCE_OVERSAMPLE_MULTIPLIER;
-  const [debouncedNonNullQuery] = useDebounceValue(
+  const debouncedNonNullQuery = useDebouncedValue(
     args.query,
     PATH_SUGGESTION_DEBOUNCE_MS,
   );

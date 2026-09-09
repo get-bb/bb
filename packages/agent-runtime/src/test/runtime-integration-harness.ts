@@ -37,6 +37,7 @@ import {
   type LaunchBoundAgentRuntime,
 } from "./runtime-test-harness.js";
 import {
+  formatRuntimeErrorEvent,
   waitForRuntimeConditionUnsafe,
   waitForThreadTurnCompleted as waitForSharedThreadTurnCompleted,
   waitForThreadTurnStarted as waitForSharedThreadTurnStarted,
@@ -413,11 +414,6 @@ function findLatestErrorEvent(events: ThreadEvent[]): ErrorThreadEvent | null {
   return null;
 }
 
-function formatErrorEvent(event: ErrorThreadEvent): string {
-  const detail = event.detail ? ` detail=${event.detail}` : "";
-  return `${event.type}: ${event.message}${detail}`;
-}
-
 function formatInteractiveRequest(request: PendingInteractionCreate): string {
   if (isUserQuestionPendingInteractionPayload(request.payload)) {
     const firstQuestion = request.payload.questions[0];
@@ -467,7 +463,7 @@ export function describeRuntimeDiagnostics(
 
   return [
     `Diagnostics: threadId=${args.threadId ?? "all"} events=${events.length} turnStarted=${turnStartedCount(events)} turnCompleted=${turnCompletedCount(events)}`,
-    `latestError=${latestError ? formatErrorEvent(latestError) : "none"}`,
+    `latestError=${latestError ? formatRuntimeErrorEvent(latestError) : "none"}`,
     `toolCalls=[${toolCalls || "none"}]`,
     `interactiveRequests=[${interactiveRequests || "none"}]`,
     `agentText=${JSON.stringify(agentText)}`,
@@ -484,7 +480,7 @@ function failOnRuntimeError(args: RuntimeDiagnosticsArgs): string | null {
   if (!latestError) {
     return null;
   }
-  return `${formatErrorEvent(latestError)}\n${describeRuntimeDiagnostics(args)}`;
+  return `${formatRuntimeErrorEvent(latestError)}\n${describeRuntimeDiagnostics(args)}`;
 }
 
 export function waitForRuntimeCondition(

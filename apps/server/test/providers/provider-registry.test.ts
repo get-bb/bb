@@ -326,3 +326,75 @@ describe("provider registry", () => {
     expect(registry.get("acp-opencode")).not.toBeNull();
   });
 });
+
+describe("installed-state cache", () => {
+  it("serves a remembered answer and dedupes concurrent probes", async () => {
+    const registry = createProviderRegistryService({});
+    registerProvider(registry, "codex", "provider-codex");
+    const key = {
+      hostId: "host_1",
+      providerId: "codex",
+    };
+
+    expect(registry.lookupInstalled(key)).toBeUndefined();
+
+    let probes = 0;
+    const probe = () => {
+      probes += 1;
+      return Promise.resolve(true);
+    };
+    const inFlight = probe();
+    registry.rememberInstalled(key, inFlight);
+
+    expect(await registry.lookupInstalled(key)).toBe(true);
+    expect(await registry.lookupInstalled(key)).toBe(true);
+    expect(probes).toBe(1);
+  });
+
+  it("drops the answer when the registration revision moves", async () => {
+    const registry = createProviderRegistryService({});
+    registerProvider(registry, "codex", "provider-codex");
+    const key = {
+      hostId: "host_1",
+      providerId: "codex",
+    };
+    registry.rememberInstalled(key, Promise.resolve(true));
+    expect(await registry.lookupInstalled(key)).toBe(true);
+
+    registerProvider(registry, "claude-code", "provider-claude-code");
+
+    expect(registry.lookupInstalled(key)).toBeUndefined();
+  });
+
+  it("forgets one host-provider answer, one provider, or all answers", async () => {
+    const registry = createProviderRegistryService({});
+    registerProvider(registry, "codex", "provider-codex");
+    const hostOneCodex = {
+      hostId: "host_1",
+      providerId: "codex",
+    };
+    const hostTwoCodex = {
+      hostId: "host_2",
+      providerId: "codex",
+    };
+    const hostOnePi = {
+      hostId: "host_1",
+      providerId: "pi",
+    };
+    registry.rememberInstalled(hostOneCodex, Promise.resolve(true));
+    registry.rememberInstalled(hostTwoCodex, Promise.resolve(false));
+    registry.rememberInstalled(hostOnePi, Promise.resolve(false));
+
+    registry.forgetInstalledKey(hostOneCodex);
+    expect(registry.lookupInstalled(hostOneCodex)).toBeUndefined();
+    expect(await registry.lookupInstalled(hostTwoCodex)).toBe(false);
+    expect(await registry.lookupInstalled(hostOnePi)).toBe(false);
+
+    registry.forgetInstalledProvider("codex");
+    expect(registry.lookupInstalled(hostTwoCodex)).toBeUndefined();
+    expect(await registry.lookupInstalled(hostOnePi)).toBe(false);
+
+    registry.forgetAllInstalled();
+    expect(registry.lookupInstalled(hostOnePi)).toBeUndefined();
+  });
+});

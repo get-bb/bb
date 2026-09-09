@@ -1,5 +1,3 @@
-import { useIsCompactViewport } from "@bb/shared-ui/hooks/use-compact-viewport";
-
 type PanelToggleAction = "enter-full-screen" | "exit-full-screen";
 
 type PanelToggleIconName = "Maximize2" | "Minimize2";
@@ -50,14 +48,14 @@ export function resolveConversationCollapseControl({
   };
 }
 
-type RightPanelToggleIconName = "PanelBottom" | "PanelRight";
+export const RIGHT_PANEL_TOGGLE_ICON_NAME = "PanelRight";
 
-export function getRightPanelToggleIconName(
-  renderAsDrawer: boolean,
-): RightPanelToggleIconName {
-  return renderAsDrawer ? "PanelBottom" : "PanelRight";
-}
-
-export function useRightPanelToggleIconName(): RightPanelToggleIconName {
-  return getRightPanelToggleIconName(useIsCompactViewport());
+export function getCompactPanelPresentation(
+  activeTabKind: string | undefined,
+  fallbackTabKind?: string,
+): "shelf" | "full" {
+  const resolvedTabKind = activeTabKind ?? fallbackTabKind;
+  return resolvedTabKind === undefined || resolvedTabKind === "thread-info"
+    ? "shelf"
+    : "full";
 }

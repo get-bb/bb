@@ -378,9 +378,11 @@ export function UsageLimitsSettingsSectionContent({
       (providerId) => !providerById.has(providerId),
     ),
   ];
-  const providerConfigs = orderedProviderIds.map((providerId) =>
-    providerConfig(providerId, providerById.get(providerId)),
-  );
+  const providerConfigs = orderedProviderIds
+    .filter((providerId) => usage[providerId]?.status !== "not_installed")
+    .map((providerId) =>
+      providerConfig(providerId, providerById.get(providerId)),
+    );
   const emptyMessage =
     isLoading || isProviderListLoading
       ? "Loading providers and usage…"
@@ -389,6 +391,7 @@ export function UsageLimitsSettingsSectionContent({
         : "No providers available.";
   return (
     <SettingsSection
+      actionPlacement={showMachinePicker ? "responsive" : "inline"}
       title="Usage limits"
       description="Your provider subscription usage."
       action={

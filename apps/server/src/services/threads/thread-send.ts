@@ -3,16 +3,16 @@ import {
   getThread,
   requireThreadLifecycleEventApplied,
 } from "@bb/db";
-import type { DbConnection, DbTransaction } from "@bb/db";
+import type { DbConnection, DbTransaction, EnvironmentRow } from "@bb/db";
 import type {
   ClientTurnRequestId,
-  Environment,
   PromptInput,
   ResolvedThreadExecutionOptions,
   Thread,
   ThreadTurnInitiator,
   TurnRequestTarget,
 } from "@bb/domain";
+import { isStandaloneBuiltinClearCommand } from "@bb/domain";
 import type { SendMessageRequest } from "@bb/server-contract";
 import { renderTemplate } from "@bb/templates";
 import type {
@@ -31,6 +31,7 @@ import {
   type AppendedClientTurnRequestWithNotification,
   createClientTurnRequestId,
   getActiveTurnId,
+  type TurnRequestRetryMarker,
 } from "./thread-events.js";
 import { recoverThreadModelOverride } from "./thread-execution-override.js";
 import {
@@ -62,6 +63,8 @@ import {
 } from "../lib/lifecycle-api-errors.js";
 import { validatePromptAttachmentReferences } from "../projects/attachments.js";
 import { resolvePluginMentionContextInputs } from "../plugins/plugin-mentions.js";
+import { clearThreadContext } from "./thread-context-clear.js";
+import { withThreadSendGuard } from "./thread-context-mutation-guard.js";
 import {
   prependDeferredFirstTurnContext,
   requireDeferredFirstTurnContextCurrent,
@@ -78,7 +81,13 @@ type SendThreadMessagePayload = SendMessageRequest & {
 
 interface SendThreadMessageArgs {
   beforeAppendInTransaction?: SendThreadMessageTransactionPreflight;
-  environment: Environment;
+  /**
+   * Present only when this send re-submits a failed turn. Marks the turn event
+   * as attempt N of an earlier request, which is what makes the next failure's
+   * attempt number correct without a separate tally.
+   */
+  retryOf?: TurnRequestRetryMarker;
+  environment: EnvironmentRow;
   historyReplacement?: {
     forkSourceProviderThreadId: string | null;
     onCommandSettled?: () => void | Promise<void>;
@@ -116,7 +125,7 @@ interface SendThreadMessageQueueRequestResult {
   activeThread: Thread | null;
 }
 
-interface SendThreadMessageTransactionPreflight {
+export interface SendThreadMessageTransactionPreflight {
   (args: SendThreadMessageTransactionPreflightArgs): void;
 }
 
@@ -127,6 +136,8 @@ interface SendThreadMessageQueueRequest {
 }
 
 interface AppendAndQueueSendThreadMessageArgs {
+  /** Retry provenance; absent for an original dispatch. */
+  retryOf?: TurnRequestRetryMarker;
   beforeAppendInTransaction?: SendThreadMessageTransactionPreflight;
   db: DbConnection;
   environmentId: string | null;
@@ -191,7 +202,10 @@ function resolveSendMode(
     if (thread.status === "active") {
       return "steer";
     }
-    if (thread.status === "idle") {
+    if (
+      thread.status === "idle" ||
+      (requestedMode === "steer-if-active" && thread.status === "error")
+    ) {
       return "start";
     }
     throwThreadNotWritable(
@@ -322,6 +336,7 @@ function captureUserMessageSentTelemetry(
 }
 
 function appendAndQueueSendThreadMessageInTransaction({
+  retryOf,
   beforeAppendInTransaction,
   db,
   environmentId,
@@ -346,6 +361,7 @@ function appendAndQueueSendThreadMessageInTransaction({
             threadId: thread.id,
             environmentId,
             type: "client/turn/requested",
+            ...(retryOf !== undefined ? { retryOf } : {}),
             input,
             ...(inputGroups !== undefined ? { inputGroups } : {}),
             execution,
@@ -383,6 +399,22 @@ function appendAndQueueSendThreadMessageInTransaction({
 }
 
 export async function sendThreadMessage(
+  deps: LoggedPendingInteractionWorkSessionDeps,
+  args: SendThreadMessageArgs,
+): Promise<void> {
+  if (isStandaloneBuiltinClearCommand(args.payload.input)) {
+    await clearThreadContext(deps, {
+      environment: args.environment,
+      thread: args.thread,
+    });
+    return;
+  }
+  return withThreadSendGuard(args.thread.id, () =>
+    sendThreadMessageWithoutContextClear(deps, args),
+  );
+}
+
+async function sendThreadMessageWithoutContextClear(
   deps: LoggedPendingInteractionWorkSessionDeps,
   args: SendThreadMessageArgs,
 ): Promise<void> {
@@ -454,14 +486,23 @@ export async function sendThreadMessage(
     input,
     projectId: thread.projectId,
   });
-  const initiator: ThreadTurnInitiator = senderThreadId ? "agent" : "user";
+  // Agent-originated CLI sends still appear as normal turn requests in the
+  // timeline, while initiator lets policy distinguish the source. A retry is
+  // `system` whatever the original was: nobody asked for it a second time, and
+  // counting it as a user message would inflate every "messages sent" figure by
+  // however many times the provider happened to be rate limited.
+  const initiator: ThreadTurnInitiator =
+    args.retryOf !== undefined ? "system" : senderThreadId ? "agent" : "user";
   const shouldCaptureUserMessageSent =
     args.trigger === "user" && initiator === "user" && input.length > 0;
   const expectedSteerTurnId =
     mode === "auto" || mode === "steer"
       ? getActiveTurnId(deps, thread.id)
       : null;
-  if (senderThreadId === null) {
+  // A retry's model is provenance — the failed attempt's tuple, replayed —
+  // not a fresh model choice, so it must not rewrite the thread's sticky
+  // override the way an explicit user send's model does.
+  if (senderThreadId === null && args.retryOf === undefined) {
     await recoverThreadModelOverride(deps, {
       model: payload.model,
       modelSource:
@@ -474,6 +515,11 @@ export async function sendThreadMessage(
   const execution = await buildExecutionOptions(deps, payload, {
     threadId: thread.id,
   });
+  // No hook pass here. User messages are decided ONCE, at the dispatch
+  // checkpoint in `attemptDispatch`, before they reach this function. The two
+  // other callers bypass the checkpoint deliberately: a manual compaction turn
+  // and an edited message's re-send are operations on the thread's existing
+  // conversation, not new work a limiter admits.
   const permissionEscalation = resolvePermissionEscalation({
     initiator,
   });
@@ -531,7 +577,6 @@ export async function sendThreadMessage(
         hostId: readyEnvironment.hostId,
         path: readyEnvironment.path,
         status: readyEnvironment.status,
-        workspaceProvisionType: readyEnvironment.workspaceProvisionType,
       },
       projectId: thread.projectId,
       providerId: thread.providerId,
@@ -553,6 +598,7 @@ export async function sendThreadMessage(
         }
       : await prepareReadyThreadTurnCommand(deps, commandArgs);
     const queuedRequest = appendAndQueueSendThreadMessageInTransaction({
+      ...(args.retryOf !== undefined ? { retryOf: args.retryOf } : {}),
       beforeAppendInTransaction: ({ tx }) => {
         beforeAppendInTransaction({ tx });
         ensureThreadCanStartRequest(thread);
@@ -637,7 +683,6 @@ export async function sendThreadMessage(
       hostId: readyEnvironment.hostId,
       path: readyEnvironment.path,
       status: readyEnvironment.status,
-      workspaceProvisionType: readyEnvironment.workspaceProvisionType,
     },
   });
   const command = addRequestIdToTurnSubmitCommandPayload({
@@ -645,6 +690,7 @@ export async function sendThreadMessage(
     requestId,
   });
   const queuedRequest = appendAndQueueSendThreadMessageInTransaction({
+    ...(args.retryOf !== undefined ? { retryOf: args.retryOf } : {}),
     beforeAppendInTransaction,
     db: deps.db,
     environmentId: thread.environmentId,

@@ -15,6 +15,7 @@ import type {
   RequestDiffFileContents,
 } from "@/components/git-diff/GitDiffCardBody";
 import { DiffFileCard } from "./DiffFileCard";
+import { makeDiffFileEntry } from "@/test/fixtures/diff-files";
 
 const diffViewMock = vi.hoisted(() => ({
   renderedFileDiffs: [] as unknown[],
@@ -76,17 +77,11 @@ const ADDED_PATCH = [
 ].join("\n");
 
 function buildEntry(overrides: Partial<DiffFileEntry> = {}): DiffFileEntry {
-  return {
-    path: "src/file.ts",
-    previousPath: null,
-    changeKind: "modified",
+  return makeDiffFileEntry({
     additions: 1,
     deletions: 1,
-    binary: false,
-    origin: "tracked",
-    loadMode: "auto",
     ...overrides,
-  };
+  });
 }
 
 function textResult(contents: string, name: string): DiffFileContentsResult {

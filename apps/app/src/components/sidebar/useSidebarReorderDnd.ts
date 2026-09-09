@@ -1,26 +1,9 @@
+import { useCallback, useEffect } from "react";
 import {
-  useCallback,
-  useEffect,
-  useMemo,
-  useRef,
-  type MouseEventHandler,
-} from "react";
-import {
-  closestCenter,
-  KeyboardSensor,
-  MouseSensor,
-  pointerWithin,
   TouchSensor,
-  useSensor,
-  useSensors,
-  type CollisionDetection,
-  type DndContextProps,
   type DragEndEvent,
-  type DragOverEvent,
   type DragStartEvent,
-  type Modifier,
 } from "@dnd-kit/core";
-import { sortableKeyboardCoordinates } from "@dnd-kit/sortable";
 import { COMPACT_VIEWPORT_QUERY } from "@bb/shared-ui/hooks/use-compact-viewport";
 import {
   getMediaQuerySnapshot,
@@ -31,23 +14,14 @@ import {
   subscribeCompactSidebarDrawerShowing,
 } from "@/components/ui/sidebar-mobile-drawer-visibility.js";
 import {
-  useDragClickSuppression,
-  type ConsumeDragClickSuppression,
-} from "@/components/ui/use-drag-click-suppression";
+  reorderCollisionDetection,
+  useReorderDnd,
+  type ReorderDndContextProps,
+  type UseReorderDndArgs,
+  type UseReorderDndResult,
+} from "@/components/ui/useReorderDnd";
 
-export const sidebarReorderCollisionDetection: CollisionDetection = (args) => {
-  const pointerCollisions = pointerWithin(args);
-  return pointerCollisions.length > 0 ? pointerCollisions : closestCenter(args);
-};
-
-const restrictSidebarDragToVerticalAxis: Modifier = ({ transform }) => ({
-  ...transform,
-  x: 0,
-});
-
-const SIDEBAR_REORDER_MODIFIERS: Modifier[] = [
-  restrictSidebarDragToVerticalAxis,
-];
+export const sidebarReorderCollisionDetection = reorderCollisionDetection;
 
 function setSidebarDraggingCursor(active: boolean): void {
   if (active) {
@@ -57,30 +31,8 @@ function setSidebarDraggingCursor(active: boolean): void {
   delete document.body.dataset.sidebarDragging;
 }
 
-interface UseSidebarReorderDndArgs {
-  onDragEnd: (event: DragEndEvent) => void;
-  onDragStart?: (event: DragStartEvent) => void;
-  onDragOver?: (event: DragOverEvent) => void;
-  onDragCancel?: () => void;
-  collisionDetection?: CollisionDetection;
-}
-
-export type SidebarReorderDndContextProps = Pick<
-  DndContextProps,
-  | "sensors"
-  | "collisionDetection"
-  | "onDragStart"
-  | "onDragOver"
-  | "onDragCancel"
-  | "onDragEnd"
-  | "modifiers"
->;
-
-interface UseSidebarReorderDndResult {
-  dndContextProps: SidebarReorderDndContextProps;
-  consumeClickSuppression: ConsumeDragClickSuppression;
-  onClickCapture: MouseEventHandler<HTMLElement>;
-}
+type UseSidebarReorderDndArgs = Omit<UseReorderDndArgs, "touchSensor">;
+export type SidebarReorderDndContextProps = ReorderDndContextProps;
 
 function shouldInstallSidebarTouchMoveListener(): boolean {
   return (
@@ -132,96 +84,38 @@ export function useSidebarReorderDnd({
   onDragOver,
   onDragCancel,
   collisionDetection = sidebarReorderCollisionDetection,
-}: UseSidebarReorderDndArgs): UseSidebarReorderDndResult {
-  const {
-    beginDragClickSuppression,
-    clearDragClickSuppressionSoon,
-    consumeDragClickSuppression,
-  } = useDragClickSuppression();
-  const isDraggingRef = useRef(false);
-  const sensors = useSensors(
-    useSensor(MouseSensor, { activationConstraint: { distance: 4 } }),
-    useSensor(SidebarTouchSensor, {
-      activationConstraint: { delay: 200, tolerance: 6 },
-    }),
-    useSensor(KeyboardSensor, {
-      coordinateGetter: sortableKeyboardCoordinates,
-    }),
-  );
+}: UseSidebarReorderDndArgs): UseReorderDndResult {
   const handleDragStart = useCallback(
     (event: DragStartEvent) => {
-      isDraggingRef.current = true;
       setSidebarDraggingCursor(true);
-      beginDragClickSuppression();
       onDragStart?.(event);
     },
-    [beginDragClickSuppression, onDragStart],
+    [onDragStart],
   );
   const handleDragCancel = useCallback(() => {
-    if (!isDraggingRef.current) {
-      return;
-    }
-    isDraggingRef.current = false;
     setSidebarDraggingCursor(false);
-    clearDragClickSuppressionSoon();
     onDragCancel?.();
-  }, [clearDragClickSuppressionSoon, onDragCancel]);
+  }, [onDragCancel]);
   const handleDragEnd = useCallback(
     (event: DragEndEvent) => {
-      isDraggingRef.current = false;
       setSidebarDraggingCursor(false);
-      clearDragClickSuppressionSoon();
       onDragEnd(event);
     },
-    [clearDragClickSuppressionSoon, onDragEnd],
+    [onDragEnd],
   );
 
   useEffect(() => {
-    const handleKeyDown = (event: KeyboardEvent): void => {
-      if (event.code === "Escape") {
-        handleDragCancel();
-      }
-    };
-    document.addEventListener("keydown", handleKeyDown);
     return () => {
-      document.removeEventListener("keydown", handleKeyDown);
-      isDraggingRef.current = false;
       setSidebarDraggingCursor(false);
     };
-  }, [handleDragCancel]);
-  const onClickCapture = useCallback<MouseEventHandler<HTMLElement>>(
-    (event) => {
-      if (!consumeDragClickSuppression()) {
-        return;
-      }
-      event.preventDefault();
-      event.stopPropagation();
-    },
-    [consumeDragClickSuppression],
-  );
-  const dndContextProps = useMemo<SidebarReorderDndContextProps>(
-    () => ({
-      sensors,
-      collisionDetection,
-      modifiers: SIDEBAR_REORDER_MODIFIERS,
-      onDragStart: handleDragStart,
-      onDragOver,
-      onDragCancel: handleDragCancel,
-      onDragEnd: handleDragEnd,
-    }),
-    [
-      collisionDetection,
-      handleDragCancel,
-      handleDragEnd,
-      handleDragStart,
-      onDragOver,
-      sensors,
-    ],
-  );
+  }, []);
 
-  return {
-    dndContextProps,
-    consumeClickSuppression: consumeDragClickSuppression,
-    onClickCapture,
-  };
+  return useReorderDnd({
+    onDragEnd: handleDragEnd,
+    onDragStart: handleDragStart,
+    onDragOver,
+    onDragCancel: handleDragCancel,
+    collisionDetection,
+    touchSensor: SidebarTouchSensor,
+  });
 }

@@ -22,10 +22,10 @@ import {
   getEnvironmentWorkspaceStateInvalidationQueryKeys,
   getFetchingThreadListQueryKeys,
   isArchivedThreadListQueryKey,
-  removeEnvironmentDiffPatchQueries,
   updateCachedThreadListPendingInteractionState,
   updateCachedThreadListStatusState,
 } from "./query-cache";
+import { bumpDiffPatchFreshnessGeneration } from "./environment-diff-patch-cache-owner";
 import {
   getCachedThreadLists,
   iterateThreadListCacheEntries,
@@ -44,6 +44,7 @@ import {
   allThreadStorageLocationsQueryKeyPrefix,
   allThreadStoragePathsQueryKeyPrefix,
   allSystemExecutionOptionsQueryKeyPrefix,
+  allSystemThemesQueryKeyPrefix,
   allThreadQueryKeyPrefix,
   allTerminalsQueryKeyPrefix,
   environmentDiffFilesQueryKeyPrefix,
@@ -53,6 +54,7 @@ import {
   hostsQueryKey,
   sidebarNavigationQueryKey,
   systemConfigQueryKey,
+  uiPreferencesQueryKey,
   allSystemProvidersQueryKeyPrefix,
   threadDefaultExecutionOptionsQueryKey,
   threadQueryKey,
@@ -66,6 +68,7 @@ import {
   threadStoragePathsForThreadQueryKeyPrefix,
   threadTimelineQueryKeyPrefix,
 } from "../queries/query-keys";
+import { systemEnvironmentProvidersQueryKey } from "../queries/environment-provider-queries";
 import { schedulePluginFrontendReconcile } from "../../lib/plugin-frontend-lazy";
 import {
   getProjectListInvalidationQueryKeys,
@@ -353,17 +356,17 @@ export const REALTIME_THREAD_CHANGE_REGISTRY = {
       dirtyThreadListQueries,
       dirtyThreadDetailQueries,
       dirtyThreadSearchQueries,
-      dirtyThreadTimelineRewriteQueries,
-      dirtyThreadQueueContentQueries,
+      getThreadTimelineInvalidationQueryKeys,
+      getThreadQueueContentInvalidationQueryKeys,
       dirtyProjectPromptHistoryQueries,
-      dirtyThreadPendingInteractionQueries,
+      getThreadPendingInteractionInvalidationQueryKeys,
     ],
   },
   "interactions-changed": {
     flush: "debounced",
     dirty: [
       dirtyThreadSearchQueries,
-      dirtyThreadPendingInteractionQueries,
+      getThreadPendingInteractionInvalidationQueryKeys,
       patchThreadListPendingInteractionState,
     ],
   },
@@ -377,7 +380,10 @@ export const REALTIME_THREAD_CHANGE_REGISTRY = {
   },
   "queue-changed": {
     flush: "debounced",
-    dirty: [dirtyThreadQueueContentQueries],
+    dirty: [
+      getThreadQueueContentInvalidationQueryKeys,
+      dirtyActiveThreadListQueries,
+    ],
   },
   "archived-changed": {
     flush: "debounced",
@@ -469,28 +475,31 @@ export const REALTIME_ENVIRONMENT_CHANGE_REGISTRY = {
 
 export const REALTIME_PROJECT_CHANGE_REGISTRY = {
   "project-created": {
-    dirty: [dirtyProjectListQueries],
+    dirty: [getProjectListInvalidationQueryKeys],
   },
   "project-updated": {
-    dirty: [dirtyProjectListQueries],
+    dirty: [getProjectListInvalidationQueryKeys],
   },
   "project-deleted": {
-    dirty: [dirtyProjectListQueries],
+    dirty: [getProjectListInvalidationQueryKeys],
   },
   "project-sources-changed": {
-    dirty: [dirtyProjectSourceDependentQueries],
+    dirty: [getProjectSourceDependentInvalidationQueryKeys],
   },
   "threads-changed": {
-    dirty: [dirtyProjectListQueries, dirtyProjectPromptHistoryQueries],
+    dirty: [
+      getProjectListInvalidationQueryKeys,
+      dirtyProjectPromptHistoryQueries,
+    ],
   },
   "project-order-changed": {
-    dirty: [dirtyProjectListQueries],
+    dirty: [getProjectListInvalidationQueryKeys],
   },
 } satisfies ProjectChangeRegistry;
 
 const HOST_CONNECTION_DIRTY_HANDLERS = [
   dirtyHostAvailabilityQueries,
-  dirtyProjectListQueries,
+  getProjectListInvalidationQueryKeys,
   dirtySystemProviderQueries,
   dirtySystemExecutionOptionQueries,
 ] satisfies readonly RealtimeDirtyHandler<HostRealtimeDirtyContext>[];
@@ -511,6 +520,7 @@ export const REALTIME_SYSTEM_CHANGE_REGISTRY = {
       dirtyAllThreadTimelineQueries,
       dirtySystemProviderQueries,
       dirtySystemExecutionOptionQueries,
+      dirtyEnvironmentProviderQueries,
     ],
   },
   "plugins-changed": {
@@ -518,11 +528,15 @@ export const REALTIME_SYSTEM_CHANGE_REGISTRY = {
       dirtyPluginContributionQueries,
       dirtyProjectCommandCatalogQueries,
       dirtyPluginManagementQueries,
+      dirtyEnvironmentProviderQueries,
       reconcilePluginFrontendBundles,
     ],
   },
   "provider-registrations-changed": {
     dirty: [dirtySystemProviderQueries, dirtySystemExecutionOptionQueries],
+  },
+  "ui-preferences-changed": {
+    dirty: [dirtyUiPreferencesQueries],
   },
 } satisfies SystemChangeRegistry;
 
@@ -865,18 +879,6 @@ function dirtyThreadTimelineQueries({
   }
 }
 
-function dirtyThreadTimelineRewriteQueries({
-  threadId,
-}: ThreadRealtimeDirtyContext): QueryKey[] {
-  return getThreadTimelineInvalidationQueryKeys({ threadId });
-}
-
-function dirtyThreadQueueContentQueries({
-  threadId,
-}: ThreadRealtimeDirtyContext): QueryKey[] {
-  return getThreadQueueContentInvalidationQueryKeys({ threadId });
-}
-
 function dirtyThreadPromptHistoryQueriesForTurnRequests({
   eventTypes,
   threadId,
@@ -903,12 +905,6 @@ function dirtyThreadPullRequestQueryForCompletedTurn({
     );
   const environmentId = cachedThread?.environmentId;
   return environmentId ? [environmentPullRequestQueryKey(environmentId)] : [];
-}
-
-function dirtyThreadPendingInteractionQueries({
-  threadId,
-}: ThreadRealtimeDirtyContext): QueryKey[] {
-  return getThreadPendingInteractionInvalidationQueryKeys({ threadId });
 }
 
 function dirtyThreadTerminalQueries({
@@ -1034,18 +1030,19 @@ function dirtyEnvironmentRecordQueries(
 function dirtyEnvironmentWorkspaceStateQueries(
   context: EnvironmentRealtimeDirtyContext,
 ): void {
+  bumpDiffPatchFreshnessGeneration(context.environmentId);
   for (const queryKey of getEnvironmentWorkspaceStateInvalidationQueryKeys(
     context,
   )) {
     context.queryClient.invalidateQueries({ queryKey });
   }
-  removeEnvironmentDiffPatchQueries(context);
 }
 
 function dirtyEnvironmentLiveWorkspaceStateQueries({
   environmentId,
   queryClient,
 }: EnvironmentRealtimeDirtyContext): void {
+  bumpDiffPatchFreshnessGeneration(environmentId);
   invalidateQueryKeyWithThrottledActiveRefetch({
     exact: false,
     minIntervalMs: WORK_STATUS_REFETCH_MIN_INTERVAL_MS,
@@ -1058,20 +1055,19 @@ function dirtyEnvironmentLiveWorkspaceStateQueries({
   queryClient.invalidateQueries({
     queryKey: environmentDiffFilesQueryKeyPrefix(environmentId),
   });
-  removeEnvironmentDiffPatchQueries({ environmentId, queryClient });
 }
 
 function dirtyEnvironmentRefDerivedWorkspaceStateQueries({
   environmentId,
   queryClient,
 }: EnvironmentRealtimeDirtyContext): void {
+  bumpDiffPatchFreshnessGeneration(environmentId);
   for (const queryKey of getCachedEnvironmentRefWorkspaceStateInvalidationQueryKeys(
     queryClient,
     { environmentId },
   )) {
     queryClient.invalidateQueries({ queryKey });
   }
-  removeEnvironmentDiffPatchQueries({ environmentId, queryClient });
 }
 
 function dirtyEnvironmentBranchListQueries(
@@ -1119,22 +1115,24 @@ function dirtyThreadStorageQueriesForEnvironment({
   return queryKeys;
 }
 
-function dirtyProjectListQueries(): QueryKey[] {
-  return getProjectListInvalidationQueryKeys();
-}
-
-function dirtyProjectSourceDependentQueries({
-  projectId,
-}: ProjectRealtimeDirtyContext): QueryKey[] {
-  return getProjectSourceDependentInvalidationQueryKeys({ projectId });
-}
-
 function dirtyHostAvailabilityQueries(): QueryKey[] {
   return [hostsQueryKey(), allHostQueryKeyPrefix()];
 }
 
-function dirtySystemConfigQueries(): QueryKey[] {
-  return [systemConfigQueryKey()];
+function dirtySystemConfigQueries({ queryClient }: RealtimeDirtyContext): void {
+  invalidateQueryKeysWithoutCancelingActiveFetches({
+    queryClient,
+    queryKeys: [systemConfigQueryKey(), allSystemThemesQueryKeyPrefix()],
+  });
+}
+
+function dirtyUiPreferencesQueries({
+  queryClient,
+}: RealtimeDirtyContext): void {
+  invalidateQueryKeysWithoutCancelingActiveFetches({
+    queryClient,
+    queryKeys: [uiPreferencesQueryKey()],
+  });
 }
 
 function dirtyAllThreadTimelineQueries(): QueryKey[] {
@@ -1165,6 +1163,10 @@ function dirtyPluginManagementQueries(): QueryKey[] {
     allPluginSourceQueryKeyPrefix(),
     allPluginCatalogSearchQueryKeyPrefix(),
   ];
+}
+
+function dirtyEnvironmentProviderQueries(): QueryKey[] {
+  return [systemEnvironmentProvidersQueryKey()];
 }
 
 function reconcilePluginFrontendBundles(): void {

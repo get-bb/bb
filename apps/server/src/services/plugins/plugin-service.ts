@@ -19,8 +19,13 @@ import {
   type ToolCallResponse,
 } from "@bb/domain";
 import {
+  type ExperimentalPluginWebSocketContext,
+  type ExperimentalPluginWebSocketHandlers,
   type PluginCliExecutionResult,
+  type ExperimentalPluginProviderEnvContext,
+  type ExperimentalPluginProviderEnvHealthContext,
   type PluginRpcError,
+  type PluginRpcErrorCode,
   type PluginRpcValidationIssue,
   type StandardSchemaV1,
   type StandardSchemaV1Issue,
@@ -34,6 +39,7 @@ import {
   PLUGIN_AGENT_TOOL_PARAMETERS_MAX_BYTES,
   RESERVED_AGENT_TOOL_NAMES,
   adoptHttpRouteResponse,
+  validatePluginProviderEnvEntries,
 } from "@get-bb/plugin-sdk/internal/host-policy";
 import {
   buildPluginApp,
@@ -42,9 +48,10 @@ import {
 } from "@bb/plugin-build";
 import { getPluginBuildToolchain } from "./build-toolchain.js";
 import {
-  marketplacePublisherLabels,
+  marketplacePublisherLabel,
   pluginPublisherLabel,
 } from "../plugin-catalog/marketplace-publishers.js";
+import { legacyMarketplaceCategory } from "../plugin-catalog/legacy-marketplace-category.js";
 import { deleteSecretFile, readOrCreateSecretFile } from "@bb/secret-storage";
 import {
   ROOT_PLUGIN_SOURCE_SELECTION,
@@ -60,16 +67,29 @@ import {
   listDuePluginSchedules,
   listInstalledPlugins,
   listPendingGitPluginArtifacts,
+  listPluginMarketplaces,
   listPluginSchedules,
   markInstalledPluginRemoved,
   recordPluginScheduleResult,
   setInstalledPluginEnabled,
   type InstalledPluginRow,
+  type PluginMarketplaceRow,
 } from "@bb/db";
+import {
+  BUNDLED_MARKETPLACE_NAME,
+  entryScreenshotUrls,
+  marketplaceEntryCategory,
+  marketplaceEntryCollections,
+  isBundledMarketplaceEntry,
+  parseBundledMarketplaceManifestJson,
+  parseMarketplaceManifestJson,
+  type MarketplaceManifest,
+} from "../plugin-catalog/marketplace-manifest.js";
 import {
   getLastThreadErrorMessage,
   getLastThreadOutput,
 } from "../threads/thread-data.js";
+import { buildTurnFailedEvent } from "../threads/turn-failed.js";
 import type { PluginBrandingAssetVariant } from "./app-bundle.js";
 import { readPluginThemeCodeTheme } from "../system/code-themes.js";
 import {
@@ -88,6 +108,7 @@ import {
   type PluginHttpRouteRecord,
   type PluginMentionTrigger,
   type PluginRpcHandler,
+  type PluginWebSocketRouteRecord,
 } from "./plugin-api.js";
 import {
   syncPluginCommandsSkill,
@@ -109,6 +130,8 @@ import {
   type InstallContext,
   type RegisterInstalledArgs,
 } from "./managed-plugin-artifacts.js";
+import type { PluginHookProvider } from "./plugin-hook-registry.js";
+import type { PluginEnvironmentProviderBridge } from "./plugin-environment-provider-registry.js";
 import { createPluginRegistration } from "./plugin-registration.js";
 import { createPluginRuntime, forgetMutableRoot } from "./plugin-runtime.js";
 import { createPluginUpdates } from "./plugin-updates.js";
@@ -130,6 +153,8 @@ import type {
   PluginUpdateCheckEntry,
   PluginWireLookup,
   PluginResolvedAgentConfiguration,
+  PluginResolvedProviderEnv,
+  PluginResolvedProviderEnvHealth,
 } from "./plugin-service-internal.js";
 export type {
   PluginAgentToolContribution,
@@ -158,6 +183,13 @@ export function dispatchPluginSourceWatchChange(
 export interface PluginService {
   isBuiltin(id: string): boolean;
   events: PluginThreadEventEmitter;
+  /** The hook chain the dispatch pipeline consults; registered in createApp. */
+  hooks: PluginHookProvider;
+  environmentProviders: PluginEnvironmentProviderBridge;
+  /**
+   * Bind the in-process BB SDK to the running server. Call once the HTTP
+   * listener is up, before start(): bb.sdk throws until this runs.
+   */
   bindSdk(args: { baseUrl: string }): void;
   start(): Promise<void>;
   stop(): Promise<void>;
@@ -205,6 +237,18 @@ export interface PluginService {
   ): Promise<PluginListEntry | undefined>;
   reload(id?: string): Promise<PluginReloadOutcome>;
   getApi(id: string): BbPluginApi | undefined;
+  /**
+   * Whether this plugin's runtime is live right now. Core uses it to decide
+   * whether a `plugin:<id>` owner still exists — a queue wait whose owner is
+   * gone is cleared as `orphaned` rather than stranding the user's turn.
+   */
+  isPluginLoaded(id: string): boolean;
+  /**
+   * On-disk asset backing GET /plugins/:id/assets/app.{js,css}: file path
+   * plus the current content hash (the route compares ?h against it for
+   * cache policy). Undefined when the plugin has no loadable bundle, or no
+   * CSS for kind "css".
+   */
   getAppAsset(
     id: string,
     kind: "js" | "css",
@@ -243,12 +287,30 @@ export interface PluginService {
     method: string,
     path: string,
   ): PluginWireLookup<PluginHttpRouteRecord>;
+  getWebSocketRoute(
+    id: string,
+    path: string,
+  ): PluginWireLookup<PluginWebSocketRouteRecord>;
   getRpcHandler(id: string, method: string): PluginWireLookup<PluginRpcHandler>;
   invokeHttpRoute(
     id: string,
     route: PluginHttpRouteRecord,
     context: Context,
   ): Promise<Response>;
+  invokeWebSocketRoute(
+    id: string,
+    route: PluginWebSocketRouteRecord,
+    context: ExperimentalPluginWebSocketContext,
+  ): Promise<
+    | { ok: true; handlers: ExperimentalPluginWebSocketHandlers }
+    | { ok: false; error: string }
+  >;
+  invokeWebSocketEvent(
+    id: string,
+    route: PluginWebSocketRouteRecord,
+    event: "open" | "message" | "close" | "error",
+    run: () => void | Promise<void>,
+  ): Promise<void>;
   invokeRpcHandler(
     id: string,
     method: string,
@@ -273,6 +335,14 @@ export interface PluginService {
     context: PluginAgentConfigurationContext;
     skillIdsByPlugin: ReadonlyMap<string, readonly string[]>;
   }): Promise<PluginResolvedAgentConfiguration>;
+  resolveProviderEnv(args: {
+    providerId: string;
+    context: ExperimentalPluginProviderEnvContext;
+  }): Promise<PluginResolvedProviderEnv>;
+  resolveProviderEnvHealth(args: {
+    providerId: string;
+    context: ExperimentalPluginProviderEnvHealthContext;
+  }): Promise<PluginResolvedProviderEnvHealth | null>;
   listInstructionContributions(): PluginInstructionContribution[];
   findAgentTool(
     name: string,
@@ -300,6 +370,14 @@ export interface PluginService {
 
 const DEFAULT_MENTION_SEARCH_TIMEOUT_MS = 2_000;
 const DEFAULT_MENTION_RESOLVE_TIMEOUT_MS = 10_000;
+const DEFAULT_PROVIDER_ENV_RESOLVE_TIMEOUT_MS = 5_000;
+/**
+ * Per-handler decision box. A hook handler is on the dispatch hot path and
+ * holds a server-wide lock while it runs, so it must decide in milliseconds;
+ * this is the outer bound past which the dispatch fails with the plugin named,
+ * not a budget to spend.
+ */
+const DEFAULT_PLUGIN_HOOK_TIMEOUT_MS = 10_000;
 const DEFAULT_STABILIZATION_WINDOW_MS = 30_000;
 const DEFAULT_ARTIFACT_RETENTION_MS = 7 * 24 * 60 * 60_000;
 const SCHEDULE_SWEEP_BATCH_SIZE = 100;
@@ -330,6 +408,11 @@ async function settledWithin(
     if (timer !== undefined) clearTimeout(timer);
   }
 }
+
+type PluginRpcHandlerErrorCode = Extract<
+  PluginRpcErrorCode,
+  "invalid_input" | "handler_error" | "invalid_output" | "non_json_result"
+>;
 
 class PluginRpcBoundaryError extends Error {
   constructor(readonly rpcError: PluginRpcError) {
@@ -366,7 +449,7 @@ function normalizeRpcIssues(
 }
 
 function rpcBoundaryFailure(
-  code: PluginRpcError["code"],
+  code: PluginRpcHandlerErrorCode,
   message: string,
   issues?: PluginRpcValidationIssue[],
 ): PluginRpcBoundaryError {
@@ -441,7 +524,7 @@ function normalizeRpcJsonResult(value: unknown): JsonValue {
       if (Array.isArray(current)) {
         return current.map((item, index) => visit(item, `${path}[${index}]`));
       }
-      const prototype = Object.getPrototypeOf(current) as object | null;
+      const prototype = Object.getPrototypeOf(current);
       if (prototype !== Object.prototype && prototype !== null) {
         throw rpcBoundaryFailure(
           "non_json_result",
@@ -788,11 +871,19 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
     deps.mentionSearchTimeoutMs ?? DEFAULT_MENTION_SEARCH_TIMEOUT_MS;
   const mentionResolveTimeoutMs =
     deps.mentionResolveTimeoutMs ?? DEFAULT_MENTION_RESOLVE_TIMEOUT_MS;
+  const providerEnvResolveTimeoutMs =
+    deps.providerEnvResolveTimeoutMs ?? DEFAULT_PROVIDER_ENV_RESOLVE_TIMEOUT_MS;
+  const pluginHookTimeoutMs =
+    deps.pluginHookTimeoutMs ?? DEFAULT_PLUGIN_HOOK_TIMEOUT_MS;
   const stabilizationWindowMs =
     deps.stabilizationWindowMs ?? DEFAULT_STABILIZATION_WINDOW_MS;
   const artifactRetentionMs =
     deps.artifactRetentionMs ?? DEFAULT_ARTIFACT_RETENTION_MS;
   const now = deps.now ?? Date.now;
+  const marketplaceManifestCache = new Map<
+    string,
+    { manifestJson: string; manifest: MarketplaceManifest | null }
+  >();
   let lastNotifiedProviderRegistrationRevision =
     deps.providerRegistry?.getRegistrationRevision() ?? 0;
   const scheduleStabilizationWindow =
@@ -815,7 +906,9 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
     checkPluginSdkRange,
     disposeAll,
     disposeOne,
+    buildQueuedMessageEventEmitter,
     emitThreadEvent,
+    getStatus,
     handlerStats,
     handleUncaughtException,
     hungServices,
@@ -823,6 +916,9 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
     identities,
     invokeWrapped,
     isBuiltinPluginId,
+    listPluginHooks,
+    listPluginEnvironmentProviders,
+    getPluginEnvironmentProvider,
     isPackagedBuiltinEntry,
     loadAll,
     loaded,
@@ -838,7 +934,12 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
     withArtifactLock,
     withLifecycleLock,
     withPluginOperationLock,
-  } = createPluginRuntime({ deps, nextCronRunAt, settledWithin });
+  } = createPluginRuntime({
+    deps,
+    nextCronRunAt,
+    settingsChanged: notifyPluginsChanged,
+    settledWithin,
+  });
 
   let managedValidateInstallDir!: (
     args: RegisterInstalledArgs,
@@ -1140,23 +1241,25 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
   function list(): PluginListEntry[] {
     const scheduleRows = listPluginSchedules(deps.db);
     const rows = listInstalledPlugins(deps.db);
-    const publisherLabels = rows.some((row) => row.provenance === "catalog")
-      ? marketplacePublisherLabels(deps.db)
-      : new Map<string, string>();
+    const catalogData = installedCatalogData(rows);
     return rows
       .sort((a, b) => a.id.localeCompare(b.id))
       .map((row) => {
-        const runtime = statuses.get(row.id);
+        const runtime = getStatus(row);
         const stats = handlerStats.get(row.id);
         const loadedPlugin = loaded.get(row.id);
         const cliRegistration = loadedPlugin?.handle.cli.registration;
         const identity =
           loadedPlugin === undefined ? identities.get(row.id) : undefined;
+        const catalogMetadata = catalogData.metadataByPluginId.get(row.id) ?? {
+          screenshots: [],
+          collections: [],
+        };
         return {
           id: row.id,
           source: row.source,
           rootDir: row.rootDir,
-          version: row.version,
+          version: loadedPlugin?.manifest.version ?? row.version,
           provenance: row.provenance,
           ...(row.catalogEntryId === null
             ? {}
@@ -1168,7 +1271,7 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
             sourceKind: row.sourceKind,
             provenance: row.provenance,
             catalogMarketplaceName: row.catalogMarketplaceName,
-            labels: publisherLabels,
+            labels: catalogData.publisherLabels,
           }),
           isOrphanedBuiltin:
             row.sourceKind === "builtin" &&
@@ -1183,6 +1286,7 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
             identity?.manifest.description ??
             null,
           name: loadedPlugin?.manifest.name ?? identity?.manifest.name ?? null,
+          ...catalogMetadata,
           icon:
             loadedPlugin?.manifest.branding.icon ??
             identity?.manifest.branding.icon ??
@@ -1191,12 +1295,8 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
             (loadedPlugin !== undefined
               ? brandingAssets.get(row.id)?.compactIcon?.url
               : identity?.brandingAssets.compactIcon?.url) ?? null,
-          status: runtime?.status ?? (row.enabled ? "error" : "disabled"),
-          statusDetail: runtime
-            ? runtime.detail
-            : row.enabled
-              ? "not loaded"
-              : null,
+          status: runtime.status,
+          statusDetail: runtime.detail,
           handlerStats: stats
             ? { ...stats }
             : { count: 0, totalMs: 0, maxMs: 0, errorCount: 0 },
@@ -1237,6 +1337,9 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
             loadedPlugin?.handle
               .listProviderDeclarations()
               .map((declaration) => declaration.id) ?? [],
+          // Declared icons ride the identity like the compact icon, so a
+          // row referencing "<pluginId>/<name>" resolves while the plugin is
+          // disabled and stops resolving only once it is uninstalled.
           icons: Object.fromEntries(
             [
               ...((loadedPlugin !== undefined
@@ -1246,6 +1349,142 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
           ),
         };
       });
+  }
+
+  type InstalledCatalogMetadata = Pick<
+    PluginListEntry,
+    | "categoryId"
+    | "category"
+    | "screenshots"
+    | "collections"
+    | "publishedAt"
+    | "updatedAt"
+  >;
+
+  function cachedMarketplaceManifest(
+    marketplace: PluginMarketplaceRow,
+  ): MarketplaceManifest | null {
+    const cached = marketplaceManifestCache.get(marketplace.name);
+    if (cached?.manifestJson === marketplace.manifestJson) {
+      return cached.manifest;
+    }
+    let manifest: MarketplaceManifest | null = null;
+    try {
+      const location = `stored "${marketplace.name}" marketplace catalog`;
+      manifest =
+        marketplace.name === BUNDLED_MARKETPLACE_NAME
+          ? parseBundledMarketplaceManifestJson(
+              marketplace.manifestJson,
+              location,
+            )
+          : parseMarketplaceManifestJson(
+              marketplace.manifestJson,
+              location,
+              (message) => logger.warn(message),
+            );
+    } catch (error) {
+      logger.warn(
+        `failed to read the stored "${marketplace.name}" marketplace catalog: ${error instanceof Error ? error.message : String(error)}`,
+      );
+    }
+    marketplaceManifestCache.set(marketplace.name, {
+      manifestJson: marketplace.manifestJson,
+      manifest,
+    });
+    return manifest;
+  }
+
+  function installedCatalogData(rows: readonly InstalledPluginRow[]): {
+    metadataByPluginId: ReadonlyMap<string, InstalledCatalogMetadata>;
+    publisherLabels: ReadonlyMap<string, string>;
+  } {
+    const rowsByMarketplace = new Map<string, InstalledPluginRow[]>();
+    const marketplaceNamesInUse = new Set<string>();
+    for (const row of rows) {
+      if (row.catalogMarketplaceName === null) continue;
+      marketplaceNamesInUse.add(row.catalogMarketplaceName);
+      if (row.catalogEntryId === null) continue;
+      const marketplaceRows =
+        rowsByMarketplace.get(row.catalogMarketplaceName) ?? [];
+      marketplaceRows.push(row);
+      rowsByMarketplace.set(row.catalogMarketplaceName, marketplaceRows);
+    }
+
+    const metadataByPluginId = new Map<string, InstalledCatalogMetadata>();
+    const publisherLabels = new Map<string, string>();
+    if (marketplaceNamesInUse.size === 0) {
+      marketplaceManifestCache.clear();
+      return { metadataByPluginId, publisherLabels };
+    }
+    const marketplaces = listPluginMarketplaces(deps.db);
+    const marketplaceByName = new Map(
+      marketplaces.map((marketplace) => [marketplace.name, marketplace]),
+    );
+    const marketplaceNames = new Set(marketplaceByName.keys());
+    for (const name of marketplaceManifestCache.keys()) {
+      if (!marketplaceNames.has(name)) marketplaceManifestCache.delete(name);
+    }
+    for (const marketplaceName of marketplaceNamesInUse) {
+      const marketplace = marketplaceByName.get(marketplaceName);
+      if (marketplace === undefined) continue;
+      const manifest = cachedMarketplaceManifest(marketplace);
+      publisherLabels.set(
+        marketplaceName,
+        marketplacePublisherLabel({
+          marketplaceName,
+          displayName: manifest?.displayName ?? marketplaceName,
+        }),
+      );
+      if (manifest === null) continue;
+      const marketplaceRows = rowsByMarketplace.get(marketplaceName) ?? [];
+      const entriesById = new Map<
+        string,
+        MarketplaceManifest["plugins"][number]
+      >();
+      for (const entry of manifest.plugins) {
+        entriesById.set(entry.id, entry);
+        if (isBundledMarketplaceEntry(entry)) {
+          entriesById.set(entry.source.bundled.plugin, entry);
+        }
+      }
+      for (const row of marketplaceRows) {
+        const entry = entriesById.get(row.catalogEntryId ?? "");
+        if (entry === undefined) continue;
+        try {
+          const category = marketplaceEntryCategory(manifest, entry);
+          const legacyCategory =
+            manifest.schemaVersion === 1
+              ? legacyMarketplaceCategory(entry.tags ?? [])
+              : undefined;
+          metadataByPluginId.set(row.id, {
+            ...(category === undefined
+              ? legacyCategory === undefined
+                ? {}
+                : { category: legacyCategory }
+              : { categoryId: category.id, category: category.displayName }),
+            screenshots: entryScreenshotUrls(
+              entry,
+              marketplace.sourceKind === "https"
+                ? { kind: "url", manifestUrl: marketplace.manifestUrl }
+                : { kind: "dir", root: marketplace.manifestUrl },
+              (message) => logger.warn(message),
+            ),
+            collections: marketplaceEntryCollections(manifest, entry.id),
+            ...("publishedAt" in entry && typeof entry.publishedAt === "string"
+              ? { publishedAt: entry.publishedAt }
+              : {}),
+            ...("updatedAt" in entry && typeof entry.updatedAt === "string"
+              ? { updatedAt: entry.updatedAt }
+              : {}),
+          });
+        } catch (error) {
+          logger.warn(
+            `failed to read catalog metadata for plugin "${row.id}" from marketplace "${marketplace.name}": ${error instanceof Error ? error.message : String(error)}`,
+          );
+        }
+      }
+    }
+    return { metadataByPluginId, publisherLabels };
   }
 
   return {
@@ -1323,11 +1562,56 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
           thread: buildThreadDto(thread),
         }));
       },
+      emitThreadUnarchived(thread) {
+        emitThreadEvent("thread.unarchived", () => ({
+          thread: buildThreadDto(thread),
+        }));
+      },
       emitThreadDeleted(thread) {
         emitThreadEvent("thread.deleted", () => ({
           thread: buildThreadDto(thread),
         }));
       },
+      emitInteractionPending(thread, interaction) {
+        emitThreadEvent("interaction.pending", () => ({
+          thread: buildThreadDto(thread),
+          interaction,
+        }));
+      },
+      emitMessageQueued: buildQueuedMessageEventEmitter("message.queued"),
+      emitMessageDispatched:
+        buildQueuedMessageEventEmitter("message.dispatched"),
+      emitMessageCancelled: buildQueuedMessageEventEmitter("message.cancelled"),
+      emitTurnFailed(threadId) {
+        // Built lazily inside the emitter: with no listener the failure path
+        // pays one map lookup and never touches the database.
+        emitThreadEvent("turn.failed", () =>
+          buildTurnFailedEvent(deps.db, threadId),
+        );
+      },
+    },
+
+    hooks: {
+      listHooks: listPluginHooks,
+      invokeHook: async (pluginId, label, run) => {
+        const outcome = await invokeWrapped(pluginId, label, run);
+        return outcome.ok
+          ? { ok: true, value: outcome.value }
+          : { ok: false, error: outcome.error };
+      },
+      decisionTimeoutMs: pluginHookTimeoutMs,
+    },
+
+    environmentProviders: {
+      listEnvironmentProviders: listPluginEnvironmentProviders,
+      getEnvironmentProvider: getPluginEnvironmentProvider,
+      invokeProvider: async (pluginId, label, run) => {
+        const outcome = await invokeWrapped(pluginId, label, run);
+        return outcome.ok
+          ? { ok: true, value: outcome.value }
+          : { ok: false, error: outcome.error };
+      },
+      decisionTimeoutMs: pluginHookTimeoutMs,
     },
 
     bindSdk: bindRuntimeSdk,
@@ -1353,11 +1637,18 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
               candidate.sourceBuiltinName === bundled.name,
           );
           if (row === undefined) continue;
-          const manifest = await readPluginManifest(bundled.rootDir);
           const loop = createPluginDevLoop({
             pluginId: row.id,
-            hasApp: manifest.appEntry !== undefined,
-            hasHost: manifest.hostEntry !== undefined,
+            targets: async () => {
+              const manifest = await readPluginManifest(bundled.rootDir);
+              const hasApp = manifest.appEntry !== undefined;
+              const hasHost = manifest.hostEntry !== undefined;
+              // A dropped entry can no longer rebuild, so its last build
+              // problem would otherwise stick forever.
+              if (!hasApp) setDevBuildProblem(row.id, "frontend", null);
+              if (!hasHost) setDevBuildProblem(row.id, "host", null);
+              return { hasApp, hasHost };
+            },
             buildApp: async () => {
               try {
                 await buildPluginApp(
@@ -1539,6 +1830,9 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
             : deleteInstalledPlugin(deps.db, id)
           : false;
         if (removed && row) {
+          deps.onPluginUnregistered?.(id);
+          // The uninstalled tree is no longer reloadable, so stop the module
+          // resolve hook from scanning it on every later import.
           forgetMutableRoot(row.rootDir);
           deletePluginSchedules(deps.db, id);
           deleteAllPluginSettings(deps.db, id);
@@ -1588,6 +1882,9 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
             }
           });
         }
+        if (!enabled) {
+          deps.onPluginUnregistered?.(id);
+        }
         await syncCliSkill();
         notifyPluginsChanged();
         return list().find((p) => p.id === id);
@@ -1615,6 +1912,10 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
 
     getApi(id) {
       return loaded.get(id)?.handle.api;
+    },
+
+    isPluginLoaded(id) {
+      return loaded.has(id);
     },
 
     getAppAsset(id, kind) {
@@ -1786,6 +2087,12 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
       );
     },
 
+    getWebSocketRoute(id, path) {
+      return wireLookup(id, (plugin) =>
+        plugin.handle.websocketRoutes.find((route) => route.path === path),
+      );
+    },
+
     getRpcHandler(id, method) {
       return wireLookup(id, (plugin) => plugin.handle.rpcHandlers.get(method));
     },
@@ -1806,6 +2113,44 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
       );
     },
 
+    async invokeWebSocketRoute(id, route, context) {
+      const outcome = await invokeWrapped(
+        id,
+        `websocket ${route.path} connect`,
+        () => {
+          const handlers = route.handler(context);
+          if (
+            typeof handlers !== "object" ||
+            handlers === null ||
+            Array.isArray(handlers)
+          ) {
+            throw new Error("websocket route handler must return an object");
+          }
+          for (const name of [
+            "onOpen",
+            "onMessage",
+            "onClose",
+            "onError",
+          ] as const) {
+            const callback = handlers[name];
+            if (callback !== undefined && typeof callback !== "function") {
+              throw new Error(
+                `websocket route handler ${name} must be a function`,
+              );
+            }
+          }
+          return handlers;
+        },
+      );
+      return outcome.ok
+        ? { ok: true, handlers: outcome.value }
+        : { ok: false, error: outcome.error };
+    },
+
+    async invokeWebSocketEvent(id, route, event, run) {
+      await invokeWrapped(id, `websocket ${route.path} ${event}`, run);
+    },
+
     async invokeRpcHandler(id, method, handler, input) {
       const outcome = await invokeWrapped(id, `rpc ${method}`, async () => {
         const parsedInput = await validateRpcValue(
@@ -1813,7 +2158,7 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
           input,
           "input",
         );
-        const result = await handler.handler(parsedInput as never);
+        const result = await handler.handler(parsedInput);
         const parsedOutput = await validateRpcValue(
           handler.outputSchema,
           result,
@@ -1859,9 +2204,7 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
       if (!plugin) {
         const row = getInstalledPlugin(deps.db, id);
         if (!row) return fail(`unknown plugin "${id}"`);
-        const runtime = statuses.get(id);
-        const status = runtime?.status ?? (row.enabled ? "error" : "disabled");
-        const detail = runtime?.detail ?? (row.enabled ? "not loaded" : null);
+        const { status, detail } = getStatus(row);
         return fail(
           `plugin "${id}" is not running (status: ${status}${detail ? ` — ${detail}` : ""})`,
         );
@@ -1979,6 +2322,107 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
       }
 
       return { tools, selectedSkillIdsByPlugin, dynamicInstructions };
+    },
+
+    async resolveProviderEnv({ providerId, context }) {
+      const entries: PluginResolvedProviderEnv["entries"] = [];
+      const ownerByName = new Map<string, string>();
+      for (const [pluginId, plugin] of loaded) {
+        const resolve = plugin.handle.providerEnvResolvers.get(providerId);
+        if (resolve === undefined) continue;
+        const outcome = await invokeWrapped(
+          pluginId,
+          `provider environment for ${providerId}`,
+          async () => {
+            let timer: NodeJS.Timeout | undefined;
+            try {
+              return await Promise.race([
+                Promise.resolve(resolve(context)).then((value) =>
+                  validatePluginProviderEnvEntries(value),
+                ),
+                new Promise<never>((_resolve, reject) => {
+                  timer = setTimeout(
+                    () =>
+                      reject(
+                        new Error(
+                          `timed out after ${providerEnvResolveTimeoutMs}ms`,
+                        ),
+                      ),
+                    providerEnvResolveTimeoutMs,
+                  );
+                  timer.unref?.();
+                }),
+              ]);
+            } finally {
+              if (timer !== undefined) clearTimeout(timer);
+            }
+          },
+        );
+        if (!outcome.ok) continue;
+        for (const entry of outcome.value) {
+          const earlierPluginId = ownerByName.get(entry.name);
+          if (earlierPluginId !== undefined) {
+            logger.error(
+              {
+                providerId,
+                name: entry.name,
+                winnerPluginId: earlierPluginId,
+                loserPluginId: pluginId,
+              },
+              "Plugin provider environment conflict; later contribution dropped",
+            );
+            continue;
+          }
+          ownerByName.set(entry.name, pluginId);
+          entries.push({ ...entry, source: { plugin: pluginId } });
+        }
+      }
+      return { entries };
+    },
+
+    async resolveProviderEnvHealth({ providerId, context }) {
+      for (const [pluginId, plugin] of loaded) {
+        if (!plugin.handle.providerEnvResolvers.has(providerId)) continue;
+        const resolve =
+          plugin.handle.providerEnvHealthResolvers.get(providerId);
+        if (resolve === undefined) continue;
+        const outcome = await invokeWrapped(
+          pluginId,
+          `provider environment health for ${providerId}`,
+          async () => {
+            let timer: NodeJS.Timeout | undefined;
+            try {
+              const value = await Promise.race([
+                Promise.resolve(resolve(context)),
+                new Promise<never>((_resolve, reject) => {
+                  timer = setTimeout(
+                    () =>
+                      reject(
+                        new Error(
+                          `timed out after ${providerEnvResolveTimeoutMs}ms`,
+                        ),
+                      ),
+                    providerEnvResolveTimeoutMs,
+                  );
+                  timer.unref?.();
+                }),
+              ]);
+              if (value === null) return null;
+              if (value.label.trim().length === 0) {
+                throw new Error("label must not be empty");
+              }
+              if (value.statusMessage.trim().length === 0) {
+                throw new Error("statusMessage must not be empty");
+              }
+              return value;
+            } finally {
+              if (timer !== undefined) clearTimeout(timer);
+            }
+          },
+        );
+        if (outcome.ok && outcome.value !== null) return outcome.value;
+      }
+      return null;
     },
 
     listInstructionContributions() {

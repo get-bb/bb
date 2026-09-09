@@ -6,6 +6,7 @@ import type { z } from "zod";
 const STDERR_TAIL_MAX_CHUNKS = 40;
 const CLOSE_AFTER_EXIT_GRACE_MS = 1_000;
 const KILL_ESCALATION_MS = 4_000;
+const CLOSED_STDIN_ERROR_CODES = new Set(["EPIPE", "ERR_STREAM_DESTROYED"]);
 
 export interface CodexAppServerRequestResponder {
   result(value: unknown): void;
@@ -44,7 +45,7 @@ interface CodexAppServerRequestArgs<TResult> {
 export interface CodexAppServerConnection {
   request<TResult>(args: CodexAppServerRequestArgs<TResult>): Promise<TResult>;
   notify(method: string, params?: unknown): void;
-  kill(): void;
+  kill(): Promise<void>;
   readonly exited: boolean;
 }
 
@@ -89,6 +90,14 @@ function parseChildLine(line: string): ParsedChildMessage | null {
   return parsed as ParsedChildMessage;
 }
 
+function isClosedChildStdinError(error: Error): boolean {
+  return (
+    "code" in error &&
+    typeof error.code === "string" &&
+    CLOSED_STDIN_ERROR_CODES.has(error.code)
+  );
+}
+
 export function createCodexAppServerConnection(
   options: CreateCodexAppServerConnectionOptions,
 ): CodexAppServerConnection {
@@ -110,15 +119,20 @@ export function createCodexAppServerConnection(
     code: number | null;
     signal: NodeJS.Signals | null;
   } | null = null;
+  let killStarted = false;
+  let stdinFailure: CodexAppServerExitedError | null = null;
   let closeGraceTimer: NodeJS.Timeout | null = null;
   let stdoutLines: Interface | null = null;
+  let resolveExit!: () => void;
+  const exitPromise = new Promise<void>((resolve) => {
+    resolveExit = resolve;
+  });
 
-  function writeLine(message: object): void {
-    const stdin = child.stdin;
-    if (!stdin || stdin.destroyed || !stdin.writable) {
-      return;
+  function pushStderrChunk(chunk: string): void {
+    stderrChunks.push(chunk);
+    if (stderrChunks.length > STDERR_TAIL_MAX_CHUNKS) {
+      stderrChunks.shift();
     }
-    stdin.write(JSON.stringify(message) + "\n");
   }
 
   function rejectAllPending(error: Error): void {
@@ -129,6 +143,50 @@ export function createCodexAppServerConnection(
       request.reject(error);
     }
     pending.clear();
+  }
+
+  function killChild(): Promise<void> {
+    if (finalized || killStarted) {
+      return exitPromise;
+    }
+    killStarted = true;
+    const escalation = setTimeout(() => {
+      if (!finalized) {
+        child.kill("SIGKILL");
+      }
+    }, KILL_ESCALATION_MS);
+    escalation.unref?.();
+    child.kill("SIGTERM");
+    return exitPromise;
+  }
+
+  function handleBrokenStdin(error: Error): void {
+    if (finalized || exitStatus !== null || stdinFailure !== null) {
+      return;
+    }
+    const code =
+      "code" in error && typeof error.code === "string"
+        ? ` (${error.code})`
+        : "";
+    const detail = `stdin failed${code}: ${error.message}`;
+    stdinFailure = new CodexAppServerExitedError(`codex app-server ${detail}`);
+    pushStderrChunk(detail);
+    killStarted = true;
+    child.kill("SIGKILL");
+  }
+
+  function writeLine(message: object): void {
+    if (stdinFailure !== null) {
+      return;
+    }
+    const stdin = child.stdin;
+    if (!stdin || stdin.destroyed || !stdin.writable) {
+      if (exitStatus === null) {
+        handleBrokenStdin(new Error("stdin is not writable"));
+      }
+      return;
+    }
+    stdin.write(JSON.stringify(message) + "\n");
   }
 
   function finalizeExit(status: {
@@ -155,7 +213,11 @@ export function createCodexAppServerConnection(
         { spawnFailed },
       ),
     );
-    options.onExit({ ...status, stderrTail, spawnFailed });
+    try {
+      options.onExit({ ...status, stderrTail, spawnFailed });
+    } finally {
+      resolveExit();
+    }
   }
 
   if (child.stdout) {
@@ -231,17 +293,21 @@ export function createCodexAppServerConnection(
       terminal: false,
     });
     stderrLines.on("line", (line) => {
-      stderrChunks.push(line);
-      if (stderrChunks.length > STDERR_TAIL_MAX_CHUNKS) {
-        stderrChunks.shift();
-      }
+      pushStderrChunk(line);
     });
   }
 
   child.on("error", (error) => {
     spawnFailed = true;
-    stderrChunks.push(error.message);
+    pushStderrChunk(error.message);
     finalizeExit({ code: null, signal: null });
+  });
+
+  child.stdin?.on("error", (error) => {
+    if (!isClosedChildStdinError(error)) {
+      throw error;
+    }
+    handleBrokenStdin(error);
   });
 
   child.on("exit", (code, signal) => {
@@ -258,7 +324,7 @@ export function createCodexAppServerConnection(
 
   return {
     get exited() {
-      return finalized;
+      return finalized || stdinFailure !== null;
     },
 
     request({ method, params, resultSchema, timeoutMs }) {
@@ -268,6 +334,9 @@ export function createCodexAppServerConnection(
             spawnFailed,
           }),
         );
+      }
+      if (stdinFailure !== null) {
+        return Promise.reject(stdinFailure);
       }
       const id = nextRequestId;
       nextRequestId += 1;
@@ -305,23 +374,14 @@ export function createCodexAppServerConnection(
     },
 
     notify(method, params) {
-      if (finalized) {
+      if (finalized || stdinFailure !== null) {
         return;
       }
       writeLine({ jsonrpc: "2.0", method, params });
     },
 
     kill() {
-      if (finalized) {
-        return;
-      }
-      const escalation = setTimeout(() => {
-        if (!finalized) {
-          child.kill("SIGKILL");
-        }
-      }, KILL_ESCALATION_MS);
-      escalation.unref?.();
-      child.kill("SIGTERM");
+      return killChild();
     },
   };
 }

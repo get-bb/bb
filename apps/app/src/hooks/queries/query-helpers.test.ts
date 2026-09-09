@@ -1,9 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type {
-  ThreadListEntry,
-  ThreadWithRuntime,
-  WorkspaceStatus,
-} from "@bb/domain";
+import type { ThreadListEntry, WorkspaceStatus } from "@bb/domain";
 import {
   makeWorkspaceMergeBase,
   makeWorkspaceStatus,
@@ -13,9 +9,18 @@ import type {
   EnvironmentDiffBranchesResponse,
   EnvironmentStatusResponse,
   ProjectBranchesResponse,
+  SidebarBootstrapResponse,
   ThreadResponse,
   ThreadTimelineResponse,
 } from "@bb/server-contract";
+import {
+  makeProjectWithThreadsResponse,
+  makeSidebarBootstrapResponse,
+} from "@/test/fixtures/projects";
+import {
+  makeThreadResponse as makeThreadResponseFixture,
+  makeThreadTimelineResponse as makeThreadTimelineResponseFixture,
+} from "@/test/fixtures/thread-responses";
 import {
   getCachedEnvironmentRefWorkspaceStateInvalidationQueryKeys,
   getEnvironmentWorkspaceStateInvalidationQueryKeys,
@@ -25,6 +30,7 @@ import {
   environmentDiffFilesQueryKeyPrefix,
   environmentDiffPatchQueryKeyPrefix,
   environmentWorkStatusQueryKey,
+  sidebarNavigationQueryKey,
   threadListQueryKey,
   threadsQueryKey,
 } from "./query-keys";
@@ -124,6 +130,7 @@ function makeProjectBranchesResponse(): ProjectBranchesResponse {
     defaultBranch: "main",
     defaultBranchRelation: "equal",
     defaultWorktreeBaseBranch: "origin/main",
+    isWorktree: false,
     hasUncommittedChanges: false,
     operation: { kind: "none" },
     originDefaultBranch: "origin/main",
@@ -143,50 +150,44 @@ function makeEnvironmentDiffBranchesResponse(): EnvironmentDiffBranchesResponse 
   };
 }
 
-function makeThreadWithRuntime(
-  thread: Partial<ThreadWithRuntime> = {},
-): ThreadWithRuntime {
-  return {
+function makeThreadResponse(
+  thread: Partial<ThreadResponse> = {},
+): ThreadResponse {
+  return makeThreadResponseFixture({
     id: "thread-1",
     projectId: "project-1",
-    providerId: "codex",
     createdAt: 1,
     status: "active",
     updatedAt: 1,
     lastReadAt: null,
     latestAttentionAt: 1,
     environmentId: "env-1",
-    title: null,
-    titleFallback: null,
-    sectionId: null,
-    parentThreadId: null,
-    sourceThreadId: null,
-    originKind: null,
-    originPluginId: null,
-    visibility: "visible",
-    archivedAt: null,
-    pinnedAt: null,
-    deletedAt: null,
     runtime: {
       displayStatus: "waiting-for-host",
       hostReconnectGraceExpiresAt: null,
     },
+    canSpawnChild: false,
     ...thread,
-  };
+  });
+}
+
+function makeSidebarNavigation(): SidebarBootstrapResponse {
+  return makeSidebarBootstrapResponse({
+    projects: [
+      makeProjectWithThreadsResponse({
+        id: "project-1",
+        name: "Project",
+        createdAt: 1,
+        updatedAt: 1,
+      }),
+    ],
+  });
 }
 
 function makeThreadTimelineResponse(
   rows: ThreadTimelineResponse["rows"],
 ): ThreadTimelineResponse {
-  return {
-    activePromptMode: null,
-    activeThinking: null,
-    activeWorkflows: [],
-    activeBackgroundCommands: [],
-    pendingTodos: null,
-    goal: null,
-    modelFallback: null,
-    maxSeq: 0,
+  return makeThreadTimelineResponseFixture({
     rows,
     timelinePage: {
       kind: "latest",
@@ -195,7 +196,7 @@ function makeThreadTimelineResponse(
       hasOlderRows: false,
       olderCursor: null,
     },
-  };
+  });
 }
 
 describe("resolveEnvironmentWorkStatusPlaceholder", () => {
@@ -243,11 +244,7 @@ describe("resolveEnvironmentWorkStatusPlaceholder", () => {
 
 describe("resolveThreadPlaceholder", () => {
   it("reuses previous thread data only for the same thread query", () => {
-    const previousThread: ThreadResponse = {
-      ...makeThreadWithRuntime({ id: "thread-1" }),
-      activeBackgroundAgentCount: 0,
-      canSpawnChild: false,
-    };
+    const previousThread = makeThreadResponse({ id: "thread-1" });
 
     expect(
       resolveThreadPlaceholder(
@@ -518,7 +515,7 @@ describe("optimisticallyInsertThread", () => {
     const { queryClient } = createQueryClientTestHarness();
     queryClient.setQueryData(threadsQueryKey(), []);
 
-    optimisticallyInsertThread(queryClient, makeThreadWithRuntime());
+    optimisticallyInsertThread(queryClient, makeThreadResponse());
 
     expect(
       queryClient.getQueryData<ThreadListEntry[]>(threadsQueryKey()),
@@ -533,7 +530,7 @@ describe("optimisticallyInsertThread", () => {
     });
     queryClient.setQueryData(threadListKey, []);
 
-    optimisticallyInsertThread(queryClient, makeThreadWithRuntime());
+    optimisticallyInsertThread(queryClient, makeThreadResponse());
 
     const [thread] =
       queryClient.getQueryData<ThreadListEntry[]>(threadListKey) ?? [];
@@ -541,6 +538,71 @@ describe("optimisticallyInsertThread", () => {
       displayStatus: "waiting-for-host",
       hostReconnectGraceExpiresAt: null,
     });
+  });
+
+  it("projects queued work into the thread list and sidebar immediately", () => {
+    const { queryClient } = createQueryClientTestHarness();
+    const threadListKey = threadListQueryKey({
+      archived: false,
+      projectId: "project-1",
+    });
+    queryClient.setQueryData(threadListKey, []);
+    queryClient.setQueryData(
+      sidebarNavigationQueryKey(),
+      makeSidebarNavigation(),
+    );
+
+    optimisticallyInsertThread(
+      queryClient,
+      makeThreadResponse({ queuedMessageCount: 1 }),
+    );
+
+    expect(
+      queryClient.getQueryData<ThreadListEntry[]>(threadListKey)?.[0]
+        ?.queuedWork,
+    ).toBe("waiting");
+    expect(
+      queryClient.getQueryData<SidebarBootstrapResponse>(
+        sidebarNavigationQueryKey(),
+      )?.projects[0]?.threads[0]?.queuedWork,
+    ).toBe("waiting");
+  });
+
+  it("adds queued work without replacing newer realtime row state", () => {
+    const { queryClient } = createQueryClientTestHarness();
+    const threadListKey = threadListQueryKey({
+      archived: false,
+      projectId: "project-1",
+    });
+    queryClient.setQueryData(threadListKey, []);
+    queryClient.setQueryData(
+      sidebarNavigationQueryKey(),
+      makeSidebarNavigation(),
+    );
+    optimisticallyInsertThread(
+      queryClient,
+      makeThreadResponse({
+        runtime: {
+          displayStatus: "active",
+          hostReconnectGraceExpiresAt: null,
+        },
+      }),
+    );
+
+    optimisticallyInsertThread(
+      queryClient,
+      makeThreadResponse({ queuedMessageCount: 1 }),
+    );
+
+    const listThread =
+      queryClient.getQueryData<ThreadListEntry[]>(threadListKey)?.[0];
+    const sidebarThread = queryClient.getQueryData<SidebarBootstrapResponse>(
+      sidebarNavigationQueryKey(),
+    )?.projects[0]?.threads[0];
+    expect(listThread?.runtime.displayStatus).toBe("active");
+    expect(listThread?.queuedWork).toBe("waiting");
+    expect(sidebarThread?.runtime.displayStatus).toBe("active");
+    expect(sidebarThread?.queuedWork).toBe("waiting");
   });
 
   it("respects the originKind filter when inserting source-derived threads", () => {
@@ -555,7 +617,7 @@ describe("optimisticallyInsertThread", () => {
 
     optimisticallyInsertThread(
       queryClient,
-      makeThreadWithRuntime({
+      makeThreadResponse({
         id: "side-chat-1",
         sourceThreadId: "source-1",
         originKind: "fork",
@@ -568,7 +630,7 @@ describe("optimisticallyInsertThread", () => {
 
     optimisticallyInsertThread(
       queryClient,
-      makeThreadWithRuntime({
+      makeThreadResponse({
         id: "fork-1",
         sourceThreadId: "source-1",
         originKind: "fork",

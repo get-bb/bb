@@ -24,6 +24,7 @@ export {
 };
 export type * from "@bb/sdk/node";
 export type {
+  GitBranchSelection,
   JsonValue,
   PermissionMode,
   PromptInput,
@@ -33,7 +34,6 @@ export type {
   ThreadStatus,
 } from "@bb/sdk/node";
 export type {
-  BaseBranchSpec,
   CreateExecutionInputSources,
   EnvironmentArgs,
   ExistingThreadExecutionInputSources,
@@ -61,6 +61,7 @@ export type ThreadWaitUnreachableErrorConstructor =
 
 export class BBSdk implements BbSdk {
   readonly environments: BbSdk["environments"];
+  readonly experimental_desktopBrowsers: BbSdk["experimental_desktopBrowsers"];
   readonly files: BbSdk["files"];
   readonly guide: BbSdk["guide"];
   readonly hosts: BbSdk["hosts"];
@@ -79,6 +80,7 @@ export class BBSdk implements BbSdk {
   constructor(options: BBSdkOptions = {}) {
     const sdk = createNodeBbSdk(options);
     this.environments = sdk.environments;
+    this.experimental_desktopBrowsers = sdk.experimental_desktopBrowsers;
     this.files = sdk.files;
     this.guide = sdk.guide;
     this.hosts = sdk.hosts;

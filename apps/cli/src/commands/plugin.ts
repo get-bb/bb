@@ -98,17 +98,20 @@ async function searchCatalog(
   baseUrl: string,
   query: string,
 ): Promise<PluginCatalogSearchResult[]> {
-  return createCliBbSdk(baseUrl).plugins.catalog.search({ query });
+  return (await createCliBbSdk(baseUrl).plugins.catalog.search({ query }))
+    .results;
 }
 
 const pluginSettingDescriptorSchema = z.object({
-  type: z.enum(["string", "boolean", "select", "project"]),
+  type: z.enum(["string", "number", "boolean", "select", "project"]),
   label: z.string(),
   description: z.string().optional(),
   secret: z.literal(true).optional(),
-  default: z.union([z.string(), z.boolean()]).optional(),
+  default: z.union([z.string(), z.number().finite(), z.boolean()]).optional(),
   options: z.array(z.string()).optional(),
 });
+const negativeNumberValuePattern =
+  /^-(?:0|[1-9]\d*)(?:\.\d+)?(?:[eE][+-]?\d+)?$/;
 const pluginSettingsResultSchema = z.object({
   ok: z.boolean(),
   error: z.string().optional(),
@@ -739,7 +742,7 @@ function parseSettingValue(
   descriptor: PluginSettingDescriptor,
   key: string,
   raw: string,
-): string | boolean {
+): string | number | boolean {
   if (descriptor.type === "boolean") {
     if (raw === "true") return true;
     if (raw === "false") return false;
@@ -750,6 +753,17 @@ function parseSettingValue(
     console.error(
       `Setting "${key}" must be one of: ${descriptor.options?.join(", ") ?? ""}`,
     );
+    process.exit(1);
+  }
+  if (descriptor.type === "number") {
+    let value: unknown;
+    try {
+      value = JSON.parse(raw);
+    } catch {
+      value = undefined;
+    }
+    if (typeof value === "number" && Number.isFinite(value)) return value;
+    console.error(`Setting "${key}" is a number — pass a finite number.`);
     process.exit(1);
   }
   return raw;
@@ -782,6 +796,7 @@ export function registerPluginCommands(
         const rows = results.map((result) => [
           result.displayName,
           result.description,
+          result.category ?? "Uncategorized",
           ...(showMarketplace ? [result.marketplaceDisplayName] : []),
           ...(showInstalls
             ? [
@@ -802,16 +817,18 @@ export function registerPluginCommands(
               head: [
                 "Name",
                 "Description",
+                "Category",
                 ...(showMarketplace ? ["Marketplace"] : []),
                 ...(showInstalls ? ["Installs"] : []),
                 "Status",
               ],
               colWidths: [
-                showMarketplace ? 26 : 28,
-                showMarketplace ? 42 : 54,
+                showMarketplace ? 22 : 24,
+                showMarketplace ? 30 : 38,
+                24,
                 ...(showMarketplace ? [22] : []),
                 ...(showInstalls ? [10] : []),
-                showMarketplace ? 40 : 48,
+                showMarketplace ? 34 : 40,
               ],
               trimTrailingWhitespace: true,
             },
@@ -1418,8 +1435,16 @@ export function registerPluginCommands(
         }
         const loop = createPluginDevLoop({
           pluginId: entry.id,
-          hasApp,
-          hasHost,
+          // Re-read per cycle: a plugin can add or drop bb.app/bb.host while
+          // being watched, and a stale snapshot would demand a build that can
+          // never succeed again.
+          targets: async () => {
+            const current = await requirePluginManifest(rootDir);
+            return {
+              hasApp: typeof current.bb?.app === "string",
+              hasHost: typeof current.bb?.host === "string",
+            };
+          },
           buildApp: async () => {
             await buildPluginApp(
               rootDir,
@@ -1537,6 +1562,8 @@ export function registerPluginCommands(
       "Show a plugin's settings, or change them: config <id> set <key> <value> | config <id> unset <key>",
     )
     .option("--json", "Output JSON")
+    .allowUnknownOption()
+    .allowExcessArguments()
     .action(
       action(
         async (
@@ -1545,7 +1572,28 @@ export function registerPluginCommands(
           key: string | undefined,
           value: string | undefined,
           opts: JsonOutputOptions,
+          command: Command,
         ) => {
+          const rawArgs = (program as Command & { rawArgs: string[] }).rawArgs;
+          const terminatorIndex = rawArgs.indexOf("--");
+          const valueIsOption =
+            value?.startsWith("-") === true &&
+            (terminatorIndex < 0 ||
+              terminatorIndex > rawArgs.lastIndexOf(value));
+          const valueIsUnknownOption =
+            valueIsOption &&
+            (actionName !== "set" || !negativeNumberValuePattern.test(value));
+          const unknownOption =
+            [id, actionName, key, ...command.args.slice(4)].find((argument) =>
+              argument?.startsWith("-"),
+            ) ?? (valueIsUnknownOption ? value : undefined);
+          if (unknownOption !== undefined)
+            command.error(`error: unknown option '${unknownOption}'`);
+          const expectedArgumentCount = actionName === "unset" ? 3 : 4;
+          if (command.args.length > expectedArgumentCount)
+            command.error(
+              `error: too many arguments for 'config'. Expected ${expectedArgumentCount} arguments but got ${command.args.length}.`,
+            );
           const settingsPath = `/${encodeURIComponent(id)}/settings`;
           if (actionName === undefined) {
             const result = pluginSettingsResultSchema.parse(
@@ -1577,7 +1625,7 @@ export function registerPluginCommands(
             );
             process.exit(1);
           }
-          let parsedValue: string | boolean | null = null;
+          let parsedValue: string | number | boolean | null = null;
           if (actionName === "set") {
             if (value === undefined) {
               console.error("Usage: bb plugin config <id> set <key> <value>");
@@ -1594,6 +1642,9 @@ export function registerPluginCommands(
                 `Unknown setting "${key}"${known ? ` — known settings: ${known}` : ""}`,
               );
               process.exit(1);
+            }
+            if (valueIsOption && descriptor.type !== "number") {
+              command.error(`error: unknown option '${value}'`);
             }
             parsedValue = parseSettingValue(descriptor, key, value);
           }

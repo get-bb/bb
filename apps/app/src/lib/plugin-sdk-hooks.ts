@@ -21,6 +21,7 @@ import type {
   PluginProvidersState,
   PluginSettingsState,
   ExperimentalAppPanel,
+  ExperimentalComposerSubmitOptions,
   ExperimentalFixedTabTargetState,
   ExperimentalPluginFixedTabReference,
   JsonValue,
@@ -176,7 +177,7 @@ export async function callPluginRpc(
 export async function fetchPluginSdkSettings(
   fetchImpl: FetchLike,
   pluginId: string,
-): Promise<Record<string, string | boolean> | null> {
+): Promise<Record<string, string | number | boolean> | null> {
   const response = await fetchImpl(
     `/api/v1/plugins/${encodeURIComponent(pluginId)}/settings`,
   );
@@ -192,9 +193,13 @@ export async function fetchPluginSdkSettings(
   ) {
     return null;
   }
-  const values: Record<string, string | boolean> = {};
+  const values: Record<string, string | number | boolean> = {};
   for (const [key, value] of Object.entries(body.values)) {
-    if (typeof value === "string" || typeof value === "boolean") {
+    if (
+      typeof value === "string" ||
+      (typeof value === "number" && Number.isFinite(value)) ||
+      typeof value === "boolean"
+    ) {
       values[key] = value;
     }
   }
@@ -814,6 +819,23 @@ export function useComposer(): PluginComposerApi {
   const focus = focusActiveComposer;
   const composerText = composerHostDraft?.text ?? routeDraft.text;
 
+  const hostSubmit = composerHost?.submit;
+  const experimental_submit = useCallback(
+    async (options: ExperimentalComposerSubmitOptions) => {
+      if (!scopeOwnership.isActive()) {
+        throw new Error("This composer is no longer active.");
+      }
+      if (hostSubmit === undefined) {
+        throw new Error("This composer cannot schedule a submission.");
+      }
+      if (!Number.isFinite(options.sendAt) || options.sendAt <= Date.now()) {
+        throw new Error("Pick a time in the future.");
+      }
+      await hostSubmit({ sendAt: options.sendAt });
+    },
+    [hostSubmit, scopeOwnership],
+  );
+
   return useMemo(
     () => ({
       scope:
@@ -831,12 +853,14 @@ export function useComposer(): PluginComposerApi {
       addQuote,
       insertMention,
       focus,
+      experimental_submit,
     }),
     [
       addQuote,
       clear,
       composerScope,
       composerText,
+      experimental_submit,
       focus,
       insertMention,
       projectId,

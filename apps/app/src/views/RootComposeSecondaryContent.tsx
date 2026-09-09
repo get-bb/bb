@@ -1,4 +1,5 @@
 import { useState, type ComponentProps, type ReactNode } from "react";
+import { useIsCompactViewport } from "@bb/shared-ui/hooks/use-compact-viewport";
 import { Skeleton } from "@bb/shared-ui/skeleton";
 import { COARSE_POINTER_HEADER_ICON_BUTTON_CLASS } from "@bb/shared-ui/coarse-pointer-sizing";
 import { cn } from "@bb/shared-ui/lib/utils";
@@ -14,7 +15,9 @@ import {
   MACOS_WINDOW_DRAG_CLASS,
   shouldUseMacosDesktopChrome,
 } from "@/lib/bb-desktop";
+import { RootComposeCompactHome } from "./RootComposeCompactHome";
 import { useOptionalPaneContext } from "./thread-detail/PaneContext";
+import { getCompactPanelPresentation } from "@/components/secondary-panel/panelToggleControlState";
 
 const ROOT_COMPOSE_MAX_WIDTH_CLASS = "max-w-[760px]";
 
@@ -40,6 +43,7 @@ type RootSecondaryPanelProps = Omit<
 
 interface RootComposeSecondaryContentProps {
   children: ReactNode;
+  compactScrollContent: ReactNode;
   contentClassName?: string;
   isSecondaryPanelOpen: boolean;
   onToggleSecondaryPanel: () => void;
@@ -61,6 +65,7 @@ function DrawerPanelLoadingSkeleton() {
 
 export function RootComposeSecondaryContent({
   children,
+  compactScrollContent,
   contentClassName,
   isSecondaryPanelOpen,
   onToggleSecondaryPanel,
@@ -74,6 +79,9 @@ export function RootComposeSecondaryContent({
   const rendersWindowDragStrip =
     usesDesktopChrome && paneContext?.isTopRow !== false;
   const { renderBrowserDeck, ...threadSecondaryPanelProps } = secondaryPanel;
+  const isCompactViewport = useIsCompactViewport();
+  const usesCompactHomeLayout =
+    isCompactViewport && compactScrollContent !== null;
 
   const mainContent = (
     <div className="relative flex h-full min-h-0 flex-1 flex-col overflow-hidden">
@@ -100,19 +108,32 @@ export function RootComposeSecondaryContent({
           ) : null}
         </div>
       ) : null}
-      <div className="@container/page min-h-0 flex-1 overflow-y-auto">
+      {usesCompactHomeLayout ? (
         <div
-          className={cn(
-            "mx-auto flex w-full flex-col px-4 pb-4 pt-2",
-            ROOT_COMPOSE_MAX_WIDTH_CLASS,
-            contentClassName,
-          )}
+          className="@container/page flex min-h-0 flex-1 flex-col"
           style={PAGE_SHELL_CONTENT_STYLE}
         >
-          {children}
-          <PluginHomepageSections />
+          <RootComposeCompactHome composer={children}>
+            {compactScrollContent}
+            <PluginHomepageSections />
+          </RootComposeCompactHome>
         </div>
-      </div>
+      ) : (
+        <div className="@container/page min-h-0 flex-1 overflow-y-auto">
+          <div
+            className={cn(
+              "mx-auto flex w-full flex-col px-4 pb-4 pt-2",
+              ROOT_COMPOSE_MAX_WIDTH_CLASS,
+              contentClassName,
+            )}
+            style={PAGE_SHELL_CONTENT_STYLE}
+          >
+            {children}
+            {compactScrollContent}
+            <PluginHomepageSections />
+          </div>
+        </div>
+      )}
     </div>
   );
 
@@ -129,6 +150,13 @@ export function RootComposeSecondaryContent({
         mainPanelId="root-compose-main-panel"
         main={mainContent}
         composerHost={composerHost}
+        compactPresentation={getCompactPanelPresentation(
+          threadSecondaryPanelProps.activeTab?.kind,
+          threadSecondaryPanelProps.fixedTabs[0]?.tab.kind ??
+            threadSecondaryPanelProps.tabs.find(
+              (tab) => tab.isHidden !== true,
+            )?.tab.kind,
+        )}
         renderPanel={({
           presentation,
           canShowNativeBrowserView,

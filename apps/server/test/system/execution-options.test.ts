@@ -15,6 +15,7 @@ import { availableModelFixture } from "../helpers/available-models.js";
 import {
   registerHostRpcResponder,
   registerProviderHostRpcResponder,
+  type HostRpcHandlerResult,
 } from "../helpers/host-rpc.js";
 import {
   seedEnvironment,
@@ -711,6 +712,110 @@ describe("resolveSystemExecutionOptions", () => {
     },
   );
 
+  it("applies the provider discovery fallback to every concurrent reader", async () => {
+    await withTestHarness({}, async (harness) => {
+      const warn = vi.fn();
+      harness.deps.logger = { ...harness.deps.logger, warn };
+      const { host, session } = seedHostSession(harness.deps, {
+        id: "host-execution-options-shared-provider-fallback",
+      });
+      let releaseHealthFailure = (): void => {};
+      const healthFailure = new Promise<HostRpcHandlerResult>((resolve) => {
+        releaseHealthFailure = () =>
+          resolve({
+            ok: false,
+            errorCode: "host_unavailable",
+            errorMessage: "Host is not connected",
+          });
+      });
+      const responder = registerHostRpcResponder(harness, {
+        hostId: host.id,
+        sessionId: session.id,
+        handle: (request) => {
+          if (request.command.type !== "provider.health") {
+            throw new Error(`Unexpected RPC command ${request.command.type}`);
+          }
+          return healthFailure;
+        },
+      });
+
+      const first = listSystemProviderInfos(harness.deps, { hostId: host.id });
+      await vi.waitFor(() => {
+        expect(responder.requests.length).toBeGreaterThan(0);
+      });
+      const second = listSystemProviderInfos(harness.deps, {
+        hostId: host.id,
+      });
+      releaseHealthFailure();
+
+      const [firstProviders, secondProviders] = await Promise.all([
+        first,
+        second,
+      ]);
+      expect(secondProviders).toEqual(firstProviders);
+      const healthProviderIds = responder.requests.map((request) => {
+        if (request.command.type !== "provider.health") {
+          throw new Error(`Unexpected RPC command ${request.command.type}`);
+        }
+        return request.command.providerId;
+      });
+      expect(new Set(healthProviderIds).size).toBe(healthProviderIds.length);
+      expect(warn).toHaveBeenCalled();
+    });
+  });
+
+  it("keeps another host's provider answers when one host probe fails", async () => {
+    await withTestHarness({}, async (harness) => {
+      const healthy = seedHostSession(harness.deps, {
+        id: "host-provider-cache-healthy",
+      });
+      const healthyResponder = registerHostRpcResponder(harness, {
+        hostId: healthy.host.id,
+        sessionId: healthy.session.id,
+        handle: (request) => {
+          if (request.command.type !== "provider.health") {
+            throw new Error(`Unexpected RPC command ${request.command.type}`);
+          }
+          return {
+            ok: true,
+            result: providerDiscoveryHealth(true),
+          };
+        },
+      });
+      await listSystemProviderInfos(harness.deps, {
+        hostId: healthy.host.id,
+      });
+      const healthyProbeCount = healthyResponder.requests.length;
+      expect(healthyProbeCount).toBeGreaterThan(0);
+
+      const failing = seedHostSession(harness.deps, {
+        id: "host-provider-cache-failing",
+      });
+      registerHostRpcResponder(harness, {
+        hostId: failing.host.id,
+        sessionId: failing.session.id,
+        handle: (request) => {
+          if (request.command.type !== "provider.health") {
+            throw new Error(`Unexpected RPC command ${request.command.type}`);
+          }
+          return {
+            ok: false,
+            errorCode: "host_unavailable",
+            errorMessage: "Host is not connected",
+          };
+        },
+      });
+      await listSystemProviderInfos(harness.deps, {
+        hostId: failing.host.id,
+      });
+      await listSystemProviderInfos(harness.deps, {
+        hostId: healthy.host.id,
+      });
+
+      expect(healthyResponder.requests).toHaveLength(healthyProbeCount);
+    });
+  });
+
   it("keeps configured providers and custom models when no host can be resolved", async () => {
     await withTestHarness(
       {
@@ -800,7 +905,7 @@ describe("resolveSystemExecutionOptions", () => {
           code: "failed",
         });
         expect(response.models.map((model) => model.model)).toEqual([
-          "claude-fable-5",
+          "claude-fable-5-1",
           "claude-opus-5[1m]",
           "claude-opus-4-8[1m]",
           "claude-opus-4-7[1m]",
@@ -932,7 +1037,7 @@ describe("resolveSystemExecutionOptions", () => {
         code: "timeout",
       });
       expect(response.models.map((model) => model.model)).toEqual([
-        "claude-fable-5",
+        "claude-fable-5-1",
         "claude-opus-5[1m]",
         "claude-opus-4-8[1m]",
         "claude-opus-4-7[1m]",

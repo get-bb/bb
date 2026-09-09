@@ -21,6 +21,23 @@ describe("buildPiSessionParams", () => {
     });
   });
 
+  it("passes contributed variables into Pi session parameters", () => {
+    expect(
+      buildPiSessionParams({
+        threadId: "bb-thread-1",
+        cwd: "/tmp/worktree",
+        instructionMode: "append",
+        options: {
+          envVars: {
+            POOL_E2E_URL: "http://127.0.0.1:3334/plugins/pool-e2e/auth",
+          },
+        },
+      }).shellEnvOverrides,
+    ).toMatchObject({
+      POOL_E2E_URL: "http://127.0.0.1:3334/plugins/pool-e2e/auth",
+    });
+  });
+
   it("maps the bb reasoning ladder onto Pi thinking levels", () => {
     const params = (reasoningLevel: "none" | "high" | "ultracode") =>
       buildPiSessionParams({

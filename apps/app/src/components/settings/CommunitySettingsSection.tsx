@@ -1,5 +1,6 @@
 import { Button } from "@bb/shared-ui/button";
 import { Icon, type IconName } from "@bb/shared-ui/icon";
+import { cn } from "@bb/shared-ui/lib/utils";
 import {
   SettingsSection,
   SettingsWithControl,
@@ -13,6 +14,7 @@ interface CommunityLinkRowProps {
   description: string;
   href: string;
   icon: IconName;
+  iconClassName?: string;
   label: string;
   openLabel: string;
 }
@@ -21,6 +23,7 @@ function CommunityLinkRow({
   description,
   href,
   icon,
+  iconClassName,
   label,
   openLabel,
 }: CommunityLinkRowProps) {
@@ -36,7 +39,7 @@ function CommunityLinkRow({
           openUrlInExternalBrowser(href);
         }}
       >
-        <Icon name={icon} className="size-3.5 shrink-0" />
+        <Icon name={icon} className={cn("size-3.5 shrink-0", iconClassName)} />
         {openLabel}
         <Icon
           name="ExternalLink"
@@ -58,14 +61,15 @@ export function CommunitySettingsSection() {
           label="Discord"
           description="Join the server for support, feedback, and announcements."
           href={DISCORD_INVITE_URL}
-          icon="Discord"
+          icon="DiscordLogo"
+          iconClassName="text-brand-discord"
           openLabel="Join Discord"
         />
         <CommunityLinkRow
           label="GitHub"
           description="Source code, issues, and releases for the bb project."
           href={GITHUB_REPO_URL}
-          icon="Github"
+          icon="GithubLogo"
           openLabel="View on GitHub"
         />
       </div>

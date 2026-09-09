@@ -8,6 +8,7 @@ import {
 } from "@bb/connect-db";
 import {
   parseCookie,
+  sha256Hex,
   verifyMachineCredential,
   verifySessionCookie,
 } from "./session.js";
@@ -111,16 +112,6 @@ const serverCredentialCache = new Map<
   { value: string | null; expires: number }
 >();
 const SERVER_CRED_TTL_MS = 20_000;
-
-async function sha256Hex(value: string): Promise<string> {
-  const digest = await crypto.subtle.digest(
-    "SHA-256",
-    new TextEncoder().encode(value),
-  );
-  return [...new Uint8Array(digest)]
-    .map((b) => b.toString(16).padStart(2, "0"))
-    .join("");
-}
 
 export async function verifyServerCredential(
   credential: string,

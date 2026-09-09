@@ -560,6 +560,7 @@ export function createRealtimeCacheEffects({
       }
     },
     handleConnected: (event) => {
+      applySystemChanges(["plugins-changed"]);
       if (event.reconnected) {
         invalidateRealtimeQueriesAfterServerReconnect({
           disconnectedAt: event.disconnectedAt,

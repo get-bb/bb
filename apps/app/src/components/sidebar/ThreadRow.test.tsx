@@ -47,6 +47,7 @@ import { splitLayoutAtom } from "@/lib/split-layout/atoms";
 import { SPLIT_LAYOUT_STORAGE_KEY } from "@/lib/split-layout/persistence";
 import { NO_COLLAPSED_CHILD_ACTIVITY } from "@bb/client-core";
 import { sdk } from "@/lib/sdk";
+import { makeThreadListEntry as makeThreadListEntryFixture } from "@bb/test-helpers/domain-fixtures";
 
 vi.mock("@/components/thread/ThreadActionsMenu", () => ({
   ThreadActionsContextMenu: ({ children }: { children: ReactNode }) => (
@@ -59,46 +60,16 @@ vi.mock("@/components/thread/ThreadActionsMenu", () => ({
 function createThread(
   overrides: Partial<ThreadListEntry> = {},
 ): ThreadListEntry {
-  return {
+  return makeThreadListEntryFixture({
     id: "thr_test",
-    projectId: "proj_test",
-    environmentId: null,
-    providerId: "codex",
     title: "Thread",
     titleFallback: "Thread",
-    sectionId: null,
-    status: "idle",
-    parentThreadId: null,
-    sourceThreadId: null,
-    originKind: null,
-    originPluginId: null,
-    visibility: "visible",
-    archivedAt: null,
-    pinnedAt: null,
-    pinSortKey: null,
-    deletedAt: null,
     lastReadAt: 0,
     latestAttentionAt: 1,
     createdAt: 1,
     updatedAt: 1,
-    activity: {
-      activeWorkflowCount: 0,
-      activeBackgroundAgentCount: 0,
-      activeBackgroundCommandCount: 0,
-      activePlanModeCount: 0,
-      activeGoalCount: 0,
-    },
-    hasPendingInteraction: false,
-    environmentHostId: null,
-    environmentName: null,
-    environmentBranchName: null,
-    environmentWorkspaceDisplayKind: "other",
-    runtime: {
-      displayStatus: "idle",
-      hostReconnectGraceExpiresAt: null,
-    },
     ...overrides,
-  };
+  });
 }
 
 const DEFAULT_OPTIONS: ThreadRowOptions = {
@@ -880,6 +851,54 @@ describe("ThreadRow", () => {
     ).toBe("CircleQuestion");
   });
 
+  it("clocks a thread with queued work, and drops the clock once it runs", () => {
+    const { rerenderThreadRow } = renderThreadRow({
+      thread: createThread({ queuedWork: "waiting" }),
+    });
+
+    expect(
+      screen
+        .getByLabelText("Thread has a message waiting to send")
+        .getAttribute("data-icon"),
+    ).toBe("Clock");
+
+    rerenderThreadRow(
+      createThread({
+        queuedWork: "waiting",
+        runtime: { displayStatus: "active", hostReconnectGraceExpiresAt: null },
+      }),
+    );
+    expect(
+      screen.queryByLabelText("Thread has a message waiting to send"),
+    ).toBeNull();
+    expect(
+      screen.getByLabelText("Thread working").getAttribute("data-icon"),
+    ).toBe("Loading");
+  });
+
+  it("gives a failed queued row the same glyph a failed thread gets", () => {
+    renderThreadRow({ thread: createThread({ queuedWork: "failed" }) });
+    const queueFailure = screen.getByLabelText("Queued message failed to send");
+
+    cleanup();
+    renderThreadRow({
+      thread: createThread({
+        status: "error",
+        lastReadAt: 0,
+        latestAttentionAt: 10,
+      }),
+    });
+    const threadFailure = screen.getByLabelText("Unread thread failed");
+
+    expect(queueFailure.getAttribute("data-icon")).toBe("CircleX");
+    expect(threadFailure.getAttribute("data-icon")).toBe(
+      queueFailure.getAttribute("data-icon"),
+    );
+    expect(queueFailure.getAttribute("class")).toBe(
+      threadFailure.getAttribute("class"),
+    );
+  });
+
   it("keeps the parent-thread disclosure caret visible on mobile", () => {
     renderThreadRow({
       thread: createThread({ title: "Parent thread" }),
@@ -912,6 +931,34 @@ describe("ThreadRow", () => {
         .getAttribute("data-sidebar-hover-actions-mobile"),
     ).toBe("always");
   });
+
+  it.each([
+    { isCollapsed: true, expectedHoverReveal: false },
+    { isCollapsed: false, expectedHoverReveal: true },
+  ])(
+    "sets parent-thread disclosure hover reveal to $expectedHoverReveal when collapsed is $isCollapsed",
+    ({ expectedHoverReveal, isCollapsed }) => {
+      renderThreadRow({
+        thread: createThread({ title: "Parent thread" }),
+        options: {
+          kind: "parent",
+          depth: 1,
+          isCompact: false,
+          isCollapsed,
+          childCount: 1,
+          childActivity: NO_COLLAPSED_CHILD_ACTIVITY,
+          onToggleCollapsed: vi.fn(),
+        },
+      });
+
+      const toggle = screen.getByRole("button", {
+        name: `${isCollapsed ? "Expand" : "Collapse"} Parent thread threads`,
+      });
+      expect(toggle.classList.contains("bb-sidebar-hover-actions")).toBe(
+        expectedHoverReveal,
+      );
+    },
+  );
 
   it("shows its Command shortcut in place of an active indicator", () => {
     renderThreadRow({

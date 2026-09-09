@@ -335,7 +335,7 @@ export function WebViewSpikeScreen() {
           allowsInlineMediaPlayback
           mediaPlaybackRequiresUserAction={false}
           mediaCapturePermissionGrantType={grantType}
-          allowsBackForwardNavigationGestures
+          allowsBackForwardNavigationGestures={false}
           allowFileAccessFromFileURLs
           incognito={incognito}
           cacheEnabled={cacheEnabled}

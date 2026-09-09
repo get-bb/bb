@@ -10,6 +10,14 @@ interface KeyboardSettingsCacheTransaction {
   previous: SystemConfigResponse | undefined;
 }
 
+export function markSystemConfigStale(queryClient: QueryClient): void {
+  void queryClient.invalidateQueries({
+    exact: true,
+    queryKey: systemConfigQueryKey(),
+    refetchType: "none",
+  });
+}
+
 interface BeginKeyboardSettingsCacheTransactionArgs {
   overrides: AppKeybindingOverrides;
   queryClient: QueryClient;

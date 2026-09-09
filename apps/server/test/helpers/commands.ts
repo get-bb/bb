@@ -65,32 +65,6 @@ export function listQueuedCommands(
     .map((queued) => hostDaemonRpcCommandSchema.parse(queued.command));
 }
 
-type ManagedWorktreeEnvironmentProvisionCommand = Extract<
-  HostDaemonCommand,
-  { type: "environment.provision"; workspaceProvisionType: "managed-worktree" }
->;
-
-type ManagedWorktreeEnvironmentProvisionLiveCommand =
-  QueuedCommand<ManagedWorktreeEnvironmentProvisionCommand>;
-
-function isManagedWorktreeEnvironmentProvisionLiveCommand(
-  queued: QueuedCommand,
-): queued is ManagedWorktreeEnvironmentProvisionLiveCommand {
-  return (
-    queued.command.type === "environment.provision" &&
-    queued.command.workspaceProvisionType === "managed-worktree"
-  );
-}
-
-export function requireManagedWorktreeEnvironmentProvisionLiveCommand(
-  queued: QueuedCommand,
-): ManagedWorktreeEnvironmentProvisionLiveCommand {
-  if (isManagedWorktreeEnvironmentProvisionLiveCommand(queued)) {
-    return queued;
-  }
-  throw new Error("Expected managed-worktree environment.provision command");
-}
-
 export function listQueuedThreadCommands(
   harness: TestAppHarness,
   type: HostDaemonCommand["type"],
@@ -130,6 +104,12 @@ interface RegisterTestHostRpcCaptureArgs {
   hostId: string;
   sessionId: string;
   queueBranchOptions?: boolean;
+  onEnvironmentHook?: (
+    command: Extract<HostDaemonRpcCommand, { type: "environment.hook.run" }>,
+  ) => Promise<void>;
+  onEnvironmentHookCancel?: (
+    operationId: string,
+  ) => Promise<void | { status: "unknown" | "terminated" }>;
   gitBranchOptionsResult?: HostDaemonOnlineRpcResult<"host.list_branch_options">;
   onListBranchOptions?: (
     command: Extract<
@@ -143,7 +123,7 @@ interface RegisterTestHostRpcCaptureArgs {
   ) => void;
 }
 
-interface TestHostRpcSocket {
+export interface TestHostRpcSocket {
   close(code?: number, reason?: string): void;
   send(data: string): void;
 }
@@ -273,6 +253,7 @@ function respondToProviderModelListCommand(
 
 function buildDefaultGitSourceInspectionResult(): HostDaemonOnlineRpcResult<"host.inspect_git_source"> {
   return {
+    isWorktree: false,
     checkout: {
       kind: "branch",
       branchName: "main",
@@ -352,10 +333,15 @@ function nextTestRpcCursor(
   return nextCursor;
 }
 
+/**
+ * Registers the capturing daemon socket for a host and returns it, so a test
+ * that reconnects a host can hand the same socket to the real
+ * `onDaemonSocketOpen` instead of replacing the capture with a stub.
+ */
 export function registerTestHostRpcCapture(
   deps: Pick<TestAppHarness, "db" | "hub">,
   args: RegisterTestHostRpcCaptureArgs,
-): void {
+): TestHostRpcSocket {
   testRpcCursorByHost.delete(args.hostId);
   for (let index = pendingHostRpcRequests.length - 1; index >= 0; index -= 1) {
     const queued = pendingHostRpcRequests[index];
@@ -388,6 +374,47 @@ export function registerTestHostRpcCapture(
           }),
           sessionId: args.sessionId,
         });
+        return;
+      }
+      if (
+        command.type === "environment.hook.run" ||
+        command.type === "environment.hook.cancel"
+      ) {
+        void Promise.resolve()
+          .then(() =>
+            command.type === "environment.hook.run"
+              ? args.onEnvironmentHook?.(command)
+              : args.onEnvironmentHookCancel?.(command.operationId),
+          )
+          .then(
+            (result) =>
+              deps.hub.recordHostOnlineRpcResponse({
+                message: hostDaemonOnlineRpcResponseMessageSchema.parse({
+                  type: "host-rpc.response",
+                  requestId: message.requestId,
+                  commandType: command.type,
+                  ok: true,
+                  result:
+                    command.type === "environment.hook.cancel"
+                      ? (result ?? { status: "terminated" })
+                      : {},
+                }),
+                sessionId: args.sessionId,
+              }),
+            (error: unknown) =>
+              deps.hub.recordHostOnlineRpcResponse({
+                message: hostDaemonOnlineRpcResponseMessageSchema.parse({
+                  type: "host-rpc.response",
+                  requestId: message.requestId,
+                  commandType: command.type,
+                  ok: false,
+                  errorCode: "setup_script_failed",
+                  errorMessage:
+                    error instanceof Error ? error.message : String(error),
+                }),
+                sessionId: args.sessionId,
+              }),
+          );
         return;
       }
       if (respondToRuntimeWorkspaceFileCommand(deps, args, message)) {
@@ -454,6 +481,7 @@ export function registerTestHostRpcCapture(
     },
   };
   deps.hub.registerDaemon(args.sessionId, args.hostId, socket);
+  return socket;
 }
 
 function removePendingHostRpcRequest(requestId: string): void {

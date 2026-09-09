@@ -232,6 +232,10 @@ describe("acpProviderDeclaration", () => {
       acpLaunchSpec: {
         command: "cursor-agent",
         args: ["acp"],
+        modelCli: {
+          listArgs: ["--list-models"],
+          primaryModels: [],
+        },
       },
     });
     expect(byId.get("acp-grok")?.experimental_bridgeOptions).toMatchObject({

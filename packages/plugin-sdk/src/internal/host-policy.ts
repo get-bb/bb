@@ -7,6 +7,7 @@ import {
 import { RESERVED_BB_CLI_COMMANDS } from "@bb/domain/plugin-cli";
 import { PROVIDER_FORK_VALUES } from "@bb/domain/provider-fork";
 import {
+  jsonValueSchema,
   normalizeProviderNativeRoots,
   providerNativeRootsInputSchema,
   providerNativeRootsSchema,
@@ -19,10 +20,14 @@ import type {
   PluginAiServiceKind,
   PluginCliExecutionResult,
   PluginCliOutputLimitError,
+  PluginEnvironmentProviderDeclaration,
+  PluginHookHandler,
+  PluginHookName,
   PluginMentionTrigger,
   PluginProviderCapabilities,
   PluginProviderComposerAction,
   PluginProviderDeclaration,
+  ExperimentalPluginProviderEnvEntry,
   PluginProviderExtensionKindDeclaration,
   PluginProviderFallbackModel,
   PluginProviderModelCatalogScope,
@@ -37,6 +42,7 @@ import type { JsonValue } from "../json-value.js";
 import type {
   PluginRpcMethodContract,
   StandardSchemaV1,
+  StandardSchemaV1Issue,
 } from "../rpc-contract.js";
 
 /**
@@ -81,7 +87,7 @@ export const PLUGIN_HTTP_METHODS: ReadonlySet<string> = new Set([
 ]);
 
 // Rpc method names become URL path segments.
-export const RPC_METHOD_PATTERN = /^[a-zA-Z0-9_-]+$/;
+export const RPC_METHOD_PATTERN = /^[a-zA-Z0-9_-]+(?:\.[a-zA-Z0-9_-]+)*$/;
 
 // Service/schedule names appear in status text and plugin_schedules rows.
 export const BACKGROUND_NAME_PATTERN = /^[a-zA-Z0-9_-]+$/;
@@ -91,6 +97,52 @@ export const CLI_COMMAND_NAME_PATTERN = /^[a-z0-9-]+$/;
 
 // Agent tool names are shown to (and called by) the model.
 export const AGENT_TOOL_NAME_PATTERN = /^[a-zA-Z0-9_-]+$/;
+export const PLUGIN_PROVIDER_ENV_NAME_PATTERN = /^[A-Z_][A-Z0-9_]*$/;
+export const PLUGIN_PROVIDER_ENV_MAX_ENTRIES = 32;
+
+const pluginProviderEnvEntrySchema = z
+  .object({
+    name: z.string().regex(PLUGIN_PROVIDER_ENV_NAME_PATTERN),
+    value: z.union([
+      z.string(),
+      z.object({ serverPath: z.string().startsWith("/") }).strict(),
+    ]),
+    reason: z.string(),
+    secret: z.boolean(),
+  })
+  .strict();
+
+const pluginProviderEnvEntriesSchema = z
+  .array(pluginProviderEnvEntrySchema)
+  .max(PLUGIN_PROVIDER_ENV_MAX_ENTRIES)
+  .superRefine((entries, context) => {
+    const names = new Set<string>();
+    for (let index = 0; index < entries.length; index += 1) {
+      const name = entries[index]?.name;
+      if (name !== undefined && names.has(name)) {
+        context.addIssue({
+          code: "custom",
+          path: [index, "name"],
+          message: "must be unique within one resolver",
+        });
+      }
+      if (name !== undefined) names.add(name);
+    }
+  });
+
+export function validatePluginProviderEnvEntries(
+  value: unknown,
+): ExperimentalPluginProviderEnvEntry[] {
+  const parsed = pluginProviderEnvEntriesSchema.safeParse(value);
+  if (!parsed.success) {
+    const issue = parsed.error.issues[0];
+    const path = issue?.path.length ? `[${issue.path.join(".")}] ` : "";
+    throw new Error(
+      `provider environment contribution ${path}${issue?.message ?? "is invalid"}`,
+    );
+  }
+  return parsed.data;
+}
 
 export const PLUGIN_AGENT_STATIC_INSTRUCTIONS_MAX_CHARS = 4096;
 /** Status labels ride on every tool-call event and share one timeline row. */
@@ -116,6 +168,16 @@ const settingsBaseFields = {
   description: z.string().min(1).optional(),
 };
 
+const stringSettingSchemaSchema = z.custom<StandardSchemaV1<string, string>>(
+  (value) => isStandardSchema(value),
+);
+const booleanSettingSchemaSchema = z.custom<StandardSchemaV1<boolean, boolean>>(
+  (value) => isStandardSchema(value),
+);
+const numberSettingSchemaSchema = z.custom<StandardSchemaV1<number, number>>(
+  (value) => isStandardSchema(value),
+);
+
 const settingDescriptorSchema = z.discriminatedUnion("type", [
   z
     .object({
@@ -123,6 +185,7 @@ const settingDescriptorSchema = z.discriminatedUnion("type", [
       ...settingsBaseFields,
       secret: z.literal(true).optional(),
       experimental_multiline: z.boolean().optional(),
+      experimental_schema: stringSettingSchemaSchema.optional(),
       default: z.string().optional(),
     })
     .strict()
@@ -143,7 +206,16 @@ const settingDescriptorSchema = z.discriminatedUnion("type", [
     .object({
       type: z.literal("boolean"),
       ...settingsBaseFields,
+      experimental_schema: booleanSettingSchemaSchema.optional(),
       default: z.boolean().optional(),
+    })
+    .strict(),
+  z
+    .object({
+      type: z.literal("number"),
+      ...settingsBaseFields,
+      experimental_schema: numberSettingSchemaSchema.optional(),
+      default: z.number().finite().optional(),
     })
     .strict(),
   z
@@ -151,6 +223,7 @@ const settingDescriptorSchema = z.discriminatedUnion("type", [
       type: z.literal("select"),
       ...settingsBaseFields,
       options: z.array(z.string().min(1)).min(1),
+      experimental_schema: stringSettingSchemaSchema.optional(),
       default: z.string().optional(),
     })
     .strict(),
@@ -158,6 +231,7 @@ const settingDescriptorSchema = z.discriminatedUnion("type", [
     .object({
       type: z.literal("project"),
       ...settingsBaseFields,
+      experimental_schema: stringSettingSchemaSchema.optional(),
       default: z.string().optional(),
     })
     .strict(),
@@ -200,10 +274,46 @@ export function registerSettingDescriptors(
         `default for setting "${key}" must be one of its options`,
       );
     }
+    if (descriptor.default !== undefined) {
+      const errors = validateSettingsUpdate(
+        { [key]: descriptor },
+        { [key]: descriptor.default },
+      );
+      if (errors.length > 0) {
+        throw new Error(`invalid default for setting "${key}": ${errors[0]}`);
+      }
+    }
     validated[key] = descriptor;
   }
   Object.assign(target, validated);
   return validated;
+}
+
+function settingSchemaError<T extends string | number | boolean>(
+  key: string,
+  schema: StandardSchemaV1<T, T> | undefined,
+  value: T,
+): string | null {
+  if (schema === undefined) return null;
+  try {
+    const result = schema["~standard"].validate(value);
+    if (result instanceof Promise) {
+      return `schema for setting "${key}" must validate synchronously`;
+    }
+    if (result.issues !== undefined) {
+      return (
+        result.issues[0]?.message ??
+        `schema for setting "${key}" rejected the value`
+      );
+    }
+    if (result.value !== value) {
+      return `schema for setting "${key}" must not transform its value`;
+    }
+    return null;
+  } catch (error) {
+    const detail = error instanceof Error ? error.message : String(error);
+    return `schema for setting "${key}" failed: ${detail}`;
+  }
 }
 
 /** Validate a settings update. `null` means unset. */
@@ -222,6 +332,30 @@ export function validateSettingsUpdate(
     if (descriptor.type === "boolean") {
       if (typeof value !== "boolean") {
         errors.push(`setting "${key}" expects a boolean`);
+        continue;
+      }
+      const validationError = settingSchemaError(
+        key,
+        descriptor.experimental_schema,
+        value,
+      );
+      if (validationError !== null) {
+        errors.push(validationError);
+      }
+      continue;
+    }
+    if (descriptor.type === "number") {
+      if (typeof value !== "number" || !Number.isFinite(value)) {
+        errors.push(`setting "${key}" expects a finite number`);
+        continue;
+      }
+      const validationError = settingSchemaError(
+        key,
+        descriptor.experimental_schema,
+        value,
+      );
+      if (validationError !== null) {
+        errors.push(validationError);
       }
       continue;
     }
@@ -233,6 +367,15 @@ export function validateSettingsUpdate(
       errors.push(
         `setting "${key}" must be one of: ${descriptor.options.join(", ")}`,
       );
+      continue;
+    }
+    const validationError = settingSchemaError(
+      key,
+      descriptor.experimental_schema,
+      value,
+    );
+    if (validationError !== null) {
+      errors.push(validationError);
     }
   }
   return errors;
@@ -1517,12 +1660,35 @@ export function readRpcMethodContract(
 
 /** Duck-typed zod detection: plugin sources may carry their own zod copy,
  * so instanceof is useless — anything with safeParse is treated as zod. */
-export function isZodSchemaLike(value: unknown): boolean {
+type ZodSchemaLike = {
+  safeParse: z.ZodType["safeParse"];
+  toJSONSchema?: z.ZodType["toJSONSchema"];
+};
+
+export function isZodSchemaLike(value: unknown): value is ZodSchemaLike {
   return (
     typeof value === "object" &&
     value !== null &&
     typeof (value as { safeParse?: unknown }).safeParse === "function"
   );
+}
+
+function standardSchemaToJsonSchema(schema: StandardSchemaV1): unknown {
+  if (isZodSchemaLike(schema)) {
+    return zodSchemaToJsonSchema(schema);
+  }
+  const convertible = schema as { toJSONSchema?: unknown };
+  if (typeof convertible.toJSONSchema === "function") {
+    return (convertible.toJSONSchema as () => unknown)();
+  }
+  throw new Error("the validator exposes no JSON Schema conversion");
+}
+
+export function zodSchemaToJsonSchema(schema: ZodSchemaLike): unknown {
+  if (typeof schema.toJSONSchema === "function") {
+    return schema.toJSONSchema({ io: "input" });
+  }
+  return z.toJSONSchema(schema as z.ZodType, { io: "input" });
 }
 
 const SINGLE_SCHEMA_KEYWORDS = [
@@ -1832,6 +1998,28 @@ export function parsePluginAgentToolPresentation(
 }
 
 /** Compact issue summary from a (possibly foreign-instance) zod error. */
+export function summarizeStandardIssues(
+  issues: readonly StandardSchemaV1Issue[],
+): string {
+  if (issues.length === 0) return "invalid";
+  return issues
+    .map((issue) => {
+      const segments =
+        issue.path === undefined
+          ? []
+          : Array.isArray(issue.path)
+            ? issue.path.map((segment) =>
+                typeof segment === "object" && segment !== null
+                  ? String(segment.key)
+                  : String(segment),
+              )
+            : [String(issue.path)];
+      const path = segments.length > 0 ? segments.join(".") : "(input)";
+      return `${path}: ${issue.message}`;
+    })
+    .join("; ");
+}
+
 export function summarizeParseIssues(error: unknown): string {
   const issues = (
     error as { issues?: Array<{ path?: PropertyKey[]; message?: string }> }
@@ -2013,3 +2201,222 @@ export function agentToolIconRefusalMessage(
 export function providerWithoutBridgeMessage(providerId: string): string {
   return `provider "${providerId}" has no bridge to run on: this plugin declares no "bb.host" entry in its manifest`;
 }
+
+/**
+ * Files a hook handler under its key in a per-hook record.
+ *
+ * The record is a mapped type over the hook-name union, so writing to it
+ * through a generic key is not expressible soundly in TypeScript: this call
+ * site knows `handler` matches `hook`, but the checker only knows both range
+ * over the union and so demands their intersection. The erasure is confined to
+ * this one function; every READ is sound, because a slot is typed for its own
+ * hook and the runner builds the context for the hook it read the handler from.
+ *
+ * Shared by the real host (`plugin-api.ts`) and the fake one so both register
+ * hooks by the same rule, which is the point of every other helper here.
+ */
+export function storePluginHook<K extends PluginHookName>(
+  records: { [N in PluginHookName]: PluginHookHandler<N> | null },
+  hook: K,
+  handler: PluginHookHandler<K>,
+): void {
+  (records as Record<PluginHookName, unknown>)[hook] = handler;
+}
+
+/** The refusal a second handler for one hook from one plugin gets. */
+export function pluginHookAlreadyRegisteredMessage(
+  hook: PluginHookName,
+): string {
+  return `a "${hook}" hook handler is already registered by this plugin`;
+}
+
+export const ENVIRONMENT_PROVIDER_ID_PATTERN = /^[a-z0-9][a-z0-9-]{1,63}$/;
+export const ENVIRONMENT_PROVIDER_DISPLAY_NAME_MAX_CHARS = 80;
+
+export const ENVIRONMENT_PROVIDER_REQUIREMENT_NAMES = [
+  "projectCheckout",
+  "gitCheckout",
+  "gitRemote",
+  "projectless",
+] as const;
+
+export type NormalizedPluginEnvironmentProviderRequirements = {
+  [K in (typeof ENVIRONMENT_PROVIDER_REQUIREMENT_NAMES)[number]]: boolean;
+};
+
+export interface NormalizedPluginEnvironmentProvider {
+  id: string;
+  displayName: string;
+  icon: string | null;
+  requires: NormalizedPluginEnvironmentProviderRequirements;
+  inputs: StandardSchemaV1 | null;
+  inputsJsonSchema: JsonValue | null;
+  availability: NonNullable<
+    PluginEnvironmentProviderDeclaration["availability"]
+  > | null;
+  validate: NonNullable<
+    PluginEnvironmentProviderDeclaration["validate"]
+  > | null;
+  create: PluginEnvironmentProviderDeclaration["create"];
+  remove: PluginEnvironmentProviderDeclaration["remove"];
+  policy: import("../environment-provider.js").PluginEnvironmentProviderPolicy;
+}
+
+export function validatePluginEnvironmentProviderDeclaration(
+  declaration: PluginEnvironmentProviderDeclaration,
+): NormalizedPluginEnvironmentProvider {
+  if (typeof declaration !== "object" || declaration === null) {
+    throw new Error("environment provider declaration must be an object");
+  }
+  const id = declaration.id;
+  if (typeof id !== "string" || !ENVIRONMENT_PROVIDER_ID_PATTERN.test(id)) {
+    throw new Error(
+      `invalid environment provider id ${JSON.stringify(id)} — use 2-64 lowercase letters, digits, or "-", starting with a letter or digit`,
+    );
+  }
+  const displayName =
+    typeof declaration.displayName === "string"
+      ? declaration.displayName.trim()
+      : "";
+  if (
+    displayName.length === 0 ||
+    displayName.length > ENVIRONMENT_PROVIDER_DISPLAY_NAME_MAX_CHARS
+  ) {
+    throw new Error(
+      `environment provider "${id}" needs a displayName of 1-${ENVIRONMENT_PROVIDER_DISPLAY_NAME_MAX_CHARS} characters`,
+    );
+  }
+  const icon =
+    declaration.icon === undefined
+      ? null
+      : z.string().min(1).parse(declaration.icon).trim();
+  if (icon !== null) {
+    if (isPluginOwnedIconPath(icon))
+      validateProviderRelativePath(icon, `"${id}" icon`);
+    else if (!isNamespacedGlyph(icon) && /[/\\]/u.test(icon))
+      throw new Error(
+        `environment provider "${id}" icon must be a glyph, declared icon, or plugin-relative path`,
+      );
+  }
+  if (icon !== null && icon.length === 0) {
+    throw new Error(`environment provider "${id}" declares an empty icon`);
+  }
+  const requires = normalizeEnvironmentProviderRequirements(id, declaration);
+  const inputs = normalizeEnvironmentProviderInputs(id, declaration);
+  if (
+    typeof declaration.create !== "function" ||
+    typeof declaration.remove !== "function"
+  ) {
+    throw new Error(
+      `environment provider "${id}" must declare create and remove functions`,
+    );
+  }
+  if (
+    declaration.validate !== undefined &&
+    typeof declaration.validate !== "function"
+  ) {
+    throw new Error(
+      `environment provider "${id}" declares a validate that is not a function`,
+    );
+  }
+  if (
+    declaration.availability !== undefined &&
+    typeof declaration.availability !== "function"
+  ) {
+    throw new Error(
+      `environment provider "${id}" declares availability that is not a function`,
+    );
+  }
+  return {
+    id,
+    displayName,
+    icon,
+    requires,
+    inputs: inputs === null ? null : inputs.schema,
+    inputsJsonSchema: inputs === null ? null : inputs.jsonSchema,
+    availability: declaration.availability ?? null,
+    validate: declaration.validate ?? null,
+    create: declaration.create,
+    remove: declaration.remove,
+    policy: environmentProviderPolicySchema.parse(declaration.policy ?? {}),
+  };
+}
+
+function normalizeEnvironmentProviderInputs(
+  id: string,
+  declaration: PluginEnvironmentProviderDeclaration,
+): { schema: StandardSchemaV1; jsonSchema: JsonValue } | null {
+  const inputs = declaration.inputs;
+  if (inputs === undefined) {
+    return null;
+  }
+  if (!isStandardSchema(inputs)) {
+    throw new Error(
+      `environment provider "${id}" declares an inputs that is not a Standard Schema v1 validator`,
+    );
+  }
+  let converted: unknown;
+  try {
+    converted = JSON.parse(JSON.stringify(standardSchemaToJsonSchema(inputs)));
+  } catch (error) {
+    throw new Error(
+      `environment provider "${id}" declares an inputs validator that cannot be published as JSON Schema (${
+        error instanceof Error ? error.message : String(error)
+      }) — declare it with zod 4 or a validator exposing toJSONSchema()`,
+    );
+  }
+  const jsonSchema = jsonValueSchema.safeParse(converted);
+  if (!jsonSchema.success) {
+    throw new Error(
+      `environment provider "${id}" declares an inputs schema whose JSON Schema is not JSON-serializable`,
+    );
+  }
+  return { schema: inputs, jsonSchema: jsonSchema.data };
+}
+
+function normalizeEnvironmentProviderRequirements(
+  id: string,
+  declaration: PluginEnvironmentProviderDeclaration,
+): NormalizedPluginEnvironmentProviderRequirements {
+  const requires = declaration.requires ?? {};
+  if (
+    typeof requires !== "object" ||
+    requires === null ||
+    Array.isArray(requires)
+  ) {
+    throw new Error(
+      `environment provider "${id}" declares a requires that is not an object`,
+    );
+  }
+  const normalized = {} as NormalizedPluginEnvironmentProviderRequirements;
+  for (const name of ENVIRONMENT_PROVIDER_REQUIREMENT_NAMES) {
+    const value = requires[name];
+    if (value !== undefined && typeof value !== "boolean") {
+      throw new Error(
+        `environment provider "${id}" declares a requires.${name} that is not a boolean`,
+      );
+    }
+    normalized[name] = value === true;
+  }
+  if (normalized.gitCheckout) {
+    normalized.projectCheckout = true;
+  }
+  if (
+    normalized.projectless &&
+    (normalized.projectCheckout || normalized.gitRemote)
+  ) {
+    throw new Error(
+      `environment provider "${id}" declares requires.projectless together with a project requirement — a projectless thread has no checkout or remote`,
+    );
+  }
+  return normalized;
+}
+
+const environmentProviderPolicySchema = z
+  .object({
+    retireGraceMs: z.number().int().nonnegative().nullable().default(300_000),
+    pathKeys: z.enum(["per-thread", "per-attempt"]).default("per-thread"),
+  })
+  .strict();
+
+export const MACHINE_PROVIDER_REQUIREMENT_NAMES = ["gitRemote"] as const;

@@ -421,6 +421,34 @@ describe("acp delta translation (moved from the legacy adapter suite)", () => {
     ]);
   });
 
+  it("translates a skipped maintenance prompt into a warning and a clean turn end", () => {
+    const harness = createHarness();
+    harness.translate(compactionStartedEvent());
+    const turnId = harness.openTurnId();
+
+    expect(
+      harness.translate(
+        compactionCompletedEvent({
+          status: "skipped",
+          detail: "Compaction failed: Nothing to compact (session too small)",
+        }),
+      ),
+    ).toEqual([
+      expect.objectContaining({
+        type: "provider/warning",
+        scope: turnScope(turnId),
+        category: "compaction-skipped",
+        summary: "Context compaction skipped",
+        details: "Compaction failed: Nothing to compact (session too small)",
+      }),
+      expect.objectContaining({
+        type: "turn/completed",
+        scope: turnScope(turnId),
+        status: "completed",
+      }),
+    ]);
+  });
+
   it("completes streamed items before ending a compaction turn", () => {
     const harness = createHarness();
     harness.translate(compactionStartedEvent());

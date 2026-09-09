@@ -43,6 +43,7 @@ function registerExtensionProvider(
 ) {
   harness.deps.providerRegistry.register({
     ...buildPluginProviderRegistration({
+      iconHash: null,
       available: true,
       pluginId: args.pluginId,
       declaration: validatePluginProviderDeclaration({

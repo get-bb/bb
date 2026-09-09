@@ -81,6 +81,11 @@ export const APP_COMMAND_GROUPS: readonly AppCommandGroup[] = [
         "Search and run bb commands from the keyboard.",
       ),
       command("window.new", "New window", "Open another bb desktop window."),
+      command(
+        "app.back",
+        "Back to app",
+        "Return from Settings or Extensions to the app.",
+      ),
       command("settings.open", "Open settings", "Open bb settings."),
       command(
         "settings.openServers",
@@ -143,6 +148,11 @@ export const APP_COMMAND_GROUPS: readonly AppCommandGroup[] = [
         "logs.openServerDaemon",
         "Open server and daemon logs",
         "Open the desktop log viewer for the bb server and host daemon.",
+      ),
+      command(
+        "notifications.open",
+        "Show all notifications",
+        "Open the notification center to read and clear past notifications.",
       ),
     ],
   },

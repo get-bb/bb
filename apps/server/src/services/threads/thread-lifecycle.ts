@@ -1,3 +1,8 @@
+import { revokeThreadDesktopBrowserControl } from "../desktop-browsers.js";
+import {
+  providerLaunchHasPendingWork,
+  refreshProviderRetirement,
+} from "../environments/provider-orchestration.js";
 import {
   and,
   eq,
@@ -40,11 +45,6 @@ import type {
   LoggedPendingInteractionWorkSessionDeps,
   LoggedWorkSessionDeps,
 } from "../../types.js";
-import {
-  requestEnvironmentCleanup,
-  requestEnvironmentCleanupAdvance,
-  runEnvironmentCleanupAdvance,
-} from "../environments/environment-cleanup-internal.js";
 import { cancelEnvironmentProvisioningForThreadStopInTransaction } from "../environments/environment-provisioning-cancellation.js";
 import {
   emptyCommandResultSideEffects,
@@ -89,6 +89,7 @@ import {
   startLiveHostCommand,
 } from "../hosts/live-command.js";
 import { createAsyncDeduper } from "../lib/async-deduper.js";
+import { requestQueuedMessageDispatch } from "./queued-message-dispatch.js";
 import { throwThreadNotWritable } from "../lib/lifecycle-api-errors.js";
 import { NotificationBuffer } from "../lib/notification-buffer.js";
 import { queueChildThreadTurnNotificationBestEffort } from "./child-thread-notifications.js";
@@ -97,6 +98,7 @@ import {
   forgetActiveThreadProvisionContext,
   getActiveThreadProvisionContext,
 } from "./thread-provisioning-active-context.js";
+import { cancelEnvironmentProviderLaunch } from "./thread-environment-providers.js";
 import { hasProvisioningTimelineRow } from "./thread-provisioning-context.js";
 import { isPreStartThreadStatus } from "./thread-status.js";
 import { settleDanglingBackgroundTasksForStoppedThreadInTransaction } from "./background-task-reconciliation.js";
@@ -216,6 +218,7 @@ interface RequestThreadStopForCurrentStateThread {
 }
 
 interface RequestPreStartThreadStopResult {
+  abandonedProvider: { environmentProviderId: string } | null;
   cancelHostId: string | null;
   environmentId: string | null;
   finalized: boolean;
@@ -268,6 +271,7 @@ interface InterruptActiveThreadsResult {
 interface ReconcileDaemonReportedThreadsArgs {
   activeThreadIds: readonly string[];
   hostId: string;
+  sameDaemonInstance: boolean;
 }
 
 interface DispatchSettledArchivedThreadProviderArchiveCommandArgs {
@@ -467,9 +471,6 @@ function appendProvisioningInterruptedEventInTransaction(
     return;
   }
   const environmentId = context.state.environmentId ?? thread.environmentId;
-  if (environmentId === null) {
-    return;
-  }
   if (!hasProvisioningTimelineRow(context)) {
     return;
   }
@@ -746,6 +747,12 @@ function settleThreadCommandFailure(
   if (!thread || thread.deletedAt !== null) {
     return emptyCommandResultSideEffects();
   }
+  if (
+    args.command.type === "turn.submit" &&
+    args.report.errorCode === "command_timeout"
+  ) {
+    return emptyCommandResultSideEffects();
+  }
   if (hasTerminalClientTurnRequestEvent(args.deps, args.command)) {
     return emptyCommandResultSideEffects();
   }
@@ -820,12 +827,6 @@ export function settleThreadStartCommandResult(
     finalizeStoppedThreadInTransaction(args.deps, {
       threadId: currentThread.id,
     });
-    postCommitActions.push({
-      run: (deps) =>
-        runEnvironmentCleanupAdvance(deps, {
-          environmentId: args.command.environmentId,
-        }),
-    });
     return { postCommitActions };
   }
   if (
@@ -850,9 +851,10 @@ export function settleThreadStartCommandResult(
       if (shouldAutoSendQueuedMessagesAfterThreadStart(args.command)) {
         postCommitActions.push({
           run: async (deps) => {
-            const { runQueuedMessageAutoSendForThread } =
-              await import("./queued-messages.js");
-            await runQueuedMessageAutoSendForThread(deps, {
+            const { runQueuedMessageDispatch } =
+              await import("./queued-message-dispatch.js");
+            await runQueuedMessageDispatch(deps, {
+              kind: "thread-ready",
               threadId: currentThread.id,
             });
           },
@@ -958,16 +960,7 @@ export function settleThreadStopCommandResult(
     finalizeStoppedThreadInTransaction(args.deps, {
       threadId: args.command.threadId,
     });
-    return {
-      postCommitActions: [
-        {
-          run: (deps) =>
-            runEnvironmentCleanupAdvance(deps, {
-              environmentId: args.command.environmentId,
-            }),
-        },
-      ],
-    };
+    return emptyCommandResultSideEffects();
   }
 
   finalizeStoppedThreadInTransaction(args.deps, {
@@ -985,12 +978,6 @@ export function settleThreadStopCommandResult(
             threadId: args.command.threadId,
           });
         },
-      },
-      {
-        run: (deps) =>
-          runEnvironmentCleanupAdvance(deps, {
-            environmentId: args.command.environmentId,
-          }),
       },
     ],
   };
@@ -1199,6 +1186,14 @@ function requestPreStartThreadStop(
   deps: RequestThreadStopForCurrentStateDeps,
   thread: RequestThreadStopForCurrentStateThread,
 ): void {
+  // Stopping a thread abandons the provisioning anything was waiting on, so
+  // those waits end here. This runs outside the transaction below because
+  // clearing a wait notifies, and it runs first so no row is left waiting on
+  // provisioning by an early return inside it.
+  requestQueuedMessageDispatch(deps, {
+    kind: "provisioning-ended",
+    threadId: thread.id,
+  });
   const notificationBuffer = new NotificationBuffer();
   const result: RequestPreStartThreadStopResult = deps.db.transaction(
     (tx) => {
@@ -1209,7 +1204,12 @@ function requestPreStartThreadStop(
       };
       const currentThread = getThread(tx, thread.id);
       if (!currentThread) {
-        return { cancelHostId: null, environmentId: null, finalized: true };
+        return {
+          abandonedProvider: null,
+          cancelHostId: null,
+          environmentId: null,
+          finalized: true,
+        };
       }
 
       const hasProvisioningContext =
@@ -1221,6 +1221,7 @@ function requestPreStartThreadStop(
         !hasProvisioningContext
       ) {
         return {
+          abandonedProvider: null,
           cancelHostId: null,
           environmentId: currentThread.environmentId,
           finalized: false,
@@ -1233,6 +1234,15 @@ function requestPreStartThreadStop(
           threadId: currentThread.id,
         });
       }
+      const abandonedContext = hasProvisioningContext
+        ? getActiveThreadProvisionContext(currentThread.id)
+        : null;
+      const abandonedIntent = abandonedContext?.request.environmentIntent;
+      const abandonedProvider =
+        abandonedIntent?.type === "provider" &&
+        abandonedContext?.state.environmentId === null
+          ? { environmentProviderId: abandonedIntent.environmentProviderId }
+          : null;
       if (hasProvisioningContext) {
         appendProvisioningInterruptedEventInTransaction(txDeps, currentThread);
       }
@@ -1250,6 +1260,7 @@ function requestPreStartThreadStop(
             });
       if (cancellation === "awaiting_host_cancel" && environment !== null) {
         return {
+          abandonedProvider,
           cancelHostId: environment.hostId,
           environmentId: environment.id,
           finalized: false,
@@ -1259,17 +1270,27 @@ function requestPreStartThreadStop(
       finalizeStoppedThreadInTransaction(txDeps, {
         threadId: currentThread.id,
       });
-      return { cancelHostId: null, environmentId, finalized: true };
+      return {
+        abandonedProvider,
+        cancelHostId: null,
+        environmentId,
+        finalized: true,
+      };
     },
     { behavior: "immediate" },
   );
   notificationBuffer.flushInto(deps.hub);
+  if (result.abandonedProvider !== null) {
+    cancelEnvironmentProviderLaunch(deps, {
+      ...result.abandonedProvider,
+      threadId: thread.id,
+    });
+  }
 
   if (!result.finalized && result.environmentId && result.cancelHostId) {
-    requestEnvironmentCleanup(deps, { environmentId: result.environmentId });
     startLiveHostCommand(deps, {
       command: {
-        type: "environment.provision.cancel",
+        type: "environment.attach.cancel",
         environmentId: result.environmentId,
       },
       hostId: result.cancelHostId,
@@ -1286,13 +1307,6 @@ function requestPreStartThreadStop(
       },
     });
     return;
-  }
-
-  if (result.finalized && result.environmentId !== null) {
-    requestEnvironmentCleanup(deps, { environmentId: result.environmentId });
-    requestEnvironmentCleanupAdvance(deps, {
-      environmentId: result.environmentId,
-    });
   }
 }
 
@@ -1332,6 +1346,7 @@ export async function stopThreadForCurrentState(
   thread: RequestThreadStopForCurrentStateThread,
   environment: RequestThreadStopForCurrentStateEnvironment | null,
 ): Promise<void> {
+  await revokeThreadDesktopBrowserControl(deps, thread.id);
   const hasLiveRuntime =
     thread.status === "active" ||
     hasLiveThreadStartInFlight(thread.id) ||
@@ -1736,27 +1751,12 @@ export function finalizeStoppedThreadInTransaction(
       },
     );
 
-    const environmentId = finalizedThread.environmentId;
+    forgetActiveThreadProvisionContext(finalizedThread.id);
+    if (providerLaunchHasPendingWork(deps.db, finalizedThread.id)) return;
     deleteThread(deps.db, deps.hub, finalizedThread.id);
-    requestEnvironmentCleanup(deps, {
-      environmentId,
-    });
+    if (finalizedThread.environmentId !== null)
+      refreshProviderRetirement(deps, finalizedThread.environmentId);
   }
-}
-
-export function finalizeStoppedThreadAndRequestCleanupAdvance(
-  deps: LoggedPendingInteractionWorkSessionDeps,
-  args: FinalizeStoppedThreadArgs,
-): void {
-  const threadBeforeFinalize = getThread(deps.db, args.threadId);
-  finalizeStoppedThread(deps, args);
-
-  const threadAfterFinalize = getThread(deps.db, args.threadId);
-  const environmentId =
-    threadAfterFinalize?.environmentId ??
-    threadBeforeFinalize?.environmentId ??
-    null;
-  requestEnvironmentCleanupAdvance(deps, { environmentId });
 }
 
 export async function reconcileDaemonReportedThreads(
@@ -1800,7 +1800,7 @@ export async function reconcileDaemonReportedThreads(
       continue;
     }
 
-    finalizeStoppedThreadAndRequestCleanupAdvance(deps, {
+    finalizeStoppedThread(deps, {
       threadId: thread.id,
     });
   }
@@ -1850,6 +1850,7 @@ export async function reconcileDaemonReportedThreads(
       threadId: thread.id,
     })),
     reason: "host-daemon-restarted",
+    cause: args.sameDaemonInstance ? "host-connection-lost" : undefined,
   });
 
   if (args.activeThreadIds.length === 0) {

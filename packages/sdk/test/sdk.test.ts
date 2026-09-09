@@ -31,15 +31,19 @@ function makeEnvironment(overrides: EnvironmentOverrides = {}): Environment {
     projectId: "proj_test",
     hostId: "host_test",
     path: "/workspace",
-    managed: false,
     isGitRepo: true,
     isWorktree: false,
-    workspaceProvisionType: "unmanaged",
     baseBranch: null,
     branchName: null,
     defaultBranch: null,
     mergeBaseBranch: null,
     status: "ready",
+    environmentProviderId: null,
+    environmentProviderSelection: null,
+    environmentProviderInstanceKey: null,
+    lifecycle: { phase: "active", retireAt: null, teardown: null },
+    managed: false,
+    workspaceProvisionType: null,
     createdAt: 1,
     updatedAt: 2,
     ...overrides,
@@ -289,6 +293,38 @@ describe("@bb/sdk", () => {
         bodyText: JSON.stringify({ themeId: "nord", faviconColor: "purple" }),
         method: "PUT",
         url: "http://bb.test/api/v1/settings/appearance",
+      },
+    ]);
+  });
+
+  it("resolves a theme by id without touching the active appearance", async () => {
+    const resolved = {
+      themeId: "plugin:pack:ocean",
+      customCss: ":root { --canvas: black; }",
+      faviconColor: "purple" as const,
+      resolvedCodeTheme: {
+        dark: "github-dark",
+        light: "github-light",
+        files: {},
+      },
+    };
+    const queue = createFetchQueue([{ body: resolved }]);
+    const sdk = createBbSdk({
+      transport: createHttpTransport({
+        baseUrl: "http://bb.test",
+        fetch: queue.fetch,
+        runtime: "node",
+      }),
+    });
+
+    await expect(
+      sdk.theme.resolve({ themeId: "plugin:pack:ocean" }),
+    ).resolves.toEqual(resolved);
+    expect(queue.requests).toEqual([
+      {
+        bodyText: undefined,
+        method: "GET",
+        url: "http://bb.test/api/v1/settings/themes/plugin:pack:ocean",
       },
     ]);
   });
@@ -603,6 +639,49 @@ describe("@bb/sdk", () => {
         bodyText: undefined,
         method: "GET",
         url: "http://bb.test/api/v1/system/usage-limits?hostId=host_remote&providerId=codex",
+      },
+    ]);
+  });
+
+  it("lists environment providers as an array for a project and machine", async () => {
+    const providers = [
+      {
+        id: "project-checkout",
+        displayName: "Project checkout",
+        icon: null,
+        logoUrl: null,
+        pluginId: "environment-project-checkout",
+        requires: {
+          projectCheckout: true,
+          gitCheckout: false,
+          gitRemote: false,
+          projectless: false,
+        },
+        inputs: null,
+        acceptsEmptyInputs: true,
+        availability: { status: "available" as const },
+      },
+    ];
+    const queue = createFetchQueue([{ body: { providers } }]);
+    const sdk = createBbSdk({
+      transport: createHttpTransport({
+        baseUrl: "http://bb.test",
+        fetch: queue.fetch,
+        runtime: "node",
+      }),
+    });
+
+    await expect(
+      sdk.environments.listProviders({
+        projectId: "proj_test",
+        hostId: "host_test",
+      }),
+    ).resolves.toEqual(providers);
+    expect(queue.requests).toEqual([
+      {
+        bodyText: undefined,
+        method: "GET",
+        url: "http://bb.test/api/v1/system/environment-providers?projectId=proj_test&hostId=host_test",
       },
     ]);
   });
@@ -1017,7 +1096,7 @@ describe("@bb/sdk", () => {
     );
   });
 
-  it("fills thread fork defaults and preserves an agent-only context seed", async () => {
+  it("defaults thread forks to source-environment reuse and preserves an agent-only context seed", async () => {
     const queue = createFetchQueue([{ body: { id: "thr_fork" }, status: 201 }]);
     const sdk = createBbSdk({
       transport: createHttpTransport({
@@ -1055,7 +1134,6 @@ describe("@bb/sdk", () => {
       ],
       origin: "sdk",
       visibility: "visible",
-      workspace: "isolated",
     });
   });
 
@@ -1257,6 +1335,168 @@ describe("@bb/sdk", () => {
     });
   });
 
+  // The queue list is cross-thread by design: an omitted filter drops out of
+  // the query string entirely rather than narrowing on `undefined`.
+  it("routes queued-row reads onto the cross-thread queue route and a row's own operations onto its thread", async () => {
+    const queue = createFetchQueue([
+      { body: [] },
+      { body: { ok: true, delivery: "sent" } },
+      { body: null, status: 204 },
+    ]);
+    const sdk = createBbSdk({
+      transport: createHttpTransport({
+        baseUrl: "http://bb.test",
+        fetch: queue.fetch,
+        runtime: "node",
+      }),
+    });
+
+    await sdk.threads.queue.list();
+    await sdk.threads.queuedMessages.send({
+      threadId: "thr_123",
+      queuedMessageId: "qm_1",
+      mode: "auto",
+    });
+    await sdk.threads.queuedMessages.delete({
+      threadId: "thr_123",
+      queuedMessageId: "qm_1",
+    });
+
+    expect(
+      queue.requests.map((request) => `${request.method} ${request.url}`),
+    ).toEqual([
+      "GET http://bb.test/api/v1/queued-messages?",
+      "POST http://bb.test/api/v1/threads/thr_123/queued-messages/qm_1/send",
+      "DELETE http://bb.test/api/v1/threads/thr_123/queued-messages/qm_1",
+    ]);
+    expect(queue.requests[1].bodyText).toBe(JSON.stringify({ mode: "auto" }));
+  });
+
+  it("applies both queue list filters and queues a scheduled send on the queue", async () => {
+    const queue = createFetchQueue([
+      { body: [] },
+      {
+        body: {
+          ok: true,
+          delivery: "queued",
+          queuedMessage: {
+            id: "qm_1",
+            waitingOn: { kind: "time" },
+            sendAt: 1750,
+          },
+        },
+      },
+    ]);
+    const sdk = createBbSdk({
+      transport: createHttpTransport({
+        baseUrl: "http://bb.test",
+        fetch: queue.fetch,
+        runtime: "node",
+      }),
+    });
+
+    await sdk.threads.queue.list({
+      threadId: "thr_123",
+      waitHolder: "plugin:concurrency-limit",
+    });
+    await expect(
+      sdk.threads.send({
+        threadId: "thr_123",
+        input: [{ type: "text", text: "later", mentions: [] }],
+        mode: "auto",
+        sendAt: 1750,
+      }),
+    ).resolves.toEqual({
+      ok: true,
+      delivery: "queued",
+      queuedMessage: {
+        id: "qm_1",
+        waitingOn: { kind: "time" },
+        sendAt: 1750,
+      },
+    });
+
+    expect(queue.requests[0].url).toBe(
+      "http://bb.test/api/v1/queued-messages?threadId=thr_123&waitHolder=plugin%3Aconcurrency-limit",
+    );
+    expect(queue.requests[1].bodyText).toBe(
+      JSON.stringify({
+        input: [{ type: "text", text: "later", mentions: [] }],
+        mode: "auto",
+        sendAt: 1750,
+      }),
+    );
+  });
+
+  // A limiter gate counts on every dispatch, so an omitted filter must drop out
+  // of the query string rather than narrow the count on the string "undefined".
+  it("counts threads over the grouped count route with only the given filters", async () => {
+    const queue = createFetchQueue([
+      { body: { total: 4 } },
+      {
+        body: {
+          total: 4,
+          groups: [
+            { key: "host_a", count: 3 },
+            { key: null, count: 1 },
+          ],
+        },
+      },
+    ]);
+    const sdk = createBbSdk({
+      transport: createHttpTransport({
+        baseUrl: "http://bb.test",
+        fetch: queue.fetch,
+        runtime: "node",
+      }),
+    });
+
+    await expect(sdk.threads.count()).resolves.toEqual({ total: 4 });
+    await expect(
+      sdk.threads.count({
+        status: "active",
+        hostId: "host_a",
+        providerId: "codex",
+        projectId: "proj_123",
+        // The root-parent sentinel: "threads with no parent at all".
+        parentThreadId: "none",
+        groupBy: "host",
+      }),
+    ).resolves.toEqual({
+      total: 4,
+      groups: [
+        { key: "host_a", count: 3 },
+        { key: null, count: 1 },
+      ],
+    });
+
+    expect(queue.requests[0].url).toBe("http://bb.test/api/v1/threads/count?");
+    expect(queue.requests[1].url).toBe(
+      "http://bb.test/api/v1/threads/count?status=active&hostId=host_a&providerId=codex&projectId=proj_123&parentThreadId=none&groupBy=host",
+    );
+  });
+
+  it("lists the running threads over the running route with no query", async () => {
+    const rows = [
+      { id: "thr_a", hostId: "host_a" },
+      // Admitted but not yet placed: counts globally, on no host's pool.
+      { id: "thr_b", hostId: null },
+    ];
+    const queue = createFetchQueue([{ body: rows }]);
+    const sdk = createBbSdk({
+      transport: createHttpTransport({
+        baseUrl: "http://bb.test",
+        fetch: queue.fetch,
+        runtime: "node",
+      }),
+    });
+
+    await expect(sdk.threads.listRunning()).resolves.toEqual(rows);
+    // No filters at all: the occupying set is small, and a caller that needs
+    // more than "which ids, on which hosts" fetches the threads it named.
+    expect(queue.requests[0].url).toBe("http://bb.test/api/v1/threads/running");
+  });
+
   it("exposes thread section mutations", async () => {
     const queue = createFetchQueue([
       {
@@ -1334,6 +1574,8 @@ describe("@bb/sdk", () => {
       enabled: true,
       description: "Notes",
       name: "Notes",
+      screenshots: [],
+      collections: [],
       icon: null,
       iconUrl: null,
       status: "running" as const,
@@ -1409,6 +1651,13 @@ describe("@bb/sdk", () => {
               incompatibleReason: null,
             },
           ],
+          collections: [
+            {
+              id: "featured",
+              displayName: "Featured",
+              pluginIds: ["notes"],
+            },
+          ],
         },
       },
     ]);
@@ -1442,9 +1691,16 @@ describe("@bb/sdk", () => {
     await expect(sdk.plugins.catalog.status()).resolves.toEqual(catalog);
     await expect(
       sdk.plugins.catalog.search({ query: "notes" }),
-    ).resolves.toMatchObject([
-      { entryId: "notes", pluginId: "notes", compatible: true },
-    ]);
+    ).resolves.toMatchObject({
+      results: [{ entryId: "notes", pluginId: "notes", compatible: true }],
+      collections: [
+        {
+          id: "featured",
+          displayName: "Featured",
+          pluginIds: ["notes"],
+        },
+      ],
+    });
     expect(queue.requests).toEqual([
       {
         bodyText: undefined,

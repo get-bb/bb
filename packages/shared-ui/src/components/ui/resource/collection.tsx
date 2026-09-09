@@ -344,18 +344,22 @@ export function ResourceOverviewPage({
 export function ResourceSourceShelf({
   label,
   attribution,
+  description,
   leading,
   browseAction,
   scrollOverlay,
   contentMode = "rail",
+  contentSurface = "recessed",
   children,
 }: {
   label: ReactNode;
   attribution?: ReactNode;
+  description?: ReactNode;
   leading?: ReactNode;
   browseAction?: ReactNode;
   scrollOverlay?: ReactNode;
   contentMode?: "rail" | "panel";
+  contentSurface?: "recessed" | "plain";
   children: ReactNode;
 }) {
   return (
@@ -374,13 +378,31 @@ export function ResourceSourceShelf({
             </span>
           ) : null}
         </div>
-        {browseAction ? (
+        {browseAction && description === undefined ? (
           <div className="ml-auto shrink-0 text-xs text-muted-foreground">
             {browseAction}
           </div>
         ) : null}
       </div>
-      <div className="rounded-lg bg-surface-recessed/70 p-[var(--resource-source-shelf-inset)]">
+      {description === undefined ? null : (
+        <div className="flex min-w-0 items-center gap-3 px-[var(--resource-source-shelf-inset)]">
+          <p className="min-w-0 max-w-2xl text-xs leading-relaxed text-muted-foreground">
+            {description}
+          </p>
+          {browseAction ? (
+            <div className="ml-auto shrink-0 text-xs text-muted-foreground">
+              {browseAction}
+            </div>
+          ) : null}
+        </div>
+      )}
+      <div
+        className={cn(
+          contentSurface === "recessed"
+            ? "rounded-lg bg-surface-recessed/70 p-[var(--resource-source-shelf-inset)]"
+            : "px-[var(--resource-source-shelf-inset)]",
+        )}
+      >
         {contentMode === "panel" ? (
           children
         ) : (
@@ -452,6 +474,7 @@ export function ResourceSourceItem({
 type ResourceBrowseCardProps = {
   className?: string;
   leading?: ReactNode;
+  leadingClassName?: string;
   title: ReactNode;
   description?: ReactNode;
   descriptionLines?: 2 | 3;
@@ -460,13 +483,14 @@ type ResourceBrowseCardProps = {
   footerMeta?: ReactNode;
   pointerOnlyOpen?: boolean;
 } & (
-  | { openLabel: string; onOpen: () => void }
+  | { openLabel: string; onOpen: (trigger: HTMLButtonElement) => void }
   | { openLabel?: undefined; onOpen?: undefined }
 );
 
 export function ResourceBrowseCard({
   className,
   leading,
+  leadingClassName,
   title,
   description,
   descriptionLines = 2,
@@ -484,7 +508,7 @@ export function ResourceBrowseCard({
       className={cn(
         "group relative grid min-h-28 w-full grid-cols-[minmax(0,1fr)_auto] grid-rows-[auto_1fr_auto] gap-2 rounded-lg border border-border bg-card p-3 text-left",
         onOpen &&
-          "transition-[border-color,box-shadow] duration-150 hover:border-foreground/20 hover:shadow-xs",
+          "transition-[border-color,box-shadow,background-color] duration-150 hover:border-foreground/30 hover:bg-[color-mix(in_oklab,var(--ink)_2.5%,transparent)] hover:shadow-sm",
         className,
       )}
     >
@@ -495,13 +519,18 @@ export function ResourceBrowseCard({
           aria-hidden={pointerOnlyOpen || undefined}
           tabIndex={pointerOnlyOpen ? -1 : undefined}
           data-resource-card-pointer-action={pointerOnlyOpen ? "" : undefined}
-          onClick={onOpen}
+          onClick={(event) => onOpen(event.currentTarget)}
           className="absolute inset-0 cursor-pointer rounded-md focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
         />
       ) : null}
       {hasLeading ? (
         <span className="pointer-events-none relative col-start-1 row-start-1 flex min-w-0 items-center">
-          <span className="flex size-6 shrink-0 items-center justify-center">
+          <span
+            className={cn(
+              "flex size-6 shrink-0 items-center justify-center",
+              leadingClassName,
+            )}
+          >
             {leading}
           </span>
           <span className="ml-3 min-w-0 flex-1">{renderTitle()}</span>
@@ -530,12 +559,12 @@ export function ResourceBrowseCard({
         </span>
       ) : null}
       {byline ? (
-        <span className="pointer-events-none relative col-start-1 row-start-3 flex min-h-4 min-w-0 items-center text-left text-xs text-subtle-foreground">
+        <span className="pointer-events-none relative col-start-1 row-start-3 mt-1.5 flex min-h-4 min-w-0 items-center text-left text-xs text-subtle-foreground">
           <span className="block min-w-0 truncate">{byline}</span>
         </span>
       ) : null}
       {footerMeta ? (
-        <span className="pointer-events-none relative col-start-2 row-start-3 flex min-h-4 items-center justify-end text-right">
+        <span className="pointer-events-none relative col-start-2 row-start-3 mt-1.5 flex min-h-4 min-w-0 items-center justify-end text-right">
           {footerMeta}
         </span>
       ) : null}

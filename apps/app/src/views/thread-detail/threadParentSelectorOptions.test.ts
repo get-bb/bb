@@ -1,5 +1,6 @@
 import type { ThreadListEntry } from "@bb/domain";
 import { describe, expect, it } from "vitest";
+import { makeThreadListEntry } from "@bb/test-helpers/domain-fixtures";
 import {
   buildParentSelectorOptions,
   isRootThread,
@@ -8,46 +9,17 @@ import {
 type ThreadListEntryOverrides = Partial<ThreadListEntry>;
 
 function makeThread(overrides: ThreadListEntryOverrides = {}): ThreadListEntry {
-  return {
-    activity: {
-      activeWorkflowCount: 0,
-      activeBackgroundAgentCount: 0,
-      activeBackgroundCommandCount: 0,
-      activePlanModeCount: 0,
-      activeGoalCount: 0,
-    },
-    archivedAt: null,
+  return makeThreadListEntry({
     createdAt: 1,
-    deletedAt: null,
-    environmentBranchName: null,
-    environmentHostId: null,
-    environmentId: null,
-    environmentName: null,
-    environmentWorkspaceDisplayKind: "other",
-    hasPendingInteraction: false,
     id: "thr_1",
     lastReadAt: null,
     latestAttentionAt: 1,
-    parentThreadId: null,
-    pinnedAt: null,
-    pinSortKey: null,
     projectId: "proj_1",
-    providerId: "codex",
-    originKind: null,
-    originPluginId: null,
-    visibility: "visible",
-    sourceThreadId: null,
-    runtime: {
-      displayStatus: "idle",
-      hostReconnectGraceExpiresAt: null,
-    },
-    status: "idle",
     title: "Thread",
     titleFallback: "Thread",
-    sectionId: null,
     updatedAt: 1,
     ...overrides,
-  };
+  });
 }
 
 describe("thread parent selector options", () => {

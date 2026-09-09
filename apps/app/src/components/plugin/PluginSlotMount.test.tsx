@@ -53,6 +53,21 @@ describe("PluginSlotMount", () => {
     expect(screen.getByText("healthy slot")).toBeDefined();
   });
 
+  it("renders nothing after a crash when the fallback is explicitly null", () => {
+    render(
+      <PluginSlotMount
+        pluginId="broken"
+        slotKind="appOverlay"
+        slotId="widget"
+        crashFallback={null}
+      >
+        <Bomb />
+      </PluginSlotMount>,
+    );
+
+    expect(screen.queryByText("plugin broken crashed")).toBeNull();
+  });
+
   it("keeps one sheet through simultaneous mounts and a portal until the final route unmount", async () => {
     vi.useFakeTimers();
     applyPluginCss("demo", "/demo.css?h=v1");

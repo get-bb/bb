@@ -1,6 +1,7 @@
 import { atomWithStorage } from "jotai/utils";
 
 type StringValueGuard<T extends string> = (value: string) => value is T;
+type StoredValueGuard<T> = (value: unknown) => value is T;
 type StoredValueListener = (storedValue: string | null) => void;
 
 export interface SyncStorage<T> {
@@ -30,10 +31,21 @@ interface StoredValueCodec<T> {
 }
 
 export function getLocalStorage(): Storage | null {
+  return withLocalStorage((storage) => storage, null);
+}
+
+export function withLocalStorage<T>(
+  operation: (storage: Storage) => T,
+  fallback: T,
+): T {
   if (typeof window === "undefined") {
-    return null;
+    return fallback;
   }
-  return window.localStorage;
+  try {
+    return operation(window.localStorage);
+  } catch {
+    return fallback;
+  }
 }
 
 function getSessionStorage(): Storage | null {
@@ -69,12 +81,13 @@ function subscribeToLocalStorageKey(
 }
 
 const localStorageStringStorage: SyncStringStorage = {
-  getItem: (key: string) => getLocalStorage()?.getItem(key) ?? null,
+  getItem: (key: string) =>
+    withLocalStorage((storage) => storage.getItem(key), null),
   setItem: (key: string, value: string) => {
-    getLocalStorage()?.setItem(key, value);
+    withLocalStorage((storage) => storage.setItem(key, value), undefined);
   },
   removeItem: (key: string) => {
-    getLocalStorage()?.removeItem(key);
+    withLocalStorage((storage) => storage.removeItem(key), undefined);
   },
   subscribe: (key: string, callback: StoredValueListener) =>
     subscribeToLocalStorageKey(key, callback),
@@ -85,7 +98,9 @@ export const rawStringLocalStorage = createLocalStorageSyncStorage<string>({
   serialize: (value) => value,
 });
 
-export function createJsonLocalStorage<T>(): SyncStorage<T> {
+export function createJsonLocalStorage<T>(
+  isValue?: StoredValueGuard<T>,
+): SyncStorage<T> {
   return createLocalStorageSyncStorage<T>({
     parse: (storedValue, initialValue) => {
       if (storedValue === null) {
@@ -93,7 +108,10 @@ export function createJsonLocalStorage<T>(): SyncStorage<T> {
       }
 
       try {
-        return JSON.parse(storedValue) as T;
+        const parsedValue: unknown = JSON.parse(storedValue);
+        return isValue === undefined || isValue(parsedValue)
+          ? (parsedValue as T)
+          : initialValue;
       } catch {
         return initialValue;
       }

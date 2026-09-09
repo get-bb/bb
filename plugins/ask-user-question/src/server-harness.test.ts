@@ -2,8 +2,8 @@ import { describe, expect, it, vi } from "vitest";
 import {
   createFakePluginHost,
   type FakePluginHost,
+  makePluginAgentConfigurationContext,
 } from "@get-bb/plugin-sdk/testing";
-import type { PluginAgentConfigurationContext } from "@get-bb/plugin-sdk";
 import plugin, { RENDERER_ID, TOOL_NAME } from "./server.js";
 import { TOOL_INPUT_JSON_SCHEMA } from "./tool-definition.js";
 import type { InteractionPayload, ToolResult } from "./contracts.js";
@@ -17,35 +17,13 @@ function createHost(): FakePluginHost {
 function configurationContext(
   providerId: string,
   supportsNativeUserQuestion = false,
-): PluginAgentConfigurationContext {
-  return {
-    thread: {
-      id: "thr-test",
-      title: null,
-      parentThreadId: null,
-      sourceThreadId: null,
-    },
-    project: {
-      id: "proj-test",
-      kind: "standard",
-      name: "bb",
-      gitRemoteUrl: null,
-    },
-    environment: {
-      id: "env-test",
-      name: null,
-      path: null,
-      workspaceProvisionType: "unmanaged",
-      branchName: null,
-    },
-    host: { id: "host-test", name: "local" },
+) {
+  return makePluginAgentConfigurationContext({
     provider: {
       id: providerId,
-      model: "test-model",
       capabilities: { supportsNativeUserQuestion },
     },
-    origin: { kind: null, pluginId: null },
-  };
+  });
 }
 
 const questions = [

@@ -1,8 +1,29 @@
+import {
+  desktopBrowserHostRequestSchema,
+  desktopBrowserScopeSchema,
+  desktopBrowserCreateRequestSchema,
+  desktopBrowserAcquireRequestSchema,
+  desktopBrowserLeaseRequestSchema,
+  desktopBrowserTabRequestSchema,
+  type ExperimentalDesktopBrowserHostRequest,
+  type ExperimentalDesktopBrowserScope,
+  type ExperimentalDesktopBrowserCreateInput,
+  type ExperimentalDesktopBrowserAcquireInput,
+  type ExperimentalDesktopBrowserLeaseRequest,
+  type ExperimentalDesktopBrowserTabRequest,
+  type ExperimentalDesktopBrowserInstances,
+  type ExperimentalDesktopBrowserTabs,
+  type ExperimentalDesktopBrowserCreated,
+  type ExperimentalDesktopBrowserLease,
+  type ExperimentalDesktopBrowserConnection,
+  type ExperimentalDesktopBrowserCapture,
+} from "./api/desktop-browsers.js";
 import type { Hono } from "hono";
 import type {
   AppTheme,
   AppThemeSelection,
   AppSettings,
+  AppSettingsUpdate,
   AppKeybindingOverrides,
   Environment,
   Experiments,
@@ -15,7 +36,7 @@ import type {
   ThreadQueuedMessage,
 } from "@bb/domain";
 import {
-  appSettingsSchema,
+  appSettingsUpdateSchema,
   appKeybindingOverridesSchema,
   appThemeSelectionSchema,
   experimentsSchema,
@@ -135,6 +156,8 @@ import type {
   ResolveThreadMentionsResponse,
   RespondPluginInteractionRequest,
   SendMessageRequest,
+  RetryTurnRequest,
+  RetryTurnResponse,
   SendMessageResponse,
   SetQueuedMessageGroupBoundaryRequest,
   SendQueuedMessageRequest,
@@ -149,6 +172,8 @@ import type {
   SystemInstallCliSkillsResponse,
   SystemExecutionOptionsQuery,
   SystemExecutionOptionsResponse,
+  SystemEnvironmentProvidersQuery,
+  SystemEnvironmentProvidersResponse,
   SystemProviderInfo,
   SystemProvidersQuery,
   SystemProviderStatesResponse,
@@ -174,6 +199,8 @@ import type {
   ThreadFilesRawQuery,
   ThreadGetQuery,
   ThreadHostFileContentQuery,
+  ThreadCountQuery,
+  ThreadCountResponse,
   ThreadListQuery,
   ThreadListResponse,
   ThreadConversationOutlineResponse,
@@ -182,6 +209,8 @@ import type {
   ThreadPaneActionRequest,
   ThreadPaneActionResponse,
   ThreadPendingInteractionsResponse,
+  ThreadRunningResponse,
+  QueuedMessageListQuery,
   ThreadQueuedMessageListResponse,
   ThreadResponse,
   ThreadSearchQuery,
@@ -197,6 +226,7 @@ import type {
   ThreadWithIncludesResponse,
   TimelineTurnSummaryDetailsQuery,
   TimelineTurnSummaryDetailsResponse,
+  ListEnvironmentsQuery,
   UpdateEnvironmentRequest,
   UpdateThreadSectionRequest,
   UpdateTerminalRequest,
@@ -215,6 +245,13 @@ import type {
   UpdateThreadTabsRequest,
 } from "./api/thread-tabs.js";
 import { updateThreadTabsRequestSchema } from "./api/thread-tabs.js";
+import type {
+  PathUiPreferenceKey,
+  UiPreferenceResponse,
+  UiPreferencesResponse,
+  UpdateUiPreferenceRequest,
+} from "./api/ui-preferences.js";
+import { updateUiPreferenceRequestSchema } from "./api/ui-preferences.js";
 import {
   closeTerminalRequestSchema,
   copyProjectAttachmentsRequestSchema,
@@ -227,6 +264,7 @@ import {
   createHostJoinCodeRequestSchema,
   createProjectSourceRequestSchema,
   createQueuedMessageRequestSchema,
+  queuedMessageListQuerySchema,
   updateQueuedMessageRequestSchema,
   createThreadRequestSchema,
   forkThreadRequestSchema,
@@ -270,11 +308,13 @@ import {
   resolvePendingInteractionRequestSchema,
   resolveThreadMentionsRequestSchema,
   respondPluginInteractionRequestSchema,
+  retryTurnRequestSchema,
   sendMessageRequestSchema,
   editMessageRequestSchema,
   setQueuedMessageGroupBoundaryRequestSchema,
   sendQueuedMessageRequestSchema,
   systemExecutionOptionsQuerySchema,
+  systemEnvironmentProvidersQuerySchema,
   systemProvidersQuerySchema,
   systemUsageLimitsQuerySchema,
   systemVersionQuerySchema,
@@ -283,6 +323,7 @@ import {
   threadFilesRawQuerySchema,
   threadGetQuerySchema,
   threadHostFileContentQuerySchema,
+  threadCountQuerySchema,
   threadListQuerySchema,
   threadOpenRequestSchema,
   threadPaneActionRequestSchema,
@@ -298,6 +339,7 @@ import {
   systemCliSkillsStatusQuerySchema,
   systemInstallCliSkillsRequestSchema,
   timelineTurnSummaryDetailsQuerySchema,
+  listEnvironmentsQuerySchema,
   updateEnvironmentRequestSchema,
   updateHostRequestSchema,
   updateHostPermissionCeilingRequestSchema,
@@ -486,6 +528,14 @@ export const publicApiRoutes = {
       ),
       response: jsonResponse<ProjectBranchesResponse>(),
     }),
+    branchOptions: defineRoute({
+      path: "/projects/:id/branch-options",
+      method: "get",
+      request: queryRequest<PathProjectId, ProjectBranchesQuery>(
+        projectBranchesQuerySchema,
+      ),
+      response: jsonResponse<ProjectBranchesResponse>(),
+    }),
     uploadAttachment: defineRoute({
       path: "/projects/:id/attachments",
       method: "post",
@@ -583,6 +633,81 @@ export const publicApiRoutes = {
       method: "get",
       request: noRequest<PathPreviewAndFilePath>(),
       response: binaryResponse<Uint8Array>(),
+    }),
+  },
+
+  desktopBrowsers: {
+    listInstances: defineRoute({
+      path: "/desktop-browsers/instances",
+      method: "post",
+      request: jsonRequest<EmptyInput, ExperimentalDesktopBrowserHostRequest>(
+        desktopBrowserHostRequestSchema,
+      ),
+      response: jsonResponse<ExperimentalDesktopBrowserInstances>(),
+    }),
+    listTabs: defineRoute({
+      path: "/desktop-browsers/tabs",
+      method: "post",
+      request: jsonRequest<EmptyInput, ExperimentalDesktopBrowserScope>(
+        desktopBrowserScopeSchema,
+      ),
+      response: jsonResponse<ExperimentalDesktopBrowserTabs>(),
+    }),
+    createTab: defineRoute({
+      path: "/desktop-browsers/create",
+      method: "post",
+      request: jsonRequest<EmptyInput, ExperimentalDesktopBrowserCreateInput>(
+        desktopBrowserCreateRequestSchema,
+      ),
+      response: jsonResponse<ExperimentalDesktopBrowserCreated>(),
+    }),
+    acquireControl: defineRoute({
+      path: "/desktop-browsers/acquire",
+      method: "post",
+      request: jsonRequest<EmptyInput, ExperimentalDesktopBrowserAcquireInput>(
+        desktopBrowserAcquireRequestSchema,
+      ),
+      response: jsonResponse<ExperimentalDesktopBrowserLease>(),
+    }),
+    openConnection: defineRoute({
+      path: "/desktop-browsers/connection",
+      method: "post",
+      request: jsonRequest<EmptyInput, ExperimentalDesktopBrowserLeaseRequest>(
+        desktopBrowserLeaseRequestSchema,
+      ),
+      response: jsonResponse<ExperimentalDesktopBrowserConnection>(),
+    }),
+    releaseControl: defineRoute({
+      path: "/desktop-browsers/release",
+      method: "post",
+      request: jsonRequest<EmptyInput, ExperimentalDesktopBrowserLeaseRequest>(
+        desktopBrowserLeaseRequestSchema,
+      ),
+      response: jsonResponse<{ ok: true }>(),
+    }),
+    closeTab: defineRoute({
+      path: "/desktop-browsers/close",
+      method: "post",
+      request: jsonRequest<EmptyInput, ExperimentalDesktopBrowserTabRequest>(
+        desktopBrowserTabRequestSchema,
+      ),
+      response: jsonResponse<{ ok: true }>(),
+    }),
+    revealTab: defineRoute({
+      path: "/desktop-browsers/reveal",
+      method: "post",
+      request: jsonRequest<EmptyInput, ExperimentalDesktopBrowserTabRequest>(
+        desktopBrowserTabRequestSchema,
+      ),
+      response: jsonResponse<{ ok: true }>(),
+    }),
+    captureTab: defineRoute({
+      path: "/desktop-browsers/capture",
+      method: "post",
+      request: jsonRequest<EmptyInput, ExperimentalDesktopBrowserTabRequest>(
+        desktopBrowserTabRequestSchema,
+      ),
+      response: jsonResponse<ExperimentalDesktopBrowserCapture>(),
     }),
   },
 
@@ -755,6 +880,24 @@ export const publicApiRoutes = {
   },
 
   environments: {
+    list: defineRoute({
+      path: "/environments",
+      method: "get",
+      request: optionalQueryRequest<EmptyInput, ListEnvironmentsQuery>(
+        listEnvironmentsQuerySchema,
+      ),
+      response: jsonResponse<Environment[]>(),
+    }),
+    delete: defineRoute({
+      path: "/environments/:id",
+      method: "delete",
+      request: noRequest<PathId>(),
+      response: [
+        jsonResponse<{ ok: true }>(),
+        jsonResponse<ApiError>({ status: 404 }),
+        jsonResponse<ApiError>({ status: 409 }),
+      ],
+    }),
     get: defineRoute({
       path: "/environments/:id",
       method: "get",
@@ -900,6 +1043,31 @@ export const publicApiRoutes = {
       ),
       response: jsonResponse<ThreadListResponse>(),
     }),
+    /**
+     * Grouped `SELECT count(*)` over threads. Exists because a plugin gate
+     * that limits concurrency must count without loading: `threads.list`
+     * would page rows into memory and still miscount past its limit.
+     */
+    count: defineRoute({
+      path: "/threads/count",
+      method: "get",
+      request: optionalQueryRequest<EmptyInput, ThreadCountQuery>(
+        threadCountQuerySchema,
+      ),
+      response: jsonResponse<ThreadCountResponse>(),
+    }),
+    /**
+     * The threads occupying capacity right now, as rows rather than a count.
+     * A limiter needs to know *which* threads are running to hold several
+     * pools at once — `threads.count` answers one pool per request and cannot
+     * reconcile a global limit with a per-host one from separate counts.
+     */
+    running: defineRoute({
+      path: "/threads/running",
+      method: "get",
+      request: noRequest(),
+      response: jsonResponse<ThreadRunningResponse>(),
+    }),
     search: defineRoute({
       path: "/threads/search",
       method: "get",
@@ -978,12 +1146,27 @@ export const publicApiRoutes = {
       ),
       response: jsonResponse<EditMessageResponse>(),
     }),
+    /**
+     * Retry a failed turn: re-submit it by reference, as an ordinary dispatch
+     * attempt. `turnRequestId` null means the thread's most recent turn, whose
+     * failure is what put the thread in `error`.
+     */
+    retry: defineRoute({
+      path: "/threads/:id/retry",
+      method: "post",
+      request: jsonRequest<PathId, RetryTurnRequest>(retryTurnRequestSchema),
+      response: jsonResponse<RetryTurnResponse>(),
+    }),
     queuedMessages: defineRoute({
       path: "/threads/:id/queued-messages",
       method: "get",
       request: noRequest<PathId>(),
       response: jsonResponse<ThreadQueuedMessageListResponse>(),
     }),
+    /**
+     * Create a queued message; senderThreadId preserves agent-to-agent context
+     * until send time.
+     */
     createQueuedMessage: defineRoute({
       path: "/threads/:id/queued-messages",
       method: "post",
@@ -1049,6 +1232,12 @@ export const publicApiRoutes = {
     }),
     compact: defineRoute({
       path: "/threads/:id/compact",
+      method: "post",
+      request: noRequest<PathId>(),
+      response: jsonResponse<{ ok: true }>(),
+    }),
+    clearContext: defineRoute({
+      path: "/threads/:id/context/clear",
       method: "post",
       request: noRequest<PathId>(),
       response: jsonResponse<{ ok: true }>(),
@@ -1292,6 +1481,24 @@ export const publicApiRoutes = {
     }),
   },
 
+  queue: {
+    /**
+     * Every live queued row, optionally narrowed to one thread or one
+     * wait holder. Cross-thread because "what is queued right now" is a
+     * whole-workspace question (`bb thread queue list` with no thread, a
+     * limiter plugin's own bookkeeping, a router recovering its rows after a
+     * restart) that no single thread's list can answer.
+     */
+    list: defineRoute({
+      path: "/queued-messages",
+      method: "get",
+      request: optionalQueryRequest<EmptyInput, QueuedMessageListQuery>(
+        queuedMessageListQuerySchema,
+      ),
+      response: jsonResponse<ThreadQueuedMessageListResponse>(),
+    }),
+  },
+
   system: {
     attention: defineRoute({
       path: "/system/attention",
@@ -1308,8 +1515,12 @@ export const publicApiRoutes = {
     generalSettings: defineRoute({
       path: "/settings/general",
       method: "put",
-      request: jsonRequest<EmptyInput, AppSettings>(appSettingsSchema),
-      response: jsonResponse<AppSettings>(),
+      request: jsonRequest<EmptyInput, AppSettingsUpdate>(
+        appSettingsUpdateSchema,
+      ),
+      response: jsonResponse<
+        AppSettings & { showUnhandledProviderEvents?: boolean }
+      >(),
     }),
     keyboardSettings: defineRoute({
       path: "/settings/keyboard",
@@ -1333,11 +1544,50 @@ export const publicApiRoutes = {
       ),
       response: jsonResponse<AppTheme>(),
     }),
+    uiPreferences: defineRoute({
+      path: "/preferences/ui",
+      method: "get",
+      request: noRequest(),
+      response: jsonResponse<UiPreferencesResponse>(),
+    }),
+    updateUiPreference: defineRoute({
+      path: "/preferences/ui/:key",
+      method: "put",
+      request: jsonRequest<PathUiPreferenceKey, UpdateUiPreferenceRequest>(
+        updateUiPreferenceRequestSchema,
+      ),
+      response: [
+        jsonResponse<UiPreferenceResponse>(),
+        jsonResponse<ApiError>({ status: 404 }),
+        jsonResponse<ApiError>({ status: 409 }),
+      ],
+    }),
+    resetUiPreference: defineRoute({
+      path: "/preferences/ui/:key",
+      method: "delete",
+      request: noRequest<PathUiPreferenceKey>(),
+      response: [
+        jsonResponse<UiPreferenceResponse>(),
+        jsonResponse<ApiError>({ status: 404 }),
+      ],
+    }),
     themes: defineRoute({
       path: "/settings/themes",
       method: "get",
       request: noRequest(),
       response: jsonResponse<ThemeCatalogResponse>(),
+    }),
+    /**
+     * Resolve a built-in, custom, or plugin theme exactly as activating it
+     * would, without persisting anything. The Settings palette hover preview
+     * and `bb theme show <id>` read it; `faviconColor` echoes the stored
+     * appearance because the response is a full `AppTheme`.
+     */
+    resolveTheme: defineRoute({
+      path: "/settings/themes/:id",
+      method: "get",
+      request: noRequest<PathId>(),
+      response: jsonResponse<AppTheme>(),
     }),
     reloadConfig: defineRoute({
       path: "/system/config/reload",
@@ -1368,6 +1618,15 @@ export const publicApiRoutes = {
         systemExecutionOptionsQuerySchema,
       ),
       response: jsonResponse<SystemExecutionOptionsResponse>(),
+    }),
+    environmentProviders: defineRoute({
+      path: "/system/environment-providers",
+      method: "get",
+      request: optionalQueryRequest<
+        EmptyInput,
+        SystemEnvironmentProvidersQuery
+      >(systemEnvironmentProvidersQuerySchema),
+      response: jsonResponse<SystemEnvironmentProvidersResponse>(),
     }),
     providers: defineRoute({
       path: "/system/providers",

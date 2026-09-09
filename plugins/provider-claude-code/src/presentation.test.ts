@@ -281,7 +281,7 @@ describe("claude item presentation", () => {
   });
 
   it("emits a bb-injected tool call as server:bb with the definition's presentation", () => {
-    const translator = createClaudeDeltaTranslator();
+    const translator = createClaudeDeltaTranslator({ sandboxEnabled: false });
     translator.configureInjectedTools([
       {
         name: "bb_workflow_result",
@@ -492,6 +492,67 @@ describe("claude item presentation", () => {
     });
   });
 
+  it("badges a Bash call that opts out of the session sandbox", () => {
+    const harness = createClaudeDeltaHarness({ sandboxEnabled: true });
+    const events = harness.translate({
+      type: "assistant",
+      message: {
+        role: "assistant",
+        content: [
+          {
+            type: "tool_use",
+            id: "b-1",
+            name: "Bash",
+            input: {
+              command: "ls -la ~/.claude/ide",
+              dangerouslyDisableSandbox: true,
+            },
+          },
+          {
+            type: "tool_use",
+            id: "b-2",
+            name: "Bash",
+            input: { command: "ls -la ~/.claude/ide" },
+          },
+        ],
+      },
+      session_id: "sess-1",
+    });
+    const started = startedItems(events);
+    expect(presentationOf(started[0])).toEqual({
+      label: { pending: "Running command", completed: "Ran command" },
+      icon: { glyph: "Terminal" },
+      title: "ls -la ~/.claude/ide",
+      badge: {
+        glyph: "SquareUnlock02",
+        label: "Outside of sandbox",
+        hint: "Outside of sandbox",
+        tone: "destructive",
+      },
+    });
+    expect(presentationOf(started[1])).not.toHaveProperty("badge");
+  });
+
+  it("omits the sandbox badge when the session never enabled the sandbox", () => {
+    const harness = createClaudeDeltaHarness({ sandboxEnabled: false });
+    const events = harness.translate({
+      type: "assistant",
+      message: {
+        role: "assistant",
+        content: [
+          {
+            type: "tool_use",
+            id: "b-1",
+            name: "Bash",
+            input: { command: "ls", dangerouslyDisableSandbox: true },
+          },
+        ],
+      },
+      session_id: "sess-1",
+    });
+    expect(presentationOf(startedItems(events)[0])).not.toHaveProperty("badge");
+  });
+
   it("presents a close without an open from the tool name alone", () => {
     const harness = createClaudeDeltaHarness();
     harness.translate({
@@ -527,7 +588,7 @@ describe("claude item presentation", () => {
   });
 
   it("attaches a presentation to every item.open and item.close delta", () => {
-    const translator = createClaudeDeltaTranslator();
+    const translator = createClaudeDeltaTranslator({ sandboxEnabled: false });
     const context = { threadId: "t" };
     const deltas = [
       ...translator.translate(

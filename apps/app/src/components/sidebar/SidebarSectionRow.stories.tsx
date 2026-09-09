@@ -220,7 +220,7 @@ export function DragInto() {
       </StoryRow>
       <StoryRow
         label="loose-list drop"
-        hint="dragging a thread out of a section previews the same slot at root depth in Unorganized"
+        hint="dragging a thread out of a section previews the same slot at root depth in Threads"
       >
         <SidebarStage>
           <DropPreviewRow depth={0} />

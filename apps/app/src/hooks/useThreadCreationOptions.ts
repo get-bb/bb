@@ -22,10 +22,17 @@ import type {
   SystemExecutionOptionsModelLoadError,
   SystemProvidersQuery,
 } from "@bb/server-contract";
+import {
+  PROJECT_CHECKOUT_ENVIRONMENT_PROVIDER_ID,
+  GIT_WORKTREE_ENVIRONMENT_PROVIDER_ID,
+} from "@bb/client-core";
 import type { PickerOption } from "@/components/pickers/OptionPicker";
 import type { ModelPickerOption } from "@/components/pickers/model-picker-option";
 import type { ProviderPickerOption } from "@/components/pickers/model-brand-prefix";
-import { parseEnvironmentValue } from "@/components/pickers/environment-picker-value";
+import {
+  encodeProviderValue,
+  parseEnvironmentValue,
+} from "@/components/pickers/environment-picker-value";
 import { PERMISSION_MODE_OPTIONS } from "@/lib/permission-mode-options";
 import { useRootComposeReuseEnvironment } from "@/lib/root-compose-selection";
 import { getProviderIconInfo } from "@/lib/provider-icon";
@@ -64,7 +71,10 @@ import {
   type UsePromptModelReasoningOptions,
   updateThreadPromptSelections,
 } from "./thread-creation-options/selection-state";
-import { resolveModelCatalogSelection } from "./thread-creation-options/model-catalog-selection";
+import {
+  resolveModelCatalogSelection,
+  resolveModelReasoningLevel,
+} from "./thread-creation-options/model-catalog-selection";
 
 export { formatModelLabel, resolvePermissionModeSelection };
 
@@ -160,9 +170,6 @@ function resolveThreadCreationProviderRouting({
     return { environmentId };
   }
   const parsed = parseEnvironmentValue(environmentSelectionValue);
-  if (parsed?.type === "host") {
-    return { hostId: parsed.hostId };
-  }
   if (parsed?.type === "reuse" && parsed.environmentId !== null) {
     return { environmentId: parsed.environmentId };
   }
@@ -175,11 +182,25 @@ type InitialReadyProviderResolution =
   | { status: "unresolved" }
   | { status: "resolved"; providerId: string | null };
 
-function sanitizeStoredEnvironmentValue(stored: string): string {
-  if (!stored) return "";
-  const parsed = parseEnvironmentValue(stored);
-  if (parsed?.type === "reuse") return "";
+const LEGACY_MANAGED_WORKTREE_VALUE = /^host:[^:]+:worktree$/;
+const LEGACY_HOST_LOCAL_VALUE = /^host:[^:]+:local$/;
+
+function migrateLegacyStoredEnvironmentValue(stored: string): string {
+  if (LEGACY_MANAGED_WORKTREE_VALUE.test(stored)) {
+    return encodeProviderValue(GIT_WORKTREE_ENVIRONMENT_PROVIDER_ID);
+  }
+  if (LEGACY_HOST_LOCAL_VALUE.test(stored)) {
+    return encodeProviderValue(PROJECT_CHECKOUT_ENVIRONMENT_PROVIDER_ID);
+  }
   return stored;
+}
+
+export function sanitizeStoredEnvironmentValue(stored: string): string {
+  if (!stored) return "";
+  const migrated = migrateLegacyStoredEnvironmentValue(stored);
+  const parsed = parseEnvironmentValue(migrated);
+  if (parsed?.type === "reuse") return "";
+  return migrated;
 }
 
 export function useThreadCreationOptions(
@@ -735,8 +756,23 @@ export function useThreadCreationOptions(
   const setSelectedModel = useCallback(
     (value: string) => {
       touchedThreadFieldsRef.current.add("selectedModel");
+      const nextModel =
+        executionOptionsQuery.data?.models.find(
+          (model) => model.model === value,
+        ) ??
+        executionOptionsQuery.data?.selectedOnlyModels.find(
+          (model) => model.model === value,
+        );
+      const nextReasoningLevel = resolveModelReasoningLevel(
+        nextModel,
+        reasoningLevel,
+      );
       if (usesStoredCreateSelections) {
-        setStoredSelectedModel(value);
+        setStoredProviderModelReasoning({
+          providerId: effectiveProviderId,
+          model: value,
+          reasoningLevel: nextReasoningLevel,
+        });
         return;
       }
       setLocalProvidersUsingDefaults((current) => {
@@ -747,18 +783,20 @@ export function useThreadCreationOptions(
       });
       localProviderSelectionsRef.current.set(effectiveProviderId, {
         model: value,
-        reasoningLevel,
+        reasoningLevel: nextReasoningLevel,
       });
       setThreadSelections((currentSelections) => ({
         ...currentSelections,
         selectedModel: value,
-        reasoningLevel,
+        reasoningLevel: nextReasoningLevel,
       }));
     },
     [
       effectiveProviderId,
+      executionOptionsQuery.data?.models,
+      executionOptionsQuery.data?.selectedOnlyModels,
       reasoningLevel,
-      setStoredSelectedModel,
+      setStoredProviderModelReasoning,
       usesStoredCreateSelections,
     ],
   );

@@ -73,7 +73,10 @@ export function RootNavigator() {
         }}
       >
         <Stack.Screen name="index" options={hiddenHeader} />
-        <Stack.Screen name="webview" options={hiddenHeader} />
+        <Stack.Screen
+          name="webview"
+          options={{ ...hiddenHeader, gestureEnabled: false }}
+        />
         <Stack.Screen
           name="settings/device"
           options={{ title: "This device", ...listScreen }}
@@ -81,6 +84,10 @@ export function RootNavigator() {
         <Stack.Screen
           name="settings/appearance"
           options={{ title: "Appearance" }}
+        />
+        <Stack.Screen
+          name="settings/notifications"
+          options={{ title: "Notifications", ...listScreen }}
         />
         <Stack.Screen
           name="settings/servers/index"

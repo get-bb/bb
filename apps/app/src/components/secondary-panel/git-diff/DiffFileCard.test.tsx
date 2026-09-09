@@ -19,6 +19,8 @@ import {
   setPluginSlotRegistrations,
 } from "@/lib/plugin-slots";
 import { DiffFileCard } from "./DiffFileCard";
+import { makeDiffFileEntry } from "@/test/fixtures/diff-files";
+import { makePluginRegistrationSet } from "@/test/fixtures/plugins";
 
 vi.mock("usehooks-ts", async (importOriginal) => ({
   ...(await importOriginal<typeof import("usehooks-ts")>()),
@@ -33,17 +35,11 @@ const IMAGE_DATA_URL =
   "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+M8AAAMBAQDJ/Qo3AAAAAElFTkSuQmCC";
 
 function buildEntry(overrides: Partial<DiffFileEntry> = {}): DiffFileEntry {
-  return {
-    path: "src/file.ts",
-    previousPath: null,
-    changeKind: "modified",
+  return makeDiffFileEntry({
     additions: 1,
     deletions: 1,
-    binary: false,
-    origin: "tracked",
-    loadMode: "auto",
     ...overrides,
-  };
+  });
 }
 
 function renderCard({
@@ -158,25 +154,21 @@ describe("DiffFileCard", () => {
 
   it("renders its text body through the shared host diff boundary", async () => {
     const seen: { patch: string; path: string; view: string }[] = [];
-    setPluginSlotRegistrations("demo", {
-      homepageSections: [],
-      settingsSections: [],
-      navPanels: [],
-      threadPanelActions: [],
-      sidebarFooterActions: [],
-      fileOpeners: [],
-      messageDirectives: [],
-      diffRenderers: [
-        {
-          id: "diffs",
-          title: "Demo diffs",
-          component: ({ patch, path, view }) => {
-            seen.push({ patch, path, view });
-            return <div data-testid="plugin-diff-body">plugin diff</div>;
+    setPluginSlotRegistrations(
+      "demo",
+      makePluginRegistrationSet({
+        diffRenderers: [
+          {
+            id: "diffs",
+            title: "Demo diffs",
+            component: ({ patch, path, view }) => {
+              seen.push({ patch, path, view });
+              return <div data-testid="plugin-diff-body">plugin diff</div>;
+            },
           },
-        },
-      ],
-    });
+        ],
+      }),
+    );
 
     renderCard({
       entry: buildEntry(),
@@ -191,25 +183,21 @@ describe("DiffFileCard", () => {
 
   it("forwards lazily resolved text sides to a replacement renderer", async () => {
     const seen: PluginDiffRendererProps["experimental_fullFileContents"][] = [];
-    setPluginSlotRegistrations("demo", {
-      homepageSections: [],
-      settingsSections: [],
-      navPanels: [],
-      threadPanelActions: [],
-      sidebarFooterActions: [],
-      fileOpeners: [],
-      messageDirectives: [],
-      diffRenderers: [
-        {
-          id: "diffs",
-          title: "Demo diffs",
-          component: ({ experimental_fullFileContents }) => {
-            seen.push(experimental_fullFileContents);
-            return <div data-testid="plugin-diff-body">plugin diff</div>;
+    setPluginSlotRegistrations(
+      "demo",
+      makePluginRegistrationSet({
+        diffRenderers: [
+          {
+            id: "diffs",
+            title: "Demo diffs",
+            component: ({ experimental_fullFileContents }) => {
+              seen.push(experimental_fullFileContents);
+              return <div data-testid="plugin-diff-body">plugin diff</div>;
+            },
           },
-        },
-      ],
-    });
+        ],
+      }),
+    );
     const onRequestFileContents = vi.fn<RequestDiffFileContents>(
       async (path, side) => ({
         kind: "text",

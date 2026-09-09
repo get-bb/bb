@@ -188,7 +188,14 @@ export function resolveThreadForkPoint(
   return descriptor === null ? tip : { ...tip, descriptor };
 }
 
-const INHERITED_EVENT_TYPES = [
+/**
+ * The events that carry the conversation a fork inherits. Everything else the
+ * source recorded is either the source's own bookkeeping (identity,
+ * provisioning, usage snapshots, operations), streaming deltas the completed
+ * items already fold in, or pending-interaction and goal state that belongs to
+ * the source thread alone.
+ */
+export const INHERITED_EVENT_TYPES = [
   "client/turn/requested",
   "turn/started",
   "turn/input/accepted",

@@ -5,7 +5,6 @@ import {
   type QueryClient,
 } from "@tanstack/react-query";
 import { useCallback, useMemo } from "react";
-import { useDebounceValue } from "usehooks-ts";
 import { COMPACT_VIEWPORT_QUERY } from "@bb/shared-ui/hooks/use-compact-viewport";
 import { getMediaQuerySnapshot } from "@bb/shared-ui/hooks/use-media-query";
 import type { PendingInteraction, ThreadListEntry } from "@bb/domain";
@@ -24,6 +23,7 @@ import type {
   ThreadTimelineResponse,
   TimelineTurnSummaryDetailsResponse,
 } from "@bb/server-contract";
+import { useDebouncedValue } from "../useDebouncedValue";
 import { applyTimelineDelta } from "@bb/server-contract";
 import type { ThreadListFilters } from "@bb/client-core";
 import type { FilePreview } from "@bb/client-core";
@@ -38,6 +38,7 @@ import {
 import {
   getCachedSidebarNavigationThreads,
   getCachedThreadListPlaceholder,
+  findSidebarNavigationThreadPlaceholder,
 } from "../cache-owners/query-cache";
 import { useSidebarNavigationThreadSelection } from "./sidebar-navigation-query";
 import {
@@ -576,7 +577,7 @@ export function useThreadSearch({
   limitPerGroup = THREAD_SEARCH_LIMIT_PER_GROUP,
   query,
 }: UseThreadSearchArgs): UseThreadSearchResult {
-  const [debouncedRawQuery] = useDebounceValue(
+  const debouncedRawQuery = useDebouncedValue(
     query,
     THREAD_SEARCH_DEBOUNCE_MS,
   );
@@ -630,7 +631,8 @@ export function useThread(id: string, options?: QueryOptions) {
     placeholderData: (previousData, previousQuery) =>
       resolveThreadPlaceholder(previousData, previousQuery?.queryKey, id) ??
       liftThreadListPlaceholder(
-        getCachedThreadListPlaceholder(queryClient, id),
+        getCachedThreadListPlaceholder(queryClient, id) ??
+          findSidebarNavigationThreadPlaceholder(queryClient, id),
       ),
   });
 }
@@ -645,6 +647,7 @@ function liftThreadListPlaceholder(
     ...thread,
     activeBackgroundAgentCount: thread.activity.activeBackgroundAgentCount,
     canSpawnChild: false,
+    queuedMessageCount: 0,
   };
 }
 
@@ -748,9 +751,13 @@ export function useThreadPendingInteractions(
         signal,
       }),
     enabled,
-    refetchOnMount: options?.refetchOnMount ?? true,
+    refetchOnMount:
+      options?.refetchOnMount ??
+      ((query) => (query.getObserversCount() === 1 ? "always" : true)),
     ...REALTIME_OWNED_NO_FOCUS_QUERY_POLICY,
-    staleTime: options?.staleTime,
+    ...(options?.staleTime === undefined
+      ? {}
+      : { staleTime: options.staleTime }),
   });
 }
 
@@ -1023,4 +1030,11 @@ export function getLatestPendingInteraction(
       interaction.createdAt > latest.createdAt ? interaction : latest,
     firstInteraction,
   );
+}
+
+export function isPendingInteractionStateUnknown(
+  interactions: readonly PendingInteraction[] | undefined,
+  isFetching: boolean,
+): boolean {
+  return getLatestPendingInteraction(interactions) === null && isFetching;
 }

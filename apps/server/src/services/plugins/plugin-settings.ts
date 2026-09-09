@@ -10,6 +10,7 @@ import type {
   PluginSettingDescriptors,
   PluginSettingValue,
 } from "@get-bb/plugin-sdk";
+import type { PluginSettingDescriptor as PublicPluginSettingDescriptor } from "@bb/server-contract";
 import { validateSettingsUpdate } from "@get-bb/plugin-sdk/internal/host-policy";
 import { deleteSecretFile, writeSecretFile } from "@bb/secret-storage";
 
@@ -72,7 +73,26 @@ function parseStoredSettingValue(
       parsed = undefined;
     }
   }
-  const expected = descriptor.type === "boolean" ? "boolean" : "string";
+  if (descriptor.type === "number" && typeof parsed === "string") {
+    const legacyNumber = Number(parsed.trim());
+    parsed =
+      parsed.trim().length > 0 && Number.isFinite(legacyNumber)
+        ? legacyNumber
+        : undefined;
+  }
+  if (
+    descriptor.type === "number" &&
+    typeof parsed === "number" &&
+    !Number.isFinite(parsed)
+  ) {
+    parsed = undefined;
+  }
+  const expected =
+    descriptor.type === "boolean"
+      ? "boolean"
+      : descriptor.type === "number"
+        ? "number"
+        : "string";
   if (typeof parsed !== expected) parsed = undefined;
   if (
     descriptor.type === "select" &&
@@ -130,8 +150,16 @@ export async function writePluginSettingsUpdate(
 }
 
 export interface PluginSettingsView {
-  schema: PluginSettingDescriptors;
+  schema: Record<string, PublicPluginSettingDescriptor>;
   values: Record<string, unknown>;
+}
+
+function publicSettingDescriptor(
+  descriptor: PluginSettingDescriptor,
+): PublicPluginSettingDescriptor {
+  const publicDescriptor = { ...descriptor };
+  delete publicDescriptor.experimental_schema;
+  return publicDescriptor;
 }
 
 export async function buildPluginSettingsView(
@@ -150,5 +178,13 @@ export async function buildPluginSettingsView(
       values[key] = effective[key];
     }
   }
-  return { schema: args.descriptors, values };
+  return {
+    schema: Object.fromEntries(
+      Object.entries(args.descriptors).map(([key, descriptor]) => [
+        key,
+        publicSettingDescriptor(descriptor),
+      ]),
+    ),
+    values,
+  };
 }

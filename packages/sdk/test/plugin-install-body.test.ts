@@ -74,7 +74,10 @@ describe("issue #1662: plugin install against a pre-0.38.0 server", () => {
     ).resolves.toEqual({
       ...legacyInstalledPlugin,
       publisherLabel: null,
+      screenshots: [],
+      collections: [],
       providerIds: [],
+      // Likewise for the declared-icon map, added later still.
       icons: {},
     });
     expect(bodies).toEqual([{ source: "path:/tmp/my-plugin" }]);

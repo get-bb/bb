@@ -125,12 +125,7 @@ function getMentionTitle(item: PromptMentionSuggestion): string {
 
 function getMentionKey(item: PromptMentionSuggestion): string {
   if (item.kind === "path") {
-    return JSON.stringify([
-      item.kind,
-      item.source,
-      item.entryKind,
-      item.path,
-    ]);
+    return JSON.stringify([item.kind, item.source, item.entryKind, item.path]);
   }
   if (item.kind === "plugin") {
     return JSON.stringify([
@@ -150,12 +145,6 @@ function getMentionKey(item: PromptMentionSuggestion): string {
 }
 
 type CommandSectionKind = ProviderCommandSection;
-
-function getCommandSectionKind(
-  item: ComposerCommandSuggestion,
-): CommandSectionKind {
-  return providerCommandSection(item);
-}
 
 function getCommandSectionLabel(kind: CommandSectionKind): string {
   if (kind === "agent-command") {
@@ -439,7 +428,7 @@ function CommandResults({
     () =>
       groupSections({
         suggestions,
-        sectionKind: getCommandSectionKind,
+        sectionKind: providerCommandSection,
         sectionLabel: getCommandSectionLabel,
       }),
     [suggestions],

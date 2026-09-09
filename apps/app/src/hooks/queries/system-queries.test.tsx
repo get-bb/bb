@@ -7,6 +7,7 @@ import type {
   SystemProviderStatesResponse,
 } from "@bb/server-contract";
 import type { ProviderInfo } from "@bb/domain";
+import { makeProviderInfo } from "@bb/test-helpers/domain-fixtures";
 import type {
   ProviderCliStatusResponse,
   ProviderUsageResponse,
@@ -81,14 +82,10 @@ afterEach(() => {
 
 describe("useSystemProviderInfo", () => {
   it("uses capabilities already loaded by the composer while the provider roster loads", async () => {
-    const provider: ProviderInfo = {
+    const provider = makeProviderInfo({
       id: "codex",
-      pluginId: "provider-codex",
       displayName: "Codex",
       logoUrl: null,
-      available: true,
-      maintenance: { health: false, usage: false, installation: false },
-      composerActions: [],
       capabilities: {
         supportsThreadArchive: true,
         supportsThreadRename: true,
@@ -99,7 +96,7 @@ describe("useSystemProviderInfo", () => {
         modelCatalogScope: "workspace",
         permissionModes: ["accept-edits", "auto", "full"],
       },
-    };
+    });
     vi.mocked(sdk.providers.list).mockImplementation(
       () => new Promise(() => undefined),
     );
@@ -130,25 +127,15 @@ describe("useSystemProviderInfo", () => {
 
   it("loads routed provider capabilities without waiting for model discovery", async () => {
     const providers: ProviderInfo[] = [
-      {
+      makeProviderInfo({
         id: "codex",
-        pluginId: "provider-codex",
         displayName: "Codex",
         logoUrl: null,
-        available: true,
-        maintenance: { health: false, usage: false, installation: false },
-        composerActions: [],
         capabilities: {
-          supportsThreadArchive: true,
-          supportsThreadRename: true,
           supportsServiceTier: true,
-          supportsNativeUserQuestion: false,
-          supportsFork: true,
           supportsSessionRewind: true,
-          modelCatalogScope: "workspace",
-          permissionModes: ["accept-edits", "auto", "full"],
         },
-      },
+      }),
     ];
     vi.mocked(sdk.providers.list).mockResolvedValue(providers);
     vi.mocked(sdk.system.executionOptions).mockImplementation(
@@ -207,6 +194,46 @@ describe("useSystemProviders", () => {
       });
     });
   });
+
+  it("replays only usage-capable providers for a usage query", async () => {
+    const provider = (id: string, usage: boolean): ProviderInfo =>
+      makeProviderInfo({
+        id,
+        displayName: id,
+        logoUrl: null,
+        maintenance: { health: true, usage, installation: false },
+        capabilities: { permissionModes: ["full"] },
+      });
+    const usageProvider = provider("usage-provider", true);
+    const unsupportedProvider = provider("unsupported-provider", false);
+    vi.mocked(sdk.providers.list).mockResolvedValueOnce([
+      usageProvider,
+      unsupportedProvider,
+    ]);
+    const warm = createQueryClientTestHarness();
+    const initial = renderHook(() => useSystemProviders({ hostId: "host-a" }), {
+      wrapper: warm.wrapper,
+    });
+    await waitFor(() => {
+      expect(initial.result.current.data).toEqual([
+        usageProvider,
+        unsupportedProvider,
+      ]);
+    });
+    initial.unmount();
+
+    vi.mocked(sdk.providers.list).mockImplementation(
+      () => new Promise(() => undefined),
+    );
+    const reload = createQueryClientTestHarness();
+    const { result } = renderHook(
+      () => useSystemProviders({ capability: "usage", hostId: "host-a" }),
+      { wrapper: reload.wrapper },
+    );
+
+    expect(result.current.isPlaceholderData).toBe(true);
+    expect(result.current.data).toEqual([usageProvider]);
+  });
 });
 
 describe("useSystemExecutionOptions", () => {
@@ -227,44 +254,28 @@ describe("useSystemExecutionOptions", () => {
 
   it("keeps dynamic providers visible while another provider's models load", async () => {
     const providers: ProviderInfo[] = [
-      {
+      makeProviderInfo({
         id: "codex",
-        pluginId: "provider-codex",
         displayName: "Codex",
         logoUrl: null,
-        available: true,
         maintenance: { health: true, usage: true, installation: false },
-        composerActions: [],
         capabilities: {
-          supportsThreadArchive: true,
-          supportsThreadRename: true,
           supportsServiceTier: true,
-          supportsNativeUserQuestion: false,
-          supportsFork: true,
           supportsSessionRewind: true,
-          modelCatalogScope: "workspace",
-          permissionModes: ["accept-edits", "auto", "full"],
         },
-      },
-      {
+      }),
+      makeProviderInfo({
         id: "acp-opencode",
-        pluginId: "provider-acp-opencode",
         displayName: "OpenCode",
         logoUrl: null,
-        available: true,
         maintenance: { health: true, usage: true, installation: false },
-        composerActions: [],
         capabilities: {
           supportsThreadArchive: false,
           supportsThreadRename: false,
-          supportsServiceTier: false,
-          supportsNativeUserQuestion: false,
           supportsFork: false,
-          supportsSessionRewind: false,
-          modelCatalogScope: "workspace",
           permissionModes: ["full"],
         },
-      },
+      }),
     ];
     let resolveDynamicModels: (
       response: SystemExecutionOptionsResponse,
@@ -347,25 +358,23 @@ describe("useSystemExecutionOptions", () => {
     );
   });
 
-  const BUILT_IN_PROVIDERS: ProviderInfo[] = ["codex", "pi"].map((id) => ({
-    id,
-    pluginId: `provider-${id}`,
-    displayName: id,
-    logoUrl: null,
-    available: true,
-    maintenance: { health: true, usage: true, installation: false },
-    composerActions: [],
-    capabilities: {
-      supportsThreadArchive: false,
-      supportsThreadRename: false,
-      supportsServiceTier: false,
-      supportsNativeUserQuestion: false,
-      supportsFork: true,
-      supportsSessionRewind: true,
-      modelCatalogScope: "workspace",
-      permissionModes: ["accept-edits", "auto", "full"],
-    },
-  }));
+  const BUILT_IN_PROVIDERS: ProviderInfo[] = ["codex", "pi"].map((id) =>
+    makeProviderInfo({
+      id,
+      logoUrl: null,
+      maintenance: { health: true, usage: true, installation: false },
+      capabilities: {
+        supportsThreadArchive: false,
+        supportsThreadRename: false,
+        supportsServiceTier: false,
+        supportsNativeUserQuestion: false,
+        supportsFork: true,
+        supportsSessionRewind: true,
+        modelCatalogScope: "workspace",
+        permissionModes: ["accept-edits", "auto", "full"],
+      },
+    }),
+  );
   const CODEX_MODEL: AvailableModel = {
     id: "gpt-5.6-sol",
     model: "gpt-5.6-sol",
@@ -414,16 +423,13 @@ describe("useSystemExecutionOptions", () => {
   });
 
   it("replays the host's provider list so a custom provider paints as itself", async () => {
-    const customProvider = {
+    const customProvider = makeProviderInfo({
       id: "acp:my-agent",
-      pluginId: "provider-acp:my-agent",
       displayName: "My agent",
       logoUrl: null,
       maintenance: { health: true, usage: true, installation: false },
       capabilities: CODEX_CATALOG.providers[0]!.capabilities,
-      composerActions: [],
-      available: true,
-    };
+    });
     const customCatalog: SystemExecutionOptionsResponse = {
       ...CODEX_CATALOG,
       providers: [...CODEX_CATALOG.providers, customProvider],

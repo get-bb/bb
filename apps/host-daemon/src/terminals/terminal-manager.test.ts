@@ -242,7 +242,6 @@ function createFakeRuntime(): AgentRuntime {
 function createFakeWorkspace(path: string): HostWorkspace {
   return {
     path,
-    managed: false,
     isGitRepo: true,
     isWorktree: false,
     getCurrentBranch: vi.fn(async () => "main"),
@@ -277,14 +276,7 @@ function createFakeWorkspace(path: string): HostWorkspace {
       commitSubject: "commit",
     })),
     reset: vi.fn(async () => undefined),
-    squashMerge: vi.fn(async () => ({
-      commitSha: "commit-1",
-      commitSubject: "commit",
-      merged: true,
-      targetBranch: "main",
-    })),
     runPullRequestAction: vi.fn(async () => undefined),
-    destroy: vi.fn(async () => undefined),
   };
 }
 
@@ -379,7 +371,6 @@ async function openTerminal(
       environmentId: "env-1",
       workspaceContext: {
         workspacePath: "/tmp/terminal-workspace",
-        workspaceProvisionType: "unmanaged",
       },
     },
     cols: 100,
@@ -416,6 +407,7 @@ describe("TerminalManager", () => {
       BB_TERMINAL_SESSION_ID: "term-1",
       COLORTERM: "truecolor",
       DISABLE_AUTO_TITLE: "true",
+      FORCE_HYPERLINK: "1",
       PROMPT_EOL_MARK: "",
       TERM: "xterm-256color",
     });
@@ -445,7 +437,6 @@ describe("TerminalManager", () => {
         environmentId: "env-1",
         workspaceContext: {
           workspacePath: "/tmp/terminal-workspace",
-          workspaceProvisionType: "unmanaged",
         },
       },
       cols: 100,
@@ -557,7 +548,6 @@ describe("TerminalManager", () => {
         environmentId: "env-1",
         workspaceContext: {
           workspacePath: "/tmp/terminal-workspace",
-          workspaceProvisionType: "unmanaged",
         },
       },
       cols: 100,
@@ -620,7 +610,6 @@ describe("TerminalManager", () => {
         environmentId: "env-1",
         workspaceContext: {
           workspacePath: "/tmp/terminal-workspace",
-          workspaceProvisionType: "unmanaged",
         },
       },
       cols: 100,
@@ -679,7 +668,6 @@ describe("TerminalManager", () => {
         environmentId: "env-1",
         workspaceContext: {
           workspacePath: "/tmp/terminal-workspace",
-          workspaceProvisionType: "unmanaged",
         },
       },
       cols: 100,
@@ -729,7 +717,6 @@ describe("TerminalManager", () => {
         environmentId: "env-1",
         workspaceContext: {
           workspacePath: "/tmp/terminal-workspace",
-          workspaceProvisionType: "unmanaged",
         },
       },
       cols: 100,
@@ -748,7 +735,6 @@ describe("TerminalManager", () => {
         environmentId: "env-1",
         workspaceContext: {
           workspacePath: "/tmp/terminal-workspace",
-          workspaceProvisionType: "unmanaged",
         },
       },
       cols: 100,
@@ -803,7 +789,6 @@ describe("TerminalManager", () => {
         environmentId: "env-1",
         workspaceContext: {
           workspacePath: "/tmp/terminal-workspace",
-          workspaceProvisionType: "unmanaged",
         },
       },
       cols: 100,
@@ -822,7 +807,6 @@ describe("TerminalManager", () => {
         environmentId: "env-1",
         workspaceContext: {
           workspacePath: "/tmp/terminal-workspace",
-          workspaceProvisionType: "unmanaged",
         },
       },
       cols: 100,
@@ -883,7 +867,6 @@ describe("TerminalManager", () => {
         environmentId: "env-1",
         workspaceContext: {
           workspacePath: "/tmp/stale-terminal-workspace",
-          workspaceProvisionType: "unmanaged",
         },
       },
       cols: 100,
@@ -1431,7 +1414,6 @@ describe("TerminalManager", () => {
         environmentId: "env-1",
         workspaceContext: {
           workspacePath: "/tmp/terminal-workspace",
-          workspaceProvisionType: "unmanaged",
         },
       },
       cols: 100,
@@ -1490,7 +1472,6 @@ describe("TerminalManager", () => {
         environmentId: "env-real",
         workspaceContext: {
           workspacePath,
-          workspaceProvisionType: "unmanaged",
         },
       },
       cols: 100,

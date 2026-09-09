@@ -1,4 +1,7 @@
-const MARKETPLACE_PATH_PREFIX = "/marketplace/v1/";
+const MARKETPLACE_PATHS = [
+  { prefix: "/marketplace/v1/", objectPrefix: "" },
+  { prefix: "/marketplace/v2/", objectPrefix: "v2/" },
+] as const;
 
 const MANIFEST_CACHE_CONTROL = "public, max-age=300, must-revalidate";
 const ICON_CACHE_CONTROL = "public, max-age=31536000, immutable";
@@ -7,14 +10,19 @@ const CONTENT_TYPES: Record<string, string> = {
   json: "application/json; charset=utf-8",
   svg: "image/svg+xml",
   png: "image/png",
+  jpg: "image/jpeg",
+  jpeg: "image/jpeg",
   webp: "image/webp",
 };
 
 export function marketplaceObjectKey(pathname: string): string | null {
-  if (!pathname.startsWith(MARKETPLACE_PATH_PREFIX)) return null;
+  const route = MARKETPLACE_PATHS.find(({ prefix }) =>
+    pathname.startsWith(prefix),
+  );
+  if (route === undefined) return null;
   let key: string;
   try {
-    key = decodeURIComponent(pathname.slice(MARKETPLACE_PATH_PREFIX.length));
+    key = decodeURIComponent(pathname.slice(route.prefix.length));
   } catch {
     return null;
   }
@@ -24,12 +32,18 @@ export function marketplaceObjectKey(pathname: string): string | null {
   if (segments.some((segment) => segment.length === 0 || segment === "..")) {
     return null;
   }
-  return key;
+  return `${route.objectPrefix}${key}`;
 }
 
 function contentTypeFor(key: string): string {
   const extension = key.split(".").at(-1)?.toLowerCase() ?? "";
   return CONTENT_TYPES[extension] ?? "application/octet-stream";
+}
+
+function cacheControlFor(key: string): string {
+  return key.endsWith(".json") || key.startsWith("v2/")
+    ? MANIFEST_CACHE_CONTROL
+    : ICON_CACHE_CONTROL;
 }
 
 function notFound(reason: string): Response {
@@ -58,10 +72,7 @@ export async function serveMarketplaceObject(args: {
     "content-type",
     object.httpMetadata?.contentType ?? contentTypeFor(key),
   );
-  headers.set(
-    "cache-control",
-    key.endsWith(".json") ? MANIFEST_CACHE_CONTROL : ICON_CACHE_CONTROL,
-  );
+  headers.set("cache-control", cacheControlFor(key));
   headers.set("x-content-type-options", "nosniff");
   headers.set(
     "content-security-policy",

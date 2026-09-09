@@ -15,7 +15,6 @@ import {
   type SQL,
 } from "drizzle-orm";
 import type {
-  EnvironmentWorkspaceDisplayKind,
   ReasoningLevel,
   ThreadChangeKind,
   ThreadLifecycleEvent,
@@ -24,11 +23,9 @@ import type {
   ThreadSearchSourceKind,
   ThreadStatus,
   ThreadVisibility,
-  WorkspaceProvisionType,
 } from "@bb/domain";
 import {
   evaluateThreadLifecycleEvent,
-  resolveEnvironmentWorkspaceDisplayKind,
   threadSearchSourceKindSchema,
 } from "@bb/domain";
 import type { DbConnection, DbTransaction } from "../connection.js";
@@ -42,9 +39,7 @@ import {
   threads,
 } from "../schema.js";
 import { createThreadId } from "../ids.js";
-import {
-  createOrderKeyBetween,
-} from "./order-keys.js";
+import { createOrderKeyBetween } from "./order-keys.js";
 
 type ThreadWriteConnection = DbConnection | DbTransaction;
 
@@ -72,7 +67,9 @@ function countThreadsWhere(
   db: ThreadWriteConnection,
   where: ThreadWhere,
 ): number {
-  return db.select({ count: count() }).from(threads).where(where).get()?.count ?? 0;
+  return (
+    db.select({ count: count() }).from(threads).where(where).get()?.count ?? 0
+  );
 }
 
 function listThreadsWhere(
@@ -82,8 +79,13 @@ function listThreadsWhere(
   return db.select().from(threads).where(where).all();
 }
 
-function hasThreadWhere(db: ThreadWriteConnection, where: ThreadWhere): boolean {
-  return db.select({ id: threads.id }).from(threads).where(where).get() !== undefined;
+function hasThreadWhere(
+  db: ThreadWriteConnection,
+  where: ThreadWhere,
+): boolean {
+  return (
+    db.select({ id: threads.id }).from(threads).where(where).get() !== undefined
+  );
 }
 
 export interface ThreadSearchHighlightRange {
@@ -296,10 +298,10 @@ export function createThread(
           sectionId: input.sectionId ?? null,
           status: input.status ?? "starting",
           parentThreadId:
-            originKind === null ? input.parentThreadId ?? null : null,
+            originKind === null ? (input.parentThreadId ?? null) : null,
           sourceThreadId:
             input.sourceThreadId ??
-            (originKind === null ? null : input.parentThreadId ?? null),
+            (originKind === null ? null : (input.parentThreadId ?? null)),
           originKind,
           originPluginId: input.originPluginId ?? null,
           visibility,
@@ -366,6 +368,7 @@ export function listThreadMentionRowsByIds(
 
 export interface ListThreadsOptions {
   projectId?: string;
+  environmentId?: string;
   archived?: boolean;
   sectionId?: string;
   unsectioned?: boolean;
@@ -414,10 +417,7 @@ interface PinThreadMutationResult {
   thread: ThreadRow;
 }
 
-type PinnedThreadRootCandidate = Pick<
-  ThreadRow,
-  "id" | "parentThreadId"
->;
+type PinnedThreadRootCandidate = Pick<ThreadRow, "id" | "parentThreadId">;
 
 interface FilterVisiblePinnedThreadRootsArgs<
   TThread extends PinnedThreadRootCandidate,
@@ -481,9 +481,7 @@ function getFirstPinnedThread(db: DbQueryConnection): ThreadRow | null {
 
 function filterVisiblePinnedThreadRoots<
   TThread extends PinnedThreadRootCandidate,
->({
-  pinnedThreads,
-}: FilterVisiblePinnedThreadRootsArgs<TThread>): TThread[] {
+>({ pinnedThreads }: FilterVisiblePinnedThreadRootsArgs<TThread>): TThread[] {
   const pinnedThreadIds = new Set(pinnedThreads.map((thread) => thread.id));
   return pinnedThreads.filter(
     (thread) =>
@@ -513,7 +511,8 @@ function threadWithPendingInteractionBaseQuery(db: DbConnection) {
       environmentHostId: environments.hostId,
       environmentIsWorktree: environments.isWorktree,
       environmentName: environments.name,
-      environmentWorkspaceProvisionType: environments.workspaceProvisionType,
+      environmentPath: environments.path,
+      environmentProviderId: environments.environmentProviderId,
       hasPendingInteraction: sql<number>`EXISTS (SELECT 1 FROM ${pendingInteractions} WHERE ${pendingInteractions.threadId} = ${threads.id} AND ${pendingInteractions.status} = 'pending')`,
     })
     .from(threads)
@@ -551,9 +550,11 @@ function resolvePinnedThreadNeighbor(
 export interface ThreadWithPendingInteractionState extends ThreadRow {
   environmentBranchName: string | null;
   environmentHostId: string | null;
+  environmentIsWorktree: boolean | null;
   environmentName: string | null;
+  environmentPath: string | null;
+  environmentProviderId: string | null;
   hasPendingInteraction: boolean;
-  environmentWorkspaceDisplayKind: EnvironmentWorkspaceDisplayKind;
 }
 
 interface ThreadWithPendingInteractionStateRow extends ThreadRow {
@@ -561,7 +562,8 @@ interface ThreadWithPendingInteractionStateRow extends ThreadRow {
   environmentHostId: string | null;
   environmentIsWorktree: boolean | null;
   environmentName: string | null;
-  environmentWorkspaceProvisionType: WorkspaceProvisionType | null;
+  environmentPath: string | null;
+  environmentProviderId: string | null;
   hasPendingInteraction: number;
 }
 
@@ -589,7 +591,6 @@ export interface ListUnarchivedHiddenSourceThreadsArgs {
 export interface ListUnarchivedAssignedChildThreadsArgs {
   parentThreadId: string;
 }
-
 
 export interface ListNonDeletedChildThreadsArgs {
   parentThreadId: string;
@@ -626,12 +627,6 @@ export interface HasPendingThreadShutdownInEnvironmentArgs {
   environmentId: string;
 }
 
-const NON_TERMINAL_THREAD_STATUSES: readonly ThreadStatus[] = [
-  "starting",
-  "idle",
-  "active",
-];
-
 interface StatusTransition {
   currentStatus: ThreadStatus;
   newStatus: ThreadStatus;
@@ -647,14 +642,15 @@ function statusTransitionNeedsAttention(args: StatusTransition): boolean {
     return false;
   }
 
-  return (
-    args.currentStatus === "active" || args.currentStatus === "starting"
-  );
+  return args.currentStatus === "active" || args.currentStatus === "starting";
 }
 
 function buildListThreadsFilters(options: ListThreadsOptions) {
   return [
     options.projectId ? eq(threads.projectId, options.projectId) : undefined,
+    options.environmentId
+      ? eq(threads.environmentId, options.environmentId)
+      : undefined,
     options.sectionId ? eq(threads.sectionId, options.sectionId) : undefined,
     options.unsectioned ? isNull(threads.sectionId) : undefined,
     nonDeletedThreads(),
@@ -665,9 +661,7 @@ function buildListThreadsFilters(options: ListThreadsOptions) {
     options.sourceThreadId
       ? eq(threads.sourceThreadId, options.sourceThreadId)
       : undefined,
-    options.originKind
-      ? eq(threads.originKind, options.originKind)
-      : undefined,
+    options.originKind ? eq(threads.originKind, options.originKind) : undefined,
     options.originPluginId
       ? eq(threads.originPluginId, options.originPluginId)
       : undefined,
@@ -711,7 +705,9 @@ function buildActiveProjectThreadOrderBy() {
 function buildPinnedThreadOrderBy() {
   return [
     asc(sql`CASE WHEN ${threads.pinnedAt} IS NOT NULL THEN 0 ELSE 1 END`),
-    asc(sql`CASE WHEN ${threads.pinnedAt} IS NOT NULL THEN ${threads.pinSortKey} END`),
+    asc(
+      sql`CASE WHEN ${threads.pinnedAt} IS NOT NULL THEN ${threads.pinSortKey} END`,
+    ),
     asc(sql`CASE WHEN ${threads.pinnedAt} IS NOT NULL THEN ${threads.id} END`),
   ];
 }
@@ -723,24 +719,16 @@ function buildListThreadsOrderBy(options: ListThreadsOptions) {
   return buildActiveProjectThreadOrderBy();
 }
 
-function buildListThreadsForProjectsOrderBy(
-  options: ListThreadsForProjectsOptions,
-) {
-  if (options.archived === true) {
-    return [desc(threads.archivedAt), desc(threads.id)];
-  }
-  return buildActiveProjectThreadOrderBy();
-}
-
 function toThreadWithPendingInteractionState(
   row: ThreadWithPendingInteractionStateRow,
 ): ThreadWithPendingInteractionState {
   const {
-    environmentIsWorktree,
-    environmentWorkspaceProvisionType,
     environmentBranchName,
     environmentHostId,
+    environmentIsWorktree,
     environmentName,
+    environmentPath,
+    environmentProviderId,
     hasPendingInteraction,
     ...thread
   } = row;
@@ -748,13 +736,10 @@ function toThreadWithPendingInteractionState(
     ...thread,
     environmentBranchName,
     environmentHostId,
+    environmentIsWorktree,
     environmentName,
-    environmentWorkspaceDisplayKind: resolveEnvironmentWorkspaceDisplayKind({
-      environment: {
-        isWorktree: environmentIsWorktree,
-        workspaceProvisionType: environmentWorkspaceProvisionType,
-      },
-    }),
+    environmentPath,
+    environmentProviderId,
     hasPendingInteraction: hasPendingInteraction > 0,
   };
 }
@@ -835,7 +820,9 @@ function findHighlightRanges(args: {
   }
 
   return mergeHighlightRanges(
-    ranges.sort((left, right) => left.start - right.start || left.end - right.end),
+    ranges.sort(
+      (left, right) => left.start - right.start || left.end - right.end,
+    ),
   );
 }
 
@@ -1112,7 +1099,8 @@ export function searchThreadsWithPendingInteractionState(
 ): ThreadSearchResults {
   const tokens = listThreadSearchQueryTokens(args.query);
   const tokenMatchQueries = listThreadSearchTokenMatchQueries(tokens);
-  const anyTokenMatchQuery = buildThreadSearchAnyTokenMatchQuery(tokenMatchQueries);
+  const anyTokenMatchQuery =
+    buildThreadSearchAnyTokenMatchQuery(tokenMatchQueries);
   if (anyTokenMatchQuery === null) {
     return {
       active: { total: 0, results: [] },
@@ -1140,6 +1128,181 @@ export function searchThreadsWithPendingInteractionState(
       rows: rows.filter((row) => row.archived === 1),
     }),
   };
+}
+
+/** How `countThreads` buckets its result; omitted asks for the total only. */
+export type CountThreadsGroupBy = "host" | "provider" | "project";
+
+export interface CountThreadsOptions {
+  status?: ThreadStatus;
+  hostId?: string;
+  providerId?: string;
+  projectId?: string;
+  /**
+   * `{ kind: "root" }` counts threads with no parent, `{ kind: "id" }` counts
+   * one parent's children, and omitting the option does not filter on
+   * parentage. Three states, three shapes — a nullable string would have made
+   * "no parent" and "no filter" the same value.
+   */
+  parent?: { kind: "root" } | { kind: "id"; parentThreadId: string };
+  groupBy?: CountThreadsGroupBy;
+  /** Archived rows are excluded unless this is true; deleted rows always are. */
+  includeArchived?: boolean;
+  /** Hidden rows are excluded unless this is true. */
+  includeHidden?: boolean;
+}
+
+export interface ThreadCountGroupRow {
+  /** The host/provider/project id, or null for threads that have none. */
+  key: string | null;
+  count: number;
+}
+
+export interface CountThreadsResult {
+  total: number;
+  /** Present exactly when `groupBy` was asked for. */
+  groups?: ThreadCountGroupRow[];
+}
+
+/**
+ * `SELECT count(*)` over threads, optionally grouped. Backs `bb thread count`,
+ * which answers "how many" in the database instead of paging threads into
+ * memory to count them. The host filter and the `host` grouping both need the
+ * environment row, so they join it; every other shape reads `threads` alone.
+ * (Limiters do not use this: reconciling several pools needs the rows, which
+ * is `listRunningThreads`' job.)
+ */
+export function countThreads(
+  db: DbQueryConnection,
+  options: CountThreadsOptions,
+): CountThreadsResult {
+  const needsEnvironmentJoin =
+    options.hostId !== undefined || options.groupBy === "host";
+  const filters = [
+    nonDeletedThreads(),
+    options.includeArchived === true ? undefined : isNull(threads.archivedAt),
+    options.includeHidden === true
+      ? undefined
+      : eq(threads.visibility, "visible"),
+    options.status !== undefined
+      ? eq(threads.status, options.status)
+      : undefined,
+    options.providerId !== undefined
+      ? eq(threads.providerId, options.providerId)
+      : undefined,
+    options.projectId !== undefined
+      ? eq(threads.projectId, options.projectId)
+      : undefined,
+    options.parent === undefined
+      ? undefined
+      : options.parent.kind === "root"
+        ? isNull(threads.parentThreadId)
+        : eq(threads.parentThreadId, options.parent.parentThreadId),
+    options.hostId !== undefined
+      ? eq(environments.hostId, options.hostId)
+      : undefined,
+  ].filter((value) => value !== undefined);
+
+  const groupColumn =
+    options.groupBy === "host"
+      ? environments.hostId
+      : options.groupBy === "provider"
+        ? threads.providerId
+        : options.groupBy === "project"
+          ? threads.projectId
+          : null;
+
+  if (groupColumn === null) {
+    const base = db.select({ value: count() }).from(threads).$dynamic();
+    const joined = needsEnvironmentJoin
+      ? base.leftJoin(environments, eq(environments.id, threads.environmentId))
+      : base;
+    return { total: joined.where(and(...filters)).get()?.value ?? 0 };
+  }
+
+  const base = db
+    .select({ key: groupColumn, value: count() })
+    .from(threads)
+    .$dynamic();
+  const joined = needsEnvironmentJoin
+    ? base.leftJoin(environments, eq(environments.id, threads.environmentId))
+    : base;
+  const rows = joined
+    .where(and(...filters))
+    .groupBy(groupColumn)
+    .all();
+  const groups = rows.map((row) => ({
+    key: row.key ?? null,
+    count: row.value,
+  }));
+  return {
+    total: groups.reduce((sum, group) => sum + group.count, 0),
+    groups,
+  };
+}
+
+/**
+ * The statuses that occupy capacity. A `starting` thread is provisioning or
+ * cold-starting and a `active` one is executing a turn; both hold a real slot
+ * on a real machine. `idle` deliberately does not — an idle thread has a
+ * session but is consuming nothing — and `pending`, `stopping` and `error` are
+ * not running work either.
+ */
+const OCCUPYING_THREAD_STATUSES: readonly ThreadStatus[] = [
+  "starting",
+  "active",
+];
+
+/**
+ * One thread currently occupying capacity: its id, and the machine that id is
+ * occupying.
+ */
+export interface RunningThreadRow {
+  id: string;
+  /** The machine it runs on, or null while no environment has been chosen. */
+  hostId: string | null;
+}
+
+/**
+ * Every thread currently occupying capacity.
+ *
+ * `countThreads` answers "how many", which holds one pool but cannot say which
+ * threads make it up — so a limiter over several pools (all hosts, one host)
+ * had to issue a count per pool and could not reconcile them. The rows answer
+ * every such question at once, and the set is bounded by what is actually
+ * running: a handful of rows, not a page of threads.
+ *
+ * The row is deliberately just `{ id, hostId }`. `hostId` is here because a
+ * per-host pool cannot be derived from an id without a query per row; anything
+ * else a caller needs it fetches by id, which keeps this from accreting a
+ * projection of the threads table.
+ *
+ * Archived and deleted rows are excluded because neither runs: archival stops
+ * a thread, and a soft-deleted row is gone. Hidden threads are NOT excluded —
+ * visibility is a UI fact and a hidden thread burns a slot like any other, so
+ * hiding it here would under-report real occupancy.
+ *
+ * `threads_archived_status_idx` (archived_at, status) serves this directly:
+ * `archived_at IS NULL` is the leading equality and the status set is the
+ * range that follows.
+ */
+export function listRunningThreads(db: DbQueryConnection): RunningThreadRow[] {
+  return db
+    .select({
+      id: threads.id,
+      hostId: environments.hostId,
+    })
+    .from(threads)
+    .leftJoin(environments, eq(environments.id, threads.environmentId))
+    .where(
+      and(
+        liveThreads(),
+        inArray(threads.status, [...OCCUPYING_THREAD_STATUSES]),
+      ),
+    )
+    .orderBy(asc(threads.id))
+    .all()
+    .map((row) => ({ ...row, hostId: row.hostId ?? null }));
 }
 
 export function listThreads(db: DbConnection, options: ListThreadsOptions) {
@@ -1215,7 +1378,7 @@ export function listThreadsWithPendingInteractionStateForProjects(
 
   const rows = threadWithPendingInteractionBaseQuery(db)
     .where(and(...buildListThreadsForProjectsFilters(options)))
-    .orderBy(...buildListThreadsForProjectsOrderBy(options))
+    .orderBy(...buildListThreadsOrderBy(options))
     .all();
 
   return rows.map(toThreadWithPendingInteractionState);
@@ -1279,7 +1442,6 @@ export function listUnarchivedAssignedChildThreads(
   );
 }
 
-
 export function listUnarchivedHiddenSourceThreads(
   db: ThreadWriteConnection,
   args: ListUnarchivedHiddenSourceThreadsArgs,
@@ -1325,33 +1487,6 @@ export function listThreadEnvironmentAssignmentsOnHost(
       ),
     )
     .all();
-}
-
-export interface HasLiveThreadAtHostPathArgs {
-  hostId: string;
-  path: string;
-}
-
-export function hasLiveThreadAtHostPath(
-  db: DbConnection,
-  args: HasLiveThreadAtHostPathArgs,
-): boolean {
-  const row = db
-    .select({ id: threads.id })
-    .from(threads)
-    .innerJoin(environments, eq(threads.environmentId, environments.id))
-    .where(
-      and(
-        eq(environments.hostId, args.hostId),
-        eq(environments.path, args.path),
-        liveThreads(
-          inArray(threads.status, [...NON_TERMINAL_THREAD_STATUSES]),
-        ),
-      ),
-    )
-    .get();
-
-  return row !== undefined;
 }
 
 export function listHostThreadIds(
@@ -1611,10 +1746,7 @@ export function updateThread(
   const changes: ThreadChangeKind[] = [];
   if ("title" in input || "sectionId" in input) changes.push("title-changed");
   if ("lastReadAt" in input) changes.push("read-state-changed");
-  if (
-    "visibility" in input &&
-    input.visibility !== existing.visibility
-  ) {
+  if ("visibility" in input && input.visibility !== existing.visibility) {
     changes.push("title-changed");
   }
   if (
@@ -1708,6 +1840,53 @@ export function setThreadExecutionOverride(
     .returning()
     .get();
   return updated ?? null;
+}
+
+export interface SetThreadPendingStartContextInput {
+  threadId: string;
+  /** JSON-encoded context, or null to clear it as the thread leaves `pending`. */
+  pendingStartContext: string | null;
+}
+
+/**
+ * Records (or clears) how a `pending` thread will be established.
+ *
+ * Deliberately not folded into the lifecycle transition that leaves `pending`:
+ * creation writes the context unconditionally BEFORE the first dispatch
+ * attempt — an attempt that queues is not a transition at all — and clearing
+ * it is a separate fact from the status change: a thread that fails to start
+ * still wants its status moved without losing the context a later attempt
+ * would start from.
+ */
+export function setThreadPendingStartContext(
+  db: ThreadWriteConnection,
+  input: SetThreadPendingStartContextInput,
+) {
+  return (
+    db
+      .update(threads)
+      .set({
+        pendingStartContext: input.pendingStartContext,
+        updatedAt: Date.now(),
+      })
+      .where(eq(threads.id, input.threadId))
+      .returning()
+      .get() ?? null
+  );
+}
+
+/** The stored JSON; null once the thread was admitted, or never was pending. */
+export function getThreadPendingStartContext(
+  db: DbQueryConnection,
+  threadId: string,
+): string | null {
+  return (
+    db
+      .select({ pendingStartContext: threads.pendingStartContext })
+      .from(threads)
+      .where(eq(threads.id, threadId))
+      .get()?.pendingStartContext ?? null
+  );
 }
 
 export function markThreadAttentionRequested(
@@ -1854,7 +2033,9 @@ export class ThreadLifecycleEventNotAppliedError extends Error {
   readonly reason: ApplyThreadLifecycleEventNoopReason;
 
   constructor(args: ThreadLifecycleEventNotAppliedErrorArgs) {
-    super(`Thread lifecycle event not applied (${args.reason}): ${args.detail}`);
+    super(
+      `Thread lifecycle event not applied (${args.reason}): ${args.detail}`,
+    );
     this.name = "ThreadLifecycleEventNotAppliedError";
     this.detail = args.detail;
     this.reason = args.reason;

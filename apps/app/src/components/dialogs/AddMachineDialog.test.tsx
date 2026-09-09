@@ -9,6 +9,7 @@ import {
   waitFor,
 } from "@testing-library/react";
 import type { Host } from "@bb/domain";
+import { makeHost as host } from "@bb/test-helpers/domain-fixtures";
 import type { InstalledPlugin } from "@bb/server-contract";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -16,6 +17,7 @@ import { BbHttpError, sdk } from "@/lib/sdk";
 import { hostsQueryKey } from "@/hooks/queries/query-keys";
 import { createQueryClientTestHarness } from "@/test/queryClientTestHarness";
 import { AddMachineDialog } from "./AddMachineDialog";
+import { makeInstalledPlugin } from "@/test/fixtures/plugins";
 
 vi.mock("@/lib/sdk", async (importOriginal) => {
   const original = await importOriginal<typeof import("@/lib/sdk")>();
@@ -35,52 +37,22 @@ vi.mock("@/lib/ws", () => ({
   wsManager: { subscribe: vi.fn(), unsubscribe: vi.fn() },
 }));
 
-function host(overrides: Partial<Host> & Pick<Host, "id" | "name">): Host {
-  return {
-    type: "persistent",
-    status: "connected",
-    lastSeenAt: null,
-    maxPermissionMode: "full",
-    lastRejectedProtocolVersion: null,
-    createdAt: 0,
-    updatedAt: 0,
-    ...overrides,
-  };
-}
-
 const existingHost = host({ id: "host_primary", name: "MacBook Pro" });
 
 function connectPlugin(
   overrides: Pick<InstalledPlugin, "enabled" | "status">,
 ): InstalledPlugin {
-  return {
+  return makeInstalledPlugin({
     id: "connect",
     source: "builtin:connect",
     rootDir: "/plugins/connect",
-    version: "0.1.0",
     provenance: "builtin",
-    isOrphanedBuiltin: false,
     publisherLabel: "BB Official",
     sourceDisplay: "builtin · connect",
-    updateState: {},
-    description: null,
     name: "Remote access",
-    icon: null,
-    iconUrl: null,
-    statusDetail: null,
-    handlerStats: { count: 0, totalMs: 0, maxMs: 0, errorCount: 0 },
-    services: [],
-    schedules: [],
-    cliCommand: null,
-    capabilities: [],
     hasSettings: true,
-    app: { hasApp: false, bundle: null },
-    logoUrl: null,
-    logoDarkUrl: null,
-    providerIds: [],
-    icons: {},
     ...overrides,
-  };
+  });
 }
 
 function notRunningRpcError(status: string): BbHttpError {
@@ -351,7 +323,7 @@ describe("AddMachineDialog", () => {
       name: "Enable the Connect plugin",
     });
     expect(link.getAttribute("href")).toBe(
-      "/extensions/plugins/connect?view=installed",
+      "/settings/plugins/connect?view=installed",
     );
     expect(screen.queryByText("Remote access isn't ready yet.")).toBeNull();
     expect(screen.queryByRole("button", { name: "Try again" })).toBeNull();

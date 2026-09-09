@@ -520,6 +520,15 @@ export default async function plugin(bb: BbPluginApi) {
       label: "Extra repositories",
       description:
         'Comma-separated "owner/repo" list to track in addition to repos discovered from BB projects.',
+      experimental_schema: z.string().superRefine((value, context) => {
+        const { ignored } = parseExtraRepos(value);
+        if (ignored.length > 0) {
+          context.addIssue({
+            code: "custom",
+            message: `Use "owner/repo" for every entry. Invalid: ${ignored.join(", ")}`,
+          });
+        }
+      }),
       default: "",
     },
     defaultProject: {

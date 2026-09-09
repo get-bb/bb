@@ -7,6 +7,7 @@ import type { DiffPatchState } from "@/hooks/queries/use-environment-diff-patche
 import { appToast } from "@/components/ui/app-toast";
 import { StoryCard, StoryRow } from "../../../../.ladle/story-card";
 import { DiffFileCard } from "./DiffFileCard";
+import { makeDiffFileEntry } from "@/test/fixtures/diff-files";
 
 export default {
   title: "right-panel/Diff File Card",
@@ -86,17 +87,11 @@ const contextContentsRequester: RequestDiffFileContents = async (
 };
 
 function buildEntry(overrides: Partial<DiffFileEntry> = {}): DiffFileEntry {
-  return {
-    path: "src/file.ts",
-    previousPath: null,
-    changeKind: "modified",
+  return makeDiffFileEntry({
     additions: 1,
     deletions: 1,
-    binary: false,
-    origin: "tracked",
-    loadMode: "auto",
     ...overrides,
-  };
+  });
 }
 
 interface CardStageProps {

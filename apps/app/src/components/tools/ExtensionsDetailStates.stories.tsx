@@ -42,6 +42,10 @@ import {
 import { BbLogo } from "@/components/ui/bb-logo";
 import { ProvenancePill } from "@/components/tools/ProvenancePill";
 import { SkillDetailView } from "@/components/tools/SkillDetailView";
+import {
+  makePluginListItem,
+  makePluginRegistrationSet,
+} from "@/test/fixtures/plugins";
 
 export default {
   title: "Extensions",
@@ -349,34 +353,16 @@ export function SkillDetailStates() {
   );
 }
 
-const PLUGIN: PluginListItem = {
+const PLUGIN: PluginListItem = makePluginListItem({
   id: "github",
   source: "npm:@bb-plugins/github",
   rootDir: "/Users/you/.bb/plugins/github",
   version: "1.4.0",
-  enabled: true,
-  status: "running",
-  statusDetail: null,
   description: "Browse GitHub issues and pull requests without leaving bb.",
   name: "GitHub",
   icon: "Github",
-  compactIconUrl: null,
-  logoUrl: null,
-  logoDarkUrl: null,
-  hasSettings: false,
-  handlerStats: { count: 0, totalMs: 0, maxMs: 0, errorCount: 0 },
-  services: [],
-  schedules: [],
-  cliCommand: null,
-  capabilities: [],
-  app: { hasApp: false, bundle: null },
-  provenance: "direct",
-  isOrphanedBuiltin: false,
-  catalogEntryId: null,
-  publisherLabel: null,
   sourceDisplay: "npm · @bb-plugins/github",
-  updateState: EMPTY_PLUGIN_UPDATE_STATE,
-};
+});
 
 const NEXT_RUN_AT = new Date(2027, 0, 15, 9).getTime();
 
@@ -511,7 +497,7 @@ const BUNDLED_PLUGIN: PluginListItem = {
 
 const UNINSTALLED_CATALOG_PLUGIN = {
   entryId: "github",
-  marketplace: "bb-community",
+  marketplace: "bb-official",
   pluginId: "github",
   displayName: "GitHub",
   description: "Browse GitHub issues and pull requests without leaving bb.",
@@ -519,10 +505,12 @@ const UNINSTALLED_CATALOG_PLUGIN = {
   iconUrl: null,
   iconTinted: false,
   category: "Developer tools",
+  screenshots: [],
+  collections: [],
   source: "builtin:github",
   repositoryUrl: null,
-  marketplaceDisplayName: "BB Community",
-  publisherKey: "builtin",
+  marketplaceDisplayName: "BB Official",
+  publisherKey: "bb-official",
   publisherLabel: "BB Official",
   official: true,
   author: null,
@@ -614,6 +602,8 @@ function Plugin({
           onEdit={noop}
           onOpenSource={noop}
           onDelete={noop}
+          catalogEntries={[]}
+          onOpenPlugin={noop}
         />
       </div>
     </div>
@@ -635,14 +625,17 @@ function CatalogPlugin({
         <CatalogPluginDetail
           entry={entry}
           onInstall={() => setInstallOpen(true)}
+          catalogEntries={[entry]}
+          onOpenPlugin={noop}
         />
       </div>
       <AddPluginDialog
         open={installOpen}
         initial={{
           entryId: entry.entryId,
-          marketplace: "bb-community",
-          publisherLabel: "BB Community",
+          pluginId: entry.pluginId,
+          marketplace: "bb-official",
+          publisherLabel: "BB Official",
           displayName: entry.displayName,
           icon: entry.icon,
           iconUrl: entry.iconUrl,
@@ -657,30 +650,30 @@ function CatalogPlugin({
 
 function PluginWithAppSurfaces() {
   useEffect(() => {
-    setPluginSlotRegistrations(APP_SURFACE_PLUGIN.id, {
-      homepageSections: [],
-      settingsSections: [],
-      navPanels: [
-        {
-          id: "issues",
-          title: "Issues",
-          icon: "Github",
-          path: "issues",
-          component: () => null,
-        },
-      ],
-      threadPanelActions: [
-        {
-          id: "open-pr",
-          title: "Open pull request",
-          icon: "GitPullRequest",
-          component: () => null,
-        },
-      ],
-      sidebarFooterActions: [],
-      fileOpeners: [],
-      messageDirectives: [],
-    });
+    setPluginSlotRegistrations(
+      APP_SURFACE_PLUGIN.id,
+      makePluginRegistrationSet({
+        navPanels: [
+          {
+            id: "issues",
+            title: "Issues",
+            icon: "Github",
+            path: "issues",
+            component: () => null,
+          },
+        ],
+        threadPanelActions: [
+          {
+            id: "open-pr",
+            title: "Open pull request",
+            icon: "GitPullRequest",
+            component: () => null,
+          },
+        ],
+        sidebarFooterActions: [],
+        fileOpeners: [],
+      }),
+    );
     return () => removePluginSlotRegistrations(APP_SURFACE_PLUGIN.id);
   }, []);
   return <Plugin plugin={APP_SURFACE_PLUGIN} />;

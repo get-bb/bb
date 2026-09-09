@@ -34,7 +34,7 @@ function result(
     : { id, title, status: "fail", detail };
 }
 
-function countTurns(events: readonly ThreadEvent[]): {
+export function countTurns(events: readonly ThreadEvent[]): {
   started: number;
   completed: number;
 } {

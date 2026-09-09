@@ -9,10 +9,10 @@ import {
   noopNotifier,
   upsertHost,
 } from "@bb/db";
+import { DEFAULT_MANAGED_BRANCH_PREFIX } from "@bb/domain";
 import { ApiError } from "../../src/errors.js";
 import {
-  baseBranchSpecToStoredName,
-  buildManagedBranchName,
+  buildSuggestedBranchName,
   createThreadRecord,
 } from "../../src/services/threads/thread-create-helpers.js";
 import { sanitizeGeneratedBranchSlug } from "../../src/services/threads/title-generation.js";
@@ -33,17 +33,22 @@ describe("sanitizeGeneratedBranchSlug", () => {
   });
 });
 
-describe("buildManagedBranchName", () => {
+describe("buildSuggestedBranchName", () => {
   it("falls back to the full thread ID", () => {
-    expect(buildManagedBranchName({ threadId: "thr_abc123def456" })).toBe(
-      "bb/thr_abc123def456",
-    );
+    expect(
+      buildSuggestedBranchName({
+        branchPrefix: DEFAULT_MANAGED_BRANCH_PREFIX,
+        title: null,
+        threadId: "thr_abc123def456",
+      }),
+    ).toBe("bb/thr_abc123def456");
   });
 
   it("includes a sanitized slug before the full thread ID", () => {
     expect(
-      buildManagedBranchName({
-        branchSlug: "Fix login flow!",
+      buildSuggestedBranchName({
+        branchPrefix: DEFAULT_MANAGED_BRANCH_PREFIX,
+        title: "Fix login flow!",
         threadId: "thr_abc123def456",
       }),
     ).toBe("bb/fix-login-flow-thr_abc123def456");
@@ -51,35 +56,53 @@ describe("buildManagedBranchName", () => {
 
   it("falls back to the full thread ID when the slug is empty after sanitizing", () => {
     expect(
-      buildManagedBranchName({
-        branchSlug: "!!!",
+      buildSuggestedBranchName({
+        branchPrefix: DEFAULT_MANAGED_BRANCH_PREFIX,
+        title: "!!!",
         threadId: "thr_abc123def456",
       }),
     ).toBe("bb/thr_abc123def456");
   });
 
   it("produces unique names for threads with the same slug", () => {
-    const a = buildManagedBranchName({
-      branchSlug: "same task",
+    const a = buildSuggestedBranchName({
+      branchPrefix: DEFAULT_MANAGED_BRANCH_PREFIX,
+      title: "same task",
       threadId: "thr_abc123def456",
     });
-    const b = buildManagedBranchName({
-      branchSlug: "same task",
+    const b = buildSuggestedBranchName({
+      branchPrefix: DEFAULT_MANAGED_BRANCH_PREFIX,
+      title: "same task",
       threadId: "thr_abc123xyz789",
     });
     expect(a).not.toBe(b);
   });
-});
 
-describe("baseBranchSpecToStoredName", () => {
-  it("stores named base branches as their branch name", () => {
+  it("applies a configured prefix to both branch name shapes", () => {
     expect(
-      baseBranchSpecToStoredName({ kind: "named", name: "release/1.2" }),
-    ).toBe("release/1.2");
+      buildSuggestedBranchName({
+        branchPrefix: "sawyer/wt-",
+        title: "Fix login flow!",
+        threadId: "thr_abc123def456",
+      }),
+    ).toBe("sawyer/wt-fix-login-flow-thr_abc123def456");
+    expect(
+      buildSuggestedBranchName({
+        branchPrefix: "sawyer/wt-",
+        title: null,
+        threadId: "thr_abc123def456",
+      }),
+    ).toBe("sawyer/wt-thr_abc123def456");
   });
 
-  it("stores default base branches as null", () => {
-    expect(baseBranchSpecToStoredName({ kind: "default" })).toBeNull();
+  it("omits the prefix when it is empty", () => {
+    expect(
+      buildSuggestedBranchName({
+        branchPrefix: "",
+        title: "Fix login flow!",
+        threadId: "thr_abc123def456",
+      }),
+    ).toBe("fix-login-flow-thr_abc123def456");
   });
 });
 
@@ -102,11 +125,11 @@ describe("createThreadRecord", () => {
         },
       });
       const environment = createEnvironment(db, noopNotifier, {
+        providerOwnsPath: false,
         hostId: host.id,
         path: "/tmp/stale-section-create-project",
         projectId: project.id,
         status: "ready",
-        workspaceProvisionType: "managed-worktree",
       });
       const sectionResult = createThreadSection(db, noopNotifier, {
         name: "Race",

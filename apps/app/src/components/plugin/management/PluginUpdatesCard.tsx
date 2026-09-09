@@ -3,7 +3,7 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { UPDATE_ACTION_ICON } from "@bb/domain/update-state";
 import { Button } from "@bb/shared-ui/button";
 import { Icon } from "@bb/shared-ui/icon";
-import { appToast } from "@/components/ui/app-toast";
+import { pluginToast } from "@/components/plugin/PluginNotificationDescription";
 import { invalidatePluginList } from "@/hooks/cache-owners/plugin-cache-owner";
 import { applyPluginUpdate } from "@/hooks/queries/plugin-catalog-queries";
 import type { PluginListItem } from "@/hooks/queries/plugin-settings-queries";
@@ -38,34 +38,41 @@ export function PluginDetailReleaseControl({
 }) {
   const [detailsOpen, setDetailsOpen] = useState(false);
   const queryClient = useQueryClient();
-  const name = plugin.name ?? plugin.id;
   const availableVersion = plugin.updateState.availableVersion;
   const failure = plugin.updateState.lastFailure;
   const retry = useMutation({
+    meta: { showErrorToast: false },
     mutationFn: () => applyPluginUpdate(fetch, plugin.id),
     onSuccess: (result) => {
       invalidatePluginList({ queryClient });
       if (result.outcome === "rolled-back") {
-        appToast.error(`Updating ${name} failed`, {
-          description:
-            result.detail ??
+        pluginToast.error(
+          "Plugin update failed",
+          plugin,
+          "installed",
+          result.detail ??
             `${displayPluginVersion(plugin.version)} was restored.`,
-        });
+        );
       } else if (result.applied) {
-        appToast.success(`${name} updated`, {
-          description:
-            result.to === null
-              ? undefined
-              : `Now running ${displayPluginVersion(result.to.display)}.`,
-        });
+        pluginToast.success(
+          "Plugin updated",
+          plugin,
+          "installed",
+          result.to === null
+            ? undefined
+            : `Now running ${displayPluginVersion(result.to.display)}.`,
+        );
       } else {
-        appToast.message(`${name} is already up to date`);
+        pluginToast.message("Plugin is up to date", plugin, "installed");
       }
     },
     onError: (error) => {
-      appToast.error(`Updating ${name} failed`, {
-        description: pluginAdminErrorMessage(error),
-      });
+      pluginToast.error(
+        "Plugin update failed",
+        plugin,
+        "installed",
+        pluginAdminErrorMessage(error),
+      );
     },
   });
 

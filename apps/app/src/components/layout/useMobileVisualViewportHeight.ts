@@ -38,15 +38,14 @@ export function isKeyboardFocusTarget(target: EventTarget | null): boolean {
 
 export function useMobileVisualViewportHeight(
   shellRef: RefObject<AppShellElement | null>,
-  shellHeightRootRef: RefObject<AppShellElement | null>,
   enabled: boolean,
   restoreImmediatelyOnKeyboardDismissal: boolean,
 ) {
   useEffect(() => {
     const shell = shellRef.current;
-    const shellHeightRoot = shellHeightRootRef.current;
     const visualViewport = window.visualViewport;
-    if (!shell || !shellHeightRoot || !enabled || !visualViewport) return;
+    if (!shell || !enabled || !visualViewport) return;
+    const viewportStyleRoot = shell.ownerDocument.body;
 
     let animationFrame: number | null = null;
     let appliedOverride: { top: number; height: number } | null = null;
@@ -58,12 +57,12 @@ export function useMobileVisualViewportHeight(
       if (open === appliedKeyboardInset) return;
       appliedKeyboardInset = open;
       if (open) {
-        shellHeightRoot.style.setProperty(
+        viewportStyleRoot.style.setProperty(
           SHELL_SAFE_AREA_BOTTOM_PROPERTY,
           "0px",
         );
       } else {
-        shellHeightRoot.style.removeProperty(SHELL_SAFE_AREA_BOTTOM_PROPERTY);
+        viewportStyleRoot.style.removeProperty(SHELL_SAFE_AREA_BOTTOM_PROPERTY);
       }
     };
     const updateKeyboardInset = () => {
@@ -84,7 +83,7 @@ export function useMobileVisualViewportHeight(
       appliedOverride = null;
       shell.style.removeProperty("top");
       shell.style.removeProperty("height");
-      shellHeightRoot.style.removeProperty("--bb-shell-height");
+      viewportStyleRoot.style.removeProperty("--bb-shell-height");
     };
     const updateHeight = () => {
       animationFrame = null;
@@ -123,7 +122,7 @@ export function useMobileVisualViewportHeight(
       appliedOverride = { top: shellTop, height: visualViewportHeight };
       shell.style.top = `${shellTop}px`;
       shell.style.height = `${visualViewportHeight}px`;
-      shellHeightRoot.style.setProperty(
+      viewportStyleRoot.style.setProperty(
         "--bb-shell-height",
         `${visualViewportHeight}px`,
       );
@@ -190,10 +189,5 @@ export function useMobileVisualViewportHeight(
       setKeyboardInset(false);
       clearViewportOverride();
     };
-  }, [
-    enabled,
-    restoreImmediatelyOnKeyboardDismissal,
-    shellHeightRootRef,
-    shellRef,
-  ]);
+  }, [enabled, restoreImmediatelyOnKeyboardDismissal, shellRef]);
 }

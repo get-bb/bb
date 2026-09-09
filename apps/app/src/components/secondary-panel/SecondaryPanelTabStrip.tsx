@@ -565,6 +565,11 @@ function PanelTab({
       isActive={isActive}
       onSelect={tab.onSelect}
       labelMaxWidthClass="max-w-[160px]"
+      enlargeCloseTargetOnCoarsePointer={
+        tab.tab.kind === "workspace-file-preview" ||
+        tab.tab.kind === "host-file-preview" ||
+        tab.tab.kind === "thread-storage-file-preview"
+      }
       closeAction={
         tab.isPinned
           ? null

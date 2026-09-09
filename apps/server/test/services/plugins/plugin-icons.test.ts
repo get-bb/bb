@@ -348,8 +348,10 @@ describe("plugin-declared icons", () => {
     expect(entry.status, entry.statusDetail ?? "").toBe("running");
 
     const registration = harness.deps.providerRegistry.get("marked-agent");
+    const iconHash = registration?.icon?.hash;
+    expect(iconHash).toBeTypeOf("string");
     expect(registration?.info.logoUrl).toBe(
-      "/api/v1/system/providers/marked-agent/logo",
+      `/api/v1/system/providers/marked-agent/logo?h=${iconHash}`,
     );
     expect(registration?.info.icon).toBeUndefined();
     expect(registration?.iconNames).toEqual(new Set(["agent"]));
@@ -365,6 +367,20 @@ describe("plugin-declared icons", () => {
     );
     expect(logo.headers.get("cache-control")).toBe("no-store");
     expect(await logo.text()).toBe(SVG);
+
+    const hashedLogo = await harness.app.request(
+      `${BASE}/api/v1/system/providers/marked-agent/logo?h=${iconHash}`,
+    );
+    expect(hashedLogo.status).toBe(200);
+    expect(hashedLogo.headers.get("cache-control")).toBe(
+      "public, max-age=31536000, immutable",
+    );
+    expect(await hashedLogo.text()).toBe(SVG);
+
+    const staleLogo = await harness.app.request(
+      `${BASE}/api/v1/system/providers/marked-agent/logo?h=stale`,
+    );
+    expect(staleLogo.headers.get("cache-control")).toBe("no-store");
   });
 
   it("fails the load when a provider icon names an icon the plugin did not declare", async () => {

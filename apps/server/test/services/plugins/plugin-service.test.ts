@@ -14,13 +14,19 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import semver from "semver";
 import {
   createConnection,
+  createEnvironment,
+  createProject,
   getInstalledPlugin,
   migrate,
+  noopNotifier,
+  upsertHost,
   upsertInstalledPlugin,
+  upsertPluginMarketplace,
   type DbConnection,
 } from "@bb/db";
 import { PLUGIN_SDK_VERSION, type SystemChangeKind } from "@bb/domain";
 import type { Logger } from "@bb/logger";
+import { pluginListResponseSchema } from "@bb/server-contract";
 import { createAiServiceRegistry } from "../../../src/services/ai/ai-service-registry.js";
 import {
   createPluginService,
@@ -168,6 +174,71 @@ describe("plugin service", () => {
     expect(entry.status).toBe("running");
     expect(service.getApi("greeter")).toBeDefined();
   });
+
+  it.each(["startup", "retry"])(
+    "reports starting while a %s factory is pending",
+    async (mode) => {
+      const rootDir = await writePlugin(workDir, {
+        name: "bb-plugin-starting",
+        serverSource: `export default function plugin() { throw new Error("failed"); }`,
+      });
+      expect((await service.installPath(rootDir)).status).toBe("error");
+      if (mode === "startup") {
+        await service.stop();
+        service = createTelemetryTrackedService([]);
+        expect(service.list()[0]).toMatchObject({
+          status: "starting",
+          statusDetail: null,
+        });
+      }
+      let release = () => {};
+      let entered = () => {};
+      const gate = new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      const loading = new Promise<void>((resolve) => {
+        entered = resolve;
+      });
+      vi.stubGlobal("__startingPluginGate", gate);
+      vi.stubGlobal("__startingPluginEntered", entered);
+      await writeFile(
+        join(rootDir, "server.ts"),
+        `export default async function plugin() {
+      globalThis.__startingPluginEntered();
+      await globalThis.__startingPluginGate;
+    }`,
+      );
+      const operation =
+        mode === "startup" ? service.start() : service.reload("starting");
+      try {
+        await loading;
+        const { plugins } = pluginListResponseSchema.parse({
+          plugins: service.list(),
+        });
+        expect(plugins[0]).toMatchObject({
+          status: "starting",
+          statusDetail: null,
+        });
+        expect(service.getHttpRoute("starting", "GET", "/")).toEqual({
+          outcome: "not-running",
+          status: "starting",
+          detail: null,
+        });
+        expect(await service.runCliCommand("starting", [], {})).toMatchObject({
+          exitCode: 1,
+          stderr: 'plugin "starting" is not running (status: starting)',
+        });
+      } finally {
+        release();
+        await operation;
+        vi.unstubAllGlobals();
+      }
+      expect(service.list()[0]).toMatchObject({
+        status: "running",
+        statusDetail: null,
+      });
+    },
+  );
 
   it("summarizes user-facing capabilities and drops the live ones when disabled", async () => {
     const rootDir = join(workDir, "bb-plugin-capabilities");
@@ -797,6 +868,140 @@ describe("plugin service", () => {
     });
   });
 
+  it("adds marketplace discovery metadata to an installed plugin", () => {
+    upsertPluginMarketplace(db, {
+      name: "acme",
+      sourceKind: "https",
+      manifestUrl: "https://plugins.acme.test/marketplace.json",
+      sourceGitRef: null,
+      sourceGitCommit: null,
+      manifestJson: JSON.stringify({
+        schemaVersion: 2,
+        name: "acme",
+        displayName: "Acme",
+        categories: [
+          {
+            id: "acme-tools",
+            displayName: "Acme tools",
+            description: "Tools from Acme.",
+          },
+        ],
+        collections: [
+          {
+            id: "featured",
+            displayName: "Featured",
+            pluginIds: ["missing-plugin", "installed-tool"],
+          },
+        ],
+        plugins: [
+          {
+            id: "installed-tool",
+            displayName: "Installed tool",
+            description: "An installed tool.",
+            icon: "Zap",
+            category: "acme-tools",
+            screenshots: ["./screenshots/installed-tool/installed-tool.png"],
+            publishedAt: "2026-08-20T11:47:04-07:00",
+            updatedAt: "2026-08-27T16:12:00Z",
+            author: { name: "Acme" },
+            source: {
+              git: {
+                url: "https://github.com/acme/plugins.git",
+                ref: "v1.0.0",
+              },
+            },
+          },
+        ],
+      }),
+      statsJson: null,
+      etag: null,
+      lastModified: null,
+      lastSuccessfulRefreshAt: 1,
+      lastAttemptedRefreshAt: 1,
+      lastError: null,
+    });
+    upsertInstalledPlugin(db, {
+      id: "installed-tool",
+      source: "git:https://github.com/acme/plugins.git@v1.0.0",
+      provenance: {
+        kind: "catalog",
+        marketplace: "acme",
+        entryId: "installed-tool",
+      },
+      sourceIntent: {
+        kind: "git",
+        url: "https://github.com/acme/plugins.git",
+        subdirectory: null,
+        selector: { kind: "ref", ref: "v1.0.0", refKind: "tag" },
+      },
+      exactResolution: { kind: "git", commit: "a".repeat(40) },
+      updateState: {
+        lastCheckAt: null,
+        availableCompatibleVersion: null,
+        newestIncompatibleVersion: null,
+        statusDetail: null,
+      },
+      activeArtifactId: null,
+      rootDir: "/managed/installed-tool",
+      version: "1.0.0",
+      enabled: false,
+    });
+
+    expect(
+      service.list().find((entry) => entry.id === "installed-tool"),
+    ).toMatchObject({
+      categoryId: "acme-tools",
+      category: "Acme tools",
+      screenshots: [
+        "https://plugins.acme.test/screenshots/installed-tool/installed-tool.png",
+      ],
+      collections: [{ id: "featured", rank: 0 }],
+      publishedAt: "2026-08-20T11:47:04-07:00",
+      updatedAt: "2026-08-27T16:12:00Z",
+    });
+
+    upsertPluginMarketplace(db, {
+      name: "acme",
+      sourceKind: "https",
+      manifestUrl: "https://plugins.acme.test/marketplace.json",
+      sourceGitRef: null,
+      sourceGitCommit: null,
+      manifestJson: JSON.stringify({
+        schemaVersion: 2,
+        name: "acme",
+        displayName: "Acme",
+        categories: [
+          {
+            id: "acme-tools",
+            displayName: "Updated Acme tools",
+            description: "Updated tools from Acme.",
+          },
+        ],
+        plugins: [
+          {
+            id: "installed-tool",
+            displayName: "Installed tool",
+            description: "An installed tool.",
+            icon: "Zap",
+            category: "acme-tools",
+            author: { name: "Acme" },
+            source: { npm: { package: "bb-plugin-installed-tool" } },
+          },
+        ],
+      }),
+      statsJson: null,
+      etag: null,
+      lastModified: null,
+      lastSuccessfulRefreshAt: 2,
+      lastAttemptedRefreshAt: 2,
+      lastError: null,
+    });
+
+    expect(
+      service.list().find((entry) => entry.id === "installed-tool")?.category,
+    ).toBe("Updated Acme tools");
+  });
+
   it("times out a hung factory and reports error", async () => {
     const rootDir = await writePlugin(workDir, {
       name: "bb-plugin-hang",
@@ -1068,6 +1273,44 @@ describe("plugin service", () => {
       expect.stringContaining("bb-managed workspace"),
     );
   });
+
+  it("does not warn for a plugin installed from a directory a provider only attached to", async () => {
+    const warnSpy = vi.spyOn(logger, "warn");
+    warnSpy.mockClear();
+    const checkoutRoot = await writePlugin(join(workDir, "checkout"), {
+      name: "bb-plugin-attached",
+      serverSource: `export default function plugin() {}`,
+    });
+    seedEnvironmentAtPath(db, {
+      path: dirname(checkoutRoot),
+      environmentProviderId: "project-checkout",
+      providerOwnsPath: false,
+    });
+
+    await service.installPath(checkoutRoot);
+    expect(warnSpy).not.toHaveBeenCalledWith(
+      expect.stringContaining("bb-managed workspace"),
+    );
+  });
+
+  it("warns for a plugin installed inside a directory a provider owns", async () => {
+    const warnSpy = vi.spyOn(logger, "warn");
+    warnSpy.mockClear();
+    const ownedRoot = await writePlugin(join(workDir, "owned"), {
+      name: "bb-plugin-owned",
+      serverSource: `export default function plugin() {}`,
+    });
+    seedEnvironmentAtPath(db, {
+      path: dirname(ownedRoot),
+      environmentProviderId: "git-worktree",
+      providerOwnsPath: true,
+    });
+
+    await service.installPath(ownedRoot);
+    expect(warnSpy).toHaveBeenCalledWith(
+      expect.stringContaining("bb-managed workspace"),
+    );
+  });
 });
 
 describe("plugins-changed broadcast", () => {
@@ -1128,3 +1371,36 @@ describe("plugins-changed broadcast", () => {
     expect(notifySystem).toHaveBeenCalledWith(["plugins-changed"]);
   });
 });
+
+function seedEnvironmentAtPath(
+  db: DbConnection,
+  args: {
+    environmentProviderId: string;
+    path: string;
+    providerOwnsPath: boolean;
+  },
+): void {
+  const host = upsertHost(db, noopNotifier, {
+    type: "persistent",
+    name: "Test host",
+  });
+  const { project } = createProject(db, noopNotifier, {
+    name: "Plugin source project",
+    source: { type: "local_path", hostId: host.id, path: args.path },
+  });
+  createEnvironment(db, noopNotifier, {
+    projectId: project.id,
+    hostId: host.id,
+    path: args.path,
+    status: "ready",
+    providerOwnsPath: args.providerOwnsPath,
+    environmentProvider: {
+      environmentProviderId: args.environmentProviderId,
+      instanceKey: null,
+      selection: {
+        machine: { type: "existing", hostId: host.id },
+        inputs: null,
+      },
+    },
+  });
+}

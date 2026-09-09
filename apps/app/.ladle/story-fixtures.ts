@@ -1,23 +1,33 @@
 import type {
-  Environment,
   Host,
   ProjectSource,
+  ProviderInfo,
   ReasoningLevel,
   Thread,
-  ThreadListEntry,
   WorkspaceStatus,
 } from "@bb/domain";
 import type {
   ProviderCliKey,
   ProviderCliStatus,
 } from "@bb/host-daemon-contract";
-import type { ProjectResponse } from "@bb/server-contract";
+import type {
+  ProjectResponse,
+  SystemEnvironmentProvider,
+} from "@bb/server-contract";
 import { EMPTY_ORDERED_MENTION_SUGGESTIONS } from "@bb/client-core";
+import {
+  makeEnvironment as makeEnvironmentFixture,
+  makeHost as makeHostFixture,
+  makeProviderInfo,
+  makeThread as makeThreadFixture,
+  makeThreadListEntry as makeThreadListEntryFixture,
+} from "@bb/test-helpers/domain-fixtures";
+import { makeProjectResponse } from "../src/test/fixtures/projects";
 import { getProviderIconInfo } from "../src/lib/provider-icon";
 import type { PickerOption } from "../src/components/pickers/OptionPicker";
 import type { ModelPickerOption } from "../src/components/pickers/model-picker-option";
 import type { ProjectSelectorOption } from "../src/components/pickers/ProjectSelector";
-import type { ReuseThreadOption } from "../src/components/pickers/WorktreePicker";
+import type { ReuseThreadOption } from "../src/components/pickers/ReuseEnvironmentPicker";
 import type { ExecutionControlsProps } from "../src/components/promptbox/ExecutionControls";
 import {
   INERT_TYPEAHEAD_COMMAND_CONFIG,
@@ -94,6 +104,35 @@ function storyProviderIcon(providerId: string, glyph: string) {
   return getProviderIconInfo(providerId, { logoUrl: null, icon: { glyph } })
     ?.icon;
 }
+
+function makeStoryProvider(
+  id: string,
+  displayName: string,
+  glyph: string,
+): ProviderInfo {
+  return makeProviderInfo({
+    id,
+    displayName,
+    logoUrl: null,
+    icon: { glyph },
+  });
+}
+
+const storyCodexProvider = makeStoryProvider("codex", "Codex", "Code");
+const storyClaudeCodeProvider = makeStoryProvider(
+  "claude-code",
+  "Claude Code",
+  "Brain",
+);
+const storyCursorProvider = makeStoryProvider("acp-cursor", "Cursor", "Zap");
+export const STORY_CLAUDE_CODE_PROVIDER_ID = storyClaudeCodeProvider.id;
+export const STORY_CURSOR_PROVIDER_ID = storyCursorProvider.id;
+
+export const STORY_PROVIDERS_BY_ID: ReadonlyMap<string, ProviderInfo> = new Map(
+  [storyCodexProvider, storyClaudeCodeProvider, storyCursorProvider].map(
+    (provider) => [provider.id, provider],
+  ),
+);
 
 export const STORY_PROVIDER_OPTIONS: readonly PickerOption<string>[] = [
   { value: "codex", label: "Codex", icon: storyProviderIcon("codex", "Code") },
@@ -231,6 +270,8 @@ export const STORY_WORKTREE_OPTIONS: readonly ReuseThreadOption[] = [
     environmentId: "env_review_flow",
     branchName: "bb/review-flow-thr_4hge9xn14m",
     name: null,
+    path: null,
+    environmentProviderId: "git-worktree",
     threads: [
       { id: "thr_review", title: "Review flow cleanup" },
       { id: "thr_tests", title: "Backfill promptbox tests" },
@@ -240,9 +281,63 @@ export const STORY_WORKTREE_OPTIONS: readonly ReuseThreadOption[] = [
     environmentId: "env_timeline",
     branchName: "bb/timeline-pagination-thr_qfk8ksbxkk",
     name: "Timeline workspace",
+    path: null,
+    environmentProviderId: "git-worktree",
     threads: [{ id: "thr_timeline", title: "Timeline pagination" }],
   },
 ];
+
+export const STORY_ENVIRONMENT_PROVIDERS: readonly SystemEnvironmentProvider[] =
+  [
+    {
+      id: "project-checkout",
+      displayName: "Project checkout",
+      icon: "Laptop",
+      logoUrl: null,
+      pluginId: "environment-project-checkout",
+      acceptsEmptyInputs: true,
+      availability: null,
+      requires: {
+        projectCheckout: true,
+        gitCheckout: false,
+        gitRemote: false,
+        projectless: false,
+      },
+      inputs: null,
+    },
+    {
+      id: "git-worktree",
+      displayName: "Worktree",
+      icon: "GitBranch",
+      logoUrl: null,
+      pluginId: "environment-git-worktree",
+      acceptsEmptyInputs: true,
+      availability: null,
+      requires: {
+        projectCheckout: true,
+        gitCheckout: true,
+        gitRemote: false,
+        projectless: false,
+      },
+      inputs: null,
+    },
+    {
+      id: "personal-workspace",
+      displayName: "Personal workspace",
+      icon: "Folder",
+      logoUrl: null,
+      pluginId: "environment-personal-workspace",
+      acceptsEmptyInputs: true,
+      availability: null,
+      requires: {
+        projectCheckout: false,
+        gitCheckout: false,
+        gitRemote: false,
+        projectless: true,
+      },
+      inputs: null,
+    },
+  ];
 
 export const STORY_PROJECTS: readonly ProjectSelectorOption[] = [
   { id: PROJECT_IDS.bb, name: PROJECT_NAMES.bb },
@@ -284,101 +379,48 @@ export function makeExecutionControlsProps(
 }
 
 export function makeThread(overrides: Partial<Thread> = {}): Thread {
-  const base: Thread = {
+  return makeThreadFixture({
     id: "thr_demo",
     projectId: PROJECT_IDS.bb,
     environmentId: "env_demo",
-    providerId: "codex",
     title: "Audit recurring permission failures",
     titleFallback: "Audit recurring permission failures",
-    sectionId: null,
-    status: "idle",
-    parentThreadId: null,
-    sourceThreadId: null,
-    originKind: null,
-    originPluginId: null,
-    visibility: "visible",
-    archivedAt: null,
-    pinnedAt: null,
-    deletedAt: null,
-    lastReadAt: 100,
-    latestAttentionAt: 100,
-    createdAt: 0,
-    updatedAt: 100,
-  };
-  return { ...base, ...overrides };
+    ...overrides,
+  });
 }
 
 export function makeThreadListEntry(
-  overrides: Partial<ThreadListEntry> = {},
-): ThreadListEntry {
-  const base: ThreadListEntry = {
+  overrides: Parameters<typeof makeThreadListEntryFixture>[0] = {},
+) {
+  return makeThreadListEntryFixture({
     id: "thr_demo",
     projectId: PROJECT_IDS.bb,
-    environmentId: null,
-    providerId: "codex",
     title: "Audit recurring permission failures",
     titleFallback: "Audit recurring permission failures",
-    sectionId: null,
-    status: "idle",
-    parentThreadId: null,
-    sourceThreadId: null,
-    originKind: null,
-    originPluginId: null,
-    visibility: "visible",
-    archivedAt: null,
-    pinnedAt: null,
-    pinSortKey: null,
-    deletedAt: null,
-    lastReadAt: 100,
-    latestAttentionAt: 100,
-    createdAt: 0,
-    updatedAt: 100,
-    activity: {
-      activeWorkflowCount: 0,
-      activeBackgroundAgentCount: 0,
-      activeBackgroundCommandCount: 0,
-      activePlanModeCount: 0,
-      activeGoalCount: 0,
-    },
-    hasPendingInteraction: false,
-    environmentHostId: null,
-    environmentName: null,
-    environmentBranchName: null,
-    environmentWorkspaceDisplayKind: "other",
-    runtime: { displayStatus: "idle", hostReconnectGraceExpiresAt: null },
-  };
-  return { ...base, ...overrides };
+    ...overrides,
+  });
 }
 
 export function makeProject(
   overrides: Partial<ProjectResponse> = {},
 ): ProjectResponse {
-  const base: ProjectResponse = {
+  return makeProjectResponse({
     id: PROJECT_IDS.bb,
-    kind: "standard",
     name: PROJECT_NAMES.bb,
-    gitRemoteUrl: null,
-    sources: [],
     createdAt: 1,
     updatedAt: 2,
-  };
-  return { ...base, ...overrides };
+    ...overrides,
+  });
 }
 
 export function makeHost(overrides: Partial<Host> = {}): Host {
-  const base: Host = {
+  return makeHostFixture({
     id: HOST_IDS.local,
     name: HOST_NAMES.local,
-    type: "persistent",
-    status: "connected",
     lastSeenAt: 100,
-    maxPermissionMode: "full",
-    lastRejectedProtocolVersion: null,
-    createdAt: 0,
     updatedAt: 100,
-  };
-  return { ...base, ...overrides };
+    ...overrides,
+  });
 }
 
 export function makeProviderCliStatus(
@@ -410,27 +452,19 @@ export function makeProviderCliStatus(
 }
 
 export function makeEnvironment(
-  overrides: Partial<Environment> = {},
-): Environment {
-  const base: Environment = {
+  overrides: Parameters<typeof makeEnvironmentFixture>[0] = {},
+) {
+  return makeEnvironmentFixture({
     id: "env_demo",
-    name: null,
     projectId: PROJECT_IDS.bb,
     hostId: HOST_IDS.local,
     path: "/Users/michael/Projects/bb",
-    managed: true,
-    isGitRepo: true,
-    isWorktree: true,
-    workspaceProvisionType: "managed-worktree",
     branchName: BRANCH_NAMES.feature,
     baseBranch: BRANCH_NAMES.default,
     defaultBranch: BRANCH_NAMES.default,
-    mergeBaseBranch: null,
-    status: "ready",
-    createdAt: 0,
     updatedAt: 100,
-  };
-  return { ...base, ...overrides };
+    ...overrides,
+  });
 }
 
 export function makeWorkspaceStatus(

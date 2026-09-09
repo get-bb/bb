@@ -73,6 +73,7 @@ interface UseThreadFileTabsParams {
   syncThreadId: string | null | undefined;
   environmentId: string | null | undefined;
   fileOwnerThreadId?: string | null;
+  onCloseLastTab?: () => void;
   preserveWorkspaceTabsAcrossContexts?: boolean;
   projectHostId?: string | null;
   projectId?: string | null;
@@ -235,12 +236,6 @@ function forgetClosedPanelTab(
   }
   recentlyClosedPanelTabs.set(contextKey, next);
   return wasTop;
-}
-
-function buildRecentlyClosedPanelContextKey(
-  context: RecentlyClosedPanelContext,
-): RecentlyClosedPanelContextKey {
-  return JSON.stringify(context);
 }
 
 function isReopenablePanelTabOwnedByContext({
@@ -438,6 +433,7 @@ export function useThreadFileTabs({
   syncThreadId,
   environmentId,
   fileOwnerThreadId,
+  onCloseLastTab,
   preserveWorkspaceTabsAcrossContexts = false,
   projectHostId = null,
   projectId = null,
@@ -500,7 +496,7 @@ export function useThreadFileTabs({
     () =>
       recentlyClosedPanelContext === null
         ? null
-        : buildRecentlyClosedPanelContextKey(recentlyClosedPanelContext),
+        : JSON.stringify(recentlyClosedPanelContext),
     [recentlyClosedPanelContext],
   );
   const recentlyClosedPanelContextKeyRef = useRef(
@@ -758,12 +754,14 @@ export function useThreadFileTabs({
 
   const closeTab = useCallback(
     (tabId: string) => {
+      let didCloseLastTab = false;
       updateFixedPanelTabsState((state) => {
         const tabIndex = state.secondary.tabs.findIndex(
           (tab) => tab.id === tabId,
         );
         const tab = state.secondary.tabs[tabIndex];
         const next = closeSecondaryPanelTabInState(state, tabId);
+        didCloseLastTab = next !== state && next.secondary.tabs.length === 0;
         if (
           next !== state &&
           recentlyClosedPanelContext !== null &&
@@ -782,8 +780,10 @@ export function useThreadFileTabs({
         }
         return next;
       });
+      if (didCloseLastTab) onCloseLastTab?.();
     },
     [
+      onCloseLastTab,
       recentlyClosedPanelContext,
       recentlyClosedPanelContextKey,
       updateFixedPanelTabsState,

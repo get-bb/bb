@@ -1,3 +1,4 @@
+import { startDesktopBrowserBroker } from "./desktop-browser-broker.js";
 import { CommandRouter } from "./command-router.js";
 import { createDaemon, type HostDaemon } from "./daemon.js";
 import {
@@ -96,7 +97,6 @@ interface IdleProviderSessionReaperRuntimeManager {
 interface StartIdleProviderSessionReaperArgs {
   logger: HostDaemonLogger;
   nowMs: () => number;
-  resolveProviderSessionReapingEnabled: () => Promise<boolean>;
   runtimeManager: IdleProviderSessionReaperRuntimeManager;
   setIntervalFn: IdleProviderSessionReaperIntervalFn;
 }
@@ -130,7 +130,7 @@ interface CreateHostDaemonAppOptions {
   fetchFn?: FetchFn;
   createWebSocket?: CreateReconnectingWebSocket;
   closeMachineAuthProxy?: () => Promise<void>;
-  forceExit?: (code: number) => void;
+  exitProcess?: (code: number) => void;
 }
 
 export interface HostDaemonApp {
@@ -160,22 +160,11 @@ export function startIdleProviderSessionReaper(
       return;
     }
     running = true;
-    void args
-      .resolveProviderSessionReapingEnabled()
-      .catch((error) => {
-        args.logger.warn(
-          { ...runtimeErrorLogFields(error) },
-          "Failed to read idle provider session experiment policy",
-        );
-        return false;
+    void args.runtimeManager
+      .reapIdleProviderSessions({
+        idleForMs: IDLE_PROVIDER_SESSION_REAP_AFTER_MS,
+        nowMs: args.nowMs(),
       })
-      .then((providerSessionReapingEnabled) =>
-        args.runtimeManager.reapIdleProviderSessions({
-          idleForMs: IDLE_PROVIDER_SESSION_REAP_AFTER_MS,
-          nowMs: args.nowMs(),
-          providerSessionReapingEnabled,
-        }),
-      )
       .then((result) => {
         if (result.reapedSessions.length === 0) {
           return;
@@ -695,8 +684,6 @@ export async function createHostDaemonApp(
   const idleProviderSessionReaper = startIdleProviderSessionReaper({
     logger: options.logger,
     nowMs: Date.now,
-    resolveProviderSessionReapingEnabled: async () =>
-      (await serverClient.getRuntimePolicy()).providerSessionReaping,
     runtimeManager,
     setIntervalFn: (callback, intervalMs) => {
       const timer = setInterval(callback, intervalMs);
@@ -742,7 +729,16 @@ export async function createHostDaemonApp(
     },
   });
 
+  const desktopBrowserBroker = await startDesktopBrowserBroker({
+    dataDir: options.dataDir,
+    hostId: options.hostId,
+    serverUrl: options.serverUrl,
+    onChanged: (event) => sendServerMessage(event),
+  });
+
   const router = new CommandRouter({
+    emitEnvironmentHookProgress: (message) => sendServerMessage(message),
+    desktopBrowserBroker,
     dataDir: options.dataDir,
     fetchProjectAttachment: (args) =>
       runSessionRequest({
@@ -838,11 +834,6 @@ export async function createHostDaemonApp(
     getActiveThreads: () => runtimeManager.listActiveThreads(),
     getLoadedEnvironments: () => runtimeManager.listLoadedEnvironments(),
     onHostRpcRequest: async (message) => {
-      if (message.command.type === "environment.destroy") {
-        await watchManager.removeEnvironmentWorkspaceWatch(
-          message.command.environmentId,
-        );
-      }
       const response = await router.handleOnlineRpcRequest(message);
       sendServerMessage(response);
     },
@@ -894,6 +885,7 @@ export async function createHostDaemonApp(
     },
     setSession: (session) => {
       sessionState.value = session?.sessionId ?? null;
+      desktopBrowserBroker.setConnected(session !== null);
       if (session === null) {
         clearInteractiveInterruptRetry();
       }
@@ -935,11 +927,12 @@ export async function createHostDaemonApp(
     },
     logger: options.logger,
     releaseLock: options.releaseLock,
-    ...(options.forceExit ? { forceExit: options.forceExit } : {}),
+    ...(options.exitProcess ? { exitProcess: options.exitProcess } : {}),
     flushEvents: async () => {
       await eventSink.flush();
     },
     shutdownRuntimes: async () => {
+      await desktopBrowserBroker.close();
       idleProviderSessionReaper.stop();
       eventLoopStallMonitor.stop();
       hostDaemonHealthMonitor.stop();
@@ -964,12 +957,12 @@ export async function createHostDaemonApp(
     },
   });
   requestDaemonRestart = () => {
-    void daemon.shutdown("self-update").catch((error) => {
+    void daemon.shutdown("self-update", 0).catch((error) => {
       options.logger.error({ err: error }, "Self-update shutdown failed");
     });
   };
   connection.setSessionCloseHandler((reason) =>
-    daemon.shutdown(`session-close:${reason}`),
+    daemon.shutdown(`session-close:${reason}`, 0),
   );
 
   return {

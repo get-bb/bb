@@ -117,6 +117,9 @@ const electronBuilderConfigSchema = z
         })
         .passthrough(),
     ]),
+    toolsets: z.object({
+      appimage: z.literal("1.0.3"),
+    }),
   })
   .passthrough();
 
@@ -502,6 +505,7 @@ describe("electron-builder signing config", () => {
       executableName: "bb",
       target: [{ arch: ["x64"], target: "AppImage" }],
     });
+    expect(config.toolsets.appimage).toBe("1.0.3");
     await expect(
       access(resolve(desktopPackageRoot, config.linux.icon)),
     ).resolves.toBeUndefined();

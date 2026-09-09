@@ -236,7 +236,9 @@ const FIXED_PANEL_TABS_STORAGE_PRUNE_FALLBACK_DELAY_MS = 1_500;
 
 function scheduleIdleFixedPanelTabsStoragePrune(): void {
   const run = () => {
-    pruneFixedPanelTabsStorage({ now: Date.now() });
+    try {
+      pruneFixedPanelTabsStorage({ now: Date.now() });
+    } catch {}
   };
   if (typeof window === "undefined") {
     return;
@@ -534,14 +536,20 @@ export function useSetFixedRightTerminalActiveTerminal(
 export function useRemoveFixedRightTerminalTab(
   panelStateId: FixedPanelTabsPanelStateId,
   syncThreadId: FixedPanelTabsSyncThreadId,
+  onCloseLastTab?: () => void,
 ): FixedPanelTerminalIdRemover {
   const updateState = useUpdateFixedPanelTabsState(panelStateId, syncThreadId);
   return useCallback(
     (terminalId: string) => {
-      updateState((current) =>
-        removeFixedRightTerminalTabInState(current, terminalId),
-      );
+      let didCloseLastTab = false;
+      updateState((current) => {
+        const next = removeFixedRightTerminalTabInState(current, terminalId);
+        didCloseLastTab =
+          next !== current && next.secondary.tabs.length === 0;
+        return next;
+      });
+      if (didCloseLastTab) onCloseLastTab?.();
     },
-    [updateState],
+    [onCloseLastTab, updateState],
   );
 }

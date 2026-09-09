@@ -22,6 +22,7 @@ import { z } from "zod";
 import { resolvePortFromEnv } from "@bb/config/runtime";
 import {
   assertBbAppArtifacts,
+  assertBbHostArtifacts,
   completeFullStackSupervision,
   createDaemonEnv,
   createHostEnrollKeyRequestBody,
@@ -1966,6 +1967,7 @@ describe("bb-app launcher", () => {
     const supervision = superviseFullStackProcesses({
       context: createTestStartContext(),
       delayMilliseconds: immediateDelay,
+      isHealthyServerAnswering: async () => false,
       isShutdownRequested: supervisor.shutdownRequested,
       processes: supervisor.processes,
       startDaemon: supervisor.daemonStart,
@@ -1998,6 +2000,7 @@ describe("bb-app launcher", () => {
     const supervision = superviseFullStackProcesses({
       context: createTestStartContext(),
       delayMilliseconds: immediateDelay,
+      isHealthyServerAnswering: async () => false,
       isShutdownRequested: supervisor.shutdownRequested,
       processes: supervisor.processes,
       startDaemon: supervisor.daemonStart,
@@ -2030,6 +2033,7 @@ describe("bb-app launcher", () => {
     const supervision = superviseFullStackProcesses({
       context: createTestStartContext(),
       delayMilliseconds: immediateDelay,
+      isHealthyServerAnswering: async () => false,
       isShutdownRequested: supervisor.shutdownRequested,
       processes: supervisor.processes,
       startDaemon: supervisor.daemonStart,
@@ -2057,6 +2061,7 @@ describe("bb-app launcher", () => {
     const supervision = superviseFullStackProcesses({
       context: createTestStartContext(),
       delayMilliseconds: immediateDelay,
+      isHealthyServerAnswering: async () => false,
       isShutdownRequested: supervisor.shutdownRequested,
       processes: supervisor.processes,
       startDaemon: supervisor.daemonStart,
@@ -2092,6 +2097,7 @@ describe("bb-app launcher", () => {
     const supervision = superviseFullStackProcesses({
       context: createTestStartContext(),
       delayMilliseconds: (args) => restartThrottle.delayMilliseconds(args),
+      isHealthyServerAnswering: async () => false,
       isShutdownRequested: supervisor.shutdownRequested,
       processes: supervisor.processes,
       startDaemon: supervisor.daemonStart,
@@ -2179,6 +2185,13 @@ describe("bb-app launcher", () => {
 
       writeFileSync(join(chunkDir, "chunk-AAAAAAAA.js"), "");
       expect(() => assertBbAppArtifacts(context)).not.toThrow();
+
+      rmSync(context.serverEntry);
+      rmSync(join(context.appDistDir, "index.html"));
+      expect(() => assertBbHostArtifacts(context)).not.toThrow();
+      expect(() => assertBbAppArtifacts(context)).toThrow(
+        /^Missing server entry/u,
+      );
     } finally {
       rmSync(packageRoot, { recursive: true, force: true });
     }

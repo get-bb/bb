@@ -1,5 +1,6 @@
 import { z } from "zod";
 import {
+  environmentStatusSchema,
   FILE_LIST_QUERY_MAX_LENGTH,
   gitBranchNameSchema,
   gitBranchRefClassificationSchema,
@@ -12,6 +13,7 @@ import { workspaceResolutionFailureSchema } from "@bb/host-daemon-contract/works
 import { apiErrorSchema } from "../errors.js";
 import {
   branchListQuerySchema,
+  environmentProviderInstanceKeySchema,
   pathListIncludeQueryValueSchema,
 } from "./shared.js";
 
@@ -30,6 +32,18 @@ export const updateEnvironmentRequestSchema = z
 export type UpdateEnvironmentRequest = z.infer<
   typeof updateEnvironmentRequestSchema
 >;
+
+export const listEnvironmentsQuerySchema = z.object({
+  projectId: z.string().min(1).optional(),
+  environmentProviderId: z.string().min(1).optional(),
+  hostId: z.string().min(1).optional(),
+  instanceKey: environmentProviderInstanceKeySchema.optional(),
+  path: z.string().min(1).optional(),
+  status: environmentStatusSchema.optional(),
+  limit: z.string().regex(/^\d+$/).optional(),
+  offset: z.string().regex(/^\d+$/).optional(),
+});
+export type ListEnvironmentsQuery = z.infer<typeof listEnvironmentsQuerySchema>;
 
 export const environmentPathsQuerySchema = z.object({
   query: z.string().min(1).max(FILE_LIST_QUERY_MAX_LENGTH).optional(),
@@ -148,13 +162,6 @@ export type PullRequestMergeMethod = z.infer<
   typeof pullRequestMergeMethodSchema
 >;
 
-export const squashMergeOptionsSchema = z
-  .object({
-    mergeBaseBranch: gitBranchNameSchema,
-  })
-  .strict();
-export type SquashMergeOptions = z.infer<typeof squashMergeOptionsSchema>;
-
 export const pullRequestMergeOptionsSchema = z
   .object({
     method: pullRequestMergeMethodSchema,
@@ -165,12 +172,6 @@ export const environmentActionRequestSchema = z.discriminatedUnion("action", [
   z
     .object({
       action: z.literal("commit"),
-    })
-    .strict(),
-  z
-    .object({
-      action: z.literal("squash_merge"),
-      options: squashMergeOptionsSchema,
     })
     .strict(),
   z
@@ -203,18 +204,6 @@ export const commitActionResponseSchema = z.object({
 });
 export type CommitActionResponse = z.infer<typeof commitActionResponseSchema>;
 
-export const squashMergeActionResponseSchema = z.object({
-  ok: z.literal(true),
-  action: z.literal("squash_merge"),
-  merged: z.boolean(),
-  message: z.string().min(1),
-  commitSha: z.string().min(1),
-  commitSubject: z.string().min(1),
-});
-export type SquashMergeActionResponse = z.infer<
-  typeof squashMergeActionResponseSchema
->;
-
 export const pullRequestReadyActionResponseSchema = z.object({
   ok: z.literal(true),
   action: z.literal("pull_request_ready"),
@@ -245,7 +234,6 @@ export type PullRequestDraftActionResponse = z.infer<
 
 export const environmentActionResponseSchema = z.discriminatedUnion("action", [
   commitActionResponseSchema,
-  squashMergeActionResponseSchema,
   pullRequestReadyActionResponseSchema,
   pullRequestMergeActionResponseSchema,
   pullRequestDraftActionResponseSchema,

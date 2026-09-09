@@ -48,7 +48,10 @@ export default defineConfig(({ command }) => {
       cloudflare(cloudflareConfig),
       tailwindcss(),
       tanstackStart({
+        server: { entry: "server-entry.ts" },
         router: {
+          quoteStyle: "double",
+          semicolons: true,
           routeTreeFileHeader: [
             "/* oxlint-disable */",
             "// @ts-nocheck",

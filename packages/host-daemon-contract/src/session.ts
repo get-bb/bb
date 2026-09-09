@@ -1,3 +1,4 @@
+import { desktopBrowserChangedSchema } from "./desktop-browser.js";
 import type { Hono } from "hono";
 import { hc } from "hono/client";
 import {
@@ -45,15 +46,6 @@ const hostDaemonLoadedEnvironmentSchema = z.object({
 });
 export type HostDaemonLoadedEnvironment = z.infer<
   typeof hostDaemonLoadedEnvironmentSchema
->;
-
-export const hostDaemonRuntimePolicySchema = z
-  .object({
-    providerSessionReaping: z.boolean(),
-  })
-  .strict();
-export type HostDaemonRuntimePolicy = z.infer<
-  typeof hostDaemonRuntimePolicySchema
 >;
 
 const hostDaemonWatchSetWorkspaceTargetSchema = z
@@ -402,6 +394,15 @@ function commandRpcResponseSuccessSchemaFor<
 const hostDaemonOnlineRpcResponseSuccessSchema = z.discriminatedUnion(
   "commandType",
   [
+    onlineRpcResponseSuccessSchemaFor("desktop.browser.list_instances"),
+    onlineRpcResponseSuccessSchemaFor("desktop.browser.list_tabs"),
+    onlineRpcResponseSuccessSchemaFor("desktop.browser.create_tab"),
+    onlineRpcResponseSuccessSchemaFor("desktop.browser.reveal_tab"),
+    onlineRpcResponseSuccessSchemaFor("desktop.browser.close_tab"),
+    onlineRpcResponseSuccessSchemaFor("desktop.browser.capture_tab"),
+    onlineRpcResponseSuccessSchemaFor("desktop.browser.acquire_control"),
+    onlineRpcResponseSuccessSchemaFor("desktop.browser.open_connection"),
+    onlineRpcResponseSuccessSchemaFor("desktop.browser.release_control"),
     onlineRpcResponseSuccessSchemaFor("host.list_files"),
     onlineRpcResponseSuccessSchemaFor("host.list_paths"),
     onlineRpcResponseSuccessSchemaFor("host.mkdir"),
@@ -412,6 +413,8 @@ const hostDaemonOnlineRpcResponseSuccessSchema = z.discriminatedUnion(
     onlineRpcResponseSuccessSchemaFor("project.inspect"),
     onlineRpcResponseSuccessSchemaFor("project.clone_default_path"),
     onlineRpcResponseSuccessSchemaFor("host.pick_folder"),
+    onlineRpcResponseSuccessSchemaFor("environment.hook.run"),
+    onlineRpcResponseSuccessSchemaFor("environment.hook.cancel"),
     onlineRpcResponseSuccessSchemaFor("plugin.host.call"),
     onlineRpcResponseSuccessSchemaFor("plugin.host.cancel"),
     onlineRpcResponseSuccessSchemaFor("plugin.host.dispose"),
@@ -449,12 +452,10 @@ const hostDaemonOnlineRpcResponseSuccessSchema = z.discriminatedUnion(
     commandRpcResponseSuccessSchemaFor("thread.archive"),
     commandRpcResponseSuccessSchemaFor("thread.unarchive"),
     commandRpcResponseSuccessSchemaFor("interactive.resolve"),
-    commandRpcResponseSuccessSchemaFor("environment.provision"),
+    commandRpcResponseSuccessSchemaFor("environment.attach"),
     commandRpcResponseSuccessSchemaFor("project.clone"),
-    commandRpcResponseSuccessSchemaFor("environment.provision.cancel"),
-    commandRpcResponseSuccessSchemaFor("environment.destroy"),
+    commandRpcResponseSuccessSchemaFor("environment.attach.cancel"),
     commandRpcResponseSuccessSchemaFor("workspace.commit"),
-    commandRpcResponseSuccessSchemaFor("workspace.squash_merge"),
     commandRpcResponseSuccessSchemaFor("workspace.pull_request_action"),
   ],
 );
@@ -631,6 +632,24 @@ const pluginHostWorkerExitedMessageSchema = z
   })
   .strict();
 
+export const environmentHookProgressMessageSchema = z
+  .object({
+    type: z.literal("environment.hook.progress"),
+    operationId: z.string().min(1),
+    entry: z
+      .object({
+        type: z.enum(["step", "output"]),
+        text: z.string(),
+        status: z.enum(["started", "completed", "failed"]).nullable(),
+      })
+      .strict(),
+  })
+  .strict();
+
+export type EnvironmentHookProgressMessage = z.infer<
+  typeof environmentHookProgressMessageSchema
+>;
+
 const pluginHostSignalMessageSchema = z
   .object({
     type: z.literal("plugin-host.signal"),
@@ -693,12 +712,14 @@ const hostDaemonTerminalErrorMessageSchema = z
   .strict();
 
 export const hostDaemonDaemonWsMessageSchema = z.union([
+  desktopBrowserChangedSchema,
   hostDaemonHeartbeatMessageSchema,
   hostDaemonEnvironmentChangeMessageSchema,
   hostDaemonEnvironmentMetadataChangeMessageSchema,
   hostDaemonConnectTunnelIdentityMessageSchema,
   pluginHostWorkerExitedMessageSchema,
   pluginHostSignalMessageSchema,
+  environmentHookProgressMessageSchema,
   hostDaemonTerminalOpenedMessageSchema,
   hostDaemonTerminalOutputMessageSchema,
   hostDaemonTerminalReplayMessageSchema,
@@ -796,9 +817,6 @@ export const hostDaemonSkillTreeSchema = z
 export type HostDaemonSkillTree = z.infer<typeof hostDaemonSkillTreeSchema>;
 
 export type HostDaemonInternalSchema = {
-  "/runtime-policy": {
-    $get: Endpoint<Record<never, never>, HostDaemonRuntimePolicy, 200>;
-  };
   "/skills/tree/:hash": {
     $get: Endpoint<Record<never, never>, HostDaemonSkillTree, 200>;
   };

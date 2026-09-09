@@ -39,6 +39,12 @@ import {
   type TocItem,
 } from "./ThreadTableOfContents";
 import { ThreadTitleMentionResourcesProvider } from "@/components/thread/ThreadTitleMentions";
+import { makeThreadListEntry as makeThreadListEntryFixture } from "@bb/test-helpers/domain-fixtures";
+import { makeThreadWithRuntime as makeThreadWithRuntimeFixture } from "@bb/test-helpers/domain-fixtures";
+import {
+  makeProjectWithThreadsResponse,
+  makeSidebarBootstrapResponse,
+} from "@/test/fixtures/projects";
 
 class ResizeObserverMock implements ResizeObserver {
   constructor(private readonly callback: ResizeObserverCallback) {}
@@ -91,6 +97,7 @@ function userConversationRow(index = 1): TimelineRow {
 }
 
 function TocHost({
+  contextBoundarySeq = null,
   hasOlderTimelineRows = false,
   hostPaddingX = 0,
   hostWidth = 1_200,
@@ -99,6 +106,7 @@ function TocHost({
   threadId = "thr_toc_test",
   timelineRows,
 }: {
+  contextBoundarySeq?: number | null;
   hasOlderTimelineRows?: boolean;
   hostPaddingX?: number;
   hostWidth?: number;
@@ -123,6 +131,7 @@ function TocHost({
       }}
     >
       <ThreadTableOfContents
+        contextBoundarySeq={contextBoundarySeq}
         threadId={threadId}
         timelineRows={timelineRows}
         hasOlderTimelineRows={hasOlderTimelineRows}
@@ -192,9 +201,13 @@ function outlineResponse(
   return { items, maxSeq: items.length };
 }
 
-function setOutline(items: ThreadConversationOutlineItem[] | undefined): void {
+function setOutline(
+  items: ThreadConversationOutlineItem[] | undefined,
+  maxSeq = items?.length ?? 0,
+): void {
   vi.mocked(useThreadConversationOutline).mockReturnValue({
-    data: items === undefined ? undefined : outlineResponse(items),
+    data:
+      items === undefined ? undefined : { ...outlineResponse(items), maxSeq },
   } as ReturnType<typeof useThreadConversationOutline>);
 }
 
@@ -207,23 +220,12 @@ function timelineRowElement(id: string): HTMLElement {
 function threadWithRuntime(
   thread: Partial<ThreadWithRuntime> = {},
 ): ThreadWithRuntime {
-  return {
+  return makeThreadWithRuntimeFixture({
     id: "thr_worker",
     projectId: "proj_toc",
     environmentId: "env_toc",
-    providerId: "codex",
     title: null,
     titleFallback: null,
-    sectionId: null,
-    status: "idle",
-    parentThreadId: null,
-    sourceThreadId: null,
-    originKind: null,
-    originPluginId: null,
-    visibility: "visible",
-    archivedAt: null,
-    pinnedAt: null,
-    deletedAt: null,
     lastReadAt: null,
     latestAttentionAt: 1,
     createdAt: 1,
@@ -233,61 +235,35 @@ function threadWithRuntime(
       hostReconnectGraceExpiresAt: null,
     },
     ...thread,
-  };
+  });
 }
 
 function threadListEntry(
   thread: Partial<ThreadListEntry> = {},
 ): ThreadListEntry {
-  return {
-    ...threadWithRuntime(thread),
-    activity: {
-      activeWorkflowCount: 0,
-      activeBackgroundAgentCount: 0,
-      activeBackgroundCommandCount: 0,
-      activePlanModeCount: 0,
-      activeGoalCount: 0,
-    },
-    pinSortKey: null,
-    hasPendingInteraction: false,
+  return makeThreadListEntryFixture({
+    ...threadWithRuntime(),
     environmentHostId: "host_toc",
     environmentName: "ToC environment",
     environmentBranchName: "main",
-    environmentWorkspaceDisplayKind: "managed-worktree",
     ...thread,
-  };
+  });
 }
 
 function sidebarNavigation(
   threads: ThreadListEntry[],
 ): SidebarBootstrapResponse {
-  return {
-    sections: [],
+  return makeSidebarBootstrapResponse({
     projects: [
-      {
+      makeProjectWithThreadsResponse({
         id: "proj_toc",
-        kind: "standard",
         name: "ToC project",
-        gitRemoteUrl: null,
         createdAt: 1,
         updatedAt: 1,
-        sources: [],
         threads,
-        defaultExecutionOptions: null,
-      },
+      }),
     ],
-    personalProject: {
-      id: "proj_personal",
-      kind: "personal",
-      name: "Personal",
-      gitRemoteUrl: null,
-      createdAt: 1,
-      updatedAt: 1,
-      sources: [],
-      threads: [],
-      defaultExecutionOptions: null,
-    },
-  };
+  });
 }
 
 const userItems: TocItem[] = [
@@ -377,6 +353,36 @@ describe("selectTocRailItems", () => {
 });
 
 describe("ThreadTableOfContents", () => {
+  it("does not restore an outline cached before the current context boundary", async () => {
+    setOutline(
+      [1, 2, 3].map((index) => ({
+        id: `old-${index}`,
+        role: "user" as const,
+        preview: `Old message ${index}`,
+        attachmentSummary: null,
+      })),
+      5,
+    );
+
+    render(
+      <TocHost
+        contextBoundarySeq={10}
+        timelineRows={[
+          userConversationRow(10),
+          userConversationRow(11),
+          userConversationRow(12),
+        ]}
+      />,
+    );
+    openTocPanel();
+
+    expect(await screen.findByText("Your messages")).not.toBeNull();
+    expect(screen.queryByText("Old message 1")).toBeNull();
+    expect(
+      screen.getByText("Loaded after client-side navigation 10"),
+    ).not.toBeNull();
+  });
+
   it("defers the full outline request until the latest timeline is available", () => {
     const view = render(<TocHost timelineRows={[]} />);
 

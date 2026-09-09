@@ -33,9 +33,18 @@ import {
   recordPaletteRecent,
 } from "@/lib/command-palette/palette-recents";
 import { buildPluginPaletteActions } from "@/lib/command-palette/palette-plugin-actions";
-import { getPluginSlotSnapshot } from "@/lib/plugin-slots";
+import { buildSettingsPaletteActions } from "@/lib/command-palette/palette-settings-actions";
+import { buildPluginPagePaletteActions } from "@/lib/command-palette/palette-plugin-page-actions";
+import { usePluginSlots } from "@/lib/plugin-slots";
 import { getActiveThreadPanelOpener } from "@/components/plugin/plugin-thread-panel-navigation";
 import { getThreadRoutePath } from "@/lib/route-paths";
+import { pluginListQueryOptions } from "@/hooks/queries/plugin-settings-queries";
+import {
+  buildPluginSettingsEntries,
+  type PluginSettingsCandidate,
+} from "@/components/settings/plugin-settings-entries";
+import { useSettingsNavSections } from "@/components/settings/settings-nav";
+import { appQueryClient } from "@/lib/app-query-client";
 import {
   ThreadPaletteResults,
   type ThreadPaletteNavigationItem,
@@ -65,8 +74,48 @@ export function CommandPalette({ threadId, projectId }: CommandPaletteProps) {
   const [recents, setRecents] = useState<readonly string[]>(() =>
     readPaletteRecents(),
   );
+  const [installedPlugins, setInstalledPlugins] = useState<
+    readonly PluginSettingsCandidate[]
+  >([]);
+  const pluginSlots = usePluginSlots();
+  const sections = useSettingsNavSections(pluginSlots.fileOpeners);
+  const pluginSettingsEntries = useMemo(
+    () =>
+      buildPluginSettingsEntries({
+        installedPlugins,
+        settingsSections: pluginSlots.settingsSections,
+      }),
+    [installedPlugins, pluginSlots.settingsSections],
+  );
+  const settingsActions = useMemo(
+    () =>
+      buildSettingsPaletteActions({
+        navigate: (path) => {
+          void navigate(path);
+        },
+        pluginEntries: pluginSettingsEntries,
+        sections,
+      }),
+    [navigate, pluginSettingsEntries, sections],
+  );
+  const pluginPageActions = useMemo(
+    () =>
+      buildPluginPagePaletteActions({
+        navigate: (path) => {
+          void navigate(path);
+        },
+        panels: pluginSlots.navPanels,
+      }),
+    [navigate, pluginSlots.navPanels],
+  );
   const openTargetRef = useRef<EventTarget | null>(null);
   const pendingRunRef = useRef<(() => void) | null>(null);
+
+  const loadInstalledPlugins = useCallback(() => {
+    void appQueryClient
+      .fetchQuery(pluginListQueryOptions({ enabled: true }))
+      .then(setInstalledPlugins, () => {});
+  }, []);
 
   const buildActions = useCallback(
     (target: EventTarget | null) => [
@@ -77,7 +126,7 @@ export function CommandPalette({ threadId, projectId }: CommandPaletteProps) {
         shortcuts,
       }),
       ...buildPluginPaletteActions({
-        slots: getPluginSlotSnapshot().commandPaletteActions,
+        slots: pluginSlots.commandPaletteActions,
         threadId,
         projectId,
         openThreadPanel: getActiveThreadPanelOpener(),
@@ -85,6 +134,7 @@ export function CommandPalette({ threadId, projectId }: CommandPaletteProps) {
     ],
     [
       projectId,
+      pluginSlots.commandPaletteActions,
       runner.dispatch,
       runner.isCommandAvailable,
       shortcuts,
@@ -100,8 +150,9 @@ export function CommandPalette({ threadId, projectId }: CommandPaletteProps) {
       setQuery(mode === "commands" ? ">" : "");
       setHighlightedIndex(0);
       setOpen(true);
+      loadInstalledPlugins();
     },
-    [buildActions],
+    [buildActions, loadInstalledPlugins],
   );
 
   useAppCommandHandler("palette.open", (invocation) => {
@@ -122,9 +173,18 @@ export function CommandPalette({ threadId, projectId }: CommandPaletteProps) {
 
   const mode: PaletteMode = query.startsWith(">") ? "commands" : "threads";
   const modeQuery = mode === "commands" ? query.slice(1) : query;
+  const commandActions = useMemo(
+    () => [...actions, ...settingsActions, ...pluginPageActions],
+    [actions, pluginPageActions, settingsActions],
+  );
   const rankedCommands = useMemo(
-    () => rankPaletteActions({ actions, query: modeQuery, recentIds: recents }),
-    [actions, modeQuery, recents],
+    () =>
+      rankPaletteActions({
+        actions: commandActions,
+        query: modeQuery,
+        recentIds: recents,
+      }),
+    [commandActions, modeQuery, recents],
   );
   const resultCount =
     mode === "commands" ? rankedCommands.length : threadItems.length;

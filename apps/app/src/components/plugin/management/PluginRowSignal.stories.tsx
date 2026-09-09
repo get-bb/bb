@@ -1,11 +1,9 @@
 import { useState, type ReactNode } from "react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import {
-  EMPTY_PLUGIN_UPDATE_STATE,
-  type PluginListItem,
-} from "@/hooks/queries/plugin-settings-queries";
+import { EMPTY_PLUGIN_UPDATE_STATE } from "@/hooks/queries/plugin-settings-queries";
 import { PluginRowSignalView } from "./PluginRowSignal";
 import { UpdatePluginDialog } from "./UpdatePluginDialog";
+import { makePluginListItem } from "@/test/fixtures/plugins";
 
 export default {
   title: "plugin/Row Signal",
@@ -13,35 +11,21 @@ export default {
 
 const FULL_HASH = "a985e1d5523398e9c7459d35679142cc4339771e";
 
-const GIT_PLUGIN = {
+const GIT_PLUGIN = makePluginListItem({
   id: "prompt-shaper",
   source:
     "git:https://github.com/brsbl/bb-plugins.git@1c6bb2e8ad3551466981e7eb027cc4b1f3428cac",
   rootDir: "/home/user/.bb/plugins/prompt-shaper",
-  version: "0.1.0",
-  enabled: true,
-  status: "running",
-  statusDetail: null,
   description: "Enhance a rough composer draft before sending it.",
   name: "Prompt Improver",
   icon: "AiContentGenerator01",
-  compactIconUrl: null,
-  logoUrl: null,
-  logoDarkUrl: null,
-  hasSettings: false,
-  handlerStats: { count: 0, totalMs: 0, maxMs: 0, errorCount: 0 },
-  services: [],
-  schedules: [],
-  cliCommand: null,
-  capabilities: [],
   app: { hasApp: true, bundle: null },
-  provenance: "catalog" as const,
-  isOrphanedBuiltin: false,
+  provenance: "catalog",
   catalogEntryId: "prompt-shaper",
   publisherLabel: "BB Community",
   sourceDisplay: "git · github.com/brsbl/bb-plugins",
   updateState: { ...EMPTY_PLUGIN_UPDATE_STATE, availableVersion: FULL_HASH },
-} satisfies PluginListItem;
+});
 
 function StateRow({
   label,

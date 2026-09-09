@@ -36,6 +36,7 @@ import { promises as fs, readFileSync } from "node:fs";
 import { createServer, type Server, type Socket } from "node:net";
 import { dirname, isAbsolute, basename, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { isDeepStrictEqual } from "node:util";
 import { z } from "zod";
 
 type DecodedToolCallResponse = ReturnType<typeof decodeToolCallResponsePayload>;
@@ -62,7 +63,11 @@ import {
   createAcpDeltaTranslator,
   type AcpDeltaTranslator,
 } from "../delta-translation.js";
-import { resolveAcpDialect, type AcpDialect } from "../dialect.js";
+import {
+  compactionOutcomeForEndTurn,
+  resolveAcpDialect,
+  type AcpDialect,
+} from "../dialect.js";
 import type { AcpMaintenanceDialect } from "./provider-maintenance.js";
 import {
   buildAcpPermissionInteractionPayload,
@@ -76,6 +81,7 @@ import {
   type AcpSessionParams,
   type AcpSkillRoot,
 } from "../session-params.js";
+import { buildCursorParameterizedModelCatalog } from "../cursor-model-selection.js";
 import {
   getAcpProviderHealth,
   getAcpProviderInstallationRun,
@@ -93,6 +99,8 @@ import {
   acpSessionForkResultSchema,
   acpSessionNewResultSchema,
   acpSessionNotificationParamsSchema,
+  acpAgentMessageChunkUpdateSchema,
+  extractAcpContentText,
   acpUsageUpdateSchema,
   type AcpConfigStateResult,
   type AcpSessionModels,
@@ -152,6 +160,7 @@ interface AcpPendingTurnInput {
 
 interface AcpThreadSession {
   bbThreadId: string;
+  construction: AcpSessionParams;
   providerThreadId: string;
   cwd: string;
   dialect: AcpDialect;
@@ -162,6 +171,7 @@ interface AcpThreadSession {
   policy: AcpSessionPolicy;
   pendingInstructions: string | undefined;
   activePromptKind: "turn" | "compaction" | null;
+  compactionAgentMessage: string;
   queuedInputs: AcpPendingTurnInput[];
   promptRequestPending: boolean;
   cancelRequested: boolean;
@@ -1691,6 +1701,7 @@ async function startAgentSession(
   });
   session = {
     bbThreadId,
+    construction: params,
     providerThreadId: "",
     cwd: params.cwd,
     dialect,
@@ -1704,6 +1715,7 @@ async function startAgentSession(
     },
     pendingInstructions: params.instructions,
     activePromptKind: null,
+    compactionAgentMessage: "",
     queuedInputs: [],
     promptRequestPending: false,
     cancelRequested: false,
@@ -2093,6 +2105,7 @@ function startCompaction(
   pending: AcpPendingTurnInput,
 ): void {
   session.activePromptKind = "compaction";
+  session.compactionAgentMessage = "";
   emitForSession(session, ACP_COMPACTION_STARTED_METHOD, {
     threadId: session.bbThreadId,
   });
@@ -2115,7 +2128,10 @@ function startCompaction(
     .then((result) => {
       finish(
         result.stopReason === "end_turn"
-          ? { status: "completed" }
+          ? compactionOutcomeForEndTurn(
+              session.dialect,
+              session.compactionAgentMessage,
+            )
           : result.stopReason === "cancelled"
             ? { status: "interrupted" }
             : {
@@ -2229,6 +2245,15 @@ function handleAgentNotification(
   if (parsed.data.sessionId !== session.providerThreadId) {
     return;
   }
+  if (session.activePromptKind === "compaction") {
+    const chunk = acpAgentMessageChunkUpdateSchema.safeParse(
+      parsed.data.update,
+    );
+    if (chunk.success) {
+      session.compactionAgentMessage +=
+        extractAcpContentText(chunk.data.content) ?? "";
+    }
+  }
   emitForSession(session, ACP_UPDATE_METHOD, update);
 }
 
@@ -2282,15 +2307,20 @@ function decodeAcpBridgeJsonRpcRequest(raw: unknown): DecodedAcpBridgeRequest {
 async function handleModelList(
   id: string | number,
   params: AcpModelListParams,
+  dialectId: string | undefined,
 ): Promise<void> {
   const catalog = params.listCommand
     ? await loadAgentModelCatalog(params.listCommand)
     : null;
   if (catalog) {
+    const catalogModels =
+      params.parameterizedModelPicker && dialectId === "cursor"
+        ? buildCursorParameterizedModelCatalog(catalog.models)
+        : catalog.models;
     sendResult(
       id,
       splitPrimaryModels(
-        applyConfiguredReasoningToModels(catalog.models, {
+        applyConfiguredReasoningToModels(catalogModels, {
           reasoningCli: params.reasoningCli,
           nativeReasoning: params.nativeReasoning,
         }),
@@ -2430,6 +2460,7 @@ async function handleRequest(
           decodeLaunchSpec(request.params.providerOptions),
           modelPicker,
         ),
+        decodeDialectId(request.params.providerOptions),
       );
       return;
     }
@@ -2562,7 +2593,7 @@ async function handleRequest(
 
     case "turn/start": {
       const params = request.params;
-      const session = liveSessionForThread(params.threadId);
+      let session = liveSessionForThread(params.threadId);
       if (session === undefined) {
         sendError(request.id, -32000, "No active ACP session");
         return;
@@ -2570,6 +2601,27 @@ async function handleRequest(
       if (session.activePromptKind !== null) {
         sendError(request.id, -32000, "A turn is already active");
         return;
+      }
+      if (Object.keys(params.options.envVars ?? {}).length > 0) {
+        const envVars = {
+          ...(decodeLaunchSpec(params.options.providerOptions)?.env ?? {}),
+          ...params.options.envVars,
+        };
+        if (!isDeepStrictEqual(envVars, session.construction.envVars ?? {})) {
+          const previousProviderThreadId = session.providerThreadId;
+          session = await startAgentSession({
+            kind: "resume",
+            params: { ...session.construction, envVars },
+            resumeProviderThreadId: previousProviderThreadId,
+          });
+          sendNotification(BRIDGE_NOTIFICATION_METHODS.sessionReplaced, {
+            threadId: params.threadId,
+            providerThreadId: session.providerThreadId,
+            reason:
+              "Execution settings changed; the ACP session was rebuilt to apply them.",
+            contextLost: session.providerThreadId !== previousProviderThreadId,
+          });
+        }
       }
       const pending: AcpPendingTurnInput = {
         clientRequestId: params.clientRequestId,

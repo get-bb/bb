@@ -3,6 +3,7 @@ import type { ThreadQueuedMessage } from "@bb/domain";
 import type { QueuedMessageEditRequest } from "@/components/promptbox/banner/QueuedMessagesList";
 import type { PromptDraftState } from "@bb/client-core";
 import { queuedInputToDraft } from "@bb/client-core";
+import type { InlineComposerDraftSession } from "./useActiveComposerDraft";
 
 export interface InlineQueuedMessageEditState {
   draft: PromptDraftState;
@@ -36,6 +37,7 @@ interface UseInlineQueuedMessageEditingResult {
   ) => void;
   dismissInlineQueuedMessageEditor: () => void;
   beginEditQueuedMessage: (request: QueuedMessageEditRequest) => void;
+  queuedMessageDraftSession: InlineComposerDraftSession | null;
 }
 
 export function useInlineQueuedMessageEditing({
@@ -133,6 +135,25 @@ export function useInlineQueuedMessageEditing({
     [commitInlineQueuedMessage, onBeginEdit, ownerThreadId],
   );
 
+  const editSessionId = inlineEditingQueuedMessage?.editSessionId ?? null;
+  const queuedMessageDraftSession =
+    useMemo<InlineComposerDraftSession | null>(() => {
+      if (editSessionId === null) {
+        return null;
+      }
+      return {
+        editSessionId,
+        setDraft: (update) => {
+          const current = inlineEditingQueuedMessageRef.current;
+          if (current === null) return;
+          commitInlineQueuedMessage({
+            ...current,
+            draft: update(current.draft),
+          });
+        },
+      };
+    }, [commitInlineQueuedMessage, editSessionId]);
+
   return {
     inlineEditingQueuedMessage,
     inlineEditingQueuedMessageRef,
@@ -140,5 +161,6 @@ export function useInlineQueuedMessageEditing({
     updateInlineQueuedMessage,
     dismissInlineQueuedMessageEditor,
     beginEditQueuedMessage,
+    queuedMessageDraftSession,
   };
 }

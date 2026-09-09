@@ -20,6 +20,7 @@ export type SFSymbolWeight = keyof typeof SF_SYMBOL_WEIGHTS;
 export const SF_SYMBOL_WEIGHT: SFSymbolWeight = "medium";
 
 export const SF_SYMBOL_MAP = {
+  AiBrain01: "brain",
   AiBrowser: "sparkles.rectangle.stack",
   AiContentGenerator01: "sparkles",
   AlertCircle: "exclamationmark.circle",
@@ -37,6 +38,7 @@ export const SF_SYMBOL_MAP = {
   ArrowTurnForward: "arrow.uturn.forward",
   ArrowUpRight: "arrow.up.right",
   Beaker: "testtube.2",
+  BellDot: "bell.badge",
   Bot: "cpu",
   Browser: "safari",
   Brain: "brain",
@@ -84,12 +86,14 @@ export const SF_SYMBOL_MAP = {
   FileQuestion: "questionmark.square.dashed",
   FileText: "doc.text",
   Folder: "folder",
+  Folder02: "folder",
   FolderEdit: "folder.badge.gearshape",
   FolderExport: "square.and.arrow.up",
   FolderGit: "folder.badge.gearshape",
   FolderOpen: "folder",
   FolderMinus: "folder.badge.minus",
   FolderPlus: "folder.badge.plus",
+  FolderSync: "folder.badge.gearshape",
   Fork: "arrow.triangle.branch",
   GitBranch: "arrow.triangle.branch",
   GitMerge: "arrow.triangle.merge",
@@ -102,6 +106,7 @@ export const SF_SYMBOL_MAP = {
   Info: "info.circle",
   Laptop: "laptopcomputer",
   Layers: "square.3.layers.3d",
+  Limitation: "hand.raised",
   ListView: "list.bullet",
   SectionAdd: "text.badge.plus",
   ListTodo: "checklist",

@@ -21,6 +21,22 @@ type LandingEvent =
   | {
       name: "landing_email_subscribed";
       properties: { placement: CtaPlacement };
+    }
+  | {
+      name: "marketplace_page_viewed";
+      properties: {
+        category?: string;
+        sort: "featured" | "recently-added" | "most-installed";
+        author?: string;
+      };
+    }
+  | {
+      name: "marketplace_plugin_detail_viewed";
+      properties: { plugin_id: string };
+    }
+  | {
+      name: "marketplace_install_command_copied";
+      properties: { plugin_id: string };
     };
 
 let client: PostHog | null = null;

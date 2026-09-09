@@ -263,7 +263,7 @@ describe("sending a message", () => {
         threadQueuedMessageListResponseSchema,
       ),
     ).toEqual([queued]);
-    await parsed(
+    const sent = await parsed(
       send(
         "POST",
         `/api/v1/threads/${THREAD_ID}/queued-messages/${queued.id}/send`,
@@ -273,6 +273,7 @@ describe("sending a message", () => {
       ),
       sendQueuedMessageResponseSchema,
     );
+    expect(sent.delivery).toBe("sent");
     expect(
       await parsed(
         get(`/api/v1/threads/${THREAD_ID}/queued-messages`),

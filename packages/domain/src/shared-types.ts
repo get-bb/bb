@@ -229,16 +229,16 @@ function isSelectedPromptCommandMention(
   );
 }
 
-const BUILTIN_COMPACT_COMMAND = { trigger: "/", name: "compact" } as const;
-
-export function isStandaloneBuiltinCompactCommand(
+function isStandaloneBuiltinCommand(
   input: readonly PromptInput[],
+  name: string,
 ): boolean {
+  const selector = { trigger: "/" as const, name };
   const selected = input.flatMap((item) =>
     item.type === "text"
       ? item.mentions
           .filter((mention) =>
-            isSelectedPromptCommandMention(mention, BUILTIN_COMPACT_COMMAND),
+            isSelectedPromptCommandMention(mention, selector),
           )
           .map((mention) => ({ mention, text: item.text }))
       : [],
@@ -256,14 +256,25 @@ export function isStandaloneBuiltinCompactCommand(
     mention.resource.kind !== "command" ||
     mention.resource.source !== "command" ||
     mention.resource.origin !== "builtin" ||
-    text.slice(mention.start, mention.end) !== "/compact"
+    text.slice(mention.start, mention.end) !== `/${name}`
   ) {
     return false;
   }
-  return removeCommandMentionsFromPromptInput(
-    input,
-    BUILTIN_COMPACT_COMMAND,
-  ).every((item) => item.type === "text" && item.text.trim() === "");
+  return removeCommandMentionsFromPromptInput(input, selector).every(
+    (item) => item.type === "text" && item.text.trim() === "",
+  );
+}
+
+export function isStandaloneBuiltinCompactCommand(
+  input: readonly PromptInput[],
+): boolean {
+  return isStandaloneBuiltinCommand(input, "compact");
+}
+
+export function isStandaloneBuiltinClearCommand(
+  input: readonly PromptInput[],
+): boolean {
+  return isStandaloneBuiltinCommand(input, "clear");
 }
 
 export function createStandaloneBuiltinCompactCommandInput(): PromptInput[] {
@@ -422,6 +433,12 @@ const threadExecutionSourceSchema = z.enum([
 ]);
 export type ThreadExecutionSource = z.infer<typeof threadExecutionSourceSchema>;
 
+/**
+ * Where a caller-supplied execution value came from. `explicit` is a user
+ * choice and `client-preference` is a remembered client-side default. Only
+ * `explicit` is a user decision, so only `explicit` shapes project execution
+ * defaults.
+ */
 const callerExecutionInputSourceValues = [
   "explicit",
   "client-preference",

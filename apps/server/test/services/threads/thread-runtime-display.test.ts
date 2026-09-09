@@ -7,11 +7,15 @@ import {
   createConnection,
   createEnvironment,
   createProject,
+  createQueuedThreadMessage,
   createThread,
   hostDaemonSessions,
+  listQueuedThreadMessages,
+  listThreadsWithPendingInteractionState,
   migrate,
   noopNotifier,
   openSession,
+  setQueuedThreadMessageFailureReason,
   upsertHost,
   type DbConnection,
   type ThreadWithPendingInteractionState,
@@ -57,6 +61,7 @@ interface CloseTestSessionArgs {
 
 interface CreateThreadWithEnvironmentArgs {
   db: DbConnection;
+  environmentProviderId?: string;
   hostId: string;
   providerId?: string;
   status?: Thread["status"];
@@ -187,11 +192,22 @@ function createThreadWithEnvironment(args: CreateThreadWithEnvironmentArgs) {
     },
   });
   const environment = createEnvironment(args.db, noopNotifier, {
+    providerOwnsPath: false,
     hostId: args.hostId,
     projectId: project.id,
-    workspaceProvisionType: "unmanaged",
     path: `/tmp/${args.hostId}/environment/${suffix}`,
     status: "ready",
+    environmentProvider:
+      args.environmentProviderId === undefined
+        ? null
+        : {
+            environmentProviderId: args.environmentProviderId,
+            instanceKey: null,
+            selection: {
+              machine: { type: "existing", hostId: args.hostId },
+              inputs: null,
+            },
+          },
   });
   const thread = createThread(args.db, noopNotifier, {
     projectId: project.id,
@@ -211,10 +227,15 @@ function createThreadListEntry(
     modelOverride: null,
     reasoningLevelOverride: null,
     environmentBranchName: null,
+    environmentPath: null,
+    environmentProviderId: null,
+    environmentIsWorktree: null,
     environmentHostId: args.environmentHostId,
     environmentName: null,
-    environmentWorkspaceDisplayKind: "other",
     hasPendingInteraction: false,
+    // Only a `pending` thread whose first message queued carries one, and
+    // these fixtures are all threads that already started.
+    pendingStartContext: null,
   };
 }
 
@@ -310,7 +331,11 @@ describe("thread runtime display", () => {
     expect(
       resolveThreadRuntimeState(
         { db, hub },
-        { environmentHostId: hostId, now: 1_000, status: "idle" },
+        {
+          environmentHostId: hostId,
+          now: 1_000,
+          status: "idle",
+        },
       ),
     ).toEqual({
       displayStatus: "idle",
@@ -324,12 +349,43 @@ describe("thread runtime display", () => {
     expect(
       resolveThreadRuntimeState(
         { db, hub },
-        { environmentHostId: null, now: 1_000, status: "active" },
+        {
+          environmentHostId: null,
+          now: 1_000,
+          status: "active",
+        },
       ),
     ).toEqual({
       displayStatus: "active",
       hostReconnectGraceExpiresAt: null,
     } satisfies ThreadRuntimeState);
+  });
+
+  it("carries the producing environment provider into the list entry", () => {
+    const { db, hostId, hub } = setup();
+    const provided = createThreadWithEnvironment({
+      db,
+      hostId,
+      environmentProviderId: "git-worktree",
+    });
+    const checkout = createThreadWithEnvironment({ db, hostId });
+
+    const providerIdByThreadId = new Map(
+      [provided, checkout].flatMap(({ project }) =>
+        toThreadListEntryResponses(
+          { db, hub, providerRegistry },
+          {
+            now: 1_000,
+            threads: listThreadsWithPendingInteractionState(db, {
+              projectId: project.id,
+            }),
+          },
+        ).map((entry) => [entry.id, entry.environmentProviderId]),
+      ),
+    );
+
+    expect(providerIdByThreadId.get(provided.thread.id)).toBe("git-worktree");
+    expect(providerIdByThreadId.get(checkout.thread.id)).toBeNull();
   });
 
   it("resolves list entry runtime from daemon registration per host", () => {
@@ -384,6 +440,61 @@ describe("thread runtime display", () => {
         hostReconnectGraceExpiresAt: null,
       },
     ] satisfies ThreadRuntimeState[]);
+  });
+
+  it("reports each thread's queued work, with a failure outranking a wait", () => {
+    const { db, hostId, hub } = setup();
+    const empty = createThreadWithEnvironment({ db, hostId, status: "idle" });
+    const waiting = createThreadWithEnvironment({ db, hostId, status: "idle" });
+    const failed = createThreadWithEnvironment({ db, hostId, status: "idle" });
+
+    // The failed thread holds BOTH a healthy row and a failed one, which is the
+    // case the precedence rule exists for: a thread that queued two messages
+    // and only the first one blew up must not read as merely waiting.
+    for (const { thread, count } of [
+      { thread: waiting.thread, count: 1 },
+      { thread: failed.thread, count: 2 },
+    ]) {
+      for (let index = 0; index < count; index += 1) {
+        createQueuedThreadMessage(db, noopNotifier, {
+          threadId: thread.id,
+          content: [{ type: "text", text: `queued ${index}`, mentions: [] }],
+          model: "gpt-5",
+          reasoningLevel: "medium",
+          permissionMode: "auto",
+          serviceTier: "default",
+          waitingOn: { kind: "thread-busy" },
+          sendAt: null,
+          payload: { kind: "inline" },
+          systemNotice: null,
+        });
+      }
+    }
+    const failedRow = listQueuedThreadMessages(db, failed.thread.id)[0]!;
+    setQueuedThreadMessageFailureReason(db, noopNotifier, {
+      id: failedRow.id,
+      threadId: failed.thread.id,
+      failureReason: "The message could not be sent.",
+    });
+
+    const entries = toThreadListEntryResponses(
+      { db, hub, providerRegistry },
+      {
+        now: 1_000,
+        threads: [empty.thread, waiting.thread, failed.thread].map((thread) =>
+          createThreadListEntry({
+            environmentHostId: hostId,
+            thread: { ...thread, pinSortKey: null },
+          }),
+        ),
+      },
+    );
+
+    expect(entries.map((entry) => entry.queuedWork)).toEqual([
+      "none",
+      "waiting",
+      "failed",
+    ]);
   });
 
   it("builds active list entries above the SQLite variable limit", () => {

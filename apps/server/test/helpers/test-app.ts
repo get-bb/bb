@@ -1,3 +1,6 @@
+import { installDefaultEnvironmentProviders } from "./environment-provider.js";
+import { setPluginEnvironmentProviderBridge } from "../../src/services/plugins/plugin-environment-provider-registry.js";
+import { forgetAllActiveThreadProvisionContexts } from "../../src/services/threads/thread-provisioning-active-context.js";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -27,7 +30,6 @@ import { createNoopTelemetryService } from "../../src/services/system/telemetry.
 import { TerminalSessionLifecycle } from "../../src/services/terminals/terminal-session-lifecycle.js";
 import { createLifecycleDedupers } from "../../src/lifecycle-dedupers.js";
 import type { ServerAppDeps, ServerRuntimeConfig } from "../../src/types.js";
-import { MANAGED_ENVIRONMENT_RETIRE_GRACE_MS } from "../../src/constants.js";
 import type { NotificationHub } from "../../src/ws/hub.js";
 import { NotificationHub as NotificationHubImpl } from "../../src/ws/hub.js";
 import { WatchInterestCoordinator } from "../../src/ws/watch-interests.js";
@@ -157,6 +159,7 @@ export async function createTestAppHarness(
         available: true,
         pluginId: extra.pluginId,
         declaration: validatePluginProviderDeclaration(extra.declaration),
+        iconHash: null,
         readSettings: () => ({}),
       }),
       pluginId: extra.pluginId,
@@ -181,7 +184,7 @@ export async function createTestAppHarness(
       const testKey = decodeTestDaemonKey(token);
       if (testKey) {
         return {
-          keyId: `test:${testKey.hostType}:${testKey.hostId}`,
+          keyId: `test:${testKey.hostId}`,
           metadata: testKey,
         };
       }
@@ -200,7 +203,6 @@ export async function createTestAppHarness(
     inferenceFallbackModel: "test/mock-fallback-model",
     inferenceModel: "test/mock-model",
     isDevelopment: true,
-    managedEnvironmentRetireGraceMs: MANAGED_ENVIRONMENT_RETIRE_GRACE_MS,
     openAiApiKey: "test-openai-key",
     serverPort: 3334,
     sharedSkillRoots: { user: [], project: [] },
@@ -270,6 +272,7 @@ export async function createTestAppHarness(
     workspaceReadCaches,
   };
   const { app, pluginCatalogService, pluginService } = createApp(deps);
+  installDefaultEnvironmentProviders();
 
   return {
     app,
@@ -280,6 +283,8 @@ export async function createTestAppHarness(
     pluginService,
     pluginCatalogService,
     async cleanup(): Promise<void> {
+      forgetAllActiveThreadProvisionContexts();
+      setPluginEnvironmentProviderBridge(undefined);
       await pluginService.stop();
       await rm(dataDir, { recursive: true, force: true });
     },

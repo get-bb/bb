@@ -199,6 +199,9 @@ describe("guide fixture boundaries", () => {
       /data-guide-badge="nav-panel"[\s\S]*?data-guide-badge-placement="start"/,
     );
     expect(markup).toMatch(
+      /data-guide-badge="sidebar-navigation"[^>]*data-guide-badge-placement="start"[^>]*data-guide-badge-align="start"/,
+    );
+    expect(markup).toMatch(
       /data-guide-badge="thread-list"[\s\S]*?data-guide-badge-placement="start"/,
     );
     expect(markup).toMatch(
@@ -212,13 +215,25 @@ describe("guide fixture boundaries", () => {
     );
   });
 
+  it("keeps nested sidebar targets reachable and the thread-header badge outside its control", () => {
+    const markup = renderWireframe(createElement(AppShellWireframe));
+
+    expect(markup).toMatch(
+      /data-guide-region="nav-panel"[^>]*class="[^"]*z-\[2\][^"]*block/,
+    );
+    expect(markup).toMatch(
+      /data-guide-badge="thread-header"[^>]*data-guide-badge-placement="above"/,
+    );
+    expect(markup.match(/data-guide-badge="thread-header"/g)).toHaveLength(1);
+  });
+
   it("keeps the sidebar trigger in app-owned overlay chrome", () => {
     const markup = renderWireframe(createElement(AppShellWireframe));
     const reserveStart = markup.indexOf(
       'data-guide-fixture="sidebar-top-reserve"',
     );
     const reserveEnd = markup.indexOf(
-      'data-guide-fixture="sidebar-primary-actions"',
+      'data-guide-fixture="sidebar-navigation-primary-actions"',
     );
 
     expect(markup).toContain('data-guide-fixture="sidebar-trigger-overlay"');
@@ -227,6 +242,47 @@ describe("guide fixture boundaries", () => {
     expect(markup.slice(reserveStart, reserveEnd)).not.toContain(
       'data-guide-fixture="sidebar-trigger-overlay"',
     );
+  });
+
+  it("shows the app-wide plugin overlay above the host layout", () => {
+    const markup = renderWireframe(createElement(AppShellWireframe));
+    const contract = anatomy.surfaceFixtures["app-overlay"];
+
+    expect(contract.requiredStates).toEqual(["anchor"]);
+    for (const label of contract.labels.anchor) {
+      expect(markup).toContain(label);
+    }
+    for (const classAnchor of contract.fixtureClassAnchors) {
+      expect(markup, `missing fixture class ${classAnchor}`).toContain(
+        classAnchor,
+      );
+    }
+    expect(markup).toMatch(
+      /data-guide-region="app-overlay"[^>]*class="[^"]*absolute[^"]*z-\[6\][^"]*shadow-md/,
+    );
+    expect(markup.match(/data-guide-badge="app-overlay"/g)).toHaveLength(1);
+  });
+
+  it("shows the complete sidebar navigation replacement boundary", () => {
+    const markup = renderWireframe(createElement(AppShellWireframe));
+    const contract = anatomy.surfaceFixtures["sidebar-navigation"];
+
+    expect(contract.requiredStates).toEqual([
+      "owner",
+      "replacement",
+      "fallback",
+    ]);
+    for (const label of contract.labels.owner) {
+      expect(markup).toContain(label);
+    }
+    for (const classAnchor of contract.fixtureClassAnchors) {
+      expect(markup).toContain(classAnchor);
+    }
+    expect(markup).toContain('data-guide-region="sidebar-navigation"');
+    expect(markup).toContain(
+      'data-guide-fixture="sidebar-navigation-primary-actions"',
+    );
+    expect(markup).not.toContain("Custom navigation");
   });
 
   it("grows the app window within capped viewport-fit bounds while retaining loose timeline spacing", () => {

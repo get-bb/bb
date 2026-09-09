@@ -17,6 +17,7 @@ import { ThreadTimelineRows } from "./ThreadTimelineRows.js";
 import { useAutoLoadOlderRows } from "./useAutoLoadOlderRows.js";
 import { TimelineStatusIndicator } from "./TimelineStatusIndicator.js";
 import type { TimelineTitleActionResolver } from "./TimelineTitleView.js";
+import { TimelineReasoningExpansionProvider } from "./TimelineReasoningExpansion.js";
 import { TimelineWorkingIndicator } from "./TimelineWorkingIndicator.js";
 import type {
   ThreadTimelineForkMessageHandler,
@@ -203,73 +204,76 @@ export function ThreadTimelineSurface({
     !timelineError;
 
   return (
-    <ConversationTimeline className="flex-1">
-      {leadingContent}
-      {showLoadOlderRows ? (
-        <LoadOlderMessages
-          hasOlderTimelineRows={hasOlderTimelineRows}
-          isLoadingOlderTimelineRows={isLoadingOlderTimelineRows}
-          onLoadOlderRows={onLoadOlderRows}
-        />
-      ) : null}
-      {isThreadTimelinePending ? (
-        (loadingContent ?? <DelayedThreadLoadingIndicator />)
-      ) : timelineError ? (
-        <TimelineStatusIndicator
-          label="Failed to load timeline"
-          className={timelineErrorClassName}
-        />
-      ) : timelineRowsWithPendingStop.length > 0 ? (
-        <ThreadTimelineRows
-          canSpawnChild={canSpawnChild}
-          threadOriginKind={threadOriginKind}
-          onForkMessage={onForkMessage}
-          onEditMessage={onEditMessage}
-          inlineMessageEditor={inlineMessageEditor}
-          onMessageAddToChat={onMessageAddToChat}
-          onSendToMainMessage={onSendToMainMessage}
-          onSelectionAddToChat={onSelectionAddToChat}
-          consumerMessageActions={consumerMessageActions}
-          includePluginMessageActions={includePluginMessageActions}
-          onOpenLink={onOpenLink}
-          onOpenLocalFileLink={onOpenLocalFileLink}
-          onOpenPluginPanel={onOpenPluginPanel}
-          onTitleAction={onTitleAction}
-          projectId={projectId}
-          resolveMentionLink={resolveMentionLink}
-          resolveUserAttachmentImageSrc={toUserAttachmentImageSrc}
-          hasOlderTimelineRows={hasOlderTimelineRows}
-          isLoadingOlderTimelineRows={isLoadingOlderTimelineRows}
-          onLoadOlderRows={onLoadOlderRows}
-          timelineRows={timelineRowsWithPendingStop}
-          timelineNavigationTargetRowId={timelineNavigationTargetRowId}
-          timelineWindowingEnabled={timelineWindowingEnabled}
-          threadId={threadId}
-          threadRuntimeDisplayStatus={threadRuntimeDisplayStatus}
-          unreadDividerAutoScroll={unreadDividerAutoScroll}
-          unreadDividerPlacement={unreadDividerPlacement}
-          workspaceRootPath={workspaceRootPath}
-        />
-      ) : null}
-      {hostConnectionNotice ? (
-        <TimelineStatusIndicator
-          label={hostConnectionNotice.label}
-          className={
-            hostConnectionNotice.tone === "error"
-              ? "mt-4 text-destructive"
-              : "mt-4"
-          }
-        />
-      ) : null}
-      <HeightTransition visible={showOngoingIndicator}>
-        <TimelineWorkingIndicator
-          key={ongoingIndicatorKey}
-          details={activeThinkingDetails}
-          isThinking={showActiveThinking}
-          label={ongoingIndicatorLabel}
-        />
-      </HeightTransition>
-    </ConversationTimeline>
+    <TimelineReasoningExpansionProvider key={threadId}>
+      <ConversationTimeline className="flex-1">
+        {leadingContent}
+        {showLoadOlderRows ? (
+          <LoadOlderMessages
+            hasOlderTimelineRows={hasOlderTimelineRows}
+            isLoadingOlderTimelineRows={isLoadingOlderTimelineRows}
+            onLoadOlderRows={onLoadOlderRows}
+          />
+        ) : null}
+        {isThreadTimelinePending ? (
+          (loadingContent ?? <DelayedThreadLoadingIndicator />)
+        ) : timelineError ? (
+          <TimelineStatusIndicator
+            label="Failed to load timeline"
+            className={timelineErrorClassName}
+          />
+        ) : timelineRowsWithPendingStop.length > 0 ? (
+          <ThreadTimelineRows
+            canSpawnChild={canSpawnChild}
+            threadOriginKind={threadOriginKind}
+            onForkMessage={onForkMessage}
+            onEditMessage={onEditMessage}
+            inlineMessageEditor={inlineMessageEditor}
+            onMessageAddToChat={onMessageAddToChat}
+            onSendToMainMessage={onSendToMainMessage}
+            onSelectionAddToChat={onSelectionAddToChat}
+            consumerMessageActions={consumerMessageActions}
+            includePluginMessageActions={includePluginMessageActions}
+            onOpenLink={onOpenLink}
+            onOpenLocalFileLink={onOpenLocalFileLink}
+            onOpenPluginPanel={onOpenPluginPanel}
+            onTitleAction={onTitleAction}
+            projectId={projectId}
+            resolveMentionLink={resolveMentionLink}
+            resolveUserAttachmentImageSrc={toUserAttachmentImageSrc}
+            hasOlderTimelineRows={hasOlderTimelineRows}
+            isLoadingOlderTimelineRows={isLoadingOlderTimelineRows}
+            onLoadOlderRows={onLoadOlderRows}
+            timelineRows={timelineRowsWithPendingStop}
+            timelineNavigationTargetRowId={timelineNavigationTargetRowId}
+            timelineWindowingEnabled={timelineWindowingEnabled}
+            threadId={threadId}
+            threadRuntimeDisplayStatus={threadRuntimeDisplayStatus}
+            unreadDividerAutoScroll={unreadDividerAutoScroll}
+            unreadDividerPlacement={unreadDividerPlacement}
+            workspaceRootPath={workspaceRootPath}
+          />
+        ) : null}
+        {hostConnectionNotice ? (
+          <TimelineStatusIndicator
+            label={hostConnectionNotice.label}
+            className={
+              hostConnectionNotice.tone === "error"
+                ? "mt-4 text-destructive"
+                : "mt-4"
+            }
+          />
+        ) : null}
+        <HeightTransition visible={showOngoingIndicator}>
+          <TimelineWorkingIndicator
+            key={ongoingIndicatorKey}
+            details={activeThinkingDetails}
+            reasoningId={activeThinking?.id}
+            isThinking={showActiveThinking}
+            label={ongoingIndicatorLabel}
+          />
+        </HeightTransition>
+      </ConversationTimeline>
+    </TimelineReasoningExpansionProvider>
   );
 }
 

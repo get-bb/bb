@@ -21,8 +21,22 @@ type NewTabPageModule = typeof import("./NewTabPage");
 type FilePreviewModule = typeof import("./FilePreview");
 type ThreadStorageFileTreeModule = typeof import("./ThreadStorageFileTree");
 
+let threadSecondaryPanelModulePromise: Promise<ThreadSecondaryPanelModule> | null =
+  null;
+
+function loadThreadSecondaryPanel(): Promise<ThreadSecondaryPanelModule> {
+  threadSecondaryPanelModulePromise ??= import("./ThreadSecondaryPanel");
+  return threadSecondaryPanelModulePromise;
+}
+
+export function preloadThreadSecondaryPanel(): void {
+  void loadThreadSecondaryPanel().catch(() => {
+    threadSecondaryPanelModulePromise = null;
+  });
+}
+
 const ThreadSecondaryPanelChunk = lazy(() =>
-  import("./ThreadSecondaryPanel").then(({ ThreadSecondaryPanel }) => ({
+  loadThreadSecondaryPanel().then(({ ThreadSecondaryPanel }) => ({
     default: ThreadSecondaryPanel,
   })),
 );
@@ -85,7 +99,7 @@ const ThreadStorageFilePreviewTabContentChunk = lazy(() =>
   ),
 );
 
-function SecondaryPanelContentSkeleton() {
+export function SecondaryPanelContentSkeleton() {
   return (
     <div
       className="space-y-2 px-4 py-4"
@@ -133,6 +147,7 @@ function ThreadSecondaryPanelInlinePlaceholder({
       className={cn(
         "min-w-0 overflow-clip",
         `relative transition-[flex-grow,flex-basis] ${PANEL_COLLAPSE_TRANSITION_CLASS}`,
+        isOpen && !isConversationCollapsed && "border-l border-border-seam",
       )}
       data-testid="thread-secondary-panel-placeholder"
     >

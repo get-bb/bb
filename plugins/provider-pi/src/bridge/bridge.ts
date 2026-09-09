@@ -9,6 +9,7 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { isDeepStrictEqual } from "node:util";
 import { z } from "zod";
 import {
   BRIDGE_JSON_RPC_ERRORS,
@@ -16,6 +17,7 @@ import {
   PROVIDER_BRIDGE_PROTOCOL_VERSION,
   THREAD_DELTA_GRAMMAR_V3,
   THREAD_DELTA_NOTIFICATION_METHOD,
+  buildShellEnvOverrides,
   bridgeRequestEnvelopeSchema,
   createBridgeIo,
   createBridgeLineHandler,
@@ -27,7 +29,6 @@ import {
   providerInstallationStatusParamsSchema,
   providerMaintenanceParamsSchema,
   isStandaloneBuiltinCompactCommand,
-  mimeTypeFromExtension,
   modelListParamsSchema,
   runBridgeRequest,
   skillsConfigureParamsSchema,
@@ -52,6 +53,11 @@ import {
 } from "../session-params.js";
 import { BB_PI_EXTENSION_SOURCE } from "./bb-pi-extension.js";
 import {
+  createExtensionUiCoordinator,
+  type ExtensionUiCoordinator,
+} from "./extension-ui.js";
+import { type InteractionUiRequest } from "../extension-ui-contract.js";
+import {
   getPiInstallGate,
   getPiProviderInstallationRun,
   getPiProviderInstallationStatus,
@@ -73,6 +79,7 @@ import {
   resolvePiBridgeSessionDir,
   resolvePiSessionFilePath,
 } from "./session-paths.js";
+import { extractPiPromptInput } from "./turn-input.js";
 
 const piCommandSchema = z.discriminatedUnion("method", [
   z.object({
@@ -200,13 +207,17 @@ let sessionSerialCounter = 0;
 const THREAD_STOP_CLOSE_TIMEOUT_MS = 8_000;
 
 const { send, sendResult, sendError } = createBridgeIo<
-  BridgeEventNotification | BridgeToolCallRequest
+  BridgeEventNotification | BridgeToolCallRequest | InteractionUiRequest
 >();
 
 const sessions = new Map<string, ThreadSession>();
 const closingSessions = new Map<string, Promise<string | undefined>>();
 const { forwardToolCall, handleToolCallResponse, resolvePendingToolCalls } =
   createPendingToolCallTracker({ sendToolCall: send });
+
+const extensionUi: ExtensionUiCoordinator = createExtensionUiCoordinator({
+  sendInteractionRequest: send,
+});
 
 let configuredSkillPaths: string[] | null = null;
 
@@ -274,6 +285,7 @@ async function closeThreadSession(args: {
   }
   threadSession.closing = true;
   resolvePendingToolCalls(threadSession, args.message);
+  extensionUi.cancelPendingForScope(threadSession);
   const closePromise = Promise.resolve()
     .then(() =>
       threadSession.session.closeGracefully(THREAD_STOP_CLOSE_TIMEOUT_MS),
@@ -419,6 +431,23 @@ function createOnPiEvent(
   };
 }
 
+function createOnExtensionUiRequest(
+  args: CurrentThreadSessionArgs,
+): (request: Record<string, unknown>) => void {
+  return (request) => {
+    const threadSession = getCurrentThreadSession(args);
+    if (!threadSession || threadSession.closing) return;
+    extensionUi.handle({
+      scope: threadSession,
+      request,
+      threadId: args.threadId,
+      providerThreadId: threadSession.providerThreadId,
+      respond: (requestId, fields) =>
+        threadSession.session.respondToExtensionUi(requestId, fields),
+    });
+  };
+}
+
 function createOnSessionDone(
   args: CurrentThreadSessionArgs,
 ): (error?: unknown) => void {
@@ -532,7 +561,11 @@ async function handleRequest(
       const missingCwd = resumedSessionMissingCwd(
         request.params.providerThreadId,
       );
-      if (missingCwd !== null) {
+      const requestedCwd = request.params.cwd;
+      // The persisted cwd is stale when bb already moved the thread to a
+      // new environment directory and the old one was removed; resume at
+      // the requested, existing cwd instead of failing the whole turn.
+      if (missingCwd !== null && !existsSync(requestedCwd ?? "")) {
         sendError(
           request.id,
           -32000,
@@ -699,6 +732,7 @@ async function buildSessionOptions(args: {
   params: PiSessionParams;
   providerThreadId: string;
   threadId: string;
+  sessionSerial: number;
 }): Promise<PiRpcSessionOptions> {
   return {
     cwd: args.params.cwd,
@@ -725,6 +759,10 @@ async function buildSessionOptions(args: {
     scratchDir: requireScratchDir(),
     extensionPath: requireExtensionPath(),
     recordThreadId: args.threadId,
+    onExtensionUiRequest: createOnExtensionUiRequest({
+      sessionSerial: args.sessionSerial,
+      threadId: args.threadId,
+    }),
   };
 }
 
@@ -738,6 +776,7 @@ async function constructPiThreadSession(
     params,
     providerThreadId,
     threadId,
+    sessionSerial,
   });
   const session = new PiRpcSession(
     sessionOptions,
@@ -750,7 +789,7 @@ async function constructPiThreadSession(
     sessionSerial,
     closing: false,
     providerThreadId,
-    cwd: persistedSessionCwd(providerThreadId) ?? params.cwd,
+    cwd: usablePersistedSessionCwd(providerThreadId) ?? params.cwd,
     construction: params,
     constructionModel: sessionOptions.model,
   };
@@ -802,6 +841,7 @@ function retireReplacedPiChild(replaced: ThreadSession): void {
     replaced,
     "Pi thread session replaced while tool call was pending",
   );
+  extensionUi.cancelPendingForScope(replaced);
   void replaced.session
     .closeGracefully(THREAD_STOP_CLOSE_TIMEOUT_MS)
     .catch(() => undefined);
@@ -857,6 +897,11 @@ async function handleThreadConstruction(
 function resumedSessionMissingCwd(providerThreadId: string): string | null {
   const cwd = persistedSessionCwd(providerThreadId);
   return cwd !== null && !existsSync(cwd) ? cwd : null;
+}
+
+function usablePersistedSessionCwd(providerThreadId: string): string | null {
+  const cwd = persistedSessionCwd(providerThreadId);
+  return cwd !== null && existsSync(cwd) ? cwd : null;
 }
 
 function persistedSessionCwd(providerThreadId: string): string | null {
@@ -988,6 +1033,13 @@ async function reconcileTurnOptions(
 ): Promise<ThreadSession> {
   const turnOptions = buildPiTurnOptions(options);
   const construction = threadSession.construction;
+  const shellEnvOverrides =
+    options.envVars && Object.keys(options.envVars).length > 0
+      ? { BB_THREAD_ID: threadId, ...buildShellEnvOverrides(options.envVars) }
+      : undefined;
+  const environmentChanged =
+    shellEnvOverrides !== undefined &&
+    !isDeepStrictEqual(shellEnvOverrides, construction.shellEnvOverrides);
   const changedModelRequest =
     turnOptions.model !== undefined && turnOptions.model !== construction.model
       ? turnOptions.model
@@ -995,7 +1047,11 @@ async function reconcileTurnOptions(
   const thinkingLevelChanged =
     turnOptions.thinkingLevel !== undefined &&
     turnOptions.thinkingLevel !== construction.thinkingLevel;
-  if (changedModelRequest === undefined && !thinkingLevelChanged) {
+  if (
+    !environmentChanged &&
+    changedModelRequest === undefined &&
+    !thinkingLevelChanged
+  ) {
     return threadSession;
   }
   const nextModel =
@@ -1007,11 +1063,12 @@ async function reconcileTurnOptions(
     (threadSession.constructionModel === undefined ||
       threadSession.constructionModel.provider !== nextModel.provider ||
       threadSession.constructionModel.id !== nextModel.id);
-  if (!modelChanged && !thinkingLevelChanged) {
+  if (!environmentChanged && !modelChanged && !thinkingLevelChanged) {
     return threadSession;
   }
   const replacement = await rebuildThreadSession(threadId, threadSession, {
     ...construction,
+    ...(shellEnvOverrides === undefined ? {} : { shellEnvOverrides }),
     ...(turnOptions.model === undefined ? {} : { model: turnOptions.model }),
     ...(turnOptions.thinkingLevel === undefined
       ? {}
@@ -1063,13 +1120,13 @@ async function handleTurnStart(
     sendResult(id, { threadId: params.threadId });
     return;
   }
-  const { text, images } = extractInput(params.input);
-  if (!text) {
+  const { text, images } = extractPiPromptInput(params.input);
+  if (!text && images.length === 0) {
     sendError(id, BRIDGE_JSON_RPC_ERRORS.INVALID_PARAMS, "Missing input text");
     return;
   }
   try {
-    await startPiPrompt(threadSession, params.threadId, text, images);
+    await startPiPrompt(threadSession, params.threadId, text ?? "", images);
     recordAcceptedTurnInput(params);
     sendResult(id, { threadId: params.threadId });
   } catch (error) {
@@ -1090,8 +1147,8 @@ async function handleTurnSteer(
     sendError(id, -32000, "No active pi session");
     return;
   }
-  const { text, images } = extractInput(params.input);
-  if (!text) {
+  const { text, images } = extractPiPromptInput(params.input);
+  if (!text && images.length === 0) {
     sendError(id, BRIDGE_JSON_RPC_ERRORS.INVALID_PARAMS, "Missing input text");
     return;
   }
@@ -1101,7 +1158,7 @@ async function handleTurnSteer(
   }
   try {
     await threadSession.session.steer(
-      text,
+      text ?? "",
       images.length > 0 ? images : undefined,
     );
     sendThreadDeltas(params.threadId, [
@@ -1156,39 +1213,15 @@ async function handleThreadDiscard(
   return { ok: true };
 }
 
-interface ExtractedInput {
-  text?: string;
-  images: ImageContent[];
-}
-
-function extractInput(input: TurnStartParams["input"]): ExtractedInput {
-  const chunks: string[] = [];
-  const images: ImageContent[] = [];
-  for (const item of input) {
-    if (!item || typeof item !== "object") continue;
-    const typed = item as {
-      type?: string;
-      text?: string;
-      path?: string;
-      mimeType?: string;
-    };
-    if (typed.type === "text" && typeof typed.text === "string") {
-      chunks.push(typed.text);
-    } else if (typed.type === "localImage" && typeof typed.path === "string") {
-      try {
-        const data = readFileSync(typed.path).toString("base64");
-        const mimeType = typed.mimeType ?? mimeTypeFromExtension(typed.path);
-        images.push({ type: "image", data, mimeType });
-      } catch {}
-    }
-  }
-  return { text: chunks.length > 0 ? chunks.join("\n") : undefined, images };
-}
-
 function handleParsedMessage(parsed: unknown): void {
   const response = decodeBridgeJsonRpcResponse(parsed);
-  if (response && handleToolCallResponse(response)) {
-    return;
+  if (response) {
+    if (extensionUi.handleRuntimeResponse(response)) {
+      return;
+    }
+    if (handleToolCallResponse(response)) {
+      return;
+    }
   }
   const decoded = decodePiJsonRpcRequest(parsed);
   if (decoded.kind === "ignored") {

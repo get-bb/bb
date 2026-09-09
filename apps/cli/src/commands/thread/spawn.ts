@@ -1,10 +1,13 @@
 import { Command } from "commander";
 import {
+  jsonValueSchema,
   PERSONAL_PROJECT_ID,
   threadVisibilitySchema,
+  type GitBranchSelection,
   type Thread,
+  type JsonValue,
 } from "@bb/domain";
-import type { BaseBranchSpec, EnvironmentArgs } from "@bb/server-contract";
+import type { CreateThreadEnvironmentArgs } from "@bb/server-contract";
 import { action } from "../../action.js";
 import { createCliBbSdk } from "../../client.js";
 import {
@@ -29,6 +32,10 @@ import {
   PLAN_HELP,
   parseServiceTier,
 } from "./helpers.js";
+import { SEND_AT_HELP, parseSendAt } from "./send-time.js";
+
+const PROVIDER_HELP =
+  "Provider ID for the thread. Omit to use the project's remembered provider choice";
 
 interface ThreadSpawnCommandOptions {
   prompt: string;
@@ -36,6 +43,8 @@ interface ThreadSpawnCommandOptions {
   project?: string;
   environment?: string;
   newEnvironment?: string;
+  environmentProvider?: string;
+  environmentInputs?: string;
   baseBranch?: string;
   parentThread?: string;
   provider?: string;
@@ -55,6 +64,7 @@ interface ThreadSpawnCommandOptions {
   sourceThread?: string;
   sourceSeqEnd?: string;
   visibility?: string;
+  sendAt?: string;
 }
 
 export function looksLikePath(value: string): boolean {
@@ -68,7 +78,9 @@ export function requireHostId(hostId: string | null): string {
   return hostId;
 }
 
-function resolveSpawnEnvironmentValue(flagValue?: string): string | undefined {
+export function resolveSpawnEnvironmentValue(
+  flagValue?: string,
+): string | undefined {
   const trimmedValue = flagValue?.trim();
   if (!trimmedValue) return undefined;
   if (looksLikePath(trimmedValue)) return trimmedValue;
@@ -105,11 +117,11 @@ export function buildSpawnEnvironment(args: {
   newEnvironmentKind?: string;
   hostId: string | null;
   baseBranch?: string;
-}): EnvironmentArgs {
+}): CreateThreadEnvironmentArgs {
   const environmentValue = args.environmentValue?.trim();
   const newEnvironmentKind = args.newEnvironmentKind?.trim();
   const trimmedBaseBranch = args.baseBranch?.trim();
-  const baseBranch: BaseBranchSpec = trimmedBaseBranch
+  const baseBranch: GitBranchSelection = trimmedBaseBranch
     ? { kind: "named", name: trimmedBaseBranch }
     : { kind: "default" };
 
@@ -120,6 +132,13 @@ export function buildSpawnEnvironment(args: {
     throw new Error("--base-branch requires --new-environment worktree.");
   }
   if (newEnvironmentKind) {
+    if (newEnvironmentKind === "personal") {
+      return {
+        type: "host",
+        hostId: requireHostId(args.hostId),
+        workspace: { type: "personal" },
+      };
+    }
     if (newEnvironmentKind === "worktree") {
       return {
         type: "host",
@@ -128,22 +147,20 @@ export function buildSpawnEnvironment(args: {
       };
     }
     throw new Error(
-      `Unknown environment kind '${newEnvironmentKind}'. Supported: worktree.`,
+      `Unknown environment kind '${newEnvironmentKind}'. Supported: personal, worktree.`,
     );
   }
   if (!environmentValue) {
-    if (args.defaultPersonalWorkspace) {
+    if (args.hostId !== null) {
       return {
         type: "host",
-        ...(args.hostId ? { hostId: args.hostId } : {}),
-        workspace: { type: "personal" },
+        hostId: args.hostId,
+        workspace: args.defaultPersonalWorkspace
+          ? { type: "personal" }
+          : { type: "unmanaged", path: null },
       };
     }
-    return {
-      type: "host",
-      hostId: requireHostId(args.hostId),
-      workspace: { type: "unmanaged", path: null },
-    };
+    return { type: "project-default" };
   }
   if (looksLikePath(environmentValue)) {
     return {
@@ -155,6 +172,80 @@ export function buildSpawnEnvironment(args: {
   return {
     type: "reuse",
     environmentId: environmentValue,
+  };
+}
+
+function parseEnvironmentInputs(
+  flagValue: string | undefined,
+): JsonValue | null {
+  if (flagValue === undefined) return null;
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(flagValue);
+  } catch {
+    throw new Error("--environment-inputs must be valid JSON.");
+  }
+  return jsonValueSchema.parse(parsed);
+}
+
+async function buildProviderSpawnEnvironment(args: {
+  serverUrl: string;
+  environmentProvider: string;
+  environmentInputs: string | undefined;
+  environmentValue: string | undefined;
+  newEnvironmentKind: string | undefined;
+  baseBranch: string | undefined;
+  machineHostId: string | null;
+  projectId: string;
+  resolveDefaultHostId: () => Promise<string | null>;
+}): Promise<CreateThreadEnvironmentArgs> {
+  if (args.environmentValue || args.newEnvironmentKind) {
+    throw new Error(
+      "Cannot combine --environment-provider with --environment or --new-environment.",
+    );
+  }
+  if (args.baseBranch?.trim()) {
+    throw new Error(
+      "--base-branch requires --new-environment worktree; an --environment-provider takes its branch through --environment-inputs.",
+    );
+  }
+  const requested = args.environmentProvider.trim();
+  const providers = await createCliBbSdk(
+    args.serverUrl,
+  ).environments.listProviders({ projectId: args.projectId });
+  const match = providers.find((provider) => provider.id === requested);
+  if (match === undefined) {
+    const available = providers.map((provider) => provider.id).join(", ");
+    throw new Error(
+      `Unknown environment provider '${requested}'.${available ? ` Available: ${available}.` : ""}`,
+    );
+  }
+  let inputs = parseEnvironmentInputs(args.environmentInputs);
+  if (match.inputs !== null && inputs === null) {
+    if (match.acceptsEmptyInputs) {
+      inputs = {};
+    } else {
+      throw new Error(
+        `The '${match.id}' environment provider needs --environment-inputs <json>; \`bb environment providers --json\` shows its schema.`,
+      );
+    }
+  }
+  if (match.inputs === null && inputs !== null) {
+    throw new Error(
+      `The '${match.id}' environment provider takes no --environment-inputs.`,
+    );
+  }
+  const machine = {
+    type: "existing" as const,
+    hostId: requireHostId(
+      args.machineHostId ?? (await args.resolveDefaultHostId()),
+    ),
+  };
+  return {
+    type: "provider",
+    environmentProviderId: match.id,
+    machine,
+    inputs,
   };
 }
 
@@ -176,11 +267,11 @@ export function registerSpawnCommand(
     )
     .option(
       "--new-environment <kind>",
-      "Create a new managed environment of the given kind (worktree)",
+      "Create a fresh environment of the given kind (personal or worktree)",
     )
     .option(
       "--base-branch <branch>",
-      "Base branch for new managed worktrees. Omit to let bb choose the project's default worktree base; naming the default branch fetches and prefers origin the same way.",
+      "Exact Git ref; omit for bb's project default (use origin/<branch> for a remote ref)",
     )
     .option(
       "--machine <id-or-name>",
@@ -189,10 +280,7 @@ export function registerSpawnCommand(
     .option("--host <id-or-name>", "Alias for --machine")
     .option("--parent-thread <id>", "Parent thread ID for worker thread links")
     .option("--parent-self", "Parent the new thread to BB_THREAD_ID")
-    .option(
-      "--provider <id>",
-      "Provider ID for the thread. Omit to use the project's remembered provider choice",
-    )
+    .option("--provider <id>", PROVIDER_HELP)
     .option(
       "--model <model>",
       "Model ID for the thread. Omit to use the project's remembered default for the resolved provider",
@@ -222,6 +310,15 @@ export function registerSpawnCommand(
       "--visibility <visibility>",
       "Thread visibility: visible or hidden (a child inherits its parent)",
     )
+    .option(
+      "--environment-provider <id>",
+      "Run on an environment provider by id (list them with `bb environment providers`)",
+    )
+    .option(
+      "--environment-inputs <json>",
+      "JSON value for an --environment-provider that declares inputs (`bb environment providers --json` shows the schema)",
+    )
+    .option("--send-at <when>", SEND_AT_HELP)
     .option("--origin-kind <kind>", "Thread origin: fork")
     .option("--source-thread <id>", "Source thread for a fork")
     .option(
@@ -238,6 +335,11 @@ export function registerSpawnCommand(
           throw new Error("Missing required option --project <id>.");
         }
         const environmentValue = resolveSpawnEnvironmentValue(opts.environment);
+        if (opts.environmentInputs !== undefined && !opts.environmentProvider) {
+          throw new Error(
+            "--environment-inputs requires --environment-provider <id>.",
+          );
+        }
         const machineTarget = resolveMachineTargetOption(opts);
         if (
           machineTarget &&
@@ -248,14 +350,12 @@ export function registerSpawnCommand(
             "Cannot combine --machine or --host with an existing environment ID; that environment already selects its machine.",
           );
         }
-        const defaultPersonalWorkspace =
-          projectId === PERSONAL_PROJECT_ID &&
-          !environmentValue &&
-          !opts.newEnvironment;
+        const selectedEnvironmentProvider = opts.environmentProvider;
         const needsHostId =
-          Boolean(opts.newEnvironment) ||
-          (!defaultPersonalWorkspace &&
-            (!environmentValue || looksLikePath(environmentValue)));
+          !opts.environmentProvider &&
+          (Boolean(opts.newEnvironment) ||
+            (environmentValue !== undefined &&
+              looksLikePath(environmentValue)));
         const hostId = machineTarget
           ? await resolveMachineHostId({
               serverUrl: getUrl(),
@@ -264,13 +364,25 @@ export function registerSpawnCommand(
           : needsHostId
             ? await resolveLocalHostId()
             : null;
-        const environment = buildSpawnEnvironment({
-          defaultPersonalWorkspace,
-          environmentValue,
-          newEnvironmentKind: opts.newEnvironment,
-          hostId,
-          baseBranch: opts.baseBranch,
-        });
+        const environment = selectedEnvironmentProvider
+          ? await buildProviderSpawnEnvironment({
+              serverUrl: getUrl(),
+              environmentProvider: selectedEnvironmentProvider,
+              environmentInputs: opts.environmentInputs,
+              environmentValue,
+              newEnvironmentKind: opts.newEnvironment,
+              baseBranch: opts.baseBranch,
+              machineHostId: hostId,
+              projectId,
+              resolveDefaultHostId: resolveLocalHostId,
+            })
+          : buildSpawnEnvironment({
+              defaultPersonalWorkspace: projectId === PERSONAL_PROJECT_ID,
+              environmentValue,
+              newEnvironmentKind: opts.newEnvironment,
+              hostId,
+              baseBranch: opts.baseBranch,
+            });
         const reasoningLevel = parseReasoningLevel(opts.reasoningLevel);
         const serviceTier = parseServiceTier(opts.serviceTier);
         const permissionMode = parsePermissionMode(opts.permissionMode);
@@ -295,6 +407,9 @@ export function registerSpawnCommand(
         ) {
           throw new Error("--source-seq-end must be a non-negative integer.");
         }
+        const sendAt =
+          opts.sendAt === undefined ? undefined : parseSendAt(opts.sendAt);
+        const providerId = opts.provider?.trim();
 
         let thread: Thread;
         try {
@@ -302,7 +417,7 @@ export function registerSpawnCommand(
           thread = await sdk.threads.spawn({
             origin: "cli",
             projectId,
-            ...(opts.provider ? { providerId: opts.provider } : {}),
+            ...(providerId ? { providerId } : {}),
             ...(opts.model ? { model: opts.model } : {}),
             input: buildPromptInputs({
               message: opts.prompt,
@@ -322,6 +437,7 @@ export function registerSpawnCommand(
             ...(opts.section ? { sectionId: opts.section } : {}),
             ...(opts.sourceThread ? { sourceThreadId: opts.sourceThread } : {}),
             ...(sourceSeqEnd !== undefined ? { sourceSeqEnd } : {}),
+            ...(sendAt !== undefined ? { sendAt } : {}),
           });
         } catch (err: unknown) {
           throw prependErrorContext("Failed to create thread", err);
@@ -329,6 +445,13 @@ export function registerSpawnCommand(
 
         if (outputJson(opts, thread)) return;
         console.log(`Thread spawned: ${thread.id}`);
+        if (sendAt !== undefined) {
+          console.log(
+            `First message scheduled for ${new Date(sendAt).toLocaleString()}; the thread stays pending until then.`,
+          );
+        }
+        // A hidden child reports to its parent too, so the promise follows the
+        // parent link alone.
         if (
           thread.parentThreadId &&
           thread.parentThreadId === resolveContextThreadId()

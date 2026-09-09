@@ -13,11 +13,12 @@ import {
   type ThreadTimelinePendingTodos,
   type WorkspaceStatus,
 } from "@bb/domain";
-import type { BbSdk } from "@bb/sdk";
+import { BbHttpError, type BbSdk } from "@bb/sdk";
 import type {
   EnvironmentDiffQuery,
   ThreadTimelineResponse,
 } from "@bb/server-contract";
+import { THREAD_EVENT_LIST_PAGE_SIZE } from "@bb/server-contract";
 import { action } from "../../action.js";
 import { createCliBbSdk } from "../../client.js";
 import {
@@ -39,7 +40,6 @@ interface ThreadShowCommandOptions {
   diffTarget?: string;
   diffSha?: string;
   diffMergeBase?: string;
-  mergeBaseBranches?: boolean;
   json?: boolean;
 }
 
@@ -53,7 +53,6 @@ interface ThreadLogCommandOptions {
 }
 
 const THREAD_LOG_DEFAULT_EVENT_LIMIT = 100;
-const THREAD_LOG_ALL_EVENTS_PAGE_SIZE = 1000;
 const THREAD_LOG_TIMELINE_SEGMENT_LIMIT_MAX = 100;
 
 interface ThreadOutputCommandOptions {
@@ -74,7 +73,6 @@ interface ThreadShowJsonPayload extends ThreadStatusPayload {
   pendingTodos: ThreadTimelinePendingTodos | null;
   workStatus?: WorkspaceStatus | null;
   gitDiff?: ThreadGitDiffResponse | null;
-  mergeBaseBranches?: string[];
 }
 
 interface ThreadShowPullRequestPayload {
@@ -207,10 +205,6 @@ export function registerShowCommand(
       "--diff-merge-base <branch>",
       "Merge base branch for --diff-target branch_committed or all",
     )
-    .option(
-      "--merge-base-branches",
-      "Include available merge-base branches in output",
-    )
     .action(
       action(async (id: string | undefined, opts: ThreadShowCommandOptions) => {
         const threadId = requireThreadIdOrSelf(id, opts);
@@ -302,14 +296,6 @@ export function registerShowCommand(
           });
         }
 
-        let mergeBaseBranches: string[] | undefined;
-        if (opts.mergeBaseBranches && thread.environmentId) {
-          const branchResponse = await sdk.environments.diffBranches({
-            environmentId: thread.environmentId,
-          });
-          mergeBaseBranches = branchResponse.branches;
-        }
-
         const fetchedPullRequest = thread.environmentId
           ? await fetchPullRequest({
               environmentId: thread.environmentId,
@@ -348,9 +334,6 @@ export function registerShowCommand(
             jsonPayload.gitDiff = fetchedGitDiff.available
               ? fetchedGitDiff.diff
               : null;
-          }
-          if (mergeBaseBranches !== undefined) {
-            jsonPayload.mergeBaseBranches = mergeBaseBranches;
           }
           outputJson(opts, jsonPayload);
           return;
@@ -408,18 +391,6 @@ export function registerShowCommand(
             }
           } else {
             console.log(`Git diff: ${fetchedGitDiff.message}`);
-          }
-        }
-
-        if (mergeBaseBranches !== undefined) {
-          console.log("");
-          if (mergeBaseBranches.length === 0) {
-            console.log("Merge-base branches: none");
-          } else {
-            console.log("Merge-base branches:");
-            for (const branch of mergeBaseBranches) {
-              console.log(`  ${branch}`);
-            }
           }
         }
       }),
@@ -641,15 +612,69 @@ interface ThreadLogEventsPage {
   hasMore: boolean;
 }
 
+interface ThreadLogEventBatch {
+  pageSize: number;
+  rows: ThreadEventRow[];
+}
+
+async function listThreadLogEventBatch(
+  sdk: BbSdk,
+  args: {
+    threadId: string;
+    limit: number;
+    afterSeq: string | undefined;
+  },
+): Promise<ThreadLogEventBatch> {
+  let pageSize = args.limit;
+  for (;;) {
+    try {
+      const rows = await sdk.threads.events.list({
+        threadId: args.threadId,
+        limit: String(pageSize),
+        ...(args.afterSeq === undefined ? {} : { afterSeq: args.afterSeq }),
+      });
+      return { pageSize, rows };
+    } catch (error) {
+      if (
+        !(error instanceof BbHttpError) ||
+        error.status !== 413 ||
+        error.code !== "event_data_too_large" ||
+        pageSize === 1
+      ) {
+        throw error;
+      }
+      pageSize = Math.max(1, Math.ceil(pageSize / 2));
+    }
+  }
+}
+
+function growThreadLogEventPageSize(pageSize: number): number {
+  return Math.min(THREAD_EVENT_LIST_PAGE_SIZE, pageSize * 2);
+}
+
 async function listThreadLogEventsPage(
   sdk: BbSdk,
   args: { threadId: string; limit: number; afterSeq: string | undefined },
 ): Promise<ThreadLogEventsPage> {
-  const rows = await sdk.threads.events.list({
-    threadId: args.threadId,
-    limit: String(args.limit + 1),
-    ...(args.afterSeq === undefined ? {} : { afterSeq: args.afterSeq }),
-  });
+  const requestedRows = args.limit + 1;
+  const rows: ThreadEventRow[] = [];
+  let cursor = args.afterSeq;
+  let pageSize = THREAD_EVENT_LIST_PAGE_SIZE;
+  while (rows.length < requestedRows) {
+    const requestedPageSize = Math.min(pageSize, requestedRows - rows.length);
+    const page = await listThreadLogEventBatch(sdk, {
+      threadId: args.threadId,
+      limit: requestedPageSize,
+      afterSeq: cursor,
+    });
+    rows.push(...page.rows);
+    const last = page.rows.at(-1);
+    if (!last || page.rows.length < page.pageSize) {
+      break;
+    }
+    cursor = String(last.seq);
+    pageSize = growThreadLogEventPageSize(page.pageSize);
+  }
   const hasMore = rows.length > args.limit;
   return { rows: hasMore ? rows.slice(0, args.limit) : rows, hasMore };
 }
@@ -661,18 +686,20 @@ async function listAllThreadLogEvents(
 ): Promise<ThreadLogEventsPage> {
   const rows: ThreadEventRow[] = [];
   let cursor = afterSeq;
+  let pageSize = THREAD_EVENT_LIST_PAGE_SIZE;
   for (;;) {
-    const page = await sdk.threads.events.list({
+    const page = await listThreadLogEventBatch(sdk, {
       threadId,
-      limit: String(THREAD_LOG_ALL_EVENTS_PAGE_SIZE),
-      ...(cursor === undefined ? {} : { afterSeq: cursor }),
+      limit: pageSize,
+      afterSeq: cursor,
     });
-    rows.push(...page);
-    const last = page[page.length - 1];
-    if (last === undefined || page.length < THREAD_LOG_ALL_EVENTS_PAGE_SIZE) {
+    rows.push(...page.rows);
+    const last = page.rows.at(-1);
+    if (last === undefined || page.rows.length < page.pageSize) {
       return { rows, hasMore: false };
     }
     cursor = String(last.seq);
+    pageSize = growThreadLogEventPageSize(page.pageSize);
   }
 }
 

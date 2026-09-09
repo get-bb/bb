@@ -295,6 +295,14 @@ export const claudeTaskNotificationMessageSchema = claudeSystemMessageSchema
   })
   .passthrough();
 
+export const claudeBackgroundTasksChangedMessageSchema =
+  claudeSystemMessageSchema
+    .extend({
+      subtype: z.literal("background_tasks_changed"),
+      tasks: z.array(z.object({ task_id: z.string() }).passthrough()),
+    })
+    .passthrough();
+
 export const claudeWorkflowAgentRecordSchema = z
   .object({
     type: z.literal("workflow_agent"),

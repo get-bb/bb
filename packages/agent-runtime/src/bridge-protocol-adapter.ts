@@ -104,6 +104,7 @@ const sessionReplacedNotificationParamsSchema = z
     providerThreadId: z.string().min(1).nullable(),
     reason: z.string().min(1),
     contextLost: z.boolean().default(false),
+    showRuntimeNote: z.boolean().default(false),
   })
   .passthrough();
 
@@ -544,9 +545,21 @@ export function createBridgeProtocolAdapter(
         if (
           !parsed.success ||
           parsed.data.providerThreadId === null ||
-          !parsed.data.contextLost
+          (!parsed.data.contextLost && !parsed.data.showRuntimeNote)
         ) {
           return [];
+        }
+        if (!parsed.data.contextLost) {
+          return [
+            {
+              type: "provider/warning",
+              threadId: parsed.data.threadId,
+              providerThreadId: parsed.data.providerThreadId,
+              category: "general",
+              summary: parsed.data.reason,
+              scope: { kind: "thread" },
+            },
+          ];
         }
         return [
           {

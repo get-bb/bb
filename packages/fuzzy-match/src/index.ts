@@ -2,7 +2,8 @@ import { Fzf } from "fzf";
 import type { FzfResultItem, Selector, Tiebreaker } from "fzf";
 
 type FuzzyPathGetter<T> = (item: T) => string;
-type FuzzyTextGetter<T> = (item: T) => string | readonly string[];
+type FuzzyTextGetter<T> = (item: T) => string;
+type FuzzyTextAliasesGetter<T> = (item: T) => readonly string[];
 
 interface FuzzyMatch<T> {
   item: T;
@@ -21,6 +22,7 @@ interface FuzzyMatchTextArgs<T> {
   items: readonly T[];
   query: string;
   getText: FuzzyTextGetter<T>;
+  getAliases?: FuzzyTextAliasesGetter<T>;
   limit: number;
 }
 
@@ -42,6 +44,7 @@ interface NormalizedTextCandidate<T> {
   itemIndex: number;
   text: string;
   textIndex: number;
+  isAlias: boolean;
 }
 
 interface RankedTextMatch<T> {
@@ -116,6 +119,8 @@ const TEXT_RELEVANCE_SCORE = {
   subsequence: 5_000,
 };
 
+const PRIMARY_TEXT_SCORE = 1_000_000;
+
 function byPathStartAsc<T>(
   left: FzfResultItem<T>,
   right: FzfResultItem<T>,
@@ -133,10 +138,6 @@ function byPathLengthAsc<T>(
 
 function isPresent<T>(value: T | null): value is T {
   return value !== null;
-}
-
-function getNormalizedQuery(query: string): string {
-  return query.replaceAll("\\", "/");
 }
 
 function getBaseName(path: string): string {
@@ -160,6 +161,16 @@ function getComparableValues(query: string, value: string): ComparableValues {
     return { query, value };
   }
   return { query, value: value.toLowerCase() };
+}
+
+function getCaseInsensitiveComparableValues(
+  query: string,
+  value: string,
+): ComparableValues {
+  return {
+    query: query.toLowerCase(),
+    value: value.toLowerCase(),
+  };
 }
 
 function startsWithQueryCase(value: string, query: string): boolean {
@@ -611,7 +622,7 @@ function mergeRankedMatches<T>(
 }
 
 function rankedMatchesToFuzzyMatches<T>(
-  matches: readonly RankedPathMatch<T>[],
+  matches: readonly FuzzyMatch<T>[],
   limit: number,
 ): FuzzyMatch<T>[] {
   return matches.slice(0, limit).map((match) => ({
@@ -622,7 +633,7 @@ function rankedMatchesToFuzzyMatches<T>(
 }
 
 function getTextRelevanceBonus(text: string, query: string): number {
-  const comparable = getComparableValues(query, text);
+  const comparable = getCaseInsensitiveComparableValues(query, text);
 
   if (comparable.value === comparable.query) {
     return TEXT_RELEVANCE_SCORE.exact;
@@ -640,32 +651,37 @@ function getTextRelevanceBonus(text: string, query: string): number {
   return 0;
 }
 
-function getTextValues<T>(item: T, getText: FuzzyTextGetter<T>): string[] {
-  const text = getText(item);
-  if (typeof text === "string") {
-    return text.length > 0 ? [text] : [];
-  }
-
-  return text.filter((value) => value.length > 0);
-}
-
 function getTextCandidates<T>(
   items: readonly T[],
   getText: FuzzyTextGetter<T>,
+  getAliases: FuzzyTextAliasesGetter<T> | undefined,
 ): NormalizedTextCandidate<T>[] {
   const candidates: NormalizedTextCandidate<T>[] = [];
   let itemIndex = 0;
   for (const item of items) {
-    const values = getTextValues(item, getText);
-    let textIndex = 0;
-    for (const text of values) {
+    const text = getText(item);
+    if (text.length > 0) {
       candidates.push({
         item,
         itemIndex,
         text,
-        textIndex,
+        textIndex: 0,
+        isAlias: false,
       });
-      textIndex += 1;
+    }
+    const aliases = getAliases?.(item) ?? [];
+    let aliasIndex = 0;
+    for (const alias of aliases) {
+      if (alias.length > 0) {
+        candidates.push({
+          item,
+          itemIndex,
+          text: alias,
+          textIndex: aliasIndex + 1,
+          isAlias: true,
+        });
+      }
+      aliasIndex += 1;
     }
     itemIndex += 1;
   }
@@ -707,7 +723,7 @@ function rankTextQueryMatches<T>(
   ];
   const matcher = new Fzf<readonly NormalizedTextCandidate<T>[]>(candidates, {
     selector: (candidate: NormalizedTextCandidate<T>) => candidate.text,
-    casing: "smart-case",
+    casing: "case-insensitive",
     forward: true,
     tiebreakers,
   });
@@ -722,7 +738,10 @@ function rankTextQueryMatches<T>(
       text: match.item.text,
       textIndex: match.item.textIndex,
       positions: [...match.positions].sort((left, right) => left - right),
-      score: match.score + getTextRelevanceBonus(match.item.text, query),
+      score:
+        match.score +
+        getTextRelevanceBonus(match.item.text, query) +
+        (match.item.isAlias ? 0 : PRIMARY_TEXT_SCORE),
       start: match.start,
     }))
     .sort(compareRankedTextMatches);
@@ -743,17 +762,6 @@ function mergeRankedTextMatches<T>(
   return [...matchesByItemIndex.values()].sort(compareRankedTextMatches);
 }
 
-function rankedTextMatchesToFuzzyMatches<T>(
-  matches: readonly RankedTextMatch<T>[],
-  limit: number,
-): FuzzyMatch<T>[] {
-  return matches.slice(0, limit).map((match) => ({
-    item: match.item,
-    score: match.score,
-    positions: match.positions,
-  }));
-}
-
 export function fuzzyMatchPaths<T>(
   args: FuzzyMatchPathsArgs<T>,
 ): FuzzyMatch<T>[] {
@@ -769,7 +777,7 @@ export function fuzzyMatchPaths<T>(
     }));
   }
 
-  const normalizedQuery = getNormalizedQuery(args.query);
+  const normalizedQuery = args.query.replaceAll("\\", "/");
   if (normalizedQuery.length > FUZZY_MATCH_QUERY_MAX_LENGTH) {
     return [];
   }
@@ -794,7 +802,8 @@ export function fuzzyMatchText<T>(
     return [];
   }
 
-  if (!args.query) {
+  const query = args.query.trim();
+  if (!query) {
     return args.items.slice(0, args.limit).map((item) => ({
       item,
       score: 0,
@@ -802,15 +811,15 @@ export function fuzzyMatchText<T>(
     }));
   }
 
-  if (args.query.length > FUZZY_MATCH_QUERY_MAX_LENGTH) {
+  if (query.length > FUZZY_MATCH_QUERY_MAX_LENGTH) {
     return [];
   }
 
-  return rankedTextMatchesToFuzzyMatches(
+  return rankedMatchesToFuzzyMatches(
     mergeRankedTextMatches(
       rankTextQueryMatches(
-        getTextCandidates(args.items, args.getText),
-        args.query,
+        getTextCandidates(args.items, args.getText, args.getAliases),
+        query,
       ),
     ),
     args.limit,

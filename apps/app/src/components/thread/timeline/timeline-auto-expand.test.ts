@@ -24,12 +24,12 @@ function collectAutoExpandedIds({
   rows,
   scopeActive,
 }: CollectAutoExpandedIdsArgs): Set<string> {
-  const { liveFrontierRowIds, terminalFrontierRowIds } =
+  const { liveExpandedRowIds, terminalFrontierRowIds } =
     collectTimelineAutoExpansionRowIds({
       rows,
       scopeActive,
     });
-  return new Set([...liveFrontierRowIds, ...terminalFrontierRowIds]);
+  return new Set([...liveExpandedRowIds, ...terminalFrontierRowIds]);
 }
 
 describe("isWorkRowExpandable", () => {
@@ -146,13 +146,13 @@ describe("collectTimelineAutoExpansionRowIds", () => {
       }),
     ]);
 
-    const { liveFrontierRowIds, terminalFrontierRowIds } =
+    const { liveExpandedRowIds, terminalFrontierRowIds } =
       collectTimelineAutoExpansionRowIds({
         rows,
         scopeActive: true,
       });
 
-    expect(Array.from(liveFrontierRowIds)).toEqual([]);
+    expect(Array.from(liveExpandedRowIds)).toEqual([]);
     expect(Array.from(terminalFrontierRowIds)).toEqual([]);
   });
 
@@ -228,7 +228,7 @@ describe("collectTimelineAutoExpansionRowIds", () => {
       }),
     ]);
 
-    const { liveFrontierRowIds, terminalFrontierRowIds } =
+    const { liveExpandedRowIds, terminalFrontierRowIds } =
       collectTimelineAutoExpansionRowIds({
         rows,
         scopeActive: false,
@@ -237,7 +237,7 @@ describe("collectTimelineAutoExpansionRowIds", () => {
     expect(Array.from(terminalFrontierRowIds)).toEqual([
       "nested-provider-error",
     ]);
-    expect(Array.from(liveFrontierRowIds)).toEqual([]);
+    expect(Array.from(liveExpandedRowIds)).toEqual([]);
   });
 
   it("does not auto-expand a trailing command row in an active scope", () => {

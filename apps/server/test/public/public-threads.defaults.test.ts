@@ -25,6 +25,7 @@ import {
   seedThread,
 } from "../helpers/seed.js";
 import { withTestHarness } from "../helpers/test-app.js";
+import { installFakeGitWorktreeProvider } from "../helpers/environment-provider.js";
 import { beforeEach, describe, expect, it } from "vitest";
 
 describe("public thread default routes", () => {
@@ -106,6 +107,7 @@ describe("public thread default routes", () => {
 
   it("allows managed-worktree threads on a secondary host", async () => {
     await withTestHarness(async (harness) => {
+      const provider = installFakeGitWorktreeProvider();
       const { host: localHost } = seedHostSession(harness.deps, {
         id: "host-managed-default",
       });
@@ -155,12 +157,10 @@ describe("public thread default routes", () => {
 
       expect(response.status).toBe(201);
       const thread = threadSchema.parse(await readJson(response));
-      const environmentResponse = await harness.app.request(
-        `/api/v1/threads/${thread.id}?include=environment`,
-      );
-      await expect(readJson(environmentResponse)).resolves.toMatchObject({
-        environment: { hostId: secondaryHost.id },
-      });
+      const context = await provider.waitForProvision();
+      expect(context.thread.id).toBe(thread.id);
+      expect(context.host?.id).toBe(secondaryHost.id);
+      expect(context.inputs).toEqual({ branch: { kind: "default" } });
       expect(secondarySource.path).toBe("/tmp/secondary-managed-source");
     });
   });
@@ -406,6 +406,79 @@ describe("public thread default routes", () => {
         },
       ]);
       expect(providerResponder.requests[0].command).not.toHaveProperty("cwd");
+    });
+  });
+
+  it("creates from displayed execution values when only the provider has a client source", async () => {
+    await withTestHarness(async (harness) => {
+      const { host, session } = seedHostSession(harness.deps);
+      registerProviderHostRpcResponder(harness, {
+        hostId: host.id,
+        sessionId: session.id,
+        restoreCommandCaptureAfterResponse: true,
+        modelsByProviderId: {
+          codex: {
+            models: [
+              availableModelFixture({
+                model: "gpt-provider-default",
+                isDefault: true,
+              }),
+            ],
+            selectedOnlyModels: [],
+          },
+        },
+      });
+      const { project } = seedProjectWithSource(harness.deps, {
+        hostId: host.id,
+        path: "/tmp/thread-defaults-client-provider",
+      });
+      const environment = seedEnvironment(harness.deps, {
+        hostId: host.id,
+        projectId: project.id,
+        path: "/tmp/thread-defaults-client-provider",
+      });
+
+      const response = await harness.app.request("/api/v1/threads", {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({
+          origin: "app",
+          projectId: project.id,
+          providerId: "codex",
+          model: "gpt-provider-default",
+          reasoningLevel: "medium",
+          permissionMode: "auto",
+          executionInputSources: {
+            providerId: "client-preference",
+          },
+          input: [
+            { type: "text", text: "Create from the new thread composer" },
+          ],
+          environment: {
+            type: "reuse",
+            environmentId: environment.id,
+          },
+        }),
+      });
+
+      expect(response.status).toBe(201);
+      const createdThread = threadSchema.parse(await readJson(response));
+      const queuedStart = await waitForQueuedCommand(
+        harness,
+        ({ command }) =>
+          command.type === "thread.start" &&
+          command.threadId === createdThread.id,
+      );
+      expect(queuedStart.command).toMatchObject({
+        providerId: "codex",
+        options: {
+          model: "gpt-provider-default",
+          reasoningLevel: "medium",
+          permissionMode: "auto",
+        },
+      });
     });
   });
 

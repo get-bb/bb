@@ -39,6 +39,11 @@ import {
 import { PullRequestStatusPill } from "@/components/pull-request/PullRequestStatusPill";
 import { AnimatedBody } from "@/components/promptbox/banner/AnimatedBody";
 import {
+  PROMPT_BANNER_ACTION_FILL_CLASS,
+  PROMPT_BANNER_ACTION_SEGMENT_CLASS,
+  PromptBannerActionButton,
+} from "@/components/promptbox/banner/prompt-banner-actions";
+import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
@@ -99,7 +104,7 @@ export interface ThreadPromptArchivedSection {
 }
 
 export interface ThreadPromptEnvironmentGoneSection {
-  status: Extract<EnvironmentStatus, "destroying" | "destroyed">;
+  status: Extract<EnvironmentStatus, "destroyed">;
 }
 
 const THREAD_BANNER_ACTIVE_CHILD_RUNTIME_STATUSES: ReadonlySet<ThreadRuntimeDisplayStatus> =
@@ -148,28 +153,11 @@ const ENVIRONMENT_GONE_STATUS_COPY: Record<
   ThreadPromptEnvironmentGoneSection["status"],
   { ariaLabel: string; label: string }
 > = {
-  destroying: {
-    ariaLabel: "This environment is being archived.",
-    label: "Archiving environment...",
-  },
   destroyed: {
     ariaLabel: "This environment has been archived.",
     label: "Environment archived",
   },
 };
-const PROMPT_BANNER_ACTION_FILL_CLASS = "bg-background shadow-xs";
-const PROMPT_BANNER_ACTION_INTERACTIVE_CLASS =
-  "cursor-pointer text-muted-foreground transition-colors hover:bg-state-hover hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-60";
-const PROMPT_BANNER_ACTION_BUTTON_CLASS = cn(
-  "inline-flex items-center whitespace-nowrap rounded border border-border px-1.5 py-0.5 text-xs",
-  PROMPT_BANNER_ACTION_FILL_CLASS,
-  PROMPT_BANNER_ACTION_INTERACTIVE_CLASS,
-);
-const PROMPT_BANNER_ACTION_SEGMENT_CLASS = cn(
-  "text-xs",
-  PROMPT_BANNER_ACTION_INTERACTIVE_CLASS,
-  "focus-visible:z-10",
-);
 
 const SECTION_IDS = {
   parentThread: {
@@ -390,23 +378,6 @@ function BannerActionSlot({
     </div>
   );
 }
-
-const PromptBannerActionButton = forwardRef<
-  HTMLButtonElement,
-  ButtonHTMLAttributes<HTMLButtonElement>
->(function PromptBannerActionButton(
-  { className, type = "button", ...props },
-  ref,
-) {
-  return (
-    <button
-      ref={ref}
-      type={type}
-      className={cn(PROMPT_BANNER_ACTION_BUTTON_CLASS, className)}
-      {...props}
-    />
-  );
-});
 
 const PromptBannerActionGroup = ({ children }: { children: ReactNode }) => (
   <div

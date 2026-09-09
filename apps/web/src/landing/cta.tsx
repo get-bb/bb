@@ -27,10 +27,16 @@ export function DownloadLink({ placement, className, children }: CtaLinkProps) {
   );
 }
 
-export function GitHubLink({ placement, className, children }: CtaLinkProps) {
+export function GitHubLink({
+  placement,
+  className,
+  children,
+  "aria-label": ariaLabel,
+}: CtaLinkProps & { "aria-label"?: string }) {
   return (
     <a
       className={className}
+      aria-label={ariaLabel}
       href={GITHUB_URL}
       target="_blank"
       rel="noreferrer"

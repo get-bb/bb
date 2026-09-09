@@ -14,7 +14,13 @@ import {
 import { useNavigate, type NavigateOptions } from "react-router-dom";
 import { useStore } from "jotai";
 import { useIsCompactViewport } from "@bb/shared-ui/hooks/use-compact-viewport";
-import { isRoutePath, resolveRouteHref } from "@/lib/route-paths";
+import {
+  isRoutePath,
+  resolveRouteHref,
+  getThreadRoutePath,
+} from "@/lib/route-paths";
+import { desktopBrowserRevealAtom } from "@/lib/desktop-browser-presentation";
+import { sdk } from "@/lib/sdk";
 import { getDesktopBrowserApi } from "@/lib/bb-desktop";
 import { openPaneContentInSplit } from "@/lib/split-layout/openPaneContentInSplit";
 import { paneContentForPathname } from "@/views/thread-detail/splitThreadNavigation";
@@ -44,6 +50,9 @@ interface RouteNavigation {
 }
 
 const RouteNavigationContext = createContext<RouteNavigation | null>(null);
+const PluginDetailRouteNavigationContext = createContext<
+  ((pluginId: string) => boolean) | null
+>(null);
 
 const RouteNavigationPendingContext = createContext(false);
 
@@ -124,6 +133,24 @@ export function RouteNavigationProvider({
     [isCompact, navigateRoute, store],
   );
   useEffect(() => {
+    const api = getDesktopBrowserApi();
+    return api?.onReveal?.((request) => {
+      store.set(desktopBrowserRevealAtom, request);
+      void sdk.threads
+        .get({ threadId: request.threadId })
+        .then((thread) => {
+          if (store.get(desktopBrowserRevealAtom) === request)
+            navigateRoute(
+              getThreadRoutePath({
+                threadId: request.threadId,
+                projectId: thread.projectId,
+              }),
+            );
+        })
+        .catch(() => undefined);
+    });
+  }, [store, navigateRoute]);
+  useEffect(() => {
     const browserApi = getDesktopBrowserApi();
     if (browserApi === null) {
       return;
@@ -149,10 +176,25 @@ export function RouteNavigationProvider({
   );
 }
 
+export function PluginDetailRouteNavigationProvider({
+  children,
+  onOpenPluginDetail,
+}: {
+  children: ReactNode;
+  onOpenPluginDetail: (pluginId: string) => boolean;
+}) {
+  return (
+    <PluginDetailRouteNavigationContext.Provider value={onOpenPluginDetail}>
+      {children}
+    </PluginDetailRouteNavigationContext.Provider>
+  );
+}
+
 export function useRouteAnchorDelegate(): (
   event: ReactMouseEvent<HTMLElement>,
 ) => void {
   const navigation = useContext(RouteNavigationContext);
+  const openPluginDetail = useContext(PluginDetailRouteNavigationContext);
   return useCallback(
     (event) => {
       if (navigation === null || event.defaultPrevented) return;
@@ -171,11 +213,18 @@ export function useRouteAnchorDelegate(): (
         href: anchor.getAttribute("href") ?? "",
       });
       if (route === null) return;
+      const content = paneContentForPathname(
+        route.path.split(/[?#]/)[0] ?? route.path,
+      );
+      if (
+        content?.kind === "plugin-detail" &&
+        openPluginDetail?.(content.pluginId)
+      ) {
+        event.preventDefault();
+        return;
+      }
       const opensBeside =
-        event.metaKey ||
-        event.ctrlKey ||
-        paneContentForPathname(route.path.split(/[?#]/)[0] ?? route.path)
-          ?.kind === "plugin-detail";
+        event.metaKey || event.ctrlKey || content?.kind === "plugin-detail";
       if (opensBeside) {
         if (navigation.openInSplit(route.path)) event.preventDefault();
         return;
@@ -183,7 +232,7 @@ export function useRouteAnchorDelegate(): (
       event.preventDefault();
       navigation.navigate(route.path);
     },
-    [navigation],
+    [navigation, openPluginDetail],
   );
 }
 

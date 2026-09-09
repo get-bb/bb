@@ -13,12 +13,16 @@ import {
   SidebarMenuButton,
   SidebarMenuItem,
   useCloseMobileSidebar,
+  useSidebar,
 } from "@/components/ui/sidebar.js";
-import { ProjectList, ProjectListActionButtons } from "./ProjectList";
+import { ProjectList } from "./ProjectList";
 import { PluginThreadList } from "./PluginThreadList";
 import { useThreadListReplacement } from "./threadListProvider";
-import { PluginNavSidebarItems } from "@/components/plugin/PluginNavSidebarItems";
-import { PluginSidebarFooterActions } from "@/components/plugin/PluginSidebarFooterActions";
+import {
+  PluginSidebarFooterDisclosure,
+  PluginSidebarFooterItems,
+  usePluginSidebarFooterDisclosure,
+} from "@/components/plugin/PluginSidebarFooterItems";
 import { SidebarPluginAttentionGlyph } from "./SidebarPluginAttentionGlyph";
 import { SidebarUpdatesBadge } from "./SidebarUpdatesBadge";
 import { SidebarHistoryNavigationControls } from "./SidebarHistoryNavigationControls";
@@ -49,6 +53,7 @@ import {
   useIndexedAppCommandHandlers,
 } from "@/components/commands/AppCommandProvider";
 import { useRouteState } from "@/hooks/useRouteState";
+import { SidebarNavigationRegion } from "./SidebarNavigationRegion";
 
 const NEW_THREAD_PANE_CONTENT = { kind: "new-thread" } as const;
 
@@ -85,6 +90,8 @@ export function AppSidebar({
     label: "New thread",
   });
   const closeOnMobile = useCloseMobileSidebar();
+  const { isCompactViewport, openMobile } = useSidebar();
+  const [compactCustomizeMode, setCompactCustomizeMode] = useState(false);
   const [desktopInfo] = useState(getBbDesktopInfo);
   const [threadShortcutKeysById, setThreadShortcutKeysById] = useState<
     ReadonlyMap<string, SidebarThreadShortcutPresentation>
@@ -99,6 +106,7 @@ export function AppSidebar({
   );
   const isAppCommandModifierHeld = useIsAppCommandModifierHeld();
   const settingsShortcut = useAppCommandShortcut("settings.open");
+  const pluginSidebarFooter = usePluginSidebarFooterDisclosure();
 
   const handleNewChat = useCallback(() => {
     closeOnMobile();
@@ -171,6 +179,13 @@ export function AppSidebar({
   );
 
   const isHiddenHostedBody = mobileHosted?.hidden === true;
+  const isCompactCustomizeModeActive =
+    isCompactViewport && compactCustomizeMode;
+  useEffect(() => {
+    if (!isCompactViewport || !openMobile || isHiddenHostedBody) {
+      setCompactCustomizeMode(false);
+    }
+  }, [isCompactViewport, isHiddenHostedBody, openMobile]);
   const activateVisibleThreadShortcut = useCallback(
     (index: number) =>
       isHiddenHostedBody ? false : activateThreadShortcut(index),
@@ -227,23 +242,29 @@ export function AppSidebar({
           />
         </div>
       ) : null}
-      <div
-        data-testid="app-sidebar-primary-actions"
-        className="shrink-0 px-2 py-2 group-data-[collapsible=icon]:hidden"
-      >
-        <ProjectListActionButtons
-          splitEnabled
-          newThreadSplit={newThreadSplit}
-          onNewChat={handleNewChat}
-          onSearchThreads={closeOnMobile}
-        />
-      </div>
-      <PluginNavSidebarItems
+      <SidebarNavigationRegion
+        compactCustomizeMode={isCompactCustomizeModeActive}
+        onCompactCustomizeModeChange={setCompactCustomizeMode}
         onNavigate={closeOnMobile}
         splitEnabled
         toolsRoutePath={toolsRoutePath}
+        newThreadSplit={newThreadSplit}
+        onNewChat={handleNewChat}
+        onSearchThreads={closeOnMobile}
       />
-      <SidebarContent>
+      <div
+        aria-hidden="true"
+        className={cn(
+          "mx-2 my-2 shrink-0 border-t border-sidebar-border/25",
+          isCompactCustomizeModeActive && "hidden",
+        )}
+        data-testid="app-sidebar-navigation-divider"
+      />
+      <SidebarContent
+        className={cn(isCompactCustomizeModeActive && "hidden")}
+        aria-hidden={isCompactCustomizeModeActive ? true : undefined}
+        inert={isCompactCustomizeModeActive ? true : undefined}
+      >
         <PluginThreadList
           replacement={threadListReplacement}
           original={originalThreadList}
@@ -253,7 +274,10 @@ export function AppSidebar({
       </SidebarContent>
       <SidebarFooter className="relative">
         <OverflowFade placement="above" tone="sidebar" size="sm" />
-        {}
+        <PluginSidebarFooterDisclosure
+          item={pluginSidebarFooter.activeItem}
+          onDismiss={pluginSidebarFooter.dismiss}
+        />
         <SidebarMenu className="flex-row flex-wrap-reverse items-center gap-1">
           <SidebarMenuItem className="min-w-0">
             <SidebarMenuButton
@@ -279,7 +303,15 @@ export function AppSidebar({
               </Link>
             </SidebarMenuButton>
           </SidebarMenuItem>
-          <PluginSidebarFooterActions onNavigate={closeOnMobile} />
+          <PluginSidebarFooterItems
+            activeDisclosureKey={pluginSidebarFooter.activeKey}
+            suppressedTooltipKey={pluginSidebarFooter.suppressedTooltipKey}
+            onTooltipSuppressionEnd={
+              pluginSidebarFooter.clearTooltipSuppression
+            }
+            onDisclosureCommand={pluginSidebarFooter.handleCommand}
+            onNavigate={closeOnMobile}
+          />
           <SidebarMenuItem className="min-w-0">
             <SidebarMenuButton
               className={SIDEBAR_FOOTER_ACTION_CLASS}

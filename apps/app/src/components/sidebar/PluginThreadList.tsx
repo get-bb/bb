@@ -1,11 +1,11 @@
 import { useCallback, type ReactNode } from "react";
-import { toast } from "sonner";
 import { PluginReplacementSlot } from "@/components/plugin/PluginReplacementSlot";
 import { deprecatedOriginalAlias } from "@/lib/plugin-sdk-deprecated-aliases";
 import { useSidebar } from "@/components/ui/sidebar.js";
 import { useRouteState } from "@/hooks/useRouteState";
 import type { ResolvedReplacement } from "@/lib/plugin-slot-resolvers";
 import type { PluginThreadListSlot } from "@/lib/plugin-slots";
+import { appToast } from "@/components/ui/app-toast";
 
 const THREAD_LIST_SLOT_KIND = "threadList";
 
@@ -29,7 +29,7 @@ export function PluginThreadList({
 
   const handleCrash = useCallback(
     (pluginId: string) => {
-      toast.error("Sidebar plugin crashed", {
+      appToast.error("Sidebar plugin crashed", {
         description: `${title} (${pluginId}) stopped working, so bb's own thread list is back.`,
       });
     },

@@ -401,16 +401,24 @@ function queueChildThreadTurnNotificationBatchItem(
   deps: LoggedPendingInteractionWorkSessionDeps,
   args: QueueChildThreadTurnNotificationArgs,
 ): void {
+  const item: ChildThreadTurnNotificationBatchItem = {
+    activeWorkflowCount: getChildThreadActiveWorkflowCount(deps, args),
+    childThread: args.childThread,
+    terminalOutput: getChildThreadCompletionOutput(deps, args),
+    turnStatus: args.turnStatus,
+  };
   const existingBatch = childThreadTurnNotificationBatches.get(
     args.parentThreadId,
   );
   if (existingBatch) {
-    existingBatch.items.push({
-      activeWorkflowCount: getChildThreadActiveWorkflowCount(deps, args),
-      childThread: args.childThread,
-      terminalOutput: getChildThreadCompletionOutput(deps, args),
-      turnStatus: args.turnStatus,
-    });
+    const existingIndex = existingBatch.items.findIndex(
+      (entry) => entry.childThread.id === args.childThread.id,
+    );
+    if (existingIndex === -1) {
+      existingBatch.items.push(item);
+    } else {
+      existingBatch.items[existingIndex] = item;
+    }
     clearTimeout(existingBatch.timer);
     existingBatch.timer = scheduleChildThreadTurnNotificationBatchFlush(
       deps,
@@ -420,14 +428,7 @@ function queueChildThreadTurnNotificationBatchItem(
   }
 
   childThreadTurnNotificationBatches.set(args.parentThreadId, {
-    items: [
-      {
-        activeWorkflowCount: getChildThreadActiveWorkflowCount(deps, args),
-        childThread: args.childThread,
-        terminalOutput: getChildThreadCompletionOutput(deps, args),
-        turnStatus: args.turnStatus,
-      },
-    ],
+    items: [item],
     timer: scheduleChildThreadTurnNotificationBatchFlush(
       deps,
       args.parentThreadId,

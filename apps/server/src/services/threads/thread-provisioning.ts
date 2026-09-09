@@ -1,6 +1,6 @@
-import { getThread, type DbTransaction } from "@bb/db";
+import { getThread, type DbTransaction, type EnvironmentRow } from "@bb/db";
 import {
-  type Environment,
+  type EnvironmentProviderSelection,
   type PromptInput,
   type ResolvedThreadExecutionOptions,
   type SystemMessageKind,
@@ -11,6 +11,7 @@ import {
 } from "@bb/domain";
 import type { StartedOnBehalfOf } from "@bb/server-contract";
 import type { AppDeps } from "../../types.js";
+import { requestQueuedMessageDispatch } from "./queued-message-dispatch.js";
 import {
   appendClientTurnEvent,
   appendPreparedClientTurnRequestedEventWithNotificationInTransaction,
@@ -21,7 +22,6 @@ import { requestThreadStart } from "./thread-lifecycle.js";
 import { resolvePermissionEscalation } from "./thread-runtime-config.js";
 import {
   createMetadataPendingContext,
-  createReprovisioningContext,
   type ThreadForkDescriptor,
   type ThreadProvisionEnvironmentIntent,
   type ThreadProvisionContext,
@@ -40,6 +40,7 @@ import {
   rememberActiveThreadProvisionContext,
 } from "./thread-provisioning-active-context.js";
 import { applyLoggedThreadLifecycleEvent } from "./lifecycle-outcome.js";
+import { runtimeErrorLogFields } from "../lib/error-log-fields.js";
 import { recordAcceptedPromptHistoryEntry } from "../prompt-history.js";
 
 interface RequestThreadProvisionArgs {
@@ -53,18 +54,20 @@ interface RequestThreadProvisionArgs {
   titleProvided: boolean;
 }
 
-interface RequestThreadReprovisionArgs {
+interface RequestThreadTargetReprovisionArgs {
   beforeRequestAppendInTransaction?: (args: { tx: DbTransaction }) => void;
-  environment: Environment;
-  provisionEventSequence: number;
+  environment: EnvironmentRow;
   execution: ResolvedThreadExecutionOptions;
   input: PromptInput[];
   inputGroups?: PromptInput[][];
   initiator: ThreadTurnInitiator;
-  provisioningId: string;
   senderThreadId: string | null;
   systemMessageKind?: SystemMessageKind;
   systemMessageSubject?: SystemMessageSubject | null;
+  provider: {
+    environmentProviderId: string;
+    selection: EnvironmentProviderSelection;
+  };
   thread: Thread;
 }
 
@@ -80,7 +83,7 @@ interface CurrentProvisioningFailureThreadArgs {
 
 interface EnvironmentPayloadThreadArgs {
   context: ThreadProvisionProvisionableContext;
-  environment: Environment;
+  environment: EnvironmentRow;
   thread: Thread;
 }
 
@@ -151,11 +154,21 @@ async function startThreadIfEnvironmentReady(
     entries: buildCwdBranchEntries({
       path: args.environment.path,
       branchName: args.environment.branchName,
+      headSha: null,
     }),
   });
   if (!workspaceReady.reached) {
     throw new Error("Thread did not reach workspace-ready provisioning state");
   }
+
+  // The workspace exists, so anything that queued waiting for it stops
+  // waiting here rather than after the dispatch below: the wait is over at
+  // this line, and the `run.succeeded` branch below returns without
+  // dispatching anything. A thread with nothing queued no-ops.
+  requestQueuedMessageDispatch(deps, {
+    kind: "workspace-ready",
+    threadId: args.thread.id,
+  });
 
   if (
     args.context.request.seedWithoutRun &&
@@ -181,7 +194,6 @@ async function startThreadIfEnvironmentReady(
       hostId: args.environment.hostId,
       path: args.environment.path,
       status: args.environment.status,
-      workspaceProvisionType: args.environment.workspaceProvisionType,
     },
     fork: args.context.request.fork,
     input: args.context.request.input,
@@ -248,10 +260,44 @@ export function requestThreadProvision(
   return context;
 }
 
-export function requestThreadReprovision(
+export function requestThreadTargetReprovision(
   deps: Pick<AppDeps, "db" | "hub">,
-  args: RequestThreadReprovisionArgs,
+  args: RequestThreadTargetReprovisionArgs,
 ): ThreadProvisionContext {
+  const request = appendReprovisionTurnRequest(deps, args);
+  const context = createMetadataPendingContext({
+    clientRequestId: request.requestId,
+    environmentIntent: {
+      type: "provider",
+      environmentProviderId: args.provider.environmentProviderId,
+      machine: {
+        type: "existing",
+        hostId: args.environment.hostId,
+      },
+      inputs: args.provider.selection.inputs,
+      selectionResolved: true,
+      produced: null,
+    },
+    execution: args.execution,
+    fork: null,
+    input: args.input,
+    ...(args.inputGroups !== undefined
+      ? { inputGroups: args.inputGroups }
+      : {}),
+    seedWithoutRun: false,
+    titleProvided: true,
+  });
+  rememberActiveThreadProvisionContext({
+    threadId: args.thread.id,
+    context,
+  });
+  return context;
+}
+
+function appendReprovisionTurnRequest(
+  deps: Pick<AppDeps, "db" | "hub">,
+  args: Omit<RequestThreadTargetReprovisionArgs, "provider">,
+) {
   const requestId = createClientTurnRequestId();
   const request = deps.db.transaction(
     (tx) => {
@@ -297,23 +343,7 @@ export function requestThreadReprovision(
     request.notificationChanges,
     request.notificationMetadata,
   );
-
-  const context = createReprovisioningContext({
-    clientRequestId: request.requestId,
-    provisionEventSequence: args.provisionEventSequence,
-    execution: args.execution,
-    environmentId: args.environment.id,
-    input: args.input,
-    ...(args.inputGroups !== undefined
-      ? { inputGroups: args.inputGroups }
-      : {}),
-    provisioningId: args.provisioningId,
-  });
-  rememberActiveThreadProvisionContext({
-    threadId: args.thread.id,
-    context,
-  });
-  return context;
+  return request;
 }
 
 async function advanceThreadProvisioningOnce(
@@ -347,6 +377,9 @@ async function advanceThreadProvisioningOnce(
       context,
       thread,
     });
+    if (ready === null) {
+      return;
+    }
     context = ready.context;
     await startThreadIfEnvironmentReady(deps, {
       context: ready.context,
@@ -377,4 +410,28 @@ export async function advanceThreadProvisioning(
   await deps.lifecycleDedupers.threadProvisionAdvance.run(args.threadId, () =>
     advanceThreadProvisioningOnce(deps, args),
   );
+}
+
+/**
+ * Drives provisioning off the caller's stack. Creation returns the thread row
+ * before the workspace exists, and a cold-start row whose wait cleared returns
+ * to its sweep or route the same way, so neither waits on the daemon.
+ */
+export function scheduleThreadProvisioningAdvance(
+  deps: ThreadProvisioningDeps & Pick<AppDeps, "config" | "logger">,
+  context: ThreadProvisionContext,
+  threadId: string,
+): void {
+  void advanceThreadProvisioning(deps, {
+    context,
+    threadId,
+  }).catch((error) => {
+    deps.logger.warn(
+      {
+        threadId,
+        ...runtimeErrorLogFields(deps.config, error),
+      },
+      "Failed to advance thread provisioning",
+    );
+  });
 }

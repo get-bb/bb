@@ -1,9 +1,10 @@
 // @vitest-environment jsdom
 
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { MemoryRouter } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createQueryClientTestHarness } from "@/test/queryClientTestHarness";
-import type { PluginListResult } from "@/hooks/queries/plugin-settings-queries";
+import type { InstalledPlugin } from "@bb/server-contract";
 import {
   pluginCatalogSearchQueryKey,
   pluginListQueryKey,
@@ -20,15 +21,26 @@ function installPlanFor(url: string): unknown {
   const params = new URL(url, "https://bb.test").searchParams;
   const entryId = params.get("entryId") ?? "";
   const marketplace = params.get("marketplace") ?? "bb-community";
-  const official = marketplace === "bb-community";
+  const official =
+    marketplace === "bb-community" || marketplace === "bb-official";
   return {
     kind: "marketplace",
     entryId,
     pluginId: entryId,
     displayName: entryId,
     marketplace,
-    marketplaceDisplayName: official ? "BB Official" : "Acme Plugins",
-    publisherLabel: official ? "BB Official" : "Acme Plugins",
+    marketplaceDisplayName:
+      marketplace === "bb-official"
+        ? "BB Official"
+        : marketplace === "bb-community"
+          ? "BB Community"
+          : "Acme Plugins",
+    publisherLabel:
+      marketplace === "bb-official"
+        ? "BB Official"
+        : marketplace === "bb-community"
+          ? "BB Community"
+          : "Acme Plugins",
     official,
     author: { name: "Acme", url: "https://github.com/acme" },
     source: "git:https://github.com/acme/plugins.git@semver:^1.0.0",
@@ -66,6 +78,8 @@ const INSTALLED_PLUGIN_RESPONSE = {
     enabled: true,
     description: "Linear integration",
     name: "Linear",
+    screenshots: [],
+    collections: [],
     icon: null,
     iconUrl: null,
     status: "running",
@@ -212,8 +226,9 @@ describe("AddPluginDialog", () => {
     stubFetch();
     const { unmount } = renderDialog({
       entryId: "linear",
-      marketplace: "bb-community",
-      publisherLabel: "BB Community",
+      pluginId: "linear",
+      marketplace: "bb-official",
+      publisherLabel: "BB Official",
       displayName: "Linear",
       icon: "Github",
       iconUrl: null,
@@ -227,6 +242,7 @@ describe("AddPluginDialog", () => {
 
     const git = renderDialog({
       entryId: "thread-hover-cards",
+      pluginId: "thread-hover-cards",
       marketplace: "bb-community",
       publisherLabel: "BB Community",
       displayName: "Thread Hover Cards",
@@ -245,6 +261,7 @@ describe("AddPluginDialog", () => {
 
     renderDialog({
       entryId: "widgets",
+      pluginId: "widgets",
       marketplace: "bb-community",
       publisherLabel: "BB Community",
       displayName: "Widgets",
@@ -264,6 +281,7 @@ describe("AddPluginDialog", () => {
     stubFetch();
     renderDialog({
       entryId: "widgets",
+      pluginId: "widgets",
       displayName: "Widgets",
       icon: "Zap",
       iconUrl: null,
@@ -284,8 +302,9 @@ describe("AddPluginDialog", () => {
     const requests = stubFetch();
     renderDialog({
       entryId: "linear",
-      marketplace: "bb-community",
-      publisherLabel: "BB Community",
+      pluginId: "linear",
+      marketplace: "bb-official",
+      publisherLabel: "BB Official",
       displayName: "Linear",
       icon: "Github",
       iconUrl: null,
@@ -305,7 +324,7 @@ describe("AddPluginDialog", () => {
       expect(post).toBeDefined();
       expect(JSON.parse(String(post?.init?.body))).toEqual({
         entryId: "linear",
-        marketplace: "bb-community",
+        marketplace: "bb-official",
       });
     });
   });
@@ -316,6 +335,7 @@ describe("AddPluginDialog", () => {
       "/api/v1/plugin-catalog/icons/bb-community/widgets?h=icon-hash";
     renderDialog({
       entryId: "widgets",
+      pluginId: "widgets",
       marketplace: "bb-community",
       publisherLabel: "BB Community",
       displayName: "Widgets",
@@ -332,17 +352,16 @@ describe("AddPluginDialog", () => {
     stubFetch();
     const onInstalled = vi.fn();
     const { wrapper, queryClient } = createQueryClientTestHarness();
-    queryClient.setQueryData<PluginListResult>(pluginListQueryKey(true), {
-      plugins: [],
-    });
+    queryClient.setQueryData<InstalledPlugin[]>(pluginListQueryKey(true), []);
     render(
       <AddPluginDialog
         open
         onOpenChange={() => {}}
         initial={{
           entryId: "linear",
-          marketplace: "bb-community",
-          publisherLabel: "BB Community",
+          pluginId: "linear",
+          marketplace: "bb-official",
+          publisherLabel: "BB Official",
           displayName: "Linear",
           icon: "Github",
           iconUrl: null,
@@ -353,8 +372,8 @@ describe("AddPluginDialog", () => {
           onInstalled(plugin);
           expect(
             queryClient
-              .getQueryData<PluginListResult>(pluginListQueryKey(true))
-              ?.plugins.some((candidate) => candidate.id === plugin.id),
+              .getQueryData<InstalledPlugin[]>(pluginListQueryKey(true))
+              ?.some((candidate) => candidate.id === plugin.id),
           ).toBe(true);
         }}
       />,
@@ -370,33 +389,44 @@ describe("AddPluginDialog", () => {
     });
   });
 
-  it("surfaces the server's install error (e.g. incompatible source) as a toast", async () => {
+  it("names and links a catalog plugin when installation fails", async () => {
     const errorToast = vi.spyOn(appToast, "error").mockReturnValue("toast");
     stubFetch(
       { ok: false, error: "requires bb >= 0.15 — you have 0.14.1" },
       422,
     );
-    renderDialog();
-
-    fireEvent.change(screen.getByLabelText("Plugin source"), {
-      target: { value: "npm:@bb-plugins/linear@2.0.0" },
+    renderDialog({
+      entryId: "linear",
+      pluginId: "linear",
+      marketplace: "bb-official",
+      publisherLabel: "BB Official",
+      displayName: "Linear",
+      icon: null,
+      iconUrl: null,
+      iconTinted: false,
+      source: "builtin:linear",
     });
-    fireEvent.click(screen.getByRole("button", { name: /install plugin/i }));
+    fireEvent.click(screen.getByRole("button", { name: /install linear/i }));
 
     await vi.waitFor(() => {
-      expect(errorToast).toHaveBeenCalledWith(
-        "Installing the plugin failed",
-        expect.objectContaining({
-          description: "requires bb >= 0.15 — you have 0.14.1",
-        }),
-      );
+      expect(errorToast).toHaveBeenCalledTimes(1);
     });
+    expect(errorToast.mock.calls[0]?.[0]).toBe("Plugin installation failed");
+    render(
+      <MemoryRouter>{errorToast.mock.calls[0]?.[1]?.description}</MemoryRouter>,
+    );
+    const pluginLink = screen.getByRole("link", { name: "Linear" });
+    expect(pluginLink.getAttribute("href")).toBe("/extensions/plugins/linear");
+    expect(pluginLink.parentElement?.textContent).toBe(
+      "Linear — requires bb >= 0.15 — you have 0.14.1",
+    );
   });
 
   it("shows a third-party listing's resolved source before confirming", async () => {
     const requests = stubFetch();
     renderDialog({
       entryId: "notes",
+      pluginId: "notes",
       marketplace: "acme-plugins",
       publisherLabel: "Acme Plugins",
       displayName: "Acme Notes",
@@ -449,8 +479,9 @@ describe("AddPluginDialog", () => {
     const requests = stubFetch();
     renderDialog({
       entryId: "linear",
-      marketplace: "bb-community",
-      publisherLabel: "BB Community",
+      pluginId: "linear",
+      marketplace: "bb-official",
+      publisherLabel: "BB Official",
       displayName: "Linear",
       icon: "Github",
       iconUrl: null,

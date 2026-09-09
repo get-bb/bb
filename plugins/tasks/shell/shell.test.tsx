@@ -2,6 +2,8 @@
 import { act, cleanup, fireEvent, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { loadPluginApp, renderSlot } from "@get-bb/plugin-sdk/testing/app";
+import { makeTask } from "../test-fixtures.js";
+import type { Task } from "../shared/contract.js";
 
 if (!window.matchMedia) {
   window.matchMedia = (query: string) => ({
@@ -176,22 +178,16 @@ describe("project view preference", () => {
   });
 });
 
-function pagerTask(key: string, status: string, position: number) {
-  return {
+function pagerTask(key: string, status: Task["status"], position: number) {
+  return makeTask({
     id: `01HZZZZZZZZZZZZZZZZZZZZ${key.replace("-", "")}`,
     projectId: PROJECT_ID,
     number: position,
     key,
     title: key,
     status,
-    priority: "none",
-    dueDate: null,
-    parentTaskId: null,
     position,
-    createdAt: "2026-07-15T00:00:00.000Z",
-    updatedAt: "2026-07-15T00:00:00.000Z",
-    labelIds: [],
-  } as never;
+  });
 }
 
 describe("task pager", () => {

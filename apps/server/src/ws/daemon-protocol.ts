@@ -1,3 +1,5 @@
+import { reportEnvironmentHookProgress } from "../services/environments/environment-hooks.js";
+import { syncDesktopBrowserTabs } from "../services/desktop-browsers.js";
 import { heartbeatSession } from "@bb/db";
 import {
   hasHostDaemonWebSocketProtocol,
@@ -5,7 +7,10 @@ import {
 } from "@bb/host-daemon-contract";
 import { ApiError } from "../errors.js";
 import { verifyAuthenticatedDaemon } from "../internal/auth.js";
-import type { AppDeps } from "../types.js";
+import type {
+  AppDeps,
+  LoggedPendingInteractionWorkSessionDeps,
+} from "../types.js";
 import { runtimeErrorLogFields } from "../services/lib/error-log-fields.js";
 import {
   getInactiveSessionLogFields,
@@ -16,6 +21,7 @@ import {
   notifyDaemonEnvironmentChange,
   recordDaemonEnvironmentMetadataChange,
 } from "../internal/environment-changes.js";
+import { requestQueuedMessageDispatch } from "../services/threads/queued-message-dispatch.js";
 import { runEventLoopWorkSync } from "../services/system/event-loop-work.js";
 import { decodeSocketPayload } from "./decode-payload.js";
 import type { PluginService } from "../services/plugins/plugin-service.js";
@@ -68,7 +74,8 @@ export async function validateDaemonWebSocket(
 }
 
 export function onDaemonSocketOpen(
-  deps: Pick<AppDeps, "hub" | "logger" | "sharedPorts" | "terminalSessions">,
+  deps: LoggedPendingInteractionWorkSessionDeps &
+    Pick<AppDeps, "hub" | "logger" | "sharedPorts" | "terminalSessions">,
   args: { hostId: string; sessionId: string; socket: DaemonSocket },
 ): void {
   deps.logger.info(
@@ -80,6 +87,14 @@ export function onDaemonSocketOpen(
   deps.terminalSessions.expireDisconnectedHostTerminals({
     daemonSessionId: args.sessionId,
     hostId: args.hostId,
+  });
+  // A dispatch that arrived while this machine was away parked its row on a
+  // `host-offline` wait with no schedule, so no sweep can see it — the
+  // machine coming back is that wait's release signal, and this socket
+  // opening is where core hears it.
+  requestQueuedMessageDispatch(deps, {
+    hostId: args.hostId,
+    kind: "host-connected",
   });
 }
 
@@ -169,12 +184,29 @@ export function onDaemonSocketMessage(
         );
         return;
       }
+      if (result.data.type === "desktop-browser.changed") {
+        syncDesktopBrowserTabs(
+          deps,
+          {
+            hostId: args.hostId,
+            instanceId: result.data.instanceId,
+            generation: result.data.generation,
+            threadId: result.data.threadId,
+          },
+          result.data.tabs,
+        );
+        return;
+      }
       if (result.data.type === "plugin-host.worker-exited") {
         plugins?.handleHostWorkerExit({
           authenticatedHostId: args.hostId,
           pluginId: result.data.pluginId,
           generation: result.data.generation,
         });
+        return;
+      }
+      if (result.data.type === "environment.hook.progress") {
+        reportEnvironmentHookProgress(deps, args.hostId, result.data);
         return;
       }
       if (result.data.type === "plugin-host.signal") {

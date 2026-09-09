@@ -1,3 +1,4 @@
+import * as questionFormHost from "@bb/shared-ui/question-form-host";
 import * as react from "react";
 import * as reactDom from "react-dom";
 import * as reactDomClient from "react-dom/client";
@@ -21,6 +22,16 @@ import * as tailwindMerge from "tailwind-merge";
 import * as classVarianceAuthority from "class-variance-authority";
 import * as sharedUiIcon from "@bb/shared-ui/icon";
 import { createDebouncedCallbackScheduler } from "@bb/domain";
+import { BbHttpError } from "@bb/sdk/browser";
+import type { QueryClient } from "@tanstack/react-query";
+import { markEnabledPluginListStale } from "@/hooks/cache-owners/plugin-cache-owner";
+import { pluginListQueryOptions } from "@/hooks/queries/plugin-settings-queries";
+import { createRecordingToast } from "@/lib/notifications/plugin-toast-recording";
+import { appQueryClient } from "./app-query-client";
+import {
+  setServerPluginsStarting,
+  setPluginFrontendReconcilePending,
+} from "./plugin-frontend-boot-state";
 import type {
   PluginContentScriptDisposer,
   PluginContentScriptRegistration,
@@ -192,6 +203,7 @@ interface BbPluginRuntime {
   tailwindMerge: unknown;
   classVarianceAuthority: unknown;
   sharedUiIcon: unknown;
+  questionFormHost: typeof questionFormHost;
 }
 
 type RuntimeHost = typeof globalThis & { __bbPluginRuntime?: BbPluginRuntime };
@@ -216,7 +228,7 @@ export function installPluginRuntime(): void {
     radixPopover,
     radixSelect,
     radixTooltip,
-    sonner,
+    sonner: { ...sonner, toast: createRecordingToast(sonner.toast) },
     vaul,
     pierreDiffs,
     pierreDiffsReact: createGatedPierreDiffsReact(),
@@ -224,70 +236,53 @@ export function installPluginRuntime(): void {
     tailwindMerge,
     classVarianceAuthority,
     sharedUiIcon,
+    questionFormHost,
   };
 }
 
-function isFrontendBundle(value: unknown): value is PluginFrontendBundle {
-  if (typeof value !== "object" || value === null) return false;
-  const bundle = value as Record<string, unknown>;
-  return (
-    typeof bundle.jsUrl === "string" &&
-    (bundle.cssUrl === null || typeof bundle.cssUrl === "string") &&
-    typeof bundle.jsBytes === "number" &&
-    typeof bundle.hash === "string" &&
-    typeof bundle.sdkMajor === "number" &&
-    typeof bundle.sdkVersion === "string" &&
-    typeof bundle.compatible === "boolean"
+export async function fetchFrontendCandidates(
+  queryClient: QueryClient = appQueryClient,
+): Promise<PluginFrontendCandidate[]> {
+  let plugins;
+  try {
+    plugins = await queryClient.fetchQuery(
+      pluginListQueryOptions({ enabled: true }),
+    );
+  } catch (error) {
+    setServerPluginsStarting(false);
+    if (
+      error instanceof BbHttpError &&
+      (error.status === 401 || error.status === 403)
+    ) {
+      setPluginLogoUrls(new Map());
+      return [];
+    }
+    throw error;
+  }
+  setServerPluginsStarting(
+    plugins.some((plugin) => plugin.enabled && plugin.status === "starting"),
   );
-}
-
-async function fetchFrontendCandidates(): Promise<PluginFrontendCandidate[]> {
-  const response = await fetch("/api/v1/plugins");
-  if (!response.ok) return [];
-  const body = (await response.json()) as { plugins?: unknown };
-  if (!Array.isArray(body.plugins)) return [];
   const candidates: PluginFrontendCandidate[] = [];
   const logoUrls = new Map<string, PluginLogoUrls>();
-  for (const entry of body.plugins) {
-    const typed = entry as {
-      id?: unknown;
-      name?: unknown;
-      icon?: unknown;
-      status?: unknown;
-      logoUrl?: unknown;
-      logoDarkUrl?: unknown;
-      iconUrl?: unknown;
-      icons?: unknown;
-      app?: { bundle?: unknown };
-    } | null;
-    if (typeof typed?.id !== "string") continue;
-    const logoUrl = typeof typed.logoUrl === "string" ? typed.logoUrl : null;
-    const logoDarkUrl =
-      typeof typed.logoDarkUrl === "string" ? typed.logoDarkUrl : null;
-    const compactIconUrl =
-      typeof typed.iconUrl === "string" ? typed.iconUrl : null;
-    const icon = typeof typed.icon === "string" ? typed.icon : null;
-    const displayName = typeof typed.name === "string" ? typed.name : null;
-    const icons = new Map<string, string>();
-    if (typeof typed.icons === "object" && typed.icons !== null) {
-      for (const [name, url] of Object.entries(typed.icons)) {
-        if (typeof url === "string") icons.set(name, url);
-      }
-    }
-    logoUrls.set(typed.id, {
-      displayName,
-      icon,
-      compactIconUrl,
-      logoUrl,
-      logoDarkUrl,
-      icons,
+  for (const plugin of plugins) {
+    logoUrls.set(plugin.id, {
+      displayName: plugin.name,
+      icon: plugin.icon,
+      compactIconUrl: plugin.iconUrl,
+      logoUrl: plugin.logoUrl,
+      logoDarkUrl: plugin.logoDarkUrl,
+      icons: new Map(Object.entries(plugin.icons)),
     });
-    if (typed.status !== "running") {
+    if (
+      plugin.status !== "running" &&
+      plugin.status !== "needs-configuration" &&
+      plugin.status !== "degraded"
+    ) {
       continue;
     }
-    const bundle = typed.app?.bundle;
-    if (!isFrontendBundle(bundle)) continue;
-    candidates.push({ pluginId: typed.id, bundle });
+    const bundle = plugin.app.bundle;
+    if (bundle === null) continue;
+    candidates.push({ pluginId: plugin.id, bundle });
   }
   setPluginLogoUrls(logoUrls);
   return candidates;
@@ -918,14 +913,8 @@ export function subscribePluginFrontendDiagnostics(
   };
 }
 
-function teardownPluginFrontends(): Promise<void> {
-  return disposePluginFrontends(state, browserReconcileDeps);
-}
-
 interface PluginFrontendPageLifecycleDeps {
-  isTornDown: () => boolean;
-  reboot: () => void;
-  reconcile: () => void;
+  restore: () => void;
   teardown: () => void;
 }
 
@@ -942,11 +931,7 @@ export function createPluginFrontendPageLifecycle(
     },
     onPageShow(event) {
       if (!event.persisted) return;
-      if (deps.isTornDown()) {
-        deps.reboot();
-        return;
-      }
-      deps.reconcile();
+      deps.restore();
     },
   };
 }
@@ -957,15 +942,10 @@ function installPluginFrontendPageLifecycle(): void {
   if (pageLifecycleListenersInstalled) return;
   pageLifecycleListenersInstalled = true;
   const lifecycle = createPluginFrontendPageLifecycle({
-    isTornDown: () => state.tornDown,
-    reboot: () => {
-      state.tornDown = false;
-      bootPromise = null;
-      void bootPluginFrontends();
-    },
-    reconcile: () => schedulePluginFrontendReconcile(),
+    restore: () => schedulePluginFrontendReconcile(),
     teardown: () => {
-      void teardownPluginFrontends();
+      setPluginFrontendReconcilePending(true);
+      void disposePluginFrontends(state, browserReconcileDeps);
     },
   });
   window.addEventListener("pagehide", (event) => lifecycle.onPageHide(event));
@@ -986,13 +966,23 @@ export function bootPluginFrontends(): Promise<void> {
 }
 
 async function runLiveReconcile(): Promise<void> {
+  setPluginFrontendReconcilePending(true);
   try {
     await bootPromise;
+    await markEnabledPluginListStale({ queryClient: appQueryClient });
+    if (state.tornDown) {
+      state.tornDown = false;
+      bootPromise = null;
+      await bootPluginFrontends();
+      return;
+    }
     await reconcilePluginFrontends(state, browserReconcileDeps);
   } catch (error) {
     console.warn(
       `plugin frontend reconcile failed: ${error instanceof Error ? error.message : String(error)}`,
     );
+  } finally {
+    setPluginFrontendReconcilePending(false);
   }
 }
 

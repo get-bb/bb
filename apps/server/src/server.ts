@@ -1,3 +1,5 @@
+import { recheckEnvironmentLaunch } from "./services/threads/thread-environment-providers.js";
+import { registerDesktopBrowserRoutes } from "./routes/desktop-browsers.js";
 import { createNodeWebSocket } from "@hono/node-ws";
 import { createHash } from "node:crypto";
 import { readFile, stat } from "node:fs/promises";
@@ -16,8 +18,10 @@ import { registerHostRoutes } from "./routes/hosts.js";
 import { registerProjectRoutes } from "./routes/projects.js";
 import { registerThreadSectionRoutes } from "./routes/thread-sections.js";
 import { registerSystemRoutes } from "./routes/system.js";
+import { registerUiPreferenceRoutes } from "./routes/ui-preferences.js";
 import { registerTerminalRoutes } from "./routes/terminals.js";
 import { registerThreadRoutes } from "./routes/threads/index.js";
+import { registerQueueRoutes } from "./routes/queue.js";
 import { registerPluginRoutes } from "./routes/plugins.js";
 import { registerPluginCatalogRoutes } from "./routes/plugin-catalog.js";
 import { registerSkillsRegistryRoutes } from "./routes/skills-registry.js";
@@ -27,7 +31,15 @@ import {
 } from "./services/plugins/plugin-service.js";
 import { setPluginAgentContributions } from "./services/plugins/plugin-agent-contributions.js";
 import { setPluginThreadEventEmitter } from "./services/plugins/plugin-thread-events.js";
-import { requestDeferredThreadMessageFlush } from "./services/threads/thread-send-request.js";
+import { setPluginHookProvider } from "./services/plugins/plugin-hook-registry.js";
+import {
+  setEnvironmentProviderRecheckHandler,
+  setEnvironmentLaunchRecheckHandler,
+  setPluginEnvironmentProviderBridge,
+} from "./services/plugins/plugin-environment-provider-registry.js";
+import { recheckEnvironmentProviderLaunches } from "./services/threads/thread-environment-providers.js";
+import { invalidateEnvironmentProviderAvailability } from "./services/environments/provider-availability.js";
+import { requestQueuedMessageDispatch } from "./services/threads/queued-message-dispatch.js";
 import { registerInternalEventRoutes } from "./internal/events.js";
 import { registerInternalHostRoutes } from "./internal/hosts.js";
 import { registerInternalInteractiveRequestRoutes } from "./internal/interactive-requests.js";
@@ -478,12 +490,20 @@ export function createApp(
     });
   });
   app.get("/install/bb-app.tgz", async (context) => {
-    const tarball = await readFile(await bbAppArtifactService.getTarballPath());
+    const artifact = await bbAppArtifactService.getArtifact();
+    const etag = `"sha256-${artifact.digest}"`;
+    const headers = {
+      "cache-control": "public, max-age=300",
+      "content-type": "application/gzip",
+      etag,
+      "x-bb-artifact-sha256": artifact.digest,
+    };
+    if (context.req.header("if-none-match") === etag) {
+      return new Response(null, { headers, status: 304 });
+    }
+    const tarball = await readFile(artifact.path);
     return new Response(tarball, {
-      headers: {
-        "cache-control": "public, max-age=300",
-        "content-type": "application/gzip",
-      },
+      headers: { ...headers, "content-length": String(artifact.size) },
     });
   });
   app.use("/api/v1/*", async (context, next) => {
@@ -545,6 +565,7 @@ export function createApp(
     pendingInteractions: deps.pendingInteractions,
     dataDir: deps.config.dataDir,
     appVersion: deps.config.appVersion,
+    getAppUrl: () => deps.config.appUrl ?? null,
     sharedPorts: deps.sharedPorts,
     providerRegistry: deps.providerRegistry,
     pluginHostArtifacts: deps.pluginHostArtifacts,
@@ -559,15 +580,49 @@ export function createApp(
       ),
     callPluginHost: (args) => callPluginHostRpc(deps, args),
     disposePluginHost: (args) => disposePluginHostWorkers(deps, args),
-    onSettingsChanged: (pluginId) =>
-      deps.providerNativeRoots.invalidate(pluginId),
+    onSettingsChanged: (pluginId) => {
+      deps.providerNativeRoots.invalidate(pluginId);
+      deps.providerRegistry.forgetAllInstalled();
+      invalidateEnvironmentProviderAvailability();
+    },
+    onPluginUnregistered: (pluginId) => {
+      requestQueuedMessageDispatch(deps, {
+        kind: "plugin-unregistered",
+        pluginId,
+      });
+    },
+    // `bb.experimental_hooks.recheck()`: a plugin whose wait condition
+    // may have changed asks core to re-attempt the plugin-queued rows. Core
+    // owns the walk, the coalescing and the pacing; the plugin owns knowing
+    // when to ask.
+    requestQueueDrain: () => {
+      requestQueuedMessageDispatch(deps, { kind: "plugin-recheck" });
+    },
     watchBuiltinPluginSources:
       process.env.BB_MANAGED_DEV_BUILTIN_PLUGIN_HOT_RELOAD === "1",
   });
+  // Messages queued while a thread awaited user interaction stop waiting once
+  // that interaction settles (#1650); the idle drain then delivers them.
   deps.pendingInteractions.setThreadInteractionSettledListener((threadId) => {
-    requestDeferredThreadMessageFlush(deps, threadId);
+    requestQueuedMessageDispatch(deps, {
+      kind: "interaction-settled",
+      threadId,
+    });
   });
   setPluginThreadEventEmitter(pluginService.events);
+  // Bridge the dispatch pipeline to this service's hooks. Until this runs
+  // there are no hooks, which is exactly the zero-overhead path.
+  setPluginHookProvider(pluginService.hooks);
+  setPluginEnvironmentProviderBridge(pluginService.environmentProviders);
+  setEnvironmentLaunchRecheckHandler((threadId) =>
+    recheckEnvironmentLaunch(deps, threadId),
+  );
+  setEnvironmentProviderRecheckHandler((pluginId) => {
+    invalidateEnvironmentProviderAvailability();
+    deps.hub.notifySystem(["config-changed"]);
+    void recheckEnvironmentProviderLaunches(deps, pluginId);
+  });
+  // Bridge runtime-config assembly to plugin skills + context (§4.4).
   setPluginAgentContributions(pluginService);
   const publicApi = new Hono();
   publicApi.use("*", async (context, next) => {
@@ -593,12 +648,15 @@ export function createApp(
   registerThreadSectionRoutes(publicApi, deps);
   registerFileRoutes(publicApi, deps);
   registerHostRoutes(publicApi, deps, pluginService);
+  registerDesktopBrowserRoutes(publicApi, deps);
   registerTerminalRoutes(publicApi, deps);
   registerEnvironmentRoutes(publicApi, deps);
   registerThreadRoutes(publicApi, deps);
+  registerQueueRoutes(publicApi, deps);
   registerSystemRoutes(publicApi, deps, pluginService);
+  registerUiPreferenceRoutes(publicApi, deps);
   registerPluginCatalogRoutes(publicApi, pluginCatalogService);
-  registerPluginRoutes(publicApi, deps, pluginService);
+  registerPluginRoutes(publicApi, deps, pluginService, upgradeWebSocket);
   registerSkillsRegistryRoutes(publicApi, deps);
   app.route("/api/v1", publicApi);
   app.use("/api/v1/*", () => {

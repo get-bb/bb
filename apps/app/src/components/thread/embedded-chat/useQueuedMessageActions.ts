@@ -1,5 +1,6 @@
 import { useCallback, useMemo, useRef, useState } from "react";
 import type { PromptInput, ThreadQueuedMessage } from "@bb/domain";
+import type { SendQueuedMessageMode } from "@bb/server-contract";
 import type {
   QueuedMessageGroupBoundaryRequest,
   QueuedMessageProcessingAction,
@@ -22,13 +23,13 @@ type QueuedMessageSendGuard = "current-head" | "exists" | "none";
 interface SendQueuedMessageByIdArgs {
   guard: QueuedMessageSendGuard;
   messageId: string;
+  mode: SendQueuedMessageMode;
 }
 
 interface UseQueuedMessageActionsArgs {
   threadId: string;
   queuedMessages: readonly ThreadQueuedMessage[];
   sendProcessingPersistence: "clear-on-settle" | "until-left-queue";
-  canSendNow?: () => boolean;
   onSendSuccess?: () => void;
   onSaveSuccess?: () => void;
   inlineEditingQueuedMessage: InlineQueuedMessageEditState | null;
@@ -44,7 +45,6 @@ interface UseQueuedMessageActionsResult {
   queuedMessageActionPending: boolean;
   isUpdateQueuedMessagePending: boolean;
   sendQueuedMessageById: (args: SendQueuedMessageByIdArgs) => Promise<void>;
-  handleSendQueuedImmediately: (queuedMessageId: string) => void;
   handleSaveInlineQueuedMessage: () => Promise<void>;
   handleDeleteQueuedMessage: (queuedMessageId: string) => void;
   handleReorderQueuedMessage: (request: QueuedMessageReorderRequest) => void;
@@ -57,7 +57,6 @@ export function useQueuedMessageActions({
   threadId,
   queuedMessages,
   sendProcessingPersistence,
-  canSendNow,
   onSendSuccess,
   onSaveSuccess,
   inlineEditingQueuedMessage,
@@ -91,10 +90,7 @@ export function useQueuedMessageActions({
   );
 
   const sendQueuedMessageById = useCallback(
-    async ({ guard, messageId }: SendQueuedMessageByIdArgs) => {
-      if (canSendNow !== undefined && !canSendNow()) {
-        return;
-      }
+    async ({ guard, messageId, mode }: SendQueuedMessageByIdArgs) => {
       if (
         guard !== "none" &&
         !queuedMessagesRef.current.some((message) => message.id === messageId)
@@ -112,11 +108,14 @@ export function useQueuedMessageActions({
       try {
         await sendQueuedMessage.mutateAsync({
           id: threadId,
-          mode: "auto",
+          mode,
           queuedMessageId: messageId,
         });
         onSendSuccess?.();
-        if (sendProcessingPersistence === "clear-on-settle") {
+        if (
+          mode === "steer" ||
+          sendProcessingPersistence === "clear-on-settle"
+        ) {
           setProcessingQueuedMessage((current) =>
             current?.id === messageId ? null : current,
           );
@@ -134,20 +133,7 @@ export function useQueuedMessageActions({
         );
       }
     },
-    [
-      canSendNow,
-      onSendSuccess,
-      sendProcessingPersistence,
-      sendQueuedMessage,
-      threadId,
-    ],
-  );
-
-  const handleSendQueuedImmediately = useCallback(
-    (queuedMessageId: string) => {
-      void sendQueuedMessageById({ guard: "none", messageId: queuedMessageId });
-    },
-    [sendQueuedMessageById],
+    [onSendSuccess, sendProcessingPersistence, sendQueuedMessage, threadId],
   );
 
   const handleSaveInlineQueuedMessage = useCallback(async () => {
@@ -282,7 +268,6 @@ export function useQueuedMessageActions({
     queuedMessageActionPending,
     isUpdateQueuedMessagePending: updateQueuedMessage.isPending,
     sendQueuedMessageById,
-    handleSendQueuedImmediately,
     handleSaveInlineQueuedMessage,
     handleDeleteQueuedMessage,
     handleReorderQueuedMessage,

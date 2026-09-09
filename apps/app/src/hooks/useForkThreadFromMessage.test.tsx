@@ -3,6 +3,7 @@
 import { act, cleanup, renderHook } from "@testing-library/react";
 import type { ReactNode } from "react";
 import type { Thread } from "@bb/domain";
+import { makeThread as makeThreadFixture } from "@bb/test-helpers/domain-fixtures";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   FORK_THREAD_CREATE_SEED_LOCATION_STATE_KEY,
@@ -55,29 +56,18 @@ vi.mock("@/lib/root-compose-selection", () => ({
 }));
 
 function makeThread(overrides: Partial<Thread> = {}): Thread {
-  const base: Thread = {
-    archivedAt: null,
+  return makeThreadFixture({
     createdAt: 1,
-    deletedAt: null,
     environmentId: "env_source",
     id: "thr_source",
     lastReadAt: null,
     latestAttentionAt: 1,
-    originKind: null,
-    originPluginId: null,
-    visibility: "visible",
-    parentThreadId: null,
-    pinnedAt: null,
     projectId: "proj_source",
-    providerId: "codex",
-    sourceThreadId: null,
-    status: "idle",
     title: null,
     titleFallback: "Fallback fork title",
-    sectionId: null,
     updatedAt: 1,
-  };
-  return { ...base, ...overrides };
+    ...overrides,
+  });
 }
 
 afterEach(() => {

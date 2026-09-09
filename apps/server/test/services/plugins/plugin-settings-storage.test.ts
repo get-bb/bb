@@ -17,6 +17,7 @@ import {
   createConnection,
   getPluginSettingsValues,
   migrate,
+  setPluginSettingsValues,
   type DbConnection,
 } from "@bb/db";
 import type { Logger } from "@bb/logger";
@@ -44,7 +45,11 @@ async function countOpenFdsFor(file: string): Promise<number> {
 
 async function writePlugin(
   dir: string,
-  options: { name: string; serverSource: string },
+  options: {
+    name: string;
+    serverSource: string;
+    dependencies?: Record<string, string>;
+  },
 ): Promise<string> {
   const rootDir = join(dir, options.name);
   await mkdir(rootDir, { recursive: true });
@@ -53,6 +58,7 @@ async function writePlugin(
     JSON.stringify({
       name: options.name,
       version: "0.1.0",
+      dependencies: options.dependencies,
       bb: {
         name: "Settings storage fixture",
         description: "Settings and storage plugin fixture.",
@@ -112,6 +118,7 @@ describe("plugin settings + storage", () => {
               teamKey: { type: "string", label: "Team key", default: "ENG" },
               mode: { type: "select", label: "Mode", options: ["fast", "slow"], default: "fast" },
               autoSync: { type: "boolean", label: "Sync automatically", default: true },
+              retries: { type: "number", label: "Retries", default: 3 },
               note: { type: "string", label: "Note" },
             });
             const g = globalThis as any;
@@ -143,8 +150,20 @@ describe("plugin settings + storage", () => {
         teamKey: "ENG",
         mode: "fast",
         autoSync: true,
+        retries: 3,
         apiKey: undefined,
         note: undefined,
+      });
+    });
+
+    it("reads a legacy stored numeric string as a number", async () => {
+      await installConfigurable();
+      setPluginSettingsValues(db, "configurable", {
+        retries: JSON.stringify(" 5 "),
+      });
+
+      await expect(state().settings.get()).resolves.toMatchObject({
+        retries: 5,
       });
     });
 
@@ -153,6 +172,7 @@ describe("plugin settings + storage", () => {
       const view = await service.updateSettings("configurable", {
         apiKey: "sk-secret-123",
         autoSync: false,
+        retries: 4.5,
         note: "hello",
       });
 
@@ -169,6 +189,7 @@ describe("plugin settings + storage", () => {
       expect(view?.values.apiKey).toEqual({ set: true });
       expect(JSON.stringify(view)).not.toContain("sk-secret-123");
       expect(view?.values.autoSync).toBe(false);
+      expect(view?.values.retries).toBe(4.5);
       expect(view?.values.note).toBe("hello");
 
       expect(await state().settings.get()).toEqual({
@@ -176,6 +197,7 @@ describe("plugin settings + storage", () => {
         teamKey: "ENG",
         mode: "fast",
         autoSync: false,
+        retries: 4.5,
         note: "hello",
       });
 
@@ -214,6 +236,77 @@ describe("plugin settings + storage", () => {
       ).toBe(false);
     });
 
+    it("lets plugin server code validate and persist its own settings", async () => {
+      const rootDir = await writePlugin(workDir, {
+        name: "bb-plugin-self-configuring",
+        dependencies: { zod: "^4.3.6" },
+        serverSource: `
+          import { z } from "zod";
+
+          export default async function plugin(bb: any) {
+            const settings = bb.settings.define({
+              notes: {
+                type: "string",
+                label: "Notes",
+                experimental_schema: z.string().max(4, "Notes must be at most 4 characters").regex(/^[a-z]*$/, "Notes must contain lowercase letters only"),
+                default: "",
+              },
+            });
+            const g = globalThis as any;
+            g.__selfConfiguring = { changes: [], settings };
+            settings.onChange((next: any) => g.__selfConfiguring.changes.push(next));
+          }
+        `,
+      });
+      const entry = await service.installPath(rootDir);
+      expect(entry.status).toBe("running");
+      const state = (globalThis as Record<string, unknown>)
+        .__selfConfiguring as {
+        changes: Array<{ notes: string }>;
+        settings: {
+          experimental_set(values: {
+            notes: string;
+          }): Promise<{ notes: string }>;
+          get(): Promise<{ notes: string }>;
+        };
+      };
+      systemBroadcasts.length = 0;
+
+      await expect(
+        state.settings.experimental_set({ notes: "test" }),
+      ).resolves.toEqual({ notes: "test" });
+      expect(state.changes).toEqual([{ notes: "test" }]);
+      await expect(state.settings.get()).resolves.toEqual({ notes: "test" });
+      expect(
+        systemBroadcasts.filter((kinds) => kinds.includes("plugins-changed")),
+      ).toHaveLength(1);
+      await expect(
+        state.settings.experimental_set({ notes: "longer" }),
+      ).rejects.toThrow("at most 4 characters");
+      await expect(
+        state.settings.experimental_set({ notes: "1234" }),
+      ).rejects.toThrow("lowercase letters only");
+
+      const app = new Hono();
+      registerPluginRoutes(app, { config: { serverPort: 3334 }, db }, service);
+      const got = await app.request("/plugins/self-configuring/settings");
+      const body = (await got.json()) as {
+        schema: Record<string, Record<string, unknown>>;
+      };
+      expect(body.schema.notes).not.toHaveProperty("experimental_schema");
+
+      const invalid = await app.request("/plugins/self-configuring/settings", {
+        method: "PUT",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ values: { notes: "1234" } }),
+      });
+      expect(invalid.status).toBe(400);
+      expect(((await invalid.json()) as { error: string }).error).toContain(
+        "lowercase letters only",
+      );
+      await expect(state.settings.get()).resolves.toEqual({ notes: "test" });
+    });
+
     it("rejects unknown keys and type mismatches", async () => {
       await installConfigurable();
       await expect(
@@ -222,6 +315,9 @@ describe("plugin settings + storage", () => {
       await expect(
         service.updateSettings("configurable", { autoSync: "yes" }),
       ).rejects.toThrow(/expects a boolean/);
+      await expect(
+        service.updateSettings("configurable", { retries: "4" }),
+      ).rejects.toThrow(/expects a finite number/);
       await expect(
         service.updateSettings("configurable", { mode: "warp" }),
       ).rejects.toThrow(/must be one of/);

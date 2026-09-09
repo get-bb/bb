@@ -7,11 +7,19 @@ import {
   experimental_withTitle as withTitle,
 } from "@get-bb/plugin-sdk/provider-bridge";
 
+const SANDBOX_ESCAPED_BADGE = {
+  glyph: "SquareUnlock02",
+  label: "Outside of sandbox",
+  hint: "Outside of sandbox",
+  tone: "destructive",
+} as const;
+
 export function commandPresentation(args: {
   command: string;
   background: boolean;
+  sandboxEscaped: boolean;
 }): DeltaPresentation {
-  return withTitle(
+  const presentation = withTitle(
     {
       label: args.background
         ? {
@@ -23,6 +31,9 @@ export function commandPresentation(args: {
     },
     presentationTitle(args.command),
   );
+  return args.sandboxEscaped
+    ? { ...presentation, badge: SANDBOX_ESCAPED_BADGE }
+    : presentation;
 }
 
 export type ClaudeFileChangeVerb = "edit" | "write" | "notebook";

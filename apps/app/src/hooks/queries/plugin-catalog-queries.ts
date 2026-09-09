@@ -2,7 +2,8 @@ import type {
   InstalledPlugin,
   PluginApplyUpdateResult as SdkPluginApplyUpdateResult,
   PluginCatalogAuthor,
-  PluginCatalogInstallPlan,
+  PluginCatalogCollection,
+  PluginCatalogCollectionMembership,
   PluginCatalogResolvedSource,
   PluginCatalogSearchResult as SdkPluginCatalogSearchResult,
   PluginMarketplace,
@@ -95,20 +96,13 @@ export async function installCatalogPlugin(
   return createPluginsClient(fetchImpl).catalog.install(args);
 }
 
-async function fetchCatalogInstallPlan(
-  fetchImpl: FetchLike,
-  args: { entryId: string; marketplace?: string },
-): Promise<PluginCatalogInstallPlan> {
-  return createPluginsClient(fetchImpl).catalog.installPlan(args);
-}
-
 export function useCatalogInstallPlan(
   args: { entryId: string; marketplace?: string } | null,
 ) {
   const request = args ?? { entryId: "" };
   return useQuery({
     queryKey: pluginCatalogInstallPlanQueryKey(request),
-    queryFn: () => fetchCatalogInstallPlan(fetch, request),
+    queryFn: () => createPluginsClient(fetch).catalog.installPlan(request),
     enabled: args !== null,
     staleTime: 0,
     gcTime: 0,
@@ -223,7 +217,12 @@ export interface PluginCatalogSearchEntry {
   icon: string | null;
   iconUrl: string | null;
   iconTinted: boolean;
-  category: string;
+  categoryId?: string;
+  category?: string;
+  screenshots: string[];
+  overview?: string;
+  collections: PluginCatalogCollectionMembership[];
+  publishedAt?: string;
   source: string;
   repositoryUrl: string | null;
   marketplace: string;
@@ -249,7 +248,14 @@ function toPluginCatalogSearchEntry(
     icon: data.icon,
     iconUrl: data.iconUrl,
     iconTinted: data.iconTinted,
-    category: data.category,
+    ...(data.categoryId === undefined ? {} : { categoryId: data.categoryId }),
+    ...(data.category === undefined ? {} : { category: data.category }),
+    screenshots: data.screenshots,
+    ...(data.overview === undefined ? {} : { overview: data.overview }),
+    collections: data.collections,
+    ...(data.publishedAt === undefined
+      ? {}
+      : { publishedAt: data.publishedAt }),
     source: data.source,
     repositoryUrl: data.repositoryUrl,
     marketplace: data.marketplace,
@@ -265,14 +271,24 @@ function toPluginCatalogSearchEntry(
   };
 }
 
+export interface PluginCatalogSearchData {
+  entries: PluginCatalogSearchEntry[];
+  collections: PluginCatalogCollection[];
+}
+
 export async function searchPluginCatalog(
   fetchImpl: FetchLike,
   query: string,
-): Promise<PluginCatalogSearchEntry[]> {
-  const results = await createPluginsClient(fetchImpl).catalog.search({
+): Promise<PluginCatalogSearchData> {
+  const { results, collections } = await createPluginsClient(
+    fetchImpl,
+  ).catalog.search({
     query,
   });
-  return results.map(toPluginCatalogSearchEntry);
+  return {
+    entries: results.map(toPluginCatalogSearchEntry),
+    collections,
+  };
 }
 
 const PLUGIN_CATALOG_STALE_TIME_MS = 30 * 60_000;

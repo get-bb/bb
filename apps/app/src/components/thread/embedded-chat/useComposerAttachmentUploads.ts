@@ -3,16 +3,13 @@ import { useUploadPromptAttachment } from "@/hooks/mutations/project-mutations";
 import { getMutationErrorMessage } from "@/lib/mutation-errors";
 import { BbHttpError } from "@/lib/sdk";
 import type { PromptDraftAttachment } from "@bb/client-core";
-import type { InlineQueuedMessageEditState } from "./useInlineQueuedMessageEditing";
+import type { InlineComposerDraftSession } from "./useActiveComposerDraft";
 
 interface UseComposerAttachmentUploadsArgs {
   projectId: string;
   addDraftAttachment: (attachment: PromptDraftAttachment) => void;
-  inlineEditingQueuedMessage: InlineQueuedMessageEditState | null;
-  inlineEditingQueuedMessageRef: React.RefObject<InlineQueuedMessageEditState | null>;
-  commitInlineQueuedMessage: (
-    next: InlineQueuedMessageEditState | null,
-  ) => void;
+  inlineEditSessionId: number | null;
+  inlineSessionRef: React.RefObject<InlineComposerDraftSession | null>;
 }
 
 interface UseComposerAttachmentUploadsResult {
@@ -152,9 +149,8 @@ export function useDraftAttachmentUploads({
 export function useComposerAttachmentUploads({
   projectId,
   addDraftAttachment,
-  inlineEditingQueuedMessage,
-  inlineEditingQueuedMessageRef,
-  commitInlineQueuedMessage,
+  inlineEditSessionId,
+  inlineSessionRef,
 }: UseComposerAttachmentUploadsArgs): UseComposerAttachmentUploadsResult {
   const {
     attachmentError: bottomAttachmentError,
@@ -165,32 +161,19 @@ export function useComposerAttachmentUploads({
     projectId,
     target: { key: "bottom", addAttachment: addDraftAttachment },
   });
-  const inlineEditSessionId = inlineEditingQueuedMessage?.editSessionId ?? null;
   const addInlineAttachment = useCallback(
     (uploaded: PromptDraftAttachment) => {
-      const current = inlineEditingQueuedMessageRef.current;
-      if (
-        current === null ||
-        current.editSessionId !== inlineEditSessionId ||
-        current.draft.attachments.some(
-          (existing) => existing.path === uploaded.path,
-        )
-      ) {
+      const current = inlineSessionRef.current;
+      if (current === null || current.editSessionId !== inlineEditSessionId) {
         return;
       }
-      commitInlineQueuedMessage({
-        ...current,
-        draft: {
-          ...current.draft,
-          attachments: [...current.draft.attachments, uploaded],
-        },
-      });
+      current.setDraft((draft) =>
+        draft.attachments.some((existing) => existing.path === uploaded.path)
+          ? draft
+          : { ...draft, attachments: [...draft.attachments, uploaded] },
+      );
     },
-    [
-      commitInlineQueuedMessage,
-      inlineEditSessionId,
-      inlineEditingQueuedMessageRef,
-    ],
+    [inlineEditSessionId, inlineSessionRef],
   );
   const {
     attachmentError: inlineAttachmentError,

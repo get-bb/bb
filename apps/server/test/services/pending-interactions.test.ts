@@ -638,7 +638,7 @@ describe("pending interaction lifecycle", () => {
     });
   });
 
-  it("interrupts resolving interactions when a replacement session reuses the same instance id", async () => {
+  it("preserves pending interactions when the same daemon instance reconnects", async () => {
     await withTestHarness(async (harness) => {
       const { host, session } = seedHostSession(harness.deps, {
         id: "host-pending-interaction-same-instance-reconnect",
@@ -671,14 +671,6 @@ describe("pending interaction lifecycle", () => {
           `Expected interaction registration to succeed: ${created.reason}`,
         );
       }
-      harness.deps.pendingInteractions.resolvePendingInteraction({
-        threadId: thread.id,
-        interactionId: created.interaction.id,
-        resolution: createUserAnswerResolution({
-          freeText: "Use the existing branch.",
-        }),
-      });
-
       const replacementSession = seedSession(harness.deps, host.id);
       await handleHostSessionOpened(harness.deps, {
         activeThreads: [],
@@ -693,9 +685,8 @@ describe("pending interaction lifecycle", () => {
         .where(eq(pendingInteractionTable.id, created.interaction.id))
         .get();
       expect(row).toMatchObject({
-        status: "interrupted",
-        statusReason:
-          "Host daemon disconnected while awaiting user interaction; retry the thread to continue",
+        status: "pending",
+        statusReason: null,
       });
     });
   });

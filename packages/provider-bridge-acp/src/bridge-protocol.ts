@@ -141,6 +141,13 @@ export const acpCompactionCompletedNotificationParamsSchema =
     z
       .object({
         threadId: z.string().min(1),
+        status: z.literal("skipped"),
+        detail: z.string().min(1),
+      })
+      .passthrough(),
+    z
+      .object({
+        threadId: z.string().min(1),
         status: z.literal("failed"),
         error: z.string().min(1),
       })

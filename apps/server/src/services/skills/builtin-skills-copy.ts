@@ -26,7 +26,11 @@ export function resolveBuiltinSkillsRootPathForModuleDir(
 ): string {
   const skillsRootPath = path.resolve(
     args.moduleDir,
-    BUILTIN_SKILLS_DIRECTORY_NAME,
+    existsSync(
+      path.join(args.moduleDir, "skills", BUILTIN_SKILLS_SENTINEL_PATH),
+    )
+      ? "skills"
+      : BUILTIN_SKILLS_DIRECTORY_NAME,
   );
   if (!hasBuiltinSkillsRoot(skillsRootPath)) {
     throw new Error(`Missing built-in skills at ${skillsRootPath}`);
@@ -36,7 +40,14 @@ export function resolveBuiltinSkillsRootPathForModuleDir(
 
 export function resolveBuiltinSkillsRootPath(): string {
   return resolveBuiltinSkillsRootPathForModuleDir({
-    moduleDir: builtinSkillsModuleDir,
+    moduleDir: existsSync(
+      path.resolve(
+        builtinSkillsModuleDir,
+        "../../../../../plugins/bb-guide/skills",
+      ),
+    )
+      ? path.resolve(builtinSkillsModuleDir, "../../../../../plugins/bb-guide")
+      : builtinSkillsModuleDir,
   });
 }
 

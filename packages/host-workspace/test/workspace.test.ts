@@ -45,17 +45,6 @@ async function initRepo(): Promise<string> {
   return repoPath;
 }
 
-async function initBareRemoteFrom(repoPath: string): Promise<string> {
-  const remotePath = await makeTempDir("bb-workspace-remote-");
-  const barePath = `${remotePath}.git`;
-  await runGit(["clone", "--bare", repoPath, barePath], {
-    cwd: path.dirname(repoPath),
-  });
-  await runGit(["remote", "add", "origin", barePath], { cwd: repoPath });
-  await runGit(["push", "-u", "origin", "main"], { cwd: repoPath });
-  return barePath;
-}
-
 function parseFirstIntegerMatch(text: string, pattern: RegExp): number {
   const value = Number.parseInt(text.match(pattern)?.[1] ?? "0", 10);
   return Number.isFinite(value) ? value : 0;
@@ -95,6 +84,16 @@ async function createPrimaryAndFeatureWorktree(): Promise<PrimaryAndFeatureWorkt
   await runGit(["add", "README.md"], { cwd: worktreePath });
   await runGit(["commit", "-m", "Feature work"], { cwd: worktreePath });
   return { primaryRepo, worktreePath };
+}
+
+async function mergeFeatureIntoMainWithSquash(
+  primaryRepo: string,
+  message: string,
+): Promise<void> {
+  await runGit(["merge", "--squash", "feature"], { cwd: primaryRepo });
+  await runGit(["commit", "--no-verify", "-m", message], {
+    cwd: primaryRepo,
+  });
 }
 
 afterEach(async () => {
@@ -354,7 +353,8 @@ describe("Workspace", () => {
   });
 
   it("does not report a multi-commit squash-merged branch as ahead of its merge base", async () => {
-    const { worktreePath } = await createPrimaryAndFeatureWorktree();
+    const { primaryRepo, worktreePath } =
+      await createPrimaryAndFeatureWorktree();
     await fs.writeFile(
       path.join(worktreePath, "feature.txt"),
       "feature extra\n",
@@ -364,10 +364,10 @@ describe("Workspace", () => {
     await runGit(["commit", "-m", "Feature extra"], { cwd: worktreePath });
 
     const workspace = new Workspace(worktreePath);
-    await workspace.squashMergeInto({
-      targetBranch: "main",
-      commitMessage: "feat: squash merge multi-commit feature into main",
-    });
+    await mergeFeatureIntoMainWithSquash(
+      primaryRepo,
+      "feat: squash merge multi-commit feature into main",
+    );
 
     const status = await workspace.getStatus({ mergeBaseBranch: "main" });
 
@@ -394,10 +394,10 @@ describe("Workspace", () => {
     await runGit(["commit", "-m", "Feature extra"], { cwd: worktreePath });
 
     const workspace = new Workspace(worktreePath);
-    await workspace.squashMergeInto({
-      targetBranch: "main",
-      commitMessage: "feat: squash merge feature into main",
-    });
+    await mergeFeatureIntoMainWithSquash(
+      primaryRepo,
+      "feat: squash merge feature into main",
+    );
 
     await fs.writeFile(
       path.join(primaryRepo, "after-squash.txt"),
@@ -472,10 +472,10 @@ describe("Workspace", () => {
     await runGit(["commit", "-m", "Main work"], { cwd: primaryRepo });
 
     const workspace = new Workspace(worktreePath);
-    await workspace.squashMergeInto({
-      targetBranch: "main",
-      commitMessage: "feat: squash merge feature into main",
-    });
+    await mergeFeatureIntoMainWithSquash(
+      primaryRepo,
+      "feat: squash merge feature into main",
+    );
 
     const status = await workspace.getStatus({ mergeBaseBranch: "main" });
 
@@ -938,22 +938,6 @@ describe("Workspace", () => {
     expect(typeof commit.commitSha).toBe("string");
   });
 
-  it("throws a typed no_changes error when squash-merging a branch with nothing to merge", async () => {
-    const repoPath = await initRepo();
-    await runGit(["checkout", "-b", "feature"], { cwd: repoPath });
-    const workspace = new Workspace(repoPath);
-
-    await expect(
-      workspace.squashMergeInto({
-        targetBranch: "main",
-        commitMessage: "feat: nothing to merge",
-      }),
-    ).rejects.toMatchObject({
-      name: "WorkspaceError",
-      code: "no_changes",
-    });
-  });
-
   it("serializes same-checkout mutations", async () => {
     const repoPath = await initRepo();
     const workspace = new Workspace(repoPath);
@@ -1091,99 +1075,6 @@ describe("Workspace", () => {
       }),
     ).resolves.toBe("after-timeout");
     expect(timedOutWorkRan).toBe(false);
-  });
-
-  it("squash merges into the target branch using a temporary worktree", async () => {
-    const repoPath = await initRepo();
-    await initBareRemoteFrom(repoPath);
-    await runGit(["checkout", "-b", "feature"], { cwd: repoPath });
-    await fs.writeFile(path.join(repoPath, "README.md"), "squash\n", "utf8");
-    await runGit(["add", "README.md"], { cwd: repoPath });
-    await runGit(["commit", "-m", "Feature work"], { cwd: repoPath });
-
-    const workspace = new Workspace(repoPath);
-    const result = await workspace.squashMergeInto({
-      targetBranch: "main",
-      commitMessage: "feat: squash merge feature into main",
-    });
-
-    const targetBranchSubject = (
-      await runGit(["log", "-1", "--pretty=%s", "main"], { cwd: repoPath })
-    ).stdout.trim();
-    expect(result.merged).toBe(true);
-    expect(targetBranchSubject).toBe("feat: squash merge feature into main");
-  });
-
-  it("rejects squash merges into remote-only target branches", async () => {
-    const repoPath = await initRepo();
-    await initBareRemoteFrom(repoPath);
-    await runGit(["checkout", "-b", "feature"], { cwd: repoPath });
-    await fs.writeFile(path.join(repoPath, "README.md"), "squash\n", "utf8");
-    await runGit(["add", "README.md"], { cwd: repoPath });
-    await runGit(["commit", "-m", "Feature work"], { cwd: repoPath });
-    await runGit(["branch", "-D", "main"], { cwd: repoPath });
-
-    const workspace = new Workspace(repoPath);
-
-    await expect(
-      workspace.squashMergeInto({
-        targetBranch: "main",
-        commitMessage: "feat: squash merge feature into main",
-      }),
-    ).rejects.toMatchObject({ code: "non_local_target_branch" });
-    await expect(
-      workspace.squashMergeInto({
-        targetBranch: "origin/main",
-        commitMessage: "feat: squash merge feature into origin/main",
-      }),
-    ).rejects.toMatchObject({ code: "non_local_target_branch" });
-  });
-
-  it("squash merges when the target branch is checked out in another worktree", async () => {
-    const { primaryRepo, worktreePath } =
-      await createPrimaryAndFeatureWorktree();
-
-    const workspace = new Workspace(worktreePath);
-    const result = await workspace.squashMergeInto({
-      targetBranch: "main",
-      commitMessage: "feat: squash merge feature into main",
-    });
-
-    const targetBranchSubject = (
-      await runGit(["log", "-1", "--pretty=%s", "main"], { cwd: primaryRepo })
-    ).stdout.trim();
-    const targetWorktreeContent = await fs.readFile(
-      path.join(primaryRepo, "README.md"),
-      "utf8",
-    );
-
-    expect(result.merged).toBe(true);
-    expect(targetBranchSubject).toBe("feat: squash merge feature into main");
-    expect(targetWorktreeContent).toBe("squash\n");
-  });
-
-  it("rejects squash merges when the checked-out target branch is dirty", async () => {
-    const { primaryRepo, worktreePath } =
-      await createPrimaryAndFeatureWorktree();
-    await fs.writeFile(
-      path.join(primaryRepo, "local.txt"),
-      "local work\n",
-      "utf8",
-    );
-
-    const workspace = new Workspace(worktreePath);
-
-    await expect(
-      workspace.squashMergeInto({
-        targetBranch: "main",
-        commitMessage: "feat: squash merge feature into main",
-      }),
-    ).rejects.toMatchObject({ code: "dirty_target_branch" });
-
-    const targetBranchSubject = (
-      await runGit(["log", "-1", "--pretty=%s", "main"], { cwd: primaryRepo })
-    ).stdout.trim();
-    expect(targetBranchSubject).toBe("Initial commit");
   });
 
   it("rejects git mutations for non-git directories", async () => {

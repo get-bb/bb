@@ -7,6 +7,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { SidebarProvider } from "@/components/ui/sidebar.js";
 import type { PluginListItem } from "@/hooks/queries/plugin-settings-queries";
 import { SidebarPluginAttentionGlyph } from "./SidebarPluginAttentionGlyph";
+import { makePluginListItem } from "@/test/fixtures/plugins";
 
 const usePluginListMock = vi.hoisted(() => vi.fn());
 
@@ -20,14 +21,13 @@ afterEach(() => {
 });
 
 function plugin(overrides: Partial<PluginListItem>): PluginListItem {
-  return {
+  return makePluginListItem({
     id: "notify",
     name: "Notify",
-    enabled: true,
     status: "incompatible",
     statusDetail: "requires bb >=0.38.0 <0.39.0, this is 0.39.0",
     ...overrides,
-  } as PluginListItem;
+  });
 }
 
 function renderGlyph(plugins: PluginListItem[]) {
@@ -60,7 +60,7 @@ describe("SidebarPluginAttentionGlyph", () => {
     expect(el.getAttribute("aria-label")).toBe(
       "Notify is incompatible: requires bb >=0.38.0 <0.39.0, this is 0.39.0",
     );
-    expect(el.getAttribute("href")).toBe("/extensions/plugins?view=installed");
+    expect(el.getAttribute("href")).toBe("/settings/plugins");
     expect(el.className).toContain("text-warning-text");
     expect(el.querySelector('[data-icon="AlertTriangle"]')).not.toBeNull();
   });

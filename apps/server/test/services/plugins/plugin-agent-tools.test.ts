@@ -271,6 +271,43 @@ describe("bb.agents.registerTool", () => {
     ).toBe(1);
   });
 
+  it("uses a foreign zod schema's own JSON Schema converter", async () => {
+    const rootDir = await writePlugin(workDir, {
+      name: "bb-plugin-foreign-zod",
+      serverSource: "export default function plugin() {}",
+    });
+    await service.installPath(rootDir);
+    const api = service.getApi("foreign-zod")!;
+    const parameters = {
+      safeParse(input: unknown) {
+        return { success: true as const, data: input };
+      },
+      toJSONSchema() {
+        return {
+          type: "object",
+          properties: { name: { type: "string" } },
+          required: ["name"],
+        };
+      },
+    };
+
+    expect(() =>
+      api.agents.registerTool({
+        name: "foreign_schema",
+        description: "Uses a foreign schema package",
+        parameters,
+        execute: () => "ok",
+      }),
+    ).not.toThrow();
+    expect(service.findAgentTool("foreign_schema")?.record.inputSchema).toEqual(
+      {
+        type: "object",
+        properties: { name: { type: "string" } },
+        required: ["name"],
+      },
+    );
+  });
+
   it("rejects recursive tool schemas before they reach a provider", async () => {
     const rootDir = await writePlugin(workDir, {
       name: "bb-plugin-schema-refs",
@@ -425,6 +462,40 @@ describe("bb.agents.registerTool", () => {
       ["collide-b", "unique_tool"],
     ]);
     expect(service.findAgentTool("shared_tool")?.pluginId).toBe("collide-a");
+  });
+
+  it("fails a plugin's load when its environment provider id is already registered", async () => {
+    const first = await writePlugin(workDir, {
+      name: "bb-plugin-env-a",
+      serverSource: `
+        export default function plugin(bb: any) {
+          bb.experimental_environments.register({
+            id: "shared-env",
+            displayName: "Shared",
+            create: async () => ({ status: "failed", failure: "transient", message: "waiting" }), remove: async () => ({ status: "removed" }),
+          });
+        }
+      `,
+    });
+    const second = await writePlugin(workDir, {
+      name: "bb-plugin-env-b",
+      serverSource: `
+        export default function plugin(bb: any) {
+          bb.experimental_environments.register({
+            id: "shared-env",
+            displayName: "Shared again",
+            create: async () => ({ status: "failed", failure: "transient", message: "waiting" }), remove: async () => ({ status: "removed" }),
+          });
+        }
+      `,
+    });
+    await service.installPath(first);
+    const entry = await service.installPath(second);
+
+    expect(entry.status).toBe("error");
+    expect(entry.statusDetail).toContain(
+      'environment provider "shared-env" is already registered by plugin "env-a"',
+    );
   });
 
   it("rejects the reserved built-in tool name at registration", async () => {

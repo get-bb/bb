@@ -102,7 +102,7 @@ const CLAUDE_CODE_SELECTED_ONLY_CATALOG: readonly ClaudeCodeCatalogEntry[] = [
     model: "best",
     displayName: "Best Alias",
     description:
-      "Moving best alias retained for existing selections; resolves to Fable 5 where available",
+      "Moving best alias retained for existing selections; resolves to the current Fable model where available",
     supportedReasoningEfforts: CLAUDE_XHIGH_CAPABLE_REASONING_EFFORTS,
     defaultReasoningEffort: "high",
   },
@@ -111,7 +111,7 @@ const CLAUDE_CODE_SELECTED_ONLY_CATALOG: readonly ClaudeCodeCatalogEntry[] = [
     model: "fable",
     displayName: "Fable Alias",
     description:
-      "Moving Fable alias retained for existing selections; resolves to Claude Fable 5",
+      "Moving Fable alias retained for existing selections; resolves to the current Claude Fable model",
     supportedReasoningEfforts: CLAUDE_XHIGH_CAPABLE_REASONING_EFFORTS,
     defaultReasoningEffort: "high",
   },

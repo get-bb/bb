@@ -1,8 +1,5 @@
-import type {
-  ThreadEvent,
-  ThreadEventBackgroundTaskItem,
-  ThreadEventItemStatus,
-} from "@bb/domain";
+import { itemStatusToExecStatus } from "./exec-lifecycle.js";
+import type { ThreadEvent, ThreadEventBackgroundTaskItem } from "@bb/domain";
 import type { EventMeta } from "./event-decode.js";
 import type {
   EventProjectionMessage,
@@ -17,21 +14,6 @@ export interface BackgroundTaskProjectionState {
 interface BackgroundTaskLifecycleEvent {
   kind: "begin" | "update" | "end";
   item: ThreadEventBackgroundTaskItem;
-}
-
-function toWorkflowMessageStatus(
-  status: ThreadEventItemStatus,
-): EventProjectionWorkflowMessage["status"] {
-  switch (status) {
-    case "pending":
-      return "pending";
-    case "completed":
-      return "completed";
-    case "failed":
-      return "error";
-    case "interrupted":
-      return "interrupted";
-  }
 }
 
 export function parseBackgroundTaskLifecycleEvent(
@@ -65,7 +47,7 @@ function applyBackgroundTaskItem(
   message.taskType = item.taskType;
   message.workflowName = item.workflowName ?? null;
   message.description = item.description;
-  message.status = toWorkflowMessageStatus(item.status);
+  message.status = itemStatusToExecStatus(item.status);
   message.taskStatus = item.taskStatus;
   message.skipTranscript = item.skipTranscript;
   message.workflow = item.workflow ?? null;
@@ -115,7 +97,7 @@ export function upsertBackgroundTaskMessage(
     workflowName: lifecycle.item.workflowName ?? null,
     description: lifecycle.item.description,
     model: null,
-    status: toWorkflowMessageStatus(lifecycle.item.status),
+    status: itemStatusToExecStatus(lifecycle.item.status),
     taskStatus: lifecycle.item.taskStatus,
     skipTranscript: lifecycle.item.skipTranscript,
     workflow: lifecycle.item.workflow ?? null,

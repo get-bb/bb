@@ -7,6 +7,7 @@ import type {
   CreateThreadEnvironmentArgs,
   CreateThreadRequest,
   EnvironmentArgs,
+  ProviderEnvironmentArgs,
   StartedOnBehalfOf,
   ThreadCreateOrigin,
 } from "@bb/server-contract";
@@ -14,6 +15,12 @@ import type {
 export interface ThreadCreateServiceRequestInput {
   environment: CreateThreadEnvironmentArgs;
   executionInputSources?: CreateThreadRequest["executionInputSources"];
+  /**
+   * Epoch ms the first message should dispatch at. Present ⇒ the thread is
+   * created `pending` with no turn and the first message is queued as a row
+   * waiting on the clock.
+   */
+  sendAt?: CreateThreadRequest["sendAt"];
   input: PromptInput[];
   sectionId?: CreateThreadRequest["sectionId"];
   model?: CreateThreadRequest["model"];
@@ -37,7 +44,7 @@ export interface ThreadCreateServiceRequest extends Omit<
   ThreadCreateServiceRequestInput,
   "environment" | "providerId"
 > {
-  environment: EnvironmentArgs;
+  environment: EnvironmentArgs | ProviderEnvironmentArgs;
   providerId: string;
   titleFallback: string | null;
   visibility: ThreadVisibility;

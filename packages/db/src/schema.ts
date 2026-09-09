@@ -14,6 +14,8 @@ import { threadStatusValues } from "@bb/domain/thread-status";
 import { threadOriginKindValues } from "@bb/domain/thread-origin-kind";
 import { threadVisibilityValues } from "@bb/domain/thread-visibility";
 import type {
+  EnvironmentProviderSelection,
+  JsonValue,
   EnvironmentStatus,
   FaviconColorPreference,
   HostType,
@@ -21,6 +23,8 @@ import type {
   PermissionMode,
   PromptHistoryScope,
   ProjectSourceType,
+  QueuedMessagePayloadKind,
+  QueuedMessageWaitHolder,
   ReasoningLevel,
   ServiceTier,
   TerminalSessionCloseReason,
@@ -30,9 +34,9 @@ import type {
   ThreadEventItemType,
   ThreadEventScopeKind,
   ThreadEventType,
-  WorkspaceProvisionType,
   ProjectKind,
 } from "@bb/domain";
+import type { RetainedEventOutputPath } from "./retained-event-output.js";
 
 export const authUsers = sqliteTable(
   "user",
@@ -154,6 +158,13 @@ export const systemExperiments = sqliteTable("system_experiments", {
 export const appSettingsValues = sqliteTable("app_settings_values", {
   key: text("key").primaryKey(),
   value: text("value").notNull(),
+  updatedAt: integer("updated_at").notNull(),
+});
+
+export const uiPreferences = sqliteTable("ui_preferences", {
+  key: text("key").primaryKey(),
+  valueJson: text("value_json").notNull(),
+  revision: integer("revision").notNull(),
   updatedAt: integer("updated_at").notNull(),
 });
 
@@ -441,7 +452,6 @@ export const environments = sqliteTable(
       .notNull()
       .references(() => hosts.id, { onDelete: "cascade" }),
     path: text("path"),
-    managed: integer("managed", { mode: "boolean" }).notNull().default(false),
     isGitRepo: integer("is_git_repo", { mode: "boolean" })
       .notNull()
       .default(false),
@@ -452,11 +462,22 @@ export const environments = sqliteTable(
     baseBranch: text("base_branch"),
     defaultBranch: text("default_branch"),
     mergeBaseBranch: text("merge_base_branch"),
-    destroyAttemptId: text("destroy_attempt_id"),
-    retireRequestedAt: integer("retire_requested_at"),
-    workspaceProvisionType: text("workspace_provision_type")
-      .$type<WorkspaceProvisionType>()
-      .notNull(),
+    environmentProviderId: text("environment_provider_id"),
+    environmentProviderPluginId: text("environment_provider_plugin_id"),
+    providerOwnsPath: integer("provider_owns_path", { mode: "boolean" })
+      .notNull()
+      .default(false),
+    environmentProviderSelection: text("environment_provider_selection", {
+      mode: "json",
+    }).$type<EnvironmentProviderSelection>(),
+    environmentProviderInstanceKey: text("environment_provider_instance_key"),
+    retireAt: integer("retire_at"),
+    teardownAttempt: integer("teardown_attempt").notNull().default(0),
+    teardownStatus: text("teardown_status").$type<
+      "running" | "failed" | "removed"
+    >(),
+    teardownMessage: text("teardown_message"),
+    resource: text("resource", { mode: "json" }).$type<JsonValue>(),
     status: text("status")
       .$type<EnvironmentStatus>()
       .notNull()
@@ -473,6 +494,10 @@ export const environments = sqliteTable(
     index("environments_host_path_lookup_idx").on(table.hostId, table.path),
     index("environments_project_idx").on(table.projectId),
     index("environments_status_idx").on(table.status),
+    index("environments_provider_instance_idx").on(
+      table.environmentProviderId,
+      table.environmentProviderInstanceKey,
+    ),
   ],
 );
 
@@ -499,6 +524,19 @@ export const threads = sqliteTable(
     status: text("status", { enum: threadStatusValues })
       .notNull()
       .default("starting"),
+    // How a `pending` thread will be established once its first message clears
+    // a dispatch attempt: the resolved environment intent, the fork descriptor,
+    // the provider-facing input and the `startedOnBehalfOf`/title facts that
+    // `requestThreadProvision` needs and that nothing else persists.
+    //
+    // It lives on the THREAD rather than on the queued message because it
+    // describes how to start the thread, not what to say once it has started —
+    // and because the live provisioning context is in-memory and only valid
+    // while a thread is `starting`, so a thread queued for a week (or across a
+    // restart) would otherwise have nothing to start from. Written only when a
+    // first message actually queues, and cleared when the thread leaves
+    // `pending`, so it is NULL for every thread that started immediately.
+    pendingStartContext: text("pending_start_context"),
     parentThreadId: text("parent_thread_id").references(
       (): AnySQLiteColumn => threads.id,
       { onDelete: "set null" },
@@ -609,6 +647,17 @@ export const threadSearchSegments = sqliteTable(
   ],
 );
 
+export const threadConversationOutlines = sqliteTable(
+  "thread_conversation_outlines",
+  {
+    threadId: text("thread_id")
+      .primaryKey()
+      .references(() => threads.id, { onDelete: "cascade" }),
+    projectionKey: text("projection_key").notNull(),
+    itemsJson: text("items_json").notNull(),
+  },
+);
+
 export const threadDynamicContextFileStates = sqliteTable(
   "thread_dynamic_context_file_states",
   {
@@ -715,6 +764,24 @@ export const events = sqliteTable(
   ],
 );
 
+export const retainedEventOutputs = sqliteTable(
+  "retained_event_outputs",
+  {
+    eventId: text("event_id")
+      .primaryKey()
+      .references(() => events.id, { onDelete: "cascade" }),
+    outputPath: text("output_path").$type<RetainedEventOutputPath>().notNull(),
+    value: text("value").notNull(),
+    expiresAt: integer("expires_at").notNull(),
+  },
+  (table) => [
+    index("retained_event_outputs_expiry_idx").on(
+      table.expiresAt,
+      table.eventId,
+    ),
+  ],
+);
+
 export const maintenanceScanCursors = sqliteTable(
   "maintenance_scan_cursors",
   {
@@ -774,30 +841,14 @@ export const promptHistoryEntries = sqliteTable(
   ],
 );
 
-export const deferredThreadMessages = sqliteTable(
-  "deferred_thread_messages",
-  {
-    id: text("id").primaryKey(),
-    threadId: text("thread_id")
-      .notNull()
-      .references(() => threads.id, { onDelete: "cascade" }),
-    kind: text("kind").notNull(),
-    payload: text("payload").notNull(),
-    createdAt: integer("created_at").notNull(),
-  },
-  (table) => [
-    index("deferred_thread_messages_thread_created_idx").on(
-      table.threadId,
-      table.createdAt,
-      table.id,
-    ),
-  ],
-);
-
 export const queuedThreadMessages = sqliteTable(
   "queued_thread_messages",
   {
     id: text("id").primaryKey(),
+    // JSON `{ kind, subject }` when this row is one of core's own system
+    // notices rather than somebody's message; NULL for every ordinary row.
+    // Owned by the server, which is the only thing that writes or reads it.
+    systemNotice: text("system_notice"),
     threadId: text("thread_id")
       .notNull()
       .references(() => threads.id, { onDelete: "cascade" }),
@@ -810,6 +861,48 @@ export const queuedThreadMessages = sqliteTable(
     groupWithNext: integer("group_with_next", { mode: "boolean" })
       .notNull()
       .default(false),
+    // Epoch ms this row is scheduled to attempt dispatch. NULL means "as soon
+    // as the other waits clear", which is what an ordinary queued row is.
+    sendAt: integer("send_at"),
+    // JSON `QueuedMessageWaitingOn`: the typed reason this row is queued.
+    // NULL for a plain queued row that is simply next in line behind the
+    // running turn — including every row written before waits were typed, for
+    // which inventing a reason would be a lie.
+    //
+    // A plugin wait's authored reason lives HERE and nowhere else. There is
+    // deliberately no `wait_reason` column: nothing queries on the reason, and
+    // every read that renders it already has the whole row in hand.
+    waitingOn: text("waiting_on"),
+    // Denormalized `plugin:<id>` owner of a plugin wait, NULL otherwise.
+    // Unlike the reason, this IS queried — the orphan sweep and the
+    // per-plugin release both need "every row this plugin holds" as an
+    // indexed equality lookup, which JSON cannot serve. Written only by the
+    // same statement that writes `waiting_on`, derived from it, so the two
+    // cannot drift.
+    waitHolder: text("wait_holder").$type<QueuedMessageWaitHolder>(),
+    // Why this row's last DRAIN attempt failed outright, NULL when it has not
+    // failed one. Its own column rather than a shape inside `waiting_on`
+    // because writing a wait rewrites that column wholesale on every attempt, which
+    // would erase a failure recorded there before anybody could read it. The
+    // row stays waiting on whatever it was waiting on; this only says what went
+    // wrong the last time the drain tried to send it.
+    failureReason: text("failure_reason"),
+    payloadKind: text("payload_kind")
+      .$type<QueuedMessagePayloadKind>()
+      .notNull()
+      .default("inline"),
+    // Set together, and only on a `retry` row: the ORIGINAL request this row
+    // re-submits, which attempt it is (2 is the first retry), and why it is
+    // being retried in the retrier's words ("Rate limited").
+    //
+    // The reason is a column of the retry rather than part of `waiting_on`
+    // because a retry can wait on the clock, on a plugin, or on nothing, and
+    // the reason outlives all three: it is a fact about the retry, not about
+    // what is currently holding it, so a re-queue that rewrites the wait must
+    // not erase it.
+    retryOfTurnRequestId: text("retry_of_turn_request_id"),
+    retryAttempt: integer("retry_attempt"),
+    retryReason: text("retry_reason"),
     claimedAt: integer("claimed_at"),
     claimToken: text("claim_token"),
     sortKey: text("sort_key").notNull(),
@@ -827,9 +920,20 @@ export const queuedThreadMessages = sqliteTable(
       table.sortKey,
       table.id,
     ),
+    // The due-scheduled sweep: "every unclaimed row whose send_at has
+    // arrived", ordered by when it came due. Partial on the two liveness
+    // predicates so the index holds only rows the sweep can actually act on.
+    index("queued_thread_messages_due_idx")
+      .on(table.sendAt, table.id)
+      .where(
+        sql`${table.sendAt} IS NOT NULL AND ${table.claimedAt} IS NULL AND ${table.claimToken} IS NULL`,
+      ),
+    // Plugin-holder lookup for the orphan sweep and per-plugin release.
+    index("queued_thread_messages_wait_holder_idx")
+      .on(table.waitHolder, table.id)
+      .where(sql`${table.waitHolder} IS NOT NULL`),
   ],
 );
-
 export const hostDaemonSessions = sqliteTable(
   "host_daemon_sessions",
   {
@@ -963,5 +1067,52 @@ export const pendingInteractions = sqliteTable(
       table.status,
       table.createdAt,
     ),
+  ],
+);
+
+export const environmentLaunches = sqliteTable(
+  "environment_launches",
+  {
+    threadId: text("thread_id").primaryKey(),
+    providerId: text("provider_id").notNull(),
+    providerPluginId: text("provider_plugin_id"),
+    pathRejected: integer("path_rejected", { mode: "boolean" })
+      .notNull()
+      .default(false),
+    attempt: integer("attempt").notNull(),
+    phase: text("phase")
+      .$type<"creating" | "ready" | "failed" | "cancelled">()
+      .notNull(),
+    startedAt: integer("started_at").notNull(),
+    failedAt: integer("failed_at"),
+    failure: text("failure").$type<"terminal" | "transient">(),
+    message: text("message"),
+    transientFailures: integer("transient_failures").notNull(),
+    pathKey: text("path_key").notNull(),
+    hostId: text("host_id"),
+    path: text("path"),
+    claimPath: text("claim_path"),
+    ownsPath: integer("owns_path", { mode: "boolean" })
+      .notNull()
+      .default(false),
+    mergeBaseBranch: text("merge_base_branch"),
+    resource: text("resource", { mode: "json" }).$type<JsonValue>(),
+    stepText: text("step_text").notNull(),
+    pendingLog: text("pending_log").notNull(),
+    replacedEnvironmentId: text("replaced_environment_id"),
+    environmentId: text("environment_id"),
+    selection: text("selection", { mode: "json" })
+      .$type<EnvironmentProviderSelection>()
+      .notNull(),
+    request: text("request", { mode: "json" }).$type<JsonValue>(),
+    cancelPending: integer("cancel_pending", { mode: "boolean" }).notNull(),
+  },
+  (table) => [
+    index("environment_launches_phase_idx").on(table.phase),
+    index("environment_launches_active_claim_idx")
+      .on(table.hostId, table.claimPath)
+      .where(
+        sql`${table.environmentId} is null and ${table.claimPath} is not null`,
+      ),
   ],
 );

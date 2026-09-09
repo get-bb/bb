@@ -22,6 +22,7 @@
   },
   "dependencies": {
     "@bb/agent-runtime": "workspace:*",
+    "bb-environment-provider-host": "workspace:*",
     "@bb/cli": "workspace:*",
     "@bb/connect-client": "workspace:*",
     "@bb/config": "workspace:*",
@@ -43,7 +44,7 @@
     "gray-matter": "^4.0.3",
     "jiti": "^2.6.1",
     "mime-types": "^3.0.2",
-    "node-pty": "1.1.0",
+    "node-pty": "1.2.0-beta.15",
     "p-retry": "^6.2.1",
     "partysocket": "^1.3.0",
     "pino": "^9.6.0",

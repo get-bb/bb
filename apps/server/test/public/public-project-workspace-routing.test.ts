@@ -26,7 +26,7 @@ const primaryCommand: HostProviderCommand = {
 };
 
 describe("public project workspace routing", () => {
-  it("reads cached branch metadata while refreshing project remotes in the background", async () => {
+  it("keeps app branch options cache-first and public branch listing blocking", async () => {
     await withTestHarness(async (harness) => {
       const { host, session } = seedHostSession(harness.deps, {
         id: "host-project-branches",
@@ -78,6 +78,7 @@ describe("public project workspace routing", () => {
               },
               defaultBranch: "main",
               defaultBranchRelation: "equal",
+              isWorktree: false,
               hasUncommittedChanges: false,
               operation: { kind: "none" },
               originDefaultBranch: "origin/main",
@@ -87,7 +88,7 @@ describe("public project workspace routing", () => {
       });
 
       const responsePromise = harness.app.request(
-        `/api/v1/projects/${project.id}/branches?hostId=${host.id}&limit=50`,
+        `/api/v1/projects/${project.id}/branch-options?hostId=${host.id}&limit=50`,
       );
 
       try {
@@ -136,7 +137,7 @@ describe("public project workspace routing", () => {
 
       responder.requests.length = 0;
       const refreshedResponsePromise = harness.app.request(
-        `/api/v1/projects/${project.id}/branches?hostId=${host.id}&limit=50&refresh=blocking`,
+        `/api/v1/projects/${project.id}/branches?hostId=${host.id}&limit=50`,
       );
       try {
         await vi.waitFor(() => expect(responder.requests).toHaveLength(1));
@@ -295,10 +296,7 @@ describe("public project workspace routing", () => {
         `/api/v1/projects/${project.id}/commands?provider=codex`,
       );
       await expect(readJson(primaryCommands)).resolves.toMatchObject({
-        commands: [
-          expect.objectContaining({ name: "compact" }),
-          primaryCommand,
-        ],
+        commands: expect.arrayContaining([primaryCommand]),
       });
       const primaryContent = await harness.app.request(
         `/api/v1/projects/${project.id}/files/content?path=primary.txt`,
@@ -329,7 +327,7 @@ describe("public project workspace routing", () => {
         `/api/v1/projects/${project.id}/commands?provider=codex&hostId=${remoteHost.id}`,
       );
       await expect(readJson(commands)).resolves.toMatchObject({
-        commands: [expect.objectContaining({ name: "compact" }), remoteCommand],
+        commands: expect.arrayContaining([remoteCommand]),
       });
       expect(
         remoteRpc.requests.find(

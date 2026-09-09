@@ -1,4 +1,5 @@
 import {
+  DEFAULT_DESTROYED_ENVIRONMENT_EVENT_DETACH_BATCH_SIZE,
   DEFAULT_DESTROYED_ENVIRONMENT_PRUNE_BATCH_SIZE,
   DESTROYED_ENVIRONMENT_TTL_MS,
   environments,
@@ -28,8 +29,8 @@ function seedThreadWithPrunedEnvironment(
   const environment = seedEnvironment(deps, {
     hostId: host.id,
     projectId: project.id,
-    managed: true,
-    workspaceProvisionType: "managed-worktree",
+    environmentProviderId: "personal-workspace",
+    isGitRepo: false,
   });
   const thread = seedThread(deps, {
     environmentId: environment.id,
@@ -38,12 +39,17 @@ function seedThreadWithPrunedEnvironment(
   });
   deps.db
     .update(environments)
-    .set({ status: "destroyed", updatedAt: Date.now() - EIGHT_DAYS_MS })
+    .set({
+      status: "destroyed",
+      teardownStatus: "removed",
+      updatedAt: Date.now() - EIGHT_DAYS_MS,
+    })
     .where(eq(environments.id, environment.id))
     .run();
   expect(
     pruneDestroyedEnvironments(deps.db, deps.hub, {
       updatedBefore: Date.now() - DESTROYED_ENVIRONMENT_TTL_MS,
+      eventBatchSize: DEFAULT_DESTROYED_ENVIRONMENT_EVENT_DETACH_BATCH_SIZE,
       limit: DEFAULT_DESTROYED_ENVIRONMENT_PRUNE_BATCH_SIZE,
     }).deleted,
   ).toBe(1);

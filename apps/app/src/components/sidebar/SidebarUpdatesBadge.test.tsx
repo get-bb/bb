@@ -4,6 +4,7 @@ import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { TooltipProvider } from "@bb/shared-ui/tooltip";
 import type { Host } from "@bb/domain";
+import { makeHost } from "@bb/test-helpers/domain-fixtures";
 import type { ProviderCliKey } from "@bb/host-daemon-contract";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { ProviderCliIssue } from "@/components/provider-cli/provider-cli-install";
@@ -31,7 +32,7 @@ vi.mock("@/components/provider-cli/provider-cli-install", () => ({
 
 vi.mock("@/lib/sdk", async () => {
   const { makeProviderInfo: provider } =
-    await import("@/test/provider-info-fixture");
+    await import("@bb/test-helpers/domain-fixtures");
   return {
     sdk: {
       providers: {
@@ -111,17 +112,10 @@ function missingInstallIssue(
 }
 
 function host(id: string): Host {
-  return {
+  return makeHost({
     id,
     name: id,
-    type: "persistent",
-    status: "connected",
-    lastSeenAt: null,
-    maxPermissionMode: "full",
-    lastRejectedProtocolVersion: null,
-    createdAt: 0,
-    updatedAt: 0,
-  };
+  });
 }
 
 function machine(

@@ -1,5 +1,5 @@
 import { useMemo, useState, type ReactNode } from "react";
-import { useNavigate, useSearchParams } from "react-router-dom";
+import { useNavigate, useSearchParams, useLocation } from "react-router-dom";
 import {
   ResourceInfiniteScrollSentinel,
   useResourceInfiniteItems,
@@ -24,6 +24,7 @@ import {
 import { BrowsePluginsTab } from "@/components/plugin/management/BrowsePluginsTab";
 import { CheckPluginUpdatesButton } from "@/components/plugin/management/CheckPluginUpdatesButton";
 import { InstalledPluginsTab } from "@/components/plugin/management/InstalledPluginsTab";
+import { PluginAuthorPage } from "@/components/plugin/management/PluginAuthorPage";
 import {
   pluginPublisherFilterId,
   pluginPublisherFilterOptions,
@@ -31,18 +32,16 @@ import {
 import { PLUGINS_INSTALLED_DESCRIPTION } from "@/components/plugin/plugins-collection-copy";
 import { usePluginList } from "@/hooks/queries/plugin-settings-queries";
 import {
+  SETTINGS_PLUGINS_ROUTE_PATH,
   getPluginDetailRoutePath,
   getRootComposeRoutePath,
 } from "@/lib/route-paths";
 
-type PluginsCollectionMode = "installed" | "browse";
-
-function modeFromSearchParams(value: string | null): PluginsCollectionMode {
-  if (value === "installed") return value;
-  return "browse";
-}
-
-export function PluginsOverview() {
+export function PluginsOverview({
+  onOpenPlugin,
+}: {
+  onOpenPlugin?: (pluginId: string, trigger: HTMLButtonElement) => void;
+} = {}) {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const listQuery = usePluginList({ enabled: true });
@@ -50,7 +49,13 @@ export function PluginsOverview() {
     () => listQuery.data?.plugins ?? [],
     [listQuery.data?.plugins],
   );
-  const activeMode = modeFromSearchParams(searchParams.get("view"));
+  const location = useLocation();
+  const activeMode =
+    location.pathname.replace(/\/+$/u, "") === SETTINGS_PLUGINS_ROUTE_PATH ||
+    searchParams.get("view") === "installed"
+      ? "installed"
+      : "browse";
+  const authorKey = searchParams.get("author");
   const [installedQuery, setInstalledQuery] = useState("");
   const [installedViewport, setInstalledViewport] =
     useState<HTMLDivElement | null>(null);
@@ -144,7 +149,6 @@ export function PluginsOverview() {
 
   const installedActions = (
     <>
-      {plugins.length > 0 ? <CheckPluginUpdatesButton /> : null}
       <CreateWithTemplatesButton
         kind="plugin"
         label="New plugin"
@@ -162,15 +166,25 @@ export function PluginsOverview() {
 
   let content: ReactNode;
   if (activeMode === "browse") {
-    content = (
-      <BrowsePluginsTab
-        onInstall={(initial) => setAddDialog({ open: true, initial })}
-        onOpenPlugin={(pluginId) =>
-          navigate(getPluginDetailRoutePath({ pluginId }))
-        }
-        onInstallFromSource={() => setAddDialog({ open: true, initial: null })}
-      />
-    );
+    const openPlugin =
+      onOpenPlugin ??
+      ((pluginId: string) => navigate(getPluginDetailRoutePath({ pluginId })));
+    content =
+      authorKey === null ? (
+        <BrowsePluginsTab
+          onInstall={(initial) => setAddDialog({ open: true, initial })}
+          onOpenPlugin={openPlugin}
+          onInstallFromSource={() =>
+            setAddDialog({ open: true, initial: null })
+          }
+        />
+      ) : (
+        <PluginAuthorPage
+          authorKey={authorKey}
+          onInstall={(initial) => setAddDialog({ open: true, initial })}
+          onOpenPlugin={openPlugin}
+        />
+      );
   } else {
     content = (
       <ResourceCollectionViewport
@@ -204,6 +218,7 @@ export function PluginsOverview() {
                     )
                   }
                 />
+                {plugins.length > 0 ? <CheckPluginUpdatesButton /> : null}
               </>
             }
           />

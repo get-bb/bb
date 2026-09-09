@@ -66,6 +66,7 @@ export function ResourceDetailPage({
   title,
   titleMeta,
   leading,
+  leadingClassName,
   lifecycleControl,
   overflowMenu,
   actions,
@@ -77,6 +78,7 @@ export function ResourceDetailPage({
   title: ReactNode;
   titleMeta?: ReactNode;
   leading?: ReactNode;
+  leadingClassName?: string;
   lifecycleControl?: ReactNode;
   overflowMenu?: ReactNode;
   actions?: ReactNode;
@@ -91,7 +93,12 @@ export function ResourceDetailPage({
         <div className="min-w-0 flex-1 space-y-2">
           <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
             {leading ? (
-              <span className="flex size-4 shrink-0 items-center justify-center">
+              <span
+                className={cn(
+                  "flex size-4 shrink-0 items-center justify-center",
+                  leadingClassName,
+                )}
+              >
                 {leading}
               </span>
             ) : null}

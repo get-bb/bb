@@ -50,6 +50,7 @@ export const APP_COMMAND_IDS = [
   "pane.maximize.toggle",
   "pane.close",
   "window.new",
+  "app.back",
   "settings.open",
   "settings.openServers",
   "sidebar.toggle",
@@ -73,6 +74,7 @@ export const APP_COMMAND_IDS = [
   "browser.find",
   "workspace.openPreferred",
   "logs.openServerDaemon",
+  "notifications.open",
   ...QUESTION_SELECT_APP_COMMAND_IDS,
 ] as const;
 

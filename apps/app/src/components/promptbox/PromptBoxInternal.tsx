@@ -227,10 +227,11 @@ interface PromptSubmitButtonProps {
   canSubmit: boolean;
   className: string;
   disabledReason: string | undefined;
+  isBusy: boolean;
   isCompact: boolean;
-  isSubmitting: boolean;
   onClick: (event: ReactMouseEvent<HTMLButtonElement>) => void;
   onPointerDown: (event: ReactPointerEvent<HTMLButtonElement>) => void;
+  onTouchSubmit: () => void;
   title: string;
 }
 
@@ -238,12 +239,17 @@ function PromptSubmitButton({
   canSubmit,
   className,
   disabledReason,
+  isBusy,
   isCompact,
-  isSubmitting,
   onClick,
   onPointerDown,
+  onTouchSubmit,
   title,
 }: PromptSubmitButtonProps) {
+  const touchRef = useRef<{ pointerId: number; x: number; y: number } | null>(
+    null,
+  );
+  const suppressTouchClickRef = useRef(false);
   const button = (
     <Button
       data-promptbox-submit-action=""
@@ -251,12 +257,60 @@ function PromptSubmitButton({
       size={isCompact ? "icon" : "sm"}
       variant="default"
       aria-label={title}
+      aria-busy={isBusy}
       disabled={!canSubmit}
-      onPointerDown={onPointerDown}
-      onClick={onClick}
+      onPointerDown={(event) => {
+        suppressTouchClickRef.current = false;
+        touchRef.current =
+          event.pointerType === "touch" && event.isPrimary && event.button === 0
+            ? { pointerId: event.pointerId, x: event.clientX, y: event.clientY }
+            : null;
+        onPointerDown(event);
+      }}
+      onPointerMove={(event) => {
+        const touch = touchRef.current;
+        if (
+          touch &&
+          touch.pointerId === event.pointerId &&
+          Math.hypot(event.clientX - touch.x, event.clientY - touch.y) > 10
+        ) {
+          touchRef.current = null;
+          suppressTouchClickRef.current = true;
+        }
+      }}
+      onPointerCancel={() => {
+        if (touchRef.current) suppressTouchClickRef.current = true;
+        touchRef.current = null;
+      }}
+      onPointerUp={(event) => {
+        const touch = touchRef.current;
+        touchRef.current = null;
+        if (!touch || touch.pointerId !== event.pointerId) return;
+        suppressTouchClickRef.current = true;
+        if (!canSubmit) return;
+        const bounds = event.currentTarget.getBoundingClientRect();
+        if (
+          Math.hypot(event.clientX - touch.x, event.clientY - touch.y) > 10 ||
+          event.clientX < bounds.left ||
+          event.clientX >= bounds.right ||
+          event.clientY < bounds.top ||
+          event.clientY >= bounds.bottom
+        ) {
+          return;
+        }
+        onTouchSubmit();
+      }}
+      onMouseDown={(event) => event.preventDefault()}
+      onClick={(event) => {
+        if (suppressTouchClickRef.current && event.detail > 0) {
+          event.preventDefault();
+          return;
+        }
+        onClick(event);
+      }}
       className={className}
     >
-      {isSubmitting ? (
+      {isBusy ? (
         <Icon name="Spinner" className="size-4 animate-spin" />
       ) : (
         <Icon name="CornerDownLeft" className="size-4" />
@@ -378,6 +432,7 @@ interface PromptBoxInternalProps {
   blurOnPointerSubmit?: boolean;
   placeholder?: string;
   autoFocus?: boolean;
+  allowSoftKeyboardAutoFocus?: boolean;
   className?: string;
   textEffects?: readonly ComposerTextEffectSource[];
   onComposerLayoutChange?: (layout: ComposerView["layout"]) => void;
@@ -1100,6 +1155,7 @@ export function PromptBoxInternal({
   blurOnPointerSubmit = false,
   placeholder = "Ask anything. @ to mention files, folders, or sections",
   autoFocus = true,
+  allowSoftKeyboardAutoFocus = false,
   className,
   textEffects,
   onComposerLayoutChange,
@@ -1163,7 +1219,8 @@ export function PromptBoxInternal({
   const isPointerCoarse = usePointerCoarse();
   const isIPadOSWebKitDevice = useMemo(isIPadOSWebKit, []);
   const editorEnterKeyHint = isPointerCoarse ? "enter" : "send";
-  const shouldAvoidSoftKeyboardAutofocus = isPointerCoarse;
+  const shouldAvoidSoftKeyboardAutofocus =
+    isPointerCoarse && !allowSoftKeyboardAutoFocus;
   const formRef = useRef<HTMLFormElement>(null);
   const typeaheadMenuRef = useRef<HTMLDivElement>(null);
   const reportQueuedEditorTypeaheadLayout = useContext(
@@ -1694,7 +1751,6 @@ export function PromptBoxInternal({
           if (attachFiles && pastedFiles.length > 0) {
             event.preventDefault();
             void attachFiles(pastedFiles);
-            return true;
           }
 
           const plainText = event.clipboardData?.getData("text/plain") ?? "";
@@ -1733,7 +1789,9 @@ export function PromptBoxInternal({
             event.clipboardData ?? null,
             promptActions,
           );
-          if (pastedValue === null) return false;
+          if (pastedValue === null) {
+            return attachFiles !== undefined && pastedFiles.length > 0;
+          }
 
           event.preventDefault();
           if (pastedValue.text.length === 0) return true;
@@ -2123,10 +2181,7 @@ export function PromptBoxInternal({
   }, [reportQueuedEditorTypeaheadLayout, showTypeaheadMenu]);
 
   useEffect(() => {
-    if (
-      selectedSuggestionKey !== null &&
-      selectedSuggestionIndex === -1
-    ) {
+    if (selectedSuggestionKey !== null && selectedSuggestionIndex === -1) {
       setSelectedSuggestionKey(null);
     }
   }, [selectedSuggestionIndex, selectedSuggestionKey]);
@@ -2520,17 +2575,27 @@ export function PromptBoxInternal({
   );
 
   const canSubmit =
-    hasSubmittableInput && !isSubmitting && !submitDisabled && !isVoiceBusy;
-  const canModifierSubmit =
-    onModifierSubmit !== undefined &&
+    hasSubmittableInput &&
+    !isAttaching &&
     !isSubmitting &&
     !submitDisabled &&
     !isVoiceBusy;
-  const showStop = Boolean(isRunning && onStop && !canSubmit && !isVoiceBusy);
+  const canModifierSubmit =
+    onModifierSubmit !== undefined &&
+    !isAttaching &&
+    !isSubmitting &&
+    !submitDisabled &&
+    !isVoiceBusy;
+  const showStop = Boolean(
+    isRunning && onStop && !canSubmit && !isAttaching && !isVoiceBusy,
+  );
   const canStartVoiceInput =
     voice !== undefined && voice.isSupported && !isSubmitting;
   const showVoiceAsPrimaryAction =
-    isPointerCoarse && !hasSubmittableInput && canStartVoiceInput;
+    isPointerCoarse &&
+    !isAttaching &&
+    !hasSubmittableInput &&
+    canStartVoiceInput;
   const handleVoicePointerDown = useCallback(
     (event: ReactPointerEvent<HTMLButtonElement>) => {
       if (!isPointerCoarse || event.button !== 0) return;
@@ -2556,8 +2621,12 @@ export function PromptBoxInternal({
     setVoiceActionTransition("exiting");
     voice?.cancel();
   }, [voice]);
-  const effectiveSubmitTitle =
-    !canSubmit && submitDisabledReason ? submitDisabledReason : submitTitle;
+  const attachmentUploadTitle = "Uploading attachments...";
+  const effectiveSubmitTitle = isAttaching
+    ? attachmentUploadTitle
+    : !canSubmit && submitDisabledReason
+      ? submitDisabledReason
+      : submitTitle;
 
   const emitAttachmentFiles = useCallback(
     (files: File[]) => {
@@ -2584,6 +2653,11 @@ export function PromptBoxInternal({
     },
     [blurOnPointerSubmit],
   );
+
+  const handleTouchSubmit = useCallback(() => {
+    blurAfterPointerSubmitRef.current = blurOnPointerSubmit;
+    submitPrompt();
+  }, [blurOnPointerSubmit, submitPrompt]);
 
   const handleSubmitPointerDown = useCallback(
     (event: ReactPointerEvent<HTMLButtonElement>) => {
@@ -3259,12 +3333,17 @@ export function PromptBoxInternal({
                           "transition-colors",
                         )}
                         disabledReason={
-                          !canSubmit ? submitDisabledReason : undefined
+                          !canSubmit
+                            ? isAttaching
+                              ? attachmentUploadTitle
+                              : submitDisabledReason
+                            : undefined
                         }
+                        isBusy={isSubmitting || isAttaching}
                         isCompact={showCompactLayout}
-                        isSubmitting={isSubmitting}
                         onPointerDown={handleSubmitPointerDown}
                         onClick={handleSubmitClick}
+                        onTouchSubmit={handleTouchSubmit}
                         title={effectiveSubmitTitle}
                       />
                     )}

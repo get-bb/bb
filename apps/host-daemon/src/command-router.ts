@@ -62,6 +62,8 @@ interface ReadWriteLaneIdleArgs {
 type CommandRouterTask = Promise<HostDaemonCommandResultForCommand>;
 
 export interface CommandRouterOptions {
+  emitEnvironmentHookProgress?: CommandDispatchOptions["emitEnvironmentHookProgress"];
+  desktopBrowserBroker?: CommandDispatchOptions["desktopBrowserBroker"];
   dataDir: CommandDispatchOptions["dataDir"];
   fetchProjectAttachment: CommandDispatchOptions["fetchProjectAttachment"];
   fetchSkillTree?: CommandDispatchOptions["fetchSkillTree"];
@@ -282,6 +284,7 @@ export class CommandRouter {
       fetchPluginHostArtifact: this.options.fetchPluginHostArtifact,
       runtimeManager: this.options.runtimeManager,
       terminalManager: this.options.terminalManager,
+      desktopBrowserBroker: this.options.desktopBrowserBroker,
       dataDir: this.options.dataDir,
       eventSink: this.options.eventSink,
       listModels: this.options.listModels,
@@ -290,6 +293,7 @@ export class CommandRouter {
       providerInstallationStatus: this.options.providerInstallationStatus,
       providerInstallationRun: this.options.providerInstallationRun,
       refreshShellEnv: this.options.refreshShellEnv,
+      emitEnvironmentHookProgress: this.options.emitEnvironmentHookProgress,
       resolveInteractiveRequest: this.options.resolveInteractiveRequest,
       ensureConnectTunnelIdentity: this.options.ensureConnectTunnelIdentity,
       threadStorageRootPath: this.options.threadStorageRootPath,

@@ -1335,12 +1335,13 @@ export default definePluginApp((app) => {
       "Use this bb from any device, anywhere — powered by getbb.app.",
     component: ConnectSettingsSection,
   });
-  app.slots.sidebarFooterAction({
+  app.experimental_sidebarFooter.register({
+    kind: "action",
     id: "remote-access",
-    title: "Remote access",
+    label: "Remote access",
     icon: "Smartphone",
-    run({ openSettings }) {
-      openSettings();
+    onActivate({ openPluginDetails }) {
+      openPluginDetails();
     },
   });
 });

@@ -9,6 +9,7 @@ import {
   useState,
   type ComponentProps,
   type FocusEvent as ReactFocusEvent,
+  type PointerEvent as ReactPointerEvent,
   type ReactNode,
   type RefObject,
 } from "react";
@@ -53,6 +54,7 @@ import { usePointerCoarse } from "@bb/shared-ui/hooks/use-pointer-coarse";
 import { ThreadTimelineScrollToBottomButton } from "@/views/thread-detail/ThreadTimelineScrollToBottomButton";
 import { useOptionalPaneContext } from "@/views/thread-detail/PaneContext";
 import { ThreadContextWindowIndicator } from "@/components/thread/timeline";
+import { PROMPT_STACK_TRACK_CLASS } from "@/components/promptbox/banner/PromptStackCard";
 import { THREAD_PROMPT_CONTEXT_BANNER_ROW_HEIGHT } from "@/components/promptbox/banner/ThreadPromptContextBanner";
 import {
   isPlanModePrompt,
@@ -113,8 +115,8 @@ const FOLLOW_UP_PROMPT_BOX_DEFAULT_MIN_HEIGHT = 68;
 const FOLLOW_UP_PROMPT_BOX_ELASTIC_TARGET_HEIGHT =
   FOLLOW_UP_PROMPT_BOX_DEFAULT_MIN_HEIGHT +
   THREAD_PROMPT_CONTEXT_BANNER_ROW_HEIGHT;
-const OPEN_COMPOSER_OVERLAY_TRIGGER_SELECTOR =
-  '[aria-haspopup][aria-expanded="true"]';
+const COMPOSER_OVERLAY_TRIGGER_SELECTOR = "[aria-haspopup]";
+const OPEN_COMPOSER_OVERLAY_TRIGGER_SELECTOR = `${COMPOSER_OVERLAY_TRIGGER_SELECTOR}[aria-expanded="true"]`;
 const MOBILE_KEYBOARD_VIEWPORT_MIN_DELTA_PX = 80;
 const MOBILE_FOCUS_EXPANSION_FALLBACK_MS = 350;
 const MOBILE_KEYBOARD_DISMISSAL_FALLBACK_MS = 750;
@@ -209,7 +211,7 @@ function FollowUpPromptBoxStackOnly({
     <PluginComposerViewProvider value={composerView}>
       <PluginComposerHostProvider value={pluginComposerHost ?? null}>
         <div data-promptbox-shell="" className="space-y-2">
-          <div className="grid gap-2">
+          <div className={`grid gap-2 ${PROMPT_STACK_TRACK_CLASS}`}>
             {composerScope ? (
               <ComposerBannersSlot>{stack}</ComposerBannersSlot>
             ) : (
@@ -289,13 +291,6 @@ function FollowUpPromptBoxWithComposer({
     promptBoxRef.current?.focusEnd();
     return promptBoxRef.current !== null;
   }, []);
-  const extensionController = useComposerExtensionController({
-    host: pluginComposerHost ?? null,
-    view: composerView,
-    isFocused: isFocusedPane,
-    isPrimary: isPrimaryComposer,
-    focusDefault,
-  });
   const voice = usePromptVoice(promptBoxRef);
   const isCompactViewport = useIsCompactViewport();
   const isPointerCoarse = usePointerCoarse();
@@ -303,6 +298,8 @@ function FollowUpPromptBoxWithComposer({
   const interactionExpandedRef = useRef(false);
   const pendingFocusExpansionCleanupRef = useRef<(() => void) | null>(null);
   const pendingFocusLossCleanupRef = useRef<(() => void) | null>(null);
+  const pressedOverlayTriggerRef = useRef(false);
+  const pressedOverlayTriggerCleanupRef = useRef<(() => void) | null>(null);
   const [isInteractionExpanded, setIsInteractionExpanded] = useState(false);
   const [widePromptBoxCollapsedFor, setWidePromptBoxCollapsedFor] = useState<
     string | number | null
@@ -341,6 +338,56 @@ function FollowUpPromptBoxWithComposer({
     pendingFocusLossCleanupRef.current = null;
     cleanup?.();
   }, []);
+  const cancelPressedOverlayTrigger = useCallback(() => {
+    const cleanup = pressedOverlayTriggerCleanupRef.current;
+    pressedOverlayTriggerCleanupRef.current = null;
+    cleanup?.();
+  }, []);
+  const handleComposerPointerDown = useCallback(
+    (event: ReactPointerEvent) => {
+      const target = event.target;
+      if (
+        !(target instanceof Element) ||
+        !target.closest(COMPOSER_OVERLAY_TRIGGER_SELECTOR)
+      ) {
+        return;
+      }
+
+      cancelPressedOverlayTrigger();
+      pressedOverlayTriggerRef.current = true;
+      let releaseTimeout: number | null = null;
+      const removeReleaseListeners = () => {
+        window.removeEventListener("pointerup", finishRelease, true);
+        window.removeEventListener("pointercancel", finishRelease, true);
+      };
+      const finishRelease = () => {
+        removeReleaseListeners();
+        releaseTimeout = window.setTimeout(() => {
+          releaseTimeout = null;
+          pressedOverlayTriggerRef.current = false;
+          pressedOverlayTriggerCleanupRef.current = null;
+        });
+      };
+      const cleanup = () => {
+        removeReleaseListeners();
+        if (releaseTimeout !== null) {
+          window.clearTimeout(releaseTimeout);
+        }
+        pressedOverlayTriggerRef.current = false;
+      };
+
+      window.addEventListener("pointerup", finishRelease, {
+        capture: true,
+        once: true,
+      });
+      window.addEventListener("pointercancel", finishRelease, {
+        capture: true,
+        once: true,
+      });
+      pressedOverlayTriggerCleanupRef.current = cleanup;
+    },
+    [cancelPressedOverlayTrigger],
+  );
   const handleComposerFocus = useCallback(
     (event: ReactFocusEvent) => {
       cancelPendingFocusLoss();
@@ -421,6 +468,8 @@ function FollowUpPromptBoxWithComposer({
 
         if (composerElement.contains(document.activeElement)) return;
 
+        if (pressedOverlayTriggerRef.current) return;
+
         if (
           composerElement.querySelector(OPEN_COMPOSER_OVERLAY_TRIGGER_SELECTOR)
         ) {
@@ -499,15 +548,45 @@ function FollowUpPromptBoxWithComposer({
     setIsInteractionExpanded(false);
     setWidePromptBoxCollapsedFor(collapseResetKey);
   }, [cancelPendingFocusExpansion, cancelPendingFocusLoss, collapseResetKey]);
+  const collapseIfFocused = useCallback(() => {
+    const activeElement = document.activeElement;
+    if (
+      !(activeElement instanceof HTMLElement) ||
+      !composerInteractionRef.current?.contains(activeElement)
+    ) {
+      return false;
+    }
+    promptBoxRef.current?.captureHeightForLayoutChange();
+    activeElement.blur();
+    collapseWidePromptBox();
+    return true;
+  }, [collapseWidePromptBox]);
+  const extensionController = useComposerExtensionController({
+    host: pluginComposerHost ?? null,
+    view: composerView,
+    isFocused: isFocusedPane,
+    isPrimary: isPrimaryComposer,
+    collapseIfFocused,
+    focusDefault,
+  });
   useEffect(
     () => () => {
       cancelPendingFocusExpansion();
       cancelPendingFocusLoss();
+      cancelPressedOverlayTrigger();
     },
-    [cancelPendingFocusExpansion, cancelPendingFocusLoss],
+    [
+      cancelPendingFocusExpansion,
+      cancelPendingFocusLoss,
+      cancelPressedOverlayTrigger,
+    ],
   );
   const steerOnPrimarySubmit =
     submitMode.kind === "queue" && composer.steerActiveThreadOnEnter;
+  const isSteeringWhenReady =
+    steerOnPrimarySubmit &&
+    (composer.threadRuntimeDisplayStatus === "provisioning" ||
+      composer.threadRuntimeDisplayStatus === "starting");
   const onPrimarySubmit = steerOnPrimarySubmit
     ? composer.onModifierSubmit
     : composer.onSubmit;
@@ -620,6 +699,7 @@ function FollowUpPromptBoxWithComposer({
       hidden={hasPendingInteraction}
       onBlurCapture={scheduleCollapseAfterFocusLoss}
       onFocusCapture={handleComposerFocus}
+      onPointerDownCapture={handleComposerPointerDown}
     >
       <PromptBoxWithScrollAnchor
         id={id}
@@ -658,7 +738,9 @@ function FollowUpPromptBoxWithComposer({
               ? composer.submitTitle
               : canQueueFollowUp
                 ? steerOnPrimarySubmit
-                  ? "Steer current run (Enter)"
+                  ? isSteeringWhenReady
+                    ? "Steer when ready (Enter)"
+                    : "Steer current run (Enter)"
                   : "Queue follow-up (Enter)"
                 : isStopping
                   ? "Stopping run..."
@@ -754,7 +836,10 @@ function DefaultFollowUpComposer({
         data-promptbox-shell=""
         className="space-y-2"
       >
-        <div ref={stackRef} className="grid gap-2">
+        <div
+          ref={stackRef}
+          className={`grid gap-2 ${PROMPT_STACK_TRACK_CLASS}`}
+        >
           {hasPluginComposerScope ? (
             <ComposerBannersSlot>{stack}</ComposerBannersSlot>
           ) : (

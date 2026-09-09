@@ -146,10 +146,10 @@ class PluginSlotBoundary extends Component<
       this.state.crashed ||
       crashedSlotInstances.has(this.props.instanceKey)
     ) {
-      return (
-        this.props.fallback ?? (
-          <CrashedPluginChip pluginId={this.props.pluginId} />
-        )
+      return this.props.fallback === undefined ? (
+        <CrashedPluginChip pluginId={this.props.pluginId} />
+      ) : (
+        this.props.fallback
       );
     }
     return (

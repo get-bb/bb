@@ -34,7 +34,7 @@ const commitAction: SplitButtonAction = {
 };
 
 const gitSecondaries: SplitButtonAction[] = [
-  { label: "Squash merge", onSelect: noop },
+  { label: "Amend commit", onSelect: noop },
 ];
 
 const openInVSCodeAction: SplitButtonAction = {

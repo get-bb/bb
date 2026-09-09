@@ -154,6 +154,49 @@ function renderFixedTabSplit({
 }
 
 describe("ThreadSecondaryPanel compact file content", () => {
+  it("renders the available tab while persisted active state catches up", () => {
+    const { wrapper: Wrapper } = createQueryClientTestHarness();
+    const fallbackTab = createWorkspaceFilePreviewFixedPanelTab({
+      environmentId: "env-test",
+      projectId: "project-test",
+      tab: {
+        lineRange: null,
+        path: "src/recovered.ts",
+        source: { kind: "working-tree" },
+        statusLabel: null,
+      },
+    });
+
+    render(
+      <Wrapper>
+        <TooltipProvider>
+          <ThreadSecondaryPanel
+            activeTab={null}
+            canUseGitUi={false}
+            fixedTabs={[]}
+            tabs={[
+              createTestRenderableTab(fallbackTab, () => (
+                <div>Recovered tab body</div>
+              )),
+            ]}
+            isConversationCollapsed={false}
+            isOpen
+            metadataContent={null}
+            onClose={noop}
+            onCollapse={noop}
+            onTabReorder={noop}
+            onOpenNewTab={noop}
+            onPanelFocus={noop}
+            onToggleConversationCollapse={noop}
+            renderAsDrawer
+          />
+        </TooltipProvider>
+      </Wrapper>,
+    );
+
+    expect(screen.getByText("Recovered tab body")).toBeTruthy();
+  });
+
   it("renders arbitrary fixed-tab content through the shared surface", () => {
     const { wrapper: Wrapper } = createQueryClientTestHarness();
     const fixedTab = createPluginPageFixedPanelTab({
@@ -650,7 +693,7 @@ describe("ThreadSecondaryPanel Diff eligibility", () => {
 });
 
 describe("ThreadSecondaryPanel hide control glyph", () => {
-  it("shows the drawer glyph while the panel renders as a bottom drawer", () => {
+  it("shows the side-panel glyph while the panel renders as a shelf", () => {
     const view = renderPanel({
       isConversationCollapsed: false,
       onToggleConversationCollapse: noop,
@@ -658,7 +701,7 @@ describe("ThreadSecondaryPanel hide control glyph", () => {
     });
 
     const hideControl = view.getByRole("button", { name: "Hide right panel" });
-    expect(hideControl.querySelector('[data-icon="PanelBottom"]')).toBeTruthy();
+    expect(hideControl.querySelector('[data-icon="PanelRight"]')).toBeTruthy();
   });
 
   it("shows the side-panel glyph on a wide viewport", () => {
@@ -669,6 +712,23 @@ describe("ThreadSecondaryPanel hide control glyph", () => {
 
     const hideControl = view.getByRole("button", { name: "Hide right panel" });
     expect(hideControl.querySelector('[data-icon="PanelRight"]')).toBeTruthy();
+  });
+});
+
+describe("ThreadSecondaryPanel resize boundary", () => {
+  it("keeps the panel seam visible while the clipped panel surface moves", () => {
+    const view = renderPanel({
+      isConversationCollapsed: false,
+      onToggleConversationCollapse: noop,
+    });
+
+    const boundary = view.getByRole("separator", {
+      name: "Resize thread and right panel",
+    });
+    const seam = boundary.querySelector(
+      "span:not([data-panel-resize-hit-target])",
+    );
+    expect(seam?.className).toContain("bg-border-seam");
   });
 });
 

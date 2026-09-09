@@ -334,7 +334,7 @@ export const codexSubAgentActivityItemSchema = z
   .object({
     type: z.literal("subAgentActivity"),
     id: z.string(),
-    kind: z.enum(["started", "interacted", "interrupted"]),
+    kind: z.enum(["started", "interacted", "interrupted", "completed"]),
     agentThreadId: z.string(),
     agentPath: z.string(),
   })
@@ -436,6 +436,27 @@ export const codexHandledThreadItemSchema = z.discriminatedUnion("type", [
       type: z.literal("imageView"),
       id: z.string(),
       path: z.string(),
+    })
+    .passthrough(),
+  z
+    .object({
+      type: z.literal("imageGeneration"),
+      id: z.string(),
+      status: z.union([
+        codexToolReferenceStatusSchema,
+        z.literal("in_progress").transform(() => "inProgress" as const),
+      ]),
+      revisedPrompt: z.string().nullable(),
+      result: z.string(),
+      transparentBackground: z.boolean().nullish(),
+      failure: z
+        .object({
+          type: z.literal("usageLimitExceeded"),
+          limitId: z.string(),
+          resetsAt: z.number().nullable(),
+        })
+        .nullable(),
+      savedPath: z.string().optional(),
     })
     .passthrough(),
   z
@@ -807,8 +828,18 @@ export interface CodexRateLimitSnapshot {
 }
 
 export const codexRateLimitReadResponseSchema = z
-  .object({ rateLimits: codexRateLimitSnapshotUpdateSchema })
-  .passthrough();
+  .object({
+    rateLimits: codexRateLimitSnapshotUpdateSchema,
+    rateLimitsByLimitId: z
+      .record(z.string(), codexRateLimitSnapshotUpdateSchema)
+      .nullable()
+      .optional(),
+  })
+  .passthrough()
+  .transform((response) => ({
+    rateLimits: response.rateLimits,
+    rateLimitsByLimitId: response.rateLimitsByLimitId ?? null,
+  }));
 
 export const codexHandledEventSchema = z.discriminatedUnion("method", [
   createCodexEventSchema(

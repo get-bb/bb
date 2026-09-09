@@ -53,6 +53,20 @@ describe("AppToastContent", () => {
     expect(container.querySelector('[data-icon="Loading"]')).not.toBeNull();
   });
 
+  it("neutralizes Sonner margins on custom toast icons", () => {
+    const { container } = render(
+      <AppToastContent title="Thread Archived" tone="success" />,
+    );
+
+    expect(
+      container.querySelector<SVGElement>('[data-icon="CircleCheck"]')?.style
+        .margin,
+    ).toBe("0px");
+    expect(
+      container.querySelector<SVGElement>('[data-icon="X"]')?.style.margin,
+    ).toBe("0px");
+  });
+
   it("dismisses from the visible close control", () => {
     const onDismiss = vi.fn();
     render(

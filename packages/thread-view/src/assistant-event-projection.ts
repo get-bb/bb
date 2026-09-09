@@ -9,13 +9,15 @@ import {
   projectBufferedTextEvent,
   projectReasoningTextEvent,
 } from "./buffered-text-projection.js";
-import { resolveBufferedTextIdentity } from "./buffered-text-identity.js";
+import {
+  createBufferedTextInstanceKey,
+  resolveBufferedTextIdentity,
+} from "./buffered-text-identity.js";
 import type { EventMeta } from "./event-decode.js";
 import type { EventProjectionAssistantTextMessage } from "./event-projection-types.js";
 import { messageId } from "./format-helpers.js";
 import {
   finalizeReasoningLifecycle,
-  trackReasoningTurn,
   upsertReasoningLifecycle,
 } from "./reasoning-lifecycle-projection.js";
 import type { ProjectionState } from "./event-projection-state.js";
@@ -25,7 +27,6 @@ interface ProjectAssistantAndReasoningEventArgs {
   eventParentToolCallId: string | undefined;
   eventTurnId: string | undefined;
   meta: EventMeta;
-  shouldTrackActiveThinking: boolean;
   state: ProjectionState;
 }
 
@@ -72,18 +73,14 @@ export function projectAssistantAndReasoningEvent(
     turnId: args.eventTurnId,
   });
 
-  if (
-    args.decoded.type === "item/started" &&
-    args.decoded.item.type === "reasoning"
-  ) {
-    trackReasoningTurn(args.state, reasoningIdentity);
-    if (args.shouldTrackActiveThinking) {
-      upsertReasoningLifecycle({
-        identity: reasoningIdentity,
-        meta: args.meta,
-        state: args.state,
-      });
-    }
+  if (reasoningIdentity) {
+    upsertReasoningLifecycle({
+      identity: reasoningIdentity,
+      meta: args.meta,
+      parentToolCallId: args.eventParentToolCallId,
+      state: args.state,
+      threadId: args.decoded.threadId,
+    });
   }
 
   if (
@@ -137,24 +134,12 @@ export function projectAssistantAndReasoningEvent(
   }
 
   if (
-    (args.decoded.type === "item/reasoning/summaryTextDelta" ||
-      args.decoded.type === "item/reasoning/textDelta") &&
-    reasoningIdentity
-  ) {
-    trackReasoningTurn(args.state, reasoningIdentity);
-    if (args.shouldTrackActiveThinking) {
-      upsertReasoningLifecycle({
-        identity: reasoningIdentity,
-        meta: args.meta,
-        state: args.state,
-      });
-    }
-  }
-
-  if (
     projectReasoningTextEvent({
       identity: reasoningIdentity,
-      mode: "delta",
+      mode:
+        args.decoded.type === "item/reasoning/summaryTextDelta"
+          ? "summary-delta"
+          : "content-delta",
       state: args.state,
       text: parseReasoningDeltaText(args.decoded),
     })
@@ -162,29 +147,42 @@ export function projectAssistantAndReasoningEvent(
     return true;
   }
 
+  const reasoningFinalText = parseReasoningFinalText(args.decoded);
+  let reasoningCompletionText = reasoningFinalText;
   if (
-    projectReasoningTextEvent({
-      identity: reasoningIdentity,
-      mode: "final",
-      state: args.state,
-      text: parseReasoningFinalText(args.decoded),
-    })
+    reasoningIdentity &&
+    args.decoded.type === "item/completed" &&
+    args.decoded.item.type === "reasoning"
   ) {
+    const deltas = args.state.reasoningDeltaTextByKey.get(
+      createBufferedTextInstanceKey(reasoningIdentity),
+    );
     if (
-      args.decoded.type === "item/completed" &&
-      args.decoded.item.type === "reasoning"
+      deltas?.summary === args.decoded.item.summary.join("") &&
+      deltas.content === args.decoded.item.content.join("")
     ) {
-      finalizeReasoningLifecycle(args.state, reasoningIdentity);
+      reasoningCompletionText = null;
     }
-    return true;
   }
+  const projectedReasoningFinal = projectReasoningTextEvent({
+    identity: reasoningIdentity,
+    mode: "final",
+    state: args.state,
+    text: reasoningCompletionText,
+  });
 
   if (
     args.decoded.type === "item/completed" &&
     args.decoded.item.type === "reasoning"
   ) {
-    finalizeReasoningLifecycle(args.state, reasoningIdentity);
+    finalizeReasoningLifecycle({
+      identity: reasoningIdentity,
+      meta: args.meta,
+      state: args.state,
+      status: "completed",
+      text: reasoningCompletionText,
+    });
   }
 
-  return false;
+  return projectedReasoningFinal || reasoningFinalText !== null;
 }

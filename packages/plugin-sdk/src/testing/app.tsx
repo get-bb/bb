@@ -15,8 +15,10 @@ import { act, render, type RenderResult } from "@testing-library/react";
 import {
   type BbContext,
   type BbNavigate,
+  type BranchesState,
   type ComposerCustomization,
   type ComposerView,
+  type ExperimentalAppOverlayRegistration,
   type PluginAppDefinition,
   type PluginAppSetup,
   type PluginCodeThemeState,
@@ -43,6 +45,7 @@ import {
   type PluginSettingsSectionRegistration,
   type PluginSettingsState,
   type PluginSidebarFooterActionRegistration,
+  type ExperimentalSidebarNavigationRegistration,
   type PluginSidebarPullRequest,
   type PluginSidebarThreadActions,
   type PluginSidebarThreadPullRequestState,
@@ -65,8 +68,11 @@ import {
   type ExperimentalOpenFixedTabOptions,
   type ExperimentalPluginFixedTabReference,
   type NewThreadComposerProps,
+  type BranchPickerProps,
+  type CheckoutState,
   type ExperimentalPermissionModePickerProps,
   type ExperimentalProviderModelPickerProps,
+  type PluginEnvironmentProviderInputsRegistration,
   type ThreadChatProps,
   type DiffProps,
   type SourceCodeProps,
@@ -75,7 +81,10 @@ import {
 import { isComposerDraftEmpty } from "../internal/composer-view.js";
 import { normalizePluginThreadRowStatus } from "../internal/composer-customization-validation.js";
 import { normalizeExperimentalFileOpenOptions } from "../internal/file-navigation-validation.js";
-import { collectPluginAppRegistrations } from "../internal/plugin-app-collector.js";
+import {
+  collectPluginAppRegistrations,
+  type CollectedExperimentalSidebarFooterItem,
+} from "../internal/plugin-app-collector.js";
 
 /**
  * `@get-bb/plugin-sdk/testing/app` — the frontend plugin test harness. Tests a
@@ -159,6 +168,12 @@ export interface ComposerLog {
   quotes: string[];
   mentions: PluginComposerMention[];
   focusCount: number;
+  /**
+   * Every `experimental_submit` the plugin ran, in order. The harness composer
+   * has no submit pipeline of its own, so it records the options and clears the
+   * draft — enough to assert what a picker scheduled and that it tidied up.
+   */
+  submits: Array<{ sendAt: number }>;
 }
 
 interface TestComposerStore {
@@ -190,6 +205,8 @@ interface SlotEnv {
   sidebarPullRequests: ReadonlyMap<string, PluginSidebarPullRequest>;
   providers: PluginProvidersState;
   codeTheme: PluginCodeThemeState;
+  branchesState: BranchesState;
+  checkoutState: CheckoutState;
 }
 
 interface TestFixedTabTargetStore {
@@ -596,6 +613,41 @@ function TestProviderModelPicker({
   );
 }
 
+function TestBranchPicker({
+  hostId,
+  projectId,
+  value,
+  onChange,
+  label,
+  placeholder,
+  disabled,
+}: BranchPickerProps) {
+  const inert = hostId === null || projectId === null || disabled === true;
+  return (
+    <div
+      data-testid="bb-branch-picker"
+      data-host-id={hostId ?? ""}
+      data-project-id={projectId ?? ""}
+      data-disabled={inert ? "true" : "false"}
+    >
+      <input
+        aria-label={label ?? "Branch"}
+        placeholder={placeholder ?? ""}
+        disabled={inert}
+        value={value ?? ""}
+        onChange={(event) => {
+          const next = event.target.value;
+          if (next.length === 0) {
+            onChange(null);
+          } else {
+            onChange(next);
+          }
+        }}
+      />
+    </div>
+  );
+}
+
 function TestPermissionModePicker({
   providerId,
   value,
@@ -799,6 +851,13 @@ const testPluginSdkApp = {
   experimental_NewThreadComposer: TestNewThreadComposer,
   experimental_ProviderModelPicker: TestProviderModelPicker,
   experimental_PermissionModePicker: TestPermissionModePicker,
+  experimental_BranchPicker: TestBranchPicker,
+  experimental_useBranches(): BranchesState {
+    return useSlotEnv("experimental_useBranches").branchesState;
+  },
+  experimental_useCheckoutState(): CheckoutState {
+    return useSlotEnv("experimental_useCheckoutState").checkoutState;
+  },
   experimental_SourceCode: TestSourceCode,
   experimental_Diff: TestDiff,
   experimental_useSidebarThreads(): PluginSidebarThreadsState {
@@ -888,12 +947,15 @@ export function installTestPluginRuntime(): void {
 export interface CapturedPluginApp {
   homepageSections: PluginHomepageSectionRegistration[];
   settingsSections: PluginSettingsSectionRegistration[];
+  appOverlays: ExperimentalAppOverlayRegistration[];
   navPanels: PluginNavPanelRegistration[];
   threadPanelActions: PluginThreadPanelActionRegistration[];
   newThreadPanelActions: PluginNewThreadPanelActionRegistration[];
   composerCustomizations: ComposerCustomization[];
   pendingInteractions: PluginPendingInteractionRegistration[];
   sidebarFooterActions: PluginSidebarFooterActionRegistration[];
+  experimentalSidebarFooterItems: CollectedExperimentalSidebarFooterItem[];
+  experimentalSidebarNavigations: ExperimentalSidebarNavigationRegistration[];
   threadLists: PluginThreadListRegistration[];
   threadHeaderActions: PluginThreadHeaderActionRegistration[];
   fileOpeners: PluginFileOpenerRegistration[];
@@ -903,6 +965,7 @@ export interface CapturedPluginApp {
   messageActions: PluginMessageActionRegistration[];
   providerIcons: PluginProviderIconRegistration[];
   timelineRenderers: PluginTimelineRendererRegistration[];
+  environmentProviderInputs: PluginEnvironmentProviderInputsRegistration[];
   contentScripts: PluginContentScriptRegistration[];
 }
 
@@ -1095,7 +1158,7 @@ export interface RenderSlotOptions<
    */
   rpc?: PluginRpcTestHandlers<Contract>;
   /** `useSettings()` values; omitted → `{ values: undefined, isLoading: false }`. */
-  settings?: Record<string, string | boolean>;
+  settings?: Record<string, string | number | boolean>;
   /** `useBbContext()` selection; both default to null. */
   context?: { projectId?: string | null; threadId?: string | null };
   /** Initial `useRealtimeConnectionState()` value; defaults to `connected`. */
@@ -1121,6 +1184,9 @@ export interface RenderSlotOptions<
    * mode with no resolved document, the state a plugin sees on first paint.
    */
   codeTheme?: Partial<PluginCodeThemeState>;
+  branchesState?: Partial<BranchesState>;
+  /** Checkout facts `experimental_useCheckoutState()` reports. */
+  checkoutState?: Partial<CheckoutState>;
   /**
    * Pull requests `experimental_useSidebarThreadPullRequest()` reports, keyed
    * by thread id. Omitted → every thread reports none.
@@ -1492,6 +1558,7 @@ export function renderSlot<
     quotes: [],
     mentions: [],
     focusCount: 0,
+    submits: [],
   };
   const composerOwnership = { active: true };
   const composer: TestComposerStore = {
@@ -1548,6 +1615,19 @@ export function renderSlot<
       focus() {
         composerLog.focusCount += 1;
       },
+      async experimental_submit({ sendAt }) {
+        if (!composerOwnership.active) {
+          throw new Error("This composer is no longer active.");
+        }
+        if (composerText.trim() === "") {
+          throw new Error("Type a message before scheduling it.");
+        }
+        if (!Number.isFinite(sendAt) || sendAt <= Date.now()) {
+          throw new Error("Pick a time in the future.");
+        }
+        composerLog.submits.push({ sendAt });
+        commitComposerText("");
+      },
     },
   };
 
@@ -1571,6 +1651,21 @@ export function renderSlot<
     sidebarPullRequests,
     providers,
     codeTheme,
+    branchesState: {
+      branches: options.branchesState?.branches ?? [],
+      remoteBranches: options.branchesState?.remoteBranches ?? [],
+      isLoading: options.branchesState?.isLoading ?? false,
+      refresh: options.branchesState?.refresh ?? (() => Promise.resolve()),
+    },
+    checkoutState: {
+      isGit: true,
+      unborn: false,
+      detached: false,
+      dirty: false,
+      currentBranch: "main",
+      operation: { kind: "none" },
+      ...options.checkoutState,
+    },
   };
 
   const releaseComposerOwnership = (): void => {

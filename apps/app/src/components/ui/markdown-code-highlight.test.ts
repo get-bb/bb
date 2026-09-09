@@ -1,5 +1,11 @@
+import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { highlightMarkdownCode } from "./markdown-code-highlight.js";
+
+const stylesheet = readFileSync(
+  new URL("./markdown-code-highlight.css", import.meta.url),
+  "utf8",
+);
 
 function tokens(html: string): Array<[string, string]> {
   return [
@@ -63,5 +69,34 @@ describe("highlightMarkdownCode", () => {
         highlightMarkdownCode({ code: "-- c\nSELECT 1", language: "sql" }),
       ),
     ).toContainEqual(["comment", "-- c"]);
+  });
+
+  it("styles every semantic line class emitted for a diff", () => {
+    const code = [
+      "diff --git a/config.ini b/config.ini",
+      "--- a/config.ini",
+      "+++ b/config.ini",
+      "@@ -1 +1 @@",
+      "-enabled=false",
+      "+enabled=true",
+    ].join("\n");
+    const html = highlightMarkdownCode({ code, language: "diff" });
+
+    for (const role of ["add", "remove", "hunk", "meta"]) {
+      expect(html).toContain(`sh__line--diff-${role}`);
+      expect(stylesheet).toContain(
+        `.bb-code-highlight .sh__line--diff-${role}`,
+      );
+    }
+
+    expect(stylesheet).toMatch(
+      /\.bb-code-highlight \.sh__line\s*\{[^}]*display: inline-block;[^}]*min-width: 100%;[^}]*\}/u,
+    );
+    expect(stylesheet).toMatch(
+      /\.bb-code-highlight \.sh__line--diff-add\s*\{[^}]*var\(--diff-added\)[^}]*\}/u,
+    );
+    expect(stylesheet).toMatch(
+      /\.bb-code-highlight \.sh__line--diff-remove\s*\{[^}]*var\(--diff-removed\)[^}]*\}/u,
+    );
   });
 });

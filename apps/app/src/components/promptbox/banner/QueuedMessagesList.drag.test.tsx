@@ -3,22 +3,17 @@
 import { fireEvent, render, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { ThreadQueuedMessage } from "@bb/domain";
+import { makeThreadQueuedMessage } from "@bb/test-helpers/domain-fixtures";
 import { QueuedMessagesList } from "./QueuedMessagesList";
 
 const noop = () => {};
 
 function makeQueuedMessage(id: string, text: string): ThreadQueuedMessage {
-  return {
+  return makeThreadQueuedMessage({
     id,
+    threadId: "thr_queue",
     content: [{ type: "text", text, mentions: [] }],
-    model: "gpt-5.5",
-    reasoningLevel: "medium",
-    permissionMode: "auto",
-    serviceTier: "default",
-    groupWithNext: false,
-    createdAt: 0,
-    updatedAt: 0,
-  };
+  });
 }
 
 function rect({ top, bottom }: { top: number; bottom: number }) {
@@ -40,12 +35,14 @@ describe("QueuedMessagesList group-handle drag", () => {
     ];
     const { container, getByLabelText } = render(
       <QueuedMessagesList
+        attachedToComposer={true}
         queuedMessages={queuedMessages}
+        sendAction="send-now"
         sendDisabled={false}
         actionDisabled={false}
         processingMessageId={null}
         processingAction={null}
-        onSendImmediately={noop}
+        onSend={noop}
         onReorder={noop}
         onSetGroupBoundary={onSetGroupBoundary}
         onEdit={noop}

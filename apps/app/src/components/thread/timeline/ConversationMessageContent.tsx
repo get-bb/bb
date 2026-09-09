@@ -1,4 +1,5 @@
 import { useMemo, useRef, useState, type CSSProperties } from "react";
+import remend from "remend";
 import type {
   TimelineConversationAttachments,
   TimelineRowBase,
@@ -68,7 +69,7 @@ import {
 } from "./SelectableMessageProse.js";
 import type { ThreadTimelinePluginMessageAction } from "./types.js";
 import type { PromptDraftAttachment } from "@bb/client-core";
-import { buildThreadHostFileContentUrl } from "@/lib/file-content-urls";
+import { buildMarkdownMessageLinkRouting } from "@/components/ui/markdown-message-link-routing";
 
 interface ConversationMessageContentBaseProps {
   attachments: TimelineConversationAttachments | null;
@@ -78,6 +79,7 @@ interface ConversationMessageContentBaseProps {
   projectId?: string;
   resolveUserAttachmentImageSrc?: UserAttachmentImageSrcResolver;
   text: string;
+  workspaceRootPath?: string;
 }
 
 interface ConversationMessageContentUserProps extends ConversationMessageContentBaseProps {
@@ -98,6 +100,7 @@ interface ConversationMessageContentUserProps extends ConversationMessageContent
   senderIsPluginSideChat: boolean;
   systemMessageKind: TimelineUserConversationRow["systemMessageKind"];
   systemMessageSubject: TimelineUserConversationRow["systemMessageSubject"];
+  threadId?: string;
   turnRequest: TimelineUserConversationRow["turnRequest"];
 }
 
@@ -121,6 +124,8 @@ const ASSISTANT_THREAD_MENTIONS: MarkdownThreadMentions = {
 const STREAMING_SETTLED_MARKDOWN_CLASS_NAME = "[&>p:last-child]:mb-2";
 const STREAMING_TAIL_MARKDOWN_CLASS_NAME =
   "[&>h1:first-child]:mt-4 [&>h2:first-child]:mt-4 [&>h3:first-child]:mt-3 [&>h4:first-child]:mt-3 [&>h5:first-child]:mt-2 [&>h6:first-child]:mt-2";
+const STREAMING_MARKDOWN_BYPASS_PATTERN =
+  /^(?:[ \t]*(?:>|[-+*]|\d{1,9}[.)]))*[ \t]*::[a-zA-Z]|`{3}|~{3}/mu;
 
 interface ConversationMessageContentAssistantProps
   extends ConversationMessageContentBaseProps, AssistantMessageRowIdentity {
@@ -164,7 +169,9 @@ interface UserConversationMessageProps {
   systemMessageKind: TimelineUserConversationRow["systemMessageKind"];
   systemMessageSubject: TimelineUserConversationRow["systemMessageSubject"];
   text: string;
+  threadId?: string;
   turnRequest: TimelineUserConversationRow["turnRequest"];
+  workspaceRootPath?: string;
 }
 
 interface AssistantConversationMessageProps extends AssistantMessageRowIdentity {
@@ -188,19 +195,19 @@ interface AssistantConversationMessageProps extends AssistantMessageRowIdentity 
 }
 
 interface CollapsibleMessageTextProps {
+  linkRouting?: MarkdownLinkRouting;
   mentions: readonly PromptTextMention[];
   resolveMentionLink?: PromptMentionLinkResolver;
   resolveSegmentLinkHref?: TimelineTitleLinkResolver;
-  onOpenLink?: ThreadTimelineLinkHandler;
   text: string;
   mutePrefixLength?: number;
 }
 
 function CollapsibleMessageText({
+  linkRouting,
   mentions,
   resolveMentionLink,
   resolveSegmentLinkHref,
-  onOpenLink,
   text,
   mutePrefixLength,
 }: CollapsibleMessageTextProps) {
@@ -244,11 +251,6 @@ function CollapsibleMessageText({
     }),
     [body.mentions],
   );
-  const linkRouting = useMemo<MarkdownLinkRouting | undefined>(
-    () => (onOpenLink ? { onOpenLink } : undefined),
-    [onOpenLink],
-  );
-
   const isOverflowing = useIsOverflowing({
     elementRef: bodyRef,
     enabled: !isExpanded,
@@ -347,8 +349,20 @@ function UserConversationMessage({
   systemMessageKind,
   systemMessageSubject,
   text,
+  threadId,
   turnRequest,
+  workspaceRootPath,
 }: UserConversationMessageProps) {
+  const linkRouting = useMemo(
+    () =>
+      buildMarkdownMessageLinkRouting({
+        onOpenLink,
+        onOpenLocalFileLink,
+        threadId,
+        workspaceRootPath,
+      }),
+    [onOpenLink, onOpenLocalFileLink, threadId, workspaceRootPath],
+  );
   if (initiator === "agent" && senderThreadId !== null) {
     const body = generatedConversationBodySlice({ initiator, text });
     const bodyMentions = shiftMentionsToTextRange({
@@ -377,7 +391,9 @@ function UserConversationMessage({
         systemMessageKind={systemMessageKind}
         systemMessageSubject={systemMessageSubject}
         text={body.text}
+        threadId={threadId}
         turnRequest={turnRequest}
+        workspaceRootPath={workspaceRootPath}
       />
     );
   }
@@ -408,7 +424,9 @@ function UserConversationMessage({
         systemMessageKind={systemMessageKind}
         systemMessageSubject={systemMessageSubject}
         text={body.text}
+        threadId={threadId}
         turnRequest={turnRequest}
+        workspaceRootPath={workspaceRootPath}
       />
     );
   }
@@ -421,7 +439,7 @@ function UserConversationMessage({
     <div className="w-full" data-message-column="">
       <div className="group/message ml-auto flex w-fit max-w-[70%] flex-col items-end">
         {requestLabel ? (
-          <div className="mb-1 flex justify-end">
+          <div className="mb-1 flex items-center justify-end gap-2">
             <TurnRequestLabel
               turnRequest={turnRequest}
               icon="ArrowTurnForward"
@@ -436,7 +454,7 @@ function UserConversationMessage({
                 mentions={mentions}
                 resolveMentionLink={resolveMentionLink}
                 resolveSegmentLinkHref={resolveSegmentLinkHref}
-                onOpenLink={onOpenLink}
+                linkRouting={linkRouting}
                 text={text}
                 mutePrefixLength={mutePrefixLength || undefined}
               />
@@ -457,6 +475,7 @@ function UserConversationMessage({
             alignment="end"
             mobileActionDisplay={mobileActionDisplay}
             addToChatAttachments={addToChatAttachments}
+            copyImageUrl={attachmentItems.imageItems[0]?.src}
             onAddToChat={onAddToChat}
             onEdit={onEdit}
             pluginActions={pluginActions}
@@ -493,41 +512,30 @@ function AssistantConversationMessage({
     () => (streaming ? splitStreamingMarkdown(text) : null),
     [streaming, text],
   );
-  const linkRouting = useMemo<MarkdownLinkRouting>(() => {
-    const localImage: NonNullable<MarkdownLinkRouting["localImage"]> = {
-      absolutePaths: {
-        kind: "trusted-host",
-      },
-      resolveSrc: ({ path }) => buildThreadHostFileContentUrl(threadId, path),
-    };
-    const routing: MarkdownLinkRouting = {
-      localImage,
-    };
-    if (workspaceRootPath !== undefined) {
-      localImage.relativePaths = {
-        baseDir: workspaceRootPath,
-        rootPath: workspaceRootPath,
-      };
+  const liveMarkdown = useMemo(() => {
+    const tail = streamingSplit?.tail ?? text;
+    if (!streaming || STREAMING_MARKDOWN_BYPASS_PATTERN.test(tail)) {
+      return tail;
     }
-    if (onOpenLink) {
-      routing.onOpenLink = onOpenLink;
-    }
-    if (onOpenLocalFileLink) {
-      routing.localFile = {
-        absoluteLinks: {
-          kind: "trusted-host",
-        },
-        onOpenLink: onOpenLocalFileLink,
-      };
-      if (workspaceRootPath !== undefined) {
-        routing.localFile.relativeLinks = {
-          baseDir: workspaceRootPath,
-          rootPath: workspaceRootPath,
-        };
-      }
-    }
-    return routing;
-  }, [onOpenLink, onOpenLocalFileLink, threadId, workspaceRootPath]);
+    return remend(closeUnterminatedMarkdownCodeSpan(tail), {
+      linkMode: "text-only",
+      comparisonOperators: false,
+      htmlTags: false,
+      katex: false,
+      setextHeadings: false,
+      singleTilde: false,
+    });
+  }, [streaming, streamingSplit, text]);
+  const linkRouting = useMemo(
+    () =>
+      buildMarkdownMessageLinkRouting({
+        onOpenLink,
+        onOpenLocalFileLink,
+        threadId,
+        workspaceRootPath,
+      }),
+    [onOpenLink, onOpenLocalFileLink, threadId, workspaceRootPath],
+  );
 
   const messageDirectiveRegistry = useMessageDirectiveRegistry();
   const openDirectiveWorkspaceFile = useMemo<
@@ -599,7 +607,9 @@ function AssistantConversationMessage({
               ? undefined
               : STREAMING_SETTLED_MARKDOWN_CLASS_NAME
           }
-          content={streamingSplit === null ? text : streamingSplit.settled}
+          content={
+            streamingSplit === null ? liveMarkdown : streamingSplit.settled
+          }
           linkRouting={linkRouting}
           messageDirectives={messageDirectives}
           threadMentions={ASSISTANT_THREAD_MENTIONS}
@@ -607,7 +617,7 @@ function AssistantConversationMessage({
         {streamingSplit === null ? null : (
           <MarkdownPreview
             className={STREAMING_TAIL_MARKDOWN_CLASS_NAME}
-            content={streamingSplit.tail}
+            content={liveMarkdown}
             linkRouting={linkRouting}
             messageDirectives={messageDirectives}
             threadMentions={ASSISTANT_THREAD_MENTIONS}
@@ -626,6 +636,7 @@ function AssistantConversationMessage({
           alignment="start"
           mobileActionDisplay={mobileActionDisplay}
           addToChatAttachments={addToChatAttachments}
+          copyImageUrl={attachmentItems.imageItems[0]?.src}
           onAddToChat={onAddToChat}
           onFork={onFork}
           onSendToMain={onSendToMain}
@@ -687,7 +698,9 @@ export function ConversationMessageContent(
         systemMessageKind={props.systemMessageKind}
         systemMessageSubject={props.systemMessageSubject}
         text={text}
+        threadId={props.threadId}
         turnRequest={props.turnRequest}
+        workspaceRootPath={props.workspaceRootPath}
       />
     );
   }

@@ -1,6 +1,7 @@
 import { appToast, AppToastContent, type AppToastTone } from "./app-toast";
 import { AppToastCommitDescription } from "./app-toast-descriptions";
 import { ArchivedThreadToastDescription } from "../thread/ArchivedThreadToastDescription";
+import { pluginNotificationDescription } from "../plugin/PluginNotificationDescription";
 import { Button } from "@bb/shared-ui/button";
 import { StoryCard, StoryRow } from "../../../.ladle/story-card";
 import { useState, type ReactNode } from "react";
@@ -53,9 +54,6 @@ interface GitSuccessDescriptionParams {
 const LIVE_TOAST_DURATION = Infinity;
 const GIT_SUCCESS_COMMIT_SHA = "e547e81c0ffee1234567890abcdef123456789";
 const GIT_SUCCESS_COMMIT_SUBJECT = "Update provider CLI health toasts";
-const SQUASH_MERGE_SUCCESS_COMMIT_SHA =
-  "a83f4d2b055e5eed1234567890abcdef1234567";
-const SQUASH_MERGE_SUCCESS_COMMIT_SUBJECT = "Merge toast UX fixes";
 
 function gitSuccessDescription({
   commitSha,
@@ -110,6 +108,62 @@ const TOAST_EXAMPLES: readonly ToastExample[] = [
     },
   },
   {
+    id: "plugin-update-failed",
+    group: "Plugin management",
+    label: "update failed",
+    source: "UpdatePluginDialog / PluginUpdatesCard",
+    usage: [
+      "Plugin update fails",
+      "Plugin name opens its installed detail page",
+    ],
+    current: {
+      tone: "error",
+      title: "Plugin update failed",
+      description: pluginNotificationDescription(
+        { id: "usage", name: "Usage" },
+        "installed",
+        "bb connect: timed out waiting for the tunnel client.",
+      ),
+    },
+  },
+  {
+    id: "plugin-updated",
+    group: "Plugin management",
+    label: "update success",
+    source: "UpdatePluginDialog / PluginUpdatesCard",
+    usage: [
+      "Plugin update succeeds",
+      "Plugin name opens its installed detail page",
+    ],
+    current: {
+      tone: "success",
+      title: "Plugin updated",
+      description: pluginNotificationDescription(
+        { id: "usage", name: "Usage" },
+        "installed",
+        "Now running 1.4.0.",
+      ),
+    },
+  },
+  {
+    id: "plugin-installed",
+    group: "Plugin management",
+    label: "install success",
+    source: "AddPluginDialog",
+    usage: [
+      "Plugin install succeeds",
+      "Plugin name opens its installed detail page",
+    ],
+    current: {
+      tone: "success",
+      title: "Plugin installed",
+      description: pluginNotificationDescription(
+        { id: "linear", name: "Linear" },
+        "installed",
+      ),
+    },
+  },
+  {
     id: "git-loading",
     group: "Git actions",
     label: "git loading",
@@ -132,21 +186,6 @@ const TOAST_EXAMPLES: readonly ToastExample[] = [
       description: gitSuccessDescription({
         commitSha: GIT_SUCCESS_COMMIT_SHA,
         commitSubject: GIT_SUCCESS_COMMIT_SUBJECT,
-      }),
-    },
-  },
-  {
-    id: "git-squash-merge-success",
-    group: "Git actions",
-    label: "squash merge success",
-    source: "useThreadGitActions",
-    usage: ["Squash merge action succeeds"],
-    current: {
-      tone: "success",
-      title: "Squash merge completed",
-      description: gitSuccessDescription({
-        commitSha: SQUASH_MERGE_SUCCESS_COMMIT_SHA,
-        commitSubject: SQUASH_MERGE_SUCCESS_COMMIT_SUBJECT,
       }),
     },
   },
@@ -208,7 +247,7 @@ const TOAST_EXAMPLES: readonly ToastExample[] = [
     group: "Thread actions",
     label: "archive worktree group",
     source: "ProjectRow",
-    usage: ["Sidebar project row", "Archive worktree group succeeds"],
+    usage: ["Sidebar project row", "Archive environment group succeeds"],
     current: {
       tone: "success",
       title: "Archived 3 threads",

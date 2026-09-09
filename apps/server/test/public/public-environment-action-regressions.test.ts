@@ -35,7 +35,7 @@ function rawPullRequest(
 }
 
 describe("public environment action regressions", () => {
-  it("rejects malformed squash-merge payload with a 400", async () => {
+  it("rejects the removed squash-merge action with a 400", async () => {
     await withTestHarness(async (harness) => {
       const squashMergeResponse = await harness.app.request(
         "/api/v1/environments/env_missing/actions",
@@ -44,6 +44,7 @@ describe("public environment action regressions", () => {
           headers: { "content-type": "application/json" },
           body: JSON.stringify({
             action: "squash_merge",
+            options: { mergeBaseBranch: "main" },
           }),
         },
       );
@@ -65,8 +66,7 @@ describe("public environment action regressions", () => {
       const environment = seedEnvironment(harness.deps, {
         hostId: host.id,
         projectId: project.id,
-        managed: true,
-        workspaceProvisionType: "managed-worktree",
+        environmentProviderId: "git-worktree",
         path: "/tmp/thread-target",
       });
 
@@ -172,77 +172,6 @@ describe("public environment action regressions", () => {
     });
   });
 
-  it("clears the stored branch during detached squash-merge status preflight", async () => {
-    await withTestHarness(async (harness) => {
-      const { host } = seedHostSession(harness.deps, {
-        id: "host-squash-detached-branch",
-      });
-      const { project } = seedProjectWithSource(harness.deps, {
-        hostId: host.id,
-      });
-      const environment = seedEnvironment(harness.deps, {
-        hostId: host.id,
-        projectId: project.id,
-        managed: true,
-        workspaceProvisionType: "managed-worktree",
-        branchName: "bb/stale",
-        defaultBranch: "main",
-        path: "/tmp/squash-detached-branch-env",
-      });
-
-      const responsePromise = harness.app.request(
-        `/api/v1/environments/${environment.id}/actions`,
-        {
-          method: "POST",
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify({
-            action: "squash_merge",
-            options: { mergeBaseBranch: "main" },
-          }),
-        },
-      );
-
-      const statusCommand = await waitForQueuedCommand(
-        harness,
-        ({ command }) =>
-          command.type === "workspace.status" &&
-          command.environmentId === environment.id,
-      );
-      await reportQueuedCommandSuccess(harness, statusCommand, {
-        outcome: "available",
-        workspaceStatus: {
-          workingTree: {
-            insertions: 0,
-            deletions: 0,
-            lineStatsComplete: true,
-            files: [],
-            hasUncommittedChanges: false,
-            state: "clean",
-          },
-          branch: {
-            currentBranch: null,
-            defaultBranch: "main",
-          },
-          checkout: {
-            kind: "detached",
-            headSha: "0123456789abcdef0123456789abcdef01234567",
-          },
-          mergeBase: null,
-        },
-      });
-
-      const response = await responsePromise;
-      expect(response.status).toBe(409);
-      await expect(readJson(response)).resolves.toMatchObject({
-        code: "invalid_request",
-      });
-      expect(getEnvironment(harness.db, environment.id)).toMatchObject({
-        branchName: null,
-        defaultBranch: "main",
-      });
-    });
-  });
-
   it("marks draft pull requests ready through the environment action route", async () => {
     await withTestHarness(async (harness) => {
       const { host } = seedHostSession(harness.deps, {
@@ -254,8 +183,7 @@ describe("public environment action regressions", () => {
       const environment = seedEnvironment(harness.deps, {
         hostId: host.id,
         projectId: project.id,
-        managed: true,
-        workspaceProvisionType: "managed-worktree",
+        environmentProviderId: "git-worktree",
         path: "/tmp/pr-ready-env",
       });
 
@@ -312,8 +240,7 @@ describe("public environment action regressions", () => {
       const environment = seedEnvironment(harness.deps, {
         hostId: host.id,
         projectId: project.id,
-        managed: true,
-        workspaceProvisionType: "managed-worktree",
+        environmentProviderId: "git-worktree",
         path: "/tmp/pr-draft-env",
       });
 
@@ -370,8 +297,7 @@ describe("public environment action regressions", () => {
       const environment = seedEnvironment(harness.deps, {
         hostId: host.id,
         projectId: project.id,
-        managed: true,
-        workspaceProvisionType: "managed-worktree",
+        environmentProviderId: "git-worktree",
         path: "/tmp/pr-blocked-env",
       });
 
@@ -420,8 +346,7 @@ describe("public environment action regressions", () => {
       const environment = seedEnvironment(harness.deps, {
         hostId: host.id,
         projectId: project.id,
-        managed: true,
-        workspaceProvisionType: "managed-worktree",
+        environmentProviderId: "git-worktree",
         path: "/tmp/pr-merge-env",
       });
 

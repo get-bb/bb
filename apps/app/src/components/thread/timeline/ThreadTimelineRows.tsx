@@ -72,6 +72,7 @@ import {
 } from "./MessageActionBar.js";
 import { TimelineSelectionMenu } from "./TimelineSelectionMenu.js";
 import type { MessageProseSelection } from "./SelectableMessageProse.js";
+import { TimelineReasoningDetail } from "./TimelineReasoningDetail.js";
 import { ExpandableTimelineRow } from "./ExpandableTimelineRow.js";
 import {
   TimelineStaticRowHeader,
@@ -1023,7 +1024,9 @@ const ConversationRowContent = memo(function ConversationRowContent({
         systemMessageSubject={row.systemMessageSubject}
         pluginActions={rowPluginActions}
         text={row.text}
+        threadId={row.threadId}
         turnRequest={row.turnRequest}
+        workspaceRootPath={workspaceRootPath}
       />
     );
   }
@@ -1238,6 +1241,11 @@ function TimelineExpandableBody({
         />
       );
     case "system":
+      if (row.systemKind === "operation" && row.operationKind === "reasoning") {
+        return row.detail ? (
+          <TimelineReasoningDetail text={row.detail} />
+        ) : null;
+      }
       return row.detail ? (
         <TimelineSystemDetailBlock
           detail={row.detail}
@@ -1391,8 +1399,17 @@ export function pastRowDimClassName({
     return undefined;
   }
   switch (row.kind) {
-    case "work":
     case "system":
+      if (
+        row.systemKind === "operation" &&
+        (row.operationKind === "warning" || row.operationKind === "deprecation")
+      )
+        return undefined;
+      return row.status === "completed" ? PAST_ROW_DIM_CLASS_NAME : undefined;
+    case "work":
+      return row.status === "completed" || row.status === "error"
+        ? PAST_ROW_DIM_CLASS_NAME
+        : undefined;
     case "turn":
     case "bundle-summary":
     case "step-summary":
@@ -1418,6 +1435,8 @@ export function systemOperationLeadingIcon(
   parentChangeAction: TimelineParentChange["action"] | null,
 ): IconName | undefined {
   switch (operationKind) {
+    case "reasoning":
+      return "AiBrain01";
     case "parent-change":
       return parentChangeAction === "release" ? "UserRound" : "UserRoundPlus";
     case "thread-provisioning":
@@ -1628,6 +1647,13 @@ function TimelineExpandableRowView({
 
   return (
     <ExpandableTimelineRow
+      reasoningExpansionKey={
+        row.kind === "system" &&
+        row.systemKind === "operation" &&
+        row.operationKind === "reasoning"
+          ? (row.reasoningId ?? row.id)
+          : undefined
+      }
       title={title}
       summaryClassName={pastRowDimClassName({
         activeLatestBundleId,
@@ -1998,7 +2024,7 @@ function ThreadTimelineRowsForTimelineView(props: ThreadTimelineRowsProps) {
     [rows, scopeActive],
   );
   const liveAutoExpandedRowIds = useStableReadonlySet(
-    computedAutoExpansionRowIds.liveFrontierRowIds,
+    computedAutoExpansionRowIds.liveExpandedRowIds,
   );
   const accumulatedTerminalRowIdsRef = useRef(new Set<string>());
   const accumulatedTerminalRowIds = useMemo(() => {

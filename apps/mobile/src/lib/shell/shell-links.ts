@@ -13,6 +13,7 @@ const NATIVE_ONLY_PREFIXES = [
   "/settings/servers",
   "/settings/machines",
   "/settings/device",
+  "/settings/notifications",
 ] as const;
 
 export function isNativeOnlyShellPath(path: string): boolean {

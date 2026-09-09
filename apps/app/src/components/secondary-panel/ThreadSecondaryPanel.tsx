@@ -37,12 +37,13 @@ import {
   THREAD_SECONDARY_PANEL_MIN_SIZE_PERCENT,
 } from "./secondaryPanelSizing";
 import {
-  getRightPanelToggleIconName,
+  RIGHT_PANEL_TOGGLE_ICON_NAME,
   resolveConversationCollapseControl,
 } from "./panelToggleControlState";
 import { SecondaryPanelHostLayoutContext } from "./SecondaryPanelHostLayoutContext";
 import { SecondaryPanelTabStrip } from "./SecondaryPanelTabStrip";
 import type {
+  MarketplacePluginDetailPanelTab,
   SecondaryPanelPaneRenderContext,
   SecondaryPanelRenderableTab,
   SecondaryPanelTabReorderHandler,
@@ -81,9 +82,9 @@ import {
 import { useDesktopWindowState } from "@/hooks/useDesktopWindowState";
 import { useOptionalIsSidebarShowing } from "@/components/ui/sidebar.js";
 import { IframeDragGuardOverlay } from "@/lib/iframe-drag-guard";
-import {
-  type FixedPanelViewTab,
-  type SecondaryFixedPanelTab,
+import type {
+  FixedPanelViewTab,
+  SecondaryFixedPanelTab,
 } from "@/lib/fixed-panel-tabs-state";
 import { useAppCommandShortcut } from "@/components/commands/AppCommandProvider";
 import { AppCommandShortcutHint } from "@/components/commands/AppCommandShortcutHint";
@@ -173,7 +174,7 @@ export interface SecondaryPanelFixedTab {
 }
 
 export interface ThreadSecondaryPanelProps {
-  activeTab: SecondaryFixedPanelTab | null;
+  activeTab: SecondaryFixedPanelTab | MarketplacePluginDetailPanelTab | null;
   canUseGitUi: boolean;
   gitDiffTabStatus?: GitDiffTabStatus;
   onRetryGitDiffEligibility?: () => void;
@@ -247,13 +248,15 @@ export function ThreadSecondaryPanel({
   const newTabShortcut = useAppCommandShortcut("panel.newTab");
   const togglePanelShortcut = useAppCommandShortcut("panel.toggle");
   const diffShortcut = useAppCommandShortcut("diff.toggle");
-  const activeRenderableTab = tabs.find((tab) => tab.tab.id === activeTab?.id);
   const visibleTabs = useMemo(
     () => tabs.filter((tab) => tab.isHidden !== true),
     [tabs],
   );
+  const activeRenderableTab =
+    tabs.find((tab) => tab.tab.id === activeTab?.id) ??
+    (activeTab === null && fixedTabs.length === 0 ? visibleTabs[0] : undefined);
   const hasActiveRenderableTab = activeRenderableTab !== undefined;
-  const hidePanelIconName = getRightPanelToggleIconName(renderAsDrawer);
+  const hidePanelIconName = RIGHT_PANEL_TOGGLE_ICON_NAME;
   const conversationCollapseControl =
     renderAsDrawer || !showConversationCollapseControl
       ? null
@@ -303,7 +306,7 @@ export function ThreadSecondaryPanel({
   );
   const hostLayout = useContext(SecondaryPanelHostLayoutContext);
   const handlePanelCollapse = useCallback(() => {
-    if (hostLayout?.isSuppressed) {
+    if (!isOpen || hostLayout?.isSuppressed) {
       return;
     }
     if (!hasPanelExpandedRef.current) {
@@ -311,7 +314,7 @@ export function ThreadSecondaryPanel({
     }
     hasPanelExpandedRef.current = false;
     onCollapse();
-  }, [hostLayout?.isSuppressed, onCollapse]);
+  }, [hostLayout?.isSuppressed, isOpen, onCollapse]);
   const handlePanelTransitionEnd = useCallback(
     (event: TransitionEvent<HTMLElement>) => {
       if (
@@ -961,7 +964,7 @@ export function ThreadSecondaryPanel({
   ) : (
     renderPanelSurface({
       activeSurfaceFixedTab: activeFixedTab,
-      activeSurfaceTabId: activeTab?.id ?? null,
+      activeSurfaceTabId: activeRenderableTab?.tab.id ?? activeTab?.id ?? null,
       surfaceTabs: tabs,
       fixedSurfaceTabs: fixedTabs,
       isFocused: true,
@@ -1202,7 +1205,7 @@ function SecondaryPanelResizeHandle({
             "pointer-events-none absolute inset-y-0 left-full z-10 w-px transition-colors",
             isResizing
               ? "bg-accent-foreground/50"
-              : "bg-transparent group-hover:bg-accent-foreground/35",
+              : "bg-border-seam group-hover:bg-accent-foreground/35",
           )}
         />
       )}

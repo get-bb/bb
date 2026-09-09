@@ -79,7 +79,7 @@ const FIRST_PARTY_PROVIDER_DECLARATIONS = [
     supportsThreadArchive: false,
     supportsThreadRename: false,
     fork: "tip",
-    supportsManualCompaction: false,
+    supportsManualCompaction: true,
     supportsUsage: false,
     visibility: "installed",
     hasLogo: true,
@@ -119,8 +119,15 @@ const ALWAYS_VISIBLE_PROVIDER_IDS = FIRST_PARTY_PROVIDER_DECLARATIONS.filter(
   (plugin) => plugin.visibility === "always",
 ).map((plugin) => plugin.providerId);
 
-function expectedLogoUrl(providerId: string): string {
-  return `/api/v1/system/providers/${providerId}/logo`;
+function expectedLogoUrl(
+  registry: TestAppHarness["deps"]["providerRegistry"],
+  providerId: string,
+): string {
+  const hash = registry.get(providerId)?.icon?.hash;
+  if (hash === undefined) {
+    throw new Error(`${providerId} registered no icon hash`);
+  }
+  return `/api/v1/system/providers/${providerId}/logo?h=${hash}`;
 }
 
 async function installFirstPartyProviderPlugins(
@@ -161,7 +168,9 @@ describe("first-party provider plugins", () => {
           expect(registration.pluginId, label).toBe(plugin.pluginId);
           expect(registration.info.displayName, label).toBe(plugin.displayName);
           expect(registration.info.logoUrl, label).toBe(
-            plugin.hasLogo ? expectedLogoUrl(plugin.providerId) : null,
+            plugin.hasLogo
+              ? expectedLogoUrl(registry, plugin.providerId)
+              : null,
           );
           expect(registration.icon !== undefined, label).toBe(plugin.hasLogo);
           expect(registration.visibility, label).toBe(plugin.visibility);
@@ -191,7 +200,9 @@ describe("first-party provider plugins", () => {
           ALWAYS_VISIBLE_PROVIDER_IDS,
         );
         expect(infos.map((info) => info.logoUrl)).toEqual(
-          ALWAYS_VISIBLE_PROVIDER_IDS.map(expectedLogoUrl),
+          ALWAYS_VISIBLE_PROVIDER_IDS.map((providerId) =>
+            expectedLogoUrl(registry, providerId),
+          ),
         );
         expect(
           infos.map((info) => [info.id, info.capabilities.supportsFork]),
@@ -244,7 +255,7 @@ describe("first-party provider plugins", () => {
         expect(clientFields("codex")).toStrictEqual({
           id: "codex",
           displayName: "Codex",
-          logoUrl: expectedLogoUrl("codex"),
+          logoUrl: expectedLogoUrl(harness.deps.providerRegistry, "codex"),
           available: true,
           maintenance: { health: true, usage: true, installation: true },
           capabilities: {
@@ -262,7 +273,10 @@ describe("first-party provider plugins", () => {
         expect(clientFields("claude-code")).toStrictEqual({
           id: "claude-code",
           displayName: "Claude Code",
-          logoUrl: expectedLogoUrl("claude-code"),
+          logoUrl: expectedLogoUrl(
+            harness.deps.providerRegistry,
+            "claude-code",
+          ),
           available: true,
           maintenance: { health: true, usage: true, installation: true },
           capabilities: {
@@ -280,7 +294,7 @@ describe("first-party provider plugins", () => {
         expect(clientFields("pi")).toStrictEqual({
           id: "pi",
           displayName: "Pi",
-          logoUrl: expectedLogoUrl("pi"),
+          logoUrl: expectedLogoUrl(harness.deps.providerRegistry, "pi"),
           available: true,
           maintenance: { health: true, usage: false, installation: true },
           capabilities: {
@@ -298,7 +312,7 @@ describe("first-party provider plugins", () => {
         expect(clientFields("acp-cursor")).toStrictEqual({
           id: "acp-cursor",
           displayName: "Cursor",
-          logoUrl: expectedLogoUrl("acp-cursor"),
+          logoUrl: expectedLogoUrl(harness.deps.providerRegistry, "acp-cursor"),
           available: true,
           maintenance: { health: true, usage: true, installation: true },
           capabilities: {

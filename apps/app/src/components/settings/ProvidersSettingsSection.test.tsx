@@ -4,6 +4,7 @@ import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { ProviderInfo } from "@bb/domain";
 import { defaultAppSettings } from "@bb/domain";
+import { makeProviderInfo } from "@bb/test-helpers/domain-fixtures";
 import {
   ProvidersSettingsSection,
   reorderProviderIds,
@@ -18,13 +19,10 @@ vi.mock("@/hooks/queries/system-queries", () => ({
 }));
 
 function provider(id: string, displayName: string): ProviderInfo {
-  return {
+  return makeProviderInfo({
     id,
-    pluginId: `provider-${id}`,
     displayName,
     logoUrl: null,
-    available: true,
-    maintenance: { health: false, usage: false, installation: false },
     capabilities: {
       supportsThreadArchive: false,
       supportsThreadRename: false,
@@ -35,8 +33,7 @@ function provider(id: string, displayName: string): ProviderInfo {
       modelCatalogScope: "workspace",
       permissionModes: ["full"],
     },
-    composerActions: [],
-  };
+  });
 }
 
 afterEach(cleanup);

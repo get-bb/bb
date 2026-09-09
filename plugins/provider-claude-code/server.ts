@@ -28,6 +28,20 @@ export default function plugin(bb: BbPluginApi) {
       description: "Hide Claude Code's native Workflow tool for bb threads.",
       default: false,
     },
+    idleQueryReleaseEnabled: {
+      type: "boolean",
+      label: "Release idle Claude processes",
+      description:
+        "Close a quiescent Claude Code process after 30 seconds and resume it on the next turn.",
+      default: false,
+    },
+    chromeEnabled: {
+      type: "boolean",
+      label: "Claude in Chrome",
+      description:
+        "Start Claude Code with the Claude in Chrome browser tools. Needs the Chrome extension and a claude.ai login on the host.",
+      default: false,
+    },
   });
 
   bb.providers.register({
@@ -85,6 +99,9 @@ export default function plugin(bb: BbPluginApi) {
         memoryEnabled: context.settings.memoryEnabled !== false,
         providerSubagentsEnabled: context.settings.subagentsDisabled !== true,
         workflowsEnabled: context.settings.workflowsDisabled !== true,
+        idleQueryReleaseEnabled:
+          context.settings.idleQueryReleaseEnabled === true,
+        chromeEnabled: context.settings.chromeEnabled === true,
         ...(context.promptMode === "plan"
           ? { claudeCodePermissionMode: "plan" }
           : {}),

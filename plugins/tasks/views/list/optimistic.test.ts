@@ -11,24 +11,15 @@ import {
   settleSuccess,
   type TaskEntries,
 } from "./optimistic.js";
+import { makeTask } from "../../test-fixtures.js";
 
 function task(overrides: Partial<Task> & Pick<Task, "id">): Task {
-  return {
+  return makeTask({
     projectId: "01ARZ3NDEKTSV4RRFFQ69G5FAA",
-    number: 1,
-    key: "TSK-1",
-    title: "A task",
-    description: "",
-    status: "todo",
-    priority: "none",
-    dueDate: null,
-    parentTaskId: null,
-    position: 0,
     createdAt: "2026-07-01T00:00:00.000Z",
     updatedAt: "2026-07-01T00:00:00.000Z",
-    labelIds: [],
     ...overrides,
-  };
+  });
 }
 
 const empty: TaskEntries = new Map();

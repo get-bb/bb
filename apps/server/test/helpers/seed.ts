@@ -23,17 +23,19 @@ import {
   turnScope,
 } from "@bb/domain";
 import type {
+  EnvironmentProviderSelection,
   EnvironmentStatus,
   PermissionMode,
   PromptInput,
+  QueuedMessageWaitingOn,
   RecordedPermissionMode,
   StoredThreadEventDataForType,
   ThreadEventScope,
   ThreadEventItemType,
   ThreadEventType,
   ThreadOriginKind,
+  ThreadStatus,
   ThreadVisibility,
-  WorkspaceProvisionType,
 } from "@bb/domain";
 import type { AppDeps } from "../../src/types.js";
 import { registerTestHostRpcCapture } from "./commands.js";
@@ -77,22 +79,21 @@ export function seedHost(
     connectMachineId?: string;
     id?: string;
     name?: string;
-    type?: "persistent";
   } = {},
 ) {
   return upsertHost(deps.db, deps.hub, {
+    type: "persistent",
     ...(args.connectMachineId !== undefined
       ? { connectMachineId: args.connectMachineId }
       : {}),
     id: args.id,
     name: args.name ?? "Test Host",
-    type: args.type ?? "persistent",
   });
 }
 
 export function seedHostSession(
   deps: Pick<AppDeps, "db" | "hub">,
-  args: { id?: string; name?: string; type?: "persistent" } = {},
+  args: { id?: string; name?: string } = {},
 ) {
   const host = seedHost(deps, args);
   const session = seedSession(deps, host.id);
@@ -147,10 +148,12 @@ export function seedEnvironment(
     projectId: string;
     path?: string | null;
     status?: EnvironmentStatus;
-    managed?: boolean;
-    workspaceProvisionType?: WorkspaceProvisionType;
+    environmentProviderId?: string;
+    environmentProviderPluginId?: string;
+    environmentProviderInstanceKey?: string;
+    environmentProviderSelection?: EnvironmentProviderSelection;
+    providerOwnsPath?: boolean;
     isGitRepo?: boolean;
-    isWorktree?: boolean;
     branchName?: string | null;
     baseBranch?: string | null;
     defaultBranch?: string | null;
@@ -158,15 +161,25 @@ export function seedEnvironment(
   },
 ) {
   return createEnvironment(deps.db, deps.hub, {
+    providerOwnsPath: args.providerOwnsPath ?? false,
     projectId: args.projectId,
     hostId: args.hostId,
     path: args.path !== undefined ? args.path : "/tmp/test-environment",
     status: args.status ?? "ready",
-    managed: args.managed ?? false,
-    isGitRepo: args.isGitRepo ?? args.workspaceProvisionType !== "personal",
-    isWorktree:
-      args.isWorktree ?? args.workspaceProvisionType === "managed-worktree",
-    workspaceProvisionType: args.workspaceProvisionType ?? "unmanaged",
+    isGitRepo: args.isGitRepo ?? true,
+    ...(args.environmentProviderId !== undefined
+      ? {
+          environmentProvider: {
+            environmentProviderId: args.environmentProviderId,
+            pluginId: args.environmentProviderPluginId,
+            instanceKey: args.environmentProviderInstanceKey ?? null,
+            selection: args.environmentProviderSelection ?? {
+              machine: { type: "existing", hostId: args.hostId },
+              inputs: null,
+            },
+          },
+        }
+      : {}),
     branchName: args.branchName !== undefined ? args.branchName : "bb/test",
     baseBranch: args.baseBranch !== undefined ? args.baseBranch : null,
     defaultBranch:
@@ -181,7 +194,7 @@ export function seedThread(
     projectId: string;
     environmentId?: string | null;
     providerId?: string;
-    status?: "idle" | "starting" | "active" | "stopping" | "error";
+    status?: ThreadStatus;
     title?: string | null;
     parentThreadId?: string | null;
     sourceThreadId?: string | null;
@@ -245,6 +258,9 @@ export function seedQueuedMessage(
     permissionMode?: PermissionMode;
     senderThreadId?: string | null;
     serviceTier?: string;
+    /** Defaults to a row with no wait: an ordinary queued message. */
+    waitingOn?: QueuedMessageWaitingOn | null;
+    sendAt?: number | null;
   },
 ) {
   return createQueuedThreadMessage(deps.db, deps.hub, {
@@ -255,6 +271,10 @@ export function seedQueuedMessage(
     permissionMode: args.permissionMode ?? "full",
     senderThreadId: args.senderThreadId ?? null,
     serviceTier: args.serviceTier ?? "default",
+    waitingOn: args.waitingOn ?? null,
+    sendAt: args.sendAt ?? null,
+    payload: { kind: "inline" },
+    systemNotice: null,
   });
 }
 

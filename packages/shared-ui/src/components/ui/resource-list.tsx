@@ -1,6 +1,9 @@
 export {
+  RESOURCE_ICON_FRAME_SIZES,
   RESOURCE_ROUTE_LABEL_EVENT,
   ResourceCardStat,
+  ResourceIconFrame,
+  type ResourceIconFrameSize,
   ResourceLocationMeta,
   ResourceMeta,
   ResourceState,
@@ -31,6 +34,7 @@ export {
   type ResourceOverflowMenuItem,
   ResourceRow,
   ResourceRowDetailChevron,
+  targetsResourceAction,
 } from "./resource/row";
 export {
   ResourceDetailActionRow,

@@ -232,27 +232,19 @@ describe("bb project command output", () => {
     ).toEqual(projects);
   });
 
-  it("bb project branches can wait for remote refs", async () => {
+  it("bb project branches waits for remote refs implicitly", async () => {
     const branches = { branches: ["main"], remoteBranches: ["origin/main"] };
     const get = vi.fn(async () => branches);
     stubServerApi({ "v1.projects.:id.branches.$get": get });
 
     await runCommand(
-      [
-        "project",
-        "branches",
-        "proj-1",
-        "--host",
-        "host-1",
-        "--refresh",
-        "--json",
-      ],
+      ["project", "branches", "proj-1", "--host", "host-1", "--json"],
       register,
     );
 
     expect(get).toHaveBeenCalledWith({
       param: { id: "proj-1" },
-      query: { hostId: "host-1", refresh: "blocking" },
+      query: { hostId: "host-1" },
     });
     expect(
       JSON.parse(String(vi.mocked(console.log).mock.calls[0]?.[0])),

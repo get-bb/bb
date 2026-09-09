@@ -15,6 +15,11 @@ import type {
 } from "@get-bb/plugin-sdk";
 import { providerAlreadyRegisteredMessage } from "@get-bb/plugin-sdk/internal/host-policy";
 
+export interface ProviderHealthCacheKey {
+  hostId: string;
+  providerId: string;
+}
+
 export interface ProviderServerCapabilities {
   reasoningLevels: readonly ReasoningLevel[];
   fork: ProviderFork;
@@ -45,15 +50,25 @@ export interface ProviderRegistration {
   deriveProviderOptions: (
     context: Omit<PluginProviderOptionsContext, "settings">,
   ) => Readonly<Record<string, JsonValue>>;
-  icon?: { bytes: Uint8Array; contentType: string };
+  icon?: { bytes: Uint8Array; contentType: string; hash: string };
   iconNames: ReadonlySet<string>;
 }
+
+const PROVIDER_INSTALLED_CACHE_TTL_MS = 5 * 60_000;
 
 export interface ProviderRegistryService {
   list(): ProviderRegistration[];
   getUserDefaultProviderId(): string | null;
   get(providerId: string): ProviderRegistration | null;
   getRegistrationRevision(): number;
+  lookupInstalled(key: ProviderHealthCacheKey): Promise<boolean> | undefined;
+  rememberInstalled(
+    key: ProviderHealthCacheKey,
+    value: Promise<boolean>,
+  ): void;
+  forgetInstalledKey(key: ProviderHealthCacheKey): void;
+  forgetInstalledProvider(providerId: string): void;
+  forgetAllInstalled(): void;
   getServerCapabilities(providerId: string): ProviderServerCapabilities | null;
   getSupportedPermissionModes(
     providerId: string,
@@ -94,6 +109,17 @@ export function createProviderRegistryService(
   >();
   const providerRegistrationWaiters = new Map<string, Set<() => void>>();
   let registrationRevision = 0;
+  const installedByHostId = new Map<
+    string,
+    Map<
+      string,
+      {
+        registrationRevision: number;
+        expiresAt: number;
+        value: Promise<boolean>;
+      }
+    >
+  >();
   let registrationSequence = 0;
 
   function compareInstallRank(
@@ -129,10 +155,6 @@ export function createProviderRegistryService(
 
   function getRegistration(providerId: string): ProviderRegistration | null {
     return pluginRegistrations.get(providerId) ?? null;
-  }
-
-  function hasProviderRegistration(providerId: string): boolean {
-    return pluginRegistrations.has(providerId);
   }
 
   function releaseProviderRegistrationWaiters(providerId: string): void {
@@ -199,6 +221,53 @@ export function createProviderRegistryService(
 
     getRegistrationRevision() {
       return registrationRevision;
+    },
+
+    lookupInstalled(key) {
+      const hostEntries = installedByHostId.get(key.hostId);
+      if (hostEntries === undefined) return undefined;
+      const entry = hostEntries.get(key.providerId);
+      if (entry === undefined) return undefined;
+      if (
+        entry.registrationRevision !== registrationRevision ||
+        entry.expiresAt <= Date.now()
+      ) {
+        hostEntries.delete(key.providerId);
+        if (hostEntries.size === 0) installedByHostId.delete(key.hostId);
+        return undefined;
+      }
+      return entry.value;
+    },
+
+    rememberInstalled(key, value) {
+      let hostEntries = installedByHostId.get(key.hostId);
+      if (hostEntries === undefined) {
+        hostEntries = new Map();
+        installedByHostId.set(key.hostId, hostEntries);
+      }
+      hostEntries.set(key.providerId, {
+        registrationRevision,
+        expiresAt: Date.now() + PROVIDER_INSTALLED_CACHE_TTL_MS,
+        value,
+      });
+    },
+
+    forgetInstalledKey(key) {
+      const hostEntries = installedByHostId.get(key.hostId);
+      if (hostEntries === undefined) return;
+      hostEntries.delete(key.providerId);
+      if (hostEntries.size === 0) installedByHostId.delete(key.hostId);
+    },
+
+    forgetInstalledProvider(providerId) {
+      for (const [hostId, hostEntries] of installedByHostId) {
+        hostEntries.delete(providerId);
+        if (hostEntries.size === 0) installedByHostId.delete(hostId);
+      }
+    },
+
+    forgetAllInstalled() {
+      installedByHostId.clear();
     },
 
     getServerCapabilities(providerId) {
@@ -281,7 +350,7 @@ export function createProviderRegistryService(
     },
 
     async whenProviderRegistered(providerId) {
-      if (hasProviderRegistration(providerId) || settle === null) {
+      if (pluginRegistrations.has(providerId) || settle === null) {
         return;
       }
       const key = providerId;

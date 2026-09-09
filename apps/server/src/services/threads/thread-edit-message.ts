@@ -242,22 +242,6 @@ function resolveEditableTurnCandidate(
   ) {
     conflict("The selected message does not belong to a root turn");
   }
-  const turnAcceptedCount = db
-    .select({ count: sql<number>`COUNT(*)` })
-    .from(events)
-    .where(
-      and(
-        eq(events.threadId, thread.id),
-        eq(events.type, "turn/input/accepted"),
-        eq(events.turnId, accepted.turnId),
-      ),
-    )
-    .get()?.count;
-  if (turnAcceptedCount !== 1) {
-    conflict(
-      "A turn containing steers or multiple accepted messages cannot be edited",
-    );
-  }
   const precedingTurn = db
     .select({ turnId: events.turnId })
     .from(events)

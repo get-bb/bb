@@ -197,10 +197,6 @@ function findTimelineRowElement(
   return null;
 }
 
-function isScrollIntentKey(event: KeyboardEvent) {
-  return SCROLL_INTENT_KEYS.has(event.key);
-}
-
 function isEditableKeyboardTarget(target: EventTarget | null) {
   if (!(target instanceof HTMLElement)) return false;
 
@@ -618,7 +614,7 @@ export function BottomAnchoredScrollBody({
     (event: KeyboardEvent) => {
       const scrollArea = scrollAreaRef.current;
       if (!scrollArea) return;
-      if (!isScrollIntentKey(event)) return;
+      if (!SCROLL_INTENT_KEYS.has(event.key)) return;
       if (isEditableKeyboardTarget(event.target)) return;
       if (!isKeyboardEventFromScrollArea(event, scrollArea)) return;
 

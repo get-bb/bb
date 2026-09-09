@@ -264,12 +264,12 @@ describe("workflow service policy integration", () => {
 
   it("applies live settings to future run snapshots without mutating existing runs", async () => {
     const initial = {
-      maxActiveRuns: "1",
-      maxConcurrentAgents: "2",
-      maxAgentCalls: "3",
-      totalRunTimeoutMs: "120000",
-      retentionDays: "7",
-      maxNotificationBytes: "2048",
+      maxActiveRuns: 1,
+      maxConcurrentAgents: 2,
+      maxAgentCalls: 3,
+      totalRunTimeoutMs: 120_000,
+      retentionDays: 7,
+      maxNotificationBytes: 2048,
     };
     const { bb, harness } = createFakePluginHost({
       pluginId: "workflows",
@@ -303,12 +303,12 @@ describe("workflow service policy integration", () => {
       })) as string,
     ) as { runId: string };
     const next = {
-      maxActiveRuns: "2",
-      maxConcurrentAgents: "4",
-      maxAgentCalls: "8",
-      totalRunTimeoutMs: "180000",
-      retentionDays: "14",
-      maxNotificationBytes: "4096",
+      maxActiveRuns: 2,
+      maxConcurrentAgents: 4,
+      maxAgentCalls: 8,
+      totalRunTimeoutMs: 180_000,
+      retentionDays: 14,
+      maxNotificationBytes: 4096,
     };
     await harness.setSettings(next);
     const second = JSON.parse(
@@ -337,16 +337,8 @@ describe("workflow service policy integration", () => {
     const secondStatus = JSON.parse(secondStatusResult.stdout!) as {
       settings: Record<string, number>;
     };
-    expect(firstStatus.settings).toEqual(
-      Object.fromEntries(
-        Object.entries(initial).map(([key, value]) => [key, Number(value)]),
-      ),
-    );
-    expect(secondStatus.settings).toEqual(
-      Object.fromEntries(
-        Object.entries(next).map(([key, value]) => [key, Number(value)]),
-      ),
-    );
+    expect(firstStatus.settings).toEqual(initial);
+    expect(secondStatus.settings).toEqual(next);
   });
 
   it("resolves named and path children on the origin host", async () => {

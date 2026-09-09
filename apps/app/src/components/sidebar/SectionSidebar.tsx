@@ -93,6 +93,40 @@ export function SectionSidebarActionRow({
   );
 }
 
+export function SectionSidebarDisclosureRow({
+  expanded,
+  label,
+  onToggle,
+}: {
+  expanded: boolean;
+  label: string;
+  onToggle: () => void;
+}) {
+  return (
+    <Button
+      type="button"
+      size="sm"
+      variant="ghost"
+      aria-expanded={expanded}
+      className={cn(
+        PROJECT_LIST_ACTION_BUTTON_CLASS,
+        "w-full text-subtle-foreground/75",
+      )}
+      onClick={onToggle}
+    >
+      <Icon
+        name="ChevronRight"
+        className={cn(
+          "size-3 shrink-0 transition-transform duration-150",
+          expanded && "rotate-90",
+        )}
+        aria-hidden="true"
+      />
+      <span className="min-w-0 flex-1 truncate text-left">{label}</span>
+    </Button>
+  );
+}
+
 export function SectionSidebarLabel({ children }: { children: ReactNode }) {
   return (
     <div

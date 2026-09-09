@@ -81,10 +81,7 @@ vi.mock("@get-bb/plugin-sdk/app", async (importOriginal) => ({
     </button>
   ),
 }));
-import {
-  EMPTY_PLUGIN_UPDATE_STATE,
-  type PluginListItem,
-} from "@/hooks/queries/plugin-settings-queries";
+import { type PluginListItem } from "@/hooks/queries/plugin-settings-queries";
 import { createQueryClientTestHarness } from "@/test/queryClientTestHarness";
 import {
   resetPluginSlotStoreForTest,
@@ -94,6 +91,11 @@ import { PluginDetail } from "./PluginDetail";
 import { SkillDetailView, splitMarkdownIntoChunks } from "./SkillDetailView";
 import { projectSkillsQueryKey } from "@/hooks/queries/query-keys";
 import { sdk } from "@/lib/sdk";
+import {
+  makePluginListItem,
+  makePluginRegistrationSet,
+} from "@/test/fixtures/plugins";
+import { buildMarkdownFileImageRouting } from "@/components/ui/markdown-file-image-routing";
 
 afterEach(() => {
   cleanup();
@@ -110,34 +112,18 @@ function renderedRecipe(container: HTMLElement): Array<[string, string]> {
   );
 }
 
-const PLUGIN: PluginListItem = {
+const PLUGIN: PluginListItem = makePluginListItem({
   id: "github",
   source: "builtin:github",
   rootDir: "/managed/plugins/github",
-  version: "0.1.0",
-  enabled: true,
-  status: "running",
-  statusDetail: null,
   description: "Browse GitHub issues and pull requests in BB.",
   name: "GitHub",
   icon: "Github",
-  compactIconUrl: null,
-  logoUrl: null,
-  logoDarkUrl: null,
-  hasSettings: false,
-  handlerStats: { count: 0, totalMs: 0, maxMs: 0, errorCount: 0 },
-  services: [],
-  schedules: [],
-  cliCommand: null,
-  capabilities: [],
-  app: { hasApp: false, bundle: null },
   provenance: "catalog",
-  isOrphanedBuiltin: false,
   catalogEntryId: "github",
   publisherLabel: "BB Community",
   sourceDisplay: "BB Official · GitHub",
-  updateState: EMPTY_PLUGIN_UPDATE_STATE,
-};
+});
 
 function renderPlugin(
   plugin: PluginListItem,
@@ -162,6 +148,8 @@ function renderPlugin(
           onEdit={() => {}}
           onOpenSource={() => {}}
           onDelete={() => {}}
+          catalogEntries={[]}
+          onOpenPlugin={() => undefined}
         />
       </QueryClientWrapper>
     </MemoryRouter>,
@@ -173,7 +161,7 @@ describe("Plugin detail recipe", () => {
     const { container } = renderPlugin(PLUGIN);
 
     expect(renderedRecipe(container)).toEqual([
-      ["overview", "About"],
+      ["overview", ""],
       ["release", "Release"],
     ]);
   });
@@ -195,7 +183,7 @@ describe("Plugin detail recipe", () => {
     });
 
     expect(renderedRecipe(container)).toEqual([
-      ["overview", "About"],
+      ["overview", ""],
       ["release", "Release"],
       ["activity", "Background services"],
       ["activity", "Scheduled jobs"],
@@ -209,13 +197,13 @@ describe("Plugin detail recipe", () => {
     });
 
     expect(renderedRecipe(container)).toEqual([
-      ["overview", "About"],
+      ["overview", ""],
       ["release", "Release"],
       ["activity", "Background services"],
     ]);
   });
 
-  it("keeps About present when a plugin declares no description", () => {
+  it("keeps the description present when a plugin declares no description", () => {
     const { container } = renderPlugin({ ...PLUGIN, description: null });
 
     expect(renderedRecipe(container).map(([kind]) => kind)).toContain(
@@ -309,23 +297,23 @@ describe("Plugin detail recipe", () => {
   });
 
   it("keeps browser-registered app surfaces in Capabilities", () => {
-    setPluginSlotRegistrations("github", {
-      homepageSections: [],
-      settingsSections: [],
-      navPanels: [
-        {
-          id: "issues",
-          title: "Issues",
-          icon: "Github",
-          path: "issues",
-          component: () => null,
-        },
-      ],
-      threadPanelActions: [],
-      sidebarFooterActions: [],
-      fileOpeners: [],
-      messageDirectives: [],
-    });
+    setPluginSlotRegistrations(
+      "github",
+      makePluginRegistrationSet({
+        navPanels: [
+          {
+            id: "issues",
+            title: "Issues",
+            icon: "Github",
+            path: "issues",
+            component: () => null,
+          },
+        ],
+        threadPanelActions: [],
+        sidebarFooterActions: [],
+        fileOpeners: [],
+      }),
+    );
     renderPlugin({ ...PLUGIN, app: { hasApp: true, bundle: null } });
 
     expect(screen.getByText("Issues")).toBeTruthy();
@@ -335,62 +323,64 @@ describe("Plugin detail recipe", () => {
     const listSkills = vi
       .spyOn(sdk.skills, "list")
       .mockResolvedValue({ skills: [] });
-    setPluginSlotRegistrations("github", {
-      homepageSections: [
-        {
-          id: "dashboard",
-          title: "GitHub dashboard",
-          component: () => null,
-        },
-      ],
-      settingsSections: [
-        {
-          id: "advanced",
-          title: "Advanced settings",
-          component: () => null,
-        },
-      ],
-      navPanels: [
-        {
-          id: "issues",
-          title: "Issues",
-          icon: "Github",
-          path: "issues",
-          component: () => null,
-        },
-      ],
-      threadPanelActions: [
-        {
-          id: "inspect",
-          title: "Inspect issue",
-          component: () => null,
-        },
-      ],
-      sidebarFooterActions: [],
-      threadLists: [
-        {
-          id: "github-threads",
-          title: "GitHub threads",
-          component: () => null,
-        },
-      ],
-      threadHeaderActions: [
-        {
-          id: "sync",
-          title: "Sync status",
-          component: () => null,
-        },
-      ],
-      fileOpeners: [
-        {
-          id: "markdown",
-          title: "Markdown viewer",
-          extensions: ["md"],
-          component: () => null,
-        },
-      ],
-      messageDirectives: [],
-    });
+    setPluginSlotRegistrations(
+      "github",
+      makePluginRegistrationSet({
+        homepageSections: [
+          {
+            id: "dashboard",
+            title: "GitHub dashboard",
+            component: () => null,
+          },
+        ],
+        settingsSections: [
+          {
+            id: "advanced",
+            title: "Advanced settings",
+            component: () => null,
+          },
+        ],
+        navPanels: [
+          {
+            id: "issues",
+            title: "Issues",
+            icon: "Github",
+            path: "issues",
+            component: () => null,
+          },
+        ],
+        threadPanelActions: [
+          {
+            id: "inspect",
+            title: "Inspect issue",
+            component: () => null,
+          },
+        ],
+        sidebarFooterActions: [],
+        threadLists: [
+          {
+            id: "github-threads",
+            title: "GitHub threads",
+            component: () => null,
+          },
+        ],
+        threadHeaderActions: [
+          {
+            id: "sync",
+            title: "Sync status",
+            component: () => null,
+          },
+        ],
+        fileOpeners: [
+          {
+            id: "markdown",
+            title: "Markdown viewer",
+            extensions: ["md"],
+            component: () => null,
+          },
+        ],
+      }),
+    );
     const { container } = renderPlugin(
       {
         ...PLUGIN,
@@ -622,6 +612,33 @@ function renderSkill(files: readonly string[]) {
 }
 
 describe("Skill detail recipe", () => {
+  it("routes relative images from Markdown skill files", () => {
+    const markdownLinkRouting = buildMarkdownFileImageRouting({
+      path: "/skills/writing-voice/SKILL.md",
+      rootPath: "/skills/writing-voice",
+      threadId: null,
+      resolveRelativeSrc: (path) => `/skill-preview/${path}`,
+    });
+    render(
+      <SkillDetailView
+        title="writing-voice"
+        path="/skills/writing-voice/SKILL.md"
+        files={["SKILL.md"]}
+        selectedPath="SKILL.md"
+        onSelectFile={() => {}}
+        contentState={{
+          kind: "ready",
+          content: "![example](assets/example.png)",
+        }}
+        markdownLinkRouting={markdownLinkRouting}
+      />,
+    );
+
+    expect(
+      screen.getByRole("img", { name: "example" }).getAttribute("src"),
+    ).toBe("/skill-preview/assets/example.png");
+  });
+
   it("shows only Definition for a single-file skill", () => {
     const { container } = renderSkill(["/skills/writing-voice/SKILL.md"]);
 

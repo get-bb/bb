@@ -23,8 +23,10 @@ describe("createPluginDevLoop", () => {
       lines,
       deps: {
         pluginId: "hello",
-        hasApp: overrides.hasApp ?? true,
-        hasHost: overrides.hasHost ?? false,
+        targets: async () => ({
+          hasApp: overrides.hasApp ?? true,
+          hasHost: overrides.hasHost ?? false,
+        }),
         hasProviderBridge: overrides.hasProviderBridge ?? false,
         buildApp: vi.fn(async () => {
           calls.push("build");

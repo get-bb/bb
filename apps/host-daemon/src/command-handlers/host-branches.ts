@@ -5,6 +5,7 @@ import type {
 } from "@bb/domain";
 import {
   detectGitRepoKind,
+  detectLinkedWorktree,
   fetchRemoteBranches,
   getCheckoutRef,
   getGitCommonDir,
@@ -261,6 +262,7 @@ export async function inspectHostGitSource(
       checkout: { kind: "unknown", reason: "Path is not a git repository" },
       defaultBranch: null,
       defaultBranchRelation: null,
+      isWorktree: false,
       hasUncommittedChanges: false,
       operation: { kind: "none" },
       originDefaultBranch: null,
@@ -277,22 +279,27 @@ export async function inspectHostGitSource(
     ).catch(() => undefined);
   }
 
-  const [checkout, defaultRefs, dirty, operation] = await Promise.all([
-    getCheckoutRef(command.path, gitProcessOptions),
-    readDefaultBranchRefs(command.path, gitProcessOptions),
-    repoKind === "work-tree"
-      ? hasUncommittedChanges(command.path, gitProcessOptions)
-      : false,
-    repoKind === "work-tree"
-      ? getWorkspaceGitOperation(command.path, gitProcessOptions)
-      : NO_GIT_OPERATION,
-  ]);
+  const [checkout, defaultRefs, dirty, operation, isWorktree] =
+    await Promise.all([
+      getCheckoutRef(command.path, gitProcessOptions),
+      readDefaultBranchRefs(command.path, gitProcessOptions),
+      repoKind === "work-tree"
+        ? hasUncommittedChanges(command.path, gitProcessOptions)
+        : false,
+      repoKind === "work-tree"
+        ? getWorkspaceGitOperation(command.path, gitProcessOptions)
+        : NO_GIT_OPERATION,
+      repoKind === "work-tree"
+        ? detectLinkedWorktree(command.path, gitProcessOptions)
+        : false,
+    ]);
   const defaultBranch = defaultRefs.defaultBranch;
   const originDefaultBranch = defaultRefs.originDefaultBranch;
   return {
     checkout,
     defaultBranch: defaultBranch ?? null,
     defaultBranchRelation: defaultRefs.defaultBranchRelation ?? null,
+    isWorktree,
     hasUncommittedChanges: dirty,
     operation,
     originDefaultBranch: originDefaultBranch ?? null,

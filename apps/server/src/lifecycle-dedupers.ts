@@ -19,7 +19,7 @@ export interface LifecycleDedupers {
   deferredThreadMessageFlush: AsyncDeduper<string, void>;
   environmentCleanupAdvance: AsyncDeduper<string, void>;
   providerModelList: AsyncTtlMemo<string, ProviderModelListMemoValue>;
-  queuedMessageAutoSend: AsyncDeduper<string, void>;
+  queuedMessageDispatch: AsyncDeduper<string, void>;
   threadProvisionAdvance: AsyncDeduper<string, void>;
 }
 
@@ -30,7 +30,7 @@ export function createLifecycleDedupers(): LifecycleDedupers {
     providerModelList: createAsyncTtlMemo<string, ProviderModelListMemoValue>({
       ttlMs: PROVIDER_MODEL_LIST_MEMO_TTL_MS,
     }),
-    queuedMessageAutoSend: createAsyncDeduper<string, void>(),
+    queuedMessageDispatch: createAsyncDeduper<string, void>(),
     threadProvisionAdvance: createAsyncDeduper<string, void>(),
   };
 }

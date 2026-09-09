@@ -91,38 +91,6 @@ const descriptionCases: DescriptionCase[] = [
     },
   },
   {
-    name: "environment_not_ready retiring",
-    body: {
-      code: "environment_not_ready",
-      message: "Environment unavailable",
-      details: {
-        environmentStatus: "retiring",
-        hasPath: true,
-      },
-    },
-    expected: {
-      title: "Workspace cleaning up",
-      body: "Workspace is being cleaned up.",
-      severity: "info",
-    },
-  },
-  {
-    name: "environment_not_ready destroying",
-    body: {
-      code: "environment_not_ready",
-      message: "Environment unavailable",
-      details: {
-        environmentStatus: "destroying",
-        hasPath: true,
-      },
-    },
-    expected: {
-      title: "Workspace cleaning up",
-      body: "Workspace is being cleaned up.",
-      severity: "info",
-    },
-  },
-  {
     name: "environment_not_ready destroyed archived thread",
     body: {
       code: "environment_not_ready",
@@ -168,22 +136,6 @@ const descriptionCases: DescriptionCase[] = [
       title: "Workspace unavailable",
       body: "Workspace no longer exists.",
       severity: "warning",
-    },
-  },
-  {
-    name: "thread_environment_unavailable destroying",
-    body: {
-      code: "thread_environment_unavailable",
-      message: "Thread environment is unavailable",
-      details: {
-        environmentStatus: "destroying",
-        reason: "destroying",
-      },
-    },
-    expected: {
-      title: "Workspace cleaning up",
-      body: "Workspace is being cleaned up.",
-      severity: "info",
     },
   },
   {
@@ -552,6 +504,37 @@ const descriptionCases: DescriptionCase[] = [
       severity: "error",
     },
   },
+  {
+    name: "dispatch_rejected shows the plugin's message verbatim",
+    body: {
+      code: "dispatch_rejected",
+      message: "Sandbox quota is exhausted. Free a slot first.",
+      details: {
+        pluginId: "policy-guard",
+      },
+    },
+    expected: {
+      title: "Blocked by a plugin",
+      body: 'Blocked by the "policy-guard" plugin: Sandbox quota is exhausted. Free a slot first.',
+      severity: "warning",
+    },
+  },
+  {
+    name: "dispatch_hook_failed adds the recovery hint",
+    body: {
+      code: "dispatch_hook_failed",
+      message:
+        'The "policy-guard" plugin\'s message.dispatch hook failed: did not decide within 5000ms',
+      details: {
+        pluginId: "policy-guard",
+      },
+    },
+    expected: {
+      title: "Plugin dispatch hook failed",
+      body: 'The "policy-guard" plugin\'s message.dispatch hook failed: did not decide within 5000ms. Disable that plugin to continue.',
+      severity: "error",
+    },
+  },
 ];
 
 describe("parseLifecycleError", () => {
@@ -632,5 +615,48 @@ describe("describeLifecycleError", () => {
         error: new Error("Failed"),
       }),
     ).toBeNull();
+  });
+
+  it("keeps a gate rejection readable under an operation title", () => {
+    const pluginMessage = "This project is frozen until the release ships.";
+    const body: LifecycleApiError = {
+      code: "dispatch_rejected",
+      message: pluginMessage,
+      details: { pluginId: "release-freeze" },
+    };
+
+    const description = describeLifecycleError({
+      error: httpError(body),
+      operation: "send_message",
+    });
+
+    if (!description) {
+      throw new Error("expected a lifecycle description");
+    }
+    expect(description.body).toContain(pluginMessage);
+    expect(description.body).toContain('"release-freeze"');
+    expect(formatLifecycleErrorDescription(description)).toBe(
+      'Failed to send message. Blocked by the "release-freeze" plugin: This project is frozen until the release ships.',
+    );
+  });
+
+  it("names the plugin once when a gate fails closed", () => {
+    const body: LifecycleApiError = {
+      code: "dispatch_hook_failed",
+      message:
+        'The "release-freeze" plugin\'s message.dispatch hook failed: handler threw',
+      details: { pluginId: "release-freeze" },
+    };
+
+    const description = describeLifecycleError({
+      error: httpError(body),
+      operation: "queue_message",
+    });
+
+    if (!description) {
+      throw new Error("expected a lifecycle description");
+    }
+    expect(description.body.match(/release-freeze/gu)).toHaveLength(1);
+    expect(description.body).toContain("Disable that plugin to continue.");
   });
 });

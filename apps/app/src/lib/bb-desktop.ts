@@ -16,7 +16,7 @@ export const MACOS_APP_REGION_NO_DRAG_CLASS =
   "[app-region:no-drag] [-webkit-app-region:no-drag]";
 export const MACOS_WINDOW_NO_DRAG_CLASS = `relative z-50 ${MACOS_APP_REGION_NO_DRAG_CLASS}`;
 
-export const CHROME_ROW_HEIGHT_CLASS = "h-[48px]";
+export const CHROME_ROW_HEIGHT_CLASS = "h-(--bb-app-chrome-row-height)";
 export const CHROME_ROW_CLASS = `flex ${CHROME_ROW_HEIGHT_CLASS} items-center`;
 
 export const MACOS_CHROME_CONTROL_AXIS_CLASS =

@@ -414,6 +414,7 @@ interface RestartManagedProcessArgs {
 interface SuperviseFullStackProcessesArgs {
   context: BbAppStartContext;
   delayMilliseconds: DelayMillisecondsFn;
+  isHealthyServerAnswering?: (url: string) => Promise<boolean>;
   isShutdownRequested: () => boolean;
   processes: ManagedFullStackProcesses;
   startDaemon: StartManagedProcess;
@@ -681,14 +682,6 @@ function isManagedConfigValueKey(
   value: string,
 ): value is ManagedConfigValueKey {
   return MANAGED_CONFIG_KEY_VALUES.has(value);
-}
-
-function isPortableEnvName(value: string): boolean {
-  return PORTABLE_ENV_NAME_PATTERN.test(value);
-}
-
-function isSecretShapedEnvName(value: string): boolean {
-  return SECRET_SHAPED_ENV_NAME_PATTERN.test(value);
 }
 
 function supportedConfigKeysText(): string {
@@ -1539,8 +1532,8 @@ Usage:
 
 Startup-only server and launcher keys:
   BB_APP_SURFACE, BB_APP_URL, BB_DATA_DIR, BB_DEV_APP_PORT,
-  BB_EXTERNAL_URL, BB_HOST_DAEMON_PORT, BB_INFERENCE,
-  BB_INFERENCE_FALLBACK, BB_INHERITED_SKILLS_ROOTS, BB_LOG_LEVEL,
+  BB_EXTERNAL_URL, BB_HOST_DAEMON_PORT, BB_INFERENCE, BB_INFERENCE_FALLBACK,
+  BB_INHERITED_SKILLS_ROOTS, BB_LOG_LEVEL,
   BB_MANAGED_DEV_BUILTIN_PLUGIN_HOT_RELOAD, BB_POSTHOG_API_KEY,
   BB_SERVER_BIND_HOST, BB_SERVER_PORT, BB_TELEMETRY, BB_TRANSCRIPTION,
   and BB_FF_* feature flags.
@@ -1575,7 +1568,7 @@ function resolveManagedConfigKey(rawKey: string): ManagedConfigKey {
   if (isManagedConfigValueKey(key)) {
     return key;
   }
-  if (isSecretShapedEnvName(key)) {
+  if (SECRET_SHAPED_ENV_NAME_PATTERN.test(key)) {
     throw new Error(
       `bb-app config does not store secrets. Use "bb-app env set ${key} <value>" instead.`,
     );
@@ -1616,7 +1609,7 @@ function unsetManagedConfigKey(
 
 function resolveManagedEnvKey(rawKey: string): string {
   const key = rawKey.trim();
-  if (!isPortableEnvName(key)) {
+  if (!PORTABLE_ENV_NAME_PATTERN.test(key)) {
     throw new Error(
       `Invalid env key "${rawKey}". Env keys must match ${PORTABLE_ENV_NAME_PATTERN.source}`,
     );
@@ -2103,9 +2096,8 @@ async function runClientCommand(args: RunClientCommandArgs): Promise<void> {
   );
 }
 
-function requiredArtifactPaths(context: BbAppStartContext): ArtifactPath[] {
+function requiredHostArtifactPaths(context: BbAppStartContext): ArtifactPath[] {
   return [
-    { kind: "file", label: "server entry", path: context.serverEntry },
     { kind: "file", label: "host daemon entry", path: context.daemonEntry },
     {
       kind: "file",
@@ -2132,6 +2124,15 @@ function requiredArtifactPaths(context: BbAppStartContext): ArtifactPath[] {
       label: "plugin host worker",
       path: join(context.daemonBundleDir, "bb-plugin-host-worker.mjs"),
     },
+  ];
+}
+
+function requiredFullStackArtifactPaths(
+  context: BbAppStartContext,
+): ArtifactPath[] {
+  return [
+    ...requiredHostArtifactPaths(context),
+    { kind: "file", label: "server entry", path: context.serverEntry },
     {
       kind: "file",
       label: "web app",
@@ -2161,12 +2162,23 @@ function artifactPresent(artifact: ArtifactPath): boolean {
 }
 
 export function assertBbAppArtifacts(context: BbAppStartContext): void {
-  const missingArtifact = requiredArtifactPaths(context).find(
+  const missingArtifact = requiredFullStackArtifactPaths(context).find(
     (artifact) => !artifactPresent(artifact),
   );
   if (missingArtifact) {
     throw new Error(
       `Missing ${missingArtifact.label} at ${missingArtifact.path}. Rebuild bb-app before running this package.`,
+    );
+  }
+}
+
+export function assertBbHostArtifacts(context: BbAppStartContext): void {
+  const missingArtifact = requiredHostArtifactPaths(context).find(
+    (artifact) => !artifactPresent(artifact),
+  );
+  if (missingArtifact) {
+    throw new Error(
+      `Missing ${missingArtifact.label} at ${missingArtifact.path}. Rebuild the bb host artifact before running this package.`,
     );
   }
 }
@@ -2285,6 +2297,21 @@ async function readServerHealthLaunchId(
     return health.success ? (health.data.launchId ?? null) : null;
   } catch {
     return null;
+  }
+}
+
+async function isHealthyServerAnswering(url: string): Promise<boolean> {
+  try {
+    const response = await fetch(url, {
+      signal: AbortSignal.timeout(HEALTH_CHECK_REQUEST_TIMEOUT_MS),
+    });
+    if (!response.ok) {
+      return false;
+    }
+    const health = serverHealthResponseSchema.safeParse(await response.json());
+    return health.success && health.data.ok;
+  } catch {
+    return false;
   }
 }
 
@@ -2751,7 +2778,7 @@ export async function runBbCli(
     options: createDefaultLauncherOptions(),
     serverUrlMode: "managed",
   });
-  assertBbAppArtifacts(runtime.context);
+  assertBbHostArtifacts(runtime.context);
   process.exitCode = await runBundledCliCommand({
     args: cliArgs,
     context: runtime.context,
@@ -2965,7 +2992,7 @@ Usage:
     options: parsedArgs.options,
     serverUrlMode: "managed",
   });
-  assertBbAppArtifacts(runtime.context);
+  assertBbHostArtifacts(runtime.context);
   await runHostDaemonOnly({
     args: parsedArgs.positionals,
     context: runtime.context,
@@ -3155,6 +3182,29 @@ export async function superviseFullStackProcesses(
       return "shutdown";
     }
 
+    if (exitedProcess.processName === "server") {
+      if (args.processes.serverRun === serverRun) {
+        args.processes.serverRun = null;
+      }
+      if (
+        await (args.isHealthyServerAnswering ?? isHealthyServerAnswering)(
+          `${args.context.serverUrl}/health`,
+        )
+      ) {
+        log(
+          yellow("!"),
+          `${formatManagedProcessLabel(exitedProcess.processName)} exited with ${formatProcessExitResult(
+            exitedProcess.result,
+          )} - another server is healthy; stopping host daemon`,
+        );
+        await terminateManagedFullStackProcesses({
+          processes: args.processes,
+          signal: "SIGTERM",
+        });
+        return "stopped";
+      }
+    }
+
     log(
       yellow("!"),
       `${formatManagedProcessLabel(exitedProcess.processName)} exited with ${formatProcessExitResult(
@@ -3163,9 +3213,6 @@ export async function superviseFullStackProcesses(
     );
 
     if (exitedProcess.processName === "server") {
-      if (args.processes.serverRun === serverRun) {
-        args.processes.serverRun = null;
-      }
       await args.delayMilliseconds({
         ms: MANAGED_PROCESS_RESTART_RETRY_DELAY_MS,
       });
@@ -3374,9 +3421,8 @@ export async function runBbApp(
     return;
   }
 
-  assertBbAppArtifacts(runtime.context);
-
   if (command.kind === "host-daemon") {
+    assertBbHostArtifacts(runtime.context);
     await runHostDaemonOnly({
       args: command.args,
       context: runtime.context,
@@ -3384,6 +3430,8 @@ export async function runBbApp(
     });
     return;
   }
+
+  assertBbAppArtifacts(runtime.context);
 
   const context = runtime.context;
   const serverListenerUrl = resolveServerListenerUrl({

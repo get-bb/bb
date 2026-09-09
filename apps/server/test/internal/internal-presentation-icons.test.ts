@@ -28,6 +28,7 @@ async function setup() {
   const harness = await createTestAppHarness();
   harness.deps.providerRegistry.register({
     ...buildPluginProviderRegistration({
+      iconHash: null,
       available: true,
       pluginId: PLUGIN_ID,
       declaration: validatePluginProviderDeclaration({

@@ -407,7 +407,7 @@ describe("createHostDaemonApp", () => {
     const closeMachineAuthProxy = vi.fn(async () => undefined);
     const { app } = await createAppFixture({}, { closeMachineAuthProxy });
 
-    await app.daemon.shutdown("test");
+    await app.daemon.shutdown("test", 0);
 
     expect(closeMachineAuthProxy).toHaveBeenCalledTimes(1);
   });
@@ -510,7 +510,7 @@ describe("createHostDaemonApp", () => {
       expect(resolveRuntimeShellEnv).toHaveBeenCalledTimes(1);
       expect(listModels).toHaveBeenCalledTimes(2);
     } finally {
-      await app.daemon.shutdown("test");
+      await app.daemon.shutdown("test", 0);
     }
   });
 
@@ -586,7 +586,7 @@ describe("createHostDaemonApp", () => {
         }),
       );
     } finally {
-      await app.daemon.shutdown("test");
+      await app.daemon.shutdown("test", 0);
     }
   });
 
@@ -642,7 +642,6 @@ describe("createHostDaemonApp", () => {
     const reaper = startIdleProviderSessionReaper({
       logger,
       nowMs: () => nowMs,
-      resolveProviderSessionReapingEnabled: async () => true,
       runtimeManager: {
         reapIdleProviderSessions,
       },
@@ -658,7 +657,6 @@ describe("createHostDaemonApp", () => {
     expect(reapIdleProviderSessions).toHaveBeenNthCalledWith(1, {
       idleForMs: 1_800_000,
       nowMs: 1_000,
-      providerSessionReapingEnabled: true,
     });
 
     nowMs = 2_000;
@@ -698,7 +696,6 @@ describe("createHostDaemonApp", () => {
     expect(reapIdleProviderSessions).toHaveBeenNthCalledWith(2, {
       idleForMs: 1_800_000,
       nowMs: 2_000,
-      providerSessionReapingEnabled: true,
     });
     expect(logger.warn).toHaveBeenCalledWith(
       {
@@ -747,7 +744,7 @@ describe("createHostDaemonApp", () => {
         "Server reported inactive daemon session; reconnecting",
       );
     } finally {
-      await app.daemon.shutdown("test");
+      await app.daemon.shutdown("test", 0);
     }
   });
 
@@ -806,7 +803,7 @@ describe("createHostDaemonApp", () => {
         loadedEnvironments: [{ environmentId: "env-app-retired" }],
       });
     } finally {
-      await app.daemon.shutdown("test");
+      await app.daemon.shutdown("test", 0);
     }
   });
 
@@ -852,7 +849,7 @@ describe("createHostDaemonApp", () => {
         "Unexpected provider process exited with stderr",
       );
     } finally {
-      await app.daemon.shutdown("test");
+      await app.daemon.shutdown("test", 0);
     }
   });
 
@@ -920,7 +917,7 @@ describe("createHostDaemonApp", () => {
         ],
       });
     } finally {
-      await app.daemon.shutdown("test");
+      await app.daemon.shutdown("test", 0);
     }
   });
 
@@ -995,7 +992,7 @@ describe("createHostDaemonApp", () => {
         reason: 'Provider "codex" exited while awaiting user interaction',
       });
     } finally {
-      await app.daemon.shutdown("test");
+      await app.daemon.shutdown("test", 0);
     }
   });
 
@@ -1030,7 +1027,7 @@ describe("createHostDaemonApp", () => {
         "Failed to forward dynamic tool call to server",
       );
     } finally {
-      await app.daemon.shutdown("test");
+      await app.daemon.shutdown("test", 0);
     }
   });
 
@@ -1070,7 +1067,7 @@ describe("createHostDaemonApp", () => {
         "Failed to forward interactive provider request to server",
       );
     } finally {
-      await app.daemon.shutdown("test");
+      await app.daemon.shutdown("test", 0);
     }
   });
 
@@ -1118,7 +1115,7 @@ describe("createHostDaemonApp", () => {
         "Failed to forward interactive provider request to server",
       );
     } finally {
-      await app.daemon.shutdown("test");
+      await app.daemon.shutdown("test", 0);
     }
   });
 });
