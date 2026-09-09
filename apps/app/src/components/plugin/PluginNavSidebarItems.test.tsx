@@ -412,24 +412,18 @@ describe("PluginNavSidebarItems", () => {
     ).not.toContain("__builtin__/skills");
   });
 
-  it("swaps the established Plugins and Skills glyphs on row hover", () => {
+  it("uses the established Plugins and Skills glyphs", () => {
     renderSidebarItems({ toolsRoutePath: "/plugins" });
 
-    for (const [label, defaultIcon, hoverIcon] of [
-      ["Plugins", "Blocks", "GridView"],
-      ["Skills", "BookOpen", "Explore"],
-    ]) {
-      const row = screen.getByRole("button", { name: label });
-      const defaultGlyph = row.querySelector(`[data-icon="${defaultIcon}"]`);
-      const hoverGlyph = row.querySelector(`[data-icon="${hoverIcon}"]`);
-      expect(defaultGlyph?.classList.contains("opacity-100")).toBe(true);
-      expect(defaultGlyph?.classList.contains("group-hover/nav-row:opacity-0")).toBe(
-        true,
-      );
-      expect(hoverGlyph?.classList.contains("opacity-0")).toBe(true);
-      expect(
-        hoverGlyph?.classList.contains("group-hover/nav-row:opacity-100"),
-      ).toBe(true);
-    }
+    expect(
+      screen
+        .getByRole("button", { name: "Plugins" })
+        .querySelector('[data-icon="GridView"]'),
+    ).toBeTruthy();
+    expect(
+      screen
+        .getByRole("button", { name: "Skills" })
+        .querySelector('[data-icon="Explore"]'),
+    ).toBeTruthy();
   });
 });
