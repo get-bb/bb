@@ -107,7 +107,6 @@ function CreateMachineContent({
         ) : (
           !loading && (
             <MachineAccessSettings
-              presentation="dialog"
               onNavigate={() => onOpenChange(false)}
             />
           )
