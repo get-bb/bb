@@ -585,3 +585,80 @@ describe("timeline page row merging", () => {
     expect(next.olderCursor).toEqual(freshCursor);
   });
 });
+
+describe("snapshot content pagination", () => {
+  it("joins stable summary children and preserves them across an unchanged latest refresh", () => {
+    const first = commandRow({ id: "first", sequence: 2 });
+    const last = commandRow({ id: "last", sequence: 3 });
+    const older = turnSummaryRow({
+      id: "summary",
+      sequence: 1,
+      endSequence: 4,
+      children: [first],
+    });
+    const latest = turnSummaryRow({
+      id: "summary",
+      sequence: 1,
+      endSequence: 4,
+      children: [last],
+    });
+    const rows = prependOlderTimelineRows({
+      olderRows: [older],
+      loadedRows: [latest],
+    });
+    expect(rows).toEqual([{ ...latest, children: [first, last] }]);
+    const response = makeTimelineResponse(
+      [latest],
+      timelineCursor({ id: "contents", sequence: 1 }),
+      4,
+    );
+    response.timelinePage.historySnapshot = "snapshot-1";
+    const current = {
+      ...makeLoadedTimelineState(rows, null, 4),
+      historySnapshot: "snapshot-1",
+    };
+    expect(
+      mergeLoadedTimelineWithLatest({
+        current,
+        latestTimeline: response,
+        surfaceKey: current.surfaceKey,
+      }).rows,
+    ).toEqual(rows);
+  });
+
+  it("discards old grouping when a new snapshot arrives at the same sequence", () => {
+    const current = {
+      ...makeLoadedTimelineState(
+        [userRow({ id: "old", sequence: 1 })],
+        null,
+        4,
+      ),
+      historySnapshot: "snapshot-1",
+    };
+    const latestTimeline = makeTimelineResponse(
+      [userRow({ id: "replacement", sequence: 1 })],
+      null,
+      4,
+    );
+    latestTimeline.timelinePage.historySnapshot = "snapshot-2";
+    const result = mergeLoadedTimelineWithLatest({
+      current,
+      latestTimeline,
+      surfaceKey: current.surfaceKey,
+    });
+    expect(result.rows).toEqual(latestTimeline.rows);
+    expect(result.historySnapshot).toBe("snapshot-2");
+  });
+
+  it("replaces changed content even when row identity and sequence are unchanged", () => {
+    const old = commandRow({ id: "command", sequence: 2 });
+    const updated = { ...old, output: "updated output" };
+    expect(
+      mergeLatestTimelineRows({
+        loadedRows: [old],
+        latestRows: [updated],
+        latestWindowStartSequence: 1,
+      }).rows,
+    ).toEqual([updated]);
+  });
+});

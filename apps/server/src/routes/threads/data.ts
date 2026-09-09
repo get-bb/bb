@@ -1,3 +1,4 @@
+import { getThreadTimelineHistoryRevision } from "@bb/db";
 import path from "node:path";
 import {
   getAppSettings,
@@ -335,7 +336,6 @@ export function registerThreadDataRoutes(app: Hono, deps: AppDeps): void {
     ).showDiagnosticEvents;
     const maxSeq = getLatestThreadSequence(deps.db, {
       threadId: thread.id,
-      excludeDiagnosticEvents: !includeDiagnosticOperations,
     });
     const eventBudget = deps.config.featureFlags.timelineWindowEventBudget;
     const keyArgs = {
@@ -350,7 +350,7 @@ export function registerThreadDataRoutes(app: Hono, deps: AppDeps): void {
     };
     const full = timelineCache.getOrBuild(
       thread.id,
-      buildThreadTimelineCacheKey({ ...keyArgs, maxSeq }),
+      `${getThreadTimelineHistoryRevision(deps.db, thread.id)}|${buildThreadTimelineCacheKey({ ...keyArgs, maxSeq })}`,
       () => {
         const { profile, response } = buildThreadTimelineWithProfile(
           deps.db,
@@ -455,6 +455,7 @@ export function registerThreadDataRoutes(app: Hono, deps: AppDeps): void {
     ).showDiagnosticEvents;
     return context.json(
       buildTimelineTurnSummaryDetails(deps.db, thread, {
+        beforeCursor: query.beforeCursor,
         includeDiagnosticOperations,
         providerDisplayName: resolveThreadProviderDisplayName(
           deps,

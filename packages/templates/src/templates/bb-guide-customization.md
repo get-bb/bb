@@ -154,12 +154,13 @@ The default-off `timelineWindowing` experiment mounts only nearby rows in long
 timelines and large expanded timeline details. Enable it with
 `bb settings experiment timelineWindowing true`.
 
-Thread timeline windows are bounded by event count as well as user-message
-count (`BB_FF_TIMELINE_WINDOW_EVENT_BUDGET`, default 1500), so a long thread
-stops reprojecting its whole history — and blocking the server event loop — on
-every update. A turn still running is cut at the budget too, so a very long
-turn costs the budget per update instead of growing without limit. Older
-activity loads automatically as you scroll toward the top.
+Thread timeline pages select complete conversation groups using
+`BB_FF_TIMELINE_WINDOW_EVENT_BUDGET` (default 1500) as a selection budget.
+Oversized groups paginate their contents with stable summary identities.
+Grouping can load more than the budget to preserve lifecycle and delegation
+context; it is not a hard CPU or memory cap. Older activity loads on scroll.
+A walk keeps its initial history snapshot. Edits invalidate it, and a new live
+snapshot can require loading older pages again.
 
 Server-backed keyboard shortcuts
 

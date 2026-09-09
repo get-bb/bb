@@ -52,6 +52,7 @@ import {
   promptHistoryEntries,
   threadDynamicContextFileStates,
   threadSearchSegments,
+  threadTimelineHistoryRevisions,
   threads,
 } from "../schema.js";
 import { createEventId } from "../ids.js";
@@ -135,6 +136,22 @@ const isNotSupersededBackgroundTaskProgress = sql`NOT (
       AND newer_task_state.sequence > ${events.sequence}
   )
 )`;
+
+function isNotSupersededBackgroundTaskProgressBefore(beforeSequence: number | undefined): SQL {
+  if (beforeSequence === undefined) return isNotSupersededBackgroundTaskProgress;
+  return sql`NOT (
+    ${events.type} = 'item/backgroundTask/progress'
+    AND EXISTS (
+      SELECT 1 FROM events AS newer_task_state
+      WHERE newer_task_state.thread_id = ${events.threadId}
+        AND newer_task_state.item_kind = 'backgroundTask'
+        AND newer_task_state.item_id = ${events.itemId}
+        AND newer_task_state.type IN ('item/backgroundTask/progress', 'item/backgroundTask/completed')
+        AND newer_task_state.sequence > ${events.sequence}
+        AND newer_task_state.sequence < ${beforeSequence}
+    )
+  )`;
+}
 
 export interface InsertEventInput {
   threadId: string;
@@ -1586,7 +1603,7 @@ function storedEventRowsByParentToolCallIdsConditions(
 
   const conditions: SQL[] = [
     eq(events.threadId, args.threadId),
-    isNotSupersededBackgroundTaskProgress,
+    isNotSupersededBackgroundTaskProgressBefore(args.beforeSequence),
     inArray(events.parentToolCallId, parentToolCallIds),
   ];
   if (args.excludeDiagnosticEvents) conditions.push(isNotDiagnosticEvent);
@@ -2165,6 +2182,7 @@ export function listStoredTurnCompletedRowsByTurnIds(
 }
 
 export interface ListLatestBackgroundTaskStateRowsByItemIdsArgs {
+  beforeSequence?: number;
   itemIds: readonly string[];
   threadId: string;
 }
@@ -2235,6 +2253,7 @@ export function listLatestBackgroundTaskStateRowsByItemIds(
             .where(
               and(
                 eq(latest.threadId, args.threadId),
+                args.beforeSequence === undefined ? undefined : lt(latest.sequence, args.beforeSequence),
                 inArray(latest.itemId, [...args.itemIds]),
                 inArray(latest.type, stateTypes),
               ),
@@ -2925,6 +2944,47 @@ export function findUnfinishedTurnCoveringSequence(
   return completed === undefined ? turnId : null;
 }
 
+export function getFirstParentedTimelineBoundarySequence(
+  db: DbConnection,
+  args: { threadId: string; sequenceStart: number; maxSeq: number },
+): number | null {
+  const result = db.get<{ sequence: number | null }>(sql`
+    WITH parents AS MATERIALIZED (
+      SELECT item_id, turn_id, min(sequence) AS start
+      FROM events INDEXED BY events_delegating_item_lookup_idx
+      WHERE thread_id = ${args.threadId}
+        AND item_kind IN ('toolCall', 'delegation')
+        AND parent_tool_call_id IS NULL
+        AND sequence >= ${args.sequenceStart} AND sequence <= ${args.maxSeq}
+        AND EXISTS (
+          SELECT 1 FROM events AS root_start
+          WHERE root_start.thread_id = events.thread_id
+            AND root_start.turn_id = events.turn_id
+            AND root_start.type = 'turn/started'
+            AND root_start.parent_tool_call_id IS NULL
+            AND root_start.sequence <= ${args.maxSeq}
+        )
+      GROUP BY item_id, turn_id
+    ), spans AS MATERIALIZED (
+      SELECT start, (
+        SELECT max(child.sequence)
+        FROM events AS child INDEXED BY events_parent_tool_call_thread_parent_sequence_idx
+        WHERE child.thread_id = ${args.threadId}
+          AND child.parent_tool_call_id IS NOT NULL
+          AND child.parent_tool_call_id = parents.item_id
+          AND child.sequence <= ${args.maxSeq}
+      ) AS end FROM parents
+    )
+    SELECT min(${events.sequence}) AS sequence
+    FROM events INNER JOIN spans
+      ON ${events.sequence} > spans.start AND ${events.sequence} < spans.end
+    WHERE ${events.type} = 'client/turn/requested'
+      AND ${timelineSegmentAnchorConditions(args.threadId)}
+      AND json_extract(${events.data}, '$.initiator') = 'user'
+  `);
+  return result?.sequence ?? null;
+}
+
 export function listTimelineSegmentAnchorsDescending(
   db: DbConnection,
   args: ListTimelineSegmentAnchorsDescendingArgs,
@@ -2974,7 +3034,7 @@ function storedTimelineWindowConditions(
   const conditions: SQL[] = [
     eq(events.threadId, args.threadId),
     gte(events.sequence, args.sequenceStart),
-    isNotSupersededBackgroundTaskProgress,
+    isNotSupersededBackgroundTaskProgressBefore(args.beforeSequence),
   ];
   if (args.beforeSequence !== undefined) {
     conditions.push(lt(events.sequence, args.beforeSequence));
@@ -3117,6 +3177,50 @@ export function findStoredTimelineWindowByteBudgetFloor(
     return oversizedEvent;
   }
   return { eventDataBytes: includedDataBytes, kind: "fits" };
+}
+
+export function getThreadTimelineHistoryRevision(db: DbConnection, threadId: string): number {
+  return db.select({ revision: threadTimelineHistoryRevisions.revision })
+    .from(threadTimelineHistoryRevisions)
+    .where(eq(threadTimelineHistoryRevisions.threadId, threadId))
+    .get()?.revision ?? 0;
+}
+
+export function listStoredTimelineTurnEventRows(
+  db: DbConnection,
+  args: ListStoredTimelineWindowEventRowsArgs & { turnIds: readonly string[] },
+): StoredEventRow[] {
+  if (args.turnIds.length === 0) return [];
+  return queryInSqliteVariableBatches({
+    values: args.turnIds,
+    variableCountPerValue: 1,
+    dedupeKey: (turnId) => turnId,
+    fixedVariableCount: 32,
+    queryBatch: (turnIds) => db
+      .select(storedEventRowFieldsWithInlineOutputLimit(args.maxInlineOutputChars))
+      .from(events)
+      .where(and(...storedTimelineWindowConditions(args), inArray(events.turnId, [...turnIds])))
+      .orderBy(events.sequence)
+      .all(),
+  }).sort((left, right) => left.sequence - right.sequence);
+}
+
+export function listStoredTimelineRootWindowEventRows(
+  db: DbConnection,
+  args: ListStoredTimelineWindowEventRowsArgs,
+): StoredEventRow[] {
+  return db.select(storedEventRowFieldsWithInlineOutputLimit(args.maxInlineOutputChars))
+    .from(events).where(and(
+      ...storedTimelineWindowConditions(args),
+      isNull(events.parentToolCallId),
+      sql`(${events.turnId} IS NULL OR EXISTS (
+        SELECT 1 FROM events AS root_start
+        WHERE root_start.thread_id = ${events.threadId}
+          AND root_start.turn_id = ${events.turnId}
+          AND root_start.type = 'turn/started'
+          AND root_start.parent_tool_call_id IS NULL
+      ))`,
+    )).orderBy(events.sequence).all();
 }
 
 export function listStoredTimelineWindowEventRows(

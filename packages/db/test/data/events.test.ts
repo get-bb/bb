@@ -27,6 +27,7 @@ import {
   getLastStoredTurnRequestEvent,
   getLatestThreadOutputEventRow,
   getLatestThreadSequence,
+  getThreadTimelineHistoryRevision,
   getStoredTimelineWindowEventDataBytes,
   insertEvents,
   listContextWindowUsageRows,
@@ -180,6 +181,25 @@ function createContextWindowUsageData(
 }
 
 describe("events", () => {
+  it("invalidates snapshots for historical inserts and both sides of an event move", () => {
+    const { db, project, thread } = setup();
+    const other = createThread(db, noopNotifier, { projectId: project.id, providerId: "codex" });
+    const insert = (sequence: number) => insertEvents(db, noopNotifier, [{
+      threadId: thread.id, sequence, type: "system/error", ...threadEventFields,
+      data: JSON.stringify({ message: "fixture" }),
+    }]);
+    insert(1);
+    insert(3);
+    expect(getThreadTimelineHistoryRevision(db, thread.id)).toBe(0);
+    insert(2);
+    expect(getThreadTimelineHistoryRevision(db, thread.id)).toBe(1);
+    db.$client.prepare("UPDATE events SET thread_id = ? WHERE thread_id = ? AND sequence = 2").run(other.id, thread.id);
+    expect(getThreadTimelineHistoryRevision(db, thread.id)).toBe(2);
+    expect(getThreadTimelineHistoryRevision(db, other.id)).toBe(1);
+    db.$client.prepare("DELETE FROM events WHERE thread_id = ? AND sequence = 3").run(thread.id);
+    expect(getThreadTimelineHistoryRevision(db, thread.id)).toBe(3);
+  });
+
   it("inserts events and returns count", () => {
     const { db, thread } = setup();
 
@@ -1597,7 +1617,7 @@ describe("events", () => {
         sequenceStart: 1,
         threadId: thread.id,
       }).map((row) => row.sequence),
-    ).toEqual([1, 2]);
+    ).toEqual([1, 2, 4, 5]);
     expect(
       listRecentStoredEventRows(db, {
         maxInlineOutputChars: null,

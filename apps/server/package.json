@@ -53,6 +53,7 @@
   },
   "devDependencies": {
     "@bb/agent-runtime": "workspace:*",
+    "@bb/client-core": "workspace:*",
     "@bb/scripts": "workspace:*",
     "@bb/test-helpers": "workspace:*",
     "@bb/tsconfig": "workspace:*",

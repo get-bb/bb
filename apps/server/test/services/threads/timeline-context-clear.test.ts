@@ -95,23 +95,6 @@ describe("timeline context-clear epochs", () => {
         hasOlderRows: false,
         olderCursor: null,
       });
-      const boundary = latest.rows[0]!;
-      const older = buildThreadTimeline(db, thread, {
-        ...options,
-        page: {
-          kind: "older",
-          segmentLimit: 20,
-          beforeCursor: {
-            anchorId: boundary.id,
-            anchorSeq: boundary.sourceSeqStart,
-          },
-        },
-      });
-      expect(older.rows).toEqual([]);
-      expect(older.timelinePage).toMatchObject({
-        hasOlderRows: false,
-        olderCursor: null,
-      });
       expect(() =>
         buildThreadTimeline(db, thread, {
           ...options,
@@ -121,7 +104,7 @@ describe("timeline context-clear epochs", () => {
             beforeCursor: { anchorId: "old-anchor", anchorSeq: 1 },
           },
         }),
-      ).toThrow("Timeline pagination cursor is before the context boundary");
+      ).toThrow(/no longer available/);
     } finally {
       db.$client.close();
     }

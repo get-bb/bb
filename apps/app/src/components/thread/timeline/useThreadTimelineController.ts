@@ -123,7 +123,10 @@ export function useThreadTimelineController({
       });
       const olderRows = [...response.rows];
       setLoadedTimeline((current) => {
-        if (current.surfaceKey !== surfaceKey) {
+        if (
+          current.surfaceKey !== surfaceKey ||
+          current.historySnapshot !== response.timelinePage.historySnapshot
+        ) {
           return current;
         }
         return {

@@ -189,7 +189,9 @@ Inspecting:
     --all                                  Print the whole thread, paging through every entry
 
   Human formats end with a notice when older history was omitted; --json warns
-  on stderr when more events exist beyond the printed page.
+  on stderr when more events exist beyond the printed page. Human-format --all
+  walks a consistent history snapshot and joins paginated group contents.
+  Appends stay outside that walk; rerun the command if a history edit invalidates it.
 
   bb thread output [id]                    Get the final output of a thread
     --self                                 Target current thread

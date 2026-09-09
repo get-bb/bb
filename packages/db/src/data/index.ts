@@ -271,6 +271,7 @@ export {
   listRecentStoredEventRows,
   listStoredConversationOutlineEventRows,
   listTimelineSegmentAnchorsDescending,
+  getFirstParentedTimelineBoundarySequence,
   findTimelineWindowBudgetFloorSequence,
   findStoredTimelineWindowByteBudgetFloor,
   getStoredEventRowsByParentToolCallIdsDataBytes,
@@ -288,6 +289,9 @@ export {
   scopedItemRefKey,
   listStoredThreadProvisioningRowsByProvisioningId,
   listStoredTimelineWindowEventRows,
+  listStoredTimelineTurnEventRows,
+  listStoredTimelineRootWindowEventRows,
+  getThreadTimelineHistoryRevision,
   listStoredDelegatingItemRowsByItemIds,
   listStoredTurnInputAcceptedRowsByClientRequestIds,
   listStoredTurnRejectedRowsByClientRequestIds,
@@ -319,6 +323,8 @@ export {
   deleteExpiredRetainedEventOutputs,
   hydrateRetainedEventOutputRows,
   hydrateRetainedEventOutputRowsWithinDataByteLimit,
+  prepareCompletedEventOutputData,
+  insertPreparedRetainedEventOutput,
   RETAINED_EVENT_OUTPUT_TARGETS,
 } from "./retained-event-outputs.js";
 export type {

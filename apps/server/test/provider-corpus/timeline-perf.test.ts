@@ -45,6 +45,8 @@ type ThreadTimelineBuildProfileStage =
 
 const STAGES: readonly ThreadTimelineBuildProfileStage[] = [
   "event-query",
+  "group-context-query",
+  "ordering-context-query",
   "accepted-client-request-context-query",
   "event-json-decode",
   "summary-compaction",
