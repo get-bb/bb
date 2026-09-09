@@ -46,6 +46,16 @@ const noop = () => {};
 export function Overview() {
   return (
     <StoryCard>
+      <StoryRow label="loading" hint="waiting for environment availability">
+        <EnvironmentPickerUI
+          value=""
+          sources={localProjectSources}
+          host={localHost}
+          isLocal
+          isLoading
+          muted
+        />
+      </StoryRow>
       <StoryRow label="local checkout" hint="selected: Project checkout">
         <EnvironmentPickerUI
           value="provider:project-checkout"

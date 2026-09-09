@@ -110,6 +110,65 @@ afterEach(() => {
 });
 
 describe("EnvironmentPickerUI", () => {
+  it.each([false, true])(
+    "shows loading instead of empty options (multiple machines: %s)",
+    (multipleMachines) => {
+      const props = {
+        value: "provider:project-checkout",
+        sources: [],
+        host,
+        isLocal: true,
+        machines: multipleMachines
+          ? {
+              hosts: [host, makeHost({ id: "host_second" })],
+              localDaemonHostId: host.id,
+              primaryHostId: host.id,
+            }
+          : null,
+        onSelectProvider: vi.fn(),
+        modal: false,
+      };
+      const { rerender } = render(<EnvironmentPickerUI {...props} isLoading />);
+      const trigger = screen.getByRole("button", {
+        name: "Environment",
+      });
+      expect(trigger.getAttribute("aria-busy")).toBe("true");
+      expect(
+        trigger.querySelector("[data-environment-loading-placeholder]"),
+      ).not.toBeNull();
+      expect(trigger.textContent).not.toContain("Loading environments…");
+      fireEvent.pointerDown(trigger, { button: 0 });
+      const status = screen.getByRole("status", {
+        name: "Loading environments",
+      });
+      expect(
+        status.querySelectorAll("[data-environment-loading-row]"),
+      ).toHaveLength(4);
+      expect(screen.queryByText("Not set up for this project")).toBeNull();
+      expect(screen.queryByRole("menuitem")).toBeNull();
+
+      rerender(
+        <EnvironmentPickerUI {...props} providers={[checkoutProvider]} />,
+      );
+      expect(screen.queryByRole("status")).toBeNull();
+      expect(
+        trigger.querySelector("[data-environment-loading-placeholder]"),
+      ).toBeNull();
+      expect(
+        screen
+          .getByRole("button", { name: "Environment" })
+          .getAttribute("aria-busy"),
+      ).toBe("false");
+      fireEvent.click(
+        screen.getAllByRole("menuitem", { name: /Project checkout/u })[0]!,
+      );
+      expect(props.onSelectProvider).toHaveBeenCalledWith(
+        checkoutProvider,
+        host.id,
+      );
+    },
+  );
+
   it("bounds arbitrary provider labels without changing selection", () => {
     const verboseProvider = {
       ...checkoutProvider,

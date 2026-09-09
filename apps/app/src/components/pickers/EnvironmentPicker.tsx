@@ -6,6 +6,8 @@ import { Icon, type IconName } from "@bb/shared-ui/icon";
 import { findLocalPathProjectSourceForHost } from "@bb/domain";
 import { pluginIconName } from "@/components/plugin/PluginIcon";
 import { Button } from "@bb/shared-ui/button";
+import { Skeleton } from "@bb/shared-ui/skeleton";
+import { useIsCompactViewport } from "@bb/shared-ui/hooks/use-compact-viewport";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -58,6 +60,7 @@ export interface EnvironmentPickerUIProps {
   isLocal: boolean;
   muted?: boolean;
   disabled?: boolean;
+  isLoading?: boolean;
   className?: string;
   defaultOpen?: boolean;
   modal?: boolean;
@@ -142,6 +145,7 @@ export function EnvironmentPickerUI({
   isLocal,
   muted,
   disabled = false,
+  isLoading = false,
   className,
   defaultOpen,
   modal,
@@ -248,6 +252,7 @@ export function EnvironmentPickerUI({
           variant="ghost"
           size="sm"
           aria-label="Environment"
+          aria-busy={isLoading}
           disabled={disabled}
           data-promptbox-shrinkable-control=""
           className={cn(
@@ -262,8 +267,11 @@ export function EnvironmentPickerUI({
           <span className={OPTION_TRIGGER_CONTENT_CLASS_NAME}>
             {selectedProvider === undefined ? (
               <Icon
-                name={selected.icon}
-                className={COARSE_POINTER_COMPACT_ICON_SIZE_SHRINK_CLASS}
+                name={isLoading ? "Spinner" : selected.icon}
+                className={cn(
+                  COARSE_POINTER_COMPACT_ICON_SIZE_SHRINK_CLASS,
+                  isLoading && "animate-spin",
+                )}
               />
             ) : (
               <EnvironmentProviderIcon
@@ -271,16 +279,29 @@ export function EnvironmentPickerUI({
                 className={COARSE_POINTER_COMPACT_ICON_SIZE_SHRINK_CLASS}
               />
             )}
-            <span className="min-w-0 truncate" data-promptbox-full-label="">
-              {selected.modeLabel}
-            </span>
-            <span
-              className="min-w-0 truncate"
-              data-promptbox-compact-label=""
-              data-promptbox-hide-tiny=""
-            >
-              {selected.compactModeLabel}
-            </span>
+            {isLoading ? (
+              <>
+                <span className="sr-only">Loading environments</span>
+                <Skeleton
+                  aria-hidden
+                  data-environment-loading-placeholder="trigger"
+                  className="h-3 w-20 shrink-0 rounded-sm"
+                />
+              </>
+            ) : (
+              <>
+                <span className="min-w-0 truncate" data-promptbox-full-label="">
+                  {selected.modeLabel}
+                </span>
+                <span
+                  className="min-w-0 truncate"
+                  data-promptbox-compact-label=""
+                  data-promptbox-hide-tiny=""
+                >
+                  {selected.compactModeLabel}
+                </span>
+              </>
+            )}
           </span>
           {disabled ? null : (
             <Icon
@@ -295,10 +316,16 @@ export function EnvironmentPickerUI({
       </DropdownMenuTrigger>
       <DropdownMenuContent
         align="start"
-        className={cn(OPTION_MENU_CONTENT_CLASS_NAME, "max-w-80")}
+        className={cn(
+          OPTION_MENU_CONTENT_CLASS_NAME,
+          "max-w-80",
+          isLoading && "min-w-52",
+        )}
         mobileTitle="Environment"
       >
-        {isMachineMenu && availableMachines ? (
+        {isLoading ? (
+          <EnvironmentPickerLoadingRows />
+        ) : isMachineMenu && availableMachines ? (
           <MachineGroupedEnvironmentOptions
             machines={availableMachines}
             sources={sources}
@@ -328,6 +355,38 @@ export function EnvironmentPickerUI({
         )}
       </DropdownMenuContent>
     </DropdownMenu>
+  );
+}
+
+const ENVIRONMENT_LOADING_ROW_WIDTHS = [
+  "w-20",
+  "w-28",
+  "w-24",
+  "w-32",
+] as const;
+
+function EnvironmentPickerLoadingRows() {
+  const isCompactViewport = useIsCompactViewport();
+
+  return (
+    <div role="status" aria-label="Loading environments" className="pb-1">
+      <span className="sr-only">Loading environments</span>
+      {ENVIRONMENT_LOADING_ROW_WIDTHS.map((widthClassName) => (
+        <div
+          key={widthClassName}
+          data-environment-loading-row=""
+          aria-hidden
+          className={cn(
+            "flex items-center rounded-sm px-2",
+            isCompactViewport ? "py-2" : "py-[0.3125rem]",
+          )}
+        >
+          <Skeleton
+            className={cn("h-3 max-w-[75%] rounded-sm", widthClassName)}
+          />
+        </div>
+      ))}
+    </div>
   );
 }
 

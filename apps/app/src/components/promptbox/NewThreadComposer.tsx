@@ -1465,6 +1465,7 @@ export function NewThreadComposer({
               onChange: changeEnvironment,
               sources: projectSources,
               disabled: locks.environment,
+              isLoading: environmentProviders === undefined,
               providers: environmentProviders ?? [],
               providersByHostId: environmentProvidersByHostId,
               selectedProviderHostId: providerHostId,

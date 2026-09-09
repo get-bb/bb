@@ -204,6 +204,7 @@ describe("ProjectlessEnvSlot", () => {
   };
 
   function makeEnvironment(overrides: {
+    isLoading?: boolean;
     value?: string;
     providers?: readonly SystemEnvironmentProvider[];
     onSelectProvider?: (
@@ -222,6 +223,7 @@ describe("ProjectlessEnvSlot", () => {
         localDaemonHostId: host.id,
         primaryHostId: host.id,
       },
+      isLoading: overrides.isLoading ?? false,
       providers: overrides.providers ?? [personalProvider],
       selectedProviderHostId: host.id,
       onSelectProvider: overrides.onSelectProvider ?? vi.fn(),
@@ -245,6 +247,28 @@ describe("ProjectlessEnvSlot", () => {
       disabled: false,
     };
   }
+
+  it("shows environment loading before resolving to the machine slot", () => {
+    const { rerender } = render(
+      <ProjectlessEnvSlot
+        environment={makeEnvironment({ providers: [], isLoading: true })}
+        worktree={makeWorktree()}
+      />,
+    );
+    expect(screen.getByRole("button", { name: "Environment" })).not.toBeNull();
+    expect(screen.queryByRole("button", { name: "Machine" })).toBeNull();
+    rerender(
+      <ProjectlessEnvSlot
+        environment={makeEnvironment({
+          providers: [personalProvider],
+          isLoading: false,
+        })}
+        worktree={makeWorktree()}
+      />,
+    );
+    expect(screen.queryByRole("button", { name: "Environment" })).toBeNull();
+    expect(screen.getByRole("button", { name: "Machine" })).not.toBeNull();
+  });
 
   it("keeps the machine slot when only one provider is available", () => {
     render(

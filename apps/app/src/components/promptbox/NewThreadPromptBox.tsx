@@ -82,6 +82,7 @@ export interface NewThreadEnvironmentConfig {
   machines?: EnvironmentPickerMachines | null;
   onRequestMachineSetup?: (host: Host) => void;
   disabled?: boolean;
+  isLoading?: boolean;
   providers?: readonly SystemEnvironmentProvider[];
   providersByHostId?: EnvironmentPickerUIProps["providersByHostId"];
   selectedProviderHostId?: string | null;
@@ -438,6 +439,7 @@ export function ThreadEnvSlot({
         machines={environment.machines}
         onRequestMachineSetup={environment.onRequestMachineSetup}
         disabled={environment.disabled}
+        isLoading={environment.isLoading}
         providers={environment.providers}
         providersByHostId={environment.providersByHostId}
         selectedProviderHostId={environment.selectedProviderHostId}
@@ -487,7 +489,11 @@ export function ProjectlessEnvSlot({
         )
       : undefined;
   const showReuseEnvironmentPicker = parsedEnvironment?.type === "reuse";
-  if (providers.length <= 1 && !showReuseEnvironmentPicker) {
+  if (
+    !environment.isLoading &&
+    providers.length <= 1 &&
+    !showReuseEnvironmentPicker
+  ) {
     return <ProjectlessMachineSlot environment={environment} />;
   }
 
@@ -501,6 +507,7 @@ export function ProjectlessEnvSlot({
         isLocal={environment.isLocal}
         machines={environment.machines}
         disabled={environment.disabled}
+        isLoading={environment.isLoading}
         providers={providers}
         providersByHostId={environment.providersByHostId}
         selectedProviderHostId={environment.selectedProviderHostId}
