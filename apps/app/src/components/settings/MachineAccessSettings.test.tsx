@@ -1,18 +1,56 @@
 // @vitest-environment jsdom
-import { cleanup, render, screen } from "@testing-library/react";
+import {
+  act,
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+} from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
-import { afterEach, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { makeSystemConfig } from "@/test/fixtures/system-config";
 import { MachineAccessSettings } from "./MachineAccessSettings";
 
-const mocks = vi.hoisted(() => ({ config: vi.fn() }));
+const mocks = vi.hoisted(() => ({
+  config: vi.fn(),
+  mutate: vi.fn(),
+  isPending: false,
+}));
+vi.mock("@/components/pickers/OptionPicker", () => ({
+  OptionPicker: ({
+    value,
+    onChange,
+    disabled,
+  }: {
+    value: string;
+    onChange: (value: string) => void;
+    disabled: boolean;
+  }) => (
+    <select
+      aria-label="Connection method"
+      value={value}
+      disabled={disabled}
+      onChange={(event) => onChange(event.target.value)}
+    >
+      <option value="connect">bb connect</option>
+      <option value="direct">Manual</option>
+    </select>
+  ),
+}));
 vi.mock("@/hooks/queries/system-queries", () => ({
   useSystemConfig: mocks.config,
 }));
 vi.mock("@/hooks/mutations/settings-mutations", () => ({
-  useUpdateGeneralSettings: () => ({ isPending: false }),
+  useUpdateGeneralSettings: () => ({
+    isPending: mocks.isPending,
+    mutate: mocks.mutate,
+  }),
 }));
 afterEach(cleanup);
+beforeEach(() => {
+  mocks.mutate.mockReset();
+  mocks.isPending = false;
+});
 
 function show(defaultProviderId: string, paired = false) {
   mocks.config.mockReturnValue({
@@ -40,7 +78,7 @@ function show(defaultProviderId: string, paired = false) {
       },
     }),
   });
-  render(
+  return render(
     <MemoryRouter>
       <MachineAccessSettings />
     </MemoryRouter>,
@@ -80,4 +118,51 @@ it("retains diagnostics for paired Connect without showing setup", () => {
     "bb connect: 2 legacy access records need attention",
   );
   expect(screen.queryByRole("link", { name: "Set up bb connect" })).toBeNull();
+});
+
+it("keeps the selection through saving and a stale config refresh", () => {
+  const view = show("connect");
+  fireEvent.change(screen.getByRole("combobox"), {
+    target: { value: "direct" },
+  });
+  expect(screen.getByRole("textbox", { name: "Server address" })).toBeTruthy();
+  expect(mocks.mutate.mock.calls[0][0].defaultMachineAccess).toBe("direct");
+  const refresh = () =>
+    view.rerender(
+      <MemoryRouter>
+        <MachineAccessSettings />
+      </MemoryRouter>,
+    );
+  mocks.isPending = true;
+  refresh();
+  expect(screen.getByRole<HTMLSelectElement>("combobox").value).toBe("direct");
+  mocks.isPending = false;
+  refresh();
+  expect(screen.getByRole<HTMLSelectElement>("combobox").value).toBe("direct");
+  const config = mocks.config();
+  mocks.config.mockReturnValue({
+    data: {
+      ...config.data,
+      serverAccess: {
+        ...config.data.serverAccess,
+        defaultProviderId: "direct",
+      },
+    },
+  });
+  refresh();
+  expect(screen.getByRole<HTMLSelectElement>("combobox").value).toBe("direct");
+  mocks.config.mockReturnValue(config);
+  refresh();
+  expect(screen.getByRole<HTMLSelectElement>("combobox").value).toBe("connect");
+});
+
+it("restores the saved selection when saving fails", () => {
+  show("connect");
+  fireEvent.change(screen.getByRole("combobox"), {
+    target: { value: "direct" },
+  });
+  expect(screen.getByRole("textbox", { name: "Server address" })).toBeTruthy();
+  act(() => mocks.mutate.mock.calls[0][1].onError(new Error("Save failed")));
+  expect(screen.getByRole<HTMLSelectElement>("combobox").value).toBe("connect");
+  expect(screen.queryByRole("textbox", { name: "Server address" })).toBeNull();
 });

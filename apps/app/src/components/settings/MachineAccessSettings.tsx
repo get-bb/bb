@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { Button } from "@bb/shared-ui/button";
 import { getPluginConfigurationRoutePath } from "@/lib/route-paths";
@@ -40,7 +40,14 @@ export function MachineAccessSettings() {
       setError("Enter a valid HTTP or HTTPS URL without credentials");
     }
   };
-  const selected = access?.defaultProviderId ?? "connect";
+  const savedProviderId = access?.defaultProviderId ?? "connect";
+  const [selectedProviderId, setSelectedProviderId] = useState<string | null>(
+    null,
+  );
+  useEffect(() => {
+    if (selectedProviderId === savedProviderId) setSelectedProviderId(null);
+  }, [savedProviderId, selectedProviderId]);
+  const selected = selectedProviderId ?? savedProviderId;
   const effective = access?.providers.find(
     (provider) => provider.id === selected,
   );
@@ -53,6 +60,7 @@ export function MachineAccessSettings() {
           label="Connection method"
           value={selected}
           disabled={disabled}
+          showChevronWhenDisabled
           align="end"
           options={[
             ...(!access?.providers.some((provider) => provider.id === "connect")
@@ -78,11 +86,12 @@ export function MachineAccessSettings() {
             })),
           ]}
           onChange={(providerId) => {
-            if (settings)
-              update.mutate({
-                ...settings,
-                defaultMachineAccess: providerId,
-              });
+            if (!settings || providerId === selected) return;
+            setSelectedProviderId(providerId);
+            update.mutate(
+              { ...settings, defaultMachineAccess: providerId },
+              { onError: () => setSelectedProviderId(null) },
+            );
           }}
         />
       }
