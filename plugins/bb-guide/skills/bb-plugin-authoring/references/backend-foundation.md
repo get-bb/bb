@@ -38,7 +38,7 @@ are additive, so registering multiple listeners is supported.
 
 ### bb.settings
 
-`bb.settings.define(descriptors)` declares plain-data descriptors (rendered
+`bb.settings.define(descriptors)` declares settings descriptors (rendered
 in Plugins → Installed plugins and editable via `bb plugin config <id> set <key>
 <value>`). Five descriptor types:
 

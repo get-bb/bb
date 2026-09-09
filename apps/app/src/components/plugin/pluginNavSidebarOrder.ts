@@ -29,31 +29,20 @@ export function seedSkillsNavigationPreference(
   order: readonly string[],
   visibleKeys: readonly string[] | null,
 ): { order: string[]; visibleKeys: string[] | null } {
-  if (order.includes(BUILT_IN_SIDEBAR_NAVIGATION_KEYS.skills)) {
-    return {
-      order: [...order],
-      visibleKeys: visibleKeys === null ? null : [...visibleKeys],
-    };
-  }
-  const pluginsIndex = order.indexOf(
-    BUILT_IN_SIDEBAR_NAVIGATION_KEYS.extensions,
-  );
-  if (pluginsIndex === -1) {
+  const { extensions, skills } = BUILT_IN_SIDEBAR_NAVIGATION_KEYS;
+  const pluginsIndex = order.indexOf(extensions);
+  if (pluginsIndex === -1 || order.includes(skills)) {
     return {
       order: [...order],
       visibleKeys: visibleKeys === null ? null : [...visibleKeys],
     };
   }
   const nextOrder = [...order];
-  nextOrder.splice(
-    pluginsIndex + 1,
-    0,
-    BUILT_IN_SIDEBAR_NAVIGATION_KEYS.skills,
-  );
+  nextOrder.splice(pluginsIndex + 1, 0, skills);
   if (
     visibleKeys === null ||
-    !visibleKeys.includes(BUILT_IN_SIDEBAR_NAVIGATION_KEYS.extensions) ||
-    visibleKeys.includes(BUILT_IN_SIDEBAR_NAVIGATION_KEYS.skills)
+    !visibleKeys.includes(extensions) ||
+    visibleKeys.includes(skills)
   ) {
     return {
       order: nextOrder,
@@ -61,14 +50,7 @@ export function seedSkillsNavigationPreference(
     };
   }
   const nextVisibleKeys = [...visibleKeys];
-  const visiblePluginsIndex = nextVisibleKeys.indexOf(
-    BUILT_IN_SIDEBAR_NAVIGATION_KEYS.extensions,
-  );
-  nextVisibleKeys.splice(
-    visiblePluginsIndex + 1,
-    0,
-    BUILT_IN_SIDEBAR_NAVIGATION_KEYS.skills,
-  );
+  nextVisibleKeys.splice(nextVisibleKeys.indexOf(extensions) + 1, 0, skills);
   return { order: nextOrder, visibleKeys: nextVisibleKeys };
 }
 

@@ -31,13 +31,13 @@ const TOOLS_SECTIONS = {
   skills: {
     id: "skills",
     label: "Skills",
-    icon: "BookOpen",
+    icon: "Explore",
     to: getSkillsRoutePath(),
   },
   plugins: {
     id: "plugins",
     label: "Plugins",
-    icon: "Blocks",
+    icon: "GridView",
     to: getPluginsRoutePath(),
   },
 } satisfies Record<ToolsSectionId, ToolsSectionDefinition>;

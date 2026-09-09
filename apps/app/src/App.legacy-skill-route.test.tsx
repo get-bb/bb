@@ -4,6 +4,7 @@ import { cleanup, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 import { MemoryRouter, Route, Routes, useLocation } from "react-router-dom";
 import {
+  LegacyInstalledPluginsRedirect,
   LegacyPluginsPathRedirect,
   LegacySkillsPathRedirect,
   LegacyToolsPathRedirect,
@@ -15,6 +16,7 @@ import {
   LEGACY_TOOLS_SKILL_DETAIL_ROUTE_PATH,
   LEGACY_TOOLS_SPLAT_ROUTE_PATH,
   PLUGINS_ROUTE_PATH,
+  SETTINGS_PLUGINS_ROUTE_PATH,
   SKILLS_ROUTE_PATH,
   TOOLS_PLUGIN_BROWSE_ROUTE_PATH,
   TOOLS_PLUGIN_DETAIL_ROUTE_PATH,
@@ -40,6 +42,22 @@ function LocationPath() {
 afterEach(cleanup);
 
 describe("legacy Extensions redirects", () => {
+  it("redirects the legacy Settings plugin manager to Installed plugins", () => {
+    render(
+      <MemoryRouter initialEntries={[SETTINGS_PLUGINS_ROUTE_PATH]}>
+        <Routes>
+          <Route
+            path={SETTINGS_PLUGINS_ROUTE_PATH}
+            element={<LegacyInstalledPluginsRedirect />}
+          />
+          <Route path={PLUGINS_ROUTE_PATH} element={<LocationPath />} />
+        </Routes>
+      </MemoryRouter>,
+    );
+
+    expect(screen.getByText("/plugins?view=installed")).toBeTruthy();
+  });
+
   it("redirects the Extensions root to Plugins while preserving query and hash", () => {
     render(
       <MemoryRouter initialEntries={["/extensions?view=installed#catalog"]}>

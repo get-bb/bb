@@ -64,7 +64,6 @@ import {
 } from "./lib/route-paths";
 import { AppCommandProvider } from "./components/commands/AppCommandProvider";
 import { ProviderCliInstallLogDialogHost } from "./components/provider-cli/provider-cli-install";
-import { PluginSettingsCompatibilityRoute } from "./components/settings/PluginSettingsCompatibilityRoute";
 import { RouteLoadingSkeleton } from "./components/ui/route-loading-skeleton";
 
 const SettingsView = lazy(() =>
@@ -164,6 +163,10 @@ export function PluginsLandingRedirect() {
       replace
     />
   );
+}
+
+export function LegacyInstalledPluginsRedirect() {
+  return <Navigate to={`${PLUGINS_ROUTE_PATH}?view=installed`} replace />;
 }
 
 function normalizeLegacyPluginSuffix(suffix: string): string {
@@ -302,20 +305,9 @@ export function AppRoutes() {
           />
           <Route
             path={SETTINGS_PLUGINS_ROUTE_PATH}
-            element={
-              <PluginSettingsCompatibilityRoute>
-                <SettingsView />
-              </PluginSettingsCompatibilityRoute>
-            }
+            element={<LegacyInstalledPluginsRedirect />}
           />
-          <Route
-            path={SETTINGS_PLUGIN_ROUTE_PATH}
-            element={
-              <PluginSettingsCompatibilityRoute>
-                <SettingsView />
-              </PluginSettingsCompatibilityRoute>
-            }
-          />
+          <Route path={SETTINGS_PLUGIN_ROUTE_PATH} element={<SettingsView />} />
           <Route
             path={SETTINGS_MACHINE_ROUTE_PATH}
             element={<MachineSettingsView />}
