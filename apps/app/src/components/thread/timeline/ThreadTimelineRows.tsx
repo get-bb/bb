@@ -1407,6 +1407,9 @@ export function pastRowDimClassName({
         return undefined;
       return row.status === "completed" ? PAST_ROW_DIM_CLASS_NAME : undefined;
     case "work":
+      return row.status === "completed" || row.status === "error"
+        ? PAST_ROW_DIM_CLASS_NAME
+        : undefined;
     case "turn":
     case "bundle-summary":
     case "step-summary":
