@@ -270,12 +270,11 @@ environments whose provider returns ownsPath: true. Readiness checks the recorde
 setup outcome against the checkout inputs; it never runs a separate recipe script.
 The repo hook owns dependency caching and its unchanged-input no-op path.
 
-`bb machine lifecycle MACHINE --json` shows the vendor expiry, planned maintenance,
-last successful snapshot and recovery state.
+`bb machine lifecycle MACHINE --json` shows core maintenance state and any suspension or resume error.
 Maintenance interrupts active turns and closes terminals before saving. Submit a
 new continuation turn after restore; interrupted turns are never reported successful.
 
-`bb machine lifecycle MACHINE --remove --yes --json` removes retained compute and snapshots through the normal machine removal path. After filesystem restore, core reruns the owned checkout’s idempotent setup hook to restart services; hook failure blocks readiness.
+`bb machine lifecycle MACHINE --remove --yes --json` runs provider removal through the normal machine removal path. After filesystem restore, core reruns the owned checkout’s idempotent setup hook to restart services; hook failure blocks readiness.
 
 Automatic machine GitHub credentials are enabled by default. Use
 `bb settings general machineGitCredentialsEnabled false` to stop forwarding the

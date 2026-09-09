@@ -1,5 +1,4 @@
 import {
-  observeMachineLifecycle,
   assertMachineLifecycleAdmission,
   waitForMachineMaintenance,
 } from "../machines/lifecycle.js";
@@ -26,7 +25,6 @@ export async function ensureHostSessionReadyForWork(
     );
   }
 
-  await observeMachineLifecycle(deps, host.id);
   await waitForMachineMaintenance(deps, host.id);
   await resumeMachine(deps, host.id);
   assertMachineLifecycleAdmission(deps, host.id);

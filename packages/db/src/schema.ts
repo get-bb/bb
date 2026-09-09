@@ -1220,32 +1220,15 @@ export const machineLifecycles = sqliteTable("machine_lifecycles", {
   hostId: text("host_id")
     .primaryKey()
     .references(() => hosts.id, { onDelete: "cascade" }),
-  observedState: text("observed_state", {
-    enum: ["running", "suspended", "missing", "unknown"],
-  }).notNull(),
-  observedAt: integer("observed_at").notNull(),
-  expiresAt: integer("expires_at"),
-  maintenanceAt: integer("maintenance_at"),
-  lastSnapshotAt: integer("last_snapshot_at"),
   restoreOperationId: text("restore_operation_id"),
   restoreCheckouts: text("restore_checkouts", { mode: "json" }).$type<
     Array<{ id: string; path: string }>
   >(),
   recoveryState: text("recovery_state", {
-    enum: [
-      "healthy",
-      "draining",
-      "saving",
-      "saved",
-      "recoverable",
-      "lost-since-last-snapshot",
-    ],
+    enum: ["healthy", "draining", "saving", "saved", "recoverable"],
   }).notNull(),
   message: text("message"),
   leaseId: text("lease_id"),
   leaseUntil: integer("lease_until"),
   retryAt: integer("retry_at"),
-  idleSuspendMs: integer("idle_suspend_ms"),
-  deadlineLeadMs: integer("deadline_lead_ms"),
-  unusedSince: integer("unused_since"),
 });

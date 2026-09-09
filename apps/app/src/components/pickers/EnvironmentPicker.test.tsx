@@ -103,11 +103,7 @@ const modalMachineProvider: SystemMachineProvider = {
     displayName: "Modal sandbox",
     environmentProviderId: checkoutProvider.id,
   },
-  policy: {
-    idleSuspendMs: 60_000,
 
-    removeRetryMs: 60_000,
-  },
   availability: null,
 };
 

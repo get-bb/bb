@@ -1,9 +1,6 @@
 import { getMachineEnrollmentService } from "../services/machines/machine-services.js";
 import { manualEnrollmentCommand } from "../services/machines/manual-enrollment-command.js";
-import {
-  machineLifecycleStatus,
-  observeMachineLifecycle,
-} from "../services/machines/lifecycle.js";
+import { machineLifecycleStatus } from "../services/machines/lifecycle.js";
 import { ensureHostReady } from "../services/machines/readiness.js";
 import { ensureProjectSourceOnHost } from "../services/projects/project-source-setup.js";
 import { serverAccess } from "../services/machines/server-access.js";
@@ -372,7 +369,6 @@ export function registerHostRoutes(
   post(routes.experimental_lifecycle, async (context) => {
     const hostId = context.req.param("id");
     assertUsableHostId(deps, { hostId });
-    await observeMachineLifecycle(deps, hostId).catch(() => {});
     return context.json(machineLifecycleStatus(deps, hostId));
   });
 

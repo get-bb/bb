@@ -302,10 +302,9 @@ Read the installed declarations for exact current signatures.
 ## `@get-bb/plugin-sdk/machine-provider`
 
 - `PluginMachineProviderDefinition` — id, display, optional icon, inputs, availability,
-  validation, optional picker sugar, policy, create, optional paired
+  validation, optional per-machine idle timeout, create, optional paired
   suspend/resume, and remove
 - `PluginMachineProviderInputsSchema`
-- `PluginMachineProviderPolicy` — idle suspension, retirement, and removal retry
 - `PluginMachineProviderEnvironmentRow`
 - `PluginMachineProviderAvailabilityContext`
 - `PluginMachineProviderAvailability`

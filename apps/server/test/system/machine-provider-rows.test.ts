@@ -15,11 +15,6 @@ import { createMachine } from "../../src/services/machines/provider-orchestratio
 import { seedHostSession, seedProjectWithSource } from "../helpers/seed.js";
 import { withTestHarness } from "../helpers/test-app.js";
 
-const policy = {
-  idleSuspendMs: null,
-
-  removeRetryMs: 30_000,
-};
 const row = {
   displayName: "Test machine",
   environmentProviderId: "project-checkout",
@@ -80,7 +75,6 @@ describe("machine checkout picker rows", () => {
             reconcileCleanup: async () => ({ status: "removed" }),
             id: "test-machine",
             displayName: "Test machine",
-            policy,
             environmentRow: row,
             inputs: z.object({ size: z.string() }),
             create: async () => ({
@@ -208,7 +202,6 @@ it("rechecks availability after provider setup changes without restarting the pl
       provider: validatePluginMachineProviderDeclaration({
         id: "test-machine",
         displayName: "Test machine",
-        policy,
         availability: () =>
           configured
             ? { status: "available" }

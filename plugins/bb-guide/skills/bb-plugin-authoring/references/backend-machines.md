@@ -27,12 +27,10 @@ bb.experimental_machines.register({
   displayName: "Custom machine",
   icon: "Server",
   inputs: z.object({ target: z.string() }),
-  policy: {
-    idleSuspendMs: null,
-    removeRetryMs: 60_000,
-  },
   async create({ inputs, key, checkpoint, report, signal }) {
-    const enrollment = await bb.experimental_machines.prepareEnrollment({ key });
+    const enrollment = await bb.experimental_machines.prepareEnrollment({
+      key,
+    });
     const target = await allocateTarget({ target: inputs.target, key, signal });
     const resource = { target: target.id, hostId: enrollment.hostId };
     await checkpoint(resource);
@@ -46,7 +44,9 @@ bb.experimental_machines.register({
     return { status: "created", hostId, resource };
   },
   async remove({ resource }) {
-    const owned = z.object({ target: z.string(), hostId: z.string() }).parse(resource);
+    const owned = z
+      .object({ target: z.string(), hostId: z.string() })
+      .parse(resource);
     await disconnectTarget(owned.target);
     return { status: "removed" };
   },
@@ -82,7 +82,7 @@ An `environmentRow` is optional. Providers without one, such as SSH, require
 `--environment-provider <id>` alongside `bb thread spawn --new-machine <id>`.
 
 Suspend and resume are optional but must be declared together. Without them,
-`policy.idleSuspendMs` must be null. With them, core suspends only after every
+omit `experimental_idleSuspendMs`. With them, core suspends only after every
 live thread is idle and no terminal is open, then resumes before the next send.
 Suspend receives `checkpoint(resource)`, which synchronously
 persists a recoverable private resource before destructive cleanup. Use it
@@ -103,8 +103,7 @@ explicitly cancel; closing a client or aborting its signal stops following.
 
 Retirement is either last-thread plus a grace period or never. Removal always
 cascades through the machine's environment providers before machine remove;
-failures persist and retry after `removeRetryMs`.
-
+failures persist and retry after the core one-minute retry interval.
 
 ## Server access
 
@@ -164,16 +163,24 @@ restarts enrolled identities, including a restored preinstalled snapshot.
 Create's awaited checkpoint precedes bootstrap; suspend's synchronous checkpoint
 persists a recovery artifact before destructive cleanup.
 
-### Finite machine lifetimes
+### Coordinated suspension
 
-Optional `experimental_observe({hostId,resource,signal})` returns
-`{state:"running"|"suspended"|"missing"|"unknown",expiresAt,resource}` without
-allocating or changing identity. `experimental_policy({hostId,resource})` returns
-live `{idleSuspendMs,deadlineLeadMs}`; null disables a policy.
-Core owns the maintenance lease, dispatch exclusion, and interruption. Stop workspace writers before snapshotting. Supply
-`suspend.checkpoint(resource, experimental_snapshotAt)` after a successful save
-and before terminating compute; do not report an allocation checkpoint as a save.
-Reconcile resume by durable name and await its checkpoint before bootstrap.
-Failed preservation must retain old compute and report recoverable failure.
-`bb.sdk.hosts.experimental_lifecycle({hostId})` exposes the same lifecycle
-state as `bb machine lifecycle MACHINE --json`.
+Use `experimental_idleSuspendMs({hostId,resource})` for a current per-machine idle
+timeout, or omit it to disable automatic suspension. Core checks threads, terminals
+and queued work before idle suspension.
+
+Call `bb.sdk.hosts.suspend({hostId})` for coordinated suspension. Core blocks new work
+and drains active turns, setup hooks and terminals with a five-minute bound before
+calling your suspend callback. Persist opaque state with `checkpoint(resource)` before
+terminating compute. Core serializes resource transitions and restores the same host
+identity, then runs checkout setup/readiness.
+
+Your plugin owns vendor observations, expiry scheduling, snapshot identifiers,
+cleanup and explicit recovery from loss. Use `bb.background.schedule` plus startup
+reconciliation; allow the full core drain bound, snapshot time and scheduler jitter.
+Refuse unsafe recovery or preservation after a missed deadline. A dispatch hook can
+help communicate status but is bypassable and does not protect terminal/file RPCs.
+Use provider details to show snapshots and loss information.
+
+`bb.sdk.hosts.experimental_lifecycle({hostId})` and `bb machine lifecycle MACHINE --json`
+show generic maintenance state. Core does not provide retention or keep controls.

@@ -40,7 +40,7 @@ async function installPlugin(harness: TestAppHarness, id: string) {
     `export default function(bb) {
     bb.experimental_machines.register({
       id: "${id}-machine", displayName: "Runtime machine",
-      policy: { idleSuspendMs: null, removeRetryMs: 10 },
+
       reconcileCleanup: async () => ({ status: "removed" }),
       create: async () => ({ status: "failed", failure: "terminal", message: "unused" }),
       remove: async () => ({ status: "removed" })

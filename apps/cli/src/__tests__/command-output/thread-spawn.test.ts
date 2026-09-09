@@ -1310,11 +1310,7 @@ describe("bb thread spawn command output", () => {
               displayName: "Test machine",
               environmentProviderId: "project-checkout",
             },
-            policy: {
-              idleSuspendMs: null,
 
-              removeRetryMs: 30_000,
-            },
             availability: null,
           },
         ],

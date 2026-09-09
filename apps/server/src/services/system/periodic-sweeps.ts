@@ -487,7 +487,7 @@ const PERIODIC_SWEEP_JOBS: PeriodicSweepJob[] = [
     cadenceMs: 0,
     category: "durable-intent-retry",
     name: "machine-provider-lifecycle",
-    run: (deps) => sweepMachineLifecycles(deps, { backgroundDeadlines: true }),
+    run: (deps) => sweepMachineLifecycles(deps, { background: true }),
   },
   {
     cadenceMs: 0,

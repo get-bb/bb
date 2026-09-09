@@ -220,11 +220,7 @@ describe("ProjectlessEnvSlot", () => {
       displayName: "Modal sandbox",
       environmentProviderId: personalProvider.id,
     },
-    policy: {
-      idleSuspendMs: 60_000,
 
-      removeRetryMs: 60_000,
-    },
     availability: null,
   };
 

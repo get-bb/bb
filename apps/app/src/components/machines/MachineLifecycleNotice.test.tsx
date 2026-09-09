@@ -16,11 +16,9 @@ afterEach(() => {
 it("delegates explicit removal through the existing confirmation flow", async () => {
   vi.mocked(sdk.hosts.experimental_lifecycle).mockResolvedValue({
     phase: "suspended",
-    expiresAt: null,
-    maintenanceAt: null,
-    lastSnapshotAt: 1,
+
     recoveryState: "healthy",
-    message: null,
+    message: "Machine suspension failed",
   });
   const remove = vi.fn();
   const client = new QueryClient({
@@ -36,15 +34,13 @@ it("delegates explicit removal through the existing confirmation flow", async ()
   client.clear();
 });
 
-it.each(["Compute disappeared before preservation completed", null])(
-  "shows preservation loss without lifecycle dates: %s",
+it.each(["Machine suspension failed"])(
+  "shows maintenance failure: %s",
   async (message) => {
     vi.mocked(sdk.hosts.experimental_lifecycle).mockResolvedValue({
       phase: "active",
-      expiresAt: null,
-      maintenanceAt: null,
-      lastSnapshotAt: null,
-      recoveryState: "lost-since-last-snapshot",
+
+      recoveryState: "recoverable",
       message,
     });
     const client = new QueryClient({

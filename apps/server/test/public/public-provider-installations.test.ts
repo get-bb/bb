@@ -286,11 +286,7 @@ describe("public provider installation routes", () => {
           provider: validatePluginMachineProviderDeclaration({
             id: "test-machine",
             displayName: "Test machine",
-            policy: {
-              idleSuspendMs: null,
 
-              removeRetryMs: 30_000,
-            },
             reconcileCleanup: async () => ({ status: "removed" }),
             create: async () => ({
               status: "created",

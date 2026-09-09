@@ -2448,7 +2448,6 @@ export interface NormalizedPluginMachineProvider {
   environmentRow:
     | import("../machine-provider.js").PluginMachineProviderEnvironmentRow
     | null;
-  policy: import("../machine-provider.js").PluginMachineProviderPolicy;
   experimental_idleSuspendMs: NonNullable<
     PluginMachineProviderDeclaration["experimental_idleSuspendMs"]
   > | null;
@@ -2457,8 +2456,6 @@ export interface NormalizedPluginMachineProvider {
   > | null;
   reconcileCleanup: PluginMachineProviderDeclaration["reconcileCleanup"];
   create: PluginMachineProviderDeclaration["create"];
-  experimental_observe?: PluginMachineProviderDeclaration["experimental_observe"];
-  experimental_policy?: PluginMachineProviderDeclaration["experimental_policy"];
   suspend: NonNullable<PluginMachineProviderDeclaration["suspend"]> | null;
   resume: NonNullable<PluginMachineProviderDeclaration["resume"]> | null;
   remove: PluginMachineProviderDeclaration["remove"];
@@ -2530,15 +2527,6 @@ export function validatePluginMachineProviderDeclaration(
       `machine provider "${id}" must declare create, reconcileCleanup and remove functions`,
     );
   }
-  for (const name of ["experimental_observe", "experimental_policy"] as const) {
-    if (
-      declaration[name] !== undefined &&
-      typeof declaration[name] !== "function"
-    )
-      throw new Error(
-        `machine provider "${id}" declares a ${name} that is not a function`,
-      );
-  }
   const hasSuspend = typeof declaration.suspend === "function";
   const hasResume = typeof declaration.resume === "function";
   if (hasSuspend !== hasResume) {
@@ -2590,12 +2578,6 @@ export function validatePluginMachineProviderDeclaration(
     throw new Error(
       `machine provider "${id}" must declare suspend and resume with experimental_idleSuspendMs`,
     );
-  const policy = machineProviderPolicySchema.parse(declaration.policy);
-  if (!hasSuspend && policy.idleSuspendMs !== null) {
-    throw new Error(
-      `machine provider "${id}" must set policy.idleSuspendMs to null without suspend and resume`,
-    );
-  }
   return {
     id,
     displayName,
@@ -2606,13 +2588,10 @@ export function validatePluginMachineProviderDeclaration(
     availability: declaration.availability ?? null,
     validate: declaration.validate ?? null,
     environmentRow,
-    policy,
     experimental_idleSuspendMs: declaration.experimental_idleSuspendMs ?? null,
     experimental_details: declaration.experimental_details ?? null,
     reconcileCleanup: declaration.reconcileCleanup,
     create: declaration.create,
-    experimental_observe: declaration.experimental_observe,
-    experimental_policy: declaration.experimental_policy,
     suspend: declaration.suspend ?? null,
     resume: declaration.resume ?? null,
     remove: declaration.remove,
@@ -2646,10 +2625,3 @@ function normalizeMachineProviderInputs(
   }
   return { schema: inputs, jsonSchema: jsonSchema.data };
 }
-
-const machineProviderPolicySchema = z
-  .object({
-    idleSuspendMs: z.number().int().nonnegative().nullable(),
-    removeRetryMs: z.number().int().positive(),
-  })
-  .strict();

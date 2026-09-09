@@ -1,3 +1,4 @@
+import { getHost } from "@bb/db";
 import { getMachineLifecycle } from "../services/machines/lifecycle.js";
 import { parseOptionalInteger } from "../services/lib/validation.js";
 import path from "node:path";
@@ -145,7 +146,8 @@ async function getPullRequestForWorkspaceTarget(
   const lifecycle = getMachineLifecycle(deps, target.hostId);
   if (
     lifecycle !== undefined &&
-    (lifecycle.observedState !== "running" || lifecycle.leaseId !== null)
+    (getHost(deps.db, target.hostId)?.suspendedAt !== null ||
+      lifecycle.leaseId !== null)
   )
     return null;
   const result = await callHostRetryableOnlineRpc(deps, {

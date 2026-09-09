@@ -355,11 +355,7 @@ export const STORY_MACHINE_PROVIDERS: readonly SystemMachineProvider[] = [
       displayName: "Modal sandbox",
       environmentProviderId: "project-checkout",
     },
-    policy: {
-      idleSuspendMs: 15 * 60_000,
 
-      removeRetryMs: 60_000,
-    },
     availability: null,
   },
 ];

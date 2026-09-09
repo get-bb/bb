@@ -472,7 +472,6 @@ export function registerSystemRoutes(
             record,
             query,
           ),
-          policy: record.provider.policy,
           availability: await resolveMachineProviderAvailability(
             deps,
             record,

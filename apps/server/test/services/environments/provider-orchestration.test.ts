@@ -1,5 +1,4 @@
 import { withEnvironmentCleanupSlot } from "../../../src/services/environments/cleanup-concurrency.js";
-import { machineLifecycles, environmentHookOperations } from "@bb/db";
 import { registerTestHostRpcCapture } from "../../helpers/commands.js";
 import { reportEnvironmentHookProgress } from "../../../src/services/environments/environment-hooks.js";
 import { recordProvisionedEnvironmentWorkspace } from "@bb/db/internal-environment-lifecycle";
@@ -1537,35 +1536,19 @@ describe("core environment orchestration", () => {
   );
 });
 
-it("records skipped teardown after confirmed filesystem loss and still invokes provider cleanup", async () =>
+it("finalizes a workspace path already claimed by the same launch", async () =>
   withTestHarness(async (harness) => {
-    const remove = vi.fn(async () => ({ status: "removed" as const }));
-    const fixture = setup(harness, { policy: { retireGraceMs: 0 }, remove });
+    const fixture = setup(harness, {
+      create: async (context) => {
+        expect(await context.experimental_claimPath("/tmp/project")).toBe(true);
+        context.report.log("Checkout prepared");
+        return { status: "created", path: "/tmp/project", ownsPath: false };
+      },
+    });
     fixture.ask();
     await fixture.settled();
-    const environmentId = fixture.attach();
-    harness.db
-      .insert(machineLifecycles)
-      .values({
-        hostId: fixture.host.id,
-        observedState: "missing",
-        observedAt: Date.now(),
-        recoveryState: "lost-since-last-snapshot",
-      })
-      .run();
-    harness.hub.unregisterDaemon(fixture.session.id);
-    await sweepProviderEnvironment(harness.deps, environmentId);
-    expect(remove).toHaveBeenCalledOnce();
-    expect(getEnvironment(harness.db, environmentId)?.teardownStatus).toBe(
-      "removed",
-    );
-    const operation = harness.db
-      .select()
-      .from(environmentHookOperations)
-      .where(eq(environmentHookOperations.kind, "teardown"))
-      .get();
-    expect(operation).toMatchObject({
-      error: expect.stringContaining("filesystem no longer exists"),
-      finishedAt: expect.any(Number),
+    expect(fixture.row()).toMatchObject({
+      phase: "ready",
+      path: "/tmp/project",
     });
   }));

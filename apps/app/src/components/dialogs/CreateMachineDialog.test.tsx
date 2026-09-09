@@ -78,11 +78,7 @@ beforeEach(() => {
       acceptsEmptyInputs: true,
       supportsSuspend: false,
       environmentRow: null,
-      policy: {
-        idleSuspendMs: null,
 
-        removeRetryMs: 60_000,
-      },
       availability: { status: "available" },
     })),
   );

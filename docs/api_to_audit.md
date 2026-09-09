@@ -625,7 +625,6 @@ Supporting root exports `PluginMachineProviderDeclaration`,
 covered by this audit alongside these machine-provider subpath exports:
 `PluginMachineProviderDefinition`,
 `PluginMachineProviderInputsSchema`,
-`PluginMachineProviderPolicy`,
 `PluginMachineProviderEnvironmentRow`,
 `PluginMachineProviderAvailabilityContext`,
 `PluginMachineProviderAvailability`,
@@ -2729,7 +2728,7 @@ Core supplies the durable launch key, progress reporter and a cleanup signal.
 Providers discover and remove uncertain allocations using a persisted submission intent
 and vendor tags, names or metadata; the callback must never allocate or bootstrap.
 Return removed only after cleanup is settled (including no submitted allocation), or
-failed while the allocation is unresolved. Core persists the removeRetryMs deadline
+failed while the allocation is unresolved. Core persists the core cleanup retry deadline
 across sweeps and restarts, including subsequent access release failures.
 Stabilization requires crash/abort coverage before submission, after submission but
 before checkpoint, eventual vendor discovery, and access-release retry coverage for
@@ -2755,7 +2754,7 @@ result and still settles enrollment, access and the pending host. Providers
 must persist the rejection before returning so restart cannot allocate twice.
 Unknown-allocation reconciliation stops after a 30-minute launch window;
 unresolved cleanup remains recorded. Known resources and access release keep
-retrying at removeRetryMs indefinitely. An explicit cancel retries cleanup even
+retrying at the core retry interval indefinitely. An explicit cancel retries cleanup even
 after automatic retries are exhausted. Stabilization requires distinguishing
 definitive vendor rejection from transport timeouts and ambiguous submissions.
 
@@ -2840,31 +2839,28 @@ setup, unavailable installers, route rotation/bypass and reachability, dirty
 checkout protection, missing dependencies, ABI/lockfile changes, private clone
 failure, and parity between public CLI/SDK and plugin/provider-managed dispatch.
 
-## Machine deadline observation and effective lifecycle policy
+## Coordinated machine maintenance
 
-`PluginMachineProviderDefinition.experimental_observe({hostId,resource,signal})`
-reads vendor state and expiry without allocating or changing identity. It returns
-`{state:running|suspended|missing|unknown,expiresAt,resource}`. UTC deadlines are
-milliseconds; null means no vendor deadline. `experimental_policy({hostId,resource})`
-returns current `{idleSuspendMs,deadlineLeadMs}`, with null disabling
-each policy. Core persists observations and a fenced maintenance lease.
-Suspend's `checkpoint(resource, experimental_snapshotAt?)` records a successful
-filesystem save time before destructive cleanup. Allocation checkpoints are not saves.
+`PluginMachineProviderDefinition.experimental_idleSuspendMs({hostId,resource})`
+returns the current idle timeout; null disables automatic suspension. Omit the hook
+when suspension is not supported. Core alone checks activity, queued work and terminals.
+There are no static policy, vendor observation, retention or snapshot timestamp APIs.
 
-`hosts.experimental_lifecycle({hostId})` returns phase, expiresAt,
-maintenanceAt, lastSnapshotAt, recoveryState and message.
-This is read-only. Explicit machine removal remains available. CLI parity is
-`bb machine lifecycle MACHINE --json`.
+`bb.sdk.hosts.suspend({hostId})` blocks dispatch, drains active turns, setup hooks
+and terminals with a five-minute bound, then invokes the provider's suspend callback.
+`suspend.checkpoint(resource)` durably persists opaque provider state before destructive
+cleanup. Core fences operations and resumes the same host identity with checkout setup
+and readiness afterward. Providers own vendor observations, snapshots, loss reporting,
+and expiry scheduling using `bb.background.schedule` and startup reconciliation.
+Providers must reserve the full drain bound plus snapshot time and scheduling jitter;
+a server outage or late wake cannot guarantee preservation. Unsafe recovery must fail
+inside the provider; a dispatch hook is not an integrity boundary.
 
-The corresponding server contract schemas and types are
-`experimental_hostLifecycleRequestSchema`, `experimental_hostLifecycleResponseSchema`,
-`experimental_HostLifecycleRequest` and `experimental_HostLifecycleResponse`. They
-share the same lifecycle behavior and stabilization criteria.
-
-Stabilization requires controlled-clock restart, lease, dispatch and loss
-coverage, vendor deadline reconciliation, snapshot-before-terminate evidence, and
-review of recoverable failures and account changes. Planned rotation cannot protect
-against a server outage spanning vendor expiry without independent storage/watchdogs.
+`hosts.experimental_lifecycle({hostId})` and `bb machine lifecycle MACHINE --json`
+return phase, recoveryState and message. Explicit machine removal remains available.
+The request/response schemas and types share this behavior and stabilization criteria.
+Stabilization requires interruption, checkpoint/restart, removal serialization,
+failed drain, bounded drain and same-identity restore tests.
 
 Restore setup hooks use the same recorded core hook path as creation and receive the shared core machine environment contributions. Hook output redacts contributed secrets across stream boundaries. PR 2 protocol 193 supplies the shared hook environment and stream redaction. Modal introduced protocol 194 because it adds `workspace.readiness.inspect` and `host.readiness.probe` requests and responses; a protocol 193 daemon cannot execute those readiness commands. Enrolled machines update before use. Failed restore hooks block readiness.
 

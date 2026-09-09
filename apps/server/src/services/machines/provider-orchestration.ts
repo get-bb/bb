@@ -9,8 +9,8 @@ import type { WorkSessionDeps } from "../../types.js";
 import { machineLifecycles } from "@bb/db";
 import {
   getMachineLifecycle,
-  observeMachineLifecycle,
   maintainMachine,
+  waitForMachineMaintenance,
 } from "./lifecycle.js";
 import type { MachineLaunchStatus } from "@bb/server-contract";
 import { serverAccess } from "./server-access.js";
@@ -120,7 +120,7 @@ const cancelOperations = new WeakMap<object, Map<string, ActiveOperation>>();
 const suspendOperations = new WeakMap<object, Map<string, ActiveOperation>>();
 const resumeOperations = new WeakMap<object, Map<string, ActiveOperation>>();
 const removeOperations = new WeakMap<object, Map<string, ActiveOperation>>();
-const deadlineSweepOperations = new WeakMap<
+const machineSweepOperations = new WeakMap<
   object,
   Map<string, ActiveOperation>
 >();
@@ -871,7 +871,7 @@ export async function cancelMachineLaunch(
           current.hostId === null &&
           Date.now() - current.startedAt >= 30 * 60_000
             ? Number.MAX_SAFE_INTEGER
-            : Date.now() + record.provider.policy.removeRetryMs,
+            : Date.now() + 60_000,
       });
     }
     throw error;
@@ -1006,9 +1006,8 @@ async function suspendMachine(deps: Deps, hostId: string): Promise<void> {
   }
   const operationId = `${record.pluginId}:${randomUUID()}`;
   if (
-    record.provider.experimental_observe === undefined &&
-    (machineIdleSince(deps.db, hostId) === null ||
-      machineHasOpenTerminal(deps.db, hostId))
+    machineIdleSince(deps.db, hostId) === null ||
+    machineHasOpenTerminal(deps.db, hostId)
   ) {
     throw new ApiError(
       409,
@@ -1039,7 +1038,7 @@ async function suspendMachine(deps: Deps, hostId: string): Promise<void> {
             resource,
             report: lifecycleReporter(deps, hostId),
             signal,
-            checkpoint: (checkpoint, snapshotAt) => {
+            checkpoint: (checkpoint) => {
               const parsed = resourceSchema.parse(checkpoint);
               if (
                 maintenanceLease !== null &&
@@ -1060,23 +1059,6 @@ async function suspendMachine(deps: Deps, hostId: string): Promise<void> {
               updateHost(deps.db, deps.hub, hostId, {
                 resource: parsed,
               });
-              if (snapshotAt !== undefined) {
-                const savedAt = z
-                  .number()
-                  .finite()
-                  .nonnegative()
-                  .max(Date.now())
-                  .parse(snapshotAt);
-                deps.db
-                  .update(machineLifecycles)
-                  .set({ lastSnapshotAt: savedAt })
-                  .where(eq(machineLifecycles.hostId, hostId))
-                  .run();
-                deps.logger.info(
-                  { hostId, operationId, savedAt },
-                  "Machine filesystem checkpoint persisted",
-                );
-              }
             },
           }),
       );
@@ -1137,7 +1119,6 @@ export async function requestMachineSuspension(
   hostId: string,
 ): Promise<void> {
   const row = requireSuspendableMachine(deps, hostId);
-  await observeMachineLifecycle(deps, hostId);
   if (row.phase !== "active" && row.phase !== "suspending") {
     throw new ApiError(
       409,
@@ -1145,33 +1126,15 @@ export async function requestMachineSuspension(
       "Only an active machine can be suspended",
     );
   }
-  if (getMachineLifecycle(deps, hostId) !== undefined)
-    await maintainMachine(deps, hostId, () => suspendMachine(deps, hostId));
-  else await suspendMachine(deps, hostId);
+  await maintainMachine(deps, hostId, () => suspendMachine(deps, hostId));
 }
 
 export async function requestMachineResume(
   deps: Deps,
   hostId: string,
 ): Promise<void> {
+  await waitForMachineMaintenance(deps, hostId);
   const row = requireSuspendableMachine(deps, hostId);
-  const lifecycle = getMachineLifecycle(deps, hostId);
-  if (lifecycle?.recoveryState === "lost-since-last-snapshot") {
-    updateHost(deps.db, deps.hub, hostId, { phase: "suspended" });
-    deps.db
-      .update(machineLifecycles)
-      .set({
-        leaseId: null,
-        leaseUntil: null,
-        maintenanceAt: null,
-        message:
-          "Explicitly recovering the last successful snapshot; newer changes may have been lost.",
-      })
-      .where(eq(machineLifecycles.hostId, hostId))
-      .run();
-    await resumeMachine(deps, hostId);
-    return;
-  }
   if (
     row.phase !== "active" &&
     row.phase !== "suspended" &&
@@ -1247,6 +1210,11 @@ async function resumeMachineWithIntent(
   if (row.resource === null) {
     throw new Error(`Machine "${hostId}" has no provider resource`);
   }
+  deps.db
+    .insert(machineLifecycles)
+    .values({ hostId, recoveryState: "healthy" })
+    .onConflictDoNothing()
+    .run();
   const operationId = `${record.pluginId}:${randomUUID()}`;
   const phase = row.phase;
   const resume = record.provider.resume;
@@ -1308,12 +1276,10 @@ async function resumeMachineWithIntent(
         .update(machineLifecycles)
         .set({
           recoveryState: "healthy",
-          observedState: "running",
           retryAt: null,
         })
         .where(eq(machineLifecycles.hostId, hostId))
         .run();
-      await observeMachineLifecycle(deps, hostId);
       await runMachineRestoreSetup(deps, hostId);
     }
   } catch (error) {
@@ -1321,7 +1287,7 @@ async function resumeMachineWithIntent(
       .update(machineLifecycles)
       .set({
         recoveryState: "recoverable",
-        message: `Restore failed: ${errorMessage(error)}. The last successful save remains the recovery point.`,
+        message: `Machine resume failed: ${errorMessage(error)}`,
       })
       .where(eq(machineLifecycles.hostId, hostId))
       .run();
@@ -1408,7 +1374,7 @@ async function removeMachine(deps: Deps, hostId: string): Promise<void> {
     updateHost(deps.db, deps.hub, hostId, {
       teardownStatus: "failed",
       teardownMessage: `Machine "${hostId}" has no provider resource`,
-      retireAt: Date.now() + record.provider.policy.removeRetryMs,
+      retireAt: Date.now() + 60_000,
     });
     return;
   }
@@ -1475,7 +1441,7 @@ async function removeMachine(deps: Deps, hostId: string): Promise<void> {
         updateHost(deps.db, deps.hub, hostId, {
           teardownStatus: "failed",
           teardownMessage: errorMessage(error),
-          retireAt: Date.now() + record.provider.policy.removeRetryMs,
+          retireAt: Date.now() + 60_000,
         });
       }
     },
@@ -1497,59 +1463,36 @@ export async function sweepProviderMachine(
   }
   const record = getMachineProvider(row.machineProviderId);
   if (record === undefined) return;
-  if (
-    record.provider.experimental_observe !== undefined &&
-    row.removalStartedAt === null &&
-    !(
-      row.phase === "retiring" &&
-      row.retireAt !== null &&
-      row.retireAt <= Date.now()
-    )
-  ) {
+  const maintenance = getMachineLifecycle(deps, hostId);
+  if (maintenance?.leaseId != null) {
     if (
-      operations(suspendOperations, deps.db).has(hostId) ||
-      operations(resumeOperations, deps.db).has(hostId)
-    )
-      return;
-    await observeMachineLifecycle(deps, hostId);
-    const lifecycle = getMachineLifecycle(deps, hostId);
-    if (
-      lifecycle === undefined ||
-      lifecycle.recoveryState === "lost-since-last-snapshot"
-    )
-      return;
-    if (lifecycle.leaseUntil !== null && lifecycle.leaseUntil > Date.now())
-      return;
-    row = getHost(deps.db, hostId);
-    if (row === null) return;
-    const hasQueuedWake =
-      listThreadIdsWithHostOfflineQueueWaits(deps.db, hostId).length > 0;
-    if (row.suspendedAt !== null && hasQueuedWake) {
-      await resumeMachine(deps, hostId);
-      return;
-    }
-    const idleSince =
-      machineIdleSince(deps.db, hostId) ??
-      (!machineHasLiveThreads(deps.db, hostId) ? lifecycle.unusedSince : null);
-    const due =
-      lifecycle.maintenanceAt !== null && lifecycle.maintenanceAt <= Date.now();
-    const idle =
-      !hasQueuedWake &&
-      lifecycle.idleSuspendMs !== null &&
-      idleSince !== null &&
-      Date.now() >= idleSince + lifecycle.idleSuspendMs &&
-      !machineHasOpenTerminal(deps.db, hostId);
-    if (
-      row.suspendedAt === null &&
-      (due || idle || row.phase === "suspending")
+      maintenance.leaseUntil !== null &&
+      maintenance.leaseUntil > Date.now()
     ) {
-      if (row.phase === "suspending")
-        updateHost(deps.db, deps.hub, hostId, {
-          phase: row.retireAt === null ? "active" : "retiring",
-        });
-      await maintainMachine(deps, hostId, () => suspendMachine(deps, hostId));
-      return;
+      if (row.phase !== "retiring") return;
+      await waitForMachineMaintenance(deps, hostId);
+      row = getHost(deps.db, hostId);
+      if (row === null) return;
     }
+    deps.db
+      .update(machineLifecycles)
+      .set({
+        leaseId: null,
+        leaseUntil: null,
+        recoveryState: row.suspendedAt !== null ? "saved" : "recoverable",
+        message:
+          row.suspendedAt !== null
+            ? null
+            : "Machine suspension was interrupted; recovery will use the last persisted provider resource.",
+      })
+      .where(eq(machineLifecycles.hostId, hostId))
+      .run();
+  }
+  if (
+    row.suspendedAt !== null &&
+    listThreadIdsWithHostOfflineQueueWaits(deps.db, hostId).length > 0
+  ) {
+    await resumeMachine(deps, hostId);
     return;
   }
   if (row.phase === "suspending") {
@@ -1600,17 +1543,18 @@ export async function sweepProviderMachine(
               resource: row.resource,
             }),
           )
-      : record.provider.policy.idleSuspendMs;
+      : null;
   const idleSince =
     row.phase === "active" ? machineIdleSince(deps.db, hostId) : null;
   if (
     row.phase === "active" &&
     idleSuspendMs !== null &&
     record.provider.suspend !== null &&
+    listThreadIdsWithHostOfflineQueueWaits(deps.db, hostId).length === 0 &&
     !machineHasOpenTerminal(deps.db, hostId)
   ) {
     if (idleSince !== null && now >= idleSince + idleSuspendMs) {
-      await suspendMachine(deps, hostId);
+      await maintainMachine(deps, hostId, () => suspendMachine(deps, hostId));
       return;
     }
   }
@@ -1679,7 +1623,7 @@ export async function sweepProviderMachine(
 
 export async function sweepMachineLifecycles(
   deps: Deps,
-  options?: { backgroundDeadlines: true },
+  options?: { background: true },
 ): Promise<void> {
   for (const launch of listMachineLaunchesByPhase(deps.db, "creating")) {
     const record = getMachineProvider(launch.providerId);
@@ -1740,14 +1684,11 @@ export async function sweepMachineLifecycles(
   }
   for (const record of listMachineProviders()) {
     for (const machine of listProviderMachines(deps.db, record.provider.id)) {
-      const sweeping =
-        record.provider.experimental_observe === undefined
-          ? sweepProviderMachine(deps, machine.id)
-          : runTrackedOperation({
-              map: operations(deadlineSweepOperations, deps.db),
-              key: machine.id,
-              run: async () => sweepProviderMachine(deps, machine.id),
-            }).done;
+      const sweeping = runTrackedOperation({
+        map: operations(machineSweepOperations, deps.db),
+        key: machine.id,
+        run: async () => sweepProviderMachine(deps, machine.id),
+      }).done;
       const settled = sweeping.catch((error: unknown) => {
         const current = getHost(deps.db, machine.id);
         if (current !== null && current.destroyedAt === null) {
@@ -1757,7 +1698,7 @@ export async function sweepMachineLifecycles(
             teardownMessage: errorMessage(error),
             ...(current.phase === "retiring"
               ? {
-                  retireAt: Date.now() + record.provider.policy.removeRetryMs,
+                  retireAt: Date.now() + 60_000,
                 }
               : {}),
           });
@@ -1767,11 +1708,7 @@ export async function sweepMachineLifecycles(
           "Machine lifecycle sweep will retry",
         );
       });
-      if (
-        record.provider.experimental_observe === undefined ||
-        options?.backgroundDeadlines !== true
-      )
-        pending.push(settled);
+      if (options?.background !== true) pending.push(settled);
     }
   }
   await Promise.all(pending);

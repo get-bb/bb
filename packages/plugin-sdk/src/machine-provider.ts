@@ -73,8 +73,8 @@ export interface PluginMachineProviderLifecycleContext {
 }
 
 export interface PluginMachineProviderSuspendContext extends PluginMachineProviderLifecycleContext {
-  /** Persist before terminating compute; supply the time only after a successful filesystem save. */
-  checkpoint(resource: JsonValue, experimental_snapshotAt?: number): void;
+  /** Persist the provider resource before terminating compute. The provider owns filesystem preservation. */
+  checkpoint(resource: JsonValue): void;
 }
 
 export interface PluginMachineProviderResumeContext extends PluginMachineProviderLifecycleContext {
@@ -93,11 +93,6 @@ export type PluginMachineProviderRemoveResult =
 export interface PluginMachineProviderEnvironmentRow {
   displayName: string;
   environmentProviderId: string;
-}
-
-export interface PluginMachineProviderPolicy {
-  idleSuspendMs: number | null;
-  removeRetryMs: number;
 }
 
 export interface PluginMachineProviderDefinition<
@@ -122,8 +117,7 @@ export interface PluginMachineProviderDefinition<
     context: PluginMachineProviderValidateContext<R, S>,
   ): PluginMachineValidateDecision | Promise<PluginMachineValidateDecision>;
   environmentRow?: PluginMachineProviderEnvironmentRow;
-  policy: PluginMachineProviderPolicy;
-  /** Resolve a per-machine idle timeout; core retains activity checks and retirement policy. */
+  /** Resolve the idle timeout for this machine; null disables automatic suspension. Core owns activity checks. */
   experimental_idleSuspendMs?(context: {
     hostId: string;
     resource: JsonValue;
@@ -144,24 +138,6 @@ export interface PluginMachineProviderDefinition<
     report: PluginMachineProviderProgress;
     signal: AbortSignal;
   }): Promise<PluginMachineProviderRemoveResult>;
-  /** Read vendor state without allocation or identity changes. Deadlines use UTC milliseconds. */
-  experimental_observe?(context: {
-    hostId: string;
-    resource: JsonValue;
-    signal: AbortSignal;
-  }): Promise<{
-    state: "running" | "suspended" | "missing" | "unknown";
-    expiresAt: number | null;
-    resource: JsonValue;
-  }>;
-  /** Evaluate current effective policy on every sweep; null disables the corresponding deadline. */
-  experimental_policy?(context: {
-    hostId: string;
-    resource: JsonValue;
-  }): Promise<{
-    idleSuspendMs: number | null;
-    deadlineLeadMs: number | null;
-  }>;
   suspend?(
     context: PluginMachineProviderSuspendContext,
   ): Promise<PluginMachineProviderResourceResult>;

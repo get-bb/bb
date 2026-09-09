@@ -6,7 +6,7 @@ import { readMigrationFiles } from "drizzle-orm/migrator";
 import { expect, it } from "vitest";
 import { createConnection, migrate } from "../src/index.js";
 
-it("upgrades the merged environment schema with one migration and preserves existing hosts", () => {
+it("upgrades the merged environment schema and preserves existing hosts", () => {
   const directory = mkdtempSync(join(tmpdir(), "bb-machine-upgrade-"));
   writeFileSync(join(directory, "host-id"), "local-host\n");
   const db = createConnection(join(directory, "bb.db"));
@@ -17,7 +17,7 @@ it("upgrades the merged environment schema with one migration and preserves exis
     db.$client.exec(
       'CREATE TABLE "__drizzle_migrations" (id SERIAL PRIMARY KEY, hash text NOT NULL, created_at numeric)',
     );
-    for (const migration of migrations.slice(0, -1)) {
+    for (const migration of migrations.slice(0, 115)) {
       for (const statement of migration.sql) db.$client.exec(statement);
       db.$client
         .prepare(

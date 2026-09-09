@@ -302,7 +302,7 @@ export function registerMachineCommands(
 
   machine
     .command("lifecycle <machine>")
-    .description("Show deadline and preservation state")
+    .description("Show machine maintenance state")
     .option("--remove", "Remove the machine and its retained snapshots")
     .option("--yes", "Skip removal confirmation")
     .option("--json", "Print machine-readable JSON output")
@@ -336,7 +336,7 @@ export function registerMachineCommands(
           });
           if (!outputJson(opts, result))
             console.log(
-              `${result.phase}: ${result.recoveryState}${result.message === null ? "" : ` — ${result.message}`}\nMaintenance: ${result.maintenanceAt === null ? "none" : new Date(result.maintenanceAt).toISOString()}\nExpiry: ${result.expiresAt === null ? "none" : new Date(result.expiresAt).toISOString()}\nControls: --remove --yes`,
+              `${result.phase}: ${result.recoveryState}${result.message === null ? "" : ` — ${result.message}`}\nControls: --remove --yes`,
             );
         },
       ),

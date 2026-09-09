@@ -280,8 +280,7 @@ it("serializes CLI installation and reads fenced core hook outcomes across lockf
         .insert(machineLifecycles)
         .values({
           hostId: host.id,
-          observedState: "running",
-          observedAt: Date.now(),
+
           recoveryState: "healthy",
           restoreOperationId: "restored-once",
         })
@@ -363,8 +362,7 @@ it("limits restore setup to the persisted generation and does not rerun creation
       .insert(machineLifecycles)
       .values({
         hostId: host.id,
-        observedState: "running",
-        observedAt: Date.now(),
+
         recoveryState: "healthy",
       })
       .run();

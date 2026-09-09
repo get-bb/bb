@@ -181,16 +181,12 @@ export type experimental_HostLifecycleRequest = z.infer<
 export const experimental_hostLifecycleResponseSchema = z
   .object({
     phase: z.string(),
-    expiresAt: z.number().nullable(),
-    maintenanceAt: z.number().nullable(),
-    lastSnapshotAt: z.number().nullable(),
     recoveryState: z.enum([
       "healthy",
       "draining",
       "saving",
       "saved",
       "recoverable",
-      "lost-since-last-snapshot",
     ]),
     message: z.string().nullable(),
   })

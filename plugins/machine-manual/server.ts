@@ -5,11 +5,7 @@ export default function manualMachinePlugin(bb: BbPluginApi): void {
     id: "manual",
     displayName: "Manual machine setup",
     icon: "Terminal",
-    policy: {
-      idleSuspendMs: null,
 
-      removeRetryMs: 60_000,
-    },
     async create(context) {
       context.signal.throwIfAborted();
       const enrollment = await bb.experimental_machines.enrollments.prepare({

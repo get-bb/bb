@@ -93,11 +93,7 @@ describe("public host management", () => {
       installMachineProvider({
         id: "plain-machine",
         displayName: "Plain machine",
-        policy: {
-          idleSuspendMs: null,
 
-          removeRetryMs: 60_000,
-        },
         reconcileCleanup: async () => ({ status: "removed" }),
         create: async () => ({
           status: "created",
@@ -463,11 +459,7 @@ describe("public host management", () => {
       installMachineProvider({
         id: "test-machine",
         displayName: "Test machine",
-        policy: {
-          idleSuspendMs: null,
 
-          removeRetryMs: 10,
-        },
         reconcileCleanup: async () => ({ status: "removed" }),
         create: async () => ({
           status: "created",
@@ -514,11 +506,7 @@ describe("public host management", () => {
       installMachineProvider({
         id: "test-machine",
         displayName: "Test machine",
-        policy: {
-          idleSuspendMs: null,
 
-          removeRetryMs: 60_000,
-        },
         reconcileCleanup: async () => ({ status: "removed" }),
         create: async () => ({
           status: "created",

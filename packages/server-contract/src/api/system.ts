@@ -345,10 +345,6 @@ export const systemMachineProviderSchema = z.object({
       environmentProviderId: z.string().min(1),
     })
     .nullable(),
-  policy: z.object({
-    idleSuspendMs: z.number().int().nonnegative().nullable(),
-    removeRetryMs: z.number().int().positive(),
-  }),
   availability: z
     .discriminatedUnion("status", [
       z.object({ status: z.literal("available") }),

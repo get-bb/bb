@@ -84,11 +84,7 @@ const modalProvider: SystemMachineProvider = {
     displayName: "Modal sandbox",
     environmentProviderId: "project-checkout",
   },
-  policy: {
-    idleSuspendMs: 60_000,
 
-    removeRetryMs: 60_000,
-  },
   availability: null,
 };
 
@@ -200,11 +196,6 @@ describe("MachinesSettingsSection", () => {
         pluginId: "test-machine-provider",
         supportsSuspend: false,
         environmentRow: null,
-        policy: {
-          idleSuspendMs: null,
-
-          removeRetryMs: 60_000,
-        },
       },
     ]);
     vi.mocked(sdk.hosts.list).mockResolvedValue([

@@ -199,7 +199,6 @@ service, releasing its port reservation and deleting its private files.
 
 Use `bb machine enroll --bootstrap-file <path>` or `--bootstrap-env <NAME>` on a machine that already has the CLI. Core prepares the versioned bundle; transport it through a private file or environment/stdin, never command arguments, logs, resource JSON, or a transcript. Enrollment refuses a different existing host/server identity and succeeds without another exchange when the same identity is already enrolled. The installer accepts `--bootstrap-env <NAME>` and invokes this command after installing bb. Machine state defaults to `~/.bb-machines/<server-host>`; an explicit `BB_DATA_DIR` must be isolated from the default BB instance. For remote non-login commands, discover `bb` on PATH and fall back to `~/.local/bin/bb`.
 
-
 Delivered enrollment bundles from v1 remain valid until their expiry. The CLI accepts both file and environment forms, upgrades the bundle to v2 headers locally, and persists legacy Connect redemption before enrollment so a retry reuses it. The installer upgrades v1 environment bundles before authenticated artifact downloads.
 
 The built-in `manual` provider appears as Manual machine setup. `bb machine create --provider manual` prints the enrollment command and follows; `--no-wait` returns the launch ID and a transient `command` field, separate from credential-free durable progress. Commands are no longer available after enrollment or cancellation. Manual machines never suspend or retire automatically. Removal revokes access; run `bb machine uninstall --host-id <id>` on the target using its original data directory.
@@ -216,10 +215,8 @@ a turn. A blocked result names cli/auth/workspace and the actionable failure.
 Provider-created machine turns run these checks automatically. A connected daemon
 alone does not establish agent readiness.
 
-
-`bb machine lifecycle MACHINE --json` shows the vendor expiry, planned maintenance,
-last successful snapshot and recovery state.
+`bb machine lifecycle MACHINE --json` shows core maintenance state and any suspension or resume error.
 Maintenance interrupts active turns and closes terminals before saving. Submit a
 new continuation turn after restore; interrupted turns are never reported successful.
 
-`bb machine lifecycle MACHINE --remove --yes --json` removes retained compute and snapshots through the normal machine removal path. After filesystem restore, core reruns the owned checkout’s idempotent setup hook to restart services; hook failure blocks readiness.
+`bb machine lifecycle MACHINE --remove --yes --json` runs provider removal through the normal machine removal path. After filesystem restore, core reruns the owned checkout’s idempotent setup hook to restart services; hook failure blocks readiness.

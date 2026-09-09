@@ -181,11 +181,7 @@ describe("MachineSettingsView", () => {
         acceptsEmptyInputs: true,
         supportsSuspend: true,
         environmentRow: null,
-        policy: {
-          idleSuspendMs: null,
 
-          removeRetryMs: 1_000,
-        },
         availability: { status: "available" },
       },
     ]);
@@ -216,11 +212,7 @@ describe("MachineSettingsView", () => {
         acceptsEmptyInputs: true,
         supportsSuspend: false,
         environmentRow: null,
-        policy: {
-          idleSuspendMs: null,
 
-          removeRetryMs: 1_000,
-        },
         availability: { status: "available" },
       },
     ]);
