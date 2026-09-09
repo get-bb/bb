@@ -1,49 +1,13 @@
-import type {
-  PluginEnvironmentProviderCreateContext,
-  PluginEnvironmentProviderProgress,
-} from "@get-bb/plugin-sdk/environment-provider";
-import {
-  createFakePluginHost,
-  makeThreadResponse,
-  type FakePluginHarness,
-} from "@get-bb/plugin-sdk/testing";
 import { describe, expect, it, vi } from "vitest";
-import { RIFT_ENVIRONMENT_PROVIDER_ID } from "./provider-id.js";
-import plugin, { riftInputsSchema } from "./server.js";
-
-type Host = NonNullable<PluginEnvironmentProviderCreateContext["host"]>;
-type Project = PluginEnvironmentProviderCreateContext["project"];
-type HostRpcCall = FakePluginHarness["experimental_hostRpcCalls"][number];
+import { riftInputsSchema } from "./server.js";
+import { createProviderFixture } from "./test-helpers.js";
 
 const HOST_ID = "host-a";
-const PROJECT_ID = "project-1";
 const THREAD_ID = "thr_1";
-const SOURCE_PATH = "/checkouts/bb";
 const RIFT_PATH = "/data/plugins/environment-git-rift/rifts/thr_1/bb";
 
-const PROVISION_HOST: Host = {
-  id: HOST_ID,
-  name: "Fake machine",
-  status: "connected",
-  type: "persistent",
-  maxPermissionMode: "full",
-  lastSeenAt: null,
-  lastRejectedProtocolVersion: null,
-  createdAt: 0,
-  updatedAt: 0,
-};
-
-const PROJECT: Project = {
-  id: PROJECT_ID,
-  kind: "standard",
-  name: "bb",
-  gitRemoteUrl: null,
-  createdAt: 1,
-  updatedAt: 1,
-};
-
-async function setup(
-  callHost: (call: HostRpcCall) => Promise<unknown> | unknown = (call) => {
+function setup(
+  callHost: Parameters<typeof createProviderFixture>[0] = (call) => {
     if (call.method === "resolvePath") return { path: RIFT_PATH };
     if (call.method === "create") {
       return {
@@ -56,38 +20,7 @@ async function setup(
     throw new Error(`unexpected host method ${call.method}`);
   },
 ) {
-  const { bb, harness } = createFakePluginHost({
-    experimental_callHostRpc: callHost,
-  });
-  await plugin(bb);
-  const provider = harness.registrations.environmentProviders.get(
-    RIFT_ENVIRONMENT_PROVIDER_ID,
-  );
-  if (provider === undefined) throw new Error("Provider not registered");
-  const steps: string[] = [];
-  const logs: string[] = [];
-  const report: PluginEnvironmentProviderProgress = {
-    step: (text) => steps.push(text),
-    log: (text) => logs.push(text),
-  };
-  const signal = new AbortController().signal;
-  const context: PluginEnvironmentProviderCreateContext = {
-    thread: makeThreadResponse({ id: THREAD_ID, projectId: PROJECT_ID }),
-    project: PROJECT,
-    host: PROVISION_HOST,
-    projectCheckout: { path: SOURCE_PATH },
-    gitRemote: null,
-    inputs: { branch: { kind: "default" }, copy: "all" },
-    suggestedBranchName: "bb/test",
-    experimental_claimPath: async () => true,
-    attempt: 1,
-    pathKey: THREAD_ID,
-    rebuild: false,
-    previous: null,
-    report,
-    signal,
-  };
-  return { context, harness, logs, provider, report, signal, steps };
+  return createProviderFixture(callHost);
 }
 
 describe("Rift provider", () => {
@@ -174,9 +107,9 @@ describe("Rift provider", () => {
       const f = await setup(() => ({ installed }));
       expect(
         await f.provider.availability?.({
-          project: PROJECT,
-          host: PROVISION_HOST,
-          projectCheckout: { path: SOURCE_PATH },
+          project: f.context.project,
+          host: f.context.host,
+          projectCheckout: f.context.projectCheckout,
           gitRemote: null,
         }),
       ).toEqual(
