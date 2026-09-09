@@ -78,3 +78,24 @@ not verified. The verification inventory has an existing unrelated unmapped
 `browser` CLI family; its baseline was not rewritten to hide that failure.
 
 See [the pagination contract](timeline-pagination.md) for lifecycle semantics.
+
+A follow-up replaces the request-by-turn overlap loop with an ordered scan.
+Six database-backed cases cover accepted turns, overlapping alternatives and
+expired spans. Migration rewind fixtures also remove the revision table and
+its event triggers; all 54 migration tests pass.
+
+A separate paired comparison against `51e0dc78d2` ran baseline/new/new/baseline
+with fresh databases and route caches. All 16 endpoint/client walks matched
+canonical content and order. Two-run means were:
+
+| Thread suffix | Previous latest ms | Scan latest ms | Previous walk ms | Scan walk ms |
+| ------------- | -----------------: | -------------: | ---------------: | -----------: |
+| `cdfq9maj8q`  |               60.9 |           49.5 |           1328.8 |       1337.9 |
+| `gcuc46ug4j`  |               56.3 |           55.1 |           1763.5 |       1778.7 |
+| `m9gz6riv9t`  |               21.7 |           18.9 |            784.0 |        734.9 |
+| `kbjzy5zdu7`  |               16.6 |           40.0 |            717.7 |        807.4 |
+
+These measurements do not establish a general endpoint latency improvement.
+The scan removes quadratic overlap comparisons without changing page content;
+query, decoding and grouping costs remain. An additional allocation-based leaf
+measurement experiment was discarded after mixed walk timings.

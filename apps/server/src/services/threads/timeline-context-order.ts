@@ -55,6 +55,10 @@ export function getTimelineGroupingContext(
     if (turn !== undefined) turn.end = row.sequence;
   }
   let boundary = getFirstParentedTimelineBoundarySequence(db, args) ?? Infinity;
+  const spans = turns.entries();
+  let next = spans.next();
+  let longest: { id: string; end: number } | null = null;
+  let secondLongestEnd = -Infinity;
   for (const row of context) {
     if (row.sequence >= boundary) break;
     if (
@@ -63,15 +67,23 @@ export function getTimelineGroupingContext(
       row.requestId === null
     )
       continue;
-    for (const [turnId, turn] of turns) {
-      if (
-        row.sequence > turn.start &&
-        row.sequence < turn.end &&
-        accepted.get(row.requestId) !== turnId
-      ) {
-        boundary = row.sequence;
-        break;
+    while (!next.done && next.value[1].start < row.sequence) {
+      const [id, turn] = next.value;
+      if (longest === null || turn.end > longest.end) {
+        secondLongestEnd = longest?.end ?? -Infinity;
+        longest = { id, end: turn.end };
+      } else {
+        secondLongestEnd = Math.max(secondLongestEnd, turn.end);
       }
+      next = spans.next();
+    }
+    const end =
+      longest?.id === accepted.get(row.requestId)
+        ? secondLongestEnd
+        : (longest?.end ?? -Infinity);
+    if (row.sequence < end) {
+      boundary = row.sequence;
+      break;
     }
   }
   const sequence = Number.isFinite(boundary) ? boundary : null;

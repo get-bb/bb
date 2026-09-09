@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { getTimelineGroupingContext } from "../../../src/services/threads/timeline-context-order.js";
 import { prependOlderTimelineRows } from "@bb/client-core";
 import {
   threadTimelineResponseSchema,
@@ -33,6 +34,66 @@ import {
 } from "../../../src/services/threads/timeline.js";
 
 const LARGE_BUDGET = 1_000_000;
+
+it.each([
+  { ends: [30], accepted: 0, boundary: null },
+  { ends: [30], accepted: -1, boundary: 15 },
+  { ends: [30, 20], accepted: 0, boundary: 15 },
+  { ends: [30, 10], accepted: 0, boundary: null },
+  { ends: [10, 12], accepted: -1, boundary: null },
+  { ends: [20, 30], accepted: 1, boundary: 15 },
+])("finds external requests among overlapping turns: %j", (testCase) => {
+  const { db, thread } = setup();
+  try {
+    const events: Parameters<typeof insertEvents>[2] = [];
+    for (const [index, end] of testCase.ends.entries()) {
+      const scope = turnScope(`span-${index}`);
+      const base = {
+        threadId: thread.id,
+        scope,
+        providerThreadId,
+        itemId: null,
+        itemKind: null,
+        parentToolCallId: null,
+      };
+      events.push(
+        { ...base, sequence: index * 2 + 1, type: "turn/started", data: "{}" },
+        { ...base, sequence: end, type: "turn/completed", data: "{}" },
+      );
+      if (index === testCase.accepted)
+        events.push({
+          ...base,
+          sequence: index * 2 + 2,
+          type: "turn/input/accepted",
+          data: JSON.stringify({ clientRequestId: requestId(1) }),
+        });
+    }
+    events.push({
+      threadId: thread.id,
+      scope: threadScope(),
+      sequence: 15,
+      type: "client/turn/requested",
+      itemId: null,
+      itemKind: null,
+      parentToolCallId: null,
+      data: JSON.stringify({ requestId: requestId(1), initiator: "user" }),
+    });
+    insertEvents(
+      db,
+      noopNotifier,
+      events.sort((a, b) => a.sequence - b.sequence),
+    );
+    expect(
+      getTimelineGroupingContext(db, {
+        threadId: thread.id,
+        sequenceStart: 0,
+        maxSeq: 30,
+      }).orderingBoundarySequence,
+    ).toBe(testCase.boundary);
+  } finally {
+    db.$client.close();
+  }
+});
 
 const providerThreadId = "provider-root";
 const execution = {
