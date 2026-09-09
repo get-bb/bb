@@ -4,6 +4,7 @@ import type {
 } from "@get-bb/plugin-sdk/environment-provider";
 import {
   createFakePluginHost,
+  makeHostResponse,
   makeThreadResponse,
   type FakePluginHarness,
 } from "@get-bb/plugin-sdk/testing";
@@ -12,7 +13,6 @@ import { worktreeHostContract } from "./contract.js";
 import { GIT_WORKTREE_ENVIRONMENT_PROVIDER_ID } from "./provider-id.js";
 import plugin, { worktreeInputsSchema } from "./server.js";
 
-type Host = NonNullable<PluginEnvironmentProviderCreateContext["host"]>;
 type Project = PluginEnvironmentProviderCreateContext["project"];
 type HostRpcCall = FakePluginHarness["experimental_hostRpcCalls"][number];
 
@@ -23,17 +23,7 @@ const SOURCE_PATH = "/checkouts/bb";
 const WORKTREE_PATH =
   "/data/plugins/environment-git-worktree/worktrees/thr_1/bb";
 
-const PROVISION_HOST: Host = {
-  id: HOST_ID,
-  name: "Fake machine",
-  status: "connected",
-  type: "persistent",
-  maxPermissionMode: "full",
-  lastSeenAt: null,
-  lastRejectedProtocolVersion: null,
-  createdAt: 0,
-  updatedAt: 0,
-};
+const PROVISION_HOST = makeHostResponse({ id: HOST_ID, name: "Fake machine" });
 
 const PROJECT: Project = {
   id: PROJECT_ID,

@@ -341,6 +341,7 @@ Read the installed declarations for exact current signatures.
 - `createFakePluginHost`
 - `createFakeSdk`
 - `experimental_scanPublicSdkOnly`
+- `makeHostResponse`
 - `makeMessageDispatchHookContext`
 - `makePluginAgentConfigurationContext`
 - `makeQueueEntry`

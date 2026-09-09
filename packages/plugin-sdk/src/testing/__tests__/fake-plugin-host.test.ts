@@ -14,6 +14,7 @@ import {
 } from "../../internal/host-policy.js";
 import {
   createFakePluginHost,
+  makeHostResponse,
   makeMessageDispatchHookContext,
   makePluginAgentConfigurationContext,
   makeQueueEntry,
@@ -21,6 +22,20 @@ import {
 } from "../index.js";
 
 describe("fixtures", () => {
+  it("builds complete host responses with targeted overrides", () => {
+    expect(makeHostResponse({ id: "host-target", name: "Target" })).toEqual({
+      id: "host-target",
+      name: "Target",
+      status: "connected",
+      type: "persistent",
+      maxPermissionMode: "full",
+      lastSeenAt: null,
+      lastRejectedProtocolVersion: null,
+      createdAt: 0,
+      updatedAt: 0,
+    });
+  });
+
   it("derives linked dispatch identities unless explicitly overridden", () => {
     const inherited = makeMessageDispatchHookContext({
       project: { id: "project-target" },
