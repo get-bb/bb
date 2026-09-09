@@ -24,7 +24,7 @@ it("backfills only non-local hosts, preserves all other columns and is idempoten
       .run("digitalocean", JSON.stringify({ dropletId: 123 }), "managed-host");
     const before = db.$client.prepare("SELECT * FROM hosts ORDER BY id").all();
     const sql = readFileSync(
-      new URL("../drizzle/0114_machine_providers.sql", import.meta.url),
+      new URL("../drizzle/0115_machine_providers.sql", import.meta.url),
       "utf8",
     )
       .split("--> statement-breakpoint")

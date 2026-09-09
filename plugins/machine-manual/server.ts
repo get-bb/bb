@@ -28,7 +28,7 @@ export default function manualMachinePlugin(bb: BbPluginApi): void {
       context.report.step("Machine connected");
       return { status: "created", hostId, resource };
     },
-    async experimental_reconcileCleanup() {
+    async reconcileCleanup() {
       return { status: "removed" };
     },
     async remove(context) {

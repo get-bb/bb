@@ -24,7 +24,7 @@ it("gives backfilled manual machines user and gh environment without enrollment 
     const sql = (
       await readFile(
         new URL(
-          "../../../../../packages/db/drizzle/0114_machine_providers.sql",
+          "../../../../../packages/db/drizzle/0115_machine_providers.sql",
           import.meta.url,
         ),
         "utf8",

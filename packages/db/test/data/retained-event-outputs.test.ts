@@ -31,7 +31,6 @@ function setup(options: CreateConnectionOptions = {}) {
   const db = createMigratedConnection(options);
   const host = upsertHost(db, noopNotifier, {
     name: "retained-output-host",
-    type: "persistent",
   });
   const { project } = createProject(db, noopNotifier, {
     name: "retained-output-project",
