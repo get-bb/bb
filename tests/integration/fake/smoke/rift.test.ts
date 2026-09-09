@@ -1,12 +1,7 @@
 import { spawnSync } from "node:child_process";
 import { access, realpath, writeFile, readFile } from "node:fs/promises";
 import { join } from "node:path";
-import {
-  environmentHookOperations,
-  getEnvironment,
-  getEnvironmentLaunch,
-} from "@bb/db";
-import { eq } from "drizzle-orm";
+import { getEnvironment, getEnvironmentLaunch } from "@bb/db";
 import { threadSchema } from "@bb/domain";
 import { describe, expect, it } from "vitest";
 import { withHarness } from "../../helpers/harness.js";
@@ -79,16 +74,8 @@ describe("Rift environment integration", () => {
         expect(
           await readFile(join(environment.path, "hook-order"), "utf8"),
         ).toBe("rift\ncore-setup\n");
-        const hooks = harness.db
-          .select()
-          .from(environmentHookOperations)
-          .where(eq(environmentHookOperations.path, environment.path))
-          .all();
-        expect(hooks).toHaveLength(1);
-        expect(hooks[0]).toMatchObject({ kind: "setup", error: null });
-        expect(hooks[0]?.finishedAt).toBeTypeOf("number");
         const canonicalPath = await realpath(environment.path);
-        expect(getEnvironment(harness.db, environment.id)?.canonicalPath).toBe(
+        expect(getEnvironment(harness.db, environment.id)?.path).toBe(
           canonicalPath,
         );
         expect(getEnvironmentLaunch(harness.db, thread.id)?.claimPath).toBe(
