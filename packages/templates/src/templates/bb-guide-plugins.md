@@ -67,8 +67,9 @@ contributes its provider-specific server route and a distinct secret token to
 Claude Code or Codex sessions on every host. Claude Code also receives
 `ENABLE_TOOL_SEARCH=true` so tool search stays on through the hub. Codex
 receives `CODEX_OPENAI_BASE_URL` and the secret `CODEX_POOL_AUTH_TOKEN`; its
-app server uses those values without editing `~/.codex/config.toml`. Tokens are
-never printed. `status` prunes tokens for
+app server uses those values without editing `~/.codex/config.toml`.
+Codex image generation and editing use the same authenticated pool route.
+Tokens are never printed. `status` prunes tokens for
 unenrolled machines and shows token timestamps plus recently routed threads
 whose machines need a local Claude login before the pool can be disabled
 safely. Rotation keeps the prior token valid for ten minutes. Agents should use

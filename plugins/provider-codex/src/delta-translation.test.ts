@@ -603,6 +603,47 @@ describe("codex item translation", () => {
     );
   });
 
+  it("accepts native image generation status and nullable background", () => {
+    const harness = createHarness();
+    for (const [method, status, expectedStatus] of [
+      ["item/started", "in_progress", "pending"],
+      ["item/completed", "completed", "completed"],
+    ]) {
+      const events = harness.translate({
+        jsonrpc: "2.0",
+        method,
+        params: {
+          threadId: "t1",
+          turnId: "turn-1",
+          item: {
+            type: "imageGeneration",
+            id: "generated-image-1",
+            status,
+            revisedPrompt: null,
+            result: "",
+            failure: null,
+            savedPath: "/tmp/generated.png",
+            transparentBackground: null,
+          },
+        },
+      });
+      expect(events).toContainEqual(
+        expect.objectContaining({
+          type: method,
+          item: expect.objectContaining({
+            type: "imageGeneration",
+            status: expectedStatus,
+            path: "/tmp/generated.png",
+            transparentBackground: false,
+          }),
+        }),
+      );
+      expect(events.some((event) => event.type === "provider/unhandled")).toBe(
+        false,
+      );
+    }
+  });
+
   it("falls back to thread-scoped provider/unhandled for unknown notifications", () => {
     const harness = createHarness();
     const events = harness.translate({

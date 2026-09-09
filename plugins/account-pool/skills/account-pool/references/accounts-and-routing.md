@@ -38,6 +38,7 @@ Code or Codex sessions receive the pool route and a distinct secret token for
 their machine.
 Codex receives `CODEX_OPENAI_BASE_URL` and the secret
 `CODEX_POOL_AUTH_TOKEN`; bb applies them as in-memory app-server config.
+Codex image generation and editing use the same authenticated pool route.
 Tokens are never printed. `status` prunes tokens for unenrolled machines and
 shows token timestamps plus recently routed threads whose machines need a
 local Claude login before the pool can be disabled safely. Rotation keeps the

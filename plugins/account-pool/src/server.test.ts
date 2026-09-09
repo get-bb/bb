@@ -416,6 +416,57 @@ describe("Account Pool plugin", () => {
     });
   });
 
+  it.each(["generations", "edits"])(
+    "routes native Codex image %s with pool authentication",
+    async (operation) => {
+      const requests: Request[] = [];
+      const image = { data: [{ b64_json: "generated-image" }] };
+      const fixture = await createOAuthRequestFixture(
+        "codex",
+        async (input, init) => {
+          requests.push(new Request(input, init));
+          return Response.json(image);
+        },
+        Date.now,
+      );
+      const route = `/v1/images/${operation}`;
+      const body = JSON.stringify({ prompt: "A fox astronaut", images: [] });
+      const denied = await fixture.host.harness.behavior.fetchHttp(
+        "POST",
+        route,
+        { body },
+      );
+      expect(denied.status).toBe(401);
+      expect(requests).toHaveLength(0);
+      const response = await fixture.host.harness.behavior.fetchHttp(
+        "POST",
+        route,
+        {
+          headers: {
+            "content-type": "application/json",
+            "x-bb-account-pool-token": fixture.key,
+            authorization: "Bearer local-token",
+          },
+          body,
+        },
+      );
+      expect(response.status).toBe(200);
+      expect(await response.json()).toEqual(image);
+      expect(requests).toHaveLength(1);
+      expect(requests[0]?.url).toBe(
+        `https://upstream.example/images/${operation}`,
+      );
+      expect(requests[0]?.headers.get("authorization")).toBe(
+        "Bearer oauth-old",
+      );
+      expect(requests[0]?.headers.get("chatgpt-account-id")).toBe(
+        "chatgpt-account",
+      );
+      expect(requests[0]?.headers.has("x-bb-account-pool-token")).toBe(false);
+      expect(await requests[0]?.text()).toBe(body);
+    },
+  );
+
   it("imports, refreshes, and routes Codex HTTP sessions by provider", async () => {
     const seen: Array<{
       path: string;

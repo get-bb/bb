@@ -288,12 +288,18 @@ export function createAccountPoolPlugin(
       (context) => hub.handle(context.req.raw, "claude"),
       { auth: "none" },
     );
-    bb.http.route(
-      "POST",
+    for (const route of [
       "/v1/responses",
-      (context) => hub.handle(context.req.raw, "codex"),
-      { auth: "none" },
-    );
+      "/v1/images/generations",
+      "/v1/images/edits",
+    ]) {
+      bb.http.route(
+        "POST",
+        route,
+        (context) => hub.handle(context.req.raw, "codex"),
+        { auth: "none" },
+      );
+    }
     bb.http.route(
       "GET",
       "/v1/models",

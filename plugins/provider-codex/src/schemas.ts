@@ -442,10 +442,13 @@ export const codexHandledThreadItemSchema = z.discriminatedUnion("type", [
     .object({
       type: z.literal("imageGeneration"),
       id: z.string(),
-      status: codexToolReferenceStatusSchema,
+      status: z.union([
+        codexToolReferenceStatusSchema,
+        z.literal("in_progress").transform(() => "inProgress" as const),
+      ]),
       revisedPrompt: z.string().nullable(),
       result: z.string(),
-      transparentBackground: z.boolean().optional(),
+      transparentBackground: z.boolean().nullish(),
       failure: z
         .object({
           type: z.literal("usageLimitExceeded"),
