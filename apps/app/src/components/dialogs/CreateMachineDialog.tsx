@@ -86,7 +86,7 @@ function CreateMachineContent({
           <DialogTitle>
             {loading ? "Add a machine" : "Set up machine access"}
           </DialogTitle>
-          <DialogDescription className={loading ? undefined : "sr-only"}>
+          <DialogDescription>
             {loading
               ? "Checking machine access…"
               : "Choose how new machines connect to the server."}
