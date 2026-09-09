@@ -295,7 +295,9 @@ export function resolveToolsActivePage(
   for (const detail of DETAIL_ROUTES) {
     if (matchPath(detail.pattern, pathname) === null) continue;
     if (detail.section === "plugins") {
-      return "plugins-browse";
+      return view === TOOLS_OWNED_COLLECTION_VIEW.plugins
+        ? "plugins-installed"
+        : "plugins-browse";
     }
     return detail.collection.label === TOOLS_OWNED_COLLECTION_LABEL.skills
       ? "skills-library"
