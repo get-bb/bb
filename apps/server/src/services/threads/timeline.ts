@@ -1,6 +1,6 @@
 import { paginateTimelineContents } from "./timeline-content-pagination.js";
 import {
-  getTimelineOrderingBoundary,
+  getTimelineGroupingContext,
   orderTimelineRowsUsingContext,
 } from "./timeline-context-order.js";
 import {
@@ -48,6 +48,8 @@ import {
   listStoredConversationOutlineEventRows,
   listStoredClientTurnRequestIdsInRange,
   listStoredEventRows,
+  listTimelineInterruptionRows,
+  listStoredClientTurnRequestRowsByKeys,
   listStoredEventRowsByParentToolCallIds,
   isTimelineCursorSequencePresent,
   listItemEventSpansByItems,
@@ -58,7 +60,8 @@ import {
   listLatestOpenBackgroundTaskStateRowsForThread,
   listStoredTimelineWindowEventRows,
   listStoredTimelineTurnEventRows,
-  listStoredTimelineRootWindowEventRows,
+  listStoredTimelineThreadWindowEventRows,
+  listTimelineRootWindowTurnIds,
   listTodoSnapshotEventRowsForThread,
   listStoredDelegatingItemRowsByItemIds,
   listStoredTurnInputAcceptedRowsByClientRequestIds,
@@ -213,6 +216,7 @@ interface BuildThreadTimelineInternalOptions extends BuildThreadTimelineOptions 
 }
 
 interface TimelineEventRowSelection {
+  contextOnlyInterruptionSequences: ReadonlySet<number>;
   orderingBoundarySequence: number | null;
   ownedSequenceStart: number;
   ownedSequenceEnd: number;
@@ -1035,35 +1039,40 @@ function selectStandardTimelineEventRows(
     excludedTypes: THREAD_TIMELINE_EXCLUDED_EVENT_TYPES,
     maxInlineOutputChars,
   };
-  const contextRows = measureThreadTimelineStage(
+  const groupingContext = measureThreadTimelineStage(
     profile,
-    "group-context-query",
+    "ordering-context-query",
     () =>
-      listStoredEventRows(db, {
+      getTimelineGroupingContext(db, {
         threadId: thread.id,
-        afterSequence: epochSequenceStart - 1,
-        beforeSequence: maxSeq + 1,
-        types: [
-          "client/turn/requested",
-          "client/turn/rejected",
-          "turn/input/accepted",
-          "turn/started",
-          "turn/completed",
-          "system/thread/interrupted",
-        ],
+        sequenceStart: epochSequenceStart,
+        maxSeq,
       }),
   );
-  let rows = listStoredTimelineRootWindowEventRows(db, windowArgs);
+  let rows = listStoredTimelineThreadWindowEventRows(db, windowArgs);
+  const initialTurnIds = [
+    ...listTimelineRootWindowTurnIds(db, windowArgs),
+    ...rows.flatMap((row) => {
+      if (row.type !== "client/turn/requested") return [];
+      const requestId = tryReadClientTurnRequestedRequestId(row);
+      const turnId =
+        requestId === null
+          ? undefined
+          : groupingContext.acceptedTurnIds.get(requestId);
+      return turnId === undefined ? [] : [turnId];
+    }),
+  ];
   rows = measureThreadTimelineStage(profile, "group-context-query", () => {
     let selectedRows = rows;
     const fetchedTurns = new Set<string>();
     for (;;) {
       const turnIds = [
-        ...new Set(
-          selectedRows.flatMap((row) =>
+        ...new Set([
+          ...initialTurnIds,
+          ...selectedRows.flatMap((row) =>
             row.turnId === null ? [] : [row.turnId],
           ),
-        ),
+        ]),
       ].filter((turnId) => !fetchedTurns.has(turnId));
       if (turnIds.length === 0) break;
       for (const turnId of turnIds) fetchedTurns.add(turnId);
@@ -1102,17 +1111,96 @@ function selectStandardTimelineEventRows(
       }).filter((row) => row.sequence <= maxSeq);
     return selectedRows;
   });
-  return {
-    orderingBoundarySequence: measureThreadTimelineStage(
-      profile,
-      "ordering-context-query",
-      () =>
-        getTimelineOrderingBoundary(db, {
-          threadId: thread.id,
-          sequenceStart: epochSequenceStart,
-          maxSeq,
-        }),
+  const contextStart = rows.reduce(
+    (start, row) => Math.min(start, row.sequence),
+    sequenceStart,
+  );
+  const contextEnd = rows.reduce(
+    (end, row) => Math.max(end, row.sequence),
+    beforeSequence - 1,
+  );
+  const contextRows = measureThreadTimelineStage(
+    profile,
+    "group-context-query",
+    () =>
+      listStoredEventRows(db, {
+        threadId: thread.id,
+        afterSequence: contextStart - 1,
+        beforeSequence: contextEnd + 1,
+        types: [
+          "client/turn/requested",
+          "client/turn/rejected",
+          "turn/input/accepted",
+          "turn/started",
+          "turn/completed",
+          "system/thread/interrupted",
+        ],
+      }),
+  );
+  const existingRequests = new Set(
+    [...contextRows, ...rows].flatMap((row) =>
+      row.type === "client/turn/requested"
+        ? [tryReadClientTurnRequestedRequestId(row)]
+        : [],
     ),
+  );
+  const requestKeys = rows
+    .filter((row) => row.type === "turn/input/accepted")
+    .filter(
+      (row) => !existingRequests.has(parseAcceptedInputClientRequestId(row)),
+    )
+    .map((row) => ({
+      threadId: thread.id,
+      requestId: parseAcceptedInputClientRequestId(row),
+    }));
+  const requestedRows = listStoredClientTurnRequestRowsByKeys(db, {
+    keys: requestKeys,
+  }).filter((row) => row.sequence <= maxSeq);
+  const requestContext = [...contextRows, ...requestedRows, ...rows];
+  const terminalRequestIds = new Set(
+    requestContext.flatMap((row) =>
+      row.type === "turn/input/accepted"
+        ? [parseAcceptedInputClientRequestId(row)]
+        : row.type === "client/turn/rejected"
+          ? [parseRejectedClientRequestId(row)]
+          : [],
+    ),
+  );
+  const unresolvedRequests = requestContext.flatMap((row) => {
+    if (row.type !== "client/turn/requested") return [];
+    const id = tryReadClientTurnRequestedRequestId(row);
+    return id === null || terminalRequestIds.has(id) ? [] : [id];
+  });
+  const terminalContext =
+    unresolvedRequests.length === 0
+      ? []
+      : [
+          ...listStoredTurnInputAcceptedRowsByClientRequestIds(db, {
+            threadId: thread.id,
+            afterSequence: contextStart - 1,
+            clientRequestIds: unresolvedRequests,
+          }),
+          ...listStoredTurnRejectedRowsByClientRequestIds(db, {
+            threadId: thread.id,
+            afterSequence: contextStart - 1,
+            clientRequestIds: unresolvedRequests,
+          }),
+        ].filter((row) => row.sequence <= maxSeq);
+  const interruptionRows = listTimelineInterruptionRows(db, {
+    threadId: thread.id,
+    sequenceStart: epochSequenceStart,
+    maxSeq,
+  });
+  const visibleSequences = new Set(
+    [...contextRows, ...rows].map((row) => row.sequence),
+  );
+  return {
+    contextOnlyInterruptionSequences: new Set(
+      interruptionRows
+        .filter((row) => !visibleSequences.has(row.sequence))
+        .map((row) => row.sequence),
+    ),
+    orderingBoundarySequence: groupingContext.orderingBoundarySequence,
     ownedSequenceStart: sequenceStart,
     ownedSequenceEnd: beforeSequence,
     knownHasOlderSegments: (
@@ -1125,7 +1213,16 @@ function selectStandardTimelineEventRows(
     paginationPage:
       contentCursor === undefined ? page : { ...page, segmentLimit: 1 },
     responsePageKind: page.kind,
-    rows: mergeStoredEventRowsById([...contextRows, ...rows]),
+    rows: ensureTimelineWindowTurnStartedRows(db, {
+      threadId: thread.id,
+      rows: mergeStoredEventRowsById([
+        ...interruptionRows,
+        ...terminalContext,
+        ...contextRows,
+        ...requestedRows,
+        ...rows,
+      ]),
+    }),
     strategy:
       sequenceStart === epochSequenceStart && page.kind === "latest"
         ? "full"
@@ -1332,7 +1429,17 @@ function buildThreadTimelineInternal(
   );
   const projectedTimelineRows = applyRetainedOutputPreviews(
     orderTimelineRowsUsingContext(
-      timeline.rows,
+      timeline.rows.filter(
+        (row) =>
+          !(
+            row.kind === "system" &&
+            row.systemKind === "operation" &&
+            row.operationKind === "thread-interrupted" &&
+            eventSelection.contextOnlyInterruptionSequences.has(
+              row.sourceSeqStart,
+            )
+          ),
+      ),
       decodedEvents,
       eventSelection.orderingBoundarySequence,
     ),

@@ -51,6 +51,15 @@ const OPTIONAL_SERVER_FIELD_GROUP_LIMIT = 30;
 const OPTIONAL_SERVER_FIELD_GROUPS: readonly OptionalServerFieldGroup[] = [
   {
     reason:
+      "Timeline snapshot fields are absent on older servers; content metadata and detail continuation inputs only apply to paginated content.",
+    fields: [
+      "threadTimelineResponseSchema.timelinePage.contentPage",
+      "threadTimelineResponseSchema.timelinePage.historySnapshot",
+      "timelineTurnSummaryDetailsQuerySchema.beforeCursor",
+    ],
+  },
+  {
+    reason:
       "Base error payloads omit optional details and retryability when a route has no structured details or retry guidance.",
     fields: [
       "apiErrorSchema.details",

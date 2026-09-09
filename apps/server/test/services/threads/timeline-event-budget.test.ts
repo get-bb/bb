@@ -27,7 +27,10 @@ import {
 } from "@bb/db";
 import type { DbConnection } from "@bb/db";
 import type { TimelinePaginationCursor } from "@bb/server-contract";
-import { buildThreadTimeline } from "../../../src/services/threads/timeline.js";
+import {
+  buildThreadTimeline,
+  buildThreadTimelineWithProfile,
+} from "../../../src/services/threads/timeline.js";
 
 const LARGE_BUDGET = 1_000_000;
 
@@ -671,4 +674,68 @@ describe("timeline event budget", () => {
       }),
     );
   });
+});
+
+it("does not decode unrelated turn history for a one-group page", () => {
+  const { db, thread } = setup();
+  insertTurns(db, thread, 200, 3);
+  const { response, profile } = buildThreadTimelineWithProfile(db, thread, {
+    eventBudget: 1500,
+    includeDiagnosticOperations: false,
+    maxInlineOutputChars: 32000,
+    maxSeq: 0,
+    page: { kind: "latest", segmentLimit: 1 },
+  });
+  expect(
+    response.rows.some(
+      (row) =>
+        row.kind === "conversation" &&
+        row.role === "user" &&
+        row.text === "User message 200",
+    ),
+  ).toBe(true);
+  expect(profile.decodedEventCount).toBeLessThan(20);
+  db.$client.close();
+});
+
+it("resolves acceptance after the next conversation boundary", () => {
+  const { db, thread } = setup();
+  insertTurns(db, thread, 3, 1);
+  db.$client
+    .prepare(
+      "UPDATE events SET sequence = sequence + 1000 WHERE thread_id = ? AND turn_id = 'turn-1'",
+    )
+    .run(thread.id);
+  const expected = buildThreadTimeline(db, thread, {
+    eventBudget: LARGE_BUDGET,
+    includeDiagnosticOperations: false,
+    maxInlineOutputChars: 32000,
+    maxSeq: 0,
+    page: { kind: "latest", segmentLimit: 100 },
+  });
+  let page = buildThreadTimeline(db, thread, {
+    eventBudget: 5,
+    includeDiagnosticOperations: false,
+    maxInlineOutputChars: 32000,
+    maxSeq: 0,
+    page: { kind: "latest", segmentLimit: 1 },
+  });
+  let rows = page.rows;
+  for (let count = 0; page.timelinePage.olderCursor !== null; count++) {
+    expect(count).toBeLessThan(20);
+    page = buildThreadTimeline(db, thread, {
+      eventBudget: 5,
+      includeDiagnosticOperations: false,
+      maxInlineOutputChars: 32000,
+      maxSeq: 0,
+      page: {
+        kind: "older",
+        segmentLimit: 1,
+        beforeCursor: page.timelinePage.olderCursor,
+      },
+    });
+    rows = prependOlderTimelineRows({ loadedRows: rows, olderRows: page.rows });
+  }
+  expect(rows).toEqual(expected.rows);
+  db.$client.close();
 });

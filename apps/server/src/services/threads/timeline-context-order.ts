@@ -2,23 +2,29 @@ import type { ThreadEventWithMeta } from "@bb/thread-view";
 import type { TimelineRow } from "@bb/server-contract";
 import {
   getFirstParentedTimelineBoundarySequence,
+  listTimelineOrderingContext,
   getThreadTimelineHistoryRevision,
   type DbConnection,
 } from "@bb/db";
 
+interface TimelineGroupingContext {
+  orderingBoundarySequence: number | null;
+  acceptedTurnIds: ReadonlyMap<string, string>;
+}
+
 const orderingContexts = new WeakMap<
   DbConnection,
-  Map<string, number | null>
+  Map<string, TimelineGroupingContext>
 >();
 
 export function clearTimelineOrderingContextCache(db: DbConnection): void {
   orderingContexts.delete(db);
 }
 
-export function getTimelineOrderingBoundary(
+export function getTimelineGroupingContext(
   db: DbConnection,
   args: { threadId: string; sequenceStart: number; maxSeq: number },
-): number | null {
+): TimelineGroupingContext {
   let cache = orderingContexts.get(db);
   if (cache === undefined) {
     cache = new Map();
@@ -30,11 +36,52 @@ export function getTimelineOrderingBoundary(
     args.maxSeq,
     getThreadTimelineHistoryRevision(db, args.threadId),
   ]);
-  if (cache.has(key)) return cache.get(key) ?? null;
-  const sequence = getFirstParentedTimelineBoundarySequence(db, args);
-  cache.set(key, sequence);
+  const cached = cache.get(key);
+  if (cached !== undefined) return cached;
+  const context = listTimelineOrderingContext(db, args);
+  const turns = new Map<string, { start: number; end: number }>();
+  const accepted = new Map<string, string>();
+  for (const row of context) {
+    if (row.turnId === null) continue;
+    if (row.type === "turn/input/accepted" && row.clientRequestId !== null)
+      accepted.set(row.clientRequestId, row.turnId);
+    if (
+      row.type === "turn/started" &&
+      row.parentToolCallId === null &&
+      !turns.has(row.turnId)
+    )
+      turns.set(row.turnId, { start: row.sequence, end: row.sequence });
+    const turn = turns.get(row.turnId);
+    if (turn !== undefined) turn.end = row.sequence;
+  }
+  let boundary = getFirstParentedTimelineBoundarySequence(db, args) ?? Infinity;
+  for (const row of context) {
+    if (row.sequence >= boundary) break;
+    if (
+      row.type !== "client/turn/requested" ||
+      row.initiator !== "user" ||
+      row.requestId === null
+    )
+      continue;
+    for (const [turnId, turn] of turns) {
+      if (
+        row.sequence > turn.start &&
+        row.sequence < turn.end &&
+        accepted.get(row.requestId) !== turnId
+      ) {
+        boundary = row.sequence;
+        break;
+      }
+    }
+  }
+  const sequence = Number.isFinite(boundary) ? boundary : null;
+  const result = {
+    orderingBoundarySequence: sequence,
+    acceptedTurnIds: accepted,
+  };
+  cache.set(key, result);
   if (cache.size > 128) cache.delete(cache.keys().next().value!);
-  return sequence;
+  return result;
 }
 
 export function orderTimelineRowsUsingContext(
