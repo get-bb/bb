@@ -281,6 +281,31 @@ describe("Rift path admission with real launch transactions", () => {
     },
   );
 
+  it.runIf(spawnSync("rift", ["--help"]).status === 0)(
+    "preserves a completed copy when Git inspection fails during replay",
+    async () => {
+      const f = await fixture();
+      try {
+        expect(await f.provider.create(f.context)).toMatchObject({
+          status: "created",
+        });
+        await writeFile(join(f.target, "sentinel"), "keep");
+        f.beforeCommand(async (command, args) => {
+          if (command === "git" && args[0] === "cat-file")
+            throw new Error("temporary Git inspection failure");
+        });
+        expect(await f.provider.create(f.context)).toMatchObject({
+          status: "failed",
+          message: expect.stringContaining("temporary Git inspection failure"),
+        });
+        expect(await readFile(join(f.target, "sentinel"), "utf8")).toBe("keep");
+        await access(`${f.target}.completed`);
+      } finally {
+        await f.dispose();
+      }
+    },
+  );
+
   it
     .runIf(spawnSync("rift", ["--help"]).status === 0)
     .each(["interrupted", "completed"])(

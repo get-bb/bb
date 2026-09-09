@@ -48,7 +48,7 @@ export const riftHostContract = defineRpcContract({
     input: z
       .object({
         pathKey: z.string().min(1),
-        path: z.string().min(1).nullable(),
+        path: z.string().min(1),
       })
       .strict(),
     output: z.discriminatedUnion("status", [

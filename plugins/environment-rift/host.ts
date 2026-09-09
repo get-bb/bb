@@ -4,7 +4,6 @@ import {
   experimental_sanitizeInheritedChildProcessEnv as sanitizeInheritedChildProcessEnv,
 } from "@get-bb/plugin-sdk/host";
 import {
-  access,
   lstat,
   mkdir,
   readFile,
@@ -129,6 +128,21 @@ export function createRiftHostEntry(runner: Runner = run) {
       work: () => runner("rift", ["init", "--here"], source, signal),
     });
   };
+  const removeCopy = async (
+    target: string,
+    dataDir: string,
+    signal: AbortSignal,
+  ) => {
+    if (await exists(target)) {
+      try {
+        await runner("rift", ["remove", target], dataDir, signal);
+      } catch {
+        signal.throwIfAborted();
+        await rm(target, { recursive: true, force: true });
+      }
+    }
+    await rm(`${target}.completed`, { force: true });
+  };
   return experimental_defineHostEntry({
     contract: riftHostContract,
     handlers: {
@@ -166,8 +180,6 @@ export function createRiftHostEntry(runner: Runner = run) {
             throw new Error(
               "Rift requires a standalone Git checkout; linked Git worktrees are not supported",
             );
-          await access(input.sourcePath, 3);
-          await initialize(input.sourcePath, context.signal);
           return { status: "accept" } as const;
         } catch (error) {
           return { status: "refuse", message: String(error) } as const;
@@ -192,45 +204,35 @@ export function createRiftHostEntry(runner: Runner = run) {
               const git = (args: string[], cwd = input.sourcePath) =>
                 runner("git", args, cwd, context.signal);
               await git(["check-ref-format", "--branch", input.branchName]);
-              if ((await exists(target)) && (await exists(completed))) {
-                try {
-                  const mergeBaseBranch = await readFile(completed, "utf8");
-                  if (!/^(?:[0-9a-f]{40}|[0-9a-f]{64})$/.test(mergeBaseBranch))
-                    throw new Error("Invalid Rift completion record");
-                  await git(
-                    ["cat-file", "-e", `${mergeBaseBranch}^{commit}`],
-                    target,
+              if (await exists(completed)) {
+                const mergeBaseBranch = await readFile(completed, "utf8");
+                if (!/^(?:[0-9a-f]{40}|[0-9a-f]{64})$/.test(mergeBaseBranch))
+                  throw new Error(
+                    `Invalid Rift completion record: ${completed}`,
                   );
-                  if (
-                    (await git(["branch", "--show-current"], target)) ===
-                      input.branchName &&
-                    (await exists(path.join(target, ".rift")))
-                  ) {
-                    await git(["rev-parse", "--verify", "HEAD"], target);
-                    return {
-                      status: "created",
-                      path: target,
-                      mergeBaseBranch,
-                    } as const;
-                  }
-                } catch {
-                  context.signal.throwIfAborted();
-                }
-              }
-              if (await exists(target)) {
-                try {
-                  await runner(
-                    "rift",
-                    ["remove", target],
-                    dataDir,
-                    context.signal,
+                await git(
+                  ["cat-file", "-e", `${mergeBaseBranch}^{commit}`],
+                  target,
+                );
+                if (
+                  (await git(["branch", "--show-current"], target)) !==
+                  input.branchName
+                )
+                  throw new Error(
+                    `Completed Rift workspace at ${target} is not on branch ${input.branchName}; restore that branch before retrying`,
                   );
-                } catch {
-                  context.signal.throwIfAborted();
-                  await rm(target, { recursive: true, force: true });
-                }
+                if (!(await exists(path.join(target, ".rift"))))
+                  throw new Error(
+                    `Completed Rift workspace is missing metadata: ${target}`,
+                  );
+                await git(["rev-parse", "--verify", "HEAD"], target);
+                return {
+                  status: "created",
+                  path: target,
+                  mergeBaseBranch,
+                } as const;
               }
-              await rm(completed, { force: true });
+              await removeCopy(target, dataDir, context.signal);
               await mkdir(path.dirname(target), { recursive: true });
               await initialize(input.sourcePath, context.signal);
               await runner(
@@ -273,26 +275,13 @@ export function createRiftHostEntry(runner: Runner = run) {
       async remove(input, context) {
         try {
           const dataDir = await realpath(context.experimental_paths.dataDir);
-          const target = input.path ?? targetFor(dataDir, input.pathKey);
+          const target = input.path;
           return await withProcessLocalQueuedLocks({
             locks: [{ key: target }],
             signal: context.signal,
             work: async () => {
               await checkManaged(target, dataDir, input.pathKey);
-              if (await exists(target)) {
-                try {
-                  await runner(
-                    "rift",
-                    ["remove", target],
-                    dataDir,
-                    context.signal,
-                  );
-                } catch {
-                  context.signal.throwIfAborted();
-                  await rm(target, { recursive: true, force: true });
-                }
-              }
-              await rm(`${target}.completed`, { force: true });
+              await removeCopy(target, dataDir, context.signal);
               return { status: "removed" } as const;
             },
           });

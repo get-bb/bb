@@ -20,7 +20,7 @@ const exec = promisify(execFile);
 
 describe("Rift host entry", () => {
   it.runIf(spawnSync("rift", ["--help"]).status === 0)(
-    "creates a real copy, runs only Rift hooks, replays, repairs and removes",
+    "creates a real copy, runs only Rift hooks, replays, preserves mismatched copies and removes",
     async () => {
       const root = await realpath(await mkdtemp(join(tmpdir(), "bb-rift-")));
       const source = join(root, "repo");
@@ -74,6 +74,7 @@ describe("Rift host entry", () => {
             ),
           ),
         ).toEqual(Array.from({ length: 8 }, () => ({ status: "accept" })));
+        await expect(access(join(source, ".rift"))).rejects.toThrow();
         const result = await harness.experimental_call("create", input);
         expect(result.status).toBe("created");
         if (result.status !== "created") throw new Error(result.message);
@@ -91,12 +92,13 @@ describe("Rift host entry", () => {
         await access(join(result.path, "keep-on-replay"));
         expect(await git("branch", "--show-current")).toBe("main");
         await exec("git", ["checkout", "--detach"], { cwd: result.path });
-        expect((await harness.experimental_call("create", input)).status).toBe(
-          "created",
-        );
-        await expect(
-          access(join(result.path, "keep-on-replay")),
-        ).rejects.toThrow();
+        expect(await harness.experimental_call("create", input)).toMatchObject({
+          status: "failed",
+          message: expect.stringContaining(
+            "restore that branch before retrying",
+          ),
+        });
+        await access(join(result.path, "keep-on-replay"));
         await writeFile(
           join(result.path, ".bb-env-teardown.sh"),
           `echo unexpected > ${join(root, "provider-teardown")}\n`,
@@ -109,12 +111,6 @@ describe("Rift host entry", () => {
         ).toEqual({ status: "removed" });
         await expect(access(result.path)).rejects.toThrow();
         await expect(access(join(root, "provider-teardown"))).rejects.toThrow();
-        expect(
-          await harness.experimental_call("remove", {
-            pathKey: input.pathKey,
-            path: null,
-          }),
-        ).toEqual({ status: "removed" });
         expect(
           (
             await harness.experimental_call("remove", {
@@ -189,7 +185,7 @@ describe("Rift host entry", () => {
       hook: "git checkout main",
     },
   ])(
-    "repairs $name and preserves index and working tree",
+    "handles $name without discarding index or working tree",
     async ({ record, hook }) => {
       const root = await realpath(
         await mkdtemp(join(tmpdir(), "bb-rift-repair-")),
@@ -240,15 +236,17 @@ describe("Rift host entry", () => {
         if (record !== null) {
           await writeFile(`${first.path}.completed`, record);
           await writeFile(join(first.path, "incomplete-only"), "discard");
-          expect(await harness.experimental_call("create", input)).toEqual(
-            first,
-          );
-          await expect(
-            access(join(first.path, "incomplete-only")),
-          ).rejects.toThrow();
+          expect(
+            await harness.experimental_call("create", input),
+          ).toMatchObject({
+            status: "failed",
+          });
+          await access(join(first.path, "incomplete-only"));
         }
         expect(first.mergeBaseBranch).toBe(head);
-        expect(await readFile(`${first.path}.completed`, "utf8")).toBe(head);
+        expect(await readFile(`${first.path}.completed`, "utf8")).toBe(
+          record ?? head,
+        );
         expect(await git(first.path, "branch", "--show-current")).toBe("main");
         expect(await git(first.path, "rev-parse", "HEAD")).toBe(head);
         expect(await git(first.path, "show", ":tracked")).toBe("staged");
