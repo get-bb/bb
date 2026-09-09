@@ -525,13 +525,14 @@ describe("bb-plugin-authoring skill", () => {
   it("documents machine creation checkpoints and private bootstrap delivery", () => {
     expect(skillEntry).toContain("machine providers");
     const backend = readReference("backend-machines.md");
-    expect(backend).toContain("prepareEnrollment({ key })");
+    const enrollment = /prepareEnrollment\(\{\s*key,?\s*\}\)/;
+    expect(backend).toMatch(enrollment);
     expect(backend).toContain("await checkpoint(resource)");
     expect(backend).toContain("bb.experimental_machines.bootstrap({");
     expect(backend).toMatch(
       /Never put the\s+bootstrap bundle in resource JSON/,
     );
-    expect(backend.indexOf("prepareEnrollment({ key })")).toBeLessThan(
+    expect(backend.search(enrollment)).toBeLessThan(
       backend.indexOf("await checkpoint(resource)"),
     );
     expect(backend.indexOf("await checkpoint(resource)")).toBeLessThan(
