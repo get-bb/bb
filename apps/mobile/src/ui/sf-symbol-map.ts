@@ -133,6 +133,7 @@ export const SF_SYMBOL_MAP = {
   Pin: "pin",
   PinOff: "pin.slash",
   Play: "play",
+  Plug02: "powerplug",
   Plus: "plus",
   Puzzle: "puzzlepiece.extension",
   Repeat: "repeat",

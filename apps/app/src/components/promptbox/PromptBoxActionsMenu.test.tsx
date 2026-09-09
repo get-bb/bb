@@ -94,7 +94,7 @@ describe("PromptBoxActionsMenu", () => {
       menuItems.map((item) =>
         item.querySelector("[data-icon]")?.getAttribute("data-icon"),
       ),
-    ).toEqual(["Zap", "ListTodo", "Repeat", "GridView"]);
+    ).toEqual(["Zap", "ListTodo", "Repeat", "Plug02"]);
 
     fireEvent.click(screen.getByRole("menuitem", { name: "Plugin" }));
 

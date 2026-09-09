@@ -84,6 +84,7 @@ export const EXTENDED_ICON_NAMES = [
   "Pin",
   "PinOff",
   "Play",
+  "Plug02",
   "Plus",
   "Puzzle",
   "Repeat",

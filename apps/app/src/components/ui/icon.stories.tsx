@@ -85,6 +85,7 @@ const USAGE: Partial<Record<IconName, string>> = {
   Paperclip: "Attach files button",
   Pin: "Pin thread action",
   PinOff: "Unpin thread action",
+  Plug02: "Plugins sidebar and prompt action",
   Plus: "New host button, new terminal button, “new branch” option in branch picker",
   Repeat: "Automations sidebar and prompt action",
   RotateCcw:

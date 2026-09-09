@@ -84,10 +84,10 @@ export function BuiltInSidebarNavigation({
             pluginId: "__bb__" as const,
             id: "extensions",
             title: "Plugins",
-            icon: <Icon name="GridView" aria-hidden="true" />,
+            icon: <Icon name="Plug02" aria-hidden="true" />,
             content: (
               <ResourceNavSidebarItem
-                icon="GridView"
+                icon="Plug02"
                 title="Plugins"
                 routePath={pluginsRoutePath}
                 onNavigate={onNavigate}
