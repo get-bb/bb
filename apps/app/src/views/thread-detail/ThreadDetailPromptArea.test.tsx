@@ -805,7 +805,6 @@ describe("ThreadDetailPromptArea", () => {
         machineSetup: [
           {
             machineProviderId: "manual",
-            default: true,
             component: () => null,
             progress: ManualEnrollmentCommand,
           },

@@ -391,7 +391,7 @@ const FRONTEND_SLOT_PROP_FIELDS = {
     "value",
     "onChange",
   ],
-  experimental_machineSetup: ["client", "onClose", "onShowProviders"],
+  experimental_machineSetup: ["client", "onClose"],
   experimental_machineProviderInputs: [
     "projectId",
     "value",

@@ -8,8 +8,8 @@ import {
 } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
-import type { ExperimentalMachineSetupProps } from "@get-bb/plugin-sdk";
 import type { SystemMachineProvider } from "@bb/server-contract";
+import { makeSystemConfig } from "@/test/fixtures/system-config";
 import { sdk } from "@/lib/sdk";
 import { createQueryClientTestHarness } from "@/test/queryClientTestHarness";
 import { CreateMachineDialog } from "./CreateMachineDialog";
@@ -23,10 +23,7 @@ vi.mock("@/lib/plugin-slots", () => ({
         machineProviderId: "command-provider",
         pluginId: slots.owner,
         generation: 1,
-        default: true,
-        component: ({ onShowProviders }: ExperimentalMachineSetupProps) => (
-          <button onClick={onShowProviders}>Plugin-owned setup</button>
-        ),
+        component: () => <button>Plugin-owned setup</button>,
       },
     ],
   }),
@@ -36,6 +33,7 @@ vi.mock("@/components/plugin/PluginSlotMount", () => ({
 }));
 vi.mock("@/lib/sdk", () => ({
   sdk: {
+    system: { config: vi.fn() },
     projects: { list: vi.fn().mockResolvedValue([]) },
     hosts: {
       submit: vi.fn(),
@@ -50,6 +48,23 @@ vi.mock("@/lib/ws", () => ({
 }));
 beforeEach(() => {
   slots.owner = "command-plugin";
+  vi.mocked(sdk.system.config).mockResolvedValue(
+    makeSystemConfig({
+      serverAccess: {
+        defaultProviderId: "connect",
+        effectiveUrl: null,
+        urlSource: null,
+        providers: [
+          {
+            id: "connect",
+            displayName: "bb connect",
+            attention: null,
+            availability: { status: "available" },
+          },
+        ],
+      },
+    }),
+  );
   vi.mocked(sdk.hosts.listProviders).mockResolvedValue(
     ["command-provider", "tailscale"].map((id): SystemMachineProvider => ({
       id,
@@ -98,16 +113,16 @@ function show() {
     { wrapper },
   );
 }
-it("opens a plugin-owned default without submitting in core", async () => {
+it("opens the only provider directly without submitting in core", async () => {
+  const providers = await sdk.hosts.listProviders();
+  vi.mocked(sdk.hosts.listProviders).mockResolvedValue(providers.slice(0, 1));
   show();
   await screen.findByRole("button", { name: "Plugin-owned setup" });
   expect(sdk.hosts.submit).not.toHaveBeenCalled();
 });
-it("lets the plugin switch to alternative providers without requiring default access", async () => {
+it("offers the generic provider picker when no owned default setup exists", async () => {
+  slots.owner = "unrelated-plugin";
   show();
-  fireEvent.click(
-    await screen.findByRole("button", { name: "Plugin-owned setup" }),
-  );
   fireEvent.click(await screen.findByRole("button", { name: "tailscale" }));
   expect(
     screen.getAllByRole("button", { name: "command-provider" }),
@@ -128,4 +143,27 @@ it("does not mount another plugin's setup for a provider it does not own", async
   expect(
     screen.queryByRole("button", { name: "Plugin-owned setup" }),
   ).toBeNull();
+});
+
+it("shows multiple providers before opening their setup", async () => {
+  show();
+  fireEvent.click(
+    await screen.findByRole("button", { name: "command-provider" }),
+  );
+  await screen.findByRole("button", { name: "Plugin-owned setup" });
+});
+it("blocks provider selection until access is configured", async () => {
+  const config = await sdk.system.config();
+  config.serverAccess.providers[0]!.availability = {
+    status: "setup-required",
+    message: "Pair bb connect",
+  };
+  vi.mocked(sdk.system.config).mockResolvedValue(config);
+  show();
+  await screen.findByRole("link", { name: "Set up bb connect" });
+  expect(screen.queryByRole("button", { name: "command-provider" })).toBeNull();
+  expect(
+    screen.queryByRole("button", { name: "Plugin-owned setup" }),
+  ).toBeNull();
+  expect(sdk.hosts.submit).not.toHaveBeenCalled();
 });

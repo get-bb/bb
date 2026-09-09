@@ -1,3 +1,4 @@
+import { isLocalOnlyUrl } from "@/lib/loopback-hostname";
 import { MachineSetupProgress } from "./MachineSetupProgress";
 import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
@@ -50,7 +51,12 @@ function CreateMachineContent({
   open: boolean;
   onOpenChange: (open: boolean) => void;
 }) {
-  const { providers = [] } = useSystemMachineProviders();
+  const { providers: loadedProviders } = useSystemMachineProviders();
+  const providers = loadedProviders ?? [];
+  const config = useQuery({
+    queryKey: ["machine-setup-access"],
+    queryFn: () => sdk.system.config(),
+  });
   const { machineSetup } = usePluginSlots();
   const hosts = useHosts();
   const [selection, setSelection] = useState<string | null | undefined>();
@@ -61,11 +67,63 @@ function CreateMachineContent({
         provider.pluginId === slot.pluginId,
     ),
   );
-  const preferred = setups.find((slot) => slot.default);
-  const selected =
-    selection === undefined
-      ? preferred
-      : setups.find((slot) => slot.machineProviderId === selection);
+  const selectedId =
+    selection ?? (providers.length === 1 ? providers[0]?.id : null);
+  const selected = setups.find((slot) => slot.machineProviderId === selectedId);
+  const access = config.data?.serverAccess;
+  const accessProvider = access?.providers.find(
+    (provider) => provider.id === access.defaultProviderId,
+  );
+  const accessReady =
+    accessProvider?.availability.status === "available" &&
+    (access?.defaultProviderId !== "direct" ||
+      (!!access.effectiveUrl && !isLocalOnlyUrl(access.effectiveUrl)));
+  if (!accessReady || loadedProviders === undefined) {
+    const loading =
+      config.isPending || (accessReady && loadedProviders === undefined);
+    return (
+      <>
+        <DialogHeader>
+          <DialogTitle>Add a machine</DialogTitle>
+          <DialogDescription>
+            {loading
+              ? "Checking machine access…"
+              : "Set up machine access before adding a machine."}
+          </DialogDescription>
+        </DialogHeader>
+        {config.isError ? (
+          <p role="alert">
+            Could not check machine access.{" "}
+            <Button variant="outline" onClick={() => void config.refetch()}>
+              Try again
+            </Button>
+          </p>
+        ) : (
+          !loading && (
+            <Button asChild variant="outline">
+              <Link
+                onClick={() => onOpenChange(false)}
+                to={
+                  access?.defaultProviderId === "connect"
+                    ? "/settings/plugins/connect"
+                    : "/settings/machines#advanced-machine-settings"
+                }
+              >
+                {access?.defaultProviderId === "connect"
+                  ? "Set up bb connect"
+                  : "Configure machine access"}
+              </Link>
+            </Button>
+          )
+        )}
+        <DialogFooter>
+          <Button variant="ghost" onClick={() => onOpenChange(false)}>
+            Close
+          </Button>
+        </DialogFooter>
+      </>
+    );
+  }
   if (selected) {
     const Component = selected.component;
     return (
@@ -82,13 +140,6 @@ function CreateMachineContent({
               void hosts.refetch();
               onOpenChange(false);
             }}
-            onShowProviders={
-              providers.some(
-                (provider) => provider.id !== selected.machineProviderId,
-              )
-                ? () => setSelection(null)
-                : undefined
-            }
           />
         </PluginSlotMount>
       </>
@@ -97,21 +148,9 @@ function CreateMachineContent({
   return (
     <ProviderMachineSetup
       onOpenChange={onOpenChange}
-      providers={providers.filter(
-        (provider) => provider.id !== preferred?.machineProviderId,
-      )}
+      providers={providers}
       onSelectSetup={(id) => setSelection(id)}
       setupIds={setups.map((slot) => slot.machineProviderId)}
-      onDefaultSetup={
-        preferred ? () => setSelection(preferred.machineProviderId) : undefined
-      }
-      defaultLabel={
-        preferred
-          ? providers.find(
-              (provider) => provider.id === preferred.machineProviderId,
-            )?.displayName
-          : undefined
-      }
     />
   );
 }
@@ -121,15 +160,11 @@ function ProviderMachineSetup({
   providers,
   onSelectSetup,
   setupIds,
-  onDefaultSetup,
-  defaultLabel,
 }: {
   onOpenChange: (open: boolean) => void;
   providers: readonly SystemMachineProvider[];
   onSelectSetup: (id: string) => void;
   setupIds: readonly string[];
-  onDefaultSetup?: () => void;
-  defaultLabel?: string;
 }) {
   const createController = useRef<AbortController | null>(null);
   const createKey = useRef<string | null>(null);
@@ -144,8 +179,16 @@ function ProviderMachineSetup({
   const [projectId, setProjectId] = useState<string | null>(null);
   const machineProviderInputsSlots = usePluginSlots().machineProviderInputs;
   const [selectedMachineProvider, setSelectedMachineProvider] =
-    useState<SystemMachineProvider | null>(null);
-  const [machineInputs, setMachineInputs] = useState<JsonValue | null>(null);
+    useState<SystemMachineProvider | null>(() =>
+      providers.length === 1 ? providers[0]! : null,
+    );
+  const [machineInputs, setMachineInputs] = useState<JsonValue | null>(() =>
+    providers.length === 1 &&
+    providers[0]?.inputs !== null &&
+    providers[0]?.acceptsEmptyInputs
+      ? {}
+      : null,
+  );
   const [machineInputsBlocked, setMachineInputsBlocked] = useState<
     string | null
   >(null);
@@ -372,11 +415,7 @@ function ProviderMachineSetup({
           providerId={selectedMachineProvider.id}
         />
       )}
-      {onDefaultSetup && !createMachine.isPending && (
-        <Button variant="ghost" onClick={onDefaultSetup}>
-          {defaultLabel}
-        </Button>
-      )}
+
       <DialogFooter>
         {createMachine.isPending && launchId ? (
           <Button

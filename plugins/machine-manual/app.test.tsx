@@ -1,12 +1,5 @@
 // @vitest-environment jsdom
-import {
-  act,
-  cleanup,
-  fireEvent,
-  render,
-  screen,
-  waitFor,
-} from "@testing-library/react";
+import { act, cleanup, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, afterEach, expect, it, vi } from "vitest";
 import { createBrowserBbSdk } from "@bb/sdk/browser";
 import { makeSystemConfig } from "../../apps/app/src/test/fixtures/system-config.js";
@@ -89,44 +82,4 @@ it("waits for a command before showing connection status and leaves enrollment v
   expect(vi.mocked(client.hosts.follow).mock.calls[0][0].signal?.aborted).toBe(
     true,
   );
-});
-
-it("offers provider alternatives without creating a command when access is unconfigured", async () => {
-  const config = await client.system.config();
-  config.serverAccess.providers[0].availability = {
-    status: "setup-required",
-    message: "Pair bb connect",
-  };
-  vi.mocked(client.system.config).mockResolvedValue(config);
-  const showProviders = vi.fn();
-  render(
-    <ManualMachineSetup
-      client={client}
-      onClose={() => {}}
-      onShowProviders={showProviders}
-    />,
-  );
-  await screen.findByRole("link", { name: "Set up bb connect" });
-  expect(client.hosts.submit).not.toHaveBeenCalled();
-  fireEvent.click(
-    screen.getByRole("button", { name: "Other ways to add a machine" }),
-  );
-  expect(showProviders).toHaveBeenCalledOnce();
-});
-
-it("cancels the current enrollment before switching providers", async () => {
-  const showProviders = vi.fn();
-  render(
-    <ManualMachineSetup
-      client={client}
-      onClose={() => {}}
-      onShowProviders={showProviders}
-    />,
-  );
-  await screen.findByRole("button", { name: "Copy command" });
-  fireEvent.click(
-    screen.getByRole("button", { name: "Other ways to add a machine" }),
-  );
-  await waitFor(() => expect(showProviders).toHaveBeenCalledOnce());
-  expect(client.hosts.cancel).toHaveBeenCalledWith({ id: "manual-launch" });
 });

@@ -1,4 +1,4 @@
-import type { HostsArea, SystemArea } from "@bb/sdk";
+import type { HostsArea } from "@bb/sdk";
 import type { ComponentPropsWithoutRef, ComponentType, ReactNode } from "react";
 import type {
   PermissionMode,
@@ -1486,10 +1486,8 @@ export interface ExperimentalMachineSetupProps {
       HostsArea,
       "submit" | "follow" | "cancel" | "experimental_enrollmentCommand"
     >;
-    system: Pick<SystemArea, "config">;
   };
   onClose(): void;
-  onShowProviders?: () => void;
 }
 
 export interface ExperimentalMachineProgressProps {
@@ -1501,8 +1499,6 @@ export interface ExperimentalMachineProgressProps {
 /** Own the standalone setup flow for a machine provider, including its heading and actions. */
 export interface ExperimentalMachineSetupRegistration {
   machineProviderId: string;
-  /** Open this flow initially; registration order breaks ties between installed defaults. */
-  default: boolean;
   component: ComponentType<ExperimentalMachineSetupProps>;
   /** Optional provider-owned instructions while a launch or thread provisions. */
   progress?: ComponentType<ExperimentalMachineProgressProps>;

@@ -817,11 +817,8 @@ export function collectPluginAppRegistrations(
           registration?.machineProviderId,
         );
         requireUniqueId(kind, seenIds.machineSetup, machineProviderId);
-        if (typeof registration.default !== "boolean")
-          throw new Error("Machine setup default must be a boolean");
         collected.machineSetup.push({
           machineProviderId,
-          default: registration.default,
           component: requireComponent(kind, registration.component),
           ...(registration.progress === undefined
             ? {}

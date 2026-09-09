@@ -2881,18 +2881,16 @@ persistence, deletion and existing secret-setting migration.
 
 ## Provider-owned machine setup
 
-`app.slots.experimental_machineSetup({machineProviderId, default, component, progress?})`
+`app.slots.experimental_machineSetup({machineProviderId, component, progress?})`
 hosts a provider-owned standalone setup UI. Only a registration matching the
-server provider's plugin ownership is eligible. The first eligible registration
-with default=true opens initially; alternatives remain selectable. The setup
-component receives client (the authenticated hosts/system SDK), onClose, and
-onShowProviders when alternatives exist. Core does not interpret provider IDs.
+server provider's plugin ownership is eligible. Core blocks setup until machine access is ready, then lists providers or opens the only provider directly. The setup
+component receives client (the authenticated hosts SDK) and onClose. Core does not interpret provider IDs.
 Optional progress receives client, id, and scope (launch/thread); it must return
 null when it has no instructions for that scope. Closing unmounts the component;
 the plugin owns cancellation and must abort local work without cancelling a
 durable enrollment merely because the dialog closes.
 
-Stabilization requires plugin unload/reload, missing provider UI, multiple defaults,
+Stabilization requires plugin unload/reload, missing provider UI, single and multiple providers,
 thread provisioning, expired enrollment regeneration, and compact drawer checks.
 Manual setup is the first implementation; it owns command fetching/copying,
-default-access guidance, countdown, cancellation on switching, and regeneration.
+countdown and regeneration.
