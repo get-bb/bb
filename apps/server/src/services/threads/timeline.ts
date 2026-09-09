@@ -45,6 +45,7 @@ import {
   getLatestCompletedThreadContextClearSequence,
   getThreadConversationOutlineRecord,
   listContextWindowUsageRows,
+  isTimelineCursorSequencePresent,
   listStoredConversationOutlineEventRows,
   listStoredClientTurnRequestIdsInRange,
   listStoredEventRows,
@@ -986,6 +987,19 @@ function selectStandardTimelineEventRows(
     beforeSequence,
     limit: page.segmentLimit + 1,
   });
+  if (
+    page.kind === "older" &&
+    !isTimelineCursorSequencePresent(db, {
+      threadId: thread.id,
+      sequence: page.beforeCursor.anchorSeq,
+    })
+  ) {
+    throw new ApiError(
+      400,
+      "invalid_request",
+      "Timeline pagination cursor is no longer available",
+    );
+  }
   const budgetFloor = findTimelineWindowBudgetFloorSequence(db, {
     threadId: thread.id,
     sequenceStart: epochSequenceStart,

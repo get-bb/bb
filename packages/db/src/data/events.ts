@@ -1681,6 +1681,24 @@ export function listStoredDelegatingItemRowsByItemIds(
     .all();
 }
 
+export function isTimelineCursorSequencePresent(
+  db: DbConnection,
+  args: TimelineSegmentAnchorLookupArgs,
+): boolean {
+  const row = db
+    .select({ sequence: events.sequence })
+    .from(events)
+    .where(
+      and(
+        eq(events.threadId, args.threadId),
+        eq(events.sequence, args.sequence),
+      ),
+    )
+    .limit(1)
+    .get();
+  return row !== undefined;
+}
+
 export interface ScopedItemRef {
   itemId: string;
   scopeKind: ThreadEventScopeKind;

@@ -19,8 +19,9 @@ The snapshot is a read boundary, not a retained copy of the history. Pagination
 continues on a best-effort basis when existing events are updated, deleted or
 replaced. Previously loaded pages can then disagree with later pages, leaving
 stale content, missing content or different grouping until history is reloaded.
-Deleted anchors remain usable sequence boundaries. No history-edit revision is
-stored or checked, and edits do not automatically reject an existing cursor.
+If the event at the cursor anchor sequence was deleted, the server returns
+HTTP 400 `invalid_request`; reload latest to restart, as on main. No history-edit
+revision is stored or checked. Other edits do not automatically reject a cursor.
 
 `timelinePage.contentPage`, when present, gives the group anchor and the
 half-open leaf interval `[start, end)` within `total` leaves. Ancestor summaries

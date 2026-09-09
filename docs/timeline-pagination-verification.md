@@ -100,9 +100,9 @@ The scan removes quadratic overlap comparisons without changing page content;
 query, decoding and grouping costs remain. An additional allocation-based leaf
 measurement experiment was discarded after mixed walk timings.
 
-Pagination now continues across history edits, suffix replacement, deleted
-anchors and reduced sequence tips. The endpoint regression expects continuation
-rather than HTTP 400. Canonical parity is required for unchanged history and
+Pagination continues across history edits and suffix replacement while the
+cursor anchor event remains present. The endpoint regression expects HTTP 400
+when that anchor is deleted, preserving main's behavior. Canonical parity is required for unchanged history and
 walks with later appends; it is deliberately not guaranteed across edits.
 There is no revision table, event trigger or database migration in the final
 change. Existing message-edit notifications still invalidate request caches.

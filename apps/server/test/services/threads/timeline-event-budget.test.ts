@@ -536,6 +536,14 @@ describe("timeline event budget", () => {
       expect(continued.timelinePage.historySnapshot).toBe(
         latest.timelinePage.historySnapshot,
       );
+      db.$client
+        .prepare("DELETE FROM events WHERE thread_id = ? AND sequence = ?")
+        .run(thread.id, originalCursor.anchorSeq);
+      const missingAnchor = await harness.app.request(
+        `/api/v1/threads/${thread.id}/timeline?includeNestedRows=true&segmentLimit=2&${new URLSearchParams({ beforeAnchorSeq: String(originalCursor.anchorSeq), beforeAnchorId: originalCursor.anchorId })}`,
+      );
+      expect(missingAnchor.status).toBe(400);
+      expect(await missingAnchor.text()).toContain("no longer available");
     } finally {
       await harness.cleanup();
     }
@@ -581,7 +589,7 @@ describe("timeline event budget", () => {
     }
   });
 
-  it("continues after suffix replacement, anchor deletion and a reduced sequence tip", () => {
+  it("continues after suffix replacement but rejects a deleted cursor anchor", () => {
     const { db, thread } = setup();
     try {
       insertTurns(db, thread, 3, 2);
@@ -640,13 +648,12 @@ describe("timeline event budget", () => {
       db.$client
         .prepare("DELETE FROM events WHERE thread_id = ? AND sequence >= ?")
         .run(thread.id, beforeCursor.anchorSeq);
-      const afterDeletion = buildThreadTimeline(db, thread, {
-        ...options,
-        page: { kind: "older", beforeCursor, segmentLimit: 1 },
-      });
-      expect(afterDeletion.timelinePage.historySnapshot).toBe(
-        latest.timelinePage.historySnapshot,
-      );
+      expect(() =>
+        buildThreadTimeline(db, thread, {
+          ...options,
+          page: { kind: "older", beforeCursor, segmentLimit: 1 },
+        }),
+      ).toThrow(/no longer available/);
     } finally {
       db.$client.close();
     }

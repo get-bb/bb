@@ -280,6 +280,7 @@ export {
   findUnfinishedTurnCoveringSequence,
   hasParentedEventCrossingSequence,
   getTimelineSegmentAnchorAtSequence,
+  isTimelineCursorSequencePresent,
   listStoredClientTurnRequestIdsInRange,
   listStoredClientTurnRequestRowsByKeys,
   listStoredEventRowsByParentToolCallIds,
