@@ -63,7 +63,7 @@ import {
 import { useMarkThreadRead } from "@/hooks/mutations/thread-state-mutations";
 import { useThreadReadTracking } from "@/hooks/useThreadReadTracking";
 import { useComposerTextEffects } from "@/lib/composer-text-effects";
-import { getMutationErrorMessage } from "@/lib/mutation-errors";
+import { showMutationErrorToast } from "@/lib/mutation-errors";
 import type { PromptDraftScope } from "@/hooks/usePromptDraftStorage";
 import { appToast } from "@/components/ui/app-toast";
 import {
@@ -518,15 +518,13 @@ function EmbeddedThreadChatWithComposer({
           return;
         }
         promptDraft.restoreIfEmpty(submittedDraft);
-        appToast.error(
-          getMutationErrorMessage({
-            error,
-            fallbackMessage: labels.sendError,
-            lifecycleOperation: shouldQueueFollowUpMessage(displayStatus)
-              ? "queue_message"
-              : "send_message",
-          }),
-        );
+        showMutationErrorToast({
+          error,
+          fallbackMessage: labels.sendError,
+          lifecycleOperation: shouldQueueFollowUpMessage(displayStatus)
+            ? "queue_message"
+            : "send_message",
+        });
       })
       .finally(() => {
         if (isMountedRef.current) {
@@ -602,13 +600,11 @@ function EmbeddedThreadChatWithComposer({
           return;
         }
         promptDraft.restoreIfEmpty(submittedDraft);
-        appToast.error(
-          getMutationErrorMessage({
-            error,
-            fallbackMessage: labels.sendError,
-            lifecycleOperation: "send_message",
-          }),
-        );
+        showMutationErrorToast({
+          error,
+          fallbackMessage: labels.sendError,
+          lifecycleOperation: "send_message",
+        });
       })
       .finally(() => {
         if (isMountedRef.current) {

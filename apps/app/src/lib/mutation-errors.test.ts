@@ -196,6 +196,46 @@ describe("showMutationErrorToast", () => {
     expect(props.description).toBe("Please try again");
   });
 
+  it("keeps the submission context in the title and the server explanation in the body", () => {
+    showMutationErrorToast({
+      error: new Error(
+        "The selected workspace is unavailable. Choose another workspace and try again.",
+      ),
+      fallbackMessage: "Failed to create thread.",
+      lifecycleOperation: "create_thread",
+    });
+    expect(readLatestToastProps()).toMatchObject({
+      title: "Failed to create thread",
+      description:
+        "The selected workspace is unavailable. Choose another workspace and try again",
+    });
+  });
+
+  it("keeps structured lifecycle titles separate from their explanation", () => {
+    showMutationErrorToast({
+      error: new HttpError({
+        body: {
+          code: "thread_not_writable",
+          message: "Thread is not active",
+          details: {
+            archivedAt: null,
+            reason: "not_started",
+            threadStatus: "starting",
+          },
+        },
+        code: "thread_not_writable",
+        message: "Thread is not active",
+        status: 409,
+      }),
+      fallbackMessage: "Failed to send message.",
+      lifecycleOperation: "send_message",
+    });
+    expect(readLatestToastProps()).toMatchObject({
+      title: "Failed to send message",
+      description: "The thread is still starting.",
+    });
+  });
+
   it("strips trailing periods from fallback toast titles", () => {
     showMutationErrorToast({
       error: {},

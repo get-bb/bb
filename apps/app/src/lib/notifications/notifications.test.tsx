@@ -64,8 +64,12 @@ describe("truncated toast descriptions", () => {
   }
 
   function mockWidths(scrollWidth: number, clientWidth: number) {
-    vi.spyOn(HTMLElement.prototype, "scrollWidth", "get").mockReturnValue(
-      scrollWidth,
+    vi.spyOn(HTMLElement.prototype, "scrollWidth", "get").mockImplementation(
+      function (this: HTMLElement) {
+        return this.dataset.testid === "app-toast-description"
+          ? scrollWidth
+          : clientWidth;
+      },
     );
     vi.spyOn(HTMLElement.prototype, "clientWidth", "get").mockReturnValue(
       clientWidth,
@@ -81,6 +85,19 @@ describe("truncated toast descriptions", () => {
     mockWidths(600, 300);
     renderToast();
     expect(screen.queryByRole("button", { name: "Show more" })).not.toBeNull();
+  });
+
+  it("offers full details when wrapped text exceeds the visible height", () => {
+    mockWidths(300, 300);
+    vi.spyOn(HTMLElement.prototype, "clientHeight", "get").mockReturnValue(80);
+    vi.spyOn(HTMLElement.prototype, "scrollHeight", "get").mockImplementation(
+      function (this: HTMLElement) {
+        return this.dataset.testid === "app-toast-description" ? 160 : 20;
+      },
+    );
+    renderToast();
+    fireEvent.click(screen.getByRole("button", { name: "Show more" }));
+    expect(getNotificationCenterState().focusedId).toBe("notification-7");
   });
 
   it("opens the center on the matching entry from Show more", () => {

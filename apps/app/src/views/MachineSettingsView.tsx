@@ -39,7 +39,10 @@ import {
   formatHostUpdateStatus,
   hostCanRetryUpdate,
 } from "@/lib/host-update-status";
-import { getMutationErrorMessage } from "@/lib/mutation-errors";
+import {
+  getMutationErrorMessage,
+  showMutationErrorToast,
+} from "@/lib/mutation-errors";
 import { PERMISSION_MODE_OPTIONS } from "@/lib/permission-mode-options";
 import { formatRelativeTime } from "@/lib/relative-time";
 import { ProviderIconMark } from "@/components/settings/ProviderIconMark";
@@ -322,12 +325,10 @@ export function MachineSettingsView() {
                 { hostId: host.id, maxPermissionMode },
                 {
                   onError: (error) => {
-                    appToast.error(
-                      getMutationErrorMessage({
-                        error,
-                        fallbackMessage: `Couldn't change the permission limit for ${host.name}.`,
-                      }),
-                    );
+                    showMutationErrorToast({
+                      error,
+                      fallbackMessage: `Couldn't change the permission limit for ${host.name}.`,
+                    });
                   },
                 },
               )
