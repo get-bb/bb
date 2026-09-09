@@ -38,9 +38,6 @@ const HOST_CONNECT_TIMEOUT_MS = 240_000;
 const HOST_POLL_INTERVAL_MS = 3_000;
 const DAEMON_STOP_TIMEOUT_MS = 60_000;
 const SNAPSHOT_TIMEOUT_MS = 300_000;
-const PRESERVATION_LEAD_MS = 15 * 60_000;
-const DRAIN_AND_SAVE_MS =
-  5 * 60_000 + DAEMON_STOP_TIMEOUT_MS + SNAPSHOT_TIMEOUT_MS;
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
@@ -349,11 +346,7 @@ export function createModalSandboxPlugin(
           summary:
             state === "missing"
               ? "Modal compute is missing. Changes since the last saved image may be lost; automatic recovery is refused."
-              : state === "running" &&
-                  expiresAt !== null &&
-                  expiresAt - deps.now() <= DRAIN_AND_SAVE_MS
-                ? "Modal compute expires too soon to guarantee preservation."
-                : `Modal machine is ${state}.`,
+              : `Modal machine is ${state}.`,
           values: {
             state,
             expiresAt,
@@ -390,14 +383,6 @@ export function createModalSandboxPlugin(
             ),
           };
         }
-        const remainingMs = () =>
-          resource.expiresAt !== null
-            ? Math.max(1, Math.floor(resource.expiresAt - deps.now()))
-            : SNAPSHOT_TIMEOUT_MS + DAEMON_STOP_TIMEOUT_MS;
-        const preservationSignal = AbortSignal.any([
-          context.signal,
-          AbortSignal.timeout(remainingMs()),
-        ]);
         context.report.step("Stopping the bb machine…");
         const stopped = await sandbox.exec(
           [
@@ -408,25 +393,19 @@ export function createModalSandboxPlugin(
             context.hostId,
           ],
           {
-            timeoutMs: Math.min(
-              DAEMON_STOP_TIMEOUT_MS,
-              Math.max(1, Math.floor(remainingMs() / 3)),
-            ),
-            signal: preservationSignal,
+            timeoutMs: DAEMON_STOP_TIMEOUT_MS,
+            signal: context.signal,
           },
         );
         if (stopped.exitCode !== 0)
           throw new Error(
             `Stopping the bb machine exited ${stopped.exitCode}: ${stopped.stderr}`,
           );
-        await waitForHostDisconnection(context.hostId, preservationSignal);
+        await waitForHostDisconnection(context.hostId, context.signal);
         context.report.step("Saving the Modal filesystem…");
         const snapshotStartedAt = deps.now();
         const snapshotImageId = await sandbox.snapshotFilesystem({
-          timeoutMs: Math.min(
-            SNAPSHOT_TIMEOUT_MS,
-            Math.max(1, remainingMs() - 10_000),
-          ),
+          timeoutMs: SNAPSHOT_TIMEOUT_MS,
           ttlMs: null,
         });
         context.report.log(
@@ -538,43 +517,6 @@ export function createModalSandboxPlugin(
         }
       },
     });
-
-    bb.background.schedule(
-      "preserve-expiring-machines",
-      "* * * * *",
-      async () => {
-        const failures: string[] = [];
-        for (const host of await bb.sdk.hosts.list()) {
-          if (
-            host.machineProviderId !== PROVIDER_ID ||
-            host.lifecycle.phase !== "active"
-          )
-            continue;
-          try {
-            const details = await bb.sdk.hosts.experimental_providerDetails({
-              hostId: host.id,
-            });
-            const state = z
-              .object({
-                state: z.enum(["running", "suspended", "missing"]),
-                expiresAt: z.number().nullable(),
-              })
-              .parse(details?.values);
-            if (state.state !== "running" || state.expiresAt === null) continue;
-            const remaining = state.expiresAt - deps.now();
-            if (remaining > PRESERVATION_LEAD_MS) continue;
-            if (remaining <= DRAIN_AND_SAVE_MS)
-              throw new Error(
-                "Too little time remains for coordinated drain and filesystem preservation",
-              );
-            await bb.sdk.hosts.suspend({ hostId: host.id });
-          } catch (error) {
-            failures.push(`${host.id}: ${errorMessage(error)}`);
-          }
-        }
-        if (failures.length) throw new Error(failures.join("; "));
-      },
-    );
 
     const loaded = await currentSettings();
     if (!loaded.ok) bb.status.needsConfiguration(loaded.message);

@@ -1295,12 +1295,11 @@ policy; running compute keeps its vendor deadline and restored compute uses the
 current lifetime. Resource reservations stay pinned across restore.
 
 There is no automatic retention removal. Use `bb machine remove MACHINE --yes`
-for explicit cleanup. The plugin schedules preservation 15 minutes before vendor
-expiry, reserving the core five-minute drain plus daemon-stop/snapshot time.
-With 11 minutes or less remaining it reports unsafe preservation. Short lifetimes,
-server downtime or plugin disablement can miss the deadline. Provider details
-expose expiry and saved-image status; missing compute never silently restores
-stale state. Open terminals prevent idle suspension but are closed for preservation.
+for explicit cleanup. Manual and idle pauses save a filesystem snapshot before
+terminating compute. There is no pre-expiry scheduler: a sandbox that stays active
+until its configured timeout can lose changes since its last successful pause.
+Provider details expose expiry and saved-image status; missing compute never
+silently restores stale state. Open terminals prevent idle suspension.
 
 `bb modal account inspect --json` tests credentials without allocating resources.
 Create with `bb machine create --provider modal-sandbox --project PROJECT --json`.

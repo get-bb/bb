@@ -64,16 +64,15 @@ Defaults are a 15-minute idle pause and 24-hour compute lifetime. Open terminals
 prevent idle pause. The current idle setting applies to existing machines; new
 compute uses the current lifetime. There is no automatic retention removal.
 
-The plugin checks vendor expiry every minute and requests core suspension 15
-minutes before expiry. Core blocks new work, interrupts turns and closes terminals
-with a five-minute drain limit. The plugin then stops the daemon, saves the
-filesystem, durably checkpoints the snapshot and terminates compute. Resume
-preserves host identity and reruns setup. Interrupted turns are not replayed.
+Manual and idle pauses snapshot the filesystem before terminating compute. Core
+blocks new work, interrupts turns and closes terminals; the plugin stops the
+daemon, saves the filesystem and durably records the snapshot before termination.
+Resume preserves host identity and reruns setup. Interrupted turns are not replayed.
 
-The scheduler reserves time for drain, daemon stop and saving. If fewer than 11
-minutes remain, it reports failure rather than claiming preservation is safe.
-Short compute lifetimes, server downtime, disabled plugins or slow cloud operations
-can therefore miss preservation. Failed saves retain compute while it exists.
+There is no pre-expiry scheduler. A sandbox that stays active until its configured
+timeout (24 hours by default) stops without a guaranteed final snapshot. Changes
+since the last successful pause may be lost. Pause before the timeout to save work.
+Failed saves retain compute while it still exists.
 Machine provider details expose vendor state, expiry and the saved image. Missing
 compute never silently becomes an empty checkout or an older snapshot. A checkpoint
 from an interrupted planned suspension remains recoverable.

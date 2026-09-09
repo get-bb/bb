@@ -846,31 +846,6 @@ it("shows the shipped Dockerfile without credentials or cloud access", async () 
   expect(test.backend.creates).toHaveLength(0);
 });
 
-it("schedules coordinated preservation before expiry and refuses a late drain", async () => {
-  const test = await setup();
-  const suspend = vi.fn(async () => ({ ok: true as const }));
-  let remaining = 14 * 60_000;
-  test.harness.sdk.stub("hosts.list", async () => [
-    { ...host("connected"), machineProviderId: PROVIDER_ID },
-  ]);
-  test.harness.sdk.stub("hosts.suspend", suspend);
-  test.harness.sdk.stub("hosts.experimental_providerDetails", async () => ({
-    summary: "Running",
-    values: { state: "running", expiresAt: Date.now() + remaining },
-  }));
-  await test.harness.runSchedule("preserve-expiring-machines");
-  expect(suspend).toHaveBeenCalledWith({ hostId: HOST_ID });
-  suspend.mockClear();
-  remaining = 10 * 60_000;
-  await expect(
-    test.harness.runSchedule("preserve-expiring-machines"),
-  ).rejects.toThrow("Too little time");
-  expect(suspend).not.toHaveBeenCalled();
-  remaining = 20 * 60_000;
-  await test.harness.runSchedule("preserve-expiring-machines");
-  expect(suspend).not.toHaveBeenCalled();
-});
-
 it("refuses an older snapshot when running compute disappears unexpectedly", async () => {
   const test = await setup();
   const created = await test.provider.create(createContext());

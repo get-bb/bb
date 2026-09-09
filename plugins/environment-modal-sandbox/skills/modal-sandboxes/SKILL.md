@@ -43,14 +43,15 @@ Use `bb machine lifecycle MACHINE --json` for core suspension state and
 status. Defaults are 15-minute idle pause and 24-hour compute lifetime. There is
 no retention/keep policy; remove machines explicitly.
 
-The plugin checks expiry every minute, starting coordinated suspension 15 minutes
-before expiry. Core drains turns/hooks/terminals within five minutes. The plugin
-reserves another six minutes for daemon stop and snapshot creation. With 11 minutes
-or less remaining, it reports unsafe preservation instead of promising a save.
-Short lifetimes or a stopped/disabled server can miss the deadline. Failed saves
-retain compute and retry while enough time remains. A lost machine never silently
-restores stale state. A durable checkpoint from interrupted planned suspension can
-resume safely. Continue interrupted turns explicitly after restore.
+Manual and idle pauses drain BB work, stop the daemon, snapshot the filesystem,
+and durably record the snapshot before terminating compute. Resume restores the
+saved filesystem and reruns setup. Continue interrupted turns explicitly.
+
+There is no pre-expiry scheduler. If a sandbox runs until its configured timeout
+(24 hours by default), changes since the last successful pause may be lost.
+Pause before the timeout to save work. Failed saves retain compute while it exists.
+Missing compute never silently restores an older snapshot; a checkpoint from an
+interrupted planned suspension remains recoverable.
 
 Remove with `bb machine remove MACHINE --yes --json`. This removes
 owned environments, compute and private snapshots. Shared standard images remain
