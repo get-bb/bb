@@ -22,7 +22,6 @@ import {
 import { Button } from "@bb/shared-ui/button";
 import { Checkbox } from "@bb/shared-ui/checkbox";
 import { Icon } from "@bb/shared-ui/icon";
-import { usePluginFrontendsSettled } from "@/lib/plugin-frontend-boot-state";
 import {
   ContextMenu,
   ContextMenuContent,
@@ -138,7 +137,6 @@ export function PluginNavSidebarItems(props: {
   onNavigate?: () => void;
   splitEnabled?: boolean;
 }) {
-  const pluginsLoading = !usePluginFrontendsSettled();
   const discoveredEntries = usePluginNavPanelChrome();
   const entries = props.entries ?? discoveredEntries;
   const rows = useMemo<SidebarNavRow[]>(
@@ -165,10 +163,9 @@ export function PluginNavSidebarItems(props: {
       (props.builtInEntries ?? []).map(getPluginNavPanelKey),
     [props.builtInEntries, props.leadingOrderKeys],
   );
-  if (rows.length === 0 && !pluginsLoading) return null;
+  if (rows.length === 0) return null;
   return (
     <PluginNavSidebarItemList
-      pluginsLoading={pluginsLoading}
       rows={rows}
       leadingOrderKeys={leadingOrderKeys}
       splitEnabled={props.splitEnabled ?? false}
@@ -186,7 +183,6 @@ export function PluginNavSidebarItems(props: {
 }
 
 function PluginNavSidebarItemList({
-  pluginsLoading,
   compactCustomizeMode,
   leadingOrderKeys,
   onCompactCustomizeModeChange,
@@ -194,7 +190,6 @@ function PluginNavSidebarItemList({
   rows,
   splitEnabled = false,
 }: {
-  pluginsLoading: boolean;
   compactCustomizeMode?: boolean;
   leadingOrderKeys: readonly string[];
   onCompactCustomizeModeChange?: (isCustomizing: boolean) => void;
@@ -431,10 +426,7 @@ function PluginNavSidebarItemList({
   return (
     <div
       ref={containerRef}
-      className={cn(
-        "relative shrink-0 space-y-0.5 px-2 py-2 group-data-[collapsible=icon]:hidden",
-        pluginsLoading && "bb-plugin-nav-loading",
-      )}
+      className="relative shrink-0 space-y-0.5 px-2 py-2 group-data-[collapsible=icon]:hidden"
       data-testid="plugin-nav-sidebar-items"
       onClickCapture={onClickCapture}
     >
@@ -462,29 +454,6 @@ function PluginNavSidebarItemList({
           )}
         </SortableContext>
       </DndContext>
-      {pluginsLoading ? (
-        <div role="status" aria-label="Loading plugins">
-          {rows.every((row) => !isPluginSidebarNavRow(row)) ? (
-            <div
-              aria-hidden="true"
-              data-testid="plugin-nav-loading-placeholders"
-              className="space-y-0.5"
-            >
-              {["w-18", "w-26", "w-14"].map((width) => (
-                <div key={width} className="flex h-8 items-center gap-2 px-2">
-                  <div className="size-4 shrink-0 rounded-sm bg-sidebar-foreground/10" />
-                  <div
-                    className={cn(
-                      "h-2 rounded-full bg-sidebar-foreground/10",
-                      width,
-                    )}
-                  />
-                </div>
-              ))}
-            </div>
-          ) : null}
-        </div>
-      ) : null}
       {hidden.length > 0 ? (
         <SidebarNavigationMoreRow
           hiddenRows={hidden}
