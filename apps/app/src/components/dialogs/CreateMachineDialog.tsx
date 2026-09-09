@@ -106,9 +106,7 @@ function CreateMachineContent({
           </p>
         ) : (
           !loading && (
-            <MachineAccessSettings
-              onNavigate={() => onOpenChange(false)}
-            />
+            <MachineAccessSettings onNavigate={() => onOpenChange(false)} />
           )
         )}
       </>
