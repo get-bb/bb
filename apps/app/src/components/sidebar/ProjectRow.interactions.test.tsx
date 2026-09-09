@@ -9,6 +9,7 @@ import {
 } from "@testing-library/react";
 import type { ThreadListEntry } from "@bb/domain";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import type { ReactNode } from "react";
 import { MemoryRouter } from "react-router-dom";
 import { TooltipProvider } from "@bb/shared-ui/tooltip";
 import { Provider, createStore } from "jotai";
@@ -96,6 +97,8 @@ function renderProjectRow(
   isActive = false,
   collapsedEnvironmentIds: Set<string> = new Set(),
   isCollapsed = false,
+  headerActions?: ReactNode,
+  headerActionsOpen = false,
 ) {
   const onToggleEnvironmentCollapsed = vi.fn();
   const result = render(
@@ -112,6 +115,8 @@ function renderProjectRow(
             collapsedThreadIds={new Set()}
             collapsedEnvironmentIds={collapsedEnvironmentIds}
             isLocalPathInvalid={false}
+            headerActions={headerActions}
+            headerActionsOpen={headerActionsOpen}
             onToggleProjectCollapsed={onToggleProjectCollapsed}
             onToggleThreadCollapsed={vi.fn()}
             onToggleEnvironmentCollapsed={onToggleEnvironmentCollapsed}
@@ -140,6 +145,32 @@ describe("ProjectRow interactions", () => {
     mockDraftThreadIds.current = new Set();
     vi.clearAllMocks();
   });
+
+  it.each([false, true])(
+    "keeps project header controls available to touch when open is %s",
+    (open) => {
+      renderProjectRow(
+        vi.fn(),
+        { status: "ready", threads: [] },
+        false,
+        new Set(),
+        false,
+        <button aria-label="Header display control" />,
+        open,
+      );
+
+      const actions = screen
+        .getByRole("button", { name: "Header display control" })
+        .closest(".bb-sidebar-hover-actions");
+
+      expect(actions?.getAttribute("data-sidebar-hover-actions-mobile")).toBe(
+        "always",
+      );
+      expect(actions?.getAttribute("data-sidebar-hover-actions-open")).toBe(
+        open ? "true" : null,
+      );
+    },
+  );
 
   it("places the project disclosure after its label and keeps root threads flush", () => {
     const result = renderProjectRow(vi.fn(), {

@@ -2356,6 +2356,9 @@ function ProjectRowComponent({
           data-sidebar-hover-actions-open={
             headerActionsOpen ? "true" : undefined
           }
+          data-sidebar-hover-actions-mobile={
+            SIDEBAR_HOVER_ACTIONS_MOBILE_ALWAYS_VALUE
+          }
           className={SIDEBAR_HOVER_ACTIONS_CLASS}
         >
           {headerActions}
