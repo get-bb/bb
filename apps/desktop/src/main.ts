@@ -162,6 +162,7 @@ import {
 import { resolveDesktopBrowserAppCommand } from "./desktop-browser-shortcuts.js";
 import { registerDesktopBrowserIpc } from "./desktop-browser-main-ipc.js";
 import { createBrowserImportService } from "./browser-import/browser-import.js";
+import { readMacAppIcon } from "./browser-import/mac-app-icon.js";
 import {
   createDesktopBrowserBroker,
   type DesktopBrowserBroker,
@@ -2230,10 +2231,7 @@ async function runDesktopApp(): Promise<void> {
   registerDesktopBrowserIpc(desktopBrowserViewManager);
   const browserImportService = createBrowserImportService({
     context: { platform: process.platform, home: homedir() },
-    async resolveIcon(appPath) {
-      const image = await app.getFileIcon(appPath, { size: "normal" });
-      return image.isEmpty() ? undefined : image.toDataURL();
-    },
+    resolveIcon: (appPath) => readMacAppIcon(appPath),
     log(message, details) {
       createDesktopLogger().info(
         `[desktop] ${message}${details ? ` ${JSON.stringify(details)}` : ""}`,

@@ -22,6 +22,10 @@ import {
   cookieScope,
 } from "../src/browser-import/cookie-database.js";
 import { readFirefoxCookies } from "../src/browser-import/firefox-cookies.js";
+import {
+  iconFileFromInfoPlist,
+  readMacAppIcon,
+} from "../src/browser-import/mac-app-icon.js";
 import { parseBinaryCookies } from "../src/browser-import/safari-cookies.js";
 import {
   chromiumSingletonLockIsHeld,
@@ -548,18 +552,71 @@ describe("browser cookie readers", () => {
     ).toEqual([]);
     expect(await isSourceRunning(chrome, context)).toBe(false);
     await symlink(`${hostname()}-999999`, join(root, "SingletonLock"));
-    expect(await isSourceRunning(chrome, context, () => false)).toBe(false);
-    expect(await isSourceRunning(chrome, context, () => true)).toBe(true);
+    expect(await isSourceRunning(chrome, context, async () => null)).toBe(
+      false,
+    );
+    expect(
+      await isSourceRunning(chrome, context, async () => "/usr/bin/vim"),
+    ).toBe(false);
+    expect(
+      await isSourceRunning(
+        chrome,
+        context,
+        async () => "/opt/google/chrome/chrome --type=browser",
+      ),
+    ).toBe(true);
   });
 
-  it("treats foreign or malformed Chromium lock targets as held", () => {
-    expect(chromiumSingletonLockIsHeld("other-12", "me", () => false)).toBe(
-      true,
+  it("judges Chromium lock targets by host, pid liveness, and owner", async () => {
+    const names = ["Google Chrome", "chrome"];
+    const dead = async () => null;
+    const unknown = async () => "";
+    const chrome = async () =>
+      "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome";
+    expect(
+      await chromiumSingletonLockIsHeld("other-12", "me", names, chrome),
+    ).toBe(true);
+    expect(
+      await chromiumSingletonLockIsHeld(
+        "mac.lan-4149",
+        "sawyers-macbook-pro.local",
+        names,
+        dead,
+      ),
+    ).toBe(false);
+    expect(
+      await chromiumSingletonLockIsHeld(
+        "mac.lan-4149",
+        "sawyers-macbook-pro.local",
+        names,
+        unknown,
+      ),
+    ).toBe(false);
+    expect(
+      await chromiumSingletonLockIsHeld("garbage", "me", names, chrome),
+    ).toBe(true);
+    expect(await chromiumSingletonLockIsHeld("me-12", "me", names, dead)).toBe(
+      false,
     );
-    expect(chromiumSingletonLockIsHeld("garbage", "me", () => false)).toBe(
-      true,
-    );
-    expect(chromiumSingletonLockIsHeld("me-12", "me", () => false)).toBe(false);
+    expect(
+      await chromiumSingletonLockIsHeld("me-12", "me", names, unknown),
+    ).toBe(true);
+    expect(
+      await chromiumSingletonLockIsHeld(
+        "Sawyers-MacBook-Pro-12",
+        "sawyers-macbook-pro.local",
+        names,
+        chrome,
+      ),
+    ).toBe(true);
+    expect(
+      await chromiumSingletonLockIsHeld(
+        "me-12",
+        "me",
+        names,
+        async () => "/usr/bin/vim",
+      ),
+    ).toBe(false);
   });
 
   it("parses Firefox profiles.ini and keeps them inside the root", () => {
@@ -669,5 +726,61 @@ describe("browser cookie readers", () => {
       skippedDomains: ["a", "b"],
     });
     expect(flushStore).not.toHaveBeenCalled();
+  });
+});
+
+describe("macOS app icons", () => {
+  it("picks the icon file from Info.plist and rejects path escapes", () => {
+    expect(iconFileFromInfoPlist('{"CFBundleIconFile":"app"}')).toBe(
+      "app.icns",
+    );
+    expect(iconFileFromInfoPlist('{"CFBundleIconFile":"app.icns"}')).toBe(
+      "app.icns",
+    );
+    expect(iconFileFromInfoPlist('{"CFBundleIconName":"AppIcon"}')).toBe(
+      "AppIcon.icns",
+    );
+    expect(
+      iconFileFromInfoPlist('{"CFBundleIconFile":"../x"}'),
+    ).toBeUndefined();
+    expect(iconFileFromInfoPlist("nope")).toBeUndefined();
+  });
+
+  it("converts the bundle icon with sips and returns a PNG data URL", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "bb-icon-"));
+    try {
+      const appPath = join(directory, "Arc.app");
+      await mkdir(join(appPath, "Contents", "Resources"), { recursive: true });
+      await writeFile(
+        join(appPath, "Contents", "Resources", "Arc.icns"),
+        "icns",
+      );
+      const run = vi.fn(async (file: string, args: string[]) => {
+        if (file === "plutil")
+          return { ok: true, stdout: '{"CFBundleIconFile":"Arc"}' };
+        const out = args[args.indexOf("--out") + 1];
+        await writeFile(out, Buffer.from([0x89, 0x50, 0x4e, 0x47]));
+        return { ok: true, stdout: "" };
+      });
+      const icon = await readMacAppIcon(appPath, 64, run);
+      expect(icon).toBe("data:image/png;base64,iVBORw==");
+      expect(run).toHaveBeenLastCalledWith(
+        "sips",
+        expect.arrayContaining([
+          "--resampleHeightWidth",
+          "64",
+          "64",
+          join(appPath, "Contents", "Resources", "Arc.icns"),
+        ]),
+      );
+      expect(
+        await readMacAppIcon(appPath, 64, async () => ({
+          ok: false,
+          stdout: "",
+        })),
+      ).toBeUndefined();
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
   });
 });

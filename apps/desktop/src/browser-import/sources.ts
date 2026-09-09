@@ -1,3 +1,4 @@
+import { execFile } from "node:child_process";
 import { readdir, readFile, readlink, stat } from "node:fs/promises";
 import { hostname } from "node:os";
 import { isAbsolute, join, normalize, relative, resolve, sep } from "node:path";
@@ -24,6 +25,7 @@ export interface BrowserImportSourceDefinition {
   keychainAccount?: string;
   linuxSecretApplication?: string;
   macAppNames?: readonly string[];
+  processNames: readonly string[];
 }
 
 function macApplicationSupport(
@@ -42,6 +44,7 @@ function chromiumSource(input: {
   linuxSegments?: readonly string[];
   linuxSecretApplication?: string;
   macAppNames: readonly string[];
+  processNames: readonly string[];
 }): BrowserImportSourceDefinition {
   return {
     id: input.id,
@@ -51,6 +54,7 @@ function chromiumSource(input: {
     keychainService: input.keychainService,
     keychainAccount: input.keychainAccount,
     macAppNames: input.macAppNames,
+    processNames: input.processNames,
     ...(input.linuxSecretApplication === undefined
       ? {}
       : { linuxSecretApplication: input.linuxSecretApplication }),
@@ -68,6 +72,7 @@ export const BROWSER_IMPORT_SOURCES: readonly BrowserImportSourceDefinition[] =
   [
     chromiumSource({
       id: "chrome",
+      processNames: ["Google Chrome", "chrome"],
       macAppNames: ["Google Chrome.app"],
       name: "Google Chrome",
       keychainService: "Chrome Safe Storage",
@@ -78,6 +83,7 @@ export const BROWSER_IMPORT_SOURCES: readonly BrowserImportSourceDefinition[] =
     }),
     chromiumSource({
       id: "chromium",
+      processNames: ["Chromium", "chromium"],
       macAppNames: ["Chromium.app"],
       name: "Chromium",
       keychainService: "Chromium Safe Storage",
@@ -88,6 +94,7 @@ export const BROWSER_IMPORT_SOURCES: readonly BrowserImportSourceDefinition[] =
     }),
     chromiumSource({
       id: "edge",
+      processNames: ["Microsoft Edge", "msedge"],
       macAppNames: ["Microsoft Edge.app"],
       name: "Microsoft Edge",
       keychainService: "Microsoft Edge Safe Storage",
@@ -98,6 +105,7 @@ export const BROWSER_IMPORT_SOURCES: readonly BrowserImportSourceDefinition[] =
     }),
     chromiumSource({
       id: "brave",
+      processNames: ["Brave", "brave"],
       macAppNames: ["Brave Browser.app"],
       name: "Brave",
       keychainService: "Brave Safe Storage",
@@ -108,6 +116,7 @@ export const BROWSER_IMPORT_SOURCES: readonly BrowserImportSourceDefinition[] =
     }),
     chromiumSource({
       id: "vivaldi",
+      processNames: ["Vivaldi", "vivaldi"],
       macAppNames: ["Vivaldi.app"],
       name: "Vivaldi",
       keychainService: "Vivaldi Safe Storage",
@@ -118,6 +127,7 @@ export const BROWSER_IMPORT_SOURCES: readonly BrowserImportSourceDefinition[] =
     }),
     chromiumSource({
       id: "opera",
+      processNames: ["Opera", "opera"],
       macAppNames: ["Opera.app"],
       name: "Opera",
       keychainService: "Opera Safe Storage",
@@ -128,6 +138,7 @@ export const BROWSER_IMPORT_SOURCES: readonly BrowserImportSourceDefinition[] =
     }),
     chromiumSource({
       id: "arc",
+      processNames: ["Arc"],
       macAppNames: ["Arc.app"],
       name: "Arc",
       keychainService: "Arc Safe Storage",
@@ -140,6 +151,7 @@ export const BROWSER_IMPORT_SOURCES: readonly BrowserImportSourceDefinition[] =
       engine: "firefox",
       platforms: ["darwin", "linux"],
       macAppNames: ["Firefox.app"],
+      processNames: ["Firefox", "firefox"],
       userDataDirectory: (context) =>
         context.platform === "darwin"
           ? macApplicationSupport(context, "Firefox")
@@ -151,6 +163,7 @@ export const BROWSER_IMPORT_SOURCES: readonly BrowserImportSourceDefinition[] =
       engine: "safari",
       platforms: ["darwin"],
       macAppNames: ["Safari.app"],
+      processNames: ["Safari"],
       userDataDirectory: (context) =>
         context.platform === "darwin"
           ? join(
@@ -490,49 +503,93 @@ export async function listSourceProfiles(
   return [...profiles.values()];
 }
 
-export type ProcessLivenessProbe = (pid: number) => boolean;
+export type ProcessProbe = (pid: number) => Promise<string | null>;
 
-export function processIsAlive(pid: number): boolean {
+export const probeProcess: ProcessProbe = async (pid) => {
   try {
     process.kill(pid, 0);
-    return true;
   } catch (error) {
-    return !(
+    if (
       typeof error === "object" &&
       error !== null &&
       "code" in error &&
       error.code === "ESRCH"
-    );
+    )
+      return null;
   }
+  return new Promise((resolve) => {
+    execFile(
+      "ps",
+      ["-o", "command=", "-p", String(pid)],
+      { encoding: "utf8" },
+      (error, stdout) => {
+        if (error) {
+          resolve(stdout.trim().length > 0 ? stdout.trim() : "");
+          return;
+        }
+        resolve(stdout.trim());
+      },
+    );
+  });
+};
+
+function normalizeHost(host: string): string {
+  return host.toLowerCase().split(".")[0] ?? "";
 }
 
-export function chromiumSingletonLockIsHeld(
+function parseLockPid(pidText: string): number | undefined {
+  if (!/^\d+$/.test(pidText)) return undefined;
+  const pid = Number(pidText);
+  return Number.isSafeInteger(pid) && pid > 0 ? pid : undefined;
+}
+
+function matchesBrowser(
+  command: string,
+  processNames: readonly string[],
+): boolean {
+  const haystack = command.toLowerCase();
+  return processNames.some((name) => haystack.includes(name.toLowerCase()));
+}
+
+export async function lockOwnerIsBrowser(
+  pid: number,
+  processNames: readonly string[],
+  probe: ProcessProbe,
+): Promise<boolean> {
+  const command = await probe(pid);
+  if (command === null) return false;
+  if (command === "") return true;
+  return matchesBrowser(command, processNames);
+}
+
+export async function chromiumSingletonLockIsHeld(
   target: string,
   currentHost: string,
-  isProcessAlive: ProcessLivenessProbe,
-): boolean {
+  processNames: readonly string[],
+  probe: ProcessProbe,
+): Promise<boolean> {
   const separator = target.lastIndexOf("-");
   if (separator <= 0) return true;
   const host = target.slice(0, separator);
-  const pidText = target.slice(separator + 1);
-  if (!/^\d+$/.test(pidText)) return true;
-  const pid = Number(pidText);
-  if (!Number.isSafeInteger(pid) || pid <= 0) return true;
-  if (host !== currentHost) return true;
-  return isProcessAlive(pid);
+  const pid = parseLockPid(target.slice(separator + 1));
+  if (pid === undefined) return true;
+  const owner = await probe(pid);
+  if (owner === null) return false;
+  if (normalizeHost(host) !== normalizeHost(currentHost))
+    return owner !== "" && matchesBrowser(owner, processNames);
+  return owner === "" || matchesBrowser(owner, processNames);
 }
 
-export function firefoxSymlinkLockIsHeld(
+export async function firefoxSymlinkLockIsHeld(
   target: string,
-  isProcessAlive: ProcessLivenessProbe,
-): boolean {
+  processNames: readonly string[],
+  probe: ProcessProbe,
+): Promise<boolean> {
   const separator = target.lastIndexOf(":");
   if (separator < 0) return true;
-  const pidText = target.slice(separator + 1).replace(/^\+/, "");
-  if (!/^\d+$/.test(pidText)) return true;
-  const pid = Number(pidText);
-  if (!Number.isSafeInteger(pid) || pid <= 0) return true;
-  return isProcessAlive(pid);
+  const pid = parseLockPid(target.slice(separator + 1).replace(/^\+/, ""));
+  if (pid === undefined) return true;
+  return lockOwnerIsBrowser(pid, processNames, probe);
 }
 
 async function readLinkTarget(path: string): Promise<string | undefined> {
@@ -546,7 +603,7 @@ async function readLinkTarget(path: string): Promise<string | undefined> {
 export async function isSourceRunning(
   definition: BrowserImportSourceDefinition,
   context: BrowserImportPathContext,
-  isProcessAlive: ProcessLivenessProbe = processIsAlive,
+  probe: ProcessProbe = probeProcess,
 ): Promise<boolean> {
   const root = definition.userDataDirectory(context);
   if (root === undefined) return false;
@@ -554,7 +611,12 @@ export async function isSourceRunning(
   if (definition.engine === "chromium") {
     const target = await readLinkTarget(join(root, "SingletonLock"));
     if (target === undefined) return false;
-    return chromiumSingletonLockIsHeld(target, hostname(), isProcessAlive);
+    return chromiumSingletonLockIsHeld(
+      target,
+      hostname(),
+      definition.processNames,
+      probe,
+    );
   }
   const profiles = await listSourceProfiles(definition, context);
   for (const profile of profiles) {
@@ -567,7 +629,7 @@ export async function isSourceRunning(
     const target = await readLinkTarget(join(directory, "lock"));
     if (
       target !== undefined &&
-      firefoxSymlinkLockIsHeld(target, isProcessAlive)
+      (await firefoxSymlinkLockIsHeld(target, definition.processNames, probe))
     )
       return true;
   }
