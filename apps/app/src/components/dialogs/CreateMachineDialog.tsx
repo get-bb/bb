@@ -133,7 +133,7 @@ function CreateMachineContent({
   const createMachine = useMutation({
     meta: { showErrorToast: false },
     mutationFn: async () => {
-      if (!accessReady)
+      if (selectedMachineProvider?.id === "manual" && !accessReady)
         throw new Error(
           "Configure a reachable server address before adding a machine.",
         );
@@ -197,7 +197,6 @@ function CreateMachineContent({
   }, [otherOptions, accessReady, selectedMachineProvider, createMachine]);
 
   const showOtherOptions = async () => {
-    if (!accessReady) return;
     if (launchId && createMachine.isPending)
       await sdk.hosts.cancel({ id: launchId });
     createController.current?.abort();
@@ -230,7 +229,7 @@ function CreateMachineContent({
         </DialogDescription>
       </DialogHeader>
       <div className="space-y-3">
-        {!accessReady && (
+        {!otherOptions && !accessReady && (
           <div
             role="status"
             className="space-y-3 rounded-md border border-border bg-muted/30 p-3"
@@ -310,7 +309,7 @@ function CreateMachineContent({
               Preparing command…
             </p>
           )}
-        {otherOptions && accessReady && alternativeProviders.length > 0 ? (
+        {otherOptions && alternativeProviders.length > 0 ? (
           <div className="space-y-2">
             <div className="space-y-1 rounded-md border border-border p-1">
               {alternativeProviders.map((provider) => {
@@ -481,7 +480,7 @@ function CreateMachineContent({
           }
         />
       ) : null}
-      {!otherOptions && accessReady && !commandExpired && (
+      {!otherOptions && !commandExpired && (
         <div className="flex items-center justify-between gap-3">
           <p role="status" className="text-xs text-subtle-foreground">
             {createMachine.isPending && launchId
