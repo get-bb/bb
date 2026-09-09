@@ -74,6 +74,7 @@ import {
   type ExperimentalProviderModelPickerProps,
   type PluginEnvironmentProviderInputsRegistration,
   type PluginMachineProviderInputsRegistration,
+  type ExperimentalMachineSetupRegistration,
   type ThreadChatProps,
   type DiffProps,
   type SourceCodeProps,
@@ -968,6 +969,7 @@ export interface CapturedPluginApp {
   timelineRenderers: PluginTimelineRendererRegistration[];
   environmentProviderInputs: PluginEnvironmentProviderInputsRegistration[];
   machineProviderInputs: PluginMachineProviderInputsRegistration[];
+  machineSetup: ExperimentalMachineSetupRegistration[];
   contentScripts: PluginContentScriptRegistration[];
 }
 

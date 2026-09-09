@@ -6,6 +6,7 @@ import * as pluginSdkApp from "@get-bb/plugin-sdk/app";
 import {
   type BbPluginApi,
   type ExperimentalAppOverlayProps,
+  type ExperimentalMachineSetupProps,
   type PluginAppBuilder,
   type PluginAppSlots,
   type PluginContentScriptContext,
@@ -250,6 +251,7 @@ const _assertAllThreadEventFieldsListed: MissingThreadEventField extends never
 void _assertAllThreadEventFieldsListed;
 
 type SlotPropsByName = {
+  experimental_machineSetup: ExperimentalMachineSetupProps;
   homepageSection: PluginHomepageSectionProps;
   settingsSection: PluginSettingsSectionProps;
   experimental_appOverlay: ExperimentalAppOverlayProps;
@@ -389,6 +391,7 @@ const FRONTEND_SLOT_PROP_FIELDS = {
     "value",
     "onChange",
   ],
+  experimental_machineSetup: ["client", "onClose", "onShowProviders"],
   experimental_machineProviderInputs: [
     "projectId",
     "value",

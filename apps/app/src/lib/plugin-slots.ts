@@ -5,6 +5,7 @@ import type {
   PluginDiffRendererRegistration,
   PluginEnvironmentProviderInputsRegistration,
   PluginMachineProviderInputsRegistration,
+  ExperimentalMachineSetupRegistration,
   PluginPendingInteractionRegistration,
   PluginFileOpenerRegistration,
   PluginHomepageSectionRegistration,
@@ -55,6 +56,7 @@ export interface PluginRegistrationSet {
   timelineRenderers?: readonly PluginTimelineRendererRegistration[];
   environmentProviderInputs?: readonly PluginEnvironmentProviderInputsRegistration[];
   machineProviderInputs?: readonly PluginMachineProviderInputsRegistration[];
+  machineSetup?: readonly ExperimentalMachineSetupRegistration[];
 }
 
 interface PluginSlotBase {
@@ -107,6 +109,9 @@ export interface PluginEnvironmentProviderInputsSlot
 export interface PluginMachineProviderInputsSlot
   extends PluginMachineProviderInputsRegistration, PluginSlotBase {}
 
+export interface ExperimentalMachineSetupSlot
+  extends ExperimentalMachineSetupRegistration, PluginSlotBase {}
+
 export interface PluginSlotSnapshot {
   homepageSections: readonly PluginHomepageSectionSlot[];
   settingsSections: readonly PluginSettingsSectionSlot[];
@@ -130,6 +135,7 @@ export interface PluginSlotSnapshot {
   timelineRenderers: readonly PluginTimelineRendererSlot[];
   environmentProviderInputs: readonly PluginEnvironmentProviderInputsSlot[];
   machineProviderInputs: readonly PluginMachineProviderInputsSlot[];
+  machineSetup: readonly ExperimentalMachineSetupSlot[];
 }
 
 export const EMPTY_PLUGIN_SLOT_SNAPSHOT: PluginSlotSnapshot = {
@@ -155,6 +161,7 @@ export const EMPTY_PLUGIN_SLOT_SNAPSHOT: PluginSlotSnapshot = {
   timelineRenderers: [],
   environmentProviderInputs: [],
   machineProviderInputs: [],
+  machineSetup: [],
 };
 
 const registrationsByPluginId = new Map<string, PluginRegistrationSet>();
@@ -187,6 +194,7 @@ const SLOT_KINDS: readonly SlotKind[] = [
   "timelineRenderers",
   "environmentProviderInputs",
   "machineProviderInputs",
+  "machineSetup",
 ];
 
 type FlattenedPluginSlots = {
@@ -243,6 +251,7 @@ function flattenRegistrations(
     timelineRenderers: stamp(set.timelineRenderers),
     environmentProviderInputs: stamp(set.environmentProviderInputs),
     machineProviderInputs: stamp(set.machineProviderInputs),
+    machineSetup: stamp(set.machineSetup),
   };
 }
 

@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { eq, like } from "drizzle-orm";
 import { z } from "zod";
 import { appSettingsValues, type DbConnection } from "@bb/db";
-import { deleteSecretFile, readOrCreateSecretFile } from "@bb/secret-storage";
+import { readOrCreateSecretFile } from "@bb/secret-storage";
 import {
   machineEnvironmentNameSchema,
   type MachineEnvironmentSet,
@@ -17,14 +17,6 @@ const encryptedSchema = z
     version: z.literal(1),
     name: machineEnvironmentNameSchema,
     ciphertext: z.string(),
-    note: z.string().nullable(),
-  })
-  .strict();
-const legacySchema = z
-  .object({
-    name: machineEnvironmentNameSchema,
-    value: z.string().nullable(),
-    secret: z.boolean(),
     note: z.string().nullable(),
   })
   .strict();
@@ -52,15 +44,6 @@ function records(db: DbConnection) {
     .where(like(appSettingsValues.key, `${prefix}%`))
     .orderBy(appSettingsValues.key)
     .all();
-}
-
-function legacyPath(dataDir: string, name: string) {
-  return join(
-    dataDir,
-    "secrets",
-    "machine-environment",
-    machineEnvironmentNameSchema.parse(name),
-  );
 }
 
 async function encryptionKey(dataDir: string, allowCreate: boolean) {
@@ -137,56 +120,13 @@ function save(db: DbConnection, row: EncryptedVariable) {
     .run();
 }
 
-async function migrateLegacy(
-  db: DbConnection,
-  dataDir: string,
-): Promise<EncryptedVariable[]> {
-  const rows = records(db).map((row) => {
-    const parsed = z
-      .union([encryptedSchema, legacySchema])
-      .parse(JSON.parse(row.value));
+export function readMachineEnvironment(db: DbConnection): EncryptedVariable[] {
+  return records(db).map((row) => {
+    const parsed = encryptedSchema.parse(JSON.parse(row.value));
     if (row.key !== prefix + parsed.name)
       throw new Error("Invalid machine environment record");
     return parsed;
   });
-  if (!rows.some((row) => !("version" in row))) {
-    for (const row of rows)
-      await deleteSecretFile(legacyPath(dataDir, row.name));
-    return rows.map((row) => encryptedSchema.parse(row));
-  }
-  const key = await encryptionKey(
-    dataDir,
-    !rows.some((row) => "version" in row),
-  );
-  const migrated: EncryptedVariable[] = [];
-  for (const row of rows) {
-    if ("version" in row) {
-      await deleteSecretFile(legacyPath(dataDir, row.name));
-      migrated.push(row);
-      continue;
-    }
-    let value = row.value;
-    if (row.secret) {
-      try {
-        value = await readFile(legacyPath(dataDir, row.name), "utf8");
-      } catch {
-        throw new Error(
-          `Machine environment variable ${row.name} is unavailable; restore its legacy secret file or set it again.`,
-        );
-      }
-    }
-    if (value === null)
-      throw new Error(`Machine environment variable ${row.name} has no value`);
-    const encrypted = encrypt(key, { name: row.name, value, note: row.note });
-    save(db, encrypted);
-    await deleteSecretFile(legacyPath(dataDir, row.name));
-    migrated.push(encrypted);
-  }
-  return migrated;
-}
-
-export function readMachineEnvironment(db: DbConnection, dataDir: string) {
-  return serialized(db, () => migrateLegacy(db, dataDir));
 }
 
 export function updateMachineEnvironment(
@@ -204,12 +144,9 @@ export function updateMachineEnvironment(
     } else {
       const key = await encryptionKey(
         dataDir,
-        !records(db).some(
-          (row) => encryptedSchema.safeParse(JSON.parse(row.value)).success,
-        ),
+        readMachineEnvironment(db).length === 0,
       );
       save(db, encrypt(key, { ...input, name }));
     }
-    await deleteSecretFile(legacyPath(dataDir, name));
   });
 }

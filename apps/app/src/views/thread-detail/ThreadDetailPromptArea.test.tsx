@@ -1,3 +1,4 @@
+import { ManualEnrollmentCommand } from "../../../../../plugins/machine-manual/enrollment-command";
 // @vitest-environment jsdom
 
 import type {
@@ -798,6 +799,19 @@ describe("environment follow-up summary", () => {
 
 describe("ThreadDetailPromptArea", () => {
   it("shows the transient command while a new manual machine keeps its thread starting", async () => {
+    setPluginSlotRegistrations(
+      "machine-manual",
+      makePluginRegistrationSet({
+        machineSetup: [
+          {
+            machineProviderId: "manual",
+            default: true,
+            component: () => null,
+            progress: ManualEnrollmentCommand,
+          },
+        ],
+      }),
+    );
     const readCommand = vi
       .spyOn(sdk.hosts, "experimental_enrollmentCommand")
       .mockResolvedValue({

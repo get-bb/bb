@@ -147,3 +147,13 @@ provider. `PluginMachineProviderInputsProps` supplies nullable `projectId`,
 prevent submission. Core validates the value against the provider's inputs
 schema. Inputs are persisted and visible to every plugin: never collect secrets
 here. Use shared components and typography; keep vendor logic in the backend.
+
+## Machine setup
+
+Register `app.slots.experimental_machineSetup({ machineProviderId, default,
+component, progress })` to own a standalone setup flow. Props are `client`,
+`onClose`, and optional `onShowProviders`. The client exposes the authenticated
+hosts/system SDK. Optional progress receives `client`, `id`, and `scope`
+(launch or thread), and returns null when no instructions apply. Match a provider
+owned by your plugin. Core owns the shared dialog and provider selection; your
+component owns setup, labels, access guidance, retry, and local cancellation.

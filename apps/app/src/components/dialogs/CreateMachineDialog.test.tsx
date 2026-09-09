@@ -1,7 +1,5 @@
 // @vitest-environment jsdom
-
 import {
-  act,
   cleanup,
   fireEvent,
   render,
@@ -9,45 +7,39 @@ import {
   waitFor,
 } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
-import { afterEach, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, expect, it, vi } from "vitest";
+import type { ExperimentalMachineSetupProps } from "@get-bb/plugin-sdk";
+import type { SystemMachineProvider } from "@bb/server-contract";
 import { sdk } from "@/lib/sdk";
 import { createQueryClientTestHarness } from "@/test/queryClientTestHarness";
 import { CreateMachineDialog } from "./CreateMachineDialog";
 
-const accessState = vi.hoisted(() => ({ ready: false }));
-vi.mock("@/hooks/queries/system-queries", () => ({
-  useSystemConfig: () => ({
-    data: {
-      serverUrl: "http://127.0.0.1:19635",
-      serverAccess: {
-        defaultProviderId: "connect",
-        effectiveUrl: null,
-        providers: [
-          {
-            id: "connect",
-            displayName: "bb connect",
-            availability: accessState.ready
-              ? { status: "available" }
-              : { status: "setup-required", message: "Pair bb connect" },
-          },
-        ],
+const slots = vi.hoisted(() => ({ owner: "command-plugin" }));
+vi.mock("@/lib/plugin-slots", () => ({
+  usePluginSlots: () => ({
+    machineProviderInputs: [],
+    machineSetup: [
+      {
+        machineProviderId: "command-provider",
+        pluginId: slots.owner,
+        generation: 1,
+        default: true,
+        component: ({ onShowProviders }: ExperimentalMachineSetupProps) => (
+          <button onClick={onShowProviders}>Plugin-owned setup</button>
+        ),
       },
-    },
+    ],
   }),
 }));
-vi.mock("@/lib/sdk", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("@/lib/sdk")>()),
+vi.mock("@/components/plugin/PluginSlotMount", () => ({
+  PluginSlotMount: ({ children }: { children: React.ReactNode }) => children,
+}));
+vi.mock("@/lib/sdk", () => ({
   sdk: {
     projects: { list: vi.fn().mockResolvedValue([]) },
     hosts: {
       submit: vi.fn(),
-      experimental_enrollmentCommand: vi.fn().mockResolvedValue({
-        command: "bb machine enroll --bootstrap-env BB_ENROLLMENT",
-        expiresAt: Date.now() + 60_000,
-      }),
       follow: vi.fn(),
-      cancel: vi.fn(),
-      createJoinCode: vi.fn(),
       list: vi.fn().mockResolvedValue([]),
       listProviders: vi.fn(),
     },
@@ -56,21 +48,16 @@ vi.mock("@/lib/sdk", async (importOriginal) => ({
 vi.mock("@/lib/ws", () => ({
   wsManager: { subscribe: vi.fn(), unsubscribe: vi.fn() },
 }));
-afterEach(() => {
-  cleanup();
-  vi.clearAllMocks();
-  accessState.ready = false;
-});
-
-it("lists alternative providers without duplicating the manual command flow", async () => {
-  accessState.ready = true;
+beforeEach(() => {
+  slots.owner = "command-plugin";
   vi.mocked(sdk.hosts.listProviders).mockResolvedValue(
-    ["manual", "ssh", "modal", "digitalocean", "tailscale"].map((id) => ({
+    ["command-provider", "tailscale"].map((id): SystemMachineProvider => ({
       id,
-      displayName: id === "manual" ? "Manual machine setup" : id,
+      displayName: id,
       icon: null,
       logoUrl: null,
-      pluginId: `machine-${id}`,
+      pluginId:
+        id === "command-provider" ? "command-plugin" : "tailscale-plugin",
       requires: { gitRemote: false },
       inputs: null,
       acceptsEmptyInputs: true,
@@ -84,154 +71,47 @@ it("lists alternative providers without duplicating the manual command flow", as
       availability: { status: "available" },
     })),
   );
-  vi.mocked(sdk.projects.list).mockResolvedValue([
-    {
-      id: "project-fixture",
-      kind: "standard",
-      name: "Fixture",
-      gitRemoteUrl: null,
-      createdAt: 1,
-      updatedAt: 1,
-      sources: [],
-    },
-  ]);
-  const launch = {
-    id: "launch-manual",
-    machineProviderId: "manual",
-    projectId: null,
+  vi.mocked(sdk.hosts.submit).mockResolvedValue({
+    id: "launch",
     hostId: null,
-    phase: "creating" as const,
-    step: "Run the enrollment command shown in the picker",
+    phase: "creating",
+    step: "",
     message: null,
     log: "",
     cancelPending: false,
     terminal: false,
-  };
-  vi.mocked(sdk.hosts.submit).mockResolvedValue(launch);
-  vi.mocked(sdk.hosts.follow).mockImplementation(async (args) => {
-    args.onProgress?.(launch);
-    return new Promise(() => {});
   });
-  vi.mocked(sdk.hosts.cancel).mockResolvedValue({
-    ...launch,
-    phase: "cancelled",
-  });
+  vi.mocked(sdk.hosts.follow).mockImplementation(
+    async () => new Promise(() => {}),
+  );
+});
+afterEach(() => {
+  cleanup();
+  vi.clearAllMocks();
+});
+function show() {
   const { wrapper } = createQueryClientTestHarness();
-  render(
+  return render(
     <MemoryRouter>
       <CreateMachineDialog open onOpenChange={() => {}} />
     </MemoryRouter>,
     { wrapper },
   );
-  await screen.findByRole("button", { name: "Copy command" });
-  fireEvent.click(
-    screen.getByRole("button", { name: "Other ways to add a machine" }),
-  );
-  await screen.findByRole("button", { name: "ssh" });
-  expect(
-    screen.queryByRole("button", { name: "Manual machine setup" }),
-  ).toBeNull();
-  fireEvent.click(screen.getByRole("button", { name: "ssh" }));
-  for (const name of ["ssh", "modal", "digitalocean", "tailscale"])
-    expect(screen.getByRole("button", { name })).toBeDefined();
-  await screen.findByRole("option", { name: "Fixture" });
-  fireEvent.change(screen.getByRole("combobox", { name: "Machine project" }), {
-    target: { value: "project-fixture" },
-  });
-  fireEvent.click(screen.getByRole("button", { name: "Create ssh machine" }));
-  expect((await screen.findByRole("status")).textContent).toContain(
-    "Run the enrollment command shown in the picker",
-  );
-  expect(
-    await screen.findByText("bb machine enroll --bootstrap-env BB_ENROLLMENT"),
-  ).toBeTruthy();
-  expect(sdk.hosts.experimental_enrollmentCommand).toHaveBeenCalledWith({
-    id: "launch-manual",
-    scope: "launch",
-    signal: expect.any(AbortSignal),
-  });
-  fireEvent.click(screen.getByRole("button", { name: "Cancel setup" }));
-  await waitFor(() =>
-    expect(sdk.hosts.cancel).toHaveBeenCalledWith({ id: "launch-manual" }),
-  );
-  expect(sdk.hosts.submit).toHaveBeenCalledWith(
-    expect.objectContaining({ projectId: "project-fixture" }),
-  );
-  expect(sdk.hosts.createJoinCode).not.toHaveBeenCalled();
-});
-
-it("shows preparation until the command is available, then waits for the machine", async () => {
-  accessState.ready = true;
-  let resolveCommand!: (value: { command: string; expiresAt: number }) => void;
-  vi.mocked(sdk.hosts.experimental_enrollmentCommand).mockReturnValue(
-    new Promise((resolve) => {
-      resolveCommand = resolve;
-    }),
-  );
-  const { wrapper } = createQueryClientTestHarness();
-  try {
-    render(
-      <MemoryRouter>
-        <CreateMachineDialog open onOpenChange={() => {}} />
-      </MemoryRouter>,
-      { wrapper },
-    );
-    await waitFor(() =>
-      expect(sdk.hosts.experimental_enrollmentCommand).toHaveBeenCalled(),
-    );
-    expect(screen.getByText("Preparing command…")).toBeTruthy();
-    expect(
-      screen.queryByText("Waiting for the machine to connect…"),
-    ).toBeNull();
-    await act(async () => {
-      resolveCommand({
-        command: "test-command",
-        expiresAt: Date.now() + 60_000,
-      });
-    });
-    await screen.findByRole("button", { name: "Copy command" });
-    expect(
-      screen.getByText("Waiting for the machine to connect…"),
-    ).toBeTruthy();
-    expect(screen.queryByText("Preparing command…")).toBeNull();
-    expect(sdk.hosts.submit).toHaveBeenCalledExactlyOnceWith(
-      expect.objectContaining({ machineProviderId: "manual", projectId: null }),
-    );
-    expect(
-      screen.queryByRole("combobox", { name: "Machine project" }),
-    ).toBeNull();
-  } finally {
-    accessState.ready = false;
-  }
-});
-
-it("keeps provider-specific setup accessible while default access is missing", async () => {
-  const { wrapper } = createQueryClientTestHarness();
-  render(
-    <MemoryRouter>
-      <CreateMachineDialog open onOpenChange={() => {}} />
-    </MemoryRouter>,
-    { wrapper },
-  );
-  expect(
-    (
-      await screen.findByRole("link", { name: "Set up bb connect" })
-    ).getAttribute("href"),
-  ).toBe("/settings/plugins/connect");
-  expect(
-    screen
-      .getByRole("link", { name: "Other ways to connect" })
-      .getAttribute("href"),
-  ).toBe("/settings/machines#advanced-machine-settings");
+}
+it("opens a plugin-owned default without submitting in core", async () => {
+  show();
+  await screen.findByRole("button", { name: "Plugin-owned setup" });
   expect(sdk.hosts.submit).not.toHaveBeenCalled();
+});
+it("lets the plugin switch to alternative providers without requiring default access", async () => {
+  show();
   fireEvent.click(
-    await screen.findByRole("button", { name: "Other ways to add a machine" }),
+    await screen.findByRole("button", { name: "Plugin-owned setup" }),
   );
   fireEvent.click(await screen.findByRole("button", { name: "tailscale" }));
   expect(
-    screen.getByRole("combobox", { name: "Machine project" }),
-  ).toBeTruthy();
-  expect(screen.queryByRole("link", { name: "Set up bb connect" })).toBeNull();
+    screen.getAllByRole("button", { name: "command-provider" }),
+  ).toHaveLength(1);
   fireEvent.click(
     screen.getByRole("button", { name: "Create tailscale machine" }),
   );
@@ -240,4 +120,12 @@ it("keeps provider-specific setup accessible while default access is missing", a
       expect.objectContaining({ machineProviderId: "tailscale" }),
     ),
   );
+});
+it("does not mount another plugin's setup for a provider it does not own", async () => {
+  slots.owner = "unrelated-plugin";
+  show();
+  await screen.findByRole("button", { name: "command-provider" });
+  expect(
+    screen.queryByRole("button", { name: "Plugin-owned setup" }),
+  ).toBeNull();
 });

@@ -1,6 +1,4 @@
-import { useSystemConfig } from "@/hooks/queries/system-queries";
-import { isLocalOnlyUrl } from "@/lib/loopback-hostname";
-import { MachineEnrollmentCommand } from "./MachineEnrollmentCommand";
+import { MachineSetupProgress } from "./MachineSetupProgress";
 import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { useMutation, useQuery } from "@tanstack/react-query";
@@ -47,54 +45,103 @@ export function CreateMachineDialog({
 }
 
 function CreateMachineContent({
-  open,
   onOpenChange,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
 }) {
-  const config = useSystemConfig();
-  const [otherOptions, setOtherOptions] = useState(false);
-  const autoStarted = useRef(false);
-  const access = config.data?.serverAccess;
-  const accessProvider = access?.providers.find(
-    (provider) => provider.id === access.defaultProviderId,
+  const { providers = [] } = useSystemMachineProviders();
+  const { machineSetup } = usePluginSlots();
+  const hosts = useHosts();
+  const [selection, setSelection] = useState<string | null | undefined>();
+  const setups = machineSetup.filter((slot) =>
+    providers.some(
+      (provider) =>
+        provider.id === slot.machineProviderId &&
+        provider.pluginId === slot.pluginId,
+    ),
   );
-  const localUrl =
-    access?.defaultProviderId === "direct" &&
-    access.effectiveUrl !== null &&
-    isLocalOnlyUrl(access.effectiveUrl);
-  const serverUrl =
-    access?.defaultProviderId === "direct"
-      ? access.effectiveUrl
-      : config.data?.serverUrl;
-  const unreachableUrl =
-    serverUrl && isLocalOnlyUrl(serverUrl) ? serverUrl : null;
-  const accessReady =
-    accessProvider?.availability.status === "available" && !localUrl;
+  const preferred = setups.find((slot) => slot.default);
+  const selected =
+    selection === undefined
+      ? preferred
+      : setups.find((slot) => slot.machineProviderId === selection);
+  if (selected) {
+    const Component = selected.component;
+    return (
+      <>
+        <DialogTitle className="sr-only">Add a machine</DialogTitle>
+        <PluginSlotMount
+          pluginId={selected.pluginId}
+          slotKind="machineSetup"
+          slotId={selected.machineProviderId}
+        >
+          <Component
+            client={sdk}
+            onClose={() => {
+              void hosts.refetch();
+              onOpenChange(false);
+            }}
+            onShowProviders={
+              providers.some(
+                (provider) => provider.id !== selected.machineProviderId,
+              )
+                ? () => setSelection(null)
+                : undefined
+            }
+          />
+        </PluginSlotMount>
+      </>
+    );
+  }
+  return (
+    <ProviderMachineSetup
+      onOpenChange={onOpenChange}
+      providers={providers.filter(
+        (provider) => provider.id !== preferred?.machineProviderId,
+      )}
+      onSelectSetup={(id) => setSelection(id)}
+      setupIds={setups.map((slot) => slot.machineProviderId)}
+      onDefaultSetup={
+        preferred ? () => setSelection(preferred.machineProviderId) : undefined
+      }
+      defaultLabel={
+        preferred
+          ? providers.find(
+              (provider) => provider.id === preferred.machineProviderId,
+            )?.displayName
+          : undefined
+      }
+    />
+  );
+}
+
+function ProviderMachineSetup({
+  onOpenChange,
+  providers,
+  onSelectSetup,
+  setupIds,
+  onDefaultSetup,
+  defaultLabel,
+}: {
+  onOpenChange: (open: boolean) => void;
+  providers: readonly SystemMachineProvider[];
+  onSelectSetup: (id: string) => void;
+  setupIds: readonly string[];
+  onDefaultSetup?: () => void;
+  defaultLabel?: string;
+}) {
   const createController = useRef<AbortController | null>(null);
   const createKey = useRef<string | null>(null);
-  const [commandReady, setCommandReady] = useState(false);
-  const [commandExpired, setCommandExpired] = useState(false);
   const [progress, setProgress] = useState("");
   const [launchId, setLaunchId] = useState<string | null>(null);
-  useEffect(() => {
-    if (!open) {
-      createController.current?.abort();
-      createKey.current = null;
-    }
-  }, [open]);
   useEffect(() => () => createController.current?.abort(), []);
   const hostsQuery = useHosts();
   const projects = useQuery({
     queryKey: ["machine-create-projects"],
     queryFn: () => sdk.projects.list(),
-    enabled: open,
   });
   const [projectId, setProjectId] = useState<string | null>(null);
-  const { providers: machineProviders } = useSystemMachineProviders();
-  const alternativeProviders =
-    machineProviders?.filter((provider) => provider.id !== "manual") ?? [];
   const machineProviderInputsSlots = usePluginSlots().machineProviderInputs;
   const [selectedMachineProvider, setSelectedMachineProvider] =
     useState<SystemMachineProvider | null>(null);
@@ -112,6 +159,10 @@ function CreateMachineContent({
         );
   const MachineInputsComponent = machineInputsRegistration?.component;
   const selectMachineProvider = (provider: SystemMachineProvider): void => {
+    if (setupIds.includes(provider.id)) {
+      onSelectSetup(provider.id);
+      return;
+    }
     createKey.current = null;
     setSelectedMachineProvider(provider);
     setMachineInputs(
@@ -133,15 +184,9 @@ function CreateMachineContent({
   const createMachine = useMutation({
     meta: { showErrorToast: false },
     mutationFn: async () => {
-      if (selectedMachineProvider?.id === "manual" && !accessReady)
-        throw new Error(
-          "Configure a reachable server address before adding a machine.",
-        );
       if (selectedMachineProvider === null) {
         throw new Error("Select a machine provider.");
       }
-      setCommandExpired(false);
-      setCommandReady(false);
       setProgress("");
       setLaunchId(null);
       const controller = new AbortController();
@@ -175,341 +220,165 @@ function CreateMachineContent({
     },
   });
 
-  useEffect(() => {
-    if (!otherOptions && selectedMachineProvider === null) {
-      const manual = machineProviders?.find(
-        (provider) => provider.id === "manual",
-      );
-      if (manual) selectMachineProvider(manual);
-    }
-  }, [machineProviders, otherOptions, selectedMachineProvider]);
-  useEffect(() => {
-    if (
-      !otherOptions &&
-      accessReady &&
-      selectedMachineProvider?.id === "manual" &&
-      selectedMachineProvider.availability?.status !== "unavailable" &&
-      !autoStarted.current
-    ) {
-      autoStarted.current = true;
-      createMachine.mutate();
-    }
-  }, [otherOptions, accessReady, selectedMachineProvider, createMachine]);
-
-  const showOtherOptions = async () => {
-    if (launchId && createMachine.isPending)
-      await sdk.hosts.cancel({ id: launchId });
-    createController.current?.abort();
-    setOtherOptions(true);
-    setSelectedMachineProvider(null);
-    setLaunchId(null);
-    createKey.current = null;
-    createMachine.reset();
-  };
-  const providerOptionsLink = (
-    <button
-      type="button"
-      onClick={() => void showOtherOptions()}
-      className="text-xs text-subtle-foreground underline underline-offset-2 hover:text-foreground"
-    >
-      Other ways to add a machine
-    </button>
-  );
-
   return (
     <>
       <DialogHeader>
         <DialogTitle>Add a machine</DialogTitle>
-        <DialogDescription>
-          {otherOptions
-            ? "Choose how to add your machine."
-            : !accessReady
-              ? "Pair a machine to run projects and threads on it."
-              : "Run this command on the machine you want to add. It installs bb and keeps the machine connected to this server."}
-        </DialogDescription>
+        <DialogDescription>Choose how to add your machine.</DialogDescription>
       </DialogHeader>
-      <div className="space-y-3">
-        {!otherOptions && !accessReady && (
-          <div
-            role="status"
-            className="space-y-3 rounded-md border border-border bg-muted/30 p-3"
-          >
-            <p className="text-sm font-medium">
-              {unreachableUrl
-                ? "Another machine cannot use this address."
-                : "Remote access isn't ready yet."}
-            </p>
-            <p className="text-xs text-subtle-foreground">
-              {unreachableUrl ? (
-                <>
-                  The pairing command would target{" "}
-                  <span className="font-mono">{unreachableUrl}</span>, which
-                  points to the machine that runs it, not to this bb. Set up
-                  remote access first, then come back here to get a pairing
-                  command that works from anywhere.
-                </>
-              ) : access?.defaultProviderId === "connect" ? (
-                "Other machines need a reachable address for this server. Set up remote access first, then come back here to copy the pairing command."
-              ) : accessProvider?.availability.status !== "available" ? (
-                (accessProvider?.availability.message ??
-                "Choose a reachable server address in Advanced settings.")
-              ) : (
-                "Checking remote access…"
-              )}
-            </p>
-            <div className="flex flex-wrap items-center gap-3">
+      <div className="space-y-2">
+        <div className="space-y-1 rounded-md border border-border p-1">
+          {providers.map((provider) => {
+            const unavailable = provider.availability?.status === "unavailable";
+            return (
+              <button
+                key={provider.id}
+                type="button"
+                disabled={unavailable || createMachine.isPending}
+                onClick={() => selectMachineProvider(provider)}
+                className="flex w-full items-center gap-2 rounded-sm px-2.5 py-2 text-left text-sm hover:bg-state-hover disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {provider.icon === null ? null : (
+                  <MachineProviderIcon
+                    provider={provider}
+                    className="size-4 shrink-0 text-muted-foreground"
+                  />
+                )}
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate">{provider.displayName}</span>
+                  {provider.availability?.status === "available" ||
+                  provider.availability === null ? null : (
+                    <span className="block text-xs text-muted-foreground">
+                      {provider.availability.message}
+                    </span>
+                  )}
+                </span>
+                <Icon
+                  name="Check"
+                  className={cn(
+                    "size-4 shrink-0",
+                    selectedMachineProvider?.id === provider.id
+                      ? "opacity-100"
+                      : "opacity-0",
+                  )}
+                />
+              </button>
+            );
+          })}
+        </div>
+        {selectedMachineProvider === null ? null : (
+          <div className="space-y-2 rounded-md border border-border bg-muted/30 p-3">
+            <label className="flex flex-col gap-1 text-sm">
+              Project
+              <select
+                aria-label="Machine project"
+                className="rounded-md border border-input bg-background px-3 py-2"
+                value={projectId ?? ""}
+                onChange={(event) => {
+                  createKey.current = null;
+                  setProjectId(event.target.value || null);
+                  setMachineInputs(null);
+                  setMachineInputsBlocked(
+                    machineInputsRegistration
+                      ? "Checking project inputs"
+                      : null,
+                  );
+                }}
+              >
+                <option value="">No project</option>
+                {(projects.data ?? []).map((project) => (
+                  <option key={project.id} value={project.id}>
+                    {project.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+            {projects.error && (
+              <p role="alert">
+                Could not load projects: {projects.error.message}
+              </p>
+            )}
+
+            {machineInputsRegistration === undefined ||
+            MachineInputsComponent === undefined ? null : (
+              <PluginSlotMount
+                pluginId={machineInputsRegistration.pluginId}
+                slotKind="machineProviderInputs"
+                slotId={machineInputsRegistration.machineProviderId}
+              >
+                <MachineInputsComponent
+                  key={`${selectedMachineProvider.id}:${projectId}`}
+                  projectId={projectId}
+                  value={machineInputs}
+                  onChange={handleMachineInputsChange}
+                />
+              </PluginSlotMount>
+            )}
+            {selectedMachineProvider.availability?.status ===
+            "setup-required" ? (
               <Button asChild size="sm" variant="outline">
                 <Link
-                  onClick={() => onOpenChange(false)}
-                  to={
-                    access?.defaultProviderId === "connect"
-                      ? getPluginConfigurationRoutePath({ pluginId: "connect" })
-                      : "/settings/machines#advanced-machine-settings"
-                  }
+                  to={getPluginConfigurationRoutePath({
+                    pluginId: selectedMachineProvider.pluginId,
+                  })}
                 >
-                  {access?.defaultProviderId === "connect"
-                    ? "Set up bb connect"
-                    : "Configure machine access"}
+                  Configure {selectedMachineProvider.displayName}
                 </Link>
               </Button>
-              {access?.defaultProviderId === "connect" && (
-                <Link
-                  to="/settings/machines#advanced-machine-settings"
-                  onClick={() => onOpenChange(false)}
-                  className="text-xs text-subtle-foreground underline underline-offset-2 hover:text-foreground"
-                >
-                  Other ways to connect
-                </Link>
-              )}
-            </div>
-          </div>
-        )}
-        {!otherOptions && createMachine.isError && !commandExpired && (
-          <div className="space-y-2">
-            <p role="alert" className="text-xs text-destructive-text">
-              {getMutationErrorMessage({
-                error: createMachine.error,
-                fallbackMessage: "Couldn't prepare an enrollment command.",
-              })}
-            </p>
-            <Button
-              size="sm"
-              variant="outline"
-              onClick={() => createMachine.mutate()}
-            >
-              Try again
-            </Button>
-          </div>
-        )}
-        {!otherOptions &&
-          accessReady &&
-          !createMachine.isError &&
-          !launchId && (
-            <p role="status" className="text-sm text-subtle-foreground">
-              Preparing command…
-            </p>
-          )}
-        {otherOptions && alternativeProviders.length > 0 ? (
-          <div className="space-y-2">
-            <div className="space-y-1 rounded-md border border-border p-1">
-              {alternativeProviders.map((provider) => {
-                const unavailable =
-                  provider.availability?.status === "unavailable";
-                return (
-                  <button
-                    key={provider.id}
-                    type="button"
-                    disabled={unavailable || createMachine.isPending}
-                    onClick={() => selectMachineProvider(provider)}
-                    className="flex w-full items-center gap-2 rounded-sm px-2.5 py-2 text-left text-sm hover:bg-state-hover disabled:cursor-not-allowed disabled:opacity-50"
-                  >
-                    {provider.icon === null ? null : (
-                      <MachineProviderIcon
-                        provider={provider}
-                        className="size-4 shrink-0 text-muted-foreground"
-                      />
-                    )}
-                    <span className="min-w-0 flex-1">
-                      <span className="block truncate">
-                        {provider.displayName}
-                      </span>
-                      {provider.availability?.status === "available" ||
-                      provider.availability === null ? null : (
-                        <span className="block text-xs text-muted-foreground">
-                          {provider.availability.message}
-                        </span>
-                      )}
-                    </span>
-                    <Icon
-                      name="Check"
-                      className={cn(
-                        "size-4 shrink-0",
-                        selectedMachineProvider?.id === provider.id
-                          ? "opacity-100"
-                          : "opacity-0",
-                      )}
-                    />
-                  </button>
-                );
-              })}
-            </div>
-            {selectedMachineProvider === null ? null : (
-              <div className="space-y-2 rounded-md border border-border bg-muted/30 p-3">
-                <label className="flex flex-col gap-1 text-sm">
-                  Project
-                  <select
-                    aria-label="Machine project"
-                    className="rounded-md border border-input bg-background px-3 py-2"
-                    value={projectId ?? ""}
-                    onChange={(event) => {
-                      createKey.current = null;
-                      setProjectId(event.target.value || null);
-                      setMachineInputs(null);
-                      setMachineInputsBlocked(
-                        machineInputsRegistration
-                          ? "Checking project inputs"
-                          : null,
-                      );
-                    }}
-                  >
-                    <option value="">No project</option>
-                    {(projects.data ?? []).map((project) => (
-                      <option key={project.id} value={project.id}>
-                        {project.name}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-                {projects.error && (
-                  <p role="alert">
-                    Could not load projects: {projects.error.message}
-                  </p>
-                )}
-
-                {machineInputsRegistration === undefined ||
-                MachineInputsComponent === undefined ? null : (
-                  <PluginSlotMount
-                    pluginId={machineInputsRegistration.pluginId}
-                    slotKind="machineProviderInputs"
-                    slotId={machineInputsRegistration.machineProviderId}
-                  >
-                    <MachineInputsComponent
-                      key={`${selectedMachineProvider.id}:${projectId}`}
-                      projectId={projectId}
-                      value={machineInputs}
-                      onChange={handleMachineInputsChange}
-                    />
-                  </PluginSlotMount>
-                )}
-                {selectedMachineProvider.availability?.status ===
-                "setup-required" ? (
-                  <Button asChild size="sm" variant="outline">
-                    <Link
-                      to={getPluginConfigurationRoutePath({
-                        pluginId: selectedMachineProvider.pluginId,
-                      })}
-                    >
-                      Configure {selectedMachineProvider.displayName}
-                    </Link>
-                  </Button>
-                ) : (
-                  <Button
-                    type="button"
-                    size="sm"
-                    disabled={
-                      createMachine.isPending ||
-                      machineInputsBlocked !== null ||
-                      (machineProviderInputsControlRequired(
-                        selectedMachineProvider,
-                      ) &&
-                        machineInputsRegistration === undefined) ||
-                      (selectedMachineProvider.inputs !== null &&
-                        machineInputs === null)
-                    }
-                    onClick={() => createMachine.mutate()}
-                  >
-                    {createMachine.isPending
-                      ? "Creating machine…"
-                      : `Create ${selectedMachineProvider.displayName}${/machine$/iu.test(selectedMachineProvider.displayName) ? "" : " machine"}`}
-                  </Button>
-                )}
-                {machineInputsBlocked === null ? null : (
-                  <p className="text-xs text-destructive">
-                    {machineInputsBlocked}
-                  </p>
-                )}
-                {createMachine.isError ? (
-                  <p className="text-xs text-destructive">
-                    {getMutationErrorMessage({
-                      error: createMachine.error,
-                      fallbackMessage: "Couldn't create the machine.",
-                    })}
-                  </p>
-                ) : null}
-              </div>
+            ) : (
+              <Button
+                type="button"
+                size="sm"
+                disabled={
+                  createMachine.isPending ||
+                  machineInputsBlocked !== null ||
+                  (machineProviderInputsControlRequired(
+                    selectedMachineProvider,
+                  ) &&
+                    machineInputsRegistration === undefined) ||
+                  (selectedMachineProvider.inputs !== null &&
+                    machineInputs === null)
+                }
+                onClick={() => createMachine.mutate()}
+              >
+                {createMachine.isPending
+                  ? "Creating machine…"
+                  : `Create ${selectedMachineProvider.displayName}${/machine$/iu.test(selectedMachineProvider.displayName) ? "" : " machine"}`}
+              </Button>
             )}
+            {machineInputsBlocked === null ? null : (
+              <p className="text-xs text-destructive">{machineInputsBlocked}</p>
+            )}
+            {createMachine.isError ? (
+              <p className="text-xs text-destructive">
+                {getMutationErrorMessage({
+                  error: createMachine.error,
+                  fallbackMessage: "Couldn't create the machine.",
+                })}
+              </p>
+            ) : null}
           </div>
-        ) : null}
-
-        {otherOptions && createMachine.isPending && progress ? (
-          <div className="space-y-2">
-            <pre
-              role="status"
-              className="whitespace-pre-wrap break-all rounded-md border border-border p-3 font-mono text-xs"
-            >
-              {progress}
-            </pre>
-          </div>
-        ) : null}
+        )}
       </div>
-      {open && launchId && (!otherOptions || createMachine.isPending) ? (
-        <MachineEnrollmentCommand
+      {createMachine.isPending && progress && (
+        <p role="status" className="text-sm text-subtle-foreground">
+          {progress}
+        </p>
+      )}
+      {launchId && selectedMachineProvider && (
+        <MachineSetupProgress
           id={launchId}
           scope="launch"
-          onExpired={() => setCommandExpired(true)}
-          onReadyChange={setCommandReady}
-          onRegenerate={
-            otherOptions
-              ? undefined
-              : async () => {
-                  await sdk.hosts.cancel({ id: launchId });
-                  createController.current?.abort();
-                  createKey.current = null;
-                  createMachine.mutate();
-                }
-          }
+          providerId={selectedMachineProvider.id}
         />
-      ) : null}
-      {!otherOptions && !commandExpired && (
-        <div className="flex items-center justify-between gap-3">
-          <p role="status" className="text-xs text-subtle-foreground">
-            {createMachine.isPending && launchId
-              ? commandReady
-                ? "Waiting for the machine to connect…"
-                : "Preparing command…"
-              : ""}
-          </p>
-          {alternativeProviders.length > 0 && providerOptionsLink}
-        </div>
       )}
-      {otherOptions && !createMachine.isPending && (
-        <Button
-          variant="ghost"
-          onClick={() => {
-            autoStarted.current = false;
-            setOtherOptions(false);
-            setSelectedMachineProvider(null);
-            setProjectId(null);
-            setMachineInputs(null);
-            createKey.current = null;
-            createMachine.reset();
-          }}
-        >
-          Use a command instead
+      {onDefaultSetup && !createMachine.isPending && (
+        <Button variant="ghost" onClick={onDefaultSetup}>
+          {defaultLabel}
         </Button>
       )}
       <DialogFooter>
-        {otherOptions && createMachine.isPending && launchId ? (
+        {createMachine.isPending && launchId ? (
           <Button
             variant="outline"
             onClick={() =>

@@ -159,6 +159,23 @@ afterEach(() => {
   setPluginEnvironmentProviderBridge(undefined);
 });
 
+function seedMachineWorkspace(
+  harness: TestAppHarness,
+  hostId: string,
+  path: string,
+) {
+  const { project } = seedProjectWithSource(harness.deps, { hostId, path });
+  const environment = createEnvironment(harness.db, harness.hub, {
+    projectId: project.id,
+    hostId,
+    path,
+    providerOwnsPath: false,
+    status: "ready",
+    environmentProvider: null,
+  });
+  return { project, environment };
+}
+
 function seedReadyLaunch(
   harness: TestAppHarness,
   args: { key: string; hostId: string; projectId?: string },
@@ -1143,18 +1160,11 @@ describe("core machine provider orchestration", () => {
       vi.useFakeTimers({ toFake: ["Date"] });
       vi.setSystemTime(10_000);
       const { host } = seedHostSession(harness.deps, { id: "host_suspend" });
-      const { project } = seedProjectWithSource(harness.deps, {
-        hostId: host.id,
-        path: "/tmp/suspend",
-      });
-      const environment = createEnvironment(harness.db, harness.hub, {
-        projectId: project.id,
-        hostId: host.id,
-        path: "/tmp/suspend",
-        providerOwnsPath: false,
-        status: "ready",
-        environmentProvider: null,
-      });
+      const { project, environment } = seedMachineWorkspace(
+        harness,
+        host.id,
+        "/tmp/suspend",
+      );
       const thread = seedThread(harness.deps, {
         projectId: project.id,
         environmentId: environment.id,
@@ -1208,18 +1218,11 @@ describe("core machine provider orchestration", () => {
           return { ok: true, result: { output: { ok: true } } };
         },
       });
-      const { project } = seedProjectWithSource(harness.deps, {
-        hostId: host.id,
-        path: "/tmp/suspend-rpc",
-      });
-      const environment = createEnvironment(harness.db, harness.hub, {
-        projectId: project.id,
-        hostId: host.id,
-        path: "/tmp/suspend-rpc",
-        providerOwnsPath: false,
-        status: "ready",
-        environmentProvider: null,
-      });
+      const { project, environment } = seedMachineWorkspace(
+        harness,
+        host.id,
+        "/tmp/suspend-rpc",
+      );
       const thread = seedThread(harness.deps, {
         projectId: project.id,
         environmentId: environment.id,
@@ -1277,18 +1280,11 @@ describe("core machine provider orchestration", () => {
         hostId: host.id,
         sessionId: session.id,
       });
-      const { project } = seedProjectWithSource(harness.deps, {
-        hostId: host.id,
-        path: "/tmp/suspend-checkpoint",
-      });
-      const environment = createEnvironment(harness.db, harness.hub, {
-        projectId: project.id,
-        hostId: host.id,
-        path: "/tmp/suspend-checkpoint",
-        providerOwnsPath: false,
-        status: "ready",
-        environmentProvider: null,
-      });
+      const { project, environment } = seedMachineWorkspace(
+        harness,
+        host.id,
+        "/tmp/suspend-checkpoint",
+      );
       const thread = seedThread(harness.deps, {
         projectId: project.id,
         environmentId: environment.id,
@@ -1404,18 +1400,11 @@ describe("core machine provider orchestration", () => {
       const { host } = seedHostSession(harness.deps, {
         id: "host_suspend_remove",
       });
-      const { project } = seedProjectWithSource(harness.deps, {
-        hostId: host.id,
-        path: "/tmp/suspend-remove",
-      });
-      const environment = createEnvironment(harness.db, harness.hub, {
-        projectId: project.id,
-        hostId: host.id,
-        path: "/tmp/suspend-remove",
-        providerOwnsPath: false,
-        status: "ready",
-        environmentProvider: null,
-      });
+      const { project, environment } = seedMachineWorkspace(
+        harness,
+        host.id,
+        "/tmp/suspend-remove",
+      );
       const thread = seedThread(harness.deps, {
         projectId: project.id,
         environmentId: environment.id,
@@ -1487,18 +1476,11 @@ describe("core machine provider orchestration", () => {
       const { host } = seedHostSession(harness.deps, {
         id: "host_stale_suspend_completion",
       });
-      const { project } = seedProjectWithSource(harness.deps, {
-        hostId: host.id,
-        path: "/tmp/stale-suspend-completion",
-      });
-      const environment = createEnvironment(harness.db, harness.hub, {
-        projectId: project.id,
-        hostId: host.id,
-        path: "/tmp/stale-suspend-completion",
-        providerOwnsPath: false,
-        status: "ready",
-        environmentProvider: null,
-      });
+      const { project, environment } = seedMachineWorkspace(
+        harness,
+        host.id,
+        "/tmp/stale-suspend-completion",
+      );
       const thread = seedThread(harness.deps, {
         projectId: project.id,
         environmentId: environment.id,
@@ -1601,18 +1583,11 @@ describe("core machine provider orchestration", () => {
         hostId: host.id,
         sessionId: session.id,
       });
-      const { project } = seedProjectWithSource(harness.deps, {
-        hostId: host.id,
-        path: "/tmp/suspend-race",
-      });
-      const environment = createEnvironment(harness.db, harness.hub, {
-        projectId: project.id,
-        hostId: host.id,
-        path: "/tmp/suspend-race",
-        providerOwnsPath: false,
-        status: "ready",
-        environmentProvider: null,
-      });
+      const { project, environment } = seedMachineWorkspace(
+        harness,
+        host.id,
+        "/tmp/suspend-race",
+      );
       const thread = seedThread(harness.deps, {
         projectId: project.id,
         environmentId: environment.id,
@@ -1676,18 +1651,11 @@ describe("core machine provider orchestration", () => {
         hostId: host.id,
         sessionId: session.id,
       });
-      const { project } = seedProjectWithSource(harness.deps, {
-        hostId: host.id,
-        path: "/tmp/resume",
-      });
-      const environment = createEnvironment(harness.db, harness.hub, {
-        projectId: project.id,
-        hostId: host.id,
-        path: "/tmp/resume",
-        providerOwnsPath: false,
-        status: "ready",
-        environmentProvider: null,
-      });
+      const { project, environment } = seedMachineWorkspace(
+        harness,
+        host.id,
+        "/tmp/resume",
+      );
       const thread = seedThread(harness.deps, {
         projectId: project.id,
         environmentId: environment.id,
@@ -2226,18 +2194,11 @@ describe("machine lifecycle safety regressions", () => {
       vi.useFakeTimers({ toFake: ["Date"] });
       vi.setSystemTime(10_000);
       const { host } = seedHostSession(harness.deps, { id: "host_suspend" });
-      const { project } = seedProjectWithSource(harness.deps, {
-        hostId: host.id,
-        path: "/tmp/suspend",
-      });
-      const environment = createEnvironment(harness.db, harness.hub, {
-        projectId: project.id,
-        hostId: host.id,
-        path: "/tmp/suspend",
-        providerOwnsPath: false,
-        status: "ready",
-        environmentProvider: null,
-      });
+      const { project, environment } = seedMachineWorkspace(
+        harness,
+        host.id,
+        "/tmp/suspend",
+      );
       const thread = seedThread(harness.deps, {
         projectId: project.id,
         environmentId: environment.id,
@@ -3645,9 +3606,13 @@ it("discards an older observation failure after a newer observation confirms pre
       expiresAt: null,
       observedState: "suspended",
     });
-    expect(() => assertMachineLifecycleAdmission(h.deps, host.id)).not.toThrow();
+    expect(() =>
+      assertMachineLifecycleAdmission(h.deps, host.id),
+    ).not.toThrow();
     older.reject(new Error("observation transport timeout"));
     await expect(pending).resolves.toBeUndefined();
     expect(getMachineLifecycle(h.deps, host.id)).toEqual(saved);
-    expect(() => assertMachineLifecycleAdmission(h.deps, host.id)).not.toThrow();
+    expect(() =>
+      assertMachineLifecycleAdmission(h.deps, host.id),
+    ).not.toThrow();
   }));

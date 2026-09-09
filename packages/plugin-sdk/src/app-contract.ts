@@ -1,3 +1,4 @@
+import type { HostsArea, SystemArea } from "@bb/sdk";
 import type { ComponentPropsWithoutRef, ComponentType, ReactNode } from "react";
 import type {
   PermissionMode,
@@ -1479,11 +1480,43 @@ export interface PluginMachineProviderInputsRegistration {
   component: ComponentType<PluginMachineProviderInputsProps>;
 }
 
+export interface ExperimentalMachineSetupProps {
+  client: {
+    hosts: Pick<
+      HostsArea,
+      "submit" | "follow" | "cancel" | "experimental_enrollmentCommand"
+    >;
+    system: Pick<SystemArea, "config">;
+  };
+  onClose(): void;
+  onShowProviders?: () => void;
+}
+
+export interface ExperimentalMachineProgressProps {
+  client: { hosts: Pick<HostsArea, "experimental_enrollmentCommand"> };
+  id: string;
+  scope: "launch" | "thread";
+}
+
+/** Own the standalone setup flow for a machine provider, including its heading and actions. */
+export interface ExperimentalMachineSetupRegistration {
+  machineProviderId: string;
+  /** Open this flow initially; registration order breaks ties between installed defaults. */
+  default: boolean;
+  component: ComponentType<ExperimentalMachineSetupProps>;
+  /** Optional provider-owned instructions while a launch or thread provisions. */
+  progress?: ComponentType<ExperimentalMachineProgressProps>;
+}
+
 // ---------------------------------------------------------------------------
 // definePluginApp
 // ---------------------------------------------------------------------------
 
 export interface PluginAppSlots {
+  /** Host a provider-owned machine setup flow in the shared dialog. */
+  experimental_machineSetup(
+    registration: ExperimentalMachineSetupRegistration,
+  ): void;
   homepageSection(registration: PluginHomepageSectionRegistration): void;
   settingsSection(registration: PluginSettingsSectionRegistration): void;
   /**

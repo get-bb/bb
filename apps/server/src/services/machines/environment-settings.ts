@@ -12,7 +12,7 @@ export async function resolveUserMachineEnvironment(
   db: DbConnection,
   dataDir: string,
 ): Promise<HostDaemonContributedEnvEntry[]> {
-  const rows = await readMachineEnvironment(db, dataDir);
+  const rows = readMachineEnvironment(db);
   return Promise.all(
     rows.map(async (row) => ({
       name: row.name,
@@ -28,7 +28,7 @@ export async function machineEnvironmentView(
   db: DbConnection,
   dataDir: string,
 ) {
-  const variables = (await readMachineEnvironment(db, dataDir)).map((row) => ({
+  const variables = readMachineEnvironment(db).map((row) => ({
     name: row.name,
     value: null,
     secret: true as const,

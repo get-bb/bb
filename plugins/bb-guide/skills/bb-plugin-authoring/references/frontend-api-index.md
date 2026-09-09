@@ -203,3 +203,7 @@ Read the installed SDK declarations for the exact current signatures.
 - `StandardSchemaV1InferOutput`
 - `StandardSchemaV1Issue`
 - `StandardSchemaV1Result`
+
+- `ExperimentalMachineSetupRegistration`, `ExperimentalMachineSetupProps`,
+  `ExperimentalMachineProgressProps`: provider-owned standalone machine setup
+  and provisioning instructions via `app.slots.experimental_machineSetup`.

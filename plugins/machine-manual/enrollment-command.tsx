@@ -1,17 +1,15 @@
-import { useClipboardCopy } from "@/lib/clipboard";
 import { useEffect, useState } from "react";
 import { Button } from "@bb/shared-ui/button";
-import { sdk } from "@/lib/sdk";
+import type { ExperimentalMachineProgressProps } from "@get-bb/plugin-sdk/app";
 
-export function MachineEnrollmentCommand({
+export function ManualEnrollmentCommand({
+  client,
   id,
   scope,
   onRegenerate,
   onExpired,
   onReadyChange,
-}: {
-  id: string;
-  scope: "launch" | "thread";
+}: ExperimentalMachineProgressProps & {
   onRegenerate?: () => Promise<void>;
   onExpired?: () => void;
   onReadyChange?: (ready: boolean) => void;
@@ -32,9 +30,19 @@ export function MachineEnrollmentCommand({
   useEffect(() => {
     onReadyChange?.(command !== null && !expired);
   }, [command, expired, onReadyChange]);
-  const { copy, copied } = useClipboardCopy({
-    text: expired ? "" : (command ?? ""),
-  });
+  const [copied, setCopied] = useState(false);
+  useEffect(() => {
+    setCopied(false);
+  }, [command]);
+  const copy = async () => {
+    if (!command || expired) return;
+    try {
+      await navigator.clipboard.writeText(command);
+      setCopied(true);
+    } catch {
+      setError("Could not copy the command. Try again.");
+    }
+  };
   useEffect(() => {
     const timer = setInterval(() => setNow(Date.now()), 1000);
     return () => clearInterval(timer);
@@ -48,7 +56,7 @@ export function MachineEnrollmentCommand({
     setError(null);
     const poll = async () => {
       try {
-        const result = await sdk.hosts.experimental_enrollmentCommand({
+        const result = await client.hosts.experimental_enrollmentCommand({
           id,
           scope,
           signal: controller.signal,
@@ -73,7 +81,7 @@ export function MachineEnrollmentCommand({
       controller.abort();
       clearTimeout(timer);
     };
-  }, [id, scope]);
+  }, [client, id, scope]);
   if (command === null && !expired) return null;
   return (
     <div className="overflow-hidden rounded-md border border-border bg-muted/30">

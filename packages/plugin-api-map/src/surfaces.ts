@@ -824,6 +824,7 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
           "Optionally declare suspend and resume together; core suspends after idle and resumes on the next send",
           "Choose last-thread plus grace retirement with environment-removal cascade, or never retirement with explicit user removal",
           "Return an opaque private JSON resource that core persists and passes back to lifecycle operations",
+          "Own standalone setup and provisioning instructions with app.slots.experimental_machineSetup; core provides the shared dialog and authenticated client, while the plugin owns access guidance, enrollment, countdown and regeneration",
           "Render inputs in both the picker sugar row and Add machine with app.slots.experimental_machineProviderInputs; PluginMachineProviderInputsProps.experimental_agentProviderId identifies the selected composer agent",
         ],
         apiSymbols: [
@@ -841,6 +842,9 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
           "PluginMachineProviderDeclaration",
           "PluginMachineProviderRequirements",
           "PluginMachineValidateDecision",
+          "ExperimentalMachineSetupRegistration",
+          "ExperimentalMachineSetupProps",
+          "ExperimentalMachineProgressProps",
           "PluginMachineProviderInputsRegistration",
           "PluginMachineProviderInputsProps",
           "PluginMachineProviderInputsChange",

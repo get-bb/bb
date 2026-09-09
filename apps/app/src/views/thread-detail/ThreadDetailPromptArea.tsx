@@ -1,4 +1,4 @@
-import { MachineEnrollmentCommand } from "@/components/dialogs/MachineEnrollmentCommand";
+import { MachineSetupProgress } from "@/components/dialogs/MachineSetupProgress";
 import {
   useCallback,
   useEffect,
@@ -1727,7 +1727,7 @@ export function ThreadDetailPromptArea({
       {(runtimeDisplayStatus === "provisioning" ||
         runtimeDisplayStatus === "starting") &&
       thread.archivedAt === null ? (
-        <MachineEnrollmentCommand id={thread.id} scope="thread" />
+        <MachineSetupProgress id={thread.id} scope="thread" />
       ) : null}
       {sentMessageEditorPortal}
       {bottomContent}

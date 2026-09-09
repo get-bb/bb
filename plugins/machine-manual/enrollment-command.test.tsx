@@ -9,15 +9,14 @@ import {
   waitFor,
 } from "@testing-library/react";
 import { afterEach, expect, it, vi } from "vitest";
-import { sdk } from "@/lib/sdk";
-import { MachineEnrollmentCommand } from "./MachineEnrollmentCommand";
+import { createBrowserBbSdk } from "@bb/sdk/browser";
+const sdk = createBrowserBbSdk({ baseUrl: "http://localhost" });
+import { ManualEnrollmentCommand } from "./enrollment-command.js";
 
-vi.mock("@/lib/sdk", () => ({
-  sdk: { hosts: { experimental_enrollmentCommand: vi.fn() } },
-}));
+vi.spyOn(sdk.hosts, "experimental_enrollmentCommand");
 afterEach(() => {
   cleanup();
-  vi.restoreAllMocks();
+  vi.clearAllMocks();
 });
 
 it("discards the private command when the server settles enrollment", async () => {
@@ -27,7 +26,9 @@ it("discards the private command when the server settles enrollment", async () =
       expiresAt: Date.now() + 60_000,
     })
     .mockResolvedValue({ command: null, expiresAt: null });
-  render(<MachineEnrollmentCommand id="manual-launch" scope="launch" />);
+  render(
+    <ManualEnrollmentCommand client={sdk} id="manual-launch" scope="launch" />,
+  );
   expect(
     await screen.findByText("bb machine enroll --bootstrap-env PRIVATE_BUNDLE"),
   ).toBeTruthy();
@@ -50,7 +51,7 @@ it("aborts retrieval when the follower closes", async () => {
     },
   );
   const view = render(
-    <MachineEnrollmentCommand id="manual-launch" scope="launch" />,
+    <ManualEnrollmentCommand client={sdk} id="manual-launch" scope="launch" />,
   );
   expect(signal?.aborted).toBe(false);
   view.unmount();
@@ -70,7 +71,8 @@ it("counts down, keeps the expired state after the command disappears, and lets 
       .mockRejectedValueOnce(new Error("offline"))
       .mockResolvedValue(undefined);
     render(
-      <MachineEnrollmentCommand
+      <ManualEnrollmentCommand
+        client={sdk}
         id="expiring"
         scope="launch"
         onRegenerate={regenerate}
