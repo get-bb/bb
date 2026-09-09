@@ -106,6 +106,11 @@ function printQueueTable(rows: ThreadQueuedMessagesResult): void {
   const table = rows.map((row) => [
     row.id,
     row.threadId,
+    row.initiator === "user"
+      ? ""
+      : row.initiator === "system"
+        ? "System"
+        : (row.senderThreadId ?? "Agent"),
     truncateQueueCell(queuedMessagePreview(row.content)),
     truncateQueueCell(describeQueueWait(row)),
     formatQueueSendCountdown(row.sendAt, now),
@@ -114,13 +119,14 @@ function printQueueTable(rows: ThreadQueuedMessagesResult): void {
   console.log(
     renderBorderlessTable(
       {
-        head: ["ID", "Thread", "Message", "Waiting on", "Send at"],
+        head: ["ID", "Thread", "Sender", "Message", "Waiting on", "Send at"],
         colWidths: [
           queueColumnWidth(table, 0, 2),
           queueColumnWidth(table, 1, 6),
-          queueColumnWidth(table, 2, 7),
-          queueColumnWidth(table, 3, 10),
-          queueColumnWidth(table, 4, 7),
+          queueColumnWidth(table, 2, 6),
+          queueColumnWidth(table, 3, 7),
+          queueColumnWidth(table, 4, 10),
+          queueColumnWidth(table, 5, 7),
         ],
       },
       table,

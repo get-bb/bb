@@ -336,6 +336,8 @@ export type ThreadPullRequest = z.infer<typeof threadPullRequestSchema>;
 
 export const threadQueuedMessageSchema = z.object({
   id: z.string(),
+  initiator: z.enum(["user", "agent", "system"]),
+  senderThreadId: z.string().nullable(),
   /**
    * The thread this row is waiting on. Redundant on the thread-scoped list
    * route that first served this DTO, and load-bearing everywhere else it is

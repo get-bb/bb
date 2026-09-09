@@ -190,6 +190,8 @@ export function makeThreadQueuedMessage(
 ): ThreadQueuedMessage {
   return {
     id: "qmsg_test",
+    initiator: "user",
+    senderThreadId: null,
     threadId: "thr_test",
     content: [{ type: "text", text: "Queued message", mentions: [] }],
     model: "gpt-5.5",

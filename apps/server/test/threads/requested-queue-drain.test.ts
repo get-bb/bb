@@ -1,4 +1,5 @@
 import {
+  createQueuedThreadMessage,
   listEvents,
   listQueuedThreadMessages,
   setQueuedThreadMessageFailureReason,
@@ -123,6 +124,63 @@ async function stopThread(harness: TestAppHarness, threadId: string) {
 }
 
 describe("the requested queue drain", () => {
+  it("preserves user, agent, and system senders in queue API responses", async () => {
+    await withTestHarness(async (harness) => {
+      const { thread } = seedRunnableThread(harness, {
+        hostId: "host-queue-senders",
+        status: "active",
+      });
+      const user = seedQueuedMessage(harness.deps, {
+        threadId: thread.id,
+        content: textInput("User follow-up"),
+      });
+      const agent = seedQueuedMessage(harness.deps, {
+        threadId: thread.id,
+        content: textInput("Agent follow-up"),
+        senderThreadId: "thr_sender",
+      });
+      const system = createQueuedThreadMessage(harness.db, harness.deps.hub, {
+        threadId: thread.id,
+        content: textInput("System notice"),
+        model: "gpt-5",
+        reasoningLevel: "medium",
+        permissionMode: "auto",
+        serviceTier: "default",
+        senderThreadId: null,
+        waitingOn: null,
+        sendAt: null,
+        payload: { kind: "inline" },
+        systemNotice: { kind: "unlabeled", subject: null },
+      });
+      for (const path of [
+        `/api/v1/threads/${thread.id}/queued-messages`,
+        "/api/v1/queued-messages",
+      ]) {
+        const response = await harness.app.request(path);
+        expect(response.status).toBe(200);
+        expect(await response.json()).toEqual(
+          expect.arrayContaining([
+            expect.objectContaining({
+              id: user.id,
+              initiator: "user",
+              senderThreadId: null,
+            }),
+            expect.objectContaining({
+              id: agent.id,
+              initiator: "agent",
+              senderThreadId: "thr_sender",
+            }),
+            expect.objectContaining({
+              id: system.id,
+              initiator: "system",
+              senderThreadId: null,
+            }),
+          ]),
+        );
+      }
+    });
+  });
+
   it("does not dispatch a scheduled group tail while its lead is postponed", async () => {
     await withTestHarness(async (harness) => {
       vi.useFakeTimers();

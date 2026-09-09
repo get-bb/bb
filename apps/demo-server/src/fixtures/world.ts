@@ -197,6 +197,8 @@ export function queuedMessage(args: {
   return {
     id: args.id,
     threadId: args.threadId,
+    initiator: "user",
+    senderThreadId: null,
     content: args.content,
     model: THREAD_DEFAULT_EXECUTION_OPTIONS.model,
     reasoningLevel: THREAD_DEFAULT_EXECUTION_OPTIONS.reasoningLevel,

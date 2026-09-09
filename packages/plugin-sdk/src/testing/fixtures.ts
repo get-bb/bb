@@ -284,6 +284,8 @@ export function makeQueueEntry(
 ): QueueEntry {
   return {
     id: "queued_1",
+    initiator: "user",
+    senderThreadId: null,
     threadId: "thread-1",
     content: [{ type: "text", text: "Queued turn", mentions: [] }],
     model: "test-model",

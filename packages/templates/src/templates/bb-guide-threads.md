@@ -322,6 +322,9 @@ Queued messages:
   bb thread queue group <thread-id> <boundary-id> --prefix <comma-separated-ids>
   bb thread queue delete <thread-id> <message-id>
 
+  The `Sender` column identifies agent threads and system notices; user messages
+  leave it blank. The SDK and `--json` include `initiator` and `senderThreadId`.
+
   A queued message is one that could not dispatch yet. Every one carries a
   typed reason in its `Waiting on` column: waiting for the current turn to
   finish, for the workspace, for a pending interaction, for a clock (`Send at`),

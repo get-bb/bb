@@ -37,6 +37,8 @@
   scheduled tell neither sends nor runs. Both report `delivery: "queued"` and
   dispatch on the sweep after the requested time. The SDK equivalent is `sendAt`
   (epoch ms) on `threads.spawn` / `threads.send`.
+- `bb thread queue list` shows a Sender for agent threads and system notices.
+  SDK queue rows and `--json` include `initiator` and nullable `senderThreadId`.
 - A send that cannot run right now does not fail: it joins the thread's queue
   with a typed reason. `--json` reports `delivery: "queued"` plus
   the complete `queuedMessage` row, so a script can inspect its `id`,
