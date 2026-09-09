@@ -472,12 +472,6 @@ function CreateMachineContent({
           {alternativeProviders.length > 0 && providerOptionsLink}
         </div>
       )}
-      {!otherOptions && createMachine.isPending && launchId && (
-        <p className="text-xs text-subtle-foreground">
-          Closing keeps this command valid until it expires. Invalidate it to
-          cancel setup.
-        </p>
-      )}
       {otherOptions && !createMachine.isPending && (
         <Button
           variant="ghost"
@@ -495,7 +489,7 @@ function CreateMachineContent({
         </Button>
       )}
       <DialogFooter>
-        {createMachine.isPending && launchId ? (
+        {otherOptions && createMachine.isPending && launchId ? (
           <Button
             variant="outline"
             onClick={() =>
@@ -505,7 +499,7 @@ function CreateMachineContent({
               })
             }
           >
-            {otherOptions ? "Cancel setup" : "Invalidate command"}
+            Cancel setup
           </Button>
         ) : null}
         <Button variant="ghost" onClick={() => onOpenChange(false)}>
