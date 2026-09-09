@@ -84,6 +84,23 @@ describe("browser import dialog steps", () => {
     ).toEqual(["chrome", "brave"]);
   });
 
+  it("keeps Safari importable when its cookie count is unknown", () => {
+    expect(
+      presentSourceRow(
+        {
+          id: "safari",
+          name: "Safari",
+          profiles: [{ directory: ".", name: "Safari" }],
+        },
+        undefined,
+      ),
+    ).toMatchObject({
+      status: "Ready",
+      action: "import",
+      details: ["1 profile"],
+    });
+  });
+
   it("presents rows by state and last import", () => {
     expect(presentSourceRow(ready, undefined)).toEqual({
       status: "Ready",

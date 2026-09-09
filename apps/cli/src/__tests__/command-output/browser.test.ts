@@ -100,7 +100,7 @@ describe("browser cookie import output", () => {
       (program) => registerBrowserCommands(program, () => "http://server"),
     );
     expect(collectLogLines(vi.mocked(console.log))).toEqual([
-      "chrome  ready  Person 1 (4)\nsafari  needsFullDiskAccess",
+      'chrome  ready  Default "Person 1" (4)\nsafari  needsFullDiskAccess',
     ]);
   });
   it("sends the import request and reports skipped hosts or the failure reason", async () => {

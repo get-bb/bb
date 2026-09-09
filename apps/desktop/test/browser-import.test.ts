@@ -30,6 +30,7 @@ import { parseBinaryCookies } from "../src/browser-import/safari-cookies.js";
 import {
   chromiumSingletonLockIsHeld,
   findBrowserImportSource,
+  firefoxParentLockIsHeld,
   isSourceRunning,
   listSourceProfiles,
   parseChromiumLocalStateProfiles,
@@ -711,6 +712,96 @@ describe("browser cookie readers", () => {
       expect.not.objectContaining({ domain: expect.anything() }),
     );
     expect(flushStore).toHaveBeenCalledTimes(1);
+  });
+
+  it("skips expired cookies so they cannot overwrite live sessions", async () => {
+    const set = vi.fn(async () => undefined);
+    const outcome = await writeCookies(
+      { cookies: { set, flushStore: vi.fn(async () => undefined) } },
+      {
+        cookies: [
+          {
+            url: "https://a.test/",
+            name: "old",
+            value: "1",
+            domain: undefined,
+            path: "/",
+            secure: true,
+            httpOnly: false,
+            expirationDate: 1_000,
+            sameSite: "lax",
+          },
+          {
+            url: "https://a.test/",
+            name: "fresh",
+            value: "2",
+            domain: undefined,
+            path: "/",
+            secure: true,
+            httpOnly: false,
+            expirationDate: 3_000,
+            sameSite: "lax",
+          },
+        ],
+        undecryptable: 0,
+        undecryptableHosts: [],
+      },
+      undefined,
+      2_000_000,
+    );
+    expect(outcome).toEqual({
+      ok: true,
+      imported: 1,
+      skipped: 1,
+      skippedDomains: [],
+    });
+    expect(set).toHaveBeenCalledTimes(1);
+    expect(set).toHaveBeenCalledWith(
+      expect.objectContaining({ name: "fresh" }),
+    );
+  });
+
+  it("detects a running Firefox through the parentlock owner", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "bb-ff-lock-"));
+    try {
+      const lock = join(directory, ".parentlock");
+      await writeFile(lock, "");
+      const names = ["Firefox", "firefox"];
+      expect(
+        await firefoxParentLockIsHeld(
+          lock,
+          names,
+          async () => "/Applications/Firefox.app/Contents/MacOS/firefox",
+          async () => [42],
+        ),
+      ).toBe(true);
+      expect(
+        await firefoxParentLockIsHeld(
+          lock,
+          names,
+          async () => "/usr/bin/vim",
+          async () => [42],
+        ),
+      ).toBe(false);
+      expect(
+        await firefoxParentLockIsHeld(
+          lock,
+          names,
+          async () => "firefox",
+          async () => [],
+        ),
+      ).toBe(false);
+      expect(
+        await firefoxParentLockIsHeld(
+          join(directory, "missing"),
+          names,
+          async () => "firefox",
+          async () => [42],
+        ),
+      ).toBe(false);
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
   });
 
   it("does not flush when nothing was written", async () => {

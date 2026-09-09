@@ -58,10 +58,11 @@ export function formatImportSources(
   const lines = result.sources.map((source) => {
     const status = source.unavailable ?? "ready";
     const profiles = source.profiles
-      .map((profile) =>
-        profile.cookieCount === undefined
-          ? profile.name
-          : `${profile.name} (${profile.cookieCount})`,
+      .map(
+        (profile) =>
+          `${profile.directory}${
+            profile.name === profile.directory ? "" : ` "${profile.name}"`
+          }${profile.cookieCount === undefined ? "" : ` (${profile.cookieCount})`}`,
       )
       .join(", ");
     return `${source.id}  ${status}  ${profiles}`.trimEnd();
@@ -319,7 +320,7 @@ export function registerBrowserCommands(
     )
     .requiredOption(
       "--profile <directory>",
-      "Source profile directory as listed by `bb browser import-sources`",
+      "Source profile directory as printed by `bb browser import-sources`",
     )
     .option(
       "--into <target>",

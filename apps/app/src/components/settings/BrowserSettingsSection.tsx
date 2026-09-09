@@ -136,7 +136,10 @@ export function BrowserSettingsSectionContent({
   );
   const [dialogSource, setDialogSource] =
     useState<DesktopBrowserImportSource | null>(null);
-  const [pendingSourceId, setPendingSourceId] = useState<string | null>(null);
+  const [pendingSourceIds, setPendingSourceIds] = useState<ReadonlySet<string>>(
+    () => new Set(),
+  );
+  const anyPending = pendingSourceIds.size > 0;
 
   const refresh = useCallback(() => {
     if (!desktopBrowser?.listImportSources) return;
@@ -166,19 +169,19 @@ export function BrowserSettingsSectionContent({
     profileName: string,
     outcome: DesktopBrowserImportOutcome & { ok: true },
   ) => {
-    const next: BrowserImportRecords = {
-      ...records,
-      [source.id]: recordFromOutcome(outcome, profileName, Date.now()),
-    };
-    setRecords(next);
-    try {
-      localStorageOrNull()?.setItem(
-        BROWSER_IMPORT_RECORDS_STORAGE_KEY,
-        JSON.stringify(next),
-      );
-    } catch {
-      return;
-    }
+    const record = recordFromOutcome(outcome, profileName, Date.now());
+    setRecords((current) => {
+      const next: BrowserImportRecords = { ...current, [source.id]: record };
+      try {
+        localStorageOrNull()?.setItem(
+          BROWSER_IMPORT_RECORDS_STORAGE_KEY,
+          JSON.stringify(next),
+        );
+      } catch {
+        return next;
+      }
+      return next;
+    });
     appToast.success(
       outcome.imported > 0
         ? `Imported ${formatCookieCount(outcome.imported)} from ${source.name}`
@@ -192,7 +195,7 @@ export function BrowserSettingsSectionContent({
       setDialogSource(source);
       return;
     }
-    setPendingSourceId(source.id);
+    setPendingSourceIds((current) => new Set(current).add(source.id));
     desktopBrowser
       .importCookies({
         sourceId: source.id,
@@ -215,7 +218,11 @@ export function BrowserSettingsSectionContent({
         appToast.error(`Could not read ${source.name}'s cookies.`);
       })
       .finally(() => {
-        setPendingSourceId(null);
+        setPendingSourceIds((current) => {
+          const next = new Set(current);
+          next.delete(source.id);
+          return next;
+        });
         refresh();
       });
   };
@@ -261,7 +268,7 @@ export function BrowserSettingsSectionContent({
                 source={source}
                 record={records[source.id]}
                 now={now}
-                pending={pendingSourceId === source.id}
+                pending={anyPending}
                 onRecheck={refresh}
                 onImport={() => {
                   if (needsProfileChoice(source)) setDialogSource(source);

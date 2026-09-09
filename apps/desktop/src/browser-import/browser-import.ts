@@ -74,11 +74,20 @@ export async function writeCookies(
   session: CookieWriteSession,
   read: CookieReadResult,
   log?: CreateBrowserImportServiceArgs["log"],
+  now: number = Date.now(),
 ): Promise<DesktopBrowserImportOutcome> {
   let imported = 0;
   let skipped = read.undecryptable;
   const skippedDomains = new Set(read.undecryptableHosts);
+  const nowSeconds = now / 1000;
   for (const cookie of read.cookies) {
+    if (
+      cookie.expirationDate !== undefined &&
+      cookie.expirationDate <= nowSeconds
+    ) {
+      skipped += 1;
+      continue;
+    }
     try {
       await session.cookies.set({
         url: cookie.url,

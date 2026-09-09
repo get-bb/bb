@@ -177,11 +177,17 @@ export interface SourceRowPresentation {
   actionLabel: string;
 }
 
-export function totalCookies(source: DesktopBrowserImportSource): number {
-  return source.profiles.reduce(
-    (sum, profile) => sum + (profile.cookieCount ?? 0),
-    0,
-  );
+export function totalCookies(
+  source: DesktopBrowserImportSource,
+): number | undefined {
+  let total = 0;
+  let known = false;
+  for (const profile of source.profiles) {
+    if (profile.cookieCount === undefined) return undefined;
+    total += profile.cookieCount;
+    known = true;
+  }
+  return known ? total : undefined;
 }
 
 export function presentSourceRow(
@@ -257,7 +263,9 @@ export function presentSourceRow(
             ]
           : []),
       ]
-    : [profileLabel, formatCookieCount(cookies)];
+    : cookies === undefined
+      ? [profileLabel]
+      : [profileLabel, formatCookieCount(cookies)];
   return {
     status: "Ready",
     tone: "ready",

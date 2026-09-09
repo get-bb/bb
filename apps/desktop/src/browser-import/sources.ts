@@ -600,10 +600,47 @@ async function readLinkTarget(path: string): Promise<string | undefined> {
   }
 }
 
+export type OpenFileProbe = (path: string) => Promise<number[]>;
+
+export const probeOpenFile: OpenFileProbe = (path) =>
+  new Promise((resolve) => {
+    execFile(
+      "lsof",
+      ["-t", "-w", "--", path],
+      { encoding: "utf8" },
+      (_error, stdout) => {
+        resolve(
+          stdout
+            .split(/\s+/)
+            .map((text) => Number(text))
+            .filter((pid) => Number.isSafeInteger(pid) && pid > 0),
+        );
+      },
+    );
+  });
+
+export async function firefoxParentLockIsHeld(
+  lockPath: string,
+  processNames: readonly string[],
+  probe: ProcessProbe,
+  openFiles: OpenFileProbe,
+): Promise<boolean> {
+  try {
+    if (!(await stat(lockPath)).isFile()) return false;
+  } catch {
+    return false;
+  }
+  for (const pid of await openFiles(lockPath)) {
+    if (await lockOwnerIsBrowser(pid, processNames, probe)) return true;
+  }
+  return false;
+}
+
 export async function isSourceRunning(
   definition: BrowserImportSourceDefinition,
   context: BrowserImportPathContext,
   probe: ProcessProbe = probeProcess,
+  openFiles: OpenFileProbe = probeOpenFile,
 ): Promise<boolean> {
   const root = definition.userDataDirectory(context);
   if (root === undefined) return false;
@@ -630,6 +667,15 @@ export async function isSourceRunning(
     if (
       target !== undefined &&
       (await firefoxSymlinkLockIsHeld(target, definition.processNames, probe))
+    )
+      return true;
+    if (
+      await firefoxParentLockIsHeld(
+        join(directory, ".parentlock"),
+        definition.processNames,
+        probe,
+        openFiles,
+      )
     )
       return true;
   }
