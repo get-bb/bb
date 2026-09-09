@@ -29,6 +29,7 @@ import {
   STORY_WORKTREE_OPTIONS,
   makeAttachmentsConfig as makeAttachments,
   makeExecutionControlsProps,
+  useInteractiveExecutionControls,
   makeTypeaheadConfig as makeTypeahead,
   makeHost,
 } from "../../../.ladle/story-fixtures";
@@ -137,6 +138,7 @@ function PromptStage({ children }: PromptStageProps) {
 
 function DefaultRow() {
   const { value, mentionRanges, onChange } = useControlledValue("");
+  const execution = useInteractiveExecutionControls(baseExecution);
   return (
     <PromptStage>
       <NewThreadPromptBoxUI
@@ -153,7 +155,7 @@ function DefaultRow() {
         promptActions={promptActions}
         modeConfig={baseModeConfig}
         project={baseProject}
-        execution={baseExecution}
+        execution={execution}
       />
     </PromptStage>
   );
@@ -545,7 +547,7 @@ export function Overview() {
       <StoryCard>
         <StoryRow
           label="default"
-          hint="codex + workspace-write + local-direct env"
+          hint="interactive provider, model, reasoning, and fast mode"
         >
           <DefaultRow />
         </StoryRow>

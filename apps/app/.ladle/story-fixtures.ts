@@ -1,3 +1,5 @@
+import { useState } from "react";
+import { reconcileReasoningLevel } from "@bb/domain";
 import type {
   Host,
   ProjectSource,
@@ -218,6 +220,8 @@ export const STORY_CODEX_REASONING: readonly PickerOption<ReasoningLevel>[] = [
   { value: "medium", label: "Medium" },
   { value: "high", label: "High" },
   { value: "xhigh", label: "Extra High" },
+  { value: "max", label: "Max" },
+  { value: "ultra", label: "Ultra" },
 ];
 
 export const STORY_CLAUDE_REASONING: readonly PickerOption<ReasoningLevel>[] = [
@@ -225,6 +229,7 @@ export const STORY_CLAUDE_REASONING: readonly PickerOption<ReasoningLevel>[] = [
   { value: "medium", label: "Medium" },
   { value: "high", label: "High" },
   { value: "xhigh", label: "Extra High" },
+  { value: "ultracode", label: "Ultracode" },
   { value: "max", label: "Max" },
 ];
 
@@ -376,6 +381,82 @@ export function makeExecutionControlsProps(
     },
   };
   return { ...base, ...overrides };
+}
+
+export function useInteractiveExecutionControls(
+  base: ExecutionControlsProps,
+): ExecutionControlsProps {
+  const [providerId, setProviderId] = useState(
+    base.provider.selectedId ?? "codex",
+  );
+  const [model, setModel] = useState(base.model.selected);
+  const [reasoning, setReasoning] = useState(base.reasoning.value);
+  const [serviceTier, setServiceTier] = useState(base.serviceTier?.value);
+  const catalogForProvider = (id: string) => {
+    if (id === base.provider.selectedId) {
+      return {
+        models: base.model.options,
+        moreModels: base.model.moreOptions,
+        reasoning: base.reasoning.options,
+      };
+    }
+    return {
+      models:
+        id === "claude-code"
+          ? STORY_CLAUDE_CODE_MODELS
+          : id === "pi"
+            ? STORY_PI_MODELS
+            : STORY_CODEX_MODELS,
+      moreModels: id === "claude-code" ? STORY_CLAUDE_CODE_MORE_MODELS : [],
+      reasoning:
+        id === "claude-code" ? STORY_CLAUDE_REASONING : STORY_CODEX_REASONING,
+    };
+  };
+  const catalog = catalogForProvider(providerId);
+  return {
+    ...base,
+    provider: {
+      ...base.provider,
+      selectedId: providerId,
+      onChange: (id) => {
+        const next = catalogForProvider(id);
+        setProviderId(id);
+        setModel(next.models[0]?.value ?? "");
+        if (next.reasoning.length > 0) {
+          setReasoning((current) =>
+            reconcileReasoningLevel(
+              current,
+              next.reasoning.map((option) => option.value),
+            ),
+          );
+        }
+        setServiceTier(undefined);
+      },
+    },
+    model: {
+      ...base.model,
+      active: { model },
+      selected: model,
+      options: catalog.models,
+      moreOptions: catalog.moreModels,
+      onChange: setModel,
+    },
+    reasoning: {
+      value: reasoning,
+      options: catalog.reasoning,
+      onChange: setReasoning,
+    },
+    ...(base.serviceTier
+      ? {
+          serviceTier: {
+            ...base.serviceTier,
+            value: serviceTier,
+            onChange: setServiceTier,
+            supported: STORY_SERVICE_TIER_SUPPORT[providerId] ?? false,
+          },
+        }
+      : {}),
+  };
 }
 
 export function makeThread(overrides: Partial<Thread> = {}): Thread {
