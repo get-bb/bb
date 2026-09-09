@@ -116,11 +116,6 @@ function CreateMachineContent({
             </Button>
           )
         )}
-        <DialogFooter>
-          <Button variant="ghost" onClick={() => onOpenChange(false)}>
-            Close
-          </Button>
-        </DialogFooter>
       </>
     );
   }
