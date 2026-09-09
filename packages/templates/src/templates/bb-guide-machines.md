@@ -10,7 +10,7 @@ Machine commands
 A host is an identity and daemon connection. A machine is a host with a
 provider-owned lifecycle. The local host has no machine provider. Every other
 host is a machine, including existing machines enrolled with the built-in
-`manual` provider (Existing machine). Add machines under Settings → Machines
+`manual` provider (Manual machine setup). Add machines under Settings → Machines
 or from the composer machine picker.
 
 The server listens on loopback by default. Remote execution machines need

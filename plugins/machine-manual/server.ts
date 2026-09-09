@@ -3,7 +3,7 @@ import type { BbPluginApi } from "@get-bb/plugin-sdk";
 export default function manualMachinePlugin(bb: BbPluginApi): void {
   bb.experimental_machines.register({
     id: "manual",
-    displayName: "Existing machine",
+    displayName: "Manual machine setup",
     icon: "Terminal",
     policy: {
       idleSuspendMs: null,

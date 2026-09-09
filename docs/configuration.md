@@ -556,8 +556,8 @@ compatibility roots follow the related config and environment switches.
 
 ## Multi-machine
 
-Settings → Machines offers Existing machine (the built-in `manual` provider)
-alongside installed cloud, SSH and Tailscale providers. Existing machine prints
+Settings → Machines offers Manual machine setup (the built-in `manual` provider)
+alongside installed cloud, SSH and Tailscale providers. Manual machine setup prints
 a private enrollment command and waits for the daemon. The one-line command
 downloads `/install.sh` with a short-lived enrollment header. The server embeds
 the pending bootstrap in its uncached response; cancelled, expired, or consumed

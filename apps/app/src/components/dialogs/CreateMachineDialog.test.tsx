@@ -67,7 +67,7 @@ it("lists alternative providers without duplicating the manual command flow", as
   vi.mocked(sdk.hosts.listProviders).mockResolvedValue(
     ["manual", "ssh", "modal", "digitalocean", "tailscale"].map((id) => ({
       id,
-      displayName: id === "manual" ? "Existing machine" : id,
+      displayName: id === "manual" ? "Manual machine setup" : id,
       icon: null,
       logoUrl: null,
       pluginId: `machine-${id}`,
@@ -128,7 +128,7 @@ it("lists alternative providers without duplicating the manual command flow", as
     screen.getByRole("button", { name: "Other ways to add a machine" }),
   );
   await screen.findByRole("button", { name: "ssh" });
-  expect(screen.queryByRole("button", { name: "Existing machine" })).toBeNull();
+  expect(screen.queryByRole("button", { name: "Manual machine setup" })).toBeNull();
   fireEvent.click(screen.getByRole("button", { name: "ssh" }));
   for (const name of ["ssh", "modal", "digitalocean", "tailscale"])
     expect(screen.getByRole("button", { name })).toBeDefined();

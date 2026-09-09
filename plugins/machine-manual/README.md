@@ -1,4 +1,4 @@
-# Existing machine
+# Manual machine setup
 
 The built-in `manual` machine provider uses the public machine registration and
 inputs-slot contracts. It prepares core enrollment, reports a redacted step,
@@ -6,7 +6,7 @@ and waits for the daemon. Cancellation and removal use core credential and acces
 cleanup. A host is identity plus daemon connection; a machine adds a provider-owned
 lifecycle. The local host remains provider-less.
 
-Run `bb machine create --provider manual` or select Existing machine in Settings
+Run `bb machine create --provider manual` or select Manual machine setup in Settings
 or the composer picker. `--no-wait` returns a durable launch ID and command;
 `bb machine status <id>` retrieves it and `bb machine cancel <id>` cancels it.
 Closing the dialog or interrupting the follower leaves creation running.

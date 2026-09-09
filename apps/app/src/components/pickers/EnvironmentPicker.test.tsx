@@ -385,7 +385,7 @@ describe("EnvironmentPickerUI", () => {
     );
   });
 
-  it("offers Existing machine alongside opted-in shortcuts without a DigitalOcean shortcut", () => {
+  it("offers Manual machine setup alongside opted-in shortcuts without a DigitalOcean shortcut", () => {
     const providers = [
       "manual",
       "ssh",
@@ -395,7 +395,7 @@ describe("EnvironmentPickerUI", () => {
     ].map((id) => ({
       ...modalMachineProvider,
       id,
-      displayName: id === "manual" ? "Existing machine" : id,
+      displayName: id === "manual" ? "Manual machine setup" : id,
       requires: { gitRemote: false },
       supportsSuspend: false,
       environmentRow:
@@ -421,7 +421,7 @@ describe("EnvironmentPickerUI", () => {
     fireEvent.pointerDown(screen.getByRole("button", { name: "Environment" }), {
       button: 0,
     });
-    for (const name of ["Existing machine", "ssh", "modal", "tailscale"])
+    for (const name of ["Manual machine setup", "ssh", "modal", "tailscale"])
       expect(
         screen.getByRole("menuitem", { name: new RegExp(name, "u") }),
       ).toBeDefined();
@@ -429,7 +429,7 @@ describe("EnvironmentPickerUI", () => {
       screen.queryByRole("menuitem", { name: /digitalocean/u }),
     ).toBeNull();
     fireEvent.click(
-      screen.getByRole("menuitem", { name: /Existing machine/u }),
+      screen.getByRole("menuitem", { name: /Manual machine setup/u }),
     );
     expect(onSelect).toHaveBeenCalledWith(providers[0]);
   });

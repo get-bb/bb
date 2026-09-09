@@ -3,13 +3,13 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "Enroll an existing machine by running a command",
+  "description": "Enroll a machine by running a command manually",
   "engines": {
     "bb": ">=0.0"
   },
   "bb": {
-    "name": "Existing machine",
-    "description": "Enroll an existing machine by running a command",
+    "name": "Manual machine setup",
+    "description": "Enroll a machine by running a command manually",
     "branding": {
       "icon": "Terminal"
     },
