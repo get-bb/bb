@@ -72,7 +72,6 @@ it("requires explicit device/user and verifies private access without falling ba
       value: {
         deviceId: "peer",
         username: "dev",
-        nodeDirectory: null,
         accessProviderId: "tailscale",
       },
     }),

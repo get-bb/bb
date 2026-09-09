@@ -6,7 +6,7 @@ description: Discover existing tailnet machines and configure private bb server 
 Use `bb tailscale devices` for the bb server host's visible candidates. Select
 an explicit device ID and OS username; check ordinary SSH authentication and
 host-key trust to its full DNS name. The target needs Node 22.19+ and npm.
-`nodeDirectory` can name an absolute bin directory when Node is outside PATH.
+Enrollment fails if Node/npm are unavailable on the SSH login-shell PATH.
 No Tailscale API or auth key is needed.
 
 Run `bb tailscale status` for this instance's loopback URL and private-access

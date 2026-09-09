@@ -28,9 +28,6 @@ export function TailscaleInputs({
   const [username, setUsername] = useState(
     initial.success ? initial.data.username : "",
   );
-  const [nodeDirectory, setNodeDirectory] = useState(
-    initial.success ? (initial.data.nodeDirectory ?? "") : "",
-  );
   const [useDefault, setUseDefault] = useState(
     initial.success && initial.data.accessProviderId === "default",
   );
@@ -68,7 +65,6 @@ export function TailscaleInputs({
     const parsed = inputsSchema.safeParse({
       deviceId,
       username,
-      nodeDirectory: nodeDirectory.trim() || null,
       accessProviderId: useDefault ? "default" : "tailscale",
     });
     if (
@@ -85,7 +81,7 @@ export function TailscaleInputs({
         reason: "Verify private server access first.",
       });
     } else onChangeRef.current({ status: "ready", value: parsed.data });
-  }, [deviceId, username, nodeDirectory, useDefault, devices, access]);
+  }, [deviceId, username, useDefault, devices, access]);
   return (
     <div className="flex min-w-0 flex-col gap-3 text-sm">
       <label>
@@ -120,16 +116,6 @@ export function TailscaleInputs({
         Uses ordinary SSH with the server’s existing keys and trusted host keys.
         Node 22.19+ and npm must be installed on the device.
       </p>
-      <label>
-        Node bin directory (optional)
-        <input
-          aria-label="Node bin directory"
-          value={nodeDirectory}
-          onChange={(e) => setNodeDirectory(e.target.value)}
-          placeholder="Absolute path when Node is outside SSH’s PATH"
-          className="w-full rounded-md border border-input bg-background p-2"
-        />
-      </label>
       <label>
         <input
           type="checkbox"

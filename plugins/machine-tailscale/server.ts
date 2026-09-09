@@ -26,23 +26,6 @@ function message(error: unknown) {
       ? error.message
       : "Tailscale machine operation failed.";
 }
-function withNode(
-  request: MachineExecutorRequest,
-  directory: string | null,
-): MachineExecutorRequest {
-  if (directory === null) return request;
-  return {
-    ...request,
-    command: [
-      "sh",
-      "-c",
-      'PATH="$1:$PATH"; export PATH; shift; exec "$@"',
-      "bb-node",
-      directory,
-      ...request.command,
-    ],
-  };
-}
 export function createTailscalePlugin(client: TailscaleClient, ssh: SshRunner) {
   return async (bb: BbPluginApi) => {
     const access = registerAccess(bb, client);
@@ -151,7 +134,6 @@ export function createTailscalePlugin(client: TailscaleClient, ssh: SshRunner) {
               launch &&
               (launch.deviceId !== inputs.deviceId ||
                 launch.username !== inputs.username ||
-                launch.nodeDirectory !== inputs.nodeDirectory ||
                 launch.accessProviderId !== inputs.accessProviderId ||
                 launch.target !== target)
             )
@@ -171,7 +153,7 @@ export function createTailscalePlugin(client: TailscaleClient, ssh: SshRunner) {
                   "This device already belongs to a Tailscale machine. Remove that machine before enrolling it again.",
               };
             const exec = (request: MachineExecutorRequest) =>
-              ssh.exec(target, withNode(request, inputs.nodeDirectory));
+              ssh.exec(target, request);
             const probe = await exec({
               command: [
                 "sh",
@@ -198,7 +180,7 @@ export function createTailscalePlugin(client: TailscaleClient, ssh: SshRunner) {
                 status: "failed",
                 failure: "terminal",
                 message:
-                  "Setup required: Node 22.19+ and npm must be available over SSH. Install them first or supply their absolute bin directory.",
+                  "Setup required: Node 22.19+ and npm must be available over SSH. Install them on the device before retrying.",
               };
             const selection =
               inputs.accessProviderId === "default"
@@ -311,17 +293,11 @@ export function createTailscalePlugin(client: TailscaleClient, ssh: SshRunner) {
                 throw new Error(
                   "Original tailnet device is unavailable. Cleanup will retry.",
                 );
-              const result = await ssh.exec(
-                resource.target,
-                withNode(
-                  {
-                    command: uninstallCommand(context.hostId),
-                    timeoutMs: 120_000,
-                    signal: context.signal,
-                  },
-                  resource.nodeDirectory,
-                ),
-              );
+              const result = await ssh.exec(resource.target, {
+                command: uninstallCommand(context.hostId),
+                timeoutMs: 120_000,
+                signal: context.signal,
+              });
               if (result.exitCode !== 0)
                 throw new Error(
                   "Identity-checked bb uninstall failed. Cleanup will retry.",

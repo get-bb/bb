@@ -114,7 +114,6 @@ async function setup() {
     inputs: {
       deviceId: "peer",
       username: "dev",
-      nodeDirectory: null,
       accessProviderId: "tailscale",
     },
     checkpoint,
@@ -319,12 +318,9 @@ describe("Tailscale lifecycle and access", () => {
     ).toMatchObject({ status: "failed" });
     expect(f.exec).not.toHaveBeenCalled();
   });
-  it("delivers optional Node PATH and private stdin without changing argv or leaking it", async () => {
+  it("delivers private stdin without changing argv or leaking it", async () => {
     const f = await setup();
-    await f.provider.create({
-      ...f.context,
-      inputs: { ...f.context.inputs, nodeDirectory: "/home/dev/my node/bin" },
-    });
+    await f.provider.create(f.context);
     await f.bootstrap.mock.calls[0][0].executor.exec({
       command: ["sh", "-c", "read secret"],
       stdin: "private-bundle",
@@ -333,7 +329,7 @@ describe("Tailscale lifecycle and access", () => {
     });
     const req = f.exec.mock.lastCall?.[1];
     expect(req?.stdin).toBe("private-bundle");
-    expect(req?.command).toContain("/home/dev/my node/bin");
+    expect(req?.command).toEqual(["sh", "-c", "read secret"]);
     expect(req?.command.join(" ")).not.toContain("private-bundle");
   });
   it.each([{ domains: [] }, { domains: ["another.example.ts.net"] }])(

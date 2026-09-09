@@ -1288,5 +1288,5 @@ in plugin storage. `bb tailscale status` shows the required loopback target.
 It never changes Serve configuration. Use General `defaultMachineAccess:
 "tailscale"` for already-networked machines, or the Tailscale picker’s explicit
 access choice. `machineServerUrl` may be empty for this provider. Machine
-inputs are `deviceId`, `username`, optional absolute `nodeDirectory`, and
+inputs are `deviceId`, `username`, and
 `accessProviderId` (`tailscale` or `default`). See the plugin’s skill and README.

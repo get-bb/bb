@@ -9,12 +9,6 @@ export const inputsSchema = z
       .string()
       .regex(/^[a-zA-Z0-9_][a-zA-Z0-9._-]*$/)
       .max(100),
-    nodeDirectory: z
-      .string()
-      .regex(/^\/[a-zA-Z0-9/_. -]+$/)
-      .max(1024)
-      .nullable()
-      .default(null),
     accessProviderId: z.enum(["tailscale", "default"]).default("tailscale"),
   })
   .strict();

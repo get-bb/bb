@@ -18,8 +18,7 @@ Enable ordinary SSH on the chosen target (Remote Login on macOS). Configure
 public-key/agent authentication and trusted host keys from the server to the
 full device DNS name. Password and host-key prompts are disabled; existing
 SSH configuration applies. The target needs Node 22.19+ and npm on its SSH
-login-shell PATH. An optional absolute Node bin directory can supply a
-user-local runtime without editing shell profiles. This plugin does not
+login-shell PATH. Enrollment fails if they are unavailable. This plugin does not
 install Node or enable Tailscale SSH. Tailscale SSH on macOS requires the
 open-source tailscaled variant; ordinary SSH over the tailnet works with the
 Mac app.
@@ -88,7 +87,6 @@ so `--environment-provider` is required with `--new-machine`.
 
 The core SDK equivalent is `sdk.hosts.create({ machineProviderId: "tailscale",
 projectId: null, inputs: { deviceId, username } })`. Full inputs add
-`nodeDirectory: null | "/absolute/bin"` and
 `accessProviderId: "tailscale" | "default"`; defaults are filled at validation.
 The plugin's typed `tailscaleContract` exposes `devices(null)`,
 `accessStatus(null)`, and `configure({ port })` via public plugin RPC, matching
