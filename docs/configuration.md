@@ -1294,14 +1294,14 @@ defaults to 1440 with an allowed range of 1–1440. Existing machines use curren
 policy; running compute keeps its vendor deadline and restored compute uses the
 current lifetime. Resource reservations stay pinned across restore.
 
-Retention defaults to 30 days after the last thread. Use `bb machine lifecycle
-MACHINE --keep --json` to retain a machine or `--remove --yes` for explicit cleanup.
-Open terminals prevent idle pause but are closed by deadline maintenance.
-Preservation covers planned rotation; missing a vendor deadline can lose changes
-since the last snapshot.
+There is no automatic retention removal. Use `bb machine remove MACHINE --yes`
+for explicit cleanup. The plugin schedules preservation 15 minutes before vendor
+expiry, reserving the core five-minute drain plus daemon-stop/snapshot time.
+With 11 minutes or less remaining it reports unsafe preservation. Short lifetimes,
+server downtime or plugin disablement can miss the deadline. Provider details
+expose expiry and saved-image status; missing compute never silently restores
+stale state. Open terminals prevent idle suspension but are closed for preservation.
 
-Settings displays the bundled Dockerfile read-only. `bb modal image show [--json]`
-returns the same file without credentials or cloud access.
 `bb modal account inspect --json` tests credentials without allocating resources.
 Create with `bb machine create --provider modal-sandbox --project PROJECT --json`.
 See [modal-sandboxes](../plugins/environment-modal-sandbox/skills/modal-sandboxes/SKILL.md)

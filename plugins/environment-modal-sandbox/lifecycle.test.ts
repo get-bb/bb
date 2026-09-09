@@ -31,6 +31,7 @@ it("retains existing catalogue-machine identity and snapshots without reading th
     cpu: 2,
     memoryMiB: 8192,
     expiresAt: null,
+    snapshotSandboxId: null,
   });
 });
 

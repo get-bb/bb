@@ -15,6 +15,7 @@ const current = common
     cpu: z.number().positive().nullable(),
     memoryMiB: z.number().positive().nullable(),
     expiresAt: z.number().nullable(),
+    snapshotSandboxId: z.string().min(1).nullable().default(null),
   })
   .strict();
 const legacy = common
@@ -40,6 +41,7 @@ const legacy = common
     cpu: value.resources?.cpuCores ?? null,
     memoryMiB: value.resources?.memoryMiB ?? null,
     expiresAt: value.expiresAt ?? null,
+    snapshotSandboxId: null,
   }));
 export const modalMachineResourceSchema = z.union([current, legacy]);
 export type ModalMachineResource = z.infer<typeof modalMachineResourceSchema>;

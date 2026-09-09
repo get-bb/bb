@@ -60,28 +60,30 @@ See the [command reference](skills/modal-sandboxes/SKILL.md).
 
 ## Lifecycle
 
-Defaults are a 15-minute idle pause, 24-hour compute lifetime, and 30-day retention
-after the last thread. Open terminals prevent idle pause. Idle and lifetime
-settings are read during lifecycle policy evaluation; updated lifetimes apply to
-new compute on restore, while running compute retains its vendor deadline.
+Defaults are a 15-minute idle pause and 24-hour compute lifetime. Open terminals
+prevent idle pause. The current idle setting applies to existing machines; new
+compute uses the current lifetime. There is no automatic retention removal.
 
-Before expiry, core stops accepting new work, interrupts turns and closes terminals.
-The daemon stops its managed runtimes before the plugin snapshots the filesystem.
-A durable snapshot checkpoint precedes compute termination. Resume restores the
-same host identity, starts the daemon and reruns setup to restart services.
-An interrupted turn requires a continuation and is never automatically replayed.
+The plugin checks vendor expiry every minute and requests core suspension 15
+minutes before expiry. Core blocks new work, interrupts turns and closes terminals
+with a five-minute drain limit. The plugin then stops the daemon, saves the
+filesystem, durably checkpoints the snapshot and terminates compute. Resume
+preserves host identity and reruns setup. Interrupted turns are not replayed.
 
-Failed saves retain compute and retry within the remaining deadline. Missing
-compute or snapshots never silently become empty checkouts. A server outage
-spanning vendor expiry can lose changes since the last snapshot; core marks this
-risk and blocks automatic dispatch. `bb machine resume MACHINE` explicitly recovers
-the last snapshot. Successful saves retain private snapshots without an expiry;
-removing the machine cleans up its compute and private snapshots.
+The scheduler reserves time for drain, daemon stop and saving. If fewer than 11
+minutes remain, it reports failure rather than claiming preservation is safe.
+Short compute lifetimes, server downtime, disabled plugins or slow cloud operations
+can therefore miss preservation. Failed saves retain compute while it exists.
+Machine provider details expose vendor state, expiry and the saved image. Missing
+compute never silently becomes an empty checkout or an older snapshot. A checkpoint
+from an interrupted planned suspension remains recoverable.
 
-Inspect `bb machine lifecycle MACHINE --json`, use `--keep` to prevent automatic
-retention removal, or `--remove --yes` for explicit removal. Account and Modal app
-identity remain pinned to the machine. Restore the original account before
-operating on an existing machine after changing credentials.
+Use `bb machine lifecycle MACHINE --json` for core state and `bb machine show
+MACHINE --json` for machine details. `sdk.hosts.experimental_providerDetails`
+returns Modal status. Remove explicitly with `bb machine remove MACHINE --yes`.
+Account identity remains pinned; restore the original account before lifecycle
+operations. Removal deletes private snapshots and compute, retaining the shared
+standard image. Removing lost compute can remain blocked on core checkout cleanup.
 
 ## Prerequisites
 

@@ -38,22 +38,21 @@ both hooks. Configure runtime secrets through core Machine environment settings;
 never bake them into the image. There are no user recipes, context uploads, smoke
 verification records or promotion commands.
 
-Use `bb machine lifecycle MACHINE --json` for preservation/retention state,
-`--keep` to retain a machine, and `--no-keep` to restore automatic removal.
-Defaults are 15-minute idle pause, 24-hour compute lifetime and 30-day retention
-after the last thread. Open terminals block idle pause; deadline maintenance
-interrupts work and closes them before saving a private filesystem snapshot.
-`idleMinutes` and `timeoutMinutes` are plugin settings; zero idle disables pause.
-Running compute retains its existing vendor deadline; new compute uses the current
-lifetime. Physical resource reservations remain pinned across restore.
+Use `bb machine lifecycle MACHINE --json` for core suspension state and
+`sdk.hosts.experimental_providerDetails({hostId})` for Modal expiry and saved-image
+status. Defaults are 15-minute idle pause and 24-hour compute lifetime. There is
+no retention/keep policy; remove machines explicitly.
 
-An interrupted turn is not replayed. Continue explicitly after restore. Failed
-saves retain compute; missing compute or snapshots never trigger an empty fallback.
-If the server misses a vendor deadline, explain possible loss since the last save
-before explicitly requesting `bb machine resume MACHINE`. Account changes block
-lifecycle actions until the original account is restored.
+The plugin checks expiry every minute, starting coordinated suspension 15 minutes
+before expiry. Core drains turns/hooks/terminals within five minutes. The plugin
+reserves another six minutes for daemon stop and snapshot creation. With 11 minutes
+or less remaining, it reports unsafe preservation instead of promising a save.
+Short lifetimes or a stopped/disabled server can miss the deadline. Failed saves
+retain compute and retry while enough time remains. A lost machine never silently
+restores stale state. A durable checkpoint from interrupted planned suspension can
+resume safely. Continue interrupted turns explicitly after restore.
 
-Remove with `bb machine lifecycle MACHINE --remove --yes --json`. This removes
+Remove with `bb machine remove MACHINE --yes --json`. This removes
 owned environments, compute and private snapshots. Shared standard images remain
 cached for future launches. Builds and machines incur Modal usage; obtain task
 authorization before allocating them during testing.

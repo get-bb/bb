@@ -38,9 +38,9 @@ const HOST_CONNECT_TIMEOUT_MS = 240_000;
 const HOST_POLL_INTERVAL_MS = 3_000;
 const DAEMON_STOP_TIMEOUT_MS = 60_000;
 const SNAPSHOT_TIMEOUT_MS = 300_000;
-const REMOVE_RETRY_MS = 30_000;
-const RETIRE_GRACE_MS = 30 * 24 * 60 * 60_000;
-const DEFAULT_IDLE_MS = 15 * 60_000;
+const PRESERVATION_LEAD_MS = 15 * 60_000;
+const DRAIN_AND_SAVE_MS =
+  5 * 60_000 + DAEMON_STOP_TIMEOUT_MS + SNAPSHOT_TIMEOUT_MS;
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
@@ -189,6 +189,7 @@ export function createModalSandboxPlugin(
           key: context.key,
           sandboxId: sandbox.sandboxId,
           snapshotImageId: null,
+          snapshotSandboxId: null,
           pendingSnapshotImageIds: [],
         };
         await context.checkpoint(allocation);
@@ -268,7 +269,6 @@ export function createModalSandboxPlugin(
       return current;
     }
 
-    const configuredAtRegistration = await currentSettings();
     bb.experimental_machines.register({
       id: PROVIDER_ID,
       displayName: "Modal sandbox",
@@ -277,13 +277,6 @@ export function createModalSandboxPlugin(
         displayName: "New sandbox",
         environmentProviderId: "project-checkout",
       },
-      policy: {
-        idleSuspendMs: configuredAtRegistration.ok
-          ? configuredAtRegistration.settings.idleMs
-          : DEFAULT_IDLE_MS,
-        retire: { after: "last-thread", graceMs: RETIRE_GRACE_MS },
-        removeRetryMs: REMOVE_RETRY_MS,
-      },
       async availability() {
         const resolved = await currentSettings();
         return resolved.ok
@@ -291,7 +284,7 @@ export function createModalSandboxPlugin(
           : { status: "setup-required", message: resolved.message };
       },
       create: launch,
-      async experimental_reconcileCleanup(context) {
+      async reconcileCleanup(context) {
         const stored = await bb.storage.kv.get<unknown>(
           `allocation/${context.key}`,
         );
@@ -332,43 +325,46 @@ export function createModalSandboxPlugin(
         }
         return { status: "removed" };
       },
-      async experimental_observe(context) {
+      async experimental_details(context) {
         const resource = readModalMachineResource(context.resource);
         const resolved = await currentSettings();
         if (!resolved.ok) throw new Error(resolved.message);
         context.signal.throwIfAborted();
         const sandbox = await findSandbox(resource, resolved.settings);
-        if (sandbox === null)
-          return {
-            state:
-              resource.sandboxId === null && resource.snapshotImageId !== null
-                ? "suspended"
-                : "missing",
-            expiresAt: null,
-            resource,
-          };
-        const observed = await backendFor(resolved.settings).observe({
-          sandboxId: sandbox.sandboxId,
-          appName: resource.appName ?? resolved.settings.appName,
-          key: resource.key,
-        });
+        const observation =
+          sandbox === null
+            ? null
+            : await backendFor(resolved.settings).observe({
+                sandboxId: sandbox.sandboxId,
+                appName: resource.appName ?? resolved.settings.appName,
+                key: resource.key,
+              });
+        const state = observation?.running
+          ? "running"
+          : resource.sandboxId === null && resource.snapshotImageId !== null
+            ? "suspended"
+            : "missing";
+        const expiresAt = observation?.expiresAt ?? null;
         return {
-          state: observed.running ? "running" : "missing",
-          expiresAt: observed.expiresAt,
-          resource: { ...resource, expiresAt: observed.expiresAt },
+          summary:
+            state === "missing"
+              ? "Modal compute is missing. Changes since the last saved image may be lost; automatic recovery is refused."
+              : state === "running" &&
+                  expiresAt !== null &&
+                  expiresAt - deps.now() <= DRAIN_AND_SAVE_MS
+                ? "Modal compute expires too soon to guarantee preservation."
+                : `Modal machine is ${state}.`,
+          values: {
+            state,
+            expiresAt,
+            snapshotImageId: resource.snapshotImageId,
+          },
         };
       },
-      async experimental_policy() {
+      async experimental_idleSuspendMs() {
         const resolved = await currentSettings();
         if (!resolved.ok) throw new Error(resolved.message);
-        return {
-          idleSuspendMs: resolved.settings.idleMs,
-          retireAfterMs: RETIRE_GRACE_MS,
-          deadlineLeadMs: Math.min(
-            15 * 60_000,
-            Math.floor(resolved.settings.timeoutMs / 2),
-          ),
-        };
+        return resolved.settings.idleMs;
       },
       async suspend(context) {
         const resource = readModalMachineResource(context.resource);
@@ -376,6 +372,13 @@ export function createModalSandboxPlugin(
         if (!resolved.ok) throw new Error(resolved.message);
         const sandbox = await findSandbox(resource, resolved.settings);
         if (sandbox === null) {
+          if (
+            resource.sandboxId !== null &&
+            resource.snapshotSandboxId !== resource.sandboxId
+          )
+            throw new Error(
+              "Modal compute is missing. Refusing automatic recovery from a potentially stale snapshot.",
+            );
           if (resource.snapshotImageId === null) {
             throw new Error("The Modal sandbox has no restorable snapshot.");
           }
@@ -436,6 +439,7 @@ export function createModalSandboxPlugin(
         const checkpoint = {
           ...resource,
           snapshotImageId,
+          snapshotSandboxId: sandbox.sandboxId,
           pendingSnapshotImageIds: [
             ...new Set([
               ...resource.pendingSnapshotImageIds,
@@ -446,7 +450,7 @@ export function createModalSandboxPlugin(
             ]),
           ],
         } satisfies ModalMachineResource;
-        context.checkpoint(checkpoint, deps.now());
+        context.checkpoint(checkpoint);
         await sandbox.terminate();
         context.report.log(
           `Terminated Modal sandbox ${sandbox.sandboxId} after its durable filesystem checkpoint`,
@@ -469,6 +473,13 @@ export function createModalSandboxPlugin(
         let sandbox = await findSandbox(resource, resolved.settings);
         let expiresAt = resource.expiresAt;
         if (sandbox === null) {
+          if (
+            resource.sandboxId !== null &&
+            resource.snapshotSandboxId !== resource.sandboxId
+          )
+            throw new Error(
+              "Modal compute is missing. Refusing automatic recovery from a potentially stale snapshot.",
+            );
           if (resource.snapshotImageId === null) {
             throw new Error("The Modal sandbox has no restorable snapshot.");
           }
@@ -527,6 +538,43 @@ export function createModalSandboxPlugin(
         }
       },
     });
+
+    bb.background.schedule(
+      "preserve-expiring-machines",
+      "* * * * *",
+      async () => {
+        const failures: string[] = [];
+        for (const host of await bb.sdk.hosts.list()) {
+          if (
+            host.machineProviderId !== PROVIDER_ID ||
+            host.lifecycle.phase !== "active"
+          )
+            continue;
+          try {
+            const details = await bb.sdk.hosts.experimental_providerDetails({
+              hostId: host.id,
+            });
+            const state = z
+              .object({
+                state: z.enum(["running", "suspended", "missing"]),
+                expiresAt: z.number().nullable(),
+              })
+              .parse(details?.values);
+            if (state.state !== "running" || state.expiresAt === null) continue;
+            const remaining = state.expiresAt - deps.now();
+            if (remaining > PRESERVATION_LEAD_MS) continue;
+            if (remaining <= DRAIN_AND_SAVE_MS)
+              throw new Error(
+                "Too little time remains for coordinated drain and filesystem preservation",
+              );
+            await bb.sdk.hosts.suspend({ hostId: host.id });
+          } catch (error) {
+            failures.push(`${host.id}: ${errorMessage(error)}`);
+          }
+        }
+        if (failures.length) throw new Error(failures.join("; "));
+      },
+    );
 
     const loaded = await currentSettings();
     if (!loaded.ok) bb.status.needsConfiguration(loaded.message);

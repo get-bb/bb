@@ -279,11 +279,6 @@ describe("Modal machine provider", () => {
         displayName: "New sandbox",
         environmentProviderId: "project-checkout",
       },
-      policy: {
-        idleSuspendMs: 900_000,
-        retire: { after: "last-thread", graceMs: 2_592_000_000 },
-        removeRetryMs: 30_000,
-      },
     });
   });
 
@@ -694,7 +689,7 @@ describe("Modal machine provider", () => {
 it("reconciles uncertain named allocations without creating or bootstrapping", async () => {
   const test = await setup();
   const request = createContext();
-  expect(await test.provider.experimental_reconcileCleanup(request)).toEqual({
+  expect(await test.provider.reconcileCleanup(request)).toEqual({
     status: "removed",
   });
   await test.bb.storage.kv.set(`allocation/${request.key}`, {
@@ -710,11 +705,11 @@ it("reconciles uncertain named allocations without creating or bootstrapping", a
     connected: false,
     terminated: false,
   });
-  expect(await test.provider.experimental_reconcileCleanup(request)).toEqual({
+  expect(await test.provider.reconcileCleanup(request)).toEqual({
     status: "removed",
   });
   expect(test.backend.states[0]?.terminated).toBe(true);
-  expect(await test.provider.experimental_reconcileCleanup(request)).toEqual({
+  expect(await test.provider.reconcileCleanup(request)).toEqual({
     status: "removed",
   });
   expect(test.backend.creates).toHaveLength(0);
@@ -743,16 +738,13 @@ it("observes vendor deadlines and applies current lifecycle settings without plu
     resource: created.resource,
     signal: new AbortController().signal,
   };
-  expect(await harness.provider.experimental_observe?.(context)).toMatchObject({
-    state: "running",
-    expiresAt: 24 * 60 * 60_000,
+  expect(await harness.provider.experimental_details?.(context)).toMatchObject({
+    values: { state: "running", expiresAt: 24 * 60 * 60_000 },
   });
   await harness.harness.setSettings({ idleMinutes: "2", timeoutMinutes: "4" });
-  expect(await harness.provider.experimental_policy?.(context)).toEqual({
-    idleSuspendMs: 120_000,
-    retireAfterMs: 30 * 86400_000,
-    deadlineLeadMs: 120_000,
-  });
+  expect(await harness.provider.experimental_idleSuspendMs?.(context)).toEqual(
+    120_000,
+  );
 });
 
 it("blocks observation and resume after the configured account identity changes", async () => {
@@ -768,7 +760,7 @@ it("blocks observation and resume after the configured account identity changes"
     checkpoint: async () => {},
   };
   await expect(
-    harness.provider.experimental_observe?.(context),
+    harness.provider.experimental_details?.(context),
   ).rejects.toThrow("pinned Modal account");
   await expect(harness.provider.resume?.(context)).rejects.toThrow(
     "pinned Modal account",
@@ -852,4 +844,54 @@ it("shows the shipped Dockerfile without credentials or cloud access", async () 
   });
   expect(test.backend.image).not.toHaveBeenCalled();
   expect(test.backend.creates).toHaveLength(0);
+});
+
+it("schedules coordinated preservation before expiry and refuses a late drain", async () => {
+  const test = await setup();
+  const suspend = vi.fn(async () => ({ ok: true as const }));
+  let remaining = 14 * 60_000;
+  test.harness.sdk.stub("hosts.list", async () => [
+    { ...host("connected"), machineProviderId: PROVIDER_ID },
+  ]);
+  test.harness.sdk.stub("hosts.suspend", suspend);
+  test.harness.sdk.stub("hosts.experimental_providerDetails", async () => ({
+    summary: "Running",
+    values: { state: "running", expiresAt: Date.now() + remaining },
+  }));
+  await test.harness.runSchedule("preserve-expiring-machines");
+  expect(suspend).toHaveBeenCalledWith({ hostId: HOST_ID });
+  suspend.mockClear();
+  remaining = 10 * 60_000;
+  await expect(
+    test.harness.runSchedule("preserve-expiring-machines"),
+  ).rejects.toThrow("Too little time");
+  expect(suspend).not.toHaveBeenCalled();
+  remaining = 20 * 60_000;
+  await test.harness.runSchedule("preserve-expiring-machines");
+  expect(suspend).not.toHaveBeenCalled();
+});
+
+it("refuses an older snapshot when running compute disappears unexpectedly", async () => {
+  const test = await setup();
+  const created = await test.provider.create(createContext());
+  if (created.status !== "created") throw new Error("creation failed");
+  test.backend.states[0]!.terminated = true;
+  const context = {
+    hostId: HOST_ID,
+    resource: {
+      ...readModalMachineResource(created.resource),
+      snapshotImageId: "older-save",
+      snapshotSandboxId: "older-sandbox",
+    },
+    report,
+    signal: new AbortController().signal,
+    checkpoint: async () => {},
+  };
+  await expect(test.provider.resume?.(context)).rejects.toThrow(
+    "potentially stale snapshot",
+  );
+  await expect(test.provider.suspend?.(context)).rejects.toThrow(
+    "potentially stale snapshot",
+  );
+  expect(test.backend.creates).toHaveLength(1);
 });
