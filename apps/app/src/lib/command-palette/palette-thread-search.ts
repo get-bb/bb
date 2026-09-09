@@ -37,6 +37,7 @@ export interface PaletteThreadSearchRow {
   primaryText: string;
   highlightRanges: readonly ThreadSearchHighlightRange[];
   metadataText: string;
+  updatedAt: number | null;
   projectId: string;
   threadId: string | null;
   draftSlotId: string | null;
@@ -62,6 +63,13 @@ export interface PaletteThreadSearchRowsResult {
 }
 
 const RECENT_THREAD_LIMIT = 20;
+
+function newestFirst(
+  left: { updatedAt: number | null },
+  right: { updatedAt: number | null },
+): number {
+  return (right.updatedAt ?? 0) - (left.updatedAt ?? 0);
+}
 
 function isTitleMatch(match: ThreadSearchMatch): boolean {
   return match.sourceKind === "title" || match.sourceKind === "title_fallback";
@@ -104,6 +112,7 @@ function serverRow(
       formatRelativeTime({ timestamp: thread.updatedAt, now }),
     ]),
     projectId: thread.projectId,
+    updatedAt: thread.updatedAt,
     threadId: thread.id,
     draftSlotId: null,
     messageSeq: snippetMatch?.sourceSeq ?? null,
@@ -156,7 +165,7 @@ export function buildPaletteThreadSearchRows({
   const isSearchable = trimmedQuery.length >= 2;
   const activeRows = isRecent
     ? [...recentThreads]
-        .sort((left, right) => right.updatedAt - left.updatedAt)
+        .sort(newestFirst)
         .slice(0, RECENT_THREAD_LIMIT)
         .map((thread) => serverRow(thread, [], "active", projectNamesById, now))
     : isSearchable && searchResultsAreCurrent
@@ -192,13 +201,14 @@ export function buildPaletteThreadSearchRows({
         : formatRelativeTime({ timestamp: item.lastEditedAt, now }),
     ]),
     projectId: item.destination.projectId,
+    updatedAt: item.lastEditedAt,
     threadId: null,
     draftSlotId: item.id,
     messageSeq: null,
   }));
   const archivedRows = isRecent
     ? [...recentArchivedThreads]
-        .sort((left, right) => right.updatedAt - left.updatedAt)
+        .sort(newestFirst)
         .slice(0, RECENT_THREAD_LIMIT)
         .map((thread) =>
           serverRow(thread, [], "archived", projectNamesById, now),
@@ -221,20 +231,7 @@ export function buildPaletteThreadSearchRows({
     ...(includesLifecycle(scope, "archived") ? archivedRows : []),
   ];
   if (isRecent) {
-    const updatedAtByThread = new Map(
-      [...recentThreads, ...recentArchivedThreads].map((thread) => [
-        thread.id,
-        thread.updatedAt,
-      ]),
-    );
-    const editedAtByDraft = new Map(
-      drafts.map((draft) => [draft.id, draft.lastEditedAt]),
-    );
-    const updatedAt = (row: PaletteThreadSearchRow) =>
-      row.threadId !== null
-        ? (updatedAtByThread.get(row.threadId) ?? 0)
-        : (editedAtByDraft.get(row.draftSlotId ?? "") ?? 0);
-    rows.sort((left, right) => updatedAt(right) - updatedAt(left));
+    rows.sort(newestFirst);
   }
 
   return {
