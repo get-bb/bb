@@ -119,6 +119,7 @@ function makeTimelineResponse(
     pendingTodos: null,
     goal: null,
     modelFallback: null,
+    providerAuthRequired: null,
     maxSeq,
     timelinePage: {
       kind: "latest",

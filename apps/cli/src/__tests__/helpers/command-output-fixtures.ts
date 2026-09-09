@@ -74,6 +74,7 @@ export function makeTimelineResponse(
     pendingTodos: null,
     goal: null,
     modelFallback: null,
+    providerAuthRequired: null,
     maxSeq: 0,
     timelinePage: {
       kind: "latest",
