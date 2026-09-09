@@ -369,11 +369,11 @@ export function registerHostRoutes(
     return context.json(result);
   });
 
-  post(routes.experimental_lifecycle, async (context, payload) => {
+  post(routes.experimental_lifecycle, async (context) => {
     const hostId = context.req.param("id");
     assertUsableHostId(deps, { hostId });
     await observeMachineLifecycle(deps, hostId).catch(() => {});
-    return context.json(machineLifecycleStatus(deps, hostId, payload));
+    return context.json(machineLifecycleStatus(deps, hostId));
   });
 
   post(routes.experimental_ensureReady, async (context, payload) => {

@@ -347,13 +347,6 @@ export const systemMachineProviderSchema = z.object({
     .nullable(),
   policy: z.object({
     idleSuspendMs: z.number().int().nonnegative().nullable(),
-    retire: z.discriminatedUnion("after", [
-      z.object({
-        after: z.literal("last-thread"),
-        graceMs: z.number().int().nonnegative(),
-      }),
-      z.object({ after: z.literal("never") }),
-    ]),
     removeRetryMs: z.number().int().positive(),
   }),
   availability: z

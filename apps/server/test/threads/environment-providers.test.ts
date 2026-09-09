@@ -1548,7 +1548,7 @@ describe("machine and environment provider composition", () => {
           },
           policy: {
             idleSuspendMs: null,
-            retire: { after: "never" },
+
             removeRetryMs: 30_000,
           },
           reconcileCleanup: async () => ({ status: "removed" }),
@@ -2028,7 +2028,7 @@ describe("a provider-produced environment over its life", () => {
               displayName: "Replacement machine",
               policy: {
                 idleSuspendMs: null,
-                retire: { after: "never" },
+
                 removeRetryMs: 30_000,
               },
               reconcileCleanup: async () => ({

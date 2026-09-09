@@ -2846,23 +2846,22 @@ failure, and parity between public CLI/SDK and plugin/provider-managed dispatch.
 reads vendor state and expiry without allocating or changing identity. It returns
 `{state:running|suspended|missing|unknown,expiresAt,resource}`. UTC deadlines are
 milliseconds; null means no vendor deadline. `experimental_policy({hostId,resource})`
-returns current `{idleSuspendMs,retireAfterMs,deadlineLeadMs}`, with null disabling
-each policy. Core persists observations, retention and a fenced maintenance lease.
+returns current `{idleSuspendMs,deadlineLeadMs}`, with null disabling
+each policy. Core persists observations and a fenced maintenance lease.
 Suspend's `checkpoint(resource, experimental_snapshotAt?)` records a successful
 filesystem save time before destructive cleanup. Allocation checkpoints are not saves.
 
-`hosts.experimental_lifecycle({hostId,keep?})` returns phase, expiresAt,
-maintenanceAt, lastSnapshotAt, recoveryState, message, retentionAt and keep.
-Omitting keep is read-only; true prevents automatic retention removal and false
-restores it. Explicit machine removal remains available. CLI parity is
-`bb machine lifecycle MACHINE [--keep|--no-keep] --json`.
+`hosts.experimental_lifecycle({hostId})` returns phase, expiresAt,
+maintenanceAt, lastSnapshotAt, recoveryState and message.
+This is read-only. Explicit machine removal remains available. CLI parity is
+`bb machine lifecycle MACHINE --json`.
 
 The corresponding server contract schemas and types are
 `experimental_hostLifecycleRequestSchema`, `experimental_hostLifecycleResponseSchema`,
 `experimental_HostLifecycleRequest` and `experimental_HostLifecycleResponse`. They
 share the same lifecycle behavior and stabilization criteria.
 
-Stabilization requires controlled-clock restart, lease, dispatch, loss and retention
+Stabilization requires controlled-clock restart, lease, dispatch and loss
 coverage, vendor deadline reconciliation, snapshot-before-terminate evidence, and
 review of recoverable failures and account changes. Planned rotation cannot protect
 against a server outage spanning vendor expiry without independent storage/watchdogs.

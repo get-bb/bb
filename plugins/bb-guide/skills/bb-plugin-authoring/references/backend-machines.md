@@ -29,7 +29,6 @@ bb.experimental_machines.register({
   inputs: z.object({ target: z.string() }),
   policy: {
     idleSuspendMs: null,
-    retire: { after: "never" },
     removeRetryMs: 60_000,
   },
   async create({ inputs, key, checkpoint, report, signal }) {
@@ -170,12 +169,11 @@ persists a recovery artifact before destructive cleanup.
 Optional `experimental_observe({hostId,resource,signal})` returns
 `{state:"running"|"suspended"|"missing"|"unknown",expiresAt,resource}` without
 allocating or changing identity. `experimental_policy({hostId,resource})` returns
-live `{idleSuspendMs,retireAfterMs,deadlineLeadMs}`; null disables a policy.
-Core owns the maintenance lease, dispatch exclusion, interruption, retention
-warning and keep control. Stop workspace writers before snapshotting. Supply
+live `{idleSuspendMs,deadlineLeadMs}`; null disables a policy.
+Core owns the maintenance lease, dispatch exclusion, and interruption. Stop workspace writers before snapshotting. Supply
 `suspend.checkpoint(resource, experimental_snapshotAt)` after a successful save
 and before terminating compute; do not report an allocation checkpoint as a save.
 Reconcile resume by durable name and await its checkpoint before bootstrap.
 Failed preservation must retain old compute and report recoverable failure.
-`bb.sdk.hosts.experimental_lifecycle({hostId,keep?})` exposes the same lifecycle
-state as `bb machine lifecycle MACHINE [--keep|--no-keep] --json`.
+`bb.sdk.hosts.experimental_lifecycle({hostId})` exposes the same lifecycle
+state as `bb machine lifecycle MACHINE --json`.

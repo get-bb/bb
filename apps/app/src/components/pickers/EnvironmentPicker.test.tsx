@@ -105,7 +105,7 @@ const modalMachineProvider: SystemMachineProvider = {
   },
   policy: {
     idleSuspendMs: 60_000,
-    retire: { after: "last-thread", graceMs: 60_000 },
+
     removeRetryMs: 60_000,
   },
   availability: null,

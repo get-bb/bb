@@ -288,7 +288,7 @@ describe("public provider installation routes", () => {
             displayName: "Test machine",
             policy: {
               idleSuspendMs: null,
-              retire: { after: "never" },
+
               removeRetryMs: 30_000,
             },
             reconcileCleanup: async () => ({ status: "removed" }),

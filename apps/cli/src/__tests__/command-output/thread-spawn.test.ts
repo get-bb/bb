@@ -1312,7 +1312,7 @@ describe("bb thread spawn command output", () => {
             },
             policy: {
               idleSuspendMs: null,
-              retire: { after: "never" },
+
               removeRetryMs: 30_000,
             },
             availability: null,

@@ -357,7 +357,7 @@ export const STORY_MACHINE_PROVIDERS: readonly SystemMachineProvider[] = [
     },
     policy: {
       idleSuspendMs: 15 * 60_000,
-      retire: { after: "last-thread", graceMs: 30 * 24 * 60 * 60_000 },
+
       removeRetryMs: 60_000,
     },
     availability: null,

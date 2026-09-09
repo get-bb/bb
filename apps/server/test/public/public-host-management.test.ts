@@ -95,7 +95,7 @@ describe("public host management", () => {
         displayName: "Plain machine",
         policy: {
           idleSuspendMs: null,
-          retire: { after: "never" },
+
           removeRetryMs: 60_000,
         },
         reconcileCleanup: async () => ({ status: "removed" }),
@@ -465,7 +465,7 @@ describe("public host management", () => {
         displayName: "Test machine",
         policy: {
           idleSuspendMs: null,
-          retire: { after: "never" },
+
           removeRetryMs: 10,
         },
         reconcileCleanup: async () => ({ status: "removed" }),
@@ -516,7 +516,7 @@ describe("public host management", () => {
         displayName: "Test machine",
         policy: {
           idleSuspendMs: null,
-          retire: { after: "never" },
+
           removeRetryMs: 60_000,
         },
         reconcileCleanup: async () => ({ status: "removed" }),

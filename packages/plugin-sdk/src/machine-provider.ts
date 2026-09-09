@@ -97,7 +97,6 @@ export interface PluginMachineProviderEnvironmentRow {
 
 export interface PluginMachineProviderPolicy {
   idleSuspendMs: number | null;
-  retire: { after: "last-thread"; graceMs: number } | { after: "never" };
   removeRetryMs: number;
 }
 
@@ -161,7 +160,6 @@ export interface PluginMachineProviderDefinition<
     resource: JsonValue;
   }): Promise<{
     idleSuspendMs: number | null;
-    retireAfterMs: number | null;
     deadlineLeadMs: number | null;
   }>;
   suspend?(

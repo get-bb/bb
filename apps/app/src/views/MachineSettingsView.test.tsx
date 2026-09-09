@@ -183,7 +183,7 @@ describe("MachineSettingsView", () => {
         environmentRow: null,
         policy: {
           idleSuspendMs: null,
-          retire: { after: "never" },
+
           removeRetryMs: 1_000,
         },
         availability: { status: "available" },
@@ -218,7 +218,7 @@ describe("MachineSettingsView", () => {
         environmentRow: null,
         policy: {
           idleSuspendMs: null,
-          retire: { after: "never" },
+
           removeRetryMs: 1_000,
         },
         availability: { status: "available" },

@@ -80,7 +80,7 @@ beforeEach(() => {
       environmentRow: null,
       policy: {
         idleSuspendMs: null,
-        retire: { after: "never" },
+
         removeRetryMs: 60_000,
       },
       availability: { status: "available" },

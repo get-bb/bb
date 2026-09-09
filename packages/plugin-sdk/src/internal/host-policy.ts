@@ -2650,15 +2650,6 @@ function normalizeMachineProviderInputs(
 const machineProviderPolicySchema = z
   .object({
     idleSuspendMs: z.number().int().nonnegative().nullable(),
-    retire: z.discriminatedUnion("after", [
-      z
-        .object({
-          after: z.literal("last-thread"),
-          graceMs: z.number().int().nonnegative(),
-        })
-        .strict(),
-      z.object({ after: z.literal("never") }).strict(),
-    ]),
     removeRetryMs: z.number().int().positive(),
   })
   .strict();

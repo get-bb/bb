@@ -14,10 +14,7 @@ import {
   updateHost,
 } from "@bb/db";
 import { jsonValueSchema } from "@bb/domain";
-import type {
-  experimental_HostLifecycleRequest,
-  experimental_HostLifecycleResponse,
-} from "@bb/server-contract";
+import type { experimental_HostLifecycleResponse } from "@bb/server-contract";
 import type {
   WorkSessionDeps,
   LoggedPendingInteractionWorkSessionDeps,
@@ -45,7 +42,6 @@ const durationSchema = z.number().int().nonnegative().nullable();
 const policySchema = z
   .object({
     idleSuspendMs: durationSchema,
-    retireAfterMs: durationSchema,
     deadlineLeadMs: durationSchema,
   })
   .strict();
@@ -143,12 +139,6 @@ export async function observeMachineLifecycle(
     const unusedSince = machineHasLiveThreads(tx, hostId)
       ? null
       : (state?.unusedSince ?? now);
-    const retentionAt =
-      state?.keep === true ||
-      unusedSince === null ||
-      effective.retireAfterMs === null
-        ? null
-        : unusedSince + effective.retireAfterMs;
     const lost =
       observation.state === "missing" && current.suspendedAt === null;
     const abandoned =
@@ -182,7 +172,6 @@ export async function observeMachineLifecycle(
           : observation.expiresAt - effective.deadlineLeadMs,
       ...effective,
       unusedSince,
-      retentionAt,
       ...reconciled,
       ...(lost
         ? {
@@ -208,33 +197,10 @@ export async function observeMachineLifecycle(
 export function machineLifecycleStatus(
   deps: Deps,
   hostId: string,
-  input: experimental_HostLifecycleRequest,
 ): experimental_HostLifecycleResponse {
   const host = getHost(deps.db, hostId);
   if (host === null)
     throw new ApiError(404, "host_not_found", "Host not found");
-  if (input.keep !== undefined) {
-    const current = getMachineLifecycle(deps, hostId);
-    if (current === undefined)
-      throw new ApiError(
-        409,
-        "machine_lifecycle_unavailable",
-        "This machine does not declare lifecycle policy",
-      );
-    deps.db
-      .update(machineLifecycles)
-      .set({
-        keep: input.keep,
-        retentionAt:
-          input.keep ||
-          current.unusedSince === null ||
-          current.retireAfterMs === null
-            ? null
-            : current.unusedSince + current.retireAfterMs,
-      })
-      .where(eq(machineLifecycles.hostId, hostId))
-      .run();
-  }
   const state = getMachineLifecycle(deps, hostId);
   return {
     phase: host.phase,
@@ -242,13 +208,7 @@ export function machineLifecycleStatus(
     maintenanceAt: state?.maintenanceAt ?? null,
     lastSnapshotAt: state?.lastSnapshotAt ?? null,
     recoveryState: state?.recoveryState ?? "healthy",
-    message:
-      state?.message ??
-      (state?.retentionAt == null
-        ? null
-        : `Automatic removal is scheduled for ${new Date(state.retentionAt).toISOString()}. Use keep to retain this machine.`),
-    retentionAt: state?.retentionAt ?? null,
-    keep: state?.keep ?? false,
+    message: state?.message ?? null,
   };
 }
 

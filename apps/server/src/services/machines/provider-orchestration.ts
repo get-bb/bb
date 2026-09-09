@@ -1550,14 +1550,7 @@ export async function sweepProviderMachine(
       await maintainMachine(deps, hostId, () => suspendMachine(deps, hostId));
       return;
     }
-    if (lifecycle.retentionAt === null || lifecycle.retentionAt > Date.now())
-      return;
-    updateHost(deps.db, deps.hub, hostId, {
-      phase: "retiring",
-      retireAt: lifecycle.retentionAt,
-    });
-    row = getHost(deps.db, hostId);
-    if (row === null) return;
+    return;
   }
   if (row.phase === "suspending") {
     const suspending = operations(suspendOperations, deps.db).get(hostId);
@@ -1593,21 +1586,6 @@ export async function sweepProviderMachine(
     });
     row = getHost(deps.db, hostId);
     if (row === null) return;
-  }
-  if (
-    !hasLiveThreads &&
-    record.provider.policy.retire.after === "last-thread"
-  ) {
-    const retireAt =
-      row.retireAt ?? now + record.provider.policy.retire.graceMs;
-    if (row.phase !== "retiring" || row.retireAt !== retireAt) {
-      updateHost(deps.db, deps.hub, hostId, {
-        phase: "retiring",
-        retireAt,
-      });
-      row = getHost(deps.db, hostId);
-      if (row === null) return;
-    }
   }
   const idleSuspendMs =
     record.provider.experimental_idleSuspendMs !== null && row.resource !== null

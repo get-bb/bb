@@ -1,4 +1,4 @@
-import { useMutation, useQuery } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 import { Button } from "@bb/shared-ui/button";
 import { sdk } from "@/lib/sdk";
 
@@ -14,16 +14,10 @@ export function MachineLifecycleNotice({
     queryFn: () => sdk.hosts.experimental_lifecycle({ hostId }),
     refetchInterval: 10_000,
   });
-  const keep = useMutation({
-    mutationFn: (value: boolean) =>
-      sdk.hosts.experimental_lifecycle({ hostId, keep: value }),
-    onSuccess: () => query.refetch(),
-  });
   const lifecycle = query.data;
   if (
     !lifecycle ||
     (lifecycle.expiresAt === null &&
-      lifecycle.retentionAt === null &&
       lifecycle.lastSnapshotAt === null &&
       lifecycle.message === null &&
       lifecycle.recoveryState !== "recoverable" &&
@@ -36,7 +30,7 @@ export function MachineLifecycleNotice({
   return (
     <div
       className="flex min-w-0 flex-col gap-2 text-xs"
-      aria-label="Machine preservation and retention"
+      aria-label="Machine preservation"
     >
       {approaching && (
         <p role="status">
@@ -58,30 +52,11 @@ export function MachineLifecycleNotice({
       {lifecycle.lastSnapshotAt !== null && (
         <p>Last saved {new Date(lifecycle.lastSnapshotAt).toLocaleString()}.</p>
       )}
-      {lifecycle.retentionAt !== null && (
-        <p>
-          {lifecycle.keep
-            ? "Automatic deletion disabled. Retention date:"
-            : "Automatically deletes after retention:"}{" "}
-          {new Date(lifecycle.retentionAt).toLocaleString()}.
-        </p>
-      )}
       <div className="flex flex-wrap gap-2">
-        <Button
-          size="sm"
-          variant="outline"
-          disabled={keep.isPending}
-          onClick={() => keep.mutate(!lifecycle.keep)}
-        >
-          {lifecycle.keep ? "Allow automatic deletion" : "Keep machine"}
-        </Button>
         <Button size="sm" variant="outline" onClick={onRemove}>
           Remove machine
         </Button>
       </div>
-      {keep.error && (
-        <p role="alert">Could not update retention: {keep.error.message}</p>
-      )}
     </div>
   );
 }

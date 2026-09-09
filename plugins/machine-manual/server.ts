@@ -7,7 +7,7 @@ export default function manualMachinePlugin(bb: BbPluginApi): void {
     icon: "Terminal",
     policy: {
       idleSuspendMs: null,
-      retire: { after: "never" },
+
       removeRetryMs: 60_000,
     },
     async create(context) {

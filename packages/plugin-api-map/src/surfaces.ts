@@ -817,7 +817,7 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
           "Resolve per-machine idle timeouts with experimental_idleSuspendMs; core checks activity and terminals and persists the empty-machine idle baseline",
           "Publish inventory and estimates through experimental_details; read them with bb.sdk.hosts.experimental_providerDetails, machine rows/details and bb machine show --json",
 
-          "Declare experimental_observe and experimental_policy to reconcile vendor deadlines and live per-machine policy without allocation; core fences preservation and retention",
+          "Declare experimental_observe and experimental_policy to reconcile vendor deadlines and live per-machine policy without allocation; core fences preservation",
           "Report a successful filesystem save through suspend.checkpoint(resource, experimental_snapshotAt) before termination; inspect or keep through bb.sdk.hosts.experimental_lifecycle",
           "Call bb.sdk.hosts.experimental_ensureReady for CLI, credential-route reachability and checkout checks before dispatch",
           "Credential health may supply an experimental_probe for authenticated machine-to-proxy reachability without exposing its headers to clients",

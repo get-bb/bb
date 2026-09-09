@@ -174,9 +174,7 @@ export type experimental_HostReadinessResponse = z.infer<
   typeof experimental_hostReadinessResponseSchema
 >;
 
-export const experimental_hostLifecycleRequestSchema = z
-  .object({ keep: z.boolean().optional() })
-  .strict();
+export const experimental_hostLifecycleRequestSchema = z.object({}).strict();
 export type experimental_HostLifecycleRequest = z.infer<
   typeof experimental_hostLifecycleRequestSchema
 >;
@@ -195,8 +193,6 @@ export const experimental_hostLifecycleResponseSchema = z
       "lost-since-last-snapshot",
     ]),
     message: z.string().nullable(),
-    retentionAt: z.number().nullable(),
-    keep: z.boolean(),
   })
   .strict();
 export type experimental_HostLifecycleResponse = z.infer<

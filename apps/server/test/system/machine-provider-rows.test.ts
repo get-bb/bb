@@ -17,7 +17,7 @@ import { withTestHarness } from "../helpers/test-app.js";
 
 const policy = {
   idleSuspendMs: null,
-  retire: { after: "never" as const },
+
   removeRetryMs: 30_000,
 };
 const row = {

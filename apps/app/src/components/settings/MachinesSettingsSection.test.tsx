@@ -11,7 +11,10 @@ import type { Host } from "@bb/domain";
 import { makeHost } from "@bb/test-helpers/domain-fixtures";
 import { RETRY_ACTION_ICON } from "@bb/domain/update-state";
 import { HOST_DAEMON_PROTOCOL_VERSION } from "@bb/host-daemon-contract";
-import type { SystemConfigResponse, SystemMachineProvider } from "@bb/server-contract";
+import type {
+  SystemConfigResponse,
+  SystemMachineProvider,
+} from "@bb/server-contract";
 import { MemoryRouter, useLocation } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { sdk } from "@/lib/sdk";
@@ -83,7 +86,7 @@ const modalProvider: SystemMachineProvider = {
   },
   policy: {
     idleSuspendMs: 60_000,
-    retire: { after: "last-thread", graceMs: 60_000 },
+
     removeRetryMs: 60_000,
   },
   availability: null,
@@ -199,7 +202,7 @@ describe("MachinesSettingsSection", () => {
         environmentRow: null,
         policy: {
           idleSuspendMs: null,
-          retire: { after: "never" },
+
           removeRetryMs: 60_000,
         },
       },

@@ -121,7 +121,7 @@ function machineDeclaration(
     displayName: "Test machine",
     policy: {
       idleSuspendMs: null,
-      retire: { after: "never" },
+
       removeRetryMs: 10,
     },
     reconcileCleanup: async () => ({ status: "removed" }),
@@ -1134,7 +1134,7 @@ describe("core machine provider orchestration", () => {
         machineDeclaration(host.id, {
           policy: {
             idleSuspendMs: null,
-            retire: { after: "never" },
+
             removeRetryMs: 10,
           },
           experimental_idleSuspendMs: async () => 5_000,
@@ -1180,7 +1180,7 @@ describe("core machine provider orchestration", () => {
         machineDeclaration(host.id, {
           policy: {
             idleSuspendMs: 5_000,
-            retire: { after: "never" },
+
             removeRetryMs: 10,
           },
           suspend: async () => {
@@ -1237,7 +1237,7 @@ describe("core machine provider orchestration", () => {
         machineDeclaration(host.id, {
           policy: {
             idleSuspendMs: 5_000,
-            retire: { after: "never" },
+
             removeRetryMs: 10,
           },
           suspend: async ({ hostId, resource, signal }) => {
@@ -1300,7 +1300,7 @@ describe("core machine provider orchestration", () => {
         machineDeclaration(host.id, {
           policy: {
             idleSuspendMs: 5_000,
-            retire: { after: "never" },
+
             removeRetryMs: 10,
           },
           suspend: async (context) => {
@@ -1366,7 +1366,7 @@ describe("core machine provider orchestration", () => {
         machineDeclaration(host.id, {
           policy: {
             idleSuspendMs: 1,
-            retire: { after: "never" },
+
             removeRetryMs: 10,
           },
           suspend: async ({ resource }) => ({ resource }),
@@ -1423,7 +1423,7 @@ describe("core machine provider orchestration", () => {
         machineDeclaration(host.id, {
           policy: {
             idleSuspendMs: 5_000,
-            retire: { after: "never" },
+
             removeRetryMs: 10,
           },
           suspend: async () => {
@@ -1497,7 +1497,7 @@ describe("core machine provider orchestration", () => {
         machineDeclaration(host.id, {
           policy: {
             idleSuspendMs: 5_000,
-            retire: { after: "never" },
+
             removeRetryMs: 10,
           },
           suspend: async () => {
@@ -1605,7 +1605,7 @@ describe("core machine provider orchestration", () => {
         machineDeclaration(host.id, {
           policy: {
             idleSuspendMs: 5_000,
-            retire: { after: "never" },
+
             removeRetryMs: 10,
           },
           suspend: async () => {
@@ -1672,7 +1672,7 @@ describe("core machine provider orchestration", () => {
         machineDeclaration(host.id, {
           policy: {
             idleSuspendMs: 1,
-            retire: { after: "never" },
+
             removeRetryMs: 10,
           },
           suspend: async ({ resource }) => ({ resource }),
@@ -1723,7 +1723,7 @@ describe("core machine provider orchestration", () => {
       });
     }));
 
-  it("retires after the last thread and cascades environment removal first", async () =>
+  it("explicit removal cascades environment removal first", async () =>
     withTestHarness(async (harness) => {
       vi.useFakeTimers({ toFake: ["Date"] });
       vi.setSystemTime(20_000);
@@ -1796,7 +1796,7 @@ describe("core machine provider orchestration", () => {
         machineDeclaration(host.id, {
           policy: {
             idleSuspendMs: null,
-            retire: { after: "last-thread", graceMs: 5_000 },
+
             removeRetryMs: 10,
           },
           remove: async () => {
@@ -1807,13 +1807,7 @@ describe("core machine provider orchestration", () => {
       );
       adoptMachine(harness, host.id);
 
-      await sweepProviderMachine(harness.deps, host.id);
-      expect(getHost(harness.db, host.id)).toMatchObject({
-        phase: "retiring",
-        retireAt: 25_000,
-      });
-      expect(order).toEqual([]);
-      vi.setSystemTime(25_001);
+      requestMachineRemoval(harness.deps, host.id);
       await sweepProviderMachine(harness.deps, host.id);
       expect(order).toEqual(["environment", "machine"]);
       expect(getEnvironment(harness.db, environment.id)).toMatchObject({
@@ -1908,7 +1902,7 @@ describe("core machine provider orchestration", () => {
         machineDeclaration(host.id, {
           policy: {
             idleSuspendMs: 1,
-            retire: { after: "last-thread", graceMs: 0 },
+
             removeRetryMs: 10,
           },
           suspend: async ({ resource }) => ({ resource }),
@@ -1931,6 +1925,7 @@ describe("core machine provider orchestration", () => {
       });
       harness.hub.unregisterDaemon(session.id);
 
+      requestMachineRemoval(harness.deps, host.id);
       await sweepProviderMachine(harness.deps, host.id);
       expect(environmentRemovalPhase).toBe("retiring");
       expect(getEnvironment(harness.db, environment.id)).toMatchObject({
@@ -2011,7 +2006,7 @@ describe("core machine provider orchestration", () => {
         machineDeclaration(host.id, {
           policy: {
             idleSuspendMs: 1,
-            retire: { after: "last-thread", graceMs: 0 },
+
             removeRetryMs: 10,
           },
           suspend: async ({ resource }) => ({ resource }),
@@ -2032,6 +2027,7 @@ describe("core machine provider orchestration", () => {
       });
       harness.hub.unregisterDaemon(session.id);
 
+      requestMachineRemoval(harness.deps, host.id);
       await expect(
         sweepProviderMachine(harness.deps, host.id),
       ).resolves.toBeUndefined();
@@ -2085,7 +2081,7 @@ describe("core machine provider orchestration", () => {
         machineDeclaration(failingHost.id, {
           policy: {
             idleSuspendMs: 5_000,
-            retire: { after: "never" },
+
             removeRetryMs: 10,
           },
           suspend: async ({ hostId, resource }) => {
@@ -2120,7 +2116,7 @@ describe("core machine provider orchestration", () => {
       });
     }));
 
-  it("keeps a never-policy machine until the user removes it", async () =>
+  it("keeps an unused machine until the user removes it", async () =>
     withTestHarness(async (harness) => {
       const { host } = seedHostSession(harness.deps, { id: "host_never" });
       let removes = 0;
@@ -2224,7 +2220,7 @@ describe("machine lifecycle safety regressions", () => {
         machineDeclaration(host.id, {
           policy: {
             idleSuspendMs: 5_000,
-            retire: { after: "never" },
+
             removeRetryMs: 10,
           },
           suspend: async () => {
@@ -2315,7 +2311,7 @@ describe("machine lifecycle safety regressions", () => {
         machineDeclaration(host.id, {
           policy: {
             idleSuspendMs: null,
-            retire: { after: "last-thread", graceMs: 5_000 },
+
             removeRetryMs: 10,
           },
           remove: async () => {
@@ -2328,13 +2324,8 @@ describe("machine lifecycle safety regressions", () => {
       );
       adoptMachine(harness, host.id);
 
-      await sweepProviderMachine(harness.deps, host.id);
-      expect(getHost(harness.db, host.id)).toMatchObject({
-        phase: "retiring",
-        retireAt: 25_000,
-      });
-      expect(order).toEqual([]);
       vi.setSystemTime(25_001);
+      requestMachineRemoval(harness.deps, host.id);
       const removing = sweepProviderMachine(harness.deps, host.id);
       await cleanupStarted.promise;
       const response = await harness.app.request(
@@ -2373,7 +2364,7 @@ it("cancelled launch cleanup persists and honors removeRetryMs", async () =>
       machineDeclaration(host.id, {
         policy: {
           idleSuspendMs: null,
-          retire: { after: "never" },
+
           removeRetryMs: 60000,
         },
         remove: async () => {
@@ -2924,7 +2915,7 @@ it("known allocated resource keeps retrying removal after the launch window", as
       machineDeclaration(host.id, {
         policy: {
           idleSuspendMs: null,
-          retire: { after: "never" },
+
           removeRetryMs: 10,
         },
         remove: async () =>
@@ -2955,7 +2946,7 @@ it("known allocated resource keeps retrying removal after the launch window", as
     });
   }));
 
-it("periodic retirement does not invalidate an in-flight resume allocation", async () =>
+it("periodic maintenance does not invalidate an in-flight resume allocation", async () =>
   withTestHarness(async (h) => {
     const { host } = seedHostSession(h.deps, { id: "review-resume-retire" });
     adoptMachine(h, host.id, { snapshot: "image" });
@@ -2969,7 +2960,7 @@ it("periodic retirement does not invalidate an in-flight resume allocation", asy
       machineDeclaration(host.id, {
         policy: {
           idleSuspendMs: 60000,
-          retire: { after: "last-thread", graceMs: 30 * 24 * 60 * 60000 },
+
           removeRetryMs: 10,
         },
         suspend: async ({ resource }) => ({ resource }),
@@ -2993,7 +2984,7 @@ it("periodic retirement does not invalidate an in-flight resume allocation", asy
       sandbox: "new-sandbox",
     });
     await sweepProviderMachine(h.deps, host.id);
-    expect(getHost(h.db, host.id)?.phase).toBe("retiring");
+    expect(getHost(h.db, host.id)?.phase).toBe("active");
   }));
 
 describe("finite machine lifecycle", () => {
@@ -3015,7 +3006,7 @@ describe("finite machine lifecycle", () => {
           }),
           experimental_policy: async () => ({
             idleSuspendMs: null,
-            retireAfterMs: 30 * 86400_000,
+
             deadlineLeadMs: 15_000,
           }),
           suspend: async ({ checkpoint }) => {
@@ -3044,7 +3035,7 @@ describe("finite machine lifecycle", () => {
       await sweep;
       expect(terminated).toBe(true);
       expect(getHost(h.db, host.id)?.phase).toBe("suspended");
-      expect(machineLifecycleStatus(h.deps, host.id, {})).toMatchObject({
+      expect(machineLifecycleStatus(h.deps, host.id)).toMatchObject({
         recoveryState: "saved",
         lastSnapshotAt: 10_000,
         expiresAt: null,
@@ -3068,7 +3059,7 @@ describe("finite machine lifecycle", () => {
           }),
           experimental_policy: async () => ({
             idleSuspendMs: null,
-            retireAfterMs: null,
+
             deadlineLeadMs: 95_000,
           }),
           suspend: async ({ checkpoint }) => {
@@ -3126,7 +3117,7 @@ describe("finite machine lifecycle", () => {
           }),
           experimental_policy: async () => ({
             idleSuspendMs: null,
-            retireAfterMs: null,
+
             deadlineLeadMs: 900_000,
           }),
           suspend: async ({ resource }) => ({ resource }),
@@ -3139,19 +3130,18 @@ describe("finite machine lifecycle", () => {
         "Changes since the last successful snapshot may be lost",
       );
       expect(resume).not.toHaveBeenCalled();
-      expect(machineLifecycleStatus(h.deps, host.id, {}).recoveryState).toBe(
+      expect(machineLifecycleStatus(h.deps, host.id).recoveryState).toBe(
         "lost-since-last-snapshot",
       );
     }));
 
-  it("updates retention and idle policy without reloading and honors keep", async () =>
+  it("updates idle policy without reloading and never automatically removes the machine", async () =>
     withTestHarness(async (h) => {
       vi.useFakeTimers({ toFake: ["Date"] });
       vi.setSystemTime(10_000);
       const { host } = seedHostSession(h.deps, { id: "host_live_policy" });
       adoptMachine(h, host.id);
       let idleSuspendMs = 100_000;
-      let retireAfterMs = 200_000;
       let removed = false;
       installMachineProvider(
         machineDeclaration(host.id, {
@@ -3162,7 +3152,6 @@ describe("finite machine lifecycle", () => {
           }),
           experimental_policy: async () => ({
             idleSuspendMs,
-            retireAfterMs,
             deadlineLeadMs: 10_000,
           }),
           remove: async () => {
@@ -3177,31 +3166,14 @@ describe("finite machine lifecycle", () => {
         }),
       );
       await sweepProviderMachine(h.deps, host.id);
-      expect(machineLifecycleStatus(h.deps, host.id, {}).retentionAt).toBe(
-        210_000,
-      );
-      const sdk = createBbSdk({
-        transport: createHttpTransport({
-          runtime: "node",
-          baseUrl: "http://bb.test",
-          fetch: async (input, init) => h.app.request(input, init),
-        }),
-      });
-      expect(
-        await sdk.hosts.experimental_lifecycle({ hostId: host.id, keep: true }),
-      ).toMatchObject({ keep: true, retentionAt: null });
       vi.setSystemTime(15_000);
       idleSuspendMs = 1_000;
-      retireAfterMs = 1_000;
       await sweepProviderMachine(h.deps, host.id);
       expect(getHost(h.db, host.id)?.phase).toBe("suspended");
       expect(removed).toBe(false);
-      expect(
-        machineLifecycleStatus(h.deps, host.id, {}).retentionAt,
-      ).toBeNull();
-      machineLifecycleStatus(h.deps, host.id, { keep: false });
+      vi.setSystemTime(365 * 86400_000);
       await sweepProviderMachine(h.deps, host.id);
-      expect(removed).toBe(true);
+      expect(removed).toBe(false);
     }));
 
   it("fails observation closed on an account identity mismatch", async () =>
@@ -3215,7 +3187,7 @@ describe("finite machine lifecycle", () => {
           },
           experimental_policy: async () => ({
             idleSuspendMs: null,
-            retireAfterMs: null,
+
             deadlineLeadMs: null,
           }),
         }),
@@ -3298,7 +3270,7 @@ it.each([false, true])(
           }),
           experimental_policy: async () => ({
             idleSuspendMs: 1,
-            retireAfterMs: null,
+
             deadlineLeadMs: 15_000,
           }),
           suspend: async ({ resource, checkpoint }) => {
@@ -3370,7 +3342,7 @@ it("concurrent dispatch shares one observed restore and records an expired image
         }),
         experimental_policy: async () => ({
           idleSuspendMs: 900_000,
-          retireAfterMs: 30 * 86_400_000,
+
           deadlineLeadMs: 900_000,
         }),
         suspend: async ({ resource }) => ({ resource }),
@@ -3407,7 +3379,7 @@ it("concurrent dispatch shares one observed restore and records an expired image
     await expect(
       ensureHostSessionReadyForWork(h.deps, { hostId: host.id }),
     ).rejects.toThrow("Snapshot image no longer exists");
-    expect(machineLifecycleStatus(h.deps, host.id, {})).toMatchObject({
+    expect(machineLifecycleStatus(h.deps, host.id)).toMatchObject({
       recoveryState: "recoverable",
       message: expect.stringContaining("Snapshot image no longer exists"),
     });
@@ -3457,7 +3429,7 @@ it("wakes persisted offline queue intent after a suspended machine is reconciled
         },
         experimental_policy: async () => ({
           idleSuspendMs: 1_000,
-          retireAfterMs: 30 * 86_400_000,
+
           deadlineLeadMs: 900_000,
         }),
         suspend: async ({ resource }) => {
@@ -3517,7 +3489,7 @@ it("settles an abandoned maintenance lease after persisted suspension and admits
         experimental_observe: observe,
         experimental_policy: async () => ({
           idleSuspendMs: 900_000,
-          retireAfterMs: 2592000000,
+
           deadlineLeadMs: 900_000,
         }),
         suspend: async ({ resource }) => ({ resource }),
@@ -3578,7 +3550,7 @@ it("discards an older observation failure after a newer observation confirms pre
         },
         experimental_policy: async () => ({
           idleSuspendMs: 900_000,
-          retireAfterMs: 2592000000,
+
           deadlineLeadMs: 900_000,
         }),
       }),
