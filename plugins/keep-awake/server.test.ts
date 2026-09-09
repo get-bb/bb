@@ -1,5 +1,8 @@
 import type { BbPluginApi } from "@get-bb/plugin-sdk";
-import { createFakePluginHost } from "@get-bb/plugin-sdk/testing";
+import {
+  createFakePluginHost,
+  makeHostResponse,
+} from "@get-bb/plugin-sdk/testing";
 import { describe, expect, it, vi } from "vitest";
 import plugin from "./server.js";
 
@@ -13,9 +16,7 @@ type RealtimeConnectionSubscription = Extract<
   { event: "realtime:connection" }
 >;
 type SdkSubscription = Parameters<BbPluginApi["sdk"]["subscribe"]>[0];
-type HostRecord = Awaited<
-  ReturnType<BbPluginApi["sdk"]["hosts"]["list"]>
->[number];
+type HostResponse = ReturnType<typeof makeHostResponse>;
 
 function isHostChangedSubscription(
   subscription: SdkSubscription,
@@ -31,19 +32,9 @@ function isRealtimeConnectionSubscription(
 
 function hostRecord(
   id: string,
-  status: HostRecord["status"] = "connected",
-): HostRecord {
-  return {
-    id,
-    name: id,
-    status,
-    type: "persistent",
-    maxPermissionMode: "full",
-    lastSeenAt: null,
-    lastRejectedProtocolVersion: null,
-    createdAt: 1,
-    updatedAt: 1,
-  };
+  status: "connected" | "disconnected" = "connected",
+): HostResponse {
+  return makeHostResponse({ id, name: id, status });
 }
 
 function enabledInput(input: unknown): boolean {
@@ -179,7 +170,7 @@ describe("builtin Keep Awake server entry", () => {
 
   it("reconciles when a host connects after startup", async () => {
     const subscriptions = lifecycleSubscriptions();
-    let status: HostRecord["status"] = "disconnected";
+    let status: HostResponse["status"] = "disconnected";
     const host = createFakePluginHost({
       pluginId: "keep-awake",
       sdk: {

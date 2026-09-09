@@ -149,7 +149,8 @@ await host.harness.lifecycle.dispose();
 ```
 
 `makePluginAgentConfigurationContext`, `makeMessageDispatchHookContext`,
-`makeThreadResponse`, `makeQueueEntry`, and `makeTurnFailedEvent` return
+`makeHostResponse`, `makeThreadResponse`, `makeQueueEntry`, and
+`makeTurnFailedEvent` return
 complete deterministic SDK objects. Pass partial overrides so a behavioral
 test shows only the values relevant to its scenario. Nested context
 members merge partial overrides against complete defaults, so required contract
