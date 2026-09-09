@@ -225,6 +225,7 @@ async function setup(
           ? "modal-account"
           : "changed-account",
       create: (request) => backend.backend.create(request),
+      fromId: (id) => backend.backend.fromId(id),
       fromName: (appName, name) => backend.backend.fromName(appName, name),
     }),
     now: () => Date.now(),
@@ -822,7 +823,9 @@ it("exposes account connection checks through RPC and CLI without allocation", a
   expect(
     await test.harness.behavior.runCli(["account", "inspect", "--json"]),
   ).toMatchObject({ exitCode: 0 });
-  expect(await test.harness.behavior.runCli(["image", "build"])).toMatchObject({
+  expect(
+    await test.harness.behavior.runCli(["image", "unknown"]),
+  ).toMatchObject({
     exitCode: 1,
   });
   expect(test.backend.image).not.toHaveBeenCalled();
@@ -942,4 +945,125 @@ it("reads CLI Dockerfiles on the invoking thread's host and leaves a saved overr
   expect(
     await test.harness.behavior.callRpc("image.definition", {}),
   ).toMatchObject({ dockerfile });
+});
+
+it("builds without enrollment and runs a bounded debug sandbox with no runtime secrets", async () => {
+  const test = await setup();
+  const built = await test.harness.behavior.runCli([
+    "image",
+    "build",
+    "--json",
+  ]);
+  expect(built.exitCode).toBe(0);
+  expect(JSON.parse(built.stdout)).toMatchObject({ imageId: "im-standard" });
+  expect(test.backend.creates).toHaveLength(0);
+  const result = await test.harness.behavior.callRpc("sandbox.run", {});
+  expect(result).toMatchObject({ sandboxId: "sandbox-1" });
+  expect(test.backend.creates[0]).toMatchObject({
+    timeoutMs: 1_800_000,
+    environmentVariables: {},
+    image: { type: "image", imageId: "im-standard" },
+  });
+  expect(test.prepareEnrollment).not.toHaveBeenCalled();
+  expect(test.bootstrap).not.toHaveBeenCalled();
+});
+
+it("preserves command argv, output and exit codes while preventing access to unrelated sandboxes", async () => {
+  const test = await setup();
+  await test.harness.behavior.callRpc("sandbox.run", {});
+  const sandbox = await test.backend.backend.fromId("sandbox-1");
+  if (!sandbox) throw new Error("missing test sandbox");
+  const exec = vi.fn(async () => ({
+    exitCode: 7,
+    stdout: "out",
+    stderr: "err",
+  }));
+  vi.spyOn(test.backend.backend, "fromId").mockResolvedValue({
+    ...sandbox,
+    exec,
+  });
+  expect(
+    await test.harness.behavior.runCli([
+      "sandbox",
+      "exec",
+      "sandbox-1",
+      "--",
+      "bash",
+      "-lc",
+      "exit 7",
+      "--json",
+    ]),
+  ).toMatchObject({ exitCode: 7, stdout: "out", stderr: "err" });
+  expect(exec).toHaveBeenCalledWith(
+    ["bash", "-lc", "exit 7", "--json"],
+    expect.objectContaining({ timeoutMs: 60_000, maxOutputBytes: 131_072 }),
+  );
+  expect(
+    await test.harness.behavior.runCli([
+      "sandbox",
+      "exec",
+      "sandbox-1",
+      "--json",
+      "--",
+      "false",
+    ]),
+  ).toMatchObject({
+    exitCode: 7,
+    stdout: JSON.stringify({ exitCode: 7, stdout: "out", stderr: "err" }),
+  });
+  expect(
+    await test.harness.behavior.runCli(["sandbox", "exec", "sandbox-1", "--"]),
+  ).toMatchObject({ exitCode: 1 });
+  await expect(
+    test.harness.behavior.callRpc("sandbox.stop", { sandboxId: "unrelated" }),
+  ).rejects.toThrow("Unknown debug sandbox");
+  await test.harness.setSettings({ tokenId: "different-account" });
+  await expect(
+    test.harness.behavior.callRpc("sandbox.exec", {
+      sandboxId: "sandbox-1",
+      command: ["true"],
+    }),
+  ).rejects.toThrow("Restore the Modal account");
+});
+
+it("stops debug compute without snapshots and refuses commands after expiry", async () => {
+  const test = await setup();
+  await test.harness.behavior.callRpc("sandbox.run", {});
+  expect(
+    await test.harness.behavior.runCli(["sandbox", "stop", "sandbox-1"]),
+  ).toMatchObject({ exitCode: 0 });
+  expect(test.backend.states[0]?.terminated).toBe(true);
+  expect(
+    await test.harness.behavior.runCli([
+      "sandbox",
+      "exec",
+      "sandbox-1",
+      "--",
+      "true",
+    ]),
+  ).toMatchObject({ exitCode: 1 });
+  expect(
+    await test.harness.behavior.runCli(["sandbox", "stop", "sandbox-1"]),
+  ).toMatchObject({ exitCode: 0 });
+});
+
+it("cleans debug compute when recording its ownership fails", async () => {
+  const test = await setup();
+  vi.spyOn(test.bb.storage.kv, "set").mockRejectedValueOnce(
+    new Error("storage unavailable"),
+  );
+  await expect(
+    test.harness.behavior.callRpc("sandbox.run", {}),
+  ).rejects.toThrow("storage unavailable");
+  expect(test.backend.states[0]?.terminated).toBe(true);
+});
+
+it("does not allocate debug compute when the image fails to build", async () => {
+  const test = await setup();
+  test.backend.image.mockRejectedValueOnce(new Error("RUN command failed"));
+  expect(await test.harness.behavior.runCli(["sandbox", "run"])).toMatchObject({
+    exitCode: 1,
+    stderr: "RUN command failed",
+  });
+  expect(test.backend.creates).toHaveLength(0);
 });

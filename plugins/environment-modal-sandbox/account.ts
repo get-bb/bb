@@ -1,4 +1,12 @@
 import {
+  buildOutput,
+  runOutput,
+  execInput,
+  execOutput,
+  sandboxInput,
+  type DebugSandbox,
+} from "./debug-sandbox.js";
+import {
   defineRpcContract,
   type BbPluginApi,
   type PluginCliContext,
@@ -12,6 +20,10 @@ const definitionSchema = z.object({
   customized: z.boolean(),
 });
 export const modalRpcContract = defineRpcContract({
+  "image.build": { input: z.object({}).strict(), output: buildOutput },
+  "sandbox.run": { input: z.object({}).strict(), output: runOutput },
+  "sandbox.exec": { input: execInput, output: execOutput },
+  "sandbox.stop": { input: sandboxInput, output: sandboxInput },
   "image.definition": {
     input: z.object({}).strict(),
     output: definitionSchema,
@@ -30,9 +42,14 @@ export const modalRpcContract = defineRpcContract({
 export function registerAccount(
   bb: BbPluginApi,
   inspect: () => Promise<{ available: boolean; message: string }>,
+  debug: DebugSandbox,
 ) {
   const image = imageDefinition(bb);
   bb.rpc.register(modalRpcContract, {
+    "image.build": () => debug.build(),
+    "sandbox.run": () => debug.run(),
+    "sandbox.exec": (input) => debug.exec(input),
+    "sandbox.stop": debug.stop,
     "account.inspect": inspect,
     "image.definition": image.get,
     "image.set": ({ dockerfile }) => image.set(dockerfile),
@@ -63,11 +80,31 @@ export function registerAccount(
     return dockerfileSchema.parse(result.content);
   }
   const usage =
-    "Usage: bb modal account inspect [--json] | bb modal image show [--json] | bb modal image set --file PATH [--json] | bb modal image reset [--json]";
+    "Usage: bb modal account inspect [--json] | bb modal image show [--json] | bb modal image set --file PATH [--json] | bb modal image reset [--json] | bb modal image build [--json] | bb modal sandbox run [--json] | bb modal sandbox exec ID [--json] -- COMMAND... | bb modal sandbox stop ID [--json]";
   bb.cli.register({
     name: "modal",
-    summary: "Configure the Modal Dockerfile and inspect the connection",
+    summary: "Configure, build and debug Modal images",
     commands: [
+      {
+        name: "image-build",
+        summary: "Build or reuse the saved image",
+        usage: "bb modal image build [--json]",
+      },
+      {
+        name: "sandbox-run",
+        summary: "Run the saved image in a 30-minute debug sandbox",
+        usage: "bb modal sandbox run [--json]",
+      },
+      {
+        name: "sandbox-exec",
+        summary: "Execute a command in a debug sandbox",
+        usage: "bb modal sandbox exec ID [--json] -- COMMAND...",
+      },
+      {
+        name: "sandbox-stop",
+        summary: "Stop a debug sandbox",
+        usage: "bb modal sandbox stop ID [--json]",
+      },
       {
         name: "image-show",
         summary: "Show the Dockerfile used for new machines",
@@ -91,8 +128,54 @@ export function registerAccount(
     ],
     async run(argv, context) {
       try {
-        const json = argv.at(-1) === "--json";
-        const args = json ? argv.slice(0, -1) : argv;
+        const separator = argv.indexOf("--");
+        const flags = separator < 0 ? argv : argv.slice(0, separator);
+        const json = flags.at(-1) === "--json";
+        const args = json ? flags.slice(0, -1) : flags;
+        if (args[0] === "sandbox" && args[1] === "exec") {
+          if (args.length !== 3 || separator < 0) throw new Error(usage);
+          const result = await debug.exec(
+            execInput.parse({
+              sandboxId: args[2],
+              command: argv.slice(separator + 1),
+            }),
+            context.signal,
+          );
+          return {
+            exitCode: result.exitCode,
+            stdout: json ? JSON.stringify(result) : result.stdout,
+            stderr: json ? "" : result.stderr,
+          };
+        }
+        if (separator >= 0) throw new Error(usage);
+        if (args.length === 2 && args[0] === "image" && args[1] === "build") {
+          const result = await debug.build(context.signal);
+          return {
+            exitCode: 0,
+            stdout: json
+              ? JSON.stringify(result)
+              : `${result.logs}${result.imageId}`,
+          };
+        }
+        if (args.length === 2 && args[0] === "sandbox" && args[1] === "run") {
+          const result = await debug.run(context.signal);
+          return {
+            exitCode: 0,
+            stdout: json ? JSON.stringify(result) : result.sandboxId,
+            stderr: json ? "" : result.logs,
+          };
+        }
+        if (args.length === 3 && args[0] === "sandbox" && args[1] === "stop") {
+          const result = await debug.stop(
+            sandboxInput.parse({ sandboxId: args[2] }),
+          );
+          return {
+            exitCode: 0,
+            stdout: json
+              ? JSON.stringify(result)
+              : `Stopped ${result.sandboxId}`,
+          };
+        }
         if (
           args.length === 2 &&
           args[0] === "account" &&

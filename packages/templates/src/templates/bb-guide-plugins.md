@@ -913,3 +913,5 @@ Contributed commands may accept `--stdin`: the calling CLI transfers up to
 The existing `--<flag>-stdin` form still accepts one line. A plugin can follow
 long-running jobs with bounded `experimental_continue` response pages; stopping
 the CLI stops the reader, not the job.
+
+Modal image debugging: `bb modal image build [--json]` prepares the saved image; `bb modal sandbox run [--json]` starts a 30-minute standalone sandbox; `bb modal sandbox exec ID [--json] -- COMMAND...` runs a command (60-second timeout); `bb modal sandbox stop ID [--json]` cleans up. These debug sandboxes skip BB enrollment, clone and setup. Logs are returned after the build finishes.

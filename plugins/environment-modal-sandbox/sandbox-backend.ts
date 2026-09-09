@@ -16,7 +16,12 @@ export interface SandboxHandle {
   readonly sandboxId: string;
   exec(
     command: readonly string[],
-    options: { timeoutMs: number; signal: AbortSignal; stdin?: string },
+    options: {
+      timeoutMs: number;
+      signal: AbortSignal;
+      stdin?: string;
+      maxOutputBytes?: number;
+    },
   ): Promise<SandboxExecResult>;
   terminate(): Promise<void>;
   snapshotFilesystem(options: {
@@ -75,6 +80,26 @@ export type SandboxBackendFactory = (
   credentials: ModalCredentials,
 ) => SandboxBackend;
 
+async function boundedOutput(stream: AsyncIterable<string>, maxBytes: number) {
+  const chunks: Buffer[] = [];
+  let size = 0;
+  let truncated = false;
+  for await (const chunk of stream) {
+    const data = Buffer.from(chunk);
+    const remaining = maxBytes - size;
+    if (data.length > remaining) truncated = true;
+    if (remaining > 0) {
+      const kept = data.subarray(0, remaining);
+      chunks.push(kept);
+      size += kept.length;
+    }
+  }
+  return (
+    Buffer.concat(chunks).toString("utf8") +
+    (truncated ? "\n[output truncated]" : "")
+  );
+}
+
 function wrapSandbox(sandbox: Sandbox): SandboxHandle {
   return {
     sandboxId: sandbox.sandboxId,
@@ -109,8 +134,12 @@ function wrapSandbox(sandbox: Sandbox): SandboxHandle {
               }
             };
             const [stdout, stderr, exitCode] = await Promise.all([
-              process.stdout.readText(),
-              process.stderr.readText(),
+              options.maxOutputBytes === undefined
+                ? process.stdout.readText()
+                : boundedOutput(process.stdout, options.maxOutputBytes),
+              options.maxOutputBytes === undefined
+                ? process.stderr.readText()
+                : boundedOutput(process.stderr, options.maxOutputBytes),
               process.wait(),
               input(),
             ]);

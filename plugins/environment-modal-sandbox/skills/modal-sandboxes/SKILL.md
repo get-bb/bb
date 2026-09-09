@@ -65,3 +65,42 @@ Remove with `bb machine remove MACHINE --yes --json`. This removes
 owned environments, compute and private snapshots. Shared standard images remain
 cached for future launches. Builds and machines incur Modal usage; obtain task
 authorization before allocating them during testing.
+
+
+## Debug an image
+
+```sh
+bb modal image build --json
+bb modal sandbox run --json
+bb modal sandbox exec SANDBOX -- bash -lc 'node --version && which git'
+bb modal sandbox exec SANDBOX --json -- bash -lc 'exit 7'
+bb modal sandbox stop SANDBOX --json
+```
+
+Build uses the saved Dockerfile and the same account-wide image cache as machine
+creation. It returns the image ID and the final 65,536 characters of build logs
+when finished; failures include captured logs and the vendor error. Build logs
+are collected through Modal 0.10's gRPC middleware because its image builder does
+not forward them. This adapter is tied to the pinned vendor SDK. Output is not
+streamed to the CLI. An already submitted build can finish after CLI cancellation.
+
+Run builds or reuses that image and returns `sandboxId`, `imageId`, `expiresAt`
+and build `logs`. Debug sandboxes expire after 30 minutes, use configured CPU and
+memory, and contain no injected BB credentials, daemon, project clone or setup
+hook. They are separate from BB Machines and do not snapshot. Files and running
+processes remain between exec calls until stop or expiry. Copy successful fixes
+into the Dockerfile, save it, and run a new sandbox to verify them.
+
+Exec passes arguments after `--` literally. Use `bash -lc` for shell expressions.
+Place BB's `--json` before `--`; command flags after it belong to the command.
+Commands have a 60-second timeout and output is capped at 128 KiB per stream with
+a truncation marker. Plain output preserves stdout/stderr and the command exit
+code; JSON returns `{exitCode,stdout,stderr}` with the same CLI exit status.
+Stopping is idempotent for known debug sandboxes. Exec/stop only accept sandboxes
+created by this plugin's debug workflow in the original Modal account; they
+cannot target arbitrary sandboxes or provider-managed machines. Stop removes
+compute without deleting the shared cached image. Expired IDs remain recognizable.
+
+SDK clients use `sdk.plugins.callRpc` with `modalRpcContract`: `image.build({})`,
+`sandbox.run({})`, `sandbox.exec({sandboxId,command})`, and
+`sandbox.stop({sandboxId})`. Build/run incur Modal usage.

@@ -3,6 +3,7 @@ import { beforeEach, expect, it, vi } from "vitest";
 import { readStandardImage, ensureStandardImage } from "./standard-image.js";
 
 const vendor = vi.hoisted(() => ({
+  options: vi.fn(),
   lookup: vi.fn(),
   app: vi.fn(),
   registry: vi.fn(),
@@ -14,12 +15,15 @@ const vendor = vi.hoisted(() => ({
 vi.mock("modal", () => ({
   NotFoundError: class extends Error {},
   ModalClient: class {
+    constructor(options: unknown) {
+      vendor.options(options);
+    }
     apps = { fromName: vendor.app };
     images = { fromName: vendor.lookup, fromRegistry: vendor.registry };
     close = vendor.close;
   },
 }));
-import { NotFoundError } from "modal";
+import { NotFoundError, type ModalClient } from "modal";
 const credentials = { tokenId: "test-id", tokenSecret: "test-secret" };
 const request = () => ({
   appName: "test-app",
@@ -112,4 +116,51 @@ it("does not start cancelled builds and saves a completed shared image when canc
   ).rejects.toThrow("cancelled");
   expect(vendor.publish).toHaveBeenCalledOnce();
   expect(vendor.close).toHaveBeenCalledOnce();
+});
+
+it("captures build output without swallowing unary API responses", async () => {
+  const input = request();
+  await ensureStandardImage(credentials, input);
+  const options: NonNullable<ConstructorParameters<typeof ModalClient>[0]> =
+    vendor.options.mock.calls[0]![0];
+  const middleware = options.grpcMiddleware![0]!;
+  const unary = middleware(
+    {
+      method: {
+        path: "/modal.client.ModalClient/AppGetOrCreate",
+        requestStream: false,
+        responseStream: false,
+        options: {},
+      },
+      requestStream: false,
+      responseStream: false,
+      request: {},
+      next: async function* () {
+        return { appId: "app-1" };
+      },
+    },
+    {},
+  );
+  expect(await unary.next()).toEqual({ done: true, value: { appId: "app-1" } });
+  const output = { taskLogs: [{ data: "RUN diagnostic\n" }] };
+  const stream = middleware(
+    {
+      method: {
+        path: "/modal.client.ModalClient/ImageJoinStreaming",
+        requestStream: false,
+        responseStream: true,
+        options: {},
+      },
+      requestStream: false,
+      responseStream: true,
+      request: {},
+      next: async function* () {
+        yield output;
+      },
+    },
+    {},
+  );
+  expect(await stream.next()).toEqual({ done: false, value: output });
+  expect(input.report.log).toHaveBeenCalledWith("RUN diagnostic\n");
+  expect(await stream.next()).toEqual({ done: true, value: undefined });
 });

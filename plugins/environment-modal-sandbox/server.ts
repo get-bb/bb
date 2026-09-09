@@ -1,3 +1,4 @@
+import { debugSandbox } from "./debug-sandbox.js";
 import { imageDefinition } from "./image-definition.js";
 import { registerAccount } from "./account.js";
 import { z } from "zod";
@@ -77,19 +78,33 @@ export function createModalSandboxPlugin(
       return backend;
     }
 
-    registerAccount(bb, async () => {
+    const debug = debugSandbox(bb, async () => {
       const resolved = await currentSettings();
-      if (!resolved.ok) return { available: false, message: resolved.message };
-      try {
-        await backendFor(resolved.settings).accountIdentity();
-        return {
-          available: true,
-          message: `Connected to Modal (${resolved.settings.appName})`,
-        };
-      } catch (error) {
-        return { available: false, message: errorMessage(error) };
-      }
+      if (!resolved.ok) throw new Error(resolved.message);
+      return {
+        backend: backendFor(resolved.settings),
+        settings: resolved.settings,
+      };
     });
+
+    registerAccount(
+      bb,
+      async () => {
+        const resolved = await currentSettings();
+        if (!resolved.ok)
+          return { available: false, message: resolved.message };
+        try {
+          await backendFor(resolved.settings).accountIdentity();
+          return {
+            available: true,
+            message: `Connected to Modal (${resolved.settings.appName})`,
+          };
+        } catch (error) {
+          return { available: false, message: errorMessage(error) };
+        }
+      },
+      debug,
+    );
 
     async function waitForHostDisconnection(
       hostId: string,

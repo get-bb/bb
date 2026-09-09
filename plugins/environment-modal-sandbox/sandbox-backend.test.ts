@@ -159,3 +159,35 @@ it("uses the vendor start and timeout for expiry and scopes inventory to the own
     }),
   ).toEqual({ running: false, expiresAt: null });
 });
+
+it("bounds debug output while draining streams and preserving command failure", async () => {
+  const process = processResult();
+  const stream = () =>
+    new ReadableStream<string>({
+      start(controller) {
+        controller.enqueue("abcdef");
+        controller.enqueue("more");
+        controller.close();
+      },
+    });
+  vendor.exec.mockResolvedValue({
+    ...process,
+    stdout: stream(),
+    stderr: stream(),
+  });
+  const sandbox = await createModalBackend({
+    tokenId: "id",
+    tokenSecret: "secret",
+  }).fromId("sandbox-1");
+  expect(
+    await sandbox?.exec(["noisy"], {
+      timeoutMs: 60_000,
+      maxOutputBytes: 4,
+      signal: new AbortController().signal,
+    }),
+  ).toEqual({
+    exitCode: 7,
+    stdout: "abcd\n[output truncated]",
+    stderr: "abcd\n[output truncated]",
+  });
+});

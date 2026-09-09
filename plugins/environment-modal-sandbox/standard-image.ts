@@ -1,3 +1,4 @@
+import { z } from "zod";
 import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { ModalClient, NotFoundError } from "modal";
@@ -53,7 +54,30 @@ export async function ensureStandardImage(
 ): Promise<string> {
   request.signal.throwIfAborted();
   const definition = await readStandardImage(request.dockerfile);
-  const client = new ModalClient(credentials);
+  const client = new ModalClient({
+    ...credentials,
+    grpcMiddleware: [
+      async function* (call, options) {
+        const responses = call.next(call.request, options);
+        while (true) {
+          const next = await responses.next();
+          if (next.done) return next.value;
+          const response = next.value;
+          if (
+            call.method.path === "/modal.client.ModalClient/ImageJoinStreaming"
+          ) {
+            const parsed = z
+              .object({ taskLogs: z.array(z.object({ data: z.string() })) })
+              .safeParse(response);
+            if (parsed.success)
+              for (const log of parsed.data.taskLogs)
+                request.report.log(log.data);
+          }
+          yield response;
+        }
+      },
+    ],
+  });
   try {
     try {
       const existing = await client.images.fromName(definition.name);
