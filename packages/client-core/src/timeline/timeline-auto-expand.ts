@@ -25,9 +25,10 @@ export function isWorkRowExpandable(row: TimelineViewWorkRow): boolean {
   switch (row.workKind) {
     case "web-search":
     case "web-fetch":
-    case "image-generation":
     case "approval":
       return false;
+    case "image-generation":
+      return row.status !== "pending" || Boolean(row.path || row.error);
     case "image-view":
       return true;
     case "question":
