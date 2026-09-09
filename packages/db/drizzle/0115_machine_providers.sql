@@ -59,11 +59,6 @@ CREATE INDEX `machine_launches_phase_idx` ON `machine_launches` (`phase`);--> st
 CREATE INDEX `machine_launches_host_id_idx` ON `machine_launches` (`host_id`);--> statement-breakpoint
 CREATE TABLE `machine_lifecycles` (
 	`host_id` text PRIMARY KEY NOT NULL,
-	`observed_state` text NOT NULL,
-	`observed_at` integer NOT NULL,
-	`expires_at` integer,
-	`maintenance_at` integer,
-	`last_snapshot_at` integer,
 	`restore_operation_id` text,
 	`restore_checkouts` text,
 	`recovery_state` text NOT NULL,
@@ -71,12 +66,6 @@ CREATE TABLE `machine_lifecycles` (
 	`lease_id` text,
 	`lease_until` integer,
 	`retry_at` integer,
-	`idle_suspend_ms` integer,
-	`retire_after_ms` integer,
-	`deadline_lead_ms` integer,
-	`unused_since` integer,
-	`retention_at` integer,
-	`keep` integer DEFAULT false NOT NULL,
 	FOREIGN KEY (`host_id`) REFERENCES `hosts`(`id`) ON UPDATE no action ON DELETE cascade
 );
 --> statement-breakpoint

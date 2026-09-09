@@ -1,7 +1,7 @@
 {
   "version": "6",
   "dialect": "sqlite",
-  "id": "363bbbbd-adf8-479d-bd94-581cd5a9fb3b",
+  "id": "7eca5847-0ead-4368-a5d5-9c33bb723eed",
   "prevId": "bd7bafd1-abb9-4c3e-871c-9c7a26aeb3cf",
   "tables": {
     "app_settings": {
@@ -2166,41 +2166,6 @@
           "notNull": true,
           "autoincrement": false
         },
-        "observed_state": {
-          "name": "observed_state",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "observed_at": {
-          "name": "observed_at",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "expires_at": {
-          "name": "expires_at",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "maintenance_at": {
-          "name": "maintenance_at",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "last_snapshot_at": {
-          "name": "last_snapshot_at",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
         "restore_operation_id": {
           "name": "restore_operation_id",
           "type": "text",
@@ -2249,49 +2214,6 @@
           "primaryKey": false,
           "notNull": false,
           "autoincrement": false
-        },
-        "idle_suspend_ms": {
-          "name": "idle_suspend_ms",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "retire_after_ms": {
-          "name": "retire_after_ms",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "deadline_lead_ms": {
-          "name": "deadline_lead_ms",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "unused_since": {
-          "name": "unused_since",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "retention_at": {
-          "name": "retention_at",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "keep": {
-          "name": "keep",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false,
-          "default": false
         }
       },
       "indexes": {},
