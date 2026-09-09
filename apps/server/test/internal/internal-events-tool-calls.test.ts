@@ -1149,9 +1149,7 @@ describe("internal event and tool-call routes", () => {
         contentItems: [
           {
             type: "inputText",
-            text: expect.stringContaining(
-              "Environment directory updated to /tmp/existing-managed-worktree",
-            ),
+            text: "Environment directory updated to /tmp/existing-managed-worktree. The running provider cwd is unchanged for this turn; continue the current task in /tmp/existing-managed-worktree using absolute paths or explicit working-directory changes in commands. Future turns start there automatically.",
           },
         ],
       });

@@ -44,7 +44,7 @@ import {
 import { resolveDeprecatedWorkspaceProvisionType } from "../environments/environment-response.js";
 
 const UPDATE_ENVIRONMENT_DIRECTORY_INSTRUCTIONS =
-  "If the user asks you to move this thread to another checkout, worktree, or directory, make sure the target directory exists, then call `update_environment_directory` with its absolute path. After it succeeds, stop work in the current turn; future turns will run in the updated environment.";
+  "If the user asks you to move this thread to another checkout, worktree, or directory, make sure the target directory exists, then call `update_environment_directory` with its absolute path. The running provider cwd does not change during the current turn. After it succeeds, continue the current task in the new directory by using absolute paths or explicit working-directory changes in commands; future turns start there automatically.";
 
 const PLUGIN_INSTRUCTION_CONTRIBUTION_MAX_CHARS = 4096;
 

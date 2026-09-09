@@ -1184,6 +1184,9 @@ describe("thread runtime config", () => {
       expect(runtimeConfig.dynamicTools).toEqual([
         expect.objectContaining({
           name: "update_environment_directory",
+          description: expect.stringContaining(
+            "continue the current task in the new directory",
+          ),
           inputSchema: expect.objectContaining({
             required: ["path"],
           }),
@@ -1197,6 +1200,12 @@ describe("thread runtime config", () => {
       expect(runtimeConfig.instructions).not.toContain("Markdown links");
       expect(runtimeConfig.instructions).toContain(
         "update_environment_directory",
+      );
+      expect(runtimeConfig.instructions).toContain(
+        "continue the current task in the new directory",
+      );
+      expect(runtimeConfig.instructions).not.toContain(
+        "stop work in the current turn",
       );
       expect(pluginContexts[0]?.environment.workspaceProvisionType).toBe(
         "unmanaged",

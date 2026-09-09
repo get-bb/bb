@@ -32,7 +32,7 @@ const updateEnvironmentDirectoryInputSchema = z
 export const UPDATE_ENVIRONMENT_DIRECTORY_TOOL: DynamicTool = {
   name: UPDATE_ENVIRONMENT_DIRECTORY_TOOL_NAME,
   description:
-    "Move this bb thread to a different working directory for subsequent turns. Use this when the user asks to switch to a new checkout, worktree, or local directory. The path must be an absolute existing directory on the current host. The tool reuses this project's existing bb environment for that host/path, otherwise it creates an unmanaged environment after validating the path. Another project may hold its own environment for the same directory; that is allowed, except for a bb-managed worktree owned by another project, which this tool refuses. After a successful switch, stop the current turn because the running provider cwd will not change until the next turn.",
+    "Move this bb thread to a different working directory. Use this when the user asks to switch to a new checkout, worktree, or local directory. The path must be an absolute existing directory on the current host. The tool reuses this project's existing bb environment for that host/path, otherwise it creates an unmanaged environment after validating the path. Another project may hold its own environment for the same directory; that is allowed, except for a bb-managed worktree owned by another project, which this tool refuses. The running provider cwd does not change during the current turn. After a successful switch, continue the current task in the new directory by using absolute paths or explicit working-directory changes in commands; future turns start there automatically.",
   inputSchema: {
     type: "object",
     properties: {
@@ -138,7 +138,7 @@ function resolveReadyEnvironment(
 }
 
 function successMessage(path: string): string {
-  return `Environment directory updated to ${path}. This applies to future turns; stop work in this turn so the next turn can run from the updated directory.`;
+  return `Environment directory updated to ${path}. The running provider cwd is unchanged for this turn; continue the current task in ${path} using absolute paths or explicit working-directory changes in commands. Future turns start there automatically.`;
 }
 
 function attachReadyEnvironment(
