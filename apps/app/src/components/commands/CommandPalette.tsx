@@ -56,7 +56,6 @@ import { PaletteShell } from "./PaletteShell";
 const PALETTE_INPUT_LABEL = "Search commands";
 const PALETTE_INPUT_DESCRIPTION = "Use Escape to close the command palette.";
 const PALETTE_PLACEHOLDER = "Search commands…";
-const ROOT_FOOTER_KEYS = [{ keys: ["Esc"], label: "Close" }] as const;
 const MODE_ENTRY_HANDLER_PRIORITY = 100;
 const MODE_BY_ACTION_ID = new Map(
   PALETTE_MODES.map((mode) => [
@@ -223,9 +222,7 @@ export function CommandPalette({
     const groups = PALETTE_ACTION_BUCKETS.map((bucket) => ({
       bucket,
       entries: ranked.filter((entry) => entry.action.bucket === bucket),
-    })).filter(
-      (group) => group.bucket !== "Plugins" || group.entries.length > 0,
-    );
+    })).filter((group) => group.entries.length > 0);
     return groups.map((group, index) => ({
       ...group,
       startIndex: groups
@@ -253,18 +250,15 @@ export function CommandPalette({
       ?.scrollIntoView({ block: "nearest" });
   }, [activeIndex]);
 
-  const chooseAction = useCallback(
-    (action: PaletteAction) => {
-      setRecents((current) => recordPaletteRecent(current, action.id));
-      if (MODE_BY_ACTION_ID.has(action.id)) {
-        action.run();
-        return;
-      }
-      pendingRunRef.current = action.run;
-      setOpen(false);
-    },
-    [],
-  );
+  const chooseAction = useCallback((action: PaletteAction) => {
+    setRecents((current) => recordPaletteRecent(current, action.id));
+    if (MODE_BY_ACTION_ID.has(action.id)) {
+      action.run();
+      return;
+    }
+    pendingRunRef.current = action.run;
+    setOpen(false);
+  }, []);
 
   const runAfterClose = useCallback((run: () => void) => {
     pendingRunRef.current = run;
@@ -356,7 +350,7 @@ export function CommandPalette({
                 ? undefined
                 : `${optionIdPrefix}-${activeIndex}`
             }
-            footerKeys={ROOT_FOOTER_KEYS}
+            footerKeys={[]}
             inputDescription={PALETTE_INPUT_DESCRIPTION}
             inputLabel={PALETTE_INPUT_LABEL}
             listId={listId}
@@ -479,10 +473,7 @@ function PaletteRow({
       onClick={onSelect}
     >
       <span className="min-w-0 truncate">
-        <HighlightedTitle
-          title={title}
-          positions={entry.positions}
-        />
+        <HighlightedTitle title={title} positions={entry.positions} />
       </span>
       {hasTrailing ? (
         <span className="ml-auto flex shrink-0 items-center gap-2">

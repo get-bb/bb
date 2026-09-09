@@ -10,9 +10,16 @@ import {
   type ReactNode,
 } from "react";
 import { useStore } from "jotai";
+import { Button } from "@bb/shared-ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@bb/shared-ui/dropdown-menu";
+import { Icon } from "@bb/shared-ui/icon";
 import { useIsCompactViewport } from "@bb/shared-ui/hooks/use-compact-viewport";
 import { cn } from "@bb/shared-ui/lib/utils";
-import { COARSE_POINTER_TEXT_SM_CLASS } from "@bb/shared-ui/coarse-pointer-sizing";
 import { isPromptDraftEmpty } from "@bb/client-core";
 import type { ThreadSearchHighlightRange } from "@bb/server-contract";
 import { usePromptDraftStorage } from "@/hooks/usePromptDraftStorage";
@@ -36,6 +43,14 @@ import {
 import { windowPaletteThreadSearchText } from "@/lib/command-palette/palette-thread-search-window";
 import type { PaletteModeViewProps } from "@/lib/command-palette/palette-mode";
 import { PALETTE_FOOTER_LABEL_CLASS, PaletteShell } from "./PaletteShell";
+import { useAppCommandRunner } from "./AppCommandProvider";
+
+const EMPTY_SCOPE_MESSAGES = {
+  all: "No threads yet",
+  active: "No active threads",
+  draft: "No drafts yet",
+  archived: "No archived threads",
+} satisfies Record<PaletteThreadSearchScope, string>;
 
 export function ThreadSearchPaletteMode({
   onExit,
@@ -48,6 +63,7 @@ export function ThreadSearchPaletteMode({
   const listRef = useRef<HTMLDivElement | null>(null);
   const store = useStore();
   const navigate = useRouteNavigate();
+  const runner = useAppCommandRunner();
   const isCompact = useIsCompactViewport();
   const [query, setQuery] = useState("");
   const [scope, setScope] = useState<PaletteThreadSearchScope>("all");
@@ -139,8 +155,26 @@ export function ThreadSearchPaletteMode({
     result.rows.length === 0
       ? -1
       : Math.min(highlightedIndex, result.rows.length - 1);
-  const activeDescendantId =
-    activeIndex < 0 ? undefined : `${optionIdPrefix}-${activeIndex}`;
+  const isRecentLoading =
+    result.isRecent && (navigation.isLoading || archivedThreads.isLoading);
+  const hasLoadError = result.isRecent
+    ? navigation.isError || archivedThreads.isError
+    : searchResultsAreCurrent && threadSearch.isError;
+  const showNewThread =
+    result.rows.length === 0 &&
+    result.isRecent &&
+    scope === "all" &&
+    !isRecentLoading &&
+    !hasLoadError;
+  const activeDescendantId = showNewThread
+    ? `${optionIdPrefix}-new-thread`
+    : activeIndex < 0
+      ? undefined
+      : `${optionIdPrefix}-${activeIndex}`;
+
+  const startNewThread = useCallback(() => {
+    runAfterClose(() => runner.dispatch("thread.new", null));
+  }, [runAfterClose, runner.dispatch]);
 
   const scrollOnNextHighlightRef = useRef(false);
   useEffect(() => {
@@ -214,7 +248,18 @@ export function ThreadSearchPaletteMode({
         onExit();
         return;
       }
-      if (result.rows.length === 0) return;
+      if (result.rows.length === 0) {
+        if (
+          showNewThread &&
+          event.key === "Enter" &&
+          !event.metaKey &&
+          !event.ctrlKey
+        ) {
+          event.preventDefault();
+          startNewThread();
+        }
+        return;
+      }
       if (event.key === "ArrowDown" || event.key === "ArrowUp") {
         event.preventDefault();
         scrollOnNextHighlightRef.current = true;
@@ -239,7 +284,15 @@ export function ThreadSearchPaletteMode({
         openRow(row, event.metaKey || event.ctrlKey);
       }
     },
-    [activeIndex, onExit, openRow, query.length, result.rows],
+    [
+      activeIndex,
+      onExit,
+      openRow,
+      query.length,
+      result.rows,
+      showNewThread,
+      startNewThread,
+    ],
   );
 
   const isLoading =
@@ -249,15 +302,18 @@ export function ThreadSearchPaletteMode({
       threadSearch.isLoading);
   let emptyMessage: string | null = null;
   if (result.rows.length === 0) {
-    emptyMessage = isLoading
-      ? "Searching threads"
-      : trimmedQuery.length === 1
-        ? "Type at least 2 characters"
-        : (navigation.isLoading || archivedThreads.isLoading) && result.isRecent
-          ? "Loading recent threads"
-          : result.isRecent
-            ? "No recent threads"
-            : "No matching threads";
+    emptyMessage =
+      isLoading || isRecentLoading
+        ? result.isRecent
+          ? "Loading threads"
+          : "Searching threads"
+        : hasLoadError
+          ? "Couldn’t load threads"
+          : trimmedQuery.length === 1
+            ? "Type at least 2 characters"
+            : result.isRecent
+              ? EMPTY_SCOPE_MESSAGES[scope]
+              : "No matching threads";
   }
 
   return (
@@ -274,8 +330,12 @@ export function ThreadSearchPaletteMode({
           }}
         />
       }
-      footerKeys={presentation.footerKeys}
-      inputDescription={presentation.inputDescription}
+      footerKeys={activeIndex >= 0 && !isCompact ? presentation.footerKeys : []}
+      inputDescription={
+        showNewThread
+          ? "Press Enter to start a new thread. Use Escape to return to commands."
+          : presentation.inputDescription
+      }
       inputLabel="Search threads"
       inputRef={inputRef}
       listId={listId}
@@ -306,6 +366,25 @@ export function ThreadSearchPaletteMode({
             onSelect={() => openRow(row, false)}
           />
         ))
+      ) : showNewThread ? (
+        <div className="flex flex-col items-center gap-4 px-3 py-8">
+          <div className="space-y-1 text-center">
+            <p className="text-sm">No threads yet</p>
+            <p className="text-sm text-subtle-foreground">
+              Start a thread to ask a question or work on a task.
+            </p>
+          </div>
+          <Button
+            id={`${optionIdPrefix}-new-thread`}
+            role="option"
+            aria-selected
+            tabIndex={-1}
+            size="sm"
+            onClick={startNewThread}
+          >
+            New thread
+          </Button>
+        </div>
       ) : (
         <p className="px-3 py-8 text-center text-sm text-muted-foreground">
           {emptyMessage}
@@ -324,89 +403,49 @@ function ThreadSearchScopeFilter({
   onScopeChange: (scope: PaletteThreadSearchScope) => void;
   scope: PaletteThreadSearchScope;
 }) {
-  const [open, setOpen] = useState(false);
-  const currentIndex = PALETTE_THREAD_SEARCH_SCOPES.findIndex(
+  const current = PALETTE_THREAD_SEARCH_SCOPES.find(
     (candidate) => candidate.id === scope,
   );
-  const current = PALETTE_THREAD_SEARCH_SCOPES[currentIndex];
-  const returnToInput = () => {
-    setOpen(false);
-    inputRef.current?.focus({ preventScroll: true });
-  };
-  const cycle = (direction: 1 | -1) => {
-    const nextIndex =
-      (currentIndex + direction + PALETTE_THREAD_SEARCH_SCOPES.length) %
-      PALETTE_THREAD_SEARCH_SCOPES.length;
-    const next = PALETTE_THREAD_SEARCH_SCOPES[nextIndex];
-    if (next !== undefined) onScopeChange(next.id);
-    setOpen(true);
-  };
 
   return (
-    <div className="relative shrink-0">
-      <button
-        type="button"
-        aria-haspopup="listbox"
-        aria-expanded={open}
-        aria-label="Thread scope"
-        className={cn(
-          "inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-xs outline-none hover:bg-state-hover hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring",
-          PALETTE_FOOTER_LABEL_CLASS,
-        )}
-        onClick={() => setOpen((value) => !value)}
-        onKeyDown={(event) => {
-          if (event.key === "ArrowDown" || event.key === "ArrowUp") {
-            event.preventDefault();
-            cycle(event.key === "ArrowDown" ? 1 : -1);
-            return;
-          }
-          if (event.key === "Enter") {
-            event.preventDefault();
-            event.stopPropagation();
-            if (open) {
-              returnToInput();
-            } else {
-              setOpen(true);
-            }
-            return;
-          }
-          if (event.key === "Escape") {
-            event.preventDefault();
-            event.stopPropagation();
-            returnToInput();
-          }
-        }}
-      >
-        <span>{current?.label ?? "All"}</span>
-        <span aria-hidden>▾</span>
-      </button>
-      {open ? (
-        <div
-          role="listbox"
-          aria-label="Thread scope options"
-          className="absolute right-0 top-full z-50 mt-1 min-w-32 rounded-lg border border-border bg-popover p-1.5 shadow-md"
+    <DropdownMenu modal={false}>
+      <DropdownMenuTrigger asChild>
+        <Button
+          type="button"
+          variant="ghost"
+          size="sm"
+          aria-label="Thread scope"
+          className="shrink-0 gap-1.5 px-2 font-normal text-subtle-foreground"
         >
-          {PALETTE_THREAD_SEARCH_SCOPES.map((option) => (
-            <div
-              key={option.id}
-              role="option"
-              aria-selected={option.id === scope}
-              className={cn(
-                "flex cursor-pointer items-center rounded-md px-2 py-1.5 text-sm",
-                option.id === scope && "bg-state-hover",
-              )}
-              onPointerDown={(event) => event.preventDefault()}
-              onClick={() => {
-                onScopeChange(option.id);
-                returnToInput();
-              }}
-            >
-              <span>{option.label}</span>
-            </div>
-          ))}
-        </div>
-      ) : null}
-    </div>
+          <span>{current?.label ?? "All"}</span>
+          <Icon name="ChevronDown" className="size-3.5" aria-hidden />
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent
+        align="end"
+        aria-label="Thread scope options"
+        mobileTitle="Thread scope"
+        onCloseAutoFocus={(event) => {
+          event.preventDefault();
+          inputRef.current?.focus({ preventScroll: true });
+        }}
+        onEscapeKeyDown={(event) => event.stopPropagation()}
+      >
+        {PALETTE_THREAD_SEARCH_SCOPES.map((option) => (
+          <DropdownMenuItem
+            key={option.id}
+            role="menuitemradio"
+            aria-checked={option.id === scope}
+            onSelect={() => onScopeChange(option.id)}
+          >
+            <span className="min-w-0 flex-1 truncate">{option.label}</span>
+            {option.id === scope ? (
+              <Icon name="Check" className="size-3.5" aria-hidden />
+            ) : null}
+          </DropdownMenuItem>
+        ))}
+      </DropdownMenuContent>
+    </DropdownMenu>
   );
 }
 
@@ -480,29 +519,23 @@ function ThreadSearchPaletteRow({
             ranges={primary.highlightRanges}
           />
         </span>
-        {row.metadataText.length === 0 ? null : (
+        {row.metadataText.length === 0 && stateLabel === null ? null : (
           <span
             className={cn(
-              "block min-w-0 truncate text-xs leading-4",
+              "flex min-h-4 min-w-0 items-baseline gap-3 text-xs leading-4",
               PALETTE_FOOTER_LABEL_CLASS,
             )}
-            title={row.metadataText}
             data-palette-thread-metadata
           >
-            {row.metadataText}
+            <span className="min-w-0 flex-1 truncate" title={row.metadataText}>
+              {row.metadataText}
+            </span>
+            {stateLabel === null ? null : (
+              <span className="shrink-0">{stateLabel}</span>
+            )}
           </span>
         )}
       </span>
-      {stateLabel === null ? null : (
-        <span
-          className={cn(
-            "shrink-0 text-xs text-subtle-foreground",
-            COARSE_POINTER_TEXT_SM_CLASS,
-          )}
-        >
-          {stateLabel}
-        </span>
-      )}
     </div>
   );
 }

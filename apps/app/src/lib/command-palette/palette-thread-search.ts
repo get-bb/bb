@@ -155,11 +155,10 @@ export function buildPaletteThreadSearchRows({
   const isRecent = trimmedQuery.length === 0;
   const isSearchable = trimmedQuery.length >= 2;
   const activeRows = isRecent
-    ? recentThreads
+    ? [...recentThreads]
+        .sort((left, right) => right.updatedAt - left.updatedAt)
         .slice(0, RECENT_THREAD_LIMIT)
-        .map((thread) =>
-          serverRow(thread, [], "active", projectNamesById, now),
-        )
+        .map((thread) => serverRow(thread, [], "active", projectNamesById, now))
     : isSearchable && searchResultsAreCurrent
       ? (searchResponse?.active.results ?? []).map((result) =>
           serverRow(
@@ -198,7 +197,8 @@ export function buildPaletteThreadSearchRows({
     messageSeq: null,
   }));
   const archivedRows = isRecent
-    ? recentArchivedThreads
+    ? [...recentArchivedThreads]
+        .sort((left, right) => right.updatedAt - left.updatedAt)
         .slice(0, RECENT_THREAD_LIMIT)
         .map((thread) =>
           serverRow(thread, [], "archived", projectNamesById, now),
@@ -215,13 +215,31 @@ export function buildPaletteThreadSearchRows({
         )
       : [];
 
+  const rows = [
+    ...(includesLifecycle(scope, "active") ? activeRows : []),
+    ...(includesLifecycle(scope, "draft") ? draftRows : []),
+    ...(includesLifecycle(scope, "archived") ? archivedRows : []),
+  ];
+  if (isRecent) {
+    const updatedAtByThread = new Map(
+      [...recentThreads, ...recentArchivedThreads].map((thread) => [
+        thread.id,
+        thread.updatedAt,
+      ]),
+    );
+    const editedAtByDraft = new Map(
+      drafts.map((draft) => [draft.id, draft.lastEditedAt]),
+    );
+    const updatedAt = (row: PaletteThreadSearchRow) =>
+      row.threadId !== null
+        ? (updatedAtByThread.get(row.threadId) ?? 0)
+        : (editedAtByDraft.get(row.draftSlotId ?? "") ?? 0);
+    rows.sort((left, right) => updatedAt(right) - updatedAt(left));
+  }
+
   return {
     draftMatchCount: draftMatches.length,
     isRecent,
-    rows: [
-      ...(includesLifecycle(scope, "active") ? activeRows : []),
-      ...(includesLifecycle(scope, "draft") ? draftRows : []),
-      ...(includesLifecycle(scope, "archived") ? archivedRows : []),
-    ],
+    rows,
   };
 }

@@ -3,6 +3,7 @@ import type { AppShortcutPresentation } from "@/lib/app-keybindings";
 export const PALETTE_ACTION_BUCKETS = [
   "Threads",
   "Actions",
+  "Settings",
   "Plugins",
 ] as const;
 

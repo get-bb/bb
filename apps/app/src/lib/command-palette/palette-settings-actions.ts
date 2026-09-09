@@ -18,7 +18,7 @@ export function buildSettingsPaletteActions(
   return [
     ...args.sections.map((section) => ({
       id: `settings:${section.id}`,
-      bucket: "Actions" as const,
+      bucket: "Settings" as const,
       group: "Settings",
       title: `${section.label} settings`,
       shortcut: null,
@@ -26,7 +26,7 @@ export function buildSettingsPaletteActions(
     })),
     ...args.pluginEntries.map((plugin) => ({
       id: `settings:plugin:${plugin.id}`,
-      bucket: "Actions" as const,
+      bucket: "Settings" as const,
       group: "Plugin settings",
       title: `${plugin.label} settings`,
       shortcut: null,

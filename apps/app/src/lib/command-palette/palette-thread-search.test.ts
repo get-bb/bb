@@ -186,7 +186,7 @@ describe("buildPaletteThreadSearchRows", () => {
     });
   });
 
-  it("orders active, draft, and archived recents and does not reuse them for a one-character query", () => {
+  it("uses stable source order for equal timestamps and does not reuse recents for a one-character query", () => {
     const active = makeThread("recent-active");
     const archived = makeThread("recent-archived", { archivedAt: NOW - 1 });
     const recents = build({
@@ -207,5 +207,50 @@ describe("buildPaletteThreadSearchRows", () => {
       isRecent: false,
       rows: [],
     });
+  });
+
+  it("orders existing threads and dated drafts by last updated across projects and lifecycles", () => {
+    const older = makeThread("older", { updatedAt: NOW - 100, pinnedAt: NOW });
+    const newest = makeThread("newest", {
+      projectId: "project-2",
+      updatedAt: NOW,
+    });
+    const archived = makeThread("archived", {
+      updatedAt: NOW - 50,
+      archivedAt: NOW,
+    });
+    const datedDraft = {
+      ...makeDraft("dated", "Dated draft"),
+      lastEditedAt: NOW - 25,
+    };
+    const undatedDraft = {
+      ...makeDraft("undated", "Undated draft"),
+      lastEditedAt: null,
+    };
+    expect(
+      build({
+        query: "",
+        recentThreads: [older, newest],
+        recentArchivedThreads: [archived],
+        drafts: [undatedDraft, datedDraft],
+      }).rows.map((row) => row.id),
+    ).toEqual([
+      "active:newest",
+      "draft:dated",
+      "archived:archived",
+      "active:older",
+      "draft:undated",
+    ]);
+  });
+
+  it("chooses the newest threads before applying the recent limit", () => {
+    const recentThreads = Array.from({ length: 21 }, (_, index) =>
+      makeThread(String(index), { updatedAt: NOW + index }),
+    );
+    const rows = build({ query: "", recentThreads }).rows;
+    expect(rows).toHaveLength(20);
+    expect(rows[0]?.threadId).toBe("20");
+    expect(rows.at(-1)?.threadId).toBe("1");
+    expect(recentThreads[0]?.id).toBe("0");
   });
 });
