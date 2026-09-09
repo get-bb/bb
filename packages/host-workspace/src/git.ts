@@ -8,7 +8,11 @@ import type {
   GitCheckoutRef,
   WorkspaceGitOperation,
 } from "@bb/domain";
-import { sanitizeInheritedChildProcessEnv } from "@bb/process-utils";
+import {
+  killProcessGroup,
+  sanitizeInheritedChildProcessEnv,
+  supportsProcessGroups,
+} from "@bb/process-utils";
 
 const execFileAsync = promisify(execFile);
 const DEFAULT_BUFFER_BYTES = 16 * 1024 * 1024;
@@ -1280,34 +1284,42 @@ export async function readDefaultBranchRefs(
   };
 }
 
-async function resolveSshCommand(
+async function fetchRemoteBranchesNonInteractively(
   cwd: string,
   options: GitTimeoutOptions,
-): Promise<string> {
-  const fromEnv = process.env.GIT_SSH_COMMAND;
-  if (fromEnv !== undefined && fromEnv.length > 0) {
-    return fromEnv;
-  }
-  const configured = await runGit(["config", "--get", "core.sshCommand"], {
-    cwd,
-    ...options,
-    allowFailure: true,
+): Promise<FetchRemoteBranchesResult> {
+  return new Promise((resolve) => {
+    const child = spawn("git", ["fetch", "--all", "--prune", "--quiet"], {
+      cwd,
+      detached: supportsProcessGroups(),
+      windowsHide: true,
+      stdio: "ignore",
+      env: resolveGitProcessEnv({
+        shellPath: options.shellPath,
+        env: {
+          GIT_TERMINAL_PROMPT: "0",
+          GIT_ASKPASS: "false",
+          SSH_ASKPASS: "false",
+          SSH_ASKPASS_REQUIRE: "never",
+          GCM_INTERACTIVE: "never",
+        },
+      }),
+    });
+    const timeout =
+      options.timeoutMs === undefined
+        ? undefined
+        : setTimeout(() => {
+            killProcessGroup({ child, signal: "SIGKILL" });
+          }, options.timeoutMs);
+    child.once("error", () => {
+      clearTimeout(timeout);
+      resolve({ status: "failed" });
+    });
+    child.once("close", (code) => {
+      clearTimeout(timeout);
+      resolve({ status: code === 0 ? "fetched" : "failed" });
+    });
   });
-  const configuredCommand = trimOutput(configured.stdout);
-  return configured.exitCode === 0 && configuredCommand.length > 0
-    ? configuredCommand
-    : "ssh";
-}
-
-async function resolveNonInteractiveGitEnv(
-  cwd: string,
-  options: GitTimeoutOptions,
-): Promise<NodeJS.ProcessEnv> {
-  const sshCommand = await resolveSshCommand(cwd, options);
-  return {
-    GIT_TERMINAL_PROMPT: "0",
-    GIT_SSH_COMMAND: `${sshCommand} -o BatchMode=yes`,
-  };
 }
 
 export async function fetchRemoteBranches(
@@ -1331,14 +1343,14 @@ export async function fetchRemoteBranches(
     return { status: "skipped" };
   }
 
+  if (!interactive) {
+    return fetchRemoteBranchesNonInteractively(cwd, options);
+  }
+
   try {
-    const env = interactive
-      ? {}
-      : await resolveNonInteractiveGitEnv(cwd, options);
     const result = await runGit(["fetch", "--all", "--prune", "--quiet"], {
       cwd,
       ...options,
-      env,
       allowFailure: true,
     });
     return { status: result.exitCode === 0 ? "fetched" : "failed" };

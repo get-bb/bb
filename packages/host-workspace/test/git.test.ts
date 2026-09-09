@@ -459,7 +459,7 @@ describe("fetchRemoteBranches", () => {
     ).resolves.toEqual({ status: "failed" });
 
     const log = await fs.readFile(sshLogPath, "utf8");
-    expect(log).toContain("-o\nBatchMode=yes\n");
+    expect(log).not.toContain("BatchMode");
     expect(log).toContain("GIT_TERMINAL_PROMPT=0\n");
   });
 

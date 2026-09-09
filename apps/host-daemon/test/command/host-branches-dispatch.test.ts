@@ -89,7 +89,7 @@ async function initSshRemoteRepo(): Promise<SshRemoteRepo> {
   const sshScriptPath = path.join(repoPath, "recording-ssh.sh");
   await fs.writeFile(
     sshScriptPath,
-    `#!/bin/sh\nprintf '%s\\n' "$@" >> ${JSON.stringify(sshLogPath)}\nprintf -- '--\\n' >> ${JSON.stringify(sshLogPath)}\nexit 255\n`,
+    `#!/bin/sh\nprintf '%s\\n' "$@" >> ${JSON.stringify(sshLogPath)}\nprintf 'GIT_TERMINAL_PROMPT=%s\\n' "\${GIT_TERMINAL_PROMPT-unset}" >> ${JSON.stringify(sshLogPath)}\nprintf -- '--\\n' >> ${JSON.stringify(sshLogPath)}\nexit 255\n`,
     { encoding: "utf8", mode: 0o755 },
   );
   await runGitCommand(
@@ -283,7 +283,7 @@ describe("host.inspect_git_source dispatch", () => {
 
     const invocations = await waitForUploadPackInvocations(sshLogPath, 1);
     expect(invocations).toHaveLength(1);
-    expect(invocations[0]).toContain("-o\nBatchMode=yes\n");
+    expect(invocations[0]).toContain("GIT_TERMINAL_PROMPT=0");
   });
 
   it("lets a blocking refresh prompt for ssh credentials", async () => {
@@ -301,7 +301,7 @@ describe("host.inspect_git_source dispatch", () => {
 
     const invocations = await readUploadPackInvocations(sshLogPath);
     expect(invocations).toHaveLength(1);
-    expect(invocations[0]).not.toContain("BatchMode");
+    expect(invocations[0]).toContain("GIT_TERMINAL_PROMPT=unset");
   });
 
   it("retries interactively when a blocking refresh follows a failed background refresh", async () => {
@@ -328,8 +328,8 @@ describe("host.inspect_git_source dispatch", () => {
 
     const invocations = await readUploadPackInvocations(sshLogPath);
     expect(invocations).toHaveLength(2);
-    expect(invocations[0]).toContain("BatchMode=yes");
-    expect(invocations[1]).not.toContain("BatchMode");
+    expect(invocations[0]).toContain("GIT_TERMINAL_PROMPT=0");
+    expect(invocations[1]).toContain("GIT_TERMINAL_PROMPT=unset");
   });
 
   it("reports detached HEAD in checkout state", async () => {
