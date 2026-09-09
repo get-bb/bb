@@ -248,7 +248,7 @@ function createContext(
   return {
     project: PROJECT,
     gitRemote: null,
-    inputs: {},
+    inputs: null,
     key,
     attempt: 1,
     report,

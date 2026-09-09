@@ -290,7 +290,6 @@ export function createModalSandboxPlugin(
           ? { status: "available" }
           : { status: "setup-required", message: resolved.message };
       },
-      inputs: machineInputsSchema,
       create: launch,
       async experimental_reconcileCleanup(context) {
         const stored = await bb.storage.kv.get<unknown>(
