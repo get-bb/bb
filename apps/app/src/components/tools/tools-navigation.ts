@@ -31,7 +31,7 @@ const TOOLS_SECTIONS = {
   skills: {
     id: "skills",
     label: "Skills",
-    icon: "Explore",
+    icon: "Zap",
     to: getSkillsRoutePath(),
   },
   plugins: {

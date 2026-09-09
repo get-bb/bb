@@ -1060,7 +1060,7 @@ describe("PluginNavSidebarItems", () => {
 describe("ResourceNavSidebarItem", () => {
   it.each([
     ["Plugins", "GridView", "/plugins"],
-    ["Skills", "Explore", "/skills"],
+    ["Skills", "Zap", "/skills"],
   ] as const)(
     "renders the static %s icon without plugin-panel options",
     (title, icon, routePath) => {

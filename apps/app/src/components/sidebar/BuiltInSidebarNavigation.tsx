@@ -103,10 +103,10 @@ export function BuiltInSidebarNavigation({
             pluginId: "__bb__" as const,
             id: "skills",
             title: "Skills",
-            icon: <Icon name="Explore" aria-hidden="true" />,
+            icon: <Icon name="Zap" aria-hidden="true" />,
             content: (
               <ResourceNavSidebarItem
-                icon="Explore"
+                icon="Zap"
                 title="Skills"
                 routePath={skillsRoutePath}
                 onNavigate={onNavigate}
