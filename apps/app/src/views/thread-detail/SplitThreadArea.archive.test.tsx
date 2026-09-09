@@ -20,6 +20,7 @@ import {
 import { PERSONAL_PROJECT_ID } from "@bb/domain";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { threadQueryKey } from "@/hooks/queries/query-keys";
+import { useUnarchiveThread } from "@/hooks/mutations/thread-state-mutations";
 import { splitLayoutAtom } from "@/lib/split-layout/atoms";
 import type { SplitLayout } from "@/lib/split-layout";
 import { PaneContext } from "./PaneContext";
@@ -56,7 +57,10 @@ vi.mock("@/hooks/useRealtimeSubscription", () => ({
 
 vi.mock("@/lib/sdk", () => ({
   sdk: {
-    threads: { get: () => new Promise<never>(() => {}) },
+    threads: {
+      get: () => new Promise<never>(() => {}),
+      unarchive: () => pendingArchive!.promise,
+    },
   },
 }));
 
@@ -118,6 +122,19 @@ function LocationProbe() {
   return <div data-testid="location">{location.pathname}</div>;
 }
 
+function UnarchiveHarness() {
+  const mutation = useUnarchiveThread();
+  return (
+    <button
+      type="button"
+      data-testid="unarchive"
+      onClick={() => mutation.mutate({ id: "thr-b" })}
+    >
+      unarchive
+    </button>
+  );
+}
+
 function twoPaneLayout(focusedPaneId: "pane-1" | "pane-2"): SplitLayout {
   const content = (threadId: string) => ({
     kind: "thread" as const,
@@ -158,6 +175,7 @@ function renderArchiveScenario(initialArchivedAt: number | null = null) {
           <SplitThreadArea />
           <LocationProbe />
           <ArchiveHarness threadId="thr-b" />
+          <UnarchiveHarness />
         </MemoryRouter>
       </QueryClientProvider>
     </JotaiProvider>,
@@ -177,6 +195,23 @@ afterEach(() => {
 });
 
 describe("SplitThreadArea archive pruning", () => {
+  it("keeps the archived pane and its focus when unarchiving is rejected", async () => {
+    deferArchive();
+    const queryClient = renderArchiveScenario(ARCHIVED_AT);
+    expect(await screen.findByTestId("pane-thr-b")).toBeTruthy();
+
+    fireEvent.click(screen.getByTestId("unarchive"));
+    await waitFor(() => expect(archivedAtOf(queryClient, "thr-b")).toBeNull());
+    await act(async () => pendingArchive!.reject(new Error("unarchive failed")));
+
+    await waitFor(() =>
+      expect(archivedAtOf(queryClient, "thr-b")).toBe(ARCHIVED_AT),
+    );
+    expect(screen.getByTestId("pane-thr-b").dataset.focused).toBe("true");
+    expect(screen.getByTestId("pane-thr-a")).toBeTruthy();
+    expect(screen.getByTestId("location").textContent).toBe("/threads/thr-b");
+  });
+
   it("keeps an archived pane when its thread first loads, but closes it after unarchiving and archiving again", async () => {
     deferArchive();
     const queryClient = renderArchiveScenario(ARCHIVED_AT);
