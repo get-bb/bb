@@ -21,7 +21,6 @@ export const EXTENDED_ICON_NAMES = [
   "Brain",
   "Calendar",
   "CalendarCheckOut02",
-  "CalendarSync",
   "ChartColumn",
   "ChevronUp",
   "ChevronsDown",

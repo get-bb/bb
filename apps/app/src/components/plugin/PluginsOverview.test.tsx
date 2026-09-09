@@ -60,7 +60,7 @@ const AUTOMATIONS_PLUGIN = {
   statusDetail: null,
   description: "Schedule recurring and one-shot agent or script work.",
   name: "Automations",
-  icon: "CalendarSync",
+  icon: "Repeat",
   iconUrl: null,
   logoUrl: null,
   logoDarkUrl: null,
