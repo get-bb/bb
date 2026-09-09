@@ -1068,7 +1068,10 @@ export function ModelReasoningPicker({
                       if (option) handleReasoningSelect(option.value);
                     }}
                     disabled={previewSelectionBlocked}
-                    className="flex gap-1"
+                    className={cn(
+                      "flex gap-1",
+                      isCompactViewport && "flex-wrap",
+                    )}
                   >
                     {activeReasoningOptions.map((option) => (
                       <ToggleGroupItem

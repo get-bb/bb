@@ -167,51 +167,79 @@ export const STORY_CLAUDE_CODE_MORE_MODELS: readonly PickerOption<string>[] = [
   { value: "claude-haiku-4-5", label: "Claude Haiku 4.5" },
 ];
 
-export const STORY_PI_MODELS: readonly ModelPickerOption[] = [
+export const STORY_PI_REASONING: readonly PickerOption<ReasoningLevel>[] = [
+  { value: "none", label: "None" },
+  { value: "low", label: "Low" },
+  { value: "medium", label: "Medium" },
+  { value: "high", label: "High" },
+  { value: "xhigh", label: "Extra High" },
+];
+
+const STORY_PI_OPUS_REASONING: readonly PickerOption<ReasoningLevel>[] = [
+  ...STORY_PI_REASONING,
+  { value: "max", label: "Max" },
+];
+
+export const STORY_PI_MODELS: readonly (ModelPickerOption & {
+  reasoningOptions: readonly PickerOption<ReasoningLevel>[];
+})[] = [
   {
     value: "openai-codex/gpt-5.5",
     label: "GPT-5.5",
     routeProviderId: "openai-codex",
+    reasoningOptions: STORY_PI_REASONING,
   },
   {
     value: "openai-codex/gpt-5.4",
     label: "GPT-5.4",
     routeProviderId: "openai-codex",
+    reasoningOptions: STORY_PI_REASONING,
   },
   {
     value: "openai-codex/gpt-5.4-mini",
     label: "GPT-5.4 Mini",
     routeProviderId: "openai-codex",
+    reasoningOptions: STORY_PI_REASONING,
   },
   {
-    value: "openai-codex/gpt-5.3-codex",
+    value: "openai/gpt-5.3-codex",
     label: "GPT-5.3 Codex",
-    routeProviderId: "openai-codex",
+    routeProviderId: "openai",
+    reasoningOptions: STORY_PI_REASONING,
   },
   {
     value: "openai/gpt-5.3-codex-spark",
     label: "GPT-5.3 Codex Spark",
     routeProviderId: "openai",
+    reasoningOptions: STORY_PI_REASONING.filter(
+      ({ value }) => value !== "none",
+    ),
   },
   {
     value: "openai-codex/gpt-5.3-codex-spark",
     label: "GPT-5.3 Codex Spark",
     routeProviderId: "openai-codex",
+    reasoningOptions: STORY_PI_REASONING,
   },
   {
     value: "anthropic/claude-haiku-4-5",
     label: "Claude Haiku 4.5",
     routeProviderId: "anthropic",
+    reasoningOptions: STORY_PI_REASONING.filter(
+      ({ value }) => value !== "xhigh",
+    ),
   },
   {
     value: "anthropic/claude-opus-4-8",
     label: "Claude Opus 4.8",
     routeProviderId: "anthropic",
+    reasoningOptions: STORY_PI_OPUS_REASONING,
   },
   {
     value: "anthropic/claude-opus-4-7",
     label: "Claude Opus 4.7",
     routeProviderId: "anthropic",
+    reasoningOptions: STORY_PI_OPUS_REASONING,
   },
 ];
 
@@ -392,7 +420,7 @@ export function useInteractiveExecutionControls(
   const [model, setModel] = useState(base.model.selected);
   const [reasoning, setReasoning] = useState(base.reasoning.value);
   const [serviceTier, setServiceTier] = useState(base.serviceTier?.value);
-  const catalogForProvider = (id: string) => {
+  const catalogForProvider = (id: string, selectedModel = model) => {
     if (id === base.provider.selectedId) {
       return {
         models: base.model.options,
@@ -409,7 +437,12 @@ export function useInteractiveExecutionControls(
             : STORY_CODEX_MODELS,
       moreModels: id === "claude-code" ? STORY_CLAUDE_CODE_MORE_MODELS : [],
       reasoning:
-        id === "claude-code" ? STORY_CLAUDE_REASONING : STORY_CODEX_REASONING,
+        id === "claude-code"
+          ? STORY_CLAUDE_REASONING
+          : id === "pi"
+            ? (STORY_PI_MODELS.find((option) => option.value === selectedModel)
+                ?.reasoningOptions ?? STORY_PI_REASONING)
+            : STORY_CODEX_REASONING,
     };
   };
   const catalog = catalogForProvider(providerId);
@@ -419,7 +452,7 @@ export function useInteractiveExecutionControls(
       ...base.provider,
       selectedId: providerId,
       onChange: (id) => {
-        const next = catalogForProvider(id);
+        const next = catalogForProvider(id, "");
         setProviderId(id);
         setModel(next.models[0]?.value ?? "");
         if (next.reasoning.length > 0) {
@@ -439,7 +472,18 @@ export function useInteractiveExecutionControls(
       selected: model,
       options: catalog.models,
       moreOptions: catalog.moreModels,
-      onChange: setModel,
+      onChange: (value) => {
+        setModel(value);
+        const next = catalogForProvider(providerId, value);
+        if (next.reasoning.length > 0) {
+          setReasoning((current) =>
+            reconcileReasoningLevel(
+              current,
+              next.reasoning.map((option) => option.value),
+            ),
+          );
+        }
+      },
     },
     reasoning: {
       value: reasoning,
