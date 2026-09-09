@@ -71,9 +71,8 @@ export function useHoverPopover({
   }, []);
 
   useEffect(() => {
-    if (isPointerHoverDisabled) return;
-
     clearToggleTimeout();
+    if (isPointerHoverDisabled) return;
 
     if (isFocusOverTrigger || isFocusOverContent) {
       if (!open) setOpen(true);

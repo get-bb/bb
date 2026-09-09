@@ -7,11 +7,14 @@ import { useHoverPopover } from "./use-hover-popover";
 
 afterEach(() => {
   cleanup();
+  vi.useRealTimers();
   vi.restoreAllMocks();
 });
 
-function HoverPopoverProbe() {
-  const { open, triggerHoverProps, handleOpenChange } = useHoverPopover();
+function HoverPopoverProbe({ openDelayMs = 0 }: { openDelayMs?: number }) {
+  const { open, triggerHoverProps, handleOpenChange } = useHoverPopover({
+    openDelayMs,
+  });
   return (
     <>
       <button type="button" data-testid="trigger" {...triggerHoverProps}>
@@ -49,5 +52,26 @@ describe("useHoverPopover", () => {
 
     fireEvent.pointerEnter(screen.getByTestId("trigger"));
     expect(screen.getByTestId("open").textContent).toBe("true");
+  });
+
+  it("clears pending hover transitions when switching to compact viewports", () => {
+    vi.useFakeTimers();
+    const { rerender } = render(
+      <CompactViewportOverrideProvider isCompactViewport={false}>
+        <HoverPopoverProbe openDelayMs={100} />
+      </CompactViewportOverrideProvider>,
+    );
+
+    fireEvent.pointerEnter(screen.getByTestId("trigger"));
+    expect(screen.getByTestId("open").textContent).toBe("false");
+
+    rerender(
+      <CompactViewportOverrideProvider isCompactViewport>
+        <HoverPopoverProbe openDelayMs={100} />
+      </CompactViewportOverrideProvider>,
+    );
+    vi.advanceTimersByTime(100);
+
+    expect(screen.getByTestId("open").textContent).toBe("false");
   });
 });
