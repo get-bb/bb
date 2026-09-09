@@ -128,7 +128,9 @@ it("lists alternative providers without duplicating the manual command flow", as
     screen.getByRole("button", { name: "Other ways to add a machine" }),
   );
   await screen.findByRole("button", { name: "ssh" });
-  expect(screen.queryByRole("button", { name: "Manual machine setup" })).toBeNull();
+  expect(
+    screen.queryByRole("button", { name: "Manual machine setup" }),
+  ).toBeNull();
   fireEvent.click(screen.getByRole("button", { name: "ssh" }));
   for (const name of ["ssh", "modal", "digitalocean", "tailscale"])
     expect(screen.getByRole("button", { name })).toBeDefined();
@@ -203,7 +205,7 @@ it("shows preparation until the command is available, then waits for the machine
   }
 });
 
-it("offers access alternatives, not machine providers, while remote access is missing", async () => {
+it("keeps provider-specific setup accessible while default access is missing", async () => {
   const { wrapper } = createQueryClientTestHarness();
   render(
     <MemoryRouter>
@@ -221,8 +223,21 @@ it("offers access alternatives, not machine providers, while remote access is mi
       .getByRole("link", { name: "Other ways to connect" })
       .getAttribute("href"),
   ).toBe("/settings/machines#advanced-machine-settings");
-  expect(
-    screen.queryByRole("button", { name: "Other ways to add a machine" }),
-  ).toBeNull();
   expect(sdk.hosts.submit).not.toHaveBeenCalled();
+  fireEvent.click(
+    await screen.findByRole("button", { name: "Other ways to add a machine" }),
+  );
+  fireEvent.click(await screen.findByRole("button", { name: "tailscale" }));
+  expect(
+    screen.getByRole("combobox", { name: "Machine project" }),
+  ).toBeTruthy();
+  expect(screen.queryByRole("link", { name: "Set up bb connect" })).toBeNull();
+  fireEvent.click(
+    screen.getByRole("button", { name: "Create tailscale machine" }),
+  );
+  await waitFor(() =>
+    expect(sdk.hosts.submit).toHaveBeenCalledWith(
+      expect.objectContaining({ machineProviderId: "tailscale" }),
+    ),
+  );
 });

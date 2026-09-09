@@ -50,7 +50,6 @@ it.each([true, false])(
           {
             name: "GH_TOKEN",
             value: "setup-fixture-token",
-            secret: true,
             note: null,
           },
         );
