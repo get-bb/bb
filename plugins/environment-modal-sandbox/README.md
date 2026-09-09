@@ -7,7 +7,7 @@ machine. The project picker exposes **New sandbox** under **New machine**.
 ## Standard image
 
 The plugin ships a [Dockerfile](Dockerfile) with Debian, Node, Git/GitHub CLI,
-build tools, Python, ripgrep, jq, pnpm, Codex and Claude Code. It contains no BB
+build tools, Python, ripgrep, jq, pnpm, Pi, Codex and Claude Code. It contains no BB
 daemon, project files, enrollment state or credentials. The image is named by the
 Dockerfile's SHA-256 and reused within the Modal account. The first launch builds
 and publishes it automatically; later launches reuse it. Changing the Dockerfile
