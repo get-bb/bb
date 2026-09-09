@@ -81,7 +81,7 @@ import { useDesktopWindowState } from "@/hooks/useDesktopWindowState";
 import { useServerDaemonLogsCommand } from "@/hooks/useServerDaemonLogsCommand";
 import {
   getLegacyProjectComposeRoutePath,
-  getProjectSettingsRoutePath,
+  getSettingsProjectRoutePath,
   getRootComposeRoutePath,
   getThreadRoutePath,
   isProjectlessProjectId,
@@ -287,7 +287,6 @@ function resolveRouteTitle(pathname: string): { title: string } | undefined {
 interface AppHeaderProps {
   usesProjectChromeStyle: boolean;
   usesDesktopChrome: boolean;
-  isSettingsView: boolean;
   projectId?: string;
   project?: ProjectResponse;
   pluginPanel?: PluginNavPanelSlot;
@@ -302,7 +301,6 @@ interface AppHeaderProps {
 function AppHeader({
   usesProjectChromeStyle,
   usesDesktopChrome,
-  isSettingsView,
   projectId,
   project,
   pluginPanel,
@@ -343,16 +341,13 @@ function AppHeader({
     !isProjectlessProjectId(projectId) ? (
     <>
       <Link
-        to={getProjectSettingsRoutePath(projectId)}
+        to={getSettingsProjectRoutePath(projectId)}
         className={cn(
           HEADER_ICON_BUTTON_CLASS,
           "inline-flex items-center justify-center transition-colors",
-          isSettingsView
-            ? "bg-state-active text-foreground"
-            : "text-muted-foreground hover:bg-state-hover hover:text-foreground",
+          "text-muted-foreground hover:bg-state-hover hover:text-foreground",
         )}
         aria-label="Project settings"
-        aria-current={isSettingsView ? "page" : undefined}
       >
         <Icon name="Settings" />
       </Link>
@@ -387,14 +382,8 @@ export function AppLayout({ children }: AppLayoutProps) {
     restoreIOSViewportOnKeyboardDismissal,
   );
   const location = useLocation();
-  const {
-    projectId,
-    threadId,
-    isThreadView,
-    isArchivedView,
-    isSettingsView,
-    isRootView,
-  } = useRouteState();
+  const { projectId, threadId, isThreadView, isArchivedView, isRootView } =
+    useRouteState();
   const [resourceRouteLabel, setResourceRouteLabel] = useAtom(
     resourceRouteLabelAtom,
   );
@@ -606,22 +595,11 @@ export function AppLayout({ children }: AppLayoutProps) {
                   { label: "Archived" },
                 ],
               }
-          : isSettingsView && projectId
+          : projectId
             ? {
-                title: "",
-                breadcrumbs: [
-                  {
-                    label: projectLabel ?? projectId,
-                    to: getLegacyProjectComposeRoutePath(projectId),
-                  },
-                  { label: "Settings" },
-                ],
+                title: projectLabel ?? projectId,
               }
-            : projectId
-              ? {
-                  title: projectLabel ?? projectId,
-                }
-              : (resolveRouteTitle(location.pathname) ?? { title: "" });
+            : (resolveRouteTitle(location.pathname) ?? { title: "" });
 
   const documentTitle = (() => {
     if (isThreadView) {
@@ -644,9 +622,6 @@ export function AppLayout({ children }: AppLayoutProps) {
           : "Threads · Archived";
       }
       return `${projectLabel ?? projectId} · Archived`;
-    }
-    if (isSettingsView && projectId) {
-      return `${projectLabel ?? projectId} · Settings`;
     }
     if (projectId) {
       return projectLabel ?? projectId;
@@ -779,10 +754,7 @@ export function AppLayout({ children }: AppLayoutProps) {
                 {showHeader ? (
                   <AppHeader
                     usesDesktopChrome={usesDesktopChrome}
-                    usesProjectChromeStyle={
-                      isRootView || isArchivedView || isSettingsView
-                    }
-                    isSettingsView={isSettingsView}
+                    usesProjectChromeStyle={isRootView || isArchivedView}
                     projectId={projectId}
                     project={project}
                     pluginPanel={pluginPanel}

@@ -31,6 +31,8 @@ function RouteMemoryTestSurface() {
       <Link to="/settings/providers/codex?tab=models#preferred">
         Codex settings
       </Link>
+      <Link to="/projects/proj_one/settings">Legacy project settings</Link>
+      <Link to="/settings/projects/proj_one">Project detail</Link>
       <Link to="/settings/plugins">Legacy plugin collection</Link>
       <Link to="/settings/plugins/ui-patterns">Legacy plugin detail</Link>
     </>
@@ -39,6 +41,33 @@ function RouteMemoryTestSurface() {
 
 describe("useAppSettingsRouteMemory", () => {
   afterEach(cleanup);
+
+  it.each(["/projects/proj_one/settings", "/settings/projects/proj_one"])(
+    "uses a safe app destination when opening %s directly",
+    (path) => {
+      render(
+        <MemoryRouter initialEntries={[path]}>
+          <RouteMemoryTestSurface />
+        </MemoryRouter>,
+      );
+      fireEvent.click(screen.getByRole("link", { name: "App" }));
+      expect(screen.getByTestId("location").textContent).toBe("/");
+    },
+  );
+
+  it("preserves the previous app route across a legacy project settings redirect", () => {
+    render(
+      <MemoryRouter initialEntries={["/threads/thr_one"]}>
+        <RouteMemoryTestSurface />
+      </MemoryRouter>,
+    );
+    fireEvent.click(
+      screen.getByRole("link", { name: "Legacy project settings" }),
+    );
+    fireEvent.click(screen.getByRole("link", { name: "Project detail" }));
+    fireEvent.click(screen.getByRole("link", { name: "App" }));
+    expect(screen.getByTestId("location").textContent).toBe("/threads/thr_one");
+  });
 
   it("switches between the most recent app and settings routes", () => {
     render(

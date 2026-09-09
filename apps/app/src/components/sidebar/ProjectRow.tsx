@@ -79,7 +79,7 @@ import {
 } from "@bb/client-core";
 import { cn } from "@bb/shared-ui/lib/utils";
 import { getMutationErrorMessage } from "@/lib/mutation-errors";
-import { getProjectSettingsRoutePath } from "@/lib/route-paths";
+import { getSettingsProjectRoutePath } from "@/lib/route-paths";
 import { getThreadDisplayTitle } from "@/lib/thread-title";
 import { appToast } from "@/components/ui/app-toast";
 import { useRouteNavigate } from "@/components/ui/app-route-anchor";
@@ -2363,7 +2363,7 @@ function ProjectRowComponent({
       ) : null}
       {isLocalPathInvalid ? (
         <NavLink
-          to={getProjectSettingsRoutePath(project.id)}
+          to={getSettingsProjectRoutePath(project.id)}
           onClick={(event) => {
             event.stopPropagation();
             onProjectSelect?.();

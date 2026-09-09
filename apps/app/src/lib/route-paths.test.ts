@@ -20,6 +20,19 @@ import {
 } from "./route-paths";
 
 describe("route path helpers", () => {
+  it.each(["/projects/proj_one/settings", "/settings/projects/proj_one"])(
+    "resolves project settings links inside the app: %s",
+    (path) => {
+      const suffix = "?from=bookmark#checkouts";
+      expect(
+        resolveRouteHref({
+          currentOrigin: "https://bb.example",
+          href: `https://bb.example${path}${suffix}`,
+        }),
+      ).toEqual({ path: `${path}${suffix}` });
+    },
+  );
+
   it("recognizes the legacy archived URL", () => {
     expect(isRoutePath({ path: "/archived" })).toBe(true);
   });

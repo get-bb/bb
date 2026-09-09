@@ -35,7 +35,7 @@ import {
   LEGACY_TOOLS_SPLAT_ROUTE_PATH,
   PROJECT_ARCHIVED_ROUTE_PATH,
   PROJECTLESS_ARCHIVED_ROUTE_PATH,
-  PROJECT_SETTINGS_ROUTE_PATH,
+  LEGACY_PROJECT_SETTINGS_ROUTE_PATH,
   SETTINGS_PLUGIN_ROUTE_PATH,
   SETTINGS_PLUGINS_ROUTE_PATH,
   SETTINGS_MACHINE_ROUTE_PATH,
@@ -53,6 +53,7 @@ import {
   getAutomationEditRoutePath,
   getAutomationsRoutePath,
   getSettingsRoutePath,
+  getSettingsProjectRoutePath,
   getSkillDetailRoutePath,
 } from "./lib/route-paths";
 import { AppCommandProvider } from "./components/commands/AppCommandProvider";
@@ -79,14 +80,26 @@ const MachineSettingsView = lazy(() =>
     default: m.MachineSettingsView,
   })),
 );
-const ProjectSettingsView = lazy(() =>
-  import("./views/ProjectSettingsView").then((m) => ({
-    default: m.ProjectSettingsView,
-  })),
-);
 const splitWorkspaceRouteModule = import("./views/SplitWorkspaceRoute");
 splitWorkspaceRouteModule.catch(() => {});
 const SplitWorkspaceRoute = lazy(() => splitWorkspaceRouteModule);
+
+function LegacyProjectSettingsRedirect() {
+  const { projectId } = useParams<{ projectId: string }>();
+  const { search, hash } = useLocation();
+  return (
+    <Navigate
+      to={{
+        pathname: projectId
+          ? getSettingsProjectRoutePath(projectId)
+          : getSettingsRoutePath("projects"),
+        search,
+        hash,
+      }}
+      replace
+    />
+  );
+}
 
 export function LegacyAutomationDetailRedirect() {
   const location = useLocation();
@@ -208,7 +221,7 @@ export function HashNavigationScroll() {
   return null;
 }
 
-function AppRoutes() {
+export function AppRoutes() {
   return (
     <AppLayout>
       <Suspense fallback={null}>
@@ -232,8 +245,8 @@ function AppRoutes() {
             element={<ProjectDetailSettingsView />}
           />
           <Route
-            path={PROJECT_SETTINGS_ROUTE_PATH}
-            element={<ProjectSettingsView />}
+            path={LEGACY_PROJECT_SETTINGS_ROUTE_PATH}
+            element={<LegacyProjectSettingsRedirect />}
           />
           <Route
             path={PROJECT_ARCHIVED_ROUTE_PATH}

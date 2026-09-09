@@ -47,7 +47,8 @@ const ROOT_COMPOSE_ROUTE_PATH = APP_ROOT_ROUTE_PATH;
 export const LEGACY_PROJECT_COMPOSE_ROUTE_PATH = "/projects/:projectId";
 export const PROJECTLESS_ARCHIVED_ROUTE_PATH = "/archived";
 const PROJECTLESS_THREAD_DETAIL_ROUTE_PATH = "/threads/:threadId";
-export const PROJECT_SETTINGS_ROUTE_PATH = "/projects/:projectId/settings";
+export const LEGACY_PROJECT_SETTINGS_ROUTE_PATH =
+  "/projects/:projectId/settings";
 export const PROJECT_ARCHIVED_ROUTE_PATH = "/projects/:projectId/archived";
 const THREAD_DETAIL_ROUTE_PATH = "/projects/:projectId/threads/:threadId";
 export const PLUGIN_PANEL_ROUTE_PATH = "/plugins/:pluginId/:panelPath/*";
@@ -170,10 +171,6 @@ export function getAutomationEditRoutePath(
   return `${getAutomationDetailRoutePath(args)}/edit`;
 }
 
-export function getProjectSettingsRoutePath(projectId: string): string {
-  return `/projects/${projectId}/settings`;
-}
-
 interface PluginPanelRoutePathArgs {
   pluginId: string;
   path: string;
@@ -208,6 +205,7 @@ const baseRoutePatterns: readonly string[] = [
   AUTH_CALLBACK_ROUTE_PATH,
   SETTINGS_ROUTE_PATH,
   SETTINGS_SECTION_ROUTE_PATH,
+  SETTINGS_PROJECT_ROUTE_PATH,
   SETTINGS_PLUGINS_ROUTE_PATH,
   SETTINGS_PLUGIN_ROUTE_PATH,
   TOOLS_ROUTE_PATH,
@@ -234,7 +232,7 @@ const baseRoutePatterns: readonly string[] = [
   AUTOMATION_EDIT_ROUTE_PATH,
   LEGACY_PROJECT_COMPOSE_ROUTE_PATH,
   PROJECTLESS_ARCHIVED_ROUTE_PATH,
-  PROJECT_SETTINGS_ROUTE_PATH,
+  LEGACY_PROJECT_SETTINGS_ROUTE_PATH,
   PROJECT_ARCHIVED_ROUTE_PATH,
   PROJECTLESS_THREAD_DETAIL_ROUTE_PATH,
   THREAD_DETAIL_ROUTE_PATH,

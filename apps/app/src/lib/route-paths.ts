@@ -42,7 +42,7 @@ export {
   SKILLS_ROUTE_PATH,
   LEGACY_PROJECT_COMPOSE_ROUTE_PATH,
   PROJECTLESS_ARCHIVED_ROUTE_PATH,
-  PROJECT_SETTINGS_ROUTE_PATH,
+  LEGACY_PROJECT_SETTINGS_ROUTE_PATH,
   PROJECT_ARCHIVED_ROUTE_PATH,
   PLUGIN_PANEL_ROUTE_PATH,
   isProjectlessProjectId,
@@ -62,7 +62,6 @@ export {
   getAutomationsRoutePath,
   getAutomationDetailRoutePath,
   getAutomationEditRoutePath,
-  getProjectSettingsRoutePath,
   getPluginPanelRoutePath,
   getThreadRoutePath,
 } from "@bb/client-core";

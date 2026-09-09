@@ -23,7 +23,7 @@ import {
 import { useIsCompactViewport } from "@bb/shared-ui/hooks/use-compact-viewport";
 import { CompactLongPressMenu } from "@/components/ui/compact-long-press-menu";
 import { usePathPickerHost } from "@/hooks/useLocalPathPicker";
-import { getProjectSettingsRoutePath } from "@/lib/route-paths";
+import { getSettingsProjectRoutePath } from "@/lib/route-paths";
 import { cn } from "@bb/shared-ui/lib/utils";
 import { useProjectActions } from "./ProjectActionsProvider";
 
@@ -69,7 +69,7 @@ function ProjectActionsMenuItems({
         surface={surface}
         icon="Settings"
         onSelect={() => {
-          navigate(getProjectSettingsRoutePath(project.id));
+          navigate(getSettingsProjectRoutePath(project.id));
         }}
       >
         Project settings
