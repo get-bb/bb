@@ -262,6 +262,41 @@ describe("bb thread spawn command output", () => {
     });
   });
 
+  it("bb thread spawn forwards repeated environment variables", async () => {
+    const thread: domain.Thread = fixtures.makeThread({
+      id: "thread-env",
+      projectId: "proj-1",
+      providerId: "codex",
+    });
+    const post = vi.fn(async () => thread);
+    stubServerApi({ "v1.threads.$post": post });
+
+    await runCommand(
+      [
+        "thread",
+        "spawn",
+        "--project",
+        "proj-1",
+        "--prompt",
+        "hello",
+        "--env",
+        "MULTICA_TASK_ID=task-123",
+        "--env",
+        "MULTICA_TOKEN=prefix=value",
+      ],
+      register,
+    );
+
+    expect(post).toHaveBeenCalledWith({
+      json: expect.objectContaining({
+        envVars: {
+          MULTICA_TASK_ID: "task-123",
+          MULTICA_TOKEN: "prefix=value",
+        },
+      }),
+    });
+  });
+
   it("bb thread spawn forwards hidden visibility", async () => {
     const thread: domain.Thread = fixtures.makeThread({
       id: "thread-hidden",
@@ -333,6 +368,7 @@ describe("bb thread spawn command output", () => {
     const helpOutput = await getHelpOutput(["thread", "spawn"], register);
     expect(helpOutput).toContain("--permission-mode <mode>");
     expect(helpOutput).toContain("--visibility <visibility>");
+    expect(helpOutput).toContain("--env <KEY=VALUE>");
     expect(helpOutput).toContain("Exact Git ref");
     expect(helpOutput).toContain("origin/<branch> for a remote ref");
     expect(helpOutput).toContain("bb environment providers");

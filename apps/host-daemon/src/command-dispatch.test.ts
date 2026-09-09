@@ -245,6 +245,7 @@ function createTurnSubmitCommand(
       instructions: "Be concise.",
       dynamicTools: [],
       contributedEnv: [],
+      envVars: {},
       injectedSkillSources: [],
       instructionMode: "append",
     },
@@ -345,6 +346,7 @@ function createInstallationGatedThreadStart(
     instructions: "Be concise.",
     dynamicTools: [],
     contributedEnv: [],
+    envVars: {},
     injectedSkillSources: [],
     instructionMode: "append",
   };
@@ -782,6 +784,7 @@ describe("dispatchCommand", () => {
         instructions: "Be concise.",
         dynamicTools: [],
         contributedEnv: [],
+        envVars: {},
         injectedSkillSources: [],
         instructionMode: "append",
       },
@@ -859,6 +862,7 @@ describe("dispatchCommand", () => {
         instructions: "Be concise.",
         dynamicTools: [],
         contributedEnv: [],
+        envVars: {},
         injectedSkillSources: [],
         instructionMode: "append",
       },
@@ -1232,6 +1236,7 @@ describe("dispatchCommand", () => {
         instructions: "Be concise.",
         dynamicTools: [],
         contributedEnv: [],
+        envVars: {},
         injectedSkillSources: [],
         instructionMode: "append",
       },
@@ -1325,6 +1330,7 @@ describe("dispatchCommand", () => {
       instructions: "Be concise.",
       dynamicTools: [],
       contributedEnv: [],
+      envVars: {},
       injectedSkillSources: [],
       instructionMode: "append",
     };
@@ -1404,6 +1410,7 @@ describe("dispatchCommand", () => {
       instructions: "Be concise.",
       dynamicTools: [],
       contributedEnv: [],
+      envVars: {},
       injectedSkillSources: [],
       instructionMode: "append",
     };
@@ -1471,6 +1478,7 @@ describe("dispatchCommand", () => {
       instructions: "Be concise.",
       dynamicTools: [],
       contributedEnv: [],
+      envVars: {},
       injectedSkillSources: [],
       instructionMode: "append",
     };
@@ -1731,6 +1739,7 @@ describe("dispatchCommand", () => {
       instructions: start.instructions,
       dynamicTools: start.dynamicTools,
       contributedEnv: [],
+      envVars: {},
       injectedSkillSources: start.injectedSkillSources,
       instructionMode: start.instructionMode,
     };
@@ -2297,6 +2306,7 @@ describe("dispatchCommand", () => {
       instructions: "Be concise.",
       dynamicTools: [],
       contributedEnv: [],
+      envVars: {},
       injectedSkillSources: [fixture.source],
       instructionMode: "append",
     };
@@ -2360,6 +2370,7 @@ describe("dispatchCommand", () => {
         instructions: "Be concise.",
         dynamicTools: [],
         contributedEnv: [],
+        envVars: {},
         injectedSkillSources: [fixture.source],
         instructionMode: "append",
       },

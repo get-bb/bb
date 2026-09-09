@@ -312,6 +312,15 @@ function dropThreadConversationOutlinesTable(db: DbConnection): void {
   db.$client.prepare("DROP TABLE IF EXISTS thread_conversation_outlines").run();
 }
 
+function dropThreadEnvVarsColumn(db: DbConnection): void {
+  const columns = db.$client
+    .prepare<[], TableInfoRow>("PRAGMA table_info(threads)")
+    .all();
+  if (columns.some((column) => column.name === "env_vars_json")) {
+    db.$client.prepare("ALTER TABLE threads DROP COLUMN env_vars_json").run();
+  }
+}
+
 function dropRewindAddedTables(db: DbConnection): void {
   rewindEnvironmentRowFactsMigration(db);
   rewindEnvironmentProvidersMigration(db);
@@ -329,6 +338,7 @@ function dropRewindAddedTables(db: DbConnection): void {
   dropMarketplaceCatalogSchema(db);
   dropEventParentToolCallIdColumn(db);
   dropQueueReworkSchema(db);
+  dropThreadEnvVarsColumn(db);
   db.$client.prepare("DROP TABLE IF EXISTS plugins").run();
   db.$client.prepare("DROP TABLE IF EXISTS plugin_kv").run();
   db.$client.prepare("DROP TABLE IF EXISTS plugin_settings").run();
@@ -423,6 +433,7 @@ const pendingInteractionsMigrationWhen = 1783626227375;
 const permissionModesMigrationWhen = 1784311522462;
 const branchLocalThreadTabsMigrationWhen = 1783633750817;
 const eventParentToolCallMigrationWhen = 1787181956957;
+const threadEnvVarsMigrationWhen = 1788917778275;
 const eventParentToolCallPreJsonValidMigrationHash =
   "79d39e7b68d1db8ba02614fe4cc227cc0c154d77c7183f2e37ed2d8475412993";
 const eventLargeValuesPreOptimizationHash =
@@ -2102,6 +2113,48 @@ describe("migrate", () => {
     }
   });
 
+  it("backfills an empty environment map for existing threads", () => {
+    const db = createConnection(":memory:");
+
+    try {
+      migrate(db);
+      const host = upsertHost(db, noopNotifier, {
+        name: "thread-env-migration-host",
+        type: "persistent",
+      });
+      const { project } = createProject(db, noopNotifier, {
+        name: "thread-env-migration-project",
+        source: {
+          type: "local_path",
+          hostId: host.id,
+          path: "/tmp/thread-env-migration",
+        },
+      });
+      const thread = createThread(db, noopNotifier, {
+        projectId: project.id,
+        providerId: "codex",
+      });
+      dropThreadEnvVarsColumn(db);
+      db.$client
+        .prepare<DeleteMigrationParameters>(
+          "DELETE FROM __drizzle_migrations WHERE created_at = ?",
+        )
+        .run(threadEnvVarsMigrationWhen);
+
+      migrate(db);
+
+      expect(
+        db.$client
+          .prepare<[string], { envVarsJson: string }>(
+            "SELECT env_vars_json AS envVarsJson FROM threads WHERE id = ?",
+          )
+          .get(thread.id),
+      ).toEqual({ envVarsJson: "{}" });
+    } finally {
+      closeConnection(db);
+    }
+  });
+
   it("keeps a chosen steer preference through the steer default change", () => {
     const db = createConnection(":memory:");
 
@@ -2376,6 +2429,7 @@ describe("migrate", () => {
       dropMarketplaceCatalogSchema(db);
       dropEventParentToolCallIdColumn(db);
       dropQueueReworkSchema(db);
+      dropThreadEnvVarsColumn(db);
 
       restoreLegacyThreadOriginColumn(db);
       migrate(db);
@@ -2783,6 +2837,7 @@ describe("migrate", () => {
       dropMarketplaceCatalogSchema(db);
       dropEventParentToolCallIdColumn(db);
       dropQueueReworkSchema(db);
+      dropThreadEnvVarsColumn(db);
 
       restoreLegacyThreadOriginColumn(db);
       expect(
@@ -2887,6 +2942,7 @@ describe("migrate", () => {
       dropMarketplaceCatalogSchema(db);
       dropEventParentToolCallIdColumn(db);
       dropQueueReworkSchema(db);
+      dropThreadEnvVarsColumn(db);
 
       restoreLegacyThreadOriginColumn(db);
       expect(() => migrate(db)).not.toThrow();
@@ -5460,6 +5516,7 @@ describe("migrate", () => {
       dropEventParentToolCallIdColumn(db);
       dropMarketplaceStatsColumn(db);
       dropQueueReworkSchema(db);
+      dropThreadEnvVarsColumn(db);
       db.$client
         .prepare<DeleteMigrationParameters>(
           "DELETE FROM __drizzle_migrations WHERE created_at >= ?",
@@ -5551,6 +5608,7 @@ describe("environment providers migration", () => {
   const environmentProvidersMigrationWhen = 1788386943764;
 
   function seedPreProviderEnvironments(db: DbConnection): void {
+    dropThreadEnvVarsColumn(db);
     db.$client.prepare("DROP TABLE retained_event_outputs").run();
     rewindEnvironmentRowFactsMigration(db);
     rewindEnvironmentProvidersMigration(db);

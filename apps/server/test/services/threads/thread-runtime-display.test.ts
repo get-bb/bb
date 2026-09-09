@@ -224,6 +224,7 @@ function createThreadListEntry(
 ): ThreadWithPendingInteractionState {
   return {
     ...args.thread,
+    envVarsJson: "{}",
     modelOverride: null,
     reasoningLevelOverride: null,
     environmentBranchName: null,

@@ -8,6 +8,7 @@ import {
   countLiveThreadsInEnvironment,
   countNonDeletedAssignedChildThreads,
   getThread,
+  getThreadEnvVars,
   getThreadExecutionOverride,
   hasActiveThreadAttention,
   setThreadExecutionOverride,
@@ -135,6 +136,25 @@ describe("threads", () => {
     const fetched = getThread(db, thread.id);
     expect(fetched?.visibility).toBe("visible");
     expect(fetched).toMatchObject({ id: thread.id });
+    expect(getThreadEnvVars(db, thread.id)).toEqual({});
+  });
+
+  it("persists environment variables with the thread", () => {
+    const { db, project } = setup();
+    const thread = createThread(db, noopNotifier, {
+      projectId: project.id,
+      providerId: "codex",
+      envVars: {
+        MULTICA_TASK_ID: "task-123",
+        MULTICA_TOKEN: "prefix=value",
+      },
+    });
+
+    expect(getThreadEnvVars(db, thread.id)).toEqual({
+      MULTICA_TASK_ID: "task-123",
+      MULTICA_TOKEN: "prefix=value",
+    });
+    expect(getThreadEnvVars(db, "thr_2222222222")).toBeNull();
   });
 
   it("resolves only exact non-deleted mention thread rows", () => {

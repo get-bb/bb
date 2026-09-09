@@ -3,6 +3,7 @@ import { DEFAULT_THREAD_WAIT_POLL_INTERVAL_MS } from "@bb/sdk";
 import {
   buildSpawnEnvironment,
   looksLikePath,
+  parseThreadEnvVars,
   requireHostId,
 } from "../commands/thread/spawn.js";
 import {
@@ -81,6 +82,36 @@ describe("looksLikePath", () => {
   it("returns false for bare words", () => {
     expect(looksLikePath("worktree")).toBe(false);
     expect(looksLikePath("docker")).toBe(false);
+  });
+});
+
+describe("parseThreadEnvVars", () => {
+  it("parses repeated entries using the first equals sign", () => {
+    expect(parseThreadEnvVars(["TOKEN=prefix=value", "EMPTY="])).toEqual({
+      TOKEN: "prefix=value",
+      EMPTY: "",
+    });
+    expect(parseThreadEnvVars(undefined)).toBeUndefined();
+  });
+
+  it.each([
+    [["TOKEN"], "Expected KEY=VALUE"],
+    [["1TOKEN=value"], "Invalid --env variable name '1TOKEN'"],
+    [["BB_THREAD_ID=value"], "reserved BB_ prefix"],
+    [["TOKEN=one", "TOKEN=two"], "Duplicate --env variable 'TOKEN'"],
+    [[`TOKEN=ok\0bad`], "must not contain a null byte"],
+  ])("rejects invalid entries %#", (values, message) => {
+    expect(() => parseThreadEnvVars(values)).toThrow(message);
+  });
+
+  it("reports map limits before sending a request", () => {
+    const values = Array.from(
+      { length: 33 },
+      (_, index) => `VALUE_${index}=value`,
+    );
+    expect(() => parseThreadEnvVars(values)).toThrow(
+      "must contain at most 32 entries",
+    );
   });
 });
 

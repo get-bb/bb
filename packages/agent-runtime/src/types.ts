@@ -122,6 +122,7 @@ export interface StartThreadArgs {
   projectId: string;
   providerId: string;
   contributedEnv?: readonly AgentRuntimeContributedEnvEntry[];
+  envVars?: AgentRuntimeShellEnvironment;
   clientRequestId?: ClientTurnRequestId;
   input?: PromptInput[];
   inputGroups?: PromptInput[][];
@@ -148,6 +149,7 @@ interface PrepareThreadRewindArgs {
   projectId: string;
   providerId: string;
   contributedEnv?: readonly AgentRuntimeContributedEnvEntry[];
+  envVars?: AgentRuntimeShellEnvironment;
   sourceProviderThreadId: string;
   retainThroughProviderCheckpoint: string;
   options: AgentRuntimeExecutionOptions;
@@ -173,6 +175,7 @@ export interface ResumeThreadArgs {
   providerThreadId?: string;
   providerId: string;
   contributedEnv?: readonly AgentRuntimeContributedEnvEntry[];
+  envVars?: AgentRuntimeShellEnvironment;
   options: AgentRuntimeExecutionOptions;
   instructions?: string;
   dynamicTools?: DynamicTool[];
@@ -191,6 +194,7 @@ export interface RunTurnArgs {
   clientRequestId: ClientTurnRequestId;
   options: AgentRuntimeExecutionOptions;
   contributedEnv?: readonly AgentRuntimeContributedEnvEntry[];
+  envVars?: AgentRuntimeShellEnvironment;
   instructions?: string;
 }
 
@@ -202,6 +206,7 @@ export interface SteerTurnArgs {
   clientRequestId: ClientTurnRequestId;
   options: AgentRuntimeExecutionOptions;
   contributedEnv?: readonly AgentRuntimeContributedEnvEntry[];
+  envVars?: AgentRuntimeShellEnvironment;
   instructions?: string;
 }
 

@@ -17,6 +17,7 @@ import {
 import type {
   ReasoningLevel,
   ThreadChangeKind,
+  ThreadEnvVars,
   ThreadLifecycleEvent,
   ThreadLifecycleNoopReason,
   ThreadOriginKind,
@@ -26,6 +27,7 @@ import type {
 } from "@bb/domain";
 import {
   evaluateThreadLifecycleEvent,
+  threadEnvVarsSchema,
   threadSearchSourceKindSchema,
 } from "@bb/domain";
 import type { DbConnection, DbTransaction } from "../connection.js";
@@ -264,6 +266,7 @@ export interface CreateThreadInput {
   projectId: string;
   environmentId?: string | null;
   providerId: string;
+  envVars?: ThreadEnvVars;
   title?: string | null;
   titleFallback?: string | null;
   sectionId?: string | null;
@@ -293,6 +296,7 @@ export function createThread(
           projectId: input.projectId,
           environmentId: input.environmentId ?? null,
           providerId: input.providerId,
+          envVarsJson: JSON.stringify(input.envVars ?? {}),
           title: input.title ?? null,
           titleFallback: input.titleFallback ?? null,
           sectionId: input.sectionId ?? null,
@@ -331,6 +335,19 @@ export function createThread(
 
 export function getThread(db: ThreadWriteConnection, id: string) {
   return db.select().from(threads).where(eq(threads.id, id)).get() ?? null;
+}
+
+export function getThreadEnvVars(
+  db: ThreadWriteConnection,
+  id: string,
+): ThreadEnvVars | null {
+  const row = db
+    .select({ envVarsJson: threads.envVarsJson })
+    .from(threads)
+    .where(eq(threads.id, id))
+    .get();
+  if (row === undefined) return null;
+  return threadEnvVarsSchema.parse(JSON.parse(row.envVarsJson));
 }
 
 export interface ThreadMentionRow {

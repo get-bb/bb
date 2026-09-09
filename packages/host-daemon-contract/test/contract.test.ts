@@ -979,7 +979,7 @@ const CONTRIBUTED_ENV = [
 
 describe("host-daemon command schemas", () => {
   it("uses the current host-daemon protocol version", () => {
-    expect(HOST_DAEMON_PROTOCOL_VERSION).toBe(195);
+    expect(HOST_DAEMON_PROTOCOL_VERSION).toBe(196);
     expect(HOST_ARTIFACT_MAX_BYTES).toBe(256 * 1024 * 1024);
   });
 
@@ -1700,6 +1700,7 @@ describe("host-daemon command schemas", () => {
         instructions: "Be concise.",
         dynamicTools: [],
         contributedEnv: [],
+        envVars: {},
         injectedSkillSources: [],
         instructionMode: "append",
         requestId: CLIENT_REQUEST_ID,
@@ -1735,6 +1736,7 @@ describe("host-daemon command schemas", () => {
           instructions: "Be concise.",
           dynamicTools: [],
           contributedEnv: [],
+          envVars: {},
           injectedSkillSources: [],
           instructionMode: "append",
         },
@@ -1792,6 +1794,7 @@ describe("host-daemon command schemas", () => {
           },
         ],
         contributedEnv: [],
+        envVars: {},
         injectedSkillSources: [],
         instructionMode: "replace",
       }),
@@ -1856,6 +1859,7 @@ describe("host-daemon command schemas", () => {
         instructions: "Be concise.",
         dynamicTools: [],
         contributedEnv: [],
+        envVars: {},
         injectedSkillSources: [],
         instructionMode: "append" as const,
       };
@@ -1918,6 +1922,7 @@ describe("host-daemon command schemas", () => {
           instructions: "Be a helpful coding agent.",
           dynamicTools: [],
           contributedEnv: [],
+          envVars: {},
           injectedSkillSources: [],
           instructionMode: "append",
         },
@@ -1969,6 +1974,7 @@ describe("host-daemon command schemas", () => {
       instructions: "Be a helpful thread.",
       dynamicTools: [],
       contributedEnv: [],
+      envVars: {},
       injectedSkillSources: [],
       instructionMode: "replace",
     };
@@ -2013,6 +2019,7 @@ describe("host-daemon command schemas", () => {
         instructions: "Be a helpful coding agent.",
         dynamicTools: [],
         contributedEnv: [],
+        envVars: {},
         injectedSkillSources: [],
         instructionMode: "append",
       },
@@ -2074,6 +2081,7 @@ describe("host-daemon command schemas", () => {
       instructions: "Be a helpful thread.",
       dynamicTools: [],
       contributedEnv: CONTRIBUTED_ENV,
+      envVars: { MULTICA_TASK_ID: "task-123" },
       injectedSkillSources: [],
       instructionMode: "append",
     };
@@ -2111,6 +2119,7 @@ describe("host-daemon command schemas", () => {
         instructions: "Be a helpful thread.",
         dynamicTools: [],
         contributedEnv: CONTRIBUTED_ENV,
+        envVars: { MULTICA_TASK_ID: "task-123" },
         injectedSkillSources: [],
         instructionMode: "append",
       },
@@ -2188,6 +2197,7 @@ describe("host-daemon command schemas", () => {
       instructions: "Be a helpful thread.",
       dynamicTools: [],
       contributedEnv: [],
+      envVars: {},
       injectedSkillSources: [],
       instructionMode: "append",
     };
@@ -2212,6 +2222,7 @@ describe("host-daemon command schemas", () => {
         instructions: "Be a helpful thread.",
         dynamicTools: [],
         contributedEnv: [],
+        envVars: {},
         injectedSkillSources: [],
         instructionMode: "append",
       },
@@ -2354,6 +2365,7 @@ describe("host-daemon command schemas", () => {
           instructions: "Be a helpful coding agent.",
           dynamicTools: [],
           contributedEnv: [],
+          envVars: {},
           injectedSkillSources: [],
           instructionMode: "append",
         },
@@ -2400,6 +2412,7 @@ describe("host-daemon command schemas", () => {
           instructions: "Be a helpful coding agent.",
           dynamicTools: [],
           contributedEnv: [],
+          envVars: {},
           injectedSkillSources: [],
           instructionMode: "append",
         },
@@ -2500,6 +2513,7 @@ describe("host-daemon command schemas", () => {
         instructions: "Be concise.",
         dynamicTools: [],
         contributedEnv: [],
+        envVars: {},
         injectedSkillSources: [],
         instructionMode: "append",
       }),
@@ -2535,6 +2549,7 @@ describe("host-daemon command schemas", () => {
           instructions: "Be a helpful coding agent.",
           dynamicTools: [],
           contributedEnv: [],
+          envVars: {},
           injectedSkillSources: [],
           instructionMode: "append",
         },

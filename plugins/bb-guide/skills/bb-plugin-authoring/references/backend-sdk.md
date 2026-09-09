@@ -45,6 +45,7 @@ const thread = await bb.sdk.threads.spawn({
   prompt: "Work on this issue…", // prompt XOR input — exactly one
   title: "ENG-42: fix the flaky test",
   visibility: "hidden", // optional background worker; visible is the default
+  envVars: { MULTICA_TASK_ID: "task-123" },
 });
 ```
 
@@ -53,6 +54,13 @@ inputs) — never both. Attribution is auto-filled: `origin: "plugin"` and
 `originPluginId: <your id>` unless you set them. `bb.sdk.threads.send({
 threadId, mode: "auto", input: [...] })` starts a turn on an idle thread or
 queues/steers a running one.
+
+`envVars` is optional per-thread process configuration. Names use portable
+shell-variable syntax and cannot use bb's reserved `BB_` prefix. BB accepts at
+most 32 entries, 16 KiB per value, and 64 KiB for the serialized map. Explicit
+values override matching host-shell or plugin-contributed values, persist with
+the thread, and are reused when its provider session resumes. Values are not
+returned on thread APIs and are masked in provider-environment timeline events.
 
 Read and edit existing threads with the same area — you do not need a
 sidebar panel or a spawned thread to reach them:

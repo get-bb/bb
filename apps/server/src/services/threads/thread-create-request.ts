@@ -1,5 +1,6 @@
 import type {
   PromptInput,
+  ThreadEnvVars,
   ThreadOriginKind,
   ThreadVisibility,
 } from "@bb/domain";
@@ -14,6 +15,7 @@ import type {
 
 export interface ThreadCreateServiceRequestInput {
   environment: CreateThreadEnvironmentArgs;
+  envVars?: CreateThreadRequest["envVars"];
   executionInputSources?: CreateThreadRequest["executionInputSources"];
   /**
    * Epoch ms the first message should dispatch at. Present ⇒ the thread is
@@ -42,9 +44,10 @@ export interface ThreadCreateServiceRequestInput {
 
 export interface ThreadCreateServiceRequest extends Omit<
   ThreadCreateServiceRequestInput,
-  "environment" | "providerId"
+  "environment" | "envVars" | "providerId"
 > {
   environment: EnvironmentArgs | ProviderEnvironmentArgs;
+  envVars: ThreadEnvVars;
   providerId: string;
   titleFallback: string | null;
   visibility: ThreadVisibility;

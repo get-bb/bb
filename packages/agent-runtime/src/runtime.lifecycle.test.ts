@@ -276,6 +276,11 @@ describe("createAgentRuntime lifecycle", () => {
         projectId: "p1",
         providerId: "fake",
         contributedEnv,
+        envVars: {
+          PATH: "/thread/bin",
+          MULTICA_TOKEN: "thread-secret",
+          BB_PROJECT_ID: "forged-project",
+        },
         options: fullRuntimeOptions,
       });
 
@@ -287,8 +292,9 @@ describe("createAgentRuntime lifecycle", () => {
           cwd: tmpDir,
           options: expect.objectContaining({
             envVars: {
-              PATH: "/plugin/bin",
+              PATH: "/thread/bin",
               AUTH_PROXY_URL: "http://127.0.0.1:3334/plugins/env-test/auth",
+              MULTICA_TOKEN: "thread-secret",
               BB_HOST_DAEMON_PORT: "3002",
               BB_PROJECT_ID: "p1",
               BB_SERVER_URL: "http://127.0.0.1:3334",
@@ -305,9 +311,13 @@ describe("createAgentRuntime lifecycle", () => {
         entries: expect.arrayContaining([
           {
             name: "PATH",
-            source: { plugin: "env-test" },
-            value: "/plugin/bin",
-            reason: "Use the plugin toolchain",
+            source: "thread",
+            value: { masked: true },
+          },
+          {
+            name: "MULTICA_TOKEN",
+            source: "thread",
+            value: { masked: true },
           },
           {
             name: "AUTH_PROXY_URL",
@@ -318,6 +328,7 @@ describe("createAgentRuntime lifecycle", () => {
         ]),
       });
       expect(JSON.stringify(events)).not.toContain("/plugins/env-test/auth");
+      expect(JSON.stringify(events)).not.toContain("thread-secret");
 
       await runtime.runTurn({
         clientRequestId: "creq_222222224c",
@@ -325,6 +336,15 @@ describe("createAgentRuntime lifecycle", () => {
         input: [promptTextInput({ text: "follow up" })],
         contributedEnv,
         options: fullRuntimeOptions,
+      });
+      expect(record.last("turn/start")?.params).toMatchObject({
+        options: {
+          envVars: {
+            PATH: "/thread/bin",
+            MULTICA_TOKEN: "thread-secret",
+            BB_PROJECT_ID: "p1",
+          },
+        },
       });
       expect(
         events.filter((event) => event.type === "provider.env-resolved"),
@@ -595,6 +615,10 @@ describe("createAgentRuntime lifecycle", () => {
         projectId: "p1",
         providerThreadId: "prov-1",
         providerId: "fake",
+        envVars: {
+          MULTICA_TASK_ID: "task-123",
+          BB_THREAD_ID: "forged-thread",
+        },
         options: fullRuntimeOptions,
       });
 
@@ -611,6 +635,7 @@ describe("createAgentRuntime lifecycle", () => {
               BB_HOST_DAEMON_PORT: "3002",
               BB_SERVER_URL: "http://127.0.0.1:3334",
               BB_PROJECT_ID: "p1",
+              MULTICA_TASK_ID: "task-123",
               BB_THREAD_ID: "t1",
               BB_ENVIRONMENT_ID: "env-1",
             },
