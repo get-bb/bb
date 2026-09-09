@@ -66,7 +66,13 @@ export function MachineAccessSettings({
   );
   return (
     <SettingsSection
-      title={presentation === "dialog" ? "Connection method" : "Machine access"}
+      title={
+        presentation === "dialog" ? (
+          <span className="font-normal">Connection method</span>
+        ) : (
+          "Machine access"
+        )
+      }
       description={
         presentation === "dialog"
           ? undefined
@@ -131,21 +137,31 @@ export function MachineAccessSettings({
         ) : null,
       )}
       {selected === "connect" && (
-        <div className="flex flex-wrap items-center justify-between gap-3">
+        <div
+          className={
+            presentation === "dialog"
+              ? "flex flex-col gap-5"
+              : "flex flex-wrap items-center justify-between gap-3"
+          }
+        >
           <div className="min-w-0 space-y-1">
-            <p className="flex items-center gap-2 text-sm font-medium">
-              {effective?.availability.status === "available" && (
-                <span
-                  className="size-2 shrink-0 rounded-full bg-success"
-                  aria-hidden="true"
-                />
-              )}
-              {effective?.availability.status === "available"
-                ? "Connected"
-                : effective?.availability.status === "unavailable"
-                  ? "Unavailable"
-                  : "Not connected"}
-            </p>
+            {(presentation !== "dialog" ||
+              effective?.availability.status === "available" ||
+              effective?.availability.status === "unavailable") && (
+              <p className="flex items-center gap-2 text-sm font-medium">
+                {effective?.availability.status === "available" && (
+                  <span
+                    className="size-2 shrink-0 rounded-full bg-success"
+                    aria-hidden="true"
+                  />
+                )}
+                {effective?.availability.status === "available"
+                  ? "Connected"
+                  : effective?.availability.status === "unavailable"
+                    ? "Unavailable"
+                    : "Not connected"}
+              </p>
+            )}
             <p className="text-xs text-subtle-foreground">
               {effective?.availability.status === "available" ? (
                 effective.availability.serverUrl ? (
@@ -163,11 +179,16 @@ export function MachineAccessSettings({
               ) : effective?.availability.status === "unavailable" ? (
                 effective.availability.message
               ) : (
-                "bb connect gives the server a private address your machines can reach. Connect your getbb.app account to get started."
+                "Use bb connect to give this server a private address your machines can reach."
               )}
             </p>
           </div>
-          <Button variant="outline" size="sm" asChild>
+          <Button
+            variant={presentation === "dialog" ? "default" : "outline"}
+            size={presentation === "dialog" ? "default" : "sm"}
+            className={presentation === "dialog" ? "self-end" : undefined}
+            asChild
+          >
             <Link
               onClick={onNavigate}
               to={getPluginConfigurationRoutePath({ pluginId: "connect" })}
