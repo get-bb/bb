@@ -1075,7 +1075,6 @@ export function ModelReasoningPicker({
                         key={option.value}
                         value={option.value}
                         aria-label={option.label}
-                        title={option.label}
                         className={cn(
                           "h-6 min-w-0 flex-auto shrink-0 whitespace-nowrap rounded-sm px-1 text-xs font-normal shadow-none data-[state=on]:bg-state-active data-[state=on]:text-foreground",
                           isCompactViewport && "h-9 text-sm",
