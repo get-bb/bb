@@ -362,7 +362,7 @@ export function resolveAppServerLaunch(env: NodeJS.ProcessEnv = process.env): {
       "-c",
       "model_providers.bb-account-pool.requires_openai_auth=true",
       "-c",
-      "model_providers.bb-account-pool.supports_websockets=true",
+      "model_providers.bb-account-pool.supports_websockets=false",
       "-c",
       'model_providers.bb-account-pool.env_http_headers.x-bb-account-pool-token="CODEX_POOL_AUTH_TOKEN"',
     ],

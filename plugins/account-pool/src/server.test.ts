@@ -289,21 +289,6 @@ function authHeaders(key: string): Record<string, string> {
   };
 }
 
-const completedResponseSchema = z
-  .object({
-    type: z.literal("response.completed"),
-    response: z
-      .object({ id: z.string(), output: z.array(z.json()).default([]) })
-      .passthrough(),
-  })
-  .passthrough();
-
-function completedResponse(value: string | Uint8Array | undefined) {
-  if (typeof value !== "string")
-    throw new Error("Expected a text WebSocket frame.");
-  return completedResponseSchema.parse(JSON.parse(value));
-}
-
 async function addApiAccount(
   fixture: Fixture,
   apiKey: string,
@@ -431,7 +416,7 @@ describe("Account Pool plugin", () => {
     });
   });
 
-  it("imports, refreshes, and routes Codex HTTP and WebSocket sessions by provider", async () => {
+  it("imports, refreshes, and routes Codex HTTP sessions by provider", async () => {
     const seen: Array<{
       path: string;
       authorization: string | undefined;
@@ -651,53 +636,29 @@ describe("Account Pool plugin", () => {
       authorization: `Bearer ${futureToken}`,
       accountId: "chatgpt-account-1",
     });
-    const socket = await host.harness.experimental_openWebSocket(
-      "/v1/responses",
-      {
+    const postResponses = (input: unknown[]) =>
+      host.harness.behavior.fetchHttp("POST", "/v1/responses", {
         headers: {
+          authorization: "Bearer local-codex-token",
           "x-bb-account-pool-token": routed.token,
-          "openai-beta": "responses_websockets",
+          "content-type": "application/json",
         },
-      },
-    );
-    await socket.receive(
-      JSON.stringify({
-        type: "response.create",
-        generate: false,
-        input: [{ type: "message", id: "prefix" }],
-      }),
-    );
-    await vi.waitFor(() => expect(socket.sent).toHaveLength(1));
-    const prewarm = completedResponse(socket.sent[0]);
-    await socket.receive(
-      JSON.stringify({
-        type: "response.create",
-        previous_response_id: prewarm.response.id,
-        model: "gpt-5",
-        input: [{ type: "message", id: "delta-one" }],
-      }),
-    );
-    await vi.waitFor(() => expect(socket.sent).toHaveLength(3));
-    expect(JSON.parse(String(socket.sent[1]))).toMatchObject({
-      type: "response.created",
-    });
-    const first = completedResponse(socket.sent[2]);
-    await socket.receive(
-      JSON.stringify({
-        type: "response.create",
-        previous_response_id: first.response.id,
-        model: "gpt-5",
-        input: [{ type: "message", id: "delta-two" }],
-      }),
-    );
-    await vi.waitFor(() => expect(socket.sent).toHaveLength(5));
-    expect(socket.sent.map((frame) => JSON.parse(String(frame)).type)).toEqual([
-      "response.completed",
-      "response.created",
-      "response.completed",
-      "response.created",
-      "response.completed",
+        body: JSON.stringify({ model: "gpt-5", input }),
+      });
+    const first = await postResponses([
+      { type: "message", id: "prefix" },
+      { type: "message", id: "delta-one" },
     ]);
+    expect(first.status).toBe(200);
+    expect(await first.text()).toContain('"type":"response.completed"');
+    const second = await postResponses([
+      { type: "message", id: "prefix" },
+      { type: "message", id: "delta-one" },
+      { type: "message", id: "message-3" },
+      { type: "message", id: "delta-two" },
+    ]);
+    expect(second.status).toBe(200);
+    await second.text();
     expect(seen[1]?.accountId).not.toBe(seen[2]?.accountId);
     expect(seen[2]?.accountId).toBe(seen[3]?.accountId);
     expect(JSON.parse(seen[3]?.body ?? "{}").input).toEqual([
@@ -706,7 +667,6 @@ describe("Account Pool plugin", () => {
       { type: "message", id: "message-3" },
       { type: "message", id: "delta-two" },
     ]);
-    await socket.close(1000, "done");
     const status = statusSchema.parse(
       await host.harness.behavior.callRpc("status.get", null),
     );
@@ -773,263 +733,6 @@ describe("Account Pool plugin", () => {
       accessToken: futureToken,
       refreshToken: "next-refresh-1",
       idToken: "next-id-token",
-    });
-  });
-
-  it("fails an unknown Codex WebSocket response id and closes with 1011", async () => {
-    const dataDir = await mkdtemp(
-      path.join(tmpdir(), "bb-account-pool-codex-unknown-"),
-    );
-    const host = createFakePluginHost({
-      pluginId: "account-pool",
-      dataDir,
-      sdk: sdkStubs(),
-    });
-    await createAccountPoolPlugin({
-      codexUsageUrl: EMPTY_USAGE_URL,
-      importCodexCredentials: async () => ({
-        accessToken: "access",
-        refreshToken: "refresh",
-        idToken: null,
-        accountId: "account",
-        email: null,
-        expiresAt: null,
-      }),
-    })(host.bb);
-    const service = host.harness.behavior.runService("hub");
-    cleanups.push(async () => {
-      service.controller.abort();
-      await service.done;
-      await host.harness.lifecycle.dispose();
-      await fs.rm(dataDir, { recursive: true, force: true });
-    });
-    await host.harness.behavior.callRpc("account.add", {
-      provider: "codex",
-      source: { kind: "import" },
-      label: null,
-      priority: 100,
-    });
-    const { token } = await resolveCodexToken(host);
-    const rejected = await host.harness.experimental_openWebSocket(
-      "/v1/responses",
-      { headers: { "x-bb-account-pool-token": "invalid" } },
-    );
-    expect(rejected.closeCalls).toEqual([
-      {
-        code: 1008,
-        reason: "invalid Account Pooler token",
-      },
-    ]);
-    const socket = await host.harness.experimental_openWebSocket(
-      "/v1/responses",
-      {
-        headers: { "x-bb-account-pool-token": token },
-      },
-    );
-    await socket.receive(
-      JSON.stringify({
-        type: "response.create",
-        previous_response_id: "missing",
-        input: [],
-      }),
-    );
-    await vi.waitFor(() => expect(socket.closeCalls).toHaveLength(1));
-    expect(JSON.parse(String(socket.sent[0]))).toMatchObject({
-      type: "response.failed",
-      response: { error: { code: "unknown_previous_response_id" } },
-    });
-    expect(socket.closeCalls).toEqual([
-      { code: 1011, reason: "unknown previous_response_id" },
-    ]);
-  });
-
-  it("cancels a Codex upstream read when its WebSocket closes", async () => {
-    const dataDir = await mkdtemp(
-      path.join(tmpdir(), "bb-account-pool-codex-cancel-"),
-    );
-    let upstreamReadCanceled = false;
-    const upstreamFetch = async (
-      input: string | URL | Request,
-      init?: RequestInit,
-    ): Promise<Response> => {
-      if (String(input) === CODEX_USAGE_STUB_URL) return Response.json({});
-      const signal = init?.signal;
-      if (signal === undefined || signal === null) {
-        throw new Error("Expected the upstream request to carry a signal.");
-      }
-      const body = new ReadableStream<Uint8Array>({
-        start(controller) {
-          controller.enqueue(
-            new TextEncoder().encode(
-              'event: response.created\ndata: {"type":"response.created","response":{"id":"streaming"}}\n\n',
-            ),
-          );
-          signal.addEventListener(
-            "abort",
-            () => {
-              upstreamReadCanceled = true;
-              controller.error(signal.reason);
-            },
-            { once: true },
-          );
-        },
-      });
-      return new Response(body, {
-        headers: { "content-type": "text/event-stream" },
-      });
-    };
-    const host = createFakePluginHost({
-      pluginId: "account-pool",
-      dataDir,
-      sdk: sdkStubs(),
-    });
-    await host.bb.storage.kv.set("config", {
-      codexUpstreamBaseUrl: "https://example.com",
-    });
-    await createAccountPoolPlugin({
-      fetch: upstreamFetch,
-      codexUsageUrl: CODEX_USAGE_STUB_URL,
-      importCodexCredentials: async () => ({
-        accessToken: "access",
-        refreshToken: "refresh",
-        idToken: null,
-        accountId: "account",
-        email: null,
-        expiresAt: null,
-      }),
-    })(host.bb);
-    const service = host.harness.behavior.runService("hub");
-    cleanups.push(async () => {
-      service.controller.abort();
-      await service.done;
-      await host.harness.lifecycle.dispose();
-      await fs.rm(dataDir, { recursive: true, force: true });
-    });
-    await vi.waitFor(async () => {
-      expect(
-        statusSchema.parse(
-          await host.harness.behavior.callRpc("status.get", null),
-        ).accepting,
-      ).toBe(true);
-    });
-    await host.harness.behavior.callRpc("account.add", {
-      provider: "codex",
-      source: { kind: "import" },
-      label: null,
-      priority: 100,
-    });
-    const { token } = await resolveCodexToken(host);
-    const socket = await host.harness.experimental_openWebSocket(
-      "/v1/responses",
-      { headers: { "x-bb-account-pool-token": token } },
-    );
-    await socket.receive(
-      JSON.stringify({
-        type: "response.create",
-        model: "gpt-5",
-        input: [],
-      }),
-    );
-    await vi.waitFor(() => expect(socket.sent).toHaveLength(1));
-    await socket.close(1000, "interrupted");
-    await vi.waitFor(async () => {
-      expect(upstreamReadCanceled).toBe(true);
-      expect(
-        statusSchema.parse(
-          await host.harness.behavior.callRpc("status.get", null),
-        ).inFlight,
-      ).toBe(0);
-    });
-    expect(socket.sent).toHaveLength(1);
-  });
-
-  it("releases a Codex request when an upstream SSE event is malformed", async () => {
-    const dataDir = await mkdtemp(
-      path.join(tmpdir(), "bb-account-pool-codex-malformed-"),
-    );
-    let upstreamReadCanceled = false;
-    const upstreamFetch = async (
-      input: string | URL | Request,
-    ): Promise<Response> => {
-      if (String(input) === CODEX_USAGE_STUB_URL) return Response.json({});
-      const body = new ReadableStream<Uint8Array>({
-        start(controller) {
-          controller.enqueue(new TextEncoder().encode("data: {\n\n"));
-        },
-        cancel() {
-          upstreamReadCanceled = true;
-        },
-      });
-      return new Response(body, {
-        headers: { "content-type": "text/event-stream" },
-      });
-    };
-    const host = createFakePluginHost({
-      pluginId: "account-pool",
-      dataDir,
-      sdk: sdkStubs(),
-    });
-    await host.bb.storage.kv.set("config", {
-      codexUpstreamBaseUrl: "https://example.com",
-    });
-    await createAccountPoolPlugin({
-      fetch: upstreamFetch,
-      codexUsageUrl: CODEX_USAGE_STUB_URL,
-      importCodexCredentials: async () => ({
-        accessToken: "access",
-        refreshToken: "refresh",
-        idToken: null,
-        accountId: "account",
-        email: null,
-        expiresAt: null,
-      }),
-    })(host.bb);
-    const service = host.harness.behavior.runService("hub");
-    cleanups.push(async () => {
-      service.controller.abort();
-      await service.done;
-      await host.harness.lifecycle.dispose();
-      await fs.rm(dataDir, { recursive: true, force: true });
-    });
-    await vi.waitFor(async () => {
-      expect(
-        statusSchema.parse(
-          await host.harness.behavior.callRpc("status.get", null),
-        ).accepting,
-      ).toBe(true);
-    });
-    await host.harness.behavior.callRpc("account.add", {
-      provider: "codex",
-      source: { kind: "import" },
-      label: null,
-      priority: 100,
-    });
-    const { token } = await resolveCodexToken(host);
-    const socket = await host.harness.experimental_openWebSocket(
-      "/v1/responses",
-      { headers: { "x-bb-account-pool-token": token } },
-    );
-    await socket.receive(
-      JSON.stringify({
-        type: "response.create",
-        model: "gpt-5",
-        input: [],
-      }),
-    );
-    await vi.waitFor(async () => {
-      expect(JSON.parse(String(socket.sent[0]))).toMatchObject({
-        type: "response.failed",
-        response: { error: { code: "proxy_error" } },
-      });
-      expect(upstreamReadCanceled).toBe(true);
-      const statusResult = await host.harness.behavior.runCli([
-        "status",
-        "--json",
-      ]);
-      expect(statusResult.exitCode).toBe(0);
-      expect(statusSchema.parse(JSON.parse(statusResult.stdout)).inFlight).toBe(
-        0,
-      );
     });
   });
 
@@ -4555,89 +4258,7 @@ describe("Account Pool plugin", () => {
       }
     });
 
-    it.each(["empty", "omitted", "populated"])(
-      "preserves streamed Codex answers when completion output is %s",
-      async (completionOutput) => {
-        const seen: string[] = [];
-        const output = [
-          {
-            type: "reasoning",
-            id: "reasoning-one",
-            encrypted_content: "opaque",
-          },
-          {
-            type: "message",
-            id: "answer-one",
-            role: "assistant",
-            phase: "final_answer",
-            content: [{ type: "output_text", text: "The retry was broken." }],
-          },
-        ];
-        const fixture = await affinityFixture("codex", async (_input, init) => {
-          seen.push(
-            new TextDecoder().decode(
-              init?.body instanceof ArrayBuffer
-                ? init.body
-                : new ArrayBuffer(0),
-            ),
-          );
-          const events = [
-            ...output.map((item, output_index) => ({
-              type: "response.output_item.done",
-              output_index,
-              item,
-            })),
-            {
-              type: "response.completed",
-              response: {
-                id: `response-${seen.length}`,
-                ...(completionOutput === "omitted"
-                  ? {}
-                  : { output: completionOutput === "empty" ? [] : output }),
-              },
-            },
-          ];
-          return new Response(
-            events
-              .map((event) => `data: ${JSON.stringify(event)}\n\n`)
-              .join(""),
-            { headers: { "content-type": "text/event-stream" } },
-          );
-        });
-        const socket = await fixture.host.harness.experimental_openWebSocket(
-          "/v1/responses",
-          { headers: authHeaders(fixture.key) },
-        );
-        try {
-          const question = {
-            role: "user",
-            content: "Is the bug deterministic?",
-          };
-          const followup = { role: "user", content: "Please put up a PR" };
-          await socket.receive(
-            JSON.stringify({ type: "response.create", input: [question] }),
-          );
-          await vi.waitFor(() => expect(socket.sent).toHaveLength(3));
-          await socket.receive(
-            JSON.stringify({
-              type: "response.create",
-              previous_response_id: "response-1",
-              input: [followup],
-            }),
-          );
-          await vi.waitFor(() => expect(socket.sent).toHaveLength(6));
-          expect(JSON.parse(seen[1] ?? "{}").input).toEqual([
-            question,
-            ...output,
-            followup,
-          ]);
-        } finally {
-          await socket.close(1000, "done");
-        }
-      },
-    );
-
-    it("keeps native Codex HTTP and WebSocket compaction continuations on the same account", async () => {
+    it("keeps native Codex HTTP compaction continuations on the same account", async () => {
       const seen: Array<{ headers: Headers; body: string }> = [];
       const compacted = {
         type: "compaction",
@@ -4666,10 +4287,6 @@ describe("Account Pool plugin", () => {
         "/v1/responses",
         { headers, body: "{}" },
       );
-      const socket = await fixture.host.harness.experimental_openWebSocket(
-        "/v1/responses",
-        { headers },
-      );
       try {
         const fields = {
           model: "gpt-5",
@@ -4689,21 +4306,27 @@ describe("Account Pool plugin", () => {
           },
           { type: "compaction_trigger" },
         ];
-        await socket.receive(
-          JSON.stringify({ type: "response.create", ...fields, input }),
+        const first = await fixture.host.harness.behavior.fetchHttp(
+          "POST",
+          "/v1/responses",
+          { headers, body: JSON.stringify({ ...fields, input }) },
         );
-        await vi.waitFor(() => expect(socket.sent).toHaveLength(1));
-        const first = completedResponse(socket.sent[0]);
+        expect(first.status).toBe(200);
+        await first.text();
         const delta = { type: "message", role: "user", content: "next" };
-        await socket.receive(
-          JSON.stringify({
-            type: "response.create",
-            ...fields,
-            previous_response_id: first.response.id,
-            input: [delta],
-          }),
+        const second = await fixture.host.harness.behavior.fetchHttp(
+          "POST",
+          "/v1/responses",
+          {
+            headers,
+            body: JSON.stringify({
+              ...fields,
+              input: [...input, compacted, delta],
+            }),
+          },
         );
-        await vi.waitFor(() => expect(socket.sent).toHaveLength(2));
+        expect(second.status).toBe(200);
+        await second.text();
         expect(JSON.parse(seen[1]?.body ?? "{}")).toMatchObject({
           ...fields,
           input,
@@ -4726,7 +4349,6 @@ describe("Account Pool plugin", () => {
           ["Bearer sk-first", "Bearer sk-first", "Bearer sk-first"],
         );
       } finally {
-        await socket.close(1000, "done");
         await held.body?.cancel();
       }
     });

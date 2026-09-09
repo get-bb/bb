@@ -717,10 +717,9 @@ receiving matching traffic and defaults to `0.98`.
 `anthropicUpstreamBaseUrl` defaults to `https://api.anthropic.com` and
 `codexUpstreamBaseUrl` defaults to
 `https://chatgpt.com/backend-api/codex`. Codex uses the hub's HTTP Responses
-and models routes and prefers its WebSocket Responses route; the hub keeps the
-downstream WebSocket session semantics while forwarding upstream over HTTPS
-SSE. Both URL values exist only for tests and QA with a controlled fake
-upstream. Inspect or update the full plugin KV-backed configuration with:
+and models routes; the hub forwards each request upstream over HTTPS SSE
+without keeping session state. Both URL values exist only for tests and QA
+with a controlled fake upstream. Inspect or update the full plugin KV-backed configuration with:
 
 ```sh
 bb pool config

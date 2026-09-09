@@ -36,7 +36,11 @@ const ALLOWED_REQUEST_HEADERS = new Set([
   "thread-id",
   "user-agent",
 ]);
-const ALLOWED_REQUEST_HEADER_PREFIXES = ["x-codex-", "x-stainless-"];
+const ALLOWED_REQUEST_HEADER_PREFIXES = [
+  "x-codex-",
+  "x-openai-internal-",
+  "x-stainless-",
+];
 
 const refreshResponseSchema = z
   .object({

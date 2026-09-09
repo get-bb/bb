@@ -14,7 +14,6 @@ import type {
   ImportedClaudeCredentials,
   ImportedCodexCredentials,
 } from "./credentials.js";
-import { createCodexWebSocketHandlers } from "./codex-websocket.js";
 import { createHub } from "./hub.js";
 import { PoolOperations } from "./operations.js";
 import { accountPoolRpcContract, createRpcHandlers } from "./rpc.js";
@@ -299,11 +298,6 @@ export function createAccountPoolPlugin(
       "GET",
       "/v1/models",
       (context) => hub.handle(context.req.raw, "codex"),
-      { auth: "none" },
-    );
-    bb.http.experimental_websocket(
-      "/v1/responses",
-      (context) => createCodexWebSocketHandlers(context, hub, bb.log),
       { auth: "none" },
     );
     bb.http.route("HEAD", "/api/hello", () => helloResponse(), {
