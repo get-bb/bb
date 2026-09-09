@@ -42,6 +42,7 @@ import {
   type TypeaheadConfig,
 } from "@/components/promptbox/PromptBoxInternal";
 import { usePromptVoice } from "@/components/promptbox/usePromptVoice";
+import { formatModelLabel } from "@/hooks/useThreadCreationOptions";
 import { PermissionModePicker } from "@/components/pickers/PermissionModePicker";
 import {
   ExecutionControls,
@@ -308,16 +309,32 @@ function FollowUpPromptBoxWithComposer({
     widePromptBoxCollapsedFor === collapseResetKey;
   const isPromptBoxCompact =
     isWidePromptBoxCollapsed || (isCompactViewport && !isInteractionExpanded);
+  const compactModelValue =
+    execution.model.active?.model ?? execution.model.selected;
+  const compactModelOption =
+    execution.model.options.find(
+      (option) => option.value === compactModelValue,
+    ) ??
+    execution.model.moreOptions.find(
+      (option) => option.value === compactModelValue,
+    );
+  const compactModelLabel =
+    compactModelValue.length > 0
+      ? (compactModelOption?.label ?? formatModelLabel(compactModelValue))
+      : undefined;
   const compactConfig = useMemo(
     () =>
       isCompactViewport || isWidePromptBoxCollapsed
         ? {
             isCompact: isPromptBoxCompact,
             placeholder: composer.compactPromptPlaceholder,
+            summary: canSubmit ? compactModelLabel : undefined,
           }
         : undefined,
     [
       composer.compactPromptPlaceholder,
+      canSubmit,
+      compactModelLabel,
       isCompactViewport,
       isPromptBoxCompact,
       isWidePromptBoxCollapsed,

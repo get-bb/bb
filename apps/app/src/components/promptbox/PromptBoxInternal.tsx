@@ -336,6 +336,7 @@ export interface AttachmentsConfig {
 interface PromptBoxCompactConfig {
   isCompact: boolean;
   placeholder?: string;
+  summary?: ReactNode;
 }
 
 export interface HistoryConfig {
@@ -1180,20 +1181,6 @@ export function PromptBoxInternal({
     heightAnimationFromRef.current =
       formElement?.getBoundingClientRect().height ?? null;
   }, []);
-  useLayoutEffect(() => {
-    const formElement = formRef.current;
-    if (!formElement) return;
-    if (containerCompactPlaceholder === undefined) {
-      formElement.style.removeProperty(
-        "--promptbox-container-compact-placeholder",
-      );
-      return;
-    }
-    formElement.style.setProperty(
-      "--promptbox-container-compact-placeholder",
-      JSON.stringify(containerCompactPlaceholder),
-    );
-  }, [containerCompactPlaceholder]);
   const editorRef = useRef<Editor | null>(null);
   const editorScrollContainerRef = useRef<HTMLDivElement>(null);
   const revealSelectionFrameRef = useRef<number | null>(null);
@@ -1361,6 +1348,26 @@ export function PromptBoxInternal({
   const effectivePlaceholder = showCompactLayout
     ? (compact.placeholder ?? placeholder)
     : placeholder;
+  const compactSummary =
+    showCompactLayout && value.length === 0 ? compact?.summary : undefined;
+  const editorPlaceholder =
+    compactSummary === undefined ? effectivePlaceholder : "";
+  const effectiveContainerCompactPlaceholder =
+    compactSummary === undefined ? containerCompactPlaceholder : "";
+  useLayoutEffect(() => {
+    const formElement = formRef.current;
+    if (!formElement) return;
+    if (effectiveContainerCompactPlaceholder === undefined) {
+      formElement.style.removeProperty(
+        "--promptbox-container-compact-placeholder",
+      );
+      return;
+    }
+    formElement.style.setProperty(
+      "--promptbox-container-compact-placeholder",
+      JSON.stringify(effectiveContainerCompactPlaceholder),
+    );
+  }, [effectiveContainerCompactPlaceholder]);
   const pluginComposerHost = usePluginComposerHost();
   const composerInputLocked = useComposerInputLock(
     pluginComposerHost?.textEffectKey ?? null,
@@ -1604,7 +1611,7 @@ export function PromptBoxInternal({
       editorProps: {
         attributes: {
           "aria-label": effectivePlaceholder,
-          "data-placeholder": effectivePlaceholder,
+          "data-placeholder": editorPlaceholder,
           ...(onModifierSubmit ? { "aria-keyshortcuts": "Meta+Enter" } : {}),
           autocomplete: "off",
           class: cn(
@@ -1828,14 +1835,14 @@ export function PromptBoxInternal({
   }, [editor, isPointerCoarse, scheduleRevealEditorSelection]);
 
   useLayoutEffect(() => {
-    placeholderRef.current = effectivePlaceholder;
+    placeholderRef.current = editorPlaceholder;
     if (!editor) return;
 
     editor.view.dom.setAttribute("aria-label", effectivePlaceholder);
-    editor.view.dom.setAttribute("data-placeholder", effectivePlaceholder);
+    editor.view.dom.setAttribute("data-placeholder", editorPlaceholder);
     editor.view.dom.setAttribute("enterkeyhint", editorEnterKeyHint);
     editor.view.dispatch(editor.state.tr);
-  }, [editor, editorEnterKeyHint, effectivePlaceholder]);
+  }, [editor, editorEnterKeyHint, editorPlaceholder, effectivePlaceholder]);
 
   useEffect(() => {
     if (!editor) return;
@@ -3068,6 +3075,14 @@ export function PromptBoxInternal({
               layout={editorLayout}
               resolveMentionLink={mentionResolveLink}
             />
+            {compactSummary !== undefined ? (
+              <div
+                data-promptbox-compact-summary=""
+                className="pointer-events-none absolute inset-y-0 left-4 right-14 flex min-w-0 items-center text-sm text-subtle-foreground"
+              >
+                <div className="truncate">{compactSummary}</div>
+              </div>
+            ) : null}
           </div>
 
           {showTypeaheadMenu ? (

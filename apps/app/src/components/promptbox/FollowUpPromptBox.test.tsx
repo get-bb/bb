@@ -83,6 +83,7 @@ vi.mock("@/components/promptbox/PromptBoxInternal", () => ({
   PromptBoxInternal: ({
     footerStart,
     compact,
+    value,
     onSubmit,
     onEscape,
     blurOnPointerSubmit,
@@ -98,7 +99,9 @@ vi.mock("@/components/promptbox/PromptBoxInternal", () => ({
     compact?: {
       isCompact: boolean;
       placeholder?: string;
+      summary?: ReactNode;
     };
+    value: string;
     onSubmit: () => void;
     onEscape?: () => void;
     blurOnPointerSubmit?: boolean;
@@ -141,7 +144,11 @@ vi.mock("@/components/promptbox/PromptBoxInternal", () => ({
             : null;
         }}
       />
-      {compact?.isCompact ? <span>{compact.placeholder}</span> : null}
+      {compact?.isCompact
+        ? ((value.length === 0 ? compact.summary : undefined) ?? (
+            <span>{compact.placeholder}</span>
+          ))
+        : null}
       <button
         type="button"
         onClick={(event) => {
@@ -1317,5 +1324,16 @@ describe("FollowUpPromptBox", () => {
     render(<FollowUpPromptBox {...props} />);
 
     expect(screen.getByText("Stopping side chat...")).toBeTruthy();
+  });
+
+  it("shows the selected model when the empty composer is compact", () => {
+    mocks.isCompactViewport = true;
+    const props = createFollowUpPromptBoxProps({ kind: "ready" });
+    if (props.composer === null) throw new Error("Missing composer");
+    props.composer.message = "";
+
+    render(<FollowUpPromptBox {...props} />);
+
+    expect(screen.getByText("GPT-5")).toBeTruthy();
   });
 });
