@@ -92,8 +92,9 @@ Headless sessions need Chrome/Chromium on that host. The plugin checks
 `<plugin host dataDir>/runtime/chrome`, the standard macOS Chrome path, then
 `google-chrome`, `google-chrome-stable`, `chromium`, and `chromium-browser` on
 PATH. The `runtime/chrome` entry can be a symlink to an installed executable.
-Normal operation never passes `--no-sandbox`. Chrome must be able to launch with
-its sandbox on the enrolled host.
+Plugin-owned local/headless Chrome always launches with `--no-sandbox`, disabling
+Chrome's sandbox so it can run on hosts that restrict unprivileged user namespaces.
+Desktop sessions attach to an existing browser and do not change its launch flags.
 
 ## CLI and agent workflow
 
@@ -201,9 +202,9 @@ real Chrome, without starting a BB core or using an existing browser profile.
 It verifies named pages, navigation, clicking, JPEG bytes, serialization,
 independent session cancellation, a synchronous infinite-loop timeout,
 reopening, stop, and preservation of an attached browser and its page state.
-On an isolated CI host that cannot use Chrome's sandbox, the smoke-only
-`DEV_BROWSER_SMOKE_NO_SANDBOX=1` adds a temporary Chrome wrapper for either
-smoke. That setting is never read by the plugin runtime.
+Both smokes link directly to Chrome and exercise the production launch flags
+without a wrapper. The attachment smoke also launches its separate browser
+fixture with `--no-sandbox` so it works on hosts with restricted user namespaces.
 
 Build with a current BB CLI: an older installed CLI can successfully bundle the
 sources while stamping old SDK metadata. Inspect `dist/*.meta.json` before any
