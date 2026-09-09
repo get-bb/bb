@@ -1,6 +1,5 @@
 const SERVER_SESSION_STALE_TIME_MS = 60 * 60_000;
 const FOCUS_OWNED_LIVE_STALE_TIME_MS = 30_000;
-const FAST_FOCUS_OWNED_LIVE_STALE_TIME_MS = 5_000;
 const TYPEAHEAD_STALE_TIME_MS = 15_000;
 
 export const SESSION_STATIC_QUERY_POLICY = {
@@ -20,12 +19,6 @@ export const FOCUS_OWNED_LIVE_QUERY_POLICY = {
   refetchOnReconnect: true,
   refetchOnWindowFocus: true,
   staleTime: FOCUS_OWNED_LIVE_STALE_TIME_MS,
-} as const;
-
-export const FAST_FOCUS_OWNED_LIVE_QUERY_POLICY = {
-  refetchOnReconnect: true,
-  refetchOnWindowFocus: true,
-  staleTime: FAST_FOCUS_OWNED_LIVE_STALE_TIME_MS,
 } as const;
 
 export const TYPEAHEAD_QUERY_POLICY = {

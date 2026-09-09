@@ -29,6 +29,8 @@ vi.mock("@/hooks/mutations/project-mutations", () => ({
 }));
 
 vi.mock("@/hooks/queries/host-queries", () => ({
+  selectPersistentHosts: (hosts: readonly Host[] | undefined) =>
+    hosts ? [...hosts] : [],
   useHosts: () => ({ data: mocks.hosts, isPending: mocks.isLoadingHosts }),
 }));
 

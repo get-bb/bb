@@ -3,17 +3,18 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "Send mobile push notifications for threads that need attention",
+  "description": "Notifications for threads that need attention on mobile, web, and desktop",
   "engines": {
     "bb": ">=0.0"
   },
   "bb": {
     "name": "Push notifications",
-    "description": "Send mobile push notifications for threads that need attention",
+    "description": "Notifications for threads that need attention on mobile, web, and desktop",
     "branding": {
       "icon": "BellDot"
     },
-    "server": "./server.ts"
+    "server": "./server.ts",
+    "app": "./app.tsx"
   },
   "keywords": [
     "bb-plugin"
@@ -30,6 +31,12 @@
     "@get-bb/plugin-sdk": "workspace:*",
     "@types/node": "^22.0.0",
     "typescript": "npm:@typescript/typescript6@^6.0.2",
-    "vitest": "^4.1.1"
+    "vitest": "^4.1.1",
+    "react": "^19.0.0",
+    "@types/react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
+    "jsdom": "^29.0.1",
+    "@testing-library/react": "^16.3.2"
   }
 }

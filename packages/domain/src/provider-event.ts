@@ -261,6 +261,23 @@ const threadEventItemTruncationSchema = z.object({
   resultText: threadEventTextTruncationSchema.optional(),
 });
 
+export const threadEventImageGenerationItemSchema = z.object({
+  type: z.literal("imageGeneration"),
+  id: z.string(),
+  status: threadEventItemStatusSchema,
+  prompt: z.string().nullable(),
+  path: z.string().nullable(),
+  result: z.string().optional(),
+  error: z.string().nullable(),
+  transparentBackground: z.boolean(),
+  truncation: threadEventItemTruncationSchema.optional(),
+  ...itemPresentationField,
+  parentToolCallId: z.string().optional(),
+});
+export type ThreadEventImageGenerationItem = z.infer<
+  typeof threadEventImageGenerationItemSchema
+>;
+
 const threadEventUserContentSchema = z.discriminatedUnion("type", [
   z.object({ type: z.literal("text"), text: z.string() }),
   z.object({ type: z.literal("image"), url: z.string() }),
@@ -399,6 +416,7 @@ export const threadEventItemSchema = z.discriminatedUnion("type", [
   threadEventWebSearchItemSchema,
   threadEventWebFetchItemSchema,
   threadEventImageViewItemSchema,
+  threadEventImageGenerationItemSchema,
   threadEventFileReadItemSchema,
   threadEventSearchItemSchema,
   z.object({
@@ -454,6 +472,7 @@ export const CORE_ITEM_KINDS = [
   "webSearch",
   "webFetch",
   "imageView",
+  "imageGeneration",
   "toolCall",
   "reasoning",
   "plan",
@@ -674,6 +693,27 @@ const unscopedProviderEventSchema = z.discriminatedUnion("type", [
     threadId: z.string(),
     providerThreadId: z.string(),
     rateLimits: providerRateLimitStateSchema,
+  }),
+  z.object({
+    type: z.literal("provider.env-resolved"),
+    threadId: z.string(),
+    providerThreadId: z.string(),
+    entries: z.array(
+      z
+        .object({
+          name: z.string(),
+          source: z.union([
+            z.literal("shell"),
+            z.object({ plugin: z.string() }).strict(),
+          ]),
+          value: z.union([
+            z.string(),
+            z.object({ masked: z.literal(true) }).strict(),
+          ]),
+          reason: z.string().optional(),
+        })
+        .strict(),
+    ),
   }),
   z.object({
     type: z.literal("thread/extensionState/updated"),

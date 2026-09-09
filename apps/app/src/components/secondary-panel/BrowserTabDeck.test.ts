@@ -132,6 +132,7 @@ describe("restoring a thread with persisted browser tabs", () => {
 
     let syncBoundsCalls = 0;
     api.attach({
+      threadId: "thread-1",
       tabId: activeBrowserTab.id,
       url: activeBrowserTab.url,
       bounds: { x: 0, y: 0, width: 800, height: 600 },

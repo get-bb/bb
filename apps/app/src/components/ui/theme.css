@@ -57,6 +57,7 @@
   /* GitHub's merged-PR purple — the one chromatic exception in the PR state
    * dots, matching the universal merged-PR color language. */
   --color-pr-merged: var(--pr-merged);
+  --color-brand-discord: var(--brand-discord);
   --color-diff-removed: var(--diff-removed);
   --color-border: var(--border);
   --color-border-hairline: var(--border-hairline);
@@ -494,6 +495,7 @@
   --success-foreground: color-mix(in oklch, var(--success) 45%, var(--ink));
   --diff-added: oklch(0.4 0.13 163);
   --pr-merged: oklch(0.53 0.2 295);
+  --brand-discord: oklch(0.5774 0.2091 273.85);
   --diff-removed: oklch(0.4 0.17 28);
   --border: color-mix(in oklch, var(--ink) 14%, var(--canvas));
   --border-hairline: color-mix(in oklch, var(--ink) 14.7%, var(--canvas));
@@ -741,6 +743,7 @@
   --diff-added: oklch(0.77 0.17 163);
   --diff-removed: oklch(0.72 0.19 22);
   --pr-merged: oklch(0.68 0.18 295);
+  --brand-discord: var(--foreground);
   --border: color-mix(in oklch, var(--ink) 19.4%, var(--canvas));
   --border-hairline: color-mix(in oklch, var(--ink) 21%, var(--canvas));
   /* One app-shell seam for top nav, sidebar, split, and panel boundaries. */

@@ -26,6 +26,10 @@ import {
 import { useSystemProviders } from "@/hooks/queries/system-queries";
 import { isSkillEditable } from "@/components/tools/skill-taxonomy";
 import { CREATE_SKILL_PROMPT } from "@bb/client-core";
+import { usePrimaryHost } from "@/hooks/queries/host-queries";
+import { useHostFilePreview } from "@/hooks/queries/host-file-preview-query";
+import { getAbsoluteDirname } from "@/lib/absolute-file-path";
+import { buildMarkdownLeaseImageRouting } from "@/components/ui/markdown-file-image-routing";
 import {
   buildRegistrySkillReferencePrompt,
   fetchRegistrySkillDetail,
@@ -84,6 +88,14 @@ function SkillDetailPage({
   }, [skill?.id]);
   const filesQuery = useSkillFiles(projectId, skill);
   const contentQuery = useSkillContent(projectId, skill, selectedPath);
+  const primaryHost = usePrimaryHost({ enabled: skill !== null });
+  const previewHostId =
+    primaryHost?.status === "connected" ? primaryHost.id : null;
+  const skillFilePreview = useHostFilePreview(
+    previewHostId,
+    skill?.filePath ?? null,
+    { enabled: skill !== null && previewHostId !== null },
+  );
   const deleteSkill = useDeleteSkill(projectId);
   const { canOpenPreferredFileTarget, openPathInPreferredFileTarget } =
     useLocalOpenTargets({ enabled: skill !== null });
@@ -92,6 +104,14 @@ function SkillDetailPage({
     skill && skill.manageable && isSkillEditable(skill) ? skill.scope : null;
   const editableScope: EditableSkillScope | null =
     skill && isSkillEditable(skill) ? skill.scope : null;
+  const markdownLinkRouting = useMemo(() => {
+    if (skill === null) return undefined;
+    return buildMarkdownLeaseImageRouting({
+      path: selectedPath,
+      rootPath: getAbsoluteDirname({ path: skill.filePath }),
+      previewUrl: skillFilePreview.data?.url,
+    });
+  }, [selectedPath, skill, skillFilePreview.data?.url]);
 
   return (
     <SkillDetailDialogView
@@ -107,6 +127,7 @@ function SkillDetailPage({
       canDelete={deletableScope !== null}
       canOpenInEditor={editableScope !== null && canOpenPreferredFileTarget}
       isDeleting={deleteSkill.isPending}
+      markdownLinkRouting={markdownLinkRouting}
       onEdit={() => {
         if (skill) onEdit(skill);
       }}

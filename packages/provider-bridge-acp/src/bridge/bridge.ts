@@ -36,6 +36,7 @@ import { promises as fs, readFileSync } from "node:fs";
 import { createServer, type Server, type Socket } from "node:net";
 import { dirname, isAbsolute, basename, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { isDeepStrictEqual } from "node:util";
 import { z } from "zod";
 
 type DecodedToolCallResponse = ReturnType<typeof decodeToolCallResponsePayload>;
@@ -159,6 +160,7 @@ interface AcpPendingTurnInput {
 
 interface AcpThreadSession {
   bbThreadId: string;
+  construction: AcpSessionParams;
   providerThreadId: string;
   cwd: string;
   dialect: AcpDialect;
@@ -1699,6 +1701,7 @@ async function startAgentSession(
   });
   session = {
     bbThreadId,
+    construction: params,
     providerThreadId: "",
     cwd: params.cwd,
     dialect,
@@ -2590,7 +2593,7 @@ async function handleRequest(
 
     case "turn/start": {
       const params = request.params;
-      const session = liveSessionForThread(params.threadId);
+      let session = liveSessionForThread(params.threadId);
       if (session === undefined) {
         sendError(request.id, -32000, "No active ACP session");
         return;
@@ -2598,6 +2601,27 @@ async function handleRequest(
       if (session.activePromptKind !== null) {
         sendError(request.id, -32000, "A turn is already active");
         return;
+      }
+      if (Object.keys(params.options.envVars ?? {}).length > 0) {
+        const envVars = {
+          ...(decodeLaunchSpec(params.options.providerOptions)?.env ?? {}),
+          ...params.options.envVars,
+        };
+        if (!isDeepStrictEqual(envVars, session.construction.envVars ?? {})) {
+          const previousProviderThreadId = session.providerThreadId;
+          session = await startAgentSession({
+            kind: "resume",
+            params: { ...session.construction, envVars },
+            resumeProviderThreadId: previousProviderThreadId,
+          });
+          sendNotification(BRIDGE_NOTIFICATION_METHODS.sessionReplaced, {
+            threadId: params.threadId,
+            providerThreadId: session.providerThreadId,
+            reason:
+              "Execution settings changed; the ACP session was rebuilt to apply them.",
+            contextLost: session.providerThreadId !== previousProviderThreadId,
+          });
+        }
       }
       const pending: AcpPendingTurnInput = {
         clientRequestId: params.clientRequestId,

@@ -1,9 +1,10 @@
 // @vitest-environment jsdom
 
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { cleanup, render, screen } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, describe, expect, it } from "vitest";
 import { SidebarProvider } from "@/components/ui/sidebar";
+import { SETTINGS_NAV_SECTIONS } from "./settings-sections";
 import { SettingsSidebarContent } from "./SettingsSidebar";
 
 const configurablePlugin = {
@@ -11,11 +12,6 @@ const configurablePlugin = {
   id: "linear",
   label: "Linear",
 };
-
-const otherPlugins = [
-  { icon: null, id: "disabled", label: "Disabled" },
-  { icon: null, id: "plain", label: "Plain" },
-];
 
 function renderSidebar(activePluginId: string | null = null) {
   return render(
@@ -28,9 +24,8 @@ function renderSidebar(activePluginId: string | null = null) {
           navigation={{
             activePluginId,
             activeSection: activePluginId === null ? "general" : null,
-            otherPluginEntries: otherPlugins,
             pluginEntries: [configurablePlugin],
-            sections: [],
+            sections: SETTINGS_NAV_SECTIONS,
           }}
           onResizeMouseDown={() => {}}
           showTopReserve={false}
@@ -42,35 +37,26 @@ function renderSidebar(activePluginId: string | null = null) {
 
 afterEach(cleanup);
 
-describe("SettingsSidebarContent plugin groups", () => {
-  it("keeps configurable plugins visible and collapses other plugins", () => {
+describe("SettingsSidebarContent plugin navigation", () => {
+  it("offers installed management and configurable plugins without an extra plugin group", () => {
     renderSidebar();
-
-    expect(screen.getByRole("link", { name: "Linear" })).toBeTruthy();
-    expect(screen.queryByRole("link", { name: "Disabled" })).toBeNull();
-    expect(screen.queryByRole("link", { name: "Plain" })).toBeNull();
-
-    const disclosure = screen.getByRole("button", {
-      name: "Other installed plugins (2)",
-    });
-    expect(disclosure.getAttribute("aria-expanded")).toBe("false");
-
-    fireEvent.click(disclosure);
-
-    expect(disclosure.getAttribute("aria-expanded")).toBe("true");
-    expect(screen.getByRole("link", { name: "Disabled" })).toBeTruthy();
-    expect(screen.getByRole("link", { name: "Plain" })).toBeTruthy();
+    expect(
+      screen
+        .getByRole("link", { name: "Installed plugins" })
+        .getAttribute("href"),
+    ).toBe("/settings/plugins");
+    expect(
+      screen.getByRole("link", { name: "Linear" }).getAttribute("href"),
+    ).toBe("/settings/plugins/linear");
+    expect(
+      screen.queryByRole("button", { name: /Other installed plugins/ }),
+    ).toBeNull();
   });
 
-  it("starts expanded when the active plugin is in the collapsed group", () => {
-    renderSidebar("disabled");
-
-    const disclosure = screen.getByRole("button", {
-      name: "Other installed plugins (2)",
-    });
-    const activePlugin = screen.getByRole("link", { name: "Disabled" });
-
-    expect(disclosure.getAttribute("aria-expanded")).toBe("true");
-    expect(activePlugin.getAttribute("aria-current")).toBe("page");
+  it("marks the active plugin settings page", () => {
+    renderSidebar("linear");
+    expect(
+      screen.getByRole("link", { name: "Linear" }).getAttribute("aria-current"),
+    ).toBe("page");
   });
 });

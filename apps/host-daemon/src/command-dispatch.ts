@@ -1,4 +1,8 @@
 import {
+  runEnvironmentHook,
+  cancelEnvironmentHook,
+} from "./command-handlers/environment-hook.js";
+import {
   providerCliInstallEventSchema,
   type HostDaemonCommand,
   type HostDaemonCommandResult,
@@ -457,7 +461,7 @@ const commandHandlers: CommandHandlerMap = {
     return {};
   },
   "interactive.resolve": resolveInteractiveRequest,
-  "environment.provision": provisionEnvironment,
+  "environment.attach": provisionEnvironment,
   "project.clone": (command, options) =>
     cloneProject({
       dataDir: options.dataDir,
@@ -468,41 +472,12 @@ const commandHandlers: CommandHandlerMap = {
         ? { targetPath: command.targetPath }
         : {}),
     }),
-  "environment.provision.cancel": cancelEnvironmentProvision,
-  "environment.destroy": async (command, options) => {
-    const transcript: HostDaemonCommandResult<"environment.destroy">["transcript"] =
-      [];
-    const resolution = await resolveWorkspaceForCommand({
-      dataDir: options.dataDir,
-      environmentId: command.environmentId,
-      runtimeManager: options.runtimeManager,
-      workspaceContext: command.workspaceContext,
-    });
-    if (!resolution.ok) {
-      if (resolution.failure.code === "path_not_found") {
-        return { transcript };
-      }
-      throw new ExpectedCommandDispatchError(
-        resolution.failure.code,
-        resolution.failure.message,
-      );
-    }
-    await options.terminalManager?.closeEnvironmentTerminals({
-      environmentId: command.environmentId,
-      reason: "environment-destroyed",
-    });
-    await options.runtimeManager.destroyEnvironment(command.environmentId, {
-      timeoutMs: command.teardownTimeoutMs,
-      onProgress: (entry) => transcript.push(entry),
-    });
-    return { transcript };
-  },
+  "environment.attach.cancel": cancelEnvironmentProvision,
   "workspace.commit": async (command, options) => {
     const entry = await requireResolvedWorkspaceForCommand({
       dataDir: options.dataDir,
       environmentId: command.environmentId,
       requireGit: true,
-      requireManagedWorktree: true,
       runtimeManager: options.runtimeManager,
       workspaceContext: command.workspaceContext,
     });
@@ -516,7 +491,6 @@ const commandHandlers: CommandHandlerMap = {
       dataDir: options.dataDir,
       environmentId: command.environmentId,
       requireGit: true,
-      requireManagedWorktree: true,
       runtimeManager: options.runtimeManager,
       workspaceContext: command.workspaceContext,
     });
@@ -555,6 +529,53 @@ const commandHandlers: CommandHandlerMap = {
 };
 
 const onlineRpcHandlers: OnlineRpcHandlerMap = {
+  "environment.hook.run": runEnvironmentHook,
+  "environment.hook.cancel": cancelEnvironmentHook,
+  "desktop.browser.list_instances": async (command, options) => {
+    if (!options.desktopBrowserBroker)
+      throw new Error("Desktop browser broker unavailable");
+    return options.desktopBrowserBroker.request(command);
+  },
+  "desktop.browser.list_tabs": async (command, options) => {
+    if (!options.desktopBrowserBroker)
+      throw new Error("Desktop browser broker unavailable");
+    return options.desktopBrowserBroker.request(command);
+  },
+  "desktop.browser.create_tab": async (command, options) => {
+    if (!options.desktopBrowserBroker)
+      throw new Error("Desktop browser broker unavailable");
+    return options.desktopBrowserBroker.request(command);
+  },
+  "desktop.browser.reveal_tab": async (command, options) => {
+    if (!options.desktopBrowserBroker)
+      throw new Error("Desktop browser broker unavailable");
+    return options.desktopBrowserBroker.request(command);
+  },
+  "desktop.browser.close_tab": async (command, options) => {
+    if (!options.desktopBrowserBroker)
+      throw new Error("Desktop browser broker unavailable");
+    return options.desktopBrowserBroker.request(command);
+  },
+  "desktop.browser.capture_tab": async (command, options) => {
+    if (!options.desktopBrowserBroker)
+      throw new Error("Desktop browser broker unavailable");
+    return options.desktopBrowserBroker.request(command);
+  },
+  "desktop.browser.acquire_control": async (command, options) => {
+    if (!options.desktopBrowserBroker)
+      throw new Error("Desktop browser broker unavailable");
+    return options.desktopBrowserBroker.request(command);
+  },
+  "desktop.browser.open_connection": async (command, options) => {
+    if (!options.desktopBrowserBroker)
+      throw new Error("Desktop browser broker unavailable");
+    return options.desktopBrowserBroker.request(command);
+  },
+  "desktop.browser.release_control": async (command, options) => {
+    if (!options.desktopBrowserBroker)
+      throw new Error("Desktop browser broker unavailable");
+    return options.desktopBrowserBroker.request(command);
+  },
   "connect-tunnel.ensure-identity": async (_command, options) => {
     if (!options.ensureConnectTunnelIdentity) {
       throw new Error("bb connect tunnel identity is unavailable");
@@ -652,7 +673,6 @@ const onlineRpcHandlers: OnlineRpcHandlerMap = {
       dataDir: options.dataDir,
       environmentId: command.environmentId,
       requireGit: true,
-      requireManagedWorktree: true,
       runtimeManager: options.runtimeManager,
       workspaceContext: command.workspaceContext,
     });
@@ -683,7 +703,6 @@ const onlineRpcHandlers: OnlineRpcHandlerMap = {
       dataDir: options.dataDir,
       environmentId: command.environmentId,
       requireGit: true,
-      requireManagedWorktree: true,
       runtimeManager: options.runtimeManager,
       workspaceContext: command.workspaceContext,
     });
@@ -715,7 +734,6 @@ const onlineRpcHandlers: OnlineRpcHandlerMap = {
       dataDir: options.dataDir,
       environmentId: command.environmentId,
       requireGit: true,
-      requireManagedWorktree: true,
       runtimeManager: options.runtimeManager,
       workspaceContext: command.workspaceContext,
     });
@@ -745,7 +763,6 @@ const onlineRpcHandlers: OnlineRpcHandlerMap = {
       dataDir: options.dataDir,
       environmentId: command.environmentId,
       requireGit: true,
-      requireManagedWorktree: true,
       runtimeManager: options.runtimeManager,
       workspaceContext: command.workspaceContext,
     });
@@ -776,7 +793,6 @@ const onlineRpcHandlers: OnlineRpcHandlerMap = {
       dataDir: options.dataDir,
       environmentId: command.environmentId,
       requireGit: true,
-      requireManagedWorktree: true,
       runtimeManager: options.runtimeManager,
       workspaceContext: command.workspaceContext,
     });

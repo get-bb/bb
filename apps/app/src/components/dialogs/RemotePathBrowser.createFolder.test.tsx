@@ -248,6 +248,53 @@ describe("RemotePathBrowser new folder", () => {
 });
 
 describe("RemotePathBrowser entry list", () => {
+  it("returns to the top when browsing into another large directory", async () => {
+    const names = Array.from(
+      { length: 4999 },
+      (_, i) => `file_${String(i).padStart(5, "0")}`,
+    );
+    const rootEntries = [...names, "next"];
+    directory.mockImplementation(({ path }) =>
+      Promise.resolve(
+        listing(
+          path === "/home/me/manyfiles/next"
+            ? "/home/me/manyfiles/next"
+            : "/home/me/manyfiles",
+          path === "/home/me/manyfiles/next" ? names : rootEntries,
+        ),
+      ),
+    );
+    const { wrapper: Wrapper } = createQueryClientTestHarness();
+
+    const { container } = render(
+      <Wrapper>
+        <RemotePathBrowser
+          hostId="host_atum"
+          allowCreateFolder={false}
+          onDirectoryChange={vi.fn()}
+        />
+      </Wrapper>,
+    );
+
+    await screen.findByText("file_00000");
+    const list = container.querySelector("ul");
+    const scrollBox = list?.parentElement;
+    if (!(scrollBox instanceof HTMLElement)) throw new Error("no scroll box");
+    Object.defineProperty(scrollBox, "scrollTo", {
+      configurable: true,
+      value: ({ top }: ScrollToOptions) => {
+        scrollBox.scrollTop = top ?? scrollBox.scrollTop;
+        scrollBox.dispatchEvent(new Event("scroll"));
+      },
+    });
+    scrollBox.scrollTop = 4_999 * ENTRY_TEST_ROW_HEIGHT_PX;
+    fireEvent.scroll(scrollBox);
+    fireEvent.click(await screen.findByRole("button", { name: "next" }));
+
+    expect(scrollBox.scrollTop).toBe(0);
+    expect(await screen.findByText("file_00000")).not.toBeNull();
+  });
+
   it("mounts only the entries near the viewport for a huge directory", async () => {
     const names = Array.from(
       { length: 5000 },

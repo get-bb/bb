@@ -34,6 +34,7 @@ export {
   type ResourceOverflowMenuItem,
   ResourceRow,
   ResourceRowDetailChevron,
+  targetsResourceAction,
 } from "./resource/row";
 export {
   ResourceDetailActionRow,

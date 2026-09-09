@@ -1,3 +1,4 @@
+import { startDesktopBrowserBroker } from "./desktop-browser-broker.js";
 import { CommandRouter } from "./command-router.js";
 import { createDaemon, type HostDaemon } from "./daemon.js";
 import {
@@ -728,7 +729,16 @@ export async function createHostDaemonApp(
     },
   });
 
+  const desktopBrowserBroker = await startDesktopBrowserBroker({
+    dataDir: options.dataDir,
+    hostId: options.hostId,
+    serverUrl: options.serverUrl,
+    onChanged: (event) => sendServerMessage(event),
+  });
+
   const router = new CommandRouter({
+    emitEnvironmentHookProgress: (message) => sendServerMessage(message),
+    desktopBrowserBroker,
     dataDir: options.dataDir,
     fetchProjectAttachment: (args) =>
       runSessionRequest({
@@ -824,11 +834,6 @@ export async function createHostDaemonApp(
     getActiveThreads: () => runtimeManager.listActiveThreads(),
     getLoadedEnvironments: () => runtimeManager.listLoadedEnvironments(),
     onHostRpcRequest: async (message) => {
-      if (message.command.type === "environment.destroy") {
-        await watchManager.removeEnvironmentWorkspaceWatch(
-          message.command.environmentId,
-        );
-      }
       const response = await router.handleOnlineRpcRequest(message);
       sendServerMessage(response);
     },
@@ -880,6 +885,7 @@ export async function createHostDaemonApp(
     },
     setSession: (session) => {
       sessionState.value = session?.sessionId ?? null;
+      desktopBrowserBroker.setConnected(session !== null);
       if (session === null) {
         clearInteractiveInterruptRetry();
       }
@@ -926,6 +932,7 @@ export async function createHostDaemonApp(
       await eventSink.flush();
     },
     shutdownRuntimes: async () => {
+      await desktopBrowserBroker.close();
       idleProviderSessionReaper.stop();
       eventLoopStallMonitor.stop();
       hostDaemonHealthMonitor.stop();

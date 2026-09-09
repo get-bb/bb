@@ -117,8 +117,13 @@ interface ClaudeDeltaHarness {
   itemId(providerItemId: string, threadId?: string): string;
 }
 
-export function createClaudeDeltaHarness(): ClaudeDeltaHarness {
-  const translator = createClaudeDeltaTranslator({ cwd: "/workspace" });
+export function createClaudeDeltaHarness(
+  options: { sandboxEnabled?: boolean } = {},
+): ClaudeDeltaHarness {
+  const translator = createClaudeDeltaTranslator({
+    cwd: "/workspace",
+    sandboxEnabled: options.sandboxEnabled ?? false,
+  });
   const assembler = createDeltaAssembler({
     providerId: "claude-code",
     entropyPrefix: CLAUDE_TEST_ENTROPY,

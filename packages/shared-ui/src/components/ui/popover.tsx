@@ -5,6 +5,7 @@ import { cn } from "../../lib/utils";
 import { usePortalScopeProps } from "../../lib/portal-scope";
 import {
   type ResponsiveOverlayContextValue,
+  COMPACT_SHEET_CONTENT_STYLE,
   useResponsiveRoot,
   MobileTrigger,
   ResponsiveDrawerShell,
@@ -143,7 +144,7 @@ const PopoverContent = React.forwardRef<
     }, [autoFocusRef, isCompactViewport, isPointerCoarse, open]);
 
     if (isCompactViewport) {
-      const domProps = stripRadixContentProps(props);
+      const { style, ...domProps } = stripRadixContentProps(props);
 
       return (
         <ResponsiveDrawerShell
@@ -160,6 +161,7 @@ const PopoverContent = React.forwardRef<
               className,
             )}
             {...domProps}
+            style={{ ...style, ...COMPACT_SHEET_CONTENT_STYLE }}
           >
             {children}
           </div>

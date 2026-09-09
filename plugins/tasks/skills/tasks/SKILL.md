@@ -1,6 +1,6 @@
 ---
 name: tasks
-description: Use when asked to work on or track a task in the Tasks plugin, when the prompt mentions a task key such as ABC-12, or when work needs task comments, attachments, delegation tracking, or status updates.
+description: "Work on or manage records in BB Tasks, including task keys such as ABC-12."
 ---
 
 # Tasks
@@ -8,21 +8,8 @@ description: Use when asked to work on or track a task in the Tasks plugin, when
 Use the `bb tasks` CLI to understand the assigned task, keep its record useful,
 and report the outcome where the work is tracked.
 
-Delegation presets are user-defined; Tasks ships with none. Before dispatching
-work, use `bb tasks preset list` and create a preset if the required one does
-not already exist. Dispatch requires an existing preset.
-
-Create or update the same execution selection exposed in the Tasks UI with
-`--provider`, `--model`, `--reasoning`, and optional
-`--service-tier default|fast|none`:
-
-```sh
-bb tasks preset create --name "Codex high" --provider codex \
-  --model gpt-5.6-sol --reasoning high --service-tier fast \
-  --permission auto
-```
-
-`preset update` accepts the same flags; `--service-tier none` clears a tier.
+For task dispatch and execution presets, read
+[references/delegation.md](references/delegation.md).
 
 ## Work a task
 
@@ -75,7 +62,8 @@ bb tasks preset create --name "Codex high" --provider codex \
    Read `references/attachments.md` for comment attachments, initial files,
    removal rules, and machine selection.
 
-5. When the work is ready for review, update the task:
+5. Set the status to match the completion criteria. Use `done` when they are
+   met, or `in_review` when required review remains:
 
    ```sh
    bb tasks update ABC-12 --status in_review

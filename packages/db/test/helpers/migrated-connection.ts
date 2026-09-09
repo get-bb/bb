@@ -1,5 +1,6 @@
 import { createConnection, migrate } from "../../src/index.js";
 import type { DbConnection } from "../../src/index.js";
+import type { CreateConnectionOptions } from "../../src/connection.js";
 
 let migratedTemplate: Buffer | null = null;
 
@@ -21,6 +22,8 @@ export function prepareMigratedConnectionTemplate(): void {
   getMigratedTemplate();
 }
 
-export function createMigratedConnection(): DbConnection {
-  return createConnection(getMigratedTemplate());
+export function createMigratedConnection(
+  options: CreateConnectionOptions = {},
+): DbConnection {
+  return createConnection(getMigratedTemplate(), options);
 }

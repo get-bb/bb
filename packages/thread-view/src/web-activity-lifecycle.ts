@@ -1,11 +1,12 @@
-import type {
-  ExtensionKind,
-  JsonValue,
-  ThreadEvent,
-  ThreadEventItemPresentation,
-  ThreadEventItemStatus,
-  ThreadEventPlanStep,
-  ThreadEventSearchMode,
+import {
+  parseLegacyImageGenerationCompletion,
+  type ExtensionKind,
+  type JsonValue,
+  type ThreadEvent,
+  type ThreadEventItemPresentation,
+  type ThreadEventItemStatus,
+  type ThreadEventPlanStep,
+  type ThreadEventSearchMode,
 } from "@bb/domain";
 import { getEventParentToolCallId } from "./event-decode.js";
 
@@ -35,6 +36,14 @@ interface ImageViewLifecycleEvent extends ItemActivityLifecycleBase {
 
 interface StatusedItemActivityLifecycleBase extends ItemActivityLifecycleBase {
   status: ThreadEventItemStatus;
+}
+
+interface ImageGenerationLifecycleEvent extends StatusedItemActivityLifecycleBase {
+  itemKind: "image-generation";
+  prompt: string | null;
+  path: string | null;
+  error: string | null;
+  transparentBackground: boolean;
 }
 
 export interface FileReadLifecycleEvent extends StatusedItemActivityLifecycleBase {
@@ -68,6 +77,7 @@ export type WebActivityLifecycleEvent =
   | WebSearchLifecycleEvent
   | WebFetchLifecycleEvent
   | ImageViewLifecycleEvent
+  | ImageGenerationLifecycleEvent
   | FileReadLifecycleEvent
   | SearchLifecycleEvent
   | PlanStepsLifecycleEvent
@@ -77,6 +87,10 @@ export function parseWebActivityLifecycleEvent(
   decoded: ThreadEvent,
   parentToolCallIdOverride?: string,
 ): WebActivityLifecycleEvent | null {
+  const legacyImageGeneration = parseLegacyImageGeneration(decoded);
+  if (legacyImageGeneration !== null) {
+    return legacyImageGeneration;
+  }
   if (decoded.type !== "item/started" && decoded.type !== "item/completed") {
     return null;
   }
@@ -114,6 +128,17 @@ export function parseWebActivityLifecycleEvent(
         ...base,
         itemKind: "image-view",
         path: item.path,
+        ...(item.presentation ? { presentation: item.presentation } : {}),
+      };
+    case "imageGeneration":
+      return {
+        ...base,
+        itemKind: "image-generation",
+        prompt: item.prompt,
+        path: item.path,
+        error: item.error,
+        transparentBackground: item.transparentBackground,
+        status: item.status,
         ...(item.presentation ? { presentation: item.presentation } : {}),
       };
     case "fileRead":
@@ -157,4 +182,29 @@ export function parseWebActivityLifecycleEvent(
     default:
       return null;
   }
+}
+
+function parseLegacyImageGeneration(
+  decoded: ThreadEvent,
+): ImageGenerationLifecycleEvent | null {
+  if (decoded.type !== "provider/unhandled") {
+    return null;
+  }
+  const imageGeneration = parseLegacyImageGenerationCompletion(decoded);
+  if (imageGeneration === null) {
+    return null;
+  }
+  return {
+    kind: "end",
+    callId: imageGeneration.callId,
+    itemKind: "image-generation",
+    prompt: imageGeneration.prompt,
+    path: imageGeneration.path,
+    error: imageGeneration.error,
+    transparentBackground: imageGeneration.transparentBackground,
+    status: imageGeneration.status,
+    ...(decoded.parentToolCallId
+      ? { parentToolCallId: decoded.parentToolCallId }
+      : {}),
+  };
 }

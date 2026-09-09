@@ -92,8 +92,10 @@ export interface CreateFilePreviewResponse {
   expiresAtMs: number;
 }
 
-export type HostFileReadResponse =
-  HostDaemonOnlineRpcResultByType["host.read_file"];
+export type HostFileReadResponse = Exclude<
+  HostDaemonOnlineRpcResultByType["host.read_file"],
+  { notModified: true }
+>;
 export type HostFileWriteResponse =
   HostDaemonOnlineRpcResultByType["host.write_file"];
 export type HostFileListResponse =

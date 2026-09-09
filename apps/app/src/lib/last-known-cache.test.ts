@@ -90,4 +90,48 @@ describe("createLastKnownCache", () => {
     expect(window.localStorage.getItem("bb.other.0.keep")).toBe("1");
     expect(cache.read(cache.key("new"))).toEqual({ models: ["b"] });
   });
+
+  it("prunes obsolete cache families on first access", () => {
+    window.localStorage.setItem(
+      "bb.test-legacy.2.scope-a",
+      JSON.stringify({ models: ["old"] }),
+    );
+    window.localStorage.setItem(
+      "bb.test-legacy.2.scope-b",
+      JSON.stringify({ models: ["old"] }),
+    );
+    const cache = createLastKnownCache({
+      prefix: "bb.test",
+      version: "1",
+      schema,
+      obsoletePrefixes: ["bb.test-legacy"],
+    });
+
+    cache.read(cache.key("current"));
+
+    expect(window.localStorage.getItem("bb.test-legacy.2.scope-a")).toBeNull();
+    expect(window.localStorage.getItem("bb.test-legacy.2.scope-b")).toBeNull();
+  });
+
+  it("bounds scoped entries while retaining the key being accessed", () => {
+    const cache = createLastKnownCache({
+      prefix: "bb.test",
+      version: "1",
+      schema,
+      maxEntries: 3,
+    });
+    const firstKey = cache.key("a");
+    const lastKey = cache.key("d");
+    const keys = [firstKey, cache.key("b"), cache.key("c"), lastKey];
+    for (const key of keys) cache.write(key, { models: [key] });
+
+    expect(
+      keys.filter((key) => window.localStorage.getItem(key) !== null),
+    ).toHaveLength(3);
+    expect(cache.read(firstKey)).toBeNull();
+    expect(cache.read(lastKey)).toEqual({ models: [lastKey] });
+    expect(
+      keys.filter((key) => window.localStorage.getItem(key) !== null),
+    ).toHaveLength(3);
+  });
 });

@@ -3,16 +3,16 @@ import {
   getThread,
   requireThreadLifecycleEventApplied,
 } from "@bb/db";
-import type { DbConnection, DbTransaction } from "@bb/db";
+import type { DbConnection, DbTransaction, EnvironmentRow } from "@bb/db";
 import type {
   ClientTurnRequestId,
-  Environment,
   PromptInput,
   ResolvedThreadExecutionOptions,
   Thread,
   ThreadTurnInitiator,
   TurnRequestTarget,
 } from "@bb/domain";
+import { isStandaloneBuiltinClearCommand } from "@bb/domain";
 import type { SendMessageRequest } from "@bb/server-contract";
 import { renderTemplate } from "@bb/templates";
 import type {
@@ -63,6 +63,8 @@ import {
 } from "../lib/lifecycle-api-errors.js";
 import { validatePromptAttachmentReferences } from "../projects/attachments.js";
 import { resolvePluginMentionContextInputs } from "../plugins/plugin-mentions.js";
+import { clearThreadContext } from "./thread-context-clear.js";
+import { withThreadSendGuard } from "./thread-context-mutation-guard.js";
 import {
   prependDeferredFirstTurnContext,
   requireDeferredFirstTurnContextCurrent,
@@ -85,7 +87,7 @@ interface SendThreadMessageArgs {
    * attempt number correct without a separate tally.
    */
   retryOf?: TurnRequestRetryMarker;
-  environment: Environment;
+  environment: EnvironmentRow;
   historyReplacement?: {
     forkSourceProviderThreadId: string | null;
     onCommandSettled?: () => void | Promise<void>;
@@ -400,6 +402,22 @@ export async function sendThreadMessage(
   deps: LoggedPendingInteractionWorkSessionDeps,
   args: SendThreadMessageArgs,
 ): Promise<void> {
+  if (isStandaloneBuiltinClearCommand(args.payload.input)) {
+    await clearThreadContext(deps, {
+      environment: args.environment,
+      thread: args.thread,
+    });
+    return;
+  }
+  return withThreadSendGuard(args.thread.id, () =>
+    sendThreadMessageWithoutContextClear(deps, args),
+  );
+}
+
+async function sendThreadMessageWithoutContextClear(
+  deps: LoggedPendingInteractionWorkSessionDeps,
+  args: SendThreadMessageArgs,
+): Promise<void> {
   const { environment, payload, thread } = args;
   ensureThreadIsWritable(thread);
   if (args.trigger === "user") {
@@ -559,7 +577,6 @@ export async function sendThreadMessage(
         hostId: readyEnvironment.hostId,
         path: readyEnvironment.path,
         status: readyEnvironment.status,
-        workspaceProvisionType: readyEnvironment.workspaceProvisionType,
       },
       projectId: thread.projectId,
       providerId: thread.providerId,
@@ -666,7 +683,6 @@ export async function sendThreadMessage(
       hostId: readyEnvironment.hostId,
       path: readyEnvironment.path,
       status: readyEnvironment.status,
-      workspaceProvisionType: readyEnvironment.workspaceProvisionType,
     },
   });
   const command = addRequestIdToTurnSubmitCommandPayload({

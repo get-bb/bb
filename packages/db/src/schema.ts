@@ -14,6 +14,8 @@ import { threadStatusValues } from "@bb/domain/thread-status";
 import { threadOriginKindValues } from "@bb/domain/thread-origin-kind";
 import { threadVisibilityValues } from "@bb/domain/thread-visibility";
 import type {
+  EnvironmentProviderSelection,
+  JsonValue,
   EnvironmentStatus,
   FaviconColorPreference,
   HostType,
@@ -32,9 +34,9 @@ import type {
   ThreadEventItemType,
   ThreadEventScopeKind,
   ThreadEventType,
-  WorkspaceProvisionType,
   ProjectKind,
 } from "@bb/domain";
+import type { RetainedEventOutputPath } from "./retained-event-output.js";
 
 export const authUsers = sqliteTable(
   "user",
@@ -156,6 +158,13 @@ export const systemExperiments = sqliteTable("system_experiments", {
 export const appSettingsValues = sqliteTable("app_settings_values", {
   key: text("key").primaryKey(),
   value: text("value").notNull(),
+  updatedAt: integer("updated_at").notNull(),
+});
+
+export const uiPreferences = sqliteTable("ui_preferences", {
+  key: text("key").primaryKey(),
+  valueJson: text("value_json").notNull(),
+  revision: integer("revision").notNull(),
   updatedAt: integer("updated_at").notNull(),
 });
 
@@ -443,7 +452,6 @@ export const environments = sqliteTable(
       .notNull()
       .references(() => hosts.id, { onDelete: "cascade" }),
     path: text("path"),
-    managed: integer("managed", { mode: "boolean" }).notNull().default(false),
     isGitRepo: integer("is_git_repo", { mode: "boolean" })
       .notNull()
       .default(false),
@@ -454,11 +462,22 @@ export const environments = sqliteTable(
     baseBranch: text("base_branch"),
     defaultBranch: text("default_branch"),
     mergeBaseBranch: text("merge_base_branch"),
-    destroyAttemptId: text("destroy_attempt_id"),
-    retireRequestedAt: integer("retire_requested_at"),
-    workspaceProvisionType: text("workspace_provision_type")
-      .$type<WorkspaceProvisionType>()
-      .notNull(),
+    environmentProviderId: text("environment_provider_id"),
+    environmentProviderPluginId: text("environment_provider_plugin_id"),
+    providerOwnsPath: integer("provider_owns_path", { mode: "boolean" })
+      .notNull()
+      .default(false),
+    environmentProviderSelection: text("environment_provider_selection", {
+      mode: "json",
+    }).$type<EnvironmentProviderSelection>(),
+    environmentProviderInstanceKey: text("environment_provider_instance_key"),
+    retireAt: integer("retire_at"),
+    teardownAttempt: integer("teardown_attempt").notNull().default(0),
+    teardownStatus: text("teardown_status").$type<
+      "running" | "failed" | "removed"
+    >(),
+    teardownMessage: text("teardown_message"),
+    resource: text("resource", { mode: "json" }).$type<JsonValue>(),
     status: text("status")
       .$type<EnvironmentStatus>()
       .notNull()
@@ -475,6 +494,10 @@ export const environments = sqliteTable(
     index("environments_host_path_lookup_idx").on(table.hostId, table.path),
     index("environments_project_idx").on(table.projectId),
     index("environments_status_idx").on(table.status),
+    index("environments_provider_instance_idx").on(
+      table.environmentProviderId,
+      table.environmentProviderInstanceKey,
+    ),
   ],
 );
 
@@ -737,6 +760,24 @@ export const events = sqliteTable(
         OR
         (${table.scopeKind} = 'thread' AND ${table.turnId} IS NULL)
       )`,
+    ),
+  ],
+);
+
+export const retainedEventOutputs = sqliteTable(
+  "retained_event_outputs",
+  {
+    eventId: text("event_id")
+      .primaryKey()
+      .references(() => events.id, { onDelete: "cascade" }),
+    outputPath: text("output_path").$type<RetainedEventOutputPath>().notNull(),
+    value: text("value").notNull(),
+    expiresAt: integer("expires_at").notNull(),
+  },
+  (table) => [
+    index("retained_event_outputs_expiry_idx").on(
+      table.expiresAt,
+      table.eventId,
     ),
   ],
 );
@@ -1026,5 +1067,52 @@ export const pendingInteractions = sqliteTable(
       table.status,
       table.createdAt,
     ),
+  ],
+);
+
+export const environmentLaunches = sqliteTable(
+  "environment_launches",
+  {
+    threadId: text("thread_id").primaryKey(),
+    providerId: text("provider_id").notNull(),
+    providerPluginId: text("provider_plugin_id"),
+    pathRejected: integer("path_rejected", { mode: "boolean" })
+      .notNull()
+      .default(false),
+    attempt: integer("attempt").notNull(),
+    phase: text("phase")
+      .$type<"creating" | "ready" | "failed" | "cancelled">()
+      .notNull(),
+    startedAt: integer("started_at").notNull(),
+    failedAt: integer("failed_at"),
+    failure: text("failure").$type<"terminal" | "transient">(),
+    message: text("message"),
+    transientFailures: integer("transient_failures").notNull(),
+    pathKey: text("path_key").notNull(),
+    hostId: text("host_id"),
+    path: text("path"),
+    claimPath: text("claim_path"),
+    ownsPath: integer("owns_path", { mode: "boolean" })
+      .notNull()
+      .default(false),
+    mergeBaseBranch: text("merge_base_branch"),
+    resource: text("resource", { mode: "json" }).$type<JsonValue>(),
+    stepText: text("step_text").notNull(),
+    pendingLog: text("pending_log").notNull(),
+    replacedEnvironmentId: text("replaced_environment_id"),
+    environmentId: text("environment_id"),
+    selection: text("selection", { mode: "json" })
+      .$type<EnvironmentProviderSelection>()
+      .notNull(),
+    request: text("request", { mode: "json" }).$type<JsonValue>(),
+    cancelPending: integer("cancel_pending", { mode: "boolean" }).notNull(),
+  },
+  (table) => [
+    index("environment_launches_phase_idx").on(table.phase),
+    index("environment_launches_active_claim_idx")
+      .on(table.hostId, table.claimPath)
+      .where(
+        sql`${table.environmentId} is null and ${table.claimPath} is not null`,
+      ),
   ],
 );

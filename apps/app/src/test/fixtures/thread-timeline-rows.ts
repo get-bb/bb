@@ -78,6 +78,7 @@ interface CommandRowArgs extends RowBaseOverrideArgs {
   exitCode?: number | null;
   id?: string;
   output?: string;
+  presentation?: TimelineRowPresentation;
   seq?: number;
   source?: string | null;
   sourceSeqEnd?: number;
@@ -530,6 +531,7 @@ export function commandRow({
   exitCode,
   id = DEFAULT_COMMAND_ID,
   output = "",
+  presentation,
   seq,
   source = "exec_command",
   sourceSeqEnd,
@@ -563,6 +565,7 @@ export function commandRow({
     completedAt: completedAtFromDuration(base.startedAt, durationMs),
     approvalStatus,
     activityIntents,
+    ...(presentation === undefined ? {} : { presentation }),
   };
 }
 

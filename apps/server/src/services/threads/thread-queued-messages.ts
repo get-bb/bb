@@ -30,6 +30,8 @@ interface StoredQueuedThreadMessageRow {
   permissionMode: PermissionMode;
   sendAt: number | null;
   serviceTier: string;
+  senderThreadId: string | null;
+  systemNotice: string | null;
   threadId: string;
   updatedAt: number;
   waitingOn: string | null;
@@ -123,6 +125,13 @@ export function toThreadQueuedMessage(
 ): ThreadQueuedMessage {
   return threadQueuedMessageSchema.parse({
     id: row.id,
+    initiator:
+      row.systemNotice !== null
+        ? "system"
+        : row.senderThreadId !== null
+          ? "agent"
+          : "user",
+    senderThreadId: row.senderThreadId,
     threadId: row.threadId,
     content: parseStoredQueuedThreadMessageContent(row),
     model: row.model,

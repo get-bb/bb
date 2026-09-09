@@ -1,3 +1,4 @@
+import { DiffLoadingSkeleton } from "@/components/code/code-loading-skeletons";
 import { useCallback, useMemo, useRef, type CSSProperties } from "react";
 import type { FileDiffOptions, SelectedLineRange } from "@pierre/diffs";
 import { FileDiff as DiffView } from "@pierre/diffs/react";
@@ -13,7 +14,6 @@ import {
 import { enrichGitDiffFileForContext } from "@/components/git-diff/git-diff-parsing";
 import { useResolvedCodeThemePair } from "@/lib/code-theme";
 import { usePreferredTheme } from "@/hooks/useTheme";
-import { Skeleton } from "@bb/shared-ui/skeleton";
 import { cn } from "@bb/shared-ui/lib/utils";
 import type { BbDiffProps } from "./code-rendering";
 
@@ -23,19 +23,6 @@ const DIFF_VIEW_STYLE = {
 } as CSSProperties;
 
 const DEFAULT_DIFF_EXPANSION_LINE_COUNT = 30;
-
-function BbDiffSkeleton() {
-  return (
-    <div className="space-y-1.5 px-3 py-3">
-      <Skeleton className="h-3 w-full rounded-sm" />
-      <Skeleton className="h-3 w-[96%] rounded-sm" />
-      <Skeleton className="h-3 w-[93%] rounded-sm" />
-      <Skeleton className="h-3 w-[90%] rounded-sm" />
-      <Skeleton className="h-3 w-[87%] rounded-sm" />
-      <Skeleton className="h-3 w-[84%] rounded-sm" />
-    </div>
-  );
-}
 
 export function BbDiff({
   file,
@@ -138,7 +125,7 @@ export function BbDiff({
   const options = usePierreStrictModeRecoveryOptions(baseOptions);
   const isWorkerPoolReady = useRequirePierreWorkerPool();
   if (!isWorkerPoolReady) {
-    return <BbDiffSkeleton />;
+    return <DiffLoadingSkeleton />;
   }
   return (
     <div

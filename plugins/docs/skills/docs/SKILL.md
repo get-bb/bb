@@ -1,6 +1,6 @@
 ---
 name: docs
-description: Access and update the user's Docs vaults. Use whenever the user asks to read, find, create, update, or store a note, document, plan, or HTML artifact; when a Docs @-mention appears in context; or when an answer should link to a document the user can open in Docs.
+description: "Read, edit, or save documents in BB Docs vaults, including documents supplied through Docs mentions."
 ---
 
 # Docs

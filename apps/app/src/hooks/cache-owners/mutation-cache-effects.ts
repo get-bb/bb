@@ -237,22 +237,6 @@ export function invalidateThreadHistoryRewriteQueries({
   });
 }
 
-export function invalidateThreadStopQueries({
-  queryClient,
-  threadId,
-}: ThreadArg): void {
-  invalidateQueryKeys({
-    queryClient,
-    queryKeys: [
-      ...getThreadDetailInvalidationQueryKeys({ threadId }),
-      ...getThreadListInvalidationQueryKeys({
-        projectId: undefined,
-        queryClient,
-      }),
-    ],
-  });
-}
-
 export function invalidateThreadBannerQueries({
   queryClient,
   threadId,

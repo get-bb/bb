@@ -157,10 +157,6 @@ export function createProviderRegistryService(
     return pluginRegistrations.get(providerId) ?? null;
   }
 
-  function hasProviderRegistration(providerId: string): boolean {
-    return pluginRegistrations.has(providerId);
-  }
-
   function releaseProviderRegistrationWaiters(providerId: string): void {
     const waiters = providerRegistrationWaiters.get(providerId);
     if (waiters === undefined) return;
@@ -354,7 +350,7 @@ export function createProviderRegistryService(
     },
 
     async whenProviderRegistered(providerId) {
-      if (hasProviderRegistration(providerId) || settle === null) {
+      if (pluginRegistrations.has(providerId) || settle === null) {
         return;
       }
       const key = providerId;

@@ -57,7 +57,7 @@ describe("ToolsSidebar", () => {
     ["/extensions/plugins", "Browse plugins"],
     ["/extensions/plugins?view=installed", "Installed plugins"],
     ["/extensions/plugins/github", "Browse plugins"],
-    ["/extensions/plugins/github?view=installed", "Installed plugins"],
+    ["/extensions/plugins/github?view=installed", "Browse plugins"],
     ["/extensions/skills", "Browse skills"],
     ["/extensions/skills/registry", "Browse skills"],
     ["/extensions/skills?view=library", "My skills"],

@@ -1,30 +1,35 @@
-import type { Thread } from "@bb/domain";
+import { isStandaloneBuiltinClearCommand, type Thread } from "@bb/domain";
 import type {
   SendMessageRequest,
   SendMessageResponse,
 } from "@bb/server-contract";
 import type { LoggedPendingInteractionWorkSessionDeps } from "../../types.js";
 import { attemptDispatch } from "./dispatch-attempt.js";
+import { requireThreadCommandEnvironment } from "./thread-command-environment.js";
+import { sendThreadMessage } from "./thread-send.js";
 
 interface AcceptThreadSendRequestArgs {
   payload: SendMessageRequest;
   thread: Thread;
 }
 
-/**
- * Takes a public `send` request (the `/threads/:id/send` route, `bb thread
- * tell`, `sdk.threads.send`) and runs it through the dispatch checkpoint.
- *
- * There is nothing left here to decide. What used to be a four-way routing
- * decision — queue it, defer it behind an interaction, hold it back, or
- * send it — was four spellings of "this cannot run yet", and the checkpoint
- * answers all four with one typed wait on one queued row. So this function's
- * whole job is now to translate the attempt's outcome into the wire response.
- */
 export async function acceptThreadSendRequest(
   deps: LoggedPendingInteractionWorkSessionDeps,
   args: AcceptThreadSendRequestArgs,
 ): Promise<SendMessageResponse> {
+  if (isStandaloneBuiltinClearCommand(args.payload.input)) {
+    const environment = await requireThreadCommandEnvironment(deps, {
+      thread: args.thread,
+    });
+    await sendThreadMessage(deps, {
+      environment,
+      payload: args.payload,
+      thread: args.thread,
+      trigger: "user",
+    });
+    return { ok: true, delivery: "sent" };
+  }
+
   const outcome = await attemptDispatch(deps, {
     thread: args.thread,
     payload: args.payload,

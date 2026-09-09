@@ -174,6 +174,8 @@ describe("desktop preload browser API", () => {
 
   it("exposes only the typed browser commands and forwards them over fixed channels", async () => {
     const attachRequest = {
+      threadId: "thread-1",
+      existingOnly: true as const,
       tabId: "browser:a",
       url: "http://localhost:5173/",
       bounds: { x: 0, y: 0, width: 800, height: 600 },
@@ -207,15 +209,20 @@ describe("desktop preload browser API", () => {
       "detach",
       "findInPage",
       "focus",
+      "getControl",
+      "getTarget",
       "goBack",
       "goForward",
       "navigate",
+      "onControl",
       "onFindResult",
       "onFocus",
       "onOpenTab",
+      "onReveal",
       "onScopedOpenTab",
       "onSnapshot",
       "onState",
+      "releaseControl",
       "reload",
       "setBounds",
       "setVisible",
@@ -314,6 +321,7 @@ describe("desktop preload browser API", () => {
     electronMock.setZoomFactor(1.25);
 
     api.browser.attach({
+      threadId: "thread-1",
       tabId: "browser:zoomed",
       url: "https://example.com/",
       bounds: { x: 800, y: 40, width: 400, height: 600 },
@@ -328,6 +336,7 @@ describe("desktop preload browser API", () => {
       {
         channel: BB_DESKTOP_BROWSER_ATTACH_CHANNEL,
         payload: {
+          threadId: "thread-1",
           tabId: "browser:zoomed",
           url: "https://example.com/",
           bounds: { x: 1000, y: 50, width: 500, height: 750 },

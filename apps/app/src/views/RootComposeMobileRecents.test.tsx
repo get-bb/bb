@@ -2,14 +2,59 @@
 
 import type { ThreadListEntry } from "@bb/domain";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import type { ReactNode } from "react";
+import { Provider, createStore } from "jotai";
+import { collapsedThreadIdsAtom } from "@/components/sidebar/sidebarCollapsedAtoms";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, describe, expect, it } from "vitest";
+import type { SystemEnvironmentProvider } from "@bb/server-contract";
+import { systemEnvironmentProvidersQueryKey } from "@/hooks/queries/environment-provider-queries";
 import {
   getMobileRecentAncestorIds,
   getMobileRecentThreads,
   RootComposeMobileRecents,
 } from "./RootComposeMobileRecents";
 import { makeThreadListEntry } from "@bb/test-helpers/domain-fixtures";
+
+const personalProvider: SystemEnvironmentProvider = {
+  id: "personal-workspace",
+  displayName: "Personal workspace",
+  icon: "Folder",
+  logoUrl: null,
+  pluginId: "environment-personal-workspace",
+  acceptsEmptyInputs: true,
+  availability: null,
+  requires: {
+    projectCheckout: false,
+    gitCheckout: false,
+    gitRemote: false,
+    projectless: true,
+  },
+  inputs: null,
+};
+
+function TestProviders({
+  children,
+  store = createStore(),
+}: {
+  children: ReactNode;
+  store?: ReturnType<typeof createStore>;
+}) {
+  return (
+    <Provider store={store}>
+      <QueryClientProvider client={new QueryClient()}>
+        <MemoryRouter>{children}</MemoryRouter>
+      </QueryClientProvider>
+    </Provider>
+  );
+}
+
+function storeWithCollapsedThreads(threadIds: string[]) {
+  const store = createStore();
+  store.set(collapsedThreadIdsAtom, threadIds);
+  return store;
+}
 
 function makeThread(overrides: Partial<ThreadListEntry> = {}): ThreadListEntry {
   return makeThreadListEntry({
@@ -176,13 +221,13 @@ describe("getMobileRecentThreads", () => {
         makeThread({
           id: "thr_wt_a",
           environmentId: "env_1",
-          environmentWorkspaceDisplayKind: "managed-worktree",
+          environmentProviderId: "git-worktree",
           latestAttentionAt: 2,
         }),
         makeThread({
           id: "thr_wt_b",
           environmentId: "env_1",
-          environmentWorkspaceDisplayKind: "managed-worktree",
+          environmentProviderId: "git-worktree",
           latestAttentionAt: 1,
         }),
       ],
@@ -242,7 +287,7 @@ describe("getMobileRecentAncestorIds", () => {
 describe("mobile recents hierarchy interaction", () => {
   function renderTree() {
     return render(
-      <MemoryRouter>
+      <TestProviders>
         <RootComposeMobileRecents
           highlightedThreadId={null}
           projectNamesById={new Map()}
@@ -264,7 +309,7 @@ describe("mobile recents hierarchy interaction", () => {
             }),
           ]}
         />
-      </MemoryRouter>,
+      </TestProviders>,
     );
   }
 
@@ -322,13 +367,8 @@ describe("mobile recents hierarchy interaction", () => {
   ])(
     "renders child-only $label state on a collapsed parent",
     ({ child, label }) => {
-      window.localStorage.setItem(
-        "bb.sidebar.collapsedThreads",
-        JSON.stringify(["thr_parent"]),
-      );
-
       render(
-        <MemoryRouter>
+        <TestProviders store={storeWithCollapsedThreads(["thr_parent"])}>
           <RootComposeMobileRecents
             highlightedThreadId={null}
             projectNamesById={new Map()}
@@ -343,7 +383,7 @@ describe("mobile recents hierarchy interaction", () => {
               child,
             ]}
           />
-        </MemoryRouter>,
+        </TestProviders>,
       );
 
       expect(screen.getByLabelText(label)).not.toBeNull();
@@ -360,13 +400,8 @@ describe("mobile recents hierarchy interaction", () => {
       "bb.promptbox.contents-proj_mobile-thr_child-3",
       JSON.stringify({ text: "Continue child work", attachments: [] }),
     );
-    window.localStorage.setItem(
-      "bb.sidebar.collapsedThreads",
-      JSON.stringify(["thr_parent"]),
-    );
-
     render(
-      <MemoryRouter>
+      <TestProviders store={storeWithCollapsedThreads(["thr_parent"])}>
         <RootComposeMobileRecents
           highlightedThreadId={null}
           projectNamesById={new Map()}
@@ -384,7 +419,7 @@ describe("mobile recents hierarchy interaction", () => {
             }),
           ]}
         />
-      </MemoryRouter>,
+      </TestProviders>,
     );
 
     expect(
@@ -398,13 +433,9 @@ describe("mobile recents hierarchy interaction", () => {
   });
 
   it("reveals a highlighted thread whose parent is collapsed", () => {
-    window.localStorage.setItem(
-      "bb.sidebar.collapsedThreads",
-      JSON.stringify(["thr_parent"]),
-    );
-
+    const store = storeWithCollapsedThreads(["thr_parent"]);
     render(
-      <MemoryRouter>
+      <TestProviders store={store}>
         <RootComposeMobileRecents
           highlightedThreadId="thr_child"
           projectNamesById={new Map()}
@@ -424,13 +455,11 @@ describe("mobile recents hierarchy interaction", () => {
             }),
           ]}
         />
-      </MemoryRouter>,
+      </TestProviders>,
     );
 
     expect(screen.getByText("Audit folder query paths")).not.toBeNull();
-    expect(window.localStorage.getItem("bb.sidebar.collapsedThreads")).toBe(
-      "[]",
-    );
+    expect(store.get(collapsedThreadIdsAtom)).toEqual([]);
   });
 
   it("de-emphasizes the provider tile on child rows only", () => {
@@ -491,7 +520,7 @@ describe("mobile recents hierarchy interaction", () => {
 describe("mobile recents section", () => {
   it("keeps the Recent label pinned while the list scrolls under it", () => {
     render(
-      <MemoryRouter>
+      <TestProviders>
         <RootComposeMobileRecents
           highlightedThreadId={null}
           projectNamesById={new Map()}
@@ -499,7 +528,7 @@ describe("mobile recents section", () => {
           showCreatingRow={false}
           threads={[makeThread()]}
         />
-      </MemoryRouter>,
+      </TestProviders>,
     );
 
     const label = screen.getByText("Recent").parentElement;
@@ -516,7 +545,7 @@ describe("mobile recents section", () => {
 describe("mobile recent thread rows", () => {
   it("shows project and relative activity on a metadata line", () => {
     render(
-      <MemoryRouter>
+      <TestProviders>
         <RootComposeMobileRecents
           highlightedThreadId={null}
           projectNamesById={new Map([["proj_mobile", "bb"]])}
@@ -535,7 +564,7 @@ describe("mobile recent thread rows", () => {
             }),
           ]}
         />
-      </MemoryRouter>,
+      </TestProviders>,
     );
 
     expect(screen.getByText("bb \u00b7 3h ago")).not.toBeNull();
@@ -543,7 +572,7 @@ describe("mobile recent thread rows", () => {
 
   it("includes the worktree branch when the thread has one", () => {
     render(
-      <MemoryRouter>
+      <TestProviders>
         <RootComposeMobileRecents
           highlightedThreadId={null}
           projectNamesById={new Map([["proj_mobile", "bb"]])}
@@ -552,6 +581,7 @@ describe("mobile recent thread rows", () => {
           threads={[
             makeThread({
               environmentBranchName: "bb/mobile-home",
+              environmentProviderId: null,
               latestAttentionAt: Date.now() - 3 * 60 * 60 * 1000,
               activity: {
                 activeWorkflowCount: 0,
@@ -563,7 +593,7 @@ describe("mobile recent thread rows", () => {
             }),
           ]}
         />
-      </MemoryRouter>,
+      </TestProviders>,
     );
 
     expect(
@@ -571,9 +601,44 @@ describe("mobile recent thread rows", () => {
     ).not.toBeNull();
   });
 
+  it("does not repeat the project name as the workspace segment", () => {
+    const queryClient = new QueryClient();
+    queryClient.setQueryData(systemEnvironmentProvidersQueryKey({}), [
+      personalProvider,
+    ]);
+    render(
+      <QueryClientProvider client={queryClient}>
+        <MemoryRouter>
+          <RootComposeMobileRecents
+            highlightedThreadId={null}
+            projectNamesById={new Map([["proj_mobile", "Personal"]])}
+            providersById={new Map()}
+            showCreatingRow={false}
+            threads={[
+              makeThread({
+                environmentId: "env_personal",
+                environmentProviderId: "personal-workspace",
+                latestAttentionAt: Date.now() - 3 * 60 * 60 * 1000,
+                activity: {
+                  activeWorkflowCount: 0,
+                  activeBackgroundAgentCount: 0,
+                  activeBackgroundCommandCount: 0,
+                  activePlanModeCount: 0,
+                  activeGoalCount: 0,
+                },
+              }),
+            ]}
+          />
+        </MemoryRouter>
+      </QueryClientProvider>,
+    );
+
+    expect(screen.getByText("Personal \u00b7 3h ago")).not.toBeNull();
+  });
+
   it("drops the status slot entirely when a thread has no indicator", () => {
     render(
-      <MemoryRouter>
+      <TestProviders>
         <RootComposeMobileRecents
           highlightedThreadId={null}
           projectNamesById={new Map()}
@@ -598,7 +663,7 @@ describe("mobile recent thread rows", () => {
             }),
           ]}
         />
-      </MemoryRouter>,
+      </TestProviders>,
     );
 
     expect(screen.queryByLabelText("Plan mode active")).toBeNull();
@@ -612,7 +677,7 @@ describe("mobile recent thread rows", () => {
 describe("RootComposeMobileRecents", () => {
   it("shows concurrent Plan activity before the runtime spinner", () => {
     render(
-      <MemoryRouter>
+      <TestProviders>
         <RootComposeMobileRecents
           highlightedThreadId={null}
           projectNamesById={new Map()}
@@ -620,7 +685,7 @@ describe("RootComposeMobileRecents", () => {
           showCreatingRow={false}
           threads={[makeThread()]}
         />
-      </MemoryRouter>,
+      </TestProviders>,
     );
 
     expect(screen.getByLabelText("Plan mode active")).not.toBeNull();
@@ -630,7 +695,7 @@ describe("RootComposeMobileRecents", () => {
 
   it("shows runtime activity before concurrent workflow activity", () => {
     render(
-      <MemoryRouter>
+      <TestProviders>
         <RootComposeMobileRecents
           highlightedThreadId={null}
           projectNamesById={new Map()}
@@ -648,7 +713,7 @@ describe("RootComposeMobileRecents", () => {
             }),
           ]}
         />
-      </MemoryRouter>,
+      </TestProviders>,
     );
 
     expect(screen.getByLabelText("Thread working")).not.toBeNull();
@@ -662,7 +727,7 @@ describe("RootComposeMobileRecents", () => {
     );
 
     render(
-      <MemoryRouter>
+      <TestProviders>
         <RootComposeMobileRecents
           highlightedThreadId={null}
           projectNamesById={new Map()}
@@ -670,7 +735,7 @@ describe("RootComposeMobileRecents", () => {
           showCreatingRow={false}
           threads={[makeThread()]}
         />
-      </MemoryRouter>,
+      </TestProviders>,
     );
 
     expect(
@@ -687,7 +752,7 @@ describe("RootComposeMobileRecents", () => {
     );
 
     render(
-      <MemoryRouter>
+      <TestProviders>
         <RootComposeMobileRecents
           highlightedThreadId={null}
           projectNamesById={new Map()}
@@ -710,7 +775,7 @@ describe("RootComposeMobileRecents", () => {
             }),
           ]}
         />
-      </MemoryRouter>,
+      </TestProviders>,
     );
 
     expect(

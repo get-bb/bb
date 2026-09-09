@@ -1,6 +1,5 @@
 import { useCallback, useMemo, useState } from "react";
 import type { SidebarBootstrapResponse } from "@bb/server-contract";
-import { useDebounceValue } from "usehooks-ts";
 import {
   buildSectionMentionSuggestions,
   type SectionMentionCandidate,
@@ -22,6 +21,7 @@ import {
   usePathSuggestions,
   PATH_SUGGESTION_DEBOUNCE_MS,
 } from "./usePathSuggestions";
+import { useDebouncedValue } from "./useDebouncedValue";
 import {
   DEFAULT_PLUGIN_MENTION_TRIGGER,
   PLUGIN_MENTION_TRIGGER_VALUES,
@@ -158,7 +158,7 @@ export function usePromptMentions(
       ),
     [pluginContributions.data?.mentionProviders],
   );
-  const [debouncedQuery] = useDebounceValue(
+  const debouncedQuery = useDebouncedValue(
     trimmedQuery,
     PATH_SUGGESTION_DEBOUNCE_MS,
   );

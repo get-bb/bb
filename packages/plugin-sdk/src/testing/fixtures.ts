@@ -1,9 +1,13 @@
 import type {
+  BbPluginApi,
   MessageDispatchHookContext,
   PluginAgentConfigurationContext,
   PluginThreadEventPayloads,
 } from "@get-bb/plugin-sdk";
 
+type HostResponse = Awaited<
+  ReturnType<BbPluginApi["sdk"]["hosts"]["list"]>
+>[number];
 type ThreadResponse = PluginThreadEventPayloads["thread.created"]["thread"];
 type QueueEntry = PluginThreadEventPayloads["message.queued"]["entry"];
 type TurnFailedEvent = PluginThreadEventPayloads["turn.failed"];
@@ -48,6 +52,29 @@ type MessageDispatchHookContextOverrides = Omit<
     NonNullable<MessageDispatchHookContext["queuedMessage"]>
   > | null;
 };
+
+/**
+ * A complete, deterministic host response for faking `bb.sdk.hosts.list()`
+ * and environment-provider contexts. Override only the fields the test cares
+ * about. If the contract grows a required field, this builder fails
+ * typecheck — update the default here.
+ */
+export function makeHostResponse(
+  overrides: Partial<HostResponse> = {},
+): HostResponse {
+  return {
+    id: "host-1",
+    name: "Test host",
+    status: "connected",
+    type: "persistent",
+    maxPermissionMode: "full",
+    lastSeenAt: null,
+    lastRejectedProtocolVersion: null,
+    createdAt: 0,
+    updatedAt: 0,
+    ...overrides,
+  };
+}
 
 /**
  * A complete, deterministic `ThreadResponse` for thread lifecycle event
@@ -113,8 +140,8 @@ export function makePluginAgentConfigurationContext(
       id: "environment-test",
       name: null,
       path: "/tmp/test",
-      workspaceProvisionType: "unmanaged",
       branchName: null,
+      workspaceProvisionType: null,
     },
     host: { id: "host-test", name: "Test host" },
     provider: {
@@ -183,6 +210,7 @@ export function makeMessageDispatchHookContext(
     originPluginId: null,
     startedOnBehalfOf: null,
     parentThreadId: null,
+    environmentIntent: null,
   };
   const environmentDefaults: NonNullable<
     MessageDispatchHookContext["environment"]
@@ -192,14 +220,18 @@ export function makeMessageDispatchHookContext(
     projectId: "project-1",
     hostId: "host-1",
     path: "/tmp/test",
-    managed: true,
     isGitRepo: true,
     isWorktree: false,
-    workspaceProvisionType: "unmanaged",
     branchName: "main",
     baseBranch: null,
     defaultBranch: "main",
     mergeBaseBranch: null,
+    environmentProviderId: null,
+    environmentProviderSelection: null,
+    environmentProviderInstanceKey: null,
+    lifecycle: { phase: "active", retireAt: null, teardown: null },
+    managed: false,
+    workspaceProvisionType: null,
     status: "ready",
     createdAt: 0,
     updatedAt: 0,
@@ -207,8 +239,8 @@ export function makeMessageDispatchHookContext(
   const hostDefaults: NonNullable<MessageDispatchHookContext["host"]> = {
     id: "host-1",
     name: "Test host",
-    type: "persistent",
     status: "connected",
+    type: "persistent",
     maxPermissionMode: "full",
     lastSeenAt: null,
     lastRejectedProtocolVersion: null,
@@ -279,6 +311,8 @@ export function makeQueueEntry(
 ): QueueEntry {
   return {
     id: "queued_1",
+    initiator: "user",
+    senderThreadId: null,
     threadId: "thread-1",
     content: [{ type: "text", text: "Queued turn", mentions: [] }],
     model: "test-model",

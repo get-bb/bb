@@ -1,5 +1,10 @@
-import { useMemo, useState, type ReactNode } from "react";
-import { Navigate, useNavigate } from "react-router-dom";
+import { useMemo, useRef, useState, type ReactNode } from "react";
+import {
+  Navigate,
+  useNavigate,
+  useLocation,
+  matchPath,
+} from "react-router-dom";
 import "@bb/shared-ui/icon-extended";
 import {
   builtInThemes,
@@ -39,6 +44,7 @@ import {
   type ThemePreference,
 } from "@/hooks/useTheme";
 import { useHostDaemon, useLocalHostDaemonAccess } from "@/hooks/useHostDaemon";
+import { useAppThemePreview } from "@/hooks/useAppThemePreview";
 import { UsageLimitsSettingsSection } from "@/components/settings/UsageLimitsSettingsSection";
 import { ProvidersSettingsSection } from "@/components/settings/ProvidersSettingsSection";
 import { CodeRendererSettings } from "@/components/settings/CodeRendererSettings";
@@ -46,6 +52,9 @@ import { SidebarThreadListSetting } from "@/components/settings/SidebarThreadLis
 import { SidebarNavigationSetting } from "@/components/settings/SidebarNavigationSetting";
 import { SplitDimmingSetting } from "@/components/settings/SplitDimmingSetting";
 import { useSettingsNavState } from "@/components/settings/settings-nav";
+import { PluginsOverview } from "@/components/plugin/PluginsOverview";
+import { PluginDetailPaneView } from "@/views/ToolsView";
+import { SETTINGS_PLUGIN_ROUTE_PATH } from "@/lib/route-paths";
 import { PluginSettingsPage } from "@/components/plugin/PluginSettings";
 import { FileOpenersSettingsSection } from "@/components/settings/FileOpenersSettingsSection";
 import { VoiceInputSettingsSection } from "@/components/settings/VoiceInputSettingsSection";
@@ -53,6 +62,7 @@ import { CommunitySettingsSection } from "@/components/settings/CommunitySetting
 import { UpdatesSettingsSection } from "@/components/settings/UpdatesSettingsSection";
 import { KeyboardSettingsSection } from "@/components/settings/KeyboardSettingsSection";
 import { MachinesSettingsSection } from "@/components/settings/MachinesSettingsSection";
+import { ProjectsSettingsSection } from "@/components/settings/ProjectsSettingsSection";
 import { ArchivedThreadsSettingsSection } from "@/components/settings/ArchivedThreadsSettingsSection";
 import { CliSkillsSettingsSection } from "@/components/settings/CliSkillsSettingsSection";
 import { MarketplacesSettingsSection } from "@/components/settings/MarketplacesSettingsSection";
@@ -139,6 +149,8 @@ interface AppearanceSettingsSectionProps {
   pluginThemes: readonly PluginThemeMeta[];
   faviconColor: FaviconColorPreference;
   onAppearanceThemeChange: (themeId: string) => void;
+  onAppearanceThemePrefetch: (themeIds: readonly string[]) => void;
+  onAppearanceThemePreview: (themeId: string | null) => void;
   onCreatePalette: () => void;
   onFaviconColorChange: (faviconColor: FaviconColorPreference) => void;
   onThemePreferenceChange: (themePreference: ThemePreference) => void;
@@ -189,10 +201,12 @@ interface ExperimentsSettingsSectionProps {
   changelogPreviewEnabled: boolean;
   editMessagesEnabled: boolean;
   mobileAppEnabled: boolean;
+  sidebarProgressiveDisclosureEnabled: boolean;
   timelineWindowingEnabled: boolean;
   onChangelogPreviewEnabledChange: (enabled: boolean) => void;
   onEditMessagesEnabledChange: (enabled: boolean) => void;
   onMobileAppEnabledChange: (enabled: boolean) => void;
+  onSidebarProgressiveDisclosureEnabledChange: (enabled: boolean) => void;
   onTimelineWindowingEnabledChange: (enabled: boolean) => void;
 }
 
@@ -241,6 +255,40 @@ const CREATE_CUSTOM_PALETTE_PROMPT =
   "Create a custom bb palette. First run `bb theme dir` to find the custom theme directory. Ask me for the palette name and visual direction, then create `<theme-dir>/<name>/theme.css` with light and dark theme variables compatible with bb's theme tokens.";
 const PALETTE_SETTING_DESCRIPTION =
   "Palettes change bb's colors, including syntax colors in diffs and file previews. Choose a built-in palette or create one from a prompt.";
+
+interface PaletteMenuItemProps {
+  active: boolean;
+  children: ReactNode;
+  onPreview: (themeId: string | null) => void;
+  onSelect: (themeId: string) => void;
+  themeId: string;
+}
+
+function PaletteMenuItem({
+  active,
+  children,
+  onPreview,
+  onSelect,
+  themeId,
+}: PaletteMenuItemProps) {
+  return (
+    <DropdownMenuItem
+      onFocus={() => onPreview(themeId)}
+      onBlur={() => onPreview(null)}
+      onSelect={() => onSelect(themeId)}
+    >
+      {children}
+      <Icon
+        name="Check"
+        className={cn(
+          "ml-auto",
+          !active && "opacity-0",
+          COARSE_POINTER_ICON_SIZE_CLASS,
+        )}
+      />
+    </DropdownMenuItem>
+  );
+}
 
 function FaviconColorPreview({ value }: { value: FaviconColorPreference }) {
   return (
@@ -533,8 +581,7 @@ const REWRITE_LOCALHOST_LINKS_SETTING_LABEL = "Rewrite localhost links";
 const NAVIGATE_TO_THREAD_AFTER_CREATE_SETTING_LABEL =
   "Navigate to threads on creation";
 const RICH_TEXT_EDITING_SETTING_LABEL = "Markdown formatting in prompt box";
-const UNHANDLED_PROVIDER_EVENTS_SETTING_LABEL =
-  "Show unhandled provider events";
+const DIAGNOSTIC_EVENTS_SETTING_LABEL = "Show diagnostic events";
 const FOLLOW_UP_BEHAVIOR_SETTING_LABEL = "Default thread followup behavior";
 const FOLLOW_UP_BEHAVIOR_OPTIONS = [
   {
@@ -551,7 +598,7 @@ const FOLLOW_UP_BEHAVIOR_OPTIONS = [
   },
 ] as const;
 const STREAMER_MODE_SETTING_LABEL = "Streamer mode";
-const MANAGED_BRANCH_PREFIX_SETTING_LABEL = "Worktree branch prefix";
+const MANAGED_BRANCH_PREFIX_SETTING_LABEL = "New branch prefix";
 const MANAGED_BRANCH_PREFIX_EXAMPLE_SLUG = "fix-login-flow-thr_ab12cd34ef";
 
 interface ManagedBranchPrefixSettingProps {
@@ -631,11 +678,22 @@ export function AppearanceSettingsSection({
   pluginThemes,
   faviconColor,
   onAppearanceThemeChange,
+  onAppearanceThemePrefetch,
+  onAppearanceThemePreview,
   onFaviconColorChange,
   onCreatePalette,
   onThemePreferenceChange,
   themePreference,
 }: AppearanceSettingsSectionProps) {
+  const paletteSelectedRef = useRef(false);
+  const previewPalette = (themeId: string | null) => {
+    if (themeId === null && paletteSelectedRef.current) return;
+    onAppearanceThemePreview(themeId);
+  };
+  const selectPalette = (themeId: string) => {
+    paletteSelectedRef.current = true;
+    onAppearanceThemeChange(themeId);
+  };
   return (
     <SettingsSection title="Appearance">
       <div className="space-y-5">
@@ -686,7 +744,20 @@ export function AppearanceSettingsSection({
           label="Palette"
           description={PALETTE_SETTING_DESCRIPTION}
         >
-          <DropdownMenu>
+          <DropdownMenu
+            onOpenChange={(open) => {
+              if (open) {
+                paletteSelectedRef.current = false;
+                onAppearanceThemePrefetch([
+                  ...builtInThemes.map((entry) => entry.id),
+                  ...customThemes,
+                  ...pluginThemes.map((theme) => theme.id),
+                ]);
+                return;
+              }
+              previewPalette(null);
+            }}
+          >
             <DropdownMenuTrigger asChild>
               <Button
                 variant="outline"
@@ -709,55 +780,40 @@ export function AppearanceSettingsSection({
               className={SETTINGS_DROPDOWN_CONTENT_CLASS}
             >
               {builtInThemes.map((entry) => (
-                <DropdownMenuItem
+                <PaletteMenuItem
                   key={entry.id}
-                  onSelect={() => onAppearanceThemeChange(entry.id)}
+                  themeId={entry.id}
+                  active={appearance.themeId === entry.id}
+                  onPreview={previewPalette}
+                  onSelect={selectPalette}
                 >
                   {entry.name}
-                  <Icon
-                    name="Check"
-                    className={cn(
-                      "ml-auto",
-                      appearance.themeId !== entry.id && "opacity-0",
-                      COARSE_POINTER_ICON_SIZE_CLASS,
-                    )}
-                  />
-                </DropdownMenuItem>
+                </PaletteMenuItem>
               ))}
               {customThemes.map((name) => (
-                <DropdownMenuItem
+                <PaletteMenuItem
                   key={`custom:${name}`}
-                  onSelect={() => onAppearanceThemeChange(name)}
+                  themeId={name}
+                  active={appearance.themeId === name}
+                  onPreview={previewPalette}
+                  onSelect={selectPalette}
                 >
                   {name}
-                  <Icon
-                    name="Check"
-                    className={cn(
-                      "ml-auto",
-                      appearance.themeId !== name && "opacity-0",
-                      COARSE_POINTER_ICON_SIZE_CLASS,
-                    )}
-                  />
-                </DropdownMenuItem>
+                </PaletteMenuItem>
               ))}
               {pluginThemes.map((theme) => (
-                <DropdownMenuItem
+                <PaletteMenuItem
                   key={theme.id}
-                  onSelect={() => onAppearanceThemeChange(theme.id)}
+                  themeId={theme.id}
+                  active={appearance.themeId === theme.id}
+                  onPreview={previewPalette}
+                  onSelect={selectPalette}
                 >
                   {theme.name}
                   <span className="text-muted-foreground">
                     ({theme.pluginId})
                   </span>
-                  <Icon
-                    name="Check"
-                    className={cn(
-                      "ml-auto",
-                      appearance.themeId !== theme.id && "opacity-0",
-                      COARSE_POINTER_ICON_SIZE_CLASS,
-                    )}
-                  />
-                </DropdownMenuItem>
+                </PaletteMenuItem>
               ))}
               <DropdownMenuSeparator />
               <DropdownMenuItem onSelect={onCreatePalette}>
@@ -927,14 +983,14 @@ export function DebugSettingsSection({
   return (
     <SettingsSection title="Debug">
       <SettingsWithControl
-        label={UNHANDLED_PROVIDER_EVENTS_SETTING_LABEL}
-        description="Show raw provider events bb does not recognize. Development builds always show these events."
+        label={DIAGNOSTIC_EVENTS_SETTING_LABEL}
+        description="Show provider environment resolution and unhandled provider events for troubleshooting."
       >
         <Switch
           checked={enabled}
           disabled={disabled}
           onCheckedChange={onEnabledChange}
-          aria-label={UNHANDLED_PROVIDER_EVENTS_SETTING_LABEL}
+          aria-label={DIAGNOSTIC_EVENTS_SETTING_LABEL}
         />
       </SettingsWithControl>
     </SettingsSection>
@@ -944,16 +1000,20 @@ export function DebugSettingsSection({
 const CHANGELOG_PREVIEW_EXPERIMENT_LABEL = "Changelog preview";
 const EDIT_MESSAGES_EXPERIMENT_LABEL = "Edit messages";
 const MOBILE_APP_EXPERIMENT_LABEL = "Mobile app";
+const SIDEBAR_PROGRESSIVE_DISCLOSURE_EXPERIMENT_LABEL =
+  "Sidebar progressive disclosure";
 const TIMELINE_WINDOWING_EXPERIMENT_LABEL = "Timeline windowing";
 export function ExperimentsSettingsSection({
   changelogPreviewEnabled,
   disabled,
   editMessagesEnabled,
   mobileAppEnabled,
+  sidebarProgressiveDisclosureEnabled,
   timelineWindowingEnabled,
   onChangelogPreviewEnabledChange,
   onEditMessagesEnabledChange,
   onMobileAppEnabledChange,
+  onSidebarProgressiveDisclosureEnabledChange,
   onTimelineWindowingEnabledChange,
 }: ExperimentsSettingsSectionProps) {
   return (
@@ -995,6 +1055,18 @@ export function ExperimentsSettingsSection({
             disabled={disabled}
             onCheckedChange={onMobileAppEnabledChange}
             aria-label={MOBILE_APP_EXPERIMENT_LABEL}
+          />
+        </SettingsWithControl>
+
+        <SettingsWithControl
+          label={SIDEBAR_PROGRESSIVE_DISCLOSURE_EXPERIMENT_LABEL}
+          description="In By project and By machine, show the first five groups in the current sort order, keep attention groups visible, and reveal ten more per click. Manually is unchanged."
+        >
+          <Switch
+            checked={sidebarProgressiveDisclosureEnabled}
+            disabled={disabled}
+            onCheckedChange={onSidebarProgressiveDisclosureEnabledChange}
+            aria-label={SIDEBAR_PROGRESSIVE_DISCLOSURE_EXPERIMENT_LABEL}
           />
         </SettingsWithControl>
 
@@ -1042,10 +1114,28 @@ export function SettingsView() {
   const updateGeneralSettingsMutation = useUpdateGeneralSettings();
   const appearance = systemConfigQuery.data?.appearance ?? defaultAppTheme;
   const updateAppearanceMutation = useUpdateAppearance();
+  const appThemePreview = useAppThemePreview();
+  const location = useLocation();
   const { activePluginId, activeSection, hasUnknownSection } =
     useSettingsNavState();
   if (hasUnknownSection) {
     return <Navigate to={SETTINGS_ROUTE_PATH} replace />;
+  }
+
+  if (activeSection === "plugins") {
+    const pluginId = matchPath(SETTINGS_PLUGIN_ROUTE_PATH, location.pathname)
+      ?.params.pluginId;
+    return (
+      <div className="-mx-4 -mt-4 flex min-h-0 flex-1 flex-col overflow-hidden md:-mx-5 md:-mt-5">
+        {pluginId ? (
+          <PluginDetailPaneView pluginId={pluginId} />
+        ) : (
+          <div className="flex min-h-0 flex-1 flex-col pt-4 md:pt-5">
+            <PluginsOverview />
+          </div>
+        )}
+      </div>
+    );
   }
 
   let content: ReactNode = null;
@@ -1077,11 +1167,16 @@ export function SettingsView() {
         faviconColor={appearance.faviconColor}
         themePreference={themePreference}
         onAppearanceThemeChange={(themeId) =>
-          updateAppearanceMutation.mutate({
-            themeId,
-            faviconColor: appearance.faviconColor,
-          })
+          updateAppearanceMutation.mutate(
+            {
+              themeId,
+              faviconColor: appearance.faviconColor,
+            },
+            { onError: () => appThemePreview.previewTheme(null) },
+          )
         }
+        onAppearanceThemePrefetch={appThemePreview.prefetchThemes}
+        onAppearanceThemePreview={appThemePreview.previewTheme}
         onCreatePalette={() =>
           navigate(getRootComposeRoutePath(), {
             state: {
@@ -1119,6 +1214,8 @@ export function SettingsView() {
         <FileOpenersSettingsSection />
       </>
     );
+  } else if (activeSection === "projects") {
+    content = <ProjectsSettingsSection />;
   } else if (activeSection === "machines") {
     content = <MachinesSettingsSection />;
   } else if (activeSection === "updates") {
@@ -1153,6 +1250,15 @@ export function SettingsView() {
           updateExperimentsMutation.mutate({
             ...experiments,
             mobileApp: enabled,
+          })
+        }
+        sidebarProgressiveDisclosureEnabled={
+          experiments.sidebarProgressiveDisclosure
+        }
+        onSidebarProgressiveDisclosureEnabledChange={(enabled) =>
+          updateExperimentsMutation.mutate({
+            ...experiments,
+            sidebarProgressiveDisclosure: enabled,
           })
         }
         timelineWindowingEnabled={experiments.timelineWindowing}
@@ -1220,7 +1326,7 @@ export function SettingsView() {
         <CliSkillsSettingsSection />
         <VoiceInputSettingsSection />
         <DebugSettingsSection
-          enabled={generalSettings.showUnhandledProviderEvents}
+          enabled={generalSettings.showDiagnosticEvents}
           disabled={
             systemConfigQuery.data === undefined ||
             updateGeneralSettingsMutation.isPending
@@ -1228,7 +1334,7 @@ export function SettingsView() {
           onEnabledChange={(enabled) =>
             updateGeneralSettingsMutation.mutate({
               ...generalSettings,
-              showUnhandledProviderEvents: enabled,
+              showDiagnosticEvents: enabled,
             })
           }
         />

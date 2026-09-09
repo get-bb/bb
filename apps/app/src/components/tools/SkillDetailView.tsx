@@ -20,6 +20,7 @@ import {
 import { FilePreview } from "@/components/secondary-panel/FilePreview.js";
 import { ProvenancePill } from "@/components/tools/ProvenancePill";
 import { useClipboardCopy } from "@/lib/clipboard";
+import type { MarkdownLinkRouting } from "@/components/ui/markdown-link-routing";
 
 type SkillDetailTitleBadge = {
   label: string;
@@ -45,6 +46,7 @@ interface SkillDetailViewProps {
   onSelectFile: (path: string) => void;
   contentState: SkillDetailContentState;
   footer?: ReactNode;
+  markdownLinkRouting?: MarkdownLinkRouting;
 }
 
 function SkillPath({ path, href }: { path: string; href?: string }) {
@@ -160,10 +162,12 @@ function ScrollingSkillContent({
   path,
   content,
   markdown,
+  markdownLinkRouting,
 }: {
   path: string;
   content: string;
   markdown: boolean;
+  markdownLinkRouting?: MarkdownLinkRouting;
 }) {
   const chunks = useMemo(
     () => (markdown ? splitMarkdownIntoChunks(content) : [content]),
@@ -183,6 +187,7 @@ function ScrollingSkillContent({
             key={index}
             path={path}
             headerMode="none"
+            markdownLinkRouting={markdownLinkRouting}
             state={{
               kind: "ready",
               file: {
@@ -220,6 +225,7 @@ export function SkillDetailView({
   onSelectFile,
   contentState,
   footer,
+  markdownLinkRouting,
 }: SkillDetailViewProps) {
   const directoryPath = getSkillDirectoryPath(path);
   const selectedDisplayPath = formatHomePathForDisplay(selectedPath);
@@ -292,6 +298,7 @@ export function SkillDetailView({
               path={selectedPath}
               content={contentState.content}
               markdown={selectedFileIsMarkdown}
+              markdownLinkRouting={markdownLinkRouting}
             />
           )}
         </ResourceDefinitionSection>

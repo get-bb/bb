@@ -46,8 +46,10 @@ import {
   systemExecutionOptionsQueryKey,
   systemProvidersQueryKey,
   systemProviderStatesQueryKey,
+  systemThemeQueryKey,
   systemUsageLimitsQueryKey,
   systemVersionQueryKey,
+  uiPreferencesQueryKey,
 } from "./query-keys";
 import { requireEnabledQueryArg, type QueryOptions } from "./query-helpers";
 import {
@@ -251,9 +253,7 @@ export function useSystemProviders(args: UseSystemProvidersArgs = {}) {
       const eligible =
         capability === null
           ? remembered
-          : remembered.filter(
-              (provider) => provider.maintenance[capability],
-            );
+          : remembered.filter((provider) => provider.maintenance[capability]);
       return eligible.length > 0 ? eligible : undefined;
     },
   });
@@ -334,6 +334,32 @@ export function systemConfigQueryOptions() {
   return queryOptions({
     queryKey: systemConfigQueryKey(),
     queryFn: ({ signal }) => sdk.system.config({ signal }),
+    staleTime: 60_000,
+  });
+}
+
+export function uiPreferencesQueryOptions() {
+  return queryOptions({
+    queryKey: uiPreferencesQueryKey(),
+    queryFn: ({ signal }) => sdk.system.uiPreferences.list({ signal }),
+    staleTime: 60_000,
+  });
+}
+
+export function useUiPreferences(options?: QueryOptions) {
+  const enabled = options?.enabled ?? true;
+  useSystemRealtimeSubscription({ enabled });
+
+  return useQuery({
+    ...uiPreferencesQueryOptions(),
+    enabled,
+  });
+}
+
+export function systemThemeQueryOptions(themeId: string) {
+  return queryOptions({
+    queryKey: systemThemeQueryKey(themeId),
+    queryFn: ({ signal }) => sdk.theme.resolve({ signal, themeId }),
     staleTime: 60_000,
   });
 }

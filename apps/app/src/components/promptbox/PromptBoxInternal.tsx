@@ -231,6 +231,7 @@ interface PromptSubmitButtonProps {
   isCompact: boolean;
   onClick: (event: ReactMouseEvent<HTMLButtonElement>) => void;
   onPointerDown: (event: ReactPointerEvent<HTMLButtonElement>) => void;
+  onTouchSubmit: () => void;
   title: string;
 }
 
@@ -242,8 +243,13 @@ function PromptSubmitButton({
   isCompact,
   onClick,
   onPointerDown,
+  onTouchSubmit,
   title,
 }: PromptSubmitButtonProps) {
+  const touchRef = useRef<{ pointerId: number; x: number; y: number } | null>(
+    null,
+  );
+  const suppressTouchClickRef = useRef(false);
   const button = (
     <Button
       data-promptbox-submit-action=""
@@ -253,8 +259,55 @@ function PromptSubmitButton({
       aria-label={title}
       aria-busy={isBusy}
       disabled={!canSubmit}
-      onPointerDown={onPointerDown}
-      onClick={onClick}
+      onPointerDown={(event) => {
+        suppressTouchClickRef.current = false;
+        touchRef.current =
+          event.pointerType === "touch" && event.isPrimary && event.button === 0
+            ? { pointerId: event.pointerId, x: event.clientX, y: event.clientY }
+            : null;
+        onPointerDown(event);
+      }}
+      onPointerMove={(event) => {
+        const touch = touchRef.current;
+        if (
+          touch &&
+          touch.pointerId === event.pointerId &&
+          Math.hypot(event.clientX - touch.x, event.clientY - touch.y) > 10
+        ) {
+          touchRef.current = null;
+          suppressTouchClickRef.current = true;
+        }
+      }}
+      onPointerCancel={() => {
+        if (touchRef.current) suppressTouchClickRef.current = true;
+        touchRef.current = null;
+      }}
+      onPointerUp={(event) => {
+        const touch = touchRef.current;
+        touchRef.current = null;
+        if (!touch || touch.pointerId !== event.pointerId) return;
+        suppressTouchClickRef.current = true;
+        if (!canSubmit) return;
+        const bounds = event.currentTarget.getBoundingClientRect();
+        if (
+          Math.hypot(event.clientX - touch.x, event.clientY - touch.y) > 10 ||
+          event.clientX < bounds.left ||
+          event.clientX >= bounds.right ||
+          event.clientY < bounds.top ||
+          event.clientY >= bounds.bottom
+        ) {
+          return;
+        }
+        onTouchSubmit();
+      }}
+      onMouseDown={(event) => event.preventDefault()}
+      onClick={(event) => {
+        if (suppressTouchClickRef.current && event.detail > 0) {
+          event.preventDefault();
+          return;
+        }
+        onClick(event);
+      }}
       className={className}
     >
       {isBusy ? (
@@ -2601,6 +2654,11 @@ export function PromptBoxInternal({
     [blurOnPointerSubmit],
   );
 
+  const handleTouchSubmit = useCallback(() => {
+    blurAfterPointerSubmitRef.current = blurOnPointerSubmit;
+    submitPrompt();
+  }, [blurOnPointerSubmit, submitPrompt]);
+
   const handleSubmitPointerDown = useCallback(
     (event: ReactPointerEvent<HTMLButtonElement>) => {
       if (event.button !== 0) return;
@@ -3285,6 +3343,7 @@ export function PromptBoxInternal({
                         isCompact={showCompactLayout}
                         onPointerDown={handleSubmitPointerDown}
                         onClick={handleSubmitClick}
+                        onTouchSubmit={handleTouchSubmit}
                         title={effectiveSubmitTitle}
                       />
                     )}

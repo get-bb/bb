@@ -1,3 +1,4 @@
+import { DiffLoadingSkeleton } from "@/components/code/code-loading-skeletons";
 import { memo, useEffect, useMemo, useRef, useState } from "react";
 import { useIntersectionObserver } from "usehooks-ts";
 import type { DiffFileEntry } from "@bb/server-contract";
@@ -5,7 +6,6 @@ import type { DiffPresentation } from "@/components/code/code-rendering";
 import {
   getGitDiffCardImageSizeStat,
   GitDiffCardBody,
-  GitDiffCardBodySkeleton,
   GitDiffCardImagePreviewBody,
   useGitDiffCardBody,
   type DiffFileContentsResult,
@@ -444,7 +444,7 @@ function DiffFileCardBody({
       binaryImagePreviewState.status === "idle" ||
       binaryImagePreviewState.status === "loading"
     ) {
-      return <GitDiffCardBodySkeleton />;
+      return <DiffLoadingSkeleton />;
     }
     if (binaryImagePreviewState.status === "ready") {
       return (
@@ -529,7 +529,7 @@ function DiffFileCardBody({
       );
     }
 
-    return <GitDiffCardBodySkeleton />;
+    return <DiffLoadingSkeleton />;
   }
 
   return (

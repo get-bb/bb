@@ -23,6 +23,7 @@ import {
 } from "@/lib/shell";
 import { getShellPreferenceStore } from "@/lib/shell/shell-preference-store";
 import { settingsSectionHref } from "@/screens/shell/hrefs";
+import { useTheme } from "@/theme";
 import { Button, EmptyStatePanel, Spinner, Text } from "@/ui";
 import { Linking } from "react-native";
 import { useShellBridge } from "./useShellBridge";
@@ -36,6 +37,7 @@ function firstParam(value: string | string[] | undefined): string | undefined {
 }
 
 export function ProfileWebViewScreen() {
+  const { tokens } = useTheme();
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const params = useLocalSearchParams<{ profileId?: string; path?: string }>();
@@ -241,11 +243,12 @@ export function ProfileWebViewScreen() {
   if (profile === null || sourceUrl === null || handshake === null) return null;
 
   return (
-    <View className="flex-1" testID="shell-webview">
+    <View className="flex-1 bg-background" testID="shell-webview">
       <WebView
         key={`${profile.id}#${sourceUrl}#${reloadKey}`}
         ref={webViewRef}
         source={{ uri: sourceUrl }}
+        style={{ backgroundColor: tokens.background }}
         sharedCookiesEnabled
         javaScriptEnabled
         domStorageEnabled
@@ -254,7 +257,10 @@ export function ProfileWebViewScreen() {
         mediaCapturePermissionGrantType="grant"
         hideKeyboardAccessoryView
         allowsBackForwardNavigationGestures={false}
-        pullToRefreshEnabled
+        bounces={false}
+        pullToRefreshEnabled={false}
+        automaticallyAdjustContentInsets={false}
+        contentInsetAdjustmentBehavior="never"
         webviewDebuggingEnabled={__DEV__}
         injectedJavaScriptBeforeContentLoaded={buildBridgeInjectionScript(
           handshake,

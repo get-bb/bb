@@ -206,7 +206,6 @@ export function SettingsHint({
 }
 
 export const ICON_ROW_SEPARATOR_INSET = 16 + 20 + 12;
-export const BADGE_ROW_SEPARATOR_INSET = 16 + 29 + 12;
 
 export interface HeaderIconButtonProps {
   icon: IconName;

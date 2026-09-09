@@ -1,3 +1,5 @@
+import { reportEnvironmentHookProgress } from "../services/environments/environment-hooks.js";
+import { syncDesktopBrowserTabs } from "../services/desktop-browsers.js";
 import { heartbeatSession } from "@bb/db";
 import {
   hasHostDaemonWebSocketProtocol,
@@ -182,12 +184,29 @@ export function onDaemonSocketMessage(
         );
         return;
       }
+      if (result.data.type === "desktop-browser.changed") {
+        syncDesktopBrowserTabs(
+          deps,
+          {
+            hostId: args.hostId,
+            instanceId: result.data.instanceId,
+            generation: result.data.generation,
+            threadId: result.data.threadId,
+          },
+          result.data.tabs,
+        );
+        return;
+      }
       if (result.data.type === "plugin-host.worker-exited") {
         plugins?.handleHostWorkerExit({
           authenticatedHostId: args.hostId,
           pluginId: result.data.pluginId,
           generation: result.data.generation,
         });
+        return;
+      }
+      if (result.data.type === "environment.hook.progress") {
+        reportEnvironmentHookProgress(deps, args.hostId, result.data);
         return;
       }
       if (result.data.type === "plugin-host.signal") {

@@ -6,6 +6,7 @@ import {
   BrowserIcon,
   CheckListIcon,
   Calendar03Icon,
+  ChartColumnIcon,
   Clock01Icon,
   Coffee01Icon,
   ComputerIcon,
@@ -33,6 +34,7 @@ interface FirstPartyPlugin {
 }
 
 const FIRST_PARTY_PLUGINS: Record<string, FirstPartyPlugin> = {
+  "Account Pooler [Experimental]": { id: "account-pool", icon: Layers01Icon },
   "Ask User Question": { id: "ask-user-question", icon: MessageQuestionIcon },
   Automations: { id: "automations", icon: Clock01Icon },
   "Custom instructions": { id: "custom-instructions", icon: Edit04Icon },
@@ -42,6 +44,7 @@ const FIRST_PARTY_PLUGINS: Record<string, FirstPartyPlugin> = {
   "Keep Awake": { id: "keep-awake", icon: Coffee01Icon },
   Memory: { id: "memory", icon: BrainIcon },
   "Provider retry": { id: "provider-retry", icon: ArrowReloadHorizontalIcon },
+  "Provider usage": { id: "provider-usage", icon: ChartColumnIcon },
   "Push notifications": { id: "push-notifications", icon: BellDotIcon },
   "Remote access": { id: "connect", icon: SmartPhone01Icon },
   Secrets: { id: "secrets", icon: LockIcon },

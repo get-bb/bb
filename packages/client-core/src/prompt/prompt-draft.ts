@@ -176,7 +176,7 @@ function getFileNameFromPath(path: string): string {
   return lastSegment && lastSegment.length > 0 ? lastSegment : trimmedPath;
 }
 
-function normalizePromptTextMentions(
+export function normalizePromptTextMentions(
   mentions: readonly PromptTextMention[],
   textLength: number,
 ): PromptTextMention[] {

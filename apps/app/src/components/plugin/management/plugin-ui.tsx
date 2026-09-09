@@ -42,6 +42,7 @@ const PLUGIN_CATEGORY_ACCENT_TOKENS: Record<string, string> = {
   "memory-and-context": "--success",
   security: "--warning",
   "agents-and-providers": "--success",
+  environments: "--attention",
   "token-usage-and-limits": "--warning",
   notifications: "--warning",
   "code-and-reviews": "--pr-merged",
@@ -97,15 +98,6 @@ export function pluginCatalogCategoryMutedAccentStyle(
   return {
     background:
       accentToken === undefined ? neutral(36) : accentTint(accentToken, 55),
-  };
-}
-
-export function pluginCatalogCategoryAccentStyle(
-  categoryId: string | undefined,
-): CSSProperties {
-  const accentToken = pluginCatalogCategoryAccentToken(categoryId);
-  return {
-    background: accentToken === undefined ? neutral(58) : `var(${accentToken})`,
   };
 }
 

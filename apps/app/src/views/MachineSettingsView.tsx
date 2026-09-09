@@ -45,7 +45,7 @@ import { formatRelativeTime } from "@/lib/relative-time";
 import { ProviderIconMark } from "@/components/settings/ProviderIconMark";
 import { getProviderIconInfo } from "@/lib/provider-icon";
 import {
-  getProjectSettingsRoutePath,
+  getSettingsProjectRoutePath,
   getSettingsRoutePath,
 } from "@/lib/route-paths";
 
@@ -411,7 +411,7 @@ export function MachineSettingsView() {
                     <span key={project.id}>
                       {index > 0 ? " · " : ""}
                       <Link
-                        to={getProjectSettingsRoutePath(project.id)}
+                        to={getSettingsProjectRoutePath(project.id)}
                         className="hover:text-foreground"
                       >
                         {project.name}

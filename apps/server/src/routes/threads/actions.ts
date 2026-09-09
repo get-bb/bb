@@ -1,7 +1,9 @@
+import { refreshProviderRetirement } from "../../services/environments/provider-orchestration.js";
 import {
   deleteQueuedThreadMessage,
   getEnvironment,
   getQueuedThreadMessage,
+  getThread,
   listActiveVisiblePinnedThreadRootsWithPendingInteractionState,
   pinThread,
   reorderPinnedThread,
@@ -29,13 +31,11 @@ import {
 } from "@bb/domain";
 import type { AppDeps } from "../../types.js";
 import { ApiError } from "../../errors.js";
-import { toThreadQueuedMessage } from "../../services/threads/thread-queued-messages.js";
 import {
-  requestEnvironmentCleanup,
-  requestEnvironmentCleanupAdvance,
-  wouldCleanupEnvironment,
-} from "../../services/environments/environment-cleanup-internal.js";
-import { applyLoggedEnvironmentLifecycleEvent } from "../../services/environments/lifecycle-outcome.js";
+  emitPluginMessageCancelled,
+  emitPluginThreadUnarchived,
+} from "../../services/plugins/plugin-thread-events.js";
+import { toThreadQueuedMessage } from "../../services/threads/thread-queued-messages.js";
 import { retryFailedTurn } from "../../services/threads/turn-retry.js";
 import { requirePublicThread } from "../../services/lib/entity-lookup.js";
 import { parseSafeRelativeRoutePath } from "../relative-route-path.js";
@@ -51,6 +51,7 @@ import {
 } from "../../services/threads/thread-send.js";
 import { acceptThreadSendRequest } from "../../services/threads/thread-send-request.js";
 import { editThreadMessage } from "../../services/threads/thread-edit-message.js";
+import { clearThreadContext } from "../../services/threads/thread-context-clear.js";
 import {
   buildExecutionOptions,
   dispatchThreadUnarchiveCommand,
@@ -359,6 +360,7 @@ export function registerThreadActionRoutes(app: Hono, deps: AppDeps): void {
     if (!deleted) {
       throw new ApiError(404, "invalid_request", "Queued message not found");
     }
+    emitPluginMessageCancelled(toThreadQueuedMessage(queuedMessage));
     return context.json({ ok: true });
   });
 
@@ -375,6 +377,13 @@ export function registerThreadActionRoutes(app: Hono, deps: AppDeps): void {
   post(routes.compact, async (context) => {
     const thread = requirePublicThread(deps.db, context.req.param("id"));
     await compactThreadContext(deps, thread);
+    return context.json({ ok: true });
+  });
+
+  post(routes.clearContext, async (context) => {
+    const thread = requirePublicThread(deps.db, context.req.param("id"));
+    const environment = await requireThreadCommandEnvironment(deps, { thread });
+    await clearThreadContext(deps, { environment, thread });
     return context.json({ ok: true });
   });
 
@@ -536,10 +545,6 @@ export function registerThreadActionRoutes(app: Hono, deps: AppDeps): void {
       });
       return context.json({ ok: true });
     }
-    const shouldRequestCleanup = wouldCleanupEnvironment(deps, {
-      environmentId: thread.environmentId,
-      excludeThreadId: thread.id,
-    });
     const environment = resolveArchiveThreadEnvironment(deps, { thread });
     const archiveResult = archiveThreadAndHiddenSourceForks(deps, {
       environment,
@@ -547,14 +552,6 @@ export function registerThreadActionRoutes(app: Hono, deps: AppDeps): void {
     });
     if (!archiveResult) {
       throw new ApiError(404, "thread_not_found", "Thread not found");
-    }
-    if (shouldRequestCleanup) {
-      requestEnvironmentCleanup(deps, {
-        environmentId: thread.environmentId,
-      });
-      requestEnvironmentCleanupAdvance(deps, {
-        environmentId: thread.environmentId,
-      });
     }
     return context.json({ ok: true });
   });
@@ -574,16 +571,15 @@ export function registerThreadActionRoutes(app: Hono, deps: AppDeps): void {
     const thread = requirePublicThread(deps.db, context.req.param("id"));
     const providerThreadId = getLastProviderThreadId(deps, thread.id);
     unarchiveThread(deps.db, deps.hub, thread.id);
-    let environment = thread.environmentId
+    const unarchivedThread = getThread(deps.db, thread.id);
+    if (unarchivedThread !== null) {
+      if (unarchivedThread.environmentId !== null)
+        refreshProviderRetirement(deps, unarchivedThread.environmentId);
+      emitPluginThreadUnarchived(unarchivedThread);
+    }
+    const environment = thread.environmentId
       ? getEnvironment(deps.db, thread.environmentId)
       : null;
-    if (environment?.status === "retiring") {
-      applyLoggedEnvironmentLifecycleEvent(deps, {
-        environmentId: environment.id,
-        event: { type: "retire.cancelled" },
-      });
-      environment = getEnvironment(deps.db, environment.id);
-    }
     if (providerThreadId && environment) {
       dispatchThreadUnarchiveCommand(deps, {
         environment,

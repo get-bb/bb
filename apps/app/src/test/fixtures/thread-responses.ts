@@ -33,6 +33,7 @@ export function makeThreadTimelineResponse(
 ): ThreadTimelineResponse {
   const response: ThreadTimelineResponse = {
     rows: [],
+    contextBoundarySeq: null,
     activePromptMode: null,
     activeThinking: null,
     activeWorkflows: [],

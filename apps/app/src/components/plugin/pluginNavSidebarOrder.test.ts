@@ -3,7 +3,6 @@ import {
   arrangePluginNavPanelPreferences,
   arrangePluginNavPanels,
   getPluginNavPanelKey,
-  migrateLegacyHiddenPluginNavPanelOrder,
   togglePluginNavPanelVisibility,
 } from "./pluginNavSidebarOrder";
 
@@ -66,20 +65,20 @@ describe("arrangePluginNavPanels", () => {
 });
 
 describe("arrangePluginNavPanelPreferences", () => {
-  it("shows the first three ordered panels by default", () => {
+  it("shows every ordered panel by default", () => {
     const extra = panel("calendar", "agenda");
     const result = arrangePluginNavPanelPreferences({
       panels: [github, docs, tasks, extra],
       storedOrder: ["tasks/board", "github/pulls"],
       storedVisibleKeys: null,
-      defaultVisibleKeys: [],
-      defaultVisibleCount: 3,
+      defaultHiddenKeys: [],
     });
 
     expect(result.visible.map(getPluginNavPanelKey)).toEqual([
       "tasks/board",
       "github/pulls",
       "docs/vault",
+      "calendar/agenda",
     ]);
     expect(result.ordered.map(getPluginNavPanelKey)).toEqual([
       "tasks/board",
@@ -91,6 +90,7 @@ describe("arrangePluginNavPanelPreferences", () => {
       "tasks/board",
       "github/pulls",
       "docs/vault",
+      "calendar/agenda",
     ]);
     expect(result.normalizedVisibleKeys).toBeNull();
   });
@@ -100,8 +100,7 @@ describe("arrangePluginNavPanelPreferences", () => {
       panels: [github, docs, tasks],
       storedOrder: [],
       storedVisibleKeys: [],
-      defaultVisibleKeys: [],
-      defaultVisibleCount: 3,
+      defaultHiddenKeys: [],
     });
 
     expect(result.visible).toEqual([]);
@@ -118,8 +117,7 @@ describe("arrangePluginNavPanelPreferences", () => {
       panels: [github, docs, tasks],
       storedOrder: ["future/main", "docs/vault", "github/pulls"],
       storedVisibleKeys: ["future/main", "github/pulls", "future/main"],
-      defaultVisibleKeys: [],
-      defaultVisibleCount: 3,
+      defaultHiddenKeys: [],
     });
 
     expect(result.visible.map(getPluginNavPanelKey)).toEqual(["github/pulls"]);
@@ -134,13 +132,12 @@ describe("arrangePluginNavPanelPreferences", () => {
     ]);
   });
 
-  it("keeps a newly installed panel unchecked", () => {
+  it("leaves a panel missing from a stored visible list unchecked", () => {
     const result = arrangePluginNavPanelPreferences({
       panels: [github, docs, tasks],
       storedOrder: ["github/pulls", "docs/vault"],
       storedVisibleKeys: ["github/pulls", "docs/vault"],
-      defaultVisibleKeys: [],
-      defaultVisibleCount: 3,
+      defaultHiddenKeys: [],
     });
 
     expect(result.visible.map(getPluginNavPanelKey)).toEqual([
@@ -159,8 +156,7 @@ describe("arrangePluginNavPanelPreferences", () => {
       panels: [github, docs, tasks],
       storedOrder: ["tasks/board", "github/pulls", "docs/vault"],
       storedVisibleKeys: ["docs/vault", "tasks/board"],
-      defaultVisibleKeys: [],
-      defaultVisibleCount: 3,
+      defaultHiddenKeys: [],
     });
 
     expect(result.visible.map(getPluginNavPanelKey)).toEqual([
@@ -174,7 +170,7 @@ describe("arrangePluginNavPanelPreferences", () => {
     ]);
   });
 
-  it("keeps every default destination visible while limiting optional plugins", () => {
+  it("hides only the default-hidden keys before the user customizes", () => {
     const newThread = panel("__bb__", "new-thread");
     const searchThreads = panel("__bb__", "search-threads");
     const extra = panel("calendar", "agenda");
@@ -189,40 +185,28 @@ describe("arrangePluginNavPanelPreferences", () => {
         "calendar/agenda",
       ],
       storedVisibleKeys: null,
-      defaultVisibleKeys: [
-        "__bb__/new-thread",
-        "__bb__/search-threads",
-      ],
-      defaultVisibleCount: 3,
+      defaultHiddenKeys: ["__bb__/search-threads"],
     });
 
     expect(result.visibleKeys).toEqual([
       "github/pulls",
       "__bb__/new-thread",
       "docs/vault",
-      "__bb__/search-threads",
       "tasks/board",
+      "calendar/agenda",
     ]);
   });
-});
 
-describe("legacy hidden-panel migration", () => {
-  it("moves hidden keys behind visible keys while preserving both orders", () => {
-    expect(
-      migrateLegacyHiddenPluginNavPanelOrder(
-        ["tasks/board", "docs/vault", "github/pulls", "docs/vault"],
-        ["tasks/board", "docs/vault"],
-      ),
-    ).toEqual(["github/pulls", "tasks/board", "docs/vault"]);
-  });
+  it("keeps a stored visible list authoritative over the default-hidden keys", () => {
+    const searchThreads = panel("__bb__", "search-threads");
+    const result = arrangePluginNavPanelPreferences({
+      panels: [searchThreads, github],
+      storedOrder: ["__bb__/search-threads", "github/pulls"],
+      storedVisibleKeys: ["__bb__/search-threads"],
+      defaultHiddenKeys: ["__bb__/search-threads"],
+    });
 
-  it("retains a hidden key missing from the stored order", () => {
-    expect(
-      migrateLegacyHiddenPluginNavPanelOrder(
-        ["github/pulls"],
-        ["docs/vault"],
-      ),
-    ).toEqual(["github/pulls", "docs/vault"]);
+    expect(result.visibleKeys).toEqual(["__bb__/search-threads"]);
   });
 });
 
@@ -234,11 +218,7 @@ describe("togglePluginNavPanelVisibility", () => {
       true,
     );
 
-    expect(checked).toEqual([
-      "github/pulls",
-      "future/main",
-      "docs/vault",
-    ]);
+    expect(checked).toEqual(["github/pulls", "future/main", "docs/vault"]);
     expect(
       togglePluginNavPanelVisibility(checked, "github/pulls", false),
     ).toEqual(["future/main", "docs/vault"]);

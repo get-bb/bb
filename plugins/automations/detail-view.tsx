@@ -16,6 +16,7 @@ import {
 } from "@get-bb/plugin-sdk/app";
 import { RUN_STATE_PRESENTATION } from "@bb/domain/update-state";
 import { Button } from "@bb/shared-ui/button";
+import { COARSE_POINTER_HOVER_REVEAL_VISIBLE_CLASS } from "@bb/shared-ui/coarse-pointer-visibility";
 import { DelayedLoading } from "@bb/shared-ui/delayed-loading";
 import { Icon, type IconName } from "@bb/shared-ui/icon";
 import {
@@ -468,7 +469,10 @@ function RunRow({
       {openable ? (
         <Icon
           name="ChevronRight"
-          className="size-3.5 shrink-0 text-subtle-foreground opacity-0 transition-opacity group-hover/run:opacity-100 group-focus-visible/run:opacity-100"
+          className={cn(
+            "size-3.5 shrink-0 text-subtle-foreground opacity-0 transition-opacity group-hover/run:opacity-100 group-focus-visible/run:opacity-100",
+            COARSE_POINTER_HOVER_REVEAL_VISIBLE_CLASS,
+          )}
           aria-hidden
         />
       ) : null}

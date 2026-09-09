@@ -6,6 +6,7 @@ import { usePluginList } from "@/hooks/queries/plugin-settings-queries";
 import {
   SETTINGS_MACHINE_ROUTE_PATH,
   SETTINGS_PLUGIN_ROUTE_PATH,
+  SETTINGS_PROJECT_ROUTE_PATH,
   SETTINGS_SECTION_ROUTE_PATH,
 } from "@/lib/route-paths";
 import {
@@ -23,7 +24,6 @@ export interface SettingsNavState {
   activeSection: SettingsSectionId | null;
   hasUnknownSection: boolean;
   activePluginId: string | null;
-  otherPluginEntries: readonly PluginSettingsEntry[];
   pluginEntries: readonly PluginSettingsEntry[];
   sections: readonly SettingsNavSection[];
 }
@@ -58,26 +58,39 @@ export function useSettingsNavState(): SettingsNavState {
     location.pathname,
   );
   const pluginMatch = matchPath(SETTINGS_PLUGIN_ROUTE_PATH, location.pathname);
-  const activePluginId = pluginMatch?.params.pluginId ?? null;
+  const isInstalledDetail =
+    new URLSearchParams(location.search).get("view") === "installed";
+  const activePluginId = isInstalledDetail
+    ? null
+    : (pluginMatch?.params.pluginId ?? null);
   const machineMatch = matchPath(
     SETTINGS_MACHINE_ROUTE_PATH,
     location.pathname,
   );
   const activeMachineId = machineMatch?.params.hostId ?? null;
+  const projectMatch = matchPath(
+    SETTINGS_PROJECT_ROUTE_PATH,
+    location.pathname,
+  );
+  const activeProjectId = projectMatch?.params.projectId ?? null;
   const sectionParam = sectionMatch?.params.section;
   const hasUnknownSection =
     sectionParam !== undefined && !isSettingsSectionId(sectionParam);
   const activeSection: SettingsSectionId | null =
-    activeMachineId !== null
-      ? "machines"
-      : activePluginId !== null
-        ? null
-        : sectionParam !== undefined && isSettingsSectionId(sectionParam)
-          ? sectionParam
-          : "general";
+    isInstalledDetail && pluginMatch !== null
+      ? "plugins"
+      : activeMachineId !== null
+        ? "machines"
+        : activeProjectId !== null
+          ? "projects"
+          : activePluginId !== null
+            ? null
+            : sectionParam !== undefined && isSettingsSectionId(sectionParam)
+              ? sectionParam
+              : "general";
 
   const installedPlugins = pluginListQuery.data?.plugins ?? [];
-  const pluginEntryGroups = buildPluginSettingsEntries({
+  const pluginEntries = buildPluginSettingsEntries({
     installedPlugins,
     settingsSections,
   });
@@ -86,8 +99,7 @@ export function useSettingsNavState(): SettingsNavState {
     activePluginId,
     activeSection,
     hasUnknownSection,
-    otherPluginEntries: pluginEntryGroups.other,
-    pluginEntries: pluginEntryGroups.configurable,
+    pluginEntries,
     sections,
   };
 }

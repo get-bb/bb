@@ -17,18 +17,16 @@ import type {
 import type {
   MessageDispatchHookContext,
   PluginDispatchAttemptKind,
+  PluginDispatchEnvironmentIntent,
   PluginDispatchExecution,
   PluginDispatchExecutionSources,
 } from "@get-bb/plugin-sdk";
 import { z } from "zod";
 import { ApiError } from "../../errors.js";
 import type { AppDeps } from "../../types.js";
+import { toEnvironmentResponse } from "../environments/environment-response.js";
 import { getNonDestroyedHostWithStatus } from "../lib/entity-lookup.js";
-import {
-  pluginHookProvider,
-  type PluginHookProvider,
-  type PluginHookRegistration,
-} from "../plugins/plugin-hook-registry.js";
+import { pluginHookProvider } from "../plugins/plugin-hook-registry.js";
 
 type DispatchHookDeps = Pick<AppDeps, "db" | "hub">;
 
@@ -91,6 +89,7 @@ export interface MessageDispatchHookPassRequest {
    * pool; null when an environment answers instead, or nothing names one.
    */
   intendedHostId: string | null;
+  environmentIntent: PluginDispatchEnvironmentIntent | null;
   input: PromptInput[];
   requestedExecution: PluginDispatchExecution;
   executionSources: PluginDispatchExecutionSources;
@@ -207,7 +206,10 @@ function withEvaluationLock<T>(run: () => Promise<T>): Promise<T> {
   return result;
 }
 
-function messageDispatchHookFailure(pluginId: string, detail: string): ApiError {
+function messageDispatchHookFailure(
+  pluginId: string,
+  detail: string,
+): ApiError {
   // Fail-closed, mirroring how a throwing `deriveProviderOptions` fails the
   // command: 502 says the failure came from something behind the server rather
   // than from the caller's request, and the plugin is named so the user knows
@@ -226,17 +228,12 @@ function dispatchRejection(pluginId: string, message: string): ApiError {
   });
 }
 
-/** True when `error` is a handler's `reject` decision rather than a failure. */
-export function isDispatchRejectedError(error: unknown): error is ApiError {
-  return error instanceof ApiError && error.body.code === "dispatch_rejected";
-}
-
 /**
  * Runs one handler inside its decision box. A timeout resolves as a failure
  * rather than racing on: the handler's promise may never settle, and the whole
  * point of the box is that the dispatch does not wait on it.
  */
-async function decideWithinBox<T>(
+export async function decideWithinBox<T>(
   run: () => Promise<T>,
   timeoutMs: number,
 ): Promise<{ ok: true; value: T } | { ok: false; error: string }> {
@@ -245,10 +242,11 @@ async function decideWithinBox<T>(
     return await Promise.race([
       run().then(
         (value) => ({ ok: true, value }) as const,
-        (error: unknown) => ({
-          ok: false,
-          error: error instanceof Error ? error.message : String(error),
-        }) as const,
+        (error: unknown) =>
+          ({
+            ok: false,
+            error: error instanceof Error ? error.message : String(error),
+          }) as const,
       ),
       new Promise<{ ok: false; error: string }>((resolveTimeout) => {
         timer = setTimeout(
@@ -268,18 +266,6 @@ async function decideWithinBox<T>(
 }
 
 /**
- * The handler chain for a hook: plugin install order, which is deterministic
- * and is the only order there is. Nothing reorders it — a chain of pure
- * decisions composes the same way whichever order it runs in, because a
- * `reject` from any handler refuses and a `wait` from any handler queues.
- */
-function orderedHooks(
-  provider: PluginHookProvider,
-): PluginHookRegistration<"message.dispatch">[] {
-  return provider.listHooks("message.dispatch");
-}
-
-/**
  * The environment/host pair a dispatch context carries, resolved the same way
  * for every reader so a queue-failure line names the same host record —
  * including its live connection state — that the hook context did.
@@ -294,7 +280,7 @@ export function dispatchEnvironmentAndHost(
   // The same DTO `GET /threads/:id?include=host` serves, so a handler reading
   // `host.status` sees the live connection state rather than a stored row.
   return {
-    environment,
+    environment: toEnvironmentResponse(environment),
     host: getNonDestroyedHostWithStatus(deps, environment.hostId),
   };
 }
@@ -332,6 +318,7 @@ function buildHookContext(
       (request.intendedHostId === null
         ? null
         : getNonDestroyedHostWithStatus(deps, request.intendedHostId)),
+    environmentIntent: request.environmentIntent,
     input: {
       blocks: [...request.input],
       text: dispatchInputText(request.input),
@@ -366,7 +353,7 @@ export async function runMessageDispatchHookPass(
   if (provider === undefined) {
     return { kind: "proceed" };
   }
-  const hooks = orderedHooks(provider);
+  const hooks = provider.listHooks("message.dispatch");
   if (hooks.length === 0) {
     return { kind: "proceed" };
   }
@@ -389,10 +376,7 @@ export async function runMessageDispatchHookPass(
         throw messageDispatchHookFailure(hook.pluginId, invocation.error);
       }
       if (!invocation.value.ok) {
-        throw messageDispatchHookFailure(
-          hook.pluginId,
-          invocation.value.error,
-        );
+        throw messageDispatchHookFailure(hook.pluginId, invocation.value.error);
       }
       const parsed = messageDispatchHookDecisionSchema.safeParse(
         invocation.value.value,

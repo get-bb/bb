@@ -156,7 +156,7 @@ describe("timeline pages with provider-recorded input", () => {
 
     const { response } = buildThreadTimelineWithProfile(db, thread, {
       eventBudget: 1_000_000,
-      includeProviderUnhandledOperations: false,
+      includeDiagnosticOperations: false,
       includeNestedRows: true,
       maxInlineOutputChars: 32_000,
       maxSeq: 0,
