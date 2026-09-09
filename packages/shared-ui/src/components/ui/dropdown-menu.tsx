@@ -6,6 +6,7 @@ import { usePortalScopeProps } from "../../lib/portal-scope";
 import { COARSE_POINTER_CHECK_SLOT_CLASS } from "./coarse-pointer-sizing.js";
 import {
   type ResponsiveOverlayContextValue,
+  COMPACT_SHEET_CONTENT_STYLE,
   useResponsiveRoot,
   MobileTrigger,
   ResponsiveDrawerShell,
@@ -139,7 +140,7 @@ const DropdownMenuContent = React.forwardRef<
     const scopeProps = usePortalScopeProps();
 
     if (isCompactViewport) {
-      const domProps = stripRadixContentProps(props);
+      const { style, ...domProps } = stripRadixContentProps(props);
       return (
         <ResponsiveDrawerShell
           open={open}
@@ -152,8 +153,8 @@ const DropdownMenuContent = React.forwardRef<
               "flex flex-col gap-0.5 overflow-y-auto p-2 pb-[max(0.5rem,env(safe-area-inset-bottom))]",
               className,
             )}
-            style={{ minWidth: "auto", maxWidth: "none", width: "auto" }}
             {...domProps}
+            style={{ ...style, ...COMPACT_SHEET_CONTENT_STYLE }}
           >
             {children}
           </div>
