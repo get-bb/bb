@@ -1,3 +1,4 @@
+import { imageDefinition } from "./image-definition.js";
 import { registerAccount } from "./account.js";
 import { z } from "zod";
 import type { BbPluginApi } from "@get-bb/plugin-sdk";
@@ -52,6 +53,7 @@ export function createModalSandboxPlugin(
   deps: ModalSandboxDeps,
 ): (bb: BbPluginApi) => Promise<void> {
   return async (bb) => {
+    const image = imageDefinition(bb);
     const settings = bb.settings.define(SETTING_DESCRIPTORS);
     let cachedBackend: { token: string; backend: SandboxBackend } | null = null;
 
@@ -153,6 +155,7 @@ export function createModalSandboxPlugin(
           context.report.step("Preparing the standard Modal image…");
           imageId = await backend.ensureStandardImage({
             appName,
+            dockerfile: (await image.get()).dockerfile,
             signal: context.signal,
             report: context.report,
           });

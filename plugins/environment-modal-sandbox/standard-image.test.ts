@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { beforeEach, expect, it, vi } from "vitest";
 import { readStandardImage, ensureStandardImage } from "./standard-image.js";
 
@@ -22,6 +23,7 @@ import { NotFoundError } from "modal";
 const credentials = { tokenId: "test-id", tokenSecret: "test-secret" };
 const request = () => ({
   appName: "test-app",
+  dockerfile: readFileSync(new URL("./Dockerfile", import.meta.url), "utf8"),
   signal: new AbortController().signal,
   report: { step: vi.fn(), log: vi.fn() },
 });

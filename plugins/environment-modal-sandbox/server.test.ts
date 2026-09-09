@@ -837,6 +837,7 @@ it("shows the shipped Dockerfile without credentials or cloud access", async () 
   );
   expect(await test.harness.behavior.callRpc("image.definition", {})).toEqual({
     dockerfile,
+    customized: false,
   });
   expect(await test.harness.behavior.runCli(["image", "show"])).toMatchObject({
     exitCode: 0,
@@ -869,4 +870,76 @@ it("refuses an older snapshot when running compute disappears unexpectedly", asy
     "potentially stale snapshot",
   );
   expect(test.backend.creates).toHaveLength(1);
+});
+
+it("validates and persists a Dockerfile override used by new machines, then resets it", async () => {
+  const test = await setup();
+  const dockerfile =
+    "# Custom tools\nFROM node:22-bookworm-slim\nRUN echo custom\nUSER node\n";
+  await expect(
+    test.harness.behavior.callRpc("image.set", {
+      dockerfile: "FROM node:22\nCOPY . /app\n",
+    }),
+  ).rejects.toThrow("requires one FROM");
+  expect(
+    await test.harness.behavior.callRpc("image.definition", {}),
+  ).toMatchObject({ customized: false });
+  await test.harness.behavior.callRpc("image.set", { dockerfile });
+  expect(test.backend.image).not.toHaveBeenCalled();
+  expect(await test.harness.behavior.callRpc("image.definition", {})).toEqual({
+    dockerfile,
+    customized: true,
+  });
+  await test.provider.create(createContext());
+  expect(test.backend.image).toHaveBeenCalledWith(
+    expect.objectContaining({ dockerfile }),
+  );
+  await test.harness.behavior.runCli(["image", "reset"]);
+  expect(
+    await test.harness.behavior.callRpc("image.definition", {}),
+  ).toMatchObject({ customized: false });
+});
+
+it("reads CLI Dockerfiles on the invoking thread's host and leaves a saved override intact on invalid input", async () => {
+  const test = await setup();
+  const dockerfile = "FROM node:22\nRUN echo remote-file\n";
+  test.harness.sdk.stub("threads.get", async () => ({
+    environmentId: "env_remote",
+  }));
+  test.harness.sdk.stub("environments.get", async () => ({
+    hostId: "host_remote",
+  }));
+  const read = vi.fn(async () => ({
+    content: dockerfile,
+    contentEncoding: "utf8",
+    sizeBytes: dockerfile.length,
+  }));
+  test.harness.sdk.stub("files.read", read);
+  const context = { threadId: "thr_remote", cwd: "/project" };
+  expect(
+    await test.harness.behavior.runCli(
+      ["image", "set", "--file", "Dockerfile", "--json"],
+      context,
+    ),
+  ).toMatchObject({ exitCode: 0 });
+  expect(read).toHaveBeenCalledWith(
+    expect.objectContaining({
+      hostId: "host_remote",
+      path: "/project/Dockerfile",
+    }),
+  );
+  read.mockResolvedValue({
+    content: "FROM node:22\nFROM alpine\n",
+    contentEncoding: "utf8",
+    sizeBytes: 29,
+  });
+  expect(
+    await test.harness.behavior.runCli(
+      ["image", "set", "--file", "Dockerfile"],
+      context,
+    ),
+  ).toMatchObject({ exitCode: 1 });
+  expect(
+    await test.harness.behavior.callRpc("image.definition", {}),
+  ).toMatchObject({ dockerfile });
 });

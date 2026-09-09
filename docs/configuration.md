@@ -1282,10 +1282,15 @@ Changes apply to new turns, setup commands and terminals.
 
 ## Modal machines
 
-The optional Modal sandbox plugin uses a bundled Dockerfile and automatically
-builds/reuses its standard tools image when creating a machine. BB installs the
-daemon during initial bootstrap, then clones the project and runs its setup
-hook. Projects do not configure image recipes, contexts or verification gates.
+The optional Modal sandbox plugin builds/reuses a standard tools image for new
+machines. Settings can save a shared Dockerfile override or reset to the bundled
+default. CLI: `bb modal image show`, `bb modal image set --file PATH`, and
+`bb modal image reset` (append `--json`). Typed plugin RPCs `image.definition`,
+`image.set({dockerfile})`, and `image.reset` expose the same persistent definition.
+Supported instructions are one FROM followed by RUN, ENV, WORKDIR, and USER; no
+build context or multi-stage builds. Saving does not build or modify existing
+machines. The next new machine uses the saved definition. BB installs the daemon
+on demand, then clones the project and runs its setup hook.
 
 Configure `tokenId` and `tokenSecret` in secret plugin settings; `appName` defaults
 to `bb-sandboxes`. `cpu` and `memoryMiB` default to blank (Modal defaults).

@@ -19,12 +19,20 @@ description: Connect Modal and create reusable cloud machines with the bundled s
    SDK: `hosts.submit({machineProviderId:"modal-sandbox",projectId,key})`.
    No image or build inputs are accepted. Use a stable creation key for retries.
 
-Settings shows the bundled Dockerfile as a read-only reference. `bb modal image
-show [--json]` reads the same file without requiring credentials or starting a
-build. Typed RPC: `image.definition` returns `{dockerfile}`.
+Settings edits the shared Dockerfile used for future machines. Agents can run
+`bb modal image show > Dockerfile`, edit the file, then run `bb modal image set
+--file ./Dockerfile`. `bb modal image reset` restores the bundled default.
+Append `--json` for structured output. File paths resolve from the CLI directory
+on the current thread's host, or the server primary host without thread context.
+Typed RPCs `image.definition`, `image.set({dockerfile})`, and `image.reset`
+return `{dockerfile, customized}` through `sdk.plugins.callRpc`.
 
-The plugin builds the bundled Dockerfile automatically on first launch and reuses
-its content-addressed image. The Dockerfile supplies tools, not the BB daemon.
+Only one FROM followed by RUN, ENV, WORKDIR, and USER is supported. Comments and
+line breaks are preserved; no COPY, ADD, uploaded context, or multi-stage builds.
+Maximum length is 65,536 characters. Failed validation leaves the saved definition
+unchanged. Save/reset is plugin-wide and affects new machines only; it does not
+allocate resources or build. The next launch builds/reuses the content-hashed
+image. The bundled default supplies tools, not the BB daemon.
 Core installs the matching daemon during initial bootstrap, then handles
 machine enrollment, connection, checkout cloning and readiness. Creation progress
 reports build/allocation/bootstrap failures. Cancelling a launch prevents subsequent

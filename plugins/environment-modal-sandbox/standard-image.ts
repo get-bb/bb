@@ -6,6 +6,7 @@ import type { ModalCredentials } from "./sandbox-backend.js";
 
 export interface StandardImageRequest {
   appName: string;
+  dockerfile: string;
   signal: AbortSignal;
   report: PluginMachineProviderProgress;
 }
@@ -24,8 +25,8 @@ export async function readStandardDockerfile() {
   );
 }
 
-export async function readStandardImage() {
-  const dockerfile = await readStandardDockerfile();
+export async function readStandardImage(override?: string) {
+  const dockerfile = override ?? (await readStandardDockerfile());
   const lines = dockerfile
     .replace(/\\\r?\n/g, " ")
     .split(/\r?\n/)
@@ -37,7 +38,7 @@ export async function readStandardImage() {
     lines.slice(1).some((line) => !/^(RUN|ENV|WORKDIR|USER) /.test(line))
   )
     throw new Error(
-      "The bundled Modal Dockerfile requires one FROM followed by RUN, ENV, WORKDIR or USER instructions",
+      "The Modal Dockerfile requires one FROM followed by RUN, ENV, WORKDIR or USER instructions",
     );
   return {
     reference: from[1]!,
@@ -51,7 +52,7 @@ export async function ensureStandardImage(
   request: StandardImageRequest,
 ): Promise<string> {
   request.signal.throwIfAborted();
-  const definition = await readStandardImage();
+  const definition = await readStandardImage(request.dockerfile);
   const client = new ModalClient(credentials);
   try {
     try {

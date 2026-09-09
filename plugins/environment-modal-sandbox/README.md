@@ -6,10 +6,31 @@ machine. The project picker exposes **New sandbox** under **New machine**.
 
 ## Standard image
 
-Settings displays the bundled Dockerfile, including its comments, as a read-only
-reference. `bb modal image show` prints the same file (`--json` returns
-`{dockerfile}`); SDK callers use `image.definition` through `modalRpcContract`.
-Viewing it needs no Modal credentials and does not start a build.
+Settings lets you edit, save, or reset the Dockerfile used for future machines
+across all projects. Agents can use the same saved definition through the CLI:
+
+```sh
+bb modal image show > Dockerfile
+bb modal image set --file ./Dockerfile
+bb modal image show --json
+bb modal image reset
+```
+
+Only one `FROM` followed by `RUN`, `ENV`, `WORKDIR`, or `USER` is supported.
+Comments and line breaks are preserved. There is no build context, `COPY`, `ADD`,
+or multi-stage build. Invalid definitions leave the saved version unchanged.
+Saving/resetting does not build or allocate compute; existing machines and their
+snapshots are unaffected. The last saved definition applies to new launches.
+The override is stored by this plugin and survives reloads; reset uses the bundled
+Dockerfile from the installed plugin version.
+
+`--file` resolves relative to the invoking CLI directory. In a BB thread it reads
+from that thread's host; without thread context it reads on the server's primary
+host. Remote callers without thread context can use the typed RPC with file text.
+All commands accept `--json` as the final flag. `image.definition`, `image.set`
+(input `{dockerfile}`), and `image.reset` are available through `modalRpcContract`
+and `sdk.plugins.callRpc`. They return `{dockerfile, customized}`. Definitions
+are limited to 65,536 characters. Editing needs no Modal credentials.
 
 The plugin ships a [Dockerfile](Dockerfile) with Debian, Node, Git/GitHub CLI,
 build tools, Python, ripgrep, jq, pnpm, Pi, Codex and Claude Code. It contains no BB
@@ -54,7 +75,7 @@ Use `bb modal account inspect --json` to validate credentials
 without allocating resources. Create with
 `bb machine create --provider modal-sandbox --project PROJECT --json`, or SDK
 `hosts.submit({machineProviderId:"modal-sandbox",projectId,key})`. Machine creation
-accepts no custom image inputs. Account inspection is also available through the
+accepts no per-machine image inputs; configure the shared Dockerfile separately. Account inspection is also available through the
 plugin's typed `modalRpcContract` (`account.inspect`) and `sdk.plugins.callRpc`.
 See the [command reference](skills/modal-sandboxes/SKILL.md).
 

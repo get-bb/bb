@@ -903,7 +903,7 @@ repo).
 
 Modal setup uses `bb modal account inspect --json` to check credentials, then
 `bb machine create --provider modal-sandbox --project PROJECT --json` to create a
-machine. Settings displays its bundled Dockerfile; `bb modal image show [--json]`
+machine. Settings edits its shared Dockerfile; `bb modal image set --file PATH [--json]` saves it and `bb modal image reset [--json]` restores the bundled default for future machines; `bb modal image show [--json]`
 reads the same file without cloud access. The image builds automatically and is reused across projects;
 core installs the daemon on demand. Project dependencies and services belong in
 `.bb-env-setup.sh`. Read the plugin's skill for connection and lifecycle details.
