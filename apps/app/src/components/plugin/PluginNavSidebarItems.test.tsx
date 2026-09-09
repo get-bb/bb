@@ -277,9 +277,11 @@ describe("PluginNavSidebarItems", () => {
     renderSidebarItems();
     const row = screen.getByRole("button", { name: "Docs" });
     expect(row.getAttribute("aria-busy")).toBe("true");
-    expect(screen.getByText("Docs").classList.contains("animate-shine")).toBe(
-      true,
-    );
+    expect(
+      screen
+        .getByTestId("plugin-nav-sidebar-items")
+        .classList.contains("bb-plugin-nav-loading"),
+    ).toBe(true);
     expect(screen.queryByTestId("plugin-nav-loading-placeholders")).toBeNull();
     act(() => {
       setPluginFrontendReconcilePending(true);
@@ -295,9 +297,11 @@ describe("PluginNavSidebarItems", () => {
     expect(
       screen.queryByRole("status", { name: "Loading plugins" }),
     ).toBeNull();
-    expect(screen.getByText("Docs").classList.contains("animate-shine")).toBe(
-      false,
-    );
+    expect(
+      screen
+        .getByTestId("plugin-nav-sidebar-items")
+        .classList.contains("bb-plugin-nav-loading"),
+    ).toBe(false);
   });
 
   it("collapses the entire subsection with zero traditional plugins", () => {
