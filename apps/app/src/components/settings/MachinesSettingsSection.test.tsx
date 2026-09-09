@@ -427,7 +427,12 @@ describe("MachinesSettingsSection", () => {
     expect(action?.parentElement?.className).toContain("sm:flex-row");
     fireEvent.click(addMachine);
     expect(
-      await screen.findByRole("heading", { name: "Add a machine" }),
+      await screen.findByRole("heading", { name: "Set up machine access" }),
+    ).toBeDefined();
+    expect(
+      screen.getByText(
+        "A new machine has to reach this server over the network. Choose the address it should use.",
+      ),
     ).toBeDefined();
   });
 

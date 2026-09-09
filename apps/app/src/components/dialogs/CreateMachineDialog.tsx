@@ -1,4 +1,4 @@
-import { MachineAccessSettings } from "@/components/settings/MachineAccessSettings";
+import { MachineAccessControls } from "@/components/settings/MachineAccessSettings";
 import { useSystemConfig } from "@/hooks/queries/system-queries";
 import { isLocalOnlyUrl } from "@/lib/loopback-hostname";
 import { MachineSetupProgress } from "./MachineSetupProgress";
@@ -80,16 +80,23 @@ function CreateMachineContent({
   if (!accessReady || loadedProviders === undefined) {
     const loading =
       config.isPending || (accessReady && loadedProviders === undefined);
+    if (loading) {
+      return (
+        <>
+          <DialogTitle className="sr-only">Add a machine</DialogTitle>
+          <p role="status" className="text-sm text-subtle-foreground">
+            Checking machine access…
+          </p>
+        </>
+      );
+    }
     return (
       <>
         <DialogHeader>
-          <DialogTitle>
-            {loading ? "Add a machine" : "Set up machine access"}
-          </DialogTitle>
+          <DialogTitle>Set up machine access</DialogTitle>
           <DialogDescription>
-            {loading
-              ? "Checking machine access…"
-              : "Choose how new machines connect to the server."}
+            A new machine has to reach this server over the network. Choose the
+            address it should use.
           </DialogDescription>
         </DialogHeader>
         {config.isError ? (
@@ -100,12 +107,7 @@ function CreateMachineContent({
             </Button>
           </p>
         ) : (
-          !loading && (
-            <MachineAccessSettings
-              presentation="dialog"
-              onNavigate={() => onOpenChange(false)}
-            />
-          )
+          <MachineAccessControls onNavigate={() => onOpenChange(false)} />
         )}
       </>
     );

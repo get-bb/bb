@@ -14,6 +14,7 @@ import { MachineAccessSettings } from "./MachineAccessSettings";
 const mocks = vi.hoisted(() => ({
   config: vi.fn(),
   mutate: vi.fn(),
+  mutateAsync: vi.fn(),
   isPending: false,
 }));
 vi.mock("@/components/pickers/OptionPicker", () => ({
@@ -44,11 +45,14 @@ vi.mock("@/hooks/mutations/settings-mutations", () => ({
   useUpdateGeneralSettings: () => ({
     isPending: mocks.isPending,
     mutate: mocks.mutate,
+    mutateAsync: mocks.mutateAsync,
   }),
 }));
 afterEach(cleanup);
 beforeEach(() => {
   mocks.mutate.mockReset();
+  mocks.mutateAsync.mockReset();
+  mocks.mutateAsync.mockResolvedValue(undefined);
   mocks.isPending = false;
 });
 
@@ -92,7 +96,12 @@ it("offers Connect setup without exposing the manual URL even when a URL exists"
       .getByRole("link", { name: "Set up bb connect" })
       .getAttribute("href"),
   ).toBe("/settings/plugins/connect");
-  expect(screen.getByText("Not connected")).toBeTruthy();
+  expect(
+    screen.getByText(
+      "bb connect gives this server a private address your machines can reach.",
+    ),
+  ).toBeTruthy();
+  expect(screen.queryByText("Not connected")).toBeNull();
   expect(screen.queryByRole("textbox")).toBeNull();
   expect(screen.queryByText("Automatic")).toBeNull();
 });
@@ -165,4 +174,32 @@ it("restores the saved selection when saving fails", () => {
   act(() => mocks.mutate.mock.calls[0][1].onError(new Error("Save failed")));
   expect(screen.getByRole<HTMLSelectElement>("combobox").value).toBe("connect");
   expect(screen.queryByRole("textbox", { name: "Server address" })).toBeNull();
+});
+
+const URL_ERROR = "Enter a valid HTTP or HTTPS URL without credentials";
+
+it("blames the save, not the URL, when the request fails", async () => {
+  show("direct");
+  fireEvent.change(screen.getByRole("textbox", { name: "Server address" }), {
+    target: { value: "https://bb.example.com" },
+  });
+  mocks.mutateAsync.mockRejectedValue(new Error("Daemon unreachable"));
+  fireEvent.click(screen.getByRole("button", { name: "Save" }));
+  const alert = await screen.findByRole("alert");
+  expect(alert.textContent).toBe("Daemon unreachable");
+  expect(screen.queryByText(URL_ERROR)).toBeNull();
+});
+
+it("drops a stale validation error once the address is edited", async () => {
+  show("direct");
+  const address = screen.getByRole("textbox", { name: "Server address" });
+  fireEvent.change(address, { target: { value: "http://localhost:3000" } });
+  fireEvent.click(screen.getByRole("button", { name: "Save" }));
+  expect((await screen.findByRole("alert")).textContent).toBe(
+    "Other machines cannot reach localhost. Use a domain or shared-network address.",
+  );
+  expect(mocks.mutateAsync).not.toHaveBeenCalled();
+  fireEvent.change(address, { target: { value: "https://bb.example.com" } });
+  expect(screen.queryByRole("alert")).toBeNull();
+  expect(address.getAttribute("aria-invalid")).toBe("false");
 });

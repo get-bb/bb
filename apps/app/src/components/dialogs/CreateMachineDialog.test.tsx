@@ -198,14 +198,14 @@ it("saves a manual address in the access gate and advances without reopening", a
     name: "Server address",
   });
   fireEvent.change(address, { target: { value: "http://localhost:3000" } });
-  fireEvent.click(screen.getByRole("button", { name: "Save address" }));
+  fireEvent.click(screen.getByRole("button", { name: "Save" }));
   await screen.findByText(
     "Other machines cannot reach localhost. Use a domain or shared-network address.",
   );
   expect(sdk.system.updateGeneralSettings).not.toHaveBeenCalled();
   expect(screen.queryByRole("button", { name: "command-provider" })).toBeNull();
   fireEvent.change(address, { target: { value: "https://bb.example.com" } });
-  fireEvent.click(screen.getByRole("button", { name: "Save address" }));
+  fireEvent.click(screen.getByRole("button", { name: "Save" }));
   await screen.findByRole("button", { name: "command-provider" });
   expect(sdk.system.updateGeneralSettings).toHaveBeenCalledWith(
     expect.objectContaining({ machineServerUrl: "https://bb.example.com" }),
