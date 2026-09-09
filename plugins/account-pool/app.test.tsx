@@ -129,6 +129,13 @@ describe("Account Pool settings", () => {
     ).toBeTruthy();
   });
 
+  it("keeps the quota slots visible at mobile widths", async () => {
+    const slot = render();
+    const group = (await slot.findByText("5H")).parentElement?.parentElement;
+    expect(group).toBeTruthy();
+    expect(group?.className).not.toMatch(/(^|\s)hidden(\s|$)/u);
+  });
+
   it("renders only the windows a Codex account reports and no Fable slot", async () => {
     const blockingResetAt = Date.now() + 6 * 24 * 60 * 60 * 1_000;
     const slot = render([

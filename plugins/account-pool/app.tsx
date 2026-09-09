@@ -250,39 +250,77 @@ function SettingsSection({
   );
 }
 
-function QuotaValue({
-  label,
-  utilization,
-  status,
-  threshold,
-}: {
+type QuotaSlot = {
+  key: string;
   label: string;
   utilization: number | null;
   status: string | null;
+};
+
+function quotaSlots(account: AccountSummary): QuotaSlot[] {
+  if (account.provider === "codex") {
+    if (account.limitWindows.length === 0)
+      return [
+        { key: "primary", label: "LIMIT", utilization: null, status: null },
+      ];
+    return account.limitWindows.map((window) => ({
+      key: window.slot,
+      label: windowShortLabel(window),
+      utilization: window.utilization,
+      status: window.status,
+    }));
+  }
+  return [
+    {
+      key: "five-hour",
+      label: "5H",
+      utilization: account.fiveHourUtilization,
+      status: account.fiveHourStatus,
+    },
+    {
+      key: "seven-day",
+      label: "7D",
+      utilization: account.sevenDayUtilization,
+      status: account.sevenDayStatus,
+    },
+    {
+      key: "fable",
+      label: "FABLE",
+      utilization: account.familyWeekly.fable?.utilization ?? null,
+      status: account.familyWeekly.fable?.status ?? null,
+    },
+  ];
+}
+
+function quotaToneClass(slot: QuotaSlot, threshold: number): string {
+  if (
+    slot.status?.toLowerCase() === "rejected" ||
+    (slot.utilization !== null && slot.utilization >= 1)
+  )
+    return "text-destructive-text";
+  if (slot.utilization !== null && slot.utilization >= threshold - 0.1)
+    return "text-warning-text";
+  return slot.utilization === null
+    ? "text-subtle-foreground/75"
+    : "text-foreground";
+}
+
+function QuotaValue({
+  slot,
+  threshold,
+}: {
+  slot: QuotaSlot;
   threshold: number;
 }) {
-  const destructive =
-    status?.toLowerCase() === "rejected" ||
-    (utilization !== null && utilization >= 1);
-  const warning = utilization !== null && utilization >= threshold - 0.1;
   return (
-    <div className="w-16 text-right tabular-nums">
+    <div className="w-16 text-left tabular-nums sm:text-right">
       <div className="text-2xs uppercase tracking-wide text-subtle-foreground/75">
-        {label}
+        {slot.label}
       </div>
       <div
-        className={cn(
-          "text-xs font-semibold",
-          destructive
-            ? "text-destructive-text"
-            : warning
-              ? "text-warning-text"
-              : utilization === null
-                ? "text-subtle-foreground/75"
-                : "text-foreground",
-        )}
+        className={cn("text-xs font-semibold", quotaToneClass(slot, threshold))}
       >
-        {percent(utilization)}
+        {percent(slot.utilization)}
       </div>
     </div>
   );
@@ -310,6 +348,7 @@ function AccountRow({
   reorderDisabled: boolean;
 }) {
   const status = statusPresentation(account, threshold);
+  const slots = quotaSlots(account);
   const {
     attributes,
     isDragging,
@@ -349,7 +388,7 @@ function AccountRow({
       >
         <button
           type="button"
-          className="flex min-w-0 flex-1 items-center rounded-md text-left outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          className="grid min-w-0 flex-1 grid-cols-1 items-center gap-y-1.5 rounded-md text-left outline-none focus-visible:ring-2 focus-visible:ring-ring sm:grid-cols-[minmax(0,1fr)_auto] sm:gap-y-0"
           aria-label={`Open ${account.label}`}
           onClick={onOpen}
         >
@@ -370,48 +409,10 @@ function AccountRow({
               )}
             </div>
           </div>
-          <div className="hidden shrink-0 items-center gap-1 sm:flex">
-            {account.provider === "codex" ? (
-              account.limitWindows.length === 0 ? (
-                <QuotaValue
-                  label="LIMIT"
-                  utilization={null}
-                  status={null}
-                  threshold={threshold}
-                />
-              ) : (
-                account.limitWindows.map((window) => (
-                  <QuotaValue
-                    key={window.slot}
-                    label={windowShortLabel(window)}
-                    utilization={window.utilization}
-                    status={window.status}
-                    threshold={threshold}
-                  />
-                ))
-              )
-            ) : (
-              <>
-                <QuotaValue
-                  label="5H"
-                  utilization={account.fiveHourUtilization}
-                  status={account.fiveHourStatus}
-                  threshold={threshold}
-                />
-                <QuotaValue
-                  label="7D"
-                  utilization={account.sevenDayUtilization}
-                  status={account.sevenDayStatus}
-                  threshold={threshold}
-                />
-                <QuotaValue
-                  label="FABLE"
-                  utilization={account.familyWeekly.fable?.utilization ?? null}
-                  status={account.familyWeekly.fable?.status ?? null}
-                  threshold={threshold}
-                />
-              </>
-            )}
+          <div className="flex flex-wrap items-center gap-x-4 gap-y-1 sm:flex-nowrap sm:gap-1">
+            {slots.map((slot) => (
+              <QuotaValue key={slot.key} slot={slot} threshold={threshold} />
+            ))}
           </div>
         </button>
         <DropdownMenu>
