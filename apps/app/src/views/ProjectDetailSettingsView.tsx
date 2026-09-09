@@ -115,41 +115,37 @@ function CheckoutRow({
 }: CheckoutRowProps) {
   const connected = host.status === "connected";
   return (
-    <SettingsRow className="flex-col items-stretch gap-2 sm:flex-row sm:items-center sm:gap-3">
-      <div className="flex min-w-0 flex-1 items-center gap-3">
-        <Icon
-          name="Laptop"
-          className={cn(
-            "size-4 shrink-0 text-muted-foreground",
-            !connected && "opacity-60",
-          )}
-        />
-        <div className="min-w-0 flex-1 space-y-0.5">
-          <div className="flex min-w-0 items-center gap-1.5">
-            <MachineStatusDot connected={connected} />
-            <Link
-              to={getSettingsMachineRoutePath(host.id)}
-              className="min-w-0 truncate text-sm font-medium text-foreground hover:underline"
-            >
-              {host.name}
-            </Link>
-            {isPrimary ? <SettingsBadge>primary</SettingsBadge> : null}
-            {isPathInvalid ? (
-              <Pill variant="destructive">Path not found</Pill>
-            ) : null}
-          </div>
-          <div className="min-w-0 truncate font-mono text-xs text-subtle-foreground/75">
-            {source === null ? (
-              <span className="font-sans italic">
-                Not set up on this machine
-              </span>
-            ) : (
-              source.path
+    <SettingsRow className="items-start">
+      <div className="min-w-0 flex-1 space-y-0.5">
+        <div className="flex min-w-0 items-center gap-1.5">
+          <Icon
+            name="Laptop"
+            className={cn(
+              "size-4 shrink-0 text-muted-foreground",
+              !connected && "opacity-60",
             )}
-          </div>
+          />
+          <MachineStatusDot connected={connected} />
+          <Link
+            to={getSettingsMachineRoutePath(host.id)}
+            className="min-w-0 truncate text-sm font-medium text-foreground hover:underline"
+          >
+            {host.name}
+          </Link>
+          {isPrimary ? <SettingsBadge>primary</SettingsBadge> : null}
+          {isPathInvalid ? (
+            <Pill variant="destructive">Path not found</Pill>
+          ) : null}
+        </div>
+        <div className="min-w-0 truncate font-mono text-xs text-subtle-foreground/75">
+          {source === null ? (
+            <span className="font-sans italic">Not set up on this machine</span>
+          ) : (
+            source.path
+          )}
         </div>
       </div>
-      <div className="flex shrink-0 items-center gap-1 sm:justify-end">
+      <div className="flex shrink-0 items-center gap-1">
         {source === null ? (
           <Button
             type="button"

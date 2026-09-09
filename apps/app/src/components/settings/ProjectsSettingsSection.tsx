@@ -176,6 +176,7 @@ function SortableProjectRow({
       ref={setNodeRef}
       style={style}
       className={cn(
+        "items-start",
         isDragging && "relative z-10 rounded-md bg-card opacity-90 shadow-lift",
       )}
     >
@@ -197,39 +198,41 @@ function SortableProjectRow({
       </Button>
       <div
         data-project-row
-        className="group -mx-2 flex min-w-0 flex-1 items-center gap-2 rounded-md px-2 py-1.5 transition-colors hover:bg-state-hover focus-within:bg-state-hover"
+        className="group -mx-2 flex min-w-0 flex-1 items-start gap-2 rounded-md px-2 py-1.5 transition-colors hover:bg-state-hover focus-within:bg-state-hover"
       >
         <Link
           to={detailPath}
           aria-label={`Open ${project.name} settings`}
-          className="flex min-w-0 flex-1 items-center gap-3 rounded-md outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          className="min-w-0 flex-1 rounded-md outline-none focus-visible:ring-2 focus-visible:ring-ring"
         >
-          <Icon
-            name="FolderGit"
-            className="size-4 shrink-0 text-muted-foreground"
-          />
           <div className="min-w-0 flex-1 space-y-0.5">
             <div className="flex min-w-0 items-center gap-1.5">
+              <Icon
+                name="FolderGit"
+                className="size-4 shrink-0 text-muted-foreground"
+              />
               <span className="min-w-0 truncate text-sm font-medium text-foreground">
                 {project.name}
               </span>
               {needsSetup ? <SettingsBadge>needs setup</SettingsBadge> : null}
               {allOffline ? <SettingsBadge>offline</SettingsBadge> : null}
             </div>
-            <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-0.5 text-xs text-subtle-foreground/75">
+            <div className="min-w-0 space-y-0.5 text-xs text-subtle-foreground/75">
               {remoteLabel === null ? (
-                <span className="shrink-0 italic">No git remote</span>
+                <div className="italic">No git remote</div>
               ) : (
-                <span className="min-w-0 truncate">{remoteLabel}</span>
+                <div className="truncate">{remoteLabel}</div>
               )}
-              <span
-                className={cn("shrink-0", needsSetup && "text-warning-text")}
-              >
-                {machineLabel(summary)}
-              </span>
-              <span className="shrink-0">
-                {pluralize(project.threads.length, "thread")}
-              </span>
+              <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5">
+                <span
+                  className={cn("shrink-0", needsSetup && "text-warning-text")}
+                >
+                  {machineLabel(summary)}
+                </span>
+                <span className="shrink-0">
+                  {pluralize(project.threads.length, "thread")}
+                </span>
+              </div>
             </div>
           </div>
         </Link>
