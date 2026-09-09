@@ -14,7 +14,6 @@
       "icon": "./modal-logo.svg"
     },
     "server": "./server.ts",
-    "host": "./host.ts",
     "skills": [
       "skills"
     ],
@@ -39,9 +38,7 @@
     "typescript": "npm:@typescript/typescript6@^6.0.2",
     "vitest": "^4.1.1",
     "better-sqlite3": "^12.6.2",
-    "@testing-library/react": "^16.3.2",
     "@types/react": "^19.0.0",
-    "jsdom": "^29.0.1",
     "react": "^19.0.0",
     "react-dom": "^19.0.0"
   }

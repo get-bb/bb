@@ -1,137 +1,89 @@
 # Modal sandbox
 
-Creates resumable bb machines in [Modal](https://modal.com) Sandboxes. It is
-an official catalog plugin, not installed by default. Installing it adds the
-`modal-sandbox` machine provider; it does not add an environment provider.
+Run reusable BB machines in Modal. Install the optional official plugin, connect
+its token in Settings → Plugins → Modal sandbox, select a project, and create a
+machine. The project picker exposes **New sandbox** under **New machine**.
 
-Choose **New sandbox** under **New machine** in a project's environment picker to create a machine,
-have core clone and register that project's checkout, and run the thread through
-the Project checkout provider. The machine remains a normal bb execution
-target, so later threads can create Git worktrees or use other environment
-providers on the same sandbox. New machines require a project and an explicitly
-built catalogue image. Pass its `buildId` to `bb machine create`, or promote a
-verified image to select it for future Modal machines in the project.
+## Standard image
 
-Creation prepares enrollment before vendor allocation and awaits a core resource
-checkpoint as soon as the allocation ID is known. The checkpoint contains no
-bootstrap credentials. Core can remove a cancelled allocation directly from
-that checkpoint without rerunning creation, enrollment, or bootstrap.
-Core owns project checkout setup and source registration after the machine
-connects, using the `project-checkout` environment row. Agent-provider
-readiness runs before dispatch: compatible installed CLIs are reused, missing
-CLIs use their registered installer, and credential routes are checked from
-the machine. Account Pooler injects credentials at runtime.
+The plugin ships a [Dockerfile](Dockerfile) with Debian, Node, Git/GitHub CLI,
+build tools, Python, ripgrep, jq, pnpm, Codex and Claude Code. It contains no BB
+daemon, project files, enrollment state or credentials. The image is named by the
+Dockerfile's SHA-256 and reused within the Modal account. The first launch builds
+and publishes it automatically; later launches reuse it. Changing the Dockerfile
+creates a new image version for future machines. Modal also caches build layers.
+There is no project recipe, uploaded context, smoke-test gate or image promotion.
 
-## Project images
+Machine creation reports image preparation and allocation progress. Build failures
+surface on the machine launch and may be retried. Cancelling a launch prevents
+subsequent sandbox allocation; an image build already submitted to Modal can
+finish and remain cached. Shared standard images are not removed with a machine.
 
-Use `bb modal project inspect`, `recipe put --stdin --expected-revision 0`,
-`context upload`, and `image build --key` to create a project image. All commands
-support `--json`; `image logs BUILD --follow` streams bounded cursor pages.
-Recipes live in plugin SQLite storage. Context uploads contain tracked files at
-an identified commit plus an explicitly reviewed dirty overlay. See the bundled
-[command reference](skills/modal-sandboxes/SKILL.md) for flags and typed RPC names.
+Core prepares enrollment before allocation. As soon as the sandbox ID is known,
+the plugin awaits a durable resource checkpoint before bootstrap, so cancellation
+cleanup does not need to allocate or enroll again. Core installs the matching BB
+daemon on demand using Modal exec, enrolls the machine and waits for its connection.
+Restore uses the same bootstrap API, reusing an enrolled daemon from the snapshot when available.
+Bootstrap credentials travel through stdin and are never persisted in machine
+resources. Core owns machine access grants and runtime credential injection.
 
-The TypeScript builder prepends a versioned Debian bookworm / Node 22.19 base,
-installs pinned Codex and Claude Code CLIs, and embeds the server's credential-free
-bb CLI/daemon package with a verified SHA-256 and protocol version. Build provenance
-records that package digest. Project Dockerfiles support RUN, COPY, ENV, WORKDIR,
-and ARG; FROM and other instructions fail with a source-line error.
-Images contain no enrollment or agent login state. Credentials enter only during
-runtime bootstrap. Rebuilding requires an explicit request; inspection reports
-staleness. GC marks owned images, waits 60 seconds, and rechecks references before
-deletion. Machine allocations, project promotion pointers, and verification records
-protect builds.
+Core clones the selected project and runs its `.bb-env-setup.sh`. Use that hook to
+install project dependencies and start services; failures remain visible in the
+launch logs. The hook must be idempotent because it runs again after filesystem
+restore. Environment teardown uses the core `.bb-env-teardown.sh` hook. Attached,
+user-maintained checkouts skip owned-environment hooks. `.worktreeinclude` does not
+apply to fresh clones; configure runtime files and secrets through core Machine
+environment settings.
 
-Run `bb modal image verify BUILD --provider codex --key KEY --json` to start a
-durable verification. Repeating its key returns the current result. Verification
-runs a real agent turn, independently checks the recorded smoke commands and
-commit, then suspends and restores the same machine with a filesystem sentinel.
-Readiness and smoke checks run again after restore. Successful verification
-retains a suspended machine; failed machines remain available for inspection.
+## Settings and commands
 
-`bb modal image use BUILD --project PROJECT --provider codex --expected-revision N`
-requires successful verification for that agent. It changes only the project's
-Modal image pointer, leaving environment preferences and existing machines alone.
-`bb machine ready MACHINE --provider codex --project PROJECT --json` exposes the
-same generic readiness checks used before agent dispatch. Core runs the repo's `.bb-env-setup.sh` after an environment provider creates a
-checkout it owns, including a fresh clone on a new machine. The script owns cache
-validation and its unchanged-input no-op path. Readiness requires a successful
-core hook outcome for this checkout's commit and lockfile inputs; it does not run
-another script. Attaching a user-maintained checkout runs neither setup nor
-teardown. Dockerfile recipes remain in plugin storage; setup hooks live in Git.
+| Setting                  | Meaning                                                   |
+| ------------------------ | --------------------------------------------------------- |
+| `tokenId`, `tokenSecret` | Required Modal token, entered in secret settings.         |
+| `appName`                | Modal app, default `bb-sandboxes`.                        |
+| `timeoutMinutes`         | Compute lifetime, 1–1440 minutes; default 1440.           |
+| `idleMinutes`            | Pause after idle, default 15; 0 disables idle suspension. |
+| `cpu`, `memoryMiB`       | Resource reservations; blank uses Modal defaults.         |
 
-Core runs `.bb-env-teardown.sh` before removing an owned environment with a separate
-15-minute timeout. Teardown failure is reported and does not block removal.
-`.worktreeinclude` does not apply to fresh machine clones. Use core Machine
-environment settings for local files and secrets on machines.
-Settings → Plugins → Modal sandbox includes a per-project Dockerfile editor, reviewed context upload, explicit builds with log follow/cancel, staleness, image verification/promotion, and resources/lifecycle policy. The recipe lives in bb storage; import/export does not write it to the repository. Account connection checks return no secrets.
+Use `bb modal account inspect --json` or **Test connection** to validate credentials
+without allocating resources. Create with
+`bb machine create --provider modal-sandbox --project PROJECT --json`, or SDK
+`hosts.submit({machineProviderId:"modal-sandbox",projectId,key})`. Machine creation
+accepts no custom image inputs. Account inspection is also available through the
+plugin's typed `modalRpcContract` (`account.inspect`) and `sdk.plugins.callRpc`.
+See the [command reference](skills/modal-sandboxes/SKILL.md).
 
 ## Lifecycle
 
-Core observes Modal's running state and vendor deadline. Defaults are a 15-minute
-idle pause, 24-hour compute lifetime and 30-day retention after the last thread.
-Zero-thread machines also pause while retained. Open terminals prevent idle pause.
-Project policy changes apply to existing machines on the next observation.
+Defaults are a 15-minute idle pause, 24-hour compute lifetime, and 30-day retention
+after the last thread. Open terminals prevent idle pause. Idle and lifetime
+settings are read during lifecycle policy evaluation; updated lifetimes apply to
+new compute on restore, while running compute retains its vendor deadline.
 
-Maintenance starts 15 minutes before expiry, or halfway through shorter configured
-lifetimes. Core excludes new work, interrupts active turns, closes terminals and
-bounds drain to five minutes. The daemon stops its managed runtimes before the
-plugin saves a private filesystem snapshot with no expiry. A durable checkpoint
-precedes compute termination. Dispatch then restores the same host identity;
-provider credentials are supplied again by core on the new continuation turn. Core reruns the repo’s `.bb-env-setup.sh` through its durable hook path to restart services. The hook must be idempotent and may start services; a failed restore hook blocks readiness.
-An interrupted turn is never reported as a successful completion or replayed.
+Before expiry, core stops accepting new work, interrupts turns and closes terminals.
+The daemon stops its managed runtimes before the plugin snapshots the filesystem.
+A durable snapshot checkpoint precedes compute termination. Resume restores the
+same host identity, starts the daemon and reruns setup to restart services.
+An interrupted turn requires a continuation and is never automatically replayed.
 
-`bb machine lifecycle MACHINE --json` shows expiry, maintenance, the last successful
-save, recovery state and the separate automatic removal deadline. Use `--keep` to
-retain a machine, or `--no-keep` to restore automatic retention removal. Removal
-cascades through owned environments and deletes private snapshots. It remains
-available explicitly even when keep is enabled.
+Failed saves retain compute and retry within the remaining deadline. Missing
+compute or snapshots never silently become empty checkouts. A server outage
+spanning vendor expiry can lose changes since the last snapshot; core marks this
+risk and blocks automatic dispatch. `bb machine resume MACHINE` explicitly recovers
+the last snapshot. Successful saves retain private snapshots without an expiry;
+removing the machine cleans up its compute and private snapshots.
 
-Failed saves keep old compute and retry inside the remaining margin. Failed restore
-or account changes remain visible and never substitute a fresh empty checkout.
-Preservation covers planned rotation only: a server outage spanning vendor expiry
-can lose changes since the last snapshot. A missing running sandbox is marked
-lost-since-last-snapshot and blocks automatic dispatch. `bb machine resume MACHINE`
-is an explicit request to recover that last snapshot with the disclosed loss risk.
+Inspect `bb machine lifecycle MACHINE --json`, use `--keep` to prevent automatic
+retention removal, or `--remove --yes` for explicit removal. Account and Modal app
+identity remain pinned to the machine. Restore the original account before
+operating on an existing machine after changing credentials.
 
-## What it needs
+## Prerequisites
 
-- A Modal API token. Set its two halves in the plugin's `tokenId` and
-  `tokenSecret` settings.
-- A git remote when creating through the project picker, because core clones
-  and registers that project. Standalone machine creation still selects a
-  project build.
-- A URL the sandbox can reach this bb at.
-
-## How the sandbox reaches this bb
-
-Configure the instance's default server-access provider so the sandbox can
-reach bb. Core's public machine bootstrap helper owns access grants,
-enrollment, durable identity, daemon startup, and waiting for a connection.
-The plugin supplies Modal exec as the transport, including stdin for secret
-bootstrap data. It does not store enrollment credentials in machine resources.
-
-Creation calls bootstrap with the durable creation key and the preinstalled daemon.
-Resume calls the same helper with the original key and a preinstalled daemon,
-including when a previous attempt left the sandbox running. Core reuses the
-identity and restarts the daemon when needed. The plugin has no `serverUrl`
-setting; configure access centrally.
-
-The exec adapter stops waiting when cancellation is requested. Modal does not
-expose per-exec cancellation, so a command already submitted may continue until
-its process timeout. Retries reuse the named sandbox and the bootstrap key.
-
-## Settings
-
-| Setting          | Required | What it is                                                                    |
-| ---------------- | -------- | ----------------------------------------------------------------------------- |
-| `tokenId`        | yes      | The token id half of a Modal API token.                                       |
-| `tokenSecret`    | yes      | The token secret half of the same token.                                      |
-| `appName`        | no       | The Modal app for sandboxes. Defaults to `bb-sandboxes`.                      |
-| `timeoutMinutes` | no       | Modal sandbox timeout, 1–1440 minutes.                                        |
-| `idleMinutes`    | no       | Snapshot after this many idle minutes. Defaults to 15; 0 disables suspension. |
-| `cpu`            | no       | Reserved cores. Blank uses Modal's default.                                   |
-| `memoryMiB`      | no       | Reserved memory in MiB. Blank uses Modal's default.                           |
+Modal credentials, a project Git remote and access to it, and a configured core
+server-access route reachable from the sandbox are required. Agent authentication
+is needed to run agent turns. Image builds and running machines incur Modal usage;
+this plugin does not provision anything merely by being installed or connected.
 
 ## Logo and trademark
 

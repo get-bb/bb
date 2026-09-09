@@ -1,5 +1,3 @@
-import { Catalogue } from "./catalogue/store.js";
-import { hash, recipeInputSchema } from "./catalogue/model.js";
 import type { BbPluginApi, JsonValue } from "@get-bb/plugin-sdk";
 import type {
   PluginMachineProviderCreateContext,
@@ -109,7 +107,11 @@ function createBackend(
     };
   }
 
+  const image = vi.fn(async () => "im-standard");
   const backend: SandboxBackend = {
+    accountIdentity: async () => "modal-account",
+    ensureStandardImage: image,
+    close() {},
     async observe({ sandboxId }) {
       return {
         running: states.some(
@@ -148,6 +150,7 @@ function createBackend(
   };
   return {
     backend,
+    image,
     creates,
     states,
     deletedSnapshots,
@@ -215,72 +218,24 @@ async function setup(
     prepareEnrollment,
   });
   await createModalSandboxPlugin({
-    backendFactory: () => backend.backend,
-    imageBackendFactory: (credentials) => ({
+    backendFactory: (credentials) => ({
+      ...backend.backend,
       accountIdentity: async () =>
-        hash(
-          credentials.tokenId === SETTINGS.tokenId
-            ? "modal-account"
-            : "changed-account",
-        ),
-      build: async () => "im-built",
-      reconcile: async () => "im-built",
-      resolve: async (id) => id,
-      delete: async () => {},
+        credentials.tokenId === SETTINGS.tokenId
+          ? "modal-account"
+          : "changed-account",
+      create: (request) => backend.backend.create(request),
+      fromName: (appName, name) => backend.backend.fromName(appName, name),
     }),
     now: () => Date.now(),
     sleep: async () => {},
   })(fake.bb);
-  const store = new Catalogue(fake.bb.storage.database(), fake.bb.storage);
-  const recipe = store.putRecipe(
-    recipeInputSchema.parse({
-      projectId: PROJECT.id,
-      expectedRevision: 0,
-      dockerfileText: "RUN true",
-    }),
-  );
-  const context = store.putContext(PROJECT.id, {
-    recipeId: recipe.recipeId,
-    revision: 1,
-    source: {
-      hostId: "local",
-      path: "/project",
-      commit: "a".repeat(40),
-      dirty: [],
-      submodules: [],
-      lfs: [],
-    },
-    reviewedDirty: [],
-    files: [],
-  });
-  store.completeContext(context.contextId);
-  const { build } = store.start(
-    {
-      projectId: PROJECT.id,
-      recipeId: recipe.recipeId,
-      revision: 1,
-      contextId: context.contextId,
-      key: "test",
-    },
-    hash("modal-account"),
-    "bb-sandboxes",
-  );
-  store.db
-    .prepare("DELETE FROM build_requests WHERE build_id=?")
-    .run(build.buildId);
-  store.db
-    .prepare(
-      "UPDATE builds SET id=?,data=json_set(data,'$.buildId',?) WHERE id=?",
-    )
-    .run("test-build", "test-build", build.buildId);
-  store.ready("test-build", "im-built", {});
   const provider = fake.harness.registrations.machineProviders.get(PROVIDER_ID);
   if (provider === undefined)
     throw new Error("machine provider not registered");
   return {
     ...fake,
     provider,
-    store,
     backend,
     bootstrap,
     prepareEnrollment,
@@ -293,7 +248,7 @@ function createContext(
   return {
     project: PROJECT,
     gitRemote: null,
-    inputs: { buildId: "test-build" },
+    inputs: {},
     key,
     attempt: 1,
     report,
@@ -350,7 +305,7 @@ describe("Modal machine provider", () => {
     expect(harness.bootstrap).toHaveBeenLastCalledWith({
       key: "modal-machine-key",
       executor: { exec: expect.any(Function) },
-      daemon: { kind: "preinstalled" },
+      daemon: { kind: "install" },
       report,
       signal: expect.any(AbortSignal),
     });
@@ -443,7 +398,7 @@ describe("Modal machine provider", () => {
       ).rejects.toThrow("cancelled");
       const resource = checkpoint.mock.calls[0]?.[0];
       expect(resource).toMatchObject({
-        version: 4,
+        version: 5,
         key: "modal-machine-key",
         sandboxId: "sandbox-1",
         snapshotImageId: null,
@@ -491,7 +446,7 @@ describe("Modal machine provider", () => {
     });
     expect(result).toMatchObject({
       status: "failed",
-      message: "Modal image launches require a project",
+      message: "Select a project before creating a Modal machine",
     });
     expect(harness.backend.creates).toHaveLength(0);
   });
@@ -535,7 +490,7 @@ describe("Modal machine provider", () => {
     expect(harness.bootstrap).toHaveBeenLastCalledWith({
       key: "modal-machine-key",
       executor: { exec: expect.any(Function) },
-      daemon: { kind: "preinstalled" },
+      daemon: { kind: "install" },
       report,
       signal: lifecycleContext.signal,
     });
@@ -654,8 +609,10 @@ describe("Modal machine provider", () => {
       connected: false,
       terminated: false,
     });
-    await expect(harness.provider.resume?.(lifecycleContext)).resolves.toEqual({
-      resource: created.resource,
+    await expect(
+      harness.provider.resume?.(lifecycleContext),
+    ).resolves.toMatchObject({
+      resource: { sandboxId: "sandbox-1" },
     });
     expect(harness.backend.creates).toHaveLength(1);
     expect(harness.backend.states[0]).toMatchObject({
@@ -765,29 +722,19 @@ it("reconciles uncertain named allocations without creating or bootstrapping", a
   expect(test.prepareEnrollment).not.toHaveBeenCalled();
   await test.harness.lifecycle.dispose();
 });
-it("does not retain an image when enrollment preparation fails before allocation", async () => {
+it("does not build an image when enrollment preparation fails", async () => {
   const test = await setup();
-  try {
-    const store = new Catalogue(test.bb.storage.database(), test.bb.storage);
-    test.prepareEnrollment.mockRejectedValueOnce(
-      new Error("Configure machine access"),
-    );
-    expect(await test.provider.create(createContext())).toMatchObject({
-      status: "failed",
-    });
-    expect(store.protected("test-build")).toBe(false);
-    store.reference("test-build", "allocation", "interrupted-before-intent");
-    await test.provider.experimental_reconcileCleanup(
-      createContext("interrupted-before-intent"),
-    );
-    expect(store.protected("test-build")).toBe(false);
-    expect(test.backend.creates).toHaveLength(0);
-  } finally {
-    await test.harness.lifecycle.dispose();
-  }
+  test.prepareEnrollment.mockRejectedValueOnce(
+    new Error("Configure machine access"),
+  );
+  expect(await test.provider.create(createContext())).toMatchObject({
+    status: "failed",
+  });
+  expect(test.backend.image).not.toHaveBeenCalled();
+  expect(test.backend.creates).toHaveLength(0);
 });
 
-it("observes vendor deadlines and updates pinned project policy without plugin reload", async () => {
+it("observes vendor deadlines and applies current lifecycle settings without plugin reload", async () => {
   const harness = await setup();
   const created = await harness.provider.create(createContext());
   if (created.status !== "created") throw new Error("creation failed");
@@ -800,22 +747,11 @@ it("observes vendor deadlines and updates pinned project policy without plugin r
     state: "running",
     expiresAt: 24 * 60 * 60_000,
   });
-  harness.store.configure({
-    projectId: PROJECT.id,
-    expectedRevision: 0,
-    resources: { cpuCores: 1, memoryMiB: 4096 },
-    policy: { idleMinutes: 2, lifetimeMinutes: 4, retentionDays: 7 },
-  });
+  await harness.harness.setSettings({ idleMinutes: "2", timeoutMinutes: "4" });
   expect(await harness.provider.experimental_policy?.(context)).toEqual({
     idleSuspendMs: 120_000,
-    retireAfterMs: 7 * 86400_000,
+    retireAfterMs: 30 * 86400_000,
     deadlineLeadMs: 120_000,
-  });
-  expect(await harness.provider.experimental_observe?.(context)).toMatchObject({
-    resource: {
-      policyRevision: 1,
-      policy: { idleMinutes: 2, lifetimeMinutes: 4, retentionDays: 7 },
-    },
   });
 });
 
@@ -838,4 +774,65 @@ it("blocks observation and resume after the configured account identity changes"
     "pinned Modal account",
   );
   expect(harness.backend.creates).toHaveLength(1);
+});
+
+it("retries an image build failure without recording an uncertain sandbox allocation", async () => {
+  const test = await setup();
+  test.backend.image.mockRejectedValueOnce(new Error("image build failed"));
+  expect(await test.provider.create(createContext())).toMatchObject({
+    status: "failed",
+    message: "image build failed",
+  });
+  expect(test.backend.creates).toHaveLength(0);
+  expect(
+    await test.bb.storage.kv.get("allocation/modal-machine-key"),
+  ).toBeUndefined();
+  expect(await test.provider.create(createContext())).toMatchObject({
+    status: "created",
+  });
+  expect(test.backend.creates[0]?.image).toEqual({
+    type: "image",
+    imageId: "im-standard",
+  });
+});
+
+it("does not allocate a sandbox when cancelled during standard image preparation", async () => {
+  const test = await setup();
+  const controller = new AbortController();
+  test.backend.image.mockImplementationOnce(async () => {
+    controller.abort(new Error("cancelled"));
+    return "im-standard";
+  });
+  await expect(
+    test.provider.create({ ...createContext(), signal: controller.signal }),
+  ).rejects.toThrow("cancelled");
+  expect(test.backend.creates).toHaveLength(0);
+  expect(test.bootstrap).not.toHaveBeenCalled();
+});
+
+it("rejects removed image-selection inputs", async () => {
+  const test = await setup();
+  expect(
+    await test.provider.create({
+      ...createContext(),
+      inputs: { buildId: "old-build" },
+    }),
+  ).toMatchObject({ status: "failed" });
+  expect(test.backend.creates).toHaveLength(0);
+});
+
+it("exposes account connection checks through RPC and CLI without allocation", async () => {
+  const test = await setup();
+  expect(await test.harness.behavior.callRpc("account.inspect", {})).toEqual({
+    available: true,
+    message: "Connected to Modal (bb-sandboxes)",
+  });
+  expect(
+    await test.harness.behavior.runCli(["account", "inspect", "--json"]),
+  ).toMatchObject({ exitCode: 0 });
+  expect(await test.harness.behavior.runCli(["image", "build"])).toMatchObject({
+    exitCode: 1,
+  });
+  expect(test.backend.image).not.toHaveBeenCalled();
+  expect(test.backend.creates).toHaveLength(0);
 });

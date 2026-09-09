@@ -901,11 +901,11 @@ composer regions). Thread Hover
 Cards installs from the BB Community marketplace (source: the bb-plugins
 repo).
 
-Modal image setup uses `bb modal project inspect`, `recipe put/show/list`,
-`context upload`, `image build/logs/status/cancel/list/gc`, and
-`project configure/show`. Every command supports `--json`. Read the Modal
-plugin's command reference for required arguments, reviewed dirty contexts,
-revision CAS, explicit rebuilds, and garbage collection grace periods.
+Modal setup uses `bb modal account inspect --json` to check credentials, then
+`bb machine create --provider modal-sandbox --project PROJECT --json` to create a
+machine. Its bundled Dockerfile builds automatically and is reused across projects;
+core installs the daemon on demand. Project dependencies and services belong in
+`.bb-env-setup.sh`. Read the plugin's skill for connection and lifecycle details.
 
 Contributed commands may accept `--stdin`: the calling CLI transfers up to
 256 KiB of multiline text as `--input-text`, without reading server-local files.

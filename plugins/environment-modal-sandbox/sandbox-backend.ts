@@ -1,3 +1,9 @@
+import { createHash } from "node:crypto";
+import { z } from "zod";
+import {
+  ensureStandardImage,
+  type StandardImageRequest,
+} from "./standard-image.js";
 import { ModalClient, NotFoundError, type Sandbox } from "modal";
 
 export interface SandboxExecResult {
@@ -31,7 +37,6 @@ export function createSandboxExecutor(sandbox: SandboxHandle) {
 }
 
 export type SandboxImage =
-  | { type: "registry"; reference: string }
   | { type: "snapshot"; imageId: string }
   | { type: "image"; imageId: string };
 
@@ -47,6 +52,9 @@ export interface SandboxCreateRequest {
 }
 
 export interface SandboxBackend {
+  accountIdentity(): Promise<string>;
+  ensureStandardImage(request: StandardImageRequest): Promise<string>;
+  close(): void;
   observe(request: {
     sandboxId: string;
     appName: string;
@@ -132,6 +140,14 @@ export const createModalBackend: SandboxBackendFactory = (credentials) => {
     tokenSecret: credentials.tokenSecret,
   });
   return {
+    close: () => client.close(),
+    ensureStandardImage: (request) => ensureStandardImage(credentials, request),
+    async accountIdentity() {
+      const identity = z
+        .object({ workspaceId: z.string().min(1) })
+        .parse(await client.cpClient.tokenInfoGet({}));
+      return createHash("sha256").update(identity.workspaceId).digest("hex");
+    },
     async observe(request) {
       const app = await client.apps.fromName(request.appName);
       const result = await client.cpClient.sandboxList({
@@ -156,10 +172,7 @@ export const createModalBackend: SandboxBackendFactory = (credentials) => {
       const app = await client.apps.fromName(request.appName, {
         createIfMissing: true,
       });
-      const image =
-        request.image.type === "registry"
-          ? client.images.fromRegistry(request.image.reference)
-          : await client.images.fromId(request.image.imageId);
+      const image = await client.images.fromId(request.image.imageId);
       const sandbox = await client.sandboxes.create(app, image, {
         name: request.name,
         timeoutMs: request.timeoutMs,
