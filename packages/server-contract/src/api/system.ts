@@ -258,9 +258,7 @@ export const systemEnvironmentProviderSchema = z.object({
     projectless: z.boolean(),
   }),
   inputs: jsonValueSchema.nullable(),
-  presentation: z
-    .object({ groupsThreads: z.boolean(), kindLabel: z.string().nullable() })
-    .nullable(),
+  presentation: z.object({ groupsThreads: z.boolean() }).nullable(),
   acceptsEmptyInputs: z.boolean(),
   availability: z
     .discriminatedUnion("status", [

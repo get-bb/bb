@@ -2251,7 +2251,7 @@ export interface NormalizedPluginEnvironmentProvider {
   requires: NormalizedPluginEnvironmentProviderRequirements;
   inputs: StandardSchemaV1 | null;
   inputsJsonSchema: JsonValue | null;
-  presentation: { groupsThreads: boolean; kindLabel: string | null } | null;
+  presentation: { groupsThreads: boolean } | null;
   availability: NonNullable<
     PluginEnvironmentProviderDeclaration["availability"]
   > | null;
@@ -2341,7 +2341,6 @@ export function validatePluginEnvironmentProviderDeclaration(
         : z
             .object({
               groupsThreads: z.boolean(),
-              kindLabel: z.string().trim().min(1).nullable().default(null),
             })
             .strict()
             .parse(declaration.presentation),

@@ -25,7 +25,7 @@ export default async function riftPlugin(bb: BbPluginApi): Promise<void> {
   bb.experimental_environments.register({
     id: RIFT_ENVIRONMENT_PROVIDER_ID,
     displayName: "Rift workspace",
-    presentation: { groupsThreads: true, kindLabel: "Rift workspace" },
+    presentation: { groupsThreads: true },
     icon: "Copy",
     requires: { gitCheckout: true },
     inputs: riftInputsSchema,

@@ -269,9 +269,7 @@ export function EnvironmentRow({
               provider={providerLookup.provider}
               className="size-3.5 shrink-0 text-muted-foreground"
             />
-            <span className="min-w-0 truncate">
-              {providerLookup.provider.presentation?.kindLabel ?? "Environment"}
-            </span>
+            <span className="min-w-0 truncate">Environment</span>
           </span>
         ) : (
           <DetailRowIconLabel icon={infoDisplay.icon}>

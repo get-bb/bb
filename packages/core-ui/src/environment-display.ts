@@ -16,7 +16,6 @@ export interface EnvironmentDisplayProvider {
   id: string;
   displayName: string;
   icon: string | null;
-  presentation?: { groupsThreads: boolean; kindLabel: string | null } | null;
 }
 
 export type EnvironmentDisplayProviderLookup =
@@ -104,9 +103,6 @@ export function formatEnvironmentDisplay({
     environment.environmentProviderId,
     providerLookup,
   );
-  const kindLabel =
-    resolveEnvironmentDisplayProvider(providerLookup)?.presentation
-      ?.kindLabel ?? providerLabel;
   const localityLabel = host.locality === "remote" ? "Remote" : "Local";
   const namedLabel =
     providerLabel ??
@@ -117,7 +113,9 @@ export function formatEnvironmentDisplay({
     modeLabel: environment.name ?? lifecycleLabel ?? namedLabel,
     compactModeLabel: environment.name ?? lifecycleLabel ?? namedCompactLabel,
     typeLabel:
-      kindLabel === null ? localityLabel : `${kindLabel} · ${localityLabel}`,
+      providerLabel === null
+        ? localityLabel
+        : `${providerLabel} · ${localityLabel}`,
     providerLabel,
     lifecycle,
     id: environment.id,

@@ -22,6 +22,6 @@ Inputs: `branch: { kind: "default" } | { kind: "named", name: string }`; `copy: 
 
 The provider owns its attempt directory, uses per-attempt path keys and the standard five-minute retirement after the last thread is archived. Core runs `.bb-env-teardown.sh` before invoking provider removal with `rift remove`; if Rift fails, direct deletion is confined to that exact managed attempt. Rift normally moves removed copies into adjacent `.trash`, so removal does not reclaim disk space. Run `rift gc` manually to reclaim that storage, following upstream Rift semantics; BB does not run garbage collection automatically. Source initialization remains after retirement.
 
-`presentation: { groupsThreads: true, kindLabel: "Rift workspace" }` groups threads sharing a copy and labels its info tab. This changes presentation only; the environment's real `isWorktree` remains false.
+`presentation: { groupsThreads: true }` groups threads sharing a copy. This changes presentation only; the environment's real `isWorktree` remains false.
 
 Hook support depends on the installed Rift version. The tested npm release 0.0.10 supports postcreate; master also documents precreate and remove hooks. BB delegates those hooks to Rift rather than emulating newer CLI behavior.

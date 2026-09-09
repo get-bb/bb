@@ -730,7 +730,7 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
         summary:
           "Offers plugin-provisioned places a thread can run, picked like any environment. With this, a plugin can:",
         bullets: [
-          "Set optional presentation.groupsThreads and presentation.kindLabel for sidebar grouping and info labels; omitted presentation groups actual Git worktrees",
+          "Set optional presentation.groupsThreads for sidebar grouping; omitted presentation groups actual Git worktrees",
           "Declare a provider with a display name and icon, picked in New Thread or bb thread spawn --environment-provider",
           "Use a host glyph, plugin-relative asset, declared icon, or React provider icon slot",
           "Declare the project facts it consumes in one place — requires.projectCheckout, requires.gitCheckout, requires.gitRemote, requires.projectless — which structurally decides where the picker offers it",
