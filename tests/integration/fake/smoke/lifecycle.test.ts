@@ -92,7 +92,7 @@ describe.sequential("fake provider smoke lifecycle integration", () => {
   it("starts parent and child threads with the shared runtime config", async () => {
     const record = await recordScriptedEchoRequests();
     try {
-      await withHarness(async (harness) => {
+      await withHarness({ builtinPlugins: ["bb-guide"] }, async (harness) => {
         const project = await createProjectFixture(
           harness,
           "Parent Thread Smoke",
