@@ -44,8 +44,8 @@
   one of `time`, `thread-busy`, `turn-starting`, `provisioning`, `host-offline`,
   `interaction`, or `plugin` (which also carries `pluginId` and a human reason).
 - Inspect and act on queued dispatches with `bb thread queue list [<thread-id>]
-  [--wait-holder plugin:<plugin-id>]`, `bb thread queue send <thread-id>
-  <message-id>` (send it now, bypassing every plugin wait and its schedule), and
+[--wait-holder plugin:<plugin-id>]`, `bb thread queue send <thread-id>
+<message-id>` (send it now, bypassing every plugin wait and its schedule), and
   `bb thread queue delete <thread-id> <message-id>` (discard it). Omitting the
   thread lists every queued row in the workspace. The list shows `Waiting on`
   and `Send at` columns. Several queued rows on one thread are normal. The SDK
@@ -63,13 +63,13 @@
 - Use `bb thread count` when you need how many threads there are, never a list
   plus a row count: the count is a database aggregate, while `bb thread list`
   pages a bounded window and would miscount. Narrow with `--status
-  <pending|idle|starting|active|stopping|error>`, `--host`, `--provider`,
+<pending|idle|starting|active|stopping|error>`, `--host`, `--provider`,
   `--project`, and `--parent <id|none>` (`none` counts only threads that have no
   parent at all; pass an id to count one thread's children). Archived, deleted,
   and hidden threads are excluded. Plain output is one number; `--by
-  host|provider|project` prints a count per group (a thread with none groups
+host|provider|project` prints a count per group (a thread with none groups
   under `-`) and the total. The SDK equivalent is `threads.count({ status,
-  hostId, providerId, projectId, parentThreadId, groupBy })`.
+hostId, providerId, projectId, parentThreadId, groupBy })`.
 - `bb thread tell` steers by default, delivering the message immediately into
   the active turn. Use `--mode queue` when the message is non-urgent and the
   agent can finish its current work first. Steer is especially important for a
@@ -83,7 +83,7 @@
   thread's queue with `waitingOn.kind: "interaction"` and dispatches once the
   interaction settles; the CLI prints that it is queued and why. That outcome is
   not a failure, so do not resend. For a hard stop use `bb thread stop
-  <thread-id>`. `--json` reports `delivery` as `sent` or `queued`. If the thread
+<thread-id>`. `--json` reports `delivery` as `sent` or `queued`. If the thread
   fails while the message is queued (its provider exited), the message waits
   until somebody retries the thread.
 

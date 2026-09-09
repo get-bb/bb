@@ -15,7 +15,6 @@ import type {
   HostDaemonContributedEnvEntry,
   HostDaemonInjectedSkillSource,
 } from "@bb/host-daemon-contract";
-import { renderTemplate } from "@bb/templates";
 import { ApiError } from "../../errors.js";
 import type { AppDeps, LoggedWorkSessionDeps } from "../../types.js";
 import { throwEnvironmentNotReady } from "../lib/lifecycle-api-errors.js";
@@ -44,10 +43,6 @@ import {
 } from "./workspace-agent-instructions.js";
 import { resolveDeprecatedWorkspaceProvisionType } from "../environments/environment-response.js";
 
-const STANDARD_AGENT_INSTRUCTIONS = renderTemplate(
-  "standardAgentAppendInstructions",
-  {},
-);
 const UPDATE_ENVIRONMENT_DIRECTORY_INSTRUCTIONS =
   "If the user asks you to move this thread to another checkout, worktree, or directory, make sure the target directory exists, then call `update_environment_directory` with its absolute path. After it succeeds, stop work in the current turn; future turns will run in the updated environment.";
 
@@ -251,7 +246,7 @@ export async function resolveThreadRuntimeCommandConfig(
   const dynamicTools = dynamicToolContributions.map(
     (contribution) => contribution.tool,
   );
-  const instructionSections = [STANDARD_AGENT_INSTRUCTIONS];
+  const instructionSections: string[] = [];
   for (const contribution of dynamicToolContributions) {
     if (!contribution.instructions) continue;
     if (contribution.pluginId === null) {

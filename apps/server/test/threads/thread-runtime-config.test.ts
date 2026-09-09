@@ -753,7 +753,7 @@ describe("thread runtime config", () => {
         name: "release-notes",
         rootPath: path.join(harness.config.dataDir, "skills"),
       });
-      const builtinSourceRootPath = await writeRuntimeSkill({
+      await writeRuntimeSkill({
         name: "bb-cli",
         rootPath: harness.config.builtinSkillsRootPath,
       });
@@ -803,14 +803,6 @@ describe("thread runtime config", () => {
       });
 
       expect(command.injectedSkillSources).toEqual([
-        {
-          kind: "tree",
-          sourceType: "builtin",
-          name: "bb-cli",
-          description: "Use bb-cli when server runtime tests run.",
-          treeHash: readSkillTreeManifest(builtinSourceRootPath).treeHash,
-          entryPath: "SKILL.md",
-        },
         {
           kind: "workspace-path",
           sourceType: "project",
@@ -1197,12 +1189,12 @@ describe("thread runtime config", () => {
           }),
         }),
       ]);
-      expect(runtimeConfig.instructions).toContain(
+      expect(runtimeConfig.instructions).not.toContain(
         "You are working inside bb, an agentic IDE",
       );
-      expect(runtimeConfig.instructions).toContain("bb status");
-      expect(runtimeConfig.instructions).toContain("bb guide");
-      expect(runtimeConfig.instructions).toContain("Markdown links");
+      expect(runtimeConfig.instructions).not.toContain("bb status");
+      expect(runtimeConfig.instructions).not.toContain("bb guide");
+      expect(runtimeConfig.instructions).not.toContain("Markdown links");
       expect(runtimeConfig.instructions).toContain(
         "update_environment_directory",
       );
@@ -1256,7 +1248,7 @@ describe("thread runtime config", () => {
       );
 
       expect(runtimeConfig.instructionMode).toBe("append");
-      expect(runtimeConfig.instructions).toContain(
+      expect(runtimeConfig.instructions).not.toContain(
         "You are working inside bb, an agentic IDE",
       );
       expect(runtimeConfig.instructions).toContain(

@@ -152,7 +152,7 @@ function skillId(identitySeed: string, logicalPath: string): string {
 
 function listServerOwnedSkills(deps: AppDeps): SkillSummary[] {
   return resolveServerOwnedSkillCatalogEntries({
-    builtinSkillsRootPath: deps.config.builtinSkillsRootPath,
+    builtinSkillsRootPath: null,
     dataDir: deps.config.dataDir,
     logger: deps.logger,
     skillTreeRegistry: deps.skillTreeRegistry,

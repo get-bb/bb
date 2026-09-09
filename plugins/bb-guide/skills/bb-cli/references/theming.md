@@ -4,7 +4,7 @@ How to write a good bb app theme: the design model, the full design-token
 reference (what every CSS variable drives), and how to set colors and fonts.
 Read this before authoring or editing a built-in theme or a custom stylesheet.
 
-The *palette* is global and server-stored; light/dark *mode* is a separate
+The _palette_ is global and server-stored; light/dark _mode_ is a separate
 per-client setting that the palette layers on top of. You ship one stylesheet
 that handles both modes.
 
@@ -48,8 +48,13 @@ Provide two blocks using these exact selectors — `:root, .light` for light mod
 and `.dark` for dark:
 
 ```css
-:root, .light { /* light overrides */ }
-.dark { /* dark overrides */ }
+:root,
+.light {
+  /* light overrides */
+}
+.dark {
+  /* dark overrides */
+}
 ```
 
 `:root` matches in both modes, so anything you put only in `:root, .light`
@@ -93,62 +98,62 @@ semantic** tokens; the rest derive.
 
 **Anchors — set first; everything below keys off them:**
 
-| token | drives |
-|---|---|
+| token      | drives                                                                                                                          |
+| ---------- | ------------------------------------------------------------------------------------------------------------------------------- |
 | `--canvas` | base surface: page/content background, cards, popovers, sidebar, and (via mixes) every neutral fill, border, and chrome surface |
-| `--ink` | base text/foreground color, and the strength of every neutral fill/border (ink mixed into canvas) |
+| `--ink`    | base text/foreground color, and the strength of every neutral fill/border (ink mixed into canvas)                               |
 
 **Surfaces & chrome — auto-derive from `--canvas`/`--ink`; leave alone unless you want one element to differ:**
 
-| token | drives | derives |
-|---|---|---|
-| `--background` | main content-area background | `= --canvas` |
-| `--card`, `--popover` | card surfaces; dropdown/menu/popover/tooltip surfaces | `= --canvas` |
-| `--secondary`, `--accent` | subtle fills: secondary buttons, hovered list rows, highlights | ink 8% |
-| `--muted` | muted fill: badges, chips, inset blocks | ink 11% |
-| `--border` | default component borders (cards, dividers) | ink 14% |
-| `--border-hairline` | the finest 1px separators | ink ~15% |
-| `--border-seam` | resizable app-shell boundaries: sidebar↔content, split panes, and side panels | ink ~10% |
-| `--border-seam-vertical` | compatibility alias for `--border-seam`; prefer the orientation-neutral token | `= --border-seam` |
-| `--input` | input/control field borders | ink ~30% |
-| `--surface-recessed` | sunken inset wells (code/diagram backgrounds) | translucent ink |
-| `--surface-raised` | faintly lifted panels | translucent ink |
-| `--surface-scrim` | **frosted top bars** — the thread/page header (`bg-surface-scrim`, blurred) | canvas 92% |
-| `--state-hover`, `--state-active` | translucent hover / pressed overlays on rows & buttons | translucent ink |
-| `--sidebar`, `--sidebar-foreground`, `--sidebar-accent`, `--sidebar-border` | left sidebar surface, its text, hovered items, borders | canvas/ink mixes |
+| token                                                                       | drives                                                                        | derives           |
+| --------------------------------------------------------------------------- | ----------------------------------------------------------------------------- | ----------------- |
+| `--background`                                                              | main content-area background                                                  | `= --canvas`      |
+| `--card`, `--popover`                                                       | card surfaces; dropdown/menu/popover/tooltip surfaces                         | `= --canvas`      |
+| `--secondary`, `--accent`                                                   | subtle fills: secondary buttons, hovered list rows, highlights                | ink 8%            |
+| `--muted`                                                                   | muted fill: badges, chips, inset blocks                                       | ink 11%           |
+| `--border`                                                                  | default component borders (cards, dividers)                                   | ink 14%           |
+| `--border-hairline`                                                         | the finest 1px separators                                                     | ink ~15%          |
+| `--border-seam`                                                             | resizable app-shell boundaries: sidebar↔content, split panes, and side panels | ink ~10%          |
+| `--border-seam-vertical`                                                    | compatibility alias for `--border-seam`; prefer the orientation-neutral token | `= --border-seam` |
+| `--input`                                                                   | input/control field borders                                                   | ink ~30%          |
+| `--surface-recessed`                                                        | sunken inset wells (code/diagram backgrounds)                                 | translucent ink   |
+| `--surface-raised`                                                          | faintly lifted panels                                                         | translucent ink   |
+| `--surface-scrim`                                                           | **frosted top bars** — the thread/page header (`bg-surface-scrim`, blurred)   | canvas 92%        |
+| `--state-hover`, `--state-active`                                           | translucent hover / pressed overlays on rows & buttons                        | translucent ink   |
+| `--sidebar`, `--sidebar-foreground`, `--sidebar-accent`, `--sidebar-border` | left sidebar surface, its text, hovered items, borders                        | canvas/ink mixes  |
 
 **Accent — set `--primary` (+ foreground); these follow it:**
 
-| token | drives | derives |
-|---|---|---|
-| `--primary` | primary buttons, active/accent states, links, focus ring, selection | set |
-| `--primary-foreground` | text/icons drawn on a `--primary` fill | set |
-| `--ring`, `--sidebar-ring` | keyboard focus outline | `= --primary` |
-| `--surface-selected`, `--surface-selected-border` | selected-row tint and its outline | primary 16% / 35% |
-| `--file-accent` | file-path titles in the timeline (the one tint in otherwise-neutral text) | set |
+| token                                             | drives                                                                    | derives           |
+| ------------------------------------------------- | ------------------------------------------------------------------------- | ----------------- |
+| `--primary`                                       | primary buttons, active/accent states, links, focus ring, selection       | set               |
+| `--primary-foreground`                            | text/icons drawn on a `--primary` fill                                    | set               |
+| `--ring`, `--sidebar-ring`                        | keyboard focus outline                                                    | `= --primary`     |
+| `--surface-selected`, `--surface-selected-border` | selected-row tint and its outline                                         | primary 16% / 35% |
+| `--file-accent`                                   | file-path titles in the timeline (the one tint in otherwise-neutral text) | set               |
 
 **Text tiers — set these (they do NOT auto-derive; use the `color-mix` recipe so contrast tracks the anchors):**
 
-| token | drives |
-|---|---|
-| `--foreground` | primary body text (auto `= --ink`; usually leave it) |
-| `--muted-foreground` | secondary text: metadata, timestamps, labels (highest-contrast secondary tier) |
-| `--subtle-foreground` | low-emphasis text: captions, hints, placeholders |
-| `--readback-foreground` | settled/closed-turn machinery text (recede tier between muted and subtle) |
+| token                   | drives                                                                         |
+| ----------------------- | ------------------------------------------------------------------------------ |
+| `--foreground`          | primary body text (auto `= --ink`; usually leave it)                           |
+| `--muted-foreground`    | secondary text: metadata, timestamps, labels (highest-contrast secondary tier) |
+| `--subtle-foreground`   | low-emphasis text: captions, hints, placeholders                               |
+| `--readback-foreground` | settled/closed-turn machinery text (recede tier between muted and subtle)      |
 
 **Semantic / status — set each to a recognizable hue (these carry meaning; don't flatten them to neutral):**
 
-| token | drives |
-|---|---|
-| `--destructive` | destructive buttons/fills (delete; failing/closed PR) |
-| `--destructive-foreground` | text/icons on a `--destructive` fill |
-| `--destructive-text` | text-only destructive (must clear ~4.5:1 on the canvas — give dark mode a lighter value) |
-| `--surface-destructive`, `--surface-destructive-border` | destructive-tinted surfaces/outlines (auto-derive from `--destructive`) |
-| `--warning`, `--warning-text` | warning fills / warning text |
-| `--attention` | attention indicator (amber dot) |
-| `--success` | success states: passing checks, open PR |
-| `--diff-added`, `--diff-removed` | added/removed line colors in diffs |
-| `--pr-merged` | merged-PR purple (the universal merged color) |
+| token                                                   | drives                                                                                   |
+| ------------------------------------------------------- | ---------------------------------------------------------------------------------------- |
+| `--destructive`                                         | destructive buttons/fills (delete; failing/closed PR)                                    |
+| `--destructive-foreground`                              | text/icons on a `--destructive` fill                                                     |
+| `--destructive-text`                                    | text-only destructive (must clear ~4.5:1 on the canvas — give dark mode a lighter value) |
+| `--surface-destructive`, `--surface-destructive-border` | destructive-tinted surfaces/outlines (auto-derive from `--destructive`)                  |
+| `--warning`, `--warning-text`                           | warning fills / warning text                                                             |
+| `--attention`                                           | attention indicator (amber dot)                                                          |
+| `--success`                                             | success states: passing checks, open PR                                                  |
+| `--diff-added`, `--diff-removed`                        | added/removed line colors in diffs                                                       |
+| `--pr-merged`                                           | merged-PR purple (the universal merged color)                                            |
 
 **Terminal — set only if remapping:** `--ansi-0` … `--ansi-15` (the 16 ANSI
 colors) and `--ansi-bg-fg-0` … `--ansi-bg-fg-15` (the readable text drawn on each
@@ -164,11 +169,11 @@ Three font tokens, overridden the same way as colors. Fonts are mode-independent
 so set them in the `:root, .light` block only. Always end the stack with a
 generic family (`sans-serif` / `monospace` / `serif`) as a fallback.
 
-| token | drives |
-|---|---|
-| `--font-sans` | the entire app UI / body text (`body` uses it) |
-| `--font-mono` | code blocks, diffs, file paths and previews, terminal-style text |
-| `--font-serif` | serif prose (rarely used in the UI) |
+| token          | drives                                                           |
+| -------------- | ---------------------------------------------------------------- |
+| `--font-sans`  | the entire app UI / body text (`body` uses it)                   |
+| `--font-mono`  | code blocks, diffs, file paths and previews, terminal-style text |
+| `--font-serif` | serif prose (rarely used in the UI)                              |
 
 The browser must be able to load the family. Three ways:
 
@@ -176,7 +181,8 @@ The browser must be able to load the family. Three ways:
    available); common OS fonts like `Menlo`, `"SF Mono"`, `Consolas`, `Georgia`
    work by name:
    ```css
-   :root, .light {
+   :root,
+   .light {
      --font-sans: "Helvetica Neue", system-ui, sans-serif;
      --font-mono: "SF Mono", Menlo, monospace;
    }
@@ -185,7 +191,8 @@ The browser must be able to load the family. Three ways:
    in the file (an `@import` after any other rule is ignored), then reference it:
    ```css
    @import url("https://fonts.googleapis.com/css2?family=JetBrains+Mono&family=Sora&display=swap");
-   :root, .light {
+   :root,
+   .light {
      --font-sans: "Sora", sans-serif;
      --font-mono: "JetBrains Mono", monospace;
    }
@@ -197,7 +204,10 @@ The browser must be able to load the family. Three ways:
      src: url("https://example.com/myfont.woff2") format("woff2");
      font-display: swap;
    }
-   :root, .light { --font-sans: "My Font", sans-serif; }
+   :root,
+   .light {
+     --font-sans: "My Font", sans-serif;
+   }
    ```
 
 Options 2–3 fetch the font over the network when the theme applies, so keep the
@@ -210,7 +220,8 @@ whichever anchors are active, so the `.dark` block only re-sets anchors, accent,
 and semantics:
 
 ```css
-:root, .light {
+:root,
+.light {
   --canvas: #eceff4;
   --ink: #2e3440;
   --primary: #5e81ac;

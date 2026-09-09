@@ -133,5 +133,9 @@
   "environment-personal-workspace": {
     "category": "environments",
     "screenshots": []
+  },
+  "bb-guide": {
+    "category": "memory-and-context",
+    "screenshots": []
   }
 }

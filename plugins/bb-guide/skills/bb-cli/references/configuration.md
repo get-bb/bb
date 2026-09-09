@@ -78,3 +78,13 @@
   machines only when more than one is enrolled.
 - `bb skill cli-skills-status` reports per machine whether the installed copy is
   `installed`, `outdated`, `missing`, or `unknown` (disconnected or unreachable).
+
+## BB guide instructions and skills
+
+Settings → Installed plugins → BB guide controls the BB introduction and the
+four bundled skills. All settings default to true. Use
+`bb plugin config bb-guide set <key> true|false` with `introduction`, `skills`
+(the master skill switch), `bbCli`, `pluginAuthoring`, `skillCreator`, or `submitPlugin`.
+Disabling the plugin removes its introduction and skills. Changes apply when
+agent configuration is next assembled; independently installed copies remain
+available through their own sources.

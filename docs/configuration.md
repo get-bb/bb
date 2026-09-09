@@ -501,7 +501,7 @@ For repo-specific guidance, create `.bb/AGENTS.md` at the workspace root:
 <workspace>/.bb/AGENTS.md
 ```
 
-The file contents are appended to bb's standard agent instructions when a
+The file contents are appended alongside enabled plugin instructions when a
 provider session starts, so the guidance applies regardless of which provider
 runs. When both files exist, `<dataDir>/AGENTS.md` is appended first and
 `<workspace>/.bb/AGENTS.md` second. An empty or whitespace-only file is treated
@@ -516,11 +516,12 @@ for guidance you want every bb thread to receive regardless of provider.
 
 User-level bb skills live under `<dataDir>/skills/<name>/SKILL.md`; for the
 packaged app this is usually `~/.bb/skills`. Project skills live under
-`<workspace>/.bb/skills/<name>/SKILL.md` and override same-named user or built-in
-skills. Running plugins contribute a third tier: every `skills/<name>/SKILL.md`
-in an installed plugin (relocatable via the manifest's `bb.skills` field) is
-auto-imported while the plugin is loaded — overridden by project and user
-skills by name, overriding built-ins.
+`<workspace>/.bb/skills/<name>/SKILL.md` and override same-named user or plugin
+skills. Running plugins contribute another tier: `skills/<name>/SKILL.md`
+files in an installed plugin (relocatable via the manifest's `bb.skills` field)
+are imported while the plugin is loaded, subject to its agent configuration.
+Project and user skills override plugin skills by name. BB guide owns the
+four bundled core skills and can disable them together or individually.
 
 bb indexes each provider's native skill roots for that provider's `/` command
 menu. Each provider plugin declares where its agent keeps skills and slash
@@ -1167,3 +1168,20 @@ The Browser Automation plugin supports desktop attachment and headless Chrome on
 On each selected browser host, the plugin's host worker installs that release automatically on first use under `<plugin host dataDir>/runtime/npm/`, using the host's `npm` with scripts disabled, verifying the registry signature and SLSA provenance, downloading the matching GitHub release binary, and checking its digest before launch. Later sessions reuse the verified install without network access. Headless mode discovers installed Chrome/Chromium or uses `<plugin host dataDir>/runtime/chrome`. These files belong to the plugin host storage directory; they are not paths on the server or invoking agent host, and the user's global npm installation is never modified. No runtime sandbox-disabling setting is provided.
 
 For isolated development smoke tests only, `DEV_BROWSER_SMOKE_BINARY` selects the absolute binary path for the runtime smoke, `DEV_BROWSER_SMOKE_CHROME` selects the absolute Chrome path, and `DEV_BROWSER_SMOKE_NO_SANDBOX=1` enables the fixture's no-sandbox wrapper where the test host requires it. The `smoke:install` task performs a real install of the pinned release into a disposable directory. These variables do not change normal plugin runtime behavior.
+
+## Agent guidance plugin settings
+
+BB guide is installed and enabled by default. In Settings → Installed plugins
+→ BB guide, `introduction` controls the BB introduction, `skills` controls all
+four bundled skills, and `bbCli`, `pluginAuthoring`, `skillCreator`, and `submitPlugin` control
+individual skills. All default to true. Disabling BB guide removes its
+introduction and skills; other plugins and independently installed skill
+copies retain their own configuration.
+
+Connect's `sendRemoteInstructions` setting ("Tell agents about remote access")
+defaults to true. When false it suppresses Connect's active/recent remote-use
+message without disabling sharing.
+
+Use `bb plugin config <id> set <key> true|false` or the SDK's
+`plugins.updateSettings({ pluginId, values })`. These settings apply when
+agent configuration is next assembled, not retroactively to existing text.

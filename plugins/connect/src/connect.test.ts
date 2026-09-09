@@ -1416,6 +1416,48 @@ describe("connect plugin", () => {
     );
   });
 
+  it("toggles remote instructions while preserving active and recent usage conditions", async () => {
+    const status: ConnectStatus = {
+      state: "connected",
+      paired: true,
+      handle: "test",
+      url: "https://test.getbb.app",
+      dashboardUrl: "https://getbb.app",
+      lastError: null,
+      nextRetryAt: null,
+      since: Date.now(),
+      remoteClients: 1,
+      lastRemoteActivityAt: null,
+      shares: [],
+    };
+    const statusSpy = vi
+      .spyOn(ConnectTunnel.prototype, "status")
+      .mockReturnValue(status);
+    try {
+      const { harness } = await loadPlugin();
+      const instructions = () =>
+        harness.registrations.instructionProvider?.({
+          threadId: "thr_test",
+          projectId: "proj_test",
+        });
+      expect(instructions()).toContain("bb connect expose");
+      await harness.behavior.setSettings({ sendRemoteInstructions: false });
+      expect(instructions()).toBeNull();
+      await harness.behavior.setSettings({ sendRemoteInstructions: true });
+      expect(instructions()).toContain("https://test.getbb.app");
+      statusSpy.mockReturnValue({ ...status, remoteClients: 0 });
+      expect(instructions()).toBeNull();
+      statusSpy.mockReturnValue({
+        ...status,
+        remoteClients: 0,
+        lastRemoteActivityAt: Date.now(),
+      });
+      expect(instructions()).toContain("bb connect expose");
+    } finally {
+      statusSpy.mockRestore();
+    }
+  });
+
   it("registers contributeInstructions", async () => {
     const { harness } = await loadPlugin();
     expect(harness.registrations.instructionProvider).not.toBeNull();

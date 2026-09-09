@@ -45,7 +45,7 @@ const REPO_ROOT = fileURLToPath(new URL("../../../../../", import.meta.url));
 
 const SKILL_ROOT = fileURLToPath(
   new URL(
-    "../../../src/services/skills/builtin-skills/bb-plugin-authoring/",
+    "../../../../../plugins/bb-guide/skills/bb-plugin-authoring/",
     import.meta.url,
   ),
 );
