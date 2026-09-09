@@ -1068,10 +1068,7 @@ export function ModelReasoningPicker({
                       if (option) handleReasoningSelect(option.value);
                     }}
                     disabled={previewSelectionBlocked}
-                    className={cn(
-                      "flex gap-1",
-                      isCompactViewport && "flex-wrap justify-start",
-                    )}
+                    className="flex gap-1"
                   >
                     {activeReasoningOptions.map((option) => (
                       <ToggleGroupItem
@@ -1080,7 +1077,7 @@ export function ModelReasoningPicker({
                         aria-label={option.label}
                         className={cn(
                           "h-6 min-w-0 flex-auto shrink-0 whitespace-nowrap rounded-sm px-1 text-xs font-normal shadow-none data-[state=on]:bg-state-active data-[state=on]:text-foreground",
-                          isCompactViewport && "h-9 flex-none text-sm",
+                          isCompactViewport && "h-9 text-sm",
                           LIST_HOVER_TRANSITION,
                         )}
                       >
