@@ -91,6 +91,8 @@ function CreateMachineContent({
   });
   const [projectId, setProjectId] = useState<string | null>(null);
   const { providers: machineProviders } = useSystemMachineProviders();
+  const alternativeProviders =
+    machineProviders?.filter((provider) => provider.id !== "manual") ?? [];
   const machineProviderInputsSlots = usePluginSlots().machineProviderInputs;
   const [selectedMachineProvider, setSelectedMachineProvider] =
     useState<SystemMachineProvider | null>(null);
@@ -207,7 +209,7 @@ function CreateMachineContent({
       onClick={() => void showOtherOptions()}
       className="text-xs text-subtle-foreground underline underline-offset-2 hover:text-foreground"
     >
-      Choose a machine provider
+      Other ways to add a machine
     </button>
   );
 
@@ -304,10 +306,10 @@ function CreateMachineContent({
               Preparing enrollment command…
             </p>
           )}
-        {otherOptions && accessReady && (machineProviders?.length ?? 0) > 0 ? (
+        {otherOptions && accessReady && alternativeProviders.length > 0 ? (
           <div className="space-y-2">
             <div className="space-y-1 rounded-md border border-border p-1">
-              {machineProviders?.map((provider) => {
+              {alternativeProviders.map((provider) => {
                 const unavailable =
                   provider.availability?.status === "unavailable";
                 return (
@@ -467,20 +469,43 @@ function CreateMachineContent({
               ? "Waiting for the machine to connect…"
               : ""}
           </p>
-          {providerOptionsLink}
+          {alternativeProviders.length > 0 && providerOptionsLink}
         </div>
+      )}
+      {!otherOptions && createMachine.isPending && launchId && (
+        <p className="text-xs text-subtle-foreground">
+          Closing keeps this command valid until it expires. Invalidate it to
+          cancel setup.
+        </p>
+      )}
+      {otherOptions && !createMachine.isPending && (
+        <Button
+          variant="ghost"
+          onClick={() => {
+            autoStarted.current = false;
+            setOtherOptions(false);
+            setSelectedMachineProvider(null);
+            setProjectId(null);
+            setMachineInputs(null);
+            createKey.current = null;
+            createMachine.reset();
+          }}
+        >
+          Use a command instead
+        </Button>
       )}
       <DialogFooter>
         {createMachine.isPending && launchId ? (
           <Button
             variant="outline"
             onClick={() =>
-              void sdk.hosts
-                .cancel({ id: launchId })
-                .then(() => createController.current?.abort())
+              void sdk.hosts.cancel({ id: launchId }).then(() => {
+                createController.current?.abort();
+                onOpenChange(false);
+              })
             }
           >
-            Cancel enrollment
+            {otherOptions ? "Cancel setup" : "Invalidate command"}
           </Button>
         ) : null}
         <Button variant="ghost" onClick={() => onOpenChange(false)}>

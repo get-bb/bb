@@ -60,7 +60,7 @@ afterEach(() => {
   accessState.ready = false;
 });
 
-it("lists manual alongside other providers once access is ready and never mints a legacy join code", async () => {
+it("lists alternative providers without duplicating the manual command flow", async () => {
   accessState.ready = true;
   vi.mocked(sdk.hosts.listProviders).mockResolvedValue(
     ["manual", "ssh", "modal", "digitalocean", "tailscale"].map((id) => ({
@@ -123,20 +123,18 @@ it("lists manual alongside other providers once access is ready and never mints 
   );
   await screen.findByRole("button", { name: "Copy command" });
   fireEvent.click(
-    screen.getByRole("button", { name: "Choose a machine provider" }),
+    screen.getByRole("button", { name: "Other ways to add a machine" }),
   );
-  fireEvent.click(
-    await screen.findByRole("button", { name: "Existing machine" }),
-  );
+  await screen.findByRole("button", { name: "ssh" });
+  expect(screen.queryByRole("button", { name: "Existing machine" })).toBeNull();
+  fireEvent.click(screen.getByRole("button", { name: "ssh" }));
   for (const name of ["ssh", "modal", "digitalocean", "tailscale"])
     expect(screen.getByRole("button", { name })).toBeDefined();
   await screen.findByRole("option", { name: "Fixture" });
   fireEvent.change(screen.getByRole("combobox", { name: "Machine project" }), {
     target: { value: "project-fixture" },
   });
-  fireEvent.click(
-    screen.getByRole("button", { name: "Create Existing machine" }),
-  );
+  fireEvent.click(screen.getByRole("button", { name: "Create ssh machine" }));
   expect((await screen.findByRole("status")).textContent).toContain(
     "Run the enrollment command shown in the picker",
   );
@@ -148,7 +146,7 @@ it("lists manual alongside other providers once access is ready and never mints 
     scope: "launch",
     signal: expect.any(AbortSignal),
   });
-  fireEvent.click(screen.getByRole("button", { name: "Cancel enrollment" }));
+  fireEvent.click(screen.getByRole("button", { name: "Cancel setup" }));
   await waitFor(() =>
     expect(sdk.hosts.cancel).toHaveBeenCalledWith({ id: "launch-manual" }),
   );
@@ -199,7 +197,7 @@ it("offers access alternatives, not machine providers, while remote access is mi
       .getAttribute("href"),
   ).toBe("/settings/machines#advanced-machine-settings");
   expect(
-    screen.queryByRole("button", { name: "Choose a machine provider" }),
+    screen.queryByRole("button", { name: "Other ways to add a machine" }),
   ).toBeNull();
   expect(sdk.hosts.submit).not.toHaveBeenCalled();
 });
