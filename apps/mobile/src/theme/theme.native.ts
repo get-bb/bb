@@ -41,6 +41,7 @@ export interface NativeThemeTokens {
   borderHairline: string;
   borderSeam: string;
   borderSeamVertical: string;
+  brandDiscord: string;
   canvas: string;
   card: string;
   cardForeground: string;
@@ -150,6 +151,7 @@ export const nativeThemes: Record<BuiltInThemeId, NativeThemeModes> = {
       borderHairline: "#d2d3dc",
       borderSeam: "#d2d3dc",
       borderSeamVertical: "#d2d3dc",
+      brandDiscord: "#5865f2",
       canvas: "#eff1f5",
       card: "#eff1f5",
       cardForeground: "#4c4f69",
@@ -251,6 +253,7 @@ export const nativeThemes: Record<BuiltInThemeId, NativeThemeModes> = {
       borderHairline: "#54566b",
       borderSeam: "#54566b",
       borderSeamVertical: "#54566b",
+      brandDiscord: "#cdd6f4",
       canvas: "#1e1e2e",
       card: "#1e1e2e",
       cardForeground: "#cdd6f4",
@@ -354,6 +357,7 @@ export const nativeThemes: Record<BuiltInThemeId, NativeThemeModes> = {
       borderHairline: "#c7c7c7",
       borderSeam: "#c7c7c7",
       borderSeamVertical: "#c7c7c7",
+      brandDiscord: "#5865f2",
       canvas: "#ffffff",
       card: "#ffffff",
       cardForeground: "#000000",
@@ -455,6 +459,7 @@ export const nativeThemes: Record<BuiltInThemeId, NativeThemeModes> = {
       borderHairline: "#383838",
       borderSeam: "#383838",
       borderSeamVertical: "#383838",
+      brandDiscord: "#ffffff",
       canvas: "#000000",
       card: "#000000",
       cardForeground: "#ffffff",
@@ -558,6 +563,7 @@ export const nativeThemes: Record<BuiltInThemeId, NativeThemeModes> = {
       borderHairline: "#cfd1d8",
       borderSeam: "#cfd1d8",
       borderSeamVertical: "#cfd1d8",
+      brandDiscord: "#5865f2",
       canvas: "#f8f8f2",
       card: "#f8f8f2",
       cardForeground: "#282a36",
@@ -659,6 +665,7 @@ export const nativeThemes: Record<BuiltInThemeId, NativeThemeModes> = {
       borderHairline: "#676974",
       borderSeam: "#676974",
       borderSeamVertical: "#676974",
+      brandDiscord: "#f8f8f2",
       canvas: "#282a36",
       card: "#282a36",
       cardForeground: "#f8f8f2",
@@ -762,6 +769,7 @@ export const nativeThemes: Record<BuiltInThemeId, NativeThemeModes> = {
       borderHairline: "#d7cfac",
       borderSeam: "#d7cfac",
       borderSeamVertical: "#d7cfac",
+      brandDiscord: "#5865f2",
       canvas: "#fbf1c7",
       card: "#fbf1c7",
       cardForeground: "#3c3836",
@@ -863,6 +871,7 @@ export const nativeThemes: Record<BuiltInThemeId, NativeThemeModes> = {
       borderHairline: "#645f53",
       borderSeam: "#645f53",
       borderSeamVertical: "#645f53",
+      brandDiscord: "#ebdbb2",
       canvas: "#282828",
       card: "#282828",
       cardForeground: "#ebdbb2",
@@ -966,6 +975,7 @@ export const nativeThemes: Record<BuiltInThemeId, NativeThemeModes> = {
       borderHairline: "#c9ccd3",
       borderSeam: "#c9ccd3",
       borderSeamVertical: "#c9ccd3",
+      brandDiscord: "#5865f2",
       canvas: "#eceff4",
       card: "#eceff4",
       cardForeground: "#2e3440",
@@ -1067,6 +1077,7 @@ export const nativeThemes: Record<BuiltInThemeId, NativeThemeModes> = {
       borderHairline: "#636975",
       borderSeam: "#636975",
       borderSeamVertical: "#636975",
+      brandDiscord: "#d8dee9",
       canvas: "#2e3440",
       card: "#2e3440",
       cardForeground: "#d8dee9",
@@ -1170,6 +1181,7 @@ export const nativeThemes: Record<BuiltInThemeId, NativeThemeModes> = {
       borderHairline: "#d1d4bd",
       borderSeam: "#d1d4bd",
       borderSeamVertical: "#d1d4bd",
+      brandDiscord: "#5865f2",
       canvas: "#fdf6e3",
       card: "#fdf6e3",
       cardForeground: "#073642",
@@ -1271,6 +1283,7 @@ export const nativeThemes: Record<BuiltInThemeId, NativeThemeModes> = {
       borderHairline: "#34505a",
       borderSeam: "#34505a",
       borderSeamVertical: "#34505a",
+      brandDiscord: "#93a1a1",
       canvas: "#002b36",
       card: "#002b36",
       cardForeground: "#93a1a1",
