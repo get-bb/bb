@@ -10,6 +10,7 @@ RUN apt-get update \
         gh \
         jq \
         ripgrep \
+        procps \
         build-essential \
         python3 \
     && rm -rf /var/lib/apt/lists/*
