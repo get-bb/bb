@@ -1,0 +1,43 @@
+{
+  "name": "bb-plugin-machine-tailscale",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Discover tailnet machines and connect them privately to bb",
+  "engines": {
+    "bb": ">=0.0"
+  },
+  "bb": {
+    "name": "Tailscale machines",
+    "description": "Discover tailnet machines and connect them privately to bb",
+    "branding": {
+      "icon": "./tailscale-logo.svg"
+    },
+    "server": "./server.ts",
+    "app": "./app.tsx"
+  },
+  "keywords": [
+    "bb-plugin"
+  ],
+  "scripts": {
+    "test": "vitest run --config vitest.config.ts",
+    "typecheck": "tsc --noEmit",
+    "lint": "oxlint *.ts *.tsx"
+  },
+  "dependencies": {
+    "zod": "^4.3.6",
+    "bb-machine-ssh": "workspace:*"
+  },
+  "devDependencies": {
+    "@get-bb/plugin-sdk": "workspace:*",
+    "@testing-library/react": "^16.3.2",
+    "@types/node": "^22.0.0",
+    "@types/react": "^19.0.0",
+    "jsdom": "^29.0.1",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "typescript": "npm:@typescript/typescript6@^6.0.2",
+    "vitest": "^4.1.1",
+    "@bb/db": "workspace:*"
+  }
+}

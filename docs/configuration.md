@@ -1279,3 +1279,14 @@ server gh credentials to machines; `true` enables them again. In Machines →
 Advanced settings, the automatic GH_TOKEN switch controls the same setting.
 This does not log the server out or suppress an explicit custom GH_TOKEN.
 Changes apply to new turns, setup commands and terminals.
+
+## Tailscale machine access
+
+The `machine-tailscale` plugin validates a dedicated HTTPS Tailscale Serve
+endpoint with `bb tailscale configure <port>` and persists its port/authority
+in plugin storage. `bb tailscale status` shows the required loopback target.
+It never changes Serve configuration. Use General `defaultMachineAccess:
+"tailscale"` for already-networked machines, or the Tailscale picker’s explicit
+access choice. `machineServerUrl` may be empty for this provider. Machine
+inputs are `deviceId`, `username`, optional absolute `nodeDirectory`, and
+`accessProviderId` (`tailscale` or `default`). See the plugin’s skill and README.
