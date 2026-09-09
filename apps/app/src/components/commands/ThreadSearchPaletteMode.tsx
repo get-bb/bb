@@ -174,7 +174,7 @@ export function ThreadSearchPaletteMode({
 
   const startNewThread = useCallback(() => {
     runAfterClose(() => runner.dispatch("thread.new", null));
-  }, [runAfterClose, runner.dispatch]);
+  }, [runAfterClose, runner]);
 
   const scrollOnNextHighlightRef = useRef(false);
   useEffect(() => {
