@@ -805,7 +805,7 @@ describe("CommandPalette", () => {
     scope.focus();
     fireEvent.keyDown(scope, { key: "Enter" });
     const options = await screen.findByRole("menu", {
-      name: "Thread scope options",
+      name: "Thread scope",
     });
     fireEvent.click(
       within(options).getByRole("menuitemradio", { name: "Active" }),
@@ -841,7 +841,7 @@ describe("CommandPalette", () => {
     const scope = screen.getByRole("button", { name: "Thread scope" });
     fireEvent.keyDown(scope, { key: "Enter" });
     const options = await screen.findByRole("menu", {
-      name: "Thread scope options",
+      name: "Thread scope",
     });
     expect(options.closest('[data-testid="command-palette"]')).toBeNull();
     expect(options.closest("[data-palette-results-clip]")).toBeNull();
@@ -864,9 +864,7 @@ describe("CommandPalette", () => {
     expect(scope.textContent).toContain("Archived");
     expect(screen.getByTestId("command-palette")).toBeTruthy();
     await waitFor(() => {
-      expect(
-        screen.queryByRole("menu", { name: "Thread scope options" }),
-      ).toBeNull();
+      expect(screen.queryByRole("menu", { name: "Thread scope" })).toBeNull();
       expect(document.activeElement).toBe(input);
     });
   });
@@ -883,7 +881,7 @@ describe("CommandPalette", () => {
     fireEvent.keyDown(scope, { key: "Enter" });
 
     const options = await screen.findByRole("menu", {
-      name: "Thread scope options",
+      name: "Thread scope",
     });
     const all = within(options).getByRole("menuitemradio", { name: "All" });
     await waitFor(() => expect(document.activeElement).toBe(all));
@@ -891,9 +889,7 @@ describe("CommandPalette", () => {
 
     await waitFor(() => {
       expect(scope.getAttribute("aria-expanded")).toBe("false");
-      expect(
-        screen.queryByRole("menu", { name: "Thread scope options" }),
-      ).toBeNull();
+      expect(screen.queryByRole("menu", { name: "Thread scope" })).toBeNull();
       expect(document.activeElement).toBe(input);
     });
     expect(scope.textContent).toContain("All");
@@ -911,7 +907,7 @@ describe("CommandPalette", () => {
     scope.focus();
     fireEvent.keyDown(scope, { key: "Enter" });
     const options = await screen.findByRole("menu", {
-      name: "Thread scope options",
+      name: "Thread scope",
     });
     await waitFor(() =>
       expect(document.activeElement).toBe(
@@ -923,9 +919,7 @@ describe("CommandPalette", () => {
     input.focus();
 
     await waitFor(() => {
-      expect(
-        screen.queryByRole("menu", { name: "Thread scope options" }),
-      ).toBeNull();
+      expect(screen.queryByRole("menu", { name: "Thread scope" })).toBeNull();
       expect(document.activeElement).toBe(input);
     });
     expect(input.getAttribute("value")).toBe("preserved query");
@@ -1014,7 +1008,7 @@ describe("CommandPalette", () => {
     scope.focus();
     fireEvent.keyDown(scope, { key: "ArrowDown" });
     const scopeOptions = await screen.findByRole("menu", {
-      name: "Thread scope options",
+      name: "Thread scope",
     });
     expect(
       within(scopeOptions)
@@ -1043,14 +1037,12 @@ describe("CommandPalette", () => {
     expect(within(results).getByRole("option").textContent).toContain(
       "matching-active",
     );
-    expect(
-      screen.queryByRole("menu", { name: "Thread scope options" }),
-    ).toBeNull();
+    expect(screen.queryByRole("menu", { name: "Thread scope" })).toBeNull();
 
     scope.focus();
     fireEvent.keyDown(scope, { key: "Enter" });
     const reopenedOptions = await screen.findByRole("menu", {
-      name: "Thread scope options",
+      name: "Thread scope",
     });
     expect(
       within(reopenedOptions)
