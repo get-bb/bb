@@ -10,6 +10,27 @@
 - Use `curl` against the server API to isolate frontend issues from server behavior.
 - Use the CLI to inspect state: `pnpm bb thread show <id>`, `pnpm bb project list`, `pnpm bb status`. From source, use `pnpm bb:dev`.
 
+## Filesystem Watcher Startup Failures
+
+The daemon runs the native filesystem watcher in a child process. A child has
+15 seconds to report ready. Exits, startup timeouts, spawn failures, and
+unresponsive children share a budget of five automatic restarts; a successful
+heartbeat resets the budget. After six consecutive failures, the daemon stops
+spawning watchers and reports an actionable error to existing and new watch
+subscribers. Live file updates remain disabled for that daemon process. Inspect
+`host-daemon-stdio.log` for the child's original error, update or repair the BB
+installation, then restart that host daemon (or relaunch BB for its local host).
+Adding another watched path does not bypass the failure budget.
+
+Desktop `afterPack` checks the actual packaged watcher child using the packaged
+Electron executable with `ELECTRON_RUN_AS_NODE=1`. The check requires readiness,
+a successful subscription, a real file event, unsubscribe acknowledgement, and
+clean exit in a fresh temporary directory. It launches no BB server or daemon
+and reads no BB store. Packaging therefore requires a host that can execute the
+target binary and use its native filesystem watcher; missing bindings, native
+load failures, and unavailable backends fail the build. A sandbox that denies
+FSEvents cannot verify macOS packaging.
+
 ## Local Dev QA Launcher
 
 Use `scripts/bb-dev-app` when validating changes in the desktop dev app or helping QA from this checkout:

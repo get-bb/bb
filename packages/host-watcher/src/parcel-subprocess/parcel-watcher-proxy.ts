@@ -54,6 +54,8 @@ const DEFAULT_PING_INTERVAL_MS = 5_000;
 const DEFAULT_PING_TIMEOUT_MS = 15_000;
 const DEFAULT_BASE_RESTART_DELAY_MS = 250;
 const DEFAULT_MAX_RESTART_DELAY_MS = 30_000;
+const STARTUP_TIMEOUT_MS = 15_000;
+const MAX_CONSECUTIVE_RESTARTS = 5;
 
 function toEventBatch(
   events: SerializedParcelEvent[],
@@ -76,7 +78,9 @@ export function createParcelWatcherProxy(
   let channel: ChildChannel | null = null;
   let childReady = false;
   let disposed = false;
+  let terminalError: Error | null = null;
   let consecutiveRestarts = 0;
+  let startupTimer: ReturnType<typeof setTimeout> | null = null;
   let respawnTimer: ReturnType<typeof setTimeout> | null = null;
   let restarting = false;
   let idCounter = 0;
@@ -94,6 +98,38 @@ export function createParcelWatcherProxy(
     if (pingTimer !== null) {
       clearInterval(pingTimer);
       pingTimer = null;
+    }
+  }
+
+  function stopStartupTimer(): void {
+    if (startupTimer !== null) {
+      clearTimeout(startupTimer);
+      startupTimer = null;
+    }
+  }
+
+  function failSubscriptions(): void {
+    terminalError = new Error(
+      `Filesystem watcher unavailable after ${MAX_CONSECUTIVE_RESTARTS + 1} consecutive child failures. ` +
+        "Live file updates are disabled. Update or repair BB, then restart the BB host daemon to retry.",
+    );
+    log("error", terminalError.message, {
+      activeSubscriptions: subscriptions.size,
+    });
+    const failed = [...subscriptions.values()];
+    subscriptions.clear();
+    for (const record of failed) {
+      try {
+        record.callback(terminalError, []);
+      } catch (error) {
+        log(
+          "warn",
+          "Watcher subscriber failed while reporting unavailability",
+          {
+            watchError: error instanceof Error ? error.message : String(error),
+          },
+        );
+      }
     }
   }
 
@@ -145,18 +181,41 @@ export function createParcelWatcherProxy(
   }
 
   function startChild(): void {
-    if (disposed) {
+    if (disposed || terminalError !== null) {
       return;
     }
     childReady = false;
-    const spawned = options.spawnChannel();
+    let spawned: ChildChannel;
+    try {
+      spawned = options.spawnChannel();
+    } catch (error) {
+      log("warn", "Watcher child could not start", {
+        watchError: error instanceof Error ? error.message : String(error),
+      });
+      scheduleRespawn();
+      return;
+    }
     channel = spawned;
+    startupTimer = setTimeout(() => {
+      log("warn", "Watcher child did not become ready; killing");
+      killAndRespawn();
+    }, STARTUP_TIMEOUT_MS);
+    startupTimer.unref?.();
     spawned.onMessage((message) => handleChildMessage(spawned, message));
     spawned.onExit(() => handleChildExit(spawned));
   }
 
   function scheduleRespawn(): void {
-    if (disposed || channel !== null || respawnTimer !== null) {
+    if (
+      disposed ||
+      terminalError !== null ||
+      channel !== null ||
+      respawnTimer !== null
+    ) {
+      return;
+    }
+    if (consecutiveRestarts >= MAX_CONSECUTIVE_RESTARTS) {
+      failSubscriptions();
       return;
     }
     restarting = true;
@@ -188,6 +247,7 @@ export function createParcelWatcherProxy(
     const dying = channel;
     channel = null;
     childReady = false;
+    stopStartupTimer();
     stopPing();
     dying.kill();
     scheduleRespawn();
@@ -199,11 +259,12 @@ export function createParcelWatcherProxy(
     }
     channel = null;
     childReady = false;
+    stopStartupTimer();
     stopPing();
     if (disposed) {
       return;
     }
-    log("warn", "Watcher child exited; respawning", {
+    log("warn", "Watcher child exited", {
       activeSubscriptions: subscriptions.size,
     });
     scheduleRespawn();
@@ -218,8 +279,12 @@ export function createParcelWatcherProxy(
     }
     switch (message.kind) {
       case "ready":
+        stopStartupTimer();
         childReady = true;
         replaySubscriptions(restarting);
+        if (source !== channel) {
+          return;
+        }
         restarting = false;
         startPing();
         break;
@@ -268,6 +333,10 @@ export function createParcelWatcherProxy(
     if (disposed) {
       return Promise.reject(new Error("Parcel watcher proxy is disposed"));
     }
+    if (terminalError !== null) {
+      callback(terminalError, []);
+      return Promise.resolve({ async unsubscribe() {} });
+    }
     const id = nextId();
     subscriptions.set(id, { id, dir, opts, callback });
     if (channel !== null && childReady) {
@@ -285,6 +354,7 @@ export function createParcelWatcherProxy(
 
   function dispose(): void {
     disposed = true;
+    stopStartupTimer();
     stopPing();
     if (respawnTimer !== null) {
       clearTimeout(respawnTimer);

@@ -2,6 +2,7 @@ const { spawn } = require("node:child_process");
 const { chmod, readFile, readdir, writeFile } = require("node:fs/promises");
 const { createRequire } = require("node:module");
 const path = require("node:path");
+const { verifyPackagedWatcher } = require("./verify-packaged-watcher.cjs");
 
 const desktopPackageRoot = path.resolve(__dirname, "..");
 
@@ -270,6 +271,29 @@ async function afterPack(context) {
     arch: resolveArchName(context),
     electronVersion: resolveElectronVersion(),
     platform: context.electronPlatformName ?? process.platform,
+  });
+  const productFilename = context.packager.appInfo.productFilename;
+  const executablePath =
+    context.electronPlatformName === "darwin"
+      ? path.join(
+          context.appOutDir,
+          `${productFilename}.app`,
+          "Contents",
+          "MacOS",
+          productFilename,
+        )
+      : path.join(context.appOutDir, context.packager.executableName);
+  await verifyPackagedWatcher({
+    executablePath,
+    childEntry: path.join(
+      context.packager.getResourcesDir(context.appOutDir),
+      "app.asar.unpacked",
+      "node_modules",
+      "bb-app",
+      "host-daemon",
+      "dist",
+      "bb-parcel-watcher-child.mjs",
+    ),
   });
 }
 

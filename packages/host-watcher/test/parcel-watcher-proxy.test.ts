@@ -473,7 +473,7 @@ describe("createParcelWatcherProxy", () => {
     }
   });
 
-  it("backs off a rapid respawn but never permanently gives up", async () => {
+  it("backs off rapid respawns while the retry budget remains", async () => {
     vi.useFakeTimers();
     try {
       const { proxy, children, current } = createHarness({
