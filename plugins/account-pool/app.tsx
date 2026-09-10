@@ -1577,14 +1577,11 @@ function LoginDialog({
         )
       ) : (
         <>
-          <div>
-            <h3 className="text-base font-semibold">Sign in to {name}</h3>
-            <p className="mt-1 text-sm text-muted-foreground">
-              {provider === "claude"
-                ? "Sign in at claude.ai, then paste the code from the final page."
-                : "Open the verification page, sign in to ChatGPT, and enter this code."}
-            </p>
-          </div>
+          <p className="text-sm text-muted-foreground">
+            {provider === "claude"
+              ? "Sign in at claude.ai, then paste the code from the final page."
+              : "Open the verification page, sign in to ChatGPT, and enter this code."}
+          </p>
           {codexStep === null ? null : (
             <div
               className="rounded-lg border border-border bg-surface-recessed px-5 py-5 text-center font-mono text-2xl font-semibold tracking-widest"

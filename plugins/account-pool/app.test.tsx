@@ -336,6 +336,33 @@ describe("Account Pool settings", () => {
     expect(slot.getByText("Opus 7 day")).toBeTruthy();
   });
 
+  it("names the sign-in dialog once and keeps the step instructions", async () => {
+    const slot = render([], {
+      "codexLogin.start": () => ({
+        sessionId: "33333333-3333-4333-8333-333333333333",
+        verificationUri: "https://auth.openai.com/codex/device",
+        userCode: "ABCD-1234",
+        expiresAt: Date.now() + 600_000,
+        intervalMs: 60_000,
+      }),
+    });
+    fireEvent.click(
+      await slot.findByRole("button", { name: "Sign in to Codex" }),
+    );
+    const dialog = await slot.findByRole("dialog", {
+      name: "Sign in to Codex",
+    });
+    expect(
+      slot.getAllByRole("heading", { name: "Sign in to Codex" }),
+    ).toHaveLength(1);
+    expect(dialog.textContent).toContain(
+      "Open the verification page, sign in to ChatGPT, and enter this code.",
+    );
+    expect(
+      (await slot.findByLabelText("Codex user code")).textContent,
+    ).toContain("ABCD-1234");
+  });
+
   it("offers a fresh Codex login after device-code polling fails", async () => {
     let starts = 0;
     const slot = render([], {
