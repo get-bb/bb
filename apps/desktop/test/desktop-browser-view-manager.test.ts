@@ -1605,7 +1605,7 @@ describe("DesktopBrowserViewManager", () => {
     }
   });
 
-  it("reveals and focuses pages created through a controlled CDP connection", async () => {
+  it("requests reveal without activating the window for pages created through a controlled CDP connection", async () => {
     const { manager, hostWindow } = createRendererRecoveryFixture(91);
     const focus = vi.fn();
     const show = vi.fn();
@@ -1663,9 +1663,21 @@ describe("DesktopBrowserViewManager", () => {
           params: { url: "https://example.com/new" },
         }),
       );
-      await vi.waitFor(() => expect(focus).toHaveBeenCalledOnce());
-      expect(show).toHaveBeenCalledOnce();
-      expect(restore).toHaveBeenCalledOnce();
+      await vi.waitFor(() =>
+        expect(hostWindow.webContents.sentPayloads).toContainEqual(
+          expect.objectContaining({
+            threadId: "thread-1",
+            desktopTarget: {
+              hostId: "host-1",
+              instanceId: scope.instanceId,
+              generation: scope.generation,
+            },
+          }),
+        ),
+      );
+      expect(focus).not.toHaveBeenCalled();
+      expect(show).not.toHaveBeenCalled();
+      expect(restore).not.toHaveBeenCalled();
       const created = manager
         .listTabs({ hostWebContentsId: 91, threadId: "thread-1" })
         .find((tab) => tab.url === "https://example.com/new");
