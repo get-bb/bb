@@ -261,13 +261,8 @@ provider new threads use when neither the caller nor the project chose one
 `bb settings general defaultProviderId claude-code` (or `null`).
 
 Each provider's own options live on its plugin: Codex memory and native
-subagents under the Codex provider plugin, Claude Code memory, native
-subagents, the Workflow tool, and opt-in idle process release under the Claude
-Code provider plugin. Idle process release closes a quiescent Claude process
-after 30 seconds while keeping its bb thread resumable; it defaults off during
-its bake period and applies on the next start, resume, or turn command. Read and
-set provider options like any plugin setting, for example
-`bb plugin config provider-claude-code set idleQueryReleaseEnabled true`.
+subagents under the Codex provider plugin, and Claude Code memory, native
+subagents, and the Workflow tool under the Claude Code provider plugin.
 
 Claude Code starts without its Claude in Chrome browser tools when bb runs it,
 even when the interactive `claude` CLI has Chrome enabled by default. Turn the
