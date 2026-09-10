@@ -29,6 +29,8 @@ import {
   resetAllCrashedPluginSlotsForTest,
   resetCrashedPluginSlots,
 } from "./PluginSlotMount";
+import { appToast } from "@/components/ui/app-toast";
+import { makePluginRegistrationSet as registrationSet } from "@/test/fixtures/plugins";
 import {
   type BuiltInSidebarNavEntry,
   ResourceNavSidebarItem,
@@ -48,7 +50,52 @@ import {
 import { writeLastKnownPluginNavPanelChrome } from "@/lib/plugin-nav-panel-chrome";
 import { splitLayoutAtom } from "@/lib/split-layout/atoms";
 import { countPanes, findPaneByContent } from "@/lib/split-layout";
-import { makePluginRegistrationSet as registrationSet } from "@/test/fixtures/plugins";
+vi.mock("@/components/ui/app-toast", () => ({
+  appToast: {
+    dismiss: vi.fn(),
+    error: vi.fn(),
+    loading: vi.fn(),
+    message: vi.fn(),
+    success: vi.fn(),
+    warning: vi.fn(),
+  },
+}));
+
+function disabledPluginMutationResponse(id: string) {
+  return {
+    ok: true,
+    plugin: {
+      id,
+      source: `npm:${id}`,
+      rootDir: `/managed/plugins/${id}`,
+      version: "1.0.0",
+      provenance: "catalog",
+      isOrphanedBuiltin: false,
+      catalogEntryId: id,
+      publisherLabel: "BB Community",
+      sourceDisplay: `BB Community · ${id}`,
+      updateState: {},
+      enabled: false,
+      description: null,
+      name: id,
+      icon: "Puzzle",
+      iconUrl: null,
+      status: "disabled",
+      statusDetail: null,
+      handlerStats: { count: 0, totalMs: 0, maxMs: 0, errorCount: 0 },
+      services: [],
+      schedules: [],
+      cliCommand: null,
+      capabilities: [],
+      hasSettings: false,
+      app: { hasApp: true, bundle: null },
+      logoUrl: null,
+      logoDarkUrl: null,
+      providerIds: [],
+      icons: {},
+    },
+  };
+}
 
 vi.mock("@/components/sidebar/useSidebarReorderDnd", async (importOriginal) => {
   const actual =
@@ -116,6 +163,7 @@ interface RenderSidebarItemsOptions {
   storedVisibleKeys?: string[] | null;
   compactViewport?: boolean;
   compactCustomizeMode?: boolean;
+  initialEntry?: string;
   onCompactCustomizeModeChange?: (isCustomizing: boolean) => void;
   splitEnabled?: boolean;
 }
@@ -174,7 +222,7 @@ function renderSidebarItems(options: RenderSidebarItemsOptions = {}) {
     >
       <QueryClientProvider client={queryClient}>
         <Provider store={store}>
-          <MemoryRouter initialEntries={["/"]}>
+          <MemoryRouter initialEntries={[options.initialEntry ?? "/"]}>
             <SidebarProvider>
               <PluginNavSidebarItemsHarness options={options} />
               <LocationProbe />
@@ -262,7 +310,7 @@ async function openCustomizeFromContextMenu(
 }
 
 beforeEach(() => {
-  vi.mocked(useSidebarReorderDnd).mockClear();
+  vi.clearAllMocks();
   resetPluginFrontendBootStateForTest();
   markPluginFrontendsSettled();
   window.localStorage.clear();
@@ -277,6 +325,7 @@ afterEach(() => {
   resetPluginSlotStoreForTest();
   resetAllCrashedPluginSlotsForTest();
   vi.restoreAllMocks();
+  vi.unstubAllGlobals();
   window.localStorage.clear();
 });
 
@@ -336,7 +385,7 @@ describe("PluginNavSidebarItems", () => {
     expect(screen.queryByText("Plugins")).toBeNull();
   });
 
-  it("shows one plugin without a More row and reaches Customize from the row menu", async () => {
+  it("shows one plugin without a More row", () => {
     registerPanel("docs", "Docs");
     renderSidebarItems();
 
@@ -347,13 +396,9 @@ describe("PluginNavSidebarItems", () => {
       screen.queryByRole("button", { name: "Customize sidebar navigation" }),
     ).toBeNull();
 
-    await openCustomizeFromContextMenu(
-      screen.getByRole("button", { name: "Docs" }),
-    );
-
-    expect(customizeRows().map((row) => row.textContent?.trim())).toEqual([
-      "Docs",
-    ]);
+    expect(
+      screen.queryByRole("button", { name: "Docs panel options" }),
+    ).not.toBeNull();
   });
 
   it("keeps an accessory-less plugin row unchanged", () => {
@@ -396,6 +441,92 @@ describe("PluginNavSidebarItems", () => {
         .closest("[data-sidebar-hover-actions-mobile]")
         ?.getAttribute("data-sidebar-hover-actions-mobile"),
     ).toBe("always");
+  });
+
+  it("uses the focused plugin action set for the options button and right-click", async () => {
+    registerPanel("docs", "Docs");
+    renderSidebarItems({ splitEnabled: true });
+
+    fireEvent.pointerDown(
+      screen.getByRole("button", { name: "Docs panel options" }),
+      { button: 0 },
+    );
+    const dropdownMenu = await screen.findByRole("menu");
+    const expected = [
+      ["Open in split", "Columns2"],
+      ["View details", "Info"],
+      ["Disable", "Unavailable"],
+    ] as const;
+    const expectFocusedMenu = (menu: HTMLElement) => {
+      expect(
+        within(menu)
+          .getAllByRole("menuitem")
+          .map((item) => item.textContent?.trim()),
+      ).toEqual(expected.map(([label]) => label));
+      expect(within(menu).getAllByRole("separator")).toHaveLength(1);
+      for (const [label, icon] of expected) {
+        expect(
+          within(menu)
+            .getByRole("menuitem", { name: label })
+            .querySelector(`[data-icon="${icon}"]`),
+        ).not.toBeNull();
+      }
+      expect(within(menu).queryByText("Move to top")).toBeNull();
+      expect(within(menu).queryByText("Move to overflow")).toBeNull();
+      expect(within(menu).queryByText("Hide from sidebar")).toBeNull();
+    };
+    expectFocusedMenu(dropdownMenu);
+    fireEvent.keyDown(dropdownMenu, { key: "Escape" });
+    await waitFor(() => expect(screen.queryByRole("menu")).toBeNull());
+
+    fireEvent.contextMenu(screen.getByRole("button", { name: "Docs" }));
+    expectFocusedMenu(await screen.findByRole("menu"));
+  });
+
+  it("opens plugin details and omits split when the layout cannot split", async () => {
+    registerPanel("docs", "Docs");
+    renderSidebarItems();
+
+    fireEvent.pointerDown(
+      screen.getByRole("button", { name: "Docs panel options" }),
+      { button: 0 },
+    );
+    expect(
+      screen.queryByRole("menuitem", { name: "Open in split" }),
+    ).toBeNull();
+    fireEvent.click(
+      await screen.findByRole("menuitem", { name: "View details" }),
+    );
+    expect(screen.getByTestId("location-path").textContent).toBe(
+      "/plugins/docs",
+    );
+  });
+
+  it("disables a plugin and leaves its active panel", async () => {
+    const fetchMock = vi.fn<typeof fetch>(
+      async () =>
+        new Response(JSON.stringify(disabledPluginMutationResponse("docs")), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    registerPanel("docs", "Docs");
+    renderSidebarItems({ initialEntry: "/plugins/docs/main" });
+
+    fireEvent.pointerDown(
+      screen.getByRole("button", { name: "Docs panel options" }),
+      { button: 0 },
+    );
+    fireEvent.click(await screen.findByRole("menuitem", { name: "Disable" }));
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+    await waitFor(() =>
+      expect(screen.getByTestId("location-path").textContent).toBe(
+        "/plugins",
+      ),
+    );
+    expect(appToast.success).toHaveBeenCalledWith("Docs disabled");
   });
 
   it("bounds and truncates a long sidebar accessory", () => {
@@ -458,7 +589,7 @@ describe("PluginNavSidebarItems", () => {
       { button: 0 },
     );
     expect(
-      await screen.findByRole("menuitem", { name: "Hide from sidebar" }),
+      await screen.findByRole("menuitem", { name: "View details" }),
     ).not.toBeNull();
     expect(screen.queryByRole("menuitem", { name: "Move to top" })).toBeNull();
     expect(
@@ -782,10 +913,12 @@ describe("PluginNavSidebarItems", () => {
   it("keeps launch and visibility as distinct targets with a clear row hover state", async () => {
     const labels = ["One", "Two", "Three", "Four"];
     labels.forEach((label, index) => registerPanel(`plugin-${index}`, label));
-    const { store, unmount } = renderSidebarItems();
+    const { store, unmount } = renderSidebarItems({
+      builtInEntries: [builtInEntry("new-thread", "New thread")],
+    });
 
     await openCustomizeFromContextMenu(
-      screen.getByRole("button", { name: "One" }),
+      screen.getByRole("button", { name: "New thread" }),
     );
     const choices = screen.getAllByRole("checkbox");
     await waitFor(() =>
@@ -793,9 +926,10 @@ describe("PluginNavSidebarItems", () => {
         document.activeElement?.getAttribute(
           "data-sidebar-navigation-customize-launch",
         ),
-      ).toBe("plugin-0/main"),
+      ).toBe("__bb__/new-thread"),
     );
     expect(choices.map((choice) => choice.getAttribute("data-state"))).toEqual([
+      "checked",
       "checked",
       "checked",
       "checked",
@@ -803,16 +937,17 @@ describe("PluginNavSidebarItems", () => {
     ]);
     expect(
       document.querySelectorAll("[data-plugin-nav-customize-drag-handle]"),
-    ).toHaveLength(4);
+    ).toHaveLength(5);
     expect(
       customizeRows()[0]?.classList.contains("hover:bg-sidebar-accent"),
     ).toBe(true);
 
-    fireEvent.click(choices[0]!);
+    fireEvent.click(choices[1]!);
     expect(
       screen.getByRole("list", { name: "Sidebar navigation" }),
     ).not.toBeNull();
     expect(store.get(pluginNavVisiblePanelKeysAtom)).toEqual([
+      "__bb__/new-thread",
       "plugin-1/main",
       "plugin-2/main",
       "plugin-3/main",
@@ -1126,15 +1261,20 @@ describe("PluginNavSidebarItems", () => {
 
   it("preserves modifier-click when launching a plugin from Customize", async () => {
     registerPanel("docs", "Docs");
-    const { store } = renderSidebarItems({ splitEnabled: true });
+    const { store } = renderSidebarItems({
+      builtInEntries: [builtInEntry("new-thread", "New thread")],
+      splitEnabled: true,
+    });
 
     await openCustomizeFromContextMenu(
-      screen.getByRole("button", { name: "Docs" }),
+      screen.getByRole("button", { name: "New thread" }),
     );
-    const row = customizeRows()[0];
-    expect(row).toBeDefined();
+    const row = customizeRows().find((item) =>
+      item.textContent?.includes("Docs"),
+    );
+    if (!row) throw new Error("Docs customization row is missing");
     fireEvent.click(
-      within(row as HTMLElement).getByRole("button", { name: "Docs" }),
+      within(row).getByRole("button", { name: "Docs" }),
       { metaKey: true },
     );
 
