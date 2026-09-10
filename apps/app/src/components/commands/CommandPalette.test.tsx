@@ -319,6 +319,33 @@ describe("CommandPalette", () => {
     expect(document.activeElement).toBe(screen.getByTestId("origin"));
   });
 
+  it("keeps composition confirmation separate from command activation", async () => {
+    renderPalette();
+    openPalette();
+    await waitFor(() => expect(searchField()).toBeTruthy());
+
+    fireEvent.change(searchField(), { target: { value: ">toggle panel" } });
+    await waitFor(() =>
+      expect(selectedOption()?.textContent).toContain("Toggle panel"),
+    );
+    const input = searchField();
+    const confirmation = new KeyboardEvent("keydown", {
+      key: "Enter",
+      isComposing: true,
+      bubbles: true,
+      cancelable: true,
+    });
+    fireEvent(input, confirmation);
+
+    expect(confirmation.defaultPrevented).toBe(false);
+    expect(screen.queryByRole("combobox")).toBe(input);
+    expect(testState.calls).toEqual([]);
+
+    fireEvent.keyDown(input, { key: "Enter" });
+    await waitFor(() => expect(testState.calls).toEqual(["panel.toggle"]));
+    expect(screen.queryByRole("combobox")).toBeNull();
+  });
+
   it("runs a compact selection once after restoring focus", async () => {
     renderPalette(true);
     openPalette();
