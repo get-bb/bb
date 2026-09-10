@@ -1,5 +1,7 @@
 import { execFileSync, spawn } from "node:child_process";
 import {
+  chmodSync,
+  existsSync,
   mkdirSync,
   mkdtempSync,
   readdirSync,
@@ -23,7 +25,10 @@ import { resolvePortFromEnv } from "@bb/config/runtime";
 import {
   assertBbAppArtifacts,
   assertBbHostArtifacts,
+  calculateManagedProcessRestartDelay,
   completeFullStackSupervision,
+  delayMilliseconds,
+  MANAGED_PROCESS_RESTART_EXHAUSTED_EXIT_CODE,
   createDaemonEnv,
   createHostEnrollKeyRequestBody,
   createServerEnv,
@@ -2090,7 +2095,7 @@ describe("bb-app launcher", () => {
     }
   });
 
-  it("throttles repeated healthy child exits before restarting", async () => {
+  it("backs off repeated short-lived child lifecycles before restarting", async () => {
     const restartThrottle = new ControlledDelay();
     const supervisor = createFakeSupervisor();
     const firstServerRun = supervisor.serverRuns[0];
@@ -2125,7 +2130,7 @@ describe("bb-app launcher", () => {
       delay: restartThrottle,
       index: 1,
     });
-    expect(secondDelay.ms).toBe(1_000);
+    expect(secondDelay.ms).toBe(2_000);
     expect(supervisor.serverRuns).toHaveLength(2);
     expect(supervisor.processes.serverRun).toBeNull();
     secondDelay.resolve();
@@ -2140,6 +2145,403 @@ describe("bb-app launcher", () => {
     await expect(stopFakeSupervisor(supervisor, supervision)).resolves.toBe(
       "shutdown",
     );
+  });
+
+  it("aborts an active restart backoff during shutdown", async () => {
+    const shutdownController = new AbortController();
+    const supervisor = createFakeSupervisor();
+    const initialServerRun = supervisor.serverRuns[0];
+    let delaySignal: AbortSignal | undefined;
+    const supervision = superviseFullStackProcesses({
+      context: createTestStartContext(),
+      delayMilliseconds: ({ signal }) =>
+        new Promise<void>((resolvePromise) => {
+          delaySignal = signal;
+          signal?.addEventListener("abort", () => resolvePromise(), {
+            once: true,
+          });
+        }),
+      isHealthyServerAnswering: async () => false,
+      isShutdownRequested: supervisor.shutdownRequested,
+      processes: supervisor.processes,
+      shutdownSignal: shutdownController.signal,
+      startDaemon: supervisor.daemonStart,
+      startServer: supervisor.serverStart,
+    });
+
+    initialServerRun.exitWith({ code: 1, signal: null });
+    for (
+      let attempt = 0;
+      attempt < 50 && delaySignal === undefined;
+      attempt += 1
+    ) {
+      await delay({ ms: 1 });
+    }
+    expect(delaySignal).toBe(shutdownController.signal);
+
+    supervisor.setShutdownRequested(true);
+    const shutdownPromise = terminateManagedFullStackProcesses({
+      processes: supervisor.processes,
+      signal: "SIGTERM",
+    });
+    shutdownController.abort();
+
+    await expect(Promise.race([supervision, delay({ ms: 100 })])).resolves.toBe(
+      "shutdown",
+    );
+    await shutdownPromise;
+    expect(supervisor.serverRuns).toHaveLength(1);
+  });
+
+  it("cancels the default restart delay when shutdown is requested", async () => {
+    const shutdownController = new AbortController();
+    const restartDelay = delayMilliseconds({
+      ms: 60_000,
+      signal: shutdownController.signal,
+    });
+
+    shutdownController.abort();
+
+    await expect(
+      Promise.race([restartDelay, delay({ ms: 100 })]),
+    ).resolves.toBeUndefined();
+  });
+
+  it("resets restart backoff after a sustained child lifecycle", async () => {
+    const restartThrottle = new ControlledDelay();
+    const supervisor = createFakeSupervisor();
+    const initialServerRun = supervisor.serverRuns[0];
+    let now = 0;
+    const supervision = superviseFullStackProcesses({
+      context: createTestStartContext(),
+      delayMilliseconds: (args) => restartThrottle.delayMilliseconds(args),
+      isHealthyServerAnswering: async () => false,
+      isShutdownRequested: supervisor.shutdownRequested,
+      now: () => now,
+      processes: supervisor.processes,
+      startDaemon: supervisor.daemonStart,
+      startServer: supervisor.serverStart,
+    });
+
+    initialServerRun.exitWith({ code: 1, signal: null });
+    const firstDelay = await waitForDelayCall({
+      delay: restartThrottle,
+      index: 0,
+    });
+    expect(firstDelay.ms).toBe(1_000);
+    firstDelay.resolve();
+
+    const restartedServer = await waitForProcessReplacement({
+      currentRun: () => supervisor.processes.serverRun,
+      previousRun: initialServerRun,
+    });
+    now = 60_000;
+    expect(restartedServer).toBe(supervisor.serverRuns[1]);
+    supervisor.serverRuns[1]!.exitWith({
+      code: 1,
+      signal: null,
+    });
+    const secondDelay = await waitForDelayCall({
+      delay: restartThrottle,
+      index: 1,
+    });
+    expect(secondDelay.ms).toBe(1_000);
+
+    const stopped = stopFakeSupervisor(supervisor, supervision);
+    secondDelay.resolve();
+    await expect(stopped).resolves.toBe("shutdown");
+  });
+
+  it("uses a child exit time rather than another child's retry time for backoff reset", async () => {
+    const restartThrottle = new ControlledDelay();
+    const supervisor = createFakeSupervisor();
+    const initialServerRun = supervisor.serverRuns[0];
+    const initialDaemonRun = supervisor.daemonRuns[0];
+    let now = 0;
+    const supervision = superviseFullStackProcesses({
+      context: createTestStartContext(),
+      delayMilliseconds: (args) => restartThrottle.delayMilliseconds(args),
+      failureCounts: { daemon: 4, server: 0 },
+      isHealthyServerAnswering: async () => false,
+      isShutdownRequested: supervisor.shutdownRequested,
+      now: () => now,
+      processes: supervisor.processes,
+      startDaemon: supervisor.daemonStart,
+      startServer: supervisor.serverStart,
+    });
+
+    initialServerRun.exitWith({ code: 1, signal: null });
+    const serverDelay = await waitForDelayCall({
+      delay: restartThrottle,
+      index: 0,
+    });
+    now = 1;
+    initialDaemonRun.exitWith({ code: 1, signal: null });
+    await Promise.resolve();
+    now = 60_001;
+    serverDelay.resolve();
+
+    const daemonDelay = await waitForDelayCall({
+      delay: restartThrottle,
+      index: 1,
+    });
+    expect(daemonDelay.ms).toBe(16_000);
+
+    const stopped = stopFakeSupervisor(supervisor, supervision);
+    daemonDelay.resolve();
+    await expect(stopped).resolves.toBe("shutdown");
+  });
+
+  it("backs off then stops after bounded consecutive startup failures", async () => {
+    const restartThrottle = new ControlledDelay();
+    const supervisor = createFakeSupervisor();
+    const initialServerRun = supervisor.serverRuns[0];
+    const startupFailure = new Error("data directory is unwritable");
+    const supervision = superviseFullStackProcesses({
+      context: createTestStartContext(),
+      delayMilliseconds: (args) => restartThrottle.delayMilliseconds(args),
+      isHealthyServerAnswering: async () => false,
+      isShutdownRequested: supervisor.shutdownRequested,
+      processes: supervisor.processes,
+      startDaemon: supervisor.daemonStart,
+      startServer: async () => Promise.reject(startupFailure),
+    });
+
+    initialServerRun.exitWith({ code: 1, signal: null });
+    for (const [index, expectedDelay] of [
+      1_000, 2_000, 4_000, 8_000, 16_000, 32_000, 60_000,
+    ].entries()) {
+      const delayCall = await waitForDelayCall({
+        delay: restartThrottle,
+        index,
+      });
+      expect(delayCall.ms).toBe(expectedDelay);
+      delayCall.resolve();
+    }
+
+    const supervisionResult = await supervision;
+    expect(supervisionResult).toBe("failed");
+    expect(supervisor.serverRuns).toHaveLength(1);
+    expect(supervisor.daemonRuns[0]?.terminationSignals).toEqual(["SIGTERM"]);
+    const previousExitCode = process.exitCode;
+    try {
+      process.exitCode = 0;
+      await completeFullStackSupervision({
+        shutdownPromise: null,
+        supervisionResult,
+      });
+      expect(process.exitCode).toBe(
+        MANAGED_PROCESS_RESTART_EXHAUSTED_EXIT_CODE,
+      );
+    } finally {
+      process.exitCode = previousExitCode;
+    }
+  });
+
+  it("calculates capped exponential managed-process restart delays", () => {
+    expect(calculateManagedProcessRestartDelay(1)).toBe(1_000);
+    expect(calculateManagedProcessRestartDelay(2)).toBe(2_000);
+    expect(calculateManagedProcessRestartDelay(7)).toBe(60_000);
+  });
+
+  it("reports unreadable startup configuration with the terminal code", async () => {
+    const dataDir = mkdtempSync(join(tmpdir(), "bb-app-unreadable-data-"));
+    chmodSync(dataDir, 0o400);
+    const previousExitCode = process.exitCode;
+    const stderr = vi
+      .spyOn(process.stderr, "write")
+      .mockImplementation(() => true);
+
+    try {
+      process.exitCode = 0;
+      await runBbApp(["--data-dir", dataDir], { worktreePolicy: null });
+
+      expect(process.exitCode).toBe(
+        MANAGED_PROCESS_RESTART_EXHAUSTED_EXIT_CODE,
+      );
+      expect(stderr).toHaveBeenCalledWith(
+        expect.stringMatching(
+          /bb-app: could not read startup configuration.*(?:EACCES|permission denied)/u,
+        ),
+      );
+    } finally {
+      stderr.mockRestore();
+      chmodSync(dataDir, 0o700);
+      process.exitCode = previousExitCode;
+    }
+  });
+
+  it("reports an unwritable runtime file and exits with the terminal code", async () => {
+    const root = mkdtempSync(join(tmpdir(), "bb-app-runtime-file-"));
+    const dataDir = join(root, "data");
+    const appDistDir = join(root, "app");
+    const daemonBundleDir = join(root, "host-daemon");
+    const chunksDir = join(daemonBundleDir, "bb-chunks");
+    mkdirSync(dataDir, { recursive: true });
+    mkdirSync(appDistDir, { recursive: true });
+    mkdirSync(chunksDir, { recursive: true });
+    writeFileSync(join(appDistDir, "index.html"), "<!doctype html>");
+    writeFileSync(join(daemonBundleDir, "daemon-bundle.mjs"), "");
+    writeFileSync(join(daemonBundleDir, "bb"), "");
+    writeFileSync(join(chunksDir, "chunk.js"), "");
+    writeFileSync(join(daemonBundleDir, "bb-provider-bridge-worker.mjs"), "");
+    writeFileSync(join(daemonBundleDir, "bb-parcel-watcher-child.mjs"), "");
+    writeFileSync(join(daemonBundleDir, "bb-plugin-host-worker.mjs"), "");
+    writeFileSync(join(root, "server.mjs"), "");
+    chmodSync(dataDir, 0o500);
+    const previousExitCode = process.exitCode;
+    const stderr = vi
+      .spyOn(process.stderr, "write")
+      .mockImplementation(() => true);
+
+    try {
+      process.exitCode = 0;
+      await runBbApp([], {
+        runtimeState: {
+          config: {},
+          context: {
+            appDistDir,
+            appVersion: "0.0.0-test",
+            configFile: join(dataDir, "config.json"),
+            daemonBundleDir,
+            daemonEntry: join(daemonBundleDir, "daemon-bundle.mjs"),
+            daemonLockDir: join(dataDir, "daemon.lock.lock"),
+            daemonLockFile: join(dataDir, "daemon.lock"),
+            daemonPort: 49387,
+            dataDir,
+            dbPath: join(dataDir, "bb.db"),
+            envFile: join(dataDir, "env.json"),
+            logDir: join(dataDir, "logs"),
+            packageRoot: root,
+            serverEntry: join(root, "server.mjs"),
+            serverPort: 49386,
+            serverUrl: "http://127.0.0.1:49386",
+          },
+          env: {},
+          serverEnv: {},
+        },
+        worktreePolicy: null,
+      });
+
+      expect(process.exitCode).toBe(
+        MANAGED_PROCESS_RESTART_EXHAUSTED_EXIT_CODE,
+      );
+      expect(stderr).toHaveBeenCalledWith(
+        expect.stringMatching(
+          /bb-app: could not create runtime file.*(?:EACCES|permission denied)/u,
+        ),
+      );
+      expect(existsSync(join(dataDir, "bb-app-runtime.json"))).toBe(false);
+    } finally {
+      stderr.mockRestore();
+      chmodSync(dataDir, 0o700);
+      process.exitCode = previousExitCode;
+    }
+  });
+
+  it("bounds unwritable data startup failures through the real bb-app supervisor path", async () => {
+    const root = mkdtempSync(join(tmpdir(), "bb-app-cold-start-"));
+    const dataDir = join(root, "data");
+    const logsDir = join(dataDir, "logs");
+    const appDistDir = join(root, "app");
+    const daemonBundleDir = join(root, "host-daemon");
+    const chunksDir = join(daemonBundleDir, "bb-chunks");
+    const attemptsPath = join(root, "attempts");
+    const serverEntry = join(root, "server.mjs");
+    const restartDelays: number[] = [];
+    mkdirSync(logsDir, { recursive: true });
+    mkdirSync(appDistDir, { recursive: true });
+    mkdirSync(chunksDir, { recursive: true });
+    writeFileSync(join(appDistDir, "index.html"), "<!doctype html>");
+    writeFileSync(join(daemonBundleDir, "daemon-bundle.mjs"), "");
+    writeFileSync(join(daemonBundleDir, "bb"), "");
+    writeFileSync(join(chunksDir, "chunk.js"), "");
+    writeFileSync(join(daemonBundleDir, "bb-provider-bridge-worker.mjs"), "");
+    writeFileSync(join(daemonBundleDir, "bb-parcel-watcher-child.mjs"), "");
+    writeFileSync(join(daemonBundleDir, "bb-plugin-host-worker.mjs"), "");
+    writeFileSync(
+      serverEntry,
+      `import { appendFileSync, chmodSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
+appendFileSync(process.env.BB_TEST_ATTEMPTS_PATH, "attempt\\n");
+chmodSync(process.env.BB_DATA_DIR, 0o500);
+try {
+  writeFileSync(join(process.env.BB_DATA_DIR, "logs", "probe"), "x");
+} catch (error) {
+  process.stderr.write(\`SqliteError: \${error.message}\\n\`);
+}
+process.exitCode = 1;
+`,
+    );
+    chmodSync(logsDir, 0o500);
+    const previousExitCode = process.exitCode;
+    const stderr = vi
+      .spyOn(process.stderr, "write")
+      .mockImplementation(() => true);
+
+    try {
+      process.exitCode = 0;
+      await runBbApp([], {
+        delayMilliseconds: async ({ ms }) => {
+          restartDelays.push(ms);
+        },
+        runtimeState: {
+          config: {},
+          context: {
+            appDistDir,
+            appVersion: "0.0.0-test",
+            configFile: join(dataDir, "config.json"),
+            daemonBundleDir,
+            daemonEntry: join(daemonBundleDir, "daemon-bundle.mjs"),
+            daemonLockDir: join(dataDir, "daemon.lock.lock"),
+            daemonLockFile: join(dataDir, "daemon.lock"),
+            daemonPort: 49387,
+            dataDir,
+            dbPath: join(dataDir, "bb.db"),
+            envFile: join(dataDir, "env.json"),
+            logDir: logsDir,
+            packageRoot: root,
+            serverEntry,
+            serverPort: 49386,
+            serverUrl: "http://127.0.0.1:49386",
+          },
+          env: {
+            BB_DATA_DIR: dataDir,
+            BB_TEST_ATTEMPTS_PATH: attemptsPath,
+          },
+          serverEnv: {
+            BB_DATA_DIR: dataDir,
+            BB_TEST_ATTEMPTS_PATH: attemptsPath,
+          },
+        },
+        worktreePolicy: null,
+      });
+
+      expect(
+        readFileSync(attemptsPath, "utf8").trim().split("\n"),
+      ).toHaveLength(8);
+      expect(restartDelays).toEqual([
+        1_000, 2_000, 4_000, 8_000, 16_000, 32_000, 60_000,
+      ]);
+      expect(process.exitCode).toBe(
+        MANAGED_PROCESS_RESTART_EXHAUSTED_EXIT_CODE,
+      );
+      expect(
+        readdirSync(logsDir).filter((entry) =>
+          entry.startsWith("process-server-startupFailure-"),
+        ),
+      ).toHaveLength(0);
+      expect(stderr).toHaveBeenCalledWith(
+        expect.stringMatching(
+          /bb-app: could not remove runtime file.*(?:EACCES|permission denied)/u,
+        ),
+      );
+    } finally {
+      stderr.mockRestore();
+      chmodSync(dataDir, 0o700);
+      chmodSync(logsDir, 0o700);
+      process.exitCode = previousExitCode;
+    }
   });
 
   it("limits npm package metadata to documented runtimes", () => {

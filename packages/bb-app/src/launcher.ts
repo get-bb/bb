@@ -79,7 +79,11 @@ const HEALTH_CHECK_INTERVAL_MS = 100;
 const HEALTH_CHECK_REQUEST_TIMEOUT_MS = 1_000;
 const MANAGED_PROCESS_TERMINATION_TIMEOUT_MS = 5_000;
 const MANAGED_PROCESS_KILL_TIMEOUT_MS = 1_000;
-const MANAGED_PROCESS_RESTART_RETRY_DELAY_MS = 1_000;
+const MANAGED_PROCESS_RESTART_INITIAL_DELAY_MS = 1_000;
+const MANAGED_PROCESS_RESTART_MAX_DELAY_MS = 60_000;
+const MANAGED_PROCESS_RESTART_MAX_CONSECUTIVE_FAILURES = 8;
+export const MANAGED_PROCESS_RESTART_EXHAUSTED_EXIT_CODE = 75;
+const MANAGED_PROCESS_STABLE_RUNTIME_MS = 60_000;
 const START_COMMAND = "start";
 const STOP_COMMAND = "stop";
 const STOP_TIMEOUT_MS = 15_000;
@@ -221,6 +225,8 @@ interface ResolveWorktreeRuntimePolicyArgs {
 
 interface RunBbAppOptions {
   beforeServerStart?: () => Promise<void> | void;
+  delayMilliseconds?: DelayMillisecondsFn;
+  runtimeState?: BbAppRuntimeState;
   worktreePolicy: WorktreeRuntimePolicy | null;
 }
 
@@ -331,7 +337,7 @@ type StartManagedProcess = () => Promise<ManagedProcessRun>;
 export type DelayMillisecondsFn = (
   args: DelayMillisecondsArgs,
 ) => Promise<void>;
-export type FullStackSupervisionResult = "shutdown" | "stopped";
+export type FullStackSupervisionResult = "failed" | "shutdown" | "stopped";
 type ResolveWaitForProcessExitWithTimeout = (
   result: WaitForProcessExitWithTimeoutResult,
 ) => void;
@@ -406,17 +412,27 @@ interface StartFullStackDaemonProcessArgs {
 interface RestartManagedProcessArgs {
   context: BbAppStartContext;
   delayMilliseconds: DelayMillisecondsFn;
+  failureCounts: ManagedProcessFailureCounts;
   isShutdownRequested: () => boolean;
   processName: ManagedProcessName;
+  shutdownSignal?: AbortSignal;
   start: StartManagedProcess;
+}
+
+interface ManagedProcessFailureCounts {
+  daemon: number;
+  server: number;
 }
 
 interface SuperviseFullStackProcessesArgs {
   context: BbAppStartContext;
   delayMilliseconds: DelayMillisecondsFn;
+  failureCounts?: ManagedProcessFailureCounts;
   isHealthyServerAnswering?: (url: string) => Promise<boolean>;
   isShutdownRequested: () => boolean;
+  now?: () => number;
   processes: ManagedFullStackProcesses;
+  shutdownSignal?: AbortSignal;
   startDaemon: StartManagedProcess;
   startServer: StartManagedProcess;
 }
@@ -438,6 +454,7 @@ interface LogManagedProcessStartupFailureContextArgs {
 
 export interface DelayMillisecondsArgs {
   ms: number;
+  signal?: AbortSignal;
 }
 
 interface WaitForServerHealthArgs {
@@ -2556,10 +2573,48 @@ function toExitCode(result: ProcessExitResult): number {
   return result.signal === null ? 1 : 128;
 }
 
-function delayMilliseconds(args: DelayMillisecondsArgs): Promise<void> {
+function isStartupStorageError(error: unknown): error is NodeJS.ErrnoException {
+  if (!(error instanceof Error) || !("code" in error)) {
+    return false;
+  }
+  return ["EACCES", "EIO", "ENOSPC", "EPERM", "EROFS"].includes(
+    String(error.code),
+  );
+}
+
+function reportTerminalStartupStorageFailure(args: {
+  error: NodeJS.ErrnoException;
+  message: string;
+}): void {
+  process.stderr.write(`bb-app: ${args.message}: ${args.error.message}\n`);
+  process.exitCode = MANAGED_PROCESS_RESTART_EXHAUSTED_EXIT_CODE;
+}
+
+export function delayMilliseconds(args: DelayMillisecondsArgs): Promise<void> {
+  if (args.signal?.aborted) {
+    return Promise.resolve();
+  }
   return new Promise((resolvePromise) => {
-    setTimeout(resolvePromise, args.ms);
+    let timeout: ReturnType<typeof setTimeout> | undefined;
+    const finish = (): void => {
+      if (timeout !== undefined) {
+        clearTimeout(timeout);
+      }
+      args.signal?.removeEventListener("abort", finish);
+      resolvePromise();
+    };
+    timeout = setTimeout(finish, args.ms);
+    args.signal?.addEventListener("abort", finish, { once: true });
   });
+}
+
+export function calculateManagedProcessRestartDelay(
+  consecutiveFailure: number,
+): number {
+  return Math.min(
+    MANAGED_PROCESS_RESTART_INITIAL_DELAY_MS * 2 ** (consecutiveFailure - 1),
+    MANAGED_PROCESS_RESTART_MAX_DELAY_MS,
+  );
 }
 
 async function terminateProcessIfRunning(
@@ -3122,7 +3177,27 @@ async function startFullStackDaemonProcess(
 async function restartManagedProcess(
   args: RestartManagedProcessArgs,
 ): Promise<ManagedProcessRun | null> {
-  while (!args.isShutdownRequested()) {
+  while (
+    args.failureCounts[args.processName] <
+      MANAGED_PROCESS_RESTART_MAX_CONSECUTIVE_FAILURES &&
+    !args.isShutdownRequested()
+  ) {
+    const delayMs = calculateManagedProcessRestartDelay(
+      args.failureCounts[args.processName],
+    );
+    log(
+      yellow("!"),
+      `${formatManagedProcessName(args.processName)} restart attempt ${args.failureCounts[args.processName]}/${MANAGED_PROCESS_RESTART_MAX_CONSECUTIVE_FAILURES - 1} in ${delayMs}ms`,
+    );
+    await args.delayMilliseconds({
+      ms: delayMs,
+      ...(args.shutdownSignal === undefined
+        ? {}
+        : { signal: args.shutdownSignal }),
+    });
+    if (args.isShutdownRequested()) {
+      return null;
+    }
     beginStep(`Restarting ${formatManagedProcessLabel(args.processName)}`);
     try {
       const processRun = await args.start();
@@ -3143,12 +3218,16 @@ async function restartManagedProcess(
         context: args.context,
         processName: args.processName,
       });
-      await args.delayMilliseconds({
-        ms: MANAGED_PROCESS_RESTART_RETRY_DELAY_MS,
-      });
+      args.failureCounts[args.processName] += 1;
     }
   }
 
+  if (!args.isShutdownRequested()) {
+    log(
+      red("✗"),
+      `${formatManagedProcessName(args.processName)} failed ${MANAGED_PROCESS_RESTART_MAX_CONSECUTIVE_FAILURES} consecutive startup attempts; stopping bb`,
+    );
+  }
   return null;
 }
 
@@ -3170,6 +3249,23 @@ export async function terminateManagedFullStackProcesses(
 export async function superviseFullStackProcesses(
   args: SuperviseFullStackProcessesArgs,
 ): Promise<FullStackSupervisionResult> {
+  const failureCounts = args.failureCounts ?? { daemon: 0, server: 0 };
+  const now = args.now ?? Date.now;
+  const startedAt = new WeakMap<ManagedProcessRun, number>();
+  const exitedAt = new WeakMap<ManagedProcessRun, number>();
+  const trackManagedProcessRun = (processRun: ManagedProcessRun): void => {
+    startedAt.set(processRun, now());
+    void processRun.exit.then(() => {
+      exitedAt.set(processRun, now());
+    });
+  };
+  if (args.processes.serverRun !== null) {
+    trackManagedProcessRun(args.processes.serverRun);
+  }
+  if (args.processes.daemonRun !== null) {
+    trackManagedProcessRun(args.processes.daemonRun);
+  }
+
   while (!args.isShutdownRequested()) {
     const serverRun = args.processes.serverRun;
     const daemonRun = args.processes.daemonRun;
@@ -3212,45 +3308,69 @@ export async function superviseFullStackProcesses(
       )} - restarting ${formatManagedProcessLabel(exitedProcess.processName)}`,
     );
 
+    const managedRun =
+      exitedProcess.processName === "server" ? serverRun : daemonRun;
+    const runStartedAt = startedAt.get(managedRun);
+    const runExitedAt = exitedAt.get(managedRun) ?? now();
+    if (
+      runStartedAt !== undefined &&
+      runExitedAt - runStartedAt >= MANAGED_PROCESS_STABLE_RUNTIME_MS
+    ) {
+      failureCounts[exitedProcess.processName] = 0;
+    }
+    failureCounts[exitedProcess.processName] += 1;
+
     if (exitedProcess.processName === "server") {
-      await args.delayMilliseconds({
-        ms: MANAGED_PROCESS_RESTART_RETRY_DELAY_MS,
-      });
-      if (args.isShutdownRequested()) {
-        return "shutdown";
-      }
       const restartedServer = await restartManagedProcess({
         context: args.context,
         delayMilliseconds: args.delayMilliseconds,
+        failureCounts,
         isShutdownRequested: args.isShutdownRequested,
         processName: "server",
+        ...(args.shutdownSignal === undefined
+          ? {}
+          : { shutdownSignal: args.shutdownSignal }),
         start: args.startServer,
       });
       if (restartedServer === null) {
-        return "shutdown";
+        if (args.isShutdownRequested()) {
+          return "shutdown";
+        }
+        await terminateManagedFullStackProcesses({
+          processes: args.processes,
+          signal: "SIGTERM",
+        });
+        return "failed";
       }
+      trackManagedProcessRun(restartedServer);
       continue;
     }
 
     if (args.processes.daemonRun === daemonRun) {
       args.processes.daemonRun = null;
     }
-    await args.delayMilliseconds({
-      ms: MANAGED_PROCESS_RESTART_RETRY_DELAY_MS,
-    });
-    if (args.isShutdownRequested()) {
-      return "shutdown";
-    }
     const restartedDaemon = await restartManagedProcess({
       context: args.context,
       delayMilliseconds: args.delayMilliseconds,
+      failureCounts,
       isShutdownRequested: args.isShutdownRequested,
       processName: "daemon",
+      ...(args.shutdownSignal === undefined
+        ? {}
+        : { shutdownSignal: args.shutdownSignal }),
       start: args.startDaemon,
     });
     if (restartedDaemon === null) {
-      return "shutdown";
+      if (args.isShutdownRequested()) {
+        return "shutdown";
+      }
+      await terminateManagedFullStackProcesses({
+        processes: args.processes,
+        signal: "SIGTERM",
+      });
+      return "failed";
     }
+    trackManagedProcessRun(restartedDaemon);
   }
   return "shutdown";
 }
@@ -3263,6 +3383,10 @@ export async function completeFullStackSupervision(
   }
   if (args.supervisionResult === "shutdown") {
     process.exitCode = 0;
+    return;
+  }
+  if (args.supervisionResult === "failed") {
+    process.exitCode = MANAGED_PROCESS_RESTART_EXHAUSTED_EXIT_CODE;
   }
 }
 
@@ -3347,21 +3471,35 @@ export async function runBbApp(
     return;
   }
 
-  const runtime = await resolveBbAppRuntimeState({
-    entrypointUrl: import.meta.url,
-    env: process.env,
-    homeDir: homedir(),
-    options: parsedArgs.options,
-    serverUrlMode:
-      command.kind === "config" ||
-      command.kind === "env" ||
-      command.kind === "host-daemon"
-        ? "managed"
-        : "local",
-    ...(options.worktreePolicy === null
-      ? {}
-      : { worktreePolicy: options.worktreePolicy }),
-  });
+  let runtime: BbAppRuntimeState;
+  try {
+    runtime =
+      options.runtimeState ??
+      (await resolveBbAppRuntimeState({
+        entrypointUrl: import.meta.url,
+        env: process.env,
+        homeDir: homedir(),
+        options: parsedArgs.options,
+        serverUrlMode:
+          command.kind === "config" ||
+          command.kind === "env" ||
+          command.kind === "host-daemon"
+            ? "managed"
+            : "local",
+        ...(options.worktreePolicy === null
+          ? {}
+          : { worktreePolicy: options.worktreePolicy }),
+      }));
+  } catch (error) {
+    if (command.kind !== "start" || !isStartupStorageError(error)) {
+      throw error;
+    }
+    reportTerminalStartupStorageFailure({
+      error,
+      message: "could not read startup configuration",
+    });
+    return;
+  }
 
   if (command.kind === "start") {
     const configuredServerBindHost = runtime.serverEnv.BB_SERVER_BIND_HOST;
@@ -3434,6 +3572,8 @@ export async function runBbApp(
   assertBbAppArtifacts(runtime.context);
 
   const context = runtime.context;
+  const managedProcessDelayMilliseconds =
+    options.delayMilliseconds ?? delayMilliseconds;
   const serverListenerUrl = resolveServerListenerUrl({
     bindHost: runtime.serverEnv.BB_SERVER_BIND_HOST,
     port: context.serverPort,
@@ -3454,16 +3594,29 @@ export async function runBbApp(
     warnExistingDaemonLock(runtime.context.daemonLockDir);
   }
 
-  const runtimeRecordOwned = await claimBbAppRuntimeFile({
-    dataDir: context.dataDir,
-    entryPath: resolveLauncherEntryPath(),
-    pid: process.pid,
-    serverUrl: context.serverUrl,
-    startedAt: new Date().toISOString(),
-    surface:
-      parseAppSurface(runtime.env[APP_SURFACE_ENV_NAME]) ?? DEFAULT_APP_SURFACE,
-    version: context.appVersion,
-  });
+  let runtimeRecordOwned: boolean;
+  try {
+    runtimeRecordOwned = await claimBbAppRuntimeFile({
+      dataDir: context.dataDir,
+      entryPath: resolveLauncherEntryPath(),
+      pid: process.pid,
+      serverUrl: context.serverUrl,
+      startedAt: new Date().toISOString(),
+      surface:
+        parseAppSurface(runtime.env[APP_SURFACE_ENV_NAME]) ??
+        DEFAULT_APP_SURFACE,
+      version: context.appVersion,
+    });
+  } catch (error) {
+    if (!isStartupStorageError(error)) {
+      throw error;
+    }
+    reportTerminalStartupStorageFailure({
+      error,
+      message: `could not create runtime file in ${context.dataDir}`,
+    });
+    return;
+  }
   if (!runtimeRecordOwned) {
     warnExistingRuntimeRecord(context.dataDir);
   }
@@ -3472,6 +3625,8 @@ export async function runBbApp(
     daemonRun: null,
     serverRun: null,
   };
+  const failureCounts: ManagedProcessFailureCounts = { daemon: 0, server: 0 };
+  const shutdownController = new AbortController();
   let shuttingDown = false;
   let shutdownPromise: Promise<void> | null = null;
 
@@ -3481,6 +3636,7 @@ export async function runBbApp(
       return shutdownPromise;
     }
     shuttingDown = true;
+    shutdownController.abort();
     shutdownPromise = (async () => {
       process.stdout.write("\n");
       log(dim("●"), "Shutting down");
@@ -3516,10 +3672,26 @@ export async function runBbApp(
         context,
         processName: "server",
       });
-      outputBuffer.flush();
-      process.exitCode = 1;
-      await shutdown("SIGTERM");
-      return;
+      failureCounts.server += 1;
+      const restartedServer = await restartManagedProcess({
+        context,
+        delayMilliseconds: managedProcessDelayMilliseconds,
+        failureCounts,
+        isShutdownRequested,
+        processName: "server",
+        shutdownSignal: shutdownController.signal,
+        start: startServer,
+      });
+      if (restartedServer === null) {
+        const stoppedBySignal = isShutdownRequested();
+        outputBuffer.flush();
+        await shutdown("SIGTERM");
+        await completeFullStackSupervision({
+          shutdownPromise,
+          supervisionResult: stoppedBySignal ? "shutdown" : "failed",
+        });
+        return;
+      }
     }
 
     endStep(green("✓"), `Server listening on ${cyan(serverListenerUrl)}`);
@@ -3546,10 +3718,26 @@ export async function runBbApp(
         context,
         processName: "daemon",
       });
-      outputBuffer.flush();
-      process.exitCode = 1;
-      await shutdown("SIGTERM");
-      return;
+      failureCounts.daemon += 1;
+      const restartedDaemon = await restartManagedProcess({
+        context,
+        delayMilliseconds: managedProcessDelayMilliseconds,
+        failureCounts,
+        isShutdownRequested,
+        processName: "daemon",
+        shutdownSignal: shutdownController.signal,
+        start: startDaemon,
+      });
+      if (restartedDaemon === null) {
+        const stoppedBySignal = isShutdownRequested();
+        outputBuffer.flush();
+        await shutdown("SIGTERM");
+        await completeFullStackSupervision({
+          shutdownPromise,
+          supervisionResult: stoppedBySignal ? "shutdown" : "failed",
+        });
+        return;
+      }
     }
 
     endStep(green("✓"), "Host daemon running");
@@ -3569,23 +3757,42 @@ export async function runBbApp(
     outputBuffer.flush();
     const supervisionResult = await superviseFullStackProcesses({
       context,
-      delayMilliseconds,
+      delayMilliseconds: managedProcessDelayMilliseconds,
+      failureCounts,
       isShutdownRequested,
       processes,
+      shutdownSignal: shutdownController.signal,
       startDaemon,
       startServer,
     });
     await completeFullStackSupervision({ shutdownPromise, supervisionResult });
   } catch (error) {
     await shutdown("SIGTERM");
+    if (isStartupStorageError(error)) {
+      reportTerminalStartupStorageFailure({
+        error,
+        message: "startup storage operation failed",
+      });
+      return;
+    }
     throw error;
   } finally {
     removeSignalForwarding();
     if (runtimeRecordOwned) {
-      await clearOwnBbAppRuntimeFile({
-        dataDir: context.dataDir,
-        pid: process.pid,
-      });
+      try {
+        await clearOwnBbAppRuntimeFile({
+          dataDir: context.dataDir,
+          pid: process.pid,
+        });
+      } catch (error) {
+        if (!isStartupStorageError(error)) {
+          throw error;
+        }
+        reportTerminalStartupStorageFailure({
+          error,
+          message: `could not remove runtime file in ${context.dataDir}`,
+        });
+      }
     }
   }
 }

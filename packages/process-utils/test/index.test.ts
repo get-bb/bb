@@ -1,5 +1,12 @@
 import { once } from "node:events";
-import { existsSync, mkdtempSync, readFileSync } from "node:fs";
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+  statSync,
+} from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { describe, expect, it } from "vitest";
@@ -106,6 +113,59 @@ describe("process utils", () => {
         process.env.OPENAI_API_KEY = originalOpenAiApiKey;
       }
     }
+  });
+
+  it("caps diagnostic reports at five per process and kind", () => {
+    const logsDir = join(
+      mkdtempSync(join(tmpdir(), "bb-process-utils-report-")),
+      "logs",
+    );
+    for (let index = 0; index < 6; index += 1) {
+      writeSafeProcessDiagnosticReport({
+        kind: "startupFailure",
+        logsDir,
+        processName: "test-process",
+        error: new Error(`startup failed ${index}`),
+        now: () => new Date(`2026-06-01T12:00:0${index}.000Z`),
+        createReportId: () => `report-id-${index}`,
+      });
+    }
+
+    const reports = readdirSync(logsDir).filter((entry) =>
+      entry.startsWith("process-test-process-startupFailure-"),
+    );
+    expect(reports).toHaveLength(5);
+    expect(reports).not.toContain(
+      "process-test-process-startupFailure-2026-06-01T12-00-00-000Z-report-id-0.json",
+    );
+    for (const report of reports) {
+      expect(statSync(join(logsDir, report)).size).toBeGreaterThan(0);
+    }
+  });
+
+  it("cleans up a complete temporary report when its final rename fails", () => {
+    const logsDir = join(
+      mkdtempSync(join(tmpdir(), "bb-process-utils-report-")),
+      "logs",
+    );
+    const reportFileName =
+      "process-test-process-startupFailure-2026-06-01T12-00-00-000Z-rename-failure.json";
+    mkdirSync(join(logsDir, reportFileName), { recursive: true });
+
+    expect(() =>
+      writeSafeProcessDiagnosticReport({
+        kind: "startupFailure",
+        logsDir,
+        processName: "test-process",
+        error: new Error("data directory is unwritable"),
+        now: () => new Date("2026-06-01T12:00:00.000Z"),
+        createReportId: () => "rename-failure",
+      }),
+    ).toThrow();
+    expect(existsSync(join(logsDir, `.${reportFileName}.tmp`))).toBe(false);
+    expect(
+      readdirSync(logsDir).filter((entry) => entry.endsWith(".tmp")),
+    ).toEqual([]);
   });
 
   it("writes nested error causes", () => {

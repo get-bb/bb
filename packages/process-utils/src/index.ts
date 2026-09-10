@@ -1,7 +1,13 @@
 export * from "./plugin-process-paths.js";
 import type { ChildProcess, StdioOptions } from "node:child_process";
 import { randomUUID } from "node:crypto";
-import { mkdirSync, writeFileSync } from "node:fs";
+import {
+  mkdirSync,
+  readdirSync,
+  renameSync,
+  unlinkSync,
+  writeFileSync,
+} from "node:fs";
 import { lstat, readdir, readlink, realpath } from "node:fs/promises";
 import {
   basename,
@@ -100,6 +106,7 @@ interface WriteSafeProcessDiagnosticReportArgs extends SafeProcessDiagnosticsOpt
 
 const MAX_DIAGNOSTIC_ERROR_CAUSE_DEPTH = 8;
 const MAX_DIAGNOSTIC_AGGREGATE_ERRORS = 8;
+const MAX_SAFE_PROCESS_DIAGNOSTIC_REPORTS_PER_PROCESS_AND_KIND = 5;
 
 interface SafeProcessDiagnosticError {
   name: string;
@@ -572,12 +579,10 @@ export function writeSafeProcessDiagnosticReport(
     (args.createReportId ?? randomUUID)(),
   );
   const processName = sanitizeDiagnosticFilenamePart(args.processName);
-  const reportPath = join(
-    args.logsDir,
-    `process-${processName}-${args.kind}-${formatDiagnosticTimestamp(
-      occurredAt,
-    )}-${reportId}.json`,
-  );
+  const reportFileName = `process-${processName}-${args.kind}-${formatDiagnosticTimestamp(
+    occurredAt,
+  )}-${reportId}.json`;
+  const reportPath = join(args.logsDir, reportFileName);
   const report: SafeProcessDiagnosticReport = {
     diagnosticVersion: 1,
     kind: args.kind,
@@ -593,9 +598,33 @@ export function writeSafeProcessDiagnosticReport(
     error: serializeDiagnosticError(args.error),
   };
 
-  writeFileSync(reportPath, `${JSON.stringify(report, null, 2)}\n`, {
-    encoding: "utf8",
-  });
+  const reportPrefix = `process-${processName}-${args.kind}-`;
+  const existingReports = readdirSync(args.logsDir)
+    .filter(
+      (entry) => entry.startsWith(reportPrefix) && entry.endsWith(".json"),
+    )
+    .sort();
+  for (
+    let index = 0;
+    index <=
+    existingReports.length -
+      MAX_SAFE_PROCESS_DIAGNOSTIC_REPORTS_PER_PROCESS_AND_KIND;
+    index += 1
+  ) {
+    unlinkSync(join(args.logsDir, existingReports[index]!));
+  }
+  const temporaryReportPath = join(args.logsDir, `.${reportFileName}.tmp`);
+  try {
+    writeFileSync(temporaryReportPath, `${JSON.stringify(report, null, 2)}\n`, {
+      encoding: "utf8",
+    });
+    renameSync(temporaryReportPath, reportPath);
+  } catch (error) {
+    try {
+      unlinkSync(temporaryReportPath);
+    } catch {}
+    throw error;
+  }
   return reportPath;
 }
 
