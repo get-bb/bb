@@ -535,6 +535,9 @@ export const REALTIME_SYSTEM_CHANGE_REGISTRY = {
   "provider-registrations-changed": {
     dirty: [dirtySystemProviderQueries, dirtySystemExecutionOptionQueries],
   },
+  "environment-availability-changed": {
+    dirty: [dirtyEnvironmentProviderQueries],
+  },
   "ui-preferences-changed": {
     dirty: [dirtyUiPreferencesQueries],
   },

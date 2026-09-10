@@ -733,7 +733,7 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
           "Declare a provider with a display name and icon, picked in New Thread or bb thread spawn --environment-provider",
           "Use a host glyph, plugin-relative asset, declared icon, or React provider icon slot",
           "Declare the project facts it consumes in one place — requires.projectCheckout, requires.gitCheckout, requires.gitRemote, requires.projectless — which structurally decides where the picker offers it",
-          "Preflight the selected project and machine at thread creation with available, setup-required, or unavailable; core bounds the answer and checks it afresh for each creation request",
+          "Answer availability for a project and machine with available, setup-required, or unavailable; core probes connected machines in the background so pickers hide unsupported ones, caches the answer, and checks it afresh for the selected machine at thread creation",
           "Declare what it needs from the request as a zod inputs schema; bb parses the request with it before the thread exists, publishes it as JSON Schema for the CLI, and hands create the parsed value as inputs",
           "Validate a resolved selection once before thread creation; host-dependent preflight requires connectivity, and create checks conditions that can change afterward",
           "Read the facts as typed values on the create context: host is always non-null, while projectCheckout and gitRemote are non-null exactly when required",

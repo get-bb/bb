@@ -1062,6 +1062,7 @@ describe("bb thread spawn command output", () => {
         icon: null,
         pluginId: "environment-git-worktree",
         acceptsEmptyInputs: false,
+        machineAvailability: {},
         availability: null,
         requires: {
           projectCheckout: true,
@@ -1081,6 +1082,7 @@ describe("bb thread spawn command output", () => {
         icon: null,
         pluginId: "plain",
         acceptsEmptyInputs: true,
+        machineAvailability: {},
         availability: null,
         requires: {
           projectCheckout: false,
@@ -1096,6 +1098,7 @@ describe("bb thread spawn command output", () => {
         icon: null,
         pluginId: "optional",
         acceptsEmptyInputs: true,
+        machineAvailability: {},
         availability: null,
         requires: {
           projectCheckout: false,

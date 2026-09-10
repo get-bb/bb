@@ -62,6 +62,7 @@ import {
   environmentProviderMatchesContext,
   environmentProviderAcceptsEmptyInputs,
 } from "../services/environments/provider-availability.js";
+import { environmentProviderMachineAvailability } from "../services/environments/provider-machine-availability.js";
 import { requirePublicProject } from "../services/lib/entity-lookup.js";
 
 const LEADING_ENVIRONMENT_PROVIDER_IDS: readonly string[] = [
@@ -373,6 +374,15 @@ export function registerSystemRoutes(
               ) {
                 return null;
               }
+              const machineAvailability =
+                query.projectId === undefined
+                  ? {}
+                  : environmentProviderMachineAvailability(deps, record, {
+                      projectId: query.projectId,
+                      ...(query.hostId === undefined
+                        ? {}
+                        : { hostId: query.hostId }),
+                    });
               return {
                 id: record.provider.id,
                 displayName: record.provider.displayName,
@@ -386,7 +396,11 @@ export function registerSystemRoutes(
                 inputs: record.provider.inputsJsonSchema,
                 acceptsEmptyInputs:
                   await environmentProviderAcceptsEmptyInputs(record),
-                availability: null,
+                availability:
+                  query.hostId === undefined
+                    ? null
+                    : (machineAvailability[query.hostId] ?? null),
+                machineAvailability,
               };
             }),
         )

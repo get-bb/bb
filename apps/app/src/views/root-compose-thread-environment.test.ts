@@ -12,6 +12,7 @@ const environmentProviders: SystemEnvironmentProvider[] = [
     logoUrl: null,
     pluginId: "branchy",
     acceptsEmptyInputs: false,
+    machineAvailability: {},
     availability: null,
     requires: {
       projectCheckout: true,
@@ -32,6 +33,7 @@ const environmentProviders: SystemEnvironmentProvider[] = [
     logoUrl: null,
     pluginId: "hosted",
     acceptsEmptyInputs: true,
+    machineAvailability: {},
     availability: null,
     requires: {
       projectCheckout: false,

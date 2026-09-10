@@ -485,11 +485,16 @@ Core persists launch attempts, progress, cancellation, direct resource
 attachment, retirement deadlines and teardown state in SQLite. Providers supply
 idempotent long-running create and remove calls plus policy. Values retain their
 experimental\_ prefix; public types follow the existing declaration convention.
-The optional `availability(context)` method answers whether the selected
-provider is available, needs setup, or is unavailable for a project and
-machine during thread creation. Discovery does not invoke it. Its context
-contains project, host, projectCheckout, and gitRemote; its named types
-intentionally have no experimental prefix.
+The optional `availability(context)` method answers whether the provider is
+available, needs setup, or is unavailable for a project and machine. Core
+invokes it in the background for each connected persistent machine when a
+project's providers are listed, caches the answer per project and machine for
+ten minutes or until the plugin rechecks, and reports it through
+`machineAvailability` so pickers can hide unsupported machines without waiting;
+listing never blocks on the answer. Core invokes it again for the selected
+provider and machine during thread creation. Its context contains project,
+host, projectCheckout, and gitRemote; its named types intentionally have no
+experimental prefix.
 
 **Audit before stabilizing.** Verify monotonic attempts and path-key recovery
 across cancellation/restart; per-environment
