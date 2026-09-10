@@ -1015,7 +1015,7 @@ describe("PluginNavSidebarItems", () => {
       ]);
       if (mode !== "sidebar") {
         await openCustomizeFromContextMenu(
-          screen.getByRole("button", { name: "Docs" }),
+          screen.getByRole("button", { name: "New thread" }),
         );
       }
       reorderSidebar("tasks/main", "docs/main");
