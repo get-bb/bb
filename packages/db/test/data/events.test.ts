@@ -58,7 +58,6 @@ import {
   pruneResolvedItemDeltas,
   pruneThreadEventsBeforeSequence,
   listLatestOpenBackgroundTaskStateRowsForThread,
-  STORED_TIMELINE_BYTE_PREFLIGHT_EVENT_LIMIT,
 } from "../../src/data/events.js";
 import { createEnvironment } from "../../src/data/environments.js";
 import { createProject } from "../../src/data/projects.js";
@@ -5017,22 +5016,19 @@ describe("timeline read-boundary output truncation", () => {
     }));
   });
 
-  it("bounds the byte-total preflight before using the early-stopping iterator", () => {
+  it("stops the byte-budget scan before reading older oversized payloads", () => {
     const { db, thread } = setup();
     const validData = JSON.stringify({ message: "valid" });
     insertEvents(
       db,
       noopNotifier,
-      Array.from(
-        { length: STORED_TIMELINE_BYTE_PREFLIGHT_EVENT_LIMIT + 2 },
-        (_, index) => ({
-          threadId: thread.id,
-          sequence: index + 1,
-          type: "system/error" as const,
-          ...threadEventFields,
-          data: validData,
-        }),
-      ),
+      Array.from({ length: 3 }, (_, index) => ({
+        threadId: thread.id,
+        sequence: index + 1,
+        type: "system/error" as const,
+        ...threadEventFields,
+        data: validData,
+      })),
     );
     db.$client
       .prepare("UPDATE events SET data = ? WHERE thread_id = ? AND sequence = 1")
@@ -5050,7 +5046,7 @@ describe("timeline read-boundary output truncation", () => {
       eventDataBytes: Buffer.byteLength(validData),
       hasOlderRows: true,
       kind: "single-event-too-large",
-      sequenceStart: STORED_TIMELINE_BYTE_PREFLIGHT_EVENT_LIMIT + 2,
+      sequenceStart: 3,
       turnId: null,
     });
   });
