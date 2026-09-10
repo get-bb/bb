@@ -88,3 +88,17 @@ four bundled skills. All settings default to true. Use
 Disabling the plugin removes its introduction and skills. Changes apply when
 agent configuration is next assembled; independently installed copies remain
 available through their own sources.
+
+## BB source runtime preparation
+
+In the BB repository, use `pnpm prepare:worktree` before a planned restart and
+`pnpm launch:worktree` for validated launch without installs, builds, or native
+repairs. `pnpm start:worktree` still prepares and launches in one command. All
+worktree launches retain checkout-specific data/ports and worktree runtime
+policy. Install dependencies before preparation when needed. Source, Node,
+dependency, build-environment, or artifact changes require fresh preparation.
+Preparation writes the checkout's build outputs; use a separate staging checkout
+to warm Turbo while a live instance serves its existing files, then prepare the
+stable serving checkout before launch. See `docs/debugging-and-qa.md` and
+`bb guide environments`. These source-maintenance commands are separate from
+installed `bb` commands and `.bb-env-setup.sh`.

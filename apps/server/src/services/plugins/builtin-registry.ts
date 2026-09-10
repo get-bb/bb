@@ -224,6 +224,14 @@ export function resolveBuiltinPluginRootPathForModuleDir(
   );
   if (existsSync(packagedCandidate)) return packagedCandidate;
 
+  const preparedCandidate = path.resolve(
+    args.moduleDir,
+    "..",
+    BUILTIN_PLUGINS_DIRECTORY_NAME,
+    args.name,
+  );
+  if (existsSync(preparedCandidate)) return preparedCandidate;
+
   const builtCheckoutCandidate = path.resolve(
     args.moduleDir,
     "../../..",

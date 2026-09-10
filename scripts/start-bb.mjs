@@ -8,6 +8,14 @@ import {
   supportsProcessGroups,
 } from "../packages/process-utils/src/index.ts";
 
+import {
+  clearPreparedRuntime,
+  clearRuntimeOutputs,
+  runtimeSourceFingerprint,
+  sealPreparedRuntime,
+  validatePreparedRuntime,
+} from "./prepared-runtime.mjs";
+
 const scriptDir = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(scriptDir, "..");
 const requireFromRoot = createRequire(resolve(repoRoot, "package.json"));
@@ -64,6 +72,7 @@ async function buildRuntimeArtifacts() {
       turboEntrypoint,
       "run",
       "build",
+      "prepare:plugins",
       "--filter=@get-bb/plugin-sdk",
       "--filter=@bb/app",
       "--filter=@bb/server",
@@ -76,7 +85,10 @@ async function buildRuntimeArtifacts() {
     ],
     command: process.execPath,
     cwd: repoRoot,
-    env: process.env,
+    env: {
+      ...process.env,
+      BB_BUILD_TOOLCHAIN: `${process.version}-${process.platform}-${process.arch}`,
+    },
   });
   if (result.code === 0) {
     return;
@@ -87,30 +99,8 @@ async function buildRuntimeArtifacts() {
   throw new Error(`Runtime build failed with exit code ${result.code ?? 1}`);
 }
 
-async function buildBundledPlugins() {
-  const result = await runBuildProcess({
-    args: [
-      "--conditions=source",
-      "--import",
-      "tsx",
-      resolve(repoRoot, "apps/server/scripts/copy-builtin-plugins.ts"),
-    ],
-    command: process.execPath,
-    cwd: repoRoot,
-    env: process.env,
-  });
-  if (result.code === 0) {
-    return;
-  }
-  if (result.signal !== null) {
-    throw new Error(`Bundled plugin build stopped by ${result.signal}`);
-  }
-  throw new Error(
-    `Bundled plugin build failed with exit code ${result.code ?? 1}`,
-  );
-}
-
 export async function runNativeModulePreflight({
+  checkOnly = false,
   cwd = repoRoot,
   env = process.env,
   nodePath = process.execPath,
@@ -119,7 +109,7 @@ export async function runNativeModulePreflight({
   // Each check needs a fresh module cache. The process group also lets the
   // launcher stop a blocked download or source build during shutdown.
   const result = await runBuildProcess({
-    args: [scriptPath],
+    args: [scriptPath, ...(checkOnly ? ["--check"] : [])],
     command: nodePath,
     cwd,
     env,
@@ -145,14 +135,35 @@ export function parseStartBbArgs(args) {
   };
 }
 
-export async function main(args = process.argv.slice(2)) {
-  const parsedArgs = parseStartBbArgs(args);
+export async function prepareRuntime() {
+  let reusable = false;
+  try {
+    await validatePreparedRuntime(repoRoot);
+    reusable = true;
+  } catch {}
+  await clearPreparedRuntime(repoRoot);
+  if (!reusable) await clearRuntimeOutputs(repoRoot);
+  await runNativeModulePreflight();
+  const sourceFingerprint = runtimeSourceFingerprint(repoRoot);
   await buildRuntimeArtifacts();
-  await buildBundledPlugins();
+  await sealPreparedRuntime(repoRoot, sourceFingerprint);
+}
+
+export async function main(args = process.argv.slice(2)) {
+  const action = ["prepare", "launch"].includes(args[0])
+    ? args.shift()
+    : "start";
+  if (action === "prepare" && args.length !== 0) {
+    throw new Error("Preparation accepts no runtime arguments");
+  }
+  const parsedArgs = parseStartBbArgs(args);
+  if (action !== "launch") await prepareRuntime();
+  if (action === "prepare") return;
+  if (action === "launch") await validatePreparedRuntime(repoRoot);
   const { resolveWorktreeRuntimePolicy, runBbApp } =
     await import("../packages/bb-app/src/launcher.ts");
   await runBbApp(parsedArgs.cliArgs, {
-    beforeServerStart: runNativeModulePreflight,
+    beforeServerStart: () => runNativeModulePreflight({ checkOnly: true }),
     worktreePolicy: parsedArgs.useWorktreeRuntimePolicy
       ? resolveWorktreeRuntimePolicy({
           env: process.env,

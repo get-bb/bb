@@ -241,3 +241,19 @@ Core owns environment retirement and teardown. After the last live thread is arc
 Explicit environment or project deletion bypasses the retirement grace, including the never-retire policy. Provider cleanup retains the host, path and resource until removal completes; inspect progress with `bb environment show <id>`.
 
 `bb environment providers --project <id>` omits providers whose declared requirements are unmet on every persistent machine, and reports each provider's `machineAvailability` per machine in `--json`. Add `--machine <id>` to scope structural eligibility to that machine and print its availability: `available`, `setup-required`, `unavailable` with the plugin's reason, or `unknown` while the background probe has not answered. Listing never waits on a machine; probes run in the background, are cached for ten minutes per project and machine, and are checked afresh for the selected provider and machine during thread creation.
+
+BB source checkout startup
+
+  In the BB repository, `pnpm start:worktree` prepares and serves production
+  artifacts using stable checkout-specific dev data and ports (no Vite).
+  `pnpm prepare:worktree` performs native repair and cached Turbo preparation
+  without starting services; install dependencies beforehand when needed.
+  `pnpm launch:worktree` validates that preparation and starts without installing,
+  building, or repairing native modules. Changed sources, dependencies, Node,
+  build environment, or missing/modified artifacts require preparation again.
+  Both launch commands preserve worktree runtime policy. Preparation writes the
+  checkout's build files; warm a separate staging checkout's cache if the live
+  instance still serves those paths. Keep the serving checkout path stable to
+  preserve its data and ports. See `docs/debugging-and-qa.md` for the restart
+  sequence and source programmatic helpers. These are repository maintenance
+  commands, not environment lifecycle hooks or installed `bb` commands.

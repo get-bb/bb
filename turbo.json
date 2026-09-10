@@ -1,5 +1,6 @@
 {
   "$schema": "https://turbo.build/schema.json",
+  "globalEnv": ["BB_BUILD_TOOLCHAIN"],
   "tasks": {
     "@bb/db#db:generate": { "cache": false },
     "@bb/desktop#smoke:browser-broker": {
@@ -69,9 +70,12 @@
       "cache": false
     },
     "@bb/app#build": {
+      "env": ["NODE_ENV", "VITE_*"],
       "dependsOn": ["topo"],
       "inputs": [
         "$TURBO_DEFAULT$",
+        "$TURBO_ROOT$/.env*",
+        ".env*",
         "$TURBO_ROOT$/CHANGELOG.md",
         "$TURBO_ROOT$/changelog-metadata.ts",
         "$TURBO_ROOT$/package.json",
@@ -125,13 +129,59 @@
         "$TURBO_ROOT$/vitest.shared.ts"
       ]
     },
+    "@bb/server#build": {
+      "dependsOn": ["topo"],
+      "outputs": ["dist/**"],
+      "inputs": [
+        "$TURBO_DEFAULT$",
+        "$TURBO_ROOT$/plugins/bb-guide/skills/**",
+        "$TURBO_ROOT$/package.json",
+        "$TURBO_ROOT$/packages/tsconfig/*.json",
+        "$TURBO_ROOT$/pnpm-lock.yaml",
+        "$TURBO_ROOT$/pnpm-workspace.yaml",
+        "$TURBO_ROOT$/scripts/build-node-entry.mjs",
+        "$TURBO_ROOT$/scripts/build-package.mjs",
+        "$TURBO_ROOT$/scripts/build-utils.mjs",
+        "$TURBO_ROOT$/turbo.json"
+      ]
+    },
+    "@bb/server#prepare:plugins": {
+      "dependsOn": [
+        "@get-bb/plugin-sdk#build",
+        "@bb/plugin-build#topo",
+        "@bb/server#generate:bb-official-marketplace"
+      ],
+      "inputs": [
+        "package.json",
+        "scripts/copy-builtin-plugins.ts",
+        "src/services/plugins/builtin-registry.ts",
+        "src/services/plugin-catalog/bundled-marketplace-paths.ts",
+        "$TURBO_ROOT$/plugins/**",
+        "!$TURBO_ROOT$/plugins/*/dist/**",
+        "!$TURBO_ROOT$/plugins/*/node_modules/**",
+        "!$TURBO_ROOT$/plugins/*/.turbo/**",
+        "!$TURBO_ROOT$/plugins/.bundled-stage-*/**",
+        "$TURBO_ROOT$/packages/*/package.json",
+        "$TURBO_ROOT$/packages/*/src/**",
+        "!$TURBO_ROOT$/packages/*/src/generated/**",
+        "$TURBO_ROOT$/packages/plugin-build/scripts/**",
+        "$TURBO_ROOT$/packages/plugin-sdk/scripts/**",
+        "$TURBO_ROOT$/packages/tsconfig/**",
+        "$TURBO_ROOT$/apps/app/src/components/ui/theme.css",
+        "$TURBO_ROOT$/package.json",
+        "$TURBO_ROOT$/pnpm-lock.yaml",
+        "$TURBO_ROOT$/pnpm-workspace.yaml",
+        "$TURBO_ROOT$/patches/**",
+        "$TURBO_ROOT$/.npmrc",
+        "$TURBO_ROOT$/turbo.json"
+      ],
+      "outputs": ["builtin-plugins/**"]
+    },
     "bb-app#build": {
-      // copy-builtin-plugins bundles every plugin in BUNDLED_PLUGINS; the
-      // tasks plugin's app bundle imports the @get-bb/plugin-sdk root at runtime
-      // (shared RPC contract), so the SDK dist must exist first.
       "dependsOn": [
         "@bb/app#build",
         "@bb/server#build",
+        "@bb/server#prepare:plugins",
         "@bb/host-daemon#build",
         "@bb/cli#build",
         "@bb/sdk#build",
@@ -485,6 +535,8 @@
         "$TURBO_ROOT$/.github/workflows/approve-contributor.yml",
         "$TURBO_ROOT$/.github/workflows/pr-gate.yml",
         "$TURBO_ROOT$/package.json",
+        "$TURBO_ROOT$/scripts/*.mjs",
+        "$TURBO_ROOT$/turbo.json",
         "$TURBO_ROOT$/vitest.shared.ts"
       ]
     },

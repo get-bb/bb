@@ -1,4 +1,14 @@
-import { cp, mkdir, readFile, rm, stat, writeFile } from "node:fs/promises";
+import {
+  cp,
+  mkdir,
+  mkdtemp,
+  readFile,
+  realpath,
+  rm,
+  stat,
+  symlink,
+  writeFile,
+} from "node:fs/promises";
 import path from "node:path";
 import { pathToFileURL, fileURLToPath } from "node:url";
 import {
@@ -23,11 +33,7 @@ import {
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
 const serverRoot = path.resolve(scriptDir, "..");
 const sourceModuleDir = path.resolve(serverRoot, "src", "services", "plugins");
-const targetRoot = path.resolve(
-  serverRoot,
-  "dist",
-  BUILTIN_PLUGINS_DIRECTORY_NAME,
-);
+const targetRoot = path.resolve(serverRoot, BUILTIN_PLUGINS_DIRECTORY_NAME);
 const bundledMarketplaceManifestPath = path.resolve(
   serverRoot,
   "src",
@@ -207,16 +213,41 @@ export async function copyBuiltinPlugins(args: {
   );
 
   for (const plugin of plugins) {
-    await copyBuiltinPlugin({
-      bbVersion: args.bbVersion,
-      build,
+    const sourceRoot = resolveBuiltinPluginRootPathForModuleDir({
+      moduleDir: resolvedSourceModuleDir,
       name: plugin.name,
-      sourceRoot: resolveBuiltinPluginRootPathForModuleDir({
-        moduleDir: resolvedSourceModuleDir,
-        name: plugin.name,
-      }),
-      targetRoot: resolvedTargetRoot,
     });
+    const buildRoot = build
+      ? await mkdtemp(path.join(path.dirname(sourceRoot), ".bundled-stage-"))
+      : sourceRoot;
+    try {
+      if (build) {
+        await cp(sourceRoot, buildRoot, {
+          recursive: true,
+          filter: (entry) =>
+            !["dist", "node_modules", ".turbo"].includes(
+              path.relative(sourceRoot, entry).split(path.sep)[0],
+            ),
+        });
+        const modules = path.join(sourceRoot, "node_modules");
+        if (await exists(modules)) {
+          await symlink(
+            await realpath(modules),
+            path.join(buildRoot, "node_modules"),
+            "junction",
+          );
+        }
+      }
+      await copyBuiltinPlugin({
+        bbVersion: args.bbVersion,
+        build,
+        name: plugin.name,
+        sourceRoot: buildRoot,
+        targetRoot: resolvedTargetRoot,
+      });
+    } finally {
+      if (build) await rm(buildRoot, { recursive: true, force: true });
+    }
   }
 }
 

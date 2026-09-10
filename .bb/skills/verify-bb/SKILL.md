@@ -119,6 +119,22 @@ same targets. Never rely on variables surviving separate agent shell calls.
 When resuming this run, require its marker to contain the exact run directory
 and verify the processes still belong to this checkout.
 
+## Prepared source startup
+
+For worktree startup changes, use the same fresh data marker and port ownership
+checks, but run `pnpm prepare:worktree` and `pnpm launch:worktree` separately.
+The app is served at the server URL with no Vite listener. Record preparation
+and time to server/daemon health independently; repeat preparation to verify
+Turbo hits. Check code, asset, skill, manifest, SDK/toolchain, and staged-asset
+invalidation plus restoration after deleting only this checkout's build outputs.
+Verify missing/stale preparation fails before services start and native validation
+never repairs on launch. `pnpm start:worktree` remains prepare-and-launch.
+Preparation writes build outputs, so use a separate staging checkout to warm
+cache while a live instance still serves those files. Keep the serving checkout
+path stable. See `docs/debugging-and-qa.md` for the preparation receipt contract.
+Stop only verified PIDs spawned by this test; `bb-dev-app stop` is for instances
+managed by that launcher, not arbitrary `pnpm launch:worktree` processes.
+
 ## Doctor
 
 ```bash

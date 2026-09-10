@@ -20,6 +20,7 @@ export function resolveBundledMarketplaceDirectory(
 ): string {
   const candidates = [
     path.resolve(baseDirectory, "builtin-plugins"),
+    path.resolve(baseDirectory, "../builtin-plugins"),
     path.resolve(
       baseDirectory,
       "../../generated",
@@ -34,7 +35,7 @@ export function resolveBundledMarketplaceDirectory(
   return (
     candidates.find((candidate) =>
       existsSync(path.join(candidate, BUNDLED_MARKETPLACE_FILENAME)),
-    ) ?? candidates[1]
+    ) ?? candidates[2]
   );
 }
 
