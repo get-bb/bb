@@ -27,7 +27,6 @@ import {
 import type { ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { workflowRow } from "@/test/fixtures/thread-timeline-rows";
-import { THREAD_HANDOFF_CREATE_SEED_LOCATION_STATE_KEY } from "@bb/client-core";
 import { BbHttpError } from "@/lib/sdk";
 import type { PluginComposerHost } from "@/components/plugin/plugin-composer-host";
 import { setComposerTextEffect } from "@/lib/composer-text-effects";
@@ -124,10 +123,6 @@ vi.mock("@/components/promptbox/FollowUpPromptBox", async () => {
       } | null;
       environmentSummary?: ReactNode;
       execution: {
-        footerAction?: {
-          label: string;
-          onClick: () => void;
-        };
         model: {
           active?: { model: string } | null;
         };
@@ -280,11 +275,6 @@ vi.mock("@/components/promptbox/FollowUpPromptBox", async () => {
               Attach file
             </button>
           </>
-        ) : null}
-        {execution.footerAction ? (
-          <button type="button" onClick={execution.footerAction.onClick}>
-            {execution.footerAction.label}
-          </button>
         ) : null}
         <div data-testid="provider-switchable">
           {execution.provider.onChange ? "true" : "false"}
@@ -1398,9 +1388,6 @@ describe("ThreadDetailPromptArea", () => {
     expect(inlineEditor.getByTestId("permission-read-only").textContent).toBe(
       "true",
     );
-    expect(
-      inlineEditor.queryByRole("button", { name: "Handoff to new thread" }),
-    ).toBeNull();
   });
 
   it("dismisses an inline edit when its thread changes or its live row disappears", async () => {
@@ -1776,34 +1763,6 @@ describe("ThreadDetailPromptArea", () => {
     expect(screen.getByText("Model fallback")).toBeTruthy();
   });
 
-  it("opens root compose with a handoff seed for the current thread", () => {
-    renderPromptArea({
-      thread: makeThread({
-        environmentId: "env_1",
-        id: "thr_source",
-        projectId: "proj_source",
-        title: "Source thread",
-        titleFallback: null,
-      }),
-    });
-
-    fireEvent.click(
-      screen.getByRole("button", { name: "Handoff to new thread" }),
-    );
-
-    expect(mocks.navigate).toHaveBeenCalledWith("/projects/proj_source", {
-      state: {
-        focusPrompt: true,
-        reuseEnvironmentId: "env_1",
-        [THREAD_HANDOFF_CREATE_SEED_LOCATION_STATE_KEY]: {
-          environmentId: "env_1",
-          projectId: "proj_source",
-          sourceThreadId: "thr_source",
-          sourceThreadTitle: "Source thread",
-        },
-      },
-    });
-  });
   it("lets only the bottom composer switch providers", () => {
     mocks.queuedMessages = [makeQueuedMessage()];
 
@@ -1816,13 +1775,12 @@ describe("ThreadDetailPromptArea", () => {
     expect(
       within(inlineEditorHost).getByTestId("provider-switchable").textContent,
     ).toBe("false");
-    const bottomComposer = screen
-      .getAllByTestId("follow-up-prompt-box")
-      .find((element) => !inlineEditorHost.contains(element));
-    expect(bottomComposer).toBeDefined();
-    expect(
-      within(bottomComposer!).getByTestId("provider-switchable").textContent,
-    ).toBe("true");
+    const bottomSwitchable = screen
+      .getAllByTestId("provider-switchable")
+      .filter((element) => !inlineEditorHost.contains(element));
+    expect(bottomSwitchable.map((element) => element.textContent)).toEqual([
+      "true",
+    ]);
   });
 
   it("notifies that submitting will create a new thread after picking another provider", () => {
@@ -1860,7 +1818,7 @@ describe("ThreadDetailPromptArea", () => {
         environmentId: "env_1",
         id: "thr_source",
         projectId: "proj_source",
-        runtime: { displayStatus: "active" },
+        runtime: { displayStatus: "active", hostReconnectGraceExpiresAt: null },
         status: "active",
         title: "Source thread",
         titleFallback: null,

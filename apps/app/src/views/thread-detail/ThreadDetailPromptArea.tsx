@@ -98,15 +98,11 @@ import {
 } from "@/lib/mutation-errors";
 import { promptHistoryEntriesToDrafts } from "@/lib/prompt-history";
 import { usePromptHistoryEnabled } from "@/hooks/usePromptHistoryEnabled";
-import {
-  getProjectComposeRoutePath,
-  getThreadRoutePath,
-} from "@/lib/route-paths";
+import { getThreadRoutePath } from "@/lib/route-paths";
 import { getThreadDisplayTitle } from "@/lib/thread-title";
 import { appToast } from "@/components/ui/app-toast";
 import {
   buildThreadHandoffCreateRequest,
-  buildThreadHandoffLocationState,
   type ThreadHandoffCreateSeed,
 } from "@bb/client-core";
 import {
@@ -1155,12 +1151,6 @@ export function ThreadDetailPromptArea({
   const handleUnarchiveCurrentThread = useCallback(() => {
     unarchiveThread.mutate({ id: thread.id });
   }, [thread.id, unarchiveThread]);
-  const handleHandoffToNewThread = useCallback(() => {
-    navigate(getProjectComposeRoutePath(thread.projectId), {
-      state: buildThreadHandoffLocationState(handoffSeed),
-    });
-  }, [handoffSeed, navigate, thread.projectId]);
-
   const bottomAttachmentsConfig = useMemo(
     () => ({
       items: currentPromptDraft.attachments,
@@ -1305,16 +1295,11 @@ export function ThreadDetailPromptArea({
         options: reasoningOptions,
         onChange: setReasoningLevel,
       },
-      footerAction: {
-        label: "Handoff to new thread",
-        onClick: handleHandoffToNewThread,
-      },
     }),
     [
       effectiveSelectedModel,
       executionOptionsRouting,
       hasMultipleProviders,
-      handleHandoffToNewThread,
       handleModelChange,
       handleProviderChange,
       isLoadingModels,
@@ -1336,12 +1321,9 @@ export function ThreadDetailPromptArea({
     ],
   );
   const compactExecutionConfig = useMemo(() => {
-    const {
-      footerAction: _footerAction,
-      provider: { onChange: _onProviderChange, ...lockedProvider },
-      ...executionWithoutFooterAction
-    } = bottomExecutionConfig;
-    return { ...executionWithoutFooterAction, provider: lockedProvider };
+    const { onChange: _onProviderChange, ...lockedProvider } =
+      bottomExecutionConfig.provider;
+    return { ...bottomExecutionConfig, provider: lockedProvider };
   }, [bottomExecutionConfig]);
   const inlineExecutionConfig = useMemo(() => {
     if (!inlineEditingQueuedMessage) return null;

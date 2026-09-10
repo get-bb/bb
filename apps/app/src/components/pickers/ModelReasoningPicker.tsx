@@ -20,7 +20,7 @@ import {
 } from "./model-brand-prefix";
 import { fastServiceTierLabel } from "@/lib/reasoning-labels";
 import { Button } from "@bb/shared-ui/button";
-import { Icon, type IconName } from "@bb/shared-ui/icon";
+import { Icon } from "@bb/shared-ui/icon";
 import { Input } from "@bb/shared-ui/input";
 import {
   COARSE_POINTER_ICON_SIZE_CLASS,
@@ -191,15 +191,6 @@ interface ModelReasoningPickerProps {
   modal?: boolean;
   align?: "start" | "center" | "end";
   disabled?: boolean;
-  footerAction?: ModelReasoningPickerFooterAction;
-}
-
-export interface ModelReasoningPickerFooterAction {
-  label: string;
-  onClick: () => void;
-  disabled?: boolean;
-  title?: string;
-  iconName?: IconName;
 }
 
 export function ModelReasoningPicker({
@@ -233,7 +224,6 @@ export function ModelReasoningPicker({
   modal = true,
   align = "start",
   disabled,
-  footerAction,
 }: ModelReasoningPickerProps) {
   const isCompactViewport = useIsCompactViewport();
   const [open, setOpen] = useState(defaultOpen);
@@ -714,16 +704,6 @@ export function ModelReasoningPicker({
     if (next) handleReasoningSelect(next.value);
   };
 
-  const handleFooterActionClick = useCallback(() => {
-    if (!footerAction || footerAction.disabled) {
-      return;
-    }
-    footerAction.onClick();
-    setOpen(false);
-    setPreviewProviderId(null);
-    setMoreModelsOpen(false);
-  }, [footerAction]);
-
   const handleQueryChange = useCallback((value: string) => {
     setSearchQuery(value);
     setActiveIndex(-1);
@@ -1141,21 +1121,6 @@ export function ModelReasoningPicker({
                 </div>
               </>
             ) : null}
-
-            {footerAction ? (
-              <>
-                <div className="shrink-0 border-t border-border" />
-                <div className="shrink-0 p-1">
-                  <MenuActionButton
-                    label={footerAction.label}
-                    iconName={footerAction.iconName ?? "MessageSquarePlus"}
-                    disabled={footerAction.disabled}
-                    title={footerAction.title}
-                    onClick={handleFooterActionClick}
-                  />
-                </div>
-              </>
-            ) : null}
           </div>
         </MenuHoverProvider>
       </PopoverContent>
@@ -1445,41 +1410,6 @@ function MenuRowButton({
           )}
         />
       </span>
-    </button>
-  );
-}
-
-function MenuActionButton({
-  label,
-  iconName,
-  disabled,
-  title,
-  onClick,
-}: {
-  label: string;
-  iconName: IconName;
-  disabled?: boolean;
-  title?: string;
-  onClick: () => void;
-}) {
-  const { hoverProps } = useMenuItemHover();
-  const isCompactViewport = useIsCompactViewport();
-  return (
-    <button
-      type="button"
-      disabled={disabled}
-      title={title}
-      onClick={onClick}
-      className={cn(
-        "relative flex w-full cursor-default select-none items-center gap-2 rounded-sm px-2 text-xs outline-none hover:bg-state-hover hover:text-foreground disabled:pointer-events-none disabled:opacity-50",
-        LIST_HOVER_TRANSITION,
-        MENU_ITEM_LAST_HOVERED_CLASS,
-        isCompactViewport ? "py-2" : "py-[0.3125rem]",
-      )}
-      {...hoverProps}
-    >
-      <Icon name={iconName} className="size-3.5 shrink-0" aria-hidden />
-      <span className="min-w-0 truncate">{label}</span>
     </button>
   );
 }
