@@ -455,6 +455,7 @@ export function NewThreadComposer({
       ),
     [isProjectless, registeredEnvironmentProviders],
   );
+  const projectGitRemoteUrl = currentProject?.gitRemoteUrl;
   const environmentProvidersByHostId = useMemo(
     () =>
       new Map(
@@ -471,8 +472,8 @@ export function NewThreadComposer({
             }
             if (
               provider.requires.gitRemote &&
-              (currentProject === undefined ||
-                currentProject.gitRemoteUrl === null)
+              (projectGitRemoteUrl === undefined ||
+                projectGitRemoteUrl === null)
             ) {
               return false;
             }
@@ -480,12 +481,7 @@ export function NewThreadComposer({
           }),
         ]),
       ),
-    [
-      availableHosts,
-      currentProject?.gitRemoteUrl,
-      environmentProviders,
-      projectSources,
-    ],
+    [availableHosts, environmentProviders, projectGitRemoteUrl, projectSources],
   );
   const seedSignature = JSON.stringify([
     resetKey ?? null,
