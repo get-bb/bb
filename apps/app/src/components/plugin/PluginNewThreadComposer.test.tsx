@@ -559,6 +559,7 @@ describe("PluginNewThreadComposer seeding", () => {
     registerWorktreeInputsControl();
     registerCheckoutInputsControl();
     window.localStorage.clear();
+    window.sessionStorage.clear();
     getPromptDraftAccessor({ kind: "new-thread" }).setDraft({
       text: "",
       mentions: [],
@@ -568,6 +569,7 @@ describe("PluginNewThreadComposer seeding", () => {
 
   afterEach(() => {
     cleanup();
+    vi.restoreAllMocks();
   });
 
   it("round-trips a stored request submitted untouched", async () => {
@@ -1095,6 +1097,106 @@ describe("PluginNewThreadComposer seeding", () => {
     expect(mocks.promptHistoryQueryOptions.at(-1)?.enabled).toBe(true);
   });
 
+  it.each(["proj_other_tab", PERSONAL_PROJECT_ID])(
+    "ignores another tab selecting %s",
+    async (remoteProjectId) => {
+      const queryClient = new QueryClient({
+        defaultOptions: { queries: { retry: false } },
+      });
+      window.localStorage.setItem("bb.root-compose.project-id", "proj_1");
+      const router = createMemoryRouter(
+        [{ path: "/", element: <RootComposeView /> }],
+        { initialEntries: ["/"] },
+      );
+      render(
+        <Provider>
+          <QueryClientProvider client={queryClient}>
+            <RouterProvider router={router} />
+          </QueryClientProvider>
+        </Provider>,
+      );
+      await waitFor(() => {
+        expect(latestPromptBoxProps().project.value).toBe("proj_1");
+      });
+      const setItem = vi.spyOn(Storage.prototype, "setItem");
+
+      act(() => {
+        window.dispatchEvent(
+          new StorageEvent("storage", {
+            key: "bb.root-compose.project-id",
+            oldValue: "proj_1",
+            newValue: remoteProjectId,
+            storageArea: window.localStorage,
+          }),
+        );
+      });
+
+      await waitFor(() => {
+        expect(setItem).not.toHaveBeenCalledWith(
+          "bb.root-compose.project-id",
+          PERSONAL_PROJECT_ID,
+        );
+      });
+      expect(latestPromptBoxProps().project.value).toBe("proj_1");
+      setItem.mockRestore();
+    },
+  );
+
+  it.each(["proj_1", PERSONAL_PROJECT_ID])(
+    "retains inherited project %s when remounted after another tab changes the seed",
+    async (inheritedProjectId) => {
+      const mountRoot = () => {
+        const queryClient = new QueryClient({
+          defaultOptions: { queries: { retry: false } },
+        });
+        const router = createMemoryRouter(
+          [{ path: "/", element: <RootComposeView /> }],
+          { initialEntries: ["/"] },
+        );
+        return render(
+          <Provider>
+            <QueryClientProvider client={queryClient}>
+              <RouterProvider router={router} />
+            </QueryClientProvider>
+          </Provider>,
+        );
+      };
+      window.localStorage.setItem(
+        "bb.root-compose.project-id",
+        inheritedProjectId,
+      );
+      const first = mountRoot();
+      await waitFor(() => {
+        expect(latestPromptBoxProps().project.value).toBe(
+          inheritedProjectId === PERSONAL_PROJECT_ID
+            ? null
+            : inheritedProjectId,
+        );
+      });
+      first.unmount();
+      const remoteProjectId =
+        inheritedProjectId === "proj_1" ? PERSONAL_PROJECT_ID : "proj_1";
+      window.localStorage.setItem(
+        "bb.root-compose.project-id",
+        remoteProjectId,
+      );
+      mountRoot();
+      await waitFor(() => {
+        expect(latestPromptBoxProps().project.value).toBe(
+          inheritedProjectId === PERSONAL_PROJECT_ID
+            ? null
+            : inheritedProjectId,
+        );
+      });
+      expect(window.sessionStorage.getItem("bb.root-compose.project-id")).toBe(
+        inheritedProjectId,
+      );
+      expect(window.localStorage.getItem("bb.root-compose.project-id")).toBe(
+        remoteProjectId,
+      );
+    },
+  );
+
   it("keeps an unrelated draft attachment out of a RootComposeView handoff", async () => {
     const queryClient = new QueryClient({
       defaultOptions: { queries: { retry: false } },
@@ -1425,6 +1527,7 @@ describe("NewThreadComposer environment providers", () => {
     resetPluginSlotStoreForTest();
     registerCheckoutInputsControl();
     window.localStorage.clear();
+    window.sessionStorage.clear();
     getPromptDraftAccessor({ kind: "new-thread" }).setDraft({
       text: "",
       mentions: [],

@@ -4,9 +4,8 @@ import { atomFamily } from "jotai-family";
 import { useCallback } from "react";
 import type { PermissionMode, ReasoningLevel, ServiceTier } from "@bb/domain";
 import {
-  createLocalStorageEnumStorage,
-  createLocalStorageSyncStorage,
-  rawStringLocalStorage,
+  createTabScopedStorage,
+  withLocalStorage,
 } from "@/lib/browser-storage";
 import { getProjectScopedStorageKey } from "@/lib/project-scoped-storage";
 
@@ -86,10 +85,18 @@ function isStoredPermissionMode(value: string): value is StoredPermissionMode {
   return value === "" || isPermissionMode(value);
 }
 
+const stringSelectionStorage = createTabScopedStorage<string>(
+  {
+    parse: (value, initialValue) => value ?? initialValue,
+    serialize: (value) => value,
+  },
+  { persistInitialValue: true },
+);
+
 const providerIdAtom = atomWithStorage<string>(
   PROVIDER_STORAGE_KEY,
   "",
-  rawStringLocalStorage,
+  stringSelectionStorage,
   { getOnInit: true },
 );
 const emptyModelAtom = atom("");
@@ -106,35 +113,40 @@ function getLegacyProviderSelection(
   providerId: string,
   storageKey: string,
 ): string | null {
-  if (typeof window === "undefined") return null;
-  if (window.localStorage.getItem(PROVIDER_STORAGE_KEY) !== providerId) {
-    return null;
-  }
-  return window.localStorage.getItem(storageKey);
+  return withLocalStorage((storage) => {
+    if (storage.getItem(PROVIDER_STORAGE_KEY) !== providerId) return null;
+    return storage.getItem(storageKey);
+  }, null);
 }
 
 function createProviderModelStorage(providerId: string) {
-  return createLocalStorageSyncStorage<string>({
-    parse: (storedValue, initialValue) =>
-      storedValue ??
-      getLegacyProviderSelection(providerId, MODEL_STORAGE_KEY) ??
-      initialValue,
-    serialize: (value) => value,
-  });
+  return createTabScopedStorage<string>(
+    {
+      parse: (storedValue, initialValue) =>
+        storedValue ??
+        getLegacyProviderSelection(providerId, MODEL_STORAGE_KEY) ??
+        initialValue,
+      serialize: (value) => value,
+    },
+    { persistInitialValue: true },
+  );
 }
 
 function createProviderReasoningStorage(providerId: string) {
-  return createLocalStorageSyncStorage<StoredReasoningLevel>({
-    parse: (storedValue, initialValue) => {
-      const value =
-        storedValue ??
-        getLegacyProviderSelection(providerId, REASONING_STORAGE_KEY);
-      return value !== null && isStoredReasoningLevel(value)
-        ? value
-        : initialValue;
+  return createTabScopedStorage<StoredReasoningLevel>(
+    {
+      parse: (storedValue, initialValue) => {
+        const value =
+          storedValue ??
+          getLegacyProviderSelection(providerId, REASONING_STORAGE_KEY);
+        return value !== null && isStoredReasoningLevel(value)
+          ? value
+          : initialValue;
+      },
+      serialize: (value) => value,
     },
-    serialize: (value) => value,
-  });
+    { persistInitialValue: true },
+  );
 }
 
 const modelAtomFamily = atomFamily((providerId: string) =>
@@ -148,7 +160,14 @@ const modelAtomFamily = atomFamily((providerId: string) =>
 const serviceTierAtom = atomWithStorage<StoredServiceTier>(
   SERVICE_TIER_STORAGE_KEY,
   "",
-  createLocalStorageEnumStorage(isStoredServiceTier),
+  createTabScopedStorage<StoredServiceTier>(
+    {
+      parse: (value, initialValue) =>
+        value !== null && isStoredServiceTier(value) ? value : initialValue,
+      serialize: (value) => value,
+    },
+    { persistInitialValue: true },
+  ),
   { getOnInit: true },
 );
 const reasoningLevelAtomFamily = atomFamily((providerId: string) =>
@@ -160,17 +179,20 @@ const reasoningLevelAtomFamily = atomFamily((providerId: string) =>
   ),
 );
 const permissionModePreferenceStorage =
-  createLocalStorageSyncStorage<StoredPermissionMode>({
-    parse: (storedValue, initialValue) => {
-      if (storedValue === "workspace-write") {
-        return "accept-edits";
-      }
-      return storedValue !== null && isStoredPermissionMode(storedValue)
-        ? storedValue
-        : initialValue;
+  createTabScopedStorage<StoredPermissionMode>(
+    {
+      parse: (storedValue, initialValue) => {
+        if (storedValue === "workspace-write") {
+          return "accept-edits";
+        }
+        return storedValue !== null && isStoredPermissionMode(storedValue)
+          ? storedValue
+          : initialValue;
+      },
+      serialize: (value) => value,
     },
-    serialize: (value) => value,
-  });
+    { persistInitialValue: true },
+  );
 
 const permissionModeAtom = atomWithStorage<StoredPermissionMode>(
   PERMISSION_MODE_STORAGE_KEY,
@@ -181,14 +203,14 @@ const permissionModeAtom = atomWithStorage<StoredPermissionMode>(
 const environmentSelectionAtom = atomWithStorage<string>(
   ENVIRONMENT_STORAGE_KEY,
   "",
-  rawStringLocalStorage,
+  stringSelectionStorage,
   { getOnInit: true },
 );
 const projectEnvironmentSelectionAtomFamily = atomFamily((projectId: string) =>
   atomWithStorage<string>(
     getProjectScopedStorageKey(ENVIRONMENT_STORAGE_KEY, projectId),
     "",
-    rawStringLocalStorage,
+    stringSelectionStorage,
     { getOnInit: true },
   ),
 );
@@ -197,9 +219,11 @@ export function usePromptBoxProviderPreference(): PersistedStringSelectionField 
   const [value, setAtomValue] = useAtom(providerIdAtom);
   const setValue = useCallback(
     (nextValue: string) => {
-      if (nextValue !== value && typeof window !== "undefined") {
-        window.localStorage.removeItem(MODEL_STORAGE_KEY);
-        window.localStorage.removeItem(REASONING_STORAGE_KEY);
+      if (nextValue !== value) {
+        withLocalStorage((storage) => {
+          storage.removeItem(MODEL_STORAGE_KEY);
+          storage.removeItem(REASONING_STORAGE_KEY);
+        }, undefined);
       }
       setAtomValue(nextValue);
     },
