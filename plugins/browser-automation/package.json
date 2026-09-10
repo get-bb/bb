@@ -25,7 +25,8 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run --config vitest.config.ts",
     "smoke": "tsx --tsconfig tsconfig.smoke.json --conditions=source smoke.ts",
-    "smoke:install": "tsx --tsconfig tsconfig.smoke.json --conditions=source smoke-install.ts"
+    "smoke:install": "tsx --tsconfig tsconfig.smoke.json --conditions=source smoke-install.ts",
+    "prepare:bundled": "cd ../.. && node --conditions=source --import tsx apps/server/scripts/copy-builtin-plugins.ts --plugin browser-automation"
   },
   "dependencies": {
     "zod": "^4.3.6"

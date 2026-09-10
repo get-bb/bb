@@ -199,6 +199,7 @@ export async function copyBuiltinPlugins(args: {
   plugins?: readonly Pick<BundledPluginDefinition, "name">[];
   sourceModuleDir?: string;
   targetRoot?: string;
+  includeMarketplace?: boolean;
 }): Promise<void> {
   const resolvedSourceModuleDir = args.sourceModuleDir ?? sourceModuleDir;
   const resolvedTargetRoot = args.targetRoot ?? targetRoot;
@@ -207,10 +208,12 @@ export async function copyBuiltinPlugins(args: {
 
   await rm(resolvedTargetRoot, { recursive: true, force: true });
   await mkdir(resolvedTargetRoot, { recursive: true });
-  await cp(
-    bundledMarketplaceManifestPath,
-    path.join(resolvedTargetRoot, BUNDLED_MARKETPLACE_FILENAME),
-  );
+  if (args.includeMarketplace !== false) {
+    await cp(
+      bundledMarketplaceManifestPath,
+      path.join(resolvedTargetRoot, BUNDLED_MARKETPLACE_FILENAME),
+    );
+  }
 
   for (const plugin of plugins) {
     const sourceRoot = resolveBuiltinPluginRootPathForModuleDir({
@@ -225,7 +228,7 @@ export async function copyBuiltinPlugins(args: {
         await cp(sourceRoot, buildRoot, {
           recursive: true,
           filter: (entry) =>
-            !["dist", "node_modules", ".turbo"].includes(
+            !["dist", "node_modules", ".turbo", ".bundled-runtime"].includes(
               path.relative(sourceRoot, entry).split(path.sep)[0],
             ),
         });
@@ -251,12 +254,55 @@ export async function copyBuiltinPlugins(args: {
   }
 }
 
+export async function assembleBuiltinPlugins(): Promise<void> {
+  await rm(targetRoot, { recursive: true, force: true });
+  await mkdir(targetRoot, { recursive: true });
+  await cp(
+    bundledMarketplaceManifestPath,
+    path.join(targetRoot, BUNDLED_MARKETPLACE_FILENAME),
+  );
+  for (const plugin of BUNDLED_PLUGINS) {
+    const sourceRoot = resolveBuiltinPluginRootPathForModuleDir({
+      moduleDir: sourceModuleDir,
+      name: plugin.name,
+    });
+    await cp(
+      path.join(sourceRoot, ".bundled-runtime", plugin.name),
+      path.join(targetRoot, plugin.name),
+      { recursive: true },
+    );
+  }
+}
+
 if (import.meta.url === pathToFileURL(process.argv[1] ?? "").href) {
-  const targetFlagIndex = process.argv.indexOf("--target");
-  const targetArg =
-    targetFlagIndex !== -1 ? process.argv[targetFlagIndex + 1] : undefined;
-  await copyBuiltinPlugins({
-    bbVersion: await readAuthoritativeBbVersion(),
-    ...(targetArg !== undefined ? { targetRoot: path.resolve(targetArg) } : {}),
-  });
+  const args = process.argv.slice(2);
+  if (args.length === 1 && args[0] === "--assemble") {
+    await assembleBuiltinPlugins();
+  } else if (args.length === 2 && args[0] === "--plugin") {
+    const plugin = BUNDLED_PLUGINS.find((plugin) => plugin.name === args[1]);
+    if (plugin === undefined)
+      throw new Error(`Unknown bundled plugin: ${args[1]}`);
+    const sourceRoot = resolveBuiltinPluginRootPathForModuleDir({
+      moduleDir: sourceModuleDir,
+      name: plugin.name,
+    });
+    await copyBuiltinPlugins({
+      bbVersion: await readAuthoritativeBbVersion(),
+      plugins: [plugin],
+      includeMarketplace: false,
+      targetRoot: path.join(sourceRoot, ".bundled-runtime"),
+    });
+  } else if (
+    args.length === 0 ||
+    (args.length === 2 && args[0] === "--target")
+  ) {
+    await copyBuiltinPlugins({
+      bbVersion: await readAuthoritativeBbVersion(),
+      ...(args[1] !== undefined ? { targetRoot: path.resolve(args[1]) } : {}),
+    });
+  } else {
+    throw new Error(
+      "Expected --assemble, --plugin <name>, --target <directory>, or no arguments",
+    );
+  }
 }

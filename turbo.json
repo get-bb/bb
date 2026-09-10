@@ -145,22 +145,17 @@
         "$TURBO_ROOT$/turbo.json"
       ]
     },
-    "@bb/server#prepare:plugins": {
-      "dependsOn": [
-        "@get-bb/plugin-sdk#build",
-        "@bb/plugin-build#topo",
-        "@bb/server#generate:bb-official-marketplace"
-      ],
+    "prepare:bundled": {
+      "dependsOn": ["@get-bb/plugin-sdk#build", "@bb/plugin-build#topo"],
       "inputs": [
-        "package.json",
-        "scripts/copy-builtin-plugins.ts",
-        "src/services/plugins/builtin-registry.ts",
-        "src/services/plugin-catalog/bundled-marketplace-paths.ts",
-        "$TURBO_ROOT$/plugins/**",
-        "!$TURBO_ROOT$/plugins/*/dist/**",
-        "!$TURBO_ROOT$/plugins/*/node_modules/**",
-        "!$TURBO_ROOT$/plugins/*/.turbo/**",
-        "!$TURBO_ROOT$/plugins/.bundled-stage-*/**",
+        "$TURBO_DEFAULT$",
+        "!dist/**",
+        "!.bundled-runtime/**",
+        "!node_modules/**",
+        "!.turbo/**",
+        "$TURBO_ROOT$/apps/server/scripts/copy-builtin-plugins.ts",
+        "$TURBO_ROOT$/apps/server/src/services/plugins/builtin-registry.ts",
+        "$TURBO_ROOT$/apps/server/src/services/plugin-catalog/bundled-marketplace-paths.ts",
         "$TURBO_ROOT$/packages/*/package.json",
         "$TURBO_ROOT$/packages/*/src/**",
         "!$TURBO_ROOT$/packages/*/src/generated/**",
@@ -174,6 +169,51 @@
         "$TURBO_ROOT$/patches/**",
         "$TURBO_ROOT$/.npmrc",
         "$TURBO_ROOT$/turbo.json"
+      ],
+      "outputs": [".bundled-runtime/**"]
+    },
+    "@bb/server#prepare:plugins": {
+      "dependsOn": [
+        "@bb/server#generate:bb-official-marketplace",
+        "bb-plugin-bb-guide#prepare:bundled",
+        "bb-plugin-account-pool#prepare:bundled",
+        "bb-plugin-ask-user-question#prepare:bundled",
+        "bb-plugin-automations#prepare:bundled",
+        "bb-plugin-connect#prepare:bundled",
+        "bb-plugin-environment-project-checkout#prepare:bundled",
+        "bb-plugin-environment-git-worktree#prepare:bundled",
+        "bb-plugin-environment-personal-workspace#prepare:bundled",
+        "bb-plugin-custom-instructions#prepare:bundled",
+        "bb-plugin-plugin-api-tester#prepare:bundled",
+        "bb-plugin-inline-vis#prepare:bundled",
+        "bb-plugin-monaco-editor#prepare:bundled",
+        "bb-plugin-pdf-preview#prepare:bundled",
+        "bb-plugin-provider-codex#prepare:bundled",
+        "bb-plugin-provider-claude-code#prepare:bundled",
+        "bb-plugin-provider-pi#prepare:bundled",
+        "bb-plugin-provider-usage#prepare:bundled",
+        "bb-plugin-provider-acp#prepare:bundled",
+        "bb-plugin-keep-awake#prepare:bundled",
+        "bb-plugin-plugin-api-docs#prepare:bundled",
+        "bb-plugin-provider-retry#prepare:bundled",
+        "bb-plugin-push-notifications#prepare:bundled",
+        "bb-plugin-secrets#prepare:bundled",
+        "bb-plugin-scheduled-send#prepare:bundled",
+        "bb-plugin-concurrency-limit#prepare:bundled",
+        "bb-plugin-side-chat#prepare:bundled",
+        "bb-plugin-workflows#prepare:bundled",
+        "bb-plugin-browser-automation#prepare:bundled",
+        "bb-plugin-github#prepare:bundled",
+        "bb-plugin-simple-notes#prepare:bundled",
+        "bb-plugin-memory#prepare:bundled",
+        "bb-plugin-tasks#prepare:bundled",
+        "bb-plugin-theme-preview#prepare:bundled"
+      ],
+      "inputs": [
+        "package.json",
+        "scripts/copy-builtin-plugins.ts",
+        "src/services/plugins/builtin-registry.ts",
+        "src/services/plugin-catalog/bundled-marketplace-paths.ts"
       ],
       "outputs": ["builtin-plugins/**"]
     },
@@ -205,6 +245,7 @@
         "$TURBO_ROOT$/packages/tsconfig/*.json",
         "$TURBO_ROOT$/plugins/*/**",
         "!$TURBO_ROOT$/plugins/*/dist/**",
+        "!$TURBO_ROOT$/plugins/*/.bundled-runtime/**",
         "!$TURBO_ROOT$/plugins/*/node_modules/**",
         "$TURBO_ROOT$/scripts/*.mjs"
       ],
@@ -537,6 +578,8 @@
         "$TURBO_ROOT$/package.json",
         "$TURBO_ROOT$/scripts/*.mjs",
         "$TURBO_ROOT$/turbo.json",
+        "$TURBO_ROOT$/plugins/*/package.json",
+        "$TURBO_ROOT$/apps/server/src/services/plugins/builtin-registry.ts",
         "$TURBO_ROOT$/vitest.shared.ts"
       ]
     },

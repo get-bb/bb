@@ -98,6 +98,17 @@ export function runtimeOutputFingerprint(root, roots = runtimeOutputRoots) {
 }
 
 export async function clearRuntimeOutputs(root) {
+  const pluginsRoot = join(root, "plugins");
+  if (existsSync(pluginsRoot)) {
+    for (const entry of readdirSync(pluginsRoot, { withFileTypes: true })) {
+      if (entry.isDirectory()) {
+        await rm(join(pluginsRoot, entry.name, ".bundled-runtime"), {
+          recursive: true,
+          force: true,
+        });
+      }
+    }
+  }
   for (const path of runtimeOutputRoots) {
     await rm(join(root, path), { recursive: true, force: true });
   }

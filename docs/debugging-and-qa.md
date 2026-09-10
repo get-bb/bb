@@ -380,8 +380,15 @@ installed `bb` commands or public plugin SDK APIs. The source launcher also acce
 `pnpm start` keeps its existing production dotenv and packaged runtime policy.
 
 Turbo output ownership is separate: server `build` owns `apps/server/dist`,
-`prepare:plugins` owns `apps/server/builtin-plugins`, and plugin package builds own
-their individual `plugins/*/dist`. Bundled preparation uses temporary source copies
+`prepare:plugins` assembles `apps/server/builtin-plugins` from 33 independently
+cached `<plugin-package>#prepare:bundled` tasks. Each plugin task owns only its
+`plugins/<name>/.bundled-runtime` directory; regular plugin builds still own
+`plugins/<name>/dist`. Changing one plugin rebuilds its preparation and final
+assembly, while unchanged plugins restore from cache. Shared SDK/toolchain
+changes deliberately invalidate every plugin. The assembly task has explicit
+dependencies on all bundled plugin tasks; adding a bundled plugin requires its
+package script and assembly dependency, checked by the startup test suite.
+Bundled preparation uses temporary source copies
 and never writes those individual output trees. `bb-app#build` depends on and
 copies prepared plugins into its own package output. The plugin task hashes
 plugin sources, manifests, branding, skills, staging scripts/entries, lockfile,

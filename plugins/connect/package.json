@@ -22,7 +22,8 @@
   ],
   "scripts": {
     "typecheck": "tsc --noEmit",
-    "test": "vitest run --config vitest.config.ts"
+    "test": "vitest run --config vitest.config.ts",
+    "prepare:bundled": "cd ../.. && node --conditions=source --import tsx apps/server/scripts/copy-builtin-plugins.ts --plugin connect"
   },
   "dependencies": {
     "@bb/connect-client": "workspace:*",

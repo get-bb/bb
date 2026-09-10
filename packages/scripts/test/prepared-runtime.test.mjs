@@ -106,6 +106,21 @@ describe("prepared runtime", () => {
     );
   });
 
+  it("clears stale per-plugin staging without touching individual plugin builds", async () => {
+    const root = fixture();
+    write(root, "plugins/example/.bundled-runtime/example/obsolete", "stale");
+    write(root, "plugins/example/dist/server.js", "owned by plugin build");
+    await clearRuntimeOutputs(root);
+    expect(() =>
+      readFileSync(
+        join(root, "plugins/example/.bundled-runtime/example/obsolete"),
+      ),
+    ).toThrow();
+    expect(
+      readFileSync(join(root, "plugins/example/dist/server.js"), "utf8"),
+    ).toBe("owned by plugin build");
+  });
+
   it("rejects malformed or incompatible receipts", async () => {
     const root = fixture();
     for (const receipt of [

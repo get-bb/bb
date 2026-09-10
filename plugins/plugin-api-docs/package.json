@@ -22,7 +22,8 @@
     "bb-plugin"
   ],
   "scripts": {
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "prepare:bundled": "cd ../.. && node --conditions=source --import tsx apps/server/scripts/copy-builtin-plugins.ts --plugin plugin-api-docs"
   },
   "dependencies": {
     "@bb/plugin-api-map": "workspace:*"

@@ -21,7 +21,8 @@
   ],
   "scripts": {
     "test": "vitest run --config vitest.config.ts",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "prepare:bundled": "cd ../.. && node --conditions=source --import tsx apps/server/scripts/copy-builtin-plugins.ts --plugin side-chat"
   },
   "dependencies": {
     "@bb/shared-ui": "workspace:*",

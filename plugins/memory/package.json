@@ -43,7 +43,8 @@
   "scripts": {
     "build": "node --conditions=source --import tsx ../../scripts/build-official-plugins.mjs memory",
     "test": "vitest run --config vitest.config.ts",
-    "typecheck": "tsc --noEmit -p tsconfig.json"
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "prepare:bundled": "cd ../.. && node --conditions=source --import tsx apps/server/scripts/copy-builtin-plugins.ts --plugin memory"
   },
   "dependencies": {
     "@bb/shared-ui": "workspace:*",
