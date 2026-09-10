@@ -678,6 +678,42 @@ export function ModelReasoningPicker({
     ],
   );
 
+  const handleReasoningArrowKeyDown: KeyboardEventHandler<HTMLElement> = (
+    event,
+  ) => {
+    if (
+      event.defaultPrevented ||
+      event.altKey ||
+      event.ctrlKey ||
+      event.metaKey ||
+      event.shiftKey ||
+      disabled ||
+      !showReasoningSection ||
+      previewSelectionBlocked ||
+      (event.key !== "ArrowLeft" && event.key !== "ArrowRight")
+    ) {
+      return;
+    }
+    if (
+      isEditableKeyboardTarget(event.target) &&
+      (event.target !== searchInputRef.current || searchQuery.length > 0)
+    ) {
+      return;
+    }
+    const value = isPreviewing
+      ? previewSelection?.reasoningLevel
+      : reasoningValue;
+    const index = activeReasoningOptions.findIndex(
+      (option) => option.value === value,
+    );
+    if (index < 0) return;
+    event.preventDefault();
+    event.stopPropagation();
+    const next =
+      activeReasoningOptions[index + (event.key === "ArrowRight" ? 1 : -1)];
+    if (next) handleReasoningSelect(next.value);
+  };
+
   const handleFooterActionClick = useCallback(() => {
     if (!footerAction || footerAction.disabled) {
       return;
@@ -765,6 +801,7 @@ export function ModelReasoningPicker({
       }
       aria-keyshortcuts={toggleShortcut?.ariaKeyshortcuts}
       disabled={disabled}
+      onKeyDown={handleReasoningArrowKeyDown}
       className={cn(
         OPTION_BASE_CLASS_NAME,
         OPTION_INTERACTIVE_CLASS_NAME,
@@ -866,6 +903,7 @@ export function ModelReasoningPicker({
       <PopoverContent
         align={align}
         mobileTitle="Model"
+        onKeyDown={handleReasoningArrowKeyDown}
         onMobileContentAnimationEnd={handleMobileContentAnimationEnd}
         autoFocusRef={showSearchInput ? searchInputRef : undefined}
         className={cn(
@@ -1105,10 +1143,7 @@ export function ModelReasoningPicker({
                       checked={fastModeEnabled}
                       onCheckedChange={onFastModeChange}
                       aria-label={fastModeText}
-                      className={cn(
-                        LIST_HOVER_TRANSITION,
-                        "[&>span]:size-3.5",
-                      )}
+                      className={cn(LIST_HOVER_TRANSITION, "[&>span]:size-3.5")}
                     />
                   </div>
                 </div>
