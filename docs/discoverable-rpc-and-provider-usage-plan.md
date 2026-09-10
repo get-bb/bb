@@ -1,6 +1,6 @@
 # Discoverable RPC and replaceable provider usage displays
 
-Status: prototype implemented for discoverable RPC, Account Pooler, Codex, Claude Code, and the core `/settings/usage` page. The broader Provider Usage plugin migration remains planned.
+Status: prototype implemented for discoverable RPC, Account Pooler, Codex, Claude Code, and the core `/settings/usage` page. The broader Provider Usage plugin migration remains planned. The core settings page preserves its existing presentation and machine picker; only its data source changes.
 
 ## Prototype verification
 
@@ -150,7 +150,7 @@ Use the same milliseconds-based timestamp convention throughout. An observation 
 
 ### Display implementation
 
-Provider Usage discovers sources whenever it loads or refreshes data, invokes them with bounded concurrency and bounded wait, and renders successful results even if another source fails. It groups observations by provider and reporting source, with explicit host/shared labels and freshness.
+Provider Usage discovers sources whenever it loads or refreshes data, invokes them with bounded concurrency and bounded wait, and renders successful results even if another source fails. The core settings prototype preserves the existing provider-card presentation, refresh control, and machine picker. Host-local observations follow the selected machine; shared accounts use the same cards. Source-group headings and observation timestamps are not added to this page. Other display plugins can choose their own presentation using the same metadata.
 
 Namespace resource keys by reporting plugin ID. Do not deduplicate by email or sum unrelated quota percentages. A shared pool appears once; a local account and a pool account may both appear even when their labels match. Source removal evicts its current display entries on the next reconciliation.
 

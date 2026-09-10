@@ -1,4 +1,6 @@
-import { useId } from "react";
+import { useUsageSources } from "@/hooks/queries/usage-source-queries";
+import type { UsageSnapshot } from "@/lib/usage-source-contract";
+import { useId, useState } from "react";
 import type { Host, ProviderInfo } from "@bb/domain";
 import type {
   ProviderUsage,
@@ -21,10 +23,11 @@ import {
 } from "@bb/shared-ui/dropdown-menu";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@bb/shared-ui/tooltip";
 import {
+  useSystemConfig,
   useSystemProviders,
   type ProviderUsageQueryState,
 } from "@/hooks/queries/system-queries";
-import { useUsageSources } from "@/hooks/queries/usage-source-queries";
+import { selectPrimaryHost, useHosts } from "@/hooks/queries/host-queries";
 import { getProviderIconInfo } from "@/lib/provider-icon";
 import { ProviderIconMark } from "./ProviderIconMark";
 import { cn } from "@bb/shared-ui/lib/utils";
@@ -136,7 +139,7 @@ function UsageWindowRow({ window }: { window: ProviderUsageWindow }) {
             "h-full rounded-full",
             barColorClass(window.usedPercent),
           )}
-          style={{ width: `${Math.min(100, Math.max(window.usedPercent, 2))}%` }}
+          style={{ width: `${Math.max(window.usedPercent, 2)}%` }}
         />
       </div>
       {reset ? <p className="text-xs text-muted-foreground">{reset}</p> : null}
@@ -152,6 +155,10 @@ interface ProviderUsageBlockProps {
 }
 
 export interface UsageLimitsSettingsSectionContentProps {
+  resources?: Array<{
+    key: string;
+    resource: UsageSnapshot["resources"][number];
+  }>;
   usage: ProviderUsageResponse;
   isLoading: boolean;
   isError: boolean;
@@ -352,6 +359,7 @@ function ProviderUsageBody({
 
 export function UsageLimitsSettingsSectionContent({
   usage,
+  resources,
   isLoading,
   isError,
   isProviderListLoading = false,
@@ -426,7 +434,37 @@ export function UsageLimitsSettingsSectionContent({
       }
     >
       <SettingsRowList>
-        {providerConfigs.length === 0 ? (
+        {resources !== undefined && resources.length > 0 ? (
+          resources.map(({ key, resource }) => {
+            const config = providerConfig(
+              resource.providerId,
+              providerById.get(resource.providerId),
+            );
+            return (
+              <ProviderUsageBlock
+                key={key}
+                config={
+                  resource.scope.kind === "shared"
+                    ? { ...config, name: resource.label }
+                    : config
+                }
+                usage={
+                  resource.usage.status === "ok"
+                    ? {
+                        ...resource.usage,
+                        windows: resource.usage.windows.map(
+                          ({ cost, ...window }) =>
+                            cost === null ? window : { ...window, cost },
+                        ),
+                      }
+                    : resource.usage
+                }
+                isLoading={false}
+                isError={false}
+              />
+            );
+          })
+        ) : providerConfigs.length === 0 ? (
           <p className="text-xs text-muted-foreground">{emptyMessage}</p>
         ) : (
           providerConfigs.map((config) => (
@@ -447,110 +485,76 @@ export function UsageLimitsSettingsSectionContent({
 }
 
 export function UsageLimitsSettingsSection() {
-  const usage = useUsageSources();
-  const providersQuery = useSystemProviders({});
-  const providers = new Map(
-    (providersQuery.data ?? []).map((provider) => [provider.id, provider]),
+  const systemConfigQuery = useSystemConfig();
+  const hostsQuery = useHosts();
+  const hosts = hostsQuery.data ?? [];
+  const [selectedHostId, setSelectedHostId] = useState<string | null>(null);
+  const primaryHost = selectPrimaryHost(
+    hosts,
+    systemConfigQuery.data?.primaryHostId ?? null,
   );
+  const selectedHost =
+    hosts.find((host) => host.id === selectedHostId) ?? primaryHost;
+  const usageHostId =
+    selectedHost?.id ?? systemConfigQuery.data?.primaryHostId ?? undefined;
+  const providersQuery = useSystemProviders(
+    usageHostId === undefined
+      ? {
+          capability: "usage",
+          enabled: systemConfigQuery.data !== undefined,
+        }
+      : {
+          capability: "usage",
+          enabled: systemConfigQuery.data !== undefined,
+          hostId: usageHostId,
+        },
+  );
+  const providers = providersQuery.data ?? [];
+  const usageQuery = useUsageSources();
+  const resources = usageQuery.sources
+    .flatMap(({ source, query }) =>
+      (query.data?.resources ?? [])
+        .filter(
+          (resource) =>
+            resource.usage.status !== "not_installed" &&
+            (resource.scope.kind === "shared" ||
+              resource.scope.hostId === usageHostId),
+        )
+        .map((resource) => ({
+          key: `${source.pluginId}:${resource.id}`,
+          resource,
+        })),
+    )
+    .sort((a, b) => {
+      const rank = (id: string) => {
+        const index = providers.findIndex((provider) => provider.id === id);
+        return index < 0 ? providers.length : index;
+      };
+      return rank(a.resource.providerId) - rank(b.resource.providerId);
+    });
+
   return (
-    <SettingsSection
-      title="Usage limits"
-      description="Usage from local provider accounts and shared account pools."
-      action={
-        <Button
-          variant="ghost"
-          size="icon"
-          className="size-7"
-          disabled={usage.isFetching}
-          onClick={() => {
-            void usage.refresh();
-          }}
-          aria-label="Reload usage data"
-        >
-          <Icon
-            name="RotateCcw"
-            className={cn("size-3.5", usage.isFetching && "animate-spin")}
-          />
-        </Button>
+    <UsageLimitsSettingsSectionContent
+      usage={{}}
+      resources={resources}
+      isLoading={
+        usageQuery.discovery.isPending ||
+        usageQuery.sources.some(({ query }) => query.isPending)
       }
-    >
-      {usage.discovery.isError ? (
-        <p className="text-xs text-destructive">
-          Usage sources could not be loaded.
-        </p>
-      ) : null}
-      {usage.discovery.isPending ? (
-        <p className="text-xs text-muted-foreground">Loading usage sources…</p>
-      ) : null}
-      {usage.discovery.isSuccess && usage.sources.length === 0 ? (
-        <p className="text-xs text-muted-foreground">
-          No usage sources available.
-        </p>
-      ) : null}
-      <div className="space-y-6">
-        {usage.sources.map(({ source, query }) => (
-          <section
-            key={source.pluginId}
-            aria-label={source.displayName}
-            className="space-y-3"
-          >
-            <h3 className="text-sm font-semibold">{source.displayName}</h3>
-            {query.isPending ? (
-              <p className="text-xs text-muted-foreground">Loading usage…</p>
-            ) : null}
-            {query.isError ? (
-              <p className="text-xs text-destructive">
-                This source could not be refreshed. Any values below are from
-                the previous observation.
-              </p>
-            ) : null}
-            {query.data?.resources.length === 0 ? (
-              <p className="text-xs text-muted-foreground">
-                No accounts reported.
-              </p>
-            ) : null}
-            <SettingsRowList>
-              {query.data?.resources.map((resource) => {
-                const config = providerConfig(
-                  resource.providerId,
-                  providers.get(resource.providerId),
-                );
-                const observation =
-                  resource.observedAt === null
-                    ? "Not yet observed"
-                    : `Observed ${new Date(resource.observedAt).toLocaleString()}`;
-                return (
-                  <div key={resource.id} className="space-y-2">
-                    <p className="text-xs text-muted-foreground">
-                      {resource.scope.kind === "shared"
-                        ? "Shared across machines"
-                        : resource.scope.hostName}
-                      {" · "}
-                      {observation}
-                    </p>
-                    <ProviderUsageBlock
-                      config={{ ...config, name: resource.label }}
-                      usage={
-                        resource.usage.status === "ok"
-                          ? {
-                              ...resource.usage,
-                              windows: resource.usage.windows.map(
-                                ({ cost, ...window }) =>
-                                  cost === null ? window : { ...window, cost },
-                              ),
-                            }
-                          : resource.usage
-                      }
-                      isLoading={false}
-                      isError={false}
-                    />
-                  </div>
-                );
-              })}
-            </SettingsRowList>
-          </section>
-        ))}
-      </div>
-    </SettingsSection>
+      isError={
+        usageQuery.discovery.isError ||
+        usageQuery.sources.some(({ query }) => query.isError)
+      }
+      isProviderListLoading={providersQuery.isLoading}
+      isProviderListError={providersQuery.isError}
+      isFetching={usageQuery.isFetching}
+      onRefresh={() => {
+        void usageQuery.refresh();
+      }}
+      providers={providers}
+      hosts={hosts}
+      selectedHostId={selectedHost?.id ?? null}
+      onSelectHost={setSelectedHostId}
+    />
   );
 }
