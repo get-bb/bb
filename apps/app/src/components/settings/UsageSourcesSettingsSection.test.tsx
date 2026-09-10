@@ -8,6 +8,8 @@ import {
   waitFor,
 } from "@testing-library/react";
 import { afterEach, expect, it, vi } from "vitest";
+import { TooltipProvider } from "@bb/shared-ui/tooltip";
+import { makeHost } from "@bb/test-helpers/domain-fixtures";
 import { UsageLimitsSettingsSection } from "./UsageLimitsSettingsSection";
 
 const calls = vi.hoisted(() => ({ discover: vi.fn(), rpc: vi.fn() }));
@@ -17,7 +19,15 @@ vi.mock("@/lib/sdk", () => ({
   },
 }));
 vi.mock("@/hooks/queries/system-queries", () => ({
-  useSystemProviders: () => ({ data: [] }),
+  useSystemProviders: () => ({ data: [], isSuccess: true }),
+  useSystemConfig: () => ({ data: { primaryHostId: "host-a" } }),
+}));
+
+vi.mock("@/hooks/queries/host-queries", () => ({
+  useHosts: () => ({
+    data: [makeHost({ id: "host-a", name: "Build machine" })],
+  }),
+  selectPrimaryHost: (hosts: unknown[]) => hosts[0],
 }));
 
 afterEach(() => {
@@ -25,7 +35,7 @@ afterEach(() => {
   vi.clearAllMocks();
 });
 
-it("renders independent sources with shared and host scope and refreshes through the copied contract", async () => {
+it("keeps the existing presentation for discovered shared and host usage and refreshes through the copied contract", async () => {
   calls.discover.mockResolvedValue([
     { pluginId: "pool", displayName: "Account Pooler" },
     { pluginId: "local", displayName: "Codex provider" },
@@ -69,16 +79,17 @@ it("renders independent sources with shared and host scope and refreshes through
   try {
     render(
       <QueryClientProvider client={client}>
-        <UsageLimitsSettingsSection />
+        <TooltipProvider>
+          <UsageLimitsSettingsSection />
+        </TooltipProvider>
       </QueryClientProvider>,
     );
     expect(await screen.findByText("42% used")).toBeTruthy();
     expect(await screen.findByText("81% used")).toBeTruthy();
-    expect(screen.getByText(/Shared across machines/)).toBeTruthy();
-    expect(screen.getByText(/Build machine/)).toBeTruthy();
-    expect(
-      await screen.findByText(/This source could not be refreshed/),
-    ).toBeTruthy();
+    expect(screen.queryByText(/Shared across machines/)).toBeNull();
+    expect(screen.queryByText("Account Pooler")).toBeNull();
+    expect(screen.queryByText(/Observed/)).toBeNull();
+    expect(screen.getByText("Your provider subscription usage.")).toBeTruthy();
     await waitFor(() =>
       expect(
         screen.getByLabelText("Reload usage data").hasAttribute("disabled"),
