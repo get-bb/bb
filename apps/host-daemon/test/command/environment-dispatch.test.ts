@@ -1,3 +1,4 @@
+import fs from "node:fs/promises";
 import { afterEach, describe, expect, it } from "vitest";
 import { WorkspaceError, type HostWorkspace } from "@bb/host-workspace";
 import { dispatchCommand } from "../../src/command-dispatch.js";
@@ -33,6 +34,7 @@ describe("environment command dispatch", () => {
         environmentId: "env-unmanaged",
         initiator: null,
         path: sourcePath,
+        setupScriptTimeoutMs: null,
       },
       harness.dispatchOptions(),
     );
@@ -50,6 +52,72 @@ describe("environment command dispatch", () => {
         signal: expect.any(AbortSignal),
       },
     ]);
+  });
+
+  it("runs setup before attaching a provider-owned workspace", async () => {
+    const harness = createHarness({ workspacePath: "/tmp/provider-owned" });
+    const sourcePath = await makeTempDir("bb-dispatch-provider-owned-");
+    const markerPath = `${sourcePath}/setup-marker`;
+    await fs.writeFile(
+      `${sourcePath}/.bb-env-setup.sh`,
+      `printf '%s' ready > '${markerPath}'\n`,
+    );
+    const emittedEvents: EventSinkInput[] = [];
+
+    await dispatchCommand(
+      {
+        type: "environment.attach",
+        environmentId: "env-provider-owned",
+        initiator: {
+          threadId: "thr-provider-owned",
+          provisioningId: "tpv-provider-owned",
+        },
+        path: sourcePath,
+        setupScriptTimeoutMs: 10_000,
+      },
+      makeDispatchOptions({
+        runtimeManager: harness.manager,
+        eventSink: {
+          emit: (event) => emittedEvents.push(event),
+          flush: async () => undefined,
+        },
+      }),
+    );
+
+    await expect(fs.readFile(markerPath, "utf8")).resolves.toBe("ready");
+    expect(streamedEntries(emittedEvents)).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          key: "setup-started",
+          text: "Running .bb-env-setup.sh",
+        }),
+        expect.objectContaining({ key: "setup-completed" }),
+        expect.objectContaining({ key: "workspace-path" }),
+      ]),
+    );
+  });
+
+  it("fails attachment when the setup script fails", async () => {
+    const harness = createHarness({ workspacePath: "/tmp/setup-failure" });
+    const sourcePath = await makeTempDir("bb-dispatch-setup-failure-");
+    await fs.writeFile(
+      `${sourcePath}/.bb-env-setup.sh`,
+      "printf 'script diagnostic\\n'\nexit 7\n",
+    );
+
+    await expect(
+      dispatchCommand(
+        {
+          type: "environment.attach",
+          environmentId: "env-setup-failure",
+          initiator: null,
+          path: sourcePath,
+          setupScriptTimeoutMs: 10_000,
+        },
+        harness.dispatchOptions(),
+      ),
+    ).rejects.toThrow("failed with exit code 7");
+    expect(harness.provisions).toEqual([]);
   });
 
   it("returns success when cancelling a provision with no in-flight work", async () => {
@@ -98,6 +166,7 @@ describe("environment command dispatch", () => {
         environmentId: "env-cancel",
         initiator: null,
         path: "/tmp/cancelled",
+        setupScriptTimeoutMs: null,
       },
       dispatchOptions,
     );
@@ -150,6 +219,7 @@ describe("environment command dispatch", () => {
         environmentId: "env-cancel-no-settle",
         initiator: null,
         path: "/tmp/cancelled-no-settle",
+        setupScriptTimeoutMs: null,
       },
       dispatchOptions,
     ).finally(() => {
@@ -187,6 +257,7 @@ describe("environment command dispatch", () => {
           provisioningId: "tpv-initiator",
         },
         path: sourcePath,
+        setupScriptTimeoutMs: null,
       },
       makeDispatchOptions({
         runtimeManager: harness.manager,
@@ -266,6 +337,7 @@ describe("environment command dispatch", () => {
           provisioningId: "tpv-batched-progress",
         },
         path: "/tmp/batched-progress",
+        setupScriptTimeoutMs: null,
       },
       makeDispatchOptions({
         runtimeManager: manager,
@@ -323,6 +395,7 @@ describe("environment command dispatch", () => {
             provisioningId: "tpv-failure",
           },
           path: "/tmp/failure",
+          setupScriptTimeoutMs: null,
         },
         makeDispatchOptions({
           runtimeManager: manager,
@@ -358,6 +431,7 @@ describe("environment command dispatch", () => {
         environmentId: "env-idempotent",
         initiator: null,
         path: sourcePath,
+        setupScriptTimeoutMs: null,
       },
       harness.dispatchOptions(),
     );
@@ -371,6 +445,7 @@ describe("environment command dispatch", () => {
           provisioningId: "tpv-second",
         },
         path: sourcePath,
+        setupScriptTimeoutMs: null,
       },
       makeDispatchOptions({
         runtimeManager: harness.manager,

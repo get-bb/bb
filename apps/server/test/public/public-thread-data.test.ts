@@ -42,6 +42,7 @@ import { describe, expect, it, vi } from "vitest";
 import type { TelemetryService } from "../../src/services/system/telemetry.js";
 import { loadActiveThreadProvisionContext } from "../../src/services/threads/thread-provisioning-environment.js";
 import {
+  reportNextEnvironmentAttachSuccess,
   reportQueuedCommandError,
   reportQueuedCommandSuccess,
   waitForQueuedCommand,
@@ -3545,6 +3546,7 @@ describe("public thread data routes", () => {
       expect(
         getQueuedThreadMessage(harness.db, createdQueuedMessage.id),
       ).toBeNull();
+      await reportNextEnvironmentAttachSuccess(harness, thread.id);
       const startCommand = await waitForQueuedCommand(
         harness,
         ({ command }) =>
@@ -3694,10 +3696,7 @@ describe("public thread data routes", () => {
         hostId: host.id,
         sessionId: session.id,
         handle: (request): HostRpcHandlerResult => {
-          if (request.command.type === "environment.hook.run") {
-            return { ok: true, result: {} };
-          }
-          if (request.command.type === "host.inspect_git_source") {
+          if (request.command.type === "environment.attach") {
             stateAtProvisionStart = {
               activeContextStage:
                 loadActiveThreadProvisionContext(harness.deps, thread.id)?.state
@@ -3718,17 +3717,12 @@ describe("public thread data routes", () => {
             return {
               ok: true,
               result: {
-                checkout: {
-                  kind: "branch",
-                  branchName: `bb/${thread.id}`,
-                  headSha: "abc123",
-                },
-                defaultBranch: "main",
-                defaultBranchRelation: "equal",
+                path: request.command.path,
+                isGitRepo: true,
                 isWorktree: false,
-                hasUncommittedChanges: false,
-                operation: { kind: "none" },
-                originDefaultBranch: "origin/main",
+                branchName: `bb/${thread.id}`,
+                defaultBranch: "main",
+                transcript: [],
               },
             };
           }
@@ -3864,6 +3858,7 @@ describe("public thread data routes", () => {
         getQueuedThreadMessage(harness.db, secondQueuedMessage.id),
       ).toBeNull();
 
+      await reportNextEnvironmentAttachSuccess(harness, thread.id);
       const startCommand = await waitForQueuedCommand(
         harness,
         ({ command }) =>
@@ -4244,6 +4239,8 @@ describe("public thread data routes", () => {
         limit: 1000,
         includeFiles: true,
         includeDirectories: true,
+        includeHidden: false,
+        excludeNames: expect.arrayContaining(["node_modules"]),
       });
       await reportQueuedCommandSuccess(harness, pathsCommand, {
         paths: [

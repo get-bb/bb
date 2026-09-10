@@ -271,3 +271,5 @@ This index lists every command path that the core CLI registers. Read the task-s
 - `bb browser close`
 - `bb browser capture`
 - `bb browser watch`
+- `bb browser import-sources`
+- `bb browser import-cookies`

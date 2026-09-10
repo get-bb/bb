@@ -38,7 +38,6 @@ import {
   setPluginEnvironmentProviderBridge,
 } from "./services/plugins/plugin-environment-provider-registry.js";
 import { recheckEnvironmentProviderLaunches } from "./services/threads/thread-environment-providers.js";
-import { invalidateEnvironmentProviderAvailability } from "./services/environments/provider-availability.js";
 import { requestQueuedMessageDispatch } from "./services/threads/queued-message-dispatch.js";
 import { registerInternalEventRoutes } from "./internal/events.js";
 import { registerInternalHostRoutes } from "./internal/hosts.js";
@@ -583,7 +582,6 @@ export function createApp(
     onSettingsChanged: (pluginId) => {
       deps.providerNativeRoots.invalidate(pluginId);
       deps.providerRegistry.forgetAllInstalled();
-      invalidateEnvironmentProviderAvailability();
     },
     onPluginUnregistered: (pluginId) => {
       requestQueuedMessageDispatch(deps, {
@@ -618,7 +616,6 @@ export function createApp(
     recheckEnvironmentLaunch(deps, threadId),
   );
   setEnvironmentProviderRecheckHandler((pluginId) => {
-    invalidateEnvironmentProviderAvailability();
     deps.hub.notifySystem(["config-changed"]);
     void recheckEnvironmentProviderLaunches(deps, pluginId);
   });

@@ -168,7 +168,7 @@ export function ThreadDetailHeader({
         <p
           className={cn(
             "relative min-w-0 text-sm font-normal transition-colors",
-            isEditing ? "overflow-visible" : "truncate",
+            isEditing ? "overflow-visible" : "bb-thread-title",
             isSplitPaneHeader &&
               !isFocused &&
               dimsInactiveSplits &&

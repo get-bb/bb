@@ -447,6 +447,9 @@ importers:
       '@bb/domain':
         specifier: workspace:*
         version: link:../../packages/domain
+      '@bb/host-daemon-contract':
+        specifier: workspace:*
+        version: link:../../packages/host-daemon-contract
       '@bb/plugin-build':
         specifier: workspace:*
         version: link:../../packages/plugin-build
@@ -1685,6 +1688,9 @@ importers:
       '@bb/domain':
         specifier: workspace:*
         version: link:../domain
+      '@bb/host-daemon-contract':
+        specifier: workspace:*
+        version: link:../host-daemon-contract
       zod:
         specifier: 4.3.6
         version: 4.3.6
@@ -4302,12 +4308,12 @@ importers:
         specifier: 4.3.6
         version: 4.3.6
     devDependencies:
-      '@get-bb/plugin-sdk':
-        specifier: workspace:*
-        version: link:../../packages/plugin-sdk
       '@bb/tsconfig':
         specifier: workspace:*
         version: link:../../packages/tsconfig
+      '@get-bb/plugin-sdk':
+        specifier: workspace:*
+        version: link:../../packages/plugin-sdk
       '@types/node':
         specifier: ^22.0.0
         version: 22.19.10

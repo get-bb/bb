@@ -182,6 +182,7 @@ export function stripRadixContentProps<T extends Record<string, unknown>>(
 interface ResponsiveDrawerShellProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  closeOnBackdropClick?: boolean;
   onAfterCloseAutoFocus?: () => void;
   srLabel?: string;
   labelledBy?: string;
@@ -244,6 +245,7 @@ export function ResponsiveDrawerShell({
   open,
   onOpenChange,
   onAfterCloseAutoFocus,
+  closeOnBackdropClick = true,
   srLabel,
   labelledBy,
   describedBy,
@@ -262,6 +264,7 @@ export function ResponsiveDrawerShell({
       open={open}
       onOpenChange={onOpenChange}
       onAfterCloseAutoFocus={onAfterCloseAutoFocus}
+      closeOnBackdropClick={closeOnBackdropClick}
       srLabel={srLabel}
       labelledBy={labelledBy}
       describedBy={describedBy}
@@ -284,6 +287,7 @@ export function ResponsiveDrawerShell({
 interface PersistentResponsiveDrawerShellProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  closeOnBackdropClick?: boolean;
   onAfterCloseAutoFocus?: () => void;
   srLabel?: string;
   labelledBy?: string;
@@ -513,6 +517,7 @@ export function PersistentResponsiveDrawerShell({
   open,
   onOpenChange,
   onAfterCloseAutoFocus,
+  closeOnBackdropClick = true,
   srLabel,
   labelledBy,
   describedBy,
@@ -675,7 +680,7 @@ export function PersistentResponsiveDrawerShell({
           pointerEvents: open ? "auto" : "none",
           transition: backdropTransition,
         }}
-        onClick={requestClose}
+        onClick={closeOnBackdropClick ? requestClose : undefined}
         onTouchMove={(event) => event.preventDefault()}
       />
       <div

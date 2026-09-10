@@ -348,11 +348,10 @@ export type PluginThreadEventHandler<E extends PluginThreadEventName> = (
  *   that machine, git or not, so core refuses a machine with no checkout of
  *   the project at create time and `context.projectCheckout` is non-null.
  * - `gitCheckout` — that directory must also be a git repository with at
- *   least one commit. The picker greys the row out where it is not, and core
- *   rejects an explicit selection using the same machine inspection before
- *   creating the thread. Implies `projectCheckout`.
- * - `gitRemote` — the provider clones the project itself, so it is greyed out
- *   in a project with no git remote and an explicit selection is rejected.
+ *   least one commit. Core inspects the selected machine and rejects an
+ *   invalid selection before creating the thread. Implies `projectCheckout`.
+ * - `gitRemote` — the provider clones the project itself, so an explicit
+ *   selection is rejected when the project has no git remote.
  * - `projectless` — this provider serves only threads that have no project,
  *   so it is offered for those and nowhere else. It cannot be combined with
  *   `projectCheckout`, `gitCheckout` or `gitRemote`, which need a project.
@@ -403,9 +402,8 @@ export interface PluginEnvironments {
   ): void;
   /**
    * Ask core to re-ask this plugin's waiting providers now instead of at their
-   * `sendAt` — call it whenever a launch advances (progress text changed, the
-   * environment became ready, a failure was recorded). Resolves on
-   * scheduling, exactly like `experimental_hooks.recheck`.
+   * `sendAt`. Resolves on scheduling, exactly like
+   * `experimental_hooks.recheck`.
    */
   recheck(): Promise<void>;
 }

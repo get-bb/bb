@@ -17,6 +17,12 @@ import {
   type ExperimentalDesktopBrowserLease,
   type ExperimentalDesktopBrowserConnection,
   type ExperimentalDesktopBrowserCapture,
+  desktopBrowserInstanceRequestSchema,
+  desktopBrowserImportCookiesRequestSchema,
+  type ExperimentalDesktopBrowserInstanceRequest,
+  type ExperimentalDesktopBrowserImportCookiesInput,
+  type ExperimentalDesktopBrowserImportSources,
+  type ExperimentalDesktopBrowserImportOutcome,
 } from "./api/desktop-browsers.js";
 import type { Hono } from "hono";
 import type {
@@ -708,6 +714,24 @@ export const publicApiRoutes = {
         desktopBrowserTabRequestSchema,
       ),
       response: jsonResponse<ExperimentalDesktopBrowserCapture>(),
+    }),
+    listImportSources: defineRoute({
+      path: "/desktop-browsers/import-sources",
+      method: "post",
+      request: jsonRequest<
+        EmptyInput,
+        ExperimentalDesktopBrowserInstanceRequest
+      >(desktopBrowserInstanceRequestSchema),
+      response: jsonResponse<ExperimentalDesktopBrowserImportSources>(),
+    }),
+    importCookies: defineRoute({
+      path: "/desktop-browsers/import-cookies",
+      method: "post",
+      request: jsonRequest<
+        EmptyInput,
+        ExperimentalDesktopBrowserImportCookiesInput
+      >(desktopBrowserImportCookiesRequestSchema),
+      response: jsonResponse<ExperimentalDesktopBrowserImportOutcome>(),
     }),
   },
 

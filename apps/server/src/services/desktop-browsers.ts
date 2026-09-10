@@ -9,6 +9,8 @@ import {
   type ExperimentalDesktopBrowserLeaseRequest,
   type ExperimentalDesktopBrowserTabRequest,
   type ExperimentalDesktopBrowserLease,
+  type ExperimentalDesktopBrowserInstanceRequest,
+  type ExperimentalDesktopBrowserImportCookiesRequest,
 } from "@bb/server-contract";
 import type { WorkSessionDeps } from "../types.js";
 import { ApiError } from "../errors.js";
@@ -391,6 +393,41 @@ export async function captureDesktopBrowserTab(
       type: "desktop.browser.capture_tab",
       ...scopeCommand(input),
       tabId: input.tabId,
+    },
+  });
+}
+
+export async function listDesktopBrowserImportSources(
+  deps: WorkSessionDeps,
+  input: ExperimentalDesktopBrowserInstanceRequest,
+) {
+  requireNonDestroyedHostWithStatus(deps, input.hostId);
+  return callHostOnlineRpc(deps, {
+    hostId: input.hostId,
+    timeoutMs: 15000,
+    command: {
+      type: "desktop.browser.list_import_sources",
+      instanceId: input.instanceId,
+      generation: input.generation,
+    },
+  });
+}
+
+export async function importDesktopBrowserCookies(
+  deps: WorkSessionDeps,
+  input: ExperimentalDesktopBrowserImportCookiesRequest,
+) {
+  requireNonDestroyedHostWithStatus(deps, input.hostId);
+  return callHostOnlineRpc(deps, {
+    hostId: input.hostId,
+    timeoutMs: 120000,
+    command: {
+      type: "desktop.browser.import_cookies",
+      instanceId: input.instanceId,
+      generation: input.generation,
+      sourceId: input.sourceId,
+      sourceProfileDirectory: input.sourceProfileDirectory,
+      profile: input.profile,
     },
   });
 }

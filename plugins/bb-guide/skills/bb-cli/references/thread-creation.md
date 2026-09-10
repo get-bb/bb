@@ -10,12 +10,7 @@
 - Select a target with `--environment`, `--new-environment`, `--base-branch`,
   or `--machine`. Select execution with `--provider`, `--model`,
   `--reasoning-level`, `--service-tier`, and `--permission-mode`.
-- List plugin-provisioned environment choices with `bb environment providers`. Add `--project <id>` and optionally `--machine <id>` to omit providers whose requirements are unmet; eligible providers retain setup or availability messages. Without a machine, the project listing includes providers eligible on any persistent machine.
-  Add `--project <id>` and `--machine <id-or-name>` (`--host` is an alias) to
-  resolve each provider's `available`, `setup-required`, or `unavailable`
-  status for that project and machine. `--json` includes availability, each
-  provider's `requires` facts, and its `inputs` JSON Schema or null. Providers
-  structurally ineligible for that project or projectless thread are omitted.
+- List plugin-provisioned environment choices with `bb environment providers`. Add `--project <id>` and optionally `--machine <id>` to omit providers whose declared requirements are unmet. Without a machine, the project listing includes providers structurally eligible on any persistent machine. Git inspection and plugin availability run only for the selected provider and machine during thread creation. `--json` includes each provider's `requires` facts and its `inputs` JSON Schema or null.
   Pass the selected ID to `--environment-provider`. Add
   `--environment-inputs <json>` only when the provider's schema does not accept
   an empty object; otherwise the CLI supplies `{}` when the flag is omitted.

@@ -149,12 +149,12 @@ describe("bb environment command output", () => {
     await runCommand(["environment", "providers"], register);
 
     expect(collectLogLines(vi.mocked(console.log))).toEqual([
-      "git-worktree  Worktree  projectCheckout, gitCheckout  takes --environment-inputs  available",
-      "modal-sandbox  Modal sandbox  gitRemote  setup-required: Add Modal credentials",
+      "git-worktree  Worktree  projectCheckout, gitCheckout  takes --environment-inputs",
+      "modal-sandbox  Modal sandbox  gitRemote",
     ]);
   });
 
-  it("bb environment providers requests availability for a project and machine", async () => {
+  it("bb environment providers requests eligibility for a project and machine", async () => {
     const getProviders = vi.fn(async () => ({ providers: [] }));
     stubServerApi({
       "v1.hosts.$get": vi.fn(async () => [

@@ -203,7 +203,7 @@ describe("EnvironmentPickerUI", () => {
     expect(onSelectProvider).toHaveBeenCalledWith(branchProvider, host.id);
   });
 
-  it("omits providers absent from scoped eligibility and retains eligible setup rows", () => {
+  it("omits providers absent from scoped eligibility and retains eligible rows", () => {
     const setupProvider = {
       ...optionalInputsProvider,
       availability: {
@@ -234,7 +234,7 @@ describe("EnvironmentPickerUI", () => {
     expect(
       screen.getByRole("menuitem", { name: /Optional sandbox/u }),
     ).toBeTruthy();
-    expect(screen.getByText("Configure credentials")).toBeTruthy();
+    expect(screen.queryByText("Configure credentials")).toBeNull();
   });
 
   it("omits a projectless-only provider from a project picker", () => {
@@ -273,7 +273,7 @@ describe("EnvironmentPickerUI", () => {
     expect(screen.queryByText("Personal workspace")).toBeNull();
   });
 
-  it("disables an unavailable provider with its availability message", () => {
+  it("does not interpret deferred availability in the picker", () => {
     render(
       <EnvironmentPickerUI
         value="provider:project-checkout"
@@ -302,11 +302,11 @@ describe("EnvironmentPickerUI", () => {
     const providerItem = screen.getByRole("menuitem", {
       name: /Project checkout/u,
     });
-    expect(providerItem.getAttribute("aria-disabled")).toBe("true");
-    expect(screen.getByText("Project source unavailable")).toBeTruthy();
+    expect(providerItem.getAttribute("aria-disabled")).toBeNull();
+    expect(screen.queryByText("Project source unavailable")).toBeNull();
   });
 
-  it("keeps a setup-required provider selectable and shows its message", () => {
+  it("keeps a setup-required provider selectable without showing preflight state", () => {
     const onSelectProvider = vi.fn();
     const setupRequiredProvider: SystemEnvironmentProvider = {
       ...sandboxProvider,
@@ -337,7 +337,7 @@ describe("EnvironmentPickerUI", () => {
       name: /Docker container/u,
     });
     expect(providerItem.getAttribute("aria-disabled")).toBeNull();
-    expect(screen.getByText("Add Modal credentials")).toBeTruthy();
+    expect(screen.queryByText("Add Modal credentials")).toBeNull();
     fireEvent.click(providerItem);
     expect(onSelectProvider).toHaveBeenCalledWith(
       setupRequiredProvider,
@@ -517,7 +517,7 @@ describe("EnvironmentPickerUI multi-machine menu", () => {
     expect(onSelectProvider).toHaveBeenCalledWith(branchProvider, studio.id);
   });
 
-  it("uses each machine's scoped availability for its provider row", () => {
+  it("uses each machine's structural eligibility for its provider row", () => {
     render(
       <EnvironmentPickerUI
         value="provider:project-checkout"
@@ -568,8 +568,8 @@ describe("EnvironmentPickerUI multi-machine menu", () => {
       name: /Project checkout/u,
     });
     expect(checkoutItems[0]!.getAttribute("aria-disabled")).toBeNull();
-    expect(checkoutItems[1]!.getAttribute("aria-disabled")).toBe("true");
-    expect(screen.getByText("Checkout missing on Mac Studio")).toBeTruthy();
+    expect(checkoutItems[1]!.getAttribute("aria-disabled")).toBeNull();
+    expect(screen.queryByText("Checkout missing on Mac Studio")).toBeNull();
   });
 
   it("disables an offline machine's options and shows when it was last seen", () => {

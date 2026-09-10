@@ -107,6 +107,7 @@ PopoverTrigger.displayName = "PopoverTrigger";
 const PopoverContent = React.forwardRef<
   HTMLDivElement,
   React.ComponentPropsWithoutRef<typeof PopoverPrimitive.Content> & {
+    dismissOnOutsideInteraction?: boolean;
     mobileTitle?: string;
     mobileClassName?: string;
     onMobileContentAnimationEnd?: (open: boolean) => void;
@@ -119,6 +120,8 @@ const PopoverContent = React.forwardRef<
       align = "center",
       sideOffset = 4,
       children,
+      dismissOnOutsideInteraction = true,
+      onInteractOutside,
       mobileTitle,
       mobileClassName,
       onMobileContentAnimationEnd,
@@ -151,6 +154,7 @@ const PopoverContent = React.forwardRef<
           open={open}
           onOpenChange={onOpenChange}
           srLabel={mobileTitle ?? "Options"}
+          closeOnBackdropClick={dismissOnOutsideInteraction}
           contentClassName={mobileClassName}
           onContentAnimationEnd={onMobileContentAnimationEnd}
         >
@@ -185,6 +189,10 @@ const PopoverContent = React.forwardRef<
             className,
           )}
           {...props}
+          onInteractOutside={(event) => {
+            if (!dismissOnOutsideInteraction) event.preventDefault();
+            onInteractOutside?.(event);
+          }}
         >
           {children}
         </PopoverPrimitive.Content>

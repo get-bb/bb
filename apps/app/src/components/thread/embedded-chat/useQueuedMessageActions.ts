@@ -12,9 +12,8 @@ import {
   useSetThreadQueuedMessageGroupBoundary,
   useUpdateThreadQueuedMessage,
 } from "@/hooks/mutations/thread-runtime-mutations";
-import { getMutationErrorMessage } from "@/lib/mutation-errors";
+import { showMutationErrorToast } from "@/lib/mutation-errors";
 import type { QueuedMessageReorderRequest } from "@/lib/queued-message-reorder";
-import { appToast } from "@/components/ui/app-toast";
 import { BbHttpError } from "@/lib/sdk";
 import type { InlineQueuedMessageEditState } from "./useInlineQueuedMessageEditing";
 
@@ -121,13 +120,11 @@ export function useQueuedMessageActions({
           );
         }
       } catch (error) {
-        appToast.error(
-          getMutationErrorMessage({
-            error,
-            fallbackMessage: "Failed to send queued message",
-            lifecycleOperation: "send_queued_message",
-          }),
-        );
+        showMutationErrorToast({
+          error,
+          fallbackMessage: "Failed to send queued message",
+          lifecycleOperation: "send_queued_message",
+        });
         setProcessingQueuedMessage((current) =>
           current?.id === messageId ? null : current,
         );
@@ -169,13 +166,11 @@ export function useQueuedMessageActions({
       if (error instanceof BbHttpError && error.status === 404) {
         dismissInlineQueuedMessageEditor();
       }
-      appToast.error(
-        getMutationErrorMessage({
-          error,
-          fallbackMessage: "Failed to update queued message",
-          lifecycleOperation: "update_queued_message",
-        }),
-      );
+      showMutationErrorToast({
+        error,
+        fallbackMessage: "Failed to update queued message",
+        lifecycleOperation: "update_queued_message",
+      });
     } finally {
       setProcessingQueuedMessage((current) =>
         current?.id === queuedMessageId ? null : current,
@@ -199,13 +194,11 @@ export function useQueuedMessageActions({
           queuedMessageId,
         })
         .catch((error) => {
-          appToast.error(
-            getMutationErrorMessage({
-              error,
-              fallbackMessage: "Failed to delete queued message",
-              lifecycleOperation: "queue_message",
-            }),
-          );
+          showMutationErrorToast({
+            error,
+            fallbackMessage: "Failed to delete queued message",
+            lifecycleOperation: "queue_message",
+          });
         })
         .finally(() => {
           setProcessingQueuedMessage((current) =>
@@ -224,13 +217,11 @@ export function useQueuedMessageActions({
           id: threadId,
         })
         .catch((error) => {
-          appToast.error(
-            getMutationErrorMessage({
-              error,
-              fallbackMessage: "Failed to reorder queued message",
-              lifecycleOperation: "reorder_queued_message",
-            }),
-          );
+          showMutationErrorToast({
+            error,
+            fallbackMessage: "Failed to reorder queued message",
+            lifecycleOperation: "reorder_queued_message",
+          });
         });
     },
     [reorderQueuedMessage, threadId],
@@ -244,13 +235,11 @@ export function useQueuedMessageActions({
           ...request,
         })
         .catch((error) => {
-          appToast.error(
-            getMutationErrorMessage({
-              error,
-              fallbackMessage: "Failed to group queued messages",
-              lifecycleOperation: "set_queued_message_group_boundary",
-            }),
-          );
+          showMutationErrorToast({
+            error,
+            fallbackMessage: "Failed to group queued messages",
+            lifecycleOperation: "set_queued_message_group_boundary",
+          });
         });
     },
     [setQueuedMessageGroupBoundary, threadId],

@@ -1,6 +1,5 @@
 import { withEnvironmentCleanupSlot } from "../../../src/services/environments/cleanup-concurrency.js";
 import { registerTestHostRpcCapture } from "../../helpers/commands.js";
-import { reportEnvironmentHookProgress } from "../../../src/services/environments/environment-hooks.js";
 import { recordProvisionedEnvironmentWorkspace } from "@bb/db/internal-environment-lifecycle";
 import { createThreadFromRequest } from "../../../src/services/threads/thread-create.js";
 import { encodeClientTurnRequestIdNumber } from "@bb/domain";
@@ -348,7 +347,7 @@ describe("core environment orchestration", () => {
     }));
 
   it.each([true, false])(
-    "runs core hooks only for ownsPath=%s, in provider order",
+    "runs teardown only for ownsPath=%s, in provider order",
     async (ownsPath) =>
       withTestHarness(async (harness) => {
         const order: string[] = [];
@@ -370,17 +369,6 @@ describe("core environment orchestration", () => {
             expect(command.timeoutMs).toBe(15 * 60 * 1000);
             expect(command.path).toBe("/tmp/hooks");
             order.push(command.kind);
-            reportEnvironmentHookProgress(harness.deps, fixture.host.id, {
-              type: "environment.hook.progress",
-              operationId: command.operationId,
-              entry: {
-                type: "step",
-                text: "Running setup…",
-                status: "started",
-              },
-            });
-            if (command.kind === "setup")
-              expect(fixture.row().stepText).toBe("Running setup…");
           },
         });
         fixture.ask();
@@ -393,65 +381,11 @@ describe("core environment orchestration", () => {
         );
         expect(order).toEqual(
           ownsPath
-            ? ["create", "setup", "teardown", "remove"]
+            ? ["create", "teardown", "remove"]
             : ["create", "remove"],
         );
       }),
   );
-
-  it("fails setup with its output and retains the path claim through cleanup", async () =>
-    withTestHarness(async (harness) => {
-      const order: string[] = [];
-      const fixture = setup(harness, {
-        create: async (context) => {
-          expect(await context.experimental_claimPath("/tmp/hooks")).toBe(true);
-          return {
-            status: "created",
-            path: "/tmp/hooks",
-            ownsPath: true,
-            resource: { token: "cleanup" },
-          };
-        },
-        remove: async (context) => {
-          order.push("remove");
-          expect(context.path).toBe("/tmp/hooks");
-          expect(context.resource).toEqual({ token: "cleanup" });
-          expect(fixture.row().claimPath).toBe("/tmp/hooks");
-          return { status: "removed" };
-        },
-      });
-      registerTestHostRpcCapture(harness.deps, {
-        hostId: fixture.host.id,
-        sessionId: fixture.session.id,
-        onEnvironmentHook: async (command) => {
-          order.push(command.kind);
-          reportEnvironmentHookProgress(harness.deps, fixture.host.id, {
-            type: "environment.hook.progress",
-            operationId: command.operationId,
-            entry: { type: "output", text: "script diagnostic", status: null },
-          });
-          throw new Error(`${command.kind} failed`);
-        },
-      });
-      fixture.ask();
-      await fixture.settled();
-      expect(fixture.row()).toMatchObject({
-        phase: "failed",
-        failure: "terminal",
-        claimPath: "/tmp/hooks",
-      });
-      expect(fixture.ask()).toMatchObject({
-        action: "reject",
-        message: expect.stringContaining("setup failed"),
-        log: expect.stringContaining("script diagnostic"),
-      });
-      await cancelProviderLaunch(harness.deps, fixture.thread.id);
-      expect(order).toEqual(["setup", "teardown", "remove"]);
-      expect(fixture.row()).toMatchObject({
-        claimPath: null,
-        cancelPending: false,
-      });
-    }));
 
   it("reports teardown transport failure and still removes the environment", async () =>
     withTestHarness(async (harness) => {

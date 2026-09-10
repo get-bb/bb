@@ -211,8 +211,11 @@ Voice transcription uses the `BB_TRANSCRIPTION` model, which defaults to
 `bb-app config set BB_TRANSCRIPTION <provider/model>`.
 
 `bb file` supports `--host` for remote machines and `--root` on mutating
-commands to confine access beneath an absolute directory. Use `--json` for
-metadata and machine-readable results.
+commands to confine access beneath an absolute directory. `bb file list` and
+`bb file paths` include dot-prefixed entries; pass `--no-hidden` to skip them.
+Both skip a default set of dependency and cache directories such as
+`node_modules` and `.venv`; `--exclude <names...>` replaces that set. Use
+`--json` for metadata and machine-readable results.
 
 Server-backed sidebar preferences
 

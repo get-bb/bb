@@ -32,9 +32,35 @@ async function readBrokerDescriptor(dataDir: string) {
   }
 }
 
+async function readServerBrokerDescriptor(args: {
+  dataDir: string;
+  homeDir: string;
+  serverOrigin: string;
+}) {
+  const serverHost = new URL(args.serverOrigin).host.replace(
+    /[^a-zA-Z0-9.-]/gu,
+    "-",
+  );
+  const dataDirs = new Set([
+    args.dataDir,
+    join(args.homeDir, ".bb-machines", serverHost),
+  ]);
+  for (const dataDir of dataDirs) {
+    try {
+      const descriptor = await readBrokerDescriptor(dataDir);
+      if (new URL(descriptor.serverUrl).origin === args.serverOrigin)
+        return descriptor;
+    } catch {
+      continue;
+    }
+  }
+  throw new Error("No desktop broker found for the selected server");
+}
+
 export function createDesktopBrowserBrokerClient(args: {
   broker: DesktopBrowserBroker;
   dataDir: string;
+  homeDir: string;
   getServerUrl(): string;
 }) {
   let socket: WebSocket | null = null;
@@ -72,14 +98,16 @@ export function createDesktopBrowserBrokerClient(args: {
       )
         args.broker.resetServer();
       registryServerOrigin = serverOrigin;
-      const descriptor = await readBrokerDescriptor(args.dataDir);
+      const descriptor = await readServerBrokerDescriptor({
+        dataDir: args.dataDir,
+        homeDir: args.homeDir,
+        serverOrigin,
+      });
       if (stopped || generation !== currentGeneration) return;
       if (new URL(args.getServerUrl()).origin !== serverOrigin) {
         schedule();
         return;
       }
-      if (new URL(descriptor.serverUrl).origin !== serverOrigin)
-        throw new Error("Desktop broker belongs to a different server");
       const connection = new WebSocket(descriptor.url, {
         headers: { authorization: `Bearer ${descriptor.token}` },
         maxPayload: 1024 * 1024,

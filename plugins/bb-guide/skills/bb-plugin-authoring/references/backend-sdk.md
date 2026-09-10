@@ -161,11 +161,15 @@ per-attachment remove operation.
 
 For filesystem-backed products that need a tree or mutations,
 `bb.sdk.files.listPaths({ path, includeFiles, includeDirectories, ... })`
-returns recursive relative paths with their kind. `mkdir`, `move`, and `remove`
-apply the same optional `hostId` routing and `rootPath` confinement as
-read/write. Mutations are not automatically retried; `move` refuses to replace
-an existing destination, and `remove` requires `recursive: true` for non-empty
-directories.
+returns recursive relative paths with their kind. Both `list` and `listPaths`
+include dot-prefixed entries unless `includeHidden: false` is passed, and skip
+a default set of dependency and cache directory names (`node_modules`,
+`.venv`, `venv`, `.turbo`, `.next`, `.cache`, `__pycache__`, `.DS_Store`)
+unless `excludeNames` replaces that set. `.git` and symlinks are never listed.
+`mkdir`, `move`, and `remove` apply the same optional `hostId` routing and
+`rootPath` confinement as read/write. Mutations are not automatically retried;
+`move` refuses to replace an existing destination, and `remove` requires
+`recursive: true` for non-empty directories.
 
 `bb.sdk.files.createPreview({ hostId?, rootPath, ttlMs? })` returns a temporary
 path-shaped `baseUrl`. Append individually encoded relative path segments to

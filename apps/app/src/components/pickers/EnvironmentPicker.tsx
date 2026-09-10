@@ -96,9 +96,6 @@ function providerDisabledReason(
   provider: SystemEnvironmentProvider,
   inputsControlProviderIds: ReadonlySet<string>,
 ): string | null {
-  if (provider.availability?.status === "unavailable") {
-    return provider.availability.message;
-  }
   if (
     !inputsControlProviderIds.has(provider.id) &&
     providerInputsControlRequired(provider)
@@ -112,9 +109,6 @@ function providerDescription(
   provider: SystemEnvironmentProvider,
   inputsControlProviderIds: ReadonlySet<string>,
 ): string | undefined {
-  if (provider.availability?.status === "setup-required") {
-    return provider.availability.message;
-  }
   return (
     providerDisabledReason(provider, inputsControlProviderIds) ?? undefined
   );

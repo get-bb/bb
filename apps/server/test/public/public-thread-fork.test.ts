@@ -27,6 +27,7 @@ import { sendThreadMessage } from "../../src/services/threads/thread-send.js";
 import {
   listQueuedCommands,
   listQueuedThreadCommands,
+  reportNextEnvironmentAttachSuccess,
   reportQueuedCommandError,
   reportQueuedCommandSuccess,
   waitForQueuedCommand,
@@ -315,6 +316,7 @@ describe("public thread fork route", () => {
       expect((await provider.waitForProvision()).host?.id).toBe(
         environment.hostId,
       );
+      await reportNextEnvironmentAttachSuccess(harness, fork.id);
 
       const start = await waitForQueuedCommand(
         harness,

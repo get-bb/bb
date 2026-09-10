@@ -113,19 +113,6 @@ describe("named managed-worktree base branch", () => {
         path: SOURCE_PATH,
       });
 
-      const availabilityResponse = await harness.app.request(
-        `/api/v1/system/environment-providers?projectId=${project.id}&hostId=${host.id}`,
-      );
-      expect(availabilityResponse.status).toBe(200);
-      const availability = (await readJson(availabilityResponse)) as {
-        providers: Array<{ id: string; availability: unknown }>;
-      };
-      expect(
-        availability.providers.find(
-          (candidate) => candidate.id === "git-worktree",
-        )?.availability,
-      ).toEqual({ status: "available" });
-
       const response = await harness.app.request("/api/v1/threads", {
         method: "POST",
         headers: { "content-type": "application/json" },

@@ -27,6 +27,10 @@ import {
   requirePrimaryHostId,
 } from "../services/hosts/primary-host.js";
 import { requirePublicThreadEnvironment } from "../services/lib/entity-lookup.js";
+import {
+  DEFAULT_PATH_LIST_EXCLUDE_NAMES,
+  WORKSPACE_PATH_LIST_INCLUDE_HIDDEN,
+} from "./path-list-policy.js";
 
 const HOST_FILE_LIST_LIMIT_DEFAULT = 1000;
 
@@ -263,6 +267,11 @@ export function registerFileRoutes(app: Hono, deps: AppDeps): void {
           type: "host.list_files",
           path: payload.path,
           limit: payload.limit ?? HOST_FILE_LIST_LIMIT_DEFAULT,
+          includeHidden:
+            payload.includeHidden ?? WORKSPACE_PATH_LIST_INCLUDE_HIDDEN,
+          excludeNames: [
+            ...(payload.excludeNames ?? DEFAULT_PATH_LIST_EXCLUDE_NAMES),
+          ],
           ...(payload.query !== undefined ? { query: payload.query } : {}),
         },
       });
@@ -284,6 +293,11 @@ export function registerFileRoutes(app: Hono, deps: AppDeps): void {
           limit: payload.limit ?? HOST_FILE_LIST_LIMIT_DEFAULT,
           includeFiles: payload.includeFiles,
           includeDirectories: payload.includeDirectories,
+          includeHidden:
+            payload.includeHidden ?? WORKSPACE_PATH_LIST_INCLUDE_HIDDEN,
+          excludeNames: [
+            ...(payload.excludeNames ?? DEFAULT_PATH_LIST_EXCLUDE_NAMES),
+          ],
           ...(payload.query !== undefined ? { query: payload.query } : {}),
         },
       });

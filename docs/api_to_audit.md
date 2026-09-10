@@ -433,8 +433,7 @@ there is no separate persisted hook ledger or process reconciliation. Recovery
 with unknown daemon hook state blocks automatic cleanup and requires inspection.
 Cleanup permits four operations globally and one per host. Progress remains
 durable before reporting returns, but wakes only its launch without invalidating
-configuration or provider availability. recheck schedules another
-ask.
+configuration. recheck schedules another pending launch attempt.
 
 Provider selections are accepted by the SDK, CLI, app, and automations. The
 built-in checkout, worktree, and personal workspace behaviors are first-party
@@ -486,10 +485,11 @@ Core persists launch attempts, progress, cancellation, direct resource
 attachment, retirement deadlines and teardown state in SQLite. Providers supply
 idempotent long-running create and remove calls plus policy. Values retain their
 experimental\_ prefix; public types follow the existing declaration convention.
-The optional `availability(context)` method answers whether the
+The optional `availability(context)` method answers whether the selected
 provider is available, needs setup, or is unavailable for a project and
-machine. Its context contains project, host, projectCheckout, and gitRemote;
-its named types intentionally have no experimental prefix.
+machine during thread creation. Discovery does not invoke it. Its context
+contains project, host, projectCheckout, and gitRemote; its named types
+intentionally have no experimental prefix.
 
 **Audit before stabilizing.** Verify monotonic attempts and path-key recovery
 across cancellation/restart; per-environment
@@ -502,9 +502,9 @@ removal. The six policy defaults are 5 minutes/60 seconds/30 seconds/3/
 per-thread/null; nullable retirement and create timeout disable those policies.
 EnvironmentStatus remains provisioning/ready/error/destroyed;
 retiring and teardown are lifecycle phases, not restored statuses.
-Audit availability message ownership, cache invalidation on settings and
-recheck, the interaction between the `requires` floor and provider decisions,
-and whether the current decision timeout is appropriate before stabilizing it.
+Audit availability message ownership, create-time error presentation, the
+interaction between the `requires` floor and provider decisions, and whether
+the current decision timeout is appropriate before stabilizing it.
 
 ## `app.slots.experimental_environmentProviderInputs`, `experimental_BranchPicker`, `experimental_useBranches` and `experimental_useCheckoutState` (`@get-bb/plugin-sdk/app`)
 
@@ -2504,9 +2504,9 @@ too, after the host has restored the draft. Sole consumer:
 
 ## Desktop browser control
 
-`bb.sdk.experimental_desktopBrowsers` and the exported `ExperimentalDesktopBrowsersArea`, `ExperimentalDesktopBrowserScope`, `ExperimentalDesktopBrowserLease`, `ExperimentalDesktopBrowserCreateInput`, and `ExperimentalDesktopBrowserAcquireInput` expose explicit host/window/thread discovery, isolated tab creation, expiring control leases, scoped CDP connections, capture, reveal, close, release, and disposable tab-state subscriptions. The matching core CLI is `bb browser`.
+`bb.sdk.experimental_desktopBrowsers` and the exported `ExperimentalDesktopBrowsersArea`, `ExperimentalDesktopBrowserScope`, `ExperimentalDesktopBrowserLease`, `ExperimentalDesktopBrowserCreateInput`, and `ExperimentalDesktopBrowserAcquireInput` expose explicit host/window/thread discovery, isolated tab creation, expiring control leases, scoped CDP connections, capture, reveal, close, release, disposable tab-state subscriptions, and cookie import from an installed browser through `listImportSources` and `importCookies` (`ExperimentalDesktopBrowserInstanceRequest`, `ExperimentalDesktopBrowserImportCookiesInput`, `ExperimentalDesktopBrowserImportSources`, `ExperimentalDesktopBrowserImportOutcome`). The matching core CLI is `bb browser`.
 
-Before stabilization, audit personal-profile handoff policy, per-tab mutual exclusion and child-target scope, native popup handling, debugger detachment, daemon/desktop disconnect and reconnect generations, expiry and cancellation races, bounded screenshot bytes, and cross-platform desktop startup. Connection credentials must remain private to workers on the browser host. `subscribe` polls every two seconds with one outstanding request; it is state observation, not a lossless event log. Cloud browsers and external provider registration are outside this surface.
+Before stabilization, audit cookie import authorization: any caller with server access can copy the desktop user's browser sessions into a BB profile, including an automation profile an agent controls, with OS consent only where the platform demands it (macOS Keychain for Chromium, Full Disk Access for Safari; none for Firefox or keyring-free Linux Chromium). Decide whether imports into automation profiles need an explicit handoff like personal-tab control, and whether the daemon should require a desktop-side confirmation. Also audit personal-profile handoff policy, per-tab mutual exclusion and child-target scope, native popup handling, debugger detachment, daemon/desktop disconnect and reconnect generations, expiry and cancellation races, bounded screenshot bytes, and cross-platform desktop startup. Connection credentials must remain private to workers on the browser host. `subscribe` polls every two seconds with one outstanding request; it is state observation, not a lossless event log. Cloud browsers and external provider registration are outside this surface.
 
 ## Host process primitives (`@get-bb/plugin-sdk/host`)
 

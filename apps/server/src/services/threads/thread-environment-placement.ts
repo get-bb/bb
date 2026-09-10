@@ -38,7 +38,10 @@ import {
 } from "../lib/entity-lookup.js";
 import { decideWithinBox } from "./dispatch-hooks.js";
 import { throwEnvironmentNotReady } from "../lib/lifecycle-api-errors.js";
-import { resolveGitCheckoutAvailability } from "../environments/provider-availability.js";
+import {
+  resolveGitCheckoutAvailability,
+  resolvePluginEnvironmentProviderAvailability,
+} from "../environments/provider-availability.js";
 import {
   resolveReuseThreadRequestEnvironment,
   resolveStableThreadRequestEnvironment,
@@ -253,6 +256,37 @@ export async function validateProviderSelection(
         { details: { environmentProviderId } },
       );
     }
+  }
+  const availability = await resolvePluginEnvironmentProviderAvailability(
+    record,
+    {
+      project,
+      host,
+      projectCheckout,
+      gitRemote: project.gitRemoteUrl,
+    },
+  );
+  if (!availability.ok) {
+    throw new ApiError(
+      502,
+      "environment_provider_failed",
+      availability.message,
+      { details: { environmentProviderId, pluginId: record.pluginId } },
+    );
+  }
+  if (availability.availability.status !== "available") {
+    throw new ApiError(
+      409,
+      "environment_provider_rejected",
+      availability.availability.message,
+      {
+        details: {
+          environmentProviderId,
+          pluginId: record.pluginId,
+          availabilityStatus: availability.availability.status,
+        },
+      },
+    );
   }
   const validate = record.provider.validate;
   if (validate === null) {

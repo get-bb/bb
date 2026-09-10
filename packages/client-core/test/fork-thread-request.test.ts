@@ -116,6 +116,13 @@ describe("buildForkThreadRequest", () => {
 });
 
 describe("isThreadForkable", () => {
+  it("rejects an archived source and permits it after unarchiving", () => {
+    const source = makeThread({ archivedAt: 123 });
+
+    expect(isThreadForkable(source, true)).toBe(false);
+    expect(isThreadForkable({ ...source, archivedAt: null }, true)).toBe(true);
+  });
+
   it("is true only with an environment id and a fork-capable provider", () => {
     expect(
       isThreadForkable(makeThread({ environmentId: "env_source" }), true),

@@ -1508,7 +1508,12 @@ describe("ThreadDetailPromptArea", () => {
     );
 
     await waitFor(() =>
-      expect(mocks.toastError).toHaveBeenCalledWith("Queued message changed"),
+      expect(mocks.toastError).toHaveBeenCalledWith(
+        "Failed to update queued message",
+        {
+          description: "Queued message changed",
+        },
+      ),
     );
     expect(
       screen.getByRole("button", { name: "Cancel queued edit" }),

@@ -26,6 +26,8 @@ import {
   providerNativeRootSetSchema,
   BRANCH_LIST_LIMIT_MAX,
   BRANCH_LIST_QUERY_MAX_LENGTH,
+  FILE_LIST_EXCLUDE_NAME_MAX_LENGTH,
+  FILE_LIST_EXCLUDE_NAMES_MAX,
   FILE_LIST_LIMIT_MAX,
   FILE_LIST_QUERY_MAX_LENGTH,
 } from "@bb/domain";
@@ -62,6 +64,8 @@ export {
 export {
   BRANCH_LIST_LIMIT_MAX,
   BRANCH_LIST_QUERY_MAX_LENGTH,
+  FILE_LIST_EXCLUDE_NAME_MAX_LENGTH,
+  FILE_LIST_EXCLUDE_NAMES_MAX,
   FILE_LIST_LIMIT_MAX,
   FILE_LIST_QUERY_MAX_LENGTH,
 } from "@bb/domain";
@@ -475,11 +479,17 @@ const hostWriteFileCommandSchema = z
   })
   .strict();
 
+const fileListExcludeNamesSchema = z
+  .array(z.string().min(1).max(FILE_LIST_EXCLUDE_NAME_MAX_LENGTH))
+  .max(FILE_LIST_EXCLUDE_NAMES_MAX);
+
 const hostListFilesCommandSchema = z.object({
   type: z.literal("host.list_files"),
   path: z.string().min(1),
   query: z.string().max(FILE_LIST_QUERY_MAX_LENGTH).optional(),
   limit: z.number().int().positive().max(FILE_LIST_LIMIT_MAX),
+  includeHidden: z.boolean(),
+  excludeNames: fileListExcludeNamesSchema,
 });
 
 const hostPathEntryKindSchema = z.enum(["file", "directory"]);
@@ -502,6 +512,8 @@ const hostListPathsCommandSchema = z
     limit: z.number().int().positive().max(FILE_LIST_LIMIT_MAX),
     includeFiles: z.boolean(),
     includeDirectories: z.boolean(),
+    includeHidden: z.boolean(),
+    excludeNames: fileListExcludeNamesSchema,
   })
   .refine((command) => command.includeFiles || command.includeDirectories, {
     message: "At least one path kind must be included",
@@ -875,6 +887,7 @@ const unmanagedEnvironmentProvisionCommandSchema =
   environmentProvisionCommandBaseSchema
     .extend({
       path: z.string().min(1),
+      setupScriptTimeoutMs: z.number().int().positive().nullable(),
     })
     .strict();
 
@@ -1361,6 +1374,25 @@ export const hostDaemonCommandRegistry = {
     schema: desktopBrowserCommandSchemas["desktop.browser.release_control"],
     resultSchema:
       desktopBrowserResultSchemas["desktop.browser.release_control"],
+    transport: "onlineRpc",
+    retryable: false,
+    flushEventsBeforeResult: false,
+    envLane: null,
+  }),
+  "desktop.browser.list_import_sources": defineHostDaemonCommandDescriptor({
+    type: "desktop.browser.list_import_sources",
+    schema: desktopBrowserCommandSchemas["desktop.browser.list_import_sources"],
+    resultSchema:
+      desktopBrowserResultSchemas["desktop.browser.list_import_sources"],
+    transport: "onlineRpc",
+    retryable: false,
+    flushEventsBeforeResult: false,
+    envLane: null,
+  }),
+  "desktop.browser.import_cookies": defineHostDaemonCommandDescriptor({
+    type: "desktop.browser.import_cookies",
+    schema: desktopBrowserCommandSchemas["desktop.browser.import_cookies"],
+    resultSchema: desktopBrowserResultSchemas["desktop.browser.import_cookies"],
     transport: "onlineRpc",
     retryable: false,
     flushEventsBeforeResult: false,
@@ -1878,9 +1910,7 @@ type HostDaemonRetryableOnlineRpcCommandSchema =
 type HostDaemonResultSchemaMapForTransport<
   Transport extends HostDaemonCommandTransport,
 > = {
-  [
-    Descriptor in HostDaemonCommandDescriptorForTransport<Transport> as Descriptor["type"]
-  ]: Descriptor["resultSchema"];
+  [Descriptor in HostDaemonCommandDescriptorForTransport<Transport> as Descriptor["type"]]: Descriptor["resultSchema"];
 };
 
 type HostDaemonCommandResultSchemaMap =

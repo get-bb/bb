@@ -92,11 +92,9 @@ Making your repo work with bb:
                                           by display name; includes id, name, the `requires` facts (host,
                                           projectCheckout, gitCheckout, gitRemote, projectless), and whether
                                           it takes --environment-inputs (--json prints the JSON Schema)
-    --project <id>                        Resolve availability for this project
-    --machine <id-or-name>               Resolve availability on this machine
+    --project <id>                        Filter by structural eligibility for this project
+    --machine <id-or-name>               Scope structural eligibility to this machine
     --host <id-or-name>                  Alias for --machine
-                                          Availability is available, setup-required with the plugin's
-                                          message, or unavailable with the provider's reason
   bb environment list                     List environments that are not destroyed
     --project <id>                        Only environments in this project
     --provider <id>                       Only environments this environment provider produced
@@ -242,4 +240,4 @@ Core owns environment retirement and teardown. After the last live thread is arc
 
 Explicit environment or project deletion bypasses the retirement grace, including the never-retire policy. Provider cleanup retains the host, path and resource until removal completes; inspect progress with `bb environment show <id>`.
 
-`bb environment providers --project <id>` omits providers whose requirements are unmet on every persistent machine. Add `--machine <id>` to scope eligibility to that machine. Eligible providers retain setup-required or unavailable messages.
+`bb environment providers --project <id>` omits providers whose declared requirements are unmet on every persistent machine. Add `--machine <id>` to scope structural eligibility to that machine. Git inspection and plugin availability run only for the selected provider and machine during thread creation.

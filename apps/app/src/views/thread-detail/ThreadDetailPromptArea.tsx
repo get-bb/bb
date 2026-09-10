@@ -91,13 +91,15 @@ import {
   useThreadPromptHistory,
 } from "@/hooks/queries/thread-queries";
 import { useThreadDefaultExecutionOptions } from "@/hooks/queries/thread-default-execution-options-query";
-import { getMutationErrorMessage } from "@/lib/mutation-errors";
+import {
+  getMutationErrorMessage,
+  showMutationErrorToast,
+} from "@/lib/mutation-errors";
 import { promptHistoryEntriesToDrafts } from "@/lib/prompt-history";
 import { usePromptHistoryEnabled } from "@/hooks/usePromptHistoryEnabled";
 import { getProjectComposeRoutePath } from "@/lib/route-paths";
 import { getThreadDisplayTitle } from "@/lib/thread-title";
 import { buildThreadHandoffLocationState } from "@bb/client-core";
-import { appToast } from "@/components/ui/app-toast";
 import {
   emptyPromptDraftState,
   promptDraftToInput,
@@ -827,17 +829,13 @@ export function ThreadDetailPromptArea({
       }
     } catch (nextError) {
       promptDraft.restoreIfEmpty(submittedDraft);
-      appToast.error(
-        getMutationErrorMessage({
-          error: nextError,
-          fallbackMessage: isQueuingMessage
-            ? "Failed to queue message"
-            : "Failed to send message",
-          lifecycleOperation: isQueuingMessage
-            ? "queue_message"
-            : "send_message",
-        }),
-      );
+      showMutationErrorToast({
+        error: nextError,
+        fallbackMessage: isQueuingMessage
+          ? "Failed to queue message"
+          : "Failed to send message",
+        lifecycleOperation: isQueuingMessage ? "queue_message" : "send_message",
+      });
     }
   }, [
     createQueuedMessage,
@@ -923,13 +921,11 @@ export function ThreadDetailPromptArea({
             await sendMessage.mutateAsync(shortcutRequest.request);
           } catch (nextError) {
             promptDraft.restoreIfEmpty(submittedDraft);
-            appToast.error(
-              getMutationErrorMessage({
-                error: nextError,
-                fallbackMessage: "Failed to send message",
-                lifecycleOperation: "send_message",
-              }),
-            );
+            showMutationErrorToast({
+              error: nextError,
+              fallbackMessage: "Failed to send message",
+              lifecycleOperation: "send_message",
+            });
           }
         },
       );

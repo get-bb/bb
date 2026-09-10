@@ -22,8 +22,6 @@ import {
 import { Button } from "@bb/shared-ui/button";
 import { Checkbox } from "@bb/shared-ui/checkbox";
 import { Icon } from "@bb/shared-ui/icon";
-import { Skeleton } from "@bb/shared-ui/skeleton";
-import { usePluginFrontendsSettled } from "@/lib/plugin-frontend-boot-state";
 import {
   ContextMenu,
   ContextMenuContent,
@@ -139,7 +137,6 @@ export function PluginNavSidebarItems(props: {
   onNavigate?: () => void;
   splitEnabled?: boolean;
 }) {
-  const pluginsLoading = !usePluginFrontendsSettled();
   const discoveredEntries = usePluginNavPanelChrome();
   const entries = props.entries ?? discoveredEntries;
   const rows = useMemo<SidebarNavRow[]>(
@@ -166,10 +163,9 @@ export function PluginNavSidebarItems(props: {
       (props.builtInEntries ?? []).map(getPluginNavPanelKey),
     [props.builtInEntries, props.leadingOrderKeys],
   );
-  if (rows.length === 0 && !pluginsLoading) return null;
+  if (rows.length === 0) return null;
   return (
     <PluginNavSidebarItemList
-      pluginsLoading={pluginsLoading}
       rows={rows}
       leadingOrderKeys={leadingOrderKeys}
       splitEnabled={props.splitEnabled ?? false}
@@ -187,7 +183,6 @@ export function PluginNavSidebarItems(props: {
 }
 
 function PluginNavSidebarItemList({
-  pluginsLoading,
   compactCustomizeMode,
   leadingOrderKeys,
   onCompactCustomizeModeChange,
@@ -195,7 +190,6 @@ function PluginNavSidebarItemList({
   rows,
   splitEnabled = false,
 }: {
-  pluginsLoading: boolean;
   compactCustomizeMode?: boolean;
   leadingOrderKeys: readonly string[];
   onCompactCustomizeModeChange?: (isCustomizing: boolean) => void;
@@ -432,7 +426,7 @@ function PluginNavSidebarItemList({
   return (
     <div
       ref={containerRef}
-      className="shrink-0 space-y-0.5 px-2 py-2 group-data-[collapsible=icon]:hidden"
+      className="relative shrink-0 space-y-0.5 px-2 py-2 group-data-[collapsible=icon]:hidden"
       data-testid="plugin-nav-sidebar-items"
       onClickCapture={onClickCapture}
     >
@@ -460,36 +454,6 @@ function PluginNavSidebarItemList({
           )}
         </SortableContext>
       </DndContext>
-      {pluginsLoading ? (
-        <div role="status" aria-label="Loading plugins" className="space-y-0.5">
-          {rows.every((row) => !isPluginSidebarNavRow(row)) ? (
-            <div
-              aria-hidden="true"
-              data-testid="plugin-nav-loading-placeholders"
-            >
-              {["w-24", "w-32", "w-20"].map((width) => (
-                <div key={width} className="flex h-8 items-center gap-2 px-2">
-                  <Skeleton className="size-4 shrink-0 rounded-md bg-sidebar-border/60 motion-reduce:animate-none" />
-                  <Skeleton
-                    className={cn(
-                      "h-2.5 rounded-full bg-sidebar-border/60 motion-reduce:animate-none",
-                      width,
-                    )}
-                  />
-                </div>
-              ))}
-            </div>
-          ) : null}
-          <div className="flex items-center gap-2 px-2 py-1.5 text-xs text-muted-foreground">
-            <Icon
-              name="Loading"
-              className="size-3 motion-safe:animate-spin"
-              aria-hidden="true"
-            />
-            <span className="animate-shine">Loading plugins…</span>
-          </div>
-        </div>
-      ) : null}
       {hidden.length > 0 ? (
         <SidebarNavigationMoreRow
           hiddenRows={hidden}
@@ -1172,6 +1136,8 @@ function SidebarNavRowChrome({
               "w-full pr-7",
               accessory && "pr-18",
               isActive && "bg-sidebar-accent text-sidebar-foreground",
+              loading &&
+                "text-sidebar-foreground/55 dark:text-sidebar-foreground/55 [&_svg]:opacity-60",
             )}
             aria-busy={loading || undefined}
             aria-current={isActive ? "page" : undefined}
@@ -1183,11 +1149,7 @@ function SidebarNavRowChrome({
           >
             {icon}
             <span className="flex min-w-0 flex-1 items-center gap-1.5 text-left">
-              <span
-                className={cn("min-w-0 truncate", loading && "animate-shine")}
-              >
-                {title}
-              </span>
+              <span className="min-w-0 truncate">{title}</span>
               {splitMiniMap ? (
                 <SplitPaneMiniMap
                   slots={splitMiniMap}

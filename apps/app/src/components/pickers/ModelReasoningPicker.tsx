@@ -36,6 +36,7 @@ import {
 } from "@bb/shared-ui/popover";
 import { Skeleton } from "@bb/shared-ui/skeleton";
 import { Switch } from "@bb/shared-ui/switch";
+import { ToggleGroup, ToggleGroupItem } from "@bb/shared-ui/toggle-group";
 import { LIST_HOVER_TRANSITION } from "@bb/shared-ui/motion";
 import {
   MENU_ITEM_LAST_HOVERED_CLASS,
@@ -109,7 +110,7 @@ const REASONING_CYCLE_COMMANDS = [
 ] as const;
 
 const MODEL_SEARCH_MIN_OPTIONS = 5;
-const MODEL_PICKER_MENU_WIDTH_CLASS_NAME = "w-max min-w-52 max-w-80";
+const MODEL_PICKER_MENU_WIDTH_CLASS_NAME = "w-max min-w-64 max-w-80";
 
 function splitModelLabelTag(label: string): ModelLabelParts {
   const match = label.match(/^(.*\S)\s*\(([^()]+)\)$/u);
@@ -677,6 +678,42 @@ export function ModelReasoningPicker({
     ],
   );
 
+  const handleReasoningArrowKeyDown: KeyboardEventHandler<HTMLElement> = (
+    event,
+  ) => {
+    if (
+      event.defaultPrevented ||
+      event.altKey ||
+      event.ctrlKey ||
+      event.metaKey ||
+      event.shiftKey ||
+      disabled ||
+      !showReasoningSection ||
+      previewSelectionBlocked ||
+      (event.key !== "ArrowLeft" && event.key !== "ArrowRight")
+    ) {
+      return;
+    }
+    if (
+      isEditableKeyboardTarget(event.target) &&
+      (event.target !== searchInputRef.current || searchQuery.length > 0)
+    ) {
+      return;
+    }
+    const value = isPreviewing
+      ? previewSelection?.reasoningLevel
+      : reasoningValue;
+    const index = activeReasoningOptions.findIndex(
+      (option) => option.value === value,
+    );
+    if (index < 0) return;
+    event.preventDefault();
+    event.stopPropagation();
+    const next =
+      activeReasoningOptions[index + (event.key === "ArrowRight" ? 1 : -1)];
+    if (next) handleReasoningSelect(next.value);
+  };
+
   const handleFooterActionClick = useCallback(() => {
     if (!footerAction || footerAction.disabled) {
       return;
@@ -764,6 +801,7 @@ export function ModelReasoningPicker({
       }
       aria-keyshortcuts={toggleShortcut?.ariaKeyshortcuts}
       disabled={disabled}
+      onKeyDown={handleReasoningArrowKeyDown}
       className={cn(
         OPTION_BASE_CLASS_NAME,
         OPTION_INTERACTIVE_CLASS_NAME,
@@ -865,6 +903,7 @@ export function ModelReasoningPicker({
       <PopoverContent
         align={align}
         mobileTitle="Model"
+        onKeyDown={handleReasoningArrowKeyDown}
         onMobileContentAnimationEnd={handleMobileContentAnimationEnd}
         autoFocusRef={showSearchInput ? searchInputRef : undefined}
         className={cn(
@@ -1052,32 +1091,38 @@ export function ModelReasoningPicker({
             {showReasoningSection ? (
               <>
                 <div className="shrink-0 border-t border-border" />
-                <div className="shrink-0 px-1 pb-1 pt-0">
-                  <MenuSectionLabel>Reasoning</MenuSectionLabel>
-                  <div
-                    role="group"
+                <div className="shrink-0 px-2 py-2.5">
+                  <MenuSectionLabel className="mb-2 px-1 py-0">
+                    Reasoning
+                  </MenuSectionLabel>
+                  <ToggleGroup
+                    type="single"
                     aria-label="Reasoning"
-                    className="flex flex-wrap gap-1.5 px-2 pb-2"
+                    value={isPreviewing ? "" : reasoningValue}
+                    onValueChange={(value) => {
+                      const option = activeReasoningOptions.find(
+                        (candidate) => candidate.value === value,
+                      );
+                      if (option) handleReasoningSelect(option.value);
+                    }}
+                    disabled={previewSelectionBlocked}
+                    className="flex gap-1"
                   >
                     {activeReasoningOptions.map((option) => (
-                      <button
+                      <ToggleGroupItem
                         key={option.value}
-                        type="button"
-                        aria-pressed={
-                          !isPreviewing && option.value === reasoningValue
-                        }
+                        value={option.value}
+                        aria-label={option.label}
                         className={cn(
-                          "rounded-full border border-border px-3 py-1 text-xs whitespace-nowrap outline-none hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 aria-pressed:border-primary aria-pressed:bg-primary aria-pressed:text-primary-foreground",
-                          isCompactViewport && "min-h-9 text-sm",
+                          "h-6 min-w-0 flex-auto shrink-0 whitespace-nowrap rounded-sm px-1 text-xs font-normal shadow-none data-[state=on]:bg-state-active data-[state=on]:text-foreground",
+                          isCompactViewport && "h-9 text-sm",
                           LIST_HOVER_TRANSITION,
                         )}
-                        disabled={previewSelectionBlocked}
-                        onClick={() => handleReasoningSelect(option.value)}
                       >
                         {option.label}
-                      </button>
+                      </ToggleGroupItem>
                     ))}
-                  </div>
+                  </ToggleGroup>
                 </div>
               </>
             ) : null}
@@ -1098,7 +1143,7 @@ export function ModelReasoningPicker({
                       checked={fastModeEnabled}
                       onCheckedChange={onFastModeChange}
                       aria-label={fastModeText}
-                      className={LIST_HOVER_TRANSITION}
+                      className={cn(LIST_HOVER_TRANSITION, "[&>span]:size-3.5")}
                     />
                   </div>
                 </div>
@@ -1126,7 +1171,13 @@ export function ModelReasoningPicker({
   );
 }
 
-function MenuSectionLabel({ children }: { children: ReactNode }) {
+function MenuSectionLabel({
+  children,
+  className,
+}: {
+  children: ReactNode;
+  className?: string;
+}) {
   const isCompactViewport = useIsCompactViewport();
 
   return (
@@ -1134,6 +1185,7 @@ function MenuSectionLabel({ children }: { children: ReactNode }) {
       className={cn(
         "sticky top-0 z-10 bg-background px-2 text-xs font-medium text-muted-foreground",
         isCompactViewport ? "pb-1.5 pt-2" : "pb-[0.3125rem] pt-2",
+        className,
       )}
     >
       {children}
@@ -1396,6 +1448,7 @@ function MenuRowButton({
           name="Check"
           className={cn(
             COARSE_POINTER_ICON_SIZE_SHRINK_CLASS,
+            "text-subtle-foreground",
             selected ? "opacity-100" : "opacity-0",
           )}
         />
@@ -1474,7 +1527,7 @@ function ModelSearchInput({
           aria-controls={listboxId}
           aria-autocomplete="list"
           aria-activedescendant={activeOptionId}
-          className="h-7 border-0 bg-transparent pl-8 pr-2 text-xs shadow-none focus-visible:ring-0"
+          className="h-7 border-0 bg-transparent pl-8 pr-2 text-xs text-foreground placeholder:text-subtle-foreground shadow-none focus-visible:ring-0"
         />
       </div>
     </div>
