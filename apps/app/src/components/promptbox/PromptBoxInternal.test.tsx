@@ -2234,6 +2234,143 @@ describe("PromptBoxInternal compact layout", () => {
     }
   });
 
+  it("does not start voice input from the trailing click of a touch submit", () => {
+    const restoreMatchMedia = mockPointerCoarse(true);
+    try {
+      const start = vi.fn();
+      const voice = {
+        state: "idle" as const,
+        isSupported: true,
+        stream: null,
+        start,
+        stop: vi.fn(),
+        cancel: vi.fn(),
+      };
+      const onSubmit = vi.fn();
+      const { rerender } = render(
+        <PromptBoxInternal
+          {...createPromptBoxProps({
+            value: "Send this",
+            onSubmit,
+            voice,
+            compact: { isCompact: true, placeholder: "Ask a follow-up" },
+          })}
+        />,
+      );
+
+      const submit = screen.getByRole("button", { name: "Submit (Enter)" });
+      vi.spyOn(submit, "getBoundingClientRect").mockReturnValue(
+        new DOMRect(0, 0, 40, 40),
+      );
+      const touch = {
+        button: 0,
+        pointerType: "touch",
+        pointerId: 1,
+        isPrimary: true,
+        clientX: 20,
+        clientY: 20,
+      };
+      fireEvent.pointerDown(submit, touch);
+      fireEvent.pointerUp(submit, touch);
+      expect(onSubmit).toHaveBeenCalledOnce();
+
+      rerender(
+        <PromptBoxInternal
+          {...createPromptBoxProps({
+            value: "",
+            onSubmit,
+            voice,
+            compact: { isCompact: true, placeholder: "Ask a follow-up" },
+          })}
+        />,
+      );
+
+      const replacement = screen.getByRole("button", {
+        name: "Start voice input",
+      });
+      expect(replacement).not.toBe(submit);
+
+      fireEvent.click(replacement, { detail: 1 });
+
+      expect(start).not.toHaveBeenCalled();
+      expect(onSubmit).toHaveBeenCalledOnce();
+    } finally {
+      restoreMatchMedia();
+    }
+  });
+
+  it("starts voice input once for a deliberate touch tap on the voice action", () => {
+    const restoreMatchMedia = mockPointerCoarse(true);
+    try {
+      const start = vi.fn();
+      render(
+        <PromptBoxInternal
+          {...createPromptBoxProps({
+            compact: { isCompact: true, placeholder: "Ask a follow-up" },
+            voice: {
+              state: "idle",
+              isSupported: true,
+              stream: null,
+              start,
+              stop: vi.fn(),
+              cancel: vi.fn(),
+            },
+          })}
+        />,
+      );
+
+      const voiceButton = screen.getByRole("button", {
+        name: "Start voice input",
+      });
+      const touch = {
+        button: 0,
+        pointerType: "touch",
+        pointerId: 1,
+        isPrimary: true,
+      };
+      fireEvent.pointerDown(voiceButton, touch);
+      fireEvent.pointerUp(voiceButton, touch);
+      fireEvent.click(voiceButton, { detail: 1 });
+
+      expect(start).toHaveBeenCalledOnce();
+    } finally {
+      restoreMatchMedia();
+    }
+  });
+
+  it("starts voice input for keyboard activation without a pointer gesture", () => {
+    const restoreMatchMedia = mockPointerCoarse(true);
+    try {
+      const start = vi.fn();
+      render(
+        <PromptBoxInternal
+          {...createPromptBoxProps({
+            compact: { isCompact: true, placeholder: "Ask a follow-up" },
+            voice: {
+              state: "idle",
+              isSupported: true,
+              stream: null,
+              start,
+              stop: vi.fn(),
+              cancel: vi.fn(),
+            },
+          })}
+        />,
+      );
+
+      fireEvent.click(
+        screen.getByRole("button", { name: "Start voice input" }),
+        {
+          detail: 0,
+        },
+      );
+
+      expect(start).toHaveBeenCalledOnce();
+    } finally {
+      restoreMatchMedia();
+    }
+  });
+
   it("keeps an unfocused compact submit stable on coarse pointers", () => {
     const restoreMatchMedia = mockPointerCoarse(true);
     try {
