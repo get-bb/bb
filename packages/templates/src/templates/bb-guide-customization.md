@@ -1,17 +1,18 @@
 ---
 kind: instruction
 title: bb Guide — Customization
-summary: Command reference for customizing the bb app color palette, keyboard shortcuts, and mobile push notifications.
+summary: Command reference for customizing the bb app color palette, typography, keyboard shortcuts, and mobile push notifications.
 intent: Explain the CLI theme surface, server-backed app customization, and push-notification device registration.
 editingNotes: Keep flags accurate against the CLI implementation. Theme details live in the bb-cli skill's references/theming.md.
 ---
 Customization commands
 
-Theming — the app-wide color palette
+Theming — the app-wide palette and typography
 
-`bb theme` controls a set of CSS-variable overrides, persisted server-side and
-applied live to every open window. This is the palette only; light/dark mode is a
-separate per-client setting the palette layers on top of. Custom themes live on
+`bb theme` controls a set of CSS-variable overrides for the app palette and
+typography, persisted server-side and applied live to every open window.
+Light/dark mode is a separate per-client setting the theme layers on top of.
+Custom themes live on
 disk, one folder per theme, at <bb-data-dir>/theme/<name>/theme.css (the packaged
 app uses ~/.bb/theme/…). The folder name is the theme id.
 
@@ -31,6 +32,10 @@ then `bb theme set <name>`. Optional `pierre-dark.json` / `pierre-light.json`
 (or a `theme.json` `codeTheme` field) ship the matching code colors. Built-in
 palettes use the matching Shiki pair. The full design-token reference is in
 the bb-cli skill (references/theming.md).
+
+Theme CSS can override typography as well as colors. `--font-terminal` controls
+the integrated terminal's font family independently of `--font-mono`; set it in
+the theme's `:root, .light` block and end the stack with a generic fallback.
 
 Favicon colors are `default`, `red`, `orange`, `yellow`, `green`, `teal`,
 `blue`, `purple`, and `pink`. Theme and favicon-only commands carry the other

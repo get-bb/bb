@@ -68,7 +68,7 @@ base theme. The anchors that drive the most are `--canvas`, `--ink`,
 | Accent and state | `--primary` `--primary-foreground` `--file-accent` `--timeline-accent` `--surface-selected` `--state-hover` `--state-active` `--sidebar-accent` |
 | Status | `--success` `--warning` `--warning-text` `--destructive` `--destructive-text` `--pr-merged` `--diff-added` `--diff-removed` |
 | Lines | `--border` `--border-hairline` `--border-seam` `--sidebar-border` `--input` `--ring` |
-| Type | `--font-sans` `--font-mono` (declare once in `:root`) |
+| Type | `--font-sans` `--font-mono` `--font-terminal` (declare once in `:root`) |
 
 How bb uses them (from bb's own components, so you can predict the result):
 sidebar rows hover with `--sidebar-accent`, the open thread's row is
@@ -76,6 +76,8 @@ sidebar rows hover with `--sidebar-accent`, the open thread's row is
 (bb has no primary-filled button; `--primary` is links, focus and accents),
 the composer sits on the canvas with a 1px `--border`, code blocks and message
 bubbles are a faint recessed wash with `--border-seam`.
+The integrated terminal uses `--font-terminal`, independently of
+`--font-mono`.
 
 Element-scoped blocks are allowed — for example `.dark .fixed.bg-sidebar { … }`
 to give only the sidebar a different value — but keep palette values in the

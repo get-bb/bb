@@ -283,6 +283,24 @@ newline and the submit button sends.
 iPadOS WebKit additionally preserves the Enter and Command+Enter shortcuts
 above for a connected Magic Keyboard.
 
+## Themes
+
+`bb theme` controls CSS-variable overrides for the app palette and typography.
+Custom themes live at `<bb-data-dir>/theme/<name>/theme.css`; use `bb theme dir`
+to find the directory and `bb theme show [id] --css` to inspect resolved CSS.
+
+The typography tokens are mode-independent and belong in the `:root, .light`
+block:
+
+- `--font-sans` controls app UI and body text.
+- `--font-mono` controls code blocks, diffs, file paths, and previews.
+- `--font-serif` controls serif prose.
+- `--font-terminal` controls the integrated terminal's font family.
+
+Always end font stacks with a generic fallback such as `sans-serif` or
+`monospace`. The complete theme token reference is in the bb-cli skill's
+`references/theming.md`.
+
 ## Keyboard Shortcuts
 
 `Mod+Shift+P` opens the quick palette: type to filter, then run a command with

@@ -593,6 +593,10 @@
   --font-mono:
     ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono",
     "Courier New", monospace;
+  --font-terminal:
+    "JetBrainsMono Nerd Font Mono", "MesloLGS NF", "Symbols Nerd Font Mono",
+    ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono",
+    "Courier New", monospace;
   --radius: 0.5rem;
   --bb-sidebar-row-height: 1.75rem;
   --bb-sidebar-row-height-coarse: 2.5rem;

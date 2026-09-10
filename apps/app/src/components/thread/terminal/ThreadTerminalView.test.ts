@@ -3,9 +3,11 @@ import { Terminal } from "@xterm/xterm";
 import { describe, expect, it, vi } from "vitest";
 import {
   buildTerminalThemeFromCssColors,
+  applyTerminalFontFamily,
   captureTerminalContextMenuState,
   decodeTerminalOutputBytes,
   encodeTerminalInputChunks,
+  forceTerminalFontMeasurement,
   focusTerminalFromTouchRelease,
   forwardTerminalData,
   loadOptionalTerminalWebglAddon,
@@ -15,6 +17,7 @@ import {
   TERMINAL_ALLOW_PROPOSED_API,
   TERMINAL_FONT_FAMILY,
   TERMINAL_UNICODE_VERSION,
+  resolveTerminalFontFamily,
   writeTerminalOutput,
   updateTerminalTouchFocusGesture,
 } from "./ThreadTerminalView";
@@ -356,6 +359,73 @@ describe("buildTerminalThemeFromCssColors", () => {
 
     expect(theme.background).toBe("--sidebar");
     expect(theme.cursorAccent).toBe("--sidebar");
+  });
+});
+
+describe("terminal font family", () => {
+  it("uses the theme terminal font family when it is set", () => {
+    expect(
+      resolveTerminalFontFamily((name) =>
+        name === "--font-terminal"
+          ? '"Berkeley Mono", monospace'
+          : undefined,
+      ),
+    ).toBe('"Berkeley Mono", monospace');
+  });
+
+  it("keeps the default stack when the theme does not set a font family", () => {
+    expect(resolveTerminalFontFamily(() => undefined)).toBe(
+      TERMINAL_FONT_FAMILY,
+    );
+  });
+
+  it("keeps the default stack when the theme font family is blank", () => {
+    expect(resolveTerminalFontFamily(() => "  ")).toBe(TERMINAL_FONT_FAMILY);
+  });
+
+  it("updates the xterm font family and schedules a refit only when it changes", () => {
+    const terminal = { options: { fontFamily: "Old Font" } } as Parameters<
+      typeof applyTerminalFontFamily
+    >[0];
+    const scheduleFit = vi.fn();
+
+    expect(
+      applyTerminalFontFamily(terminal, '"New Font", monospace', scheduleFit),
+    ).toBe(true);
+    expect(terminal.options.fontFamily).toBe('"New Font", monospace');
+    expect(scheduleFit).toHaveBeenCalledOnce();
+
+    scheduleFit.mockClear();
+    expect(
+      applyTerminalFontFamily(terminal, '"New Font", monospace', scheduleFit),
+    ).toBe(false);
+    expect(scheduleFit).not.toHaveBeenCalled();
+  });
+
+  it("forces xterm to remeasure and refresh after a font loads", () => {
+    const fontFamily = '"New Font", monospace';
+    let currentFontFamily = fontFamily;
+    const fontFamilyChanges: string[] = [];
+    const refresh = vi.fn();
+    const terminal = {
+      options: {
+        get fontFamily() {
+          return currentFontFamily;
+        },
+        set fontFamily(value: string) {
+          fontFamilyChanges.push(value);
+          currentFontFamily = value;
+        },
+      },
+      refresh,
+      rows: 24,
+    } as Parameters<typeof forceTerminalFontMeasurement>[0];
+
+    forceTerminalFontMeasurement(terminal);
+
+    expect(fontFamilyChanges).toEqual([`${fontFamily} `, fontFamily]);
+    expect(refresh).toHaveBeenCalledWith(0, 23);
+    expect(terminal.options.fontFamily).toBe(fontFamily);
   });
 });
 
