@@ -2045,6 +2045,51 @@ describe("PromptBoxInternal plugin composer actions", () => {
 });
 
 describe("PromptBoxInternal compact layout", () => {
+  it("shows only an attachment count when compact and removal controls when expanded", () => {
+    const items: NonNullable<
+      NonNullable<PromptBoxProps["attachments"]>["items"]
+    > = [
+      {
+        type: "localImage",
+        name: "photo.png",
+        path: "photo.png",
+        sizeBytes: 1,
+      },
+      { type: "localFile", name: "notes.txt", path: "notes.txt", sizeBytes: 1 },
+    ];
+    const props = createPromptBoxProps({
+      attachments: { items, onRemove: vi.fn() },
+      compact: { isCompact: true },
+    });
+    const { rerender } = render(<PromptBoxInternal {...props} />);
+    expect(screen.getByRole("img", { name: "2 attachments" })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: /Remove / })).toBeNull();
+    expect(
+      document.querySelector("[data-promptbox-attachments] button"),
+    ).toBeNull();
+    rerender(<PromptBoxInternal {...props} compact={{ isCompact: false }} />);
+    expect(
+      screen.getByRole("button", { name: "Remove photo.png" }),
+    ).toBeTruthy();
+    expect(
+      screen.getByRole("button", { name: "Remove notes.txt" }),
+    ).toBeTruthy();
+    rerender(
+      <PromptBoxInternal
+        {...props}
+        attachments={{ ...props.attachments, items: items.slice(1) }}
+      />,
+    );
+    expect(screen.getByRole("img", { name: "1 attachment" })).toBeTruthy();
+    rerender(
+      <PromptBoxInternal
+        {...props}
+        attachments={{ ...props.attachments, items: [] }}
+      />,
+    );
+    expect(document.querySelector("[data-promptbox-attachments]")).toBeNull();
+  });
+
   it("shows attachment upload progress on the submit button", () => {
     const restoreMatchMedia = mockPointerCoarse(true);
     try {

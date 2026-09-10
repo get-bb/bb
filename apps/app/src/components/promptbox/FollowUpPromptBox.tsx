@@ -307,10 +307,8 @@ function FollowUpPromptBoxWithComposer({
   >(null);
   const isWidePromptBoxCollapsed =
     widePromptBoxCollapsedFor === collapseResetKey;
-  const isComposerExpanded =
-    !isWidePromptBoxCollapsed && (isInteractionExpanded || attachmentCount > 0);
   const isPromptBoxCompact =
-    isWidePromptBoxCollapsed || (isCompactViewport && !isComposerExpanded);
+    isWidePromptBoxCollapsed || (isCompactViewport && !isInteractionExpanded);
   const compactConfig = useMemo(
     () =>
       isCompactViewport || isWidePromptBoxCollapsed
@@ -700,7 +698,7 @@ function FollowUpPromptBoxWithComposer({
       ref={composerInteractionRef}
       className="relative z-20"
       data-follow-up-composer=""
-      data-follow-up-composer-expanded={isComposerExpanded ? "" : undefined}
+      data-follow-up-composer-expanded={isInteractionExpanded ? "" : undefined}
       hidden={hasPendingInteraction}
       onBlurCapture={scheduleCollapseAfterFocusLoss}
       onFocusCapture={handleComposerFocus}
@@ -727,7 +725,7 @@ function FollowUpPromptBoxWithComposer({
         focusEndKey={focusEndKey}
         placeholder={composer.promptPlaceholder}
         containerCompactPlaceholder={composer.compactPromptPlaceholder}
-        heightAnimationKey={isComposerExpanded ? "expanded" : "compact"}
+        heightAnimationKey={isInteractionExpanded ? "expanded" : "compact"}
         mentionMenuPlacement="top"
         submission={{
           onStop: onStopRuntime,

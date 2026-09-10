@@ -3069,14 +3069,14 @@ export function PromptBoxInternal({
       />
       <div
         data-promptbox-layout=""
-        className={COLLAPSING_GRID_CLASS}
+        className={cn(COLLAPSING_GRID_CLASS, showCompactLayout && "relative")}
         style={{ gridTemplateRows: "1fr" }}
       >
         <div
           data-promptbox-main=""
           className={cn(
             "min-h-0 overflow-hidden transition-opacity duration-[180ms] motion-reduce:transition-none",
-            showCompactLayout && "relative h-12",
+            showCompactLayout && "relative flex h-12 items-center",
             showVoiceActionGroup && "pointer-events-none",
           )}
         >
@@ -3089,7 +3089,20 @@ export function PromptBoxInternal({
               {header}
             </div>
           ) : null}
-          <div data-promptbox-input-region="" className="relative">
+          {showCompactLayout ? (
+            <AttachmentPreview
+              compact
+              attachments={attachments}
+              attachmentProjectId={attachmentProjectId}
+              expandedImageIndex={expandedImageIndex}
+              onExpandedImageIndexChange={setExpandedImageIndex}
+              onRemoveAttachment={onRemoveAttachment}
+            />
+          ) : null}
+          <div
+            data-promptbox-input-region=""
+            className={cn("relative", showCompactLayout && "min-w-0 flex-1")}
+          >
             {!showCompactLayout ? (
               <>
                 <div data-promptbox-expanded-only="">
