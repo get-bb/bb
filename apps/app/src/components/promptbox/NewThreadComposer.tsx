@@ -445,7 +445,7 @@ export function NewThreadComposer({
   );
 
   const { providers: registeredEnvironmentProviders } =
-    useSystemEnvironmentProviders();
+    useSystemEnvironmentProviders({ projectId });
   const environmentProviders = useMemo(
     () =>
       registeredEnvironmentProviders?.filter((provider) =>
@@ -461,24 +461,29 @@ export function NewThreadComposer({
       new Map(
         availableHosts.map((host) => [
           host.id,
-          environmentProviders?.filter((provider) => {
-            if (
-              (provider.requires.projectCheckout ||
-                provider.requires.gitCheckout) &&
-              findLocalPathProjectSourceForHost(projectSources, host.id) ===
-                undefined
-            ) {
-              return false;
-            }
-            if (
-              provider.requires.gitRemote &&
-              (projectGitRemoteUrl === undefined ||
-                projectGitRemoteUrl === null)
-            ) {
-              return false;
-            }
-            return true;
-          }),
+          environmentProviders
+            ?.filter((provider) => {
+              if (
+                (provider.requires.projectCheckout ||
+                  provider.requires.gitCheckout) &&
+                findLocalPathProjectSourceForHost(projectSources, host.id) ===
+                  undefined
+              ) {
+                return false;
+              }
+              if (
+                provider.requires.gitRemote &&
+                (projectGitRemoteUrl === undefined ||
+                  projectGitRemoteUrl === null)
+              ) {
+                return false;
+              }
+              return true;
+            })
+            .map((provider) => ({
+              ...provider,
+              availability: provider.machineAvailability[host.id] ?? null,
+            })),
         ]),
       ),
     [availableHosts, environmentProviders, projectGitRemoteUrl, projectSources],

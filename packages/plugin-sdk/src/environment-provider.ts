@@ -116,7 +116,7 @@ export interface PluginEnvironmentProviderDefinition<
   requires?: R;
   inputs?: S;
   policy?: Partial<PluginEnvironmentProviderPolicy>;
-  /** Experimental create-time preflight: see docs/api_to_audit.md. */
+  /** Experimental per-machine availability, probed in the background for pickers and again at thread creation: see docs/api_to_audit.md. */
   availability?(
     context: PluginEnvironmentProviderAvailabilityContext,
   ):

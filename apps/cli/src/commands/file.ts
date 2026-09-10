@@ -136,7 +136,7 @@ export function registerFileCommands(
     .option("--no-hidden", "Skip dot-prefixed files and directories")
     .option(
       "--exclude <names...>",
-      "Entry names to skip instead of the default set",
+      "Entry names or root-relative paths (using /) to skip instead of the default set",
     )
     .option("--host <id>", "Machine ID")
     .option("--json", "Print machine-readable JSON output")
@@ -164,7 +164,7 @@ export function registerFileCommands(
     .option("--no-hidden", "Skip dot-prefixed files and directories")
     .option(
       "--exclude <names...>",
-      "Entry names to skip instead of the default set",
+      "Entry names or root-relative paths (using /) to skip instead of the default set",
     )
     .option("--host <id>", "Machine ID")
     .option("--json", "Print machine-readable JSON output")

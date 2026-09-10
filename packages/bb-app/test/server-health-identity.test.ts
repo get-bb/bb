@@ -6,7 +6,7 @@ import {
   type ServerResponse,
 } from "node:http";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import type {
   BbAppStartContext,
@@ -74,7 +74,7 @@ function createStartContext(args: {
   serverEntry: string;
   serverPort: number;
 }): BbAppStartContext {
-  const dataDir = "/tmp/bb-app-health-test";
+  const dataDir = dirname(args.serverEntry);
   return {
     appDistDir: `${dataDir}/app/dist`,
     appVersion: "0.0.0-test",
@@ -94,11 +94,6 @@ function createStartContext(args: {
     serverUrl: `http://127.0.0.1:${args.serverPort}`,
   };
 }
-
-const silentOutputBuffer = {
-  flush(): void {},
-  handler(): void {},
-};
 
 describe("waitForServerHealth", () => {
   it("does not accept another server's /health while the child is still booting", async () => {
@@ -218,7 +213,6 @@ describe("startFullStackServerProcess", () => {
         BB_SERVER_PORT: String(context.serverPort),
         PATH: process.env.PATH,
       },
-      outputBuffer: silentOutputBuffer,
       processes,
     });
     try {
@@ -257,7 +251,6 @@ describe("startFullStackServerProcess", () => {
           BB_SERVER_PORT: String(context.serverPort),
           PATH: process.env.PATH,
         },
-        outputBuffer: silentOutputBuffer,
         processes,
       }),
     ).rejects.toBe(preflightError);
@@ -285,7 +278,6 @@ describe("startFullStackServerProcess", () => {
             BB_SERVER_PORT: String(context.serverPort),
             PATH: process.env.PATH,
           },
-          outputBuffer: silentOutputBuffer,
           processes,
         }),
       ).rejects.toThrow(

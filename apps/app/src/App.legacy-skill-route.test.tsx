@@ -42,14 +42,14 @@ afterEach(cleanup);
 
 describe("legacy resource redirects", () => {
   it.each(["github", "plugin with spaces"])(
-    "redirects legacy installed detail for %s without changing configuration routes",
+    "opens workspace installed detail for %s alongside Settings routes",
     async (pluginId) => {
       const settingsPath = `/settings/plugins/${encodeURIComponent(pluginId)}`;
       render(
         <MemoryRouter
           initialEntries={[
             settingsPath,
-            `${settingsPath}?view=installed&from=bookmark#details`,
+            `/plugins/${encodeURIComponent(pluginId)}?view=installed&from=bookmark#details`,
           ]}
           initialIndex={1}
         >
@@ -77,11 +77,8 @@ describe("legacy resource redirects", () => {
   );
 
   it.each([
-    ["/settings/plugins", "/plugins?view=installed"],
-    [
-      "/extensions?view=installed#catalog",
-      "/plugins?view=installed#catalog",
-    ],
+    ["/settings/plugins", "/settings/plugins"],
+    ["/extensions?view=installed#catalog", "/plugins?view=installed#catalog"],
     ["/extensions/plugins", "/plugins"],
     [
       "/extensions/plugins/browse?sort=name#catalog",

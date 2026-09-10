@@ -362,7 +362,6 @@ function ExperimentsStory() {
     <ExperimentsSettingsSection
       changelogPreviewEnabled={state.experiments.changelogPreview}
       disabled={false}
-      editMessagesEnabled={state.experiments.editMessages}
       mobileAppEnabled={state.experiments.mobileApp}
       sidebarProgressiveDisclosureEnabled={
         state.experiments.sidebarProgressiveDisclosure
@@ -372,12 +371,6 @@ function ExperimentsStory() {
         state.setExperiments((current) => ({
           ...current,
           changelogPreview: enabled,
-        }))
-      }
-      onEditMessagesEnabledChange={(enabled) =>
-        state.setExperiments((current) => ({
-          ...current,
-          editMessages: enabled,
         }))
       }
       onMobileAppEnabledChange={(enabled) =>

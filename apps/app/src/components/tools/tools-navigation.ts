@@ -7,6 +7,7 @@ import {
   REGISTRY_SKILLS_ROUTE_PATH,
   REGISTRY_SKILL_DETAIL_ROUTE_PATH,
   SKILL_DETAIL_ROUTE_PATH,
+  SETTINGS_PLUGINS_ROUTE_PATH,
   AUTOMATIONS_BROWSE_ROUTE_PATH,
   AUTOMATIONS_ROUTE_PATH,
   AUTOMATION_DETAIL_ROUTE_PATH,
@@ -49,7 +50,9 @@ const TOOLS_OWNED_COLLECTION_VIEW = {
 } as const satisfies Record<ToolsSectionId, string>;
 
 export function getToolsOwnedCollectionRoutePath(id: ToolsSectionId): string {
-  return `${TOOLS_SECTIONS[id].to}?view=${TOOLS_OWNED_COLLECTION_VIEW[id]}`;
+  return id === "plugins"
+    ? SETTINGS_PLUGINS_ROUTE_PATH
+    : `${TOOLS_SECTIONS[id].to}?view=${TOOLS_OWNED_COLLECTION_VIEW[id]}`;
 }
 
 interface ToolsBreadcrumbSegment {

@@ -102,8 +102,8 @@ every window and client sees the same value.
 
 ## Message edits
 
-- The `editMessages` experiment defaults to true. It controls edits of
-  eligible accepted root user messages.
+- Eligible accepted root user messages can be edited without enabling an
+  experiment. Use `bb thread edit-message` or the message editor in the app.
 
 ## Provider session release
 

@@ -37,6 +37,7 @@ import {
   SkillsOverview,
 } from "../components/tools/SkillsCollection";
 import { SkillsLibrary } from "../components/tools/SkillsLibrary";
+import { focusWithKeyboard } from "@/test/keyboard-focus";
 
 afterEach(() => {
   focusManager.setFocused(undefined);
@@ -113,10 +114,7 @@ function renderLibrarySkillRoute() {
     <MemoryRouter initialEntries={["/skills/library/skill_missing"]}>
       <QueryClientWrapper>
         <Routes>
-          <Route
-            path="/skills/library/:skillId"
-            element={<SkillsLibrary />}
-          />
+          <Route path="/skills/library/:skillId" element={<SkillsLibrary />} />
         </Routes>
       </QueryClientWrapper>
     </MemoryRouter>,
@@ -259,9 +257,7 @@ function renderRegistrySkillRoute() {
   const { wrapper: QueryClientWrapper } = createQueryClientTestHarness();
   return renderDom(
     <MemoryRouter
-      initialEntries={[
-        "/skills/registry/owner%2Frepo%2Fuseful-skill",
-      ]}
+      initialEntries={["/skills/registry/owner%2Frepo%2Fuseful-skill"]}
     >
       <QueryClientWrapper>
         <Routes>
@@ -351,7 +347,7 @@ describe("SkillsOverview", () => {
     expect(screen.getByText("user-skill")).toBeTruthy();
     expect(screen.getByText("automations")).toBeTruthy();
     const typeTrigger = screen.getByRole("button", { name: /^Filters/ });
-    fireEvent.focus(typeTrigger);
+    focusWithKeyboard(typeTrigger);
     expect((await screen.findByRole("tooltip")).textContent).toBe(
       "Provider: bb",
     );
@@ -669,7 +665,7 @@ describe("SkillsOverview", () => {
     );
 
     const providerTrigger = screen.getByRole("button", { name: /^Filters/ });
-    fireEvent.focus(providerTrigger);
+    focusWithKeyboard(providerTrigger);
     expect((await screen.findByRole("tooltip")).textContent?.trim()).toBe(
       "Provider: bb",
     );

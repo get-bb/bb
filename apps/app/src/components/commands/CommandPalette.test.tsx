@@ -505,7 +505,7 @@ describe("CommandPalette", () => {
   });
 
   it.each([false, true])(
-    "opens Installed plugins in its workspace (compact: %s)",
+    "opens Installed plugins in Settings (compact: %s)",
     async (isCompactViewport) => {
       renderPalette(isCompactViewport);
       openPalette();
@@ -520,8 +520,8 @@ describe("CommandPalette", () => {
       await waitFor(() =>
         expect(screen.getByTestId("location").textContent).toBe(
           JSON.stringify({
-            pathname: "/plugins",
-            search: "?view=installed",
+            pathname: "/settings/plugins",
+            search: "",
             state: null,
           }),
         ),

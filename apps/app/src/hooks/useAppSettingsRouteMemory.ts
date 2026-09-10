@@ -3,7 +3,6 @@ import { matchPath, useLocation } from "react-router-dom";
 import {
   getRootComposeRoutePath,
   getPluginsRoutePath,
-  isLegacyInstalledPluginsRoute,
   isToolsRoutePath,
   SETTINGS_ROUTE_PATH,
   LEGACY_PROJECT_SETTINGS_ROUTE_PATH,
@@ -34,17 +33,13 @@ function isSettingsRoutePath(pathname: string): boolean {
 export function useAppSettingsRouteMemory(): AppSettingsRouteMemory {
   const location = useLocation();
   const currentRoutePath = getLocationRoutePath(location);
-  const isCompatibilityRoute = isLegacyInstalledPluginsRoute(location);
-  const isSettingsRoute =
-    !isCompatibilityRoute && isSettingsRoutePath(location.pathname);
+  const isSettingsRoute = isSettingsRoutePath(location.pathname);
   const isCurrentToolsRoute = isToolsRoutePath(location.pathname);
   const lastAppRoutePathRef = useRef(
-    isSettingsRoute || isCompatibilityRoute
-      ? getRootComposeRoutePath()
-      : currentRoutePath,
+    isSettingsRoute ? getRootComposeRoutePath() : currentRoutePath,
   );
   const lastCoreAppRoutePathRef = useRef(
-    isSettingsRoute || isCurrentToolsRoute || isCompatibilityRoute
+    isSettingsRoute || isCurrentToolsRoute
       ? getRootComposeRoutePath()
       : currentRoutePath,
   );
@@ -53,9 +48,6 @@ export function useAppSettingsRouteMemory(): AppSettingsRouteMemory {
   );
 
   useEffect(() => {
-    if (isCompatibilityRoute) {
-      return;
-    }
     if (isSettingsRoute) {
       lastSettingsRoutePathRef.current = currentRoutePath;
       return;
@@ -65,27 +57,20 @@ export function useAppSettingsRouteMemory(): AppSettingsRouteMemory {
       return;
     }
     lastCoreAppRoutePathRef.current = currentRoutePath;
-  }, [
-    currentRoutePath,
-    isCompatibilityRoute,
-    isCurrentToolsRoute,
-    isSettingsRoute,
-  ]);
+  }, [currentRoutePath, isCurrentToolsRoute, isSettingsRoute]);
 
   return {
-    appRoutePath:
-      isSettingsRoute || isCompatibilityRoute
-        ? lastAppRoutePathRef.current
-        : currentRoutePath,
+    appRoutePath: isSettingsRoute
+      ? lastAppRoutePathRef.current
+      : currentRoutePath,
     settingsRoutePath: isSettingsRoute
       ? currentRoutePath
       : lastSettingsRoutePathRef.current,
     toolsRoutePath: isCurrentToolsRoute
       ? currentRoutePath
       : getPluginsRoutePath(),
-    toolsBackRoutePath:
-      isCurrentToolsRoute || isCompatibilityRoute
-        ? lastCoreAppRoutePathRef.current
-        : currentRoutePath,
+    toolsBackRoutePath: isCurrentToolsRoute
+      ? lastCoreAppRoutePathRef.current
+      : currentRoutePath,
   };
 }

@@ -659,6 +659,7 @@ describe("@bb/sdk", () => {
         },
         inputs: null,
         acceptsEmptyInputs: true,
+        machineAvailability: {},
         availability: { status: "available" as const },
       },
     ];

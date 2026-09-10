@@ -807,6 +807,15 @@ export const timelinePageMetadataSchema = z
     returnedSegmentCount: z.number().int().nonnegative(),
     hasOlderRows: z.boolean(),
     olderCursor: timelinePaginationCursorSchema.nullable(),
+    historySnapshot: z.string().optional(),
+    contentPage: z
+      .object({
+        anchorSeq: z.number().int().positive(),
+        start: z.number().int().nonnegative(),
+        end: z.number().int().nonnegative(),
+        total: z.number().int().nonnegative(),
+      })
+      .optional(),
   })
   .strict();
 
@@ -837,6 +846,7 @@ export const threadTimelineQuerySchema = z
 export type ThreadTimelineQuery = z.infer<typeof threadTimelineQuerySchema>;
 
 export const timelineTurnSummaryDetailsQuerySchema = z.object({
+  beforeCursor: z.string().min(1).optional(),
   turnId: z.string().min(1),
   sourceSeqStart: z.string().regex(/^\d+$/),
   sourceSeqEnd: z.string().regex(/^\d+$/),
@@ -931,6 +941,8 @@ export const timelineTurnSummaryDetailsRequestSchema = z.object({
 });
 
 export const timelineTurnSummaryDetailsResponseSchema = z.object({
+  olderCursor: z.string().nullable().optional(),
+  historySnapshot: z.string().optional(),
   rows: z.array(timelineRowSchema),
 });
 export type TimelineTurnSummaryDetailsResponse = z.infer<

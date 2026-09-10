@@ -438,6 +438,9 @@ importers:
 
   apps/cli:
     dependencies:
+      '@bb/client-core':
+        specifier: workspace:*
+        version: link:../../packages/client-core
       '@bb/config':
         specifier: workspace:*
         version: link:../../packages/config
@@ -1126,6 +1129,9 @@ importers:
       '@bb/agent-runtime':
         specifier: workspace:*
         version: link:../../packages/agent-runtime
+      '@bb/client-core':
+        specifier: workspace:*
+        version: link:../../packages/client-core
       '@bb/scripts':
         specifier: workspace:*
         version: link:../../packages/scripts
@@ -20023,9 +20029,7 @@ snapshots:
       metro-runtime: 0.84.5
     transitivePeerDependencies:
       - '@babel/core'
-      - bufferutil
       - supports-color
-      - utf-8-validate
 
   '@react-native/normalize-colors@0.79.6': {}
 

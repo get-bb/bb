@@ -1000,7 +1000,7 @@ const CONTRIBUTED_ENV = [
 
 describe("host-daemon command schemas", () => {
   it("uses the current host-daemon protocol version", () => {
-    expect(HOST_DAEMON_PROTOCOL_VERSION).toBe(198);
+    expect(HOST_DAEMON_PROTOCOL_VERSION).toBe(199);
     expect(HOST_ARTIFACT_MAX_BYTES).toBe(256 * 1024 * 1024);
   });
 
@@ -1250,6 +1250,7 @@ describe("host-daemon command schemas", () => {
         path: "/tmp/workspace",
         limit: 1000,
         includeHidden: true,
+        respectGitIgnore: false,
         excludeNames: [],
       }),
     ).toMatchObject({
@@ -1257,6 +1258,7 @@ describe("host-daemon command schemas", () => {
       path: "/tmp/workspace",
       limit: 1000,
       includeHidden: true,
+      respectGitIgnore: false,
       excludeNames: [],
     });
 
@@ -1266,6 +1268,7 @@ describe("host-daemon command schemas", () => {
         path: "/tmp/workspace",
         limit: 1000,
         includeHidden: true,
+        respectGitIgnore: false,
         excludeNames: [],
         includeFiles: true,
         includeDirectories: true,
@@ -1275,6 +1278,7 @@ describe("host-daemon command schemas", () => {
       path: "/tmp/workspace",
       limit: 1000,
       includeHidden: true,
+      respectGitIgnore: false,
       excludeNames: [],
       includeFiles: true,
       includeDirectories: true,
@@ -1500,6 +1504,7 @@ describe("host-daemon command schemas", () => {
         path: "/tmp/bb-data/thread-storage/thread-123",
         limit: 100,
         includeHidden: true,
+        respectGitIgnore: false,
         excludeNames: [],
       }),
     ).toMatchObject({
@@ -1507,6 +1512,7 @@ describe("host-daemon command schemas", () => {
       path: "/tmp/bb-data/thread-storage/thread-123",
       limit: 100,
       includeHidden: true,
+      respectGitIgnore: false,
       excludeNames: [],
     });
 
@@ -1579,6 +1585,7 @@ describe("host-daemon command schemas", () => {
         path: "/tmp/workspace",
         limit: 100,
         includeHidden: true,
+        respectGitIgnore: false,
         excludeNames: [],
       },
       {
@@ -1586,6 +1593,7 @@ describe("host-daemon command schemas", () => {
         path: "/tmp/workspace",
         limit: 100,
         includeHidden: true,
+        respectGitIgnore: false,
         excludeNames: [],
         includeFiles: true,
         includeDirectories: true,
@@ -2708,6 +2716,7 @@ describe("host-daemon command schemas", () => {
       path: "/tmp/workspace",
       limit: 100,
       includeHidden: true,
+      respectGitIgnore: false,
       excludeNames: ["node_modules"],
     };
     const listPaths = {
@@ -2717,6 +2726,7 @@ describe("host-daemon command schemas", () => {
       includeFiles: true,
       includeDirectories: true,
       includeHidden: true,
+      respectGitIgnore: false,
       excludeNames: ["node_modules"],
     };
     const parses = (command: Record<string, unknown>) =>
@@ -2726,8 +2736,11 @@ describe("host-daemon command schemas", () => {
     expect(parses(listPaths)).toBe(true);
     for (const command of [listFiles, listPaths]) {
       const { includeHidden: _hidden, ...withoutHidden } = command;
+      const { respectGitIgnore: _ignore, ...withoutIgnorePolicy } = command;
       const { excludeNames: _names, ...withoutNames } = command;
       expect(parses(withoutHidden)).toBe(false);
+      expect(parses(withoutIgnorePolicy)).toBe(false);
+      expect(parses({ ...command, respectGitIgnore: true })).toBe(true);
       expect(parses(withoutNames)).toBe(false);
       expect(parses({ ...command, excludeNames: [""] })).toBe(false);
       expect(
@@ -2752,6 +2765,7 @@ describe("host-daemon command schemas", () => {
         query: longQuery,
         limit: 100,
         includeHidden: true,
+        respectGitIgnore: false,
         excludeNames: [],
       }),
     ).toThrow();
@@ -2762,6 +2776,7 @@ describe("host-daemon command schemas", () => {
         path: "/tmp/bb-data/thread-storage/thread-123",
         limit: contract.FILE_LIST_LIMIT_MAX + 1,
         includeHidden: true,
+        respectGitIgnore: false,
         excludeNames: [],
       }),
     ).toThrow();
@@ -2773,6 +2788,7 @@ describe("host-daemon command schemas", () => {
         query: longQuery,
         limit: 100,
         includeHidden: true,
+        respectGitIgnore: false,
         excludeNames: [],
       }),
     ).toThrow();
@@ -2783,6 +2799,7 @@ describe("host-daemon command schemas", () => {
         path: "/tmp/workspace",
         limit: contract.FILE_LIST_LIMIT_MAX + 1,
         includeHidden: true,
+        respectGitIgnore: false,
         excludeNames: [],
       }),
     ).toThrow();
@@ -2794,6 +2811,7 @@ describe("host-daemon command schemas", () => {
         query: longQuery,
         limit: 100,
         includeHidden: true,
+        respectGitIgnore: false,
         excludeNames: [],
         includeFiles: true,
         includeDirectories: true,
@@ -2806,6 +2824,7 @@ describe("host-daemon command schemas", () => {
         path: "/tmp/workspace",
         limit: contract.FILE_LIST_LIMIT_MAX + 1,
         includeHidden: true,
+        respectGitIgnore: false,
         excludeNames: [],
         includeFiles: true,
         includeDirectories: true,
@@ -2818,6 +2837,7 @@ describe("host-daemon command schemas", () => {
         path: "/tmp/workspace",
         limit: 100,
         includeHidden: true,
+        respectGitIgnore: false,
         excludeNames: [],
         includeFiles: false,
         includeDirectories: false,

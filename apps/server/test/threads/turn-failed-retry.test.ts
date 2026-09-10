@@ -560,6 +560,7 @@ describe("retrying a failed turn", () => {
       setThreadExecutionOverride(harness.db, {
         threadId: thread.id,
         modelOverride: "gpt-6-pro",
+        reasoningLevelOverride: "max",
       });
 
       await retryFailedTurn(harness.deps, {
@@ -572,6 +573,9 @@ describe("retrying a failed turn", () => {
       if (retryRequest === undefined) throw new Error("expected a retry turn");
       expect(turnRequestData(retryRequest).execution.model).toBe("gpt-5");
       expect(requireThread(harness, thread.id).modelOverride).toBe("gpt-6-pro");
+      expect(requireThread(harness, thread.id).reasoningLevelOverride).toBe(
+        "max",
+      );
     });
   });
 

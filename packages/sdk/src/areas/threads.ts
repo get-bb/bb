@@ -1298,6 +1298,9 @@ export function createThreadsArea(args: CreateSdkAreaArgs): ThreadsArea {
               turnId: input.turnId,
               sourceSeqStart: input.sourceSeqStart,
               sourceSeqEnd: input.sourceSeqEnd,
+              ...(input.beforeCursor === undefined
+                ? {}
+                : { beforeCursor: input.beforeCursor }),
             },
           },
           ...signalRequestArgs(input.signal),

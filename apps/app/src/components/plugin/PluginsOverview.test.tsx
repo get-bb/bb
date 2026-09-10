@@ -53,7 +53,7 @@ function responseJson(body: unknown, status = 200): Response {
 const AUTOMATIONS_PLUGIN = {
   id: "automations",
   source: "builtin:automations",
-  rootDir: "/plugins/automations",
+  rootDir: "/settings/plugins/automations",
   version: "0.1.0",
   enabled: true,
   status: "running",
@@ -168,7 +168,7 @@ function installFetch(plugins: readonly unknown[] = [AUTOMATIONS_PLUGIN]) {
             ...AUTOMATIONS_PLUGIN,
             id: "github",
             source: GITHUB_CATALOG_ENTRY.source,
-            rootDir: "/plugins/github",
+            rootDir: "/settings/plugins/github",
             name: GITHUB_CATALOG_ENTRY.displayName,
             description: GITHUB_CATALOG_ENTRY.description,
             icon: GITHUB_CATALOG_ENTRY.icon,
@@ -398,14 +398,17 @@ describe("PluginsOverview", () => {
     ).toBeTruthy();
   });
 
-  it("opens installed resources on the canonical Plugins detail route", async () => {
+  it("opens installed resources on the canonical Settings detail route", async () => {
     installFetch();
     const { wrapper: QueryClientWrapper } = createQueryClientTestHarness();
     render(
-      <MemoryRouter initialEntries={["/plugins?view=installed"]}>
+      <MemoryRouter initialEntries={["/settings/plugins"]}>
         <QueryClientWrapper>
           <Routes>
-            <Route path="/plugins" element={<PluginsOverview />} />
+            <Route
+              path="/settings/plugins"
+              element={<PluginsOverview mode="installed" />}
+            />
             <Route path="*" element={<LocationPath />} />
           </Routes>
         </QueryClientWrapper>
@@ -418,7 +421,7 @@ describe("PluginsOverview", () => {
       }),
     );
     expect(screen.getByTestId("location-path").textContent).toBe(
-      "/plugins/automations",
+      "/settings/plugins/automations",
     );
   });
 
@@ -445,7 +448,7 @@ describe("PluginsOverview", () => {
     fireEvent.click(screen.getByRole("button", { name: "Install GitHub" }));
 
     expect((await screen.findByTestId("location-path")).textContent).toBe(
-      "/plugins/github",
+      "/settings/plugins/github",
     );
   });
 

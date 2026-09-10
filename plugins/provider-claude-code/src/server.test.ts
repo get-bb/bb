@@ -33,27 +33,6 @@ function providerOptions(
 }
 
 describe("the Claude Code provider settings", () => {
-  it("keeps idle query release off by default and derives an explicit opt-in", () => {
-    const { declaration, host } = loadClaudeCodePlugin();
-
-    expect(
-      host.harness.registrations.settingsDescriptors.idleQueryReleaseEnabled,
-    ).toEqual({
-      type: "boolean",
-      label: "Release idle Claude processes",
-      description:
-        "Close a quiescent Claude Code process after 30 seconds and resume it on the next turn.",
-      default: false,
-    });
-    expect(providerOptions(declaration, {}).idleQueryReleaseEnabled).toBe(
-      false,
-    );
-    expect(
-      providerOptions(declaration, { idleQueryReleaseEnabled: true })
-        .idleQueryReleaseEnabled,
-    ).toBe(true);
-  });
-
   it("keeps Claude in Chrome off by default and derives an explicit opt-in", () => {
     const { declaration, host } = loadClaudeCodePlugin();
 

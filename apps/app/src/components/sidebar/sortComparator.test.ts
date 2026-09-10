@@ -111,6 +111,79 @@ function order(comparator: ThreadComparator, entries: ThreadListEntry[]) {
 }
 
 describe("getSidebarThreadComparator", () => {
+  it.each(["updated", "none"] as const)(
+    "keeps active threads first in both directions for %s",
+    (sort) => {
+      const entries = [
+        thread({
+          id: "idle_new",
+          status: "idle",
+          createdAt: 30,
+          latestAttentionAt: 200,
+        }),
+        thread({
+          id: "active_old",
+          status: "active",
+          createdAt: 10,
+          latestAttentionAt: 2000,
+        }),
+        thread({
+          id: "idle_old",
+          status: "idle",
+          createdAt: 40,
+          latestAttentionAt: 100,
+        }),
+        thread({
+          id: "active_new",
+          status: "active",
+          createdAt: 20,
+          latestAttentionAt: 1500,
+        }),
+      ];
+
+      expect(
+        order(
+          getSidebarThreadComparator(sort, undefined, "ascending"),
+          entries,
+        ),
+      ).toEqual(["active_old", "active_new", "idle_old", "idle_new"]);
+      for (const direction of ["default", "descending"] as const) {
+        expect(
+          order(
+            getSidebarThreadComparator(sort, undefined, direction),
+            entries,
+          ),
+        ).toEqual(["active_new", "active_old", "idle_new", "idle_old"]);
+      }
+    },
+  );
+
+  it("reverses created dates", () => {
+    expect(
+      order(getSidebarThreadComparator("created", undefined, "ascending"), [
+        cherry,
+        apple,
+        banana,
+      ]),
+    ).toEqual(["thr_a", "thr_b", "thr_c"]);
+  });
+
+  it("reverses both thread and group alphabetical comparison", () => {
+    const comparator = getSidebarThreadComparator(
+      "alpha",
+      undefined,
+      "descending",
+    );
+    expect(order(comparator, [apple, banana, cherry])).toEqual([
+      "thr_c",
+      "thr_b",
+      "thr_a",
+    ]);
+    expect(
+      comparator.compareItems?.(sectionItem("Apple"), sectionItem("Zebra")),
+    ).toBeGreaterThan(0);
+  });
+
   it("created lists newest first", () => {
     expect(
       order(getSidebarThreadComparator("created"), [apple, banana, cherry]),

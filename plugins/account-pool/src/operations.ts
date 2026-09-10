@@ -214,10 +214,7 @@ export class PoolOperations {
   async status(): Promise<PoolStatus> {
     const hosts = await this.listHosts();
     await this.hubTokens.prune(hosts.map((host) => host.id));
-    const [status, routedThreadsWithoutLocalLogin] = await Promise.all([
-      this.hub.status(),
-      this.routedThreadsWithoutLocalLogin(),
-    ]);
+    const status = await this.hub.status();
     const hostNames = new Map(hosts.map((host) => [host.id, host.name]));
     const [claude, codex] = await Promise.all([
       this.routing.isProviderEnabled("claude"),
@@ -237,7 +234,6 @@ export class PoolOperations {
             : (hostNames.get(account.lastUsedHostId) ?? null),
       })),
       routing: { claude, codex },
-      routedThreadsWithoutLocalLogin,
     };
   }
 

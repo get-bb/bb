@@ -322,7 +322,9 @@ describe("AddMachineDialog", () => {
     const link = screen.getByRole("link", {
       name: "Enable the Connect plugin",
     });
-    expect(link.getAttribute("href")).toBe("/plugins/connect?view=installed");
+    expect(link.getAttribute("href")).toBe(
+      "/settings/plugins/connect?view=installed",
+    );
     expect(screen.queryByText("Remote access isn't ready yet.")).toBeNull();
     expect(screen.queryByRole("button", { name: "Try again" })).toBeNull();
     expect(

@@ -74,6 +74,7 @@ export const EXTENDED_ICON_NAMES = [
   "Maximize2",
   "Mic",
   "Minimize2",
+  "MoveTo",
   "NewTab",
   "PackageReceive",
   "Palette",

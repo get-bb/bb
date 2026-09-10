@@ -58,7 +58,9 @@ BB_HOST_DAEMON_PORT only for an intentional non-default target.
   (`bb environment providers --json` prints both facts). `--base-branch`
   belongs to `--new-environment worktree` only.
 - `bb environment providers` lists Project checkout, Worktree, then other
-  installed providers by display name. Read or set `managedBranchPrefix`
+  installed providers by display name. With `--project <id> --machine <id>`
+  it also prints that machine's availability (`available`, `setup-required`,
+  `unavailable`, or `unknown` until the background probe answers). Read or set `managedBranchPrefix`
   through `bb settings show` and `bb settings general <key> <value>`.
 - The server keeps a registry of sidebar layout preferences (organization
   mode, section order, collapsed rows, navigation entries): `bb settings ui
@@ -69,6 +71,10 @@ BB_HOST_DAEMON_PORT only for an intentional non-default target.
 - Treat plugin commands as normal top-level commands after installation.
 
 - Inspect real status, logs, API results, or diffs instead of assumptions.
+- For launcher startup errors and console output, read `logs/server-stdio.log`
+  or `logs/host-daemon-stdio.log` under the selected bb data directory. These
+  append across restarts; `bb-app`, `bb-server`, and `bb-host-daemon` capture
+  service output there instead of forwarding it to their terminal.
 - Keep file paths on the machine that owns the selected workspace.
 
 ## Common checks

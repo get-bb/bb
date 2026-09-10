@@ -36,10 +36,7 @@ import {
   resetPluginSlotStoreForTest,
   setPluginSlotRegistrations,
 } from "@/lib/plugin-slots";
-import {
-  encodeReuseValue,
-  REUSE_VALUE_WITHOUT_ENVIRONMENT,
-} from "@/components/pickers/environment-picker-value";
+import { encodeReuseValue } from "@/components/pickers/environment-picker-value";
 import { useRootComposeReuseEnvironment } from "@/lib/root-compose-selection";
 import { getPromptDraftAccessor } from "@/hooks/usePromptDraftStorage";
 import { buildThreadHandoffLocationState } from "@bb/client-core";
@@ -398,6 +395,7 @@ const CHECKOUT_PROVIDER: SystemEnvironmentProvider = {
   logoUrl: null,
   pluginId: "environment-project-checkout",
   acceptsEmptyInputs: true,
+  machineAvailability: {},
   availability: null,
   requires: {
     projectCheckout: true,
@@ -418,6 +416,7 @@ const PERSONAL_WORKSPACE_PROVIDER: SystemEnvironmentProvider = {
   logoUrl: null,
   pluginId: "environment-personal-workspace",
   acceptsEmptyInputs: true,
+  machineAvailability: {},
   availability: null,
   requires: {
     projectCheckout: false,
@@ -435,6 +434,7 @@ const MANAGED_WORKTREE_SUGAR_PROVIDER: SystemEnvironmentProvider = {
   logoUrl: null,
   pluginId: "environment-git-worktree",
   acceptsEmptyInputs: false,
+  machineAvailability: {},
   availability: null,
   requires: {
     projectCheckout: true,
@@ -1008,7 +1008,7 @@ describe("PluginNewThreadComposer seeding", () => {
     ).toBe(true);
   });
 
-  it("keeps a seeded fork's reuse selection pending until the sidebar bootstrap settles", async () => {
+  it("keeps a seeded fork's exact reuse selection while the sidebar bootstrap settles", async () => {
     mocks.sidebarNavigationSettled = false;
     const submitted: NewThreadRequest[] = [];
     const seed = {
@@ -1039,7 +1039,7 @@ describe("PluginNewThreadComposer seeding", () => {
 
     await waitFor(() => {
       expect(latestPromptBoxProps().modeConfig.environment.value).toBe(
-        REUSE_VALUE_WITHOUT_ENVIRONMENT,
+        encodeReuseValue("env-source"),
       );
     });
     expect(latestPromptBoxProps().modeConfig.worktree.options).toEqual([]);
@@ -1335,6 +1335,7 @@ const SANDBOX_PROVIDER: SystemEnvironmentProvider = {
   logoUrl: null,
   pluginId: "docker-sandbox",
   acceptsEmptyInputs: false,
+  machineAvailability: {},
   availability: null,
   requires: {
     projectCheckout: false,
@@ -1356,6 +1357,7 @@ const OPTIONAL_INPUTS_PROVIDER: SystemEnvironmentProvider = {
   logoUrl: null,
   pluginId: "optional-sandbox",
   acceptsEmptyInputs: true,
+  machineAvailability: {},
   availability: null,
   requires: {
     projectCheckout: false,
@@ -1376,6 +1378,7 @@ const BRANCH_PROVIDER: SystemEnvironmentProvider = {
   logoUrl: null,
   pluginId: "branchy",
   acceptsEmptyInputs: true,
+  machineAvailability: {},
   availability: null,
   requires: {
     projectCheckout: true,
@@ -1393,6 +1396,7 @@ const HOST_PROVIDER: SystemEnvironmentProvider = {
   logoUrl: null,
   pluginId: "hosted",
   acceptsEmptyInputs: true,
+  machineAvailability: {},
   availability: null,
   requires: {
     projectCheckout: false,

@@ -14,6 +14,7 @@ const provider: SystemEnvironmentProvider = {
   id: "git-worktree",
   pluginId: "environment-git-worktree",
   acceptsEmptyInputs: true,
+  machineAvailability: {},
   availability: null,
   displayName: "Worktree",
   icon: "Folder",

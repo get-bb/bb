@@ -1,12 +1,44 @@
 export const GITHUB_URL = "https://github.com/get-bb/bb";
 export const DISCORD_URL = "https://discord.gg/kvBU6tJhcJ";
 export const X_URL = "https://x.com/get_bb_app";
-export const DOWNLOAD_MACOS_FALLBACK_URL =
+export const DOWNLOAD_FALLBACK_URL =
   "https://github.com/get-bb/bb/releases/tag/desktop-latest";
-export const DOWNLOAD_MACOS_RELEASE_ASSET_BASE_URL =
+export const DOWNLOAD_RELEASE_ASSET_BASE_URL =
   "https://github.com/get-bb/bb/releases/download/desktop-latest";
-export const DOWNLOAD_MACOS_VERSION_FEED_URL = `${DOWNLOAD_MACOS_RELEASE_ASSET_BASE_URL}/desktop-version.json`;
-const DOWNLOAD_MACOS_REDIRECT_PATH = "/download/macos";
+
+export type DesktopPlatform = "macos" | "linux";
+
+export const DESKTOP_PLATFORMS: readonly DesktopPlatform[] = ["macos", "linux"];
+
+export const DEFAULT_DESKTOP_PLATFORM: DesktopPlatform = "macos";
+
+export type DesktopDownload = {
+  label: string;
+  buttonLabel: string;
+  note: string;
+  installerExtension: string;
+  versionFeedUrl: string;
+  redirectPath: string;
+};
+
+export const DESKTOP_DOWNLOADS: Record<DesktopPlatform, DesktopDownload> = {
+  macos: {
+    label: "macOS",
+    buttonLabel: "Download for macOS",
+    note: "Apple Silicon",
+    installerExtension: ".dmg",
+    versionFeedUrl: `${DOWNLOAD_RELEASE_ASSET_BASE_URL}/desktop-version.json`,
+    redirectPath: "/download/macos",
+  },
+  linux: {
+    label: "Linux",
+    buttonLabel: "Download for Linux",
+    note: "x64 AppImage, alpha",
+    installerExtension: ".AppImage",
+    versionFeedUrl: `${DOWNLOAD_RELEASE_ASSET_BASE_URL}/desktop-version-linux.json`,
+    redirectPath: "/download/linux",
+  },
+};
 export const SUBSCRIBE_PATH = "/api/subscribe";
 export const CLI_COMMAND = "npx bb-app@latest";
 
@@ -19,8 +51,11 @@ export type CtaPlacement =
   | "closer"
   | "footer";
 
-export function downloadMacosHref(placement: CtaPlacement): string {
-  return `${DOWNLOAD_MACOS_REDIRECT_PATH}?placement=${placement}`;
+export function downloadHref(
+  platform: DesktopPlatform,
+  placement: CtaPlacement,
+): string {
+  return `${DESKTOP_DOWNLOADS[platform].redirectPath}?placement=${placement}`;
 }
 
 declare const __SITE_ORIGIN__: string;

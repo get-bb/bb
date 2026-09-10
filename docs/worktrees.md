@@ -30,7 +30,7 @@ branch. Under the hood it's `git worktree add` plus some bookkeeping:
   worktree; after it elapses the worktree is removed the same way.
 
 Worktrees are created by bb's built-in **Worktree** plugin, which is enabled by
-default. Disabling it in Plugins → Installed plugins leaves existing worktrees alone
+default. Disabling it in Settings → Installed plugins leaves existing worktrees alone
 but stops bb from making new ones: a thread that asks for one waits until the
 plugin is running again.
 

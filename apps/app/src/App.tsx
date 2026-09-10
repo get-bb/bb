@@ -60,10 +60,8 @@ import {
   getAutomationDetailRoutePath,
   getAutomationEditRoutePath,
   getAutomationsRoutePath,
-  getPluginDetailRoutePath,
   getSettingsRoutePath,
   getSettingsProjectRoutePath,
-  isLegacyInstalledPluginsRoute,
 } from "./lib/route-paths";
 import { AppCommandProvider } from "./components/commands/AppCommandProvider";
 import { ProviderCliInstallLogDialogHost } from "./components/provider-cli/provider-cli-install";
@@ -165,34 +163,6 @@ export function PluginsLandingRedirect() {
       }}
       replace
     />
-  );
-}
-
-export function LegacyInstalledPluginsRedirect() {
-  const { pluginId } = useParams<{ pluginId?: string }>();
-  const { search, hash } = useLocation();
-  const searchParams = new URLSearchParams(search);
-  searchParams.set("view", "installed");
-  return (
-    <Navigate
-      to={{
-        pathname: pluginId
-          ? getPluginDetailRoutePath({ pluginId })
-          : PLUGINS_ROUTE_PATH,
-        search: `?${searchParams.toString()}`,
-        hash,
-      }}
-      replace
-    />
-  );
-}
-
-function PluginSettingsRoute() {
-  const location = useLocation();
-  return isLegacyInstalledPluginsRoute(location) ? (
-    <LegacyInstalledPluginsRedirect />
-  ) : (
-    <SettingsView />
   );
 }
 
@@ -332,12 +302,9 @@ export function AppRoutes() {
           />
           <Route
             path={SETTINGS_PLUGINS_ROUTE_PATH}
-            element={<LegacyInstalledPluginsRedirect />}
+            element={<SettingsView />}
           />
-          <Route
-            path={SETTINGS_PLUGIN_ROUTE_PATH}
-            element={<PluginSettingsRoute />}
-          />
+          <Route path={SETTINGS_PLUGIN_ROUTE_PATH} element={<SettingsView />} />
           <Route
             path={SETTINGS_MACHINE_ROUTE_PATH}
             element={<MachineSettingsView />}

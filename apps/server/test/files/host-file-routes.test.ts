@@ -248,6 +248,7 @@ describe("host file routes", () => {
           includeFiles: true,
           includeDirectories: true,
           includeHidden: true,
+          respectGitIgnore: false,
           excludeNames: DEFAULT_EXCLUDE_NAMES,
         },
         {
@@ -257,6 +258,7 @@ describe("host file routes", () => {
           includeFiles: true,
           includeDirectories: true,
           includeHidden: false,
+          respectGitIgnore: false,
           excludeNames: DEFAULT_EXCLUDE_NAMES,
         },
         {
@@ -264,6 +266,7 @@ describe("host file routes", () => {
           path: "/notes",
           limit: 1000,
           includeHidden: false,
+          respectGitIgnore: false,
           excludeNames: [".obsidian"],
         },
         {

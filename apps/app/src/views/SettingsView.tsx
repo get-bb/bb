@@ -1,5 +1,10 @@
 import { useMemo, useRef, useState, type ReactNode } from "react";
-import { Navigate, useNavigate } from "react-router-dom";
+import {
+  Navigate,
+  useNavigate,
+  useLocation,
+  matchPath,
+} from "react-router-dom";
 import "@bb/shared-ui/icon-extended";
 import {
   builtInThemes,
@@ -47,6 +52,9 @@ import { SidebarThreadListSetting } from "@/components/settings/SidebarThreadLis
 import { SidebarNavigationSetting } from "@/components/settings/SidebarNavigationSetting";
 import { SplitDimmingSetting } from "@/components/settings/SplitDimmingSetting";
 import { useSettingsNavState } from "@/components/settings/settings-nav";
+import { PluginsOverview } from "@/components/plugin/PluginsOverview";
+import { PluginDetailPaneView } from "@/views/ToolsView";
+import { SETTINGS_PLUGIN_ROUTE_PATH } from "@/lib/route-paths";
 import { PluginSettingsPage } from "@/components/plugin/PluginSettings";
 import { FileOpenersSettingsSection } from "@/components/settings/FileOpenersSettingsSection";
 import { VoiceInputSettingsSection } from "@/components/settings/VoiceInputSettingsSection";
@@ -192,12 +200,10 @@ function appPaletteLabel(
 interface ExperimentsSettingsSectionProps {
   disabled: boolean;
   changelogPreviewEnabled: boolean;
-  editMessagesEnabled: boolean;
   mobileAppEnabled: boolean;
   sidebarProgressiveDisclosureEnabled: boolean;
   timelineWindowingEnabled: boolean;
   onChangelogPreviewEnabledChange: (enabled: boolean) => void;
-  onEditMessagesEnabledChange: (enabled: boolean) => void;
   onMobileAppEnabledChange: (enabled: boolean) => void;
   onSidebarProgressiveDisclosureEnabledChange: (enabled: boolean) => void;
   onTimelineWindowingEnabledChange: (enabled: boolean) => void;
@@ -581,13 +587,13 @@ const FOLLOW_UP_BEHAVIOR_OPTIONS = [
     steerOnEnter: false,
     label: "Queue",
     description:
-      "Enter adds a follow-up. It runs when the agent stops. Command+Enter steers the run.",
+      "Enter adds a follow-up. It runs when the agent stops. Command+Enter (Ctrl+Enter on Windows and Linux) steers the run.",
   },
   {
     steerOnEnter: true,
     label: "Steer",
     description:
-      "Enter steers the run now. Command+Enter adds a follow-up for later.",
+      "Enter steers the run now. Command+Enter (Ctrl+Enter on Windows and Linux) adds a follow-up for later.",
   },
 ] as const;
 const STREAMER_MODE_SETTING_LABEL = "Streamer mode";
@@ -991,7 +997,6 @@ export function DebugSettingsSection({
 }
 
 const CHANGELOG_PREVIEW_EXPERIMENT_LABEL = "Changelog preview";
-const EDIT_MESSAGES_EXPERIMENT_LABEL = "Edit messages";
 const MOBILE_APP_EXPERIMENT_LABEL = "Mobile app";
 const SIDEBAR_PROGRESSIVE_DISCLOSURE_EXPERIMENT_LABEL =
   "Sidebar progressive disclosure";
@@ -999,12 +1004,10 @@ const TIMELINE_WINDOWING_EXPERIMENT_LABEL = "Timeline windowing";
 export function ExperimentsSettingsSection({
   changelogPreviewEnabled,
   disabled,
-  editMessagesEnabled,
   mobileAppEnabled,
   sidebarProgressiveDisclosureEnabled,
   timelineWindowingEnabled,
   onChangelogPreviewEnabledChange,
-  onEditMessagesEnabledChange,
   onMobileAppEnabledChange,
   onSidebarProgressiveDisclosureEnabledChange,
   onTimelineWindowingEnabledChange,
@@ -1024,18 +1027,6 @@ export function ExperimentsSettingsSection({
             disabled={disabled}
             onCheckedChange={onChangelogPreviewEnabledChange}
             aria-label={CHANGELOG_PREVIEW_EXPERIMENT_LABEL}
-          />
-        </SettingsWithControl>
-
-        <SettingsWithControl
-          label={EDIT_MESSAGES_EXPERIMENT_LABEL}
-          description="Edit a sent message and replace the conversation from that point. Workspace changes are kept."
-        >
-          <Switch
-            checked={editMessagesEnabled}
-            disabled={disabled}
-            onCheckedChange={onEditMessagesEnabledChange}
-            aria-label={EDIT_MESSAGES_EXPERIMENT_LABEL}
           />
         </SettingsWithControl>
 
@@ -1108,10 +1099,27 @@ export function SettingsView() {
   const appearance = systemConfigQuery.data?.appearance ?? defaultAppTheme;
   const updateAppearanceMutation = useUpdateAppearance();
   const appThemePreview = useAppThemePreview();
+  const location = useLocation();
   const { activePluginId, activeSection, hasUnknownSection } =
     useSettingsNavState();
   if (hasUnknownSection) {
     return <Navigate to={SETTINGS_ROUTE_PATH} replace />;
+  }
+
+  if (activeSection === "plugins") {
+    const pluginId = matchPath(SETTINGS_PLUGIN_ROUTE_PATH, location.pathname)
+      ?.params.pluginId;
+    return (
+      <div className="-mx-4 -mt-4 flex min-h-0 flex-1 flex-col overflow-hidden md:-mx-5 md:-mt-5">
+        {pluginId ? (
+          <PluginDetailPaneView pluginId={pluginId} />
+        ) : (
+          <div className="flex min-h-0 flex-1 flex-col pt-4 md:pt-5">
+            <PluginsOverview mode="installed" />
+          </div>
+        )}
+      </div>
+    );
   }
 
   let content: ReactNode = null;
@@ -1214,13 +1222,6 @@ export function SettingsView() {
           updateExperimentsMutation.mutate({
             ...experiments,
             changelogPreview: enabled,
-          })
-        }
-        editMessagesEnabled={experiments.editMessages}
-        onEditMessagesEnabledChange={(enabled) =>
-          updateExperimentsMutation.mutate({
-            ...experiments,
-            editMessages: enabled,
           })
         }
         mobileAppEnabled={experiments.mobileApp}

@@ -18,6 +18,7 @@ const checkoutProvider: SystemEnvironmentProvider = {
   logoUrl: null,
   pluginId: "environment-project-checkout",
   acceptsEmptyInputs: true,
+  machineAvailability: {},
   availability: null,
   requires: {
     projectCheckout: true,
@@ -35,6 +36,7 @@ const branchProvider: SystemEnvironmentProvider = {
   logoUrl: null,
   pluginId: "branchy",
   acceptsEmptyInputs: true,
+  machineAvailability: {},
   availability: null,
   requires: {
     projectCheckout: true,
@@ -52,6 +54,7 @@ const sandboxProvider: SystemEnvironmentProvider = {
   logoUrl: null,
   pluginId: "docker-sandbox",
   acceptsEmptyInputs: false,
+  machineAvailability: {},
   availability: null,
   requires: {
     projectCheckout: false,
@@ -73,6 +76,7 @@ const optionalInputsProvider: SystemEnvironmentProvider = {
   logoUrl: null,
   pluginId: "optional-sandbox",
   acceptsEmptyInputs: true,
+  machineAvailability: {},
   availability: null,
   requires: {
     projectCheckout: false,
@@ -234,7 +238,7 @@ describe("EnvironmentPickerUI", () => {
     expect(
       screen.getByRole("menuitem", { name: /Optional sandbox/u }),
     ).toBeTruthy();
-    expect(screen.queryByText("Configure credentials")).toBeNull();
+    expect(screen.getByText("Configure credentials")).toBeTruthy();
   });
 
   it("omits a projectless-only provider from a project picker", () => {
@@ -273,7 +277,7 @@ describe("EnvironmentPickerUI", () => {
     expect(screen.queryByText("Personal workspace")).toBeNull();
   });
 
-  it("does not interpret deferred availability in the picker", () => {
+  it("keeps a selected unavailable provider visible but disabled with its reason", () => {
     render(
       <EnvironmentPickerUI
         value="provider:project-checkout"
@@ -302,15 +306,90 @@ describe("EnvironmentPickerUI", () => {
     const providerItem = screen.getByRole("menuitem", {
       name: /Project checkout/u,
     });
-    expect(providerItem.getAttribute("aria-disabled")).toBeNull();
-    expect(screen.queryByText("Project source unavailable")).toBeNull();
+    expect(providerItem.getAttribute("aria-disabled")).toBe("true");
+    expect(screen.getByText("Project source unavailable")).toBeTruthy();
   });
 
-  it("keeps a setup-required provider selectable without showing preflight state", () => {
+  it("hides an unavailable provider that is not selected and keeps unknown ones", () => {
+    render(
+      <EnvironmentPickerUI
+        value="provider:project-checkout"
+        sources={sources}
+        host={host}
+        isLocal
+        providers={[
+          checkoutProvider,
+          {
+            ...branchProvider,
+            availability: {
+              status: "unavailable",
+              message: "No reflink support",
+            },
+          },
+          { ...optionalInputsProvider, availability: null },
+        ]}
+        selectedProviderHostId={host.id}
+        onSelectProvider={vi.fn()}
+        modal={false}
+      />,
+    );
+
+    fireEvent.pointerDown(screen.getByRole("button", { name: "Environment" }), {
+      button: 0,
+    });
+
+    expect(
+      screen.getByRole("menuitem", { name: /Project checkout/u }),
+    ).toBeTruthy();
+    expect(
+      screen.queryByRole("menuitem", { name: /New branch workspace/u }),
+    ).toBeNull();
+    expect(screen.queryByText("No reflink support")).toBeNull();
+    expect(
+      screen.getByRole("menuitem", { name: /Optional sandbox/u }),
+    ).toBeTruthy();
+  });
+
+  it("shows a setup-required provider enabled with its message", () => {
+    render(
+      <EnvironmentPickerUI
+        value="provider:project-checkout"
+        sources={sources}
+        host={host}
+        isLocal
+        providers={[
+          checkoutProvider,
+          {
+            ...branchProvider,
+            availability: {
+              status: "setup-required",
+              message: "Configure credentials",
+            },
+          },
+        ]}
+        selectedProviderHostId={host.id}
+        onSelectProvider={vi.fn()}
+        modal={false}
+      />,
+    );
+
+    fireEvent.pointerDown(screen.getByRole("button", { name: "Environment" }), {
+      button: 0,
+    });
+
+    const branchItem = screen.getByRole("menuitem", {
+      name: /New branch workspace/u,
+    });
+    expect(branchItem.getAttribute("aria-disabled")).toBeNull();
+    expect(screen.getByText("Configure credentials")).toBeTruthy();
+  });
+
+  it("keeps a setup-required provider selectable and shows its message", () => {
     const onSelectProvider = vi.fn();
     const setupRequiredProvider: SystemEnvironmentProvider = {
       ...sandboxProvider,
       acceptsEmptyInputs: true,
+      machineAvailability: {},
       inputs: null,
       availability: {
         status: "setup-required",
@@ -337,7 +416,7 @@ describe("EnvironmentPickerUI", () => {
       name: /Docker container/u,
     });
     expect(providerItem.getAttribute("aria-disabled")).toBeNull();
-    expect(screen.queryByText("Add Modal credentials")).toBeNull();
+    expect(screen.getByText("Add Modal credentials")).toBeTruthy();
     fireEvent.click(providerItem);
     expect(onSelectProvider).toHaveBeenCalledWith(
       setupRequiredProvider,
@@ -517,7 +596,7 @@ describe("EnvironmentPickerUI multi-machine menu", () => {
     expect(onSelectProvider).toHaveBeenCalledWith(branchProvider, studio.id);
   });
 
-  it("uses each machine's structural eligibility for its provider row", () => {
+  it("hides a provider on the machine that reports it unavailable", () => {
     render(
       <EnvironmentPickerUI
         value="provider:project-checkout"
@@ -567,8 +646,8 @@ describe("EnvironmentPickerUI multi-machine menu", () => {
     const checkoutItems = screen.getAllByRole("menuitem", {
       name: /Project checkout/u,
     });
+    expect(checkoutItems).toHaveLength(1);
     expect(checkoutItems[0]!.getAttribute("aria-disabled")).toBeNull();
-    expect(checkoutItems[1]!.getAttribute("aria-disabled")).toBeNull();
     expect(screen.queryByText("Checkout missing on Mac Studio")).toBeNull();
   });
 

@@ -509,6 +509,11 @@ async function sendThreadMessageWithoutContextClear(
         payload.executionInputSources === undefined
           ? "explicit"
           : payload.executionInputSources.model,
+      reasoningLevel: payload.reasoningLevel,
+      reasoningLevelSource:
+        payload.executionInputSources === undefined
+          ? "explicit"
+          : payload.executionInputSources.reasoningLevel,
       thread,
     });
   }

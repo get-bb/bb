@@ -37,6 +37,7 @@ import {
 } from "@bb/shared-ui/collapsible";
 import {
   Dialog,
+  DialogClose,
   DialogContent,
   DialogFooter,
   DialogHeader,
@@ -65,6 +66,7 @@ import type {
   PoolStatus,
 } from "./src/contracts.js";
 import type { accountPoolRpcContract } from "./src/rpc.js";
+import { statusSchema } from "./src/contracts.js";
 import { blockingResetAt } from "./src/quota.js";
 import {
   ACCOUNT_POOL_ACCOUNTS_CHANGED,
@@ -190,6 +192,27 @@ function resetLabel(timestamp: number | null): string {
     return `resets in ${minutes >= 60 ? `${Math.floor(minutes / 60)}h ${minutes % 60}m` : `${minutes}m`}`;
   return `resets ${new Intl.DateTimeFormat(undefined, { month: "short", day: "numeric" }).format(timestamp)}`;
 }
+const STATUS_CACHE_KEY = "account-pool:status";
+
+function readCachedStatus(): PoolStatus | null {
+  try {
+    const raw = window.localStorage.getItem(STATUS_CACHE_KEY);
+    if (raw === null) return null;
+    const parsed = statusSchema.safeParse(JSON.parse(raw));
+    return parsed.success ? parsed.data : null;
+  } catch {
+    return null;
+  }
+}
+
+function writeCachedStatus(status: PoolStatus): void {
+  try {
+    window.localStorage.setItem(STATUS_CACHE_KEY, JSON.stringify(status));
+  } catch {
+    return;
+  }
+}
+
 function statusPresentation(
   account: AccountSummary,
   threshold: number,
@@ -314,12 +337,19 @@ function quotaToneClass(slot: QuotaSlot, threshold: number): string {
 function QuotaValue({
   slot,
   threshold,
+  refreshing,
 }: {
   slot: QuotaSlot;
   threshold: number;
+  refreshing: boolean;
 }) {
   return (
-    <div className="w-16 text-left tabular-nums sm:text-right">
+    <div
+      className={cn(
+        "w-16 text-left tabular-nums transition-opacity sm:text-right",
+        refreshing && "opacity-50",
+      )}
+    >
       <div className="text-2xs uppercase tracking-wide text-subtle-foreground/75">
         {slot.label}
       </div>
@@ -342,6 +372,7 @@ function AccountRow({
   account,
   threshold,
   pending,
+  refreshing,
   onAction,
   onOpen,
   reorderDisabled,
@@ -349,6 +380,7 @@ function AccountRow({
   account: AccountSummary;
   threshold: number;
   pending: boolean;
+  refreshing: boolean;
   onAction: (action: "toggle" | "priority" | "refresh" | "remove") => void;
   onOpen: () => void;
   reorderDisabled: boolean;
@@ -413,11 +445,17 @@ function AccountRow({
               {account.lastUsedAt === null ? null : (
                 <span>used {relative(account.lastUsedAt)}</span>
               )}
+              {refreshing ? <span>refreshing usage…</span> : null}
             </div>
           </div>
           <div className="flex flex-wrap items-center gap-x-4 gap-y-1 sm:flex-nowrap sm:gap-1">
             {slots.map((slot) => (
-              <QuotaValue key={slot.key} slot={slot} threshold={threshold} />
+              <QuotaValue
+                key={slot.key}
+                slot={slot}
+                threshold={threshold}
+                refreshing={refreshing}
+              />
             ))}
           </div>
         </button>
@@ -612,18 +650,25 @@ function DialogFrame({
 }) {
   return (
     <DialogContent
+      hideCloseButton
       className={cn(
         "max-h-[85vh] grid-rows-[auto_minmax(0,1fr)_auto]",
         className,
       )}
     >
-      <DialogHeader className="pr-6">
+      <DialogHeader className="flex-row items-start justify-between gap-4 space-y-0">
         <DialogTitle>{title}</DialogTitle>
+        <DialogClose className="-mr-1 shrink-0 cursor-pointer rounded-sm opacity-70 transition-opacity hover:opacity-100 focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2">
+          <Icon name="X" className="size-4" />
+          <span className="sr-only">Close</span>
+        </DialogClose>
       </DialogHeader>
       <div className="min-h-0 space-y-5 overflow-y-auto">{children}</div>
-      <DialogFooter className="flex-row items-center gap-2 sm:space-x-0">
-        {footer}
-      </DialogFooter>
+      {footer === null ? null : (
+        <DialogFooter className="flex-row items-center gap-2 sm:space-x-0">
+          {footer}
+        </DialogFooter>
+      )}
     </DialogContent>
   );
 }
@@ -662,7 +707,8 @@ function ConfigFieldRow({
 function AccountPoolSettings() {
   const rpc = useRpc<typeof accountPoolRpcContract>();
   const navigate = useBbNavigate();
-  const [status, setStatus] = useState<PoolStatus | null>(null);
+  const [status, setStatus] = useState<PoolStatus | null>(readCachedStatus);
+  const [statusIsCached, setStatusIsCached] = useState(status !== null);
   const [config, setConfig] = useState<AccountPoolConfig | null>(null);
   const [drafts, setDrafts] = useState<ConfigDrafts>({
     anthropicUpstreamBaseUrl: "",
@@ -703,7 +749,10 @@ function AccountPoolSettings() {
   const refresh = useCallback(async () => {
     try {
       const next = await rpc.call("status.get", null);
-      if (mounted.current) setStatus(next);
+      writeCachedStatus(next);
+      if (!mounted.current) return;
+      setStatus(next);
+      setStatusIsCached(false);
     } catch (loadError) {
       if (mounted.current) setError(errorText(loadError));
     }
@@ -939,6 +988,7 @@ function AccountPoolSettings() {
       <p className="text-xs text-subtle-foreground/75">
         Hub {status?.accepting ? "accepting" : "not accepting"} ·{" "}
         {status?.inFlight ?? 0} in flight · used by {hubHosts}
+        {statusIsCached ? " · refreshing…" : null}
       </p>
       {error === null ? null : (
         <div
@@ -948,7 +998,7 @@ function AccountPoolSettings() {
           {error}
         </div>
       )}
-      {status !== null && accounts.length === 0 ? (
+      {status !== null && !statusIsCached && accounts.length === 0 ? (
         <div className="rounded-lg border border-dashed border-border px-5 py-6 text-center">
           <h2 className="text-sm font-semibold text-foreground">
             No accounts in the pool
@@ -1039,6 +1089,9 @@ function AccountPoolSettings() {
                         account={account}
                         threshold={threshold}
                         pending={pending !== null}
+                        refreshing={
+                          statusIsCached || pending === `refresh-${account.id}`
+                        }
                         reorderDisabled={providerAccounts.length < 2}
                         onAction={(action) =>
                           void accountAction(account, action)
@@ -1524,35 +1577,27 @@ function LoginDialog({
       title={`Sign in to ${name}`}
       className="sm:max-w-xl"
       footer={
-        <>
-          <span className="flex-1" />
-          {loginDone === null ? (
-            <>
-              <Button variant="ghost" onClick={close}>
-                Cancel
-              </Button>
-              {provider === "claude" ? (
-                <Button
-                  disabled={
-                    loginStep === null ||
-                    pastedCode.trim().length === 0 ||
-                    pending
-                  }
-                  onClick={complete}
-                >
-                  Complete
-                </Button>
-              ) : null}
-            </>
-          ) : (
-            <>
-              <Button variant="outline" onClick={addAnother}>
-                Add another
-              </Button>
-              <Button onClick={close}>Done</Button>
-            </>
-          )}
-        </>
+        loginDone !== null ? (
+          <>
+            <span className="flex-1" />
+            <Button variant="outline" onClick={addAnother}>
+              Add another
+            </Button>
+            <Button onClick={close}>Done</Button>
+          </>
+        ) : provider === "claude" ? (
+          <>
+            <span className="flex-1" />
+            <Button
+              disabled={
+                loginStep === null || pastedCode.trim().length === 0 || pending
+              }
+              onClick={complete}
+            >
+              Complete
+            </Button>
+          </>
+        ) : null
       }
     >
       <StepIndicator step={loginDone === null ? 2 : 3} />
@@ -1577,14 +1622,11 @@ function LoginDialog({
         )
       ) : (
         <>
-          <div>
-            <h3 className="text-base font-semibold">Sign in to {name}</h3>
-            <p className="mt-1 text-sm text-muted-foreground">
-              {provider === "claude"
-                ? "Sign in at claude.ai, then paste the code from the final page."
-                : "Open the verification page, sign in to ChatGPT, and enter this code."}
-            </p>
-          </div>
+          <p className="text-sm text-muted-foreground">
+            {provider === "claude"
+              ? "Sign in at claude.ai, then paste the code from the final page."
+              : "Open the verification page, sign in to ChatGPT, and enter this code."}
+          </p>
           {codexStep === null ? null : (
             <div
               className="rounded-lg border border-border bg-surface-recessed px-5 py-5 text-center font-mono text-2xl font-semibold tracking-widest"
