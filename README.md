@@ -41,6 +41,16 @@ with `npx` instead. On Windows, run bb inside
 install WSL2 first, then run the same `npx` command below from your WSL2 (Linux)
 shell. Native Windows PowerShell and CMD are not supported.
 
+### Arch Linux (AUR)
+
+Arch Linux users can install the community-maintained
+[`bb-bin`](https://aur.archlinux.org/packages/bb-bin) package from the AUR with
+their preferred AUR helper:
+
+```bash
+yay -S bb-bin
+```
+
 Early adopters can install
 **[bb Nightly](https://github.com/get-bb/bb/releases/tag/desktop-nightly)**
 alongside the stable desktop app. It has a separate application identity,
