@@ -11,7 +11,6 @@ import {
 } from "@testing-library/react";
 import { MemoryRouter, useLocation } from "react-router-dom";
 import { createStore, Provider } from "jotai";
-import { TooltipProvider } from "@bb/shared-ui/tooltip";
 import { splitLayoutAtom } from "@/lib/split-layout/atoms";
 import { MAX_PANES, type SplitLayout } from "@/lib/split-layout";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -343,28 +342,26 @@ function renderPalette({
   store.set(splitLayoutAtom, layout);
   const result = render(
     <Provider store={store}>
-      <TooltipProvider>
-        <CompactViewportOverrideProvider isCompactViewport={compact}>
-          <MemoryRouter>
-            <AppCommandProvider>
-              <button type="button" data-testid="origin">
-                origin
-              </button>
-              <Handler command="thread.new" />
-              <Handler command="thread.search" />
-              <Handler command="thread.next" />
-              <Handler command="panel.toggle" />
-              <Handler command="terminal.open" />
-              <CommandPalette
-                threadId={null}
-                projectId={null}
-                onSplit={onSplit}
-              />
-              <LocationProbe />
-            </AppCommandProvider>
-          </MemoryRouter>
-        </CompactViewportOverrideProvider>
-      </TooltipProvider>
+      <CompactViewportOverrideProvider isCompactViewport={compact}>
+        <MemoryRouter>
+          <AppCommandProvider>
+            <button type="button" data-testid="origin">
+              origin
+            </button>
+            <Handler command="thread.new" />
+            <Handler command="thread.search" />
+            <Handler command="thread.next" />
+            <Handler command="panel.toggle" />
+            <Handler command="terminal.open" />
+            <CommandPalette
+              threadId={null}
+              projectId={null}
+              onSplit={onSplit}
+            />
+            <LocationProbe />
+          </AppCommandProvider>
+        </MemoryRouter>
+      </CompactViewportOverrideProvider>
     </Provider>,
   );
   screen.getByTestId("origin").focus();
