@@ -44,7 +44,6 @@ vi.mock("@/hooks/queries/system-queries", () => ({
   useSystemConfig: () => ({
     data: {
       experiments: {
-        editMessages: false,
       },
       generalSettings: defaultAppSettings,
       keybindings: [

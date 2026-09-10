@@ -854,21 +854,21 @@ need the experiment on, the bb paired (`bb connect --code …`), and the connect
 plugin enabled; with the experiment off the panel hides the section and
 `bb connect machine-code` exits 1 with a pointer to the toggle.
 
-## Experiments
+## Message editing
 
-Experimental surfaces are changed in Settings → Experiments or with
-`bb settings experiment <key> <true|false>`. Most start off; `editMessages`
-starts on and its toggle is the opt-out.
-The default-off `changelogPreview` experiment shows the latest release notes
-as a compact, dismissible card on Settings → Updates.
-The `editMessages` experiment is on by default and enables replacing an
-eligible, accepted root user message in a Codex, Claude Code, or Pi thread,
-including failed or incomplete turns. Turn it off to hide the editor. Grouped
+Message editing is available for eligible, accepted root user messages in a
+Codex, Claude Code, or Pi thread, including failed or incomplete turns. Grouped
 multi-message requests are not yet editable. Opening the editor does not change
 history; if the thread is running, submission stops the current turn and waits
 for it to settle before atomically replacing that message and every later turn
 while keeping workspace changes.
 
+## Experiments
+
+Experimental surfaces are changed in Settings → Experiments or with
+`bb settings experiment <key> <true|false>`. All experiments start off.
+The default-off `changelogPreview` experiment shows the latest release notes
+as a compact, dismissible card on Settings → Updates.
 The `mobileApp` experiment turns on pairing for the bb mobile app: the
 **Add mobile device** card under Settings → Remote access and the
 `bb connect machine-code` command (see "Pairing the bb mobile app" above). It

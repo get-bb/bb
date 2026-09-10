@@ -132,9 +132,9 @@ and `null` clears a preference that can be unset.
 
 The default-off `changelogPreview` experiment shows the latest release notes
 as a compact, dismissible card on Settings → Updates.
-The default-on `editMessages` experiment enables editing eligible, accepted
+Message editing is available for eligible, accepted
 root user messages in Codex, Claude Code, and Pi threads, including failed or
-incomplete turns; turn it off to hide the editor. Opening the editor is
+incomplete turns. Opening the editor is
 client-local; submitting stops and settles a running thread, then replaces the
 selected turn and all later conversation history while retaining workspace side
 effects. Grouped multi-message requests are not yet editable.

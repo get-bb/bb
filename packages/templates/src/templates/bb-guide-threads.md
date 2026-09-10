@@ -112,7 +112,7 @@ Forking:
   provider session lives on its original machine. Omit --prompt to create an
   idle fork.
 
-Editing a sent message (requires the default-on `editMessages` experiment):
+Editing a sent message:
 
   bb thread edit-message <id> --message "Replacement text"
     --self                              Target the current thread (BB_THREAD_ID)

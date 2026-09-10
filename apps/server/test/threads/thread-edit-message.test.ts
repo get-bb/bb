@@ -6,10 +6,8 @@ import {
   listEvents,
   listStoredProjectPromptHistoryRows,
   listStoredThreadPromptHistoryRows,
-  setExperiments,
 } from "@bb/db";
 import {
-  defaultExperiments,
   encodeClientTurnRequestIdNumber,
   threadScope,
   turnScope,
@@ -192,7 +190,6 @@ function seedTurn(
 function seedEditableThread(
   harness: TestAppHarness,
   args: {
-    editMessagesExperiment?: boolean;
     firstCompletionStatus?: ThreadEventTurnStatus | null;
     firstProviderCheckpoint?: string | null;
     firstProviderThreadId?: string;
@@ -205,10 +202,11 @@ function seedEditableThread(
     threadStatus?: ThreadStatus;
   } = {},
 ) {
-  setExperiments(harness.db, {
-    ...defaultExperiments,
-    editMessages: args.editMessagesExperiment ?? true,
-  });
+  harness.db.$client
+    .prepare(
+      "INSERT INTO system_experiments (key, value, updated_at) VALUES ('editMessages', false, 1)",
+    )
+    .run();
   const { host } = seedHostSession(harness.deps, {
     id: "host-edit-message",
   });
@@ -1431,26 +1429,6 @@ describe("editThreadMessage", () => {
           },
         }),
       ).rejects.toThrow("Editing messages is not supported for acp-cursor");
-    });
-  });
-
-  it("rejects mutations while the experiment is disabled", async () => {
-    await withTestHarness(async (harness) => {
-      const { environment, thread } = seedEditableThread(harness, {
-        editMessagesExperiment: false,
-      });
-
-      await expect(
-        editThreadMessage(harness.deps, {
-          environment,
-          thread,
-          payload: {
-            operationId: "edit-op-disabled",
-            expectedRequestSequence: 7,
-            input: [{ type: "text", text: "Replacement", mentions: [] }],
-          },
-        }),
-      ).rejects.toThrow("Enable the Edit messages experiment");
     });
   });
 });
