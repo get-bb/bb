@@ -2,12 +2,31 @@ import { execFile } from "node:child_process";
 import { defineRpcContract, type BbPluginApi } from "@get-bb/plugin-sdk";
 import { z } from "zod";
 
-const SYNC_INTERVAL_MS = 5 * 60_000;
 const SYNC_RETRY_BASE_MS = 30_000;
 const ISSUE_PAGE = 100;
 const CLOSED_ISSUE_PAGE = 50;
 const PR_PAGE = 50;
 const CLOSED_PR_PAGE = 30;
+// Each tracked repo costs four `gh` list calls per sync (open/closed issues and
+// PRs). Aim for ~400 of those per hour so a machine with many BB projects does
+// not spend the shared GitHub token on catalog refresh. Floor 5 min so a
+// one-project install stays fresh; cap 60 min so a huge catalog still moves.
+const GH_CALLS_PER_REPO_PER_SYNC = 4;
+const TARGET_SYNC_CALLS_PER_HOUR = 400;
+const MIN_SYNC_INTERVAL_MINUTES = 5;
+const MAX_SYNC_INTERVAL_MINUTES = 60;
+
+export function syncIntervalMinutesForRepoCount(repoCount: number): number {
+  const n = Number.isFinite(repoCount) ? Math.max(0, Math.floor(repoCount)) : 0;
+  if (n === 0) return MIN_SYNC_INTERVAL_MINUTES;
+  const minutes = Math.ceil(
+    (n * GH_CALLS_PER_REPO_PER_SYNC * 60) / TARGET_SYNC_CALLS_PER_HOUR,
+  );
+  return Math.min(
+    MAX_SYNC_INTERVAL_MINUTES,
+    Math.max(MIN_SYNC_INTERVAL_MINUTES, minutes),
+  );
+}
 
 const GH_HINT =
   "Install the GitHub CLI (https://cli.github.com) and run `gh auth login`, " +
@@ -857,17 +876,25 @@ export default async function plugin(bb: BbPluginApi) {
   bb.background.service("sync", {
     async start(signal) {
       let failures = 0;
+      let lastRepoCount = 0;
       while (!signal.aborted) {
-        let delayMs = SYNC_INTERVAL_MS;
+        let delayMs =
+          syncIntervalMinutesForRepoCount(lastRepoCount) * 60_000;
         try {
-          await syncAll();
+          const result = await syncAll();
+          lastRepoCount = result.repos;
+          delayMs = syncIntervalMinutesForRepoCount(lastRepoCount) * 60_000;
           failures = 0;
+          bb.log.info(
+            `next sync in ${Math.round(delayMs / 60_000)} min ` +
+              `(${lastRepoCount} repo(s))`,
+          );
         } catch (error) {
           if (!isGhUnavailableError(error)) throw error;
           failures += 1;
           delayMs = Math.min(
             SYNC_RETRY_BASE_MS * 2 ** (failures - 1),
-            SYNC_INTERVAL_MS,
+            delayMs,
           );
           bb.log.warn(
             `sync failed (retry in ${Math.round(delayMs / 1000)}s): ${

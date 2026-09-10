@@ -45,8 +45,12 @@ bb plugin config github set extraRepos "owner/repo, owner/other"
 bb plugin reload github
 ```
 
-A background service refreshes the issue/PR cache every 5 minutes; the
-panel's Refresh button (or `bb github sync`) forces it.
+A background service refreshes the issue/PR cache on a cadence that scales
+with how many repositories are tracked (each sync is four `gh` list calls per
+repo). One or two projects stay on a 5-minute refresh; a catalog of ~34
+repos lands around 20 minutes, so the plugin stays near 400 GitHub list calls
+per hour instead of burning the shared token. Floor is 5 minutes, cap is 60.
+The panel's Refresh button (or `bb github sync`) forces a sync now.
 
 ## Development
 
