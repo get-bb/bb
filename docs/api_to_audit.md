@@ -2554,3 +2554,16 @@ describing it as merely too large.
    boolean indicating whether a detail read can succeed.
 3. Verify old persisted previews and mixed-version clients still receive a
    deterministic state before making the field stable.
+
+## Document Markdown (`MarkdownProps.experimental_document`)
+
+The existing Markdown component accepts explicit `{ target, rootPath, threadId }`
+document context. `target` is an existing workspace or thread-storage live-file
+identity; `rootPath` is its resolved filesystem root. Relative links and images
+resolve from the document directory within that root. Links open the explicit
+file target; images use the selected thread's existing source-confined route.
+Thread-storage targets must name the same thread. Omission retains message
+routing; malformed context does not fall back to the ambient workspace.
+Explicit absolute paths retain existing host-file behavior. HTML is unaffected.
+Stabilize after plugin consumers verify nested paths, source identity, missing
+files, containment and line locations, then rename and remove this audit entry.

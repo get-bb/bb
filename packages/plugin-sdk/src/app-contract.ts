@@ -2241,6 +2241,12 @@ export interface MarkdownProps {
   /** Markdown source, rendered exactly like a chat message body. */
   content: string;
   className?: string;
+  /** Resolve local destinations from this document; omission keeps message routing. */
+  experimental_document?: {
+    threadId: string;
+    rootPath: string;
+    target: Exclude<ExperimentalLiveFileTarget, { kind: "host" }>;
+  };
 }
 
 /**
