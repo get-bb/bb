@@ -1,6 +1,10 @@
 import { jsonValueSchema, type JsonValue } from "@bb/domain";
 import {
   installedPluginSchema,
+  pluginRpcDiscoveryQuerySchema,
+  pluginRpcDiscoveryResponseSchema,
+  type PluginRpcDiscoveryQuery,
+  type PublishedPluginRpcMethod,
   pluginCatalogInstallPlanResponseSchema,
   pluginCatalogInstallRequestSchema,
   pluginCatalogSearchResponseSchema,
@@ -142,6 +146,7 @@ export interface PluginCheckUpdatesArgs {
 }
 
 export interface PluginRpcArgs<TOutput> extends PluginIdArgs {
+  signal?: AbortSignal;
   input?: JsonValue;
   method: string;
   outputSchema: z.ZodType<TOutput>;
@@ -218,6 +223,9 @@ export interface PluginMarketplacesArea {
 }
 
 export interface PluginsArea {
+  experimental_discoverRpc(
+    args?: PluginRpcDiscoveryQuery,
+  ): Promise<PublishedPluginRpcMethod[]>;
   applyUpdate(args: PluginIdArgs): Promise<PluginApplyUpdateResult>;
   callRpc<TOutput>(args: PluginRpcArgs<TOutput>): Promise<TOutput>;
   checkUpdates(
@@ -376,11 +384,19 @@ export function createPluginsArea(args: CreateSdkAreaArgs): PluginsArea {
         jsonInit("POST", body),
       );
     },
+    async experimental_discoverRpc(input = {}) {
+      const query = pluginRpcDiscoveryQuerySchema.parse(input);
+      const params = new URLSearchParams(query);
+      return requestParsed(
+        `/api/v1/plugins/rpc?${params}`,
+        pluginRpcDiscoveryResponseSchema,
+      );
+    },
     async callRpc(input) {
       const envelope = await requestParsed(
         pluginPath(input.pluginId, `/rpc/${encodeURIComponent(input.method)}`),
         z.object({ ok: z.literal(true), result: jsonValueSchema }),
-        jsonInit("POST", input.input ?? null),
+        { ...jsonInit("POST", input.input ?? null), signal: input.signal },
       );
       return input.outputSchema.parse(envelope.result);
     },

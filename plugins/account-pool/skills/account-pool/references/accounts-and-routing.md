@@ -78,3 +78,7 @@ one provider. Include disabled accounts too. Reordering changes the next failove
 sequence without moving the current account. `bb pool account priority <id> <n>`
 sets an individual priority; the same operations are available through the
 `account.reorder` and `account.setPriority` plugin RPCs.
+
+## Discoverable usage
+
+This plugin exposes `provider-usage.v1.get` for independent usage displays. Inspect its descriptions and input/output JSON Schemas with `bb plugin rpc inspect account-pool --method provider-usage.v1.get --json`. The settings Usage limits page discovers these sources; the existing `bb settings usage` command continues to show host-provider maintenance data.

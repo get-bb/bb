@@ -82,6 +82,7 @@ import {
   normalizeMentionProviderRegistration,
   normalizeRealtimePayload,
   normalizeRpcRegistration,
+  publishRpcMethod,
   normalizeWebSocketRouteRegistration,
   pluginCliCollisionWarning,
   registerSettingDescriptors,
@@ -182,6 +183,7 @@ export interface PluginWebSocketRouteRecord {
 }
 
 export interface PluginRpcHandler {
+  publication: ReturnType<typeof publishRpcMethod>;
   inputSchema: StandardSchemaV1;
   outputSchema: StandardSchemaV1;
   handler: (input: unknown) => unknown;
@@ -784,6 +786,7 @@ export function createPluginApi(options: {
         contract,
         handlers,
         rpcHandlers,
+        options,
       )) {
         rpcHandlers.set(name, record);
       }

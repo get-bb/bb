@@ -34,6 +34,7 @@ import {
   normalizeRealtimePayload,
   normalizeRpcJsonResult,
   normalizeRpcRegistration,
+  publishRpcMethod,
   normalizeWebSocketRouteRegistration,
   pluginCliCollisionWarning,
   providerAlreadyRegisteredMessage,
@@ -582,6 +583,7 @@ function jsonRoundTrip(value: unknown, what: string): unknown {
 }
 
 interface FakeRpcRecord {
+  publication: ReturnType<typeof publishRpcMethod>;
   inputSchema: StandardSchemaV1;
   outputSchema: StandardSchemaV1;
   handler: (input: never) => unknown;
@@ -841,6 +843,7 @@ function createFakePluginHostInternal(
         contract,
         handlers,
         rpcHandlers,
+        options,
       )) {
         rpcHandlers.set(name, record);
       }

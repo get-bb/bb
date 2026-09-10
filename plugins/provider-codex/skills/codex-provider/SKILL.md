@@ -16,3 +16,7 @@ account access. Inspect models on the actual execution host with
 
 Use the core CLI skill for command syntax and official Codex guidance for
 upstream product behavior.
+
+## Discoverable usage
+
+This plugin exposes `provider-usage.v1.get` for independent usage displays. Inspect its descriptions and input/output JSON Schemas with `bb plugin rpc inspect provider-codex --method provider-usage.v1.get --json`. The settings Usage limits page discovers these sources; the existing `bb settings usage` command continues to show host-provider maintenance data.
