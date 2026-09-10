@@ -489,6 +489,7 @@ const hostListFilesCommandSchema = z.object({
   query: z.string().max(FILE_LIST_QUERY_MAX_LENGTH).optional(),
   limit: z.number().int().positive().max(FILE_LIST_LIMIT_MAX),
   includeHidden: z.boolean(),
+  respectGitIgnore: z.boolean(),
   excludeNames: fileListExcludeNamesSchema,
 });
 
@@ -513,6 +514,7 @@ const hostListPathsCommandSchema = z
     includeFiles: z.boolean(),
     includeDirectories: z.boolean(),
     includeHidden: z.boolean(),
+    respectGitIgnore: z.boolean(),
     excludeNames: fileListExcludeNamesSchema,
   })
   .refine((command) => command.includeFiles || command.includeDirectories, {
@@ -1910,7 +1912,9 @@ type HostDaemonRetryableOnlineRpcCommandSchema =
 type HostDaemonResultSchemaMapForTransport<
   Transport extends HostDaemonCommandTransport,
 > = {
-  [Descriptor in HostDaemonCommandDescriptorForTransport<Transport> as Descriptor["type"]]: Descriptor["resultSchema"];
+  [
+    Descriptor in HostDaemonCommandDescriptorForTransport<Transport> as Descriptor["type"]
+  ]: Descriptor["resultSchema"];
 };
 
 type HostDaemonCommandResultSchemaMap =

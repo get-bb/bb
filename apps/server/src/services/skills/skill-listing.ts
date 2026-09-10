@@ -396,6 +396,7 @@ export async function listProjectSkillFiles(
       path: rootPath,
       limit: 200,
       includeHidden: SKILL_PATH_LIST_INCLUDE_HIDDEN,
+      respectGitIgnore: false,
       excludeNames: [...DEFAULT_PATH_LIST_EXCLUDE_NAMES],
     },
   });

@@ -144,8 +144,9 @@ For review or fix pipelines, get the environment ID from
 - File write requires exactly one of `--content` and `--stdin`. File paths lists
   files and directories when neither selector is present. File list and file
   paths include dot-prefixed entries; `--no-hidden` skips them. Both skip
-  `node_modules`, `.venv`, and similar cache directories by default;
-  `--exclude <names...>` replaces that set.
+  `node_modules`, `.venv`, `.pnpm-store`, and root-relative `.claude/worktrees`
+  by default. `--exclude <names...>` replaces that set; entries match basenames
+  at any depth or exact root-relative paths using `/` separators.
 - File remove supports `--recursive` and requires `--yes` without a terminal.
 - Use `bb voice transcribe <file> [--type <mime>] [--prompt <text>]` without the
   app composer. The MIME type defaults to `audio/webm`.

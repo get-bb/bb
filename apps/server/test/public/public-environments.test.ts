@@ -339,8 +339,11 @@ describe("public environments", () => {
         includeFiles: true,
         includeDirectories: false,
         includeHidden: true,
+        respectGitIgnore: true,
         excludeNames: [
           "node_modules",
+          ".pnpm-store",
+          ".claude/worktrees",
           ".venv",
           "venv",
           ".turbo",

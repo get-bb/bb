@@ -269,6 +269,7 @@ export function registerFileRoutes(app: Hono, deps: AppDeps): void {
           limit: payload.limit ?? HOST_FILE_LIST_LIMIT_DEFAULT,
           includeHidden:
             payload.includeHidden ?? WORKSPACE_PATH_LIST_INCLUDE_HIDDEN,
+          respectGitIgnore: false,
           excludeNames: [
             ...(payload.excludeNames ?? DEFAULT_PATH_LIST_EXCLUDE_NAMES),
           ],
@@ -295,6 +296,7 @@ export function registerFileRoutes(app: Hono, deps: AppDeps): void {
           includeDirectories: payload.includeDirectories,
           includeHidden:
             payload.includeHidden ?? WORKSPACE_PATH_LIST_INCLUDE_HIDDEN,
+          respectGitIgnore: false,
           excludeNames: [
             ...(payload.excludeNames ?? DEFAULT_PATH_LIST_EXCLUDE_NAMES),
           ],

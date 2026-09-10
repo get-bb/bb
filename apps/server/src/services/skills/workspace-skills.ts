@@ -90,6 +90,7 @@ export async function resolveWorkspaceProjectSkills(
       query: SKILL_FILE_NAME,
       limit: MAX_PROJECT_SKILLS,
       includeHidden: SKILL_PATH_LIST_INCLUDE_HIDDEN,
+      respectGitIgnore: false,
       excludeNames: [...DEFAULT_PATH_LIST_EXCLUDE_NAMES],
     },
   });

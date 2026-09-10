@@ -604,6 +604,7 @@ export function registerThreadDataRoutes(app: Hono, deps: AppDeps): void {
           ...(query.query ? { query: query.query } : {}),
           limit,
           includeHidden: THREAD_STORAGE_PATH_LIST_INCLUDE_HIDDEN,
+          respectGitIgnore: false,
           excludeNames: [...DEFAULT_PATH_LIST_EXCLUDE_NAMES],
         },
       });
@@ -665,6 +666,7 @@ export function registerThreadDataRoutes(app: Hono, deps: AppDeps): void {
           includeFiles: inclusion.includeFiles,
           includeDirectories: inclusion.includeDirectories,
           includeHidden: THREAD_STORAGE_PATH_LIST_INCLUDE_HIDDEN,
+          respectGitIgnore: false,
           excludeNames: [...DEFAULT_PATH_LIST_EXCLUDE_NAMES],
         },
       });

@@ -215,7 +215,9 @@ Voice transcription uses the `BB_TRANSCRIPTION` model, which defaults to
 commands to confine access beneath an absolute directory. `bb file list` and
 `bb file paths` include dot-prefixed entries; pass `--no-hidden` to skip them.
 Both skip a default set of dependency and cache directories such as
-`node_modules` and `.venv`; `--exclude <names...>` replaces that set. Use
+`node_modules`, `.venv`, `.pnpm-store`, and root-relative `.claude/worktrees`;
+`--exclude <names...>` replaces that set. Entries match basenames at any depth
+or exact root-relative paths using `/` separators. Use
 `--json` for metadata and machine-readable results.
 
 Server-backed sidebar preferences
