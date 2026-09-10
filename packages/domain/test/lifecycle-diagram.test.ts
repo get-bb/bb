@@ -102,7 +102,7 @@ describe("docs/lifecycle-diagrams.md", () => {
       "",
       "```mermaid",
       `${renderLifecycleMermaid({
-        initial: "provisioning",
+        initial: "creating",
         predicateNames: {},
         table: ENVIRONMENT_LIFECYCLE,
       }).trimEnd()}`,

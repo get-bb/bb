@@ -170,6 +170,10 @@ describe("thread provisioning recovery", () => {
             command.type === "thread.start" && command.threadId === thread.id,
         );
 
+        await advanceThreadProvisioning(harness.deps, { threadId: thread.id });
+        expect(
+          listQueuedThreadCommands(harness, "thread.start", thread.id),
+        ).toHaveLength(1);
         expect(getThread(harness.db, thread.id)?.status).not.toBe("error");
         expect(
           listEvents(harness.db, { threadId: thread.id }).map(

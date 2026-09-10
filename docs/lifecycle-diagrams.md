@@ -51,11 +51,15 @@ flowchart LR
 ```mermaid
 flowchart LR
     __start((start))
+    creating["creating"]
     provisioning["provisioning"]
     ready["ready"]
     error["error"]
     destroyed["destroyed"]
-    __start --> provisioning
+    __start --> creating
+    creating -->|"provision.requested"| provisioning
+    creating -->|"provision.failed<br/>provision.cancelled"| error
+    creating -->|"destroy.recorded"| destroyed
     provisioning -->|"provision.succeeded<br/>provision.cancelled (workspace on disk)"| ready
     provisioning -->|"provision.failed"| error
     provisioning -->|"provision.cancelled (no workspace)"| destroyed

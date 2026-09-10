@@ -755,7 +755,7 @@ export function prepareProviderEnvironment(
   }
   const start = row === null || row.teardownStatus === "removed";
   if (start) {
-    const attempt = (row?.attempt ?? 0) + 1;
+    const attempt = (row?.attempt ?? previous?.attempt ?? 0) + 1;
     const pathKey =
       policy.pathKeys === "per-attempt" || context.environment !== null
         ? `${context.thread.id}-${attempt}`

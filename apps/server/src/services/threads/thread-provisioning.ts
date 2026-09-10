@@ -21,7 +21,10 @@ import {
   buildCwdBranchEntries,
   createClientTurnRequestId,
 } from "./thread-events.js";
-import { requestThreadStart } from "./thread-lifecycle.js";
+import {
+  hasLiveThreadStartInFlight,
+  requestThreadStart,
+} from "./thread-lifecycle.js";
 import { resolvePermissionEscalation } from "./thread-runtime-config.js";
 import {
   createThreadStartup,
@@ -372,6 +375,7 @@ async function advanceThreadProvisioningOnce(
     clearThreadProvisionSchedule(thread.id);
     return;
   }
+  if (hasLiveThreadStartInFlight(thread.id)) return;
   let context = loadActiveThreadProvisionContext(deps, thread.id);
   if (!context) {
     failThreadProvisioning(deps, {
