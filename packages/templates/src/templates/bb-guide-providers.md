@@ -78,13 +78,6 @@ Claude Code's native Workflow tool can be disabled separately on its provider
 page. This preference also defaults off and applies to newly started, resumed,
 or forked provider sessions.
 
-Claude Code can opt into releasing its native process after 30 seconds of
-quiescence while keeping the bb thread attached and resumable. This defaults
-off during its bake period. Enable it with
-`bb plugin config provider-claude-code set idleQueryReleaseEnabled true`.
-Changes apply on the next start, resume, or turn command and do not interrupt
-active work.
-
 Claude Code runs without its Claude in Chrome browser tools under bb by
 default. Enable them with
 `bb plugin config provider-claude-code set chromeEnabled true`. The host needs

@@ -612,6 +612,7 @@ export function registerEnvironmentRoutes(app: Hono, deps: AppDeps): void {
           includeFiles: inclusion.includeFiles,
           includeDirectories: inclusion.includeDirectories,
           includeHidden: WORKSPACE_PATH_LIST_INCLUDE_HIDDEN,
+          respectGitIgnore: true,
           excludeNames: [...DEFAULT_PATH_LIST_EXCLUDE_NAMES],
         },
       });

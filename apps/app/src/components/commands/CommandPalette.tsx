@@ -248,6 +248,7 @@ export function CommandPalette({ threadId, projectId }: CommandPaletteProps) {
 
   const handleKeyDown = useCallback(
     (event: ReactKeyboardEvent<HTMLInputElement>) => {
+      if (event.nativeEvent.isComposing) return;
       if (resultCount === 0) return;
       if (event.key === "ArrowDown") {
         event.preventDefault();

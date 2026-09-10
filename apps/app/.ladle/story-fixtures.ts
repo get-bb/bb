@@ -329,6 +329,7 @@ export const STORY_ENVIRONMENT_PROVIDERS: readonly SystemEnvironmentProvider[] =
       logoUrl: null,
       pluginId: "environment-project-checkout",
       acceptsEmptyInputs: true,
+      machineAvailability: {},
       availability: null,
       requires: {
         projectCheckout: true,
@@ -345,6 +346,7 @@ export const STORY_ENVIRONMENT_PROVIDERS: readonly SystemEnvironmentProvider[] =
       logoUrl: null,
       pluginId: "environment-git-worktree",
       acceptsEmptyInputs: true,
+      machineAvailability: {},
       availability: null,
       requires: {
         projectCheckout: true,
@@ -361,6 +363,7 @@ export const STORY_ENVIRONMENT_PROVIDERS: readonly SystemEnvironmentProvider[] =
       logoUrl: null,
       pluginId: "environment-personal-workspace",
       acceptsEmptyInputs: true,
+      machineAvailability: {},
       availability: null,
       requires: {
         projectCheckout: false,

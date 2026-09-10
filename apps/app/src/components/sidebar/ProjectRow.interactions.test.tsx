@@ -9,7 +9,6 @@ import {
 } from "@testing-library/react";
 import type { ThreadListEntry } from "@bb/domain";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type { ReactNode } from "react";
 import { MemoryRouter } from "react-router-dom";
 import { TooltipProvider } from "@bb/shared-ui/tooltip";
 import { Provider, createStore } from "jotai";
@@ -33,6 +32,7 @@ const mockArchiveEnvironmentThreads = vi.hoisted(() => ({
 const mockDraftThreadIds = vi.hoisted(() => ({
   current: new Set<string>(),
 }));
+const mockCreateThreadInEnvironment = vi.hoisted(() => vi.fn());
 
 vi.mock("@/hooks/useLocalPathPicker", () => ({
   usePathPickerHost: () => ({ hostId: null, hostName: null }),
@@ -54,7 +54,7 @@ vi.mock("@/hooks/mutations/environment-mutations", () => ({
 }));
 
 vi.mock("@/hooks/useCreateThreadInEnvironment", () => ({
-  useCreateThreadInEnvironment: () => vi.fn(),
+  useCreateThreadInEnvironment: () => mockCreateThreadInEnvironment,
 }));
 
 vi.mock("@/hooks/usePromptDraftStorage", () => ({
@@ -97,8 +97,6 @@ function renderProjectRow(
   isActive = false,
   collapsedEnvironmentIds: Set<string> = new Set(),
   isCollapsed = false,
-  headerActions?: ReactNode,
-  headerActionsOpen = false,
 ) {
   const onToggleEnvironmentCollapsed = vi.fn();
   const result = render(
@@ -115,8 +113,6 @@ function renderProjectRow(
             collapsedThreadIds={new Set()}
             collapsedEnvironmentIds={collapsedEnvironmentIds}
             isLocalPathInvalid={false}
-            headerActions={headerActions}
-            headerActionsOpen={headerActionsOpen}
             onToggleProjectCollapsed={onToggleProjectCollapsed}
             onToggleThreadCollapsed={vi.fn()}
             onToggleEnvironmentCollapsed={onToggleEnvironmentCollapsed}
@@ -146,31 +142,33 @@ describe("ProjectRow interactions", () => {
     vi.clearAllMocks();
   });
 
-  it.each([false, true])(
-    "keeps project header controls available to touch when open is %s",
-    (open) => {
-      renderProjectRow(
-        vi.fn(),
-        { status: "ready", threads: [] },
-        false,
-        new Set(),
-        false,
-        <button aria-label="Header display control" />,
-        open,
-      );
+  it("keeps project header controls touch-accessible when their menu opens and closes", async () => {
+    renderProjectRow();
+    const trigger = screen.getByRole("button", {
+      name: "Test project actions",
+    });
+    const actions = trigger.closest(".bb-sidebar-hover-actions");
+    expect(actions?.getAttribute("data-sidebar-hover-actions-mobile")).toBe(
+      "always",
+    );
+    expect(actions?.getAttribute("data-sidebar-hover-actions-open")).toBeNull();
 
-      const actions = screen
-        .getByRole("button", { name: "Header display control" })
-        .closest(".bb-sidebar-hover-actions");
+    fireEvent.pointerDown(trigger, { button: 0 });
+    const menu = await screen.findByRole("menu");
+    expect(actions?.getAttribute("data-sidebar-hover-actions-mobile")).toBe(
+      "always",
+    );
+    expect(actions?.getAttribute("data-sidebar-hover-actions-open")).toBe(
+      "true",
+    );
 
-      expect(actions?.getAttribute("data-sidebar-hover-actions-mobile")).toBe(
-        "always",
-      );
-      expect(actions?.getAttribute("data-sidebar-hover-actions-open")).toBe(
-        open ? "true" : null,
-      );
-    },
-  );
+    fireEvent.keyDown(menu, { key: "Escape" });
+    await waitFor(() => expect(screen.queryByRole("menu")).toBeNull());
+    expect(actions?.getAttribute("data-sidebar-hover-actions-mobile")).toBe(
+      "always",
+    );
+    expect(actions?.getAttribute("data-sidebar-hover-actions-open")).toBeNull();
+  });
 
   it("places the project disclosure after its label and keeps root threads flush", () => {
     const result = renderProjectRow(vi.fn(), {
@@ -496,49 +494,72 @@ describe("ProjectRow interactions", () => {
     expect(document.querySelector('[data-icon="Edit"]')).toBeNull();
   });
 
-  it("closes the environment actions menu after selecting rename", async () => {
-    renderProjectRow(vi.fn(), {
-      status: "ready",
-      threads: [
-        makeThread({
-          id: "thr_worktree_a",
-          environmentId: "env_test",
-          environmentName: "Feature workspace",
-          environmentBranchName: "feat/menu-close",
-          environmentProviderId: "git-worktree",
-          environmentIsWorktree: true,
-          queuedWork: "none",
-        }),
-        makeThread({
-          id: "thr_worktree_b",
-          environmentId: "env_test",
-          environmentName: "Feature workspace",
-          environmentBranchName: "feat/menu-close",
-          environmentProviderId: "git-worktree",
-          environmentIsWorktree: true,
-          queuedWork: "none",
-        }),
-      ],
-    });
+  it.each([false, true])(
+    "keeps environment actions touch-accessible when collapsed=%s",
+    async (isCollapsed) => {
+      renderProjectRow(
+        vi.fn(),
+        {
+          status: "ready",
+          threads: [
+            makeThread({
+              id: "thr_worktree_a",
+              environmentId: "env_test",
+              environmentName: "Feature workspace",
+              environmentBranchName: "feat/menu-close",
+              environmentProviderId: "git-worktree",
+              environmentIsWorktree: true,
+              queuedWork: "none",
+            }),
+            makeThread({
+              id: "thr_worktree_b",
+              environmentId: "env_test",
+              environmentName: "Feature workspace",
+              environmentBranchName: "feat/menu-close",
+              environmentProviderId: "git-worktree",
+              environmentIsWorktree: true,
+              queuedWork: "none",
+            }),
+          ],
+        },
+        false,
+        isCollapsed ? new Set(["env_test"]) : new Set(),
+      );
 
-    fireEvent.pointerDown(
-      screen.getByRole("button", { name: "Environment actions" }),
-      { button: 0 },
-    );
-    fireEvent.click(
-      await screen.findByRole("menuitem", { name: "Rename environment" }),
-    );
-
-    expect(
-      await screen.findByRole("dialog", { name: "Rename environment" }),
-    ).not.toBeNull();
-    expect(screen.getByText("feat/menu-close")).not.toBeNull();
-    await waitFor(() => {
+      const createButton = screen.getByRole("button", {
+        name: "New thread in environment",
+      });
+      const actions = createButton.closest(".bb-sidebar-hover-actions");
+      expect(actions?.getAttribute("data-sidebar-hover-actions-mobile")).toBe(
+        "always",
+      );
       expect(
-        screen.queryByRole("menuitem", { name: "Rename environment" }),
-      ).toBeNull();
-    });
-  });
+        actions?.contains(
+          screen.getByRole("button", { name: "Environment actions" }),
+        ),
+      ).toBe(true);
+      fireEvent.click(createButton);
+      expect(mockCreateThreadInEnvironment).toHaveBeenCalledOnce();
+
+      fireEvent.pointerDown(
+        screen.getByRole("button", { name: "Environment actions" }),
+        { button: 0 },
+      );
+      const rename = await screen.findByRole("menuitem", { name: "Rename" });
+      expect(
+        screen.getAllByRole("menuitem").map((item) => item.textContent),
+      ).toEqual(["Rename", "Archive"]);
+      fireEvent.click(rename);
+
+      expect(
+        await screen.findByRole("dialog", { name: "Rename environment" }),
+      ).not.toBeNull();
+      expect(screen.getByText("feat/menu-close")).not.toBeNull();
+      await waitFor(() => {
+        expect(screen.queryByRole("menuitem", { name: "Rename" })).toBeNull();
+      });
+    },
+  );
 
   it("leaves threads sharing the project checkout ungrouped", () => {
     renderProjectRow(vi.fn(), {
@@ -594,9 +615,7 @@ describe("ProjectRow interactions", () => {
       screen.getByRole("button", { name: "Environment actions" }),
       { button: 0 },
     );
-    fireEvent.click(
-      await screen.findByRole("menuitem", { name: "Archive environment" }),
-    );
+    fireEvent.click(await screen.findByRole("menuitem", { name: "Archive" }));
     expect(mockArchiveEnvironmentThreads.mutateAsync).toHaveBeenCalledWith({
       id: "env_plain",
     });
@@ -605,9 +624,7 @@ describe("ProjectRow interactions", () => {
       screen.getByRole("button", { name: "Environment actions" }),
       { button: 0 },
     );
-    fireEvent.click(
-      await screen.findByRole("menuitem", { name: "Rename environment" }),
-    );
+    fireEvent.click(await screen.findByRole("menuitem", { name: "Rename" }));
     expect(
       await screen.findByRole("dialog", { name: "Rename environment" }),
     ).not.toBeNull();

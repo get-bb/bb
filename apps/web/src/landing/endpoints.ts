@@ -1,18 +1,15 @@
 import {
-  DOWNLOAD_MACOS_FALLBACK_URL,
-  DOWNLOAD_MACOS_RELEASE_ASSET_BASE_URL,
-  DOWNLOAD_MACOS_VERSION_FEED_URL,
+  DESKTOP_DOWNLOADS,
+  DOWNLOAD_FALLBACK_URL,
+  DOWNLOAD_RELEASE_ASSET_BASE_URL,
 } from "./site";
-import type { CtaPlacement } from "./site";
+import type { CtaPlacement, DesktopPlatform } from "./site";
 
 const POSTHOG_CAPTURE_URL = "https://us.i.posthog.com/capture/?ip=0";
-const DOWNLOAD_EVENT_NAME = "landing_download_macos_clicked";
-const DOWNLOAD_TARGET = "macos";
 const TRACKING_SOURCE = "landing_worker_redirect";
 const MAX_URL_PROPERTY_LENGTH = 2048;
 const RESEND_CONTACTS_URL = "https://api.resend.com/audiences";
 const MAX_EMAIL_LENGTH = 254;
-const MACOS_INSTALLER_EXTENSION = ".dmg";
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 type DownloadPlacement = CtaPlacement | "direct";
@@ -26,7 +23,7 @@ type MarketingEnv = {
 type DownloadEventProperties = {
   $current_url: string;
   $referrer?: string;
-  download_target: typeof DOWNLOAD_TARGET;
+  download_target: DesktopPlatform;
   placement: DownloadPlacement;
   tracking_source: typeof TRACKING_SOURCE;
   utm_campaign?: string;
@@ -39,18 +36,20 @@ type DownloadEventProperties = {
 type PostHogCapturePayload = {
   api_key: string;
   distinct_id: string;
-  event: typeof DOWNLOAD_EVENT_NAME;
+  event: `landing_download_${DesktopPlatform}_clicked`;
   properties: DownloadEventProperties;
   timestamp: string;
 };
 
 type TrackDownloadClickArgs = {
+  platform: DesktopPlatform;
   postHogKey: string | undefined;
   request: Request;
   requestUrl: URL;
 };
 
-export async function handleDownloadMacos(
+export async function handleDownload(
+  platform: DesktopPlatform,
   request: Request,
   env: MarketingEnv,
   waitUntil: (promise: Promise<void>) => void,
@@ -58,12 +57,13 @@ export async function handleDownloadMacos(
   const requestUrl = new URL(request.url);
   waitUntil(
     trackDownloadClick({
+      platform,
       postHogKey: env.LANDING_POSTHOG_KEY,
       request,
       requestUrl,
     }),
   );
-  const location = await resolveMacosDownloadUrl();
+  const location = await resolveDownloadUrl(platform);
   return redirectResponse(location);
 }
 
@@ -155,27 +155,34 @@ function redirectResponse(location: string): Response {
   });
 }
 
-async function resolveMacosDownloadUrl(): Promise<string> {
+async function resolveDownloadUrl(platform: DesktopPlatform): Promise<string> {
+  const download = DESKTOP_DOWNLOADS[platform];
   try {
-    const response = await fetch(DOWNLOAD_MACOS_VERSION_FEED_URL, {
+    const response = await fetch(download.versionFeedUrl, {
       headers: { accept: "application/json" },
     });
     if (!response.ok) {
-      return DOWNLOAD_MACOS_FALLBACK_URL;
+      return DOWNLOAD_FALLBACK_URL;
     }
 
-    const assetName = findMacosInstallerAssetName(await response.json());
+    const assetName = findInstallerAssetName(
+      await response.json(),
+      download.installerExtension,
+    );
     if (!assetName) {
-      return DOWNLOAD_MACOS_FALLBACK_URL;
+      return DOWNLOAD_FALLBACK_URL;
     }
 
-    return `${DOWNLOAD_MACOS_RELEASE_ASSET_BASE_URL}/${encodeURIComponent(assetName)}`;
+    return `${DOWNLOAD_RELEASE_ASSET_BASE_URL}/${encodeURIComponent(assetName)}`;
   } catch {
-    return DOWNLOAD_MACOS_FALLBACK_URL;
+    return DOWNLOAD_FALLBACK_URL;
   }
 }
 
-function findMacosInstallerAssetName(feed: unknown): string | null {
+function findInstallerAssetName(
+  feed: unknown,
+  installerExtension: string,
+): string | null {
   if (!isRecord(feed) || !Array.isArray(feed.files)) {
     return null;
   }
@@ -184,17 +191,20 @@ function findMacosInstallerAssetName(feed: unknown): string | null {
     if (!isRecord(file) || typeof file.url !== "string") {
       continue;
     }
-    if (isMacosInstallerAssetName(file.url)) {
+    if (isInstallerAssetName(file.url, installerExtension)) {
       return file.url;
     }
   }
   return null;
 }
 
-function isMacosInstallerAssetName(value: string): boolean {
+function isInstallerAssetName(
+  value: string,
+  installerExtension: string,
+): boolean {
   return (
-    value.length > MACOS_INSTALLER_EXTENSION.length &&
-    value.endsWith(MACOS_INSTALLER_EXTENSION) &&
+    value.length > installerExtension.length &&
+    value.endsWith(installerExtension) &&
     !value.includes("/") &&
     !value.includes("\\")
   );
@@ -212,8 +222,9 @@ async function trackDownloadClick(args: TrackDownloadClickArgs): Promise<void> {
   const payload: PostHogCapturePayload = {
     api_key: args.postHogKey,
     distinct_id: crypto.randomUUID(),
-    event: DOWNLOAD_EVENT_NAME,
+    event: `landing_download_${args.platform}_clicked`,
     properties: buildDownloadEventProperties({
+      platform: args.platform,
       request: args.request,
       requestUrl: args.requestUrl,
     }),
@@ -228,6 +239,7 @@ async function trackDownloadClick(args: TrackDownloadClickArgs): Promise<void> {
 }
 
 type BuildDownloadEventPropertiesArgs = {
+  platform: DesktopPlatform;
   request: Request;
   requestUrl: URL;
 };
@@ -239,7 +251,7 @@ function buildDownloadEventProperties(
   const referrerSearchParams = readReferrerSearchParams(referrer);
   const properties: DownloadEventProperties = {
     $current_url: truncateProperty(args.requestUrl.href),
-    download_target: DOWNLOAD_TARGET,
+    download_target: args.platform,
     placement: parseDownloadPlacement(args.requestUrl.searchParams),
     tracking_source: TRACKING_SOURCE,
   };

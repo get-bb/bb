@@ -628,6 +628,7 @@ export function registerProjectRoutes(app: Hono, deps: AppDeps): void {
         ...(query.query ? { query: query.query } : {}),
         limit,
         includeHidden: WORKSPACE_PATH_LIST_INCLUDE_HIDDEN,
+        respectGitIgnore: true,
         excludeNames: [...DEFAULT_PATH_LIST_EXCLUDE_NAMES],
       },
     });
@@ -690,6 +691,7 @@ export function registerProjectRoutes(app: Hono, deps: AppDeps): void {
         includeFiles: inclusion.includeFiles,
         includeDirectories: inclusion.includeDirectories,
         includeHidden: WORKSPACE_PATH_LIST_INCLUDE_HIDDEN,
+        respectGitIgnore: true,
         excludeNames: [...DEFAULT_PATH_LIST_EXCLUDE_NAMES],
       },
     });

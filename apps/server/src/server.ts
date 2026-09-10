@@ -38,6 +38,7 @@ import {
   setPluginEnvironmentProviderBridge,
 } from "./services/plugins/plugin-environment-provider-registry.js";
 import { recheckEnvironmentProviderCreations } from "./services/threads/thread-environment-providers.js";
+import { invalidateEnvironmentProviderMachineAvailability } from "./services/environments/provider-machine-availability.js";
 import { requestQueuedMessageDispatch } from "./services/threads/queued-message-dispatch.js";
 import { registerInternalEventRoutes } from "./internal/events.js";
 import { registerInternalHostRoutes } from "./internal/hosts.js";
@@ -616,6 +617,7 @@ export function createApp(
     recheckEnvironmentProvisioning(deps, threadId),
   );
   setEnvironmentProviderRecheckHandler((pluginId) => {
+    invalidateEnvironmentProviderMachineAvailability();
     deps.hub.notifySystem(["config-changed"]);
     void recheckEnvironmentProviderCreations(deps, pluginId);
   });

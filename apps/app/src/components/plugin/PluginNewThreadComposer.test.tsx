@@ -395,6 +395,7 @@ const CHECKOUT_PROVIDER: SystemEnvironmentProvider = {
   logoUrl: null,
   pluginId: "environment-project-checkout",
   acceptsEmptyInputs: true,
+  machineAvailability: {},
   availability: null,
   requires: {
     projectCheckout: true,
@@ -415,6 +416,7 @@ const PERSONAL_WORKSPACE_PROVIDER: SystemEnvironmentProvider = {
   logoUrl: null,
   pluginId: "environment-personal-workspace",
   acceptsEmptyInputs: true,
+  machineAvailability: {},
   availability: null,
   requires: {
     projectCheckout: false,
@@ -432,6 +434,7 @@ const MANAGED_WORKTREE_SUGAR_PROVIDER: SystemEnvironmentProvider = {
   logoUrl: null,
   pluginId: "environment-git-worktree",
   acceptsEmptyInputs: false,
+  machineAvailability: {},
   availability: null,
   requires: {
     projectCheckout: true,
@@ -1332,6 +1335,7 @@ const SANDBOX_PROVIDER: SystemEnvironmentProvider = {
   logoUrl: null,
   pluginId: "docker-sandbox",
   acceptsEmptyInputs: false,
+  machineAvailability: {},
   availability: null,
   requires: {
     projectCheckout: false,
@@ -1353,6 +1357,7 @@ const OPTIONAL_INPUTS_PROVIDER: SystemEnvironmentProvider = {
   logoUrl: null,
   pluginId: "optional-sandbox",
   acceptsEmptyInputs: true,
+  machineAvailability: {},
   availability: null,
   requires: {
     projectCheckout: false,
@@ -1373,6 +1378,7 @@ const BRANCH_PROVIDER: SystemEnvironmentProvider = {
   logoUrl: null,
   pluginId: "branchy",
   acceptsEmptyInputs: true,
+  machineAvailability: {},
   availability: null,
   requires: {
     projectCheckout: true,
@@ -1390,6 +1396,7 @@ const HOST_PROVIDER: SystemEnvironmentProvider = {
   logoUrl: null,
   pluginId: "hosted",
   acceptsEmptyInputs: true,
+  machineAvailability: {},
   availability: null,
   requires: {
     projectCheckout: false,

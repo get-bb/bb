@@ -4,7 +4,6 @@ import {
   deleteThreadEventSuffixInTransaction,
   events,
   getActivePendingInteractionForThread,
-  getExperiments,
   getHighWaterMarks,
   getThread,
   hasQueuedThreadMessages,
@@ -399,9 +398,6 @@ export async function editThreadMessage(
     thread: Thread;
   },
 ): Promise<EditMessageResponse> {
-  if (!getExperiments(deps.db).editMessages) {
-    conflict("Enable the Edit messages experiment before editing a message");
-  }
   if (!deps.providerRegistry.supportsSessionRewind(args.thread.providerId)) {
     conflict(`Editing messages is not supported for ${args.thread.providerId}`);
   }

@@ -19,6 +19,7 @@ import {
   insertEvents,
   listActiveBackgroundTaskCountsByThreadIds,
   listItemEventSpansByItems,
+  listOpenTurnInputAcceptedRowsByThreadIds,
   listLatestThreadStateEventRowsByThreadIds,
   listLatestOpenBackgroundTaskStateRowsForThread,
   listStoredConversationOutlineEventRows,
@@ -236,6 +237,24 @@ function assertEmittedQueryPlanUsesIndex(
 }
 
 describe("slow query index plans", () => {
+  it("seeks accepted inputs past each thread's latest interruption", () => {
+    const { db, thread } = setup();
+    try {
+      const captured = captureStatements(db, () => {
+        listOpenTurnInputAcceptedRowsByThreadIds(db, {
+          threadIds: [thread.id, "missing"],
+        });
+      });
+      expect(captured).toHaveLength(1);
+      const query = captured[0]!;
+      expect(queryPlanDetails({ db, ...query })).toContain(
+        "events_thread_type_sequence_idx (thread_id=? AND type=? AND sequence>?)",
+      );
+    } finally {
+      db.$client.close();
+    }
+  });
+
   it.each([null, "/tmp/claimed"])(
     "indexes active environment claims for path %s",
     (path) => {
@@ -729,8 +748,8 @@ describe("slow query index plans", () => {
     const debugLog = findOnlyDebugLog({
       logger,
       predicate: (fields) =>
-        fields.operation === "run" &&
-        fields.sql.startsWith("UPDATE events SET environment_id = NULL"),
+        fields.operation === "all" &&
+        fields.sql.startsWith("SELECT rowid, octet_length(data)"),
     });
     assertEmittedQueryPlanUsesIndex({
       db,

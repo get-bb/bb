@@ -1,4 +1,7 @@
-import { COARSE_POINTER_DOT_SIZE_CLASS } from "@bb/shared-ui/coarse-pointer-sizing";
+import {
+  COARSE_POINTER_DOT_SIZE_CLASS,
+  COARSE_POINTER_ROW_ACTION_SIZE_CLASS,
+} from "@bb/shared-ui/coarse-pointer-sizing";
 import { CONTEXT_SELECTION_SURFACE_CLASS } from "@/components/ui/context-selection";
 
 export const SIDEBAR_ROW_BASE_CLASS =
@@ -22,6 +25,20 @@ const SIDEBAR_THREAD_ROW_GLYPH_CENTER_OFFSET_PX = 8;
 
 export const SIDEBAR_STANDARD_ROW_PADDING_CLASS = "pl-2";
 
+export const SIDEBAR_ROW_TEXT_CLASS = "text-sidebar-foreground";
+
+export const SIDEBAR_GROUP_TEXT_CLASS = "text-muted-foreground";
+
+export const SIDEBAR_CONTROL_TONE_CLASS =
+  "text-subtle-foreground hover:text-muted-foreground focus-visible:text-muted-foreground data-[state=open]:text-muted-foreground";
+
+export const SIDEBAR_CONTROL_STATE_CLASS = `${SIDEBAR_CONTROL_TONE_CLASS} hover:bg-state-hover focus-visible:bg-state-hover active:bg-state-active data-[state=open]:bg-state-active data-[state=open]:hover:bg-state-active data-[state=open]:focus-visible:bg-state-active`;
+
+export const SIDEBAR_CONTROL_BUTTON_CLASS = `${COARSE_POINTER_ROW_ACTION_SIZE_CLASS} ${SIDEBAR_CONTROL_STATE_CLASS} relative m-0 shrink-0 cursor-pointer rounded-md p-0 outline-none ring-sidebar-ring focus-visible:ring-2`;
+
+export const SIDEBAR_CONTROL_PAIR_SIZE_CLASS =
+  "h-7 w-[3.625rem] max-md:pointer-coarse:h-9 max-md:pointer-coarse:w-[4.625rem]";
+
 export function getSidebarThreadRowPaddingLeft(depth: number): number {
   return (
     SIDEBAR_THREAD_ROW_BASE_PADDING_PX +
@@ -36,13 +53,11 @@ export function getSidebarThreadGroupLineLeft(depth: number): number {
   );
 }
 
-export const SIDEBAR_ROW_INTERACTIVE_STATE_CLASS =
-  "cursor-pointer text-sidebar-foreground/85 dark:text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground";
+export const SIDEBAR_ROW_INTERACTIVE_STATE_CLASS = `cursor-pointer ${SIDEBAR_ROW_TEXT_CLASS} hover:bg-sidebar-accent hover:text-sidebar-accent-foreground`;
 
-export const SIDEBAR_ROW_STATIC_STATE_CLASS =
-  "text-sidebar-foreground/85 dark:text-sidebar-foreground";
+export const SIDEBAR_ROW_STATIC_STATE_CLASS = SIDEBAR_ROW_TEXT_CLASS;
 
-export const SIDEBAR_ROW_SELECTED_STATE_CLASS = `${CONTEXT_SELECTION_SURFACE_CLASS} bb-sidebar-selected-row text-sidebar-foreground`;
+export const SIDEBAR_ROW_SELECTED_STATE_CLASS = `${CONTEXT_SELECTION_SURFACE_CLASS} bb-sidebar-selected-row ${SIDEBAR_ROW_TEXT_CLASS}`;
 
 export const SIDEBAR_ROW_OPEN_IN_SPLIT_STATE_CLASS =
   "bb-sidebar-open-in-split-row";

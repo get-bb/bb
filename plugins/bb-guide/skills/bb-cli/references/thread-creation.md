@@ -99,6 +99,10 @@ worktree` only; a provider takes its branch through `--environment-inputs`.
   project source; omitting both intentionally uses the primary machine source.
   `bb project content --json` returns UTF-8 text or base64 binary content with
   an explicit `contentEncoding`.
+  Project/environment file and path searches honor Git ignore rules, retaining
+  tracked and non-ignored untracked files, including hidden files. Non-Git
+  workspaces use filesystem listing. `bb file list|paths` can inspect ignored
+  files, subject to their exclusion options.
 - Use `bb project attachment upload <project-id> --client-file <path>` when the
   bytes live on the CLI machine, including when the CLI and bb server are on
   different hosts. It reads locally and sends multipart bytes through the

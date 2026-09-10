@@ -66,6 +66,7 @@ import type {
   PoolStatus,
 } from "./src/contracts.js";
 import type { accountPoolRpcContract } from "./src/rpc.js";
+import { statusSchema } from "./src/contracts.js";
 import { blockingResetAt } from "./src/quota.js";
 import {
   ACCOUNT_POOL_ACCOUNTS_CHANGED,
@@ -191,6 +192,27 @@ function resetLabel(timestamp: number | null): string {
     return `resets in ${minutes >= 60 ? `${Math.floor(minutes / 60)}h ${minutes % 60}m` : `${minutes}m`}`;
   return `resets ${new Intl.DateTimeFormat(undefined, { month: "short", day: "numeric" }).format(timestamp)}`;
 }
+const STATUS_CACHE_KEY = "account-pool:status";
+
+function readCachedStatus(): PoolStatus | null {
+  try {
+    const raw = window.localStorage.getItem(STATUS_CACHE_KEY);
+    if (raw === null) return null;
+    const parsed = statusSchema.safeParse(JSON.parse(raw));
+    return parsed.success ? parsed.data : null;
+  } catch {
+    return null;
+  }
+}
+
+function writeCachedStatus(status: PoolStatus): void {
+  try {
+    window.localStorage.setItem(STATUS_CACHE_KEY, JSON.stringify(status));
+  } catch {
+    return;
+  }
+}
+
 function statusPresentation(
   account: AccountSummary,
   threshold: number,
@@ -315,12 +337,19 @@ function quotaToneClass(slot: QuotaSlot, threshold: number): string {
 function QuotaValue({
   slot,
   threshold,
+  refreshing,
 }: {
   slot: QuotaSlot;
   threshold: number;
+  refreshing: boolean;
 }) {
   return (
-    <div className="w-16 text-left tabular-nums sm:text-right">
+    <div
+      className={cn(
+        "w-16 text-left tabular-nums transition-opacity sm:text-right",
+        refreshing && "opacity-50",
+      )}
+    >
       <div className="text-2xs uppercase tracking-wide text-subtle-foreground/75">
         {slot.label}
       </div>
@@ -343,6 +372,7 @@ function AccountRow({
   account,
   threshold,
   pending,
+  refreshing,
   onAction,
   onOpen,
   reorderDisabled,
@@ -350,6 +380,7 @@ function AccountRow({
   account: AccountSummary;
   threshold: number;
   pending: boolean;
+  refreshing: boolean;
   onAction: (action: "toggle" | "priority" | "refresh" | "remove") => void;
   onOpen: () => void;
   reorderDisabled: boolean;
@@ -414,11 +445,17 @@ function AccountRow({
               {account.lastUsedAt === null ? null : (
                 <span>used {relative(account.lastUsedAt)}</span>
               )}
+              {refreshing ? <span>refreshing usage…</span> : null}
             </div>
           </div>
           <div className="flex flex-wrap items-center gap-x-4 gap-y-1 sm:flex-nowrap sm:gap-1">
             {slots.map((slot) => (
-              <QuotaValue key={slot.key} slot={slot} threshold={threshold} />
+              <QuotaValue
+                key={slot.key}
+                slot={slot}
+                threshold={threshold}
+                refreshing={refreshing}
+              />
             ))}
           </div>
         </button>
@@ -670,7 +707,8 @@ function ConfigFieldRow({
 function AccountPoolSettings() {
   const rpc = useRpc<typeof accountPoolRpcContract>();
   const navigate = useBbNavigate();
-  const [status, setStatus] = useState<PoolStatus | null>(null);
+  const [status, setStatus] = useState<PoolStatus | null>(readCachedStatus);
+  const [statusIsCached, setStatusIsCached] = useState(status !== null);
   const [config, setConfig] = useState<AccountPoolConfig | null>(null);
   const [drafts, setDrafts] = useState<ConfigDrafts>({
     anthropicUpstreamBaseUrl: "",
@@ -711,7 +749,10 @@ function AccountPoolSettings() {
   const refresh = useCallback(async () => {
     try {
       const next = await rpc.call("status.get", null);
-      if (mounted.current) setStatus(next);
+      writeCachedStatus(next);
+      if (!mounted.current) return;
+      setStatus(next);
+      setStatusIsCached(false);
     } catch (loadError) {
       if (mounted.current) setError(errorText(loadError));
     }
@@ -947,6 +988,7 @@ function AccountPoolSettings() {
       <p className="text-xs text-subtle-foreground/75">
         Hub {status?.accepting ? "accepting" : "not accepting"} ·{" "}
         {status?.inFlight ?? 0} in flight · used by {hubHosts}
+        {statusIsCached ? " · refreshing…" : null}
       </p>
       {error === null ? null : (
         <div
@@ -956,7 +998,7 @@ function AccountPoolSettings() {
           {error}
         </div>
       )}
-      {status !== null && accounts.length === 0 ? (
+      {status !== null && !statusIsCached && accounts.length === 0 ? (
         <div className="rounded-lg border border-dashed border-border px-5 py-6 text-center">
           <h2 className="text-sm font-semibold text-foreground">
             No accounts in the pool
@@ -1047,6 +1089,9 @@ function AccountPoolSettings() {
                         account={account}
                         threshold={threshold}
                         pending={pending !== null}
+                        refreshing={
+                          statusIsCached || pending === `refresh-${account.id}`
+                        }
                         reorderDisabled={providerAccounts.length < 2}
                         onAction={(action) =>
                           void accountAction(account, action)

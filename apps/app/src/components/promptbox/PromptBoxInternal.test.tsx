@@ -1449,6 +1449,60 @@ describe("PromptBoxInternal submit shortcuts", () => {
     }
   });
 
+  it("routes Control+Enter to modifier submit and labels the shortcut for the platform", () => {
+    const platformMock = vi
+      .spyOn(navigator, "platform", "get")
+      .mockReturnValue("Linux x86_64");
+    try {
+      const onModifierSubmit = vi.fn();
+      const onSubmit = vi.fn();
+      render(
+        <PromptBoxInternal
+          {...createPromptBoxProps({
+            value: "Follow up",
+            onSubmit,
+            submission: { onModifierSubmit },
+          })}
+        />,
+      );
+
+      const editor = getPromptEditorElement();
+      expect(editor.getAttribute("aria-keyshortcuts")).toBe("Control+Enter");
+      act(() => editor.focus());
+      fireEvent.keyDown(editor, {
+        key: "Enter",
+        code: "Enter",
+        ctrlKey: true,
+      });
+
+      expect(onModifierSubmit).toHaveBeenCalledOnce();
+      expect(onSubmit).not.toHaveBeenCalled();
+    } finally {
+      platformMock.mockRestore();
+    }
+  });
+
+  it("labels the modifier submit shortcut with Meta on Mac", () => {
+    const platformMock = vi
+      .spyOn(navigator, "platform", "get")
+      .mockReturnValue("MacIntel");
+    try {
+      render(
+        <PromptBoxInternal
+          {...createPromptBoxProps({
+            value: "Follow up",
+            submission: { onModifierSubmit: vi.fn() },
+          })}
+        />,
+      );
+      expect(getPromptEditorElement().getAttribute("aria-keyshortcuts")).toBe(
+        "Meta+Enter",
+      );
+    } finally {
+      platformMock.mockRestore();
+    }
+  });
+
   it("does not submit a hardware Enter that is committing IME composition", () => {
     const restoreMatchMedia = mockPointerCoarse(true);
     const restoreNavigator = mockIPadOSWebKit();

@@ -275,9 +275,7 @@ export class AccountPoolHub {
     }
   }
 
-  async status(): Promise<
-    Omit<PoolStatus, "routedThreadsWithoutLocalLogin" | "routing">
-  > {
+  async status(): Promise<Omit<PoolStatus, "routing">> {
     const settings = this.options.getSettings();
     const now = this.options.now();
     const accounts = (await this.options.accounts.list()).sort(

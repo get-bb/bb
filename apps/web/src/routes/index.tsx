@@ -56,19 +56,22 @@ import {
   GitHubLink,
 } from "../landing/cta";
 import { SiteFooter, SiteNav } from "../landing/site-chrome";
+import { useDesktopPlatform } from "../landing/desktop-platform";
 import {
   ClaudeIcon,
   CursorIcon,
   GrokIcon,
   HermesAgentIcon,
+  LinuxIcon,
   OmpIcon,
   OpenAiIcon,
   OpencodeIcon,
   PiIcon,
 } from "../landing/icons";
-import type { CtaPlacement } from "../landing/site";
+import type { CtaPlacement, DesktopPlatform } from "../landing/site";
 import {
   CLI_COMMAND,
+  DESKTOP_DOWNLOADS,
   OG_DESCRIPTION,
   SITE_DESCRIPTION,
   SITE_TITLE,
@@ -169,19 +172,41 @@ const AppleSolidIcon: IconSvgElement = [
   ],
 ];
 
+function DesktopDownloadIcon({ platform }: { platform: DesktopPlatform }) {
+  if (platform === "linux") {
+    return <LinuxIcon className="btn-ic" />;
+  }
+  return <HugeiconsIcon icon={AppleSolidIcon} className="btn-ic" />;
+}
+
 function InstallOptions({ placement }: { placement: CtaPlacement }) {
+  const platform = useDesktopPlatform();
+  const download = DESKTOP_DOWNLOADS[platform];
+  const otherPlatform: DesktopPlatform =
+    platform === "macos" ? "linux" : "macos";
   return (
     <div className="install-options">
       <div className="install-actions">
         <span className="install-choice">
           <DownloadLink
             placement={placement}
+            platform={platform}
             className="btn btn-primary btn-install"
           >
-            <HugeiconsIcon icon={AppleSolidIcon} className="btn-ic" />
-            Download for macOS
+            <DesktopDownloadIcon platform={platform} />
+            {download.buttonLabel}
           </DownloadLink>
-          <span className="install-note">One-click, no terminal</span>
+          <span className="install-note">
+            {download.note}
+            {" · "}
+            <DownloadLink
+              placement={placement}
+              platform={otherPlatform}
+              className="install-note-link"
+            >
+              Also for {DESKTOP_DOWNLOADS[otherPlatform].label}
+            </DownloadLink>
+          </span>
         </span>
         <span className="install-choice">
           <CommandButton
@@ -196,7 +221,7 @@ function InstallOptions({ placement }: { placement: CtaPlacement }) {
             }
           />
           <span className="install-note">
-            Windows (via WSL), Linux &amp; remote machines
+            Windows (via WSL), Intel Macs &amp; remote machines
           </span>
         </span>
       </div>

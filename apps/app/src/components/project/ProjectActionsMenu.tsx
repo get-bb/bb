@@ -51,7 +51,7 @@ function stopProjectActionsMenuClickPropagation(event: MouseEvent) {
   event.stopPropagation();
 }
 
-function ProjectActionsMenuItems({
+export function ProjectActionsMenuItems({
   project,
   surface,
 }: ProjectActionsMenuItemsProps) {
@@ -74,7 +74,6 @@ function ProjectActionsMenuItems({
       >
         Project settings
       </ActionMenuItem>
-      <ActionMenuSeparator surface={surface} />
       <ActionMenuItem
         surface={surface}
         icon="Edit"
@@ -95,6 +94,7 @@ function ProjectActionsMenuItems({
           Add local path
         </ActionMenuItem>
       ) : null}
+      <ActionMenuSeparator surface={surface} />
       <ActionMenuItem
         surface={surface}
         icon="Trash2"

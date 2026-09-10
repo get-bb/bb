@@ -217,6 +217,7 @@ describe("listPathsRecursively", () => {
         includeFiles: true,
         includeDirectories: true,
         includeHidden: false,
+        ignoredPaths: new Set<string>(),
         excludeNames: new Set<string>(),
       });
 
@@ -255,6 +256,7 @@ describe("listPathsRecursively", () => {
           includeFiles: true,
           includeDirectories: true,
           includeHidden,
+          ignoredPaths: new Set<string>(),
           excludeNames: new Set<string>(),
         }).then((entries) => entries.map((entry) => entry.path).sort());
 
@@ -279,7 +281,10 @@ describe("listPathsRecursively", () => {
       await fs.mkdir(path.join(root, "node_modules", "pkg"), {
         recursive: true,
       });
-      await fs.writeFile(path.join(root, "node_modules", "pkg", "index.js"), "");
+      await fs.writeFile(
+        path.join(root, "node_modules", "pkg", "index.js"),
+        "",
+      );
       await fs.mkdir(path.join(root, "apps", "web", ".turbo"), {
         recursive: true,
       });
@@ -294,6 +299,7 @@ describe("listPathsRecursively", () => {
           includeFiles: true,
           includeDirectories: true,
           includeHidden: true,
+          ignoredPaths: new Set<string>(),
           excludeNames: new Set(excludeNames),
         }).then((entries) => entries.map((entry) => entry.path).sort());
 
@@ -333,6 +339,7 @@ describe("listPathsRecursively", () => {
         includeFiles: true,
         includeDirectories: false,
         includeHidden: false,
+        ignoredPaths: new Set<string>(),
         excludeNames: new Set<string>(),
       });
 
@@ -372,6 +379,7 @@ describe("listPathsRecursively", () => {
         includeFiles: true,
         includeDirectories: false,
         includeHidden: false,
+        ignoredPaths: new Set<string>(),
         excludeNames: new Set<string>(),
       });
 

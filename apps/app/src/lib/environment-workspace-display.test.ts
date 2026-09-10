@@ -23,6 +23,7 @@ const worktreeProvider: SystemEnvironmentProvider = {
   logoUrl: null,
   pluginId: "environment-git-worktree",
   acceptsEmptyInputs: true,
+  machineAvailability: {},
   availability: null,
   requires: {
     projectCheckout: true,
@@ -40,6 +41,7 @@ const personalProvider: SystemEnvironmentProvider = {
   logoUrl: null,
   pluginId: "environment-personal-workspace",
   acceptsEmptyInputs: true,
+  machineAvailability: {},
   availability: null,
   requires: {
     projectCheckout: false,
@@ -57,6 +59,7 @@ const machineContainerProvider: SystemEnvironmentProvider = {
   logoUrl: null,
   pluginId: "containers",
   acceptsEmptyInputs: false,
+  machineAvailability: {},
   availability: null,
   requires: {
     projectCheckout: false,

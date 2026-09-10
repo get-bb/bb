@@ -13,6 +13,8 @@ import {
   accountPoolConfigSetInputSchema,
   codexLoginPollSchema,
   codexLoginStartSchema,
+  routedThreadStatusListSchema,
+  statusReportSchema,
   statusSchema,
   type AccountSummary,
 } from "./contracts.js";
@@ -217,10 +219,12 @@ async function createFixture(args: {
   await vi.waitFor(async () => {
     const result = await host.harness.behavior.runCli(["status", "--json"]);
     expect(result.exitCode).toBe(0);
-    expect(statusSchema.parse(JSON.parse(result.stdout)).accepting).toBe(true);
+    expect(statusReportSchema.parse(JSON.parse(result.stdout)).accepting).toBe(
+      true,
+    );
   });
   const statusResult = await host.harness.behavior.runCli(["status", "--json"]);
-  const status = statusSchema.parse(JSON.parse(statusResult.stdout));
+  const status = statusReportSchema.parse(JSON.parse(statusResult.stdout));
   const account = status.accounts.find(
     (candidate) => candidate.id === accountMetadata.id,
   );
@@ -1020,7 +1024,7 @@ describe("Account Pool plugin", () => {
       "status",
       "--json",
     ]);
-    const status = statusSchema.parse(JSON.parse(statusResult.stdout));
+    const status = statusReportSchema.parse(JSON.parse(statusResult.stdout));
     expect(status.accepting).toBe(true);
     expect(status.hosts).toEqual([]);
     expect(
@@ -1130,7 +1134,7 @@ describe("Account Pool plugin", () => {
         ])
       ).exitCode,
     ).toBe(0);
-    const publicStatus = statusSchema.parse(
+    const publicStatus = statusReportSchema.parse(
       JSON.parse(
         (await fixture.host.harness.behavior.runCli(["status", "--json"]))
           .stdout,
@@ -1675,10 +1679,10 @@ describe("Account Pool plugin", () => {
         ],
       }),
     );
-    const status = statusSchema.parse(
-      await fixture.host.harness.behavior.callRpc("status.get", null),
+    const routedThreads = routedThreadStatusListSchema.parse(
+      await fixture.host.harness.behavior.callRpc("status.routedThreads", null),
     );
-    expect(status.routedThreadsWithoutLocalLogin).toEqual([
+    expect(routedThreads).toEqual([
       {
         threadId: "thread-one",
         hostId: "host-one",
@@ -1763,10 +1767,10 @@ describe("Account Pool plugin", () => {
         },
       ],
     }));
-    const status = statusSchema.parse(
-      await fixture.host.harness.behavior.callRpc("status.get", null),
+    const routedThreads = routedThreadStatusListSchema.parse(
+      await fixture.host.harness.behavior.callRpc("status.routedThreads", null),
     );
-    expect(status.routedThreadsWithoutLocalLogin).toEqual([
+    expect(routedThreads).toEqual([
       {
         threadId: "thread-one",
         hostId: "host-one",

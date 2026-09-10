@@ -221,7 +221,8 @@ active-thread composer shortcuts when no typeahead suggestion is active. A
 queued message waits and then runs when the agent stops. A steer message goes
 to the agent during the current run. The picker defaults to "Steer" for a new
 install: Enter steers and Command+Enter queues. "Queue" swaps them: Enter
-queues and Command+Enter steers. An earlier install with saved settings or work
+queues and Command+Enter steers. Ctrl+Enter is the same modifier shortcut on
+Windows and Linux. An earlier install with saved settings or work
 keeps "Queue" because a one-time migration stamps the old default onto it. Set
 it with
 `bb settings general steerActiveThreadOnEnter <true|false>`, where `true` is
@@ -261,13 +262,8 @@ provider new threads use when neither the caller nor the project chose one
 `bb settings general defaultProviderId claude-code` (or `null`).
 
 Each provider's own options live on its plugin: Codex memory and native
-subagents under the Codex provider plugin, Claude Code memory, native
-subagents, the Workflow tool, and opt-in idle process release under the Claude
-Code provider plugin. Idle process release closes a quiescent Claude process
-after 30 seconds while keeping its bb thread resumable; it defaults off during
-its bake period and applies on the next start, resume, or turn command. Read and
-set provider options like any plugin setting, for example
-`bb plugin config provider-claude-code set idleQueryReleaseEnabled true`.
+subagents under the Codex provider plugin, and Claude Code memory, native
+subagents, and the Workflow tool under the Claude Code provider plugin.
 
 Claude Code starts without its Claude in Chrome browser tools when bb runs it,
 even when the interactive `claude` CLI has Chrome enabled by default. Turn the
@@ -854,21 +850,21 @@ need the experiment on, the bb paired (`bb connect --code …`), and the connect
 plugin enabled; with the experiment off the panel hides the section and
 `bb connect machine-code` exits 1 with a pointer to the toggle.
 
-## Experiments
+## Message editing
 
-Experimental surfaces are changed in Settings → Experiments or with
-`bb settings experiment <key> <true|false>`. Most start off; `editMessages`
-starts on and its toggle is the opt-out.
-The default-off `changelogPreview` experiment shows the latest release notes
-as a compact, dismissible card on Settings → Updates.
-The `editMessages` experiment is on by default and enables replacing an
-eligible, accepted root user message in a Codex, Claude Code, or Pi thread,
-including failed or incomplete turns. Turn it off to hide the editor. Grouped
+Message editing is available for eligible, accepted root user messages in a
+Codex, Claude Code, or Pi thread, including failed or incomplete turns. Grouped
 multi-message requests are not yet editable. Opening the editor does not change
 history; if the thread is running, submission stops the current turn and waits
 for it to settle before atomically replacing that message and every later turn
 while keeping workspace changes.
 
+## Experiments
+
+Experimental surfaces are changed in Settings → Experiments or with
+`bb settings experiment <key> <true|false>`. All experiments start off.
+The default-off `changelogPreview` experiment shows the latest release notes
+as a compact, dismissible card on Settings → Updates.
 The `mobileApp` experiment turns on pairing for the bb mobile app: the
 **Add mobile device** card under Settings → Remote access and the
 `bb connect machine-code` command (see "Pairing the bb mobile app" above). It
@@ -892,34 +888,33 @@ wrappers while mounting only rows near their active scrollport. Toggle it with
 
 ## Thread Timeline Window
 
-A thread-timeline window is bounded by segment (user-message) count _and_ by
-event count. Segment count alone is a weak bound on work, because an agentic
-turn can be thousands of events: a thread with 21 user messages and 21k events
-used to reproject its entire history on every timeline request. That projection
-is synchronous, so it blocked the server's event loop — which also delayed
-`/internal/session/events`, the endpoint the host daemon awaits before every
-dynamic tool call and before registering every interactive request. One slow
-thread therefore slowed agent work on _every_ thread on the host.
+Timeline pages select conversation groups using user-message anchors. The
+`BB_FF_TIMELINE_WINDOW_EVENT_BUDGET` setting (default 1500) guides the number
+of groups selected and limits the number of content leaves returned. Grouping
+loads complete selected turns, their delegation descendants, and lifecycle
+context. The setting is not a hard limit on query bytes, event count, or CPU:
+one large turn can require substantially more work.
 
-A window is capped at `BB_FF_TIMELINE_WINDOW_EVENT_BUDGET` events (default 1500) and returns however many whole turns fit. Older turns load automatically
-as you scroll toward the top of the loaded window; a manual "Load older
-messages" button remains on surfaces that render no scroll body, and after a
-failed page so a broken fetch is retried on request rather than in a loop.
-Nothing becomes unreachable — pagination still walks the full history, and the
-head-state banners (goal, pending todos, running workflows, background
-commands) are resolved by thread-scoped lookups rather than by scanning the
-window, so a narrow window cannot drop them mid-session.
+Pages target 4 MiB of rendered rows. An oversized group is continued by an
+opaque content cursor after grouping. Turn/delegation ancestors keep their
+canonical IDs, source ranges, and summary counts while their children are
+paged. A single indivisible row may exceed the byte target; its content is not
+silently discarded. Retained tool-output previews and full-output availability
+continue to use the large-output sidecar policy.
 
-A turn larger than the whole budget is cut at the budget while it is _running_,
-so watching an agent work through a very long turn costs the budget per update
-rather than the whole turn; scrolling up loads the earlier part. Once the turn
-finishes it is rendered whole again, because a finished turn collapses into one
-summary row that two pages cannot each own — so the budget bounds a running turn
-and a long thread, but not a single finished oversized turn.
+A walk is bound to its initial history sequence, grouping version, and display
+options. Appends do not move that snapshot. Edits, deletions, or out-of-order
+insertions invalidate its cursor, including after a server restart. A new
+latest response replaces the client's loaded snapshot when its identity
+changes; old page responses cannot merge into it. This conservative behavior
+also handles late events that change earlier grouping. It can require loading
+older pages again during live updates.
 
-Raising the budget far above the default restores the previous
-unbounded-in-practice behavior; it is an operator escape hatch set at server
-start, not a product setting.
+Older activity loads as the user scrolls. `bb thread log --all` walks one
+snapshot and joins repeated summary ancestors; rerun it if an edit invalidates
+the walk. The API and SDK contract is described in
+[timeline-pagination.md](timeline-pagination.md). The budget is a server-start
+operator setting, not an app preference.
 
 Timeline builds slower than 150ms log `Thread timeline build blocked the event
 loop` with a per-stage breakdown, and event-loop stalls over 500ms log `Event

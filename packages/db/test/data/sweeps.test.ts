@@ -178,6 +178,54 @@ describe("pruneClosedSessions", () => {
 });
 
 describe("pruneDestroyedEnvironments", () => {
+  it("bounds large event rewrites by bytes while still detaching an oversized row", () => {
+    const { db, host, project } = setup();
+    const environment = createEnvironment(db, noopNotifier, {
+      providerOwnsPath: false,
+      projectId: project.id,
+      hostId: host.id,
+      status: "destroyed",
+    });
+    const thread = createThread(db, noopNotifier, {
+      projectId: project.id,
+      environmentId: environment.id,
+      providerId: "codex",
+    });
+    for (let sequence = 1; sequence <= 3; sequence++) {
+      db.insert(events)
+        .values({
+          id: `large-detach-${sequence}`,
+          threadId: thread.id,
+          environmentId: environment.id,
+          scopeKind: "thread",
+          sequence,
+          type: "thread/started",
+          data: JSON.stringify({
+            payload: "x".repeat(sequence === 1 ? 512 * 1024 : 150 * 1024),
+          }),
+          createdAt: 1,
+        })
+        .run();
+    }
+    const args = {
+      updatedBefore: Date.now() + 1000,
+      eventBatchSize: 50,
+      limit: 1,
+    };
+    for (let i = 0; i < 3; i++) {
+      expect(pruneDestroyedEnvironments(db, noopNotifier, args)).toEqual({
+        deleted: 0,
+        detachedEvents: 1,
+      });
+    }
+    expect(pruneDestroyedEnvironments(db, noopNotifier, args)).toEqual({
+      deleted: 1,
+      detachedEvents: 0,
+    });
+    expect(db.select({ data: events.data }).from(events).all()).toHaveLength(3);
+    db.$client.close();
+  });
+
   it("resumes event detachment from persisted progress before notifying deletion", () => {
     const { db, host, project } = setup();
     const now = Date.now();

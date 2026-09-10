@@ -245,6 +245,21 @@ export type SystemConfigReloadResponse = z.infer<
   typeof systemConfigReloadResponseSchema
 >;
 
+const systemEnvironmentProviderAvailabilitySchema = z.discriminatedUnion(
+  "status",
+  [
+    z.object({ status: z.literal("available") }),
+    z.object({
+      status: z.literal("setup-required"),
+      message: z.string().min(1),
+    }),
+    z.object({
+      status: z.literal("unavailable"),
+      message: z.string().min(1),
+    }),
+  ],
+);
+
 export const systemEnvironmentProviderSchema = z.object({
   id: z.string().min(1),
   displayName: z.string().min(1),
@@ -259,19 +274,11 @@ export const systemEnvironmentProviderSchema = z.object({
   }),
   inputs: jsonValueSchema.nullable(),
   acceptsEmptyInputs: z.boolean(),
-  availability: z
-    .discriminatedUnion("status", [
-      z.object({ status: z.literal("available") }),
-      z.object({
-        status: z.literal("setup-required"),
-        message: z.string().min(1),
-      }),
-      z.object({
-        status: z.literal("unavailable"),
-        message: z.string().min(1),
-      }),
-    ])
-    .nullable(),
+  availability: systemEnvironmentProviderAvailabilitySchema.nullable(),
+  machineAvailability: z.record(
+    z.string().min(1),
+    systemEnvironmentProviderAvailabilitySchema.nullable(),
+  ),
 });
 export type SystemEnvironmentProvider = z.infer<
   typeof systemEnvironmentProviderSchema
