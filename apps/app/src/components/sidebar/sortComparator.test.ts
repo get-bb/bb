@@ -111,6 +111,42 @@ function order(comparator: ThreadComparator, entries: ThreadListEntry[]) {
 }
 
 describe("getSidebarThreadComparator", () => {
+  it.each(["updated", "created"] as const)(
+    "reverses %s dates without changing the default",
+    (sort) => {
+      expect(
+        order(getSidebarThreadComparator(sort, undefined, "ascending"), [
+          cherry,
+          apple,
+          banana,
+        ]),
+      ).toEqual(["thr_a", "thr_b", "thr_c"]);
+      expect(
+        order(getSidebarThreadComparator(sort, undefined, "default"), [
+          apple,
+          banana,
+          cherry,
+        ]),
+      ).toEqual(["thr_c", "thr_b", "thr_a"]);
+    },
+  );
+
+  it("reverses both thread and group alphabetical comparison", () => {
+    const comparator = getSidebarThreadComparator(
+      "alpha",
+      undefined,
+      "descending",
+    );
+    expect(order(comparator, [apple, banana, cherry])).toEqual([
+      "thr_c",
+      "thr_b",
+      "thr_a",
+    ]);
+    expect(
+      comparator.compareItems?.(sectionItem("Apple"), sectionItem("Zebra")),
+    ).toBeGreaterThan(0);
+  });
+
   it("created lists newest first", () => {
     expect(
       order(getSidebarThreadComparator("created"), [apple, banana, cherry]),

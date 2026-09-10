@@ -237,6 +237,13 @@ lists and `null`; it reads the current revision, writes with it, and retries
 once on a conflict. `reset` writes the default. The SDK offers
 `sdk.system.uiPreferences.list()`, `.set()`, and `.reset()`.
 
+Every thread-list header's actions menu offers New project, New section,
+Organize, and Sort by. Organize selects By project, By machine, or Custom;
+Sort by selects a field, and selecting it again reverses its arrow/direction.
+`sidebar.sortDirection` accepts `ascending`, `descending`, or `default`.
+The default preserves each field's original order (newest first for dates,
+A–Z for titles). For example: `bb settings ui set sidebar.sortDirection ascending`.
+
 Client-local UI preferences
 
 Some Settings values live only in the current browser/client. Sidebar width

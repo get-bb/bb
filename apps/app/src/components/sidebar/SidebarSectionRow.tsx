@@ -1,4 +1,8 @@
 import {
+  SidebarHeaderControls,
+  SidebarSectionMenuItems,
+} from "./SidebarHeaderControls";
+import {
   memo,
   useCallback,
   useState,
@@ -6,19 +10,9 @@ import {
   type MouseEvent,
   type MouseEventHandler,
 } from "react";
-import { Button } from "@bb/shared-ui/button";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from "@bb/shared-ui/dropdown-menu";
-import { Icon } from "@bb/shared-ui/icon";
 import { SidebarStickyTier } from "@/components/ui/sidebar.js";
-import { Tooltip, TooltipContent, TooltipTrigger } from "@bb/shared-ui/tooltip";
 import {
   COARSE_POINTER_COMPACT_ROW_HEIGHT_CLASS,
-  COARSE_POINTER_ICON_SIZE_CLASS,
   COARSE_POINTER_ROW_ACTION_SIZE_CLASS,
 } from "@bb/shared-ui/coarse-pointer-sizing";
 import { LIST_HOVER_TRANSITION } from "@bb/shared-ui/motion";
@@ -32,7 +26,6 @@ import {
 import { cn } from "@bb/shared-ui/lib/utils";
 import type { CollapsedChildActivity } from "@bb/client-core";
 import {
-  SIDEBAR_MORE_ACTION_TRIGGER_CLASS,
   SIDEBAR_ROW_BASE_CLASS,
   SIDEBAR_ROW_STATIC_STATE_CLASS,
   getSidebarThreadRowPaddingLeft,
@@ -197,67 +190,16 @@ function SidebarSectionRowComponent({
                 {renderRollupIndicator()}
               </span>
             ) : null}
-            {hasMenuActions ? (
-              <DropdownMenu onOpenChange={setIsActionsOpen}>
-                <DropdownMenuTrigger asChild>
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="icon"
-                    aria-label={`${label} section actions`}
-                    className={cn(
-                      "rounded-md p-0 text-subtle-foreground hover:bg-transparent hover:text-foreground",
-                      SIDEBAR_MORE_ACTION_TRIGGER_CLASS,
-                    )}
-                  >
-                    <Icon
-                      name="MoreHorizontal"
-                      className={COARSE_POINTER_ICON_SIZE_CLASS}
-                    />
-                  </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="end">
-                  {onRename ? (
-                    <DropdownMenuItem onSelect={onRename}>
-                      <Icon name="Edit" aria-hidden="true" />
-                      Rename
-                    </DropdownMenuItem>
-                  ) : null}
-                  {onRemove ? (
-                    <DropdownMenuItem variant="destructive" onSelect={onRemove}>
-                      <Icon name="Trash2" aria-hidden="true" />
-                      Remove
-                    </DropdownMenuItem>
-                  ) : null}
-                </DropdownMenuContent>
-              </DropdownMenu>
-            ) : null}
-            {onCreateThread ? (
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="icon"
-                    aria-label={`New thread in ${label}`}
-                    onClick={(event) => {
-                      event.stopPropagation();
-                      onCreateThread();
-                    }}
-                    className={cn(
-                      "rounded-md p-0 text-subtle-foreground hover:bg-transparent hover:text-foreground",
-                      COARSE_POINTER_ROW_ACTION_SIZE_CLASS,
-                    )}
-                  >
-                    <Icon
-                      name="MessageSquarePlus"
-                      className={COARSE_POINTER_ICON_SIZE_CLASS}
-                    />
-                  </Button>
-                </TooltipTrigger>
-                <TooltipContent side="bottom">New thread</TooltipContent>
-              </Tooltip>
-            ) : null}
+            <SidebarHeaderControls
+              label={`${label} section`}
+              onNewThread={onCreateThread}
+              onOpenChange={setIsActionsOpen}
+            >
+              <SidebarSectionMenuItems
+                onRename={onRename}
+                onRemove={onRemove}
+              />
+            </SidebarHeaderControls>
           </span>
         ) : showRollupIndicator ? (
           <span className="hidden size-full items-center justify-center text-subtle-foreground max-md:pointer-coarse:inline-flex">

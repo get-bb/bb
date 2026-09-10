@@ -1,4 +1,7 @@
-import { COARSE_POINTER_DOT_SIZE_CLASS } from "@bb/shared-ui/coarse-pointer-sizing";
+import {
+  COARSE_POINTER_DOT_SIZE_CLASS,
+  COARSE_POINTER_ROW_ACTION_SIZE_CLASS,
+} from "@bb/shared-ui/coarse-pointer-sizing";
 import { CONTEXT_SELECTION_SURFACE_CLASS } from "@/components/ui/context-selection";
 
 export const SIDEBAR_ROW_BASE_CLASS =
@@ -21,6 +24,14 @@ const SIDEBAR_THREAD_ROW_DEPTH_STEP_PX = 24;
 const SIDEBAR_THREAD_ROW_GLYPH_CENTER_OFFSET_PX = 8;
 
 export const SIDEBAR_STANDARD_ROW_PADDING_CLASS = "pl-2";
+
+export const SIDEBAR_CONTROL_TONE_CLASS =
+  "text-subtle-foreground/75 hover:text-subtle-foreground focus-visible:text-subtle-foreground data-[state=open]:text-subtle-foreground";
+
+export const SIDEBAR_CONTROL_BUTTON_CLASS = `${COARSE_POINTER_ROW_ACTION_SIZE_CLASS} ${SIDEBAR_CONTROL_TONE_CLASS} relative m-0 shrink-0 cursor-pointer rounded-md p-0 outline-none ring-sidebar-ring hover:bg-sidebar-accent focus-visible:ring-2 data-[state=open]:bg-state-active`;
+
+export const SIDEBAR_CONTROL_PAIR_SIZE_CLASS =
+  "h-7 w-[3.625rem] max-md:pointer-coarse:h-9 max-md:pointer-coarse:w-[4.625rem]";
 
 export function getSidebarThreadRowPaddingLeft(depth: number): number {
   return (

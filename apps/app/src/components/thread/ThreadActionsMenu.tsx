@@ -96,9 +96,7 @@ function ThreadActionsMenuItems({
               {action.label}
             </ActionMenuItem>
           ))}
-          {showSeparators ? (
-            <ActionMenuSeparator surface={surface} />
-          ) : null}
+          {showSeparators ? <ActionMenuSeparator surface={surface} /> : null}
         </>
       ) : null}
       {onOpenInSplit ? (
@@ -112,9 +110,7 @@ function ThreadActionsMenuItems({
           >
             Open in split
           </ActionMenuItem>
-          {showSeparators ? (
-            <ActionMenuSeparator surface={surface} />
-          ) : null}
+          {showSeparators ? <ActionMenuSeparator surface={surface} /> : null}
         </>
       ) : null}
       <ActionMenuItem
@@ -244,8 +240,8 @@ export function ThreadActionsMenu({
           size="icon"
           className={cn(
             "rounded-md p-0",
-            triggerClassName,
             "data-[state=open]:bg-state-active data-[state=open]:text-foreground",
+            triggerClassName,
           )}
           aria-label="Thread actions"
           onClick={(event) => {

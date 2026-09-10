@@ -35,6 +35,7 @@ const uiPreferenceStringListSchema = z
 export const UI_PREFERENCE_KEYS = [
   "sidebar.organizationMode",
   "sidebar.chronologicalSort",
+  "sidebar.sortDirection",
   "sidebar.sectionOrder",
   "sidebar.manualSectionOrder",
   "sidebar.machineSectionOrder",
@@ -80,6 +81,11 @@ export const uiPreferenceDefinitions = {
     sidebarChronologicalSortSchema,
     "updated",
     "Sort order for the chronological sidebar organization.",
+  ),
+  "sidebar.sortDirection": defineUiPreference(
+    z.enum(["default", "ascending", "descending"]),
+    "default",
+    "Sidebar thread sort direction; default preserves the selected field's original direction.",
   ),
   "sidebar.sectionOrder": defineUiPreference(
     uiPreferenceStringListSchema,

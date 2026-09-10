@@ -494,18 +494,14 @@ describe("ProjectRow interactions", () => {
       screen.getByRole("button", { name: "Environment actions" }),
       { button: 0 },
     );
-    fireEvent.click(
-      await screen.findByRole("menuitem", { name: "Rename environment" }),
-    );
+    fireEvent.click(await screen.findByRole("menuitem", { name: "Rename" }));
 
     expect(
       await screen.findByRole("dialog", { name: "Rename environment" }),
     ).not.toBeNull();
     expect(screen.getByText("feat/menu-close")).not.toBeNull();
     await waitFor(() => {
-      expect(
-        screen.queryByRole("menuitem", { name: "Rename environment" }),
-      ).toBeNull();
+      expect(screen.queryByRole("menuitem", { name: "Rename" })).toBeNull();
     });
   });
 
@@ -574,9 +570,7 @@ describe("ProjectRow interactions", () => {
       screen.getByRole("button", { name: "Environment actions" }),
       { button: 0 },
     );
-    fireEvent.click(
-      await screen.findByRole("menuitem", { name: "Rename environment" }),
-    );
+    fireEvent.click(await screen.findByRole("menuitem", { name: "Rename" }));
     expect(
       await screen.findByRole("dialog", { name: "Rename environment" }),
     ).not.toBeNull();
