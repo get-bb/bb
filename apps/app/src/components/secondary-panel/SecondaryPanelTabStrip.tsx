@@ -31,6 +31,14 @@ import { CSS } from "@dnd-kit/utilities";
 import { Button } from "@bb/shared-ui/button";
 import { Icon } from "@bb/shared-ui/icon";
 import {
+  ContextMenu,
+  ContextMenuContent,
+  ContextMenuItem,
+  ContextMenuSeparator,
+  ContextMenuTrigger,
+} from "@bb/shared-ui/context-menu";
+import { useIsCompactViewport } from "@bb/shared-ui/hooks/use-compact-viewport";
+import {
   OverflowFade,
   type OverflowFadeTone,
 } from "@/components/ui/overflow-fade";
@@ -85,11 +93,34 @@ export interface SecondaryPanelTabStripProps {
   isPanelOpen: boolean;
 }
 
+export type SecondaryPanelTabCloseScope = "self" | "others" | "right";
+
+export function secondaryPanelTabsToClose(
+  tabs: readonly SecondaryPanelRenderableTab[],
+  tabId: string,
+  scope: SecondaryPanelTabCloseScope,
+): SecondaryPanelRenderableTab[] {
+  const index = tabs.findIndex((tab) => tab.tab.id === tabId);
+  if (index === -1) {
+    return [];
+  }
+  const candidates =
+    scope === "self"
+      ? tabs.slice(index, index + 1)
+      : scope === "right"
+        ? tabs.slice(index + 1)
+        : tabs.filter((tab) => tab.tab.id !== tabId);
+  return candidates.filter((tab) => !tab.isPinned);
+}
+
 interface SortablePanelTabProps {
   isActive: boolean;
   activeTabRef: RefObject<HTMLDivElement | null>;
+  contextMenuDisabled: boolean;
   dragDisabled: boolean;
   noDragClass: string | null;
+  onCloseTabs: (tabId: string, scope: SecondaryPanelTabCloseScope) => void;
+  tabs: readonly SecondaryPanelRenderableTab[];
   onBeginTabDrag?: (
     tabId: string,
     event: ReactPointerEvent<HTMLElement>,
@@ -330,6 +361,23 @@ export function SecondaryPanelTabStrip({
     [consumeDragClickSuppression],
   );
 
+  const isCompactViewport = useIsCompactViewport();
+  const handleCloseTabs = useCallback(
+    (tabId: string, scope: SecondaryPanelTabCloseScope) => {
+      const tabsToClose = secondaryPanelTabsToClose(tabs, tabId, scope);
+      const closesActiveTab = tabsToClose.some(
+        (tab) => tab.tab.id === activeTabId,
+      );
+      if (scope !== "self" && closesActiveTab) {
+        tabs.find((tab) => tab.tab.id === tabId)?.onSelect();
+      }
+      for (const tab of tabsToClose) {
+        tab.onClose();
+      }
+    },
+    [activeTabId, tabs],
+  );
+
   const noDragClass = usesDesktopChrome ? MACOS_WINDOW_NO_DRAG_CLASS : null;
   const chevronNoDragClass = usesDesktopChrome
     ? MACOS_APP_REGION_NO_DRAG_CLASS
@@ -351,11 +399,14 @@ export function SecondaryPanelTabStrip({
             <SortablePanelTab
               key={tab.tab.id}
               activeTabRef={activeTabRef}
+              contextMenuDisabled={isCompactViewport}
               dragDisabled={dragDisabled}
               isActive={tab.tab.id === activeTabId}
               noDragClass={noDragClass}
               onBeginTabDrag={onBeginTabDrag}
+              onCloseTabs={handleCloseTabs}
               tab={tab}
+              tabs={tabs}
             />
           ))}
         </SortableContext>
@@ -381,8 +432,10 @@ export function SecondaryPanelTabStrip({
       tabIds,
       tabs,
       dragDisabled,
+      isCompactViewport,
       noDragClass,
       onBeginTabDrag,
+      handleCloseTabs,
       draggingTab,
       activeTabId,
     ],
@@ -451,11 +504,14 @@ export function SecondaryPanelTabStrip({
 
 function SortablePanelTab({
   activeTabRef,
+  contextMenuDisabled,
   dragDisabled,
   isActive,
   noDragClass,
   onBeginTabDrag,
+  onCloseTabs,
   tab,
+  tabs,
 }: SortablePanelTabProps) {
   const { isDragging, listeners, setNodeRef, transform, transition } =
     useSortable({
@@ -481,24 +537,57 @@ function SortablePanelTab({
     [transform, transition],
   );
 
+  const tabId = tab.tab.id;
+  const canCloseSelf =
+    secondaryPanelTabsToClose(tabs, tabId, "self").length > 0;
+  const canCloseOthers =
+    secondaryPanelTabsToClose(tabs, tabId, "others").length > 0;
+  const canCloseRight =
+    secondaryPanelTabsToClose(tabs, tabId, "right").length > 0;
+
   return (
-    <div
-      ref={setTabRef}
-      style={style}
-      className={cn(
-        "shrink-0",
-        !dragDisabled && "cursor-grab active:cursor-grabbing",
-        isDragging && "opacity-40",
-        noDragClass,
-      )}
-      onPointerDown={(event) => {
-        onBeginTabDrag?.(tab.tab.id, event);
-        sortablePointerDown?.(event);
-      }}
-      {...sortableListeners}
-    >
-      <PanelTab tab={tab} isActive={isActive} />
-    </div>
+    <ContextMenu>
+      <ContextMenuTrigger asChild disabled={contextMenuDisabled}>
+        <div
+          ref={setTabRef}
+          style={style}
+          className={cn(
+            "shrink-0",
+            !dragDisabled && "cursor-grab active:cursor-grabbing",
+            isDragging && "opacity-40",
+            noDragClass,
+          )}
+          onPointerDown={(event) => {
+            onBeginTabDrag?.(tabId, event);
+            sortablePointerDown?.(event);
+          }}
+          {...sortableListeners}
+        >
+          <PanelTab tab={tab} isActive={isActive} />
+        </div>
+      </ContextMenuTrigger>
+      <ContextMenuContent aria-label={`${tab.label} tab actions`}>
+        <ContextMenuItem
+          disabled={!canCloseSelf}
+          onSelect={() => onCloseTabs(tabId, "self")}
+        >
+          Close tab
+        </ContextMenuItem>
+        <ContextMenuSeparator />
+        <ContextMenuItem
+          disabled={!canCloseOthers}
+          onSelect={() => onCloseTabs(tabId, "others")}
+        >
+          Close other tabs
+        </ContextMenuItem>
+        <ContextMenuItem
+          disabled={!canCloseRight}
+          onSelect={() => onCloseTabs(tabId, "right")}
+        >
+          Close tabs to the right
+        </ContextMenuItem>
+      </ContextMenuContent>
+    </ContextMenu>
   );
 }
 
