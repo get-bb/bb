@@ -285,6 +285,10 @@ function ThreadListStoryFixture({ children }: { children: ReactNode }) {
   const [ready, setReady] = useState(false);
 
   useLayoutEffect(() => {
+    const initialPath = initialLocation.current;
+    const initialMode = initialOrganizationMode.current;
+    const wasSettled = initiallySettled.current;
+    const navigateTo = navigate.current;
     const queryFixtures = [
       {
         queryKey: sidebarNavigationQueryKey(),
@@ -539,9 +543,9 @@ function ThreadListStoryFixture({ children }: { children: ReactNode }) {
       store.set(collapsedSidebarSectionIdsAtom, previousSections);
       store.set(sidebarChronologicalSortAtom, previousSort);
       store.set(sidebarSortDirectionAtom, previousDirection);
-      if (!initiallySettled.current) resetPluginFrontendBootStateForTest();
-      navigate.current(initialLocation.current, { replace: true });
-      setOrganizationMode(initialOrganizationMode.current);
+      if (!wasSettled) resetPluginFrontendBootStateForTest();
+      navigateTo(initialPath, { replace: true });
+      setOrganizationMode(initialMode);
       for (const { queryKey, previous } of [
         ...previousQueries,
         ...previousThreadQueries,

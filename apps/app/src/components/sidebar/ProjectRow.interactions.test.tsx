@@ -559,9 +559,7 @@ describe("ProjectRow interactions", () => {
       screen.getByRole("button", { name: "Environment actions" }),
       { button: 0 },
     );
-    fireEvent.click(
-      await screen.findByRole("menuitem", { name: "Archive environment" }),
-    );
+    fireEvent.click(await screen.findByRole("menuitem", { name: "Archive" }));
     expect(mockArchiveEnvironmentThreads.mutateAsync).toHaveBeenCalledWith({
       id: "env_plain",
     });
