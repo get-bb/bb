@@ -163,13 +163,6 @@ const DETAIL_ROUTES = [
   },
 ] as const;
 
-const BROWSE_ROUTES = [["skills", REGISTRY_SKILLS_ROUTE_PATH]] as const;
-
-const ROOT_ROUTE_ALIASES: Record<ToolsSectionId, readonly string[]> = {
-  skills: [],
-  plugins: [],
-};
-
 export function resolveToolsBreadcrumbs(
   pathname: string,
   search = "",
@@ -183,18 +176,21 @@ export function resolveToolsBreadcrumbs(
   if (pluginCreateBreadcrumbs !== null) {
     return pluginCreateBreadcrumbs;
   }
-  for (const [section, browseRoute] of BROWSE_ROUTES) {
-    if (pathname === browseRoute) {
-      return [sectionCrumb(section), { label: "Browse" }];
-    }
+  if (pathname === REGISTRY_SKILLS_ROUTE_PATH) {
+    return [sectionCrumb("skills"), { label: "Browse" }];
   }
 
   for (const section of [TOOLS_SECTIONS.plugins, TOOLS_SECTIONS.skills]) {
-    if (
-      pathname === section.to &&
-      view !== TOOLS_OWNED_COLLECTION_VIEW[section.id]
-    ) {
-      return [sectionCrumb(section.id), { label: "Browse" }];
+    if (pathname === section.to) {
+      return [
+        sectionCrumb(section.id),
+        {
+          label:
+            view === TOOLS_OWNED_COLLECTION_VIEW[section.id]
+              ? TOOLS_OWNED_COLLECTION_LABEL[section.id]
+              : "Browse",
+        },
+      ];
     }
   }
 
@@ -217,23 +213,6 @@ export function resolveToolsBreadcrumbs(
     ];
   }
 
-  for (const section of [TOOLS_SECTIONS.plugins, TOOLS_SECTIONS.skills]) {
-    if (
-      pathname === section.to ||
-      ROOT_ROUTE_ALIASES[section.id].includes(pathname)
-    ) {
-      if (
-        pathname === section.to &&
-        view !== TOOLS_OWNED_COLLECTION_VIEW[section.id]
-      ) {
-        continue;
-      }
-      return [
-        sectionCrumb(section.id),
-        { label: TOOLS_OWNED_COLLECTION_LABEL[section.id] },
-      ];
-    }
-  }
   return null;
 }
 
@@ -243,7 +222,6 @@ interface ResourcePageDefinition {
     | "plugins-installed"
     | "skills-browse"
     | "skills-library";
-  section: ToolsSectionId;
   label: string;
   to: string;
 }
@@ -251,13 +229,11 @@ interface ResourcePageDefinition {
 export const PLUGIN_PAGES: readonly ResourcePageDefinition[] = [
   {
     id: "plugins-browse",
-    section: "plugins",
-    label: `Browse ${TOOLS_SECTIONS.plugins.label.toLowerCase()}`,
+    label: "Browse plugins",
     to: TOOLS_SECTIONS.plugins.to,
   },
   {
     id: "plugins-installed",
-    section: "plugins",
     label: "Installed plugins",
     to: `${TOOLS_SECTIONS.plugins.to}?view=installed`,
   },
@@ -266,13 +242,11 @@ export const PLUGIN_PAGES: readonly ResourcePageDefinition[] = [
 export const SKILL_PAGES: readonly ResourcePageDefinition[] = [
   {
     id: "skills-browse",
-    section: "skills",
-    label: `Browse ${TOOLS_SECTIONS.skills.label.toLowerCase()}`,
+    label: "Browse skills",
     to: TOOLS_SECTIONS.skills.to,
   },
   {
     id: "skills-library",
-    section: "skills",
     label: TOOLS_OWNED_COLLECTION_LABEL.skills,
     to: getToolsOwnedCollectionRoutePath("skills"),
   },

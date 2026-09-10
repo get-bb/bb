@@ -31,26 +31,21 @@ export function seedSkillsNavigationPreference(
 ): { order: string[]; visibleKeys: string[] | null } {
   const { extensions, skills } = BUILT_IN_SIDEBAR_NAVIGATION_KEYS;
   const pluginsIndex = order.indexOf(extensions);
-  if (pluginsIndex === -1 || order.includes(skills)) {
-    return {
-      order: [...order],
-      visibleKeys: visibleKeys === null ? null : [...visibleKeys],
-    };
-  }
   const nextOrder = [...order];
-  nextOrder.splice(pluginsIndex + 1, 0, skills);
-  if (
-    visibleKeys === null ||
-    !visibleKeys.includes(extensions) ||
-    visibleKeys.includes(skills)
-  ) {
-    return {
-      order: nextOrder,
-      visibleKeys: visibleKeys === null ? null : [...visibleKeys],
-    };
+  const nextVisibleKeys = visibleKeys === null ? null : [...visibleKeys];
+  if (pluginsIndex !== -1 && !order.includes(skills)) {
+    nextOrder.splice(pluginsIndex + 1, 0, skills);
+    if (
+      nextVisibleKeys?.includes(extensions) &&
+      !nextVisibleKeys.includes(skills)
+    ) {
+      nextVisibleKeys.splice(
+        nextVisibleKeys.indexOf(extensions) + 1,
+        0,
+        skills,
+      );
+    }
   }
-  const nextVisibleKeys = [...visibleKeys];
-  nextVisibleKeys.splice(nextVisibleKeys.indexOf(extensions) + 1, 0, skills);
   return { order: nextOrder, visibleKeys: nextVisibleKeys };
 }
 

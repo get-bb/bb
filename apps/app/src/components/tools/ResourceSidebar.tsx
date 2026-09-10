@@ -8,15 +8,19 @@ import {
 import {
   PLUGIN_PAGES,
   resolveToolsActivePage,
-} from "@/components/tools/tools-navigation";
+  SKILL_PAGES,
+  type ToolsSectionId,
+} from "./tools-navigation";
 
-export function PluginsSidebar({
+export function ResourceSidebar({
+  workspace,
   appRoutePath,
   isResizing,
   mobileHosted,
   onResizeMouseDown,
   showTopReserve,
 }: {
+  workspace: ToolsSectionId;
   appRoutePath: string;
   isResizing: boolean;
   mobileHosted?: boolean;
@@ -25,6 +29,7 @@ export function PluginsSidebar({
 }) {
   const location = useLocation();
   const activePage = resolveToolsActivePage(location.pathname, location.search);
+  const pages = workspace === "plugins" ? PLUGIN_PAGES : SKILL_PAGES;
 
   return (
     <SectionSidebar
@@ -34,11 +39,13 @@ export function PluginsSidebar({
       mobileHosted={mobileHosted}
       onResizeMouseDown={onResizeMouseDown}
       showTopReserve={showTopReserve}
-      testIdPrefix="plugins"
+      testIdPrefix={workspace}
     >
-      <SectionSidebarLabel>Plugins</SectionSidebarLabel>
+      <SectionSidebarLabel>
+        {workspace === "plugins" ? "Plugins" : "Skills"}
+      </SectionSidebarLabel>
       <div className="mt-1 space-y-0.5">
-        {PLUGIN_PAGES.map((page) => (
+        {pages.map((page) => (
           <SectionSidebarRow
             key={page.id}
             active={activePage === page.id}

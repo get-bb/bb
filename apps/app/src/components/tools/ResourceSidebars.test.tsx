@@ -4,31 +4,21 @@ import { cleanup, render, screen } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, describe, expect, it } from "vitest";
 import { SidebarProvider } from "@/components/ui/sidebar";
-import { PluginsSidebar } from "@/components/plugin/PluginsSidebar";
-import { SkillsSidebar } from "./SkillsSidebar";
+import { ResourceSidebar } from "./ResourceSidebar";
+import type { ToolsSectionId } from "./tools-navigation";
 
 afterEach(cleanup);
 
-function renderPluginsAt(path: string, appRoutePath = "/") {
+function renderSidebarAt(
+  workspace: ToolsSectionId,
+  path: string,
+  appRoutePath = "/",
+) {
   return render(
     <MemoryRouter initialEntries={[path]}>
       <SidebarProvider>
-        <PluginsSidebar
-          appRoutePath={appRoutePath}
-          isResizing={false}
-          onResizeMouseDown={() => {}}
-          showTopReserve={false}
-        />
-      </SidebarProvider>
-    </MemoryRouter>,
-  );
-}
-
-function renderSkillsAt(path: string, appRoutePath = "/") {
-  return render(
-    <MemoryRouter initialEntries={[path]}>
-      <SidebarProvider>
-        <SkillsSidebar
+        <ResourceSidebar
+          workspace={workspace}
           appRoutePath={appRoutePath}
           isResizing={false}
           onResizeMouseDown={() => {}}
@@ -41,9 +31,9 @@ function renderSkillsAt(path: string, appRoutePath = "/") {
 
 const row = (name: string) => screen.getByRole("link", { name });
 
-describe("PluginsSidebar", () => {
+describe("Plugins sidebar", () => {
   it("owns only the Plugins pages and the app back target", () => {
-    renderPluginsAt("/plugins", "/projects/proj_one");
+    renderSidebarAt("plugins", "/plugins", "/projects/proj_one");
 
     expect(screen.getByText("Plugins")).toBeTruthy();
     expect(row("Browse plugins").getAttribute("href")).toBe("/plugins");
@@ -64,15 +54,15 @@ describe("PluginsSidebar", () => {
     ["/plugins/github", "Browse plugins"],
     ["/plugins/github?view=installed", "Installed plugins"],
   ])("marks %s as %s", (path, expected) => {
-    renderPluginsAt(path);
+    renderSidebarAt("plugins", path);
 
     expect(row(expected).getAttribute("aria-current")).toBe("page");
   });
 });
 
-describe("SkillsSidebar", () => {
+describe("Skills sidebar", () => {
   it("owns only the Skills pages and the app back target", () => {
-    renderSkillsAt("/skills", "/projects/proj_one");
+    renderSidebarAt("skills", "/skills", "/projects/proj_one");
 
     expect(screen.getByText("Skills")).toBeTruthy();
     expect(row("Browse skills").getAttribute("href")).toBe("/skills");
@@ -94,7 +84,7 @@ describe("SkillsSidebar", () => {
     ["/skills/library/my-skill", "My skills"],
     ["/skills/registry/owner%2Frepo%2Fskill", "Browse skills"],
   ])("marks %s as %s", (path, expected) => {
-    renderSkillsAt(path);
+    renderSidebarAt("skills", path);
 
     expect(row(expected).getAttribute("aria-current")).toBe("page");
   });

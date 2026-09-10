@@ -58,31 +58,26 @@ vi.mock("@/components/settings/SettingsSidebar", async () => {
   };
 });
 
-vi.mock("@/components/plugin/PluginsSidebar", async () => {
+vi.mock("@/components/tools/ResourceSidebar", async () => {
   const { Sidebar } = await vi.importActual<
     typeof import("@/components/ui/sidebar")
   >("@/components/ui/sidebar");
   return {
-    PluginsSidebar: ({ mobileHosted }: { mobileHosted?: boolean }) =>
-      mobileHosted ? (
-        <div data-testid="plugins-sidebar-body">Plugins sidebar</div>
+    ResourceSidebar: ({
+      mobileHosted,
+      workspace,
+    }: {
+      mobileHosted?: boolean;
+      workspace: "plugins" | "skills";
+    }) => {
+      const title =
+        workspace === "plugins" ? "Plugins sidebar" : "Skills sidebar";
+      return mobileHosted ? (
+        <div data-testid={`${workspace}-sidebar-body`}>{title}</div>
       ) : (
-        <Sidebar>Plugins sidebar</Sidebar>
-      ),
-  };
-});
-
-vi.mock("@/components/tools/SkillsSidebar", async () => {
-  const { Sidebar } = await vi.importActual<
-    typeof import("@/components/ui/sidebar")
-  >("@/components/ui/sidebar");
-  return {
-    SkillsSidebar: ({ mobileHosted }: { mobileHosted?: boolean }) =>
-      mobileHosted ? (
-        <div data-testid="skills-sidebar-body">Skills sidebar</div>
-      ) : (
-        <Sidebar>Skills sidebar</Sidebar>
-      ),
+        <Sidebar>{title}</Sidebar>
+      );
+    },
   };
 });
 
@@ -287,9 +282,7 @@ describe("AppLayoutSidebar mobile mode transitions", () => {
     expect(screen.getByText("Plugins sidebar")).toBeTruthy();
     expect(screen.queryByText("Skills sidebar")).toBeNull();
 
-    fireEvent.click(
-      screen.getByRole("button", { name: "Navigate to skills" }),
-    );
+    fireEvent.click(screen.getByRole("button", { name: "Navigate to skills" }));
     expect(screen.getByText("Skills sidebar")).toBeTruthy();
     expect(screen.queryByText("Plugins sidebar")).toBeNull();
   });

@@ -15,16 +15,16 @@ import {
   ArrowMoveDownLeftIcon,
   ArrowUp01Icon,
   ArrowRight01Icon,
-  Book02Icon,
   Bug01Icon,
   Copy01Icon,
   File01Icon,
   Folder01Icon,
   GitBranchIcon,
-  GridViewIcon,
   InformationCircleIcon,
   MessageAdd01Icon,
   Mic01Icon,
+  Plug02Icon,
+  ZapIcon,
   MoreHorizontalIcon,
   PencilEdit01Icon,
   PlusSignIcon,
@@ -568,11 +568,11 @@ const SIDEBAR_SECTION_RENDERERS: Record<string, () => ReactNode> = {
         showChip={false}
       >
         <span className="flex h-6.5 items-center gap-2 rounded-md px-2">
-          <MiniIcon icon={GridViewIcon} />
+          <MiniIcon icon={Plug02Icon} />
           Plugins
         </span>
         <span className="flex h-6.5 items-center gap-2 rounded-md px-2">
-          <MiniIcon icon={Book02Icon} />
+          <MiniIcon icon={ZapIcon} />
           Skills
         </span>
         <span className="flex h-6.5 items-center gap-2 rounded-md bg-sidebar-accent px-2 font-medium text-sidebar-foreground">

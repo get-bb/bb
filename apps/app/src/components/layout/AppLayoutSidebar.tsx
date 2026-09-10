@@ -1,15 +1,10 @@
 import { useState, type MouseEvent as ReactMouseEvent } from "react";
 import { AppSidebar } from "@/components/sidebar/AppSidebar";
 import { SettingsSidebar } from "@/components/settings/SettingsSidebar";
-import { PluginsSidebar } from "@/components/plugin/PluginsSidebar";
-import { SkillsSidebar } from "@/components/tools/SkillsSidebar";
+import { ResourceSidebar } from "@/components/tools/ResourceSidebar";
 import { Sidebar, useSidebar } from "@/components/ui/sidebar.js";
 
-export type AppLayoutSidebarMode =
-  | "app"
-  | "settings"
-  | "plugins"
-  | "skills";
+export type AppLayoutSidebarMode = "app" | "settings" | "plugins" | "skills";
 
 interface AppLayoutSidebarProps {
   mode: AppLayoutSidebarMode;
@@ -58,17 +53,10 @@ export function AppLayoutSidebar({
             mobileHosted
           />
         ) : null}
-        {renderedMode === "plugins" ? (
-          <PluginsSidebar
-            onResizeMouseDown={onResizeMouseDown}
-            isResizing={isResizing}
-            showTopReserve={true}
-            appRoutePath={toolsBackRoutePath}
-            mobileHosted
-          />
-        ) : null}
-        {renderedMode === "skills" ? (
-          <SkillsSidebar
+        {renderedMode === "plugins" || renderedMode === "skills" ? (
+          <ResourceSidebar
+            key={renderedMode}
+            workspace={renderedMode}
             onResizeMouseDown={onResizeMouseDown}
             isResizing={isResizing}
             showTopReserve={true}
@@ -91,20 +79,11 @@ export function AppLayoutSidebar({
     );
   }
 
-  if (renderedMode === "plugins") {
+  if (renderedMode === "plugins" || renderedMode === "skills") {
     return (
-      <PluginsSidebar
-        onResizeMouseDown={onResizeMouseDown}
-        isResizing={isResizing}
-        showTopReserve={true}
-        appRoutePath={toolsBackRoutePath}
-      />
-    );
-  }
-
-  if (renderedMode === "skills") {
-    return (
-      <SkillsSidebar
+      <ResourceSidebar
+        key={renderedMode}
+        workspace={renderedMode}
         onResizeMouseDown={onResizeMouseDown}
         isResizing={isResizing}
         showTopReserve={true}
