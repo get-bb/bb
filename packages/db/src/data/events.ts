@@ -1562,11 +1562,21 @@ export function listStoredClientTurnRequestRowsByKeys(
     maximumValueCount: CLIENT_TURN_REQUEST_KEY_BATCH_SIZE,
     queryBatch: (keys) => {
       const requestType = "client/turn/requested" satisfies ThreadEventType;
-      const keyConditions = keys.map((key) =>
-        and(
-          eq(events.threadId, key.threadId),
-          sql`json_extract(${events.data}, '$.requestId') = ${key.requestId}`,
-        ),
+      const requestIdsByThread = new Map<string, string[]>();
+      for (const key of keys) {
+        const requestIds = requestIdsByThread.get(key.threadId) ?? [];
+        requestIds.push(key.requestId);
+        requestIdsByThread.set(key.threadId, requestIds);
+      }
+      const keyConditions = [...requestIdsByThread].map(
+        ([threadId, requestIds]) =>
+          and(
+            eq(events.threadId, threadId),
+            inArray(
+              sql<string>`json_extract(${events.data}, '$.requestId')`,
+              requestIds,
+            ),
+          ),
       );
       return db
         .select(storedEventRowFields)

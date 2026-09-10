@@ -2127,6 +2127,14 @@ describe("events", () => {
     expect(rowsByThreadId.get(thread.id)?.sequence).toBe(1);
     expect(rowsByThreadId.get(otherThread.id)?.sequence).toBe(1);
     expect(rowsByThreadId.size).toBe(2);
+    expect(
+      listStoredClientTurnRequestRowsByKeys(db, {
+        keys: [
+          { threadId: thread.id, requestId: "creq_23456789ab" },
+          { threadId: thread.id, requestId: "creq_23456789aa" },
+        ],
+      }).map((row) => row.sequence),
+    ).toEqual([1, 2]);
   });
 
   it("batches client turn request keys above the expression-depth limit", () => {
