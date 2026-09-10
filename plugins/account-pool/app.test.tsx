@@ -308,7 +308,7 @@ describe("Account Pool settings", () => {
     );
   });
 
-  it("shows every observed family bucket in the detail drawer", async () => {
+  it("shows every observed family bucket in the detail dialog", async () => {
     const fable = {
       utilization: 0.91,
       resetAt: Date.now() + 3_600_000,
