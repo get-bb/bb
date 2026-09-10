@@ -30,7 +30,6 @@ import {
   LazyBrowserTabDeck,
   LazyHostScopedFilePreviewTabContent,
   LazyNewTabPage,
-  SecondaryPanelContentSkeleton,
   LazyThreadSecondaryPanel,
   LazyThreadStorageFilePreviewTabContent,
   LazyThreadTerminalPanel,
