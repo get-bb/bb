@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import { createFakePluginHost } from "@get-bb/plugin-sdk/testing";
 import plugin, {
   MAX_HTML_BYTES,
-  requireWorkspaceHtmlFile,
+  requireRelativeHtmlFile,
   resolveContainedHtmlPath,
 } from "./server";
 
@@ -22,7 +22,10 @@ function threadWithEnv(overrides?: { path?: string | null; hostId?: string }) {
 }
 
 async function load(sdk: {
-  threads?: { get: (args: unknown) => unknown };
+  threads?: {
+    get?: (args: unknown) => unknown;
+    storageLocation?: (args: unknown) => unknown;
+  };
   files?: { read: (args: unknown) => unknown };
 }) {
   const host = createFakePluginHost({
@@ -33,25 +36,25 @@ async function load(sdk: {
   return host;
 }
 
-describe("requireWorkspaceHtmlFile", () => {
+describe("requireRelativeHtmlFile", () => {
   it("accepts nested html paths", () => {
-    expect(requireWorkspaceHtmlFile("demo.html")).toBe("demo.html");
-    expect(requireWorkspaceHtmlFile("charts/out.HTML")).toBe("charts/out.HTML");
+    expect(requireRelativeHtmlFile("demo.html")).toBe("demo.html");
+    expect(requireRelativeHtmlFile("charts/out.HTML")).toBe("charts/out.HTML");
   });
 
   it("rejects absolute, traversal, and non-html paths", () => {
-    expect(() => requireWorkspaceHtmlFile("/etc/passwd.html")).toThrow(
-      /workspace-relative/,
+    expect(() => requireRelativeHtmlFile("/etc/passwd.html")).toThrow(
+      /source-relative/,
     );
-    expect(() => requireWorkspaceHtmlFile("../secret.html")).toThrow(
+    expect(() => requireRelativeHtmlFile("../secret.html")).toThrow(
       /traversal|escape/,
     );
-    expect(() => requireWorkspaceHtmlFile("..\\secret.html")).toThrow();
-    expect(() => requireWorkspaceHtmlFile("charts/../secret.html")).toThrow(
+    expect(() => requireRelativeHtmlFile("..\\secret.html")).toThrow();
+    expect(() => requireRelativeHtmlFile("charts/../secret.html")).toThrow(
       /traversal/,
     );
-    expect(() => requireWorkspaceHtmlFile("demo.md")).toThrow(/\.html/);
-    expect(() => requireWorkspaceHtmlFile("")).toThrow(/non-empty/);
+    expect(() => requireRelativeHtmlFile("demo.md")).toThrow(/\.html/);
+    expect(() => requireRelativeHtmlFile("")).toThrow(/non-empty/);
   });
 });
 
@@ -85,6 +88,24 @@ describe("prepareHtmlPreview rpc", () => {
       code: "invalid_input",
       issues: expect.any(Array),
     });
+  });
+
+  it("rejects an unknown source during input validation", async () => {
+    const { harness } = await load({
+      threads: { get: () => threadWithEnv() },
+      files: { read: () => ({ content: "", contentEncoding: "utf8" }) },
+    });
+    await expect(
+      harness.callRpc("prepareHtmlPreview", {
+        threadId: "thr_1",
+        file: "demo.html",
+        source: "project",
+      }),
+    ).rejects.toMatchObject({
+      code: "invalid_input",
+      issues: expect.any(Array),
+    });
+    expect(harness.sdk.calls).toHaveLength(0);
   });
 
   it("rejects missing fields and non-object input", async () => {
@@ -158,8 +179,52 @@ describe("prepareHtmlPreview rpc", () => {
     const result = await harness.callRpc("prepareHtmlPreview", {
       threadId: "thr_1",
       file: "charts/demo.html",
+      source: "workspace",
     });
-    expect(result).toEqual({ file: "charts/demo.html" });
+    expect(result).toEqual({
+      file: "charts/demo.html",
+      source: "workspace",
+    });
+    expect(harness.sdk.callsTo("files.read")).toHaveLength(1);
+  });
+
+  it("reads thread storage without resolving the workspace", async () => {
+    const storageRootPath = "/thread-storage/thr_1";
+    const { harness } = await load({
+      threads: {
+        storageLocation: (args) => {
+          expect(args).toEqual({ threadId: "thr_1" });
+          return { hostId: HOST_ID, storageRootPath };
+        },
+      },
+      files: {
+        read: (args) => {
+          expect(args).toEqual({
+            path: path.resolve(storageRootPath, "reports/result.html"),
+            rootPath: storageRootPath,
+            hostId: HOST_ID,
+          });
+          return {
+            content: "<html><body>ok</body></html>",
+            contentEncoding: "utf8",
+            sizeBytes: 32,
+            sha256: "abc",
+          };
+        },
+      },
+    });
+
+    const result = await harness.callRpc("prepareHtmlPreview", {
+      threadId: "thr_1",
+      file: "reports/result.html",
+      source: "thread-storage",
+    });
+    expect(result).toEqual({
+      file: "reports/result.html",
+      source: "thread-storage",
+    });
+    expect(harness.sdk.callsTo("threads.storageLocation")).toHaveLength(1);
+    expect(harness.sdk.callsTo("threads.get")).toHaveLength(0);
     expect(harness.sdk.callsTo("files.read")).toHaveLength(1);
   });
 
@@ -177,7 +242,7 @@ describe("prepareHtmlPreview rpc", () => {
         threadId: "thr_1",
         file: "/tmp/x.html",
       }),
-    ).rejects.toThrow(/workspace-relative/);
+    ).rejects.toThrow(/source-relative/);
     await expect(
       harness.callRpc("prepareHtmlPreview", {
         threadId: "thr_1",
