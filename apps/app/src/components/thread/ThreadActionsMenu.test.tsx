@@ -177,10 +177,11 @@ describe("ThreadActionsMenu section moves", () => {
     ).toBeNull();
   });
 
-  it("uses a reversible destination step in the compact actions drawer", async () => {
+  it("supports Back and resets the compact overflow menu after a move", async () => {
     renderCompact(<ThreadActionsMenu thread={thread} />);
 
-    fireEvent.click(screen.getByRole("button", { name: "Thread actions" }));
+    const trigger = screen.getByRole("button", { name: "Thread actions" });
+    fireEvent.click(trigger);
     const moveToSection = await screen.findByRole("menuitem", {
       name: "Move to section",
     });
@@ -193,13 +194,7 @@ describe("ThreadActionsMenu section moves", () => {
     expect(
       await screen.findByRole("menuitem", { name: "Rename" }),
     ).not.toBeNull();
-  });
 
-  it("reopens the compact overflow menu at the root after moving a thread", async () => {
-    renderCompact(<ThreadActionsMenu thread={thread} />);
-
-    const trigger = screen.getByRole("button", { name: "Thread actions" });
-    fireEvent.click(trigger);
     fireEvent.click(
       await screen.findByRole("menuitem", { name: "Move to section" }),
     );

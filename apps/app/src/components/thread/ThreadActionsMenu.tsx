@@ -35,10 +35,7 @@ import { isThreadRead } from "@bb/client-core";
 import { copyToClipboardWithToast } from "@/lib/clipboard";
 import { getThreadRoutePath } from "@/lib/route-paths";
 import { useThreadActions } from "./ThreadActionsProvider";
-import {
-  useThreadSectionMove,
-  type ThreadSectionMoveDestination,
-} from "./ThreadSectionMoveProvider";
+import { useThreadSectionMove } from "./ThreadSectionMoveProvider";
 
 interface ThreadActionsMenuBaseProps {
   thread: Thread;
@@ -72,77 +69,6 @@ interface ThreadActionsMenuItemsProps extends ThreadActionsMenuBaseProps {
   surface: ThreadActionsMenuSurface;
 }
 
-function ThreadSectionDestinationItem({
-  destination,
-  isCurrent,
-  moveThread,
-  surface,
-}: {
-  destination: ThreadSectionMoveDestination;
-  isCurrent: boolean;
-  moveThread: () => void;
-  surface: ThreadActionsMenuSurface;
-}) {
-  const content = (
-    <>
-      <span className="min-w-0 flex-1 truncate">{destination.label}</span>
-      {isCurrent ? (
-        <Icon name="Check" className="ml-auto" aria-hidden="true" />
-      ) : null}
-    </>
-  );
-
-  if (surface === "context") {
-    return (
-      <ContextMenuItem
-        aria-current={isCurrent ? "true" : undefined}
-        className="flex items-center justify-between gap-3"
-        disabled={isCurrent}
-        onSelect={moveThread}
-      >
-        {content}
-      </ContextMenuItem>
-    );
-  }
-
-  return (
-    <DropdownMenuItem
-      aria-current={isCurrent ? "true" : undefined}
-      className="flex items-center justify-between gap-3"
-      disabled={isCurrent}
-      onSelect={moveThread}
-    >
-      {content}
-    </DropdownMenuItem>
-  );
-}
-
-function ThreadSectionDestinationItems({
-  destinations,
-  thread,
-  moveThread,
-  surface,
-}: {
-  destinations: readonly ThreadSectionMoveDestination[];
-  thread: Thread;
-  moveThread: (thread: Thread, sectionId: string | null) => void;
-  surface: ThreadActionsMenuSurface;
-}) {
-  return destinations.map((destination) => {
-    const isCurrent =
-      thread.pinnedAt === null && thread.sectionId === destination.sectionId;
-    return (
-      <ThreadSectionDestinationItem
-        key={destination.sectionId ?? "threads"}
-        destination={destination}
-        isCurrent={isCurrent}
-        moveThread={() => moveThread(thread, destination.sectionId)}
-        surface={surface}
-      />
-    );
-  });
-}
-
 function ThreadSectionMoveMenu({
   drawerStep = false,
   isDrawer,
@@ -173,14 +99,25 @@ function ThreadSectionMoveMenu({
   );
   if (!hasValidDestination) return null;
 
-  const items = (
-    <ThreadSectionDestinationItems
-      destinations={sectionMove.destinations}
-      thread={thread}
-      moveThread={sectionMove.moveThread}
-      surface={surface}
-    />
-  );
+  const Item = surface === "context" ? ContextMenuItem : DropdownMenuItem;
+  const items = sectionMove.destinations.map((destination) => {
+    const isCurrent =
+      thread.pinnedAt === null && thread.sectionId === destination.sectionId;
+    return (
+      <Item
+        key={destination.sectionId ?? "threads"}
+        aria-current={isCurrent ? "true" : undefined}
+        className="flex items-center justify-between gap-3"
+        disabled={isCurrent}
+        onSelect={() => sectionMove.moveThread(thread, destination.sectionId)}
+      >
+        <span className="min-w-0 flex-1 truncate">{destination.label}</span>
+        {isCurrent ? (
+          <Icon name="Check" className="ml-auto" aria-hidden="true" />
+        ) : null}
+      </Item>
+    );
+  });
 
   if (isDrawer) {
     if (!drawerStep) {
@@ -215,30 +152,22 @@ function ThreadSectionMoveMenu({
     );
   }
 
-  if (surface === "context") {
-    return (
-      <ContextMenuSub>
-        <ContextMenuSubTrigger>
-          <Icon name="MoveTo" aria-hidden="true" />
-          Move to section
-        </ContextMenuSubTrigger>
-        <ContextMenuSubContent className="max-h-[min(24rem,calc(100vh-2rem))] min-w-44 overflow-y-auto">
-          {items}
-        </ContextMenuSubContent>
-      </ContextMenuSub>
-    );
-  }
+  const Sub = surface === "context" ? ContextMenuSub : DropdownMenuSub;
+  const SubTrigger =
+    surface === "context" ? ContextMenuSubTrigger : DropdownMenuSubTrigger;
+  const SubContent =
+    surface === "context" ? ContextMenuSubContent : DropdownMenuSubContent;
 
   return (
-    <DropdownMenuSub>
-      <DropdownMenuSubTrigger>
+    <Sub>
+      <SubTrigger>
         <Icon name="MoveTo" aria-hidden="true" />
         Move to section
-      </DropdownMenuSubTrigger>
-      <DropdownMenuSubContent className="max-h-[min(24rem,calc(100vh-2rem))] min-w-44 overflow-y-auto">
+      </SubTrigger>
+      <SubContent className="max-h-[min(24rem,calc(100vh-2rem))] min-w-44 overflow-y-auto">
         {items}
-      </DropdownMenuSubContent>
-    </DropdownMenuSub>
+      </SubContent>
+    </Sub>
   );
 }
 
