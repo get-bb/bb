@@ -2,14 +2,21 @@ import path from "node:path";
 import { defineRpcContract, type BbPluginApi } from "@get-bb/plugin-sdk";
 import { z } from "zod";
 
-export const MAX_HTML_BYTES = 5 * 1024 * 1024;
+export const MAX_PREVIEW_BYTES = 5 * 1024 * 1024;
 
-const HTML_EXTENSIONS = new Set([".html", ".htm"]);
+type PreviewKind = "html" | "markdown";
+type PreviewSource = "workspace" | "thread-storage";
 
-interface PrepareHtmlPreviewResult {
-  file: string;
-  source: "workspace" | "thread-storage";
-}
+const PREVIEW_KIND_BY_EXTENSION: ReadonlyMap<string, PreviewKind> = new Map([
+  [".html", "html"],
+  [".htm", "html"],
+  [".md", "markdown"],
+  [".markdown", "markdown"],
+]);
+
+type PreparePreviewResult =
+  | { kind: "html"; file: string; source: PreviewSource }
+  | { kind: "markdown"; file: string; source: PreviewSource; content: string };
 
 function requireNonEmptyString(value: unknown, field: string): string {
   if (typeof value !== "string" || value.trim().length === 0) {
@@ -22,7 +29,18 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-export function requireRelativeHtmlFile(value: unknown): string {
+function previewKind(file: string): PreviewKind {
+  const extension = path.posix.extname(file).toLowerCase();
+  const kind = PREVIEW_KIND_BY_EXTENSION.get(extension);
+  if (kind === undefined) {
+    throw new Error(
+      `"file" must end with .html, .htm, .md, or .markdown, got ${JSON.stringify(file)}`,
+    );
+  }
+  return kind;
+}
+
+export function requireRelativePreviewFile(value: unknown): string {
   const file = requireNonEmptyString(value, "file");
   if (path.isAbsolute(file)) {
     throw new Error(`"file" must be source-relative, not absolute: ${file}`);
@@ -44,16 +62,11 @@ export function requireRelativeHtmlFile(value: unknown): string {
   ) {
     throw new Error(`"file" must not escape its source: ${file}`);
   }
-  const ext = path.posix.extname(normalized).toLowerCase();
-  if (!HTML_EXTENSIONS.has(ext)) {
-    throw new Error(
-      `"file" must end with .html or .htm, got ${JSON.stringify(file)}`,
-    );
-  }
+  previewKind(normalized);
   return normalized;
 }
 
-export function resolveContainedHtmlPath(
+export function resolveContainedPreviewPath(
   rootPath: string,
   relativeFile: string,
 ): string {
@@ -79,11 +92,13 @@ function httpStatus(error: unknown): number | null {
 }
 
 export const inlineVisRpcContract = defineRpcContract({
-  prepareHtmlPreview: {
+  preparePreview: {
     input: z
       .object({
         threadId: z.string().trim().min(1),
-        file: z.string().transform((value) => requireRelativeHtmlFile(value)),
+        file: z
+          .string()
+          .transform((value) => requireRelativePreviewFile(value)),
         source: z
           .string()
           .trim()
@@ -91,22 +106,33 @@ export const inlineVisRpcContract = defineRpcContract({
           .default("workspace"),
       })
       .strict(),
-    output: z
-      .object({
-        file: z.string(),
-        source: z.enum(["workspace", "thread-storage"]),
-      })
-      .strict(),
+    output: z.discriminatedUnion("kind", [
+      z
+        .object({
+          kind: z.literal("html"),
+          file: z.string(),
+          source: z.enum(["workspace", "thread-storage"]),
+        })
+        .strict(),
+      z
+        .object({
+          kind: z.literal("markdown"),
+          file: z.string(),
+          source: z.enum(["workspace", "thread-storage"]),
+          content: z.string(),
+        })
+        .strict(),
+    ]),
   },
 });
 
 export default async function plugin(bb: BbPluginApi) {
   bb.rpc.register(inlineVisRpcContract, {
-    async prepareHtmlPreview({
+    async preparePreview({
       threadId,
       file,
       source,
-    }): Promise<PrepareHtmlPreviewResult> {
+    }): Promise<PreparePreviewResult> {
       let rootPath: string;
       let hostId: string;
 
@@ -145,7 +171,7 @@ export default async function plugin(bb: BbPluginApi) {
         hostId = workspaceHostId;
       }
 
-      const absolutePath = resolveContainedHtmlPath(rootPath, file);
+      const absolutePath = resolveContainedPreviewPath(rootPath, file);
 
       let result;
       try {
@@ -156,24 +182,27 @@ export default async function plugin(bb: BbPluginApi) {
         });
       } catch (error) {
         if (httpStatus(error) === 404) {
-          throw new Error(`HTML file not found: ${file}`);
+          throw new Error(`Preview file not found: ${file}`);
         }
         throw error;
       }
 
       if (result.contentEncoding !== "utf8") {
         throw new Error(
-          `HTML file is not valid UTF-8 text (encoding=${result.contentEncoding}).`,
+          `Preview file is not valid UTF-8 text (encoding=${result.contentEncoding}).`,
         );
       }
       const sizeBytes = result.sizeBytes;
-      if (sizeBytes > MAX_HTML_BYTES) {
+      if (sizeBytes > MAX_PREVIEW_BYTES) {
         throw new Error(
-          `HTML file is too large (${sizeBytes} bytes; max ${MAX_HTML_BYTES}).`,
+          `Preview file is too large (${sizeBytes} bytes; max ${MAX_PREVIEW_BYTES}).`,
         );
       }
 
-      return { file, source };
+      const kind = previewKind(file);
+      return kind === "markdown"
+        ? { kind, file, source, content: result.content }
+        : { kind, file, source };
     },
   });
 }

@@ -3,6 +3,7 @@ import { Icon } from "@bb/shared-ui/icon";
 import { Skeleton } from "@bb/shared-ui/skeleton";
 import {
   definePluginApp,
+  Markdown,
   useRpc,
   type PluginMessageDirectiveProps,
 } from "@get-bb/plugin-sdk/app";
@@ -25,7 +26,14 @@ type LoadState =
   | { status: "missing-file" }
   | { status: "invalid-height"; message: string }
   | { status: "loading"; file: string }
-  | { status: "ready"; file: string; source: PreviewSource }
+  | { status: "ready"; kind: "html"; file: string; source: PreviewSource }
+  | {
+      status: "ready";
+      kind: "markdown";
+      file: string;
+      source: PreviewSource;
+      content: string;
+    }
   | { status: "error"; file: string; message: string };
 
 const DEFAULT_HEIGHT_PX = 224;
@@ -117,17 +125,13 @@ function InlineVisDirective({
 
     void (async () => {
       try {
-        const result = await rpc.call("prepareHtmlPreview", {
+        const result = await rpc.call("preparePreview", {
           threadId: message.threadId,
           file: fileAttr,
           ...(sourceAttr === undefined ? {} : { source: sourceAttr }),
         });
         if (cancelled) return;
-        setState({
-          status: "ready",
-          file: result.file,
-          source: result.source,
-        });
+        setState({ status: "ready", ...result });
       } catch (error) {
         if (cancelled) return;
         setState({
@@ -204,11 +208,6 @@ function InlineVisDirective({
   }
 
   const sourceConfig = PREVIEW_SOURCE_CONFIG[state.source];
-  const previewUrl = buildPreviewUrl(
-    message.threadId,
-    state.file,
-    state.source,
-  );
 
   return (
     <PreviewCard
@@ -229,13 +228,22 @@ function InlineVisDirective({
         )
       }
     >
-      <iframe
-        title={`inline-vis: ${state.file}`}
-        src={previewUrl}
-        sandbox="allow-scripts"
-        style={{ height: previewHeight ?? DEFAULT_HEIGHT_PX }}
-        className="block w-full border-0 bg-background"
-      />
+      {state.kind === "markdown" ? (
+        <div
+          style={{ height: previewHeight ?? DEFAULT_HEIGHT_PX }}
+          className="overflow-auto p-3"
+        >
+          <Markdown content={state.content} />
+        </div>
+      ) : (
+        <iframe
+          title={`inline-vis: ${state.file}`}
+          src={buildPreviewUrl(message.threadId, state.file, state.source)}
+          sandbox="allow-scripts"
+          style={{ height: previewHeight ?? DEFAULT_HEIGHT_PX }}
+          className="block w-full border-0 bg-background"
+        />
+      )}
     </PreviewCard>
   );
 }
