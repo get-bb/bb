@@ -561,7 +561,7 @@ function WorkflowComposerCard({ run }: { run: WorkflowRunView }) {
           id={toggleId}
           aria-expanded={expanded}
           aria-controls={bodyId}
-          aria-label={`Workflow: ${run.name}`}
+          aria-label={`Active workflow: ${run.name}`}
           onClick={() => setExpanded((value) => !value)}
           className={WORKFLOW_HEADER_BUTTON_CLASS}
         >
@@ -571,6 +571,14 @@ function WorkflowComposerCard({ run }: { run: WorkflowRunView }) {
             aria-hidden
           />
           <span className="flex min-w-0 flex-1 items-center gap-1.5 text-left">
+            <span
+              className={activityMetaClass(
+                "active",
+                "shrink-0 text-2xs font-medium uppercase tracking-wide",
+              )}
+            >
+              Active
+            </span>
             <span
               className={activityTextClass("active", "min-w-0 truncate")}
               title={run.name}

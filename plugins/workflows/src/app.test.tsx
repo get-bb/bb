@@ -159,7 +159,7 @@ describe("workflow composer banner", () => {
     );
 
     const toggle = await slot.findByRole("button", {
-      name: "Workflow: Review the release",
+      name: "Active workflow: Review the release",
     });
     expect(toggle.tagName).toBe("BUTTON");
     expect(toggle.getAttribute("aria-expanded")).toBe("false");
@@ -204,7 +204,7 @@ describe("workflow composer banner", () => {
 
     await act(async () => Promise.resolve());
     const toggle = slot.getByRole("button", {
-      name: "Workflow: Review the release",
+      name: "Active workflow: Review the release",
     });
     fireEvent.click(toggle);
     expect(toggle.getAttribute("aria-expanded")).toBe("true");
@@ -345,6 +345,48 @@ describe("workflow composer banner", () => {
     expect(
       slot.rpcCalls.some((call) => call.method === "workflowStopRun"),
     ).toBe(false);
+  });
+});
+
+describe("coexisting workflow surfaces", () => {
+  it("distinguishes the active composer card from the matching message preview", async () => {
+    const composer = renderSlot(
+      app.composerCustomizations[0]!.banners![0]!,
+      {},
+      {
+        composer: {
+          scope: { kind: "thread", threadId: message.threadId },
+        },
+        rpc: { workflowActiveRuns: () => ({ runs: [run] }) },
+      },
+    );
+    const preview = renderSlot(
+      app.messageDirectives[0]!,
+      {
+        attributes: { run: run.id },
+        source: `::workflow-preview{run="${run.id}"}`,
+        message,
+        openWorkspaceFile: null,
+      },
+      { rpc: { workflowRunView: () => ({ run }) } },
+    );
+
+    await waitFor(() => {
+      expect(composer.container.textContent).toContain(run.name);
+      expect(preview.container.textContent).toContain(run.name);
+    });
+
+    expect(composer.container.textContent).toContain("Active");
+    expect(
+      composer.container.querySelector(
+        '[aria-label="Active workflow: Review the release"]',
+      ),
+    ).toBeTruthy();
+    expect(
+      preview.container.querySelector(
+        '[aria-label="Workflow: Review the release"]',
+      ),
+    ).toBeTruthy();
   });
 });
 
