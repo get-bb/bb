@@ -1,5 +1,36 @@
 import { spawn } from "node:child_process";
 
+interface CloseDeadline {
+  cancel(): void;
+}
+
+interface SuperviseOptions {
+  scheduleCloseDeadline?: (
+    callback: () => void,
+    timeoutMs: number,
+  ) => CloseDeadline;
+}
+
+export const PROCESS_REAP_CONFIRMATION_TIMEOUT_MS = 5_000;
+
+export class ProcessReapingUnconfirmedError extends Error {
+  constructor(timeoutMs: number) {
+    super(
+      `Browser process shutdown exceeded ${String(timeoutMs)} ms; child reaping was not confirmed`,
+    );
+    this.name = "ProcessReapingUnconfirmedError";
+  }
+}
+
+function scheduleCloseDeadline(
+  callback: () => void,
+  timeoutMs: number,
+): CloseDeadline {
+  const timer = setTimeout(callback, timeoutMs);
+  timer.unref();
+  return { cancel: () => clearTimeout(timer) };
+}
+
 const supervisor = `
 const { spawn } = require('node:child_process');
 const child = spawn(process.argv[1], process.argv.slice(2), { detached: true, stdio: 'ignore', env: process.env });
@@ -28,6 +59,7 @@ export function supervise(
   command: string,
   args: string[],
   env: NodeJS.ProcessEnv,
+  options: SuperviseOptions = {},
 ) {
   const child = spawn(process.execPath, ["-e", supervisor, command, ...args], {
     env,
@@ -45,12 +77,39 @@ export function supervise(
       resolve();
     });
   });
+  let closing: Promise<void> | null = null;
+  const close = (): Promise<void> => {
+    if (closing !== null) return closing;
+    child.stdin.end();
+    closing = new Promise<void>((resolve, reject) => {
+      let settled = false;
+      let cancelDeadline = (): void => {};
+      completion.then(() => {
+        if (settled) return;
+        settled = true;
+        cancelDeadline();
+        resolve();
+      });
+      cancelDeadline = (options.scheduleCloseDeadline ?? scheduleCloseDeadline)(
+        () => {
+          if (settled) return;
+          settled = true;
+          child.stdin.destroy();
+          child.unref();
+          reject(
+            new ProcessReapingUnconfirmedError(
+              PROCESS_REAP_CONFIRMATION_TIMEOUT_MS,
+            ),
+          );
+        },
+        PROCESS_REAP_CONFIRMATION_TIMEOUT_MS,
+      ).cancel;
+    });
+    return closing;
+  };
   return {
     alive: () => !exited,
-    async close() {
-      child.stdin.end();
-      await completion;
-    },
+    close,
   };
 }
 

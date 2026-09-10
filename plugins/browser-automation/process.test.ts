@@ -4,7 +4,11 @@ import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it, vi } from "vitest";
-import { supervise } from "./process.js";
+import {
+  PROCESS_REAP_CONFIRMATION_TIMEOUT_MS,
+  ProcessReapingUnconfirmedError,
+  supervise,
+} from "./process.js";
 
 async function stopWorker(worker: ChildProcess): Promise<void> {
   if (worker.exitCode !== null || worker.signalCode !== null) return;
@@ -98,4 +102,57 @@ describe("process ownership", () => {
       await rm(root, { recursive: true, force: true });
     }
   }, 10_000);
+  it("bounds close while the supervisor independently finishes reaping", async () => {
+    const root = await mkdtemp(join(tmpdir(), "db-close-deadline-"));
+    const file = join(root, "pid");
+    const code =
+      'require("node:fs").writeFileSync(process.argv[1], `${String(process.pid)}:${String(process.ppid)}`); process.on("SIGTERM", () => {}); setInterval(() => {}, 1000);';
+    let expireDeadline = (): void => {
+      throw new Error("Close deadline was not scheduled");
+    };
+    let deadlineScheduled = false;
+    let deadlineMs = 0;
+    const owned = supervise(process.execPath, ["-e", code, file], process.env, {
+      scheduleCloseDeadline(callback, timeoutMs) {
+        expireDeadline = callback;
+        deadlineScheduled = true;
+        deadlineMs = timeoutMs;
+        return { cancel() {} };
+      },
+    });
+    let childPid = 0;
+    let supervisorPid = 0;
+    try {
+      await vi.waitFor(
+        async () => {
+          const pids = (await readFile(file, "utf8")).split(":").map(Number);
+          childPid = pids[0] ?? 0;
+          supervisorPid = pids[1] ?? 0;
+          expect(childPid).toBeGreaterThan(0);
+          expect(supervisorPid).toBeGreaterThan(0);
+        },
+        { timeout: 5000 },
+      );
+      const closing = owned.close();
+      expect(deadlineMs).toBe(PROCESS_REAP_CONFIRMATION_TIMEOUT_MS);
+      expect(deadlineScheduled).toBe(true);
+      const rejected = expect(closing).rejects.toBeInstanceOf(
+        ProcessReapingUnconfirmedError,
+      );
+      expireDeadline();
+      await rejected;
+      await expect(closing).rejects.toThrow("child reaping was not confirmed");
+      expect(owned.alive()).toBe(true);
+      expect(() => process.kill(childPid, 0)).not.toThrow();
+      await vi.waitFor(() => expect(owned.alive()).toBe(false), {
+        timeout: 5000,
+      });
+      expect(() => process.kill(childPid, 0)).toThrow();
+    } finally {
+      if (childPid > 0 && isProcessAlive(childPid)) killProcessGroup(childPid);
+      if (supervisorPid > 0 && isProcessAlive(supervisorPid))
+        process.kill(supervisorPid, "SIGKILL");
+      await rm(root, { recursive: true, force: true });
+    }
+  }, 8_000);
 });
