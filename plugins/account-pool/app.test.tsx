@@ -12,6 +12,7 @@ const app = await loadPluginApp(() => import("./app"));
 afterEach(() => {
   cleanup();
   vi.restoreAllMocks();
+  vi.unstubAllGlobals();
 });
 
 function measureAccountRows() {
@@ -336,16 +337,31 @@ describe("Account Pool settings", () => {
     expect(slot.getByText("Opus 7 day")).toBeTruthy();
   });
 
+  function codexLoginStart() {
+    return {
+      sessionId: "33333333-3333-4333-8333-333333333333",
+      verificationUri: "https://auth.openai.com/codex/device",
+      userCode: "ABCD-1234",
+      expiresAt: Date.now() + 600_000,
+      intervalMs: 60_000,
+    };
+  }
+
+  function mockCompactViewport(matches: boolean) {
+    vi.stubGlobal("matchMedia", (query: string) => ({
+      matches: query === "(max-width: 767px)" && matches,
+      media: query,
+      onchange: null,
+      addListener: () => {},
+      removeListener: () => {},
+      addEventListener: () => {},
+      removeEventListener: () => {},
+      dispatchEvent: () => false,
+    }));
+  }
+
   it("names the sign-in dialog once and keeps the step instructions", async () => {
-    const slot = render([], {
-      "codexLogin.start": () => ({
-        sessionId: "33333333-3333-4333-8333-333333333333",
-        verificationUri: "https://auth.openai.com/codex/device",
-        userCode: "ABCD-1234",
-        expiresAt: Date.now() + 600_000,
-        intervalMs: 60_000,
-      }),
-    });
+    const slot = render([], { "codexLogin.start": codexLoginStart });
     fireEvent.click(
       await slot.findByRole("button", { name: "Sign in to Codex" }),
     );
@@ -361,7 +377,42 @@ describe("Account Pool settings", () => {
     expect(
       (await slot.findByLabelText("Codex user code")).textContent,
     ).toContain("ABCD-1234");
+    expect(slot.queryByRole("button", { name: "Cancel" })).toBeNull();
   });
+
+  it.each([false, true])(
+    "cancels the pending sign-in from the header close with compact viewport %s",
+    async (compact) => {
+      mockCompactViewport(compact);
+      const slot = render([], {
+        "codexLogin.start": codexLoginStart,
+        "codexLogin.poll": () => ({ status: "pending" }),
+        "codexLogin.cancel": () => ({ cancelled: true }),
+      });
+      fireEvent.click(
+        await slot.findByRole("button", { name: "Sign in to Codex" }),
+      );
+      await slot.findByRole("dialog", { name: "Sign in to Codex" });
+      fireEvent.click(slot.getByRole("button", { name: "Close" }));
+      await waitFor(() =>
+        expect(slot.rpcCalls).toContainEqual({
+          method: "codexLogin.cancel",
+          input: { sessionId: codexLoginStart().sessionId },
+        }),
+      );
+      await waitFor(() =>
+        expect(slot.queryByRole("dialog", { name: "Sign in to Codex" })).toBe(
+          null,
+        ),
+      );
+      const polls = () =>
+        slot.rpcCalls.filter((call) => call.method === "codexLogin.poll")
+          .length;
+      const settled = polls();
+      await new Promise((resolve) => setTimeout(resolve, 50));
+      expect(polls()).toBe(settled);
+    },
+  );
 
   it("offers a fresh Codex login after device-code polling fails", async () => {
     let starts = 0;
