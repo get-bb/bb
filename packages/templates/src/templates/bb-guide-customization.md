@@ -70,14 +70,14 @@ Server-backed General settings
 
 Settings → General includes app-wide preferences stored server-side so every
 window and restart sees the same value. Keep Awake is instead owned by its
-builtin plugin: use its autosaving page under Extensions → Plugins or run
+builtin plugin: use its autosaving page under Settings → Installed plugins or run
 `bb keep-awake enable` or `bb keep-awake disable`. Choose every host with `bb
 keep-awake hosts all`, or name individual host ids after `bb keep-awake hosts`.
 On macOS it prevents system idle sleep while bb is running; closing the lid or
 choosing Sleep still sleeps the Mac.
 
 Concurrency limit is also owned by its builtin plugin. Its autosaving page
-under Extensions → Plugins leaves the overall limit unlimited by default and
+under Settings → Installed plugins leaves the overall limit unlimited by default and
 uses an automatic per-host limit of one thread per available processor. Use
 `bb concurrency-limit global [unlimited|<limit>]` and `bb
 concurrency-limit host <host-id> [auto|<limit>]`; 0 pauses new work.
@@ -132,9 +132,9 @@ and `null` clears a preference that can be unset.
 
 The default-off `changelogPreview` experiment shows the latest release notes
 as a compact, dismissible card on Settings → Updates.
-The default-on `editMessages` experiment enables editing eligible, accepted
+Message editing is available for eligible, accepted
 root user messages in Codex, Claude Code, and Pi threads, including failed or
-incomplete turns; turn it off to hide the editor. Opening the editor is
+incomplete turns. Opening the editor is
 client-local; submitting stops and settles a running thread, then replaces the
 selected turn and all later conversation history while retaining workspace side
 effects. Grouped multi-message requests are not yet editable.
@@ -154,12 +154,13 @@ The default-off `timelineWindowing` experiment mounts only nearby rows in long
 timelines and large expanded timeline details. Enable it with
 `bb settings experiment timelineWindowing true`.
 
-Thread timeline windows are bounded by event count as well as user-message
-count (`BB_FF_TIMELINE_WINDOW_EVENT_BUDGET`, default 1500), so a long thread
-stops reprojecting its whole history — and blocking the server event loop — on
-every update. A turn still running is cut at the budget too, so a very long
-turn costs the budget per update instead of growing without limit. Older
-activity loads automatically as you scroll toward the top.
+Thread timeline pages select complete conversation groups using
+`BB_FF_TIMELINE_WINDOW_EVENT_BUDGET` (default 1500) as a selection budget.
+Oversized groups paginate their contents with stable summary identities.
+Grouping can load more than the budget to preserve lifecycle and delegation
+context; it is not a hard CPU or memory cap. Older activity loads on scroll.
+A walk keeps its initial history snapshot. Edits invalidate it, and a new live
+snapshot can require loading older pages again.
 
 Server-backed keyboard shortcuts
 

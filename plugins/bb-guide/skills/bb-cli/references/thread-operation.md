@@ -101,7 +101,9 @@ hostId, providerId, projectId, parentThreadId, groupBy })`.
 - Use `bb thread log <thread-id>` to inspect the conversation. The default
   shows only the newest 20 user-message turns and ends with a notice when older
   history was omitted. For timeline text, `--limit <n>` accepts at most 100.
-  `--all` prints the whole thread. JSON accepts any positive limit. It defaults
+  `--all` prints the whole thread. Human formats use a consistent history
+  snapshot and join paginated group contents. Appends remain outside that walk;
+  rerun after a cursor-invalidated error from a history edit. JSON accepts any positive limit. It defaults
   to the oldest 100 raw events and warns when more exist. Page with
   `--after-seq <seq>` or pass `--all`.
   Grep the `--all` output, not the default page, when checking whether a

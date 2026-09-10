@@ -495,6 +495,8 @@ async function sendClaimedQueuedMessageForIdleProviderThread(
     await recoverThreadModelOverride(deps, {
       model: payload.model,
       modelSource: "explicit",
+      reasoningLevel: payload.reasoningLevel,
+      reasoningLevelSource: "explicit",
       thread,
     });
   }

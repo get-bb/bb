@@ -17,6 +17,7 @@ import { TooltipProvider } from "@bb/shared-ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import type { ReactNode } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { focusWithKeyboard } from "@/test/keyboard-focus";
 import {
   makeEnvironment,
   makeThread as makeThreadFixture,
@@ -197,7 +198,7 @@ describe("EnvironmentRow", () => {
       ),
     );
 
-    fireEvent.focus(
+    focusWithKeyboard(
       screen.getByRole("button", {
         name: "New thread in this environment",
       }),

@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 
+import type { ReactNode } from "react";
 import {
   cleanup,
   fireEvent,
@@ -26,7 +27,9 @@ import {
   resetPluginSlotStoreForTest,
   setPluginSlotRegistrations,
 } from "@/lib/plugin-slots";
-import { PluginDetailPaneView, ToolsView } from "./ToolsView";
+import { PluginsOverview } from "@/components/plugin/PluginsOverview";
+import { PluginDetailPaneView, PluginsView } from "./ToolsView";
+import { AppRoutes } from "../App";
 import {
   CatalogPluginDetail,
   CatalogPluginDetailBanner,
@@ -42,6 +45,10 @@ import {
   makePluginListItem,
   makePluginRegistrationSet,
 } from "@/test/fixtures/plugins";
+
+vi.mock("@/components/layout/AppLayout", () => ({
+  AppLayout: ({ children }: { children: ReactNode }) => <>{children}</>,
+}));
 
 vi.mock("react-resizable-panels", async () => {
   const { createRequire } = await import("node:module");
@@ -94,22 +101,35 @@ const GITHUB_CATALOG_ENTRY = {
   incompatibleReason: null,
 } satisfies PluginCatalogSearchEntry;
 
-function RoutedToolsView() {
+function RoutedPluginsView() {
   const location = useLocation();
-  const isSettings = location.pathname.startsWith("/settings/plugins/");
-  const prefix = isSettings ? "/settings/plugins/" : "/extensions/plugins/";
+  const isSettings = location.pathname.startsWith("/settings/plugins");
+  const prefix = isSettings ? "/settings/plugins/" : "/plugins/";
   const pluginId = location.pathname.startsWith(prefix)
     ? decodeURIComponent(location.pathname.slice(prefix.length))
     : undefined;
   return (
     <>
       <TooltipProvider>
-        {isSettings && pluginId ? (
-          <PluginDetailPaneView pluginId={pluginId} />
+        {isSettings ? (
+          pluginId ? (
+            <PluginDetailPaneView pluginId={pluginId} />
+          ) : (
+            <PluginsOverview mode="installed" />
+          )
         ) : (
-          <ToolsView pluginId={pluginId} />
+          <PluginsView pluginId={pluginId} />
         )}
       </TooltipProvider>
+      <LocationProbe />
+    </>
+  );
+}
+
+function LocationProbe() {
+  const location = useLocation();
+  return (
+    <>
       <output data-testid="route-path">{location.pathname}</output>
       <output data-testid="route-search">{location.search}</output>
     </>
@@ -616,13 +636,13 @@ describe("BB Official plugin detail routing", () => {
 
     const { wrapper: QueryClientWrapper } = createQueryClientTestHarness();
     render(
-      <MemoryRouter initialEntries={["/extensions/plugins/github"]}>
+      <MemoryRouter initialEntries={["/plugins/github"]}>
         <Routes>
           <Route
-            path="/extensions/plugins/:pluginId"
+            path="/plugins/:pluginId"
             element={
               <TooltipProvider>
-                <ToolsView pluginId="github" />
+                <PluginsView pluginId="github" />
               </TooltipProvider>
             }
           />
@@ -641,7 +661,7 @@ describe("BB Official plugin detail routing", () => {
     expect(screen.getByTestId("full-trust-warning")).toBeTruthy();
   });
 
-  it("opens one detail tab beside Browse and restores card focus", async () => {
+  it("preserves Browse and restores card focus across the real app routes", async () => {
     const catalogEntry = {
       ...GITHUB_CATALOG_ENTRY,
       categoryId: "code-and-reviews",
@@ -676,10 +696,11 @@ describe("BB Official plugin detail routing", () => {
 
     const { wrapper: QueryClientWrapper } = createQueryClientTestHarness();
     render(
-      <MemoryRouter initialEntries={["/extensions/plugins"]}>
-        <Routes>
-          <Route path="/extensions/plugins/*" element={<RoutedToolsView />} />
-        </Routes>
+      <MemoryRouter initialEntries={["/plugins"]}>
+        <TooltipProvider>
+          <AppRoutes />
+        </TooltipProvider>
+        <LocationProbe />
         <HistoryBackButton />
       </MemoryRouter>,
       { wrapper: QueryClientWrapper },
@@ -711,9 +732,7 @@ describe("BB Official plugin detail routing", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Close GitHub" }));
     await waitFor(() => {
-      expect(screen.getByTestId("route-path").textContent).toBe(
-        "/extensions/plugins",
-      );
+      expect(screen.getByTestId("route-path").textContent).toBe("/plugins");
       expect(document.activeElement).toBe(card);
     });
     expect(Array.from(document.querySelectorAll("[data-panel]"))).toEqual(
@@ -728,14 +747,16 @@ describe("BB Official plugin detail routing", () => {
     fireEvent.click(screen.getByRole("button", { name: "Browser back" }));
     await waitFor(() => {
       expect(screen.getByTestId("route-path").textContent).toBe(
-        "/extensions/plugins/github",
+        "/plugins/github",
       );
     });
   });
 
   it.each([
-    "/extensions/plugins/github?view=installed",
-    "/extensions/plugins?view=installed",
+    "/settings/plugins/github?view=installed",
+    "/settings/plugins",
+    "/plugins/github?view=installed",
+    "/plugins?view=installed",
   ])("opens installed plugin settings from %s", async (path) => {
     const author = {
       name: "BB",
@@ -792,35 +813,43 @@ describe("BB Official plugin detail routing", () => {
     render(
       <MemoryRouter initialEntries={[path]}>
         <Routes>
-          <Route path="/extensions/plugins/*" element={<RoutedToolsView />} />
-          <Route path="/settings/plugins/*" element={<RoutedToolsView />} />
+          <Route path="/plugins/*" element={<RoutedPluginsView />} />
+          <Route path="/settings/plugins/*" element={<RoutedPluginsView />} />
         </Routes>
       </MemoryRouter>,
       { wrapper: QueryClientWrapper },
     );
 
-    if (path === "/extensions/plugins?view=installed") {
+    if (path === "/settings/plugins" || path === "/plugins?view=installed") {
       expect(
         await screen.findByRole("textbox", {
           name: "Search installed plugins",
         }),
       ).toBeTruthy();
       expect(screen.getByTestId("route-path").textContent).toBe(
-        "/extensions/plugins",
+        path.split("?")[0],
       );
-      fireEvent.click(
-        await screen.findByRole("button", { name: "GitHub plugin details" }),
-      );
+      const pluginButton = await screen.findByRole("button", {
+        name: "GitHub plugin details",
+      });
+      expect(
+        vi
+          .mocked(fetch)
+          .mock.calls.some(([input]) =>
+            String(input).startsWith("/api/v1/plugin-catalog/search"),
+          ),
+      ).toBe(false);
+      fireEvent.click(pluginButton);
     }
 
-    fireEvent.click(
-      await screen.findByRole("button", {
-        name: "Open Automations details",
-      }),
-    );
+    const relatedPluginButton = await screen.findByRole("button", {
+      name: "Open Automations details",
+    });
+    expect(screen.getAllByText("GitHub", { selector: "h1" })).toHaveLength(1);
+    fireEvent.click(relatedPluginButton);
     await waitFor(() => {
       expect(screen.getByTestId("route-path").textContent).toBe(
-        "/settings/plugins/automations",
+        "/plugins/automations",
       );
     });
     expect(screen.getByTestId("route-search").textContent).toBe(
@@ -880,11 +909,11 @@ describe("BB Official plugin detail routing", () => {
     render(
       <MemoryRouter
         initialEntries={[
-          "/extensions/plugins?category=code-and-reviews&sort=recently-added",
+          "/plugins?category=code-and-reviews&sort=recently-added",
         ]}
       >
         <Routes>
-          <Route path="/extensions/plugins/*" element={<RoutedToolsView />} />
+          <Route path="/plugins/*" element={<RoutedPluginsView />} />
         </Routes>
         <HistoryBackButton />
       </MemoryRouter>,
@@ -964,9 +993,9 @@ describe("BB Official plugin detail routing", () => {
 
     const { wrapper: QueryClientWrapper } = createQueryClientTestHarness();
     render(
-      <MemoryRouter initialEntries={["/extensions/plugins/github"]}>
+      <MemoryRouter initialEntries={["/plugins/github"]}>
         <Routes>
-          <Route path="/extensions/plugins/*" element={<RoutedToolsView />} />
+          <Route path="/plugins/*" element={<RoutedPluginsView />} />
         </Routes>
       </MemoryRouter>,
       { wrapper: QueryClientWrapper },
@@ -978,9 +1007,7 @@ describe("BB Official plugin detail routing", () => {
     const authorLinks = screen.getAllByRole("link", { name: "BB" });
     fireEvent.click(authorLinks.at(-1)!);
     await waitFor(() => {
-      expect(screen.getByTestId("route-path").textContent).toBe(
-        "/extensions/plugins",
-      );
+      expect(screen.getByTestId("route-path").textContent).toBe("/plugins");
     });
     expect(await screen.findByRole("heading", { name: /^BB/u })).toBeTruthy();
     expect(
@@ -1038,13 +1065,13 @@ describe("plugin removal confirmation", () => {
 
     const { wrapper: QueryClientWrapper } = createQueryClientTestHarness();
     render(
-      <MemoryRouter initialEntries={["/extensions/plugins/github"]}>
+      <MemoryRouter initialEntries={["/plugins/github"]}>
         <Routes>
           <Route
-            path="/extensions/plugins/:pluginId"
+            path="/plugins/:pluginId"
             element={
               <TooltipProvider>
-                <ToolsView pluginId="github" />
+                <PluginsView pluginId="github" />
               </TooltipProvider>
             }
           />

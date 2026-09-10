@@ -3,10 +3,13 @@ import { HugeiconsIcon } from "@hugeicons/react";
 
 import { DASHBOARD_PATH } from "../lib/connect-return-to";
 import { DiscordLink, DownloadLink, GitHubLink, XLink } from "./cta";
+import { useDesktopPlatform } from "./desktop-platform";
+import { DESKTOP_DOWNLOADS } from "./site";
 
 type SiteNavPage = "blog" | "changelog" | "plugins";
 
 export function SiteNav({ current }: { current?: SiteNavPage }) {
+  const platform = useDesktopPlatform();
   return (
     <nav className="nav">
       {}
@@ -40,8 +43,12 @@ export function SiteNav({ current }: { current?: SiteNavPage }) {
         >
           <HugeiconsIcon icon={GithubIcon} />
         </GitHubLink>
-        <DownloadLink placement="nav" className="btn btn-primary btn-sm">
-          Download for macOS
+        <DownloadLink
+          placement="nav"
+          platform={platform}
+          className="btn btn-primary btn-sm"
+        >
+          {DESKTOP_DOWNLOADS[platform].buttonLabel}
         </DownloadLink>
       </div>
     </nav>
@@ -49,6 +56,7 @@ export function SiteNav({ current }: { current?: SiteNavPage }) {
 }
 
 export function SiteFooter() {
+  const platform = useDesktopPlatform();
   return (
     <footer className="footer">
       <span>bb is free and open source (MIT)</span>
@@ -65,7 +73,9 @@ export function SiteFooter() {
         {" · "}
         <DiscordLink placement="footer">Discord</DiscordLink>
         {" · "}
-        <DownloadLink placement="footer">Download</DownloadLink>
+        <DownloadLink placement="footer" platform={platform}>
+          Download
+        </DownloadLink>
       </span>
     </footer>
   );

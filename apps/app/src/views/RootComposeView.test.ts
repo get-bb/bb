@@ -939,7 +939,7 @@ describe("resolveRootComposeEffectiveEnvironmentValue", () => {
     ).toBe("provider:project-checkout");
   });
 
-  it("holds specific reuse values as incomplete while project worktrees load", () => {
+  it("holds a specific reuse selection while project worktrees load", () => {
     expect(
       resolveRootComposeEffectiveEnvironmentValue({
         knownHostIds: new Set(["host_1"]),
@@ -951,7 +951,7 @@ describe("resolveRootComposeEffectiveEnvironmentValue", () => {
         reuseThreadOptions: [],
         reuseThreadOptionsLoading: true,
       }),
-    ).toBe("reuse");
+    ).toBe("reuse:env_pending");
   });
 
   it("keeps a projectless reuse selection when the environment is one of its own", () => {

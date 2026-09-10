@@ -9,6 +9,7 @@ export const BUILT_IN_SIDEBAR_NAVIGATION_KEYS = {
   newThread: "__bb__/new-thread",
   searchThreads: "__bb__/search-threads",
   extensions: "__bb__/extensions",
+  skills: "__bb__/skills",
   automations: "__bb__/automations",
 } as const;
 
@@ -20,8 +21,33 @@ export const DEFAULT_BUILT_IN_SIDEBAR_NAVIGATION_ORDER = [
   BUILT_IN_SIDEBAR_NAVIGATION_KEYS.newThread,
   BUILT_IN_SIDEBAR_NAVIGATION_KEYS.searchThreads,
   BUILT_IN_SIDEBAR_NAVIGATION_KEYS.extensions,
+  BUILT_IN_SIDEBAR_NAVIGATION_KEYS.skills,
   BUILT_IN_SIDEBAR_NAVIGATION_KEYS.automations,
 ] as const;
+
+export function seedSkillsNavigationPreference(
+  order: readonly string[],
+  visibleKeys: readonly string[] | null,
+): { order: string[]; visibleKeys: string[] | null } {
+  const { extensions, skills } = BUILT_IN_SIDEBAR_NAVIGATION_KEYS;
+  const pluginsIndex = order.indexOf(extensions);
+  const nextOrder = [...order];
+  const nextVisibleKeys = visibleKeys === null ? null : [...visibleKeys];
+  if (pluginsIndex !== -1 && !order.includes(skills)) {
+    nextOrder.splice(pluginsIndex + 1, 0, skills);
+    if (
+      nextVisibleKeys?.includes(extensions) &&
+      !nextVisibleKeys.includes(skills)
+    ) {
+      nextVisibleKeys.splice(
+        nextVisibleKeys.indexOf(extensions) + 1,
+        0,
+        skills,
+      );
+    }
+  }
+  return { order: nextOrder, visibleKeys: nextVisibleKeys };
+}
 
 export function getPluginNavPanelKey(panel: PluginNavPanelIdentity): string {
   return `${panel.pluginId}/${panel.id}`;

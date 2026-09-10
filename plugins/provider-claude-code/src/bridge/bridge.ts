@@ -239,10 +239,6 @@ interface ThreadAttachment {
   sessionOptions: SdkSessionOptions;
   closing: boolean;
   residentSession: ThreadSession | null;
-  idleTimer: ReturnType<typeof setTimeout> | null;
-  residencyGeneration: number;
-  wakePromise: Promise<ThreadSession | undefined> | null;
-  idleQueryReleaseEnabled: boolean;
   permissionEscalation: PermissionEscalation | null;
   permissionMode: ClaudePermissionMode;
   liveSettings: ClaudeLiveSessionSettings;
@@ -256,7 +252,6 @@ interface CreateThreadAttachmentArgs {
   permissionEscalation: PermissionEscalation | null;
   permissionMode: ClaudePermissionMode;
   liveSettings: ClaudeLiveSessionSettings;
-  idleQueryReleaseEnabled: boolean;
   approvedPlanPermissionMode: ClaudePermissionMode;
   providerThreadId?: string;
   sessionConstructionConfig: SessionConstructionConfig;
@@ -397,7 +392,6 @@ function requireSkillPluginsRoot(): string {
 }
 
 const THREAD_STOP_CLOSE_TIMEOUT_MS = 4_000;
-export const CLAUDE_IDLE_QUERY_GRACE_MS = 30_000;
 const CLAUDE_CHROME_SETTING_RESTART_REASON = "Claude in Chrome setting changed";
 
 const { send, sendResult, sendError } = createBridgeIo<
@@ -415,90 +409,6 @@ function resolvePendingSessionWork(
 ): void {
   toolCallTracker.resolvePendingToolCalls(threadSession, message);
   resolvePendingInteractiveRequests(threadSession, message);
-}
-
-function cancelIdleQueryRelease(attachment: ThreadAttachment): void {
-  attachment.residencyGeneration += 1;
-  if (attachment.idleTimer !== null) {
-    clearTimeout(attachment.idleTimer);
-    attachment.idleTimer = null;
-  }
-}
-
-function isThreadSessionQuiescent(
-  threadSession: ThreadSession,
-  threadId: string,
-): boolean {
-  return (
-    !threadSession.translator.hasOpenSessionWork(threadId) &&
-    threadSession.pendingForwardedToolCalls === 0 &&
-    threadSession.pendingInteractiveRequests.size === 0 &&
-    threadSession.pendingSessionCronIds.size === 0 &&
-    (threadSession.sdkSessionState === undefined ||
-      threadSession.sdkSessionState === "idle")
-  );
-}
-
-function scheduleIdleQueryRelease(
-  threadSession: ThreadSession,
-  threadId: string,
-): void {
-  const attachment = threadSession.attachment;
-  if (
-    attachment.closing ||
-    threadSession.closing ||
-    attachment.residentSession !== threadSession
-  ) {
-    return;
-  }
-  if (!attachment.idleQueryReleaseEnabled) {
-    cancelIdleQueryRelease(attachment);
-    return;
-  }
-  cancelIdleQueryRelease(attachment);
-  const generation = attachment.residencyGeneration;
-  attachment.idleTimer = setTimeout(() => {
-    attachment.idleTimer = null;
-    if (
-      attachment.closing ||
-      attachment.residencyGeneration !== generation ||
-      threadAttachments.get(threadId) !== attachment ||
-      attachment.residentSession !== threadSession ||
-      threadSession.closing
-    ) {
-      return;
-    }
-    if (!isThreadSessionQuiescent(threadSession, threadId)) {
-      scheduleIdleQueryRelease(threadSession, threadId);
-      return;
-    }
-    threadSession.closing = true;
-    attachment.residentSession = null;
-    attachment.residencyGeneration += 1;
-    threadSession.session.stop();
-  }, CLAUDE_IDLE_QUERY_GRACE_MS);
-}
-
-function refreshIdleQueryRelease(
-  threadSession: ThreadSession,
-  threadId: string,
-): void {
-  if (threadSession.attachment.idleTimer !== null) {
-    scheduleIdleQueryRelease(threadSession, threadId);
-  }
-}
-
-function applyIdleQueryReleaseSetting(
-  attachment: ThreadAttachment,
-  enabled: boolean | undefined,
-): void {
-  if (enabled === undefined || attachment.idleQueryReleaseEnabled === enabled) {
-    return;
-  }
-  attachment.idleQueryReleaseEnabled = enabled;
-  if (!enabled) {
-    cancelIdleQueryRelease(attachment);
-  }
 }
 
 function applyChromeSetting(
@@ -540,16 +450,12 @@ function createForwardToolCall(getThreadId: () => string): ToolCallForwarder {
         isError: true,
       });
     }
-    threadSession.pendingForwardedToolCalls += 1;
     return forwardToolCall({
       arguments: args,
       providerThreadId: attachment.providerThreadId ?? threadId,
       scope: threadSession,
       threadId,
       toolName,
-    }).finally(() => {
-      threadSession.pendingForwardedToolCalls -= 1;
-      refreshIdleQueryRelease(threadSession, threadId);
     });
   };
 }
@@ -570,7 +476,6 @@ async function closeThreadSession(args: {
   }
 
   attachment.closing = true;
-  cancelIdleQueryRelease(attachment);
   const threadSession = attachment.residentSession;
   if (threadSession) {
     threadSession.closing = true;
@@ -578,15 +483,8 @@ async function closeThreadSession(args: {
   }
   const closePromise = Promise.resolve()
     .then(async () => {
-      await attachment.wakePromise;
-      const residentSession = attachment.residentSession;
-      if (residentSession) {
-        residentSession.closing = true;
-        resolvePendingSessionWork(residentSession, args.message);
-        await closeClaudeThreadSession(
-          residentSession,
-          args.graceful !== false,
-        );
+      if (threadSession) {
+        await closeClaudeThreadSession(threadSession, args.graceful !== false);
       }
     })
     .finally(() => {
@@ -750,32 +648,6 @@ async function applyLiveSessionSettings(
   threadSession.attachment.liveSettings = next;
 }
 
-function applyDormantLiveSessionSettings(
-  attachment: ThreadAttachment,
-  next: ClaudeLiveSessionSettings,
-): void {
-  attachment.sessionOptions.model = next.model;
-  attachment.sessionOptions.effort =
-    next.reasoningLevel === undefined
-      ? undefined
-      : toSdkEffort(next.reasoningLevel);
-  const mutableSettings = buildMutableFlagSettings({
-    memoryEnabled: next.memoryEnabled,
-    reasoningLevel: next.reasoningLevel,
-    workflowsEnabled: next.workflowsEnabled,
-  });
-  const { effortLevel: _effortLevel, ...sessionSettings } = mutableSettings;
-  const currentSettings =
-    typeof attachment.sessionOptions.settings === "object"
-      ? attachment.sessionOptions.settings
-      : {};
-  attachment.sessionOptions.settings = {
-    ...currentSettings,
-    ...sessionSettings,
-  };
-  attachment.liveSettings = next;
-}
-
 const MODEL_LIST_MEMO_TTL_MS = 2 * 60_000;
 const listModelsMemoized = createClaudeCodeBridgeModelListMemo({
   ttlMs: MODEL_LIST_MEMO_TTL_MS,
@@ -830,9 +702,6 @@ function emitForSession(
     }
     if (delta.kind === "turn.boundary" || delta.kind === "session.reset") {
       threadSession.recoveryHintRaisedThisTurn = null;
-    }
-    if (delta.kind === "turn.boundary") {
-      scheduleIdleQueryRelease(threadSession, threadId);
     }
   }
 }
@@ -1052,10 +921,6 @@ function createThreadAttachment(
     sessionOptions: args.sessionOptions,
     closing: false,
     residentSession: null,
-    idleTimer: null,
-    residencyGeneration: 0,
-    wakePromise: null,
-    idleQueryReleaseEnabled: args.idleQueryReleaseEnabled,
     permissionEscalation: args.permissionEscalation,
     permissionMode: args.permissionMode,
     liveSettings: args.liveSettings,
@@ -1144,12 +1009,7 @@ function startAttachedResidentThreadSession(
   attachment: ThreadAttachment,
   resumeProviderThreadId?: string,
 ): ThreadSession {
-  const threadSession = startResidentThreadSession(
-    attachment,
-    resumeProviderThreadId,
-  );
-  scheduleIdleQueryRelease(threadSession, attachment.threadIdRef.current);
-  return threadSession;
+  return startResidentThreadSession(attachment, resumeProviderThreadId);
 }
 
 function getTrackedPermissionEscalation(
@@ -1367,7 +1227,6 @@ function buildSessionTrackingHooks(
       threadSession.pendingSessionCronIds = new Set(
         input.session_crons.map((cron) => cron.id),
       );
-      refreshIdleQueryRelease(threadSession, threadIdRef.current);
     }
     return { continue: true };
   };
@@ -1487,20 +1346,11 @@ async function getWritableThreadSession(
   if (!attachment || attachment.closing) {
     return undefined;
   }
-  cancelIdleQueryRelease(attachment);
-
-  const existingWake = attachment.wakePromise;
-  if (existingWake) {
-    return existingWake;
-  }
-
   const threadSession = attachment.residentSession;
-  const replacement: ClaudeSessionRestart | null = !threadSession
-    ? {
-        reason: "Claude query resumed after idle release",
-        showRuntimeNote: false,
-      }
-    : threadSession.streamEnded
+  if (!threadSession) {
+    return undefined;
+  }
+  const replacement: ClaudeSessionRestart | null = threadSession.streamEnded
       ? {
           reason: "Thread session replaced after Claude SDK stream ended",
           showRuntimeNote: false,
@@ -1508,69 +1358,15 @@ async function getWritableThreadSession(
       : intent === "new-turn"
         ? threadSession.restartBeforeNextTurn
         : null;
-  if (threadSession && replacement === null) {
+  if (replacement === null) {
     return threadSession;
   }
-
-  if (!threadSession && intent === "steer") {
-    return undefined;
-  }
-
-  const wakePromise = Promise.resolve().then(() => {
-    if (attachment.closing || threadAttachments.get(threadId) !== attachment) {
-      return undefined;
-    }
-
-    const currentSession = attachment.residentSession;
-    if (currentSession) {
-      const currentRestart: ClaudeSessionRestart | null =
-        currentSession.streamEnded
-          ? {
-              reason: "Thread session replaced after Claude SDK stream ended",
-              showRuntimeNote: false,
-            }
-          : intent === "new-turn"
-            ? currentSession.restartBeforeNextTurn
-            : null;
-      return currentRestart === null
-        ? currentSession
-        : replaceThreadSessionBeforeNextTurn({
-            attachment,
-            restart: currentRestart,
-            threadId,
-            threadSession: currentSession,
-          });
-    }
-
-    const providerThreadId = attachment.providerThreadId;
-    if (!providerThreadId) {
-      return undefined;
-    }
-    const replacementSession = createThreadSession(attachment);
-    attachment.residentSession = replacementSession;
-    startResidentThreadSession(attachment, providerThreadId);
-    send({
-      jsonrpc: "2.0",
-      method: BRIDGE_NOTIFICATION_METHODS.sessionReplaced,
-      params: {
-        threadId,
-        providerThreadId,
-        reason: "Claude query resumed after idle release",
-        contextLost: false,
-      },
-    });
-    sendThreadIdentity(threadId, providerThreadId);
-    sendSessionReset(threadId);
-    return replacementSession;
+  return replaceThreadSessionBeforeNextTurn({
+    attachment,
+    restart: replacement,
+    threadId,
+    threadSession,
   });
-  attachment.wakePromise = wakePromise;
-  try {
-    return await wakePromise;
-  } finally {
-    if (attachment.wakePromise === wakePromise) {
-      attachment.wakePromise = null;
-    }
-  }
 }
 
 function getAuthenticationFailureRestartReason(
@@ -1648,7 +1444,6 @@ function createOnSdkMessage(
         getAssistantMessageErrorText(message),
       );
     }
-    refreshIdleQueryRelease(threadSession, args.threadIdRef.current);
   };
 }
 
@@ -1920,7 +1715,6 @@ function createForwardInteractiveRequest(
       const finish = (result: PermissionResult): void => {
         args.signal.removeEventListener("abort", onAbort);
         resolve(result);
-        refreshIdleQueryRelease(threadSession, threadIdRef.current);
       };
 
       const onAbort = (): void => {
@@ -1985,7 +1779,6 @@ function createForwardUserQuestionRequest(
       const finish = (result: PermissionResult): void => {
         args.signal.removeEventListener("abort", onAbort);
         resolve(result);
-        refreshIdleQueryRelease(threadSession, threadIdRef.current);
       };
 
       const onAbort = (): void => {
@@ -2351,7 +2144,6 @@ async function handleThreadStart(
 
   const attachment = createThreadAttachment({
     liveSettings: toInitialLiveSessionSettings(params),
-    idleQueryReleaseEnabled: params.idleQueryReleaseEnabled,
     permissionEscalation: params.permissionEscalation,
     permissionMode: params.permissionMode,
     approvedPlanPermissionMode: params.approvedPlanPermissionMode,
@@ -2399,16 +2191,12 @@ async function handleThreadResume(
     )
   ) {
     const liveSettings = toInitialLiveSessionSettings(params);
-    applyIdleQueryReleaseSetting(existing, params.idleQueryReleaseEnabled);
     if (existingSession) {
       await applyLiveSessionSettings(
         existingSession,
         params.threadId,
         liveSettings,
       );
-      scheduleIdleQueryRelease(existingSession, threadId);
-    } else {
-      applyDormantLiveSessionSettings(existing, liveSettings);
     }
     existing.permissionEscalation = params.permissionEscalation;
     sendResult(id, {
@@ -2450,7 +2238,6 @@ async function handleThreadResume(
   }
   const attachment = createThreadAttachment({
     liveSettings: toInitialLiveSessionSettings(params),
-    idleQueryReleaseEnabled: params.idleQueryReleaseEnabled,
     permissionEscalation: params.permissionEscalation,
     permissionMode: params.permissionMode,
     approvedPlanPermissionMode: params.approvedPlanPermissionMode,
@@ -2516,7 +2303,6 @@ async function handleThreadFork(
   }
   const attachment = createThreadAttachment({
     liveSettings: toInitialLiveSessionSettings(params),
-    idleQueryReleaseEnabled: params.idleQueryReleaseEnabled,
     permissionEscalation: params.permissionEscalation,
     permissionMode: params.permissionMode,
     approvedPlanPermissionMode: params.approvedPlanPermissionMode,
@@ -2565,7 +2351,6 @@ async function runTurnStart(
   const attachment = threadAttachments.get(params.threadId);
   if (attachment) {
     applyTurnEnvironment(attachment, params.config);
-    applyIdleQueryReleaseSetting(attachment, params.idleQueryReleaseEnabled);
     applyChromeSetting(attachment, params.chromeEnabled);
   }
 
@@ -2579,7 +2364,6 @@ async function runTurnStart(
   }
 
   if (!threadSession.session.canPushInput()) {
-    scheduleIdleQueryRelease(threadSession, params.threadId);
     sendError(id, -32000, "Claude SDK input stream is closed");
     return;
   }
@@ -2594,7 +2378,6 @@ async function runTurnStart(
     );
     await enterPlanModeIfRequested(threadSession, params);
   } catch (error) {
-    scheduleIdleQueryRelease(threadSession, params.threadId);
     const message = error instanceof Error ? error.message : String(error);
     sendError(id, -32000, message);
     return;
@@ -2610,7 +2393,6 @@ async function runTurnStart(
     threadSession.attachment.permissionEscalation = params.permissionEscalation;
     sendResult(id, { threadId: params.threadId });
   } catch (error) {
-    scheduleIdleQueryRelease(threadSession, params.threadId);
     const message = error instanceof Error ? error.message : String(error);
     sendError(id, -32000, message);
   }
@@ -2650,7 +2432,6 @@ async function runTurnSteer(
 
   const attachment = threadAttachments.get(params.threadId);
   if (attachment) {
-    applyIdleQueryReleaseSetting(attachment, params.idleQueryReleaseEnabled);
     applyChromeSetting(attachment, params.chromeEnabled);
   }
 
@@ -2664,7 +2445,6 @@ async function runTurnSteer(
   }
 
   if (!threadSession.session.canPushInput()) {
-    scheduleIdleQueryRelease(threadSession, params.threadId);
     sendError(id, -32000, "Claude SDK input stream is closed");
     return;
   }
@@ -2679,7 +2459,6 @@ async function runTurnSteer(
     );
     await enterPlanModeIfRequested(threadSession, params);
   } catch (error) {
-    scheduleIdleQueryRelease(threadSession, params.threadId);
     const message = error instanceof Error ? error.message : String(error);
     sendError(id, -32000, message);
     return;
@@ -2695,7 +2474,6 @@ async function runTurnSteer(
     threadSession.attachment.permissionEscalation = params.permissionEscalation;
     sendResult(id, { threadId: params.threadId });
   } catch (error) {
-    scheduleIdleQueryRelease(threadSession, params.threadId);
     const message = error instanceof Error ? error.message : String(error);
     sendError(id, -32000, message);
   }

@@ -4,13 +4,13 @@ import { useEffect, useState } from "react";
 import type { FormEvent, ReactNode } from "react";
 
 import { trackLandingEvent } from "./analytics";
-import type { CtaPlacement } from "./site";
+import type { CtaPlacement, DesktopPlatform } from "./site";
 import {
   DISCORD_URL,
   GITHUB_URL,
   X_URL,
   SUBSCRIBE_PATH,
-  downloadMacosHref,
+  downloadHref,
 } from "./site";
 
 type CtaLinkProps = {
@@ -19,9 +19,14 @@ type CtaLinkProps = {
   children: ReactNode;
 };
 
-export function DownloadLink({ placement, className, children }: CtaLinkProps) {
+export function DownloadLink({
+  placement,
+  platform,
+  className,
+  children,
+}: CtaLinkProps & { platform: DesktopPlatform }) {
   return (
-    <a className={className} href={downloadMacosHref(placement)}>
+    <a className={className} href={downloadHref(platform, placement)}>
       {children}
     </a>
   );

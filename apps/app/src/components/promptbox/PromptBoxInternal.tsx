@@ -2596,9 +2596,12 @@ export function PromptBoxInternal({
     !isAttaching &&
     !hasSubmittableInput &&
     canStartVoiceInput;
+  const voiceGestureButtonRef = useRef<HTMLButtonElement | null>(null);
   const handleVoicePointerDown = useCallback(
     (event: ReactPointerEvent<HTMLButtonElement>) => {
-      if (!isPointerCoarse || event.button !== 0) return;
+      if (event.button !== 0) return;
+      voiceGestureButtonRef.current = event.currentTarget;
+      if (!isPointerCoarse) return;
 
       event.preventDefault();
     },
@@ -2613,6 +2616,15 @@ export function PromptBoxInternal({
     }
     void voice?.start();
   }, [isPointerCoarse, voice]);
+  const handleVoiceClick = useCallback(
+    (event: ReactMouseEvent<HTMLButtonElement>) => {
+      const gestureButton = voiceGestureButtonRef.current;
+      voiceGestureButtonRef.current = null;
+      if (event.detail > 0 && gestureButton !== event.currentTarget) return;
+      startVoiceInput();
+    },
+    [startVoiceInput],
+  );
   const cancelVoiceInput = useCallback(() => {
     if (voiceActionRevealFrameRef.current !== null) {
       window.cancelAnimationFrame(voiceActionRevealFrameRef.current);
@@ -3266,7 +3278,7 @@ export function PromptBoxInternal({
                           }
                           disabled={!canStartVoiceInput}
                           onPointerDown={handleVoicePointerDown}
-                          onClick={startVoiceInput}
+                          onClick={handleVoiceClick}
                           className={
                             COARSE_POINTER_PROMPT_ICON_ACTION_BUTTON_CLASS
                           }
@@ -3307,7 +3319,7 @@ export function PromptBoxInternal({
                         variant="default"
                         aria-label="Start voice input"
                         onPointerDown={handleVoicePointerDown}
-                        onClick={startVoiceInput}
+                        onClick={handleVoiceClick}
                         className={cn(
                           showCompactLayout
                             ? COMPACT_PROMPT_ACTION_BUTTON_CLASS

@@ -69,6 +69,10 @@ BB_HOST_DAEMON_PORT only for an intentional non-default target.
 - Treat plugin commands as normal top-level commands after installation.
 
 - Inspect real status, logs, API results, or diffs instead of assumptions.
+- For launcher startup errors and console output, read `logs/server-stdio.log`
+  or `logs/host-daemon-stdio.log` under the selected bb data directory. These
+  append across restarts; `bb-app`, `bb-server`, and `bb-host-daemon` capture
+  service output there instead of forwarding it to their terminal.
 - Keep file paths on the machine that owns the selected workspace.
 
 ## Common checks

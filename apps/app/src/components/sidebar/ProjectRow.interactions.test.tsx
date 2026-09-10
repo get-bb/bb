@@ -142,6 +142,34 @@ describe("ProjectRow interactions", () => {
     vi.clearAllMocks();
   });
 
+  it("keeps project header controls touch-accessible when their menu opens and closes", async () => {
+    renderProjectRow();
+    const trigger = screen.getByRole("button", {
+      name: "Test project actions",
+    });
+    const actions = trigger.closest(".bb-sidebar-hover-actions");
+    expect(actions?.getAttribute("data-sidebar-hover-actions-mobile")).toBe(
+      "always",
+    );
+    expect(actions?.getAttribute("data-sidebar-hover-actions-open")).toBeNull();
+
+    fireEvent.pointerDown(trigger, { button: 0 });
+    const menu = await screen.findByRole("menu");
+    expect(actions?.getAttribute("data-sidebar-hover-actions-mobile")).toBe(
+      "always",
+    );
+    expect(actions?.getAttribute("data-sidebar-hover-actions-open")).toBe(
+      "true",
+    );
+
+    fireEvent.keyDown(menu, { key: "Escape" });
+    await waitFor(() => expect(screen.queryByRole("menu")).toBeNull());
+    expect(actions?.getAttribute("data-sidebar-hover-actions-mobile")).toBe(
+      "always",
+    );
+    expect(actions?.getAttribute("data-sidebar-hover-actions-open")).toBeNull();
+  });
+
   it("places the project disclosure after its label and keeps root threads flush", () => {
     const result = renderProjectRow(vi.fn(), {
       status: "ready",

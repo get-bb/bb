@@ -907,20 +907,19 @@ export function ModelReasoningPicker({
         onMobileContentAnimationEnd={handleMobileContentAnimationEnd}
         autoFocusRef={showSearchInput ? searchInputRef : undefined}
         className={cn(
-          "flex flex-col p-0",
+          "flex min-h-0 flex-col p-0",
           MODEL_PICKER_MENU_WIDTH_CLASS_NAME,
-          !isCompactViewport &&
-            "max-h-[min(var(--radix-popover-content-available-height),calc(100dvh-0.5rem))] overflow-hidden",
+          isCompactViewport
+            ? "overflow-y-hidden"
+            : "max-h-[min(var(--radix-popover-content-available-height),calc(100dvh-0.5rem))] overflow-hidden",
         )}
       >
         <ResetBrowseStateOnContentUnmount onReset={resetBrowseState} />
         {showProviderTabs ? (
           <div
             className={cn(
-              "flex items-center gap-0.5 border-b border-border px-2.5 pt-1",
-              isCompactViewport
-                ? "sticky top-0 z-10 bg-background"
-                : "shrink-0 bg-surface-recessed",
+              "flex shrink-0 items-center gap-0.5 border-b border-border px-2.5 pt-1",
+              isCompactViewport ? "bg-background" : "bg-surface-recessed",
             )}
           >
             {providerOptions.map((provider) => {
@@ -978,12 +977,7 @@ export function ModelReasoningPicker({
         ) : null}
 
         <MenuHoverProvider>
-          <div
-            className={cn(
-              !isCompactViewport &&
-                "min-h-0 flex flex-1 flex-col overflow-hidden",
-            )}
-          >
+          <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
             <div
               ref={listRef}
               key={activeProviderId || "no-provider"}
@@ -991,10 +985,8 @@ export function ModelReasoningPicker({
               id={showSearchInput ? listboxId : undefined}
               aria-label={showSearchInput ? "Models" : undefined}
               className={cn(
-                "px-1 pb-1 pt-0",
-                isCompactViewport
-                  ? "overflow-y-auto"
-                  : "min-h-0 max-h-64 flex-1 overflow-y-auto overscroll-contain",
+                "min-h-0 flex-1 overflow-y-auto overscroll-contain px-1 pb-1 pt-0",
+                !isCompactViewport && "max-h-64",
               )}
             >
               {isShowingModelError ? null : (

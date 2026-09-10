@@ -364,7 +364,7 @@ function StoryPluginPageRegistrations() {
         panel: {
           id: AUTOMATIONS_PLUGIN_PANEL_PATH,
           title: "Automations",
-          icon: "TimeSchedule" as const,
+          icon: "Repeat" as const,
           path: AUTOMATIONS_PLUGIN_PANEL_PATH,
           component: () => null,
         },

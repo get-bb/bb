@@ -1,24 +1,31 @@
 // @vitest-environment jsdom
 
-import { cleanup, render, screen } from "@testing-library/react";
-import { afterEach, describe, expect, it } from "vitest";
-import { MemoryRouter, Route, Routes, useLocation } from "react-router-dom";
-import {
-  ExtensionsLandingRedirect,
-  LegacySkillDetailRedirect,
-  LegacyToolsPathRedirect,
-} from "./App";
-import {
-  LEGACY_TOOLS_AUTOMATIONS_ROUTE_PATH,
-  LEGACY_TOOLS_PREFIX_ROUTE_PATH,
-  LEGACY_TOOLS_SKILL_DETAIL_ROUTE_PATH,
-  LEGACY_TOOLS_SPLAT_ROUTE_PATH,
-  TOOLS_PLUGIN_BROWSE_ROUTE_PATH,
-  TOOLS_PLUGIN_DETAIL_ROUTE_PATH,
-  TOOLS_PLUGINS_ROUTE_PATH,
-  TOOLS_ROUTE_PATH,
-  TOOLS_SKILL_DETAIL_ROUTE_PATH,
-} from "./lib/route-paths";
+import type { ReactNode } from "react";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { MemoryRouter, useLocation, useNavigate } from "react-router-dom";
+import { AppRoutes } from "./App";
+
+vi.mock("./components/layout/AppLayout", () => ({
+  AppLayout: ({ children }: { children: ReactNode }) => <>{children}</>,
+}));
+vi.mock("./views/SettingsView", () => ({
+  SettingsView: () => <h1>Settings</h1>,
+}));
+vi.mock("./views/ToolsView", () => ({
+  PluginsView: ({ pluginId }: { pluginId?: string }) => (
+    <h1>Plugin detail: {pluginId}</h1>
+  ),
+  SkillsView: () => <h1>Skills</h1>,
+}));
+vi.mock("./views/SplitWorkspaceRoute", () => ({
+  default: () => <h1>App workspace</h1>,
+}));
+
+function HistoryBackButton() {
+  const navigate = useNavigate();
+  return <button onClick={() => navigate(-1)}>Back</button>;
+}
 
 function LocationPath() {
   const location = useLocation();
@@ -31,137 +38,94 @@ function LocationPath() {
   );
 }
 
-describe("LegacySkillDetailRedirect", () => {
-  afterEach(cleanup);
+afterEach(cleanup);
 
-  it("preserves old installed links while Library remains canonical", () => {
+describe("legacy resource redirects", () => {
+  it.each(["github", "plugin with spaces"])(
+    "opens workspace installed detail for %s alongside Settings routes",
+    async (pluginId) => {
+      const settingsPath = `/settings/plugins/${encodeURIComponent(pluginId)}`;
+      render(
+        <MemoryRouter
+          initialEntries={[
+            settingsPath,
+            `/plugins/${encodeURIComponent(pluginId)}?view=installed&from=bookmark#details`,
+          ]}
+          initialIndex={1}
+        >
+          <AppRoutes />
+          <LocationPath />
+          <HistoryBackButton />
+        </MemoryRouter>,
+      );
+      expect(
+        await screen.findByRole("heading", {
+          name: `Plugin detail: ${pluginId}`,
+        }),
+      ).toBeTruthy();
+      expect(
+        screen.getByText(
+          `/plugins/${encodeURIComponent(pluginId)}?view=installed&from=bookmark#details`,
+        ),
+      ).toBeTruthy();
+      fireEvent.click(screen.getByRole("button", { name: "Back" }));
+      expect(
+        await screen.findByRole("heading", { name: "Settings" }),
+      ).toBeTruthy();
+      expect(screen.getByText(settingsPath)).toBeTruthy();
+    },
+  );
+
+  it.each([
+    ["/settings/plugins", "/settings/plugins"],
+    ["/extensions?view=installed#catalog", "/plugins?view=installed#catalog"],
+    ["/extensions/plugins", "/plugins"],
+    [
+      "/extensions/plugins/browse?sort=name#catalog",
+      "/plugins?sort=name#catalog",
+    ],
+    [
+      "/extensions/plugins/browse/?sort=name#catalog",
+      "/plugins?sort=name#catalog",
+    ],
+    [
+      "/extensions/plugins/github?view=installed#configuration",
+      "/plugins/github?view=installed#configuration",
+    ],
+    ["/extensions/skills", "/skills"],
+    [
+      "/extensions/skills/library/skill_abc123?source=local#details",
+      "/skills/library/skill_abc123?source=local#details",
+    ],
+    [
+      "/extensions/skills/installed/skill_abc123",
+      "/skills/library/skill_abc123",
+    ],
+    ["/extensions/skills/registry", "/skills/registry"],
+    [
+      "/extensions/skills/registry/moss-skills%2Fmoss-notes",
+      "/skills/registry/moss-skills%2Fmoss-notes",
+    ],
+    ["/tools", "/plugins"],
+    ["/tools/plugins/browse", "/plugins"],
+    ["/tools/plugins/browse/?sort=name#catalog", "/plugins?sort=name#catalog"],
+    [
+      "/tools/plugins/github?view=installed#configuration",
+      "/plugins/github?view=installed#configuration",
+    ],
+    [
+      "/tools/skills/installed/skill_abc123?source=local#details",
+      "/skills/library/skill_abc123?source=local#details",
+    ],
+    ["/tools/automations", "/plugins/automations/automations"],
+  ])("redirects %s to %s", async (entry, expected) => {
     render(
-      <MemoryRouter
-        initialEntries={["/extensions/skills/installed/skill_abc123"]}
-      >
-        <Routes>
-          <Route
-            path={LEGACY_TOOLS_SKILL_DETAIL_ROUTE_PATH}
-            element={<LegacySkillDetailRedirect />}
-          />
-          <Route
-            path={TOOLS_SKILL_DETAIL_ROUTE_PATH}
-            element={<LocationPath />}
-          />
-        </Routes>
+      <MemoryRouter initialEntries={[entry]}>
+        <AppRoutes />
+        <LocationPath />
       </MemoryRouter>,
     );
 
-    expect(
-      screen.getByText("/extensions/skills/library/skill_abc123"),
-    ).toBeTruthy();
-  });
-});
-
-describe("ExtensionsLandingRedirect", () => {
-  afterEach(cleanup);
-
-  it("opens Extensions on Plugins by default", () => {
-    render(
-      <MemoryRouter initialEntries={[TOOLS_ROUTE_PATH]}>
-        <Routes>
-          <Route
-            path={TOOLS_ROUTE_PATH}
-            element={<ExtensionsLandingRedirect />}
-          />
-          <Route path={TOOLS_PLUGINS_ROUTE_PATH} element={<LocationPath />} />
-        </Routes>
-      </MemoryRouter>,
-    );
-
-    expect(screen.getByText(TOOLS_PLUGINS_ROUTE_PATH)).toBeTruthy();
-  });
-});
-
-describe("LegacyToolsPathRedirect", () => {
-  afterEach(cleanup);
-
-  it("forwards /tools deep links to /extensions keeping subpath, query, and hash", () => {
-    render(
-      <MemoryRouter
-        initialEntries={["/tools/plugins/github?view=installed#configuration"]}
-      >
-        <Routes>
-          <Route
-            path={LEGACY_TOOLS_SPLAT_ROUTE_PATH}
-            element={<LegacyToolsPathRedirect />}
-          />
-          <Route
-            path={TOOLS_PLUGIN_DETAIL_ROUTE_PATH}
-            element={<LocationPath />}
-          />
-        </Routes>
-      </MemoryRouter>,
-    );
-
-    expect(
-      screen.getByText(
-        "/extensions/plugins/github?view=installed#configuration",
-      ),
-    ).toBeTruthy();
-  });
-
-  it("forwards bare /tools into the Extensions landing redirect", () => {
-    render(
-      <MemoryRouter initialEntries={[LEGACY_TOOLS_PREFIX_ROUTE_PATH]}>
-        <Routes>
-          <Route
-            path={LEGACY_TOOLS_PREFIX_ROUTE_PATH}
-            element={<LegacyToolsPathRedirect />}
-          />
-          <Route
-            path={TOOLS_ROUTE_PATH}
-            element={<ExtensionsLandingRedirect />}
-          />
-          <Route path={TOOLS_PLUGINS_ROUTE_PATH} element={<LocationPath />} />
-        </Routes>
-      </MemoryRouter>,
-    );
-
-    expect(screen.getByText(TOOLS_PLUGINS_ROUTE_PATH)).toBeTruthy();
-  });
-
-  it("loses /tools/automations to that route's own more-specific redirect", () => {
-    render(
-      <MemoryRouter initialEntries={[LEGACY_TOOLS_AUTOMATIONS_ROUTE_PATH]}>
-        <Routes>
-          <Route
-            path={LEGACY_TOOLS_SPLAT_ROUTE_PATH}
-            element={<LegacyToolsPathRedirect />}
-          />
-          <Route
-            path={LEGACY_TOOLS_AUTOMATIONS_ROUTE_PATH}
-            element={<LocationPath />}
-          />
-        </Routes>
-      </MemoryRouter>,
-    );
-
-    expect(screen.getByText(LEGACY_TOOLS_AUTOMATIONS_ROUTE_PATH)).toBeTruthy();
-  });
-});
-
-describe("legacy plugin browse redirect", () => {
-  afterEach(cleanup);
-
-  it("redirects the old Browse path to the canonical bare Plugins route", () => {
-    render(
-      <MemoryRouter initialEntries={[TOOLS_PLUGIN_BROWSE_ROUTE_PATH]}>
-        <Routes>
-          <Route
-            path={TOOLS_PLUGIN_BROWSE_ROUTE_PATH}
-            element={<ExtensionsLandingRedirect />}
-          />
-          <Route path={TOOLS_PLUGINS_ROUTE_PATH} element={<LocationPath />} />
-        </Routes>
-      </MemoryRouter>,
-    );
-
-    expect(screen.getByText(TOOLS_PLUGINS_ROUTE_PATH)).toBeTruthy();
+    expect(await screen.findByText(expected)).toBeTruthy();
   });
 });

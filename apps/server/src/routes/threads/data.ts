@@ -1,3 +1,4 @@
+import { clearTimelineOrderingContextCache } from "../../services/threads/timeline-context-order.js";
 import path from "node:path";
 import {
   getAppSettings,
@@ -311,6 +312,7 @@ export function registerThreadDataRoutes(app: Hono, deps: AppDeps): void {
       message.id !== undefined &&
       message.changes.includes("history-rewritten")
     ) {
+      clearTimelineOrderingContextCache(deps.db);
       timelineCache.invalidateThread(message.id);
       timelineLatestRowsCache.invalidateThread(message.id);
     }
@@ -339,7 +341,6 @@ export function registerThreadDataRoutes(app: Hono, deps: AppDeps): void {
     ).showDiagnosticEvents;
     const maxSeq = getLatestThreadSequence(deps.db, {
       threadId: thread.id,
-      excludeDiagnosticEvents: !includeDiagnosticOperations,
     });
     const eventBudget = deps.config.featureFlags.timelineWindowEventBudget;
     const keyArgs = {
@@ -459,6 +460,7 @@ export function registerThreadDataRoutes(app: Hono, deps: AppDeps): void {
     ).showDiagnosticEvents;
     return context.json(
       buildTimelineTurnSummaryDetails(deps.db, thread, {
+        beforeCursor: query.beforeCursor,
         includeDiagnosticOperations,
         providerDisplayName: resolveThreadProviderDisplayName(
           deps,

@@ -39,7 +39,7 @@ are additive, so registering multiple listeners is supported.
 ### bb.settings
 
 `bb.settings.define(descriptors)` declares settings descriptors (rendered
-in Extensions → Plugins and editable via `bb plugin config <id> set <key>
+in Settings → Installed plugins and editable via `bb plugin config <id> set <key>
 <value>`). Five descriptor types:
 
 ```ts

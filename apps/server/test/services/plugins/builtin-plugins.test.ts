@@ -227,7 +227,7 @@ describe("builtin plugin reconciliation", () => {
       ["bb-guide", "Explore"],
       ["account-pool", "Layers"],
       ["ask-user-question", "MessageQuestion"],
-      ["automations", "Clock"],
+      ["automations", "Repeat"],
       ["concurrency-limit", "Limitation"],
       ["connect", "Smartphone"],
       ["custom-instructions", "EditFile"],

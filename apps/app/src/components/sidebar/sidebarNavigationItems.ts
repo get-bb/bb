@@ -4,11 +4,25 @@ import type {
   ExperimentalSidebarNavigationShortcut,
 } from "@get-bb/plugin-sdk";
 import type { PluginNavPanelSlot } from "@/lib/plugin-slots";
-import { getPluginPanelRoutePath, isToolsRoutePath } from "@/lib/route-paths";
+import {
+  getPluginPanelRoutePath,
+  getPluginsRoutePath,
+  getSkillsRoutePath,
+  isToolsRoutePath,
+} from "@/lib/route-paths";
 
 export const NEW_THREAD_NAVIGATION_ITEM_ID = "new-thread";
 export const SEARCH_THREADS_NAVIGATION_ITEM_ID = "search-threads";
-export const EXTENSIONS_NAVIGATION_ITEM_ID = "extensions";
+export const PLUGINS_NAVIGATION_ITEM_ID = "extensions";
+export const SKILLS_NAVIGATION_ITEM_ID = "skills";
+
+export function getResourceNavigationItemRoutePath(
+  itemId: string,
+): string | null {
+  if (itemId === PLUGINS_NAVIGATION_ITEM_ID) return getPluginsRoutePath();
+  if (itemId === SKILLS_NAVIGATION_ITEM_ID) return getSkillsRoutePath();
+  return null;
+}
 
 export function getPluginPanelNavigationItemId(
   panel: Pick<PluginNavPanelSlot, "pluginId" | "id">,
@@ -24,7 +38,7 @@ interface CreateSidebarNavigationItemsOptions {
   newThreadShortcut: ExperimentalSidebarNavigationShortcut | null;
   searchThreadsDisabled: boolean;
   searchThreadsShortcut: ExperimentalSidebarNavigationShortcut | null;
-  showExtensions: boolean;
+  showResourceWorkspaces: boolean;
   splitPropsFor(
     action: ExperimentalSidebarNavigationAction,
     label: string,
@@ -37,12 +51,12 @@ export function createSidebarNavigationItems({
   newThreadShortcut,
   searchThreadsDisabled,
   searchThreadsShortcut,
-  showExtensions,
+  showResourceWorkspaces,
   splitPropsFor,
 }: CreateSidebarNavigationItemsOptions): readonly ExperimentalSidebarNavigationItem[] {
   const newThreadAction = { kind: "new-thread" } as const;
   const searchAction = { kind: "search-threads" } as const;
-  const extensionsAction = { kind: "open-extensions" } as const;
+  const resourceWorkspaceAction = { kind: "open-extensions" } as const;
   return [
     {
       id: NEW_THREAD_NAVIGATION_ITEM_ID,
@@ -62,13 +76,22 @@ export function createSidebarNavigationItems({
       shortcut: searchThreadsShortcut,
       experimental_splitProps: {},
     },
-    ...(showExtensions
+    ...(showResourceWorkspaces
       ? [
           {
-            id: EXTENSIONS_NAVIGATION_ITEM_ID,
-            label: "Extensions",
+            id: PLUGINS_NAVIGATION_ITEM_ID,
+            label: "Plugins",
             icon: { kind: "host", name: "extensions" },
-            action: extensionsAction,
+            action: resourceWorkspaceAction,
+            isDisabled: false,
+            shortcut: null,
+            experimental_splitProps: {},
+          } satisfies ExperimentalSidebarNavigationItem,
+          {
+            id: SKILLS_NAVIGATION_ITEM_ID,
+            label: "Skills",
+            icon: { kind: "host", name: "extensions" },
+            action: resourceWorkspaceAction,
             isDisabled: false,
             shortcut: null,
             experimental_splitProps: {},
@@ -109,9 +132,12 @@ export function resolveActiveSidebarNavigationItemId({
 }): string | null {
   if (pathname === "/") return NEW_THREAD_NAVIGATION_ITEM_ID;
   if (isToolsRoutePath(pathname)) {
-    return items.some((item) => item.id === EXTENSIONS_NAVIGATION_ITEM_ID)
-      ? EXTENSIONS_NAVIGATION_ITEM_ID
-      : null;
+    const itemId =
+      pathname === getSkillsRoutePath() ||
+      pathname.startsWith(`${getSkillsRoutePath()}/`)
+        ? SKILLS_NAVIGATION_ITEM_ID
+        : PLUGINS_NAVIGATION_ITEM_ID;
+    return items.some((item) => item.id === itemId) ? itemId : null;
   }
   for (const panel of navPanels) {
     const path = getPluginPanelRoutePath({
@@ -128,7 +154,7 @@ export function resolveActiveSidebarNavigationItemId({
 export interface SidebarNavigationActivationHandlers {
   newThread(openInSplit: boolean): void;
   searchThreads(): void;
-  openExtensions(): void;
+  openResourceWorkspace(itemId: string): void;
   openPluginPanel(
     action: Extract<
       ExperimentalSidebarNavigationAction,
@@ -155,7 +181,7 @@ export function activateSidebarNavigationItem(
       handlers.searchThreads();
       return;
     case "open-extensions":
-      handlers.openExtensions();
+      handlers.openResourceWorkspace(item.id);
       return;
     case "open-plugin-panel":
       handlers.openPluginPanel(item.action, openInSplit);

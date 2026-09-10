@@ -15,14 +15,12 @@ function renderSection(overrides?: {
     <ExperimentsSettingsSection
       changelogPreviewEnabled={false}
       disabled={false}
-      editMessagesEnabled={false}
       mobileAppEnabled={false}
       sidebarProgressiveDisclosureEnabled={false}
       timelineWindowingEnabled={false}
       onChangelogPreviewEnabledChange={
         overrides?.onChangelogPreviewEnabledChange ?? vi.fn()
       }
-      onEditMessagesEnabledChange={vi.fn()}
       onMobileAppEnabledChange={overrides?.onMobileAppEnabledChange ?? vi.fn()}
       onSidebarProgressiveDisclosureEnabledChange={
         overrides?.onSidebarProgressiveDisclosureEnabledChange ?? vi.fn()

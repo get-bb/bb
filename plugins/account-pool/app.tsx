@@ -37,6 +37,7 @@ import {
 } from "@bb/shared-ui/collapsible";
 import {
   Dialog,
+  DialogClose,
   DialogContent,
   DialogFooter,
   DialogHeader,
@@ -612,18 +613,25 @@ function DialogFrame({
 }) {
   return (
     <DialogContent
+      hideCloseButton
       className={cn(
         "max-h-[85vh] grid-rows-[auto_minmax(0,1fr)_auto]",
         className,
       )}
     >
-      <DialogHeader className="pr-6">
+      <DialogHeader className="flex-row items-start justify-between gap-4 space-y-0">
         <DialogTitle>{title}</DialogTitle>
+        <DialogClose className="-mr-1 shrink-0 cursor-pointer rounded-sm opacity-70 transition-opacity hover:opacity-100 focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2">
+          <Icon name="X" className="size-4" />
+          <span className="sr-only">Close</span>
+        </DialogClose>
       </DialogHeader>
       <div className="min-h-0 space-y-5 overflow-y-auto">{children}</div>
-      <DialogFooter className="flex-row items-center gap-2 sm:space-x-0">
-        {footer}
-      </DialogFooter>
+      {footer === null ? null : (
+        <DialogFooter className="flex-row items-center gap-2 sm:space-x-0">
+          {footer}
+        </DialogFooter>
+      )}
     </DialogContent>
   );
 }
@@ -1524,35 +1532,27 @@ function LoginDialog({
       title={`Sign in to ${name}`}
       className="sm:max-w-xl"
       footer={
-        <>
-          <span className="flex-1" />
-          {loginDone === null ? (
-            <>
-              <Button variant="ghost" onClick={close}>
-                Cancel
-              </Button>
-              {provider === "claude" ? (
-                <Button
-                  disabled={
-                    loginStep === null ||
-                    pastedCode.trim().length === 0 ||
-                    pending
-                  }
-                  onClick={complete}
-                >
-                  Complete
-                </Button>
-              ) : null}
-            </>
-          ) : (
-            <>
-              <Button variant="outline" onClick={addAnother}>
-                Add another
-              </Button>
-              <Button onClick={close}>Done</Button>
-            </>
-          )}
-        </>
+        loginDone !== null ? (
+          <>
+            <span className="flex-1" />
+            <Button variant="outline" onClick={addAnother}>
+              Add another
+            </Button>
+            <Button onClick={close}>Done</Button>
+          </>
+        ) : provider === "claude" ? (
+          <>
+            <span className="flex-1" />
+            <Button
+              disabled={
+                loginStep === null || pastedCode.trim().length === 0 || pending
+              }
+              onClick={complete}
+            >
+              Complete
+            </Button>
+          </>
+        ) : null
       }
     >
       <StepIndicator step={loginDone === null ? 2 : 3} />
@@ -1577,14 +1577,11 @@ function LoginDialog({
         )
       ) : (
         <>
-          <div>
-            <h3 className="text-base font-semibold">Sign in to {name}</h3>
-            <p className="mt-1 text-sm text-muted-foreground">
-              {provider === "claude"
-                ? "Sign in at claude.ai, then paste the code from the final page."
-                : "Open the verification page, sign in to ChatGPT, and enter this code."}
-            </p>
-          </div>
+          <p className="text-sm text-muted-foreground">
+            {provider === "claude"
+              ? "Sign in at claude.ai, then paste the code from the final page."
+              : "Open the verification page, sign in to ChatGPT, and enter this code."}
+          </p>
           {codexStep === null ? null : (
             <div
               className="rounded-lg border border-border bg-surface-recessed px-5 py-5 text-center font-mono text-2xl font-semibold tracking-widest"

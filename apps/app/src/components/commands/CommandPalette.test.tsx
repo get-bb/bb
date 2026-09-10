@@ -169,7 +169,11 @@ function LocationProbe() {
   const location = useLocation();
   return (
     <output data-testid="location">
-      {JSON.stringify({ pathname: location.pathname, state: location.state })}
+      {JSON.stringify({
+        pathname: location.pathname,
+        search: location.search,
+        state: location.state,
+      })}
     </output>
   );
 }
@@ -477,6 +481,31 @@ describe("CommandPalette", () => {
       ).value,
     ).toBe("");
   });
+
+  it.each([false, true])(
+    "opens Installed plugins in Settings (compact: %s)",
+    async (isCompactViewport) => {
+      renderPalette(isCompactViewport);
+      openPalette();
+      await waitFor(() => expect(searchField()).toBeTruthy());
+      fireEvent.change(searchField(), {
+        target: { value: ">installed plugins" },
+      });
+      await waitFor(() =>
+        expect(selectedOption()?.textContent).toContain("Installed plugins"),
+      );
+      fireEvent.keyDown(searchField(), { key: "Enter" });
+      await waitFor(() =>
+        expect(screen.getByTestId("location").textContent).toBe(
+          JSON.stringify({
+            pathname: "/settings/plugins",
+            search: "",
+            state: null,
+          }),
+        ),
+      );
+    },
+  );
 
   it("opens a specific settings page from Cmd-K", async () => {
     renderPalette();

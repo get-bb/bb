@@ -225,12 +225,24 @@ async function waitForHttp({ label, processRef, url }) {
   );
 }
 
-async function waitForHostPluginWorker({ pluginId, processRef }) {
+async function waitForHostPluginWorker({ dataDir, pluginId, processRef }) {
+  const logPath = join(dataDir, "logs", "host-daemon-stdio.log");
+  let daemonOutput = "";
   const deadline = Date.now() + HOST_PLUGIN_WORKER_TIMEOUT_MS;
   while (Date.now() <= deadline) {
+    try {
+      daemonOutput = await readFile(logPath, "utf8");
+    } catch (error) {
+      if (error.code !== "ENOENT") throw error;
+    }
     if (
-      processRef.output.stdout.includes("Host plugin worker ready") &&
-      processRef.output.stdout.includes(pluginId)
+      daemonOutput
+        .split("\n")
+        .some(
+          (line) =>
+            line.includes("Host plugin worker ready") &&
+            line.includes(pluginId),
+        )
     ) {
       return;
     }
@@ -239,13 +251,13 @@ async function waitForHostPluginWorker({ pluginId, processRef }) {
       processRef.childProcess.signalCode !== null
     ) {
       throw new Error(
-        `${processRef.label} exited before host plugin ${pluginId} started\n${formatProcessOutput(processRef.output)}`,
+        `${processRef.label} exited before host plugin ${pluginId} started\n${formatProcessOutput(processRef.output)}\n${logPath}:\n${daemonOutput}`,
       );
     }
     await delay(HTTP_WAIT_INTERVAL_MS);
   }
   throw new Error(
-    `Timed out waiting for host plugin ${pluginId} on ${processRef.label}\n${formatProcessOutput(processRef.output)}`,
+    `Timed out waiting for host plugin ${pluginId} on ${processRef.label}\n${formatProcessOutput(processRef.output)}\n${logPath}:\n${daemonOutput}`,
   );
 }
 
@@ -945,6 +957,7 @@ async function smokeFullStack(binDir, sdkDir) {
     // log proves the packed daemon found its companion worker, downloaded the
     // plugin artifact, and started the worker for a host RPC call.
     await waitForHostPluginWorker({
+      dataDir,
       pluginId: "keep-awake",
       processRef: stack,
     });
@@ -1053,8 +1066,9 @@ async function smokeDaemonJoin(binDir) {
     // Ready workers on both prove host-plugin artifacts and calls fan out to
     // enrolled machines instead of assuming server-local paths.
     await Promise.all(
-      daemons.map((daemon) =>
+      daemons.map((daemon, index) =>
         waitForHostPluginWorker({
+          dataDir: daemonSpecs[index].dataDir,
           pluginId: "keep-awake",
           processRef: daemon,
         }),
