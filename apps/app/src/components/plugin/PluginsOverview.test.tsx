@@ -35,9 +35,7 @@ function SwitchViewButton({ view }: { view: "browse" | "installed" }) {
     <button
       type="button"
       onClick={() =>
-        navigate(
-          view === "browse" ? "/extensions/plugins" : "/settings/plugins",
-        )
+        navigate(view === "browse" ? "/plugins" : "/plugins?view=installed")
       }
     >
       {`switch-to-${view}`}
@@ -62,7 +60,7 @@ const AUTOMATIONS_PLUGIN = {
   statusDetail: null,
   description: "Schedule recurring and one-shot agent or script work.",
   name: "Automations",
-  icon: "Clock",
+  icon: "Repeat",
   iconUrl: null,
   logoUrl: null,
   logoDarkUrl: null,
@@ -204,7 +202,7 @@ describe("PluginsOverview", () => {
     installFetch();
     const { wrapper: QueryClientWrapper } = createQueryClientTestHarness();
     render(
-      <MemoryRouter initialEntries={["/extensions/plugins"]}>
+      <MemoryRouter initialEntries={["/plugins"]}>
         <QueryClientWrapper>
           <PluginsOverview />
         </QueryClientWrapper>
@@ -251,7 +249,7 @@ describe("PluginsOverview", () => {
     installFetch();
     const { wrapper: QueryClientWrapper } = createQueryClientTestHarness();
     render(
-      <MemoryRouter initialEntries={["/extensions/plugins"]}>
+      <MemoryRouter initialEntries={["/plugins"]}>
         <QueryClientWrapper>
           <SidebarHistoryNavigationControls />
           <PluginsOverview />
@@ -302,7 +300,7 @@ describe("PluginsOverview", () => {
     ]);
     const { wrapper: QueryClientWrapper } = createQueryClientTestHarness();
     render(
-      <MemoryRouter initialEntries={["/extensions/plugins"]}>
+      <MemoryRouter initialEntries={["/plugins"]}>
         <QueryClientWrapper>
           <PluginsOverview />
         </QueryClientWrapper>
@@ -327,7 +325,7 @@ describe("PluginsOverview", () => {
     installFetch([AUTOMATIONS_PLUGIN]);
     const { wrapper: QueryClientWrapper } = createQueryClientTestHarness();
     render(
-      <MemoryRouter initialEntries={["/settings/plugins"]}>
+      <MemoryRouter initialEntries={["/plugins?view=installed"]}>
         <QueryClientWrapper>
           <PluginsOverview />
           <LocationPath />
@@ -341,33 +339,30 @@ describe("PluginsOverview", () => {
     expect(screen.getByTestId("location-path").textContent).toBe("/");
   });
 
-  it.each(["/settings/plugins", "/extensions/plugins?view=installed"])(
-    "shows installed plugin management at %s",
-    async (path) => {
-      installFetch([AUTOMATIONS_PLUGIN]);
-      const { wrapper: QueryClientWrapper } = createQueryClientTestHarness();
-      render(
-        <MemoryRouter initialEntries={[path]}>
-          <QueryClientWrapper>
-            <PluginsOverview />
-            <SwitchViewButton view="browse" />
-            <SwitchViewButton view="installed" />
-          </QueryClientWrapper>
-        </MemoryRouter>,
-      );
+  it("shows the Type filter on Installed instead of Category", async () => {
+    installFetch([AUTOMATIONS_PLUGIN]);
+    const { wrapper: QueryClientWrapper } = createQueryClientTestHarness();
+    render(
+      <MemoryRouter initialEntries={["/plugins?view=installed"]}>
+        <QueryClientWrapper>
+          <PluginsOverview />
+          <SwitchViewButton view="browse" />
+          <SwitchViewButton view="installed" />
+        </QueryClientWrapper>
+      </MemoryRouter>,
+    );
 
-      expect(await screen.findByText("Automations")).toBeTruthy();
-      expect(screen.queryByRole("button", { name: "Category" })).toBeNull();
-      expect(screen.getByRole("button", { name: "Type" })).toBeTruthy();
-      expect(screen.getByRole("button", { name: "New plugin" })).toBeTruthy();
-    },
-  );
+    expect(await screen.findByText("Automations")).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Category" })).toBeNull();
+    expect(screen.getByRole("button", { name: "Type" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "New plugin" })).toBeTruthy();
+  });
 
   it("keeps Browse filters in the toolbar rather than a separate pill band", async () => {
     installFetch();
     const { wrapper: QueryClientWrapper } = createQueryClientTestHarness();
     const { container } = render(
-      <MemoryRouter initialEntries={["/extensions/plugins?view=browse"]}>
+      <MemoryRouter initialEntries={["/plugins?view=browse"]}>
         <QueryClientWrapper>
           <PluginsOverview />
         </QueryClientWrapper>
@@ -403,14 +398,14 @@ describe("PluginsOverview", () => {
     ).toBeTruthy();
   });
 
-  it("opens installed resources on the Settings detail route", async () => {
+  it("opens installed resources on the canonical Plugins detail route", async () => {
     installFetch();
     const { wrapper: QueryClientWrapper } = createQueryClientTestHarness();
     render(
-      <MemoryRouter initialEntries={["/settings/plugins"]}>
+      <MemoryRouter initialEntries={["/plugins?view=installed"]}>
         <QueryClientWrapper>
           <Routes>
-            <Route path="/settings/plugins" element={<PluginsOverview />} />
+            <Route path="/plugins" element={<PluginsOverview />} />
             <Route path="*" element={<LocationPath />} />
           </Routes>
         </QueryClientWrapper>
@@ -423,7 +418,7 @@ describe("PluginsOverview", () => {
       }),
     );
     expect(screen.getByTestId("location-path").textContent).toBe(
-      "/settings/plugins/automations",
+      "/plugins/automations",
     );
   });
 
@@ -431,10 +426,10 @@ describe("PluginsOverview", () => {
     installFetch();
     const { wrapper: QueryClientWrapper } = createQueryClientTestHarness();
     render(
-      <MemoryRouter initialEntries={["/extensions/plugins?view=browse"]}>
+      <MemoryRouter initialEntries={["/plugins?view=browse"]}>
         <QueryClientWrapper>
           <Routes>
-            <Route path="/extensions/plugins" element={<PluginsOverview />} />
+            <Route path="/plugins" element={<PluginsOverview />} />
             <Route path="*" element={<LocationPath />} />
           </Routes>
         </QueryClientWrapper>
@@ -450,7 +445,7 @@ describe("PluginsOverview", () => {
     fireEvent.click(screen.getByRole("button", { name: "Install GitHub" }));
 
     expect((await screen.findByTestId("location-path")).textContent).toBe(
-      "/settings/plugins/github",
+      "/plugins/github",
     );
   });
 
@@ -490,7 +485,7 @@ describe("PluginsOverview", () => {
     installFetch(plugins);
     const { wrapper: QueryClientWrapper } = createQueryClientTestHarness();
     render(
-      <MemoryRouter initialEntries={["/settings/plugins"]}>
+      <MemoryRouter initialEntries={["/plugins?view=installed"]}>
         <QueryClientWrapper>
           <PluginsOverview />
         </QueryClientWrapper>
@@ -565,7 +560,7 @@ describe("PluginsOverview", () => {
       installFetch(plugins);
       const { wrapper: QueryClientWrapper } = createQueryClientTestHarness();
       render(
-        <MemoryRouter initialEntries={["/settings/plugins"]}>
+        <MemoryRouter initialEntries={["/plugins?view=installed"]}>
           <QueryClientWrapper>
             <PluginsOverview />
           </QueryClientWrapper>
@@ -639,7 +634,7 @@ describe("PluginsOverview", () => {
     ]);
     const { wrapper: QueryClientWrapper } = createQueryClientTestHarness();
     render(
-      <MemoryRouter initialEntries={["/settings/plugins"]}>
+      <MemoryRouter initialEntries={["/plugins?view=installed"]}>
         <QueryClientWrapper>
           <PluginsOverview />
           <SwitchViewButton view="browse" />
@@ -723,7 +718,7 @@ describe("PluginsOverview", () => {
     ]);
     const { wrapper: QueryClientWrapper } = createQueryClientTestHarness();
     render(
-      <MemoryRouter initialEntries={["/settings/plugins"]}>
+      <MemoryRouter initialEntries={["/plugins?view=installed"]}>
         <QueryClientWrapper>
           <PluginsOverview />
           <SwitchViewButton view="browse" />
@@ -802,7 +797,7 @@ describe("PluginsOverview", () => {
     const { wrapper: QueryClientWrapper, queryClient } =
       createQueryClientTestHarness();
     render(
-      <MemoryRouter initialEntries={["/settings/plugins"]}>
+      <MemoryRouter initialEntries={["/plugins?view=installed"]}>
         <QueryClientWrapper>
           <PluginsOverview />
         </QueryClientWrapper>
@@ -872,7 +867,7 @@ describe("PluginsOverview", () => {
     ]);
     const { wrapper: QueryClientWrapper } = createQueryClientTestHarness();
     render(
-      <MemoryRouter initialEntries={["/settings/plugins"]}>
+      <MemoryRouter initialEntries={["/plugins?view=installed"]}>
         <QueryClientWrapper>
           <PluginsOverview />
           <SwitchViewButton view="browse" />
@@ -912,7 +907,7 @@ describe("PluginsOverview", () => {
     ]);
     const { wrapper: QueryClientWrapper } = createQueryClientTestHarness();
     render(
-      <MemoryRouter initialEntries={["/settings/plugins"]}>
+      <MemoryRouter initialEntries={["/plugins?view=installed"]}>
         <QueryClientWrapper>
           <PluginsOverview />
           <SwitchViewButton view="browse" />

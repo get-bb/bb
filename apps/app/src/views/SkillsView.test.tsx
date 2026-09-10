@@ -110,11 +110,11 @@ function renderLibrarySkillRoute() {
   vi.stubGlobal("fetch", fetchMock);
   const { wrapper: QueryClientWrapper } = createQueryClientTestHarness();
   renderDom(
-    <MemoryRouter initialEntries={["/extensions/skills/library/skill_missing"]}>
+    <MemoryRouter initialEntries={["/skills/library/skill_missing"]}>
       <QueryClientWrapper>
         <Routes>
           <Route
-            path="/extensions/skills/library/:skillId"
+            path="/skills/library/:skillId"
             element={<SkillsLibrary />}
           />
         </Routes>
@@ -260,13 +260,13 @@ function renderRegistrySkillRoute() {
   return renderDom(
     <MemoryRouter
       initialEntries={[
-        "/extensions/skills/registry/owner%2Frepo%2Fuseful-skill",
+        "/skills/registry/owner%2Frepo%2Fuseful-skill",
       ]}
     >
       <QueryClientWrapper>
         <Routes>
           <Route
-            path="/extensions/skills/registry/:registrySkillId"
+            path="/skills/registry/:registrySkillId"
             element={<SkillsLibrary />}
           />
         </Routes>
@@ -901,17 +901,17 @@ describe("SkillsLibrary registry detail lifecycle", () => {
     const fetchMock = stubRegistryFetch(registrySkill, { list: true });
     const { wrapper: QueryClientWrapper } = createQueryClientTestHarness();
     renderDom(
-      <MemoryRouter initialEntries={["/extensions/skills"]}>
+      <MemoryRouter initialEntries={["/skills"]}>
         <QueryClientWrapper>
           <Routes>
-            <Route path="/extensions/skills" element={<SkillsLibrary />} />
+            <Route path="/skills" element={<SkillsLibrary />} />
             <Route path="/" element={<LocationStateProbe />} />
           </Routes>
           <NavigateButton
-            to="/extensions/skills?view=library"
+            to="/skills?view=library"
             label="go-library"
           />
-          <NavigateButton to="/extensions/skills" label="go-browse" />
+          <NavigateButton to="/skills" label="go-browse" />
         </QueryClientWrapper>
       </MemoryRouter>,
     );
@@ -967,10 +967,10 @@ describe("SkillsLibrary registry detail lifecycle", () => {
     });
     const { wrapper: QueryClientWrapper } = createQueryClientTestHarness();
     renderDom(
-      <MemoryRouter initialEntries={["/extensions/skills?view=browse"]}>
+      <MemoryRouter initialEntries={["/skills?view=browse"]}>
         <QueryClientWrapper>
           <Routes>
-            <Route path="/extensions/skills" element={<SkillsLibrary />} />
+            <Route path="/skills" element={<SkillsLibrary />} />
           </Routes>
         </QueryClientWrapper>
       </MemoryRouter>,
@@ -986,10 +986,10 @@ describe("SkillsLibrary registry detail lifecycle", () => {
     stubRegistryFetch(trendingEntry, { list: true, entryFails: true });
     const { wrapper: QueryClientWrapper } = createQueryClientTestHarness();
     renderDom(
-      <MemoryRouter initialEntries={["/extensions/skills?view=browse"]}>
+      <MemoryRouter initialEntries={["/skills?view=browse"]}>
         <QueryClientWrapper>
           <Routes>
-            <Route path="/extensions/skills" element={<SkillsLibrary />} />
+            <Route path="/skills" element={<SkillsLibrary />} />
           </Routes>
         </QueryClientWrapper>
       </MemoryRouter>,
@@ -1033,10 +1033,10 @@ describe("SkillsLibrary registry detail lifecycle", () => {
     vi.stubGlobal("fetch", fetchMock);
     const { wrapper: QueryClientWrapper } = createQueryClientTestHarness();
     renderDom(
-      <MemoryRouter initialEntries={["/extensions/skills?view=browse"]}>
+      <MemoryRouter initialEntries={["/skills?view=browse"]}>
         <QueryClientWrapper>
           <Routes>
-            <Route path="/extensions/skills" element={<SkillsLibrary />} />
+            <Route path="/skills" element={<SkillsLibrary />} />
           </Routes>
         </QueryClientWrapper>
       </MemoryRouter>,
@@ -1093,10 +1093,10 @@ describe("SkillsLibrary registry detail lifecycle", () => {
     vi.stubGlobal("fetch", fetchMock);
     const { wrapper: QueryClientWrapper } = createQueryClientTestHarness();
     renderDom(
-      <MemoryRouter initialEntries={["/extensions/skills?view=browse"]}>
+      <MemoryRouter initialEntries={["/skills?view=browse"]}>
         <QueryClientWrapper>
           <Routes>
-            <Route path="/extensions/skills" element={<SkillsLibrary />} />
+            <Route path="/skills" element={<SkillsLibrary />} />
           </Routes>
         </QueryClientWrapper>
       </MemoryRouter>,
@@ -1169,10 +1169,10 @@ describe("SkillsLibrary registry detail lifecycle", () => {
     vi.stubGlobal("fetch", fetchMock);
     const { wrapper: QueryClientWrapper } = createQueryClientTestHarness();
     renderDom(
-      <MemoryRouter initialEntries={["/extensions/skills?view=browse"]}>
+      <MemoryRouter initialEntries={["/skills?view=browse"]}>
         <QueryClientWrapper>
           <Routes>
-            <Route path="/extensions/skills" element={<SkillsLibrary />} />
+            <Route path="/skills" element={<SkillsLibrary />} />
           </Routes>
         </QueryClientWrapper>
       </MemoryRouter>,
@@ -1292,10 +1292,10 @@ describe("RegistrySkillsBrowsePage", () => {
     });
     const { wrapper: QueryClientWrapper } = createQueryClientTestHarness();
     renderDom(
-      <MemoryRouter initialEntries={["/extensions/skills?view=browse"]}>
+      <MemoryRouter initialEntries={["/skills?view=browse"]}>
         <QueryClientWrapper>
           <Routes>
-            <Route path="/extensions/skills" element={<SkillsLibrary />} />
+            <Route path="/skills" element={<SkillsLibrary />} />
           </Routes>
         </QueryClientWrapper>
       </MemoryRouter>,
@@ -1331,10 +1331,10 @@ describe("SkillsLibrary registry browse paging", () => {
   function renderBrowse() {
     const { wrapper: QueryClientWrapper } = createQueryClientTestHarness();
     return renderDom(
-      <MemoryRouter initialEntries={["/extensions/skills?view=browse"]}>
+      <MemoryRouter initialEntries={["/skills?view=browse"]}>
         <QueryClientWrapper>
           <Routes>
-            <Route path="/extensions/skills" element={<SkillsLibrary />} />
+            <Route path="/skills" element={<SkillsLibrary />} />
           </Routes>
         </QueryClientWrapper>
       </MemoryRouter>,

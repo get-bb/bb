@@ -81,7 +81,7 @@
 
 ## BB guide instructions and skills
 
-Settings → Installed plugins → BB guide controls the BB introduction and the
+Plugins → Installed plugins → BB guide controls the BB introduction and the
 four bundled skills. All settings default to true. Use
 `bb plugin config bb-guide set <key> true|false` with `introduction`, `skills`
 (the master skill switch), `bbCli`, `pluginAuthoring`, `skillCreator`, or `submitPlugin`.

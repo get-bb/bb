@@ -29,7 +29,7 @@ import {
 } from "./PluginSlotMount";
 import {
   type BuiltInSidebarNavEntry,
-  ExtensionsNavSidebarItem,
+  ResourceNavSidebarItem,
   PluginNavSidebarItems,
   type SidebarNavActivationModifiers,
 } from "./PluginNavSidebarItems";
@@ -604,11 +604,11 @@ describe("PluginNavSidebarItems", () => {
     const { store } = renderSidebarItems({
       builtInEntries: [
         builtInEntry("new-thread", "New thread"),
-        builtInEntry("extensions", "Extensions"),
+        builtInEntry("extensions", "Plugins"),
       ],
     });
 
-    fireEvent.contextMenu(screen.getByRole("button", { name: "Extensions" }));
+    fireEvent.contextMenu(screen.getByRole("button", { name: "Plugins" }));
     fireEvent.click(
       await screen.findByRole("menuitem", { name: "Hide from sidebar" }),
     );
@@ -1045,18 +1045,28 @@ describe("PluginNavSidebarItems", () => {
   });
 });
 
-describe("ExtensionsNavSidebarItem", () => {
-  it("is host-owned and has no plugin-panel options menu", () => {
-    render(
-      <MemoryRouter>
-        <ExtensionsNavSidebarItem routePath="/extensions/plugins" />
-      </MemoryRouter>,
-    );
+describe("ResourceNavSidebarItem", () => {
+  it.each([
+    ["Plugins", "Plug02", "/plugins"],
+    ["Skills", "Zap", "/skills"],
+  ] as const)(
+    "renders the static %s icon without plugin-panel options",
+    (title, icon, routePath) => {
+      render(
+        <MemoryRouter>
+          <ResourceNavSidebarItem
+            icon={icon}
+            title={title}
+            routePath={routePath}
+          />
+        </MemoryRouter>,
+      );
 
-    const row = screen.getByRole("button", { name: "Extensions" });
-    expect(row.querySelector(".bb-sidebar-row-icon-swap")).not.toBeNull();
-    expect(
-      screen.queryByRole("button", { name: "Extensions panel options" }),
-    ).toBeNull();
-  });
+      const row = screen.getByRole("button", { name: title });
+      expect(row.querySelector(`[data-icon="${icon}"]`)).not.toBeNull();
+      expect(
+        screen.queryByRole("button", { name: `${title} panel options` }),
+      ).toBeNull();
+    },
+  );
 });

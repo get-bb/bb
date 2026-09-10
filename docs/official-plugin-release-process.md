@@ -5,8 +5,8 @@ publish pipeline: at packaging time, `apps/server/scripts/copy-builtin-plugins.t
 builds every plugin declared in `BUNDLED_PLUGINS`
 (`apps/server/src/services/plugins/builtin-registry.ts`) and copies each
 prebuilt runtime layout into `<server dist>/builtin-plugins/<name>`. The app in
-Extensions → Plugins → Browse installs official plugins from that local bundled
-copy; no network is involved.
+Plugins → Browse plugins installs official plugins from that local bundled copy;
+no network is involved.
 
 Every bundled plugin lives in `plugins/<name>`. The directory does not record
 the install policy. `autoInstall` in the registry does: `BUILTIN_PLUGINS`

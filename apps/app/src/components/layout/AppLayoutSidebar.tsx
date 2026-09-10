@@ -1,10 +1,15 @@
 import { useState, type MouseEvent as ReactMouseEvent } from "react";
 import { AppSidebar } from "@/components/sidebar/AppSidebar";
 import { SettingsSidebar } from "@/components/settings/SettingsSidebar";
-import { ToolsSidebar } from "@/components/tools/ToolsSidebar";
+import { PluginsSidebar } from "@/components/plugin/PluginsSidebar";
+import { SkillsSidebar } from "@/components/tools/SkillsSidebar";
 import { Sidebar, useSidebar } from "@/components/ui/sidebar.js";
 
-export type AppLayoutSidebarMode = "app" | "settings" | "tools";
+export type AppLayoutSidebarMode =
+  | "app"
+  | "settings"
+  | "plugins"
+  | "skills";
 
 interface AppLayoutSidebarProps {
   mode: AppLayoutSidebarMode;
@@ -53,8 +58,17 @@ export function AppLayoutSidebar({
             mobileHosted
           />
         ) : null}
-        {renderedMode === "tools" ? (
-          <ToolsSidebar
+        {renderedMode === "plugins" ? (
+          <PluginsSidebar
+            onResizeMouseDown={onResizeMouseDown}
+            isResizing={isResizing}
+            showTopReserve={true}
+            appRoutePath={toolsBackRoutePath}
+            mobileHosted
+          />
+        ) : null}
+        {renderedMode === "skills" ? (
+          <SkillsSidebar
             onResizeMouseDown={onResizeMouseDown}
             isResizing={isResizing}
             showTopReserve={true}
@@ -77,9 +91,20 @@ export function AppLayoutSidebar({
     );
   }
 
-  if (renderedMode === "tools") {
+  if (renderedMode === "plugins") {
     return (
-      <ToolsSidebar
+      <PluginsSidebar
+        onResizeMouseDown={onResizeMouseDown}
+        isResizing={isResizing}
+        showTopReserve={true}
+        appRoutePath={toolsBackRoutePath}
+      />
+    );
+  }
+
+  if (renderedMode === "skills") {
+    return (
+      <SkillsSidebar
         onResizeMouseDown={onResizeMouseDown}
         isResizing={isResizing}
         showTopReserve={true}

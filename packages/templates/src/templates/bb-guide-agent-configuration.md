@@ -95,7 +95,7 @@ BB guide plugin:
 
 Connect agent instructions:
 
-  Settings → Installed plugins → Connect → Tell agents about remote access
+  Plugins → Installed plugins → Connect → Tell agents about remote access
   controls the message telling remotely used agents to expose public server
   links. It defaults to true and still requires active/recent remote usage.
   Use `bb plugin config connect set sendRemoteInstructions false` to turn it
