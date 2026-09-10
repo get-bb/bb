@@ -38,6 +38,7 @@ import {
   THREAD_SECONDARY_PANEL_MIN_SIZE_PERCENT,
 } from "./secondaryPanelSizing";
 import {
+  getCompactPanelPresentation,
   RIGHT_PANEL_TOGGLE_ICON_NAME,
   resolveConversationCollapseControl,
 } from "./panelToggleControlState";
@@ -258,6 +259,12 @@ function ThreadSecondaryPanelContent({
     () => tabs.filter((tab) => tab.isHidden !== true),
     [tabs],
   );
+  const reservesCompactSidebarToggle =
+    renderAsDrawer &&
+    getCompactPanelPresentation(
+      activeTab?.kind,
+      fixedTabs[0]?.tab.kind ?? visibleTabs[0]?.tab.kind,
+    ) === "full";
   const activeRenderableTab =
     tabs.find((tab) => tab.tab.id === activeTab?.id) ??
     (activeTab === null && fixedTabs.length === 0 ? visibleTabs[0] : undefined);
@@ -717,6 +724,7 @@ function ThreadSecondaryPanelContent({
             className={cn(
               CHROME_ROW_CLASS,
               "min-w-0 justify-between gap-2 px-4",
+              reservesCompactSidebarToggle && "pl-14",
               usesDesktopChrome && usesWindowChrome && MACOS_WINDOW_DRAG_CLASS,
               usesDesktopChrome &&
                 usesWindowChrome &&
