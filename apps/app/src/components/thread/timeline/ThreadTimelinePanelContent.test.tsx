@@ -97,6 +97,7 @@ function baseTimeline(
   overrides: Partial<UseThreadTimelineControllerResult> = {},
 ): UseThreadTimelineControllerResult {
   return {
+    providerAuthRequired: null,
     activePromptMode: null,
     activeThinking: null,
     activeWorkflows: [],

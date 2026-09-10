@@ -410,6 +410,7 @@ export class DemoWorld {
       pendingTodos: null,
       goal: null,
       modelFallback: null,
+      providerAuthRequired: null,
       contextWindowUsage: {
         estimated: false,
         modelContextWindow: 258_400,

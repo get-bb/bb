@@ -113,6 +113,7 @@ describe("fetchThreadPendingTodos", () => {
       pendingTodos,
       goal: null,
       modelFallback: null,
+      providerAuthRequired: null,
       rows: [],
       maxSeq: 0,
       timelinePage: {

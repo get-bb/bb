@@ -23,6 +23,7 @@ import {
   type ThreadTimelineActivePromptMode,
   type ThreadTimelineGoal,
   type ThreadTimelineModelFallback,
+  type ThreadTimelineProviderAuthRequired,
   type ThreadTimelinePendingTodos,
 } from "@bb/domain";
 import type {
@@ -67,6 +68,7 @@ import {
 } from "./active-prompt-mode-extraction.js";
 import { extractThreadTimelineGoal } from "./goal-snapshot-extraction.js";
 import { extractThreadTimelineModelFallback } from "./model-fallback-extraction.js";
+import { extractThreadTimelineProviderAuthRequired } from "./provider-auth-extraction.js";
 import { extractThreadTimelinePendingTodos } from "./todo-snapshot-extraction.js";
 import { buildTimelineErrorDisplay } from "./error-display.js";
 
@@ -105,6 +107,7 @@ export interface ThreadTimelineFromEventsResult {
   goal: ThreadTimelineGoal | null;
   modelFallback: ThreadTimelineModelFallback | null;
   pendingTodos: ThreadTimelinePendingTodos | null;
+  providerAuthRequired: ThreadTimelineProviderAuthRequired | null;
   rows: TimelineRow[];
 }
 
@@ -1413,6 +1416,9 @@ export function buildThreadTimelineFromEvents(
           args.options.threadStatus,
           args.events,
         ),
+    providerAuthRequired: !args.options.isLatestPage
+      ? null
+      : extractThreadTimelineProviderAuthRequired(args.events),
     rows,
   };
 }

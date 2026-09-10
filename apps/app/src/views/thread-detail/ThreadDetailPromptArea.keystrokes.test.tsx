@@ -373,6 +373,7 @@ function buildPromptArea({
         environmentGoneStatus={null}
         goal={null}
         modelFallback={null}
+        providerAuthSection={null}
         isEnvironmentActionPending={false}
         onChangedFileClick={vi.fn()}
         parentThreadSection={null}

@@ -138,6 +138,13 @@ export type ClaudeAssistantMessageError = z.infer<
   typeof claudeAssistantMessageErrorSchema
 >;
 
+export const claudeAssistantErrorMessageSchema = z
+  .object({
+    type: z.literal("assistant"),
+    error: claudeAssistantMessageErrorSchema,
+  })
+  .passthrough();
+
 export const claudeSdkMessageTypeSchema = z
   .object({
     type: z.enum([
