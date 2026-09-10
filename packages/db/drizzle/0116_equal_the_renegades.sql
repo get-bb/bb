@@ -1,1 +1,0 @@
-CREATE INDEX `events_delta_prune_idx` ON `events` (`thread_id`,`type`,`turn_id`,`item_id`,`parent_tool_call_id`,`sequence`) WHERE "events"."type" IN ('item/agentMessage/delta', 'item/commandExecution/outputDelta', 'item/reasoning/summaryTextDelta', 'item/reasoning/textDelta');

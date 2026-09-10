@@ -813,13 +813,6 @@
       "when": 1788908496395,
       "tag": "0115_ui_preferences",
       "breakpoints": true
-    },
-    {
-      "idx": 116,
-      "version": "6",
-      "when": 1789062956920,
-      "tag": "0116_equal_the_renegades",
-      "breakpoints": true
     }
   ]
 }

@@ -3845,7 +3845,12 @@ export function pruneResolvedItemDeltas(
           SELECT candidate.rowid
           FROM events candidate
           WHERE candidate.thread_id = ${args.threadId}
-          AND candidate.type IN ('item/agentMessage/delta', 'item/commandExecution/outputDelta', 'item/reasoning/summaryTextDelta', 'item/reasoning/textDelta')
+          AND candidate.type IN (
+            ${"item/agentMessage/delta" satisfies PrunableResolvedDeltaEventType},
+            ${"item/commandExecution/outputDelta" satisfies PrunableResolvedDeltaEventType},
+            ${"item/reasoning/summaryTextDelta" satisfies PrunableResolvedDeltaEventType},
+            ${"item/reasoning/textDelta" satisfies PrunableResolvedDeltaEventType}
+          )
           AND candidate.item_id IS NOT NULL
           AND candidate.turn_id IS NOT NULL
           AND EXISTS (
@@ -3874,8 +3879,7 @@ export function pruneResolvedItemDeltas(
           AND EXISTS (
             SELECT 1
             FROM events earlier_delta
-            WHERE earlier_delta.type IN ('item/agentMessage/delta', 'item/commandExecution/outputDelta', 'item/reasoning/summaryTextDelta', 'item/reasoning/textDelta')
-              AND earlier_delta.thread_id = candidate.thread_id
+            WHERE earlier_delta.thread_id = candidate.thread_id
               AND earlier_delta.turn_id = candidate.turn_id
               AND earlier_delta.type = candidate.type
               AND earlier_delta.item_id = candidate.item_id
