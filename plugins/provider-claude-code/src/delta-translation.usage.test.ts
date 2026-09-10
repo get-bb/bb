@@ -28,6 +28,130 @@ describe("claude usage and fixture translation (delta path)", () => {
     );
   });
 
+  it("emits context-window usage on a top-level assistant message", () => {
+    const harness = createClaudeDeltaHarness();
+    const threadId = "bb-thread-1";
+
+    harness.translator.setClaudeModelContextWindowHint(
+      threadId,
+      "claude-opus-4-7[1m]",
+    );
+    const events = harness.translate(
+      {
+        type: "assistant",
+        message: {
+          type: "message",
+          role: "assistant",
+          content: [],
+          usage: {
+            input_tokens: 1,
+            cache_read_input_tokens: 49_000,
+            cache_creation_input_tokens: 999,
+            output_tokens: 120,
+          },
+        },
+      },
+      { threadId },
+    );
+
+    expect(events).toContainEqual(
+      expect.objectContaining({
+        type: "thread/contextWindowUsage/updated",
+        contextWindowUsage: {
+          usedTokens: 50_000,
+          modelContextWindow: 1_000_000,
+          estimated: true,
+        },
+      }),
+    );
+    expect(events).not.toContainEqual(
+      expect.objectContaining({ type: "turn/completed" }),
+    );
+  });
+
+  it("does not use nested assistant usage as the parent context window", () => {
+    const harness = createClaudeDeltaHarness();
+    const threadId = "bb-thread-1";
+
+    harness.translator.setClaudeModelContextWindowHint(
+      threadId,
+      "claude-opus-4-7[1m]",
+    );
+    harness.translate(
+      {
+        type: "assistant",
+        message: {
+          type: "message",
+          role: "assistant",
+          content: [],
+          usage: {
+            input_tokens: 1,
+            cache_read_input_tokens: 49_000,
+            cache_creation_input_tokens: 999,
+            output_tokens: 120,
+          },
+        },
+      },
+      { threadId },
+    );
+
+    const nestedEvents = harness.translate(
+      {
+        type: "assistant",
+        message: {
+          type: "message",
+          role: "assistant",
+          content: [],
+          usage: {
+            input_tokens: 1,
+            cache_read_input_tokens: 4_000,
+            cache_creation_input_tokens: 999,
+            output_tokens: 20,
+          },
+        },
+      },
+      { threadId, parentToolCallId: "parent-tool-1" },
+    );
+    expect(nestedEvents).not.toContainEqual(
+      expect.objectContaining({
+        type: "thread/contextWindowUsage/updated",
+      }),
+    );
+
+    const resultEvents = harness.translate(
+      {
+        type: "result",
+        subtype: "success",
+        duration_ms: 1,
+        duration_api_ms: 1,
+        is_error: false,
+        num_turns: 1,
+        result: "ok",
+        stop_reason: "end_turn",
+        total_cost_usd: 0,
+        usage: {
+          input_tokens: 1,
+          cache_read_input_tokens: 49_000,
+          cache_creation_input_tokens: 999,
+          output_tokens: 120,
+        },
+        session_id: "session-1",
+      },
+      { threadId },
+    );
+
+    expect(resultEvents).toContainEqual(
+      expect.objectContaining({
+        type: "thread/contextWindowUsage/updated",
+        contextWindowUsage: {
+          usedTokens: 50_000,
+          modelContextWindow: 1_000_000,
+          estimated: true,
+        },
+      }),
+    );
+  });
+
   it("fixture: assistant-tool-use produces agentMessage + commandExecution item", () => {
     const harness = createClaudeDeltaHarness();
     const events = harness.translate(loadFixture("assistant-tool-use.json"));

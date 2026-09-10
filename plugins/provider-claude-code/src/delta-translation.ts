@@ -842,9 +842,18 @@ export function createClaudeDeltaTranslator(
     if (providerCheckpointId !== undefined) {
       state.latestProviderCheckpointId = providerCheckpointId;
     }
-    const requestContextTokens = extractClaudeRequestContextTokens(message);
-    if (requestContextTokens !== null) {
-      state.latestRequestContextTokens = requestContextTokens;
+    if (parentToolCallId === undefined) {
+      const requestContextTokens = extractClaudeRequestContextTokens(message);
+      if (requestContextTokens !== null) {
+        state.latestRequestContextTokens = requestContextTokens;
+        deltas.push({
+          kind: "contextWindow",
+          used: requestContextTokens,
+          size: state.selectedModelContextWindow,
+          estimated: true,
+          attach: "open",
+        });
+      }
     }
 
     for (const thinkingBlock of extractThinkingBlocks(message)) {
