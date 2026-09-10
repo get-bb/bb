@@ -6,10 +6,7 @@ import type { Host } from "@bb/domain";
 import { makeHost } from "@bb/test-helpers/domain-fixtures";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { SystemEnvironmentProvider } from "@bb/server-contract";
-import {
-  ProjectlessEnvSlot,
-  ProjectlessMachineSlot,
-} from "./NewThreadPromptBox";
+import { EnvironmentSlot, ProjectlessMachineSlot } from "./NewThreadPromptBox";
 
 const host = makeHost({
   id: "host_test",
@@ -162,7 +159,7 @@ describe("ProjectlessMachineSlot", () => {
   });
 });
 
-describe("ProjectlessEnvSlot", () => {
+describe("EnvironmentSlot", () => {
   const secondHost: Host = {
     ...host,
     id: "host_second",
@@ -250,7 +247,8 @@ describe("ProjectlessEnvSlot", () => {
 
   it("shows environment loading before resolving to the machine slot", () => {
     const { rerender } = render(
-      <ProjectlessEnvSlot
+      <EnvironmentSlot
+        projectless
         environment={makeEnvironment({ providers: [], isLoading: true })}
         worktree={makeWorktree()}
       />,
@@ -258,7 +256,8 @@ describe("ProjectlessEnvSlot", () => {
     expect(screen.getByRole("button", { name: "Environment" })).not.toBeNull();
     expect(screen.queryByRole("button", { name: "Machine" })).toBeNull();
     rerender(
-      <ProjectlessEnvSlot
+      <EnvironmentSlot
+        projectless
         environment={makeEnvironment({
           providers: [personalProvider],
           isLoading: false,
@@ -272,7 +271,8 @@ describe("ProjectlessEnvSlot", () => {
 
   it("keeps the machine slot when only one provider is available", () => {
     render(
-      <ProjectlessEnvSlot
+      <EnvironmentSlot
+        projectless
         environment={makeEnvironment({ providers: [personalProvider] })}
         worktree={makeWorktree()}
       />,
@@ -284,7 +284,8 @@ describe("ProjectlessEnvSlot", () => {
 
   it("omits project-only providers from the projectless picker", () => {
     render(
-      <ProjectlessEnvSlot
+      <EnvironmentSlot
+        projectless
         environment={makeEnvironment({
           value: "provider:personal-workspace",
           providers: [personalProvider, sandboxProvider],
@@ -301,7 +302,8 @@ describe("ProjectlessEnvSlot", () => {
   it("shows the reused environment instead of the machine slot when a thread reuses one", () => {
     render(
       <QueryClientProvider client={new QueryClient()}>
-        <ProjectlessEnvSlot
+        <EnvironmentSlot
+          projectless
           environment={makeEnvironment({
             value: "reuse:env_personal",
             providers: [personalProvider],
@@ -316,5 +318,47 @@ describe("ProjectlessEnvSlot", () => {
     expect(triggers).toHaveLength(2);
     expect(triggers[0]?.textContent).toContain("Reuse");
     expect(triggers[1]?.textContent).toContain("Scratch space");
+  });
+
+  it("keeps an open environment menu mounted while project scope replays", () => {
+    const projectProvider = {
+      ...sandboxProvider,
+      requires: {
+        ...sandboxProvider.requires,
+        projectless: false,
+      },
+    };
+    const environment = makeEnvironment({
+      value: "reuse:env_personal",
+      providers: [personalProvider, projectProvider],
+    });
+    const queryClient = new QueryClient();
+    const { rerender } = render(
+      <QueryClientProvider client={queryClient}>
+        <EnvironmentSlot
+          projectless={false}
+          environment={environment}
+          worktree={makeWorktree("env_personal")}
+        />
+      </QueryClientProvider>,
+    );
+    const trigger = screen.getAllByRole("button", { name: "Environment" })[0];
+    fireEvent.pointerDown(trigger!, { button: 0 });
+    expect(screen.getByRole("menu")).toBeTruthy();
+
+    rerender(
+      <QueryClientProvider client={queryClient}>
+        <EnvironmentSlot
+          projectless
+          environment={environment}
+          worktree={makeWorktree("env_personal")}
+        />
+      </QueryClientProvider>,
+    );
+
+    expect(screen.getByRole("menu")).toBeTruthy();
+    expect(document.querySelector('button[aria-label="Environment"]')).toBe(
+      trigger,
+    );
   });
 });

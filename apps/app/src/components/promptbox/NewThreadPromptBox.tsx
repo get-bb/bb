@@ -369,23 +369,14 @@ const DefaultNewThreadComposer = memo(function DefaultNewThreadComposer({
               className="shrink-0"
             />
           ) : null}
-          {project?.value !== null ? (
-            <ThreadEnvSlot
-              environment={modeConfig.environment}
-              worktree={modeConfig.worktree}
-              environmentProviderInputsSlot={
-                modeConfig.environmentProviderInputsSlot
-              }
-            />
-          ) : (
-            <ProjectlessEnvSlot
-              environment={modeConfig.environment}
-              worktree={modeConfig.worktree}
-              environmentProviderInputsSlot={
-                modeConfig.environmentProviderInputsSlot
-              }
-            />
-          )}
+          <EnvironmentSlot
+            projectless={project?.value === null}
+            environment={modeConfig.environment}
+            worktree={modeConfig.worktree}
+            environmentProviderInputsSlot={
+              modeConfig.environmentProviderInputsSlot
+            }
+          />
         </div>
         <div className="flex shrink-0 items-center gap-2">
           <PermissionModePicker
@@ -403,80 +394,21 @@ const DefaultNewThreadComposer = memo(function DefaultNewThreadComposer({
   );
 });
 
-interface ThreadEnvSlotProps {
+interface EnvironmentSlotProps {
+  projectless: boolean;
   environment: NewThreadEnvironmentConfig;
   worktree: NewThreadWorktreeConfig;
   environmentProviderInputsSlot?: ReactNode;
 }
 
-export function ThreadEnvSlot({
+export function EnvironmentSlot({
+  projectless,
   environment,
   worktree,
   environmentProviderInputsSlot,
-}: ThreadEnvSlotProps) {
-  const parsedEnvironment = useMemo(
-    () => parseEnvironmentValue(environment.value),
-    [environment.value],
-  );
-  const selectedProvider = useMemo(
-    () =>
-      parsedEnvironment?.type === "provider"
-        ? environment.providers?.find(
-            (provider) =>
-              provider.id === parsedEnvironment.environmentProviderId,
-          )
-        : undefined,
-    [environment.providers, parsedEnvironment],
-  );
-  const showReuseEnvironmentPicker = parsedEnvironment?.type === "reuse";
-  return (
-    <>
-      <EnvironmentPickerUI
-        value={environment.value}
-        sources={environment.sources}
-        host={environment.host}
-        isLocal={environment.isLocal}
-        machines={environment.machines}
-        onRequestMachineSetup={environment.onRequestMachineSetup}
-        disabled={environment.disabled}
-        isLoading={environment.isLoading}
-        providers={environment.providers}
-        providersByHostId={environment.providersByHostId}
-        selectedProviderHostId={environment.selectedProviderHostId}
-        inputsControlProviderIds={environment.inputsControlProviderIds}
-        onSelectProvider={environment.onSelectProvider}
-        className="shrink-0"
-        muted
-      />
-      {showReuseEnvironmentPicker ? (
-        <ReuseEnvironmentPicker
-          muted
-          options={worktree.options}
-          value={worktree.value}
-          onChange={worktree.onChange}
-          disabled={worktree.disabled}
-        />
-      ) : null}
-      {selectedProvider !== undefined && selectedProvider.inputs !== null
-        ? environmentProviderInputsSlot
-        : null}
-    </>
-  );
-}
-
-interface ProjectlessEnvSlotProps {
-  environment: NewThreadEnvironmentConfig;
-  worktree: NewThreadWorktreeConfig;
-  environmentProviderInputsSlot?: ReactNode;
-}
-
-export function ProjectlessEnvSlot({
-  environment,
-  worktree,
-  environmentProviderInputsSlot,
-}: ProjectlessEnvSlotProps) {
+}: EnvironmentSlotProps) {
   const providers = (environment.providers ?? []).filter(
-    (provider) => provider.requires.projectless,
+    (provider) => provider.requires.projectless === projectless,
   );
   const parsedEnvironment = useMemo(
     () => parseEnvironmentValue(environment.value),
@@ -490,6 +422,7 @@ export function ProjectlessEnvSlot({
       : undefined;
   const showReuseEnvironmentPicker = parsedEnvironment?.type === "reuse";
   if (
+    projectless &&
     !environment.isLoading &&
     providers.length <= 1 &&
     !showReuseEnvironmentPicker
@@ -501,11 +434,14 @@ export function ProjectlessEnvSlot({
     <>
       <EnvironmentPickerUI
         value={environment.value}
-        projectless
+        projectless={projectless}
         sources={environment.sources}
         host={environment.host}
         isLocal={environment.isLocal}
         machines={environment.machines}
+        {...(!projectless && environment.onRequestMachineSetup
+          ? { onRequestMachineSetup: environment.onRequestMachineSetup }
+          : {})}
         disabled={environment.disabled}
         isLoading={environment.isLoading}
         providers={providers}
