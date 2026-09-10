@@ -211,26 +211,26 @@ export function PromptBoxActionsMenu({
         }}
       >
         {onAttach ? (
-          <DropdownMenuItem
-            disabled={isAttaching}
-            onSelect={() => {
-              selectedItemRef.current = true;
-              onAttach();
-            }}
-          >
-            <Icon
-              name={isAttaching ? "Spinner" : "Paperclip"}
-              className={cn(
-                "size-4 text-muted-foreground",
-                isAttaching && "animate-spin",
-              )}
-              aria-hidden
-            />
-            Attach files
-          </DropdownMenuItem>
-        ) : null}
-        {onAttach && visibleActions.length > 0 ? (
-          <DropdownMenuSeparator />
+          <>
+            <DropdownMenuItem
+              disabled={isAttaching}
+              onSelect={() => {
+                selectedItemRef.current = true;
+                onAttach();
+              }}
+            >
+              <Icon
+                name={isAttaching ? "Spinner" : "Paperclip"}
+                className={cn(
+                  "size-4 text-muted-foreground",
+                  isAttaching && "animate-spin",
+                )}
+                aria-hidden
+              />
+              Attach files
+            </DropdownMenuItem>
+            {visibleActions.length > 0 ? <DropdownMenuSeparator /> : null}
+          </>
         ) : null}
         {visibleActions.map((action, index) => {
           const presentation = PROMPT_ACTION_PRESENTATION[action.kind];
