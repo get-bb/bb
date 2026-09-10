@@ -430,6 +430,39 @@ describe("workflow-preview directive", () => {
     });
   });
 
+  it("opens actionable worker rows and leaves rows without a child thread inert", async () => {
+    const runWithInertWorker: WorkflowRunView = {
+      ...run,
+      phases: run.phases.map((phase) => ({
+        ...phase,
+        calls: phase.calls.map((call) =>
+          call.id === "wfc_1" ? { ...call, childThreadId: null } : call,
+        ),
+      })),
+    };
+    const slot = renderSlot(
+      app.messageDirectives[0]!,
+      {
+        attributes: { run: run.id },
+        source: `::workflow-preview{run="${run.id}"}`,
+        message,
+        openWorkspaceFile: null,
+      },
+      { rpc: { workflowRunView: () => ({ run: runWithInertWorker }) } },
+    );
+
+    await slot.findByText("Adversarial review");
+    fireEvent.click(slot.getByRole("button", { name: /adversarial review/i }));
+    expect(slot.navigateCalls).toContainEqual({
+      method: "toThread",
+      threadId: "thr_worker_2",
+    });
+
+    fireEvent.click(slot.getByRole("button", { name: /Discover1\/1/ }));
+    const inertWorker = slot.getByText("Inspect implementation").parentElement;
+    expect(inertWorker?.tagName).toBe("DIV");
+  });
+
   it("keeps workers outside declared phases visible", async () => {
     const unphasedRun: WorkflowRunView = {
       ...run,

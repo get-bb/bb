@@ -335,6 +335,18 @@ function buildSharedWorkflowView(run: WorkflowRunView): SharedWorkflowView {
   };
 }
 
+function activateWorkflowAgent(
+  agent: WorkflowProgressAgent,
+  callsById: ReadonlyMap<string, WorkflowCallView>,
+  toThread: (threadId: string) => void,
+): void {
+  const childThreadId =
+    agent.id === undefined
+      ? null
+      : (callsById.get(agent.id)?.childThreadId ?? null);
+  if (childThreadId !== null) toThread(childThreadId);
+}
+
 function useWorkflowRun(
   threadId: string,
   runId: string | null,
@@ -812,6 +824,11 @@ function WorkflowPreviewLoaded({
               collapsiblePhases
               currentPhaseIndex={shared.currentPhaseIndex}
               terminalState={runTerminalState(run)}
+              onAgentActivate={(agent) =>
+                activateWorkflowAgent(agent, shared.callsById, (threadId) =>
+                  navigate.toThread(threadId),
+                )
+              }
             />
           </div>
         </div>
@@ -981,13 +998,11 @@ function WorkflowRunPanelLoaded({
             collapsiblePhases
             currentPhaseIndex={shared.currentPhaseIndex}
             terminalState={runTerminalState(run)}
-            onAgentActivate={(agent) => {
-              const childThreadId =
-                agent.id === undefined
-                  ? null
-                  : (shared.callsById.get(agent.id)?.childThreadId ?? null);
-              if (childThreadId !== null) navigate.toThread(childThreadId);
-            }}
+            onAgentActivate={(agent) =>
+              activateWorkflowAgent(agent, shared.callsById, (threadId) =>
+                navigate.toThread(threadId),
+              )
+            }
           />
         </div>
         <div className="my-4 h-px bg-border-seam" />
