@@ -366,7 +366,7 @@ describe("ThreadPendingInteractionBanner presentation detail images", () => {
 });
 
 describe("ThreadPendingInteractionBanner collapsed strip", () => {
-  it("arrives collapsed with the reason, the first command line, and every decision", () => {
+  it("arrives collapsed with only the label and exposes decisions after expansion", () => {
     renderBanner(commandApproval);
     const banner = screen.getByTestId("approval-banner");
     expect(banner.hasAttribute("data-expanded")).toBe(false);
@@ -375,6 +375,8 @@ describe("ThreadPendingInteractionBanner collapsed strip", () => {
       "python3 -m unittest discover -s tests 2>&1 | tail -20",
     );
     expect(isHidden(screen.getByTestId("command-preview"))).toBe(true);
+    expect(screen.queryByRole("button", { name: "Allow once" })).toBeNull();
+    expandBanner();
     fireEvent.click(screen.getByRole("button", { name: "Allow once" }));
     expect(mocks.resolveMutateAsync).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -404,6 +406,27 @@ describe("ThreadPendingInteractionBanner collapsed strip", () => {
     expect(screen.getByRole("button", { name: "Show less" })).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "Hide details" }));
     expect(banner.hasAttribute("data-expanded")).toBe(false);
+  });
+
+  it("toggles through the title without submitting an approval", () => {
+    renderBanner(commandApproval);
+    const title = screen.getByRole("button", {
+      name: "Approval needed",
+    });
+    title.focus();
+    fireEvent.click(title);
+    const expandedTitle = screen.getByRole("button", {
+      name: "Approval needed",
+    });
+    expect(expandedTitle.getAttribute("aria-expanded")).toBe("true");
+    expect(document.activeElement).toBe(expandedTitle);
+    fireEvent.click(expandedTitle);
+    expect(
+      screen
+        .getByRole("button", { name: "Approval needed" })
+        .getAttribute("aria-expanded"),
+    ).toBe("false");
+    expect(mocks.resolveMutateAsync).not.toHaveBeenCalled();
   });
 
   it("keeps focus on the disclosure button across toggles so Escape works right after opening", () => {
@@ -452,7 +475,7 @@ describe("ThreadPendingInteractionBanner collapsed strip", () => {
     ).toBe(false);
   });
 
-  it("keeps the source thread reachable from the strip and the card", () => {
+  it("keeps the source thread reachable after expanding", () => {
     render(
       <QueryClientProvider client={new QueryClient()}>
         <MemoryRouter>
@@ -468,11 +491,14 @@ describe("ThreadPendingInteractionBanner collapsed strip", () => {
       </QueryClientProvider>,
     );
     expect(
+      screen.queryByRole("link", { name: "From Install tools" }),
+    ).toBeNull();
+    expandBanner();
+    expect(
       screen
         .getByRole("link", { name: "From Install tools" })
         .getAttribute("href"),
     ).toBe("/threads/thr_child");
-    expandBanner();
     expect(
       screen.getByRole("link", { name: "From Install tools" }),
     ).toBeTruthy();
@@ -518,5 +544,16 @@ describe("ThreadPendingInteractionBanner collapsed strip", () => {
         .getByRole("button", { name: "AOption A" })
         .getAttribute("aria-pressed"),
     ).toBe("true");
+    fireEvent.click(screen.getByRole("button", { name: "Submit answer" }));
+    expect(mocks.resolveMutateAsync).toHaveBeenCalledWith({
+      threadId: "thr_1",
+      interactionId: "pint_question",
+      resolution: {
+        kind: "user_answer",
+        answers: { path: { selected: ["a"] } },
+      },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+    expect(mocks.stopMutateAsync).toHaveBeenCalledWith("thr_1");
   });
 });

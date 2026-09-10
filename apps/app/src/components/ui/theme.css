@@ -57,6 +57,7 @@
   /* GitHub's merged-PR purple — the one chromatic exception in the PR state
    * dots, matching the universal merged-PR color language. */
   --color-pr-merged: var(--pr-merged);
+  --color-brand-discord: var(--brand-discord);
   --color-diff-removed: var(--diff-removed);
   --color-border: var(--border);
   --color-border-hairline: var(--border-hairline);
@@ -271,34 +272,6 @@
     opacity: 1;
   }
 
-  /* Sidebar row glyph that swaps on hover (the Extensions row's toolbox ->
-   * tool case). Both glyphs share one grid cell and only opacity changes, so
-   * the row can never reflow mid-swap. Driven by the same
-   * :is(:hover, :has(:focus-visible)) row selector as the hover actions above,
-   * so a keyboard focus swaps the glyph exactly like a pointer hover. */
-  .bb-sidebar-row-icon-swap {
-    display: grid;
-    grid-template-areas: "glyph";
-  }
-
-  .bb-sidebar-row-icon-swap > * {
-    grid-area: glyph;
-  }
-
-  .bb-sidebar-row-icon-hover {
-    opacity: 0;
-  }
-
-  .bb-sidebar-hover-actions-row:is(:hover, :has(:focus-visible))
-    .bb-sidebar-row-icon-rest {
-    opacity: 0;
-  }
-
-  .bb-sidebar-hover-actions-row:is(:hover, :has(:focus-visible))
-    .bb-sidebar-row-icon-hover {
-    opacity: 1;
-  }
-
   /* Row content beside a hover-actions overlay that grows past its rest slot
    * (the thread row's archive button sits left of the menu trigger). Reserve
    * one action width under the same row states that reveal the overlay, so the
@@ -314,7 +287,7 @@
       .bb-sidebar-hover-actions[data-sidebar-hover-actions-open="true"]
     )
     .bb-sidebar-hover-actions-inset {
-    padding-right: 1.5rem;
+    padding-right: calc(var(--spacing) * 7.5);
   }
 
   .bb-sidebar-hover-actions-fade {
@@ -494,6 +467,7 @@
   --success-foreground: color-mix(in oklch, var(--success) 45%, var(--ink));
   --diff-added: oklch(0.4 0.13 163);
   --pr-merged: oklch(0.53 0.2 295);
+  --brand-discord: oklch(0.5774 0.2091 273.85);
   --diff-removed: oklch(0.4 0.17 28);
   --border: color-mix(in oklch, var(--ink) 14%, var(--canvas));
   --border-hairline: color-mix(in oklch, var(--ink) 14.7%, var(--canvas));
@@ -741,6 +715,7 @@
   --diff-added: oklch(0.77 0.17 163);
   --diff-removed: oklch(0.72 0.19 22);
   --pr-merged: oklch(0.68 0.18 295);
+  --brand-discord: var(--foreground);
   --border: color-mix(in oklch, var(--ink) 19.4%, var(--canvas));
   --border-hairline: color-mix(in oklch, var(--ink) 21%, var(--canvas));
   /* One app-shell seam for top nav, sidebar, split, and panel boundaries. */
@@ -955,16 +930,14 @@ body.sidebar-resizing [data-sidebar="panel"] {
 }
 
 @layer utilities {
-  /* Let the title's outer ellipsis clip through rich pills in reading order
-   * instead of treating each inline-flex pill as one replaceable box. */
-  .bb-sidebar-thread-title .prompt-mention-pill {
-    display: inline;
+  .bb-thread-title {
+    @apply flex min-w-0 items-baseline;
   }
 
-  .bb-sidebar-thread-title .prompt-mention-pill > :first-child {
-    display: inline-block;
-    margin-inline-end: 0.125rem;
-    vertical-align: -0.2em;
+  .bb-thread-title .prompt-mention-pill {
+    @apply min-w-10;
+    flex: 1 1 0%;
+    max-width: max-content;
   }
 
   /*

@@ -1,3 +1,4 @@
+import { reportEnvironmentHookProgress } from "../services/environments/environment-hooks.js";
 import { syncDesktopBrowserTabs } from "../services/desktop-browsers.js";
 import { heartbeatSession } from "@bb/db";
 import {
@@ -202,6 +203,10 @@ export function onDaemonSocketMessage(
           pluginId: result.data.pluginId,
           generation: result.data.generation,
         });
+        return;
+      }
+      if (result.data.type === "environment.hook.progress") {
+        reportEnvironmentHookProgress(deps, args.hostId, result.data);
         return;
       }
       if (result.data.type === "plugin-host.signal") {

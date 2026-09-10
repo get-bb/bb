@@ -11,6 +11,7 @@ import type {
   TimelineFileChange,
   TimelineFileChangeWorkRow,
   TimelineFileReadWorkRow,
+  TimelineImageGenerationWorkRow,
   TimelineImageViewWorkRow,
   TimelineParentChangeSystemRow,
   TimelinePlanStepsWorkRow,
@@ -867,6 +868,42 @@ function mapImageViewTitle(row: TimelineImageViewWorkRow): TimelineTitle {
   }
 }
 
+function mapImageGenerationTitle(
+  row: TimelineImageGenerationWorkRow,
+): TimelineTitle {
+  if (row.presentation) {
+    return presentedTitle({
+      presentation: row.presentation,
+      status: row.status,
+      startedAt: row.startedAt,
+      completedAt: row.completedAt,
+    });
+  }
+  const label = (() => {
+    switch (row.status) {
+      case "pending":
+        return "Generating image";
+      case "completed":
+        return "Generated image";
+      case "error":
+        return "Image generation failed";
+      case "interrupted":
+        return "Interrupted image generation";
+      default:
+        return assertNever(row.status);
+    }
+  })();
+  return makeTitle({
+    segments: [segment(label, { shimmer: row.status === "pending" })],
+    decorations:
+      row.status === "error"
+        ? [statusDecoration("error", null)]
+        : row.status === "interrupted"
+          ? [statusDecoration("interrupted", null)]
+          : filterNull([durationDecoration(row.startedAt, row.completedAt)]),
+  });
+}
+
 function delegationVerbForStatus(status: TimelineRowStatus): {
   text: string;
   shimmer: boolean;
@@ -1369,6 +1406,8 @@ function mapWorkTitle(
         return mapWebSearchTitle(row);
       case "web-fetch":
         return mapWebFetchTitle(row);
+      case "image-generation":
+        return mapImageGenerationTitle(row);
       case "image-view":
         return mapImageViewTitle(row);
       case "delegation":
@@ -1555,13 +1594,22 @@ function mapSystemTitle(row: TimelineSystemViewRow): TimelineTitle {
   if (row.systemKind === "operation" && row.operationKind === "parent-change") {
     return mapParentChangeSystemTitle(row);
   }
+  const isReasoning =
+    row.systemKind === "operation" && row.operationKind === "reasoning";
   const isCompaction =
     row.systemKind === "operation" && row.operationKind === "compaction";
-  const titleText =
-    isCompaction && row.status === "pending" ? `${row.title}…` : row.title;
+  const titleText = isReasoning
+    ? row.status === "pending"
+      ? "Thinking…"
+      : "Thought"
+    : isCompaction && row.status === "pending"
+      ? `${row.title}…`
+      : row.title;
   const decorations: TimelineTitleDecoration[] = hasError
     ? [statusDecoration("error", null, { emphasis: true })]
-    : isCompaction && (row.status === "pending" || row.status === "completed")
+    : isReasoning ||
+        (isCompaction &&
+          (row.status === "pending" || row.status === "completed"))
       ? filterNull([durationDecoration(row.startedAt, row.completedAt)])
       : [];
   const shimmer = row.status === "pending";

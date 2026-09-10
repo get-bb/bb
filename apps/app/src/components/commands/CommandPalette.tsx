@@ -173,7 +173,7 @@ export function CommandPalette({ threadId, projectId }: CommandPaletteProps) {
 
   const mode: PaletteMode = query.startsWith(">") ? "commands" : "threads";
   const modeQuery = mode === "commands" ? query.slice(1) : query;
-  const commandActions = useMemo(
+  const commandActions = useMemo<readonly PaletteAction[]>(
     () => [...actions, ...settingsActions, ...pluginPageActions],
     [actions, pluginPageActions, settingsActions],
   );
@@ -248,6 +248,7 @@ export function CommandPalette({ threadId, projectId }: CommandPaletteProps) {
 
   const handleKeyDown = useCallback(
     (event: ReactKeyboardEvent<HTMLInputElement>) => {
+      if (event.nativeEvent.isComposing) return;
       if (resultCount === 0) return;
       if (event.key === "ArrowDown") {
         event.preventDefault();

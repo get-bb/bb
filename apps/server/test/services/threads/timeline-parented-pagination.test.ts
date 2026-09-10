@@ -335,7 +335,7 @@ describe("thread timeline parented pagination", () => {
 
     const timeline = buildThreadTimeline(db, thread, {
       eventBudget: 1_000_000,
-      includeProviderUnhandledOperations: false,
+      includeDiagnosticOperations: false,
       includeNestedRows: true,
       maxInlineOutputChars: null,
       maxSeq: 51,
@@ -350,18 +350,23 @@ describe("thread timeline parented pagination", () => {
     const { db, thread } = setup();
     insertCrossWindowSubagentEvents(db, thread);
 
+    const latest = buildThreadTimeline(db, thread, {
+      eventBudget: 1_000_000,
+      includeDiagnosticOperations: false,
+      includeNestedRows: true,
+      maxInlineOutputChars: null,
+      maxSeq: 51,
+      page: { kind: "latest", segmentLimit: 2 },
+    });
     const timeline = buildThreadTimeline(db, thread, {
       eventBudget: 1_000_000,
-      includeProviderUnhandledOperations: false,
+      includeDiagnosticOperations: false,
       includeNestedRows: true,
       maxInlineOutputChars: null,
       maxSeq: 51,
       page: {
         kind: "older",
-        beforeCursor: {
-          anchorId: `${thread.id}:user-seed:20`,
-          anchorSeq: 20,
-        },
+        beforeCursor: latest.timelinePage.olderCursor!,
         segmentLimit: 1,
       },
     });

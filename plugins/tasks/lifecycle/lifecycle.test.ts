@@ -209,6 +209,12 @@ describe("task thread lifecycle", () => {
       "thread.idle": 1,
       "thread.failed": 1,
       "thread.deleted": 1,
+      "interaction.pending": 0,
+      "message.queued": 0,
+      "message.dispatched": 0,
+      "turn.failed": 0,
+      "message.cancelled": 0,
+      "thread.unarchived": 0,
     });
     expect(host.harness.sdk.callsTo("threads.get")).toHaveLength(2);
     expect(store.tasks.getTaskThread(tracked.id)?.liveStatus).toBe("starting");
@@ -361,6 +367,37 @@ describe("task thread lifecycle", () => {
 
     expect(harness.realtimeSignals).toEqual([]);
     expect(store.tasks.listTasks()).toEqual([]);
+
+    await harness.dispose();
+  });
+
+  it("looks up an unrelated lifecycle event without scanning tasks", async () => {
+    const { bb, harness } = createFakePluginHost({ pluginId: "tasks" });
+    const store = createStore(bb);
+    const project = store.tasks.createProject({
+      name: "Lookup scope",
+      prefix: "SCOPE",
+      color: "blue",
+    });
+    for (let index = 0; index < 3; index += 1) {
+      store.tasks.createTask({
+        projectId: project.id,
+        title: `Unrelated task ${index}`,
+      });
+    }
+    await registerLifecycle(bb, store);
+    const listTasks = vi.spyOn(store.tasks, "listTasks");
+    const listTaskThreads = vi.spyOn(store.tasks, "listTaskThreads");
+
+    await harness.emitThreadEvent("thread.idle", {
+      thread: makeThreadResponse({ id: "thr_untracked", status: "idle" }),
+      lastAssistantText: null,
+    });
+
+    expect({
+      listTasks: listTasks.mock.calls.length,
+      listTaskThreads: listTaskThreads.mock.calls.length,
+    }).toEqual({ listTasks: 0, listTaskThreads: 0 });
 
     await harness.dispose();
   });

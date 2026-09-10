@@ -75,7 +75,6 @@ function ModeOrderProbe({ mode }: { mode: SidebarOrganizationMode }) {
     entitySectionIds: config.entitySectionIds,
     hasThreadsSection: config.hasThreadsSection,
     showPinnedSection: true,
-    isReady: true,
   });
 
   return <div data-testid={`${mode}-order`}>{order.join(",")}</div>;
@@ -159,7 +158,6 @@ function MachineModeProbe({ threads = [] }: { threads?: ThreadListEntry[] }) {
       draftThreadIds={new Set()}
       effectivePinnedThreadIds={new Set()}
       status="ready"
-      isReady
       showPinnedSection={false}
       pinnedSection={{ label: "Pinned", content: null }}
       threadsSection={{ label: "Threads" }}

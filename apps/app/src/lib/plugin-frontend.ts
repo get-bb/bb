@@ -1,3 +1,4 @@
+import * as questionFormHost from "@bb/shared-ui/question-form-host";
 import * as react from "react";
 import * as reactDom from "react-dom";
 import * as reactDomClient from "react-dom/client";
@@ -27,6 +28,10 @@ import { markEnabledPluginListStale } from "@/hooks/cache-owners/plugin-cache-ow
 import { pluginListQueryOptions } from "@/hooks/queries/plugin-settings-queries";
 import { createRecordingToast } from "@/lib/notifications/plugin-toast-recording";
 import { appQueryClient } from "./app-query-client";
+import {
+  setServerPluginsStarting,
+  setPluginFrontendReconcilePending,
+} from "./plugin-frontend-boot-state";
 import type {
   PluginContentScriptDisposer,
   PluginContentScriptRegistration,
@@ -198,6 +203,7 @@ interface BbPluginRuntime {
   tailwindMerge: unknown;
   classVarianceAuthority: unknown;
   sharedUiIcon: unknown;
+  questionFormHost: typeof questionFormHost;
 }
 
 type RuntimeHost = typeof globalThis & { __bbPluginRuntime?: BbPluginRuntime };
@@ -230,6 +236,7 @@ export function installPluginRuntime(): void {
     tailwindMerge,
     classVarianceAuthority,
     sharedUiIcon,
+    questionFormHost,
   };
 }
 
@@ -242,6 +249,7 @@ export async function fetchFrontendCandidates(
       pluginListQueryOptions({ enabled: true }),
     );
   } catch (error) {
+    setServerPluginsStarting(false);
     if (
       error instanceof BbHttpError &&
       (error.status === 401 || error.status === 403)
@@ -251,6 +259,9 @@ export async function fetchFrontendCandidates(
     }
     throw error;
   }
+  setServerPluginsStarting(
+    plugins.some((plugin) => plugin.enabled && plugin.status === "starting"),
+  );
   const candidates: PluginFrontendCandidate[] = [];
   const logoUrls = new Map<string, PluginLogoUrls>();
   for (const plugin of plugins) {
@@ -933,6 +944,7 @@ function installPluginFrontendPageLifecycle(): void {
   const lifecycle = createPluginFrontendPageLifecycle({
     restore: () => schedulePluginFrontendReconcile(),
     teardown: () => {
+      setPluginFrontendReconcilePending(true);
       void disposePluginFrontends(state, browserReconcileDeps);
     },
   });
@@ -954,6 +966,7 @@ export function bootPluginFrontends(): Promise<void> {
 }
 
 async function runLiveReconcile(): Promise<void> {
+  setPluginFrontendReconcilePending(true);
   try {
     await bootPromise;
     await markEnabledPluginListStale({ queryClient: appQueryClient });
@@ -968,6 +981,8 @@ async function runLiveReconcile(): Promise<void> {
     console.warn(
       `plugin frontend reconcile failed: ${error instanceof Error ? error.message : String(error)}`,
     );
+  } finally {
+    setPluginFrontendReconcilePending(false);
   }
 }
 

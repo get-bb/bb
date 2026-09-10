@@ -99,6 +99,16 @@ function startsInHorizontalScroller(session: DragSession): boolean {
   return false;
 }
 
+function hasTextSelectionWithin(boundary: Element): boolean {
+  const selection = boundary.ownerDocument.getSelection();
+  if (selection === null || selection.isCollapsed) return false;
+  return (
+    (selection.anchorNode !== null &&
+      boundary.contains(selection.anchorNode)) ||
+    (selection.focusNode !== null && boundary.contains(selection.focusNode))
+  );
+}
+
 function suppressNextClick() {
   const cleanup = () => {
     window.removeEventListener("click", suppress, { capture: true });
@@ -157,6 +167,10 @@ export function useHorizontalDismissDrag(options: Options) {
       if (session === null) return;
       const point = trackedPoint(event, session);
       if (point === null) return;
+      if (!session.dragging && hasTextSelectionWithin(session.boundary)) {
+        clearSession();
+        return;
+      }
       const direction = optionsRef.current.direction === "left" ? -1 : 1;
       const deltaX = point.x - session.startX;
       const deltaY = point.y - session.startY;
@@ -256,6 +270,7 @@ export function useHorizontalDismissDrag(options: Options) {
       target: EventTarget | null,
       boundary: Element,
     ) => {
+      if (hasTextSelectionWithin(boundary)) return;
       const view = boundary.ownerDocument.defaultView;
       if (
         (optionsRef.current.direction === "left" &&

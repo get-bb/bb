@@ -8,25 +8,33 @@ import {
 } from "react";
 import { useNavigate } from "react-router-dom";
 import {
+  findLocalPathProjectSourceForHost,
   PERSONAL_PROJECT_ID,
+  type EnvironmentMachineSelection,
   type Host,
+  type JsonValue,
   type PermissionMode,
   type ProjectExecutionDefaults,
   type ReasoningLevel,
   type ServiceTier,
 } from "@bb/domain";
-import type { NewThreadRequest } from "@get-bb/plugin-sdk";
+import type {
+  NewThreadRequest,
+  PluginEnvironmentProviderInputsChange,
+} from "@get-bb/plugin-sdk";
 import type {
   CreateExecutionInputSources,
   SidebarBootstrapResponse,
+  SystemEnvironmentProvider,
   SystemExecutionOptionsModelLoadError,
 } from "@bb/server-contract";
 import type { ProjectSelectorCreateProjectConfig } from "@/components/pickers/ProjectSelector";
 import {
-  encodeHostValue,
   encodeReuseValue,
+  encodeProviderValue,
   parseEnvironmentValue,
 } from "@/components/pickers/environment-picker-value";
+import { providerInputsControlRequired } from "@/components/pickers/environment-provider-inputs";
 import { formatModelLoadErrorText } from "@/components/pickers/model-load-error-message";
 import {
   NewThreadPromptBox,
@@ -38,13 +46,19 @@ import type { PromptMentionLinkResolver } from "@/components/promptbox/editor/pr
 import type { PromptBoxHandle } from "@/components/promptbox/PromptBoxInternal";
 import { type PluginComposerHost } from "@/components/plugin/plugin-composer-host";
 import { newThreadEnvironmentArgsToSeed } from "@/components/plugin/new-thread-environment-seed";
+import { PluginSlotMount } from "@/components/plugin/PluginSlotMount";
+import { usePluginSlots } from "@/lib/plugin-slots";
 import { useUploadPromptAttachment } from "@/hooks/mutations/project-mutations";
-import { selectPrimaryHost, useHosts } from "@/hooks/queries/host-queries";
+import { useSystemEnvironmentProviders } from "@/hooks/queries/environment-provider-queries";
+import {
+  selectPersistentHosts,
+  selectPrimaryHost,
+  useHosts,
+} from "@/hooks/queries/host-queries";
 import { useProjectDefaultExecutionOptions } from "@/hooks/queries/project-default-execution-options-query";
 import {
   stripProjectThreads,
   useProjectPromptHistory,
-  useProjectSourceBranches,
   type SidebarProject,
 } from "@/hooks/queries/project-queries";
 import { useSidebarNavigation } from "@/hooks/queries/sidebar-navigation-query";
@@ -75,21 +89,10 @@ import {
 } from "@/lib/route-paths";
 import { sdk } from "@/lib/sdk";
 import {
-  buildRootComposeBranchUiState,
-  type RootComposeBranchEnvironmentMode,
-} from "@/views/root-compose-branch-ui";
-import { useScopedBranchSelection } from "@/views/root-compose-branch-selection";
-import {
   buildReuseThreadOptions,
-  resolveProjectSourceWorktreeDisabledReason,
   resolveRootComposeEffectiveEnvironmentValue,
-  resolveRootComposeProjectRouting,
-  resolveRootComposeProviderRouting,
 } from "@/views/root-compose-environment-selection";
-import {
-  resolveRootComposeThreadEnvironment,
-  type RootComposeSelectedBranch,
-} from "@/views/root-compose-thread-environment";
+import { resolveRootComposeThreadEnvironment } from "@/views/root-compose-thread-environment";
 
 type NewThreadComposerSelectionScope = "new-thread" | "component-local";
 
@@ -107,7 +110,6 @@ interface NewThreadComposerLocks {
   project?: boolean;
   provider?: boolean;
   environment?: boolean;
-  branch?: boolean;
 }
 
 interface NewThreadComposerPromptOptions {
@@ -150,7 +152,10 @@ export interface NewThreadComposerState {
   textEffects: NewThreadPromptBoxProps["textEffects"];
   isSubmitting: boolean;
   seedEnvironmentSelectionValue: (value: string) => void;
-  setEnvironmentSelectionValue: (value: string) => void;
+  setEnvironmentSelectionValue: (
+    value: string,
+    providerHostId?: string | null,
+  ) => void;
   setProviderModelReasoning: (selection: {
     providerId: string;
     model: string;
@@ -184,12 +189,11 @@ type ProjectDefaultsState =
   | { status: "resolved"; defaults: ProjectExecutionDefaults | null };
 
 export interface ResolveNewThreadSubmitDisabledReasonArgs {
-  branchMutationBlockerTitle: string | null;
+  environmentProviderInputsBlocker: string | null;
   isCopyingAttachments: boolean;
   isLoadingModels: boolean;
   isSubmitting: boolean;
   isUploading: boolean;
-  managedWorktreeUnavailableReason: string | null;
   modelLoadError: SystemExecutionOptionsModelLoadError | null;
   projectDefaultsStatus: ProjectDefaultsState["status"];
   projectDefaultsUnavailable: boolean;
@@ -201,12 +205,11 @@ export interface ResolveNewThreadSubmitDisabledReasonArgs {
 }
 
 export function resolveNewThreadSubmitDisabledReason({
-  branchMutationBlockerTitle,
+  environmentProviderInputsBlocker,
   isCopyingAttachments,
   isLoadingModels,
   isSubmitting,
   isUploading,
-  managedWorktreeUnavailableReason,
   modelLoadError,
   projectDefaultsStatus,
   projectDefaultsUnavailable,
@@ -242,11 +245,8 @@ export function resolveNewThreadSubmitDisabledReason({
     });
   }
   if (!selectedThreadModel) return "Select a model.";
+  if (environmentProviderInputsBlocker) return environmentProviderInputsBlocker;
   if (submissionEnvironmentUnavailable) return "Select an environment.";
-  if (managedWorktreeUnavailableReason) {
-    return managedWorktreeUnavailableReason;
-  }
-  if (branchMutationBlockerTitle) return branchMutationBlockerTitle;
   if (promptInputEmpty) return "Enter a prompt or attach a file.";
   return null;
 }
@@ -338,19 +338,6 @@ export function hasPromptOptionValueChanged<T>(
   return !Object.is(currentValue, nextValue);
 }
 
-export function hasPromptBranchSelectionChanged(
-  currentBranch: RootComposeSelectedBranch | null,
-  nextBranch: RootComposeSelectedBranch | null,
-): boolean {
-  if (currentBranch === null || nextBranch === null) {
-    return currentBranch !== nextBranch;
-  }
-  return (
-    currentBranch.name !== nextBranch.name ||
-    currentBranch.isNew !== nextBranch.isNew
-  );
-}
-
 function resolvePanelThreadId(
   environmentId: string | null,
   reuseThreadOptions: ReturnType<typeof buildReuseThreadOptions>,
@@ -414,31 +401,35 @@ export function NewThreadComposer({
   );
 
   const hostsQuery = useHosts();
+  const availableHosts = useMemo(
+    () => selectPersistentHosts(hostsQuery.data),
+    [hostsQuery.data],
+  );
   const systemConfigQuery = useSystemConfig();
   const primaryHostId =
     selectPrimaryHost(
-      hostsQuery.data,
+      availableHosts,
       systemConfigQuery.data?.primaryHostId ?? null,
     )?.id ?? null;
   const knownHostIds = useMemo(
-    () => new Set((hostsQuery.data ?? []).map((host) => host.id)),
-    [hostsQuery.data],
+    () => new Set(availableHosts.map((host) => host.id)),
+    [availableHosts],
   );
   const connectedHostIds = useMemo(
     () =>
       new Set(
-        (hostsQuery.data ?? [])
+        availableHosts
           .filter((host) => host.status === "connected")
           .map((host) => host.id),
       ),
-    [hostsQuery.data],
+    [availableHosts],
   );
   const worktreeHostNameById = useMemo(() => {
-    const hosts = hostsQuery.data ?? [];
+    const hosts = availableHosts;
     return hosts.length <= 1
       ? null
       : new Map(hosts.map((host) => [host.id, host.name]));
-  }, [hostsQuery.data]);
+  }, [availableHosts]);
   const projectThreads = useMemo(() => {
     const navigation = sidebarNavigationQuery.data;
     if (!navigation) return undefined;
@@ -453,6 +444,50 @@ export function NewThreadComposer({
     [projectThreads, worktreeHostNameById],
   );
 
+  const { providers: registeredEnvironmentProviders } =
+    useSystemEnvironmentProviders({ projectId });
+  const environmentProviders = useMemo(
+    () =>
+      registeredEnvironmentProviders?.filter((provider) =>
+        isProjectless
+          ? !provider.requires.projectCheckout && !provider.requires.gitRemote
+          : !provider.requires.projectless,
+      ),
+    [isProjectless, registeredEnvironmentProviders],
+  );
+  const projectGitRemoteUrl = currentProject?.gitRemoteUrl;
+  const environmentProvidersByHostId = useMemo(
+    () =>
+      new Map(
+        availableHosts.map((host) => [
+          host.id,
+          environmentProviders
+            ?.filter((provider) => {
+              if (
+                (provider.requires.projectCheckout ||
+                  provider.requires.gitCheckout) &&
+                findLocalPathProjectSourceForHost(projectSources, host.id) ===
+                  undefined
+              ) {
+                return false;
+              }
+              if (
+                provider.requires.gitRemote &&
+                (projectGitRemoteUrl === undefined ||
+                  projectGitRemoteUrl === null)
+              ) {
+                return false;
+              }
+              return true;
+            })
+            .map((provider) => ({
+              ...provider,
+              availability: provider.machineAvailability[host.id] ?? null,
+            })),
+        ]),
+      ),
+    [availableHosts, environmentProviders, projectGitRemoteUrl, projectSources],
+  );
   const seedSignature = JSON.stringify([
     resetKey ?? null,
     seed?.providerId ?? null,
@@ -470,28 +505,102 @@ export function NewThreadComposer({
     [seed?.environment],
   );
   const [activeSeedSignature, setActiveSeedSignature] = useState(seedSignature);
-  const [branchSeedOverridden, setBranchSeedOverridden] = useState(false);
+  const [seedOverridden, setBranchSeedOverridden] = useState(false);
+  const [pickedProviderMachine, setPickedProviderMachine] = useState<{
+    selectionValue: string;
+    machine: EnvironmentMachineSelection;
+  } | null>(null);
   if (activeSeedSignature !== seedSignature) {
     setActiveSeedSignature(seedSignature);
     setBranchSeedOverridden(false);
+    setPickedProviderMachine(null);
   }
 
+  const resolveProviderSelection = useCallback(
+    (
+      effectiveValue: string,
+    ): {
+      provider: SystemEnvironmentProvider;
+      machine: EnvironmentMachineSelection | null;
+    } | null => {
+      const parsedValue = parseEnvironmentValue(effectiveValue);
+      if (parsedValue?.type !== "provider") return null;
+      const provider = environmentProviders?.find(
+        (candidate) => candidate.id === parsedValue.environmentProviderId,
+      );
+      if (provider === undefined) return null;
+      const usable = (hostId: string | null): boolean =>
+        hostId !== null &&
+        knownHostIds.has(hostId) &&
+        (isProjectless ||
+          !provider.requires.projectCheckout ||
+          findLocalPathProjectSourceForHost(projectSources, hostId) !==
+            undefined);
+      const picked =
+        pickedProviderMachine?.selectionValue === effectiveValue
+          ? pickedProviderMachine.machine
+          : null;
+      const seeded =
+        picked === null &&
+        !seedOverridden &&
+        environmentSeed !== null &&
+        environmentSeed.selectionValue === effectiveValue
+          ? environmentSeed.providerMachine
+          : null;
+      const candidate = picked ?? seeded;
+      if (usable(candidate?.hostId ?? null)) {
+        return { provider, machine: candidate };
+      }
+      return {
+        provider,
+        machine:
+          primaryHostId !== null && usable(primaryHostId)
+            ? { type: "existing", hostId: primaryHostId }
+            : null,
+      };
+    },
+    [
+      seedOverridden,
+      environmentSeed,
+      environmentProviders,
+      isProjectless,
+      knownHostIds,
+      pickedProviderMachine,
+      primaryHostId,
+      projectSources,
+    ],
+  );
+
   const resolveProviderRouting = useCallback(
-    (environmentSelectionValue: string) =>
-      resolveRootComposeProviderRouting({
+    (environmentSelectionValue: string) => {
+      const effectiveValue = resolveRootComposeEffectiveEnvironmentValue({
         environmentSelectionValue,
+        environmentProviders,
         isProjectless,
         knownHostIds,
         primaryHostId,
         projectSources,
         reuseThreadOptions,
         reuseThreadOptionsLoading,
-      }),
+      });
+      const providerSelection = resolveProviderSelection(effectiveValue);
+      if (providerSelection !== null) {
+        return providerSelection.machine?.type !== "existing"
+          ? {}
+          : { hostId: providerSelection.machine.hostId };
+      }
+      const parsed = parseEnvironmentValue(effectiveValue);
+      return parsed?.type === "reuse" && parsed.environmentId !== null
+        ? { environmentId: parsed.environmentId }
+        : {};
+    },
     [
+      environmentProviders,
       isProjectless,
       knownHostIds,
       primaryHostId,
       projectSources,
+      resolveProviderSelection,
       reuseThreadOptions,
       reuseThreadOptionsLoading,
     ],
@@ -595,23 +704,55 @@ export function NewThreadComposer({
   });
 
   const changeEnvironment = useCallback(
-    (value: string) => {
-      if (!hasPromptOptionValueChanged(environmentSelectionValue, value))
+    (
+      value: string,
+      providerTarget: string | EnvironmentMachineSelection | null = null,
+    ) => {
+      const providerMachine =
+        typeof providerTarget === "string"
+          ? { type: "existing" as const, hostId: providerTarget }
+          : providerTarget;
+      const currentProviderMachine =
+        pickedProviderMachine?.selectionValue === value
+          ? pickedProviderMachine.machine
+          : null;
+      if (
+        !hasPromptOptionValueChanged(environmentSelectionValue, value) &&
+        JSON.stringify(providerMachine) ===
+          JSON.stringify(currentProviderMachine)
+      ) {
         return;
+      }
       snapshotDraftBeforeOptionChange();
       setBranchSeedOverridden(true);
+      setPickedProviderMachine(
+        providerMachine === null
+          ? null
+          : { selectionValue: value, machine: providerMachine },
+      );
       setCreationEnvironmentSelectionValue(value);
     },
     [
       environmentSelectionValue,
+      pickedProviderMachine,
       setCreationEnvironmentSelectionValue,
       snapshotDraftBeforeOptionChange,
     ],
+  );
+  const handleSelectProvider = useCallback(
+    (provider: SystemEnvironmentProvider, hostId: string | null) => {
+      changeEnvironment(
+        encodeProviderValue(provider.id),
+        hostId === null ? null : { type: "existing", hostId },
+      );
+    },
+    [changeEnvironment],
   );
   const effectiveEnvironmentValue = useMemo(
     () =>
       resolveRootComposeEffectiveEnvironmentValue({
         environmentSelectionValue,
+        environmentProviders,
         isProjectless,
         knownHostIds,
         primaryHostId,
@@ -621,6 +762,7 @@ export function NewThreadComposer({
       }),
     [
       environmentSelectionValue,
+      environmentProviders,
       isProjectless,
       knownHostIds,
       primaryHostId,
@@ -633,170 +775,178 @@ export function NewThreadComposer({
     () => parseEnvironmentValue(effectiveEnvironmentValue),
     [effectiveEnvironmentValue],
   );
-  const isHostMode = parsedEnvironment?.type === "host";
-  const branchEnvironmentMode: RootComposeBranchEnvironmentMode = isProjectless
-    ? "other"
-    : isHostMode && parsedEnvironment.mode === "local"
-      ? "local"
-      : isHostMode && parsedEnvironment.mode === "worktree"
-        ? "worktree"
-        : "other";
-  const {
-    selectedBranch: pickedBranch,
-    onBranchChange,
-    onClearBranch,
-    onCreateBranch,
-    onCreateBranchFrom,
-  } = useScopedBranchSelection({
-    environmentValue: effectiveEnvironmentValue,
-    projectId,
-    selectionScope,
-  });
-  const selectedBranch =
-    pickedBranch ??
-    (!branchSeedOverridden &&
-    environmentSeed !== null &&
-    effectiveEnvironmentValue === environmentSeed.selectionValue
-      ? environmentSeed.branch
-      : null);
-  const [branchSearchQuery, setBranchSearchQuery] = useState("");
-  useEffect(() => {
-    setBranchSearchQuery("");
-  }, [effectiveEnvironmentValue, projectId]);
-  const branchesQuery = useProjectSourceBranches(
-    projectId,
-    isHostMode ? parsedEnvironment.hostId : null,
-    {
-      enabled: isHostMode && !isProjectless,
-      query: branchSearchQuery,
-      selectedBranch: selectedBranch?.name ?? "",
+  const providerSelection = useMemo(
+    () => resolveProviderSelection(effectiveEnvironmentValue),
+    [effectiveEnvironmentValue, resolveProviderSelection],
+  );
+  const selectedEnvironmentProvider = providerSelection?.provider;
+  const providerMachine = providerSelection?.machine ?? null;
+  const providerHostId =
+    providerMachine?.type === "existing" ? providerMachine.hostId : null;
+  const [environmentProviderInputsOverride, setProviderInputsOverride] =
+    useState<{ scopeKey: string; value: JsonValue | null } | null>(null);
+  const [environmentProviderInputsBlocked, setProviderInputsBlocked] =
+    useState<{ scopeKey: string; reason: string } | null>(null);
+  const environmentProviderInputsScopeKey = `${projectId}\0${effectiveEnvironmentValue}\0${providerHostId ?? ""}`;
+  const handleProviderInputsChange = useCallback(
+    (next: PluginEnvironmentProviderInputsChange) => {
+      if (next.status === "blocked") {
+        setProviderInputsBlocked((current) => {
+          if (
+            current?.scopeKey === environmentProviderInputsScopeKey &&
+            current.reason === next.reason
+          ) {
+            return current;
+          }
+          return {
+            scopeKey: environmentProviderInputsScopeKey,
+            reason: next.reason,
+          };
+        });
+        return;
+      }
+      setProviderInputsBlocked(null);
+      setProviderInputsOverride((current) => {
+        if (
+          current?.scopeKey === environmentProviderInputsScopeKey &&
+          JSON.stringify(current.value) === JSON.stringify(next.value)
+        ) {
+          return current;
+        }
+        return {
+          scopeKey: environmentProviderInputsScopeKey,
+          value: next.value,
+        };
+      });
     },
+    [environmentProviderInputsScopeKey],
   );
-  const worktreeDisabledReason = resolveProjectSourceWorktreeDisabledReason(
-    branchesQuery.data,
-  );
-  const worktreeUnavailable = worktreeDisabledReason !== null;
-  const requestsManagedWorktree =
-    isHostMode && parsedEnvironment.mode === "worktree";
-  const managedWorktreeUnavailable =
-    requestsManagedWorktree && worktreeUnavailable;
-  useEffect(() => {
+  const activeProviderInputsOverride =
+    environmentProviderInputsOverride !== null &&
+    environmentProviderInputsOverride.scopeKey ===
+      environmentProviderInputsScopeKey
+      ? environmentProviderInputsOverride
+      : null;
+  const activeProviderInputsBlocked =
+    environmentProviderInputsBlocked?.scopeKey ===
+    environmentProviderInputsScopeKey
+      ? environmentProviderInputsBlocked
+      : null;
+  const providerTakesInputs =
+    selectedEnvironmentProvider !== undefined &&
+    selectedEnvironmentProvider.inputs !== null;
+  const pluginSlots = usePluginSlots();
+  const environmentProviderInputsSlots = pluginSlots.environmentProviderInputs;
+  const inputsControlProviderIds = useMemo(() => {
+    const pluginIdByProviderId = new Map(
+      (environmentProviders ?? []).map((provider) => [
+        provider.id,
+        provider.pluginId,
+      ]),
+    );
+    return new Set(
+      environmentProviderInputsSlots
+        .filter(
+          (slot) =>
+            pluginIdByProviderId.get(slot.environmentProviderId) ===
+            slot.pluginId,
+        )
+        .map((slot) => slot.environmentProviderId),
+    );
+  }, [environmentProviderInputsSlots, environmentProviders]);
+  const environmentProviderInputsRegistration = useMemo(() => {
     if (
-      !worktreeUnavailable ||
-      parsedEnvironment?.type !== "host" ||
-      parsedEnvironment.mode !== "worktree"
+      selectedEnvironmentProvider === undefined ||
+      selectedEnvironmentProvider.inputs === null
     ) {
-      return;
+      return undefined;
     }
-    setCreationEnvironmentSelectionValue(
-      encodeHostValue(parsedEnvironment.hostId, "local"),
+    return environmentProviderInputsSlots.find(
+      (slot) =>
+        slot.environmentProviderId === selectedEnvironmentProvider.id &&
+        slot.pluginId === selectedEnvironmentProvider.pluginId,
+    );
+  }, [environmentProviderInputsSlots, selectedEnvironmentProvider]);
+  const controlRequiredForSelectedProvider =
+    selectedEnvironmentProvider !== undefined &&
+    providerInputsControlRequired(selectedEnvironmentProvider);
+  const submissionProviderInputs = useMemo((): JsonValue | null => {
+    if (!providerTakesInputs) return null;
+    if (activeProviderInputsOverride !== null) {
+      return activeProviderInputsOverride.value;
+    }
+    const seededInputs =
+      !seedOverridden &&
+      environmentSeed !== null &&
+      effectiveEnvironmentValue === environmentSeed.selectionValue
+        ? environmentSeed.providerInputs
+        : null;
+    if (seededInputs !== null) return seededInputs;
+    return environmentProviderInputsRegistration === undefined &&
+      !controlRequiredForSelectedProvider
+      ? {}
+      : null;
+  }, [
+    activeProviderInputsOverride,
+    controlRequiredForSelectedProvider,
+    seedOverridden,
+    effectiveEnvironmentValue,
+    environmentSeed,
+    environmentProviderInputsRegistration,
+    providerTakesInputs,
+  ]);
+  const environmentProviderInputsBlocker =
+    selectedEnvironmentProvider === undefined || !providerTakesInputs
+      ? null
+      : activeProviderInputsBlocked !== null
+        ? activeProviderInputsBlocked.reason
+        : environmentProviderInputsRegistration === undefined &&
+            controlRequiredForSelectedProvider
+          ? `${selectedEnvironmentProvider.displayName} needs its plugin's control`
+          : submissionProviderInputs === null
+            ? `Configure ${selectedEnvironmentProvider.displayName}`
+            : null;
+  const environmentProviderInputsSlot = useMemo(() => {
+    if (environmentProviderInputsRegistration === undefined) return null;
+    const InputsComponent = environmentProviderInputsRegistration.component;
+    return (
+      <PluginSlotMount
+        pluginId={environmentProviderInputsRegistration.pluginId}
+        slotKind="environmentProviderInputs"
+        slotId={environmentProviderInputsRegistration.environmentProviderId}
+      >
+        <InputsComponent
+          projectId={isProjectless ? null : projectId}
+          hostId={providerHostId}
+          value={submissionProviderInputs}
+          onChange={handleProviderInputsChange}
+        />
+      </PluginSlotMount>
     );
   }, [
-    parsedEnvironment,
-    setCreationEnvironmentSelectionValue,
-    worktreeUnavailable,
+    handleProviderInputsChange,
+    isProjectless,
+    projectId,
+    providerHostId,
+    submissionProviderInputs,
+    environmentProviderInputsRegistration,
   ]);
-  const branchOptions = useMemo(() => {
-    const branches = branchesQuery.data?.branches ?? [];
-    const selectedRef = branchesQuery.data?.selectedBranch;
-    return selectedRef?.kind === "local" && !branches.includes(selectedRef.name)
-      ? [selectedRef.name, ...branches]
-      : branches;
-  }, [branchesQuery.data?.branches, branchesQuery.data?.selectedBranch]);
-  const remoteBranchOptions = useMemo(() => {
-    if (branchEnvironmentMode === "other") return [];
-    const branches = branchesQuery.data?.remoteBranches ?? [];
-    const selectedRef = branchesQuery.data?.selectedBranch;
-    return selectedRef?.kind === "remote" &&
-      !branches.includes(selectedRef.name)
-      ? [selectedRef.name, ...branches]
-      : branches;
-  }, [
-    branchEnvironmentMode,
-    branchesQuery.data?.remoteBranches,
-    branchesQuery.data?.selectedBranch,
-  ]);
-  const branchSelectionSeed =
-    branchEnvironmentMode === "local" &&
-    branchesQuery.data?.checkout.kind === "branch"
-      ? branchesQuery.data.checkout.branchName
-      : branchEnvironmentMode === "worktree"
-        ? (branchesQuery.data?.defaultWorktreeBaseBranch ??
-          branchesQuery.data?.defaultBranch ??
-          null)
-        : null;
-  const branchUiState = useMemo(
-    () =>
-      buildRootComposeBranchUiState({
-        checkout: branchesQuery.data,
-        isFetching: branchesQuery.isFetching,
-        isLoading: branchesQuery.isLoading,
-        mode: branchEnvironmentMode,
-        selectedBranch,
-      }),
-    [
-      branchEnvironmentMode,
-      branchesQuery.data,
-      branchesQuery.isFetching,
-      branchesQuery.isLoading,
-      selectedBranch,
-    ],
-  );
-  const handleBranchChange = useCallback(
-    (name: string) => {
-      const nextBranch = { name, isNew: false };
-      if (!hasPromptBranchSelectionChanged(selectedBranch, nextBranch)) return;
-      snapshotDraftBeforeOptionChange();
-      setBranchSeedOverridden(true);
-      onBranchChange(name);
-    },
-    [onBranchChange, selectedBranch, snapshotDraftBeforeOptionChange],
-  );
-  const handleClearBranch = useCallback(() => {
-    if (!hasPromptBranchSelectionChanged(selectedBranch, null)) return;
-    snapshotDraftBeforeOptionChange();
-    setBranchSeedOverridden(true);
-    onClearBranch();
-  }, [onClearBranch, selectedBranch, snapshotDraftBeforeOptionChange]);
-  const handleCreateBranch = useCallback(() => {
-    const name = selectedBranch?.name ?? branchSelectionSeed;
-    const nextBranch = name === null ? null : { name, isNew: true };
-    if (!hasPromptBranchSelectionChanged(selectedBranch, nextBranch)) return;
-    snapshotDraftBeforeOptionChange();
-    setBranchSeedOverridden(true);
-    onCreateBranch(name);
-  }, [
-    branchSelectionSeed,
-    onCreateBranch,
-    selectedBranch,
-    snapshotDraftBeforeOptionChange,
-  ]);
-  const handleCreateBranchFrom = useCallback(
-    (name: string) => {
-      const nextBranch = { name, isNew: true };
-      if (!hasPromptBranchSelectionChanged(selectedBranch, nextBranch)) return;
-      snapshotDraftBeforeOptionChange();
-      setBranchSeedOverridden(true);
-      onCreateBranchFrom(name);
-    },
-    [onCreateBranchFrom, selectedBranch, snapshotDraftBeforeOptionChange],
-  );
+
   const selectedEnvironment = useMemo(
     () =>
       resolveRootComposeThreadEnvironment({
-        defaultBranch: branchesQuery.data?.defaultBranch,
-        defaultWorktreeBaseBranch:
-          branchesQuery.data?.defaultWorktreeBaseBranch,
         environmentValue: effectiveEnvironmentValue,
         projectId,
-        selectedBranch,
+        environmentProviders,
+        providerMachine: providerMachine,
+        providerInputs: submissionProviderInputs,
       }),
     [
-      branchesQuery.data?.defaultBranch,
-      branchesQuery.data?.defaultWorktreeBaseBranch,
       effectiveEnvironmentValue,
+      environmentProviders,
       projectId,
-      selectedBranch,
+      submissionProviderInputs,
+      providerMachine,
     ],
   );
 
@@ -912,11 +1062,8 @@ export function NewThreadComposer({
     parsedEnvironment?.type === "reuse"
       ? parsedEnvironment.environmentId
       : null;
-  const projectRouting = resolveRootComposeProjectRouting(
-    parsedEnvironment,
-    primaryHostId,
-  );
-  const projectHostId = projectRouting.hostId ?? null;
+  const projectHostId =
+    reuseEnvironmentId !== null ? null : (providerHostId ?? primaryHostId);
   const panelThreadId = resolvePanelThreadId(
     reuseEnvironmentId,
     reuseThreadOptions,
@@ -1051,17 +1198,11 @@ export function NewThreadComposer({
     (selectionScope === "new-thread" ? seed?.environment : undefined) ??
     null;
   const submitDisabledReason = resolveNewThreadSubmitDisabledReason({
-    branchMutationBlockerTitle:
-      branchEnvironmentMode === "local" && selectedBranch !== null
-        ? (branchUiState.mutationBlocker?.title ?? null)
-        : null,
+    environmentProviderInputsBlocker: environmentProviderInputsBlocker,
     isCopyingAttachments,
     isLoadingModels,
     isSubmitting,
     isUploading,
-    managedWorktreeUnavailableReason: managedWorktreeUnavailable
-      ? worktreeDisabledReason
-      : null,
     modelLoadError,
     projectDefaultsStatus: projectDefaultsState.status,
     projectDefaultsUnavailable,
@@ -1083,8 +1224,7 @@ export function NewThreadComposer({
         projectDefaultsUnavailable ||
         submissionEnvironment === null ||
         !selectedProviderId ||
-        !selectedThreadModel ||
-        managedWorktreeUnavailable
+        !selectedThreadModel
       ) {
         throw new Error(
           blockedReason ??
@@ -1131,7 +1271,6 @@ export function NewThreadComposer({
     [
       clearReuseEnvironment,
       executionInputSources,
-      managedWorktreeUnavailable,
       onSubmit,
       permissionMode,
       projectDefaultsUnavailable,
@@ -1206,13 +1345,6 @@ export function NewThreadComposer({
     },
     [serviceTier, setServiceTier, snapshotDraftBeforeOptionChange],
   );
-  const refreshBranchesFromRemote = branchesQuery.refreshFromRemote;
-  const handleBranchOpenChange = useCallback(
-    (open: boolean) => {
-      if (open) void refreshBranchesFromRemote().catch(() => undefined);
-    },
-    [refreshBranchesFromRemote],
-  );
   const handleWorktreeChange = useCallback(
     (environmentId: string) => {
       changeEnvironment(encodeReuseValue(environmentId));
@@ -1282,47 +1414,16 @@ export function NewThreadComposer({
               value: effectiveEnvironmentValue,
               onChange: changeEnvironment,
               sources: projectSources,
-              reuseDisabled: reuseThreadOptions.length === 0,
-              worktreeDisabledReason,
               disabled: locks.environment,
+              isLoading: environmentProviders === undefined,
+              providers: environmentProviders ?? [],
+              providersByHostId: environmentProvidersByHostId,
+              selectedProviderHostId: providerHostId,
+              inputsControlProviderIds,
+              onSelectProvider: handleSelectProvider,
               ...(!isProjectless && options.onRequestMachineSetup
                 ? { onRequestMachineSetup: options.onRequestMachineSetup }
                 : {}),
-            },
-            branch: {
-              value:
-                selectedBranch?.name ??
-                (branchEnvironmentMode === "worktree"
-                  ? branchUiState.currentBranch
-                  : null),
-              currentBranch: branchUiState.currentBranch,
-              isNew: selectedBranch?.isNew ?? false,
-              hidden: worktreeUnavailable,
-              options: branchOptions,
-              remoteOptions: remoteBranchOptions,
-              loading: branchesQuery.isFetching,
-              placeholder: branchUiState.placeholder,
-              triggerLabel: branchUiState.triggerLabel,
-              triggerTitle: branchUiState.triggerTitle,
-              currentOptionLabel:
-                branchEnvironmentMode === "local"
-                  ? branchUiState.currentOptionLabel
-                  : null,
-              currentOptionTitle:
-                branchEnvironmentMode === "local"
-                  ? (branchUiState.currentOptionLabel ?? undefined)
-                  : undefined,
-              optionDisabledReason: branchUiState.mutationBlocker?.label,
-              optionDisabledTitle: branchUiState.mutationBlocker?.title,
-              createDisabledReason: branchUiState.mutationBlocker?.label,
-              createDisabledTitle: branchUiState.mutationBlocker?.title,
-              disabled: locks.branch,
-              onChange: handleBranchChange,
-              onClear: handleClearBranch,
-              onCreate: handleCreateBranch,
-              onCreateBaseChange: handleCreateBranchFrom,
-              onOpenChange: handleBranchOpenChange,
-              onSearchQueryChange: setBranchSearchQuery,
             },
             worktree: {
               options: reuseThreadOptions,
@@ -1336,6 +1437,7 @@ export function NewThreadComposer({
               onChange: handlePermissionChange,
               supported: supportsPermissionModeSelection,
             },
+            environmentProviderInputsSlot,
             banner: options.banner,
             header: options.header,
           }}
@@ -1390,28 +1492,21 @@ export function NewThreadComposer({
     [
       activeModel,
       attachmentError,
-      branchEnvironmentMode,
-      branchOptions,
-      branchUiState,
-      branchesQuery.isFetching,
       changeEnvironment,
       commandSuggestions,
       currentDraft,
       defaultMentionLinkResolver,
       effectiveEnvironmentValue,
+      environmentProviders,
       executionOptionsRouting,
       handleAttachFiles,
-      handleBranchChange,
-      handleBranchOpenChange,
-      handleClearBranch,
-      handleCreateBranch,
-      handleCreateBranchFrom,
       handleEditorFocus,
       handleModelChange,
       handlePermissionChange,
       handleProjectChange,
       handleProviderChange,
       handleReasoningChange,
+      handleSelectProvider,
       handleServiceTierChange,
       handleSubmit,
       handleWorktreeChange,
@@ -1438,10 +1533,8 @@ export function NewThreadComposer({
       providerOptions,
       reasoningLevel,
       reasoningOptions,
-      remoteBranchOptions,
       reuseEnvironmentId,
       reuseThreadOptions,
-      selectedBranch,
       selectedModel,
       selectedProviderId,
       serviceTier,
@@ -1450,9 +1543,11 @@ export function NewThreadComposer({
       supportsPermissionModeSelection,
       supportsServiceTier,
       submitDisabledReason,
+      environmentProviderInputsSlot,
+      environmentProvidersByHostId,
+      inputsControlProviderIds,
+      providerHostId,
       textEffects,
-      worktreeDisabledReason,
-      worktreeUnavailable,
       serviceTierFastLabel,
     ],
   );

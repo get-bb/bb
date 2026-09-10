@@ -13,6 +13,7 @@ export interface PatchQueryIdentity {
 }
 
 const diffPatchEvictionGenerations = new Map<string, number>();
+const diffPatchFreshnessGenerations = new Map<string, number>();
 
 let allEnvironmentsEvictionGeneration = 0;
 
@@ -28,6 +29,18 @@ export function bumpDiffPatchEvictionGeneration(environmentId: string): void {
     environmentId,
     (diffPatchEvictionGenerations.get(environmentId) ?? 0) + 1,
   );
+  bumpDiffPatchFreshnessGeneration(environmentId);
+}
+
+export function getDiffPatchFreshnessGeneration(environmentId: string): number {
+  return diffPatchFreshnessGenerations.get(environmentId) ?? 0;
+}
+
+export function bumpDiffPatchFreshnessGeneration(environmentId: string): void {
+  diffPatchFreshnessGenerations.set(
+    environmentId,
+    getDiffPatchFreshnessGeneration(environmentId) + 1,
+  );
 }
 
 export function bumpAllDiffPatchEvictionGenerations(): void {
@@ -38,6 +51,52 @@ interface ReadDiffPatchEntryArgs {
   queryClient: QueryClient;
   identity: PatchQueryIdentity;
   path: string;
+}
+
+const diffPatchFreshnessByClient = new WeakMap<
+  QueryClient,
+  Map<string, Map<string, number>>
+>();
+
+function getDiffPatchFreshnessEntries(
+  queryClient: QueryClient,
+  environmentId: string,
+): Map<string, number> {
+  let entriesByEnvironment = diffPatchFreshnessByClient.get(queryClient);
+  if (entriesByEnvironment === undefined) {
+    entriesByEnvironment = new Map();
+    diffPatchFreshnessByClient.set(queryClient, entriesByEnvironment);
+  }
+  let entries = entriesByEnvironment.get(environmentId);
+  if (entries === undefined) {
+    entries = new Map();
+    entriesByEnvironment.set(environmentId, entries);
+  }
+  return entries;
+}
+
+function diffPatchEntryFreshnessKey(
+  identity: PatchQueryIdentity,
+  path: string,
+): string {
+  return JSON.stringify([identity.targetType, identity.targetKey, path]);
+}
+
+export function isDiffPatchEntryFresh({
+  queryClient,
+  identity,
+  path,
+}: ReadDiffPatchEntryArgs): boolean {
+  const freshnessGeneration = getDiffPatchFreshnessGeneration(
+    identity.environmentId,
+  );
+  const entryGeneration = getDiffPatchFreshnessEntries(
+    queryClient,
+    identity.environmentId,
+  ).get(diffPatchEntryFreshnessKey(identity, path));
+  return entryGeneration === undefined
+    ? freshnessGeneration === 0
+    : entryGeneration === freshnessGeneration;
 }
 
 export function readDiffPatchEntry({
@@ -59,12 +118,14 @@ interface WriteDiffPatchEntryArgs {
   queryClient: QueryClient;
   identity: PatchQueryIdentity;
   entry: DiffPatchEntry;
+  freshnessGeneration?: number;
 }
 
 export function writeDiffPatchEntry({
   queryClient,
   identity,
   entry,
+  freshnessGeneration = getDiffPatchFreshnessGeneration(identity.environmentId),
 }: WriteDiffPatchEntryArgs): void {
   const queryKey = environmentDiffPatchQueryKey(
     identity.environmentId,
@@ -76,6 +137,50 @@ export function writeDiffPatchEntry({
     .getQueryCache()
     .build(queryClient, { queryKey, gcTime: Infinity });
   queryClient.setQueryData<DiffPatchEntry>(queryKey, entry);
+  getDiffPatchFreshnessEntries(queryClient, identity.environmentId).set(
+    diffPatchEntryFreshnessKey(identity, entry.path),
+    freshnessGeneration,
+  );
+}
+
+export function pruneDiffPatchEntries({
+  queryClient,
+  identity,
+  paths,
+}: {
+  queryClient: QueryClient;
+  identity: PatchQueryIdentity;
+  paths: readonly string[];
+}): void {
+  const retainedPaths = new Set(paths);
+  const entries = getDiffPatchFreshnessEntries(
+    queryClient,
+    identity.environmentId,
+  );
+  for (const key of Array.from(entries.keys())) {
+    const [targetType, targetKey, path] = JSON.parse(key) as [
+      string | null,
+      string | null,
+      string,
+    ];
+    if (
+      targetType !== identity.targetType ||
+      targetKey !== identity.targetKey ||
+      retainedPaths.has(path)
+    ) {
+      continue;
+    }
+    entries.delete(key);
+    queryClient.removeQueries({
+      exact: true,
+      queryKey: environmentDiffPatchQueryKey(
+        identity.environmentId,
+        identity.targetType,
+        identity.targetKey,
+        path,
+      ),
+    });
+  }
 }
 
 interface DiffPatchRetentionLease {
@@ -134,6 +239,7 @@ export function retainDiffPatchQueries({
       }
       leases.delete(environmentId);
       bumpDiffPatchEvictionGeneration(environmentId);
+      diffPatchFreshnessByClient.get(queryClient)?.delete(environmentId);
       queryClient.removeQueries({
         queryKey: environmentDiffPatchQueryKeyPrefix(environmentId),
       });

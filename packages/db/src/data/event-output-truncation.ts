@@ -1,12 +1,15 @@
 import { sql } from "drizzle-orm";
 import type { SQL } from "drizzle-orm";
+import { RETAINED_EVENT_OUTPUT_TARGETS } from "../retained-event-output.js";
 import { events } from "../schema.js";
 
-const INLINE_OUTPUT_JSON_PATHS = [
-  "$.item.aggregatedOutput",
-  "$.item.result",
-  "$.item.resultText",
-] as const;
+const INLINE_OUTPUT_JSON_PATHS = Array.from(
+  new Set(
+    RETAINED_EVENT_OUTPUT_TARGETS.map(
+      (target) => `$.item.${target.outputPath}`,
+    ),
+  ),
+);
 
 const NOOP_JSON_PATH = "$.__bb_timeline_truncation_noop__";
 

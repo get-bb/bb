@@ -3,6 +3,7 @@ import type { AgentRuntimeBridgeLaunch } from "@bb/agent-runtime";
 import type { AvailableModel } from "@bb/domain";
 import type { EventSinkInput } from "./event-sink.js";
 import type {
+  EnvironmentHookProgressMessage,
   HostDaemonCommand,
   ProviderHealthResult,
   ProviderUsageResult,
@@ -17,7 +18,6 @@ import type {
   ProviderInstallationRunResult,
   ProviderInstallationStatus,
 } from "@bb/provider-bridge-protocol";
-import { getPersonalWorkspaceRoot } from "@bb/host-workspace";
 import { ensurePluginProcessDataDir } from "@bb/process-utils";
 import type { InteractiveResolveCommandInput } from "./interactive-request-registry.js";
 import { RuntimeManager, type RuntimeEntry } from "./runtime-manager.js";
@@ -48,6 +48,9 @@ export const noopEventSink: EventSink = {
 };
 
 export interface CommandDispatchOptions {
+  emitEnvironmentHookProgress?: (
+    message: EnvironmentHookProgressMessage,
+  ) => void;
   desktopBrowserBroker?: DesktopBrowserBroker;
   dataDir: string;
   logger: Pick<HostDaemonLogger, "debug" | "warn">;
@@ -258,10 +261,6 @@ export async function requireWorkspaceEnvironment(
     ...(args.targetThreadId !== undefined
       ? { targetThreadId: args.targetThreadId }
       : {}),
-    ...(args.dataDir
-      ? { personalWorkspaceRoot: getPersonalWorkspaceRoot(args.dataDir) }
-      : {}),
     workspacePath: args.workspaceContext.workspacePath,
-    workspaceProvisionType: args.workspaceContext.workspaceProvisionType,
   });
 }

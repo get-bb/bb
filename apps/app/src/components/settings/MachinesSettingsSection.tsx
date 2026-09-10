@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import type { Host, PermissionMode } from "@bb/domain";
 import { RETRY_ACTION_ICON } from "@bb/domain/update-state";
 import type { HostPlatform } from "@bb/host-daemon-contract";
@@ -18,7 +18,10 @@ import {
 } from "@bb/shared-ui/dropdown-menu";
 import { Icon } from "@bb/shared-ui/icon";
 import { cn } from "@bb/shared-ui/lib/utils";
-import { ResourceRowDetailChevron } from "@bb/shared-ui/resource-list";
+import {
+  ResourceRowDetailChevron,
+  targetsResourceAction,
+} from "@bb/shared-ui/resource-list";
 import {
   Tooltip,
   TooltipContent,
@@ -102,6 +105,8 @@ function MachineRow({
   onRetryUpdate,
   retryUpdatePending,
 }: MachineRowProps) {
+  const navigate = useNavigate();
+  const detailPath = getSettingsMachineRoutePath(host.id);
   const permission = PERMISSION_MODE_PRESENTATION[host.maxPermissionMode];
   const projectLabel = `${projectCount} ${projectCount === 1 ? "project" : "projects"}`;
   const connectionLabel =
@@ -136,10 +141,14 @@ function MachineRow({
     <SettingsRow>
       <div
         data-machine-row
-        className="group group/machine -mx-2 flex min-w-0 flex-1 items-center gap-2 rounded-md px-2 py-2 transition-colors hover:bg-state-hover focus-within:bg-state-hover"
+        className="group group/machine -mx-2 flex min-w-0 flex-1 cursor-pointer items-center gap-2 rounded-md px-2 py-2 transition-colors hover:bg-state-hover focus-within:bg-state-hover"
+        onClick={(event) => {
+          if (targetsResourceAction(event.target)) return;
+          navigate(detailPath);
+        }}
       >
         <Link
-          to={getSettingsMachineRoutePath(host.id)}
+          to={detailPath}
           aria-label={`Open ${host.name}`}
           className="flex min-w-0 flex-1 items-center rounded-md outline-none focus-visible:ring-2 focus-visible:ring-ring"
         >
@@ -260,12 +269,14 @@ export function MachinesSettingsSection() {
   const now = Date.now();
   const primaryHostPlatform = systemConfig.data?.primaryHostPlatform ?? null;
   const showMachineIdentityBadges = (hosts?.length ?? 0) > 1;
+  const hasMachineRows = hosts !== undefined && hosts.length > 0;
 
   return (
     <>
       <SettingsSection
         title="Machines"
         description={MACHINES_SECTION_DESCRIPTION}
+        bodyClassName={hasMachineRows ? "py-2" : undefined}
         action={
           <Button
             size="sm"

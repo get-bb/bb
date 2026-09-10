@@ -12,12 +12,13 @@ import { makeHost } from "@bb/test-helpers/domain-fixtures";
 import { RETRY_ACTION_ICON } from "@bb/domain/update-state";
 import { HOST_DAEMON_PROTOCOL_VERSION } from "@bb/host-daemon-contract";
 import type { SystemConfigResponse } from "@bb/server-contract";
-import { MemoryRouter } from "react-router-dom";
+import { MemoryRouter, useLocation } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { sdk } from "@/lib/sdk";
 import { createQueryClientTestHarness } from "@/test/queryClientTestHarness";
 import { makeSystemConfig } from "@/test/fixtures/system-config";
 import { MachinesSettingsSection } from "./MachinesSettingsSection";
+import { focusWithKeyboard } from "@/test/keyboard-focus";
 
 vi.mock("@/lib/sdk", () => ({
   sdk: {
@@ -99,11 +100,17 @@ function stubSidebarBootstrapFetch(): void {
   );
 }
 
+function LocationProbe() {
+  const location = useLocation();
+  return <div data-testid="location">{location.pathname}</div>;
+}
+
 function renderSection() {
   const { wrapper } = createQueryClientTestHarness();
   return render(
     <MemoryRouter>
       <MachinesSettingsSection />
+      <LocationProbe />
     </MemoryRouter>,
     { wrapper },
   );
@@ -368,6 +375,46 @@ describe("MachinesSettingsSection", () => {
     ).toBe(true);
   });
 
+  it("navigates to the machine detail route when the row caret is clicked", async () => {
+    vi.mocked(sdk.system.config).mockResolvedValue(systemConfig());
+    vi.mocked(sdk.hosts.list).mockResolvedValue([primaryHost, offlineHost]);
+    stubSidebarBootstrapFetch();
+
+    renderSection();
+
+    const machineLink = await screen.findByRole("link", {
+      name: "Open dev-vm",
+    });
+    const row = machineLink.closest("[data-machine-row]");
+    const caret = row?.querySelector('[data-icon="ChevronRight"]');
+    expect(caret).not.toBeNull();
+    if (caret === null || caret === undefined) return;
+
+    fireEvent.click(caret);
+
+    await waitFor(() => {
+      expect(screen.getByTestId("location").textContent).toBe(
+        "/settings/machines/host_remote",
+      );
+    });
+  });
+
+  it("keeps the row menu open without navigating when its trigger is clicked", async () => {
+    vi.mocked(sdk.system.config).mockResolvedValue(systemConfig());
+    vi.mocked(sdk.hosts.list).mockResolvedValue([primaryHost, offlineHost]);
+    stubSidebarBootstrapFetch();
+
+    renderSection();
+
+    await screen.findByText("dev-vm");
+    await openHostMenu("dev-vm");
+
+    expect(
+      await screen.findByRole("menuitem", { name: "Rename" }),
+    ).toBeDefined();
+    expect(screen.getByTestId("location").textContent).toBe("/");
+  });
+
   it("renames a machine through the row menu", async () => {
     vi.mocked(sdk.system.config).mockResolvedValue(systemConfig());
     vi.mocked(sdk.hosts.list).mockResolvedValue([primaryHost, offlineHost]);
@@ -435,7 +482,7 @@ describe("MachinesSettingsSection", () => {
     });
     expect(removeItem.getAttribute("aria-disabled")).toBe("true");
     expect(removeItem.textContent).toBe("Remove machine");
-    fireEvent.focus(removeItem);
+    focusWithKeyboard(removeItem);
     expect(
       await screen.findByRole("tooltip", {
         name: "bb's primary machine can't be removed.",

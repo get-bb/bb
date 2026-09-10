@@ -241,6 +241,93 @@ describe("useThreadTimelineController", () => {
     ]);
   });
 
+  it("discards an in-flight older page when latest changes the history snapshot", async () => {
+    const oldRow = makeUserRow("thread-1:user-seed:1", 1);
+    const olderRow = makeUserRow("thread-1:user-seed:0", 0);
+    const boundaryRow: TimelineRow = {
+      id: "context-clear-10",
+      kind: "system",
+      threadId: "thread-1",
+      turnId: null,
+      sourceSeqStart: 10,
+      sourceSeqEnd: 10,
+      startedAt: 10,
+      createdAt: 10,
+      systemKind: "operation",
+      operationKind: "generic",
+      title: "Context cleared",
+      detail: null,
+      status: "completed",
+      completedAt: 10,
+    };
+    let resolveOlder: (value: ThreadTimelineResponse) => void = () => {};
+    vi.mocked(sdk.threads.timeline)
+      .mockResolvedValueOnce(
+        makeTimelineResponse({
+          rows: [oldRow],
+          maxSeq: 1,
+          timelinePage: {
+            historySnapshot: "before",
+            hasOlderRows: true,
+            olderCursor: { anchorId: oldRow.id, anchorSeq: 1 },
+          },
+        }),
+      )
+      .mockImplementationOnce(
+        () =>
+          new Promise<ThreadTimelineResponse>((resolve) => {
+            resolveOlder = resolve;
+          }),
+      );
+
+    const { queryClient, wrapper } = createQueryClientTestHarness();
+    const { result } = renderHook(
+      () => useThreadTimelineController({ threadId: "thread-1" }),
+      { wrapper },
+    );
+    await waitFor(() => {
+      expect(result.current.hasOlderTimelineRows).toBe(true);
+    });
+
+    let olderRequest: Promise<void> = Promise.resolve();
+    act(() => {
+      olderRequest = result.current.loadOlderTimelineRows();
+    });
+    await waitFor(() => {
+      expect(sdk.threads.timeline).toHaveBeenCalledTimes(2);
+    });
+    act(() => {
+      queryClient.setQueryData(
+        threadTimelineQueryKey("thread-1"),
+        makeTimelineResponse({
+          timelinePage: { historySnapshot: "after" },
+          maxSeq: 10,
+          rows: [boundaryRow],
+        }),
+      );
+    });
+    await waitFor(() => {
+      expect(result.current.timelineRows.map((row) => row.id)).toEqual([
+        boundaryRow.id,
+      ]);
+    });
+
+    resolveOlder(
+      makeTimelineResponse({
+        rows: [olderRow],
+        maxSeq: 1,
+        timelinePage: { kind: "older", historySnapshot: "before" },
+      }),
+    );
+    await act(async () => {
+      await olderRequest;
+    });
+
+    expect(result.current.timelineRows.map((row) => row.id)).toEqual([
+      boundaryRow.id,
+    ]);
+  });
+
   it("keeps an initial timeline refetch in loading state instead of showing the previous error", async () => {
     const response = makeTimelineResponse();
     let resolveRefetch: (value: ThreadTimelineResponse) => void = () => {};

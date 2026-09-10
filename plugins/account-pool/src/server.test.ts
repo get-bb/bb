@@ -13,6 +13,8 @@ import {
   accountPoolConfigSetInputSchema,
   codexLoginPollSchema,
   codexLoginStartSchema,
+  routedThreadStatusListSchema,
+  statusReportSchema,
   statusSchema,
   type AccountSummary,
 } from "./contracts.js";
@@ -184,6 +186,7 @@ async function createFixture(args: {
   source?: "api-key" | "import";
   apiKey?: string;
   priority?: number;
+  beforePlugin?: (host: Fixture["host"]) => void;
 }): Promise<Fixture> {
   const dataDir = await mkdtemp(path.join(tmpdir(), "bb-account-pool-"));
   const host = createFakePluginHost({
@@ -199,6 +202,7 @@ async function createFixture(args: {
     usageUrl: "data:application/json,{}",
     ...args.options,
   });
+  args.beforePlugin?.(host);
   await plugin(host.bb);
   const accountMetadata = accountSchema.parse(
     await host.harness.behavior.callRpc("account.add", {
@@ -215,10 +219,12 @@ async function createFixture(args: {
   await vi.waitFor(async () => {
     const result = await host.harness.behavior.runCli(["status", "--json"]);
     expect(result.exitCode).toBe(0);
-    expect(statusSchema.parse(JSON.parse(result.stdout)).accepting).toBe(true);
+    expect(statusReportSchema.parse(JSON.parse(result.stdout)).accepting).toBe(
+      true,
+    );
   });
   const statusResult = await host.harness.behavior.runCli(["status", "--json"]);
-  const status = statusSchema.parse(JSON.parse(statusResult.stdout));
+  const status = statusReportSchema.parse(JSON.parse(statusResult.stdout));
   const account = status.accounts.find(
     (candidate) => candidate.id === accountMetadata.id,
   );
@@ -285,21 +291,6 @@ function authHeaders(key: string): Record<string, string> {
     "content-type": "application/json",
     "anthropic-version": "2023-06-01",
   };
-}
-
-const completedResponseSchema = z
-  .object({
-    type: z.literal("response.completed"),
-    response: z
-      .object({ id: z.string(), output: z.array(z.json()).default([]) })
-      .passthrough(),
-  })
-  .passthrough();
-
-function completedResponse(value: string | Uint8Array | undefined) {
-  if (typeof value !== "string")
-    throw new Error("Expected a text WebSocket frame.");
-  return completedResponseSchema.parse(JSON.parse(value));
 }
 
 async function addApiAccount(
@@ -429,7 +420,58 @@ describe("Account Pool plugin", () => {
     });
   });
 
-  it("imports, refreshes, and routes Codex HTTP and WebSocket sessions by provider", async () => {
+  it.each(["generations", "edits"])(
+    "routes native Codex image %s with pool authentication",
+    async (operation) => {
+      const requests: Request[] = [];
+      const image = { data: [{ b64_json: "generated-image" }] };
+      const fixture = await createOAuthRequestFixture(
+        "codex",
+        async (input, init) => {
+          requests.push(new Request(input, init));
+          return Response.json(image);
+        },
+        Date.now,
+      );
+      const route = `/v1/images/${operation}`;
+      const body = JSON.stringify({ prompt: "A fox astronaut", images: [] });
+      const denied = await fixture.host.harness.behavior.fetchHttp(
+        "POST",
+        route,
+        { body },
+      );
+      expect(denied.status).toBe(401);
+      expect(requests).toHaveLength(0);
+      const response = await fixture.host.harness.behavior.fetchHttp(
+        "POST",
+        route,
+        {
+          headers: {
+            "content-type": "application/json",
+            "x-bb-account-pool-token": fixture.key,
+            authorization: "Bearer local-token",
+          },
+          body,
+        },
+      );
+      expect(response.status).toBe(200);
+      expect(await response.json()).toEqual(image);
+      expect(requests).toHaveLength(1);
+      expect(requests[0]?.url).toBe(
+        `https://upstream.example/images/${operation}`,
+      );
+      expect(requests[0]?.headers.get("authorization")).toBe(
+        "Bearer oauth-old",
+      );
+      expect(requests[0]?.headers.get("chatgpt-account-id")).toBe(
+        "chatgpt-account",
+      );
+      expect(requests[0]?.headers.has("x-bb-account-pool-token")).toBe(false);
+      expect(await requests[0]?.text()).toBe(body);
+    },
+  );
+
+  it("imports, refreshes, and routes Codex HTTP sessions by provider", async () => {
     const seen: Array<{
       path: string;
       authorization: string | undefined;
@@ -513,7 +555,7 @@ describe("Account Pool plugin", () => {
       if (responseNumber === 2) {
         response.writeHead(429, {
           "content-type": "application/json",
-          "x-codex-primary-used-percent": "100",
+          "x-codex-secondary-used-percent": "100",
         });
         response.end('{"error":{"message":"quota exhausted"}}');
         return;
@@ -649,53 +691,29 @@ describe("Account Pool plugin", () => {
       authorization: `Bearer ${futureToken}`,
       accountId: "chatgpt-account-1",
     });
-    const socket = await host.harness.experimental_openWebSocket(
-      "/v1/responses",
-      {
+    const postResponses = (input: unknown[]) =>
+      host.harness.behavior.fetchHttp("POST", "/v1/responses", {
         headers: {
+          authorization: "Bearer local-codex-token",
           "x-bb-account-pool-token": routed.token,
-          "openai-beta": "responses_websockets",
+          "content-type": "application/json",
         },
-      },
-    );
-    await socket.receive(
-      JSON.stringify({
-        type: "response.create",
-        generate: false,
-        input: [{ type: "message", id: "prefix" }],
-      }),
-    );
-    await vi.waitFor(() => expect(socket.sent).toHaveLength(1));
-    const prewarm = completedResponse(socket.sent[0]);
-    await socket.receive(
-      JSON.stringify({
-        type: "response.create",
-        previous_response_id: prewarm.response.id,
-        model: "gpt-5",
-        input: [{ type: "message", id: "delta-one" }],
-      }),
-    );
-    await vi.waitFor(() => expect(socket.sent).toHaveLength(3));
-    expect(JSON.parse(String(socket.sent[1]))).toMatchObject({
-      type: "response.created",
-    });
-    const first = completedResponse(socket.sent[2]);
-    await socket.receive(
-      JSON.stringify({
-        type: "response.create",
-        previous_response_id: first.response.id,
-        model: "gpt-5",
-        input: [{ type: "message", id: "delta-two" }],
-      }),
-    );
-    await vi.waitFor(() => expect(socket.sent).toHaveLength(5));
-    expect(socket.sent.map((frame) => JSON.parse(String(frame)).type)).toEqual([
-      "response.completed",
-      "response.created",
-      "response.completed",
-      "response.created",
-      "response.completed",
+        body: JSON.stringify({ model: "gpt-5", input }),
+      });
+    const first = await postResponses([
+      { type: "message", id: "prefix" },
+      { type: "message", id: "delta-one" },
     ]);
+    expect(first.status).toBe(200);
+    expect(await first.text()).toContain('"type":"response.completed"');
+    const second = await postResponses([
+      { type: "message", id: "prefix" },
+      { type: "message", id: "delta-one" },
+      { type: "message", id: "message-3" },
+      { type: "message", id: "delta-two" },
+    ]);
+    expect(second.status).toBe(200);
+    await second.text();
     expect(seen[1]?.accountId).not.toBe(seen[2]?.accountId);
     expect(seen[2]?.accountId).toBe(seen[3]?.accountId);
     expect(JSON.parse(seen[3]?.body ?? "{}").input).toEqual([
@@ -704,7 +722,6 @@ describe("Account Pool plugin", () => {
       { type: "message", id: "message-3" },
       { type: "message", id: "delta-two" },
     ]);
-    await socket.close(1000, "done");
     const status = statusSchema.parse(
       await host.harness.behavior.callRpc("status.get", null),
     );
@@ -722,15 +739,15 @@ describe("Account Pool plugin", () => {
         {
           slot: "primary",
           windowMinutes: 300,
-          utilization: 1,
-          status: "rejected",
+          utilization: 0.25,
+          status: null,
           source: "header",
         },
         {
           slot: "secondary",
           windowMinutes: 10_080,
-          utilization: 0.4,
-          status: null,
+          utilization: 1,
+          status: "rejected",
           source: "header",
         },
       ],
@@ -752,6 +769,24 @@ describe("Account Pool plugin", () => {
         },
       ],
     });
+    const secondCodex = status.accounts.find(
+      (account) =>
+        account.provider === "codex" && account.id !== firstCodex?.id,
+    );
+    if (secondCodex === undefined) throw new Error("Missing second account.");
+    await host.harness.behavior.callRpc("account.disable", {
+      id: secondCodex.id,
+    });
+    const blocked = await host.harness.behavior.fetchHttp(
+      "POST",
+      "/v1/responses",
+      {
+        headers: { "x-bb-account-pool-token": routed.token },
+        body: JSON.stringify({ model: "gpt-5", input: [] }),
+      },
+    );
+    expect(blocked.status).toBe(429);
+    expect(Number(blocked.headers.get("retry-after"))).toBeGreaterThan(80_000);
     const secret = accountSecretSchema.parse(
       JSON.parse(
         await fs.readFile(
@@ -774,74 +809,7 @@ describe("Account Pool plugin", () => {
     });
   });
 
-  it("fails an unknown Codex WebSocket response id and closes with 1011", async () => {
-    const dataDir = await mkdtemp(
-      path.join(tmpdir(), "bb-account-pool-codex-unknown-"),
-    );
-    const host = createFakePluginHost({
-      pluginId: "account-pool",
-      dataDir,
-      sdk: sdkStubs(),
-    });
-    await createAccountPoolPlugin({
-      codexUsageUrl: EMPTY_USAGE_URL,
-      importCodexCredentials: async () => ({
-        accessToken: "access",
-        refreshToken: "refresh",
-        idToken: null,
-        accountId: "account",
-        email: null,
-        expiresAt: null,
-      }),
-    })(host.bb);
-    const service = host.harness.behavior.runService("hub");
-    cleanups.push(async () => {
-      service.controller.abort();
-      await service.done;
-      await host.harness.lifecycle.dispose();
-      await fs.rm(dataDir, { recursive: true, force: true });
-    });
-    await host.harness.behavior.callRpc("account.add", {
-      provider: "codex",
-      source: { kind: "import" },
-      label: null,
-      priority: 100,
-    });
-    const { token } = await resolveCodexToken(host);
-    const rejected = await host.harness.experimental_openWebSocket(
-      "/v1/responses",
-      { headers: { "x-bb-account-pool-token": "invalid" } },
-    );
-    expect(rejected.closeCalls).toEqual([
-      {
-        code: 1008,
-        reason: "invalid Account Pooler token",
-      },
-    ]);
-    const socket = await host.harness.experimental_openWebSocket(
-      "/v1/responses",
-      {
-        headers: { "x-bb-account-pool-token": token },
-      },
-    );
-    await socket.receive(
-      JSON.stringify({
-        type: "response.create",
-        previous_response_id: "missing",
-        input: [],
-      }),
-    );
-    await vi.waitFor(() => expect(socket.closeCalls).toHaveLength(1));
-    expect(JSON.parse(String(socket.sent[0]))).toMatchObject({
-      type: "response.failed",
-      response: { error: { code: "unknown_previous_response_id" } },
-    });
-    expect(socket.closeCalls).toEqual([
-      { code: 1011, reason: "unknown previous_response_id" },
-    ]);
-  });
-
-  it("cancels a Codex upstream read when its WebSocket closes", async () => {
+  it("cancels a Codex upstream read when the HTTP client aborts", async () => {
     const dataDir = await mkdtemp(
       path.join(tmpdir(), "bb-account-pool-codex-cancel-"),
     );
@@ -917,19 +885,26 @@ describe("Account Pool plugin", () => {
       priority: 100,
     });
     const { token } = await resolveCodexToken(host);
-    const socket = await host.harness.experimental_openWebSocket(
+    const client = new AbortController();
+    const response = await host.harness.behavior.fetchHttp(
+      "POST",
       "/v1/responses",
-      { headers: { "x-bb-account-pool-token": token } },
+      {
+        headers: {
+          "x-bb-account-pool-token": token,
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({ model: "gpt-5", input: [] }),
+        signal: client.signal,
+      },
     );
-    await socket.receive(
-      JSON.stringify({
-        type: "response.create",
-        model: "gpt-5",
-        input: [],
-      }),
-    );
-    await vi.waitFor(() => expect(socket.sent).toHaveLength(1));
-    await socket.close(1000, "interrupted");
+    expect(response.status).toBe(200);
+    const reader = response.body?.getReader();
+    if (reader === undefined) throw new Error("Expected a streaming body.");
+    const first = await reader.read();
+    expect(new TextDecoder().decode(first.value)).toContain("response.created");
+    client.abort(new Error("interrupted"));
+    await reader.cancel().catch(() => undefined);
     await vi.waitFor(async () => {
       expect(upstreamReadCanceled).toBe(true);
       expect(
@@ -937,97 +912,6 @@ describe("Account Pool plugin", () => {
           await host.harness.behavior.callRpc("status.get", null),
         ).inFlight,
       ).toBe(0);
-    });
-    expect(socket.sent).toHaveLength(1);
-  });
-
-  it("releases a Codex request when an upstream SSE event is malformed", async () => {
-    const dataDir = await mkdtemp(
-      path.join(tmpdir(), "bb-account-pool-codex-malformed-"),
-    );
-    let upstreamReadCanceled = false;
-    const upstreamFetch = async (
-      input: string | URL | Request,
-    ): Promise<Response> => {
-      if (String(input) === CODEX_USAGE_STUB_URL) return Response.json({});
-      const body = new ReadableStream<Uint8Array>({
-        start(controller) {
-          controller.enqueue(new TextEncoder().encode("data: {\n\n"));
-        },
-        cancel() {
-          upstreamReadCanceled = true;
-        },
-      });
-      return new Response(body, {
-        headers: { "content-type": "text/event-stream" },
-      });
-    };
-    const host = createFakePluginHost({
-      pluginId: "account-pool",
-      dataDir,
-      sdk: sdkStubs(),
-    });
-    await host.bb.storage.kv.set("config", {
-      codexUpstreamBaseUrl: "https://example.com",
-    });
-    await createAccountPoolPlugin({
-      fetch: upstreamFetch,
-      codexUsageUrl: CODEX_USAGE_STUB_URL,
-      importCodexCredentials: async () => ({
-        accessToken: "access",
-        refreshToken: "refresh",
-        idToken: null,
-        accountId: "account",
-        email: null,
-        expiresAt: null,
-      }),
-    })(host.bb);
-    const service = host.harness.behavior.runService("hub");
-    cleanups.push(async () => {
-      service.controller.abort();
-      await service.done;
-      await host.harness.lifecycle.dispose();
-      await fs.rm(dataDir, { recursive: true, force: true });
-    });
-    await vi.waitFor(async () => {
-      expect(
-        statusSchema.parse(
-          await host.harness.behavior.callRpc("status.get", null),
-        ).accepting,
-      ).toBe(true);
-    });
-    await host.harness.behavior.callRpc("account.add", {
-      provider: "codex",
-      source: { kind: "import" },
-      label: null,
-      priority: 100,
-    });
-    const { token } = await resolveCodexToken(host);
-    const socket = await host.harness.experimental_openWebSocket(
-      "/v1/responses",
-      { headers: { "x-bb-account-pool-token": token } },
-    );
-    await socket.receive(
-      JSON.stringify({
-        type: "response.create",
-        model: "gpt-5",
-        input: [],
-      }),
-    );
-    await vi.waitFor(async () => {
-      expect(JSON.parse(String(socket.sent[0]))).toMatchObject({
-        type: "response.failed",
-        response: { error: { code: "proxy_error" } },
-      });
-      expect(upstreamReadCanceled).toBe(true);
-      const statusResult = await host.harness.behavior.runCli([
-        "status",
-        "--json",
-      ]);
-      expect(statusResult.exitCode).toBe(0);
-      expect(statusSchema.parse(JSON.parse(statusResult.stdout)).inFlight).toBe(
-        0,
-      );
     });
   });
 
@@ -1140,7 +1024,7 @@ describe("Account Pool plugin", () => {
       "status",
       "--json",
     ]);
-    const status = statusSchema.parse(JSON.parse(statusResult.stdout));
+    const status = statusReportSchema.parse(JSON.parse(statusResult.stdout));
     expect(status.accepting).toBe(true);
     expect(status.hosts).toEqual([]);
     expect(
@@ -1205,6 +1089,7 @@ describe("Account Pool plugin", () => {
     expect(help.stdout).toContain("--code-stdin");
     expect(help.stdout).toContain("--api-key-stdin");
     expect(help.stdout).toContain("Unsafe: exposes the key");
+    expect(help.stdout).toContain("account refresh <id>");
     const list = await fixture.host.harness.behavior.runCli([
       "account",
       "list",
@@ -1217,6 +1102,13 @@ describe("Account Pool plugin", () => {
     const account = listed.accounts[0];
     if (account === undefined) throw new Error("CLI account was not listed.");
     expect(account).toMatchObject({ label: "Claude API key", priority: 100 });
+    expect(
+      await fixture.host.harness.behavior.runCli([
+        "account",
+        "refresh",
+        account.id,
+      ]),
+    ).toMatchObject({ exitCode: 0 });
     expect(
       (
         await fixture.host.harness.behavior.runCli([
@@ -1242,7 +1134,7 @@ describe("Account Pool plugin", () => {
         ])
       ).exitCode,
     ).toBe(0);
-    const publicStatus = statusSchema.parse(
+    const publicStatus = statusReportSchema.parse(
       JSON.parse(
         (await fixture.host.harness.behavior.runCli(["status", "--json"]))
           .stdout,
@@ -1787,10 +1679,10 @@ describe("Account Pool plugin", () => {
         ],
       }),
     );
-    const status = statusSchema.parse(
-      await fixture.host.harness.behavior.callRpc("status.get", null),
+    const routedThreads = routedThreadStatusListSchema.parse(
+      await fixture.host.harness.behavior.callRpc("status.routedThreads", null),
     );
-    expect(status.routedThreadsWithoutLocalLogin).toEqual([
+    expect(routedThreads).toEqual([
       {
         threadId: "thread-one",
         hostId: "host-one",
@@ -1875,10 +1767,10 @@ describe("Account Pool plugin", () => {
         },
       ],
     }));
-    const status = statusSchema.parse(
-      await fixture.host.harness.behavior.callRpc("status.get", null),
+    const routedThreads = routedThreadStatusListSchema.parse(
+      await fixture.host.harness.behavior.callRpc("status.routedThreads", null),
     );
-    expect(status.routedThreadsWithoutLocalLogin).toEqual([
+    expect(routedThreads).toEqual([
       {
         threadId: "thread-one",
         hostId: "host-one",
@@ -2235,6 +2127,52 @@ describe("Account Pool plugin", () => {
         fable: { status: "rejected", source: "header" },
       },
     });
+  });
+
+  it("rotates when a same-account retry reveals a family limit", async () => {
+    const keys: string[] = [];
+    const fixture = await createFixture({
+      upstreamUrl: "https://upstream.example",
+      apiKey: "sk-one",
+      options: {
+        fetch: async (_input, init) => {
+          keys.push(new Headers(init?.headers).get("x-api-key") ?? "");
+          if (keys.length === 1) {
+            return Response.json(
+              { minute: true },
+              { status: 429, headers: { "retry-after": "0" } },
+            );
+          }
+          if (keys.length === 2) {
+            return Response.json(
+              { family: true },
+              {
+                status: 429,
+                headers: {
+                  "anthropic-ratelimit-unified-5h-status": "allowed",
+                  "anthropic-ratelimit-unified-7d-status": "allowed",
+                  "anthropic-ratelimit-unified-7d_oi-reset": "4102452000",
+                  "anthropic-ratelimit-unified-7d_oi-status": "rejected",
+                },
+              },
+            );
+          }
+          return Response.json({ rotated: true });
+        },
+      },
+    });
+    await addApiAccount(fixture, "sk-two");
+    const response = await fixture.host.harness.behavior.fetchHttp(
+      "POST",
+      "/v1/messages",
+      {
+        headers: authHeaders(fixture.key),
+        body: JSON.stringify({ model: "claude-fable-5" }),
+      },
+    );
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({ rotated: true });
+    expect(keys).toEqual(["sk-one", "sk-one", "sk-two"]);
   });
 
   it("refreshes usage on import and routes from its family observations", async () => {
@@ -4507,7 +4445,7 @@ describe("Account Pool plugin", () => {
       }
     });
 
-    it("keeps native Codex HTTP and WebSocket compaction continuations on the same account", async () => {
+    it("keeps native Codex HTTP compaction continuations on the same account", async () => {
       const seen: Array<{ headers: Headers; body: string }> = [];
       const compacted = {
         type: "compaction",
@@ -4536,10 +4474,6 @@ describe("Account Pool plugin", () => {
         "/v1/responses",
         { headers, body: "{}" },
       );
-      const socket = await fixture.host.harness.experimental_openWebSocket(
-        "/v1/responses",
-        { headers },
-      );
       try {
         const fields = {
           model: "gpt-5",
@@ -4559,21 +4493,27 @@ describe("Account Pool plugin", () => {
           },
           { type: "compaction_trigger" },
         ];
-        await socket.receive(
-          JSON.stringify({ type: "response.create", ...fields, input }),
+        const first = await fixture.host.harness.behavior.fetchHttp(
+          "POST",
+          "/v1/responses",
+          { headers, body: JSON.stringify({ ...fields, input }) },
         );
-        await vi.waitFor(() => expect(socket.sent).toHaveLength(1));
-        const first = completedResponse(socket.sent[0]);
+        expect(first.status).toBe(200);
+        await first.text();
         const delta = { type: "message", role: "user", content: "next" };
-        await socket.receive(
-          JSON.stringify({
-            type: "response.create",
-            ...fields,
-            previous_response_id: first.response.id,
-            input: [delta],
-          }),
+        const second = await fixture.host.harness.behavior.fetchHttp(
+          "POST",
+          "/v1/responses",
+          {
+            headers,
+            body: JSON.stringify({
+              ...fields,
+              input: [...input, compacted, delta],
+            }),
+          },
         );
-        await vi.waitFor(() => expect(socket.sent).toHaveLength(2));
+        expect(second.status).toBe(200);
+        await second.text();
         expect(JSON.parse(seen[1]?.body ?? "{}")).toMatchObject({
           ...fields,
           input,
@@ -4596,7 +4536,6 @@ describe("Account Pool plugin", () => {
           ["Bearer sk-first", "Bearer sk-first", "Bearer sk-first"],
         );
       } finally {
-        await socket.close(1000, "done");
         await held.body?.cancel();
       }
     });
@@ -4798,7 +4737,7 @@ describe("Account Pool plugin", () => {
       }
     });
 
-    it("evicts the least recently used binding after 4096 sessions", async () => {
+    it("evicts the least recently used binding at capacity", async () => {
       let lastKey: string | null = null;
       let attempts = 0;
       const fixture = await createFixture({
@@ -4806,6 +4745,7 @@ describe("Account Pool plugin", () => {
         apiKey: "sk-first",
         options: {
           now: () => 1_800_000_000_000,
+          maxAffinityBindings: 4,
           fetch: async (_input, init) => {
             lastKey = new Headers(init?.headers).get("x-api-key");
             attempts += 1;
@@ -4836,7 +4776,7 @@ describe("Account Pool plugin", () => {
       );
       try {
         await movePoolToOtherAccount(fixture, "claude");
-        for (let index = 1; index < 4096; index += 1)
+        for (let index = 1; index < 4; index += 1)
           await send(`session-${index}`);
         const touched = await send("oldest");
         await send("newest");
@@ -4854,7 +4794,7 @@ describe("Account Pool plugin", () => {
       } finally {
         if (!held.bodyUsed) await held.body?.cancel();
       }
-    }, 20_000);
+    });
   });
 
   it("serializes refresh, writes new tokens with 0600 mode, and uses them", async () => {
@@ -5296,14 +5236,10 @@ describe("Account Pool plugin", () => {
   });
 
   it("suppresses env and health only for the provider whose routing is off", async () => {
-    const upstream = await startUpstream((_request, response) => {
-      response.writeHead(200, { "content-type": "application/json" });
-      response.end("{}");
-    });
-    cleanups.push(upstream.close);
     const fixture = await createFixture({
-      upstreamUrl: upstream.url,
+      upstreamUrl: "https://upstream.example",
       options: {
+        fetch: async () => Response.json({}),
         codexUsageUrl: EMPTY_USAGE_URL,
         importCodexCredentials: async () => ({
           accessToken: "codex-access",
@@ -5501,10 +5437,12 @@ describe("sequential pool recovery", () => {
 
   it("keeps a paced session on its account when another request arrives during a short hold", async () => {
     const attempts: Array<string | null> = [];
+    let now = 1_800_000_000_000;
     const fixture = await createFixture({
       upstreamUrl: "https://upstream.example",
       apiKey: "sk-first",
       options: {
+        now: () => now,
         fetch: async (_input, init) => {
           attempts.push(new Headers(init?.headers).get("x-api-key"));
           return attempts.length === 2
@@ -5534,7 +5472,12 @@ describe("sequential pool recovery", () => {
             ?.status,
         ).toBe("held");
       });
-      await (await send()).text();
+      const duringHold = send();
+      now += 249;
+      const duringHoldResponse = await duringHold;
+      expect(duringHoldResponse.status).toBe(200);
+      await duringHoldResponse.text();
+      now += 1;
       await (await paced).text();
       await (await send()).text();
       expect(attempts).toEqual([
@@ -5759,4 +5702,99 @@ describe("sequential pool recovery", () => {
         )[0]?.id,
     ).toBe(second.id);
   });
+});
+
+it("logs a sanitized transport cause when pooled fetch fails", async () => {
+  const fixture = await createFixture({
+    upstreamUrl: "https://upstream.example",
+    options: {
+      fetch: async () => {
+        throw new TypeError("fetch failed with private request data", {
+          cause: Object.assign(
+            new Error("The session has been destroyed: secret-token"),
+            {
+              code: "ERR_HTTP2_INVALID_SESSION",
+            },
+          ),
+        });
+      },
+    },
+  });
+  const response = await fixture.host.harness.behavior.fetchHttp(
+    "POST",
+    "/v1/messages",
+    {
+      headers: authHeaders(fixture.key),
+      body: "{}",
+    },
+  );
+  expect(response.status).toBe(502);
+  expect(await response.text()).not.toContain("secret-token");
+  expect(fixture.host.harness.inspection.logEntries).toContainEqual({
+    level: "warn",
+    message:
+      "Account Pooler claude transport failed: ERR_HTTP2_INVALID_SESSION.",
+  });
+  expect(
+    JSON.stringify(fixture.host.harness.inspection.logEntries),
+  ).not.toContain("secret-token");
+  expect(
+    JSON.stringify(fixture.host.harness.inspection.logEntries),
+  ).not.toContain("private request data");
+});
+
+it("drains a streamed response before disposing the owned transport", async () => {
+  const finish = deferred();
+  const upstream = await startUpstream(async (request, response) => {
+    await readRequestBody(request);
+    response.writeHead(200, { "content-type": "text/event-stream" });
+    response.write("first");
+    await finish.promise;
+    response.end("last");
+  });
+  cleanups.push(upstream.close);
+  const hooks: Array<() => void | Promise<void>> = [];
+  const fixture = await createFixture({
+    upstreamUrl: upstream.url,
+    beforePlugin(host) {
+      const register = host.bb.onDispose.bind(host.bb);
+      vi.spyOn(host.bb, "onDispose").mockImplementation((hook) => {
+        hooks.push(hook);
+        register(hook);
+      });
+    },
+  });
+  const response = await fixture.host.harness.behavior.fetchHttp(
+    "POST",
+    "/v1/messages",
+    {
+      headers: authHeaders(fixture.key),
+      body: "{}",
+    },
+  );
+  const reader = response.body?.getReader();
+  if (reader === undefined) throw new Error("Expected a stream");
+  expect(new TextDecoder().decode((await reader.read()).value)).toBe("first");
+  const disposeTransport = hooks[0];
+  if (disposeTransport === undefined)
+    throw new Error("Expected transport disposal");
+  const tail = reader.read().then(
+    (result) => ({
+      kind: "chunk",
+      text: new TextDecoder().decode(result.value),
+    }),
+    () => ({ kind: "error", text: "" }),
+  );
+  const disposing = disposeTransport();
+  try {
+    await new Promise<void>((resolve) => setImmediate(resolve));
+    finish.resolve();
+    expect(await tail).toEqual({ kind: "chunk", text: "last" });
+    expect((await reader.read()).done).toBe(true);
+    await disposing;
+  } finally {
+    finish.resolve();
+    await reader.cancel().catch(() => undefined);
+    await disposing;
+  }
 });

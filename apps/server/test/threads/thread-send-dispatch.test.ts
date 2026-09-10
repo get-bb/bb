@@ -8,10 +8,10 @@ import {
   setQueuedThreadMessageFailureReason,
   setQueuedThreadMessageGroupBoundary,
 } from "@bb/db";
+import type { EnvironmentRow } from "@bb/db";
 import {
   changedMessageSchema,
   turnScope,
-  type Environment,
   type Thread,
   type ThreadChangedMessage,
 } from "@bb/domain";
@@ -51,7 +51,7 @@ import {
 import { withTestHarness, type TestAppHarness } from "../helpers/test-app.js";
 
 interface IdleThreadFixture {
-  environment: Environment;
+  environment: EnvironmentRow;
   sessionId: string;
   thread: Thread;
 }
@@ -230,6 +230,7 @@ describe("queued message auto-send notification", () => {
       const queued = seedQueuedMessage(harness.deps, {
         threadId: thread.id,
         content: textInput("queued while idle"),
+        reasoningLevel: "high",
       });
       const socket = createMockHubSocket();
       harness.hub.subscribe(socket, { kind: "thread-list" });
@@ -247,6 +248,9 @@ describe("queued message auto-send notification", () => {
         mode: "auto",
       });
 
+      expect(
+        threadEvents.getLastExecutionOptions(harness.deps, thread.id),
+      ).toMatchObject({ model: queued.model, reasoningLevel: "high" });
       const statusMessages = parseThreadMessages(socket.messages).filter(
         (message) =>
           message.id === thread.id &&
@@ -286,6 +290,9 @@ describe("user message telemetry", () => {
         trigger: "user",
       });
 
+      expect(
+        threadEvents.getLastExecutionOptions(harness.deps, thread.id),
+      ).toMatchObject({ model: "gpt-5", reasoningLevel: "medium" });
       expect(capture).toHaveBeenCalledWith({
         name: "user_message_sent",
         properties: {

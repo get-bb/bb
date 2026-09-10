@@ -35,6 +35,7 @@ const ALLOWED_REQUEST_HEADERS = new Set([
   "session_id",
   "thread-id",
   "user-agent",
+  "x-openai-internal-codex-responses-lite",
 ]);
 const ALLOWED_REQUEST_HEADER_PREFIXES = ["x-codex-", "x-stainless-"];
 

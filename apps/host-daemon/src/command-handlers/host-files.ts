@@ -16,14 +16,14 @@ import { userExecutableProcessOptions } from "../user-executable-env.js";
 import {
   finalizeListedFiles,
   finalizeListedPaths,
-  listFilesRecursively,
-  listPathsRecursively,
+  listWorkspacePaths,
 } from "./file-list.js";
 import {
   readFileForTransport,
   readFileFromGitRef,
   readFileMetadataForTransport,
   readRootRelativeFileForTransport,
+  type ReadFileContentForTransportResult,
 } from "./file-read.js";
 import { resolveNonSymlinkDirectoryPath } from "./root-path.js";
 
@@ -70,7 +70,16 @@ export async function listHostFiles(
     });
 
     return finalizeListedFiles({
-      filePaths: await listFilesRecursively(realRootPath, realRootPath),
+      filePaths: (
+        await listWorkspacePaths({
+          root: realRootPath,
+          includeHidden: command.includeHidden,
+          excludeNames: command.excludeNames,
+          respectGitIgnore: command.respectGitIgnore,
+          includeFiles: true,
+          includeDirectories: false,
+        })
+      ).map((entry) => entry.path),
       limit: command.limit,
       ...(command.query ? { query: command.query } : {}),
     });
@@ -96,11 +105,13 @@ export async function listHostPaths(
     });
 
     return finalizeListedPaths({
-      paths: await listPathsRecursively({
-        dir: realRootPath,
+      paths: await listWorkspacePaths({
         root: realRootPath,
         includeFiles: command.includeFiles,
         includeDirectories: command.includeDirectories,
+        includeHidden: command.includeHidden,
+        excludeNames: command.excludeNames,
+        respectGitIgnore: command.respectGitIgnore,
       }),
       limit: command.limit,
       includeFiles: command.includeFiles,
@@ -185,6 +196,14 @@ export async function checkHostPathsExist(
   return { existence: Object.fromEntries(entries) };
 }
 
+export function readHostFile(
+  command: CommandOf<"host.read_file"> & { ifNoneMatch?: undefined },
+  options?: Pick<CommandDispatchOptions, "runtimeManager">,
+): Promise<ReadFileContentForTransportResult>;
+export function readHostFile(
+  command: CommandOf<"host.read_file">,
+  options?: Pick<CommandDispatchOptions, "runtimeManager">,
+): Promise<HostDaemonOnlineRpcResult<"host.read_file">>;
 export async function readHostFile(
   command: CommandOf<"host.read_file">,
   options?: Pick<CommandDispatchOptions, "runtimeManager">,
@@ -200,6 +219,9 @@ export async function readHostFile(
     }
     assertSafeGitRef(command.ref);
     return readFileFromGitRef({
+      ...(command.ifNoneMatch !== undefined
+        ? { ifNoneMatch: command.ifNoneMatch }
+        : {}),
       rootPath: command.rootPath,
       resolvedPath: command.path,
       resultPath: command.path,
@@ -211,6 +233,9 @@ export async function readHostFile(
   }
 
   return readFileForTransport({
+    ...(command.ifNoneMatch !== undefined
+      ? { ifNoneMatch: command.ifNoneMatch }
+      : {}),
     resolvedPath: command.path,
     resultPath: command.path,
     ...(command.rootPath !== undefined ? { rootPath: command.rootPath } : {}),

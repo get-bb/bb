@@ -3,7 +3,6 @@ import type { PermissionMode, PromptTextMention } from "@bb/domain";
 import type { SystemExecutionOptionsModelLoadError } from "@bb/server-contract";
 import {
   NewThreadPromptBoxUI,
-  type NewThreadBranchConfig,
   type NewThreadEnvironmentConfig,
   type NewThreadModeConfig,
   type NewThreadProjectConfig,
@@ -24,13 +23,13 @@ import { ModelPickerStoryQueryProvider } from "../../../.ladle/model-picker-quer
 import {
   HOST_IDS,
   PROJECT_IDS,
-  STORY_BRANCH_OPTIONS,
   STORY_CLAUDE_CODE_MORE_MODELS,
   STORY_PROJECTS,
   STORY_PROJECT_SOURCES,
   STORY_WORKTREE_OPTIONS,
   makeAttachmentsConfig as makeAttachments,
   makeExecutionControlsProps,
+  useInteractiveExecutionControls,
   makeTypeaheadConfig as makeTypeahead,
   makeHost,
 } from "../../../.ladle/story-fixtures";
@@ -57,21 +56,6 @@ const baseEnvironment: NewThreadEnvironmentConfig = {
   sources: STORY_PROJECT_SOURCES,
   host: makeHost({ id: HOST_IDS.local }),
   isLocal: true,
-};
-
-const baseBranch: NewThreadBranchConfig = {
-  value: null,
-  currentBranch: "main",
-  isNew: false,
-  options: STORY_BRANCH_OPTIONS,
-  loading: false,
-  currentOptionLabel: "Current: main",
-  placeholder: "Current checkout",
-  triggerLabel: "Current (main)",
-  triggerTitle: "Current: main",
-  onChange: noop,
-  onClear: noop,
-  onCreate: noop,
 };
 
 const baseWorktree: NewThreadWorktreeConfig = {
@@ -140,7 +124,6 @@ function useControlledValue(initial: string) {
 
 const baseModeConfig: NewThreadModeConfig = {
   environment: baseEnvironment,
-  branch: baseBranch,
   worktree: baseWorktree,
   permission: basePermission,
 };
@@ -155,6 +138,7 @@ function PromptStage({ children }: PromptStageProps) {
 
 function DefaultRow() {
   const { value, mentionRanges, onChange } = useControlledValue("");
+  const execution = useInteractiveExecutionControls(baseExecution);
   return (
     <PromptStage>
       <NewThreadPromptBoxUI
@@ -171,7 +155,7 @@ function DefaultRow() {
         promptActions={promptActions}
         modeConfig={baseModeConfig}
         project={baseProject}
-        execution={baseExecution}
+        execution={execution}
       />
     </PromptStage>
   );
@@ -563,7 +547,7 @@ export function Overview() {
       <StoryCard>
         <StoryRow
           label="default"
-          hint="codex + workspace-write + local-direct env"
+          hint="interactive provider, model, reasoning, and fast mode"
         >
           <DefaultRow />
         </StoryRow>

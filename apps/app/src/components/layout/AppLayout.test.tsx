@@ -19,8 +19,8 @@ import { AppLayout } from "./AppLayout";
 const SIDEBAR_WIDTH_STORAGE_KEY = "bb.sidebar.width";
 const APP_ROUTE = "/projects/proj_one/threads/thr_one?message=12#event-12";
 const SETTINGS_ROUTE = "/settings/providers/codex?tab=models#preferred";
-const EXTENSIONS_ROUTE = "/extensions/plugins/ui-patterns?tab=settings#source";
-const SECONDARY_ROUTES = [SETTINGS_ROUTE, EXTENSIONS_ROUTE];
+const PLUGINS_ROUTE = "/plugins/ui-patterns?tab=settings#source";
+const SECONDARY_ROUTES = [SETTINGS_ROUTE, PLUGINS_ROUTE];
 
 vi.mock("./AppLayoutSidebar", async () => {
   const { Sidebar } = await vi.importActual<
@@ -44,7 +44,6 @@ vi.mock("@/hooks/queries/system-queries", () => ({
   useSystemConfig: () => ({
     data: {
       experiments: {
-        editMessages: false,
       },
       generalSettings: defaultAppSettings,
       keybindings: [
@@ -219,13 +218,13 @@ describe("AppLayout Back to app", () => {
     },
   );
 
-  it("returns from Settings to Extensions before returning to the core app", () => {
+  it("returns from Settings to Plugins before returning to the core app", () => {
     renderLayout(APP_ROUTE);
-    fireEvent.click(screen.getByRole("link", { name: EXTENSIONS_ROUTE }));
+    fireEvent.click(screen.getByRole("link", { name: PLUGINS_ROUTE }));
     fireEvent.click(screen.getByRole("link", { name: SETTINGS_ROUTE }));
 
     fireEvent.keyDown(document, { key: "Escape" });
-    expect(screen.getByTestId("location").textContent).toBe(EXTENSIONS_ROUTE);
+    expect(screen.getByTestId("location").textContent).toBe(PLUGINS_ROUTE);
 
     fireEvent.keyDown(document, { key: "Escape" });
     expect(screen.getByTestId("location").textContent).toBe(APP_ROUTE);

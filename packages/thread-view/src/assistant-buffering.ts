@@ -36,7 +36,7 @@ export function parseReasoningFinalText(decoded: ThreadEvent): string | null {
   if (decoded.item.type !== "reasoning") return null;
   const summaryText = decoded.item.summary.join("");
   const contentText = decoded.item.content.join("");
-  const text = summaryText || contentText;
+  const text = `${summaryText}${contentText}`;
   return text.length > 0 ? text : null;
 }
 

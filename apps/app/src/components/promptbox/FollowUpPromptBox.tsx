@@ -20,6 +20,7 @@ import type {
 } from "@bb/domain";
 import type { ComposerView, PluginComposerScope } from "@get-bb/plugin-sdk";
 import type { ComposerTextEffectSource } from "@/lib/composer-text-effects";
+import { modifierSubmitShortcutLabel } from "./modifier-submit-shortcut";
 import { isKeyboardFocusTarget } from "@/components/layout/useMobileVisualViewportHeight";
 import { ComposerBannersSlot } from "@/components/plugin/PluginComposerBanners";
 import {
@@ -54,6 +55,7 @@ import { usePointerCoarse } from "@bb/shared-ui/hooks/use-pointer-coarse";
 import { ThreadTimelineScrollToBottomButton } from "@/views/thread-detail/ThreadTimelineScrollToBottomButton";
 import { useOptionalPaneContext } from "@/views/thread-detail/PaneContext";
 import { ThreadContextWindowIndicator } from "@/components/thread/timeline";
+import { PROMPT_STACK_TRACK_CLASS } from "@/components/promptbox/banner/PromptStackCard";
 import { THREAD_PROMPT_CONTEXT_BANNER_ROW_HEIGHT } from "@/components/promptbox/banner/ThreadPromptContextBanner";
 import {
   isPlanModePrompt,
@@ -210,7 +212,7 @@ function FollowUpPromptBoxStackOnly({
     <PluginComposerViewProvider value={composerView}>
       <PluginComposerHostProvider value={pluginComposerHost ?? null}>
         <div data-promptbox-shell="" className="space-y-2">
-          <div className="grid gap-2">
+          <div className={`grid gap-2 ${PROMPT_STACK_TRACK_CLASS}`}>
             {composerScope ? (
               <ComposerBannersSlot>{stack}</ComposerBannersSlot>
             ) : (
@@ -596,6 +598,8 @@ function FollowUpPromptBoxWithComposer({
       ? composer.onSubmit
       : composer.onModifierSubmit
     : undefined;
+  const modifierSubmitHint = (action: "queue" | "steer"): string =>
+    onModifierSubmit ? `, ${modifierSubmitShortcutLabel()} to ${action}` : "";
   const executionControlsDisabled =
     (executionReadOnly ?? readOnly ?? false) || hasPendingInteraction;
   const footerStart = useMemo(
@@ -740,9 +744,9 @@ function FollowUpPromptBoxWithComposer({
               : canQueueFollowUp
                 ? steerOnPrimarySubmit
                   ? isSteeringWhenReady
-                    ? "Steer when ready (Enter)"
-                    : "Steer current run (Enter)"
-                  : "Queue follow-up (Enter)"
+                    ? `Steer when ready (Enter)${modifierSubmitHint("queue")}`
+                    : `Steer current run (Enter)${modifierSubmitHint("queue")}`
+                  : `Queue follow-up (Enter)${modifierSubmitHint("steer")}`
                 : isStopping
                   ? "Stopping run..."
                   : isLoadingExecutionOptions
@@ -837,7 +841,10 @@ function DefaultFollowUpComposer({
         data-promptbox-shell=""
         className="space-y-2"
       >
-        <div ref={stackRef} className="grid gap-2">
+        <div
+          ref={stackRef}
+          className={`grid gap-2 ${PROMPT_STACK_TRACK_CLASS}`}
+        >
           {hasPluginComposerScope ? (
             <ComposerBannersSlot>{stack}</ComposerBannersSlot>
           ) : (

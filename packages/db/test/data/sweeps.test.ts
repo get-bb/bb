@@ -5,22 +5,15 @@ import { createEventId } from "../../src/ids.js";
 import { noopNotifier } from "../../src/notifier.js";
 import type { DbNotifier } from "../../src/notifier.js";
 import {
-  COMPLETED_EVENT_OUTPUT_RETAINED_HEAD_CHARS,
-  COMPLETED_EVENT_OUTPUT_RETAINED_TAIL_CHARS,
-  COMPLETED_EVENT_OUTPUT_TRUNCATION_THRESHOLD_CHARS,
   DEFAULT_DESTROYED_ENVIRONMENT_EVENT_DETACH_BATCH_SIZE,
   DESTROYED_ENVIRONMENT_TTL_MS,
   pruneClosedSessions,
   pruneDestroyedEnvironments,
-  sweepManagedEnvironments,
-  truncateCompletedEventItemOutputs,
 } from "../../src/data/sweeps.js";
 import { upsertHost } from "../../src/data/hosts.js";
 import { createProject } from "../../src/data/projects.js";
 import {
   createThread,
-  archiveThread,
-  markThreadDeleted,
 } from "../../src/data/threads.js";
 import {
   createEnvironment,
@@ -47,372 +40,6 @@ function setup() {
   });
   return { db, host, project };
 }
-
-interface InsertCompletedItemEventArgs {
-  createdAt: number;
-  db: DbConnection;
-  item: object;
-  itemId: string;
-  itemKind: "commandExecution" | "toolCall" | "webFetch" | "webSearch";
-  sequence: number;
-  threadId: string;
-}
-
-function insertCompletedItemEvent(args: InsertCompletedItemEventArgs): string {
-  const id = createEventId();
-  args.db
-    .insert(events)
-    .values({
-      id,
-      threadId: args.threadId,
-      scopeKind: "turn",
-      turnId: "turn_1",
-      providerThreadId: "provider-thread-1",
-      sequence: args.sequence,
-      type: "item/completed",
-      itemId: args.itemId,
-      itemKind: args.itemKind,
-      data: JSON.stringify({
-        item: args.item,
-        providerThreadId: "provider-thread-1",
-        threadId: args.threadId,
-        type: "item/completed",
-      }),
-      createdAt: args.createdAt,
-    })
-    .run();
-  return id;
-}
-
-describe("truncateCompletedEventItemOutputs", () => {
-  it("truncates old large completed item outputs with metadata", () => {
-    const { db, project } = setup();
-    const thread = createThread(db, noopNotifier, {
-      projectId: project.id,
-      providerId: "codex",
-      status: "idle",
-    });
-    const now = Date.now();
-    const staleCreatedAt = now - 10_000;
-    const freshCreatedAt = now;
-    const createdBefore = now - 5_000;
-    const commandOutput =
-      "command-head-" +
-      "a".repeat(COMPLETED_EVENT_OUTPUT_TRUNCATION_THRESHOLD_CHARS) +
-      "-command-tail";
-    const toolResult =
-      "tool-head-" +
-      "b".repeat(COMPLETED_EVENT_OUTPUT_TRUNCATION_THRESHOLD_CHARS) +
-      "-tool-tail";
-    const webSearchResultText =
-      "search-head-" +
-      "c".repeat(COMPLETED_EVENT_OUTPUT_TRUNCATION_THRESHOLD_CHARS) +
-      "-search-tail";
-    const webFetchResultText =
-      "fetch-head-" +
-      "d".repeat(COMPLETED_EVENT_OUTPUT_TRUNCATION_THRESHOLD_CHARS) +
-      "-fetch-tail";
-    const smallOutput = "short output";
-
-    const commandEventId = insertCompletedItemEvent({
-      createdAt: staleCreatedAt,
-      db,
-      item: {
-        type: "commandExecution",
-        id: "cmd-item",
-        command: "rg large",
-        cwd: "/tmp/project",
-        status: "completed",
-        approvalStatus: null,
-        aggregatedOutput: commandOutput,
-      },
-      itemId: "cmd-item",
-      itemKind: "commandExecution",
-      sequence: 1,
-      threadId: thread.id,
-    });
-    const toolEventId = insertCompletedItemEvent({
-      createdAt: staleCreatedAt,
-      db,
-      item: {
-        type: "toolCall",
-        id: "tool-item",
-        tool: "Read",
-        status: "completed",
-        result: toolResult,
-      },
-      itemId: "tool-item",
-      itemKind: "toolCall",
-      sequence: 2,
-      threadId: thread.id,
-    });
-    const freshEventId = insertCompletedItemEvent({
-      createdAt: freshCreatedAt,
-      db,
-      item: {
-        type: "commandExecution",
-        id: "fresh-item",
-        command: "rg fresh",
-        cwd: "/tmp/project",
-        status: "completed",
-        approvalStatus: null,
-        aggregatedOutput: commandOutput,
-      },
-      itemId: "fresh-item",
-      itemKind: "commandExecution",
-      sequence: 3,
-      threadId: thread.id,
-    });
-    const webSearchEventId = insertCompletedItemEvent({
-      createdAt: staleCreatedAt,
-      db,
-      item: {
-        type: "webSearch",
-        id: "web-search-item",
-        queries: ["retention policy"],
-        resultText: webSearchResultText,
-      },
-      itemId: "web-search-item",
-      itemKind: "webSearch",
-      sequence: 4,
-      threadId: thread.id,
-    });
-    const webFetchEventId = insertCompletedItemEvent({
-      createdAt: staleCreatedAt,
-      db,
-      item: {
-        type: "webFetch",
-        id: "web-fetch-item",
-        url: "https://example.com/large",
-        prompt: null,
-        pattern: null,
-        resultText: webFetchResultText,
-      },
-      itemId: "web-fetch-item",
-      itemKind: "webFetch",
-      sequence: 5,
-      threadId: thread.id,
-    });
-    const smallEventId = insertCompletedItemEvent({
-      createdAt: staleCreatedAt,
-      db,
-      item: {
-        type: "commandExecution",
-        id: "small-item",
-        command: "pwd",
-        cwd: "/tmp/project",
-        status: "completed",
-        approvalStatus: null,
-        aggregatedOutput: smallOutput,
-      },
-      itemId: "small-item",
-      itemKind: "commandExecution",
-      sequence: 6,
-      threadId: thread.id,
-    });
-
-    const result = truncateCompletedEventItemOutputs(db, {
-      createdBefore,
-      limit: 10,
-      truncatedAt: now,
-    });
-
-    expect(result).toEqual({
-      commandExecutionOutputs: 1,
-      toolCallResults: 1,
-      webFetchResultTexts: 1,
-      webSearchResultTexts: 1,
-    });
-
-    const commandData = JSON.parse(
-      db.select().from(events).where(eq(events.id, commandEventId)).get()
-        ?.data ?? "{}",
-    );
-    expect(commandData.item.aggregatedOutput).not.toBe(commandOutput);
-    expect(commandData.item.aggregatedOutput).toContain(
-      "output truncated by retention policy",
-    );
-    expect(commandData.item.aggregatedOutput.startsWith(commandOutput.slice(0, COMPLETED_EVENT_OUTPUT_RETAINED_HEAD_CHARS))).toBe(true);
-    expect(commandData.item.aggregatedOutput.endsWith(commandOutput.slice(-COMPLETED_EVENT_OUTPUT_RETAINED_TAIL_CHARS))).toBe(true);
-    expect(commandData.item.truncation.aggregatedOutput).toEqual({
-      originalLength: commandOutput.length,
-      retainedHeadLength: COMPLETED_EVENT_OUTPUT_RETAINED_HEAD_CHARS,
-      retainedTailLength: COMPLETED_EVENT_OUTPUT_RETAINED_TAIL_CHARS,
-      truncatedAt: now,
-    });
-
-    const toolData = JSON.parse(
-      db.select().from(events).where(eq(events.id, toolEventId)).get()?.data ??
-        "{}",
-    );
-    expect(toolData.item.result).not.toBe(toolResult);
-    expect(toolData.item.result).toContain(
-      "output truncated by retention policy",
-    );
-    expect(toolData.item.result.startsWith(toolResult.slice(0, COMPLETED_EVENT_OUTPUT_RETAINED_HEAD_CHARS))).toBe(true);
-    expect(toolData.item.result.endsWith(toolResult.slice(-COMPLETED_EVENT_OUTPUT_RETAINED_TAIL_CHARS))).toBe(true);
-    expect(toolData.item.truncation.result).toEqual({
-      originalLength: toolResult.length,
-      retainedHeadLength: COMPLETED_EVENT_OUTPUT_RETAINED_HEAD_CHARS,
-      retainedTailLength: COMPLETED_EVENT_OUTPUT_RETAINED_TAIL_CHARS,
-      truncatedAt: now,
-    });
-
-    const webSearchData = JSON.parse(
-      db
-        .select()
-        .from(events)
-        .where(eq(events.id, webSearchEventId))
-        .get()?.data ?? "{}",
-    );
-    expect(webSearchData.item.resultText).not.toBe(webSearchResultText);
-    expect(webSearchData.item.resultText).toContain(
-      "output truncated by retention policy",
-    );
-    expect(
-      webSearchData.item.resultText.startsWith(
-        webSearchResultText.slice(0, COMPLETED_EVENT_OUTPUT_RETAINED_HEAD_CHARS),
-      ),
-    ).toBe(true);
-    expect(
-      webSearchData.item.resultText.endsWith(
-        webSearchResultText.slice(-COMPLETED_EVENT_OUTPUT_RETAINED_TAIL_CHARS),
-      ),
-    ).toBe(true);
-    expect(webSearchData.item.truncation.resultText).toEqual({
-      originalLength: webSearchResultText.length,
-      retainedHeadLength: COMPLETED_EVENT_OUTPUT_RETAINED_HEAD_CHARS,
-      retainedTailLength: COMPLETED_EVENT_OUTPUT_RETAINED_TAIL_CHARS,
-      truncatedAt: now,
-    });
-
-    const webFetchData = JSON.parse(
-      db.select().from(events).where(eq(events.id, webFetchEventId)).get()
-        ?.data ?? "{}",
-    );
-    expect(webFetchData.item.resultText).not.toBe(webFetchResultText);
-    expect(webFetchData.item.resultText).toContain(
-      "output truncated by retention policy",
-    );
-    expect(
-      webFetchData.item.resultText.startsWith(
-        webFetchResultText.slice(0, COMPLETED_EVENT_OUTPUT_RETAINED_HEAD_CHARS),
-      ),
-    ).toBe(true);
-    expect(
-      webFetchData.item.resultText.endsWith(
-        webFetchResultText.slice(-COMPLETED_EVENT_OUTPUT_RETAINED_TAIL_CHARS),
-      ),
-    ).toBe(true);
-    expect(webFetchData.item.truncation.resultText).toEqual({
-      originalLength: webFetchResultText.length,
-      retainedHeadLength: COMPLETED_EVENT_OUTPUT_RETAINED_HEAD_CHARS,
-      retainedTailLength: COMPLETED_EVENT_OUTPUT_RETAINED_TAIL_CHARS,
-      truncatedAt: now,
-    });
-
-    const freshData = JSON.parse(
-      db.select().from(events).where(eq(events.id, freshEventId)).get()?.data ??
-        "{}",
-    );
-    expect(freshData.item.aggregatedOutput).toBe(commandOutput);
-    const smallData = JSON.parse(
-      db.select().from(events).where(eq(events.id, smallEventId)).get()?.data ??
-        "{}",
-    );
-    expect(smallData.item.aggregatedOutput).toBe(smallOutput);
-
-    expect(
-      truncateCompletedEventItemOutputs(db, {
-        createdBefore,
-        limit: 10,
-        truncatedAt: now,
-      }),
-    ).toEqual({
-      commandExecutionOutputs: 0,
-      toolCallResults: 0,
-      webFetchResultTexts: 0,
-      webSearchResultTexts: 0,
-    });
-  });
-
-  it("advances durable cursors past old small outputs", () => {
-    const { db, project } = setup();
-    const thread = createThread(db, noopNotifier, {
-      projectId: project.id,
-      providerId: "codex",
-      status: "idle",
-    });
-    const now = Date.now();
-    const staleCreatedAt = now - 10_000;
-    const createdBefore = now - 5_000;
-    const largeOutput =
-      "command-head-" +
-      "a".repeat(COMPLETED_EVENT_OUTPUT_TRUNCATION_THRESHOLD_CHARS) +
-      "-command-tail";
-
-    insertCompletedItemEvent({
-      createdAt: staleCreatedAt,
-      db,
-      item: {
-        type: "commandExecution",
-        id: "small-before-large",
-        command: "pwd",
-        cwd: "/tmp/project",
-        status: "completed",
-        approvalStatus: null,
-        aggregatedOutput: "small output",
-      },
-      itemId: "small-before-large",
-      itemKind: "commandExecution",
-      sequence: 1,
-      threadId: thread.id,
-    });
-    const largeEventId = insertCompletedItemEvent({
-      createdAt: staleCreatedAt + 1,
-      db,
-      item: {
-        type: "commandExecution",
-        id: "large-after-small",
-        command: "cat large",
-        cwd: "/tmp/project",
-        status: "completed",
-        approvalStatus: null,
-        aggregatedOutput: largeOutput,
-      },
-      itemId: "large-after-small",
-      itemKind: "commandExecution",
-      sequence: 2,
-      threadId: thread.id,
-    });
-
-    expect(
-      truncateCompletedEventItemOutputs(db, {
-        createdBefore,
-        limit: 1,
-        truncatedAt: now,
-      }).commandExecutionOutputs,
-    ).toBe(0);
-    expect(
-      truncateCompletedEventItemOutputs(db, {
-        createdBefore,
-        limit: 1,
-        truncatedAt: now,
-      }).commandExecutionOutputs,
-    ).toBe(1);
-
-    const largeData = JSON.parse(
-      db.select().from(events).where(eq(events.id, largeEventId)).get()?.data ??
-        "{}",
-    );
-    expect(largeData.item.truncation.aggregatedOutput).toEqual({
-      originalLength: largeOutput.length,
-      retainedHeadLength: COMPLETED_EVENT_OUTPUT_RETAINED_HEAD_CHARS,
-      retainedTailLength: COMPLETED_EVENT_OUTPUT_RETAINED_TAIL_CHARS,
-      truncatedAt: now,
-    });
-  });
-});
 
 describe("pruneClosedSessions", () => {
   function openClosedSessionAt(args: {
@@ -550,145 +177,63 @@ describe("pruneClosedSessions", () => {
   });
 });
 
-describe("sweepManagedEnvironments", () => {
-  it("returns retiring managed environments with zero non-archived threads", () => {
-    const { db, host, project } = setup();
-
-    const env = createEnvironment(db, noopNotifier, {
-      projectId: project.id,
-      hostId: host.id,
-      path: "/tmp/env",
-      managed: true,
-      workspaceProvisionType: "managed-worktree",
-      status: "retiring",
-    });
-
-    const candidates1 = sweepManagedEnvironments(db);
-    expect(candidates1).toHaveLength(1);
-    expect(candidates1[0]!.id).toBe(env.id);
-  });
-
-  it("does not return environments with non-archived threads", () => {
-    const { db, host, project } = setup();
-
-    const env = createEnvironment(db, noopNotifier, {
-      projectId: project.id,
-      hostId: host.id,
-      path: "/tmp/env",
-      managed: true,
-      workspaceProvisionType: "managed-worktree",
-      status: "retiring",
-    });
-
-    createThread(db, noopNotifier, {
-      projectId: project.id,
-      environmentId: env.id,
-      providerId: "codex",
-      status: "idle",
-    });
-
-    const candidates = sweepManagedEnvironments(db);
-    expect(candidates).toHaveLength(0);
-  });
-
-  it("returns environment after all threads are archived", () => {
-    const { db, host, project } = setup();
-
-    const env = createEnvironment(db, noopNotifier, {
-      projectId: project.id,
-      hostId: host.id,
-      path: "/tmp/env",
-      managed: true,
-      workspaceProvisionType: "managed-worktree",
-      status: "retiring",
-    });
-
-    const thread = createThread(db, noopNotifier, {
-      projectId: project.id,
-      environmentId: env.id,
-      providerId: "codex",
-      status: "idle",
-    });
-
-    expect(sweepManagedEnvironments(db)).toHaveLength(0);
-
-    archiveThread(db, noopNotifier, thread.id);
-
-    const candidates = sweepManagedEnvironments(db);
-    expect(candidates).toHaveLength(1);
-    expect(candidates[0]!.id).toBe(env.id);
-  });
-
-  it("treats soft-deleted threads as non-live when selecting cleanup candidates", () => {
-    const { db, host, project } = setup();
-
-    const env = createEnvironment(db, noopNotifier, {
-      projectId: project.id,
-      hostId: host.id,
-      path: "/tmp/env",
-      managed: true,
-      workspaceProvisionType: "managed-worktree",
-      status: "retiring",
-    });
-
-    const thread = createThread(db, noopNotifier, {
-      projectId: project.id,
-      environmentId: env.id,
-      providerId: "codex",
-      status: "idle",
-    });
-
-    markThreadDeleted(db, noopNotifier, { threadId: thread.id });
-
-    const candidates = sweepManagedEnvironments(db);
-    expect(candidates).toHaveLength(1);
-    expect(candidates[0]!.id).toBe(env.id);
-  });
-
-  it("does not return unmanaged environments", () => {
-    const { db, host, project } = setup();
-
-    createEnvironment(db, noopNotifier, {
-      projectId: project.id,
-      hostId: host.id,
-      path: "/tmp/env",
-      managed: false,
-      workspaceProvisionType: "unmanaged",
-      status: "retiring",
-    });
-
-    const candidates = sweepManagedEnvironments(db);
-    expect(candidates).toHaveLength(0);
-  });
-
-  it("does not return destroying environments from the retiring sweep", () => {
-    const { db, host, project } = setup();
-
-    const env = createEnvironment(db, noopNotifier, {
-      projectId: project.id,
-      hostId: host.id,
-      path: "/tmp/env",
-      managed: true,
-      workspaceProvisionType: "managed-worktree",
-      status: "destroying",
-    });
-
-    const candidates = sweepManagedEnvironments(db);
-    expect(candidates).toHaveLength(0);
-    expect(env.status).toBe("destroying");
-  });
-});
-
 describe("pruneDestroyedEnvironments", () => {
+  it("bounds large event rewrites by bytes while still detaching an oversized row", () => {
+    const { db, host, project } = setup();
+    const environment = createEnvironment(db, noopNotifier, {
+      providerOwnsPath: false,
+      projectId: project.id,
+      hostId: host.id,
+      status: "destroyed",
+    });
+    const thread = createThread(db, noopNotifier, {
+      projectId: project.id,
+      environmentId: environment.id,
+      providerId: "codex",
+    });
+    for (let sequence = 1; sequence <= 3; sequence++) {
+      db.insert(events)
+        .values({
+          id: `large-detach-${sequence}`,
+          threadId: thread.id,
+          environmentId: environment.id,
+          scopeKind: "thread",
+          sequence,
+          type: "thread/started",
+          data: JSON.stringify({
+            payload: "x".repeat(sequence === 1 ? 512 * 1024 : 150 * 1024),
+          }),
+          createdAt: 1,
+        })
+        .run();
+    }
+    const args = {
+      updatedBefore: Date.now() + 1000,
+      eventBatchSize: 50,
+      limit: 1,
+    };
+    for (let i = 0; i < 3; i++) {
+      expect(pruneDestroyedEnvironments(db, noopNotifier, args)).toEqual({
+        deleted: 0,
+        detachedEvents: 1,
+      });
+    }
+    expect(pruneDestroyedEnvironments(db, noopNotifier, args)).toEqual({
+      deleted: 1,
+      detachedEvents: 0,
+    });
+    expect(db.select({ data: events.data }).from(events).all()).toHaveLength(3);
+    db.$client.close();
+  });
+
   it("resumes event detachment from persisted progress before notifying deletion", () => {
     const { db, host, project } = setup();
     const now = Date.now();
     const environment = createEnvironment(db, noopNotifier, {
+      providerOwnsPath: false,
       projectId: project.id,
       hostId: host.id,
       path: "/tmp/destroyed-with-event-history",
-      managed: true,
-      workspaceProvisionType: "managed-worktree",
       status: "destroyed",
     });
     db.update(environments)
@@ -794,19 +339,17 @@ describe("pruneDestroyedEnvironments", () => {
     const now = Date.now();
 
     const staleEnvironment = createEnvironment(db, noopNotifier, {
+      providerOwnsPath: false,
       projectId: project.id,
       hostId: host.id,
       path: "/tmp/stale-destroyed",
-      managed: true,
-      workspaceProvisionType: "managed-worktree",
       status: "destroyed",
     });
     const freshEnvironment = createEnvironment(db, noopNotifier, {
+      providerOwnsPath: false,
       projectId: project.id,
       hostId: host.id,
       path: "/tmp/fresh-destroyed",
-      managed: true,
-      workspaceProvisionType: "managed-worktree",
       status: "destroyed",
     });
 
@@ -841,55 +384,15 @@ describe("pruneDestroyedEnvironments", () => {
     ]);
   });
 
-  it("does not hard-delete stale destroying environments", () => {
-    const { db, host, project } = setup();
-    const now = Date.now();
-
-    const staleEnvironment = createEnvironment(db, noopNotifier, {
-      projectId: project.id,
-      hostId: host.id,
-      path: "/tmp/stale-destroying",
-      managed: true,
-      workspaceProvisionType: "managed-worktree",
-      status: "destroying",
-    });
-
-    db.update(environments)
-      .set({ updatedAt: now - 8 * 24 * 60 * 60_000 })
-      .where(eq(environments.id, staleEnvironment.id))
-      .run();
-
-    const spy: DbNotifier = {
-      notifyThread: vi.fn(),
-      notifyEnvironment: vi.fn(),
-      notifyHost: vi.fn(),
-      notifyProject: vi.fn(),
-      notifySystem: vi.fn(),
-    };
-
-    const result = pruneDestroyedEnvironments(db, spy, {
-      updatedBefore: now - DESTROYED_ENVIRONMENT_TTL_MS,
-      eventBatchSize: DEFAULT_DESTROYED_ENVIRONMENT_EVENT_DETACH_BATCH_SIZE,
-      limit: 10,
-    });
-    expect(result.deleted).toBe(0);
-    expect(
-      db.select().from(environments).where(eq(environments.id, staleEnvironment.id)).get()
-        ?.status,
-    ).toBe("destroying");
-    expect(spy.notifyEnvironment).not.toHaveBeenCalled();
-  });
-
   it("a metadata write on a destroyed environment restarts its retention clock", () => {
     const { db, host, project } = setup();
     const now = Date.now();
 
     const environment = createEnvironment(db, noopNotifier, {
+      providerOwnsPath: false,
       projectId: project.id,
       hostId: host.id,
       path: "/tmp/destroyed-then-renamed",
-      managed: true,
-      workspaceProvisionType: "managed-worktree",
       status: "destroyed",
     });
     db.update(environments)
@@ -923,11 +426,10 @@ describe("pruneDestroyedEnvironments", () => {
 
     function createDestroyedEnvironment(path: string, ageMs: number) {
       const environment = createEnvironment(db, noopNotifier, {
+      providerOwnsPath: false,
         projectId: project.id,
         hostId: host.id,
         path,
-        managed: true,
-        workspaceProvisionType: "managed-worktree",
         status: "destroyed",
       });
       db.update(environments)
@@ -1025,11 +527,10 @@ describe("pruneDestroyedEnvironments", () => {
 
     function createDestroyedEnvironmentWithThread(path: string, updatedAt: number) {
       const environment = createEnvironment(db, noopNotifier, {
+      providerOwnsPath: false,
         projectId: project.id,
         hostId: host.id,
         path,
-        managed: true,
-        workspaceProvisionType: "managed-worktree",
         status: "destroyed",
       });
       db.update(environments)

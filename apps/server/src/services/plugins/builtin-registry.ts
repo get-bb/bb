@@ -24,6 +24,11 @@ const REPO_PLUGINS_DIRECTORY_NAME = "plugins";
 
 export const BUILTIN_PLUGINS = [
   {
+    name: "bb-guide",
+    pluginId: "bb-guide",
+    defaultEnabled: true,
+  },
+  {
     name: "account-pool",
     pluginId: "account-pool",
     defaultEnabled: false,
@@ -41,6 +46,21 @@ export const BUILTIN_PLUGINS = [
   {
     name: "connect",
     pluginId: "connect",
+    defaultEnabled: true,
+  },
+  {
+    name: "environment-project-checkout",
+    pluginId: "environment-project-checkout",
+    defaultEnabled: true,
+  },
+  {
+    name: "environment-git-worktree",
+    pluginId: "environment-git-worktree",
+    defaultEnabled: true,
+  },
+  {
+    name: "environment-personal-workspace",
+    pluginId: "environment-personal-workspace",
     defaultEnabled: true,
   },
   {

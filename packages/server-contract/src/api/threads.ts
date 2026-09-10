@@ -30,6 +30,7 @@ import {
   threadWithRuntimeSchema,
 } from "@bb/domain";
 import type { CallerExecutionInputSource } from "@bb/domain";
+import { THREAD_EVENT_LIST_PAGE_SIZE } from "../common.js";
 import {
   timelineDeltaSchema,
   timelineRowSchema,
@@ -683,6 +684,7 @@ export type ThreadArchiveAllResponse = z.infer<
 
 export const threadListQuerySchema = z.object({
   projectId: z.string().min(1).optional(),
+  environmentId: z.string().min(1).optional(),
   parentThreadId: z.string().min(1).optional(),
   sourceThreadId: z.string().min(1).optional(),
   archived: z.enum(["true", "false"]).optional(),
@@ -805,6 +807,15 @@ export const timelinePageMetadataSchema = z
     returnedSegmentCount: z.number().int().nonnegative(),
     hasOlderRows: z.boolean(),
     olderCursor: timelinePaginationCursorSchema.nullable(),
+    historySnapshot: z.string().optional(),
+    contentPage: z
+      .object({
+        anchorSeq: z.number().int().positive(),
+        start: z.number().int().nonnegative(),
+        end: z.number().int().nonnegative(),
+        total: z.number().int().nonnegative(),
+      })
+      .optional(),
   })
   .strict();
 
@@ -835,6 +846,7 @@ export const threadTimelineQuerySchema = z
 export type ThreadTimelineQuery = z.infer<typeof threadTimelineQuerySchema>;
 
 export const timelineTurnSummaryDetailsQuerySchema = z.object({
+  beforeCursor: z.string().min(1).optional(),
   turnId: z.string().min(1),
   sourceSeqStart: z.string().regex(/^\d+$/),
   sourceSeqEnd: z.string().regex(/^\d+$/),
@@ -847,7 +859,13 @@ export const threadEventsQuerySchema = z
   .object({
     afterSeq: z.string().regex(/^\d+$/),
     beforeSeq: z.string().regex(/^\d+$/),
-    limit: z.string().regex(/^\d+$/),
+    limit: z
+      .string()
+      .regex(/^\d+$/)
+      .refine(
+        (value) => Number(value) <= THREAD_EVENT_LIST_PAGE_SIZE,
+        `Thread event limit cannot exceed ${THREAD_EVENT_LIST_PAGE_SIZE}`,
+      ),
     order: z.enum(["asc", "desc"]),
     types: z.string().refine(
       (value) =>
@@ -923,6 +941,8 @@ export const timelineTurnSummaryDetailsRequestSchema = z.object({
 });
 
 export const timelineTurnSummaryDetailsResponseSchema = z.object({
+  olderCursor: z.string().nullable().optional(),
+  historySnapshot: z.string().optional(),
   rows: z.array(timelineRowSchema),
 });
 export type TimelineTurnSummaryDetailsResponse = z.infer<

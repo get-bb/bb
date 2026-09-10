@@ -129,6 +129,10 @@ import {
 import { parsePromptMentionClipboardElement } from "./mentions/prompt-mention-clipboard";
 import { ComposerEditorSlot } from "./ComposerEditorSlot";
 import { QueuedEditorTypeaheadLayoutContext } from "./queued-editor-typeahead-layout";
+import {
+  isModifierSubmitKeyEvent,
+  modifierSubmitShortcutAria,
+} from "./modifier-submit-shortcut";
 
 const PROMPTBOX_MIN_HEIGHT = 68;
 const PROMPTBOX_SELECTION_REVEAL_MARGIN = 12;
@@ -231,6 +235,7 @@ interface PromptSubmitButtonProps {
   isCompact: boolean;
   onClick: (event: ReactMouseEvent<HTMLButtonElement>) => void;
   onPointerDown: (event: ReactPointerEvent<HTMLButtonElement>) => void;
+  onTouchSubmit: () => void;
   title: string;
 }
 
@@ -242,8 +247,13 @@ function PromptSubmitButton({
   isCompact,
   onClick,
   onPointerDown,
+  onTouchSubmit,
   title,
 }: PromptSubmitButtonProps) {
+  const touchRef = useRef<{ pointerId: number; x: number; y: number } | null>(
+    null,
+  );
+  const suppressTouchClickRef = useRef(false);
   const button = (
     <Button
       data-promptbox-submit-action=""
@@ -253,8 +263,55 @@ function PromptSubmitButton({
       aria-label={title}
       aria-busy={isBusy}
       disabled={!canSubmit}
-      onPointerDown={onPointerDown}
-      onClick={onClick}
+      onPointerDown={(event) => {
+        suppressTouchClickRef.current = false;
+        touchRef.current =
+          event.pointerType === "touch" && event.isPrimary && event.button === 0
+            ? { pointerId: event.pointerId, x: event.clientX, y: event.clientY }
+            : null;
+        onPointerDown(event);
+      }}
+      onPointerMove={(event) => {
+        const touch = touchRef.current;
+        if (
+          touch &&
+          touch.pointerId === event.pointerId &&
+          Math.hypot(event.clientX - touch.x, event.clientY - touch.y) > 10
+        ) {
+          touchRef.current = null;
+          suppressTouchClickRef.current = true;
+        }
+      }}
+      onPointerCancel={() => {
+        if (touchRef.current) suppressTouchClickRef.current = true;
+        touchRef.current = null;
+      }}
+      onPointerUp={(event) => {
+        const touch = touchRef.current;
+        touchRef.current = null;
+        if (!touch || touch.pointerId !== event.pointerId) return;
+        suppressTouchClickRef.current = true;
+        if (!canSubmit) return;
+        const bounds = event.currentTarget.getBoundingClientRect();
+        if (
+          Math.hypot(event.clientX - touch.x, event.clientY - touch.y) > 10 ||
+          event.clientX < bounds.left ||
+          event.clientX >= bounds.right ||
+          event.clientY < bounds.top ||
+          event.clientY >= bounds.bottom
+        ) {
+          return;
+        }
+        onTouchSubmit();
+      }}
+      onMouseDown={(event) => event.preventDefault()}
+      onClick={(event) => {
+        if (suppressTouchClickRef.current && event.detail > 0) {
+          event.preventDefault();
+          return;
+        }
+        onClick(event);
+      }}
       className={className}
     >
       {isBusy ? (
@@ -1605,7 +1662,9 @@ export function PromptBoxInternal({
         attributes: {
           "aria-label": effectivePlaceholder,
           "data-placeholder": effectivePlaceholder,
-          ...(onModifierSubmit ? { "aria-keyshortcuts": "Meta+Enter" } : {}),
+          ...(onModifierSubmit
+            ? { "aria-keyshortcuts": modifierSubmitShortcutAria() }
+            : {}),
           autocomplete: "off",
           class: cn(
             "min-h-full whitespace-pre-wrap break-words outline-none",
@@ -2543,9 +2602,12 @@ export function PromptBoxInternal({
     !isAttaching &&
     !hasSubmittableInput &&
     canStartVoiceInput;
+  const voiceGestureButtonRef = useRef<HTMLButtonElement | null>(null);
   const handleVoicePointerDown = useCallback(
     (event: ReactPointerEvent<HTMLButtonElement>) => {
-      if (!isPointerCoarse || event.button !== 0) return;
+      if (event.button !== 0) return;
+      voiceGestureButtonRef.current = event.currentTarget;
+      if (!isPointerCoarse) return;
 
       event.preventDefault();
     },
@@ -2560,6 +2622,15 @@ export function PromptBoxInternal({
     }
     void voice?.start();
   }, [isPointerCoarse, voice]);
+  const handleVoiceClick = useCallback(
+    (event: ReactMouseEvent<HTMLButtonElement>) => {
+      const gestureButton = voiceGestureButtonRef.current;
+      voiceGestureButtonRef.current = null;
+      if (event.detail > 0 && gestureButton !== event.currentTarget) return;
+      startVoiceInput();
+    },
+    [startVoiceInput],
+  );
   const cancelVoiceInput = useCallback(() => {
     if (voiceActionRevealFrameRef.current !== null) {
       window.cancelAnimationFrame(voiceActionRevealFrameRef.current);
@@ -2600,6 +2671,11 @@ export function PromptBoxInternal({
     },
     [blurOnPointerSubmit],
   );
+
+  const handleTouchSubmit = useCallback(() => {
+    blurAfterPointerSubmitRef.current = blurOnPointerSubmit;
+    submitPrompt();
+  }, [blurOnPointerSubmit, submitPrompt]);
 
   const handleSubmitPointerDown = useCallback(
     (event: ReactPointerEvent<HTMLButtonElement>) => {
@@ -2856,13 +2932,7 @@ export function PromptBoxInternal({
         }
       }
 
-      const isModifierSubmitKey =
-        event.key === "Enter" &&
-        event.metaKey &&
-        !event.shiftKey &&
-        !event.altKey &&
-        !event.ctrlKey;
-      if (isModifierSubmitKey && onModifierSubmit) {
+      if (isModifierSubmitKeyEvent(event) && onModifierSubmit) {
         event.preventDefault();
         submitModifierPrompt();
         return true;
@@ -3208,7 +3278,7 @@ export function PromptBoxInternal({
                           }
                           disabled={!canStartVoiceInput}
                           onPointerDown={handleVoicePointerDown}
-                          onClick={startVoiceInput}
+                          onClick={handleVoiceClick}
                           className={
                             COARSE_POINTER_PROMPT_ICON_ACTION_BUTTON_CLASS
                           }
@@ -3249,7 +3319,7 @@ export function PromptBoxInternal({
                         variant="default"
                         aria-label="Start voice input"
                         onPointerDown={handleVoicePointerDown}
-                        onClick={startVoiceInput}
+                        onClick={handleVoiceClick}
                         className={cn(
                           showCompactLayout
                             ? COMPACT_PROMPT_ACTION_BUTTON_CLASS
@@ -3285,6 +3355,7 @@ export function PromptBoxInternal({
                         isCompact={showCompactLayout}
                         onPointerDown={handleSubmitPointerDown}
                         onClick={handleSubmitClick}
+                        onTouchSubmit={handleTouchSubmit}
                         title={effectiveSubmitTitle}
                       />
                     )}

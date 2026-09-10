@@ -65,32 +65,6 @@ export function listQueuedCommands(
     .map((queued) => hostDaemonRpcCommandSchema.parse(queued.command));
 }
 
-type ManagedWorktreeEnvironmentProvisionCommand = Extract<
-  HostDaemonCommand,
-  { type: "environment.provision"; workspaceProvisionType: "managed-worktree" }
->;
-
-type ManagedWorktreeEnvironmentProvisionLiveCommand =
-  QueuedCommand<ManagedWorktreeEnvironmentProvisionCommand>;
-
-function isManagedWorktreeEnvironmentProvisionLiveCommand(
-  queued: QueuedCommand,
-): queued is ManagedWorktreeEnvironmentProvisionLiveCommand {
-  return (
-    queued.command.type === "environment.provision" &&
-    queued.command.workspaceProvisionType === "managed-worktree"
-  );
-}
-
-export function requireManagedWorktreeEnvironmentProvisionLiveCommand(
-  queued: QueuedCommand,
-): ManagedWorktreeEnvironmentProvisionLiveCommand {
-  if (isManagedWorktreeEnvironmentProvisionLiveCommand(queued)) {
-    return queued;
-  }
-  throw new Error("Expected managed-worktree environment.provision command");
-}
-
 export function listQueuedThreadCommands(
   harness: TestAppHarness,
   type: HostDaemonCommand["type"],
@@ -130,6 +104,12 @@ interface RegisterTestHostRpcCaptureArgs {
   hostId: string;
   sessionId: string;
   queueBranchOptions?: boolean;
+  onEnvironmentHook?: (
+    command: Extract<HostDaemonRpcCommand, { type: "environment.hook.run" }>,
+  ) => Promise<void>;
+  onEnvironmentHookCancel?: (
+    operationId: string,
+  ) => Promise<void | { status: "unknown" | "terminated" }>;
   gitBranchOptionsResult?: HostDaemonOnlineRpcResult<"host.list_branch_options">;
   onListBranchOptions?: (
     command: Extract<
@@ -273,6 +253,7 @@ function respondToProviderModelListCommand(
 
 function buildDefaultGitSourceInspectionResult(): HostDaemonOnlineRpcResult<"host.inspect_git_source"> {
   return {
+    isWorktree: false,
     checkout: {
       kind: "branch",
       branchName: "main",
@@ -393,6 +374,47 @@ export function registerTestHostRpcCapture(
           }),
           sessionId: args.sessionId,
         });
+        return;
+      }
+      if (
+        command.type === "environment.hook.run" ||
+        command.type === "environment.hook.cancel"
+      ) {
+        void Promise.resolve()
+          .then(() =>
+            command.type === "environment.hook.run"
+              ? args.onEnvironmentHook?.(command)
+              : args.onEnvironmentHookCancel?.(command.operationId),
+          )
+          .then(
+            (result) =>
+              deps.hub.recordHostOnlineRpcResponse({
+                message: hostDaemonOnlineRpcResponseMessageSchema.parse({
+                  type: "host-rpc.response",
+                  requestId: message.requestId,
+                  commandType: command.type,
+                  ok: true,
+                  result:
+                    command.type === "environment.hook.cancel"
+                      ? (result ?? { status: "terminated" })
+                      : {},
+                }),
+                sessionId: args.sessionId,
+              }),
+            (error: unknown) =>
+              deps.hub.recordHostOnlineRpcResponse({
+                message: hostDaemonOnlineRpcResponseMessageSchema.parse({
+                  type: "host-rpc.response",
+                  requestId: message.requestId,
+                  commandType: command.type,
+                  ok: false,
+                  errorCode: "setup_script_failed",
+                  errorMessage:
+                    error instanceof Error ? error.message : String(error),
+                }),
+                sessionId: args.sessionId,
+              }),
+          );
         return;
       }
       if (respondToRuntimeWorkspaceFileCommand(deps, args, message)) {
@@ -559,6 +581,29 @@ export async function reportQueuedCommandSuccess<
   await sleep(0);
   void args;
   return new Response(null, { status: 200 });
+}
+
+export async function reportNextEnvironmentAttachSuccess(
+  harness: TestAppHarness,
+  threadId: string,
+): Promise<void> {
+  const queued = await waitForQueuedCommand(
+    harness,
+    ({ command }) =>
+      command.type === "environment.attach" &&
+      command.initiator?.threadId === threadId,
+  );
+  if (queued.command.type !== "environment.attach") {
+    throw new Error("Expected environment.attach command");
+  }
+  await reportQueuedCommandSuccess(harness, queued, {
+    path: queued.command.path,
+    isGitRepo: true,
+    isWorktree: false,
+    branchName: "main",
+    defaultBranch: "main",
+    transcript: [],
+  });
 }
 
 export async function reportQueuedCommandError(

@@ -28,6 +28,7 @@ import type {
   PluginCliCommandInfo,
   PluginCliContext,
   PluginCliResult,
+  PluginEnvironments,
   PluginHooks,
   PluginHookHandler,
   PluginHookName,
@@ -90,6 +91,7 @@ import {
   aiServiceAlreadyRegisteredMessage,
   pluginHookAlreadyRegisteredMessage,
   storePluginHook,
+  validatePluginEnvironmentProviderDeclaration,
   providerAlreadyRegisteredMessage,
   providerIconRefusalMessage,
   undeclaredIconProblem,
@@ -100,9 +102,11 @@ import {
 } from "@get-bb/plugin-sdk/internal/host-policy";
 import type {
   AiServiceHostBinding,
+  NormalizedPluginEnvironmentProvider,
   NormalizedPluginProviderDeclaration,
 } from "@get-bb/plugin-sdk/internal/host-policy";
 import type { BbSdk, ThreadForkArgs, ThreadSpawnArgs } from "@bb/sdk";
+import { requestEnvironmentProviderRecheck } from "./plugin-environment-provider-registry.js";
 import type { ServerLogger } from "../../types.js";
 import type { PluginInteractionResult } from "../interactions/pending-interactions.js";
 import { appendPluginLogLine } from "./plugin-log.js";
@@ -176,7 +180,7 @@ export interface PluginWebSocketRouteRecord {
 export interface PluginRpcHandler {
   inputSchema: StandardSchemaV1;
   outputSchema: StandardSchemaV1;
-  handler: (input: never) => unknown;
+  handler: (input: unknown) => unknown;
 }
 
 export interface PluginAgentToolRecord {
@@ -245,6 +249,7 @@ export interface PluginApiHandle {
   threadEventHandlers: PluginThreadEventHandlers;
   /** Hook handlers recorded by `bb.experimental_hooks.on`. */
   hooks: PluginHookRecords;
+  environmentProviders: Map<string, NormalizedPluginEnvironmentProvider>;
   /** HTTP routes recorded by `bb.http.route`; dropped with the handle. */
   httpRoutes: PluginHttpRouteRecord[];
   websocketRoutes: PluginWebSocketRouteRecord[];
@@ -410,6 +415,8 @@ function createStagedRegistrations<
   };
 }
 
+const PLUGIN_HOST_CALL_MAX_TIMEOUT_MS = 30 * 60_000;
+
 export function createPluginApi(options: {
   pluginId: string;
   logger: ServerLogger;
@@ -422,6 +429,7 @@ export function createPluginApi(options: {
   settingsChanged: () => void;
   reportNeedsConfiguration: (message: string) => void;
   isAgentToolNameTaken: (name: string) => string | undefined;
+  isEnvironmentProviderIdTaken: (id: string) => string | undefined;
   reportAgentToolProblem: (message: string) => void;
   /**
    * Schedules a re-attempt of every plugin-queued row
@@ -462,6 +470,7 @@ export function createPluginApi(options: {
     input: unknown;
     hostId: string;
     signal?: AbortSignal;
+    timeoutMs?: number;
   }) => Promise<unknown>;
   registerProvider: (declaration: NormalizedPluginProviderDeclaration) => {
     dispose(): void;
@@ -530,10 +539,16 @@ export function createPluginApi(options: {
     "message.queued": [],
     "message.dispatched": [],
     "turn.failed": [],
+    "message.cancelled": [],
+    "thread.unarchived": [],
   };
   const hooks: PluginHookRecords = {
     "message.dispatch": null,
   };
+  const environmentProviders = new Map<
+    string,
+    NormalizedPluginEnvironmentProvider
+  >();
   const httpRoutes: PluginHttpRouteRecord[] = [];
   const websocketRoutes: PluginWebSocketRouteRecord[] = [];
   const rpcHandlers = new Map<string, PluginRpcHandler>();
@@ -914,7 +929,7 @@ export function createPluginApi(options: {
           {
             inputSchema: methodContract.input,
             outputSchema: methodContract.output,
-            handler: handler as (input: never) => unknown,
+            handler,
           },
         ]);
       }
@@ -1349,6 +1364,14 @@ export function createPluginApi(options: {
             ...(callOptions.signal === undefined
               ? {}
               : { signal: callOptions.signal }),
+            ...(callOptions.timeoutMs === undefined
+              ? {}
+              : {
+                  timeoutMs: Math.min(
+                    Math.max(1_000, Math.floor(callOptions.timeoutMs)),
+                    PLUGIN_HOST_CALL_MAX_TIMEOUT_MS,
+                  ),
+                }),
           });
         },
         experimental_onWorkerExit(handler) {
@@ -1491,6 +1514,31 @@ export function createPluginApi(options: {
     },
   };
 
+  const experimental_environments: PluginEnvironments = {
+    register(declaration) {
+      assertLive();
+      const provider =
+        validatePluginEnvironmentProviderDeclaration(declaration);
+      const problem =
+        provider.icon === null
+          ? null
+          : undeclaredIconProblem(pluginId, declaredIconNames, provider.icon);
+      if (problem !== null)
+        throw new Error(providerIconRefusalMessage(provider.id, problem));
+      const owner = options.isEnvironmentProviderIdTaken(provider.id);
+      if (owner !== undefined) {
+        throw new Error(
+          `environment provider "${provider.id}" is already registered by plugin "${owner}"`,
+        );
+      }
+      environmentProviders.set(provider.id, provider);
+    },
+    async recheck() {
+      assertLive();
+      requestEnvironmentProviderRecheck(options.pluginId);
+    },
+  };
+
   const aiServiceRegistrations = createStagedRegistrations({
     validate: validatePluginAiServiceDeclaration,
     bind: assertAiServiceRegistrable,
@@ -1520,6 +1568,7 @@ export function createPluginApi(options: {
     ui,
     events,
     experimental_hooks,
+    experimental_environments,
     status,
     server,
     hosts,
@@ -1549,6 +1598,7 @@ export function createPluginApi(options: {
     databaseHandles,
     threadEventHandlers,
     hooks,
+    environmentProviders,
     httpRoutes,
     websocketRoutes,
     rpcHandlers,

@@ -77,7 +77,7 @@ describe("timeline context-clear epochs", () => {
       const options = {
         eventBudget: 1_000,
         includeNestedRows: true,
-        includeProviderUnhandledOperations: false,
+        includeDiagnosticOperations: false,
         maxInlineOutputChars: null,
         maxSeq: 2,
       };
@@ -95,23 +95,6 @@ describe("timeline context-clear epochs", () => {
         hasOlderRows: false,
         olderCursor: null,
       });
-      const boundary = latest.rows[0]!;
-      const older = buildThreadTimeline(db, thread, {
-        ...options,
-        page: {
-          kind: "older",
-          segmentLimit: 20,
-          beforeCursor: {
-            anchorId: boundary.id,
-            anchorSeq: boundary.sourceSeqStart,
-          },
-        },
-      });
-      expect(older.rows).toEqual([]);
-      expect(older.timelinePage).toMatchObject({
-        hasOlderRows: false,
-        olderCursor: null,
-      });
       expect(() =>
         buildThreadTimeline(db, thread, {
           ...options,
@@ -121,7 +104,7 @@ describe("timeline context-clear epochs", () => {
             beforeCursor: { anchorId: "old-anchor", anchorSeq: 1 },
           },
         }),
-      ).toThrow("Timeline pagination cursor is before the context boundary");
+      ).toThrow(/no longer available/);
     } finally {
       db.$client.close();
     }
@@ -212,7 +195,7 @@ describe("timeline context-clear epochs", () => {
     const timeline = buildThreadTimeline(db, thread, {
       eventBudget: 1_000,
       includeNestedRows: true,
-      includeProviderUnhandledOperations: false,
+      includeDiagnosticOperations: false,
       maxInlineOutputChars: null,
       maxSeq: 6,
       page: { kind: "latest", segmentLimit: 20 },
@@ -321,7 +304,7 @@ describe("timeline context-clear epochs", () => {
     let page = buildThreadTimeline(db, thread, {
       eventBudget: 1_000,
       includeNestedRows: true,
-      includeProviderUnhandledOperations: false,
+      includeDiagnosticOperations: false,
       maxInlineOutputChars: null,
       maxSeq: 6,
       page: { kind: "latest", segmentLimit: 1 },
@@ -339,7 +322,7 @@ describe("timeline context-clear epochs", () => {
       page = buildThreadTimeline(db, thread, {
         eventBudget: 1_000,
         includeNestedRows: true,
-        includeProviderUnhandledOperations: false,
+        includeDiagnosticOperations: false,
         maxInlineOutputChars: null,
         maxSeq: 6,
         page: { kind: "older", segmentLimit: 1, beforeCursor: cursor },

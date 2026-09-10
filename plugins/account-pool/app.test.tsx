@@ -12,7 +12,19 @@ const app = await loadPluginApp(() => import("./app"));
 afterEach(() => {
   cleanup();
   vi.restoreAllMocks();
+  vi.unstubAllGlobals();
+  window.localStorage.clear();
 });
+
+const STATUS_CACHE_KEY = "account-pool:status";
+
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((next) => {
+    resolve = next;
+  });
+  return { promise, resolve };
+}
 
 function measureAccountRows() {
   vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(
@@ -83,7 +95,6 @@ function status(accounts: AccountSummary[] = [account()]): PoolStatus {
     hosts: [
       { hostId: "host-one", hostName: "bee", mintedAt: 1, lastUsedAt: 2 },
     ],
-    routedThreadsWithoutLocalLogin: [],
     accounts,
     routing: { claude: true, codex: true },
   };
@@ -100,7 +111,7 @@ function config(overrides: Partial<AccountPoolConfig> = {}): AccountPoolConfig {
 
 function render(
   accounts = [account()],
-  extraRpc: Record<string, () => object | null> = {},
+  extraRpc: Record<string, () => object | null | Promise<object | null>> = {},
 ) {
   return renderSlot(
     app.settingsSections[0]!,
@@ -117,6 +128,54 @@ function render(
 }
 
 describe("Account Pool settings", () => {
+  it("renders cached accounts as refreshing until live status arrives, then caches it", async () => {
+    window.localStorage.setItem(
+      STATUS_CACHE_KEY,
+      JSON.stringify(status([account({ fiveHourUtilization: 0.21 })])),
+    );
+    const live = deferred<PoolStatus>();
+    const slot = render([], { "status.get": () => live.promise });
+    expect(slot.getByText("person@example.com")).toBeTruthy();
+    expect(slot.getByText("21%")).toBeTruthy();
+    expect(slot.getByText("refreshing usage…")).toBeTruthy();
+    expect(slot.getByText(/· refreshing…$/)).toBeTruthy();
+    expect(slot.queryByText("Loading…")).toBeNull();
+    expect(slot.queryByText("No accounts in the pool")).toBeNull();
+    live.resolve(status([account({ fiveHourUtilization: 0.6 })]));
+    expect(await slot.findByText("60%")).toBeTruthy();
+    expect(slot.queryByText("refreshing usage…")).toBeNull();
+    expect(slot.queryByText(/· refreshing…$/)).toBeNull();
+    const cached = JSON.parse(
+      window.localStorage.getItem(STATUS_CACHE_KEY) ?? "null",
+    ) as PoolStatus;
+    expect(cached.accounts[0]?.fiveHourUtilization).toBe(0.6);
+  });
+
+  it("ignores a malformed status cache and shows the loading state", async () => {
+    window.localStorage.setItem(STATUS_CACHE_KEY, '{"accounts":"nope"}');
+    const live = deferred<PoolStatus>();
+    const slot = render([], { "status.get": () => live.promise });
+    expect(slot.getAllByText("Loading…")).toHaveLength(2);
+    live.resolve(status());
+    expect(await slot.findByText("person@example.com")).toBeTruthy();
+  });
+
+  it("marks a row as refreshing while its usage refresh is in flight", async () => {
+    const refresh = deferred<{ account: null }>();
+    const slot = render([account()], {
+      "account.refreshUsage": () => refresh.promise,
+    });
+    fireEvent.pointerDown(
+      await slot.findByRole("button", { name: "person@example.com actions" }),
+    );
+    fireEvent.click(await slot.findByText("Refresh usage"));
+    expect(await slot.findByText("refreshing usage…")).toBeTruthy();
+    refresh.resolve({ account: null });
+    await waitFor(() =>
+      expect(slot.queryByText("refreshing usage…")).toBeNull(),
+    );
+  });
+
   it("renders fixed quota slots with missing buckets as em dashes", async () => {
     const slot = render();
     expect(await slot.findByText("person@example.com")).toBeTruthy();
@@ -129,21 +188,31 @@ describe("Account Pool settings", () => {
     ).toBeTruthy();
   });
 
+  it("keeps the quota slots visible at mobile widths", async () => {
+    const slot = render();
+    const group = (await slot.findByText("5H")).parentElement?.parentElement;
+    expect(group).toBeTruthy();
+    expect(group?.className).not.toMatch(/(^|\s)hidden(\s|$)/u);
+  });
+
   it("renders only the windows a Codex account reports and no Fable slot", async () => {
+    const blockingResetAt = Date.now() + 6 * 24 * 60 * 60 * 1_000;
     const slot = render([
       account({
         id: "22222222-2222-4222-8222-222222222222",
         provider: "codex",
         label: "pro@example.com",
         codexAccountId: "chatgpt-account",
-        fiveHourUtilization: null,
+        status: "exhausted",
+        fiveHourUtilization: 0.25,
+        fiveHourResetAt: Date.now() + 60 * 60 * 1_000,
         limitWindows: [
           {
             slot: "primary",
             windowMinutes: 10_080,
-            utilization: 0.48,
-            resetAt: Date.now() + 3_600_000,
-            status: "allowed",
+            utilization: 1,
+            resetAt: blockingResetAt,
+            status: "rejected",
             observedAt: 1,
             source: "usage",
           },
@@ -152,9 +221,14 @@ describe("Account Pool settings", () => {
     ]);
     expect(await slot.findByText("pro@example.com")).toBeTruthy();
     expect(slot.getByText("7D")).toBeTruthy();
-    expect(slot.getByText("48%")).toBeTruthy();
+    expect(slot.getByText("100%")).toBeTruthy();
     expect(slot.queryByText("5H")).toBeNull();
     expect(slot.queryByText("FABLE")).toBeNull();
+    expect(
+      slot.getByText(
+        `Exhausted · resets ${new Intl.DateTimeFormat(undefined, { month: "short", day: "numeric" }).format(blockingResetAt)}`,
+      ),
+    ).toBeTruthy();
     fireEvent.click(
       await slot.findByRole("button", { name: "Open pro@example.com details" }),
     );
@@ -163,46 +237,48 @@ describe("Account Pool settings", () => {
     expect(slot.queryByText("7 day")).toBeNull();
   });
 
-  it("dispatches kebab actions to their RPC contracts", async () => {
-    const slot = render([account()], {
-      "account.disable": () => ({ account: null }),
-      "account.refreshUsage": () => ({ account: null }),
-      "account.remove": () => ({ removed: true }),
-    });
-    const open = async () => {
+  it.each([
+    {
+      action: "Disable",
+      method: "account.disable",
+      input: { id: account().id },
+    },
+    {
+      action: "Refresh usage",
+      method: "account.refreshUsage",
+      input: { accountId: account().id },
+    },
+  ])(
+    "dispatches $action to its RPC contract",
+    async ({ action, method, input }) => {
+      const slot = render([account()], {
+        [method]: () => ({ account: null }),
+      });
       fireEvent.pointerDown(
         await slot.findByRole("button", { name: "person@example.com actions" }),
       );
-    };
-    await open();
-    fireEvent.click(await slot.findByText("Disable"));
-    await waitFor(() =>
-      expect(slot.rpcCalls).toContainEqual({
-        method: "account.disable",
-        input: { id: account().id },
-      }),
+      fireEvent.click(await slot.findByText(action));
+      expect(slot.rpcCalls).toContainEqual({ method, input });
+    },
+  );
+
+  it("confirms Remove before dispatching its RPC contract", async () => {
+    const slot = render([account()], {
+      "account.remove": () => ({ removed: true }),
+    });
+    fireEvent.pointerDown(
+      await slot.findByRole("button", { name: "person@example.com actions" }),
     );
-    await open();
-    fireEvent.click(await slot.findByText("Refresh usage"));
-    await waitFor(() =>
-      expect(slot.rpcCalls).toContainEqual({
-        method: "account.refreshUsage",
-        input: { accountId: account().id },
-      }),
-    );
-    await open();
     fireEvent.click(await slot.findByText("Remove"));
     expect(await slot.findByText("Remove person@example.com?")).toBeTruthy();
     expect(slot.rpcCalls.some((call) => call.method === "account.remove")).toBe(
       false,
     );
     fireEvent.click(slot.getByRole("button", { name: "Remove" }));
-    await waitFor(() =>
-      expect(slot.rpcCalls).toContainEqual({
-        method: "account.remove",
-        input: { id: account().id },
-      }),
-    );
+    expect(slot.rpcCalls).toContainEqual({
+      method: "account.remove",
+      input: { id: account().id },
+    });
   });
 
   it("opens the correct provider sign-in flow from each Add account menu", async () => {
@@ -291,7 +367,7 @@ describe("Account Pool settings", () => {
     );
   });
 
-  it("shows every observed family bucket in the detail drawer", async () => {
+  it("shows every observed family bucket in the detail dialog", async () => {
     const fable = {
       utilization: 0.91,
       resetAt: Date.now() + 3_600_000,
@@ -318,6 +394,83 @@ describe("Account Pool settings", () => {
     expect(await slot.findByText("Fable 7 day")).toBeTruthy();
     expect(slot.getByText("Opus 7 day")).toBeTruthy();
   });
+
+  function codexLoginStart() {
+    return {
+      sessionId: "33333333-3333-4333-8333-333333333333",
+      verificationUri: "https://auth.openai.com/codex/device",
+      userCode: "ABCD-1234",
+      expiresAt: Date.now() + 600_000,
+      intervalMs: 60_000,
+    };
+  }
+
+  function mockCompactViewport(matches: boolean) {
+    vi.stubGlobal("matchMedia", (query: string) => ({
+      matches: query === "(max-width: 767px)" && matches,
+      media: query,
+      onchange: null,
+      addListener: () => {},
+      removeListener: () => {},
+      addEventListener: () => {},
+      removeEventListener: () => {},
+      dispatchEvent: () => false,
+    }));
+  }
+
+  it("names the sign-in dialog once and keeps the step instructions", async () => {
+    const slot = render([], { "codexLogin.start": codexLoginStart });
+    fireEvent.click(
+      await slot.findByRole("button", { name: "Sign in to Codex" }),
+    );
+    const dialog = await slot.findByRole("dialog", {
+      name: "Sign in to Codex",
+    });
+    expect(
+      slot.getAllByRole("heading", { name: "Sign in to Codex" }),
+    ).toHaveLength(1);
+    expect(dialog.textContent).toContain(
+      "Open the verification page, sign in to ChatGPT, and enter this code.",
+    );
+    expect(
+      (await slot.findByLabelText("Codex user code")).textContent,
+    ).toContain("ABCD-1234");
+    expect(slot.queryByRole("button", { name: "Cancel" })).toBeNull();
+  });
+
+  it.each([false, true])(
+    "cancels the pending sign-in from the header close with compact viewport %s",
+    async (compact) => {
+      mockCompactViewport(compact);
+      const slot = render([], {
+        "codexLogin.start": codexLoginStart,
+        "codexLogin.poll": () => ({ status: "pending" }),
+        "codexLogin.cancel": () => ({ cancelled: true }),
+      });
+      fireEvent.click(
+        await slot.findByRole("button", { name: "Sign in to Codex" }),
+      );
+      await slot.findByRole("dialog", { name: "Sign in to Codex" });
+      fireEvent.click(slot.getByRole("button", { name: "Close" }));
+      await waitFor(() =>
+        expect(slot.rpcCalls).toContainEqual({
+          method: "codexLogin.cancel",
+          input: { sessionId: codexLoginStart().sessionId },
+        }),
+      );
+      await waitFor(() =>
+        expect(slot.queryByRole("dialog", { name: "Sign in to Codex" })).toBe(
+          null,
+        ),
+      );
+      const polls = () =>
+        slot.rpcCalls.filter((call) => call.method === "codexLogin.poll")
+          .length;
+      const settled = polls();
+      await new Promise((resolve) => setTimeout(resolve, 50));
+      expect(polls()).toBe(settled);
+    },
+  );
 
   it("offers a fresh Codex login after device-code polling fails", async () => {
     let starts = 0;

@@ -75,9 +75,10 @@ export interface LoadedCorpusThread {
 
 export function loadCorpusThreadIntoDb(
   corpusThread: CorpusThread,
+  connection?: DbConnection,
 ): LoadedCorpusThread {
-  const db = createConnection(":memory:");
-  migrate(db);
+  const db = connection ?? createConnection(":memory:");
+  if (connection === undefined) migrate(db);
   const host = upsertHost(db, noopNotifier, {
     name: "provider-corpus-host",
     type: "persistent",
@@ -170,7 +171,7 @@ export function buildRouteTimelinePage(
     args.thread,
     {
       eventBudget: defaultFeatureFlags.timelineWindowEventBudget,
-      includeProviderUnhandledOperations: true,
+      includeDiagnosticOperations: true,
       includeNestedRows,
       maxInlineOutputChars: DEFAULT_MAX_INLINE_OUTPUT_CHARS,
       maxSeq,

@@ -14,6 +14,8 @@ import { threadStatusValues } from "@bb/domain/thread-status";
 import { threadOriginKindValues } from "@bb/domain/thread-origin-kind";
 import { threadVisibilityValues } from "@bb/domain/thread-visibility";
 import type {
+  EnvironmentProviderSelection,
+  JsonValue,
   EnvironmentStatus,
   FaviconColorPreference,
   HostType,
@@ -32,9 +34,9 @@ import type {
   ThreadEventItemType,
   ThreadEventScopeKind,
   ThreadEventType,
-  WorkspaceProvisionType,
   ProjectKind,
 } from "@bb/domain";
+import type { RetainedEventOutputPath } from "./retained-event-output.js";
 
 export const authUsers = sqliteTable(
   "user",
@@ -156,6 +158,13 @@ export const systemExperiments = sqliteTable("system_experiments", {
 export const appSettingsValues = sqliteTable("app_settings_values", {
   key: text("key").primaryKey(),
   value: text("value").notNull(),
+  updatedAt: integer("updated_at").notNull(),
+});
+
+export const uiPreferences = sqliteTable("ui_preferences", {
+  key: text("key").primaryKey(),
+  valueJson: text("value_json").notNull(),
+  revision: integer("revision").notNull(),
   updatedAt: integer("updated_at").notNull(),
 });
 
@@ -443,7 +452,6 @@ export const environments = sqliteTable(
       .notNull()
       .references(() => hosts.id, { onDelete: "cascade" }),
     path: text("path"),
-    managed: integer("managed", { mode: "boolean" }).notNull().default(false),
     isGitRepo: integer("is_git_repo", { mode: "boolean" })
       .notNull()
       .default(false),
@@ -454,11 +462,27 @@ export const environments = sqliteTable(
     baseBranch: text("base_branch"),
     defaultBranch: text("default_branch"),
     mergeBaseBranch: text("merge_base_branch"),
-    destroyAttemptId: text("destroy_attempt_id"),
-    retireRequestedAt: integer("retire_requested_at"),
-    workspaceProvisionType: text("workspace_provision_type")
-      .$type<WorkspaceProvisionType>()
-      .notNull(),
+    environmentProviderId: text("environment_provider_id"),
+    environmentProviderPluginId: text("environment_provider_plugin_id"),
+    providerOwnsPath: integer("provider_owns_path", { mode: "boolean" })
+      .notNull()
+      .default(false),
+    environmentProviderSelection: text("environment_provider_selection", {
+      mode: "json",
+    }).$type<EnvironmentProviderSelection>(),
+    environmentProviderInstanceKey: text("environment_provider_instance_key"),
+    retireAt: integer("retire_at"),
+    teardownAttempt: integer("teardown_attempt").notNull().default(0),
+    teardownStatus: text("teardown_status").$type<
+      "running" | "failed" | "removed"
+    >(),
+    teardownMessage: text("teardown_message"),
+    resource: text("resource", { mode: "json" }).$type<JsonValue>(),
+    ownerThreadId: text("owner_thread_id"),
+    attempt: integer("attempt").notNull().default(0),
+    statusMessage: text("status_message"),
+    pendingLog: text("pending_log").notNull().default(""),
+    claimPath: text("claim_path"),
     status: text("status")
       .$type<EnvironmentStatus>()
       .notNull()
@@ -473,8 +497,14 @@ export const environments = sqliteTable(
       table.path,
     ),
     index("environments_host_path_lookup_idx").on(table.hostId, table.path),
+    uniqueIndex("environments_owner_thread_idx").on(table.ownerThreadId),
+    index("environments_claim_idx").on(table.hostId, table.claimPath),
     index("environments_project_idx").on(table.projectId),
     index("environments_status_idx").on(table.status),
+    index("environments_provider_instance_idx").on(
+      table.environmentProviderId,
+      table.environmentProviderInstanceKey,
+    ),
   ],
 );
 
@@ -501,19 +531,7 @@ export const threads = sqliteTable(
     status: text("status", { enum: threadStatusValues })
       .notNull()
       .default("starting"),
-    // How a `pending` thread will be established once its first message clears
-    // a dispatch attempt: the resolved environment intent, the fork descriptor,
-    // the provider-facing input and the `startedOnBehalfOf`/title facts that
-    // `requestThreadProvision` needs and that nothing else persists.
-    //
-    // It lives on the THREAD rather than on the queued message because it
-    // describes how to start the thread, not what to say once it has started —
-    // and because the live provisioning context is in-memory and only valid
-    // while a thread is `starting`, so a thread queued for a week (or across a
-    // restart) would otherwise have nothing to start from. Written only when a
-    // first message actually queues, and cleared when the thread leaves
-    // `pending`, so it is NULL for every thread that started immediately.
-    pendingStartContext: text("pending_start_context"),
+    startupContext: text("startup_context"),
     parentThreadId: text("parent_thread_id").references(
       (): AnySQLiteColumn => threads.id,
       { onDelete: "set null" },
@@ -737,6 +755,24 @@ export const events = sqliteTable(
         OR
         (${table.scopeKind} = 'thread' AND ${table.turnId} IS NULL)
       )`,
+    ),
+  ],
+);
+
+export const retainedEventOutputs = sqliteTable(
+  "retained_event_outputs",
+  {
+    eventId: text("event_id")
+      .primaryKey()
+      .references(() => events.id, { onDelete: "cascade" }),
+    outputPath: text("output_path").$type<RetainedEventOutputPath>().notNull(),
+    value: text("value").notNull(),
+    expiresAt: integer("expires_at").notNull(),
+  },
+  (table) => [
+    index("retained_event_outputs_expiry_idx").on(
+      table.expiresAt,
+      table.eventId,
     ),
   ],
 );

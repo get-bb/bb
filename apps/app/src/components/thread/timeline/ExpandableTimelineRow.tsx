@@ -17,6 +17,7 @@ import {
 } from "../../ui/disclosure.js";
 import { Icon, type IconName } from "@bb/shared-ui/icon";
 import { cn } from "@bb/shared-ui/lib/utils";
+import { useTimelineReasoningExpansion } from "./TimelineReasoningExpansion.js";
 import { PluginCompactIconMask } from "../../plugin/PluginIcon.js";
 import {
   TIMELINE_ROW_HEADER_CONTENT_CLASS_NAME,
@@ -31,6 +32,7 @@ import {
 } from "./TimelineTitleView.js";
 
 interface ExpandableTimelineRowProps {
+  reasoningExpansionKey?: string;
   autoExpanded?: boolean;
   forceExpanded?: boolean;
   terminalAutoExpanded?: boolean;
@@ -48,7 +50,6 @@ interface ExpandableTimelineRowProps {
   resolveSegmentLinkHref?: TimelineTitleLinkResolver;
 }
 
-type ManualExpansionOverride = boolean | null;
 type CollapsedPreviewClickEvent = MouseEvent<HTMLDivElement>;
 type CollapsedPreviewFocusEvent = FocusEvent<HTMLDivElement>;
 type CollapsedPreviewKeyboardEvent = KeyboardEvent<HTMLDivElement>;
@@ -86,6 +87,7 @@ function ExpandableTimelineRowComponent({
   leadingIconStyle,
   onTitleAction,
   renderBody,
+  reasoningExpansionKey,
   resolveSegmentLinkHref,
   summaryClassName,
   terminalAutoExpanded = false,
@@ -93,7 +95,7 @@ function ExpandableTimelineRowComponent({
   titleContent,
 }: ExpandableTimelineRowProps) {
   const [manualExpansionOverride, setManualExpansionOverride] =
-    useState<ManualExpansionOverride>(null);
+    useTimelineReasoningExpansion(reasoningExpansionKey);
   const [terminalAutoExpandedLatch, setTerminalAutoExpandedLatch] =
     useState(terminalAutoExpanded);
   const [collapsedPreviewActive, setCollapsedPreviewActive] = useState(false);
@@ -116,7 +118,7 @@ function ExpandableTimelineRowComponent({
     timelineRowHorizontalPaddingClassName(horizontalPadding);
   const handleToggle = useCallback((): void => {
     setManualExpansionOverride(!isExpanded);
-  }, [isExpanded]);
+  }, [isExpanded, setManualExpansionOverride]);
   const handleCollapsedPreviewClick = useCallback(
     (event: CollapsedPreviewClickEvent): void => {
       if (

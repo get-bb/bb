@@ -18,7 +18,7 @@ import {
   type FamilyQuota,
   type LimitWindow,
   type ModelFamily,
-  type PoolStatus,
+  type PoolStatusReport,
 } from "./contracts.js";
 import type { PoolOperations } from "./operations.js";
 import type { ClaudeOAuthLogin } from "./oauth-login.js";
@@ -45,6 +45,7 @@ const HELP = [
   "  bb pool account disable <id>",
   "  bb pool account priority <id> <n>",
   "  bb pool account reorder <claude|codex> <id>...",
+  "  bb pool account refresh <id>",
   "  bb pool status [--json]",
   "  bb pool routing <claude|codex> [--off]",
   "  bb pool config",
@@ -179,7 +180,7 @@ function formatAccounts(accounts: readonly AccountSummary[]): string {
   ].join("\n");
 }
 
-function formatStatus(status: PoolStatus): string {
+function formatStatus(status: PoolStatusReport): string {
   return [
     `Route: ${status.route}`,
     `Accepting: ${status.accepting}`,
@@ -304,6 +305,11 @@ export function registerPoolCli(
         usage: "bb pool account reorder <claude|codex> <id>...",
       },
       {
+        name: "account-refresh",
+        summary: "Refresh one account's observed usage",
+        usage: "bb pool account refresh <id>",
+      },
+      {
         name: "status",
         summary: "Show hub, machine token, routing, and account status",
         usage: "bb pool status [--json]",
@@ -367,6 +373,13 @@ export function registerPoolCli(
             exitCode: 0,
             stdout: `Updated ${input.provider} account order.\n`,
           };
+        }
+        if (argv[0] === "account" && argv[1] === "refresh") {
+          if (argv.length !== 3) throw new Error(HELP);
+          const { id } = accountIdInputSchema.parse({ id: argv[2] });
+          if ((await operations.refreshUsage(id)) === null)
+            throw new Error("Account not found.");
+          return { exitCode: 0, stdout: `Refreshed usage for ${id}.\n` };
         }
         if (argv[0] === "account" && argv[1] === "add") {
           const flags = parseFlags(
@@ -543,7 +556,15 @@ export function registerPoolCli(
         }
         if (argv[0] === "status") {
           const flags = parseFlags(argv.slice(1), ["json"], []);
-          const status = await operations.status();
+          const [poolStatus, routedThreadsWithoutLocalLogin] =
+            await Promise.all([
+              operations.status(),
+              operations.routedThreadsWithoutLocalLogin(),
+            ]);
+          const status: PoolStatusReport = {
+            ...poolStatus,
+            routedThreadsWithoutLocalLogin,
+          };
           return {
             exitCode: 0,
             stdout: flags.booleans.has("json")

@@ -37,9 +37,11 @@ import {
   HOST_IDS,
   HOST_NAMES,
   PROJECT_IDS,
+  PROJECT_NAMES,
   STORY_PROJECT_SOURCES,
   makeHost,
   makeProject,
+  makeThreadListEntry,
   makeProviderCliStatus,
 } from "./story-fixtures";
 import codexLogoUrl from "../../../plugins/provider-codex/icons/codex.svg";
@@ -111,7 +113,31 @@ const remoteProviderStatus = {
 
 const project = makeProject({
   id: PROJECT_IDS.bb,
+  gitRemoteUrl: "git@github.com:get-bb/bb.git",
   sources: [...STORY_PROJECT_SOURCES],
+});
+const pierreProject = makeProject({
+  id: PROJECT_IDS.pierre,
+  name: PROJECT_NAMES.pierre,
+  gitRemoteUrl: "https://github.com/get-bb/pierre.git",
+  sources: [
+    {
+      id: "src_pierre_remote",
+      projectId: PROJECT_IDS.pierre,
+      type: "local_path",
+      hostId: HOST_IDS.remote,
+      path: "/home/michael/pierre",
+      isDefault: true,
+      createdAt: 0,
+      updatedAt: 0,
+    },
+  ],
+});
+const ingestProject = makeProject({
+  id: PROJECT_IDS.ingest,
+  name: PROJECT_NAMES.ingest,
+  gitRemoteUrl: null,
+  sources: [],
 });
 const personalProject = makeProject({
   id: PERSONAL_PROJECT_ID,
@@ -122,7 +148,28 @@ const personalProject = makeProject({
 
 const sidebarNavigation = {
   sections: [],
-  projects: [{ ...project, defaultExecutionOptions: null, threads: [] }],
+  projects: [
+    {
+      ...project,
+      defaultExecutionOptions: null,
+      threads: [
+        makeThreadListEntry({ id: "thr_bb_1", projectId: PROJECT_IDS.bb }),
+        makeThreadListEntry({ id: "thr_bb_2", projectId: PROJECT_IDS.bb }),
+        makeThreadListEntry({ id: "thr_bb_3", projectId: PROJECT_IDS.bb }),
+      ],
+    },
+    {
+      ...pierreProject,
+      defaultExecutionOptions: null,
+      threads: [
+        makeThreadListEntry({
+          id: "thr_pierre_1",
+          projectId: PROJECT_IDS.pierre,
+        }),
+      ],
+    },
+    { ...ingestProject, defaultExecutionOptions: null, threads: [] },
+  ],
   personalProject: {
     ...personalProject,
     defaultExecutionOptions: null,

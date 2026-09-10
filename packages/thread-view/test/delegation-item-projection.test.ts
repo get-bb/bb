@@ -36,6 +36,81 @@ function findDelegationRow(
 }
 
 describe("delegation item projection", () => {
+  it.each(["explicit", "inherited", "completion-only"] as const)(
+    "keeps %s child compactions inside the delegation and root compactions in the main feed",
+    (mode) => {
+      const event = createTimelineEventFactory({ threadId: "thread-1" });
+      const childScope = {
+        turnId: "child-turn",
+        ...(mode === "inherited" ? {} : { parentToolCallId: "call-1" }),
+      };
+      const timeline = renderTimelineFixture({
+        events: [
+          event.turnStarted({ turnId: "parent-turn", createdAt: 0 }),
+          event.delegationStarted({
+            turnId: "parent-turn",
+            itemId: "call-1",
+            childRef: "child",
+            label: "/root/review",
+            createdAt: 1_000,
+          }),
+          event.turnStarted({
+            turnId: "child-turn",
+            ...(mode === "inherited" ? { parentToolCallId: "call-1" } : {}),
+            createdAt: 2_000,
+          }),
+          ...(mode === "completion-only"
+            ? []
+            : [
+                event.contextCompactionStarted({
+                  ...childScope,
+                  createdAt: 3_000,
+                }),
+              ]),
+          event.contextCompactionStarted({
+            turnId: "parent-turn",
+            itemId: "root-compaction",
+            createdAt: 4_000,
+          }),
+          event.contextCompactionCompleted({ ...childScope, createdAt: 5_000 }),
+          event.contextCompactionCompleted({
+            turnId: "parent-turn",
+            itemId: "root-compaction",
+            createdAt: 6_000,
+          }),
+        ],
+        projectionOptions: {
+          threadStatus: "active",
+          turnMessageDetail: "full",
+        },
+      });
+      const delegation = findDelegationRow(timeline.rows, "call-1");
+      expect(delegation.childRows).toContainEqual(
+        expect.objectContaining({
+          kind: "system",
+          operationKind: "compaction",
+          status: "completed",
+          startedAt: mode === "completion-only" ? 5_000 : 3_000,
+          completedAt: 5_000,
+        }),
+      );
+      const rootRows = timeline.rows.flatMap((row) =>
+        row.kind === "turn" ? (row.children ?? []) : [row],
+      );
+      const compactions = rootRows.filter(
+        (row) =>
+          row.kind === "system" &&
+          row.systemKind === "operation" &&
+          row.operationKind === "compaction",
+      );
+      expect(compactions).toHaveLength(1);
+      expect(compactions[0]).toMatchObject({
+        startedAt: 4_000,
+        completedAt: 6_000,
+      });
+    },
+  );
+
   it("renders a delegation item as a delegation row with its child content nested", () => {
     const event = createTimelineEventFactory({ threadId: "thread-1" });
     const timeline = renderTimelineFixture({

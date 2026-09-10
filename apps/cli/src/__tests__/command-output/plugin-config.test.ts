@@ -74,6 +74,45 @@ describe("bb plugin config", () => {
     expect(fetch).not.toHaveBeenCalled();
   });
 
+  it.each([
+    ["ordinary extra value", ["extra"]],
+    ["negative value after --", ["--", "-1"]],
+  ])("rejects the %s passed to unset", async (_, extraArgs) => {
+    const stderr = vi
+      .spyOn(process.stderr, "write")
+      .mockImplementation(() => true);
+
+    await expect(
+      runCommand(
+        ["plugin", "config", "demo", "unset", "retries", ...extraArgs],
+        register,
+      ),
+    ).rejects.toThrow("process.exit:1");
+
+    expect(stderr).toHaveBeenCalledWith(
+      "error: too many arguments for 'config'. Expected 3 arguments but got 4.\n",
+    );
+    expect(fetch).not.toHaveBeenCalled();
+  });
+
+  it("unsets a setting when no value is passed", async () => {
+    vi.mocked(fetch).mockResolvedValueOnce(settingsResponse(3));
+
+    await runCommand(
+      ["plugin", "config", "demo", "unset", "retries"],
+      register,
+    );
+
+    expect(fetch).toHaveBeenCalledOnce();
+    expect(fetch).toHaveBeenCalledWith(
+      "http://server/api/v1/plugins/demo/settings",
+      expect.objectContaining({
+        method: "PUT",
+        body: JSON.stringify({ values: { retries: null } }),
+      }),
+    );
+  });
+
   it("rejects a non-finite number before sending an update", async () => {
     vi.mocked(fetch).mockResolvedValueOnce(settingsResponse(3));
 

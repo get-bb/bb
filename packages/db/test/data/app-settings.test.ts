@@ -20,6 +20,26 @@ describe("app settings data", () => {
     db.$client.close();
   });
 
+  it("preserves the legacy diagnostic preference and lets the new preference override it", () => {
+    db.$client.exec(
+      "INSERT INTO app_settings_values (key, value, updated_at) VALUES ('showUnhandledProviderEvents', 'true', 1)",
+    );
+    expect(getAppSettings(db).showDiagnosticEvents).toBe(true);
+    db.$client.exec(
+      "INSERT INTO app_settings_values (key, value, updated_at) VALUES ('showDiagnosticEvents', 'false', 2)",
+    );
+    expect(getAppSettings(db).showDiagnosticEvents).toBe(false);
+    setAppSettings(db, { ...defaultAppSettings, showDiagnosticEvents: true });
+    expect(getAppSettings(db).showDiagnosticEvents).toBe(true);
+    expect(
+      db.$client
+        .prepare(
+          "SELECT key FROM app_settings_values WHERE key = 'showUnhandledProviderEvents'",
+        )
+        .get(),
+    ).toBeUndefined();
+  });
+
   it("persists keyboard overrides without clobbering general settings", () => {
     const overrides = [
       { command: "thread.new" as const, shortcut: null },

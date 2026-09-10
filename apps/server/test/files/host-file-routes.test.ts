@@ -4,6 +4,9 @@ import { registerHostRpcResponder } from "../helpers/host-rpc.js";
 import { readJson } from "../helpers/json.js";
 import { seedHostSession, seedPrimaryHost } from "../helpers/seed.js";
 import { withTestHarness } from "../helpers/test-app.js";
+import { DEFAULT_PATH_LIST_EXCLUDE_NAMES } from "../../src/routes/path-list-policy.js";
+
+const DEFAULT_EXCLUDE_NAMES = [...DEFAULT_PATH_LIST_EXCLUDE_NAMES];
 
 const WRITTEN_RESULT = {
   outcome: "written",
@@ -83,7 +86,7 @@ describe("host file routes", () => {
     });
   });
 
-  it("creates opaque path-shaped preview leases and serves sandboxed HTML", async () => {
+  it("revalidates preview files while keeping sandboxed HTML uncached", async () => {
     await withTestHarness(async (harness) => {
       const { host, session } = seedHostSession(harness.deps);
       seedPrimaryHost(harness.deps, host.id);
@@ -93,6 +96,22 @@ describe("host file routes", () => {
         sessionId: session.id,
         handle: (request) => {
           commands.push(request.command);
+          if (
+            request.command.type === "host.read_file" &&
+            request.command.path.endsWith(".png")
+          ) {
+            return {
+              ok: true,
+              result: {
+                path: "/notes/chart.png",
+                contentEncoding: "base64",
+                mimeType: "image/png",
+                sha256: "d".repeat(64),
+                sizeBytes: 4,
+                notModified: true,
+              },
+            };
+          }
           return {
             ok: true,
             result: {
@@ -124,14 +143,35 @@ describe("host file routes", () => {
         throw new Error("Preview response missing baseUrl");
       }
 
-      const content = await harness.app.request(`${lease.baseUrl}/report.html`);
+      const image = await harness.app.request(`${lease.baseUrl}/chart.png`, {
+        headers: { "if-none-match": `"${"d".repeat(64)}"` },
+      });
+      expect(image.status).toBe(304);
+      expect(image.headers.get("cache-control")).toBe("private, no-cache");
+
+      const content = await harness.app.request(
+        `${lease.baseUrl}/report.html`,
+        {
+          headers: { "if-none-match": `"${"c".repeat(64)}"` },
+        },
+      );
       expect(content.status).toBe(200);
+      expect(content.headers.get("cache-control")).toBe("no-store");
       expect(content.headers.get("content-security-policy")).toBe(
         "sandbox allow-scripts",
       );
       expect(content.headers.get("x-content-type-options")).toBe("nosniff");
       await expect(content.text()).resolves.toContain("<h1>Report</h1>");
       expect(commands).toEqual([
+        {
+          type: "host.read_file",
+          path: "/notes/chart.png",
+          rootPath: "/notes",
+          ifNoneMatch: {
+            kind: "sha256",
+            values: ["d".repeat(64)],
+          },
+        },
         {
           type: "host.read_file",
           path: "/notes/report.html",
@@ -154,6 +194,9 @@ describe("host file routes", () => {
           if (request.command.type === "host.list_paths") {
             return { ok: true, result: { paths: [], truncated: false } };
           }
+          if (request.command.type === "host.list_files") {
+            return { ok: true, result: { files: [], truncated: false } };
+          }
           return { ok: true, result: { ok: true } };
         },
       });
@@ -162,6 +205,19 @@ describe("host file routes", () => {
         [
           "/api/v1/files/paths",
           { path: "/notes", includeFiles: true, includeDirectories: true },
+        ],
+        [
+          "/api/v1/files/paths",
+          {
+            path: "/notes",
+            includeFiles: true,
+            includeDirectories: true,
+            includeHidden: false,
+          },
+        ],
+        [
+          "/api/v1/files/list",
+          { path: "/notes", includeHidden: false, excludeNames: [".obsidian"] },
         ],
         [
           "/api/v1/files/mkdir",
@@ -191,6 +247,27 @@ describe("host file routes", () => {
           limit: 1000,
           includeFiles: true,
           includeDirectories: true,
+          includeHidden: true,
+          respectGitIgnore: false,
+          excludeNames: DEFAULT_EXCLUDE_NAMES,
+        },
+        {
+          type: "host.list_paths",
+          path: "/notes",
+          limit: 1000,
+          includeFiles: true,
+          includeDirectories: true,
+          includeHidden: false,
+          respectGitIgnore: false,
+          excludeNames: DEFAULT_EXCLUDE_NAMES,
+        },
+        {
+          type: "host.list_files",
+          path: "/notes",
+          limit: 1000,
+          includeHidden: false,
+          respectGitIgnore: false,
+          excludeNames: [".obsidian"],
         },
         {
           type: "host.mkdir",

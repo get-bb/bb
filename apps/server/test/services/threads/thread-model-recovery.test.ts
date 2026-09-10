@@ -13,7 +13,8 @@ import {
 import { withTestHarness } from "../../helpers/test-app.js";
 
 describe("stale model recovery", () => {
-  it("replaces an unavailable sticky override from an explicit available follow-up", async () => {
+  const savedModels = ["claude-mythos-5", "claude-opus-4-8[1m]"];
+  it.each(savedModels)("recovers %s", async (savedModel) => {
     await withTestHarness(async (harness) => {
       const { host, session } = seedHostSession(harness.deps, {
         id: "host-stale-model-recovery",
@@ -36,8 +37,8 @@ describe("stale model recovery", () => {
       });
       setThreadExecutionOverride(harness.db, {
         threadId: thread.id,
-        modelOverride: "claude-mythos-5",
-        reasoningLevelOverride: "high",
+        modelOverride: savedModel,
+        reasoningLevelOverride: "max",
       });
       registerProviderHostRpcResponder(harness, {
         hostId: host.id,
@@ -58,6 +59,8 @@ describe("stale model recovery", () => {
       await recoverThreadModelOverride(harness.deps, {
         model: "claude-opus-4-8[1m]",
         modelSource: "explicit",
+        reasoningLevel: "high",
+        reasoningLevelSource: "explicit",
         thread,
       });
 
@@ -70,7 +73,10 @@ describe("stale model recovery", () => {
           threadId: thread.id,
           requestedExecution: { source: "client/turn/requested" },
         }),
-      ).resolves.toMatchObject({ model: "claude-opus-4-8[1m]" });
+      ).resolves.toMatchObject({
+        model: "claude-opus-4-8[1m]",
+        reasoningLevel: "high",
+      });
     });
   });
 
@@ -112,6 +118,8 @@ describe("stale model recovery", () => {
       const recovery = {
         model: "claude-opus-4-8[1m]",
         modelSource: "explicit" as const,
+        reasoningLevel: undefined,
+        reasoningLevelSource: undefined,
         thread,
       };
 

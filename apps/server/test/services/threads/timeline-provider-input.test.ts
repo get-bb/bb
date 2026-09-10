@@ -156,14 +156,14 @@ describe("timeline pages with provider-recorded input", () => {
 
     const { response } = buildThreadTimelineWithProfile(db, thread, {
       eventBudget: 1_000_000,
-      includeProviderUnhandledOperations: false,
+      includeDiagnosticOperations: false,
       includeNestedRows: true,
       maxInlineOutputChars: 32_000,
       maxSeq: 0,
       page: { kind: "latest", segmentLimit: 20 },
     });
 
-    expect(response.timelinePage).toEqual({
+    expect(response.timelinePage).toMatchObject({
       kind: "latest",
       segmentLimit: 20,
       returnedSegmentCount: 1,

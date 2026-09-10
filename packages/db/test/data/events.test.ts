@@ -58,7 +58,6 @@ import {
   pruneResolvedItemDeltas,
   pruneThreadEventsBeforeSequence,
   listLatestOpenBackgroundTaskStateRowsForThread,
-  STORED_TIMELINE_BYTE_PREFLIGHT_EVENT_LIMIT,
 } from "../../src/data/events.js";
 import { createEnvironment } from "../../src/data/environments.js";
 import { createProject } from "../../src/data/projects.js";
@@ -1597,7 +1596,7 @@ describe("events", () => {
         sequenceStart: 1,
         threadId: thread.id,
       }).map((row) => row.sequence),
-    ).toEqual([1, 2]);
+    ).toEqual([1, 2, 4, 5]);
     expect(
       listRecentStoredEventRows(db, {
         maxInlineOutputChars: null,
@@ -2127,6 +2126,14 @@ describe("events", () => {
     expect(rowsByThreadId.get(thread.id)?.sequence).toBe(1);
     expect(rowsByThreadId.get(otherThread.id)?.sequence).toBe(1);
     expect(rowsByThreadId.size).toBe(2);
+    expect(
+      listStoredClientTurnRequestRowsByKeys(db, {
+        keys: [
+          { threadId: thread.id, requestId: "creq_23456789ab" },
+          { threadId: thread.id, requestId: "creq_23456789aa" },
+        ],
+      }).map((row) => row.sequence),
+    ).toEqual([1, 2]);
   });
 
   it("batches client turn request keys above the expression-depth limit", () => {
@@ -2913,6 +2920,24 @@ describe("events", () => {
     const hwm = getHighWaterMarks(db, [thread.id]);
     expect(hwm[thread.id]).toBe(10);
     expect(hwm[thread2.id]).toBeUndefined();
+  });
+
+  it("omits empty threads and batches deduplicated high-water mark lookups", () => {
+    const { db, thread } = setup();
+    insertEvents(db, noopNotifier, [
+      {
+        threadId: thread.id,
+        sequence: 10,
+        type: "system/error",
+        ...threadEventFields,
+        data: "{}",
+      },
+    ]);
+    const missing = Array.from({ length: 32_767 }, (_, i) => `missing-${i}`);
+    expect(getHighWaterMarks(db, [thread.id, ...missing, thread.id])).toEqual({
+      [thread.id]: 10,
+    });
+    expect(getHighWaterMarks(db, [])).toEqual(getHighWaterMarks(db));
   });
 
   it("lists events after a given sequence", () => {
@@ -4652,18 +4677,17 @@ describe("events", () => {
 
   it("lists the latest lifecycle row per open backgroundTask item on a host", () => {
     const db = createMigratedConnection();
-    const host = upsertHost(db, noopNotifier, {
+    const host = upsertHost(db, noopNotifier, { type: "persistent",
       name: "task-host",
-      type: "persistent",
     });
     const { project } = createProject(db, noopNotifier, {
       name: "task-project",
       source: { type: "local_path", hostId: host.id, path: "/tmp/test" },
     });
     const environment = createEnvironment(db, noopNotifier, {
+      providerOwnsPath: false,
       projectId: project.id,
       hostId: host.id,
-      workspaceProvisionType: "unmanaged",
     });
     const thread = createThread(db, noopNotifier, {
       projectId: project.id,
@@ -4992,22 +5016,19 @@ describe("timeline read-boundary output truncation", () => {
     }));
   });
 
-  it("bounds the byte-total preflight before using the early-stopping iterator", () => {
+  it("stops the byte-budget scan before reading older oversized payloads", () => {
     const { db, thread } = setup();
     const validData = JSON.stringify({ message: "valid" });
     insertEvents(
       db,
       noopNotifier,
-      Array.from(
-        { length: STORED_TIMELINE_BYTE_PREFLIGHT_EVENT_LIMIT + 2 },
-        (_, index) => ({
-          threadId: thread.id,
-          sequence: index + 1,
-          type: "system/error" as const,
-          ...threadEventFields,
-          data: validData,
-        }),
-      ),
+      Array.from({ length: 3 }, (_, index) => ({
+        threadId: thread.id,
+        sequence: index + 1,
+        type: "system/error" as const,
+        ...threadEventFields,
+        data: validData,
+      })),
     );
     db.$client
       .prepare("UPDATE events SET data = ? WHERE thread_id = ? AND sequence = 1")
@@ -5025,7 +5046,7 @@ describe("timeline read-boundary output truncation", () => {
       eventDataBytes: Buffer.byteLength(validData),
       hasOlderRows: true,
       kind: "single-event-too-large",
-      sequenceStart: STORED_TIMELINE_BYTE_PREFLIGHT_EVENT_LIMIT + 2,
+      sequenceStart: 3,
       turnId: null,
     });
   });

@@ -6,6 +6,7 @@ import { usePluginList } from "@/hooks/queries/plugin-settings-queries";
 import {
   SETTINGS_MACHINE_ROUTE_PATH,
   SETTINGS_PLUGIN_ROUTE_PATH,
+  SETTINGS_PROJECT_ROUTE_PATH,
   SETTINGS_SECTION_ROUTE_PATH,
 } from "@/lib/route-paths";
 import {
@@ -67,6 +68,11 @@ export function useSettingsNavState(): SettingsNavState {
     location.pathname,
   );
   const activeMachineId = machineMatch?.params.hostId ?? null;
+  const projectMatch = matchPath(
+    SETTINGS_PROJECT_ROUTE_PATH,
+    location.pathname,
+  );
+  const activeProjectId = projectMatch?.params.projectId ?? null;
   const sectionParam = sectionMatch?.params.section;
   const hasUnknownSection =
     sectionParam !== undefined && !isSettingsSectionId(sectionParam);
@@ -75,11 +81,13 @@ export function useSettingsNavState(): SettingsNavState {
       ? "plugins"
       : activeMachineId !== null
         ? "machines"
-        : activePluginId !== null
-          ? null
-          : sectionParam !== undefined && isSettingsSectionId(sectionParam)
-            ? sectionParam
-            : "general";
+        : activeProjectId !== null
+          ? "projects"
+          : activePluginId !== null
+            ? null
+            : sectionParam !== undefined && isSettingsSectionId(sectionParam)
+              ? sectionParam
+              : "general";
 
   const installedPlugins = pluginListQuery.data?.plugins ?? [];
   const pluginEntries = buildPluginSettingsEntries({

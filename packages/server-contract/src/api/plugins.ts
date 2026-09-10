@@ -18,6 +18,7 @@ export {
 };
 
 export const pluginRuntimeStatusSchema = z.enum([
+  "starting",
   "running",
   "error",
   "incompatible",

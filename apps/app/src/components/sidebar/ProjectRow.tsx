@@ -1,4 +1,14 @@
 import {
+  SidebarHeaderControls,
+  SidebarSectionMenuItems,
+} from "./SidebarHeaderControls";
+import { SidebarRowControls, SidebarControlButton } from "./SidebarRowControls";
+import {
+  SIDEBAR_CONTROL_BUTTON_CLASS,
+  SIDEBAR_CONTROL_PAIR_SIZE_CLASS,
+  SIDEBAR_GROUP_TEXT_CLASS,
+} from "./sidebarRowClasses";
+import {
   memo,
   useCallback,
   useMemo,
@@ -17,7 +27,14 @@ import { createPortal } from "react-dom";
 import { PERSONAL_PROJECT_ID, type ThreadListEntry } from "@bb/domain";
 import type { ProjectResponse } from "@bb/server-contract";
 import { NavLink } from "react-router-dom";
-import { useCreateThreadInWorktree } from "@/hooks/useCreateThreadInWorktree";
+import { useCreateThreadInEnvironment } from "@/hooks/useCreateThreadInEnvironment";
+import { useSystemEnvironmentProviders } from "@/hooks/queries/environment-provider-queries";
+import {
+  findEnvironmentDisplayProvider,
+  getEnvironmentLabelIconName,
+  UNNAMED_ENVIRONMENT_LABEL,
+} from "@/lib/environment-workspace-display";
+import { resolveEnvironmentDisplayName } from "@bb/core-ui";
 import {
   usePromptDraftHasInput,
   usePromptDraftInputThreadIds,
@@ -43,7 +60,7 @@ import {
 } from "@/components/ui/sidebar.js";
 import {
   ProjectActionsContextMenu,
-  ProjectActionsMenu,
+  ProjectActionsMenuItems,
 } from "@/components/project/ProjectActionsMenu";
 import {
   EnvironmentRenameDialog,
@@ -72,7 +89,7 @@ import {
 } from "@bb/client-core";
 import { cn } from "@bb/shared-ui/lib/utils";
 import { getMutationErrorMessage } from "@/lib/mutation-errors";
-import { getProjectSettingsRoutePath } from "@/lib/route-paths";
+import { getSettingsProjectRoutePath } from "@/lib/route-paths";
 import { getThreadDisplayTitle } from "@/lib/thread-title";
 import { appToast } from "@/components/ui/app-toast";
 import { useRouteNavigate } from "@/components/ui/app-route-anchor";
@@ -110,7 +127,6 @@ import {
 } from "./sidebarCollapsedAtoms";
 import {
   SIDEBAR_PROJECT_GROUP_LINE_CLASS,
-  SIDEBAR_MORE_ACTION_TRIGGER_CLASS,
   SIDEBAR_ROW_BASE_CLASS,
   getSidebarThreadGroupLineLeft,
   getSidebarThreadRowPaddingLeft,
@@ -164,8 +180,6 @@ export interface ProjectRowProps {
   collapsedThreadIds: Set<string>;
   collapsedEnvironmentIds: Set<string>;
   isLocalPathInvalid: boolean;
-  headerActions?: ReactNode;
-  headerActionsOpen?: boolean;
   onProjectSelect?: () => void;
   onCreateProjectThread?: (projectId: string) => void;
   onToggleProjectCollapsed: (projectId: string) => void;
@@ -202,16 +216,8 @@ interface SectionThreadTreeProps {
   onCreateThreadInSection?: (sectionId: string) => void;
   onRenameSection?: (section: SidebarSectionDefinition) => void;
   onRemoveSection?: (section: SidebarSectionDefinition) => void;
-  renderTopLevelSectionHeaderActions?: (
-    section: SidebarSectionDefinition,
-  ) => TopLevelSectionHeaderActions;
   onToggleThreadCollapsed: (threadId: string) => void;
   onToggleEnvironmentCollapsed: (environmentId: string) => void;
-}
-
-interface TopLevelSectionHeaderActions {
-  actions: ReactNode;
-  actionsOpen: boolean;
 }
 
 interface ChronologicalBuiltInSidebarSections {
@@ -301,7 +307,6 @@ interface ThreadTreeItemRowProps {
   onCreateThreadInSection?: (sectionId: string) => void;
   onRenameSection?: (section: SidebarSectionDefinition) => void;
   onRemoveSection?: (section: SidebarSectionDefinition) => void;
-  renderTopLevelSectionHeaderActions?: SectionThreadTreeProps["renderTopLevelSectionHeaderActions"];
   onToggleThreadCollapsed: (threadId: string) => void;
   onToggleEnvironmentCollapsed: (environmentId: string) => void;
   consumeClickSuppression?: ConsumeDragClickSuppression;
@@ -323,7 +328,6 @@ interface SectionTreeItemRowProps {
   onCreateThreadInSection?: (sectionId: string) => void;
   onRenameSection?: (section: SidebarSectionDefinition) => void;
   onRemoveSection?: (section: SidebarSectionDefinition) => void;
-  renderTopLevelSectionHeaderActions?: SectionThreadTreeProps["renderTopLevelSectionHeaderActions"];
   onToggleThreadCollapsed: (threadId: string) => void;
   onToggleEnvironmentCollapsed: (environmentId: string) => void;
   consumeClickSuppression?: ConsumeDragClickSuppression;
@@ -388,6 +392,7 @@ interface GetThreadNodeStickyLevelArgs {
 
 interface EnvironmentThreadGroupHeaderProps {
   environmentId: string;
+  environmentProviderId: string | null;
   representativeThread: ThreadListEntry;
   rowDepth: number;
   stickyLevel?: number;
@@ -845,19 +850,23 @@ function EnvironmentThreadGroupHeaderActions({
   onOpenChange,
 }: EnvironmentThreadGroupHeaderActionsProps) {
   return (
-    <span className="inline-flex shrink-0 items-center">
+    <SidebarRowControls
+      primaryAction={
+        <SidebarControlButton
+          label="New thread in environment"
+          icon="MessageSquarePlus"
+          onClick={onCreateNewThread}
+        />
+      }
+    >
       <DropdownMenu onOpenChange={onOpenChange}>
         <DropdownMenuTrigger asChild>
           <Button
             type="button"
             variant="ghost"
             size="icon"
-            aria-label="Worktree actions"
-            className={cn(
-              "rounded-md p-0 text-muted-foreground",
-              "data-[state=open]:bg-sidebar-accent data-[state=open]:text-sidebar-foreground",
-              SIDEBAR_MORE_ACTION_TRIGGER_CLASS,
-            )}
+            aria-label="Environment actions"
+            className={SIDEBAR_CONTROL_BUTTON_CLASS}
           >
             <Icon
               name="MoreHorizontal"
@@ -865,18 +874,14 @@ function EnvironmentThreadGroupHeaderActions({
             />
           </Button>
         </DropdownMenuTrigger>
-        <DropdownMenuContent align="end">
-          <DropdownMenuItem onSelect={onCreateNewThread}>
-            <Icon name="MessageSquarePlus" aria-hidden="true" />
-            New thread
-          </DropdownMenuItem>
+        <DropdownMenuContent align="end" mobileTitle="Environment actions">
           <DropdownMenuItem
             onSelect={() => {
               onRenameEnvironment();
             }}
           >
             <Icon name="Edit" aria-hidden="true" />
-            Rename worktree
+            Rename
           </DropdownMenuItem>
           <DropdownMenuItem
             disabled={archiveThreadsPending}
@@ -889,16 +894,17 @@ function EnvironmentThreadGroupHeaderActions({
             }}
           >
             <Icon name="Archive" aria-hidden="true" />
-            Archive worktree
+            Archive
           </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>
-    </span>
+    </SidebarRowControls>
   );
 }
 
 function EnvironmentThreadGroupHeader({
   environmentId,
+  environmentProviderId,
   representativeThread,
   rowDepth,
   stickyLevel,
@@ -912,10 +918,22 @@ function EnvironmentThreadGroupHeader({
   onToggleCollapsed,
 }: EnvironmentThreadGroupHeaderProps) {
   const [isActionsOpen, setIsActionsOpen] = useState(false);
-  const environmentName = representativeThread.environmentName;
-  const branchName = representativeThread.environmentBranchName;
-  const displayName = environmentName || branchName || "Worktree";
-  const iconName: IconName = "FolderGit";
+  const { providers } = useSystemEnvironmentProviders();
+  const providerLookup = findEnvironmentDisplayProvider(
+    providers,
+    environmentProviderId,
+  );
+  const displayName =
+    resolveEnvironmentDisplayName(
+      {
+        name: representativeThread.environmentName,
+        branchName: representativeThread.environmentBranchName,
+        path: representativeThread.environmentPath,
+        environmentProviderId,
+      },
+      providerLookup,
+    ) ?? UNNAMED_ENVIRONMENT_LABEL;
+  const iconName = getEnvironmentLabelIconName(providerLookup);
   const showRollupGlyph =
     isCollapsed &&
     (childActivity.pending ||
@@ -939,7 +957,8 @@ function EnvironmentThreadGroupHeader({
       )}
       <span
         className={cn(
-          "pointer-events-none relative z-10 inline-flex shrink-0 items-center justify-center text-subtle-foreground",
+          "pointer-events-none relative z-10 inline-flex shrink-0 items-center justify-center",
+          SIDEBAR_GROUP_TEXT_CLASS,
           COARSE_POINTER_GLYPH_BOX_CLASS,
         )}
         aria-hidden="true"
@@ -950,7 +969,12 @@ function EnvironmentThreadGroupHeader({
           aria-hidden="true"
         />
       </span>
-      <span className="pointer-events-none relative z-10 flex min-w-0 flex-1 items-center gap-1.5 text-left text-subtle-foreground/80">
+      <span
+        className={cn(
+          "pointer-events-none relative z-10 flex min-w-0 flex-1 items-center gap-1.5 text-left",
+          SIDEBAR_GROUP_TEXT_CLASS,
+        )}
+      >
         <span className="min-w-0 truncate">
           <span>{displayName}</span>
         </span>
@@ -962,18 +986,14 @@ function EnvironmentThreadGroupHeader({
           revealOnHover
         />
       </span>
-      <span
-        className={cn(
-          "relative z-10 shrink-0",
-          COARSE_POINTER_ROW_ACTION_SIZE_CLASS,
-        )}
-      >
+      <span className="relative z-10 inline-flex shrink-0 items-center">
         {showRollupGlyph ? (
           <span
             data-sidebar-hover-actions-open={isActionsOpen ? "true" : undefined}
             className={cn(
               SIDEBAR_HOVER_ACTIONS_FADE_CLASS,
-              "pointer-events-none absolute inset-0 flex items-center justify-end text-subtle-foreground",
+              COARSE_POINTER_ROW_ACTION_SIZE_CLASS,
+              "pointer-events-none absolute right-0 flex items-center justify-end text-subtle-foreground max-md:pointer-coarse:static max-md:pointer-coarse:shrink-0 max-md:pointer-coarse:justify-center",
             )}
           >
             <CollapsedThreadStatusGlyph activity={childActivity} />
@@ -981,9 +1001,13 @@ function EnvironmentThreadGroupHeader({
         ) : null}
         <div
           data-sidebar-hover-actions-open={isActionsOpen ? "true" : undefined}
+          data-sidebar-hover-actions-mobile={
+            SIDEBAR_HOVER_ACTIONS_MOBILE_ALWAYS_VALUE
+          }
           className={cn(
             SIDEBAR_HOVER_ACTIONS_CLASS,
-            "absolute inset-0 flex items-center justify-end",
+            SIDEBAR_CONTROL_PAIR_SIZE_CLASS,
+            "relative flex items-center justify-end",
           )}
         >
           <EnvironmentThreadGroupHeaderActions
@@ -1031,7 +1055,8 @@ const EnvironmentThreadGroupRow = memo(function EnvironmentThreadGroupRow({
   onToggleThreadCollapsed,
   onToggleEnvironmentCollapsed,
 }: EnvironmentThreadGroupRowProps) {
-  const { environmentId, nodes, stats } = environmentThreadGroup;
+  const { environmentId, environmentProviderId, nodes, stats } =
+    environmentThreadGroup;
   const representativeNode = nodes[0];
   const representativeThread = representativeNode.thread;
   const nodeDepth = representativeNode.depth;
@@ -1048,7 +1073,7 @@ const EnvironmentThreadGroupRow = memo(function EnvironmentThreadGroupRow({
           variant,
         })
       : undefined;
-  const createThreadInWorktree = useCreateThreadInWorktree({
+  const createThreadInEnvironment = useCreateThreadInEnvironment({
     projectId,
     environmentId,
   });
@@ -1062,8 +1087,8 @@ const EnvironmentThreadGroupRow = memo(function EnvironmentThreadGroupRow({
     });
   const handleCreateNewThread = useCallback(() => {
     onProjectSelect?.();
-    createThreadInWorktree();
-  }, [createThreadInWorktree, onProjectSelect]);
+    createThreadInEnvironment();
+  }, [createThreadInEnvironment, onProjectSelect]);
   const {
     onRenameDialogOpenChange,
     onRenameEnvironment,
@@ -1092,6 +1117,7 @@ const EnvironmentThreadGroupRow = memo(function EnvironmentThreadGroupRow({
       <SidebarStickyGroup className="space-y-0.5">
         <EnvironmentThreadGroupHeader
           environmentId={environmentId}
+          environmentProviderId={environmentProviderId}
           representativeThread={representativeThread}
           rowDepth={rowDepth}
           stickyLevel={getThreadNodeStickyLevel({
@@ -1164,7 +1190,6 @@ const ThreadTreeItemRow = memo(function ThreadTreeItemRow({
   onCreateThreadInSection,
   onRenameSection,
   onRemoveSection,
-  renderTopLevelSectionHeaderActions,
   onToggleThreadCollapsed,
   onToggleEnvironmentCollapsed,
   consumeClickSuppression,
@@ -1187,7 +1212,6 @@ const ThreadTreeItemRow = memo(function ThreadTreeItemRow({
         onCreateThreadInSection={onCreateThreadInSection}
         onRenameSection={onRenameSection}
         onRemoveSection={onRemoveSection}
-        renderTopLevelSectionHeaderActions={renderTopLevelSectionHeaderActions}
         onToggleThreadCollapsed={onToggleThreadCollapsed}
         onToggleEnvironmentCollapsed={onToggleEnvironmentCollapsed}
         consumeClickSuppression={consumeClickSuppression}
@@ -1299,7 +1323,6 @@ const SectionTreeItemRow = memo(function SectionTreeItemRow({
   onCreateThreadInSection,
   onRenameSection,
   onRemoveSection,
-  renderTopLevelSectionHeaderActions,
   onToggleThreadCollapsed,
   onToggleEnvironmentCollapsed,
   consumeClickSuppression,
@@ -1400,101 +1423,32 @@ const SectionTreeItemRow = memo(function SectionTreeItemRow({
   ) : null;
 
   if (variant === "section" && depthOffset === 0) {
-    const externalHeaderActions = renderTopLevelSectionHeaderActions?.(section);
-    const hasMenuActions = Boolean(onRenameSection || onRemoveSection);
-    const hasTopLevelActions = Boolean(
-      externalHeaderActions?.actions ||
-      hasMenuActions ||
-      onCreateThreadInSection,
-    );
-    const topLevelActionsOpen =
-      isTopLevelActionsOpen || externalHeaderActions?.actionsOpen === true;
-    const topLevelActionControls = (
-      <>
-        {externalHeaderActions?.actions}
-        {hasMenuActions ? (
-          <DropdownMenu onOpenChange={setIsTopLevelActionsOpen}>
-            <DropdownMenuTrigger asChild>
-              <Button
-                type="button"
-                variant="ghost"
-                size="icon"
-                aria-label={`${section.name} section actions`}
-                className={cn(
-                  "rounded-md p-0 text-subtle-foreground hover:bg-transparent hover:text-foreground",
-                  SIDEBAR_MORE_ACTION_TRIGGER_CLASS,
-                )}
-              >
-                <Icon
-                  name="MoreHorizontal"
-                  className={COARSE_POINTER_ICON_SIZE_CLASS}
-                />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
-              {onRenameSection ? (
-                <DropdownMenuItem onSelect={() => onRenameSection(section)}>
-                  <Icon name="Edit" aria-hidden="true" />
-                  Rename
-                </DropdownMenuItem>
-              ) : null}
-              {onRemoveSection ? (
-                <DropdownMenuItem
-                  variant="destructive"
-                  onSelect={() => onRemoveSection(section)}
-                >
-                  <Icon name="Trash2" aria-hidden="true" />
-                  Remove
-                </DropdownMenuItem>
-              ) : null}
-            </DropdownMenuContent>
-          </DropdownMenu>
-        ) : null}
-        {onCreateThreadInSection ? (
-          <Button
-            type="button"
-            variant="ghost"
-            size="icon"
-            aria-label={`New thread in ${section.name}`}
-            onClick={() => onCreateThreadInSection(section.id)}
-            className={cn(
-              "rounded-md p-0 text-subtle-foreground hover:bg-transparent hover:text-foreground",
-              COARSE_POINTER_ROW_ACTION_SIZE_CLASS,
-            )}
-          >
-            <Icon
-              name="MessageSquarePlus"
-              className={COARSE_POINTER_ICON_SIZE_CLASS}
-            />
-          </Button>
-        ) : null}
-      </>
-    );
-    const topLevelActions = hasTopLevelActions ? (
-      <span
-        data-sidebar-hover-actions-open={
-          topLevelActionsOpen ? "true" : undefined
+    const topLevelActions = (
+      <SidebarHeaderControls
+        label={`${section.name} section`}
+        onNewThread={
+          onCreateThreadInSection
+            ? () => onCreateThreadInSection(section.id)
+            : undefined
         }
-        data-sidebar-hover-actions-mobile={
-          SIDEBAR_HOVER_ACTIONS_MOBILE_ALWAYS_VALUE
-        }
-        className={cn(
-          SIDEBAR_HOVER_ACTIONS_CLASS,
-          "relative z-10 inline-flex shrink-0 items-center",
-          SIDEBAR_HOVER_ACTIONS_GAP_CLASS,
-        )}
+        onOpenChange={setIsTopLevelActionsOpen}
       >
-        {topLevelActionControls}
-      </span>
-    ) : null;
-
+        <SidebarSectionMenuItems
+          onRename={
+            onRenameSection ? () => onRenameSection(section) : undefined
+          }
+          onRemove={
+            onRemoveSection ? () => onRemoveSection(section) : undefined
+          }
+        />
+      </SidebarHeaderControls>
+    );
     return (
       <TopLevelSidebarSection
         label={section.name}
         sectionId={section.id}
         actions={topLevelActions}
-        actionsAlwaysVisible
-        actionsOpen={topLevelActionsOpen}
+        actionsOpen={isTopLevelActionsOpen}
         actionsMobileAlways
         collapseControl={{
           isCollapsed,
@@ -1704,7 +1658,6 @@ interface SectionThreadTreeItemsProps {
   onCreateThreadInSection?: (sectionId: string) => void;
   onRenameSection?: (section: SidebarSectionDefinition) => void;
   onRemoveSection?: (section: SidebarSectionDefinition) => void;
-  renderTopLevelSectionHeaderActions?: SectionThreadTreeProps["renderTopLevelSectionHeaderActions"];
 }
 
 function useWindowedThreadItems({
@@ -1775,7 +1728,6 @@ function SectionThreadTreeItems({
   onCreateThreadInSection,
   onRenameSection,
   onRemoveSection,
-  renderTopLevelSectionHeaderActions,
 }: SectionThreadTreeItemsProps) {
   const { itemKeys, estimateRows, getNavigationEntries, alwaysMountedKeys } =
     useWindowedThreadItems({
@@ -1812,9 +1764,6 @@ function SectionThreadTreeItems({
             onCreateThreadInSection={onCreateThreadInSection}
             onRenameSection={onRenameSection}
             onRemoveSection={onRemoveSection}
-            renderTopLevelSectionHeaderActions={
-              renderTopLevelSectionHeaderActions
-            }
             sectionDnd={sectionDnd ?? undefined}
           />
         );
@@ -1999,7 +1948,6 @@ export const ChronologicalSectionThreadSections = memo(
     onCreateThreadInSection,
     onRenameSection,
     onRemoveSection,
-    renderTopLevelSectionHeaderActions,
     onToggleThreadCollapsed,
     onToggleEnvironmentCollapsed,
     builtInSections,
@@ -2128,7 +2076,6 @@ export const ChronologicalSectionThreadSections = memo(
         onCreateThreadInSection={onCreateThreadInSection}
         onRenameSection={onRenameSection}
         onRemoveSection={onRemoveSection}
-        renderTopLevelSectionHeaderActions={renderTopLevelSectionHeaderActions}
       />
     );
 
@@ -2290,8 +2237,6 @@ function ProjectRowComponent({
   collapsedThreadIds,
   collapsedEnvironmentIds,
   isLocalPathInvalid,
-  headerActions,
-  headerActionsOpen = false,
   onProjectSelect,
   onCreateProjectThread,
   onToggleProjectCollapsed,
@@ -2304,8 +2249,7 @@ function ProjectRowComponent({
 }: ProjectRowProps) {
   const [isDropdownActionsOpen, setIsDropdownActionsOpen] = useState(false);
   const [isContextActionsOpen, setIsContextActionsOpen] = useState(false);
-  const isActionsOpen =
-    isDropdownActionsOpen || isContextActionsOpen || headerActionsOpen;
+  const isActionsOpen = isDropdownActionsOpen || isContextActionsOpen;
   const projectThreads = useMemo(
     () =>
       isCollapsed && threadListState.status === "ready"
@@ -2328,19 +2272,9 @@ function ProjectRowComponent({
   }, [draftThreadIds, isCollapsed, projectThreads, threadListState.status]);
   const projectActions = (
     <>
-      {headerActions ? (
-        <span
-          data-sidebar-hover-actions-open={
-            headerActionsOpen ? "true" : undefined
-          }
-          className={SIDEBAR_HOVER_ACTIONS_CLASS}
-        >
-          {headerActions}
-        </span>
-      ) : null}
       {isLocalPathInvalid ? (
         <NavLink
-          to={getProjectSettingsRoutePath(project.id)}
+          to={getSettingsProjectRoutePath(project.id)}
           onClick={(event) => {
             event.stopPropagation();
             onProjectSelect?.();
@@ -2369,34 +2303,13 @@ function ProjectRowComponent({
             SIDEBAR_HOVER_ACTIONS_GAP_CLASS,
           )}
         >
-          <ProjectActionsMenu
-            project={project}
+          <SidebarHeaderControls
+            label={project.name}
+            onNewThread={onCreateProjectThread ? handleCreateThread : undefined}
             onOpenChange={setIsDropdownActionsOpen}
-            triggerClassName={cn(
-              "relative z-10 text-subtle-foreground hover:bg-transparent hover:text-foreground",
-              SIDEBAR_MORE_ACTION_TRIGGER_CLASS,
-            )}
-          />
-          <Button
-            type="button"
-            variant="ghost"
-            size="icon"
-            aria-label={`New thread in ${project.name}`}
-            disabled={!onCreateProjectThread}
-            onClick={(event) => {
-              event.stopPropagation();
-              handleCreateThread();
-            }}
-            className={cn(
-              "rounded-md p-0 text-subtle-foreground hover:bg-transparent hover:text-foreground",
-              COARSE_POINTER_ROW_ACTION_SIZE_CLASS,
-            )}
           >
-            <Icon
-              name="MessageSquarePlus"
-              className={COARSE_POINTER_ICON_SIZE_CLASS}
-            />
-          </Button>
+            <ProjectActionsMenuItems project={project} surface="dropdown" />
+          </SidebarHeaderControls>
         </span>
       </span>
     </>
@@ -2530,8 +2443,6 @@ function areProjectRowPropsEqual(
     prev.isCollapsed !== next.isCollapsed ||
     prev.compareThreads !== next.compareThreads ||
     prev.isLocalPathInvalid !== next.isLocalPathInvalid ||
-    prev.headerActions !== next.headerActions ||
-    prev.headerActionsOpen !== next.headerActionsOpen ||
     prev.onProjectSelect !== next.onProjectSelect ||
     prev.onCreateProjectThread !== next.onCreateProjectThread ||
     prev.onToggleProjectCollapsed !== next.onToggleProjectCollapsed ||

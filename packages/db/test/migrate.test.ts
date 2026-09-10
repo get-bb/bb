@@ -94,6 +94,13 @@ interface MigratedThreadProvenanceRow {
   sourceThreadId: string | null;
 }
 
+interface BackfilledEnvironmentRow {
+  id: string;
+  environmentProviderId: string | null;
+  environmentProviderSelection: string | null;
+  environmentProviderInstanceKey: string | null;
+}
+
 interface MigratedThreadVisibilityRow {
   id: string;
   visibility: string;
@@ -206,6 +213,13 @@ interface TableInfoRow {
   notnull: number;
 }
 
+interface ForeignKeyRow {
+  childColumn: string;
+  onDelete: string;
+  parentColumn: string;
+  parentTable: string;
+}
+
 interface ReadIndexNamesArgs {
   db: DbConnection;
   tableName: string;
@@ -299,6 +313,8 @@ function dropThreadConversationOutlinesTable(db: DbConnection): void {
 }
 
 function dropRewindAddedTables(db: DbConnection): void {
+  rewindEnvironmentRowFactsMigration(db);
+  rewindEnvironmentProvidersMigration(db);
   dropThreadConversationOutlinesTable(db);
   db.$client.prepare("DROP TABLE IF EXISTS thread_tabs").run();
   db.$client.prepare("DROP TABLE IF EXISTS automation_runs").run();
@@ -452,6 +468,12 @@ const steerOnEnterDefaultMigrationPath = resolve(
   "..",
   "drizzle",
   "0112_steer_on_enter_default.sql",
+);
+const retainedEventOutputsMigrationPath = resolve(
+  __dirname,
+  "..",
+  "drizzle",
+  "0114_public_iron_lad.sql",
 );
 const providerSettingsToPluginsMigrationPath = resolve(
   __dirname,
@@ -646,6 +668,8 @@ function dropMarketplaceCatalogSchema(db: DbConnection): void {
 }
 
 function dropEventToolNameColumn(db: DbConnection): void {
+  db.$client.prepare("DROP TABLE IF EXISTS ui_preferences").run();
+  db.$client.prepare("DROP TABLE IF EXISTS retained_event_outputs").run();
   dropThreadConversationOutlinesTable(db);
   db.$client.exec("DROP INDEX IF EXISTS events_delegating_item_lookup_idx");
   db.$client.exec("DROP INDEX IF EXISTS events_plan_steps_thread_sequence_idx");
@@ -703,7 +727,39 @@ function dropMarketplaceStatsColumn(db: DbConnection): void {
  * nothing here. Every rewind that clears 0110's journal row also clears
  * 0108's, so the replay recreates the table before 0110 drops it again.
  */
+function rewindEnvironmentProvisioningMigration(db: DbConnection): void {
+  const columns = db.$client
+    .prepare<[], TableInfoRow>("PRAGMA table_info(environments)")
+    .all();
+  for (const name of [
+    "environments_owner_thread_idx",
+    "environments_claim_idx",
+  ])
+    db.$client.exec(`DROP INDEX IF EXISTS ${name}`);
+  for (const column of columns) {
+    if (
+      [
+        "owner_thread_id",
+        "attempt",
+        "claim_path",
+        "status_message",
+        "pending_log",
+      ].includes(column.name) ||
+      column.name === "replaced_environment_id"
+    )
+      db.$client.exec(`ALTER TABLE environments DROP COLUMN ${column.name}`);
+  }
+  const threadColumns = db.$client
+    .prepare<[], TableInfoRow>("PRAGMA table_info(threads)")
+    .all();
+  if (threadColumns.some((column) => column.name === "startup_context"))
+    db.$client.exec(
+      "ALTER TABLE threads RENAME COLUMN startup_context TO pending_start_context",
+    );
+}
+
 function dropQueueReworkSchema(db: DbConnection): void {
+  rewindEnvironmentProvisioningMigration(db);
   // Indexes first: SQLite refuses to drop a column an existing index names.
   for (const index of [
     "queued_thread_messages_due_idx",
@@ -745,9 +801,135 @@ function dropEnvironmentNameColumn(db: DbConnection): void {
 }
 
 function dropEnvironmentDestroyAttemptIdColumn(db: DbConnection): void {
+  const columns = db.$client
+    .prepare<[], TableInfoRow>("PRAGMA table_info(environments)")
+    .all();
+  if (columns.some((column) => column.name === "destroy_attempt_id")) {
+    db.$client
+      .prepare("ALTER TABLE environments DROP COLUMN destroy_attempt_id")
+      .run();
+  }
+}
+
+function rewindEnvironmentRowFactsMigration(db: DbConnection): void {
+  rewindEnvironmentProvisioningMigration(db);
+  const columns = new Set(
+    db.$client
+      .prepare<[], TableInfoRow>("PRAGMA table_info(environments)")
+      .all()
+      .map((column) => column.name),
+  );
+  if (columns.has("provider_owns_path")) {
+    db.$client
+      .prepare("ALTER TABLE environments DROP COLUMN provider_owns_path")
+      .run();
+  }
+  if (columns.has("is_worktree")) {
+    db.$client
+      .prepare("ALTER TABLE environments DROP COLUMN is_worktree")
+      .run();
+  }
+}
+
+function rewindEnvironmentProvidersMigration(db: DbConnection): void {
+  rewindEnvironmentProvisioningMigration(db);
+  db.$client.exec("DROP TABLE IF EXISTS environment_hook_operations");
+  db.$client.exec("DROP TABLE IF EXISTS environment_launches");
+  db.$client.exec("DROP INDEX IF EXISTS environments_project_host_path_idx");
+  const lifecycleColumns = [
+    "environment_provider_plugin_id",
+    "canonical_path",
+    "retire_at",
+    "teardown_attempt",
+    "teardown_status",
+    "teardown_message",
+    "resource",
+  ];
+  for (const column of lifecycleColumns) {
+    const columns = db.$client
+      .prepare<[], TableInfoRow>("PRAGMA table_info(environments)")
+      .all();
+    if (columns.some((entry) => entry.name === column))
+      db.$client.exec(`ALTER TABLE environments DROP COLUMN ${column}`);
+  }
+
+  const columns = new Set(
+    db.$client
+      .prepare<[], TableInfoRow>("PRAGMA table_info(environments)")
+      .all()
+      .map((column) => column.name),
+  );
+  if (!columns.has("managed")) {
+    db.$client
+      .prepare(
+        "ALTER TABLE environments ADD COLUMN managed integer NOT NULL DEFAULT 0",
+      )
+      .run();
+  }
+  if (!columns.has("destroy_attempt_id")) {
+    db.$client
+      .prepare("ALTER TABLE environments ADD COLUMN destroy_attempt_id text")
+      .run();
+  }
+  if (!columns.has("retire_requested_at")) {
+    db.$client
+      .prepare(
+        "ALTER TABLE environments ADD COLUMN retire_requested_at integer",
+      )
+      .run();
+  }
+  if (!columns.has("workspace_provision_type")) {
+    db.$client
+      .prepare(
+        "ALTER TABLE environments ADD COLUMN workspace_provision_type text NOT NULL DEFAULT 'unmanaged'",
+      )
+      .run();
+  }
+  if (!columns.has("is_worktree")) {
+    db.$client
+      .prepare(
+        "ALTER TABLE environments ADD COLUMN is_worktree integer NOT NULL DEFAULT 0",
+      )
+      .run();
+  }
+  if (!columns.has("environment_provider_id")) return;
   db.$client
-    .prepare("ALTER TABLE environments DROP COLUMN destroy_attempt_id")
+    .prepare(
+      `UPDATE environments
+         SET workspace_provision_type = 'managed-worktree',
+             managed = 1,
+             base_branch = COALESCE(
+               json_extract(environment_provider_selection, '$.inputs.branch.name'),
+               base_branch
+             )
+       WHERE environment_provider_id = 'git-worktree'`,
+    )
     .run();
+  db.$client
+    .prepare(
+      `UPDATE environments
+         SET workspace_provision_type = 'personal',
+             managed = 1
+       WHERE environment_provider_id = 'personal-workspace'`,
+    )
+    .run();
+  db.$client.exec("DROP INDEX IF EXISTS `environments_provider_instance_idx`");
+  db.$client
+    .prepare("ALTER TABLE environments DROP COLUMN environment_provider_id")
+    .run();
+  db.$client
+    .prepare(
+      "ALTER TABLE environments DROP COLUMN environment_provider_selection",
+    )
+    .run();
+  db.$client
+    .prepare(
+      "ALTER TABLE environments DROP COLUMN environment_provider_instance_key",
+    )
+    .run();
+  db.$client.exec(
+    "CREATE UNIQUE INDEX environments_project_host_path_idx ON environments (project_id, host_id, path)",
+  );
 }
 
 function dropPluginArtifactGitCheckoutRootColumn(db: DbConnection): void {
@@ -1432,6 +1614,80 @@ describe("migrate", () => {
     prepareMigratedConnectionTemplate();
   });
 
+  it("adds retained outputs without rewriting events", () => {
+    const db = createMigratedConnection();
+
+    try {
+      const host = upsertHost(db, noopNotifier, {
+        id: "host-retained-output-migration",
+        name: "Migration Host",
+        type: "persistent",
+      });
+      const { project } = createProject(db, noopNotifier, {
+        name: "Migration Project",
+        source: {
+          type: "local_path",
+          hostId: host.id,
+          path: "/tmp/retained-output-migration",
+        },
+      });
+      const thread = createThread(db, noopNotifier, {
+        projectId: project.id,
+        providerId: "codex",
+      });
+      const eventData = JSON.stringify({ message: "existing event" });
+
+      db.$client.prepare("DROP TABLE ui_preferences").run();
+      db.$client.prepare("DROP TABLE retained_event_outputs").run();
+      db.$client
+        .prepare<[string, string, string]>(
+          `
+            INSERT INTO events (
+              id, thread_id, scope_kind, sequence, type, data, created_at
+            ) VALUES (?, ?, 'thread', 1, 'system/error', ?, 1234)
+          `,
+        )
+        .run("evt-retained-output-migration", thread.id, eventData);
+
+      runMigrationFile({
+        db,
+        migrationPath: retainedEventOutputsMigrationPath,
+      });
+
+      expect(
+        db.$client
+          .prepare<[], MigratedEventDataRow>(
+            "SELECT data FROM events WHERE id = 'evt-retained-output-migration'",
+          )
+          .get(),
+      ).toEqual({ data: eventData });
+      expect(
+        readIndexNames({ db, tableName: "retained_event_outputs" }),
+      ).toContain("retained_event_outputs_expiry_idx");
+      expect(
+        db.$client
+          .prepare<[], ForeignKeyRow>(
+            `
+              SELECT
+                "table" AS parentTable,
+                "from" AS childColumn,
+                "to" AS parentColumn,
+                on_delete AS onDelete
+              FROM pragma_foreign_key_list('retained_event_outputs')
+            `,
+          )
+          .get(),
+      ).toEqual({
+        childColumn: "event_id",
+        onDelete: "CASCADE",
+        parentColumn: "id",
+        parentTable: "events",
+      });
+    } finally {
+      closeConnection(db);
+    }
+  });
+
   it("backfills the first checkout commit component for every artifact shape", () => {
     const db = createConnection(":memory:");
     const commit = "d".repeat(40);
@@ -1600,7 +1856,7 @@ describe("migrate", () => {
       expect(getAppSettings(db)).toEqual({
         showKeyboardHints: false,
         steerActiveThreadOnEnter: true,
-        showUnhandledProviderEvents: true,
+        showDiagnosticEvents: true,
         providerOrder: [],
         defaultProviderId: null,
         streamerMode: false,
@@ -2141,6 +2397,8 @@ describe("migrate", () => {
           "DELETE FROM __drizzle_migrations WHERE created_at >= ?",
         )
         .run(permissionModesMigrationWhen);
+      rewindEnvironmentRowFactsMigration(db);
+      rewindEnvironmentProvidersMigration(db);
       dropSideChatPluginExperimentColumn(db);
       dropToolsHubExperimentColumn(db);
       restorePluginsExperimentColumn(db);
@@ -2546,6 +2804,8 @@ describe("migrate", () => {
           "DELETE FROM __drizzle_migrations WHERE created_at >= ?",
         )
         .run(threadSectionsRepairMigrationWhen);
+      rewindEnvironmentRowFactsMigration(db);
+      rewindEnvironmentProvidersMigration(db);
       dropSideChatPluginExperimentColumn(db);
       dropToolsHubExperimentColumn(db);
       restorePluginsExperimentColumn(db);
@@ -2648,6 +2908,8 @@ describe("migrate", () => {
           "DELETE FROM __drizzle_migrations WHERE created_at >= ?",
         )
         .run(threadSectionsRepairMigrationWhen);
+      rewindEnvironmentRowFactsMigration(db);
+      rewindEnvironmentProvidersMigration(db);
       dropSideChatPluginExperimentColumn(db);
       dropToolsHubExperimentColumn(db);
       restorePluginsExperimentColumn(db);
@@ -3437,7 +3699,6 @@ describe("migrate", () => {
           project_id,
           host_id,
           path,
-          workspace_provision_type,
           status,
           created_at,
           updated_at
@@ -3447,7 +3708,6 @@ describe("migrate", () => {
           'proj_deferred_cleanup',
           'host_deferred_cleanup',
           '/tmp/deferred-cleanup',
-          'managed-worktree',
           'provisioning',
           1000,
           1000
@@ -4136,6 +4396,8 @@ describe("migrate", () => {
           `,
         )
         .run("main-0001-hash", publishedTerminalSessionUserInputWhen);
+      rewindEnvironmentRowFactsMigration(db);
+      rewindEnvironmentProvidersMigration(db);
       dropEnvironmentNameColumn(db);
       dropEnvironmentDestroyAttemptIdColumn(db);
       restoreEnvironmentCleanupModeColumn(db);
@@ -4334,6 +4596,8 @@ describe("migrate", () => {
           `,
         )
         .run(terminalSessionRuntimeStateHonestyWhen);
+      rewindEnvironmentRowFactsMigration(db);
+      rewindEnvironmentProvidersMigration(db);
       dropEnvironmentNameColumn(db);
       dropEnvironmentDestroyAttemptIdColumn(db);
       dropQueuedMessageSenderThreadIdColumn(db);
@@ -5227,6 +5491,8 @@ describe("migrate", () => {
         providerId: "codex",
       });
 
+      rewindEnvironmentRowFactsMigration(db);
+      rewindEnvironmentProvidersMigration(db);
       dropEventParentToolCallIdColumn(db);
       dropMarketplaceStatsColumn(db);
       dropQueueReworkSchema(db);
@@ -5315,4 +5581,504 @@ describe("migrate", () => {
       closeConnection(db);
     }
   });
+});
+
+describe("environment providers migration", () => {
+  const environmentProvidersMigrationWhen = 1788386943764;
+
+  function seedPreProviderEnvironments(db: DbConnection): void {
+    db.$client.prepare("DROP TABLE ui_preferences").run();
+    db.$client.prepare("DROP TABLE retained_event_outputs").run();
+    rewindEnvironmentRowFactsMigration(db);
+    rewindEnvironmentProvidersMigration(db);
+    db.$client
+      .prepare<[number]>(
+        "DELETE FROM __drizzle_migrations WHERE created_at >= ?",
+      )
+      .run(environmentProvidersMigrationWhen);
+    db.$client.exec(`
+      INSERT INTO hosts (id, name, type, created_at, updated_at)
+      VALUES ('host_ep', 'provider host', 'persistent', 1000, 1000);
+
+      INSERT INTO projects (id, name, created_at, updated_at)
+      VALUES ('proj_ep', 'provider project', 1000, 1000);
+
+      INSERT INTO environments (
+        id, project_id, host_id, path, managed, base_branch,
+        retire_requested_at, destroy_attempt_id, workspace_provision_type,
+        status, created_at, updated_at
+      ) VALUES
+        ('env_named', 'proj_ep', 'host_ep', '/w/named', 1, 'release/1.2',
+         NULL, NULL, 'managed-worktree', 'ready', 1000, 1000),
+        ('env_default', 'proj_ep', 'host_ep', '/w/default', 1, NULL,
+         NULL, NULL, 'managed-worktree', 'ready', 1000, 1000),
+        ('env_personal', 'proj_ep', 'host_ep', '/w/personal', 1, NULL,
+         NULL, NULL, 'personal', 'ready', 1000, 1000),
+        ('env_personal_gone', 'proj_ep', 'host_ep', NULL, 1, NULL,
+         NULL, NULL, 'personal', 'destroyed', 1000, 1000),
+        ('env_retiring', 'proj_ep', 'host_ep', '/w/retiring', 1, NULL,
+         5000, NULL, 'managed-worktree', 'retiring', 1000, 1000),
+        ('env_destroying', 'proj_ep', 'host_ep', '/w/destroying', 1, NULL,
+         5000, 'rpc_attempt', 'managed-worktree', 'destroying', 1000, 1000),
+        ('env_unmanaged', 'proj_ep', 'host_ep', '/w/unmanaged', 0, NULL,
+         NULL, NULL, 'unmanaged', 'ready', 1000, 1000);
+    `);
+    const insertPendingThread = db.$client.prepare<[string, string]>(
+      `INSERT INTO threads (
+         id, project_id, provider_id, status, pending_start_context,
+         latest_attention_at, created_at, updated_at
+       ) VALUES (?, 'proj_ep', 'codex', 'pending', ?, 1000, 1000, 1000)`,
+    );
+    insertPendingThread.run(
+      "thr_worktree_pending",
+      JSON.stringify({
+        environmentIntent: {
+          type: "direct-managed",
+          hostId: "host_ep",
+          sourcePath: "/checkouts/bb",
+          baseBranch: { kind: "named", name: "release/1.2" },
+          workspaceProvisionType: "managed-worktree",
+        },
+      }),
+    );
+    insertPendingThread.run(
+      "thr_personal_pending",
+      JSON.stringify({
+        environmentIntent: {
+          type: "direct-personal",
+          hostId: "host_ep",
+          workspaceProvisionType: "personal",
+        },
+      }),
+    );
+  }
+
+  function readPendingStartContext(db: DbConnection, threadId: string) {
+    const row = db.$client
+      .prepare<[string], { startupContext: string | null }>(
+        `SELECT startup_context AS startupContext
+           FROM threads WHERE id = ?`,
+      )
+      .get(threadId);
+    return JSON.parse(row?.startupContext ?? "null") as unknown;
+  }
+
+  it("records bundled plugin owners while migrating legacy environments", () => {
+    const db = createMigratedConnection();
+    try {
+      seedPreProviderEnvironments(db);
+      migrate(db);
+      const rows = db.$client
+        .prepare<[], { provider: string; owner: string | null }>(
+          "SELECT DISTINCT environment_provider_id AS provider, environment_provider_plugin_id AS owner FROM environments ORDER BY provider",
+        )
+        .all();
+      expect(rows).toEqual([
+        { provider: "git-worktree", owner: "environment-git-worktree" },
+        {
+          provider: "personal-workspace",
+          owner: "environment-personal-workspace",
+        },
+        { provider: "project-checkout", owner: "environment-project-checkout" },
+      ]);
+    } finally {
+      db.$client.close();
+    }
+  });
+
+  it("hands managed worktree, personal, and attached rows to their providers", () => {
+    const db = createMigratedConnection();
+
+    try {
+      seedPreProviderEnvironments(db);
+
+      migrate(db);
+
+      expect(
+        db.$client
+          .prepare<[], BackfilledEnvironmentRow>(
+            `
+              SELECT id,
+                     environment_provider_id AS environmentProviderId,
+                     environment_provider_selection AS environmentProviderSelection,
+                     environment_provider_instance_key AS environmentProviderInstanceKey
+              FROM environments
+              ORDER BY id
+            `,
+          )
+          .all(),
+      ).toEqual([
+        {
+          id: "env_default",
+          environmentProviderId: "git-worktree",
+          environmentProviderSelection:
+            '{"machine":{"type":"existing","hostId":"host_ep"},"inputs":{"branch":{"kind":"default"}}}',
+          environmentProviderInstanceKey: null,
+        },
+        {
+          id: "env_destroying",
+          environmentProviderId: "git-worktree",
+          environmentProviderSelection:
+            '{"machine":{"type":"existing","hostId":"host_ep"},"inputs":{"branch":{"kind":"default"}}}',
+          environmentProviderInstanceKey: null,
+        },
+        {
+          id: "env_named",
+          environmentProviderId: "git-worktree",
+          environmentProviderSelection:
+            '{"machine":{"type":"existing","hostId":"host_ep"},"inputs":{"branch":{"kind":"named","name":"release/1.2"}}}',
+          environmentProviderInstanceKey: null,
+        },
+        {
+          id: "env_personal",
+          environmentProviderId: "personal-workspace",
+          environmentProviderSelection:
+            '{"machine":{"type":"existing","hostId":"host_ep"},"inputs":null}',
+          environmentProviderInstanceKey: null,
+        },
+        {
+          id: "env_personal_gone",
+          environmentProviderId: "personal-workspace",
+          environmentProviderSelection:
+            '{"machine":{"type":"existing","hostId":"host_ep"},"inputs":null}',
+          environmentProviderInstanceKey: null,
+        },
+        {
+          id: "env_retiring",
+          environmentProviderId: "git-worktree",
+          environmentProviderSelection:
+            '{"machine":{"type":"existing","hostId":"host_ep"},"inputs":{"branch":{"kind":"default"}}}',
+          environmentProviderInstanceKey: null,
+        },
+        {
+          id: "env_unmanaged",
+          environmentProviderId: "project-checkout",
+          environmentProviderSelection:
+            '{"machine":{"type":"existing","hostId":"host_ep"},"inputs":{"path":"/w/unmanaged"}}',
+          environmentProviderInstanceKey: null,
+        },
+      ]);
+    } finally {
+      closeConnection(db);
+    }
+  });
+
+  it("hands main's path-less legacy rows to each environment provider", () => {
+    const db = createMigratedConnection();
+
+    try {
+      seedPreProviderEnvironments(db);
+      db.$client.exec(`
+        INSERT INTO environments (
+          id, project_id, host_id, path, managed, base_branch,
+          retire_requested_at, destroy_attempt_id, workspace_provision_type,
+          status, created_at, updated_at
+        ) VALUES
+          ('env_pathless_managed', 'proj_ep', 'host_ep', NULL, 1, NULL,
+           NULL, NULL, 'managed-worktree', 'error', 1000, 1000),
+          ('env_pathless_personal', 'proj_ep', 'host_ep', NULL, 1, NULL,
+           NULL, NULL, 'personal', 'error', 1000, 1000),
+          ('env_pathless_unmanaged', 'proj_ep', 'host_ep', NULL, 0, NULL,
+           NULL, NULL, 'unmanaged', 'error', 1000, 1000);
+      `);
+
+      migrate(db);
+
+      expect(
+        db.$client
+          .prepare<
+            [],
+            {
+              environmentProviderId: string | null;
+              environmentProviderSelection: string | null;
+              id: string;
+              isWorktree: number;
+              path: string | null;
+              providerOwnsPath: number;
+              status: string;
+            }
+          >(
+            `
+              SELECT id,
+                     path,
+                     status,
+                     environment_provider_id AS environmentProviderId,
+                     environment_provider_selection AS environmentProviderSelection,
+                     is_worktree AS isWorktree,
+                     provider_owns_path AS providerOwnsPath
+              FROM environments
+              WHERE id LIKE 'env_pathless_%'
+              ORDER BY id
+            `,
+          )
+          .all(),
+      ).toEqual([
+        {
+          id: "env_pathless_managed",
+          path: null,
+          status: "error",
+          environmentProviderId: "git-worktree",
+          environmentProviderSelection:
+            '{"machine":{"type":"existing","hostId":"host_ep"},"inputs":{"branch":{"kind":"default"}}}',
+          isWorktree: 1,
+          providerOwnsPath: 1,
+        },
+        {
+          id: "env_pathless_personal",
+          path: null,
+          status: "error",
+          environmentProviderId: "personal-workspace",
+          environmentProviderSelection:
+            '{"machine":{"type":"existing","hostId":"host_ep"},"inputs":null}',
+          isWorktree: 0,
+          providerOwnsPath: 1,
+        },
+        {
+          id: "env_pathless_unmanaged",
+          path: null,
+          status: "error",
+          environmentProviderId: "project-checkout",
+          environmentProviderSelection:
+            '{"machine":{"type":"existing","hostId":"host_ep"},"inputs":{}}',
+          isWorktree: 0,
+          providerOwnsPath: 0,
+        },
+      ]);
+    } finally {
+      closeConnection(db);
+    }
+  });
+
+  it("backfills the worktree and path-ownership row facts by provider", () => {
+    const db = createMigratedConnection();
+
+    try {
+      seedPreProviderEnvironments(db);
+
+      migrate(db);
+
+      expect(
+        db.$client
+          .prepare<
+            [],
+            { id: string; isWorktree: number; providerOwnsPath: number }
+          >(
+            `
+              SELECT id,
+                     is_worktree AS isWorktree,
+                     provider_owns_path AS providerOwnsPath
+              FROM environments
+              ORDER BY id
+            `,
+          )
+          .all(),
+      ).toEqual([
+        { id: "env_default", isWorktree: 1, providerOwnsPath: 1 },
+        { id: "env_destroying", isWorktree: 1, providerOwnsPath: 1 },
+        { id: "env_named", isWorktree: 1, providerOwnsPath: 1 },
+        { id: "env_personal", isWorktree: 0, providerOwnsPath: 1 },
+        { id: "env_personal_gone", isWorktree: 0, providerOwnsPath: 1 },
+        { id: "env_retiring", isWorktree: 1, providerOwnsPath: 1 },
+        { id: "env_unmanaged", isWorktree: 0, providerOwnsPath: 0 },
+      ]);
+    } finally {
+      closeConnection(db);
+    }
+  });
+
+  it("settles retiring and destroying rows and drops core's retire, destroy and provision type columns", () => {
+    const db = createMigratedConnection();
+
+    try {
+      seedPreProviderEnvironments(db);
+
+      migrate(db);
+
+      expect(
+        db.$client
+          .prepare<[], { id: string; status: string }>(
+            "SELECT id, status FROM environments ORDER BY id",
+          )
+          .all(),
+      ).toEqual([
+        { id: "env_default", status: "ready" },
+        { id: "env_destroying", status: "error" },
+        { id: "env_named", status: "ready" },
+        { id: "env_personal", status: "ready" },
+        { id: "env_personal_gone", status: "destroyed" },
+        { id: "env_retiring", status: "ready" },
+        { id: "env_unmanaged", status: "ready" },
+      ]);
+
+      const environmentColumns = db.$client
+        .prepare<[], TableInfoRow>("PRAGMA table_info(environments)")
+        .all()
+        .map((column) => column.name);
+      expect(environmentColumns).not.toContain("managed");
+      expect(environmentColumns).not.toContain("retire_requested_at");
+      expect(environmentColumns).not.toContain("destroy_attempt_id");
+      expect(environmentColumns).not.toContain("workspace_provision_type");
+    } finally {
+      closeConnection(db);
+    }
+  });
+
+  it("rewrites pending threads' stored direct intents into provider selections", () => {
+    const db = createMigratedConnection();
+
+    try {
+      seedPreProviderEnvironments(db);
+
+      migrate(db);
+
+      expect(readPendingStartContext(db, "thr_worktree_pending")).toEqual({
+        kind: "pending",
+        environmentIntent: {
+          type: "provider",
+          environmentProviderId: "git-worktree",
+          machine: { type: "existing", hostId: "host_ep" },
+          inputs: { branch: { kind: "named", name: "release/1.2" } },
+        },
+      });
+      expect(readPendingStartContext(db, "thr_personal_pending")).toEqual({
+        kind: "pending",
+        environmentIntent: {
+          type: "provider",
+          environmentProviderId: "personal-workspace",
+          machine: { type: "existing", hostId: "host_ep" },
+          inputs: null,
+        },
+      });
+    } finally {
+      closeConnection(db);
+    }
+  });
+});
+
+describe("environment and thread startup ownership migration", () => {
+  it.each(["creating", "cancelled"])(
+    "preserves %s allocation checkpoints and keeps attached environment resources authoritative",
+    (phase) => {
+      const db = createMigratedConnection();
+      try {
+        rewindEnvironmentProvisioningMigration(db);
+        const legacySchema = readFileSync(
+          resolve(
+            dirname(fileURLToPath(import.meta.url)),
+            "../drizzle/0113_environment_providers.sql",
+          ),
+          "utf8",
+        ).split("--> statement-breakpoint")[0]!;
+        db.$client.exec(legacySchema);
+        db.$client.exec(
+          "DELETE FROM __drizzle_migrations WHERE created_at = (SELECT MAX(created_at) FROM __drizzle_migrations)",
+        );
+        db.$client.exec(`
+        INSERT INTO hosts (id, name, type, created_at, updated_at) VALUES ('host_ownership', 'test', 'persistent', 1, 1);
+        INSERT INTO projects (id, name, created_at, updated_at) VALUES ('proj_ownership', 'test', 1, 1);
+        INSERT INTO threads (id, project_id, provider_id, status, latest_attention_at, created_at, updated_at)
+          VALUES ('thr_creating', 'proj_ownership', 'codex', 'starting', 1, 1, 1), ('thr_attached', 'proj_ownership', 'codex', 'starting', 1, 1, 1);
+        INSERT INTO environments (id, project_id, host_id, path, status, resource, created_at, updated_at)
+          VALUES ('env_attached', 'proj_ownership', 'host_ownership', '/tmp/attached', 'ready', '{"new":"checkpoint"}', 1, 1);
+      `);
+        const request = {
+          clientRequestId: "request",
+          environmentIntent: {
+            type: "provider",
+            environmentProviderId: "test",
+            machine: { type: "existing", hostId: "host_ownership" },
+            inputs: null,
+          },
+          input: [{ type: "text", text: "original message" }],
+        };
+        const selection = JSON.stringify({
+          machine: { type: "existing", hostId: "host_ownership" },
+          inputs: null,
+        });
+        const insert = db.$client
+          .prepare(`INSERT INTO environment_launches (thread_id, provider_id, provider_plugin_id, path_rejected, attempt, phase, started_at, failed_at, failure, message, transient_failures, path_key, host_id, path, claim_path, owns_path, resource, step_text, pending_log, environment_id, selection, request, cancel_pending)
+        VALUES (?, 'test', 'test-plugin', 0, 3, ?, 20, NULL, NULL, NULL, 1, 'stable-key', 'host_ownership', ?, ?, 1, ?, 'Preparing', 'output', ?, ?, ?, 0)`);
+        insert.run(
+          "thr_creating",
+          "creating",
+          "/tmp/creating",
+          "/tmp/creating",
+          '{"allocated":"resource"}',
+          null,
+          selection,
+          JSON.stringify(request),
+        );
+        insert.run(
+          "thr_attached",
+          "ready",
+          "/tmp/attached",
+          "/tmp/attached",
+          '{"old":"checkpoint"}',
+          "env_attached",
+          selection,
+          JSON.stringify(request),
+        );
+        if (phase === "cancelled")
+          db.$client.exec(
+            "UPDATE environment_launches SET phase = 'cancelled', cancel_pending = 1 WHERE thread_id = 'thr_creating'",
+          );
+        migrate(db);
+        expect(
+          db.$client
+            .prepare(
+              "SELECT teardown_status FROM environments WHERE owner_thread_id = 'thr_creating'",
+            )
+            .get(),
+        ).toEqual({
+          teardown_status: phase === "cancelled" ? "running" : null,
+        });
+        const resource = db.$client
+          .prepare(
+            "SELECT id, resource, attempt, claim_path FROM environments WHERE owner_thread_id = 'thr_creating'",
+          )
+          .get();
+        expect(resource).toEqual({
+          id: "env_provision_thr_creating",
+          resource: '{"allocated":"resource"}',
+          attempt: 3,
+          claim_path: "/tmp/creating",
+        });
+        expect(
+          db.$client
+            .prepare(
+              "SELECT resource FROM environments WHERE id = 'env_attached'",
+            )
+            .get(),
+        ).toEqual({ resource: '{"new":"checkpoint"}' });
+        const stored = db.$client
+          .prepare<[], { startup_context: string }>(
+            "SELECT startup_context FROM threads WHERE id = 'thr_creating'",
+          )
+          .get()!;
+        expect(JSON.parse(stored.startup_context).state).not.toHaveProperty(
+          "stage",
+        );
+        expect(JSON.parse(stored.startup_context)).toMatchObject({
+          kind: "provisioning",
+          request,
+          state: {
+            environmentId: null,
+            provisioningId: "provision_migrated_thr_creating",
+          },
+        });
+        expect(
+          db.$client
+            .prepare(
+              "SELECT name FROM sqlite_master WHERE name = 'environment_launches'",
+            )
+            .get(),
+        ).toBeUndefined();
+        expect(db.$client.prepare("PRAGMA foreign_key_check").all()).toEqual(
+          [],
+        );
+      } finally {
+        closeConnection(db);
+      }
+    },
+  );
 });

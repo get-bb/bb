@@ -839,7 +839,7 @@ function ResolvingThreadTitleMention({
         serializedText={serializedText}
       />
     ) : (
-      threadId
+      <span className="truncate">{threadId}</span>
     );
   }
   return (
@@ -862,15 +862,16 @@ function ThreadTitleMentionsContent({ title }: { title: string }) {
         threadId={segment.unresolvedThreadId}
       />
     ) : segment.resource === null || segment.serializedText === null ? (
-      segment.text
-    ) : (
-      <span key={`${index}:${segment.serializedText}`}>
-        <PromptMentionPill
-          interactive={false}
-          resource={segment.resource}
-          serializedText={segment.serializedText}
-        />
+      <span key={`${index}:text`} className="truncate whitespace-pre">
+        {segment.text}
       </span>
+    ) : (
+      <PromptMentionPill
+        key={`${index}:${segment.serializedText}`}
+        interactive={false}
+        resource={segment.resource}
+        serializedText={segment.serializedText}
+      />
     ),
   );
 }

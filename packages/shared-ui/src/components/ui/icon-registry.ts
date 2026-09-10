@@ -1,6 +1,7 @@
 import type { IconSvgElement } from "@hugeicons/react";
 
 export const EXTENDED_ICON_NAMES = [
+  "AiBrain01",
   "AiBrowser",
   "AiContentGenerator01",
   "AlignLeft",
@@ -34,8 +35,10 @@ export const EXTENDED_ICON_NAMES = [
   "CornerDownLeft",
   "CornerDownRight",
   "Discord",
+  "DiscordLogo",
   "DateTime",
   "Github",
+  "GithubLogo",
   "DragDropHorizontal",
   "DragDropVertical",
   "EditFile",
@@ -71,6 +74,7 @@ export const EXTENDED_ICON_NAMES = [
   "Maximize2",
   "Mic",
   "Minimize2",
+  "MoveTo",
   "NewTab",
   "PackageReceive",
   "Palette",
@@ -81,6 +85,7 @@ export const EXTENDED_ICON_NAMES = [
   "Pin",
   "PinOff",
   "Play",
+  "Plug02",
   "Plus",
   "Puzzle",
   "Repeat",

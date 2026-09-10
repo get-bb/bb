@@ -22,10 +22,10 @@ import {
   getEnvironmentWorkspaceStateInvalidationQueryKeys,
   getFetchingThreadListQueryKeys,
   isArchivedThreadListQueryKey,
-  removeEnvironmentDiffPatchQueries,
   updateCachedThreadListPendingInteractionState,
   updateCachedThreadListStatusState,
 } from "./query-cache";
+import { bumpDiffPatchFreshnessGeneration } from "./environment-diff-patch-cache-owner";
 import {
   getCachedThreadLists,
   iterateThreadListCacheEntries,
@@ -44,6 +44,7 @@ import {
   allThreadStorageLocationsQueryKeyPrefix,
   allThreadStoragePathsQueryKeyPrefix,
   allSystemExecutionOptionsQueryKeyPrefix,
+  allSystemThemesQueryKeyPrefix,
   allThreadQueryKeyPrefix,
   allTerminalsQueryKeyPrefix,
   environmentDiffFilesQueryKeyPrefix,
@@ -53,6 +54,7 @@ import {
   hostsQueryKey,
   sidebarNavigationQueryKey,
   systemConfigQueryKey,
+  uiPreferencesQueryKey,
   allSystemProvidersQueryKeyPrefix,
   threadDefaultExecutionOptionsQueryKey,
   threadQueryKey,
@@ -66,6 +68,7 @@ import {
   threadStoragePathsForThreadQueryKeyPrefix,
   threadTimelineQueryKeyPrefix,
 } from "../queries/query-keys";
+import { systemEnvironmentProvidersQueryKey } from "../queries/environment-provider-queries";
 import { schedulePluginFrontendReconcile } from "../../lib/plugin-frontend-lazy";
 import {
   getProjectListInvalidationQueryKeys,
@@ -517,6 +520,7 @@ export const REALTIME_SYSTEM_CHANGE_REGISTRY = {
       dirtyAllThreadTimelineQueries,
       dirtySystemProviderQueries,
       dirtySystemExecutionOptionQueries,
+      dirtyEnvironmentProviderQueries,
     ],
   },
   "plugins-changed": {
@@ -524,11 +528,18 @@ export const REALTIME_SYSTEM_CHANGE_REGISTRY = {
       dirtyPluginContributionQueries,
       dirtyProjectCommandCatalogQueries,
       dirtyPluginManagementQueries,
+      dirtyEnvironmentProviderQueries,
       reconcilePluginFrontendBundles,
     ],
   },
   "provider-registrations-changed": {
     dirty: [dirtySystemProviderQueries, dirtySystemExecutionOptionQueries],
+  },
+  "environment-availability-changed": {
+    dirty: [dirtyEnvironmentProviderQueries],
+  },
+  "ui-preferences-changed": {
+    dirty: [dirtyUiPreferencesQueries],
   },
 } satisfies SystemChangeRegistry;
 
@@ -1022,18 +1033,19 @@ function dirtyEnvironmentRecordQueries(
 function dirtyEnvironmentWorkspaceStateQueries(
   context: EnvironmentRealtimeDirtyContext,
 ): void {
+  bumpDiffPatchFreshnessGeneration(context.environmentId);
   for (const queryKey of getEnvironmentWorkspaceStateInvalidationQueryKeys(
     context,
   )) {
     context.queryClient.invalidateQueries({ queryKey });
   }
-  removeEnvironmentDiffPatchQueries(context);
 }
 
 function dirtyEnvironmentLiveWorkspaceStateQueries({
   environmentId,
   queryClient,
 }: EnvironmentRealtimeDirtyContext): void {
+  bumpDiffPatchFreshnessGeneration(environmentId);
   invalidateQueryKeyWithThrottledActiveRefetch({
     exact: false,
     minIntervalMs: WORK_STATUS_REFETCH_MIN_INTERVAL_MS,
@@ -1046,20 +1058,19 @@ function dirtyEnvironmentLiveWorkspaceStateQueries({
   queryClient.invalidateQueries({
     queryKey: environmentDiffFilesQueryKeyPrefix(environmentId),
   });
-  removeEnvironmentDiffPatchQueries({ environmentId, queryClient });
 }
 
 function dirtyEnvironmentRefDerivedWorkspaceStateQueries({
   environmentId,
   queryClient,
 }: EnvironmentRealtimeDirtyContext): void {
+  bumpDiffPatchFreshnessGeneration(environmentId);
   for (const queryKey of getCachedEnvironmentRefWorkspaceStateInvalidationQueryKeys(
     queryClient,
     { environmentId },
   )) {
     queryClient.invalidateQueries({ queryKey });
   }
-  removeEnvironmentDiffPatchQueries({ environmentId, queryClient });
 }
 
 function dirtyEnvironmentBranchListQueries(
@@ -1114,7 +1125,16 @@ function dirtyHostAvailabilityQueries(): QueryKey[] {
 function dirtySystemConfigQueries({ queryClient }: RealtimeDirtyContext): void {
   invalidateQueryKeysWithoutCancelingActiveFetches({
     queryClient,
-    queryKeys: [systemConfigQueryKey()],
+    queryKeys: [systemConfigQueryKey(), allSystemThemesQueryKeyPrefix()],
+  });
+}
+
+function dirtyUiPreferencesQueries({
+  queryClient,
+}: RealtimeDirtyContext): void {
+  invalidateQueryKeysWithoutCancelingActiveFetches({
+    queryClient,
+    queryKeys: [uiPreferencesQueryKey()],
   });
 }
 
@@ -1146,6 +1166,10 @@ function dirtyPluginManagementQueries(): QueryKey[] {
     allPluginSourceQueryKeyPrefix(),
     allPluginCatalogSearchQueryKeyPrefix(),
   ];
+}
+
+function dirtyEnvironmentProviderQueries(): QueryKey[] {
+  return [systemEnvironmentProvidersQueryKey()];
 }
 
 function reconcilePluginFrontendBundles(): void {

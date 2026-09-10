@@ -15,6 +15,17 @@ What lives here:
 - `src/delta-translation.ts` — pi's session events become bb's thread deltas.
 - `src/bridge/provider-maintenance.ts` — the install gate (`pi --version`
   ≥ 0.84.0) and the npm install/update actions.
+- `src/bridge/extension-ui.ts` — pi extension dialogs reach the user:
+  `ctx.ui.select/confirm/input/editor` inside a pi extension arrive as pi RPC
+  `extension_ui_request` lines, the bridge forwards each dialog as a
+  `provider-pi/extension-ui` interaction request, and the plugin's pending
+  interaction renderer (`app.tsx`) shows it and returns the answer to pi.
+  Fire-and-forget requests (`notify`, `setStatus`, `setWidget`, `setTitle`,
+  `set_editor_text`) are accepted and dropped. A dialog left pending when the
+  session closes is answered cancelled. Requests that fail validation are
+  answered cancelled, never forwarded. Select answers must match an offered
+  option. Helper sessions without a dialog handler automatically cancel dialogs
+  so extensions cannot block helper startup waiting for user input.
 
 ## Skills
 

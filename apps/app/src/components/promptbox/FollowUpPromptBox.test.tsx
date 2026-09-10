@@ -108,7 +108,7 @@ vi.mock("@/components/promptbox/PromptBoxInternal", () => ({
         focusEnd: () => void;
       } | null;
     };
-    submission?: { onModifierSubmit?: () => void };
+    submission?: { onModifierSubmit?: () => void; title?: string };
     suppressPluginComposerCustomizations?: boolean;
     onCollapse?: () => void;
     heightAnimationKey?: string | number;
@@ -157,7 +157,11 @@ vi.mock("@/components/promptbox/PromptBoxInternal", () => ({
       >
         Submit
       </button>
-      <button type="button" onClick={submission?.onModifierSubmit}>
+      <button
+        type="button"
+        title={submission?.title}
+        onClick={submission?.onModifierSubmit}
+      >
         Modifier submit
       </button>
       {onCollapse ? (
@@ -471,6 +475,19 @@ describe("FollowUpPromptBox", () => {
     expect(queuedMessages.previousElementSibling).toBe(pluginHeaderRoot);
   });
 
+  it("lays the banner stack on an explicit single-column track", () => {
+    const props = createFollowUpPromptBoxProps({ kind: "ready" });
+    render(
+      <FollowUpPromptBox
+        {...props}
+        stack={<div data-testid="queued-messages">Queued messages</div>}
+      />,
+    );
+
+    const stack = screen.getByTestId("queued-messages").parentElement;
+    expect(stack?.className).toContain("grid-cols-[minmax(0,1fr)]");
+  });
+
   it("does not mount plugin banners for a retained inactive composer without a real scope", () => {
     setPluginSlotRegistrations(
       "inactive-banner",
@@ -735,6 +752,38 @@ describe("FollowUpPromptBox", () => {
       fireEvent.click(screen.getByText("Modifier submit"));
       expect(expectedModifier).toHaveBeenCalledOnce();
       expect(mocks.scrollToBottom).toHaveBeenCalledOnce();
+    },
+  );
+
+  it.each([
+    { setting: false, title: "Queue follow-up (Enter), Ctrl + Enter to steer" },
+    {
+      setting: true,
+      title: "Steer current run (Enter), Ctrl + Enter to queue",
+    },
+  ])(
+    "shows the platform modifier shortcut in the submit title when steer-on-Enter is $setting",
+    ({ setting, title }) => {
+      const platformMock = vi
+        .spyOn(navigator, "platform", "get")
+        .mockReturnValue("Win32");
+      try {
+        const props = createFollowUpPromptBoxProps({
+          kind: "queue",
+          onStop: vi.fn(),
+        });
+        if (!props.composer) {
+          throw new Error("Expected follow-up composer props");
+        }
+        props.composer.steerActiveThreadOnEnter = setting;
+        render(<FollowUpPromptBox {...props} />);
+
+        expect(screen.getByText("Modifier submit").getAttribute("title")).toBe(
+          title,
+        );
+      } finally {
+        platformMock.mockRestore();
+      }
     },
   );
 

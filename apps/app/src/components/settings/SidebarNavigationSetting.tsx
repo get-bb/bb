@@ -21,7 +21,7 @@ import { usePluginSlots } from "@/lib/plugin-slots";
 const BUILT_IN_OPTION = {
   key: BUILT_IN_REPLACEMENT_PROVIDER,
   title: "bb (built-in)",
-  description: "Native New thread, Search, Extensions, and plugin panels.",
+  description: "Native New thread, Search, Plugins, Skills, and plugin panels.",
 } as const;
 
 export function SidebarNavigationSetting() {

@@ -192,8 +192,8 @@ bb keep-awake hosts all
 bb keep-awake hosts <host-id>...
 ```
 
-The builtin Concurrency limit plugin has an autosaving page under Extensions
-→ Plugins. Its overall limit is unlimited by default. Each host defaults to
+The builtin Concurrency limit plugin has an autosaving page under Plugins →
+Installed plugins. Its overall limit is unlimited by default. Each host defaults to
 Auto: one thread per available processor. A blank host field restores
 Auto, and 0 pauses new work for that scope. Configure it from an agent or
 terminal with:
@@ -204,19 +204,25 @@ bb concurrency-limit global [unlimited|<limit>] [--json]
 bb concurrency-limit host <host-id> [auto|<limit>] [--json]
 ```
 
-The "Show unhandled provider events" toggle in Settings → General exposes raw
-provider events that bb does not yet understand. It defaults to off in packaged
-builds because these diagnostic payloads are noisy. Development builds continue
-to show them regardless of the toggle. Set the persisted preference from an
-agent or terminal with
-`bb settings general showUnhandledProviderEvents <true|false>`.
+The "Show diagnostic events" toggle in Settings → General shows provider
+environment resolution and raw provider events that bb does not yet understand.
+It defaults to off in all builds. Warnings, errors, and model fallback remain
+visible. An existing unhandled-provider-events preference is preserved.
+Set it with `bb settings general showDiagnosticEvents <true|false>` or
+`bb.sdk.system.updateGeneralSettings` using the `showDiagnosticEvents` field.
+For older SDK callers, the general-settings API still accepts and returns
+`showUnhandledProviderEvents` as a deprecated alias. Both names control the same
+setting. When a read-modify-write payload contains conflicting values, the
+value changed from the saved setting wins. Hidden diagnostics do not count
+toward timeline event or byte limits.
 
 The "Default thread followup behavior" picker in Settings → General changes the
 active-thread composer shortcuts when no typeahead suggestion is active. A
 queued message waits and then runs when the agent stops. A steer message goes
 to the agent during the current run. The picker defaults to "Steer" for a new
 install: Enter steers and Command+Enter queues. "Queue" swaps them: Enter
-queues and Command+Enter steers. An earlier install with saved settings or work
+queues and Command+Enter steers. Ctrl+Enter is the same modifier shortcut on
+Windows and Linux. An earlier install with saved settings or work
 keeps "Queue" because a one-time migration stamps the old default onto it. Set
 it with
 `bb settings general steerActiveThreadOnEnter <true|false>`, where `true` is
@@ -234,8 +240,8 @@ and falls back to the provider default; the next send records that default, so
 select the custom model again after you turn streamer mode off. Set it with
 `bb settings general streamerMode <true|false>`.
 
-The "Worktree branch prefix" field in Settings → General sets the text bb puts
-in front of every branch name it creates for a managed worktree or a new
+The "New branch prefix" field in Settings → General sets the text bb
+puts in front of every branch name it creates for a managed worktree or a new
 checkout branch. It defaults to `bb/`, which produces
 `bb/fix-login-flow-thr_ab12cd34ef`. Change it to `sawyer/` to group your branches
 under your own namespace, or clear the field to create
@@ -256,13 +262,8 @@ provider new threads use when neither the caller nor the project chose one
 `bb settings general defaultProviderId claude-code` (or `null`).
 
 Each provider's own options live on its plugin: Codex memory and native
-subagents under the Codex provider plugin, Claude Code memory, native
-subagents, the Workflow tool, and opt-in idle process release under the Claude
-Code provider plugin. Idle process release closes a quiescent Claude process
-after 30 seconds while keeping its bb thread resumable; it defaults off during
-its bake period and applies on the next start, resume, or turn command. Read and
-set provider options like any plugin setting, for example
-`bb plugin config provider-claude-code set idleQueryReleaseEnabled true`.
+subagents under the Codex provider plugin, and Claude Code memory, native
+subagents, and the Workflow tool under the Claude Code provider plugin.
 
 Claude Code starts without its Claude in Chrome browser tools when bb runs it,
 even when the interactive `claude` CLI has Chrome enabled by default. Turn the
@@ -496,7 +497,7 @@ For repo-specific guidance, create `.bb/AGENTS.md` at the workspace root:
 <workspace>/.bb/AGENTS.md
 ```
 
-The file contents are appended to bb's standard agent instructions when a
+The file contents are appended alongside enabled plugin instructions when a
 provider session starts, so the guidance applies regardless of which provider
 runs. When both files exist, `<dataDir>/AGENTS.md` is appended first and
 `<workspace>/.bb/AGENTS.md` second. An empty or whitespace-only file is treated
@@ -511,11 +512,12 @@ for guidance you want every bb thread to receive regardless of provider.
 
 User-level bb skills live under `<dataDir>/skills/<name>/SKILL.md`; for the
 packaged app this is usually `~/.bb/skills`. Project skills live under
-`<workspace>/.bb/skills/<name>/SKILL.md` and override same-named user or built-in
-skills. Running plugins contribute a third tier: every `skills/<name>/SKILL.md`
-in an installed plugin (relocatable via the manifest's `bb.skills` field) is
-auto-imported while the plugin is loaded — overridden by project and user
-skills by name, overriding built-ins.
+`<workspace>/.bb/skills/<name>/SKILL.md` and override same-named user or plugin
+skills. Running plugins contribute another tier: `skills/<name>/SKILL.md`
+files in an installed plugin (relocatable via the manifest's `bb.skills` field)
+are imported while the plugin is loaded, subject to its agent configuration.
+Project and user skills override plugin skills by name. BB guide owns the
+four bundled core skills and can disable them together or individually.
 
 bb indexes each provider's native skill roots for that provider's `/` command
 menu. Each provider plugin declares where its agent keeps skills and slash
@@ -596,6 +598,62 @@ from 5 seconds to 5 minutes, and never downgrade a daemon. Settings → Machines
 and `bb machine retry-update <id-or-name>` can bypass the current backoff after
 a transient failure.
 
+## Sidebar preferences
+
+Sidebar layout preferences are stored on the server in a keyed registry so
+every window, device, and the CLI read the same value. Each key has a typed
+schema, a default, and a revision that increments on every write. Writes name
+the revision they expect and receive `409 ui_preference_conflict` when another
+client wrote first, so a stale window cannot silently clobber a newer value.
+
+| Key                               | Value                                               |
+| --------------------------------- | --------------------------------------------------- |
+| `sidebar.organizationMode`        | `project`, `chronological`, or `machine`            |
+| `sidebar.chronologicalSort`       | `updated`, `created`, `alpha`, or `none`            |
+| `sidebar.sectionOrder`            | Section id list for **By project**                  |
+| `sidebar.manualSectionOrder`      | Section id list for **Manually**                    |
+| `sidebar.machineSectionOrder`     | Section id list for **By machine**                  |
+| `sidebar.collapsedSections`       | Collapsed built-in sections (`pinned`, `threads`)   |
+| `sidebar.collapsedProjects`       | Collapsed project ids                               |
+| `sidebar.collapsedThreads`        | Thread ids whose children are collapsed             |
+| `sidebar.collapsedEnvironments`   | Collapsed environment ids                           |
+| `sidebar.collapsedThreadSections` | Collapsed thread section ids                        |
+| `sidebar.collapsedMachines`       | Collapsed machine ids                               |
+| `sidebar.pluginPanelOrder`        | Navigation entry order                              |
+| `sidebar.visiblePluginPanels`     | Navigation entries shown, or `null` for every entry |
+| `sidebar.navigationProvider`      | Plugin key, `__automatic__`, or `__builtin__`       |
+| `sidebar.threadListProvider`      | Plugin key, `__automatic__`, or `__builtin__`       |
+
+Read and write them with:
+
+```sh
+bb settings ui list [--json]
+bb settings ui get <key> [--json]
+bb settings ui set <key> <value> [--json]
+bb settings ui reset <key> [--json]
+```
+
+`set` takes a plain string for enum and provider keys and JSON for lists and
+`null`, for example `bb settings ui set sidebar.organizationMode machine` or
+`bb settings ui set sidebar.sectionOrder '["threads","pinned","projects"]'`.
+It reads the current revision first and retries once on a conflict. `reset`
+writes the default and advances the revision. The SDK exposes the same
+operations as `sdk.system.uiPreferences.list()`, `.set({ key, value,
+expectedRevision })`, and `.reset({ key })` over `GET /preferences/ui`,
+`PUT /preferences/ui/:key`, and `DELETE /preferences/ui/:key`. Every write
+broadcasts a `ui-preferences-changed` system change to connected clients.
+
+The sidebar waits for these values alongside the project list, so it never
+paints a default layout that then snaps to the saved one. The first client to
+reach a server that has never stored a key uploads the value it finds in the
+old browser storage once, then deletes that copy, so an existing layout
+survives the upgrade; a second device that loses that race adopts the server
+value. A change on one device reaches every other connected window through the
+`ui-preferences-changed` broadcast without a reload.
+
+Sidebar width and open state stay in the browser because they depend on the
+window size.
+
 ## Thread splits
 
 Thread splits enable up to eight panes in the app's multi-pane thread view and
@@ -636,6 +694,7 @@ bb pool account login-poll --session <id>
 bb pool account add --provider claude --import
 bb pool account add --provider codex --import
 printf '%s\n' "$ANTHROPIC_API_KEY" | bb pool account add --provider claude --api-key-stdin [--label <text>] [--priority <n>]
+bb pool account refresh <id>
 ```
 
 The Claude login start command creates a ten-minute in-memory PKCE session,
@@ -663,6 +722,7 @@ Claude Code also receives `ENABLE_TOOL_SEARCH=true`.
 Codex receives `CODEX_OPENAI_BASE_URL` and the secret
 `CODEX_POOL_AUTH_TOKEN`; bb applies both when launching `codex app-server`
 without writing to `~/.codex/config.toml`.
+Codex image generation and editing use the same authenticated pool route.
 Claude Code disables tool search behind a custom base URL by default; the hub
 forwards `tool_reference` blocks unchanged, so the override keeps it on.
 Tokens are never printed
@@ -673,16 +733,18 @@ login. Rotate one machine's token with
 `bb pool token rotate --machine <id-or-name>`; the prior token remains valid
 for ten minutes so in-flight requests can drain. Bypass or restore routing for
 one thread with `bb pool bypass <thread-id>` or
-`bb pool bypass <thread-id> --off`. Account listing, enable, disable, and
-removal are available through `bb pool account list|enable|disable|remove`.
+`bb pool bypass <thread-id> --off`. Account listing, enable, disable, removal,
+priority changes, and usage refreshes are available through
+`bb pool account list|enable|disable|remove|priority|refresh`.
 Provider routing is independently persisted and defaults on. Use
 `bb pool routing <claude|codex> --off` to stop contributing pool environment
 and health for one provider, and omit `--off` to enable it again.
 OAuth accounts refresh quota from Anthropic's usage endpoint when added or
-enabled and every five minutes while idle. `account list` adds columns for the
-family buckets Anthropic reports; JSON status exposes their utilization,
-reset, status, observation time, and `header` or `usage` source under
-`familyWeekly`. Requests route around an account spent for their model family
+enabled and every five minutes while idle. Use `bb pool account refresh <id>`
+to request an immediate refresh for one account. `account list` adds columns
+for the family buckets Anthropic reports; JSON status exposes their
+utilization, reset, status, observation time, and `header` or `usage` source
+under `familyWeekly`. Requests route around an account spent for their model family
 without disabling that account for other families. Imported and newly signed-in
 accounts retain their Anthropic account UUID, and the hub aligns a present
 `metadata.user_id` account component with the selected account.
@@ -712,10 +774,9 @@ receiving matching traffic and defaults to `0.98`.
 `anthropicUpstreamBaseUrl` defaults to `https://api.anthropic.com` and
 `codexUpstreamBaseUrl` defaults to
 `https://chatgpt.com/backend-api/codex`. Codex uses the hub's HTTP Responses
-and models routes and prefers its WebSocket Responses route; the hub keeps the
-downstream WebSocket session semantics while forwarding upstream over HTTPS
-SSE. Both URL values exist only for tests and QA with a controlled fake
-upstream. Inspect or update the full plugin KV-backed configuration with:
+and models routes; the hub forwards each request upstream over HTTPS SSE
+without keeping session state. Both URL values exist only for tests and QA
+with a controlled fake upstream. Inspect or update the full plugin KV-backed configuration with:
 
 ```sh
 bb pool config
@@ -789,21 +850,21 @@ need the experiment on, the bb paired (`bb connect --code …`), and the connect
 plugin enabled; with the experiment off the panel hides the section and
 `bb connect machine-code` exits 1 with a pointer to the toggle.
 
-## Experiments
+## Message editing
 
-Experimental surfaces are changed in Settings → Experiments or with
-`bb settings experiment <key> <true|false>`. Most start off; `editMessages`
-starts on and its toggle is the opt-out.
-The default-off `changelogPreview` experiment shows the latest release notes
-as a compact, dismissible card on Settings → Updates.
-The `editMessages` experiment is on by default and enables replacing an
-eligible, accepted root user message in a Codex, Claude Code, or Pi thread,
-including failed or incomplete turns. Turn it off to hide the editor. Grouped
+Message editing is available for eligible, accepted root user messages in a
+Codex, Claude Code, or Pi thread, including failed or incomplete turns. Grouped
 multi-message requests are not yet editable. Opening the editor does not change
 history; if the thread is running, submission stops the current turn and waits
 for it to settle before atomically replacing that message and every later turn
 while keeping workspace changes.
 
+## Experiments
+
+Experimental surfaces are changed in Settings → Experiments or with
+`bb settings experiment <key> <true|false>`. All experiments start off.
+The default-off `changelogPreview` experiment shows the latest release notes
+as a compact, dismissible card on Settings → Updates.
 The `mobileApp` experiment turns on pairing for the bb mobile app: the
 **Add mobile device** card under Settings → Remote access and the
 `bb connect machine-code` command (see "Pairing the bb mobile app" above). It
@@ -827,34 +888,33 @@ wrappers while mounting only rows near their active scrollport. Toggle it with
 
 ## Thread Timeline Window
 
-A thread-timeline window is bounded by segment (user-message) count _and_ by
-event count. Segment count alone is a weak bound on work, because an agentic
-turn can be thousands of events: a thread with 21 user messages and 21k events
-used to reproject its entire history on every timeline request. That projection
-is synchronous, so it blocked the server's event loop — which also delayed
-`/internal/session/events`, the endpoint the host daemon awaits before every
-dynamic tool call and before registering every interactive request. One slow
-thread therefore slowed agent work on _every_ thread on the host.
+Timeline pages select conversation groups using user-message anchors. The
+`BB_FF_TIMELINE_WINDOW_EVENT_BUDGET` setting (default 1500) guides the number
+of groups selected and limits the number of content leaves returned. Grouping
+loads complete selected turns, their delegation descendants, and lifecycle
+context. The setting is not a hard limit on query bytes, event count, or CPU:
+one large turn can require substantially more work.
 
-A window is capped at `BB_FF_TIMELINE_WINDOW_EVENT_BUDGET` events (default 1500) and returns however many whole turns fit. Older turns load automatically
-as you scroll toward the top of the loaded window; a manual "Load older
-messages" button remains on surfaces that render no scroll body, and after a
-failed page so a broken fetch is retried on request rather than in a loop.
-Nothing becomes unreachable — pagination still walks the full history, and the
-head-state banners (goal, pending todos, running workflows, background
-commands) are resolved by thread-scoped lookups rather than by scanning the
-window, so a narrow window cannot drop them mid-session.
+Pages target 4 MiB of rendered rows. An oversized group is continued by an
+opaque content cursor after grouping. Turn/delegation ancestors keep their
+canonical IDs, source ranges, and summary counts while their children are
+paged. A single indivisible row may exceed the byte target; its content is not
+silently discarded. Retained tool-output previews and full-output availability
+continue to use the large-output sidecar policy.
 
-A turn larger than the whole budget is cut at the budget while it is _running_,
-so watching an agent work through a very long turn costs the budget per update
-rather than the whole turn; scrolling up loads the earlier part. Once the turn
-finishes it is rendered whole again, because a finished turn collapses into one
-summary row that two pages cannot each own — so the budget bounds a running turn
-and a long thread, but not a single finished oversized turn.
+A walk is bound to its initial history sequence, grouping version, and display
+options. Appends do not move that snapshot. Edits, deletions, or out-of-order
+insertions invalidate its cursor, including after a server restart. A new
+latest response replaces the client's loaded snapshot when its identity
+changes; old page responses cannot merge into it. This conservative behavior
+also handles late events that change earlier grouping. It can require loading
+older pages again during live updates.
 
-Raising the budget far above the default restores the previous
-unbounded-in-practice behavior; it is an operator escape hatch set at server
-start, not a product setting.
+Older activity loads as the user scrolls. `bb thread log --all` walks one
+snapshot and joins repeated summary ancestors; rerun it if an edit invalidates
+the walk. The API and SDK contract is described in
+[timeline-pagination.md](timeline-pagination.md). The budget is a server-start
+operator setting, not an app preference.
 
 Timeline builds slower than 150ms log `Thread timeline build blocked the event
 loop` with a per-stage breakdown, and event-loop stalls over 500ms log `Event
@@ -885,7 +945,7 @@ Plugin state lives under the data dir:
 
 BB's official plugins (GitHub, Docs, Memory, and Tasks) ship bundled
 inside the app and install from the local bundled copy — no network, no remote catalog.
-Discover them with `bb plugin search` or Extensions → Plugins → Browse; users
+Discover them with `bb plugin search` or Plugins → Browse plugins; users
 cannot add, remove, or configure the bundled official plugin set. Installed official
 plugins are pinned to the bundled copy and update with BB app releases. Local
 path installs remain available directly through `bb plugin install ./path` or
@@ -959,7 +1019,7 @@ retries structured provider overloads with exponential backoff and jitter.
 Prior output or tool activity does not block recovery. If the provider accepted
 the failed input, core sends an agent-only continuation; if it rejected the
 input before starting, core re-sends the original message as agent-only. Disable
-the plugin under Extensions → Plugins or with
+the plugin under Settings → Installed plugins or with
 `bb plugin disable provider-retry`.
 
 It never blocks a send. A remembered rate limit is a stale picture of the
@@ -989,9 +1049,9 @@ nothing, because waiting does not fix them.
 ### Workflows plugin
 
 The builtin Workflows plugin is disabled on fresh installations. Enable it
-under Extensions → Plugins or with `bb plugin enable workflows`. Its six
-settings are bounded integers, edited with numeric inputs under Extensions →
-Plugins or with `bb plugin config workflows set <key> <value>`:
+under Settings → Installed plugins or with `bb plugin enable workflows`. Its six
+settings are bounded integers, edited with numeric inputs under Plugins →
+Installed plugins or with `bb plugin config workflows set <key> <value>`:
 
 | Key                    |    Default |       Allowed range | Behavior                                               |
 | ---------------------- | ---------: | ------------------: | ------------------------------------------------------ |
@@ -1162,3 +1222,20 @@ The Browser Automation plugin supports desktop attachment and headless Chrome on
 On each selected browser host, the plugin's host worker installs that release automatically on first use under `<plugin host dataDir>/runtime/npm/`, using the host's `npm` with scripts disabled, verifying the registry signature and SLSA provenance, downloading the matching GitHub release binary, and checking its digest before launch. Later sessions reuse the verified install without network access. Headless mode discovers installed Chrome/Chromium or uses `<plugin host dataDir>/runtime/chrome`. These files belong to the plugin host storage directory; they are not paths on the server or invoking agent host, and the user's global npm installation is never modified. No runtime sandbox-disabling setting is provided.
 
 For isolated development smoke tests only, `DEV_BROWSER_SMOKE_BINARY` selects the absolute binary path for the runtime smoke, `DEV_BROWSER_SMOKE_CHROME` selects the absolute Chrome path, and `DEV_BROWSER_SMOKE_NO_SANDBOX=1` enables the fixture's no-sandbox wrapper where the test host requires it. The `smoke:install` task performs a real install of the pinned release into a disposable directory. These variables do not change normal plugin runtime behavior.
+
+## Agent guidance plugin settings
+
+BB guide is installed and enabled by default. In Settings → Installed plugins
+→ BB guide, `introduction` controls the BB introduction, `skills` controls all
+four bundled skills, and `bbCli`, `pluginAuthoring`, `skillCreator`, and `submitPlugin` control
+individual skills. All default to true. Disabling BB guide removes its
+introduction and skills; other plugins and independently installed skill
+copies retain their own configuration.
+
+Connect's `sendRemoteInstructions` setting ("Tell agents about remote access")
+defaults to true. When false it suppresses Connect's active/recent remote-use
+message without disabling sharing.
+
+Use `bb plugin config <id> set <key> true|false` or the SDK's
+`plugins.updateSettings({ pluginId, values })`. These settings apply when
+agent configuration is next assembled, not retroactively to existing text.

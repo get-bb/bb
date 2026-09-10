@@ -19,6 +19,7 @@ import { useAppCommandShortcut } from "@/components/commands/AppCommandProvider"
 import { AppCommandShortcutHint } from "@/components/commands/AppCommandShortcutHint";
 import type { MarkdownLinkRouting } from "@/components/ui/markdown-link-routing.js";
 import { MarkdownPreview } from "@/components/ui/markdown-preview.js";
+import { ImageLightbox } from "@/components/ui/image-lightbox.js";
 import {
   Tooltip,
   TooltipContent,
@@ -1040,12 +1041,23 @@ function CsvFilePreview({ file, onSelectionAddToChat }: CsvFilePreviewProps) {
 }
 
 function FilePreviewImage({ url, alt }: FilePreviewImageProps) {
+  const [isLightboxOpen, setIsLightboxOpen] = useState(false);
+
   return (
     <div className="pt-4">
-      <img
-        src={url}
-        alt={alt}
-        className="block max-h-[34rem] w-full object-contain"
+      <button
+        type="button"
+        className="block w-full cursor-zoom-in"
+        aria-label={`Open ${alt} in full screen preview`}
+        onClick={() => setIsLightboxOpen(true)}
+      >
+        <img src={url} alt={alt} className="mx-auto block h-auto max-w-full" />
+      </button>
+      <ImageLightbox
+        title={alt}
+        imageSrc={isLightboxOpen ? url : null}
+        imageAlt={alt}
+        onClose={() => setIsLightboxOpen(false)}
       />
     </div>
   );

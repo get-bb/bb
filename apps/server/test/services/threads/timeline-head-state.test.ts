@@ -193,7 +193,7 @@ function seedThreadWithEarlyHeadState(
 }
 
 const baseOptions = {
-  includeProviderUnhandledOperations: false,
+  includeDiagnosticOperations: false,
   includeNestedRows: true,
   maxInlineOutputChars: null,
   maxSeq: 0,

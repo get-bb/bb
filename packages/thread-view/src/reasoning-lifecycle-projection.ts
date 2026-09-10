@@ -19,7 +19,6 @@ import {
 } from "./buffered-text-identity.js";
 
 interface ActiveThinkingLifecycle {
-  itemId: string;
   messageKey: string;
   parentToolCallId: string | null;
   sourceSeqStart: number;
@@ -37,6 +36,7 @@ interface ReasoningTurnLifecycleState {
 
 export interface ReasoningProjectionState {
   finalizedReasoningKeys: Set<string>;
+  reasoningDeltaTextByKey: Map<string, { content: string; summary: string }>;
   reasoningMessagesAwaitingCompletion: Map<
     string,
     EventProjectionOperationMessage
@@ -95,6 +95,7 @@ interface FinalizeOpenReasoningLifecyclesForTurnArgs extends FinalizeOpenReasoni
 export function createReasoningProjectionState(): ReasoningProjectionState {
   return {
     openReasoningLifecyclesByKey: new Map(),
+    reasoningDeltaTextByKey: new Map(),
     reasoningTextBuffersByKey: new Map(),
     finalizedReasoningKeys: new Set(),
     reasoningMessagesAwaitingCompletion: new Map(),
@@ -150,7 +151,11 @@ export function buildProjectionActiveThinking(
   }
 
   return {
-    id: latestLifecycle.itemId,
+    id: messageId(
+      latestLifecycle.threadId,
+      "op",
+      `reasoning:${latestLifecycle.messageKey}`,
+    ),
     text: getActiveThinkingText(state, latestLifecycle.messageKey),
     startedAt: latestLifecycle.startedAt,
     updatedAt: latestLifecycle.updatedAt,
@@ -183,7 +188,6 @@ export function upsertReasoningLifecycle(
   }
 
   args.state.openReasoningLifecyclesByKey.set(messageKey, {
-    itemId: args.identity.itemId,
     messageKey,
     parentToolCallId: args.parentToolCallId ?? null,
     sourceSeqStart: args.meta.seq,
@@ -231,7 +235,7 @@ function finalizeReasoningLifecycleByKey(
     ...(lifecycle.parentToolCallId
       ? { parentToolCallId: lifecycle.parentToolCallId }
       : {}),
-    opType: "operation",
+    opType: "reasoning",
     title: `Thought for ${durationToCompactString(
       args.meta.createdAt - lifecycle.startedAt,
     )}`,
@@ -250,6 +254,7 @@ export function finalizeReasoningLifecycle(
   }
 
   const messageKey = createBufferedTextInstanceKey(args.identity);
+  args.state.reasoningDeltaTextByKey.delete(messageKey);
   const message =
     args.state.reasoningMessagesAwaitingCompletion.get(messageKey);
   if (message) {

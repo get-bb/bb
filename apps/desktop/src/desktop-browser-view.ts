@@ -274,6 +274,7 @@ export interface DesktopBrowserViewManager {
     threadId: string;
   }): Array<{ tabId: string; webContents: WebContents }>;
   subscribeAutomationTabs(listener: () => void): () => void;
+  profileSession(profile: DesktopBrowserTabProfile): Session;
   attach(args: HostScopedRequestArgs<BbDesktopBrowserAttachRequest>): void;
   detach(args: HostScopedTabArgs): void;
   focus(args: HostScopedTabArgs): void;
@@ -489,6 +490,12 @@ export function createDesktopBrowserViewManager(
         clearTimeout(hideCap);
         applyEntryVisibility(entry, hostWindow);
       });
+  }
+
+  function partitionForProfile(profile: DesktopBrowserTabProfile): string {
+    return profile.kind === "personal"
+      ? partition
+      : `persist:bb-browser-automation-${createHash("sha256").update(profile.id).digest("hex")}`;
   }
 
   function ensureHardenedSession(tabPartition: string): Session {
@@ -776,10 +783,7 @@ export function createDesktopBrowserViewManager(
   }
 
   function createEntry(args: CreateEntryArgs): BrowserViewEntry {
-    const tabPartition =
-      args.profile.kind === "personal"
-        ? partition
-        : `persist:bb-browser-automation-${createHash("sha256").update(args.profile.id).digest("hex")}`;
+    const tabPartition = partitionForProfile(args.profile);
     ensureHardenedSession(tabPartition);
     const view = new WebContentsView({
       webPreferences: {
@@ -977,6 +981,9 @@ export function createDesktopBrowserViewManager(
         entry.hostWindow,
         browserViewKey(entry.hostWindow, ref.tabId),
       );
+    },
+    profileSession(profile) {
+      return ensureHardenedSession(partitionForProfile(profile));
     },
     async captureTab(request) {
       const entry = requireNativeEntry(request);
