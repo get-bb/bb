@@ -191,6 +191,11 @@ function captureStatements(
       const statement = originalPrepare(source);
       const originalAll = statement.all.bind(statement);
       const originalGet = statement.get.bind(statement);
+      const originalRun = statement.run.bind(statement);
+      statement.run = (...params: unknown[]) => {
+        captured.push({ params: params as SqliteParameter[], sql: source });
+        return originalRun(...params);
+      };
       statement.all = (...params: unknown[]) => {
         captured.push({ params: params as SqliteParameter[], sql: source });
         return originalAll(...params);
@@ -1332,7 +1337,20 @@ describe("slow query index plans", () => {
     ]);
     logger.clear();
 
-    expect(pruneResolvedItemDeltas(db, { threadId: thread.id })).toBe(1);
+    const captured = captureStatements(db, () => {
+      expect(pruneResolvedItemDeltas(db, { threadId: thread.id })).toBe(1);
+    });
+    const emitted = captured.find((query) =>
+      query.sql.startsWith("DELETE FROM events"),
+    );
+    expect(emitted).toBeDefined();
+    const plan = queryPlanDetails({ db, ...emitted! });
+    expect(plan).toContain(
+      "candidate USING COVERING INDEX events_delta_prune_idx",
+    );
+    expect(plan).toContain(
+      "USING COVERING INDEX events_delta_prune_idx (thread_id=? AND type=? AND turn_id=? AND item_id=? AND parent_tool_call_id=? AND sequence<?)",
+    );
     const pruneQuery = findOnlyDebugLog({
       logger,
       predicate: (fields) =>

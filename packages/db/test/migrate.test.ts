@@ -673,6 +673,7 @@ function dropEventToolNameColumn(db: DbConnection): void {
   dropThreadConversationOutlinesTable(db);
   db.$client.exec("DROP INDEX IF EXISTS events_delegating_item_lookup_idx");
   db.$client.exec("DROP INDEX IF EXISTS events_plan_steps_thread_sequence_idx");
+  db.$client.exec("DROP INDEX IF EXISTS events_delta_prune_idx");
   // The same rewind also rewinds the later deferred-message table (0108).
   db.$client.prepare("DROP TABLE IF EXISTS deferred_thread_messages").run();
   // Generated columns are omitted from table_info but included in table_xinfo.
@@ -4424,6 +4425,7 @@ describe("migrate", () => {
         "events_background_task_thread_type_item_sequence_idx",
         "events_completed_item_truncation_idx",
         "events_delegating_item_lookup_idx",
+        "events_delta_prune_idx",
         "events_environment_idx",
         "events_item_lifecycle_thread_item_sequence_idx",
         "events_parent_tool_call_thread_parent_sequence_idx",
@@ -5562,6 +5564,7 @@ describe("environment providers migration", () => {
         "DELETE FROM __drizzle_migrations WHERE created_at >= ?",
       )
       .run(environmentProvidersMigrationWhen);
+    db.$client.exec("DROP INDEX IF EXISTS events_delta_prune_idx");
     db.$client.exec(`
       INSERT INTO hosts (id, name, type, created_at, updated_at)
       VALUES ('host_ep', 'provider host', 'persistent', 1000, 1000);

@@ -744,6 +744,18 @@ export const events = sqliteTable(
       .where(
         sql`${table.type} IN ('item/started', 'item/completed', 'item/backgroundTask/completed')`,
       ),
+    index("events_delta_prune_idx")
+      .on(
+        table.threadId,
+        table.type,
+        table.turnId,
+        table.itemId,
+        table.parentToolCallId,
+        table.sequence,
+      )
+      .where(
+        sql`${table.type} IN ('item/agentMessage/delta', 'item/commandExecution/outputDelta', 'item/reasoning/summaryTextDelta', 'item/reasoning/textDelta')`,
+      ),
     index("events_environment_idx").on(table.environmentId),
     index("events_completed_item_truncation_idx")
       .on(table.itemKind, table.createdAt, table.id)
