@@ -32,6 +32,7 @@ import { rankAcceptedAssetEncodings } from "../asset-content-encoding.js";
 import { pluginImageResponse } from "./plugin-image-response.js";
 import {
   pluginApplyUpdateRequestSchema,
+  pluginRpcDiscoveryQuerySchema,
   pluginInstallRequestSchema,
   pluginSettingsUpdateRequestSchema,
   pluginTokenRequestSchema,
@@ -371,6 +372,13 @@ export function registerPluginRoutes(
       plugins,
       route: fresh.value,
     });
+  });
+
+  app.get("/plugins/rpc", (context) => {
+    const query = pluginRpcDiscoveryQuerySchema.safeParse(context.req.query());
+    if (!query.success)
+      return context.json({ error: "Invalid RPC discovery query" }, 400);
+    return context.json(plugins.discoverRpc(query.data));
   });
 
   app.get("/plugins", (context) => context.json({ plugins: plugins.list() }));

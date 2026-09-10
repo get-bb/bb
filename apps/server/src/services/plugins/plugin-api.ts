@@ -92,6 +92,8 @@ import {
   parsePluginAgentToolPresentation,
   pluginCliCollisionWarning,
   readRpcMethodContract,
+  readRpcPublicationOptions,
+  publishRpcMethod,
   registerSettingDescriptors,
   rejectStaleAgentToolFields,
   RESERVED_AGENT_TOOL_NAMES,
@@ -198,6 +200,7 @@ export interface PluginWebSocketRouteRecord {
 }
 
 export interface PluginRpcHandler {
+  publication: ReturnType<typeof publishRpcMethod>;
   inputSchema: StandardSchemaV1;
   outputSchema: StandardSchemaV1;
   handler: (input: unknown) => unknown;
@@ -938,7 +941,7 @@ export function createPluginApi(options: {
   };
 
   const rpc: PluginRpc = {
-    register(contract, handlers) {
+    register(contract, handlers, options) {
       assertLive();
       if (
         typeof contract !== "object" ||
@@ -955,6 +958,7 @@ export function createPluginApi(options: {
         throw new Error("rpc.register handlers must be an object");
       }
 
+      const publicationOptions = readRpcPublicationOptions(options);
       const pending: Array<[string, PluginRpcHandler]> = [];
       const contractEntries = Object.entries(contract);
       const contractNames = new Set(contractEntries.map(([name]) => name));
@@ -984,6 +988,11 @@ export function createPluginApi(options: {
         pending.push([
           name,
           {
+            publication: publishRpcMethod(
+              name,
+              methodContract,
+              publicationOptions,
+            ),
             inputSchema: methodContract.input,
             outputSchema: methodContract.output,
             handler,

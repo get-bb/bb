@@ -1,3 +1,4 @@
+import { usageSnapshotSchema } from "./usage-contract.js";
 import fs from "node:fs/promises";
 import http, { type IncomingMessage, type ServerResponse } from "node:http";
 import path from "node:path";
@@ -5811,4 +5812,34 @@ it("drains a streamed response before disposing the owned transport", async () =
     await reader.cancel().catch(() => undefined);
     await disposing;
   }
+});
+
+it("publishes pooled usage without a display plugin and does not invent unobserved utilization", async () => {
+  const upstream = await startUpstream((_request, response) => {
+    response.end();
+  });
+  cleanups.push(upstream.close);
+  const fixture = await createFixture({ upstreamUrl: upstream.url });
+  const result = usageSnapshotSchema.parse(
+    await fixture.host.harness.behavior.callRpc("provider-usage.v1.get", {
+      refresh: false,
+    }),
+  );
+  expect(result.resources).toEqual([
+    expect.objectContaining({
+      id: fixture.account.id,
+      providerId: "claude-code",
+      scope: { kind: "shared" },
+      observedAt: null,
+      usage: expect.objectContaining({
+        status: "error",
+        message: "Usage has not been observed for this account.",
+      }),
+    }),
+  ]);
+  expect(
+    fixture.host.harness.registrations.experimental_publishedRpcMethods.map(
+      (entry) => entry.method,
+    ),
+  ).toEqual(["provider-usage.v1.get"]);
 });

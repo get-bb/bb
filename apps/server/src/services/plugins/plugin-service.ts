@@ -1,3 +1,7 @@
+import type {
+  PluginRpcDiscoveryQuery,
+  PublishedPluginRpcMethod,
+} from "@bb/server-contract";
 import { watch } from "node:fs";
 import { readFile, rm } from "node:fs/promises";
 import { join } from "node:path";
@@ -300,6 +304,7 @@ export interface PluginService {
     id: string,
     path: string,
   ): PluginWireLookup<PluginWebSocketRouteRecord>;
+  discoverRpc(query: PluginRpcDiscoveryQuery): PublishedPluginRpcMethod[];
   getRpcHandler(id: string, method: string): PluginWireLookup<PluginRpcHandler>;
   invokeHttpRoute(
     id: string,
@@ -2141,6 +2146,32 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
       return wireLookup(id, (plugin) =>
         plugin.handle.websocketRoutes.find((route) => route.path === path),
       );
+    },
+
+    discoverRpc(query) {
+      return [...loaded.entries()]
+        .flatMap(([pluginId, plugin]) => {
+          if (query.pluginId !== undefined && query.pluginId !== pluginId)
+            return [];
+          return [...plugin.handle.rpcHandlers.values()].flatMap(
+            ({ publication }) => {
+              if (
+                publication === null ||
+                (query.method !== undefined &&
+                  publication.method !== query.method)
+              )
+                return [];
+              return [
+                { pluginId, displayName: plugin.manifest.name, ...publication },
+              ];
+            },
+          );
+        })
+        .sort(
+          (a, b) =>
+            a.pluginId.localeCompare(b.pluginId) ||
+            a.method.localeCompare(b.method),
+        );
     },
 
     getRpcHandler(id, method) {

@@ -131,6 +131,45 @@ describe("plugin bb.sdk bind gate", () => {
     ) => ({ pong: true }),
   );
   const disposePluginHost = vi.fn(async () => undefined);
+  it("discovers only published methods from live implementations and removes them on disable", async () => {
+    for (const id of ["usage-a", "usage-b"]) {
+      const rootDir = await writePlugin(workDir, {
+        name: `bb-plugin-${id}`,
+        serverSource: `export default function plugin() {}`,
+      });
+      await service.installPath(rootDir);
+      requireApi(service, id).rpc.register(
+        defineRpcContract({
+          "usage.v1.get": {
+            input: z.null(),
+            output: z.object({ percent: z.number() }),
+            experimental_description: "Current usage",
+          },
+        }),
+        { "usage.v1.get": () => ({ percent: 42 }) },
+        {
+          experimental_discoverable: true,
+          experimental_description: "Usage source",
+        },
+      );
+      requireApi(service, id).rpc.register(
+        { internal: { input: z.null(), output: z.null() } },
+        { internal: () => null },
+      );
+    }
+    expect(
+      service
+        .discoverRpc({ method: "usage.v1.get" })
+        .map((item) => item.pluginId),
+    ).toEqual(["usage-a", "usage-b"]);
+    expect(service.discoverRpc({ method: "internal" })).toEqual([]);
+    expect(service.discoverRpc({ pluginId: "usage-a" })).toHaveLength(1);
+    await service.setEnabled("usage-a", false);
+    expect(service.discoverRpc({}).map((item) => item.pluginId)).toEqual([
+      "usage-b",
+    ]);
+  });
+
   beforeEach(async () => {
     db = createConnection(":memory:");
     migrate(db);

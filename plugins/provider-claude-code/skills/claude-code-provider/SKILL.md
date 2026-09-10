@@ -18,3 +18,7 @@ with `bb plugin config provider-claude-code set <key> <value>`.
 
 Inspect the thread and provider state after a change; do not restart unrelated
 threads or change settings merely to answer a question.
+
+## Discoverable usage
+
+This plugin exposes `provider-usage.v1.get` for independent usage displays. Inspect its descriptions and input/output JSON Schemas with `bb plugin rpc inspect provider-claude-code --method provider-usage.v1.get --json`. The settings Usage limits page discovers these sources; the existing `bb settings usage` command continues to show host-provider maintenance data.
