@@ -448,7 +448,16 @@ export function getSidebarThreadComparator(
     normalizedSort === "created"
       ? compareByCreatedAtDescending
       : compareStandardThreads;
-  return (left, right) => multiplier * base(left, right);
+  return (left, right) => {
+    const comparison = base(left, right);
+    if (
+      normalizedSort === "updated" &&
+      (left.status === "active") !== (right.status === "active")
+    ) {
+      return comparison;
+    }
+    return multiplier * comparison;
+  };
 }
 
 function getSectionMutationErrorMessage(

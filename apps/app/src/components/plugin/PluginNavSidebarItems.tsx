@@ -64,7 +64,10 @@ import {
 import { usePaneContentSplitIndicator } from "@/components/sidebar/paneContentSplitIndicator";
 import type { MiniMapSlot } from "@/components/sidebar/paneContentSplitIndicator";
 import { SplitPaneMiniMap } from "@/components/sidebar/SplitPaneMiniMap";
-import { SIDEBAR_MORE_ACTION_TRIGGER_CLASS } from "@/components/sidebar/sidebarRowClasses";
+import {
+  SIDEBAR_CONTROL_STATE_CLASS,
+  SIDEBAR_MORE_ACTION_TRIGGER_CLASS,
+} from "@/components/sidebar/sidebarRowClasses";
 import {
   SIDEBAR_HOVER_ACTIONS_CLASS,
   SIDEBAR_HOVER_ACTIONS_FADE_CLASS,
@@ -496,8 +499,8 @@ function SidebarNavigationMoreRow({
                 aria-label="More sidebar navigation"
                 className={cn(
                   PROJECT_LIST_ACTION_BUTTON_CLASS,
-                  "w-full",
-                  isMenuOpen && "bg-sidebar-accent text-sidebar-foreground",
+                  "w-full text-muted-foreground hover:text-sidebar-foreground focus-visible:text-sidebar-foreground data-[state=open]:text-sidebar-foreground",
+                  isMenuOpen && "bg-sidebar-accent",
                 )}
                 data-testid={MORE_TRIGGER_TEST_ID}
               >
@@ -1190,9 +1193,9 @@ function SidebarNavRowChrome({
                   size="icon"
                   aria-label={`${title} panel options`}
                   className={cn(
-                    "rounded-md p-0 text-muted-foreground",
-                    "data-[state=open]:bg-sidebar-accent data-[state=open]:text-sidebar-foreground",
+                    "rounded-md p-0",
                     SIDEBAR_MORE_ACTION_TRIGGER_CLASS,
+                    SIDEBAR_CONTROL_STATE_CLASS,
                   )}
                 >
                   <Icon

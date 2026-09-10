@@ -10,6 +10,7 @@ import {
 import { createStore, Provider } from "jotai";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { TooltipProvider } from "@bb/shared-ui/tooltip";
+import { SIDEBAR_CONTROL_STATE_CLASS } from "./sidebarRowClasses";
 import {
   SidebarHeaderActionsProvider,
   SidebarHeaderControls,
@@ -81,9 +82,23 @@ describe("sidebar header controls", () => {
       expect(primary.nextElementSibling?.getAttribute("aria-label")).toBe(
         `${label} actions`,
       );
+      for (const control of [primary, primary.nextElementSibling]) {
+        for (const token of SIDEBAR_CONTROL_STATE_CLASS.split(" ")) {
+          expect(control?.classList.contains(token)).toBe(true);
+        }
+        expect(control?.classList.contains("hover:bg-sidebar-accent")).toBe(
+          false,
+        );
+        expect(control?.classList.contains("hover:text-foreground")).toBe(
+          false,
+        );
+      }
       fireEvent.click(primary);
       expect(newThread).toHaveBeenCalledOnce();
       await openMenu(label);
+      expect(primary.nextElementSibling?.getAttribute("data-state")).toBe(
+        "open",
+      );
       expect(
         screen.getAllByRole("menuitem").map((item) => item.textContent),
       ).toEqual(["New project", "New section", "Organize", "Sort by"]);

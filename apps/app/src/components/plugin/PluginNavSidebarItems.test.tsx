@@ -15,6 +15,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { CompactViewportOverrideProvider } from "@bb/shared-ui/hooks/use-compact-viewport";
 import { SidebarProvider } from "@/components/ui/sidebar.js";
+import { SIDEBAR_CONTROL_STATE_CLASS } from "@/components/sidebar/sidebarRowClasses";
 import {
   resetPluginSlotStoreForTest,
   setPluginSlotRegistrations,
@@ -333,9 +334,16 @@ describe("PluginNavSidebarItems", () => {
     expect(
       screen.getByRole("button", { name: "Docs" }).classList.contains("pr-18"),
     ).toBe(false);
+    const options = screen.getByRole("button", {
+      name: "Docs panel options",
+    });
+    for (const token of SIDEBAR_CONTROL_STATE_CLASS.split(" ")) {
+      expect(options.classList.contains(token)).toBe(true);
+    }
     expect(
-      screen.queryByRole("button", { name: "Docs panel options" }),
-    ).not.toBeNull();
+      options.classList.contains("data-[state=open]:bg-sidebar-accent"),
+    ).toBe(false);
+    expect(options.classList.contains("hover:text-foreground")).toBe(false);
     expect(
       view.container.querySelector("[data-plugin-nav-sidebar-accessory]"),
     ).toBeNull();
@@ -680,7 +688,19 @@ describe("PluginNavSidebarItems", () => {
       screen.getByTestId("plugin-nav-sidebar-items").lastElementChild,
     ).toBe(screen.getByTestId("sidebar-navigation-more-row"));
 
+    const trigger = moreTrigger();
+    for (const token of [
+      "text-muted-foreground",
+      "hover:text-sidebar-foreground",
+      "focus-visible:text-sidebar-foreground",
+      "data-[state=open]:text-sidebar-foreground",
+    ]) {
+      expect(trigger.classList.contains(token)).toBe(true);
+    }
+    expect(trigger.getAttribute("data-state")).toBe("closed");
+
     const items = await openMoreMenu();
+    expect(trigger.getAttribute("data-state")).toBe("open");
     expect(items.map((item) => item.textContent?.trim())).toEqual([
       "Search threads",
       "Customize sidebar",
@@ -694,6 +714,7 @@ describe("PluginNavSidebarItems", () => {
       ctrlKey: false,
     });
     await waitFor(() => expect(screen.queryByRole("menu")).toBeNull());
+    expect(trigger.getAttribute("data-state")).toBe("closed");
   });
 
   it("opens a hidden plugin in a split on modifier-click from More", async () => {

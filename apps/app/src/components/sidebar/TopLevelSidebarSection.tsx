@@ -25,7 +25,8 @@ import {
 import type { ConsumeDragClickSuppression } from "@/components/ui/use-drag-click-suppression";
 import {
   SIDEBAR_STANDARD_ROW_PADDING_CLASS,
-  SIDEBAR_CONTROL_TONE_CLASS,
+  SIDEBAR_CONTROL_STATE_CLASS,
+  SIDEBAR_GROUP_TEXT_CLASS,
 } from "./sidebarRowClasses";
 import type { SidebarSortableDragBindings } from "./sortableMotion";
 import {
@@ -56,6 +57,7 @@ export interface TopLevelSidebarSectionProps {
   label: string;
   children: ReactNode;
   sectionId?: string;
+  stickyHeader?: boolean;
   actions?: ReactNode;
   actionsAlwaysVisible?: boolean;
   actionsMobileAlways?: boolean;
@@ -74,6 +76,7 @@ export function TopLevelSidebarSection({
   label,
   children,
   sectionId,
+  stickyHeader = true,
   actions,
   actionsAlwaysVisible = false,
   actionsMobileAlways = false,
@@ -171,8 +174,10 @@ export function TopLevelSidebarSection({
         className={cn(
           SIDEBAR_HOVER_ACTIONS_ROW_CLASS,
           CHROME_SECTION_LABEL_CLASS,
+          SIDEBAR_GROUP_TEXT_CLASS,
           SIDEBAR_STANDARD_ROW_PADDING_CLASS,
           "rounded-md pr-0 transition-colors",
+          !stickyHeader && "relative top-auto",
           dragBindings && !dragBindings.disabled && "select-none",
         )}
         {...dragBindings?.attributes}
@@ -196,8 +201,8 @@ export function TopLevelSidebarSection({
               }
               className={cn(
                 !collapseControl.isCollapsed && SIDEBAR_HOVER_ACTIONS_CLASS,
-                "relative z-20 inline-flex size-6 shrink-0 cursor-pointer items-center justify-center rounded-md outline-none ring-sidebar-ring hover:bg-sidebar-accent focus-visible:ring-2",
-                SIDEBAR_CONTROL_TONE_CLASS,
+                "relative z-20 inline-flex size-6 shrink-0 cursor-pointer items-center justify-center rounded-md outline-none ring-sidebar-ring focus-visible:ring-2",
+                SIDEBAR_CONTROL_STATE_CLASS,
                 LIST_HOVER_TRANSITION,
               )}
               onClick={handleCollapseControlClick}

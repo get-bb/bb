@@ -93,6 +93,7 @@ function BuiltInSidebarSection({
     <SortableSidebarSection
       id={id}
       label={label}
+      stickyHeader={id !== "pinned"}
       disabled={disabled}
       actions={actions}
       actionsOpen={actionsOpen}

@@ -6,6 +6,7 @@ import { SidebarRowControls, SidebarControlButton } from "./SidebarRowControls";
 import {
   SIDEBAR_CONTROL_BUTTON_CLASS,
   SIDEBAR_CONTROL_PAIR_SIZE_CLASS,
+  SIDEBAR_GROUP_TEXT_CLASS,
 } from "./sidebarRowClasses";
 import {
   memo,
@@ -956,7 +957,8 @@ function EnvironmentThreadGroupHeader({
       )}
       <span
         className={cn(
-          "pointer-events-none relative z-10 inline-flex shrink-0 items-center justify-center text-subtle-foreground",
+          "pointer-events-none relative z-10 inline-flex shrink-0 items-center justify-center",
+          SIDEBAR_GROUP_TEXT_CLASS,
           COARSE_POINTER_GLYPH_BOX_CLASS,
         )}
         aria-hidden="true"
@@ -967,7 +969,12 @@ function EnvironmentThreadGroupHeader({
           aria-hidden="true"
         />
       </span>
-      <span className="pointer-events-none relative z-10 flex min-w-0 flex-1 items-center gap-1.5 text-left text-subtle-foreground/80">
+      <span
+        className={cn(
+          "pointer-events-none relative z-10 flex min-w-0 flex-1 items-center gap-1.5 text-left",
+          SIDEBAR_GROUP_TEXT_CLASS,
+        )}
+      >
         <span className="min-w-0 truncate">
           <span>{displayName}</span>
         </span>
@@ -979,18 +986,14 @@ function EnvironmentThreadGroupHeader({
           revealOnHover
         />
       </span>
-      <span
-        className={cn(
-          "relative z-10 shrink-0",
-          SIDEBAR_CONTROL_PAIR_SIZE_CLASS,
-        )}
-      >
+      <span className="relative z-10 inline-flex shrink-0 items-center">
         {showRollupGlyph ? (
           <span
             data-sidebar-hover-actions-open={isActionsOpen ? "true" : undefined}
             className={cn(
               SIDEBAR_HOVER_ACTIONS_FADE_CLASS,
-              "pointer-events-none absolute inset-0 flex items-center justify-end text-subtle-foreground",
+              COARSE_POINTER_ROW_ACTION_SIZE_CLASS,
+              "pointer-events-none absolute right-0 flex items-center justify-end text-subtle-foreground max-md:pointer-coarse:static max-md:pointer-coarse:shrink-0 max-md:pointer-coarse:justify-center",
             )}
           >
             <CollapsedThreadStatusGlyph activity={childActivity} />
@@ -998,9 +1001,13 @@ function EnvironmentThreadGroupHeader({
         ) : null}
         <div
           data-sidebar-hover-actions-open={isActionsOpen ? "true" : undefined}
+          data-sidebar-hover-actions-mobile={
+            SIDEBAR_HOVER_ACTIONS_MOBILE_ALWAYS_VALUE
+          }
           className={cn(
             SIDEBAR_HOVER_ACTIONS_CLASS,
-            "absolute inset-0 flex items-center justify-end",
+            SIDEBAR_CONTROL_PAIR_SIZE_CLASS,
+            "relative flex items-center justify-end",
           )}
         >
           <EnvironmentThreadGroupHeaderActions

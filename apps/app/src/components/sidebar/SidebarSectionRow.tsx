@@ -27,7 +27,7 @@ import { cn } from "@bb/shared-ui/lib/utils";
 import type { CollapsedChildActivity } from "@bb/client-core";
 import {
   SIDEBAR_ROW_BASE_CLASS,
-  SIDEBAR_ROW_STATIC_STATE_CLASS,
+  SIDEBAR_GROUP_TEXT_CLASS,
   getSidebarThreadRowPaddingLeft,
 } from "./sidebarRowClasses";
 import { SidebarChildToggleChevron } from "./SidebarChildToggleChevron";
@@ -115,7 +115,7 @@ function SidebarSectionRowComponent({
     stickyLevel === undefined && "relative",
     SIDEBAR_ROW_BASE_CLASS,
     LIST_HOVER_TRANSITION,
-    SIDEBAR_ROW_STATIC_STATE_CLASS,
+    SIDEBAR_GROUP_TEXT_CLASS,
     COARSE_POINTER_COMPACT_ROW_HEIGHT_CLASS,
     dragBindings && !dragBindings.disabled && "select-none",
     isDropTargetActive && "bg-sidebar-accent text-sidebar-accent-foreground",
