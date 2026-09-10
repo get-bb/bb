@@ -977,7 +977,7 @@ function listThreadSearchMatchRows(
       WHERE t.deleted_at IS NULL
         AND t.visibility = 'visible'
       GROUP BY threadId
-      HAVING COUNT(DISTINCT token_matches.tokenIndex) = ${args.tokenMatchQueries.length}
+      HAVING COUNT(*) = ${args.tokenMatchQueries.length}
     ),
     ordered_threads AS (
       SELECT
@@ -1010,7 +1010,7 @@ function listThreadSearchMatchRows(
         ${isTitleSegment} AS isTitle,
         thread_search_segments.source_kind AS sourceKind,
         thread_search_segments.source_seq AS sourceSeq,
-        thread_search_segments.text AS text,
+        thread_search_segments.rowid AS segmentRowid,
         thread_search_segments.thread_id AS threadId
       FROM thread_search_segments_fts
       JOIN thread_search_segments
@@ -1026,7 +1026,8 @@ function listThreadSearchMatchRows(
       segmentOrder,
       sourceKind,
       sourceSeq,
-      text,
+      (SELECT text FROM thread_search_segments
+       WHERE rowid = ranked_segments.segmentRowid) AS text,
       threadId
     FROM ranked_segments
     WHERE isTitle = 1
