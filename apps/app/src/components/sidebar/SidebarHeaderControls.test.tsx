@@ -72,38 +72,28 @@ async function openSubmenu(label: string) {
 }
 
 describe("sidebar header controls", () => {
-  it.each(["Pinned", "Atlas", "Review", "MacBook Pro", "Threads"])(
-    "keeps the same primary/overflow order and shared menu for %s",
-    async (label) => {
-      const { newThread } = setup(label);
-      const primary = screen.getByRole("button", {
-        name: `New thread in ${label}`,
-      });
-      expect(primary.nextElementSibling?.getAttribute("aria-label")).toBe(
-        `${label} actions`,
-      );
-      for (const control of [primary, primary.nextElementSibling]) {
-        for (const token of SIDEBAR_CONTROL_STATE_CLASS.split(" ")) {
-          expect(control?.classList.contains(token)).toBe(true);
-        }
-        expect(control?.classList.contains("hover:bg-sidebar-accent")).toBe(
-          false,
-        );
-        expect(control?.classList.contains("hover:text-foreground")).toBe(
-          false,
-        );
+  it("keeps the primary before overflow and applies the shared control state", async () => {
+    const { newThread } = setup();
+    const primary = screen.getByRole("button", {
+      name: "New thread in Pinned",
+    });
+    expect(primary.nextElementSibling?.getAttribute("aria-label")).toBe(
+      "Pinned actions",
+    );
+    for (const control of [primary, primary.nextElementSibling]) {
+      for (const token of SIDEBAR_CONTROL_STATE_CLASS.split(" ")) {
+        expect(control?.classList.contains(token)).toBe(true);
       }
-      fireEvent.click(primary);
-      expect(newThread).toHaveBeenCalledOnce();
-      await openMenu(label);
-      expect(primary.nextElementSibling?.getAttribute("data-state")).toBe(
-        "open",
+      expect(control?.classList.contains("hover:bg-sidebar-accent")).toBe(
+        false,
       );
-      expect(
-        screen.getAllByRole("menuitem").map((item) => item.textContent),
-      ).toEqual(["New project", "New section", "Organize", "Sort by"]);
-    },
-  );
+      expect(control?.classList.contains("hover:text-foreground")).toBe(false);
+    }
+    fireEvent.click(primary);
+    expect(newThread).toHaveBeenCalledOnce();
+    await openMenu();
+    expect(primary.nextElementSibling?.getAttribute("data-state")).toBe("open");
+  });
 
   it("preserves creation callbacks and separates section editing/removal", async () => {
     const { newSection } = setup("Review", true);

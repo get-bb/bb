@@ -34,25 +34,19 @@ interface HeaderCreationActions {
 const HeaderCreationContext = createContext<HeaderCreationActions>({});
 export const SidebarHeaderActionsProvider = HeaderCreationContext.Provider;
 
-export const SIDEBAR_ORGANIZE_OPTIONS = [
+const SIDEBAR_ORGANIZE_OPTIONS = [
   { label: "By project", mode: "project" },
   { label: "By machine", mode: "machine" },
   { label: "Custom", mode: "chronological" },
 ] as const;
 
-export const SIDEBAR_SORT_OPTIONS = [
+const SIDEBAR_SORT_OPTIONS = [
   { label: "Updated at", sort: "updated", direction: "descending" },
   { label: "Created at", sort: "created", direction: "descending" },
   { label: "Alphabetical", sort: "alpha", direction: "ascending" },
 ] as const;
 
-function SidebarViewItems({
-  page,
-  onClose,
-}: {
-  page: "organize" | "sort";
-  onClose: () => void;
-}) {
+function SidebarViewItems({ page }: { page: "organize" | "sort" }) {
   const [organization, setOrganization] = useAtom(sidebarOrganizationModeAtom);
   const [sort, setSort] = useAtom(sidebarChronologicalSortAtom);
   const [savedDirection, setDirection] = useAtom(sidebarSortDirectionAtom);
@@ -69,7 +63,6 @@ function SidebarViewItems({
               aria-checked={organization === option.mode}
               onSelect={() => {
                 setOrganization(option.mode);
-                onClose();
               }}
             >
               {option.label}
@@ -142,9 +135,7 @@ export function SidebarHeaderControls({
   const creation = useContext(HeaderCreationContext);
   const compact = useIsCompactViewport();
   const [page, setPage] = useState<"organize" | "sort" | null>(null);
-  const [localOpen, setLocalOpen] = useState(false);
   const changeOpen = (next: boolean) => {
-    setLocalOpen(next);
     if (!next) setPage(null);
     onOpenChange?.(next);
   };
@@ -159,7 +150,7 @@ export function SidebarHeaderControls({
         />
       }
     >
-      <DropdownMenu open={open ?? localOpen} onOpenChange={changeOpen}>
+      <DropdownMenu open={open} onOpenChange={changeOpen}>
         <DropdownMenuTrigger asChild>
           <Button
             type="button"
@@ -196,7 +187,7 @@ export function SidebarHeaderControls({
                 Back
               </DropdownMenuItem>
               <DropdownMenuSeparator />
-              <SidebarViewItems page={page} onClose={() => changeOpen(false)} />
+              <SidebarViewItems page={page} />
             </>
           ) : (
             <>
@@ -241,10 +232,7 @@ export function SidebarHeaderControls({
                     </DropdownMenuSubTrigger>
                     <DropdownMenuPortal>
                       <DropdownMenuSubContent className="min-w-32">
-                        <SidebarViewItems
-                          page={item.page}
-                          onClose={() => changeOpen(false)}
-                        />
+                        <SidebarViewItems page={item.page} />
                       </DropdownMenuSubContent>
                     </DropdownMenuPortal>
                   </DropdownMenuSub>

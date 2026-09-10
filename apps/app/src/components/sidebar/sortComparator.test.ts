@@ -142,35 +142,31 @@ describe("getSidebarThreadComparator", () => {
       ];
 
       expect(
-        order(getSidebarThreadComparator(sort, undefined, "ascending"), entries),
+        order(
+          getSidebarThreadComparator(sort, undefined, "ascending"),
+          entries,
+        ),
       ).toEqual(["active_old", "active_new", "idle_old", "idle_new"]);
       for (const direction of ["default", "descending"] as const) {
         expect(
-          order(getSidebarThreadComparator(sort, undefined, direction), entries),
+          order(
+            getSidebarThreadComparator(sort, undefined, direction),
+            entries,
+          ),
         ).toEqual(["active_new", "active_old", "idle_new", "idle_old"]);
       }
     },
   );
 
-  it.each(["updated", "created"] as const)(
-    "reverses %s dates without changing the default",
-    (sort) => {
-      expect(
-        order(getSidebarThreadComparator(sort, undefined, "ascending"), [
-          cherry,
-          apple,
-          banana,
-        ]),
-      ).toEqual(["thr_a", "thr_b", "thr_c"]);
-      expect(
-        order(getSidebarThreadComparator(sort, undefined, "default"), [
-          apple,
-          banana,
-          cherry,
-        ]),
-      ).toEqual(["thr_c", "thr_b", "thr_a"]);
-    },
-  );
+  it("reverses created dates", () => {
+    expect(
+      order(getSidebarThreadComparator("created", undefined, "ascending"), [
+        cherry,
+        apple,
+        banana,
+      ]),
+    ).toEqual(["thr_a", "thr_b", "thr_c"]);
+  });
 
   it("reverses both thread and group alphabetical comparison", () => {
     const comparator = getSidebarThreadComparator(

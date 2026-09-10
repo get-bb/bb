@@ -4,7 +4,6 @@ import {
   useEffect,
   useMemo,
   useState,
-  type MouseEventHandler,
   type PointerEventHandler,
   type ReactNode,
 } from "react";
@@ -69,10 +68,7 @@ import {
   SidebarGroupContent,
   SidebarStickyStack,
 } from "@/components/ui/sidebar.js";
-import {
-  COARSE_POINTER_ROW_ACTION_SIZE_CLASS,
-  COARSE_POINTER_ROW_HEIGHT_CLASS,
-} from "@bb/shared-ui/coarse-pointer-sizing";
+import { COARSE_POINTER_ROW_HEIGHT_CLASS } from "@bb/shared-ui/coarse-pointer-sizing";
 import {
   ChronologicalSectionThreadSections,
   ProjectThreadTree,
@@ -119,7 +115,6 @@ import {
   type SidebarSectionId,
 } from "./sidebarCollapsedAtoms";
 import { useUiPreferencesReady } from "@/lib/ui-preferences/UiPreferencesSync";
-import { Tooltip, TooltipContent, TooltipTrigger } from "@bb/shared-ui/tooltip";
 import {
   SIDEBAR_ROW_BASE_CLASS,
   SIDEBAR_ROW_INTERACTIVE_STATE_CLASS,
@@ -178,14 +173,6 @@ interface ProjectListShellProps {
   children: ReactNode;
 }
 
-interface ProjectListSectionIconButtonProps {
-  ariaLabel: string;
-  disabled?: boolean;
-  icon: ReactNode;
-  onClick: () => void;
-  title: string;
-}
-
 interface ProjectListNavigationLoadingRowProps {
   textWidthClassName: string;
 }
@@ -203,14 +190,6 @@ export const PROJECT_LIST_ACTION_BUTTON_CLASS = cn(
   COARSE_POINTER_ROW_HEIGHT_CLASS,
   "min-w-0 cursor-pointer justify-start overflow-hidden font-normal ring-sidebar-ring focus-visible:ring-2 disabled:cursor-default disabled:opacity-70 max-md:pointer-coarse:[&_svg]:size-5",
 );
-
-const PROJECT_LIST_SECTION_ACTION_BUTTON_CLASS = cn(
-  "inline-flex items-center justify-center rounded-md text-muted-foreground outline-none ring-sidebar-ring hover:bg-sidebar-accent hover:text-sidebar-foreground focus-visible:ring-2 disabled:opacity-50",
-  LIST_HOVER_TRANSITION,
-  COARSE_POINTER_ROW_ACTION_SIZE_CLASS,
-);
-
-const PROJECT_LIST_SECTION_ACTION_TOOLTIP_DELAY_MS = 350;
 
 interface ProjectThreadListStateArgs {
   status: ConnectionAwareQueryStatus | undefined;
@@ -468,51 +447,6 @@ function getSectionMutationErrorMessage(
     return "Section name already exists.";
   }
   return getMutationErrorMessage({ error, fallbackMessage });
-}
-
-export function ProjectListSectionIconButton({
-  ariaLabel,
-  disabled = false,
-  icon,
-  onClick,
-  title,
-}: ProjectListSectionIconButtonProps) {
-  const handleClick = useCallback<MouseEventHandler<HTMLButtonElement>>(
-    (event) => {
-      event.stopPropagation();
-      if (event.detail > 0) {
-        event.currentTarget.blur();
-      }
-      onClick();
-    },
-    [onClick],
-  );
-
-  const button = (
-    <Button
-      type="button"
-      size="icon"
-      variant="ghost"
-      aria-label={ariaLabel}
-      disabled={disabled}
-      className={PROJECT_LIST_SECTION_ACTION_BUTTON_CLASS}
-      onClick={handleClick}
-    >
-      {icon}
-    </Button>
-  );
-
-  return (
-    <Tooltip
-      delayDuration={PROJECT_LIST_SECTION_ACTION_TOOLTIP_DELAY_MS}
-      disableHoverableContent
-    >
-      <TooltipTrigger asChild>
-        {disabled ? <span className="inline-flex">{button}</span> : button}
-      </TooltipTrigger>
-      <TooltipContent side="bottom">{title}</TooltipContent>
-    </Tooltip>
-  );
 }
 
 export function ProjectListNavigationLoadingState() {
