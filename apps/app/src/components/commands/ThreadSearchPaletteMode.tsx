@@ -30,6 +30,10 @@ import {
   useThreadSearch,
 } from "@/hooks/queries/thread-queries";
 import { useRouteNavigate } from "@/components/ui/app-route-anchor";
+import {
+  NO_THREADS_MESSAGE,
+  ThreadListEmptyState,
+} from "@/components/thread/ThreadListEmptyState";
 import { getRootComposeRoutePath, getThreadRoutePath } from "@/lib/route-paths";
 import { useRootComposeProjectId } from "@/lib/root-compose-selection";
 import { openPaneContentInSplit } from "@/lib/split-layout/openPaneContentInSplit";
@@ -43,10 +47,9 @@ import {
 import { windowPaletteThreadSearchText } from "@/lib/command-palette/palette-thread-search-window";
 import type { PaletteModeViewProps } from "@/lib/command-palette/palette-mode";
 import { PALETTE_FOOTER_LABEL_CLASS, PaletteShell } from "./PaletteShell";
-import { useAppCommandRunner } from "./AppCommandProvider";
 
 const EMPTY_SCOPE_MESSAGES = {
-  all: "No threads yet",
+  all: NO_THREADS_MESSAGE,
   active: "No active threads",
   draft: "No drafts yet",
   archived: "No archived threads",
@@ -63,7 +66,6 @@ export function ThreadSearchPaletteMode({
   const listRef = useRef<HTMLDivElement | null>(null);
   const store = useStore();
   const navigate = useRouteNavigate();
-  const runner = useAppCommandRunner();
   const isCompact = useIsCompactViewport();
   const [query, setQuery] = useState("");
   const [scope, setScope] = useState<PaletteThreadSearchScope>("all");
@@ -160,21 +162,14 @@ export function ThreadSearchPaletteMode({
   const hasLoadError = result.isRecent
     ? navigation.isError || archivedThreads.isError
     : searchResultsAreCurrent && threadSearch.isError;
-  const showNewThread =
+  const showThreadListEmptyState =
     result.rows.length === 0 &&
     result.isRecent &&
     scope === "all" &&
     !isRecentLoading &&
     !hasLoadError;
-  const activeDescendantId = showNewThread
-    ? `${optionIdPrefix}-new-thread`
-    : activeIndex < 0
-      ? undefined
-      : `${optionIdPrefix}-${activeIndex}`;
-
-  const startNewThread = useCallback(() => {
-    runAfterClose(() => runner.dispatch("thread.new", null));
-  }, [runAfterClose, runner]);
+  const activeDescendantId =
+    activeIndex < 0 ? undefined : `${optionIdPrefix}-${activeIndex}`;
 
   const scrollOnNextHighlightRef = useRef(false);
   useEffect(() => {
@@ -248,18 +243,7 @@ export function ThreadSearchPaletteMode({
         onExit();
         return;
       }
-      if (result.rows.length === 0) {
-        if (
-          showNewThread &&
-          event.key === "Enter" &&
-          !event.metaKey &&
-          !event.ctrlKey
-        ) {
-          event.preventDefault();
-          startNewThread();
-        }
-        return;
-      }
+      if (result.rows.length === 0) return;
       if (event.key === "ArrowDown" || event.key === "ArrowUp") {
         event.preventDefault();
         scrollOnNextHighlightRef.current = true;
@@ -284,15 +268,7 @@ export function ThreadSearchPaletteMode({
         openRow(row, event.metaKey || event.ctrlKey);
       }
     },
-    [
-      activeIndex,
-      onExit,
-      openRow,
-      query.length,
-      result.rows,
-      showNewThread,
-      startNewThread,
-    ],
+    [activeIndex, onExit, openRow, query.length, result.rows],
   );
 
   const isLoading =
@@ -331,11 +307,7 @@ export function ThreadSearchPaletteMode({
         />
       }
       footerKeys={activeIndex >= 0 && !isCompact ? presentation.footerKeys : []}
-      inputDescription={
-        showNewThread
-          ? "Press Enter to start a new thread. Use Escape to return to commands."
-          : presentation.inputDescription
-      }
+      inputDescription={presentation.inputDescription}
       inputLabel="Search threads"
       inputRef={inputRef}
       listId={listId}
@@ -366,25 +338,8 @@ export function ThreadSearchPaletteMode({
             onSelect={() => openRow(row, false)}
           />
         ))
-      ) : showNewThread ? (
-        <div className="flex flex-col items-center gap-4 px-3 py-8">
-          <div className="space-y-1 text-center">
-            <p className="text-sm">No threads yet</p>
-            <p className="text-sm text-subtle-foreground">
-              Start a thread to ask a question or work on a task.
-            </p>
-          </div>
-          <Button
-            id={`${optionIdPrefix}-new-thread`}
-            role="option"
-            aria-selected
-            tabIndex={-1}
-            size="sm"
-            onClick={startNewThread}
-          >
-            New thread
-          </Button>
-        </div>
+      ) : showThreadListEmptyState ? (
+        <ThreadListEmptyState className="justify-center px-3 py-8" />
       ) : (
         <p className="px-3 py-8 text-center text-sm text-muted-foreground">
           {emptyMessage}

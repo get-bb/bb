@@ -673,29 +673,26 @@ describe("CommandPalette", () => {
     expect(optionTitles()).toEqual(commandsAfterExit);
   });
 
-  it.each(["pointer", "keyboard"])(
-    "starts a thread from the first-use empty state with %s input",
-    async (inputMethod) => {
-      renderPalette();
-      openThreadSearch();
-      await screen.findByText("No threads yet");
-      expect(
-        screen.getByText("Start a thread to ask a question or work on a task."),
-      ).toBeTruthy();
-      const action = screen.getByRole("option", { name: "New thread" });
-      expectAttribute(action, "aria-selected", "true");
-      expectAttribute(searchField(), "aria-activedescendant", action.id);
-      expect(
-        screen
-          .getByTestId("command-palette")
-          .querySelector("[data-palette-footer]"),
-      ).toBeNull();
-      if (inputMethod === "pointer") fireEvent.click(action);
-      else fireEvent.keyDown(searchField(), { key: "Enter" });
-      await waitFor(() => expect(screen.queryByRole("combobox")).toBeNull());
-      expect(testState.calls).toEqual(["thread.new"]);
-    },
-  );
+  it("shows the shared thread-list empty state without a create action", async () => {
+    renderPalette();
+    openThreadSearch();
+    await screen.findByText("No threads");
+    const palette = screen.getByTestId("command-palette");
+    expect(within(palette).queryByText("New thread")).toBeNull();
+    expect(screen.queryByRole("option")).toBeNull();
+    expect(searchField().hasAttribute("aria-activedescendant")).toBe(false);
+    expect(palette.querySelector("[data-palette-footer]")).toBeNull();
+    fireEvent.keyDown(searchField(), { key: "Enter" });
+    fireEvent.keyDown(searchField(), { key: "Enter", metaKey: true });
+    fireEvent.keyDown(searchField(), { key: "Enter", ctrlKey: true });
+    expect(
+      screen.getByRole("combobox", { name: "Search threads" }),
+    ).toBeTruthy();
+    expect(testState.calls).toEqual([]);
+    expect(routeNavigateMock).not.toHaveBeenCalled();
+    expect(openThreadInSplitMock).not.toHaveBeenCalled();
+    expect(openPaneContentInSplitMock).not.toHaveBeenCalled();
+  });
 
   it.each([
     ["loading", "Loading threads"],
@@ -708,7 +705,9 @@ describe("CommandPalette", () => {
       renderPalette();
       openThreadSearch();
       await screen.findByText(message);
-      expect(screen.queryByRole("option", { name: "New thread" })).toBeNull();
+      expect(screen.queryByText("No threads")).toBeNull();
+      expect(screen.queryByRole("option")).toBeNull();
+      expect(searchField().hasAttribute("aria-activedescendant")).toBe(false);
       expect(
         screen
           .getByTestId("command-palette")
