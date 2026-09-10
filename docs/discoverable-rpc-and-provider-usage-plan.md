@@ -1,6 +1,6 @@
 # Discoverable RPC and replaceable provider usage displays
 
-Status: prototype implemented for discoverable RPC, Account Pooler, Codex, Claude Code, and the core `/settings/usage` page. The broader Provider Usage plugin migration remains planned. The core settings page preserves its existing presentation and machine picker; only its data source changes.
+Status: prototype implemented for discoverable RPC, Account Pooler, Codex, Claude Code, and the core `/settings/usage` page. Provider Usage defines the canonical contract in `plugins/provider-usage/usage-source-contract.ts` and consumes discovered sources through it. The core settings page preserves its existing presentation and machine picker; only its data source changes.
 
 ## Prototype verification
 
@@ -8,7 +8,7 @@ Status: prototype implemented for discoverable RPC, Account Pooler, Codex, Claud
 - Focused tests passed: 3 RPC publication tests, 10 server SDK tests, 1 SDK discovery/call test, 2 provider-source tests, 141 Account Pooler server tests, and 13 settings usage tests.
 - The isolated dev server advertises all three implementations with registration/method descriptions and JSON Schemas. CLI inspection and invocation passed.
 - Desktop and 390-pixel mobile browser checks passed, including refresh and no horizontal overflow. The fresh dev store has no pooled accounts; live host usage and authentication-error states were exercised.
-- The prototype trusts the Standard JSON Schema exporter for semantic fidelity; exhaustive refinement/transform fidelity auditing remains a stabilization task. The existing Provider Usage sidebar plugin and `bb settings usage` remain on their previous collection paths.
+- The prototype trusts the Standard JSON Schema exporter for semantic fidelity; exhaustive refinement/transform fidelity auditing remains a stabilization task. `bb settings usage` remains on its previous collection path. Provider Usage uses discovery through its existing `getUsage` display RPC; call it with `bb plugin rpc call provider-usage getUsage`. Shared sources appear once in the existing sidebar picker.
 - The repository verification inventory reports an existing unmapped `browser` CLI family; this prototype does not rewrite that unrelated baseline.
 
 
