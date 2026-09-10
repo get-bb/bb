@@ -412,6 +412,23 @@ describe("core environment orchestration", () => {
       expect(fixture.row().claimPath).toBeNull();
     }));
 
+  it("finalizes a workspace path already claimed by the same launch", async () =>
+    withTestHarness(async (harness) => {
+      const fixture = setup(harness, {
+        create: async (context) => {
+          expect(await context.experimental_claimPath("/tmp/project")).toBe(
+            true,
+          );
+          context.report.log("Checkout prepared");
+          return { status: "created", path: "/tmp/project", ownsPath: false };
+        },
+      });
+      fixture.ask();
+      await fixture.settled();
+      expect(fixture.row().path).toBe("/tmp/project");
+      expect(["provisioning", "ready"]).toContain(fixture.row().status);
+    }));
+
   it.each([true, false])(
     "runs teardown only for ownsPath=%s, in provider order",
     async (ownsPath) =>
