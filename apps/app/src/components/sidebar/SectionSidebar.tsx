@@ -36,7 +36,7 @@ export function SectionSidebarRow({
   to,
 }: {
   active: boolean;
-  children: ReactNode;
+  children?: ReactNode;
   label: string;
   to: string;
 }) {

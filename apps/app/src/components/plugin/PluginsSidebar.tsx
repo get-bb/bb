@@ -2,7 +2,6 @@ import type { MouseEvent as ReactMouseEvent } from "react";
 import { useLocation } from "react-router-dom";
 import {
   SectionSidebar,
-  SectionSidebarIcon,
   SectionSidebarLabel,
   SectionSidebarRow,
 } from "@/components/sidebar/SectionSidebar";
@@ -45,9 +44,7 @@ export function PluginsSidebar({
             active={activePage === page.id}
             label={page.label}
             to={page.to}
-          >
-            <SectionSidebarIcon name={page.icon} />
-          </SectionSidebarRow>
+          />
         ))}
       </div>
     </SectionSidebar>

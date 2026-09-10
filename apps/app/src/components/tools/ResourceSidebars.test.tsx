@@ -50,6 +50,8 @@ describe("PluginsSidebar", () => {
     expect(row("Installed plugins").getAttribute("href")).toBe(
       "/plugins?view=installed",
     );
+    expect(row("Browse plugins").querySelector("svg")).toBeNull();
+    expect(row("Installed plugins").querySelector("svg")).toBeNull();
     expect(screen.queryByText("Skills")).toBeNull();
     expect(screen.queryByRole("link", { name: "Browse skills" })).toBeNull();
     expect(screen.queryByRole("link", { name: "My skills" })).toBeNull();
@@ -75,6 +77,8 @@ describe("SkillsSidebar", () => {
     expect(screen.getByText("Skills")).toBeTruthy();
     expect(row("Browse skills").getAttribute("href")).toBe("/skills");
     expect(row("My skills").getAttribute("href")).toBe("/skills?view=library");
+    expect(row("Browse skills").querySelector("svg")).toBeNull();
+    expect(row("My skills").querySelector("svg")).toBeNull();
     expect(screen.queryByText("Plugins")).toBeNull();
     expect(screen.queryByRole("link", { name: "Browse plugins" })).toBeNull();
     expect(

@@ -1,4 +1,3 @@
-import type { IconName } from "@bb/shared-ui/icon";
 import { matchPath } from "react-router-dom";
 import {
   getPluginsRoutePath,
@@ -23,7 +22,6 @@ export const TOOLS_PAGE_BAND_CLASSES = "mx-auto w-full max-w-5xl px-4 md:px-5";
 interface ToolsSectionDefinition {
   id: ToolsSectionId;
   label: string;
-  icon: IconName;
   to: string;
 }
 
@@ -31,13 +29,11 @@ const TOOLS_SECTIONS = {
   skills: {
     id: "skills",
     label: "Skills",
-    icon: "Zap",
     to: getSkillsRoutePath(),
   },
   plugins: {
     id: "plugins",
     label: "Plugins",
-    icon: "Plug02",
     to: getPluginsRoutePath(),
   },
 } satisfies Record<ToolsSectionId, ToolsSectionDefinition>;
@@ -249,7 +245,6 @@ interface ResourcePageDefinition {
     | "skills-library";
   section: ToolsSectionId;
   label: string;
-  icon: IconName;
   to: string;
 }
 
@@ -258,14 +253,12 @@ export const PLUGIN_PAGES: readonly ResourcePageDefinition[] = [
     id: "plugins-browse",
     section: "plugins",
     label: `Browse ${TOOLS_SECTIONS.plugins.label.toLowerCase()}`,
-    icon: TOOLS_SECTIONS.plugins.icon,
     to: TOOLS_SECTIONS.plugins.to,
   },
   {
     id: "plugins-installed",
     section: "plugins",
     label: "Installed plugins",
-    icon: "PackageReceive",
     to: `${TOOLS_SECTIONS.plugins.to}?view=installed`,
   },
 ];
@@ -275,14 +268,12 @@ export const SKILL_PAGES: readonly ResourcePageDefinition[] = [
     id: "skills-browse",
     section: "skills",
     label: `Browse ${TOOLS_SECTIONS.skills.label.toLowerCase()}`,
-    icon: TOOLS_SECTIONS.skills.icon,
     to: TOOLS_SECTIONS.skills.to,
   },
   {
     id: "skills-library",
     section: "skills",
     label: TOOLS_OWNED_COLLECTION_LABEL.skills,
-    icon: "FolderOpen",
     to: getToolsOwnedCollectionRoutePath("skills"),
   },
 ];
