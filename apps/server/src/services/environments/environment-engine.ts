@@ -1,3 +1,4 @@
+import { findHostDataDir } from "../lib/entity-lookup.js";
 import { updateThread } from "@bb/db";
 import { withEnvironmentPathAdmission } from "./path-admission.js";
 import { saveThreadProvisionContext } from "../threads/thread-startup-store.js";
@@ -1677,7 +1678,12 @@ export async function advanceEnvironmentProvisioning(
       void advanceThreadProvisioning(deps, { threadId });
     return;
   }
-  if (environment.status !== "provisioning" || map.has(environment.id)) return;
+  if (
+    environment.status !== "provisioning" ||
+    map.has(environment.id) ||
+    findHostDataDir(deps, environment.hostId) === null
+  )
+    return;
   const request =
     args.request ?? recoverEnvironmentProvisionRequest(deps, environment);
   if (request === null) {

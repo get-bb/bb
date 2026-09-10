@@ -274,16 +274,21 @@ export function requestThreadTargetReprovision(
     const request = appendReprovisionTurnRequest(deps, args);
     const context = createThreadStartup({
       clientRequestId: request.requestId,
-      environmentIntent: {
-        type: "provider",
-        environmentProviderId: args.provider.environmentProviderId,
-        machine: {
-          type: "existing",
-          hostId: args.environment.hostId,
-        },
-        inputs: args.provider.selection.inputs,
-        selectionResolved: true,
-      },
+      environmentIntent:
+        args.environment.status === "error" &&
+        args.environment.path !== null &&
+        args.environment.teardownStatus === null
+          ? { type: "reuse", environmentId: args.environment.id }
+          : {
+              type: "provider",
+              environmentProviderId: args.provider.environmentProviderId,
+              machine: {
+                type: "existing",
+                hostId: args.environment.hostId,
+              },
+              inputs: args.provider.selection.inputs,
+              selectionResolved: true,
+            },
       execution: args.execution,
       fork: null,
       input: args.input,
