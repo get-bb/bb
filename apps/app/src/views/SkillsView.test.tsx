@@ -37,6 +37,7 @@ import {
   SkillsOverview,
 } from "../components/tools/SkillsCollection";
 import { SkillsLibrary } from "../components/tools/SkillsLibrary";
+import { focusWithKeyboard } from "@/test/keyboard-focus";
 
 afterEach(() => {
   focusManager.setFocused(undefined);
@@ -351,7 +352,7 @@ describe("SkillsOverview", () => {
     expect(screen.getByText("user-skill")).toBeTruthy();
     expect(screen.getByText("automations")).toBeTruthy();
     const typeTrigger = screen.getByRole("button", { name: /^Filters/ });
-    fireEvent.focus(typeTrigger);
+    focusWithKeyboard(typeTrigger);
     expect((await screen.findByRole("tooltip")).textContent).toBe(
       "Provider: bb",
     );
@@ -669,7 +670,7 @@ describe("SkillsOverview", () => {
     );
 
     const providerTrigger = screen.getByRole("button", { name: /^Filters/ });
-    fireEvent.focus(providerTrigger);
+    focusWithKeyboard(providerTrigger);
     expect((await screen.findByRole("tooltip")).textContent?.trim()).toBe(
       "Provider: bb",
     );

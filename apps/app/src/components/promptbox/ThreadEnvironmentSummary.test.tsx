@@ -1,9 +1,10 @@
 // @vitest-environment jsdom
 
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { cleanup, render, screen } from "@testing-library/react";
 import { TooltipProvider } from "@bb/shared-ui/tooltip";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { ThreadEnvironmentSummary } from "./ThreadEnvironmentSummary";
+import { focusWithKeyboard } from "@/test/keyboard-focus";
 
 afterEach(cleanup);
 
@@ -41,7 +42,7 @@ describe("ThreadEnvironmentSummary", () => {
     );
     expect(environmentDisplay).not.toBeNull();
     expect(environmentDisplay!.className).not.toContain("max-w-[10rem]");
-    fireEvent.focus(environmentDisplay!);
+    focusWithKeyboard(environmentDisplay!);
 
     expect((await screen.findByRole("tooltip")).textContent).toBe(
       "Bersabel's MacBook Pro",
@@ -92,7 +93,7 @@ describe("ThreadEnvironmentSummary", () => {
         </TooltipProvider>,
       );
 
-      fireEvent.focus(
+      focusWithKeyboard(
         screen.getByRole("img", {
           name: `Environment type: ${environmentTypeLabel}`,
         }),
@@ -124,7 +125,7 @@ describe("ThreadEnvironmentSummary", () => {
     expect(
       container.querySelector('[data-icon="MessageSquarePlus"]'),
     ).not.toBeNull();
-    fireEvent.focus(createThreadButton);
+    focusWithKeyboard(createThreadButton);
 
     expect((await screen.findByRole("tooltip")).textContent).toBe(
       "New thread in this environment",
