@@ -3595,7 +3595,7 @@ describe("PromptBoxInternal prompt actions", () => {
   it("inserts the skills trigger with no trailing space", async () => {
     const { changes, onCommandQueryChange } = renderPromptBox("");
 
-    await selectPromptAction("Skills");
+    await selectPromptAction("Use skill…");
 
     await waitFor(() => expect(latestValue(changes)).toBe("/"));
     await waitFor(() =>
@@ -3607,7 +3607,7 @@ describe("PromptBoxInternal prompt actions", () => {
   it("does not duplicate the skills trigger when it is already active", async () => {
     const { changes } = renderPromptBox("/");
 
-    await selectPromptAction("Skills");
+    await selectPromptAction("Use skill…");
 
     expect(changes).toHaveLength(0);
   });
@@ -3780,7 +3780,7 @@ describe("PromptBoxInternal prompt actions", () => {
     const { changes, promptBoxRef } = renderPromptBox("");
 
     await focusPromptEnd(promptBoxRef);
-    await selectPromptAction("Skills");
+    await selectPromptAction("Use skill…");
     await waitFor(() => expect(latestValue(changes)).toBe("/"));
     await waitForPromptFocus();
 
@@ -3864,7 +3864,7 @@ describe("PromptBoxInternal prompt actions", () => {
     await waitFor(() => expect(latestValue(changes)).toBe("/goal "));
     await waitForPromptFocus();
 
-    await selectPromptAction("Skills");
+    await selectPromptAction("Use skill…");
 
     await waitFor(() => expect(latestValue(changes)).toBe("/"));
     expect(latestChange(changes)?.mentions).toEqual([]);

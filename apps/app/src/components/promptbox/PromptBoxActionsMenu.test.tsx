@@ -73,6 +73,7 @@ describe("PromptBoxActionsMenu", () => {
       <PromptBoxActionsMenu
         actions={withAppPromptActions([{ kind: "plan", text: "/plan " }])}
         onAction={onAction}
+        onAttach={() => {}}
       />,
     );
 
@@ -82,10 +83,28 @@ describe("PromptBoxActionsMenu", () => {
     );
     const menuItems = await screen.findAllByRole("menuitem");
     expect(menuItems.map((item) => item.textContent)).toEqual([
+      "Attach files",
+      "Use skill…",
       "Plan",
       "Automation",
       "Plugin",
     ]);
+    expect(
+      menuItems.map((item) =>
+        item.querySelector("[data-icon]")?.getAttribute("data-icon"),
+      ),
+    ).toEqual(["Paperclip", "Zap", "ListTodo", "Repeat", "ElectricPlugs"]);
+    const createLabel = screen.getByText("Create");
+    expect(screen.getAllByRole("separator")).toHaveLength(2);
+    expect(menuItems[0].nextElementSibling?.getAttribute("role")).toBe(
+      "separator",
+    );
+    expect(createLabel.previousElementSibling?.getAttribute("role")).toBe(
+      "separator",
+    );
+    expect(createLabel.nextElementSibling).toBe(
+      screen.getByRole("menuitem", { name: "Automation" }),
+    );
 
     fireEvent.click(screen.getByRole("menuitem", { name: "Plugin" }));
 
@@ -104,6 +123,54 @@ describe("PromptBoxActionsMenu", () => {
       },
     ]);
   });
+
+  it("omits creation chrome when no creation actions are visible", async () => {
+    render(
+      <PromptBoxActionsMenu
+        actions={[
+          { kind: "skills", text: "/" },
+          { kind: "plan", text: "/plan " },
+          { kind: "automation", text: "" },
+        ]}
+        onAction={() => {}}
+        onAttach={() => {}}
+      />,
+    );
+
+    fireEvent.pointerDown(
+      screen.getByRole("button", { name: "Prompt actions" }),
+      { button: 0 },
+    );
+    await screen.findByRole("menuitem", { name: "Use skill…" });
+    expect(screen.queryByText("Create")).toBeNull();
+    expect(screen.getAllByRole("separator")).toHaveLength(1);
+    expect(screen.getByRole("separator").previousElementSibling).toBe(
+      screen.getByRole("menuitem", { name: "Attach files" }),
+    );
+  });
+
+  it.each([false, true])(
+    "avoids extra dividers for a lone creation action with attachments %s",
+    async (withAttachments) => {
+      render(
+        <PromptBoxActionsMenu
+          actions={[CREATE_PLUGIN_PROMPT_ACTION]}
+          onAction={() => {}}
+          onAttach={withAttachments ? () => {} : undefined}
+        />,
+      );
+
+      fireEvent.pointerDown(
+        screen.getByRole("button", { name: "Prompt actions" }),
+        { button: 0 },
+      );
+      const plugin = await screen.findByRole("menuitem", { name: "Plugin" });
+      expect(screen.getByText("Create").nextElementSibling).toBe(plugin);
+      expect(screen.queryAllByRole("separator")).toHaveLength(
+        withAttachments ? 1 : 0,
+      );
+    },
+  );
 
   it("restores composer focus after an update-only plugin item", async () => {
     const view: ComposerView = {

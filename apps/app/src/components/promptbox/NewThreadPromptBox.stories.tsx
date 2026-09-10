@@ -139,6 +139,7 @@ function PromptStage({ children }: PromptStageProps) {
 function DefaultRow() {
   const { value, mentionRanges, onChange } = useControlledValue("");
   const execution = useInteractiveExecutionControls(baseExecution);
+  const [commandQuery, setCommandQuery] = useState<string | null>(null);
   return (
     <PromptStage>
       <NewThreadPromptBoxUI
@@ -150,7 +151,28 @@ function DefaultRow() {
         isSubmitting={false}
         disabled={false}
         history={baseHistory}
-        typeahead={makeTypeahead()}
+        typeahead={makeTypeahead(
+          {},
+          {
+            trigger: "/",
+            onQueryChange: setCommandQuery,
+            suggestions:
+              commandQuery !== null &&
+              "moss-hardening-review".includes(commandQuery.toLowerCase())
+                ? [
+                    {
+                      kind: "command",
+                      name: "moss-hardening-review",
+                      source: "skill",
+                      origin: "user",
+                      description:
+                        "Run a hardening review for Moss persistence paths",
+                      argumentHint: "[branch | staged] [base=<ref>]",
+                    },
+                  ]
+                : [],
+          },
+        )}
         attachments={makeAttachments()}
         promptActions={promptActions}
         modeConfig={baseModeConfig}
@@ -547,7 +569,7 @@ export function Overview() {
       <StoryCard>
         <StoryRow
           label="default"
-          hint="interactive provider, model, reasoning, and fast mode"
+          hint="open + to use a skill, insert Plan/Goal, or start creating an Automation/Plugin; provider controls are interactive"
         >
           <DefaultRow />
         </StoryRow>

@@ -1,10 +1,11 @@
-import { useCallback, useRef } from "react";
+import { Fragment, useCallback, useRef } from "react";
 import { Button } from "@bb/shared-ui/button";
 import { cn } from "@bb/shared-ui/lib/utils";
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuLabel,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@bb/shared-ui/dropdown-menu";
@@ -73,7 +74,7 @@ const PROMPT_ACTION_ORDER: readonly PromptBoxActionKind[] = [
 
 const PROMPT_ACTION_PRESENTATION = {
   skills: {
-    label: "Skills",
+    label: "Use skill…",
     icon: "Zap",
   },
   plan: {
@@ -132,6 +133,9 @@ export function PromptBoxActionsMenu({
   );
   const visibleActions = orderedPromptActions(actions).filter(
     (action) => action.text.length > 0,
+  );
+  const firstCreateActionIndex = visibleActions.findIndex(
+    (action) => action.kind === "automation" || action.kind === "plugin",
   );
   const clearSelectedActionAfterClose = useCallback(() => {
     const clear = () => {
@@ -207,45 +211,52 @@ export function PromptBoxActionsMenu({
         }}
       >
         {onAttach ? (
-          <>
-            <DropdownMenuItem
-              disabled={isAttaching}
-              onSelect={() => {
-                selectedItemRef.current = true;
-                onAttach();
-              }}
-            >
-              <Icon
-                name={isAttaching ? "Spinner" : "Paperclip"}
-                className={cn(
-                  "size-4 text-muted-foreground",
-                  isAttaching && "animate-spin",
-                )}
-                aria-hidden
-              />
-              Attach files
-            </DropdownMenuItem>
-            {visibleActions.length > 0 ? <DropdownMenuSeparator /> : null}
-          </>
+          <DropdownMenuItem
+            disabled={isAttaching}
+            onSelect={() => {
+              selectedItemRef.current = true;
+              onAttach();
+            }}
+          >
+            <Icon
+              name={isAttaching ? "Spinner" : "Paperclip"}
+              className={cn(
+                "size-4 text-muted-foreground",
+                isAttaching && "animate-spin",
+              )}
+              aria-hidden
+            />
+            Attach files
+          </DropdownMenuItem>
         ) : null}
-        {visibleActions.map((action) => {
+        {onAttach && visibleActions.length > 0 ? (
+          <DropdownMenuSeparator />
+        ) : null}
+        {visibleActions.map((action, index) => {
           const presentation = PROMPT_ACTION_PRESENTATION[action.kind];
           return (
-            <DropdownMenuItem
-              key={action.kind}
-              disabled={action.disabled}
-              onSelect={() => {
-                selectedItemRef.current = true;
-                onAction(action);
-              }}
-            >
-              <Icon
-                name={presentation.icon}
-                className="size-4 text-muted-foreground"
-                aria-hidden
-              />
-              {action.label ?? presentation.label}
-            </DropdownMenuItem>
+            <Fragment key={action.kind}>
+              {index === firstCreateActionIndex ? (
+                <>
+                  {index > 0 ? <DropdownMenuSeparator /> : null}
+                  <DropdownMenuLabel>Create</DropdownMenuLabel>
+                </>
+              ) : null}
+              <DropdownMenuItem
+                disabled={action.disabled}
+                onSelect={() => {
+                  selectedItemRef.current = true;
+                  onAction(action);
+                }}
+              >
+                <Icon
+                  name={presentation.icon}
+                  className="size-4 text-muted-foreground"
+                  aria-hidden
+                />
+                {action.label ?? presentation.label}
+              </DropdownMenuItem>
+            </Fragment>
           );
         })}
         {pluginItems.length > 0 ? <DropdownMenuSeparator /> : null}
