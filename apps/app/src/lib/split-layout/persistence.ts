@@ -1,5 +1,10 @@
 import { z } from "zod";
-import { MAX_PANES, countPanes, listPanes } from "./ops";
+import {
+  MAX_PANES,
+  countPanes,
+  findPaneByContent,
+  listPanes,
+} from "./ops";
 import type { LayoutNode, PaneNode, SplitLayout, SplitNode } from "./types";
 
 export const SPLIT_LAYOUT_SCHEMA_VERSION = 1;
@@ -94,6 +99,22 @@ const splitLayoutSchema: z.ZodType<SplitLayout> = z
       context.addIssue({
         code: "custom",
         message: "Pane IDs must be unique",
+        path: ["root"],
+      });
+    }
+    if (
+      panes.some((pane, index) =>
+        panes
+          .slice(0, index)
+          .some(
+            (previous) =>
+              findPaneByContent(previous, pane.content) !== null,
+          ),
+      )
+    ) {
+      context.addIssue({
+        code: "custom",
+        message: "Pane content must be unique",
         path: ["root"],
       });
     }

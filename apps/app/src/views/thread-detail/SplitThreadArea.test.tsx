@@ -1797,6 +1797,31 @@ describe("SplitThreadArea", () => {
     expect(screen.getByTestId("pane-thr-b")).toBeTruthy();
   });
 
+  it("restores at most one pane for the same thread", async () => {
+    window.localStorage.setItem(
+      SPLIT_LAYOUT_STORAGE_KEY,
+      serializeSplitLayout({
+        root: {
+          type: "split",
+          dir: "row",
+          sizes: [0.25, 0.25, 0.25, 0.25],
+          children: ["pane-1", "pane-2", "pane-3", "pane-4"].map(
+            (paneId) => ({
+              type: "pane" as const,
+              paneId,
+              content: threadContent("thr-a"),
+            }),
+          ),
+        },
+        focusedPaneId: "pane-4",
+      }),
+    );
+
+    renderSplitArea({ path: threadPath("thr-a") });
+
+    expect(await screen.findAllByTestId("pane-thr-a")).toHaveLength(1);
+  });
+
   it("restores eight successive default-right opens, then focuses and closes with valid URL state", async () => {
     const layout = eightPaneThreadLayout();
     expect(layout.root).toMatchObject({
