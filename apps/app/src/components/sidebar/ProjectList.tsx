@@ -925,19 +925,13 @@ function SectionModeSections({
         { label: section.name, sectionId: section.id },
       ]),
     );
-    const orderedDestinationIds: SidebarSectionId[] = [
-      ...order.filter((sectionId) => sectionId !== "threads"),
-      "threads",
-    ];
-    return orderedDestinationIds.flatMap<ThreadSectionMoveDestination>(
-      (sectionId) => {
-        if (sectionId === "threads") {
-          return [{ label: threadsSection.label, sectionId: null }];
-        }
-        const destination = destinationsBySidebarId.get(sectionId);
-        return destination ? [destination] : [];
-      },
-    );
+    return order.flatMap<ThreadSectionMoveDestination>((sectionId) => {
+      if (sectionId === "threads") {
+        return [{ label: threadsSection.label, sectionId: null }];
+      }
+      const destination = destinationsBySidebarId.get(sectionId);
+      return destination ? [destination] : [];
+    });
   }, [order, sections, threadsSection.label]);
 
   return (
