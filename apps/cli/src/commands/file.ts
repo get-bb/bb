@@ -11,14 +11,21 @@ interface FileTargetOptions {
 
 interface FileListOptions extends FileTargetOptions {
   directories?: boolean;
+  exclude?: string[];
   files?: boolean;
   hidden?: boolean;
   limit?: string;
   query?: string;
 }
 
-function hiddenListArgs(opts: FileListOptions): { includeHidden?: boolean } {
-  return opts.hidden === false ? { includeHidden: false } : {};
+function listFilterArgs(opts: FileListOptions): {
+  includeHidden?: boolean;
+  excludeNames?: string[];
+} {
+  return {
+    ...(opts.hidden === false ? { includeHidden: false } : {}),
+    ...(opts.exclude !== undefined ? { excludeNames: opts.exclude } : {}),
+  };
 }
 
 interface FileWriteOptions extends FileTargetOptions {
@@ -127,13 +134,17 @@ export function registerFileCommands(
     .option("--query <query>", "Fuzzy path query")
     .option("--limit <count>", "Maximum entries")
     .option("--no-hidden", "Skip dot-prefixed files and directories")
+    .option(
+      "--exclude <names...>",
+      "Entry names to skip instead of the default set",
+    )
     .option("--host <id>", "Machine ID")
     .option("--json", "Print machine-readable JSON output")
     .action(
       action(async (path: string, opts: FileListOptions) => {
         const result = await createCliBbSdk(getUrl()).files.list({
           path,
-          ...hiddenListArgs(opts),
+          ...listFilterArgs(opts),
           ...(opts.host ? { hostId: opts.host } : {}),
           ...(opts.query ? { query: opts.query } : {}),
           ...(parseLimit(opts.limit) ? { limit: parseLimit(opts.limit) } : {}),
@@ -151,6 +162,10 @@ export function registerFileCommands(
     .option("--files", "Include files")
     .option("--directories", "Include directories")
     .option("--no-hidden", "Skip dot-prefixed files and directories")
+    .option(
+      "--exclude <names...>",
+      "Entry names to skip instead of the default set",
+    )
     .option("--host <id>", "Machine ID")
     .option("--json", "Print machine-readable JSON output")
     .action(
@@ -162,7 +177,7 @@ export function registerFileCommands(
           path,
           includeFiles,
           includeDirectories,
-          ...hiddenListArgs(opts),
+          ...listFilterArgs(opts),
           ...(opts.host ? { hostId: opts.host } : {}),
           ...(opts.query ? { query: opts.query } : {}),
           ...(limit ? { limit } : {}),

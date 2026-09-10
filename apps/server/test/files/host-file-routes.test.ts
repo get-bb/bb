@@ -4,6 +4,9 @@ import { registerHostRpcResponder } from "../helpers/host-rpc.js";
 import { readJson } from "../helpers/json.js";
 import { seedHostSession, seedPrimaryHost } from "../helpers/seed.js";
 import { withTestHarness } from "../helpers/test-app.js";
+import { DEFAULT_PATH_LIST_EXCLUDE_NAMES } from "../../src/routes/path-list-policy.js";
+
+const DEFAULT_EXCLUDE_NAMES = [...DEFAULT_PATH_LIST_EXCLUDE_NAMES];
 
 const WRITTEN_RESULT = {
   outcome: "written",
@@ -212,7 +215,10 @@ describe("host file routes", () => {
             includeHidden: false,
           },
         ],
-        ["/api/v1/files/list", { path: "/notes", includeHidden: false }],
+        [
+          "/api/v1/files/list",
+          { path: "/notes", includeHidden: false, excludeNames: [".obsidian"] },
+        ],
         [
           "/api/v1/files/mkdir",
           { path: "/notes/projects", rootPath: "/notes" },
@@ -242,6 +248,7 @@ describe("host file routes", () => {
           includeFiles: true,
           includeDirectories: true,
           includeHidden: true,
+          excludeNames: DEFAULT_EXCLUDE_NAMES,
         },
         {
           type: "host.list_paths",
@@ -250,12 +257,14 @@ describe("host file routes", () => {
           includeFiles: true,
           includeDirectories: true,
           includeHidden: false,
+          excludeNames: DEFAULT_EXCLUDE_NAMES,
         },
         {
           type: "host.list_files",
           path: "/notes",
           limit: 1000,
           includeHidden: false,
+          excludeNames: [".obsidian"],
         },
         {
           type: "host.mkdir",

@@ -4245,6 +4245,7 @@ describe("public thread data routes", () => {
         includeFiles: true,
         includeDirectories: true,
         includeHidden: false,
+        excludeNames: expect.arrayContaining(["node_modules"]),
       });
       await reportQueuedCommandSuccess(harness, pathsCommand, {
         paths: [

@@ -22,7 +22,10 @@ import { resolveServerOwnedSkillCatalogEntries } from "./injected-skills.js";
 import { resolveSkillCatalog } from "./skill-catalog.js";
 import { readRegistrySkillProvenance } from "./registry-skill-provenance.js";
 import { hostPathDirname, resolveSharedSkills } from "./shared-skills.js";
-import { SKILL_PATH_LIST_INCLUDE_HIDDEN } from "../../routes/path-list-policy.js";
+import {
+  DEFAULT_PATH_LIST_EXCLUDE_NAMES,
+  SKILL_PATH_LIST_INCLUDE_HIDDEN,
+} from "../../routes/path-list-policy.js";
 import {
   providerHasNativeRootSurface,
   scanProviderNativeRoots,
@@ -393,6 +396,7 @@ export async function listProjectSkillFiles(
       path: rootPath,
       limit: 200,
       includeHidden: SKILL_PATH_LIST_INCLUDE_HIDDEN,
+      excludeNames: [...DEFAULT_PATH_LIST_EXCLUDE_NAMES],
     },
   });
   const files = result.files

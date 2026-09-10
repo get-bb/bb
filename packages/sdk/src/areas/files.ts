@@ -34,6 +34,7 @@ export interface FileListArgs {
   query?: string;
   limit?: number;
   includeHidden?: boolean;
+  excludeNames?: string[];
   signal?: AbortSignal;
 }
 
@@ -117,6 +118,7 @@ export function createFilesArea(args: CreateSdkAreaArgs): FilesArea {
         transport.api.v1.files.list.$post(
           {
             json: {
+              excludeNames: input.excludeNames,
               hostId: input.hostId,
               includeHidden: input.includeHidden,
               limit: input.limit,
@@ -133,6 +135,7 @@ export function createFilesArea(args: CreateSdkAreaArgs): FilesArea {
         transport.api.v1.files.paths.$post(
           {
             json: {
+              excludeNames: input.excludeNames,
               hostId: input.hostId,
               includeDirectories: input.includeDirectories,
               includeFiles: input.includeFiles,

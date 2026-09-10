@@ -217,6 +217,7 @@ describe("listPathsRecursively", () => {
         includeFiles: true,
         includeDirectories: true,
         includeHidden: false,
+        excludeNames: new Set<string>(),
       });
 
       expect(result).toEqual([
@@ -254,6 +255,7 @@ describe("listPathsRecursively", () => {
           includeFiles: true,
           includeDirectories: true,
           includeHidden,
+          excludeNames: new Set<string>(),
         }).then((entries) => entries.map((entry) => entry.path).sort());
 
       expect(await listPaths(true)).toEqual([
@@ -264,6 +266,53 @@ describe("listPathsRecursively", () => {
         "README.md",
       ]);
       expect(await listPaths(false)).toEqual(["README.md"]);
+    } finally {
+      await fs.rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it("skips excluded names at any depth and never lists .git", async () => {
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), "bb-file-list-"));
+    try {
+      await fs.mkdir(path.join(root, ".git"), { recursive: true });
+      await fs.writeFile(path.join(root, ".git", "HEAD"), "");
+      await fs.mkdir(path.join(root, "node_modules", "pkg"), {
+        recursive: true,
+      });
+      await fs.writeFile(path.join(root, "node_modules", "pkg", "index.js"), "");
+      await fs.mkdir(path.join(root, "apps", "web", ".turbo"), {
+        recursive: true,
+      });
+      await fs.writeFile(path.join(root, "apps", "web", ".turbo", "log"), "");
+      await fs.writeFile(path.join(root, "apps", "web", ".DS_Store"), "");
+      await fs.writeFile(path.join(root, "apps", "web", "index.ts"), "");
+
+      const listPaths = (excludeNames: string[]) =>
+        listPathsRecursively({
+          dir: root,
+          root,
+          includeFiles: true,
+          includeDirectories: true,
+          includeHidden: true,
+          excludeNames: new Set(excludeNames),
+        }).then((entries) => entries.map((entry) => entry.path).sort());
+
+      expect(await listPaths(["node_modules", ".turbo", ".DS_Store"])).toEqual([
+        "apps",
+        "apps/web",
+        "apps/web/index.ts",
+      ]);
+      expect(await listPaths([])).toEqual([
+        "apps",
+        "apps/web",
+        "apps/web/.DS_Store",
+        "apps/web/.turbo",
+        "apps/web/.turbo/log",
+        "apps/web/index.ts",
+        "node_modules",
+        "node_modules/pkg",
+        "node_modules/pkg/index.js",
+      ]);
     } finally {
       await fs.rm(root, { recursive: true, force: true });
     }
@@ -284,6 +333,7 @@ describe("listPathsRecursively", () => {
         includeFiles: true,
         includeDirectories: false,
         includeHidden: false,
+        excludeNames: new Set<string>(),
       });
 
       expect(result).toEqual([
@@ -322,6 +372,7 @@ describe("listPathsRecursively", () => {
         includeFiles: true,
         includeDirectories: false,
         includeHidden: false,
+        excludeNames: new Set<string>(),
       });
 
       expect(result).toHaveLength(fileCount);

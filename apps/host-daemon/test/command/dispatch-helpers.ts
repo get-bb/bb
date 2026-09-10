@@ -244,6 +244,7 @@ export function createFakeWorkspace(pathname: string) {
         dir: pathname,
         root: pathname,
         includeHidden: false,
+        excludeNames: new Set<string>(),
       });
     },
     async commit(options: { message: string; noVerify: boolean }) {

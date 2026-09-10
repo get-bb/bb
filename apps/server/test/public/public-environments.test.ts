@@ -339,6 +339,16 @@ describe("public environments", () => {
         includeFiles: true,
         includeDirectories: false,
         includeHidden: true,
+        excludeNames: [
+          "node_modules",
+          ".venv",
+          "venv",
+          ".turbo",
+          ".next",
+          ".cache",
+          "__pycache__",
+          ".DS_Store",
+        ],
       });
       await reportQueuedCommandSuccess(harness, pathsCommand, {
         paths: [

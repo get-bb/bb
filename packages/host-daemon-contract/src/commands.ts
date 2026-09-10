@@ -26,6 +26,8 @@ import {
   providerNativeRootSetSchema,
   BRANCH_LIST_LIMIT_MAX,
   BRANCH_LIST_QUERY_MAX_LENGTH,
+  FILE_LIST_EXCLUDE_NAME_MAX_LENGTH,
+  FILE_LIST_EXCLUDE_NAMES_MAX,
   FILE_LIST_LIMIT_MAX,
   FILE_LIST_QUERY_MAX_LENGTH,
 } from "@bb/domain";
@@ -62,6 +64,8 @@ export {
 export {
   BRANCH_LIST_LIMIT_MAX,
   BRANCH_LIST_QUERY_MAX_LENGTH,
+  FILE_LIST_EXCLUDE_NAME_MAX_LENGTH,
+  FILE_LIST_EXCLUDE_NAMES_MAX,
   FILE_LIST_LIMIT_MAX,
   FILE_LIST_QUERY_MAX_LENGTH,
 } from "@bb/domain";
@@ -475,12 +479,17 @@ const hostWriteFileCommandSchema = z
   })
   .strict();
 
+const fileListExcludeNamesSchema = z
+  .array(z.string().min(1).max(FILE_LIST_EXCLUDE_NAME_MAX_LENGTH))
+  .max(FILE_LIST_EXCLUDE_NAMES_MAX);
+
 const hostListFilesCommandSchema = z.object({
   type: z.literal("host.list_files"),
   path: z.string().min(1),
   query: z.string().max(FILE_LIST_QUERY_MAX_LENGTH).optional(),
   limit: z.number().int().positive().max(FILE_LIST_LIMIT_MAX),
   includeHidden: z.boolean(),
+  excludeNames: fileListExcludeNamesSchema,
 });
 
 const hostPathEntryKindSchema = z.enum(["file", "directory"]);
@@ -504,6 +513,7 @@ const hostListPathsCommandSchema = z
     includeFiles: z.boolean(),
     includeDirectories: z.boolean(),
     includeHidden: z.boolean(),
+    excludeNames: fileListExcludeNamesSchema,
   })
   .refine((command) => command.includeFiles || command.includeDirectories, {
     message: "At least one path kind must be included",
