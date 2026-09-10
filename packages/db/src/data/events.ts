@@ -1508,16 +1508,21 @@ export function listOpenTurnInputAcceptedRowsByThreadIds(
       const completed = alias(events, "completed_turn_for_accepted_input");
       return db
         .select(storedEventRowFields)
-        .from(events)
+        .from(
+          sql`(VALUES ${sql.join(
+            threadIds.map((id) => sql`(${id})`),
+            sql`, `,
+          )}) AS requested`,
+        )
+        .innerJoin(events, eq(events.threadId, sql`requested.column1`))
         .where(
           and(
-            inArray(events.threadId, [...threadIds]),
             eq(events.type, acceptedType),
             isNotNull(events.turnId),
             sql`${events.sequence} > COALESCE((
           SELECT MAX(interrupted.sequence)
           FROM events interrupted
-          WHERE interrupted.thread_id = ${events.threadId}
+          WHERE interrupted.thread_id = requested.column1
             AND interrupted.type = ${interruptedType}
         ), -1)`,
             notExists(
