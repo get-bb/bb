@@ -62,6 +62,7 @@ import {
   getPluginDetailRoutePath,
   getSettingsRoutePath,
   getSettingsProjectRoutePath,
+  isLegacyInstalledPluginsRoute,
 } from "./lib/route-paths";
 import { AppCommandProvider } from "./components/commands/AppCommandProvider";
 import { ProviderCliInstallLogDialogHost } from "./components/provider-cli/provider-cli-install";
@@ -186,8 +187,8 @@ export function LegacyInstalledPluginsRedirect() {
 }
 
 function PluginSettingsRoute() {
-  const { search } = useLocation();
-  return new URLSearchParams(search).get("view") === "installed" ? (
+  const location = useLocation();
+  return isLegacyInstalledPluginsRoute(location) ? (
     <LegacyInstalledPluginsRedirect />
   ) : (
     <SettingsView />

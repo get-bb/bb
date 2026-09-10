@@ -3,8 +3,8 @@ import { matchPath, useLocation } from "react-router-dom";
 import {
   getRootComposeRoutePath,
   getPluginsRoutePath,
+  isLegacyInstalledPluginsRoute,
   isToolsRoutePath,
-  SETTINGS_PLUGINS_ROUTE_PATH,
   SETTINGS_ROUTE_PATH,
   LEGACY_PROJECT_SETTINGS_ROUTE_PATH,
 } from "@/lib/route-paths";
@@ -31,16 +31,10 @@ function isSettingsRoutePath(pathname: string): boolean {
   );
 }
 
-function isPluginSettingsCompatibilityRoute(pathname: string): boolean {
-  return matchPath(SETTINGS_PLUGINS_ROUTE_PATH, pathname) !== null;
-}
-
 export function useAppSettingsRouteMemory(): AppSettingsRouteMemory {
   const location = useLocation();
   const currentRoutePath = getLocationRoutePath(location);
-  const isCompatibilityRoute = isPluginSettingsCompatibilityRoute(
-    location.pathname,
-  );
+  const isCompatibilityRoute = isLegacyInstalledPluginsRoute(location);
   const isSettingsRoute =
     !isCompatibilityRoute && isSettingsRoutePath(location.pathname);
   const isCurrentToolsRoute = isToolsRoutePath(location.pathname);
