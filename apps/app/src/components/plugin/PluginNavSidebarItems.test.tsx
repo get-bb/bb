@@ -865,8 +865,8 @@ describe("PluginNavSidebarItems", () => {
       reorderSidebar("tasks/main", "docs/main");
       const storedOrder = view.store.get(pluginNavPanelOrderAtom);
       const storedVisibleKeys = view.store.get(pluginNavVisiblePanelKeysAtom);
-      expect(storedVisibleKeys?.toSorted()).toEqual(
-        [...initialVisibleKeys, "unregistered/main"].toSorted(),
+      expect(new Set(storedVisibleKeys)).toEqual(
+        new Set([...initialVisibleKeys, "unregistered/main"]),
       );
       expect(storedOrder).toContain("unregistered/main");
       expect(storedOrder.indexOf("tasks/main")).toBeLessThan(
