@@ -349,8 +349,11 @@ export function registerEnvironmentCommands(
   environment
     .command("providers")
     .description("List registered environment providers")
-    .option("--project <id>", "List eligible providers and availability for this project")
-    .option("--machine <id-or-name>", "Show availability on this machine")
+    .option(
+      "--project <id>",
+      "List structurally eligible providers for this project",
+    )
+    .option("--machine <id-or-name>", "Scope eligibility to this machine")
     .option("--host <id-or-name>", "Alias for --machine")
     .option("--json", "Print machine-readable JSON output")
     .action(
@@ -384,14 +387,8 @@ export function registerEnvironmentCommands(
             .join(", ");
           const inputs =
             provider.inputs === null ? "" : "  takes --environment-inputs";
-          const availability =
-            provider.availability === null
-              ? ""
-              : provider.availability.status === "available"
-                ? "  available"
-                : `  ${provider.availability.status}: ${provider.availability.message}`;
           console.log(
-            `${provider.id}  ${provider.displayName}  ${requirements || "-"}${inputs}${availability}`,
+            `${provider.id}  ${provider.displayName}  ${requirements || "-"}${inputs}`,
           );
         }
       }),

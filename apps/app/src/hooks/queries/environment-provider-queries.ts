@@ -1,5 +1,4 @@
-import { useMemo } from "react";
-import { useQueries, useQuery } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 import type {
   SystemEnvironmentProvider,
   SystemEnvironmentProvidersQuery,
@@ -57,28 +56,4 @@ export function useSystemEnvironmentProviders(
   return {
     providers: result.isError ? NO_ENVIRONMENT_PROVIDERS : result.data,
   };
-}
-
-export function useSystemEnvironmentProvidersByHost(
-  projectId: string,
-  hostIds: readonly string[],
-): ReadonlyMap<string, readonly SystemEnvironmentProvider[] | undefined> {
-  const results = useQueries({
-    queries: hostIds.map((hostId) =>
-      environmentProvidersQueryOptions({ projectId, hostId }),
-    ),
-  });
-  return useMemo(
-    () =>
-      new Map(
-        hostIds.map((hostId, index) => {
-          const result = results[index];
-          return [
-            hostId,
-            result?.isError ? NO_ENVIRONMENT_PROVIDERS : result?.data,
-          ] as const;
-        }),
-      ),
-    [hostIds, results],
-  );
 }

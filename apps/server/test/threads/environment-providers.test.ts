@@ -29,7 +29,6 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { z } from "zod";
 import { ApiError } from "../../src/errors.js";
 import {
-  requestEnvironmentProviderRecheck,
   setPluginEnvironmentProviderBridge,
   type PluginEnvironmentProviderRecord,
 } from "../../src/services/plugins/plugin-environment-provider-registry.js";
@@ -1005,6 +1004,71 @@ describe("provider validate at create time", () => {
     return failed as ApiError;
   }
 
+  it("checks only the selected provider's availability before creating rows", async () => {
+    await withTestHarness(async (harness) => {
+      const availability = vi.fn(() => ({
+        status: "setup-required" as const,
+        message: "Add sandbox credentials",
+      }));
+      const validate = vi.fn(() => ({ action: "accept" as const }));
+      installTarget({
+        availability,
+        validate,
+        provision: () => ({ action: "wait", reason: "…" }),
+      });
+      const { host, project } = seedTargetFixture(
+        harness,
+        "host-target-availability-refuse",
+      );
+      const threadsBefore = harness.db.$client
+        .prepare("select count(*) as count from threads")
+        .get();
+      const environmentsBefore = listEnvironments(harness.db, {}).length;
+
+      const failed = await createFailure(harness, {
+        projectId: project.id,
+        hostId: host.id,
+      });
+      expect(failed.status).toBe(409);
+      expect(failed.body.code).toBe("environment_provider_rejected");
+      expect(failed.message).toBe("Add sandbox credentials");
+      expect(availability).toHaveBeenCalledOnce();
+      expect(availability).toHaveBeenCalledWith(
+        expect.objectContaining({
+          project: expect.objectContaining({ id: project.id }),
+          host: expect.objectContaining({ id: host.id }),
+        }),
+      );
+      expect(validate).not.toHaveBeenCalled();
+      expect(
+        harness.db.$client
+          .prepare("select count(*) as count from threads")
+          .get(),
+      ).toEqual(threadsBefore);
+      expect(listEnvironments(harness.db, {})).toHaveLength(environmentsBefore);
+    });
+  });
+
+  it("reports availability hook failures as provider failures", async () => {
+    await withTestHarness(async (harness) => {
+      installTarget({
+        availability: () => {
+          throw new Error("credential service failed");
+        },
+        provision: () => ({ action: "wait", reason: "…" }),
+      });
+      const { project } = seedTargetFixture(
+        harness,
+        "host-target-availability-error",
+      );
+      const failed = await createFailure(harness, { projectId: project.id });
+      expect(failed.status).toBe(502);
+      expect(failed.body.code).toBe("environment_provider_failed");
+      expect(failed.message).toContain(`Plugin "${PLUGIN_ID}"`);
+      expect(failed.message).toContain("credential service failed");
+    });
+  });
+
   it("refuses the request with the provider's message before any thread or row exists", async () => {
     await withTestHarness(async (harness) => {
       const asks: TestEnvironmentProviderContext[] = [];
@@ -1273,7 +1337,7 @@ describe("provider inputs are parsed at create time", () => {
 });
 
 describe("environment provider listing", () => {
-  it("filters project and projectless providers before evaluating availability", async () => {
+  it("filters project and projectless providers without evaluating availability", async () => {
     await withTestHarness(async (harness) => {
       const availabilityChecks: string[] = [];
       installTargets([
@@ -1309,7 +1373,7 @@ describe("environment provider listing", () => {
       expect(projectBody.providers.map((provider) => provider.id)).toEqual([
         "project-only",
       ]);
-      expect(availabilityChecks).toEqual(["project-only"]);
+      expect(availabilityChecks).toEqual([]);
 
       availabilityChecks.length = 0;
       const projectlessBody = (await readJson(
@@ -1320,7 +1384,7 @@ describe("environment provider listing", () => {
       expect(projectlessBody.providers.map((provider) => provider.id)).toEqual([
         "projectless-only",
       ]);
-      expect(availabilityChecks).toEqual(["projectless-only"]);
+      expect(availabilityChecks).toEqual([]);
     });
   });
 
@@ -1359,13 +1423,14 @@ describe("environment provider listing", () => {
     });
   });
 
-  it("returns provider-owned availability for a project", async () => {
+  it("defers provider-owned availability until thread creation", async () => {
     await withTestHarness(async (harness) => {
+      const availability = vi.fn(() => ({
+        status: "setup-required" as const,
+        message: "Add sandbox credentials",
+      }));
       installTarget({
-        availability: () => ({
-          status: "setup-required",
-          message: "Add sandbox credentials",
-        }),
+        availability,
         provision: () => ({ action: "wait", reason: "…" }),
       });
       const { project } = seedTargetFixture(
@@ -1379,41 +1444,40 @@ describe("environment provider listing", () => {
       const body = (await readJson(response)) as {
         providers: Array<{ availability: unknown }>;
       };
-      expect(body.providers[0]?.availability).toEqual({
-        status: "setup-required",
-        message: "Add sandbox credentials",
-      });
+      expect(body.providers[0]?.availability).toBeNull();
+      expect(availability).not.toHaveBeenCalled();
     });
   });
 
-  it("caches availability until the provider requests a recheck", async () => {
+  it("checks availability afresh for every thread creation", async () => {
     await withTestHarness(async (harness) => {
       let checks = 0;
       installTarget({
         availability: () => {
           checks += 1;
-          return { status: "available" };
+          return {
+            status: "setup-required",
+            message: "Add sandbox credentials",
+          };
         },
         provision: () => ({ action: "wait", reason: "…" }),
       });
       const { project } = seedTargetFixture(
         harness,
-        "host-provider-availability-cache",
+        "host-provider-availability-fresh",
       );
-      const path = `/api/v1/system/environment-providers?projectId=${project.id}`;
-
-      await harness.app.request(path);
-      await harness.app.request(path);
-      expect(checks).toBe(1);
-
-      requestEnvironmentProviderRecheck(PLUGIN_ID);
-      await harness.app.request(path);
+      await createTargetThread(harness, { projectId: project.id }).catch(
+        () => undefined,
+      );
+      await createTargetThread(harness, { projectId: project.id }).catch(
+        () => undefined,
+      );
       expect(checks).toBe(2);
     });
   });
 
-  it.each(["gitCheckout", "gitRemote", "host"])(
-    "omits providers with unmet %s requirements before availability",
+  it.each(["gitRemote", "host"])(
+    "omits providers with unmet %s requirements without checking availability",
     async (requirement) => {
       await withTestHarness(async (harness) => {
         const availability = vi.fn(() => ({
@@ -1421,7 +1485,6 @@ describe("environment provider listing", () => {
           message: "Configure credentials",
         }));
         installTarget({
-          requiresGitCheckout: requirement === "gitCheckout",
           requiresGitRemote: requirement === "gitRemote",
           availability,
           provision: () => ({ action: "wait", reason: "…" }),
@@ -1455,7 +1518,40 @@ describe("environment provider listing", () => {
     },
   );
 
-  it("recomputes core availability after a checkout is added", async () => {
+  it("does not inspect Git while listing a git-checkout provider", async () => {
+    await withTestHarness(async (harness) => {
+      const availability = vi.fn(() => ({
+        status: "available" as const,
+      }));
+      installTarget({
+        requiresGitCheckout: true,
+        availability,
+        provision: () => ({ action: "wait", reason: "…" }),
+      });
+      const { host, project, session } = seedTargetFixture(
+        harness,
+        "host-filter-git-checkout",
+      );
+      const inspect = vi.fn();
+      registerTestHostRpcCapture(harness, {
+        hostId: host.id,
+        sessionId: session.id,
+        onInspectGitSource: inspect,
+      });
+      const body = (await readJson(
+        await harness.app.request(
+          `/api/v1/system/environment-providers?projectId=${project.id}&hostId=${host.id}`,
+        ),
+      )) as { providers: Array<{ id: string }> };
+      expect(body.providers.map((provider) => provider.id)).toEqual([
+        PROVIDER_ID,
+      ]);
+      expect(inspect).not.toHaveBeenCalled();
+      expect(availability).not.toHaveBeenCalled();
+    });
+  });
+
+  it("recomputes structural eligibility after a checkout is added", async () => {
     await withTestHarness(async (harness) => {
       let checks = 0;
       installTarget({
@@ -1493,19 +1589,18 @@ describe("environment provider listing", () => {
       const after = (await readJson(await harness.app.request(path))) as {
         providers: Array<{ availability: unknown }>;
       };
-      expect(after.providers[0]?.availability).toEqual({
-        status: "available",
-      });
-      expect(checks).toBe(1);
+      expect(after.providers[0]?.availability).toBeNull();
+      expect(checks).toBe(0);
     });
   });
 
-  it("names the plugin when its availability hook throws", async () => {
+  it("does not call a throwing availability hook while listing", async () => {
     await withTestHarness(async (harness) => {
+      const availability = vi.fn(() => {
+        throw new Error("credential service failed");
+      });
       installTarget({
-        availability: () => {
-          throw new Error("credential service failed");
-        },
+        availability,
         provision: () => ({ action: "wait", reason: "…" }),
       });
       const { project } = seedTargetFixture(
@@ -1519,11 +1614,8 @@ describe("environment provider listing", () => {
       const body = (await readJson(response)) as {
         providers: Array<{ availability: unknown }>;
       };
-      expect(body.providers[0]?.availability).toEqual({
-        status: "unavailable",
-        message:
-          'Plugin "sandbox" could not determine availability: credential service failed',
-      });
+      expect(body.providers[0]?.availability).toBeNull();
+      expect(availability).not.toHaveBeenCalled();
     });
   });
 });

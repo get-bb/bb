@@ -433,8 +433,7 @@ there is no separate persisted hook ledger or process reconciliation. Recovery
 with unknown daemon hook state blocks automatic cleanup and requires inspection.
 Cleanup permits four operations globally and one per host. Progress remains
 durable before reporting returns, but wakes only its launch without invalidating
-configuration or provider availability. recheck schedules another
-ask.
+configuration. recheck schedules another pending launch attempt.
 
 Provider selections are accepted by the SDK, CLI, app, and automations. The
 built-in checkout, worktree, and personal workspace behaviors are first-party
@@ -486,10 +485,11 @@ Core persists launch attempts, progress, cancellation, direct resource
 attachment, retirement deadlines and teardown state in SQLite. Providers supply
 idempotent long-running create and remove calls plus policy. Values retain their
 experimental\_ prefix; public types follow the existing declaration convention.
-The optional `availability(context)` method answers whether the
+The optional `availability(context)` method answers whether the selected
 provider is available, needs setup, or is unavailable for a project and
-machine. Its context contains project, host, projectCheckout, and gitRemote;
-its named types intentionally have no experimental prefix.
+machine during thread creation. Discovery does not invoke it. Its context
+contains project, host, projectCheckout, and gitRemote; its named types
+intentionally have no experimental prefix.
 
 **Audit before stabilizing.** Verify monotonic attempts and path-key recovery
 across cancellation/restart; per-environment
@@ -502,9 +502,9 @@ removal. The six policy defaults are 5 minutes/60 seconds/30 seconds/3/
 per-thread/null; nullable retirement and create timeout disable those policies.
 EnvironmentStatus remains provisioning/ready/error/destroyed;
 retiring and teardown are lifecycle phases, not restored statuses.
-Audit availability message ownership, cache invalidation on settings and
-recheck, the interaction between the `requires` floor and provider decisions,
-and whether the current decision timeout is appropriate before stabilizing it.
+Audit availability message ownership, create-time error presentation, the
+interaction between the `requires` floor and provider decisions, and whether
+the current decision timeout is appropriate before stabilizing it.
 
 ## `app.slots.experimental_environmentProviderInputs`, `experimental_BranchPicker`, `experimental_useBranches` and `experimental_useCheckoutState` (`@get-bb/plugin-sdk/app`)
 

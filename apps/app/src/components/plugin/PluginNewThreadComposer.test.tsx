@@ -75,10 +75,6 @@ vi.mock("@/hooks/queries/environment-provider-queries", () => ({
   useSystemEnvironmentProviders: () => ({
     providers: mocks.environmentProviders,
   }),
-  useSystemEnvironmentProvidersByHost: (
-    _projectId: string,
-    hostIds: readonly string[],
-  ) => new Map(hostIds.map((hostId) => [hostId, mocks.environmentProviders])),
 }));
 
 vi.mock("@/lib/sdk", () => ({
@@ -1624,7 +1620,7 @@ describe("NewThreadComposer environment providers", () => {
     });
   });
 
-  it("routes setup-required provider submissions to plugin settings", async () => {
+  it("submits a provider without interpreting deferred availability", async () => {
     const setupRequiredProvider: SystemEnvironmentProvider = {
       ...OPTIONAL_INPUTS_PROVIDER,
       id: "modal-sandbox",
@@ -1655,10 +1651,13 @@ describe("NewThreadComposer environment providers", () => {
     });
     await submit();
 
-    expect(submitted).toHaveLength(0);
-    expect(screen.getByTestId("location-path").textContent).toBe(
-      "/settings/plugins/environment-modal-sandbox",
-    );
+    expect(submitted).toHaveLength(1);
+    expect(submitted[0]?.environment).toEqual({
+      type: "provider",
+      environmentProviderId: "modal-sandbox",
+      machine: { type: "existing", hostId: "host_1" },
+      inputs: null,
+    });
   });
 
   it("shows the plugin's blocked reason and prevents submit", async () => {

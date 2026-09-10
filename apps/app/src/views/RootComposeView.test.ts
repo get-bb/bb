@@ -161,7 +161,6 @@ describe("resolveNewThreadSubmitDisabledReason", () => {
     isLoadingModels: false,
     isSubmitting: false,
     isUploading: false,
-    gitCheckoutUnavailableReason: null,
     modelLoadError: null,
     projectDefaultsStatus: "resolved",
     projectDefaultsUnavailable: false,
@@ -223,14 +222,6 @@ describe("resolveNewThreadSubmitDisabledReason", () => {
         submissionEnvironmentUnavailable: true,
       },
       "Docker container needs its plugin's control",
-    ],
-    [
-      "an unavailable worktree",
-      {
-        gitCheckoutUnavailableReason:
-          "Project source has no commits. Create an initial commit before creating a worktree",
-      },
-      "Project source has no commits. Create an initial commit before creating a worktree",
     ],
     [
       "an empty prompt",

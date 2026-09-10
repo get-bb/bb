@@ -209,10 +209,11 @@ and are readable by every plugin through the SDK, including after the
 environment is destroyed. They are configuration, not a credential store;
 keep credentials in secret settings. `availability` may return
 available, setup-required with a message, or unavailable with a message for a
-project and machine. Core calls it inside the decision timeout and caches the
-answer until settings change or the provider calls `recheck`. `validate` may accept or refuse a request
-before a thread exists, using the resolved project, host, checkout, remote and
-inputs. Required facts and schema outputs are inferred by registration.
+project and machine. Core calls it inside the decision timeout only for the
+selected provider and machine during thread creation, checking it afresh for
+every creation request. `validate` may accept or refuse the same request before
+a thread exists, using the resolved project, host, checkout, remote and inputs.
+Required facts and schema outputs are inferred by registration.
 
 Core owns launch attempts, cancellation, retry timing, attachment, retirement,
 and removal in SQLite. Providers must not keep duplicate launch records or
@@ -422,6 +423,6 @@ claiming and before mutating a shared checkout. Core normalizes trailing slashes
 on claims. Reuse, directory switching and restored dispatch enforce claims;
 only the owning launch is exempt. `bb.sdk.environments.list({ hostId, path })`
 compares stored paths in the database and does not contact hosts.
-Scoped discovery omits providers whose requirements are unmet; availability rows
-are only returned for eligible providers. Without a machine scope, discovery
-includes providers eligible on any persistent machine.
+Scoped discovery omits providers whose declared requirements are unmet without
+running Git inspection or plugin availability. Without a machine scope,
+discovery includes providers structurally eligible on any persistent machine.

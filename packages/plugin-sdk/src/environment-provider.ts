@@ -41,7 +41,7 @@ export interface PluginEnvironmentProviderValidateContext<
 
 export interface PluginEnvironmentProviderAvailabilityContext {
   project: Project;
-  host: Host | null;
+  host: Host;
   projectCheckout: { path: string } | null;
   gitRemote: string | null;
 }
@@ -116,7 +116,7 @@ export interface PluginEnvironmentProviderDefinition<
   requires?: R;
   inputs?: S;
   policy?: Partial<PluginEnvironmentProviderPolicy>;
-  /** Experimental: see docs/api_to_audit.md. */
+  /** Experimental create-time preflight: see docs/api_to_audit.md. */
   availability?(
     context: PluginEnvironmentProviderAvailabilityContext,
   ):
