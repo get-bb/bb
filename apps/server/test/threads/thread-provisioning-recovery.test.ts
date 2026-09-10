@@ -21,6 +21,7 @@ import {
 import { advanceThreadProvisioning } from "../../src/services/threads/thread-provisioning.js";
 import {
   listQueuedThreadCommands,
+  reportNextEnvironmentAttachSuccess,
   reportQueuedCommandError,
   reportQueuedCommandSuccess,
   waitForQueuedCommand,
@@ -463,6 +464,7 @@ describe("thread provisioning recovery", () => {
 
         expect(response.status).toBe(200);
         expect(getThread(harness.db, thread.id)?.status).toBe("starting");
+        await reportNextEnvironmentAttachSuccess(harness, thread.id);
         startCommand = await waitForQueuedCommand(
           harness,
           ({ command }) =>

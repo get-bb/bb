@@ -583,6 +583,29 @@ export async function reportQueuedCommandSuccess<
   return new Response(null, { status: 200 });
 }
 
+export async function reportNextEnvironmentAttachSuccess(
+  harness: TestAppHarness,
+  threadId: string,
+): Promise<void> {
+  const queued = await waitForQueuedCommand(
+    harness,
+    ({ command }) =>
+      command.type === "environment.attach" &&
+      command.initiator?.threadId === threadId,
+  );
+  if (queued.command.type !== "environment.attach") {
+    throw new Error("Expected environment.attach command");
+  }
+  await reportQueuedCommandSuccess(harness, queued, {
+    path: queued.command.path,
+    isGitRepo: true,
+    isWorktree: false,
+    branchName: "main",
+    defaultBranch: "main",
+    transcript: [],
+  });
+}
+
 export async function reportQueuedCommandError(
   harness: TestAppHarness,
   queued: QueuedCommand,
