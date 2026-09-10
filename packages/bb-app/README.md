@@ -91,6 +91,19 @@ local host daemon, and serves the web app. It stores bb-managed state under
 launcher restarts that child without stopping the other one. Press `Ctrl+C` in
 the terminal to stop both processes and exit with status `0`.
 
+Server and host-daemon output goes directly to `logs/server-stdio.log` and
+`logs/host-daemon-stdio.log` under the data directory, including startup errors
+and console output. These files append across restarts; they are separate from
+the rotating application logs. The launcher prints status and log locations
+without forwarding service output to the terminal, so a stalled terminal cannot
+block service logging. To follow output with the default data directory:
+
+```bash
+tail -F ~/.bb/logs/server-stdio.log ~/.bb/logs/host-daemon-stdio.log
+```
+
+The same output capture applies to `bb-server` and `bb-host-daemon`.
+
 To stop a bb that runs in another terminal or in the background:
 
 ```bash
