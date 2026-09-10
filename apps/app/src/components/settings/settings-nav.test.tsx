@@ -93,13 +93,13 @@ describe("useSettingsNavState", () => {
     );
   });
 
-  it("does not treat the legacy installed-plugin collection as a settings section", () => {
+  it("recognizes installed plugins as a settings section", () => {
     const { result } = renderHook(() => useSettingsNavState(), {
       wrapper: wrapperFor("/settings/plugins"),
     });
 
-    expect(result.current.hasUnknownSection).toBe(true);
-    expect(result.current.sections.map((section) => section.id)).not.toContain(
+    expect(result.current.hasUnknownSection).toBe(false);
+    expect(result.current.sections.map((section) => section.id)).toContain(
       "plugins",
     );
   });

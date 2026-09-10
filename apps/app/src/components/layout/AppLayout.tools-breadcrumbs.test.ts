@@ -71,7 +71,7 @@ describe("resolveToolsBreadcrumbs", () => {
       ),
     ).toEqual([
       { label: "Plugins", to: "/plugins" },
-      { label: "Installed", to: "/plugins?view=installed" },
+      { label: "Installed", to: "/settings/plugins" },
       { label: "UI Patterns" },
     ]);
     expect(

@@ -140,7 +140,9 @@ export function getPluginDetailRoutePath({
   view,
 }: PluginDetailRoutePathArgs): string {
   const path = `${PLUGINS_ROUTE_PATH}/${encodeURIComponent(pluginId)}`;
-  return view === "installed" ? `${path}?view=installed` : path;
+  return view === "installed"
+    ? `${SETTINGS_PLUGINS_ROUTE_PATH}/${encodeURIComponent(pluginId)}?view=installed`
+    : path;
 }
 
 export function getPluginConfigurationRoutePath(

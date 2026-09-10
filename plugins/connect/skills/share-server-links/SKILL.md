@@ -30,7 +30,7 @@ remove and re-add it under Settings > Machines.
 
 ## Agent instructions setting
 
-Plugins → Installed plugins → Connect has a "Tell agents about remote access"
+Settings → Installed plugins → Connect has a "Tell agents about remote access"
 toggle, enabled by default. Use
 `bb plugin config connect set sendRemoteInstructions false` to suppress the
 remote-access message, or `true` to restore it. This controls only the message;

@@ -38,7 +38,9 @@ import {
 
 export function PluginsOverview({
   onOpenPlugin,
+  mode,
 }: {
+  mode?: "installed" | "browse";
   onOpenPlugin?: (pluginId: string, trigger: HTMLButtonElement) => void;
 } = {}) {
   const navigate = useNavigate();
@@ -49,7 +51,7 @@ export function PluginsOverview({
     [listQuery.data?.plugins],
   );
   const activeMode =
-    searchParams.get("view") === "installed" ? "installed" : "browse";
+    mode ?? (searchParams.get("view") === "installed" ? "installed" : "browse");
   const authorKey = searchParams.get("author");
   const [installedQuery, setInstalledQuery] = useState("");
   const [installedViewport, setInstalledViewport] =

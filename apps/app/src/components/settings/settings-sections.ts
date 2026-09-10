@@ -12,6 +12,7 @@ export const SETTINGS_NAV_SECTIONS = [
   { icon: "FolderGit", id: "projects", label: "Projects" },
   { icon: "Laptop", id: "machines", label: "Machines" },
   { icon: "PackageReceive", id: "updates", label: "Updates" },
+  { icon: "ElectricPlugs", id: "plugins", label: "Installed plugins" },
   { icon: "Puzzle", id: "marketplaces", label: "Plugin marketplaces" },
   { icon: "Beaker", id: "experiments", label: "Experiments" },
   { icon: "MessageSquare", id: "community", label: "Community" },
