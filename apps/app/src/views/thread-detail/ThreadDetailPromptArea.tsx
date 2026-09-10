@@ -79,6 +79,7 @@ import {
   type InlineQueuedMessageEditState,
 } from "@/components/thread/embedded-chat";
 import {
+  useCreateThread,
   useCreateThreadQueuedMessage,
   useCancelThreadPlan,
   useClearThreadGoal,
@@ -97,9 +98,17 @@ import {
 } from "@/lib/mutation-errors";
 import { promptHistoryEntriesToDrafts } from "@/lib/prompt-history";
 import { usePromptHistoryEnabled } from "@/hooks/usePromptHistoryEnabled";
-import { getProjectComposeRoutePath } from "@/lib/route-paths";
+import {
+  getProjectComposeRoutePath,
+  getThreadRoutePath,
+} from "@/lib/route-paths";
 import { getThreadDisplayTitle } from "@/lib/thread-title";
-import { buildThreadHandoffLocationState } from "@bb/client-core";
+import { appToast } from "@/components/ui/app-toast";
+import {
+  buildThreadHandoffCreateRequest,
+  buildThreadHandoffLocationState,
+  type ThreadHandoffCreateSeed,
+} from "@bb/client-core";
 import {
   emptyPromptDraftState,
   promptDraftToInput,
@@ -125,6 +134,7 @@ import {
 } from "@bb/client-core";
 
 const ignorePromptBannerFileClick = () => {};
+const ignoreToastedCreateThreadError = () => {};
 
 export interface ThreadDetailSentMessageEdit {
   draft: PromptDraftState;
@@ -450,6 +460,7 @@ export function ThreadDetailPromptArea({
   const cancelThreadPlan = useCancelThreadPlan();
   const clearThreadGoal = useClearThreadGoal();
   const unarchiveThread = useUnarchiveThread();
+  const createThread = useCreateThread();
   const projectName = useProjectDisplayName(
     thread.projectId === PERSONAL_PROJECT_ID ? undefined : thread.projectId,
   );
@@ -597,8 +608,10 @@ export function ThreadDetailPromptArea({
   const {
     executionOptionsRouting,
     selectedProviderId,
+    setSelectedProviderId,
     providerOptions,
     hasMultipleProviders,
+    selectedProviderDisplayName,
     selectedProviderComposerActions,
     selectedModel,
     setSelectedModel,
@@ -655,6 +668,63 @@ export function ThreadDetailPromptArea({
     },
     [fallbackIdentity, setSelectedModel],
   );
+  const handleProviderChange = useCallback(
+    (providerId: string) => {
+      if (providerId === selectedProviderId) {
+        return;
+      }
+      if (fallbackIdentity !== null) {
+        setOverriddenFallbackIdentity(fallbackIdentity);
+      }
+      setSelectedProviderId(providerId);
+    },
+    [fallbackIdentity, selectedProviderId, setSelectedProviderId],
+  );
+  const isHandoffSelection =
+    selectedProviderId.length > 0 &&
+    selectedProviderId !== thread.providerId &&
+    providerOptions.some((option) => option.value === thread.providerId);
+  const sourceThreadDisplayTitle = getThreadDisplayTitle({
+    id: thread.id,
+    title: thread.title,
+    titleFallback: thread.titleFallback,
+  });
+  const handoffSeed = useMemo<ThreadHandoffCreateSeed>(
+    () => ({
+      environmentId: thread.environmentId,
+      projectId: thread.projectId,
+      sourceThreadId: thread.id,
+      sourceThreadTitle: sourceThreadDisplayTitle,
+    }),
+    [
+      sourceThreadDisplayTitle,
+      thread.environmentId,
+      thread.id,
+      thread.projectId,
+    ],
+  );
+  const selectedProviderDisplayNameRef = useLatestRef(
+    selectedProviderDisplayName,
+  );
+  useEffect(() => {
+    if (!isHandoffSelection) {
+      return;
+    }
+    appToast.message("Submitting will create a new thread", {
+      description: `Your follow-up starts a new ${selectedProviderDisplayNameRef.current} thread that continues from this one.`,
+    });
+  }, [isHandoffSelection, selectedProviderDisplayNameRef]);
+  const hasSentMessageEdit = sentMessageEdit !== undefined;
+  useEffect(() => {
+    if (hasSentMessageEdit && isHandoffSelection) {
+      setSelectedProviderId(thread.providerId);
+    }
+  }, [
+    hasSentMessageEdit,
+    isHandoffSelection,
+    setSelectedProviderId,
+    thread.providerId,
+  ]);
   const { typeaheadConfig, promptActions } = useComposerTypeahead({
     projectId: thread.projectId,
     mentionsProjectId: projectId,
@@ -702,6 +772,7 @@ export function ThreadDetailPromptArea({
   const isFollowUpSubmitting =
     sendMessage.isPending ||
     createQueuedMessage.isPending ||
+    createThread.isPending ||
     isFollowUpShortcutSending;
   const handleStopThread = useCallback(() => {
     stopThread.mutate(thread.id);
@@ -712,7 +783,16 @@ export function ThreadDetailPromptArea({
   const handleClearGoal = useCallback(() => {
     clearThreadGoal.mutate(thread.id);
   }, [clearThreadGoal, thread.id]);
-  const submitMode: FollowUpSubmitMode = useMemo(() => {
+  const submitMode = useMemo<FollowUpSubmitMode>(() => {
+    if (isHandoffSelection && !isStopRequested) {
+      if (effectiveSelectedModel.length > 0) {
+        return { kind: "ready" };
+      }
+      return {
+        kind: "blocked",
+        reason: modelLoadFailed ? "unavailable" : "loading-execution-options",
+      };
+    }
     return buildFollowUpSubmitMode({
       hasPendingInteraction,
       isDefaultExecutionOptionsLoading,
@@ -722,9 +802,12 @@ export function ThreadDetailPromptArea({
       runtimeDisplayStatus,
     });
   }, [
+    effectiveSelectedModel,
     handleStopThread,
     hasPendingInteraction,
     isDefaultExecutionOptionsLoading,
+    isHandoffSelection,
+    modelLoadFailed,
     pendingInteractionsInitialLoading,
     isStopRequested,
     runtimeDisplayStatus,
@@ -793,9 +876,69 @@ export function ThreadDetailPromptArea({
     supportsServiceTier,
   ]);
 
+  const createHandoffThread = useCallback(
+    async (submittedDraft: PromptDraftState, sendAt?: number) => {
+      const request = buildThreadHandoffCreateRequest({
+        execution: {
+          providerId: selectedProviderId,
+          model: effectiveSelectedModel,
+          reasoningLevel,
+          serviceTier,
+          supportsServiceTier,
+          permissionMode,
+          executionInputSources,
+        },
+        followUp: submittedDraft,
+        seed: handoffSeed,
+        ...(sendAt === undefined ? {} : { sendAt }),
+      });
+      if (request === null) {
+        return false;
+      }
+      const clearedSubmittedDraft =
+        promptDraft.clearIfCurrentMatches(submittedDraft);
+      setBottomAttachmentError(null);
+      try {
+        const created = await createThread.mutateAsync(request);
+        navigate(
+          getThreadRoutePath({
+            projectId: created.projectId,
+            threadId: created.id,
+          }),
+        );
+      } catch (error) {
+        if (clearedSubmittedDraft) {
+          promptDraft.restoreIfEmpty(submittedDraft);
+        }
+        throw error;
+      }
+      return true;
+    },
+    [
+      createThread,
+      effectiveSelectedModel,
+      executionInputSources,
+      handoffSeed,
+      navigate,
+      permissionMode,
+      promptDraft,
+      reasoningLevel,
+      selectedProviderId,
+      serviceTier,
+      setBottomAttachmentError,
+      supportsServiceTier,
+    ],
+  );
+
   const handleSend = useCallback(async () => {
     const submittedDraft = currentPromptDraft;
     const submittedInput = currentPromptDraftInput;
+    if (isHandoffSelection) {
+      await createHandoffThread(submittedDraft).catch(
+        ignoreToastedCreateThreadError,
+      );
+      return;
+    }
     const isQueuingMessage = shouldQueueFollowUpMessage(runtimeDisplayStatus);
     if (
       submittedInput.length === 0 ||
@@ -838,11 +981,13 @@ export function ThreadDetailPromptArea({
       });
     }
   }, [
+    createHandoffThread,
     createQueuedMessage,
     currentPromptDraft,
     currentPromptDraftInput,
     followUpExecutionSelection,
     isDefaultExecutionOptionsLoading,
+    isHandoffSelection,
     promptDraft,
     sendMessage,
     setBottomAttachmentError,
@@ -851,6 +996,27 @@ export function ThreadDetailPromptArea({
   ]);
   const submitScheduled = useCallback(
     async ({ sendAt }: { sendAt: number }) => {
+      if (isHandoffSelection) {
+        if (effectiveSelectedModel.length === 0) {
+          throw new Error("The selected model is still loading.");
+        }
+        let created = false;
+        try {
+          created = await createHandoffThread(promptDraft.getCurrent(), sendAt);
+        } catch (scheduleError) {
+          throw new Error(
+            getMutationErrorMessage({
+              error: scheduleError,
+              fallbackMessage: "Failed to create thread",
+              lifecycleOperation: "create_thread",
+            }),
+          );
+        }
+        if (!created) {
+          throw new Error("Type a message before scheduling it.");
+        }
+        return;
+      }
       if (isDefaultExecutionOptionsLoading) {
         throw new Error("This thread's model options are still loading.");
       }
@@ -882,8 +1048,11 @@ export function ThreadDetailPromptArea({
       }
     },
     [
+      createHandoffThread,
+      effectiveSelectedModel,
       followUpExecutionSelection,
       isDefaultExecutionOptionsLoading,
+      isHandoffSelection,
       promptDraft,
       sendMessage,
       setBottomAttachmentError,
@@ -986,27 +1155,11 @@ export function ThreadDetailPromptArea({
   const handleUnarchiveCurrentThread = useCallback(() => {
     unarchiveThread.mutate({ id: thread.id });
   }, [thread.id, unarchiveThread]);
-  const sourceThreadDisplayTitle = getThreadDisplayTitle({
-    id: thread.id,
-    title: thread.title,
-    titleFallback: thread.titleFallback,
-  });
   const handleHandoffToNewThread = useCallback(() => {
     navigate(getProjectComposeRoutePath(thread.projectId), {
-      state: buildThreadHandoffLocationState({
-        environmentId: thread.environmentId,
-        projectId: thread.projectId,
-        sourceThreadId: thread.id,
-        sourceThreadTitle: sourceThreadDisplayTitle,
-      }),
+      state: buildThreadHandoffLocationState(handoffSeed),
     });
-  }, [
-    navigate,
-    sourceThreadDisplayTitle,
-    thread.environmentId,
-    thread.id,
-    thread.projectId,
-  ]);
+  }, [handoffSeed, navigate, thread.projectId]);
 
   const bottomAttachmentsConfig = useMemo(
     () => ({
@@ -1050,6 +1203,9 @@ export function ThreadDetailPromptArea({
       onChangeMessage: promptDraft.setTextAndMentions,
       onModifierSubmit: handleBottomComposerModifierSubmit,
       onSubmit: handleBottomComposerSubmit,
+      ...(isHandoffSelection
+        ? { submitTitle: "Create new thread (Enter)" }
+        : {}),
       compactPromptPlaceholder,
       promptPlaceholder,
       canModifierSubmit: canSubmitModifierShortcut,
@@ -1064,6 +1220,7 @@ export function ThreadDetailPromptArea({
       handleBottomComposerModifierSubmit,
       handleBottomComposerSubmit,
       isFollowUpSubmitting,
+      isHandoffSelection,
       promptHistoryDrafts,
       promptPlaceholder,
       promptDraft.setDraft,
@@ -1121,6 +1278,7 @@ export function ThreadDetailPromptArea({
       provider: {
         options: providerOptions,
         selectedId: selectedProviderId,
+        onChange: handleProviderChange,
         hasMultiple: hasMultipleProviders,
       },
       model: {
@@ -1158,6 +1316,7 @@ export function ThreadDetailPromptArea({
       hasMultipleProviders,
       handleHandoffToNewThread,
       handleModelChange,
+      handleProviderChange,
       isLoadingModels,
       modelLoadFailed,
       modelLoadError,
@@ -1177,9 +1336,12 @@ export function ThreadDetailPromptArea({
     ],
   );
   const compactExecutionConfig = useMemo(() => {
-    const { footerAction: _footerAction, ...executionWithoutFooterAction } =
-      bottomExecutionConfig;
-    return executionWithoutFooterAction;
+    const {
+      footerAction: _footerAction,
+      provider: { onChange: _onProviderChange, ...lockedProvider },
+      ...executionWithoutFooterAction
+    } = bottomExecutionConfig;
+    return { ...executionWithoutFooterAction, provider: lockedProvider };
   }, [bottomExecutionConfig]);
   const inlineExecutionConfig = useMemo(() => {
     if (!inlineEditingQueuedMessage) return null;
