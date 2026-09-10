@@ -93,12 +93,11 @@ describe("useSettingsNavState", () => {
     );
   });
 
-  it("resolves installed plugin management in Settings", () => {
+  it("recognizes installed plugins as a settings section", () => {
     const { result } = renderHook(() => useSettingsNavState(), {
       wrapper: wrapperFor("/settings/plugins"),
     });
 
-    expect(result.current.activeSection).toBe("plugins");
     expect(result.current.hasUnknownSection).toBe(false);
     expect(result.current.sections.map((section) => section.id)).toContain(
       "plugins",

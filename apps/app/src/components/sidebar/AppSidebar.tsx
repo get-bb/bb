@@ -305,10 +305,6 @@ export function AppSidebar({
           </SidebarMenuItem>
           <PluginSidebarFooterItems
             activeDisclosureKey={pluginSidebarFooter.activeKey}
-            suppressedTooltipKey={pluginSidebarFooter.suppressedTooltipKey}
-            onTooltipSuppressionEnd={
-              pluginSidebarFooter.clearTooltipSuppression
-            }
             onDisclosureCommand={pluginSidebarFooter.handleCommand}
             onNavigate={closeOnMobile}
           />

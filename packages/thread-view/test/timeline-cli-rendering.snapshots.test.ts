@@ -1385,6 +1385,36 @@ describe("timeline CLI rendering snapshots", () => {
     ]);
   });
 
+  it("uses the completed row identity for active thinking across turn-scoped item reuse", () => {
+    const event = createTimelineEventFactory({
+      threadId: "thread-1",
+      turnId: "turn-1",
+    });
+    const prefix = [
+      event.turnStarted(),
+      event.reasoningStarted({ itemId: "thinking" }),
+      event.reasoningDelta({ itemId: "thinking", delta: "First thought" }),
+    ];
+    const active = renderActiveTimeline(prefix).projection.state.activeThinking;
+    expect(active).not.toBeNull();
+    const completed = renderActiveTimeline([
+      ...prefix,
+      event.reasoningCompleted({ itemId: "thinking", text: "First thought" }),
+    ]);
+    expect(
+      completed.messages.find(
+        (message) =>
+          message.kind === "operation" && message.opType === "reasoning",
+      )?.id,
+    ).toBe(active?.id);
+    const next = renderActiveTimeline([
+      event.turnStarted({ turnId: "turn-2" }),
+      event.reasoningStarted({ itemId: "thinking", turnId: "turn-2" }),
+    ]).projection.state.activeThinking;
+    expect(next).not.toBeNull();
+    expect(next?.id).not.toBe(active?.id);
+  });
+
   it("keeps root reasoning active when a nested reasoning lifecycle completes first", () => {
     const event = createTimelineEventFactory({
       providerThreadId: "root-provider",
@@ -1419,7 +1449,7 @@ describe("timeline CLI rendering snapshots", () => {
     ]);
 
     expect(timeline.projection.state.activeThinking).toMatchObject({
-      id: "root-reasoning",
+      id: expect.stringContaining("item:root-reasoning"),
       text: "Root is still thinking.\n",
     });
     expect(
@@ -2334,7 +2364,7 @@ describe("timeline CLI rendering snapshots", () => {
         startedAt: 1_000,
         completedAt: 4_000,
         scope: { kind: "turn", turnId: "turn-1" },
-        opType: "operation",
+        opType: "reasoning",
         title: "Thought for 3s",
         detail: "I should inspect the projection seam first.",
         status: "completed",
@@ -2343,10 +2373,10 @@ describe("timeline CLI rendering snapshots", () => {
     expect(reloadedTimeline.text).toBe(timeline.text);
     expect(timeline.text).toMatchInlineSnapshot(`
       "── Worked for (7s) ─────────────────────────────────────────
-        ── Thought for 3s
-          I should inspect the projection seam first.
-
-        ── Ran tool exec_command { cmd: sed -n '1,80p' packages/core-ui/src/i... }
+        ── Ran 1 tool
+          ── Thought for 3s
+            I should inspect the projection seam first.
+          ── Ran tool exec_command { cmd: sed -n '1,80p' packages/core-ui/src/i... }
 
       ── Assistant ───────────────────────────────────────────────
       The extension point is the timeline row builder."

@@ -9,8 +9,16 @@ Environment commands
 
 Environments determine where threads run. Multiple threads can share an environment
 (e.g., a coding thread and a review thread in the same worktree).
+The first-party choices are Project checkout (the project's existing directory),
+Worktree (a fresh Git worktree), and Personal workspace (a projectless workspace).
 
 Making your repo work with bb:
+
+  If the default environment plugin is disabled or missing, creation fails
+  before inserting a thread. Enable the plugin or explicitly choose another
+  environment; BB does not silently replace an isolated worktree with a checkout.
+  Host-dependent preflight checks require the selected machine to be connected.
+  Directory switching creates a core-owned attachment with no provider identity.
 
   Commit a .bb-env-setup.sh script at the repo root when new bb worktrees need
   repo-specific setup. After bb creates a new managed worktree environment, it
@@ -27,12 +35,16 @@ Making your repo work with bb:
   variable are removed, and bb does not inject BB_PROJECT_ID, BB_ENVIRONMENT_ID,
   or BB_SOURCE_PATH.
 
-  The hook runs only for newly-created managed worktree environments. It does
-  not run for direct/project-checkout environments, personal scratch workspaces,
-  or reconnecting an existing managed worktree.
+  Core admits and claims the path before hooks, and runs hooks only
+  after create confirms ownsPath: true. Attached project
+  checkouts and personal workspaces never run hooks. Hook IDs derive from the launch attempt. A server restart can join the same
+  operation while the daemon remains alive. Hook state is held only in daemon
+  memory; a daemon restart leaves an interrupted hook outcome unknown.
 
   A non-zero exit, timeout, signal, or cancellation fails provisioning and bb
-  removes the new worktree. Keep optional setup steps non-fatal inside the
+  removes the new worktree after confirming the script has stopped. An unknown
+  hook outcome blocks automatic cleanup and requires inspection before recovery.
+  Keep optional setup steps non-fatal inside the
   script if the environment should still open. Provisioning progress reports
   "Running .bb-env-setup.sh" and then ".bb-env-setup.sh finished",
   ".bb-env-setup.sh failed", or ".bb-env-setup.sh cancelled".
@@ -45,8 +57,12 @@ Making your repo work with bb:
 
   Teardown has a separate 15-minute timeout. A non-zero exit, timeout, or
   signal reports failure in the destroy transcript, but bb removes the
-  worktree regardless. The teardown hook runs only when bb destroys managed
-  worktrees. It does not run for unmanaged or personal environments.
+  worktree after script termination. If transport fails, bb cancels the hook
+  and confirms its process group has stopped before releasing the workspace.
+  An unreachable daemon leaves cleanup pending for retry. If the daemon no
+  longer knows the hook, cleanup remains blocked with an explicit unknown-outcome
+  error. There is no cross-restart script recovery or persisted process tracking.
+  Teardown only runs for paths whose ownership was confirmed by create.
 
   New worktrees do not contain untracked files such as .env.local. To copy
   them from the source checkout, commit a .worktreeinclude file at the repo
@@ -71,7 +87,30 @@ Making your repo work with bb:
   For files that customize agent instructions and skills (AGENTS.md,
   .bb/AGENTS.md, .bb/skills/), run `bb guide agent-configuration`.
 
-  bb environment show <id>                Show environment details (path, branch, status)
+  bb environment providers                List registered environment providers in picker order:
+                                          Project checkout, Worktree, then other installed providers
+                                          by display name; includes id, name, the `requires` facts (host,
+                                          projectCheckout, gitCheckout, gitRemote, projectless), and whether
+                                          it takes --environment-inputs (--json prints the JSON Schema)
+    --project <id>                        Filter by structural eligibility for this project
+    --machine <id-or-name>               Scope structural eligibility to this machine
+    --host <id-or-name>                  Alias for --machine
+  bb environment list                     List environments that are not destroyed
+    --project <id>                        Only environments in this project
+    --provider <id>                       Only environments this environment provider produced
+    --host <id-or-name>                   Only environments on this machine
+    --instance-key <key>                  Only the environment its provider named with
+                                          this instance key (with --provider, the one
+                                          row that provider's launch produced)
+    --status <status>                     Only environments in this status: provisioning,
+                                          ready, error, destroyed (the only way to see
+                                          destroyed rows)
+    --limit <n> / --offset <n>            Page through the rows, oldest first
+  bb environment delete <id>              Request provider cleanup; refused while threads are
+                                          live or stopping. The command returns with cleanup
+                                          requested; lifecycle becomes destroyed only after
+                                          provider removal completes
+  bb environment show <id>                Show environment details (path, branch, status, lifecycle, retirement deadline and teardown attempts)
 
   bb environment status <id>              Show workspace status
     --merge-base-branch <branch>          Include merge-base status
@@ -115,13 +154,15 @@ Making your repo work with bb:
 
   bb environment archive-threads <id>     Archive all threads in an environment
 
-  When the last thread of a managed worktree environment is archived or
-  deleted, bb destroys the environment: it stops the agent process, then
-  stops every process whose working directory is inside the worktree
-  (background jobs the agent left behind, and also shells, editors, or
-  servers you started there yourself), then removes the worktree and its
-  branch. Each process gets SIGTERM, then SIGKILL after a short grace
-  period. Move your own shells out of the worktree first if you want to
+  When the last thread of a worktree environment is archived, the worktree
+  plugin waits five minutes and then tears it down: it runs
+  .bb-env-teardown.sh, stops every process whose working directory is inside
+  the worktree (the agent process, background jobs it left behind, and also
+  shells, editors, or servers you started there yourself; SIGTERM, then
+  SIGKILL after a short grace period), removes the worktree, and records the
+  environment as destroyed. The branch is kept. Deleting the last thread starts
+  teardown without the retirement grace; cleanup still completes asynchronously. Unarchiving a thread inside the grace window cancels the
+  teardown. Move your own shells out of the worktree first if you want to
   keep them.
 
   bb environment pull-request show <id>   Inspect a pull request
@@ -194,3 +235,9 @@ Remote access (bb connect):
   shows the URL, QR code, mobile pairing, and shared ports). Disabling the
   plugin (`bb plugin disable connect`) cuts off all remote access; re-enable
   with `bb plugin enable connect`.
+
+Core owns environment retirement and teardown. After the last live thread is archived or deleted, the provider policy sets the retirement deadline. `bb environment show <id>` reports lifecycle phase and teardown status, attempt and failure message. Failed teardown retries automatically; checkout environments do not retire.
+
+Explicit environment or project deletion bypasses the retirement grace, including the never-retire policy. Provider cleanup retains the host, path and resource until removal completes; inspect progress with `bb environment show <id>`.
+
+`bb environment providers --project <id>` omits providers whose declared requirements are unmet on every persistent machine. Add `--machine <id>` to scope structural eligibility to that machine. Git inspection and plugin availability run only for the selected provider and machine during thread creation.

@@ -45,20 +45,17 @@ export function usePluginSidebarFooterDisclosure() {
     [sidebarFooterItems],
   );
   const [activeKey, setActiveKey] = useState<string | null>(null);
-  const [suppressedTooltipKey, setSuppressedTooltipKey] = useState<
-    string | null
-  >(null);
+  const [restoreFocusKey, setRestoreFocusKey] = useState<string | null>(null);
   const lastProgrammaticCommand = useRef(0);
   const activeItem = useMemo(
     () => disclosures.find((item) => footerItemKey(item) === activeKey) ?? null,
     [activeKey, disclosures],
   );
-  const suppressedTooltipItem = useMemo(
+  const restoreFocusItem = useMemo(
     () =>
-      disclosures.find(
-        (item) => footerItemKey(item) === suppressedTooltipKey,
-      ) ?? null,
-    [disclosures, suppressedTooltipKey],
+      disclosures.find((item) => footerItemKey(item) === restoreFocusKey) ??
+      null,
+    [disclosures, restoreFocusKey],
   );
 
   const handleCommand = useCallback(
@@ -74,7 +71,7 @@ export function usePluginSidebarFooterDisclosure() {
       const isClosing =
         (command === "close" && activeKey === itemKey) ||
         (command === "toggle" && activeKey === itemKey);
-      setSuppressedTooltipKey(isClosing ? itemKey : null);
+      setRestoreFocusKey(isClosing ? itemKey : null);
       setActiveKey((current) => {
         if (command === "open") return itemKey;
         if (command === "close") return current === itemKey ? null : current;
@@ -86,23 +83,17 @@ export function usePluginSidebarFooterDisclosure() {
 
   const dismiss = useCallback(() => {
     if (activeItem !== null) {
-      setSuppressedTooltipKey(footerItemKey(activeItem));
+      setRestoreFocusKey(footerItemKey(activeItem));
     }
     setActiveKey(null);
   }, [activeItem]);
 
   useLayoutEffect(() => {
-    if (suppressedTooltipItem === null || activeItem !== null) return;
+    if (restoreFocusItem === null || activeItem !== null) return;
     document
-      .getElementById(footerTriggerId(suppressedTooltipItem))
+      .getElementById(footerTriggerId(restoreFocusItem))
       ?.focus({ preventScroll: true });
-  }, [activeItem, suppressedTooltipItem]);
-
-  const clearTooltipSuppression = useCallback((itemKey: string) => {
-    setSuppressedTooltipKey((current) =>
-      current === itemKey ? null : current,
-    );
-  }, []);
+  }, [activeItem, restoreFocusItem]);
 
   useEffect(() => {
     if (activeItem === null) return;
@@ -118,8 +109,6 @@ export function usePluginSidebarFooterDisclosure() {
   return {
     activeItem,
     activeKey: activeItem === null ? null : activeKey,
-    suppressedTooltipKey,
-    clearTooltipSuppression,
     dismiss,
     handleCommand,
   };
@@ -172,14 +161,10 @@ export function PluginSidebarFooterDisclosure({
 
 export function PluginSidebarFooterItems({
   activeDisclosureKey,
-  suppressedTooltipKey,
-  onTooltipSuppressionEnd,
   onDisclosureCommand,
   onNavigate,
 }: {
   activeDisclosureKey: string | null;
-  suppressedTooltipKey: string | null;
-  onTooltipSuppressionEnd: (itemKey: string) => void;
   onDisclosureCommand: (
     itemKey: string,
     command: ExperimentalSidebarFooterCommandKind,
@@ -196,8 +181,6 @@ export function PluginSidebarFooterItems({
           key={footerItemKey(item)}
           item={item}
           isActive={footerItemKey(item) === activeDisclosureKey}
-          isTooltipSuppressed={footerItemKey(item) === suppressedTooltipKey}
-          onTooltipSuppressionEnd={onTooltipSuppressionEnd}
           onDisclosureCommand={onDisclosureCommand}
           onNavigate={onNavigate}
         />
@@ -209,15 +192,11 @@ export function PluginSidebarFooterItems({
 function SidebarFooterItemButton({
   item,
   isActive,
-  isTooltipSuppressed,
-  onTooltipSuppressionEnd,
   onDisclosureCommand,
   onNavigate,
 }: {
   item: PluginSidebarFooterItemSlot;
   isActive: boolean;
-  isTooltipSuppressed: boolean;
-  onTooltipSuppressionEnd: (itemKey: string) => void;
   onDisclosureCommand: (
     itemKey: string,
     command: ExperimentalSidebarFooterCommandKind,
@@ -248,7 +227,7 @@ function SidebarFooterItemButton({
         aria-label={item.label}
         tooltip={{
           children: item.label,
-          hidden: isTooltipSuppressed,
+          hidden: false,
           side: "top",
         }}
         className={cn(
@@ -261,8 +240,6 @@ function SidebarFooterItemButton({
             ? `plugin-sidebar-footer-action-${item.pluginId}-${item.id}`
             : `plugin-sidebar-footer-item-${item.pluginId}-${item.id}`
         }
-        onBlur={() => onTooltipSuppressionEnd(itemKey)}
-        onPointerLeave={() => onTooltipSuppressionEnd(itemKey)}
         {...(item.kind === "disclosure"
           ? {
               "aria-expanded": isActive,

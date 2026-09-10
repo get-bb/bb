@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { useNavigate } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 import { EmptyState } from "@bb/shared-ui/empty-state";
 import { Switch } from "@bb/shared-ui/switch";
 import {
@@ -17,7 +17,10 @@ import {
 } from "@/hooks/queries/plugin-settings-queries";
 import { pluginNeedsAttention } from "@/hooks/usePluginAttention";
 import { cn } from "@bb/shared-ui/lib/utils";
-import { getPluginDetailRoutePath } from "@/lib/route-paths";
+import {
+  getPluginDetailRoutePath,
+  isPluginsRoutePath,
+} from "@/lib/route-paths";
 import {
   pluginRowSignal,
   pluginRuntimeStatusPresentation,
@@ -77,6 +80,7 @@ export function InstalledPluginRow({
   onUpdateClick: () => void;
 }) {
   const navigate = useNavigate();
+  const location = useLocation();
   const queryClient = useQueryClient();
   const toggle = useMutation({
     meta: { showErrorToast: false },
@@ -104,11 +108,15 @@ export function InstalledPluginRow({
   const runtimeStatusToneClass =
     runtimeStatus?.tone === "error"
       ? "text-destructive-text"
-      : "text-warning-text";
+      : runtimeStatus?.tone === "warning"
+        ? "text-warning-text"
+        : "text-muted-foreground";
 
   const openDetail = () =>
     navigate(
-      getPluginDetailRoutePath({ pluginId: plugin.id, view: "installed" }),
+      isPluginsRoutePath(location.pathname)
+        ? `${getPluginDetailRoutePath({ pluginId: plugin.id })}?view=installed`
+        : getPluginDetailRoutePath({ pluginId: plugin.id, view: "installed" }),
     );
   return (
     <div data-testid={`plugin-row-${plugin.id}`}>

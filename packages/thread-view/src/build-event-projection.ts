@@ -160,6 +160,7 @@ function isEventProjectionCallMessage(
     case "extension":
     case "file-edit":
     case "file-read":
+    case "image-generation":
     case "image-view":
     case "plan-steps":
     case "search":
@@ -905,7 +906,11 @@ function buildFlatProjectionData(
       continue;
     }
 
-    const compactionEvent = parseCompactionLifecycleEvent(decoded, meta);
+    const compactionEvent = parseCompactionLifecycleEvent(
+      decoded,
+      meta,
+      eventParentToolCallId,
+    );
     if (compactionEvent) {
       flushToolActivityBeforeNonToolMessage(state);
       if (compactionEvent.kind === "begin") {
@@ -929,8 +934,7 @@ function buildFlatProjectionData(
     }
 
     const operation = parseOperationMessage(decoded, meta, {
-      includeProviderUnhandledOperations:
-        args.options?.includeProviderUnhandledOperations,
+      includeDiagnosticOperations: args.options?.includeDiagnosticOperations,
       providerDisplayName: args.options?.providerDisplayName,
       threadName: args.options?.threadName ?? "",
     });

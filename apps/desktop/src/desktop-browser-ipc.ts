@@ -35,3 +35,9 @@ export const BB_DESKTOP_BROWSER_STOP_FIND_IN_PAGE_CHANNEL =
   "bb-desktop:browser:stop-find-in-page";
 export const BB_DESKTOP_BROWSER_FIND_RESULT_CHANNEL =
   "bb-desktop:browser:find-result";
+export const BB_DESKTOP_BROWSER_LIST_IMPORT_SOURCES_CHANNEL =
+  "bb-desktop:browser:list-import-sources";
+export const BB_DESKTOP_BROWSER_IMPORT_COOKIES_CHANNEL =
+  "bb-desktop:browser:import-cookies";
+export const BB_DESKTOP_BROWSER_OPEN_FULL_DISK_ACCESS_SETTINGS_CHANNEL =
+  "bb-desktop:browser:open-full-disk-access-settings";

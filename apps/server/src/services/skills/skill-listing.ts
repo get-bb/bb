@@ -23,6 +23,10 @@ import { resolveSkillCatalog } from "./skill-catalog.js";
 import { readRegistrySkillProvenance } from "./registry-skill-provenance.js";
 import { hostPathDirname, resolveSharedSkills } from "./shared-skills.js";
 import {
+  DEFAULT_PATH_LIST_EXCLUDE_NAMES,
+  SKILL_PATH_LIST_INCLUDE_HIDDEN,
+} from "../../routes/path-list-policy.js";
+import {
   providerHasNativeRootSurface,
   scanProviderNativeRoots,
 } from "../providers/native-roots.js";
@@ -152,7 +156,7 @@ function skillId(identitySeed: string, logicalPath: string): string {
 
 function listServerOwnedSkills(deps: AppDeps): SkillSummary[] {
   return resolveServerOwnedSkillCatalogEntries({
-    builtinSkillsRootPath: deps.config.builtinSkillsRootPath,
+    builtinSkillsRootPath: null,
     dataDir: deps.config.dataDir,
     logger: deps.logger,
     skillTreeRegistry: deps.skillTreeRegistry,
@@ -387,7 +391,13 @@ export async function listProjectSkillFiles(
   const result = await callHostRetryableOnlineRpc(deps, {
     hostId: args.workspace.hostId,
     timeoutMs: COMMAND_TIMEOUT_MS,
-    command: { type: "host.list_files", path: rootPath, limit: 200 },
+    command: {
+      type: "host.list_files",
+      path: rootPath,
+      limit: 200,
+      includeHidden: SKILL_PATH_LIST_INCLUDE_HIDDEN,
+      excludeNames: [...DEFAULT_PATH_LIST_EXCLUDE_NAMES],
+    },
   });
   const files = result.files
     .map((file) => file.path)

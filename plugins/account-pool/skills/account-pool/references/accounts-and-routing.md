@@ -17,6 +17,7 @@ bb pool account enable <id>
 bb pool account disable <id>
 bb pool account priority <id> <n>
 bb pool account reorder <claude|codex> <id>...
+bb pool account refresh <id>
 bb pool status [--json]
 bb pool routing <claude|codex> [--off]
 bb pool config
@@ -37,6 +38,7 @@ Code or Codex sessions receive the pool route and a distinct secret token for
 their machine.
 Codex receives `CODEX_OPENAI_BASE_URL` and the secret
 `CODEX_POOL_AUTH_TOKEN`; bb applies them as in-memory app-server config.
+Codex image generation and editing use the same authenticated pool route.
 Tokens are never printed. `status` prunes tokens for unenrolled machines and
 shows token timestamps plus recently routed threads whose machines need a
 local Claude login before the pool can be disabled safely. Rotation keeps the
@@ -46,12 +48,14 @@ prior token valid for ten minutes. Agents should pipe API keys to
 process arguments, shell history, and agent transcripts. Prefer `--import` for
 an existing Claude Code login. The CLI Codex import path reads
 `~/.codex/auth.json` on the bb server host. OAuth quota refreshes on add or
-enable and every five minutes while an account is idle. Account tables add columns for observed
-model-family buckets; JSON status exposes their utilization, reset, status,
-observation time, and source under `familyWeekly`. Selection skips an account
-whose requested family is spent while retaining it for other families. A
-present `metadata.user_id` account UUID is aligned with the selected OAuth
-account. Use `bb pool config` to inspect the full routing configuration and
+enable and every five minutes while an account is idle. Use
+`bb pool account refresh <id>` to request an immediate refresh for one account.
+Account tables add columns for observed model-family buckets; JSON status
+exposes their utilization, reset, status, observation time, and source under
+`familyWeekly`. Selection skips an account whose requested family is spent
+while retaining it for other families. A present `metadata.user_id` account
+UUID is aligned with the selected OAuth account. Use `bb pool config` to
+inspect the full routing configuration and
 `bb pool config set <key> <value>` to update one value. The upstream URL keys
 are QA-only overrides; `switchThreshold` must be greater than 0 and at most 1.
 

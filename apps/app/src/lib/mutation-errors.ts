@@ -176,6 +176,17 @@ export function showMutationErrorToast({
     return;
   }
 
+  const lifecycleDescription = describeLifecycleError({
+    error,
+    operation: lifecycleOperation,
+  });
+  if (lifecycleDescription) {
+    appToast.error(lifecycleDescription.title, {
+      description: lifecycleDescription.body,
+    });
+    return;
+  }
+
   const message = getMutationErrorMessage({
     error,
     fallbackMessage,
@@ -188,5 +199,12 @@ export function showMutationErrorToast({
     return;
   }
 
-  appToast.error(message);
+  const title = normalizeMessage(fallbackMessage).replace(
+    TRAILING_PERIOD_PATTERN,
+    "",
+  );
+  appToast.error(
+    title,
+    message === title ? undefined : { description: message },
+  );
 }

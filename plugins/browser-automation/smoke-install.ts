@@ -1,11 +1,4 @@
-import {
-  readFile,
-  mkdir,
-  mkdtemp,
-  rm,
-  symlink,
-  writeFile,
-} from "node:fs/promises";
+import { readFile, mkdir, mkdtemp, rm, symlink } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { strict as assert } from "node:assert";
@@ -18,14 +11,7 @@ const chrome = z.string().min(1).parse(process.env.DEV_BROWSER_SMOKE_CHROME);
 const root = await mkdtemp(join(tmpdir(), "bb-dev-browser-install-smoke-"));
 const dataDir = join(root, "data");
 await mkdir(join(dataDir, "runtime"), { recursive: true });
-if (process.env.DEV_BROWSER_SMOKE_NO_SANDBOX === "1") {
-  const escaped = `'${resolve(chrome).replaceAll("'", "'\\''")}'`;
-  await writeFile(
-    join(dataDir, "runtime", "chrome"),
-    `#!/bin/sh\nexec ${escaped} --no-sandbox "$@"\n`,
-    { mode: 0o700 },
-  );
-} else await symlink(resolve(chrome), join(dataDir, "runtime", "chrome"));
+await symlink(resolve(chrome), join(dataDir, "runtime", "chrome"));
 const signal = new AbortController().signal;
 const progress: string[] = [];
 try {

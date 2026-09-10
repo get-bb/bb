@@ -14,7 +14,6 @@ import type {
   ImportedClaudeCredentials,
   ImportedCodexCredentials,
 } from "./credentials.js";
-import { createCodexWebSocketHandlers } from "./codex-websocket.js";
 import { createHub } from "./hub.js";
 import { PoolOperations } from "./operations.js";
 import { accountPoolRpcContract, createRpcHandlers } from "./rpc.js";
@@ -42,6 +41,7 @@ export interface AccountPoolPluginOptions {
   usageUrl?: string;
   usageRefreshIntervalMs?: number;
   drainTimeoutMs?: number;
+  maxAffinityBindings?: number;
   disposeTimeoutMs?: number;
   importCredentials?: () => Promise<ImportedClaudeCredentials>;
   importCodexCredentials?: () => Promise<ImportedCodexCredentials>;
@@ -117,6 +117,7 @@ export function createAccountPoolPlugin(
       importCodexCredentials: options.importCodexCredentials,
       usageRefreshIntervalMs: options.usageRefreshIntervalMs,
       drainTimeoutMs: options.drainTimeoutMs,
+      maxAffinityBindings: options.maxAffinityBindings,
       onUpstreamError: (provider, error) =>
         bb.log.warn(
           `Account Pooler ${provider} transport failed: ${transportErrorCode(error)}.`,
@@ -287,21 +288,22 @@ export function createAccountPoolPlugin(
       (context) => hub.handle(context.req.raw, "claude"),
       { auth: "none" },
     );
-    bb.http.route(
-      "POST",
+    for (const route of [
       "/v1/responses",
-      (context) => hub.handle(context.req.raw, "codex"),
-      { auth: "none" },
-    );
+      "/v1/images/generations",
+      "/v1/images/edits",
+    ]) {
+      bb.http.route(
+        "POST",
+        route,
+        (context) => hub.handle(context.req.raw, "codex"),
+        { auth: "none" },
+      );
+    }
     bb.http.route(
       "GET",
       "/v1/models",
       (context) => hub.handle(context.req.raw, "codex"),
-      { auth: "none" },
-    );
-    bb.http.experimental_websocket(
-      "/v1/responses",
-      (context) => createCodexWebSocketHandlers(context, hub, bb.log),
       { auth: "none" },
     );
     bb.http.route("HEAD", "/api/hello", () => helloResponse(), {

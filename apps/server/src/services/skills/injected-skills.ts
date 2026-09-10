@@ -34,7 +34,7 @@ const skillFrontmatterSchema = z
 
 export interface ResolveInjectedSkillSourcesArgs {
   additionalSkillsRootPaths?: readonly string[];
-  builtinSkillsRootPath: string;
+  builtinSkillsRootPath: string | null;
   dataDir: string;
   pluginSkillRoots?: readonly PluginSkillRoot[];
   pluginSkillSelections?: ReadonlyMap<string, ReadonlySet<string>>;
@@ -89,7 +89,7 @@ export interface ResolvedSkillCatalogEntry {
 }
 
 interface ResolveServerOwnedSkillCatalogEntriesArgs {
-  builtinSkillsRootPath: string;
+  builtinSkillsRootPath: string | null;
   dataDir: string;
   logger: ServerLogger;
   skillTreeRegistry: SkillTreeRegistry;
@@ -525,12 +525,16 @@ function readSkillsRoot(
 export function resolveServerOwnedSkillCatalogEntries(
   args: ResolveServerOwnedSkillCatalogEntriesArgs,
 ): ResolvedSkillCatalogEntry[] {
-  const builtin = readSkillsRoot({
-    logger: args.logger,
-    skillTreeRegistry: args.skillTreeRegistry,
-    skillsRootPath: args.builtinSkillsRootPath,
-    sourceType: "builtin",
-  }).map((runtimeSource) => ({
+  const builtin = (
+    args.builtinSkillsRootPath === null
+      ? []
+      : readSkillsRoot({
+          logger: args.logger,
+          skillTreeRegistry: args.skillTreeRegistry,
+          skillsRootPath: args.builtinSkillsRootPath,
+          sourceType: "builtin",
+        })
+  ).map((runtimeSource) => ({
     provenance: { kind: "builtin" } as const,
     runtimeSource,
   }));
@@ -661,12 +665,15 @@ export function resolveSkillCatalogEntries(
   const sharedUserSources = (args.sharedSkillSources ?? []).filter(
     (source) => source.sourceType === "shared-user",
   );
-  const builtinSources = readSkillsRoot({
-    logger,
-    skillTreeRegistry,
-    skillsRootPath: args.builtinSkillsRootPath,
-    sourceType: "builtin",
-  });
+  const builtinSources =
+    args.builtinSkillsRootPath === null
+      ? []
+      : readSkillsRoot({
+          logger,
+          skillTreeRegistry,
+          skillsRootPath: args.builtinSkillsRootPath,
+          sourceType: "builtin",
+        });
 
   const dataDirSources = readSkillsRoot({
     logger,

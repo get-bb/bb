@@ -24,6 +24,21 @@ Spawning:
     --environment <id-or-path>     Attach to an existing environment (ID or workspace path)
     --new-environment <kind>       Create a fresh personal workspace or managed worktree
     --base-branch <branch>         Exact Git ref for a new managed worktree
+                                   (--new-environment worktree only)
+    --environment-provider <id>    Run on an environment provider by id (list them with
+                                   `bb environment providers`). The provider
+                                   provisions where the thread runs; its steps show in the
+                                   thread's workspace-setup block. Its `requires` names the
+                                   facts it consumes: `host` takes --machine (the local
+                                   machine by default); `gitCheckout` needs this project's
+                                   checkout on that machine to be a Git repository with
+                                   commits; `gitRemote` needs a project remote;
+                                   `projectless` serves only threads with no project.
+    --environment-inputs <json>    JSON value for an --environment-provider that declares
+                                   inputs; `bb environment providers --json` prints each
+                                   provider's inputs as JSON Schema (null when it takes
+                                   none). Required when the provider declares inputs,
+                                   refused when it does not
     --machine <id-or-name>         Run on a machine (--host is an alias)
     --service-tier <tier>          Service tier: fast, default
     --permission-mode <mode>       Permission mode: accept-edits, auto, or full
@@ -62,6 +77,10 @@ Spawning:
   machine resolution is unchanged.
   Omit --base-branch for bb's default. Explicit values are exact; use
   origin/<branch> for a remote ref.
+  Before selecting a provider, run `bb environment providers --project <id>
+  --machine <id-or-name>` to see whether it is available, needs setup, or is
+  unavailable and why. The first-party providers are Project checkout,
+  Worktree, and Personal workspace.
 
 Forking:
 
@@ -112,6 +131,7 @@ Listing:
 
   bb thread list                           List threads
     --project <id>                         Filter by project
+    --environment <id>                     Filter by environment
     --parent-thread <id>                   Filter by parent thread
     --archived                             Show only archived threads
     --section <id>                         Filter by section
@@ -302,6 +322,9 @@ Queued messages:
   bb thread queue group <thread-id> <boundary-id> --prefix <comma-separated-ids>
   bb thread queue delete <thread-id> <message-id>
 
+  The `Sender` column identifies agent threads and system notices; user messages
+  leave it blank. The SDK and `--json` include `initiator` and `senderThreadId`.
+
   A queued message is one that could not dispatch yet. Every one carries a
   typed reason in its `Waiting on` column: waiting for the current turn to
   finish, for the workspace, for a pending interaction, for a clock (`Send at`),
@@ -361,6 +384,10 @@ Lifecycle:
 
   bb thread delete <id>                    Delete permanently
     --yes                                  Skip confirmation
+
+  Deleting a thread removes its record immediately, but provider-owned
+  environment cleanup is asynchronous. Use `bb environment show <id>` to
+  inspect teardown until the lifecycle reaches destroyed.
 
 Read-only commands require a thread ID or --self where supported.
 Mutating thread lifecycle and messaging commands require an explicit ID or --self.

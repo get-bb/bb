@@ -17,10 +17,8 @@ import {
 } from "@/components/promptbox/follow-up-placeholder";
 import { PERSONAL_PROJECT_ID } from "@bb/domain";
 import type {
-  EnvironmentStatus,
   PendingInteraction,
   PromptInput,
-  ReasoningLevel,
   ThreadQueuedMessage,
   ThreadPullRequest,
   ThreadTimelineActivePromptMode,
@@ -66,7 +64,6 @@ import {
   type QueuedMessageInlineEditor,
 } from "@/components/promptbox/banner/QueuedMessagesList";
 import { ThreadEnvironmentSummary } from "@/components/promptbox/ThreadEnvironmentSummary";
-import type { EnvironmentWorkspaceTypeLabel } from "@/lib/environment-workspace-display";
 import type { WorkspaceCheckoutDisplay } from "@/lib/workspace-checkout-display";
 import { useComposerTextEffects } from "@/lib/composer-text-effects";
 import { useLatestRef } from "@/hooks/useLatestRef";
@@ -87,23 +84,22 @@ import {
   useClearThreadGoal,
   useStopThread,
 } from "@/hooks/mutations/thread-runtime-mutations";
-import {
-  useUnarchiveThread,
-  useUpdateThread,
-} from "@/hooks/mutations/thread-state-mutations";
+import { useUnarchiveThread } from "@/hooks/mutations/thread-state-mutations";
 import {
   getLatestPendingInteraction,
   useThreadQueuedMessages,
   useThreadPromptHistory,
 } from "@/hooks/queries/thread-queries";
 import { useThreadDefaultExecutionOptions } from "@/hooks/queries/thread-default-execution-options-query";
-import { getMutationErrorMessage } from "@/lib/mutation-errors";
+import {
+  getMutationErrorMessage,
+  showMutationErrorToast,
+} from "@/lib/mutation-errors";
 import { promptHistoryEntriesToDrafts } from "@/lib/prompt-history";
 import { usePromptHistoryEnabled } from "@/hooks/usePromptHistoryEnabled";
 import { getProjectComposeRoutePath } from "@/lib/route-paths";
 import { getThreadDisplayTitle } from "@/lib/thread-title";
 import { buildThreadHandoffLocationState } from "@bb/client-core";
-import { appToast } from "@/components/ui/app-toast";
 import {
   emptyPromptDraftState,
   promptDraftToInput,
@@ -154,15 +150,12 @@ interface ThreadDetailPromptAreaProps {
   contextWindowUsage?: ThreadTimelineResponse["contextWindowUsage"];
   environmentCheckout?: WorkspaceCheckoutDisplay;
   environmentCompactLabel?: string;
-  environmentGoneStatus: Extract<
-    EnvironmentStatus,
-    "destroying" | "destroyed"
-  > | null;
+  environmentGoneStatus: "destroyed" | null;
   environmentHostId?: string;
   environmentIcon?: IconName;
   environmentLabel?: string;
-  environmentTypeLabel?: EnvironmentWorkspaceTypeLabel;
-  onCreateNewThreadInWorktree?: () => void;
+  environmentTypeLabel?: string;
+  onCreateNewThreadInEnvironment?: () => void;
   onPullRequestDraft?: () => void;
   onPullRequestMerge?: (method: PullRequestMergeMethod) => void;
   onPullRequestReady?: () => void;
@@ -355,7 +348,7 @@ export function ThreadDetailPromptArea({
   environmentIcon,
   environmentLabel,
   environmentTypeLabel,
-  onCreateNewThreadInWorktree,
+  onCreateNewThreadInEnvironment,
   onPullRequestDraft,
   onPullRequestMerge,
   onPullRequestReady,
@@ -457,9 +450,6 @@ export function ThreadDetailPromptArea({
   const cancelThreadPlan = useCancelThreadPlan();
   const clearThreadGoal = useClearThreadGoal();
   const unarchiveThread = useUnarchiveThread();
-  const { mutate: updateThread } = useUpdateThread({
-    errorMessage: "Failed to update thread reasoning.",
-  });
   const projectName = useProjectDisplayName(
     thread.projectId === PERSONAL_PROJECT_ID ? undefined : thread.projectId,
   );
@@ -665,13 +655,6 @@ export function ThreadDetailPromptArea({
     },
     [fallbackIdentity, setSelectedModel],
   );
-  const handleReasoningLevelChange = useCallback(
-    (value: ReasoningLevel) => {
-      setReasoningLevel(value);
-      updateThread({ id: thread.id, reasoningLevel: value });
-    },
-    [setReasoningLevel, thread.id, updateThread],
-  );
   const { typeaheadConfig, promptActions } = useComposerTypeahead({
     projectId: thread.projectId,
     mentionsProjectId: projectId,
@@ -846,17 +829,13 @@ export function ThreadDetailPromptArea({
       }
     } catch (nextError) {
       promptDraft.restoreIfEmpty(submittedDraft);
-      appToast.error(
-        getMutationErrorMessage({
-          error: nextError,
-          fallbackMessage: isQueuingMessage
-            ? "Failed to queue message"
-            : "Failed to send message",
-          lifecycleOperation: isQueuingMessage
-            ? "queue_message"
-            : "send_message",
-        }),
-      );
+      showMutationErrorToast({
+        error: nextError,
+        fallbackMessage: isQueuingMessage
+          ? "Failed to queue message"
+          : "Failed to send message",
+        lifecycleOperation: isQueuingMessage ? "queue_message" : "send_message",
+      });
     }
   }, [
     createQueuedMessage,
@@ -942,13 +921,11 @@ export function ThreadDetailPromptArea({
             await sendMessage.mutateAsync(shortcutRequest.request);
           } catch (nextError) {
             promptDraft.restoreIfEmpty(submittedDraft);
-            appToast.error(
-              getMutationErrorMessage({
-                error: nextError,
-                fallbackMessage: "Failed to send message",
-                lifecycleOperation: "send_message",
-              }),
-            );
+            showMutationErrorToast({
+              error: nextError,
+              fallbackMessage: "Failed to send message",
+              lifecycleOperation: "send_message",
+            });
           }
         },
       );
@@ -1168,7 +1145,7 @@ export function ThreadDetailPromptArea({
       reasoning: {
         value: reasoningLevel,
         options: reasoningOptions,
-        onChange: handleReasoningLevelChange,
+        onChange: setReasoningLevel,
       },
       footerAction: {
         label: "Handoff to new thread",
@@ -1181,7 +1158,6 @@ export function ThreadDetailPromptArea({
       hasMultipleProviders,
       handleHandoffToNewThread,
       handleModelChange,
-      handleReasoningLevelChange,
       isLoadingModels,
       modelLoadFailed,
       modelLoadError,
@@ -1194,6 +1170,7 @@ export function ThreadDetailPromptArea({
       selectedProviderId,
       serviceTier,
       serviceTierSupportByProvider,
+      setReasoningLevel,
       setServiceTier,
       supportsServiceTier,
       serviceTierFastLabel,
@@ -1253,7 +1230,7 @@ export function ThreadDetailPromptArea({
 
   const environmentSummary = useMemo(
     () =>
-      environmentLabel ? (
+      thread.environmentId !== null ? (
         <ThreadEnvironmentSummary
           projectName={projectName}
           environmentLabel={environmentLabel}
@@ -1261,7 +1238,7 @@ export function ThreadDetailPromptArea({
           environmentIcon={environmentIcon}
           environmentTypeLabel={environmentTypeLabel}
           environmentCheckout={environmentCheckout}
-          onCreateNewThreadInWorktree={onCreateNewThreadInWorktree}
+          onCreateNewThreadInEnvironment={onCreateNewThreadInEnvironment}
         />
       ) : null,
     [
@@ -1270,8 +1247,9 @@ export function ThreadDetailPromptArea({
       environmentIcon,
       environmentLabel,
       environmentTypeLabel,
-      onCreateNewThreadInWorktree,
+      onCreateNewThreadInEnvironment,
       projectName,
+      thread.environmentId,
     ],
   );
   const activePromptModeCard = useMemo(

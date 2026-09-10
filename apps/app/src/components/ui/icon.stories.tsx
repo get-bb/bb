@@ -48,8 +48,8 @@ const USAGE: Partial<Record<IconName, string>> = {
   CornerDownLeft: "Mod+Enter submit hint in prompt footer",
   CornerDownRight:
     "Queued message indicator, steer/edit request label marker in conversation",
-  Discord: "Join Discord link in Settings → Community",
-  Github: "View on GitHub link in Settings → Community",
+  DiscordLogo: "Join Discord link in Settings → Community",
+  GithubLogo: "View on GitHub link in Settings → Community",
   Edit: "Rename project, edit queued message, edit project source",
   ExternalLink: "FilePathLink external indicator",
   File: "Right-panel markdown/doc file visual, Open file action",
@@ -85,8 +85,9 @@ const USAGE: Partial<Record<IconName, string>> = {
   Paperclip: "Attach files button",
   Pin: "Pin thread action",
   PinOff: "Unpin thread action",
+  Plug02: "Plugins sidebar and prompt action",
   Plus: "New host button, new terminal button, “new branch” option in branch picker",
-  Repeat: "Automation prompt action",
+  Repeat: "Automations sidebar and prompt action",
   RotateCcw:
     "Retry button when fetching timeline turn details fails, reset Mermaid diagram view",
   Rows2: "Git diff toolbar “unified view”",

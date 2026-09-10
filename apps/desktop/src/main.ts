@@ -26,6 +26,7 @@ import {
 import type { ConnectCredential } from "@bb/connect-client";
 import type { AppKeybindings } from "@bb/domain";
 import {
+  bbDesktopBrowserImportCookiesRequestSchema,
   bbDesktopThemeSchema,
   type BbDesktopInfo,
   type BbDesktopWindowState,
@@ -160,6 +161,8 @@ import {
 } from "./desktop-browser-view.js";
 import { resolveDesktopBrowserAppCommand } from "./desktop-browser-shortcuts.js";
 import { registerDesktopBrowserIpc } from "./desktop-browser-main-ipc.js";
+import { createBrowserImportService } from "./browser-import/browser-import.js";
+import { readMacAppIcon } from "./browser-import/mac-app-icon.js";
 import {
   createDesktopBrowserBroker,
   type DesktopBrowserBroker,
@@ -170,6 +173,9 @@ import {
   BB_DESKTOP_BROWSER_TARGET_CHANNEL,
   BB_DESKTOP_BROWSER_GET_CONTROL_CHANNEL,
   BB_DESKTOP_BROWSER_RELEASE_CONTROL_CHANNEL,
+  BB_DESKTOP_BROWSER_LIST_IMPORT_SOURCES_CHANNEL,
+  BB_DESKTOP_BROWSER_IMPORT_COOKIES_CHANNEL,
+  BB_DESKTOP_BROWSER_OPEN_FULL_DISK_ACCESS_SETTINGS_CHANNEL,
 } from "./desktop-browser-ipc.js";
 import { parseDesktopSystemConfig } from "./desktop-system-config.js";
 import { ensurePackagedUserShellPath } from "./desktop-shell-path.js";
@@ -2223,10 +2229,61 @@ async function runDesktopApp(): Promise<void> {
     },
   });
   registerDesktopBrowserIpc(desktopBrowserViewManager);
+  const browserImportService = createBrowserImportService({
+    context: { platform: process.platform, home: homedir() },
+    resolveIcon: (appPath) => readMacAppIcon(appPath),
+    log(message, details) {
+      createDesktopLogger().info(
+        `[desktop] ${message}${details ? ` ${JSON.stringify(details)}` : ""}`,
+      );
+    },
+  });
   desktopBrowserBroker = createDesktopBrowserBroker({
     manager: desktopBrowserViewManager,
     product: `Chrome/${process.versions.chrome}`,
+    browserImport: browserImportService,
   });
+  ipcMain.handle(
+    BB_DESKTOP_BROWSER_LIST_IMPORT_SOURCES_CHANNEL,
+    async (event) => {
+      if (!applicationWindowWebContentsIds.has(event.sender.id)) return null;
+      return { sources: await browserImportService.listSources() };
+    },
+  );
+  ipcMain.handle(
+    BB_DESKTOP_BROWSER_IMPORT_COOKIES_CHANNEL,
+    async (event, payload: unknown) => {
+      const parsed =
+        bbDesktopBrowserImportCookiesRequestSchema.safeParse(payload);
+      if (
+        !parsed.success ||
+        !applicationWindowWebContentsIds.has(event.sender.id)
+      )
+        return null;
+      const manager = desktopBrowserViewManager;
+      if (!manager) return null;
+      return browserImportService.importCookies(
+        {
+          sourceId: parsed.data.sourceId,
+          sourceProfileDirectory: parsed.data.sourceProfileDirectory,
+        },
+        manager.profileSession(parsed.data.profile),
+      );
+    },
+  );
+  ipcMain.on(
+    BB_DESKTOP_BROWSER_OPEN_FULL_DISK_ACCESS_SETTINGS_CHANNEL,
+    (event) => {
+      if (
+        !applicationWindowWebContentsIds.has(event.sender.id) ||
+        process.platform !== "darwin"
+      )
+        return;
+      void shell.openExternal(
+        "x-apple.systempreferences:com.apple.preference.security?Privacy_AllFiles",
+      );
+    },
+  );
   ipcMain.handle(BB_DESKTOP_BROWSER_TARGET_CHANNEL, (event) => {
     return applicationWindowWebContentsIds.has(event.sender.id)
       ? (desktopBrowserBroker?.getTarget(event.sender.id) ?? null)
@@ -2259,6 +2316,7 @@ async function runDesktopApp(): Promise<void> {
   desktopBrowserBrokerClient = createDesktopBrowserBrokerClient({
     broker: desktopBrowserBroker,
     dataDir: resolveDataDirFromEnv({ env: process.env, homeDir: homedir() }),
+    homeDir: homedir(),
     getServerUrl() {
       const target = serverTargetStore?.getTarget();
       if (target?.kind === "connect") return target.server.url;

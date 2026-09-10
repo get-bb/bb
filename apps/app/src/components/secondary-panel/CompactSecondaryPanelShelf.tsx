@@ -116,6 +116,20 @@ export function CompactSecondaryPanelShelf({
     requestClose,
   });
 
+  useLayoutEffect(() => {
+    if (open) return;
+    const panel = panelRef.current;
+    if (panel === null) return;
+    const selection = panel.ownerDocument.getSelection();
+    if (selection === null || selection.isCollapsed) return;
+    if (
+      (selection.anchorNode !== null && panel.contains(selection.anchorNode)) ||
+      (selection.focusNode !== null && panel.contains(selection.focusNode))
+    ) {
+      selection.removeAllRanges();
+    }
+  }, [open]);
+
   useEffect(() => {
     setCompactSecondaryPanelPresentation(state);
     return () => setCompactSecondaryPanelPresentation("closed");

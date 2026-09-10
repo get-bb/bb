@@ -1,5 +1,10 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { useLocation, useNavigate, useParams } from "react-router-dom";
+import {
+  matchPath,
+  useLocation,
+  useNavigate,
+  useParams,
+} from "react-router-dom";
 import {
   keepPreviousData,
   useQueries,
@@ -173,7 +178,7 @@ export function SkillsLibrary() {
     skillsQuery.isFetching && skillsQuery.data === undefined && !hasError;
   const isRegistryBrowseRoute =
     location.pathname === getRegistrySkillsRoutePath() ||
-    (location.pathname === getSkillsRoutePath() &&
+    (matchPath(getSkillsRoutePath(), location.pathname) !== null &&
       new URLSearchParams(location.search).get("view") !== "library");
   const registryRequestPage =
     isRegistryBrowseRoute || routeRegistrySkillId !== undefined

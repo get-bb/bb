@@ -250,6 +250,107 @@ afterEach(() => {
 });
 
 describe("ModelReasoningPicker", () => {
+  it.each([
+    ["ArrowRight", "medium", "high"],
+    ["ArrowLeft", "high", "medium"],
+  ] as const)(
+    "adjusts reasoning with %s on the focused trigger",
+    (key, value, next) => {
+      const { onReasoningChange } = renderPicker({ reasoningValue: value });
+      const trigger = screen.getByRole("button", {
+        name: "Provider, model and reasoning",
+      });
+      trigger.focus();
+      fireEvent.keyDown(trigger, { key });
+      expect(onReasoningChange).toHaveBeenCalledExactlyOnceWith(next);
+      expect(document.activeElement).toBe(trigger);
+    },
+  );
+
+  it.each([
+    ["ArrowLeft", "medium"],
+    ["ArrowRight", "high"],
+  ] as const)("stops at the reasoning limit for %s", (key, value) => {
+    const { onReasoningChange } = renderPicker({ reasoningValue: value });
+    fireEvent.keyDown(
+      screen.getByRole("button", {
+        name: "Provider, model and reasoning",
+      }),
+      { key },
+    );
+    expect(onReasoningChange).not.toHaveBeenCalled();
+  });
+
+  it("adjusts reasoning in an empty search but preserves text navigation", () => {
+    const { onReasoningChange, onModelChange } = renderPicker({
+      modelOptions: manyCodexModels,
+    });
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: "Provider, model and reasoning",
+      }),
+    );
+    const search = screen.getByPlaceholderText("Search models");
+    fireEvent.keyDown(search, { key: "ArrowRight" });
+    expect(onReasoningChange).toHaveBeenCalledExactlyOnceWith("high");
+    fireEvent.change(search, { target: { value: "o4" } });
+    fireEvent.keyDown(search, { key: "ArrowRight" });
+    expect(onReasoningChange).toHaveBeenCalledTimes(1);
+    expect(onModelChange).not.toHaveBeenCalled();
+  });
+
+  it("adjusts reasoning from a model row without changing the model", () => {
+    const { onReasoningChange, onModelChange } = renderPicker();
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: "Provider, model and reasoning",
+      }),
+    );
+    const model = screen.getByRole("button", { name: "5.5" });
+    model.focus();
+    fireEvent.keyDown(model, { key: "ArrowRight" });
+    expect(onReasoningChange).toHaveBeenCalledExactlyOnceWith("high");
+    expect(onModelChange).not.toHaveBeenCalled();
+    expect(document.activeElement).toBe(model);
+  });
+
+  it("does not change reasoning when the submenu handles an arrow", () => {
+    const { onReasoningChange } = renderPicker({
+      moreModelOptions: [{ value: "legacy", label: "Legacy" }],
+    });
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: "Provider, model and reasoning",
+      }),
+    );
+    const moreModels = screen.getByRole("button", { name: "More models" });
+    act(() => moreModels.focus());
+    fireEvent.keyDown(moreModels, {
+      key: "ArrowRight",
+    });
+    expect(onReasoningChange).not.toHaveBeenCalled();
+  });
+
+  it("leaves modified arrows and models without reasoning alone", () => {
+    const { onReasoningChange } = renderPicker();
+    const trigger = screen.getByRole("button", {
+      name: "Provider, model and reasoning",
+    });
+    for (const modifier of ["altKey", "ctrlKey", "metaKey", "shiftKey"]) {
+      fireEvent.keyDown(trigger, { key: "ArrowRight", [modifier]: true });
+    }
+    expect(onReasoningChange).not.toHaveBeenCalled();
+    cleanup();
+    renderPicker({ pickerReasoningOptions: [], onReasoningChange });
+    fireEvent.keyDown(
+      screen.getByRole("button", {
+        name: "Provider, model and reasoning",
+      }),
+      { key: "ArrowRight" },
+    );
+    expect(onReasoningChange).not.toHaveBeenCalled();
+  });
+
   it("uses the lower-emphasis chrome token for the composer caret", () => {
     renderPicker({ muted: true });
 
@@ -734,6 +835,46 @@ describe("ModelReasoningPicker", () => {
     fireEvent.keyDown(search, { key: "Enter" });
 
     expect(onModelChange).toHaveBeenCalledWith("gpt-4.1-legacy");
+  });
+
+  it("compact: keeps reasoning outside the scrollable model list", () => {
+    const frames: FrameRequestCallback[] = [];
+    vi.spyOn(window, "requestAnimationFrame").mockImplementation((callback) => {
+      frames.push(callback);
+      return frames.length;
+    });
+    renderPicker({ compact: true, modelOptions: manyCodexModels });
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Provider, model and reasoning" }),
+    );
+    act(() => frames.shift()?.(0));
+    act(() => frames.shift()?.(16));
+
+    const modelList = screen.getByRole("listbox", { name: "Models" });
+    const reasoning = screen.getByRole("radiogroup", { name: "Reasoning" });
+
+    expect(modelList.contains(reasoning)).toBe(false);
+    for (const className of [
+      "min-h-0",
+      "flex-1",
+      "overflow-y-auto",
+      "overscroll-contain",
+    ]) {
+      expect(modelList.classList.contains(className)).toBe(true);
+    }
+
+    const scrollParents: string[] = [];
+    for (
+      let element = modelList.parentElement;
+      element !== null && element.getAttribute("role") !== "dialog";
+      element = element.parentElement
+    ) {
+      if (element.classList.contains("overflow-y-auto")) {
+        scrollParents.push(element.className);
+      }
+    }
+    expect(scrollParents).toEqual([]);
   });
 
   it("does not render the search box for short model lists", () => {

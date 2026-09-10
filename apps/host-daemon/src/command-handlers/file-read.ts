@@ -2,7 +2,10 @@ import { isUtf8 } from "node:buffer";
 import fs from "node:fs/promises";
 import path from "node:path";
 import mimeTypes from "mime-types";
-import type { HostReadFileRelativeDotfilePolicy } from "@bb/host-daemon-contract";
+import type {
+  HostReadFileIfNoneMatch,
+  HostReadFileRelativeDotfilePolicy,
+} from "@bb/host-daemon-contract";
 import {
   readGitBlob,
   WorkspaceError,
@@ -21,8 +24,7 @@ export const NON_IMAGE_FILE_SIZE_LIMIT_BYTES = 25 * 1024 * 1024;
 
 type FileContentEncoding = "base64" | "utf8";
 
-interface ReadFileForTransportResult {
-  content: string;
+interface ReadFileForTransportMetadata {
   contentEncoding: FileContentEncoding;
   mimeType?: string;
   modifiedAtMs?: number;
@@ -31,6 +33,18 @@ interface ReadFileForTransportResult {
   sizeBytes: number;
 }
 
+export interface ReadFileContentForTransportResult extends ReadFileForTransportMetadata {
+  content: string;
+}
+
+interface ReadFileNotModifiedForTransportResult extends ReadFileForTransportMetadata {
+  notModified: true;
+}
+
+export type ReadFileForTransportResult =
+  | ReadFileContentForTransportResult
+  | ReadFileNotModifiedForTransportResult;
+
 interface ReadFileMetadataForTransportResult {
   modifiedAtMs: number;
   path: string;
@@ -38,6 +52,7 @@ interface ReadFileMetadataForTransportResult {
 }
 
 interface ReadFileForTransportArgs {
+  ifNoneMatch?: HostReadFileIfNoneMatch;
   resolvedPath: string;
   resultPath: string;
   rootPath?: string;
@@ -65,6 +80,7 @@ interface ValidatedRootRelativePath {
 }
 
 interface ReadFileFromGitRefArgs extends GitProcessOptions {
+  ifNoneMatch?: HostReadFileIfNoneMatch;
   rootPath: string;
   resolvedPath: string;
   resultPath: string;
@@ -106,6 +122,65 @@ function getContentEncoding(
     return "utf8";
   }
   return "base64";
+}
+
+interface ReadFileBytes {
+  contents: Buffer;
+  mimeType?: string;
+  modifiedAtMs?: number;
+  path: string;
+  sizeBytes: number;
+}
+
+function createReadFileForTransportMetadata(
+  args: ReadFileBytes,
+): ReadFileForTransportMetadata {
+  const contentEncoding = getContentEncoding(args.contents, args.mimeType);
+  return {
+    contentEncoding,
+    ...(args.mimeType ? { mimeType: args.mimeType } : {}),
+    ...(args.modifiedAtMs !== undefined
+      ? { modifiedAtMs: args.modifiedAtMs }
+      : {}),
+    path: args.path,
+    sha256: sha256Hex(args.contents),
+    sizeBytes: args.sizeBytes,
+  };
+}
+
+function addFileContent(
+  metadata: ReadFileForTransportMetadata,
+  contents: Buffer,
+): ReadFileContentForTransportResult {
+  return {
+    ...metadata,
+    content:
+      metadata.contentEncoding === "utf8"
+        ? contents.toString("utf8")
+        : contents.toString("base64"),
+  };
+}
+
+function createReadFileForTransportResult(
+  args: ReadFileBytes & { ifNoneMatch?: HostReadFileIfNoneMatch },
+): ReadFileForTransportResult {
+  const metadata = createReadFileForTransportMetadata(args);
+  if (
+    args.ifNoneMatch?.kind === "any" ||
+    args.ifNoneMatch?.values.includes(metadata.sha256)
+  ) {
+    return { ...metadata, notModified: true };
+  }
+  return addFileContent(metadata, args.contents);
+}
+
+function createUnconditionalReadFileForTransportResult(
+  args: ReadFileBytes,
+): ReadFileContentForTransportResult {
+  return addFileContent(
+    createReadFileForTransportMetadata(args),
+    args.contents,
+  );
 }
 
 export function createMissingTargetError(
@@ -253,28 +328,26 @@ export async function readFileFromGitRef(
   }
 
   if (blob.contents === null) {
-    return {
+    return createReadFileForTransportResult({
+      contents: Buffer.alloc(0),
+      ...(args.ifNoneMatch !== undefined
+        ? { ifNoneMatch: args.ifNoneMatch }
+        : {}),
+      mimeType,
       path: args.resultPath,
-      content: "",
-      contentEncoding: "utf8",
-      ...(mimeType ? { mimeType } : {}),
-      sha256: sha256Hex(Buffer.alloc(0)),
       sizeBytes: 0,
-    };
+    });
   }
 
-  const contentEncoding = getContentEncoding(blob.contents, mimeType);
-  return {
+  return createReadFileForTransportResult({
+    contents: blob.contents,
+    ...(args.ifNoneMatch !== undefined
+      ? { ifNoneMatch: args.ifNoneMatch }
+      : {}),
+    mimeType,
     path: args.resultPath,
-    content:
-      contentEncoding === "utf8"
-        ? blob.contents.toString("utf8")
-        : blob.contents.toString("base64"),
-    contentEncoding,
-    ...(mimeType ? { mimeType } : {}),
-    sha256: sha256Hex(blob.contents),
     sizeBytes: blob.sizeBytes,
-  };
+  });
 }
 
 export async function readFileForTransport(
@@ -303,24 +376,19 @@ export async function readFileForTransport(
   const fileContents = await fs
     .readFile(readablePath)
     .catch((error: unknown) => throwMissingTargetOrRethrow(args, error));
-  const contentEncoding = getContentEncoding(fileContents, mimeType);
-  return {
-    path: args.resultPath,
-    content:
-      contentEncoding === "utf8"
-        ? fileContents.toString("utf8")
-        : fileContents.toString("base64"),
-    contentEncoding,
-    ...(mimeType ? { mimeType } : {}),
+  return createReadFileForTransportResult({
+    contents: fileContents,
+    ifNoneMatch: args.ifNoneMatch,
+    mimeType,
     modifiedAtMs: stat.mtimeMs,
-    sha256: sha256Hex(fileContents),
+    path: args.resultPath,
     sizeBytes: stat.size,
-  };
+  });
 }
 
 export async function readRootRelativeFileForTransport(
   args: ReadRootRelativeFileForTransportArgs,
-): Promise<ReadFileForTransportResult> {
+): Promise<ReadFileContentForTransportResult> {
   if (!path.isAbsolute(args.rootPath)) {
     throw new CommandDispatchError("invalid_path", "rootPath must be absolute");
   }
@@ -350,19 +418,13 @@ export async function readRootRelativeFileForTransport(
   const fileContents = await fs
     .readFile(readablePath)
     .catch((error: unknown) => throwMissingTargetOrRethrow(readArgs, error));
-  const contentEncoding = getContentEncoding(fileContents, mimeType);
-  return {
-    path: relativePath.resultPath,
-    content:
-      contentEncoding === "utf8"
-        ? fileContents.toString("utf8")
-        : fileContents.toString("base64"),
-    contentEncoding,
-    ...(mimeType ? { mimeType } : {}),
+  return createUnconditionalReadFileForTransportResult({
+    contents: fileContents,
+    mimeType,
     modifiedAtMs: stat.mtimeMs,
-    sha256: sha256Hex(fileContents),
+    path: relativePath.resultPath,
     sizeBytes: stat.size,
-  };
+  });
 }
 
 export async function readFileMetadataForTransport(

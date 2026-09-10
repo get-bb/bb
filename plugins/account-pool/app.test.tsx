@@ -129,21 +129,31 @@ describe("Account Pool settings", () => {
     ).toBeTruthy();
   });
 
+  it("keeps the quota slots visible at mobile widths", async () => {
+    const slot = render();
+    const group = (await slot.findByText("5H")).parentElement?.parentElement;
+    expect(group).toBeTruthy();
+    expect(group?.className).not.toMatch(/(^|\s)hidden(\s|$)/u);
+  });
+
   it("renders only the windows a Codex account reports and no Fable slot", async () => {
+    const blockingResetAt = Date.now() + 6 * 24 * 60 * 60 * 1_000;
     const slot = render([
       account({
         id: "22222222-2222-4222-8222-222222222222",
         provider: "codex",
         label: "pro@example.com",
         codexAccountId: "chatgpt-account",
-        fiveHourUtilization: null,
+        status: "exhausted",
+        fiveHourUtilization: 0.25,
+        fiveHourResetAt: Date.now() + 60 * 60 * 1_000,
         limitWindows: [
           {
             slot: "primary",
             windowMinutes: 10_080,
-            utilization: 0.48,
-            resetAt: Date.now() + 3_600_000,
-            status: "allowed",
+            utilization: 1,
+            resetAt: blockingResetAt,
+            status: "rejected",
             observedAt: 1,
             source: "usage",
           },
@@ -152,9 +162,14 @@ describe("Account Pool settings", () => {
     ]);
     expect(await slot.findByText("pro@example.com")).toBeTruthy();
     expect(slot.getByText("7D")).toBeTruthy();
-    expect(slot.getByText("48%")).toBeTruthy();
+    expect(slot.getByText("100%")).toBeTruthy();
     expect(slot.queryByText("5H")).toBeNull();
     expect(slot.queryByText("FABLE")).toBeNull();
+    expect(
+      slot.getByText(
+        `Exhausted · resets ${new Intl.DateTimeFormat(undefined, { month: "short", day: "numeric" }).format(blockingResetAt)}`,
+      ),
+    ).toBeTruthy();
     fireEvent.click(
       await slot.findByRole("button", { name: "Open pro@example.com details" }),
     );
@@ -163,46 +178,48 @@ describe("Account Pool settings", () => {
     expect(slot.queryByText("7 day")).toBeNull();
   });
 
-  it("dispatches kebab actions to their RPC contracts", async () => {
-    const slot = render([account()], {
-      "account.disable": () => ({ account: null }),
-      "account.refreshUsage": () => ({ account: null }),
-      "account.remove": () => ({ removed: true }),
-    });
-    const open = async () => {
+  it.each([
+    {
+      action: "Disable",
+      method: "account.disable",
+      input: { id: account().id },
+    },
+    {
+      action: "Refresh usage",
+      method: "account.refreshUsage",
+      input: { accountId: account().id },
+    },
+  ])(
+    "dispatches $action to its RPC contract",
+    async ({ action, method, input }) => {
+      const slot = render([account()], {
+        [method]: () => ({ account: null }),
+      });
       fireEvent.pointerDown(
         await slot.findByRole("button", { name: "person@example.com actions" }),
       );
-    };
-    await open();
-    fireEvent.click(await slot.findByText("Disable"));
-    await waitFor(() =>
-      expect(slot.rpcCalls).toContainEqual({
-        method: "account.disable",
-        input: { id: account().id },
-      }),
+      fireEvent.click(await slot.findByText(action));
+      expect(slot.rpcCalls).toContainEqual({ method, input });
+    },
+  );
+
+  it("confirms Remove before dispatching its RPC contract", async () => {
+    const slot = render([account()], {
+      "account.remove": () => ({ removed: true }),
+    });
+    fireEvent.pointerDown(
+      await slot.findByRole("button", { name: "person@example.com actions" }),
     );
-    await open();
-    fireEvent.click(await slot.findByText("Refresh usage"));
-    await waitFor(() =>
-      expect(slot.rpcCalls).toContainEqual({
-        method: "account.refreshUsage",
-        input: { accountId: account().id },
-      }),
-    );
-    await open();
     fireEvent.click(await slot.findByText("Remove"));
     expect(await slot.findByText("Remove person@example.com?")).toBeTruthy();
     expect(slot.rpcCalls.some((call) => call.method === "account.remove")).toBe(
       false,
     );
     fireEvent.click(slot.getByRole("button", { name: "Remove" }));
-    await waitFor(() =>
-      expect(slot.rpcCalls).toContainEqual({
-        method: "account.remove",
-        input: { id: account().id },
-      }),
-    );
+    expect(slot.rpcCalls).toContainEqual({
+      method: "account.remove",
+      input: { id: account().id },
+    });
   });
 
   it("opens the correct provider sign-in flow from each Add account menu", async () => {
@@ -291,7 +308,7 @@ describe("Account Pool settings", () => {
     );
   });
 
-  it("shows every observed family bucket in the detail drawer", async () => {
+  it("shows every observed family bucket in the detail dialog", async () => {
     const fable = {
       utilization: 0.91,
       resetAt: Date.now() + 3_600_000,

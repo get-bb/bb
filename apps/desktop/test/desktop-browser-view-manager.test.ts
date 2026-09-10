@@ -1,6 +1,6 @@
 import type { RenderProcessGoneDetails, WebContentsView } from "electron";
 import { once } from "node:events";
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { WebSocket, WebSocketServer } from "ws";
@@ -1407,144 +1407,167 @@ describe("DesktopBrowserCdpAdapter", () => {
 });
 
 describe("DesktopBrowserViewManager", () => {
-  it("preserves same-server reconnect tabs but clears them before a different server registration", async () => {
-    const { manager, hostWindow } = createRendererRecoveryFixture(91);
-    const broker = createDesktopBrowserBroker({
-      manager,
-      product: "Chrome/test",
-    });
-    broker.registerWindow(
-      Object.assign(hostWindow, {
-        focus() {},
-        show() {},
-        restore() {},
-        isMinimized: () => false,
-      }),
-    );
-    const server = new WebSocketServer({ host: "127.0.0.1", port: 0 });
-    await once(server, "listening");
-    const address = server.address();
-    if (typeof address === "string" || address === null)
-      throw new Error("Expected TCP address");
-    const dataDir = await mkdtemp(join(tmpdir(), "bb-native-origin-"));
-    const frameSchema = z.union([
-      desktopBrowserRegistrationSchema,
-      desktopBrowserChangedSchema,
-    ]);
-    const messages: Array<{
-      peer: number;
-      frame: z.infer<typeof frameSchema>;
-    }> = [];
-    let peers = 0;
-    server.on("connection", (socket) => {
-      const peer = ++peers;
-      socket.on("message", (data) =>
-        messages.push({
-          peer,
-          frame: frameSchema.parse(JSON.parse(data.toString())),
-        }),
-      );
-    });
-    let serverUrl = "https://first.example";
-    const writeDescriptor = () =>
-      writeFile(
-        join(dataDir, DESKTOP_BROWSER_BROKER_DESCRIPTOR_FILE),
-        JSON.stringify({
-          version: 1,
-          hostId: "host-1",
-          serverUrl,
-          url: `ws://127.0.0.1:${address.port}/desktop-browser`,
-          token: "a".repeat(64),
-        }),
-        { mode: 0o600 },
-      );
-    await writeDescriptor();
-    const client = createDesktopBrowserBrokerClient({
-      broker,
-      dataDir,
-      getServerUrl: () => serverUrl,
-    });
-    const hasOriginalTab = (peer: number) =>
-      messages.some(
-        (message) =>
-          message.peer === peer &&
-          message.frame.type === "desktop-browser.changed" &&
-          message.frame.tabs.some((tab) => tab.tabId === "browser:a"),
-      );
-    try {
-      await vi.waitFor(() => expect(hasOriginalTab(1)).toBe(true));
-      client.reconnect();
-      await vi.waitFor(() => expect(hasOriginalTab(2)).toBe(true));
-      expect(
-        manager.listTabs({ hostWebContentsId: 91, threadId: "thread-1" }),
-      ).toHaveLength(1);
-      const target = broker.getTarget(91);
-      if (!target) throw new Error("Expected connected desktop");
-      await broker.execute({
-        type: "desktop.browser.acquire_control",
-        instanceId: target.instanceId,
-        generation: target.generation,
-        threadId: "thread-1",
-        leaseId: "origin-lease",
-        tabIds: ["browser:a"],
-        controllerLabel: "Test",
-        expiresAt: Date.now() + 60_000,
+  it.each(["local", "enrolled"])(
+    "preserves same-server reconnect tabs but clears them before a different server registration (%s daemon)",
+    async (daemon) => {
+      const { manager, hostWindow } = createRendererRecoveryFixture(91);
+      const broker = createDesktopBrowserBroker({
+        manager,
+        product: "Chrome/test",
       });
-      serverUrl = "https://second.example";
+      broker.registerWindow(
+        Object.assign(hostWindow, {
+          focus() {},
+          show() {},
+          restore() {},
+          isMinimized: () => false,
+        }),
+      );
+      const server = new WebSocketServer({ host: "127.0.0.1", port: 0 });
+      await once(server, "listening");
+      const address = server.address();
+      if (typeof address === "string" || address === null)
+        throw new Error("Expected TCP address");
+      const dataDir = await mkdtemp(join(tmpdir(), "bb-native-origin-"));
+      const frameSchema = z.union([
+        desktopBrowserRegistrationSchema,
+        desktopBrowserChangedSchema,
+      ]);
+      const messages: Array<{
+        peer: number;
+        frame: z.infer<typeof frameSchema>;
+      }> = [];
+      let peers = 0;
+      server.on("connection", (socket) => {
+        const peer = ++peers;
+        socket.on("message", (data) =>
+          messages.push({
+            peer,
+            frame: frameSchema.parse(JSON.parse(data.toString())),
+          }),
+        );
+      });
+      let serverUrl = "https://first.example";
+      if (daemon === "enrolled") {
+        await writeFile(
+          join(dataDir, DESKTOP_BROWSER_BROKER_DESCRIPTOR_FILE),
+          JSON.stringify({
+            version: 1,
+            hostId: "local-host",
+            serverUrl: "http://127.0.0.1:38886",
+            url: `ws://127.0.0.1:${address.port}/desktop-browser`,
+            token: "b".repeat(64),
+          }),
+          { mode: 0o600 },
+        );
+      }
+      const writeDescriptor = async () => {
+        const directory =
+          daemon === "local"
+            ? dataDir
+            : join(dataDir, ".bb-machines", new URL(serverUrl).host);
+        await mkdir(directory, { recursive: true });
+        await writeFile(
+          join(directory, DESKTOP_BROWSER_BROKER_DESCRIPTOR_FILE),
+          JSON.stringify({
+            version: 1,
+            hostId: "host-1",
+            serverUrl,
+            url: `ws://127.0.0.1:${address.port}/desktop-browser`,
+            token: "a".repeat(64),
+          }),
+          { mode: 0o600 },
+        );
+      };
       await writeDescriptor();
-      client.reconnect();
-      expect(
-        manager.listTabs({ hostWebContentsId: 91, threadId: null }),
-      ).toEqual([]);
-      expect(broker.getControl(91, "browser:a")).toBeNull();
-      await vi.waitFor(() =>
-        expect(
-          messages.some(
-            ({ peer, frame }) =>
-              peer === 3 &&
-              frame.type === "register" &&
-              frame.serverUrl === serverUrl,
-          ),
-        ).toBe(true),
-      );
-      manager.attach({
-        hostWindow,
-        request: {
-          tabId: "new-server-tab",
-          threadId: "thread-new",
-          url: "about:blank",
-          bounds: { x: 0, y: 0, width: 640, height: 400 },
-          visible: false,
-        },
+      const client = createDesktopBrowserBrokerClient({
+        broker,
+        dataDir,
+        homeDir: dataDir,
+        getServerUrl: () => serverUrl,
       });
-      await vi.waitFor(() =>
+      const hasOriginalTab = (peer: number) =>
+        messages.some(
+          (message) =>
+            message.peer === peer &&
+            message.frame.type === "desktop-browser.changed" &&
+            message.frame.tabs.some((tab) => tab.tabId === "browser:a"),
+        );
+      try {
+        await vi.waitFor(() => expect(hasOriginalTab(1)).toBe(true));
+        client.reconnect();
+        await vi.waitFor(() => expect(hasOriginalTab(2)).toBe(true));
         expect(
-          messages.some(
-            ({ peer, frame }) =>
-              peer === 3 &&
-              frame.type === "desktop-browser.changed" &&
-              frame.threadId === "thread-new",
-          ),
-        ).toBe(true),
-      );
-      expect(
-        messages
-          .filter(({ peer }) => peer === 3)
-          .every(
-            ({ frame }) =>
-              frame.type === "register" || frame.threadId === "thread-new",
-          ),
-      ).toBe(true);
-      expect(hasOriginalTab(3)).toBe(false);
-    } finally {
-      client.stop();
-      broker.dispose();
-      manager.destroyAll();
-      for (const socket of server.clients) socket.terminate();
-      await new Promise<void>((resolve) => server.close(() => resolve()));
-      await rm(dataDir, { recursive: true, force: true });
-    }
-  });
+          manager.listTabs({ hostWebContentsId: 91, threadId: "thread-1" }),
+        ).toHaveLength(1);
+        const target = broker.getTarget(91);
+        if (!target) throw new Error("Expected connected desktop");
+        await broker.execute({
+          type: "desktop.browser.acquire_control",
+          instanceId: target.instanceId,
+          generation: target.generation,
+          threadId: "thread-1",
+          leaseId: "origin-lease",
+          tabIds: ["browser:a"],
+          controllerLabel: "Test",
+          expiresAt: Date.now() + 60_000,
+        });
+        serverUrl = "https://second.example";
+        await writeDescriptor();
+        client.reconnect();
+        expect(
+          manager.listTabs({ hostWebContentsId: 91, threadId: null }),
+        ).toEqual([]);
+        expect(broker.getControl(91, "browser:a")).toBeNull();
+        await vi.waitFor(() =>
+          expect(
+            messages.some(
+              ({ peer, frame }) =>
+                peer === 3 &&
+                frame.type === "register" &&
+                frame.serverUrl === serverUrl,
+            ),
+          ).toBe(true),
+        );
+        manager.attach({
+          hostWindow,
+          request: {
+            tabId: "new-server-tab",
+            threadId: "thread-new",
+            url: "about:blank",
+            bounds: { x: 0, y: 0, width: 640, height: 400 },
+            visible: false,
+          },
+        });
+        await vi.waitFor(() =>
+          expect(
+            messages.some(
+              ({ peer, frame }) =>
+                peer === 3 &&
+                frame.type === "desktop-browser.changed" &&
+                frame.threadId === "thread-new",
+            ),
+          ).toBe(true),
+        );
+        expect(
+          messages
+            .filter(({ peer }) => peer === 3)
+            .every(
+              ({ frame }) =>
+                frame.type === "register" || frame.threadId === "thread-new",
+            ),
+        ).toBe(true);
+        expect(hasOriginalTab(3)).toBe(false);
+      } finally {
+        client.stop();
+        broker.dispose();
+        manager.destroyAll();
+        for (const socket of server.clients) socket.terminate();
+        await new Promise<void>((resolve) => server.close(() => resolve()));
+        await rm(dataDir, { recursive: true, force: true });
+      }
+    },
+  );
 
   it("captures an unpainted hidden page without detaching another controller", async () => {
     const { manager, view } = createRendererRecoveryFixture(91);
@@ -1582,7 +1605,7 @@ describe("DesktopBrowserViewManager", () => {
     }
   });
 
-  it("reveals and focuses pages created through a controlled CDP connection", async () => {
+  it("requests reveal without activating the window for pages created through a controlled CDP connection", async () => {
     const { manager, hostWindow } = createRendererRecoveryFixture(91);
     const focus = vi.fn();
     const show = vi.fn();
@@ -1640,9 +1663,21 @@ describe("DesktopBrowserViewManager", () => {
           params: { url: "https://example.com/new" },
         }),
       );
-      await vi.waitFor(() => expect(focus).toHaveBeenCalledOnce());
-      expect(show).toHaveBeenCalledOnce();
-      expect(restore).toHaveBeenCalledOnce();
+      await vi.waitFor(() =>
+        expect(hostWindow.webContents.sentPayloads).toContainEqual(
+          expect.objectContaining({
+            threadId: "thread-1",
+            desktopTarget: {
+              hostId: "host-1",
+              instanceId: scope.instanceId,
+              generation: scope.generation,
+            },
+          }),
+        ),
+      );
+      expect(focus).not.toHaveBeenCalled();
+      expect(show).not.toHaveBeenCalled();
+      expect(restore).not.toHaveBeenCalled();
       const created = manager
         .listTabs({ hostWebContentsId: 91, threadId: "thread-1" })
         .find((tab) => tab.url === "https://example.com/new");

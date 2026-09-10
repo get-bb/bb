@@ -77,7 +77,7 @@ describe("timeline context-clear epochs", () => {
       const options = {
         eventBudget: 1_000,
         includeNestedRows: true,
-        includeProviderUnhandledOperations: false,
+        includeDiagnosticOperations: false,
         maxInlineOutputChars: null,
         maxSeq: 2,
       };
@@ -212,7 +212,7 @@ describe("timeline context-clear epochs", () => {
     const timeline = buildThreadTimeline(db, thread, {
       eventBudget: 1_000,
       includeNestedRows: true,
-      includeProviderUnhandledOperations: false,
+      includeDiagnosticOperations: false,
       maxInlineOutputChars: null,
       maxSeq: 6,
       page: { kind: "latest", segmentLimit: 20 },
@@ -321,7 +321,7 @@ describe("timeline context-clear epochs", () => {
     let page = buildThreadTimeline(db, thread, {
       eventBudget: 1_000,
       includeNestedRows: true,
-      includeProviderUnhandledOperations: false,
+      includeDiagnosticOperations: false,
       maxInlineOutputChars: null,
       maxSeq: 6,
       page: { kind: "latest", segmentLimit: 1 },
@@ -339,7 +339,7 @@ describe("timeline context-clear epochs", () => {
       page = buildThreadTimeline(db, thread, {
         eventBudget: 1_000,
         includeNestedRows: true,
-        includeProviderUnhandledOperations: false,
+        includeDiagnosticOperations: false,
         maxInlineOutputChars: null,
         maxSeq: 6,
         page: { kind: "older", segmentLimit: 1, beforeCursor: cursor },

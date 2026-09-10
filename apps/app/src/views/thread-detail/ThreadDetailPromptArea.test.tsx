@@ -2,7 +2,6 @@
 
 import type {
   PendingInteraction,
-  ReasoningLevel,
   ResolvedThreadExecutionOptions,
   ThreadQueuedMessage,
   ThreadTimelineActivePromptMode,
@@ -72,7 +71,6 @@ const mocks = vi.hoisted(() => ({
   stopThreadMutate: vi.fn(),
   toastError: vi.fn(),
   unarchiveThreadMutate: vi.fn(),
-  updateThreadMutate: vi.fn(),
   uploadPromptAttachmentMutateAsync: vi.fn(),
   updateQueuedMessageMutateAsync: vi.fn(),
   useThreadDefaultExecutionOptions: vi.fn(),
@@ -97,6 +95,7 @@ vi.mock("@/components/promptbox/FollowUpPromptBox", async () => {
     FollowUpPromptBox: ({
       attachments,
       composer,
+      environmentSummary,
       execution,
       executionReadOnly,
       pendingInteraction,
@@ -120,6 +119,7 @@ vi.mock("@/components/promptbox/FollowUpPromptBox", async () => {
         submitTitle?: string;
         submitMode: { kind: string; reason?: string };
       } | null;
+      environmentSummary?: ReactNode;
       execution: {
         footerAction?: {
           label: string;
@@ -128,10 +128,7 @@ vi.mock("@/components/promptbox/FollowUpPromptBox", async () => {
         model: {
           active?: { model: string } | null;
         };
-        reasoning: {
-          value: string;
-          onChange: (value: ReasoningLevel) => void;
-        };
+        reasoning: { value: string };
         serviceTier?: { value?: string };
       };
       executionReadOnly?: boolean;
@@ -147,7 +144,7 @@ vi.mock("@/components/promptbox/FollowUpPromptBox", async () => {
       }[];
     }) => (
       <div data-testid="follow-up-prompt-box">
-        {}
+        {environmentSummary}
         <div data-testid="prompt-stack">
           {pluginComposerHost ? (
             <ComposerBannersSlot
@@ -180,12 +177,6 @@ vi.mock("@/components/promptbox/FollowUpPromptBox", async () => {
         </div>
         <div data-testid="selected-model">{execution.model.active?.model}</div>
         <div data-testid="selected-reasoning">{execution.reasoning.value}</div>
-        <button
-          type="button"
-          onClick={() => execution.reasoning.onChange("high")}
-        >
-          Select high reasoning
-        </button>
         <div data-testid="selected-service-tier">
           {execution.serviceTier?.value}
         </div>
@@ -295,7 +286,9 @@ vi.mock("@/components/promptbox/FollowUpPromptBox", async () => {
 });
 
 vi.mock("@/components/promptbox/ThreadEnvironmentSummary", () => ({
-  ThreadEnvironmentSummary: () => <div />,
+  ThreadEnvironmentSummary: () => (
+    <div data-testid="thread-environment-summary" />
+  ),
 }));
 
 vi.mock(
@@ -568,9 +561,6 @@ vi.mock("@/hooks/mutations/thread-state-mutations", () => ({
     mutate: mocks.unarchiveThreadMutate,
     variables: null,
   }),
-  useUpdateThread: () => ({
-    mutate: mocks.updateThreadMutate,
-  }),
 }));
 
 vi.mock("@/hooks/queries/sidebar-navigation-query", () => ({
@@ -790,27 +780,23 @@ afterEach(() => {
   vi.clearAllMocks();
 });
 
-describe("ThreadDetailPromptArea", () => {
-  it("persists a changed reasoning level as the thread default", () => {
-    mocks.defaultExecutionOptions = {
-      model: "gpt-5",
-      permissionMode: "auto",
-      reasoningLevel: "max",
-      serviceTier: "default",
-      source: "client/turn/requested",
-    };
+describe("environment follow-up summary", () => {
+  it("renders for a thread with an environment even when it has no environment label", () => {
+    renderPromptArea({ thread: makeThread({ environmentId: "env_1" }) });
 
-    renderPromptArea();
-    fireEvent.click(
-      screen.getByRole("button", { name: "Select high reasoning" }),
-    );
-
-    expect(mocks.updateThreadMutate).toHaveBeenCalledWith({
-      id: "thr_1",
-      reasoningLevel: "high",
-    });
+    expect(screen.getByTestId("thread-environment-summary")).toBeTruthy();
   });
 
+  it("shows no environment row for an errored thread with no environment", () => {
+    renderPromptArea({
+      thread: makeThread({ environmentId: null, status: "error" }),
+    });
+
+    expect(screen.queryByTestId("thread-environment-summary")).toBeNull();
+  });
+});
+
+describe("ThreadDetailPromptArea", () => {
   it("shows queued work while its message details are loading", () => {
     mocks.queuedMessages = undefined;
 
@@ -1522,7 +1508,12 @@ describe("ThreadDetailPromptArea", () => {
     );
 
     await waitFor(() =>
-      expect(mocks.toastError).toHaveBeenCalledWith("Queued message changed"),
+      expect(mocks.toastError).toHaveBeenCalledWith(
+        "Failed to update queued message",
+        {
+          description: "Queued message changed",
+        },
+      ),
     );
     expect(
       screen.getByRole("button", { name: "Cancel queued edit" }),

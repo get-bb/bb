@@ -37,20 +37,50 @@ describe("pastRowDimClassName", () => {
     );
   });
 
-  it("keeps running, errored, and interrupted work rows at full strength", () => {
-    for (const status of ["pending", "error", "interrupted"] as const) {
+  it("recedes a failed work row alongside its completed neighbours", () => {
+    const row = viewRow([toolRow({ status: "error" })]);
+    expect(pastRowDimClassName({ ...inactiveScope, row })).toBe(
+      PAST_ROW_DIM_CLASS_NAME,
+    );
+  });
+
+  it("keeps running and interrupted work rows at full strength", () => {
+    for (const status of ["pending", "interrupted"] as const) {
       const row = viewRow([toolRow({ status })]);
       expect(pastRowDimClassName({ ...inactiveScope, row })).toBeUndefined();
     }
   });
 
-  it("recedes a completed system row", () => {
-    const row = viewRow([systemRow({ status: "completed" })]);
+  it("keeps a failed system row at full strength", () => {
+    const row = viewRow([systemRow({ status: "error" })]);
     expect(row.kind).toBe("system");
-    expect(pastRowDimClassName({ ...inactiveScope, row })).toBe(
-      PAST_ROW_DIM_CLASS_NAME,
-    );
+    expect(pastRowDimClassName({ ...inactiveScope, row })).toBeUndefined();
   });
+
+  it.each(["generic", "reasoning"] as const)(
+    "recedes a completed %s system row",
+    (operationKind) => {
+      const row = viewRow([systemRow({ operationKind, status: "completed" })]);
+      expect(row.kind).toBe("system");
+      expect(pastRowDimClassName({ ...inactiveScope, row })).toBe(
+        PAST_ROW_DIM_CLASS_NAME,
+      );
+    },
+  );
+
+  it.each(["warning", "deprecation"] as const)(
+    "keeps completed %s rows readable",
+    (operationKind) => {
+      const row = viewRow([
+        systemRow({
+          systemKind: "operation",
+          operationKind,
+          status: "completed",
+        }),
+      ]);
+      expect(pastRowDimClassName({ ...inactiveScope, row })).toBeUndefined();
+    },
+  );
 
   it("keeps a still-running system row at full strength", () => {
     const row = viewRow([systemRow({ status: "pending" })]);

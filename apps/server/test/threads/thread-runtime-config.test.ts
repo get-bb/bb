@@ -12,6 +12,7 @@ import {
   encodeClientTurnRequestIdNumber,
 } from "@bb/domain";
 import { validatePluginProviderDeclaration } from "@get-bb/plugin-sdk/internal/host-policy";
+import type { PluginAgentConfigurationContext } from "@get-bb/plugin-sdk";
 import { buildPluginProviderRegistration } from "../../src/services/providers/plugin-provider-registration.js";
 import type { DiscoveredSkill } from "@bb/host-daemon-contract";
 import { setPluginAgentContributions } from "../../src/services/plugins/plugin-agent-contributions.js";
@@ -752,7 +753,7 @@ describe("thread runtime config", () => {
         name: "release-notes",
         rootPath: path.join(harness.config.dataDir, "skills"),
       });
-      const builtinSourceRootPath = await writeRuntimeSkill({
+      await writeRuntimeSkill({
         name: "bb-cli",
         rootPath: harness.config.builtinSkillsRootPath,
       });
@@ -802,14 +803,6 @@ describe("thread runtime config", () => {
       });
 
       expect(command.injectedSkillSources).toEqual([
-        {
-          kind: "tree",
-          sourceType: "builtin",
-          name: "bb-cli",
-          description: "Use bb-cli when server runtime tests run.",
-          treeHash: readSkillTreeManifest(builtinSourceRootPath).treeHash,
-          entryPath: "SKILL.md",
-        },
         {
           kind: "workspace-path",
           sourceType: "project",
@@ -1142,12 +1135,33 @@ describe("thread runtime config", () => {
         hostId,
         projectId: project.id,
         path: "/tmp/runtime-project-root",
+        environmentProviderId: "project-checkout",
       });
       const thread = seedThread(harness.deps, {
         projectId: project.id,
         environmentId: environment.id,
       });
 
+      const pluginContexts: PluginAgentConfigurationContext[] = [];
+      setPluginAgentContributions({
+        listSkillRootContributions: () => [],
+        listAgentTools: () => [],
+        listInstructionContributions: () => [],
+        findAgentTool: () => undefined,
+        invokeAgentTool: async () => ({
+          success: false,
+          contentItems: [{ type: "inputText", text: "unused" }],
+        }),
+        resolveMention: async () => ({ ok: false, error: "unused" }),
+        resolveAgentConfiguration: async (args) => {
+          pluginContexts.push(args.context);
+          return {
+            tools: [],
+            selectedSkillIdsByPlugin: new Map(),
+            dynamicInstructions: [],
+          };
+        },
+      });
       const runtimeConfig = await resolveThreadRuntimeCommandConfig(
         harness.deps,
         {
@@ -1158,16 +1172,15 @@ describe("thread runtime config", () => {
             id: environment.id,
             path: environment.path,
             status: environment.status,
-            workspaceProvisionType: environment.workspaceProvisionType,
           },
         },
       );
+      setPluginAgentContributions(undefined);
 
       expect(runtimeConfig.workspacePath).toBe("/tmp/runtime-project-root");
       expect(runtimeConfig.threadStoragePath).toBe(
         `/tmp/bb-host-data/${hostId}/thread-storage/${thread.id}`,
       );
-      expect(runtimeConfig.workspaceProvisionType).toBe("unmanaged");
       expect(runtimeConfig.dynamicTools).toEqual([
         expect.objectContaining({
           name: "update_environment_directory",
@@ -1176,14 +1189,17 @@ describe("thread runtime config", () => {
           }),
         }),
       ]);
-      expect(runtimeConfig.instructions).toContain(
+      expect(runtimeConfig.instructions).not.toContain(
         "You are working inside bb, an agentic IDE",
       );
-      expect(runtimeConfig.instructions).toContain("bb status");
-      expect(runtimeConfig.instructions).toContain("bb guide");
-      expect(runtimeConfig.instructions).toContain("Markdown links");
+      expect(runtimeConfig.instructions).not.toContain("bb status");
+      expect(runtimeConfig.instructions).not.toContain("bb guide");
+      expect(runtimeConfig.instructions).not.toContain("Markdown links");
       expect(runtimeConfig.instructions).toContain(
         "update_environment_directory",
+      );
+      expect(pluginContexts[0]?.environment.workspaceProvisionType).toBe(
+        "unmanaged",
       );
     });
   });
@@ -1227,13 +1243,12 @@ describe("thread runtime config", () => {
             id: environment.id,
             path: environment.path,
             status: environment.status,
-            workspaceProvisionType: environment.workspaceProvisionType,
           },
         },
       );
 
       expect(runtimeConfig.instructionMode).toBe("append");
-      expect(runtimeConfig.instructions).toContain(
+      expect(runtimeConfig.instructions).not.toContain(
         "You are working inside bb, an agentic IDE",
       );
       expect(runtimeConfig.instructions).toContain(
@@ -1549,7 +1564,6 @@ describe("thread runtime config", () => {
             id: environment.id,
             path: environment.path,
             status: environment.status,
-            workspaceProvisionType: environment.workspaceProvisionType,
           },
         },
       );
@@ -1661,7 +1675,6 @@ describe("thread runtime config", () => {
               id: environment.id,
               path: environment.path,
               status: environment.status,
-              workspaceProvisionType: environment.workspaceProvisionType,
             },
           },
         );
@@ -1745,7 +1758,6 @@ describe("thread runtime config", () => {
               id: environment.id,
               path: environment.path,
               status: environment.status,
-              workspaceProvisionType: environment.workspaceProvisionType,
             },
           },
         );

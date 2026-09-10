@@ -224,9 +224,10 @@ describe("builtin plugin reconciliation", () => {
 
   it("gives every builtin plugin a deliberate settings icon", async () => {
     const expectedIcons = new Map([
+      ["bb-guide", "Explore"],
       ["account-pool", "Layers"],
       ["ask-user-question", "MessageQuestion"],
-      ["automations", "Clock"],
+      ["automations", "Repeat"],
       ["concurrency-limit", "Limitation"],
       ["connect", "Smartphone"],
       ["custom-instructions", "EditFile"],
@@ -235,6 +236,8 @@ describe("builtin plugin reconciliation", () => {
       ["keep-awake", "Coffee"],
       ["monaco-editor", "Code"],
       ["pdf-preview", "FileText"],
+      ["environment-project-checkout", "Laptop"],
+      ["environment-personal-workspace", "Folder"],
       ["provider-acp", "./icons/acp.svg"],
       ["plugin-api-docs", "./icons/ai-generative.svg"],
       ["provider-claude-code", "./icons/claude-code.svg"],
@@ -247,6 +250,7 @@ describe("builtin plugin reconciliation", () => {
       ["secrets", "Lock"],
       ["side-chat", "SideChat"],
       ["workflows", "Workflow"],
+      ["environment-git-worktree", "FolderGit"],
     ]);
 
     expect(BUILTIN_PLUGINS).toHaveLength(expectedIcons.size);

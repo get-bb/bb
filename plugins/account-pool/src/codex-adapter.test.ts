@@ -233,3 +233,49 @@ describe("codex header quotas", () => {
     ).toBe(quota);
   });
 });
+
+describe("requestHeaders", () => {
+  it("forwards Codex routing and lite-mode headers but drops downstream auth", () => {
+    const headers = adapter.requestHeaders(
+      new Headers({
+        authorization: "Bearer downstream",
+        "x-bb-account-pool-token": "machine-token",
+        "x-codex-turn-state": "sticky",
+        "x-openai-internal-codex-responses-lite": "true",
+        "x-openai-internal-other": "dropped",
+        "openai-beta": "responses=experimental",
+        "content-type": "application/json",
+      }),
+      {
+        id: ACCOUNT_ID,
+        provider: "codex",
+        kind: "oauth",
+        label: "codex",
+        email: null,
+        accountUuid: null,
+        codexAccountId: "chatgpt-account",
+        subscriptionType: null,
+        rateLimitTier: null,
+        enabled: true,
+        priority: 0,
+        createdAt: 0,
+        lastUsedAt: null,
+        lastUsedHostId: null,
+      },
+      {
+        kind: "oauth",
+        accessToken: "upstream-token",
+        refreshToken: "refresh",
+        expiresAt: null,
+      },
+    );
+    expect(Object.fromEntries(headers)).toEqual({
+      authorization: "Bearer upstream-token",
+      "chatgpt-account-id": "chatgpt-account",
+      "content-type": "application/json",
+      "openai-beta": "responses=experimental",
+      "x-codex-turn-state": "sticky",
+      "x-openai-internal-codex-responses-lite": "true",
+    });
+  });
+});

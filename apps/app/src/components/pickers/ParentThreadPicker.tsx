@@ -101,7 +101,7 @@ export function ParentThreadPicker({
       </PopoverTrigger>
       <PopoverContent
         align="start"
-        className="w-72 p-0 max-md:w-full"
+        className="w-72 p-0"
         mobileTitle="Assign parent thread"
       >
         <Command label="Search parent threads" shouldFilter={false}>

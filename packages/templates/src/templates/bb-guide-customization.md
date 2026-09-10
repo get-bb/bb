@@ -70,14 +70,14 @@ Server-backed General settings
 
 Settings → General includes app-wide preferences stored server-side so every
 window and restart sees the same value. Keep Awake is instead owned by its
-builtin plugin: use its autosaving page under Extensions → Plugins or run
+builtin plugin: use its autosaving page under Settings → Installed plugins or run
 `bb keep-awake enable` or `bb keep-awake disable`. Choose every host with `bb
 keep-awake hosts all`, or name individual host ids after `bb keep-awake hosts`.
 On macOS it prevents system idle sleep while bb is running; closing the lid or
 choosing Sleep still sleeps the Mac.
 
 Concurrency limit is also owned by its builtin plugin. Its autosaving page
-under Extensions → Plugins leaves the overall limit unlimited by default and
+under Settings → Installed plugins leaves the overall limit unlimited by default and
 uses an automatic per-host limit of one thread per available processor. Use
 `bb concurrency-limit global [unlimited|<limit>]` and `bb
 concurrency-limit host <host-id> [auto|<limit>]`; 0 pauses new work.
@@ -87,9 +87,11 @@ Turn it off to hide the delayed shortcut badges shown while holding Command or
 Control on macOS, or Control on Windows/Linux. Shortcut commands continue to
 work.
 
-Settings → General includes `showUnhandledProviderEvents`, which defaults to
-false in packaged builds. Turn it on to show raw provider events bb does not yet
-understand; development builds always show these diagnostic rows.
+Settings → General includes `showDiagnosticEvents`, which defaults to false
+in all builds. Turn it on to show provider environment resolution and unhandled
+provider events. Warnings, errors, and model fallback stay visible. Existing
+unhandled-event preferences are preserved. Set it with
+`bb settings general showDiagnosticEvents <true|false>`.
 
 Settings → General also includes `steerActiveThreadOnEnter`, which defaults to
 true for a new install. An earlier install with saved settings or work keeps
@@ -104,7 +106,7 @@ it on to hide every `customModels` entry from `~/.bb/config.json` in all model
 lists (pickers, `bb provider models`, and the SDK) during a screen share. The
 entries stay in the config file.
 
-Settings → General also includes `managedBranchPrefix`, which defaults to
+Settings → General includes `managedBranchPrefix`, which defaults to
 `bb/`. bb puts it in front of every branch name it creates for a worktree, so
 the default gives `bb/fix-login-flow-thr_ab12cd34ef`. Set `sawyer/wt-` to get
 `sawyer/wt-fix-login-flow-thr_ab12cd34ef`, or clear it for no prefix. bb rejects
@@ -209,12 +211,36 @@ Voice transcription uses the `BB_TRANSCRIPTION` model, which defaults to
 `bb-app config set BB_TRANSCRIPTION <provider/model>`.
 
 `bb file` supports `--host` for remote machines and `--root` on mutating
-commands to confine access beneath an absolute directory. Use `--json` for
-metadata and machine-readable results.
+commands to confine access beneath an absolute directory. `bb file list` and
+`bb file paths` include dot-prefixed entries; pass `--no-hidden` to skip them.
+Both skip a default set of dependency and cache directories such as
+`node_modules` and `.venv`; `--exclude <names...>` replaces that set. Use
+`--json` for metadata and machine-readable results.
+
+Server-backed sidebar preferences
+
+Sidebar layout lives on the server in a keyed, revisioned registry so every
+window, device, and the CLI share it: organization mode, chronological sort,
+section orders, collapsed rows and sections, navigation entry order and
+visibility, and the navigation and thread-list provider pickers. The sidebar
+waits for them alongside the project list, and an upgrade uploads the old
+browser-stored layout once.
+
+  bb settings ui list [--json]
+  bb settings ui get <key> [--json]
+  bb settings ui set <key> <value> [--json]
+  bb settings ui reset <key> [--json]
+
+`bb settings ui list` prints every key with its value, revision, and a short
+description. `set` takes plain strings for enum and provider keys and JSON for
+lists and `null`; it reads the current revision, writes with it, and retries
+once on a conflict. `reset` writes the default. The SDK offers
+`sdk.system.uiPreferences.list()`, `.set()`, and `.reset()`.
 
 Client-local UI preferences
 
-Some Settings values live only in the current browser/client. The Voice Input
+Some Settings values live only in the current browser/client. Sidebar width
+and open state stay local because they depend on the window size. The Voice Input
 microphone picker stores the selected browser MediaDevices device id in
 localStorage as `bb.voiceInput.audioInputDeviceId`; it does not have a `bb`
 command and does not change the server-side transcription model.

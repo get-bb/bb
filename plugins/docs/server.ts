@@ -173,7 +173,6 @@ const hostSchema = z
   .object({
     id: z.string().min(1),
     name: z.string().min(1),
-    type: z.literal("persistent"),
     status: z.enum(["connected", "disconnected"]),
     maxPermissionMode: z.enum(["full", "auto", "accept-edits"]),
     lastSeenAt: z.number().nullable(),
@@ -824,6 +823,7 @@ export default async function plugin(
       path: vault.rootPath,
       includeFiles: true,
       includeDirectories: true,
+      includeHidden: false,
       limit: MAX_TREE_ENTRIES,
     });
     return {
@@ -1151,6 +1151,7 @@ export default async function plugin(
         path: vault.rootPath,
         includeFiles: true,
         includeDirectories: true,
+        includeHidden: false,
         limit: MAX_TREE_ENTRIES,
       });
       if (result.truncated) {
@@ -1305,6 +1306,7 @@ export default async function plugin(
       path: vault.rootPath,
       includeFiles: true,
       includeDirectories: true,
+      includeHidden: false,
       limit: MAX_TREE_ENTRIES,
     });
     if (currentListing.truncated) {
@@ -2244,6 +2246,7 @@ export default async function plugin(
       path: rootPath,
       includeFiles: true,
       includeDirectories: true,
+      includeHidden: false,
       limit: MAX_TREE_ENTRIES,
     });
     if (listing.truncated) {

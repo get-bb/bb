@@ -1,4 +1,9 @@
 import { z } from "zod";
+import {
+  desktopBrowserImportOutcomeSchema,
+  desktopBrowserImportSelectionSchema,
+  desktopBrowserImportSourceSchema,
+} from "./desktop-browser-import.js";
 
 const id = z.string().min(1).max(256);
 export const desktopBrowserInstanceSchema = z.object({
@@ -25,7 +30,8 @@ export const desktopBrowserTabSchema = z.object({
   profile: desktopBrowserProfileSchema,
   presentation: z.enum(["hidden", "reveal"]),
 });
-const target = { instanceId: id, generation: id, threadId: id };
+const instanceTarget = { instanceId: id, generation: id };
+const target = { ...instanceTarget, threadId: id };
 const tabTarget = { ...target, tabId: id };
 const leaseTarget = { ...target, leaseId: id };
 const tabIds = z
@@ -96,6 +102,20 @@ export const desktopBrowserCommandSchemas = {
       ...leaseTarget,
     })
     .strict(),
+  "desktop.browser.list_import_sources": z
+    .object({
+      type: z.literal("desktop.browser.list_import_sources"),
+      ...instanceTarget,
+    })
+    .strict(),
+  "desktop.browser.import_cookies": z
+    .object({
+      type: z.literal("desktop.browser.import_cookies"),
+      ...instanceTarget,
+      ...desktopBrowserImportSelectionSchema.shape,
+      profile: desktopBrowserProfileSchema,
+    })
+    .strict(),
 };
 export const desktopBrowserCommandSchema = z.discriminatedUnion("type", [
   desktopBrowserCommandSchemas["desktop.browser.list_instances"],
@@ -107,6 +127,8 @@ export const desktopBrowserCommandSchema = z.discriminatedUnion("type", [
   desktopBrowserCommandSchemas["desktop.browser.acquire_control"],
   desktopBrowserCommandSchemas["desktop.browser.open_connection"],
   desktopBrowserCommandSchemas["desktop.browser.release_control"],
+  desktopBrowserCommandSchemas["desktop.browser.list_import_sources"],
+  desktopBrowserCommandSchemas["desktop.browser.import_cookies"],
 ]);
 const ok = z.object({ ok: z.literal(true) });
 export const desktopBrowserResultSchemas = {
@@ -144,6 +166,10 @@ export const desktopBrowserResultSchemas = {
       }),
   }),
   "desktop.browser.release_control": ok,
+  "desktop.browser.list_import_sources": z.object({
+    sources: z.array(desktopBrowserImportSourceSchema).max(20),
+  }),
+  "desktop.browser.import_cookies": desktopBrowserImportOutcomeSchema,
 };
 export type DesktopBrowserCommand = z.infer<typeof desktopBrowserCommandSchema>;
 export type DesktopBrowserCommandType = DesktopBrowserCommand["type"];

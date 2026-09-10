@@ -34,7 +34,6 @@ const MODE_SECTION_ORDER_CONFIG: Record<
 interface UseSidebarModeSectionOrderArgs {
   entitySectionIds: readonly SidebarSectionId[];
   hasThreadsSection?: boolean;
-  isReady: boolean;
   mode: SidebarOrganizationMode;
   showPinnedSection: boolean;
 }
@@ -48,7 +47,6 @@ interface UseSidebarModeSectionOrderResult {
 export function useSidebarModeSectionOrder({
   entitySectionIds,
   hasThreadsSection,
-  isReady,
   mode,
   showPinnedSection,
 }: UseSidebarModeSectionOrderArgs): UseSidebarModeSectionOrderResult {
@@ -56,12 +54,10 @@ export function useSidebarModeSectionOrder({
   const [storedOrder, setStoredOrder] = useAtom(config.atom);
   const persistedOrder = usePersistedSidebarSectionOrder({
     storedOrder,
-    setStoredOrder,
     entitySectionIds,
     legacyEntityAnchor: config.legacyEntityAnchor,
     hasPinnedSection: true,
     ...(hasThreadsSection === undefined ? {} : { hasThreadsSection }),
-    isReady,
   });
   const order = useMemo(
     () =>

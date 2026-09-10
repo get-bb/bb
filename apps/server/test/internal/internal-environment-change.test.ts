@@ -73,6 +73,8 @@ describe("internal environment change websocket hints", () => {
             type: "host.list_files",
             path: "/tmp/session-scope-test",
             limit: 10,
+            includeHidden: false,
+            excludeNames: [],
           },
         },
       });
@@ -196,7 +198,7 @@ describe("internal environment change websocket hints", () => {
           workspace: {
             path: environment.path,
             isGitRepo: true,
-            isWorktree: false,
+            isWorktree: true,
             branchName: "main",
             defaultBranch: "main",
           },
@@ -206,7 +208,7 @@ describe("internal environment change websocket hints", () => {
       expect(socket.close).not.toHaveBeenCalled();
       expect(getEnvironment(harness.db, environment.id)).toMatchObject({
         isGitRepo: true,
-        isWorktree: false,
+        isWorktree: true,
         branchName: "main",
         defaultBranch: "main",
       });

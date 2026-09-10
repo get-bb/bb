@@ -12,6 +12,7 @@ import type {
   ExperimentalSidebarFooterDisclosureController,
 } from "@get-bb/plugin-sdk";
 import { MemoryRouter, useLocation } from "react-router-dom";
+import { TooltipProvider } from "@bb/shared-ui/tooltip";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { SidebarMenu, SidebarProvider } from "@/components/ui/sidebar.js";
 import {
@@ -61,10 +62,12 @@ function LocationProbe() {
 function renderWithProviders(ui: ReactNode) {
   return render(
     <MemoryRouter>
-      <SidebarProvider>
-        {ui}
-        <LocationProbe />
-      </SidebarProvider>
+      <TooltipProvider delayDuration={0}>
+        <SidebarProvider>
+          {ui}
+          <LocationProbe />
+        </SidebarProvider>
+      </TooltipProvider>
     </MemoryRouter>,
   );
 }
@@ -80,8 +83,6 @@ function FooterHarness() {
       <SidebarMenu>
         <PluginSidebarFooterItems
           activeDisclosureKey={disclosure.activeKey}
-          suppressedTooltipKey={disclosure.suppressedTooltipKey}
-          onTooltipSuppressionEnd={disclosure.clearTooltipSuppression}
           onDisclosureCommand={disclosure.handleCommand}
         />
       </SidebarMenu>
@@ -267,6 +268,48 @@ describe("PluginSidebarFooterItems", () => {
     fireEvent.click(screen.getByRole("button", { name: "Dismiss usage" }));
     expect(screen.queryByText("Provider usage content")).toBeNull();
     expect(trigger.getAttribute("aria-expanded")).toBe("false");
+    expect(document.activeElement).toBe(trigger);
+    expect(screen.queryByRole("tooltip")).toBeNull();
+  });
+
+  it("keeps the tooltip closed when the More drawer returns focus after a touch dismissal", () => {
+    const definition = definePluginApp((app) => {
+      app.experimental_sidebarFooter.register({
+        kind: "disclosure",
+        id: "usage",
+        label: "Provider usage",
+        icon: "ChartColumn",
+        component: UsageDisclosure,
+      });
+    });
+    setPluginSlotRegistrations(
+      "usage-plugin",
+      collectPluginAppRegistrations(definition),
+    );
+
+    renderWithProviders(<FooterHarness />);
+    const trigger = screen.getByRole("button", { name: "Provider usage" });
+
+    fireEvent.pointerDown(trigger, { pointerType: "touch" });
+    fireEvent.pointerUp(trigger, { pointerType: "touch" });
+    fireEvent.click(trigger);
+    expect(screen.getByText("Provider usage content")).toBeDefined();
+
+    const dismissButton = screen.getByRole("button", { name: "Dismiss usage" });
+    fireEvent.pointerDown(dismissButton, { pointerType: "touch" });
+    fireEvent.pointerUp(dismissButton, { pointerType: "touch" });
+    fireEvent.click(dismissButton);
+    expect(document.activeElement).toBe(trigger);
+    expect(screen.queryByRole("tooltip")).toBeNull();
+
+    fireEvent.pointerDown(document.body, { pointerType: "touch" });
+    fireEvent.pointerUp(document.body, { pointerType: "touch" });
+    fireEvent.blur(trigger);
+    fireEvent.pointerDown(document.body, { pointerType: "touch" });
+    fireEvent.pointerUp(document.body, { pointerType: "touch" });
+    trigger.focus();
+    fireEvent.focus(trigger);
+
     expect(document.activeElement).toBe(trigger);
     expect(screen.queryByRole("tooltip")).toBeNull();
   });

@@ -47,7 +47,6 @@ import {
 } from "@/lib/route-paths";
 import { splitLayoutAtom } from "@/lib/split-layout/atoms";
 import {
-  SIDEBAR_ORGANIZATION_MODE_STORAGE_KEY,
   sidebarOrganizationModeAtom,
   type SidebarOrganizationMode,
 } from "./sidebarCollapsedAtoms";
@@ -180,8 +179,8 @@ const loadedSidebarNavigation = makeSidebarBootstrapResponse({
           environmentId: "env_story_sidebar",
           environmentName: "Sidebar polish",
           environmentBranchName: BRANCH_NAMES.feature,
+          environmentProviderId: "git-worktree",
           queuedWork: "none",
-          environmentWorkspaceDisplayKind: "managed-worktree",
           title: "Tighten loading skeleton",
           titleFallback: "Tighten loading skeleton",
           latestAttentionAt: 170,
@@ -194,8 +193,8 @@ const loadedSidebarNavigation = makeSidebarBootstrapResponse({
           environmentId: "env_story_sidebar",
           environmentName: "Sidebar polish",
           environmentBranchName: BRANCH_NAMES.feature,
+          environmentProviderId: "git-worktree",
           queuedWork: "none",
-          environmentWorkspaceDisplayKind: "managed-worktree",
           title: "Audit sidebar stories",
           titleFallback: "Audit sidebar stories",
           hasPendingInteraction: true,
@@ -351,7 +350,7 @@ function StoryPluginPageRegistrations() {
         panel: {
           id: AUTOMATIONS_PLUGIN_PANEL_PATH,
           title: "Automations",
-          icon: "TimeSchedule" as const,
+          icon: "Repeat" as const,
           path: AUTOMATIONS_PLUGIN_PANEL_PATH,
           component: () => null,
         },
@@ -437,39 +436,8 @@ function OrganizationSidebar({
 
   useLayoutEffect(() => {
     setIsModeSeeded(false);
-
-    let localStorage: Storage | null = null;
-    let persistedMode: string | null = null;
-
-    if (typeof window !== "undefined") {
-      try {
-        localStorage = window.localStorage;
-        persistedMode = localStorage.getItem(
-          SIDEBAR_ORGANIZATION_MODE_STORAGE_KEY,
-        );
-      } catch {
-        localStorage = null;
-      }
-    }
-
     const unsubscribe = store.sub(sidebarOrganizationModeAtom, noop);
-
-    try {
-      store.set(sidebarOrganizationModeAtom, mode);
-    } finally {
-      if (localStorage) {
-        try {
-          if (persistedMode === null) {
-            localStorage.removeItem(SIDEBAR_ORGANIZATION_MODE_STORAGE_KEY);
-          } else {
-            localStorage.setItem(
-              SIDEBAR_ORGANIZATION_MODE_STORAGE_KEY,
-              persistedMode,
-            );
-          }
-        } catch {}
-      }
-    }
+    store.set(sidebarOrganizationModeAtom, mode);
 
     setIsModeSeeded(true);
 

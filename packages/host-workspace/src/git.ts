@@ -8,7 +8,11 @@ import type {
   GitCheckoutRef,
   WorkspaceGitOperation,
 } from "@bb/domain";
-import { sanitizeInheritedChildProcessEnv } from "@bb/process-utils";
+import {
+  killProcessGroup,
+  sanitizeInheritedChildProcessEnv,
+  supportsProcessGroups,
+} from "@bb/process-utils";
 
 const execFileAsync = promisify(execFile);
 const DEFAULT_BUFFER_BYTES = 16 * 1024 * 1024;
@@ -47,6 +51,10 @@ interface GitTimeoutOptions extends GitProcessOptions {
 
 interface FetchRemoteBranchesResult {
   status: "fetched" | "failed" | "skipped";
+}
+
+interface FetchRemoteBranchesOptions extends GitTimeoutOptions {
+  interactive: boolean;
 }
 
 interface DefaultBranchRefs {
@@ -615,6 +623,21 @@ export async function detectGitRepo(
   options: GitTimeoutOptions = {},
 ): Promise<boolean> {
   return (await detectGitRepoKind(cwd, options)) === "work-tree";
+}
+
+export async function detectLinkedWorktree(
+  cwd: string,
+  options: GitTimeoutOptions = {},
+): Promise<boolean> {
+  const gitDirResult = await runGit(["rev-parse", "--git-dir"], {
+    cwd,
+    ...options,
+    allowFailure: true,
+  });
+  if (gitDirResult.exitCode !== 0) {
+    return false;
+  }
+  return gitDirResult.stdout.trim().includes("/worktrees/");
 }
 
 export async function detectGitSource(
@@ -1261,9 +1284,47 @@ export async function readDefaultBranchRefs(
   };
 }
 
+async function fetchRemoteBranchesNonInteractively(
+  cwd: string,
+  options: GitTimeoutOptions,
+): Promise<FetchRemoteBranchesResult> {
+  return new Promise((resolve) => {
+    const child = spawn("git", ["fetch", "--all", "--prune", "--quiet"], {
+      cwd,
+      detached: supportsProcessGroups(),
+      windowsHide: true,
+      stdio: "ignore",
+      env: resolveGitProcessEnv({
+        shellPath: options.shellPath,
+        env: {
+          GIT_TERMINAL_PROMPT: "0",
+          GIT_ASKPASS: "false",
+          SSH_ASKPASS: "false",
+          SSH_ASKPASS_REQUIRE: "never",
+          GCM_INTERACTIVE: "never",
+        },
+      }),
+    });
+    const timeout =
+      options.timeoutMs === undefined
+        ? undefined
+        : setTimeout(() => {
+            killProcessGroup({ child, signal: "SIGKILL" });
+          }, options.timeoutMs);
+    child.once("error", () => {
+      clearTimeout(timeout);
+      resolve({ status: "failed" });
+    });
+    child.once("close", (code) => {
+      clearTimeout(timeout);
+      resolve({ status: code === 0 ? "fetched" : "failed" });
+    });
+  });
+}
+
 export async function fetchRemoteBranches(
   cwd: string,
-  options: GitTimeoutOptions = {},
+  { interactive, ...options }: FetchRemoteBranchesOptions,
 ): Promise<FetchRemoteBranchesResult> {
   await ensureGitRepo(cwd, options);
 
@@ -1280,6 +1341,10 @@ export async function fetchRemoteBranches(
       .filter(Boolean).length === 0
   ) {
     return { status: "skipped" };
+  }
+
+  if (!interactive) {
+    return fetchRemoteBranchesNonInteractively(cwd, options);
   }
 
   try {

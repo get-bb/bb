@@ -13,6 +13,7 @@ import {
 } from "@bb/domain";
 import {
   publicApiRoutes,
+  THREAD_EVENT_LIST_PAGE_SIZE,
   typedRoutes,
   type PublicApiSchema,
   type ThreadConversationOutlineResponse,
@@ -81,6 +82,10 @@ import {
 } from "../../services/lib/validation.js";
 import { resolveProviderPlanCommand } from "../../services/providers/provider-plan-command.js";
 import { parsePathKindInclusion } from "../path-list-inclusion.js";
+import {
+  DEFAULT_PATH_LIST_EXCLUDE_NAMES,
+  THREAD_STORAGE_PATH_LIST_INCLUDE_HIDDEN,
+} from "../path-list-policy.js";
 import { parseFileListLimit } from "../file-list-query.js";
 import { parseSafeRelativeRoutePath } from "../relative-route-path.js";
 
@@ -227,23 +232,29 @@ function assertHtmlPreviewSize(relativePath: string, sizeBytes: number): void {
 function createRawFilePreviewResponse(
   result: DaemonFileReadResult,
   relativePath: string,
+  ifNoneMatch: string | undefined,
 ): Response {
   assertHtmlPreviewSize(relativePath, result.sizeBytes);
   const headers = new Headers({
-    "cache-control": RAW_FILE_NO_STORE_CACHE_CONTROL,
     "x-content-type-options": RAW_FILE_CONTENT_TYPE_OPTIONS,
   });
-  if (isHtmlPreviewPath(relativePath)) {
+  const isHtml = isHtmlPreviewPath(relativePath);
+  if (isHtml) {
+    headers.set("cache-control", RAW_FILE_NO_STORE_CACHE_CONTROL);
     headers.set("content-security-policy", GENERIC_HTML_PREVIEW_CSP);
     headers.set("content-type", RAW_FILE_HTML_CONTENT_TYPE);
   }
-  return createDaemonFileContentResponse(result, { headers });
+  return createDaemonFileContentResponse(result, {
+    headers,
+    ifNoneMatch: isHtml ? undefined : ifNoneMatch,
+  });
 }
 
 async function serveThreadStorageRawFile(
   deps: LoggedWorkSessionDeps,
   threadId: string,
   rawPath: string,
+  ifNoneMatch: string | undefined,
 ): Promise<Response> {
   const filePath = parseSafeRelativeRoutePath(rawPath);
   const target = await requireThreadStorageTarget(deps, { threadId });
@@ -252,10 +263,12 @@ async function serveThreadStorageRawFile(
     deps,
     {
       hostId: target.hostId,
+      ...(!isHtmlPreviewPath(filePath.relativePath) ? { ifNoneMatch } : {}),
       path: path.join(target.storagePath, filePath.relativePath),
       rootPath: target.storagePath,
     },
-    (result) => createRawFilePreviewResponse(result, filePath.relativePath),
+    (result) =>
+      createRawFilePreviewResponse(result, filePath.relativePath, ifNoneMatch),
   );
 }
 
@@ -263,6 +276,7 @@ async function serveThreadWorktreeRawFile(
   deps: LoggedWorkSessionDeps,
   threadId: string,
   rawPath: string,
+  ifNoneMatch: string | undefined,
 ): Promise<Response> {
   const filePath = parseSafeRelativeRoutePath(rawPath);
   const thread = requirePublicThread(deps.db, threadId);
@@ -275,10 +289,12 @@ async function serveThreadWorktreeRawFile(
     deps,
     {
       hostId: environment.hostId,
+      ...(!isHtmlPreviewPath(filePath.relativePath) ? { ifNoneMatch } : {}),
       path: path.join(environment.path, filePath.relativePath),
       rootPath: environment.path,
     },
-    (result) => createRawFilePreviewResponse(result, filePath.relativePath),
+    (result) =>
+      createRawFilePreviewResponse(result, filePath.relativePath, ifNoneMatch),
   );
 }
 
@@ -289,6 +305,16 @@ export function registerThreadDataRoutes(app: Hono, deps: AppDeps): void {
   const routes = publicApiRoutes.threads;
   const timelineCache = createThreadTimelineCache();
   const timelineLatestRowsCache = createTimelineLatestRowsCache();
+  deps.hub.onChangedMessage((message) => {
+    if (
+      message.entity === "thread" &&
+      message.id !== undefined &&
+      message.changes.includes("history-rewritten")
+    ) {
+      timelineCache.invalidateThread(message.id);
+      timelineLatestRowsCache.invalidateThread(message.id);
+    }
+  });
   const slowTimelineBuildLogger = createSlowThreadTimelineBuildLogger({
     logger: deps.logger,
   });
@@ -303,14 +329,18 @@ export function registerThreadDataRoutes(app: Hono, deps: AppDeps): void {
     const page = parseThreadTimelinePage(query);
     const includeNestedRows = query.includeNestedRows === "true";
     const summaryOnly = query.summaryOnly === "true";
-    const maxSeq = getLatestThreadSequence(deps.db, { threadId: thread.id });
+
     const providerDisplayName = resolveThreadProviderDisplayName(
       deps,
       thread.providerId,
     );
-    const includeProviderUnhandledOperations =
-      deps.config.isDevelopment ||
-      getAppSettings(deps.db).showUnhandledProviderEvents;
+    const includeDiagnosticOperations = getAppSettings(
+      deps.db,
+    ).showDiagnosticEvents;
+    const maxSeq = getLatestThreadSequence(deps.db, {
+      threadId: thread.id,
+      excludeDiagnosticEvents: !includeDiagnosticOperations,
+    });
     const eventBudget = deps.config.featureFlags.timelineWindowEventBudget;
     const keyArgs = {
       threadId: thread.id,
@@ -320,9 +350,10 @@ export function registerThreadDataRoutes(app: Hono, deps: AppDeps): void {
       page,
       includeNestedRows,
       summaryOnly,
-      includeProviderUnhandledOperations,
+      includeDiagnosticOperations,
     };
     const full = timelineCache.getOrBuild(
+      thread.id,
       buildThreadTimelineCacheKey({ ...keyArgs, maxSeq }),
       () => {
         const { profile, response } = buildThreadTimelineWithProfile(
@@ -330,7 +361,7 @@ export function registerThreadDataRoutes(app: Hono, deps: AppDeps): void {
           thread,
           {
             eventBudget,
-            includeProviderUnhandledOperations,
+            includeDiagnosticOperations,
             includeNestedRows,
             maxInlineOutputChars: DEFAULT_MAX_INLINE_OUTPUT_CHARS,
             maxSeq,
@@ -362,12 +393,15 @@ export function registerThreadDataRoutes(app: Hono, deps: AppDeps): void {
     const previous =
       afterSequence === undefined
         ? undefined
-        : timelineLatestRowsCache.get(paramsKey, afterSequence);
+        : timelineLatestRowsCache.get(thread.id, paramsKey, afterSequence);
     const delta =
       previous === undefined
         ? undefined
         : computeTimelineRowDelta(previous.rows, full.rows);
-    timelineLatestRowsCache.set(paramsKey, { maxSeq, rows: full.rows });
+    timelineLatestRowsCache.set(thread.id, paramsKey, {
+      maxSeq,
+      rows: full.rows,
+    });
 
     return context.json(
       delta === undefined ? full : { ...full, rows: [], delta },
@@ -376,6 +410,7 @@ export function registerThreadDataRoutes(app: Hono, deps: AppDeps): void {
 
   get(routes.conversationOutline, (context) => {
     const thread = requirePublicThread(deps.db, context.req.param("id"));
+
     const maxSeq = getLatestThreadSequence(deps.db, { threadId: thread.id });
     const outlineSequence = getLatestStoredConversationOutlineSequence(
       deps.db,
@@ -419,12 +454,12 @@ export function registerThreadDataRoutes(app: Hono, deps: AppDeps): void {
 
   get(routes.timelineTurnSummaryDetails, (context, query) => {
     const thread = requirePublicThread(deps.db, context.req.param("id"));
-    const includeProviderUnhandledOperations =
-      deps.config.isDevelopment ||
-      getAppSettings(deps.db).showUnhandledProviderEvents;
+    const includeDiagnosticOperations = getAppSettings(
+      deps.db,
+    ).showDiagnosticEvents;
     return context.json(
       buildTimelineTurnSummaryDetails(deps.db, thread, {
-        includeProviderUnhandledOperations,
+        includeDiagnosticOperations,
         providerDisplayName: resolveThreadProviderDisplayName(
           deps,
           thread.providerId,
@@ -476,7 +511,12 @@ export function registerThreadDataRoutes(app: Hono, deps: AppDeps): void {
         threadId: context.req.param("id"),
         afterSeq: parseOptionalInteger(query.afterSeq, "afterSeq"),
         beforeSeq: parseOptionalInteger(query.beforeSeq, "beforeSeq"),
-        limit: parseOptionalInteger(query.limit, "limit") ?? 100,
+        limit: parseBoundedPositiveOptionalInteger({
+          defaultValue: THREAD_EVENT_LIST_PAGE_SIZE,
+          max: THREAD_EVENT_LIST_PAGE_SIZE,
+          name: "limit",
+          value: query.limit,
+        }),
         order: query.order,
         types: parseThreadEventTypes(query.types),
       }),
@@ -542,6 +582,7 @@ export function registerThreadDataRoutes(app: Hono, deps: AppDeps): void {
       deps,
       context.req.param("id"),
       context.req.param("filePath"),
+      context.req.header("if-none-match"),
     ),
   );
 
@@ -560,6 +601,8 @@ export function registerThreadDataRoutes(app: Hono, deps: AppDeps): void {
           path: target.storagePath,
           ...(query.query ? { query: query.query } : {}),
           limit,
+          includeHidden: THREAD_STORAGE_PATH_LIST_INCLUDE_HIDDEN,
+          excludeNames: [...DEFAULT_PATH_LIST_EXCLUDE_NAMES],
         },
       });
       return context.json({
@@ -594,6 +637,7 @@ export function registerThreadDataRoutes(app: Hono, deps: AppDeps): void {
       deps,
       context.req.param("id"),
       context.req.param("filePath"),
+      context.req.header("if-none-match"),
     ),
   );
 
@@ -618,6 +662,8 @@ export function registerThreadDataRoutes(app: Hono, deps: AppDeps): void {
           limit,
           includeFiles: inclusion.includeFiles,
           includeDirectories: inclusion.includeDirectories,
+          includeHidden: THREAD_STORAGE_PATH_LIST_INCLUDE_HIDDEN,
+          excludeNames: [...DEFAULT_PATH_LIST_EXCLUDE_NAMES],
         },
       });
       return context.json({
@@ -647,6 +693,7 @@ export function registerThreadDataRoutes(app: Hono, deps: AppDeps): void {
       deps,
       {
         hostId: target.hostId,
+        ifNoneMatch: context.req.header("if-none-match"),
         path: path.join(target.storagePath, query.path),
         rootPath: target.storagePath,
       },
@@ -670,6 +717,7 @@ export function registerThreadDataRoutes(app: Hono, deps: AppDeps): void {
       deps,
       {
         hostId: environment.hostId,
+        ifNoneMatch: context.req.header("if-none-match"),
         path: query.path,
       },
       (result) =>

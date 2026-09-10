@@ -336,6 +336,8 @@ export type ThreadPullRequest = z.infer<typeof threadPullRequestSchema>;
 
 export const threadQueuedMessageSchema = z.object({
   id: z.string(),
+  initiator: z.enum(["user", "agent", "system"]),
+  senderThreadId: z.string().nullable(),
   /**
    * The thread this row is waiting on. Redundant on the thread-scoped list
    * route that first served this DTO, and load-bearing everywhere else it is
@@ -439,6 +441,9 @@ export const threadListEntrySchema = threadWithRuntimeSchema.extend({
   environmentHostId: z.string().nullable(),
   environmentName: z.string().nullable(),
   environmentBranchName: z.string().nullable(),
+  environmentPath: z.string().nullable(),
+  environmentProviderId: z.string().nullable(),
+  environmentIsWorktree: z.boolean().nullable(),
   environmentWorkspaceDisplayKind: environmentWorkspaceDisplayKindSchema,
 });
 export type ThreadListEntry = z.infer<typeof threadListEntrySchema>;

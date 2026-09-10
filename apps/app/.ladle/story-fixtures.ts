@@ -1,3 +1,5 @@
+import { useState } from "react";
+import { reconcileReasoningLevel } from "@bb/domain";
 import type {
   Host,
   ProjectSource,
@@ -10,7 +12,10 @@ import type {
   ProviderCliKey,
   ProviderCliStatus,
 } from "@bb/host-daemon-contract";
-import type { ProjectResponse } from "@bb/server-contract";
+import type {
+  ProjectResponse,
+  SystemEnvironmentProvider,
+} from "@bb/server-contract";
 import { EMPTY_ORDERED_MENTION_SUGGESTIONS } from "@bb/client-core";
 import {
   makeEnvironment as makeEnvironmentFixture,
@@ -24,7 +29,7 @@ import { getProviderIconInfo } from "../src/lib/provider-icon";
 import type { PickerOption } from "../src/components/pickers/OptionPicker";
 import type { ModelPickerOption } from "../src/components/pickers/model-picker-option";
 import type { ProjectSelectorOption } from "../src/components/pickers/ProjectSelector";
-import type { ReuseThreadOption } from "../src/components/pickers/WorktreePicker";
+import type { ReuseThreadOption } from "../src/components/pickers/ReuseEnvironmentPicker";
 import type { ExecutionControlsProps } from "../src/components/promptbox/ExecutionControls";
 import {
   INERT_TYPEAHEAD_COMMAND_CONFIG,
@@ -162,51 +167,79 @@ export const STORY_CLAUDE_CODE_MORE_MODELS: readonly PickerOption<string>[] = [
   { value: "claude-haiku-4-5", label: "Claude Haiku 4.5" },
 ];
 
-export const STORY_PI_MODELS: readonly ModelPickerOption[] = [
+export const STORY_PI_REASONING: readonly PickerOption<ReasoningLevel>[] = [
+  { value: "none", label: "None" },
+  { value: "low", label: "Low" },
+  { value: "medium", label: "Medium" },
+  { value: "high", label: "High" },
+  { value: "xhigh", label: "Extra High" },
+];
+
+const STORY_PI_OPUS_REASONING: readonly PickerOption<ReasoningLevel>[] = [
+  ...STORY_PI_REASONING,
+  { value: "max", label: "Max" },
+];
+
+export const STORY_PI_MODELS: readonly (ModelPickerOption & {
+  reasoningOptions: readonly PickerOption<ReasoningLevel>[];
+})[] = [
   {
     value: "openai-codex/gpt-5.5",
     label: "GPT-5.5",
     routeProviderId: "openai-codex",
+    reasoningOptions: STORY_PI_REASONING,
   },
   {
     value: "openai-codex/gpt-5.4",
     label: "GPT-5.4",
     routeProviderId: "openai-codex",
+    reasoningOptions: STORY_PI_REASONING,
   },
   {
     value: "openai-codex/gpt-5.4-mini",
     label: "GPT-5.4 Mini",
     routeProviderId: "openai-codex",
+    reasoningOptions: STORY_PI_REASONING,
   },
   {
-    value: "openai-codex/gpt-5.3-codex",
+    value: "openai/gpt-5.3-codex",
     label: "GPT-5.3 Codex",
-    routeProviderId: "openai-codex",
+    routeProviderId: "openai",
+    reasoningOptions: STORY_PI_REASONING,
   },
   {
     value: "openai/gpt-5.3-codex-spark",
     label: "GPT-5.3 Codex Spark",
     routeProviderId: "openai",
+    reasoningOptions: STORY_PI_REASONING.filter(
+      ({ value }) => value !== "none",
+    ),
   },
   {
     value: "openai-codex/gpt-5.3-codex-spark",
     label: "GPT-5.3 Codex Spark",
     routeProviderId: "openai-codex",
+    reasoningOptions: STORY_PI_REASONING,
   },
   {
     value: "anthropic/claude-haiku-4-5",
     label: "Claude Haiku 4.5",
     routeProviderId: "anthropic",
+    reasoningOptions: STORY_PI_REASONING.filter(
+      ({ value }) => value !== "xhigh",
+    ),
   },
   {
     value: "anthropic/claude-opus-4-8",
     label: "Claude Opus 4.8",
     routeProviderId: "anthropic",
+    reasoningOptions: STORY_PI_OPUS_REASONING,
   },
   {
     value: "anthropic/claude-opus-4-7",
     label: "Claude Opus 4.7",
     routeProviderId: "anthropic",
+    reasoningOptions: STORY_PI_OPUS_REASONING,
   },
 ];
 
@@ -215,6 +248,8 @@ export const STORY_CODEX_REASONING: readonly PickerOption<ReasoningLevel>[] = [
   { value: "medium", label: "Medium" },
   { value: "high", label: "High" },
   { value: "xhigh", label: "Extra High" },
+  { value: "max", label: "Max" },
+  { value: "ultra", label: "Ultra" },
 ];
 
 export const STORY_CLAUDE_REASONING: readonly PickerOption<ReasoningLevel>[] = [
@@ -222,6 +257,7 @@ export const STORY_CLAUDE_REASONING: readonly PickerOption<ReasoningLevel>[] = [
   { value: "medium", label: "Medium" },
   { value: "high", label: "High" },
   { value: "xhigh", label: "Extra High" },
+  { value: "ultracode", label: "Ultracode" },
   { value: "max", label: "Max" },
 ];
 
@@ -267,6 +303,8 @@ export const STORY_WORKTREE_OPTIONS: readonly ReuseThreadOption[] = [
     environmentId: "env_review_flow",
     branchName: "bb/review-flow-thr_4hge9xn14m",
     name: null,
+    path: null,
+    environmentProviderId: "git-worktree",
     threads: [
       { id: "thr_review", title: "Review flow cleanup" },
       { id: "thr_tests", title: "Backfill promptbox tests" },
@@ -276,9 +314,63 @@ export const STORY_WORKTREE_OPTIONS: readonly ReuseThreadOption[] = [
     environmentId: "env_timeline",
     branchName: "bb/timeline-pagination-thr_qfk8ksbxkk",
     name: "Timeline workspace",
+    path: null,
+    environmentProviderId: "git-worktree",
     threads: [{ id: "thr_timeline", title: "Timeline pagination" }],
   },
 ];
+
+export const STORY_ENVIRONMENT_PROVIDERS: readonly SystemEnvironmentProvider[] =
+  [
+    {
+      id: "project-checkout",
+      displayName: "Project checkout",
+      icon: "Laptop",
+      logoUrl: null,
+      pluginId: "environment-project-checkout",
+      acceptsEmptyInputs: true,
+      availability: null,
+      requires: {
+        projectCheckout: true,
+        gitCheckout: false,
+        gitRemote: false,
+        projectless: false,
+      },
+      inputs: null,
+    },
+    {
+      id: "git-worktree",
+      displayName: "Worktree",
+      icon: "GitBranch",
+      logoUrl: null,
+      pluginId: "environment-git-worktree",
+      acceptsEmptyInputs: true,
+      availability: null,
+      requires: {
+        projectCheckout: true,
+        gitCheckout: true,
+        gitRemote: false,
+        projectless: false,
+      },
+      inputs: null,
+    },
+    {
+      id: "personal-workspace",
+      displayName: "Personal workspace",
+      icon: "Folder",
+      logoUrl: null,
+      pluginId: "environment-personal-workspace",
+      acceptsEmptyInputs: true,
+      availability: null,
+      requires: {
+        projectCheckout: false,
+        gitCheckout: false,
+        gitRemote: false,
+        projectless: true,
+      },
+      inputs: null,
+    },
+  ];
 
 export const STORY_PROJECTS: readonly ProjectSelectorOption[] = [
   { id: PROJECT_IDS.bb, name: PROJECT_NAMES.bb },
@@ -317,6 +409,98 @@ export function makeExecutionControlsProps(
     },
   };
   return { ...base, ...overrides };
+}
+
+export function useInteractiveExecutionControls(
+  base: ExecutionControlsProps,
+): ExecutionControlsProps {
+  const [providerId, setProviderId] = useState(
+    base.provider.selectedId ?? "codex",
+  );
+  const [model, setModel] = useState(base.model.selected);
+  const [reasoning, setReasoning] = useState(base.reasoning.value);
+  const [serviceTier, setServiceTier] = useState(base.serviceTier?.value);
+  const catalogForProvider = (id: string, selectedModel = model) => {
+    if (id === base.provider.selectedId) {
+      return {
+        models: base.model.options,
+        moreModels: base.model.moreOptions,
+        reasoning: base.reasoning.options,
+      };
+    }
+    return {
+      models:
+        id === "claude-code"
+          ? STORY_CLAUDE_CODE_MODELS
+          : id === "pi"
+            ? STORY_PI_MODELS
+            : STORY_CODEX_MODELS,
+      moreModels: id === "claude-code" ? STORY_CLAUDE_CODE_MORE_MODELS : [],
+      reasoning:
+        id === "claude-code"
+          ? STORY_CLAUDE_REASONING
+          : id === "pi"
+            ? (STORY_PI_MODELS.find((option) => option.value === selectedModel)
+                ?.reasoningOptions ?? STORY_PI_REASONING)
+            : STORY_CODEX_REASONING,
+    };
+  };
+  const catalog = catalogForProvider(providerId);
+  return {
+    ...base,
+    provider: {
+      ...base.provider,
+      selectedId: providerId,
+      onChange: (id) => {
+        const next = catalogForProvider(id, "");
+        setProviderId(id);
+        setModel(next.models[0]?.value ?? "");
+        if (next.reasoning.length > 0) {
+          setReasoning((current) =>
+            reconcileReasoningLevel(
+              current,
+              next.reasoning.map((option) => option.value),
+            ),
+          );
+        }
+        setServiceTier(undefined);
+      },
+    },
+    model: {
+      ...base.model,
+      active: { model },
+      selected: model,
+      options: catalog.models,
+      moreOptions: catalog.moreModels,
+      onChange: (value) => {
+        setModel(value);
+        const next = catalogForProvider(providerId, value);
+        if (next.reasoning.length > 0) {
+          setReasoning((current) =>
+            reconcileReasoningLevel(
+              current,
+              next.reasoning.map((option) => option.value),
+            ),
+          );
+        }
+      },
+    },
+    reasoning: {
+      value: reasoning,
+      options: catalog.reasoning,
+      onChange: setReasoning,
+    },
+    ...(base.serviceTier
+      ? {
+          serviceTier: {
+            ...base.serviceTier,
+            value: serviceTier,
+            onChange: setServiceTier,
+            supported: STORY_SERVICE_TIER_SUPPORT[providerId] ?? false,
+          },
+        }
+      : {}),
+  };
 }
 
 export function makeThread(overrides: Partial<Thread> = {}): Thread {

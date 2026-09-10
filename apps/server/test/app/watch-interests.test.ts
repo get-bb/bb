@@ -25,17 +25,17 @@ function setup() {
   const hub = new NotificationHub();
   const watchInterests = new WatchInterestCoordinator({ db, hub });
   const host = upsertHost(db, noopNotifier, {
-    name: "test-host",
     type: "persistent",
+    name: "test-host",
   });
   const { project } = createProject(db, noopNotifier, {
     name: "test-project",
     source: { type: "local_path", hostId: host.id, path: "/tmp/test" },
   });
   const environment = createEnvironment(db, noopNotifier, {
+    providerOwnsPath: false,
     projectId: project.id,
     hostId: host.id,
-    workspaceProvisionType: "unmanaged",
     path: "/tmp/test-workspace",
     status: "ready",
   });
@@ -77,7 +77,6 @@ describe("WatchInterestCoordinator", () => {
           environmentId: environment.id,
           workspaceContext: {
             workspacePath: "/tmp/test-workspace",
-            workspaceProvisionType: "unmanaged",
           },
         },
       ],
@@ -162,7 +161,6 @@ describe("WatchInterestCoordinator", () => {
           environmentId: environment.id,
           workspaceContext: {
             workspacePath: "/tmp/test-workspace",
-            workspaceProvisionType: "unmanaged",
           },
         },
       ],
@@ -173,16 +171,16 @@ describe("WatchInterestCoordinator", () => {
   it("omits unresolved workspace targets from snapshots", () => {
     const { db, host, project, watchInterests } = setup();
     const unready = createEnvironment(db, noopNotifier, {
+      providerOwnsPath: false,
       projectId: project.id,
       hostId: host.id,
-      workspaceProvisionType: "unmanaged",
       path: "/tmp/unready",
       status: "provisioning",
     });
     const destroyed = createEnvironment(db, noopNotifier, {
+      providerOwnsPath: false,
       projectId: project.id,
       hostId: host.id,
-      workspaceProvisionType: "unmanaged",
       path: "/tmp/destroyed",
       status: "destroyed",
     });
@@ -207,9 +205,9 @@ describe("WatchInterestCoordinator", () => {
     const daemonSocket = createMockHubSocket();
     const socket = createMockHubSocket();
     const environment = createEnvironment(db, noopNotifier, {
+      providerOwnsPath: false,
       projectId: project.id,
       hostId: host.id,
-      workspaceProvisionType: "unmanaged",
       path: "/tmp/later-ready",
       status: "provisioning",
     });
@@ -234,7 +232,6 @@ describe("WatchInterestCoordinator", () => {
           environmentId: environment.id,
           workspaceContext: {
             workspacePath: "/tmp/later-ready",
-            workspaceProvisionType: "unmanaged",
           },
         },
       ],

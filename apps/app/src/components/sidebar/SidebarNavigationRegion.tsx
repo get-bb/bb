@@ -28,6 +28,7 @@ import {
 import {
   activateSidebarNavigationItem,
   createSidebarNavigationItems,
+  getResourceNavigationItemRoutePath,
   resolveActiveSidebarNavigationItemId,
 } from "./sidebarNavigationItems";
 import { useSidebarNavigationReplacement } from "./sidebarNavigationProvider";
@@ -107,7 +108,7 @@ export function SidebarNavigationRegion(props: BuiltInSidebarNavigationProps) {
               ariaKeyShortcuts: threadSearchShortcut.ariaKeyshortcuts,
             }
           : null,
-        showExtensions: props.toolsRoutePath !== undefined,
+        showResourceWorkspaces: props.toolsRoutePath !== undefined,
         splitPropsFor,
       }),
     [
@@ -187,10 +188,12 @@ export function SidebarNavigationRegion(props: BuiltInSidebarNavigationProps) {
             current.props.onSearchThreads?.();
             current.commandRunner.dispatch("thread.search", null);
           },
-          openExtensions: () => {
+          openResourceWorkspace: (itemId) => {
             if (current.props.toolsRoutePath === undefined) return;
+            const routePath = getResourceNavigationItemRoutePath(itemId);
+            if (routePath === null) return;
             current.props.onNavigate?.();
-            void current.navigate(current.props.toolsRoutePath);
+            void current.navigate(routePath);
           },
           openPluginPanel: (action, openInSplit) => {
             const panel = current.navPanels.find(

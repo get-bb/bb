@@ -152,15 +152,27 @@ function AppToastOverflowText({
     if (body === null) {
       return;
     }
-    setTruncated(body.scrollWidth - body.clientWidth > 1);
+    const measure = () => {
+      setTruncated(
+        body.scrollHeight - body.clientHeight > 1 ||
+          body.scrollWidth - body.clientWidth > 1,
+      );
+    };
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(body);
+    return () => observer.disconnect();
   }, [content]);
 
   return (
-    <>
+    <div className="min-w-0 w-full">
       <div
         ref={bodyRef}
         data-testid={testId}
-        className={cn("min-w-0 flex-1 truncate", className)}
+        className={cn(
+          "line-clamp-4 whitespace-pre-wrap break-words [overflow-wrap:anywhere]",
+          className,
+        )}
       >
         {content}
       </div>
@@ -175,7 +187,7 @@ function AppToastOverflowText({
           Show more
         </Button>
       ) : null}
-    </>
+    </div>
   );
 }
 
@@ -234,22 +246,16 @@ export function AppToastContent({
         </div>
         <div className="min-w-0 flex-1">
           <div className="flex min-w-0 items-center gap-2">
-            {description ? (
-              <div className="min-w-0 flex-1 truncate text-sm font-medium leading-5">
-                {title}
-              </div>
-            ) : (
-              <AppToastOverflowText
-                className="text-sm font-medium leading-5"
-                content={title}
-                notificationId={notificationId}
-                onShowMore={showNotification}
-                testId="app-toast-title"
-              />
-            )}
+            <AppToastOverflowText
+              className="text-sm font-medium leading-5"
+              content={title}
+              notificationId={notificationId}
+              onShowMore={showNotification}
+              testId="app-toast-title"
+            />
           </div>
           {description || hasActions ? (
-            <div className="mt-0.5 flex min-w-0 flex-nowrap items-center gap-2 text-xs leading-5 text-muted-foreground">
+            <div className="mt-0.5 flex min-w-0 flex-col items-start gap-2 text-xs leading-5 text-muted-foreground">
               {description ? (
                 <AppToastDescription
                   description={description}
@@ -257,7 +263,9 @@ export function AppToastContent({
                   onShowMore={showNotification}
                 />
               ) : null}
-              {actions}
+              {hasActions ? (
+                <div className="flex flex-wrap gap-2">{actions}</div>
+              ) : null}
             </div>
           ) : null}
         </div>

@@ -13,3 +13,4 @@ export {
 } from "@bb/domain";
 
 export * from "./desktop-browser.js";
+export * from "./desktop-browser-import.js";

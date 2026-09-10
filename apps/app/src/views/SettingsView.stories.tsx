@@ -22,6 +22,7 @@ import { CommunitySettingsSection } from "@/components/settings/CommunitySetting
 import { KeyboardSettingsSection } from "@/components/settings/KeyboardSettingsSection";
 import { MarketplacesSettingsSection } from "@/components/settings/MarketplacesSettingsSection";
 import { MachinesSettingsSection } from "@/components/settings/MachinesSettingsSection";
+import { ProjectsSettingsSection } from "@/components/settings/ProjectsSettingsSection";
 import {
   SettingsStoryChrome,
   type SettingsStoryRoute,
@@ -34,7 +35,10 @@ import {
 import type { ThemePreference } from "@/hooks/useTheme";
 import type { AudioInputDeviceOption } from "@/hooks/useAudioInputDevices";
 import type { PreferredAudioInputDeviceId } from "@/lib/audio-input-device-preference";
-import { SETTINGS_MACHINE_ROUTE_PATH } from "@/lib/route-paths";
+import {
+  SETTINGS_MACHINE_ROUTE_PATH,
+  SETTINGS_PROJECT_ROUTE_PATH,
+} from "@/lib/route-paths";
 import {
   AppearanceSettingsSection,
   DebugSettingsSection,
@@ -44,6 +48,7 @@ import {
   type LocalOpenTargetSettingsSectionProps,
 } from "./SettingsView";
 import { MachineSettingsView } from "./MachineSettingsView";
+import { ProjectDetailSettingsView } from "./ProjectDetailSettingsView";
 import { ProvidersSettingsSection } from "@/components/settings/ProvidersSettingsSection";
 
 export default {
@@ -202,8 +207,7 @@ function useSettingsStoryState() {
   const [managedBranchPrefix, setManagedBranchPrefix] = useState(
     defaultAppSettings.managedBranchPrefix,
   );
-  const [showUnhandledProviderEvents, setShowUnhandledProviderEvents] =
-    useState(false);
+  const [showDiagnosticEvents, setShowDiagnosticEvents] = useState(false);
   const [preferredAudioInputDeviceId, setPreferredAudioInputDeviceId] =
     useState<PreferredAudioInputDeviceId>("studio-mic");
   const [directoryTargetId, setDirectoryTargetId] =
@@ -226,7 +230,7 @@ function useSettingsStoryState() {
     richTextEditing,
     steerActiveThreadOnEnter,
     streamerMode,
-    showUnhandledProviderEvents,
+    showDiagnosticEvents,
     setAppearance,
     setDirectoryTargetId,
     setExperiments,
@@ -239,7 +243,7 @@ function useSettingsStoryState() {
     setRichTextEditing,
     setSteerActiveThreadOnEnter,
     setStreamerMode,
-    setShowUnhandledProviderEvents,
+    setShowDiagnosticEvents,
     setThemePreference,
     themePreference,
   };
@@ -294,8 +298,8 @@ function GeneralSettingsStory({
       />
       <DebugSettingsSection
         disabled={false}
-        enabled={state.showUnhandledProviderEvents}
-        onEnabledChange={state.setShowUnhandledProviderEvents}
+        enabled={state.showDiagnosticEvents}
+        onEnabledChange={state.setShowDiagnosticEvents}
       />
     </>
   );
@@ -442,6 +446,16 @@ function SettingsStoryContent({ route }: { route: SettingsStoryRoute }) {
       </Routes>
     );
   }
+  if (route.kind === "project") {
+    return (
+      <Routes>
+        <Route
+          path={SETTINGS_PROJECT_ROUTE_PATH}
+          element={<ProjectDetailSettingsView />}
+        />
+      </Routes>
+    );
+  }
 
   switch (route.id) {
     case "providers":
@@ -454,6 +468,8 @@ function SettingsStoryContent({ route }: { route: SettingsStoryRoute }) {
       return <UsageLimitsStory />;
     case "files":
       return <FilePreferencesStory />;
+    case "projects":
+      return <ProjectsSettingsSection />;
     case "machines":
       return <MachinesSettingsSection />;
     case "updates":
@@ -493,7 +509,7 @@ export function FullPage() {
 
   return (
     <SettingsStoryFixtures>
-      <SettingsStoryChrome contentOwnsPageShell={route.kind === "machine"}>
+      <SettingsStoryChrome contentOwnsPageShell={route.kind !== "section"}>
         <SettingsStoryContent route={route} />
       </SettingsStoryChrome>
     </SettingsStoryFixtures>

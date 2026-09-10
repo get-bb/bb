@@ -15,6 +15,7 @@ import { Textarea } from "@bb/shared-ui/textarea";
 import { Link } from "react-router-dom";
 import { SettingsWithControl } from "@/components/ui/settings-section.js";
 import { getPluginDetailRoutePath } from "@/lib/route-paths";
+import { Skeleton } from "@bb/shared-ui/skeleton";
 import { Switch } from "@bb/shared-ui/switch";
 import {
   ResourceDetailConfigurationSection,
@@ -448,16 +449,80 @@ const PLUGIN_STATUSES_WITH_SETTINGS = [
   "degraded",
 ];
 
+function PluginSettingsFieldSkeleton() {
+  return (
+    <div className="min-w-0 space-y-2">
+      <div className="flex h-5 items-center">
+        <Skeleton className="h-3.5 w-40 max-w-[60%]" />
+      </div>
+      <div className="flex h-4 items-center">
+        <Skeleton className="h-3 w-72 max-w-full" />
+      </div>
+    </div>
+  );
+}
+
+function PluginSettingsPageSkeleton() {
+  return (
+    <div
+      className="mx-auto w-full max-w-5xl"
+      data-testid="plugin-settings-skeleton"
+      role="status"
+      aria-busy="true"
+    >
+      <span className="sr-only">Loading plugin settings…</span>
+      <div aria-hidden>
+        <header className="flex items-center justify-between gap-4">
+          <div className="flex min-w-0 items-center gap-3">
+            <Skeleton className="size-9 shrink-0" />
+            <div className="min-w-0">
+              <div className="flex h-7 items-center">
+                <Skeleton className="h-4 w-44 max-w-full" />
+              </div>
+              <div className="flex h-4 items-center">
+                <Skeleton className="h-3 w-80 max-w-full" />
+              </div>
+            </div>
+          </div>
+          <Skeleton className="h-5 w-9 shrink-0 rounded-full" />
+        </header>
+        <ResourceDetailStack className="mt-6">
+          <ResourceDetailConfigurationSection
+            label={<Skeleton className="h-3.5 w-24" />}
+          >
+            <ResourceDetailPanel surface="recessed" className="px-3 py-3">
+              <div className="space-y-4">
+                <PluginSettingsFieldSkeleton />
+                <PluginSettingsFieldSkeleton />
+              </div>
+            </ResourceDetailPanel>
+          </ResourceDetailConfigurationSection>
+          <ResourceDetailOverviewSection
+            label={<Skeleton className="h-3.5 w-28" />}
+          >
+            <div className="flex h-5 items-center">
+              <Skeleton className="h-3 w-96 max-w-full" />
+            </div>
+          </ResourceDetailOverviewSection>
+        </ResourceDetailStack>
+      </div>
+    </div>
+  );
+}
+
 export function PluginSettingsPage({ pluginId }: { pluginId: string }) {
   const listQuery = usePluginList({ enabled: true });
   const plugin =
     listQuery.data?.plugins.find(
       (entry: PluginListItem) => entry.id === pluginId,
     ) ?? null;
-  if (listQuery.isFetching && listQuery.data === undefined) {
+  if (listQuery.data === undefined && !listQuery.isError) {
+    return <PluginSettingsPageSkeleton />;
+  }
+  if (listQuery.data === undefined && listQuery.isError) {
     return (
       <p className="text-sm text-muted-foreground" role="status">
-        Loading plugin settings…
+        Could not load plugin settings.
       </p>
     );
   }

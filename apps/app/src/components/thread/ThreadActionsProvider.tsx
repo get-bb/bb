@@ -27,10 +27,7 @@ import {
 import { sdk } from "@/lib/sdk";
 import { useRouteState } from "@/hooks/useRouteState";
 import { useDialogState } from "@/hooks/useDialogState";
-import {
-  getMutationErrorMessage,
-  shouldShowMutationErrorToast,
-} from "@/lib/mutation-errors";
+import { showMutationErrorToast } from "@/lib/mutation-errors";
 import { getThreadDisplayTitle } from "@/lib/thread-title";
 import {
   ThreadRenameDialog,
@@ -200,14 +197,10 @@ export function ThreadActionsProvider({
         };
       } catch (error) {
         if (signal.aborted) return null;
-        if (shouldShowMutationErrorToast(error)) {
-          appToast.error(
-            getMutationErrorMessage({
-              error,
-              fallbackMessage: "Failed to check thread state",
-            }),
-          );
-        }
+        showMutationErrorToast({
+          error,
+          fallbackMessage: "Failed to check thread state",
+        });
         return null;
       }
     },
@@ -343,13 +336,11 @@ export function ThreadActionsProvider({
           });
         },
         (error: unknown) => {
-          appToast.error(
-            getMutationErrorMessage({
-              error,
-              fallbackMessage: "Failed to archive thread and children",
-              lifecycleOperation: "archive_thread",
-            }),
-          );
+          showMutationErrorToast({
+            error,
+            fallbackMessage: "Failed to archive thread and children",
+            lifecycleOperation: "archive_thread",
+          });
         },
       );
     },
@@ -367,24 +358,20 @@ export function ThreadActionsProvider({
       if (getThreadReadToggleAction(thread) === "mark_unread") {
         markUnreadMutate(thread.id, {
           onError: (error) => {
-            appToast.error(
-              getMutationErrorMessage({
-                error,
-                fallbackMessage: "Failed to mark thread unread",
-              }),
-            );
+            showMutationErrorToast({
+              error,
+              fallbackMessage: "Failed to mark thread unread",
+            });
           },
         });
         return;
       }
       markReadMutate(thread.id, {
         onError: (error) => {
-          appToast.error(
-            getMutationErrorMessage({
-              error,
-              fallbackMessage: "Failed to mark thread read",
-            }),
-          );
+          showMutationErrorToast({
+            error,
+            fallbackMessage: "Failed to mark thread read",
+          });
         },
       });
     },

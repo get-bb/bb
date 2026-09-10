@@ -15,19 +15,12 @@
     "smoke": {
       "cache": false,
       "dependsOn": ["@get-bb/plugin-sdk#build:types"],
-      "passThroughEnv": [
-        "DEV_BROWSER_SMOKE_BINARY",
-        "DEV_BROWSER_SMOKE_CHROME",
-        "DEV_BROWSER_SMOKE_NO_SANDBOX"
-      ]
+      "passThroughEnv": ["DEV_BROWSER_SMOKE_BINARY", "DEV_BROWSER_SMOKE_CHROME"]
     },
     "smoke:install": {
       "cache": false,
       "dependsOn": ["@get-bb/plugin-sdk#build:types"],
-      "passThroughEnv": [
-        "DEV_BROWSER_SMOKE_CHROME",
-        "DEV_BROWSER_SMOKE_NO_SANDBOX"
-      ]
+      "passThroughEnv": ["DEV_BROWSER_SMOKE_CHROME"]
     }
   }
 }

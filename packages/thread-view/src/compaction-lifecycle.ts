@@ -7,6 +7,7 @@ export interface CompactionLifecycleEvent {
   key: string;
   kind: "begin" | "end";
   detail?: string;
+  parentToolCallId?: string;
 }
 
 export function getCompactionKey(
@@ -29,6 +30,7 @@ export function getCompactionKey(
 export function parseCompactionLifecycleEvent(
   decoded: ThreadEvent,
   meta: EventMeta,
+  parentToolCallId: string | undefined,
 ): CompactionLifecycleEvent | null {
   if (
     (decoded.type === "item/started" || decoded.type === "item/completed") &&
@@ -37,6 +39,7 @@ export function parseCompactionLifecycleEvent(
     return {
       key: getCompactionKey(decoded, meta),
       kind: decoded.type === "item/started" ? "begin" : "end",
+      ...(parentToolCallId ? { parentToolCallId } : {}),
     };
   }
 
@@ -44,6 +47,7 @@ export function parseCompactionLifecycleEvent(
     return {
       key: getCompactionKey(decoded, meta),
       kind: "end",
+      ...(parentToolCallId ? { parentToolCallId } : {}),
     };
   }
 

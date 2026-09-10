@@ -152,7 +152,6 @@ export function createFakeWorkspace(pathname: string) {
   };
   const workspace: FakeHostWorkspace = {
     path: pathname,
-    managed: false,
     isGitRepo: true,
     isWorktree: false,
     async getDefaultBranch() {
@@ -241,7 +240,12 @@ export function createFakeWorkspace(pathname: string) {
       state.pullRequestActionShellPath = options?.shellPath;
     },
     async listFiles() {
-      return listFilesRecursively(pathname, pathname);
+      return listFilesRecursively({
+        dir: pathname,
+        root: pathname,
+        includeHidden: false,
+        excludeNames: new Set<string>(),
+      });
     },
     async commit(options: { message: string; noVerify: boolean }) {
       state.lastCommitMessage = options.message;
@@ -251,9 +255,6 @@ export function createFakeWorkspace(pathname: string) {
       };
     },
     async reset() {},
-    async destroy() {
-      state.destroyed = true;
-    },
   };
 
   return { workspace, state };

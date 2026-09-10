@@ -191,6 +191,13 @@ function proxyUpgrade(args: {
     ),
   });
   upstreamRequest.on("upgrade", (response, upstreamSocket, upstreamHead) => {
+    upstreamSocket.on("error", () => upstreamSocket.destroy());
+    upstreamSocket.on("close", () => args.clientSocket.destroy());
+    args.clientSocket.on("close", () => upstreamSocket.destroy());
+    if (args.clientSocket.destroyed) {
+      upstreamSocket.destroy();
+      return;
+    }
     const statusLine = `HTTP/${response.httpVersion} ${response.statusCode ?? 101} ${response.statusMessage ?? "Switching Protocols"}\r\n`;
     const headerLines = response.rawHeaders
       .reduce<string[]>((lines, value, index) => {
@@ -208,6 +215,8 @@ function proxyUpgrade(args: {
     writeRejectedSocket(args.clientSocket, 400),
   );
   upstreamRequest.on("error", () => args.clientSocket.destroy());
+  args.clientSocket.on("error", () => args.clientSocket.destroy());
+  args.clientSocket.on("close", () => upstreamRequest.destroy());
   upstreamRequest.end();
 }
 

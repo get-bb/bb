@@ -61,7 +61,9 @@ import { VoiceInputSettingsSection } from "@/components/settings/VoiceInputSetti
 import { CommunitySettingsSection } from "@/components/settings/CommunitySettingsSection";
 import { UpdatesSettingsSection } from "@/components/settings/UpdatesSettingsSection";
 import { KeyboardSettingsSection } from "@/components/settings/KeyboardSettingsSection";
+import { BrowserSettingsSection } from "@/components/settings/BrowserSettingsSection";
 import { MachinesSettingsSection } from "@/components/settings/MachinesSettingsSection";
+import { ProjectsSettingsSection } from "@/components/settings/ProjectsSettingsSection";
 import { ArchivedThreadsSettingsSection } from "@/components/settings/ArchivedThreadsSettingsSection";
 import { CliSkillsSettingsSection } from "@/components/settings/CliSkillsSettingsSection";
 import { MarketplacesSettingsSection } from "@/components/settings/MarketplacesSettingsSection";
@@ -580,8 +582,7 @@ const REWRITE_LOCALHOST_LINKS_SETTING_LABEL = "Rewrite localhost links";
 const NAVIGATE_TO_THREAD_AFTER_CREATE_SETTING_LABEL =
   "Navigate to threads on creation";
 const RICH_TEXT_EDITING_SETTING_LABEL = "Markdown formatting in prompt box";
-const UNHANDLED_PROVIDER_EVENTS_SETTING_LABEL =
-  "Show unhandled provider events";
+const DIAGNOSTIC_EVENTS_SETTING_LABEL = "Show diagnostic events";
 const FOLLOW_UP_BEHAVIOR_SETTING_LABEL = "Default thread followup behavior";
 const FOLLOW_UP_BEHAVIOR_OPTIONS = [
   {
@@ -598,7 +599,7 @@ const FOLLOW_UP_BEHAVIOR_OPTIONS = [
   },
 ] as const;
 const STREAMER_MODE_SETTING_LABEL = "Streamer mode";
-const MANAGED_BRANCH_PREFIX_SETTING_LABEL = "Worktree branch prefix";
+const MANAGED_BRANCH_PREFIX_SETTING_LABEL = "New branch prefix";
 const MANAGED_BRANCH_PREFIX_EXAMPLE_SLUG = "fix-login-flow-thr_ab12cd34ef";
 
 interface ManagedBranchPrefixSettingProps {
@@ -983,14 +984,14 @@ export function DebugSettingsSection({
   return (
     <SettingsSection title="Debug">
       <SettingsWithControl
-        label={UNHANDLED_PROVIDER_EVENTS_SETTING_LABEL}
-        description="Show raw provider events bb does not recognize. Development builds always show these events."
+        label={DIAGNOSTIC_EVENTS_SETTING_LABEL}
+        description="Show provider environment resolution and unhandled provider events for troubleshooting."
       >
         <Switch
           checked={enabled}
           disabled={disabled}
           onCheckedChange={onEnabledChange}
-          aria-label={UNHANDLED_PROVIDER_EVENTS_SETTING_LABEL}
+          aria-label={DIAGNOSTIC_EVENTS_SETTING_LABEL}
         />
       </SettingsWithControl>
     </SettingsSection>
@@ -1126,11 +1127,13 @@ export function SettingsView() {
     const pluginId = matchPath(SETTINGS_PLUGIN_ROUTE_PATH, location.pathname)
       ?.params.pluginId;
     return (
-      <div className="-mx-4 -mt-4 flex min-h-0 flex-1 flex-col overflow-hidden pt-4 md:-mx-5 md:-mt-5 md:pt-5">
+      <div className="-mx-4 -mt-4 flex min-h-0 flex-1 flex-col overflow-hidden md:-mx-5 md:-mt-5">
         {pluginId ? (
           <PluginDetailPaneView pluginId={pluginId} />
         ) : (
-          <PluginsOverview />
+          <div className="flex min-h-0 flex-1 flex-col pt-4 md:pt-5">
+            <PluginsOverview mode="installed" />
+          </div>
         )}
       </div>
     );
@@ -1196,6 +1199,8 @@ export function SettingsView() {
     content = <UsageLimitsSettingsSection />;
   } else if (activeSection === "keyboard") {
     content = <KeyboardSettingsSection />;
+  } else if (activeSection === "browser") {
+    content = <BrowserSettingsSection />;
   } else if (activeSection === "files") {
     content = (
       <>
@@ -1212,6 +1217,8 @@ export function SettingsView() {
         <FileOpenersSettingsSection />
       </>
     );
+  } else if (activeSection === "projects") {
+    content = <ProjectsSettingsSection />;
   } else if (activeSection === "machines") {
     content = <MachinesSettingsSection />;
   } else if (activeSection === "updates") {
@@ -1322,7 +1329,7 @@ export function SettingsView() {
         <CliSkillsSettingsSection />
         <VoiceInputSettingsSection />
         <DebugSettingsSection
-          enabled={generalSettings.showUnhandledProviderEvents}
+          enabled={generalSettings.showDiagnosticEvents}
           disabled={
             systemConfigQuery.data === undefined ||
             updateGeneralSettingsMutation.isPending
@@ -1330,7 +1337,7 @@ export function SettingsView() {
           onEnabledChange={(enabled) =>
             updateGeneralSettingsMutation.mutate({
               ...generalSettings,
-              showUnhandledProviderEvents: enabled,
+              showDiagnosticEvents: enabled,
             })
           }
         />

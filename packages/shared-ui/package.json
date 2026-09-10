@@ -84,6 +84,11 @@
       "types": "./src/components/ui/coarse-pointer-sizing.ts",
       "default": "./src/components/ui/coarse-pointer-sizing.ts"
     },
+    "./coarse-pointer-visibility": {
+      "source": "./src/components/ui/coarse-pointer-visibility.ts",
+      "types": "./src/components/ui/coarse-pointer-visibility.ts",
+      "default": "./src/components/ui/coarse-pointer-visibility.ts"
+    },
     "./collapsible": {
       "source": "./src/components/ui/collapsible.tsx",
       "types": "./src/components/ui/collapsible.tsx",

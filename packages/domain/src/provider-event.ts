@@ -261,6 +261,23 @@ const threadEventItemTruncationSchema = z.object({
   resultText: threadEventTextTruncationSchema.optional(),
 });
 
+export const threadEventImageGenerationItemSchema = z.object({
+  type: z.literal("imageGeneration"),
+  id: z.string(),
+  status: threadEventItemStatusSchema,
+  prompt: z.string().nullable(),
+  path: z.string().nullable(),
+  result: z.string().optional(),
+  error: z.string().nullable(),
+  transparentBackground: z.boolean(),
+  truncation: threadEventItemTruncationSchema.optional(),
+  ...itemPresentationField,
+  parentToolCallId: z.string().optional(),
+});
+export type ThreadEventImageGenerationItem = z.infer<
+  typeof threadEventImageGenerationItemSchema
+>;
+
 const threadEventUserContentSchema = z.discriminatedUnion("type", [
   z.object({ type: z.literal("text"), text: z.string() }),
   z.object({ type: z.literal("image"), url: z.string() }),
@@ -399,6 +416,7 @@ export const threadEventItemSchema = z.discriminatedUnion("type", [
   threadEventWebSearchItemSchema,
   threadEventWebFetchItemSchema,
   threadEventImageViewItemSchema,
+  threadEventImageGenerationItemSchema,
   threadEventFileReadItemSchema,
   threadEventSearchItemSchema,
   z.object({
@@ -454,6 +472,7 @@ export const CORE_ITEM_KINDS = [
   "webSearch",
   "webFetch",
   "imageView",
+  "imageGeneration",
   "toolCall",
   "reasoning",
   "plan",

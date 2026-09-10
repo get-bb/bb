@@ -5,15 +5,14 @@ import {
   type DbNotifier,
   type DbQueryConnection,
   type DbTransaction,
-  getAppSettings,
   getEnvironment,
+  type EnvironmentRow,
   getThread,
   listStoredThreadProvisioningRowsByProvisioningId,
   threads,
 } from "@bb/db";
 import { recordProvisionedEnvironmentWorkspace } from "@bb/db/internal-environment-lifecycle";
 import type {
-  Environment,
   ProvisioningTranscriptEntry,
   SystemThreadProvisioningStatus,
   ThreadStatus,
@@ -23,25 +22,12 @@ import {
   threadScope,
 } from "@bb/domain";
 import type { AppDeps } from "../../types.js";
-import { ApiError } from "../../errors.js";
 import {
   appendSystemErrorEventInTransaction,
   appendThreadProvisioningEventInTransaction,
   buildCwdBranchEntries,
 } from "../threads/thread-events.js";
-import {
-  buildEnvironmentProvisionCommand,
-  buildManagedBranchName,
-  SETUP_TIMEOUT_MS,
-  requireSourceForHost,
-  storedBaseBranchNameToSpec,
-} from "../threads/thread-create-helpers.js";
-import {
-  resolveManagedTargetPath,
-  resolvePersonalTargetPath,
-} from "../threads/worktree-paths.js";
 import type { EnvironmentProvisionRequest } from "./environment-provision-request.js";
-import { ensureHostSessionReadyForWork } from "../hosts/host-lifecycle.js";
 import {
   createLiveHostCommandExecution,
   expectedLiveHostCommandErrorLogFields,
@@ -49,10 +35,7 @@ import {
   runLiveHostCommand,
 } from "../hosts/live-command.js";
 import { applyLoggedThreadLifecycleEventInTransaction } from "../threads/lifecycle-outcome.js";
-import {
-  applyLoggedEnvironmentLifecycleEvent,
-  applyLoggedEnvironmentLifecycleEventInTransaction,
-} from "./lifecycle-outcome.js";
+import { applyLoggedEnvironmentLifecycleEventInTransaction } from "./lifecycle-outcome.js";
 import {
   forgetActiveThreadProvisionContext,
   getActiveThreadProvisionContext,
@@ -64,10 +47,6 @@ import {
   requestThreadStopForCurrentState,
 } from "../threads/thread-lifecycle.js";
 import {
-  requestEnvironmentCleanup,
-  runEnvironmentCleanupAdvance,
-} from "./environment-cleanup-internal.js";
-import {
   emptyCommandResultSideEffects,
   type CommandResultPostCommitAction,
   type CommandResultSideEffectsDeps,
@@ -78,13 +57,13 @@ import {
 } from "../../internal/command-result-side-effects.js";
 
 type EnvironmentProvisionCommand =
-  HostDaemonCommandForType<"environment.provision">;
+  HostDaemonCommandForType<"environment.attach">;
 type EnvironmentProvisionCommandResultReport =
-  CommandResultReportForType<"environment.provision">;
+  CommandResultReportForType<"environment.attach">;
 type EnvironmentProvisionCancelCommand =
-  HostDaemonCommandForType<"environment.provision.cancel">;
+  HostDaemonCommandForType<"environment.attach.cancel">;
 type EnvironmentProvisionCancelCommandResultReport =
-  CommandResultReportForType<"environment.provision.cancel">;
+  CommandResultReportForType<"environment.attach.cancel">;
 
 interface EnvironmentProvisionReadDeps {
   db: DbQueryConnection;
@@ -99,14 +78,6 @@ interface EnvironmentProvisionTransactionDeps extends EnvironmentProvisionWriteD
   db: DbTransaction;
   logger: AppDeps["logger"];
   pendingInteractions: AppDeps["pendingInteractions"];
-}
-
-interface CompletePathlessDestroyInTransactionArgs {
-  environment: Pick<
-    NonNullable<ReturnType<typeof getEnvironment>>,
-    "destroyAttemptId" | "path" | "status"
-  >;
-  environmentId: string;
 }
 
 interface AdvanceEnvironmentProvisioningArgs {
@@ -136,8 +107,14 @@ interface FailEnvironmentProvisioningDurablyArgs {
 }
 
 interface StartTrackedEnvironmentProvisionCommandArgs {
-  environment: Environment;
+  environment: EnvironmentRow;
   request: EnvironmentProvisionRequest;
+}
+
+interface SettleEnvironmentProvisionOutcomeArgs extends SettleEnvironmentProvisionCommandResultArgs {
+  headSha: string | null;
+  initiatorStreamed: boolean;
+  mergeBaseBranch: string | null;
 }
 
 interface InterruptUnrecoverableEnvironmentProvisioningArgs {
@@ -238,57 +215,10 @@ function appendThreadProvisioningEventToEnvironmentThreadsInTransaction(
   }
 }
 
-function isWorkspaceProvisioningTranscriptEntry(
-  entry: ProvisioningTranscriptEntry,
-): boolean {
-  return WORKSPACE_PROVISIONING_TRANSCRIPT_KEYS.has(entry.key);
-}
-
-const WORKSPACE_PROVISIONING_TRANSCRIPT_KEYS = new Set([
-  "git-checkout-completed",
-  "git-checkout-failed",
-  "git-checkout-started",
-  "git-clone-completed",
-  "git-clone-failed",
-  "git-clone-started",
-  "git-worktree-command",
-  "git-worktree-completed",
-  "git-worktree-failed",
-  "git-worktree-started",
-  "setup-completed",
-  "setup-failed",
-  "setup-started",
-  "workspace-branch",
-  "workspace-path",
-  "workspace-source",
-  "workspace-target",
-]);
-
 const activeEnvironmentProvisionRpcEnvironmentIds = new Set<string>();
 
 function hasLiveEnvironmentProvisionInFlight(environmentId: string): boolean {
   return activeEnvironmentProvisionRpcEnvironmentIds.has(environmentId);
-}
-
-function hasStreamedProvisioningTranscript(
-  deps: EnvironmentProvisionReadDeps,
-  threadId: string,
-  provisioningId: string,
-): boolean {
-  const rows = listStoredThreadProvisioningRowsByProvisioningId(deps.db, {
-    threadId,
-    provisioningId,
-  });
-
-  return rows.some((row) => {
-    const eventData = systemThreadProvisioningEventDataSchema.parse(
-      JSON.parse(row.data),
-    );
-    return (
-      eventData.provisioningId === provisioningId &&
-      eventData.entries.some(isWorkspaceProvisioningTranscriptEntry)
-    );
-  });
 }
 
 function hasActiveThreadProvisioningContext(
@@ -395,7 +325,7 @@ interface HasOnlyCancelledOrStoppedProvisioningOutcomeThreadsArgs {
 }
 
 interface RestoreProvisioningEnvironmentAfterCancelledProvisioningOutcomeArgs {
-  environment: Environment;
+  environment: EnvironmentRow;
 }
 
 function hasOnlyCancelledOrStoppedProvisioningOutcomeThreads(
@@ -427,64 +357,9 @@ function restoreProvisioningEnvironmentAfterCancelledProvisioningOutcomeInTransa
   });
   if (outcome.applied) {
     deps.hub.notifyEnvironment(args.environment.id, outcome.changes);
-    completePathlessDestroyInTransaction(deps, {
-      environmentId: args.environment.id,
-      environment: outcome.environment,
-    });
   }
 
   return true;
-}
-
-function completePathlessDestroyInTransaction(
-  deps: EnvironmentProvisionTransactionDeps,
-  args: CompletePathlessDestroyInTransactionArgs,
-): void {
-  if (args.environment.status !== "destroying" || args.environment.path) {
-    return;
-  }
-  const completedOutcome = applyLoggedEnvironmentLifecycleEventInTransaction(
-    deps,
-    {
-      environmentId: args.environmentId,
-      event: {
-        type: "destroy.completed",
-        destroyAttemptId: args.environment.destroyAttemptId,
-      },
-    },
-  );
-  if (completedOutcome.applied) {
-    deps.hub.notifyEnvironment(args.environmentId, completedOutcome.changes);
-  }
-}
-
-interface ProvisionedEnvironmentBranchMetadata {
-  baseBranch?: string | null;
-  mergeBaseBranch?: string | null;
-}
-
-function resolveProvisionedEnvironmentBranchMetadata(
-  command: EnvironmentProvisionCommand,
-): ProvisionedEnvironmentBranchMetadata {
-  if (command.workspaceProvisionType !== "unmanaged") {
-    return {};
-  }
-
-  if (!command.checkout) {
-    return {};
-  }
-
-  if (command.checkout.kind === "new") {
-    return {
-      baseBranch: null,
-      mergeBaseBranch: command.checkout.baseBranch,
-    };
-  }
-
-  return {
-    baseBranch: null,
-    mergeBaseBranch: null,
-  };
 }
 
 function recordEnvironmentProvisioningFailureInTransaction(
@@ -560,6 +435,19 @@ function recordEnvironmentProvisioningFailureInTransaction(
 export function settleEnvironmentProvisionCommandResult(
   args: SettleEnvironmentProvisionCommandResultArgs,
 ): CommandResultSideEffectsResult {
+  return settleEnvironmentProvisionOutcome({
+    ...args,
+    headSha: null,
+    initiatorStreamed: true,
+    mergeBaseBranch:
+      getEnvironment(args.deps.db, args.command.environmentId)
+        ?.mergeBaseBranch ?? null,
+  });
+}
+
+function settleEnvironmentProvisionOutcome(
+  args: SettleEnvironmentProvisionOutcomeArgs,
+): CommandResultSideEffectsResult {
   const postCommitActions: CommandResultPostCommitAction[] = [];
   const initiator = args.command.initiator;
   if (!initiator && !args.report.ok) {
@@ -596,7 +484,9 @@ export function settleEnvironmentProvisionCommandResult(
         isWorktree: args.report.result.isWorktree,
         branchName: args.report.result.branchName,
         defaultBranch: args.report.result.defaultBranch,
-        ...resolveProvisionedEnvironmentBranchMetadata(args.command),
+        ...(args.mergeBaseBranch === null
+          ? {}
+          : { baseBranch: null, mergeBaseBranch: args.mergeBaseBranch }),
       },
     );
     const provisionedOutcome =
@@ -621,18 +511,13 @@ export function settleEnvironmentProvisionCommandResult(
     const cwdBranchEntries = buildCwdBranchEntries({
       path: args.report.result.path,
       branchName: args.report.result.branchName,
+      headSha: args.headSha,
     });
 
     for (const thread of boundThreads) {
       if (thread.deletedAt !== null) {
         finalizeStoppedThreadInTransaction(args.deps, {
           threadId: thread.id,
-        });
-        postCommitActions.push({
-          run: (deps) =>
-            runEnvironmentCleanupAdvance(deps, {
-              environmentId: args.command.environmentId,
-            }),
         });
         continue;
       }
@@ -646,19 +531,9 @@ export function settleEnvironmentProvisionCommandResult(
         continue;
       }
 
-      const isInitiator = thread.id === args.command.initiator?.threadId;
-      const hasStreamedTranscript =
-        isInitiator && args.command.initiator
-          ? hasStreamedProvisioningTranscript(
-              args.deps,
-              thread.id,
-              args.command.initiator.provisioningId,
-            )
-          : false;
-      const entries = hasStreamedTranscript
-        ? []
-        : isInitiator && args.report.result.transcript.length > 0
-          ? args.report.result.transcript
+      const entries =
+        thread.id === initiator.threadId && args.initiatorStreamed
+          ? []
           : cwdBranchEntries;
 
       if (!hasActiveThreadProvisioningContext(thread)) {
@@ -685,12 +560,6 @@ export function settleEnvironmentProvisionCommandResult(
       });
     }
 
-    postCommitActions.push({
-      run: (deps) =>
-        runEnvironmentCleanupAdvance(deps, {
-          environmentId: args.command.environmentId,
-        }),
-    });
     return { postCommitActions };
   }
 
@@ -698,34 +567,19 @@ export function settleEnvironmentProvisionCommandResult(
     return emptyCommandResultSideEffects();
   }
   const environmentProvisioningId = initiator.provisioningId;
-  const failureHandled = recordEnvironmentProvisioningFailureInTransaction(
-    args.deps,
-    {
-      environmentId: args.command.environmentId,
-      failureReason: args.report.errorMessage,
-      provisioningId: environmentProvisioningId,
-      failureEntry: {
-        type: "step",
-        key: "workspace-failed",
-        text: "Workspace setup failed",
-        status: "failed",
-        startedAt: args.execution.createdAt,
-        metadata: { durationMs: Date.now() - args.execution.createdAt },
-      },
+  recordEnvironmentProvisioningFailureInTransaction(args.deps, {
+    environmentId: args.command.environmentId,
+    failureReason: args.report.errorMessage,
+    provisioningId: environmentProvisioningId,
+    failureEntry: {
+      type: "step",
+      key: "workspace-failed",
+      text: "Workspace setup failed",
+      status: "failed",
+      startedAt: args.execution.createdAt,
+      metadata: { durationMs: Date.now() - args.execution.createdAt },
     },
-  );
-  if (failureHandled) {
-    postCommitActions.push({
-      run: (deps) => {
-        requestEnvironmentCleanup(deps, {
-          environmentId: args.command.environmentId,
-        });
-        runEnvironmentCleanupAdvance(deps, {
-          environmentId: args.command.environmentId,
-        });
-      },
-    });
-  }
+  });
   return { postCommitActions };
 }
 
@@ -791,35 +645,16 @@ export function settleEnvironmentProvisionCancelCommandResult(
       event: { type: "provision.cancelled" },
     },
   );
-  const restoredProvisioningEnvironment = cancelledOutcome.applied;
   if (cancelledOutcome.applied) {
     args.deps.hub.notifyEnvironment(
       args.command.environmentId,
       cancelledOutcome.changes,
     );
-    completePathlessDestroyInTransaction(args.deps, {
-      environmentId: args.command.environmentId,
-      environment: cancelledOutcome.environment,
-    });
   }
 
   for (const thread of stoppedThreads) {
     finalizeStoppedThreadInTransaction(args.deps, {
       threadId: thread.id,
-    });
-  }
-  const finalizedThread = stoppedThreads.length > 0;
-
-  if (finalizedThread || restoredProvisioningEnvironment) {
-    postCommitActions.push({
-      run: (deps) => {
-        requestEnvironmentCleanup(deps, {
-          environmentId: args.command.environmentId,
-        });
-        runEnvironmentCleanupAdvance(deps, {
-          environmentId: args.command.environmentId,
-        });
-      },
     });
   }
 
@@ -941,133 +776,4 @@ export async function advanceEnvironmentProvisioning(
     environment,
     request: args.request,
   });
-}
-
-export const MANAGED_REPROVISION_STARTED = "started" as const;
-export const MANAGED_REPROVISION_IN_PROGRESS = "already-provisioning" as const;
-interface StartedManagedReprovision {
-  provisionEventSequence: number;
-  status: typeof MANAGED_REPROVISION_STARTED;
-}
-type ManagedReprovisionResult =
-  | StartedManagedReprovision
-  | typeof MANAGED_REPROVISION_IN_PROGRESS;
-
-interface ActiveManagedEnvironmentProvisionArgs {
-  environmentId: string;
-}
-
-interface DispatchManagedEnvironmentReprovisionArgs {
-  beforeProvisionCommandStart?: () => void;
-  environment: Environment;
-  projectId: string;
-  provisionEventSequence: number;
-  provisioningId: string;
-  threadId: string;
-}
-
-export function hasActiveManagedEnvironmentProvision(
-  deps: Pick<AppDeps, "db">,
-  args: ActiveManagedEnvironmentProvisionArgs,
-): boolean {
-  return getEnvironment(deps.db, args.environmentId)?.status === "provisioning";
-}
-
-export async function dispatchManagedEnvironmentReprovision(
-  deps: CommandResultSideEffectsDeps,
-  args: DispatchManagedEnvironmentReprovisionArgs,
-): Promise<ManagedReprovisionResult> {
-  const provisionType = args.environment.workspaceProvisionType;
-  if (!args.environment.managed || provisionType === "unmanaged") {
-    throw new ApiError(
-      409,
-      "invalid_request",
-      "Environment cannot be reprovisioned automatically",
-      {
-        details: {
-          managed: args.environment.managed,
-          workspaceProvisionType: provisionType,
-        },
-      },
-    );
-  }
-
-  if (
-    hasActiveManagedEnvironmentProvision(deps, {
-      environmentId: args.environment.id,
-    })
-  ) {
-    return MANAGED_REPROVISION_IN_PROGRESS;
-  }
-
-  const hostSession = await ensureHostSessionReadyForWork(deps, {
-    hostId: args.environment.hostId,
-  });
-
-  const initiator = {
-    threadId: args.threadId,
-    provisioningId: args.provisioningId,
-  };
-  const command =
-    provisionType === "personal"
-      ? buildEnvironmentProvisionCommand({
-          environmentId: args.environment.id,
-          hostId: args.environment.hostId,
-          initiator,
-          targetPath:
-            args.environment.path ??
-            resolvePersonalTargetPath({
-              dataDir: hostSession.dataDir,
-              environmentId: args.environment.id,
-            }),
-          workspaceProvisionType: provisionType,
-        })
-      : (() => {
-          const source = requireSourceForHost(
-            deps,
-            args.projectId,
-            args.environment.hostId,
-          );
-          const targetPath =
-            args.environment.path ??
-            resolveManagedTargetPath({
-              dataDir: hostSession.dataDir,
-              environmentId: args.environment.id,
-              sourcePath: source.path,
-            });
-          const branchName =
-            args.environment.branchName ??
-            buildManagedBranchName({
-              branchPrefix: getAppSettings(deps.db).managedBranchPrefix,
-              threadId: args.threadId,
-            });
-          const baseBranch = storedBaseBranchNameToSpec(
-            args.environment.baseBranch,
-          );
-          return buildEnvironmentProvisionCommand({
-            branchName,
-            baseBranch,
-            environmentId: args.environment.id,
-            hostId: args.environment.hostId,
-            initiator,
-            sourcePath: source.path,
-            targetPath,
-            workspaceProvisionType: provisionType,
-            setupTimeoutMs: SETUP_TIMEOUT_MS,
-          });
-        })();
-
-  args.beforeProvisionCommandStart?.();
-  applyLoggedEnvironmentLifecycleEvent(deps, {
-    environmentId: args.environment.id,
-    event: { type: "provision.requested" },
-  });
-  await advanceEnvironmentProvisioning(deps, {
-    environmentId: args.environment.id,
-    request: { command },
-  });
-  return {
-    provisionEventSequence: args.provisionEventSequence,
-    status: MANAGED_REPROVISION_STARTED,
-  };
 }
