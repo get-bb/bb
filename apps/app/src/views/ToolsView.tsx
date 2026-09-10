@@ -409,12 +409,12 @@ export function PluginsView({ pluginId }: { pluginId?: string } = {}) {
   const navigate = useNavigate();
   const focusReturnRef = useRef<HTMLButtonElement | null>(null);
   const [isPluginDetailFullPage, setIsPluginDetailFullPage] = useState(false);
-  const catalogQuery = usePluginCatalogSearch("", { enabled: true });
-  const listQuery = usePluginList({ enabled: true });
   const isInstalledDetail =
     pluginId !== undefined &&
     new URLSearchParams(location.search).get("view") === "installed";
   const isPanelOpen = pluginId !== undefined && !isInstalledDetail;
+  const catalogQuery = usePluginCatalogSearch("", { enabled: isPanelOpen });
+  const listQuery = usePluginList({ enabled: true });
 
   const openPlugin = useCallback(
     (nextPluginId: string, trigger: HTMLButtonElement) => {
@@ -450,7 +450,7 @@ export function PluginsView({ pluginId }: { pluginId?: string } = {}) {
     pluginId ??
     "Plugin";
   const panelTab = useMemo<SecondaryPanelRenderableTab | null>(() => {
-    if (pluginId === undefined) return null;
+    if (!isPanelOpen) return null;
     return {
       contentFillsRegion: true,
       label: panelLabel,
@@ -476,6 +476,7 @@ export function PluginsView({ pluginId }: { pluginId?: string } = {}) {
     closePanel,
     installedPlugin?.compactIconUrl,
     installedPlugin?.icon,
+    isPanelOpen,
     panelLabel,
     pluginId,
   ]);

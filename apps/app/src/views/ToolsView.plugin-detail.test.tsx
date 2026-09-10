@@ -813,16 +813,22 @@ describe("BB Official plugin detail routing", () => {
           }),
         ).toBeTruthy();
         expect(screen.getByTestId("route-path").textContent).toBe("/plugins");
-        fireEvent.click(
-          await screen.findByRole("button", { name: "GitHub plugin details" }),
-        );
+        const pluginButton = await screen.findByRole("button", {
+          name: "GitHub plugin details",
+        });
+        expect(
+          vi.mocked(fetch).mock.calls.some(([input]) =>
+            String(input).startsWith("/api/v1/plugin-catalog/search"),
+          ),
+        ).toBe(false);
+        fireEvent.click(pluginButton);
       }
 
-      fireEvent.click(
-        await screen.findByRole("button", {
-          name: "Open Automations details",
-        }),
-      );
+      const relatedPluginButton = await screen.findByRole("button", {
+        name: "Open Automations details",
+      });
+      expect(screen.getAllByText("GitHub", { selector: "h1" })).toHaveLength(1);
+      fireEvent.click(relatedPluginButton);
       await waitFor(() => {
         expect(screen.getByTestId("route-path").textContent).toBe(
           "/plugins/automations",
