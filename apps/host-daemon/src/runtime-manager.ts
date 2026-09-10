@@ -46,6 +46,7 @@ import {
 } from "./provider-installation-gate.js";
 import type { FetchSkillTree } from "./skill-trees.js";
 import { userExecutableProcessOptions } from "./user-executable-env.js";
+import { runSetupScript } from "./environment-lifecycle-script.js";
 
 type StopWatching = () => void | Promise<void>;
 
@@ -140,6 +141,7 @@ interface InjectedSkillsChangedNotification {
 export interface EnsureEnvironmentArgs {
   environmentId: string;
   injectedSkillSources?: readonly HostDaemonInjectedSkillSource[];
+  setupScriptTimeoutMs?: number | null;
   targetThreadId?: string;
   workspacePath?: string;
   provision?: ProvisionWorkspaceArgs;
@@ -1208,6 +1210,16 @@ export class RuntimeManager {
       throw new Error(
         `Missing workspace path for environment ${args.environmentId}`,
       );
+    }
+
+    if (args.setupScriptTimeoutMs != null) {
+      await runSetupScript({
+        workspacePath: provision.path,
+        timeoutMs: args.setupScriptTimeoutMs,
+        shellPath: this.getShellEnv().PATH,
+        signal: args.provisionSignal,
+        onProgress: provision.onProgress,
+      });
     }
 
     const workspace = await this.provisionHostWorkspace({

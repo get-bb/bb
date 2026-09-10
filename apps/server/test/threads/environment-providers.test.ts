@@ -47,7 +47,12 @@ import {
   forgetAllActiveThreadProvisionContexts,
   getActiveThreadProvisionContext,
 } from "../../src/services/threads/thread-provisioning-active-context.js";
-import { registerTestHostRpcCapture } from "../helpers/commands.js";
+import {
+  registerTestHostRpcCapture,
+  reportQueuedCommandError,
+  reportQueuedCommandSuccess,
+  waitForQueuedCommand,
+} from "../helpers/commands.js";
 import { readJson } from "../helpers/json.js";
 import { textInput } from "../helpers/prompt-input.js";
 import {
@@ -362,6 +367,120 @@ describe("environment providers are asked inside provisioning", () => {
       });
 
       await expect.poll(() => inputs).toEqual([2]);
+    });
+  });
+
+  it("attaches the provisioning environment before provider-owned setup completes", async () => {
+    await withTestHarness(async (harness) => {
+      const { host, project, session } = seedTargetFixture(
+        harness,
+        "host-target-provider-setup",
+      );
+      const producedPath = "/tmp/environment-providers-owned-setup";
+      registerTestHostRpcCapture(harness, {
+        hostId: host.id,
+        sessionId: session.id,
+      });
+      installTarget({
+        provision: () => ({
+          action: "ready",
+          environment: {
+            type: "host",
+            hostId: host.id,
+            mergeBaseBranch: "origin/main",
+            ownsPath: true,
+            path: producedPath,
+          },
+        }),
+      });
+
+      const created = await createTargetThread(harness, {
+        projectId: project.id,
+      });
+      const queued = await waitForQueuedCommand(
+        harness,
+        (candidate) => candidate.command.type === "environment.attach",
+      );
+      if (queued.command.type !== "environment.attach") {
+        throw new Error("Expected environment.attach command");
+      }
+      const environmentId = queued.command.environmentId;
+
+      const thread = getThread(harness.db, created.id);
+      expect(thread?.environmentId).toBe(environmentId);
+      expect(getEnvironment(harness.db, environmentId)).toMatchObject({
+        hostId: host.id,
+        mergeBaseBranch: "origin/main",
+        path: producedPath,
+        providerOwnsPath: true,
+        status: "provisioning",
+      });
+      expect(queued.command).toMatchObject({
+        path: producedPath,
+        setupScriptTimeoutMs: 15 * 60 * 1_000,
+      });
+
+      await reportQueuedCommandSuccess(harness, queued, {
+        branchName: "feature/provider-setup",
+        defaultBranch: "main",
+        isGitRepo: true,
+        isWorktree: true,
+        path: producedPath,
+      });
+      await vi.waitFor(() => {
+        expect(getEnvironment(harness.db, environmentId)?.status).toBe("ready");
+      });
+    });
+  });
+
+  it("keeps the attached environment for diagnosis when provider-owned setup fails", async () => {
+    await withTestHarness(async (harness) => {
+      const { host, project, session } = seedTargetFixture(
+        harness,
+        "host-target-provider-setup-failure",
+      );
+      const producedPath = "/tmp/environment-providers-setup-failure";
+      registerTestHostRpcCapture(harness, {
+        hostId: host.id,
+        sessionId: session.id,
+      });
+      installTarget({
+        provision: () => ({
+          action: "ready",
+          environment: {
+            type: "host",
+            hostId: host.id,
+            path: producedPath,
+          },
+        }),
+      });
+
+      const created = await createTargetThread(harness, {
+        projectId: project.id,
+      });
+      const queued = await waitForQueuedCommand(
+        harness,
+        (candidate) => candidate.command.type === "environment.attach",
+      );
+      if (queued.command.type !== "environment.attach") {
+        throw new Error("Expected environment.attach command");
+      }
+      const environmentId = queued.command.environmentId;
+
+      await reportQueuedCommandError(harness, queued, {
+        errorCode: "setup_script_failed",
+        errorMessage: ".bb-env-setup.sh failed with exit code 7",
+      });
+      await vi.waitFor(() => {
+        expect(getThread(harness.db, created.id)).toMatchObject({
+          environmentId,
+          status: "error",
+        });
+        expect(getEnvironment(harness.db, environmentId)).toMatchObject({
+          path: producedPath,
+          status: "error",
+        });
+      });
     });
   });
 

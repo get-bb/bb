@@ -875,6 +875,7 @@ const unmanagedEnvironmentProvisionCommandSchema =
   environmentProvisionCommandBaseSchema
     .extend({
       path: z.string().min(1),
+      setupScriptTimeoutMs: z.number().int().positive().nullable(),
     })
     .strict();
 

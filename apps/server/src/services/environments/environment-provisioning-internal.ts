@@ -16,8 +16,6 @@ import type {
   ProvisioningTranscriptEntry,
   SystemThreadProvisioningStatus,
   ThreadStatus,
-  DiscoveredWorkspaceProperties,
-  GitSourceInspection,
 } from "@bb/domain";
 import {
   systemThreadProvisioningEventDataSchema,
@@ -31,15 +29,11 @@ import {
 } from "../threads/thread-events.js";
 import type { EnvironmentProvisionRequest } from "./environment-provision-request.js";
 import {
-  buildLiveHostCommandFailureReport,
-  buildLiveHostCommandSuccessReport,
   createLiveHostCommandExecution,
   expectedLiveHostCommandErrorLogFields,
   LIVE_DAEMON_COMMAND_TIMEOUT_MS,
   runLiveHostCommand,
-  runLiveHostCommandSettlement,
 } from "../hosts/live-command.js";
-import { callHostRetryableOnlineRpc } from "../hosts/online-rpc.js";
 import { applyLoggedThreadLifecycleEventInTransaction } from "../threads/lifecycle-outcome.js";
 import { applyLoggedEnvironmentLifecycleEventInTransaction } from "./lifecycle-outcome.js";
 import {
@@ -122,15 +116,6 @@ interface SettleEnvironmentProvisionOutcomeArgs extends SettleEnvironmentProvisi
   initiatorStreamed: boolean;
   mergeBaseBranch: string | null;
 }
-
-interface InspectProducedEnvironmentWorkspaceArgs {
-  command: EnvironmentProvisionCommand;
-  environment: EnvironmentRow;
-  execution: HostDaemonCommandExecutionRecord;
-  mergeBaseBranch: string | null;
-}
-
-const PRODUCED_WORKSPACE_INSPECT_TIMEOUT_MS = 60_000;
 
 interface InterruptUnrecoverableEnvironmentProvisioningArgs {
   environmentId: string;
@@ -454,7 +439,9 @@ export function settleEnvironmentProvisionCommandResult(
     ...args,
     headSha: null,
     initiatorStreamed: true,
-    mergeBaseBranch: null,
+    mergeBaseBranch:
+      getEnvironment(args.deps.db, args.command.environmentId)
+        ?.mergeBaseBranch ?? null,
   });
 }
 
@@ -719,17 +706,6 @@ function startTrackedEnvironmentProvisionCommand(
   }
   const execution = createLiveHostCommandExecution(args.environment.hostId);
   activeEnvironmentProvisionRpcEnvironmentIds.add(args.environment.id);
-  if (args.request.mode === "inspect") {
-    void inspectProducedEnvironmentWorkspace(deps, {
-      command: args.request.command,
-      environment: args.environment,
-      execution,
-      mergeBaseBranch: args.request.mergeBaseBranch,
-    }).finally(() => {
-      activeEnvironmentProvisionRpcEnvironmentIds.delete(args.environment.id);
-    });
-    return;
-  }
   void runLiveHostCommand(deps, {
     command: args.request.command,
     execution,
@@ -771,103 +747,6 @@ function startTrackedEnvironmentProvisionCommand(
     .finally(() => {
       activeEnvironmentProvisionRpcEnvironmentIds.delete(args.environment.id);
     });
-}
-
-function discoverProducedWorkspace(
-  path: string,
-  inspection: GitSourceInspection,
-): { headSha: string | null; properties: DiscoveredWorkspaceProperties } {
-  const checkout = inspection.checkout;
-  const isGitRepo = checkout.kind !== "unknown";
-  const branchName =
-    checkout.kind === "branch" || checkout.kind === "unborn"
-      ? checkout.branchName
-      : null;
-  return {
-    headSha:
-      checkout.kind === "branch" || checkout.kind === "detached"
-        ? checkout.headSha
-        : null,
-    properties: {
-      path,
-      isGitRepo,
-      isWorktree: inspection.isWorktree,
-      branchName,
-      defaultBranch: isGitRepo
-        ? (inspection.defaultBranch ?? branchName)
-        : null,
-    },
-  };
-}
-
-async function inspectProducedEnvironmentWorkspace(
-  deps: CommandResultSideEffectsDeps,
-  args: InspectProducedEnvironmentWorkspaceArgs,
-): Promise<void> {
-  let discovered:
-    | {
-        ok: true;
-        headSha: string | null;
-        properties: DiscoveredWorkspaceProperties;
-      }
-    | { ok: false; error: Error };
-  try {
-    const inspection = await callHostRetryableOnlineRpc(deps, {
-      hostId: args.environment.hostId,
-      timeoutMs: PRODUCED_WORKSPACE_INSPECT_TIMEOUT_MS,
-      command: {
-        type: "host.inspect_git_source",
-        path: args.command.path,
-        remoteRefresh: "background",
-      },
-    });
-    discovered = {
-      ok: true,
-      ...discoverProducedWorkspace(args.command.path, inspection),
-    };
-  } catch (error) {
-    discovered = {
-      ok: false,
-      error: error instanceof Error ? error : new Error(String(error)),
-    };
-  }
-  const completedAt = Date.now();
-  const report = discovered.ok
-    ? buildLiveHostCommandSuccessReport({
-        command: args.command,
-        completedAt,
-        execution: args.execution,
-        result: discovered.properties,
-      })
-    : buildLiveHostCommandFailureReport({
-        command: args.command,
-        completedAt,
-        error: discovered.error,
-        execution: args.execution,
-      });
-  const headSha = discovered.ok ? discovered.headSha : null;
-  try {
-    await runLiveHostCommandSettlement(deps, (settlementDeps) =>
-      settleEnvironmentProvisionOutcome({
-        command: args.command,
-        deps: settlementDeps,
-        execution: args.execution,
-        headSha,
-        initiatorStreamed: false,
-        mergeBaseBranch: args.mergeBaseBranch,
-        report,
-      }),
-    );
-  } catch (settlementError) {
-    deps.logger.error(
-      {
-        err: settlementError,
-        environmentId: args.environment.id,
-        hostId: args.environment.hostId,
-      },
-      "Produced environment settlement failed",
-    );
-  }
 }
 
 export async function advanceEnvironmentProvisioning(

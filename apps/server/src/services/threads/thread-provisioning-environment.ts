@@ -23,6 +23,7 @@ import type { AppDeps } from "../../types.js";
 import type { CommandResultSideEffectsDeps } from "../../internal/command-result-side-effects.js";
 import { ApiError } from "../../errors.js";
 import { advanceEnvironmentProvisioning } from "../environments/environment-provisioning-internal.js";
+import { ENVIRONMENT_HOOK_TIMEOUT_MS } from "../environments/environment-hooks.js";
 import type { EnvironmentProvisionRequest } from "../environments/environment-provision-request.js";
 import { requestQueuedMessageDispatch } from "./queued-message-dispatch.js";
 import {
@@ -528,6 +529,7 @@ function buildHostEnvironmentPlan(
     environmentInput: {
       projectId: args.thread.projectId,
       hostId: args.intent.produced.hostId,
+      mergeBaseBranch: args.intent.produced.mergeBaseBranch,
       providerOwnsPath: args.intent.produced.ownsPath,
       status: "provisioning",
     },
@@ -541,9 +543,11 @@ function buildHostEnvironmentPlan(
             provisioningId: context.state.provisioningId,
           },
           path: args.intent.produced.path,
+          setupScriptTimeoutMs:
+            args.producedBy !== null && args.intent.produced.ownsPath
+              ? ENVIRONMENT_HOOK_TIMEOUT_MS
+              : null,
         }),
-        mergeBaseBranch: args.intent.produced.mergeBaseBranch,
-        mode: args.producedBy === null ? "provision" : "inspect",
       };
     },
   };

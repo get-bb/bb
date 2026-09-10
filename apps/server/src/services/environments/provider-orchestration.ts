@@ -329,17 +329,6 @@ async function runCreate(
         row.resource = produced.resource ?? null;
       });
       controller.signal.throwIfAborted();
-      if (result.ownsPath) {
-        await runEnvironmentHook(deps, {
-          id: `launch:${launch.threadId}:${launch.attempt}:setup`,
-          hostId: context.host.id,
-          path: result.path,
-          kind: "setup",
-          resumeOnly: launch.ownsPath && launch.path !== null,
-          report: launchReporter(deps, launch),
-          signal: controller.signal,
-        });
-      }
     }
     changed = mutateLaunch(deps, launch, ["creating"], (row) => {
       if (result.status === "created") {
