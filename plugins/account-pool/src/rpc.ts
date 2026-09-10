@@ -18,6 +18,7 @@ import {
   hubTokenSummarySchema,
   loginCompleteInputSchema,
   loginStartSchema,
+  routedThreadStatusListSchema,
   statusSchema,
   tokenRotateInputSchema,
   routingSetInputSchema,
@@ -98,6 +99,10 @@ export const accountPoolRpcContract = defineRpcContract({
     input: z.null(),
     output: statusSchema,
   },
+  "status.routedThreads": {
+    input: z.null(),
+    output: routedThreadStatusListSchema,
+  },
   "token.rotate": {
     input: tokenRotateInputSchema,
     output: hubTokenSummarySchema,
@@ -168,6 +173,7 @@ export function createRpcHandlers(
       cancelled: codexLogin.cancel(input),
     }),
     "status.get": () => operations.status(),
+    "status.routedThreads": () => operations.routedThreadsWithoutLocalLogin(),
     "token.rotate": ({ machine }: { machine: string }) =>
       operations.rotateToken(machine),
     "bypass.set": ({
