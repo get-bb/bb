@@ -91,9 +91,8 @@ type ThreadProvisioningStage = (typeof threadProvisioningStageValues)[number];
 export interface ThreadProvisionProviderAsk {
   environmentProviderId: string;
   lastStep: { key: string; startedAt: number; text: string } | null;
-  nextAskTimer: NodeJS.Timeout | null;
   outputCount: number;
-  recheckRequested: boolean;
+  runtime: { nextAskTimer: NodeJS.Timeout | null; recheckRequested: boolean };
   stepCount: number;
 }
 
@@ -369,9 +368,8 @@ export function createProviderPendingContext(
       providerAsk: {
         environmentProviderId: intent.environmentProviderId,
         lastStep: null,
-        nextAskTimer: null,
         outputCount: 0,
-        recheckRequested: false,
+        runtime: { nextAskTimer: null, recheckRequested: false },
         stepCount: 0,
       },
       provisionEventSequence: args.provisionEventSequence,
@@ -494,3 +492,24 @@ export function provisioningStartedContext(
     `Cannot resolve started provisioning from ${context.state.stage}`,
   );
 }
+
+export const persistedThreadProvisionContextSchema = z.object({
+  request: threadProvisionCommonPayloadSchema,
+  state: z.object({
+    environmentId: z.string().nullable(),
+    providerAsk: z
+      .object({
+        environmentProviderId: z.string(),
+        lastStep: z
+          .object({ key: z.string(), startedAt: z.number(), text: z.string() })
+          .nullable(),
+        outputCount: z.number(),
+        stepCount: z.number(),
+      })
+      .nullable(),
+    provisionEventSequence: z.number().nullable(),
+    provisioningId: z.string(),
+    stage: z.enum(threadProvisioningStageValues),
+    workspaceReadyEventSequence: z.number().nullable(),
+  }),
+});

@@ -813,6 +813,13 @@
       "when": 1788908496395,
       "tag": "0115_ui_preferences",
       "breakpoints": true
+    },
+    {
+      "idx": 116,
+      "version": "6",
+      "when": 1789064744671,
+      "tag": "0116_lush_katie_power",
+      "breakpoints": true
     }
   ]
 }

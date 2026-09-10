@@ -1,3 +1,4 @@
+import { stopThreadForCurrentState } from "../../src/services/threads/thread-lifecycle.js";
 import { createDeferredPromise } from "@bb/test-helpers";
 import { resolveGitCheckoutAvailability } from "../../src/services/environments/provider-availability.js";
 import {
@@ -10,9 +11,10 @@ import {
   createProjectSource,
   ensurePersonalProject,
   getEnvironment,
-  getEnvironmentLaunch,
+  getPreparingEnvironment,
   getDefaultProjectSource,
   getThread,
+  getThreadStartupContext,
   listEnvironments,
   listEvents,
 } from "@bb/db";
@@ -38,14 +40,14 @@ import {
 } from "../../src/services/plugins/plugin-hook-registry.js";
 import { attemptDispatch } from "../../src/services/threads/dispatch-attempt.js";
 import {
-  recheckEnvironmentProviderLaunches,
+  recheckEnvironmentProviderCreations,
   scheduledEnvironmentProviderAskCount,
 } from "../../src/services/threads/thread-environment-providers.js";
 import { createThreadFromRequest } from "../../src/services/threads/thread-create.js";
 import {
-  forgetAllActiveThreadProvisionContexts,
-  getActiveThreadProvisionContext,
-} from "../../src/services/threads/thread-provisioning-active-context.js";
+  clearAllThreadProvisionSchedules,
+  getThreadProvisionContext,
+} from "../../src/services/threads/thread-startup-store.js";
 import {
   registerTestHostRpcCapture,
   reportQueuedCommandError,
@@ -159,7 +161,7 @@ function installEnvironmentIntentProbe(): PluginDispatchEnvironmentIntent[] {
 }
 
 afterEach(() => {
-  forgetAllActiveThreadProvisionContexts();
+  clearAllThreadProvisionSchedules();
   setPluginEnvironmentProviderBridge(undefined);
   setPluginHookProvider(undefined);
 });
@@ -299,7 +301,8 @@ describe("environment providers are asked inside provisioning", () => {
       });
 
       expect(
-        getActiveThreadProvisionContext(child.id)?.request.environmentIntent,
+        getThreadProvisionContext(harness.db, child.id)?.request
+          .environmentIntent,
       ).toEqual({
         type: "reuse",
         environmentId: parentEnvironment.id,
@@ -493,7 +496,7 @@ describe("environment providers are asked inside provisioning", () => {
       );
       let provisioningThreadId: string | null = null;
       const refreshAssignments: Array<{
-        launch: string | null;
+        preparationAttached: boolean;
         thread: string | null;
       }> = [];
       registerTestHostRpcCapture(harness, {
@@ -502,9 +505,9 @@ describe("environment providers are asked inside provisioning", () => {
         onInspectGitSource: () => {
           if (provisioningThreadId === null) return;
           refreshAssignments.push({
-            launch:
-              getEnvironmentLaunch(harness.db, provisioningThreadId)
-                ?.environmentId ?? null,
+            preparationAttached:
+              getPreparingEnvironment(harness.db, provisioningThreadId)
+                ?.provisioningAttached ?? false,
             thread:
               getThread(harness.db, provisioningThreadId)?.environmentId ??
               null,
@@ -528,8 +531,10 @@ describe("environment providers are asked inside provisioning", () => {
           environment.id,
         );
       });
-      expect(refreshAssignments).toEqual([{ launch: null, thread: null }]);
-      expect(getEnvironmentLaunch(harness.db, created.id)?.environmentId).toBe(
+      expect(refreshAssignments).toEqual([
+        { preparationAttached: false, thread: null },
+      ]);
+      expect(getPreparingEnvironment(harness.db, created.id)?.id).toBe(
         environment.id,
       );
       expect(getThread(harness.db, created.id)?.status).toBe("starting");
@@ -585,7 +590,7 @@ describe("environment providers are asked inside provisioning", () => {
         });
 
         cloning.resolve();
-        recheckEnvironmentProviderLaunches(harness.deps, PLUGIN_ID);
+        recheckEnvironmentProviderCreations(harness.deps, PLUGIN_ID);
         await vi.waitFor(() => {
           expect(blockEntries(harness, created.id)).toContainEqual([
             "output",
@@ -593,7 +598,7 @@ describe("environment providers are asked inside provisioning", () => {
           ]);
         });
         ready.resolve();
-        recheckEnvironmentProviderLaunches(harness.deps, PLUGIN_ID);
+        recheckEnvironmentProviderCreations(harness.deps, PLUGIN_ID);
         await vi.waitFor(() => {
           expect(getThread(harness.db, created.id)?.environmentId).toBe(
             environment.id,
@@ -626,7 +631,7 @@ describe("environment providers are asked inside provisioning", () => {
     });
   });
 
-  it("preserves a launch recheck that overlaps an in-flight provisioning advance", async () => {
+  it("preserves a creation recheck that overlaps an in-flight provisioning advance", async () => {
     await withTestHarness(async (harness) => {
       const createReady = createDeferredPromise<void>();
       const firstAdvanceFinished = createDeferredPromise<void>();
@@ -670,9 +675,9 @@ describe("environment providers are asked inside provisioning", () => {
         await firstAdvanceFinished.promise;
         createReady.resolve();
         await vi.waitFor(() => {
-          expect(getEnvironmentLaunch(harness.db, created.id)?.phase).toBe(
-            "ready",
-          );
+          expect(
+            getPreparingEnvironment(harness.db, created.id)?.provisioningPhase,
+          ).toBe("ready");
         });
         await vi.waitFor(() => {
           expect(coalescedAdvanceCount).toBeGreaterThan(0);
@@ -728,7 +733,7 @@ describe("environment providers are asked inside provisioning", () => {
       const detail = (JSON.parse(error?.data ?? "null") as { detail: string })
         .detail;
       expect(detail).toContain(`"${PROVIDER_ID}" environment provider`);
-      expect(detail).toContain('which the "git-worktree" environment provider');
+      expect(detail).toContain('"git-worktree" environment provider');
       expect(
         getEnvironment(harness.db, foreign.id)?.environmentProviderId,
       ).toBe("git-worktree");
@@ -836,7 +841,7 @@ describe("environment providers are asked inside provisioning", () => {
     });
   });
 
-  it("retries a provider launch on the next send after failure before a row attaches", async () => {
+  it("retries provider creation on the next send after failure before a row attaches", async () => {
     await withTestHarness(async (harness) => {
       const { environment, host, project } = seedTargetFixture(
         harness,
@@ -845,7 +850,7 @@ describe("environment providers are asked inside provisioning", () => {
       );
       installTarget({
         provision: () => {
-          throw new Error("temporary launch failure");
+          throw new Error("temporary creation failure");
         },
       });
       const created = await createTargetThread(harness, {
@@ -1736,5 +1741,38 @@ describe("environment provider listing", () => {
       expect(body.providers[0]?.availability).toBeNull();
       expect(availability).not.toHaveBeenCalled();
     });
+  });
+});
+
+it("stops an unattached provider creation using the thread's durable startup state", async () => {
+  await withTestHarness(async (harness) => {
+    const remove = vi.fn(async () => ({ status: "removed" as const }));
+    installTarget({
+      provision: () => ({ action: "wait", reason: "Allocating" }),
+      remove,
+    });
+    const { project } = seedTargetFixture(harness, "host-stop-durable-startup");
+    const created = await createTargetThread(harness, {
+      projectId: project.id,
+    });
+    await vi.waitFor(() =>
+      expect(
+        getPreparingEnvironment(harness.db, created.id)?.provisioningPhase,
+      ).toBe("creating"),
+    );
+    const environmentId = getPreparingEnvironment(harness.db, created.id)!.id;
+    await stopThreadForCurrentState(
+      harness.deps,
+      getThread(harness.db, created.id)!,
+      null,
+    );
+    await vi.waitFor(() =>
+      expect(getEnvironment(harness.db, environmentId)?.teardownStatus).toBe(
+        "removed",
+      ),
+    );
+    expect(remove).toHaveBeenCalledTimes(1);
+    expect(getThread(harness.db, created.id)?.status).toBe("idle");
+    expect(getThreadStartupContext(harness.db, created.id)).toBeNull();
   });
 });

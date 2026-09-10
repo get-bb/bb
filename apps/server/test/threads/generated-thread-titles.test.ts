@@ -238,7 +238,7 @@ describe("generated thread titles", () => {
         titleFallback: "Stop during metadata inference",
       });
       const input = textInput("Stop during metadata inference before setup");
-      const context = requestThreadProvision(harness.deps, {
+      requestThreadProvision(harness.deps, {
         environmentIntent: {
           type: "provider",
           environmentProviderId: "git-worktree",
@@ -255,7 +255,6 @@ describe("generated thread titles", () => {
         titleProvided: false,
       });
       const advance = advanceThreadProvisioning(harness.deps, {
-        context,
         threadId: thread.id,
       });
 
@@ -588,7 +587,7 @@ describe("generated thread titles", () => {
         titleFallback: "Idle late title rename",
       });
 
-      const context = requestThreadProvision(harness.deps, {
+      requestThreadProvision(harness.deps, {
         environmentIntent: {
           type: "reuse",
           environmentId: environment.id,
@@ -601,7 +600,6 @@ describe("generated thread titles", () => {
         titleProvided: false,
       });
       await advanceThreadProvisioning(harness.deps, {
-        context,
         threadId: thread.id,
       });
 
@@ -721,7 +719,7 @@ describe("generated thread titles", () => {
         titleFallback: "Errored late title no rename",
       });
 
-      const context = requestThreadProvision(harness.deps, {
+      requestThreadProvision(harness.deps, {
         environmentIntent: {
           type: "reuse",
           environmentId: environment.id,
@@ -734,7 +732,6 @@ describe("generated thread titles", () => {
         titleProvided: false,
       });
       await advanceThreadProvisioning(harness.deps, {
-        context,
         threadId: thread.id,
       });
 

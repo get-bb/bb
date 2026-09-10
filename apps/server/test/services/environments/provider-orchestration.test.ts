@@ -16,15 +16,16 @@ import { handleUpdateEnvironmentDirectoryToolCall } from "../../../src/services/
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { eq } from "drizzle-orm";
 import {
-  claimEnvironmentLaunchPath,
+  claimEnvironmentPath,
   createEnvironment,
   environments,
   getEnvironment,
-  getEnvironmentLaunch,
+  getPreparingEnvironment,
   getThread,
   getProject,
   pruneDestroyedEnvironments,
-  saveEnvironmentLaunch,
+  reserveEnvironment,
+  updatePreparingEnvironment,
   threads,
   updateThread,
 } from "@bb/db";
@@ -33,9 +34,9 @@ import { makeHost } from "@bb/test-helpers/domain-fixtures";
 import type { PluginEnvironmentProviderDeclaration } from "@get-bb/plugin-sdk";
 import { validatePluginEnvironmentProviderDeclaration } from "@get-bb/plugin-sdk/internal/host-policy";
 import {
-  askProviderLaunch,
-  attachProviderLaunch,
-  cancelProviderLaunch,
+  advanceProviderEnvironmentCreation,
+  markProviderEnvironmentAttached,
+  cancelProviderEnvironmentCreation,
   sweepProviderEnvironment,
   sweepProviderLifecycles,
 } from "../../../src/services/environments/provider-orchestration.js";
@@ -45,9 +46,11 @@ import {
   advanceProjectDeletion,
   beginProjectDeletion,
 } from "../../../src/services/projects/project-deletion.js";
-import { runPeriodicSweeps } from "../../../src/services/system/periodic-sweeps.js";
+import {
+  runPeriodicSweeps,
+  runEnvironmentProvisioningSweep,
+} from "../../../src/services/system/periodic-sweeps.js";
 import { toThreadResponseFromThread } from "../../../src/services/threads/thread-runtime-display.js";
-import { resolveProducedEnvironmentPlacement } from "../../../src/services/threads/thread-environment-placement.js";
 import type { TestEnvironmentProviderContext } from "../../helpers/provider-decisions.js";
 import {
   seedHostSession,
@@ -109,37 +112,32 @@ function setup(
     environment: null,
   };
   const row = () => {
-    const value = getEnvironmentLaunch(harness.db, thread.id);
-    if (value === null) throw new Error("Missing launch");
+    const value = getPreparingEnvironment(harness.db, thread.id);
+    if (value === null) throw new Error("Missing preparing environment");
     return value;
   };
-  const ask = () => askProviderLaunch(harness.deps, record, context, null);
+  const ask = () =>
+    advanceProviderEnvironmentCreation(harness.deps, record, context);
   const settled = async () =>
-    expect.poll(() => row().phase).not.toBe("creating");
+    expect.poll(() => row().provisioningPhase).not.toBe("creating");
   const attach = () => {
-    const launch = row();
-    if (launch.hostId === null || launch.path === null) {
-      throw new Error("Launch is not ready");
+    const prepared = row();
+    if (prepared.hostId === null || prepared.path === null) {
+      throw new Error("Environment is not ready");
     }
-    const environment = createEnvironment(harness.db, harness.hub, {
-      projectId: project.id,
-      hostId: launch.hostId,
-      path: null,
-      providerOwnsPath: launch.ownsPath,
-      status: "ready",
-      environmentProvider: {
-        environmentProviderId: record.provider.id,
-        selection: launch.selection,
-        instanceKey: launch.pathKey,
-      },
-    });
-    attachProviderLaunch(harness.db, thread.id, environment.id);
+    const environment = getEnvironment(harness.db, prepared.id)!;
+    harness.db
+      .update(environments)
+      .set({ status: "ready" })
+      .where(eq(environments.id, environment.id))
+      .run();
+    markProviderEnvironmentAttached(harness.db, thread.id, environment.id);
     recordProvisionedEnvironmentWorkspace(
       harness.db,
       harness.hub,
       environment.id,
       {
-        path: launch.path,
+        path: prepared.path,
         isGitRepo: false,
         isWorktree: false,
         branchName: null,
@@ -244,23 +242,24 @@ describe("core environment orchestration", () => {
       fixture.ask();
       await fixture.settled();
       expect(fixture.row()).toMatchObject({
-        phase: "failed",
-        pathRejected: true,
+        provisioningPhase: "failed",
+        provisioningPathRejected: true,
       });
-      await cancelProviderLaunch(harness.deps, fixture.thread.id);
+      await cancelProviderEnvironmentCreation(harness.deps, fixture.thread.id);
       expect(hooks).not.toHaveBeenCalled();
       expect(remove).not.toHaveBeenCalled();
-      expect(fixture.row().cancelPending).toBe(false);
+      expect(fixture.row().teardownStatus).toBe("removed");
     }));
 
-  it.each(["launch", "environment"])(
+  it.each(["preparing environment", "attached environment"])(
     "preserves the original plugin owner of a %s",
     async (kind) =>
       withTestHarness(async (harness) => {
         const fixture = setup(harness, { policy: { retireGraceMs: 0 } });
         fixture.ask();
         await fixture.settled();
-        const environmentId = kind === "environment" ? fixture.attach() : null;
+        const environmentId =
+          kind === "attached environment" ? fixture.attach() : null;
         const create = vi.fn(fixture.record.provider.create);
         const remove = vi.fn(async () => ({ status: "removed" as const }));
         const replacement = {
@@ -279,10 +278,14 @@ describe("core environment orchestration", () => {
         });
         if (environmentId === null) {
           expect(
-            askProviderLaunch(harness.deps, replacement, fixture.context, null),
+            advanceProviderEnvironmentCreation(
+              harness.deps,
+              replacement,
+              fixture.context,
+            ),
           ).toMatchObject({ action: "reject" });
           await expect(
-            cancelProviderLaunch(harness.deps, fixture.thread.id),
+            cancelProviderEnvironmentCreation(harness.deps, fixture.thread.id),
           ).rejects.toThrow();
         } else {
           await sweepProviderEnvironment(harness.deps, environmentId);
@@ -306,7 +309,7 @@ describe("core environment orchestration", () => {
       const notify = vi.spyOn(harness.hub, "notifySystem");
       fixture.ask();
       await fixture.settled();
-      expect(fixture.row().pendingLog).toContain("line 49");
+      expect(fixture.row().provisioningLog).toContain("line 49");
       expect(
         notify.mock.calls.some(([changes]) =>
           changes.includes("config-changed"),
@@ -339,11 +342,11 @@ describe("core environment orchestration", () => {
       });
       fixture.ask();
       await fixture.settled();
-      expect(fixture.row().ownsPath).toBe(false);
-      await cancelProviderLaunch(harness.deps, fixture.thread.id);
+      expect(fixture.row().providerOwnsPath).toBe(false);
+      await cancelProviderEnvironmentCreation(harness.deps, fixture.thread.id);
       expect(remove).toHaveBeenCalledOnce();
       expect(hooks).not.toHaveBeenCalled();
-      expect(fixture.row().claimPath).toBeNull();
+      expect(fixture.row().provisioningClaimPath).toBeNull();
     }));
 
   it.each([true, false])(
@@ -373,16 +376,14 @@ describe("core environment orchestration", () => {
         });
         fixture.ask();
         await fixture.settled();
-        expect(fixture.row().phase).toBe("ready");
+        expect(fixture.row().provisioningPhase).toBe("ready");
         const environmentId = fixture.attach();
         await sweepProviderEnvironment(harness.deps, environmentId);
         expect(getEnvironment(harness.db, environmentId)?.teardownStatus).toBe(
           "removed",
         );
         expect(order).toEqual(
-          ownsPath
-            ? ["create", "teardown", "remove"]
-            : ["create", "remove"],
+          ownsPath ? ["create", "teardown", "remove"] : ["create", "remove"],
         );
       }),
   );
@@ -416,7 +417,7 @@ describe("core environment orchestration", () => {
     }));
 
   it.each(["new reuse", "reuse", "directory", "restored dispatch"])(
-    "refuses %s admission while another launch owns the checkout",
+    "refuses %s admission while another environment preparation owns the checkout",
     async (admission) =>
       withTestHarness(async (harness) => {
         const fixture = setup(harness, {
@@ -427,13 +428,12 @@ describe("core environment orchestration", () => {
         });
         fixture.ask();
         await fixture.settled();
-        const target = createEnvironment(harness.db, harness.hub, {
-          projectId: fixture.context.project.id,
-          hostId: fixture.host.id,
-          path: "/tmp/project",
-          status: "ready",
-          providerOwnsPath: false,
-        });
+        const target = getEnvironment(harness.db, fixture.row().id)!;
+        harness.db
+          .update(environments)
+          .set({ status: "ready" })
+          .where(eq(environments.id, target.id))
+          .run();
         const current = createEnvironment(harness.db, harness.hub, {
           projectId: fixture.context.project.id,
           hostId: fixture.host.id,
@@ -541,30 +541,36 @@ describe("core environment orchestration", () => {
       });
       fixture.ask();
       await fixture.settled();
-      const second = {
+      const competitor = seedThread(harness.deps, {
+        projectId: fixture.context.project.id,
+        status: "starting",
+      });
+      const second = reserveEnvironment(harness.db, {
         ...fixture.row(),
-        threadId: "thr_competing",
-        phase: "creating" as const,
+        provisioningThreadId: competitor.id,
+        provisioningPhase: "creating" as const,
         path: null,
-        claimPath: null,
-      };
-      saveEnvironmentLaunch(harness.db, second);
+        provisioningClaimPath: null,
+      });
       let cleanup: Promise<void> | undefined;
       try {
-        expect(
-          claimEnvironmentLaunchPath(harness.db, second, "/tmp/project"),
-        ).toBe(false);
-        cleanup = cancelProviderLaunch(harness.deps, fixture.thread.id);
-        expect(
-          claimEnvironmentLaunchPath(harness.db, second, "/tmp/project"),
-        ).toBe(false);
+        expect(claimEnvironmentPath(harness.db, second, "/tmp/project")).toBe(
+          false,
+        );
+        cleanup = cancelProviderEnvironmentCreation(
+          harness.deps,
+          fixture.thread.id,
+        );
+        expect(claimEnvironmentPath(harness.db, second, "/tmp/project")).toBe(
+          false,
+        );
       } finally {
         release();
         await cleanup;
       }
-      expect(
-        claimEnvironmentLaunchPath(harness.db, second, "/tmp/project"),
-      ).toBe(true);
+      expect(claimEnvironmentPath(harness.db, second, "/tmp/project")).toBe(
+        true,
+      );
     }));
 
   it("normalizes trailing slashes on claimed paths", async () =>
@@ -577,17 +583,20 @@ describe("core environment orchestration", () => {
       });
       fixture.ask();
       await fixture.settled();
-      const second = {
+      const competitor = seedThread(harness.deps, {
+        projectId: fixture.context.project.id,
+        status: "starting",
+      });
+      const second = reserveEnvironment(harness.db, {
         ...fixture.row(),
-        threadId: "thr_competing",
-        phase: "creating" as const,
+        provisioningThreadId: competitor.id,
+        provisioningPhase: "creating" as const,
         path: null,
-        claimPath: null,
-      };
-      saveEnvironmentLaunch(harness.db, second);
-      expect(
-        claimEnvironmentLaunchPath(harness.db, second, "/tmp/project"),
-      ).toBe(false);
+        provisioningClaimPath: null,
+      });
+      expect(claimEnvironmentPath(harness.db, second, "/tmp/project")).toBe(
+        false,
+      );
       expect(fixture.row().path).toBe("/tmp/project");
     }));
 
@@ -748,37 +757,35 @@ describe("core environment orchestration", () => {
         inputs: { branch: { kind: "existing", name: "release" } },
       };
       try {
-        askProviderLaunch(harness.deps, record, context, null);
-        askProviderLaunch(
-          harness.deps,
-          record,
-          {
-            ...context,
-            thread: toThreadResponseFromThread(harness.deps, {
-              thread: second,
-            }),
-            inputs: { branch: { kind: "existing", name: "feature" } },
-          },
-          null,
-        );
+        advanceProviderEnvironmentCreation(harness.deps, record, context);
+        advanceProviderEnvironmentCreation(harness.deps, record, {
+          ...context,
+          thread: toThreadResponseFromThread(harness.deps, {
+            thread: second,
+          }),
+          inputs: { branch: { kind: "existing", name: "feature" } },
+        });
         await expect
-          .poll(() => getEnvironmentLaunch(harness.db, second.id)?.phase)
+          .poll(
+            () =>
+              getPreparingEnvironment(harness.db, second.id)?.provisioningPhase,
+          )
           .toBe("failed");
-        expect(getEnvironmentLaunch(harness.db, second.id)?.message).toContain(
-          "another thread is using this workspace",
-        );
+        expect(
+          getPreparingEnvironment(harness.db, second.id)?.provisioningMessage,
+        ).toContain("another thread is using this workspace");
         expect(switched).toEqual(["release"]);
         expect(fixture.row()).toMatchObject({
           hostId: fixture.host.id,
-          path: "/tmp/project",
-          environmentId: null,
-          phase: "creating",
+          provisioningClaimPath: "/tmp/project",
+          provisioningAttached: false,
+          provisioningPhase: "creating",
         });
       } finally {
         release();
         await fixture.settled();
       }
-      expect(fixture.row().phase).toBe("ready");
+      expect(fixture.row().provisioningPhase).toBe("ready");
     }));
 
   it("reuses a same-project worktree before checkout validation", async () =>
@@ -804,7 +811,7 @@ describe("core environment orchestration", () => {
         environmentProvider: {
           environmentProviderId: "git-worktree",
           instanceKey: "worktree",
-          selection: fixture.row().selection,
+          selection: fixture.row().environmentProviderSelection!,
         },
       });
       seedTurnStarted(harness.deps, {
@@ -853,33 +860,27 @@ describe("core environment orchestration", () => {
           projectId: fixture.context.project.id,
           status: "starting",
         });
-        saveEnvironmentLaunch(harness.db, {
+        reserveEnvironment(harness.db, {
           ...fixture.row(),
-          threadId: second.id,
-          pathKey: second.id,
+          provisioningThreadId: second.id,
+          environmentProviderInstanceKey: second.id,
           path: "/tmp/second",
         });
         if (kind === "removal") {
           fixture.attach();
-          const env = createEnvironment(harness.db, harness.hub, {
-            projectId: fixture.context.project.id,
-            hostId: fixture.host.id,
-            path: "/tmp/second",
-            status: "ready",
-            providerOwnsPath: true,
-            environmentProvider: {
-              environmentProviderId: fixture.record.provider.id,
-              instanceKey: second.id,
-              selection: fixture.row().selection,
-            },
-          });
-          attachProviderLaunch(harness.db, second.id, env.id);
+          const env = getPreparingEnvironment(harness.db, second.id)!;
+          harness.db
+            .update(environments)
+            .set({ status: "ready" })
+            .where(eq(environments.id, env.id))
+            .run();
+          markProviderEnvironmentAttached(harness.db, second.id, env.id);
         } else {
           for (const id of [fixture.thread.id, second.id]) {
-            saveEnvironmentLaunch(harness.db, {
-              ...getEnvironmentLaunch(harness.db, id)!,
-              phase: "cancelled",
-              cancelPending: true,
+            updatePreparingEnvironment(harness.db, {
+              ...getPreparingEnvironment(harness.db, id)!,
+              provisioningPhase: "cancelled",
+              retireAt: Date.now(),
             });
           }
         }
@@ -912,7 +913,10 @@ describe("core environment orchestration", () => {
         environment: { path: `/tmp/${fixture.thread.id}` },
       });
       const environmentId = fixture.attach();
-      expect(fixture.row().environmentId).toBe(environmentId);
+      expect(fixture.row()).toMatchObject({
+        id: environmentId,
+        provisioningAttached: true,
+      });
     }));
 
   it("re-runs a persisted creating attempt with the same path key", async () =>
@@ -928,44 +932,42 @@ describe("core environment orchestration", () => {
           };
         },
       });
-      saveEnvironmentLaunch(harness.db, {
-        threadId: fixture.thread.id,
-        providerId: fixture.record.provider.id,
-        providerPluginId: fixture.record.pluginId,
-        pathRejected: false,
-        attempt: 7,
-        phase: "creating",
-        startedAt: Date.now() - 1_000,
-        failedAt: null,
-        failure: null,
-        message: null,
-        transientFailures: 0,
-        pathKey: "durable-path-key",
-        hostId: null,
+      reserveEnvironment(harness.db, {
+        projectId: fixture.context.project.id,
+        provisioningThreadId: fixture.thread.id,
+        environmentProviderId: fixture.record.provider.id,
+        environmentProviderPluginId: fixture.record.pluginId,
+        provisioningPathRejected: false,
+        provisioningAttempt: 7,
+        provisioningPhase: "creating",
+        provisioningFailedAt: null,
+        provisioningFailure: null,
+        provisioningMessage: null,
+        provisioningTransientFailures: 0,
+        environmentProviderInstanceKey: "durable-path-key",
+        hostId: fixture.host.id,
         path: null,
-        claimPath: null,
-        ownsPath: true,
+        provisioningClaimPath: null,
+        providerOwnsPath: true,
         mergeBaseBranch: null,
         resource: null,
-        stepText: "Preparing Test…",
-        pendingLog: "",
-        replacedEnvironmentId: null,
-        environmentId: null,
-        selection: {
+        provisioningStep: "Preparing Test…",
+        provisioningLog: "",
+        provisioningAttached: false,
+        environmentProviderSelection: {
           machine: { type: "existing", hostId: fixture.host.id },
           inputs: null,
         },
-        cancelPending: false,
-        request: null,
+        teardownStatus: null,
       });
 
       expect(fixture.ask().action).toBe("wait");
       await fixture.settled();
       expect(calls).toEqual([{ attempt: 7, pathKey: "durable-path-key" }]);
       expect(fixture.row()).toMatchObject({
-        attempt: 7,
-        pathKey: "durable-path-key",
-        phase: "ready",
+        provisioningAttempt: 7,
+        environmentProviderInstanceKey: "durable-path-key",
+        provisioningPhase: "ready",
       });
     }));
 
@@ -1014,15 +1016,15 @@ describe("core environment orchestration", () => {
       });
       fixture.ask();
       await expect.poll(() => events).toHaveLength(1);
-      await cancelProviderLaunch(harness.deps, fixture.thread.id);
+      await cancelProviderEnvironmentCreation(harness.deps, fixture.thread.id);
       expect(events).toEqual([
         `create:${fixture.thread.id}`,
         "abort",
         `remove:${fixture.thread.id}`,
       ]);
       expect(fixture.row()).toMatchObject({
-        phase: "cancelled",
-        cancelPending: false,
+        provisioningPhase: "cancelled",
+        teardownStatus: "removed",
       });
     }));
 
@@ -1052,7 +1054,7 @@ describe("core environment orchestration", () => {
       });
       fixture.ask();
       await expect.poll(() => events).toEqual(["create"]);
-      const cancellation = cancelProviderLaunch(
+      const cancellation = cancelProviderEnvironmentCreation(
         harness.deps,
         fixture.thread.id,
       );
@@ -1087,7 +1089,7 @@ describe("core environment orchestration", () => {
       fixture.ask();
       await fixture.settled();
       for (let attempt = 1; attempt <= 3; attempt += 1) {
-        const failedAt = fixture.row().failedAt!;
+        const failedAt = fixture.row().provisioningFailedAt!;
         expect(fixture.ask()).toMatchObject({
           action: "wait",
           reason: "offline; cleaning up before retry",
@@ -1095,8 +1097,8 @@ describe("core environment orchestration", () => {
         await expect
           .poll(() => fixture.row())
           .toMatchObject({
-            phase: "cancelled",
-            cancelPending: false,
+            provisioningPhase: "cancelled",
+            teardownStatus: "removed",
           });
         expect(removes).toHaveLength(attempt);
         expect(fixture.ask()).toMatchObject({
@@ -1115,10 +1117,10 @@ describe("core environment orchestration", () => {
       await expect
         .poll(() => fixture.row())
         .toMatchObject({
-          attempt: 4,
-          transientFailures: 4,
-          phase: "cancelled",
-          cancelPending: false,
+          provisioningAttempt: 4,
+          provisioningTransientFailures: 4,
+          provisioningPhase: "cancelled",
+          teardownStatus: "removed",
         });
       const expectedKeys = [1, 2, 3, 4].map(
         (attempt) => `${fixture.thread.id}-${attempt}`,
@@ -1227,37 +1229,42 @@ describe("core environment orchestration", () => {
       const environmentId = fixture.attach();
       const removal = sweepProviderEnvironment(harness.deps, environmentId);
       await expect.poll(() => removes).toBe(1);
-      await expect(
-        resolveProducedEnvironmentPlacement(harness.deps, {
-          environmentProviderId: fixture.record.provider.id,
-          inputs: null,
-          producedEnvironment: {
-            type: "host",
-            hostId: fixture.host.id,
-            path,
-            ownsPath: true,
-          },
-          projectId: fixture.context.project.id,
-        }),
-      ).rejects.toThrow(/not ready|unavailable/iu);
-      release();
-      await removal;
-      await expect(
-        resolveProducedEnvironmentPlacement(harness.deps, {
-          environmentProviderId: fixture.record.provider.id,
-          inputs: null,
-          producedEnvironment: {
-            type: "host",
-            hostId: fixture.host.id,
-            path,
-            ownsPath: true,
-          },
-          projectId: fixture.context.project.id,
-        }),
-      ).resolves.toMatchObject({
-        environmentId: null,
-        environmentIntent: { type: "provider" },
+      const competingThread = seedThread(harness.deps, {
+        projectId: fixture.context.project.id,
+        status: "starting",
       });
+      const context = {
+        ...fixture.context,
+        thread: toThreadResponseFromThread(harness.deps, {
+          thread: competingThread,
+        }),
+      };
+      advanceProviderEnvironmentCreation(harness.deps, fixture.record, context);
+      try {
+        await expect
+          .poll(
+            () =>
+              getPreparingEnvironment(harness.db, competingThread.id)
+                ?.provisioningPhase,
+          )
+          .toBe("failed");
+        expect(
+          getPreparingEnvironment(harness.db, competingThread.id)
+            ?.provisioningMessage,
+        ).toContain("cleanup is still pending");
+      } finally {
+        release();
+        await removal;
+      }
+      await cancelProviderEnvironmentCreation(harness.deps, competingThread.id);
+      advanceProviderEnvironmentCreation(harness.deps, fixture.record, context);
+      await expect
+        .poll(
+          () =>
+            getPreparingEnvironment(harness.db, competingThread.id)
+              ?.provisioningPhase,
+        )
+        .toBe("ready");
     }));
 
   it("records a failed remove and retries after the core retry delay", async () =>
@@ -1455,4 +1462,187 @@ describe("core environment orchestration", () => {
         expect(getProject(harness.db, fixture.context.project.id)).toBeNull();
       }),
   );
+});
+
+it("keeps one environment identity from provider creation through removal", async () => {
+  await withTestHarness(async (harness) => {
+    let release: () => void = () => {};
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const fixture = setup(harness, {
+      policy: { retireGraceMs: 0 },
+      create: async (context) => {
+        await gate;
+        return {
+          status: "created",
+          path: `/tmp/${context.pathKey}`,
+          ownsPath: true,
+          resource: { checkpoint: "allocated" },
+        };
+      },
+    });
+    fixture.ask();
+    const reserved = fixture.row().id;
+    expect(getEnvironment(harness.db, reserved)?.status).toBe("provisioning");
+    release();
+    await fixture.settled();
+    expect(fixture.row().id).toBe(reserved);
+    expect(fixture.attach()).toBe(reserved);
+    expect(
+      harness.db
+        .select()
+        .from(environments)
+        .where(eq(environments.projectId, fixture.context.project.id))
+        .all(),
+    ).toHaveLength(1);
+    await cancelProviderEnvironmentCreation(harness.deps, fixture.thread.id);
+    expect(getEnvironment(harness.db, reserved)?.resource).toEqual({
+      checkpoint: "allocated",
+    });
+    await sweepProviderEnvironment(harness.deps, reserved);
+    expect(getEnvironment(harness.db, reserved)?.status).toBe("destroyed");
+  });
+});
+
+it("shares one removal operation between cancellation and lifecycle sweeps", async () => {
+  await withTestHarness(async (harness) => {
+    let release = () => {};
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const remove = vi.fn(async () => {
+      await gate;
+      return { status: "removed" as const };
+    });
+    const fixture = setup(harness, { remove });
+    fixture.ask();
+    await fixture.settled();
+    const environmentId = fixture.row().id;
+    const cancellation = cancelProviderEnvironmentCreation(
+      harness.deps,
+      fixture.thread.id,
+    );
+    await expect.poll(() => remove.mock.calls.length).toBe(1);
+    const sweep = sweepProviderEnvironment(harness.deps, environmentId);
+    const all = sweepProviderLifecycles(harness.deps);
+    try {
+      expect(fixture.row().teardownStatus).toBe("running");
+      expect(remove).toHaveBeenCalledTimes(1);
+    } finally {
+      release();
+      await Promise.all([cancellation, sweep, all]);
+    }
+    expect(remove).toHaveBeenCalledTimes(1);
+    expect(getEnvironment(harness.db, environmentId)).toMatchObject({
+      status: "destroyed",
+      teardownStatus: "removed",
+    });
+  });
+});
+
+it("retries cancelled cleanup through environment teardown without dropping its checkpoint", async () => {
+  await withTestHarness(async (harness) => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    const attempts: number[] = [];
+    const fixture = setup(harness, {
+      create: async () => ({
+        status: "created",
+        path: "/tmp/cancel-retry",
+        ownsPath: false,
+        resource: { allocation: "retained" },
+      }),
+      remove: async ({ attempt, resource }) => {
+        attempts.push(attempt);
+        expect(resource).toEqual({ allocation: "retained" });
+        return attempts.length === 1
+          ? { status: "failed", message: "temporarily unavailable" }
+          : { status: "removed" };
+      },
+    });
+    fixture.ask();
+    await fixture.settled();
+    await expect(
+      cancelProviderEnvironmentCreation(harness.deps, fixture.thread.id),
+    ).rejects.toThrow("temporarily unavailable");
+    const failed = fixture.row();
+    expect(failed).toMatchObject({
+      provisioningPhase: "cancelled",
+      teardownStatus: "failed",
+      provisioningClaimPath: "/tmp/cancel-retry",
+      resource: { allocation: "retained" },
+    });
+    await sweepProviderLifecycles(harness.deps);
+    expect(attempts).toEqual([1]);
+    vi.setSystemTime(failed.retireAt!);
+    await sweepProviderLifecycles(harness.deps);
+    expect(attempts).toEqual([1, 2]);
+    expect(fixture.row()).toMatchObject({
+      id: failed.id,
+      status: "destroyed",
+      teardownStatus: "removed",
+      provisioningClaimPath: null,
+      resource: null,
+    });
+  });
+});
+
+it("prepares a previously removed path without inheriting completed teardown", async () => {
+  await withTestHarness(async (harness) => {
+    const remove = vi.fn(async () => ({ status: "removed" as const }));
+    const fixture = setup(harness, { remove });
+    fixture.ask();
+    await fixture.settled();
+    const environmentId = fixture.row().id;
+    await cancelProviderEnvironmentCreation(harness.deps, fixture.thread.id);
+    fixture.ask();
+    await fixture.settled();
+    expect(fixture.row()).toMatchObject({
+      provisioningAttempt: 2,
+      provisioningPhase: "ready",
+      status: "provisioning",
+      teardownStatus: null,
+    });
+    await cancelProviderEnvironmentCreation(harness.deps, fixture.thread.id);
+    expect(remove).toHaveBeenCalledTimes(2);
+    expect(getEnvironment(harness.db, environmentId)?.teardownStatus).toBe(
+      "removed",
+    );
+    expect(fixture.row().teardownStatus).toBe("removed");
+  });
+});
+
+it("keeps reserved environments provisioning while a provider creates their workspace", async () => {
+  await withTestHarness(async (harness) => {
+    let release = () => {};
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const fixture = setup(harness, {
+      create: async () => {
+        await gate;
+        return {
+          status: "created",
+          path: "/tmp/swept-workspace",
+          ownsPath: true,
+        };
+      },
+    });
+    fixture.ask();
+    try {
+      await runEnvironmentProvisioningSweep(harness.deps);
+      expect(fixture.row()).toMatchObject({
+        status: "provisioning",
+        provisioningPhase: "creating",
+      });
+    } finally {
+      release();
+      await fixture.settled();
+    }
+    await runEnvironmentProvisioningSweep(harness.deps);
+    expect(fixture.row()).toMatchObject({
+      status: "provisioning",
+      provisioningPhase: "ready",
+    });
+  });
 });

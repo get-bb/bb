@@ -1,7 +1,6 @@
 import {
-  askProviderLaunch,
-  cancelProviderLaunch,
-  persistPendingProviderRequest,
+  advanceProviderEnvironmentCreation,
+  cancelProviderEnvironmentCreation,
 } from "../environments/provider-orchestration.js";
 import {
   getAppSettings,
@@ -9,7 +8,6 @@ import {
   getProjectSourceByHost,
   getThread,
   recordEnvironmentCurrentBranch,
-  recordEnvironmentProviderProvenance,
 } from "@bb/db";
 import {
   isLocalPathProjectSource,
@@ -31,15 +29,12 @@ import { buildSuggestedBranchName } from "./thread-create-helpers.js";
 import { appendThreadProvisioningEvent } from "./thread-events.js";
 import { COMMAND_TIMEOUT_MS } from "../../constants.js";
 import { callHostRetryableOnlineRpc } from "../hosts/online-rpc.js";
+import { completeProviderSelection } from "./thread-environment-placement.js";
 import {
-  completeProviderSelection,
-  resolveProducedEnvironmentPlacement,
-} from "./thread-environment-placement.js";
-import {
-  forgetActiveThreadProvisionContext,
-  listActiveThreadProviderAsks,
-  rememberActiveThreadProvisionContext,
-} from "./thread-provisioning-active-context.js";
+  clearThreadProvisionSchedule,
+  listThreadProvisionSchedules,
+  saveThreadProvisionContext,
+} from "./thread-startup-store.js";
 import {
   resolveProviderPendingContext,
   type ThreadProvisionEnvironmentPendingContext,
@@ -61,20 +56,20 @@ const MAX_TIMER_DELAY_MS = 2_147_483_647;
 
 function reaskLater(
   deps: ThreadProvisioningDeps,
-  ask: ThreadProvisionProviderAsk,
+  runtime: ThreadProvisionProviderAsk["runtime"],
   threadId: string,
   at: number,
 ): NodeJS.Timeout {
   const timer = setTimeout(
     () => {
-      if (ask.nextAskTimer !== timer) {
+      if (runtime.nextAskTimer !== timer) {
         return;
       }
       if (Date.now() < at) {
-        ask.nextAskTimer = reaskLater(deps, ask, threadId, at);
+        runtime.nextAskTimer = reaskLater(deps, runtime, threadId, at);
         return;
       }
-      ask.nextAskTimer = null;
+      runtime.nextAskTimer = null;
       void advanceThreadProvisioning(deps, { threadId })
         .catch((error) => {
           deps.logger.warn(
@@ -83,15 +78,20 @@ function reaskLater(
           );
         })
         .finally(() => {
-          const askIsActive = listActiveThreadProviderAsks().some(
-            (entry) => entry.threadId === threadId && entry.ask === ask,
+          const askIsActive = listThreadProvisionSchedules().some(
+            (entry) => entry.threadId === threadId && entry.runtime === runtime,
           );
           if (
             askIsActive &&
-            ask.recheckRequested &&
-            ask.nextAskTimer === null
+            runtime.recheckRequested &&
+            runtime.nextAskTimer === null
           ) {
-            ask.nextAskTimer = reaskLater(deps, ask, threadId, Date.now());
+            runtime.nextAskTimer = reaskLater(
+              deps,
+              runtime,
+              threadId,
+              Date.now(),
+            );
           }
         });
     },
@@ -101,7 +101,7 @@ function reaskLater(
   return timer;
 }
 
-export function recheckEnvironmentProviderLaunches(
+export function recheckEnvironmentProviderCreations(
   deps: ThreadProvisioningDeps,
   pluginId: string,
 ): void {
@@ -110,39 +110,43 @@ export function recheckEnvironmentProviderLaunches(
       .filter((record) => record.pluginId === pluginId)
       .map((record) => record.provider.id),
   );
-  for (const { ask, threadId } of listActiveThreadProviderAsks()) {
-    if (!owned.has(ask.environmentProviderId)) {
+  for (const {
+    runtime,
+    environmentProviderId,
+    threadId,
+  } of listThreadProvisionSchedules()) {
+    if (!owned.has(environmentProviderId)) {
       continue;
     }
-    if (ask.nextAskTimer !== null) {
-      clearTimeout(ask.nextAskTimer);
+    if (runtime.nextAskTimer !== null) {
+      clearTimeout(runtime.nextAskTimer);
     }
-    ask.recheckRequested = true;
-    ask.nextAskTimer = reaskLater(deps, ask, threadId, Date.now());
+    runtime.recheckRequested = true;
+    runtime.nextAskTimer = reaskLater(deps, runtime, threadId, Date.now());
   }
 }
 
-export function recheckEnvironmentLaunch(
+export function recheckEnvironmentProvisioning(
   deps: ThreadProvisioningDeps,
   targetThreadId: string,
 ): void {
-  const entry = listActiveThreadProviderAsks().find(
+  const entry = listThreadProvisionSchedules().find(
     ({ threadId }) => threadId === targetThreadId,
   );
-  if (entry === undefined || entry.ask.recheckRequested) return;
-  const { ask, threadId } = entry;
-  if (ask.nextAskTimer !== null) clearTimeout(ask.nextAskTimer);
-  ask.recheckRequested = true;
-  ask.nextAskTimer = reaskLater(deps, ask, threadId, Date.now());
+  if (entry === undefined || entry.runtime.recheckRequested) return;
+  const { runtime, threadId } = entry;
+  if (runtime.nextAskTimer !== null) clearTimeout(runtime.nextAskTimer);
+  runtime.recheckRequested = true;
+  runtime.nextAskTimer = reaskLater(deps, runtime, threadId, Date.now());
 }
 
 export function scheduledEnvironmentProviderAskCount(): number {
-  return listActiveThreadProviderAsks().filter(
-    ({ ask }) => ask.nextAskTimer !== null,
+  return listThreadProvisionSchedules().filter(
+    ({ runtime }) => runtime.nextAskTimer !== null,
   ).length;
 }
 
-interface CancelEnvironmentProviderLaunchArgs {
+interface CancelEnvironmentProviderCreationArgs {
   environmentProviderId: string;
   threadId: string;
 }
@@ -182,21 +186,21 @@ async function refreshAttachedEnvironmentBranch(
   }
 }
 
-export function cancelAbandonedProviderLaunches(
+export function cancelAbandonedProviderCreations(
   deps: ThreadProvisioningDeps,
   threadId: string,
 ): void {
-  void cancelProviderLaunch(deps, threadId).catch((error) =>
+  void cancelProviderEnvironmentCreation(deps, threadId).catch((error) =>
     deps.logger.warn({ threadId, error }, "Environment cancellation failed"),
   );
 }
 
-export function cancelEnvironmentProviderLaunch(
+export function cancelEnvironmentProviderCreation(
   deps: ThreadProvisioningDeps,
-  args: CancelEnvironmentProviderLaunchArgs,
+  args: CancelEnvironmentProviderCreationArgs,
 ): void {
-  forgetActiveThreadProvisionContext(args.threadId);
-  void cancelProviderLaunch(deps, args.threadId).catch((error) => {
+  clearThreadProvisionSchedule(args.threadId);
+  void cancelProviderEnvironmentCreation(deps, args.threadId).catch((error) => {
     deps.logger.warn(
       { threadId: args.threadId, error },
       "Environment provider cancel failed",
@@ -218,14 +222,16 @@ function providerFailure(
   );
 }
 
-interface LaunchEntriesArgs {
+interface ProvisioningEntriesArgs {
   ask: ThreadProvisionProviderAsk;
   log: string | undefined;
   now: number;
   step: { text: string; status: "started" | "completed" } | null;
 }
 
-function launchEntries(args: LaunchEntriesArgs): ProvisioningTranscriptEntry[] {
+function provisioningEntries(
+  args: ProvisioningEntriesArgs,
+): ProvisioningTranscriptEntry[] {
   const entries: ProvisioningTranscriptEntry[] = [];
   const { ask } = args;
   if (args.step !== null && ask.lastStep?.text !== args.step.text) {
@@ -284,7 +290,7 @@ interface RecordWaitArgs {
 
 function recordWait(deps: ThreadProvisioningDeps, args: RecordWaitArgs): void {
   const ask = args.context.state.providerAsk;
-  const entries = launchEntries({
+  const entries = provisioningEntries({
     ask,
     log: args.log,
     now: Date.now(),
@@ -299,14 +305,25 @@ function recordWait(deps: ThreadProvisioningDeps, args: RecordWaitArgs): void {
       entries,
     });
   }
-  if (ask.nextAskTimer !== null) {
-    clearTimeout(ask.nextAskTimer);
+  if (ask.runtime.nextAskTimer !== null) {
+    clearTimeout(ask.runtime.nextAskTimer);
   }
-  const reaskAt = ask.recheckRequested
+  const reaskAt = ask.runtime.recheckRequested
     ? Date.now()
     : (args.sendAt ?? Date.now() + PROVIDER_REASK_FALLBACK_MS);
-  ask.recheckRequested = false;
-  ask.nextAskTimer = reaskLater(deps, ask, args.thread.id, reaskAt);
+  ask.runtime.recheckRequested = false;
+  ask.runtime.nextAskTimer = reaskLater(
+    deps,
+    ask.runtime,
+    args.thread.id,
+    reaskAt,
+  );
+  saveThreadProvisionContext({
+    db: deps.db,
+    replace: false,
+    threadId: args.thread.id,
+    context: args.context,
+  });
 }
 
 interface ResolveEnvironmentProviderArgs {
@@ -329,10 +346,9 @@ export async function resolveEnvironmentProvider(
   }
 
   const ask = context.state.providerAsk;
-  ask.recheckRequested = false;
+  ask.runtime.recheckRequested = false;
   const record = getEnvironmentProvider(intent.environmentProviderId);
   if (record === undefined) {
-    persistPendingProviderRequest(deps.db, args.thread.id, context.request);
     recordWait(deps, {
       context,
       log: undefined,
@@ -410,14 +426,13 @@ export async function resolveEnvironmentProvider(
     }),
     environment: threadProvisionContextEnvironment(deps, thread.environmentId),
   };
-  const decision = askProviderLaunch(
+  const decision = advanceProviderEnvironmentCreation(
     deps,
     record,
     provisionContext,
-    context.request,
   );
   if (decision.action === "reject") {
-    const entries = launchEntries({
+    const entries = provisioningEntries({
       ask,
       log: decision.log,
       now: Date.now(),
@@ -445,11 +460,11 @@ export async function resolveEnvironmentProvider(
     });
     return { kind: "waiting" };
   }
-  if (ask.nextAskTimer !== null) {
-    clearTimeout(ask.nextAskTimer);
-    ask.nextAskTimer = null;
+  if (ask.runtime.nextAskTimer !== null) {
+    clearTimeout(ask.runtime.nextAskTimer);
+    ask.runtime.nextAskTimer = null;
   }
-  const entries = launchEntries({
+  const entries = provisioningEntries({
     ask,
     log: decision.log,
     now: Date.now(),
@@ -467,49 +482,39 @@ export async function resolveEnvironmentProvider(
       entries,
     });
   }
-  const placement = await resolveProducedEnvironmentPlacement(deps, {
-    environmentProviderId: intent.environmentProviderId,
-    inputs: selection.inputs,
-    producedEnvironment: decision.environment,
-    projectId: thread.projectId,
-  });
-  if (placement.environmentIntent.type === "reuse") {
-    recordEnvironmentProviderProvenance(
-      deps.db,
-      deps.hub,
-      placement.environmentIntent.environmentId,
-      {
-        environmentProviderId: intent.environmentProviderId,
-        instanceKey: decision.instanceKey ?? null,
-        selection: {
-          machine: selection.machine,
-          inputs: selection.inputs,
-        },
-      },
-    );
-  }
-  if (
-    placement.environmentIntent.type === "reuse" &&
-    decision.environment.type === "host"
-  ) {
+  const environment = decision.environment;
+  if (environment.path === null)
+    throw new Error("Prepared environment has no path");
+  const environmentIntent =
+    environment.status === "ready"
+      ? { type: "reuse" as const, environmentId: environment.id }
+      : {
+          ...intent,
+          produced: {
+            hostId: environment.hostId,
+            path: environment.path,
+            ownsPath: environment.providerOwnsPath,
+            mergeBaseBranch: environment.mergeBaseBranch,
+          },
+        };
+  if (environmentIntent.type === "reuse") {
     await refreshAttachedEnvironmentBranch(deps, {
-      environmentId: placement.environmentIntent.environmentId,
-      hostId: decision.environment.hostId,
-      path: decision.environment.path,
+      environmentId: environment.id,
+      hostId: environment.hostId,
+      path: environment.path,
     });
   }
   const resolved = resolveProviderPendingContext(context, {
-    environmentIntent: placement.environmentIntent,
+    environmentIntent,
     producedBy: {
       environmentProviderId: intent.environmentProviderId,
-      instanceKey: decision.instanceKey ?? null,
-      selection: {
-        machine: selection.machine,
-        inputs: selection.inputs,
-      },
+      instanceKey: environment.environmentProviderInstanceKey,
+      selection,
     },
   });
-  rememberActiveThreadProvisionContext({
+  saveThreadProvisionContext({
+    replace: false,
+    db: deps.db,
     threadId: thread.id,
     context: resolved,
   });

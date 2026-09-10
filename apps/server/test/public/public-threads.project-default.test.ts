@@ -6,7 +6,7 @@ import {
 } from "@bb/domain";
 import { describe, expect, it, vi } from "vitest";
 import { resolveProjectDefaultThreadEnvironment } from "../../src/services/threads/thread-default-policy.js";
-import { getActiveThreadProvisionContext } from "../../src/services/threads/thread-provisioning-active-context.js";
+import { getThreadProvisionContext } from "../../src/services/threads/thread-startup-store.js";
 import type { ThreadProvisionEnvironmentIntent } from "../../src/services/threads/thread-provisioning-context.js";
 import { registerHostRpcResponder } from "../helpers/host-rpc.js";
 import { readJson } from "../helpers/json.js";
@@ -59,7 +59,7 @@ async function createAndCaptureIntent(
   });
   expect(response.status).toBe(201);
   const thread = threadSchema.parse(await readJson(response));
-  const intent = getActiveThreadProvisionContext(thread.id)?.request
+  const intent = getThreadProvisionContext(harness.db, thread.id)?.request
     .environmentIntent;
   if (intent === undefined) {
     throw new Error("Expected an active provisioning context");
@@ -213,7 +213,7 @@ describe("project-default thread environment", () => {
         expect(getThread(harness.db, thread.id)?.originPluginId).toBe("tasks");
         await vi.waitFor(() =>
           expect(
-            getActiveThreadProvisionContext(thread.id)?.request
+            getThreadProvisionContext(harness.db, thread.id)?.request
               .environmentIntent,
           ).toEqual({
             type: "provider",

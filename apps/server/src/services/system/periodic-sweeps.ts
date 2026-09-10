@@ -1,5 +1,5 @@
 import { sweepProviderLifecycles } from "../environments/provider-orchestration.js";
-import { and, eq, isNull } from "drizzle-orm";
+import { and, eq, isNull, or } from "drizzle-orm";
 import {
   CLOSED_SESSION_ROW_RETENTION_MS,
   compactDatabase,
@@ -288,7 +288,15 @@ export async function runEnvironmentProvisioningSweep(
   const provisioningEnvironments = deps.db
     .select({ id: environments.id })
     .from(environments)
-    .where(eq(environments.status, "provisioning"))
+    .where(
+      and(
+        eq(environments.status, "provisioning"),
+        or(
+          isNull(environments.provisioningPhase),
+          eq(environments.provisioningAttached, true),
+        ),
+      ),
+    )
     .all();
 
   for (const environment of provisioningEnvironments) {

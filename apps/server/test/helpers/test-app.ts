@@ -1,6 +1,6 @@
 import { installDefaultEnvironmentProviders } from "./environment-provider.js";
 import { setPluginEnvironmentProviderBridge } from "../../src/services/plugins/plugin-environment-provider-registry.js";
-import { forgetAllActiveThreadProvisionContexts } from "../../src/services/threads/thread-provisioning-active-context.js";
+import { clearAllThreadProvisionSchedules } from "../../src/services/threads/thread-startup-store.js";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -283,7 +283,7 @@ export async function createTestAppHarness(
     pluginService,
     pluginCatalogService,
     async cleanup(): Promise<void> {
-      forgetAllActiveThreadProvisionContexts();
+      clearAllThreadProvisionSchedules();
       setPluginEnvironmentProviderBridge(undefined);
       await pluginService.stop();
       await rm(dataDir, { recursive: true, force: true });

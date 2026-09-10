@@ -1,4 +1,4 @@
-import { findEnvironmentLaunchPathClaim, getEnvironmentLaunch } from "@bb/db";
+import { findEnvironmentPathClaim, getPreparingEnvironment } from "@bb/db";
 import type { WorkSessionDeps } from "../../types.js";
 import { ApiError } from "../../errors.js";
 
@@ -12,19 +12,16 @@ export async function withEnvironmentPathAdmission<T>(
 ): Promise<T> {
   if (
     args.path !== null &&
-    findEnvironmentLaunchPathClaim(deps.db, args.hostId, null, null) !== null
+    findEnvironmentPathClaim(deps.db, args.hostId, null, null) !== null
   ) {
     const path = args.path.replace(/\/+$/u, "") || "/";
-    const launch =
+    const provisioning =
       args.threadId === null
         ? null
-        : getEnvironmentLaunch(deps.db, args.threadId);
-    const owner =
-      launch === null
-        ? null
-        : { threadId: launch.threadId, attempt: launch.attempt };
+        : getPreparingEnvironment(deps.db, args.threadId);
     if (
-      findEnvironmentLaunchPathClaim(deps.db, args.hostId, path, owner) !== null
+      findEnvironmentPathClaim(deps.db, args.hostId, path, provisioning) !==
+      null
     )
       throw new ApiError(409, "workspace_busy", CHECKOUT_BUSY_MESSAGE);
   }

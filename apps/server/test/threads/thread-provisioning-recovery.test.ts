@@ -1,3 +1,4 @@
+import { runEnvironmentProvisioningSweep } from "../../src/services/system/periodic-sweeps.js";
 import { eq } from "drizzle-orm";
 import { environments, getEnvironment, getThread, listEvents } from "@bb/db";
 import {
@@ -11,14 +12,23 @@ import {
   appendThreadProvisioningEvent,
   buildCwdBranchEntries,
 } from "../../src/services/threads/thread-events.js";
-import { rememberActiveThreadProvisionContext } from "../../src/services/threads/thread-provisioning-active-context.js";
+import {
+  saveThreadProvisionContext,
+  clearThreadProvisionSchedule,
+  readThreadProvisionContext,
+  getThreadProvisionContext,
+} from "../../src/services/threads/thread-startup-store.js";
 import {
   createEnvironmentAttachedContext,
+  createEnvironmentProvisioningContext,
   createEnvironmentPendingContext,
   createMetadataPendingContext,
   createWorkspaceReadyContext,
 } from "../../src/services/threads/thread-provisioning-context.js";
-import { advanceThreadProvisioning } from "../../src/services/threads/thread-provisioning.js";
+import {
+  advanceThreadProvisioning,
+  requestThreadProvision,
+} from "../../src/services/threads/thread-provisioning.js";
 import {
   listQueuedThreadCommands,
   reportNextEnvironmentAttachSuccess,
@@ -143,7 +153,9 @@ describe("thread provisioning recovery", () => {
           }),
         },
       );
-      rememberActiveThreadProvisionContext({
+      saveThreadProvisionContext({
+        replace: false,
+        db: harness.db,
         threadId: thread.id,
         context: createWorkspaceReadyContext(attachedContext, {
           workspaceReadyEventSequence,
@@ -267,7 +279,9 @@ describe("thread provisioning recovery", () => {
           }),
         },
       );
-      rememberActiveThreadProvisionContext({
+      saveThreadProvisionContext({
+        replace: false,
+        db: harness.db,
         threadId: thread.id,
         context: createWorkspaceReadyContext(attachedContext, {
           workspaceReadyEventSequence,
@@ -488,5 +502,150 @@ describe("thread provisioning recovery", () => {
         }
       }
     });
+  });
+});
+
+it.each(["metadata", "workspace"])(
+  "recovers %s preparation from the thread after losing process state",
+  async (stage) => {
+    await withTestHarness(async (harness) => {
+      const { host } = seedHostSession(harness.deps, {
+        id: "host-durable-start",
+      });
+      const { project } = seedProjectWithSource(harness.deps, {
+        hostId: host.id,
+      });
+      const environment = seedEnvironment(harness.deps, {
+        hostId: host.id,
+        projectId: project.id,
+        path: "/tmp/durable-start",
+        status: stage === "workspace" ? "provisioning" : "ready",
+      });
+      const thread = seedThread(harness.deps, {
+        projectId: project.id,
+        environmentId: environment.id,
+        status: "starting",
+      });
+      const requested = requestThreadProvision(harness.deps, {
+        thread,
+        environmentIntent: { type: "reuse", environmentId: environment.id },
+        execution: THREAD_START_EXECUTION,
+        fork: null,
+        input: textInput("preserve this first message"),
+        startedOnBehalfOf: null,
+        titleProvided: true,
+      });
+      if (stage === "workspace") {
+        const sequence = appendThreadProvisioningEvent(harness.deps, {
+          threadId: thread.id,
+          environmentId: environment.id,
+          provisioningId: requested.state.provisioningId,
+          status: "active",
+          entries: [],
+        });
+        saveThreadProvisionContext({
+          db: harness.db,
+          replace: false,
+          threadId: thread.id,
+          context: createEnvironmentProvisioningContext(
+            createEnvironmentAttachedContext(
+              createEnvironmentPendingContext(requested),
+              { attachedEnvironmentId: environment.id },
+            ),
+            { provisionEventSequence: sequence },
+          ),
+        });
+      }
+      clearThreadProvisionSchedule(thread.id);
+      expect(
+        readThreadProvisionContext(harness.db, thread.id)?.state.provisioningId,
+      ).toBe(requested.state.provisioningId);
+      const advance =
+        stage === "workspace"
+          ? runEnvironmentProvisioningSweep(harness.deps)
+          : advanceThreadProvisioning(harness.deps, { threadId: thread.id });
+      if (stage === "workspace") {
+        await waitForQueuedCommand(
+          harness,
+          ({ command }) =>
+            command.type === "environment.attach" &&
+            command.environmentId === environment.id,
+        );
+        await reportNextEnvironmentAttachSuccess(harness, thread.id);
+      }
+      const command = await waitForQueuedCommand(
+        harness,
+        ({ command }) =>
+          command.type === "thread.start" && command.threadId === thread.id,
+      );
+      expect(command.command).toMatchObject({
+        input: textInput("preserve this first message"),
+      });
+      clearThreadProvisionSchedule(thread.id);
+      expect(readThreadProvisionContext(harness.db, thread.id)).toBeNull();
+      await advanceThreadProvisioning(harness.deps, { threadId: thread.id });
+      expect(
+        listQueuedThreadCommands(harness, "thread.start", thread.id),
+      ).toHaveLength(1);
+      expect(getThread(harness.db, thread.id)?.environmentId).toBe(
+        environment.id,
+      );
+      await reportQueuedCommandError(harness, command, {
+        errorCode: "test_cleanup",
+        errorMessage: "test cleanup",
+      });
+      await advance;
+    });
+  },
+);
+
+it("rejects an older startup checkpoint after a new attempt has been persisted", async () => {
+  await withTestHarness(async (harness) => {
+    const { host } = seedHostSession(harness.deps, { id: "host-startup-cas" });
+    const { project } = seedProjectWithSource(harness.deps, {
+      hostId: host.id,
+    });
+    const environment = seedEnvironment(harness.deps, {
+      hostId: host.id,
+      projectId: project.id,
+      path: "/tmp/startup-cas",
+      status: "ready",
+    });
+    const thread = seedThread(harness.deps, {
+      projectId: project.id,
+      status: "starting",
+    });
+    const args = {
+      thread,
+      environmentIntent: {
+        type: "reuse" as const,
+        environmentId: environment.id,
+      },
+      execution: THREAD_START_EXECUTION,
+      fork: null,
+      startedOnBehalfOf: null,
+      titleProvided: true,
+    };
+    const first = requestThreadProvision(harness.deps, {
+      ...args,
+      input: textInput("first"),
+    });
+    const second = requestThreadProvision(harness.deps, {
+      ...args,
+      input: textInput("second"),
+    });
+    saveThreadProvisionContext({
+      db: harness.db,
+      replace: false,
+      threadId: thread.id,
+      context: first,
+    });
+    expect(
+      getThreadProvisionContext(harness.db, thread.id)?.state.provisioningId,
+    ).toBe(second.state.provisioningId);
+    clearThreadProvisionSchedule(thread.id);
+    expect(
+      readThreadProvisionContext(harness.db, thread.id)?.request.input,
+    ).toEqual(textInput("second"));
   });
 });

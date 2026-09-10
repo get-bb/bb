@@ -1,3 +1,5 @@
+import { buildEnvironmentProvisionCommand } from "../threads/thread-create-helpers.js";
+import { ENVIRONMENT_HOOK_TIMEOUT_MS } from "./environment-hooks.js";
 import { and, desc, eq, isNull } from "drizzle-orm";
 import {
   events,
@@ -37,9 +39,9 @@ import {
 import { applyLoggedThreadLifecycleEventInTransaction } from "../threads/lifecycle-outcome.js";
 import { applyLoggedEnvironmentLifecycleEventInTransaction } from "./lifecycle-outcome.js";
 import {
-  forgetActiveThreadProvisionContext,
-  getActiveThreadProvisionContext,
-} from "../threads/thread-provisioning-active-context.js";
+  clearThreadProvisionSchedule,
+  getThreadProvisionContext,
+} from "../threads/thread-startup-store.js";
 import { advanceThreadProvisioning } from "../threads/thread-provisioning.js";
 import { ensureWorkspaceReadyEventInTransaction } from "../threads/thread-provisioning-environment.js";
 import {
@@ -180,10 +182,11 @@ function listStopRequestedEnvironmentProvisionThreads(
 }
 
 function resolveLiveThreadProvisioningId(
+  deps: EnvironmentProvisionReadDeps,
   thread: LiveEnvironmentThread,
   fallbackProvisioningId: string,
 ): string {
-  const context = getActiveThreadProvisionContext(thread.id);
+  const context = getThreadProvisionContext(deps.db, thread.id);
   if (context?.state.environmentId === thread.environmentId) {
     return context.state.provisioningId;
   }
@@ -199,6 +202,7 @@ function appendThreadProvisioningEventToEnvironmentThreadsInTransaction(
 
   for (const thread of liveThreads) {
     const provisioningId = resolveLiveThreadProvisioningId(
+      deps,
       thread,
       args.fallbackProvisioningId,
     );
@@ -222,9 +226,10 @@ function hasLiveEnvironmentProvisionInFlight(environmentId: string): boolean {
 }
 
 function hasActiveThreadProvisioningContext(
+  deps: EnvironmentProvisionReadDeps,
   thread: LiveEnvironmentThread,
 ): boolean {
-  const context = getActiveThreadProvisionContext(thread.id);
+  const context = getThreadProvisionContext(deps.db, thread.id);
   return context?.state.environmentId === thread.environmentId;
 }
 
@@ -411,7 +416,7 @@ function recordEnvironmentProvisioningFailureInTransaction(
   });
 
   for (const thread of failureThreads) {
-    forgetActiveThreadProvisionContext(thread.id);
+    clearThreadProvisionSchedule(thread.id);
     appendSystemErrorEventInTransaction(deps, {
       threadId: thread.id,
       environmentId: environment.id,
@@ -536,7 +541,7 @@ function settleEnvironmentProvisionOutcome(
           ? []
           : cwdBranchEntries;
 
-      if (!hasActiveThreadProvisioningContext(thread)) {
+      if (!hasActiveThreadProvisioningContext(args.deps, thread)) {
         appendThreadProvisioningEventInTransaction(args.deps.db, {
           threadId: thread.id,
           environmentId: args.command.environmentId,
@@ -749,6 +754,44 @@ function startTrackedEnvironmentProvisionCommand(
     });
 }
 
+function recoverEnvironmentProvisionRequest(
+  deps: CommandResultSideEffectsDeps,
+  environment: EnvironmentRow,
+): EnvironmentProvisionRequest | null {
+  if (environment.path === null) return null;
+  const owners = deps.db
+    .select({ id: threads.id })
+    .from(threads)
+    .where(
+      and(
+        eq(threads.environmentId, environment.id),
+        eq(threads.status, "starting"),
+        isNull(threads.archivedAt),
+        isNull(threads.deletedAt),
+      ),
+    )
+    .all();
+  for (const owner of owners) {
+    const context = getThreadProvisionContext(deps.db, owner.id);
+    if (context?.state.environmentId !== environment.id) continue;
+    return {
+      command: buildEnvironmentProvisionCommand({
+        environmentId: environment.id,
+        hostId: environment.hostId,
+        initiator: {
+          threadId: owner.id,
+          provisioningId: context.state.provisioningId,
+        },
+        path: environment.path,
+        setupScriptTimeoutMs: environment.providerOwnsPath
+          ? ENVIRONMENT_HOOK_TIMEOUT_MS
+          : null,
+      }),
+    };
+  }
+  return null;
+}
+
 export async function advanceEnvironmentProvisioning(
   deps: CommandResultSideEffectsDeps,
   args: AdvanceEnvironmentProvisioningArgs,
@@ -761,10 +804,15 @@ export async function advanceEnvironmentProvisioning(
   if (!environment || environment.status === "destroyed") {
     return;
   }
-  if (!args.request) {
-    if (hasLiveEnvironmentProvisionInFlight(environment.id)) {
-      return;
-    }
+  if (
+    environment.provisioningPhase !== null &&
+    !environment.provisioningAttached
+  )
+    return;
+  if (hasLiveEnvironmentProvisionInFlight(environment.id)) return;
+  const request =
+    args.request ?? recoverEnvironmentProvisionRequest(deps, environment);
+  if (request === null) {
     interruptUnrecoverableEnvironmentProvisioning(deps, {
       environmentId: environment.id,
       reason:
@@ -774,6 +822,6 @@ export async function advanceEnvironmentProvisioning(
   }
   startTrackedEnvironmentProvisionCommand(deps, {
     environment,
-    request: args.request,
+    request,
   });
 }

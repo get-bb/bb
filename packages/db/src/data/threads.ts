@@ -1842,31 +1842,20 @@ export function setThreadExecutionOverride(
   return updated ?? null;
 }
 
-export interface SetThreadPendingStartContextInput {
+export interface SetThreadStartupContextInput {
   threadId: string;
-  /** JSON-encoded context, or null to clear it as the thread leaves `pending`. */
-  pendingStartContext: string | null;
+    startupContext: string | null;
 }
 
-/**
- * Records (or clears) how a `pending` thread will be established.
- *
- * Deliberately not folded into the lifecycle transition that leaves `pending`:
- * creation writes the context unconditionally BEFORE the first dispatch
- * attempt — an attempt that queues is not a transition at all — and clearing
- * it is a separate fact from the status change: a thread that fails to start
- * still wants its status moved without losing the context a later attempt
- * would start from.
- */
-export function setThreadPendingStartContext(
+export function setThreadStartupContext(
   db: ThreadWriteConnection,
-  input: SetThreadPendingStartContextInput,
+  input: SetThreadStartupContextInput,
 ) {
   return (
     db
       .update(threads)
       .set({
-        pendingStartContext: input.pendingStartContext,
+        startupContext: input.startupContext,
         updatedAt: Date.now(),
       })
       .where(eq(threads.id, input.threadId))
@@ -1875,17 +1864,16 @@ export function setThreadPendingStartContext(
   );
 }
 
-/** The stored JSON; null once the thread was admitted, or never was pending. */
-export function getThreadPendingStartContext(
+export function getThreadStartupContext(
   db: DbQueryConnection,
   threadId: string,
 ): string | null {
   return (
     db
-      .select({ pendingStartContext: threads.pendingStartContext })
+      .select({ startupContext: threads.startupContext })
       .from(threads)
       .where(eq(threads.id, threadId))
-      .get()?.pendingStartContext ?? null
+      .get()?.startupContext ?? null
   );
 }
 
@@ -2085,6 +2073,7 @@ export function applyThreadLifecycleEventInTransaction(
     status: evaluation.to,
     updatedAt: now,
   };
+  if (evaluation.to === "active" || evaluation.to === "idle") set.startupContext = null;
   if (
     statusTransitionNeedsAttention({
       currentStatus: thread.status,

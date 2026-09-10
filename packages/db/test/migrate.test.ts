@@ -727,7 +727,34 @@ function dropMarketplaceStatsColumn(db: DbConnection): void {
  * nothing here. Every rewind that clears 0110's journal row also clears
  * 0108's, so the replay recreates the table before 0110 drops it again.
  */
+function rewindEnvironmentProvisioningMigration(db: DbConnection): void {
+  const columns = db.$client
+    .prepare<[], TableInfoRow>("PRAGMA table_info(environments)")
+    .all();
+  for (const name of [
+    "environments_provisioning_thread_idx",
+    "environments_provisioning_phase_idx",
+    "environments_provisioning_claim_idx",
+  ])
+    db.$client.exec(`DROP INDEX IF EXISTS ${name}`);
+  for (const column of columns) {
+    if (
+      column.name.startsWith("provisioning_") ||
+      column.name === "replaced_environment_id"
+    )
+      db.$client.exec(`ALTER TABLE environments DROP COLUMN ${column.name}`);
+  }
+  const threadColumns = db.$client
+    .prepare<[], TableInfoRow>("PRAGMA table_info(threads)")
+    .all();
+  if (threadColumns.some((column) => column.name === "startup_context"))
+    db.$client.exec(
+      "ALTER TABLE threads RENAME COLUMN startup_context TO pending_start_context",
+    );
+}
+
 function dropQueueReworkSchema(db: DbConnection): void {
+  rewindEnvironmentProvisioningMigration(db);
   // Indexes first: SQLite refuses to drop a column an existing index names.
   for (const index of [
     "queued_thread_messages_due_idx",
@@ -780,6 +807,7 @@ function dropEnvironmentDestroyAttemptIdColumn(db: DbConnection): void {
 }
 
 function rewindEnvironmentRowFactsMigration(db: DbConnection): void {
+  rewindEnvironmentProvisioningMigration(db);
   const columns = new Set(
     db.$client
       .prepare<[], TableInfoRow>("PRAGMA table_info(environments)")
@@ -799,6 +827,7 @@ function rewindEnvironmentRowFactsMigration(db: DbConnection): void {
 }
 
 function rewindEnvironmentProvidersMigration(db: DbConnection): void {
+  rewindEnvironmentProvisioningMigration(db);
   db.$client.exec("DROP TABLE IF EXISTS environment_hook_operations");
   db.$client.exec("DROP TABLE IF EXISTS environment_launches");
   db.$client.exec("DROP INDEX IF EXISTS environments_project_host_path_idx");
@@ -5621,12 +5650,12 @@ describe("environment providers migration", () => {
 
   function readPendingStartContext(db: DbConnection, threadId: string) {
     const row = db.$client
-      .prepare<[string], { pendingStartContext: string | null }>(
-        `SELECT pending_start_context AS pendingStartContext
+      .prepare<[string], { startupContext: string | null }>(
+        `SELECT startup_context AS startupContext
            FROM threads WHERE id = ?`,
       )
       .get(threadId);
-    return JSON.parse(row?.pendingStartContext ?? "null") as unknown;
+    return JSON.parse(row?.startupContext ?? "null") as unknown;
   }
 
   it("records bundled plugin owners while migrating legacy environments", () => {
@@ -5898,6 +5927,7 @@ describe("environment providers migration", () => {
       migrate(db);
 
       expect(readPendingStartContext(db, "thr_worktree_pending")).toEqual({
+        kind: "pending",
         environmentIntent: {
           type: "provider",
           environmentProviderId: "git-worktree",
@@ -5906,6 +5936,7 @@ describe("environment providers migration", () => {
         },
       });
       expect(readPendingStartContext(db, "thr_personal_pending")).toEqual({
+        kind: "pending",
         environmentIntent: {
           type: "provider",
           environmentProviderId: "personal-workspace",
@@ -5917,4 +5948,126 @@ describe("environment providers migration", () => {
       closeConnection(db);
     }
   });
+});
+
+describe("environment and thread startup ownership migration", () => {
+  it.each(["creating", "cancelled"])(
+    "preserves %s allocation checkpoints and keeps attached environment resources authoritative",
+    (phase) => {
+      const db = createMigratedConnection();
+      try {
+        rewindEnvironmentProvisioningMigration(db);
+        const legacySchema = readFileSync(
+          resolve(
+            dirname(fileURLToPath(import.meta.url)),
+            "../drizzle/0113_environment_providers.sql",
+          ),
+          "utf8",
+        ).split("--> statement-breakpoint")[0]!;
+        db.$client.exec(legacySchema);
+        db.$client.exec(
+          "DELETE FROM __drizzle_migrations WHERE created_at = (SELECT MAX(created_at) FROM __drizzle_migrations)",
+        );
+        db.$client.exec(`
+        INSERT INTO hosts (id, name, type, created_at, updated_at) VALUES ('host_ownership', 'test', 'persistent', 1, 1);
+        INSERT INTO projects (id, name, created_at, updated_at) VALUES ('proj_ownership', 'test', 1, 1);
+        INSERT INTO threads (id, project_id, provider_id, status, latest_attention_at, created_at, updated_at)
+          VALUES ('thr_creating', 'proj_ownership', 'codex', 'starting', 1, 1, 1), ('thr_attached', 'proj_ownership', 'codex', 'starting', 1, 1, 1);
+        INSERT INTO environments (id, project_id, host_id, path, status, resource, created_at, updated_at)
+          VALUES ('env_attached', 'proj_ownership', 'host_ownership', '/tmp/attached', 'ready', '{"new":"checkpoint"}', 1, 1);
+      `);
+        const request = {
+          clientRequestId: "request",
+          environmentIntent: {
+            type: "provider",
+            environmentProviderId: "test",
+            machine: { type: "existing", hostId: "host_ownership" },
+            inputs: null,
+          },
+          input: [{ type: "text", text: "original message" }],
+        };
+        const selection = JSON.stringify({
+          machine: { type: "existing", hostId: "host_ownership" },
+          inputs: null,
+        });
+        const insert = db.$client
+          .prepare(`INSERT INTO environment_launches (thread_id, provider_id, provider_plugin_id, path_rejected, attempt, phase, started_at, failed_at, failure, message, transient_failures, path_key, host_id, path, claim_path, owns_path, resource, step_text, pending_log, environment_id, selection, request, cancel_pending)
+        VALUES (?, 'test', 'test-plugin', 0, 3, ?, 20, NULL, NULL, NULL, 1, 'stable-key', 'host_ownership', ?, ?, 1, ?, 'Preparing', 'output', ?, ?, ?, 0)`);
+        insert.run(
+          "thr_creating",
+          "creating",
+          "/tmp/creating",
+          "/tmp/creating",
+          '{"allocated":"resource"}',
+          null,
+          selection,
+          JSON.stringify(request),
+        );
+        insert.run(
+          "thr_attached",
+          "ready",
+          "/tmp/attached",
+          "/tmp/attached",
+          '{"old":"checkpoint"}',
+          "env_attached",
+          selection,
+          JSON.stringify(request),
+        );
+        if (phase === "cancelled")
+          db.$client.exec(
+            "UPDATE environment_launches SET phase = 'cancelled', cancel_pending = 1 WHERE thread_id = 'thr_creating'",
+          );
+        migrate(db);
+        expect(
+          db.$client
+            .prepare(
+              "SELECT teardown_status FROM environments WHERE provisioning_thread_id = 'thr_creating'",
+            )
+            .get(),
+        ).toEqual({
+          teardown_status: phase === "cancelled" ? "running" : null,
+        });
+        const resource = db.$client
+          .prepare(
+            "SELECT id, resource, provisioning_attempt, provisioning_claim_path FROM environments WHERE provisioning_thread_id = 'thr_creating'",
+          )
+          .get();
+        expect(resource).toEqual({
+          id: "env_provision_thr_creating",
+          resource: '{"allocated":"resource"}',
+          provisioning_attempt: 3,
+          provisioning_claim_path: "/tmp/creating",
+        });
+        expect(
+          db.$client
+            .prepare(
+              "SELECT resource FROM environments WHERE id = 'env_attached'",
+            )
+            .get(),
+        ).toEqual({ resource: '{"new":"checkpoint"}' });
+        const stored = db.$client
+          .prepare<[], { startup_context: string }>(
+            "SELECT startup_context FROM threads WHERE id = 'thr_creating'",
+          )
+          .get()!;
+        expect(JSON.parse(stored.startup_context)).toMatchObject({
+          kind: "provisioning",
+          request,
+          state: { stage: "metadata-pending" },
+        });
+        expect(
+          db.$client
+            .prepare(
+              "SELECT name FROM sqlite_master WHERE name = 'environment_launches'",
+            )
+            .get(),
+        ).toBeUndefined();
+        expect(db.$client.prepare("PRAGMA foreign_key_check").all()).toEqual(
+          [],
+        );
+      } finally {
+        closeConnection(db);
+      }
+    },
+  );
 });

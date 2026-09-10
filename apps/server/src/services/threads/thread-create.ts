@@ -35,7 +35,7 @@ import {
   hostIdForEnvironmentIntent,
   type PendingThreadStartContext,
 } from "./dispatch-attempt.js";
-import { setThreadPendingStartContext } from "@bb/db";
+import { setThreadStartupContext } from "@bb/db";
 import { emitPluginThreadDeleted } from "../plugins/plugin-thread-events.js";
 import {
   createThreadRecord,
@@ -389,13 +389,9 @@ async function createPendingThreadAndAttemptFirstDispatch(
       startedOnBehalfOf: args.request.startedOnBehalfOf,
       titleProvided: Boolean(args.request.title),
     };
-    // Recorded BEFORE the attempt, not after it queues: the attempt drives
-    // provisioning off this stack when it clears, and a context written
-    // afterwards would race that. Writing it unconditionally and clearing it
-    // when the thread leaves `pending` keeps one owner for the field.
-    setThreadPendingStartContext(deps.db, {
+    setThreadStartupContext(deps.db, {
       threadId: thread.id,
-      pendingStartContext: JSON.stringify(startContext),
+      startupContext: JSON.stringify({ kind: "pending", ...startContext }),
     });
 
     await attemptDispatch(deps, {

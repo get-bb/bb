@@ -1,5 +1,5 @@
 import {
-  cancelProviderLaunch,
+  cancelProviderEnvironmentCreation,
   sweepProviderEnvironment,
 } from "../environments/provider-orchestration.js";
 import {
@@ -25,7 +25,7 @@ import {
 } from "./thread-lifecycle.js";
 import { archiveThreadAndReleaseChildren } from "./thread-ownership.js";
 import { requireThreadHostCommandEnvironment } from "./thread-command-environment.js";
-import { getActiveThreadProvisionContext } from "./thread-provisioning-active-context.js";
+import { getThreadProvisionContext } from "./thread-startup-store.js";
 import { isPreStartThreadStatus } from "./thread-status.js";
 
 interface ArchiveThreadEnvironment {
@@ -63,7 +63,7 @@ export function resolveArchiveThreadEnvironment(
   if (
     isPreStartThreadStatus(args.thread.status) ||
     args.thread.status === "stopping" ||
-    getActiveThreadProvisionContext(args.thread.id) !== null
+    getThreadProvisionContext(deps.db, args.thread.id) !== null
   ) {
     throwThreadEnvironmentUnavailable(
       threadEnvironmentUnavailableDetails("never_attached", null),
@@ -101,8 +101,9 @@ function archiveThreadWithLifecycleEffects(
     mode: "archived",
     threadId: archivedThread.id,
   });
-  void cancelProviderLaunch(deps, archivedThread.id).catch((error) =>
-    deps.logger.warn({ error }, "Environment launch cancellation failed"),
+  void cancelProviderEnvironmentCreation(deps, archivedThread.id).catch(
+    (error) =>
+      deps.logger.warn({ error }, "Environment launch cancellation failed"),
   );
   if (archivedThread.environmentId !== null)
     void sweepProviderEnvironment(deps, archivedThread.environmentId).catch(

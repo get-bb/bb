@@ -2,7 +2,7 @@ import {
   requestEnvironmentRemoval,
   sweepProviderEnvironment,
 } from "../environments/provider-orchestration.js";
-import { cancelAbandonedProviderLaunches } from "../threads/thread-environment-providers.js";
+import { cancelAbandonedProviderCreations } from "../threads/thread-environment-providers.js";
 import { eq, isNotNull } from "drizzle-orm";
 import {
   deleteProject,
@@ -94,7 +94,7 @@ function tombstoneProjectThreadsForDeletion(
   notificationBuffer.flushInto(deps.hub);
   for (const thread of result.deletedThreads) {
     emitPluginThreadDeleted(thread);
-    cancelAbandonedProviderLaunches(deps, thread.id);
+    cancelAbandonedProviderCreations(deps, thread.id);
   }
   return result;
 }
@@ -186,7 +186,7 @@ export async function advanceProjectDeletion(
       });
       if (deletedThread) emitPluginThreadDeleted(deletedThread);
     }
-    cancelAbandonedProviderLaunches(deps, thread.id);
+    cancelAbandonedProviderCreations(deps, thread.id);
     deps.terminalSessions.closeDeletedThreadTerminals({ threadId: thread.id });
     if (environment) {
       requestActiveRuntimeThreadStopIfNeeded(deps, thread, environment);

@@ -1,8 +1,4 @@
-import {
-  findProjectEnvironmentByHostPath,
-  getProjectSourceByHost,
-  type EnvironmentRow,
-} from "@bb/db";
+import { getProjectSourceByHost, type EnvironmentRow } from "@bb/db";
 import { z } from "zod";
 import { DEFAULT_ENVIRONMENT_PROVIDER_ID } from "../environments/environment-provider-ids.js";
 import {
@@ -15,7 +11,6 @@ import {
 import type {
   EnvironmentArgs,
   ProviderEnvironmentArgs,
-  ProviderReadyEnvironmentArgs,
   UnmanagedBranchSpec,
 } from "@bb/server-contract";
 import { summarizeStandardIssues } from "@get-bb/plugin-sdk/internal/host-policy";
@@ -30,7 +25,6 @@ import {
 import { requireSourceForHost } from "./thread-create-helpers.js";
 import { foreignProviderOwnedPathRefusal } from "./workspace-path-claims.js";
 import { ensureHostSessionReadyForWork } from "../hosts/host-lifecycle.js";
-import { assertUsableHostId } from "../hosts/primary-host.js";
 import {
   getNonDestroyedHostWithStatus,
   requireNonDestroyedHostWithStatus,
@@ -42,10 +36,7 @@ import {
   resolveGitCheckoutAvailability,
   resolvePluginEnvironmentProviderAvailability,
 } from "../environments/provider-availability.js";
-import {
-  resolveReuseThreadRequestEnvironment,
-  resolveStableThreadRequestEnvironment,
-} from "./thread-request-eligibility.js";
+import { resolveStableThreadRequestEnvironment } from "./thread-request-eligibility.js";
 import type { ThreadProvisionEnvironmentIntent } from "./thread-provisioning-context.js";
 
 type PlacementDeps = LoggedPendingInteractionWorkSessionDeps;
@@ -62,11 +53,6 @@ export function checkoutProviderInputs(
 }
 
 export interface ThreadEnvironmentPlacement {
-  environmentId: string | null;
-  environmentIntent: ThreadProvisionEnvironmentIntent;
-}
-
-export interface ProducedThreadEnvironmentPlacement {
   environmentId: string | null;
   environmentIntent: ThreadProvisionEnvironmentIntent;
 }
@@ -347,54 +333,6 @@ export async function validateProviderSelection(
   }
 }
 
-interface ExistingProviderEnvironmentByHostPathArgs {
-  environmentProviderId: string;
-  hostId: string;
-  path: string;
-  projectId: string;
-}
-
-function existingProviderEnvironmentPlacementByHostPath(
-  deps: PlacementDeps,
-  args: ExistingProviderEnvironmentByHostPathArgs,
-): ProducedThreadEnvironmentPlacement | null {
-  const existing = findProjectEnvironmentByHostPath(
-    deps.db,
-    args.projectId,
-    args.hostId,
-    args.path,
-  );
-  if (!existing) {
-    return null;
-  }
-
-  if (existing.teardownStatus !== null) throwEnvironmentNotReady(existing);
-  const owner = existing.environmentProviderId;
-  if (owner !== null && owner !== args.environmentProviderId) {
-    throw new ApiError(
-      400,
-      "invalid_request",
-      `The "${args.environmentProviderId}" environment provider answered ready with ${args.path} on machine ${args.hostId}, which the "${owner}" environment provider produced. A ready answer names { type: "host", hostId, path } for a directory this provider made, or { type: "reuse", environmentId } for an environment it produced.`,
-    );
-  }
-
-  if (existing.status === "ready" || existing.status === "provisioning") {
-    return {
-      environmentId: existing.id,
-      environmentIntent: {
-        type: "reuse",
-        environmentId: existing.id,
-      },
-    };
-  }
-
-  throw new ApiError(
-    409,
-    "invalid_request",
-    `Workspace path is already attached to an environment in ${existing.status} state`,
-  );
-}
-
 export interface ResolveThreadEnvironmentPlacementArgs {
   allowUnmanagedPersonalProjectReuseEnvironmentId?: string;
   projectId: string;
@@ -404,7 +342,7 @@ export interface ResolveThreadEnvironmentPlacementArgs {
 function reuseEnvironmentPlacement(
   deps: PlacementDeps,
   environment: EnvironmentRow,
-): ProducedThreadEnvironmentPlacement {
+): ThreadEnvironmentPlacement {
   if (
     environment.teardownStatus !== null ||
     (environment.status !== "ready" && environment.status !== "provisioning")
@@ -421,102 +359,6 @@ function reuseEnvironmentPlacement(
     environmentId: environment.id,
     environmentIntent: { type: "reuse", environmentId: environment.id },
   };
-}
-
-interface HostPathPlacementArgs {
-  environmentProviderId: string;
-  hostId: string;
-  inputs: JsonValue | null;
-  mergeBaseBranch: string | null;
-  ownsPath: boolean;
-  path: string;
-  projectId: string;
-}
-
-async function hostPathPlacement(
-  deps: PlacementDeps,
-  args: HostPathPlacementArgs,
-): Promise<ProducedThreadEnvironmentPlacement> {
-  const dataDir = (
-    await ensureHostSessionReadyForWork(deps, { hostId: args.hostId })
-  ).dataDir;
-  const refusal = foreignProviderOwnedPathRefusal(deps.db, {
-    dataDir,
-    hostId: args.hostId,
-    path: args.path,
-    projectId: args.projectId,
-  });
-  if (refusal !== null) {
-    throw new ApiError(409, "invalid_request", refusal);
-  }
-  const existingPlacement = existingProviderEnvironmentPlacementByHostPath(
-    deps,
-    {
-      environmentProviderId: args.environmentProviderId,
-      hostId: args.hostId,
-      path: args.path,
-      projectId: args.projectId,
-    },
-  );
-  if (existingPlacement !== null) {
-    return existingPlacement;
-  }
-  return {
-    environmentId: null,
-    environmentIntent: {
-      type: "provider",
-      environmentProviderId: args.environmentProviderId,
-      machine: { type: "existing", hostId: args.hostId },
-      inputs: args.inputs,
-      selectionResolved: true,
-      produced: {
-        hostId: args.hostId,
-        path: args.path,
-        mergeBaseBranch: args.mergeBaseBranch,
-        ownsPath: args.ownsPath,
-      },
-    },
-  };
-}
-
-export async function resolveProducedEnvironmentPlacement(
-  deps: PlacementDeps,
-  args: {
-    environmentProviderId: string;
-    inputs: JsonValue | null;
-    producedEnvironment: ProviderReadyEnvironmentArgs;
-    projectId: string;
-  },
-): Promise<ProducedThreadEnvironmentPlacement> {
-  const produced = args.producedEnvironment;
-  if (produced.type === "reuse") {
-    const resolved = resolveReuseThreadRequestEnvironment(
-      deps,
-      produced,
-      args.projectId,
-      undefined,
-    );
-    if (
-      resolved.environment.environmentProviderId !== args.environmentProviderId
-    ) {
-      throw new ApiError(
-        400,
-        "invalid_request",
-        `The "${args.environmentProviderId}" environment provider answered ready with environment ${produced.environmentId}, which it did not produce. A ready answer names { type: "reuse", environmentId } for an environment this provider produced, or { type: "host", hostId, path } for a directory it made.`,
-      );
-    }
-    return reuseEnvironmentPlacement(deps, resolved.environment);
-  }
-  assertUsableHostId(deps, { hostId: produced.hostId });
-  return hostPathPlacement(deps, {
-    environmentProviderId: args.environmentProviderId,
-    hostId: produced.hostId,
-    inputs: args.inputs,
-    mergeBaseBranch: produced.mergeBaseBranch ?? null,
-    ownsPath: produced.ownsPath,
-    path: produced.path,
-    projectId: args.projectId,
-  });
 }
 
 export async function resolveThreadEnvironmentPlacement(

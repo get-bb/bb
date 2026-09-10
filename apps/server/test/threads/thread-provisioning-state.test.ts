@@ -8,7 +8,7 @@ import {
   noopNotifier,
   upsertHost,
 } from "@bb/db";
-import { getActiveThreadProvisionContext } from "../../src/services/threads/thread-provisioning-active-context.js";
+import { getThreadProvisionContext } from "../../src/services/threads/thread-startup-store.js";
 import { requestThreadProvision } from "../../src/services/threads/thread-provisioning.js";
 import { NotificationHub } from "../../src/ws/hub.js";
 import { assertPromptHistoryForTurnRequest } from "../helpers/prompt-history.js";
@@ -82,7 +82,7 @@ describe("thread provisioning state", () => {
     expect(context.state.environmentId).toBeNull();
     expect(context.state.provisionEventSequence).toBeNull();
     expect(context.state.workspaceReadyEventSequence).toBeNull();
-    expect(getActiveThreadProvisionContext(thread.id)).toEqual(context);
+    expect(getThreadProvisionContext(db, thread.id)).toEqual(context);
     assertPromptHistoryForTurnRequest({
       db,
       threadId: thread.id,

@@ -1,4 +1,4 @@
-import { recheckEnvironmentLaunch } from "./services/threads/thread-environment-providers.js";
+import { recheckEnvironmentProvisioning } from "./services/threads/thread-environment-providers.js";
 import { registerDesktopBrowserRoutes } from "./routes/desktop-browsers.js";
 import { createNodeWebSocket } from "@hono/node-ws";
 import { createHash } from "node:crypto";
@@ -34,10 +34,10 @@ import { setPluginThreadEventEmitter } from "./services/plugins/plugin-thread-ev
 import { setPluginHookProvider } from "./services/plugins/plugin-hook-registry.js";
 import {
   setEnvironmentProviderRecheckHandler,
-  setEnvironmentLaunchRecheckHandler,
+  setEnvironmentProvisioningRecheckHandler,
   setPluginEnvironmentProviderBridge,
 } from "./services/plugins/plugin-environment-provider-registry.js";
-import { recheckEnvironmentProviderLaunches } from "./services/threads/thread-environment-providers.js";
+import { recheckEnvironmentProviderCreations } from "./services/threads/thread-environment-providers.js";
 import { requestQueuedMessageDispatch } from "./services/threads/queued-message-dispatch.js";
 import { registerInternalEventRoutes } from "./internal/events.js";
 import { registerInternalHostRoutes } from "./internal/hosts.js";
@@ -612,12 +612,12 @@ export function createApp(
   // there are no hooks, which is exactly the zero-overhead path.
   setPluginHookProvider(pluginService.hooks);
   setPluginEnvironmentProviderBridge(pluginService.environmentProviders);
-  setEnvironmentLaunchRecheckHandler((threadId) =>
-    recheckEnvironmentLaunch(deps, threadId),
+  setEnvironmentProvisioningRecheckHandler((threadId) =>
+    recheckEnvironmentProvisioning(deps, threadId),
   );
   setEnvironmentProviderRecheckHandler((pluginId) => {
     deps.hub.notifySystem(["config-changed"]);
-    void recheckEnvironmentProviderLaunches(deps, pluginId);
+    void recheckEnvironmentProviderCreations(deps, pluginId);
   });
   // Bridge runtime-config assembly to plugin skills + context (§4.4).
   setPluginAgentContributions(pluginService);

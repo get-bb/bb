@@ -1,10 +1,10 @@
+import { eq } from "drizzle-orm";
 import { withEnvironmentPathAdmission } from "../environments/path-admission.js";
-import {
-  attachProviderLaunch,
-  restoreProviderLaunchContext,
-} from "../environments/provider-orchestration.js";
+import { markProviderEnvironmentAttached } from "../environments/provider-orchestration.js";
 import {
   createEnvironment,
+  getPreparingEnvironment,
+  environments,
   getEnvironment,
   getThread,
   type CreateEnvironmentInput,
@@ -60,10 +60,10 @@ import {
 } from "./thread-provisioning-context.js";
 import { resolveEnvironmentProvider } from "./thread-environment-providers.js";
 import {
-  forgetActiveThreadProvisionContext,
-  getActiveThreadProvisionContext,
-  rememberActiveThreadProvisionContext,
-} from "./thread-provisioning-active-context.js";
+  clearThreadProvisionSchedule,
+  getThreadProvisionContext,
+  saveThreadProvisionContext,
+} from "./thread-startup-store.js";
 import { applyLoggedThreadLifecycleEvent } from "./lifecycle-outcome.js";
 
 export type ThreadProvisioningDeps = CommandResultSideEffectsDeps;
@@ -188,11 +188,7 @@ export function loadActiveThreadProvisionContext(
   threadId: string,
 ): ThreadProvisionContext | null {
   const thread = getThread(deps.db, threadId);
-  const context =
-    getActiveThreadProvisionContext(threadId) ??
-    restoreProviderLaunchContext(deps.db, threadId);
-  if (context !== null)
-    rememberActiveThreadProvisionContext({ threadId, context });
+  const context = getThreadProvisionContext(deps.db, threadId);
   if (
     !thread ||
     thread.deletedAt !== null ||
@@ -222,8 +218,7 @@ function ensureWorkspaceReadyEventRecord(
   args: EnsureWorkspaceReadyEventArgs,
 ): EnsureWorkspaceReadyEventResult {
   const thread = getThread(db, args.threadId);
-  const context =
-    args.context ?? getActiveThreadProvisionContext(args.threadId);
+  const context = args.context ?? getThreadProvisionContext(db, args.threadId);
   if (
     !thread ||
     thread.deletedAt !== null ||
@@ -257,7 +252,9 @@ function ensureWorkspaceReadyEventRecord(
           status: "active",
           entries: args.entries,
         });
-  rememberActiveThreadProvisionContext({
+  saveThreadProvisionContext({
+    replace: false,
+    db,
     threadId: args.threadId,
     context: createWorkspaceReadyContext(provisionableContext, {
       workspaceReadyEventSequence: appendedSequence,
@@ -283,8 +280,8 @@ export function failThreadProvisioning(
   deps: ThreadProvisioningDeps,
   args: FailThreadProvisioningArgs,
 ): void {
-  const context = getActiveThreadProvisionContext(args.thread.id);
-  forgetActiveThreadProvisionContext(args.thread.id);
+  const context = getThreadProvisionContext(deps.db, args.thread.id);
+  clearThreadProvisionSchedule(args.thread.id);
   if (
     context !== null &&
     context.state.environmentId === null &&
@@ -384,7 +381,9 @@ async function resolveMetadataIfNeeded(
   }
 
   const resolvedContext = createEnvironmentPendingContext(args.context);
-  rememberActiveThreadProvisionContext({
+  saveThreadProvisionContext({
+    replace: false,
+    db: deps.db,
     threadId: args.thread.id,
     context: resolvedContext,
   });
@@ -402,7 +401,7 @@ function attachThreadToEnvironment(
           environmentId: args.environment.id,
         });
       }
-      attachProviderLaunch(tx, args.thread.id, args.environment.id);
+      markProviderEnvironmentAttached(tx, args.thread.id, args.environment.id);
     },
     { behavior: "immediate" },
   );
@@ -415,7 +414,9 @@ function attachThreadToEnvironment(
   const attachedContext = createEnvironmentAttachedContext(args.context, {
     attachedEnvironmentId: args.environment.id,
   });
-  rememberActiveThreadProvisionContext({
+  saveThreadProvisionContext({
+    replace: false,
+    db: deps.db,
     threadId: args.thread.id,
     context: attachedContext,
   });
@@ -441,7 +442,9 @@ function appendProvisioningStartedEvent(
   const updatedContext = createEnvironmentProvisioningContext(args.context, {
     provisionEventSequence: appendedSequence,
   });
-  rememberActiveThreadProvisionContext({
+  saveThreadProvisionContext({
+    replace: false,
+    db: deps.db,
     threadId: args.thread.id,
     context: updatedContext,
   });
@@ -455,7 +458,7 @@ function createProvisioningEnvironment(
   const result = deps.db.transaction(
     (tx) => {
       const activeThread = getThread(tx, args.thread.id);
-      const activeContext = getActiveThreadProvisionContext(args.thread.id);
+      const activeContext = getThreadProvisionContext(tx, args.thread.id);
       if (
         !activeThread ||
         activeThread.status !== "starting" ||
@@ -479,12 +482,22 @@ function createProvisioningEnvironment(
         };
       }
 
-      const environment = createEnvironment(
-        tx,
-        deps.hub,
-        args.environmentInput,
-      );
-      attachProviderLaunch(tx, args.thread.id, environment.id);
+      const prepared = getPreparingEnvironment(tx, args.thread.id);
+      const environment =
+        prepared === null
+          ? createEnvironment(tx, deps.hub, args.environmentInput)
+          : tx
+              .update(environments)
+              .set({
+                name: args.environmentInput.name ?? null,
+                baseBranch: args.environmentInput.baseBranch ?? null,
+              })
+              .where(eq(environments.id, prepared.id))
+              .returning()
+              .get();
+      if (environment === undefined)
+        throw new Error("Prepared environment disappeared");
+      markProviderEnvironmentAttached(tx, args.thread.id, environment.id);
       if (args.thread.environmentId !== environment.id) {
         updateThread(tx, deps.hub, args.thread.id, {
           environmentId: environment.id,
@@ -504,7 +517,9 @@ function createProvisioningEnvironment(
       const context = createEnvironmentProvisioningContext(attachedContext, {
         provisionEventSequence: appendedSequence,
       });
-      rememberActiveThreadProvisionContext({
+      saveThreadProvisionContext({
+        replace: false,
+        db: deps.db,
         threadId: args.thread.id,
         context,
       });
@@ -727,7 +742,7 @@ async function prepareTargetPending(
     });
   }
   if (
-    getActiveThreadProvisionContext(args.thread.id)?.state.provisioningId !==
+    getThreadProvisionContext(deps.db, args.thread.id)?.state.provisioningId !==
     args.context.state.provisioningId
   ) {
     throw new Error("Thread provisioning context is no longer active");
@@ -735,7 +750,9 @@ async function prepareTargetPending(
   const context = createProviderPendingContext(args.context, {
     provisionEventSequence,
   });
-  rememberActiveThreadProvisionContext({
+  saveThreadProvisionContext({
+    replace: false,
+    db: deps.db,
     threadId: args.thread.id,
     context,
   });
@@ -783,7 +800,7 @@ export async function ensureThreadProvisionEnvironmentReady(
   if (environment.status === "provisioning") {
     await advanceEnvironmentProvisioning(deps, {
       environmentId: environment.id,
-      request: provisionRequest ?? null,
+      request: provisionRequest,
     });
   }
   if (!isProvisionableContext(attachedContext)) {
