@@ -129,6 +129,10 @@ import {
 import { parsePromptMentionClipboardElement } from "./mentions/prompt-mention-clipboard";
 import { ComposerEditorSlot } from "./ComposerEditorSlot";
 import { QueuedEditorTypeaheadLayoutContext } from "./queued-editor-typeahead-layout";
+import {
+  isModifierSubmitKeyEvent,
+  modifierSubmitShortcutAria,
+} from "./modifier-submit-shortcut";
 
 const PROMPTBOX_MIN_HEIGHT = 68;
 const PROMPTBOX_SELECTION_REVEAL_MARGIN = 12;
@@ -1658,7 +1662,9 @@ export function PromptBoxInternal({
         attributes: {
           "aria-label": effectivePlaceholder,
           "data-placeholder": effectivePlaceholder,
-          ...(onModifierSubmit ? { "aria-keyshortcuts": "Meta+Enter" } : {}),
+          ...(onModifierSubmit
+            ? { "aria-keyshortcuts": modifierSubmitShortcutAria() }
+            : {}),
           autocomplete: "off",
           class: cn(
             "min-h-full whitespace-pre-wrap break-words outline-none",
@@ -2926,13 +2932,7 @@ export function PromptBoxInternal({
         }
       }
 
-      const isModifierSubmitKey =
-        event.key === "Enter" &&
-        event.metaKey &&
-        !event.shiftKey &&
-        !event.altKey &&
-        !event.ctrlKey;
-      if (isModifierSubmitKey && onModifierSubmit) {
+      if (isModifierSubmitKeyEvent(event) && onModifierSubmit) {
         event.preventDefault();
         submitModifierPrompt();
         return true;

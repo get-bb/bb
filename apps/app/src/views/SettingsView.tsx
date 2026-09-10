@@ -587,13 +587,13 @@ const FOLLOW_UP_BEHAVIOR_OPTIONS = [
     steerOnEnter: false,
     label: "Queue",
     description:
-      "Enter adds a follow-up. It runs when the agent stops. Command+Enter steers the run.",
+      "Enter adds a follow-up. It runs when the agent stops. Command+Enter (Ctrl+Enter on Windows and Linux) steers the run.",
   },
   {
     steerOnEnter: true,
     label: "Steer",
     description:
-      "Enter steers the run now. Command+Enter adds a follow-up for later.",
+      "Enter steers the run now. Command+Enter (Ctrl+Enter on Windows and Linux) adds a follow-up for later.",
   },
 ] as const;
 const STREAMER_MODE_SETTING_LABEL = "Streamer mode";
