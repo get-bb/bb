@@ -1,6 +1,9 @@
 import { findHostDataDir } from "../lib/entity-lookup.js";
 import { updateThread } from "@bb/db";
-import { withEnvironmentPathAdmission } from "./path-admission.js";
+import {
+  assertEnvironmentPathAvailable,
+  withEnvironmentPathAdmission,
+} from "./path-admission.js";
 import { saveThreadProvisionContext } from "../threads/thread-startup-store.js";
 import {
   refreshAttachedEnvironmentBranch,
@@ -558,7 +561,6 @@ export async function cancelProviderEnvironmentCreation(
   if (row.teardownStatus === null) {
     updatePreparingEnvironment(deps.db, {
       ...row,
-      status: "error",
       teardownStatus: "running",
       retireAt: Date.now(),
     });
@@ -593,7 +595,6 @@ export function requestEnvironmentRemoval(
       return false;
     updatePreparingEnvironment(deps.db, {
       ...row,
-      status: "error",
       teardownStatus: "running",
       retireAt: Date.now(),
     });
@@ -609,7 +610,6 @@ export function requestEnvironmentRemoval(
     deps.db
       .update(environments)
       .set({
-        status: "error",
         retireAt: Date.now(),
         teardownStatus: "running",
       })
@@ -1517,11 +1517,10 @@ export async function advanceEnvironmentProvisioning(
     environment.ownerThreadId !== null &&
     environment.ownerThreadId !== args.threadId
   )
-    await withEnvironmentPathAdmission(
-      deps,
-      { ...environment, threadId: args.threadId },
-      () => {},
-    );
+    assertEnvironmentPathAvailable(deps, {
+      ...environment,
+      threadId: args.threadId,
+    });
   if (
     args.removal ||
     (environment.teardownStatus !== null &&

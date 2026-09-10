@@ -5,11 +5,10 @@ import { ApiError } from "../../errors.js";
 export const CHECKOUT_BUSY_MESSAGE =
   "Cannot checkout branch while another thread is using this workspace";
 
-export async function withEnvironmentPathAdmission<T>(
+export function assertEnvironmentPathAvailable(
   deps: WorkSessionDeps,
   args: { hostId: string; path: string | null; threadId: string | null },
-  admit: () => T,
-): Promise<T> {
+): void {
   if (
     args.path !== null &&
     findEnvironmentPathClaim(deps.db, args.hostId, null, null) !== null
@@ -25,5 +24,13 @@ export async function withEnvironmentPathAdmission<T>(
     )
       throw new ApiError(409, "workspace_busy", CHECKOUT_BUSY_MESSAGE);
   }
+}
+
+export async function withEnvironmentPathAdmission<T>(
+  deps: WorkSessionDeps,
+  args: { hostId: string; path: string | null; threadId: string | null },
+  admit: () => T,
+): Promise<T> {
+  assertEnvironmentPathAvailable(deps, args);
   return admit();
 }

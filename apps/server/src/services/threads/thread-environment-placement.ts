@@ -15,11 +15,7 @@ import {
   cancelProviderEnvironmentCreation,
   type ProviderOperationContext,
 } from "../environments/environment-engine.js";
-import {
-  getPreparingEnvironment,
-  reserveEnvironment,
-  updatePreparingEnvironment,
-} from "@bb/db";
+import { getPreparingEnvironment, reserveEnvironment } from "@bb/db";
 import { appendThreadProvisioningEvent } from "./thread-events.js";
 import { scheduleEnvironmentProvisioning } from "./thread-environment-providers.js";
 import {
@@ -676,12 +672,11 @@ function providerFailure(
 }
 
 export type ProviderEnvironmentCreationDecision =
-  | { action: "wait"; reason: string; sendAt: number; log: string }
-  | { action: "reject"; message: string; log: string }
+  | { action: "wait"; reason: string; sendAt: number }
+  | { action: "reject"; message: string }
   | {
       action: "ready";
       environment: EnvironmentRow;
-      log: string;
     };
 
 export function prepareProviderEnvironment(
@@ -708,7 +703,6 @@ export function prepareProviderEnvironment(
       action: "reject",
       message:
         "The environment provider belongs to a different plugin or has no recorded owner.",
-      log: "",
     };
   }
   if (
@@ -719,7 +713,6 @@ export function prepareProviderEnvironment(
       action: "wait",
       reason: "Removing the previous environment",
       sendAt: now + 1000,
-      log: "",
     };
   const selected = { machine: context.machine, inputs: context.inputs };
   const changed =
@@ -737,7 +730,6 @@ export function prepareProviderEnvironment(
     return {
       action: "reject",
       message: row.statusMessage ?? "Environment creation failed",
-      log: row.pendingLog,
     };
   }
   if (
@@ -759,7 +751,6 @@ export function prepareProviderEnvironment(
       action: "wait",
       reason: "Removing the previous environment",
       sendAt: now + 1000,
-      log: "",
     };
   }
   const start = row === null || row.teardownStatus === "removed";
@@ -808,14 +799,11 @@ export function prepareProviderEnvironment(
     });
   }
   if (row === null) throw new Error("Missing environment provisioning");
-  const log = row.pendingLog;
-  if (log.length > 0)
-    updatePreparingEnvironment(deps.db, { ...row, pendingLog: "" });
   if (
     (row.status === "provisioning" || row.status === "ready") &&
     row.path !== null
   )
-    return { action: "ready", environment: row, log };
+    return { action: "ready", environment: row };
   if (row.status === "creating")
     void advanceEnvironmentProvisioning(deps, {
       environmentId: row.id,
@@ -825,7 +813,6 @@ export function prepareProviderEnvironment(
     action: "wait",
     reason: row.statusMessage ?? "Creating environment",
     sendAt: now + 1000,
-    log,
   };
 }
 

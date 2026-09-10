@@ -1,9 +1,14 @@
+import { appendThreadProvisioningEvent } from "../../../src/services/threads/thread-events.js";
+import { requestThreadStopForCurrentState } from "../../../src/services/threads/thread-lifecycle.js";
 import { prepareProviderEnvironment } from "../../../src/services/threads/thread-environment-placement.js";
 import { withEnvironmentCleanupSlot } from "../../../src/services/environments/cleanup-concurrency.js";
 import { registerTestHostRpcCapture } from "../../helpers/commands.js";
 import { recordProvisionedEnvironmentWorkspace } from "@bb/db/internal-environment-lifecycle";
 import { createThreadFromRequest } from "../../../src/services/threads/thread-create.js";
-import { encodeClientTurnRequestIdNumber } from "@bb/domain";
+import {
+  encodeClientTurnRequestIdNumber,
+  systemThreadProvisioningEventDataSchema,
+} from "@bb/domain";
 import { requireThreadCommandEnvironment } from "../../../src/services/threads/thread-command-environment.js";
 import { ensureThreadProvisionEnvironmentReady } from "../../../src/services/threads/thread-provisioning-environment.js";
 import {
@@ -17,6 +22,7 @@ import { handleUpdateEnvironmentDirectoryToolCall } from "../../../src/services/
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { eq } from "drizzle-orm";
 import {
+  listEvents,
   claimEnvironmentPath,
   createEnvironment,
   environments,
@@ -166,6 +172,56 @@ function setup(
     source,
     thread,
   };
+}
+
+function saveProviderStartup(
+  harness: TestAppHarness,
+  fixture: ReturnType<typeof setup>,
+) {
+  const context = createThreadStartup({
+    clientRequestId: encodeClientTurnRequestIdNumber({ value: 1 }),
+    environmentIntent: {
+      type: "provider",
+      environmentProviderId: fixture.record.provider.id,
+      machine: fixture.context.machine,
+      inputs: null,
+      selectionResolved: true,
+    },
+    execution: {
+      model: "gpt-5",
+      serviceTier: "default",
+      reasoningLevel: "medium",
+      permissionMode: "accept-edits",
+      source: "client/turn/requested",
+    },
+    fork: null,
+    input: [],
+    titleProvided: true,
+    seedWithoutRun: false,
+  });
+  context.state.provisionEventSequence = appendThreadProvisioningEvent(
+    harness.deps,
+    {
+      threadId: fixture.thread.id,
+      environmentId: null,
+      provisioningId: context.state.provisioningId,
+      status: "active",
+      entries: [
+        {
+          type: "step",
+          key: "workspace-started",
+          text: "Preparing workspace",
+          status: "started",
+        },
+      ],
+    },
+  );
+  saveThreadProvisionContext({
+    db: harness.db,
+    replace: true,
+    threadId: fixture.thread.id,
+    context,
+  });
 }
 
 function pendingUntilAbort(signal: AbortSignal): Promise<never> {
@@ -990,11 +1046,25 @@ describe("core environment orchestration", () => {
           };
         },
       });
+      saveProviderStartup(harness, fixture);
       fixture.ask();
       await expect
         .poll(() => fixture.ask())
-        .toMatchObject({ reason: "Cloning repository", log: "clone output" });
-      expect(fixture.ask()).toMatchObject({ log: "" });
+        .toMatchObject({ reason: "Cloning repository" });
+      expect(fixture.row().pendingLog).toBe("");
+      fixture.ask();
+      const output = listEvents(harness.db, { threadId: fixture.thread.id })
+        .filter((event) => event.type === "system/thread-provisioning")
+        .flatMap(
+          (event) =>
+            systemThreadProvisioningEventDataSchema.parse(
+              JSON.parse(event.data),
+            ).entries,
+        )
+        .filter(
+          (entry) => entry.type === "output" && entry.text === "clone output",
+        );
+      expect(output).toHaveLength(1);
       release();
       await fixture.settled();
     }));
@@ -1610,5 +1680,64 @@ it("keeps reserved environments provisioning while a provider creates their work
     expect(fixture.row()).toMatchObject({
       status: "provisioning",
     });
+  });
+});
+
+it("keeps a shared workspace ready when its preparing owner cancels before attachment", async () => {
+  await withTestHarness(async (harness) => {
+    const remove = vi.fn(async () => ({ status: "removed" as const }));
+    const fixture = setup(harness, {
+      create: async () => ({
+        status: "created",
+        path: "/tmp/shared-ready",
+        ownsPath: false,
+      }),
+      remove,
+    });
+    const shared = createEnvironment(harness.db, harness.hub, {
+      projectId: fixture.context.project.id,
+      hostId: fixture.host.id,
+      path: "/tmp/shared-ready",
+      status: "ready",
+      providerOwnsPath: false,
+    });
+    const existingThread = seedThread(harness.deps, {
+      projectId: fixture.context.project.id,
+      environmentId: shared.id,
+      status: "idle",
+    });
+    fixture.ask();
+    await expect
+      .poll(() => getPreparingEnvironment(harness.db, fixture.thread.id)?.id)
+      .toBe(shared.id);
+    expect(getEnvironment(harness.db, shared.id)).toMatchObject({
+      status: "ready",
+      ownerThreadId: fixture.thread.id,
+    });
+    expect(getThread(harness.db, fixture.thread.id)?.environmentId).toBeNull();
+    saveProviderStartup(harness, fixture);
+    requestThreadStopForCurrentState(harness.deps, fixture.thread, null);
+    await expect
+      .poll(() => getEnvironment(harness.db, shared.id)?.ownerThreadId)
+      .toBeNull();
+    expect(getEnvironment(harness.db, shared.id)).toMatchObject({
+      status: "ready",
+      claimPath: null,
+      teardownStatus: null,
+      retireAt: null,
+    });
+    expect(getThread(harness.db, existingThread.id)?.environmentId).toBe(
+      shared.id,
+    );
+    expect(getThread(harness.db, fixture.thread.id)?.status).toBe("idle");
+    const transcript = listEvents(harness.db, {
+      threadId: fixture.thread.id,
+    }).filter((event) => event.type === "system/thread-provisioning");
+    expect(
+      systemThreadProvisioningEventDataSchema.parse(
+        JSON.parse(transcript.at(-1)!.data),
+      ).status,
+    ).toBe("cancelled");
+    expect(remove).not.toHaveBeenCalled();
   });
 });
