@@ -2915,6 +2915,24 @@ describe("events", () => {
     expect(hwm[thread2.id]).toBeUndefined();
   });
 
+  it("omits empty threads and batches deduplicated high-water mark lookups", () => {
+    const { db, thread } = setup();
+    insertEvents(db, noopNotifier, [
+      {
+        threadId: thread.id,
+        sequence: 10,
+        type: "system/error",
+        ...threadEventFields,
+        data: "{}",
+      },
+    ]);
+    const missing = Array.from({ length: 32_767 }, (_, i) => `missing-${i}`);
+    expect(getHighWaterMarks(db, [thread.id, ...missing, thread.id])).toEqual({
+      [thread.id]: 10,
+    });
+    expect(getHighWaterMarks(db, [])).toEqual(getHighWaterMarks(db));
+  });
+
   it("lists events after a given sequence", () => {
     const { db, thread } = setup();
 

@@ -1023,15 +1023,27 @@ export function getHighWaterMarks(
   const result: Record<string, number> = {};
 
   if (threadIds && threadIds.length > 0) {
-    const rows = db
-      .select({
-        threadId: events.threadId,
-        maxSeq: max(events.sequence),
-      })
-      .from(events)
-      .where(inArray(events.threadId, threadIds))
-      .groupBy(events.threadId)
-      .all();
+    const rows = queryInSqliteVariableBatches({
+      dedupeKey: (threadId) => threadId,
+      fixedVariableCount: 0,
+      queryBatch: (ids) =>
+        db.all<{ threadId: string; maxSeq: number | null }>(sql`
+          WITH requested(thread_id) AS (
+            VALUES ${sql.join(
+              ids.map((id) => sql`(${id})`),
+              sql`, `,
+            )}
+          )
+          SELECT thread_id AS threadId, (
+            SELECT sequence FROM events
+            WHERE events.thread_id = requested.thread_id
+            ORDER BY sequence DESC LIMIT 1
+          ) AS maxSeq
+          FROM requested
+        `),
+      values: threadIds,
+      variableCountPerValue: 1,
+    });
     for (const row of rows) {
       if (row.maxSeq != null) {
         result[row.threadId] = row.maxSeq;
