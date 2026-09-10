@@ -196,9 +196,6 @@ export function createDesktopBrowserBroker(args: {
     requireTab(instance, threadId, tabId);
     if (hostId === null)
       throw new Error("Desktop is not connected to its host daemon");
-    if (instance.window.isMinimized()) instance.window.restore();
-    instance.window.show();
-    instance.window.focus();
     instance.window.webContents.send(BB_DESKTOP_BROWSER_REVEAL_CHANNEL, {
       tabId,
       threadId,

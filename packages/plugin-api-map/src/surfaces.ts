@@ -871,7 +871,7 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
           "Controls a selected desktop window through bb.sdk.experimental_desktopBrowsers. With this, a plugin can:",
         bullets: [
           "Discover instances on an explicit host and create thread-owned tabs with separate automation profiles",
-          "Acquire expiring control and focus the first selected tab; new CDP pages are revealed too. Personal tabs require an explicit handoff",
+          "Acquire expiring control; reveal the first tab and new CDP pages only in the already focused thread, without activating the desktop window. Personal tabs require an explicit handoff",
           "Give a worker on that host a private, scoped CDP WebSocket connection for DevBrowser or agent-browser",
           "Capture or reveal a tab and release control while preserving the tab and its login",
           "Observe changed tab and control state with a disposable two-second polling subscription; report disconnect errors",

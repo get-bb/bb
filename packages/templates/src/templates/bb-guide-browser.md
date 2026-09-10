@@ -6,10 +6,10 @@ Start with `bb browser instances --host <host-id> --json`. For every tab/control
 
 - `tabs`: list native tabs and their control state.
 - `create [--url <http(s)-url>] [--reveal]`: create a tab with a separate automation profile. Defaults: hidden, about:blank.
-- `acquire <tab-ids...> --controller <label> [--ttl-ms <ms>] [--allow-personal]`: acquire exclusive tab control and open/focus the first selected tab. New tabs created through its CDP connection are also revealed. Default expiry is five minutes, maximum thirty minutes. Personal tabs require the explicit handoff flag and carry their profile's authenticated authority.
+- `acquire <tab-ids...> --controller <label> [--ttl-ms <ms>] [--allow-personal]`: acquire exclusive tab control. If the owning thread is already focused, open the side panel and select the first tab. New or activated CDP tabs follow the same rule. No thread switching or desktop window activation. Default expiry is five minutes, maximum thirty minutes. Personal tabs require the explicit handoff flag and carry their profile's authenticated authority.
 - `connection <lease-id> --output <new-file>`: write private connection JSON with mode 0600 on the CLI host. The loopback WebSocket endpoint is usable only on the browser host. Pass it privately to an integration worker; never expose it through a shared port or chat output.
 - `release <lease-id>`: revoke automation while keeping tabs open.
-- `reveal <tab-id>`: show the actual existing native tab.
+- `reveal <tab-id>`: open the side panel and select the existing native tab only if its thread is already focused; otherwise leave the current view unchanged.
 - `capture <tab-id> --output <new-file>`: save a bounded JPEG to the CLI host without focusing the tab.
 - `close <tab-id>`: explicitly close that native tab.
 - `watch`: print changed tab snapshots every two seconds until interrupted. Disconnects report errors; this is not a lossless event log.

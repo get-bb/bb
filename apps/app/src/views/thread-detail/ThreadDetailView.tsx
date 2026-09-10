@@ -10,7 +10,7 @@ import { nanoid } from "nanoid";
 import { useSystemProviderInfo } from "@/hooks/queries/system-queries";
 import { useNavigate } from "react-router-dom";
 import { useAtom } from "jotai";
-import { desktopBrowserRevealAtom } from "@/lib/desktop-browser-presentation";
+import { useDesktopBrowserReveal } from "@/lib/use-desktop-browser-reveal";
 import { atomWithStorage } from "jotai/utils";
 import {
   isRunningThreadRuntimeDisplayStatus,
@@ -1444,25 +1444,12 @@ function ThreadDetailViewInternal(props: ThreadRoutePathArgs) {
     },
     [activateTab, openCompactDrawer],
   );
-  const [nativeReveal, setNativeReveal] = useAtom(desktopBrowserRevealAtom);
-  useEffect(() => {
-    if (
-      !isFocused ||
-      nativeReveal === null ||
-      nativeReveal.threadId !== threadId ||
-      !browserTabs.some((tab) => tab.id === nativeReveal.tabId)
-    )
-      return;
-    handleActivateFileTab(nativeReveal.tabId);
-    setNativeReveal(null);
-  }, [
-    nativeReveal,
-    isFocused,
+  useDesktopBrowserReveal({
     threadId,
+    isFocused,
     browserTabs,
-    handleActivateFileTab,
-    setNativeReveal,
-  ]);
+    activateTab: handleActivateFileTab,
+  });
   useEffect(() => {
     const browserApi = getDesktopBrowserApi();
     if (browserApi === null) {

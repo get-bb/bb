@@ -14,12 +14,13 @@ import type { BrowserImportService } from "../src/browser-import/browser-import.
 
 function createFakeManager(
   profileSession: DesktopBrowserViewManager["profileSession"],
+  listTabs: DesktopBrowserViewManager["listTabs"] = () => [],
 ) {
   const manager: Pick<
     DesktopBrowserViewManager,
     "listTabs" | "subscribeAutomationTabs" | "profileSession" | "destroyAll"
   > = {
-    listTabs: () => [],
+    listTabs,
     subscribeAutomationTabs: () => () => undefined,
     profileSession,
     destroyAll: () => undefined,
@@ -131,5 +132,67 @@ describe("desktop browser broker cookie import commands", () => {
       }),
     ).rejects.toThrow("Browser cookie import is unavailable");
     broker.dispose();
+  });
+});
+
+describe("desktop browser reveal", () => {
+  it("sends the tab request without restoring, showing, or focusing the window", async () => {
+    const broker = createDesktopBrowserBroker({
+      manager: createFakeManager(
+        () => {
+          throw new Error("unused");
+        },
+        () => [
+          {
+            tabId: "tab-a",
+            threadId: "thread-a",
+            generation: "tab-generation",
+            profile: { kind: "automation", id: "profile-a" },
+            presentation: "hidden",
+            url: "about:blank",
+            title: null,
+            isLoading: false,
+            canGoBack: false,
+            canGoForward: false,
+            errorText: null,
+          },
+        ],
+      ),
+      product: "Chrome/1",
+    });
+    const window = {
+      ...createFakeWindow(),
+      isMinimized: () => true,
+      restore: vi.fn(),
+      show: vi.fn(),
+      focus: vi.fn(),
+    };
+    const send = vi.spyOn(window.webContents, "send");
+    broker.registerWindow(window as never);
+    broker.setHostId("host-a");
+    const [instance] = broker.listInstances();
+    try {
+      await broker.execute({
+        type: "desktop.browser.reveal_tab",
+        instanceId: instance.instanceId,
+        generation: instance.generation,
+        threadId: "thread-a",
+        tabId: "tab-a",
+      });
+      expect(send).toHaveBeenCalledWith("bb-desktop:browser:reveal", {
+        threadId: "thread-a",
+        tabId: "tab-a",
+        desktopTarget: {
+          hostId: "host-a",
+          instanceId: instance.instanceId,
+          generation: instance.generation,
+        },
+      });
+      expect(window.restore).not.toHaveBeenCalled();
+      expect(window.show).not.toHaveBeenCalled();
+      expect(window.focus).not.toHaveBeenCalled();
+    } finally {
+      broker.dispose();
+    }
   });
 });
