@@ -1283,10 +1283,11 @@ function ThreadDetailViewInternal(props: ThreadRoutePathArgs) {
     openPersistedWorkspaceFile,
     togglePersistedPanel: toggleDefaultPersistedSecondaryPanel,
   });
+  const dismissPluginDetails = pluginDetails.dismiss;
   const closeSecondaryPanel = useCallback(() => {
-    pluginDetails.dismiss();
+    dismissPluginDetails();
     closeWorkspacePanel();
-  }, [pluginDetails.dismiss, closeWorkspacePanel]);
+  }, [dismissPluginDetails, closeWorkspacePanel]);
   const toggleSecondaryPanel = useCallback(() => {
     if (pluginDetails.activePluginId !== null) closeSecondaryPanel();
     else toggleWorkspacePanel();

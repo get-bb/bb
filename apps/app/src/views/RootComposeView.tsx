@@ -1167,10 +1167,11 @@ function RootComposeSurface({
     openPersistedWorkspaceFile,
     togglePersistedPanel: toggleRootPersistedSecondaryPanel,
   });
+  const dismissPluginDetails = pluginDetails.dismiss;
   const closeSecondaryPanel = useCallback(() => {
-    pluginDetails.dismiss();
+    dismissPluginDetails();
     closeWorkspacePanel();
-  }, [pluginDetails.dismiss, closeWorkspacePanel]);
+  }, [dismissPluginDetails, closeWorkspacePanel]);
   const handleOpenLiveFilePreview = useCallback(
     (intent: AppFilePreviewIntent): boolean => {
       const normalized = normalizeExperimentalFileOpenOptions(intent);
