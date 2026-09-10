@@ -329,6 +329,11 @@ export function CommandPalette({
     activeModeId === null
       ? undefined
       : PALETTE_MODES.find((mode) => mode.id === activeModeId);
+  const exitMode = () => {
+    setActiveModeId(null);
+    setQuery("");
+    setHighlightedIndex(0);
+  };
 
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
@@ -338,7 +343,10 @@ export function CommandPalette({
         className="top-[12%] max-w-[640px] translate-y-0 gap-0 p-0 shadow-lg sm:rounded-xl"
         onCloseAutoFocus={handleCloseAutoFocus}
         onEscapeKeyDown={(event) => {
-          if (activeMode !== undefined) event.preventDefault();
+          if (activeMode !== undefined) {
+            event.preventDefault();
+            exitMode();
+          }
         }}
         data-testid="command-palette"
       >
@@ -426,11 +434,7 @@ export function CommandPalette({
         ) : (
           <activeMode.View
             presentation={activeMode}
-            onExit={() => {
-              setActiveModeId(null);
-              setQuery("");
-              setHighlightedIndex(0);
-            }}
+            onExit={exitMode}
             runAfterClose={runAfterClose}
           />
         )}

@@ -9,7 +9,7 @@ import {
   type KeyboardEvent as ReactKeyboardEvent,
   type ReactNode,
 } from "react";
-import { useStore } from "jotai";
+import { useAtomValue, useStore } from "jotai";
 import { Button } from "@bb/shared-ui/button";
 import {
   DropdownMenu,
@@ -18,6 +18,7 @@ import {
   DropdownMenuTrigger,
 } from "@bb/shared-ui/dropdown-menu";
 import { Icon } from "@bb/shared-ui/icon";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@bb/shared-ui/tooltip";
 import { useIsCompactViewport } from "@bb/shared-ui/hooks/use-compact-viewport";
 import { cn } from "@bb/shared-ui/lib/utils";
 import { isPromptDraftEmpty } from "@bb/client-core";
@@ -38,6 +39,9 @@ import { getRootComposeRoutePath, getThreadRoutePath } from "@/lib/route-paths";
 import { useRootComposeProjectId } from "@/lib/root-compose-selection";
 import { openPaneContentInSplit } from "@/lib/split-layout/openPaneContentInSplit";
 import { openThreadInSplit } from "@/lib/split-layout/openThreadInSplit";
+import { splitLayoutAtom } from "@/lib/split-layout/atoms";
+import { countPanes, findPaneByContent, MAX_PANES } from "@/lib/split-layout";
+import { isMacKeyboardPlatform } from "@bb/domain";
 import {
   buildPaletteThreadSearchRows,
   PALETTE_THREAD_SEARCH_SCOPES,
@@ -65,6 +69,7 @@ export function ThreadSearchPaletteMode({
   const inputRef = useRef<HTMLInputElement | null>(null);
   const listRef = useRef<HTMLDivElement | null>(null);
   const store = useStore();
+  const splitLayout = useAtomValue(splitLayoutAtom);
   const navigate = useRouteNavigate();
   const isCompact = useIsCompactViewport();
   const [query, setQuery] = useState("");
@@ -170,6 +175,30 @@ export function ThreadSearchPaletteMode({
     !hasLoadError;
   const activeDescendantId =
     activeIndex < 0 ? undefined : `${optionIdPrefix}-${activeIndex}`;
+  const activeRow = result.rows[activeIndex];
+  const splitDisabledReason =
+    splitLayout === null
+      ? "Open a thread first to use split view"
+      : activeRow !== undefined &&
+          findPaneByContent(
+            splitLayout.root,
+            activeRow.threadId === null
+              ? { kind: "new-thread" }
+              : {
+                  kind: "thread",
+                  projectId: activeRow.projectId,
+                  threadId: activeRow.threadId,
+                },
+          ) !== null
+        ? "Already open in this workspace"
+        : countPanes(splitLayout.root) >= MAX_PANES
+          ? "Close a split pane first"
+          : null;
+  const canSplit =
+    activeRow !== undefined && !isCompact && splitDisabledReason === null;
+  const splitShortcut = isMacKeyboardPlatform(navigator.platform)
+    ? "⌘↵"
+    : "Ctrl+↵";
 
   const scrollOnNextHighlightRef = useRef(false);
   useEffect(() => {
@@ -296,18 +325,51 @@ export function ThreadSearchPaletteMode({
     <PaletteShell
       activeDescendantId={activeDescendantId}
       accessory={
-        <ThreadSearchScopeFilter
-          inputRef={inputRef}
-          scope={scope}
-          onScopeChange={(nextScope) => {
-            setScope(nextScope);
-            setHighlightedIndex(0);
-            if (listRef.current !== null) listRef.current.scrollTop = 0;
-          }}
-        />
+        <>
+          <ThreadSearchScopeFilter
+            inputRef={inputRef}
+            scope={scope}
+            onScopeChange={(nextScope) => {
+              setScope(nextScope);
+              setHighlightedIndex(0);
+              if (listRef.current !== null) listRef.current.scrollTop = 0;
+            }}
+          />
+          {activeRow === undefined || isCompact ? null : (
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  className="shrink-0 px-2 text-subtle-foreground aria-disabled:opacity-50"
+                  aria-label="Open in split"
+                  aria-disabled={!canSplit}
+                  aria-keyshortcuts={
+                    canSplit ? "Meta+Enter Control+Enter" : undefined
+                  }
+                  onClick={() => {
+                    if (canSplit) openRow(activeRow, true);
+                  }}
+                >
+                  <Icon name="Columns2" aria-hidden />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>
+                {splitDisabledReason ?? `Open in split (${splitShortcut})`}
+              </TooltipContent>
+            </Tooltip>
+          )}
+        </>
       }
-      footerKeys={activeIndex >= 0 && !isCompact ? presentation.footerKeys : []}
-      inputDescription={presentation.inputDescription}
+      footerKeys={
+        canSplit ? [{ keys: [splitShortcut], label: "Open in split" }] : []
+      }
+      inputDescription={
+        canSplit
+          ? presentation.inputDescription
+          : "Use Escape to return to commands."
+      }
       inputLabel="Search threads"
       inputRef={inputRef}
       listId={listId}
@@ -452,6 +514,7 @@ function ThreadSearchPaletteRow({
       : row.lifecycle === "draft"
         ? "Draft"
         : "Archived";
+  const metadata = [stateLabel, row.metadataText].filter(Boolean).join(" · ");
   return (
     <div
       id={id}
@@ -474,20 +537,16 @@ function ThreadSearchPaletteRow({
             ranges={primary.highlightRanges}
           />
         </span>
-        {row.metadataText.length === 0 && stateLabel === null ? null : (
+        {metadata.length === 0 ? null : (
           <span
             className={cn(
-              "flex min-h-4 min-w-0 items-baseline gap-3 text-xs leading-4",
+              "block min-h-4 truncate text-xs leading-4",
               PALETTE_FOOTER_LABEL_CLASS,
             )}
             data-palette-thread-metadata
+            title={metadata}
           >
-            <span className="min-w-0 flex-1 truncate" title={row.metadataText}>
-              {row.metadataText}
-            </span>
-            {stateLabel === null ? null : (
-              <span className="shrink-0">{stateLabel}</span>
-            )}
+            {metadata}
           </span>
         )}
       </span>

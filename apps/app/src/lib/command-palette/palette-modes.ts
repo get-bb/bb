@@ -7,7 +7,6 @@ export const PALETTE_MODES: readonly PaletteModeRegistration[] = [
     entryCommand: "thread.search",
     chip: { icon: "Search", label: "Threads" },
     placeholder: "Search title, project, or message…",
-    footerKeys: [{ keys: ["⌘↵"], label: "Open in split" }],
     inputDescription:
       "Use Command-Enter or Control-Enter to open the selected thread in a split. Use Escape to return to commands.",
     View: ThreadSearchPaletteMode,

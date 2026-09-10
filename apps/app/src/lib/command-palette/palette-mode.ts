@@ -7,10 +7,6 @@ export interface PaletteModePresentation {
     icon: IconName;
     label: string;
   };
-  footerKeys: readonly {
-    keys: readonly string[];
-    label: string;
-  }[];
   inputDescription: string;
   placeholder: string;
 }

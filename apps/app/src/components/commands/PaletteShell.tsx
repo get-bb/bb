@@ -1,5 +1,6 @@
 import {
   useId,
+  useState,
   type KeyboardEventHandler,
   type ReactNode,
   type Ref,
@@ -10,6 +11,7 @@ import { cn } from "@bb/shared-ui/lib/utils";
 import { useScrollOverflowState } from "@/components/thread/timeline/useScrollOverflowState";
 import { TabPill } from "@/components/ui/tab-pill";
 import { APP_COMMAND_ACCESSORY_PILL_CLASS } from "./AppCommandShortcutHint";
+import { useIsAppCommandModifierHeld } from "./AppCommandProvider";
 
 export const PALETTE_FOOTER_KEYCAP_CLASS = cn(
   APP_COMMAND_ACCESSORY_PILL_CLASS,
@@ -60,6 +62,9 @@ export function PaletteShell({
   value,
 }: PaletteShellProps) {
   const inputDescriptionId = useId();
+  const [inputFocused, setInputFocused] = useState(false);
+  const modifierHeld = useIsAppCommandModifierHeld();
+  const showFooter = inputFocused && modifierHeld && footerKeys.length > 0;
   const overflow = useScrollOverflowState<HTMLDivElement>({
     measureOverflow: true,
   });
@@ -99,6 +104,8 @@ export function PaletteShell({
             placeholder={placeholder}
             value={value}
             onChange={(event) => onInputChange(event.target.value)}
+            onFocus={() => setInputFocused(true)}
+            onBlur={() => setInputFocused(false)}
             onKeyDown={onInputKeyDown}
           />
           <span id={inputDescriptionId} className="sr-only">
@@ -110,7 +117,7 @@ export function PaletteShell({
       <div
         className={cn(
           "relative min-h-0 overflow-hidden bg-background",
-          footerKeys.length === 0 && "rounded-b-[inherit]",
+          !showFooter && "rounded-b-[inherit]",
         )}
         data-palette-results-clip
       >
@@ -141,7 +148,7 @@ export function PaletteShell({
           />
         </div>
       </div>
-      {footerKeys.length === 0 ? null : (
+      {!showFooter ? null : (
         <div
           aria-hidden
           className="relative z-10 flex flex-wrap items-center gap-x-4 gap-y-1 rounded-b-[inherit] border-t border-border/40 bg-surface-recessed-soft-solid px-4 py-2 text-xs text-subtle-foreground"
@@ -165,7 +172,7 @@ export function PaletteShell({
                 ))}
               </span>
               <span
-                className={cn(PALETTE_FOOTER_LABEL_CLASS, "opacity-50")}
+                className="text-subtle-foreground"
                 data-palette-footer-label
               >
                 {hint.label}
@@ -193,7 +200,11 @@ function PaletteModeChip({
         isActive
         onSelect={() => undefined}
         leadingVisual={<Icon name={icon} aria-hidden />}
-        closeAction={{ onClose: onClear, closeLabel: clearLabel }}
+        closeAction={{
+          onClose: onClear,
+          closeLabel: clearLabel,
+          tooltip: `${clearLabel} (Esc)`,
+        }}
       />
     </span>
   );
