@@ -38,6 +38,7 @@ import { buildPluginPagePaletteActions } from "@/lib/command-palette/palette-plu
 import { usePluginSlots } from "@/lib/plugin-slots";
 import { getActiveThreadPanelOpener } from "@/components/plugin/plugin-thread-panel-navigation";
 import { getThreadRoutePath } from "@/lib/route-paths";
+import { getToolsOwnedCollectionRoutePath } from "@/components/tools/tools-navigation";
 import { pluginListQueryOptions } from "@/hooks/queries/plugin-settings-queries";
 import {
   buildPluginSettingsEntries,
@@ -173,9 +174,22 @@ export function CommandPalette({ threadId, projectId }: CommandPaletteProps) {
 
   const mode: PaletteMode = query.startsWith(">") ? "commands" : "threads";
   const modeQuery = mode === "commands" ? query.slice(1) : query;
-  const commandActions = useMemo(
-    () => [...actions, ...settingsActions, ...pluginPageActions],
-    [actions, pluginPageActions, settingsActions],
+  const commandActions = useMemo<readonly PaletteAction[]>(
+    () => [
+      ...actions,
+      ...settingsActions,
+      {
+        id: "settings:plugins",
+        group: "Plugins",
+        title: "Installed plugins",
+        shortcut: null,
+        run: () => {
+          void navigate(getToolsOwnedCollectionRoutePath("plugins"));
+        },
+      },
+      ...pluginPageActions,
+    ],
+    [actions, navigate, pluginPageActions, settingsActions],
   );
   const rankedCommands = useMemo(
     () =>

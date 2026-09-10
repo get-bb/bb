@@ -169,7 +169,11 @@ function LocationProbe() {
   const location = useLocation();
   return (
     <output data-testid="location">
-      {JSON.stringify({ pathname: location.pathname, state: location.state })}
+      {JSON.stringify({
+        pathname: location.pathname,
+        search: location.search,
+        state: location.state,
+      })}
     </output>
   );
 }
@@ -259,7 +263,7 @@ describe("CommandPalette", () => {
     expect((searchField() as HTMLInputElement).value).toBe(">");
     const titles = optionTitles();
     expect(titles?.[0]).toContain("New thread");
-    expect(titles).toHaveLength(18);
+    expect(titles).toHaveLength(19);
   });
 
   it("filters as the user types and keeps the selection on a live row", async () => {
@@ -477,6 +481,31 @@ describe("CommandPalette", () => {
       ).value,
     ).toBe("");
   });
+
+  it.each([false, true])(
+    "opens Installed plugins in its workspace (compact: %s)",
+    async (isCompactViewport) => {
+      renderPalette(isCompactViewport);
+      openPalette();
+      await waitFor(() => expect(searchField()).toBeTruthy());
+      fireEvent.change(searchField(), {
+        target: { value: ">installed plugins" },
+      });
+      await waitFor(() =>
+        expect(selectedOption()?.textContent).toContain("Installed plugins"),
+      );
+      fireEvent.keyDown(searchField(), { key: "Enter" });
+      await waitFor(() =>
+        expect(screen.getByTestId("location").textContent).toBe(
+          JSON.stringify({
+            pathname: "/plugins",
+            search: "?view=installed",
+            state: null,
+          }),
+        ),
+      );
+    },
+  );
 
   it("opens a specific settings page from Cmd-K", async () => {
     renderPalette();

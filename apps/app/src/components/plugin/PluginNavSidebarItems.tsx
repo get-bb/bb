@@ -280,15 +280,26 @@ function PluginNavSidebarItemList({
     [ordered],
   );
 
-  const persistNormalizedOrder = useCallback(() => {
-    if (haveSameOrder(storedOrder, normalizedOrder)) return;
-    setStoredOrder(normalizedOrder);
-  }, [normalizedOrder, setStoredOrder, storedOrder]);
+  const persistPreferences = useCallback(
+    (order: string[], nextVisibleKeys: string[] | null) => {
+      if (!haveSameOrder(storedOrder, order)) setStoredOrder(order);
+      if (
+        storedVisibleKeys === nextVisibleKeys ||
+        (storedVisibleKeys !== null &&
+          nextVisibleKeys !== null &&
+          haveSameOrder(storedVisibleKeys, nextVisibleKeys))
+      ) {
+        return;
+      }
+      setStoredVisibleKeys(nextVisibleKeys);
+    },
+    [setStoredOrder, setStoredVisibleKeys, storedOrder, storedVisibleKeys],
+  );
 
   const setPanelVisible = useCallback(
     (key: string, isVisible: boolean) => {
-      persistNormalizedOrder();
-      setStoredVisibleKeys(
+      persistPreferences(
+        normalizedOrder,
         togglePluginNavPanelVisibility(
           normalizedVisibleKeys ?? visibleKeys,
           key,
@@ -296,12 +307,7 @@ function PluginNavSidebarItemList({
         ),
       );
     },
-    [
-      normalizedVisibleKeys,
-      persistNormalizedOrder,
-      setStoredVisibleKeys,
-      visibleKeys,
-    ],
+    [normalizedVisibleKeys, normalizedOrder, persistPreferences, visibleKeys],
   );
 
   const handleDragEnd = useCallback(
@@ -319,9 +325,9 @@ function PluginNavSidebarItemList({
         order: normalizedOrder,
         visibleIds: visibleKeys,
       });
-      if (nextOrder) setStoredOrder(nextOrder);
+      if (nextOrder) persistPreferences(nextOrder, normalizedVisibleKeys);
     },
-    [normalizedOrder, setStoredOrder, visibleKeys],
+    [normalizedOrder, normalizedVisibleKeys, persistPreferences, visibleKeys],
   );
   const { dndContextProps, onClickCapture } = useSidebarReorderDnd({
     onDragEnd: handleDragEnd,
@@ -336,15 +342,13 @@ function PluginNavSidebarItemList({
         visibleIds: orderedKeys,
       });
       if (!nextOrder) return;
-      if (storedVisibleKeys === null) setStoredVisibleKeys(visibleKeys);
-      setStoredOrder(nextOrder);
+      persistPreferences(nextOrder, normalizedVisibleKeys ?? visibleKeys);
     },
     [
       normalizedOrder,
+      normalizedVisibleKeys,
       orderedKeys,
-      setStoredOrder,
-      setStoredVisibleKeys,
-      storedVisibleKeys,
+      persistPreferences,
       visibleKeys,
     ],
   );
