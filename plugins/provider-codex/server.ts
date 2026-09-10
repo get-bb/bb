@@ -7,6 +7,7 @@ export default function plugin(bb: BbPluginApi) {
     id: "codex",
     displayName: "Codex (ChatGPT account or API key)",
     kinds: ["inference", "voice"],
+    experimental_maxVoiceBytes: 5 * 1024 * 1024,
   });
 
   bb.settings.define({

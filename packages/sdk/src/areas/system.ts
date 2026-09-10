@@ -18,6 +18,8 @@ import type {
   SystemInstallCliSkillsResponse,
   SystemProviderStatesResponse,
   SystemProvidersQuery,
+  SystemAiServices,
+  SystemTranscriptionSettingsUpdate,
   SystemUsageLimitsQuery,
   SystemVersionQuery,
   SystemVersionResponse,
@@ -71,6 +73,7 @@ export type SystemUpdateExperimentsResult = Experiments;
 export type SystemUpdateGeneralSettingsResult = AppSettings & {
   showUnhandledProviderEvents?: boolean;
 };
+export type SystemUpdateTranscriptionSettingsResult = SystemAiServices;
 export type SystemUpdateKeyboardSettingsResult = AppKeybindingOverrides;
 export type SystemUsageLimitsResult = ProviderUsageResponse;
 export interface SystemProviderStatesArgs extends SystemProvidersQuery {
@@ -125,6 +128,9 @@ export interface SystemArea {
   updateGeneralSettings(
     args: AppSettingsUpdate,
   ): Promise<SystemUpdateGeneralSettingsResult>;
+  updateTranscriptionSettings(
+    args: SystemTranscriptionSettingsUpdate,
+  ): Promise<SystemUpdateTranscriptionSettingsResult>;
   updateKeyboardSettings(
     args: AppKeybindingOverrides,
   ): Promise<SystemUpdateKeyboardSettingsResult>;
@@ -253,6 +259,11 @@ export function createSystemArea(args: CreateSdkAreaArgs): SystemArea {
     async updateGeneralSettings(input) {
       return transport.readJson(
         transport.api.v1.settings.general.$put({ json: input }),
+      );
+    },
+    async updateTranscriptionSettings(input) {
+      return transport.readJson(
+        transport.api.v1.settings.transcription.$put({ json: input }),
       );
     },
     async updateKeyboardSettings(input) {

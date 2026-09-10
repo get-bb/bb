@@ -1,5 +1,10 @@
 import { atom } from "jotai";
 import { DEFAULTS } from "@bb/config/defaults";
+import {
+  DEFAULT_PLUGIN_TRANSCRIPTION_MAX_BYTES,
+  DEFAULT_VOICE_RECORDING_BITRATE,
+  DEFAULT_VOICE_TRANSCRIPTION_TIMEOUT_MAX_MS,
+} from "@bb/config/voice-transcription-limit";
 import { defaultAppSettings, defaultAppTheme } from "@bb/domain";
 import type { WorkspaceOpenTarget } from "@bb/host-daemon-contract";
 import type { HostDaemonStatusSnapshot } from "./api-host-daemon";
@@ -43,6 +48,9 @@ const unavailableSystemConfig: SystemConfigResponse = {
     inference: DEFAULTS.inferenceModel,
     inferenceFallback: DEFAULTS.inferenceFallbackModel,
     transcription: DEFAULTS.transcriptionModel,
+    transcriptionMaxBytes: DEFAULT_PLUGIN_TRANSCRIPTION_MAX_BYTES,
+    transcriptionTimeoutMaxMs: DEFAULT_VOICE_TRANSCRIPTION_TIMEOUT_MAX_MS,
+    recordingBitrate: DEFAULT_VOICE_RECORDING_BITRATE,
     services: [],
   },
   dataDir: "",

@@ -34,9 +34,12 @@ export interface ServerRuntimeConfig {
   isDevelopment: boolean;
   marketplaceUrl: string;
   openAiApiKey: string;
+  pluginTranscriptionMaxBytes: number;
   serverPort: number;
   sharedSkillRoots: ProviderNativeSkillRoots;
   transcriptionModel: string;
+  voiceTranscriptionRecordingBitrate: number;
+  voiceTranscriptionTimeoutMaxMs: number;
   appUrl?: string;
   devAppPort?: number;
   launchId?: string;

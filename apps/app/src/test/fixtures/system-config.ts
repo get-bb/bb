@@ -1,5 +1,10 @@
 import { DEFAULTS } from "@bb/config/defaults";
 import {
+  DEFAULT_PLUGIN_TRANSCRIPTION_MAX_BYTES,
+  DEFAULT_VOICE_RECORDING_BITRATE,
+  DEFAULT_VOICE_TRANSCRIPTION_TIMEOUT_MAX_MS,
+} from "@bb/config/voice-transcription-limit";
+import {
   defaultAppSettings,
   defaultAppTheme,
   defaultExperiments,
@@ -30,6 +35,9 @@ export function makeSystemConfig(
       inference: DEFAULTS.inferenceModel,
       inferenceFallback: DEFAULTS.inferenceFallbackModel,
       transcription: DEFAULTS.transcriptionModel,
+      transcriptionMaxBytes: DEFAULT_PLUGIN_TRANSCRIPTION_MAX_BYTES,
+      transcriptionTimeoutMaxMs: DEFAULT_VOICE_TRANSCRIPTION_TIMEOUT_MAX_MS,
+      recordingBitrate: DEFAULT_VOICE_RECORDING_BITRATE,
       services: [],
     },
     dataDir: "/tmp/bb-test",

@@ -25,6 +25,17 @@ interface UseVoiceInputOptions {
     signal?: AbortSignal;
   }) => Promise<string>;
   getPromptContext?: () => string | undefined;
+  /**
+   * Recorder bitrate to pin, or null to leave the browser default untouched.
+   * Read at recording start; pinned only for large-audio transcription
+   * services so Codex and openai/* keep the browser default.
+   */
+  getAudioBitsPerSecond?: () => number | null;
+}
+
+interface RetainedRecording {
+  file: File;
+  promptContext?: string;
 }
 
 const MIN_RECORDING_DURATION_MS = 1_000;
@@ -124,8 +135,11 @@ export function useVoiceInput(options: UseVoiceInputOptions) {
   const wakeLockSentinelRef = useRef<WakeLockSentinel | null>(null);
   const wakeLockRequestRef = useRef<Promise<void> | null>(null);
   const shouldHoldWakeLockRef = useRef(false);
+  const retainedRecordingRef = useRef<RetainedRecording | null>(null);
+  const retryRef = useRef<() => void>(() => {});
 
   const [state, setState] = useState<VoiceInputState>("idle");
+  const [canRetry, setCanRetry] = useState(false);
   const [isSupported, setIsSupported] = useState(false);
   const [unsupportedReason, setUnsupportedReason] =
     useState<VoiceUnsupportedReason | null>("unsupported-browser");
@@ -135,6 +149,65 @@ export function useVoiceInput(options: UseVoiceInputOptions) {
     setState("error");
     appToast.error("Voice input failed", { description: message });
   }, []);
+
+  const clearRetainedRecording = useCallback(() => {
+    retainedRecordingRef.current = null;
+    setCanRetry(false);
+  }, []);
+
+  const runTranscription = useCallback(
+    async (recording: RetainedRecording) => {
+      setState("transcribing");
+      const abortController = new AbortController();
+      transcriptionAbortRef.current = abortController;
+      try {
+        const transcript = await options.onTranscribe({
+          file: recording.file,
+          promptContext: recording.promptContext,
+          signal: abortController.signal,
+        });
+        const normalized = normalizeTranscript(transcript);
+        if (normalized.length === 0) {
+          throw new Error("Voice transcription returned an empty result.");
+        }
+        options.onTranscript(normalized);
+        clearRetainedRecording();
+        setState("idle");
+      } catch (error) {
+        if (error instanceof DOMException && error.name === "AbortError") {
+          setState("idle");
+          return;
+        }
+        retainedRecordingRef.current = recording;
+        setCanRetry(true);
+        setState("error");
+        appToast.error("Voice input failed", {
+          description: resolveRecordingErrorMessage(error),
+          action: {
+            label: "Retry",
+            onClick: () => retryRef.current(),
+          },
+        });
+      } finally {
+        if (transcriptionAbortRef.current === abortController) {
+          transcriptionAbortRef.current = null;
+        }
+      }
+    },
+    [clearRetainedRecording, options],
+  );
+
+  const retry = useCallback(() => {
+    const recording = retainedRecordingRef.current;
+    if (recording === null || state === "recording" || state === "transcribing") {
+      return;
+    }
+    void runTranscription(recording);
+  }, [runTranscription, state]);
+
+  useEffect(() => {
+    retryRef.current = retry;
+  }, [retry]);
 
   const stopMediaStream = useCallback(() => {
     const stream = streamRef.current;
@@ -260,12 +333,22 @@ export function useVoiceInput(options: UseVoiceInputOptions) {
       promptContextRef.current = options.getPromptContext?.();
       shouldTranscribeRef.current = true;
       shouldHoldWakeLockRef.current = true;
+      clearRetainedRecording();
       requestRecordingWakeLock();
 
       const preferredMimeType = resolvePreferredAudioMimeType();
-      const recorder = preferredMimeType
-        ? new MediaRecorder(stream, { mimeType: preferredMimeType })
-        : new MediaRecorder(stream);
+      const audioBitsPerSecond = options.getAudioBitsPerSecond?.() ?? null;
+      const recorderOptions: MediaRecorderOptions = {};
+      if (preferredMimeType) {
+        recorderOptions.mimeType = preferredMimeType;
+      }
+      if (audioBitsPerSecond !== null) {
+        recorderOptions.audioBitsPerSecond = audioBitsPerSecond;
+      }
+      const recorder =
+        Object.keys(recorderOptions).length > 0
+          ? new MediaRecorder(stream, recorderOptions)
+          : new MediaRecorder(stream);
       mediaRecorderRef.current = recorder;
 
       recorder.onstart = () => {
@@ -320,32 +403,7 @@ export function useVoiceInput(options: UseVoiceInputOptions) {
         const promptContext = promptContextRef.current;
         promptContextRef.current = undefined;
 
-        setState("transcribing");
-        const abortController = new AbortController();
-        transcriptionAbortRef.current = abortController;
-        try {
-          const transcript = await options.onTranscribe({
-            file: audioFile,
-            promptContext,
-            signal: abortController.signal,
-          });
-          const normalized = normalizeTranscript(transcript);
-          if (normalized.length === 0) {
-            throw new Error("Voice transcription returned an empty result.");
-          }
-          options.onTranscript(normalized);
-          setState("idle");
-        } catch (error) {
-          if (error instanceof DOMException && error.name === "AbortError") {
-            setState("idle");
-            return;
-          }
-          showError(resolveRecordingErrorMessage(error));
-        } finally {
-          if (transcriptionAbortRef.current === abortController) {
-            transcriptionAbortRef.current = null;
-          }
-        }
+        await runTranscription({ file: audioFile, promptContext });
       };
 
       recorder.start(CHUNK_TIMESLICE_MS);
@@ -366,8 +424,10 @@ export function useVoiceInput(options: UseVoiceInputOptions) {
       );
     }
   }, [
+    clearRetainedRecording,
     isSupported,
     options,
+    runTranscription,
     unsupportedReason,
     preferredAudioInputDeviceId,
     releaseRecordingWakeLock,
@@ -414,9 +474,10 @@ export function useVoiceInput(options: UseVoiceInputOptions) {
         abortController.abort();
         transcriptionAbortRef.current = null;
       }
+      clearRetainedRecording();
       setState("idle");
     }
-  }, [showError, state]);
+  }, [clearRetainedRecording, showError, state]);
 
   return {
     state,
@@ -426,8 +487,10 @@ export function useVoiceInput(options: UseVoiceInputOptions) {
     isRecording: state === "recording",
     isProcessing: state === "transcribing",
     isListening: state === "recording" || state === "transcribing",
+    canRetry,
     start,
     stop,
     cancel,
+    retry,
   };
 }

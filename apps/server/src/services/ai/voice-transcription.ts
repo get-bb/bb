@@ -4,12 +4,19 @@ import {
   parseProviderModelConfig,
   type ProviderModelInfo,
 } from "@bb/config/inference-model";
+import {
+  resolveVoiceTranscriptionTimeoutMs,
+  VOICE_TRANSCRIPTION_MAX_BYTES,
+} from "@bb/config/voice-transcription-limit";
 import type { LoggedWorkSessionDeps } from "../../types.js";
 import { ApiError } from "../../errors.js";
 import { requireConnectedPrimaryHostId } from "../hosts/primary-host.js";
 import { runtimeErrorLogFields } from "../lib/error-log-fields.js";
 import { AiServiceCallError } from "./ai-service-call.js";
-import type { AiServiceRegistration } from "./ai-service-registry.js";
+import type {
+  AiServiceInfo,
+  AiServiceRegistration,
+} from "./ai-service-registry.js";
 import {
   INFERENCE_POLICY,
   inferenceCompleteWithFallback,
@@ -24,8 +31,6 @@ interface TranscribeVoiceInputArgs {
 type OptionalJsonValue = JsonValue | null | undefined;
 
 const OPENAI_TRANSCRIPTION_PROVIDER = "openai";
-const VOICE_TRANSCRIPTION_MAX_BYTES = 25 * 1024 * 1024;
-const AI_SERVICE_VOICE_MAX_BYTES = 5 * 1024 * 1024;
 const voiceTranscriptionSchema = Type.Object({ text: Type.String() });
 
 function parseTranscriptionModel(model: string): ProviderModelInfo {
@@ -41,6 +46,16 @@ function voiceService(
 ): AiServiceRegistration | null {
   const service = deps.aiServices.get(modelInfo.provider);
   return service !== null && service.kinds.includes("voice") ? service : null;
+}
+
+export function resolveServiceVoiceMaxBytes(
+  deps: LoggedWorkSessionDeps,
+  service: AiServiceRegistration | AiServiceInfo,
+): number {
+  const ceiling = deps.config.pluginTranscriptionMaxBytes;
+  return service.experimental_maxVoiceBytes === undefined
+    ? ceiling
+    : Math.min(ceiling, service.experimental_maxVoiceBytes);
 }
 
 function isPrimaryHostConnected(deps: LoggedWorkSessionDeps): boolean {
@@ -92,13 +107,12 @@ function openAiErrorMessage(payload: OptionalJsonValue): string {
   return jsonStringProperty(error, "message") ?? "Voice transcription failed";
 }
 
-async function readJsonValue(response: Response): Promise<JsonValue | null> {
-  const text = await response.text();
-  if (text.trim().length === 0) {
+function parseJsonBody(rawBody: string): JsonValue | null {
+  if (rawBody.trim().length === 0) {
     return null;
   }
   try {
-    return jsonValueSchema.parse(JSON.parse(text));
+    return jsonValueSchema.parse(JSON.parse(rawBody));
   } catch {
     return null;
   }
@@ -128,11 +142,12 @@ async function transcribeWithAiService(
   modelInfo: ProviderModelInfo,
   args: TranscribeVoiceInputArgs,
 ): Promise<string> {
-  if (args.file.size > AI_SERVICE_VOICE_MAX_BYTES) {
+  const maxBytes = resolveServiceVoiceMaxBytes(deps, service);
+  if (args.file.size > maxBytes) {
     throw new ApiError(
       400,
       "invalid_request",
-      `Audio file exceeds the ${AI_SERVICE_VOICE_MAX_BYTES / (1024 * 1024)}MB limit for plugin-served transcription`,
+      `Audio file exceeds the ${maxBytes / (1024 * 1024)}MB limit for plugin-served transcription`,
     );
   }
   const hostId = requireConnectedPrimaryHostId(deps);
@@ -141,8 +156,14 @@ async function transcribeWithAiService(
   );
   const prompt = trimPrompt(args.prompt) ?? "";
   const transcriptionModel = `${modelInfo.provider}/${modelInfo.modelId}`;
+  const timeoutBudgetMs = resolveVoiceTranscriptionTimeoutMs({
+    audioBytes: args.file.size,
+    maxMs: deps.config.voiceTranscriptionTimeoutMaxMs,
+  });
   const transcription = await inferenceCompleteWithFallback(deps, {
-    ...INFERENCE_POLICY.voiceTranscription,
+    maxAttempts: INFERENCE_POLICY.voiceTranscription.maxAttempts,
+    retryDelayMs: INFERENCE_POLICY.voiceTranscription.retryDelayMs,
+    timeoutMs: timeoutBudgetMs,
     complete: async (model, attemptPrompt, timeoutMs) => {
       const attemptModel = parseTranscriptionModel(model);
       const result = await service.transcribeVoice(
@@ -213,12 +234,16 @@ async function transcribeWithOpenAi(
     formData.set("prompt", prompt);
   }
 
+  const timeoutBudgetMs = resolveVoiceTranscriptionTimeoutMs({
+    audioBytes: args.file.size,
+    maxMs: deps.config.voiceTranscriptionTimeoutMaxMs,
+  });
   const abortController = new AbortController();
   let timedOut = false;
   const timer = setTimeout(() => {
     timedOut = true;
     abortController.abort();
-  }, INFERENCE_POLICY.voiceTranscription.timeoutMs);
+  }, timeoutBudgetMs);
   timer.unref();
 
   let response: Response;
@@ -248,8 +273,19 @@ async function transcribeWithOpenAi(
     clearTimeout(timer);
   }
 
-  const payload = await readJsonValue(response);
+  const rawBody = await response.text();
+  const payload = parseJsonBody(rawBody);
   if (!response.ok) {
+    if (payload === null) {
+      deps.logger.warn(
+        {
+          ...runtimeErrorLogFields(deps.config, new Error("unparseable provider error payload")),
+          status: response.status,
+          bodySnippet: rawBody.slice(0, 500),
+        },
+        "OpenAI voice transcription returned an unparseable error payload",
+      );
+    }
     throw new ApiError(502, "provider_rpc_error", openAiErrorMessage(payload));
   }
 
@@ -269,7 +305,11 @@ export async function transcribeVoiceInput(
     throw new ApiError(400, "invalid_request", "Audio file must not be empty");
   }
   if (args.file.size > VOICE_TRANSCRIPTION_MAX_BYTES) {
-    throw new ApiError(400, "invalid_request", "Audio file exceeds 25MB limit");
+    throw new ApiError(
+      400,
+      "invalid_request",
+      `Audio file exceeds ${VOICE_TRANSCRIPTION_MAX_BYTES / (1024 * 1024)}MB limit`,
+    );
   }
 
   const modelInfo = parseTranscriptionModel(deps.config.transcriptionModel);

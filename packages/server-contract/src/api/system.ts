@@ -112,13 +112,30 @@ export const systemAiServiceSchema = z.object({
   displayName: z.string().min(1),
   kinds: z.array(z.enum(["inference", "voice"])),
   pluginId: z.string().min(1),
+  maxVoiceBytes: z.number().int().positive().nullable(),
+  effectiveVoiceMaxBytes: z.number().int().positive().nullable(),
 });
 export type SystemAiService = z.infer<typeof systemAiServiceSchema>;
+
+export const systemTranscriptionSettingsUpdateSchema = z
+  .object({
+    transcriptionModel: z.string().min(1).optional(),
+    transcriptionMaxBytes: z.number().int().positive().optional(),
+    transcriptionTimeoutMaxMs: z.number().int().positive().optional(),
+    recordingBitrate: z.number().int().positive().optional(),
+  })
+  .strict();
+export type SystemTranscriptionSettingsUpdate = z.infer<
+  typeof systemTranscriptionSettingsUpdateSchema
+>;
 
 export const systemAiServicesSchema = z.object({
   inference: z.string().min(1),
   inferenceFallback: z.string().min(1),
   transcription: z.string().min(1),
+  transcriptionMaxBytes: z.number().int().positive(),
+  transcriptionTimeoutMaxMs: z.number().int().positive(),
+  recordingBitrate: z.number().int().positive(),
   services: z.array(systemAiServiceSchema),
 });
 export type SystemAiServices = z.infer<typeof systemAiServicesSchema>;

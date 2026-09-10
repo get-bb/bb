@@ -25,7 +25,10 @@ export type BbAppManagedConfigKey =
   | "BB_INFERENCE"
   | "BB_INFERENCE_FALLBACK"
   | "BB_LOG_LEVEL"
-  | "BB_TRANSCRIPTION";
+  | "BB_TRANSCRIPTION"
+  | "BB_TRANSCRIPTION_MAX_BYTES"
+  | "BB_TRANSCRIPTION_TIMEOUT_MAX_MS"
+  | "BB_TRANSCRIPTION_RECORDING_BITRATE";
 
 export const BB_APP_MANAGED_CONFIG_KEYS: BbAppManagedConfigKey[] = [
   "BB_APP_URL",
@@ -33,6 +36,9 @@ export const BB_APP_MANAGED_CONFIG_KEYS: BbAppManagedConfigKey[] = [
   "BB_INFERENCE_FALLBACK",
   "BB_LOG_LEVEL",
   "BB_TRANSCRIPTION",
+  "BB_TRANSCRIPTION_MAX_BYTES",
+  "BB_TRANSCRIPTION_TIMEOUT_MAX_MS",
+  "BB_TRANSCRIPTION_RECORDING_BITRATE",
 ];
 
 export const PORTABLE_ENV_NAME_PATTERN = /^[A-Za-z_][A-Za-z0-9_]*$/u;
@@ -54,6 +60,9 @@ const bbAppManagedConfigValuesSchema = z
     BB_INFERENCE_FALLBACK: z.string().optional(),
     BB_LOG_LEVEL: z.string().optional(),
     BB_TRANSCRIPTION: z.string().optional(),
+    BB_TRANSCRIPTION_MAX_BYTES: z.string().optional(),
+    BB_TRANSCRIPTION_TIMEOUT_MAX_MS: z.string().optional(),
+    BB_TRANSCRIPTION_RECORDING_BITRATE: z.string().optional(),
   })
   .strict();
 

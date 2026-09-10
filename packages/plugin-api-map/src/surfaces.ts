@@ -895,6 +895,7 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
         bullets: [
           "Serve those calls from an enrolled machine, so bb's helper model can be one the plugin holds the credentials for",
           "Serve voice transcription the same way, for the microphone button in the prompt box",
+          "Cap the audio size it accepts with experimental_maxVoiceBytes, which bb enforces beneath the user's overall limit",
           "Appear as a choice in the AI-service settings, alongside the models bb reaches itself",
         ],
         apiSymbols: ["PluginAiServices", "PluginAiServiceDeclaration"],

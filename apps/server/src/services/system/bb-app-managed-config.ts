@@ -1,10 +1,13 @@
-import { readFile } from "node:fs/promises";
+import { randomUUID } from "node:crypto";
+import { mkdir, readFile, rename, unlink, writeFile } from "node:fs/promises";
+import { join } from "node:path";
 import {
   bbAppManagedEnvFileSchema,
   formatBbAppConfigPath,
   formatBbAppEnvPath,
   parseBbAppManagedConfig,
   type BbAppManagedConfig,
+  type BbAppManagedConfigKey,
   type BbAppManagedEnvConfig,
   type BbAppManagedEnvFile,
 } from "@bb/config/bb-app-managed-config";
@@ -14,6 +17,11 @@ import {
   validateTranscriptionModel,
 } from "@bb/config/inference-model";
 import { validateOptionalUrl } from "@bb/config/public-url";
+import {
+  parsePluginTranscriptionMaxBytes,
+  parseVoiceRecordingBitrate,
+  parseVoiceTranscriptionTimeoutMaxMs,
+} from "@bb/config/voice-transcription-limit";
 import type { ServerLogger, ServerRuntimeConfig } from "../../types.js";
 import type { NotificationHub } from "../../ws/hub.js";
 
@@ -117,6 +125,27 @@ export function applyBbAppManagedConfig(
     managedConfig.BB_TRANSCRIPTION !== undefined
       ? validateTranscriptionModel(managedConfig.BB_TRANSCRIPTION)
       : args.baseConfig.transcriptionModel;
+  args.targetConfig.pluginTranscriptionMaxBytes =
+    managedConfig.BB_TRANSCRIPTION_MAX_BYTES !== undefined
+      ? parsePluginTranscriptionMaxBytes(
+          "BB_TRANSCRIPTION_MAX_BYTES",
+          managedConfig.BB_TRANSCRIPTION_MAX_BYTES,
+        )
+      : args.baseConfig.pluginTranscriptionMaxBytes;
+  args.targetConfig.voiceTranscriptionTimeoutMaxMs =
+    managedConfig.BB_TRANSCRIPTION_TIMEOUT_MAX_MS !== undefined
+      ? parseVoiceTranscriptionTimeoutMaxMs(
+          "BB_TRANSCRIPTION_TIMEOUT_MAX_MS",
+          managedConfig.BB_TRANSCRIPTION_TIMEOUT_MAX_MS,
+        )
+      : args.baseConfig.voiceTranscriptionTimeoutMaxMs;
+  args.targetConfig.voiceTranscriptionRecordingBitrate =
+    managedConfig.BB_TRANSCRIPTION_RECORDING_BITRATE !== undefined
+      ? parseVoiceRecordingBitrate(
+          "BB_TRANSCRIPTION_RECORDING_BITRATE",
+          managedConfig.BB_TRANSCRIPTION_RECORDING_BITRATE,
+        )
+      : args.baseConfig.voiceTranscriptionRecordingBitrate;
   args.targetConfig.openAiApiKey =
     managedEnv.OPENAI_API_KEY ?? args.baseConfig.openAiApiKey;
 
@@ -126,6 +155,68 @@ export function applyBbAppManagedConfig(
       ? validateOptionalUrl("BB_APP_URL", managedConfig.BB_APP_URL)
       : args.baseConfig.appUrl,
   );
+}
+
+interface WriteBbAppManagedConfigValuesArgs {
+  dataDir: string;
+  values: Partial<Record<BbAppManagedConfigKey, string>>;
+}
+
+function isJsonObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+export async function writeBbAppManagedConfigValues(
+  args: WriteBbAppManagedConfigValuesArgs,
+): Promise<void> {
+  const configPath = formatBbAppConfigPath(args.dataDir);
+  let rawConfig: Record<string, unknown> = {};
+  try {
+    const text = await readFile(configPath, "utf8");
+    const parsed: unknown = JSON.parse(text);
+    if (!isJsonObject(parsed)) {
+      throw new Error(`Invalid bb-app config JSON at ${configPath}`);
+    }
+    rawConfig = parsed;
+  } catch (error) {
+    if (error instanceof SyntaxError) {
+      throw new Error(`Invalid bb-app config JSON at ${configPath}`);
+    }
+    if (!(error instanceof Error && "code" in error && error.code === "ENOENT")) {
+      throw error;
+    }
+  }
+
+  const existingConfig = rawConfig.config;
+  if (existingConfig !== undefined && !isJsonObject(existingConfig)) {
+    throw new Error(`Invalid bb-app config JSON at ${configPath}`);
+  }
+  const nextValues: Record<string, unknown> = { ...(existingConfig ?? {}) };
+  for (const [key, value] of Object.entries(args.values)) {
+    if (value !== undefined) {
+      nextValues[key] = value;
+    }
+  }
+  const nextRawConfig: Record<string, unknown> = {
+    ...rawConfig,
+    config: nextValues,
+  };
+
+  await mkdir(args.dataDir, { recursive: true });
+  const tempPath = join(
+    args.dataDir,
+    `.config.json.${process.pid}.${randomUUID()}.tmp`,
+  );
+  try {
+    await writeFile(tempPath, `${JSON.stringify(nextRawConfig, null, 2)}\n`, {
+      encoding: "utf8",
+      mode: 0o600,
+    });
+    await rename(tempPath, configPath);
+  } catch (error) {
+    await unlink(tempPath).catch(() => undefined);
+    throw error;
+  }
 }
 
 async function readBbAppManagedConfig(

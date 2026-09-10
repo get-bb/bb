@@ -48,7 +48,9 @@ but the CLI identifies server and launcher settings that are startup-only,
 including binding/ports, data and the dev-app port, telemetry, inherited skill
 roots, and `BB_FF_*` flags. `BB_LOG_LEVEL` is also startup-only. Use
 `bb-app config`, not `bb-app env`, to change `BB_APP_URL`, `BB_INFERENCE`,
-`BB_INFERENCE_FALLBACK`, or `BB_TRANSCRIPTION` live. After a startup-only
+`BB_INFERENCE_FALLBACK`, `BB_TRANSCRIPTION`, `BB_TRANSCRIPTION_MAX_BYTES`,
+`BB_TRANSCRIPTION_TIMEOUT_MAX_MS`, or `BB_TRANSCRIPTION_RECORDING_BITRATE`
+live. After a startup-only
 change, run `bb-app stop && bb-app start` or restart the desktop app. Until
 then, changing or unsetting `BB_SERVER_BIND_HOST` does not close a previous
 `0.0.0.0` listener.
@@ -207,8 +209,33 @@ Host files and voice transcription
   bb voice transcribe <audio-file> [--prompt <context>]
 
 Voice transcription uses the `BB_TRANSCRIPTION` model, which defaults to
-`codex/gpt-transcribe`. Override it with
-`bb-app config set BB_TRANSCRIPTION <provider/model>`.
+`codex/gpt-transcribe`. Edit it in Settings → Voice Input, or from the CLI with
+`bb settings transcription model <provider/model>` (also `max-bytes`,
+`timeout-ms`, and `recording-bitrate` keys); both persist to BB-managed config
+and apply live. `bb-app config set BB_TRANSCRIPTION <provider/model>` remains
+for startup/env-file use. When the model names a
+plugin-registered AI service, the server rejects audio larger than the smaller
+of `BB_TRANSCRIPTION_MAX_BYTES` (default `5242880`, i.e. 5MB) and any per-service
+cap the plugin declares, before the host call. Raise the ceiling up to the 25MB
+overall voice cap with `bb-app config set BB_TRANSCRIPTION_MAX_BYTES <bytes>`
+for longer dictations; `bb settings ai-services` shows the ceiling and each
+voice service's effective limit (bundled Codex caps itself at 5MB).
+
+Each transcription attempt's timeout scales with recording size (roughly 15s
+per MB with a 10s floor) and clamps to `BB_TRANSCRIPTION_TIMEOUT_MAX_MS` (default
+`300000`, i.e. 5 min). Raise it with
+`bb-app config set BB_TRANSCRIPTION_TIMEOUT_MAX_MS <ms>` (up to 15 min) when a
+slow local speech-to-text backend times out on long audio; set it to the 10000
+floor to disable scaling. It applies to both plugin-served and `openai/*`
+transcription.
+
+For services that accept large audio (effective cap above 5MB), the browser
+records at `BB_TRANSCRIPTION_RECORDING_BITRATE` (default `32000` bps) so a
+10-minute dictation stays small enough to clear every layer: the 25MB file cap,
+`min(ceiling, service cap)`, then base64 (+33%) under the 16MB host-RPC payload
+cap (~11MB raw physical max). Codex and `openai/*` keep the browser default. A
+failed transcription keeps the recording and offers Retry, so a transient
+failure does not force re-dictation.
 
 `bb file` supports `--host` for remote machines and `--root` on mutating
 commands to confine access beneath an absolute directory. Use `--json` for

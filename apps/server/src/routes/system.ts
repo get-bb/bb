@@ -26,15 +26,24 @@ import {
   type PublicApiSchema,
 } from "@bb/server-contract";
 import type { Hono } from "hono";
+import { validateTranscriptionModel } from "@bb/config/inference-model";
+import type { BbAppManagedConfigKey } from "@bb/config/bb-app-managed-config";
+import {
+  validatePluginTranscriptionMaxBytes,
+  validateVoiceRecordingBitrate,
+  validateVoiceTranscriptionTimeoutMaxMs,
+} from "@bb/config/voice-transcription-limit";
 import { pluginImageResponse } from "./plugin-image-response.js";
 import {
   getEnvironmentProvider,
   listEnvironmentProviders,
 } from "../services/plugins/plugin-environment-provider-registry.js";
+import { writeBbAppManagedConfigValues } from "../services/system/bb-app-managed-config.js";
 import type { ServerAppDeps, ServerRuntimeConfig } from "../types.js";
 import type { PluginService } from "../services/plugins/plugin-service.js";
 import { ApiError } from "../errors.js";
 import {
+  resolveServiceVoiceMaxBytes,
   resolveVoiceTranscriptionEnabled,
   transcribeVoiceInput,
 } from "../services/ai/voice-transcription.js";
@@ -193,18 +202,32 @@ export function registerSystemRoutes(
           ? null
           : deps.hub.getDaemonPlatformForHost(primaryHostId),
       voiceTranscriptionEnabled: resolveVoiceTranscriptionEnabled(deps),
-      aiServices: {
-        inference: deps.config.inferenceModel,
-        inferenceFallback: deps.config.inferenceFallbackModel,
-        transcription: deps.config.transcriptionModel,
-        services: deps.aiServices.list().map((service) => ({
+      aiServices: buildAiServicesResponse(),
+      dataDir: deps.config.dataDir,
+    };
+  }
+
+  function buildAiServicesResponse() {
+    return {
+      inference: deps.config.inferenceModel,
+      inferenceFallback: deps.config.inferenceFallbackModel,
+      transcription: deps.config.transcriptionModel,
+      transcriptionMaxBytes: deps.config.pluginTranscriptionMaxBytes,
+      transcriptionTimeoutMaxMs: deps.config.voiceTranscriptionTimeoutMaxMs,
+      recordingBitrate: deps.config.voiceTranscriptionRecordingBitrate,
+      services: deps.aiServices.list().map((service) => {
+        const servesVoice = service.kinds.includes("voice");
+        return {
           id: service.id,
           displayName: service.displayName,
           kinds: [...service.kinds],
           pluginId: service.pluginId,
-        })),
-      },
-      dataDir: deps.config.dataDir,
+          maxVoiceBytes: service.experimental_maxVoiceBytes ?? null,
+          effectiveVoiceMaxBytes: servesVoice
+            ? resolveServiceVoiceMaxBytes(deps, service)
+            : null,
+        };
+      }),
     };
   }
 
@@ -311,6 +334,65 @@ export function registerSystemRoutes(
       throw new ApiError(422, "invalid_config", message);
     }
     return context.json({ ok: true });
+  });
+
+  put(routes.transcriptionSettings, async (context, payload) => {
+    const values: Partial<Record<BbAppManagedConfigKey, string>> = {};
+    try {
+      if (payload.transcriptionModel !== undefined) {
+        values.BB_TRANSCRIPTION = validateTranscriptionModel(
+          payload.transcriptionModel,
+        );
+      }
+      if (payload.transcriptionMaxBytes !== undefined) {
+        values.BB_TRANSCRIPTION_MAX_BYTES = String(
+          validatePluginTranscriptionMaxBytes(
+            "BB_TRANSCRIPTION_MAX_BYTES",
+            payload.transcriptionMaxBytes,
+          ),
+        );
+      }
+      if (payload.transcriptionTimeoutMaxMs !== undefined) {
+        values.BB_TRANSCRIPTION_TIMEOUT_MAX_MS = String(
+          validateVoiceTranscriptionTimeoutMaxMs(
+            "BB_TRANSCRIPTION_TIMEOUT_MAX_MS",
+            payload.transcriptionTimeoutMaxMs,
+          ),
+        );
+      }
+      if (payload.recordingBitrate !== undefined) {
+        values.BB_TRANSCRIPTION_RECORDING_BITRATE = String(
+          validateVoiceRecordingBitrate(
+            "BB_TRANSCRIPTION_RECORDING_BITRATE",
+            payload.recordingBitrate,
+          ),
+        );
+      }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      throw new ApiError(400, "invalid_request", message);
+    }
+
+    if (Object.keys(values).length === 0) {
+      throw new ApiError(
+        400,
+        "invalid_request",
+        "No transcription settings were provided",
+      );
+    }
+
+    try {
+      await writeBbAppManagedConfigValues({
+        dataDir: deps.config.dataDir,
+        values,
+      });
+      await deps.bbAppManagedConfig.reload({ notify: true });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      throw new ApiError(422, "invalid_config", message);
+    }
+
+    return context.json(buildAiServicesResponse());
   });
 
   get(routes.cliSkillsStatus, async (context, query) =>

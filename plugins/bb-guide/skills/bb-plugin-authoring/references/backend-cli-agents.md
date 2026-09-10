@@ -228,7 +228,15 @@ time.
 
 Inference input includes `serviceId`, `model`, `reasoningEffort: "none"`,
 `prompt`, `outputSchema`, and `timeoutMs`. Plugin-served voice input has a
-5 MiB limit. The server rejects a larger file before a host call. Voice input
+size limit: the user's `BB_TRANSCRIPTION_MAX_BYTES` ceiling (default 5 MiB, up
+to the 25 MiB overall voice cap) and, optionally, a per-service
+`experimental_maxVoiceBytes` on the `register` declaration. The server enforces
+the smaller of the two and rejects a larger file before a host call, so a voice
+service that returns empty or degraded transcripts on long audio should declare
+`experimental_maxVoiceBytes` rather than rely on the global ceiling. Voice input
 includes `serviceId`, `model`, `audioBase64`, `mimeType`, `filename`, `prompt`,
-and `timeoutMs`. The inference success value must be a JSON object. Voice
-`prompt` can be `null`.
+and `timeoutMs`. The voice `timeoutMs` is not fixed: it scales with the audio
+size (roughly 15s per MB with a 10s floor, clamped to `BB_TRANSCRIPTION_TIMEOUT_MAX_MS`,
+default 5 min), so a slow host backend receives a proportionate budget on long
+recordings; a timed-out attempt is retried once and stays retryable. The
+inference success value must be a JSON object. Voice `prompt` can be `null`.

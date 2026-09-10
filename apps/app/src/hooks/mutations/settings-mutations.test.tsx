@@ -26,6 +26,7 @@ import {
 import {
   useUpdateGeneralSettings,
   useUpdateKeyboardSettings,
+  useUpdateTranscriptionSettings,
 } from "./settings-mutations";
 
 vi.mock("@/lib/sdk", () => {
@@ -34,6 +35,7 @@ vi.mock("@/lib/sdk", () => {
       system: {
         updateGeneralSettings: vi.fn(),
         updateKeyboardSettings: vi.fn(),
+        updateTranscriptionSettings: vi.fn(),
       },
     },
   };
@@ -166,6 +168,28 @@ describe("general settings mutation", () => {
       expect(queryClient.getQueryData(executionOptionsKey)).toBeUndefined(),
     );
     expect(readCachedModelCatalog(catalogCacheKey)).toBeNull();
+  });
+});
+
+describe("transcription settings mutation", () => {
+  it("sends the update and invalidates system config on success", async () => {
+    const { queryClient, wrapper } = createQueryClientTestHarness();
+    const configKey = systemConfigQueryKey();
+    queryClient.setQueryData(configKey, systemConfig());
+    vi.mocked(sdk.system.updateTranscriptionSettings).mockResolvedValue(
+      systemConfig().aiServices,
+    );
+    const { result } = renderHook(() => useUpdateTranscriptionSettings(), {
+      wrapper,
+    });
+
+    act(() => result.current.mutate({ transcriptionMaxBytes: 10 * 1024 * 1024 }));
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+
+    expect(sdk.system.updateTranscriptionSettings).toHaveBeenCalledWith({
+      transcriptionMaxBytes: 10 * 1024 * 1024,
+    });
+    expect(queryClient.getQueryState(configKey)?.isInvalidated).toBe(true);
   });
 });
 

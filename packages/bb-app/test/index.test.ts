@@ -155,6 +155,21 @@ const invalidConfigCommandCases: InvalidConfigCommandCase[] = [
     key: "BB_LOG_LEVEL",
     value: "bogus",
   },
+  {
+    expectedError: /BB_TRANSCRIPTION_MAX_BYTES/u,
+    key: "BB_TRANSCRIPTION_MAX_BYTES",
+    value: "not-a-number",
+  },
+  {
+    expectedError: /BB_TRANSCRIPTION_TIMEOUT_MAX_MS/u,
+    key: "BB_TRANSCRIPTION_TIMEOUT_MAX_MS",
+    value: "9999",
+  },
+  {
+    expectedError: /BB_TRANSCRIPTION_RECORDING_BITRATE/u,
+    key: "BB_TRANSCRIPTION_RECORDING_BITRATE",
+    value: "999",
+  },
 ];
 
 const startupOnlyManagedEnvCases: StartupOnlyManagedEnvCase[] = [
@@ -179,6 +194,18 @@ const startupOnlyManagedEnvCases: StartupOnlyManagedEnvCase[] = [
   { key: "BB_SERVER_PORT", value: "48886" },
   { key: "BB_TELEMETRY", value: "false" },
   { key: "BB_TRANSCRIPTION", value: "codex/test-transcription" },
+  {
+    key: "BB_TRANSCRIPTION_MAX_BYTES",
+    value: String(10 * 1024 * 1024),
+  },
+  {
+    key: "BB_TRANSCRIPTION_TIMEOUT_MAX_MS",
+    value: "120000",
+  },
+  {
+    key: "BB_TRANSCRIPTION_RECORDING_BITRATE",
+    value: "48000",
+  },
 ];
 
 const packageMetadataSchema = z.object({

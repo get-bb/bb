@@ -139,7 +139,10 @@ signal it, so a stale file left by a crash cannot stop an unrelated process.
 | `BB_APP_URL`            | `bb-app config`                                    | Optional for remote use | Human-facing app URL used for generated links and allowed browser origins. Leave empty for local-only use.                                                                                                                                                                                                                                                                                                     |
 | `BB_INFERENCE`          | `bb-app config`                                    | Optional                | Primary server-side helper model in `<service>/<model>` format, where `<service>` is an AI service a loaded plugin registers (`bb settings ai-services` lists them; `codex` comes with the codex plugin and uses the codex CLI's credentials with no reasoning) or a pi-ai provider the server calls directly with its API key. Defaults to `codex/gpt-5.6-luna`.                                              |
 | `BB_INFERENCE_FALLBACK` | `bb-app config`                                    | Optional                | Helper model used after a transient primary timeout, rate limit, or service-unavailable failure. Defaults to `codex/gpt-5.4-mini`.                                                                                                                                                                                                                                                                             |
-| `BB_TRANSCRIPTION`      | `bb-app config`                                    | Optional                | Voice transcription model in `<service>/<model>` format: a plugin-registered AI service (`codex` with the codex plugin; audio up to 5MB) or `openai/<model>` with `OPENAI_API_KEY`. Defaults to `codex/gpt-transcribe`.                                                                                                                                                                                        |
+| `BB_TRANSCRIPTION`      | `bb-app config`                                    | Optional                | Voice transcription model in `<service>/<model>` format: a plugin-registered AI service (`codex` with the codex plugin; audio up to the `BB_TRANSCRIPTION_MAX_BYTES` limit) or `openai/<model>` with `OPENAI_API_KEY`. Defaults to `codex/gpt-transcribe`.                                                                                                                                                     |
+| `BB_TRANSCRIPTION_MAX_BYTES` | `bb-app config`                               | Optional                | Ceiling, in bytes, on audio forwarded to a plugin-registered AI service for voice transcription. Defaults to `5242880` (5MB) and must be a positive integer no greater than the overall 10MB voice cap (`10485760`) — the largest audio the plugin transport can carry (16MB host-RPC payloads minus base64 inflation and envelope). Each voice service may also declare its own `experimental_maxVoiceBytes`; the server enforces the smaller of the two, so raising this ceiling only helps services that accept larger audio (bundled Codex caps itself at 5MB). Raise it for a local on-device STT plugin that accepts longer dictations. `bb settings ai-services` shows the ceiling and each service's effective cap. |
+| `BB_TRANSCRIPTION_TIMEOUT_MAX_MS` | `bb-app config`                          | Optional                | Ceiling, in milliseconds, on the per-attempt voice transcription timeout. The budget scales with recording size — roughly 15s per MB, with a 10s floor for short clips — then clamps to this ceiling, and each request retries once. Defaults to `300000` (5 min); must be an integer between `10000` (the floor; setting it here disables scaling) and `900000` (15 min). Raise it for slow local speech-to-text backends whose long recordings time out. Applies to both plugin-served and `openai/<model>` transcription. |
+| `BB_TRANSCRIPTION_RECORDING_BITRATE` | `bb-app config`                       | Optional                | Opus recorder bitrate, in bits/second, the browser pins **only** when the active transcription service accepts large audio (its effective cap is above 5MB). Defaults to `32000` (~2.4MB for 10 min of speech); must be an integer between `8000` and `320000`. Codex and `openai/<model>` are left at the browser default, so their recordings are unchanged. The transcription pipeline resamples to 16kHz mono, so the quality cost on clean speech is negligible. |
 | `BB_MARKETPLACE_URL`    | `bb-app env`, or environment                       | Startup-only testing    | Manifest URL of the reserved `bb-community` plugin marketplace. It defaults to `https://getbb.app/marketplace/v2/marketplace.json`. If the default v2 request returns 404, the server requests v1. Set another URL to test catalog refreshes. The server requests that URL without fallback. It changes only `bb-community`. Add other marketplaces with `bb marketplace add`. Restart the app after a change. |
 | `BB_SERVER_URL`         | `bb-app config`                                    | Remote CLI/host use     | Server URL for standalone `bb` CLI and `host-daemon` commands on the current machine. The CLI defaults to `http://127.0.0.1:38886` when unset.                                                                                                                                                                                                                                                                 |
 | `BB_SERVER_BIND_HOST`   | `bb-app env`, environment, or `--server-bind-host` | Startup-only            | Server listener host. Defaults to `127.0.0.1`; accepts only `127.0.0.1` or `0.0.0.0`. A full launcher or desktop app restart is required; until then, a previous `0.0.0.0` listener remains exposed. This is not a `bb-app config` key.                                                                                                                                                                        |
@@ -152,6 +155,20 @@ By default, helper inference and voice transcription use Codex credentials from
 the host daemon. Run `codex login` on the host for the default path. Set
 provider env keys only when opting into a non-Codex provider route.
 
+A recording must clear every layer of the voice pipeline, so the smallest limit
+wins:
+
+1. The overall audio file cap of 10MB (`10485760` bytes), rejected first.
+2. For a plugin-served service, `min(BB_TRANSCRIPTION_MAX_BYTES, the service's
+   declared cap)` — bundled Codex pins itself at 5MB.
+3. The audio is base64-encoded (~+33%) to cross the host RPC, which caps
+   payloads at 16MB — the 10MB overall cap already accounts for this, so any
+   audio that clears layers 1–2 fits the transport.
+
+Pinning `BB_TRANSCRIPTION_RECORDING_BITRATE` (~32kbps) for large-audio services
+keeps a 10-minute recording near 2.4MB raw / ~3.2MB over RPC, comfortably inside
+every layer. `bb settings ai-services` prints the effective caps.
+
 With a ChatGPT subscription login, `codex/` voice transcription posts to a
 `chatgpt.com` endpoint that sits behind Cloudflare bot protection. On some
 networks Cloudflare challenges that request; bb retries, then reports
@@ -160,9 +177,17 @@ challenge on the server. If that happens often, route transcription through an
 API key instead: `codex login --with-api-key`, or set `BB_TRANSCRIPTION` to
 `openai/gpt-transcribe` with `OPENAI_API_KEY`.
 
-The microphone picker in Settings → Voice Input is client-local. It stores the
-selected browser `MediaDevices` device id in localStorage as
-`bb.voiceInput.audioInputDeviceId`; it does not change `bb-app config` or the
+Settings → Voice Input has native controls: a Transcription provider dropdown
+(Codex or Local), a Local-models sub-section for downloading on-device
+models (shown only when the provider is Local), and an Advanced group with the
+recording limit (2/5/10 MB), timeout ceiling (seconds), and recording quality
+(24/32/64/128 kbps).
+Editing these writes BB-managed config server-side and applies live — the same
+effect as `bb settings transcription <key> <value>` or the `bb-app config` keys
+above. Per-service audio caps are maintainer detail and appear only in
+`bb settings ai-services`, not the UI. The microphone picker in that section is
+client-local: it stores the selected browser `MediaDevices` device id in
+localStorage as `bb.voiceInput.audioInputDeviceId` and does not change the
 server-side transcription model.
 
 The built-in Push notifications plugin uses `expoPushUrl` for its relay URL.

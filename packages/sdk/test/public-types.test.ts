@@ -344,6 +344,7 @@ type ExpectedSystemKey =
   | "uiPreferences"
   | "updateExperiments"
   | "updateGeneralSettings"
+  | "updateTranscriptionSettings"
   | "updateKeyboardSettings"
   | "providerStates"
   | "usageLimits"

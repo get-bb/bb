@@ -177,6 +177,8 @@ import type {
   SystemProviderInfo,
   SystemProvidersQuery,
   SystemProviderStatesResponse,
+  SystemAiServices,
+  SystemTranscriptionSettingsUpdate,
   SystemUsageLimitsQuery,
   SystemVersionQuery,
   SystemVersionResponse,
@@ -338,6 +340,7 @@ import {
   threadTimelineQuerySchema,
   systemCliSkillsStatusQuerySchema,
   systemInstallCliSkillsRequestSchema,
+  systemTranscriptionSettingsUpdateSchema,
   timelineTurnSummaryDetailsQuerySchema,
   listEnvironmentsQuerySchema,
   updateEnvironmentRequestSchema,
@@ -1594,6 +1597,14 @@ export const publicApiRoutes = {
       method: "post",
       request: noRequest(),
       response: jsonResponse<SystemConfigReloadResponse>(),
+    }),
+    transcriptionSettings: defineRoute({
+      path: "/settings/transcription",
+      method: "put",
+      request: jsonRequest<EmptyInput, SystemTranscriptionSettingsUpdate>(
+        systemTranscriptionSettingsUpdateSchema,
+      ),
+      response: jsonResponse<SystemAiServices>(),
     }),
     cliSkillsStatus: defineRoute({
       path: "/system/cli-skills",

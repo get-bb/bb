@@ -127,6 +127,11 @@
       "source": "./src/verified-process-stop.ts",
       "types": "./src/verified-process-stop.ts",
       "default": "./src/verified-process-stop.ts"
+    },
+    "./voice-transcription-limit": {
+      "source": "./src/voice-transcription-limit.ts",
+      "types": "./src/voice-transcription-limit.ts",
+      "default": "./src/voice-transcription-limit.ts"
     }
   },
   "scripts": {

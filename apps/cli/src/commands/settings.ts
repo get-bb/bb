@@ -16,6 +16,7 @@ import {
   type UiPreferenceValue,
 } from "@bb/domain";
 import { BbHttpError } from "@bb/sdk";
+import type { SystemTranscriptionSettingsUpdate } from "@bb/server-contract";
 import { action } from "../action.js";
 import { createCliBbSdk } from "../client.js";
 import { outputJson } from "./helpers.js";
@@ -34,6 +35,44 @@ function parseBoolean(value: string): boolean {
   if (value === "true" || value === "on") return true;
   if (value === "false" || value === "off") return false;
   throw new Error("value must be true, false, on, or off.");
+}
+
+function formatMebibytes(bytes: number): string {
+  const mib = bytes / (1024 * 1024);
+  const rounded = Math.round(mib * 100) / 100;
+  return `${rounded}MB (${bytes} bytes)`;
+}
+
+function parseIntegerSetting(key: string, value: string): number {
+  const trimmed = value.trim();
+  if (!/^\d+$/.test(trimmed)) {
+    throw new Error(`${key} must be a positive integer.`);
+  }
+  const parsed = Number(trimmed);
+  if (!Number.isInteger(parsed) || parsed <= 0) {
+    throw new Error(`${key} must be a positive integer.`);
+  }
+  return parsed;
+}
+
+function buildTranscriptionSettingsUpdate(
+  key: string,
+  value: string,
+): SystemTranscriptionSettingsUpdate {
+  switch (key) {
+    case "model":
+      return { transcriptionModel: value.trim() };
+    case "max-bytes":
+      return { transcriptionMaxBytes: parseIntegerSetting(key, value) };
+    case "timeout-ms":
+      return { transcriptionTimeoutMaxMs: parseIntegerSetting(key, value) };
+    case "recording-bitrate":
+      return { recordingBitrate: parseIntegerSetting(key, value) };
+    default:
+      throw new Error(
+        `Unknown transcription setting "${key}". Use model, max-bytes, timeout-ms, or recording-bitrate.`,
+      );
+  }
 }
 
 function parseShortcut(value: string): AppShortcut {
@@ -171,16 +210,27 @@ export function registerSettingsCommands(
   settings
     .command("ai-services")
     .description(
-      "Show the AI-service settings (BB_INFERENCE, BB_INFERENCE_FALLBACK, BB_TRANSCRIPTION) and the plugin services they may name",
+      "Show the AI-service settings (BB_INFERENCE, BB_INFERENCE_FALLBACK, BB_TRANSCRIPTION, BB_TRANSCRIPTION_MAX_BYTES, BB_TRANSCRIPTION_TIMEOUT_MAX_MS, BB_TRANSCRIPTION_RECORDING_BITRATE) and the plugin services they may name, with each voice service's effective audio-size limit",
     )
     .option("--json", "Print machine-readable JSON output")
     .action(
       action(async (opts: JsonOptions) => {
         const { aiServices } = await createCliBbSdk(getUrl()).system.config();
         if (outputJson(opts, aiServices)) return;
-        console.log(`BB_INFERENCE          ${aiServices.inference}`);
-        console.log(`BB_INFERENCE_FALLBACK ${aiServices.inferenceFallback}`);
-        console.log(`BB_TRANSCRIPTION      ${aiServices.transcription}`);
+        console.log(`BB_INFERENCE               ${aiServices.inference}`);
+        console.log(
+          `BB_INFERENCE_FALLBACK      ${aiServices.inferenceFallback}`,
+        );
+        console.log(`BB_TRANSCRIPTION           ${aiServices.transcription}`);
+        console.log(
+          `BB_TRANSCRIPTION_MAX_BYTES ${formatMebibytes(aiServices.transcriptionMaxBytes)}`,
+        );
+        console.log(
+          `BB_TRANSCRIPTION_TIMEOUT_MAX_MS ${aiServices.transcriptionTimeoutMaxMs} (scales with audio size)`,
+        );
+        console.log(
+          `BB_TRANSCRIPTION_RECORDING_BITRATE ${aiServices.recordingBitrate} (pinned only for large-audio services)`,
+        );
         console.log("");
         if (aiServices.services.length === 0) {
           console.log("No plugin registers an AI service.");
@@ -193,7 +243,38 @@ export function registerSettingsCommands(
           console.log(
             `  ${service.id}  ${service.displayName}  [${service.kinds.join(", ")}]  plugin ${service.pluginId}`,
           );
+          if (service.kinds.includes("voice")) {
+            const declared =
+              service.maxVoiceBytes === null
+                ? "no service limit"
+                : formatMebibytes(service.maxVoiceBytes);
+            const effective =
+              service.effectiveVoiceMaxBytes === null
+                ? "n/a"
+                : formatMebibytes(service.effectiveVoiceMaxBytes);
+            console.log(
+              `      voice audio limit: ${effective} effective (service cap: ${declared})`,
+            );
+          }
         }
+      }),
+    );
+
+  settings
+    .command("transcription <key> <value>")
+    .description(
+      "Set a voice transcription setting: model (<service>/<model>), max-bytes, timeout-ms, or recording-bitrate",
+    )
+    .option("--json", "Print machine-readable JSON output")
+    .action(
+      action(async (key: string, value: string, opts: JsonOptions) => {
+        const update = buildTranscriptionSettingsUpdate(key, value);
+        const result =
+          await createCliBbSdk(getUrl()).system.updateTranscriptionSettings(
+            update,
+          );
+        if (outputJson(opts, result)) return;
+        console.log(`${key} updated`);
       }),
     );
 

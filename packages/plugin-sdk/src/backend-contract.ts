@@ -1677,6 +1677,14 @@ export interface PluginAiServiceDeclaration {
   readonly displayName: string;
   /** Which kinds this service answers; a kind it lacks is not offered. */
   readonly kinds: readonly PluginAiServiceKind[];
+  /**
+   * Largest audio payload, in bytes, this service reliably transcribes. The
+   * server rejects larger recordings before the host call, enforcing the
+   * smaller of this and the user's `BB_TRANSCRIPTION_MAX_BYTES` ceiling.
+   * Declare it only for a `voice` service; omit it to accept up to the user's
+   * ceiling. Must be a positive integer no greater than 25MB (26214400).
+   */
+  readonly experimental_maxVoiceBytes?: number;
 }
 
 export interface PluginAiServices {

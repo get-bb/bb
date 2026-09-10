@@ -17,6 +17,14 @@ import {
 import { validateLogLevel } from "./log-level.js";
 import { validateOptionalUrl, validateRequiredUrl } from "./public-url.js";
 import { BB_LOOPBACK_HOST, parsePortValue } from "./runtime.js";
+import {
+  DEFAULT_PLUGIN_TRANSCRIPTION_MAX_BYTES,
+  DEFAULT_VOICE_RECORDING_BITRATE,
+  DEFAULT_VOICE_TRANSCRIPTION_TIMEOUT_MAX_MS,
+  parsePluginTranscriptionMaxBytes,
+  parseVoiceRecordingBitrate,
+  parseVoiceTranscriptionTimeoutMaxMs,
+} from "./voice-transcription-limit.js";
 
 export type ServerBindHost = "127.0.0.1" | "0.0.0.0";
 
@@ -139,6 +147,20 @@ function parseTranscriptionModelValue(args: EnvVarParseArgs): string {
   return validateTranscriptionModel(args.value);
 }
 
+function parseTranscriptionMaxBytesValue(args: EnvVarParseArgs): number {
+  return parsePluginTranscriptionMaxBytes(args.name, args.value);
+}
+
+function parseTranscriptionTimeoutMaxMsValue(args: EnvVarParseArgs): number {
+  return parseVoiceTranscriptionTimeoutMaxMs(args.name, args.value);
+}
+
+function parseTranscriptionRecordingBitrateValue(
+  args: EnvVarParseArgs,
+): number {
+  return parseVoiceRecordingBitrate(args.name, args.value);
+}
+
 function parseHostTypeValue(args: EnvVarParseArgs): HostType | undefined {
   const trimmedValue = args.value.trim();
   if (trimmedValue.length === 0) {
@@ -242,6 +264,27 @@ export const BB_TRANSCRIPTION_ENV = defineEnvVar<string>({
   description: "Speech-to-text model used for voice transcription",
   name: "BB_TRANSCRIPTION",
   parse: parseTranscriptionModelValue,
+});
+
+export const BB_TRANSCRIPTION_MAX_BYTES_ENV = defineEnvVar<number>({
+  description:
+    "Maximum audio file size in bytes forwarded to a plugin-registered AI service for voice transcription. Defaults to 5MB; must not exceed the 10MB overall voice cap (the largest audio the plugin transport can carry).",
+  name: "BB_TRANSCRIPTION_MAX_BYTES",
+  parse: parseTranscriptionMaxBytesValue,
+});
+
+export const BB_TRANSCRIPTION_TIMEOUT_MAX_MS_ENV = defineEnvVar<number>({
+  description:
+    "Ceiling in milliseconds on the per-attempt voice transcription timeout, which scales with recorded audio size. Defaults to 300000 (5 min); raise it for slow local speech-to-text backends.",
+  name: "BB_TRANSCRIPTION_TIMEOUT_MAX_MS",
+  parse: parseTranscriptionTimeoutMaxMsValue,
+});
+
+export const BB_TRANSCRIPTION_RECORDING_BITRATE_ENV = defineEnvVar<number>({
+  description:
+    "Opus recorder bitrate in bits/second pinned by the browser only for transcription services that accept large audio (effective cap above 5MB). Defaults to 32000; leaves the browser default untouched for Codex and openai/*.",
+  name: "BB_TRANSCRIPTION_RECORDING_BITRATE",
+  parse: parseTranscriptionRecordingBitrateValue,
 });
 
 export const OPENAI_API_KEY_ENV = defineEnvVar<string>({
@@ -377,6 +420,12 @@ export const DEFAULT_BB_MARKETPLACE_URL =
 export const DEFAULT_BB_INFERENCE = DEFAULTS.inferenceModel;
 export const DEFAULT_BB_INFERENCE_FALLBACK = DEFAULTS.inferenceFallbackModel;
 export const DEFAULT_BB_TRANSCRIPTION = DEFAULTS.transcriptionModel;
+export const DEFAULT_BB_TRANSCRIPTION_MAX_BYTES =
+  DEFAULT_PLUGIN_TRANSCRIPTION_MAX_BYTES;
+export const DEFAULT_BB_TRANSCRIPTION_TIMEOUT_MAX_MS =
+  DEFAULT_VOICE_TRANSCRIPTION_TIMEOUT_MAX_MS;
+export const DEFAULT_BB_TRANSCRIPTION_RECORDING_BITRATE =
+  DEFAULT_VOICE_RECORDING_BITRATE;
 export const DEFAULT_BB_FF_PLACEHOLDER = defaultFeatureFlags.placeholder;
 export const DEFAULT_BB_FF_TIMELINE_WINDOW_EVENT_BUDGET =
   defaultFeatureFlags.timelineWindowEventBudget;

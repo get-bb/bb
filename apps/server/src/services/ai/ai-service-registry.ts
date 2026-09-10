@@ -70,6 +70,9 @@ export function createAiServiceRegistry(): AiServiceRegistry {
         displayName: service.displayName,
         kinds: service.kinds,
         pluginId: service.pluginId,
+        ...(service.experimental_maxVoiceBytes === undefined
+          ? {}
+          : { experimental_maxVoiceBytes: service.experimental_maxVoiceBytes }),
       }));
     },
   };

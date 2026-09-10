@@ -221,6 +221,7 @@ const CACHE_OWNER_QUERY_KEY_IMPORTS: CacheOwnerQueryKeyImportRegistry = {
     "TerminalQueryScope",
     "terminalsQueryKey",
   ],
+  "hooks/cache-owners/voice-cache-owner.ts": ["voiceLocalModelsQueryKey"],
   "hooks/cache-owners/thread-archive-cache.ts": [
     "threadQueryKey",
     "threadsQueryKey",

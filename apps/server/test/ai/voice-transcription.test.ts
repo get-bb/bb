@@ -44,14 +44,24 @@ async function createServiceTranscriptionHarness(
   transcribe: (
     input: ExperimentalAiVoiceTranscribeInput,
   ) => ExperimentalAiVoiceTranscribeOutput,
+  overrides: {
+    pluginTranscriptionMaxBytes?: number;
+    serviceMaxVoiceBytes?: number;
+  } = {},
 ): Promise<ServiceTranscriptionHarness> {
   const harness = await createTestAppHarness({
     inferenceFallbackModel: "codex/gpt-5.4-mini",
     transcriptionModel: "codex/gpt-transcribe",
+    ...(overrides.pluginTranscriptionMaxBytes === undefined
+      ? {}
+      : { pluginTranscriptionMaxBytes: overrides.pluginTranscriptionMaxBytes }),
   });
   seedHostSession(harness.deps);
   const fake = registerFakeAiService(harness.deps.aiServices, {
     transcribeVoice: transcribe,
+    ...(overrides.serviceMaxVoiceBytes === undefined
+      ? {}
+      : { maxVoiceBytes: overrides.serviceMaxVoiceBytes }),
   });
   return {
     app: harness.app,
@@ -135,6 +145,143 @@ describe("voice transcription", () => {
         },
       });
       expect(harness.calls).toHaveLength(0);
+    } finally {
+      await harness.cleanup();
+    }
+  });
+
+  it("forwards audio above the default cap when the configured limit is raised", async () => {
+    const harness = await createServiceTranscriptionHarness(
+      (input) => ({ ok: true, model: input.model, text: "long transcript" }),
+      { pluginTranscriptionMaxBytes: 10 * 1024 * 1024 },
+    );
+    try {
+      const file = new File([Buffer.alloc(5 * 1024 * 1024 + 1)], "long.webm", {
+        type: "audio/webm",
+      });
+      await expect(
+        transcribeVoiceInput(harness.deps, { file }),
+      ).resolves.toBe("long transcript");
+      expect(harness.calls).toHaveLength(1);
+    } finally {
+      await harness.cleanup();
+    }
+  });
+
+  it("rejects audio above the configured plugin-served cap using the configured size", async () => {
+    const harness = await createServiceTranscriptionHarness(
+      () => {
+        throw new Error("Oversized audio must not reach the service");
+      },
+      { pluginTranscriptionMaxBytes: 8 * 1024 * 1024 },
+    );
+    try {
+      const file = new File([Buffer.alloc(8 * 1024 * 1024 + 1)], "long.webm", {
+        type: "audio/webm",
+      });
+      const error = await transcribeVoiceInput(harness.deps, { file }).catch(
+        (caught: unknown) => caught,
+      );
+      expect(error).toBeInstanceOf(ApiError);
+      expect(error).toMatchObject({
+        status: 400,
+        body: {
+          code: "invalid_request",
+          message:
+            "Audio file exceeds the 8MB limit for plugin-served transcription",
+        },
+      });
+      expect(harness.calls).toHaveLength(0);
+    } finally {
+      await harness.cleanup();
+    }
+  });
+
+  it("enforces the service-declared cap even when the global ceiling is higher", async () => {
+    const harness = await createServiceTranscriptionHarness(
+      () => {
+        throw new Error("Oversized audio must not reach the service");
+      },
+      {
+        pluginTranscriptionMaxBytes: 25 * 1024 * 1024,
+        serviceMaxVoiceBytes: 5 * 1024 * 1024,
+      },
+    );
+    try {
+      const file = new File([Buffer.alloc(5 * 1024 * 1024 + 1)], "long.webm", {
+        type: "audio/webm",
+      });
+      const error = await transcribeVoiceInput(harness.deps, { file }).catch(
+        (caught: unknown) => caught,
+      );
+      expect(error).toBeInstanceOf(ApiError);
+      expect(error).toMatchObject({
+        status: 400,
+        body: {
+          code: "invalid_request",
+          message:
+            "Audio file exceeds the 5MB limit for plugin-served transcription",
+        },
+      });
+      expect(harness.calls).toHaveLength(0);
+    } finally {
+      await harness.cleanup();
+    }
+  });
+
+  it("forwards audio up to the service cap when the global ceiling is higher", async () => {
+    const harness = await createServiceTranscriptionHarness(
+      (input) => ({ ok: true, model: input.model, text: "within service cap" }),
+      {
+        pluginTranscriptionMaxBytes: 25 * 1024 * 1024,
+        serviceMaxVoiceBytes: 8 * 1024 * 1024,
+      },
+    );
+    try {
+      const file = new File([Buffer.alloc(6 * 1024 * 1024)], "long.webm", {
+        type: "audio/webm",
+      });
+      await expect(
+        transcribeVoiceInput(harness.deps, { file }),
+      ).resolves.toBe("within service cap");
+      expect(harness.calls).toHaveLength(1);
+    } finally {
+      await harness.cleanup();
+    }
+  });
+
+  it("scales the per-attempt timeout with the audio size", async () => {
+    const harness = await createServiceTranscriptionHarness((input) => ({
+      ok: true,
+      model: input.model,
+      text: "long transcript",
+    }));
+    try {
+      const file = new File([Buffer.alloc(2 * 1024 * 1024)], "long.webm", {
+        type: "audio/webm",
+      });
+      await expect(
+        transcribeVoiceInput(harness.deps, { file }),
+      ).resolves.toBe("long transcript");
+      expect(harness.calls).toHaveLength(1);
+      expect(harness.calls[0]?.input.timeoutMs).toBe(30_000);
+      expect(harness.calls[0]?.options.timeoutMs).toBe(31_000);
+    } finally {
+      await harness.cleanup();
+    }
+  });
+
+  it("keeps the 10s floor for short clips", async () => {
+    const harness = await createServiceTranscriptionHarness((input) => ({
+      ok: true,
+      model: input.model,
+      text: "short transcript",
+    }));
+    try {
+      await expect(
+        transcribeVoiceInput(harness.deps, { file: voiceFile() }),
+      ).resolves.toBe("short transcript");
+      expect(harness.calls[0]?.input.timeoutMs).toBe(10_000);
     } finally {
       await harness.cleanup();
     }

@@ -10,6 +10,7 @@ import { describe, expect, it } from "vitest";
 import {
   applyBbAppManagedConfig,
   createBbAppManagedConfigReloader,
+  writeBbAppManagedConfigValues,
 } from "../../src/services/system/bb-app-managed-config.js";
 import { NotificationHub } from "../../src/ws/hub.js";
 import type { ServerLogger, ServerRuntimeConfig } from "../../src/types.js";
@@ -73,9 +74,12 @@ function createRuntimeConfig(): ServerRuntimeConfig {
     inferenceModel: "openai/gpt-4o-mini",
     isDevelopment: false,
     openAiApiKey: "ambient-openai-key",
+    pluginTranscriptionMaxBytes: 5 * 1024 * 1024,
     serverPort: 38886,
     sharedSkillRoots: { user: [], project: [] },
     transcriptionModel: "openai/gpt-4o-transcribe",
+    voiceTranscriptionRecordingBitrate: 32_000,
+    voiceTranscriptionTimeoutMaxMs: 300_000,
   };
 }
 
@@ -250,6 +254,135 @@ describe("bb-app managed config", () => {
     ).toThrow(/BB_INFERENCE_FALLBACK/u);
   });
 
+  it("applies and restores the plugin transcription byte limit", () => {
+    const baseConfig = createRuntimeConfig();
+    const targetConfig = createRuntimeConfig();
+
+    applyBbAppManagedConfig({
+      baseConfig,
+      managedConfig: {
+        config: {
+          BB_TRANSCRIPTION_MAX_BYTES: String(8 * 1024 * 1024),
+        },
+      },
+      managedEnvFile: {},
+      targetConfig,
+    });
+    expect(targetConfig.pluginTranscriptionMaxBytes).toBe(8 * 1024 * 1024);
+
+    applyBbAppManagedConfig({
+      baseConfig,
+      managedConfig: {},
+      managedEnvFile: {},
+      targetConfig,
+    });
+    expect(targetConfig.pluginTranscriptionMaxBytes).toBe(5 * 1024 * 1024);
+  });
+
+  it("rejects an out-of-range plugin transcription byte limit", () => {
+    const baseConfig = createRuntimeConfig();
+    const targetConfig = createRuntimeConfig();
+
+    expect(() =>
+      applyBbAppManagedConfig({
+        baseConfig,
+        managedConfig: {
+          config: {
+            BB_TRANSCRIPTION_MAX_BYTES: String(25 * 1024 * 1024 + 1),
+          },
+        },
+        managedEnvFile: {},
+        targetConfig,
+      }),
+    ).toThrow(/BB_TRANSCRIPTION_MAX_BYTES/u);
+  });
+
+  it("applies and restores the voice transcription timeout ceiling", () => {
+    const baseConfig = createRuntimeConfig();
+    const targetConfig = createRuntimeConfig();
+
+    applyBbAppManagedConfig({
+      baseConfig,
+      managedConfig: {
+        config: {
+          BB_TRANSCRIPTION_TIMEOUT_MAX_MS: "120000",
+        },
+      },
+      managedEnvFile: {},
+      targetConfig,
+    });
+    expect(targetConfig.voiceTranscriptionTimeoutMaxMs).toBe(120_000);
+
+    applyBbAppManagedConfig({
+      baseConfig,
+      managedConfig: {},
+      managedEnvFile: {},
+      targetConfig,
+    });
+    expect(targetConfig.voiceTranscriptionTimeoutMaxMs).toBe(300_000);
+  });
+
+  it("rejects an out-of-range voice transcription timeout ceiling", () => {
+    const baseConfig = createRuntimeConfig();
+    const targetConfig = createRuntimeConfig();
+
+    expect(() =>
+      applyBbAppManagedConfig({
+        baseConfig,
+        managedConfig: {
+          config: {
+            BB_TRANSCRIPTION_TIMEOUT_MAX_MS: "9999",
+          },
+        },
+        managedEnvFile: {},
+        targetConfig,
+      }),
+    ).toThrow(/BB_TRANSCRIPTION_TIMEOUT_MAX_MS/u);
+  });
+
+  it("applies and restores the voice recording bitrate", () => {
+    const baseConfig = createRuntimeConfig();
+    const targetConfig = createRuntimeConfig();
+
+    applyBbAppManagedConfig({
+      baseConfig,
+      managedConfig: {
+        config: {
+          BB_TRANSCRIPTION_RECORDING_BITRATE: "48000",
+        },
+      },
+      managedEnvFile: {},
+      targetConfig,
+    });
+    expect(targetConfig.voiceTranscriptionRecordingBitrate).toBe(48_000);
+
+    applyBbAppManagedConfig({
+      baseConfig,
+      managedConfig: {},
+      managedEnvFile: {},
+      targetConfig,
+    });
+    expect(targetConfig.voiceTranscriptionRecordingBitrate).toBe(32_000);
+  });
+
+  it("rejects an out-of-range voice recording bitrate", () => {
+    const baseConfig = createRuntimeConfig();
+    const targetConfig = createRuntimeConfig();
+
+    expect(() =>
+      applyBbAppManagedConfig({
+        baseConfig,
+        managedConfig: {
+          config: {
+            BB_TRANSCRIPTION_RECORDING_BITRATE: "999",
+          },
+        },
+        managedEnvFile: {},
+        targetConfig,
+      }),
+    ).toThrow(/BB_TRANSCRIPTION_RECORDING_BITRATE/u);
+  });
+
   it("reloads config file changes and notifies clients", async () => {
     const dataDir = mkdtempSync(join(tmpdir(), "bb-managed-config-"));
     const socket = createMockHubSocket();
@@ -377,8 +510,7 @@ describe("bb-app managed config", () => {
     }
   });
 
-  it("throws on invalid managed config during explicit reload", async () => {
-    const dataDir = mkdtempSync(join(tmpdir(), "bb-managed-config-"));
+  it("throws on invalid managed config during explicit reload", async () => {    const dataDir = mkdtempSync(join(tmpdir(), "bb-managed-config-"));
     const config = {
       ...createRuntimeConfig(),
       dataDir,
@@ -400,6 +532,22 @@ describe("bb-app managed config", () => {
         /BB_INFERENCE/u,
       );
       expect(config.inferenceModel).toBe("openai/gpt-4o-mini");
+    } finally {
+      rmSync(dataDir, { force: true, recursive: true });
+    }
+  });
+
+  it("refuses to overwrite non-object managed config content", async () => {
+    const dataDir = mkdtempSync(join(tmpdir(), "bb-managed-config-"));
+    try {
+      writeFileSync(formatBbAppConfigPath(dataDir), `["not", "an", "object"]\n`, "utf8");
+
+      await expect(
+        writeBbAppManagedConfigValues({
+          dataDir,
+          values: { BB_INFERENCE: "openai/gpt-4o-mini" },
+        }),
+      ).rejects.toThrow(/Invalid bb-app config JSON/u);
     } finally {
       rmSync(dataDir, { force: true, recursive: true });
     }

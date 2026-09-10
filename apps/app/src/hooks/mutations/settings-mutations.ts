@@ -5,7 +5,10 @@ import {
   type AppThemeSelection,
   type Experiments,
 } from "@bb/domain";
-import type { SystemInstallCliSkillsRequest } from "@bb/server-contract";
+import type {
+  SystemInstallCliSkillsRequest,
+  SystemTranscriptionSettingsUpdate,
+} from "@bb/server-contract";
 import { sdk } from "@/lib/sdk";
 import {
   invalidateGeneralSettingsDependencies,
@@ -60,6 +63,21 @@ export function useUpdateGeneralSettings() {
       if (providerOrderChanged) {
         void invalidateSystemProviders({ queryClient });
       }
+    },
+  });
+}
+
+export function useUpdateTranscriptionSettings() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    meta: {
+      errorMessage: "Failed to update transcription settings.",
+    },
+    mutationFn: (update: SystemTranscriptionSettingsUpdate) =>
+      sdk.system.updateTranscriptionSettings(update),
+    onSuccess: () => {
+      invalidateSystemConfig({ queryClient });
     },
   });
 }

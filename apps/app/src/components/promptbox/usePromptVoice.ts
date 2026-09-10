@@ -1,6 +1,8 @@
-import { useCallback, useMemo, type RefObject } from "react";
+import { useCallback, useMemo, useRef, type RefObject } from "react";
+import { isLargeAudioService } from "@bb/config/voice-transcription-limit";
 import { useVoiceInput } from "@/hooks/useVoiceInput";
 import { transcribeVoiceInput } from "@/lib/api";
+import { useSystemConfig } from "@/hooks/queries/system-queries";
 import type { PromptBoxHandle, PromptVoiceConfig } from "./PromptBoxInternal";
 
 async function requestVoiceTranscription({
@@ -35,6 +37,29 @@ export function usePromptVoice(
     [promptBoxRef],
   );
 
+  const systemConfig = useSystemConfig().data;
+  const pinnedAudioBitsPerSecond = useMemo(() => {
+    if (systemConfig === undefined) {
+      return null;
+    }
+    const ai = systemConfig.aiServices;
+    const activeServiceId = ai.transcription.split("/", 1)[0];
+    const activeService = ai.services.find(
+      (service) => service.id === activeServiceId,
+    );
+    const effectiveCap = activeService?.effectiveVoiceMaxBytes ?? null;
+    if (!isLargeAudioService(effectiveCap)) {
+      return null;
+    }
+    return ai.recordingBitrate;
+  }, [systemConfig]);
+  const pinnedAudioBitsPerSecondRef = useRef(pinnedAudioBitsPerSecond);
+  pinnedAudioBitsPerSecondRef.current = pinnedAudioBitsPerSecond;
+  const getAudioBitsPerSecond = useCallback(
+    () => pinnedAudioBitsPerSecondRef.current,
+    [],
+  );
+
   const transcribeAfterCompletionTransition = useCallback(
     async (args: Parameters<typeof requestVoiceTranscription>[0]) => {
       const text = await requestVoiceTranscription(args);
@@ -51,6 +76,7 @@ export function usePromptVoice(
     onTranscript,
     onTranscribe: transcribeAfterCompletionTransition,
     getPromptContext,
+    getAudioBitsPerSecond,
   });
 
   return useMemo<PromptVoiceConfig>(

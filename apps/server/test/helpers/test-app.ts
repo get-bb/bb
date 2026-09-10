@@ -204,9 +204,12 @@ export async function createTestAppHarness(
     inferenceModel: "test/mock-model",
     isDevelopment: true,
     openAiApiKey: "test-openai-key",
+    pluginTranscriptionMaxBytes: 5 * 1024 * 1024,
     serverPort: 3334,
     sharedSkillRoots: { user: [], project: [] },
     transcriptionModel: "test/mock-transcription",
+    voiceTranscriptionRecordingBitrate: 32_000,
+    voiceTranscriptionTimeoutMaxMs: 300_000,
     appUrl: "https://bb.example.test",
     ...configOverrides,
   };

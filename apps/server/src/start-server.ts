@@ -81,9 +81,14 @@ export async function runServer(serverConfig: ServerConfig): Promise<void> {
     inferenceModel: serverConfig.BB_INFERENCE,
     isDevelopment: !isProduction,
     openAiApiKey: serverConfig.OPENAI_API_KEY,
+    pluginTranscriptionMaxBytes: serverConfig.BB_TRANSCRIPTION_MAX_BYTES,
     serverPort: serverConfig.BB_SERVER_PORT,
     sharedSkillRoots: { user: [], project: [] },
     transcriptionModel: serverConfig.BB_TRANSCRIPTION,
+    voiceTranscriptionRecordingBitrate:
+      serverConfig.BB_TRANSCRIPTION_RECORDING_BITRATE,
+    voiceTranscriptionTimeoutMaxMs:
+      serverConfig.BB_TRANSCRIPTION_TIMEOUT_MAX_MS,
   };
 
   const providerRegistry = createProviderRegistryService({

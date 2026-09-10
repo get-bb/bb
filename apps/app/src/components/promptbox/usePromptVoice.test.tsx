@@ -15,14 +15,20 @@ vi.mock("@/hooks/useVoiceInput", () => ({
   useVoiceInput: vi.fn(),
 }));
 
+vi.mock("@/hooks/queries/system-queries", () => ({
+  useSystemConfig: vi.fn(() => ({ data: undefined })),
+}));
+
 const voiceInput = {
   state: "transcribing" as const,
   isSupported: true,
   unsupportedReason: null,
   stream: null,
+  canRetry: false,
   start: vi.fn(),
   stop: vi.fn(),
   cancel: vi.fn(),
+  retry: vi.fn(),
 };
 
 afterEach(() => {

@@ -26,6 +26,9 @@ import {
   BB_SERVER_LAUNCH_ID_ENV,
   BB_TELEMETRY_ENV,
   BB_TRANSCRIPTION_ENV,
+  BB_TRANSCRIPTION_MAX_BYTES_ENV,
+  BB_TRANSCRIPTION_TIMEOUT_MAX_MS_ENV,
+  BB_TRANSCRIPTION_RECORDING_BITRATE_ENV,
   DEFAULT_BB_APP_URL,
   DEFAULT_BB_APP_SURFACE,
   DEFAULT_BB_APP_VERSION,
@@ -37,6 +40,9 @@ import {
   DEFAULT_BB_SERVER_BIND_HOST,
   DEFAULT_BB_TELEMETRY,
   DEFAULT_BB_TRANSCRIPTION,
+  DEFAULT_BB_TRANSCRIPTION_MAX_BYTES,
+  DEFAULT_BB_TRANSCRIPTION_TIMEOUT_MAX_MS,
+  DEFAULT_BB_TRANSCRIPTION_RECORDING_BITRATE,
   DEFAULT_OPENAI_API_KEY,
   OPENAI_API_KEY_ENV,
   parseServerBindHost,
@@ -64,6 +70,9 @@ export interface ServerConfig
   BB_SERVER_LAUNCH_ID?: string;
   BB_TELEMETRY: boolean;
   BB_TRANSCRIPTION: string;
+  BB_TRANSCRIPTION_MAX_BYTES: number;
+  BB_TRANSCRIPTION_TIMEOUT_MAX_MS: number;
+  BB_TRANSCRIPTION_RECORDING_BITRATE: number;
   OPENAI_API_KEY: string;
   featureFlags: FeatureFlags;
 }
@@ -181,6 +190,24 @@ export function loadServerConfig(
       context: loader.context,
       defaultValue: DEFAULT_BB_TRANSCRIPTION,
       definition: BB_TRANSCRIPTION_ENV,
+      env: loader.env,
+    }),
+    BB_TRANSCRIPTION_MAX_BYTES: readEnvVarWithDefault({
+      context: loader.context,
+      defaultValue: DEFAULT_BB_TRANSCRIPTION_MAX_BYTES,
+      definition: BB_TRANSCRIPTION_MAX_BYTES_ENV,
+      env: loader.env,
+    }),
+    BB_TRANSCRIPTION_TIMEOUT_MAX_MS: readEnvVarWithDefault({
+      context: loader.context,
+      defaultValue: DEFAULT_BB_TRANSCRIPTION_TIMEOUT_MAX_MS,
+      definition: BB_TRANSCRIPTION_TIMEOUT_MAX_MS_ENV,
+      env: loader.env,
+    }),
+    BB_TRANSCRIPTION_RECORDING_BITRATE: readEnvVarWithDefault({
+      context: loader.context,
+      defaultValue: DEFAULT_BB_TRANSCRIPTION_RECORDING_BITRATE,
+      definition: BB_TRANSCRIPTION_RECORDING_BITRATE_ENV,
       env: loader.env,
     }),
     OPENAI_API_KEY: readEnvVarWithDefault({

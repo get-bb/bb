@@ -2178,7 +2178,9 @@ options.
    registered services (a picker needs per-service model lists, which the
    contract does not carry yet).
 2. **Payload cap.** A plugin-served transcription travels as base64 inside one
-   host RPC call (8 MiB JSON cap → 5 MB audio), a regression from the 25 MB
+   host RPC call (16 MiB JSON cap → 10 MB audio; raised from 8 MiB in the
+   voice-transcription limits change because the base64 overhead made the old
+   cap unserviceable for the local STT path), a regression from the 25 MB
    the server-direct path accepts for long recordings (owner decision: keep
    for now). The alternative is a host pull: the server stores the audio
    under a short-lived token and the call carries the token, so the host
@@ -2549,3 +2551,27 @@ describing it as merely too large.
    boolean indicating whether a detail read can succeed.
 3. Verify old persisted previews and mixed-version clients still receive a
    deterministic state before making the field stable.
+
+## `PluginAiServiceDeclaration.experimental_maxVoiceBytes`
+
+**What it does.** Lets an AI service that declares the `voice` kind cap the
+largest audio payload it will accept, in bytes. The server rejects a larger
+recording with HTTP 400 before the host call, enforcing the smaller of this
+value and the user's `BB_TRANSCRIPTION_MAX_BYTES` ceiling. Omitting it accepts
+audio up to the user's ceiling. `validatePluginAiServiceDeclaration` requires a
+positive integer no greater than the 10MB overall voice cap
+(`AI_SERVICE_MAX_VOICE_BYTES_CEILING`) and only on a service that declares the
+`voice` kind. The effective and declared caps surface in the system config
+response (`SystemAiService.effectiveVoiceMaxBytes` / `maxVoiceBytes`), in
+`bb settings ai-services`, and in Settings → General → Voice Input.
+
+**Audit before stabilizing.**
+
+1. Confirm bytes is the right unit versus a duration or a coarse capability
+   flag (e.g. `largeAudio`), given plugins reason about recording length.
+2. Decide whether a service should be able to raise its cap above the 10MB
+   overall voice cap if that cap ever becomes configurable.
+3. Confirm the min(ceiling, service) enforcement and its 400 message are the
+   right behavior versus transparently downsampling or chunking long audio.
+4. Decide whether the field belongs on the per-service declaration or on the
+   per-request `ai.voice.transcribe` contract.

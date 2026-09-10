@@ -22,6 +22,12 @@ import {
 import { loadServerPortConfig } from "../src/server-port.js";
 import { loadServerConfig } from "../src/server.js";
 import { loadViteDevConfig } from "../src/vite-dev.js";
+import { resolveVoiceTranscriptionTimeoutMs } from "../src/voice-transcription-limit.js";
+import {
+  parsePluginTranscriptionMaxBytes,
+  parseVoiceRecordingBitrate,
+  parseVoiceTranscriptionTimeoutMaxMs,
+} from "../src/voice-transcription-limit.js";
 
 async function importConfigModules(): Promise<void> {
   vi.resetModules();
@@ -307,6 +313,9 @@ describe("consumer-specific config", () => {
     expect(serverConfig.BB_INFERENCE).toBe("codex/gpt-5.6-luna");
     expect(serverConfig.BB_INFERENCE_FALLBACK).toBe("codex/gpt-5.4-mini");
     expect(serverConfig.BB_TRANSCRIPTION).toBe("codex/gpt-transcribe");
+    expect(serverConfig.BB_TRANSCRIPTION_MAX_BYTES).toBe(5 * 1024 * 1024);
+    expect(serverConfig.BB_TRANSCRIPTION_TIMEOUT_MAX_MS).toBe(300_000);
+    expect(serverConfig.BB_TRANSCRIPTION_RECORDING_BITRATE).toBe(32_000);
     expect(serverConfig.OPENAI_API_KEY).toBe("test-openai-key");
     expect(serverConfig.featureFlags).toEqual({
       placeholder: false,
@@ -513,6 +522,108 @@ describe("consumer-specific config", () => {
         }),
       }),
     ).toThrow(/BB_TRANSCRIPTION/u);
+  });
+
+  it("parses an explicit BB_TRANSCRIPTION_MAX_BYTES", () => {
+    const serverConfig = loadServerConfig({
+      env: createServerRuntimeEnv({
+        BB_TRANSCRIPTION_MAX_BYTES: String(10 * 1024 * 1024),
+      }),
+    });
+
+    expect(serverConfig.BB_TRANSCRIPTION_MAX_BYTES).toBe(10 * 1024 * 1024);
+  });
+
+  it("rejects a non-positive BB_TRANSCRIPTION_MAX_BYTES", () => {
+    expect(() =>
+      loadServerConfig({
+        env: createServerRuntimeEnv({
+          BB_TRANSCRIPTION_MAX_BYTES: "0",
+        }),
+      }),
+    ).toThrow(/BB_TRANSCRIPTION_MAX_BYTES/u);
+  });
+
+  it("rejects a non-integer BB_TRANSCRIPTION_MAX_BYTES", () => {
+    expect(() =>
+      loadServerConfig({
+        env: createServerRuntimeEnv({
+          BB_TRANSCRIPTION_MAX_BYTES: "not-a-number",
+        }),
+      }),
+    ).toThrow(/BB_TRANSCRIPTION_MAX_BYTES/u);
+  });
+
+  it("rejects a BB_TRANSCRIPTION_MAX_BYTES above the 10MB voice cap", () => {
+    expect(() =>
+      loadServerConfig({
+        env: createServerRuntimeEnv({
+          BB_TRANSCRIPTION_MAX_BYTES: String(10 * 1024 * 1024 + 1),
+        }),
+      }),
+    ).toThrow(/BB_TRANSCRIPTION_MAX_BYTES/u);
+  });
+
+  it("parses an explicit BB_TRANSCRIPTION_TIMEOUT_MAX_MS", () => {
+    const serverConfig = loadServerConfig({
+      env: createServerRuntimeEnv({
+        BB_TRANSCRIPTION_TIMEOUT_MAX_MS: "120000",
+      }),
+    });
+
+    expect(serverConfig.BB_TRANSCRIPTION_TIMEOUT_MAX_MS).toBe(120_000);
+  });
+
+  it("rejects a BB_TRANSCRIPTION_TIMEOUT_MAX_MS below the 10s floor", () => {
+    expect(() =>
+      loadServerConfig({
+        env: createServerRuntimeEnv({
+          BB_TRANSCRIPTION_TIMEOUT_MAX_MS: "9999",
+        }),
+      }),
+    ).toThrow(/BB_TRANSCRIPTION_TIMEOUT_MAX_MS/u);
+  });
+
+  it("rejects a BB_TRANSCRIPTION_TIMEOUT_MAX_MS above the 15 minute cap", () => {
+    expect(() =>
+      loadServerConfig({
+        env: createServerRuntimeEnv({
+          BB_TRANSCRIPTION_TIMEOUT_MAX_MS: String(900_000 + 1),
+        }),
+      }),
+    ).toThrow(/BB_TRANSCRIPTION_TIMEOUT_MAX_MS/u);
+  });
+
+  it("rejects a non-integer BB_TRANSCRIPTION_TIMEOUT_MAX_MS", () => {
+    expect(() =>
+      loadServerConfig({
+        env: createServerRuntimeEnv({
+          BB_TRANSCRIPTION_TIMEOUT_MAX_MS: "soon",
+        }),
+      }),
+    ).toThrow(/BB_TRANSCRIPTION_TIMEOUT_MAX_MS/u);
+  });
+
+  it("parses an explicit BB_TRANSCRIPTION_RECORDING_BITRATE", () => {
+    const serverConfig = loadServerConfig({
+      env: createServerRuntimeEnv({
+        BB_TRANSCRIPTION_RECORDING_BITRATE: "48000",
+      }),
+    });
+
+    expect(serverConfig.BB_TRANSCRIPTION_RECORDING_BITRATE).toBe(48_000);
+  });
+
+  it("rejects a BB_TRANSCRIPTION_RECORDING_BITRATE outside the supported range", () => {
+    for (const value of ["7999", "320001", "not-a-number"]) {
+      expect(() =>
+        loadServerConfig({
+          env: createServerRuntimeEnv({
+            BB_TRANSCRIPTION_RECORDING_BITRATE: value,
+          }),
+        }),
+      ).toThrow(/BB_TRANSCRIPTION_RECORDING_BITRATE/u);
+    }
   });
 
   it("requires a valid server URL for the daemon and CLI", () => {
@@ -815,5 +926,67 @@ describe("provider model config", () => {
         }),
       ).toThrow(/BB_INFERENCE/u);
     }
+  });
+});
+
+describe("resolveVoiceTranscriptionTimeoutMs", () => {
+  it("keeps the 10s floor for short clips", () => {
+    expect(
+      resolveVoiceTranscriptionTimeoutMs({ audioBytes: 4_096, maxMs: 300_000 }),
+    ).toBe(10_000);
+  });
+
+  it("scales the budget with audio size above the floor", () => {
+    expect(
+      resolveVoiceTranscriptionTimeoutMs({
+        audioBytes: 2 * 1024 * 1024,
+        maxMs: 300_000,
+      }),
+    ).toBe(30_000);
+  });
+
+  it("clamps the scaled budget to the configured ceiling", () => {
+    expect(
+      resolveVoiceTranscriptionTimeoutMs({
+        audioBytes: 25 * 1024 * 1024,
+        maxMs: 120_000,
+      }),
+    ).toBe(120_000);
+  });
+
+  it("collapses to a fixed budget when the ceiling equals the floor", () => {
+    expect(
+      resolveVoiceTranscriptionTimeoutMs({
+        audioBytes: 25 * 1024 * 1024,
+        maxMs: 10_000,
+      }),
+    ).toBe(10_000);
+  });
+});
+
+describe("voice transcription numeric parsing", () => {
+  it.each([
+    ["0x10", "hex"],
+    ["1e6", "exponent"],
+    ["10.5", "decimal"],
+    ["  ", "blank"],
+    ["-5", "negative sign"],
+    ["10mb", "unit suffix"],
+  ])("rejects %j (%s) for every numeric voice setting", (raw) => {
+    expect(() => parsePluginTranscriptionMaxBytes("t", raw)).toThrow(
+      /positive integer/,
+    );
+    expect(() => parseVoiceRecordingBitrate("t", raw)).toThrow(
+      /positive integer/,
+    );
+    expect(() => parseVoiceTranscriptionTimeoutMaxMs("t", raw)).toThrow(
+      /positive integer/,
+    );
+  });
+
+  it("accepts plain decimal integers with surrounding whitespace", () => {
+    expect(parsePluginTranscriptionMaxBytes("t", " 1048576 ")).toBe(1_048_576);
+    expect(parseVoiceRecordingBitrate("t", "32000")).toBe(32_000);
+    expect(parseVoiceTranscriptionTimeoutMaxMs("t", "300000")).toBe(300_000);
   });
 });

@@ -1047,6 +1047,14 @@ function validateProviderFallbackModels(
 const AI_SERVICE_KINDS = new Set<PluginAiServiceKind>(["inference", "voice"]);
 
 /**
+ * Hard ceiling for a voice service's declared `experimental_maxVoiceBytes`,
+ * matching the server's overall voice transcription cap (10MB). A declaration
+ * cannot promise more than bb accepts — and bb cannot accept more than the
+ * plugin transport can carry.
+ */
+export const AI_SERVICE_MAX_VOICE_BYTES_CEILING = 10 * 1024 * 1024;
+
+/**
  * AI-service ids the server serves itself: `openai` transcription and the
  * builtin inference providers (pi-ai 0.84). A plugin cannot register one —
  * it would capture the user's prompts and audio. This list is the one source
@@ -1139,10 +1147,31 @@ export function validatePluginAiServiceDeclaration(
     }
     seen.add(kind as PluginAiServiceKind);
   }
+  const maxVoiceBytes = declaration.experimental_maxVoiceBytes;
+  if (maxVoiceBytes !== undefined) {
+    if (!seen.has("voice")) {
+      throw new Error(
+        `AI service "${id}" declares experimental_maxVoiceBytes without the "voice" kind`,
+      );
+    }
+    if (
+      typeof maxVoiceBytes !== "number" ||
+      !Number.isInteger(maxVoiceBytes) ||
+      maxVoiceBytes <= 0 ||
+      maxVoiceBytes > AI_SERVICE_MAX_VOICE_BYTES_CEILING
+    ) {
+      throw new Error(
+        `AI service "${id}" experimental_maxVoiceBytes must be a positive integer of bytes no greater than ${AI_SERVICE_MAX_VOICE_BYTES_CEILING}`,
+      );
+    }
+  }
   return Object.freeze({
     id,
     displayName,
     kinds: Object.freeze([...seen]),
+    ...(maxVoiceBytes === undefined
+      ? {}
+      : { experimental_maxVoiceBytes: maxVoiceBytes }),
   });
 }
 

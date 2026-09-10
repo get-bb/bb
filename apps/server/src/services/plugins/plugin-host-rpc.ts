@@ -7,12 +7,17 @@ import type {
 } from "@get-bb/plugin-sdk";
 import type { JsonValue } from "@bb/domain";
 import { COMMAND_TIMEOUT_MS } from "../../constants.js";
+import { ApiError } from "../../errors.js";
 import type { WorkSessionDeps } from "../../types.js";
 import { callHostOnlineRpc } from "../hosts/online-rpc.js";
 import type { PluginHostArtifactSnapshot } from "./plugin-service-internal.js";
 
 const HOST_RPC_TRANSPORT_GRACE_MS = 6_000;
-const HOST_RPC_PAYLOAD_MAX_BYTES = 8 * 1024 * 1024;
+// Raised from 8 MiB for the voice-transcription limits change: base64 audio
+// (+33%) plus the JSON envelope around it made 8 MiB unserviceable for the
+// local STT path. This is a shared transport cap — see the payload-cap audit
+// entry in docs/api_to_audit.md before raising it again.
+const HOST_RPC_PAYLOAD_MAX_BYTES = 16 * 1024 * 1024;
 
 async function validateValue(
   schema: StandardSchemaV1,
@@ -46,7 +51,12 @@ function normalizeJson(value: unknown, label: string): JsonValue {
     throw new Error(`${label} is not JSON-serializable`);
   }
   if (Buffer.byteLength(serialized) > HOST_RPC_PAYLOAD_MAX_BYTES) {
-    throw new Error(`${label} exceeds ${HOST_RPC_PAYLOAD_MAX_BYTES} bytes`);
+    const maxMb = HOST_RPC_PAYLOAD_MAX_BYTES / (1024 * 1024);
+    throw new ApiError(
+      413,
+      "invalid_request",
+      `${label} exceeds the ${maxMb}MB host RPC payload limit`,
+    );
   }
   return JSON.parse(serialized) as JsonValue;
 }

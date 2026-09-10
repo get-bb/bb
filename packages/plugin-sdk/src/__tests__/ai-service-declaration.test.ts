@@ -79,6 +79,48 @@ describe("validatePluginAiServiceDeclaration", () => {
       }),
     ).toThrow(/declares kind "voice" twice/u);
   });
+
+  it("carries a valid experimental_maxVoiceBytes on a voice service", () => {
+    const normalized = validatePluginAiServiceDeclaration({
+      id: "acme-ai",
+      displayName: "Acme",
+      kinds: ["voice"],
+      experimental_maxVoiceBytes: 5 * 1024 * 1024,
+    });
+    expect(normalized).toEqual({
+      id: "acme-ai",
+      displayName: "Acme",
+      kinds: ["voice"],
+      experimental_maxVoiceBytes: 5 * 1024 * 1024,
+    });
+  });
+
+  it("rejects experimental_maxVoiceBytes without the voice kind", () => {
+    expect(() =>
+      validatePluginAiServiceDeclaration({
+        id: "acme-ai",
+        displayName: "Acme",
+        kinds: ["inference"],
+        experimental_maxVoiceBytes: 1024,
+      }),
+    ).toThrow(/experimental_maxVoiceBytes without the "voice" kind/u);
+  });
+
+  it.each([
+    [0, "zero"],
+    [-1, "negative"],
+    [1.5, "non-integer"],
+    [10 * 1024 * 1024 + 1, "above the 10MB ceiling"],
+  ])("rejects experimental_maxVoiceBytes %j (%s)", (maxVoiceBytes) => {
+    expect(() =>
+      validatePluginAiServiceDeclaration({
+        id: "acme-ai",
+        displayName: "Acme",
+        kinds: ["voice"],
+        experimental_maxVoiceBytes: maxVoiceBytes,
+      }),
+    ).toThrow(/experimental_maxVoiceBytes must be a positive integer/u);
+  });
 });
 
 describe("assertAiServiceRegistrable", () => {

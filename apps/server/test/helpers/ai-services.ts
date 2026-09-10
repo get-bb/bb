@@ -20,6 +20,7 @@ export function registerFakeAiService(
   args: {
     id?: string;
     kinds?: readonly PluginAiServiceKind[];
+    maxVoiceBytes?: number;
     completeInference?: (
       input: ExperimentalAiInferenceCompleteInput,
     ) =>
@@ -45,6 +46,9 @@ export function registerFakeAiService(
     displayName: "Fake service",
     kinds: args.kinds ?? ["inference", "voice"],
     pluginId: "provider-fake",
+    ...(args.maxVoiceBytes === undefined
+      ? {}
+      : { experimental_maxVoiceBytes: args.maxVoiceBytes }),
     async completeInference(input, options) {
       inferenceCalls.push({ input, options });
       if (!args.completeInference) {

@@ -231,9 +231,12 @@ async function startIntegrationServer(
     marketplaceUrl: "https://marketplace.invalid/marketplace.json",
     openAiApiKey: process.env.OPENAI_API_KEY ?? "test-openai-key",
     appUrl: "https://bb.example.test",
+    pluginTranscriptionMaxBytes: 5 * 1024 * 1024,
     serverPort: 0,
     sharedSkillRoots: { user: [], project: [] },
     transcriptionModel: "test/mock-transcription",
+    voiceTranscriptionRecordingBitrate: 32_000,
+    voiceTranscriptionTimeoutMaxMs: 300_000,
     isDevelopment: false,
   };
   const terminalSessions = new TerminalSessionLifecycle({

@@ -131,6 +131,35 @@ describe("bb.experimental_aiServices.register (server)", () => {
     });
   });
 
+  it("carries a declared experimental_maxVoiceBytes through to the registry", async () => {
+    await withTestHarness(async (harness) => {
+      const rootDir = await writePlugin(workDir, {
+        name: "bb-plugin-capped-ai",
+        serverSource: `
+          export default function plugin(bb: any) {
+            bb.experimental_aiServices.register({
+              id: "capped-ai",
+              displayName: "Capped AI",
+              kinds: ["voice"],
+              experimental_maxVoiceBytes: 5 * 1024 * 1024,
+            });
+          }
+        `,
+      });
+      const entry = await harness.pluginService.installPath(rootDir);
+      expect(entry.status).toBe("running");
+      expect(harness.deps.aiServices.list()).toEqual([
+        {
+          id: "capped-ai",
+          displayName: "Capped AI",
+          kinds: ["voice"],
+          pluginId: "capped-ai",
+          experimental_maxVoiceBytes: 5 * 1024 * 1024,
+        },
+      ]);
+    });
+  });
+
   it("fails the load of a plugin that registers a service without a bb.host entry", async () => {
     await withTestHarness(async (harness) => {
       const rootDir = await writePlugin(workDir, {

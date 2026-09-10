@@ -27,6 +27,12 @@
 - Use `bb settings show` and `bb settings ai-services` for current values.
 - Use `bb settings general <key> <value>` or
   `bb settings experiment <key> <value>` for updates.
+- Use `bb settings transcription <key> <value>` to change voice transcription
+  settings (also editable in Settings → Voice Input). Keys: `model`
+  (`<service>/<model>`), `max-bytes`, `timeout-ms`, `recording-bitrate`. Values
+  are validated server-side and persist to BB-managed config. This is the
+  live-update path; `bb-app config set BB_TRANSCRIPTION*` remains for
+  startup/env-file use.
 - Use `bb settings keyboard list`, `set`, and `reset` for shortcut overrides.
 - Use `bb settings usage [--machine <id-or-name>]` for provider limits.
   `--host` is an alias for `--machine`.
