@@ -1,7 +1,7 @@
 import {
   cancelProviderEnvironmentCreation,
   sweepProviderEnvironment,
-} from "../environments/provider-orchestration.js";
+} from "../environments/environment-engine.js";
 import {
   listLiveThreadsInEnvironment,
   listNonDeletedChildThreads,

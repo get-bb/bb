@@ -28,7 +28,7 @@ import {
   WORKSPACE_DIFF_MAX_FILE_LIST_BYTES,
 } from "../constants.js";
 import { ApiError } from "../errors.js";
-import { requestEnvironmentRemoval } from "../services/environments/provider-orchestration.js";
+import { requestEnvironmentRemoval } from "../services/environments/environment-engine.js";
 import { toEnvironmentResponse } from "../services/environments/environment-response.js";
 import {
   requireEnvironment,

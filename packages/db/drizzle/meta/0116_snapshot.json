@@ -1,7 +1,7 @@
 {
   "version": "6",
   "dialect": "sqlite",
-  "id": "f6f84b0d-18a7-4c6c-88ff-59e1856bc30d",
+  "id": "f6d5efcf-3a42-4db6-9243-08e95d50ebed",
   "prevId": "29773b03-78e7-4083-a89c-e38d38412675",
   "tables": {
     "app_settings": {
@@ -606,95 +606,42 @@
           "notNull": false,
           "autoincrement": false
         },
-        "provisioning_thread_id": {
-          "name": "provisioning_thread_id",
+        "owner_thread_id": {
+          "name": "owner_thread_id",
           "type": "text",
           "primaryKey": false,
           "notNull": false,
           "autoincrement": false
         },
-        "provisioning_attempt": {
-          "name": "provisioning_attempt",
+        "attempt": {
+          "name": "attempt",
           "type": "integer",
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false,
           "default": 0
         },
-        "provisioning_phase": {
-          "name": "provisioning_phase",
+        "status_message": {
+          "name": "status_message",
           "type": "text",
           "primaryKey": false,
           "notNull": false,
           "autoincrement": false
         },
-        "provisioning_failed_at": {
-          "name": "provisioning_failed_at",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "provisioning_failure": {
-          "name": "provisioning_failure",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "provisioning_message": {
-          "name": "provisioning_message",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "provisioning_transient_failures": {
-          "name": "provisioning_transient_failures",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false,
-          "default": 0
-        },
-        "provisioning_step": {
-          "name": "provisioning_step",
+        "pending_log": {
+          "name": "pending_log",
           "type": "text",
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false,
           "default": "''"
         },
-        "provisioning_log": {
-          "name": "provisioning_log",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false,
-          "default": "''"
-        },
-        "provisioning_path_rejected": {
-          "name": "provisioning_path_rejected",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false,
-          "default": false
-        },
-        "provisioning_claim_path": {
-          "name": "provisioning_claim_path",
+        "claim_path": {
+          "name": "claim_path",
           "type": "text",
           "primaryKey": false,
           "notNull": false,
           "autoincrement": false
-        },
-        "provisioning_attached": {
-          "name": "provisioning_attached",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false,
-          "default": false
         },
         "status": {
           "name": "status",
@@ -737,25 +684,18 @@
           ],
           "isUnique": false
         },
-        "environments_provisioning_thread_idx": {
-          "name": "environments_provisioning_thread_idx",
+        "environments_owner_thread_idx": {
+          "name": "environments_owner_thread_idx",
           "columns": [
-            "provisioning_thread_id"
+            "owner_thread_id"
           ],
           "isUnique": true
         },
-        "environments_provisioning_phase_idx": {
-          "name": "environments_provisioning_phase_idx",
-          "columns": [
-            "provisioning_phase"
-          ],
-          "isUnique": false
-        },
-        "environments_provisioning_claim_idx": {
-          "name": "environments_provisioning_claim_idx",
+        "environments_claim_idx": {
+          "name": "environments_claim_idx",
           "columns": [
             "host_id",
-            "provisioning_claim_path"
+            "claim_path"
           ],
           "isUnique": false
         },

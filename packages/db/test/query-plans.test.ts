@@ -252,9 +252,7 @@ describe("slow query index plans", () => {
         params: query.params,
         sql: query.sql,
       });
-      expect(details).toContain(
-        "USING INDEX environments_provisioning_claim_idx",
-      );
+      expect(details).toContain("USING INDEX environments_claim_idx");
       expect(details).not.toContain("SCAN environments");
     },
   );

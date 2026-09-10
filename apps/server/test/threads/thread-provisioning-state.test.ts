@@ -42,7 +42,7 @@ function setup() {
 }
 
 describe("thread provisioning state", () => {
-  it("stores provisioning progress in live context without a durable row payload", () => {
+  it("stores provisioning progress in the durable thread startup context", () => {
     const { db, host, hub, thread } = setup();
     const input = textInput("start this workspace");
 
@@ -56,12 +56,6 @@ describe("thread provisioning state", () => {
           machine: { type: "existing", hostId: host.id },
           inputs: {},
           selectionResolved: true,
-          produced: {
-            hostId: host.id,
-            path: "/tmp/source",
-            mergeBaseBranch: null,
-            ownsPath: false,
-          },
         },
         input,
         execution: {
@@ -78,7 +72,7 @@ describe("thread provisioning state", () => {
     );
 
     expect(context.state.provisioningId).toMatch(/^tpv_/);
-    expect(context.state.stage).toBe("metadata-pending");
+    expect(context.state.environmentId).toBeNull();
     expect(context.state.environmentId).toBeNull();
     expect(context.state.provisionEventSequence).toBeNull();
     expect(context.state.workspaceReadyEventSequence).toBeNull();

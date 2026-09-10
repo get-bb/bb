@@ -1,8 +1,9 @@
+import { advanceEnvironmentProvisioning } from "../environments/environment-engine.js";
 import { revokeThreadDesktopBrowserControl } from "../desktop-browsers.js";
 import {
   providerEnvironmentHasPendingWork,
   refreshProviderRetirement,
-} from "../environments/provider-orchestration.js";
+} from "../environments/environment-engine.js";
 import {
   and,
   eq,
@@ -86,7 +87,6 @@ import { isHostUnavailableApiError } from "../hosts/online-rpc.js";
 import {
   LIVE_DAEMON_COMMAND_TIMEOUT_MS,
   runLiveHostCommand,
-  startLiveHostCommand,
 } from "../hosts/live-command.js";
 import { createAsyncDeduper } from "../lib/async-deduper.js";
 import { requestQueuedMessageDispatch } from "./queued-message-dispatch.js";
@@ -99,7 +99,6 @@ import {
   getThreadProvisionContext,
 } from "./thread-startup-store.js";
 import { cancelEnvironmentProviderCreation } from "./thread-environment-providers.js";
-import { hasProvisioningTimelineRow } from "./thread-provisioning-context.js";
 import { isPreStartThreadStatus } from "./thread-status.js";
 import { settleDanglingBackgroundTasksForStoppedThreadInTransaction } from "./background-task-reconciliation.js";
 
@@ -474,7 +473,7 @@ function appendProvisioningInterruptedEventInTransaction(
     return;
   }
   const environmentId = context.state.environmentId ?? thread.environmentId;
-  if (!hasProvisioningTimelineRow(context)) {
+  if (context.state.provisionEventSequence === null) {
     return;
   }
 
@@ -1049,7 +1048,7 @@ function dispatchThreadStartFromRequest(
       let completedProvisionSequence: number | null = null;
       if (
         activeProvisionContext !== null &&
-        hasProvisioningTimelineRow(activeProvisionContext)
+        activeProvisionContext.state.provisionEventSequence !== null
       ) {
         completedProvisionSequence = appendThreadProvisioningEventInTransaction(
           tx,
@@ -1304,24 +1303,14 @@ function requestPreStartThreadStop(
   }
 
   if (!result.finalized && result.environmentId && result.cancelHostId) {
-    startLiveHostCommand(deps, {
-      command: {
-        type: "environment.attach.cancel",
-        environmentId: result.environmentId,
-      },
-      hostId: result.cancelHostId,
-      timeoutMs: LIVE_DAEMON_COMMAND_TIMEOUT_MS,
-      onError: ({ error }) => {
-        deps.logger.warn(
-          {
-            err: error,
-            environmentId: result.environmentId,
-            threadId: thread.id,
-          },
-          "Live environment provision cancel command failed",
-        );
-      },
-    });
+    void advanceEnvironmentProvisioning(deps, {
+      environmentId: result.environmentId,
+    }).catch((error) =>
+      deps.logger.warn(
+        { environmentId: result.environmentId, error },
+        "Environment cancellation failed",
+      ),
+    );
     return;
   }
 }

@@ -58,7 +58,7 @@ import {
 import {
   threadForkDescriptorSchema,
   threadProvisionEnvironmentIntentSchema,
-} from "./thread-provisioning-context.js";
+} from "./thread-startup-store.js";
 import { getThreadProvisionContext } from "./thread-startup-store.js";
 import {
   buildThreadStatusChangeMetadata,

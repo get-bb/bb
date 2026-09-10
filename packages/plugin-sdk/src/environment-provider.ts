@@ -77,7 +77,7 @@ export type PluginEnvironmentProviderCreateResult =
       mergeBaseBranch?: string;
       resource?: JsonValue;
     }
-  | { status: "failed"; failure: "transient" | "terminal"; message: string };
+  | { status: "failed"; message: string };
 
 export interface PluginEnvironmentProviderRemoveContext {
   environment: Environment | null;

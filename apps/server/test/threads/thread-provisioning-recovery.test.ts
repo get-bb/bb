@@ -1,3 +1,4 @@
+import { requestThreadStopForCurrentState } from "../../src/services/threads/thread-lifecycle.js";
 import { runEnvironmentProvisioningSweep } from "../../src/services/system/periodic-sweeps.js";
 import { eq } from "drizzle-orm";
 import { environments, getEnvironment, getThread, listEvents } from "@bb/db";
@@ -18,13 +19,7 @@ import {
   readThreadProvisionContext,
   getThreadProvisionContext,
 } from "../../src/services/threads/thread-startup-store.js";
-import {
-  createEnvironmentAttachedContext,
-  createEnvironmentProvisioningContext,
-  createEnvironmentPendingContext,
-  createMetadataPendingContext,
-  createWorkspaceReadyContext,
-} from "../../src/services/threads/thread-provisioning-context.js";
+import { createThreadStartup } from "../../src/services/threads/thread-startup-store.js";
 import {
   advanceThreadProvisioning,
   requestThreadProvision,
@@ -123,7 +118,7 @@ describe("thread provisioning recovery", () => {
         environmentId: environment.id,
         status: "starting",
       });
-      const requestedContext = createMetadataPendingContext({
+      const requestedContext = createThreadStartup({
         clientRequestId: encodeClientTurnRequestIdNumber({ value: 1 }),
         environmentIntent: {
           type: "reuse",
@@ -135,10 +130,10 @@ describe("thread provisioning recovery", () => {
         titleProvided: true,
         seedWithoutRun: false,
       });
-      const attachedContext = createEnvironmentAttachedContext(
-        createEnvironmentPendingContext(requestedContext),
-        { attachedEnvironmentId: environment.id },
-      );
+      const attachedContext = {
+        ...requestedContext,
+        state: { ...requestedContext.state, environmentId: environment.id },
+      };
       const workspaceReadyEventSequence = appendThreadProvisioningEvent(
         harness.deps,
         {
@@ -157,9 +152,10 @@ describe("thread provisioning recovery", () => {
         replace: false,
         db: harness.db,
         threadId: thread.id,
-        context: createWorkspaceReadyContext(attachedContext, {
-          workspaceReadyEventSequence,
-        }),
+        context: {
+          ...attachedContext,
+          state: { ...attachedContext.state, workspaceReadyEventSequence },
+        },
       });
 
       let startCommand: QueuedCommand | null = null;
@@ -249,7 +245,7 @@ describe("thread provisioning recovery", () => {
         environmentId: environment.id,
         status: "starting",
       });
-      const requestedContext = createMetadataPendingContext({
+      const requestedContext = createThreadStartup({
         clientRequestId: encodeClientTurnRequestIdNumber({ value: 1 }),
         environmentIntent: {
           type: "reuse",
@@ -261,10 +257,10 @@ describe("thread provisioning recovery", () => {
         titleProvided: true,
         seedWithoutRun: false,
       });
-      const attachedContext = createEnvironmentAttachedContext(
-        createEnvironmentPendingContext(requestedContext),
-        { attachedEnvironmentId: environment.id },
-      );
+      const attachedContext = {
+        ...requestedContext,
+        state: { ...requestedContext.state, environmentId: environment.id },
+      };
       const workspaceReadyEventSequence = appendThreadProvisioningEvent(
         harness.deps,
         {
@@ -283,9 +279,10 @@ describe("thread provisioning recovery", () => {
         replace: false,
         db: harness.db,
         threadId: thread.id,
-        context: createWorkspaceReadyContext(attachedContext, {
-          workspaceReadyEventSequence,
-        }),
+        context: {
+          ...attachedContext,
+          state: { ...attachedContext.state, workspaceReadyEventSequence },
+        },
       });
 
       await runThreadLifecycleSweep(harness.deps);
@@ -547,13 +544,19 @@ it.each(["metadata", "workspace"])(
           db: harness.db,
           replace: false,
           threadId: thread.id,
-          context: createEnvironmentProvisioningContext(
-            createEnvironmentAttachedContext(
-              createEnvironmentPendingContext(requested),
-              { attachedEnvironmentId: environment.id },
-            ),
-            { provisionEventSequence: sequence },
-          ),
+          context: {
+            ...{
+              ...requested,
+              state: { ...requested.state, environmentId: environment.id },
+            },
+            state: {
+              ...{
+                ...requested,
+                state: { ...requested.state, environmentId: environment.id },
+              }.state,
+              provisionEventSequence: sequence,
+            },
+          },
         });
       }
       clearThreadProvisionSchedule(thread.id);
@@ -649,3 +652,127 @@ it("rejects an older startup checkpoint after a new attempt has been persisted",
     ).toEqual(textInput("second"));
   });
 });
+
+it("retries failed setup on the same environment without reallocating its workspace", async () => {
+  await withTestHarness(async (harness) => {
+    const { host } = seedHostSession(harness.deps);
+    const { project } = seedProjectWithSource(harness.deps, {
+      hostId: host.id,
+    });
+    const environment = seedEnvironment(harness.deps, {
+      hostId: host.id,
+      projectId: project.id,
+      path: "/tmp/retry-existing-setup",
+      status: "error",
+    });
+    const thread = seedThread(harness.deps, {
+      projectId: project.id,
+      environmentId: environment.id,
+      status: "starting",
+    });
+    requestThreadProvision(harness.deps, {
+      thread,
+      environmentIntent: { type: "reuse", environmentId: environment.id },
+      execution: THREAD_START_EXECUTION,
+      fork: null,
+      input: textInput("retry original input"),
+      startedOnBehalfOf: null,
+      titleProvided: true,
+    });
+    await advanceThreadProvisioning(harness.deps, { threadId: thread.id });
+    const attach = await waitForQueuedCommand(
+      harness,
+      ({ command }) => command.type === "environment.attach",
+    );
+    expect(attach.command).toMatchObject({
+      environmentId: environment.id,
+      path: environment.path,
+    });
+    expect(getEnvironment(harness.db, environment.id)).toMatchObject({
+      attempt: 1,
+      status: "provisioning",
+    });
+    await reportNextEnvironmentAttachSuccess(harness, thread.id);
+    const start = await waitForQueuedCommand(
+      harness,
+      ({ command }) => command.type === "thread.start",
+    );
+    expect(start.command).toMatchObject({
+      input: textInput("retry original input"),
+    });
+    expect(getThread(harness.db, thread.id)?.environmentId).toBe(
+      environment.id,
+    );
+    expect(getEnvironment(harness.db, environment.id)?.status).toBe("ready");
+  });
+});
+
+it.each(["success", "failure"])(
+  "preserves cancellation after attachment when setup later reports %s",
+  async (outcome) => {
+    await withTestHarness(async (harness) => {
+      const { host } = seedHostSession(harness.deps);
+      const { project } = seedProjectWithSource(harness.deps, {
+        hostId: host.id,
+      });
+      const environment = seedEnvironment(harness.deps, {
+        hostId: host.id,
+        projectId: project.id,
+        path: "/tmp/cancel-attached-setup",
+        status: "provisioning",
+      });
+      const thread = seedThread(harness.deps, {
+        projectId: project.id,
+        environmentId: environment.id,
+        status: "starting",
+      });
+      requestThreadProvision(harness.deps, {
+        thread,
+        environmentIntent: { type: "reuse", environmentId: environment.id },
+        execution: THREAD_START_EXECUTION,
+        fork: null,
+        input: textInput("cancel during setup"),
+        startedOnBehalfOf: null,
+        titleProvided: true,
+      });
+      await advanceThreadProvisioning(harness.deps, { threadId: thread.id });
+      const attach = await waitForQueuedCommand(
+        harness,
+        ({ command }) => command.type === "environment.attach",
+      );
+      requestThreadStopForCurrentState(
+        harness.deps,
+        getThread(harness.db, thread.id)!,
+        environment,
+      );
+      const cancel = await waitForQueuedCommand(
+        harness,
+        ({ command }) => command.type === "environment.attach.cancel",
+      );
+      await reportQueuedCommandSuccess(harness, cancel, { aborted: true });
+      if (outcome === "success")
+        await reportQueuedCommandSuccess(harness, attach, {
+          path: environment.path!,
+          isGitRepo: false,
+          isWorktree: false,
+          branchName: null,
+          defaultBranch: null,
+        });
+      else
+        await reportQueuedCommandError(harness, attach, {
+          errorCode: "provision_cancelled",
+          errorMessage: "Setup was cancelled",
+        });
+      expect(getThread(harness.db, thread.id)?.status).toBe("idle");
+      expect(getEnvironment(harness.db, environment.id)?.status).toBe("ready");
+      expect(
+        listEvents(harness.db, { threadId: thread.id }).some(
+          (event) => event.type === "system/error",
+        ),
+      ).toBe(false);
+      expect(
+        listQueuedThreadCommands(harness, "thread.start", thread.id),
+      ).toHaveLength(0);
+    });
+  },
+);

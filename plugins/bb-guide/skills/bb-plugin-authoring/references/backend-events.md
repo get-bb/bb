@@ -226,7 +226,7 @@ attempt, pathKey, rebuild, `previous: { environment, resource } | null`,
 report, and an abort signal. It is one long call and must be idempotent for
 pathKey: after a process or plugin restart, core calls it again with the same
 attempt and pathKey. Return `created` with `path`, explicit `ownsPath`
-and optional `mergeBaseBranch`, or `failed` with terminal/transient and message.
+and optional `mergeBaseBranch`, or `failed` with a message; a failed create is terminal.
 `report.step` and
 `report.log` stream durable progress while the call runs.
 
@@ -241,7 +241,7 @@ failed(message).
 
 Policy exposes retireGraceMs (five minutes by default; null means never) and
 pathKeys (per-thread by default, or per-attempt). Core retries failed removal
-after 60 seconds and permits three transient creation retries, 30 seconds apart.
+after 60 seconds. Creation retries are explicit and start a new attempt on the same environment row after cleanup.
 Core imposes no overall provider-create timeout. These are internal core
 behaviors, not provider settings. Rebuilds use
 fresh path keys. Retirement starts after the last live thread archives or is deleted.

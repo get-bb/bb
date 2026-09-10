@@ -1,3 +1,34 @@
+import {
+  getAppSettings,
+  getEnvironment,
+  getThread,
+  recordEnvironmentCurrentBranch,
+} from "@bb/db";
+import { type Environment, type Thread } from "@bb/domain";
+import { type ThreadProvisionContext } from "./thread-startup-store.js";
+import { type ThreadProvisioningDeps } from "./thread-provisioning-environment.js";
+import { buildSuggestedBranchName } from "./thread-create-helpers.js";
+import { toThreadResponseFromThread } from "./thread-runtime-display.js";
+import { toEnvironmentResponse } from "../environments/environment-response.js";
+import {
+  advanceEnvironmentProvisioning,
+  cancelProviderEnvironmentCreation,
+  type ProviderOperationContext,
+} from "../environments/environment-engine.js";
+import {
+  getPreparingEnvironment,
+  reserveEnvironment,
+  updatePreparingEnvironment,
+} from "@bb/db";
+import { appendThreadProvisioningEvent } from "./thread-events.js";
+import { scheduleEnvironmentProvisioning } from "./thread-environment-providers.js";
+import {
+  getThreadProvisionContext,
+  saveThreadProvisionContext,
+} from "./thread-startup-store.js";
+import { runtimeErrorLogFields } from "../lib/error-log-fields.js";
+import { COMMAND_TIMEOUT_MS } from "../../constants.js";
+import { callHostRetryableOnlineRpc } from "../hosts/online-rpc.js";
 import { getProjectSourceByHost, type EnvironmentRow } from "@bb/db";
 import { z } from "zod";
 import { DEFAULT_ENVIRONMENT_PROVIDER_ID } from "../environments/environment-provider-ids.js";
@@ -37,7 +68,7 @@ import {
   resolvePluginEnvironmentProviderAvailability,
 } from "../environments/provider-availability.js";
 import { resolveStableThreadRequestEnvironment } from "./thread-request-eligibility.js";
-import type { ThreadProvisionEnvironmentIntent } from "./thread-provisioning-context.js";
+import type { ThreadProvisionEnvironmentIntent } from "./thread-startup-store.js";
 
 type PlacementDeps = LoggedPendingInteractionWorkSessionDeps;
 
@@ -367,23 +398,12 @@ export async function resolveThreadEnvironmentPlacement(
 ): Promise<ThreadEnvironmentPlacement> {
   if (args.requestedEnvironment.type === "provider") {
     const requested = args.requestedEnvironment;
-    const selection = await resolveCompleteProviderSelection(
+    return providerPlacement(
       deps,
       args.projectId,
       requested.environmentProviderId,
       requested,
     );
-    return {
-      environmentId: null,
-      environmentIntent: {
-        type: "provider",
-        environmentProviderId: requested.environmentProviderId,
-        machine: selection.machine,
-        inputs: selection.inputs,
-        selectionResolved: selection.selectionResolved,
-        produced: null,
-      },
-    };
   }
   const resolvedEnvironment = resolveStableThreadRequestEnvironment(deps, {
     ...(args.allowUnmanagedPersonalProjectReuseEnvironmentId !== undefined
@@ -401,7 +421,7 @@ export async function resolveThreadEnvironmentPlacement(
     case "host": {
       const workspace = resolvedEnvironment.workspace;
       if (workspace.type !== "unmanaged") {
-        const selection = await resolveCompleteProviderSelection(
+        return providerPlacement(
           deps,
           args.projectId,
           DEFAULT_ENVIRONMENT_PROVIDER_ID.gitWorktree,
@@ -413,17 +433,6 @@ export async function resolveThreadEnvironmentPlacement(
             inputs: worktreeProviderInputs(workspace.baseBranch),
           },
         );
-        return {
-          environmentId: null,
-          environmentIntent: {
-            type: "provider",
-            environmentProviderId: DEFAULT_ENVIRONMENT_PROVIDER_ID.gitWorktree,
-            machine: selection.machine,
-            inputs: selection.inputs,
-            selectionResolved: selection.selectionResolved,
-            produced: null,
-          },
-        };
       }
       if (resolvedEnvironment.unmanagedPath === null) {
         throw new Error(
@@ -444,7 +453,7 @@ export async function resolveThreadEnvironmentPlacement(
       if (refusal !== null) {
         throw new ApiError(409, "invalid_request", refusal);
       }
-      const selection = await resolveCompleteProviderSelection(
+      return providerPlacement(
         deps,
         args.projectId,
         DEFAULT_ENVIRONMENT_PROVIDER_ID.projectCheckout,
@@ -459,21 +468,9 @@ export async function resolveThreadEnvironmentPlacement(
           ),
         },
       );
-      return {
-        environmentId: null,
-        environmentIntent: {
-          type: "provider",
-          environmentProviderId:
-            DEFAULT_ENVIRONMENT_PROVIDER_ID.projectCheckout,
-          machine: selection.machine,
-          inputs: selection.inputs,
-          selectionResolved: selection.selectionResolved,
-          produced: null,
-        },
-      };
     }
     case "personal": {
-      const selection = await resolveCompleteProviderSelection(
+      return providerPlacement(
         deps,
         args.projectId,
         DEFAULT_ENVIRONMENT_PROVIDER_ID.personalWorkspace,
@@ -485,18 +482,371 @@ export async function resolveThreadEnvironmentPlacement(
           inputs: null,
         },
       );
-      return {
-        environmentId: null,
-        environmentIntent: {
-          type: "provider",
-          environmentProviderId:
-            DEFAULT_ENVIRONMENT_PROVIDER_ID.personalWorkspace,
-          machine: selection.machine,
-          inputs: selection.inputs,
-          selectionResolved: selection.selectionResolved,
-          produced: null,
-        },
-      };
     }
   }
+}
+export async function resolveProviderOperationContext(
+  deps: ThreadProvisioningDeps,
+  thread: Thread,
+  intent: Extract<
+    import("./thread-startup-store.js").ThreadProvisionEnvironmentIntent,
+    { type: "provider" }
+  >,
+  record: NonNullable<ReturnType<typeof getEnvironmentProvider>>,
+) {
+  const project = requirePublicProject(deps.db, thread.projectId);
+  let selection;
+  try {
+    selection = intent.selectionResolved
+      ? { machine: intent.machine, inputs: intent.inputs }
+      : await completeProviderSelection(deps, record, thread.projectId, {
+          machine: intent.machine,
+          inputs: intent.inputs,
+        });
+  } catch (error) {
+    throw providerFailure(
+      intent.environmentProviderId,
+      record.pluginId,
+      error instanceof Error ? error.message : String(error),
+    );
+  }
+  const host = getNonDestroyedHostWithStatus(deps, selection.machine.hostId);
+  if (host === null) {
+    throw providerFailure(
+      intent.environmentProviderId,
+      record.pluginId,
+      "runs on a machine that no longer exists",
+    );
+  }
+  const requires = record.provider.requires;
+  if (requires.gitRemote && project.gitRemoteUrl === null) {
+    throw new ApiError(
+      409,
+      "environment_provider_rejected",
+      `${project.name} has no git remote, so the "${intent.environmentProviderId}" environment provider has nothing to clone.`,
+      { details: { environmentProviderId: intent.environmentProviderId } },
+    );
+  }
+  const checkout = getProjectSourceByHost(deps.db, thread.projectId, host.id);
+  const projectCheckout =
+    checkout !== null && isLocalPathProjectSource(checkout)
+      ? { path: checkout.path }
+      : null;
+  if (requires.projectCheckout && projectCheckout === null) {
+    throw providerFailure(
+      intent.environmentProviderId,
+      record.pluginId,
+      "works from this project's checkout on the machine, which is no longer configured",
+    );
+  }
+  intent.machine = selection.machine;
+  intent.inputs = selection.inputs;
+  intent.selectionResolved = true;
+  const provisionContext = {
+    thread: toThreadResponseFromThread(deps, { thread }),
+    project,
+    host,
+    machine: selection.machine,
+    projectCheckout,
+    gitRemote: requires.gitRemote ? project.gitRemoteUrl : null,
+    inputs: selection.inputs,
+    suggestedBranchName: buildSuggestedBranchName({
+      branchPrefix: getAppSettings(deps.db).managedBranchPrefix,
+      title: thread.title ?? thread.titleFallback,
+      threadId: thread.id,
+    }),
+    environment: threadProvisionContextEnvironment(deps, thread.environmentId),
+  };
+  return provisionContext;
+}
+function threadProvisionContextEnvironment(
+  deps: Pick<ThreadProvisioningDeps, "db">,
+  environmentId: string | null,
+): Environment | null {
+  if (environmentId === null) {
+    return null;
+  }
+  const environment = getEnvironment(deps.db, environmentId);
+  return environment === null ? null : toEnvironmentResponse(environment);
+}
+export async function refreshAttachedEnvironmentBranch(
+  deps: ThreadProvisioningDeps,
+  args: { environmentId: string; hostId: string; path: string },
+): Promise<void> {
+  try {
+    const inspection = await callHostRetryableOnlineRpc(deps, {
+      hostId: args.hostId,
+      timeoutMs: COMMAND_TIMEOUT_MS,
+      command: {
+        type: "host.inspect_git_source",
+        path: args.path,
+        remoteRefresh: "background",
+      },
+    });
+    const checkout = inspection.checkout;
+    const branchName =
+      checkout.kind === "branch" || checkout.kind === "unborn"
+        ? checkout.branchName
+        : null;
+    recordEnvironmentCurrentBranch(deps.db, deps.hub, args.environmentId, {
+      branchName,
+      defaultBranch: inspection.defaultBranch ?? branchName,
+    });
+  } catch (error) {
+    deps.logger.warn(
+      {
+        environmentId: args.environmentId,
+        hostId: args.hostId,
+        ...runtimeErrorLogFields(deps.config, error),
+      },
+      "Could not refresh the branch of a reused environment",
+    );
+  }
+}
+
+export async function resolveEnvironmentProvider(
+  deps: ThreadProvisioningDeps,
+  args: { context: ThreadProvisionContext; thread: Thread },
+): Promise<
+  { kind: "resolved"; environment: EnvironmentRow } | { kind: "waiting" }
+> {
+  const context = args.context;
+  const thread = getThread(deps.db, args.thread.id);
+  if (thread === null || thread.status !== "starting")
+    return { kind: "waiting" };
+  const intent = context.request.environmentIntent;
+  if (intent.type !== "provider")
+    throw new Error("Missing environment provider selection");
+  const record = getEnvironmentProvider(intent.environmentProviderId);
+  if (record === undefined) {
+    scheduleEnvironmentProvisioning(deps, thread.id, Date.now() + 30_000);
+    return { kind: "waiting" };
+  }
+  const operation = await resolveProviderOperationContext(
+    deps,
+    thread,
+    intent,
+    record,
+  );
+  const current = getThreadProvisionContext(deps.db, thread.id);
+  if (
+    current === null ||
+    current.state.provisioningId !== context.state.provisioningId
+  )
+    return { kind: "waiting" };
+  if (current.request.environmentIntent.type === "reuse") {
+    const environment = getEnvironment(
+      deps.db,
+      current.request.environmentIntent.environmentId,
+    );
+    return environment === null
+      ? { kind: "waiting" }
+      : { kind: "resolved", environment };
+  }
+  saveThreadProvisionContext({
+    db: deps.db,
+    replace: false,
+    threadId: thread.id,
+    context,
+  });
+  const decision = prepareProviderEnvironment(deps, record, operation);
+  if (decision.action === "reject")
+    throw new ApiError(409, "environment_provider_rejected", decision.message, {
+      details: { environmentProviderId: intent.environmentProviderId },
+    });
+  if (decision.action === "wait") {
+    scheduleEnvironmentProvisioning(deps, thread.id, decision.sendAt);
+    return { kind: "waiting" };
+  }
+  const environment = decision.environment;
+  return { kind: "resolved", environment };
+}
+function providerFailure(
+  environmentProviderId: string,
+  pluginId: string | null,
+  detail: string,
+): ApiError {
+  const owner = pluginId === null ? "" : ` (plugin "${pluginId}")`;
+  return new ApiError(
+    502,
+    "environment_provider_failed",
+    `The "${environmentProviderId}" environment provider${owner} failed: ${detail}`,
+    { details: { environmentProviderId, pluginId } },
+  );
+}
+
+export type ProviderEnvironmentCreationDecision =
+  | { action: "wait"; reason: string; sendAt: number; log: string }
+  | { action: "reject"; message: string; log: string }
+  | {
+      action: "ready";
+      environment: EnvironmentRow;
+      log: string;
+    };
+
+export function prepareProviderEnvironment(
+  deps: ThreadProvisioningDeps,
+  record: PluginEnvironmentProviderRecord,
+  context: ProviderOperationContext,
+): ProviderEnvironmentCreationDecision {
+  const now = Date.now();
+  const policy = record.provider.policy;
+  const previous =
+    context.environment === null
+      ? null
+      : getEnvironment(deps.db, context.environment.id);
+  let row = getPreparingEnvironment(deps.db, context.thread.id);
+  if (
+    (row !== null &&
+      row.attempt > 0 &&
+      row.environmentProviderPluginId !== record.pluginId) ||
+    (previous !== null &&
+      previous.environmentProviderId !== null &&
+      previous.environmentProviderPluginId !== record.pluginId)
+  ) {
+    return {
+      action: "reject",
+      message:
+        "The environment provider belongs to a different plugin or has no recorded owner.",
+      log: "",
+    };
+  }
+  if (
+    previous?.teardownStatus === "running" ||
+    previous?.teardownStatus === "failed"
+  )
+    return {
+      action: "wait",
+      reason: "Removing the previous environment",
+      sendAt: now + 1000,
+      log: "",
+    };
+  const selected = { machine: context.machine, inputs: context.inputs };
+  const changed =
+    row !== null &&
+    (row.environmentProviderId !== record.provider.id ||
+      JSON.stringify(row.environmentProviderSelection) !==
+        JSON.stringify(selected));
+  if (
+    row !== null &&
+    !changed &&
+    row.status === "error" &&
+    row.teardownStatus !== "running" &&
+    row.teardownStatus !== "failed"
+  ) {
+    return {
+      action: "reject",
+      message: row.statusMessage ?? "Environment creation failed",
+      log: row.pendingLog,
+    };
+  }
+  if (
+    row !== null &&
+    row.teardownStatus !== "removed" &&
+    (changed || row.teardownStatus !== null)
+  ) {
+    void cancelProviderEnvironmentCreation(deps, context.thread.id).catch(
+      (error) =>
+        deps.logger.warn(
+          {
+            threadId: context.thread.id,
+            error: error instanceof Error ? error.message : String(error),
+          },
+          "Environment cleanup will retry",
+        ),
+    );
+    return {
+      action: "wait",
+      reason: "Removing the previous environment",
+      sendAt: now + 1000,
+      log: "",
+    };
+  }
+  const start = row === null || row.teardownStatus === "removed";
+  if (start) {
+    const attempt = (row?.attempt ?? 0) + 1;
+    const pathKey =
+      policy.pathKeys === "per-attempt" || context.environment !== null
+        ? `${context.thread.id}-${attempt}`
+        : context.thread.id;
+    row = reserveEnvironment(deps.db, {
+      projectId: context.project.id,
+      ownerThreadId: context.thread.id,
+      environmentProviderId: record.provider.id,
+      environmentProviderPluginId: record.pluginId,
+      attempt: attempt,
+      status: "creating",
+      environmentProviderInstanceKey: pathKey,
+      hostId: context.host.id,
+      statusMessage: `${context.environment === null ? "Preparing" : "Restoring"} ${record.provider.displayName}…`,
+      environmentProviderSelection: selected,
+    });
+    deps.hub.notifyEnvironment(row.id, ["environment-created"]);
+    const startup = getThreadProvisionContext(deps.db, context.thread.id);
+    if (startup !== null) {
+      appendThreadProvisioningEvent(deps, {
+        threadId: context.thread.id,
+        environmentId: row.id,
+        provisioningId: startup.state.provisioningId,
+        status: "active",
+        entries: [
+          {
+            type: "step",
+            key: `provider-step-${row.attempt}-${row.statusMessage}`,
+            text: row.statusMessage ?? "Creating environment",
+            status: "started",
+          },
+        ],
+      });
+      deps.hub.notifyThread(context.thread.id, ["events-appended"], {
+        eventTypes: ["system/thread-provisioning"],
+      });
+    }
+    void advanceEnvironmentProvisioning(deps, {
+      environmentId: row.id,
+      creation: { record, context },
+    });
+  }
+  if (row === null) throw new Error("Missing environment provisioning");
+  const log = row.pendingLog;
+  if (log.length > 0)
+    updatePreparingEnvironment(deps.db, { ...row, pendingLog: "" });
+  if (
+    (row.status === "provisioning" || row.status === "ready") &&
+    row.path !== null
+  )
+    return { action: "ready", environment: row, log };
+  if (row.status === "creating")
+    void advanceEnvironmentProvisioning(deps, {
+      environmentId: row.id,
+      creation: { record, context },
+    });
+  return {
+    action: "wait",
+    reason: row.statusMessage ?? "Creating environment",
+    sendAt: now + 1000,
+    log,
+  };
+}
+
+async function providerPlacement(
+  deps: PlacementDeps,
+  projectId: string,
+  environmentProviderId: string,
+  requested: ProviderSelection,
+): Promise<ThreadEnvironmentPlacement> {
+  const selection = await resolveCompleteProviderSelection(
+    deps,
+    projectId,
+    environmentProviderId,
+    requested,
+  );
+  return {
+    environmentId: null,
+    environmentIntent: {
+      type: "provider",
+      environmentProviderId,
+      ...selection,
+    },
+  };
 }

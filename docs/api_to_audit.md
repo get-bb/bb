@@ -421,7 +421,7 @@ must still check mutable conditions and report resource-operation failures.
 
 Core invokes `create` and `remove` and records results directly. Policy drives
 cancellation and retirement; core fixes removal retries at 60 seconds and
-transient creation retries at 30 seconds with a limit of three. Policy exposes
+terminal creation failures; explicit retries start a new attempt on the same row. Policy exposes
 only retirement grace and path-key strategy; creation has no overall core
 timeout. Providers return resource-operation
 results. Created directories include explicit ownsPath. The core lifecycle

@@ -732,14 +732,19 @@ function rewindEnvironmentProvisioningMigration(db: DbConnection): void {
     .prepare<[], TableInfoRow>("PRAGMA table_info(environments)")
     .all();
   for (const name of [
-    "environments_provisioning_thread_idx",
-    "environments_provisioning_phase_idx",
-    "environments_provisioning_claim_idx",
+    "environments_owner_thread_idx",
+    "environments_claim_idx",
   ])
     db.$client.exec(`DROP INDEX IF EXISTS ${name}`);
   for (const column of columns) {
     if (
-      column.name.startsWith("provisioning_") ||
+      [
+        "owner_thread_id",
+        "attempt",
+        "claim_path",
+        "status_message",
+        "pending_log",
+      ].includes(column.name) ||
       column.name === "replaced_environment_id"
     )
       db.$client.exec(`ALTER TABLE environments DROP COLUMN ${column.name}`);
@@ -6021,7 +6026,7 @@ describe("environment and thread startup ownership migration", () => {
         expect(
           db.$client
             .prepare(
-              "SELECT teardown_status FROM environments WHERE provisioning_thread_id = 'thr_creating'",
+              "SELECT teardown_status FROM environments WHERE owner_thread_id = 'thr_creating'",
             )
             .get(),
         ).toEqual({
@@ -6029,14 +6034,14 @@ describe("environment and thread startup ownership migration", () => {
         });
         const resource = db.$client
           .prepare(
-            "SELECT id, resource, provisioning_attempt, provisioning_claim_path FROM environments WHERE provisioning_thread_id = 'thr_creating'",
+            "SELECT id, resource, attempt, claim_path FROM environments WHERE owner_thread_id = 'thr_creating'",
           )
           .get();
         expect(resource).toEqual({
           id: "env_provision_thr_creating",
           resource: '{"allocated":"resource"}',
-          provisioning_attempt: 3,
-          provisioning_claim_path: "/tmp/creating",
+          attempt: 3,
+          claim_path: "/tmp/creating",
         });
         expect(
           db.$client
@@ -6050,10 +6055,16 @@ describe("environment and thread startup ownership migration", () => {
             "SELECT startup_context FROM threads WHERE id = 'thr_creating'",
           )
           .get()!;
+        expect(JSON.parse(stored.startup_context).state).not.toHaveProperty(
+          "stage",
+        );
         expect(JSON.parse(stored.startup_context)).toMatchObject({
           kind: "provisioning",
           request,
-          state: { stage: "metadata-pending" },
+          state: {
+            environmentId: null,
+            provisioningId: "provision_migrated_thr_creating",
+          },
         });
         expect(
           db.$client

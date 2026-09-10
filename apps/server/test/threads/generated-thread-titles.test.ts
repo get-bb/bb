@@ -245,7 +245,6 @@ describe("generated thread titles", () => {
           machine: { type: "existing", hostId: host.id },
           inputs: { branch: { kind: "default" } },
           selectionResolved: true,
-          produced: null,
         },
         execution: THREAD_START_EXECUTION,
         fork: null,

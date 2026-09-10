@@ -1,3 +1,4 @@
+import { prepareProviderEnvironment } from "../../../src/services/threads/thread-environment-placement.js";
 import { withEnvironmentCleanupSlot } from "../../../src/services/environments/cleanup-concurrency.js";
 import { registerTestHostRpcCapture } from "../../helpers/commands.js";
 import { recordProvisionedEnvironmentWorkspace } from "@bb/db/internal-environment-lifecycle";
@@ -6,9 +7,9 @@ import { encodeClientTurnRequestIdNumber } from "@bb/domain";
 import { requireThreadCommandEnvironment } from "../../../src/services/threads/thread-command-environment.js";
 import { ensureThreadProvisionEnvironmentReady } from "../../../src/services/threads/thread-provisioning-environment.js";
 import {
-  createMetadataPendingContext,
-  createEnvironmentPendingContext,
-} from "../../../src/services/threads/thread-provisioning-context.js";
+  saveThreadProvisionContext,
+  createThreadStartup,
+} from "../../../src/services/threads/thread-startup-store.js";
 import { z } from "zod";
 import type { BbPluginApi } from "@get-bb/plugin-sdk";
 import { createFakePluginHost } from "@get-bb/plugin-sdk/testing";
@@ -34,12 +35,11 @@ import { makeHost } from "@bb/test-helpers/domain-fixtures";
 import type { PluginEnvironmentProviderDeclaration } from "@get-bb/plugin-sdk";
 import { validatePluginEnvironmentProviderDeclaration } from "@get-bb/plugin-sdk/internal/host-policy";
 import {
-  advanceProviderEnvironmentCreation,
   markProviderEnvironmentAttached,
   cancelProviderEnvironmentCreation,
   sweepProviderEnvironment,
   sweepProviderLifecycles,
-} from "../../../src/services/environments/provider-orchestration.js";
+} from "../../../src/services/environments/environment-engine.js";
 import { toEnvironmentResponse } from "../../../src/services/environments/environment-response.js";
 import { setPluginEnvironmentProviderBridge } from "../../../src/services/plugins/plugin-environment-provider-registry.js";
 import {
@@ -111,15 +111,23 @@ function setup(
     suggestedBranchName: "bb/test",
     environment: null,
   };
+  let lastEnvironmentId: string | null = null;
   const row = () => {
-    const value = getPreparingEnvironment(harness.db, thread.id);
+    const attachedId = getThread(harness.db, thread.id)?.environmentId;
+    const value =
+      getPreparingEnvironment(harness.db, thread.id) ??
+      (attachedId
+        ? getEnvironment(harness.db, attachedId)
+        : lastEnvironmentId === null
+          ? null
+          : getEnvironment(harness.db, lastEnvironmentId));
     if (value === null) throw new Error("Missing preparing environment");
+    lastEnvironmentId = value.id;
     return value;
   };
-  const ask = () =>
-    advanceProviderEnvironmentCreation(harness.deps, record, context);
+  const ask = () => prepareProviderEnvironment(harness.deps, record, context);
   const settled = async () =>
-    expect.poll(() => row().provisioningPhase).not.toBe("creating");
+    expect.poll(() => row().status).not.toBe("creating");
   const attach = () => {
     const prepared = row();
     if (prepared.hostId === null || prepared.path === null) {
@@ -242,8 +250,7 @@ describe("core environment orchestration", () => {
       fixture.ask();
       await fixture.settled();
       expect(fixture.row()).toMatchObject({
-        provisioningPhase: "failed",
-        provisioningPathRejected: true,
+        status: "error",
       });
       await cancelProviderEnvironmentCreation(harness.deps, fixture.thread.id);
       expect(hooks).not.toHaveBeenCalled();
@@ -278,7 +285,7 @@ describe("core environment orchestration", () => {
         });
         if (environmentId === null) {
           expect(
-            advanceProviderEnvironmentCreation(
+            prepareProviderEnvironment(
               harness.deps,
               replacement,
               fixture.context,
@@ -309,7 +316,7 @@ describe("core environment orchestration", () => {
       const notify = vi.spyOn(harness.hub, "notifySystem");
       fixture.ask();
       await fixture.settled();
-      expect(fixture.row().provisioningLog).toContain("line 49");
+      expect(fixture.row().pendingLog).toContain("line 49");
       expect(
         notify.mock.calls.some(([changes]) =>
           changes.includes("config-changed"),
@@ -329,7 +336,7 @@ describe("core environment orchestration", () => {
           );
           return {
             status: "failed",
-            failure: "terminal",
+
             message: "checkout create failed",
           };
         },
@@ -346,7 +353,7 @@ describe("core environment orchestration", () => {
       await cancelProviderEnvironmentCreation(harness.deps, fixture.thread.id);
       expect(remove).toHaveBeenCalledOnce();
       expect(hooks).not.toHaveBeenCalled();
-      expect(fixture.row().provisioningClaimPath).toBeNull();
+      expect(fixture.row().claimPath).toBeNull();
     }));
 
   it.each([true, false])(
@@ -376,7 +383,7 @@ describe("core environment orchestration", () => {
         });
         fixture.ask();
         await fixture.settled();
-        expect(fixture.row().provisioningPhase).toBe("ready");
+        expect(fixture.row().status).toBe("provisioning");
         const environmentId = fixture.attach();
         await sweepProviderEnvironment(harness.deps, environmentId);
         expect(getEnvironment(harness.db, environmentId)?.teardownStatus).toBe(
@@ -492,23 +499,27 @@ describe("core environment orchestration", () => {
             }),
           ).resolves.toMatchObject({ id: target.id });
         } else {
-          const context = createEnvironmentPendingContext(
-            createMetadataPendingContext({
-              clientRequestId: encodeClientTurnRequestIdNumber({ value: 1 }),
-              environmentIntent: { type: "reuse", environmentId: target.id },
-              execution: {
-                model: "gpt-5",
-                serviceTier: "default",
-                reasoningLevel: "medium",
-                permissionMode: "accept-edits",
-                source: "client/turn/requested",
-              },
-              fork: null,
-              input: [],
-              titleProvided: true,
-              seedWithoutRun: false,
-            }),
-          );
+          const context = createThreadStartup({
+            clientRequestId: encodeClientTurnRequestIdNumber({ value: 1 }),
+            environmentIntent: { type: "reuse", environmentId: target.id },
+            execution: {
+              model: "gpt-5",
+              serviceTier: "default",
+              reasoningLevel: "medium",
+              permissionMode: "accept-edits",
+              source: "client/turn/requested",
+            },
+            fork: null,
+            input: [],
+            titleProvided: true,
+            seedWithoutRun: false,
+          });
+          saveThreadProvisionContext({
+            db: harness.db,
+            replace: true,
+            threadId: thread.id,
+            context,
+          });
           await expect(
             ensureThreadProvisionEnvironmentReady(harness.deps, {
               thread,
@@ -530,7 +541,7 @@ describe("core environment orchestration", () => {
           await context.experimental_claimPath("/tmp/project");
           return {
             status: "failed",
-            failure: "terminal",
+
             message: "provision failed",
           };
         },
@@ -547,10 +558,10 @@ describe("core environment orchestration", () => {
       });
       const second = reserveEnvironment(harness.db, {
         ...fixture.row(),
-        provisioningThreadId: competitor.id,
-        provisioningPhase: "creating" as const,
+        ownerThreadId: competitor.id,
+        status: "creating" as const,
         path: null,
-        provisioningClaimPath: null,
+        claimPath: null,
       });
       let cleanup: Promise<void> | undefined;
       try {
@@ -589,10 +600,10 @@ describe("core environment orchestration", () => {
       });
       const second = reserveEnvironment(harness.db, {
         ...fixture.row(),
-        provisioningThreadId: competitor.id,
-        provisioningPhase: "creating" as const,
+        ownerThreadId: competitor.id,
+        status: "creating" as const,
         path: null,
-        provisioningClaimPath: null,
+        claimPath: null,
       });
       expect(claimEnvironmentPath(harness.db, second, "/tmp/project")).toBe(
         false,
@@ -757,8 +768,8 @@ describe("core environment orchestration", () => {
         inputs: { branch: { kind: "existing", name: "release" } },
       };
       try {
-        advanceProviderEnvironmentCreation(harness.deps, record, context);
-        advanceProviderEnvironmentCreation(harness.deps, record, {
+        prepareProviderEnvironment(harness.deps, record, context);
+        prepareProviderEnvironment(harness.deps, record, {
           ...context,
           thread: toThreadResponseFromThread(harness.deps, {
             thread: second,
@@ -766,26 +777,22 @@ describe("core environment orchestration", () => {
           inputs: { branch: { kind: "existing", name: "feature" } },
         });
         await expect
-          .poll(
-            () =>
-              getPreparingEnvironment(harness.db, second.id)?.provisioningPhase,
-          )
-          .toBe("failed");
+          .poll(() => getPreparingEnvironment(harness.db, second.id)?.status)
+          .toBe("error");
         expect(
-          getPreparingEnvironment(harness.db, second.id)?.provisioningMessage,
+          getPreparingEnvironment(harness.db, second.id)?.statusMessage,
         ).toContain("another thread is using this workspace");
         expect(switched).toEqual(["release"]);
         expect(fixture.row()).toMatchObject({
           hostId: fixture.host.id,
-          provisioningClaimPath: "/tmp/project",
-          provisioningAttached: false,
-          provisioningPhase: "creating",
+          claimPath: "/tmp/project",
+          status: "creating",
         });
       } finally {
         release();
         await fixture.settled();
       }
-      expect(fixture.row().provisioningPhase).toBe("ready");
+      expect(fixture.row().status).toBe("provisioning");
     }));
 
   it("reuses a same-project worktree before checkout validation", async () =>
@@ -862,7 +869,7 @@ describe("core environment orchestration", () => {
         });
         reserveEnvironment(harness.db, {
           ...fixture.row(),
-          provisioningThreadId: second.id,
+          ownerThreadId: second.id,
           environmentProviderInstanceKey: second.id,
           path: "/tmp/second",
         });
@@ -879,7 +886,8 @@ describe("core environment orchestration", () => {
           for (const id of [fixture.thread.id, second.id]) {
             updatePreparingEnvironment(harness.db, {
               ...getPreparingEnvironment(harness.db, id)!,
-              provisioningPhase: "cancelled",
+              status: "error",
+              teardownStatus: "running",
               retireAt: Date.now(),
             });
           }
@@ -915,7 +923,6 @@ describe("core environment orchestration", () => {
       const environmentId = fixture.attach();
       expect(fixture.row()).toMatchObject({
         id: environmentId,
-        provisioningAttached: true,
       });
     }));
 
@@ -934,26 +941,20 @@ describe("core environment orchestration", () => {
       });
       reserveEnvironment(harness.db, {
         projectId: fixture.context.project.id,
-        provisioningThreadId: fixture.thread.id,
+        ownerThreadId: fixture.thread.id,
         environmentProviderId: fixture.record.provider.id,
         environmentProviderPluginId: fixture.record.pluginId,
-        provisioningPathRejected: false,
-        provisioningAttempt: 7,
-        provisioningPhase: "creating",
-        provisioningFailedAt: null,
-        provisioningFailure: null,
-        provisioningMessage: null,
-        provisioningTransientFailures: 0,
+        attempt: 7,
+        status: "creating",
         environmentProviderInstanceKey: "durable-path-key",
         hostId: fixture.host.id,
         path: null,
-        provisioningClaimPath: null,
+        claimPath: null,
         providerOwnsPath: true,
         mergeBaseBranch: null,
         resource: null,
-        provisioningStep: "Preparing Test…",
-        provisioningLog: "",
-        provisioningAttached: false,
+        statusMessage: "Preparing Test…",
+        pendingLog: "",
         environmentProviderSelection: {
           machine: { type: "existing", hostId: fixture.host.id },
           inputs: null,
@@ -965,9 +966,9 @@ describe("core environment orchestration", () => {
       await fixture.settled();
       expect(calls).toEqual([{ attempt: 7, pathKey: "durable-path-key" }]);
       expect(fixture.row()).toMatchObject({
-        provisioningAttempt: 7,
+        attempt: 7,
         environmentProviderInstanceKey: "durable-path-key",
-        provisioningPhase: "ready",
+        status: "provisioning",
       });
     }));
 
@@ -1023,7 +1024,7 @@ describe("core environment orchestration", () => {
         `remove:${fixture.thread.id}`,
       ]);
       expect(fixture.row()).toMatchObject({
-        provisioningPhase: "cancelled",
+        status: "destroyed",
         teardownStatus: "removed",
       });
     }));
@@ -1064,69 +1065,40 @@ describe("core environment orchestration", () => {
       expect(events).toEqual(["create", "abort", "create-stopped", "remove"]);
     }));
 
-  it("cleans each transient attempt before retrying under a new path key", async () =>
+  it("keeps failed creation terminal and retries explicitly on the same row", async () =>
     withTestHarness(async (harness) => {
-      vi.useFakeTimers({ toFake: ["Date"] });
       const creates: string[] = [];
-      const removes: string[] = [];
       const fixture = setup(harness, {
-        policy: {
-          pathKeys: "per-attempt",
-        },
+        policy: { pathKeys: "per-attempt" },
         create: async (context) => {
           creates.push(context.pathKey);
-          return {
-            status: "failed",
-            failure: "transient",
-            message: "offline",
-          };
-        },
-        remove: async (context) => {
-          removes.push(context.pathKey);
-          return { status: "removed" };
+          return { status: "failed", message: "offline" };
         },
       });
       fixture.ask();
       await fixture.settled();
-      for (let attempt = 1; attempt <= 3; attempt += 1) {
-        const failedAt = fixture.row().provisioningFailedAt!;
+      const previousAttempt = fixture.row();
+      const id = previousAttempt.id;
+      for (let i = 0; i < 4; i++)
         expect(fixture.ask()).toMatchObject({
-          action: "wait",
-          reason: "offline; cleaning up before retry",
+          action: "reject",
+          message: "offline",
         });
-        await expect
-          .poll(() => fixture.row())
-          .toMatchObject({
-            provisioningPhase: "cancelled",
-            teardownStatus: "removed",
-          });
-        expect(removes).toHaveLength(attempt);
-        expect(fixture.ask()).toMatchObject({
-          action: "wait",
-          sendAt: failedAt + 30_000,
-        });
-        expect(creates).toHaveLength(attempt);
-        vi.setSystemTime(failedAt + 30_000);
-        fixture.ask();
-        await fixture.settled();
-      }
-      expect(fixture.ask()).toMatchObject({
-        action: "reject",
-        message: "offline",
-      });
-      await expect
-        .poll(() => fixture.row())
-        .toMatchObject({
-          provisioningAttempt: 4,
-          provisioningTransientFailures: 4,
-          provisioningPhase: "cancelled",
-          teardownStatus: "removed",
-        });
-      const expectedKeys = [1, 2, 3, 4].map(
-        (attempt) => `${fixture.thread.id}-${attempt}`,
-      );
-      expect(creates).toEqual(expectedKeys);
-      expect(removes).toEqual(expectedKeys);
+      expect(creates).toHaveLength(1);
+      await cancelProviderEnvironmentCreation(harness.deps, fixture.thread.id);
+      fixture.ask();
+      await fixture.settled();
+      expect(
+        updatePreparingEnvironment(harness.db, {
+          ...previousAttempt,
+          status: "provisioning",
+        }),
+      ).toBe(false);
+      expect(fixture.row()).toMatchObject({ id, attempt: 2, status: "error" });
+      expect(creates).toEqual([
+        `${fixture.thread.id}-1`,
+        `${fixture.thread.id}-2`,
+      ]);
     }));
 
   it("round-trips a private resource handle into remove", async () =>
@@ -1239,32 +1211,29 @@ describe("core environment orchestration", () => {
           thread: competingThread,
         }),
       };
-      advanceProviderEnvironmentCreation(harness.deps, fixture.record, context);
+      prepareProviderEnvironment(harness.deps, fixture.record, context);
       try {
         await expect
           .poll(
             () =>
-              getPreparingEnvironment(harness.db, competingThread.id)
-                ?.provisioningPhase,
+              getPreparingEnvironment(harness.db, competingThread.id)?.status,
           )
-          .toBe("failed");
+          .toBe("error");
         expect(
           getPreparingEnvironment(harness.db, competingThread.id)
-            ?.provisioningMessage,
+            ?.statusMessage,
         ).toContain("cleanup is still pending");
       } finally {
         release();
         await removal;
       }
       await cancelProviderEnvironmentCreation(harness.deps, competingThread.id);
-      advanceProviderEnvironmentCreation(harness.deps, fixture.record, context);
+      prepareProviderEnvironment(harness.deps, fixture.record, context);
       await expect
         .poll(
-          () =>
-            getPreparingEnvironment(harness.db, competingThread.id)
-              ?.provisioningPhase,
+          () => getPreparingEnvironment(harness.db, competingThread.id)?.status,
         )
-        .toBe("ready");
+        .toBe("provisioning");
     }));
 
   it("records a failed remove and retries after the core retry delay", async () =>
@@ -1484,7 +1453,7 @@ it("keeps one environment identity from provider creation through removal", asyn
     });
     fixture.ask();
     const reserved = fixture.row().id;
-    expect(getEnvironment(harness.db, reserved)?.status).toBe("provisioning");
+    expect(getEnvironment(harness.db, reserved)?.status).toBe("creating");
     release();
     await fixture.settled();
     expect(fixture.row().id).toBe(reserved);
@@ -1567,9 +1536,9 @@ it("retries cancelled cleanup through environment teardown without dropping its 
     ).rejects.toThrow("temporarily unavailable");
     const failed = fixture.row();
     expect(failed).toMatchObject({
-      provisioningPhase: "cancelled",
+      status: "error",
       teardownStatus: "failed",
-      provisioningClaimPath: "/tmp/cancel-retry",
+      claimPath: "/tmp/cancel-retry",
       resource: { allocation: "retained" },
     });
     await sweepProviderLifecycles(harness.deps);
@@ -1581,7 +1550,7 @@ it("retries cancelled cleanup through environment teardown without dropping its 
       id: failed.id,
       status: "destroyed",
       teardownStatus: "removed",
-      provisioningClaimPath: null,
+      claimPath: null,
       resource: null,
     });
   });
@@ -1598,8 +1567,7 @@ it("prepares a previously removed path without inheriting completed teardown", a
     fixture.ask();
     await fixture.settled();
     expect(fixture.row()).toMatchObject({
-      provisioningAttempt: 2,
-      provisioningPhase: "ready",
+      attempt: 2,
       status: "provisioning",
       teardownStatus: null,
     });
@@ -1632,8 +1600,7 @@ it("keeps reserved environments provisioning while a provider creates their work
     try {
       await runEnvironmentProvisioningSweep(harness.deps);
       expect(fixture.row()).toMatchObject({
-        status: "provisioning",
-        provisioningPhase: "creating",
+        status: "creating",
       });
     } finally {
       release();
@@ -1642,7 +1609,6 @@ it("keeps reserved environments provisioning while a provider creates their work
     await runEnvironmentProvisioningSweep(harness.deps);
     expect(fixture.row()).toMatchObject({
       status: "provisioning",
-      provisioningPhase: "ready",
     });
   });
 });

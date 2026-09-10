@@ -342,7 +342,7 @@ describe("environment providers are asked inside provisioning", () => {
       expect(entries[0]).toEqual(["step", "Preparing workspace"]);
       expect(
         provisioningEvents(harness, created.id).every(
-          (event) => event.status === "active" && event.environmentId === null,
+          (event) => event.status === "active",
         ),
       ).toBe(true);
       expect(scheduledEnvironmentProviderAskCount()).toBe(1);
@@ -494,7 +494,7 @@ describe("environment providers are asked inside provisioning", () => {
         "host-target-ready",
         { environmentProviderId: PROVIDER_ID },
       );
-      let provisioningThreadId: string | null = null;
+      let ownerThreadId: string | null = null;
       const refreshAssignments: Array<{
         preparationAttached: boolean;
         thread: string | null;
@@ -503,21 +503,18 @@ describe("environment providers are asked inside provisioning", () => {
         hostId: host.id,
         sessionId: session.id,
         onInspectGitSource: () => {
-          if (provisioningThreadId === null) return;
+          if (ownerThreadId === null) return;
           refreshAssignments.push({
             preparationAttached:
-              getPreparingEnvironment(harness.db, provisioningThreadId)
-                ?.provisioningAttached ?? false,
-            thread:
-              getThread(harness.db, provisioningThreadId)?.environmentId ??
-              null,
+              getPreparingEnvironment(harness.db, ownerThreadId) === null,
+            thread: getThread(harness.db, ownerThreadId)?.environmentId ?? null,
           });
         },
       });
       installTarget({
         inputs: CONTAINER_INPUTS,
         provision: (context) => {
-          provisioningThreadId = context.thread.id;
+          ownerThreadId = context.thread.id;
           return readyAt(host);
         },
       });
@@ -534,7 +531,8 @@ describe("environment providers are asked inside provisioning", () => {
       expect(refreshAssignments).toEqual([
         { preparationAttached: false, thread: null },
       ]);
-      expect(getPreparingEnvironment(harness.db, created.id)?.id).toBe(
+      expect(getPreparingEnvironment(harness.db, created.id)).toBeNull();
+      expect(getThread(harness.db, created.id)?.environmentId).toBe(
         environment.id,
       );
       expect(getThread(harness.db, created.id)?.status).toBe("starting");
@@ -617,11 +615,11 @@ describe("environment providers are asked inside provisioning", () => {
           ["step", "Preparing Fake container…"],
           ["step", "Preparing Fake container…"],
           ["step", "Starting container…"],
+          ["output", "cloned 100 objects"],
           ["step", "Starting container…"],
           ["step", "Cloning repository…"],
-          ["output", "cloned 100 objects"],
-          ["step", "Cloning repository…"],
           ["output", "scripts/setup.sh: done"],
+          ["step", "Cloning repository…"],
         ]);
         expect(scheduledEnvironmentProviderAskCount()).toBe(0);
       } finally {
@@ -675,9 +673,9 @@ describe("environment providers are asked inside provisioning", () => {
         await firstAdvanceFinished.promise;
         createReady.resolve();
         await vi.waitFor(() => {
-          expect(
-            getPreparingEnvironment(harness.db, created.id)?.provisioningPhase,
-          ).toBe("ready");
+          expect(getThread(harness.db, created.id)?.environmentId).toBe(
+            environment.id,
+          );
         });
         await vi.waitFor(() => {
           expect(coalescedAdvanceCount).toBeGreaterThan(0);
@@ -1756,9 +1754,9 @@ it("stops an unattached provider creation using the thread's durable startup sta
       projectId: project.id,
     });
     await vi.waitFor(() =>
-      expect(
-        getPreparingEnvironment(harness.db, created.id)?.provisioningPhase,
-      ).toBe("creating"),
+      expect(getPreparingEnvironment(harness.db, created.id)?.status).toBe(
+        "creating",
+      ),
     );
     const environmentId = getPreparingEnvironment(harness.db, created.id)!.id;
     await stopThreadForCurrentState(

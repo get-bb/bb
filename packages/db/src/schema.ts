@@ -478,30 +478,11 @@ export const environments = sqliteTable(
     >(),
     teardownMessage: text("teardown_message"),
     resource: text("resource", { mode: "json" }).$type<JsonValue>(),
-    provisioningThreadId: text("provisioning_thread_id"),
-    provisioningAttempt: integer("provisioning_attempt").notNull().default(0),
-    provisioningPhase: text("provisioning_phase").$type<
-      "creating" | "ready" | "failed" | "cancelled"
-    >(),
-    provisioningFailedAt: integer("provisioning_failed_at"),
-    provisioningFailure: text("provisioning_failure").$type<
-      "terminal" | "transient"
-    >(),
-    provisioningMessage: text("provisioning_message"),
-    provisioningTransientFailures: integer("provisioning_transient_failures")
-      .notNull()
-      .default(0),
-    provisioningStep: text("provisioning_step").notNull().default(""),
-    provisioningLog: text("provisioning_log").notNull().default(""),
-    provisioningPathRejected: integer("provisioning_path_rejected", {
-      mode: "boolean",
-    })
-      .notNull()
-      .default(false),
-    provisioningClaimPath: text("provisioning_claim_path"),
-    provisioningAttached: integer("provisioning_attached", { mode: "boolean" })
-      .notNull()
-      .default(false),
+    ownerThreadId: text("owner_thread_id"),
+    attempt: integer("attempt").notNull().default(0),
+    statusMessage: text("status_message"),
+    pendingLog: text("pending_log").notNull().default(""),
+    claimPath: text("claim_path"),
     status: text("status")
       .$type<EnvironmentStatus>()
       .notNull()
@@ -516,14 +497,8 @@ export const environments = sqliteTable(
       table.path,
     ),
     index("environments_host_path_lookup_idx").on(table.hostId, table.path),
-    uniqueIndex("environments_provisioning_thread_idx").on(
-      table.provisioningThreadId,
-    ),
-    index("environments_provisioning_phase_idx").on(table.provisioningPhase),
-    index("environments_provisioning_claim_idx").on(
-      table.hostId,
-      table.provisioningClaimPath,
-    ),
+    uniqueIndex("environments_owner_thread_idx").on(table.ownerThreadId),
+    index("environments_claim_idx").on(table.hostId, table.claimPath),
     index("environments_project_idx").on(table.projectId),
     index("environments_status_idx").on(table.status),
     index("environments_provider_instance_idx").on(

@@ -550,23 +550,28 @@ export function applyEnvironmentLifecycleEvent(
 }
 
 export function getPreparingEnvironment(db: EnvironmentWriteConnection, threadId: string) {
-  return db.select().from(environments).where(eq(environments.provisioningThreadId, threadId)).get() ?? null;
+  return db.select().from(environments).where(eq(environments.ownerThreadId, threadId)).get() ?? null;
 }
 
 export function reserveEnvironment(db: EnvironmentWriteConnection, input: Omit<typeof environments.$inferInsert, "id" | "createdAt" | "updatedAt">) {
   return db.transaction((tx) => {
-    if (input.provisioningThreadId === null || input.provisioningThreadId === undefined) throw new Error("Missing environment preparation owner");
-    tx.update(environments).set({ provisioningThreadId: null }).where(eq(environments.provisioningThreadId, input.provisioningThreadId)).run();
-    return tx.insert(environments).values({ ...input, id: createEnvironmentId(), createdAt: Date.now(), updatedAt: Date.now() }).returning().get();
+    if (input.ownerThreadId == null) throw new Error("Missing environment preparation owner");
+    const existing = getPreparingEnvironment(tx, input.ownerThreadId);
+    const now = Date.now();
+    if (existing !== null) {
+      if (existing.teardownStatus !== "removed") throw new Error("Previous environment cleanup is incomplete");
+      return tx.update(environments).set({ ...input, path: null, resource: null, claimPath: null, teardownStatus: null, teardownMessage: null, teardownAttempt: 0, retireAt: null, pendingLog: "", updatedAt: now }).where(eq(environments.id, existing.id)).returning().get()!;
+    }
+    return tx.insert(environments).values({ ...input, id: createEnvironmentId(), createdAt: now, updatedAt: now }).returning().get();
   });
 }
 
 export function updatePreparingEnvironment(db: EnvironmentWriteConnection, row: EnvironmentRow): boolean {
-  return db.update(environments).set({ ...row, updatedAt: Date.now(), status: row.status === 'provisioning' && (row.provisioningPhase === 'failed' || row.provisioningPhase === 'cancelled') ? 'error' : row.status }).where(and(eq(environments.id, row.id), row.provisioningThreadId === null ? isNull(environments.provisioningThreadId) : eq(environments.provisioningThreadId, row.provisioningThreadId), eq(environments.provisioningAttempt, row.provisioningAttempt))).run().changes > 0;
+  return db.update(environments).set({ ...row, updatedAt: Date.now() }).where(and(eq(environments.id, row.id), row.ownerThreadId === null ? isNull(environments.ownerThreadId) : eq(environments.ownerThreadId, row.ownerThreadId), eq(environments.attempt, row.attempt))).run().changes > 0;
 }
 
 export function listProviderLifecycleEnvironments(db: EnvironmentWriteConnection, providerId: string) {
-  return db.select().from(environments).where(and(eq(environments.environmentProviderId, providerId), or(isNull(environments.provisioningPhase), eq(environments.provisioningAttached, true), eq(environments.provisioningPhase, "cancelled")), sql`(${environments.retireAt} is not null or ${environments.teardownStatus} is not null or not exists (select 1 from ${threads} where ${threads.environmentId} = ${environments.id} and ${threads.archivedAt} is null and ${threads.deletedAt} is null))`, or(ne(environments.status, "destroyed"), isNull(environments.teardownStatus), ne(environments.teardownStatus, "removed")))).all();
+  return db.select().from(environments).where(and(eq(environments.environmentProviderId, providerId), or(isNull(environments.ownerThreadId), sql`${environments.teardownStatus} is not null`), sql`(${environments.retireAt} is not null or ${environments.teardownStatus} is not null or not exists (select 1 from ${threads} where ${threads.environmentId} = ${environments.id} and ${threads.archivedAt} is null and ${threads.deletedAt} is null))`, or(ne(environments.status, "destroyed"), isNull(environments.teardownStatus), ne(environments.teardownStatus, "removed")))).all();
 }
 
 export function environmentHasLiveThreads(db: EnvironmentWriteConnection, environmentId: string): boolean {
@@ -574,39 +579,37 @@ export function environmentHasLiveThreads(db: EnvironmentWriteConnection, enviro
 }
 
 export function releaseFinishedEnvironmentPreparationOwners(db: EnvironmentWriteConnection): void {
-  db.update(environments).set({ provisioningThreadId: null }).where(and(or(eq(environments.teardownStatus, "removed"), eq(environments.provisioningAttached, true)), ne(environments.provisioningPhase, "creating"), or(eq(environments.provisioningAttached, true), eq(environments.provisioningPhase, "cancelled")), sql`not exists (select 1 from ${threads} where ${threads.id} = ${environments.provisioningThreadId} and ${threads.deletedAt} is null)`)).run();
+  db.update(environments).set({ ownerThreadId: null }).where(and(eq(environments.teardownStatus, "removed"), sql`not exists (select 1 from ${threads} where ${threads.id} = ${environments.ownerThreadId} and ${threads.deletedAt} is null)`)).run();
 }
 
 export function claimEnvironmentPath(db: DbConnection, provisioning: EnvironmentRow, path: string, allowCancelled = false): boolean {
   return db.transaction((tx) => {
-    const current = tx.select().from(environments).where(eq(environments.id, provisioning.id)).get() ?? null;
-    if (current === null || current.id !== provisioning.id || current.provisioningAttempt !== provisioning.provisioningAttempt || current.provisioningThreadId !== provisioning.provisioningThreadId || (current.provisioningPhase !== "creating" && !(allowCancelled && current.provisioningPhase === "cancelled"))) return false;
-    if (current.provisioningClaimPath !== null && current.provisioningClaimPath !== path) return false;
+    const current = getEnvironment(tx, provisioning.id);
+    if (current === null || current.attempt !== provisioning.attempt || current.ownerThreadId !== provisioning.ownerThreadId || (current.status !== "creating" && !(allowCancelled && current.teardownStatus === "running"))) return false;
+    if (current.claimPath !== null && current.claimPath !== path) return false;
     if (findEnvironmentPathClaim(tx, current.hostId, path, current) !== null) return false;
-    return updatePreparingEnvironment(tx, { ...current, provisioningClaimPath: path });
+    return updatePreparingEnvironment(tx, { ...current, claimPath: path });
   }, { behavior: "immediate" });
 }
 
 export function findEnvironmentPathClaim(db: EnvironmentWriteConnection, hostId: string, path: string | null, owner: EnvironmentRow | null): EnvironmentRow | null {
-  const row = db.select().from(environments).where(and(
+  return db.select().from(environments).where(and(
     eq(environments.hostId, hostId),
-    path === null ? sql`${environments.provisioningClaimPath} is not null` : eq(environments.provisioningClaimPath, path),
+    path === null ? sql`${environments.claimPath} is not null` : eq(environments.claimPath, path),
     owner === null ? undefined : ne(environments.id, owner.id),
-    eq(environments.provisioningAttached, false),
-    or(eq(environments.provisioningPhase, "creating"), eq(environments.provisioningPhase, "ready"), eq(environments.provisioningPhase, "failed"), and(eq(environments.provisioningPhase, "cancelled"), or(isNull(environments.teardownStatus), ne(environments.teardownStatus, "removed")))),
-  )).limit(1).get();
-  return row ?? null;
+    ne(environments.status, "destroyed"),
+  )).limit(1).get() ?? null;
 }
 
 export function bindEnvironmentPath(db: DbConnection, provisioning: EnvironmentRow, path: string): EnvironmentRow {
   return db.transaction((tx) => {
-    const current = tx.select().from(environments).where(eq(environments.id, provisioning.id)).get() ?? null;
-    if (current === null || current.provisioningAttempt !== provisioning.provisioningAttempt || current.provisioningThreadId !== provisioning.provisioningThreadId) throw new Error("Environment preparation is no longer current");
+    const current = getEnvironment(tx, provisioning.id);
+    if (current === null || current.attempt !== provisioning.attempt || current.ownerThreadId !== provisioning.ownerThreadId) throw new Error("Environment preparation is no longer current");
     const existing = tx.select().from(environments).where(and(eq(environments.hostId, current.hostId), eq(environments.path, path), eq(environments.projectId, current.projectId))).get();
     if (existing === undefined || existing.id === current.id) return current;
     if (existing.teardownStatus !== null || (existing.status !== "ready" && existing.status !== "provisioning")) throw new Error("Workspace is not ready or cleanup is still pending");
-    if (existing.provisioningThreadId !== null && !existing.provisioningAttached) throw new Error("Workspace is still being prepared by another thread");
-    tx.update(environments).set({ provisioningThreadId: null, status: "destroyed", teardownStatus: "removed", provisioningClaimPath: null, resource: null, path: null }).where(eq(environments.id, current.id)).run();
-    return tx.update(environments).set({ provisioningThreadId: current.provisioningThreadId, provisioningAttempt: current.provisioningAttempt, provisioningPhase: current.provisioningPhase, provisioningFailedAt: current.provisioningFailedAt, provisioningFailure: current.provisioningFailure, provisioningMessage: current.provisioningMessage, provisioningTransientFailures: current.provisioningTransientFailures, provisioningStep: current.provisioningStep, provisioningLog: current.provisioningLog, provisioningPathRejected: current.provisioningPathRejected, provisioningClaimPath: current.provisioningClaimPath, provisioningAttached: current.provisioningAttached, environmentProviderId: current.environmentProviderId, environmentProviderPluginId: current.environmentProviderPluginId, environmentProviderSelection: current.environmentProviderSelection, environmentProviderInstanceKey: current.environmentProviderInstanceKey }).where(eq(environments.id, existing.id)).returning().get()!;
+    if (existing.ownerThreadId !== null) throw new Error("Workspace is still being prepared by another thread");
+    tx.update(environments).set({ ownerThreadId: null, status: "destroyed", teardownStatus: "removed", claimPath: null, resource: null, path: null }).where(eq(environments.id, current.id)).run();
+    return tx.update(environments).set({ ownerThreadId: current.ownerThreadId, attempt: current.attempt, status: existing.status === "ready" ? "ready" : current.status, teardownStatus: current.teardownStatus, retireAt: current.retireAt, statusMessage: current.statusMessage, pendingLog: current.pendingLog, claimPath: current.claimPath, environmentProviderId: current.environmentProviderId, environmentProviderPluginId: current.environmentProviderPluginId, environmentProviderSelection: current.environmentProviderSelection, environmentProviderInstanceKey: current.environmentProviderInstanceKey }).where(eq(environments.id, existing.id)).returning().get()!;
   }, { behavior: "immediate" });
 }

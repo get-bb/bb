@@ -57,7 +57,7 @@ import {
   type ThreadCreateServiceRequest,
 } from "./thread-create-request.js";
 import { deriveTitleFallback } from "./title-generation.js";
-import type { ThreadProvisionEnvironmentIntent } from "./thread-provisioning-context.js";
+import type { ThreadProvisionEnvironmentIntent } from "./thread-startup-store.js";
 import { resolveSystemProviderModels } from "../system/execution-options.js";
 import { getEnvironmentProvider } from "../plugins/plugin-environment-provider-registry.js";
 

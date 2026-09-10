@@ -40,7 +40,7 @@ import { renderTemplate } from "@bb/templates";
 import { z } from "zod";
 import { describe, expect, it, vi } from "vitest";
 import type { TelemetryService } from "../../src/services/system/telemetry.js";
-import { loadActiveThreadProvisionContext } from "../../src/services/threads/thread-provisioning-environment.js";
+import { readThreadProvisioningStage } from "../../src/services/threads/thread-provisioning-context.js";
 import {
   reportNextEnvironmentAttachSuccess,
   reportQueuedCommandError,
@@ -3698,9 +3698,10 @@ describe("public thread data routes", () => {
         handle: (request): HostRpcHandlerResult => {
           if (request.command.type === "environment.attach") {
             stateAtProvisionStart = {
-              activeContextStage:
-                loadActiveThreadProvisionContext(harness.deps, thread.id)?.state
-                  .stage ?? null,
+              activeContextStage: readThreadProvisioningStage(
+                harness.db,
+                thread.id,
+              ),
               queuedMessageExists:
                 getQueuedThreadMessage(harness.db, queuedMessage.id) !== null,
               requestEventCount: harness.db
@@ -3763,7 +3764,7 @@ describe("public thread data routes", () => {
       expect(sendResponse.status, await sendResponse.clone().text()).toBe(200);
       await vi.waitFor(() =>
         expect(stateAtProvisionStart).toEqual({
-          activeContextStage: "environment-provisioning",
+          activeContextStage: "provisioning",
           queuedMessageExists: false,
           requestEventCount: 1,
         }),

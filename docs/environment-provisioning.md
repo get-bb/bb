@@ -1,19 +1,29 @@
 # Environment and thread startup ownership
 
-An environment record exists before its provider finishes creating the workspace. The record owns the provider selection, resource checkpoint, path claim, creation progress, attempt, and removal state. Successful creation attaches that same environment to the thread. Cancellation marks the environment for removal, waits for its create call to settle, and uses the same cleanup queue, concurrency limit, retry deadline, and teardown checkpoint as attached environments.
+An environment row exists before its provider creates the workspace. Its `status` moves from `creating` through `provisioning` (daemon attachment and setup) to `ready`, or to `error`. `environment-engine.ts` owns that walk, cancellation, cleanup, and retirement, using one operation registry. The periodic sweep resumes the same walk after a restart.
 
-A provider may return an existing project checkout. In that case its existing environment identity is preserved and the unused reservation is retired. Path admission remains exclusive until attachment or successful cleanup; an environment still being prepared cannot be selected for another thread. Provider ownership checks apply before accepting a returned path.
+Placement validates the selected provider, reserves the environment, and asks the engine to advance it. It no longer turns provider output into another placement intent or creates a second environment after the provider returns. A provider that returns an existing project checkout preserves that checkout's identity and retires the unused reservation.
 
-A creation attempt reserves an environment record. A removed environment releases its path so a later allocation can reserve it. A failed resource remains recorded until its cleanup succeeds. Removing a provider or restarting the server does not discard its cleanup checkpoint.
+Creation adds five fields to `environments`:
+
+- `ownerThreadId` identifies the thread preparing the row before attachment. The engine sets `threads.environmentId` and clears the owner in one transaction. Cancellation before attachment and exclusive checkout admission exercise this ownership.
+- `attempt` identifies a create attempt. An explicit retry cleans the previous attempt and reuses the row with an incremented attempt. Tests cover restart with the same path key, explicit retry on the same row, and rejecting writes from an older attempt.
+- `claimPath` reserves a path before the provider mutates it. Concurrent checkout tests prove that another thread cannot claim it and that failed cleanup retains the claim until removal succeeds.
+- `statusMessage` holds current progress or the terminal creation error.
+- `pendingLog` buffers provider output until it is appended to the thread transcript.
+
+There is no parallel provisioning phase, attached flag, rejected-path flag, transient-failure counter, or automatic create retry ladder. A rejected foreign path records an error and completed teardown without handing that path to removal. Creation failures are terminal. Cleanup failures still use the existing teardown status, attempt, message, and retry deadline. Setup failure can be retried on the same environment without recreating its workspace.
+
+Cancellation waits for the active create to settle before removing its resources. After attachment, the engine cancels daemon setup. Shared environments remain until their last live thread leaves; retirement uses the provider's existing grace period. Provider ownership checks continue to protect cleanup, and pending cleanup survives provider unavailability and server restart.
 
 The thread owns its startup request in `threads.startup_context`:
 
 - `pending` stores the environment intent and fork facts while the first message remains queued.
-- `provisioning` stores the resolved request, execution options, provisioning ID, current stage, and transcript positions. Admission persists this state and its request events in the same transaction that consumes the first queued message.
-- `dispatched` records that the agent start has been handed to the transport. Recovery does not automatically resend an uncertain agent start. Existing interruption and explicit retry behavior applies.
+- `provisioning` stores the resolved request, execution options, provisioning ID, and transcript references. Admission writes it and the request events in the transaction that consumes the first queued message.
+- `dispatched` records that agent start was handed to the transport. Recovery does not automatically resend an uncertain agent start; existing interruption and explicit retry behavior applies.
 
-The server reconstructs provisioning from the persisted thread state after restart. Only timer handles, recheck flags, and abort controllers remain process-local. Startup requests and progress are read from the thread record rather than cached in a second context registry. Checkpoint updates are conditional on the current provisioning ID, so an older attempt cannot overwrite a newer startup. Successful startup clears the context.
+The provisioning stage is derived from thread and environment rows. Stage constructors, predicates, produced-workspace projections, and provider-stage bookkeeping are removed. Runtime state contains scheduling handles and the engine's active operations. Conditional writes prevent an older startup from overwriting a newer or dispatched startup. Successful startup clears the context.
 
-The existing environment list/get routes, SDK methods, and CLI commands expose reserved environments with `status: provisioning`. Existing thread provisioning events continue to carry detailed progress. No daemon wire contract changes are required.
+The existing environment routes, SDK, and CLI expose reservations with `status: creating`. The environment provider SDK's failed-create result is now `{ status: "failed", message }`; failures are terminal. The Plugin Guide documents this contract. Daemon commands and results are unchanged; `creating` is server-owned and is not sent in daemon command payloads.
 
-Migration 0116 moves unfinished environment allocations into environment records and moves their startup requests onto threads. Existing attached environment resources remain authoritative. Pending starts are tagged without changing their queued messages.
+Migration `0116_majestic_swordsman.sql` transfers unfinished allocations from `environment_launches` into environment rows and moves their startup requests onto threads, then drops `environment_launches`. Existing attached resources remain authoritative. Pending starts retain their queued messages. The schema snapshot is generated by Drizzle.

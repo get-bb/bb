@@ -1,4 +1,5 @@
-import { cancelProviderEnvironmentCreation } from "../environments/provider-orchestration.js";
+import { readThreadProvisioningStage } from "./thread-provisioning-context.js";
+import { cancelProviderEnvironmentCreation } from "../environments/environment-engine.js";
 import { getPreparingEnvironment } from "@bb/db";
 import { getThread, type DbTransaction, type EnvironmentRow } from "@bb/db";
 import {
@@ -23,13 +24,11 @@ import {
 import { requestThreadStart } from "./thread-lifecycle.js";
 import { resolvePermissionEscalation } from "./thread-runtime-config.js";
 import {
-  createMetadataPendingContext,
+  createThreadStartup,
   type ThreadForkDescriptor,
   type ThreadProvisionEnvironmentIntent,
   type ThreadProvisionContext,
-  type ThreadProvisionMetadataPendingContext,
-  type ThreadProvisionProvisionableContext,
-} from "./thread-provisioning-context.js";
+} from "./thread-startup-store.js";
 import {
   ensureThreadProvisionEnvironmentReady,
   ensureWorkspaceReadyEvent,
@@ -85,7 +84,7 @@ interface CurrentProvisioningFailureThreadArgs {
 }
 
 interface EnvironmentPayloadThreadArgs {
-  context: ThreadProvisionProvisionableContext;
+  context: ThreadProvisionContext;
   environment: EnvironmentRow;
   thread: Thread;
 }
@@ -217,7 +216,7 @@ async function startThreadIfEnvironmentReady(
 export function requestThreadProvision(
   deps: Pick<AppDeps, "db" | "hub">,
   args: RequestThreadProvisionArgs,
-): ThreadProvisionMetadataPendingContext {
+): ThreadProvisionContext {
   return deps.db.transaction(() => {
     const initiator: ThreadTurnInitiator =
       args.startedOnBehalfOf?.initiator ?? "user";
@@ -251,7 +250,7 @@ export function requestThreadProvision(
       source: "spawn",
     });
 
-    const context = createMetadataPendingContext({
+    const context = createThreadStartup({
       ...args,
       clientRequestId: request.requestId,
       input: args.providerInput ?? args.input,
@@ -273,7 +272,7 @@ export function requestThreadTargetReprovision(
 ): ThreadProvisionContext {
   return deps.db.transaction(() => {
     const request = appendReprovisionTurnRequest(deps, args);
-    const context = createMetadataPendingContext({
+    const context = createThreadStartup({
       clientRequestId: request.requestId,
       environmentIntent: {
         type: "provider",
@@ -284,7 +283,6 @@ export function requestThreadTargetReprovision(
         },
         inputs: args.provider.selection.inputs,
         selectionResolved: true,
-        produced: null,
       },
       execution: args.execution,
       fork: null,
@@ -365,7 +363,7 @@ async function advanceThreadProvisioningOnce(
   if (!thread || thread.deletedAt !== null) {
     return;
   }
-  if (thread.status !== "starting") {
+  if (readThreadProvisioningStage(deps.db, thread.id) === "inactive") {
     clearThreadProvisionSchedule(thread.id);
     return;
   }
@@ -451,7 +449,7 @@ export async function restoreFailedThreadStartupRequest(
   const context = readThreadProvisionContext(deps.db, threadId);
   if (context === null) return null;
   const provisioning = getPreparingEnvironment(deps.db, threadId);
-  if (provisioning !== null && !provisioning.provisioningAttached) {
+  if (provisioning !== null) {
     await cancelProviderEnvironmentCreation(deps, threadId);
   }
   return context.request;

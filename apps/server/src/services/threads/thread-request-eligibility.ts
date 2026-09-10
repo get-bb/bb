@@ -165,10 +165,7 @@ export function resolveReuseThreadRequestEnvironment(
     deps.db,
     environment.environmentId,
   );
-  if (
-    reusedEnvironment.provisioningPhase !== null &&
-    !reusedEnvironment.provisioningAttached
-  ) {
+  if (reusedEnvironment.ownerThreadId !== null) {
     throw new ApiError(
       409,
       "workspace_busy",

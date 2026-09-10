@@ -31,7 +31,7 @@ export default async function personalWorkspacePlugin(
         if (signal.aborted) throw error;
         return {
           status: "failed",
-          failure: "transient",
+
           message: error instanceof Error ? error.message : String(error),
         };
       }
