@@ -82,6 +82,7 @@ import {
 } from "../../services/lib/validation.js";
 import { resolveProviderPlanCommand } from "../../services/providers/provider-plan-command.js";
 import { parsePathKindInclusion } from "../path-list-inclusion.js";
+import { THREAD_STORAGE_PATH_LIST_INCLUDE_HIDDEN } from "../path-list-policy.js";
 import { parseFileListLimit } from "../file-list-query.js";
 import { parseSafeRelativeRoutePath } from "../relative-route-path.js";
 
@@ -597,6 +598,7 @@ export function registerThreadDataRoutes(app: Hono, deps: AppDeps): void {
           path: target.storagePath,
           ...(query.query ? { query: query.query } : {}),
           limit,
+          includeHidden: THREAD_STORAGE_PATH_LIST_INCLUDE_HIDDEN,
         },
       });
       return context.json({
@@ -656,6 +658,7 @@ export function registerThreadDataRoutes(app: Hono, deps: AppDeps): void {
           limit,
           includeFiles: inclusion.includeFiles,
           includeDirectories: inclusion.includeDirectories,
+          includeHidden: THREAD_STORAGE_PATH_LIST_INCLUDE_HIDDEN,
         },
       });
       return context.json({

@@ -191,6 +191,9 @@ describe("host file routes", () => {
           if (request.command.type === "host.list_paths") {
             return { ok: true, result: { paths: [], truncated: false } };
           }
+          if (request.command.type === "host.list_files") {
+            return { ok: true, result: { files: [], truncated: false } };
+          }
           return { ok: true, result: { ok: true } };
         },
       });
@@ -200,6 +203,16 @@ describe("host file routes", () => {
           "/api/v1/files/paths",
           { path: "/notes", includeFiles: true, includeDirectories: true },
         ],
+        [
+          "/api/v1/files/paths",
+          {
+            path: "/notes",
+            includeFiles: true,
+            includeDirectories: true,
+            includeHidden: false,
+          },
+        ],
+        ["/api/v1/files/list", { path: "/notes", includeHidden: false }],
         [
           "/api/v1/files/mkdir",
           { path: "/notes/projects", rootPath: "/notes" },
@@ -228,6 +241,21 @@ describe("host file routes", () => {
           limit: 1000,
           includeFiles: true,
           includeDirectories: true,
+          includeHidden: true,
+        },
+        {
+          type: "host.list_paths",
+          path: "/notes",
+          limit: 1000,
+          includeFiles: true,
+          includeDirectories: true,
+          includeHidden: false,
+        },
+        {
+          type: "host.list_files",
+          path: "/notes",
+          limit: 1000,
+          includeHidden: false,
         },
         {
           type: "host.mkdir",

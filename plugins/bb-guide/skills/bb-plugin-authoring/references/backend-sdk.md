@@ -161,7 +161,9 @@ per-attachment remove operation.
 
 For filesystem-backed products that need a tree or mutations,
 `bb.sdk.files.listPaths({ path, includeFiles, includeDirectories, ... })`
-returns recursive relative paths with their kind. `mkdir`, `move`, and `remove`
+returns recursive relative paths with their kind. Both `list` and `listPaths`
+include dot-prefixed entries unless `includeHidden: false` is passed; `.git`,
+`node_modules`, and symlinks are never listed. `mkdir`, `move`, and `remove`
 apply the same optional `hostId` routing and `rootPath` confinement as
 read/write. Mutations are not automatically retried; `move` refuses to replace
 an existing destination, and `remove` requires `recursive: true` for non-empty

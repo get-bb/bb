@@ -71,7 +71,11 @@ export async function listHostFiles(
     });
 
     return finalizeListedFiles({
-      filePaths: await listFilesRecursively(realRootPath, realRootPath),
+      filePaths: await listFilesRecursively({
+        dir: realRootPath,
+        root: realRootPath,
+        includeHidden: command.includeHidden,
+      }),
       limit: command.limit,
       ...(command.query ? { query: command.query } : {}),
     });
@@ -102,6 +106,7 @@ export async function listHostPaths(
         root: realRootPath,
         includeFiles: command.includeFiles,
         includeDirectories: command.includeDirectories,
+        includeHidden: command.includeHidden,
       }),
       limit: command.limit,
       includeFiles: command.includeFiles,

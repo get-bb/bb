@@ -480,6 +480,7 @@ const hostListFilesCommandSchema = z.object({
   path: z.string().min(1),
   query: z.string().max(FILE_LIST_QUERY_MAX_LENGTH).optional(),
   limit: z.number().int().positive().max(FILE_LIST_LIMIT_MAX),
+  includeHidden: z.boolean(),
 });
 
 const hostPathEntryKindSchema = z.enum(["file", "directory"]);
@@ -502,6 +503,7 @@ const hostListPathsCommandSchema = z
     limit: z.number().int().positive().max(FILE_LIST_LIMIT_MAX),
     includeFiles: z.boolean(),
     includeDirectories: z.boolean(),
+    includeHidden: z.boolean(),
   })
   .refine((command) => command.includeFiles || command.includeDirectories, {
     message: "At least one path kind must be included",

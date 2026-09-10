@@ -823,6 +823,7 @@ export default async function plugin(
       path: vault.rootPath,
       includeFiles: true,
       includeDirectories: true,
+      includeHidden: false,
       limit: MAX_TREE_ENTRIES,
     });
     return {
@@ -1150,6 +1151,7 @@ export default async function plugin(
         path: vault.rootPath,
         includeFiles: true,
         includeDirectories: true,
+        includeHidden: false,
         limit: MAX_TREE_ENTRIES,
       });
       if (result.truncated) {
@@ -1304,6 +1306,7 @@ export default async function plugin(
       path: vault.rootPath,
       includeFiles: true,
       includeDirectories: true,
+      includeHidden: false,
       limit: MAX_TREE_ENTRIES,
     });
     if (currentListing.truncated) {
@@ -2243,6 +2246,7 @@ export default async function plugin(
       path: rootPath,
       includeFiles: true,
       includeDirectories: true,
+      includeHidden: false,
       limit: MAX_TREE_ENTRIES,
     });
     if (listing.truncated) {

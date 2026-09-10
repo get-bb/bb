@@ -33,6 +33,7 @@ export interface FileListArgs {
   path: string;
   query?: string;
   limit?: number;
+  includeHidden?: boolean;
   signal?: AbortSignal;
 }
 
@@ -117,6 +118,7 @@ export function createFilesArea(args: CreateSdkAreaArgs): FilesArea {
           {
             json: {
               hostId: input.hostId,
+              includeHidden: input.includeHidden,
               limit: input.limit,
               path: input.path,
               query: input.query,
@@ -134,6 +136,7 @@ export function createFilesArea(args: CreateSdkAreaArgs): FilesArea {
               hostId: input.hostId,
               includeDirectories: input.includeDirectories,
               includeFiles: input.includeFiles,
+              includeHidden: input.includeHidden,
               limit: input.limit,
               path: input.path,
               query: input.query,

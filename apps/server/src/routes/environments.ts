@@ -45,6 +45,7 @@ import {
 } from "./branch-list-query.js";
 import { parseFileListLimit } from "./file-list-query.js";
 import { parsePathKindInclusion } from "./path-list-inclusion.js";
+import { WORKSPACE_PATH_LIST_INCLUDE_HIDDEN } from "./path-list-policy.js";
 import {
   requireWorkspaceCommandTarget,
   type WorkspaceCommandTarget,
@@ -607,6 +608,7 @@ export function registerEnvironmentRoutes(app: Hono, deps: AppDeps): void {
           limit,
           includeFiles: inclusion.includeFiles,
           includeDirectories: inclusion.includeDirectories,
+          includeHidden: WORKSPACE_PATH_LIST_INCLUDE_HIDDEN,
         },
       });
       return context.json({

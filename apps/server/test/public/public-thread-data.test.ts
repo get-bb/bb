@@ -4244,6 +4244,7 @@ describe("public thread data routes", () => {
         limit: 1000,
         includeFiles: true,
         includeDirectories: true,
+        includeHidden: false,
       });
       await reportQueuedCommandSuccess(harness, pathsCommand, {
         paths: [

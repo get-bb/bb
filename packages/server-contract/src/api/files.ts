@@ -31,6 +31,7 @@ export const hostFileListRequestSchema = z
     path: z.string().min(1),
     query: z.string().optional(),
     limit: z.number().int().positive().max(FILE_LIST_LIMIT_MAX).optional(),
+    includeHidden: z.boolean().optional(),
   })
   .strict();
 export type HostFileListRequest = z.infer<typeof hostFileListRequestSchema>;
@@ -43,6 +44,7 @@ export const hostPathListRequestSchema = z
     limit: z.number().int().positive().max(FILE_LIST_LIMIT_MAX).optional(),
     includeFiles: z.boolean(),
     includeDirectories: z.boolean(),
+    includeHidden: z.boolean().optional(),
   })
   .strict();
 export type HostPathListRequest = z.infer<typeof hostPathListRequestSchema>;

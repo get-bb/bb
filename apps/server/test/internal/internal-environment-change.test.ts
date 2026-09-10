@@ -73,6 +73,7 @@ describe("internal environment change websocket hints", () => {
             type: "host.list_files",
             path: "/tmp/session-scope-test",
             limit: 10,
+            includeHidden: false,
           },
         },
       });

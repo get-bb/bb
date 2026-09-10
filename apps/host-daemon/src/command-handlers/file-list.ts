@@ -47,6 +47,13 @@ interface FinalizedPathList {
 interface ListPathsRecursivelyArgs extends PathListInclusion {
   dir: string;
   root: string;
+  includeHidden: boolean;
+}
+
+interface ListFilesRecursivelyArgs {
+  dir: string;
+  root: string;
+  includeHidden: boolean;
 }
 
 function shouldIncludePath(
@@ -140,7 +147,7 @@ export async function listPathsRecursively(
   const entries = await fs.readdir(args.dir, { withFileTypes: true });
   const results: ListedPath[] = [];
   for (const entry of entries) {
-    if (entry.name.startsWith(".")) continue;
+    if (!args.includeHidden && entry.name.startsWith(".")) continue;
     if (entry.name === "node_modules") continue;
     if (entry.isSymbolicLink()) continue;
 
@@ -176,12 +183,10 @@ export async function listPathsRecursively(
 }
 
 export async function listFilesRecursively(
-  dir: string,
-  root: string,
+  args: ListFilesRecursivelyArgs,
 ): Promise<string[]> {
   const paths = await listPathsRecursively({
-    dir,
-    root,
+    ...args,
     includeFiles: true,
     includeDirectories: false,
   });

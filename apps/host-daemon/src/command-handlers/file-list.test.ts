@@ -216,6 +216,7 @@ describe("listPathsRecursively", () => {
         root,
         includeFiles: true,
         includeDirectories: true,
+        includeHidden: false,
       });
 
       expect(result).toEqual([
@@ -236,6 +237,38 @@ describe("listPathsRecursively", () => {
     }
   });
 
+  it("lists dot-prefixed entries only when hidden entries are included", async () => {
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), "bb-file-list-"));
+    try {
+      await fs.mkdir(path.join(root, ".github", "workflows"), {
+        recursive: true,
+      });
+      await fs.writeFile(path.join(root, ".github", "workflows", "ci.yml"), "");
+      await fs.writeFile(path.join(root, ".env"), "");
+      await fs.writeFile(path.join(root, "README.md"), "");
+
+      const listPaths = (includeHidden: boolean) =>
+        listPathsRecursively({
+          dir: root,
+          root,
+          includeFiles: true,
+          includeDirectories: true,
+          includeHidden,
+        }).then((entries) => entries.map((entry) => entry.path).sort());
+
+      expect(await listPaths(true)).toEqual([
+        ".env",
+        ".github",
+        ".github/workflows",
+        ".github/workflows/ci.yml",
+        "README.md",
+      ]);
+      expect(await listPaths(false)).toEqual(["README.md"]);
+    } finally {
+      await fs.rm(root, { recursive: true, force: true });
+    }
+  });
+
   it("does not return symlinked files as regular path entries", async () => {
     const root = await fs.mkdtemp(path.join(os.tmpdir(), "bb-file-list-"));
     try {
@@ -250,6 +283,7 @@ describe("listPathsRecursively", () => {
         root,
         includeFiles: true,
         includeDirectories: false,
+        includeHidden: false,
       });
 
       expect(result).toEqual([
@@ -287,6 +321,7 @@ describe("listPathsRecursively", () => {
         root,
         includeFiles: true,
         includeDirectories: false,
+        includeHidden: false,
       });
 
       expect(result).toHaveLength(fileCount);

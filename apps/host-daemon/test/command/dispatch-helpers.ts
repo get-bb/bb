@@ -240,7 +240,11 @@ export function createFakeWorkspace(pathname: string) {
       state.pullRequestActionShellPath = options?.shellPath;
     },
     async listFiles() {
-      return listFilesRecursively(pathname, pathname);
+      return listFilesRecursively({
+        dir: pathname,
+        root: pathname,
+        includeHidden: false,
+      });
     },
     async commit(options: { message: string; noVerify: boolean }) {
       state.lastCommitMessage = options.message;

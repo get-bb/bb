@@ -338,6 +338,7 @@ describe("public environments", () => {
         query: "app",
         includeFiles: true,
         includeDirectories: false,
+        includeHidden: true,
       });
       await reportQueuedCommandSuccess(harness, pathsCommand, {
         paths: [

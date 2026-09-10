@@ -1,0 +1,3 @@
+export const WORKSPACE_PATH_LIST_INCLUDE_HIDDEN = true;
+export const THREAD_STORAGE_PATH_LIST_INCLUDE_HIDDEN = false;
+export const SKILL_PATH_LIST_INCLUDE_HIDDEN = false;

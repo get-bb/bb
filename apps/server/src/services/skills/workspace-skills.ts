@@ -4,6 +4,7 @@ import { COMMAND_TIMEOUT_MS } from "../../constants.js";
 import { ApiError } from "../../errors.js";
 import type { LoggedWorkSessionDeps } from "../../types.js";
 import { callHostRetryableOnlineRpc } from "../hosts/online-rpc.js";
+import { SKILL_PATH_LIST_INCLUDE_HIDDEN } from "../../routes/path-list-policy.js";
 import { requireDaemonFileContentResult } from "../hosts/daemon-file-response.js";
 import {
   resolveProjectSkillSourceFromContent,
@@ -85,6 +86,7 @@ export async function resolveWorkspaceProjectSkills(
       path: skillsRootPath,
       query: SKILL_FILE_NAME,
       limit: MAX_PROJECT_SKILLS,
+      includeHidden: SKILL_PATH_LIST_INCLUDE_HIDDEN,
     },
   });
   if (result.truncated) {

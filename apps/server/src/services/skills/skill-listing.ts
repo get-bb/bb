@@ -22,6 +22,7 @@ import { resolveServerOwnedSkillCatalogEntries } from "./injected-skills.js";
 import { resolveSkillCatalog } from "./skill-catalog.js";
 import { readRegistrySkillProvenance } from "./registry-skill-provenance.js";
 import { hostPathDirname, resolveSharedSkills } from "./shared-skills.js";
+import { SKILL_PATH_LIST_INCLUDE_HIDDEN } from "../../routes/path-list-policy.js";
 import {
   providerHasNativeRootSurface,
   scanProviderNativeRoots,
@@ -387,7 +388,12 @@ export async function listProjectSkillFiles(
   const result = await callHostRetryableOnlineRpc(deps, {
     hostId: args.workspace.hostId,
     timeoutMs: COMMAND_TIMEOUT_MS,
-    command: { type: "host.list_files", path: rootPath, limit: 200 },
+    command: {
+      type: "host.list_files",
+      path: rootPath,
+      limit: 200,
+      includeHidden: SKILL_PATH_LIST_INCLUDE_HIDDEN,
+    },
   });
   const files = result.files
     .map((file) => file.path)

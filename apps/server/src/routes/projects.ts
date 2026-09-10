@@ -75,6 +75,7 @@ import {
 import { resolveDefaultWorktreeBaseBranch } from "../services/projects/worktree-base-branch.js";
 import { listProjectPromptHistory } from "../services/prompt-history.js";
 import { parsePathKindInclusion } from "./path-list-inclusion.js";
+import { WORKSPACE_PATH_LIST_INCLUDE_HIDDEN } from "./path-list-policy.js";
 import {
   normalizeBranchQuery,
   parseBranchListLimit,
@@ -623,6 +624,7 @@ export function registerProjectRoutes(app: Hono, deps: AppDeps): void {
         path: target.path,
         ...(query.query ? { query: query.query } : {}),
         limit,
+        includeHidden: WORKSPACE_PATH_LIST_INCLUDE_HIDDEN,
       },
     });
     return context.json({ files: result.files, truncated: result.truncated });
@@ -683,6 +685,7 @@ export function registerProjectRoutes(app: Hono, deps: AppDeps): void {
         limit,
         includeFiles: inclusion.includeFiles,
         includeDirectories: inclusion.includeDirectories,
+        includeHidden: WORKSPACE_PATH_LIST_INCLUDE_HIDDEN,
       },
     });
     return context.json({ paths: result.paths, truncated: result.truncated });
