@@ -54,6 +54,7 @@ import {
   findPaneByContent,
   type SplitLayout,
 } from "@/lib/split-layout";
+import { usePublishPluginDetailOpener } from "./plugin-detail-navigation";
 vi.mock("@/components/ui/app-toast", () => ({
   appToast: {
     dismiss: vi.fn(),
@@ -518,6 +519,28 @@ describe("PluginNavSidebarItems", () => {
     );
     expect(screen.getByTestId("location-path").textContent).toBe(
       "/plugins/docs",
+    );
+  });
+
+  it("opens details in the active workspace without changing its route", async () => {
+    const open = vi.fn(() => true);
+    function Workspace() {
+      usePublishPluginDetailOpener(open, true);
+      return null;
+    }
+    render(<Workspace />);
+    registerPanel("docs", "Docs");
+    renderSidebarItems({ initialEntry: "/plugins/docs/main" });
+    fireEvent.pointerDown(
+      screen.getByRole("button", { name: "Docs panel options" }),
+      { button: 0 },
+    );
+    fireEvent.click(
+      await screen.findByRole("menuitem", { name: "View details" }),
+    );
+    expect(open).toHaveBeenCalledWith({ pluginId: "docs", title: "Docs" });
+    expect(screen.getByTestId("location-path").textContent).toBe(
+      "/plugins/docs/main",
     );
   });
 

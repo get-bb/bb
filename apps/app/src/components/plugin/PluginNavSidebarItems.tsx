@@ -108,6 +108,7 @@ import {
   togglePluginNavPanelVisibility,
 } from "./pluginNavSidebarOrder";
 import { haveSameOrder, reorderStoredOrder } from "@/lib/stored-order";
+import { openPluginDetailsInWorkspace } from "./plugin-detail-navigation";
 
 const MORE_TRIGGER_TEST_ID = "sidebar-navigation-more-trigger";
 
@@ -1206,6 +1207,13 @@ function PluginNavSidebarItem({
       onOpenInSplit={splitEnabled ? openInSplit : undefined}
       onOpenDetails={() => {
         onNavigate?.();
+        if (
+          openPluginDetailsInWorkspace({
+            pluginId: chrome.pluginId,
+            title: chrome.title,
+          })
+        )
+          return;
         void navigate(getPluginDetailRoutePath({ pluginId: chrome.pluginId }));
       }}
       onDisable={() => onDisable(row)}

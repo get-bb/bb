@@ -1,3 +1,4 @@
+import { usePluginDetailPanelProps } from "@/components/plugin/plugin-detail-navigation";
 import {
   type CSSProperties,
   type FocusEvent,
@@ -210,7 +211,12 @@ export interface ThreadSecondaryPanelProps {
   renderAsDrawer: boolean;
 }
 
-export function ThreadSecondaryPanel({
+export function ThreadSecondaryPanel(props: ThreadSecondaryPanelProps) {
+  const panelProps = usePluginDetailPanelProps(props);
+  return <ThreadSecondaryPanelContent {...panelProps} />;
+}
+
+function ThreadSecondaryPanelContent({
   activeTab,
   canUseGitUi,
   gitDiffTabStatus,
