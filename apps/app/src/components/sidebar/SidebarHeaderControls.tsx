@@ -106,6 +106,11 @@ function SidebarViewItems({
                 }}
               >
                 {option.label}
+                {selected && (
+                  <span className="sr-only">
+                    , {direction}. Sort {nextDirection}
+                  </span>
+                )}
                 <span className="ml-auto inline-flex size-4 shrink-0 items-center justify-center">
                   {selected && (
                     <Icon

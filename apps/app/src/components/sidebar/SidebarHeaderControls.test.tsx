@@ -162,4 +162,33 @@ describe("sidebar header controls", () => {
         .getAttribute("aria-checked"),
     ).toBe("true");
   });
+
+  it("announces compact sort direction and resets the nested page after closing", async () => {
+    viewport.compact = true;
+    const { store } = setup();
+    fireEvent.click(screen.getByRole("button", { name: "Pinned actions" }));
+    fireEvent.click(await screen.findByRole("menuitem", { name: "Sort by" }));
+    fireEvent.click(
+      await screen.findByRole("menuitemradio", {
+        name: /Updated at\s*, descending\. Sort ascending/,
+      }),
+    );
+    expect(store.get(sidebarSortDirectionAtom)).toBe("ascending");
+    expect(
+      screen
+        .getByRole("menuitemradio", {
+          name: /Updated at\s*, ascending\. Sort descending/,
+        })
+        .getAttribute("aria-checked"),
+    ).toBe("true");
+    fireEvent.click(screen.getByRole("menuitem", { name: "Back" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "Organize" }));
+    fireEvent.click(screen.getByRole("menuitemradio", { name: "Custom" }));
+    expect(store.get(sidebarOrganizationModeAtom)).toBe("chronological");
+    fireEvent.click(screen.getByRole("button", { name: "Pinned actions" }));
+    expect(
+      await screen.findByRole("menuitem", { name: "New project" }),
+    ).toBeTruthy();
+    expect(screen.queryByRole("menuitem", { name: "Back" })).toBeNull();
+  });
 });
