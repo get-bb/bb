@@ -261,6 +261,26 @@ function VoiceInputStory() {
       onDeviceChange={state.setPreferredAudioInputDeviceId}
       onRefresh={() => undefined}
       preferredDeviceId={state.preferredAudioInputDeviceId}
+      onUpdateTranscription={() => undefined}
+      transcription={{
+        model: "codex/gpt-transcribe",
+        enabled: true,
+        ceilingBytes: 10 * 1024 * 1024,
+        timeoutMaxMs: 300_000,
+        recordingBitrate: 32_000,
+        voiceServices: [
+          {
+            id: "codex",
+            displayName: "Codex (ChatGPT account or API key)",
+            pluginId: "provider-codex",
+          },
+          {
+            id: "local",
+            displayName: "Local (Parakeet)",
+            pluginId: "local-stt",
+          },
+        ],
+      }}
     />
   );
 }
