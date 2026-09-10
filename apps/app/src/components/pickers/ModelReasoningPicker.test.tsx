@@ -837,6 +837,46 @@ describe("ModelReasoningPicker", () => {
     expect(onModelChange).toHaveBeenCalledWith("gpt-4.1-legacy");
   });
 
+  it("compact: keeps reasoning outside the scrollable model list", () => {
+    const frames: FrameRequestCallback[] = [];
+    vi.spyOn(window, "requestAnimationFrame").mockImplementation((callback) => {
+      frames.push(callback);
+      return frames.length;
+    });
+    renderPicker({ compact: true, modelOptions: manyCodexModels });
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Provider, model and reasoning" }),
+    );
+    act(() => frames.shift()?.(0));
+    act(() => frames.shift()?.(16));
+
+    const modelList = screen.getByRole("listbox", { name: "Models" });
+    const reasoning = screen.getByRole("radiogroup", { name: "Reasoning" });
+
+    expect(modelList.contains(reasoning)).toBe(false);
+    for (const className of [
+      "min-h-0",
+      "flex-1",
+      "overflow-y-auto",
+      "overscroll-contain",
+    ]) {
+      expect(modelList.classList.contains(className)).toBe(true);
+    }
+
+    const scrollParents: string[] = [];
+    for (
+      let element = modelList.parentElement;
+      element !== null && element.getAttribute("role") !== "dialog";
+      element = element.parentElement
+    ) {
+      if (element.classList.contains("overflow-y-auto")) {
+        scrollParents.push(element.className);
+      }
+    }
+    expect(scrollParents).toEqual([]);
+  });
+
   it("does not render the search box for short model lists", () => {
     renderPicker();
 

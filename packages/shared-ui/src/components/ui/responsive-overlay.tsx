@@ -27,11 +27,77 @@ export const COMPACT_SHEET_CONTENT_STYLE: React.CSSProperties = {
   maxWidth: "none",
 };
 
+const DRAWER_KEYBOARD_INSET_PROPERTY = "--bb-drawer-keyboard-inset";
+const DRAWER_KEYBOARD_MIN_OVERLAP_PX = 80;
+
 function resetDrawerKeyboardStyles(drawerElement: HTMLElement | null): void {
   if (drawerElement === null) return;
 
   drawerElement.style.height = "";
   drawerElement.style.bottom = "";
+  drawerElement.style.removeProperty(DRAWER_KEYBOARD_INSET_PROPERTY);
+}
+
+export function measureDrawerKeyboardOverlap({
+  layoutViewportHeight,
+  visualViewportHeight,
+  visualViewportOffsetTop,
+}: {
+  layoutViewportHeight: number;
+  visualViewportHeight: number;
+  visualViewportOffsetTop: number;
+}): number {
+  const overlap = Math.round(
+    layoutViewportHeight - (visualViewportHeight + visualViewportOffsetTop),
+  );
+  return overlap >= DRAWER_KEYBOARD_MIN_OVERLAP_PX ? overlap : 0;
+}
+
+function useDrawerKeyboardInset(
+  panelRef: React.RefObject<HTMLElement | null>,
+  open: boolean,
+): void {
+  React.useEffect(() => {
+    const panel = panelRef.current;
+    const visualViewport = window.visualViewport;
+    if (panel === null || !open || !visualViewport) return;
+
+    let animationFrame: number | null = null;
+    const applyInset = () => {
+      animationFrame = null;
+      const overlap = measureDrawerKeyboardOverlap({
+        layoutViewportHeight: panel.ownerDocument.documentElement.clientHeight,
+        visualViewportHeight: visualViewport.height,
+        visualViewportOffsetTop: visualViewport.offsetTop,
+      });
+      if (overlap === 0) {
+        panel.style.bottom = "";
+        panel.style.removeProperty(DRAWER_KEYBOARD_INSET_PROPERTY);
+        return;
+      }
+      panel.style.bottom = `${overlap}px`;
+      panel.style.setProperty(DRAWER_KEYBOARD_INSET_PROPERTY, `${overlap}px`);
+    };
+    const scheduleUpdate = () => {
+      if (animationFrame !== null) {
+        window.cancelAnimationFrame(animationFrame);
+      }
+      animationFrame = window.requestAnimationFrame(applyInset);
+    };
+
+    applyInset();
+    visualViewport.addEventListener("resize", scheduleUpdate);
+    visualViewport.addEventListener("scroll", scheduleUpdate);
+
+    return () => {
+      visualViewport.removeEventListener("resize", scheduleUpdate);
+      visualViewport.removeEventListener("scroll", scheduleUpdate);
+      if (animationFrame !== null) {
+        window.cancelAnimationFrame(animationFrame);
+      }
+      resetDrawerKeyboardStyles(panel);
+    };
+  }, [open, panelRef]);
 }
 
 export function useResponsiveRoot(
@@ -556,6 +622,8 @@ export function PersistentResponsiveDrawerShell({
     requestClose,
   });
 
+  useDrawerKeyboardInset(panelRef, open);
+
   const reportSettled = React.useCallback(
     (settledOpen: boolean) => {
       if (settledStateRef.current === settledOpen) {
@@ -699,7 +767,7 @@ export function PersistentResponsiveDrawerShell({
         role="dialog"
         tabIndex={-1}
         className={cn(
-          "fixed inset-x-0 bottom-0 z-50 mt-24 flex max-h-[92dvh] flex-col rounded-t-xl border bg-background outline-none",
+          "fixed inset-x-0 bottom-0 z-50 mt-24 flex max-h-[calc(92dvh-var(--bb-drawer-keyboard-inset,0px))] flex-col rounded-t-xl border bg-background outline-none",
           contentClassName,
         )}
         style={{
