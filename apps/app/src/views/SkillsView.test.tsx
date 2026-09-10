@@ -114,10 +114,7 @@ function renderLibrarySkillRoute() {
     <MemoryRouter initialEntries={["/skills/library/skill_missing"]}>
       <QueryClientWrapper>
         <Routes>
-          <Route
-            path="/skills/library/:skillId"
-            element={<SkillsLibrary />}
-          />
+          <Route path="/skills/library/:skillId" element={<SkillsLibrary />} />
         </Routes>
       </QueryClientWrapper>
     </MemoryRouter>,
@@ -260,9 +257,7 @@ function renderRegistrySkillRoute() {
   const { wrapper: QueryClientWrapper } = createQueryClientTestHarness();
   return renderDom(
     <MemoryRouter
-      initialEntries={[
-        "/skills/registry/owner%2Frepo%2Fuseful-skill",
-      ]}
+      initialEntries={["/skills/registry/owner%2Frepo%2Fuseful-skill"]}
     >
       <QueryClientWrapper>
         <Routes>

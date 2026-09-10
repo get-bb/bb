@@ -83,8 +83,6 @@ function FooterHarness() {
       <SidebarMenu>
         <PluginSidebarFooterItems
           activeDisclosureKey={disclosure.activeKey}
-          suppressedTooltipKey={disclosure.suppressedTooltipKey}
-          onTooltipSuppressionEnd={disclosure.clearTooltipSuppression}
           onDisclosureCommand={disclosure.handleCommand}
         />
       </SidebarMenu>
