@@ -71,7 +71,10 @@ describe("PromptBoxActionsMenu", () => {
     const onAction = vi.fn();
     render(
       <PromptBoxActionsMenu
-        actions={withAppPromptActions([{ kind: "plan", text: "/plan " }])}
+        actions={withAppPromptActions([
+          { kind: "skills", text: "/skills " },
+          { kind: "plan", text: "/plan " },
+        ])}
         onAction={onAction}
         onAttach={() => {}}
       />,
