@@ -414,7 +414,10 @@ function ThreadListStoryFixture({ children }: { children: ReactNode }) {
               { error: "Section not found" },
               { status: 404 },
             );
-          const renamed = "name" in request ? request.name : section.name;
+          const renamed =
+            "name" in request && typeof request.name === "string"
+              ? request.name
+              : section.name;
           let updatedThreadCount = 0;
           const updateThread = (thread: ThreadListEntry): ThreadListEntry => {
             if (method !== "DELETE" || thread.sectionId !== section.id)

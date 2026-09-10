@@ -187,7 +187,7 @@ export function SidebarHeaderControls({
                   setPage(null);
                 }}
               >
-                <Icon name="ArrowLeft" />
+                <Icon name="ChevronLeft" />
                 Back
               </DropdownMenuItem>
               <DropdownMenuSeparator />
