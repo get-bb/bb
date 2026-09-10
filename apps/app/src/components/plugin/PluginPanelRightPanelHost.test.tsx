@@ -415,6 +415,16 @@ vi.mock("@/components/secondary-panel/ThreadSecondaryPanel", () => ({
             {tab.title}
           </button>
         ))}
+        <button
+          type="button"
+          onClick={() => {
+            for (const tab of tabs) {
+              tab.onClose();
+            }
+          }}
+        >
+          Close all tabs
+        </button>
         <button type="button" onClick={onOpenNewTab}>
           Add tab
         </button>
@@ -822,6 +832,27 @@ describe("PluginPanelRightPanelHost", () => {
     fireEvent.click(screen.getByRole("button", { name: "Secrets" }));
     expect(await screen.findByText("Details for secrets")).toBeTruthy();
     expect(catalogQueryState.queries).toEqual(["secrets"]);
+  });
+
+  it("closes every plugin detail tab when several close in one event", async () => {
+    renderHost("board", "", createStore(), true);
+
+    fireEvent.click(screen.getByRole("link", { name: "Open Secrets plugin" }));
+    expect(await screen.findByText("Details for secrets")).toBeTruthy();
+    fireEvent.click(
+      screen.getByRole("link", { name: "Open Automations plugin" }),
+    );
+    expect(await screen.findByText("Details for automations")).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("button", { name: "Close all tabs" }));
+
+    await waitFor(() =>
+      expect(secondaryPanelState.tabKinds).not.toContain(
+        "marketplace-plugin-detail",
+      ),
+    );
+    expect(screen.queryByRole("button", { name: "Secrets" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Automations" })).toBeNull();
   });
 
   it("keeps split navigation for plugin-detail links outside the Plugin Guide", () => {

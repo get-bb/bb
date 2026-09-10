@@ -733,11 +733,15 @@ export function PluginPanelRightPanelHost({
       const nextPluginIds = openedPluginIds.filter(
         (candidate) => candidate !== closingPluginId,
       );
-      setOpenedPluginIds(nextPluginIds);
+      setOpenedPluginIds((current) =>
+        current.filter((candidate) => candidate !== closingPluginId),
+      );
       if (activePluginDetailId !== closingPluginId) return;
       const nextActivePluginId =
         nextPluginIds[Math.min(closingIndex, nextPluginIds.length - 1)] ?? null;
-      setActivePluginDetailId(nextActivePluginId);
+      setActivePluginDetailId((current) =>
+        current === closingPluginId ? nextActivePluginId : current,
+      );
       setIsPluginDetailFullPage(false);
       if (
         nextActivePluginId === null &&
