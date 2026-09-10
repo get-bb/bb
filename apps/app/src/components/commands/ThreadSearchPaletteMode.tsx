@@ -351,6 +351,12 @@ export function ThreadSearchPaletteMode({
                   onClick={() => {
                     if (canSplit) openRow(activeRow, true);
                   }}
+                  onKeyDown={(event) => {
+                    if (event.key !== "Escape") return;
+                    event.preventDefault();
+                    event.stopPropagation();
+                    onExit();
+                  }}
                 >
                   <Icon name="Columns2" aria-hidden />
                 </Button>

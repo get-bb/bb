@@ -159,18 +159,9 @@ export function PaletteShell({
               key={`${hint.keys.join(":")}:${hint.label}`}
               className="inline-flex items-center gap-1.5"
             >
-              <span className="inline-flex items-center gap-1">
-                {hint.keys.map((keys, index) => (
-                  <span key={keys} className="inline-flex items-center gap-1">
-                    {index === 0 ? null : (
-                      <span aria-hidden className="text-muted-foreground/60">
-                        /
-                      </span>
-                    )}
-                    <kbd className={PALETTE_FOOTER_KEYCAP_CLASS}>{keys}</kbd>
-                  </span>
-                ))}
-              </span>
+              <kbd className={PALETTE_FOOTER_KEYCAP_CLASS}>
+                {hint.keys.join(" / ")}
+              </kbd>
               <span
                 className="text-subtle-foreground"
                 data-palette-footer-label
@@ -192,7 +183,15 @@ function PaletteModeChip({
   onClear,
 }: PaletteModeChipProps) {
   return (
-    <span data-palette-mode-chip>
+    <span
+      data-palette-mode-chip
+      onKeyDown={(event) => {
+        if (event.key !== "Escape") return;
+        event.preventDefault();
+        event.stopPropagation();
+        onClear();
+      }}
+    >
       <TabPill
         ariaLabel={`${label} search`}
         label={label}

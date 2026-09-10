@@ -1149,7 +1149,13 @@ describe("CommandPalette", () => {
           'input:not([disabled]), button:not([disabled]), [tabindex]:not([tabindex="-1"])',
         ),
       ),
-    ).toEqual([modeSelect, clearMode, input, scope]);
+    ).toEqual([
+      modeSelect,
+      clearMode,
+      input,
+      scope,
+      screen.getByRole("button", { name: "Open in split" }),
+    ]);
 
     fireEvent.change(input, { target: { value: "match" } });
     const results = screen.getByRole("listbox", { name: "Threads" });
