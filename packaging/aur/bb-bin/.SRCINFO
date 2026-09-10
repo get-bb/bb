@@ -1,0 +1,20 @@
+pkgbase = bb-bin
+	pkgdesc = Agentic IDE that builds itself
+	pkgver = 0.42.1
+	pkgrel = 2
+	url = https://github.com/get-bb/bb
+	arch = x86_64
+	license = MIT
+	provides = bb
+	conflicts = bb
+	noextract = bb-bin-0.42.1.AppImage
+	options = !strip
+	options = !debug
+	source = bb-bin-0.42.1.AppImage::https://github.com/get-bb/bb/releases/download/desktop-v0.42.1/bb-0.42.1-x86_64.AppImage
+	source = bb-launcher.sh
+	source = LICENSE
+	sha256sums = b29165f5cd2f06feeba51c36ca86b96006bfc6c48521903367c004ae63c86976
+	sha256sums = 67d10f7a6daac6bfbd947bbc2af59bcc42589d5e37637a504ffce9c89074d173
+	sha256sums = d10816aa30183af920bdd789a81b16847bcf3e287e1b3419dd7d85f6e3e8e7b0
+
+pkgname = bb-bin
