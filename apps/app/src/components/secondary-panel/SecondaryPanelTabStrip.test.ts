@@ -1,12 +1,20 @@
 // @vitest-environment jsdom
 
-import { act, cleanup, fireEvent, render } from "@testing-library/react";
+import {
+  act,
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+} from "@testing-library/react";
 import { createElement } from "react";
 import { afterEach, vi } from "vitest";
 import { describe, expect, it } from "vitest";
 import {
   SecondaryPanelTabStrip,
   SECONDARY_PANEL_TAB_STRIP_FADE_TONE,
+  secondaryPanelTabsToClose,
+  type SecondaryPanelTabStripProps,
 } from "./SecondaryPanelTabStrip";
 
 afterEach(() => {
@@ -244,5 +252,94 @@ describe("secondary panel tab-strip edge fades", () => {
     expect(document.activeElement).toBe(
       container.querySelector('button[aria-pressed="true"]'),
     );
+  });
+});
+
+function makeCloseMenuTabs(
+  pinnedIndexes: readonly number[] = [],
+): SecondaryPanelTabStripProps["tabs"] {
+  return Array.from({ length: 4 }, (_, index) => ({
+    label: `file-${index}.ts`,
+    isPinned: pinnedIndexes.includes(index),
+    leadingVisual: null,
+    statusLabel: null,
+    onSelect: vi.fn(),
+    onClose: vi.fn(),
+    renderContent: () => null,
+    tab: { id: `tab-${index}`, kind: "new-tab" as const },
+  }));
+}
+
+function closeCounts(tabs: SecondaryPanelTabStripProps["tabs"]) {
+  return tabs.map((tab) => vi.mocked(tab.onClose).mock.calls.length);
+}
+
+function renderCloseMenuStrip(tabs: SecondaryPanelTabStripProps["tabs"]) {
+  vi.stubGlobal(
+    "ResizeObserver",
+    class {
+      observe() {}
+      disconnect() {}
+    },
+  );
+  render(
+    createElement(SecondaryPanelTabStrip, {
+      activeTabId: "tab-3",
+      tabs,
+      onReorderTab: vi.fn(),
+      usesDesktopChrome: false,
+      isPanelOpen: true,
+    }),
+  );
+}
+
+describe("secondary panel tab close menu", () => {
+  it("selects other tabs and tabs to the right, skipping pinned tabs", () => {
+    const tabs = makeCloseMenuTabs([0, 3]);
+    const closeIds = (tabId: string, scope: "self" | "others" | "right") =>
+      secondaryPanelTabsToClose(tabs, tabId, scope).map((tab) => tab.tab.id);
+    expect(closeIds("tab-1", "others")).toEqual(["tab-2"]);
+    expect(closeIds("tab-1", "right")).toEqual(["tab-2"]);
+    expect(closeIds("tab-0", "self")).toEqual([]);
+    expect(closeIds("missing", "others")).toEqual([]);
+  });
+
+  it("closes the right-clicked tab", () => {
+    const tabs = makeCloseMenuTabs();
+    renderCloseMenuStrip(tabs);
+
+    fireEvent.contextMenu(screen.getByRole("button", { name: "file-2.ts" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "Close tab" }));
+
+    expect(closeCounts(tabs)).toEqual([0, 0, 1, 0]);
+  });
+
+  it("closes tabs to the right and selects the clicked tab when the active tab closes", () => {
+    const tabs = makeCloseMenuTabs();
+    renderCloseMenuStrip(tabs);
+
+    fireEvent.contextMenu(screen.getByRole("button", { name: "file-1.ts" }));
+    fireEvent.click(
+      screen.getByRole("menuitem", { name: "Close tabs to the right" }),
+    );
+
+    expect(tabs[1]?.onSelect).toHaveBeenCalledTimes(1);
+    expect(closeCounts(tabs)).toEqual([0, 0, 1, 1]);
+  });
+
+  it("closes other tabs and disables close-to-the-right on the last tab", () => {
+    const tabs = makeCloseMenuTabs();
+    renderCloseMenuStrip(tabs);
+
+    fireEvent.contextMenu(screen.getByRole("button", { name: "file-3.ts" }));
+    expect(
+      screen
+        .getByRole("menuitem", { name: "Close tabs to the right" })
+        .getAttribute("data-disabled"),
+    ).not.toBeNull();
+    fireEvent.click(screen.getByRole("menuitem", { name: "Close other tabs" }));
+
+    expect(tabs[3]?.onSelect).not.toHaveBeenCalled();
+    expect(closeCounts(tabs)).toEqual([1, 1, 1, 0]);
   });
 });
