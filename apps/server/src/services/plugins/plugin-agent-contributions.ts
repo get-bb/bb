@@ -75,7 +75,12 @@ export async function resolvePluginProviderEnv(args: {
 }): Promise<HostDaemonContributedEnvEntry[]> {
   const active = contributions;
   if (!active?.resolveProviderEnv) return [];
-  return (await active.resolveProviderEnv(args)).entries;
+  return (await active.resolveProviderEnv(args)).entries.map((entry) => ({
+    name: entry.name,
+    value: entry.value,
+    source: entry.source,
+    reason: entry.reason,
+  }));
 }
 
 export async function resolvePluginProviderEnvHealth(args: {
@@ -86,7 +91,9 @@ export async function resolvePluginProviderEnvHealth(args: {
   if (!active?.resolveProviderEnvHealth) return null;
   return active.resolveProviderEnvHealth({
     providerId: args.providerId,
-    context: { hostId: args.hostId },
+    context: {
+      hostId: args.hostId,
+    },
   });
 }
 

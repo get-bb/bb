@@ -73,15 +73,18 @@ describe("builtin server artifacts", () => {
     { pluginDir: "environment-project-checkout" },
     { pluginDir: "environment-git-worktree" },
     { pluginDir: "environment-personal-workspace" },
+    { pluginDir: "environment-modal-sandbox" },
   ])(
     "inlines the environment-provider runtime into the $pluginDir server entry",
     async ({ pluginDir }) => {
       const root = await mkdtemp(join(repositoryRoot, ".builtin-server-test-"));
       tempDirs.push(root);
       const source = join(repositoryRoot, "plugins", pluginDir);
+
       const fileNames = (await readdir(source)).filter(
         (fileName) =>
           fileName === "package.json" ||
+          fileName === "Dockerfile" ||
           fileName.endsWith(".ts") ||
           fileName.endsWith(".svg"),
       );
@@ -97,6 +100,18 @@ describe("builtin server artifacts", () => {
         join(repositoryRoot, "node_modules", ".unused-toolchain"),
       );
       const built = await buildPluginServer(root, "0.9.0-test", toolchain);
+
+      if (pluginDir === "environment-modal-sandbox") {
+        await cp(join(source, "scripts"), join(root, "scripts"), {
+          recursive: true,
+        });
+        await import(
+          pathToFileURL(join(root, "scripts/stage-assets.mjs")).href
+        );
+        expect(await readFile(join(root, "dist/Dockerfile"), "utf8")).toEqual(
+          await readFile(join(source, "Dockerfile"), "utf8"),
+        );
+      }
 
       const bundle = await readFile(built.jsPath, "utf8");
       expect(

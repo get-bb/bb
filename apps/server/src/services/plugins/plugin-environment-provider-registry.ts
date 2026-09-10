@@ -1,3 +1,4 @@
+import type { NormalizedPluginEnvironmentComposition } from "@get-bb/plugin-sdk/internal/host-policy";
 import type { NormalizedPluginEnvironmentProvider } from "@get-bb/plugin-sdk/internal/host-policy";
 import type { PluginHookInvocation } from "./plugin-hook-registry.js";
 
@@ -7,7 +8,12 @@ export interface PluginEnvironmentProviderRecord {
   icon?: { bytes: Uint8Array; contentType: string; hash: string };
 }
 
+export interface PluginEnvironmentCompositionRecord {
+  pluginId: string;
+  composition: NormalizedPluginEnvironmentComposition;
+}
 export interface PluginEnvironmentProviderBridge {
+  listEnvironmentCompositions?(): PluginEnvironmentCompositionRecord[];
   listEnvironmentProviders(): PluginEnvironmentProviderRecord[];
   getEnvironmentProvider(
     id: string,
@@ -27,6 +33,10 @@ export function setPluginEnvironmentProviderBridge(
   next: PluginEnvironmentProviderBridge | undefined,
 ): void {
   bridge = next;
+}
+
+export function listEnvironmentCompositions(): PluginEnvironmentCompositionRecord[] {
+  return bridge?.listEnvironmentCompositions?.() ?? [];
 }
 
 export function listEnvironmentProviders(): PluginEnvironmentProviderRecord[] {

@@ -30,6 +30,8 @@ let hangOnDispose = false;
 export default {
   experimental_apiVersion: 1,
   contract: {
+    environment: { input: anySchema, output: anySchema },
+    secretProbe: { input: anySchema, output: anySchema },
     echo: { input: anySchema, output: anySchema },
     wait: { input: anySchema, output: anySchema },
     crash: { input: anySchema, output: anySchema },
@@ -43,6 +45,24 @@ export default {
   },
   experimental_signals: { changed: { payload: anySchema } },
   handlers: {
+    async secretProbe(input, context) {
+      const secret = process.env.TEST_SECRET ?? null;
+      if (input.chunks) {
+        for (const chunk of input.chunks) {
+          await new Promise((resolve) => process.stderr.write(Buffer.from(chunk), resolve));
+          await new Promise((resolve) => setTimeout(resolve, 10));
+        }
+      }
+      if (input.fail) throw new Error(secret);
+      const payload = { type: secret, true: true, ok: true, nested: [{ text: secret }] };
+      await context.experimental_emitSignal("changed", payload);
+      return payload;
+    },
+    async environment(input) {
+      const before = process.env.GATE_VALUE;
+      await new Promise((resolve) => setTimeout(resolve, input.delay ?? 0));
+      return { before: before ?? null, after: process.env.GATE_VALUE ?? null, token: process.env.GH_TOKEN ?? null };
+    },
     echo(input) { return { input, pid: process.pid }; },
     wait(_input, context) {
       return new Promise((resolve) => {
@@ -104,6 +124,7 @@ export default {
 function callCommand(overrides: Partial<PluginCall> = {}): PluginCall {
   return {
     type: "plugin.host.call",
+    contributedEnv: [],
     pluginId: "fixture",
     generation: "generation-1",
     artifact: {
@@ -166,6 +187,149 @@ describe("PluginHostManager", () => {
       Reflect.get(Object(second.output), "pid"),
     );
     expect(fetchArtifact).toHaveBeenCalledOnce();
+  });
+
+  it("scopes setup env, waits for rotation, and returns worker output as-is", async () => {
+    const manager = await createManager({
+      shellEnv: () => ({ npm_config_user_agent: "test" }),
+    });
+    const contribution = (value: string) => [
+      {
+        name: "GATE_VALUE",
+        value,
+        reason: "Gate",
+        source: { core: "machine-environment" as const },
+      },
+      {
+        name: "GH_TOKEN",
+        value: 'worker-secret\nwith"quotes',
+        reason: "Git",
+        source: { core: "machine-git" as const },
+      },
+    ];
+    const [first, rotated] = await Promise.all([
+      manager.call(
+        callCommand({
+          method: "environment",
+          input: { delay: 100 },
+          contributedEnv: contribution("first"),
+        }),
+      ),
+      manager.call(
+        callCommand({
+          method: "environment",
+          input: {},
+          contributedEnv: contribution("rotated"),
+        }),
+      ),
+    ]);
+    expect(first.output).toEqual({
+      before: "first",
+      after: "first",
+      token: 'worker-secret\nwith"quotes',
+    });
+    expect(rotated.output).toEqual({
+      before: "rotated",
+      after: "rotated",
+      token: 'worker-secret\nwith"quotes',
+    });
+    expect(
+      (await manager.call(callCommand({ method: "environment", input: {} })))
+        .output,
+    ).toEqual({ before: null, after: null, token: null });
+  });
+
+  it.each(["type", "true", "changed"])(
+    "preserves worker RPC structure and identifiers when the secret is %s",
+    async (secret) => {
+      const onSignal = vi.fn();
+      const manager = await createManager({ onSignal });
+      const command = callCommand({
+        callId: secret,
+        method: "secretProbe",
+        input: {},
+        contributedEnv: [
+          {
+            name: "TEST_SECRET",
+            value: secret,
+            reason: "Probe",
+            source: { core: "machine-environment" },
+          },
+        ],
+      });
+      const payload = {
+        type: secret,
+        true: true,
+        ok: true,
+        nested: [{ text: secret }],
+      };
+      expect(await manager.call(command)).toEqual({ output: payload });
+      expect(onSignal).toHaveBeenCalledWith({
+        pluginId: "fixture",
+        generation: "generation-1",
+        signal: "changed",
+        payload,
+      });
+      await expect(
+        manager.call({ ...command, input: { fail: true } }),
+      ).rejects.toThrow(secret);
+    },
+  );
+
+  it.each([
+    "first-line\nsecond-line",
+    "first-line\r\nsecond-line",
+    "π-first\nsecond-line",
+  ])("frames worker stderr as-is across byte chunks: %j", async (secret) => {
+    const warn = vi.fn();
+    const manager = await createManager({
+      logger: { debug: vi.fn(), info: vi.fn(), warn },
+    });
+    const command = callCommand({
+      method: "secretProbe",
+      input: {},
+      contributedEnv: [
+        {
+          name: "TEST_SECRET",
+          value: secret,
+          reason: "Probe",
+          source: { core: "machine-environment" },
+        },
+      ],
+    });
+    await manager.call(command);
+    const bytes = Buffer.from(
+      secret.replaceAll("\r\n", "\n").replaceAll("\n", "\r\n") + "\n",
+    );
+    await manager.call({
+      ...command,
+      contributedEnv: [],
+      input: { chunks: [...bytes].map((byte) => [byte]) },
+    });
+    await vi.waitFor(() =>
+      expect(warn).toHaveBeenCalledWith(
+        {
+          pluginId: "fixture",
+          origin: "host",
+          stderr: secret.replaceAll("\r\n", "\n").split("\n")[0],
+        },
+        "Host plugin stderr",
+      ),
+    );
+    const pendingPrefix = Buffer.from(secret.slice(0, 5));
+    await manager.call({
+      ...command,
+      contributedEnv: [],
+      input: { chunks: [[...pendingPrefix]] },
+    });
+    await manager.shutdown();
+    const records = warn.mock.calls.filter(
+      ([, message]) => message === "Host plugin stderr",
+    );
+    expect(records.map(([record]) => record.stderr)).toEqual([
+      ...secret.replaceAll("\r\n", "\n").split("\n"),
+      secret.slice(0, 5),
+    ]);
   });
 
   it("migrates a verified legacy host.js cache entry without downloading", async () => {

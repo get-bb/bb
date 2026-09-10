@@ -443,10 +443,11 @@ function orderBranches(
 
 function CheckoutInputsControl({
   projectId,
-  hostId,
+  target,
   value,
   onChange,
 }: PluginEnvironmentProviderInputsProps) {
+  const hostId = target.kind === "existing-host" ? target.hostId : null;
   const inputs = useMemo(() => readCheckoutInputs(value), [value]);
   const checkout = experimental_useCheckoutState({ hostId, projectId });
   const selectedCheckoutIntent = resolveCheckoutIntent(inputs.branch);
@@ -463,7 +464,7 @@ function CheckoutInputsControl({
   });
   const inputRef = useRef<HTMLInputElement>(null);
   const optionsScrollRef = useRef<HTMLDivElement>(null);
-  const blocker = checkoutBlocker(checkout);
+  const blocker = hostId === null ? null : checkoutBlocker(checkout);
   const nextInputs = useMemo(
     () => buildCheckoutInputs(inputs),
     [inputs.branch, inputs.path],
@@ -488,14 +489,18 @@ function CheckoutInputsControl({
 
   const branchOptions = useMemo(() => {
     const branches =
-      checkoutIntent === "new"
-        ? [
-            ...branchState.branches,
-            ...branchState.remoteBranches.filter(
-              (branch) => !branchState.branches.includes(branch),
-            ),
-          ]
-        : [...branchState.branches];
+      hostId === null
+        ? branchState.remoteBranches
+            .filter((branch) => branch.startsWith("origin/"))
+            .map((branch) => branch.slice("origin/".length))
+        : checkoutIntent === "new"
+          ? [
+              ...branchState.branches,
+              ...branchState.remoteBranches.filter(
+                (branch) => !branchState.branches.includes(branch),
+              ),
+            ]
+          : [...branchState.branches];
     const filtered = filterBranches(branches, deferredQuery);
     const selectedBranch =
       query.trim().length === 0
@@ -507,6 +512,7 @@ function CheckoutInputsControl({
         : null;
     return orderBranches(filtered, selectedBranch);
   }, [
+    hostId,
     branchState.branches,
     branchState.remoteBranches,
     checkoutIntent,
@@ -527,15 +533,19 @@ function CheckoutInputsControl({
       ? `Checkout: ${inputs.branch.name}`
       : inputs.branch?.kind === "new"
         ? `New branch from: ${inputs.branch.baseBranch}`
-        : currentTriggerLabel(checkout);
+        : hostId === null
+          ? "Default branch"
+          : currentTriggerLabel(checkout);
   const triggerTitle =
     blocker?.reason ??
     (inputs.branch?.kind === "existing"
       ? `Checkout branch: ${inputs.branch.name}`
       : inputs.branch?.kind === "new"
         ? `Create a new branch from ${inputs.branch.baseBranch}`
-        : currentMenuLabel(checkout));
-  const inputsDisabled = hostId === null || projectId === null;
+        : hostId === null
+          ? "Use the repository’s default branch"
+          : currentMenuLabel(checkout));
+  const inputsDisabled = projectId === null;
   const updateBranch = (branch: CheckoutBranchSelection | null) => {
     onChange({
       status: "ready",
@@ -618,7 +628,9 @@ function CheckoutInputsControl({
             <BranchPickerSearch
               inputRef={inputRef}
               query={query}
-              enterSelection={branchOptions[0]}
+              enterSelection={
+                branchOptions[0] ?? (hostId === null ? query.trim() : undefined)
+              }
               onEnterSelection={selectBranchAndClose}
               onQueryChange={setQuery}
             />
@@ -631,7 +643,9 @@ function CheckoutInputsControl({
             <BranchPickerSectionHeader label="Start from:" sticky={false} />
             <CheckoutMenuRow
               icon="GitMerge"
-              label={currentMenuLabel(checkout)}
+              label={
+                hostId === null ? "Default branch" : currentMenuLabel(checkout)
+              }
               selected={checkoutIntent === "current"}
               onSelect={() => {
                 setCheckoutIntent("current");
@@ -683,7 +697,18 @@ function CheckoutInputsControl({
                         onSelect={() => selectBranchAndClose(branch)}
                       />
                     ))}
-                    {branchOptions.length === 0 ? (
+                    {hostId === null &&
+                    query.trim() &&
+                    !branchOptions.includes(query.trim()) ? (
+                      <CheckoutMenuRow
+                        icon="GitMerge"
+                        label={`Use ${query.trim()}`}
+                        selected={false}
+                        onSelect={() => selectBranchAndClose(query.trim())}
+                      />
+                    ) : null}
+                    {branchOptions.length === 0 &&
+                    !(hostId === null && query.trim()) ? (
                       <p className="px-2 py-3 text-center text-xs text-muted-foreground">
                         {branchState.isLoading
                           ? "Loading branches..."

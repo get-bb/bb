@@ -5,6 +5,7 @@ import type {
 import {
   createFakePluginHost,
   makeHostResponse,
+  makeThreadResponse,
 } from "@get-bb/plugin-sdk/testing";
 import { describe, expect, it } from "vitest";
 import { PROJECT_CHECKOUT_ENVIRONMENT_PROVIDER_ID } from "./provider-id.js";
@@ -277,3 +278,47 @@ describe("checkout provider validate", () => {
     expect(decision.action).toBe("refuse");
   });
 });
+
+it.each([false, true])(
+  "reports source ownership %s to core's hook policy",
+  async (owned) => {
+    const { bb, harness } = createFakePluginHost({
+      pluginId: "environment-project-checkout",
+      experimental_callHostRpc: (call) => {
+        if (call.method !== "attach") throw new Error("Unexpected host method");
+        return { status: "attached", path: CHECKOUT_PATH, branchName: "main" };
+      },
+      sdk: { environments: { list: () => [] }, threads: { list: () => [] } },
+    });
+    try {
+      await plugin(bb);
+      const provider = harness.registrations.environmentProviders.get(
+        PROJECT_CHECKOUT_ENVIRONMENT_PROVIDER_ID,
+      );
+      if (!provider) throw new Error("Missing provider");
+      const result = await provider.create({
+        project: PROJECT,
+        host: HOST,
+        projectCheckout: { path: CHECKOUT_PATH, experimental_ownsPath: owned },
+        gitRemote: null,
+        inputs: {},
+        thread: makeThreadResponse(),
+        suggestedBranchName: "bb/test",
+        attempt: 1,
+        pathKey: "fixture",
+        rebuild: false,
+        experimental_claimPath: async () => true,
+        previous: null,
+        report: { step() {}, log() {} },
+        signal: new AbortController().signal,
+      });
+      expect(result).toMatchObject({
+        status: "created",
+        path: CHECKOUT_PATH,
+        ownsPath: owned,
+      });
+    } finally {
+      await harness.lifecycle.dispose();
+    }
+  },
+);

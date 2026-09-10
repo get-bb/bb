@@ -18,7 +18,7 @@ import {
 } from "../../internal/command-result-side-effects.js";
 import { handleLiveCommandResultSideEffects } from "../../internal/command-results.js";
 import { NotificationBuffer } from "../lib/notification-buffer.js";
-import { callHostOnlineRpc } from "./online-rpc.js";
+import { callHostOnlineRpc, callHostOnlineRpcForWork } from "./online-rpc.js";
 
 export const LIVE_DAEMON_COMMAND_TIMEOUT_MS = 24 * 60 * 60 * 1000;
 
@@ -225,7 +225,11 @@ export async function runLiveHostCommand<
   const execution =
     args.execution ?? createLiveHostCommandExecution(args.hostId);
   try {
-    const result = await callHostOnlineRpc(deps, {
+    const call =
+      args.command.type === "thread.stop"
+        ? callHostOnlineRpc
+        : callHostOnlineRpcForWork;
+    const result = await call(deps, {
       command: args.command,
       hostId: args.hostId,
       timeoutMs: args.timeoutMs,

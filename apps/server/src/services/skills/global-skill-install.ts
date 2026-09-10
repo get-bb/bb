@@ -11,7 +11,10 @@ import type {
 import { COMMAND_TIMEOUT_MS } from "../../constants.js";
 import { ApiError } from "../../errors.js";
 import type { AppDeps } from "../../types.js";
-import { callHostOnlineRpc } from "../hosts/online-rpc.js";
+import {
+  callHostOnlineRpc,
+  callHostOnlineRpcForWork,
+} from "../hosts/online-rpc.js";
 import { resolveServerOwnedSkillCatalogEntries } from "./injected-skills.js";
 
 const GLOBAL_CLI_SKILL_NAMES: readonly string[] = ["bb-cli"];
@@ -161,7 +164,7 @@ export async function installGlobalCliSkills(
   const results = await Promise.all(
     hosts.map(async (host) => {
       try {
-        const result = await callHostOnlineRpc(deps, {
+        const result = await callHostOnlineRpcForWork(deps, {
           hostId: host.id,
           timeoutMs: COMMAND_TIMEOUT_MS,
           command: { type: "host.install_global_skills", skills },

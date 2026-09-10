@@ -135,3 +135,4 @@ providerId }`) and `Original`, the host's declarative base for the body —
   One registration per provider id per plugin; if two plugins claim one
   provider id the host keeps the first by plugin id and warns. See the
   `app.tsx` example in `references/providers.md`.
+

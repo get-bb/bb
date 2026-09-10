@@ -49,3 +49,25 @@ export async function fetchMachineCode(
     serverUrl: parsed.data.serverUrl,
   };
 }
+
+export async function lookupMachineCode(
+  credential: ConnectCredential,
+  code: string,
+) {
+  const response = await fetch(
+    `${deriveConnectBaseUrl(credential.serverUrl)}/api/connect/machine-code`,
+    {
+      method: "GET",
+      headers: {
+        "x-bb-connect-machine": credential.credential,
+        "x-bb-connect-code": code,
+      },
+      signal: AbortSignal.timeout(10_000),
+    },
+  );
+  if (!response.ok)
+    throw new Error(`Machine code lookup failed (${response.status})`);
+  return z
+    .object({ consumed: z.boolean(), machineId: z.string().nullable() })
+    .parse(await response.json());
+}

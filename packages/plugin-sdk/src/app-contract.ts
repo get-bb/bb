@@ -1422,10 +1422,8 @@ export interface PluginTimelineRendererRegistration {
 export interface PluginEnvironmentProviderInputsProps {
   /** Project selected in the composer; null in projectless compose. */
   projectId: string | null;
-  /**
-   * The enrolled machine the selection names; null before one is picked.
-   */
-  hostId: string | null;
+  /** Whether setup uses an existing host or provisions a new host before create. */
+  target: { kind: "existing-host"; hostId: string } | { kind: "new-host" };
   /**
    * The `inputs` value the selection will carry: null until `onChange`
    * supplies one.
@@ -1457,6 +1455,33 @@ export interface PluginEnvironmentProviderInputsRegistration {
   /** The environment provider id this control supplies inputs for. */
   environmentProviderId: string;
   component: ComponentType<PluginEnvironmentProviderInputsProps>;
+}
+
+/**
+ * Props passed to an `experimental_machineProviderInputs` component. Machine
+ * inputs are persisted and readable by every plugin, so they must contain only
+ * non-secret configuration and references to credentials held in plugin
+ * settings.
+ */
+export interface PluginMachineProviderInputsProps {
+  /** The value persisted with the machine selection. */
+  value: JsonValue | null;
+  /** Replace the submitted value or block submission with a visible reason. */
+  onChange(next: PluginMachineProviderInputsChange): void;
+}
+
+export type PluginMachineProviderInputsChange =
+  | { status: "ready"; value: JsonValue }
+  | { status: "blocked"; reason: string };
+
+/**
+ * Supply the inputs control for one machine provider registered server-side
+ * through `bb.experimental_machines.register`.
+ */
+export interface PluginMachineProviderInputsRegistration {
+  /** The machine provider id this control supplies inputs for. */
+  machineProviderId: string;
+  component: ComponentType<PluginMachineProviderInputsProps>;
 }
 
 // ---------------------------------------------------------------------------
@@ -1535,7 +1560,7 @@ export interface PluginAppSlots {
     registration: PluginCommandPaletteActionRegistration,
   ): void;
   /**
-   * Draw one agent or environment provider's icon with an inline
+   * Draw one agent, environment, or machine provider's icon with an inline
    * React component instead of its `<img>`-rendered logo file (see
    * {@link PluginProviderIconRegistration}). Experimental: see
    * docs/api_to_audit.md.
@@ -1558,6 +1583,14 @@ export interface PluginAppSlots {
    */
   experimental_environmentProviderInputs(
     registration: PluginEnvironmentProviderInputsRegistration,
+  ): void;
+  /**
+   * Supply the non-secret machine inputs control rendered by machine creation
+   * surfaces (see {@link PluginMachineProviderInputsRegistration}).
+   * Experimental: see docs/api_to_audit.md.
+   */
+  experimental_machineProviderInputs(
+    registration: PluginMachineProviderInputsRegistration,
   ): void;
 }
 

@@ -1,3 +1,8 @@
+import {
+  environmentCompositionSchema,
+  type NormalizedPluginEnvironmentComposition,
+} from "../internal/host-policy.js";
+import type { MachineBootstrapApi } from "../machine-bootstrap.js";
 import { createHash } from "node:crypto";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -21,7 +26,9 @@ import {
   isZodSchemaLike,
   storePluginHook,
   validatePluginEnvironmentProviderDeclaration,
+  validatePluginMachineProviderDeclaration,
   type NormalizedPluginEnvironmentProvider,
+  type NormalizedPluginMachineProvider,
   KV_VALUE_MAX_BYTES,
   MENTION_PROVIDER_ID_PATTERN,
   normalizeMentionProviderTriggers,
@@ -65,6 +72,7 @@ import type {
   PluginCliResult,
   PluginHookHandler,
   PluginEnvironments,
+  PluginMachines,
   PluginHookName,
   PluginHooks,
   PluginEvents,
@@ -284,9 +292,18 @@ export interface FakePluginRegistrations {
   hooks: {
     [K in PluginHookName]: PluginHookHandler<K> | null;
   };
+  environmentCompositions: ReadonlyMap<
+    string,
+    NormalizedPluginEnvironmentComposition
+  >;
   environmentProviders: ReadonlyMap<
     string,
     NormalizedPluginEnvironmentProvider
+  >;
+  machineProviders: ReadonlyMap<string, NormalizedPluginMachineProvider>;
+  serverAccessProviders: ReadonlyMap<
+    string,
+    import("../backend-contract.js").ServerAccessProviderDeclaration
   >;
   mentionProviders: FakeMentionProviderRecord[];
   /** Live provider registrations from `bb.providers.register`
@@ -478,6 +495,8 @@ export interface FakePluginHarness
 }
 
 export interface CreateFakePluginHostOptions {
+  machineBootstrap?: MachineBootstrapApi;
+  machineResource?: (hostId: string) => Promise<JsonValue | null>;
   /** Defaults to "test-plugin". */
   pluginId?: string;
   /**
@@ -1779,6 +1798,8 @@ function createFakePluginHostInternal(
   const threadEventHandlers: {
     [E in PluginThreadEventName]: Array<PluginThreadEventHandler<E>>;
   } = {
+    "experimental_thread.events": [],
+    "experimental_terminal.input": [],
     "thread.created": [],
     "thread.active": [],
     "thread.idle": [],
@@ -1797,9 +1818,18 @@ function createFakePluginHostInternal(
   } = {
     "message.dispatch": null,
   };
+  const environmentCompositions = new Map<
+    string,
+    NormalizedPluginEnvironmentComposition
+  >();
   const environmentProviders = new Map<
     string,
     NormalizedPluginEnvironmentProvider
+  >();
+  const machineProviders = new Map<string, NormalizedPluginMachineProvider>();
+  const serverAccessProviders = new Map<
+    string,
+    import("../backend-contract.js").ServerAccessProviderDeclaration
   >();
   const disposeHooks: Array<() => void | Promise<void>> = [];
   const serviceControllers: AbortController[] = [];
@@ -2112,8 +2142,25 @@ function createFakePluginHostInternal(
   };
 
   const experimental_environments: PluginEnvironments = {
-    register(declaration) {
+    register(
+      declaration:
+        | import("@get-bb/plugin-sdk").PluginEnvironmentProviderDeclaration
+        | NormalizedPluginEnvironmentComposition,
+    ) {
       assertLive();
+      if ("machineProviderId" in declaration) {
+        const composition = environmentCompositionSchema.parse(declaration);
+        if (environmentProviders.has(composition.id))
+          throw new Error(
+            "Environment ID is already registered as a concrete provider",
+          );
+        environmentCompositions.set(composition.id, composition);
+        return;
+      }
+      if (environmentCompositions.has(declaration.id))
+        throw new Error(
+          "Environment ID is already registered as a composition",
+        );
       const target = validatePluginEnvironmentProviderDeclaration(declaration);
       const problem =
         target.icon === null
@@ -2126,6 +2173,33 @@ function createFakePluginHostInternal(
     async recheck() {
       assertLive();
       requestedDrains += 1;
+    },
+  };
+
+  const unavailableMachineBootstrap = (): never => {
+    throw new Error(
+      "Configure machineBootstrap in createFakePluginHost to exercise machine bootstrap",
+    );
+  };
+  const experimental_machines: PluginMachines = {
+    async getResource(hostId) {
+      assertLive();
+      return options.machineResource ? options.machineResource(hostId) : null;
+    },
+    ...(options.machineBootstrap ?? {
+      bootstrap: unavailableMachineBootstrap,
+    }),
+    register(declaration) {
+      assertLive();
+      const target = validatePluginMachineProviderDeclaration(declaration);
+      const problem =
+        target.icon === null
+          ? null
+          : undeclaredIconProblem(pluginId, declaredIconNames, target.icon);
+      if (problem !== null) {
+        throw new Error(providerIconRefusalMessage(target.id, problem));
+      }
+      machineProviders.set(target.id, target);
     },
   };
 
@@ -2145,6 +2219,17 @@ function createFakePluginHostInternal(
     events,
     experimental_hooks,
     experimental_environments,
+    experimental_machines,
+    experimental_serverAccess: {
+      register(declaration) {
+        assertLive();
+        serverAccessProviders.set(declaration.id, declaration);
+      },
+      recheck() {
+        assertLive();
+        requestedDrains += 1;
+      },
+    },
     status,
     server,
     hosts,
@@ -2236,6 +2321,10 @@ function createFakePluginHostInternal(
       },
       get threadEventHandlers() {
         return {
+          "experimental_thread.events":
+            threadEventHandlers["experimental_thread.events"].length,
+          "experimental_terminal.input":
+            threadEventHandlers["experimental_terminal.input"].length,
           "thread.created": threadEventHandlers["thread.created"].length,
           "thread.active": threadEventHandlers["thread.active"].length,
           "thread.idle": threadEventHandlers["thread.idle"].length,
@@ -2255,10 +2344,18 @@ function createFakePluginHostInternal(
       get hooks() {
         return { ...hooks };
       },
+      get environmentCompositions() {
+        return new Map(environmentCompositions);
+      },
       get environmentProviders() {
         return new Map(environmentProviders);
       },
-
+      get serverAccessProviders() {
+        return new Map(serverAccessProviders);
+      },
+      get machineProviders() {
+        return new Map(machineProviders);
+      },
       mentionProviders,
       providerRegistrations,
       providerEnvResolvers,

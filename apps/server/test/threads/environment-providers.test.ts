@@ -12,12 +12,14 @@ import {
   createProjectSource,
   ensurePersonalProject,
   getEnvironment,
+  getNonDestroyedHostByLaunchKey,
   getPreparingEnvironment,
   getDefaultProjectSource,
   getThread,
   getThreadStartupContext,
   listEnvironments,
   listEvents,
+  setProjectGitRemoteUrlIfMissing,
 } from "@bb/db";
 import { PERSONAL_PROJECT_ID, type JsonValue } from "@bb/domain";
 import type {
@@ -27,14 +29,20 @@ import type {
   PluginHookName,
 } from "@get-bb/plugin-sdk";
 import type { PluginEnvironmentProviderValidateContext } from "@get-bb/plugin-sdk/environment-provider";
-import { validatePluginEnvironmentProviderDeclaration } from "@get-bb/plugin-sdk/internal/host-policy";
+import type { PluginMachineProviderCreateContext } from "@get-bb/plugin-sdk/machine-provider";
+import {
+  validatePluginEnvironmentProviderDeclaration,
+  validatePluginMachineProviderDeclaration,
+} from "@get-bb/plugin-sdk/internal/host-policy";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { z } from "zod";
 import { ApiError } from "../../src/errors.js";
 import {
   setPluginEnvironmentProviderBridge,
+  type PluginEnvironmentCompositionRecord,
   type PluginEnvironmentProviderRecord,
 } from "../../src/services/plugins/plugin-environment-provider-registry.js";
+import { setPluginMachineProviderBridge } from "../../src/services/plugins/plugin-machine-provider-registry.js";
 import {
   setPluginHookProvider,
   type PluginHookRegistration,
@@ -95,7 +103,10 @@ const CONTAINER_INPUTS = z.object({
   cpus: z.number().int().positive().default(2),
 });
 
-function installTargets(fakes: FakeTarget[]): void {
+function installTargets(
+  fakes: FakeTarget[],
+  compositions: PluginEnvironmentCompositionRecord[] = [],
+): void {
   const records: PluginEnvironmentProviderRecord[] = fakes.map((fake) => ({
     pluginId: PLUGIN_ID,
     provider: validatePluginEnvironmentProviderDeclaration({
@@ -117,6 +128,7 @@ function installTargets(fakes: FakeTarget[]): void {
     }),
   }));
   setPluginEnvironmentProviderBridge({
+    listEnvironmentCompositions: () => compositions,
     listEnvironmentProviders: () => records,
     getEnvironmentProvider: (id) =>
       records.find((record) => record.provider.id === id),
@@ -165,6 +177,7 @@ function installEnvironmentIntentProbe(): PluginDispatchEnvironmentIntent[] {
 afterEach(() => {
   clearAllThreadProvisionSchedules();
   setPluginEnvironmentProviderBridge(undefined);
+  setPluginMachineProviderBridge(undefined);
   setPluginHookProvider(undefined);
 });
 
@@ -191,6 +204,116 @@ function seedTargetFixture(
   });
   return { environment, host, project, session };
 }
+
+describe("machine and environment provider composition", () => {
+  it("creates the environment before its machine and mirrors machine failure", async () => {
+    await withTestHarness(async (harness) => {
+      const { host } = seedHostSession(harness.deps, {
+        id: "composition-environment-first",
+      });
+      const { project } = seedProjectWithSource(harness.deps, {
+        hostId: host.id,
+      });
+      setProjectGitRemoteUrlIfMissing(
+        harness.db,
+        harness.hub,
+        project.id,
+        "https://example.test/project.git",
+      );
+      const started = createDeferredPromise<void>();
+      const release = createDeferredPromise<void>();
+      const machine = {
+        pluginId: "cloud",
+        provider: validatePluginMachineProviderDeclaration({
+          description: "Provision a test machine.",
+          icon: "Terminal",
+          id: "test-machine",
+          displayName: "Test machine",
+          create: async ({ report }: PluginMachineProviderCreateContext) => {
+            report.step("Booting cloud machine");
+            report.log("Allocating VM\n");
+            started.resolve();
+            await release.promise;
+            return { status: "failed" as const, message: "Cloud quota exceeded" };
+          },
+          reconcileCleanup: async () => ({ status: "removed" }),
+          remove: async () => ({ status: "removed" }),
+        }),
+      };
+      setPluginMachineProviderBridge({
+        listMachineProviders: () => [machine],
+        getMachineProvider: (id) =>
+          id === machine.provider.id ? machine : undefined,
+        invokeProvider: async (_pluginId, _label, run) => ({
+          ok: true,
+          value: await run(),
+        }),
+        decisionTimeoutMs: 10_000,
+      });
+      installTargets(
+        [
+          {
+            id: "project-checkout",
+            requiresProjectCheckout: true,
+            provision: () => {
+              throw new Error("Environment provider started before the machine");
+            },
+          },
+        ],
+        [
+          {
+            pluginId: "cloud",
+            composition: {
+              id: "test-sandbox",
+              displayName: "Test sandbox",
+              machineProviderId: "test-machine",
+              environmentProviderId: "project-checkout",
+            },
+          },
+        ],
+      );
+
+      const thread = await createThreadFromRequest(harness.deps, {
+        environment: {
+          type: "provider",
+          environmentProviderId: "test-sandbox",
+          inputs: null,
+        },
+        projectId: project.id,
+        input: textInput("Create it"),
+        origin: "app",
+        providerId: "codex",
+        model: "requested-model",
+        startedOnBehalfOf: null,
+      });
+
+      await started.promise;
+      await expect
+        .poll(() => getPreparingEnvironment(harness.db, thread.id))
+        .toMatchObject({
+          status: "creating",
+          statusMessage: "Booting cloud machine",
+          pendingLog: expect.stringContaining("Allocating VM"),
+        });
+      const machineHost = getNonDestroyedHostByLaunchKey(harness.db, thread.id);
+      expect(machineHost).toMatchObject({
+        phase: "creating",
+        statusMessage: "Booting cloud machine",
+      });
+      expect(getPreparingEnvironment(harness.db, thread.id)?.hostId).toBe(
+        machineHost?.id,
+      );
+
+      release.resolve();
+      await expect
+        .poll(() => getPreparingEnvironment(harness.db, thread.id))
+        .toMatchObject({
+          status: "error",
+          statusMessage: "Cloud quota exceeded",
+        });
+    });
+  });
+});
 
 function createTargetThread(
   harness: TestAppHarness,
@@ -1417,6 +1540,7 @@ describe("provider inputs are parsed at create time", () => {
       };
       expect(body.providers).toEqual([
         {
+          machineProviderId: null,
           id: PROVIDER_ID,
           displayName: "Fake container",
           icon: null,
@@ -1441,6 +1565,7 @@ describe("provider inputs are parsed at create time", () => {
           availability: null,
         },
         {
+          machineProviderId: null,
           id: "plain",
           displayName: "Fake container",
           icon: null,

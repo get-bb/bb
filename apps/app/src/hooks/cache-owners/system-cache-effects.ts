@@ -9,6 +9,7 @@ import {
   allHostQueryKeyPrefix,
   allProjectPathsQueryKeyPrefix,
   allSystemExecutionOptionsQueryKeyPrefix,
+  allSystemMachineProvidersQueryKeyPrefix,
   allSystemProvidersQueryKeyPrefix,
   allSystemThemesQueryKeyPrefix,
   allTerminalsQueryKeyPrefix,
@@ -110,6 +111,14 @@ export function invalidateSystemProviders({
 }: QueryClientArg): Promise<void> {
   return queryClient.invalidateQueries({
     queryKey: allSystemProvidersQueryKeyPrefix(),
+  });
+}
+
+export function invalidateMachineProviders({
+  queryClient,
+}: QueryClientArg): Promise<void> {
+  return queryClient.invalidateQueries({
+    queryKey: allSystemMachineProvidersQueryKeyPrefix(),
   });
 }
 

@@ -15,6 +15,7 @@ import type {
 import type {
   ProjectResponse,
   SystemEnvironmentProvider,
+  SystemMachineProvider,
 } from "@bb/server-contract";
 import { EMPTY_ORDERED_MENTION_SUGGESTIONS } from "@bb/client-core";
 import {
@@ -323,6 +324,7 @@ export const STORY_WORKTREE_OPTIONS: readonly ReuseThreadOption[] = [
 export const STORY_ENVIRONMENT_PROVIDERS: readonly SystemEnvironmentProvider[] =
   [
     {
+      machineProviderId: null,
       id: "project-checkout",
       displayName: "Project checkout",
       icon: "Laptop",
@@ -340,6 +342,7 @@ export const STORY_ENVIRONMENT_PROVIDERS: readonly SystemEnvironmentProvider[] =
       inputs: null,
     },
     {
+      machineProviderId: null,
       id: "git-worktree",
       displayName: "Worktree",
       icon: "GitBranch",
@@ -357,6 +360,7 @@ export const STORY_ENVIRONMENT_PROVIDERS: readonly SystemEnvironmentProvider[] =
       inputs: null,
     },
     {
+      machineProviderId: null,
       id: "personal-workspace",
       displayName: "Personal workspace",
       icon: "Folder",
@@ -374,6 +378,20 @@ export const STORY_ENVIRONMENT_PROVIDERS: readonly SystemEnvironmentProvider[] =
       inputs: null,
     },
   ];
+
+export const STORY_MACHINE_PROVIDERS: readonly SystemMachineProvider[] = [
+  {
+    id: "modal-sandbox",
+    displayName: "Modal Sandbox",
+    description: "Run a machine for development.",
+    icon: "Box",
+    logoUrl: null,
+    pluginId: "environment-modal-sandbox",
+    inputs: null,
+    acceptsEmptyInputs: true,
+    supportsSuspend: true,
+  },
+];
 
 export const STORY_PROJECTS: readonly ProjectSelectorOption[] = [
   { id: PROJECT_IDS.bb, name: PROJECT_NAMES.bb },

@@ -48,7 +48,7 @@ import {
   useReorderProject,
   useUpdateProject,
 } from "@/hooks/mutations/project-mutations";
-import { selectPersistentHosts, useHosts } from "@/hooks/queries/host-queries";
+import { selectHosts, useHosts } from "@/hooks/queries/host-queries";
 import { useSidebarNavigation } from "@/hooks/queries/sidebar-navigation-query";
 import { useQuickCreateProject } from "@/hooks/useQuickCreateProject";
 import { getSettingsProjectRoutePath } from "@/lib/route-paths";
@@ -289,7 +289,7 @@ export function ProjectsSettingsSection() {
     [projects],
   );
   const hosts = useMemo(
-    () => selectPersistentHosts(hostsQuery.data),
+    () => selectHosts(hostsQuery.data),
     [hostsQuery.data],
   );
   const hostById = useMemo(

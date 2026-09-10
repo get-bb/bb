@@ -183,3 +183,21 @@ path-shaped `baseUrl`. Append individually encoded relative path segments to
 serve browser assets from that confined host root. This is the preferred
 transport for plugin images and sandboxed HTML with sibling-relative assets;
 preview URLs expire and never reveal the host id or absolute root.
+
+## Standalone machines
+
+`bb.sdk.hosts.experimental_listProviders({ projectId? })` discovers machine providers and their
+input schemas; its optional `projectId` only resolves the environment row shown
+for a project. `bb.sdk.hosts.experimental_create({ machineProviderId, inputs, key?, wait?, signal? })`
+returns a public Host; a machine belongs to no project, and `inputs: null` is
+for a provider that accepts no inputs. Supply a stable key for
+idempotent retries. The default waits until active; `wait: false` returns the
+creating host for polling with `get`. Creation does not create an environment or a thread.
+`bb.sdk.hosts.experimental_suspend({ hostId })` and `resume({ hostId })` require the provider's
+paired suspend/resume operations. They return the updated public Host with HTTP
+202 once the tracked operation starts; read its lifecycle state for completion.
+`retryCleanup({ hostId })` retries failed
+provider teardown. `get({ hostId })` additionally returns nullable
+`connectMachineId` from trusted gate metadata for legacy access revocation;
+Connect now persists its revocation identity during acquire, before enrollment.
+Host lists do not expose that detail.

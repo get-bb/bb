@@ -155,7 +155,6 @@ bb.providers.experimental_contributeEnv("claude-code", async (context) => [
     name: "ANTHROPIC_BASE_URL",
     value: { serverPath: `/plugins/my-proxy/${context.hostId}` },
     reason: "Route Claude through the plugin's authenticated proxy",
-    secret: true,
   },
 ]);
 ```
@@ -163,7 +162,7 @@ bb.providers.experimental_contributeEnv("claude-code", async (context) => [
 The server calls the resolver for every matching start, resume, fork, and turn
 command. Its `ExperimentalPluginProviderEnvContext` has `threadId`, `projectId`,
 and `hostId`; return at most 32 `ExperimentalPluginProviderEnvEntry` values.
-Names must match `[A-Z_][A-Z0-9_]*`; `reason` and `secret` are required. A
+Names must match `[A-Z_][A-Z0-9_]*`; `reason` is required. A
 literal `value` is forwarded as-is. `{ serverPath: "/..." }` is expanded by
 the selected host against its authenticated `BB_SERVER_URL`, which is the
 right form for a server route that must work from enrolled machines.
@@ -171,9 +170,9 @@ right form for a server route that must work from enrolled machines.
 Contributions override the host shell environment. If multiple plugins return
 the same name, the earlier registration wins and BB logs the conflict. A
 resolver that throws, times out after five seconds, or returns invalid entries
-contributes nothing for that command without blocking other plugins. Mark
-credentials and sensitive URLs with `secret: true`; BB passes the real value
-to the provider but masks it in `provider.env-resolved` timeline events.
+contributes nothing for that command without blocking other plugins. BB passes
+values to the provider and reports them as-is in `provider.env-resolved`
+timeline events, provider output, and diagnostics.
 
 When the contributed environment supplies credentials that replace a local
 login, pair the resolver with

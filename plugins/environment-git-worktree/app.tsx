@@ -26,10 +26,11 @@ export function selectedBranchName(value: JsonValue | null): string | null {
 
 function WorktreeInputsControl({
   projectId,
-  hostId,
+  target,
   value,
   onChange,
 }: PluginEnvironmentProviderInputsProps) {
+  const hostId = target.kind === "existing-host" ? target.hostId : null;
   useEffect(() => {
     if (value === null) {
       onChange({ status: "ready", value: DEFAULT_INPUTS });

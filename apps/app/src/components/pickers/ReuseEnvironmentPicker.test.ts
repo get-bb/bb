@@ -6,6 +6,7 @@ import {
 } from "./ReuseEnvironmentPicker";
 
 const provider: SystemEnvironmentProvider = {
+  machineProviderId: null,
   id: "project-checkout",
   displayName: "Project checkout",
   icon: "Laptop",

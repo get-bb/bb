@@ -232,7 +232,9 @@ export default async function checkoutPlugin(bb: BbPluginApi): Promise<void> {
         return {
           status: "created",
           path: result.path,
-          ownsPath: false,
+          ownsPath:
+            result.path === context.projectCheckout.path &&
+            context.projectCheckout.experimental_ownsPath === true,
         };
       } catch (error) {
         if (context.signal.aborted) throw error;

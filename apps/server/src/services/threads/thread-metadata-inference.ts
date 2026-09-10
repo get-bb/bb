@@ -82,7 +82,9 @@ export async function inferThreadMetadata(
       environmentId: args.environmentId,
       provisioningId,
       status: "active",
-      entries: [metadataCompletedEntry({ outcome, startedAt })],
+      entries: [
+        metadataCompletedEntry({ outcome, startedAt }),
+      ],
     });
   }
 

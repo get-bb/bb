@@ -74,3 +74,33 @@ export function useRetryHostUpdate() {
     mutationFn: (hostId: string) => sdk.hosts.retryUpdate({ hostId }),
   });
 }
+
+function useHostLifecycleMutation<Result>(
+  mutationFn: (hostId: string) => Promise<Result>,
+) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn,
+    onSuccess: () => {
+      invalidateHostListQueries({ queryClient });
+    },
+  });
+}
+
+export function useSuspendHost() {
+  return useHostLifecycleMutation((hostId) =>
+    sdk.hosts.experimental_suspend({ hostId }),
+  );
+}
+
+export function useResumeHost() {
+  return useHostLifecycleMutation((hostId) =>
+    sdk.hosts.experimental_resume({ hostId }),
+  );
+}
+
+export function useRetryHostCleanup() {
+  return useHostLifecycleMutation((hostId) =>
+    sdk.hosts.experimental_retryCleanup({ hostId }),
+  );
+}

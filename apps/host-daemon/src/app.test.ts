@@ -34,6 +34,7 @@ import type {
 import type { FetchFn } from "./server-client.js";
 import type { CreateReconnectingWebSocket } from "./server-connection.js";
 import type { ReconnectingWebSocketLike } from "./server-connection-support.js";
+import { MACHINE_SUSPENSION_MARKER } from "./suspension-marker.js";
 
 interface RecordedFetchRequest {
   body: string | null;
@@ -60,6 +61,7 @@ interface RuntimeOptionsRef {
 
 interface HostDaemonAppFixture {
   app: HostDaemonApp;
+  dataDir: string;
   fetchRecorder: FetchRecorder;
   logger: ReturnType<typeof createLogger>;
   runtimeOptions: RuntimeOptionsRef;
@@ -196,7 +198,9 @@ function createFetchRecorder(
   };
 }
 
-function createOpeningWebSocket(): CreateReconnectingWebSocket {
+function createOpeningWebSocket(
+  onCreate?: (socket: ReconnectingWebSocketLike) => void,
+): CreateReconnectingWebSocket {
   return (urlProvider) => {
     let readyState = 0;
     const socket: ReconnectingWebSocketLike = {
@@ -225,6 +229,7 @@ function createOpeningWebSocket(): CreateReconnectingWebSocket {
       socket.onclose?.({ code: 1000, reason: "test-reconnect" });
       void openSocket();
     });
+    onCreate?.(socket);
     void openSocket();
     return socket;
   };
@@ -366,7 +371,11 @@ afterEach(async () => {
 
 async function createAppFixture(
   args: CreateFetchRecorderArgs = {},
-  options: { closeMachineAuthProxy?: () => Promise<void> } = {},
+  options: {
+    closeMachineAuthProxy?: () => Promise<void>;
+    createWebSocket?: CreateReconnectingWebSocket;
+    exitProcess?: (code: number) => void;
+  } = {},
 ): Promise<HostDaemonAppFixture> {
   const dataDir = await makeTempDir("bb-host-daemon-app-test-");
   const fetchRecorder = createFetchRecorder(args);
@@ -376,7 +385,6 @@ async function createAppFixture(
     dataDir,
     serverUrl: "http://127.0.0.1:3334",
     hostKey: "host-key-app-test",
-    hostType: "persistent",
     hostId: "host-app-test",
     hostName: "App Test Host",
     instanceId: "instance-app-test",
@@ -388,7 +396,8 @@ async function createAppFixture(
       return createFakeRuntime();
     },
     fetchFn: fetchRecorder.fetchFn,
-    createWebSocket: createOpeningWebSocket(),
+    createWebSocket: options.createWebSocket ?? createOpeningWebSocket(),
+    ...(options.exitProcess ? { exitProcess: options.exitProcess } : {}),
     ...(options.closeMachineAuthProxy
       ? { closeMachineAuthProxy: options.closeMachineAuthProxy }
       : {}),
@@ -396,6 +405,7 @@ async function createAppFixture(
 
   return {
     app,
+    dataDir,
     fetchRecorder,
     logger,
     runtimeOptions,
@@ -403,6 +413,33 @@ async function createAppFixture(
 }
 
 describe("createHostDaemonApp", () => {
+  it("acknowledges machine shutdown, cleans up, and exits", async () => {
+    let socket: ReconnectingWebSocketLike | undefined;
+    const exitProcess = vi.fn();
+    const { app, dataDir } = await createAppFixture(
+      {},
+      {
+        createWebSocket: createOpeningWebSocket((created) => {
+          socket = created;
+        }),
+        exitProcess,
+      },
+    );
+    await app.daemon.start();
+    if (socket === undefined) throw new Error("Expected daemon socket");
+
+    socket.onmessage?.({ data: JSON.stringify({ type: "machine.shutdown" }) });
+    await app.daemon.waitUntilStopped();
+
+    await expect(
+      fs.access(path.join(dataDir, MACHINE_SUSPENSION_MARKER)),
+    ).resolves.toBeUndefined();
+    expect(socket.send).toHaveBeenCalledWith(
+      JSON.stringify({ type: "machine.shutdown-ack" }),
+    );
+    expect(exitProcess).toHaveBeenCalledWith(0);
+  });
+
   it("closes the machine authentication proxy during daemon shutdown", async () => {
     const closeMachineAuthProxy = vi.fn(async () => undefined);
     const { app } = await createAppFixture({}, { closeMachineAuthProxy });
@@ -438,7 +475,6 @@ describe("createHostDaemonApp", () => {
       dataDir,
       serverUrl: "http://127.0.0.1:3334",
       hostKey: "host-key-app-test",
-      hostType: "persistent",
       hostId: "host-app-test",
       hostName: "App Test Host",
       instanceId: "instance-app-test",
@@ -540,7 +576,6 @@ describe("createHostDaemonApp", () => {
       dataDir,
       serverUrl: "http://127.0.0.1:3334",
       hostKey: "host-key-app-test",
-      hostType: "persistent",
       hostId: "host-app-test",
       hostName: "App Test Host",
       instanceId: "instance-app-test",
@@ -770,7 +805,6 @@ describe("createHostDaemonApp", () => {
       dataDir,
       serverUrl: "http://127.0.0.1:3334",
       hostKey: "host-key-retired-env",
-      hostType: "persistent",
       hostId: "host-retired-env",
       hostName: "Retired Environment Host",
       instanceId: "instance-retired-env",

@@ -1,3 +1,6 @@
+import { ensureHostSessionReadyForWork } from "../hosts/host-lifecycle.js";
+import { isMachineWaitingForExecution } from "../machines/lifecycle.js";
+import { waitForMachineMaintenance } from "../machines/provider-orchestration.js";
 import {
   getQueuedThreadMessage,
   getThread,
@@ -92,6 +95,7 @@ function prepareQueuedMessageDispatchWake(
       });
       return [];
     case "host-connected": {
+      if (isMachineWaitingForExecution(deps, wake.hostId)) return [];
       const prepared: PreparedQueuedMessageDispatchWake[] = [];
       for (const threadId of listThreadIdsWithHostOfflineQueueWaits(
         deps.db,
@@ -156,10 +160,50 @@ function schedulePreparedQueuedMessageDispatch(
   });
 }
 
+const queuedMachineReadiness = new WeakMap<
+  QueueDispatchDeps["db"],
+  Set<string>
+>();
+
+export function requestQueuedMachineReadiness(
+  deps: QueueDispatchDeps,
+  hostId: string,
+): void {
+  const pending = queuedMachineReadiness.get(deps.db) ?? new Set<string>();
+  queuedMachineReadiness.set(deps.db, pending);
+  if (pending.has(hostId)) return;
+  pending.add(hostId);
+  void waitForMachineMaintenance(deps, hostId)
+    .then(() => {
+      return ensureHostSessionReadyForWork(deps, { hostId });
+    })
+    .then(() => {
+      requestQueuedMessageDispatch(deps, { kind: "host-connected", hostId });
+    })
+    .catch((error) => {
+      deps.logger.warn(
+        { hostId, error },
+        "Could not prepare machine for queued messages",
+      );
+    })
+    .finally(() => pending.delete(hostId));
+}
+
 export function requestQueuedMessageDispatch(
   deps: QueueDispatchDeps,
   wake: QueuedMessageDispatchWake,
 ): void {
+  if (
+    wake.kind === "host-connected" &&
+    isMachineWaitingForExecution(deps, wake.hostId)
+  ) {
+    if (
+      listThreadIdsWithHostOfflineQueueWaits(deps.db, wake.hostId).length > 0
+    ) {
+      requestQueuedMachineReadiness(deps, wake.hostId);
+    }
+    return;
+  }
   for (const prepared of prepareQueuedMessageDispatchWake(deps, wake)) {
     schedulePreparedQueuedMessageDispatch(deps, prepared);
   }

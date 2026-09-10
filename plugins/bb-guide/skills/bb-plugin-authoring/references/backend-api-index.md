@@ -73,6 +73,17 @@ Read the installed declarations for exact current signatures.
 - `PluginDispatchExecutionSources`
 - `PluginEnvironments` — `bb.experimental_environments`: `register` +
   `recheck` (see backend-events.md, environment providers)
+- `PluginServerAccess` — `bb.experimental_serverAccess.register`
+- `ServerAccessProviderDeclaration`
+- `ServerAccessGrant`
+- `ServerAccessSelection`
+- `PluginMachines` — `bb.experimental_machines.register` and bootstrap helper (see backend-machines.md)
+- `MachineExecutorRequest` — argv, timeout, signal, optional private stdin
+- `MachineExecutor` — transport exec
+- `MachineBootstrapRequest` — durable key, optional executor and access selection, report, signal
+- `MachineBootstrapApi` — bootstrap
+- `PluginMachineProviderDeclaration`
+- `PluginMachineValidateDecision`
 - `PluginEnvironmentProviderDeclaration`
 - `PluginEnvironmentProviderRequirements` — `requires`, e.g.
   `{ gitCheckout: true }`; also `projectCheckout`, `gitRemote` and `projectless`.
@@ -278,6 +289,23 @@ Read the installed declarations for exact current signatures.
 - `PluginEnvironmentProviderRemoveContext` — includes the private
   `resource` returned by the launch that made the environment
 - `PluginEnvironmentProviderRemoveResult`
+
+## `@get-bb/plugin-sdk/machine-provider`
+
+- `PluginMachineProviderDefinition` — id, display, description, icon, inputs,
+  availability, validation, create, optional paired suspend/resume,
+  `ephemeral` automatic retirement policy, and remove
+- `PluginMachineProviderInputsSchema`
+- `PluginMachineProviderAvailability`
+- `PluginMachineProviderValidateContext`
+- `PluginMachineProviderCreateContext` — async `checkpoint(resource)` after
+  preparing enrollment and allocating, before bootstrap; never bundle credentials
+- `PluginMachineProviderCreateResult`
+- `PluginMachineProviderLifecycleContext` — shared create, suspend and resume
+  context with a durable `checkpoint` resource callback
+- `PluginMachineProviderProgress`
+- `PluginMachineProviderResourceResult`
+- `PluginMachineProviderRemoveResult`
 
 ## `@get-bb/plugin-sdk/ai-services`
 

@@ -208,6 +208,47 @@ describe("surface card copy", () => {
     expect(eventCopy).toContain("cancelled before dispatch");
   });
 
+  it("documents durable machine lifecycle checkpoints", () => {
+    const machineProviders = SURFACES_BY_ID.get("machine-providers");
+    expect(machineProviders?.apiSymbols).toContain(
+      "PluginMachineProviderLifecycleContext",
+    );
+    expect(machineProviders?.bullets.join(" ")).toContain(
+      "Await suspend.checkpoint(resource) before destructive cleanup",
+    );
+    expect(machineProviders?.bullets.join(" ")).toContain(
+      "host's lifecycle phase and message",
+    );
+  });
+
+  it("maps bootstrap and checkpointed allocation to the machine surface", () => {
+    const machines = SURFACES_BY_ID.get("machine-providers");
+    expect(machines?.apiSymbols).toEqual(
+      expect.arrayContaining([
+        "MachineExecutorRequest",
+        "MachineExecutor",
+        "MachineBootstrapRequest",
+        "MachineBootstrapApi",
+        "PluginMachineProviderCreateContext",
+        "PluginMachineProviderInputsProps",
+        "PluginMachineProviderInputsChange",
+        "PluginMachineProviderInputsRegistration",
+      ]),
+    );
+    expect(machines?.bullets.join(" ")).toContain(
+      "Await create.checkpoint(resource)",
+    );
+    expect(machines?.bullets.join(" ")).toContain("--environment-provider");
+    expect(SURFACES_BY_ID.get("server-access")?.apiSymbols).toEqual(
+      expect.arrayContaining([
+        "PluginServerAccess",
+        "ServerAccessProviderDeclaration",
+        "ServerAccessGrant",
+        "ServerAccessSelection",
+      ]),
+    );
+  });
+
   it("follows the lead-then-bullets template", () => {
     for (const group of SURFACE_GROUPS) {
       for (const surface of group.surfaces) {

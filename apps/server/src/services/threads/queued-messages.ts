@@ -729,7 +729,7 @@ function describeCoreWait(waitingOn: QueuedMessageWaitingOn | null): string {
     case "provisioning":
       return "the thread's workspace is still being prepared";
     case "host-offline":
-      return `the "${waitingOn.hostName}" host is not connected`;
+      return `the "${waitingOn.hostName}" host is not ready`;
     case "interaction":
       return "the thread is waiting for you to answer a pending interaction";
     case "turn-starting":

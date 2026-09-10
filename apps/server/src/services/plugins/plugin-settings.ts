@@ -39,7 +39,7 @@ function isSecret(descriptor: PluginSettingDescriptor): boolean {
   return descriptor.type === "string" && descriptor.secret === true;
 }
 
-async function readSecret(
+export async function readSecret(
   dataDir: string,
   pluginId: string,
   key: string,

@@ -1,4 +1,3 @@
-import { MachineStatusDot } from "@/components/machines/MachineStatusDot";
 import { useMemo } from "react";
 import type { Host } from "@bb/domain";
 import { Icon } from "@bb/shared-ui/icon";
@@ -15,13 +14,16 @@ import {
   COARSE_POINTER_ICON_SIZE_CLASS,
 } from "@bb/shared-ui/coarse-pointer-sizing";
 import { LIST_HOVER_TRANSITION } from "@bb/shared-ui/motion";
-import {
-  selectPersistentHosts,
-  selectPrimaryHost,
-} from "@/hooks/queries/host-queries";
+import { MachineStatusDot } from "@/components/machines/MachineStatusDot";
+import { selectHosts, selectPrimaryHost } from "@/hooks/queries/host-queries";
 import { formatRelativeTime } from "@/lib/relative-time";
 import { cn } from "@bb/shared-ui/lib/utils";
 import { formatHostUpdateStatus } from "@/lib/host-update-status";
+import {
+  MachineLabel,
+  type MachineLabelHost,
+} from "@/components/machines/MachineLabel";
+import type { MachineProviderPresentation } from "@/components/plugin/MachineProviderIcon";
 import {
   OPTION_BASE_CLASS_NAME,
   OPTION_INTERACTIVE_CLASS_NAME,
@@ -43,6 +45,7 @@ interface MachinePickerUIProps {
   disabled?: boolean;
   className?: string;
   modal?: boolean;
+  machineProviders?: readonly MachineProviderPresentation[];
 }
 
 export function MachinePickerUI({
@@ -55,8 +58,9 @@ export function MachinePickerUI({
   disabled = false,
   className,
   modal,
+  machineProviders = [],
 }: MachinePickerUIProps) {
-  const availableHosts = useMemo(() => selectPersistentHosts(hosts), [hosts]);
+  const availableHosts = useMemo(() => selectHosts(hosts), [hosts]);
   const selectedHost = useMemo(
     () =>
       availableHosts.find((host) => host.id === selectedHostId) ??
@@ -94,13 +98,18 @@ export function MachinePickerUI({
           )}
         >
           <span className={OPTION_TRIGGER_CONTENT_CLASS_NAME}>
-            <Icon
-              name="Laptop"
-              className={COARSE_POINTER_COMPACT_ICON_SIZE_SHRINK_CLASS}
-            />
-            <span className="min-w-0 truncate">
-              {selectedHost?.name ?? "Machine"}
-            </span>
+            {selectedHost == null ? (
+              <span className="min-w-0 truncate">Machine</span>
+            ) : (
+              <MachineLabel
+                host={selectedHost}
+                machineProvider={findMachineProvider(
+                  selectedHost,
+                  machineProviders,
+                )}
+                iconClassName={COARSE_POINTER_COMPACT_ICON_SIZE_SHRINK_CLASS}
+              />
+            )}
           </span>
           {disabled ? null : (
             <Icon
@@ -135,7 +144,12 @@ export function MachinePickerUI({
             >
               <span className="flex min-w-0 flex-1 items-center gap-1.5">
                 <MachineStatusDot connected={connected} />
-                <span className="min-w-0 truncate text-xs">{host.name}</span>
+                <MachineLabel
+                  host={host}
+                  machineProvider={findMachineProvider(host, machineProviders)}
+                  iconClassName="size-3"
+                  nameClassName="text-xs"
+                />
                 {host.id === localDaemonHostId ? (
                   <span className={MACHINE_BADGE_CLASS_NAME}>this machine</span>
                 ) : null}
@@ -163,5 +177,17 @@ export function MachinePickerUI({
         })}
       </DropdownMenuContent>
     </DropdownMenu>
+  );
+}
+
+function findMachineProvider(
+  host: MachineLabelHost,
+  machineProviders: readonly MachineProviderPresentation[],
+): MachineProviderPresentation | null {
+  if (host.machineProviderId === null) return null;
+  return (
+    machineProviders.find(
+      (provider) => provider.id === host.machineProviderId,
+    ) ?? null
   );
 }

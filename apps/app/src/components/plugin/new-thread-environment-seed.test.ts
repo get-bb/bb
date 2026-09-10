@@ -16,6 +16,7 @@ const BRANCH_INPUTS_SCHEMA = {
 
 const ENVIRONMENT_PROVIDERS: SystemEnvironmentProvider[] = [
   {
+    machineProviderId: null,
     id: "branchy",
     displayName: "New branch workspace",
     icon: "GitBranch",
@@ -33,6 +34,7 @@ const ENVIRONMENT_PROVIDERS: SystemEnvironmentProvider[] = [
     inputs: BRANCH_INPUTS_SCHEMA,
   },
   {
+    machineProviderId: null,
     id: "project-checkout",
     displayName: "Project checkout",
     icon: "Laptop",
@@ -53,6 +55,7 @@ const ENVIRONMENT_PROVIDERS: SystemEnvironmentProvider[] = [
     },
   },
   {
+    machineProviderId: null,
     id: "git-worktree",
     displayName: "Worktree",
     icon: "GitBranch",
@@ -70,6 +73,7 @@ const ENVIRONMENT_PROVIDERS: SystemEnvironmentProvider[] = [
     inputs: BRANCH_INPUTS_SCHEMA,
   },
   {
+    machineProviderId: null,
     id: "personal-workspace",
     displayName: "Personal workspace",
     icon: "Folder",
@@ -87,6 +91,7 @@ const ENVIRONMENT_PROVIDERS: SystemEnvironmentProvider[] = [
     inputs: null,
   },
   {
+    machineProviderId: null,
     id: "container",
     displayName: "Docker container",
     icon: "Container",
@@ -225,6 +230,20 @@ describe("newThreadEnvironmentArgsToSeed round trip", () => {
       environmentProviderId: "branchy",
       machine: { type: "existing", hostId: "host_1" },
       inputs: { branch: { kind: "named", name: "release" } },
+    };
+    expect(roundTrip(environment)).toEqual(environment);
+  });
+
+  it("a provider on a new machine keeps its inputs verbatim", () => {
+    const environment: CreateThreadEnvironmentArgs = {
+      type: "provider",
+      environmentProviderId: "container",
+      machine: {
+        type: "new",
+        machineProviderId: "container-machine",
+        inputs: { target: "primary" },
+      },
+      inputs: { image: "custom:latest" },
     };
     expect(roundTrip(environment)).toEqual(environment);
   });

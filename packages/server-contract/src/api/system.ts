@@ -16,6 +16,34 @@ import {
 } from "@bb/domain";
 import { providerHealthSchema as providerHealthSchema } from "@bb/provider-bridge-protocol/provider-maintenance";
 import { hostPlatformSchema } from "@bb/host-daemon-contract/local";
+import { machineEnvironmentSetSchema } from "./machine-environment.js";
+
+const machineEnvironmentReplacementVariableSchema =
+  machineEnvironmentSetSchema.extend({
+    value: machineEnvironmentSetSchema.shape.value.nullable(),
+  });
+
+export const machineEnvironmentReplaceSchema = z
+  .object({
+    variables: z.array(machineEnvironmentReplacementVariableSchema),
+  })
+  .strict()
+  .superRefine(({ variables }, context) => {
+    const names = new Set<string>();
+    for (const [index, variable] of variables.entries()) {
+      if (names.has(variable.name)) {
+        context.addIssue({
+          code: "custom",
+          path: ["variables", index, "name"],
+          message: "Machine environment variable names must be unique",
+        });
+      }
+      names.add(variable.name);
+    }
+  });
+export type MachineEnvironmentReplace = z.infer<
+  typeof machineEnvironmentReplaceSchema
+>;
 
 export const systemExecutionOptionsModelLoadErrorCodeSchema = z.enum([
   "provider_unavailable",
@@ -123,7 +151,23 @@ export const systemAiServicesSchema = z.object({
 });
 export type SystemAiServices = z.infer<typeof systemAiServicesSchema>;
 
+export const serverAccessStatusSchema = z.object({
+  providers: z.array(
+    z.object({
+      id: z.string(),
+      displayName: z.string(),
+      description: z.string(),
+      pluginId: z.string().min(1).nullable(),
+    }),
+  ),
+  defaultProviderId: z.string(),
+  effectiveUrl: z.string().nullable(),
+  urlSource: z.enum(["setting", "BB_EXTERNAL_URL"]).nullable(),
+});
+export type ServerAccessStatus = z.infer<typeof serverAccessStatusSchema>;
+
 export const systemConfigResponseSchema = z.object({
+  serverAccess: serverAccessStatusSchema,
   generalSettings: appSettingsSchema.extend({
     showUnhandledProviderEvents: z.boolean().optional(),
   }),
@@ -261,6 +305,8 @@ const systemEnvironmentProviderAvailabilitySchema = z.discriminatedUnion(
 );
 
 export const systemEnvironmentProviderSchema = z.object({
+  environmentProviderId: z.string().min(1).optional(),
+  machineProviderId: z.string().min(1).nullable(),
   id: z.string().min(1),
   displayName: z.string().min(1),
   icon: z.string().min(1).nullable(),
@@ -279,6 +325,9 @@ export const systemEnvironmentProviderSchema = z.object({
     z.string().min(1),
     systemEnvironmentProviderAvailabilitySchema.nullable(),
   ),
+  machineInputs: jsonValueSchema.nullable().optional(),
+  machineAcceptsEmptyInputs: z.boolean().optional(),
+  machineProviderPluginId: z.string().min(1).optional(),
 });
 export type SystemEnvironmentProvider = z.infer<
   typeof systemEnvironmentProviderSchema
@@ -307,4 +356,24 @@ export const systemEnvironmentProvidersQuerySchema = z
   });
 export type SystemEnvironmentProvidersQuery = z.infer<
   typeof systemEnvironmentProvidersQuerySchema
+>;
+
+export const systemMachineProviderSchema = z.object({
+  id: z.string().min(1),
+  displayName: z.string().min(1),
+  description: z.string().min(1),
+  icon: z.string().min(1),
+  logoUrl: z.string().min(1).nullable(),
+  pluginId: z.string().min(1),
+  inputs: jsonValueSchema.nullable(),
+  acceptsEmptyInputs: z.boolean(),
+  supportsSuspend: z.boolean(),
+});
+export type SystemMachineProvider = z.infer<typeof systemMachineProviderSchema>;
+
+export const systemMachineProvidersResponseSchema = z.object({
+  providers: z.array(systemMachineProviderSchema),
+});
+export type SystemMachineProvidersResponse = z.infer<
+  typeof systemMachineProvidersResponseSchema
 >;

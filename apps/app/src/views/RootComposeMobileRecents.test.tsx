@@ -18,6 +18,7 @@ import {
 import { makeThreadListEntry } from "@bb/test-helpers/domain-fixtures";
 
 const personalProvider: SystemEnvironmentProvider = {
+  machineProviderId: null,
   id: "personal-workspace",
   displayName: "Personal workspace",
   icon: "Folder",

@@ -26,8 +26,16 @@ describe("fixtures", () => {
     expect(makeHostResponse({ id: "host-target", name: "Target" })).toEqual({
       id: "host-target",
       name: "Target",
-      status: "connected",
       type: "persistent",
+      status: "connected",
+      machineProviderId: null,
+      lifecycle: {
+        phase: "active",
+        suspendedAt: null,
+        message: null,
+        pendingLog: "",
+        teardown: null,
+      },
       maxPermissionMode: "full",
       lastSeenAt: null,
       lastRejectedProtocolVersion: null,
@@ -1692,7 +1700,6 @@ describe("providers.experimental_contributeEnv", () => {
           name: "PLUGIN_API_URL",
           value: { serverPath: "/plugins/auth-proxy/api" },
           reason: "Route provider traffic through the plugin",
-          secret: true,
         },
       ];
     });
@@ -1708,7 +1715,6 @@ describe("providers.experimental_contributeEnv", () => {
         name: "PLUGIN_API_URL",
         value: { serverPath: "/plugins/auth-proxy/api" },
         reason: "Route provider traffic through the plugin",
-        secret: true,
       },
     ]);
     expect(contexts).toEqual([
@@ -1761,7 +1767,6 @@ describe("providers.experimental_contributeEnv", () => {
         name: "lowercase",
         value: "hidden",
         reason: "invalid name",
-        secret: false,
       },
     ]);
     expect(() =>
@@ -1812,6 +1817,37 @@ describe("experimental_aiServices.register", () => {
 });
 
 describe("environment targets", () => {
+  it("keeps compositions separate from concrete lifecycle providers", () => {
+    const { bb, harness } = createFakePluginHost();
+    bb.experimental_environments.register({
+      id: "sandbox",
+      displayName: "Sandbox",
+      machineProviderId: "cloud-machine",
+      environmentProviderId: "project-checkout",
+    });
+    expect(harness.registrations.environmentProviders.has("sandbox")).toBe(
+      false,
+    );
+    expect(
+      harness.registrations.environmentCompositions.get("sandbox"),
+    ).toMatchObject({
+      machineProviderId: "cloud-machine",
+      environmentProviderId: "project-checkout",
+    });
+    expect(() =>
+      bb.experimental_environments.register({
+        id: "sandbox",
+        displayName: "Conflicting concrete provider",
+        create: async () => ({
+          status: "created",
+          path: "/checkout",
+          ownsPath: false,
+        }),
+        remove: async () => ({ status: "removed" }),
+      }),
+    ).toThrow("already registered as a composition");
+  });
+
   it("normalizes a registration and exposes it to the harness", async () => {
     const { bb, harness } = createFakePluginHost();
     const create = async () => ({
@@ -2064,6 +2100,96 @@ describe("environment targets", () => {
         projectless: false,
       },
     });
+  });
+
+  it("accepts a machine provider without suspend and resume", () => {
+    const { bb, harness } = createFakePluginHost();
+    bb.experimental_machines.register({
+      description: "Provision a test machine.",
+      icon: "Terminal",
+      id: "test-machine",
+      displayName: "Test machine",
+
+      reconcileCleanup: async () => ({ status: "removed" }),
+      create: async () => ({
+        status: "created",
+        name: "Test machine",
+        resource: { target: "staging" },
+      }),
+      remove: async () => ({ status: "removed" }),
+    });
+    expect(
+      harness.registrations.machineProviders.get("test-machine"),
+    ).toMatchObject({
+      icon: "Terminal",
+      ephemeral: false,
+      suspend: null,
+      resume: null,
+    });
+  });
+
+  it("normalizes ephemeral machine lifecycle policy", () => {
+    const { bb, harness } = createFakePluginHost();
+    bb.experimental_machines.register({
+      description: "Provision temporary compute.",
+      icon: "Terminal",
+      id: "temporary-machine",
+      displayName: "Temporary machine",
+      ephemeral: true,
+      reconcileCleanup: async () => ({ status: "removed" }),
+      create: async () => ({
+        status: "created",
+        name: "Temporary machine",
+        resource: null,
+      }),
+      remove: async () => ({ status: "removed" }),
+    });
+    expect(
+      harness.registrations.machineProviders.get("temporary-machine"),
+    ).toMatchObject({ ephemeral: true });
+  });
+
+  it.each([
+    { description: "", icon: "Terminal" },
+    { description: "Provision a machine.", icon: " " },
+  ])("rejects empty required machine metadata: %j", (metadata) => {
+    const { bb } = createFakePluginHost();
+    expect(() =>
+      bb.experimental_machines.register({
+        id: "invalid-metadata",
+        displayName: "Invalid metadata",
+        ...metadata,
+        create: async () => ({
+          status: "created",
+          name: "Test machine",
+          resource: null,
+        }),
+        reconcileCleanup: async () => ({ status: "removed" }),
+        remove: async () => ({ status: "removed" }),
+      }),
+    ).toThrow();
+  });
+
+  it("requires machine suspend and resume as a pair", () => {
+    const create = async () => ({
+      status: "created" as const,
+      name: "Test machine",
+      resource: null,
+    });
+    const remove = async () => ({ status: "removed" as const });
+    const lifecycle = async () => ({ resource: null });
+    expect(() =>
+      createFakePluginHost().bb.experimental_machines.register({
+        description: "Provision a test machine.",
+        icon: "Terminal",
+        id: "half-lifecycle",
+        displayName: "Half lifecycle",
+        create,
+        reconcileCleanup: remove,
+        suspend: lifecycle,
+        remove,
+      }),
+    ).toThrow(/declare suspend and resume together/);
   });
 
   it("delivers message.cancelled to a listener", async () => {

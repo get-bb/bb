@@ -1,13 +1,30 @@
+import { registerMachineEnvironmentCommands } from "./machine-environment.js";
+import {
+  enrollMachine,
+  type MachineEnrollmentOptions,
+} from "./machine-enrollment.js";
 import { Command } from "commander";
-import type { Host } from "@bb/domain";
-import { action } from "../action.js";
+import { jsonValueSchema, type Host, type JsonValue } from "@bb/domain";
+import { action, CliExitError } from "../action.js";
 import { createCliBbSdk } from "../client.js";
 import { renderBorderlessTable } from "../table.js";
 import { outputJson } from "./helpers.js";
 import { confirmDestructiveAction } from "./helpers.js";
 
+function enrollmentExpiryNotice(expiresAt: number | null): string {
+  if (expiresAt === null) return "This command expires once it is used.";
+  return `This command expires at ${new Date(expiresAt).toLocaleTimeString()}.`;
+}
+
 interface MachineListCommandOptions {
   json?: boolean;
+}
+
+interface MachineCreateCommandOptions extends MachineListCommandOptions {
+  provider: string;
+  wait: boolean;
+  key?: string;
+  inputs?: string;
 }
 
 interface MachineMutationCommandOptions extends MachineListCommandOptions {
@@ -16,6 +33,46 @@ interface MachineMutationCommandOptions extends MachineListCommandOptions {
 
 interface MachineProviderInstallOptions extends MachineListCommandOptions {
   action?: "install" | "update";
+}
+
+const MACHINE_LIFECYCLE_TIMEOUT_MS = 15 * 60_000;
+const MACHINE_LIFECYCLE_POLL_MS = 500;
+
+async function waitForMachineLifecycle(args: {
+  host: Host;
+  targetPhase: "active" | "suspended";
+  getHost: () => Promise<Host>;
+}): Promise<Host> {
+  let host = args.host;
+  const deadline = Date.now() + MACHINE_LIFECYCLE_TIMEOUT_MS;
+  while (host.lifecycle.phase !== args.targetPhase) {
+    const message = host.lifecycle.message;
+    if (
+      message?.startsWith("Machine suspension failed:") ||
+      message?.startsWith("Machine resume failed:")
+    ) {
+      throw new Error(message);
+    }
+    if (
+      host.lifecycle.phase === "removing" ||
+      host.lifecycle.phase === "destroyed"
+    ) {
+      throw new Error(
+        host.lifecycle.message ??
+          `Machine entered the ${host.lifecycle.phase} phase`,
+      );
+    }
+    if (Date.now() >= deadline) {
+      throw new Error(
+        `Timed out after ${MACHINE_LIFECYCLE_TIMEOUT_MS / 1000} seconds waiting for machine ${host.id} to become ${args.targetPhase}`,
+      );
+    }
+    await new Promise<void>((resolve) =>
+      setTimeout(resolve, MACHINE_LIFECYCLE_POLL_MS),
+    );
+    host = await args.getHost();
+  }
+  return host;
 }
 
 function parseProviderCliKey(value: string): string {
@@ -125,6 +182,119 @@ export function registerMachineCommands(
     .command("machine")
     .description("Inspect execution machines");
 
+  registerMachineEnvironmentCommands(machine, getUrl);
+
+  machine
+    .command("enroll")
+    .description("Enroll this machine using a private bootstrap bundle")
+    .option("--bootstrap-file <path>", "Read the bootstrap bundle from a file")
+    .option(
+      "--bootstrap-env <name>",
+      "Consume the bootstrap bundle from an environment variable",
+    )
+    .option("--json", "Print machine-readable JSON output")
+    .action(
+      action(async (options: MachineEnrollmentOptions & { json?: boolean }) => {
+        const result = await enrollMachine(options);
+        if (!outputJson(options, result))
+          console.log(`Machine ${result.hostId} enrolled`);
+      }),
+    );
+
+  machine
+    .command("create")
+    .description("Create a machine using an installed provider")
+    .option("--no-wait", "Return the creating host ID immediately")
+    .requiredOption("--provider <id>", "Machine provider ID")
+    .option(
+      "--key <idempotency-key>",
+      "Reuse a stable key when retrying creation",
+    )
+    .option("--inputs <JSON>", "Provider inputs as JSON")
+    .option("--json", "Print machine-readable JSON output")
+    .action(
+      action(async (opts: MachineCreateCommandOptions) => {
+        const machineProviderId = parseProviderCliKey(opts.provider);
+        const key = opts.key?.trim();
+        if (key === "") throw new Error("Creation key must not be empty.");
+        let inputs: JsonValue = null;
+        if (opts.inputs !== undefined) {
+          try {
+            inputs = jsonValueSchema.parse(JSON.parse(opts.inputs));
+          } catch {
+            throw new Error("--inputs must be valid JSON.");
+          }
+        }
+        const controller = new AbortController();
+        const cancel = () => controller.abort();
+        process.once("SIGINT", cancel);
+        try {
+          const sdk = createCliBbSdk(getUrl());
+          controller.signal.throwIfAborted();
+          let host = await sdk.hosts.experimental_create({
+            machineProviderId,
+            inputs,
+            ...(key === undefined ? {} : { key }),
+            wait: false,
+            signal: controller.signal,
+          });
+          if (!opts.wait) {
+            if (!outputJson(opts, host)) console.log(host.id);
+            return;
+          }
+          const enrollmentCommand =
+            await sdk.hosts.experimental_getEnrollmentCommand({
+              hostId: host.id,
+              signal: controller.signal,
+            });
+          if (enrollmentCommand !== null) {
+            console.error(enrollmentCommand.command);
+            console.error(enrollmentExpiryNotice(enrollmentCommand.expiresAt));
+          }
+          console.error(`Following machine ${host.id}`);
+          host = await waitForMachineLifecycle({
+            host,
+            targetPhase: "active",
+            getHost: () =>
+              sdk.hosts.get({ hostId: host.id, signal: controller.signal }),
+          });
+          if (!outputJson(opts, host))
+            console.log(`Machine ${host.name} created`);
+        } catch (error) {
+          if (controller.signal.aborted) {
+            throw new CliExitError(
+              "Stopped following; creation continues. Use bb machine remove <host-id> to cancel.",
+              130,
+            );
+          }
+          throw error;
+        } finally {
+          process.off("SIGINT", cancel);
+        }
+      }),
+    );
+
+  machine
+    .command("providers")
+    .description("List installed machine providers")
+    .option("--json", "Print machine-readable JSON output")
+    .action(
+      action(async (opts: MachineListCommandOptions) => {
+        const providers =
+          await createCliBbSdk(getUrl()).hosts.experimental_listProviders();
+        if (outputJson(opts, providers)) return;
+        if (providers.length === 0) {
+          console.log("No machine providers found");
+          return;
+        }
+        console.log(
+          providers
+            .map((provider) => `${provider.id}  ${provider.displayName}`)
+            .join("\n"),
+        );
+      }),
+    );
+
   machine
     .command("list")
     .description("List execution machines")
@@ -195,7 +365,8 @@ export function registerMachineCommands(
     .action(
       action(async (target: string, opts: MachineMutationCommandOptions) => {
         const sdk = createCliBbSdk(getUrl());
-        const hostId = resolveMachineId(await sdk.hosts.list(), target);
+        const hosts = await sdk.hosts.list();
+        const hostId = resolveMachineId(hosts, target);
         if (
           !opts.yes &&
           !(await confirmDestructiveAction(`Remove machine ${hostId}?`))
@@ -218,6 +389,58 @@ export function registerMachineCommands(
         const result = await sdk.hosts.retryUpdate({ hostId });
         if (outputJson(opts, result)) return;
         console.log(`Machine ${hostId} update retry requested`);
+      }),
+    );
+
+  machine
+    .command("suspend <id-or-name>")
+    .description("Suspend a provider-managed execution machine")
+    .option("--json", "Print machine-readable JSON output")
+    .action(
+      action(async (target: string, opts: MachineListCommandOptions) => {
+        const sdk = createCliBbSdk(getUrl());
+        const hostId = resolveMachineId(await sdk.hosts.list(), target);
+        const requested = await sdk.hosts.experimental_suspend({ hostId });
+        const result = await waitForMachineLifecycle({
+          host: requested,
+          targetPhase: "suspended",
+          getHost: () => sdk.hosts.get({ hostId }),
+        });
+        if (outputJson(opts, result)) return;
+        console.log(`Machine ${hostId} suspended`);
+      }),
+    );
+
+  machine
+    .command("resume <id-or-name>")
+    .description("Resume a suspended provider-managed execution machine")
+    .option("--json", "Print machine-readable JSON output")
+    .action(
+      action(async (target: string, opts: MachineListCommandOptions) => {
+        const sdk = createCliBbSdk(getUrl());
+        const hostId = resolveMachineId(await sdk.hosts.list(), target);
+        const requested = await sdk.hosts.experimental_resume({ hostId });
+        const result = await waitForMachineLifecycle({
+          host: requested,
+          targetPhase: "active",
+          getHost: () => sdk.hosts.get({ hostId }),
+        });
+        if (outputJson(opts, result)) return;
+        console.log(`Machine ${hostId} resumed`);
+      }),
+    );
+
+  machine
+    .command("retry-cleanup <id-or-name>")
+    .description("Retry a failed provider teardown immediately")
+    .option("--json", "Print machine-readable JSON output")
+    .action(
+      action(async (target: string, opts: MachineListCommandOptions) => {
+        const sdk = createCliBbSdk(getUrl());
+        const hostId = resolveMachineId(await sdk.hosts.list(), target);
+        const result = await sdk.hosts.experimental_retryCleanup({ hostId });
+        if (outputJson(opts, result)) return;
+        console.log(`Machine ${hostId} cleanup retried`);
       }),
     );
 
@@ -272,19 +495,21 @@ function printMachineTable(hosts: Host[]): void {
     host.name,
     host.id,
     host.status,
+    host.machineProviderId ?? "user-enrolled",
     formatMachineLastSeen(host.lastSeenAt, now),
   ]);
   const widths = [
     Math.max(4, ...rows.map((row) => row[0].length)),
     Math.max(2, ...rows.map((row) => row[1].length)),
     Math.max(6, ...rows.map((row) => row[2].length)),
-    Math.max(9, ...rows.map((row) => row[3].length)),
+    Math.max(8, ...rows.map((row) => row[3].length)),
+    Math.max(9, ...rows.map((row) => row[4].length)),
   ];
   console.log("");
   console.log(
     renderBorderlessTable(
       {
-        head: ["Name", "ID", "Status", "Last seen"],
+        head: ["Name", "ID", "Status", "Provider", "Last seen"],
         colWidths: widths,
         trimTrailingWhitespace: true,
       },

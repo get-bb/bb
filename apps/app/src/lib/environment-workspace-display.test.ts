@@ -17,6 +17,7 @@ describe("shouldShowEnvironmentHostIdentity", () => {
 });
 
 const worktreeProvider: SystemEnvironmentProvider = {
+  machineProviderId: null,
   id: "git-worktree",
   displayName: "Worktree",
   icon: "FolderGit",
@@ -35,6 +36,7 @@ const worktreeProvider: SystemEnvironmentProvider = {
 };
 
 const personalProvider: SystemEnvironmentProvider = {
+  machineProviderId: null,
   id: "personal-workspace",
   displayName: "Personal workspace",
   icon: "Folder",
@@ -53,6 +55,7 @@ const personalProvider: SystemEnvironmentProvider = {
 };
 
 const machineContainerProvider: SystemEnvironmentProvider = {
+  machineProviderId: null,
   id: "container",
   displayName: "Container",
   icon: "Box",

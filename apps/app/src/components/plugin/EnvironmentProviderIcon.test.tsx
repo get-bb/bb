@@ -11,6 +11,7 @@ import { makePluginRegistrationSet } from "@/test/fixtures/plugins";
 import { EnvironmentProviderIcon } from "./EnvironmentProviderIcon";
 
 const provider: SystemEnvironmentProvider = {
+  machineProviderId: null,
   id: "git-worktree",
   pluginId: "environment-git-worktree",
   acceptsEmptyInputs: true,

@@ -111,7 +111,16 @@ export const projectDefaultEnvironmentSchema = z.object({
 export const providerEnvironmentSchema = z.object({
   type: z.literal("provider"),
   environmentProviderId: z.string().min(1),
-  machine: z.object({ type: z.literal("existing"), hostId: z.string().min(1) }),
+  machine: z
+    .discriminatedUnion("type", [
+      z.object({ type: z.literal("existing"), hostId: z.string().min(1) }),
+      z.object({
+        type: z.literal("new"),
+        machineProviderId: z.string().min(1),
+        inputs: jsonValueSchema.nullable().default(null),
+      }),
+    ])
+    .optional(),
   inputs: jsonValueSchema.nullable().default(null),
 });
 export type ProviderEnvironmentArgs = z.infer<typeof providerEnvironmentSchema>;

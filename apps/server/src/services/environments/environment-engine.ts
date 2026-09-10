@@ -115,7 +115,7 @@ export interface ProviderOperationContext {
   project: Project;
   host: Host;
   machine: EnvironmentMachineSelection;
-  projectCheckout: { path: string } | null;
+  projectCheckout: { path: string; experimental_ownsPath?: boolean } | null;
   gitRemote: string | null;
   inputs: JsonValue | null;
   suggestedBranchName: string;
@@ -918,7 +918,7 @@ interface AdvanceEnvironmentProvisioningArgs {
   threadId?: string;
   creation?: {
     record: PluginEnvironmentProviderRecord;
-    context: ProviderOperationContext;
+    context?: ProviderOperationContext;
   };
   environmentId: string | null | undefined;
   request?: EnvironmentProvisionRequest | null;
@@ -1577,17 +1577,28 @@ export async function advanceEnvironmentProvisioning(
       map,
       key: row.id,
       run: async (signal) => {
-        const creation =
-          args.creation?.context ??
-          (owner !== null &&
-          context?.request.environmentIntent.type === "provider"
-            ? await resolveProviderOperationContext(
-                deps,
-                owner,
-                context.request.environmentIntent,
-                record,
-              )
-            : null);
+        let creation: ProviderOperationContext | null;
+        try {
+          creation =
+            args.creation?.context ??
+            (owner !== null &&
+            context?.request.environmentIntent.type === "provider"
+              ? await resolveProviderOperationContext(
+                  deps,
+                  owner,
+                  context.request.environmentIntent,
+                  record,
+                )
+              : null);
+        } catch (error) {
+          mutateProvisioning(deps, row, ["creating"], (current) => {
+            current.status = "error";
+            current.statusMessage = message(error);
+          });
+          if (row.ownerThreadId !== null)
+            requestEnvironmentProvisioningRecheck(row.ownerThreadId);
+          return;
+        }
         if (creation === null) return;
         await runCreate(deps, record, row, creation, signal);
       },

@@ -34,6 +34,27 @@ describe("bb settings commands", () => {
     });
   });
 
+  it("disables automatic machine Git credentials despite the legacy response alias", async () => {
+    const put = vi.fn(async ({ json }) => json);
+    stubServerApi({
+      "v1.system.config.$get": vi.fn(async () => ({
+        generalSettings: {
+          ...defaultAppSettings,
+          showUnhandledProviderEvents: false,
+        },
+        experiments: defaultExperiments,
+      })),
+      "v1.settings.general.$put": put,
+    });
+    await runCommand(
+      ["settings", "general", "machineGitCredentialsEnabled", "false"],
+      register,
+    );
+    expect(put).toHaveBeenCalledWith({
+      json: { ...defaultAppSettings, machineGitCredentialsEnabled: false },
+    });
+  });
+
   it("rejects an unknown general setting key", async () => {
     stubServerApi({
       "v1.system.config.$get": vi.fn(async () => ({
@@ -139,7 +160,6 @@ describe("bb settings commands", () => {
         {
           id: "host-remote",
           name: "builder",
-          type: "persistent",
           status: "connected",
           lastSeenAt: 1,
           lastRejectedProtocolVersion: null,

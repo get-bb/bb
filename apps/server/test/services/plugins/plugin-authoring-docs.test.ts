@@ -24,6 +24,7 @@ import {
   type PluginNewThreadPanelProps,
   type PluginPendingInteractionProps,
   type PluginEnvironmentProviderInputsProps,
+  type PluginMachineProviderInputsProps,
   type PluginProviderIconRegistration,
   type PluginTimelineRendererProps,
   type PluginSettingDescriptor,
@@ -165,6 +166,8 @@ const BB_PLUGIN_API_KEYS = [
   "experimental_aiServices",
   "experimental_hooks",
   "experimental_environments",
+  "experimental_machines",
+  "experimental_serverAccess",
   "sdk",
   "onDispose",
 ] as const satisfies readonly (keyof BbPluginApi)[];
@@ -209,6 +212,8 @@ const _assertAllAuthModesListed: MissingAuthMode extends never ? true : never =
 void _assertAllAuthModesListed;
 
 const THREAD_EVENT_PAYLOAD_FIELDS = {
+  "experimental_thread.events": ["thread", "sequence"],
+  "experimental_terminal.input": ["terminal"],
   "thread.created": ["thread"],
   "thread.active": ["thread"],
   "thread.idle": ["thread", "lastAssistantText"],
@@ -267,6 +272,7 @@ type SlotPropsByName = {
   experimental_providerIcon: PluginProviderIconRegistration;
   experimental_timelineRenderer: PluginTimelineRendererProps;
   experimental_environmentProviderInputs: PluginEnvironmentProviderInputsProps;
+  experimental_machineProviderInputs: PluginMachineProviderInputsProps;
 };
 
 type MissingSlot = Exclude<keyof PluginAppSlots, keyof SlotPropsByName>;
@@ -387,10 +393,11 @@ const FRONTEND_SLOT_PROP_FIELDS = {
   ],
   experimental_environmentProviderInputs: [
     "projectId",
-    "hostId",
+    "target",
     "value",
     "onChange",
   ],
+  experimental_machineProviderInputs: ["value", "onChange"],
 } as const satisfies {
   [S in keyof SlotPropsByName]: readonly (keyof SlotPropsByName[S])[];
 };
@@ -515,14 +522,17 @@ describe("bb-plugin-authoring skill", () => {
   const skillEntry = readFileSync(SKILL_PATH, "utf8");
   const skill = readSkillTree();
 
-  it("does not advertise unshipped machine providers", () => {
-    for (const doc of [
-      skillEntry,
-      readReference("frontend-renderer-slots.md"),
-      readReference("backend-events.md"),
-    ]) {
-      expect(doc).not.toMatch(/machine providers?|custom-machine/);
-    }
+  it("documents machine creation checkpoints and private bootstrap delivery", () => {
+    expect(skillEntry).toContain("machine providers");
+    const backend = readReference("backend-machines.md");
+    expect(backend).toContain("await checkpoint(resource)");
+    expect(backend).toContain("bb.experimental_machines.bootstrap({");
+    expect(backend).toMatch(
+      /Never put the\s+bootstrap bundle in resource JSON/,
+    );
+    expect(backend.indexOf("await checkpoint(resource)")).toBeLessThan(
+      backend.indexOf("bb.experimental_machines.bootstrap({"),
+    );
   });
 
   it("has frontmatter naming the skill after its directory", () => {
@@ -667,7 +677,7 @@ describe("bb-plugin-authoring skill", () => {
     expect(readReference("frontend-components.md")).not.toContain(
       'workspace: { type: "personal" }',
     );
-    expect(readReference("backend-events.md")).toContain("Twelve events.");
+    expect(readReference("backend-events.md")).toContain("Fourteen events.");
     expect(readReference("backend-events.md")).toContain(
       "The seven `thread.*` ones",
     );
