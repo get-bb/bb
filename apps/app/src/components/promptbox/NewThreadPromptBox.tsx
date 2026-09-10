@@ -421,12 +421,14 @@ export function EnvironmentSlot({
         )
       : undefined;
   const showReuseEnvironmentPicker = parsedEnvironment?.type === "reuse";
-  if (
-    projectless &&
-    !environment.isLoading &&
-    providers.length <= 1 &&
-    !showReuseEnvironmentPicker
-  ) {
+  const [environmentPickerOpen, setEnvironmentPickerOpen] = useState(false);
+  const showEnvironmentPicker =
+    !projectless ||
+    environment.isLoading ||
+    providers.length > 1 ||
+    showReuseEnvironmentPicker ||
+    environmentPickerOpen;
+  if (!showEnvironmentPicker) {
     return <ProjectlessMachineSlot environment={environment} />;
   }
 
@@ -435,6 +437,8 @@ export function EnvironmentSlot({
       <EnvironmentPickerUI
         value={environment.value}
         projectless={projectless}
+        open={environmentPickerOpen}
+        onOpenChange={setEnvironmentPickerOpen}
         sources={environment.sources}
         host={environment.host}
         isLocal={environment.isLocal}

@@ -62,6 +62,8 @@ export interface EnvironmentPickerUIProps {
   disabled?: boolean;
   isLoading?: boolean;
   className?: string;
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
   defaultOpen?: boolean;
   modal?: boolean;
   machines?: EnvironmentPickerMachines | null;
@@ -141,6 +143,8 @@ export function EnvironmentPickerUI({
   disabled = false,
   isLoading = false,
   className,
+  open,
+  onOpenChange,
   defaultOpen,
   modal,
   machines,
@@ -239,7 +243,12 @@ export function EnvironmentPickerUI({
   ]);
 
   return (
-    <DropdownMenu defaultOpen={defaultOpen} modal={modal}>
+    <DropdownMenu
+      open={open}
+      onOpenChange={onOpenChange}
+      defaultOpen={defaultOpen}
+      modal={modal}
+    >
       <DropdownMenuTrigger asChild disabled={disabled}>
         <Button
           type="button"

@@ -361,4 +361,42 @@ describe("EnvironmentSlot", () => {
       trigger,
     );
   });
+
+  it("keeps an open environment menu mounted while projectless options settle", () => {
+    const loadingEnvironment = makeEnvironment({
+      providers: [personalProvider],
+      isLoading: true,
+    });
+    const queryClient = new QueryClient();
+    const { rerender } = render(
+      <QueryClientProvider client={queryClient}>
+        <EnvironmentSlot
+          projectless
+          environment={loadingEnvironment}
+          worktree={makeWorktree()}
+        />
+      </QueryClientProvider>,
+    );
+    const trigger = screen.getByRole("button", { name: "Environment" });
+    fireEvent.pointerDown(trigger, { button: 0 });
+    expect(screen.getByRole("menu")).toBeTruthy();
+
+    rerender(
+      <QueryClientProvider client={queryClient}>
+        <EnvironmentSlot
+          projectless
+          environment={{ ...loadingEnvironment, isLoading: false }}
+          worktree={makeWorktree()}
+        />
+      </QueryClientProvider>,
+    );
+
+    expect(screen.getByRole("menu")).toBeTruthy();
+    expect(document.querySelector('button[aria-label="Environment"]')).toBe(
+      trigger,
+    );
+    fireEvent.keyDown(document, { key: "Escape" });
+    expect(screen.queryByRole("button", { name: "Environment" })).toBeNull();
+    expect(screen.getByRole("button", { name: "Machine" })).toBeTruthy();
+  });
 });

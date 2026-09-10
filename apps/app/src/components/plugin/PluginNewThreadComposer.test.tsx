@@ -36,10 +36,7 @@ import {
   resetPluginSlotStoreForTest,
   setPluginSlotRegistrations,
 } from "@/lib/plugin-slots";
-import {
-  encodeReuseValue,
-  REUSE_VALUE_WITHOUT_ENVIRONMENT,
-} from "@/components/pickers/environment-picker-value";
+import { encodeReuseValue } from "@/components/pickers/environment-picker-value";
 import { useRootComposeReuseEnvironment } from "@/lib/root-compose-selection";
 import { getPromptDraftAccessor } from "@/hooks/usePromptDraftStorage";
 import { buildThreadHandoffLocationState } from "@bb/client-core";
@@ -1008,7 +1005,7 @@ describe("PluginNewThreadComposer seeding", () => {
     ).toBe(true);
   });
 
-  it("keeps a seeded fork's reuse selection pending until the sidebar bootstrap settles", async () => {
+  it("keeps a seeded fork's exact reuse selection while the sidebar bootstrap settles", async () => {
     mocks.sidebarNavigationSettled = false;
     const submitted: NewThreadRequest[] = [];
     const seed = {
@@ -1039,7 +1036,7 @@ describe("PluginNewThreadComposer seeding", () => {
 
     await waitFor(() => {
       expect(latestPromptBoxProps().modeConfig.environment.value).toBe(
-        REUSE_VALUE_WITHOUT_ENVIRONMENT,
+        encodeReuseValue("env-source"),
       );
     });
     expect(latestPromptBoxProps().modeConfig.worktree.options).toEqual([]);
