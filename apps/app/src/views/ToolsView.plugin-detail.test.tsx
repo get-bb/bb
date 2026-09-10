@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 
+import type { ReactNode } from "react";
 import {
   cleanup,
   fireEvent,
@@ -27,6 +28,7 @@ import {
   setPluginSlotRegistrations,
 } from "@/lib/plugin-slots";
 import { PluginsView } from "./ToolsView";
+import { AppRoutes } from "../App";
 import {
   CatalogPluginDetail,
   CatalogPluginDetailBanner,
@@ -42,6 +44,10 @@ import {
   makePluginListItem,
   makePluginRegistrationSet,
 } from "@/test/fixtures/plugins";
+
+vi.mock("@/components/layout/AppLayout", () => ({
+  AppLayout: ({ children }: { children: ReactNode }) => <>{children}</>,
+}));
 
 vi.mock("react-resizable-panels", async () => {
   const { createRequire } = await import("node:module");
@@ -105,6 +111,15 @@ function RoutedPluginsView() {
       <TooltipProvider>
         <PluginsView pluginId={pluginId} />
       </TooltipProvider>
+      <LocationProbe />
+    </>
+  );
+}
+
+function LocationProbe() {
+  const location = useLocation();
+  return (
+    <>
       <output data-testid="route-path">{location.pathname}</output>
       <output data-testid="route-search">{location.search}</output>
     </>
@@ -636,7 +651,7 @@ describe("BB Official plugin detail routing", () => {
     expect(screen.getByTestId("full-trust-warning")).toBeTruthy();
   });
 
-  it("opens one detail tab beside Browse and restores card focus", async () => {
+  it("preserves Browse and restores card focus across the real app routes", async () => {
     const catalogEntry = {
       ...GITHUB_CATALOG_ENTRY,
       categoryId: "code-and-reviews",
@@ -672,9 +687,10 @@ describe("BB Official plugin detail routing", () => {
     const { wrapper: QueryClientWrapper } = createQueryClientTestHarness();
     render(
       <MemoryRouter initialEntries={["/plugins"]}>
-        <Routes>
-          <Route path="/plugins/*" element={<RoutedPluginsView />} />
-        </Routes>
+        <TooltipProvider>
+          <AppRoutes />
+        </TooltipProvider>
+        <LocationProbe />
         <HistoryBackButton />
       </MemoryRouter>,
       { wrapper: QueryClientWrapper },

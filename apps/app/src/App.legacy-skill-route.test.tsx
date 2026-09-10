@@ -1,9 +1,17 @@
 // @vitest-environment jsdom
 
-import { cleanup, render, screen } from "@testing-library/react";
-import { afterEach, describe, expect, it } from "vitest";
-import { MemoryRouter, Route, Routes, useLocation } from "react-router-dom";
+import type { ReactNode } from "react";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import {
+  MemoryRouter,
+  Route,
+  Routes,
+  useLocation,
+  useNavigate,
+} from "react-router-dom";
+import {
+  AppRoutes,
   LegacyInstalledPluginsRedirect,
   LegacyPluginsPathRedirect,
   LegacySkillsPathRedirect,
@@ -28,6 +36,23 @@ import {
   TOOLS_SKILLS_ROUTE_PATH,
 } from "./lib/route-paths";
 
+vi.mock("./components/layout/AppLayout", () => ({
+  AppLayout: ({ children }: { children: ReactNode }) => <>{children}</>,
+}));
+vi.mock("./views/SettingsView", () => ({
+  SettingsView: () => <h1>Settings</h1>,
+}));
+vi.mock("./views/ToolsView", () => ({
+  PluginsView: ({ pluginId }: { pluginId?: string }) => (
+    <h1>Plugin detail: {pluginId}</h1>
+  ),
+}));
+
+function HistoryBackButton() {
+  const navigate = useNavigate();
+  return <button onClick={() => navigate(-1)}>Back</button>;
+}
+
 function LocationPath() {
   const location = useLocation();
   return (
@@ -42,6 +67,41 @@ function LocationPath() {
 afterEach(cleanup);
 
 describe("legacy Extensions redirects", () => {
+  it.each(["github", "plugin with spaces"])(
+    "redirects legacy installed detail for %s without changing configuration routes",
+    async (pluginId) => {
+      const settingsPath = `/settings/plugins/${encodeURIComponent(pluginId)}`;
+      render(
+        <MemoryRouter
+          initialEntries={[
+            settingsPath,
+            `${settingsPath}?view=installed&from=bookmark#details`,
+          ]}
+          initialIndex={1}
+        >
+          <AppRoutes />
+          <LocationPath />
+          <HistoryBackButton />
+        </MemoryRouter>,
+      );
+      expect(
+        await screen.findByRole("heading", {
+          name: `Plugin detail: ${pluginId}`,
+        }),
+      ).toBeTruthy();
+      expect(
+        screen.getByText(
+          `/plugins/${encodeURIComponent(pluginId)}?view=installed&from=bookmark#details`,
+        ),
+      ).toBeTruthy();
+      fireEvent.click(screen.getByRole("button", { name: "Back" }));
+      expect(
+        await screen.findByRole("heading", { name: "Settings" }),
+      ).toBeTruthy();
+      expect(screen.getByText(settingsPath)).toBeTruthy();
+    },
+  );
+
   it("redirects the legacy Settings plugin manager to Installed plugins", () => {
     render(
       <MemoryRouter initialEntries={[SETTINGS_PLUGINS_ROUTE_PATH]}>

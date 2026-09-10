@@ -59,6 +59,7 @@ import {
   getAutomationDetailRoutePath,
   getAutomationEditRoutePath,
   getAutomationsRoutePath,
+  getPluginDetailRoutePath,
   getSettingsRoutePath,
   getSettingsProjectRoutePath,
 } from "./lib/route-paths";
@@ -166,7 +167,31 @@ export function PluginsLandingRedirect() {
 }
 
 export function LegacyInstalledPluginsRedirect() {
-  return <Navigate to={`${PLUGINS_ROUTE_PATH}?view=installed`} replace />;
+  const { pluginId } = useParams<{ pluginId?: string }>();
+  const { search, hash } = useLocation();
+  const searchParams = new URLSearchParams(search);
+  searchParams.set("view", "installed");
+  return (
+    <Navigate
+      to={{
+        pathname: pluginId
+          ? getPluginDetailRoutePath({ pluginId })
+          : PLUGINS_ROUTE_PATH,
+        search: `?${searchParams.toString()}`,
+        hash,
+      }}
+      replace
+    />
+  );
+}
+
+function PluginSettingsRoute() {
+  const { search } = useLocation();
+  return new URLSearchParams(search).get("view") === "installed" ? (
+    <LegacyInstalledPluginsRedirect />
+  ) : (
+    <SettingsView />
+  );
 }
 
 function normalizeLegacyPluginSuffix(suffix: string): string {
@@ -307,7 +332,10 @@ export function AppRoutes() {
             path={SETTINGS_PLUGINS_ROUTE_PATH}
             element={<LegacyInstalledPluginsRedirect />}
           />
-          <Route path={SETTINGS_PLUGIN_ROUTE_PATH} element={<SettingsView />} />
+          <Route
+            path={SETTINGS_PLUGIN_ROUTE_PATH}
+            element={<PluginSettingsRoute />}
+          />
           <Route
             path={SETTINGS_MACHINE_ROUTE_PATH}
             element={<MachineSettingsView />}
@@ -400,7 +428,7 @@ export function AppRoutes() {
             path={REGISTRY_SKILL_DETAIL_ROUTE_PATH}
             element={<SkillsView />}
           />
-          <Route path={PLUGINS_ROUTE_PATH} element={<PluginsView />} />
+          <Route path={PLUGINS_ROUTE_PATH} element={<PluginsRoute />} />
           <Route path={PLUGIN_DETAIL_ROUTE_PATH} element={<PluginsRoute />} />
           <Route
             path="*"
