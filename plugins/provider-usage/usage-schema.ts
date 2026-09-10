@@ -2,8 +2,8 @@ import { z } from "zod/mini";
 
 const nonemptyStringSchema = z.string().check(z.minLength(1));
 const costSchema = z.strictObject({
-  usedUsdCents: z.number().check(z.int(), z.nonnegative()),
-  limitUsdCents: z.number().check(z.int(), z.positive()),
+  usedUsdCents: z.number().check(z.nonnegative()),
+  limitUsdCents: z.number().check(z.positive()),
 });
 
 export const usageWindowSchema = z.strictObject({

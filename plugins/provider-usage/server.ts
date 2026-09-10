@@ -8,6 +8,19 @@ import {
   type UsageSnapshot,
 } from "./usage-schema.js";
 
+import {
+  usageSourceMethod,
+  usageSourceRpcContract,
+  type UsageSnapshot as SourceSnapshot,
+} from "./usage-source-contract.js";
+
+type Resource = SourceSnapshot["resources"][number];
+interface SourceResult {
+  pluginId: string;
+  resources: Resource[];
+  error: string | null;
+}
+
 const TINT_COLOR_PATTERN =
   /^(#[0-9a-f]{3,8}|(rgb|rgba|hsl|hsla|hwb|lab|lch|oklab|oklch|color)\([-+.%\w\s,/]*\)|[a-z]{3,20})$/iu;
 
@@ -55,21 +68,19 @@ function normalizedTint(
 }
 
 function normalizedUsage(
-  usage: Awaited<
-    ReturnType<BbPluginApi["sdk"]["system"]["usageLimits"]>
-  >[string],
+  usage: Resource["usage"] | undefined,
 ): ProviderUsage | null {
   if (usage === undefined) return null;
   switch (usage.status) {
     case "ok":
       return {
         status: "ok",
-        accountEmail: usage.accountEmail,
-        planLabel: usage.planLabel,
+        accountEmail: usage.accountEmail || null,
+        planLabel: usage.planLabel || null,
         windows: usage.windows.map((window) => ({
           label: window.label,
           usedPercent: window.usedPercent,
-          resetsAt: window.resetsAt,
+          resetsAt: window.resetsAt || null,
           cost: window.cost ?? null,
         })),
       };
@@ -80,7 +91,10 @@ function normalizedUsage(
     case "expired":
       return { status: "expired" };
     case "error":
-      return { status: "error", message: usage.message };
+      return {
+        status: "error",
+        message: usage.message || "Usage could not be collected.",
+      };
   }
 }
 
@@ -90,8 +104,11 @@ type Provider = Awaited<
 >[number];
 
 function normalizedProvider(
-  provider: Provider,
-  usage: Awaited<ReturnType<BbPluginApi["sdk"]["system"]["usageLimits"]>>,
+  provider: Pick<
+    Provider,
+    "id" | "displayName" | "logoUrl" | "icon" | "strings"
+  >,
+  usage: Resource["usage"] | undefined,
 ): UsageProvider {
   return {
     id: provider.id,
@@ -107,84 +124,92 @@ function normalizedProvider(
       "Your " +
         provider.displayName +
         " session expired. Sign in again, then reload usage.",
-    usage: normalizedUsage(usage[provider.id]),
+    usage: normalizedUsage(usage),
+  };
+}
+
+function resourceProvider(
+  resource: Resource,
+  pluginId: string,
+  providers: Provider[],
+): UsageProvider {
+  const metadata = providers.find(
+    (provider) => provider.id === resource.providerId,
+  );
+  return {
+    ...normalizedProvider(
+      metadata ?? {
+        id: resource.providerId,
+        displayName: resource.label,
+        logoUrl: null,
+      },
+      resource.usage,
+    ),
+    id: `${pluginId}:${resource.id}`,
+    displayName: resource.label,
   };
 }
 
 async function loadMachineUsage(
   bb: BbPluginApi,
   host: Host,
+  readSources: () => Promise<SourceResult[]>,
 ): Promise<UsageMachine> {
-  const providersPromise = bb.sdk.providers.list({
-    hostId: host.id,
-    capability: "usage",
-  });
-  if (host.status === "disconnected") {
-    try {
-      const providers = await providersPromise;
-      return {
-        id: host.id,
-        displayName: host.name,
-        status: host.status,
-        providers: providers.map((provider) =>
-          normalizedProvider(provider, {}),
-        ),
-        error: null,
-      };
-    } catch {
-      return {
-        id: host.id,
-        displayName: host.name,
-        status: host.status,
-        providers: [],
-        error: "Provider information could not be loaded for this machine.",
-      };
-    }
-  }
-  const [providersResult, usageResult] = await Promise.allSettled([
-    providersPromise,
-    bb.sdk.system.usageLimits({ hostId: host.id }),
+  const [metadata, sources] = await Promise.allSettled([
+    bb.sdk.providers.list({ hostId: host.id, capability: "usage" }),
+    host.status === "disconnected" ? Promise.resolve([]) : readSources(),
   ]);
-  if (providersResult.status === "rejected") {
-    return {
-      id: host.id,
-      displayName: host.name,
-      status: host.status,
-      providers: [],
-      error: "Provider information could not be loaded for this machine.",
-    };
-  }
-  if (usageResult.status === "rejected") {
-    return {
-      id: host.id,
-      displayName: host.name,
-      status: host.status,
-      providers: providersResult.value.map((provider) =>
-        normalizedProvider(provider, {}),
-      ),
-      error: "Usage could not be loaded for this machine.",
-    };
-  }
+  const providers = metadata.status === "fulfilled" ? metadata.value : [];
+  const results = sources.status === "fulfilled" ? sources.value : [];
+  const providerOrder = new Map(
+    providers.map((provider, index) => [provider.id, index]),
+  );
+  const resources = results
+    .flatMap((source) =>
+      source.resources
+        .filter(
+          (resource) =>
+            resource.scope.kind === "host" && resource.scope.hostId === host.id,
+        )
+        .map((resource) => ({ pluginId: source.pluginId, resource })),
+    )
+    .sort(
+      (left, right) =>
+        (providerOrder.get(left.resource.providerId) ?? providers.length) -
+        (providerOrder.get(right.resource.providerId) ?? providers.length),
+    )
+    .map(({ pluginId, resource }) =>
+      resourceProvider(resource, pluginId, providers),
+    );
   return {
     id: host.id,
     displayName: host.name,
     status: host.status,
-    providers: providersResult.value.map((provider) =>
-      normalizedProvider(provider, usageResult.value),
-    ),
-    error: null,
+    providers:
+      host.status === "disconnected"
+        ? providers.map((provider) => normalizedProvider(provider, undefined))
+        : resources,
+    error:
+      sources.status === "rejected"
+        ? "Usage sources could not be discovered."
+        : null,
   };
 }
 
 export default function providerUsagePlugin(bb: BbPluginApi): void {
   const cache = new Map<string, MachineCacheEntry>();
   const pendingByMachine = new Map<string, PendingMachineUsage>();
+  let sourceResults: SourceResult[] = [];
+  let sourceLoadedAt = 0;
+  let sourceSignature = "";
+  let sharedDirty = false;
   const environmentHosts = new Map<string, string | null>();
 
   const readMachine = async (
     host: Host,
     request: UsageRequest,
     targeted: boolean,
+    readSources: () => Promise<SourceResult[]>,
   ): Promise<UsageMachine> => {
     const cached = cache.get(host.id);
     const effectiveMaxAgeMs =
@@ -213,9 +238,9 @@ export default function providerUsagePlugin(bb: BbPluginApi): void {
     if (pending !== undefined) {
       if (!request.force || pending.force) return pending.promise;
       await pending.promise;
-      return readMachine(host, request, targeted);
+      return readMachine(host, request, targeted, readSources);
     }
-    const next = loadMachineUsage(bb, host)
+    const next = loadMachineUsage(bb, host, readSources)
       .then((machine) => {
         cache.set(host.id, {
           dirty: false,
@@ -232,7 +257,60 @@ export default function providerUsagePlugin(bb: BbPluginApi): void {
   };
 
   const readUsage = async (request: UsageRequest): Promise<UsageSnapshot> => {
-    const hosts = await bb.sdk.hosts.list();
+    const [hosts, sources] = await Promise.all([
+      bb.sdk.hosts.list(),
+      bb.sdk.plugins.experimental_discoverRpc({ method: usageSourceMethod }),
+    ]);
+    const signature = JSON.stringify(sources);
+    if (signature !== sourceSignature) {
+      cache.clear();
+      sourceResults = [];
+      sourceLoadedAt = 0;
+      sourceSignature = signature;
+    }
+    let pendingSources: Promise<SourceResult[]> | undefined;
+    const readSources = () =>
+      (pendingSources ??= (async () => {
+        const results: SourceResult[] = [];
+        for (let offset = 0; offset < sources.length; offset += 3) {
+          results.push(
+            ...(await Promise.all(
+              sources
+                .slice(offset, offset + 3)
+                .map(async (source): Promise<SourceResult> => {
+                  try {
+                    const snapshot = await bb.sdk.plugins.callRpc({
+                      pluginId: source.pluginId,
+                      method: usageSourceMethod,
+                      input: { refresh: request.force },
+                      outputSchema:
+                        usageSourceRpcContract[usageSourceMethod].output,
+                      signal: AbortSignal.timeout(45_000),
+                    });
+                    return {
+                      pluginId: source.pluginId,
+                      resources: snapshot.resources,
+                      error: null,
+                    };
+                  } catch {
+                    return {
+                      pluginId: source.pluginId,
+                      resources: [],
+                      error:
+                        "Usage could not be loaded from " +
+                        source.pluginId +
+                        ".",
+                    };
+                  }
+                }),
+            )),
+          );
+        }
+        sourceResults = results;
+        sourceLoadedAt = Date.now();
+        sharedDirty = false;
+        return results;
+      })());
     const hostIds = new Set(hosts.map((host) => host.id));
     for (const machineId of cache.keys()) {
       if (!hostIds.has(machineId)) cache.delete(machineId);
@@ -247,9 +325,24 @@ export default function providerUsagePlugin(bb: BbPluginApi): void {
           targetedIds === null ||
             targetedIds.has(host.id) ||
             !cache.has(host.id),
+          readSources,
         ),
       ),
     );
+    const sharedTargeted =
+      request.machineIds === null ||
+      request.machineIds.some((id) => id.startsWith("source:"));
+    if (
+      sourceLoadedAt === 0 ||
+      (sharedTargeted &&
+        (request.force ||
+          Date.now() - sourceLoadedAt >=
+            (sharedDirty
+              ? Math.min(request.maxAgeMs, DIRTY_CACHE_MAX_AGE_MS)
+              : request.maxAgeMs)))
+    ) {
+      await readSources();
+    }
     const machines: UsageMachine[] = [];
     for (const host of hosts) {
       const entry = cache.get(host.id);
@@ -258,10 +351,26 @@ export default function providerUsagePlugin(bb: BbPluginApi): void {
       }
       machines.push(entry.machine);
     }
+    for (const source of sourceResults) {
+      const shared = source.resources.filter(
+        (resource) => resource.scope.kind === "shared",
+      );
+      if (shared.length === 0 && source.error === null) continue;
+      machines.push({
+        id: `source:${source.pluginId}`,
+        displayName: `Shared · ${source.pluginId}`,
+        status: "connected",
+        providers: shared.map((resource) =>
+          resourceProvider(resource, source.pluginId, []),
+        ),
+        error: source.error,
+      });
+    }
     return { machines };
   };
 
   const markDirty = (machineId: string | null): void => {
+    sharedDirty = true;
     if (machineId === null) {
       for (const entry of cache.values()) entry.dirty = true;
     } else {

@@ -4,6 +4,12 @@ import {
   makeThreadResponse,
 } from "@get-bb/plugin-sdk/testing";
 import plugin from "./server.js";
+import {
+  usageSnapshotSchema,
+  usageSourceMethod,
+} from "./usage-source-contract.js";
+
+const discovery = [{ pluginId: "local-source", method: usageSourceMethod }];
 
 afterEach(() => {
   vi.useRealTimers();
@@ -59,22 +65,47 @@ describe("provider usage backend", () => {
             },
           ],
         },
-        system: {
-          usageLimits: async () => ({
-            "claude-code": {
-              status: "ok",
-              accountEmail: "dev@example.com",
-              planLabel: "Max",
-              windows: [
+        plugins: {
+          experimental_discoverRpc: async () => discovery,
+          callRpc: async () =>
+            usageSnapshotSchema.parse({
+              resources: [
                 {
-                  label: "Five-hour limit",
-                  usedPercent: 82,
-                  resetsAt: "2026-09-02T18:42:00.000Z",
+                  id: "claude-code",
+                  providerId: "claude-code",
+                  label: "Claude Code",
+                  scope: { kind: "host", hostId: "host-m4", hostName: "M4" },
+                  observedAt: 1,
+                  usage: {
+                    status: "ok",
+                    accountEmail: "dev@example.com",
+                    planLabel: "Max",
+                    windows: [
+                      {
+                        id: "five-hour",
+                        label: "Five-hour limit",
+                        usedPercent: 82,
+                        resetsAt: "2026-09-02T18:42:00.000Z",
+                        model: null,
+                        cost: null,
+                      },
+                    ],
+                  },
+                },
+                {
+                  id: "codex",
+                  providerId: "codex",
+                  label: "Codex",
+                  scope: { kind: "host", hostId: "host-m4", hostName: "M4" },
+                  observedAt: null,
+                  usage: {
+                    status: "unauthenticated",
+                    accountEmail: null,
+                    planLabel: null,
+                  },
                 },
               ],
-            },
-            codex: { status: "unauthenticated" },
-          }),
+            }),
         },
       },
     });
@@ -95,7 +126,7 @@ describe("provider usage backend", () => {
           error: null,
           providers: [
             {
-              id: "claude-code",
+              id: "local-source:claude-code",
               displayName: "Claude Code",
               logoUrl: "/api/v1/system/providers/claude-code/logo?h=claude",
               icon: null,
@@ -117,7 +148,7 @@ describe("provider usage backend", () => {
               },
             },
             {
-              id: "codex",
+              id: "local-source:codex",
               displayName: "Codex",
               logoUrl: "/api/v1/system/providers/codex/logo?h=codex",
               icon: null,
@@ -165,9 +196,12 @@ describe("provider usage backend", () => {
       [{ hostId: "host-m4", capability: "usage" }],
       [{ hostId: "host-intel", capability: "usage" }],
     ]);
-    expect(host.harness.sdk.callsTo("system.usageLimits")).toEqual([
-      [{ hostId: "host-m4" }],
-    ]);
+    expect(host.harness.sdk.callsTo("plugins.callRpc")).toHaveLength(1);
+    expect(host.harness.sdk.callsTo("plugins.callRpc")[0]?.[0]).toMatchObject({
+      pluginId: "local-source",
+      method: usageSourceMethod,
+      input: { refresh: false },
+    });
 
     await host.harness.behavior.callRpc("getUsage", {
       force: false,
@@ -176,7 +210,7 @@ describe("provider usage backend", () => {
     });
     expect(host.harness.sdk.callsTo("hosts.list")).toHaveLength(2);
     expect(host.harness.sdk.callsTo("providers.list")).toHaveLength(2);
-    expect(host.harness.sdk.callsTo("system.usageLimits")).toHaveLength(1);
+    expect(host.harness.sdk.callsTo("plugins.callRpc")).toHaveLength(1);
 
     await host.harness.behavior.callRpc("getUsage", {
       force: true,
@@ -185,7 +219,7 @@ describe("provider usage backend", () => {
     });
     expect(host.harness.sdk.callsTo("hosts.list")).toHaveLength(3);
     expect(host.harness.sdk.callsTo("providers.list")).toHaveLength(4);
-    expect(host.harness.sdk.callsTo("system.usageLimits")).toHaveLength(2);
+    expect(host.harness.sdk.callsTo("plugins.callRpc")).toHaveLength(2);
 
     await host.harness.behavior.callRpc("getUsage", {
       force: true,
@@ -193,7 +227,7 @@ describe("provider usage backend", () => {
       maxAgeMs: 0,
     });
     expect(host.harness.sdk.callsTo("providers.list")).toHaveLength(5);
-    expect(host.harness.sdk.callsTo("system.usageLimits")).toHaveLength(3);
+    expect(host.harness.sdk.callsTo("plugins.callRpc")).toHaveLength(3);
     expect(host.harness.sdk.callsTo("providers.list").at(-1)).toEqual([
       { hostId: "host-m4", capability: "usage" },
     ]);
@@ -217,8 +251,9 @@ describe("provider usage backend", () => {
         providers: {
           list: async () => [],
         },
-        system: {
-          usageLimits: async () => ({}),
+        plugins: {
+          experimental_discoverRpc: async () => discovery,
+          callRpc: async () => ({ resources: [] }),
         },
       },
     });
@@ -240,10 +275,7 @@ describe("provider usage backend", () => {
     expect(host.harness.sdk.callsTo("environments.get")).toEqual([
       [{ environmentId: "environment-m5" }],
     ]);
-    expect(host.harness.sdk.callsTo("system.usageLimits")).toEqual([
-      [{ hostId: "host-m4" }],
-      [{ hostId: "host-m5" }],
-    ]);
+    expect(host.harness.sdk.callsTo("plugins.callRpc")).toHaveLength(1);
 
     vi.setSystemTime(new Date("2026-09-04T12:02:00.000Z"));
     await host.harness.behavior.callRpc("getUsage", {
@@ -252,11 +284,101 @@ describe("provider usage backend", () => {
       maxAgeMs: 30 * 60_000,
     });
 
-    expect(host.harness.sdk.callsTo("system.usageLimits")).toEqual([
-      [{ hostId: "host-m4" }],
-      [{ hostId: "host-m5" }],
-      [{ hostId: "host-m5" }],
+    expect(host.harness.sdk.callsTo("plugins.callRpc")).toHaveLength(2);
+    expect(host.harness.sdk.callsTo("providers.list")).toEqual([
+      [{ hostId: "host-m4", capability: "usage" }],
+      [{ hostId: "host-m5", capability: "usage" }],
+      [{ hostId: "host-m5", capability: "usage" }],
     ]);
+    await host.harness.lifecycle.dispose();
+  });
+});
+
+describe("usage source composition", () => {
+  it("keeps shared accounts once, isolates failures, and removes disabled sources", async () => {
+    let enabled = true;
+    const host = createFakePluginHost({
+      pluginId: "provider-usage",
+      sdk: {
+        hosts: { list: async () => [] },
+        plugins: {
+          experimental_discoverRpc: async () =>
+            enabled
+              ? [
+                  { pluginId: "pool", method: usageSourceMethod },
+                  { pluginId: "broken", method: usageSourceMethod },
+                ]
+              : [],
+          callRpc: async ({ pluginId }) => {
+            if (pluginId === "broken") throw new Error("Unavailable");
+            return usageSnapshotSchema.parse({
+              resources: [
+                {
+                  id: "account-1",
+                  providerId: "codex",
+                  label: "Team account",
+                  scope: { kind: "shared" },
+                  observedAt: 123,
+                  usage: {
+                    status: "ok",
+                    accountEmail: "team@example.com",
+                    planLabel: null,
+                    windows: [
+                      {
+                        id: "budget",
+                        label: "Budget",
+                        usedPercent: 120,
+                        resetsAt: null,
+                        model: null,
+                        cost: { usedUsdCents: 1.2, limitUsdCents: 1 },
+                      },
+                    ],
+                  },
+                },
+              ],
+            });
+          },
+        },
+      },
+    });
+    plugin(host.bb);
+    const request = { force: false, machineIds: null, maxAgeMs: 60_000 };
+    const snapshot = await host.harness.behavior.callRpc("getUsage", request);
+    expect(snapshot).toMatchObject({
+      machines: [
+        {
+          id: "source:pool",
+          providers: [
+            {
+              id: "pool:account-1",
+              displayName: "Team account",
+              usage: {
+                status: "ok",
+                windows: [{ usedPercent: 120, cost: { usedUsdCents: 1.2 } }],
+              },
+            },
+          ],
+        },
+        {
+          id: "source:broken",
+          providers: [],
+          error: "Usage could not be loaded from broken.",
+        },
+      ],
+    });
+    await host.harness.behavior.callRpc("getUsage", {
+      ...request,
+      force: true,
+      machineIds: ["source:pool"],
+    });
+    expect(host.harness.sdk.callsTo("plugins.callRpc")[2]?.[0]).toMatchObject({
+      input: { refresh: true },
+    });
+    expect(host.harness.sdk.callsTo("system.usageLimits")).toEqual([]);
+    enabled = false;
+    await expect(
+      host.harness.behavior.callRpc("getUsage", request),
+    ).resolves.toEqual({ machines: [] });
     await host.harness.lifecycle.dispose();
   });
 });
