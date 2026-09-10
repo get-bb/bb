@@ -8,7 +8,6 @@ import { toOptionalString } from "@bb/config/strings";
 import { createLogger } from "@bb/logger";
 import { getAppSettings } from "@bb/db";
 import { initDb } from "./db.js";
-import { startDatabaseCheckpointWorker } from "./services/system/database-checkpoint.js";
 import { createApp } from "./server.js";
 import { PendingInteractionLifecycle } from "./services/interactions/pending-interactions.js";
 import { createMachineAuthService } from "./services/machine-auth.js";
@@ -54,11 +53,6 @@ export async function runServer(serverConfig: ServerConfig): Promise<void> {
   });
   const db = initDb(serverConfig.databasePath, {
     dataDir: serverConfig.BB_DATA_DIR,
-    logger,
-  });
-  const databaseCheckpoints = await startDatabaseCheckpointWorker({
-    db,
-    databasePath: serverConfig.databasePath,
     logger,
   });
   const hub = new NotificationHub();
@@ -282,7 +276,6 @@ export async function runServer(serverConfig: ServerConfig): Promise<void> {
       });
       await closeWebSockets();
       await closeServer;
-      await databaseCheckpoints?.stop();
     })();
     return shutdownPromise;
   };
