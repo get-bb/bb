@@ -1,5 +1,6 @@
 import { lazy, Suspense, useEffect } from "react";
 import {
+  matchPath,
   Navigate,
   Route,
   Routes,
@@ -196,7 +197,7 @@ function PluginSettingsRoute() {
 }
 
 function normalizeLegacyPluginSuffix(suffix: string): string {
-  return suffix === "/browse" ? "" : suffix;
+  return matchPath("/browse", suffix) !== null ? "" : suffix;
 }
 
 export function LegacyPluginsPathRedirect() {

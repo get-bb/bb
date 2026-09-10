@@ -122,15 +122,15 @@ export function isLegacyInstalledPluginsRoute({
 
 export function isPluginsRoutePath(pathname: string): boolean {
   return (
-    pathname === PLUGINS_ROUTE_PATH ||
+    matchPath(PLUGINS_ROUTE_PATH, pathname) !== null ||
     matchPath(PLUGIN_DETAIL_ROUTE_PATH, pathname) !== null
   );
 }
 
 export function isSkillsRoutePath(pathname: string): boolean {
   return (
-    pathname === SKILLS_ROUTE_PATH ||
-    pathname === REGISTRY_SKILLS_ROUTE_PATH ||
+    matchPath(SKILLS_ROUTE_PATH, pathname) !== null ||
+    matchPath(REGISTRY_SKILLS_ROUTE_PATH, pathname) !== null ||
     matchPath(SKILL_DETAIL_ROUTE_PATH, pathname) !== null ||
     matchPath(REGISTRY_SKILL_DETAIL_ROUTE_PATH, pathname) !== null
   );

@@ -15,6 +15,7 @@ import {
   isRoutePath,
   isProjectlessProjectId,
   isSkillsRoutePath,
+  isToolsRoutePath,
   LEGACY_AUTOMATION_DETAIL_ROUTE_PATH,
   LEGACY_AUTOMATIONS_ROUTE_PATH,
   LEGACY_SKILLS_ROUTE_PATH,
@@ -123,6 +124,19 @@ describe("route path helpers", () => {
     ]) {
       expect(isRoutePath({ path })).toBe(true);
     }
+  });
+
+  it.each([
+    ["/plugins/", "plugins"],
+    ["/plugins/github/", "plugins"],
+    ["/skills/", "skills"],
+    ["/skills/registry/", "skills"],
+    ["/skills/library/skill_abc123/", "skills"],
+  ])("keeps %s in its workspace", (pathname, workspace) => {
+    expect(isRoutePath({ path: pathname })).toBe(true);
+    expect(isToolsRoutePath(pathname)).toBe(true);
+    expect(isPluginsRoutePath(pathname)).toBe(workspace === "plugins");
+    expect(isSkillsRoutePath(pathname)).toBe(workspace === "skills");
   });
 
   it("builds canonical Automations plugin routes", () => {

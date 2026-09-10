@@ -139,6 +139,11 @@ describe("legacy Extensions redirects", () => {
       "/plugins?sort=name#catalog",
     ],
     [
+      TOOLS_PLUGIN_BROWSE_ROUTE_PATH,
+      "/extensions/plugins/browse/?sort=name#catalog",
+      "/plugins?sort=name#catalog",
+    ],
+    [
       TOOLS_PLUGIN_DETAIL_ROUTE_PATH,
       "/extensions/plugins/github?view=installed#configuration",
       "/plugins/github?view=installed#configuration",
@@ -205,6 +210,7 @@ describe("legacy Tools redirects", () => {
   it.each([
     ["/tools", "/plugins"],
     ["/tools/plugins/browse", "/plugins"],
+    ["/tools/plugins/browse/?sort=name#catalog", "/plugins?sort=name#catalog"],
     [
       "/tools/plugins/github?view=installed#configuration",
       "/plugins/github?view=installed#configuration",

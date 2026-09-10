@@ -6,7 +6,7 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import { useLocation, useNavigate } from "react-router-dom";
+import { matchPath, useLocation, useNavigate } from "react-router-dom";
 import "@bb/shared-ui/icon-extended";
 import { useMutation } from "@tanstack/react-query";
 import { buildPluginEditThreadPrompt } from "@bb/shared-ui/resource-edit-prompt";
@@ -557,7 +557,7 @@ export function PluginsView({ pluginId }: { pluginId?: string } = {}) {
 export function SkillsView() {
   const location = useLocation();
   const isCollection =
-    location.pathname === SKILLS_ROUTE_PATH ||
+    matchPath(SKILLS_ROUTE_PATH, location.pathname) !== null ||
     location.pathname === REGISTRY_SKILLS_ROUTE_PATH;
 
   return (
