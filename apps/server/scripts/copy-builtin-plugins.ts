@@ -24,7 +24,6 @@ import {
   BUNDLED_MARKETPLACE_GENERATED_DIRECTORY,
 } from "../src/services/plugin-catalog/bundled-marketplace-paths.js";
 import {
-  BUILTIN_PLUGINS_DIRECTORY_NAME,
   BUNDLED_PLUGINS,
   resolveBuiltinPluginRootPathForModuleDir,
   type BundledPluginDefinition,
@@ -33,7 +32,10 @@ import {
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
 const serverRoot = path.resolve(scriptDir, "..");
 const sourceModuleDir = path.resolve(serverRoot, "src", "services", "plugins");
-const targetRoot = path.resolve(serverRoot, BUILTIN_PLUGINS_DIRECTORY_NAME);
+const targetRoot = path.resolve(
+  serverRoot,
+  "../../packages/bundled-plugins/dist",
+);
 const bundledMarketplaceManifestPath = path.resolve(
   serverRoot,
   "src",
@@ -254,31 +256,9 @@ export async function copyBuiltinPlugins(args: {
   }
 }
 
-export async function assembleBuiltinPlugins(): Promise<void> {
-  await rm(targetRoot, { recursive: true, force: true });
-  await mkdir(targetRoot, { recursive: true });
-  await cp(
-    bundledMarketplaceManifestPath,
-    path.join(targetRoot, BUNDLED_MARKETPLACE_FILENAME),
-  );
-  for (const plugin of BUNDLED_PLUGINS) {
-    const sourceRoot = resolveBuiltinPluginRootPathForModuleDir({
-      moduleDir: sourceModuleDir,
-      name: plugin.name,
-    });
-    await cp(
-      path.join(sourceRoot, ".bundled-runtime", plugin.name),
-      path.join(targetRoot, plugin.name),
-      { recursive: true },
-    );
-  }
-}
-
 if (import.meta.url === pathToFileURL(process.argv[1] ?? "").href) {
   const args = process.argv.slice(2);
-  if (args.length === 1 && args[0] === "--assemble") {
-    await assembleBuiltinPlugins();
-  } else if (args.length === 2 && args[0] === "--plugin") {
+  if (args.length === 2 && args[0] === "--plugin") {
     const plugin = BUNDLED_PLUGINS.find((plugin) => plugin.name === args[1]);
     if (plugin === undefined)
       throw new Error(`Unknown bundled plugin: ${args[1]}`);
@@ -302,7 +282,7 @@ if (import.meta.url === pathToFileURL(process.argv[1] ?? "").href) {
     });
   } else {
     throw new Error(
-      "Expected --assemble, --plugin <name>, --target <directory>, or no arguments",
+      "Expected --plugin <name>, --target <directory>, or no arguments",
     );
   }
 }

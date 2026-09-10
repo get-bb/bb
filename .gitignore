@@ -94,6 +94,5 @@ provider-recordings/raw/
 .builtin-server-test-*/
 .builtin-host-test-*/
 
-/apps/server/builtin-plugins/
 /plugins/.bundled-stage-*/
 /plugins/*/.bundled-runtime/

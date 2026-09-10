@@ -13,7 +13,7 @@ import { join, resolve } from "node:path";
 export const runtimeOutputRoots = [
   "apps/app/dist",
   "apps/server/dist",
-  "apps/server/builtin-plugins",
+  "packages/bundled-plugins/dist",
   "apps/host-daemon/dist",
   "packages/plugin-sdk/dist",
   "packages/plugin-sdk/bundled-types",

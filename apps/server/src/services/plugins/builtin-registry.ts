@@ -226,8 +226,7 @@ export function resolveBuiltinPluginRootPathForModuleDir(
 
   const preparedCandidate = path.resolve(
     args.moduleDir,
-    "..",
-    BUILTIN_PLUGINS_DIRECTORY_NAME,
+    "../../../packages/bundled-plugins/dist",
     args.name,
   );
   if (existsSync(preparedCandidate)) return preparedCandidate;

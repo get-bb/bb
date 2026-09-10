@@ -1552,6 +1552,108 @@ importers:
         specifier: npm:typescript@^7.0.2
         version: typescript@7.0.2
 
+  packages/bundled-plugins:
+    dependencies:
+      bb-plugin-account-pool:
+        specifier: workspace:*
+        version: link:../../plugins/account-pool
+      bb-plugin-ask-user-question:
+        specifier: workspace:*
+        version: link:../../plugins/ask-user-question
+      bb-plugin-automations:
+        specifier: workspace:*
+        version: link:../../plugins/automations
+      bb-plugin-bb-guide:
+        specifier: workspace:*
+        version: link:../../plugins/bb-guide
+      bb-plugin-browser-automation:
+        specifier: workspace:*
+        version: link:../../plugins/browser-automation
+      bb-plugin-concurrency-limit:
+        specifier: workspace:*
+        version: link:../../plugins/concurrency-limit
+      bb-plugin-connect:
+        specifier: workspace:*
+        version: link:../../plugins/connect
+      bb-plugin-custom-instructions:
+        specifier: workspace:*
+        version: link:../../plugins/custom-instructions
+      bb-plugin-environment-git-worktree:
+        specifier: workspace:*
+        version: link:../../plugins/environment-git-worktree
+      bb-plugin-environment-personal-workspace:
+        specifier: workspace:*
+        version: link:../../plugins/environment-personal-workspace
+      bb-plugin-environment-project-checkout:
+        specifier: workspace:*
+        version: link:../../plugins/environment-project-checkout
+      bb-plugin-github:
+        specifier: workspace:*
+        version: link:../../plugins/github
+      bb-plugin-inline-vis:
+        specifier: workspace:*
+        version: link:../../plugins/inline-vis
+      bb-plugin-keep-awake:
+        specifier: workspace:*
+        version: link:../../plugins/keep-awake
+      bb-plugin-memory:
+        specifier: workspace:*
+        version: link:../../plugins/memory
+      bb-plugin-monaco-editor:
+        specifier: workspace:*
+        version: link:../../plugins/monaco-editor
+      bb-plugin-pdf-preview:
+        specifier: workspace:*
+        version: link:../../plugins/pdf-preview
+      bb-plugin-plugin-api-docs:
+        specifier: workspace:*
+        version: link:../../plugins/plugin-api-docs
+      bb-plugin-plugin-api-tester:
+        specifier: workspace:*
+        version: link:../../plugins/plugin-api-tester
+      bb-plugin-provider-acp:
+        specifier: workspace:*
+        version: link:../../plugins/provider-acp
+      bb-plugin-provider-claude-code:
+        specifier: workspace:*
+        version: link:../../plugins/provider-claude-code
+      bb-plugin-provider-codex:
+        specifier: workspace:*
+        version: link:../../plugins/provider-codex
+      bb-plugin-provider-pi:
+        specifier: workspace:*
+        version: link:../../plugins/provider-pi
+      bb-plugin-provider-retry:
+        specifier: workspace:*
+        version: link:../../plugins/provider-retry
+      bb-plugin-provider-usage:
+        specifier: workspace:*
+        version: link:../../plugins/provider-usage
+      bb-plugin-push-notifications:
+        specifier: workspace:*
+        version: link:../../plugins/push-notifications
+      bb-plugin-scheduled-send:
+        specifier: workspace:*
+        version: link:../../plugins/scheduled-send
+      bb-plugin-secrets:
+        specifier: workspace:*
+        version: link:../../plugins/secrets
+      bb-plugin-side-chat:
+        specifier: workspace:*
+        version: link:../../plugins/side-chat
+      bb-plugin-simple-notes:
+        specifier: workspace:*
+        version: link:../../plugins/docs
+      bb-plugin-tasks:
+        specifier: workspace:*
+        version: link:../../plugins/tasks
+      bb-plugin-theme-preview:
+        specifier: workspace:*
+        version: link:../../plugins/theme-preview
+      bb-plugin-workflows:
+        specifier: workspace:*
+        version: link:../../plugins/workflows
+
   packages/config:
     dependencies:
       '@bb/domain':

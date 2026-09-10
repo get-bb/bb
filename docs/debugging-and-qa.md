@@ -339,7 +339,7 @@ Use `pnpm prepare:worktree` to prepare the production runtime with the developme
 dotenv cascade, without starting services or touching instance data or ports.
 Install dependencies with `pnpm install --frozen-lockfile` beforehand when needed.
 Preparation repairs/checks native modules, runs Turbo builds including
-`@bb/server#prepare:plugins`, and writes a local preparation receipt only after
+`@bb/bundled-plugins#build`, and writes a local preparation receipt only after
 successful builds. Repeated preparation restores the cached plugin bundles,
 branding, skills, marketplace manifest, and staged Monaco assets.
 
@@ -380,14 +380,16 @@ installed `bb` commands or public plugin SDK APIs. The source launcher also acce
 `pnpm start` keeps its existing production dotenv and packaged runtime policy.
 
 Turbo output ownership is separate: server `build` owns `apps/server/dist`,
-`prepare:plugins` assembles `apps/server/builtin-plugins` from 33 independently
+`@bb/bundled-plugins#build` assembles `packages/bundled-plugins/dist` from 33 independently
 cached `<plugin-package>#prepare:bundled` tasks. Each plugin task owns only its
 `plugins/<name>/.bundled-runtime` directory; regular plugin builds still own
 `plugins/<name>/dist`. Changing one plugin rebuilds its preparation and final
 assembly, while unchanged plugins restore from cache. Shared SDK/toolchain
-changes deliberately invalidate every plugin. The assembly task has explicit
-dependencies on all bundled plugin tasks; adding a bundled plugin requires its
-package script and assembly dependency, checked by the startup test suite.
+changes deliberately invalidate every plugin. The assembly package declares its plugin dependencies in `package.json`; Turbo
+uses `^prepare:bundled` to build them. Adding a bundled plugin requires its
+package script and workspace dependency, checked against the runtime registry
+by the startup test suite. Shared sources are hashed through workspace `topo`
+dependencies rather than repository-wide source globs.
 Bundled preparation uses temporary source copies
 and never writes those individual output trees. `bb-app#build` depends on and
 copies prepared plugins into its own package output. The plugin task hashes

@@ -12,8 +12,7 @@
     "generate:bb-official-marketplace": "node --conditions=source --import tsx scripts/generate-bb-official-marketplace.ts",
     "typecheck": "tsc --noEmit",
     "test": "vitest run --config vitest.config.ts",
-    "test:provider-corpus": "vitest run --config vitest.config.ts test/provider-corpus",
-    "prepare:plugins": "node --conditions=source --import tsx scripts/copy-builtin-plugins.ts --assemble"
+    "test:provider-corpus": "vitest run --config vitest.config.ts test/provider-corpus"
   },
   "dependencies": {
     "@bb/config": "workspace:*",

@@ -16,18 +16,25 @@ describe("bundled plugin task graph", () => {
       expect(manifest.scripts["prepare:bundled"]).toBe(
         `cd ../.. && node --conditions=source --import tsx apps/server/scripts/copy-builtin-plugins.ts --plugin ${name}`,
       );
-      return `${manifest.name}#prepare:bundled`;
+      return manifest.name;
     });
-    const assembly = turbo.tasks["@bb/server#prepare:plugins"];
-    expect(
-      assembly.dependsOn
-        .filter((task) => task.endsWith("#prepare:bundled"))
-        .sort(),
-    ).toEqual(expected.sort());
-    expect(assembly.outputs).toEqual(["builtin-plugins/**"]);
+    const bundle = JSON.parse(
+      readFileSync(
+        resolve(root, "packages/bundled-plugins/package.json"),
+        "utf8",
+      ),
+    );
+    expect(Object.keys(bundle.dependencies).sort()).toEqual(expected.sort());
+    const assembly = turbo.tasks["@bb/bundled-plugins#build"];
+    expect(assembly.dependsOn).toEqual([
+      "^prepare:bundled",
+      "@bb/server#generate:bb-official-marketplace",
+    ]);
+    expect(assembly.outputs).toEqual(["dist/**"]);
     const plugin = turbo.tasks["prepare:bundled"];
     expect(plugin.outputs).toEqual([".bundled-runtime/**"]);
     expect(plugin.dependsOn).toEqual([
+      "topo",
       "@get-bb/plugin-sdk#build",
       "@bb/plugin-build#topo",
     ]);

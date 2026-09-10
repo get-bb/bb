@@ -78,8 +78,8 @@ await copyBuildOutput({
   to: resolve(packageRoot, "server", "dist"),
 });
 await copyBuildOutput({
-  from: resolve(workspaceRoot, "apps", "server", "builtin-plugins"),
-  label: "@bb/server prepared plugins",
+  from: resolve(workspaceRoot, "packages", "bundled-plugins", "dist"),
+  label: "@bb/bundled-plugins dist",
   to: resolve(packageRoot, "server", "dist", "builtin-plugins"),
 });
 await copyBuildOutput({
