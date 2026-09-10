@@ -755,8 +755,8 @@ describe("slow query index plans", () => {
     const debugLog = findOnlyDebugLog({
       logger,
       predicate: (fields) =>
-        fields.operation === "run" &&
-        fields.sql.startsWith("UPDATE events SET environment_id = NULL"),
+        fields.operation === "all" &&
+        fields.sql.startsWith("SELECT rowid, octet_length(data)"),
     });
     assertEmittedQueryPlanUsesIndex({
       db,
