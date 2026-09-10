@@ -2316,6 +2316,7 @@ async function runDesktopApp(): Promise<void> {
   desktopBrowserBrokerClient = createDesktopBrowserBrokerClient({
     broker: desktopBrowserBroker,
     dataDir: resolveDataDirFromEnv({ env: process.env, homeDir: homedir() }),
+    homeDir: homedir(),
     getServerUrl() {
       const target = serverTargetStore?.getTarget();
       if (target?.kind === "connect") return target.server.url;
