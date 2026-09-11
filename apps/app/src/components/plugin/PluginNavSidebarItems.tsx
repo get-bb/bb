@@ -253,13 +253,11 @@ function PluginNavSidebarItemList({
     () => seedSkillsNavigationPreference(storedOrder, storedVisibleKeys),
     [storedOrder, storedVisibleKeys],
   );
-  const [disablePendingPluginId, setDisablePendingPluginId] = useState<
-    string | null
-  >(null);
+  const [disablePending, setDisablePending] = useState(false);
   const handleDisable = useCallback(
     async (row: PluginSidebarNavRow) => {
       const pluginId = row.chrome.pluginId;
-      setDisablePendingPluginId(pluginId);
+      setDisablePending(true);
       try {
         const current = store.get(splitLayoutAtom);
         let next = current;
@@ -305,7 +303,7 @@ function PluginNavSidebarItemList({
         });
       } finally {
         await invalidatePluginList({ queryClient: appQueryClient });
-        setDisablePendingPluginId(null);
+        setDisablePending(false);
       }
     },
     [location.pathname, navigate, onNavigate, store],
@@ -444,7 +442,7 @@ function PluginNavSidebarItemList({
     pathname: location.pathname,
     splitEnabled,
     onHide: (key: string) => setPanelVisible(key, false),
-    disablePending: disablePendingPluginId !== null,
+    disablePending,
     onDisable: (row: PluginSidebarNavRow) => void handleDisable(row),
   };
 
@@ -539,7 +537,7 @@ function PluginNavSidebarItemList({
               <BuiltInSidebarNavRow
                 key={getPluginNavPanelKey(row)}
                 row={row}
-                onHide={(key) => setPanelVisible(key, false)}
+                onHide={rowProps.onHide}
                 onCustomize={openCustomize}
               />
             ),
@@ -1028,58 +1026,7 @@ function SidebarNavRowItem({
 
 type PluginNavRowMenuSurface = "context" | "dropdown";
 
-function PluginNavRowMenuItem({
-  children,
-  disabled = false,
-  icon,
-  onSelect,
-  surface,
-}: {
-  children: ReactNode;
-  disabled?: boolean;
-  icon: "Columns2" | "Info" | "EyeOff" | "Unavailable";
-  onSelect: () => void;
-  surface: PluginNavRowMenuSurface;
-}) {
-  const content = (
-    <>
-      {icon === "Unavailable" ? (
-        <HugeiconsIcon
-          icon={UnavailableIcon}
-          aria-hidden="true"
-          data-icon="Unavailable"
-        />
-      ) : (
-        <Icon name={icon} aria-hidden="true" />
-      )}
-      {children}
-    </>
-  );
-  return surface === "context" ? (
-    <ContextMenuItem disabled={disabled} onSelect={onSelect}>
-      {content}
-    </ContextMenuItem>
-  ) : (
-    <DropdownMenuItem disabled={disabled} onSelect={onSelect}>
-      {content}
-    </DropdownMenuItem>
-  );
-}
-
-function PluginNavRowMenuSeparator({
-  surface,
-}: {
-  surface: PluginNavRowMenuSurface;
-}) {
-  return surface === "context" ? (
-    <ContextMenuSeparator />
-  ) : (
-    <DropdownMenuSeparator />
-  );
-}
-
 function PluginNavRowMenuItems({
-  canOpenInSplit,
   disablePending,
   onDisable,
   onHide,
@@ -1087,44 +1034,41 @@ function PluginNavRowMenuItems({
   onOpenDetails,
   surface,
 }: {
-  canOpenInSplit: boolean;
   disablePending: boolean;
   onDisable: () => void;
   onHide: () => void;
-  onOpenInSplit: () => void;
+  onOpenInSplit?: () => void;
   onOpenDetails: () => void;
   surface: PluginNavRowMenuSurface;
 }) {
+  const Item = surface === "context" ? ContextMenuItem : DropdownMenuItem;
+  const Separator =
+    surface === "context" ? ContextMenuSeparator : DropdownMenuSeparator;
   return (
     <>
-      {canOpenInSplit ? (
-        <PluginNavRowMenuItem
-          surface={surface}
-          icon="Columns2"
-          onSelect={onOpenInSplit}
-        >
+      {onOpenInSplit !== undefined ? (
+        <Item onSelect={onOpenInSplit}>
+          <Icon name="Columns2" aria-hidden="true" />
           Open in split
-        </PluginNavRowMenuItem>
+        </Item>
       ) : null}
-      <PluginNavRowMenuItem
-        surface={surface}
-        icon="Info"
-        onSelect={onOpenDetails}
-      >
+      <Item onSelect={onOpenDetails}>
+        <Icon name="Info" aria-hidden="true" />
         View details
-      </PluginNavRowMenuItem>
-      <PluginNavRowMenuItem surface={surface} icon="EyeOff" onSelect={onHide}>
+      </Item>
+      <Item onSelect={onHide}>
+        <Icon name="EyeOff" aria-hidden="true" />
         Hide from sidebar
-      </PluginNavRowMenuItem>
-      <PluginNavRowMenuSeparator surface={surface} />
-      <PluginNavRowMenuItem
-        surface={surface}
-        icon="Unavailable"
-        disabled={disablePending}
-        onSelect={onDisable}
-      >
+      </Item>
+      <Separator />
+      <Item disabled={disablePending} onSelect={onDisable}>
+        <HugeiconsIcon
+          icon={UnavailableIcon}
+          aria-hidden="true"
+          data-icon="Unavailable"
+        />
         Disable
-      </PluginNavRowMenuItem>
+      </Item>
     </>
   );
 }
@@ -1283,11 +1227,10 @@ function SidebarNavRowChrome({
   const menuItems = (surface: PluginNavRowMenuSurface): ReactNode => (
     <PluginNavRowMenuItems
       surface={surface}
-      canOpenInSplit={onOpenInSplit !== undefined}
       disablePending={disablePending}
       onDisable={onDisable}
       onHide={() => onHide(rowKey)}
-      onOpenInSplit={() => onOpenInSplit?.()}
+      onOpenInSplit={onOpenInSplit}
       onOpenDetails={onOpenDetails}
     />
   );

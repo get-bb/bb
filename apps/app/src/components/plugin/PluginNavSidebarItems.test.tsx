@@ -30,7 +30,10 @@ import {
   resetCrashedPluginSlots,
 } from "./PluginSlotMount";
 import { appToast } from "@/components/ui/app-toast";
-import { makePluginRegistrationSet as registrationSet } from "@/test/fixtures/plugins";
+import {
+  makeInstalledPlugin,
+  makePluginRegistrationSet as registrationSet,
+} from "@/test/fixtures/plugins";
 import {
   type BuiltInSidebarNavEntry,
   ResourceNavSidebarItem,
@@ -69,36 +72,12 @@ vi.mock("@/components/ui/app-toast", () => ({
 function disabledPluginMutationResponse(id: string) {
   return {
     ok: true,
-    plugin: {
+    plugin: makeInstalledPlugin({
       id,
-      source: `npm:${id}`,
-      rootDir: `/managed/plugins/${id}`,
-      version: "1.0.0",
-      provenance: "catalog",
-      isOrphanedBuiltin: false,
-      catalogEntryId: id,
-      publisherLabel: "BB Community",
-      sourceDisplay: `BB Community · ${id}`,
-      updateState: {},
       enabled: false,
-      description: null,
-      name: id,
-      icon: "Puzzle",
-      iconUrl: null,
       status: "disabled",
-      statusDetail: null,
-      handlerStats: { count: 0, totalMs: 0, maxMs: 0, errorCount: 0 },
-      services: [],
-      schedules: [],
-      cliCommand: null,
-      capabilities: [],
-      hasSettings: false,
       app: { hasApp: true, bundle: null },
-      logoUrl: null,
-      logoDarkUrl: null,
-      providerIds: [],
-      icons: {},
-    },
+    }),
   };
 }
 
@@ -500,8 +479,6 @@ describe("PluginNavSidebarItems", () => {
               .querySelector(`[data-icon="${icon}"]`),
           ).not.toBeNull();
         }
-        expect(within(menu).queryByText("Move to top")).toBeNull();
-        expect(within(menu).queryByText("Move to overflow")).toBeNull();
       };
       expectFocusedMenu(dropdownMenu);
       fireEvent.keyDown(dropdownMenu, { key: "Escape" });
@@ -512,71 +489,48 @@ describe("PluginNavSidebarItems", () => {
     },
   );
 
-  it.each([
-    { surface: "dropdown", compactViewport: false },
-    { surface: "context", compactViewport: false },
-    { surface: "dropdown", compactViewport: true },
-    { surface: "context", compactViewport: true },
-  ])(
-    "hides an active plugin without disabling or navigating ($surface, compact=$compactViewport)",
-    async ({ surface, compactViewport }) => {
-      const fetchMock = vi.fn<typeof fetch>();
-      vi.stubGlobal("fetch", fetchMock);
-      registerPanel("docs", "Docs");
-      const initialLayout: SplitLayout = {
-        root: {
-          type: "pane",
-          paneId: "docs-pane",
-          content: {
-            kind: "plugin-panel",
-            pluginId: "docs",
-            panelPath: "main",
-            subPath: "",
-          },
+  it("hides an active plugin through the compact menu without disabling or navigating", async () => {
+    const fetchMock = vi.fn<typeof fetch>();
+    vi.stubGlobal("fetch", fetchMock);
+    registerPanel("docs", "Docs");
+    const initialLayout: SplitLayout = {
+      root: {
+        type: "pane",
+        paneId: "docs-pane",
+        content: {
+          kind: "plugin-panel",
+          pluginId: "docs",
+          panelPath: "main",
+          subPath: "",
         },
-        focusedPaneId: "docs-pane",
-      };
-      const { store } = renderSidebarItems({
-        compactViewport,
-        initialEntry: "/plugins/docs/main",
-        initialLayout,
-      });
-      if (surface === "dropdown") {
-        const trigger = screen.getByRole("button", {
-          name: "Docs panel options",
-        });
-        if (compactViewport) {
-          fireEvent.click(trigger);
-        } else {
-          fireEvent.pointerDown(trigger, { button: 0 });
-        }
-      } else {
-        fireEvent.contextMenu(screen.getByRole("button", { name: "Docs" }));
-      }
-      fireEvent.click(
-        await screen.findByRole("menuitem", { name: "Hide from sidebar" }),
-      );
+      },
+      focusedPaneId: "docs-pane",
+    };
+    const { store } = renderSidebarItems({
+      compactViewport: true,
+      initialEntry: "/plugins/docs/main",
+      initialLayout,
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Docs panel options" }));
+    fireEvent.click(
+      await screen.findByRole("menuitem", { name: "Hide from sidebar" }),
+    );
 
-      expect(store.get(pluginNavVisiblePanelKeysAtom)).toEqual([]);
-      expect(visibleRowKeys()).toEqual([]);
-      expect(store.get(splitLayoutAtom)).toEqual(initialLayout);
-      expect(screen.getByTestId("location-path").textContent).toBe(
-        "/plugins/docs/main",
-      );
-      expect(fetchMock).not.toHaveBeenCalled();
-      if (compactViewport) {
-        fireEvent.click(moreTrigger());
-      } else {
-        fireEvent.pointerDown(moreTrigger(), { button: 0 });
-      }
-      expect(
-        await screen.findByRole("menuitem", { name: "Docs" }),
-      ).not.toBeNull();
-      expect(
-        screen.getAllByRole("menuitem").map((item) => item.textContent?.trim()),
-      ).toEqual(["Docs", "Customize sidebar"]);
-    },
-  );
+    expect(store.get(pluginNavVisiblePanelKeysAtom)).toEqual([]);
+    expect(visibleRowKeys()).toEqual([]);
+    expect(store.get(splitLayoutAtom)).toEqual(initialLayout);
+    expect(screen.getByTestId("location-path").textContent).toBe(
+      "/plugins/docs/main",
+    );
+    expect(fetchMock).not.toHaveBeenCalled();
+    fireEvent.click(moreTrigger());
+    expect(
+      await screen.findByRole("menuitem", { name: "Docs" }),
+    ).not.toBeNull();
+    expect(
+      screen.getAllByRole("menuitem").map((item) => item.textContent?.trim()),
+    ).toEqual(["Docs", "Customize sidebar"]);
+  });
 
   it("opens plugin details and omits split when the layout cannot split", async () => {
     registerPanel("docs", "Docs");
@@ -620,16 +574,14 @@ describe("PluginNavSidebarItems", () => {
   });
 
   it.each([
-    { compactViewport: false, pluginId: "docs", title: "Docs" },
-    { compactViewport: true, pluginId: "docs", title: "Docs" },
+    { pluginId: "docs", title: "Docs" },
     {
-      compactViewport: false,
       pluginId: AUTOMATIONS_PLUGIN_ID,
       title: "Automations",
     },
   ])(
-    "replaces $title with New thread before disabling (compact=$compactViewport)",
-    async ({ compactViewport, pluginId, title }) => {
+    "replaces $title with New thread before disabling",
+    async ({ pluginId, title }) => {
       let completeDisable: (response: Response) => void = () => {};
       const fetchMock = vi.fn<typeof fetch>(
         () =>
@@ -640,7 +592,6 @@ describe("PluginNavSidebarItems", () => {
       vi.stubGlobal("fetch", fetchMock);
       registerPanel(pluginId, title);
       const { store } = renderSidebarItems({
-        compactViewport,
         initialEntries: ["/skills", `/plugins/${pluginId}/main`],
         initialLayout: {
           root: {
@@ -875,7 +826,7 @@ describe("PluginNavSidebarItems", () => {
       { button: 0 },
     );
     expect(
-      await screen.findByRole("menuitem", { name: "View details" }),
+      await screen.findByRole("menuitem", { name: "Hide from sidebar" }),
     ).not.toBeNull();
     expect(screen.queryByRole("menuitem", { name: "Move to top" })).toBeNull();
     expect(

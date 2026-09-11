@@ -45,7 +45,8 @@ vi.mock("./AppLayoutSidebar", async () => {
 vi.mock("@/hooks/queries/system-queries", () => ({
   useSystemConfig: () => ({
     data: {
-      experiments: {},
+      experiments: {
+      },
       generalSettings: defaultAppSettings,
       keybindings: [
         {
