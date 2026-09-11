@@ -160,6 +160,15 @@ function resourceProvider(
 }
 
 export default function providerUsagePlugin(bb: BbPluginApi): void {
+  bb.settings.define({
+    showFooterCard: {
+      type: "boolean",
+      label: "Show footer card",
+      description:
+        "Show the usage card and shortcut in the sidebar footer. Usage remains available in this plugin’s settings.",
+      default: true,
+    },
+  });
   const inventories = new Map<string, SourceResult>();
   const measurements = new Map<
     string,
@@ -205,11 +214,26 @@ export default function providerUsagePlugin(bb: BbPluginApi): void {
     return promise;
   };
   const readUsage = async (request: UsageRequest): Promise<UsageSnapshot> => {
-    const [hosts, sources, providers] = await Promise.all([
-      bb.sdk.hosts.list(),
+    const hostId = request.machineIds?.find((id) => !id.startsWith("source:"));
+    const [hosts, sources, providers, config] = await Promise.all([
+      bb.sdk.hosts
+        .list()
+        .then((hosts) => hosts.filter((host) => host.type !== "ephemeral")),
       bb.sdk.plugins.experimental_discoverRpc({ method: usageListMethod }),
-      bb.sdk.providers.list({ capability: "usage" }).catch(() => []),
+      bb.sdk.providers
+        .list(
+          hostId === undefined
+            ? { capability: "usage" }
+            : { capability: "usage", hostId },
+        )
+        .catch(() => []),
+      bb.sdk.system.config().catch(() => null),
     ]);
+    hosts.sort(
+      (a, b) =>
+        Number(b.id === config?.primaryHostId) -
+        Number(a.id === config?.primaryHostId),
+    );
     for (const id of inventories.keys())
       if (!sources.some((source) => source.pluginId === id))
         inventories.delete(id);

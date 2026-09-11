@@ -106,7 +106,7 @@ export const BUILTIN_PLUGINS = [
   {
     name: "provider-usage",
     pluginId: "provider-usage",
-    defaultEnabled: false,
+    defaultEnabled: true,
   },
   {
     name: "provider-acp",

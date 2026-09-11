@@ -5,17 +5,13 @@ import {
   defaultExperiments,
   type AppTheme,
   type Experiments,
-  type Host,
   defaultAppSettings,
   type AppSettings,
 } from "@bb/domain";
-import { makeHost } from "@bb/test-helpers/domain-fixtures";
 import type {
-  ProviderUsage,
   WorkspaceOpenTarget,
   WorkspaceOpenTargetId,
 } from "@bb/host-daemon-contract";
-import { UsageLimitsSettingsSectionContent } from "@/components/settings/UsageLimitsSettingsSection";
 import { VoiceInputSettingsSectionContent } from "@/components/settings/VoiceInputSettingsSection";
 import { ArchivedThreadsSettingsSection } from "@/components/settings/ArchivedThreadsSettingsSection";
 import { CommunitySettingsSection } from "@/components/settings/CommunitySettingsSection";
@@ -107,86 +103,6 @@ const connectedTargets: WorkspaceOpenTarget[] = [
   finderTarget,
   terminalTarget,
   defaultAppTarget,
-];
-
-function futureIso(minutesFromNow: number): string {
-  return new Date(Date.now() + minutesFromNow * 60_000).toISOString();
-}
-
-const usageFixture: {
-  codex: ProviderUsage;
-  "claude-code": ProviderUsage;
-  "acp-cursor": ProviderUsage;
-} = {
-  codex: {
-    status: "ok",
-    accountEmail: "sawyer@example.com",
-    planLabel: "Pro",
-    windows: [
-      {
-        label: "Current session",
-        resetsAt: futureIso(136),
-        usedPercent: 35,
-      },
-      {
-        label: "Weekly limit",
-        resetsAt: futureIso(48),
-        usedPercent: 74,
-      },
-    ],
-  },
-  "claude-code": {
-    status: "ok",
-    accountEmail: "sawyer@example.com",
-    planLabel: "Max (20x)",
-    windows: [
-      {
-        label: "Current session",
-        resetsAt: futureIso(179),
-        usedPercent: 3,
-      },
-      {
-        label: "Weekly limit",
-        resetsAt: futureIso(4 * 24 * 60),
-        usedPercent: 26,
-      },
-    ],
-  },
-  "acp-cursor": {
-    status: "ok",
-    accountEmail: "sawyer@example.com",
-    planLabel: "Pro",
-    windows: [
-      {
-        label: "Plan usage",
-        resetsAt: futureIso(14 * 24 * 60),
-        usedPercent: 72,
-      },
-      {
-        label: "On-demand spend",
-        resetsAt: futureIso(14 * 24 * 60),
-        usedPercent: 25,
-        cost: { usedUsdCents: 1_250, limitUsdCents: 5_000 },
-      },
-    ],
-  },
-};
-
-const usageHosts: Host[] = [
-  makeHost({
-    id: "host-macbook",
-    name: "MacBook Pro",
-    lastSeenAt: Date.now(),
-    createdAt: 1,
-    updatedAt: 1,
-  }),
-  makeHost({
-    id: "host-studio",
-    name: "Mac Studio",
-    lastSeenAt: Date.now(),
-    createdAt: 1,
-    updatedAt: 1,
-  }),
 ];
 
 function useSettingsStoryState() {
@@ -395,32 +311,6 @@ function ExperimentsStory() {
   );
 }
 
-function UsageLimitsStory() {
-  const [isFetching, setIsFetching] = useState(false);
-  const [selectedHostId, setSelectedHostId] = useState("host-macbook");
-
-  return (
-    <UsageLimitsSettingsSectionContent
-      usage={usageFixture}
-      isLoading={false}
-      isError={false}
-      isFetching={isFetching}
-      onRefresh={() => {
-        setIsFetching(true);
-        window.setTimeout(() => setIsFetching(false), 500);
-      }}
-      locations={usageHosts.map((host) => ({
-        id: host.id,
-        name: host.name,
-        kind: "host",
-        disabled: host.status !== "connected",
-      }))}
-      selectedLocationId={selectedHostId}
-      onSelectLocation={setSelectedHostId}
-    />
-  );
-}
-
 function ProvidersSettingsStory() {
   const [generalSettings, setGeneralSettings] =
     useState<AppSettings>(defaultAppSettings);
@@ -462,8 +352,6 @@ function SettingsStoryContent({ route }: { route: SettingsStoryRoute }) {
       return <AppearanceSettingsStory />;
     case "keyboard":
       return <KeyboardSettingsSection />;
-    case "usage":
-      return <UsageLimitsStory />;
     case "files":
       return <FilePreferencesStory />;
     case "projects":

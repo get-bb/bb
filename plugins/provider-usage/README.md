@@ -10,8 +10,8 @@ Failed refreshes retain the last available measurements with a retry notice.
 Account authentication failures and plans without reported limits have separate
 states; unavailable usage is never represented as zero consumption.
 
-Settings → Usage limits consumes the same sources independently, using its
-full-size provider groups with email-labeled accounts and fetching only resources in the selected pool or machine. Neither display is required for source
+Settings → Installed plugins → Provider usage contains the usage page, using its
+full-size provider groups with email-labeled accounts and fetching only resources in the selected pool or machine. Both surfaces share the plugin’s aggregation and cache. Neither display is required for source
 plugins to publish their usage.
 
 Use `bb plugin rpc list --method provider-usage.v1.listResources --json` to find sources
@@ -31,3 +31,15 @@ explicitly implement the contract to appear in these displays.
 Known provider-issued account identities are deduplicated within the selected
 location. Unknown identities are never merged by email. Structured plan and quota
 window metadata give both displays consistent labels.
+
+Provider Usage is enabled by default for newly registered installations. Existing
+explicit enable/disable choices are preserved. Turn off **Show footer card** in
+the plugin settings to hide its shortcut and card while keeping the usage page.
+The setting applies to all clients connected to this bb server.
+
+```sh
+bb plugin config provider-usage set showFooterCard false
+bb plugin config provider-usage set showFooterCard true
+```
+
+SDK: `bb.sdk.plugins.updateSettings({ pluginId: "provider-usage", values: { showFooterCard: false } })`.

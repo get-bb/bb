@@ -1,10 +1,12 @@
 # Discoverable RPC and replaceable provider usage displays
 
-Status: prototype implemented for discoverable RPC, Account Pooler, the Codex, Claude Code, and ACP provider plugins, and the core `/settings/usage` page. Provider Usage defines the canonical contract in `plugins/provider-usage/usage-source-contract.ts` and consumes discovered sources through it. The core settings page preserves its existing provider cards and extends the machine picker to select shared sources such as Account Pooler. Shared sources are selected by default.
+The former core usage route is removed. Provider Usage is enabled by default and owns the usage settings page, plus a `showFooterCard` setting (default true). Both surfaces reuse its private aggregation RPC and measurement cache.
+
+Status: prototype implemented for discoverable RPC, Account Pooler, the Codex, Claude Code, and ACP provider plugins, and Provider Usage’s settings page and footer card. Provider Usage defines the canonical contract in `plugins/provider-usage/usage-source-contract.ts` and consumes discovered sources through it. The plugin settings page preserves its existing provider cards and extends the machine picker to select shared sources such as Account Pooler. Shared sources are selected by default.
 
 ## Prototype verification
 
-- Relevant typechecks pass for the app and all four plugins. Current focused/full package suites pass: 16 settings tests, 10 Provider Usage tests, 276 Account Pooler tests, 269 Codex tests, and 349 Claude Code tests.
+- Relevant app, server, SDK and plugin typechecks pass. Current migration checks pass: 21 Provider Usage tests, 8 footer-host tests, 52 SDK app-harness tests, 74 Plugin Guide tests and 31 builtin-plugin tests. Earlier source implementation checks also covered Account Pooler, Codex, Claude Code and ACP.
 - Source tests prove that listing does not collect quota and fetching addresses one resource, including cached reads, forced reads, offline hosts, and removed resource IDs.
 - Display tests prove inventory-only discovery, selected provider/account fetching, cached failure preservation, empty groups, resource removal, and tab/source changes. Settings waits for default shared-source discovery before fetching a fallback host.
 - Live CLI discovery advertises both methods from all three sources. Browser request traces show only pool Codex on first open, Claude on tab selection, and four selected pool resources on settings. Existing configured accounts were retained.
@@ -34,18 +36,23 @@ const usageContract = defineRpcContract({
   "provider-usage.v1.getResource": {
     input: usageFetchInputSchema,
     output: usageMeasurementSchema,
-    experimental_description: "Fetch one resource’s actual usage; refresh=false permits cache, refresh=true requests a fresh attempt for this resource only.",
+    experimental_description:
+      "Fetch one resource’s actual usage; refresh=false permits cache, refresh=true requests a fresh attempt for this resource only.",
   },
 });
 
-bb.rpc.register(usageContract, {
-  "provider-usage.v1.listResources": listResources,
-  "provider-usage.v1.getResource": getResource,
-}, {
-  experimental_discoverable: true,
-  experimental_description:
-    "Usage windows for accounts managed by Account Pooler.",
-});
+bb.rpc.register(
+  usageContract,
+  {
+    "provider-usage.v1.listResources": listResources,
+    "provider-usage.v1.getResource": getResource,
+  },
+  {
+    experimental_discoverable: true,
+    experimental_description:
+      "Usage windows for accounts managed by Account Pooler.",
+  },
+);
 ```
 
 The option publishes all methods in that registration. Plugins register internal methods separately. Omitting the option preserves current behavior: methods are callable by name but are not advertised. Discovery is not an authorization boundary.
@@ -83,12 +90,14 @@ Consumers retain their own expected schemas and use the existing call API:
 
 ```ts
 const results = await Promise.allSettled(
-  sources.map((source) => bb.sdk.plugins.callRpc({
-    pluginId: source.pluginId,
-    method: "provider-usage.v1.listResources",
-    input: {},
-    outputSchema: usageResourceListSchema,
-  })),
+  sources.map((source) =>
+    bb.sdk.plugins.callRpc({
+      pluginId: source.pluginId,
+      method: "provider-usage.v1.listResources",
+      input: {},
+      outputSchema: usageResourceListSchema,
+    }),
+  ),
 );
 ```
 
@@ -142,7 +151,7 @@ Use two methods defined canonically by Provider Usage and copied locally by each
 - `provider-usage.v1.listResources({})` returns `{ label?, resources: [{ id, providerId, accountKey, label, scope }] }`. This is cheap local inventory; it never refreshes usage or contacts providers. The optional label declares an empty shared group. Host-only sources omit it. List order is display order.
 - `provider-usage.v1.getResource({ resourceId, refresh })` returns `{ accountKey, observedAt, usage }` for exactly one listed resource. False permits cached measurements but still returns actual usage. True requests a fresh collection attempt for that resource only. A removed resource fails explicitly, and consumers relist.
 
-The sidebar lists all sources to construct its source picker and provider tabs, then fetches only accounts belonging to the selected provider and source/machine. Background reconciliation lists metadata only. Unopened tabs have unknown usage rather than a fabricated healthy badge; retained measurements may still supply badges. Settings fetches the resources in its selected pool or machine. Both keep independent per-resource caches, bounded collection concurrency, stale-data notices, and graceful failures.
+The sidebar lists all sources to construct its source picker and provider tabs, then fetches only accounts belonging to the selected provider and source/machine. Background reconciliation lists metadata only. Unopened tabs have unknown usage rather than a fabricated healthy badge; retained measurements may still supply badges. Settings fetches the resources in its selected pool or machine. Both reuse Provider Usage’s per-resource cache, bounded collection concurrency, stale-data notices, and graceful failures.
 
 Account Pooler lists account metadata without refreshing, then calls its existing account-specific collection for fetch. Local provider sources list hosts without collecting quota and fetch only the requested host/provider pair. No display plugin is required for source registration or collection.
 
@@ -154,7 +163,7 @@ Account Pooler lists account metadata without refreshing, then calls its existin
 
 ### Display implementation
 
-Provider Usage discovers sources whenever it loads or refreshes data, invokes them with bounded concurrency and bounded wait, and renders successful results even if another source fails. The core settings page groups accounts beneath one provider heading and icon, using the same email/plan/usage layout for shared pools and machines. It preserves the refresh control. Its source picker defaults to a shared source when available, or the primary machine otherwise; explicit selections win. Shared-source selections show only that source’s shared accounts, and machine selections show only that machine’s host-local observations. Account headings use email without repeating it as a subtitle. Source-group headings and observation timestamps are not added to this page. Other display plugins can choose their own presentation using the same metadata.
+Provider Usage discovers sources whenever it loads or refreshes data, invokes them with bounded concurrency and bounded wait, and renders successful results even if another source fails. The plugin settings page groups accounts beneath one provider heading and icon, using the same email/plan/usage layout for shared pools and machines. It preserves the refresh control. Its source picker defaults to a shared source when available, or the primary machine otherwise; explicit selections win. Shared-source selections show only that source’s shared accounts, and machine selections show only that machine’s host-local observations. Account headings use email without repeating it as a subtitle. Source-group headings and observation timestamps are not added to this page. Other display plugins can choose their own presentation using the same metadata.
 
 Namespace resource keys by reporting plugin ID. Do not deduplicate by email or sum unrelated quota percentages. A shared pool appears once in the source picker; local and pooled observations remain separate choices even when their account emails match. Source removal evicts its current display entries on the next reconciliation.
 
@@ -199,7 +208,6 @@ Use Turbo for relevant package typechecks and tests. Extend the plugin test harn
 - Relevant Provider Usage UI journeys and plugin CLI flows pass the repository's verification workflow.
 
 The result is complete when discovery and inspection are generally usable, usage producers implement the public convention, and either display can consume them independently. Provider Retry and thread-specific quota attribution are not prerequisites.
-
 
 Usage-state review: both consumers distinguish loading, empty shared groups, unavailable sources, uninstalled providers, per-account authentication/collection failures, plans without reported limits, and offline machines. Shared-account sign-in guidance refers to the source plugin’s settings. Failed source refreshes preserve successful cached observations with a visible notice; disabled sources disappear on discovery reconciliation. Browser fixtures exercise source selection, removal, and retry recovery without changing configured accounts. Unfiltered CLI discovery omits undefined filters instead of serializing them into literal query values.
 
