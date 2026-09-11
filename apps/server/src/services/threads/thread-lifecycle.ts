@@ -30,6 +30,7 @@ import {
   type DbTransaction,
 } from "@bb/db";
 import { assertNever } from "@bb/core-ui";
+import { COMPETING_TURN_ERROR_CODE } from "@bb/host-daemon-contract";
 import {
   type ProvisioningTranscriptEntry,
   type SystemThreadInterruptedReason,
@@ -120,6 +121,10 @@ type ThreadStartCommandResultReport =
   CommandResultReportForType<"thread.start">;
 type TurnSubmitCommandResultReport = CommandResultReportForType<"turn.submit">;
 type ThreadStopCommandResultReport = CommandResultReportForType<"thread.stop">;
+type ThreadStopCommandResult = Extract<
+  ThreadStopCommandResultReport,
+  { ok: true }
+>["result"];
 type ThreadPlanCancelCommandResultReport =
   CommandResultReportForType<"thread.plan.cancel">;
 
@@ -138,7 +143,10 @@ type PreparedReadyThreadTurnCommand =
   | PreparedReadyTurnSubmitCommand;
 
 const threadStartRequestDeduper = createAsyncDeduper<string, void>();
-const threadStopRequestDeduper = createAsyncDeduper<string, void>();
+const threadStopRequestDeduper = createAsyncDeduper<
+  string,
+  ThreadStopCommandResult | null
+>();
 
 type InFlightThreadRpcKind =
   | "thread.start"
@@ -771,6 +779,12 @@ function settleThreadCommandFailure(
         message: args.report.errorMessage,
       },
     });
+    if (
+      args.report.errorCode === COMPETING_TURN_ERROR_CODE &&
+      getActiveTurnId(args.deps, thread.id) !== null
+    ) {
+      return emptyCommandResultSideEffects();
+    }
   }
   if (hasExpectedTurnCompletedEvent(args.deps, args.command)) {
     return emptyCommandResultSideEffects();
@@ -1387,7 +1401,7 @@ export async function stopThreadForCurrentState(
     ) {
       return;
     }
-    await releaseIdleThreadRuntime(deps, thread.id, environment);
+    await releaseOrInterruptIdleThreadRuntime(deps, thread.id, environment);
     return;
   }
 
@@ -1400,10 +1414,10 @@ export async function stopThreadForCurrentState(
     return;
   }
 
-  await releaseIdleThreadRuntime(deps, thread.id, environment);
+  await releaseOrInterruptIdleThreadRuntime(deps, thread.id, environment);
 }
 
-async function releaseIdleThreadRuntime(
+async function releaseOrInterruptIdleThreadRuntime(
   deps: RequestThreadStopForCurrentStateDeps,
   threadId: string,
   environment: RequestThreadStopForCurrentStateEnvironment | null,
@@ -1411,7 +1425,7 @@ async function releaseIdleThreadRuntime(
   if (environment === null) {
     return;
   }
-  await runAwaitedThreadStopCommand(deps, {
+  const released = await runAwaitedThreadStopCommand(deps, {
     command: buildThreadStopCommand({
       environmentId: environment.id,
       hostId: environment.hostId,
@@ -1419,6 +1433,56 @@ async function releaseIdleThreadRuntime(
       threadId,
     }),
     hostId: environment.hostId,
+    threadId,
+  });
+  if (released?.activeTurnRetained !== true) {
+    return;
+  }
+  deps.logger.warn(
+    { threadId },
+    "Host daemon kept an active turn on release; interrupting it for the explicit stop",
+  );
+  await interruptRetainedThreadRuntime(deps, threadId, environment);
+}
+
+async function interruptRetainedThreadRuntime(
+  deps: RequestThreadStopForCurrentStateDeps,
+  threadId: string,
+  environment: RequestThreadStopForCurrentStateEnvironment,
+): Promise<void> {
+  const current = getThread(deps.db, threadId);
+  if (!current) {
+    return;
+  }
+  const args: RequestThreadStopArgs = {
+    environmentId: environment.id,
+    hostId: environment.hostId,
+    interruptionReason: "manual-stop",
+    threadId,
+  };
+  if (current.status === "idle" || current.status === "error") {
+    const revived = applyLoggedThreadLifecycleEvent(deps, {
+      event: { type: "run.started" },
+      threadId,
+    });
+    if (!revived.applied) {
+      await runAwaitedThreadStopCommand(deps, {
+        command: buildThreadStopCommand({ ...args, intent: "interrupt" }),
+        hostId: args.hostId,
+        threadId,
+      });
+      return;
+    }
+  }
+  if (getThread(deps.db, threadId)?.status !== "active") {
+    return;
+  }
+  if (!markThreadStopRequested(deps, args)) {
+    return;
+  }
+  await runAwaitedThreadStopCommand(deps, {
+    command: buildThreadStopCommand({ ...args, intent: "interrupt" }),
+    hostId: args.hostId,
     threadId,
   });
 }
@@ -1431,11 +1495,11 @@ async function runAwaitedThreadStopCommand(
     hostId: string;
     threadId: string;
   },
-): Promise<void> {
-  await threadStopRequestDeduper.run(args.threadId, async () => {
+): Promise<ThreadStopCommandResult | null> {
+  return threadStopRequestDeduper.run(args.threadId, async () => {
     inFlightThreadRpcGuard.claim(args.threadId, "thread.stop");
     try {
-      await runLiveHostCommand(deps, {
+      return await runLiveHostCommand(deps, {
         command: args.command,
         hostId: args.hostId,
         timeoutMs: AWAITED_THREAD_STOP_TIMEOUT_MS,
@@ -1452,6 +1516,7 @@ async function runAwaitedThreadStopCommand(
       ) {
         throw error;
       }
+      return null;
     } finally {
       inFlightThreadRpcGuard.release(args.threadId, "thread.stop");
     }
