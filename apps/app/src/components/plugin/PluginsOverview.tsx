@@ -222,7 +222,7 @@ export function PluginsOverview({
     });
   const installedActions = (
     <span className="flex flex-wrap items-center justify-end gap-2">
-      <OpenPluginGuideButton />
+      <OpenPluginGuideButton variant="outline" />
       <CreateWithTemplatesButton
         kind="plugin"
         label="New plugin"
