@@ -47,7 +47,7 @@ fi
 export SERVER_URL="${SERVER_URL:-http://127.0.0.1:41999}"
 mkdir -p "$ARTIFACTS"
 
-if [[ " ${FLOWS[*]} " == *" notification-open "* ]]; then
+if [[ " ${FLOWS[*]} " == *" notification-open "* || " ${FLOWS[*]} " == *" notification-retry "* ]]; then
   node scripts/notification-control.mjs "$UDID" "$ARTIFACTS" "$ARTIFACTS/../backend.log" > "$ARTIFACTS/notification-control.log" 2>&1 &
   notification_control_pid=$!
   trap 'kill "$notification_control_pid" 2>/dev/null || true' EXIT
