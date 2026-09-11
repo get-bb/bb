@@ -2288,27 +2288,13 @@ function ProjectRowComponent({
     </NavLink>
   ) : null;
   const projectActions = (
-    <span className="relative z-10 inline-flex shrink-0 items-center">
-      <span
-        data-sidebar-hover-actions-open={isActionsOpen ? "true" : undefined}
-        data-sidebar-hover-actions-mobile={
-          SIDEBAR_HOVER_ACTIONS_MOBILE_ALWAYS_VALUE
-        }
-        className={cn(
-          SIDEBAR_HOVER_ACTIONS_CLASS,
-          "relative z-10 inline-flex shrink-0 items-center",
-          SIDEBAR_HOVER_ACTIONS_GAP_CLASS,
-        )}
-      >
-        <SidebarHeaderControls
-          label={project.name}
-          onNewThread={onCreateProjectThread ? handleCreateThread : undefined}
-          onOpenChange={setIsDropdownActionsOpen}
-        >
-          <ProjectActionsMenuItems project={project} surface="dropdown" />
-        </SidebarHeaderControls>
-      </span>
-    </span>
+    <SidebarHeaderControls
+      label={project.name}
+      onNewThread={onCreateProjectThread ? handleCreateThread : undefined}
+      onOpenChange={setIsDropdownActionsOpen}
+    >
+      <ProjectActionsMenuItems project={project} surface="dropdown" />
+    </SidebarHeaderControls>
   );
 
   return (
@@ -2324,7 +2310,6 @@ function ProjectRowComponent({
           label={project.name}
           status={projectStatus}
           actions={projectActions}
-          actionsAlwaysVisible
           actionsMobileAlways
           actionsOpen={isActionsOpen}
           collapseControl={{
