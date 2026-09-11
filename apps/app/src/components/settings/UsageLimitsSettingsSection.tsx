@@ -329,6 +329,95 @@ function ProviderUsageBlock({
   );
 }
 
+function UsageResourceGroup({
+  config,
+  resources,
+  isLoading,
+}: {
+  config: ProviderConfig;
+  resources: NonNullable<UsageLimitsSettingsSectionContentProps["resources"]>;
+  isLoading: boolean;
+}) {
+  const headingId = useId();
+  const ProviderIcon = getProviderIconInfo(
+    "agent",
+    config.providerId,
+    config.provider ?? null,
+  )?.icon;
+  return (
+    <section
+      aria-labelledby={headingId}
+      className="space-y-3 py-3.5 first:pt-0 last:pb-0"
+    >
+      <div className="flex items-center gap-2.5">
+        {ProviderIcon ? (
+          <span aria-hidden="true" className="shrink-0">
+            <ProviderIconMark
+              provider={{ id: config.providerId, strings: config.strings }}
+              icon={ProviderIcon}
+              className="size-4"
+            />
+          </span>
+        ) : null}
+        <h3 id={headingId} className="text-sm font-semibold text-foreground">
+          {config.name}
+        </h3>
+      </div>
+      <div className={cn("divide-y divide-border", ProviderIcon && "pl-6")}>
+        {resources.map(({ key, resource, isError }) => {
+          const email =
+            resource.usage?.accountEmail ??
+            (resource.label === config.name ? "Account" : resource.label);
+          const usage =
+            resource.usage?.status === "ok"
+              ? {
+                  ...resource.usage,
+                  windows: resource.usage.windows.map(({ cost, ...window }) =>
+                    cost === null ? window : { ...window, cost },
+                  ),
+                }
+              : resource.usage;
+          const accountConfig =
+            resource.scope.kind === "shared"
+              ? {
+                  ...config,
+                  signInHint:
+                    "Sign in to this account in the source plugin’s settings, then reload usage.",
+                  expiredHint:
+                    "This account’s session expired. Sign in again in the source plugin’s settings, then reload usage.",
+                }
+              : config;
+          return (
+            <section
+              key={key}
+              aria-label={email}
+              className="space-y-3 py-3 first:pt-0 last:pb-0"
+            >
+              <div className="flex min-w-0 items-center justify-between gap-2">
+                <h4
+                  className="min-w-0 truncate text-xs font-medium text-foreground"
+                  title={email}
+                >
+                  {email}
+                </h4>
+                {usage?.status === "ok" && usage.planLabel ? (
+                  <SettingsBadge>{usage.planLabel}</SettingsBadge>
+                ) : null}
+              </div>
+              <ProviderUsageBody
+                config={accountConfig}
+                usage={usage}
+                isLoading={isLoading}
+                isError={isError === true && usage === undefined}
+              />
+            </section>
+          );
+        })}
+      </div>
+    </section>
+  );
+}
+
 function ProviderUsageBody({
   config,
   usage,
@@ -408,6 +497,15 @@ export function UsageLimitsSettingsSectionContent({
   const providerById = new Map(
     providers.map((provider) => [provider.id, provider] as const),
   );
+  const resourceGroups = new Map<
+    string,
+    NonNullable<UsageLimitsSettingsSectionContentProps["resources"]>
+  >();
+  for (const entry of resources ?? []) {
+    const group = resourceGroups.get(entry.resource.providerId);
+    if (group) group.push(entry);
+    else resourceGroups.set(entry.resource.providerId, [entry]);
+  }
   const reportedProviderIds = Object.keys(usage);
   const orderedProviderIds = [
     ...providers
@@ -479,44 +577,17 @@ export function UsageLimitsSettingsSectionContent({
               <p className="text-xs text-muted-foreground">{emptyMessage}</p>
             )
           ) : (
-            resources.map(({ key, resource, isError: resourceIsError }) => {
-              const config = providerConfig(
-                resource.providerId,
-                providerById.get(resource.providerId),
-              );
-              return (
-                <ProviderUsageBlock
-                  key={key}
-                  config={
-                    resource.scope.kind === "shared"
-                      ? {
-                          ...config,
-                          name: resource.usage?.accountEmail ?? resource.label,
-                          signInHint:
-                            "Sign in to this account in the source plugin’s settings, then reload usage.",
-                          expiredHint:
-                            "This account’s session expired. Sign in again in the source plugin’s settings, then reload usage.",
-                        }
-                      : config
-                  }
-                  usage={
-                    resource.usage?.status === "ok"
-                      ? {
-                          ...resource.usage,
-                          windows: resource.usage.windows.map(
-                            ({ cost, ...window }) =>
-                              cost === null ? window : { ...window, cost },
-                          ),
-                        }
-                      : resource.usage
-                  }
-                  isLoading={isLoading || isFetching}
-                  isError={
-                    resourceIsError === true && resource.usage === undefined
-                  }
-                />
-              );
-            })
+            [...resourceGroups].map(([providerId, accounts]) => (
+              <UsageResourceGroup
+                key={providerId}
+                config={providerConfig(
+                  providerId,
+                  providerById.get(providerId),
+                )}
+                resources={accounts}
+                isLoading={isLoading || isFetching}
+              />
+            ))
           )
         ) : providerConfigs.length === 0 ? (
           <p className="text-xs text-muted-foreground">{emptyMessage}</p>
