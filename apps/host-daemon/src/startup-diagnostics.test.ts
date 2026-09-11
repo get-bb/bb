@@ -38,13 +38,12 @@ describe("host daemon startup diagnostics", () => {
     );
   });
 
-  it("exits after a fatal startup failure even with active resources", async () => {
+  it("flushes a fatal startup failure before exiting with active resources", async () => {
     const source = await readHostDaemonEntrypoint();
-    const writeIndex = source.indexOf("process.stderr.write");
-    const exitIndex = source.indexOf("process.exit(1)");
 
-    expect(writeIndex).toBeGreaterThanOrEqual(0);
-    expect(exitIndex).toBeGreaterThan(writeIndex);
+    expect(source).toContain(
+      "process.stderr.write(`${message}\\n`, () => process.exit(1));",
+    );
     expect(source).not.toContain("process.exitCode = 1");
   });
 });
