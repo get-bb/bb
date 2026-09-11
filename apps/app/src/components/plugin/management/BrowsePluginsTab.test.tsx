@@ -465,11 +465,9 @@ describe("BrowsePluginsTab", () => {
       collections: [],
     });
 
-    const installed = await screen.findByLabelText("Installed");
-    expect(installed.textContent).toContain("Installed");
-    expect(installed.querySelector('[data-icon="Check"]')).toBeTruthy();
-    expect(screen.getByLabelText("4,210 installs")).toBeTruthy();
-    expect(installed.tagName).toBe("BUTTON");
+    const installed = await screen.findByRole("button", {
+      name: "Memory installed — 4,210 installs",
+    });
     expect(installed.getAttribute("aria-disabled")).toBe("true");
     expect(
       screen.queryByRole("button", { name: /Install Memory/u }),
@@ -481,15 +479,20 @@ describe("BrowsePluginsTab", () => {
       entries: [{ ...MEMORY_ENTRY, installed: true }],
       collections: [],
     });
-    const installed = await screen.findByRole("button", { name: "Installed" });
+    const installed = await screen.findByRole("button", {
+      name: "Memory installed — 4,210 installs",
+    });
     fireEvent.click(installed);
     fireEvent.keyDown(installed, { key: "Enter" });
-    expect(installed.hasAttribute("disabled")).toBe(true);
-    expect(installed.className).toContain("disabled:cursor-not-allowed");
+    expect(installed.getAttribute("aria-disabled")).toBe("true");
     expect(onOpenPlugin).not.toHaveBeenCalled();
     expect(onInstall).not.toHaveBeenCalled();
     expect(screen.queryByText("By")).toBeNull();
     expect(screen.getByRole("link", { name: "BB" })).toBeTruthy();
+    fireEvent.focus(installed);
+    expect((await screen.findByRole("tooltip")).textContent).toBe(
+      "Included with BB; cannot be uninstalled.",
+    );
   });
 
   it("uses category shelves instead of publisher collections when filtered", async () => {
