@@ -9,7 +9,7 @@
     "bbPluginSdk": ">=0.4.56"
   },
   "bb": {
-    "name": "Account Pooler [Experimental]",
+    "name": "Account Pooler",
     "description": "Routes Claude and Codex API traffic across provider account pools.",
     "branding": {
       "icon": "Layers"
