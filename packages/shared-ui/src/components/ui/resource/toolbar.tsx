@@ -28,6 +28,7 @@ export function ResourceToolbar({
   controls,
   controlsClassName,
   action,
+  wrap = true,
 }: {
   searchValue: string;
   searchPlaceholder: string;
@@ -36,10 +37,16 @@ export function ResourceToolbar({
   controls?: ReactNode;
   controlsClassName?: string;
   action?: ReactNode;
+  wrap?: boolean;
 }) {
   return (
-    <div className="flex flex-wrap items-center gap-2">
-      <div className="relative w-full min-w-0 sm:w-auto sm:flex-1">
+    <div className={cn("flex items-center gap-2", wrap && "flex-wrap")}>
+      <div
+        className={cn(
+          "relative min-w-0",
+          wrap ? "w-full sm:w-auto sm:flex-1" : "flex-1",
+        )}
+      >
         <Icon
           name="Search"
           className="pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground"
@@ -564,6 +571,7 @@ export interface ResourceCreateTemplateGroup {
 
 export function ResourceCreateButton({
   label,
+  compactOnMobile = false,
   templates,
   templateMenuLabel = "Examples",
   templateGroups,
@@ -571,6 +579,7 @@ export function ResourceCreateButton({
   onCreate,
 }: {
   label: string;
+  compactOnMobile?: boolean;
   templates: readonly ResourceCreateTemplate[];
   templateMenuLabel?: string;
   templateGroups?: readonly ResourceCreateTemplateGroup[];
@@ -580,17 +589,36 @@ export function ResourceCreateButton({
   const groups: readonly ResourceCreateTemplateGroup[] = templateGroups ?? [
     { label: templateMenuLabel, templates },
   ];
+  const createButton = (
+    <Button
+      type="button"
+      size="sm"
+      className={cn(
+        "rounded-r-none",
+        compactOnMobile && "w-8 px-0 sm:w-auto sm:px-3",
+      )}
+      onClick={() => onCreate()}
+    >
+      <Icon name="MessageCirclePlus" className="size-4" aria-hidden />
+      <span className={compactOnMobile ? "sr-only sm:not-sr-only" : undefined}>
+        {label}
+      </span>
+    </Button>
+  );
   return (
     <div className="flex shrink-0 items-stretch">
-      <Button
-        type="button"
-        size="sm"
-        className="rounded-r-none"
-        onClick={() => onCreate()}
-      >
-        <Icon name="MessageCirclePlus" className="size-4" aria-hidden />
-        {label}
-      </Button>
+      {compactOnMobile ? (
+        <TooltipProvider delayDuration={250}>
+          <Tooltip>
+            <TooltipTrigger asChild>{createButton}</TooltipTrigger>
+            <TooltipContent side="bottom" className="sm:hidden">
+              {label}
+            </TooltipContent>
+          </Tooltip>
+        </TooltipProvider>
+      ) : (
+        createButton
+      )}
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
           <Button

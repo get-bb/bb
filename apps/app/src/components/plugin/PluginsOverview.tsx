@@ -1,6 +1,13 @@
 import { useMemo, useState, type ReactNode } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { Button } from "@bb/shared-ui/button";
+import { Icon } from "@bb/shared-ui/icon";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@bb/shared-ui/tooltip";
 import {
   ResourceInfiniteScrollSentinel,
   useResourceInfiniteItems,
@@ -148,12 +155,30 @@ export function PluginsOverview({
 
   const installedActions = (
     <>
-      <Button asChild variant="outline" size="sm">
-        <Link to={getPluginsRoutePath()}>Browse marketplace</Link>
-      </Button>
+      <TooltipProvider delayDuration={250}>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button
+              asChild
+              variant="outline"
+              size="sm"
+              className="w-8 px-0 sm:w-auto sm:px-3"
+            >
+              <Link to={getPluginsRoutePath()}>
+                <Icon name="Explore" className="size-4 sm:hidden" aria-hidden />
+                <span className="sr-only sm:not-sr-only">Browse marketplace</span>
+              </Link>
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent side="bottom" className="sm:hidden">
+            Browse marketplace
+          </TooltipContent>
+        </Tooltip>
+      </TooltipProvider>
       <CreateWithTemplatesButton
         kind="plugin"
         label="New plugin"
+        compactOnMobile
         menuActions={[
           {
             label: "Install from source",
@@ -195,6 +220,7 @@ export function PluginsOverview({
         bandClassName={TOOLS_PAGE_BAND_CLASSES}
         toolbar={
           <ResourceToolbar
+            wrap={false}
             searchValue={installedQuery}
             searchPlaceholder="Search installed plugins"
             onSearchChange={setInstalledQuery}
