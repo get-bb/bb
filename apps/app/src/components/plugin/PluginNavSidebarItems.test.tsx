@@ -54,6 +54,7 @@ import {
   findPaneByContent,
   type SplitLayout,
 } from "@/lib/split-layout";
+import { usePublishPluginDetailOpener } from "./plugin-detail-navigation";
 vi.mock("@/components/ui/app-toast", () => ({
   appToast: {
     dismiss: vi.fn(),
@@ -462,45 +463,48 @@ describe("PluginNavSidebarItems", () => {
     ).toBe("always");
   });
 
-  it("uses the focused plugin action set for the options button and right-click", async () => {
-    registerPanel("docs", "Docs");
-    renderSidebarItems({ splitEnabled: true });
+  it.each([false, true])(
+    "uses the focused plugin action set for the options button and right-click (compact=%s)",
+    async (compactViewport) => {
+      registerPanel("docs", "Docs");
+      renderSidebarItems({ splitEnabled: true, compactViewport });
 
-    fireEvent.pointerDown(
-      screen.getByRole("button", { name: "Docs panel options" }),
-      { button: 0 },
-    );
-    const dropdownMenu = await screen.findByRole("menu");
-    const expected = [
-      ["Open in split", "Columns2"],
-      ["View details", "Info"],
-      ["Disable", "Unavailable"],
-    ] as const;
-    const expectFocusedMenu = (menu: HTMLElement) => {
-      expect(
-        within(menu)
-          .getAllByRole("menuitem")
-          .map((item) => item.textContent?.trim()),
-      ).toEqual(expected.map(([label]) => label));
-      expect(within(menu).getAllByRole("separator")).toHaveLength(1);
-      for (const [label, icon] of expected) {
+      fireEvent.pointerDown(
+        screen.getByRole("button", { name: "Docs panel options" }),
+        { button: 0 },
+      );
+      const dropdownMenu = await screen.findByRole("menu");
+      const expected = [
+        ...(compactViewport ? [] : [["Open in split", "Columns2"]]),
+        ["View details", "Info"],
+        ["Disable", "Unavailable"],
+      ] as const;
+      const expectFocusedMenu = (menu: HTMLElement) => {
         expect(
           within(menu)
-            .getByRole("menuitem", { name: label })
-            .querySelector(`[data-icon="${icon}"]`),
-        ).not.toBeNull();
-      }
-      expect(within(menu).queryByText("Move to top")).toBeNull();
-      expect(within(menu).queryByText("Move to overflow")).toBeNull();
-      expect(within(menu).queryByText("Hide from sidebar")).toBeNull();
-    };
-    expectFocusedMenu(dropdownMenu);
-    fireEvent.keyDown(dropdownMenu, { key: "Escape" });
-    await waitFor(() => expect(screen.queryByRole("menu")).toBeNull());
+            .getAllByRole("menuitem")
+            .map((item) => item.textContent?.trim()),
+        ).toEqual(expected.map(([label]) => label));
+        expect(within(menu).getAllByRole("separator")).toHaveLength(1);
+        for (const [label, icon] of expected) {
+          expect(
+            within(menu)
+              .getByRole("menuitem", { name: label })
+              .querySelector(`[data-icon="${icon}"]`),
+          ).not.toBeNull();
+        }
+        expect(within(menu).queryByText("Move to top")).toBeNull();
+        expect(within(menu).queryByText("Move to overflow")).toBeNull();
+        expect(within(menu).queryByText("Hide from sidebar")).toBeNull();
+      };
+      expectFocusedMenu(dropdownMenu);
+      fireEvent.keyDown(dropdownMenu, { key: "Escape" });
+      await waitFor(() => expect(screen.queryByRole("menu")).toBeNull());
 
-    fireEvent.contextMenu(screen.getByRole("button", { name: "Docs" }));
-    expectFocusedMenu(await screen.findByRole("menu"));
-  });
+      fireEvent.contextMenu(screen.getByRole("button", { name: "Docs" }));
+      expectFocusedMenu(await screen.findByRole("menu"));
+    },
+  );
 
   it("opens plugin details and omits split when the layout cannot split", async () => {
     registerPanel("docs", "Docs");
@@ -518,6 +522,28 @@ describe("PluginNavSidebarItems", () => {
     );
     expect(screen.getByTestId("location-path").textContent).toBe(
       "/plugins/docs",
+    );
+  });
+
+  it("opens details in the active workspace without changing its route", async () => {
+    const open = vi.fn(() => true);
+    function Workspace() {
+      usePublishPluginDetailOpener(open, true);
+      return null;
+    }
+    render(<Workspace />);
+    registerPanel("docs", "Docs");
+    renderSidebarItems({ initialEntry: "/plugins/docs/main" });
+    fireEvent.pointerDown(
+      screen.getByRole("button", { name: "Docs panel options" }),
+      { button: 0 },
+    );
+    fireEvent.click(
+      await screen.findByRole("menuitem", { name: "View details" }),
+    );
+    expect(open).toHaveBeenCalledWith({ pluginId: "docs", title: "Docs" });
+    expect(screen.getByTestId("location-path").textContent).toBe(
+      "/plugins/docs/main",
     );
   });
 

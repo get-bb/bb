@@ -119,9 +119,6 @@ const LazyPluginPanelRightPanelHost = lazy(() =>
   ),
 );
 
-const PLUGIN_GUIDE_PLUGIN_ID = "plugin-api-docs";
-const PLUGIN_GUIDE_PANEL_PATH = "plugin-api";
-
 const LazyPluginDetailPaneView = lazy(() =>
   import("@/views/ToolsView").then(({ PluginDetailPaneView }) => ({
     default: PluginDetailPaneView,
@@ -152,10 +149,7 @@ function PluginPagePanelHost({
       <LazyPluginPanelRightPanelHost
         key={`${props.pluginId}/${props.panelPath}`}
         {...props}
-        pluginDetailTabsEnabled={
-          props.pluginId === PLUGIN_GUIDE_PLUGIN_ID &&
-          props.panelPath === PLUGIN_GUIDE_PANEL_PATH
-        }
+        pluginDetailTabsEnabled
       >
         {children}
       </LazyPluginPanelRightPanelHost>
