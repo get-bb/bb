@@ -101,7 +101,6 @@ interface SectionThreadDndLookup {
   sectionParentKeyBySectionId: Map<string, string>;
   sectionSectionIdByParentKey: Map<string, SidebarSectionId>;
   sectionIdByParentKey: Map<string, string | null>;
-  sectionNameByParentKey: Map<string, string>;
   itemIdsByParentKey: Map<string, string[]>;
   itemKindById: Map<string, ProjectThreadItem["kind"]>;
   parentKeyByItemId: Map<string, string>;
@@ -155,11 +154,7 @@ interface ResolveThreadRowNestCollisionsArgs {
   onRowPointer?: (info: ThreadRowPointerInfo) => void;
 }
 
-interface RowDropState {
-  threadId: string;
-  sectionId: string | null;
-  state: SidebarNestTargetState;
-}
+type RowDropState = SectionThreadNestTarget;
 
 interface CollectSectionThreadDndLookupOptions {
   groups?: boolean;
@@ -194,10 +189,6 @@ export function collectSectionThreadDndLookup(
       [PINNED_THREAD_PARENT_KEY, "pinned"],
     ]),
     sectionIdByParentKey: new Map([[containerId, null]]),
-    sectionNameByParentKey: new Map([
-      [containerId, "Threads"],
-      [PINNED_THREAD_PARENT_KEY, "Pinned"],
-    ]),
     itemIdsByParentKey: new Map([
       [PINNED_THREAD_PARENT_KEY, pinnedThreads.map((thread) => thread.id)],
     ]),
@@ -257,7 +248,6 @@ export function collectSectionThreadDndLookup(
         lookup.sectionParentKeyBySectionId.set(sectionId, item.group.key);
         lookup.sectionSectionIdByParentKey.set(item.group.key, sectionId);
         lookup.sectionIdByParentKey.set(item.group.key, item.group.id);
-        lookup.sectionNameByParentKey.set(item.group.key, item.group.name);
         walk(item.group.items, item.group.key);
       }
     }
@@ -609,20 +599,29 @@ function resolveRowDropState(
   decision: SectionThreadDropDecision | null,
 ): RowDropState | null {
   if (decision?.kind === "nest") {
-    return {
-      threadId: decision.parentThreadId,
-      sectionId: decision.sectionId ?? null,
-      state: "valid",
-    };
+    return { threadId: decision.parentThreadId, state: "valid" };
   }
   if (decision?.kind === "rejected") {
     return {
       threadId: decision.overThreadId,
-      sectionId: null,
       state: decision.reason === "own-subtree" ? "blocked" : "unchanged",
     };
   }
   return null;
+}
+
+function resolvePinnedReorderTarget(
+  lookup: SectionThreadDndLookup,
+  activeId: string,
+  decision: SectionThreadDropDecision | null,
+): SectionThreadReorderTarget | null {
+  if (decision?.kind !== "reorder-pinned") return null;
+  const placement = resolvePinnedReorderPlacement(
+    lookup,
+    activeId,
+    decision.overId,
+  );
+  return placement ? { threadId: decision.overId, placement } : null;
 }
 
 function getRowDropTargetKey(rowDrop: RowDropState): string {
@@ -889,19 +888,11 @@ export function useSectionThreadDnd({
           : decision.kind === "pin"
             ? PINNED_THREAD_PARENT_KEY
             : (drop?.toParentKey ?? null);
-      const nextReorderTarget =
-        decision?.kind === "reorder-pinned"
-          ? (() => {
-              const placement = resolvePinnedReorderPlacement(
-                lookup,
-                activeId,
-                decision.overId,
-              );
-              return placement
-                ? { threadId: decision.overId, placement }
-                : null;
-            })()
-          : null;
+      const nextReorderTarget = resolvePinnedReorderTarget(
+        lookup,
+        activeId,
+        decision,
+      );
       const targetKey =
         nextRowDrop !== null
           ? getRowDropTargetKey(nextRowDrop)
@@ -995,9 +986,7 @@ export function useSectionThreadDnd({
         updateThread.mutate({
           id: decision.activeId,
           parentThreadId: decision.parentThreadId,
-          ...(decision.sectionId !== undefined
-            ? { sectionId: decision.sectionId }
-            : {}),
+          sectionId: decision.sectionId,
         });
       if (decision.unpin) {
         unpinThread
@@ -1063,9 +1052,7 @@ export function useSectionThreadDnd({
           updateThread.mutate({
             id: decision.activeId,
             parentThreadId: null,
-            ...(decision.sectionId !== undefined
-              ? { sectionId: decision.sectionId }
-              : {}),
+            sectionId: decision.sectionId,
           });
           break;
         case "nest":
@@ -1168,9 +1155,7 @@ export function useSectionThreadDnd({
     onClickCapture,
     dragOverParentKey,
     dropPreview: null,
-    nestTarget: rowDrop
-      ? { threadId: rowDrop.threadId, state: rowDrop.state }
-      : null,
+    nestTarget: rowDrop,
     reorderTarget,
     pinnedItemIds,
     pinnedReorderPending,

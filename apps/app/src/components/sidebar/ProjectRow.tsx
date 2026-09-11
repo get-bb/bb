@@ -2079,7 +2079,7 @@ export const ChronologicalSectionThreadSections = memo(
     topLevelSectionOrder,
     onTopLevelSectionOrderChange,
     pinnedReorderPending,
-    pinnedRootNodes,
+    pinnedRootNodes = EMPTY_PINNED_ROOT_NODES,
     pinnedThreads,
     onReorderPinnedThread,
     renderPinnedSection,
@@ -2127,7 +2127,7 @@ export const ChronologicalSectionThreadSections = memo(
     const renderedSectionDnd = useRenderedSectionThreadDnd({
       compareThreads,
       draftThreadIds,
-      pinnedRootNodes: pinnedRootNodes ?? EMPTY_PINNED_ROOT_NODES,
+      pinnedRootNodes,
       pinnedThreads,
       rootItems,
       sectionDnd,
