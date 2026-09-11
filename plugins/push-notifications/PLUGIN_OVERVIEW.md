@@ -17,11 +17,9 @@ Channel switches apply to this server and save immediately. Browser permission i
 
 ## Push notification history
 
-Open **Settings → Push notifications → Show history**, or search for **Push notifications settings** in the command palette's **Plugin settings** group. History lists the latest 200 push dispatches from the current server session, newest first. **Refresh** fetches recent dispatches; select a thread title to open it.
+Open **Settings → Push notifications → Show history**, or choose **Push notifications settings** under **Plugin settings** in the command palette. **Refresh** loads recent dispatches; select a title to open its thread.
 
-Each entry contains the outgoing title and body, time, and channels attempted. Mobile is included only when a send is attempted with registered devices. Coalesced updates appear once across channels. Test notifications are included. Suppressed events and in-app toasts are excluded.
-
-History is held in server memory and clears when the server or plugin restarts. It does not read the operating system's notification inbox or confirm device delivery, display, or read state. Earlier notifications cannot be recovered.
+History keeps the latest 200 outgoing messages and attempted channels in server memory, newest first. Coalesced updates appear once across channels; tests are included. Suppressed events and in-app toasts are excluded. Server or plugin restart clears history. This is not the OS inbox or proof of delivery/read status.
 
 ## CLI and SDK
 
@@ -35,4 +33,4 @@ History is held in server memory and clears when the server or plugin restarts. 
 
 Agents can use the SDK’s plugin settings API for the same switches and `sdk.plugins.callRpc({ pluginId: "push-notifications", method: "notifications.test", input: { channel: "web" }, outputSchema: z.object({ ok: z.literal(true) }) })` to send a test. RPC input is validated by `pushNotificationsRpcContract`. Permission requests still require a click in the target client.
 
-History uses `sdk.plugins.callRpc({ pluginId: "push-notifications", method: "notifications.history", input: {}, outputSchema: listPushNotificationHistoryOutputSchema })`. The output schema in `contract.ts` describes each entry's `id`, `title`, `body`, nullable `threadId`, `createdAt` timestamp, and attempted `channels` (`web`, `desktop`, or `mobile`).
+Read history with `sdk.plugins.callRpc({ pluginId: "push-notifications", method: "notifications.history", input: {}, outputSchema: listPushNotificationHistoryOutputSchema })`. See `contract.ts` for the entry schema.
