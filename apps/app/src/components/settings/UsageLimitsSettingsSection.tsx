@@ -226,6 +226,9 @@ function UsageLocationPicker({
           <span className="min-w-0 truncate">
             {selectedLocation?.name ?? "Source"}
           </span>
+          {selectedLocation?.kind === "host" ? (
+            <MachineStatusDot connected={!selectedLocation.disabled} />
+          ) : null}
           <Icon name="ChevronDown" className="size-3.5 shrink-0" />
         </Button>
       </DropdownMenuTrigger>
@@ -239,12 +242,14 @@ function UsageLocationPicker({
               onSelect={() => onSelectLocation(location.id)}
               className="flex items-center gap-2"
             >
+              <Icon
+                name={location.kind === "source" ? "Layers" : "Laptop"}
+                className="size-3.5 shrink-0"
+              />
+              <span className="min-w-0 flex-1 truncate">{location.name}</span>
               {location.kind === "host" ? (
                 <MachineStatusDot connected={connected} />
-              ) : (
-                <Icon name="Layers" className="size-3.5" />
-              )}
-              <span className="min-w-0 flex-1 truncate">{location.name}</span>
+              ) : null}
               {location.id === selectedLocation?.id ? (
                 <Icon name="Check" className="size-3.5 shrink-0" />
               ) : null}
