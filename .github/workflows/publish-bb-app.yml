@@ -50,6 +50,12 @@ env:
 jobs:
   publish:
     name: Publish bb-app
+    # Scheduled (nightly) runs are restricted to the canonical repository so
+    # that forks, on which GitHub happily runs cron workflows, do not execute
+    # release jobs that publish to npm, reset the desktop-nightly release and
+    # need signing or notarization secrets they will never have. Manual
+    # workflow_dispatch runs keep working in forks.
+    if: ${{ github.event_name != 'schedule' || github.repository == 'get-bb/bb' }}
     runs-on: ubuntu-latest
     timeout-minutes: 30
     environment: npm-release
@@ -372,6 +378,10 @@ jobs:
   # docs/bb-release-process.md#publishing-the-plugin-sdk.
   publish-plugin-sdk:
     name: Publish @get-bb/plugin-sdk
+    # Same fork guard as the publish job: this job also runs on the schedule
+    # trigger, while the nightly desktop, iOS and release-publish jobs stay
+    # behind `needs` chains rooted at it.
+    if: ${{ github.event_name != 'schedule' || github.repository == 'get-bb/bb' }}
     runs-on: ubuntu-latest
     timeout-minutes: 30
     environment: npm-release
