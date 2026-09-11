@@ -10,7 +10,7 @@ import {
 } from "@testing-library/react";
 import { useEffect, useState, type ComponentType } from "react";
 import { createStore, Provider } from "jotai";
-import { MemoryRouter, useLocation } from "react-router-dom";
+import { MemoryRouter, useLocation, useNavigate } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { CompactViewportOverrideProvider } from "@bb/shared-ui/hooks/use-compact-viewport";
@@ -48,8 +48,12 @@ import {
   setPluginFrontendReconcilePending,
 } from "@/lib/plugin-frontend-boot-state";
 import { writeLastKnownPluginNavPanelChrome } from "@/lib/plugin-nav-panel-chrome";
-import { splitLayoutAtom } from "@/lib/split-layout/atoms";
-import { countPanes, findPaneByContent } from "@/lib/split-layout";
+import { maximizedPaneIdAtom, splitLayoutAtom } from "@/lib/split-layout/atoms";
+import {
+  countPanes,
+  findPaneByContent,
+  type SplitLayout,
+} from "@/lib/split-layout";
 vi.mock("@/components/ui/app-toast", () => ({
   appToast: {
     dismiss: vi.fn(),
@@ -164,6 +168,8 @@ interface RenderSidebarItemsOptions {
   compactViewport?: boolean;
   compactCustomizeMode?: boolean;
   initialEntry?: string;
+  initialEntries?: string[];
+  initialLayout?: SplitLayout;
   onCompactCustomizeModeChange?: (isCustomizing: boolean) => void;
   splitEnabled?: boolean;
 }
@@ -216,13 +222,18 @@ function renderSidebarItems(options: RenderSidebarItemsOptions = {}) {
       focusedPaneId: "pane-1",
     });
   }
+  if (options.initialLayout) store.set(splitLayoutAtom, options.initialLayout);
   const view = render(
     <CompactViewportOverrideProvider
       isCompactViewport={options.compactViewport ?? false}
     >
       <QueryClientProvider client={queryClient}>
         <Provider store={store}>
-          <MemoryRouter initialEntries={[options.initialEntry ?? "/"]}>
+          <MemoryRouter
+            initialEntries={
+              options.initialEntries ?? [options.initialEntry ?? "/"]
+            }
+          >
             <SidebarProvider>
               <PluginNavSidebarItemsHarness options={options} />
               <LocationProbe />
@@ -236,7 +247,15 @@ function renderSidebarItems(options: RenderSidebarItemsOptions = {}) {
 }
 
 function LocationProbe() {
-  return <output data-testid="location-path">{useLocation().pathname}</output>;
+  const location = useLocation();
+  const navigate = useNavigate();
+  return (
+    <>
+      <output data-testid="location-path">{location.pathname}</output>
+      <button onClick={() => void navigate(-1)}>History back</button>
+      <button onClick={() => void navigate(1)}>History forward</button>
+    </>
+  );
 }
 
 function panelRowNames(
@@ -502,7 +521,163 @@ describe("PluginNavSidebarItems", () => {
     );
   });
 
-  it("disables a plugin and leaves its active panel", async () => {
+  it.each([false, true])(
+    "replaces the active plugin with New thread before disabling (compact=%s)",
+    async (compactViewport) => {
+      let completeDisable: (response: Response) => void = () => {};
+      const fetchMock = vi.fn<typeof fetch>(
+        () =>
+          new Promise((resolve) => {
+            completeDisable = resolve;
+          }),
+      );
+      vi.stubGlobal("fetch", fetchMock);
+      registerPanel("docs", "Docs");
+      const { store } = renderSidebarItems({
+        compactViewport,
+        initialEntries: ["/skills", "/plugins/docs/main"],
+        initialLayout: {
+          root: {
+            type: "pane",
+            paneId: "docs",
+            content: {
+              kind: "plugin-panel",
+              pluginId: "docs",
+              panelPath: "main",
+              subPath: "",
+            },
+          },
+          focusedPaneId: "docs",
+        },
+      });
+
+      fireEvent.pointerDown(
+        screen.getByRole("button", { name: "Docs panel options" }),
+        { button: 0 },
+      );
+      fireEvent.click(await screen.findByRole("menuitem", { name: "Disable" }));
+
+      await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+      await waitFor(() =>
+        expect(screen.getByTestId("location-path").textContent).toBe("/"),
+      );
+      expect(store.get(splitLayoutAtom)?.root).toMatchObject({
+        content: { kind: "new-thread" },
+      });
+      expect(appToast.success).not.toHaveBeenCalled();
+      await act(async () => {
+        completeDisable(
+          new Response(JSON.stringify(disabledPluginMutationResponse("docs")), {
+            status: 200,
+            headers: { "content-type": "application/json" },
+          }),
+        );
+      });
+      expect(appToast.success).toHaveBeenCalledWith("Docs disabled");
+      fireEvent.click(screen.getByRole("button", { name: "History back" }));
+      await waitFor(() =>
+        expect(screen.getByTestId("location-path").textContent).toBe("/skills"),
+      );
+      fireEvent.click(screen.getByRole("button", { name: "History forward" }));
+      await waitFor(() =>
+        expect(screen.getByTestId("location-path").textContent).toBe("/"),
+      );
+    },
+  );
+
+  it.each(["docs", "github"])(
+    "closes only the disabled plugin panes with %s focused",
+    async (focusedPaneId) => {
+      registerPanel("docs", "Docs");
+      registerPanel("github", "GitHub");
+      const { store } = renderSidebarItems({
+        initialEntry: `/plugins/${focusedPaneId}/main`,
+        initialLayout: {
+          root: {
+            type: "split",
+            dir: "row",
+            sizes: [1, 1, 1],
+            children: [
+              {
+                type: "pane",
+                paneId: "docs",
+                content: {
+                  kind: "plugin-panel",
+                  pluginId: "docs",
+                  panelPath: "main",
+                  subPath: "",
+                },
+              },
+              {
+                type: "pane",
+                paneId: "github",
+                content: {
+                  kind: "plugin-panel",
+                  pluginId: "github",
+                  panelPath: "main",
+                  subPath: "",
+                },
+              },
+              {
+                type: "pane",
+                paneId: "docs-other",
+                content: {
+                  kind: "plugin-panel",
+                  pluginId: "docs",
+                  panelPath: "other",
+                  subPath: "",
+                },
+              },
+            ],
+          },
+          focusedPaneId,
+        },
+      });
+      store.set(maximizedPaneIdAtom, "docs");
+      const layoutsAtDisable: Array<SplitLayout | null> = [];
+      const fetchMock = vi.fn<typeof fetch>(async () => {
+        layoutsAtDisable.push(store.get(splitLayoutAtom));
+        return new Response(
+          JSON.stringify(disabledPluginMutationResponse("docs")),
+          {
+            status: 200,
+            headers: { "content-type": "application/json" },
+          },
+        );
+      });
+      vi.stubGlobal("fetch", fetchMock);
+      fireEvent.pointerDown(
+        screen.getByRole("button", { name: "Docs panel options" }),
+        { button: 0 },
+      );
+      fireEvent.click(await screen.findByRole("menuitem", { name: "Disable" }));
+      await waitFor(() =>
+        expect(appToast.success).toHaveBeenCalledWith("Docs disabled"),
+      );
+      const survivingLayout = {
+        root: {
+          type: "pane",
+          paneId: "github",
+          content: {
+            kind: "plugin-panel",
+            pluginId: "github",
+            panelPath: "main",
+            subPath: "",
+          },
+        },
+        focusedPaneId: "github",
+      };
+      expect(layoutsAtDisable).toEqual([survivingLayout]);
+      expect(store.get(splitLayoutAtom)).toEqual(survivingLayout);
+      expect(store.get(maximizedPaneIdAtom)).toBeNull();
+      expect(screen.getByTestId("location-path").textContent).toBe(
+        "/plugins/github/main",
+      );
+    },
+  );
+
+  it("keeps the current workspace when disabling a plugin that is not open", async () => {
+    registerPanel("docs", "Docs");
     const fetchMock = vi.fn<typeof fetch>(
       async () =>
         new Response(JSON.stringify(disabledPluginMutationResponse("docs")), {
@@ -511,22 +686,21 @@ describe("PluginNavSidebarItems", () => {
         }),
     );
     vi.stubGlobal("fetch", fetchMock);
-    registerPanel("docs", "Docs");
-    renderSidebarItems({ initialEntry: "/plugins/docs/main" });
-
+    const { store } = renderSidebarItems({
+      initialEntry: "/",
+      splitEnabled: true,
+    });
+    const originalLayout = store.get(splitLayoutAtom);
     fireEvent.pointerDown(
       screen.getByRole("button", { name: "Docs panel options" }),
       { button: 0 },
     );
     fireEvent.click(await screen.findByRole("menuitem", { name: "Disable" }));
-
-    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
     await waitFor(() =>
-      expect(screen.getByTestId("location-path").textContent).toBe(
-        "/plugins",
-      ),
+      expect(appToast.success).toHaveBeenCalledWith("Docs disabled"),
     );
-    expect(appToast.success).toHaveBeenCalledWith("Docs disabled");
+    expect(store.get(splitLayoutAtom)).toBe(originalLayout);
+    expect(screen.getByTestId("location-path").textContent).toBe("/");
   });
 
   it("bounds and truncates a long sidebar accessory", () => {
@@ -1273,10 +1447,9 @@ describe("PluginNavSidebarItems", () => {
       item.textContent?.includes("Docs"),
     );
     if (!row) throw new Error("Docs customization row is missing");
-    fireEvent.click(
-      within(row).getByRole("button", { name: "Docs" }),
-      { metaKey: true },
-    );
+    fireEvent.click(within(row).getByRole("button", { name: "Docs" }), {
+      metaKey: true,
+    });
 
     const layout = store.get(splitLayoutAtom);
     expect(layout).not.toBeNull();
