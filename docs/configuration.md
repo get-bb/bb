@@ -707,7 +707,7 @@ how many connected clients received the broadcast. `spotlight` focuses the
 target pane and persistently dims the others; `clear-spotlight` focuses it and
 persistently restores undimmed splits.
 
-## Account Pooler [Experimental]
+## Account Pooler
 
 The builtin Account Pooler plugin is disabled on fresh installations. It stores
 non-secret Claude and Codex account metadata in plugin KV, quota observations

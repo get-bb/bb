@@ -35,7 +35,7 @@ interface FirstPartyPlugin {
 }
 
 const FIRST_PARTY_PLUGINS: Record<string, FirstPartyPlugin> = {
-  "Account Pooler [Experimental]": { id: "account-pool", icon: Layers01Icon },
+  "Account Pooler": { id: "account-pool", icon: Layers01Icon },
   "Ask User Question": { id: "ask-user-question", icon: MessageQuestionIcon },
   Automations: { id: "automations", icon: RepeatIcon },
   "Custom instructions": { id: "custom-instructions", icon: Edit04Icon },
