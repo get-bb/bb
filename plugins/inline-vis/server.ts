@@ -1,11 +1,14 @@
 import path from "node:path";
-import { defineRpcContract, type BbPluginApi } from "@get-bb/plugin-sdk";
+import {
+  defineRpcContract,
+  type BbPluginApi,
+  type MarkdownProps,
+} from "@get-bb/plugin-sdk";
 import { z } from "zod";
 
 export const MAX_PREVIEW_BYTES = 5 * 1024 * 1024;
 
 type PreviewKind = "html" | "markdown";
-type PreviewSource = "workspace" | "thread-storage";
 
 const PREVIEW_KIND_BY_EXTENSION: ReadonlyMap<string, PreviewKind> = new Map([
   [".html", "html"],
@@ -13,10 +16,6 @@ const PREVIEW_KIND_BY_EXTENSION: ReadonlyMap<string, PreviewKind> = new Map([
   [".md", "markdown"],
   [".markdown", "markdown"],
 ]);
-
-type PreparePreviewResult =
-  | { kind: "html"; file: string; source: PreviewSource }
-  | { kind: "markdown"; file: string; source: PreviewSource; content: string };
 
 function requireNonEmptyString(value: unknown, field: string): string {
   if (typeof value !== "string" || value.trim().length === 0) {
@@ -120,6 +119,28 @@ export const inlineVisRpcContract = defineRpcContract({
           file: z.string(),
           source: z.enum(["workspace", "thread-storage"]),
           content: z.string(),
+          document: z
+            .object({
+              rootPath: z.string(),
+              threadId: z.string(),
+              target: z.discriminatedUnion("kind", [
+                z
+                  .object({
+                    kind: z.literal("workspace"),
+                    environmentId: z.string(),
+                    path: z.string(),
+                  })
+                  .strict(),
+                z
+                  .object({
+                    kind: z.literal("thread-storage"),
+                    threadId: z.string(),
+                    path: z.string(),
+                  })
+                  .strict(),
+              ]),
+            })
+            .strict(),
         })
         .strict(),
     ]),
@@ -128,18 +149,16 @@ export const inlineVisRpcContract = defineRpcContract({
 
 export default async function plugin(bb: BbPluginApi) {
   bb.rpc.register(inlineVisRpcContract, {
-    async preparePreview({
-      threadId,
-      file,
-      source,
-    }): Promise<PreparePreviewResult> {
+    async preparePreview({ threadId, file, source }) {
       let rootPath: string;
       let hostId: string;
+      let target: NonNullable<MarkdownProps["experimental_document"]>["target"];
 
       if (source === "thread-storage") {
         const storage = await bb.sdk.threads.storageLocation({ threadId });
         rootPath = storage.storageRootPath;
         hostId = storage.hostId;
+        target = { kind: source, threadId, path: file };
       } else {
         const thread = await bb.sdk.threads.get({
           threadId,
@@ -155,7 +174,7 @@ export default async function plugin(bb: BbPluginApi) {
         const environment = thread.environment;
         const workspacePath =
           typeof environment?.path === "string" ? environment.path : null;
-        if (!workspacePath) {
+        if (!environment || !workspacePath) {
           throw new Error(
             "This thread has no workspace path — inline-vis needs a live environment.",
           );
@@ -169,6 +188,7 @@ export default async function plugin(bb: BbPluginApi) {
         }
         rootPath = workspacePath;
         hostId = workspaceHostId;
+        target = { kind: source, environmentId: environment.id, path: file };
       }
 
       const absolutePath = resolveContainedPreviewPath(rootPath, file);
@@ -201,7 +221,13 @@ export default async function plugin(bb: BbPluginApi) {
 
       const kind = previewKind(file);
       return kind === "markdown"
-        ? { kind, file, source, content: result.content }
+        ? {
+            kind,
+            file,
+            source,
+            content: result.content,
+            document: { rootPath, threadId, target },
+          }
         : { kind, file, source };
     },
   });

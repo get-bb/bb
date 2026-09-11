@@ -6,6 +6,7 @@ import type { ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   usePromptBoxEnvironmentPreference,
+  usePromptBoxMachinePreference,
   usePromptBoxModelPreference,
   usePromptBoxPermissionModePreference,
   usePromptBoxProviderPreference,
@@ -69,6 +70,7 @@ function renderSelections(projectId = "project-a") {
         serviceTier: usePromptBoxServiceTierPreference(),
         permission: usePromptBoxPermissionModePreference(),
         environment: usePromptBoxEnvironmentPreference(projectId),
+        machine: usePromptBoxMachinePreference(projectId),
       };
     },
     { wrapper, initialProps: { projectId } },
@@ -76,6 +78,12 @@ function renderSelections(projectId = "project-a") {
 }
 
 const selections = [
+  {
+    field: "machine",
+    key: "bb.promptbox.machine-project-a-1",
+    initial: "host-a",
+    remote: "host-b",
+  },
   {
     field: "provider",
     key: "bb.promptbox.provider",
@@ -164,6 +172,7 @@ describe("tab-local composer selections", () => {
     rerender({ projectId: "project-b" });
     act(() => {
       result.current.environment.setValue("provider:git-worktree");
+      result.current.machine.setValue("host-b");
       window.localStorage.setItem("bb.promptbox.model-codex-1", "remote-model");
       window.localStorage.setItem("bb.promptbox.reasoning-codex-1", "low");
       window.localStorage.setItem(
@@ -176,11 +185,13 @@ describe("tab-local composer selections", () => {
     expect(result.current.model.value).toBe("model-a");
     expect(result.current.reasoning.value).toBe("high");
     expect(result.current.environment.value).toBe("provider:project-checkout");
+    expect(result.current.machine.value).toBe("host-a");
     act(() => result.current.provider.setValue("claude-code"));
     rerender({ projectId: "project-b" });
     expect(result.current.model.value).toBe("claude-model");
     expect(result.current.reasoning.value).toBe("medium");
     expect(result.current.environment.value).toBe("provider:git-worktree");
+    expect(result.current.machine.value).toBe("host-b");
   });
 
   it("pins legacy provider model and reasoning before another tab changes the legacy owner", () => {

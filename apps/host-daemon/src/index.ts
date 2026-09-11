@@ -43,8 +43,7 @@ function reportStartupFailure(args: ReportStartupFailureArgs): void {
     args.error instanceof Error
       ? (args.error.stack ?? args.error.message)
       : String(args.error);
-  process.stderr.write(`${message}\n`);
-  process.exitCode = 1;
+  process.stderr.write(`${message}\n`, () => process.exit(1));
 }
 
 async function runHostDaemonEntrypoint(): Promise<void> {

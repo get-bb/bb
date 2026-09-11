@@ -3,6 +3,7 @@ import type {
   BbDesktopBrowserControlState,
   BbDesktopBrowserTarget,
 } from "@bb/desktop-contract";
+import { isRawThreadId } from "@bb/domain";
 import type {
   DesktopBrowserChanged,
   DesktopBrowserCommand,
@@ -118,7 +119,8 @@ export function createDesktopBrowserBroker(args: {
     const serialized = JSON.stringify(event);
     if (snapshots.get(key) === serialized) return;
     snapshots.set(key, serialized);
-    for (const listener of listeners) listener(event);
+    if (isRawThreadId(threadId))
+      for (const listener of listeners) listener(event);
     if (
       instance.window.isDestroyed() ||
       instance.window.webContents.isDestroyed()

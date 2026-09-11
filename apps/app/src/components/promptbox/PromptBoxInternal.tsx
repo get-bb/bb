@@ -2602,6 +2602,23 @@ export function PromptBoxInternal({
     !isAttaching &&
     !hasSubmittableInput &&
     canStartVoiceInput;
+  const stopGestureButtonRef = useRef<HTMLButtonElement | null>(null);
+  const handleStopPointerDown = useCallback(
+    (event: ReactPointerEvent<HTMLButtonElement>) => {
+      if (event.button !== 0) return;
+      stopGestureButtonRef.current = event.currentTarget;
+    },
+    [],
+  );
+  const handleStopClick = useCallback(
+    (event: ReactMouseEvent<HTMLButtonElement>) => {
+      const gestureButton = stopGestureButtonRef.current;
+      stopGestureButtonRef.current = null;
+      if (event.detail > 0 && gestureButton !== event.currentTarget) return;
+      onStop?.();
+    },
+    [onStop],
+  );
   const voiceGestureButtonRef = useRef<HTMLButtonElement | null>(null);
   const handleVoicePointerDown = useCallback(
     (event: ReactPointerEvent<HTMLButtonElement>) => {
@@ -3312,7 +3329,8 @@ export function PromptBoxInternal({
                         size="icon"
                         variant="secondary"
                         aria-label="Stop run"
-                        onClick={onStop}
+                        onPointerDown={handleStopPointerDown}
+                        onClick={handleStopClick}
                         className={
                           showCompactLayout
                             ? COMPACT_PROMPT_ACTION_BUTTON_CLASS

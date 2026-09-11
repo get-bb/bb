@@ -1,5 +1,6 @@
 import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
+import { Writable } from "node:stream";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { Agent, getGlobalDispatcher, setGlobalDispatcher } from "undici";
 import { RESERVED_BB_CLI_COMMANDS } from "@bb/domain/plugin-cli";
@@ -469,17 +470,18 @@ describe("runPluginCliCommand", () => {
     );
     const writes: Array<{ channel: "stdout" | "stderr"; value: string }> = [];
     let pendingWrites = 0;
-    const outputStream = (channel: "stdout" | "stderr") => ({
-      write(value: string, callback: (error?: Error | null) => void) {
-        pendingWrites += 1;
-        setTimeout(() => {
-          writes.push({ channel, value });
-          pendingWrites -= 1;
-          callback();
-        }, 0);
-        return false;
-      },
-    });
+    const outputStream = (channel: "stdout" | "stderr") =>
+      new Writable({
+        write(chunk, _encoding, callback) {
+          const value = chunk.toString();
+          pendingWrites += 1;
+          setTimeout(() => {
+            writes.push({ channel, value });
+            pendingWrites -= 1;
+            callback();
+          }, 0);
+        },
+      });
 
     const exitCode = await runPluginCliCommand(
       "http://localhost",
@@ -496,6 +498,201 @@ describe("runPluginCliCommand", () => {
     ]);
   });
 
+  it.each(["stdout", "stderr"] as const)(
+    "handles %s write errors without leaking listeners or masking failures",
+    async (channel) => {
+      for (const code of ["EPIPE", "ENOSPC", undefined]) {
+        const error = Object.assign(new Error(`write ${code ?? "failed"}`), {
+          code,
+        });
+        vi.stubGlobal(
+          "fetch",
+          vi.fn(
+            async () =>
+              new Response(
+                JSON.stringify({ exitCode: 7, [channel]: "output" }),
+              ),
+          ),
+        );
+        let callbackCompleted = false;
+        const stream = new Writable({
+          write(_chunk, _encoding, callback) {
+            setImmediate(() => {
+              callback(error);
+              callbackCompleted = true;
+            });
+          },
+        });
+        const observed: Error[] = [];
+        const observer = (error: Error) => {
+          observed.push(error);
+        };
+        stream.on("error", observer);
+        const result = runPluginCliCommand("http://localhost", "fixture", [], {
+          stdout: stream,
+          stderr: stream,
+        });
+        if (code === "EPIPE") await expect(result).resolves.toBe(7);
+        else await expect(result).rejects.toBe(error);
+        await new Promise<void>((resolve) => setImmediate(resolve));
+        expect(callbackCompleted).toBe(true);
+        expect(observed).toEqual([error]);
+        expect(stream.listeners("error")).toEqual([observer]);
+        stream.off("error", observer);
+      }
+    },
+  );
+
+  it("observes a real Writable's paired EPIPE event without an existing listener", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(
+        async () =>
+          new Response(JSON.stringify({ exitCode: 0, stdout: "output" })),
+      ),
+    );
+    const stream = new Writable({
+      write(_chunk, _encoding, callback) {
+        callback(Object.assign(new Error("write EPIPE"), { code: "EPIPE" }));
+      },
+    });
+    await expect(
+      runPluginCliCommand("http://localhost", "fixture", [], {
+        stdout: stream,
+        stderr: stream,
+      }),
+    ).resolves.toBe(0);
+    await new Promise<void>((resolve) => setImmediate(resolve));
+    expect(stream.listenerCount("error")).toBe(0);
+  });
+
+  it("keeps the error listener until delayed destruction finishes", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(
+        async () =>
+          new Response(
+            JSON.stringify({ exitCode: 0, stdout: "output", stderr: "output" }),
+          ),
+      ),
+    );
+    let finishDestroy: ((error: Error | null) => void) | undefined;
+    const error = Object.assign(new Error("write EPIPE"), { code: "EPIPE" });
+    const stream = new Writable({
+      write(_chunk, _encoding, callback) {
+        callback(error);
+      },
+      destroy(_error, callback) {
+        finishDestroy = callback;
+      },
+    });
+    let settled = false;
+    const result = runPluginCliCommand("http://localhost", "fixture", [], {
+      stdout: stream,
+      stderr: stream,
+    }).finally(() => {
+      settled = true;
+    });
+    await vi.waitFor(() => expect(finishDestroy).toBeDefined());
+    expect(settled).toBe(false);
+    expect(stream.listenerCount("error")).toBe(1);
+    finishDestroy!(error);
+    await expect(result).resolves.toBe(0);
+    expect(stream.listenerCount("error")).toBe(0);
+    expect(stream.listenerCount("close")).toBe(0);
+  });
+
+  it("removes listeners after repeated successful writes and still flushes stderr after EPIPE", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(
+        async () =>
+          new Response(
+            JSON.stringify({
+              exitCode: 0,
+              stdout: "output",
+              stderr: "warning",
+            }),
+          ),
+      ),
+    );
+    const writes: string[] = [];
+    const healthy = new Writable({
+      write(chunk, _encoding, callback) {
+        writes.push(chunk.toString());
+        callback();
+      },
+    });
+    const broken = new Writable({
+      write(_chunk, _encoding, callback) {
+        callback(Object.assign(new Error("write EPIPE"), { code: "EPIPE" }));
+      },
+    });
+    for (let i = 0; i < 12; i += 1) {
+      await expect(
+        runPluginCliCommand("http://localhost", "fixture", [], {
+          stdout: i === 0 ? broken : healthy,
+          stderr: healthy,
+        }),
+      ).resolves.toBe(0);
+      expect(healthy.listenerCount("error")).toBe(0);
+      expect(healthy.listenerCount("close")).toBe(0);
+    }
+    expect(writes).toEqual([
+      "warning\n",
+      ...Array.from({ length: 11 }, () => ["output\n", "warning\n"]).flat(),
+    ]);
+  });
+
+  it("rejects synchronous write failures without leaving listeners", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(
+        async () =>
+          new Response(JSON.stringify({ exitCode: 0, stdout: "output" })),
+      ),
+    );
+    const error = new Error("synchronous write failed");
+    const stream = new Writable({
+      write() {
+        throw error;
+      },
+    });
+    await expect(
+      runPluginCliCommand("http://localhost", "fixture", [], {
+        stdout: stream,
+        stderr: stream,
+      }),
+    ).rejects.toBe(error);
+    expect(stream.listenerCount("error")).toBe(0);
+    expect(stream.listenerCount("close")).toBe(0);
+    stream.destroy();
+  });
+
+  it("rejects a stream closed while output is pending", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(
+        async () =>
+          new Response(JSON.stringify({ exitCode: 0, stdout: "output" })),
+      ),
+    );
+    const stream = new Writable({
+      write(_chunk, _encoding, callback) {
+        this.destroy();
+        callback(new Error("write interrupted"));
+      },
+    });
+    await expect(
+      runPluginCliCommand("http://localhost", "fixture", [], {
+        stdout: stream,
+        stderr: stream,
+      }),
+    ).rejects.toThrow("write interrupted");
+    expect(stream.listenerCount("error")).toBe(0);
+    expect(stream.listenerCount("close")).toBe(0);
+  });
+
   it("materializes an arbitrary stdin flag only in the proxied request", async () => {
     const requests: string[][] = [];
     vi.stubGlobal(
@@ -507,13 +704,12 @@ describe("runPluginCliCommand", () => {
       }),
     );
     const writes: string[] = [];
-    const output = {
-      write(value: string, callback: (error?: Error | null) => void) {
-        writes.push(value);
+    const output = new Writable({
+      write(chunk, _encoding, callback) {
+        writes.push(chunk.toString());
         callback();
-        return true;
       },
-    };
+    });
     const input = {
       isTTY: false,
       async *[Symbol.asyncIterator]() {
@@ -566,13 +762,12 @@ describe("runPluginCliCommand", () => {
       });
 
       const writes: string[] = [];
-      const stream = {
-        write(value: string, callback: (error?: Error | null) => void) {
-          writes.push(value);
+      const stream = new Writable({
+        write(chunk, _encoding, callback) {
+          writes.push(chunk.toString());
           callback();
-          return true;
         },
-      };
+      });
       const exitCode = await runPluginCliCommand(
         baseUrl,
         "secrets",

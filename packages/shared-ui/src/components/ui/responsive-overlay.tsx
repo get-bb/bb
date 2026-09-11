@@ -10,6 +10,7 @@ import {
   preventOverlayTriggerSelection,
 } from "./overlay-trigger.js";
 import { useIsCompactViewport } from "./hooks/use-compact-viewport.js";
+import { usePointerCoarse } from "./hooks/use-pointer-coarse.js";
 import { usePortalScopeProps } from "../../lib/portal-scope.js";
 import { cn } from "../../lib/utils.js";
 
@@ -100,12 +101,23 @@ function useDrawerKeyboardInset(
   }, [open, panelRef]);
 }
 
+export function useResponsiveOverlayBehavior() {
+  const presentation = useIsCompactViewport() ? "drawer" : "floating";
+  const isPointerCoarse = usePointerCoarse();
+
+  return {
+    presentation,
+    supportsHover: presentation === "floating" && !isPointerCoarse,
+  };
+}
+
 export function useResponsiveRoot(
   controlledOpen: boolean | undefined,
   controlledOnChange: ((open: boolean) => void) | undefined,
   defaultOpen: boolean = false,
 ): ResponsiveOverlayContextValue {
-  const isCompactViewport = useIsCompactViewport();
+  const { presentation } = useResponsiveOverlayBehavior();
+  const isCompactViewport = presentation === "drawer";
   const [internalOpen, setInternalOpen] = React.useState(defaultOpen);
   const isControlled = controlledOpen !== undefined;
   const open = isControlled ? controlledOpen : internalOpen;

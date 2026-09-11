@@ -32,6 +32,26 @@ function extractText(input: PromptInput[]): string | undefined {
   return extractPiPromptInput(input).text;
 }
 
+it("preserves local file paths with and without text", () => {
+  const path = "/workspace/notes.md";
+  const marker = `[Attached file: ${path}]`;
+  const file = {
+    type: "localFile" as const,
+    path,
+    name: "notes.md",
+    sizeBytes: 6,
+    mimeType: "text/markdown",
+  };
+
+  expect(
+    extractText([
+      { type: "text", text: "Read this file.", mentions: [] },
+      file,
+    ]),
+  ).toBe(`Read this file.\n${marker}`);
+  expect(extractText([file])).toBe(marker);
+});
+
 it("invokes a selected skill through Pi's native command", () => {
   expect(
     extractText([
