@@ -1,6 +1,7 @@
 import type { ThreadListEntry } from "@bb/domain";
 import {
   buildPinnedSidebarState,
+  buildProjectThreadGroups,
   buildSectionThreadList,
   CHRONOLOGICAL_CONTAINER_ID,
   type ProjectThreadItem,
@@ -11,6 +12,7 @@ import {
 
 export type SidebarDropPreviewTarget =
   | { kind: "container"; parentKey: string; sectionId: string | null }
+  | { kind: "group"; parentKey: string; items: readonly ProjectThreadItem[] }
   | { kind: "nest"; parentThreadId: string }
   | { kind: "pinned"; parentKey: string };
 
@@ -157,6 +159,21 @@ export function resolveSidebarDropPreviewPlacement({
         nodesToItems(projected.rootNodes),
         activeThread.id,
       ),
+    };
+  }
+
+  if (target.kind === "group") {
+    const projected = buildProjectThreadGroups(
+      withPatchedThread(flattenNodeThreads(target.items), {
+        ...activeThread,
+        parentThreadId: null,
+      }),
+      compareThreads,
+      draftThreadIds,
+    );
+    return {
+      parentKey: target.parentKey,
+      beforeItemKey: beforeKeyAfterThread(projected, activeThread.id),
     };
   }
 

@@ -5,6 +5,9 @@ import type { SidebarSectionId } from "./sidebarCollapsedAtoms";
 import { SidebarSectionOrderList } from "./SidebarSectionOrderList";
 import { reorderSidebarSectionOrder } from "@bb/client-core";
 import { useSidebarReorderDnd } from "./useSidebarReorderDnd";
+import { SectionThreadDndProvider } from "./SectionThreadDndContext";
+import { SectionThreadDragOverlayPortal } from "./ProjectRow";
+import type { SectionThreadDndState } from "./useSectionThreadDnd";
 
 interface ReorderableSidebarSectionOrderListProps {
   children: (
@@ -14,6 +17,7 @@ interface ReorderableSidebarSectionOrderListProps {
   onOrderChange: (order: SidebarSectionId[]) => void;
   order: readonly SidebarSectionId[];
   reorderOrder?: readonly SidebarSectionId[];
+  threadDnd?: SectionThreadDndState | null;
 }
 
 export function ReorderableSidebarSectionOrderList({
@@ -21,6 +25,7 @@ export function ReorderableSidebarSectionOrderList({
   onOrderChange,
   order,
   reorderOrder = order,
+  threadDnd = null,
 }: ReorderableSidebarSectionOrderListProps) {
   const handleDragEnd = useCallback(
     (event: DragEndEvent) => {
@@ -43,6 +48,26 @@ export function ReorderableSidebarSectionOrderList({
   const { dndContextProps, consumeClickSuppression } = useSidebarReorderDnd({
     onDragEnd: handleDragEnd,
   });
+
+  if (threadDnd) {
+    return (
+      <SectionThreadDndProvider value={threadDnd}>
+        <SidebarSectionOrderList
+          order={order}
+          dndContextProps={threadDnd.dndContextProps}
+          trailing={
+            <SectionThreadDragOverlayPortal
+              activeThread={threadDnd.activeThread}
+            />
+          }
+        >
+          {(sectionId) =>
+            children(sectionId, threadDnd.consumeClickSuppression)
+          }
+        </SidebarSectionOrderList>
+      </SectionThreadDndProvider>
+    );
+  }
 
   return (
     <SidebarSectionOrderList order={order} dndContextProps={dndContextProps}>
