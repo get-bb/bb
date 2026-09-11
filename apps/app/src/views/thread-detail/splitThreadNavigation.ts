@@ -12,12 +12,12 @@ import {
 } from "@/lib/split-layout";
 import { decideThreadDrop, type SplitZone } from "@/lib/split-drag";
 import type { PaneContent, SplitLayout } from "@/lib/split-layout";
+import { getDraftRoutePath, parseDraftRouteId } from "@/lib/draft-route";
 import { matchPath } from "react-router-dom";
 import {
   APP_ROOT_ROUTE_PATH,
   getPluginDetailRoutePath,
   getPluginPanelRoutePath,
-  getRootComposeRoutePath,
   getThreadRoutePath,
   PLUGIN_DETAIL_ROUTE_PATH,
   PLUGIN_PANEL_ROUTE_PATH,
@@ -59,7 +59,7 @@ export function paneContentRoute(content: PaneContent): string {
     return getThreadRoutePath(content);
   }
   if (content.kind === "new-thread") {
-    return getRootComposeRoutePath();
+    return getDraftRoutePath(content.draftId);
   }
   if (content.kind === "plugin-detail") {
     return getPluginDetailRoutePath({ pluginId: content.pluginId });
@@ -71,9 +71,11 @@ export function paneContentRoute(content: PaneContent): string {
   });
 }
 
-export function paneContentForPathname(pathname: string): PaneContent | null {
+export function paneContentForPathname(path: string): PaneContent | null {
+  const [pathname = "", search = ""] = (path.split("#")[0] ?? "").split("?");
   if (pathname === APP_ROOT_ROUTE_PATH) {
-    return { kind: "new-thread" };
+    const draftId = parseDraftRouteId(search);
+    return draftId === null ? null : { kind: "new-thread", draftId };
   }
   const thread = matchPath(
     { path: SPLITTABLE_THREAD_ROUTE_PATH, end: false },

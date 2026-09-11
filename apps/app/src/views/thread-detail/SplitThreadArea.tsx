@@ -971,7 +971,7 @@ function StandalonePaneContent({
     return <ThreadDetailView surface="page" />;
   }
   if (content.kind === "new-thread") {
-    return <RootComposeView />;
+    return <RootComposeView draftId={content.draftId} />;
   }
   if (content.kind === "plugin-detail") {
     return <PluginDetailPaneView pluginId={content.pluginId} />;
@@ -1175,7 +1175,7 @@ function NonThreadPaneContent({
         )}
       >
         {content.kind === "new-thread" ? (
-          <RootComposeView />
+          <RootComposeView draftId={content.draftId} />
         ) : content.kind === "plugin-detail" ? (
           <PluginDetailPaneView pluginId={content.pluginId} />
         ) : (
@@ -1445,6 +1445,10 @@ interface PaneStaleWatcherProps {
 
 function PaneStaleWatcher({ threadId, onStale }: PaneStaleWatcherProps) {
   const { data: thread, isSuccess, isError, error } = useThread(threadId);
+  const hasObservedUnarchived = useRef(false);
+  const unarchivesInFlight = useIsMutating({
+    mutationKey: ["unarchive-thread"],
+  });
   const archivesInFlight = useIsMutating({
     predicate: (mutation) =>
       mutation.options.meta?.lifecycleOperation === "archive_thread",
@@ -1458,17 +1462,31 @@ function PaneStaleWatcher({ threadId, onStale }: PaneStaleWatcherProps) {
     thread !== undefined &&
     thread.archivedAt !== null &&
     archivesInFlight === 0;
-  const isStale = isGone || isDeleted || isConfirmedArchived;
+  const isUnarchived =
+    isSuccess && thread !== undefined && thread.archivedAt === null;
 
   const onStaleRef = useRef(onStale);
   useEffect(() => {
     onStaleRef.current = onStale;
   }, [onStale]);
   useEffect(() => {
-    if (isStale) {
+    if (isUnarchived && unarchivesInFlight === 0) {
+      hasObservedUnarchived.current = true;
+    }
+    if (
+      isGone ||
+      isDeleted ||
+      (isConfirmedArchived && hasObservedUnarchived.current)
+    ) {
       onStaleRef.current();
     }
-  }, [isStale]);
+  }, [
+    isConfirmedArchived,
+    isDeleted,
+    isGone,
+    isUnarchived,
+    unarchivesInFlight,
+  ]);
 
   return null;
 }

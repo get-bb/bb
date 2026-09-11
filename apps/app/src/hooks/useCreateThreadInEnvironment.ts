@@ -1,6 +1,5 @@
+import { useOpenNewThreadDraft } from "@/hooks/useOpenNewThreadDraft";
 import { useCallback } from "react";
-import { useRouteNavigate } from "@/components/ui/app-route-anchor";
-import { getRootComposeRoutePath } from "@/lib/route-paths";
 import { useSetRootComposeProjectId } from "@/lib/root-compose-selection";
 
 interface UseCreateThreadInEnvironmentArgs {
@@ -12,12 +11,15 @@ export function useCreateThreadInEnvironment({
   projectId,
   environmentId,
 }: UseCreateThreadInEnvironmentArgs): () => void {
-  const navigate = useRouteNavigate();
+  const openNewDraft = useOpenNewThreadDraft();
   const setRootComposeProjectId = useSetRootComposeProjectId();
   return useCallback(() => {
     setRootComposeProjectId(projectId);
-    navigate(getRootComposeRoutePath(), {
-      state: { reuseEnvironmentId: environmentId },
-    });
-  }, [environmentId, navigate, projectId, setRootComposeProjectId]);
+    openNewDraft(
+      { projectId },
+      {
+        state: { reuseEnvironmentId: environmentId },
+      },
+    );
+  }, [environmentId, openNewDraft, projectId, setRootComposeProjectId]);
 }

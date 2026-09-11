@@ -48,6 +48,24 @@ describe("bb thread draft commands", () => {
   const register: CommandRegistrar = (program) =>
     registerDraftCommands(program.command("thread"), () => "http://server");
 
+  it("opens a saved identity and passes optional placement without inferring a thread target", async () => {
+    const post = vi.fn(async () => ({ delivered: 0 }));
+    stubServerApi({ "v1.drafts.:id.open.$post": post });
+    await runCommand(
+      ["thread", "draft", "open", draft.id, "--split", "right", "--json"],
+      register,
+    );
+    expect(post).toHaveBeenCalledWith({
+      param: { id: draft.id },
+      json: { split: "right" },
+    });
+    expect(JSON.parse(collectLogLines(vi.mocked(console.log))[0]!)).toEqual({
+      draftId: draft.id,
+      split: "right",
+      delivered: 0,
+    });
+  });
+
   it("prints complete generated and caller-supplied identities for reuse", async () => {
     const ids = [
       "drf_c4f849da-569e-4822-bb8d-b143438b20b7",

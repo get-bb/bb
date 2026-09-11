@@ -41,20 +41,25 @@ function eightPaneLayout(): SplitLayout {
 }
 
 describe("mixed page navigation", () => {
-  it("keeps New Thread as a singleton and focuses its existing pane", () => {
+  it("focuses the existing pane for the same draft identity", () => {
     const withCompose = splitPane(twoPaneLayout(), "pane-2", "bottom", {
       kind: "new-thread",
+      draftId: "drf_navigation_test",
     });
 
     const after = reconcileLayoutForContent(withCompose, {
       kind: "new-thread",
+      draftId: "drf_navigation_test",
     });
 
     expect(listPanes(after.root)).toHaveLength(3);
     expect(after.focusedPaneId).toBe(
-      findPaneByContent(after.root, { kind: "new-thread" })?.paneId,
+      findPaneByContent(after.root, {
+        kind: "new-thread",
+        draftId: "drf_navigation_test",
+      })?.paneId,
     );
-    expect(focusedPaneRoute(after)).toBe("/");
+    expect(focusedPaneRoute(after)).toBe("/?draft=drf_navigation_test");
   });
 
   it("updates a plugin pane's subpath without duplicating the panel", () => {

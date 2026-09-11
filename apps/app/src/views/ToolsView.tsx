@@ -1,3 +1,4 @@
+import { useOpenNewThreadDraft } from "@/hooks/useOpenNewThreadDraft";
 import {
   Suspense,
   useCallback,
@@ -50,7 +51,6 @@ import {
   SKILLS_ROUTE_PATH,
   getPluginDetailRoutePath,
   getPluginsRoutePath,
-  getRootComposeRoutePath,
 } from "@/lib/route-paths";
 import { getToolsOwnedCollectionRoutePath } from "@/components/tools/tools-navigation";
 import { cn } from "@bb/shared-ui/lib/utils";
@@ -138,6 +138,7 @@ function PluginsToolView({
 
 function PluginDetailToolView({ pluginId }: { pluginId: string }) {
   const navigate = useNavigate();
+  const openNewDraft = useOpenNewThreadDraft();
   const location = useLocation();
   const [deleteTarget, setDeleteTarget] = useState<PluginListItem | null>(null);
   const [installTarget, setInstallTarget] =
@@ -215,18 +216,21 @@ function PluginDetailToolView({ pluginId }: { pluginId: string }) {
         : null;
   const handleEditPlugin = useCallback(
     (plugin: PluginListItem) => {
-      navigate(getRootComposeRoutePath(), {
-        state: {
-          focusPrompt: true,
-          initialPrompt: buildPluginEditThreadPrompt({
-            name: plugin.name ?? plugin.id,
-            path: plugin.rootDir,
-          }),
-          replaceInitialPrompt: true,
+      openNewDraft(
+        {},
+        {
+          state: {
+            focusPrompt: true,
+            initialPrompt: buildPluginEditThreadPrompt({
+              name: plugin.name ?? plugin.id,
+              path: plugin.rootDir,
+            }),
+            replaceInitialPrompt: true,
+          },
         },
-      });
+      );
     },
-    [navigate],
+    [openNewDraft],
   );
   const handleOpenPluginSource = useCallback(
     (plugin: PluginListItem) => {

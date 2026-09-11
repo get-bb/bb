@@ -34,7 +34,10 @@ import {
   MACOS_WINDOW_DRAG_CLASS,
   shouldUseMacosDesktopChrome,
 } from "@/lib/bb-desktop";
-import { getRootComposeRoutePath, getThreadRoutePath } from "@/lib/route-paths";
+import { getThreadRoutePath } from "@/lib/route-paths";
+import { getDraftRoutePath } from "@/lib/draft-route";
+import { createNewThreadDraft } from "@/lib/drafts/resource-runtime";
+import { useRootComposeProjectId } from "@/lib/root-compose-selection";
 import { usePaneContentSplitDrag } from "./usePaneContentSplitDrag";
 import { openUrlInExternalBrowser } from "@/lib/url-open-routing";
 import {
@@ -54,8 +57,6 @@ import {
 } from "@/components/commands/AppCommandProvider";
 import { useRouteState } from "@/hooks/useRouteState";
 import { SidebarNavigationRegion } from "./SidebarNavigationRegion";
-
-const NEW_THREAD_PANE_CONTENT = { kind: "new-thread" } as const;
 
 const BUG_REPORT_NEW_ISSUE_URL = "https://github.com/get-bb/bb/issues/new";
 const SIDEBAR_FOOTER_ACTION_CLASS = cn(
@@ -84,12 +85,21 @@ export function AppSidebar({
   const threadListReplacement = useThreadListReplacement();
   const { threadId: activeThreadId } = useRouteState();
   const navigate = useNavigate();
+  const [projectId] = useRootComposeProjectId();
+  const closeOnMobile = useCloseMobileSidebar();
+  const createNewThreadContent = useCallback(
+    () => ({
+      kind: "new-thread" as const,
+      draftId: createNewThreadDraft({ projectId }),
+    }),
+    [projectId],
+  );
   const newThreadSplit = usePaneContentSplitDrag({
-    content: NEW_THREAD_PANE_CONTENT,
+    content: createNewThreadContent,
     enabled: true,
     label: "New thread",
+    onNavigate: closeOnMobile,
   });
-  const closeOnMobile = useCloseMobileSidebar();
   const { isCompactViewport, openMobile } = useSidebar();
   const [compactCustomizeMode, setCompactCustomizeMode] = useState(false);
   const [desktopInfo] = useState(getBbDesktopInfo);
@@ -110,10 +120,10 @@ export function AppSidebar({
 
   const handleNewChat = useCallback(() => {
     closeOnMobile();
-    void navigate(getRootComposeRoutePath(), {
+    void navigate(getDraftRoutePath(createNewThreadContent().draftId), {
       state: { focusPrompt: true },
     });
-  }, [closeOnMobile, navigate]);
+  }, [closeOnMobile, createNewThreadContent, navigate]);
 
   const showThreadShortcuts = useCallback(() => {
     const targets = getSidebarThreadShortcutTargets(sidebarRef.current);

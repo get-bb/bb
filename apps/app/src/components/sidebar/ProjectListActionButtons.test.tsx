@@ -2,7 +2,10 @@
 
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { ProjectListSearchThreadsAction } from "./ProjectList";
+import {
+  ProjectListNewThreadAction,
+  ProjectListSearchThreadsAction,
+} from "./ProjectList";
 
 const mocks = vi.hoisted(() => ({
   dispatch: vi.fn(),
@@ -65,5 +68,33 @@ describe("ProjectListSearchThreadsAction", () => {
 
     expect(onSearchThreads).toHaveBeenCalledOnce();
     expect(mocks.dispatch).toHaveBeenCalledWith("thread.search", button);
+  });
+});
+
+describe("ProjectListNewThreadAction", () => {
+  it("creates on each activation and delegates modifier activation to the fresh-draft split action", () => {
+    const onNewChat = vi.fn();
+    const openInSplit = vi.fn();
+    render(
+      <ProjectListNewThreadAction
+        onNewChat={onNewChat}
+        newThreadSplit={{ openInSplit }}
+      />,
+    );
+    const button = screen.getByRole("button", { name: "New thread" });
+    fireEvent.click(button);
+    fireEvent.click(button);
+    fireEvent.click(button, { metaKey: true });
+    expect(onNewChat).toHaveBeenCalledTimes(2);
+    expect(openInSplit).toHaveBeenCalledOnce();
+  });
+
+  it("opens normally when a split action is unavailable", () => {
+    const onNewChat = vi.fn();
+    render(<ProjectListNewThreadAction onNewChat={onNewChat} />);
+    fireEvent.click(screen.getByRole("button", { name: "New thread" }), {
+      ctrlKey: true,
+    });
+    expect(onNewChat).toHaveBeenCalledOnce();
   });
 });

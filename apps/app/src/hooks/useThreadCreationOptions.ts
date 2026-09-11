@@ -226,6 +226,7 @@ export function useThreadCreationOptions(
     initialReasoningLevel,
     initialServiceTier,
     preferReadyProviderWhenUnset = false,
+    preserveUnavailableSelections = false,
     preferenceProjectId,
     resolveProviderRouting,
     resetKey,
@@ -409,6 +410,9 @@ export function useThreadCreationOptions(
   const hasMultipleProviders = providers.length >= 2;
 
   const effectiveProviderId = useMemo(() => {
+    if (preserveUnavailableSelections && rawSelectedProviderId) {
+      return rawSelectedProviderId;
+    }
     if (
       rawSelectedProviderId &&
       providers.some((provider) => provider.id === rawSelectedProviderId)
@@ -416,7 +420,7 @@ export function useThreadCreationOptions(
       return rawSelectedProviderId;
     }
     return providers[0]?.id ?? "";
-  }, [providers, rawSelectedProviderId]);
+  }, [preserveUnavailableSelections, providers, rawSelectedProviderId]);
 
   const { setValue: setStoredSelectedModel, value: storedSelectedModel } =
     usePromptBoxModelPreference(effectiveProviderId);
@@ -548,6 +552,7 @@ export function useThreadCreationOptions(
         preferredReasoningLevel,
         provider: selectedProviderInfo,
         catalogIsVerified: modelCatalogIsVerified,
+        preserveUnavailableSelection: preserveUnavailableSelections,
         formatModelLabel,
       }),
     [
@@ -555,22 +560,28 @@ export function useThreadCreationOptions(
       executionOptionsQuery.data?.selectedOnlyModels,
       modelCatalogIsVerified,
       preferredReasoningLevel,
+      preserveUnavailableSelections,
       rawSelectedModel,
       selectedProviderInfo,
     ],
   );
   const serviceTier = useMemo(
-    () => (supportsServiceTier ? rawServiceTier : undefined),
-    [rawServiceTier, supportsServiceTier],
+    () =>
+      supportsServiceTier || preserveUnavailableSelections
+        ? rawServiceTier
+        : undefined,
+    [preserveUnavailableSelections, rawServiceTier, supportsServiceTier],
   );
 
-  const permissionMode = resolvePermissionModeSelection({
-    rawPermissionMode,
-    permissionModes:
-      allowedPermissionModes.length > 0
-        ? allowedPermissionModes
-        : permissionModes,
-  });
+  const permissionMode = preserveUnavailableSelections
+    ? rawPermissionMode
+    : resolvePermissionModeSelection({
+        rawPermissionMode,
+        permissionModes:
+          allowedPermissionModes.length > 0
+            ? allowedPermissionModes
+            : permissionModes,
+      });
   const environmentSelectionValue = rawEnvironmentSelectionValue;
   const touchedFieldsPendingReset =
     usesLocalThreadSelections && threadResetKeyRef.current !== resetKey;

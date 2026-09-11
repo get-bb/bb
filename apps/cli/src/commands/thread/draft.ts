@@ -1,6 +1,10 @@
 import { readFile } from "node:fs/promises";
 import { Command } from "commander";
-import { draftContentSchema, type DraftContent } from "@bb/server-contract";
+import {
+  draftContentSchema,
+  threadOpenSplitSchema,
+  type DraftContent,
+} from "@bb/server-contract";
 import { action } from "../../action.js";
 import { createCliBbSdk } from "../../client.js";
 import { renderBorderlessTable } from "../../table.js";
@@ -116,6 +120,43 @@ export function registerDraftCommands(
   const draft = program
     .command("draft")
     .description("Manage saved drafts with or without an app connected");
+
+  draft
+    .command("open <draft-id>")
+    .description("Open a saved draft in connected apps")
+    .option(
+      "--split <placement>",
+      "Open right, down, left, top, or replace; edge placements add panes through pane 8, then replace the focused pane",
+    )
+    .option("--json", "Print machine-readable JSON output")
+    .action(
+      action(
+        async (
+          draftId: string,
+          opts: JsonOutputOptions & { split?: string },
+        ) => {
+          const split =
+            opts.split === undefined
+              ? undefined
+              : threadOpenSplitSchema.parse(opts.split);
+          const result = await createCliBbSdk(getUrl()).drafts.open({
+            draftId,
+            ...(split === undefined ? {} : { split }),
+          });
+          if (
+            outputJson(opts, {
+              draftId,
+              split: split ?? "replace",
+              delivered: result.delivered,
+            })
+          )
+            return;
+          console.log(`Draft: ${draftId}`);
+          console.log(`Split: ${split ?? "replace"}`);
+          console.log(`Delivered: ${result.delivered}`);
+        },
+      ),
+    );
 
   contentOptions(draft.command("create"))
     .description("Save a draft without starting a thread")

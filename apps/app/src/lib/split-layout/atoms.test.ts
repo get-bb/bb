@@ -1,16 +1,28 @@
 // @vitest-environment jsdom
 
 import { createStore } from "jotai";
-import { afterEach, describe, expect, it } from "vitest";
+import { initializeNewThreadDraft } from "@/lib/drafts/resource-runtime";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   closePanesForThreadsAtom,
   maximizedPaneIdAtom,
   MAXIMIZED_PANE_STORAGE_KEY,
   splitLayoutAtom,
 } from "./atoms";
-import { countPanes, findPaneByThread, splitPane } from "./ops";
-import { serializeSplitLayout, SPLIT_LAYOUT_STORAGE_KEY } from "./persistence";
+import { countPanes, findPaneByThread, listPanes, splitPane } from "./ops";
+import {
+  createSplitLayoutStorage,
+  deserializeSplitLayout,
+  serializeSplitLayout,
+  serializeLegacySplitLayout,
+  SPLIT_LAYOUT_STORAGE_KEY,
+  LEGACY_SPLIT_LAYOUT_STORAGE_KEY,
+} from "./persistence";
 import type { SplitLayout } from "./types";
+
+vi.mock("@/lib/drafts/resource-runtime", () => ({
+  initializeNewThreadDraft: vi.fn(() => true),
+}));
 
 function singlePane(threadId: string): SplitLayout {
   return {
@@ -32,6 +44,7 @@ function twoPanes(): SplitLayout {
 }
 
 afterEach(() => {
+  vi.clearAllMocks();
   window.localStorage.clear();
   window.sessionStorage.clear();
 });
@@ -180,13 +193,159 @@ describe("closePanesForThreadsAtom", () => {
     expect(store.set(closePanesForThreadsAtom, ["thread-1"])).toEqual({
       removedAny: false,
       focusedRoute: null,
+      focusedContent: null,
     });
 
     store.set(splitLayoutAtom, twoPanes());
     expect(store.set(closePanesForThreadsAtom, [])).toEqual({
       removedAny: false,
       focusedRoute: null,
+      focusedContent: null,
     });
     expect(countPanes(store.get(splitLayoutAtom)!.root)).toBe(2);
+  });
+});
+
+describe("draft layout migration", () => {
+  it("keeps legacy panes and distinct migrated draft IDs across reloads", () => {
+    const previous = {
+      version: 1,
+      layout: {
+        root: {
+          type: "split",
+          dir: "row",
+          sizes: [0.25, 0.25, 0.25, 0.25],
+          children: [
+            { type: "pane", paneId: "pane-1", content: { kind: "new-thread" } },
+            { type: "pane", paneId: "pane-2", content: { kind: "new-thread" } },
+            {
+              type: "pane",
+              paneId: "pane-3",
+              content: { kind: "plugin-detail", pluginId: "notes" },
+            },
+            {
+              type: "pane",
+              paneId: "pane-4",
+              content: { kind: "thread", projectId: "p1", threadId: "t1" },
+            },
+          ],
+        },
+        focusedPaneId: "pane-2",
+      },
+    };
+    window.sessionStorage.setItem(
+      LEGACY_SPLIT_LAYOUT_STORAGE_KEY,
+      JSON.stringify(previous),
+    );
+    const storage = createSplitLayoutStorage();
+    const migrated = storage.getItem(SPLIT_LAYOUT_STORAGE_KEY, null)!;
+    const panes = listPanes(migrated.root);
+    expect(migrated.focusedPaneId).toBe("pane-2");
+    expect(panes[0]!.content).toMatchObject({
+      kind: "new-thread",
+      draftId: expect.stringMatching(/^drf_/),
+    });
+    expect(panes[0]!.content).not.toEqual(panes[1]!.content);
+    expect(panes.slice(2)).toEqual(previous.layout.root.children.slice(2));
+    expect(storage.getItem(SPLIT_LAYOUT_STORAGE_KEY, null)).toEqual(migrated);
+    expect(
+      JSON.parse(
+        window.sessionStorage.getItem(LEGACY_SPLIT_LAYOUT_STORAGE_KEY)!,
+      ),
+    ).toEqual(previous);
+  });
+
+  it("preserves malformed values on read and the old projection when a new write fails", () => {
+    const storage = createSplitLayoutStorage();
+    window.sessionStorage.setItem(
+      SPLIT_LAYOUT_STORAGE_KEY,
+      "malformed current",
+    );
+    window.localStorage.setItem(
+      LEGACY_SPLIT_LAYOUT_STORAGE_KEY,
+      "malformed old",
+    );
+    expect(storage.getItem(SPLIT_LAYOUT_STORAGE_KEY, null)).toBeNull();
+    expect(initializeNewThreadDraft).not.toHaveBeenCalled();
+    expect(window.sessionStorage.getItem(SPLIT_LAYOUT_STORAGE_KEY)).toBe(
+      "malformed current",
+    );
+    expect(window.localStorage.getItem(LEGACY_SPLIT_LAYOUT_STORAGE_KEY)).toBe(
+      "malformed old",
+    );
+    const original = Storage.prototype.setItem;
+    const spy = vi
+      .spyOn(Storage.prototype, "setItem")
+      .mockImplementation(function (this: Storage, key: string, value: string) {
+        if (key === SPLIT_LAYOUT_STORAGE_KEY) throw new Error("quota");
+        return original.call(this, key, value);
+      });
+    try {
+      storage.setItem(SPLIT_LAYOUT_STORAGE_KEY, twoPanes());
+      expect(window.localStorage.getItem(LEGACY_SPLIT_LAYOUT_STORAGE_KEY)).toBe(
+        "malformed old",
+      );
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
+  it("retains legacy layout when the draft recovery checkpoint cannot be written", () => {
+    const previous = JSON.stringify({
+      version: 1,
+      layout: {
+        root: {
+          type: "pane",
+          paneId: "pane-1",
+          content: { kind: "new-thread" },
+        },
+        focusedPaneId: "pane-1",
+      },
+    });
+    window.sessionStorage.setItem(LEGACY_SPLIT_LAYOUT_STORAGE_KEY, previous);
+    vi.mocked(initializeNewThreadDraft)
+      .mockReturnValueOnce(false)
+      .mockReturnValueOnce(false);
+    const storage = createSplitLayoutStorage();
+    const migrated = storage.getItem(SPLIT_LAYOUT_STORAGE_KEY, null);
+    expect(storage.getItem(SPLIT_LAYOUT_STORAGE_KEY, null)).toBe(migrated);
+    storage.setItem(SPLIT_LAYOUT_STORAGE_KEY, migrated);
+    expect(window.sessionStorage.getItem(SPLIT_LAYOUT_STORAGE_KEY)).toBeNull();
+    expect(window.sessionStorage.getItem(LEGACY_SPLIT_LAYOUT_STORAGE_KEY)).toBe(
+      previous,
+    );
+  });
+
+  it("writes a rollback-readable projection after persisting the draft identity", () => {
+    const layout = splitPane(singlePane("thread-1"), "pane-1", "right", {
+      kind: "new-thread",
+      draftId: "drf_persisted_identity",
+    });
+    createSplitLayoutStorage().setItem(SPLIT_LAYOUT_STORAGE_KEY, layout);
+    expect(
+      deserializeSplitLayout(
+        window.sessionStorage.getItem(SPLIT_LAYOUT_STORAGE_KEY),
+      ),
+    ).toEqual(layout);
+    expect(window.sessionStorage.getItem(LEGACY_SPLIT_LAYOUT_STORAGE_KEY)).toBe(
+      serializeLegacySplitLayout(layout),
+    );
+  });
+
+  it("keeps the draft survivor when archiving the last thread pane", () => {
+    const store = createStore();
+    const content = {
+      kind: "new-thread",
+      draftId: "drf_surviving_draft",
+    } as const;
+    store.set(
+      splitLayoutAtom,
+      splitPane(singlePane("thread-1"), "pane-1", "right", content),
+    );
+    const result = store.set(closePanesForThreadsAtom, ["thread-1"]);
+    expect(result.focusedContent).toEqual(content);
+    expect(
+      listPanes(store.get(splitLayoutAtom)!.root).map((pane) => pane.content),
+    ).toEqual([content]);
   });
 });

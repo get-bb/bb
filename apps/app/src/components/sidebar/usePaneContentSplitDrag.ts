@@ -8,10 +8,10 @@ import { useNavigate } from "react-router-dom";
 import { useIsCompactViewport } from "@bb/shared-ui/hooks/use-compact-viewport";
 import {
   getPluginPanelRoutePath,
-  getRootComposeRoutePath,
   getThreadRoutePath,
   getPluginDetailRoutePath,
 } from "@/lib/route-paths";
+import { getDraftRoutePath } from "@/lib/draft-route";
 import { splitLayoutAtom } from "@/lib/split-layout/atoms";
 import { openPaneContentInSplit } from "@/lib/split-layout/openPaneContentInSplit";
 import {
@@ -37,7 +37,7 @@ const MAIN_CONTENT_SELECTOR = "main";
 
 function routeForContent(content: PaneContent): string {
   if (content.kind === "thread") return getThreadRoutePath(content);
-  if (content.kind === "new-thread") return getRootComposeRoutePath();
+  if (content.kind === "new-thread") return getDraftRoutePath(content.draftId);
   if (content.kind === "plugin-detail") {
     return getPluginDetailRoutePath({ pluginId: content.pluginId });
   }
@@ -68,7 +68,7 @@ export function usePaneContentSplitDrag(options: PaneContentSplitOptions) {
 }
 
 interface PaneContentSplitOptions {
-  content: PaneContent;
+  content: PaneContent | (() => PaneContent);
   enabled: boolean;
   label: string;
   onNavigate?: () => void;
@@ -80,7 +80,8 @@ export function usePaneContentSplitActions() {
   const isCompact = useIsCompactViewport();
 
   const openInSplit = useCallback(
-    ({ content, enabled, onNavigate }: PaneContentSplitOptions) => {
+    ({ content: source, enabled, onNavigate }: PaneContentSplitOptions) => {
+      const content = typeof source === "function" ? source() : source;
       onNavigate?.();
       openPaneContentInSplit({
         store,
@@ -125,24 +126,33 @@ export function usePaneContentSplitActions() {
           if (layout === null) return null;
           return decideThreadDrop({
             zone,
-            threadAlreadyOpen: findPaneByContent(layout.root, content) !== null,
+            threadAlreadyOpen:
+              typeof content !== "function" &&
+              findPaneByContent(layout.root, content) !== null,
             atMaxPanes: countPanes(layout.root) >= MAX_PANES,
           });
         },
         onDrop: (target) => {
           const layout = store.get(splitLayoutAtom);
           if (layout === null) return;
-          const existing = findPaneByContent(layout.root, content);
+          const resolvedContent =
+            typeof content === "function" ? content() : content;
+          const existing = findPaneByContent(layout.root, resolvedContent);
           const next =
             existing !== null
               ? setFocus(layout, existing.paneId)
               : target.zone === "center"
-                ? replacePaneContent(layout, target.paneId, content)
-                : splitPane(layout, target.paneId, target.zone, content);
+                ? replacePaneContent(layout, target.paneId, resolvedContent)
+                : splitPane(
+                    layout,
+                    target.paneId,
+                    target.zone,
+                    resolvedContent,
+                  );
           if (next !== layout) store.set(splitLayoutAtom, next);
           onNavigate?.();
           navigate(
-            routeForContent(content),
+            routeForContent(resolvedContent),
             existing !== null ? { replace: true } : undefined,
           );
         },

@@ -207,6 +207,40 @@ describe("WebSocketManager thread-open signals", () => {
     instance.onmessage?.({ data: JSON.stringify(payload) } as MessageEvent);
   }
 
+  it("routes draft opens to their own listeners and ignores malformed signals", () => {
+    const { manager } = createConnectedManager();
+    const opened = vi.fn();
+    const changed = vi.fn();
+    const unsubscribe = manager.onDraftOpen(opened);
+    manager.onChanged(changed);
+    dispatchRaw({
+      type: "draft-open",
+      draftId: "drf_valid_signal",
+      split: "down",
+      futureField: true,
+    });
+    expect(opened).toHaveBeenCalledWith({
+      type: "draft-open",
+      draftId: "drf_valid_signal",
+      split: "down",
+    });
+    dispatchRaw({ type: "draft-open", draftId: "invalid", split: "right" });
+    dispatchRaw({
+      type: "draft-open",
+      draftId: "drf_valid_signal",
+      split: "diagonal",
+    });
+    expect(opened).toHaveBeenCalledTimes(1);
+    expect(changed).not.toHaveBeenCalled();
+    unsubscribe();
+    dispatchRaw({
+      type: "draft-open",
+      draftId: "drf_valid_signal",
+      split: "right",
+    });
+    expect(opened).toHaveBeenCalledTimes(1);
+  });
+
   it("notifies layout listeners and buffers an included file once", () => {
     const { manager } = createConnectedManager();
     const threadOpen = vi.fn();

@@ -2,6 +2,7 @@ import {
   draftCreateResponseSchema,
   draftDeleteResponseSchema,
   draftListResponseSchema,
+  draftOpenResponseSchema,
   draftSchema,
   draftSubmitResponseSchema,
   type Draft,
@@ -10,12 +11,16 @@ import {
   type DraftDeleteRequest,
   type DraftDeleteResponse,
   type DraftListResponse,
+  type DraftOpenRequest,
+  type DraftOpenResponse,
   type DraftSubmitRequest,
   type DraftSubmitResponse,
   type DraftUpdateRequest,
 } from "@bb/server-contract";
 import { signalRequestArgs, type CreateSdkAreaArgs } from "./common.js";
 
+export type DraftOpenArgs = DraftOpenRequest & { draftId: string };
+export type DraftOpenResult = DraftOpenResponse;
 export type DraftCreateArgs = DraftCreateRequest;
 export type DraftCreateResult = DraftCreateResponse;
 export type DraftDeleteArgs = DraftDeleteRequest & { draftId: string };
@@ -40,6 +45,7 @@ export type DraftSubmitArgs = DraftSubmitRequest & { draftId: string };
 export type DraftSubmitResult = DraftSubmitResponse;
 
 export interface DraftsArea {
+  open(args: DraftOpenArgs): Promise<DraftOpenResult>;
   create(args?: DraftCreateArgs): Promise<DraftCreateResult>;
   list(args?: DraftListArgs): Promise<DraftListResult>;
   get(args: DraftGetArgs): Promise<DraftGetResult>;
@@ -51,6 +57,16 @@ export interface DraftsArea {
 export function createDraftsArea(args: CreateSdkAreaArgs): DraftsArea {
   const { transport } = args;
   return {
+    async open(input) {
+      const { draftId, ...json } = input;
+      const body = await transport.readJson(
+        transport.api.v1.drafts[":id"].open.$post({
+          param: { id: draftId },
+          json,
+        }),
+      );
+      return draftOpenResponseSchema.parse(body);
+    },
     async create(input = {}) {
       const body = await transport.readJson(
         transport.api.v1.drafts.$post({ json: input }),

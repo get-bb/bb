@@ -449,7 +449,10 @@ const pluginGuideContent: PaneContent = {
   subPath: "",
 };
 
-const newThreadContent: PaneContent = { kind: "new-thread" };
+const newThreadContent: PaneContent = {
+  kind: "new-thread",
+  draftId: "drf_navigation_test",
+};
 
 function pluginContent(panelPath: string): PaneContent {
   return {

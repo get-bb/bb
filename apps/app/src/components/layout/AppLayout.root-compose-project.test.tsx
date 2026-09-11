@@ -6,6 +6,15 @@ import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { AppLayout } from "./AppLayout";
 
+vi.mock("@/lib/drafts/resource-runtime", () => ({
+  createNewThreadDraft: vi.fn(() => `drf_${crypto.randomUUID()}`),
+  initializeNewThreadDraft: vi.fn(),
+}));
+
+vi.mock("@/components/drafts/LegacyDraftImport", () => ({
+  LegacyDraftImport: () => null,
+}));
+
 const ROOT_COMPOSE_PROJECT_ID_STORAGE_KEY = "bb.root-compose.project-id";
 
 const mockUseThread = vi.hoisted(() => vi.fn());

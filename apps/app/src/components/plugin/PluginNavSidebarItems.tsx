@@ -1,3 +1,4 @@
+import { createNewThreadDraft } from "@/lib/drafts/resource-runtime";
 import {
   useCallback,
   useEffect,
@@ -270,7 +271,10 @@ function PluginNavSidebarItemList({
               continue;
             next =
               listPanes(next.root).length === 1
-                ? replacePaneContent(next, pane.paneId, { kind: "new-thread" })
+                ? replacePaneContent(next, pane.paneId, {
+                    kind: "new-thread",
+                    draftId: createNewThreadDraft({}),
+                  })
                 : removePane(next, pane.paneId);
           }
         }

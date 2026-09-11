@@ -22,6 +22,7 @@ import { makePluginRegistrationSet as registrationSet } from "@/test/fixtures/pl
 const mocks = vi.hoisted(() => ({
   dispatch: vi.fn(),
   openNewThreadInSplit: vi.fn(),
+  newThreadPointerDown: vi.fn(),
   onSearchThreads: vi.fn(),
 }));
 
@@ -119,7 +120,10 @@ function Harness({ onOwnerMount }: { onOwnerMount: () => void }) {
     <>
       <SidebarNavigationRegion
         splitEnabled
-        newThreadSplit={{ openInSplit: mocks.openNewThreadInSplit }}
+        newThreadSplit={{
+          onPointerDown: mocks.newThreadPointerDown,
+          openInSplit: mocks.openNewThreadInSplit,
+        }}
         onNavigate={vi.fn()}
         onNewChat={vi.fn()}
         onSearchThreads={mocks.onSearchThreads}
@@ -179,10 +183,21 @@ afterEach(() => {
   vi.restoreAllMocks();
   mocks.dispatch.mockReset();
   mocks.openNewThreadInSplit.mockReset();
+  mocks.newThreadPointerDown.mockReset();
   mocks.onSearchThreads.mockReset();
 });
 
 describe("SidebarNavigationRegion", () => {
+  it("uses the same fresh-draft split and drag actions in replacement navigation", () => {
+    registerFixture();
+    renderHarness();
+    const newThread = screen.getByRole("button", { name: "New thread" });
+    fireEvent.pointerDown(newThread, { button: 0 });
+    fireEvent.click(newThread, { metaKey: true });
+    expect(mocks.newThreadPointerDown).toHaveBeenCalledOnce();
+    expect(mocks.openNewThreadInSplit).toHaveBeenCalledOnce();
+  });
+
   it("preserves modifier-click for New thread in BB navigation", () => {
     renderHarness();
 
@@ -256,9 +271,7 @@ describe("SidebarNavigationRegion", () => {
     ).toBeNull();
 
     fireEvent.click(screen.getByRole("button", { name: "Plugins" }));
-    expect(screen.getByTestId("pathname").textContent).toBe(
-      "/plugins",
-    );
+    expect(screen.getByTestId("pathname").textContent).toBe("/plugins");
     expect(
       screen
         .getByRole("button", { name: "Plugins" })
@@ -266,9 +279,7 @@ describe("SidebarNavigationRegion", () => {
     ).toBe("page");
 
     fireEvent.click(screen.getByRole("button", { name: "Skills" }));
-    expect(screen.getByTestId("pathname").textContent).toBe(
-      "/skills",
-    );
+    expect(screen.getByTestId("pathname").textContent).toBe("/skills");
   });
 
   it("delegates and falls back after a crash without owner remounts", () => {

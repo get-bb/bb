@@ -55,8 +55,8 @@ export function BuiltInSidebarNavigation({
       ),
       disabled: onNewChat === undefined,
       onActivate: (event: SidebarNavActivationModifiers) => {
-        if (event.metaKey || event.ctrlKey) {
-          newThreadSplit?.openInSplit();
+        if (newThreadSplit && (event.metaKey || event.ctrlKey)) {
+          newThreadSplit.openInSplit();
           return;
         }
         onNewChat?.();

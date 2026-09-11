@@ -32,6 +32,15 @@ export function registerDraftRoutes(app: Hono, deps: AppDeps): void {
   });
   const routes = publicApiRoutes.drafts;
 
+  post(routes.open, (context, payload) => {
+    const draft = requireDraft(deps, context.req.param("id"));
+    const delivered = deps.hub.notifyDraftOpen(
+      draft.id,
+      payload.split ?? "replace",
+    );
+    return context.json({ delivered });
+  });
+
   post(routes.create, (context, payload) =>
     context.json(createDraftResource(deps, payload), 201),
   );

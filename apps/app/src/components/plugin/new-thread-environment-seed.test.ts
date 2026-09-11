@@ -260,3 +260,19 @@ describe("newThreadEnvironmentArgsToSeed round trip", () => {
     ).toBeNull();
   });
 });
+
+it("preserves an incomplete saved draft environment without choosing another machine", () => {
+  expect(
+    newThreadEnvironmentArgsToSeed({
+      type: "provider",
+      environmentProviderId: "branchy",
+      machine: null,
+      inputs: { branch: "draft-work" },
+    }),
+  ).toEqual({
+    selectionValue: "provider:branchy",
+    providerMachine: null,
+    providerHostId: null,
+    providerInputs: { branch: "draft-work" },
+  });
+});

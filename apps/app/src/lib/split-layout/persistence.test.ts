@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   deserializeSplitLayout,
+  deserializeLegacySplitLayout,
   serializeSplitLayout,
   SPLIT_LAYOUT_SCHEMA_VERSION,
 } from "./persistence";
@@ -75,7 +76,7 @@ describe("split layout persistence", () => {
           {
             type: "pane",
             paneId: "pane-1",
-            content: { kind: "new-thread" },
+            content: { kind: "new-thread", draftId: "drf_navigation_test" },
           },
           {
             type: "pane",
@@ -101,6 +102,24 @@ describe("split layout persistence", () => {
     expect(deserializeSplitLayout(serializeSplitLayout(eightPanes))).toEqual(
       eightPanes,
     );
+  });
+
+  it("rejects draft identities injected into a legacy singleton instead of initializing them", () => {
+    expect(
+      deserializeLegacySplitLayout(
+        JSON.stringify({
+          version: 1,
+          layout: {
+            root: {
+              type: "pane",
+              paneId: "pane-1",
+              content: { kind: "new-thread", draftId: "drf_consumed_identity" },
+            },
+            focusedPaneId: "pane-1",
+          },
+        }),
+      ),
+    ).toBeNull();
   });
 
   it("rejects malformed JSON, unknown versions, and invalid layout invariants", () => {

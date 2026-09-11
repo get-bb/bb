@@ -115,7 +115,7 @@ export function RouteNavigationProvider({
   );
   const openInSplit = useCallback<RouteNavigation["openInSplit"]>(
     (path) => {
-      const content = paneContentForPathname(path.split(/[?#]/)[0] ?? path);
+      const content = paneContentForPathname(path);
       if (content === null) return false;
       openPaneContentInSplit({
         store,
@@ -196,9 +196,7 @@ export function useRouteAnchorDelegate(): (
         href: anchor.getAttribute("href") ?? "",
       });
       if (route === null) return;
-      const content = paneContentForPathname(
-        route.path.split(/[?#]/)[0] ?? route.path,
-      );
+      const content = paneContentForPathname(route.path);
       if (
         content?.kind === "plugin-detail" &&
         openPluginDetail?.(content.pluginId)

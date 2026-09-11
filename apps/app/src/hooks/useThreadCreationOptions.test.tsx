@@ -294,6 +294,70 @@ afterEach(() => {
 });
 
 describe("useThreadCreationOptions", () => {
+  it("retains a draft's unavailable selections instead of applying other defaults", async () => {
+    const { result } = renderHook(
+      () =>
+        useThreadCreationOptions({
+          scope: "component-local",
+          resetKey: "draft-unavailable",
+          preserveUnavailableSelections: true,
+          initialProviderId: "removed-provider",
+          initialModel: "removed-model",
+          initialReasoningLevel: "xhigh",
+          initialPermissionMode: "full",
+          initialServiceTier: "fast",
+        }),
+      { wrapper: createQueryClientTestHarness().wrapper },
+    );
+    await waitFor(() =>
+      expect(result.current.modelCatalogIsVerified).toBe(true),
+    );
+    expect(result.current.selectedProviderId).toBe("removed-provider");
+    expect(result.current.selectedModel).toBe("removed-model");
+    expect(result.current.activeModel).toBeUndefined();
+    expect(result.current.reasoningLevel).toBe("xhigh");
+    expect(result.current.serviceTier).toBe("fast");
+    act(() =>
+      result.current.setProviderModelReasoning({
+        providerId: GLOBAL_PROVIDER_ID,
+        model: "global-model",
+        reasoningLevel: "high",
+      }),
+    );
+    expect(result.current.selectedProviderId).toBe(GLOBAL_PROVIDER_ID);
+    expect(result.current.selectedModel).toBe("global-model");
+  });
+
+  it("keeps a draft's saved permission choice visible when the machine ceiling changes", async () => {
+    vi.mocked(sdk.system.executionOptions).mockResolvedValue({
+      ...executionOptionsResponse(),
+      permissionCeiling: "auto",
+    });
+    const { result } = renderHook(
+      () =>
+        useThreadCreationOptions({
+          scope: "component-local",
+          resetKey: "draft-permissions",
+          preserveUnavailableSelections: true,
+          initialProviderId: GLOBAL_PROVIDER_ID,
+          initialModel: "global-model",
+          initialPermissionMode: "full",
+        }),
+      { wrapper: createQueryClientTestHarness().wrapper },
+    );
+    await waitFor(() =>
+      expect(result.current.permissionModeIsVerified).toBe(true),
+    );
+    expect(result.current.permissionMode).toBe("full");
+    expect(
+      result.current.permissionModeOptions.find(
+        (option) => option.value === "full",
+      )?.disabled,
+    ).toBe(true);
+    act(() => result.current.setPermissionMode("auto"));
+    expect(result.current.permissionMode).toBe("auto");
+  });
+
   it("keeps the selected remembered provider branded while models load", () => {
     window.localStorage.setItem("bb.promptbox.provider", "codex");
     writeCachedProviderList(

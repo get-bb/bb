@@ -6,6 +6,7 @@ import {
 import type { EnvironmentMachineSelection, JsonValue } from "@bb/domain";
 import type {
   CreateThreadEnvironmentArgs,
+  DraftOptions,
   ProviderEnvironmentArgs,
   WorkspaceArgs,
 } from "@bb/server-contract";
@@ -56,7 +57,9 @@ function workspaceAsProviderSugar(
 }
 
 export function newThreadEnvironmentArgsToSeed(
-  environment: CreateThreadEnvironmentArgs,
+  environment:
+    | CreateThreadEnvironmentArgs
+    | NonNullable<DraftOptions["environment"]>,
 ): NewThreadEnvironmentSeed | null {
   if (environment.type === "project-default") {
     return null;
@@ -65,7 +68,7 @@ export function newThreadEnvironmentArgsToSeed(
     return {
       selectionValue: encodeProviderValue(environment.environmentProviderId),
       providerMachine: environment.machine,
-      providerHostId: environment.machine.hostId,
+      providerHostId: environment.machine?.hostId ?? null,
       providerInputs: environment.inputs,
     };
   }

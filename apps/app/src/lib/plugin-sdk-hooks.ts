@@ -1,3 +1,4 @@
+import { useOpenNewThreadDraft } from "@/hooks/useOpenNewThreadDraft";
 import {
   useCallback,
   useContext,
@@ -53,7 +54,6 @@ import {
   AUTOMATIONS_PLUGIN_ID,
   getPluginPanelRoutePath,
   getProjectComposeRoutePath,
-  getRootComposeRoutePath,
   getThreadRoutePath,
   AUTOMATION_EDIT_ROUTE_PATH,
 } from "@/lib/route-paths";
@@ -290,6 +290,7 @@ export function useBbNavigate(): BbNavigate {
   const location = useLocation();
   const openThreadPanelHandler = usePluginThreadPanelOpenHandler();
   const navigate = useNavigate();
+  const openNewDraft = useOpenNewThreadDraft();
   const appNavigation = useAppNavigationHost();
   const toThread = useCallback(
     (threadId: string) => {
@@ -326,18 +327,21 @@ export function useBbNavigate(): BbNavigate {
       const replacesAutomationEditRoute =
         pluginId === AUTOMATIONS_PLUGIN_ID &&
         isAutomationEditRoutePath(location.pathname);
-      void navigate(getRootComposeRoutePath(), {
-        ...(replacesAutomationEditRoute ? { replace: true } : {}),
-        state: {
-          focusPrompt: options?.focusPrompt ?? false,
-          initialPrompt: options?.initialPrompt ?? "",
-          ...(replacesAutomationEditRoute
-            ? { replaceInitialPrompt: true }
-            : {}),
+      void openNewDraft(
+        {},
+        {
+          ...(replacesAutomationEditRoute ? { replace: true } : {}),
+          state: {
+            focusPrompt: options?.focusPrompt ?? false,
+            initialPrompt: options?.initialPrompt ?? "",
+            ...(replacesAutomationEditRoute
+              ? { replaceInitialPrompt: true }
+              : {}),
+          },
         },
-      });
+      );
     },
-    [location.pathname, navigate, pluginId],
+    [location.pathname, openNewDraft, pluginId],
   );
   const openThreadPanel = useCallback<BbNavigate["openThreadPanel"]>(
     (options) => openThreadPanelHandler?.({ ...options, pluginId }) ?? false,

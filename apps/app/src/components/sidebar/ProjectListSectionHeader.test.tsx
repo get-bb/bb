@@ -201,7 +201,7 @@ describe("TopLevelSidebarSection", () => {
           {
             type: "pane",
             paneId: "pane-compose",
-            content: { kind: "new-thread" },
+            content: { kind: "new-thread", draftId: "drf_sidebarfixture" },
           },
         ],
       },

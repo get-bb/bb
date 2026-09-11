@@ -17,6 +17,7 @@ interface ResolveModelCatalogSelectionArgs {
   preferredReasoningLevel?: ReasoningLevel;
   provider: ReasoningLabelSource | undefined;
   catalogIsVerified: boolean;
+  preserveUnavailableSelection?: boolean;
   formatModelLabel: (displayName: string) => string;
 }
 
@@ -65,6 +66,7 @@ export function resolveModelCatalogSelection({
   preferredReasoningLevel,
   provider,
   catalogIsVerified,
+  preserveUnavailableSelection = false,
   formatModelLabel,
 }: ResolveModelCatalogSelectionArgs): ResolvedModelCatalogSelection {
   const fullCatalog = [...models, ...selectedOnlyModels];
@@ -93,6 +95,8 @@ export function resolveModelCatalogSelection({
   }
 
   const selectedModel = (() => {
+    if (preserveUnavailableSelection && selectedModelSelection)
+      return selectedModelSelection;
     if (!catalogIsVerified && selectedModelSelection) {
       return selectedModelSelection;
     }
@@ -112,8 +116,10 @@ export function resolveModelCatalogSelection({
 
   const activeModel =
     availableModels.find((model) => model.model === selectedModel) ??
-    availableModels.find((model) => model.isDefault) ??
-    availableModels[0];
+    (preserveUnavailableSelection && selectedModelSelection
+      ? undefined
+      : (availableModels.find((model) => model.isDefault) ??
+        availableModels[0]));
 
   const reasoningOptions: PickerOption<ReasoningLevel>[] = [];
   const seenReasoningLevels = new Set<ReasoningLevel>();
@@ -127,10 +133,9 @@ export function resolveModelCatalogSelection({
   }
 
   const preferredLevel = preferredReasoningLevel ?? "medium";
-  const reasoningLevel = resolveModelReasoningLevel(
-    activeModel,
-    preferredLevel,
-  );
+  const reasoningLevel = preserveUnavailableSelection
+    ? preferredLevel
+    : resolveModelReasoningLevel(activeModel, preferredLevel);
 
   return {
     selectedModel,

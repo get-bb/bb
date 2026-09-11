@@ -15,6 +15,7 @@ Saved drafts:
                   [--content-file <path>] [--id <draft-id>]
   bb thread draft list [--project <id>] [--query <text>] [--include-empty]
                 [--limit <number>] [--offset <number>]
+  bb thread draft open <draft-id> [--split <placement>] [--json]
   bb thread draft show <draft-id>                 (alias: bb thread draft get)
   bb thread draft update <draft-id> --expected-revision <number>
                   [--text <text>] [--project <id>] [--section <id>]
@@ -66,7 +67,14 @@ Saved drafts:
   fails after reserving a thread, the error requires saving a new revision
   before an intentional new attempt. Keep local unsaved content after errors.
 
-  SDK parity: sdk.drafts.create/list/get/update/delete/submit. Use draftId for
+  Open broadcasts to connected apps and returns the number of recipients; zero
+  means no app received it. It never submits or changes the saved draft.
+  Ordinary open replaces the focused pane; --split right/down/left/top adds a
+  pane, up to pane 8, then replaces the focused pane. An already-open draft is
+  focused instead of duplicated. Compact apps use the focused pane.
+
+  SDK open accepts {draftId, split?}; split defaults to replace.
+  SDK parity: sdk.drafts.create/list/get/update/delete/submit/open. Use draftId for
   ID operations, expectedRevision for mutations, and content for create/update.
   list accepts projectId, query, includeEmpty (boolean), limit and offset
   (numbers); list/get accept signal. SDK submit defaults origin to "sdk";

@@ -2,6 +2,7 @@ import {
   draftCreateRequestSchema,
   draftDeleteRequestSchema,
   draftListQuerySchema,
+  draftOpenRequestSchema,
   draftSubmitRequestSchema,
   draftUpdateRequestSchema,
   type Draft,
@@ -11,6 +12,8 @@ import {
   type DraftDeleteResponse,
   type DraftListQuery,
   type DraftListResponse,
+  type DraftOpenRequest,
+  type DraftOpenResponse,
   type DraftSubmitRequest,
   type DraftSubmitResponse,
   type DraftUpdateRequest,
@@ -1039,6 +1042,12 @@ export const publicApiRoutes = {
   },
 
   drafts: {
+    open: defineRoute({
+      path: "/drafts/:id/open",
+      method: "post",
+      request: jsonRequest<PathId, DraftOpenRequest>(draftOpenRequestSchema),
+      response: jsonResponse<DraftOpenResponse>(),
+    }),
     create: defineRoute({
       path: "/drafts",
       method: "post",

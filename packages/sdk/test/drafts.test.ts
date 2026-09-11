@@ -104,6 +104,37 @@ function sdkWithResponses(responses: Response[]) {
 }
 
 describe("draft SDK", () => {
+  it("opens saved drafts through the server with optional placement and recipient counts", async () => {
+    const { sdk, fetch } = sdkWithResponses([
+      Response.json({ delivered: 0 }),
+      Response.json({ delivered: 2 }),
+    ]);
+    await expect(sdk.drafts.open({ draftId: draft.id })).resolves.toEqual({
+      delivered: 0,
+    });
+    await expect(
+      sdk.drafts.open({ draftId: draft.id, split: "left" }),
+    ).resolves.toEqual({ delivered: 2 });
+    expect(
+      fetch.mock.calls.map(([url, init]) => ({
+        url: String(url),
+        method: init?.method,
+        body: JSON.parse(String(init?.body)),
+      })),
+    ).toEqual([
+      {
+        url: `http://bb.test/api/v1/drafts/${draft.id}/open`,
+        method: "POST",
+        body: {},
+      },
+      {
+        url: `http://bb.test/api/v1/drafts/${draft.id}/open`,
+        method: "POST",
+        body: { split: "left" },
+      },
+    ]);
+  });
+
   it("exposes revision-required content mutations through every public entrypoint", () => {
     expectTypeOf<DraftUpdateArgs>().toEqualTypeOf<BrowserDraftUpdateArgs>();
     expectTypeOf<DraftUpdateArgs>().toEqualTypeOf<CoreDraftUpdateArgs>();

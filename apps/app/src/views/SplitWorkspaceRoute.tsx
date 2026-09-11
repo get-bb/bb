@@ -13,12 +13,14 @@ import {
 } from "@/lib/route-paths";
 import type { PaneContent } from "@/lib/split-layout";
 import { useRouteState } from "@/hooks/useRouteState";
-import { LegacyProjectComposeRedirect } from "./RootComposeView";
+import { parseDraftRouteId } from "@/lib/draft-route";
+import {
+  RootComposeView,
+  LegacyProjectComposeRedirect,
+} from "./RootComposeView";
 import { SplitThreadArea } from "./thread-detail/SplitThreadArea";
 
 disableGlobalCursorStyles();
-
-const ROOT_COMPOSE_CONTENT = { kind: "new-thread" } as const;
 
 const PluginsView = lazy(() =>
   import("./ToolsView").then((m) => ({ default: m.PluginsView })),
@@ -43,7 +45,8 @@ export default function SplitWorkspaceRoute() {
 
   const routeContent = useMemo<PaneContent | null>(() => {
     if (location.pathname === APP_ROOT_ROUTE_PATH) {
-      return ROOT_COMPOSE_CONTENT;
+      const draftId = parseDraftRouteId(location.search);
+      return draftId === null ? null : { kind: "new-thread", draftId };
     }
     if (isThreadView && projectId && threadId) {
       return { kind: "thread", projectId, threadId };
@@ -64,6 +67,7 @@ export default function SplitWorkspaceRoute() {
     detailPluginId,
     isThreadView,
     location.pathname,
+    location.search,
     panelPath,
     pluginId,
     pluginSubPath,
@@ -76,6 +80,9 @@ export default function SplitWorkspaceRoute() {
   const legacyProjectId = legacyProjectMatch?.params.projectId;
   if (legacyProjectId) {
     return <LegacyProjectComposeRedirect projectId={legacyProjectId} />;
+  }
+  if (location.pathname === APP_ROOT_ROUTE_PATH && routeContent === null) {
+    return <RootComposeView />;
   }
   if (routeContent === null) {
     return <Navigate to={APP_ROOT_ROUTE_PATH} replace />;

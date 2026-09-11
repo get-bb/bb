@@ -1,10 +1,15 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
-import { useLocation, useNavigate } from "react-router-dom";
-import { useQueryClient } from "@tanstack/react-query";
 import {
-  findCachedProviderInfo,
-  useSystemProviders,
-} from "@/hooks/queries/system-queries";
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react";
+import { useStore } from "jotai";
+import { useLocation, useNavigate } from "react-router-dom";
+import { useSystemProviders } from "@/hooks/queries/system-queries";
 import {
   findLocalPathProjectSourceForHost,
   type EnvironmentStatus,
@@ -15,6 +20,8 @@ import {
   type ThreadListEntry,
 } from "@bb/domain";
 import type {
+  DraftContent,
+  DraftOptions,
   SidebarBootstrapResponse,
   TerminalSession,
 } from "@bb/server-contract";
@@ -64,7 +71,19 @@ import { PluginIcon } from "@/components/plugin/PluginIcon";
 import type { FileOpenerOverride } from "@/lib/plugin-slot-resolvers";
 import { usePluginNewThreadPanelActions } from "@/components/plugin/PluginPanelActions";
 import { usePluginSlots } from "@/lib/plugin-slots";
-import { useCreateThread } from "@/hooks/mutations/thread-runtime-mutations";
+import { useDraftResource } from "@/hooks/useDraftResource";
+import { createNewThreadDraft } from "@/lib/drafts/resource-runtime";
+import { getDraftRoutePath } from "@/lib/draft-route";
+import { splitLayoutAtom } from "@/lib/split-layout/atoms";
+import type { PaneContent } from "@/lib/split-layout";
+import {
+  ownsRootComposeLocation,
+  replaceRootDraftOrigin,
+  rootComposeRouteDraftId,
+  rootDraftComposerSeed,
+  rootDraftSubmissionContent,
+  type RootDraftOrigin,
+} from "./root-compose-draft";
 import {
   useCloseTerminal,
   useCloseEnvironmentTerminal,
@@ -84,7 +103,6 @@ import type { PromptMentionLinkResolver } from "@/components/promptbox/editor/pr
 import { useQuickCreateProjectController } from "@/hooks/useQuickCreateProject";
 import type { PromptDraftAttachment } from "@bb/client-core";
 import {
-  buildForkThreadRequest,
   FORK_THREAD_CREATE_SEED_LOCATION_STATE_KEY,
   type ForkThreadCreateSeed,
 } from "@bb/client-core";
@@ -503,126 +521,497 @@ export function LegacyProjectComposeRedirect({
   return <RouteLoadingSkeleton isBoundedPane={false} />;
 }
 
-export function RootComposeView() {
-  const [rootComposeProjectId, setRootComposeProjectId] =
-    useRootComposeProjectId();
-  const location = useLocation();
-  const navigate = useNavigate();
-  const queryClient = useQueryClient();
-  const createThread = useCreateThread();
-  const [rootComposeSectionId, setRootComposeSectionId] = useState<
-    string | null
-  >(() => readSectionIdFromLocationState(location.state));
+export function RootComposeView({
+  draftId: paneDraftId,
+}: { draftId?: string } = {}) {
+  const [defaultProjectId] = useRootComposeProjectId();
   const [lastCreatedThreadId, setLastCreatedThreadId] = useState<string | null>(
     null,
   );
-  const [startedComposing, setStartedComposing] = useState(() =>
-    shouldStartComposingFromLocationState(location.state),
+  const location = useLocation();
+  const navigate = useNavigate();
+  const paneContext = useOptionalPaneContext();
+  const bootstrapDraftId = useRef<string | null>(null);
+  const draftId = paneDraftId ?? rootComposeRouteDraftId(location);
+
+  useEffect(() => {
+    if (draftId !== null) {
+      bootstrapDraftId.current = null;
+      return;
+    }
+    if (location.pathname !== "/" || paneContext?.isFocused === false) return;
+    const id =
+      bootstrapDraftId.current ??
+      createNewThreadDraft({
+        projectId: defaultProjectId,
+        sectionId: readSectionIdFromLocationState(location.state),
+      });
+    bootstrapDraftId.current = id;
+    const search = new URLSearchParams(location.search);
+    search.set("draft", id);
+    navigate(`/?${search.toString()}`, {
+      replace: true,
+      state: location.state,
+    });
+  }, [
+    defaultProjectId,
+    draftId,
+    location.pathname,
+    location.search,
+    location.state,
+    navigate,
+    paneContext?.isFocused,
+  ]);
+
+  return draftId === null ? (
+    <RouteLoadingSkeleton isBoundedPane={paneContext?.isBoundedPane ?? false} />
+  ) : (
+    <RootComposeDraft
+      key={draftId}
+      draftId={draftId}
+      lastCreatedThreadId={lastCreatedThreadId}
+      onCreatedThread={setLastCreatedThreadId}
+    />
   );
+}
+
+function RootComposeDraft({
+  draftId,
+  lastCreatedThreadId,
+  onCreatedThread,
+}: {
+  draftId: string;
+  lastCreatedThreadId: string | null;
+  onCreatedThread: (id: string) => void;
+}) {
+  const resource = useDraftResource(draftId);
+  const setDefaultProjectId = useSetRootComposeProjectId();
+  const location = useLocation();
+  const navigate = useNavigate();
+  const store = useStore();
+  const paneContext = useOptionalPaneContext();
+  const locationRef = useRef(location);
+  useLayoutEffect(() => {
+    locationRef.current = location;
+  }, [location]);
+  const [startedComposing, setStartedComposing] = useState(
+    () =>
+      ownsRootComposeLocation(
+        draftId,
+        paneContext?.isFocused ?? true,
+        location,
+      ) && shouldStartComposingFromLocationState(location.state),
+  );
+  const [sourceThreadTitle, setSourceThreadTitle] = useState("Source thread");
+  const [actionError, setActionError] = useState<string | null>(null);
+  const [actionPending, setActionPending] = useState(false);
   const [navigateToThreadAfterCreate] =
     useNavigateToThreadAfterCreatePreference();
-  const [forkSeed, setForkSeed] = useState<ForkThreadCreateSeed | null>(() =>
-    readForkThreadCreateSeedFromLocationState(location.state),
+  const submissionInFlight = useRef(false);
+  const pendingSubmission = useRef<{
+    origin: RootDraftOrigin;
+    navigateAfter: boolean;
+  } | null>(null);
+  const reboundDeletedDraft = useRef(false);
+  const content = resource.content;
+  const lastUsableContent = useRef<DraftContent | null>(null);
+  if (content !== null && resource.status !== "deleted") {
+    lastUsableContent.current = content;
+  }
+  const isForkDraft = content?.options.originKind === "fork";
+  const forkSeed = isForkDraft ? { sourceThreadTitle } : null;
+  const origin = useCallback(
+    (): RootDraftOrigin => ({
+      draftId,
+      paneId: paneContext?.paneId ?? null,
+      hadLayout: store.get(splitLayoutAtom) !== null,
+    }),
+    [draftId, paneContext?.paneId, store],
   );
-
-  const handleProjectChange = useCallback(
-    (projectId: string) => {
-      setForkSeed(null);
-      setRootComposeProjectId(projectId);
-    },
-    [setRootComposeProjectId],
-  );
-  const handleSubmit = useCallback(
-    async (request: NewThreadComposerSubmission) => {
-      const shouldNavigateToCreatedThread = shouldNavigateAfterThreadCreate({
-        isForkDraft: forkSeed !== null,
-        navigateToThreadAfterCreate,
+  const replaceOrigin = useCallback(
+    (target: RootDraftOrigin, destination: PaneContent) => {
+      const current = store.get(splitLayoutAtom);
+      const result = replaceRootDraftOrigin({
+        layout: current,
+        origin: target,
+        destination,
+        currentRouteDraftId: rootComposeRouteDraftId(locationRef.current),
       });
-      const { sendAt, ...requestFields } = request;
-      const createRequest =
-        forkSeed === null
-          ? {
-              ...requestFields,
-              ...(rootComposeSectionId
-                ? { sectionId: rootComposeSectionId }
-                : {}),
-            }
-          : buildForkThreadRequest({
-              ...forkSeed,
-              input: request.input,
-              model: request.model,
-              permissionMode: request.permissionMode,
-              providerSupportsFork:
-                findCachedProviderInfo(queryClient, forkSeed.providerId)
-                  ?.capabilities.supportsFork ?? false,
-              reasoningLevel: request.reasoningLevel,
-              serviceTier: request.serviceTier,
-            });
-      if (createRequest === null) return;
-      const thread = await createThread.mutateAsync(
-        sendAt === undefined ? createRequest : { ...createRequest, sendAt },
-      );
-      setLastCreatedThreadId(thread.id);
-      setForkSeed(null);
-      setRootComposeSectionId(null);
-      if (shouldNavigateToCreatedThread) {
-        navigate(
-          getThreadRoutePath({
-            projectId: thread.projectId,
-            threadId: thread.id,
-          }),
-        );
+      if (result.layout !== null && result.layout !== current) {
+        store.set(splitLayoutAtom, result.layout);
+      }
+      if (!result.navigate) return;
+      if (destination.kind === "thread") {
+        navigate(getThreadRoutePath(destination));
+      } else if (destination.kind === "new-thread") {
+        navigate(getDraftRoutePath(destination.draftId), { replace: true });
       }
     },
+    [navigate, store],
+  );
+  const handleProjectChange = useCallback(
+    (projectId: string) => {
+      resource.edit((current) => ({
+        ...current,
+        projectId,
+        options: {
+          ...current.options,
+          sourceThreadId: null,
+          sourceSeqEnd: null,
+          originKind: null,
+        },
+      }));
+      setDefaultProjectId(projectId);
+    },
+    [resource.edit, setDefaultProjectId],
+  );
+  const setForkSeed = useCallback(
+    (seed: ForkThreadCreateSeed | null) => {
+      if (seed === null) {
+        resource.edit((current) => ({
+          ...current,
+          options: {
+            ...current.options,
+            sourceThreadId: null,
+            sourceSeqEnd: null,
+            originKind: null,
+          },
+        }));
+        return;
+      }
+      setSourceThreadTitle(seed.sourceThreadTitle);
+      setDefaultProjectId(seed.projectId);
+      resource.edit((current) => ({
+        ...current,
+        projectId: seed.projectId,
+        options: {
+          ...current.options,
+          providerId: seed.providerId,
+          model: seed.model,
+          reasoningLevel: seed.reasoningLevel,
+          serviceTier: seed.serviceTier ?? null,
+          permissionMode: seed.permissionMode,
+          environment: { type: "reuse", environmentId: seed.environmentId },
+          sourceThreadId: seed.sourceThreadId,
+          sourceSeqEnd: seed.sourceSeqEnd ?? null,
+          originKind: "fork",
+        },
+      }));
+    },
+    [resource.edit, setDefaultProjectId],
+  );
+  const setSectionId = useCallback(
+    (sectionId: string | null) => {
+      resource.edit((current) => ({ ...current, sectionId }));
+    },
+    [resource.edit],
+  );
+  const setReuseEnvironment = useCallback(
+    (environmentId: string) => {
+      resource.edit((current) => ({
+        ...current,
+        options: {
+          ...current.options,
+          environment: { type: "reuse", environmentId },
+        },
+      }));
+    },
+    [resource.edit],
+  );
+  const awaitingLocationSeed =
+    ownsRootComposeLocation(
+      draftId,
+      paneContext?.isFocused ?? true,
+      location,
+    ) && hasSingleUseRootComposeTargetState(location.state);
+  const handleOptionsChange = useCallback(
+    (
+      options: Pick<
+        DraftOptions,
+        | "providerId"
+        | "model"
+        | "reasoningLevel"
+        | "serviceTier"
+        | "permissionMode"
+        | "environment"
+      >,
+    ) => {
+      if (
+        awaitingLocationSeed ||
+        resource.status === "loading" ||
+        resource.status === "deleted" ||
+        resource.content === null
+      )
+        return;
+      resource.edit((current) => ({
+        ...current,
+        options: { ...current.options, ...options },
+      }));
+    },
+    [awaitingLocationSeed, resource.content, resource.edit, resource.status],
+  );
+  const completeSubmission = useCallback(
+    (
+      result: Awaited<ReturnType<typeof resource.submit>>,
+      submission: { origin: RootDraftOrigin; navigateAfter: boolean },
+    ) => {
+      pendingSubmission.current = null;
+      if (result.draft === null) reboundDeletedDraft.current = true;
+      onCreatedThread(result.thread.id);
+      if (submission.navigateAfter) {
+        replaceOrigin(submission.origin, {
+          kind: "thread",
+          projectId: result.thread.projectId,
+          threadId: result.thread.id,
+        });
+      } else if (result.draft === null) {
+        const previous = lastUsableContent.current;
+        const nextDraftId =
+          result.recoveryDraftId ??
+          createNewThreadDraft({
+            projectId: previous?.projectId ?? null,
+            options: previous
+              ? {
+                  providerId: previous.options.providerId,
+                  model: previous.options.model,
+                  reasoningLevel: previous.options.reasoningLevel,
+                  serviceTier: previous.options.serviceTier,
+                  permissionMode: previous.options.permissionMode,
+                  environment: previous.options.environment,
+                }
+              : {},
+          });
+        replaceOrigin(submission.origin, {
+          kind: "new-thread",
+          draftId: nextDraftId,
+        });
+      }
+    },
+    [onCreatedThread, replaceOrigin],
+  );
+  const submitResource = useCallback(
+    async (submission: { origin: RootDraftOrigin; navigateAfter: boolean }) => {
+      submissionInFlight.current = true;
+      pendingSubmission.current = submission;
+      try {
+        completeSubmission(await resource.submit(), submission);
+      } finally {
+        submissionInFlight.current = false;
+      }
+    },
+    [completeSubmission, resource.submit],
+  );
+  const retryResource = useCallback(async () => {
+    if (pendingSubmission.current !== null) {
+      await submitResource(pendingSubmission.current);
+      return;
+    }
+    const submission = {
+      origin: origin(),
+      navigateAfter: shouldNavigateAfterThreadCreate({
+        isForkDraft,
+        navigateToThreadAfterCreate,
+      }),
+    };
+    submissionInFlight.current = true;
+    try {
+      const result = await resource.retry();
+      if (result !== null) completeSubmission(result, submission);
+    } finally {
+      submissionInFlight.current = false;
+    }
+  }, [
+    completeSubmission,
+    isForkDraft,
+    navigateToThreadAfterCreate,
+    origin,
+    resource.retry,
+    submitResource,
+  ]);
+  const useSavedVersion = useCallback(async () => {
+    await resource.reloadRemote();
+    pendingSubmission.current = null;
+  }, [resource.reloadRemote]);
+  const handleSubmit = useCallback(
+    async (request: NewThreadComposerSubmission) => {
+      resource.edit((current) => rootDraftSubmissionContent(current, request));
+      await submitResource({
+        origin: origin(),
+        navigateAfter: shouldNavigateAfterThreadCreate({
+          isForkDraft,
+          navigateToThreadAfterCreate,
+        }),
+      });
+    },
     [
-      createThread,
-      forkSeed,
-      queryClient,
-      navigate,
+      isForkDraft,
       navigateToThreadAfterCreate,
-      rootComposeSectionId,
+      origin,
+      resource.edit,
+      submitResource,
     ],
+  );
+  useEffect(() => {
+    if (
+      resource.status !== "deleted" ||
+      resource.recoveryCopies.length > 0 ||
+      actionPending ||
+      submissionInFlight.current ||
+      pendingSubmission.current !== null ||
+      reboundDeletedDraft.current
+    )
+      return;
+    reboundDeletedDraft.current = true;
+    replaceOrigin(origin(), {
+      kind: "new-thread",
+      draftId: createNewThreadDraft({
+        projectId: lastUsableContent.current?.projectId ?? null,
+      }),
+    });
+  }, [
+    actionPending,
+    origin,
+    replaceOrigin,
+    resource.recoveryCopies.length,
+    resource.status,
+  ]);
+  const runAction = useCallback(async (action: () => void | Promise<void>) => {
+    setActionError(null);
+    setActionPending(true);
+    try {
+      await action();
+    } catch (error) {
+      setActionError(
+        error instanceof Error ? error.message : "Could not update this draft.",
+      );
+    } finally {
+      setActionPending(false);
+    }
+  }, []);
+  const resourceNotice = (
+    <div
+      role="status"
+      className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground"
+    >
+      <span>
+        {resource.status === "loading"
+          ? "Loading draft…"
+          : resource.status === "saving"
+            ? "Saving draft…"
+            : resource.status === "conflict"
+              ? "This draft changed elsewhere. Your edits are kept here."
+              : resource.status === "deleted"
+                ? "This draft was sent or deleted. Recover your edits as a copy."
+                : resource.status === "error" || resource.persistenceError
+                  ? "Draft not saved."
+                  : "Draft saved"}
+      </span>
+      {actionError || resource.error || resource.persistenceError ? (
+        <span>
+          {actionError ??
+            resource.error?.message ??
+            resource.persistenceError?.message}
+        </span>
+      ) : null}
+      {resource.status === "error" ||
+      resource.persistenceError ||
+      pendingSubmission.current !== null ? (
+        <Button
+          size="sm"
+          variant="ghost"
+          disabled={actionPending}
+          onClick={() => void runAction(retryResource)}
+        >
+          Retry
+        </Button>
+      ) : null}
+      {resource.status === "conflict" ? (
+        <Button
+          size="sm"
+          variant="ghost"
+          disabled={actionPending}
+          onClick={() => void runAction(useSavedVersion)}
+        >
+          Use saved version
+        </Button>
+      ) : null}
+      {resource.recoveryCopies.map((_, index) => (
+        <Button
+          key={index}
+          size="sm"
+          variant="ghost"
+          disabled={actionPending}
+          onClick={() =>
+            void runAction(() => {
+              const copyId = resource.saveLocalAsCopy(index);
+              replaceOrigin(origin(), { kind: "new-thread", draftId: copyId });
+            })
+          }
+        >
+          {index === 0 ? "Save a copy" : `Save copy ${index + 1}`}
+        </Button>
+      ))}
+    </div>
   );
   const composerSeed = useMemo(
     () =>
-      forkSeed === null
-        ? undefined
-        : {
-            providerId: forkSeed.providerId,
-            model: forkSeed.model,
-            reasoningLevel: forkSeed.reasoningLevel,
-            serviceTier: forkSeed.serviceTier,
-            permissionMode: forkSeed.permissionMode,
-            environment: {
-              type: "reuse" as const,
-              environmentId: forkSeed.environmentId,
-            },
-          },
-    [forkSeed],
+      content === null ? undefined : rootDraftComposerSeed(content.options),
+    [content?.options],
   );
-
+  if (content === null) {
+    return (
+      <PageShell contentClassName="min-h-full items-center justify-center">
+        {resourceNotice}
+      </PageShell>
+    );
+  }
   return (
     <NewThreadComposer
-      projectId={rootComposeProjectId}
+      projectId={content.projectId}
       onProjectChange={handleProjectChange}
       draftStorage={{ kind: "new-thread" }}
-      selectionScope="new-thread"
+      draftController={resource.promptDraft}
+      selectionScope="component-local"
       seed={composerSeed}
-      resetKey={forkSeed?.sourceThreadId ?? null}
-      preferReadyProviderWhenUnset={forkSeed === null}
+      resetKey={draftId}
+      preferReadyProviderWhenUnset={!isForkDraft}
+      onOptionsChange={handleOptionsChange}
+      resourceBlockedReason={
+        resource.status === "conflict"
+          ? "Resolve the draft conflict before sending."
+          : resource.status === "deleted"
+            ? "Recover this draft as a new copy before sending."
+            : resource.status === "loading"
+              ? "Loading draft…"
+              : null
+      }
       onSubmit={handleSubmit}
     >
       {(composer) => (
         <RootComposeSurface
           composer={composer}
+          draftId={draftId}
           forkSeed={forkSeed}
           lastCreatedThreadId={lastCreatedThreadId}
-          rootComposeProjectId={rootComposeProjectId}
           setForkSeed={setForkSeed}
-          setRootComposeProjectId={setRootComposeProjectId}
-          setRootComposeSectionId={setRootComposeSectionId}
+          setRootComposeProjectId={handleProjectChange}
+          setRootComposeSectionId={setSectionId}
+          setReuseEnvironment={setReuseEnvironment}
           setStartedComposing={setStartedComposing}
-          startedComposing={startedComposing}
+          startedComposing={
+            startedComposing ||
+            resource.promptDraft.text.length > 0 ||
+            resource.promptDraft.attachments.length > 0 ||
+            resource.status === "error" ||
+            resource.status === "conflict" ||
+            resource.status === "deleted"
+          }
+          resourceNotice={resourceNotice}
+          canApplyLocationSeeds={
+            resource.status !== "loading" &&
+            resource.status !== "conflict" &&
+            resource.status !== "deleted"
+          }
         />
       )}
     </NewThreadComposer>
@@ -631,24 +1020,30 @@ export function RootComposeView() {
 
 interface RootComposeSurfaceProps {
   composer: NewThreadComposerState;
-  forkSeed: ForkThreadCreateSeed | null;
+  draftId: string;
+  forkSeed: Pick<ForkThreadCreateSeed, "sourceThreadTitle"> | null;
   lastCreatedThreadId: string | null;
-  rootComposeProjectId: string;
+  resourceNotice: ReactNode;
+  canApplyLocationSeeds: boolean;
   setForkSeed: (seed: ForkThreadCreateSeed | null) => void;
   setRootComposeProjectId: (projectId: string) => void;
   setRootComposeSectionId: (sectionId: string | null) => void;
+  setReuseEnvironment: (environmentId: string) => void;
   setStartedComposing: (started: boolean) => void;
   startedComposing: boolean;
 }
 
 function RootComposeSurface({
   composer,
+  draftId,
   forkSeed,
   lastCreatedThreadId,
-  rootComposeProjectId,
+  resourceNotice,
+  canApplyLocationSeeds,
   setForkSeed,
   setRootComposeProjectId,
   setRootComposeSectionId,
+  setReuseEnvironment,
   setStartedComposing,
   startedComposing,
 }: RootComposeSurfaceProps) {
@@ -700,10 +1095,6 @@ function RootComposeSurface({
     [promptDraft.storageKey, sharedPluginComposerHost],
   );
 
-  useEffect(() => {
-    if (projectId === rootComposeProjectId) return;
-    setRootComposeProjectId(projectId);
-  }, [projectId, rootComposeProjectId, setRootComposeProjectId]);
   useEffect(
     () =>
       subscribeComposerFocusRequests(promptDraft.storageKey, () => {
@@ -724,50 +1115,47 @@ function RootComposeSurface({
   const setPromptDraft = promptDraft.setDraft;
   const restorePromptDraftIfEmpty = promptDraft.restoreIfEmpty;
 
+  const consumedLocationKey = useRef<string | null>(null);
+  const ownsLocation =
+    canApplyLocationSeeds &&
+    ownsRootComposeLocation(draftId, isFocusedPane, location);
   useEffect(() => {
-    const initialPrompt = readInitialPromptFromSearch(location.search);
-    if (initialPrompt === null) return;
-    setStartedComposing(true);
-    setPromptDraft({ text: initialPrompt, mentions: [], attachments: [] });
-    navigate(
-      getRootComposeRoutePath() + stripInitialPromptFromSearch(location.search),
-      { replace: true, state: location.state },
-    );
-  }, [
-    location.search,
-    location.state,
-    navigate,
-    setPromptDraft,
-    setStartedComposing,
-  ]);
-  useEffect(() => {
-    const sectionTarget = readRootComposeSectionTargetFromLocationState(
-      location.state,
-    );
-    const reuseEnvironmentId = readReuseEnvironmentIdFromLocationState(
-      location.state,
-    );
+    if (!ownsLocation || consumedLocationKey.current === location.key) return;
+    const queryPrompt = readInitialPromptFromSearch(location.search);
+    const initialPrompt = readInitialPromptFromLocationState(location.state);
     const nextForkSeed = readForkThreadCreateSeedFromLocationState(
       location.state,
     );
     const nextHandoffSeed = readThreadHandoffCreateSeedFromLocationState(
       location.state,
     );
-    if (!hasSingleUseRootComposeTargetState(location.state)) return;
-    if (shouldStartComposingFromLocationState(location.state)) {
-      setStartedComposing(true);
+    const reuseEnvironmentId = readReuseEnvironmentIdFromLocationState(
+      location.state,
+    );
+    const hasSectionTarget =
+      typeof location.state === "object" &&
+      location.state !== null &&
+      "sectionId" in location.state;
+    const shouldFocus = shouldStartComposingFromLocationState(location.state);
+    if (
+      queryPrompt === null &&
+      initialPrompt === null &&
+      !hasSingleUseRootComposeTargetState(location.state)
+    )
+      return;
+    consumedLocationKey.current = location.key;
+    if (queryPrompt !== null) {
+      setPromptDraft({ text: queryPrompt, mentions: [], attachments: [] });
     }
-    if (sectionTarget?.kind === "set") {
-      setRootComposeSectionId(sectionTarget.sectionId);
-    } else if (sectionTarget?.kind === "clear") {
-      setRootComposeSectionId(null);
+    if (hasSectionTarget) {
+      setRootComposeSectionId(readSectionIdFromLocationState(location.state));
     }
     if (reuseEnvironmentId !== null) {
+      setReuseEnvironment(reuseEnvironmentId);
       seedEnvironmentSelectionValue(encodeReuseValue(reuseEnvironmentId));
     }
     if (nextForkSeed !== null && nextHandoffSeed === null) {
       setForkSeed(nextForkSeed);
-      setRootComposeProjectId(nextForkSeed.projectId);
       setProviderModelReasoning(nextForkSeed);
       setPermissionMode(nextForkSeed.permissionMode);
       setServiceTier(nextForkSeed.serviceTier);
@@ -776,66 +1164,59 @@ function RootComposeSurface({
       );
     }
     if (nextHandoffSeed !== null) {
-      setStartedComposing(true);
       setRootComposeProjectId(nextHandoffSeed.projectId);
-      setForkSeed(null);
       if (nextHandoffSeed.environmentId !== null) {
+        setReuseEnvironment(nextHandoffSeed.environmentId);
         seedEnvironmentSelectionValue(
           encodeReuseValue(nextHandoffSeed.environmentId),
         );
       }
       setPromptDraft(buildThreadHandoffPromptDraft(nextHandoffSeed));
     }
-    navigate(getRootComposeRoutePath() + location.search, {
-      replace: true,
-      state: null,
-    });
+    if (initialPrompt !== null) {
+      const nextDraft = { text: initialPrompt, mentions: [], attachments: [] };
+      if (shouldReplaceInitialPromptFromLocationState(location.state)) {
+        setPromptDraft(nextDraft);
+      } else {
+        restorePromptDraftIfEmpty(nextDraft);
+      }
+    }
+    if (
+      shouldFocus ||
+      queryPrompt !== null ||
+      initialPrompt !== null ||
+      nextHandoffSeed !== null ||
+      nextForkSeed !== null
+    ) {
+      setStartedComposing(true);
+      if (!isPointerCoarse) {
+        window.requestAnimationFrame(() => promptBoxRef.current?.focusEnd());
+      }
+    }
+    navigate(
+      getRootComposeRoutePath() + stripInitialPromptFromSearch(location.search),
+      { replace: true, state: null },
+    );
   }, [
+    isPointerCoarse,
+    location.key,
     location.search,
     location.state,
     navigate,
+    ownsLocation,
+    promptBoxRef,
+    restorePromptDraftIfEmpty,
     seedEnvironmentSelectionValue,
     setForkSeed,
     setPermissionMode,
     setPromptDraft,
     setProviderModelReasoning,
+    setReuseEnvironment,
     setRootComposeProjectId,
     setRootComposeSectionId,
     setServiceTier,
     setStartedComposing,
   ]);
-  useEffect(() => {
-    const initialPrompt = readInitialPromptFromLocationState(location.state);
-    if (initialPrompt === null) return;
-    const nextDraft = { text: initialPrompt, mentions: [], attachments: [] };
-    if (shouldReplaceInitialPromptFromLocationState(location.state)) {
-      setPromptDraft(nextDraft);
-    } else {
-      restorePromptDraftIfEmpty(nextDraft);
-    }
-    navigate(getRootComposeRoutePath() + location.search, {
-      replace: true,
-      state: { focusPrompt: true },
-    });
-  }, [
-    location.search,
-    location.state,
-    navigate,
-    restorePromptDraftIfEmpty,
-    setPromptDraft,
-  ]);
-  const shouldFocusPrompt =
-    typeof location.state === "object" &&
-    location.state !== null &&
-    "focusPrompt" in location.state &&
-    location.state.focusPrompt === true;
-  useEffect(() => {
-    if (!shouldFocusPrompt || isPointerCoarse) return;
-    const handle = window.requestAnimationFrame(() => {
-      promptBoxRef.current?.focusEnd();
-    });
-    return () => window.cancelAnimationFrame(handle);
-  }, [isPointerCoarse, location.key, promptBoxRef, shouldFocusPrompt]);
 
   const mobileRecentThreads = useMemo(
     () => buildMobileRecentThreads({ sidebarNavigation }),
@@ -1814,7 +2195,7 @@ function RootComposeSurface({
     [setPromptTextAndMentions, setStartedComposing],
   );
   useEffect(() => {
-    if (!startedComposing) return;
+    if (!startedComposing || !isFocusedPane) return;
     if (isProviderCliVersionBlocked) return;
     if (isPointerCoarse) return;
     const handle = window.requestAnimationFrame(() => {
@@ -1822,6 +2203,7 @@ function RootComposeSurface({
     });
     return () => window.cancelAnimationFrame(handle);
   }, [
+    isFocusedPane,
     isProviderCliVersionBlocked,
     isPointerCoarse,
     promptBoxRef,
@@ -1930,16 +2312,6 @@ function RootComposeSurface({
     selectedProviderId,
   ]);
 
-  if (!projects && sidebarNavigationError) {
-    return (
-      <PageShell contentClassName="min-h-full items-center justify-center">
-        <p className="py-12 text-center text-sm text-destructive">
-          Failed to load projects.
-        </p>
-      </PageShell>
-    );
-  }
-
   const machineSetupDialog = (
     <ProjectMachineSetupDialog
       target={machineSetupTarget}
@@ -1951,10 +2323,20 @@ function RootComposeSurface({
   );
 
   const promptBox = renderPromptBox({
-    id: "root-compose-prompt",
-    autoFocus: !isProviderCliVersionBlocked,
-    allowSoftKeyboardAutoFocus: isCompactViewport,
-    banner: promptBanner,
+    id: `root-compose-prompt-${draftId}`,
+    autoFocus: isFocusedPane && !isProviderCliVersionBlocked,
+    allowSoftKeyboardAutoFocus: isFocusedPane && isCompactViewport,
+    banner: (
+      <>
+        {resourceNotice}
+        {!projects && sidebarNavigationError ? (
+          <p className="text-xs text-destructive">
+            Could not load projects. Your draft is kept here.
+          </p>
+        ) : null}
+        {promptBanner}
+      </>
+    ),
     header: promptHeader,
     blockedReason: isProviderCliVersionBlocked
       ? `Update ${selectedProviderCliStatus?.displayName ?? selectedProviderId} before starting a thread.`
