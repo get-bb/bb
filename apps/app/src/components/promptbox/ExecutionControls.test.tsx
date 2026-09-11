@@ -96,6 +96,26 @@ describe("ExecutionControls", () => {
     expect(trigger.textContent).not.toContain("Failed to load models");
   });
 
+  it("offers the in-picker handoff flow when configured", () => {
+    renderExecutionControls({
+      ...makeExecutionControlsProps(vi.fn()),
+      handoff: { sourceProviderId: "codex", onSelect: vi.fn() },
+    });
+
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: "Provider, model and reasoning",
+      }),
+    );
+    fireEvent.click(
+      screen.getByRole("button", { name: "Handoff to new thread" }),
+    );
+
+    expect(screen.getByText("Choose a provider")).not.toBeNull();
+    expect(screen.queryByRole("button", { name: "Codex" })).toBeNull();
+    expect(screen.getByRole("button", { name: "Claude Code" })).not.toBeNull();
+  });
+
   it("maps disabled fast mode to the explicit default service tier", () => {
     const onServiceTierChange = vi.fn();
     renderExecutionControls({

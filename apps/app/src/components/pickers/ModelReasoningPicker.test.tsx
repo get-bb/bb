@@ -24,6 +24,7 @@ import {
 import {
   buildModelNavRows,
   ModelReasoningPicker,
+  type ModelReasoningPickerHandoff,
 } from "./ModelReasoningPicker";
 import type { PickerOption } from "./OptionPicker";
 import type { ProviderPickerOption } from "./model-brand-prefix";
@@ -159,6 +160,7 @@ function renderPicker({
   compact = false,
   splitPane = false,
   muted = false,
+  handoff,
 }: {
   onSelectedProviderChange?: ((value: string) => void) | null;
   onModelChange?: (value: string) => void;
@@ -177,6 +179,7 @@ function renderPicker({
   compact?: boolean;
   splitPane?: boolean;
   muted?: boolean;
+  handoff?: ModelReasoningPickerHandoff;
 } = {}) {
   const { queryClient, wrapper } = createQueryClientTestHarness();
   queryClient.setQueryData(
@@ -218,6 +221,7 @@ function renderPicker({
         showFastModeToggle={false}
         muted={muted}
         modal={false}
+        handoff={handoff}
       />
       <button type="button">Composer action</button>
     </div>
@@ -664,6 +668,46 @@ describe("ModelReasoningPicker", () => {
 
     expect(onSelectedProviderChange).toHaveBeenCalledTimes(1);
     expect(onModelChange).toHaveBeenCalledWith("claude-opus-4-7");
+  });
+
+  it("guides a handoff through provider and model without leaving the picker", async () => {
+    const onSelect = vi.fn();
+    const { onSelectedProviderChange, onModelChange } = renderPicker({
+      handoff: { sourceProviderId: "codex", onSelect },
+    });
+    const trigger = screen.getByRole("button", {
+      name: "Provider, model and reasoning",
+    });
+
+    fireEvent.click(trigger);
+    fireEvent.click(
+      screen.getByRole("button", { name: "Handoff to new thread" }),
+    );
+
+    expect(screen.getByText("Choose a provider")).not.toBeNull();
+    expect(screen.queryByRole("button", { name: "Codex" })).toBeNull();
+    expect(screen.queryByTitle("Claude Code")).toBeNull();
+
+    fireEvent.click(screen.getByRole("button", { name: "Claude Code" }));
+
+    expect(screen.getByText("Choose a model")).not.toBeNull();
+    expect(screen.getByText("Claude Code")).not.toBeNull();
+    expect(await screen.findByText("Opus 4.7")).not.toBeNull();
+    expect(onSelectedProviderChange).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByRole("button", { name: "Back to providers" }));
+    expect(screen.getByText("Choose a provider")).not.toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Claude Code" }));
+    fireEvent.click(await screen.findByText("Opus 4.7"));
+
+    expect(onSelect).toHaveBeenCalledExactlyOnceWith({
+      providerId: "claude-code",
+      model: "claude-opus-4-7",
+      reasoningLevel: "medium",
+    });
+    expect(onSelectedProviderChange).not.toHaveBeenCalled();
+    expect(onModelChange).not.toHaveBeenCalled();
+    expect(trigger.getAttribute("aria-expanded")).toBe("false");
   });
 
   it("loads provider models on the compose-selected host", async () => {

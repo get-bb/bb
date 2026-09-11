@@ -54,6 +54,7 @@ import { ThreadWorkflowCard } from "@/components/promptbox/banner/ThreadWorkflow
 import { ThreadBackgroundCommandsCard } from "@/components/promptbox/banner/ThreadBackgroundCommandsCard";
 import { ThreadModelFallbackCard } from "@/components/promptbox/banner/ThreadModelFallbackCard";
 import { InlineMessageEditorFrame } from "@/components/promptbox/InlineMessageEditorFrame";
+import type { ModelReasoningPickerHandoffSelection } from "@/components/pickers/ModelReasoningPicker";
 import type {
   WorkspaceChangedFileSelection,
   WorkspaceChangedFilesSection,
@@ -607,6 +608,7 @@ export function ThreadDetailPromptArea({
     executionOptionsRouting,
     selectedProviderId,
     setSelectedProviderId,
+    setProviderModelReasoning,
     providerOptions,
     hasMultipleProviders,
     selectedProviderDisplayName,
@@ -677,6 +679,15 @@ export function ThreadDetailPromptArea({
       setSelectedProviderId(providerId);
     },
     [fallbackIdentity, selectedProviderId, setSelectedProviderId],
+  );
+  const handleHandoffSelect = useCallback(
+    (selection: ModelReasoningPickerHandoffSelection) => {
+      if (fallbackIdentity !== null) {
+        setOverriddenFallbackIdentity(fallbackIdentity);
+      }
+      setProviderModelReasoning(selection);
+    },
+    [fallbackIdentity, setProviderModelReasoning],
   );
   const isHandoffSelection =
     selectedProviderId.length > 0 &&
@@ -1321,11 +1332,16 @@ export function ThreadDetailPromptArea({
         options: reasoningOptions,
         onChange: setReasoningLevel,
       },
+      handoff: {
+        sourceProviderId: thread.providerId,
+        onSelect: handleHandoffSelect,
+      },
     }),
     [
       effectiveSelectedModel,
       executionOptionsRouting,
       hasMultipleProviders,
+      handleHandoffSelect,
       handleModelChange,
       handleProviderChange,
       isLoadingModels,
@@ -1344,12 +1360,16 @@ export function ThreadDetailPromptArea({
       setServiceTier,
       supportsServiceTier,
       serviceTierFastLabel,
+      thread.providerId,
     ],
   );
   const compactExecutionConfig = useMemo(() => {
-    const { onChange: _onProviderChange, ...lockedProvider } =
-      bottomExecutionConfig.provider;
-    return { ...bottomExecutionConfig, provider: lockedProvider };
+    const {
+      handoff: _handoff,
+      provider: { onChange: _onProviderChange, ...lockedProvider },
+      ...lockedExecution
+    } = bottomExecutionConfig;
+    return { ...lockedExecution, provider: lockedProvider };
   }, [bottomExecutionConfig]);
   const inlineExecutionConfig = useMemo(() => {
     if (!inlineEditingQueuedMessage) return null;

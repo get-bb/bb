@@ -130,6 +130,13 @@ vi.mock("@/components/promptbox/FollowUpPromptBox", async () => {
         provider: {
           onChange?: (value: string) => void;
         };
+        handoff?: {
+          onSelect: (selection: {
+            providerId: string;
+            model: string;
+            reasoningLevel: "medium";
+          }) => void;
+        };
         reasoning: { value: string };
         serviceTier?: { value?: string };
       };
@@ -295,6 +302,23 @@ vi.mock("@/components/promptbox/FollowUpPromptBox", async () => {
               Switch provider back
             </button>
           </>
+        ) : null}
+        <div data-testid="handoff-flow">
+          {execution.handoff ? "true" : "false"}
+        </div>
+        {execution.handoff ? (
+          <button
+            type="button"
+            onClick={() =>
+              execution.handoff?.onSelect({
+                providerId: "claude-code",
+                model: "claude-opus-5",
+                reasoningLevel: "medium",
+              })
+            }
+          >
+            Complete handoff flow
+          </button>
         ) : null}
       </div>
     ),
@@ -523,6 +547,8 @@ vi.mock("@/hooks/useThreadCreationOptions", async () => {
         serviceTierSupportByProvider: {},
         setPermissionMode: vi.fn(),
         setReasoningLevel: vi.fn(),
+        setProviderModelReasoning: ({ providerId }: { providerId: string }) =>
+          setSelectedProviderId(providerId),
         setSelectedModel: vi.fn(),
         setSelectedProviderId,
         setServiceTier: vi.fn(),
@@ -1791,6 +1817,34 @@ describe("ThreadDetailPromptArea", () => {
     expect(bottomSwitchable.map((element) => element.textContent)).toEqual([
       "true",
     ]);
+    expect(
+      within(inlineEditorHost).getByTestId("handoff-flow").textContent,
+    ).toBe("false");
+    expect(
+      screen
+        .getAllByTestId("handoff-flow")
+        .filter((element) => !inlineEditorHost.contains(element))
+        .map((element) => element.textContent),
+    ).toEqual(["true"]);
+  });
+
+  it("enters handoff mode when the picker flow selects a provider and model", () => {
+    renderPromptArea();
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Complete handoff flow" }),
+    );
+
+    expect(mocks.toastMessage).toHaveBeenCalledTimes(1);
+    expect(screen.getByTestId("submit-title").textContent).toBe(
+      "Create new thread (Enter)",
+    );
+    expect(screen.getByTestId("selected-model").textContent).toBe(
+      "claude-opus-5",
+    );
+    expect(mocks.promptDraft.setDraft).toHaveBeenCalledWith(
+      expect.objectContaining({ text: "Continue from @thread:thr_1\n\n" }),
+    );
   });
 
   it("notifies that submitting will create a new thread after picking another provider", () => {

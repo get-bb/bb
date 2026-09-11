@@ -5,7 +5,10 @@ import type {
   SystemProvidersQuery,
 } from "@bb/server-contract";
 import { formatModelLabel } from "@/hooks/useThreadCreationOptions";
-import { ModelReasoningPicker } from "@/components/pickers/ModelReasoningPicker";
+import {
+  ModelReasoningPicker,
+  type ModelReasoningPickerHandoff,
+} from "@/components/pickers/ModelReasoningPicker";
 import { type PickerOption } from "@/components/pickers/OptionPicker";
 import type { ModelPickerOption } from "@/components/pickers/model-picker-option";
 import type { ProviderPickerOption } from "@/components/pickers/model-brand-prefix";
@@ -55,6 +58,7 @@ export interface ExecutionControlsProps {
   model: ExecutionModelConfig;
   serviceTier?: ExecutionServiceTierConfig;
   reasoning: ExecutionReasoningConfig;
+  handoff?: ModelReasoningPickerHandoff;
   disabled?: boolean;
 }
 
@@ -64,6 +68,7 @@ export const ExecutionControls = memo(function ExecutionControls({
   model,
   serviceTier,
   reasoning,
+  handoff,
   disabled,
 }: ExecutionControlsProps) {
   const handleServiceTierChange = serviceTier?.onChange ?? (() => {});
@@ -80,7 +85,8 @@ export const ExecutionControls = memo(function ExecutionControls({
     model.loadFailed ||
     model.options.length > 0 ||
     canSwitchProviders ||
-    selectedProviderId.length > 0;
+    selectedProviderId.length > 0 ||
+    handoff !== undefined;
 
   return (
     <>
@@ -111,6 +117,7 @@ export const ExecutionControls = memo(function ExecutionControls({
           fastModeLabel={serviceTier?.fastLabel}
           muted
           disabled={disabled}
+          handoff={handoff}
         />
       ) : null}
     </>
