@@ -6,6 +6,7 @@ import {
   Markdown,
   useRpc,
   type PluginMessageDirectiveProps,
+  type MarkdownProps,
 } from "@get-bb/plugin-sdk/app";
 import type { inlineVisRpcContract } from "./server.js";
 
@@ -33,6 +34,7 @@ type LoadState =
       file: string;
       source: PreviewSource;
       content: string;
+      document: NonNullable<MarkdownProps["experimental_document"]>;
     }
   | { status: "error"; file: string; message: string };
 
@@ -233,7 +235,10 @@ function InlineVisDirective({
           style={{ height: previewHeight ?? DEFAULT_HEIGHT_PX }}
           className="overflow-auto p-3"
         >
-          <Markdown content={state.content} />
+          <Markdown
+            content={state.content}
+            experimental_document={state.document}
+          />
         </div>
       ) : (
         <iframe

@@ -110,6 +110,11 @@ describe("preparePreview rpc", () => {
       file: "notes.md",
       source: "workspace",
       content: "# Notes\n\nReady for review.",
+      document: {
+        rootPath: ROOT,
+        threadId: "thr_1",
+        target: { kind: "workspace", environmentId: "env_1", path: "notes.md" },
+      },
     });
   });
 
@@ -147,6 +152,15 @@ describe("preparePreview rpc", () => {
       file: "reports/summary.markdown",
       source: "thread-storage",
       content: "# Report",
+      document: {
+        rootPath: storageRootPath,
+        threadId: "thr_1",
+        target: {
+          kind: "thread-storage",
+          threadId: "thr_1",
+          path: "reports/summary.markdown",
+        },
+      },
     });
     expect(harness.sdk.callsTo("threads.get")).toHaveLength(0);
   });

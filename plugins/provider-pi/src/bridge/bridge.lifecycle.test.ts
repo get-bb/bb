@@ -79,19 +79,39 @@ async function startThread(threadId: string): Promise<void> {
   expect(response.result).toMatchObject({ providerThreadId: threadId });
 }
 
-it("stop{release} ends the child", async () => {
-  await startThread("thr_lc_release");
-  await harness.request((nextId += 1), "turn/start", {
-    threadId: "thr_lc_release",
-    providerThreadId: "thr_lc_release",
+it("stop{release} ends the child after a local-file-only turn", async () => {
+  const threadId = "thr_lc_release";
+  const filePath = join(harness.workspaceDir, "notes.md");
+  await startThread(threadId);
+  const turn = await harness.request((nextId += 1), "turn/start", {
+    threadId,
+    providerThreadId: threadId,
     clientRequestId: "creq_ab23456789",
-    input: [{ type: "text", text: "hello", mentions: [] }],
+    input: [
+      {
+        type: "localFile",
+        path: filePath,
+        name: "notes.md",
+        sizeBytes: 6,
+        mimeType: "text/markdown",
+      },
+    ],
     options: FULL_PERMISSION_OPTIONS,
   });
-  await harness.waitForTurnBoundary("thr_lc_release", 0);
+  expect(turn.result).toEqual({ threadId });
+  await harness.waitForTurnBoundary(threadId, 0);
+  expect(
+    harness
+      .deltasOf(threadId)
+      .some(
+        (delta) =>
+          delta.kind === "item.textDelta" &&
+          String(delta.text).includes(`[Attached file: ${filePath}]`),
+      ),
+  ).toBe(true);
   const stop = await harness.request((nextId += 1), "thread/stop", {
-    threadId: "thr_lc_release",
-    providerThreadId: "thr_lc_release",
+    threadId,
+    providerThreadId: threadId,
     intent: "release",
     activeTurnId: null,
   });
@@ -238,9 +258,12 @@ it("accepts a prompt containing only a local image", async () => {
   expect(response.result).toEqual({ threadId });
   await harness.waitForTurnBoundary(threadId);
   expect(
-    harness.deltasOf(threadId).some(
-      (delta) => delta.kind === "item.textDelta" && delta.text === "Response to: ",
-    ),
+    harness
+      .deltasOf(threadId)
+      .some(
+        (delta) =>
+          delta.kind === "item.textDelta" && delta.text === "Response to: ",
+      ),
   ).toBe(true);
 });
 
