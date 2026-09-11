@@ -4,6 +4,23 @@ import {
   type MachineEnvironmentReplace,
 } from "./api/system.js";
 import {
+  draftCreateRequestSchema,
+  draftDeleteRequestSchema,
+  draftListQuerySchema,
+  draftSubmitRequestSchema,
+  draftUpdateRequestSchema,
+  type Draft,
+  type DraftCreateRequest,
+  type DraftCreateResponse,
+  type DraftDeleteRequest,
+  type DraftDeleteResponse,
+  type DraftListQuery,
+  type DraftListResponse,
+  type DraftSubmitRequest,
+  type DraftSubmitResponse,
+  type DraftUpdateRequest,
+} from "./api/drafts.js";
+import {
   desktopBrowserHostRequestSchema,
   desktopBrowserScopeSchema,
   desktopBrowserCreateRequestSchema,
@@ -1064,6 +1081,61 @@ export const publicApiRoutes = {
       method: "post",
       request: noRequest<PathId>(),
       response: jsonResponse<EnvironmentArchiveThreadsResponse>(),
+    }),
+  },
+
+  drafts: {
+    create: defineRoute({
+      path: "/drafts",
+      method: "post",
+      request: jsonRequest<
+        EmptyInput,
+        DraftCreateRequest,
+        typeof draftCreateRequestSchema
+      >(draftCreateRequestSchema),
+      response: jsonResponse<DraftCreateResponse>({ status: 201 }),
+    }),
+    list: defineRoute({
+      path: "/drafts",
+      method: "get",
+      request: optionalQueryRequest<EmptyInput, DraftListQuery>(
+        draftListQuerySchema,
+      ),
+      response: jsonResponse<DraftListResponse>(),
+    }),
+    get: defineRoute({
+      path: "/drafts/:id",
+      method: "get",
+      request: noRequest<PathId>(),
+      response: jsonResponse<Draft>(),
+    }),
+    update: defineRoute({
+      path: "/drafts/:id",
+      method: "patch",
+      request: jsonRequest<
+        PathId,
+        DraftUpdateRequest,
+        typeof draftUpdateRequestSchema
+      >(draftUpdateRequestSchema),
+      response: jsonResponse<Draft>(),
+    }),
+    delete: defineRoute({
+      path: "/drafts/:id",
+      method: "delete",
+      request: jsonRequest<PathId, DraftDeleteRequest>(
+        draftDeleteRequestSchema,
+      ),
+      response: jsonResponse<DraftDeleteResponse>(),
+    }),
+    submit: defineRoute({
+      path: "/drafts/:id/submit",
+      method: "post",
+      request: jsonRequest<
+        PathId,
+        DraftSubmitRequest,
+        typeof draftSubmitRequestSchema
+      >(draftSubmitRequestSchema),
+      response: jsonResponse<DraftSubmitResponse>(),
     }),
   },
 

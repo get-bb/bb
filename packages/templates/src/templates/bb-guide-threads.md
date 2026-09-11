@@ -1,13 +1,77 @@
 ---
 kind: instruction
 title: bb Guide — Threads
-summary: Command reference for thread spawning, inspecting, messaging, and lifecycle.
+summary: Command reference for saved drafts, thread spawning, inspecting, messaging, and lifecycle.
 intent: Provide complete thread command documentation for agents.
 editingNotes: Keep flags accurate against the CLI implementation. Run the json-flag-enforcement and command-output tests after changes.
 ---
 Thread commands
 
 Every command supports --json for machine-readable output.
+
+Saved drafts:
+
+  bb thread draft create [--text <text>] [--project <id>] [--section <id>]
+                  [--content-file <path>] [--id <draft-id>]
+  bb thread draft list [--project <id>] [--query <text>] [--include-empty]
+                [--limit <number>] [--offset <number>]
+  bb thread draft show <draft-id>                 (alias: bb thread draft get)
+  bb thread draft update <draft-id> --expected-revision <number>
+                  [--text <text>] [--project <id>] [--section <id>]
+                  [--content-file <path>]
+  bb thread draft delete <draft-id> --expected-revision <number> [--yes]
+  bb thread draft submit <draft-id> --expected-revision <number>
+
+  Drafts persist prompt text, mentions, uploaded attachment references, project,
+  section and composer choices on the server. All these operations work with
+  no app connected. A draft is separate from an active thread's unsent reply.
+  No command infers a destination from BB_PROJECT_ID. An incomplete draft may
+  be saved; submit validates its project and execution choices before starting
+  an ordinary thread.
+
+  List excludes blank and option-only drafts unless --include-empty is passed.
+  --query matches prompt text and attachment names. Pagination defaults to 50,
+  accepts --limit 1–200, and returns nextOffset in JSON (null at the end).
+  Without --project, list spans projects.
+
+  Inspect the revision with show --json before editing, deleting or submitting.
+  A stale --expected-revision fails without overwriting newer content. Updates
+  using --text, --project or --section retain unsupplied fields. A text change
+  to a draft containing mentions requires --content-file so mention positions
+  are explicit. --content-file replaces the whole content object; omitted
+  fields reset to schema defaults. Text/project/section flags override the file.
+
+  To edit every field, extract the content object (not the complete draft):
+
+    bb thread draft show <draft-id> --json > draft.json
+    jq '.content' draft.json > content.json
+    bb thread draft update <draft-id> --expected-revision <revision-from-draft.json> --content-file content.json
+
+  content.json has projectId, sectionId, prompt {text, mentions, attachments},
+  and options {providerId, model, reasoningLevel, serviceTier, permissionMode,
+  environment, title, parentThreadId, sourceThreadId, sourceSeqEnd, originKind,
+  sendAt}. Nullable selections stay unset until submit resolves defaults.
+  Use null in a content file to clear a destination or optional choice.
+  Upload attachments through bb project attachment upload, then retain the
+  returned attachment references in prompt.attachments.
+
+  Create returns {id, draft}. For a retried create/import, reuse --id and the
+  exact original content: a consumed/deleted identity returns draft: null and
+  never resurrects. Different creation content for that ID is a conflict.
+  IDs use drf_ followed by 8–128 letters, digits, underscores or hyphens.
+
+  Submit returns {thread, draft}; draft is null when the accepted revision was
+  consumed, or the newer remaining revision when edits arrived during submit.
+  Retrying the same draft revision never creates a second thread. If submission
+  fails after reserving a thread, the error requires saving a new revision
+  before an intentional new attempt. Keep local unsaved content after errors.
+
+  SDK parity: sdk.drafts.create/list/get/update/delete/submit. Use draftId for
+  ID operations, expectedRevision for mutations, and content for create/update.
+  list accepts projectId, query, includeEmpty (boolean), limit and offset
+  (numbers); list/get accept signal. SDK submit defaults origin to "sdk";
+  bb thread draft submit records origin "cli". The SDK exports Draft, DraftContent,
+  DraftContentInput, DraftPrompt, DraftOptions and each operation's args/results.
 
 Spawning:
 

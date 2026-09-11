@@ -20,6 +20,7 @@ import { registerFileRoutes } from "./routes/files.js";
 import { registerHostRoutes } from "./routes/hosts.js";
 import { registerProjectRoutes } from "./routes/projects.js";
 import { registerThreadSectionRoutes } from "./routes/thread-sections.js";
+import { registerDraftRoutes } from "./routes/drafts.js";
 import { registerSystemRoutes } from "./routes/system.js";
 import { registerUiPreferenceRoutes } from "./routes/ui-preferences.js";
 import { registerTerminalRoutes } from "./routes/terminals.js";
@@ -683,6 +684,7 @@ export function createApp(
   });
   registerProjectRoutes(publicApi, deps);
   registerThreadSectionRoutes(publicApi, deps);
+  registerDraftRoutes(publicApi, deps);
   registerFileRoutes(publicApi, deps);
   registerHostRoutes(publicApi, deps, pluginService);
   registerDesktopBrowserRoutes(publicApi, deps);

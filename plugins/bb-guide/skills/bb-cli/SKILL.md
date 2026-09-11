@@ -31,7 +31,7 @@ BB_HOST_DAEMON_PORT only for an intentional non-default target.
 - Read references/configuration.md for settings, agent instructions, skills,
   remote clients, and environment setup scripts.
 - Read references/thread-creation.md before you spawn or fork threads, create
-  projects, select machines, or create environments.
+  or submit saved drafts, create projects, select machines, or create environments.
 - Read references/thread-operation.md for messages, queues, interactions,
   panes, terminals, inspection, and long-running commands.
 - Read references/failure-recovery.md when a thread fails, stops, or needs plan
@@ -46,6 +46,9 @@ BB_HOST_DAEMON_PORT only for an intentional non-default target.
 
 - Resolve names and IDs with a list or show command before mutation.
 - Pass an explicit project when a command can act across projects.
+- Manage saved prompts through `bb thread draft` even with the app closed. Read the
+  current revision before update/delete/submit, and pass --expected-revision.
+  Use --content-file for full composer content and mention-safe text edits.
 - Pass an environment or machine selector when the default host is uncertain.
 - Spawn onto a plugin-provisioned environment with
   `bb thread spawn --environment-provider <id>` (list them with

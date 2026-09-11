@@ -827,6 +827,13 @@
       "when": 1789081162875,
       "tag": "0117_machine_providers",
       "breakpoints": true
+    },
+    {
+      "idx": 118,
+      "version": "6",
+      "when": 1789158915991,
+      "tag": "0118_draft_resources",
+      "breakpoints": true
     }
   ]
 }

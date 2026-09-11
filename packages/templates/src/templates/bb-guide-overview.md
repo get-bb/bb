@@ -11,6 +11,7 @@ Core concepts:
 
 - Project — maps to a repository. All threads belong to a project.
 - Thread — a single agent conversation. The fundamental unit of work.
+- Draft — saved prompt contents, destination and composer choices before a thread starts. Drafts are server resources available through SDK and CLI with the app closed.
 - Environment — where a thread runs. Kinds: project checkout or isolated worktree. Multiple threads can share an environment.
 - Machine — an execution host where project sources and thread environments live.
 - Terminal — a persistent PTY session scoped to a thread, environment, or machine path. Use terminals for long-running commands such as dev servers.
@@ -38,7 +39,7 @@ behavior.
 
 Run `bb guide <chapter>` for command details:
 
-  threads              Spawning, inspecting, messaging, and managing threads
+  threads              Saved drafts; spawning, inspecting, and managing threads
   environments         Environment lifecycle hooks, operations, commits, and merges
   agent-configuration  AGENTS.md and skills files that shape agents
   providers            Discovering providers and models
