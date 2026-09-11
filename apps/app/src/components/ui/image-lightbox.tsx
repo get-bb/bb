@@ -2,6 +2,7 @@ import {
   useCallback,
   useEffect,
   useId,
+  useLayoutEffect,
   useRef,
   type CSSProperties,
 } from "react";
@@ -106,7 +107,9 @@ export function ImageLightbox({
 }: ImageLightboxProps) {
   const panelRef = useRef<HTMLDivElement>(null);
   const closeRef = useRef(onClose);
-  closeRef.current = onClose;
+  useLayoutEffect(() => {
+    closeRef.current = onClose;
+  }, [onClose]);
   const requestClose = useCallback(() => closeRef.current(), []);
   const titleId = useId();
   const scopeProps = usePortalScopeProps();
@@ -223,7 +226,6 @@ export function ImageLightbox({
         className="absolute right-[max(0.5rem,env(safe-area-inset-right))] top-[max(0.5rem,env(safe-area-inset-top))] size-11 rounded-full bg-black/45 text-white hover:bg-black/60 hover:text-white"
         onClick={onClose}
         aria-label="Close image preview"
-        title="Close image preview"
       >
         <Icon name="X" className="size-5" />
       </Button>
