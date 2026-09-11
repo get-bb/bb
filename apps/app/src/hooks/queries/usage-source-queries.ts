@@ -1,3 +1,4 @@
+import { normalizeUsageMeasurement } from "@/lib/usage-normalization";
 import { useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
 import { sdk } from "@/lib/sdk";
 import {
@@ -25,13 +26,18 @@ async function loadResource(
   else active++;
   try {
     signal.throwIfAborted();
-    return await sdk.plugins.callRpc({
-      pluginId,
-      method: usageFetchMethod,
-      input: { resourceId, refresh },
-      outputSchema: usageMeasurementSchema,
-      signal: AbortSignal.any([signal, AbortSignal.timeout(45_000)]),
-    });
+    const value = normalizeUsageMeasurement(
+      await sdk.plugins.callRpc({
+        pluginId,
+        method: usageFetchMethod,
+        input: { resourceId, refresh },
+        outputSchema: usageMeasurementSchema,
+        signal: AbortSignal.any([signal, AbortSignal.timeout(45_000)]),
+      }),
+    );
+    if (value.usage.status === "error")
+      throw new Error("Usage could not be refreshed.");
+    return value;
   } finally {
     const next = waiting.shift();
     if (next === undefined) active--;

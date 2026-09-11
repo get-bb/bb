@@ -32,6 +32,16 @@ export function usagePlanLabel(
     : null;
 }
 
+function accountKey(account: AccountSummary): string | null {
+  return account.provider === "codex"
+    ? account.codexAccountId
+      ? `openai:chatgpt:${account.codexAccountId}`
+      : null
+    : account.accountUuid
+      ? `anthropic:account:${account.accountUuid}`
+      : null;
+}
+
 export function registerUsageSource(bb: BbPluginApi, hub: AccountPoolHub) {
   bb.rpc.register(
     usageSourceRpcContract,
@@ -42,6 +52,7 @@ export function registerUsageSource(bb: BbPluginApi, hub: AccountPoolHub) {
           label: "Account Pooler",
           resources: accounts.map((account) => ({
             id: account.id,
+            accountKey: accountKey(account),
             providerId: account.provider === "claude" ? "claude-code" : "codex",
             label:
               account.email ??
@@ -78,6 +89,14 @@ export function registerUsageSource(bb: BbPluginApi, hub: AccountPoolHub) {
           ) => {
             if (utilization === null) return;
             windows.push({
+              kind:
+                label === "Five-hour limit"
+                  ? "five-hour"
+                  : label === "Daily limit"
+                    ? "daily"
+                    : label.startsWith("Weekly")
+                      ? "weekly"
+                      : "custom",
               id,
               label,
               usedPercent: Math.round(utilization * 100),
@@ -123,6 +142,14 @@ export function registerUsageSource(bb: BbPluginApi, hub: AccountPoolHub) {
               );
           }
           const accountFields = {
+            plan: account.subscriptionType
+              ? {
+                  id: account.subscriptionType.toLowerCase(),
+                  multiplier:
+                    Number(account.rateLimitTier?.match(/max_(\d+)x/u)?.[1]) ||
+                    null,
+                }
+              : null,
             accountEmail: account.email,
             planLabel: usagePlanLabel(account),
           };
@@ -135,6 +162,7 @@ export function registerUsageSource(bb: BbPluginApi, hub: AccountPoolHub) {
               : null);
           return {
             id: account.id,
+            accountKey: accountKey(account),
             providerId: account.provider === "claude" ? "claude-code" : "codex",
             label: account.label,
             scope: { kind: "shared" },
@@ -146,7 +174,11 @@ export function registerUsageSource(bb: BbPluginApi, hub: AccountPoolHub) {
           };
         });
         const resource = resources[0]!;
-        return { observedAt: resource.observedAt, usage: resource.usage };
+        return {
+          accountKey: resource.accountKey,
+          observedAt: resource.observedAt,
+          usage: resource.usage,
+        };
       },
     },
     {

@@ -1,3 +1,4 @@
+import { selectUsageResources } from "@/lib/usage-normalization";
 import {
   useUsageSources,
   useUsageMeasurements,
@@ -598,28 +599,31 @@ export function UsageLimitsSettingsSection() {
             resource.scope.hostId === selectedLocation?.id,
         ),
   );
-  const listedResources = selectedSources
-    .flatMap(({ source, query }) =>
-      (query.data?.resources ?? [])
-        .filter((resource) =>
-          selectedLocation?.kind === "source"
-            ? resource.scope.kind === "shared"
-            : resource.scope.kind === "host" &&
-              resource.scope.hostId === selectedLocation?.id,
-        )
-        .map((resource) => ({
-          key: `${source.pluginId}:${resource.id}`,
-          pluginId: source.pluginId,
-          resource,
-        })),
-    )
-    .sort((a, b) => {
-      const rank = (id: string) => {
-        const index = providers.findIndex((provider) => provider.id === id);
-        return index < 0 ? providers.length : index;
-      };
-      return rank(a.resource.providerId) - rank(b.resource.providerId);
-    });
+  const listedResources = selectUsageResources(
+    selectedSources
+      .flatMap(({ source, query }) =>
+        (query.data?.resources ?? [])
+          .filter((resource) =>
+            selectedLocation?.kind === "source"
+              ? resource.scope.kind === "shared"
+              : resource.scope.kind === "host" &&
+                resource.scope.hostId === selectedLocation?.id,
+          )
+          .map((resource) => ({
+            key: `${source.pluginId}:${resource.id}`,
+            pluginId: source.pluginId,
+            resource,
+          })),
+      )
+      .sort((a, b) => {
+        const rank = (id: string) => {
+          const index = providers.findIndex((provider) => provider.id === id);
+          return index < 0 ? providers.length : index;
+        };
+        return rank(a.resource.providerId) - rank(b.resource.providerId);
+      }),
+    (entry) => entry.resource,
+  );
 
   const measurements = useUsageMeasurements(
     listedResources
@@ -632,13 +636,16 @@ export function UsageLimitsSettingsSection() {
       )
       .map(({ pluginId, resource }) => ({ pluginId, resourceId: resource.id })),
   );
-  const resources = listedResources
-    .map((entry, index) => ({
-      ...entry,
-      isError: measurements.queries[index]?.isError ?? false,
-      resource: { ...entry.resource, ...measurements.queries[index]?.data },
-    }))
-    .filter(({ resource }) => resource.usage?.status !== "not_installed");
+  const resources = selectUsageResources(
+    listedResources
+      .map((entry, index) => ({
+        ...entry,
+        isError: measurements.queries[index]?.isError ?? false,
+        resource: { ...entry.resource, ...measurements.queries[index]?.data },
+      }))
+      .filter(({ resource }) => resource.usage?.status !== "not_installed"),
+    (entry) => entry.resource,
+  );
 
   return (
     <UsageLimitsSettingsSectionContent

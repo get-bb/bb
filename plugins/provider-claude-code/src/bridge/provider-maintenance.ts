@@ -46,7 +46,10 @@ type ClaudeCredentials = z.infer<
 
 const claudeAccountSchema = z.object({
   oauthAccount: z
-    .object({ emailAddress: z.string().email().nullish() })
+    .object({
+      emailAddress: z.string().email().nullish(),
+      accountUuid: z.string().uuid().nullish(),
+    })
     .nullish(),
 });
 
@@ -290,19 +293,21 @@ async function readCredentials(): Promise<ClaudeCredentials | null> {
   }
 }
 
-async function readAccountEmail(): Promise<string | null> {
+async function readAccount() {
   try {
     const parsed = claudeAccountSchema.safeParse(
       JSON.parse(
         await fs.readFile(path.join(os.homedir(), ".claude.json"), "utf8"),
       ),
     );
-    return parsed.success
-      ? (parsed.data.oauthAccount?.emailAddress ?? null)
-      : null;
+    return parsed.success ? (parsed.data.oauthAccount ?? null) : null;
   } catch {
     return null;
   }
+}
+
+async function readAccountEmail(): Promise<string | null> {
+  return (await readAccount())?.emailAddress ?? null;
 }
 
 function planLabel(credentials: ClaudeCredentials): string | null {
@@ -410,10 +415,12 @@ function resetIso(value: string | null | undefined): string | null {
 function usageWindow(
   value: z.infer<typeof claudeUsageWindowSchema> | null | undefined,
   label: string,
+  kind: "five-hour" | "weekly",
 ): ProviderUsageWindow | null {
   if (!value || value.utilization == null) return null;
   return {
     label,
+    kind,
     usedPercent: clampPercent(value.utilization),
     resetsAt: resetIso(value.resets_at),
   };
@@ -440,6 +447,8 @@ function scopedWindows(
     }
     seen.add(label.toLowerCase());
     windows.push({
+      kind: "weekly",
+      model: label.toLowerCase(),
       label,
       usedPercent: clampPercent(limit.percent),
       resetsAt: resetIso(limit.resets_at),
@@ -463,14 +472,22 @@ function normalizeUsage(
     };
   }
   const windows = [
-    usageWindow(parsed.data.five_hour, "Current session"),
-    usageWindow(parsed.data.seven_day, "Weekly limit"),
+    usageWindow(parsed.data.five_hour, "Current session", "five-hour"),
+    usageWindow(parsed.data.seven_day, "Weekly limit", "weekly"),
     ...scopedWindows(parsed.data.limits),
   ].filter((window): window is ProviderUsageWindow => window !== null);
   return {
     status: "ok",
     accountEmail: email,
     planLabel: planLabel(credentials),
+    plan: credentials.subscriptionType
+      ? {
+          id: credentials.subscriptionType.toLowerCase(),
+          multiplier:
+            Number(credentials.rateLimitTier?.match(/max_(\d+)x/u)?.[1]) ||
+            null,
+        }
+      : null,
     windows,
   };
 }
@@ -480,10 +497,11 @@ export async function getClaudeProviderUsage(): Promise<ProviderUsageResult> {
   if ((await resolveExecutablePath(command)) === null) {
     return { supported: true, usage: { status: "not_installed" } };
   }
-  const [credentials, email] = await Promise.all([
+  const [credentials, account] = await Promise.all([
     readCredentials(),
-    readAccountEmail(),
+    readAccount(),
   ]);
+  const email = account?.emailAddress ?? null;
   if (!credentials) {
     return { supported: true, usage: { status: "unauthenticated" } };
   }
@@ -520,7 +538,12 @@ export async function getClaudeProviderUsage(): Promise<ProviderUsageResult> {
     }
     return {
       supported: true,
-      usage: normalizeUsage(await response.json(), credentials, email),
+      usage: {
+        ...normalizeUsage(await response.json(), credentials, email),
+        accountKey: account?.accountUuid
+          ? `anthropic:account:${account.accountUuid}`
+          : null,
+      },
     };
   } catch (error) {
     return {

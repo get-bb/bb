@@ -104,6 +104,11 @@ export const BUILTIN_PLUGINS = [
     defaultEnabled: true,
   },
   {
+    name: "provider-usage-sources",
+    pluginId: "provider-usage-sources",
+    defaultEnabled: true,
+  },
+  {
     name: "provider-usage",
     pluginId: "provider-usage",
     defaultEnabled: false,

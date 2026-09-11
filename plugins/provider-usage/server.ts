@@ -1,3 +1,7 @@
+import {
+  normalizeUsageMeasurement,
+  selectUsageResources,
+} from "./usage-normalization.js";
 import { defineRpcContract, type BbPluginApi } from "@get-bb/plugin-sdk";
 import { z } from "zod/mini";
 import {
@@ -188,7 +192,10 @@ export default function providerUsagePlugin(bb: BbPluginApi): void {
         outputSchema: usageSourceRpcContract[usageFetchMethod].output,
         signal: AbortSignal.timeout(45_000),
       })
-      .then((value) => {
+      .then((raw) => {
+        const value = normalizeUsageMeasurement(raw);
+        if (value.usage.status === "error")
+          throw new Error("Usage could not be refreshed.");
         measurements.set(key, { value, loadedAt: Date.now() });
         failures.delete(key);
         return value;
@@ -294,6 +301,11 @@ export default function providerUsagePlugin(bb: BbPluginApi): void {
       providers: [],
       error: null,
     }));
+    const candidates: Array<{
+      source: SourceResult;
+      resource: UsageResourceList["resources"][number];
+      machineId: string;
+    }> = [];
     for (const source of inventories.values()) {
       const hasShared =
         source.label !== null ||
@@ -315,8 +327,21 @@ export default function providerUsagePlugin(bb: BbPluginApi): void {
           resource.scope.kind === "shared"
             ? `source:${source.pluginId}`
             : resource.scope.hostId;
-        const machine = machines.find((machine) => machine.id === machineId);
-        if (!machine) continue;
+        candidates.push({ source, resource, machineId });
+      }
+    }
+    for (const machine of machines) {
+      const visible = selectUsageResources(
+        candidates.filter((candidate) => candidate.machineId === machine.id),
+        ({ source, resource }) => ({
+          ...resource,
+          accountKey: measurements.has(keyOf(source.pluginId, resource.id))
+            ? measurements.get(keyOf(source.pluginId, resource.id))!.value
+                .accountKey
+            : resource.accountKey,
+        }),
+      );
+      for (const { source, resource } of visible) {
         const key = keyOf(source.pluginId, resource.id);
         const cached = measurements.get(key);
         machine.providers.push(

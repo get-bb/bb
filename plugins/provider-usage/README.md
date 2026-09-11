@@ -21,3 +21,9 @@ to inspect their published contracts. RPC calls accept JSON through
 
 `bb settings usage --json` and `bb.sdk.system.usageLimits()` remain the
 host-local provider-maintenance view; they do not aggregate shared pool accounts.
+
+The headless Provider usage sources plugin automatically adapts providers declaring
+maintenance usage. The contract remains owned here; it is not part of the provider
+kit or core runtime. Known provider-issued account identities are deduplicated
+within the selected location. Unknown identities are never merged by email.
+Structured plan and quota-window metadata give both displays consistent labels.

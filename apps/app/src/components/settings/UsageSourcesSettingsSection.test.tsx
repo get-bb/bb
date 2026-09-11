@@ -301,3 +301,71 @@ it("waits for the default shared inventory before fetching a fallback machine", 
     client.clear();
   }
 });
+
+it("deduplicates known inventory identities without merging unknown accounts sharing an email", async () => {
+  calls.discover.mockResolvedValue([
+    { pluginId: "pool", displayName: "Account Pooler" },
+  ]);
+  calls.rpc.mockImplementation(async ({ method, input }) =>
+    method.endsWith("listResources")
+      ? {
+          label: "Account Pooler",
+          resources: ["first", "duplicate", "unknown", "unknown2"].map(
+            (id) => ({
+              id,
+              providerId: "custom",
+              accountKey: id.startsWith("unknown") ? null : "issuer:account:1",
+              label: "person@example.com",
+              scope: { kind: "shared" },
+            }),
+          ),
+        }
+      : {
+          accountKey: input.resourceId.startsWith("unknown")
+            ? null
+            : "issuer:account:1",
+          observedAt: 123,
+          usage: {
+            status: "ok",
+            accountEmail: "person@example.com",
+            planLabel: "max",
+            plan: { id: "max", multiplier: 20 },
+            windows: [
+              {
+                id: "week",
+                kind: "weekly",
+                label: "168 hour window",
+                model: null,
+                resetsAt: null,
+                cost: null,
+                usedPercent: 42,
+              },
+            ],
+          },
+        },
+  );
+  const client = new QueryClient({
+    defaultOptions: { queries: { retry: false } },
+  });
+  try {
+    render(
+      <QueryClientProvider client={client}>
+        <TooltipProvider>
+          <UsageLimitsSettingsSection />
+        </TooltipProvider>
+      </QueryClientProvider>,
+    );
+    await waitFor(() =>
+      expect(screen.getAllByText("42% used")).toHaveLength(3),
+    );
+    expect(screen.getAllByText("Max (20x)")).toHaveLength(3);
+    expect(screen.getAllByText("Weekly limit")).toHaveLength(3);
+    expect(
+      calls.rpc.mock.calls
+        .filter(([args]) => args.method.endsWith("getResource"))
+        .map(([args]) => args.input.resourceId),
+    ).toEqual(["first", "unknown", "unknown2"]);
+  } finally {
+    client.clear();
+  }
+});
