@@ -11,7 +11,7 @@ import {
 import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
-import { access, mkdtemp, readFile, rm } from "node:fs/promises";
+import { access, mkdir, mkdtemp, readFile, rm } from "node:fs/promises";
 import { promisify } from "node:util";
 import { z } from "zod";
 import { describe, expect, it } from "vitest";
@@ -418,10 +418,58 @@ describe("desktop build", () => {
           stdout,
         })}`,
       ).toBeNull();
+
+      for (const scenario of ["custom", "connect", "fatal"]) {
+        const retryProfile = join(smokeRoot, `retry-${scenario}`);
+        await mkdir(retryProfile);
+        let reportReady: (result: PreloadReadyResult) => void = () => {};
+        const retryReady = new Promise<PreloadReadyResult>((resolvePromise) => {
+          reportReady = resolvePromise;
+        });
+        const retry = spawn(
+          electronBinary,
+          [
+            `--user-data-dir=${retryProfile}`,
+            resolve(
+              desktopPackageRoot,
+              "test/fixtures/startup-retry-smoke.cjs",
+            ),
+          ],
+          {
+            cwd: desktopPackageRoot,
+            env: {
+              ...childEnv,
+              BB_STARTUP_SMOKE_APP_PATH: desktopPackageRoot,
+              BB_STARTUP_SMOKE_SCENARIO: scenario,
+            },
+          },
+        );
+        const retryStdout: string[] = [];
+        const retryStderr: string[] = [];
+        retry.stdout.on("data", (chunk) => {
+          retryStdout.push(String(chunk));
+          if (retryStdout.join("").includes("STARTUP_RETRY_SMOKE_OK")) {
+            reportReady({ ok: true, reason: "" });
+          }
+        });
+        retry.stderr.on("data", (chunk) => retryStderr.push(String(chunk)));
+        try {
+          const result = await waitForPreloadReady({
+            child: retry,
+            preloadReady: retryReady,
+            stdout: retryStdout,
+            stderr: retryStderr,
+            timeoutMs: ELECTRON_STARTUP_TIMEOUT_MS,
+          });
+          expect(result).toEqual({ ok: true, reason: "" });
+        } finally {
+          await stopElectron(retry);
+        }
+      }
     } finally {
       await stopElectron(child);
       await smokeServer.close();
       await rm(smokeRoot, { force: true, recursive: true });
     }
-  }, 30_000);
+  }, 90_000);
 });
