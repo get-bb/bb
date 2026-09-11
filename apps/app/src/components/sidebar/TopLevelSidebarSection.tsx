@@ -110,6 +110,7 @@ export function TopLevelSidebarSection({
         "pointer-events-none absolute right-0 top-1/2 z-20 inline-flex -translate-y-1/2 items-center justify-center text-subtle-foreground max-md:static max-md:shrink-0 max-md:translate-y-0",
         COARSE_POINTER_ROW_ACTION_SIZE_CLASS,
         actions && SIDEBAR_HOVER_ACTIONS_FADE_CLASS,
+        status && "max-md:pointer-coarse:empty:hidden",
       )}
     >
       {collapsedSplitIndicator.miniMap ? (

@@ -2279,7 +2279,7 @@ function ProjectRowComponent({
       }}
       aria-label="Project folder not found"
       className={cn(
-        "relative z-10 inline-flex shrink-0 items-center justify-center rounded-md text-destructive outline-none ring-sidebar-ring transition-colors hover:bg-destructive/10 hover:text-destructive focus-visible:ring-2 max-md:pointer-coarse:order-last",
+        "relative z-10 inline-flex shrink-0 items-center justify-center rounded-md text-destructive outline-none ring-sidebar-ring transition-colors hover:bg-destructive/10 hover:text-destructive focus-visible:ring-2",
         COARSE_POINTER_ROW_ACTION_SIZE_CLASS,
       )}
     >
