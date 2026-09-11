@@ -14,6 +14,7 @@ import {
   invalidateCachedUiPreferences,
   setCachedUiPreferences,
 } from "@/hooks/cache-owners/ui-preferences-cache-owner";
+import { isTransientReadError } from "@/hooks/queries/query-helpers";
 import { BbHttpError, sdk } from "../sdk";
 import {
   clearLegacyLocalUiPreference,
@@ -49,6 +50,30 @@ interface UiPreferencesSyncContext {
 }
 
 const MAX_WRITE_ATTEMPTS = 2;
+const REQUEST_RETRY_DELAYS = [250, 1_000];
+
+function isTransientUiPreferenceError(error: unknown): boolean {
+  return (
+    isTransientReadError(error) ||
+    (error instanceof BbHttpError && [502, 503, 504].includes(error.status))
+  );
+}
+
+async function retryUiPreferenceRequest<T>(
+  request: () => Promise<T>,
+): Promise<T> {
+  for (let attempt = 0; ; attempt++) {
+    try {
+      return await request();
+    } catch (error) {
+      const delay = REQUEST_RETRY_DELAYS[attempt];
+      if (delay === undefined || !isTransientUiPreferenceError(error)) {
+        throw error;
+      }
+      await new Promise((resolve) => setTimeout(resolve, delay));
+    }
+  }
+}
 
 const registry = new Map<
   UiPreferenceKey,
@@ -185,7 +210,9 @@ async function readCurrentUiPreferences(
 async function refetchUiPreferences(
   queryClient: QueryClient,
 ): Promise<UiPreferencesResponse> {
-  const response = await sdk.system.uiPreferences.list();
+  const response = await retryUiPreferenceRequest(() =>
+    sdk.system.uiPreferences.list(),
+  );
   setCachedUiPreferences(queryClient, response);
   return response;
 }
@@ -224,11 +251,15 @@ async function writeUiPreference<Key extends UiPreferenceKey>(
         : operations.filter((operation) => operation.source === "user");
     const value = applyOperations(applicable, base.value);
     if (areUiPreferenceValuesEqual(value, base.value)) return;
+    let writeRequests = 0;
     try {
-      const response = await sdk.system.uiPreferences.set({
-        expectedRevision: base.revision,
-        key,
-        value,
+      const response = await retryUiPreferenceRequest(() => {
+        writeRequests++;
+        return sdk.system.uiPreferences.set({
+          expectedRevision: base.revision,
+          key,
+          value,
+        });
       });
       recordServerEntry(queryClient, key, {
         revision: response.revision,
@@ -237,8 +268,12 @@ async function writeUiPreference<Key extends UiPreferenceKey>(
       return;
     } catch (error) {
       if (!isUiPreferenceConflict(error)) throw error;
+      base = (await refetchUiPreferences(queryClient)).preferences[key];
+      if (writeRequests > 1) {
+        if (areUiPreferenceValuesEqual(base.value, value)) return;
+        throw error;
+      }
     }
-    base = (await refetchUiPreferences(queryClient)).preferences[key];
   }
 }
 
@@ -247,7 +282,9 @@ function notifySyncFailure(error: unknown): void {
   syncFailureNotified = true;
   appToast.error("Couldn’t sync sidebar preferences", {
     description:
-      error instanceof Error ? error.message : "Changes stay on this device.",
+      error instanceof Error && !isTransientUiPreferenceError(error)
+        ? error.message
+        : "We couldn’t confirm this change was saved. Please try again.",
   });
 }
 
