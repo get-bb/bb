@@ -478,6 +478,9 @@ describe("plugin bb.sdk against a running server", () => {
         PERSONAL_PROJECT_ID,
         project.id,
       ]);
+      expect(
+        await api.sdk.projects.get({ projectId: PERSONAL_PROJECT_ID }),
+      ).toEqual(projectsWithPersonal[0]);
       const projectsWithThreadsAndPersonal = await api.sdk.projects.list({
         include: "threads",
         includePersonal: true,

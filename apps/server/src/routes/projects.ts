@@ -378,7 +378,11 @@ export function registerProjectRoutes(app: Hono, deps: AppDeps): void {
   });
 
   get(routes.get, (context) =>
-    context.json(buildProjectResponses(deps, context.req.param("id"))[0]),
+    context.json(
+      buildProjectResponsesFromRows(deps, [
+        requirePublicProject(deps.db, context.req.param("id")),
+      ])[0],
+    ),
   );
 
   get(routes.defaultExecutionOptions, (context) => {
