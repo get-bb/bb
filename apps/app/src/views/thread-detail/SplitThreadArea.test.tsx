@@ -672,7 +672,7 @@ describe("SplitThreadArea", () => {
     expect(host.dataset.pluginId).toBe("docs");
     expect(host.dataset.panelPath).toBe("docs");
     expect(host.dataset.flushPageInsets).toBe("true");
-    expect(host.dataset.pluginDetailTabsEnabled).toBe("false");
+    expect(host.dataset.pluginDetailTabsEnabled).toBe("true");
   });
 
   it("preserves detail state within the Guide and clears it for another plugin page", async () => {

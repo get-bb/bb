@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 
 import {
+  act,
   cleanup,
   fireEvent,
   render,
@@ -22,6 +23,7 @@ import {
   serializeFixedPanelTabsState,
 } from "@/lib/fixed-panel-tabs-state";
 import { PluginPanelRightPanelHost } from "./PluginPanelRightPanelHost";
+import { openPluginDetailsInWorkspace } from "./plugin-detail-opener";
 import { getPluginPagePanelStateId } from "./plugin-page-panel-state";
 import { useAppNavigationHost } from "@/lib/app-navigation-host";
 import {
@@ -803,6 +805,21 @@ describe("PluginPanelRightPanelHost", () => {
     expect(screen.getByTestId("current-path").textContent).toBe(
       "/plugins/demo/board",
     );
+  });
+
+  it("accepts sidebar detail requests before the plugin panel registers", async () => {
+    fixedTabState.panelRegistered = false;
+    renderHost("board", "", createStore(), true);
+    act(() => {
+      expect(
+        openPluginDetailsInWorkspace({ pluginId: "secrets", title: "Secrets" }),
+      ).toBe(true);
+    });
+    expect(await screen.findByText("Details for secrets")).toBeTruthy();
+    expect(screen.getByTestId("current-path").textContent).toBe(
+      "/plugins/demo/board",
+    );
+    expect(screen.getByText("Plugin page")).toBeTruthy();
   });
 
   it("observes only the selected detail tab while retaining inactive tab metadata", async () => {
