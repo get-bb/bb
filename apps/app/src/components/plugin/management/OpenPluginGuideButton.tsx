@@ -15,6 +15,7 @@ export function OpenPluginGuideButton({
       className={cn(
         buttonVariants({ variant, size: "sm" }),
         "group/guide shrink-0 gap-1.5",
+        variant === "secondary" && "@max-[30rem]/resource-toolbar:px-1.5",
         variant === "ghost" && "text-muted-foreground",
       )}
     >
