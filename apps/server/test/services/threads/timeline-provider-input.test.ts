@@ -19,6 +19,7 @@ import type { TimelineRow } from "@bb/server-contract";
 import { buildThreadTimelineWithProfile } from "../../../src/services/threads/timeline.js";
 
 const providerThreadId = "pi-thread-1";
+const PLUGIN_METADATA_MARKER = "timeline-plugin-metadata-must-stay-private";
 const PROCESS_EVENT =
   '<process_event kind="success" process_id="proc_551c">Process completed successfully</process_event>';
 
@@ -34,6 +35,11 @@ function setup(): { db: DbConnection; thread: Thread } {
     source: { type: "local_path", hostId: host.id, path: "/tmp/test" },
   });
   const thread = createThread(db, noopNotifier, {
+    originPluginId: "timeline-launcher",
+    pluginMetadata: {
+      pluginId: "timeline-launcher",
+      metadata: { marker: PLUGIN_METADATA_MARKER },
+    },
     projectId: project.id,
     providerId: "pi",
   });
@@ -176,6 +182,8 @@ describe("timeline pages with provider-recorded input", () => {
       `user:${PROCESS_EVENT}`,
       "assistant:The process finished.",
     ]);
+    expect(JSON.stringify(response)).not.toContain("pluginMetadata");
+    expect(JSON.stringify(response)).not.toContain(PLUGIN_METADATA_MARKER);
     const turnRow = response.rows.find(
       (row) => row.kind === "turn" && row.turnId === "turn-2",
     );
