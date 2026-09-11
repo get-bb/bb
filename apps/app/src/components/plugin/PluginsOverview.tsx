@@ -1,5 +1,6 @@
 import { useMemo, useState, type ReactNode } from "react";
-import { useNavigate, useSearchParams } from "react-router-dom";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
+import { Button } from "@bb/shared-ui/button";
 import {
   ResourceInfiniteScrollSentinel,
   useResourceInfiniteItems,
@@ -33,6 +34,7 @@ import { PLUGINS_INSTALLED_DESCRIPTION } from "@/components/plugin/plugins-colle
 import { usePluginList } from "@/hooks/queries/plugin-settings-queries";
 import {
   getPluginDetailRoutePath,
+  getPluginsRoutePath,
   getRootComposeRoutePath,
 } from "@/lib/route-paths";
 
@@ -146,6 +148,9 @@ export function PluginsOverview({
 
   const installedActions = (
     <>
+      <Button asChild variant="outline" size="sm">
+        <Link to={getPluginsRoutePath()}>Browse marketplace</Link>
+      </Button>
       <CreateWithTemplatesButton
         kind="plugin"
         label="New plugin"

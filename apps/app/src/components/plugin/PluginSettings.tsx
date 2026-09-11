@@ -14,7 +14,10 @@ import { Input } from "@bb/shared-ui/input";
 import { Textarea } from "@bb/shared-ui/textarea";
 import { Link } from "react-router-dom";
 import { SettingsWithControl } from "@/components/ui/settings-section.js";
-import { getPluginDetailRoutePath } from "@/lib/route-paths";
+import {
+  getPluginDetailRoutePath,
+  SETTINGS_PLUGINS_ROUTE_PATH,
+} from "@/lib/route-paths";
 import { Skeleton } from "@bb/shared-ui/skeleton";
 import { Switch } from "@bb/shared-ui/switch";
 import {
@@ -511,6 +514,24 @@ function PluginSettingsPageSkeleton() {
 }
 
 export function PluginSettingsPage({ pluginId }: { pluginId: string }) {
+  return (
+    <div className="mx-auto w-full max-w-5xl space-y-6">
+      <nav aria-label="Plugin navigation" className="flex flex-wrap gap-2">
+        <Button asChild variant="outline" size="sm">
+          <Link to={SETTINGS_PLUGINS_ROUTE_PATH}>Installed plugins</Link>
+        </Button>
+        <Button asChild variant="outline" size="sm">
+          <Link to={getPluginDetailRoutePath({ pluginId })}>
+            View in marketplace
+          </Link>
+        </Button>
+      </nav>
+      <PluginSettingsPageContent pluginId={pluginId} />
+    </div>
+  );
+}
+
+function PluginSettingsPageContent({ pluginId }: { pluginId: string }) {
   const listQuery = usePluginList({ enabled: true });
   const plugin =
     listQuery.data?.plugins.find(

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { useSearchParams } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import { Button } from "@bb/shared-ui/button";
 import { PLUGIN_CATALOG_CATEGORIES, pluginCatalogCategory } from "@bb/domain";
 import {
@@ -27,6 +27,7 @@ import { BrowseArchetypeCards } from "@/components/plugin/browse-hero/BrowseArch
 import { BrowseHeroCarousel } from "@/components/plugin/browse-hero/BrowseHeroCarousel";
 import { nextComposerRequestNonce } from "@/components/plugin/browse-hero/browse-hero-archetypes";
 import { TOOLS_PAGE_BAND_CLASSES } from "@/components/tools/tools-navigation";
+import { SETTINGS_PLUGINS_ROUTE_PATH } from "@/lib/route-paths";
 import {
   usePluginCatalogSearch,
   type PluginCatalogSearchEntry,
@@ -158,7 +159,10 @@ export function BrowsePluginsTab({
   return (
     <ResourceCollectionViewport scrollId="plugins-browse-results">
       <div className={cn("space-y-7 pb-8", TOOLS_PAGE_BAND_CLASSES)}>
-        <div className="flex items-center justify-end gap-3">
+        <div className="flex flex-wrap items-center justify-end gap-3">
+          <Button asChild variant="outline">
+            <Link to={SETTINGS_PLUGINS_ROUTE_PATH}>Installed plugins</Link>
+          </Button>
           <div className="flex items-stretch">
             <Button
               className="rounded-r-none"

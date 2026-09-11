@@ -2,6 +2,7 @@
 
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { MemoryRouter } from "react-router-dom";
 import {
   getNotifications,
   resetNotificationStore,
@@ -82,7 +83,12 @@ describe("MarketplacesSettingsSection", () => {
   it("adds a marketplace through the server route", async () => {
     const requests = stubFetch([OFFICIAL]);
     const { wrapper } = createQueryClientTestHarness();
-    render(<MarketplacesSettingsSection />, { wrapper });
+    render(
+      <MemoryRouter>
+        <MarketplacesSettingsSection />
+      </MemoryRouter>,
+      { wrapper },
+    );
 
     fireEvent.change(screen.getByLabelText("Marketplace source"), {
       target: { value: " https://acme.test/marketplace.json " },
@@ -107,7 +113,12 @@ describe("MarketplacesSettingsSection", () => {
       jsonResponse({ error: "marketplace directory does not exist" }, 400),
     );
     const { wrapper } = createQueryClientTestHarness();
-    render(<MarketplacesSettingsSection />, { wrapper });
+    render(
+      <MemoryRouter>
+        <MarketplacesSettingsSection />
+      </MemoryRouter>,
+      { wrapper },
+    );
 
     fireEvent.change(screen.getByLabelText("Marketplace source"), {
       target: { value: "path:/missing-marketplace" },
@@ -127,7 +138,12 @@ describe("MarketplacesSettingsSection", () => {
   it("offers Remove only for marketplaces other than bb-community", async () => {
     stubFetch([OFFICIAL, ACME]);
     const { wrapper } = createQueryClientTestHarness();
-    render(<MarketplacesSettingsSection />, { wrapper });
+    render(
+      <MemoryRouter>
+        <MarketplacesSettingsSection />
+      </MemoryRouter>,
+      { wrapper },
+    );
 
     await screen.findByText("Acme Plugins");
     expect(screen.queryByRole("button", { name: "Remove BB Official" })).toBe(
@@ -141,7 +157,12 @@ describe("MarketplacesSettingsSection", () => {
   it("says removal keeps installed plugins running before confirming", async () => {
     const requests = stubFetch([OFFICIAL, ACME]);
     const { wrapper } = createQueryClientTestHarness();
-    render(<MarketplacesSettingsSection />, { wrapper });
+    render(
+      <MemoryRouter>
+        <MarketplacesSettingsSection />
+      </MemoryRouter>,
+      { wrapper },
+    );
 
     fireEvent.click(
       await screen.findByRole("button", { name: "Remove Acme Plugins" }),

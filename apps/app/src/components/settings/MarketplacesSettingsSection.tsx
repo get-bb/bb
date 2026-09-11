@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { Link } from "react-router-dom";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import type { PluginMarketplace } from "@bb/server-contract";
 import { Badge } from "@bb/shared-ui/badge";
@@ -11,6 +12,7 @@ import {
   ConfirmDeleteDialogContent,
 } from "@/components/dialogs/ConfirmDeleteDialog";
 import { pluginAdminErrorMessage } from "@/lib/plugin-admin-error";
+import { getPluginsRoutePath } from "@/lib/route-paths";
 import { invalidatePluginMarketplaces } from "@/hooks/cache-owners/plugin-cache-owner";
 import {
   addPluginMarketplace,
@@ -103,6 +105,9 @@ export function MarketplacesSettingsSection() {
       bodyClassName="border-0 bg-transparent p-0"
     >
       <div className="space-y-1.5">
+        <Button asChild variant="outline" size="sm" className="mb-3">
+          <Link to={getPluginsRoutePath()}>Browse marketplace</Link>
+        </Button>
         <div className="flex items-start gap-2">
           <Input
             value={source}
