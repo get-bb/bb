@@ -266,16 +266,21 @@ describe("UsageLimitsSettingsSectionContent", () => {
   });
 
   it("selects which connected machine supplies usage", () => {
-    const onSelectHost = vi.fn();
+    const onSelectLocation = vi.fn();
     renderContent({
       usage: {},
       isLoading: false,
       isError: false,
       isFetching: false,
       onRefresh: vi.fn(),
-      hosts: [primaryHost, remoteHost],
-      selectedHostId: primaryHost.id,
-      onSelectHost,
+      locations: [primaryHost, remoteHost].map((host) => ({
+        id: host.id,
+        name: host.name,
+        kind: "host",
+        disabled: false,
+      })),
+      selectedLocationId: primaryHost.id,
+      onSelectLocation,
     });
 
     const sectionHeader = screen
@@ -284,12 +289,12 @@ describe("UsageLimitsSettingsSectionContent", () => {
     expect(sectionHeader?.classList.contains("flex-col")).toBe(true);
 
     fireEvent.pointerDown(
-      screen.getByRole("button", { name: "Usage limits machine" }),
+      screen.getByRole("button", { name: "Usage source" }),
       { button: 0 },
     );
     fireEvent.click(screen.getByRole("menuitem", { name: /Build machine/u }));
 
-    expect(onSelectHost).toHaveBeenCalledWith(remoteHost.id);
+    expect(onSelectLocation).toHaveBeenCalledWith(remoteHost.id);
   });
 
   it("does not show a machine selector when there is only one machine", () => {
@@ -299,9 +304,16 @@ describe("UsageLimitsSettingsSectionContent", () => {
       isError: false,
       isFetching: false,
       onRefresh: vi.fn(),
-      hosts: [primaryHost],
-      selectedHostId: primaryHost.id,
-      onSelectHost: vi.fn(),
+      locations: [
+        {
+          id: primaryHost.id,
+          name: primaryHost.name,
+          kind: "host",
+          disabled: false,
+        },
+      ],
+      selectedLocationId: primaryHost.id,
+      onSelectLocation: vi.fn(),
     });
 
     const sectionHeader = screen
@@ -309,9 +321,7 @@ describe("UsageLimitsSettingsSectionContent", () => {
       .closest("section")?.firstElementChild;
     expect(sectionHeader?.classList.contains("flex-row")).toBe(true);
     expect(sectionHeader?.classList.contains("flex-col")).toBe(false);
-    expect(
-      screen.queryByRole("button", { name: "Usage limits machine" }),
-    ).toBeNull();
+    expect(screen.queryByRole("button", { name: "Usage source" })).toBeNull();
   });
 });
 

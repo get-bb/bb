@@ -154,23 +154,23 @@ type UsagePreviewProps = Pick<UsageLimitsSettingsSectionContentProps, "usage"> &
   Partial<
     Pick<
       UsageLimitsSettingsSectionContentProps,
-      | "hosts"
+      | "locations"
       | "isError"
       | "isFetching"
       | "isLoading"
-      | "onSelectHost"
-      | "selectedHostId"
+      | "onSelectLocation"
+      | "selectedLocationId"
     >
   >;
 
 function UsagePreview({
   usage,
-  hosts,
+  locations,
   isError = false,
   isFetching = false,
   isLoading = false,
-  onSelectHost,
-  selectedHostId,
+  onSelectLocation,
+  selectedLocationId,
 }: UsagePreviewProps) {
   return (
     <Stage>
@@ -181,23 +181,30 @@ function UsagePreview({
         isFetching={isFetching}
         onRefresh={noop}
         providers={PROVIDERS}
-        hosts={hosts}
-        selectedHostId={selectedHostId}
-        onSelectHost={onSelectHost}
+        locations={locations}
+        selectedLocationId={selectedLocationId}
+        onSelectLocation={onSelectLocation}
       />
     </Stage>
   );
 }
 
 function MultipleMachinesPreview() {
-  const [selectedHostId, setSelectedHostId] = useState(HOSTS[0]?.id ?? null);
+  const [selectedLocationId, setSelectedLocationId] = useState(
+    HOSTS[0]?.id ?? null,
+  );
 
   return (
     <UsagePreview
       usage={HEALTHY_USAGE}
-      hosts={HOSTS}
-      selectedHostId={selectedHostId}
-      onSelectHost={setSelectedHostId}
+      locations={HOSTS.map((host) => ({
+        id: host.id,
+        name: host.name,
+        kind: "host",
+        disabled: host.status !== "connected",
+      }))}
+      selectedLocationId={selectedLocationId}
+      onSelectLocation={setSelectedLocationId}
     />
   );
 }
