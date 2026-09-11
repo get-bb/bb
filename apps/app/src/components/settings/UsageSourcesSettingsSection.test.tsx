@@ -27,6 +27,7 @@ vi.mock("@/hooks/queries/host-queries", () => ({
   useHosts: () => ({
     data: [makeHost({ id: "host-a", name: "Build machine" })],
   }),
+  selectHosts: (hosts: unknown[] | undefined) => hosts ?? [],
   selectPrimaryHost: (hosts: unknown[]) => hosts[0],
 }));
 
