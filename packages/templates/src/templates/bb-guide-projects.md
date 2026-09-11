@@ -49,6 +49,10 @@ Discovery:
   machine selects that machine's project source. Omitting both intentionally
   falls back to the primary machine's project source.
 
+  Personal file access (`paths`, `files`, `content`) requires an explicit
+  --environment <id> belonging to Personal. Personal has no default project
+  source; the selected environment must be ready.
+
 Attachments:
 
   bb project attachment upload <id>       Upload bytes from the CLI machine
