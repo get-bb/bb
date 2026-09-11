@@ -596,7 +596,7 @@ export function useSectionThreadDnd({
     null,
   );
   const lingerTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const [lingerTick, setLingerTick] = useState(0);
+  const [, setLingerTick] = useState(0);
   const clearPinnedLinger = useCallback(() => {
     if (lingerTimerRef.current !== null) clearTimeout(lingerTimerRef.current);
     lingerTimerRef.current = null;
@@ -664,7 +664,7 @@ export function useSectionThreadDnd({
       );
       return nestedCollisions.length > 0 ? nestedCollisions : collisions;
     },
-    [getNestBandFraction, lingerTick, topLevelSectionIds],
+    [getNestBandFraction, topLevelSectionIds],
   );
   const updateThread = useUpdateThread();
   const pinThread = usePinThread();
