@@ -13,6 +13,7 @@ export interface ToastOptions {
   action?: { label: string; onClick: () => void };
   id?: ToastId;
   overlay?: boolean;
+  onDismiss?: () => void;
 }
 
 function show(
@@ -26,6 +27,7 @@ function show(
     action: options?.action,
     id: options?.id,
     toasterId: options?.overlay ? "overlay" : undefined,
+    onDismiss: options?.onDismiss,
   };
   switch (kind) {
     case "success":

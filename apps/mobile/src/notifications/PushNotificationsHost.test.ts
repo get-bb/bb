@@ -331,6 +331,19 @@ describe("PushNotificationsHost", () => {
     expect(mocks.toastDismiss).not.toHaveBeenCalled();
   });
 
+  it("does not restore a toast the user dismissed while the page was loading", async () => {
+    vi.useFakeTimers();
+    receive({ serverUrl: "https://bb.example.test", threadId: "thr_1" }).onClick();
+    await vi.advanceTimersByTimeAsync(0);
+    mocks.toastMessage.mock.calls.at(-1)?.[1]?.onDismiss?.();
+    const shown = mocks.toastMessage.mock.calls.length;
+    finishNotificationNavigation(navigationId(), "cancelled");
+    setNotificationNavigationReady(navigationId(), true);
+    await vi.advanceTimersByTimeAsync(100);
+    expect(mocks.toastMessage).toHaveBeenCalledTimes(shown);
+    expect(mocks.toastDismiss).not.toHaveBeenCalled();
+  });
+
   it("ignores a notification without a valid thread target", () => {
     mocks.receivedListener({ request: { content: { data: {} } } });
     expect(mocks.toastMessage).not.toHaveBeenCalled();

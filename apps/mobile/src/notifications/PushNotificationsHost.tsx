@@ -124,10 +124,16 @@ export function PushNotificationsHost() {
         if (!target) return;
         let opening = false;
         let attempt = 0;
+        let dismissed = false;
+        let stopWaiting: (() => void) | undefined;
         const title = content.title ?? "bb";
         const options: ToastOptions = {
           description: content.body ?? undefined,
           duration: 8_000,
+          onDismiss: () => {
+            dismissed = true;
+            stopWaiting?.();
+          },
           action: {
             label: "Open",
             onClick: async () => {
@@ -151,11 +157,15 @@ export function PushNotificationsHost() {
                   }
                 },
               );
+              stopWaiting = () => {
+                stop();
+                pending.delete(stop);
+              };
               pending.add(stop);
               if (!(await openTarget(target, notificationId))) {
                 stop();
                 pending.delete(stop);
-                toast.message(title, { ...options, id: toastId });
+                if (!dismissed) toast.message(title, { ...options, id: toastId });
                 opening = false;
                 return;
               }
