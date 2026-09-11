@@ -195,10 +195,9 @@ describe("thread runtime stop", () => {
           command.threadId === thread.id &&
           command.intent === "release",
       );
-      const second = harness.app.request(
-        `/api/v1/threads/${thread.id}/stop`,
-        { method: "POST" },
-      );
+      const second = harness.app.request(`/api/v1/threads/${thread.id}/stop`, {
+        method: "POST",
+      });
       expect(listQueuedCommands(harness, "thread.stop")).toHaveLength(1);
       await reportQueuedCommandSuccess(harness, release, {
         providerCheckpointId: null,

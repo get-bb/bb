@@ -1538,9 +1538,9 @@ describe("competing turn refusals", () => {
       });
 
       const events = listEvents(harness.db, { threadId: fixture.thread.id });
-      expect(events.some((event) => event.type === "client/turn/rejected")).toBe(
-        true,
-      );
+      expect(
+        events.some((event) => event.type === "client/turn/rejected"),
+      ).toBe(true);
       expect(events.some((event) => event.type === "system/error")).toBe(true);
       expect(getThread(harness.db, fixture.thread.id)?.status).toBe("error");
     });
