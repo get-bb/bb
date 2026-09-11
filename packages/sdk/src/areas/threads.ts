@@ -4,6 +4,7 @@ import {
   type PendingInteraction,
   type PendingInteractionResolution,
   type JsonValue,
+  type JsonObject,
   type ResolvedThreadExecutionOptions,
   type ThreadEventRow,
   type ThreadEventType,
@@ -15,6 +16,7 @@ import {
   DEFAULT_TURN_RETRY_REASON,
   threadTabsResponseSchema,
 } from "@bb/server-contract";
+import { validatePluginMetadata } from "@bb/domain";
 import type {
   CreateQueuedMessageRequest,
   CreateThreadRequest,
@@ -39,6 +41,7 @@ import type {
   ThreadPendingInteractionsResponse,
   ThreadQueuedMessageListResponse,
   ThreadResponse,
+  ThreadPluginMetadataResponse,
   ThreadSearchResponse,
   ThreadStorageFileListResponse,
   ThreadStorageLocationResponse,
@@ -162,6 +165,7 @@ export interface ThreadOutputResponse {
   output: string | null;
 }
 export type ThreadMutationResult = ThreadResponse;
+export type ThreadPluginMetadataResult = ThreadPluginMetadataResponse;
 export type ThreadSpawnResult = ThreadResponse;
 export type ThreadForkResult = ThreadResponse;
 export type ThreadInteractionGetResult = PendingInteraction;
@@ -238,6 +242,19 @@ export interface ThreadForkArgs extends Omit<
 
 export interface ThreadUpdateArgs extends UpdateThreadRequest {
   threadId: string;
+}
+
+export interface ThreadPluginMetadataArgs {
+  pluginId: string;
+  signal?: AbortSignal;
+  threadId: string;
+}
+export interface ThreadPluginMetadataUpdateArgs {
+  threadId: string;
+  pluginId: string;
+  set?: JsonObject;
+  remove?: string[];
+  signal?: AbortSignal;
 }
 
 export interface ThreadDeleteArgs extends DeleteThreadRequest {
@@ -544,6 +561,12 @@ export interface ThreadsArea {
   events: ThreadEventsArea;
   fork(args: ThreadForkArgs): Promise<ThreadForkResult>;
   get(args: ThreadGetArgs): Promise<ThreadGetResult>;
+  getPluginMetadata(
+    args: ThreadPluginMetadataArgs,
+  ): Promise<ThreadPluginMetadataResult>;
+  updatePluginMetadata(
+    args: ThreadPluginMetadataUpdateArgs,
+  ): Promise<ThreadPluginMetadataResult>;
   queue: ThreadQueueArea;
   interactions: ThreadInteractionsArea;
   list(args?: ThreadListArgs): Promise<ThreadListResult>;
@@ -690,6 +713,9 @@ function spawnJson(args: ThreadSpawnArgs): CreateThreadRequest {
   } = args;
   return {
     ...request,
+    ...(args.pluginMetadata === undefined
+      ? {}
+      : { pluginMetadata: validatePluginMetadata(args.pluginMetadata) }),
     input: spawnInput(args),
     origin: origin ?? "sdk",
     startedOnBehalfOf: startedOnBehalfOf ?? null,
@@ -700,6 +726,9 @@ function spawnJson(args: ThreadSpawnArgs): CreateThreadRequest {
 function forkJson(args: ThreadForkArgs): ForkThreadRequest {
   return {
     ...args,
+    ...(args.pluginMetadata === undefined
+      ? {}
+      : { pluginMetadata: validatePluginMetadata(args.pluginMetadata) }),
     origin: args.origin ?? "sdk",
     visibility: args.visibility ?? "visible",
   };
@@ -825,6 +854,29 @@ export function createThreadsArea(args: CreateSdkAreaArgs): ThreadsArea {
           ...(input.include === undefined
             ? {}
             : { query: { include: input.include } }),
+        },
+        ...signalRequestArgs(input.signal),
+      ),
+    );
+  const getPluginMetadata = (input: ThreadPluginMetadataArgs) =>
+    transport.readJson(
+      transport.api.v1.threads[":id"]["plugin-metadata"].$get(
+        { param: { id: input.threadId }, query: { pluginId: input.pluginId } },
+        ...signalRequestArgs(input.signal),
+      ),
+    );
+  const updatePluginMetadata = (input: ThreadPluginMetadataUpdateArgs) =>
+    transport.readJson(
+      transport.api.v1.threads[":id"]["plugin-metadata"].$patch(
+        {
+          param: { id: input.threadId },
+          json: {
+            pluginId: input.pluginId,
+            ...(input.set === undefined
+              ? {}
+              : { set: validatePluginMetadata(input.set) }),
+            ...(input.remove === undefined ? {} : { remove: input.remove }),
+          },
         },
         ...signalRequestArgs(input.signal),
       ),
@@ -1117,6 +1169,8 @@ export function createThreadsArea(args: CreateSdkAreaArgs): ThreadsArea {
       );
     },
     get: getThread,
+    getPluginMetadata,
+    updatePluginMetadata,
     queue,
     interactions,
     async list(input) {

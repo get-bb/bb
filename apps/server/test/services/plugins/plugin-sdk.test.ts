@@ -5,7 +5,11 @@ import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   createConnection,
+  archiveThread,
+  createThread,
   getThread,
+  insertThreadPluginMetadata,
+  markThreadDeleted,
   migrate,
   type DbConnection,
 } from "@bb/db";
@@ -23,7 +27,6 @@ import {
   seedEnvironment,
   seedPrimaryHost,
   seedProjectWithSource,
-  seedThread,
   seedThreadRuntimeState,
 } from "../../helpers/seed.js";
 import {
@@ -131,6 +134,7 @@ describe("plugin bb.sdk bind gate", () => {
   });
 
   afterEach(async () => {
+    vi.restoreAllMocks();
     await service.stop();
     await rm(workDir, { recursive: true, force: true });
   });
@@ -150,6 +154,98 @@ describe("plugin bb.sdk bind gate", () => {
     service.bindSdk({ baseUrl: "http://127.0.0.1:9" });
     expect(typeof api.sdk.threads.fork).toBe("function");
     expect(typeof api.sdk.threads.spawn).toBe("function");
+  });
+
+  it("rejects unsafe plugin metadata before transport serialization", async () => {
+    const rootDir = await writePlugin(workDir, {
+      name: "bb-plugin-metadata-boundary",
+      serverSource: `export default function plugin() {}`,
+    });
+    await service.installPath(rootDir);
+    service.bindSdk({ baseUrl: "http://127.0.0.1:9" });
+    const api = requireApi(service, "metadata-boundary");
+    const fetchSpy = vi.spyOn(globalThis, "fetch");
+    const invalidValues: unknown[] = [Number.NaN, { missing: undefined }];
+    const operations = [
+      (pluginMetadata: unknown) =>
+        api.sdk.threads.spawn({
+          projectId: "project-1",
+          environment: { type: "project-default" },
+          prompt: "invalid",
+          pluginMetadata,
+        } as never),
+      (pluginMetadata: unknown) =>
+        api.sdk.threads.fork({
+          sourceThreadId: "source-1",
+          pluginMetadata,
+        } as never),
+    ];
+
+    for (const operation of operations) {
+      for (const invalidValue of invalidValues) {
+        await expect(operation(invalidValue)).rejects.toThrow();
+      }
+    }
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
+
+  it("preserves no-context spawn and fork attribution", async () => {
+    const rootDir = await writePlugin(workDir, {
+      name: "bb-plugin-metadata-attribution",
+      serverSource: `export default function plugin() {}`,
+    });
+    await service.installPath(rootDir);
+    service.bindSdk({ baseUrl: "https://bb.example.test" });
+    const api = requireApi(service, "metadata-attribution");
+    const requests: unknown[] = [];
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (_input, init) => {
+      requests.push(JSON.parse(String(init?.body)));
+      return new Response(
+        JSON.stringify({
+          id: "thread-1",
+          projectId: "project-1",
+          title: null,
+          status: "pending",
+        }),
+        { status: 200, headers: { "content-type": "application/json" } },
+      );
+    });
+    const operations = [
+      (overrides: Record<string, unknown>) =>
+        api.sdk.threads.spawn({
+          projectId: "project-1",
+          environment: { type: "project-default" },
+          prompt: "compatibility",
+          ...overrides,
+        } as never),
+      (overrides: Record<string, unknown>) =>
+        api.sdk.threads.fork({
+          sourceThreadId: "source-1",
+          ...overrides,
+        } as never),
+    ];
+
+    for (const operation of operations) {
+      requests.length = 0;
+      await operation({});
+      expect(requests[0]).toMatchObject({
+        origin: "plugin",
+        originPluginId: "metadata-attribution",
+      });
+
+      await operation({
+        origin: "plugin",
+        originPluginId: "legacy-plugin",
+      });
+      expect(requests[1]).toMatchObject({
+        origin: "plugin",
+        originPluginId: "legacy-plugin",
+      });
+
+      await operation({ origin: "sdk" });
+      expect(requests[2]).toMatchObject({ origin: "sdk" });
+      expect(requests[2]).not.toHaveProperty("originPluginId");
+    }
   });
 
   it("serves the current public app URL without the SDK bind gate", async () => {
@@ -438,6 +534,327 @@ describe("plugin bb.sdk against a running server", () => {
     }
   });
 
+  it("covers live plugin metadata routes, namespace validation, and lifecycle guards", async () => {
+    const server = await startTestServer();
+    const workDir = await mkdtemp(join(tmpdir(), "bb-plugin-metadata-live-"));
+    try {
+      const { host } = seedHostSession(server.deps);
+      seedPrimaryHost(server.deps, host.id);
+      const { project } = seedProjectWithSource(server.deps, {
+        hostId: host.id,
+      });
+      const environment = seedEnvironment(server.deps, {
+        hostId: host.id,
+        projectId: project.id,
+      });
+      server.pluginService.bindSdk({ baseUrl: server.baseUrl });
+      const rootDir = await writePlugin(workDir, {
+        name: "bb-plugin-meta-owner",
+        serverSource: `export default function plugin() {}`,
+      });
+      await server.pluginService.installPath(rootDir);
+      const api = requireApi(server.pluginService, "meta-owner");
+      const thread = createThread(server.db, server.deps.hub, {
+        projectId: project.id,
+        environmentId: environment.id,
+        providerId: "codex",
+        status: "idle",
+        originPluginId: "meta-owner",
+      });
+      const other = createThread(server.db, server.deps.hub, {
+        projectId: project.id,
+        environmentId: environment.id,
+        providerId: "codex",
+        status: "idle",
+        originPluginId: "meta-owner",
+      });
+      await expect(
+        api.sdk.threads.getPluginMetadata({ threadId: thread.id }),
+      ).resolves.toEqual({});
+      await expect(
+        api.sdk.threads.updatePluginMetadata({
+          threadId: thread.id,
+          set: { a: 1, nested: { old: true } },
+        }),
+      ).resolves.toEqual({ a: 1, nested: { old: true } });
+      await expect(
+        api.sdk.threads.getPluginMetadata({
+          threadId: thread.id,
+          pluginId: "cross",
+        }),
+      ).resolves.toEqual({});
+      await expect(
+        api.sdk.threads.updatePluginMetadata({
+          threadId: thread.id,
+          pluginId: "cross",
+          set: { b: 2 },
+        }),
+      ).resolves.toEqual({ b: 2 });
+      await expect(
+        api.sdk.threads.getPluginMetadata({ threadId: thread.id }),
+      ).resolves.toEqual({ a: 1, nested: { old: true } });
+      await expect(
+        api.sdk.threads.getPluginMetadata({
+          threadId: thread.id,
+          pluginId: "cross",
+        }),
+      ).resolves.toEqual({ b: 2 });
+      await expect(
+        api.sdk.threads.updatePluginMetadata({
+          threadId: thread.id,
+          set: { nested: { next: true } },
+          remove: ["a"],
+        }),
+      ).resolves.toEqual({ nested: { next: true } });
+      await expect(
+        api.sdk.threads.updatePluginMetadata({
+          threadId: thread.id,
+          set: { nullable: null },
+        }),
+      ).resolves.toEqual({ nested: { next: true }, nullable: null });
+      await expect(
+        api.sdk.threads.updatePluginMetadata({ threadId: thread.id }),
+      ).resolves.toEqual({ nested: { next: true }, nullable: null });
+      await expect(
+        api.sdk.threads.updatePluginMetadata({
+          threadId: thread.id,
+          remove: ["nested", "nullable"],
+        }),
+      ).resolves.toEqual({});
+      await expect(
+        api.sdk.threads.updatePluginMetadata({
+          threadId: thread.id,
+          set: { x: 1 },
+          remove: ["x"],
+        }),
+      ).rejects.toThrow();
+      await expect(
+        api.sdk.threads.updatePluginMetadata({
+          threadId: thread.id,
+          remove: ["x", "x"],
+        }),
+      ).rejects.toThrow();
+      const nearLimit = "x".repeat(262_100);
+      await expect(
+        api.sdk.threads.updatePluginMetadata({
+          threadId: thread.id,
+          set: { stable: true, nearLimit },
+        }),
+      ).resolves.toEqual({ stable: true, nearLimit });
+      await expect(
+        api.sdk.threads.updatePluginMetadata({
+          threadId: thread.id,
+          set: { smallAdditionalValue: "valid" },
+        }),
+      ).rejects.toThrow();
+      await expect(
+        api.sdk.threads.getPluginMetadata({ threadId: thread.id }),
+      ).resolves.toEqual({ stable: true, nearLimit });
+      for (const status of ["active", "stopping"] as const) {
+        const candidate = createThread(server.db, server.deps.hub, {
+          projectId: project.id,
+          environmentId: environment.id,
+          providerId: "codex",
+          status,
+          originPluginId: "meta-owner",
+        });
+        await expect(
+          api.sdk.threads.updatePluginMetadata({
+            threadId: candidate.id,
+            set: { status },
+          }),
+        ).resolves.toEqual({ status });
+      }
+      const archived = createThread(server.db, server.deps.hub, {
+        projectId: project.id,
+        environmentId: environment.id,
+        providerId: "codex",
+        status: "idle",
+        originPluginId: "meta-owner",
+      });
+      archiveThread(server.db, server.deps.hub, archived.id);
+      await expect(
+        api.sdk.threads.updatePluginMetadata({
+          threadId: archived.id,
+          set: { status: "archived" },
+        }),
+      ).resolves.toEqual({ status: "archived" });
+      await expect(
+        api.sdk.threads.getPluginMetadata({
+          threadId: other.id,
+          pluginId: "missing",
+        }),
+      ).resolves.toEqual({});
+      markThreadDeleted(server.db, server.deps.hub, { threadId: other.id });
+      await expect(
+        api.sdk.threads.getPluginMetadata({ threadId: other.id }),
+      ).rejects.toThrow();
+    } finally {
+      await server.pluginService.stop();
+      await rm(workDir, { recursive: true, force: true });
+      await server.close();
+    }
+  });
+
+  it("fans out frozen metadata without restarting an active turn", async () => {
+    const server = await startTestServer();
+    const workDir = await mkdtemp(
+      join(tmpdir(), "bb-plugin-metadata-configure-"),
+    );
+    try {
+      const { host } = seedHostSession(server.deps);
+      const { project } = seedProjectWithSource(server.deps, {
+        hostId: host.id,
+      });
+      const environment = seedEnvironment(server.deps, {
+        hostId: host.id,
+        projectId: project.id,
+      });
+      server.pluginService.bindSdk({ baseUrl: server.baseUrl });
+      const thread = createThread(server.db, server.deps.hub, {
+        projectId: project.id,
+        environmentId: environment.id,
+        providerId: "codex",
+        status: "active",
+      });
+      const seen: Record<string, unknown>[] = [];
+      const make = (name: string) =>
+        writePlugin(workDir, {
+          name: `bb-plugin-${name}`,
+          serverSource: `export default function plugin(bb) { bb.agents.configure((context) => { const first = Object.values(context.pluginMetadata)[0]; globalThis.__bbMetadataSeen = globalThis.__bbMetadataSeen || []; globalThis.__bbMetadataSeen.push({ plugin: "${name}", metadata: context.pluginMetadata, frozen: Object.isFrozen(context.pluginMetadata), nestedFrozen: first === undefined || first === null || typeof first !== "object" || Object.isFrozen(first) }); return { tools: [], skills: [] }; }); }`,
+        });
+      await server.pluginService.installPath(await make("alpha"));
+      await server.pluginService.installPath(await make("beta"));
+      await server.pluginService.installPath(await make("gamma"));
+      insertThreadPluginMetadata(server.db, {
+        threadId: thread.id,
+        pluginId: "alpha",
+        metadata: { alpha: { own: true } },
+      });
+      insertThreadPluginMetadata(server.db, {
+        threadId: thread.id,
+        pluginId: "beta",
+        metadata: { beta: { own: true } },
+      });
+      const result = await server.pluginService.resolveAgentConfiguration({
+        context: { pluginMetadata: {}, thread: { id: thread.id } } as never,
+        skillIdsByPlugin: new Map(),
+      });
+      expect(result.tools).toEqual([]);
+      const observations =
+        (
+          globalThis as typeof globalThis & {
+            __bbMetadataSeen?: Record<string, unknown>[];
+          }
+        ).__bbMetadataSeen ?? [];
+      seen.push(...observations);
+      expect(seen).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            plugin: "alpha",
+            metadata: { alpha: { own: true } },
+            frozen: true,
+            nestedFrozen: true,
+          }),
+          expect.objectContaining({
+            plugin: "beta",
+            metadata: { beta: { own: true } },
+            frozen: true,
+            nestedFrozen: true,
+          }),
+          expect.objectContaining({
+            plugin: "gamma",
+            metadata: {},
+            frozen: true,
+            nestedFrozen: true,
+          }),
+        ]),
+      );
+      const activeTurnSnapshot = seen.find(
+        (observation) => observation.plugin === "alpha",
+      )?.metadata;
+      expect(activeTurnSnapshot).toEqual({ alpha: { own: true } });
+
+      delete (globalThis as typeof globalThis & { __bbMetadataSeen?: unknown })
+        .__bbMetadataSeen;
+      const alphaApi = requireApi(server.pluginService, "alpha");
+      await expect(
+        alphaApi.sdk.threads.updatePluginMetadata({
+          threadId: thread.id,
+          set: { alpha: { own: false }, updated: true },
+        }),
+      ).resolves.toEqual({ alpha: { own: false }, updated: true });
+      expect(
+        (globalThis as typeof globalThis & { __bbMetadataSeen?: unknown })
+          .__bbMetadataSeen,
+      ).toBeUndefined();
+      expect(getThread(server.db, thread.id)?.status).toBe("active");
+      expect(activeTurnSnapshot).toEqual({ alpha: { own: true } });
+
+      await server.pluginService.resolveAgentConfiguration({
+        context: { pluginMetadata: {}, thread: { id: thread.id } } as never,
+        skillIdsByPlugin: new Map(),
+      });
+      const afterUpdate =
+        (
+          globalThis as typeof globalThis & {
+            __bbMetadataSeen?: Record<string, unknown>[];
+          }
+        ).__bbMetadataSeen ?? [];
+      expect(afterUpdate).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            plugin: "alpha",
+            metadata: { alpha: { own: false }, updated: true },
+            frozen: true,
+            nestedFrozen: true,
+          }),
+        ]),
+      );
+
+      server.db.$client
+        .prepare(
+          "UPDATE thread_plugin_metadata SET metadata_json = ? WHERE thread_id = ? AND plugin_id = ?",
+        )
+        .run("not-json", thread.id, "alpha");
+      const warn = vi.spyOn(server.deps.logger, "warn");
+      delete (globalThis as typeof globalThis & { __bbMetadataSeen?: unknown })
+        .__bbMetadataSeen;
+      await server.pluginService.resolveAgentConfiguration({
+        context: { pluginMetadata: {}, thread: { id: thread.id } } as never,
+        skillIdsByPlugin: new Map(),
+      });
+      const afterCorruption =
+        (
+          globalThis as typeof globalThis & {
+            __bbMetadataSeen?: Record<string, unknown>[];
+          }
+        ).__bbMetadataSeen ?? [];
+      expect(afterCorruption).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ plugin: "alpha", metadata: {} }),
+          expect.objectContaining({
+            plugin: "beta",
+            metadata: { beta: { own: true } },
+            nestedFrozen: true,
+          }),
+          expect.objectContaining({ plugin: "gamma", metadata: {} }),
+        ]),
+      );
+      expect(warn).toHaveBeenCalledWith(
+        expect.stringContaining(
+          `Ignoring corrupt plugin metadata for thread ${thread.id}, plugin alpha`,
+        ),
+      );
+    } finally {
+      delete (globalThis as typeof globalThis & { __bbMetadataSeen?: unknown })
+        .__bbMetadataSeen;
+      await server.pluginService.stop();
+      await rm(workDir, { recursive: true, force: true });
+      await server.close();
+    }
+  });
+
   it("keeps hidden plugin threads attributed and directly operable by id", async () => {
     const server = await startTestServer();
     const workDir = await mkdtemp(join(tmpdir(), "bb-plugin-sdk-live-"));
@@ -493,6 +910,7 @@ describe("plugin bb.sdk against a running server", () => {
         ]),
       );
 
+      const launchMarker = "plugin-metadata-private-marker";
       const thread = await api.sdk.threads.spawn({
         projectId: project.id,
         prompt: "spawned from a plugin",
@@ -501,17 +919,30 @@ describe("plugin bb.sdk against a running server", () => {
           hostId: host.id,
           workspace: { type: "unmanaged", path: "/tmp/plugin-sdk-live-source" },
         },
+        origin: "sdk",
+        originPluginId: "forged-plugin",
+        pluginMetadata: {
+          marker: launchMarker,
+          nested: { attempt: 1 },
+        },
         visibility: "hidden",
       });
       expect(thread.originPluginId).toBe("spawner");
       expect(thread.visibility).toBe("hidden");
+      expect(thread).not.toHaveProperty("pluginMetadata");
       expect(getThread(server.db, thread.id)).toMatchObject({
         originPluginId: "spawner",
         visibility: "hidden",
       });
       await expect(
-        api.sdk.threads.get({ threadId: thread.id }),
-      ).resolves.toMatchObject({ id: thread.id, visibility: "hidden" });
+        api.sdk.threads.getPluginMetadata({ threadId: thread.id }),
+      ).resolves.toEqual({ marker: launchMarker, nested: { attempt: 1 } });
+      const pluginThread = await api.sdk.threads.get({ threadId: thread.id });
+      expect(pluginThread).toMatchObject({
+        id: thread.id,
+        visibility: "hidden",
+      });
+      expect(JSON.stringify(pluginThread)).not.toContain(launchMarker);
       await expect(
         api.sdk.threads.wait({
           threadId: thread.id,
@@ -522,14 +953,24 @@ describe("plugin bb.sdk against a running server", () => {
       await expect(
         api.sdk.threads.list({ projectId: project.id }),
       ).resolves.not.toContainEqual(expect.objectContaining({ id: thread.id }));
-      await expect(
-        api.sdk.threads.list({ projectId: project.id, includeHidden: true }),
-      ).resolves.toContainEqual(expect.objectContaining({ id: thread.id }));
+      const allThreads = await api.sdk.threads.list({
+        projectId: project.id,
+        includeHidden: true,
+      });
+      expect(allThreads).toContainEqual(
+        expect.objectContaining({ id: thread.id }),
+      );
+      expect(JSON.stringify(allThreads)).not.toContain(launchMarker);
 
-      const operable = seedThread(server.deps, {
+      const operable = createThread(server.db, server.deps.hub, {
         environmentId: environment.id,
         originPluginId: "spawner",
+        pluginMetadata: {
+          pluginId: "spawner",
+          metadata: { marker: "source-plugin-metadata" },
+        },
         projectId: project.id,
+        providerId: "codex",
         status: "idle",
         visibility: "hidden",
       });
@@ -539,14 +980,28 @@ describe("plugin bb.sdk against a running server", () => {
         providerThreadId: "provider-hidden-plugin-thread",
         threadId: operable.id,
       });
+      const forkMarker = "plugin-fork-context-private-marker";
       const fork = await api.sdk.threads.fork({
         sourceThreadId: operable.id,
+        origin: "sdk",
+        originPluginId: "forged-plugin",
+        pluginMetadata: { marker: forkMarker, nested: { attempt: 2 } },
       });
       expect(fork).toMatchObject({
         originKind: "fork",
         originPluginId: "spawner",
         sourceThreadId: operable.id,
       });
+      expect(fork).not.toHaveProperty("pluginMetadata");
+      await expect(
+        api.sdk.threads.getPluginMetadata({ threadId: fork.id }),
+      ).resolves.toEqual({ marker: forkMarker, nested: { attempt: 2 } });
+      const forkWithoutContext = await api.sdk.threads.fork({
+        sourceThreadId: operable.id,
+      });
+      await expect(
+        api.sdk.threads.getPluginMetadata({ threadId: forkWithoutContext.id }),
+      ).resolves.toEqual({});
       await expect(
         api.sdk.threads.wait({
           threadId: operable.id,

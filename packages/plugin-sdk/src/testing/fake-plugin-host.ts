@@ -111,6 +111,16 @@ import type {
   StandardSchemaV1Result,
   JsonValue,
 } from "@get-bb/plugin-sdk";
+import { validatePluginMetadata } from "@bb/domain";
+
+function deepFreezeJsonValue<T>(value: T): T {
+  if (value !== null && typeof value === "object") {
+    Object.freeze(value);
+    for (const child of Object.values(value as Record<string, unknown>))
+      deepFreezeJsonValue(child);
+  }
+  return value;
+}
 import {
   createFakeSdk,
   type FakeSdkHarness,
@@ -2672,6 +2682,11 @@ function createFakePluginHostInternal(
         };
       }
       try {
+        Object.assign(context, {
+          pluginMetadata: deepFreezeJsonValue(
+            validatePluginMetadata(context.pluginMetadata ?? {}),
+          ),
+        });
         const normalized = normalizeAgentConfiguration({
           knownSkillIds: new Set(agentSkillIds),
           knownToolIds: new Set(agentTools.map((tool) => tool.name)),

@@ -18,14 +18,19 @@ import type {
   WorkspaceProvisionType,
 } from "@bb/domain";
 import type { ProviderFork } from "@bb/domain/provider-fork";
-import type { BbSdk } from "@bb/sdk";
+import type {
+  BbSdk,
+  ThreadPluginMetadataArgs,
+  ThreadPluginMetadataUpdateArgs,
+  ThreadPluginMetadataResult,
+} from "@bb/sdk";
 import type {
   ExecutionInputFieldSource,
   StartedOnBehalfOf,
   ThreadCreateOrigin,
   ThreadResponse,
 } from "@bb/server-contract";
-import type { JsonValue } from "./json-value.js";
+import type { JsonObject, JsonValue } from "./json-value.js";
 import type {
   PluginRpcContract,
   PluginRpcHandlers,
@@ -950,6 +955,8 @@ export interface PluginAgentToolRegistrationBase {
 
 /** Stable, plain-data context resolved by the server for one agent session. */
 export interface PluginAgentConfigurationContext {
+  /** This plugin's namespaced thread metadata, frozen for this configure call. */
+  readonly pluginMetadata: JsonObject;
   thread: {
     id: string;
     title: string | null;
@@ -1746,6 +1753,22 @@ export interface PluginStatusApi {
   needsConfiguration(message: string): void;
 }
 
+export type PluginBbSdk = Omit<BbSdk, "threads"> & {
+  threads: Omit<
+    BbSdk["threads"],
+    "getPluginMetadata" | "updatePluginMetadata"
+  > & {
+    getPluginMetadata(
+      args: Omit<ThreadPluginMetadataArgs, "pluginId"> & { pluginId?: string },
+    ): Promise<ThreadPluginMetadataResult>;
+    updatePluginMetadata(
+      args: Omit<ThreadPluginMetadataUpdateArgs, "pluginId"> & {
+        pluginId?: string;
+      },
+    ): Promise<ThreadPluginMetadataResult>;
+  };
+};
+
 /**
  * The API object handed to a plugin's factory (design §4). Implemented by
  * the BB server; this contract is what plugin `server.ts` files compile
@@ -1814,7 +1837,7 @@ export interface BbPluginApi {
    * `threads.spawn` defaults `origin` to "plugin" and `originPluginId` to
    * this plugin's id so spawned threads are attributed automatically.
    */
-  readonly sdk: BbSdk;
+  readonly sdk: PluginBbSdk;
   /**
    * Register cleanup to run on reload/disable/shutdown. Hooks run LIFO.
    * The sanctioned place to clear timers and close connections.
