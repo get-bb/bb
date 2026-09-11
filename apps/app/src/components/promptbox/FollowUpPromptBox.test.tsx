@@ -1240,6 +1240,38 @@ describe("FollowUpPromptBox", () => {
     },
   );
 
+  it.each(["pointerUp", "pointerCancel"] as const)(
+    "resumes deferred focus loss after a control gesture ends with %s",
+    (releaseEvent) => {
+      mocks.isCompactViewport = true;
+      vi.useFakeTimers();
+      try {
+        render(
+          <FollowUpPromptBox
+            {...createFollowUpPromptBoxProps({ kind: "ready" })}
+          />,
+        );
+        const input = screen.getByRole("textbox", { name: "Follow-up prompt" });
+        const control = screen.getByRole("button", { name: "Submit" });
+        act(() => input.focus());
+        fireEvent.pointerDown(control);
+        act(() => input.blur());
+        act(() => vi.advanceTimersByTime(20));
+        expect(
+          screen.getByTestId("prompt-box").getAttribute("data-compact"),
+        ).toBe("false");
+
+        fireEvent[releaseEvent](control);
+        act(() => vi.advanceTimersByTime(20));
+        expect(
+          screen.getByTestId("prompt-box").getAttribute("data-compact"),
+        ).toBe("true");
+      } finally {
+        vi.useRealTimers();
+      }
+    },
+  );
+
   it("stays expanded after pressing a non-focusable composer control", () => {
     mocks.isCompactViewport = true;
     const props = createFollowUpPromptBoxProps({ kind: "ready" });
