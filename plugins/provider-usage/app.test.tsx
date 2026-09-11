@@ -62,7 +62,7 @@ describe("provider usage footer disclosure", () => {
     ).map(([providerId, displayName, email, usedPercent]) => ({
       id: email,
       providerId: providerId,
-      accountLabel: email === "personal@example.com" ? "Personal" : email,
+      accountLabel: email,
       displayName: displayName,
       logoUrl: `/api/v1/system/providers/${providerId}/logo`,
       iconGlyph: null,
@@ -240,7 +240,7 @@ describe("provider usage footer disclosure", () => {
     expect(
       slot.getByRole("button", { name: "Usage machine: Account Pooler" }),
     ).toBeTruthy();
-    expect(slot.getByRole("heading", { name: "Personal" })).toBeTruthy();
+    expect(slot.getByRole("heading", { name: "personal@example.com" })).toBeTruthy();
     fireEvent.pointerDown(
       slot.getByRole("button", { name: "Usage machine: Account Pooler" }),
       { button: 0 },

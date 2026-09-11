@@ -368,7 +368,7 @@ describe("usage source composition", () => {
           providers: [
             {
               id: "pool:account-1",
-              accountLabel: "Team account",
+              accountLabel: "team@example.com",
               providerId: "codex",
               displayName: "Codex",
               logoUrl: "/codex.svg",

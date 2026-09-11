@@ -148,7 +148,7 @@ function resourceProvider(
       resource.usage,
     ),
     id: `${pluginId}:${resource.id}`,
-    accountLabel: resource.scope.kind === "shared" ? resource.label : null,
+    accountLabel: resource.scope.kind === "shared" ? resource.usage.accountEmail : null,
   };
 }
 
