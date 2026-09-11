@@ -51,6 +51,7 @@ import {
   DropdownMenuTrigger,
 } from "@bb/shared-ui/dropdown-menu";
 import { useUrlAnchorClickHandler } from "@/lib/url-open-routing";
+import { ThreadPromptRelationshipRow } from "./ThreadPromptRelationshipRow";
 
 export interface ContextBannerMergeBaseConfig {
   branch: string;
@@ -929,28 +930,13 @@ export function ThreadPromptContextBanner({
         >
           {}
           {showParentThread && parentThreadSection && isParentThreadOnly ? (
-            <div
-              className={cn(
-                "flex min-w-0 items-center gap-1.5 text-xs",
-                PROMPT_STACK_INLAY_SEGMENT_CLASS,
-              )}
+            <ThreadPromptRelationshipRow
               title={parentSectionAriaLabel(parentThreadSection)}
-            >
-              <Icon
-                name={PARENT_SECTION_ICON[parentThreadSection.relationship]}
-                className="size-3.5 shrink-0"
-                aria-hidden="true"
-              />
-              <span className="min-w-0 truncate">
-                {PARENT_SECTION_COPY[parentThreadSection.relationship].verb}{" "}
-                <NavLink
-                  to={parentThreadSection.href}
-                  className="text-foreground/90 underline underline-offset-2"
-                >
-                  {parentThreadSection.parentThreadTitle}
-                </NavLink>
-              </span>
-            </div>
+              icon={PARENT_SECTION_ICON[parentThreadSection.relationship]}
+              label={PARENT_SECTION_COPY[parentThreadSection.relationship].verb}
+              href={parentThreadSection.href}
+              threadTitle={parentThreadSection.parentThreadTitle}
+            />
           ) : null}
           {showParentThread && parentThreadSection && !isParentThreadOnly ? (
             <SectionToggleButton

@@ -6,6 +6,12 @@ import {
   getCollapsedChildActivity,
 } from "@bb/client-core";
 import { FollowUpPromptBox } from "@/components/promptbox/FollowUpPromptBox";
+import {
+  PromptStackCard,
+  PROMPT_STACK_CARD_ROW_HEIGHT,
+  PROMPT_STACK_INLAY_INSET_CLASS,
+} from "@/components/promptbox/banner/PromptStackCard";
+import { ThreadPromptRelationshipRow } from "@/components/promptbox/banner/ThreadPromptRelationshipRow";
 import { INERT_TYPEAHEAD_COMMAND_CONFIG } from "@/components/promptbox/PromptBoxInternal";
 import { ModelPickerStoryQueryProvider } from "../../../.ladle/model-picker-query-provider";
 import { Button } from "@bb/shared-ui/button";
@@ -68,9 +74,11 @@ const executionFixture = makeExecutionControlsProps();
 
 function WorkspaceComposer({
   threadId,
+  parentThread,
   onSubmit,
 }: {
   threadId: string;
+  parentThread: ThreadListEntry | null;
   onSubmit: (message: string) => void;
 }) {
   const [message, setMessage] = useState("");
@@ -92,7 +100,33 @@ function WorkspaceComposer({
           onAttachFiles: noop,
           onRemove: noop,
         }}
-        stack={null}
+        stack={
+          parentThread ? (
+            <PromptStackCard
+              ariaLabel="Thread context before sending"
+              className="overflow-hidden"
+              style={{ minHeight: PROMPT_STACK_CARD_ROW_HEIGHT }}
+            >
+              <div
+                className={cn(
+                  "flex items-center gap-0.5 text-xs text-muted-foreground",
+                  PROMPT_STACK_INLAY_INSET_CLASS,
+                )}
+              >
+                <ThreadPromptRelationshipRow
+                  icon="UserRound"
+                  label="Sub-thread of"
+                  threadTitle={threadTitle(parentThread)}
+                  title={`Sub-thread of ${threadTitle(parentThread)}`}
+                  href={getThreadRoutePath({
+                    projectId: parentThread.projectId,
+                    threadId: parentThread.id,
+                  })}
+                />
+              </div>
+            </PromptStackCard>
+          ) : null
+        }
         environmentSummary={null}
         contextWindowUsage={null}
         execution={execution}
@@ -469,6 +503,11 @@ function WorkspaceStory({
             <WorkspaceComposer
               key={selected.id}
               threadId={selected.id}
+              parentThread={
+                threads.find(
+                  (thread) => thread.id === selected.parentThreadId,
+                ) ?? null
+              }
               onSubmit={(message) =>
                 setMessages((current) => ({
                   ...current,
