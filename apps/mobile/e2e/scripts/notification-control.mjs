@@ -20,7 +20,11 @@ const proxy = createServer((request, response) => {
   const forward = () => {
     const upstream = proxyRequest(new URL(request.url, details.serverUrl), {
       method: request.method,
-      headers: { ...request.headers, host: new URL(details.serverUrl).host },
+      headers: {
+        ...request.headers,
+        host: new URL(details.serverUrl).host,
+        ...(request.headers.origin ? { origin: new URL(details.serverUrl).origin } : {}),
+      },
     }, (result) => {
       response.writeHead(result.statusCode, result.headers);
       result.pipe(response);
@@ -40,7 +44,8 @@ proxy.on("upgrade", (request, socket, head) => {
   const upstream = connect(Number(target.port), target.hostname, () => {
     upstream.write(`${request.method} ${request.url} HTTP/1.1\r\n`);
     for (const [key, value] of Object.entries(request.headers)) {
-      upstream.write(`${key}: ${key === "host" ? target.host : value}\r\n`);
+      const forwarded = key === "host" ? target.host : key === "origin" ? target.origin : value;
+      upstream.write(`${key}: ${forwarded}\r\n`);
     }
     upstream.write("\r\n");
     upstream.write(head);
