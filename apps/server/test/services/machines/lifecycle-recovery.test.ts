@@ -5,6 +5,8 @@ import {
   createEnvironment,
   environments,
   getEnvironment,
+  getAppSettings,
+  setAppSettings,
   getHost,
   hosts,
   listThreadIdsWithHostOfflineQueueWaits,
@@ -157,6 +159,10 @@ it.each(["active", "suspended"] as const)(
   "removes environments on a %s persistent machine without admitting new work",
   async (phase) =>
     withTestHarness(async (harness) => {
+      setAppSettings(harness.db, {
+        ...getAppSettings(harness.db),
+        machineGitCredentialsEnabled: false,
+      });
       const target = seedHostSession(harness.deps, { id: "review-removing" });
       registerTestHostRpcCapture(harness, {
         hostId: target.host.id,
