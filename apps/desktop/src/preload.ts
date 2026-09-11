@@ -86,6 +86,7 @@ import {
   BB_DESKTOP_WINDOW_STATE_CHANGED_CHANNEL,
 } from "./desktop-window-command-ipc.js";
 import { resolveBbDesktopPlatform } from "./desktop-platform.js";
+import { STARTUP_RETRY_CHANNEL } from "./local-view.js";
 
 function getDesktopVersion(version: string | undefined): string {
   if (version === undefined || version.length === 0) {
@@ -553,6 +554,16 @@ ipcRenderer.on(
     }
   },
 );
+
+if (typeof window !== "undefined" && typeof document !== "undefined") {
+  window.addEventListener("DOMContentLoaded", () => {
+    document
+      .querySelector('[data-testid="bb-startup-retry"]')
+      ?.addEventListener("click", () => {
+        ipcRenderer.send(STARTUP_RETRY_CHANNEL);
+      });
+  });
+}
 
 void invokeDesktopInfo(BB_DESKTOP_GET_INFO_CHANNEL);
 void invokeDesktopWindowState();

@@ -14,6 +14,7 @@ const SERVICE_TIER_STORAGE_KEY = "bb.promptbox.service-tier";
 const REASONING_STORAGE_KEY = "bb.promptbox.reasoning";
 const PERMISSION_MODE_STORAGE_KEY = "bb.promptbox.permission-mode";
 const ENVIRONMENT_STORAGE_KEY = "bb.promptbox.environment";
+const MACHINE_STORAGE_KEY = "bb.promptbox.machine";
 const PROVIDER_STORAGE_KEY = "bb.promptbox.provider";
 const PROVIDER_SELECTION_STORAGE_VERSION = "1";
 
@@ -214,6 +215,26 @@ const projectEnvironmentSelectionAtomFamily = atomFamily((projectId: string) =>
     { getOnInit: true },
   ),
 );
+
+const machineSelectionAtomFamily = atomFamily((projectId: string) =>
+  atomWithStorage<string>(
+    getProjectScopedStorageKey(MACHINE_STORAGE_KEY, projectId),
+    "",
+    stringSelectionStorage,
+    { getOnInit: true },
+  ),
+);
+
+export function usePromptBoxMachinePreference(
+  projectId: string,
+): PersistedStringSelectionField {
+  const [value, setAtomValue] = useAtom(machineSelectionAtomFamily(projectId));
+  const setValue = useCallback(
+    (nextValue: string) => setAtomValue(nextValue),
+    [setAtomValue],
+  );
+  return { value, setValue };
+}
 
 export function usePromptBoxProviderPreference(): PersistedStringSelectionField {
   const [value, setAtomValue] = useAtom(providerIdAtom);

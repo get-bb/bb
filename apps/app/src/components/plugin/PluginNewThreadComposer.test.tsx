@@ -99,6 +99,16 @@ const PROJECT = makeProjectWithThreadsResponse({
       createdAt: 0,
       updatedAt: 0,
     },
+    {
+      id: "src_remote",
+      projectId: "proj_1",
+      type: "local_path",
+      hostId: "host_2",
+      path: "/remote-repo",
+      isDefault: false,
+      createdAt: 0,
+      updatedAt: 0,
+    },
   ],
 });
 
@@ -143,7 +153,10 @@ vi.mock("@/hooks/queries/sidebar-navigation-query", () => ({
 
 vi.mock("@/hooks/queries/host-queries", () => ({
   useHosts: () => ({
-    data: [{ id: "host_1", name: "Machine" }],
+    data: [
+      { id: "host_1", name: "Machine" },
+      { id: "host_2", name: "Other machine" },
+    ],
   }),
   selectPersistentHosts: <T,>(hosts: T[] | undefined) => hosts ?? [],
   selectPrimaryHost: (
@@ -570,6 +583,101 @@ describe("PluginNewThreadComposer seeding", () => {
   afterEach(() => {
     cleanup();
     vi.restoreAllMocks();
+  });
+
+  function newThreadElement(projectId: string) {
+    return (
+      <Provider>
+        <MemoryRouter>
+          <NewThreadComposer
+            projectId={projectId}
+            onProjectChange={() => undefined}
+            draftStorage={{ kind: "new-thread" }}
+            selectionScope="new-thread"
+            onSubmit={() => undefined}
+          >
+            {(composer) => composer.renderPromptBox({})}
+          </NewThreadComposer>
+        </MemoryRouter>
+      </Provider>
+    );
+  }
+
+  it("restores the environment type and machine after reload and project switching", async () => {
+    const first = render(newThreadElement("proj_1"));
+    await act(async () => {
+      latestPromptBoxProps().modeConfig.environment.onSelectProvider(
+        MANAGED_WORKTREE_SUGAR_PROVIDER,
+        "host_2",
+      );
+    });
+    expect(latestPromptBoxProps().modeConfig.environment.value).toBe(
+      "provider:git-worktree",
+    );
+    expect(
+      latestPromptBoxProps().modeConfig.environment.selectedProviderHostId,
+    ).toBe("host_2");
+    first.rerender(newThreadElement("proj_2"));
+    expect(
+      latestPromptBoxProps().modeConfig.environment.selectedProviderHostId,
+    ).toBe("host_1");
+    first.rerender(newThreadElement("proj_1"));
+    expect(latestPromptBoxProps().modeConfig.environment.value).toBe(
+      "provider:git-worktree",
+    );
+    expect(
+      latestPromptBoxProps().modeConfig.environment.selectedProviderHostId,
+    ).toBe("host_2");
+    first.unmount();
+    render(newThreadElement("proj_1"));
+    await waitFor(() => {
+      expect(latestPromptBoxProps().modeConfig.environment.value).toBe(
+        "provider:git-worktree",
+      );
+      expect(
+        latestPromptBoxProps().modeConfig.environment.selectedProviderHostId,
+      ).toBe("host_2");
+    });
+  });
+
+  it.each(["host_deleted", "host_2"])(
+    "falls back when remembered machine %s cannot run the project",
+    async (hostId) => {
+      window.localStorage.setItem(
+        "bb.promptbox.environment-proj_2-1",
+        "provider:git-worktree",
+      );
+      window.localStorage.setItem("bb.promptbox.machine-proj_2-1", hostId);
+      render(newThreadElement("proj_2"));
+      await waitFor(() => {
+        expect(latestPromptBoxProps().modeConfig.environment.value).toBe(
+          "provider:git-worktree",
+        );
+        expect(
+          latestPromptBoxProps().modeConfig.environment.selectedProviderHostId,
+        ).toBe("host_1");
+      });
+      expect(window.localStorage.getItem("bb.promptbox.machine-proj_2-1")).toBe(
+        hostId,
+      );
+    },
+  );
+
+  it("keeps a plugin composer's machine separate from the new-thread preference", async () => {
+    window.localStorage.setItem("bb.promptbox.machine-proj_1-1", "host_2");
+    renderComposer(STORED_REQUEST, () => undefined, "local-machine");
+    expect(
+      latestPromptBoxProps().modeConfig.environment.selectedProviderHostId,
+    ).toBe("host_1");
+    await act(async () => {
+      latestPromptBoxProps().modeConfig.environment.onSelectProvider(
+        CHECKOUT_PROVIDER,
+        "host_1",
+      );
+    });
+    expect(window.localStorage.getItem("bb.promptbox.machine-proj_1-1")).toBe(
+      "host_2",
+    );
   });
 
   it("round-trips a stored request submitted untouched", async () => {

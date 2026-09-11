@@ -915,11 +915,13 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
         bullets: [
           "Embed the thread view and the new-thread prompt box as components",
           "Render message text with the same Markdown renderer bb uses",
+          "Resolve document links and images beside a workspace or thread-storage file with Markdown.experimental_document",
           "Inherit bb's styling, so embedded UI matches the rest of the app",
         ],
         apiSymbols: [
           "ThreadChat",
           "Markdown",
+          "MarkdownProps.experimental_document",
           "experimental_NewThreadComposer",
         ],
         firstParty: ["Side chat"],

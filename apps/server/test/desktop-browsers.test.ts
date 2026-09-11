@@ -882,6 +882,28 @@ describe("desktop browser public API", () => {
       expect(test.stored()).toEqual([]);
     });
   });
+  it("drops snapshots for synthetic, missing, or deleted threads without closing the daemon session", async () => {
+    await withBrowserTest(async (test, harness) => {
+      const deleted = seedThread(harness.deps, {
+        projectId: test.project.id,
+        environmentId: test.environment.id,
+      });
+      markThreadDeleted(harness.db, harness.hub, { threadId: deleted.id });
+      for (const threadId of [
+        "plugin-panel:cloud-sandbox:cloud-machines:pane-1",
+        "thr_missing",
+        deleted.id,
+      ]) {
+        const socket = test.change({ threadId }, [{ ...test.tab(), threadId }]);
+        expect(socket.close, threadId).not.toHaveBeenCalled();
+        expect(test.stored(threadId), threadId).toEqual([]);
+      }
+      expect(test.change({}, [test.tab()]).close).not.toHaveBeenCalled();
+      expect(test.stored()).toEqual([
+        expect.objectContaining({ id: test.tab().tabId }),
+      ]);
+    });
+  });
   it("revokes native control when acquisition completes after its deadline", async () => {
     await withBrowserTest(async (test) => {
       const gate = deferred<HostRpcHandlerResult>();
