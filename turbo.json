@@ -532,6 +532,26 @@
         "$TURBO_ROOT$/vitest.shared.ts"
       ]
     },
+    "@bb/provider-parity#test": {
+      "dependsOn": ["//#ensure-native-modules", "topo"],
+      "inputs": [
+        "$TURBO_DEFAULT$",
+        "$TURBO_ROOT$/plugins/provider-acp/package.json",
+        "$TURBO_ROOT$/plugins/provider-acp/src/**",
+        "$TURBO_ROOT$/plugins/provider-acp/tsconfig.json",
+        "$TURBO_ROOT$/plugins/provider-claude-code/package.json",
+        "$TURBO_ROOT$/plugins/provider-claude-code/src/**",
+        "$TURBO_ROOT$/plugins/provider-claude-code/tsconfig.json",
+        "$TURBO_ROOT$/plugins/provider-codex/package.json",
+        "$TURBO_ROOT$/plugins/provider-codex/src/**",
+        "$TURBO_ROOT$/plugins/provider-codex/tsconfig.json",
+        "$TURBO_ROOT$/plugins/provider-pi/package.json",
+        "$TURBO_ROOT$/plugins/provider-pi/src/**",
+        "$TURBO_ROOT$/plugins/provider-pi/tsconfig.json",
+        "$TURBO_ROOT$/vitest.shared.ts"
+      ],
+      "passThroughEnv": ["UPDATE_PARITY_ROW_COUNTS"]
+    },
     "test": {
       "dependsOn": ["//#ensure-native-modules", "topo"],
       "inputs": ["$TURBO_DEFAULT$", "$TURBO_ROOT$/vitest.shared.ts"],
