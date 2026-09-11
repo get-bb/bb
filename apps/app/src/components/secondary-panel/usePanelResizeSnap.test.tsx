@@ -44,6 +44,29 @@ function SnapHarness({ onResize }: { onResize: (fraction: number) => void }) {
 afterEach(() => cleanup());
 
 describe("usePanelResizeSnap", () => {
+  it("preserves a newer layout when the pointer is released without a preview", () => {
+    const onResize = vi.fn();
+    render(<SnapHarness onResize={onResize} />);
+    const previous = screen.getByTestId("previous");
+    const divider = screen.getByTestId("divider");
+    const next = screen.getByTestId("next");
+    screen.getByTestId("grid").getBoundingClientRect = () => rect(100, 800);
+    previous.getBoundingClientRect = () => rect(100, 400);
+    divider.getBoundingClientRect = () => rect(500, 1);
+    next.getBoundingClientRect = () => rect(501, 399);
+    previous.style.flex = "50 1 0px";
+    next.style.flex = "50 1 0px";
+
+    fireEvent.pointerDown(divider, { clientX: 500, pointerId: 46 });
+    previous.style.flex = "60 1 0px";
+    next.style.flex = "40 1 0px";
+    fireEvent.pointerUp(window, { clientX: 500, pointerId: 46 });
+
+    expect(onResize).not.toHaveBeenCalled();
+    expect(previous.style.flex).toBe("60 1 0px");
+    expect(next.style.flex).toBe("40 1 0px");
+  });
+
   it("restores the committed layout before a resize that clamps to the existing limit", () => {
     const onResize = vi.fn();
     render(<SnapHarness onResize={onResize} />);
