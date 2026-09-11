@@ -521,9 +521,17 @@ describe("PluginNavSidebarItems", () => {
     );
   });
 
-  it.each([false, true])(
-    "replaces the active plugin with New thread before disabling (compact=%s)",
-    async (compactViewport) => {
+  it.each([
+    { compactViewport: false, pluginId: "docs", title: "Docs" },
+    { compactViewport: true, pluginId: "docs", title: "Docs" },
+    {
+      compactViewport: false,
+      pluginId: AUTOMATIONS_PLUGIN_ID,
+      title: "Automations",
+    },
+  ])(
+    "replaces $title with New thread before disabling (compact=$compactViewport)",
+    async ({ compactViewport, pluginId, title }) => {
       let completeDisable: (response: Response) => void = () => {};
       const fetchMock = vi.fn<typeof fetch>(
         () =>
@@ -532,17 +540,17 @@ describe("PluginNavSidebarItems", () => {
           }),
       );
       vi.stubGlobal("fetch", fetchMock);
-      registerPanel("docs", "Docs");
+      registerPanel(pluginId, title);
       const { store } = renderSidebarItems({
         compactViewport,
-        initialEntries: ["/skills", "/plugins/docs/main"],
+        initialEntries: ["/skills", `/plugins/${pluginId}/main`],
         initialLayout: {
           root: {
             type: "pane",
             paneId: "docs",
             content: {
               kind: "plugin-panel",
-              pluginId: "docs",
+              pluginId,
               panelPath: "main",
               subPath: "",
             },
@@ -552,12 +560,15 @@ describe("PluginNavSidebarItems", () => {
       });
 
       fireEvent.pointerDown(
-        screen.getByRole("button", { name: "Docs panel options" }),
+        screen.getByRole("button", { name: `${title} panel options` }),
         { button: 0 },
       );
       fireEvent.click(await screen.findByRole("menuitem", { name: "Disable" }));
 
       await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+      expect(String(fetchMock.mock.calls[0]?.[0])).toContain(
+        `/plugins/${pluginId}/disable`,
+      );
       await waitFor(() =>
         expect(screen.getByTestId("location-path").textContent).toBe("/"),
       );
@@ -567,13 +578,16 @@ describe("PluginNavSidebarItems", () => {
       expect(appToast.success).not.toHaveBeenCalled();
       await act(async () => {
         completeDisable(
-          new Response(JSON.stringify(disabledPluginMutationResponse("docs")), {
-            status: 200,
-            headers: { "content-type": "application/json" },
-          }),
+          new Response(
+            JSON.stringify(disabledPluginMutationResponse(pluginId)),
+            {
+              status: 200,
+              headers: { "content-type": "application/json" },
+            },
+          ),
         );
       });
-      expect(appToast.success).toHaveBeenCalledWith("Docs disabled");
+      expect(appToast.success).toHaveBeenCalledWith(`${title} disabled`);
       fireEvent.click(screen.getByRole("button", { name: "History back" }));
       await waitFor(() =>
         expect(screen.getByTestId("location-path").textContent).toBe("/skills"),
