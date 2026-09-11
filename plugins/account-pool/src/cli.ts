@@ -146,6 +146,7 @@ function formatAccounts(accounts: readonly AccountSummary[]): string {
     [
       "ID",
       "Label",
+      "Email",
       "Provider",
       "Kind",
       "Enabled",
@@ -162,6 +163,7 @@ function formatAccounts(accounts: readonly AccountSummary[]): string {
       [
         account.id,
         account.label,
+        account.email ?? "-",
         account.provider,
         account.kind,
         String(account.enabled),
