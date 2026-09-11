@@ -194,13 +194,7 @@ function formatUsdCents(cents: number, alwaysShowCents: boolean): string {
   }).format(cents / 100);
 }
 
-function UsageWindow({
-  window,
-  compact,
-}: {
-  window: UsageWindowValue;
-  compact: boolean;
-}) {
+function UsageWindow({ window }: { window: UsageWindowValue }) {
   const [showReset, setShowReset] = useState(false);
   const reset = formatReset(window.resetsAt);
   const countdown = formatResetCountdown(window.resetsAt);
@@ -210,83 +204,54 @@ function UsageWindow({
       : formatUsdCents(window.cost.usedUsdCents, true) +
         " / " +
         formatUsdCents(window.cost.limitUsdCents, false);
-  if (compact) {
-    const label = window.label
-      .replace(/^Five-hour limit$|^5 hours$/u, "5h")
-      .replace(/^Weekly limit$|^Weekly/u, "7d")
-      .replace(/^Daily limit$/u, "1d");
-    return (
-      <button
-        type="button"
-        className="block w-full rounded-sm py-0.5 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sidebar-ring"
-        title={`${window.label} · ${reset ?? "Reset time not reported"}`}
-        aria-label={`${window.label}: ${value}. ${reset ?? "Reset time not reported"}`}
-        aria-expanded={showReset}
-        onClick={() => setShowReset((shown) => !shown)}
-      >
-        <span className="flex items-center gap-2 text-2xs">
-          <span className="w-16 shrink-0 truncate text-subtle-foreground">
-            {label}
-          </span>
-          <span className="h-1 min-w-0 flex-1 overflow-hidden rounded-full bg-sidebar-border">
-            <span
-              className={
-                "block h-full rounded-full " + barColorClass(window.usedPercent)
-              }
-              style={{
-                width: Math.max(2, Math.min(100, window.usedPercent)) + "%",
-              }}
-            />
-          </span>
-          <span className="w-9 shrink-0 text-right tabular-nums text-sidebar-foreground">
-            {Math.round(window.usedPercent)}%
-          </span>
-          <span
-            aria-hidden="true"
-            className="w-14 shrink-0 text-right tabular-nums text-subtle-foreground"
-          >
-            {countdown ?? "—"}
-          </span>
-        </span>
-        {showReset ? (
-          <span className="mt-1 block text-2xs text-subtle-foreground">
-            {reset ?? "Reset time not reported."}
-            {window.cost === null ? "" : ` · ${value}`}
-          </span>
-        ) : null}
-      </button>
-    );
-  }
+  const label = window.label
+    .replace(/^Five-hour limit$|^5 hours$/u, "5h")
+    .replace(/^Weekly limit$|^Weekly/u, "7d")
+    .replace(/^Daily limit$/u, "1d");
   return (
-    <div className="space-y-1.5">
-      <div className="flex items-baseline justify-between gap-2 text-xs">
-        <span className="truncate text-sidebar-foreground">{window.label}</span>
-        <span className="shrink-0 tabular-nums text-muted-foreground">
-          {value}
+    <button
+      type="button"
+      className="col-span-full grid grid-cols-subgrid rounded-sm py-0.5 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sidebar-ring"
+      title={`${window.label} · ${reset ?? "Reset time not reported"}`}
+      aria-label={`${window.label}: ${value}. ${reset ?? "Reset time not reported"}`}
+      aria-expanded={showReset}
+      onClick={() => setShowReset((shown) => !shown)}
+    >
+      <span className="col-span-full grid grid-cols-subgrid items-center text-2xs">
+        <span className="max-w-20 truncate text-subtle-foreground">
+          {label}
         </span>
-      </div>
-      <div className="h-1.5 overflow-hidden rounded-full bg-sidebar-border">
-        <div
-          className={"h-full rounded-full " + barColorClass(window.usedPercent)}
-          style={{
-            width: Math.max(2, Math.min(100, window.usedPercent)) + "%",
-          }}
-        />
-      </div>
-      {reset === null ? null : (
-        <p className="text-xs tabular-nums text-muted-foreground">{reset}</p>
-      )}
-    </div>
+        <span className="h-1 min-w-0 overflow-hidden rounded-full bg-sidebar-border">
+          <span
+            className={
+              "block h-full rounded-full " + barColorClass(window.usedPercent)
+            }
+            style={{
+              width: Math.max(2, Math.min(100, window.usedPercent)) + "%",
+            }}
+          />
+        </span>
+        <span className="text-right tabular-nums text-sidebar-foreground">
+          {Math.round(window.usedPercent)}%
+        </span>
+        <span
+          aria-hidden="true"
+          className="text-right tabular-nums text-subtle-foreground"
+        >
+          {countdown ?? "—"}
+        </span>
+      </span>
+      {showReset ? (
+        <span className="col-span-full mt-1 text-2xs text-subtle-foreground">
+          {reset ?? "Reset time not reported."}
+          {window.cost === null ? "" : ` · ${value}`}
+        </span>
+      ) : null}
+    </button>
   );
 }
 
-function ProviderUsageBody({
-  provider,
-  compact,
-}: {
-  provider: UsageProvider;
-  compact: boolean;
-}) {
+function ProviderUsageBody({ provider }: { provider: UsageProvider }) {
   const usage = provider.usage;
   if (usage === null) {
     return <p className="text-xs text-muted-foreground">Usage not reported.</p>;
@@ -298,9 +263,9 @@ function ProviderUsageBody({
           No usage limits reported for this plan.
         </p>
       ) : (
-        <div className={compact ? "space-y-0.5" : "space-y-3"}>
+        <div className="grid grid-cols-[max-content_minmax(0,1fr)_max-content_max-content] gap-x-2 gap-y-0.5">
           {usage.windows.map((window) => (
-            <UsageWindow key={window.label} window={window} compact={compact} />
+            <UsageWindow key={window.label} window={window} />
           ))}
         </div>
       );
@@ -447,7 +412,6 @@ function ProviderUsageStatus({
     requestedMachineId,
     threadMachineId,
   );
-  const compactAccounts = activeMachine?.id.startsWith("source:") === true;
   const providers = useMemo(() => {
     const groups = new Map<
       string,
@@ -665,10 +629,7 @@ function ProviderUsageStatus({
                 <section
                   key={account.id}
                   aria-label={account.accountLabel ?? account.displayName}
-                  className={cn(
-                    compactAccounts ? "py-2" : "py-3",
-                    "first:pt-0 last:pb-0",
-                  )}
+                  className="py-2 first:pt-0 last:pb-0"
                 >
                   <div className="flex min-w-0 items-start gap-2">
                     <div className="min-w-0 flex-1">
@@ -696,17 +657,14 @@ function ProviderUsageStatus({
                       </span>
                     ) : null}
                   </div>
-                  <div className={compactAccounts ? "mt-1" : "mt-2.5"}>
+                  <div className="mt-1">
                     {activeMachine.status === "disconnected" ? (
                       <p className="text-xs text-muted-foreground">
                         {activeMachine.displayName} is offline. Usage will
                         refresh when it reconnects.
                       </p>
                     ) : activeMachine.error === null ? (
-                      <ProviderUsageBody
-                        provider={account}
-                        compact={compactAccounts}
-                      />
+                      <ProviderUsageBody provider={account} />
                     ) : (
                       <p className="text-xs text-muted-foreground">
                         {activeMachine.error}
