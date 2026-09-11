@@ -762,8 +762,8 @@ export function AppLayout({ children }: AppLayoutProps) {
               reserveMacosTrafficLights={reserveMacosTrafficLights}
               usesDesktopChrome={usesDesktopChrome}
             />
+            <PluginAppOverlays />
           </SidebarStateBridge>
-          <PluginAppOverlays />
           <IframeDragGuardOverlay
             active={isSidebarResizing}
             cursor="col-resize"

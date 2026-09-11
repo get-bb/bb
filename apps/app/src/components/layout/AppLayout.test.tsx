@@ -10,6 +10,18 @@ import {
 } from "@testing-library/react";
 import { defaultAppSettings } from "@bb/domain";
 import { Popover, PopoverContent, PopoverTrigger } from "@bb/shared-ui/popover";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@bb/shared-ui/tooltip";
+import { createPortal } from "react-dom";
+import {
+  resetPluginSlotStoreForTest,
+  setPluginSlotRegistrations,
+} from "@/lib/plugin-slots";
+import { resetAllCrashedPluginSlotsForTest } from "@/components/plugin/PluginSlotMount";
+import { makePluginRegistrationSet } from "@/test/fixtures/plugins";
 import type { MouseEvent as ReactMouseEvent, ReactNode } from "react";
 import { Link, MemoryRouter, useLocation } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -200,6 +212,8 @@ beforeEach(() => {
 
 afterEach(() => {
   cleanup();
+  resetPluginSlotStoreForTest();
+  resetAllCrashedPluginSlotsForTest();
   setCompactSecondaryPanelPresentation("closed");
   vi.restoreAllMocks();
   window.localStorage.clear();
@@ -453,4 +467,42 @@ describe("AppLayout sidebar resize drag", () => {
       document.querySelector('[data-testid="iframe-drag-guard-overlay"]'),
     ).toBeNull();
   });
+});
+
+describe("AppLayout plugin overlay contexts", () => {
+  it.each([false, true])(
+    "provides host tooltips to an overlay (portal: %s)",
+    async (portaled) => {
+      const errors = vi.spyOn(console, "error").mockImplementation(() => {});
+      const warnings = vi.spyOn(console, "warn").mockImplementation(() => {});
+      function Overlay() {
+        const content = (
+          <Tooltip open>
+            <TooltipTrigger>Overlay action</TooltipTrigger>
+            <TooltipContent>Overlay tooltip</TooltipContent>
+          </Tooltip>
+        );
+        return portaled ? createPortal(content, document.body) : content;
+      }
+      setPluginSlotRegistrations(
+        "tooltip-overlay",
+        makePluginRegistrationSet({
+          appOverlays: [{ id: "tooltip", component: Overlay }],
+        }),
+      );
+
+      renderLayout();
+
+      expect(errors).not.toHaveBeenCalled();
+      expect(screen.getByRole("button", { name: "Overlay action" })).toBeDefined();
+      expect((await screen.findByRole("tooltip")).textContent).toBe(
+        "Overlay tooltip",
+      );
+      fireEvent.click(screen.getByRole("link", { name: SETTINGS_ROUTE }));
+      expect(screen.getByRole("button", { name: "Overlay action" })).toBeDefined();
+      expect(screen.getByRole("tooltip").textContent).toBe("Overlay tooltip");
+      expect(errors).not.toHaveBeenCalled();
+      expect(warnings).not.toHaveBeenCalled();
+    },
+  );
 });
