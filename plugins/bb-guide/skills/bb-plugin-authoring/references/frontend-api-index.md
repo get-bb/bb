@@ -6,6 +6,9 @@ Read the installed SDK declarations for the exact current signatures.
 
 ## Runtime values
 
+- `experimental_Icon`
+- `experimental_ProviderIcon`
+
 - `definePluginApp`
 - `ThreadChat`
 - `Markdown`
@@ -40,6 +43,11 @@ Read the installed SDK declarations for the exact current signatures.
 - `experimental_useCodeTheme`
 
 ## Type exports
+
+- `ExperimentalAppIcons`
+- `ExperimentalIconRegistration`
+- `ExperimentalIconProps`
+- `ExperimentalProviderIconProps`
 
 - `PluginHomepageSectionProps`
 - `PluginSettingsSectionProps`
