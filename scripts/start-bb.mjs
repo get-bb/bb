@@ -8,13 +8,7 @@ import {
   supportsProcessGroups,
 } from "../packages/process-utils/src/index.ts";
 
-import {
-  clearPreparedRuntime,
-  clearRuntimeOutputs,
-  runtimeSourceFingerprint,
-  sealPreparedRuntime,
-  validatePreparedRuntime,
-} from "./prepared-runtime.mjs";
+import { cleanRuntimeOutputs } from "./clean-runtime-outputs.mjs";
 
 const scriptDir = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(scriptDir, "..");
@@ -137,15 +131,8 @@ export function parseStartBbArgs(args) {
 
 export async function prepareRuntime() {
   await runNativeModulePreflight();
-  try {
-    await validatePreparedRuntime(repoRoot);
-    return;
-  } catch {}
-  await clearPreparedRuntime(repoRoot);
-  await clearRuntimeOutputs(repoRoot);
-  const sourceFingerprint = runtimeSourceFingerprint(repoRoot);
+  await cleanRuntimeOutputs(repoRoot);
   await buildRuntimeArtifacts();
-  await sealPreparedRuntime(repoRoot, sourceFingerprint);
 }
 
 export async function main(args = process.argv.slice(2)) {

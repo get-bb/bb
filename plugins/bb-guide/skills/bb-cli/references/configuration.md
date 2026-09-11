@@ -93,9 +93,9 @@ available through their own sources.
 
 In the BB repository, `pnpm prepare:start` optionally prepares ahead of
 `pnpm start`; use `pnpm prepare:start --worktree` ahead of `pnpm start:worktree`
-to match its development dotenv configuration. Both start commands reuse valid
-prepared artifacts without Turbo and automatically prepare stale or missing
-artifacts. Native modules are checked and repaired when necessary. Worktree
+to match its development dotenv configuration. Both start commands always run
+Turbo preparation, restoring cached artifacts and rebuilding tasks whose inputs
+changed. Native modules are checked and repaired when necessary. Worktree
 startup retains checkout-specific data/ports and runtime policy. Install
 dependencies before preparation when needed.
 Preparation writes the checkout's build outputs; use a separate staging checkout

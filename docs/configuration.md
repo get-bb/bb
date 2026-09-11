@@ -1185,8 +1185,8 @@ or `env.json`.
 `pnpm prepare:start` optionally prepares artifacts ahead of `pnpm start`, using
 the same production dotenv cascade. Add `--worktree` to use the development
 dotenv cascade ahead of `pnpm start:worktree`. Neither preparation variant starts
-services or touches instance data/ports. Both start commands reuse valid prepared
-artifacts and automatically prepare missing or stale artifacts. Native modules
+services or touches instance data/ports. Both start commands always run Turbo
+preparation, restoring cached artifacts and rebuilding tasks whose inputs changed. Native modules
 are always validated and repaired when necessary. See
 [Prepared Worktree Restarts](debugging-and-qa.md#prepared-worktree-restarts)
 for installation, invalidation, and maintenance sequencing.

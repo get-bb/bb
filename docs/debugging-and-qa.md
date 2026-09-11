@@ -335,46 +335,39 @@ survives closing the GUI.
 
 ## Prepared Worktree Restarts
 
-`pnpm start` and `pnpm start:worktree` automatically prepare missing or stale
-artifacts before launching. When the preparation receipt is valid, they skip
-Turbo and reuse the existing artifacts. Native modules are still checked and
-repaired when necessary. Worktree startup retains stable checkout-specific data,
-ports, telemetry, and runtime policy.
+`pnpm start` and `pnpm start:worktree` always run Turbo-backed preparation before
+launching. Turbo decides which tasks need rebuilding and restores unchanged
+artifacts from cache. Native modules are checked and repaired when necessary.
+Worktree startup retains stable checkout-specific data, ports, telemetry, and
+runtime policy.
 
-Optionally run `pnpm prepare:start` ahead of time to prepare without starting
-services. It uses the production dotenv cascade to match `pnpm start`.
+Optionally run `pnpm prepare:start` ahead of time to warm the build cache without
+starting services. It uses the production dotenv cascade to match `pnpm start`.
 Use `pnpm prepare:start --worktree` to match `pnpm start:worktree`'s development
 dotenv cascade; both build production artifacts. Install dependencies with
-`pnpm install --frozen-lockfile` beforehand when needed. Preparation repairs/checks
-native modules, runs Turbo builds including `@bb/bundled-plugins#build` when
-needed, and writes a local preparation receipt after successful builds.
-There is no separate launch mode: use the same normal start command afterward.
+`pnpm install --frozen-lockfile` beforehand when needed. There is no separate
+launch mode: use the same normal start command afterward.
 
-The receipt checks content and file modes for runtime output trees, all tracked
-and non-ignored source files, root and app dotenv files, pnpm installation metadata,
-Node version/platform/architecture, checkout path, and build environment
-(`NODE_ENV` and `VITE_*`). Missing, edited, added, or removed artifacts and
-changed sources trigger automatic preparation at startup; even an unrelated
-tracked documentation edit requires preparation again. The receipt is local to this checkout and is not
-an install stamp or a portable deployment artifact. Do not edit the checkout,
-install dependencies, or prepare concurrently with another preparation or launch.
-Preparation verifies that sources did not change while it ran. If the previous
-receipt is absent or invalid, preparation removes its runtime output trees before
-Turbo restores/rebuilds them, preventing obsolete files from surviving a cache
-restore. Do not run it against build files still served by a live instance.
+Preparation clears the generated runtime directories and per-plugin
+`.bundled-runtime` outputs before Turbo restores or rebuilds them. Turbo restores
+missing files but does not remove unexpected files from cached output directories;
+cleaning first prevents obsolete artifacts from surviving a cache restore.
+Plugin development `dist` directories, source files, toolchain installations,
+and instance data are preserved. There is no custom preparation receipt or
+whole-checkout hashing pass. Do not prepare concurrently with another preparation
+or against build files still served by a live instance.
 
 Preparation writes build outputs in the checkout. If the previous process serves
 those same paths, preparation can change files it reads: this is not an atomic
 release switch. Use a separate staging checkout to warm the shared Turbo cache
 while the old instance runs, then stop the verified instance, update/install and
 prepare its stable checkout, and launch. For an already stopped, fully prepared
-checkout, normal startup reuses its artifacts without invoking Turbo. Moving the serving checkout
-changes the default instance data and ports; do not move it as a restart shortcut.
+checkout, normal startup restores its artifacts through Turbo cache hits. Moving
+the serving checkout changes the default instance data and ports; do not move it as a restart shortcut.
 
-The repo-level programmatic entry points are `prepareRuntime()` in
-`scripts/start-bb.mjs` and `validatePreparedRuntime(repoRoot)` in
-`scripts/prepared-runtime.mjs`. These are source-maintenance helpers, not new
-installed `bb` commands or public plugin SDK APIs. The source launcher also accepts
+The repo-level programmatic entry point is `prepareRuntime()` in
+`scripts/start-bb.mjs`. This is a source-maintenance helper, not a new
+installed `bb` command or public plugin SDK API. The source launcher also accepts
 `prepare` (no runtime arguments) for the preparation helper.
 `pnpm start` keeps its existing production dotenv and packaged runtime policy.
 
