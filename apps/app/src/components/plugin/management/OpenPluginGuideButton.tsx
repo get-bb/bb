@@ -5,7 +5,7 @@ import { cn } from "@bb/shared-ui/lib/utils";
 export function OpenPluginGuideButton({
   variant = "ghost",
 }: {
-  variant?: "ghost" | "outline";
+  variant?: "ghost" | "secondary";
 }) {
   return (
     <a
