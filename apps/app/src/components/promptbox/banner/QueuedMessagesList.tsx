@@ -999,7 +999,7 @@ const QueuedMessageRow = memo(function QueuedMessageRow({
                       size="icon"
                       variant="ghost"
                       className={cn(
-                        "shrink-0 text-muted-foreground hover:text-destructive",
+                        "shrink-0 text-muted-foreground hover:text-destructive max-md:text-destructive",
                         compact ? "size-7" : "size-8",
                       )}
                       disabled={actionDisabled}
