@@ -55,6 +55,7 @@ export const NEST_BAND_FRACTION = 0.6;
 export const NEST_BAND_ARMED_FRACTION = 0.8;
 export const PINNED_NEST_BAND_FRACTION = 0.4;
 export const PINNED_NEST_BAND_ARMED_FRACTION = 0.5;
+export const NEST_HOVER_DELAY_MS = 700;
 
 export interface SectionThreadNestTarget {
   threadId: string;
@@ -157,6 +158,11 @@ interface ResolveThreadRowNestCollisionsArgs {
   pointerCoordinates: { x: number; y: number } | null;
   getBandFraction: (threadId: string) => number | null;
   onRowPointer?: (info: ThreadRowPointerInfo) => void;
+  holdNestCandidate?: (threadId: string | null) => boolean;
+}
+
+interface NestHoverCandidate {
+  threadId: string;
 }
 
 type RowDropState = SectionThreadNestTarget;
@@ -293,6 +299,7 @@ export function resolveThreadRowNestCollisions({
   pointerCoordinates,
   getBandFraction,
   onRowPointer,
+  holdNestCandidate = (threadId) => threadId !== null,
 }: ResolveThreadRowNestCollisionsArgs): Collision[] {
   let rowCollision: Collision | null = null;
   let rowThreadId: string | null = null;
@@ -309,24 +316,49 @@ export function resolveThreadRowNestCollisions({
       rowThreadId = threadId;
     }
   }
-  if (rowCollision === null || rowThreadId === null || !pointerCoordinates) {
-    return otherCollisions;
+  const rowPointer =
+    rowCollision === null || rowThreadId === null
+      ? null
+      : locateThreadRowPointer(
+          rowThreadId,
+          droppableRects.get(rowCollision.id),
+          pointerCoordinates,
+          getBandFraction,
+        );
+  const candidateThreadId = rowPointer?.inNestBand ? rowPointer.threadId : null;
+  const nesting =
+    holdNestCandidate(candidateThreadId) && candidateThreadId !== null;
+  if (rowPointer) {
+    onRowPointer?.({
+      threadId: rowPointer.threadId,
+      relativeY: rowPointer.relativeY,
+      nesting,
+    });
   }
-  const rect = droppableRects.get(rowCollision.id);
-  if (!rect || rect.height <= 0) return otherCollisions;
+  return nesting && rowCollision !== null
+    ? [rowCollision, ...otherCollisions]
+    : otherCollisions;
+}
+
+function locateThreadRowPointer(
+  threadId: string,
+  rect: ClientRect | undefined,
+  pointerCoordinates: { x: number; y: number } | null,
+  getBandFraction: (threadId: string) => number | null,
+): { threadId: string; relativeY: number; inNestBand: boolean } | null {
+  if (!rect || rect.height <= 0 || !pointerCoordinates) return null;
   const { x, y } = pointerCoordinates;
   const withinRect =
     x >= rect.left &&
     x <= rect.left + rect.width &&
     y >= rect.top &&
     y <= rect.top + rect.height;
-  if (!withinRect) return otherCollisions;
+  if (!withinRect) return null;
   const relativeY = (y - rect.top) / rect.height;
-  const bandFraction = getBandFraction(rowThreadId);
-  const nesting =
+  const bandFraction = getBandFraction(threadId);
+  const inNestBand =
     bandFraction !== null && Math.abs(relativeY - 0.5) <= bandFraction / 2;
-  onRowPointer?.({ threadId: rowThreadId, relativeY, nesting });
-  return nesting ? [rowCollision, ...otherCollisions] : otherCollisions;
+  return { threadId, relativeY, inNestBand };
 }
 
 export function buildPinInsertRequest(
@@ -688,6 +720,37 @@ export function useSectionThreadDnd({
   const armedNestThreadIdRef = useRef<string | null>(null);
   const coarsePointerRef = useRef(false);
   const pinnedInsertRef = useRef<SectionThreadReorderTarget | null>(null);
+  const nestCandidateRef = useRef<NestHoverCandidate | null>(null);
+  const nestCandidateTimerRef = useRef<ReturnType<typeof setTimeout> | null>(
+    null,
+  );
+  const [readyNestCandidate, setReadyNestCandidate] =
+    useState<NestHoverCandidate | null>(null);
+  const clearNestCandidate = useCallback(() => {
+    if (nestCandidateTimerRef.current !== null) {
+      clearTimeout(nestCandidateTimerRef.current);
+    }
+    nestCandidateTimerRef.current = null;
+    nestCandidateRef.current = null;
+  }, []);
+  const holdNestCandidate = useCallback(
+    (threadId: string | null): boolean => {
+      const current = nestCandidateRef.current;
+      if (current !== null && current.threadId === threadId) {
+        return current === readyNestCandidate;
+      }
+      clearNestCandidate();
+      if (threadId === null) return false;
+      const candidate: NestHoverCandidate = { threadId };
+      nestCandidateRef.current = candidate;
+      nestCandidateTimerRef.current = setTimeout(() => {
+        nestCandidateTimerRef.current = null;
+        setReadyNestCandidate(candidate);
+      }, NEST_HOVER_DELAY_MS);
+      return false;
+    },
+    [clearNestCandidate, readyNestCandidate],
+  );
   const isPinnedItem = useCallback(
     (itemId: string) =>
       lookup.parentKeyByItemId.get(itemId) === PINNED_THREAD_PARENT_KEY,
@@ -752,13 +815,19 @@ export function useSectionThreadDnd({
         pointerCoordinates: args.pointerCoordinates,
         getBandFraction: getNestBandFraction,
         onRowPointer: handleRowPointer,
+        holdNestCandidate,
       });
       const nestedCollisions = collisions.filter(({ id }) =>
         typeof id === "string" ? !topLevelSectionIds.has(id) : true,
       );
       return nestedCollisions.length > 0 ? nestedCollisions : collisions;
     },
-    [getNestBandFraction, handleRowPointer, topLevelSectionIds],
+    [
+      getNestBandFraction,
+      handleRowPointer,
+      holdNestCandidate,
+      topLevelSectionIds,
+    ],
   );
   const updateThread = useUpdateThread();
   const pinThread = usePinThread();
@@ -826,10 +895,12 @@ export function useSectionThreadDnd({
     setDragOverParentKey(null);
     setRowDrop(null);
     setReorderTarget(null);
+    setReadyNestCandidate(null);
+    clearNestCandidate();
     armedNestThreadIdRef.current = null;
     activeIdRef.current = null;
     pinnedInsertRef.current = null;
-  }, []);
+  }, [clearNestCandidate]);
   const clearProjectedDrag = useCallback(() => {
     clearDropSettle();
     clearDropState();
@@ -839,9 +910,15 @@ export function useSectionThreadDnd({
     () => () => {
       clearDropDwell();
       clearDropSettle();
+      clearNestCandidate();
       stopProjectionInputTracking();
     },
-    [clearDropDwell, clearDropSettle, stopProjectionInputTracking],
+    [
+      clearDropDwell,
+      clearDropSettle,
+      clearNestCandidate,
+      stopProjectionInputTracking,
+    ],
   );
 
   const handleDragStart = useCallback(
@@ -860,13 +937,21 @@ export function useSectionThreadDnd({
       );
       clearDropSettle();
       clearDropDwell();
+      clearNestCandidate();
       startProjectionInputTracking();
       setActiveThread(thread);
       setDragOverParentKey(null);
       setRowDrop(null);
       setReorderTarget(null);
+      setReadyNestCandidate(null);
     },
-    [clearDropDwell, clearDropSettle, lookup, startProjectionInputTracking],
+    [
+      clearDropDwell,
+      clearDropSettle,
+      clearNestCandidate,
+      lookup,
+      startProjectionInputTracking,
+    ],
   );
 
   const projectedNestParentId =
@@ -984,6 +1069,7 @@ export function useSectionThreadDnd({
     (event: DragEndEvent) => {
       draggingThreadRef.current = false;
       clearDropDwell();
+      clearNestCandidate();
       stopProjectionInputTracking();
       if (!enabled) {
         clearProjectedDrag();
@@ -1088,6 +1174,7 @@ export function useSectionThreadDnd({
       clearDropDwell,
       clearDropSettle,
       clearDropState,
+      clearNestCandidate,
       clearProjectedDrag,
       commitNest,
       decisionOptions,

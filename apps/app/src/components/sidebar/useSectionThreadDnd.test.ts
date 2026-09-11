@@ -587,6 +587,33 @@ describe("thread row nest collisions", () => {
     ]);
   });
 
+  it("holds the row target until the candidate is ready", () => {
+    const held: (string | null)[] = [];
+    const seen: unknown[] = [];
+    const resolveHeld = (y: number, ready: boolean) =>
+      resolveThreadRowNestCollisions({
+        collisions: [rowCollision, groupCollision],
+        droppableRects,
+        pointerCoordinates: { x: 20, y },
+        getBandFraction: () => NEST_BAND_FRACTION,
+        onRowPointer: (info) => seen.push(info),
+        holdNestCandidate: (threadId) => {
+          held.push(threadId);
+          return ready;
+        },
+      });
+    expect(resolveHeld(114, false)).toEqual([groupCollision]);
+    expect(resolveHeld(114, true)).toEqual([rowCollision, groupCollision]);
+    expect(resolveHeld(103, true)).toEqual([groupCollision]);
+    expect(resolveHeld(140, true)).toEqual([groupCollision]);
+    expect(held).toEqual(["parent-a", "parent-a", null, null]);
+    expect(seen).toEqual([
+      { threadId: "parent-a", relativeY: 0.5, nesting: false },
+      { threadId: "parent-a", relativeY: 0.5, nesting: true },
+      { threadId: "parent-a", relativeY: 3 / 28, nesting: false },
+    ]);
+  });
+
   it("drops the row target when it is not nestable or the pointer is outside", () => {
     expect(resolve(114, null)).toEqual([groupCollision]);
     expect(resolve(140, 1)).toEqual([groupCollision]);
