@@ -1,4 +1,3 @@
-import { registerUsageSource } from "./src/usage-source.js";
 import type { BbPluginApi } from "@get-bb/plugin-sdk";
 import {
   CLAUDE_CODE_ACTIVE_CATALOG_DATA,
@@ -8,7 +7,6 @@ import {
 import { CLAUDE_NATIVE_ROOTS_DECLARATION } from "./src/native-roots.js";
 
 export default function plugin(bb: BbPluginApi) {
-  registerUsageSource(bb);
   bb.settings.define({
     memoryEnabled: {
       type: "boolean",

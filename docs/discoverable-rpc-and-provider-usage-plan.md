@@ -1,6 +1,6 @@
 # Discoverable RPC and replaceable provider usage displays
 
-Status: prototype implemented for discoverable RPC, Account Pooler, Codex, Claude Code, and the core `/settings/usage` page. Provider Usage defines the canonical contract in `plugins/provider-usage/usage-source-contract.ts` and consumes discovered sources through it. The core settings page preserves its existing provider cards and extends the machine picker to select shared sources such as Account Pooler. Shared sources are selected by default.
+Status: prototype implemented for discoverable RPC, Account Pooler, the generic Provider usage sources adapter, and the core `/settings/usage` page. Provider Usage defines the canonical contract in `plugins/provider-usage/usage-source-contract.ts` and consumes discovered sources through it. The core settings page preserves its existing provider cards and extends the machine picker to select shared sources such as Account Pooler. Shared sources are selected by default.
 
 ## Prototype verification
 
@@ -139,8 +139,8 @@ A consumer author inspects a producer's source or CLI output, copies the relevan
 
 Use two methods defined canonically by Provider Usage and copied locally by each producer and independent consumer:
 
-- `provider-usage.v1.listResources({})` returns `{ label?, resources: [{ id, providerId, label, scope }] }`. This is cheap local inventory; it never refreshes usage or contacts providers. The optional label declares an empty shared group. Host-only sources omit it. List order is display order.
-- `provider-usage.v1.getResource({ resourceId, refresh })` returns `{ observedAt, usage }` for exactly one listed resource. False permits cached measurements but still returns actual usage. True requests a fresh collection attempt for that resource only. A removed resource fails explicitly, and consumers relist.
+- `provider-usage.v1.listResources({})` returns `{ label?, resources: [{ id, providerId, accountKey, label, scope }] }`. This is cheap local inventory; it never refreshes usage or contacts providers. The optional label declares an empty shared group. Host-only sources omit it. List order is display order.
+- `provider-usage.v1.getResource({ resourceId, refresh })` returns `{ accountKey, observedAt, usage }` for exactly one listed resource. False permits cached measurements but still returns actual usage. True requests a fresh collection attempt for that resource only. A removed resource fails explicitly, and consumers relist.
 
 The sidebar lists all sources to construct its source picker and provider tabs, then fetches only accounts belonging to the selected provider and source/machine. Background reconciliation lists metadata only. Unopened tabs have unknown usage rather than a fabricated healthy badge; retained measurements may still supply badges. Settings fetches the resources in its selected pool or machine. Both keep independent per-resource caches, bounded collection concurrency, stale-data notices, and graceful failures.
 
@@ -149,8 +149,8 @@ Account Pooler lists account metadata without refreshing, then calls its existin
 ### Source implementations
 
 - Account Pooler exposes its accounts and existing quota state with shared scope. Refresh delegates to its existing collection logic; it does not alter routing.
-- Provider plugins expose host-local resources by calling their existing host usage maintenance capability. A disconnected host or failed account collection becomes an individual resource outcome and does not discard other results.
-- Both register the discoverable method regardless of whether Provider Usage is installed or enabled.
+- The headless Provider usage sources adapter exposes host-local resources for every provider declaring `maintenance.usage`, using the existing SDK maintenance API. A disconnected host or failed account collection becomes an individual resource outcome and does not discard other results.
+- Both source plugins register the discoverable methods regardless of whether Provider Usage is installed or enabled.
 
 ### Display implementation
 
@@ -164,14 +164,14 @@ An alternative display uses the same discovery query and its own copied response
 
 Preserve `bb.sdk.system.usageLimits()` and `bb settings usage --json` as existing host-provider maintenance views during the first rollout. Do not silently change their response shape or use them as the unified view.
 
-Provider Usage exposes its display snapshot through `bb plugin rpc call provider-usage getUsage --input-file <request.json> --json`. The private display request includes `force`, nullable `machineIds`, nullable `providerId`, and `maxAgeMs`; null providerId lists metadata without collecting usage. Source fetch requests use a JSON file containing `resourceId` and `refresh`. Consumers needing replacement-independent data can discover and call the source methods directly. Provider Usage must stop collecting the same host usage independently once provider plugins supply it through discovery.
+Provider Usage exposes its display snapshot through `bb plugin rpc call provider-usage getUsage --input-file <request.json> --json`. The private display request includes `force`, nullable `machineIds`, nullable `providerId`, and `maxAgeMs`; null providerId lists metadata without collecting usage. Source fetch requests use a JSON file containing `resourceId` and `refresh`. Consumers needing replacement-independent data can discover and call the source methods directly. Provider Usage must stop collecting the same host usage independently once the adapter supplies it through discovery.
 
 ## Delivery sequence
 
 1. **Schema publication:** implement export support and registration validation. Verify portable wire schemas for real usage types and unchanged anonymous RPC behavior.
 2. **Registry and inspection:** add opt-in publication, lifecycle-safe descriptors, targeted discovery route, SDK query, and CLI listing/inspection.
 3. **Contracts and documentation:** publish copyable examples, method naming guidance, schema limitations, and lifecycle semantics in Plugin Guide. Add SDK surfaces to `packages/plugin-api-map/src/surfaces.ts` and audit entries to `docs/api_to_audit.md`; update CLI guide templates and skills.
-4. **Usage sources:** implement the convention in Account Pooler and provider plugins using existing collection primitives.
+4. **Usage sources:** implement the convention in Account Pooler and the independent maintenance adapter using existing collection primitives.
 5. **Usage display:** migrate Provider Usage to discovery, expose the unified snapshot through its RPC/CLI, and verify a second display consumer against the same sources.
 
 Keep the work server-side unless inspection proves host wire changes are necessary. Existing host usage maintenance remains a primitive. If any server/daemon wire fields change, increment `HOST_DAEMON_PROTOCOL_VERSION` unless previous-daemon compatibility is deliberately preserved and tested.
@@ -202,3 +202,35 @@ The result is complete when discovery and inspection are generally usable, usage
 
 
 Usage-state review: both consumers distinguish loading, empty shared groups, unavailable sources, uninstalled providers, per-account authentication/collection failures, plans without reported limits, and offline machines. Shared-account sign-in guidance refers to the source plugin’s settings. Failed source refreshes preserve successful cached observations with a visible notice; disabled sources disappear on discovery reconciliation. Browser fixtures exercise source selection, removal, and retry recovery without changing configured accounts. Unfiltered CLI discovery omits undefined filters instead of serializing them into literal query values.
+
+## Plugin-owned maintenance adapter and normalization
+
+Provider Usage owns the canonical contract. Provider usage sources is a separate,
+headless, default-enabled bundled plugin that copies it. It discovers host/provider
+metadata through `bb.sdk.providers.list({hostId, capability: "usage"})` and fetches
+only the requested pair through `bb.sdk.system.usageLimits({hostId, providerId})`.
+Codex and Claude Code no longer register separate usage RPC methods. Other providers
+declaring maintenance usage work automatically; no provider kit or core adapter is
+added. A replacement display can consume the same sources without Provider Usage.
+
+Resource IDs are opaque source-local addresses. `accountKey` is a nullable,
+provider-issued quota identity, namespaced by issuer and account/organization
+scope. Labels and email are presentation only. Known matching identities within a
+selected location collapse to one observation in stable source order; quota
+percentages are never summed. Unknown identities remain distinct. Location
+selection happens first: shared sources are the default, and an explicit machine
+selection shows that machine, even when it observes the same account as a pool.
+
+Inventory may return an unknown key until the first measurement. The measurement's
+identity is authoritative. The adapter remembers it for later cheap inventory;
+it never reads credentials merely to list resources. Codex and Claude Code add
+provider-owned identity and normalization metadata to their existing passthrough
+maintenance responses. Core transports those extensions without interpreting them.
+Older providers remain compatible and report unknown identity/custom labels.
+
+Known windows carry `kind` (`five-hour`, `daily`, `weekly`, or `custom`) alongside
+an optional model family. Known plans carry `{id, multiplier}` alongside their
+fallback label. Consumers consistently render Weekly limit and Max (20x), while
+retaining unfamiliar provider labels. These additions default to unknown/custom
+when consuming older source contracts. Breaking semantics still require a new
+method namespace; discovery introduces no independent version negotiation.

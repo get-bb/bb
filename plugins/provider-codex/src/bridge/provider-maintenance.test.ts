@@ -55,13 +55,20 @@ describe("Codex provider maintenance", () => {
       status: "ok",
       accountEmail: "codex@example.com",
       planLabel: "Plus",
+      plan: { id: "plus", multiplier: null },
       windows: [
         {
           label: "Current session",
+          kind: "five-hour",
           usedPercent: 42,
           resetsAt: "2025-06-15T15:06:40.000Z",
         },
-        { label: "Weekly limit", usedPercent: 100, resetsAt: null },
+        {
+          label: "Weekly limit",
+          kind: "weekly",
+          usedPercent: 100,
+          resetsAt: null,
+        },
       ],
     });
   });
@@ -271,11 +278,14 @@ describe("Codex credential health and usage", () => {
       supported: true,
       usage: {
         status: "ok",
+        accountKey: "openai:chatgpt:account-123",
         accountEmail: "codex@example.com",
         planLabel: "Plus",
+        plan: { id: "plus", multiplier: null },
         windows: [
           {
             label: "Current session",
+            kind: "five-hour",
             usedPercent: 10,
             resetsAt: "2025-06-15T15:06:40.000Z",
           },

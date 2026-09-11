@@ -263,3 +263,92 @@ it("keeps an unconfigured shared group without hosts or measurement requests", a
     await host.harness.lifecycle.dispose();
   }
 });
+
+it("collapses known account observations per machine, preserves unknown identities, and normalizes display labels", async () => {
+  const { bb, harness } = createFakePluginHost({
+    sdk: {
+      hosts: {
+        list: async () => [
+          makeHostResponse({ id: "host", status: "connected" }),
+        ],
+      },
+      providers: { list: async () => [] },
+      plugins: {
+        experimental_discoverRpc: async () => [
+          { pluginId: "adapter", displayName: "Adapter" },
+          { pluginId: "custom", displayName: "Custom" },
+        ],
+        callRpc: async ({ pluginId, method }) =>
+          method === usageListMethod
+            ? {
+                resources: [
+                  {
+                    id: "account",
+                    providerId: "codex",
+                    accountKey: null,
+                    label: "same@example.com",
+                    scope: { kind: "host", hostId: "host", hostName: "Host" },
+                  },
+                  {
+                    id: "unknown",
+                    providerId: "other",
+                    accountKey: null,
+                    label: "same@example.com",
+                    scope: { kind: "host", hostId: "host", hostName: "Host" },
+                  },
+                ],
+              }
+            : {
+                accountKey: "issuer:account:1",
+                observedAt: 123,
+                usage: {
+                  status: "ok",
+                  accountEmail: "same@example.com",
+                  planLabel: "max",
+                  plan: { id: "max", multiplier: 20 },
+                  windows: [
+                    {
+                      id: "week",
+                      kind: "weekly",
+                      label: "168 hour window",
+                      model: null,
+                      resetsAt: null,
+                      cost: null,
+                      usedPercent: pluginId === "adapter" ? 42 : 81,
+                    },
+                  ],
+                },
+              },
+      },
+    },
+  });
+  try {
+    plugin(bb);
+    const snapshot = await harness.behavior.callRpc("getUsage", {
+      force: false,
+      machineIds: ["host"],
+      providerId: "codex",
+      maxAgeMs: 0,
+    });
+    expect(snapshot).toMatchObject({
+      machines: [
+        {
+          providers: [
+            {
+              id: "adapter:account",
+              usage: {
+                planLabel: "Max (20x)",
+                windows: [{ label: "Weekly limit", usedPercent: 42 }],
+              },
+            },
+            { id: "adapter:unknown", usage: null },
+            { id: "custom:unknown", usage: null },
+          ],
+        },
+      ],
+    });
+    expect(JSON.stringify(snapshot)).not.toContain("81");
+  } finally {
+    await harness.lifecycle.dispose();
+  }
+});

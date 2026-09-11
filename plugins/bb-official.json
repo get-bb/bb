@@ -141,5 +141,9 @@
   "environment-modal-sandbox": {
     "category": "environments",
     "screenshots": []
+  },
+  "provider-usage-sources": {
+    "category": "agents-and-providers",
+    "screenshots": []
   }
 }

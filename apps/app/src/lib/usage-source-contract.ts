@@ -1,10 +1,22 @@
 import { z } from "zod";
 
+export const usagePlanSchema = z.object({
+  id: z.string().min(1),
+  multiplier: z.number().int().positive().nullable(),
+});
 const accountFields = {
+  plan: usagePlanSchema.nullable().default(null),
   accountEmail: z.string().nullable(),
   planLabel: z.string().nullable(),
 };
+export const usageWindowKindSchema = z.enum([
+  "five-hour",
+  "daily",
+  "weekly",
+  "custom",
+]);
 const usageWindowSchema = z.object({
+  kind: usageWindowKindSchema.default("custom"),
   id: z.string().min(1),
   label: z.string().min(1),
   usedPercent: z
@@ -41,7 +53,16 @@ const usageSchema = z.discriminatedUnion("status", [
     message: z.string(),
   }),
 ]);
+export const usageAccountKeySchema = z
+  .string()
+  .min(1)
+  .nullable()
+  .default(null)
+  .describe(
+    "Provider-issued quota account identity, namespaced by issuer and account/organization scope. Never use email, a display label, a source-local ID, or credentials. Null means unknown; unknown accounts must not be merged.",
+  );
 export const usageResourceSchema = z.object({
+  accountKey: usageAccountKeySchema,
   id: z
     .string()
     .min(1)
@@ -68,6 +89,7 @@ export const usageResourceListSchema = z.object({
   resources: z.array(usageResourceSchema),
 });
 export const usageMeasurementSchema = z.object({
+  accountKey: usageAccountKeySchema,
   observedAt: z
     .number()
     .int()
