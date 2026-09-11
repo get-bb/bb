@@ -297,6 +297,9 @@ export function SecondaryPanelLayout({
 
   const mainContent = (
     <div
+      data-split-pane-id={
+        secondaryPanelHost === null ? paneContext?.paneId : undefined
+      }
       data-conversation-collapsed={isMainCollapsed}
       inert={isMainCollapsed}
       className={cn(
