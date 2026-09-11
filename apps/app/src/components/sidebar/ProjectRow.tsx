@@ -2271,49 +2271,44 @@ function ProjectRowComponent({
     }
     return getCollapsedChildActivity(projectThreads, draftThreadIds);
   }, [draftThreadIds, isCollapsed, projectThreads, threadListState.status]);
+  const projectStatus = isLocalPathInvalid ? (
+    <NavLink
+      to={getSettingsProjectRoutePath(project.id)}
+      onClick={(event) => {
+        event.stopPropagation();
+        onProjectSelect?.();
+      }}
+      aria-label="Project folder not found"
+      className={cn(
+        "relative z-10 inline-flex shrink-0 items-center justify-center rounded-md text-destructive outline-none ring-sidebar-ring transition-colors hover:bg-destructive/10 hover:text-destructive focus-visible:ring-2",
+        COARSE_POINTER_ROW_ACTION_SIZE_CLASS,
+      )}
+    >
+      <Icon name="AlertTriangle" className={COARSE_POINTER_ICON_SIZE_CLASS} />
+    </NavLink>
+  ) : null;
   const projectActions = (
-    <>
-      {isLocalPathInvalid ? (
-        <NavLink
-          to={getSettingsProjectRoutePath(project.id)}
-          onClick={(event) => {
-            event.stopPropagation();
-            onProjectSelect?.();
-          }}
-          aria-label="Project folder not found"
-          className={cn(
-            "relative z-10 inline-flex shrink-0 items-center justify-center rounded-md text-destructive outline-none ring-sidebar-ring transition-colors hover:bg-destructive/10 hover:text-destructive focus-visible:ring-2",
-            COARSE_POINTER_ROW_ACTION_SIZE_CLASS,
-          )}
+    <span className="relative z-10 inline-flex shrink-0 items-center">
+      <span
+        data-sidebar-hover-actions-open={isActionsOpen ? "true" : undefined}
+        data-sidebar-hover-actions-mobile={
+          SIDEBAR_HOVER_ACTIONS_MOBILE_ALWAYS_VALUE
+        }
+        className={cn(
+          SIDEBAR_HOVER_ACTIONS_CLASS,
+          "relative z-10 inline-flex shrink-0 items-center",
+          SIDEBAR_HOVER_ACTIONS_GAP_CLASS,
+        )}
+      >
+        <SidebarHeaderControls
+          label={project.name}
+          onNewThread={onCreateProjectThread ? handleCreateThread : undefined}
+          onOpenChange={setIsDropdownActionsOpen}
         >
-          <Icon
-            name="AlertTriangle"
-            className={COARSE_POINTER_ICON_SIZE_CLASS}
-          />
-        </NavLink>
-      ) : null}
-      <span className="relative z-10 inline-flex shrink-0 items-center">
-        <span
-          data-sidebar-hover-actions-open={isActionsOpen ? "true" : undefined}
-          data-sidebar-hover-actions-mobile={
-            SIDEBAR_HOVER_ACTIONS_MOBILE_ALWAYS_VALUE
-          }
-          className={cn(
-            SIDEBAR_HOVER_ACTIONS_CLASS,
-            "relative z-10 inline-flex shrink-0 items-center",
-            SIDEBAR_HOVER_ACTIONS_GAP_CLASS,
-          )}
-        >
-          <SidebarHeaderControls
-            label={project.name}
-            onNewThread={onCreateProjectThread ? handleCreateThread : undefined}
-            onOpenChange={setIsDropdownActionsOpen}
-          >
-            <ProjectActionsMenuItems project={project} surface="dropdown" />
-          </SidebarHeaderControls>
-        </span>
+          <ProjectActionsMenuItems project={project} surface="dropdown" />
+        </SidebarHeaderControls>
       </span>
-    </>
+    </span>
   );
 
   return (
@@ -2327,6 +2322,7 @@ function ProjectRowComponent({
       >
         <TopLevelSidebarSection
           label={project.name}
+          status={projectStatus}
           actions={projectActions}
           actionsAlwaysVisible
           actionsMobileAlways
