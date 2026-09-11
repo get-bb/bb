@@ -4,7 +4,7 @@ Status: **2026-09-05: 2 passed, 1 partial/blocked**. See [the audit](../MAINTENA
 
 ## Setup and entry points
 
-Enable Provider usage and the bundled Provider usage sources adapter; configure at least one provider advertising usage maintenance. Open its usage card and Settings → Usage.
+Enable Provider usage and a provider implementing the usage RPC contract. Open its usage card and Settings → Usage.
 
 Use the main skill’s isolated targets and evidence rules. A plugin can be present
 in this checkout but disabled in an installation. Enable it only in the test
@@ -17,7 +17,9 @@ SKILL.md. Inspect nested `--help` before selecting flags and IDs.
 - `plugins/provider-usage/package.json`
 - `plugins/provider-usage/server.ts`
 - `plugins/provider-usage/app.tsx`
-- `plugins/provider-usage-sources/server.ts`
+- `plugins/provider-codex/src/usage-source.ts`
+- `plugins/provider-claude-code/src/usage-source.ts`
+- `plugins/provider-acp/src/usage-source.ts`
 - `plugins/account-pool/src/usage-source.ts`
 - `apps/app/src/components/settings/UsageLimitsSettingsSection.tsx`
 
@@ -27,7 +29,7 @@ SKILL.md. Inspect nested `--help` before selecting flags and IDs.
 | --- | --- | --- |
 | All capable providers | Refresh with two supported providers and one unsupported provider. | Cards show only supported data using current provider names/icons and configured ordering. |
 | Quota windows and errors | Inspect real returned windows/resets and a controlled refresh failure. | Values match the provider response; unknown/unavailable data is distinct from exhausted quota. |
-| CLI and SDK parity | Inspect `bb plugin rpc list --method provider-usage.v1.listResources --json`, list the adapter resources, and fetch one returned resource ID. Compare its selected host/provider with `bb settings usage --json`. | Discovery is independent of display plugins, inventory collects no quota, and fetch returns only the chosen resource. Pool resources remain separate from direct host maintenance. |
+| CLI and SDK parity | Inspect `bb plugin rpc list --method provider-usage.v1.listResources --json`, list a provider plugin’s resources, and fetch one returned resource ID. Compare its selected host/provider with `bb settings usage --json`. | Discovery is independent of display plugins, inventory collects no quota, and fetch returns only the chosen resource. Pool resources remain separate from direct host maintenance. |
 
 ## Evidence and cleanup
 
@@ -45,13 +47,13 @@ External account changes use authorized disposable targets.
 ## Usage source prototype follow-up (2026-09-11)
 
 - Passed live: pool defaults on both displays, provider tabs and pooled account ordering,
-  matching weekly/model/plan labels, explicit machine selection, and automatic Cursor
-  maintenance adaptation without changing its provider. Screenshot evidence is in the
-  implementing thread’s `usage-review/normalization.md`.
-- Passed targeted tests: arbitrary maintenance providers, no collection during inventory,
+  matching weekly/model/plan labels, explicit machine selection, and Cursor
+  usage published directly by the ACP provider plugin. Screenshot evidence is in the
+  implementing thread’s `usage-review/explicit-providers.md`.
+- Passed targeted tests: provider ownership filtering, no collection during inventory,
   removed resources, disconnected hosts, request coalescing, force refresh, empty pools,
   first-load/stale failures, known identity deduplication, and unknown-identity separation.
-- A new source should be tested with the display plugin disabled. The adapter has no
+- A new source should be tested with the display plugin disabled. Each provider implementation has no
   dependency on the display and publishes both source methods from its own registration.
 - Do not deduplicate by email. Filter by selected location before normalizing observations;
   explicit machine selection must remain available even when that account exists in a pool.

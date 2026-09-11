@@ -263,7 +263,6 @@ describe("builtin plugin reconciliation", () => {
       ["provider-pi", "./icons/pi.svg"],
       ["provider-retry", "ArrowReloadHorizontal"],
       ["provider-usage", "ChartColumn"],
-      ["provider-usage-sources", "ChartColumn"],
       ["push-notifications", "BellDot"],
       ["scheduled-send", "Calendar"],
       ["secrets", "Lock"],
