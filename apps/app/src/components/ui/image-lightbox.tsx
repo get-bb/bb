@@ -42,6 +42,8 @@ interface WrappedImageIndexInput {
 
 interface ImageLightboxProps {
   hasMultipleImages?: boolean;
+  navigationDisabled?: boolean;
+  navigationStatus?: string;
   imageAlt: string;
   imageSrc: string | null;
   onClose: () => void;
@@ -98,6 +100,8 @@ export function getWrappedImageIndex({
 
 export function ImageLightbox({
   hasMultipleImages = false,
+  navigationDisabled = false,
+  navigationStatus,
   imageAlt,
   imageSrc,
   onClose,
@@ -130,7 +134,7 @@ export function ImageLightbox({
     const handleKeyDown = (event: KeyboardEvent) => {
       const action = getImageLightboxKeyAction({
         event,
-        hasNavigation,
+        hasNavigation: hasNavigation && !navigationDisabled,
       });
       if (!action) {
         return;
@@ -160,7 +164,14 @@ export function ImageLightbox({
 
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [hasNavigation, imageSrc, onClose, onNext, onPrevious]);
+  }, [
+    hasNavigation,
+    navigationDisabled,
+    imageSrc,
+    onClose,
+    onNext,
+    onPrevious,
+  ]);
 
   if (!imageSrc) {
     return null;
@@ -201,6 +212,7 @@ export function ImageLightbox({
             variant="ghost"
             size="icon"
             className="absolute left-[max(0.5rem,env(safe-area-inset-left))] top-1/2 size-11 -translate-y-1/2 rounded-full bg-black/45 text-white hover:bg-black/60 hover:text-white"
+            disabled={navigationDisabled}
             onClick={onPrevious}
             aria-label="Previous image"
           >
@@ -211,12 +223,22 @@ export function ImageLightbox({
             variant="ghost"
             size="icon"
             className="absolute right-[max(0.5rem,env(safe-area-inset-right))] top-1/2 size-11 -translate-y-1/2 rounded-full bg-black/45 text-white hover:bg-black/60 hover:text-white"
+            disabled={navigationDisabled}
             onClick={onNext}
             aria-label="Next image"
           >
             <Icon name="ChevronRight" className="size-5" />
           </Button>
         </>
+      ) : null}
+
+      {navigationStatus ? (
+        <p
+          role="status"
+          className="absolute bottom-[max(1rem,env(safe-area-inset-bottom))] max-w-full px-4 text-center text-sm text-white"
+        >
+          {navigationStatus}
+        </p>
       ) : null}
 
       <Button

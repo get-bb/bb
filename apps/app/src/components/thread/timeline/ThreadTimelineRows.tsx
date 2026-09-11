@@ -12,6 +12,8 @@ import {
 import type { CSSProperties, ReactNode } from "react";
 import { useComposedRefs } from "@radix-ui/react-compose-refs";
 import { useLocation } from "react-router-dom";
+import { TimelineImageGallery } from "./TimelineImageGallery";
+import { InlineImageMessageContext } from "@/components/ui/inline-image-gallery-context";
 import type {
   PromptInput,
   ThreadOriginKind,
@@ -1514,10 +1516,12 @@ function TimelineRowView({
 
   if (row.kind === "conversation") {
     return (
-      <ConversationRow
-        row={row}
-        showAssistantMessageActions={showAssistantMessageActions}
-      />
+      <InlineImageMessageContext.Provider value={row.id}>
+        <ConversationRow
+          row={row}
+          showAssistantMessageActions={showAssistantMessageActions}
+        />
+      </InlineImageMessageContext.Provider>
     );
   }
 
@@ -1988,7 +1992,17 @@ function ThreadTimelineRowsComponent(props: ThreadTimelineRowsProps) {
     threadId: props.threadId,
     timelineRows: props.timelineRows,
   });
-  return <ThreadTimelineRowsForTimelineView key={ownerKey} {...props} />;
+  return (
+    <TimelineImageGallery
+      key={ownerKey}
+      timelineRows={props.timelineRows}
+      threadId={props.threadId}
+      workspaceRootPath={props.workspaceRootPath}
+      hasOlderTimelineRows={props.hasOlderTimelineRows}
+    >
+      <ThreadTimelineRowsForTimelineView {...props} />
+    </TimelineImageGallery>
+  );
 }
 
 function ThreadTimelineRowsForTimelineView(props: ThreadTimelineRowsProps) {

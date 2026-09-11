@@ -38,6 +38,10 @@ import remarkBreaks from "remark-breaks";
 import remarkGfm from "remark-gfm";
 import remarkMath from "remark-math";
 import { ImageLightbox } from "./image-lightbox.js";
+import {
+  InlineImageGalleryContext,
+  InlineImageMessageContext,
+} from "./inline-image-gallery-context.js";
 import { normalizeMathFences } from "./markdown-math-fences.js";
 import {
   markdownMayContainMath,
@@ -490,7 +494,7 @@ function resolveMarkdownLocalPath(
       };
 }
 
-function buildLocalAwareUrlTransform({
+export function buildLocalAwareUrlTransform({
   fallbackUrlTransform,
   localFileRouting,
   localImageRouting,
@@ -942,12 +946,14 @@ function MarkdownTableCell({ children }: MarkdownTableCellProps) {
   return <td className="border border-border px-2 py-1">{children}</td>;
 }
 
-function renderMarkdownImage({
+function MarkdownRenderedImage({
   alt,
   imageAttributes,
   setExpandedImageUrl,
   src,
 }: MarkdownImageRendererArgs) {
+  const openGallery = useContext(InlineImageGalleryContext);
+  const rowId = useContext(InlineImageMessageContext);
   const imageUrl = typeof src === "string" ? src : "";
   if (!imageUrl) return null;
   return (
@@ -957,7 +963,19 @@ function renderMarkdownImage({
       alt={typeof alt === "string" ? alt : "Image"}
       className="my-2 max-h-96 max-w-full cursor-zoom-in object-contain"
       loading="lazy"
-      onClick={() => setExpandedImageUrl(imageUrl)}
+      data-markdown-image=""
+      onClick={(event) => {
+        if (openGallery && rowId !== null) {
+          const image = event.currentTarget;
+          const siblings = image
+            .closest("[data-markdown-preview]")
+            ?.querySelectorAll("img[data-markdown-image]");
+          const imageIndex = siblings ? Array.from(siblings).indexOf(image) : 0;
+          openGallery({ rowId, imageIndex, src: imageUrl, alt: image.alt });
+        } else {
+          setExpandedImageUrl(imageUrl);
+        }
+      }}
     />
   );
 }
@@ -1227,12 +1245,14 @@ function buildMarkdownComponents({
         </span>
       );
     }
-    return renderMarkdownImage({
-      alt,
-      imageAttributes,
-      setExpandedImageUrl,
-      src,
-    });
+    return (
+      <MarkdownRenderedImage
+        alt={alt}
+        imageAttributes={imageAttributes}
+        setExpandedImageUrl={setExpandedImageUrl}
+        src={src}
+      />
+    );
   }
 
   function MarkdownSource({
@@ -1525,7 +1545,7 @@ function cssPixels(value: string): number {
 const FRONTMATTER_PATTERN =
   /^---[ \t]*\r?\n([\s\S]*?)\r?\n---[ \t]*(?:\r?\n|$)/;
 
-function splitMarkdownFrontmatter(markdown: string): {
+export function splitMarkdownFrontmatter(markdown: string): {
   frontmatter: string | null;
   body: string;
 } {

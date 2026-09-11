@@ -9,6 +9,10 @@ import {
   waitFor,
 } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import {
+  InlineImageGalleryContext,
+  InlineImageMessageContext,
+} from "./inline-image-gallery-context";
 import { MarkdownPreview } from "./markdown-preview";
 import {
   MarkdownLocalFileContextMenuContext,
@@ -535,4 +539,27 @@ describe("MarkdownPreview", () => {
       container.querySelector('a[href="https://example.com"]')?.textContent,
     ).toBe("This should remain a link");
   });
+});
+
+it("opens the specific table image occurrence in the timeline gallery", () => {
+  const open = vi.fn();
+  render(
+    <InlineImageGalleryContext.Provider value={open}>
+      <InlineImageMessageContext.Provider value="message-2">
+        <MarkdownPreview
+          content={
+            "![Inline](https://example.com/image.png)\n\n| Preview |\n| --- |\n| ![Table](https://example.com/image.png) |"
+          }
+        />
+      </InlineImageMessageContext.Provider>
+    </InlineImageGalleryContext.Provider>,
+  );
+  fireEvent.click(screen.getByRole("img", { name: "Table" }));
+  expect(open).toHaveBeenCalledWith({
+    rowId: "message-2",
+    imageIndex: 1,
+    src: "https://example.com/image.png",
+    alt: "Table",
+  });
+  expect(screen.queryByRole("dialog")).toBeNull();
 });
