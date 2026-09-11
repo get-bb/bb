@@ -81,3 +81,20 @@ export function providerUsageTone(
   if (usedPercent >= 95) return "critical";
   return usedPercent >= 80 ? "warning" : null;
 }
+
+export function selectUsageMachine(
+  machines: UsageMachine[],
+  requestedId: string | null,
+  threadMachineId: string | null,
+): UsageMachine | null {
+  return (
+    machines.find((machine) => machine.id === requestedId) ??
+    machines.find(
+      (machine) => machine.id.startsWith("source:") && machine.error === null,
+    ) ??
+    machines.find((machine) => machine.id === threadMachineId) ??
+    machines.find((machine) => machine.status === "connected") ??
+    machines[0] ??
+    null
+  );
+}
