@@ -1068,10 +1068,9 @@ Settings changes do not require a plugin reload.
 `bb plugin install npm:<package>[@<version|tag|range>]` uses BB's shipped npm
 and its running Node runtime; neither executable needs to be on PATH. Packages
 are installed with `--ignore-scripts`. Git plugins also use this npm with
-lifecycle scripts disabled. Their development dependencies are excluded from
-resolution, workspace installation is disabled, and their original manifest
-and lockfiles are restored after the install, including failures. They may
-depend on third-party runtime packages; bb
+lifecycle scripts disabled and `--omit=dev --omit=optional`. Plugins may keep
+normal development dependencies in their manifests; npm resolves these but
+does not install them. They may depend on third-party runtime packages; bb
 then builds both their server and frontend bundles. `node_modules` is
 retained, because a dependency can load data files that bundling cannot
 inline. A committed `dist/` is always replaced by the bundles bb builds.

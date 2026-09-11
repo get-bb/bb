@@ -95,9 +95,9 @@
     and git sources without a prebuilt app when their imported dependencies
     are already available;
     git/npm packages can also ship a metadata-validated prebuilt `dist/`, and
-    npm packages must. Git installs resolve runtime dependencies without
-    development dependencies or workspace installation; lifecycle scripts are
-    disabled, and the original manifest and lockfiles are restored afterward.
+    npm packages must. Git installs use `--omit=dev`, `--omit=optional`, and
+    `--ignore-scripts`; plugins may keep normal development dependencies in
+    their manifests.
     npm and Node do not need to be on PATH; Git sources still require `git`.
     Managed git/npm installs refuse `engines.bb` /
     `engines.bbPluginSdk` mismatches, manifest vs. artifact identity mismatches,

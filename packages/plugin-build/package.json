@@ -21,7 +21,7 @@
     "@bb/domain": "workspace:*",
     "@bb/process-utils": "workspace:*",
     "@get-bb/plugin-sdk": "workspace:*",
-    "npm": "10.9.8",
+    "npm": "11.16.0",
     "saxes": "^6.0.0"
   },
   "devDependencies": {

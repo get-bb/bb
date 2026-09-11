@@ -18,9 +18,7 @@ afterEach(async () => {
 
 function manifest(
   dependencies: Record<string, string>,
-  devDependencies: Record<string, string> = {
-    "missing-dev-tool": "workspace:*",
-  },
+  devDependencies: Record<string, string> = {},
 ): string {
   return JSON.stringify(
     {
@@ -40,7 +38,7 @@ function manifest(
   );
 }
 
-it("installs runtime dependencies without resolving missing development tools and restores source files", async () => {
+it("installs runtime dependencies with development dependencies present and lifecycle scripts disabled", async () => {
   await mkdir(join(rootDir, "runtime"));
   await writeFile(
     join(rootDir, "runtime", "package.json"),
@@ -61,7 +59,7 @@ it("installs runtime dependencies without resolving missing development tools an
   await writeFile(
     join(rootDir, "dev-tool", "package.json"),
     JSON.stringify({
-      name: "missing-dev-tool",
+      name: "dev-tool",
       version: "1.0.0",
     }),
   );
@@ -73,7 +71,7 @@ it("installs runtime dependencies without resolving missing development tools an
     "--ignore-scripts",
   ]);
   const devDependencies = {
-    "missing-dev-tool": "file:./missing-dev-tool-1.0.0.tgz",
+    "dev-tool": "file:./dev-tool-1.0.0.tgz",
   };
   const dependencies = {
     "runtime-fixture": "file:./runtime-fixture-1.0.0.tgz",
@@ -96,9 +94,7 @@ it("installs runtime dependencies without resolving missing development tools an
     "--no-audit",
     "--no-fund",
   ]);
-  const lock = await readFile(join(rootDir, "package-lock.json"), "utf8");
   const original = manifest(dependencies, devDependencies);
-  await rm(join(rootDir, "missing-dev-tool-1.0.0.tgz"));
   await writeFile(join(rootDir, "package.json"), original);
 
   await installGitDependencies(rootDir);
@@ -110,13 +106,12 @@ it("installs runtime dependencies without resolving missing development tools an
     ),
   ).toContain('"version":"1.0.0"');
   expect(await readFile(join(rootDir, "package.json"), "utf8")).toBe(original);
-  expect(await readFile(join(rootDir, "package-lock.json"), "utf8")).toBe(lock);
   await expect(
-    readFile(join(rootDir, "node_modules/missing-dev-tool/package.json")),
+    readFile(join(rootDir, "node_modules/dev-tool/package.json")),
   ).rejects.toMatchObject({ code: "ENOENT" });
 });
 
-it("restores the source manifest when a runtime dependency cannot be installed", async () => {
+it("leaves the source manifest unchanged when a runtime dependency cannot be installed", async () => {
   const original = manifest({
     "missing-runtime": "file:./missing-runtime.tgz",
   });
@@ -137,7 +132,7 @@ it("uses the shipped npm and Node runtime when PATH contains no executables", as
   const original = manifest({});
   await writeFile(join(rootDir, "package.json"), original);
 
-  expect(await runInstallCommand("npm", ["--version"])).toBe("10.9.8");
+  expect(await runInstallCommand("npm", ["--version"])).toBe("11.16.0");
   await installGitDependencies(rootDir);
 
   expect(await readFile(join(rootDir, "package.json"), "utf8")).toBe(original);
