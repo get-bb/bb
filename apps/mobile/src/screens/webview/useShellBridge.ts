@@ -15,6 +15,7 @@ import { updateAppBadgeCount } from "@/notifications/AppBadgeSync";
 
 export interface ShellBridgeCallbacks {
   onReady(path: string): void;
+  onThreadReady(threadId: string, path: string): void;
   onPath(path: string): void;
   onOpenNative(screen: NativeScreen): void;
 }
@@ -50,6 +51,9 @@ export function useShellBridge(
       switch (message.type) {
         case "ready":
           callbacksRef.current.onReady(message.path);
+          return;
+        case "thread-ready":
+          callbacksRef.current.onThreadReady(message.threadId, message.path);
           return;
         case "title":
           callbacksRef.current.onPath(message.path);

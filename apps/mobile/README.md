@@ -696,11 +696,16 @@ add-root-cert`). Env: `BB_MOBILE_E2E_GATE_PORT` (42998),
   characters in `tokenSuffix`. A token can receive pushes but cannot read
   server data.
 - Handling: a foreground arrival becomes a toast with "Open" (no system
-  banner). Open dismisses that toast 500 ms after resolving its server and
-  navigating. A failed lookup overlays an error for two seconds, then reveals
+  banner). Open dismisses that toast 100 ms after the destination conversation has painted and
+  the native navigation transition has finished. A failed lookup overlays an error for two seconds, then reveals
   the original notification's Open action for retry. Its expiry pauses during
-  lookup and restarts for eight seconds on failure. Repeated taps do not repeat
+  lookup and page loading, and restarts for eight seconds on failure or leaving
+  the page before completion. Repeated taps do not repeat
   navigation. Unopened toasts keep their eight-second lifetime.
+  Bridge version 3 adds an optional `thread-ready` message after the conversation
+  paints. Versions 1 and 2 remain supported; older shells ignore the new message.
+  An older server without the message leaves the opened toast available for
+  manual dismissal.
   A tap on a background / cold-start notification opens
   `/threads/<threadId>` on the profile that owns it. The phone first matches
   the optional `serverUrl` hint. It probes saved profiles for the thread only

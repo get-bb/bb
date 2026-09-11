@@ -11,6 +11,7 @@ import { useSystemProviderInfo } from "@/hooks/queries/system-queries";
 import { useNavigate } from "react-router-dom";
 import { useAtom } from "jotai";
 import { useDesktopBrowserReveal } from "@/lib/use-desktop-browser-reveal";
+import { NativeThreadReady } from "@/lib/native-shell/NativeThreadReady";
 import { atomWithStorage } from "jotai/utils";
 import {
   isRunningThreadRuntimeDisplayStatus,
@@ -3016,6 +3017,9 @@ function ThreadDetailViewInternal(props: ThreadRoutePathArgs) {
   );
   return (
     <>
+      {isFocused && !timelineLoading && !timelineError ? (
+        <NativeThreadReady threadId={thread.id} />
+      ) : null}
       <ThreadArchiveCommandHandler thread={thread} />
       <ThreadRenameCommandHandler thread={thread} />
       <ThreadProviderContext.Provider value={threadProviderContextValue}>

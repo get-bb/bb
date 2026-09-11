@@ -21,6 +21,7 @@ import { getPushRegistrationController } from "./push-controller";
 import { getPushStore } from "./push-storage";
 import { hasThreadOnServer } from "./thread-probe";
 import { usePushStoreSnapshot } from "./use-push-store";
+import { watchNotificationNavigation } from "./notification-navigation";
 
 export function PushNotificationsHost() {
   const { status, profiles, activeProfile, connection } = useProfiles();
@@ -65,7 +66,7 @@ export function PushNotificationsHost() {
   }, []);
 
   const openTarget = useCallback(
-    async (target: PushNotificationTarget) => {
+    async (target: PushNotificationTarget, notificationId?: string) => {
       const profile = await resolvePushTargetProfile(target, {
         profiles: profilesRef.current,
         activeProfileId: activeProfileIdRef.current,
@@ -82,6 +83,7 @@ export function PushNotificationsHost() {
       router.push(
         webViewShellHref({
           profileId: profile.id,
+          notificationId,
           path:
             target.projectId === null
               ? `/threads/${target.threadId}`
@@ -114,12 +116,14 @@ export function PushNotificationsHost() {
   }, [openTarget]);
 
   useEffect(() => {
+    const pending = new Set<() => void>();
     const subscription = Notifications.addNotificationReceivedListener(
       (notification) => {
         const content = notification.request.content;
         const target = parsePushNotificationData(content.data);
         if (!target) return;
         let opening = false;
+        let attempt = 0;
         const title = content.title ?? "bb";
         const options: ToastOptions = {
           description: content.body ?? undefined,
@@ -134,19 +138,37 @@ export function PushNotificationsHost() {
                 id: toastId,
                 duration: Infinity,
               });
-              if (!(await openTarget(target))) {
+              const notificationId = `${toastId}:${++attempt}`;
+              const stop = watchNotificationNavigation(
+                notificationId,
+                (outcome) => {
+                  pending.delete(stop);
+                  if (outcome === "ready") {
+                    toast.dismiss(toastId);
+                  } else {
+                    toast.message(title, { ...options, id: toastId });
+                    opening = false;
+                  }
+                },
+              );
+              pending.add(stop);
+              if (!(await openTarget(target, notificationId))) {
+                stop();
+                pending.delete(stop);
                 toast.message(title, { ...options, id: toastId });
                 opening = false;
                 return;
               }
-              setTimeout(() => toast.dismiss(toastId), 500);
             },
           },
         };
         const toastId = toast.message(title, options);
       },
     );
-    return () => subscription.remove();
+    return () => {
+      subscription.remove();
+      for (const stop of pending) stop();
+    };
   }, [openTarget]);
 
   useEffect(() => {

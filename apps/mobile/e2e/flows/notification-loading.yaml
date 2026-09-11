@@ -1,0 +1,52 @@
+appId: app.getbb.mobile
+env:
+  SERVER_URL: "http://127.0.0.1:42995"
+---
+- runFlow: ../subflows/launch-app.yaml
+- tapOn:
+    id: "server-url-input"
+- inputText: "${SERVER_URL}"
+- tapOn:
+    id: "server-label-input"
+- inputText: "E2E backend"
+- tapOn: "Server URL"
+- tapOn:
+    id: "add-server-submit"
+- extendedWaitUntil:
+    visible: "Turn on notifications"
+    timeout: 30000
+- tapOn: "Turn on notifications"
+- extendedWaitUntil:
+    visible: ".*Ask anything.*"
+    timeout: 60000
+- startRecording: notification-loading
+- runScript:
+    file: ../scripts/send-notification.js
+    env:
+      SCENARIO: slow-completed
+- extendedWaitUntil:
+    visible: "Thread finished"
+    timeout: 5000
+- takeScreenshot: notification-arrived
+- tapOn:
+    text: "Open"
+    waitToSettleTimeoutMs: 0
+- runScript:
+    file: ../scripts/send-notification.js
+    env:
+      SCENARIO: wait-for-timeline
+- takeScreenshot: notification-loading
+- assertNotVisible: ".*Response to: Hello from the seed.*"
+- runScript:
+    file: ../scripts/send-notification.js
+    env:
+      SCENARIO: release-timeline
+- extendedWaitUntil:
+    visible: ".*Response to: Hello from the seed.*"
+    timeout: 30000
+- takeScreenshot: notification-thread
+- extendedWaitUntil:
+    notVisible: "Thread finished"
+    timeout: 12000
+- takeScreenshot: notification-dismissed
+- stopRecording

@@ -30,6 +30,7 @@ describe("parsePageToShellMessage", () => {
   it("accepts every message kind the contract defines", () => {
     const cases: unknown[] = [
       { type: "ready", path: "/threads/thr_1" },
+      { type: "thread-ready", threadId: "thr_1", path: "/threads/thr_1" },
       { type: "title", title: "bb", path: "/" },
       { type: "haptic", kind: "impact-medium" },
       { type: "badge", count: 0 },

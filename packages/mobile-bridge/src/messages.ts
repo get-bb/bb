@@ -51,6 +51,13 @@ export const pageToShellMessageSchema = z.discriminatedUnion("type", [
   z.object({ type: z.literal("ready"), path: z.string() }).strict(),
   z
     .object({
+      type: z.literal("thread-ready"),
+      threadId: z.string().min(1),
+      path: z.string(),
+    })
+    .strict(),
+  z
+    .object({
       type: z.literal("title"),
       title: z.string().max(300),
       path: z.string(),

@@ -29,11 +29,12 @@ export function rawPathHref(path: string): Href {
 }
 
 export function webViewShellHref(
-  params: { profileId?: string; path?: string } = {},
+  params: { profileId?: string; path?: string; notificationId?: string } = {},
 ): Href {
   return untypedHref("/webview", {
     profileId: params.profileId,
     path: params.path,
+    notificationId: params.notificationId,
   });
 }
 

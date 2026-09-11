@@ -27,6 +27,7 @@ import { useTheme } from "@/theme";
 import { Button, EmptyStatePanel, Spinner, Text } from "@/ui";
 import { Linking } from "react-native";
 import { useShellBridge } from "./useShellBridge";
+import { useNotificationNavigation } from "./useNotificationNavigation";
 
 const APP_VERSION = String(Constants.expoConfig?.version ?? "0.0.0");
 
@@ -40,7 +41,11 @@ export function ProfileWebViewScreen() {
   const { tokens } = useTheme();
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const params = useLocalSearchParams<{ profileId?: string; path?: string }>();
+  const params = useLocalSearchParams<{
+    profileId?: string;
+    path?: string;
+    notificationId?: string;
+  }>();
   const { status, profiles, activeProfile, connection, setActiveProfile } =
     useProfiles();
   const preferences = getShellPreferenceStore();
@@ -60,6 +65,13 @@ export function ProfileWebViewScreen() {
   const webViewRef = useRef<WebView>(null);
   const [load, setLoad] = useState<ShellLoadPhase>({ kind: "loading" });
   const [reloadKey, setReloadKey] = useState(0);
+  const [readyThread, setReadyThread] = useState<{
+    threadId: string;
+    path: string;
+    sourceUrl: string | null;
+    reloadKey: number;
+  } | null>(null);
+  const [pagePath, setPagePath] = useState<string | null>(null);
   const currentPathRef = useRef<string>("/");
 
   const initialPath = useMemo(() => {
@@ -79,6 +91,7 @@ export function ProfileWebViewScreen() {
   const rememberPath = useCallback(
     (path: string) => {
       currentPathRef.current = path;
+      setPagePath(path);
       if (profile !== null) preferences.setLastPath(profile.id, path);
     },
     [preferences, profile],
@@ -94,10 +107,28 @@ export function ProfileWebViewScreen() {
       rememberPath(path);
     },
     onPath: rememberPath,
+    onThreadReady: (threadId, path) => {
+      setReadyThread({ threadId, path, sourceUrl, reloadKey });
+    },
     onOpenNative: (screen) => {
       if (screen === "device-settings") openDeviceSettings();
     },
   });
+
+  useNotificationNavigation(
+    firstParam(params.notificationId),
+    readyThread !== null &&
+      readyThread.sourceUrl === sourceUrl &&
+      readyThread.reloadKey === reloadKey &&
+      readyThread.path === pagePath &&
+      requestedPath?.split("?")[0]?.endsWith(`/threads/${readyThread.threadId}`) === true &&
+      profile?.id === requestedProfileId &&
+      load.kind === "ready",
+    load.kind === "failed" ||
+      load.kind === "http-error" ||
+      session.status === "error" ||
+      session.status === "auth-required",
+  );
 
   useEffect(
     () =>

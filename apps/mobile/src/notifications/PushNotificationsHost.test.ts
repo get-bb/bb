@@ -117,6 +117,10 @@ vi.mock("./use-push-store", () => ({
 }));
 
 import { PushNotificationsHost } from "./PushNotificationsHost";
+import {
+  finishNotificationNavigation,
+  setNotificationNavigationReady,
+} from "./notification-navigation";
 
 describe("PushNotificationsHost", () => {
   beforeEach(() => {
@@ -129,8 +133,14 @@ describe("PushNotificationsHost", () => {
   });
 
   afterEach(() => {
+    finishNotificationNavigation(navigationId(), "cancelled");
+    finishNotificationNavigation("foreground-2:1", "cancelled");
     vi.useRealTimers();
   });
+
+  function navigationId(): string {
+    return mocks.push.mock.calls.at(-1)?.[0]?.params.notificationId ?? "foreground-1:1";
+  }
 
   function receive(data: Record<string, string>, id = "foreground-1") {
     mocks.toastMessage.mockReturnValueOnce(id);
@@ -153,7 +163,7 @@ describe("PushNotificationsHost", () => {
   it.each([
     ["proj_1", "/projects/proj_1/threads/thr_1"],
     [null, "/threads/thr_1"],
-  ])("dismisses the opened %s notification after 500 ms", async (projectId, path) => {
+  ])("dismisses the opened %s notification after 100 ms", async (projectId, path) => {
     vi.useFakeTimers();
     const action = receive({
       ...(projectId ? { projectId } : {}),
@@ -164,16 +174,17 @@ describe("PushNotificationsHost", () => {
     await vi.advanceTimersByTimeAsync(0);
     expect(mocks.push).toHaveBeenCalledWith({
       pathname: "/webview",
-      params: { path, profileId: "profile-1" },
+      params: { path, profileId: "profile-1", notificationId: "foreground-1:1" },
     });
     expect(mocks.toastDismiss).not.toHaveBeenCalled();
-    await vi.advanceTimersByTimeAsync(499);
+    setNotificationNavigationReady(navigationId(), true);
+    await vi.advanceTimersByTimeAsync(99);
     expect(mocks.toastDismiss).not.toHaveBeenCalled();
     await vi.advanceTimersByTimeAsync(1);
     expect(mocks.toastDismiss).toHaveBeenCalledExactlyOnceWith("foreground-1");
   });
 
-  it("starts the dismissal delay after resolving the target profile", async () => {
+  it("waits for the thread page after a slow profile lookup", async () => {
     vi.useFakeTimers();
     let resolveProbe: (found: boolean) => void = () => {};
     mocks.hasThread.mockImplementationOnce(
@@ -192,7 +203,10 @@ describe("PushNotificationsHost", () => {
     resolveProbe(true);
     await vi.advanceTimersByTimeAsync(0);
     expect(mocks.push).toHaveBeenCalledOnce();
-    await vi.advanceTimersByTimeAsync(499);
+    await vi.advanceTimersByTimeAsync(10_000);
+    expect(mocks.toastDismiss).not.toHaveBeenCalled();
+    setNotificationNavigationReady(navigationId(), true);
+    await vi.advanceTimersByTimeAsync(99);
     expect(mocks.toastDismiss).not.toHaveBeenCalled();
     await vi.advanceTimersByTimeAsync(1);
     expect(mocks.toastDismiss).toHaveBeenCalledExactlyOnceWith("foreground-1");
@@ -212,7 +226,9 @@ describe("PushNotificationsHost", () => {
     });
     mocks.hasThread.mockResolvedValue(true);
     action.onClick();
-    await vi.advanceTimersByTimeAsync(500);
+    await vi.advanceTimersByTimeAsync(0);
+    setNotificationNavigationReady(navigationId(), true);
+    await vi.advanceTimersByTimeAsync(100);
     expect(mocks.push).toHaveBeenCalledOnce();
     expect(mocks.toastDismiss).toHaveBeenCalledExactlyOnceWith("foreground-1");
   });
@@ -232,7 +248,9 @@ describe("PushNotificationsHost", () => {
     expect(mocks.toastDismiss).not.toHaveBeenCalled();
     mocks.hasThread.mockResolvedValue(true);
     action.onClick();
-    await vi.advanceTimersByTimeAsync(500);
+    await vi.advanceTimersByTimeAsync(0);
+    setNotificationNavigationReady(navigationId(), true);
+    await vi.advanceTimersByTimeAsync(100);
     expect(mocks.push).toHaveBeenCalledOnce();
     expect(mocks.toastDismiss).toHaveBeenCalledExactlyOnceWith("foreground-1");
   });
@@ -245,9 +263,11 @@ describe("PushNotificationsHost", () => {
     });
     action.onClick();
     action.onClick();
-    await vi.advanceTimersByTimeAsync(250);
+    await vi.advanceTimersByTimeAsync(0);
+    setNotificationNavigationReady(navigationId(), true);
+    await vi.advanceTimersByTimeAsync(50);
     action.onClick();
-    await vi.advanceTimersByTimeAsync(250);
+    await vi.advanceTimersByTimeAsync(50);
     expect(mocks.push).toHaveBeenCalledOnce();
     expect(mocks.toastDismiss).toHaveBeenCalledExactlyOnceWith("foreground-1");
   });
@@ -255,12 +275,50 @@ describe("PushNotificationsHost", () => {
   it("dismisses only the opened toast when another notification arrives", async () => {
     vi.useFakeTimers();
     receive({ serverUrl: "https://bb.example.test", threadId: "thr_1" }).onClick();
-    await vi.advanceTimersByTimeAsync(250);
+    await vi.advanceTimersByTimeAsync(0);
+    setNotificationNavigationReady(navigationId(), true);
+    await vi.advanceTimersByTimeAsync(50);
     receive(
       { serverUrl: "https://bb.example.test", threadId: "thr_2" },
       "foreground-2",
     );
-    await vi.advanceTimersByTimeAsync(250);
+    await vi.advanceTimersByTimeAsync(50);
+    expect(mocks.toastDismiss).toHaveBeenCalledExactlyOnceWith("foreground-1");
+  });
+
+  it("keeps the toast through loading and ignores another page's readiness", async () => {
+    vi.useFakeTimers();
+    receive({ serverUrl: "https://bb.example.test", threadId: "thr_1" }).onClick();
+    await vi.advanceTimersByTimeAsync(0);
+    setNotificationNavigationReady("another-navigation", true);
+    await vi.advanceTimersByTimeAsync(10_000);
+    expect(mocks.toastDismiss).not.toHaveBeenCalled();
+    setNotificationNavigationReady(navigationId(), true);
+    await vi.advanceTimersByTimeAsync(50);
+    setNotificationNavigationReady(navigationId(), false);
+    await vi.advanceTimersByTimeAsync(100);
+    expect(mocks.toastDismiss).not.toHaveBeenCalled();
+    setNotificationNavigationReady(navigationId(), true);
+    await vi.advanceTimersByTimeAsync(100);
+    expect(mocks.toastDismiss).toHaveBeenCalledExactlyOnceWith("foreground-1");
+  });
+
+  it("cancels dismissal and restores Open when navigation fails or the user leaves", async () => {
+    vi.useFakeTimers();
+    const action = receive({ serverUrl: "https://bb.example.test", threadId: "thr_1" });
+    action.onClick();
+    await vi.advanceTimersByTimeAsync(0);
+    setNotificationNavigationReady(navigationId(), true);
+    await vi.advanceTimersByTimeAsync(50);
+    finishNotificationNavigation(navigationId(), "cancelled");
+    await vi.advanceTimersByTimeAsync(100);
+    expect(mocks.toastDismiss).not.toHaveBeenCalled();
+    expect(mocks.toastMessage.mock.calls.at(-1)?.[1]).toMatchObject({ duration: 8_000, action });
+    action.onClick();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(mocks.push).toHaveBeenCalledTimes(2);
+    setNotificationNavigationReady(navigationId(), true);
+    await vi.advanceTimersByTimeAsync(100);
     expect(mocks.toastDismiss).toHaveBeenCalledExactlyOnceWith("foreground-1");
   });
 
