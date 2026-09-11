@@ -24,7 +24,9 @@ const STATUS_TIMEOUT_MS = 5_000;
 export function listInstallableMachineIds(
   deps: GlobalSkillInstallDeps,
 ): string[] {
-  return listHosts(deps.db).map((host) => host.id);
+  return listHosts(deps.db)
+    .filter((host) => host.type !== "ephemeral")
+    .map((host) => host.id);
 }
 
 type InstallGlobalCliSkillsResult = SystemInstallCliSkillsResponse;

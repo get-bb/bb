@@ -218,9 +218,31 @@ describe("bb machine command output", () => {
 
     expect(collectLogPayloads(vi.mocked(console.log))).toEqual([
       "",
-      "Name         ID            Status        Provider       Last seen\n-----------  ------------  ------------  -------------  ---------\nworkstation  host-primary  connected     user-enrolled  2m ago\n-----------  ------------  ------------  -------------  ---------\nlaptop       host-remote   disconnected  ssh            never",
+      "Name         ID            Type        Status        Provider       Last seen\n-----------  ------------  ----------  ------------  -------------  ---------\nworkstation  host-primary  persistent  connected     user-enrolled  2m ago\n-----------  ------------  ----------  ------------  -------------  ---------\nlaptop       host-remote   persistent  disconnected  ssh            never",
       "",
     ]);
+  });
+
+  it("hides disposable sandboxes from bb machine list until --all", async () => {
+    const sandbox: Host = {
+      ...hosts[0]!,
+      id: "host-sandbox",
+      name: "sandbox",
+      type: "ephemeral",
+      machineProviderId: "modal-sandbox",
+    };
+    stubServerApi({ "v1.hosts.$get": vi.fn(async () => [...hosts, sandbox]) });
+
+    await runCommand(["machine", "list", "--json"], register);
+    expect(
+      JSON.parse(String(vi.mocked(console.log).mock.calls[0]?.[0])),
+    ).toEqual(hosts);
+
+    vi.mocked(console.log).mockClear();
+    await runCommand(["machine", "list", "--all", "--json"], register);
+    expect(
+      JSON.parse(String(vi.mocked(console.log).mock.calls[0]?.[0])),
+    ).toEqual([...hosts, sandbox]);
   });
 
   it("bb machine retry-update resolves the machine and requests a retry", async () => {

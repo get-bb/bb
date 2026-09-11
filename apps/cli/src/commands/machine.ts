@@ -20,6 +20,10 @@ interface MachineListCommandOptions {
   json?: boolean;
 }
 
+interface MachineEnumerationOptions extends MachineListCommandOptions {
+  all?: boolean;
+}
+
 interface MachineCreateCommandOptions extends MachineListCommandOptions {
   provider: string;
   wait: boolean;
@@ -85,6 +89,17 @@ function parseProviderCliKey(value: string): string {
 function describeMachines(hosts: readonly Host[]): string {
   if (hosts.length === 0) return "none";
   return hosts.map((host) => `${host.name} (${host.id})`).join(", ");
+}
+
+export type MachineScope = "persistent" | "all";
+
+export function selectMachines(
+  hosts: readonly Host[],
+  scope: MachineScope,
+): Host[] {
+  return scope === "all"
+    ? [...hosts]
+    : hosts.filter((host) => host.type !== "ephemeral");
 }
 
 export function resolveMachineId(
@@ -318,12 +333,17 @@ export function registerMachineCommands(
   machine
     .command("list")
     .description("List execution machines")
+    .option(
+      "--all",
+      "Include disposable provider sandboxes alongside persistent machines",
+    )
     .option("--json", "Print machine-readable JSON output")
     .action(
-      action(async (opts: MachineListCommandOptions) => {
-        const hosts = await createCliBbSdk(getUrl()).hosts.list({
-          includeCreating: true,
-        });
+      action(async (opts: MachineEnumerationOptions) => {
+        const hosts = selectMachines(
+          await createCliBbSdk(getUrl()).hosts.list({ includeCreating: true }),
+          opts.all ? "all" : "persistent",
+        );
         if (outputJson(opts, hosts)) return;
         if (hosts.length === 0) {
           console.log("No machines found");
@@ -540,6 +560,7 @@ function printMachineTable(hosts: Host[]): void {
   const rows = hosts.map((host) => [
     host.name,
     host.id,
+    host.type,
     host.status,
     host.machineProviderId ?? "user-enrolled",
     formatMachineLastSeen(host.lastSeenAt, now),
@@ -547,15 +568,16 @@ function printMachineTable(hosts: Host[]): void {
   const widths = [
     Math.max(4, ...rows.map((row) => row[0].length)),
     Math.max(2, ...rows.map((row) => row[1].length)),
-    Math.max(6, ...rows.map((row) => row[2].length)),
-    Math.max(8, ...rows.map((row) => row[3].length)),
-    Math.max(9, ...rows.map((row) => row[4].length)),
+    Math.max(4, ...rows.map((row) => row[2].length)),
+    Math.max(6, ...rows.map((row) => row[3].length)),
+    Math.max(8, ...rows.map((row) => row[4].length)),
+    Math.max(9, ...rows.map((row) => row[5].length)),
   ];
   console.log("");
   console.log(
     renderBorderlessTable(
       {
-        head: ["Name", "ID", "Status", "Provider", "Last seen"],
+        head: ["Name", "ID", "Type", "Status", "Provider", "Last seen"],
         colWidths: widths,
         trimTrailingWhitespace: true,
       },

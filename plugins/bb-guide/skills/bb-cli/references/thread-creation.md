@@ -69,8 +69,10 @@ worktree` only; a provider takes its branch through `--environment-inputs`.
   launchd/systemd restart the daemon. Auto-update never downgrades. To bypass a
   transient backoff, use `bb machine retry-update <id-or-name>`. Remove
   `--auto-update` from the service definition and reload it to opt out.
-- Run `bb machine list` to see machine names, IDs, connection status, and last
-  seen time (`--json` returns the raw host list). Use `--machine <id-or-name>`
+- Run `bb machine list` to see machine names, IDs, type, connection status, and
+  last seen time (`--json` returns the raw host list). It shows persistent
+  machines; pass `--all` to include the disposable sandboxes environment
+  providers create per thread. Use `--machine <id-or-name>`
   (alias `--host`) on `bb thread spawn` to run in a personal or unmanaged
   workspace, or combine it with `--new-environment worktree`. Do not combine a
   machine selector with an existing environment ID, which already owns its

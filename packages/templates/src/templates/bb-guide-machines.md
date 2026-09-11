@@ -41,8 +41,11 @@ directly under the selected data directory in `logs/server-stdio.log` and
 console output and startup errors; rotating application logs remain separate.
 Use `tail -F` to follow them without coupling service logging to the terminal.
 
-bb machine list List machines with ID, connection
-status, and relative last-seen time
+bb machine list List persistent machines with ID,
+type, connection status, and
+relative last-seen time
+--all Include disposable provider
+sandboxes
 --json Print the raw host list
 bb machine providers List installed machine providers
 --json Include inputs schemas and policy
@@ -81,7 +84,9 @@ provider defaults; supply JSON when its schema requires additional values. Omit
 Creation is durable:
 `--no-wait` returns the creating host ID immediately; otherwise the CLI polls
 that host until active. SIGINT stops following and exits 130 while creation
-continues. `bb machine list` includes machines still being created.
+continues. `bb machine list` includes machines still being created. It lists persistent
+machines only; pass `--all` to include the disposable sandboxes that
+environment providers create per thread.
 Use `bb machine show <host-id>` to inspect progress and `bb machine
 remove <host-id>` to cancel and clean up. The SDK provides
 `hosts.experimental_create`; pass `wait: false` to receive the creating host and
