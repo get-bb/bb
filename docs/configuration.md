@@ -1065,9 +1065,13 @@ Installed plugins or with `bb plugin config workflows set <key> <value>`:
 The five settings other than `maxActiveRuns` are snapshotted into each new run.
 Settings changes do not require a plugin reload.
 
-`bb plugin install npm:<package>[@<version|tag|range>]` requires `npm` on PATH
-(packages are installed with `--ignore-scripts`). Git plugins also use npm with
-lifecycle scripts disabled, so they may depend on third-party packages; bb
+`bb plugin install npm:<package>[@<version|tag|range>]` uses BB's shipped npm
+and its running Node runtime; neither executable needs to be on PATH. Packages
+are installed with `--ignore-scripts`. Git plugins also use this npm with
+lifecycle scripts disabled. Their development dependencies are excluded from
+resolution, workspace installation is disabled, and their original manifest
+and lockfiles are restored after the install, including failures. They may
+depend on third-party runtime packages; bb
 then builds both their server and frontend bundles. `node_modules` is
 retained, because a dependency can load data files that bundling cannot
 inline. A committed `dist/` is always replaced by the bundles bb builds.

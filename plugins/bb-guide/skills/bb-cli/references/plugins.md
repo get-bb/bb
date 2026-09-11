@@ -71,7 +71,7 @@
   - `bb plugin install <src>` — `<entry-id>@<marketplace>`, an HTTP(S) Git
     repository URL, a local path,
     `git:<url>[@<ref|semver-range>]`, or `npm:<package>[@<version|tag|range>]`
-    (npm on PATH required for `npm:`). Repository URLs and prefixes `path:` /
+    (using BB's shipped npm). Repository URLs and prefixes `path:` /
     `npm:` / `git:` skip catalog resolution. To pin or
     range an npm package, install with `npm:<package>@…`.
     Omit the npm spec to track compatible stable releases; ranges and dist-tags
@@ -95,7 +95,11 @@
     and git sources without a prebuilt app when their imported dependencies
     are already available;
     git/npm packages can also ship a metadata-validated prebuilt `dist/`, and
-    npm packages must. Managed git/npm installs refuse `engines.bb` /
+    npm packages must. Git installs resolve runtime dependencies without
+    development dependencies or workspace installation; lifecycle scripts are
+    disabled, and the original manifest and lockfiles are restored afterward.
+    npm and Node do not need to be on PATH; Git sources still require `git`.
+    Managed git/npm installs refuse `engines.bb` /
     `engines.bbPluginSdk` mismatches, manifest vs. artifact identity mismatches,
     and reserved ID mismatches.
     A `git:`/`path:` repository can hold several plugins. Install one with
