@@ -12,11 +12,20 @@ runs:
         FUSE_PACKAGE: ${{ inputs.package }}
       run: |
         set -euo pipefail
+        mirrorlist=/etc/apt/blacksmith-ubuntu-mirrors.txt
+        if [ -f "$mirrorlist" ]; then
+          printf '%s\n' 'https://mirrors.edge.kernel.org/ubuntu/' | sudo tee "$mirrorlist" >/dev/null
+        fi
         for source in /etc/apt/sources.list /etc/apt/sources.list.d/*.list /etc/apt/sources.list.d/*.sources /etc/apt/blacksmith-ubuntu-mirrors.txt; do
           if [ -f "$source" ]; then
             sudo sed -E -i 's#http://((([a-z0-9-]+\.)?archive|security)\.ubuntu\.com/ubuntu|mirrors\.sonic\.net/ubuntu)#https://\1#g' "$source"
           fi
         done
-        apt_options=(-o Acquire::http::Timeout=10 -o Acquire::https::Timeout=10 -o Acquire::Retries=1)
+        apt_options=(
+          -o Acquire::http::Timeout=10
+          -o Acquire::https::Timeout=10
+          -o Acquire::Retries=1
+          -o Acquire::IndexTargets::deb::DEP-11::DefaultEnabled=false
+        )
         sudo apt-get "${apt_options[@]}" update
         sudo apt-get "${apt_options[@]}" install --yes "$FUSE_PACKAGE"
