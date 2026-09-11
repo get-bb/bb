@@ -1,3 +1,4 @@
+import type { Writable } from "node:stream";
 import {
   resolveContextProjectId,
   resolveContextThreadId,
@@ -270,9 +271,7 @@ export function findPluginCliCommand(
   return contributions.find((entry) => entry.name === name);
 }
 
-interface PluginCliOutputStream {
-  write(chunk: string, callback: (error?: Error | null) => void): boolean;
-}
+type PluginCliOutputStream = Writable;
 
 interface PluginCliOutputStreams {
   stdout: PluginCliOutputStream;
@@ -337,10 +336,36 @@ async function writePluginCliOutput(
   if (value.length === 0) return;
   const output = value.endsWith("\n") ? value : `${value}\n`;
   await new Promise<void>((resolvePromise, rejectPromise) => {
-    stream.write(output, (error) => {
-      if (error) rejectPromise(error);
-      else resolvePromise();
-    });
+    const settle = (error?: Error | null) => {
+      stream.off("error", onError);
+      stream.off("close", onClose);
+      if (error && !("code" in error && error.code === "EPIPE")) {
+        rejectPromise(error);
+      } else {
+        resolvePromise();
+      }
+    };
+    const onError = (error: Error) => settle(error);
+    const onClose = () =>
+      settle(
+        stream.errored ??
+          new Error("Plugin CLI output stream closed before flushing"),
+      );
+    stream.once("error", onError);
+    stream.once("close", onClose);
+    if (stream.destroyed) {
+      if (stream.closed) process.nextTick(onClose);
+      return;
+    }
+    try {
+      stream.write(output, (error) => {
+        if (!error) settle();
+      });
+    } catch (error) {
+      stream.off("error", onError);
+      stream.off("close", onClose);
+      rejectPromise(error);
+    }
   });
 }
 
