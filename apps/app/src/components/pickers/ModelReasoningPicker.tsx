@@ -20,7 +20,7 @@ import {
 } from "./model-brand-prefix";
 import { fastServiceTierLabel } from "@/lib/reasoning-labels";
 import { Button } from "@bb/shared-ui/button";
-import { Icon, type IconName } from "@bb/shared-ui/icon";
+import { Icon } from "@bb/shared-ui/icon";
 import { Input } from "@bb/shared-ui/input";
 import {
   COARSE_POINTER_ICON_SIZE_CLASS,
@@ -1003,6 +1003,11 @@ export function ModelReasoningPicker({
       >
         <ResetBrowseStateOnContentUnmount onReset={resetBrowseState} />
         {handoffMode ? <HandoffModeHeader onBack={exitHandoffMode} /> : null}
+        {handoff !== undefined &&
+        !handoffMode &&
+        handoffProviderOptions.length > 0 ? (
+          <HandoffMenuEntry onClick={startHandoffMode} />
+        ) : null}
         {showProviderTabs ? (
           <div
             className={cn(
@@ -1253,21 +1258,6 @@ export function ModelReasoningPicker({
                 </div>
               </>
             ) : null}
-
-            {handoff !== undefined &&
-            !handoffMode &&
-            handoffProviderOptions.length > 0 ? (
-              <>
-                <div className="shrink-0 border-t border-border" />
-                <div className="shrink-0 p-1">
-                  <MenuActionButton
-                    label="Handoff to new thread"
-                    iconName="MessageSquarePlus"
-                    onClick={startHandoffMode}
-                  />
-                </div>
-              </>
-            ) : null}
           </div>
         </MenuHoverProvider>
       </PopoverContent>
@@ -1302,32 +1292,37 @@ function HandoffModeHeader({ onBack }: { onBack: () => void }) {
   );
 }
 
-function MenuActionButton({
-  label,
-  iconName,
-  onClick,
-}: {
-  label: string;
-  iconName: IconName;
-  onClick: () => void;
-}) {
-  const { hoverProps } = useMenuItemHover();
+function HandoffMenuEntry({ onClick }: { onClick: () => void }) {
   const isCompactViewport = useIsCompactViewport();
   return (
-    <button
-      type="button"
-      onClick={onClick}
+    <div
       className={cn(
-        "relative flex w-full cursor-default select-none items-center gap-2 rounded-sm px-2 text-xs outline-none hover:bg-state-hover hover:text-foreground",
-        LIST_HOVER_TRANSITION,
-        MENU_ITEM_LAST_HOVERED_CLASS,
-        isCompactViewport ? "py-2" : "py-[0.3125rem]",
+        "shrink-0 border-b border-border p-1",
+        isCompactViewport ? "bg-background" : "bg-surface-recessed",
       )}
-      {...hoverProps}
     >
-      <Icon name={iconName} className="size-3.5 shrink-0" aria-hidden />
-      <span className="min-w-0 truncate">{label}</span>
-    </button>
+      <button
+        type="button"
+        onClick={onClick}
+        className={cn(
+          "group/handoff flex w-full cursor-default select-none items-center gap-2 rounded-sm bg-state-active px-2 text-left text-xs font-medium text-foreground outline-none",
+          LIST_HOVER_TRANSITION,
+          isCompactViewport ? "py-2" : "py-[0.3125rem]",
+        )}
+      >
+        <Icon
+          name="MessageSquarePlus"
+          className="size-3.5 shrink-0 text-subtle-foreground group-hover/handoff:text-foreground"
+          aria-hidden
+        />
+        <span className="min-w-0 flex-1 truncate">Handoff to new thread</span>
+        <Icon
+          name="ChevronRight"
+          className="size-3.5 shrink-0 text-subtle-foreground group-hover/handoff:text-foreground"
+          aria-hidden
+        />
+      </button>
+    </div>
   );
 }
 
