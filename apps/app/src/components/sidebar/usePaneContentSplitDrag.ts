@@ -82,10 +82,21 @@ export function usePaneContentSplitActions() {
   const openInSplit = useCallback(
     ({ content: source, enabled, onNavigate }: PaneContentSplitOptions) => {
       const content = typeof source === "function" ? source() : source;
+      const isFreshDraft =
+        typeof source === "function" && content.kind === "new-thread";
       onNavigate?.();
       openPaneContentInSplit({
         store,
-        navigate,
+        navigate: (route, options) =>
+          navigate(
+            route,
+            isFreshDraft
+              ? {
+                  ...options,
+                  state: { focusPrompt: true },
+                }
+              : options,
+          ),
         content,
         route: routeForContent(content),
         enabled: enabled && !isCompact,
@@ -137,6 +148,9 @@ export function usePaneContentSplitActions() {
           if (layout === null) return;
           const resolvedContent =
             typeof content === "function" ? content() : content;
+          const isFreshDraft =
+            typeof content === "function" &&
+            resolvedContent.kind === "new-thread";
           const existing = findPaneByContent(layout.root, resolvedContent);
           const next =
             existing !== null
@@ -151,9 +165,13 @@ export function usePaneContentSplitActions() {
                   );
           if (next !== layout) store.set(splitLayoutAtom, next);
           onNavigate?.();
+          const navigationOptions =
+            existing !== null ? { replace: true } : undefined;
           navigate(
             routeForContent(resolvedContent),
-            existing !== null ? { replace: true } : undefined,
+            isFreshDraft
+              ? { ...navigationOptions, state: { focusPrompt: true } }
+              : navigationOptions,
           );
         },
       });

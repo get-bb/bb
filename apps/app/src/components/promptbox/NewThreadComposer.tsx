@@ -176,6 +176,7 @@ export interface NewThreadComposerState {
   }) => void;
   setPermissionMode: (value: PermissionMode) => void;
   setServiceTier: (value: ServiceTier | undefined) => void;
+  selectProject: (projectId: string | null) => Promise<void>;
   renderPromptBox: (options: NewThreadComposerPromptOptions) => ReactNode;
 }
 
@@ -1850,6 +1851,7 @@ function NewThreadComposerContent({
     setProviderModelReasoning,
     setPermissionMode,
     setServiceTier,
+    selectProject: handleProjectChange,
     renderPromptBox,
   });
 }

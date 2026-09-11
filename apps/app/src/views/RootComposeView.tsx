@@ -2363,7 +2363,8 @@ function RootComposeSurface({
     textEffects: promptTextEffects,
     allowNoProject: true,
     createProject: {
-      onCreate: quickCreateProject.openCreateDialog,
+      onCreate: () =>
+        quickCreateProject.openCreateDialogForSelection(composer.selectProject),
       disabled:
         !quickCreateProject.isAvailable || quickCreateProject.isCreating,
       isCreating: quickCreateProject.isCreating,

@@ -60,6 +60,7 @@ export type DraftResourceSubmitResult = DraftSubmitResponse & {
 interface Entry {
   id: string;
   buffer: DraftRecovery | null;
+  ownsBuffer: boolean;
   sources: StoredDraftRecovery[];
   alternatives: StoredDraftRecovery[];
   persistenceError: Error | null;
@@ -72,6 +73,7 @@ interface Entry {
 }
 
 const EMPTY_CONTENT = draftContentSchema.parse({});
+const WRITER_LOCK_PREFIX = "bb.draft-recovery-writer:";
 
 function sameContent(left: DraftContent, right: DraftContent): boolean {
   return JSON.stringify(left) === JSON.stringify(right);
@@ -83,6 +85,22 @@ function asError(error: unknown): Error {
     : new Error("Draft request failed. Your changes have been retained.");
 }
 
+function selectRecovery(records: StoredDraftRecovery[]) {
+  const selected = records[0] ?? null;
+  const sources = records.filter(
+    (record) =>
+      selected !== null &&
+      sameContent(record.value.content, selected.value.content) &&
+      record.value.baseRevision === selected.value.baseRevision &&
+      JSON.stringify(record.value.submission) ===
+        JSON.stringify(selected.value.submission),
+  );
+  const alternatives = records.filter((record) => !sources.includes(record));
+  const buffer = selected ? { ...selected.value } : null;
+  if (buffer && alternatives.length > 0) buffer.blocked = "conflict";
+  return { buffer, sources, alternatives };
+}
+
 export class DraftResourceStore {
   private readonly entries = new Map<string, Entry>();
   private readonly writerId = crypto.randomUUID();
@@ -91,6 +109,8 @@ export class DraftResourceStore {
   private resumed = false;
   private disposed = false;
   private readonly unsubscribeCache: () => void;
+  private readonly writerReady: Promise<void>;
+  private readonly releaseWriters = new Set<() => void>();
 
   constructor(
     private readonly queryClient: QueryClient,
@@ -98,11 +118,12 @@ export class DraftResourceStore {
     private readonly storage: DraftRecoveryStorage,
     private readonly debounceMs = 350,
   ) {
+    this.writerReady = this.holdWriter(this.writerId, false).then(() => {});
     const recovered = readDraftRecoveries(storage);
     for (const id of new Set(
       recovered.records.map((record) => record.value.id),
     )) {
-      this.entry(id);
+      this.entry(id, true);
     }
     this.unsubscribeCache = queryClient.getQueryCache().subscribe((event) => {
       if (
@@ -130,28 +151,42 @@ export class DraftResourceStore {
     this.refreshRecoverable();
   }
 
-  private entry(id: string): Entry {
+  private holdWriter(writer: string, ifAvailable: boolean): Promise<boolean> {
+    if (typeof navigator === "undefined" || !navigator.locks)
+      return Promise.resolve(true);
+    return new Promise((ready) => {
+      void navigator.locks
+        .request(
+          `${WRITER_LOCK_PREFIX}${writer}`,
+          { ifAvailable },
+          async (lock) => {
+            if (!lock || this.disposed) {
+              ready(false);
+              return;
+            }
+            const released = new Promise<void>((resolve) => {
+              this.releaseWriters.add(resolve);
+            });
+            ready(true);
+            await released;
+          },
+        )
+        .catch(() => ready(false));
+    });
+  }
+
+  private entry(id: string, restoreRecovery = false): Entry {
     draftIdSchema.parse(id);
     const existing = this.entries.get(id);
     if (existing) return existing;
     const recovered = readDraftRecoveries(this.storage, id);
-    const selected = recovered.records[0] ?? null;
-    const sources = recovered.records.filter(
-      (record) =>
-        selected !== null &&
-        sameContent(record.value.content, selected.value.content) &&
-        record.value.baseRevision === selected.value.baseRevision &&
-        JSON.stringify(record.value.submission) ===
-          JSON.stringify(selected.value.submission),
+    const { buffer, sources, alternatives } = selectRecovery(
+      restoreRecovery ? recovered.records : [],
     );
-    const alternatives = recovered.records.filter(
-      (record) => !sources.includes(record),
-    );
-    const buffer = selected ? { ...selected.value } : null;
-    if (buffer && alternatives.length > 0) buffer.blocked = "conflict";
     const entry: Entry = {
       id,
       buffer,
+      ownsBuffer: false,
       sources,
       alternatives,
       persistenceError: recovered.error,
@@ -212,7 +247,9 @@ export class DraftResourceStore {
       persistenceError: entry.persistenceError,
       recoveryCopies: [
         ...(blocked && entry.buffer ? [entry.buffer.content] : []),
-        ...entry.alternatives.map((record) => record.value.content),
+        ...(entry.buffer
+          ? entry.alternatives.map((record) => record.value.content)
+          : []),
       ],
     };
     const previous = entry.snapshot;
@@ -283,12 +320,14 @@ export class DraftResourceStore {
     try {
       const key = `${DRAFT_RECOVERY_PREFIX}${entry.id}:${this.writerId}`;
       if (entry.buffer) {
+        if (!entry.ownsBuffer) return;
         this.storage.setItem(key, JSON.stringify(entry.buffer));
       } else {
         this.storage.removeItem(key);
         for (const source of entry.sources)
           removeUnchangedRecovery(this.storage, source);
         entry.sources = [];
+        entry.ownsBuffer = false;
       }
       entry.persistenceError = null;
     } catch {
@@ -311,38 +350,21 @@ export class DraftResourceStore {
   };
 
   private onStorage = (event: StorageEvent): void => {
-    if (!event.key?.startsWith(DRAFT_RECOVERY_PREFIX) || !event.newValue)
-      return;
+    if (!event.key?.startsWith(DRAFT_RECOVERY_PREFIX)) return;
     const recovered = readDraftRecoveries(this.storage);
-    for (const record of recovered.records) {
-      const entry = this.entries.get(record.value.id);
-      if (!entry) {
-        this.entry(record.value.id);
-        continue;
-      }
-      if (
-        record.key.endsWith(`:${this.writerId}`) ||
-        entry.sources.some(
-          (item) => item.key === record.key && item.raw === record.raw,
-        )
-      )
-        continue;
-      const previous = entry.alternatives.findIndex(
-        (item) => item.key === record.key,
+    for (const entry of this.entries.values()) {
+      entry.alternatives = recovered.records.filter(
+        (record) =>
+          record.value.id === entry.id &&
+          !record.key.endsWith(`:${this.writerId}`) &&
+          !entry.sources.some(
+            (item) => item.key === record.key && item.raw === record.raw,
+          ) &&
+          (!entry.buffer ||
+            !sameContent(entry.buffer.content, record.value.content)),
       );
-      if (previous >= 0) entry.alternatives.splice(previous, 1);
-      if (!entry.buffer) {
-        entry.buffer = { ...record.value, blocked: "conflict" };
-        entry.sources = [record];
-      } else if (!sameContent(entry.buffer.content, record.value.content)) {
-        entry.alternatives.push(record);
-        entry.buffer.blocked = "conflict";
-        this.cancelTimer(entry);
-        this.persist(entry);
-      }
       this.emit(entry);
     }
-    this.refreshRecoverable();
   };
 
   private cancelTimer(entry: Entry): void {
@@ -441,6 +463,7 @@ export class DraftResourceStore {
       forceRevision: false,
       updatedAt: Date.now(),
     };
+    entry.ownsBuffer = true;
     this.persist(entry);
     this.emit(entry);
     this.schedule(entry);
@@ -491,6 +514,7 @@ export class DraftResourceStore {
           updatedAt: Date.now(),
         };
     entry.error = null;
+    entry.ownsBuffer = true;
     this.persist(entry);
     this.emit(entry);
     this.schedule(entry);
@@ -628,11 +652,13 @@ export class DraftResourceStore {
 
   flush(id: string): Promise<Draft> {
     const entry = this.entry(id);
+    entry.ownsBuffer = true;
     return this.exclusive(entry, () => this.save(entry));
   }
 
   submit(id: string): Promise<DraftResourceSubmitResult> {
     const entry = this.entry(id);
+    entry.ownsBuffer = true;
     return this.exclusive(entry, async () => {
       if (entry.buffer?.deleteRequested)
         throw new Error("This draft is being deleted.");
@@ -652,6 +678,7 @@ export class DraftResourceStore {
           forceRevision: false,
           updatedAt: Date.now(),
         };
+        entry.ownsBuffer = true;
         this.persist(entry);
         this.emit(entry);
       }
@@ -743,6 +770,7 @@ export class DraftResourceStore {
       updatedAt: Date.now(),
     };
     entry.buffer.deleteRequested = true;
+    entry.ownsBuffer = true;
     this.cancelTimer(entry);
     this.persist(entry);
     this.emit(entry);
@@ -804,7 +832,45 @@ export class DraftResourceStore {
   resumeRecoveries = (): void => {
     if (this.resumed) return;
     this.resumed = true;
+    void this.resumeAbandonedRecoveries();
+  };
+
+  private async resumeAbandonedRecoveries(): Promise<void> {
+    await this.writerReady;
+    if (this.disposed) return;
+    const writers = new Set(
+      readDraftRecoveries(this.storage).records.map((record) =>
+        record.key.slice(record.key.lastIndexOf(":") + 1),
+      ),
+    );
+    const claimedWriters = new Set(
+      (
+        await Promise.all(
+          Array.from(writers, async (writer) =>
+            (await this.holdWriter(writer, true)) ? [writer] : [],
+          ),
+        )
+      ).flat(),
+    );
+    if (this.disposed) return;
     for (const entry of this.entries.values()) {
+      if (entry.buffer && !entry.ownsBuffer) {
+        const recovered = readDraftRecoveries(this.storage, entry.id);
+        const abandoned = recovered.records.filter((record) => {
+          const writer = record.key.slice(record.key.lastIndexOf(":") + 1);
+          return claimedWriters.has(writer);
+        });
+        const selected = selectRecovery(abandoned);
+        entry.buffer = selected.buffer;
+        entry.sources = selected.sources;
+        entry.alternatives = selected.alternatives;
+        entry.ownsBuffer = entry.buffer !== null;
+        entry.deleted = entry.buffer?.blocked === "deleted";
+        entry.persistenceError = recovered.error;
+        this.persist(entry);
+        this.reconcile(entry);
+        this.emit(entry);
+      }
       if (
         !entry.buffer ||
         entry.buffer.blocked ||
@@ -818,11 +884,13 @@ export class DraftResourceStore {
         })
         .catch(() => {});
     }
-  };
+  }
 
   dispose(): void {
     if (this.disposed) return;
     this.disposed = true;
+    for (const release of this.releaseWriters) release();
+    this.releaseWriters.clear();
     this.persistAll();
     this.unsubscribeCache();
     for (const entry of this.entries.values()) this.cancelTimer(entry);

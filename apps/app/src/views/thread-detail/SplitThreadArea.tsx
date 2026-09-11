@@ -760,6 +760,7 @@ function SplitTree(props: SplitTreeProps) {
         {}
         {node.content.kind === "thread" ? (
           <PaneStaleWatcher
+            key={node.content.threadId}
             threadId={node.content.threadId}
             onStale={() => props.onPruneStalePane(node.paneId)}
           />

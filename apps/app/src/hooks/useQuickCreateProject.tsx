@@ -3,6 +3,7 @@ import {
   useCallback,
   useContext,
   useMemo,
+  useRef,
   type ReactNode,
 } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
@@ -34,6 +35,9 @@ interface QuickCreateProjectController {
   isAvailable: boolean;
   isCreating: boolean;
   openCreateDialog: () => void;
+  openCreateDialogForSelection: (
+    onCreated: (projectId: string) => void | Promise<void>,
+  ) => void;
   platform: HostPlatform | null;
   hostId: string | null;
   hostName: string | null;
@@ -56,12 +60,16 @@ export function useQuickCreateProject(): QuickCreateProjectController {
   const location = useLocation();
   const setRootComposeProjectId = useSetRootComposeProjectId();
   const shouldReplaceRoute = location.pathname === APP_ROOT_ROUTE_PATH;
+  const selectionCompletion = useRef<
+    ((projectId: string) => void | Promise<void>) | null
+  >(null);
 
   const submit = useCallback(
     ({ path, hostId, target, closeDialog }: LocalPathSubmitParams) => {
       if (target.kind !== "create") return;
       const name = deriveProjectNameFromPath(path).trim();
       if (!name) return;
+      const onCreated = selectionCompletion.current;
 
       mutate(
         {
@@ -69,8 +77,12 @@ export function useQuickCreateProject(): QuickCreateProjectController {
           source: { type: "local_path", hostId, path },
         },
         {
-          onSuccess: (project) => {
+          onSuccess: async (project) => {
             closeDialog();
+            if (onCreated) {
+              await onCreated(project.id);
+              return;
+            }
             setRootComposeProjectId(project.id);
             void navigate(getRootComposeRoutePath(), {
               replace: shouldReplaceRoute,
@@ -88,14 +100,23 @@ export function useQuickCreateProject(): QuickCreateProjectController {
   });
 
   const openCreateDialog = useCallback(() => {
+    selectionCompletion.current = null;
     controller.openPathEntry({ kind: "create" });
   }, [controller]);
+  const openCreateDialogForSelection = useCallback(
+    (onCreated: (projectId: string) => void | Promise<void>) => {
+      selectionCompletion.current = onCreated;
+      controller.openPathEntry({ kind: "create" });
+    },
+    [controller],
+  );
 
   return useMemo(
     () => ({
       isAvailable: controller.isAvailable,
       isCreating: isPending,
       openCreateDialog,
+      openCreateDialogForSelection,
       platform: controller.platform,
       hostId: controller.hostId,
       hostName: controller.hostName,
@@ -103,7 +124,13 @@ export function useQuickCreateProject(): QuickCreateProjectController {
       projectPathDialog: controller.projectPathDialog,
       submitProjectPath: controller.submitProjectPath,
     }),
-    [controller, hosts, isPending, openCreateDialog],
+    [
+      controller,
+      hosts,
+      isPending,
+      openCreateDialog,
+      openCreateDialogForSelection,
+    ],
   );
 }
 

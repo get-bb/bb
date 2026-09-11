@@ -10,7 +10,11 @@ import { sdk } from "@/lib/sdk";
 import { createQueryClientTestHarness } from "@/test/queryClientTestHarness";
 import type { ProviderModelCatalogScope } from "@bb/domain";
 import type { QueryClient } from "@tanstack/react-query";
-import { hostsQueryKey, systemProvidersQueryKey } from "./queries/query-keys";
+import {
+  hostsQueryKey,
+  systemExecutionOptionsQueryKey,
+  systemProvidersQueryKey,
+} from "./queries/query-keys";
 import { getProjectScopedStorageKey } from "@/lib/project-scoped-storage";
 import { useThreadCreationOptions } from "./useThreadCreationOptions";
 import {
@@ -301,6 +305,7 @@ describe("useThreadCreationOptions", () => {
           scope: "component-local",
           resetKey: "draft-unavailable",
           preserveUnavailableSelections: true,
+          preferReadyProviderWhenUnset: true,
           initialProviderId: "removed-provider",
           initialModel: "removed-model",
           initialReasoningLevel: "xhigh",
@@ -317,6 +322,7 @@ describe("useThreadCreationOptions", () => {
     expect(result.current.activeModel).toBeUndefined();
     expect(result.current.reasoningLevel).toBe("xhigh");
     expect(result.current.serviceTier).toBe("fast");
+    expect(sdk.system.providerStates).not.toHaveBeenCalled();
     act(() =>
       result.current.setProviderModelReasoning({
         providerId: GLOBAL_PROVIDER_ID,
@@ -326,6 +332,122 @@ describe("useThreadCreationOptions", () => {
     );
     expect(result.current.selectedProviderId).toBe(GLOBAL_PROVIDER_ID);
     expect(result.current.selectedModel).toBe("global-model");
+  });
+
+  it("keeps the normalized reasoning effort when a draft explicitly selects a shorter model ladder", async () => {
+    const response = executionOptionsResponse();
+    vi.mocked(sdk.system.executionOptions).mockResolvedValue({
+      ...response,
+      models: response.models.map((model) =>
+        model.model === "global-model"
+          ? {
+              ...model,
+              supportedReasoningEfforts: [
+                ...model.supportedReasoningEfforts,
+                { reasoningEffort: "max", description: "" },
+              ],
+            }
+          : model,
+      ),
+    });
+    const { result } = renderHook(
+      () =>
+        useThreadCreationOptions({
+          scope: "component-local",
+          resetKey: "draft-model-change",
+          preserveUnavailableSelections: true,
+          initialProviderId: GLOBAL_PROVIDER_ID,
+          initialModel: "global-model",
+          initialReasoningLevel: "max",
+        }),
+      { wrapper: createQueryClientTestHarness().wrapper },
+    );
+    await waitFor(() =>
+      expect(result.current.modelCatalogIsVerified).toBe(true),
+    );
+    expect(result.current.reasoningLevel).toBe("max");
+
+    act(() => result.current.setSelectedModel("project-model"));
+
+    expect(result.current.selectedModel).toBe("project-model");
+    expect(result.current.reasoningLevel).toBe("high");
+    expect(result.current.executionInputSources.reasoningLevel).toBe(
+      "explicit",
+    );
+  });
+
+  it("waits for the ready provider before exposing fresh draft defaults and keeps it after a machine change", async () => {
+    let resolveProviderStates: (
+      value: SystemProviderStatesResponse,
+    ) => void = () => {};
+    vi.mocked(sdk.system.providerStates).mockImplementationOnce(
+      () =>
+        new Promise<SystemProviderStatesResponse>((resolve) => {
+          resolveProviderStates = resolve;
+        }),
+    );
+    vi.mocked(sdk.system.executionOptions).mockImplementation(async (args) =>
+      providerExecutionOptionsResponse(args?.providerId),
+    );
+    const { wrapper, queryClient } = createQueryClientTestHarness();
+    queryClient.setQueryData(
+      systemExecutionOptionsQueryKey({
+        environmentId: null,
+        hostId: "remote-host",
+        providerId: null,
+      }),
+      providerExecutionOptionsResponse(undefined),
+    );
+    const { result } = renderHook(
+      () =>
+        useThreadCreationOptions({
+          scope: "component-local",
+          resetKey: "draft-ready-provider",
+          preserveUnavailableSelections: true,
+          preferReadyProviderWhenUnset: true,
+          initialEnvironmentSelectionValue: "provider:project-checkout",
+          resolveProviderRouting: (value) => ({
+            hostId:
+              value === "provider:project-checkout"
+                ? "remote-host"
+                : "second-host",
+          }),
+        }),
+      { wrapper },
+    );
+    await waitFor(() =>
+      expect(sdk.system.providerStates).toHaveBeenCalledWith({
+        environmentId: undefined,
+        hostId: "remote-host",
+        signal: expect.any(AbortSignal),
+      }),
+    );
+    expect(result.current.selectedProviderId).toBe("");
+    expect(result.current.selectedModel).toBe("");
+    expect(result.current.isLoadingModels).toBe(true);
+
+    await act(async () => {
+      resolveProviderStates(readyProviderStates(PROJECT_PROVIDER_ID));
+    });
+    await waitFor(() => {
+      expect(result.current.selectedProviderId).toBe(PROJECT_PROVIDER_ID);
+      expect(result.current.selectedModel).toBe("project-default");
+      expect(result.current.isLoadingModels).toBe(false);
+    });
+
+    act(() =>
+      result.current.setEnvironmentSelectionValue("provider:git-worktree"),
+    );
+    await waitFor(() =>
+      expect(sdk.system.executionOptions).toHaveBeenCalledWith(
+        expect.objectContaining({
+          hostId: "second-host",
+          providerId: PROJECT_PROVIDER_ID,
+        }),
+      ),
+    );
+    expect(result.current.selectedProviderId).toBe(PROJECT_PROVIDER_ID);
+    expect(sdk.system.providerStates).toHaveBeenCalledTimes(1);
   });
 
   it("keeps a draft's saved permission choice visible when the machine ceiling changes", async () => {

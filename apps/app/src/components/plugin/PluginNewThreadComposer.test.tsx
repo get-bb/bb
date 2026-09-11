@@ -76,6 +76,7 @@ const mocks = vi.hoisted(() => ({
   promptHistoryQueryOptions: [] as Array<{ enabled?: boolean } | undefined>,
   environmentProviders: [] as unknown[],
   closeTerminal: vi.fn(),
+  createProjectForSelection: vi.fn(),
 }));
 
 vi.mock("@/views/RootComposePanelCommandHandlers", () => ({
@@ -371,6 +372,7 @@ vi.mock("@/hooks/useQuickCreateProject", () => ({
     isAvailable: false,
     isCreating: false,
     openCreateDialog: vi.fn(),
+    openCreateDialogForSelection: mocks.createProjectForSelection,
     platform: null,
     projectPathDialog: {
       isOpen: false,
@@ -616,6 +618,7 @@ describe("PluginNewThreadComposer seeding", () => {
   beforeEach(() => {
     resetFixedPanelTabsStateForTest();
     mocks.closeTerminal.mockClear();
+    mocks.createProjectForSelection.mockClear();
     mocks.promptBoxProps.length = 0;
     mocks.promptHistoryQueryOptions.length = 0;
     mocks.copyAttachments.mockReset();
@@ -1464,6 +1467,73 @@ describe("PluginNewThreadComposer seeding", () => {
       getDraftResourceStore(queryClient).getSnapshot(saved.id).content?.prompt
         .text,
     ).toBe("Replacement text");
+  });
+
+  it("keeps the same draft and attachments when its picker creates a project", async () => {
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false, staleTime: Infinity } },
+    });
+    const saved = draftSchema.parse({
+      id: "drf_created_project",
+      revision: 1,
+      createdAt: 1,
+      updatedAt: 1,
+      content: {
+        projectId: "proj_1",
+        prompt: {
+          text: "Keep this message in the new project",
+          attachments: [
+            {
+              type: "localFile",
+              name: "notes.txt",
+              path: ".bb/attachments/notes.txt",
+              mimeType: "text/plain",
+              sizeBytes: 5,
+            },
+          ],
+        },
+      },
+    });
+    queryClient.setQueryData(draftResourceQueryKey(saved.id), saved);
+    vi.spyOn(draftResourceApi, "update").mockImplementation(
+      async (id, revision, content) => ({
+        ...saved,
+        id,
+        revision: revision + 1,
+        content,
+      }),
+    );
+    mocks.copyAttachments.mockResolvedValue(undefined);
+    const router = createMemoryRouter(
+      [{ path: "/", element: <RootComposeView /> }],
+      { initialEntries: [`/?draft=${saved.id}`] },
+    );
+    render(
+      <Provider>
+        <QueryClientProvider client={queryClient}>
+          <RouterProvider router={router} />
+        </QueryClientProvider>
+      </Provider>,
+    );
+    await waitFor(() =>
+      expect(latestPromptBoxProps().value).toBe(saved.content.prompt.text),
+    );
+    act(() => latestPromptBoxProps().project.createProject.onCreate());
+    await act(async () => {
+      await mocks.createProjectForSelection.mock.calls[0][0]("proj_2");
+    });
+    await act(async () => {
+      await getDraftResourceStore(queryClient).flush(saved.id);
+    });
+    expect(parseDraftRouteId(router.state.location.search)).toBe(saved.id);
+    expect(mocks.copyAttachments).toHaveBeenCalledWith({
+      projectId: "proj_2",
+      sourceProjectId: "proj_1",
+      paths: [".bb/attachments/notes.txt"],
+    });
+    expect(
+      getDraftResourceStore(queryClient).getSnapshot(saved.id).content,
+    ).toMatchObject({ projectId: "proj_2", prompt: saved.content.prompt });
   });
 
   it("keeps an unrelated draft attachment out of a RootComposeView handoff", async () => {
