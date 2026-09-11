@@ -309,6 +309,7 @@ describe("provider usage backend", () => {
 describe("usage source composition", () => {
   it("keeps shared accounts once, isolates failures, and removes disabled sources", async () => {
     let enabled = true;
+    let failPool = false;
     const host = createFakePluginHost({
       pluginId: "provider-usage",
       sdk: {
@@ -327,7 +328,8 @@ describe("usage source composition", () => {
                 ]
               : [],
           callRpc: async ({ pluginId }) => {
-            if (pluginId === "broken") throw new Error("Unavailable");
+            if (pluginId === "broken" || failPool)
+              throw new Error("Unavailable");
             return usageSnapshotSchema.parse({
               label: "Pool accounts",
               resources: [
@@ -397,10 +399,72 @@ describe("usage source composition", () => {
       input: { refresh: true },
     });
     expect(host.harness.sdk.callsTo("system.usageLimits")).toEqual([]);
+    failPool = true;
+    const stale = await host.harness.behavior.callRpc("getUsage", {
+      ...request,
+      force: true,
+    });
+    expect(stale).toMatchObject({
+      machines: [
+        {
+          id: "source:pool",
+          error: "Usage could not be loaded from pool.",
+          providers: [
+            { usage: { status: "ok", windows: [{ usedPercent: 120 }] } },
+          ],
+        },
+        { id: "source:broken" },
+      ],
+    });
     enabled = false;
     await expect(
       host.harness.behavior.callRpc("getUsage", request),
     ).resolves.toEqual({ machines: [] });
+    await host.harness.lifecycle.dispose();
+  });
+  it("keeps an unconfigured shared source selectable without inventing groups for empty host sources", async () => {
+    const host = createFakePluginHost({
+      pluginId: "provider-usage",
+      sdk: {
+        hosts: { list: async () => [] },
+        plugins: {
+          experimental_discoverRpc: async () => [
+            {
+              pluginId: "pool",
+              displayName: "Account Pooler [Experimental]",
+              method: usageSourceMethod,
+            },
+            {
+              pluginId: "local",
+              displayName: "Local provider",
+              method: usageSourceMethod,
+            },
+          ],
+          callRpc: async ({ pluginId }) =>
+            pluginId === "pool"
+              ? { label: "Account Pooler", resources: [] }
+              : { resources: [] },
+        },
+      },
+    });
+    plugin(host.bb);
+    await expect(
+      host.harness.behavior.callRpc("getUsage", {
+        force: false,
+        machineIds: null,
+        maxAgeMs: 0,
+      }),
+    ).resolves.toEqual({
+      machines: [
+        {
+          id: "source:pool",
+          displayName: "Account Pooler",
+          status: "connected",
+          providers: [],
+          error: null,
+        },
+      ],
+    });
     await host.harness.lifecycle.dispose();
   });
 });

@@ -148,6 +148,14 @@ function resourceProvider(
       },
       resource.usage,
     ),
+    ...(resource.scope.kind === "shared"
+      ? {
+          signInHint:
+            "Sign in to this account in the source plugin’s settings, then reload usage.",
+          expiredHint:
+            "This account’s session expired. Sign in again in the source plugin’s settings, then reload usage.",
+        }
+      : {}),
     id: `${pluginId}:${resource.id}`,
     accountLabel:
       resource.scope.kind === "shared" ? resource.usage.accountEmail : null,
@@ -196,7 +204,18 @@ async function loadMachineUsage(
     error:
       sources.status === "rejected"
         ? "Usage sources could not be discovered."
-        : null,
+        : results.some(
+              (source) =>
+                source.error !== null &&
+                (source.resources.length === 0 ||
+                  source.resources.some(
+                    (resource) =>
+                      resource.scope.kind === "host" &&
+                      resource.scope.hostId === host.id,
+                  )),
+            )
+          ? "Some usage could not be refreshed."
+          : null,
   };
 }
 
@@ -304,10 +323,13 @@ export default function providerUsagePlugin(bb: BbPluginApi): void {
                         sourceResults.find(
                           (entry) => entry.pluginId === source.pluginId,
                         )?.label ?? null,
-                      resources: [],
+                      resources:
+                        sourceResults.find(
+                          (entry) => entry.pluginId === source.pluginId,
+                        )?.resources ?? [],
                       error:
                         "Usage could not be loaded from " +
-                        source.pluginId +
+                        (source.displayName ?? source.pluginId) +
                         ".",
                     };
                   }
@@ -371,8 +393,8 @@ export default function providerUsagePlugin(bb: BbPluginApi): void {
       );
       if (
         shared.length === 0 &&
-        source.resources.length > 0 &&
-        source.error === null
+        source.label === null &&
+        (source.resources.length > 0 || source.error === null)
       )
         continue;
       machines.push({

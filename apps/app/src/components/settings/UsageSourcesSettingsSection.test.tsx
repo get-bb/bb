@@ -118,3 +118,104 @@ it("selects pooled or machine usage without mixing sources, preserves cards, and
     client.clear();
   }
 });
+
+it("distinguishes an empty shared source, empty host sources, removal, and discovery failure", async () => {
+  calls.discover.mockResolvedValue([
+    { pluginId: "pool", displayName: "Account Pooler [Experimental]" },
+    { pluginId: "local", displayName: "Local provider" },
+  ]);
+  calls.rpc.mockImplementation(async ({ pluginId }) =>
+    pluginId === "pool"
+      ? { label: "Account Pooler", resources: [] }
+      : { resources: [] },
+  );
+  const client = new QueryClient({
+    defaultOptions: { queries: { retry: false } },
+  });
+  try {
+    render(
+      <QueryClientProvider client={client}>
+        <TooltipProvider>
+          <UsageLimitsSettingsSection />
+        </TooltipProvider>
+      </QueryClientProvider>,
+    );
+    expect(await screen.findByText("Account Pooler")).toBeTruthy();
+    expect(screen.getByText(/No accounts report usage yet/)).toBeTruthy();
+    expect(screen.queryByText("Local provider")).toBeNull();
+    calls.discover.mockResolvedValue([]);
+    fireEvent.click(screen.getByLabelText("Reload usage data"));
+    expect(
+      await screen.findByText(/No usage sources are available/),
+    ).toBeTruthy();
+    expect(screen.queryByText("Account Pooler")).toBeNull();
+    calls.discover.mockRejectedValue(new Error("private technical details"));
+    fireEvent.click(screen.getByLabelText("Reload usage data"));
+    expect(await screen.findByRole("status")).toHaveProperty(
+      "textContent",
+      "Couldn’t discover usage sources. Try reloading usage.",
+    );
+    expect(screen.queryByText(/private technical/)).toBeNull();
+  } finally {
+    client.clear();
+  }
+});
+
+it("keeps successful measurements visible after a failed refresh and recovers", async () => {
+  calls.discover.mockResolvedValue([
+    { pluginId: "pool", displayName: "Account Pooler" },
+  ]);
+  const snapshot = {
+    label: "Account Pooler",
+    resources: [
+      {
+        id: "account",
+        providerId: "codex",
+        label: "Account",
+        scope: { kind: "shared" },
+        observedAt: 123,
+        usage: {
+          status: "ok",
+          accountEmail: "person@example.com",
+          planLabel: null,
+          windows: [
+            {
+              id: "weekly",
+              label: "Weekly",
+              usedPercent: 42,
+              resetsAt: null,
+              model: null,
+              cost: null,
+            },
+          ],
+        },
+      },
+    ],
+  };
+  calls.rpc.mockResolvedValue(snapshot);
+  const client = new QueryClient({
+    defaultOptions: { queries: { retry: false } },
+  });
+  try {
+    render(
+      <QueryClientProvider client={client}>
+        <TooltipProvider>
+          <UsageLimitsSettingsSection />
+        </TooltipProvider>
+      </QueryClientProvider>,
+    );
+    expect(await screen.findByText("42% used")).toBeTruthy();
+    calls.rpc.mockRejectedValue(new Error("Unexpected token b"));
+    fireEvent.click(screen.getByLabelText("Reload usage data"));
+    expect(await screen.findByText(/Showing the last update/)).toBeTruthy();
+    expect(screen.getByText("42% used")).toBeTruthy();
+    expect(screen.queryByText(/Unexpected token/)).toBeNull();
+    calls.rpc.mockResolvedValue(snapshot);
+    fireEvent.click(screen.getByLabelText("Reload usage data"));
+    await waitFor(() =>
+      expect(screen.queryByText(/Showing the last update/)).toBeNull(),
+    );
+  } finally {
+    client.clear();
+  }
+});

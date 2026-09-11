@@ -53,3 +53,31 @@ it("discovers published methods with filters and calls using a copied response s
     }),
   ).rejects.toThrow();
 });
+
+it("omits absent and explicitly undefined discovery filters", async () => {
+  const urls: URL[] = [];
+  const sdk = createBbSdk({
+    transport: createHttpTransport({
+      baseUrl: "http://bb.test",
+      runtime: "node",
+      fetch: async (input) => {
+        urls.push(new URL(String(input)));
+        return Response.json([]);
+      },
+    }),
+  });
+  await sdk.plugins.experimental_discoverRpc();
+  await sdk.plugins.experimental_discoverRpc({
+    method: undefined,
+    pluginId: undefined,
+  });
+  await sdk.plugins.experimental_discoverRpc({
+    pluginId: "pool",
+    method: undefined,
+  });
+  expect(urls.map((url) => Object.fromEntries(url.searchParams))).toEqual([
+    {},
+    {},
+    { pluginId: "pool" },
+  ]);
+});

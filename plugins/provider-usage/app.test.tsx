@@ -408,3 +408,83 @@ describe("provider usage footer disclosure", () => {
     await mounted.lifecycle.dispose();
   }, 15_000);
 });
+
+it.each([
+  ["empty", "No accounts report usage yet."],
+  ["expired", "Sign in again in the source plugin’s settings."],
+  [
+    "unauthenticated",
+    "Sign in to this account in the source plugin’s settings.",
+  ],
+  ["no-limits", "No usage limits reported for this plan."],
+  ["source-error", "Couldn’t refresh. Showing the last update."],
+] as const)("renders the %s shared-source state", async (state, expected) => {
+  const usage: UsageProvider["usage"] =
+    state === "expired" || state === "unauthenticated"
+      ? { status: state }
+      : {
+          status: "ok",
+          accountEmail: "review@example.com",
+          planLabel: null,
+          windows:
+            state === "no-limits"
+              ? []
+              : [
+                  {
+                    label: "Weekly limit",
+                    usedPercent: 42,
+                    resetsAt: null,
+                    cost: null,
+                  },
+                ],
+        };
+  const account: UsageProvider = {
+    id: "account",
+    providerId: "codex",
+    accountLabel: "review@example.com",
+    displayName: "Codex",
+    logoUrl: null,
+    iconGlyph: null,
+    iconTint: null,
+    signInHint: "Sign in to this account in the source plugin’s settings.",
+    expiredHint: "Sign in again in the source plugin’s settings.",
+    usage,
+  };
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async () =>
+      Response.json({
+        ok: true,
+        result: {
+          machines: [
+            {
+              id: "source:pool",
+              displayName: "Review pool",
+              status: "connected",
+              providers: state === "empty" ? [] : [account],
+              error: state === "source-error" ? "private backend error" : null,
+            },
+          ],
+        },
+      }),
+    ),
+  );
+  const app = await loadPluginApp(() => import("./app"));
+  const mounted = await mountPluginContentScripts(app, {
+    pluginId: "provider-usage",
+  });
+  const item = app.experimentalSidebarFooterItems[0];
+  if (item?.kind !== "disclosure") throw new Error("missing disclosure");
+  const slot = renderSlot(item, { dismiss: vi.fn() });
+  await waitFor(() =>
+    expect(slot.getByText(expected, { exact: false })).toBeTruthy(),
+  );
+  if (state === "source-error") {
+    expect(slot.getByText("42%")).toBeTruthy();
+    expect(slot.queryByText("private backend error")).toBeNull();
+    expect(
+      slot.getByRole("button", { name: "Retry usage refresh" }),
+    ).toBeTruthy();
+  }
+  await mounted.lifecycle.dispose();
+});
