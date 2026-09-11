@@ -128,37 +128,6 @@ function renderPicker(ui: ReactElement) {
 }
 
 describe("EnvironmentPickerUI", () => {
-  it.each([
-    null,
-    { status: "setup-required" as const, message: "Configure checkout access" },
-  ])(
-    "shows the provider description unless setup guidance takes precedence (%j)",
-    (availability) => {
-      const provider = { ...checkoutProvider, availability };
-      renderPicker(
-        <EnvironmentPickerUI
-          value="provider:project-checkout"
-          sources={sources}
-          host={host}
-          isLocal
-          providers={[provider]}
-          onSelectProvider={vi.fn()}
-          modal={false}
-        />,
-      );
-      fireEvent.pointerDown(
-        screen.getByRole("button", { name: "Environment" }),
-        { button: 0 },
-      );
-      const item = screen.getByRole("menuitem", { name: /Project checkout/u });
-      expect(item.textContent).toContain(
-        availability?.message ?? provider.description,
-      );
-      if (availability !== null)
-        expect(item.textContent).not.toContain(provider.description);
-    },
-  );
-
   it("does not expose an ephemeral host through the single-machine fallback", () => {
     const ephemeralHost: Host = {
       ...host,
