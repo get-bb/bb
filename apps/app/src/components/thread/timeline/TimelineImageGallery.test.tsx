@@ -261,7 +261,7 @@ it("retains only the displayed image after hiding and removing its source", asyn
   expect(screen.queryByRole("button", { name: "Next image" })).toBeNull();
 });
 
-it("keeps the selected pixels until close even when no eligible images remain", async () => {
+it("keeps the selected image source until close even when no eligible images remain", async () => {
   const { rerender } = render(
     <TimelineImageGallery>
       <MarkdownPreview content="![Selected](https://example.com/selected.png)" />

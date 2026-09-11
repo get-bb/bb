@@ -270,6 +270,7 @@ function CollapsibleMessageText({
       ) : null}
       <div
         ref={bodyRef}
+        data-image-gallery-clipped={!isExpanded ? "" : undefined}
         className={cn(
           "break-words",
           !isExpanded && "max-h-[15lh] overflow-hidden",
