@@ -315,7 +315,10 @@ function PromptSubmitButton({
         }
         onClick(event);
       }}
-      className={cn(className, label !== undefined && "w-auto gap-1.5 px-2.5")}
+      className={cn(
+        className,
+        label !== undefined && "size-auto h-8 gap-1.5 px-2.5",
+      )}
     >
       {isBusy ? (
         <Icon name="Spinner" className="size-4 animate-spin" />
