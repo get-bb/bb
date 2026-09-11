@@ -5,6 +5,7 @@ import {
   SIDEBAR_HOVER_ACTIONS_MOBILE_ALWAYS_VALUE,
 } from "@/components/ui/sidebar-hover-actions.js";
 import { cn } from "@bb/shared-ui/lib/utils";
+import { SIDEBAR_CONTROL_STATE_CLASS } from "./sidebarRowClasses";
 
 interface SidebarChildToggleChevronProps {
   isCollapsed: boolean;
@@ -12,6 +13,7 @@ interface SidebarChildToggleChevronProps {
   collapseLabel: string;
   onToggle: () => void;
   revealOnHover?: boolean;
+  className?: string;
 }
 
 export function SidebarChildToggleChevron({
@@ -20,6 +22,7 @@ export function SidebarChildToggleChevron({
   collapseLabel,
   onToggle,
   revealOnHover = false,
+  className,
 }: SidebarChildToggleChevronProps) {
   return (
     <button
@@ -36,8 +39,10 @@ export function SidebarChildToggleChevron({
       }}
       className={cn(
         revealOnHover ? SIDEBAR_HOVER_ACTIONS_CLASS : "pointer-events-auto",
-        "relative z-10 inline-flex size-5 shrink-0 cursor-pointer items-center justify-center rounded-md text-subtle-foreground outline-none ring-sidebar-ring hover:bg-sidebar-accent hover:text-sidebar-accent-foreground focus-visible:ring-2",
+        "relative z-10 inline-flex size-5 shrink-0 cursor-pointer items-center justify-center rounded-md outline-none ring-sidebar-ring focus-visible:ring-2",
+        SIDEBAR_CONTROL_STATE_CLASS,
         LIST_HOVER_TRANSITION,
+        className,
       )}
     >
       <Icon

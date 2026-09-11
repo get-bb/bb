@@ -161,11 +161,22 @@ per-attachment remove operation.
 
 For filesystem-backed products that need a tree or mutations,
 `bb.sdk.files.listPaths({ path, includeFiles, includeDirectories, ... })`
-returns recursive relative paths with their kind. `mkdir`, `move`, and `remove`
-apply the same optional `hostId` routing and `rootPath` confinement as
-read/write. Mutations are not automatically retried; `move` refuses to replace
-an existing destination, and `remove` requires `recursive: true` for non-empty
-directories.
+returns recursive relative paths with their kind. Both `list` and `listPaths`
+include dot-prefixed entries unless `includeHidden: false` is passed, and skip
+a default set of dependency and cache directory names (`node_modules`,
+`.pnpm-store`, `.venv`, `venv`, `.turbo`, `.next`, `.cache`, `__pycache__`,
+`.DS_Store`) and the root-relative `.claude/worktrees` subtree unless
+`excludeNames` replaces that set. Each exclusion matches a basename at any
+depth or an exact root-relative path with `/` separators. `.git` and symlinks are never listed.
+`mkdir`, `move`, and `remove` apply the same optional `hostId` routing and
+`rootPath` confinement as read/write. Mutations are not automatically retried;
+`move` refuses to replace an existing destination, and `remove` requires
+`recursive: true` for non-empty directories.
+
+Project and environment workspace file searches honor Git ignore rules, retaining
+tracked and non-ignored untracked files, including hidden files. Generic
+`files.list` and `files.listPaths` retain filesystem listing behavior so tools
+can inspect ignored files. Non-Git workspaces use filesystem listings.
 
 `bb.sdk.files.createPreview({ hostId?, rootPath, ttlMs? })` returns a temporary
 path-shaped `baseUrl`. Append individually encoded relative path segments to

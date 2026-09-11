@@ -92,11 +92,9 @@ Making your repo work with bb:
                                           by display name; includes id, name, the `requires` facts (host,
                                           projectCheckout, gitCheckout, gitRemote, projectless), and whether
                                           it takes --environment-inputs (--json prints the JSON Schema)
-    --project <id>                        Resolve availability for this project
-    --machine <id-or-name>               Resolve availability on this machine
+    --project <id>                        Filter by structural eligibility for this project
+    --machine <id-or-name>               Scope structural eligibility to this machine
     --host <id-or-name>                  Alias for --machine
-                                          Availability is available, setup-required with the plugin's
-                                          message, or unavailable with the provider's reason
   bb environment list                     List environments that are not destroyed
     --project <id>                        Only environments in this project
     --provider <id>                       Only environments this environment provider produced
@@ -242,4 +240,20 @@ Core owns environment retirement and teardown. After the last live thread is arc
 
 Explicit environment or project deletion bypasses the retirement grace, including the never-retire policy. Provider cleanup retains the host, path and resource until removal completes; inspect progress with `bb environment show <id>`.
 
-`bb environment providers --project <id>` omits providers whose requirements are unmet on every persistent machine. Add `--machine <id>` to scope eligibility to that machine. Eligible providers retain setup-required or unavailable messages.
+`bb environment providers --project <id>` omits providers whose declared requirements are unmet on every persistent machine, and reports each provider's `machineAvailability` per machine in `--json`. Add `--machine <id>` to scope structural eligibility to that machine and print its availability: `available`, `setup-required`, `unavailable` with the plugin's reason, or `unknown` while the background probe has not answered. Listing never waits on a machine; probes run in the background, are cached for ten minutes per project and machine, and are checked afresh for the selected provider and machine during thread creation.
+
+BB source checkout startup
+
+  In the BB repository, `pnpm start:worktree` prepares and serves production
+  artifacts using stable checkout-specific dev data and ports (no Vite).
+  Add `--dryrun` to `pnpm start` or `pnpm start:worktree` to prepare through
+  Turbo, print resolved paths/ports, and exit. It does not launch services,
+  migrate instance data or require ports to be free. It still writes artifacts
+  and may repair native modules. Install dependencies beforehand when needed.
+  Both normal and dry-run startup preserve their runtime policy and use the same
+  dotenv settings. Preparation writes the
+  checkout's build files; warm a separate staging checkout's cache if the live
+  instance still serves those paths. Keep the serving checkout path stable to
+  preserve its data and ports. See `docs/debugging-and-qa.md` for the restart
+  sequence and source programmatic helpers. These are repository maintenance
+  commands, not environment lifecycle hooks or installed `bb` commands.

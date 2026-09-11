@@ -161,7 +161,6 @@ describe("resolveNewThreadSubmitDisabledReason", () => {
     isLoadingModels: false,
     isSubmitting: false,
     isUploading: false,
-    gitCheckoutUnavailableReason: null,
     modelLoadError: null,
     projectDefaultsStatus: "resolved",
     projectDefaultsUnavailable: false,
@@ -225,14 +224,6 @@ describe("resolveNewThreadSubmitDisabledReason", () => {
       "Docker container needs its plugin's control",
     ],
     [
-      "an unavailable worktree",
-      {
-        gitCheckoutUnavailableReason:
-          "Project source has no commits. Create an initial commit before creating a worktree",
-      },
-      "Project source has no commits. Create an initial commit before creating a worktree",
-    ],
-    [
       "an empty prompt",
       { promptInputEmpty: true },
       "Enter a prompt or attach a file.",
@@ -290,6 +281,7 @@ function makeProjectProvider(id: string): SystemEnvironmentProvider {
     logoUrl: null,
     pluginId: id,
     acceptsEmptyInputs: true,
+    machineAvailability: {},
     availability: null,
     requires: {
       projectCheckout: true,
@@ -312,6 +304,7 @@ function makeProjectlessProvider(
     logoUrl: null,
     pluginId: id,
     acceptsEmptyInputs: true,
+    machineAvailability: {},
     availability: null,
     requires: {
       projectCheckout: false,
@@ -948,7 +941,7 @@ describe("resolveRootComposeEffectiveEnvironmentValue", () => {
     ).toBe("provider:project-checkout");
   });
 
-  it("holds specific reuse values as incomplete while project worktrees load", () => {
+  it("holds a specific reuse selection while project worktrees load", () => {
     expect(
       resolveRootComposeEffectiveEnvironmentValue({
         knownHostIds: new Set(["host_1"]),
@@ -960,7 +953,7 @@ describe("resolveRootComposeEffectiveEnvironmentValue", () => {
         reuseThreadOptions: [],
         reuseThreadOptionsLoading: true,
       }),
-    ).toBe("reuse");
+    ).toBe("reuse:env_pending");
   });
 
   it("keeps a projectless reuse selection when the environment is one of its own", () => {

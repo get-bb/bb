@@ -56,7 +56,7 @@ function numberHeader(headers: Headers, name: string): number | null {
 
 function resetAt(headers: Headers, prefix: string, now: number): number | null {
   const raw = numberHeader(headers, `${prefix}-reset-at`);
-  if (raw !== null)
+  if (raw !== null && raw > 0)
     return Math.round(raw < 1_000_000_000_000 ? raw * 1_000 : raw);
   const after = numberHeader(headers, `${prefix}-reset-after-seconds`);
   return after === null ? null : now + Math.round(after * 1_000);
@@ -95,20 +95,29 @@ function windowFromHeaders(
     usedPercent === null
       ? (previous?.utilization ?? null)
       : Math.max(0, Math.min(1, usedPercent / 100));
+  const windowMinutes =
+    minutes !== null && minutes > 0
+      ? Math.round(minutes)
+      : (previous?.windowMinutes ?? null);
+  const nextReset =
+    reset ??
+    (previous?.resetAt !== null &&
+    previous?.resetAt !== undefined &&
+    previous.resetAt > now
+      ? previous.resetAt
+      : null);
+  if (
+    windowMinutes === null &&
+    nextReset === null &&
+    !overLimit &&
+    (utilization === null || utilization === 0)
+  )
+    return null;
   return {
     slot,
-    windowMinutes:
-      minutes !== null && minutes > 0
-        ? Math.round(minutes)
-        : (previous?.windowMinutes ?? null),
+    windowMinutes,
     utilization,
-    resetAt:
-      reset ??
-      (previous?.resetAt !== null &&
-      previous?.resetAt !== undefined &&
-      previous.resetAt > now
-        ? previous.resetAt
-        : null),
+    resetAt: nextReset,
     status:
       overLimit || (utilization !== null && utilization >= 1)
         ? "rejected"

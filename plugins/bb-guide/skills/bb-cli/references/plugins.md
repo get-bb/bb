@@ -205,7 +205,7 @@
     useBbNavigate, useComposer for scoped text editing / quote / mention /
     focus access); components are vendored shadcn source the
     plugin owns. Installed
-    plugins and their settings also appear under Extensions → Plugins.
+    plugins and their settings also appear under Settings → Installed plugins.
 - **Writing a plugin?** Use the `bb-plugin-authoring` skill — the complete
   authoring reference for the backend `BbPluginApi` (settings, storage, sdk,
   http/rpc/realtime, background services and schedules, CLI commands, agent

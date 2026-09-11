@@ -59,9 +59,10 @@ import {
 import { DEFAULT_APP_KEYBINDINGS } from "../services/system/app-keybindings.js";
 import { resolvePrimaryHostId } from "../services/hosts/primary-host.js";
 import {
+  environmentProviderMatchesContext,
   environmentProviderAcceptsEmptyInputs,
-  resolveEnvironmentProviderAvailability,
 } from "../services/environments/provider-availability.js";
+import { environmentProviderMachineAvailability } from "../services/environments/provider-machine-availability.js";
 import { requirePublicProject } from "../services/lib/entity-lookup.js";
 
 const LEADING_ENVIRONMENT_PROVIDER_IDS: readonly string[] = [
@@ -362,17 +363,26 @@ export function registerSystemRoutes(
               );
             })
             .map(async (record) => {
-              const availability =
+              if (
+                query.projectId !== undefined &&
+                !environmentProviderMatchesContext(deps, record, {
+                  projectId: query.projectId,
+                  ...(query.hostId === undefined
+                    ? {}
+                    : { hostId: query.hostId }),
+                })
+              ) {
+                return null;
+              }
+              const machineAvailability =
                 query.projectId === undefined
-                  ? null
-                  : await resolveEnvironmentProviderAvailability(deps, record, {
+                  ? {}
+                  : environmentProviderMachineAvailability(deps, record, {
                       projectId: query.projectId,
                       ...(query.hostId === undefined
                         ? {}
                         : { hostId: query.hostId }),
                     });
-              if (query.projectId !== undefined && availability === null)
-                return null;
               return {
                 id: record.provider.id,
                 displayName: record.provider.displayName,
@@ -386,7 +396,11 @@ export function registerSystemRoutes(
                 inputs: record.provider.inputsJsonSchema,
                 acceptsEmptyInputs:
                   await environmentProviderAcceptsEmptyInputs(record),
-                availability,
+                availability:
+                  query.hostId === undefined
+                    ? null
+                    : (machineAvailability[query.hostId] ?? null),
+                machineAvailability,
               };
             }),
         )

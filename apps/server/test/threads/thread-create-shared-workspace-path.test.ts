@@ -8,7 +8,10 @@ import {
   checkoutProviderInputsSchema,
   installFakeEnvironmentProvider,
 } from "../helpers/environment-provider.js";
-import { waitForQueuedCommand } from "../helpers/commands.js";
+import {
+  reportNextEnvironmentAttachSuccess,
+  waitForQueuedCommand,
+} from "../helpers/commands.js";
 import { textInput } from "../helpers/prompt-input.js";
 import {
   seedEnvironment,
@@ -52,6 +55,7 @@ describe("thread creation on a path another project already uses", () => {
       });
 
       expect(thread.projectId).toBe(project.id);
+      await reportNextEnvironmentAttachSuccess(harness, thread.id);
       await waitForQueuedCommand(
         harness,
         (queued) =>
@@ -281,6 +285,7 @@ describe("thread creation on a path another project already uses", () => {
       });
 
       expect(thread.projectId).toBe(second.id);
+      await reportNextEnvironmentAttachSuccess(harness, thread.id);
       await waitForQueuedCommand(
         harness,
         (queued) =>

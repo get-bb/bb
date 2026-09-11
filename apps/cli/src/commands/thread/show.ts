@@ -1,3 +1,4 @@
+import { prependOlderTimelineRows } from "@bb/client-core";
 import { Command } from "commander";
 import {
   formatThreadTimelineText,
@@ -487,7 +488,10 @@ export function registerShowCommand(
             beforeAnchorSeq: String(page.olderCursor.anchorSeq),
             beforeAnchorId: page.olderCursor.anchorId,
           });
-          rows = [...older.rows, ...rows];
+          rows = prependOlderTimelineRows({
+            olderRows: older.rows,
+            loadedRows: rows,
+          });
           page = older.timelinePage;
         }
         const color = process.stdout.isTTY === true && !process.env.NO_COLOR;

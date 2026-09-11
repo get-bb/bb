@@ -5,7 +5,10 @@ import path from "node:path";
 import { afterEach, describe, expect, expectTypeOf, it, vi } from "vitest";
 import { defineRpcContract } from "@get-bb/plugin-sdk";
 import type { PluginRpcClient, PluginRpcHandlers } from "@get-bb/plugin-sdk";
-import { createFakePluginHost } from "@get-bb/plugin-sdk/testing";
+import {
+  createFakePluginHost,
+  makeHostResponse,
+} from "@get-bb/plugin-sdk/testing";
 import simpleNotes, { docsRpcContract } from "./server";
 
 const temporaryDirectories: string[] = [];
@@ -514,6 +517,37 @@ describe("Docs mention provider", () => {
 });
 
 describe("Docs vault operations", () => {
+  it.each([false, true])(
+    "lists vaults with current host records when file listing fails: %s",
+    async (listingFails) => {
+      const { harness } = await loadNotebook({ "draft.md": "# Draft" });
+      const host = makeHostResponse();
+      harness.sdk.stub("hosts.list", async () => [host]);
+      if (listingFails) {
+        harness.sdk.stub("files.listPaths", async () => {
+          throw new Error("Host unavailable");
+        });
+      }
+
+      await expect(
+        harness.behavior.callRpc("listNotes", { vaultId: "personal" }),
+      ).resolves.toMatchObject({
+        vaults: [expect.objectContaining({ id: "personal" })],
+        hosts: [
+          expect.objectContaining({
+            id: host.id,
+            name: host.name,
+            status: host.status,
+          }),
+        ],
+        notes: listingFails
+          ? []
+          : [expect.objectContaining({ path: "draft.md" })],
+        error: listingFails ? "Host unavailable" : null,
+      });
+    },
+  );
+
   it("creates the initial Personal vault without exposing a folder setting", async () => {
     const host = createFakePluginHost({
       pluginId: "simple-notes",

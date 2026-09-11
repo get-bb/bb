@@ -1,3 +1,4 @@
+import { getEnvironment } from "@bb/db";
 import { getThread } from "@bb/db";
 import {
   PERSONAL_PROJECT_ID,
@@ -6,8 +7,8 @@ import {
 } from "@bb/domain";
 import { describe, expect, it, vi } from "vitest";
 import { resolveProjectDefaultThreadEnvironment } from "../../src/services/threads/thread-default-policy.js";
-import { getActiveThreadProvisionContext } from "../../src/services/threads/thread-provisioning-active-context.js";
-import type { ThreadProvisionEnvironmentIntent } from "../../src/services/threads/thread-provisioning-context.js";
+import { getThreadProvisionContext } from "../../src/services/threads/thread-startup-store.js";
+import type { ThreadProvisionEnvironmentIntent } from "../../src/services/threads/thread-startup-store.js";
 import { registerHostRpcResponder } from "../helpers/host-rpc.js";
 import { readJson } from "../helpers/json.js";
 import {
@@ -59,7 +60,7 @@ async function createAndCaptureIntent(
   });
   expect(response.status).toBe(201);
   const thread = threadSchema.parse(await readJson(response));
-  const intent = getActiveThreadProvisionContext(thread.id)?.request
+  const intent = getThreadProvisionContext(harness.db, thread.id)?.request
     .environmentIntent;
   if (intent === undefined) {
     throw new Error("Expected an active provisioning context");
@@ -89,7 +90,6 @@ describe("project-default thread environment", () => {
         machine: { type: "existing", hostId: host.id },
         inputs: { branch: { kind: "named", name: "origin/main" } },
         selectionResolved: true,
-        produced: null,
       });
       expect(getThread(harness.db, threadId)?.originPluginId).toBeNull();
     });
@@ -123,7 +123,6 @@ describe("project-default thread environment", () => {
         machine: { type: "existing", hostId: host.id },
         inputs: { branch: { kind: "default" } },
         selectionResolved: true,
-        produced: null,
       });
     });
   });
@@ -211,24 +210,25 @@ describe("project-default thread environment", () => {
         const thread = threadSchema.parse(await readJson(response));
         expect(responder.requests).toHaveLength(1);
         expect(getThread(harness.db, thread.id)?.originPluginId).toBe("tasks");
-        await vi.waitFor(() =>
-          expect(
-            getActiveThreadProvisionContext(thread.id)?.request
-              .environmentIntent,
-          ).toEqual({
-            type: "provider",
+        await vi.waitFor(() => {
+          const environmentId = getThread(harness.db, thread.id)?.environmentId;
+          expect(environmentId).toBeTruthy();
+          const environment = getEnvironment(harness.db, environmentId!);
+          expect(environment).toMatchObject({
             environmentProviderId: "project-checkout",
-            machine: { type: "existing", hostId: host.id },
-            inputs: { path: sourcePath },
-            selectionResolved: true,
-            produced: {
-              mergeBaseBranch: null,
-              ownsPath: true,
-              hostId: host.id,
-              path: sourcePath,
+            hostId: host.id,
+            path: sourcePath,
+            ownerThreadId: null,
+            environmentProviderSelection: {
+              machine: { type: "existing", hostId: host.id },
+              inputs: { path: sourcePath },
             },
-          }),
-        );
+          });
+          expect(
+            getThreadProvisionContext(harness.db, thread.id)?.request
+              .environmentIntent,
+          ).toEqual({ type: "reuse", environmentId });
+        });
       });
     },
   );

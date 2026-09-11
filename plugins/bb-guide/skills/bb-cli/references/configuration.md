@@ -88,3 +88,16 @@ four bundled skills. All settings default to true. Use
 Disabling the plugin removes its introduction and skills. Changes apply when
 agent configuration is next assembled; independently installed copies remain
 available through their own sources.
+
+## BB source runtime preparation
+
+In the BB repository, add `--dryrun` to `pnpm start` or `pnpm start:worktree`
+to run Turbo preparation, print resolved paths/ports and exit. The dry run uses
+the same dotenv settings and runtime policy as normal startup. It does not start
+services, migrate instance data or require ports to be free, but still writes
+build outputs and may repair native modules. Install dependencies beforehand.
+Preparation writes the checkout's build outputs; use a separate staging checkout
+to warm Turbo while a live instance serves its existing files, then prepare the
+stable serving checkout before launch. See `docs/debugging-and-qa.md` and
+`bb guide environments`. These source-maintenance commands are separate from
+installed `bb` commands and `.bb-env-setup.sh`.

@@ -734,7 +734,8 @@ Everything else (zod included) bundles from the plugin's node_modules (`npm inst
 release packages with their declared production dependencies). A crashing slot collapses to a
 "plugin <id> crashed" chip without
 touching the rest of the app. Installed plugins and their declared settings
-(same data as `bb plugin config`) also appear under Settings → Installed plugins.
+(same data as `bb plugin config`) appear under both Settings → Installed plugins
+and Plugins → Installed plugins. Both locations manage the same installed plugins.
 
 Plugin CLI commands: a plugin can register one top-level subcommand (for
 example `bb github …`). Unknown `bb` commands are looked up against installed

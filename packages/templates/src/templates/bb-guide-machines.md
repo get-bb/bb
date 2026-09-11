@@ -30,6 +30,12 @@ To opt out, remove `--auto-update` from the launchd plist or systemd user unit
 and reload that service. Foreground/manual `bb-app host-daemon` runs leave it off
 unless you pass `--auto-update` explicitly.
 
+`bb-app`, `bb-server`, and `bb-host-daemon` capture service stdout and stderr
+directly under the selected data directory in `logs/server-stdio.log` and
+`logs/host-daemon-stdio.log`. These files append across restarts and contain
+console output and startup errors; rotating application logs remain separate.
+Use `tail -F` to follow them without coupling service logging to the terminal.
+
   bb machine list                         List machines with ID, connection
                                           status, and relative last-seen time
     --json                                Print the raw host list

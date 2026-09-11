@@ -15,6 +15,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { CompactViewportOverrideProvider } from "@bb/shared-ui/hooks/use-compact-viewport";
 import { SidebarProvider } from "@/components/ui/sidebar.js";
+import { SIDEBAR_CONTROL_STATE_CLASS } from "@/components/sidebar/sidebarRowClasses";
+import { useSidebarReorderDnd } from "@/components/sidebar/useSidebarReorderDnd";
 import {
   resetPluginSlotStoreForTest,
   setPluginSlotRegistrations,
@@ -29,7 +31,7 @@ import {
 } from "./PluginSlotMount";
 import {
   type BuiltInSidebarNavEntry,
-  ExtensionsNavSidebarItem,
+  ResourceNavSidebarItem,
   PluginNavSidebarItems,
   type SidebarNavActivationModifiers,
 } from "./PluginNavSidebarItems";
@@ -47,6 +49,40 @@ import { writeLastKnownPluginNavPanelChrome } from "@/lib/plugin-nav-panel-chrom
 import { splitLayoutAtom } from "@/lib/split-layout/atoms";
 import { countPanes, findPaneByContent } from "@/lib/split-layout";
 import { makePluginRegistrationSet as registrationSet } from "@/test/fixtures/plugins";
+
+vi.mock("@/components/sidebar/useSidebarReorderDnd", async (importOriginal) => {
+  const actual =
+    await importOriginal<
+      typeof import("@/components/sidebar/useSidebarReorderDnd")
+    >();
+  return {
+    ...actual,
+    useSidebarReorderDnd: vi.fn(actual.useSidebarReorderDnd),
+  };
+});
+
+function reorderSidebar(activeId: string, overId: string) {
+  const options = vi.mocked(useSidebarReorderDnd).mock.lastCall?.[0];
+  if (!options) throw new Error("Sidebar reorder handler is not mounted");
+  act(() => {
+    options.onDragEnd({
+      active: {
+        id: activeId,
+        data: { current: {} },
+        rect: { current: { initial: null, translated: null } },
+      },
+      over: {
+        id: overId,
+        data: { current: {} },
+        rect: new DOMRect(),
+        disabled: false,
+      },
+      activatorEvent: new Event("pointerdown"),
+      collisions: [],
+      delta: { x: 0, y: 0 },
+    });
+  });
+}
 
 function registerPanel(
   pluginId: string,
@@ -226,6 +262,7 @@ async function openCustomizeFromContextMenu(
 }
 
 beforeEach(() => {
+  vi.mocked(useSidebarReorderDnd).mockClear();
   resetPluginFrontendBootStateForTest();
   markPluginFrontendsSettled();
   window.localStorage.clear();
@@ -244,17 +281,15 @@ afterEach(() => {
 });
 
 describe("PluginNavSidebarItems", () => {
-  it("shows placeholders on first launch and removes them when startup settles", () => {
+  it("keeps built-in actions visible without placeholders during startup", () => {
     resetPluginFrontendBootStateForTest();
     renderSidebarItems({
       builtInEntries: [builtInEntry("new-thread", "New thread")],
     });
     expect(
-      screen.getByRole("status", { name: "Loading plugins" }),
-    ).toBeTruthy();
-    expect(
-      screen.getByTestId("plugin-nav-loading-placeholders").children,
-    ).toHaveLength(3);
+      screen.queryByRole("status", { name: "Loading plugins" }),
+    ).toBeNull();
+    expect(screen.queryByTestId("plugin-nav-loading-placeholders")).toBeNull();
     expect(screen.getByRole("button", { name: "New thread" })).toBeTruthy();
     act(() => markPluginFrontendsSettled());
     expect(
@@ -277,9 +312,6 @@ describe("PluginNavSidebarItems", () => {
     renderSidebarItems();
     const row = screen.getByRole("button", { name: "Docs" });
     expect(row.getAttribute("aria-busy")).toBe("true");
-    expect(screen.getByText("Docs").classList.contains("animate-shine")).toBe(
-      true,
-    );
     expect(screen.queryByTestId("plugin-nav-loading-placeholders")).toBeNull();
     act(() => {
       setPluginFrontendReconcilePending(true);
@@ -289,15 +321,12 @@ describe("PluginNavSidebarItems", () => {
     expect(screen.getByRole("button", { name: "Docs" })).toBe(row);
     expect(row.hasAttribute("aria-busy")).toBe(false);
     expect(
-      screen.getByRole("status", { name: "Loading plugins" }),
-    ).toBeTruthy();
+      screen.queryByRole("status", { name: "Loading plugins" }),
+    ).toBeNull();
     act(() => setPluginFrontendReconcilePending(false));
     expect(
       screen.queryByRole("status", { name: "Loading plugins" }),
     ).toBeNull();
-    expect(screen.getByText("Docs").classList.contains("animate-shine")).toBe(
-      false,
-    );
   });
 
   it("collapses the entire subsection with zero traditional plugins", () => {
@@ -341,9 +370,16 @@ describe("PluginNavSidebarItems", () => {
     expect(
       screen.getByRole("button", { name: "Docs" }).classList.contains("pr-18"),
     ).toBe(false);
+    const options = screen.getByRole("button", {
+      name: "Docs panel options",
+    });
+    for (const token of SIDEBAR_CONTROL_STATE_CLASS.split(" ")) {
+      expect(options.classList.contains(token)).toBe(true);
+    }
     expect(
-      screen.queryByRole("button", { name: "Docs panel options" }),
-    ).not.toBeNull();
+      options.classList.contains("data-[state=open]:bg-sidebar-accent"),
+    ).toBe(false);
+    expect(options.classList.contains("hover:text-foreground")).toBe(false);
     expect(
       view.container.querySelector("[data-plugin-nav-sidebar-accessory]"),
     ).toBeNull();
@@ -612,11 +648,11 @@ describe("PluginNavSidebarItems", () => {
     const { store } = renderSidebarItems({
       builtInEntries: [
         builtInEntry("new-thread", "New thread"),
-        builtInEntry("extensions", "Extensions"),
+        builtInEntry("extensions", "Plugins"),
       ],
     });
 
-    fireEvent.contextMenu(screen.getByRole("button", { name: "Extensions" }));
+    fireEvent.contextMenu(screen.getByRole("button", { name: "Plugins" }));
     fireEvent.click(
       await screen.findByRole("menuitem", { name: "Hide from sidebar" }),
     );
@@ -688,7 +724,19 @@ describe("PluginNavSidebarItems", () => {
       screen.getByTestId("plugin-nav-sidebar-items").lastElementChild,
     ).toBe(screen.getByTestId("sidebar-navigation-more-row"));
 
+    const trigger = moreTrigger();
+    for (const token of [
+      "text-muted-foreground",
+      "hover:text-sidebar-foreground",
+      "focus-visible:text-sidebar-foreground",
+      "data-[state=open]:text-sidebar-foreground",
+    ]) {
+      expect(trigger.classList.contains(token)).toBe(true);
+    }
+    expect(trigger.getAttribute("data-state")).toBe("closed");
+
     const items = await openMoreMenu();
+    expect(trigger.getAttribute("data-state")).toBe("open");
     expect(items.map((item) => item.textContent?.trim())).toEqual([
       "Search threads",
       "Customize sidebar",
@@ -702,6 +750,7 @@ describe("PluginNavSidebarItems", () => {
       ctrlKey: false,
     });
     await waitFor(() => expect(screen.queryByRole("menu")).toBeNull());
+    expect(trigger.getAttribute("data-state")).toBe("closed");
   });
 
   it("opens a hidden plugin in a split on modifier-click from More", async () => {
@@ -792,6 +841,96 @@ describe("PluginNavSidebarItems", () => {
     );
     await waitFor(() => expect(screen.queryByRole("menu")).toBeNull());
     expect(panelRowNames(labels)).toEqual(["Two", "Three", "Four"]);
+  });
+
+  it.each(["sidebar", "desktop customize", "compact customize"])(
+    "persists new rows and existing hidden choices when reordered through %s",
+    async (mode) => {
+      registerPanel("docs", "Docs");
+      registerPanel("github", "GitHub");
+      registerPanel("tasks", "Tasks");
+      const builtInEntries = [
+        builtInEntry("new-thread", "New thread"),
+        builtInEntry("search-threads", "Search threads"),
+        builtInEntry("extensions", "Plugins"),
+        builtInEntry("skills", "Skills"),
+      ];
+      const view = renderSidebarItems({
+        builtInEntries,
+        compactViewport: mode === "compact customize",
+        storedOrder: [
+          "__bb__/extensions",
+          "docs/main",
+          "github/main",
+          "unregistered/main",
+        ],
+        storedVisibleKeys: [
+          "__bb__/extensions",
+          "docs/main",
+          "unregistered/main",
+        ],
+      });
+      const initialVisibleKeys = visibleRowKeys();
+      expect(initialVisibleKeys).toEqual([
+        "__bb__/new-thread",
+        "__bb__/extensions",
+        "__bb__/skills",
+        "docs/main",
+        "tasks/main",
+      ]);
+      if (mode !== "sidebar") {
+        await openCustomizeFromContextMenu(
+          screen.getByRole("button", { name: "Docs" }),
+        );
+      }
+      reorderSidebar("tasks/main", "docs/main");
+      const storedOrder = view.store.get(pluginNavPanelOrderAtom);
+      const storedVisibleKeys = view.store.get(pluginNavVisiblePanelKeysAtom);
+      expect(new Set(storedVisibleKeys)).toEqual(
+        new Set([...initialVisibleKeys, "unregistered/main"]),
+      );
+      expect(storedOrder).toContain("unregistered/main");
+      expect(storedOrder.indexOf("tasks/main")).toBeLessThan(
+        storedOrder.indexOf("docs/main"),
+      );
+      view.unmount();
+      renderSidebarItems({ builtInEntries, storedOrder, storedVisibleKeys });
+      expect(visibleRowKeys()).toEqual([
+        "__bb__/new-thread",
+        "__bb__/extensions",
+        "__bb__/skills",
+        "tasks/main",
+        "docs/main",
+      ]);
+    },
+  );
+
+  it("keeps Skills hidden when inherited from a hidden Plugins row after reordering", () => {
+    registerPanel("docs", "Docs");
+    registerPanel("tasks", "Tasks");
+    const { store } = renderSidebarItems({
+      builtInEntries: [
+        builtInEntry("extensions", "Plugins"),
+        builtInEntry("skills", "Skills"),
+      ],
+      storedOrder: ["__bb__/extensions", "docs/main"],
+      storedVisibleKeys: ["docs/main"],
+    });
+    reorderSidebar("tasks/main", "docs/main");
+    expect(visibleRowKeys()).toEqual(["tasks/main", "docs/main"]);
+    expect(store.get(pluginNavVisiblePanelKeysAtom)).toEqual([
+      "tasks/main",
+      "docs/main",
+    ]);
+  });
+
+  it("preserves default visibility when reordering the sidebar without saved choices", () => {
+    registerPanel("docs", "Docs");
+    registerPanel("tasks", "Tasks");
+    const { store } = renderSidebarItems({ storedVisibleKeys: null });
+    reorderSidebar("tasks/main", "docs/main");
+    expect(visibleRowKeys()).toEqual(["tasks/main", "docs/main"]);
+    expect(store.get(pluginNavVisiblePanelKeysAtom)).toBeNull();
   });
 
   it("seeds newly introduced built-ins without overriding existing plugin visibility", () => {
@@ -1053,18 +1192,28 @@ describe("PluginNavSidebarItems", () => {
   });
 });
 
-describe("ExtensionsNavSidebarItem", () => {
-  it("is host-owned and has no plugin-panel options menu", () => {
-    render(
-      <MemoryRouter>
-        <ExtensionsNavSidebarItem routePath="/extensions/plugins" />
-      </MemoryRouter>,
-    );
+describe("ResourceNavSidebarItem", () => {
+  it.each([
+    ["Plugins", "Plug02", "/plugins"],
+    ["Skills", "Zap", "/skills"],
+  ] as const)(
+    "renders the static %s icon without plugin-panel options",
+    (title, icon, routePath) => {
+      render(
+        <MemoryRouter>
+          <ResourceNavSidebarItem
+            icon={icon}
+            title={title}
+            routePath={routePath}
+          />
+        </MemoryRouter>,
+      );
 
-    const row = screen.getByRole("button", { name: "Extensions" });
-    expect(row.querySelector(".bb-sidebar-row-icon-swap")).not.toBeNull();
-    expect(
-      screen.queryByRole("button", { name: "Extensions panel options" }),
-    ).toBeNull();
-  });
+      const row = screen.getByRole("button", { name: title });
+      expect(row.querySelector(`[data-icon="${icon}"]`)).not.toBeNull();
+      expect(
+        screen.queryByRole("button", { name: `${title} panel options` }),
+      ).toBeNull();
+    },
+  );
 });

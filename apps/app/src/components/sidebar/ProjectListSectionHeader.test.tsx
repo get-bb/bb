@@ -17,10 +17,8 @@ import {
   resetPluginThreadRowStatusesForTest,
   setPluginThreadRowStatus,
 } from "@/lib/plugin-thread-row-status";
-import {
-  ProjectListSectionIconButton,
-  TopLevelSidebarSection,
-} from "./ProjectList";
+import { TopLevelSidebarSection } from "./TopLevelSidebarSection";
+import { SidebarControlButton } from "./SidebarRowControls";
 
 afterEach(() => {
   cleanup();
@@ -30,24 +28,23 @@ afterEach(() => {
   window.sessionStorage.removeItem(SPLIT_LAYOUT_STORAGE_KEY);
 });
 
-describe("ProjectListSectionIconButton", () => {
+describe("SidebarControlButton", () => {
   it("drops pointer focus before a section action opens a picker", () => {
     let triggerWasFocused = true;
     render(
       <TooltipProvider>
-        <ProjectListSectionIconButton
-          ariaLabel="New project"
-          icon={<span aria-hidden>+</span>}
-          title="New project"
+        <SidebarControlButton
+          label="New thread"
+          icon="MessageSquarePlus"
           onClick={() => {
             triggerWasFocused =
               document.activeElement ===
-              screen.getByRole("button", { name: "New project" });
+              screen.getByRole("button", { name: "New thread" });
           }}
         />
       </TooltipProvider>,
     );
-    const trigger = screen.getByRole("button", { name: "New project" });
+    const trigger = screen.getByRole("button", { name: "New thread" });
     trigger.focus();
 
     fireEvent.click(trigger, { detail: 1 });
@@ -59,15 +56,14 @@ describe("ProjectListSectionIconButton", () => {
   it("retains section-action focus for keyboard activation", () => {
     render(
       <TooltipProvider>
-        <ProjectListSectionIconButton
-          ariaLabel="New project"
-          icon={<span aria-hidden>+</span>}
-          title="New project"
+        <SidebarControlButton
+          label="New thread"
+          icon="MessageSquarePlus"
           onClick={vi.fn()}
         />
       </TooltipProvider>,
     );
-    const trigger = screen.getByRole("button", { name: "New project" });
+    const trigger = screen.getByRole("button", { name: "New thread" });
     trigger.focus();
 
     fireEvent.click(trigger, { detail: 0 });

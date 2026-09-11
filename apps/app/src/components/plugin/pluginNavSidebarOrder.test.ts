@@ -2,7 +2,9 @@ import { describe, expect, it } from "vitest";
 import {
   arrangePluginNavPanelPreferences,
   arrangePluginNavPanels,
+  BUILT_IN_SIDEBAR_NAVIGATION_KEYS,
   getPluginNavPanelKey,
+  seedSkillsNavigationPreference,
   togglePluginNavPanelVisibility,
 } from "./pluginNavSidebarOrder";
 
@@ -13,6 +15,53 @@ function panel(pluginId: string, id: string) {
 const github = panel("github", "pulls");
 const docs = panel("docs", "vault");
 const tasks = panel("tasks", "board");
+
+describe("seedSkillsNavigationPreference", () => {
+  it("places Skills beside the existing Plugins row and inherits its visibility", () => {
+    expect(
+      seedSkillsNavigationPreference(
+        [
+          BUILT_IN_SIDEBAR_NAVIGATION_KEYS.newThread,
+          BUILT_IN_SIDEBAR_NAVIGATION_KEYS.extensions,
+          BUILT_IN_SIDEBAR_NAVIGATION_KEYS.automations,
+        ],
+        [
+          BUILT_IN_SIDEBAR_NAVIGATION_KEYS.newThread,
+          BUILT_IN_SIDEBAR_NAVIGATION_KEYS.extensions,
+          BUILT_IN_SIDEBAR_NAVIGATION_KEYS.automations,
+        ],
+      ),
+    ).toEqual({
+      order: [
+        BUILT_IN_SIDEBAR_NAVIGATION_KEYS.newThread,
+        BUILT_IN_SIDEBAR_NAVIGATION_KEYS.extensions,
+        BUILT_IN_SIDEBAR_NAVIGATION_KEYS.skills,
+        BUILT_IN_SIDEBAR_NAVIGATION_KEYS.automations,
+      ],
+      visibleKeys: [
+        BUILT_IN_SIDEBAR_NAVIGATION_KEYS.newThread,
+        BUILT_IN_SIDEBAR_NAVIGATION_KEYS.extensions,
+        BUILT_IN_SIDEBAR_NAVIGATION_KEYS.skills,
+        BUILT_IN_SIDEBAR_NAVIGATION_KEYS.automations,
+      ],
+    });
+  });
+
+  it("keeps Skills hidden when the existing Plugins row was hidden", () => {
+    expect(
+      seedSkillsNavigationPreference(
+        [BUILT_IN_SIDEBAR_NAVIGATION_KEYS.extensions],
+        [],
+      ),
+    ).toEqual({
+      order: [
+        BUILT_IN_SIDEBAR_NAVIGATION_KEYS.extensions,
+        BUILT_IN_SIDEBAR_NAVIGATION_KEYS.skills,
+      ],
+      visibleKeys: [],
+    });
+  });
+});
 
 describe("arrangePluginNavPanels", () => {
   it("falls back to registry order before the user has reordered anything", () => {

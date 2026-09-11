@@ -209,10 +209,11 @@ and are readable by every plugin through the SDK, including after the
 environment is destroyed. They are configuration, not a credential store;
 keep credentials in secret settings. `availability` may return
 available, setup-required with a message, or unavailable with a message for a
-project and machine. Core calls it inside the decision timeout and caches the
-answer until settings change or the provider calls `recheck`. `validate` may accept or refuse a request
-before a thread exists, using the resolved project, host, checkout, remote and
-inputs. Required facts and schema outputs are inferred by registration.
+project and machine. Core calls it inside the decision timeout only for the
+selected provider and machine during thread creation, checking it afresh for
+every creation request. `validate` may accept or refuse the same request before
+a thread exists, using the resolved project, host, checkout, remote and inputs.
+Required facts and schema outputs are inferred by registration.
 
 Core owns launch attempts, cancellation, retry timing, attachment, retirement,
 and removal in SQLite. Providers must not keep duplicate launch records or
@@ -225,7 +226,7 @@ attempt, pathKey, rebuild, `previous: { environment, resource } | null`,
 report, and an abort signal. It is one long call and must be idempotent for
 pathKey: after a process or plugin restart, core calls it again with the same
 attempt and pathKey. Return `created` with `path`, explicit `ownsPath`
-and optional `mergeBaseBranch`, or `failed` with terminal/transient and message.
+and optional `mergeBaseBranch`, or `failed` with a message; a failed create is terminal.
 `report.step` and
 `report.log` stream durable progress while the call runs.
 
@@ -240,7 +241,7 @@ failed(message).
 
 Policy exposes retireGraceMs (five minutes by default; null means never) and
 pathKeys (per-thread by default, or per-attempt). Core retries failed removal
-after 60 seconds and permits three transient creation retries, 30 seconds apart.
+after 60 seconds. Creation retries are explicit and start a new attempt on the same environment row after cleanup.
 Core imposes no overall provider-create timeout. These are internal core
 behaviors, not provider settings. Rebuilds use
 fresh path keys. Retirement starts after the last live thread archives or is deleted.
@@ -422,6 +423,6 @@ claiming and before mutating a shared checkout. Core normalizes trailing slashes
 on claims. Reuse, directory switching and restored dispatch enforce claims;
 only the owning launch is exempt. `bb.sdk.environments.list({ hostId, path })`
 compares stored paths in the database and does not contact hosts.
-Scoped discovery omits providers whose requirements are unmet; availability rows
-are only returned for eligible providers. Without a machine scope, discovery
-includes providers eligible on any persistent machine.
+Scoped discovery omits providers whose declared requirements are unmet without
+running Git inspection or plugin availability. Without a machine scope,
+discovery includes providers structurally eligible on any persistent machine.

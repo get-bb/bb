@@ -118,6 +118,29 @@ function fixture(harness: TestAppHarness) {
         case "desktop.browser.close_tab":
         case "desktop.browser.reveal_tab":
           return { ok: true, result: { ok: true } };
+        case "desktop.browser.list_import_sources":
+          return {
+            ok: true,
+            result: {
+              sources: [
+                {
+                  id: "firefox",
+                  name: "Firefox",
+                  profiles: [{ directory: "Profiles/p1", name: "main" }],
+                },
+              ],
+            },
+          };
+        case "desktop.browser.import_cookies":
+          return {
+            ok: true,
+            result: {
+              ok: true,
+              imported: 2,
+              skipped: 0,
+              skippedDomains: [],
+            },
+          };
         case "desktop.browser.capture_tab":
           return {
             ok: true,
@@ -545,6 +568,54 @@ describe("desktop browser public API", () => {
     });
   });
 
+  it("lists import sources and forwards cookie imports with a personal default target", async () => {
+    await withBrowserTest(async (test) => {
+      const instance = {
+        hostId: test.scope.hostId,
+        instanceId: test.scope.instanceId,
+        generation: test.scope.generation,
+      };
+      const sources = await test.post("import-sources", instance);
+      expect(sources.status).toBe(200);
+      expect(await sources.json()).toEqual({
+        sources: [
+          {
+            id: "firefox",
+            name: "Firefox",
+            profiles: [{ directory: "Profiles/p1", name: "main" }],
+          },
+        ],
+      });
+      const imported = await test.post("import-cookies", {
+        ...instance,
+        sourceId: "firefox",
+        sourceProfileDirectory: "Profiles/p1",
+      });
+      expect(imported.status).toBe(200);
+      expect(imported.headers.get("cache-control")).toBe("no-store");
+      expect(await imported.json()).toEqual({
+        ok: true,
+        imported: 2,
+        skipped: 0,
+        skippedDomains: [],
+      });
+      expect(test.responder.requests.at(-1)?.command).toEqual({
+        type: "desktop.browser.import_cookies",
+        instanceId: instance.instanceId,
+        generation: instance.generation,
+        sourceId: "firefox",
+        sourceProfileDirectory: "Profiles/p1",
+        profile: { kind: "personal" },
+      });
+      const rejected = await test.post("import-cookies", {
+        ...instance,
+        sourceId: "netscape",
+        sourceProfileDirectory: "Profiles/p1",
+      });
+      expect(rejected.status).toBe(400);
+    });
+  });
+
   it("binds open and release to host, instance, generation, thread, and granted tabs", async () => {
     await withBrowserTest(async (test, harness) => {
       const lease = await test.acquire();
@@ -809,6 +880,28 @@ describe("desktop browser public API", () => {
       ]);
       test.change({}, []);
       expect(test.stored()).toEqual([]);
+    });
+  });
+  it("drops snapshots for synthetic, missing, or deleted threads without closing the daemon session", async () => {
+    await withBrowserTest(async (test, harness) => {
+      const deleted = seedThread(harness.deps, {
+        projectId: test.project.id,
+        environmentId: test.environment.id,
+      });
+      markThreadDeleted(harness.db, harness.hub, { threadId: deleted.id });
+      for (const threadId of [
+        "plugin-panel:cloud-sandbox:cloud-machines:pane-1",
+        "thr_missing",
+        deleted.id,
+      ]) {
+        const socket = test.change({ threadId }, [{ ...test.tab(), threadId }]);
+        expect(socket.close, threadId).not.toHaveBeenCalled();
+        expect(test.stored(threadId), threadId).toEqual([]);
+      }
+      expect(test.change({}, [test.tab()]).close).not.toHaveBeenCalled();
+      expect(test.stored()).toEqual([
+        expect.objectContaining({ id: test.tab().tabId }),
+      ]);
     });
   });
   it("revokes native control when acquisition completes after its deadline", async () => {

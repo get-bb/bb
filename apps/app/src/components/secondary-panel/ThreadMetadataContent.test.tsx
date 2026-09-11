@@ -17,6 +17,7 @@ import { TooltipProvider } from "@bb/shared-ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import type { ReactNode } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { focusWithKeyboard } from "@/test/keyboard-focus";
 import {
   makeEnvironment,
   makeThread as makeThreadFixture,
@@ -57,6 +58,7 @@ const worktreeProvider: SystemEnvironmentProvider = {
   logoUrl: null,
   pluginId: "environment-git-worktree",
   acceptsEmptyInputs: true,
+  machineAvailability: {},
   availability: null,
   requires: {
     projectCheckout: true,
@@ -74,6 +76,7 @@ const modalProvider: SystemEnvironmentProvider = {
   logoUrl: null,
   pluginId: "environment-modal-sandbox",
   acceptsEmptyInputs: true,
+  machineAvailability: {},
   availability: null,
   requires: {
     projectCheckout: false,
@@ -91,6 +94,7 @@ const personalProvider: SystemEnvironmentProvider = {
   logoUrl: null,
   pluginId: "environment-personal-workspace",
   acceptsEmptyInputs: true,
+  machineAvailability: {},
   availability: null,
   requires: {
     projectCheckout: false,
@@ -197,7 +201,7 @@ describe("EnvironmentRow", () => {
       ),
     );
 
-    fireEvent.focus(
+    focusWithKeyboard(
       screen.getByRole("button", {
         name: "New thread in this environment",
       }),

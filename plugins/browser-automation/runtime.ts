@@ -214,7 +214,7 @@ export async function createRuntime(args: {
       startup.throwIfAborted();
       if (processes.some((child) => !child.alive()))
         throw new Error(
-          "Browser runtime exited during startup; check Chrome installation and sandbox support.",
+          "Browser runtime exited during startup; check Chrome installation and runtime dependencies.",
         );
       try {
         return await readFile(path, "utf8");
@@ -233,6 +233,7 @@ export async function createRuntime(args: {
           chrome,
           [
             "--headless=new",
+            "--no-sandbox",
             "--remote-debugging-port=0",
             "--remote-debugging-address=127.0.0.1",
             `--user-data-dir=${profile}`,

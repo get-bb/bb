@@ -30,7 +30,7 @@ async function fetchThreadDefaultExecutionOptions(
     threadId,
     signal,
   });
-  if (options !== null) {
+  if (options !== null && !signal?.aborted) {
     writeCachedThreadExecutionOptions(
       threadExecutionOptionsCacheKey(threadId),
       options,

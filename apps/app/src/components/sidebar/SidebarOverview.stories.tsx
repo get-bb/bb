@@ -11,6 +11,7 @@ import {
   useQueryClient,
 } from "@tanstack/react-query";
 import { createStore, Provider } from "jotai";
+import { useNavigate } from "react-router-dom";
 import { PERSONAL_PROJECT_ID } from "@bb/domain";
 import type { SidebarBootstrapResponse } from "@bb/server-contract";
 import {
@@ -37,6 +38,15 @@ import {
 import { StoryCard, StoryRow } from "../../../.ladle/story-card";
 import { PluginNavSidebarItems } from "@/components/plugin/PluginNavSidebarItems";
 import {
+  pluginNavPanelOrderAtom,
+  pluginNavVisiblePanelKeysAtom,
+} from "@/components/plugin/pluginNavSidebarAtoms";
+import {
+  BUILT_IN_SIDEBAR_NAVIGATION_KEYS,
+  DEFAULT_BUILT_IN_SIDEBAR_NAVIGATION_ORDER,
+} from "@/components/plugin/pluginNavSidebarOrder";
+import { BuiltInSidebarNavigation } from "./BuiltInSidebarNavigation";
+import {
   removePluginSlotRegistrations,
   setPluginSlotRegistrations,
   type PluginRegistrationSet,
@@ -62,6 +72,7 @@ export default {
 
 interface SidebarFrameProps {
   children: ReactNode;
+  navigation?: ReactNode;
 }
 
 const noop = () => {};
@@ -257,16 +268,19 @@ const machineSidebarNavigation = {
   })),
 } satisfies SidebarBootstrapResponse;
 
-function SidebarFrame({ children }: SidebarFrameProps) {
+function SidebarFrame({ children, navigation }: SidebarFrameProps) {
   return (
     <ProjectActionsProvider>
       <ThreadActionsProvider>
         <div className="flex h-[680px] w-full max-w-[320px] min-w-0 flex-col overflow-hidden rounded-md border border-sidebar-border bg-sidebar text-sidebar-foreground shadow-sm">
-          <div className="shrink-0 px-2 py-2">
-            <ProjectListActionButtons onNewChat={noop} />
-          </div>
-          {}
-          <PluginNavSidebarItems />
+          {navigation ?? (
+            <>
+              <div className="shrink-0 px-2 py-2">
+                <ProjectListActionButtons onNewChat={noop} />
+              </div>
+              <PluginNavSidebarItems />
+            </>
+          )}
           <div className="min-h-0 flex-1 overflow-y-auto">{children}</div>
           <div className="shrink-0 border-t border-sidebar-border/70 px-2 py-2">
             <button
@@ -350,7 +364,7 @@ function StoryPluginPageRegistrations() {
         panel: {
           id: AUTOMATIONS_PLUGIN_PANEL_PATH,
           title: "Automations",
-          icon: "TimeSchedule" as const,
+          icon: "Repeat" as const,
           path: AUTOMATIONS_PLUGIN_PANEL_PATH,
           component: () => null,
         },
@@ -401,11 +415,32 @@ function StoryPluginPageRegistrations() {
 }
 
 function LoadedSidebarWithPluginPages() {
-  const [store] = useState(() => createStore());
+  const navigate = useNavigate();
+  const [store] = useState(() => {
+    const seededStore = createStore();
+    seededStore.set(pluginNavPanelOrderAtom, [
+      ...DEFAULT_BUILT_IN_SIDEBAR_NAVIGATION_ORDER,
+      "github/github",
+      "docs/docs",
+      "tasks/tasks",
+    ]);
+    seededStore.set(pluginNavVisiblePanelKeysAtom, [
+      BUILT_IN_SIDEBAR_NAVIGATION_KEYS.newThread,
+      "github/github",
+    ]);
+    return seededStore;
+  });
   return (
     <Provider store={store}>
       <StoryPluginPageRegistrations />
-      <SidebarFrame>
+      <SidebarFrame
+        navigation={
+          <BuiltInSidebarNavigation
+            onNewChat={() => void navigate("/")}
+            toolsRoutePath="/extensions"
+          />
+        }
+      >
         <LoadedSidebar />
       </SidebarFrame>
     </Provider>
@@ -479,10 +514,7 @@ export function Overview() {
 export function PluginPages() {
   return (
     <StoryCard labelWidth="120px">
-      <StoryRow
-        label="expanded"
-        hint="all shipped plugin navigation above the real thread list"
-      >
+      <StoryRow label="sidebar">
         <LoadedSidebarWithPluginPages />
       </StoryRow>
     </StoryCard>

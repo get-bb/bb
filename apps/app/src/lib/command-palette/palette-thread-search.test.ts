@@ -1,11 +1,7 @@
-import { emptyPromptDraftState } from "@bb/client-core";
 import type { ThreadListEntry } from "@bb/domain";
 import type { ThreadSearchResponse } from "@bb/server-contract";
 import { describe, expect, it } from "vitest";
-import {
-  buildPaletteThreadSearchRows,
-  type PaletteNewThreadDraft,
-} from "./palette-thread-search";
+import { buildPaletteThreadSearchRows } from "./palette-thread-search";
 
 const NOW = 1_000_000;
 
@@ -56,27 +52,14 @@ function makeThread(
   };
 }
 
-function makeDraft(id: string, title: string): PaletteNewThreadDraft {
-  return {
-    id,
-    title,
-    draft: { ...emptyPromptDraftState(), text: title },
-    lastEditedAt: NOW,
-    destination: { projectId: "project-1", sectionId: null },
-  };
-}
-
 function build(
   overrides: Partial<Parameters<typeof buildPaletteThreadSearchRows>[0]> = {},
 ) {
   return buildPaletteThreadSearchRows({
-    drafts: [],
     now: NOW,
     projectNamesById: new Map([["project-1", "Palette project"]]),
     query: "match",
-    recentArchivedThreads: [],
     recentThreads: [],
-    scope: "all",
     searchResponse: {
       active: { results: [], total: 0 },
       archived: { results: [], total: 0 },
@@ -87,7 +70,7 @@ function build(
 }
 
 describe("buildPaletteThreadSearchRows", () => {
-  it("builds one active, draft, archived list with a local draft total", () => {
+  it("preserves active and archived server matches in their ranked order", () => {
     const active = makeThread("active");
     const archived = makeThread("archived", { archivedAt: NOW - 1 });
     const searchResponse: ThreadSearchResponse = {
@@ -102,61 +85,21 @@ describe("buildPaletteThreadSearchRows", () => {
     };
 
     const result = build({
-      drafts: [makeDraft("draft", "A matching local draft")],
       searchResponse,
     });
 
     expect(result.rows.map((row) => row.lifecycle)).toEqual([
       "active",
-      "draft",
       "archived",
     ]);
-    expect(result.rows.map((row) => row.thread)).toEqual([
-      active,
-      null,
-      archived,
-    ]);
+    expect(result.rows.map((row) => row.thread)).toEqual([active, archived]);
     expect(result.rows.map((row) => row.metadataText)).toEqual([
       "Palette project · just now",
       "Palette project · just now",
-      "Palette project · just now",
     ]);
-    expect(result.draftMatchCount).toBe(1);
-  });
-
-  it("preserves metadata anatomy after narrowing lifecycle scope", () => {
-    const draftResult = build({
-      drafts: [makeDraft("draft", "A matching local draft")],
-      scope: "draft",
-    });
-
-    expect(draftResult.rows).toMatchObject([
-      {
-        lifecycle: "draft",
-        metadataText: "Palette project · just now",
-        projectId: "project-1",
-        draftSlotId: "draft",
-      },
-    ]);
-
-    const archived = makeThread("archived", { archivedAt: NOW - 1 });
-    const archivedResult = build({
-      scope: "archived",
-      searchResponse: {
-        active: { results: [], total: 0 },
-        archived: {
-          total: 1,
-          results: [{ thread: archived, matches: [] }],
-        },
-      },
-    });
-
-    expect(archivedResult.rows).toMatchObject([
-      {
-        lifecycle: "archived",
-        metadataText: "Palette project · just now",
-        threadId: "archived",
-      },
+    expect(result.rows.map((row) => row.threadId)).toEqual([
+      "active",
+      "archived",
     ]);
   });
 
@@ -188,64 +131,54 @@ describe("buildPaletteThreadSearchRows", () => {
       primaryText: "the matching message",
       metadataText: "Original title · Palette project · just now",
       messageSeq: 42,
+      highlightRanges: [{ start: 4, end: 12 }],
     });
   });
 
-  it("uses stable source order for equal timestamps and does not reuse recents for a one-character query", () => {
+  it("uses active recents before typing and does not reuse them for a one-character query", () => {
     const active = makeThread("recent-active");
     const archived = makeThread("recent-archived", { archivedAt: NOW - 1 });
     const recents = build({
-      drafts: [makeDraft("recent-draft", "Recent draft")],
       query: "",
-      recentArchivedThreads: [archived],
+      searchResponse: {
+        active: { total: 0, results: [] },
+        archived: { total: 1, results: [{ thread: archived, matches: [] }] },
+      },
       recentThreads: [active],
     });
     expect(recents).toMatchObject({
       isRecent: true,
-      rows: [
-        { id: "active:recent-active" },
-        { id: "draft:recent-draft" },
-        { id: "archived:recent-archived" },
-      ],
+      rows: [{ id: "active:recent-active" }],
     });
     expect(build({ query: "m", recentThreads: [active] })).toMatchObject({
       isRecent: false,
       rows: [],
     });
   });
-
-  it("orders existing threads and dated drafts by last updated across projects and lifecycles", () => {
+  it("does not show stale server matches while a new query is debouncing", () => {
+    const thread = makeThread("stale");
+    expect(
+      build({
+        searchResultsAreCurrent: false,
+        searchResponse: {
+          active: { total: 1, results: [{ thread, matches: [] }] },
+          archived: { total: 1, results: [{ thread, matches: [] }] },
+        },
+      }).rows,
+    ).toEqual([]);
+  });
+  it("orders active recents by update time across projects without prioritizing pinned threads", () => {
     const older = makeThread("older", { updatedAt: NOW - 100, pinnedAt: NOW });
     const newest = makeThread("newest", {
       projectId: "project-2",
       updatedAt: NOW,
     });
-    const archived = makeThread("archived", {
-      updatedAt: NOW - 50,
-      archivedAt: NOW,
-    });
-    const datedDraft = {
-      ...makeDraft("dated", "Dated draft"),
-      lastEditedAt: NOW - 25,
-    };
-    const undatedDraft = {
-      ...makeDraft("undated", "Undated draft"),
-      lastEditedAt: null,
-    };
+    const tied = makeThread("tied", { updatedAt: NOW });
     expect(
-      build({
-        query: "",
-        recentThreads: [older, newest],
-        recentArchivedThreads: [archived],
-        drafts: [undatedDraft, datedDraft],
-      }).rows.map((row) => row.id),
-    ).toEqual([
-      "active:newest",
-      "draft:dated",
-      "archived:archived",
-      "active:older",
-      "draft:undated",
-    ]);
+      build({ query: "", recentThreads: [older, newest, tied] }).rows.map(
+        (row) => row.id,
+      ),
+    ).toEqual(["active:newest", "active:tied", "active:older"]);
   });
 
   it("chooses the newest threads before applying the recent limit", () => {

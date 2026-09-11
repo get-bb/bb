@@ -416,7 +416,7 @@ describe("AddPluginDialog", () => {
       <MemoryRouter>{errorToast.mock.calls[0]?.[1]?.description}</MemoryRouter>,
     );
     const pluginLink = screen.getByRole("link", { name: "Linear" });
-    expect(pluginLink.getAttribute("href")).toBe("/extensions/plugins/linear");
+    expect(pluginLink.getAttribute("href")).toBe("/plugins/linear");
     expect(pluginLink.parentElement?.textContent).toBe(
       "Linear — requires bb >= 0.15 — you have 0.14.1",
     );

@@ -4,6 +4,9 @@ import { registerHostRpcResponder } from "../helpers/host-rpc.js";
 import { readJson } from "../helpers/json.js";
 import { seedHostSession, seedPrimaryHost } from "../helpers/seed.js";
 import { withTestHarness } from "../helpers/test-app.js";
+import { DEFAULT_PATH_LIST_EXCLUDE_NAMES } from "../../src/routes/path-list-policy.js";
+
+const DEFAULT_EXCLUDE_NAMES = [...DEFAULT_PATH_LIST_EXCLUDE_NAMES];
 
 const WRITTEN_RESULT = {
   outcome: "written",
@@ -191,6 +194,9 @@ describe("host file routes", () => {
           if (request.command.type === "host.list_paths") {
             return { ok: true, result: { paths: [], truncated: false } };
           }
+          if (request.command.type === "host.list_files") {
+            return { ok: true, result: { files: [], truncated: false } };
+          }
           return { ok: true, result: { ok: true } };
         },
       });
@@ -199,6 +205,19 @@ describe("host file routes", () => {
         [
           "/api/v1/files/paths",
           { path: "/notes", includeFiles: true, includeDirectories: true },
+        ],
+        [
+          "/api/v1/files/paths",
+          {
+            path: "/notes",
+            includeFiles: true,
+            includeDirectories: true,
+            includeHidden: false,
+          },
+        ],
+        [
+          "/api/v1/files/list",
+          { path: "/notes", includeHidden: false, excludeNames: [".obsidian"] },
         ],
         [
           "/api/v1/files/mkdir",
@@ -228,6 +247,27 @@ describe("host file routes", () => {
           limit: 1000,
           includeFiles: true,
           includeDirectories: true,
+          includeHidden: true,
+          respectGitIgnore: false,
+          excludeNames: DEFAULT_EXCLUDE_NAMES,
+        },
+        {
+          type: "host.list_paths",
+          path: "/notes",
+          limit: 1000,
+          includeFiles: true,
+          includeDirectories: true,
+          includeHidden: false,
+          respectGitIgnore: false,
+          excludeNames: DEFAULT_EXCLUDE_NAMES,
+        },
+        {
+          type: "host.list_files",
+          path: "/notes",
+          limit: 1000,
+          includeHidden: false,
+          respectGitIgnore: false,
+          excludeNames: [".obsidian"],
         },
         {
           type: "host.mkdir",

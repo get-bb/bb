@@ -36,6 +36,7 @@ const COMPLETED_EVENT_OUTPUT_MIGRATION_CURSOR_VERSION = 1;
 const COMPLETED_EVENT_OUTPUT_MIGRATION_COMPLETED_AT = -1;
 export const DEFAULT_CLOSED_SESSION_PRUNE_BATCH_SIZE = 1_000;
 export const DEFAULT_DESTROYED_ENVIRONMENT_EVENT_DETACH_BATCH_SIZE = 50;
+const DESTROYED_ENVIRONMENT_EVENT_DETACH_DATA_BUDGET_BYTES = 256 * 1024;
 export const DEFAULT_COMPLETED_EVENT_OUTPUT_MIGRATION_SCAN_LIMIT = 25;
 export const DEFAULT_LEGACY_IMAGE_GENERATION_MIGRATION_SCAN_LIMIT = 250;
 export const DEFAULT_DESTROYED_ENVIRONMENT_PRUNE_BATCH_SIZE = 10;
@@ -760,16 +761,36 @@ export function pruneDestroyedEnvironments(
   for (const environmentId of staleEnvironmentIds) {
     const result = db.transaction(
       (tx) => {
-        const detached = tx.run(sql`
+        const candidates = tx.all<{ rowid: number; dataBytes: number }>(sql`
+          SELECT rowid, octet_length(data) AS dataBytes
+          FROM events INDEXED BY events_environment_idx
+          WHERE environment_id = ${environmentId}
+          ORDER BY rowid
+          LIMIT ${args.eventBatchSize}
+        `);
+        const rowids: number[] = [];
+        let dataBytes = 0;
+        for (const candidate of candidates) {
+          if (
+            rowids.length > 0 &&
+            dataBytes + candidate.dataBytes >
+              DESTROYED_ENVIRONMENT_EVENT_DETACH_DATA_BUDGET_BYTES
+          ) {
+            break;
+          }
+          rowids.push(candidate.rowid);
+          dataBytes += candidate.dataBytes;
+        }
+        const detached =
+          rowids.length === 0
+            ? 0
+            : tx.run(sql`
           UPDATE events
           SET environment_id = NULL
-          WHERE rowid IN (
-            SELECT rowid
-            FROM events INDEXED BY events_environment_idx
-            WHERE environment_id = ${environmentId}
-            ORDER BY rowid
-            LIMIT ${args.eventBatchSize}
-          )
+          WHERE rowid IN (${sql.join(
+            rowids.map((rowid) => sql`${rowid}`),
+            sql`, `,
+          )})
         `).changes;
         if (detached > 0) {
           return { deleted: 0, detachedEvents: detached };

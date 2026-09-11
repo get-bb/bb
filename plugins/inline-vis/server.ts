@@ -1,14 +1,21 @@
 import path from "node:path";
-import { defineRpcContract, type BbPluginApi } from "@get-bb/plugin-sdk";
+import {
+  defineRpcContract,
+  type BbPluginApi,
+  type MarkdownProps,
+} from "@get-bb/plugin-sdk";
 import { z } from "zod";
 
-export const MAX_HTML_BYTES = 5 * 1024 * 1024;
+export const MAX_PREVIEW_BYTES = 5 * 1024 * 1024;
 
-const HTML_EXTENSIONS = new Set([".html", ".htm"]);
+type PreviewKind = "html" | "markdown";
 
-interface PrepareHtmlPreviewResult {
-  file: string;
-}
+const PREVIEW_KIND_BY_EXTENSION: ReadonlyMap<string, PreviewKind> = new Map([
+  [".html", "html"],
+  [".htm", "html"],
+  [".md", "markdown"],
+  [".markdown", "markdown"],
+]);
 
 function requireNonEmptyString(value: unknown, field: string): string {
   if (typeof value !== "string" || value.trim().length === 0) {
@@ -21,13 +28,24 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-export function requireWorkspaceHtmlFile(value: unknown): string {
+function previewKind(file: string): PreviewKind {
+  const extension = path.posix.extname(file).toLowerCase();
+  const kind = PREVIEW_KIND_BY_EXTENSION.get(extension);
+  if (kind === undefined) {
+    throw new Error(
+      `"file" must end with .html, .htm, .md, or .markdown, got ${JSON.stringify(file)}`,
+    );
+  }
+  return kind;
+}
+
+export function requireRelativePreviewFile(value: unknown): string {
   const file = requireNonEmptyString(value, "file");
   if (path.isAbsolute(file)) {
-    throw new Error(`"file" must be workspace-relative, not absolute: ${file}`);
+    throw new Error(`"file" must be source-relative, not absolute: ${file}`);
   }
   if (/^[a-zA-Z]:[\\/]/.test(file) || file.startsWith("\\\\")) {
-    throw new Error(`"file" must be workspace-relative, not absolute: ${file}`);
+    throw new Error(`"file" must be source-relative, not absolute: ${file}`);
   }
   const slashNormalized = file.replace(/\\/g, "/");
   if (slashNormalized.split("/").includes("..")) {
@@ -41,18 +59,13 @@ export function requireWorkspaceHtmlFile(value: unknown): string {
     normalized === "." ||
     normalized.startsWith("/")
   ) {
-    throw new Error(`"file" must not escape the workspace: ${file}`);
+    throw new Error(`"file" must not escape its source: ${file}`);
   }
-  const ext = path.posix.extname(normalized).toLowerCase();
-  if (!HTML_EXTENSIONS.has(ext)) {
-    throw new Error(
-      `"file" must end with .html or .htm, got ${JSON.stringify(file)}`,
-    );
-  }
+  previewKind(normalized);
   return normalized;
 }
 
-export function resolveContainedHtmlPath(
+export function resolveContainedPreviewPath(
   rootPath: string,
   relativeFile: string,
 ): string {
@@ -64,7 +77,7 @@ export function resolveContainedHtmlPath(
     relative.startsWith(`..${path.sep}`) ||
     path.isAbsolute(relative)
   ) {
-    throw new Error(`"file" must not escape the workspace: ${relativeFile}`);
+    throw new Error(`"file" must not escape its source: ${relativeFile}`);
   }
   return absolute;
 }
@@ -78,51 +91,107 @@ function httpStatus(error: unknown): number | null {
 }
 
 export const inlineVisRpcContract = defineRpcContract({
-  prepareHtmlPreview: {
+  preparePreview: {
     input: z
       .object({
         threadId: z.string().trim().min(1),
-        file: z.string().transform((value) => requireWorkspaceHtmlFile(value)),
+        file: z
+          .string()
+          .transform((value) => requireRelativePreviewFile(value)),
+        source: z
+          .string()
+          .trim()
+          .pipe(z.enum(["workspace", "thread-storage"]))
+          .default("workspace"),
       })
       .strict(),
-    output: z.object({ file: z.string() }).strict(),
+    output: z.discriminatedUnion("kind", [
+      z
+        .object({
+          kind: z.literal("html"),
+          file: z.string(),
+          source: z.enum(["workspace", "thread-storage"]),
+        })
+        .strict(),
+      z
+        .object({
+          kind: z.literal("markdown"),
+          file: z.string(),
+          source: z.enum(["workspace", "thread-storage"]),
+          content: z.string(),
+          document: z
+            .object({
+              rootPath: z.string(),
+              threadId: z.string(),
+              target: z.discriminatedUnion("kind", [
+                z
+                  .object({
+                    kind: z.literal("workspace"),
+                    environmentId: z.string(),
+                    path: z.string(),
+                  })
+                  .strict(),
+                z
+                  .object({
+                    kind: z.literal("thread-storage"),
+                    threadId: z.string(),
+                    path: z.string(),
+                  })
+                  .strict(),
+              ]),
+            })
+            .strict(),
+        })
+        .strict(),
+    ]),
   },
 });
 
 export default async function plugin(bb: BbPluginApi) {
   bb.rpc.register(inlineVisRpcContract, {
-    async prepareHtmlPreview({
-      threadId,
-      file,
-    }): Promise<PrepareHtmlPreviewResult> {
-      const thread = await bb.sdk.threads.get({
-        threadId,
-        include: "environment",
-      });
+    async preparePreview({ threadId, file, source }) {
+      let rootPath: string;
+      let hostId: string;
+      let target: NonNullable<MarkdownProps["experimental_document"]>["target"];
 
-      if (!("environment" in thread)) {
-        throw new Error(
-          "Thread environment was not returned — inline-vis needs a live environment.",
-        );
+      if (source === "thread-storage") {
+        const storage = await bb.sdk.threads.storageLocation({ threadId });
+        rootPath = storage.storageRootPath;
+        hostId = storage.hostId;
+        target = { kind: source, threadId, path: file };
+      } else {
+        const thread = await bb.sdk.threads.get({
+          threadId,
+          include: "environment",
+        });
+
+        if (!("environment" in thread)) {
+          throw new Error(
+            "Thread environment was not returned — inline-vis needs a live environment.",
+          );
+        }
+
+        const environment = thread.environment;
+        const workspacePath =
+          typeof environment?.path === "string" ? environment.path : null;
+        if (!environment || !workspacePath) {
+          throw new Error(
+            "This thread has no workspace path — inline-vis needs a live environment.",
+          );
+        }
+        const workspaceHostId =
+          typeof environment?.hostId === "string" ? environment.hostId : null;
+        if (!workspaceHostId) {
+          throw new Error(
+            "This thread's environment has no hostId — cannot read workspace files.",
+          );
+        }
+        rootPath = workspacePath;
+        hostId = workspaceHostId;
+        target = { kind: source, environmentId: environment.id, path: file };
       }
 
-      const environment = thread.environment;
-      const rootPath =
-        typeof environment?.path === "string" ? environment.path : null;
-      if (!rootPath) {
-        throw new Error(
-          "This thread has no workspace path — inline-vis needs a live environment.",
-        );
-      }
-      const hostId =
-        typeof environment?.hostId === "string" ? environment.hostId : null;
-      if (!hostId) {
-        throw new Error(
-          "This thread's environment has no hostId — cannot read workspace files.",
-        );
-      }
-
-      const absolutePath = resolveContainedHtmlPath(rootPath, file);
+      const absolutePath = resolveContainedPreviewPath(rootPath, file);
 
       let result;
       try {
@@ -133,24 +202,33 @@ export default async function plugin(bb: BbPluginApi) {
         });
       } catch (error) {
         if (httpStatus(error) === 404) {
-          throw new Error(`HTML file not found: ${file}`);
+          throw new Error(`Preview file not found: ${file}`);
         }
         throw error;
       }
 
       if (result.contentEncoding !== "utf8") {
         throw new Error(
-          `HTML file is not valid UTF-8 text (encoding=${result.contentEncoding}).`,
+          `Preview file is not valid UTF-8 text (encoding=${result.contentEncoding}).`,
         );
       }
       const sizeBytes = result.sizeBytes;
-      if (sizeBytes > MAX_HTML_BYTES) {
+      if (sizeBytes > MAX_PREVIEW_BYTES) {
         throw new Error(
-          `HTML file is too large (${sizeBytes} bytes; max ${MAX_HTML_BYTES}).`,
+          `Preview file is too large (${sizeBytes} bytes; max ${MAX_PREVIEW_BYTES}).`,
         );
       }
 
-      return { file };
+      const kind = previewKind(file);
+      return kind === "markdown"
+        ? {
+            kind,
+            file,
+            source,
+            content: result.content,
+            document: { rootPath, threadId, target },
+          }
+        : { kind, file, source };
     },
   });
 }

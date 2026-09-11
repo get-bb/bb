@@ -66,7 +66,7 @@ import {
   setSecondaryPanelTabsInState,
   updateSecondaryPanelTabInState,
 } from "@bb/client-core";
-import { pruneTerminalTabsForSessions } from "./terminalPanelTabs";
+import { pruneTerminalTabsInFixedPanelState } from "./terminalPanelTabs";
 
 interface UseThreadFileTabsParams {
   panelStateId: string | null | undefined;
@@ -642,22 +642,13 @@ export function useThreadFileTabs({
 
   useEffect(() => {
     if (!isPanelStateResolved || terminalSessions === undefined) return;
-    updateFixedPanelTabsState((state) => {
-      const pruned = setPrunedSecondaryTabs({
-        activeTabId: state.secondary.activeTabId,
-        tabs: pruneTerminalTabsForSessions({
-          retainedTerminalId,
-          tabs: state.secondary.tabs,
-          terminalSessions,
-        }),
-      });
-      return setSecondaryPanelTabsInState({
-        activeTabId: pruned.activeTabId,
-        isOpen: state.secondary.isOpen,
+    updateFixedPanelTabsState((state) =>
+      pruneTerminalTabsInFixedPanelState({
         state,
-        tabs: pruned.tabs,
-      });
-    });
+        retainedTerminalId,
+        terminalSessions,
+      }),
+    );
   }, [
     isPanelStateResolved,
     retainedTerminalId,

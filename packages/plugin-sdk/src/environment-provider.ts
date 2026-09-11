@@ -41,7 +41,7 @@ export interface PluginEnvironmentProviderValidateContext<
 
 export interface PluginEnvironmentProviderAvailabilityContext {
   project: Project;
-  host: Host | null;
+  host: Host;
   projectCheckout: { path: string } | null;
   gitRemote: string | null;
 }
@@ -77,7 +77,7 @@ export type PluginEnvironmentProviderCreateResult =
       mergeBaseBranch?: string;
       resource?: JsonValue;
     }
-  | { status: "failed"; failure: "transient" | "terminal"; message: string };
+  | { status: "failed"; message: string };
 
 export interface PluginEnvironmentProviderRemoveContext {
   environment: Environment | null;
@@ -116,7 +116,7 @@ export interface PluginEnvironmentProviderDefinition<
   requires?: R;
   inputs?: S;
   policy?: Partial<PluginEnvironmentProviderPolicy>;
-  /** Experimental: see docs/api_to_audit.md. */
+  /** Experimental per-machine availability, probed in the background for pickers and again at thread creation: see docs/api_to_audit.md. */
   availability?(
     context: PluginEnvironmentProviderAvailabilityContext,
   ):

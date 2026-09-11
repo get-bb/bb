@@ -8,6 +8,13 @@ export const SETTINGS_PLUGINS_ROUTE_PATH = "/settings/plugins";
 export const SETTINGS_PLUGIN_ROUTE_PATH = "/settings/plugins/:pluginId";
 export const SETTINGS_MACHINE_ROUTE_PATH = "/settings/machines/:hostId";
 export const SETTINGS_PROJECT_ROUTE_PATH = "/settings/projects/:projectId";
+export const PLUGINS_ROUTE_PATH = "/plugins";
+export const PLUGIN_DETAIL_ROUTE_PATH = "/plugins/:pluginId";
+export const SKILLS_ROUTE_PATH = "/skills";
+export const SKILL_DETAIL_ROUTE_PATH = "/skills/library/:skillId";
+export const REGISTRY_SKILLS_ROUTE_PATH = "/skills/registry";
+export const REGISTRY_SKILL_DETAIL_ROUTE_PATH =
+  "/skills/registry/:registrySkillId";
 export const TOOLS_ROUTE_PATH = "/extensions";
 export const TOOLS_SKILLS_ROUTE_PATH = "/extensions/skills";
 export const TOOLS_SKILL_DETAIL_ROUTE_PATH =
@@ -29,7 +36,7 @@ export const LEGACY_TOOLS_AUTOMATION_DETAIL_ROUTE_PATH =
   "/tools/automations/:projectId/:automationId";
 export const LEGACY_TOOLS_AUTOMATION_EDIT_ROUTE_PATH =
   "/tools/automations/:projectId/:automationId/edit";
-export const LEGACY_SKILLS_ROUTE_PATH = "/skills";
+export const LEGACY_SKILLS_ROUTE_PATH = SKILLS_ROUTE_PATH;
 export const LEGACY_AUTOMATIONS_ROUTE_PATH = "/automations";
 export const LEGACY_AUTOMATION_DETAIL_ROUTE_PATH =
   "/automations/:projectId/:automationId";
@@ -42,7 +49,6 @@ export const AUTOMATION_DETAIL_ROUTE_PATH =
   "/plugins/automations/automations/:projectId/:automationId";
 export const AUTOMATION_EDIT_ROUTE_PATH =
   "/plugins/automations/automations/:projectId/:automationId/edit";
-export const SKILLS_ROUTE_PATH = TOOLS_SKILLS_ROUTE_PATH;
 const ROOT_COMPOSE_ROUTE_PATH = APP_ROOT_ROUTE_PATH;
 export const LEGACY_PROJECT_COMPOSE_ROUTE_PATH = "/projects/:projectId";
 export const PROJECTLESS_ARCHIVED_ROUTE_PATH = "/archived";
@@ -97,7 +103,7 @@ export function getSkillsRoutePath(): string {
 }
 
 export function getRegistrySkillsRoutePath(): string {
-  return TOOLS_REGISTRY_SKILLS_ROUTE_PATH;
+  return REGISTRY_SKILLS_ROUTE_PATH;
 }
 
 interface SkillDetailRoutePathArgs {
@@ -107,7 +113,7 @@ interface SkillDetailRoutePathArgs {
 export function getSkillDetailRoutePath({
   skillId,
 }: SkillDetailRoutePathArgs): string {
-  return `${TOOLS_SKILLS_ROUTE_PATH}/library/${encodeURIComponent(skillId)}`;
+  return `${SKILLS_ROUTE_PATH}/library/${encodeURIComponent(skillId)}`;
 }
 
 interface RegistrySkillDetailRoutePathArgs {
@@ -117,13 +123,11 @@ interface RegistrySkillDetailRoutePathArgs {
 export function getRegistrySkillDetailRoutePath({
   registrySkillId,
 }: RegistrySkillDetailRoutePathArgs): string {
-  return `${TOOLS_SKILLS_ROUTE_PATH}/registry/${encodeURIComponent(
-    registrySkillId,
-  )}`;
+  return `${SKILLS_ROUTE_PATH}/registry/${encodeURIComponent(registrySkillId)}`;
 }
 
 export function getPluginsRoutePath(): string {
-  return TOOLS_PLUGINS_ROUTE_PATH;
+  return PLUGINS_ROUTE_PATH;
 }
 
 interface PluginDetailRoutePathArgs {
@@ -135,7 +139,7 @@ export function getPluginDetailRoutePath({
   pluginId,
   view,
 }: PluginDetailRoutePathArgs): string {
-  const path = `${TOOLS_PLUGINS_ROUTE_PATH}/${encodeURIComponent(pluginId)}`;
+  const path = `${PLUGINS_ROUTE_PATH}/${encodeURIComponent(pluginId)}`;
   return view === "installed"
     ? `${SETTINGS_PLUGINS_ROUTE_PATH}/${encodeURIComponent(pluginId)}?view=installed`
     : path;
@@ -208,6 +212,12 @@ const baseRoutePatterns: readonly string[] = [
   SETTINGS_PROJECT_ROUTE_PATH,
   SETTINGS_PLUGINS_ROUTE_PATH,
   SETTINGS_PLUGIN_ROUTE_PATH,
+  PLUGINS_ROUTE_PATH,
+  PLUGIN_DETAIL_ROUTE_PATH,
+  SKILLS_ROUTE_PATH,
+  SKILL_DETAIL_ROUTE_PATH,
+  REGISTRY_SKILLS_ROUTE_PATH,
+  REGISTRY_SKILL_DETAIL_ROUTE_PATH,
   TOOLS_ROUTE_PATH,
   TOOLS_SKILLS_ROUTE_PATH,
   TOOLS_SKILL_DETAIL_ROUTE_PATH,

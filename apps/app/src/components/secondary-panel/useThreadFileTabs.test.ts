@@ -1028,6 +1028,40 @@ describe("useThreadFileTabs file opener diversion", () => {
     });
   });
 
+  it("refreshes an identical target in the active opener tab", () => {
+    registerNotesOpener();
+    const { result } = renderThreadHook(() =>
+      useThreadFileTabs({
+        panelStateId: "opener-repeat",
+        syncThreadId: "opener-repeat",
+        environmentId: "env_1",
+        storageFiles: undefined,
+        terminalSessions: undefined,
+      }),
+    );
+    const open = () =>
+      result.current.openTab({
+        kind: "workspace-file-preview",
+        tab: {
+          lineRange: { startLineNumber: 15, endLineNumber: 15 },
+          path: "notes/todo.md",
+          source: { kind: "working-tree" },
+          statusLabel: null,
+        },
+      });
+    act(open);
+    const first = result.current.activePluginPanelTab;
+    act(open);
+    expect(result.current.activePluginPanelTab?.id).toBe(first?.id);
+    expect(result.current.activePluginPanelTab?.fileOpenerOwner).not.toBe(
+      first?.fileOpenerOwner,
+    );
+    expect(result.current.activeWorkspaceFileLineRange).toEqual({
+      startLineNumber: 15,
+      endLineNumber: 15,
+    });
+  });
+
   it("preserves native host and thread-storage preview state", () => {
     registerNotesOpener();
     const { result } = renderThreadHook(() =>

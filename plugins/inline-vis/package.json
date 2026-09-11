@@ -3,13 +3,13 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "Render workspace HTML visualizations inline in assistant messages.",
+  "description": "Render workspace or thread-storage HTML visualizations and Markdown documents inline in assistant messages.",
   "engines": {
     "bb": ">=0.0"
   },
   "bb": {
     "name": "Inline visualizations",
-    "description": "Render workspace HTML visualizations inline in assistant messages.",
+    "description": "Render workspace or thread-storage HTML visualizations and Markdown documents inline in assistant messages.",
     "branding": {
       "icon": "AppWindow"
     },
@@ -24,13 +24,15 @@
   ],
   "scripts": {
     "test": "vitest run --config vitest.config.ts",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "prepare:bundled": "bb-plugin-build prepare-bundled"
   },
   "dependencies": {
     "@bb/shared-ui": "workspace:*",
     "zod": "^4.3.6"
   },
   "devDependencies": {
+    "@bb/plugin-build": "workspace:*",
     "@get-bb/plugin-sdk": "workspace:*",
     "@testing-library/react": "^16.3.2",
     "@types/node": "^22.0.0",

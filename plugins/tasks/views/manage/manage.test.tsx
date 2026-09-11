@@ -80,6 +80,65 @@ describe("derivePrefix", () => {
 });
 
 describe("NewTaskDialog", () => {
+  it.each([
+    {
+      name: "Ctrl+Enter in title",
+      field: "Task title",
+      ctrlKey: true,
+      metaKey: false,
+    },
+    {
+      name: "Meta+Enter in title",
+      field: "Task title",
+      ctrlKey: false,
+      metaKey: true,
+    },
+    {
+      name: "Enter in title",
+      field: "Task title",
+      ctrlKey: false,
+      metaKey: false,
+    },
+    {
+      name: "Ctrl+Enter in due date",
+      field: "Due date",
+      ctrlKey: true,
+      metaKey: false,
+    },
+  ])("submits exactly once for $name", async ({ field, ctrlKey, metaKey }) => {
+    const createCalls: Array<Record<string, unknown>> = [];
+    const slot = renderSlot(
+      app.navPanels[0]!,
+      { subPath: PROJECT_ID },
+      {
+        rpc: {
+          listProjects: () => ({ projects: [project] }),
+          listFolders: () => ({ folders: [] }),
+          listPresets: () => ({ presets: [] }),
+          sidebarSummary: () => ({ projects: [] }),
+          listTasks: () => ({ tasks: [] }),
+          listLabels: () => ({ labels: [] }),
+          createTask: (input: Record<string, unknown>) => {
+            createCalls.push(input);
+            return { ok: true, task: createdTask(input) };
+          },
+        },
+      },
+    );
+    fireEvent.click(await slot.findByRole("button", { name: /New task/ }));
+    fireEvent.change(await slot.findByLabelText("Task title"), {
+      target: { value: "Keyboard submission" },
+    });
+    fireEvent.keyDown(slot.getByLabelText(field), {
+      key: "Enter",
+      ctrlKey,
+      metaKey,
+    });
+    await waitFor(() => expect(slot.navigateCalls).not.toHaveLength(0));
+    expect(createCalls).toHaveLength(1);
+    expect(createCalls[0]).toMatchObject({ title: "Keyboard submission" });
+  });
+
   it("creates a task in the route's project with column defaults and navigates to it", async () => {
     const createCalls: Array<Record<string, unknown>> = [];
     const slot = renderSlot(

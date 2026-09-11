@@ -1,35 +1,13 @@
 import { PERSONAL_PROJECT_ID, type ThreadListEntry } from "@bb/domain";
-import { fuzzyMatchText } from "@bb/fuzzy-match";
 import type {
   ThreadSearchHighlightRange,
   ThreadSearchMatch,
   ThreadSearchResponse,
 } from "@bb/server-contract";
-import type { PromptDraftState } from "@bb/client-core";
 import { formatRelativeTime } from "@/lib/relative-time";
 import { getThreadDisplayTitle } from "@/lib/thread-title";
 
-export interface PaletteNewThreadDraft {
-  id: string;
-  draft: PromptDraftState;
-  title: string;
-  lastEditedAt: number | null;
-  destination: {
-    projectId: string;
-    sectionId: string | null;
-  };
-}
-
-export const PALETTE_THREAD_SEARCH_SCOPES = [
-  { id: "all", label: "All" },
-  { id: "active", label: "Active" },
-  { id: "draft", label: "Drafts" },
-  { id: "archived", label: "Archived" },
-] as const;
-
-export type PaletteThreadSearchScope =
-  (typeof PALETTE_THREAD_SEARCH_SCOPES)[number]["id"];
-export type PaletteThreadLifecycle = "active" | "draft" | "archived";
+export type PaletteThreadLifecycle = "active" | "archived";
 
 export interface PaletteThreadSearchRow {
   id: string;
@@ -37,40 +15,27 @@ export interface PaletteThreadSearchRow {
   primaryText: string;
   highlightRanges: readonly ThreadSearchHighlightRange[];
   metadataText: string;
-  updatedAt: number | null;
   projectId: string;
-  threadId: string | null;
-  thread: ThreadListEntry | null;
-  draftSlotId: string | null;
+  threadId: string;
+  thread: ThreadListEntry;
   messageSeq: number | null;
 }
 
 interface BuildPaletteThreadSearchRowsArgs {
-  drafts: readonly PaletteNewThreadDraft[];
   now: number;
   projectNamesById: ReadonlyMap<string, string>;
   query: string;
-  recentArchivedThreads: readonly ThreadListEntry[];
   recentThreads: readonly ThreadListEntry[];
-  scope: PaletteThreadSearchScope;
   searchResponse: ThreadSearchResponse | undefined;
   searchResultsAreCurrent: boolean;
 }
 
 export interface PaletteThreadSearchRowsResult {
-  draftMatchCount: number;
   isRecent: boolean;
   rows: PaletteThreadSearchRow[];
 }
 
 const RECENT_THREAD_LIMIT = 20;
-
-function newestFirst(
-  left: { updatedAt: number | null },
-  right: { updatedAt: number | null },
-): number {
-  return (right.updatedAt ?? 0) - (left.updatedAt ?? 0);
-}
 
 function isTitleMatch(match: ThreadSearchMatch): boolean {
   return match.sourceKind === "title" || match.sourceKind === "title_fallback";
@@ -113,52 +78,17 @@ function serverRow(
       formatRelativeTime({ timestamp: thread.updatedAt, now }),
     ]),
     projectId: thread.projectId,
-    updatedAt: thread.updatedAt,
     threadId: thread.id,
     thread,
-    draftSlotId: null,
     messageSeq: snippetMatch?.sourceSeq ?? null,
   };
 }
 
-function draftHighlightRanges(
-  text: string,
-  positions: readonly number[],
-): ThreadSearchHighlightRange[] {
-  const offsets = [0];
-  for (const character of text) {
-    offsets.push((offsets.at(-1) ?? 0) + character.length);
-  }
-  const ranges: ThreadSearchHighlightRange[] = [];
-  for (const position of [...positions].sort((left, right) => left - right)) {
-    const start = offsets[position];
-    const end = offsets[position + 1];
-    if (start === undefined || end === undefined) continue;
-    const prior = ranges.at(-1);
-    if (prior !== undefined && prior.end === start) {
-      prior.end = end;
-    } else {
-      ranges.push({ start, end });
-    }
-  }
-  return ranges;
-}
-
-function includesLifecycle(
-  scope: PaletteThreadSearchScope,
-  lifecycle: PaletteThreadLifecycle,
-): boolean {
-  return scope === "all" || scope === lifecycle;
-}
-
 export function buildPaletteThreadSearchRows({
-  drafts,
   now,
   projectNamesById,
   query,
-  recentArchivedThreads,
   recentThreads,
-  scope,
   searchResponse,
   searchResultsAreCurrent,
 }: BuildPaletteThreadSearchRowsArgs): PaletteThreadSearchRowsResult {
@@ -167,7 +97,7 @@ export function buildPaletteThreadSearchRows({
   const isSearchable = trimmedQuery.length >= 2;
   const activeRows = isRecent
     ? [...recentThreads]
-        .sort(newestFirst)
+        .sort((left, right) => right.updatedAt - left.updatedAt)
         .slice(0, RECENT_THREAD_LIMIT)
         .map((thread) => serverRow(thread, [], "active", projectNamesById, now))
     : isSearchable && searchResultsAreCurrent
@@ -182,41 +112,8 @@ export function buildPaletteThreadSearchRows({
         )
       : [];
 
-  const draftMatches =
-    isRecent || isSearchable
-      ? fuzzyMatchText({
-          items: drafts,
-          query: trimmedQuery,
-          getText: (draft) => draft.title,
-          limit: drafts.length,
-        })
-      : [];
-  const draftRows = draftMatches.map(({ item, positions }) => ({
-    id: `draft:${item.id}`,
-    lifecycle: "draft" as const,
-    primaryText: item.title,
-    highlightRanges: draftHighlightRanges(item.title, positions),
-    metadataText: metadataText([
-      projectMetadata(item.destination.projectId, projectNamesById),
-      item.lastEditedAt === null
-        ? null
-        : formatRelativeTime({ timestamp: item.lastEditedAt, now }),
-    ]),
-    projectId: item.destination.projectId,
-    updatedAt: item.lastEditedAt,
-    threadId: null,
-    thread: null,
-    draftSlotId: item.id,
-    messageSeq: null,
-  }));
-  const archivedRows = isRecent
-    ? [...recentArchivedThreads]
-        .sort(newestFirst)
-        .slice(0, RECENT_THREAD_LIMIT)
-        .map((thread) =>
-          serverRow(thread, [], "archived", projectNamesById, now),
-        )
-    : isSearchable && searchResultsAreCurrent
+  const archivedRows =
+    isSearchable && searchResultsAreCurrent
       ? (searchResponse?.archived.results ?? []).map((result) =>
           serverRow(
             result.thread,
@@ -228,18 +125,8 @@ export function buildPaletteThreadSearchRows({
         )
       : [];
 
-  const rows = [
-    ...(includesLifecycle(scope, "active") ? activeRows : []),
-    ...(includesLifecycle(scope, "draft") ? draftRows : []),
-    ...(includesLifecycle(scope, "archived") ? archivedRows : []),
-  ];
-  if (isRecent) {
-    rows.sort(newestFirst);
-  }
-
   return {
-    draftMatchCount: draftMatches.length,
     isRecent,
-    rows,
+    rows: [...activeRows, ...archivedRows],
   };
 }

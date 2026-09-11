@@ -1,3 +1,4 @@
+import { clearTimelineOrderingContextCache } from "../../services/threads/timeline-context-order.js";
 import path from "node:path";
 import {
   getAppSettings,
@@ -82,6 +83,10 @@ import {
 } from "../../services/lib/validation.js";
 import { resolveProviderPlanCommand } from "../../services/providers/provider-plan-command.js";
 import { parsePathKindInclusion } from "../path-list-inclusion.js";
+import {
+  DEFAULT_PATH_LIST_EXCLUDE_NAMES,
+  THREAD_STORAGE_PATH_LIST_INCLUDE_HIDDEN,
+} from "../path-list-policy.js";
 import { parseFileListLimit } from "../file-list-query.js";
 import { parseSafeRelativeRoutePath } from "../relative-route-path.js";
 
@@ -307,6 +312,7 @@ export function registerThreadDataRoutes(app: Hono, deps: AppDeps): void {
       message.id !== undefined &&
       message.changes.includes("history-rewritten")
     ) {
+      clearTimelineOrderingContextCache(deps.db);
       timelineCache.invalidateThread(message.id);
       timelineLatestRowsCache.invalidateThread(message.id);
     }
@@ -335,7 +341,6 @@ export function registerThreadDataRoutes(app: Hono, deps: AppDeps): void {
     ).showDiagnosticEvents;
     const maxSeq = getLatestThreadSequence(deps.db, {
       threadId: thread.id,
-      excludeDiagnosticEvents: !includeDiagnosticOperations,
     });
     const eventBudget = deps.config.featureFlags.timelineWindowEventBudget;
     const keyArgs = {
@@ -455,6 +460,7 @@ export function registerThreadDataRoutes(app: Hono, deps: AppDeps): void {
     ).showDiagnosticEvents;
     return context.json(
       buildTimelineTurnSummaryDetails(deps.db, thread, {
+        beforeCursor: query.beforeCursor,
         includeDiagnosticOperations,
         providerDisplayName: resolveThreadProviderDisplayName(
           deps,
@@ -597,6 +603,9 @@ export function registerThreadDataRoutes(app: Hono, deps: AppDeps): void {
           path: target.storagePath,
           ...(query.query ? { query: query.query } : {}),
           limit,
+          includeHidden: THREAD_STORAGE_PATH_LIST_INCLUDE_HIDDEN,
+          respectGitIgnore: false,
+          excludeNames: [...DEFAULT_PATH_LIST_EXCLUDE_NAMES],
         },
       });
       return context.json({
@@ -656,6 +665,9 @@ export function registerThreadDataRoutes(app: Hono, deps: AppDeps): void {
           limit,
           includeFiles: inclusion.includeFiles,
           includeDirectories: inclusion.includeDirectories,
+          includeHidden: THREAD_STORAGE_PATH_LIST_INCLUDE_HIDDEN,
+          respectGitIgnore: false,
+          excludeNames: [...DEFAULT_PATH_LIST_EXCLUDE_NAMES],
         },
       });
       return context.json({

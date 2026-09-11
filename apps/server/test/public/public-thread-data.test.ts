@@ -40,8 +40,9 @@ import { renderTemplate } from "@bb/templates";
 import { z } from "zod";
 import { describe, expect, it, vi } from "vitest";
 import type { TelemetryService } from "../../src/services/system/telemetry.js";
-import { loadActiveThreadProvisionContext } from "../../src/services/threads/thread-provisioning-environment.js";
+import { readThreadProvisioningStage } from "../../src/services/threads/thread-provisioning-context.js";
 import {
+  reportNextEnvironmentAttachSuccess,
   reportQueuedCommandError,
   reportQueuedCommandSuccess,
   waitForQueuedCommand,
@@ -1820,7 +1821,7 @@ describe("public thread data routes", () => {
       if (!turnRow) {
         throw new Error("Expected a turn row");
       }
-      expect(turnRow.sourceSeqStart).toBeGreaterThan(2);
+      expect(turnRow.sourceSeqStart).toBe(1);
 
       const detailsResponse = await harness.app.request(
         `/api/v1/threads/${thread.id}/timeline/turn-summary-details?turnId=${turnRow.turnId}&sourceSeqStart=${turnRow.sourceSeqStart}&sourceSeqEnd=${turnRow.sourceSeqEnd}`,
@@ -3545,6 +3546,7 @@ describe("public thread data routes", () => {
       expect(
         getQueuedThreadMessage(harness.db, createdQueuedMessage.id),
       ).toBeNull();
+      await reportNextEnvironmentAttachSuccess(harness, thread.id);
       const startCommand = await waitForQueuedCommand(
         harness,
         ({ command }) =>
@@ -3694,14 +3696,12 @@ describe("public thread data routes", () => {
         hostId: host.id,
         sessionId: session.id,
         handle: (request): HostRpcHandlerResult => {
-          if (request.command.type === "environment.hook.run") {
-            return { ok: true, result: {} };
-          }
-          if (request.command.type === "host.inspect_git_source") {
+          if (request.command.type === "environment.attach") {
             stateAtProvisionStart = {
-              activeContextStage:
-                loadActiveThreadProvisionContext(harness.deps, thread.id)?.state
-                  .stage ?? null,
+              activeContextStage: readThreadProvisioningStage(
+                harness.db,
+                thread.id,
+              ),
               queuedMessageExists:
                 getQueuedThreadMessage(harness.db, queuedMessage.id) !== null,
               requestEventCount: harness.db
@@ -3718,17 +3718,12 @@ describe("public thread data routes", () => {
             return {
               ok: true,
               result: {
-                checkout: {
-                  kind: "branch",
-                  branchName: `bb/${thread.id}`,
-                  headSha: "abc123",
-                },
-                defaultBranch: "main",
-                defaultBranchRelation: "equal",
+                path: request.command.path,
+                isGitRepo: true,
                 isWorktree: false,
-                hasUncommittedChanges: false,
-                operation: { kind: "none" },
-                originDefaultBranch: "origin/main",
+                branchName: `bb/${thread.id}`,
+                defaultBranch: "main",
+                transcript: [],
               },
             };
           }
@@ -3769,7 +3764,7 @@ describe("public thread data routes", () => {
       expect(sendResponse.status, await sendResponse.clone().text()).toBe(200);
       await vi.waitFor(() =>
         expect(stateAtProvisionStart).toEqual({
-          activeContextStage: "environment-provisioning",
+          activeContextStage: "provisioning",
           queuedMessageExists: false,
           requestEventCount: 1,
         }),
@@ -3864,6 +3859,7 @@ describe("public thread data routes", () => {
         getQueuedThreadMessage(harness.db, secondQueuedMessage.id),
       ).toBeNull();
 
+      await reportNextEnvironmentAttachSuccess(harness, thread.id);
       const startCommand = await waitForQueuedCommand(
         harness,
         ({ command }) =>
@@ -4244,6 +4240,8 @@ describe("public thread data routes", () => {
         limit: 1000,
         includeFiles: true,
         includeDirectories: true,
+        includeHidden: false,
+        excludeNames: expect.arrayContaining(["node_modules"]),
       });
       await reportQueuedCommandSuccess(harness, pathsCommand, {
         paths: [

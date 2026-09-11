@@ -21,9 +21,7 @@ import {
 } from "@dnd-kit/sortable";
 import { Button } from "@bb/shared-ui/button";
 import { Checkbox } from "@bb/shared-ui/checkbox";
-import { Icon } from "@bb/shared-ui/icon";
-import { Skeleton } from "@bb/shared-ui/skeleton";
-import { usePluginFrontendsSettled } from "@/lib/plugin-frontend-boot-state";
+import { Icon, type IconName } from "@bb/shared-ui/icon";
 import {
   ContextMenu,
   ContextMenuContent,
@@ -66,7 +64,10 @@ import {
 import { usePaneContentSplitIndicator } from "@/components/sidebar/paneContentSplitIndicator";
 import type { MiniMapSlot } from "@/components/sidebar/paneContentSplitIndicator";
 import { SplitPaneMiniMap } from "@/components/sidebar/SplitPaneMiniMap";
-import { SIDEBAR_MORE_ACTION_TRIGGER_CLASS } from "@/components/sidebar/sidebarRowClasses";
+import {
+  SIDEBAR_CONTROL_STATE_CLASS,
+  SIDEBAR_MORE_ACTION_TRIGGER_CLASS,
+} from "@/components/sidebar/sidebarRowClasses";
 import {
   SIDEBAR_HOVER_ACTIONS_CLASS,
   SIDEBAR_HOVER_ACTIONS_FADE_CLASS,
@@ -84,6 +85,7 @@ import {
   arrangePluginNavPanelPreferences,
   DEFAULT_HIDDEN_SIDEBAR_NAVIGATION_KEYS,
   getPluginNavPanelKey,
+  seedSkillsNavigationPreference,
   togglePluginNavPanelVisibility,
 } from "./pluginNavSidebarOrder";
 import { haveSameOrder, reorderStoredOrder } from "@/lib/stored-order";
@@ -139,7 +141,6 @@ export function PluginNavSidebarItems(props: {
   onNavigate?: () => void;
   splitEnabled?: boolean;
 }) {
-  const pluginsLoading = !usePluginFrontendsSettled();
   const discoveredEntries = usePluginNavPanelChrome();
   const entries = props.entries ?? discoveredEntries;
   const rows = useMemo<SidebarNavRow[]>(
@@ -166,10 +167,9 @@ export function PluginNavSidebarItems(props: {
       (props.builtInEntries ?? []).map(getPluginNavPanelKey),
     [props.builtInEntries, props.leadingOrderKeys],
   );
-  if (rows.length === 0 && !pluginsLoading) return null;
+  if (rows.length === 0) return null;
   return (
     <PluginNavSidebarItemList
-      pluginsLoading={pluginsLoading}
       rows={rows}
       leadingOrderKeys={leadingOrderKeys}
       splitEnabled={props.splitEnabled ?? false}
@@ -187,7 +187,6 @@ export function PluginNavSidebarItems(props: {
 }
 
 function PluginNavSidebarItemList({
-  pluginsLoading,
   compactCustomizeMode,
   leadingOrderKeys,
   onCompactCustomizeModeChange,
@@ -195,7 +194,6 @@ function PluginNavSidebarItemList({
   rows,
   splitEnabled = false,
 }: {
-  pluginsLoading: boolean;
   compactCustomizeMode?: boolean;
   leadingOrderKeys: readonly string[];
   onCompactCustomizeModeChange?: (isCustomizing: boolean) => void;
@@ -230,9 +228,14 @@ function PluginNavSidebarItemList({
     },
     [compactCustomizeMode, isCompactViewport, onCompactCustomizeModeChange],
   );
+  const seededPreferences = useMemo(
+    () => seedSkillsNavigationPreference(storedOrder, storedVisibleKeys),
+    [storedOrder, storedVisibleKeys],
+  );
   const newLeadingKeys = useMemo(
-    () => leadingOrderKeys.filter((key) => !storedOrder.includes(key)),
-    [leadingOrderKeys, storedOrder],
+    () =>
+      leadingOrderKeys.filter((key) => !seededPreferences.order.includes(key)),
+    [leadingOrderKeys, seededPreferences.order],
   );
   const newVisibleKeys = useMemo(
     () =>
@@ -240,12 +243,12 @@ function PluginNavSidebarItemList({
         .map(getPluginNavPanelKey)
         .filter(
           (key) =>
-            !storedOrder.includes(key) &&
+            !seededPreferences.order.includes(key) &&
             !DEFAULT_HIDDEN_SIDEBAR_NAVIGATION_KEYS.some(
               (hiddenKey) => hiddenKey === key,
             ),
         ),
-    [rows, storedOrder],
+    [rows, seededPreferences.order],
   );
   const {
     ordered,
@@ -259,15 +262,15 @@ function PluginNavSidebarItemList({
         panels: rows,
         storedOrder:
           newLeadingKeys.length === 0
-            ? storedOrder
-            : [...newLeadingKeys, ...storedOrder],
+            ? seededPreferences.order
+            : [...newLeadingKeys, ...seededPreferences.order],
         storedVisibleKeys:
-          storedVisibleKeys === null || newVisibleKeys.length === 0
-            ? storedVisibleKeys
-            : [...newVisibleKeys, ...storedVisibleKeys],
+          seededPreferences.visibleKeys === null || newVisibleKeys.length === 0
+            ? seededPreferences.visibleKeys
+            : [...newVisibleKeys, ...seededPreferences.visibleKeys],
         defaultHiddenKeys: DEFAULT_HIDDEN_SIDEBAR_NAVIGATION_KEYS,
       }),
-    [newLeadingKeys, newVisibleKeys, rows, storedOrder, storedVisibleKeys],
+    [newLeadingKeys, newVisibleKeys, rows, seededPreferences],
   );
   const hidden = useMemo(
     () =>
@@ -280,15 +283,26 @@ function PluginNavSidebarItemList({
     [ordered],
   );
 
-  const persistNormalizedOrder = useCallback(() => {
-    if (haveSameOrder(storedOrder, normalizedOrder)) return;
-    setStoredOrder(normalizedOrder);
-  }, [normalizedOrder, setStoredOrder, storedOrder]);
+  const persistPreferences = useCallback(
+    (order: string[], nextVisibleKeys: string[] | null) => {
+      if (!haveSameOrder(storedOrder, order)) setStoredOrder(order);
+      if (
+        storedVisibleKeys === nextVisibleKeys ||
+        (storedVisibleKeys !== null &&
+          nextVisibleKeys !== null &&
+          haveSameOrder(storedVisibleKeys, nextVisibleKeys))
+      ) {
+        return;
+      }
+      setStoredVisibleKeys(nextVisibleKeys);
+    },
+    [setStoredOrder, setStoredVisibleKeys, storedOrder, storedVisibleKeys],
+  );
 
   const setPanelVisible = useCallback(
     (key: string, isVisible: boolean) => {
-      persistNormalizedOrder();
-      setStoredVisibleKeys(
+      persistPreferences(
+        normalizedOrder,
         togglePluginNavPanelVisibility(
           normalizedVisibleKeys ?? visibleKeys,
           key,
@@ -296,12 +310,7 @@ function PluginNavSidebarItemList({
         ),
       );
     },
-    [
-      normalizedVisibleKeys,
-      persistNormalizedOrder,
-      setStoredVisibleKeys,
-      visibleKeys,
-    ],
+    [normalizedVisibleKeys, normalizedOrder, persistPreferences, visibleKeys],
   );
 
   const handleDragEnd = useCallback(
@@ -319,9 +328,9 @@ function PluginNavSidebarItemList({
         order: normalizedOrder,
         visibleIds: visibleKeys,
       });
-      if (nextOrder) setStoredOrder(nextOrder);
+      if (nextOrder) persistPreferences(nextOrder, normalizedVisibleKeys);
     },
-    [normalizedOrder, setStoredOrder, visibleKeys],
+    [normalizedOrder, normalizedVisibleKeys, persistPreferences, visibleKeys],
   );
   const { dndContextProps, onClickCapture } = useSidebarReorderDnd({
     onDragEnd: handleDragEnd,
@@ -336,15 +345,13 @@ function PluginNavSidebarItemList({
         visibleIds: orderedKeys,
       });
       if (!nextOrder) return;
-      if (storedVisibleKeys === null) setStoredVisibleKeys(visibleKeys);
-      setStoredOrder(nextOrder);
+      persistPreferences(nextOrder, normalizedVisibleKeys ?? visibleKeys);
     },
     [
       normalizedOrder,
+      normalizedVisibleKeys,
       orderedKeys,
-      setStoredOrder,
-      setStoredVisibleKeys,
-      storedVisibleKeys,
+      persistPreferences,
       visibleKeys,
     ],
   );
@@ -432,7 +439,7 @@ function PluginNavSidebarItemList({
   return (
     <div
       ref={containerRef}
-      className="shrink-0 space-y-0.5 px-2 py-2 group-data-[collapsible=icon]:hidden"
+      className="relative shrink-0 space-y-0.5 px-2 py-2 group-data-[collapsible=icon]:hidden"
       data-testid="plugin-nav-sidebar-items"
       onClickCapture={onClickCapture}
     >
@@ -460,36 +467,6 @@ function PluginNavSidebarItemList({
           )}
         </SortableContext>
       </DndContext>
-      {pluginsLoading ? (
-        <div role="status" aria-label="Loading plugins" className="space-y-0.5">
-          {rows.every((row) => !isPluginSidebarNavRow(row)) ? (
-            <div
-              aria-hidden="true"
-              data-testid="plugin-nav-loading-placeholders"
-            >
-              {["w-24", "w-32", "w-20"].map((width) => (
-                <div key={width} className="flex h-8 items-center gap-2 px-2">
-                  <Skeleton className="size-4 shrink-0 rounded-md bg-sidebar-border/60 motion-reduce:animate-none" />
-                  <Skeleton
-                    className={cn(
-                      "h-2.5 rounded-full bg-sidebar-border/60 motion-reduce:animate-none",
-                      width,
-                    )}
-                  />
-                </div>
-              ))}
-            </div>
-          ) : null}
-          <div className="flex items-center gap-2 px-2 py-1.5 text-xs text-muted-foreground">
-            <Icon
-              name="Loading"
-              className="size-3 motion-safe:animate-spin"
-              aria-hidden="true"
-            />
-            <span className="animate-shine">Loading plugins…</span>
-          </div>
-        </div>
-      ) : null}
       {hidden.length > 0 ? (
         <SidebarNavigationMoreRow
           hiddenRows={hidden}
@@ -532,8 +509,8 @@ function SidebarNavigationMoreRow({
                 aria-label="More sidebar navigation"
                 className={cn(
                   PROJECT_LIST_ACTION_BUTTON_CLASS,
-                  "w-full",
-                  isMenuOpen && "bg-sidebar-accent text-sidebar-foreground",
+                  "w-full text-muted-foreground hover:text-sidebar-foreground focus-visible:text-sidebar-foreground data-[state=open]:text-sidebar-foreground",
+                  isMenuOpen && "bg-sidebar-accent",
                 )}
                 data-testid={MORE_TRIGGER_TEST_ID}
               >
@@ -991,19 +968,14 @@ function PluginNavRowVisibilityMenuItem({
   );
 }
 
-function ToolsNavSidebarItemIcon() {
-  return (
-    <span className="bb-sidebar-row-icon-swap shrink-0" aria-hidden="true">
-      <Icon name="Toolbox" className="bb-sidebar-row-icon-rest" />
-      <Icon name="ToolCase" className="bb-sidebar-row-icon-hover" />
-    </span>
-  );
-}
-
-export function ExtensionsNavSidebarItem({
+export function ResourceNavSidebarItem({
+  icon,
+  title,
   routePath,
   onNavigate,
 }: {
+  icon: IconName;
+  title: string;
   routePath: string;
   onNavigate?: () => void;
 }) {
@@ -1019,8 +991,8 @@ export function ExtensionsNavSidebarItem({
         void navigate(routePath);
       }}
     >
-      <ToolsNavSidebarItemIcon />
-      <span className="min-w-0 truncate text-left">Extensions</span>
+      <Icon name={icon} aria-hidden="true" />
+      <span className="min-w-0 truncate text-left">{title}</span>
     </Button>
   );
 }
@@ -1172,6 +1144,8 @@ function SidebarNavRowChrome({
               "w-full pr-7",
               accessory && "pr-18",
               isActive && "bg-sidebar-accent text-sidebar-foreground",
+              loading &&
+                "text-sidebar-foreground/55 dark:text-sidebar-foreground/55 [&_svg]:opacity-60",
             )}
             aria-busy={loading || undefined}
             aria-current={isActive ? "page" : undefined}
@@ -1183,11 +1157,7 @@ function SidebarNavRowChrome({
           >
             {icon}
             <span className="flex min-w-0 flex-1 items-center gap-1.5 text-left">
-              <span
-                className={cn("min-w-0 truncate", loading && "animate-shine")}
-              >
-                {title}
-              </span>
+              <span className="min-w-0 truncate">{title}</span>
               {splitMiniMap ? (
                 <SplitPaneMiniMap
                   slots={splitMiniMap}
@@ -1228,9 +1198,9 @@ function SidebarNavRowChrome({
                   size="icon"
                   aria-label={`${title} panel options`}
                   className={cn(
-                    "rounded-md p-0 text-muted-foreground",
-                    "data-[state=open]:bg-sidebar-accent data-[state=open]:text-sidebar-foreground",
+                    "rounded-md p-0",
                     SIDEBAR_MORE_ACTION_TRIGGER_CLASS,
+                    SIDEBAR_CONTROL_STATE_CLASS,
                   )}
                 >
                   <Icon

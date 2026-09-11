@@ -17,6 +17,7 @@ import {
   STORY_CODEX_MODELS,
   STORY_CODEX_REASONING,
   STORY_PI_MODELS,
+  STORY_PI_REASONING,
   STORY_PROVIDER_OPTIONS,
   STORY_SERVICE_TIER_SUPPORT,
 } from "./story-fixtures";
@@ -86,29 +87,31 @@ function makeAvailableModels({
   reasoningOptions,
   markFirstDefault = true,
 }: {
-  models: readonly ModelPickerOption[];
+  models: readonly (ModelPickerOption & {
+    reasoningOptions?: readonly PickerOption<ReasoningLevel>[];
+  })[];
   reasoningOptions: readonly PickerOption<ReasoningLevel>[];
   markFirstDefault?: boolean;
 }): AvailableModel[] {
-  const defaultReasoningEffort =
-    reasoningOptions.find((option) => option.value === "medium")?.value ??
-    reasoningOptions[0]?.value ??
-    "medium";
-  const supportedReasoningEfforts =
-    makeSupportedReasoningEfforts(reasoningOptions);
-
-  return models.map((model, index) => ({
-    id: model.value,
-    model: model.value,
-    displayName: model.label,
-    ...(model.routeProviderId
-      ? { routeProviderId: model.routeProviderId }
-      : {}),
-    description: "",
-    supportedReasoningEfforts,
-    defaultReasoningEffort,
-    isDefault: markFirstDefault && index === 0,
-  }));
+  return models.map((model, index) => {
+    const modelReasoning = model.reasoningOptions ?? reasoningOptions;
+    const defaultReasoningEffort =
+      modelReasoning.find((option) => option.value === "medium")?.value ??
+      modelReasoning[0]?.value ??
+      "medium";
+    return {
+      id: model.value,
+      model: model.value,
+      displayName: model.label,
+      ...(model.routeProviderId
+        ? { routeProviderId: model.routeProviderId }
+        : {}),
+      description: "",
+      supportedReasoningEfforts: makeSupportedReasoningEfforts(modelReasoning),
+      defaultReasoningEffort,
+      isDefault: markFirstDefault && index === 0,
+    };
+  });
 }
 
 function makeExecutionOptions(
@@ -159,7 +162,7 @@ function createStoryQueryClient(): QueryClient {
     pi: makeExecutionOptions(
       makeAvailableModels({
         models: STORY_PI_MODELS,
-        reasoningOptions: STORY_CODEX_REASONING,
+        reasoningOptions: STORY_PI_REASONING,
       }),
     ),
   };

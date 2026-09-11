@@ -28,7 +28,7 @@ import {
   WORKSPACE_DIFF_MAX_FILE_LIST_BYTES,
 } from "../constants.js";
 import { ApiError } from "../errors.js";
-import { requestEnvironmentRemoval } from "../services/environments/provider-orchestration.js";
+import { requestEnvironmentRemoval } from "../services/environments/environment-engine.js";
 import { toEnvironmentResponse } from "../services/environments/environment-response.js";
 import {
   requireEnvironment,
@@ -45,6 +45,10 @@ import {
 } from "./branch-list-query.js";
 import { parseFileListLimit } from "./file-list-query.js";
 import { parsePathKindInclusion } from "./path-list-inclusion.js";
+import {
+  DEFAULT_PATH_LIST_EXCLUDE_NAMES,
+  WORKSPACE_PATH_LIST_INCLUDE_HIDDEN,
+} from "./path-list-policy.js";
 import {
   requireWorkspaceCommandTarget,
   type WorkspaceCommandTarget,
@@ -607,6 +611,9 @@ export function registerEnvironmentRoutes(app: Hono, deps: AppDeps): void {
           limit,
           includeFiles: inclusion.includeFiles,
           includeDirectories: inclusion.includeDirectories,
+          includeHidden: WORKSPACE_PATH_LIST_INCLUDE_HIDDEN,
+          respectGitIgnore: true,
+          excludeNames: [...DEFAULT_PATH_LIST_EXCLUDE_NAMES],
         },
       });
       return context.json({

@@ -101,7 +101,9 @@ hostId, providerId, projectId, parentThreadId, groupBy })`.
 - Use `bb thread log <thread-id>` to inspect the conversation. The default
   shows only the newest 20 user-message turns and ends with a notice when older
   history was omitted. For timeline text, `--limit <n>` accepts at most 100.
-  `--all` prints the whole thread. JSON accepts any positive limit. It defaults
+  `--all` prints the whole thread. Human formats use a consistent history
+  snapshot and join paginated group contents. Appends remain outside that walk;
+  rerun after a cursor-invalidated error from a history edit. JSON accepts any positive limit. It defaults
   to the oldest 100 raw events and warns when more exist. Page with
   `--after-seq <seq>` or pass `--all`.
   Grep the `--all` output, not the default page, when checking whether a
@@ -140,7 +142,11 @@ For review or fix pipelines, get the environment ID from
 - Use `bb file read|write|list|paths|mkdir|move|remove` for SDK-equivalent host
   file access. `--host` targets another machine; `--root` confines mutations.
 - File write requires exactly one of `--content` and `--stdin`. File paths lists
-  files and directories when neither selector is present.
+  files and directories when neither selector is present. File list and file
+  paths include dot-prefixed entries; `--no-hidden` skips them. Both skip
+  `node_modules`, `.venv`, `.pnpm-store`, and root-relative `.claude/worktrees`
+  by default. `--exclude <names...>` replaces that set; entries match basenames
+  at any depth or exact root-relative paths using `/` separators.
 - File remove supports `--recursive` and requires `--yes` without a terminal.
 - Use `bb voice transcribe <file> [--type <mime>] [--prompt <text>]` without the
   app composer. The MIME type defaults to `audio/webm`.

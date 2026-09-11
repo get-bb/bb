@@ -38,7 +38,7 @@ function renderSidebar(activePluginId: string | null = null) {
 afterEach(cleanup);
 
 describe("SettingsSidebarContent plugin navigation", () => {
-  it("offers installed management and configurable plugins without an extra plugin group", () => {
+  it("offers installed-plugin management and configurable plugin settings", () => {
     renderSidebar();
     expect(
       screen

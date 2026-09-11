@@ -1,3 +1,4 @@
+import { SidebarRowControls } from "./SidebarRowControls";
 import {
   memo,
   useCallback,
@@ -60,9 +61,7 @@ import {
   SIDEBAR_ROW_GLYPH_SLOT_CLASS,
   SIDEBAR_ROW_INTERACTIVE_STATE_CLASS,
   SIDEBAR_ROW_SELECTED_STATE_CLASS,
-  SIDEBAR_MORE_ACTION_TRIGGER_CLASS,
-  SIDEBAR_PAIRED_ACTION_LEADING_TARGET_CLASS,
-  SIDEBAR_PAIRED_ACTION_TRAILING_TARGET_CLASS,
+  SIDEBAR_CONTROL_BUTTON_CLASS,
   SIDEBAR_ROW_OPEN_IN_SPLIT_STATE_CLASS,
   SIDEBAR_SUCCESS_STATUS_COLOR_CLASS,
   SIDEBAR_SUCCESS_STATUS_DOT_CLASS,
@@ -724,7 +723,7 @@ function ThreadRowComponent({
           </span>
         ) : (
           <span
-            className="bb-sidebar-thread-title min-w-0 truncate"
+            className="bb-thread-title"
             title={labelTitle}
             onDoubleClick={startTitleEditing}
           >
@@ -819,25 +818,21 @@ function ThreadRowComponent({
                   "absolute inset-y-0 right-0 z-10 flex items-center justify-end max-md:pointer-coarse:hidden",
                 )}
               >
-                <ThreadArchiveQuickAction
-                  thread={thread}
-                  className={cn(
-                    "text-subtle-foreground hover:bg-transparent hover:text-foreground",
-                    SIDEBAR_MORE_ACTION_TRIGGER_CLASS,
-                    "-mr-0.5",
-                    SIDEBAR_PAIRED_ACTION_LEADING_TARGET_CLASS,
-                  )}
-                />
-                <ThreadActionsMenu
-                  thread={thread}
-                  triggerClassName={cn(
-                    "text-subtle-foreground hover:bg-transparent hover:text-foreground",
-                    SIDEBAR_MORE_ACTION_TRIGGER_CLASS,
-                    SIDEBAR_PAIRED_ACTION_TRAILING_TARGET_CLASS,
-                  )}
-                  onOpenInSplit={splitAvailable ? openInSplit : undefined}
-                  onOpenChange={setIsDropdownActionsOpen}
-                />
+                <SidebarRowControls
+                  primaryAction={
+                    <ThreadArchiveQuickAction
+                      thread={thread}
+                      className={SIDEBAR_CONTROL_BUTTON_CLASS}
+                    />
+                  }
+                >
+                  <ThreadActionsMenu
+                    thread={thread}
+                    triggerClassName={SIDEBAR_CONTROL_BUTTON_CLASS}
+                    onOpenInSplit={splitAvailable ? openInSplit : undefined}
+                    onOpenChange={setIsDropdownActionsOpen}
+                  />
+                </SidebarRowControls>
               </div>
             </span>
           </span>

@@ -18,6 +18,7 @@ import { sdk } from "@/lib/sdk";
 import { createQueryClientTestHarness } from "@/test/queryClientTestHarness";
 import { makeSystemConfig } from "@/test/fixtures/system-config";
 import { MachinesSettingsSection } from "./MachinesSettingsSection";
+import { focusWithKeyboard } from "@/test/keyboard-focus";
 
 vi.mock("@/lib/sdk", () => ({
   sdk: {
@@ -481,7 +482,7 @@ describe("MachinesSettingsSection", () => {
     });
     expect(removeItem.getAttribute("aria-disabled")).toBe("true");
     expect(removeItem.textContent).toBe("Remove machine");
-    fireEvent.focus(removeItem);
+    focusWithKeyboard(removeItem);
     expect(
       await screen.findByRole("tooltip", {
         name: "bb's primary machine can't be removed.",

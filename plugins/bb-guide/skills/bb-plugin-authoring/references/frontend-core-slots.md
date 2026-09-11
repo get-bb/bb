@@ -237,7 +237,7 @@ target? })`. Inside the fixed-tab component,
   `experimental_activate`, and `experimental_Original`. Search activation opens
   the quick palette. No inline search field or query state exists. BB keeps the
   drawer, thread list, footer, resize handle, and shortcut ownership.
-- `fileOpener` → `{ path: string, source, Original }` — register as a viewer/editor
+- `fileOpener` → `{ path: string, source, experimental_lineRange?, Original }` — register as a viewer/editor
   for file extensions: `{ id, title, extensions: ["md"], component }`.
   Matching files use the first applicable opener in deterministic slot order
   by default. Users can pin BB's preview or a specific opener per extension
@@ -252,6 +252,12 @@ projectId, experimental_hostId? }` (nullable fields). The optional host ID
   selects a project-backed workspace host and persists in opener-tab parameters.
   The `path` follows the source (workspace:
   worktree-relative; host: absolute; thread-storage: storage-relative).
+  `experimental_lineRange` (SDK 0.4.56) is a nullable, one-based inclusive
+  `{ startLineNumber, endLineNumber }` target; older hosts may omit it. Observe
+  object identity: each targeted open supplies a new object, including an
+  identical range in the active tab. Apply the latest target after loading
+  and on subsequent requests without replacing the editor model; null means
+  no requested navigation.
   `Original` is BB's preview bound to this file; render it to
   delegate conditionally without re-entering plugin replacement resolution.
   Applies only to live file content — git-ref snapshots and deleted files

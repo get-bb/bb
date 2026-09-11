@@ -1,10 +1,14 @@
-import { useMemo } from "react";
-import { useQueries, useQuery } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 import type {
   SystemEnvironmentProvider,
   SystemEnvironmentProvidersQuery,
 } from "@bb/server-contract";
 import { sdk } from "@/lib/sdk";
+import {
+  environmentProviderListCacheKey,
+  readCachedEnvironmentProviderList,
+  writeCachedEnvironmentProviderList,
+} from "@/lib/environment-provider-list-cache";
 import { SERVER_SESSION_QUERY_POLICY } from "./query-policies";
 
 const SYSTEM_ENVIRONMENT_PROVIDERS_QUERY_KEY = "systemEnvironmentProviders";
@@ -41,9 +45,19 @@ const NO_ENVIRONMENT_PROVIDERS: readonly SystemEnvironmentProvider[] = [];
 function environmentProvidersQueryOptions(
   query: SystemEnvironmentProvidersQuery,
 ) {
+  const cacheKey = environmentProviderListCacheKey({
+    projectId: query.projectId ?? null,
+    hostId: query.hostId ?? null,
+  });
   return {
     queryKey: systemEnvironmentProvidersQueryKey(query),
-    queryFn: () => sdk.environments.listProviders(query),
+    queryFn: async () => {
+      const providers = await sdk.environments.listProviders(query);
+      writeCachedEnvironmentProviderList(cacheKey, providers);
+      return providers;
+    },
+    placeholderData: () =>
+      readCachedEnvironmentProviderList(cacheKey) ?? undefined,
     ...SERVER_SESSION_QUERY_POLICY,
   };
 }
@@ -57,28 +71,4 @@ export function useSystemEnvironmentProviders(
   return {
     providers: result.isError ? NO_ENVIRONMENT_PROVIDERS : result.data,
   };
-}
-
-export function useSystemEnvironmentProvidersByHost(
-  projectId: string,
-  hostIds: readonly string[],
-): ReadonlyMap<string, readonly SystemEnvironmentProvider[] | undefined> {
-  const results = useQueries({
-    queries: hostIds.map((hostId) =>
-      environmentProvidersQueryOptions({ projectId, hostId }),
-    ),
-  });
-  return useMemo(
-    () =>
-      new Map(
-        hostIds.map((hostId, index) => {
-          const result = results[index];
-          return [
-            hostId,
-            result?.isError ? NO_ENVIRONMENT_PROVIDERS : result?.data,
-          ] as const;
-        }),
-      ),
-    [hostIds, results],
-  );
 }

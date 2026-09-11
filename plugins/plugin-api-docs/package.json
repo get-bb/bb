@@ -22,12 +22,14 @@
     "bb-plugin"
   ],
   "scripts": {
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "prepare:bundled": "bb-plugin-build prepare-bundled"
   },
   "dependencies": {
     "@bb/plugin-api-map": "workspace:*"
   },
   "devDependencies": {
+    "@bb/plugin-build": "workspace:*",
     "@get-bb/plugin-sdk": "workspace:*",
     "@types/react": "^19.0.0",
     "react": "^19.0.0",

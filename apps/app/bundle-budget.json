@@ -8,8 +8,9 @@
     "Chunks behind a dynamic import are deliberately not counted. Moving code",
     "behind React.lazy or import() is the fix this budget exists to encourage.",
     "",
-    "maxBootBytes / maxBootBrotliBytes are a ratchet set 10% above the measured",
-    "payload: enough for a normal feature's worth of shell code and for build",
+    "maxBootBytes is set 5% above the measured raw payload;",
+    "maxBootBrotliBytes retains its 10% ratchet above the compressed payload.",
+    "These allowances leave room for normal shell feature work and build",
     "noise, tight enough that a barrel regression cannot hide inside it. Lower",
     "them when a change wins headroom. Raising one is a deliberate decision",
     "that needs a reason in the pull request, not a routine edit.",
@@ -46,7 +47,7 @@
     "`node scripts/why-eager.mjs --from=views/SplitWorkspaceRoute.tsx <package>`",
     "to print the static chain that pulled a package into the closure."
   ],
-  "maxBootBytes": 1726689,
+  "maxBootBytes": 1722912,
   "maxBootBrotliBytes": 429072,
   "forbiddenBootPackages": [
     "@pierre/diffs",
@@ -67,6 +68,7 @@
     "prosemirror-model",
     "prosemirror-state",
     "prosemirror-view",
+    "react-resizable-panels",
     "rehype-katex",
     "shiki"
   ],

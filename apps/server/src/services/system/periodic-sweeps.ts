@@ -1,5 +1,5 @@
-import { sweepProviderLifecycles } from "../environments/provider-orchestration.js";
-import { and, eq, isNull } from "drizzle-orm";
+import { sweepProviderLifecycles } from "../environments/environment-engine.js";
+import { and, eq, isNull, inArray } from "drizzle-orm";
 import {
   CLOSED_SESSION_ROW_RETENTION_MS,
   compactDatabase,
@@ -36,7 +36,7 @@ import type {
   AppDeps,
   LoggedPendingInteractionWorkSessionDeps,
 } from "../../types.js";
-import { advanceEnvironmentProvisioning } from "../environments/environment-provisioning-internal.js";
+import { advanceEnvironmentProvisioning } from "../environments/environment-engine.js";
 import {
   advanceProjectDeletion,
   listProjectsPendingDeletion,
@@ -288,7 +288,7 @@ export async function runEnvironmentProvisioningSweep(
   const provisioningEnvironments = deps.db
     .select({ id: environments.id })
     .from(environments)
-    .where(eq(environments.status, "provisioning"))
+    .where(inArray(environments.status, ["creating", "provisioning"]))
     .all();
 
   for (const environment of provisioningEnvironments) {

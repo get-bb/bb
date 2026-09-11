@@ -3,7 +3,7 @@ import type { PluginEnvironmentProviderProgress } from "@get-bb/plugin-sdk/envir
 import type { WorkSessionDeps } from "../../types.js";
 import { callHostOnlineRpc } from "../hosts/online-rpc.js";
 
-const HOOK_TIMEOUT_MS = 15 * 60 * 1000;
+export const ENVIRONMENT_HOOK_TIMEOUT_MS = 15 * 60 * 1000;
 const TRANSPORT_GRACE_MS = 6_000;
 const reports = new WeakMap<
   object,
@@ -65,14 +65,14 @@ export async function runEnvironmentHook(
   try {
     await callHostOnlineRpc(deps, {
       hostId: args.hostId,
-      timeoutMs: HOOK_TIMEOUT_MS + TRANSPORT_GRACE_MS,
+      timeoutMs: ENVIRONMENT_HOOK_TIMEOUT_MS + TRANSPORT_GRACE_MS,
       command: {
         type: "environment.hook.run",
         resumeOnly: args.resumeOnly,
         operationId,
         path: args.path,
         kind: args.kind,
-        timeoutMs: HOOK_TIMEOUT_MS,
+        timeoutMs: ENVIRONMENT_HOOK_TIMEOUT_MS,
       },
     });
     args.signal.throwIfAborted();

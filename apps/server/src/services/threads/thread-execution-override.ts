@@ -39,6 +39,8 @@ interface ApplyThreadExecutionOverrideArgs {
 interface RecoverThreadModelOverrideArgs {
   model: string | undefined;
   modelSource: CallerExecutionInputSource | undefined;
+  reasoningLevel: ReasoningLevel | undefined;
+  reasoningLevelSource: CallerExecutionInputSource | undefined;
   thread: Thread;
 }
 
@@ -142,19 +144,28 @@ export async function recoverThreadModelOverride(
   args: RecoverThreadModelOverrideArgs,
 ): Promise<void> {
   const existing = getThreadExecutionOverride(deps.db, args.thread.id);
+  const patch: ThreadExecutionOverridePatch = {};
   if (
-    args.model === undefined ||
-    args.modelSource !== "explicit" ||
-    existing?.modelOverride === null ||
-    existing?.modelOverride === undefined ||
-    existing.modelOverride === args.model
+    args.model !== undefined &&
+    args.modelSource === "explicit" &&
+    existing?.modelOverride != null &&
+    existing.modelOverride !== args.model
   ) {
-    return;
+    patch.model = args.model;
   }
+  if (
+    args.reasoningLevel !== undefined &&
+    args.reasoningLevelSource === "explicit" &&
+    existing?.reasoningLevelOverride != null &&
+    existing.reasoningLevelOverride !== args.reasoningLevel
+  ) {
+    patch.reasoningLevel = args.reasoningLevel;
+  }
+  if (patch.model === undefined && patch.reasoningLevel === undefined) return;
 
   await applyThreadExecutionOverride(deps, {
     thread: args.thread,
-    patch: { model: args.model },
+    patch,
   });
 }
 

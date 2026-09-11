@@ -3,6 +3,7 @@ import type { ChildProcess } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { spawn } from "node:child_process";
 import { existsSync, readdirSync, readFileSync } from "node:fs";
+import { spawnLoggedProcess } from "./logged-process.js";
 import {
   access,
   mkdir,
@@ -220,6 +221,7 @@ interface ResolveWorktreeRuntimePolicyArgs {
 }
 
 interface RunBbAppOptions {
+  dryRun?: boolean;
   beforeServerStart?: () => Promise<void> | void;
   worktreePolicy: WorktreeRuntimePolicy | null;
 }
@@ -307,25 +309,12 @@ interface ParsedLauncherArgs {
   positionals: string[];
 }
 
-interface ManagedSpawnArgs {
-  args: string[];
-  command: string;
-  env: NodeJS.ProcessEnv;
-  outputBuffer: OutputBuffer;
-}
-
-interface OutputBuffer {
-  flush(): void;
-  handler(chunk: OutputChunk): void;
-}
-
 export interface ProcessExitResult {
   code: number | null;
   signal: NodeJS.Signals | null;
 }
 
 export type ManagedProcessName = "daemon" | "server";
-type OutputChunk = Buffer | string;
 type WaitForProcessExitWithTimeoutResult = "exited" | "timed-out";
 type StartManagedProcess = () => Promise<ManagedProcessRun>;
 export type DelayMillisecondsFn = (
@@ -381,10 +370,10 @@ export interface ManagedFullStackProcesses {
 }
 
 interface SpawnNamedManagedProcessArgs {
+  logDir: string;
   args: string[];
   command: string;
   env: NodeJS.ProcessEnv;
-  outputBuffer: OutputBuffer;
   processName: ManagedProcessName;
 }
 
@@ -392,14 +381,12 @@ interface StartFullStackServerProcessArgs {
   beforeStart?: () => Promise<void> | void;
   context: BbAppStartContext;
   env: NodeJS.ProcessEnv;
-  outputBuffer: OutputBuffer;
   processes: ManagedFullStackProcesses;
 }
 
 interface StartFullStackDaemonProcessArgs {
   autoJoinEnv: NodeJS.ProcessEnv;
   context: BbAppStartContext;
-  outputBuffer: OutputBuffer;
   processes: ManagedFullStackProcesses;
 }
 
@@ -2405,52 +2392,13 @@ export async function waitForHostDaemonStatus(
   );
 }
 
-function toChunkString(chunk: OutputChunk): string {
-  return typeof chunk === "string" ? chunk : chunk.toString("utf8");
-}
-
-function createOutputBuffer(): OutputBuffer {
-  const chunks: OutputChunk[] = [];
-  let passthrough = false;
-
-  return {
-    handler(chunk) {
-      if (passthrough) {
-        process.stdout.write(chunk);
-        return;
-      }
-      chunks.push(chunk);
-    },
-    flush() {
-      process.stdout.write("\n");
-      for (const chunk of chunks) {
-        process.stdout.write(toChunkString(chunk));
-      }
-      chunks.length = 0;
-      passthrough = true;
-    },
-  };
-}
-
-function spawnManagedProcess(args: ManagedSpawnArgs): ChildProcess {
-  const child = spawn(args.command, args.args, {
-    cwd: process.cwd(),
-    env: args.env,
-    stdio: ["ignore", "pipe", "inherit"],
-  });
-
-  if (child.stdout === null) {
-    throw new Error("Expected managed process stdout to be piped");
-  }
-
-  child.stdout.on("data", args.outputBuffer.handler);
-  return child;
-}
-
 function spawnNamedManagedProcess(
   args: SpawnNamedManagedProcessArgs,
 ): ChildManagedProcessRun {
-  const childProcess = spawnManagedProcess(args);
+  const childProcess = spawnLoggedProcess({
+    ...args,
+    logName: args.processName === "server" ? "server" : "host-daemon",
+  });
   return {
     childProcess,
     exit: waitForNamedProcessExit({
@@ -2795,6 +2743,8 @@ export async function runBbServer(
 
 Usage:
   bb-server [--data-dir <path>] [--server-bind-host <host>] [--server-port <port>]
+
+Service stdout and stderr append to <data-dir>/logs/server-stdio.log.
 `);
     return;
   }
@@ -2831,13 +2781,16 @@ Usage:
   }
   assertBbAppArtifacts(runtime.context);
 
-  const childProcess = spawn(process.execPath, [runtime.context.serverEntry], {
-    cwd: process.cwd(),
+  log(" ", dim(`logs: ${runtime.context.logDir}/server-stdio.log`));
+  const childProcess = spawnLoggedProcess({
+    command: process.execPath,
+    args: [runtime.context.serverEntry],
+    logDir: runtime.context.logDir,
+    logName: "server",
     env: createServerEnv({
       context: runtime.context,
       env: runtime.serverEnv,
     }),
-    stdio: "inherit",
   });
   process.exitCode = toExitCode(await waitForProcessExit(childProcess));
 }
@@ -2895,12 +2848,12 @@ async function runHostDaemonOnly(args: RunHostDaemonOnlyArgs): Promise<void> {
     enrollment.enrolled ? "Starting daemon" : "Enrolling and starting daemon",
   );
 
-  const outputBuffer = createOutputBuffer();
-  const daemonProcess = spawnManagedProcess({
+  const daemonProcess = spawnLoggedProcess({
     args: [args.context.daemonEntry],
     command: process.execPath,
     env: daemonEnv,
-    outputBuffer,
+    logDir: args.context.logDir,
+    logName: "host-daemon",
   });
 
   let shuttingDown = false;
@@ -2938,7 +2891,6 @@ async function runHostDaemonOnly(args: RunHostDaemonOnlyArgs): Promise<void> {
       endStep(red("✗"), "Host daemon failed to start");
       log(" ", dim(`lock: ${args.context.daemonLockDir}`));
       log(" ", dim(`logs: ${args.context.logDir}/`));
-      outputBuffer.flush();
       process.exitCode = 1;
       await shutdown("SIGTERM");
       return;
@@ -2964,7 +2916,6 @@ async function runHostDaemonOnly(args: RunHostDaemonOnlyArgs): Promise<void> {
     process.stdout.write("\n");
     log(" ", dim("Press Ctrl+C to stop"));
 
-    outputBuffer.flush();
     process.exitCode = toExitCode(await daemonExit);
   } finally {
     removeSignalForwarding();
@@ -3055,7 +3006,7 @@ export async function startFullStackServerProcess(
     args: [args.context.serverEntry],
     command: process.execPath,
     env: { ...args.env, BB_SERVER_LAUNCH_ID: launchId },
-    outputBuffer: args.outputBuffer,
+    logDir: args.context.logDir,
     processName: "server",
   });
   args.processes.serverRun = serverRun;
@@ -3089,7 +3040,7 @@ async function startFullStackDaemonProcess(
     args: [args.context.daemonEntry],
     command: process.execPath,
     env: createDaemonEnv(args.context, args.autoJoinEnv),
-    outputBuffer: args.outputBuffer,
+    logDir: args.context.logDir,
     processName: "daemon",
   });
   args.processes.daemonRun = daemonRun;
@@ -3386,6 +3337,25 @@ export async function runBbApp(
     }
   }
 
+  if (options.dryRun) {
+    if (command.kind !== "start") {
+      throw new Error("--dryrun is supported only for server startup.");
+    }
+    process.stdout.write(
+      `${JSON.stringify(
+        {
+          dryRun: true,
+          ...runtime.context,
+          serverBindHost:
+            runtime.serverEnv.BB_SERVER_BIND_HOST ?? BB_LOOPBACK_HOST,
+        },
+        null,
+        2,
+      )}\n`,
+    );
+    return;
+  }
+
   if (command.kind === "config") {
     await runConfigCommand({
       args: command.args,
@@ -3438,7 +3408,6 @@ export async function runBbApp(
     bindHost: runtime.serverEnv.BB_SERVER_BIND_HOST,
     port: context.serverPort,
   });
-  const outputBuffer = createOutputBuffer();
   const serverEnv = createServerEnv({
     context,
     env: runtime.serverEnv,
@@ -3495,7 +3464,6 @@ export async function runBbApp(
         : { beforeStart: options.beforeServerStart }),
       context,
       env: serverEnv,
-      outputBuffer,
       processes,
     });
 
@@ -3516,7 +3484,6 @@ export async function runBbApp(
         context,
         processName: "server",
       });
-      outputBuffer.flush();
       process.exitCode = 1;
       await shutdown("SIGTERM");
       return;
@@ -3534,7 +3501,6 @@ export async function runBbApp(
       startFullStackDaemonProcess({
         autoJoinEnv,
         context,
-        outputBuffer,
         processes,
       });
 
@@ -3546,7 +3512,6 @@ export async function runBbApp(
         context,
         processName: "daemon",
       });
-      outputBuffer.flush();
       process.exitCode = 1;
       await shutdown("SIGTERM");
       return;
@@ -3566,7 +3531,6 @@ export async function runBbApp(
     process.stdout.write("\n");
     log(" ", dim("Press Ctrl+C to stop"));
 
-    outputBuffer.flush();
     const supervisionResult = await superviseFullStackProcesses({
       context,
       delayMilliseconds,

@@ -10,7 +10,7 @@ import { nanoid } from "nanoid";
 import { useSystemProviderInfo } from "@/hooks/queries/system-queries";
 import { useNavigate } from "react-router-dom";
 import { useAtom } from "jotai";
-import { desktopBrowserRevealAtom } from "@/lib/desktop-browser-presentation";
+import { useDesktopBrowserReveal } from "@/lib/use-desktop-browser-reveal";
 import { atomWithStorage } from "jotai/utils";
 import {
   isRunningThreadRuntimeDisplayStatus,
@@ -127,7 +127,10 @@ import {
 } from "@/components/workspace/workspace-change-summary";
 import { getThreadDisplayTitle } from "@/lib/thread-title";
 import { hasThreadProvisioningFailure } from "@/lib/thread-provisioning-failure";
-import { getMutationErrorMessage } from "@/lib/mutation-errors";
+import {
+  getMutationErrorMessage,
+  showMutationErrorToast,
+} from "@/lib/mutation-errors";
 import {
   promptInputToDraft,
   type PromptDraftAttachment,
@@ -1015,7 +1018,6 @@ function ThreadDetailViewInternal(props: ThreadRoutePathArgs) {
       : null;
   const canEditSentMessages =
     thread !== undefined &&
-    (systemConfigQuery.data?.experiments.editMessages ?? false) &&
     (threadProviderInfo?.capabilities.supportsSessionRewind ?? false) &&
     thread.archivedAt === null &&
     thread.deletedAt === null &&
@@ -1124,13 +1126,11 @@ function ThreadDetailViewInternal(props: ThreadRoutePathArgs) {
           closeSentMessageEdit(session.operationId);
         })
         .catch((error) => {
-          appToast.error(
-            getMutationErrorMessage({
-              error,
-              fallbackMessage: "Failed to edit the message",
-              lifecycleOperation: "edit_message",
-            }),
-          );
+          showMutationErrorToast({
+            error,
+            fallbackMessage: "Failed to edit the message",
+            lifecycleOperation: "edit_message",
+          });
         });
     },
     [activeSentMessageEditSession, closeSentMessageEdit, editMessage],
@@ -1444,25 +1444,12 @@ function ThreadDetailViewInternal(props: ThreadRoutePathArgs) {
     },
     [activateTab, openCompactDrawer],
   );
-  const [nativeReveal, setNativeReveal] = useAtom(desktopBrowserRevealAtom);
-  useEffect(() => {
-    if (
-      !isFocused ||
-      nativeReveal === null ||
-      nativeReveal.threadId !== threadId ||
-      !browserTabs.some((tab) => tab.id === nativeReveal.tabId)
-    )
-      return;
-    handleActivateFileTab(nativeReveal.tabId);
-    setNativeReveal(null);
-  }, [
-    nativeReveal,
-    isFocused,
+  useDesktopBrowserReveal({
     threadId,
+    isFocused,
     browserTabs,
-    handleActivateFileTab,
-    setNativeReveal,
-  ]);
+    activateTab: handleActivateFileTab,
+  });
   useEffect(() => {
     const browserApi = getDesktopBrowserApi();
     if (browserApi === null) {

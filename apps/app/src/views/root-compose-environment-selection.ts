@@ -14,7 +14,6 @@ import {
 import {
   encodeProviderValue,
   parseEnvironmentValue,
-  REUSE_VALUE_WITHOUT_ENVIRONMENT,
 } from "@/components/pickers/environment-picker-value";
 import type { ReuseThreadOption } from "@/components/pickers/ReuseEnvironmentPicker";
 import { getThreadDisplayTitle } from "@/lib/thread-title";
@@ -228,7 +227,7 @@ export function resolveRootComposeEffectiveEnvironmentValue({
     }
 
     if (reuseThreadOptionsLoading) {
-      return REUSE_VALUE_WITHOUT_ENVIRONMENT;
+      return environmentSelectionValue;
     }
 
     return reuseThreadOptions.some(
