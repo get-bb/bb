@@ -21,3 +21,13 @@ models selectable through BB's model field.
 OpenCode ACP supports the core `bb thread compact` command; Cursor ACP does not
 expose compatible compaction. Check the actual agent's capabilities before
 attempting provider-specific recovery.
+
+## Usage resources
+
+This plugin directly implements Provider Usage's discoverable
+`provider-usage.v1.listResources` and `provider-usage.v1.getResource` contracts for
+its own usage-capable ACP agents, including Cursor. Listing is cheap metadata;
+fetching measures only the returned host/provider resource ID. Inspect the copied
+contract with `bb plugin rpc inspect provider-acp --json`. No display plugin needs
+to be enabled. Other provider plugins must explicitly implement the usage contract;
+`maintenance.usage` alone does not publish RPC methods.

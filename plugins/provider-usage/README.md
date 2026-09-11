@@ -22,8 +22,12 @@ to inspect their published contracts. RPC calls accept JSON through
 `bb settings usage --json` and `bb.sdk.system.usageLimits()` remain the
 host-local provider-maintenance view; they do not aggregate shared pool accounts.
 
-The headless Provider usage sources plugin automatically adapts providers declaring
-maintenance usage. The contract remains owned here; it is not part of the provider
-kit or core runtime. Known provider-issued account identities are deduplicated
-within the selected location. Unknown identities are never merged by email.
-Structured plan and quota-window metadata give both displays consistent labels.
+Codex, Claude Code, and ACP provider plugins explicitly implement the usage contract
+for their own providers. Account Pooler implements it for shared accounts. The
+contract is owned here and copied into each source; no additional adapter plugin,
+provider-kit helper, or core runtime convention is required. Other providers must
+explicitly implement the contract to appear in these displays.
+
+Known provider-issued account identities are deduplicated within the selected
+location. Unknown identities are never merged by email. Structured plan and quota
+window metadata give both displays consistent labels.

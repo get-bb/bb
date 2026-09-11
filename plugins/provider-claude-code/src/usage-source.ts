@@ -8,7 +8,7 @@ import {
   usagePlanSchema,
   usageWindowKindSchema,
   type UsageMeasurement,
-} from "./src/usage-contract.js";
+} from "./usage-contract.js";
 
 const locatorSchema = z.tuple([z.string().min(1), z.string().min(1)]);
 const metadataSchema = z.object({
@@ -20,7 +20,7 @@ const windowMetadataSchema = z.object({
   model: z.string().nullable().catch(null),
 });
 
-export default function usageSourcesPlugin(bb: BbPluginApi) {
+export function registerUsageSource(bb: BbPluginApi) {
   const cache = new Map<string, UsageMeasurement>();
   const pending = new Map<
     string,
@@ -51,7 +51,14 @@ export default function usageSourcesPlugin(bb: BbPluginApi) {
       hostId,
       capability: "usage",
     });
-    if (!providers.some((provider) => provider.id === providerId))
+    if (
+      !providers.some(
+        (provider) =>
+          provider.id === providerId &&
+          provider.pluginId === "provider-claude-code" &&
+          provider.id === "claude-code",
+      )
+    )
       throw new Error("Usage resource no longer exists.");
     if (
       !refresh &&
@@ -123,20 +130,26 @@ export default function usageSourcesPlugin(bb: BbPluginApi) {
                 hostId: host.id,
                 capability: "usage",
               });
-              return providers.map((provider) => {
-                const id = JSON.stringify([host.id, provider.id]);
-                return {
-                  id,
-                  accountKey: cache.get(id)?.accountKey ?? null,
-                  providerId: provider.id,
-                  label: provider.displayName,
-                  scope: {
-                    kind: "host" as const,
-                    hostId: host.id,
-                    hostName: host.name,
-                  },
-                };
-              });
+              return providers
+                .filter(
+                  (provider) =>
+                    provider.pluginId === "provider-claude-code" &&
+                    provider.id === "claude-code",
+                )
+                .map((provider) => {
+                  const id = JSON.stringify([host.id, provider.id]);
+                  return {
+                    id,
+                    accountKey: cache.get(id)?.accountKey ?? null,
+                    providerId: provider.id,
+                    label: provider.displayName,
+                    scope: {
+                      kind: "host" as const,
+                      hostId: host.id,
+                      hostName: host.name,
+                    },
+                  };
+                });
             }),
           )
         ).flat();
@@ -150,7 +163,7 @@ export default function usageSourcesPlugin(bb: BbPluginApi) {
     {
       experimental_discoverable: true,
       experimental_description:
-        "Host-local usage from providers declaring maintenance.usage. Inventory reads provider metadata only. Independent of display plugins.",
+        "Host-local usage owned by the claude-code provider plugin. Inventory reads metadata only. Independent of display plugins.",
     },
   );
 }

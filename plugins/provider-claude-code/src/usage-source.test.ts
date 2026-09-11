@@ -3,7 +3,7 @@ import {
   createFakePluginHost,
   makeHostResponse,
 } from "@get-bb/plugin-sdk/testing";
-import plugin from "../server.js";
+import { registerUsageSource as plugin } from "./usage-source.js";
 import {
   usageListMethod,
   usageFetchMethod,
@@ -11,9 +11,9 @@ import {
   usageResourceListSchema,
 } from "./usage-contract.js";
 
-it("adapts arbitrary maintenance providers without a display and only measures the requested resource", async () => {
+it("publishes only its own maintenance providers without a display and only measures the requested resource", async () => {
   const collect = vi.fn(async () => ({
-    custom: {
+    "claude-code": {
       status: "ok" as const,
       accountEmail: "same@example.com",
       planLabel: "Custom subscription",
@@ -36,8 +36,21 @@ it("adapts arbitrary maintenance providers without a display and only measures t
           removed
             ? []
             : [
-                { id: "custom", displayName: "Custom" },
-                { id: "another", displayName: "Another" },
+                {
+                  id: "foreign",
+                  displayName: "Foreign",
+                  pluginId: "unrelated",
+                },
+                {
+                  id: "claude-code",
+                  displayName: "Custom",
+                  pluginId: "provider-claude-code",
+                },
+                {
+                  id: "another",
+                  displayName: "Another",
+                  pluginId: "unrelated",
+                },
               ],
       },
       system: { usageLimits: collect },
@@ -56,9 +69,10 @@ it("adapts arbitrary maintenance providers without a display and only measures t
           refresh,
         }),
       );
-    expect((await list()).resources).toHaveLength(4);
+    expect((await list()).resources).toHaveLength(2);
     expect(collect).not.toHaveBeenCalled();
-    expect(await read("online", "custom")).toMatchObject({
+    await expect(read("online", "foreign")).rejects.toThrow("no longer exists");
+    expect(await read("online", "claude-code")).toMatchObject({
       accountKey: null,
       usage: {
         status: "ok",
@@ -69,20 +83,22 @@ it("adapts arbitrary maintenance providers without a display and only measures t
     });
     expect(collect).toHaveBeenCalledWith({
       hostId: "online",
-      providerId: "custom",
+      providerId: "claude-code",
     });
-    await read("online", "custom");
+    await read("online", "claude-code");
     expect(collect).toHaveBeenCalledTimes(1);
-    await read("online", "custom", true);
+    await read("online", "claude-code", true);
     expect(collect).toHaveBeenCalledTimes(2);
-    expect(await read("offline", "custom")).toMatchObject({
+    expect(await read("offline", "claude-code")).toMatchObject({
       observedAt: null,
       usage: { status: "error" },
     });
     expect(collect).toHaveBeenCalledTimes(2);
     removed = true;
     expect((await list()).resources).toEqual([]);
-    await expect(read("online", "custom")).rejects.toThrow("no longer exists");
+    await expect(read("online", "claude-code")).rejects.toThrow(
+      "no longer exists",
+    );
   } finally {
     await harness.lifecycle.dispose();
   }
@@ -97,11 +113,17 @@ it("forwards validated provider-owned identity and normalization metadata while 
         ],
       },
       providers: {
-        list: async () => [{ id: "custom", displayName: "Custom" }],
+        list: async () => [
+          {
+            id: "claude-code",
+            displayName: "Custom",
+            pluginId: "provider-claude-code",
+          },
+        ],
       },
       system: {
         usageLimits: async () => ({
-          custom: {
+          "claude-code": {
             status: "ok",
             accountKey: "issuer:organization:123",
             accountEmail: "same@example.com",
@@ -125,7 +147,7 @@ it("forwards validated provider-owned identity and normalization metadata while 
     plugin(bb);
     const value = usageMeasurementSchema.parse(
       await harness.behavior.callRpc(usageFetchMethod, {
-        resourceId: JSON.stringify(["host", "custom"]),
+        resourceId: JSON.stringify(["host", "claude-code"]),
         refresh: false,
       }),
     );
@@ -153,7 +175,7 @@ it("coalesces concurrent reads and makes a forced refresh wait for a fresh colle
   const collect = vi.fn(async () => {
     await gate;
     return {
-      custom: {
+      "claude-code": {
         status: "ok" as const,
         accountEmail: null,
         planLabel: null,
@@ -169,7 +191,13 @@ it("coalesces concurrent reads and makes a forced refresh wait for a fresh colle
         ],
       },
       providers: {
-        list: async () => [{ id: "custom", displayName: "Custom" }],
+        list: async () => [
+          {
+            id: "claude-code",
+            displayName: "Custom",
+            pluginId: "provider-claude-code",
+          },
+        ],
       },
       system: { usageLimits: collect },
     },
@@ -178,7 +206,7 @@ it("coalesces concurrent reads and makes a forced refresh wait for a fresh colle
     plugin(bb);
     const read = (refresh: boolean) =>
       harness.behavior.callRpc(usageFetchMethod, {
-        resourceId: JSON.stringify(["host", "custom"]),
+        resourceId: JSON.stringify(["host", "claude-code"]),
         refresh,
       });
     const first = read(false);

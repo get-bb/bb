@@ -1,3 +1,4 @@
+import { registerUsageSource } from "./src/usage-source.js";
 import type {
   BbPluginApi,
   PluginProviderDeclaration,
@@ -42,6 +43,7 @@ async function sleepUntilAbort(ms: number, signal: AbortSignal): Promise<void> {
 export default async function acpProvidersPlugin(
   bb: BbPluginApi,
 ): Promise<void> {
+  registerUsageSource(bb);
   const host = bb.hosts.experimental_client({ contract: acpHostContract });
   const settings = bb.settings.define({
     customAgents: {
