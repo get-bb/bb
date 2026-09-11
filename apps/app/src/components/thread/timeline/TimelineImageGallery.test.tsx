@@ -53,6 +53,7 @@ it("navigates the loaded page immediately without fetching older history, preser
       <MarkdownPreview content="![Outside](https://example.com/outside.png)" />
       <ThreadTimelineRows
         threadId="thread-1"
+        threadRuntimeDisplayStatus="idle"
         workspaceRootPath={undefined}
         hasOlderTimelineRows
         timelineRows={[
@@ -181,6 +182,7 @@ it("never includes images suppressed in ordinary worker messages", () => {
   renderTimeline(
     <ThreadTimelineRows
       threadId="thread-1"
+      threadRuntimeDisplayStatus="idle"
       workspaceRootPath={undefined}
       timelineRows={[
         conversationRow({
