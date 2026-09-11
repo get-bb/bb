@@ -191,10 +191,14 @@ export function PluginsOverview({
   }>({ open: false, initial: null });
   const openPlugin =
     onOpenPlugin ??
-    ((pluginId: string) =>
-      navigate(
-        `${getPluginDetailRoutePath({ pluginId })}${searchParams.size === 0 ? "" : `?${searchParams.toString()}`}`,
-      ));
+    ((pluginId: string) => {
+      const params = new URLSearchParams(searchParams);
+      if (activeMode === "installed") params.set("view", "installed");
+      navigate({
+        pathname: getPluginDetailRoutePath({ pluginId }),
+        search: params.toString(),
+      });
+    });
   const onUninstall =
     onRemovePlugin === undefined
       ? undefined

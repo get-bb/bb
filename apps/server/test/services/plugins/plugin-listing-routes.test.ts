@@ -46,7 +46,7 @@ describe("authored plugin listing routes and SDK", () => {
       transport: createHttpTransport({
         baseUrl: "http://localhost:3000",
         runtime: "node",
-        fetch: (input, init) => app.request(input, init),
+        fetch: async (input, init) => app.request(input, init),
       }),
     });
   }

@@ -14,9 +14,9 @@ export function OpenPluginGuideButton() {
       )}
     >
       <span className="relative size-4">
-        <Icon name="Map" className="size-4" aria-hidden />
+        <Icon name="Explore" className="size-4" aria-hidden />
         <Icon
-          name="MapPin"
+          name="Pin"
           className="absolute -right-1 -top-1 size-3 opacity-0 transition-opacity group-hover/guide:opacity-100 group-focus-visible/guide:opacity-100"
           aria-hidden
         />

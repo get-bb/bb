@@ -50,6 +50,11 @@ export function PluginCollectionCard({
   const runtimeStatus =
     runtime === null ? null : pluginRuntimeStatusPresentation(runtime);
   const author = listing?.entry.author;
+  const authorUrl =
+    author?.url ??
+    (author?.github === undefined
+      ? null
+      : `https://github.com/${author.github}`);
   const localSource =
     runtime?.source.startsWith("path:") === true
       ? runtime.source.slice(5)
@@ -84,11 +89,11 @@ export function PluginCollectionCard({
       <PluginCardAuthor entry={catalogEntry} />
     ) : author !== undefined ? (
       <PluginAuthorByline name={author.name} github={author.github ?? null}>
-        {author.url === undefined ? (
+        {authorUrl === null ? (
           author.name
         ) : (
           <a
-            href={author.url}
+            href={authorUrl}
             target="_blank"
             rel="noreferrer"
             className="pointer-events-auto relative rounded-sm underline underline-offset-2 hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"

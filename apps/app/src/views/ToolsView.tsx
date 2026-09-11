@@ -290,7 +290,7 @@ function PluginDetailToolView({ pluginId }: { pluginId: string }) {
           size="sm"
           onClick={() => setConfigurationOpen(false)}
         >
-          <Icon name="ArrowLeft" className="mr-1.5 size-4" aria-hidden />
+          <Icon name="ChevronLeft" className="mr-1.5 size-4" aria-hidden />
           Back to details
         </Button>
         <PluginSettingsPage pluginId={pluginId} />

@@ -208,6 +208,11 @@ This index lists every command path that the core CLI registers. Read the task-s
 - `bb plugin`
 - `bb plugin search`
 - `bb plugin list`
+- `bb plugin listing`
+- `bb plugin listing list`
+- `bb plugin listing draft`
+- `bb plugin listing record-submission`
+- `bb plugin listing consume-notice`
 - `bb plugin source`
 - `bb plugin install`
 - `bb plugin outdated`
