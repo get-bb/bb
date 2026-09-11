@@ -959,7 +959,9 @@ const QueuedMessageRow = memo(function QueuedMessageRow({
                         <Icon name="Sent" className="size-4" aria-hidden />
                       </Button>
                     </TooltipTrigger>
-                    <TooltipContent>{sendLabel}</TooltipContent>
+                    <TooltipContent className="max-md:hidden">
+                      {sendLabel}
+                    </TooltipContent>
                   </Tooltip>
                 ) : null}
                 {queuedMessage.editable ? (
@@ -985,7 +987,9 @@ const QueuedMessageRow = memo(function QueuedMessageRow({
                         <Icon name="Edit" className="size-4" aria-hidden />
                       </Button>
                     </TooltipTrigger>
-                    <TooltipContent>Edit</TooltipContent>
+                    <TooltipContent className="max-md:hidden">
+                      Edit
+                    </TooltipContent>
                   </Tooltip>
                 ) : null}
                 <Tooltip>
@@ -1005,7 +1009,9 @@ const QueuedMessageRow = memo(function QueuedMessageRow({
                       <Icon name="Trash2" className="size-4" aria-hidden />
                     </Button>
                   </TooltipTrigger>
-                  <TooltipContent>Delete</TooltipContent>
+                  <TooltipContent className="max-md:hidden">
+                    Delete
+                  </TooltipContent>
                 </Tooltip>
               </div>
             </TooltipProvider>
@@ -1092,7 +1098,9 @@ function SortableGroupBoundaryHandle({ disabled }: { disabled: boolean }) {
                   />
                 </button>
               </TooltipTrigger>
-              <TooltipContent>Messages above send together</TooltipContent>
+              <TooltipContent className="max-md:hidden">
+                Messages above send together
+              </TooltipContent>
             </Tooltip>
           </TooltipProvider>
         </div>
@@ -1820,7 +1828,9 @@ export function QueuedMessagesList({
                   />
                 </Button>
               </TooltipTrigger>
-              <TooltipContent>{caretLabel}</TooltipContent>
+              <TooltipContent className="max-md:hidden">
+                {caretLabel}
+              </TooltipContent>
             </Tooltip>
           </TooltipProvider>
         </div>
