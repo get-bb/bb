@@ -625,9 +625,8 @@ describe("resolveSystemExecutionOptions", () => {
           );
         } finally {
           harness.hub.unregisterDaemon(session.id);
-          await vi.runAllTimersAsync();
-          await pendingProviders?.catch(() => undefined);
           vi.useRealTimers();
+          await pendingProviders?.catch(() => undefined);
         }
       },
     );
