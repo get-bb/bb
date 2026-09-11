@@ -638,6 +638,30 @@ export function ModelReasoningPicker({
     }
   }, [exitHandoffMode, handoff, onSelectedProviderChange, selectedProviderId]);
 
+  const handleReasoningSelect = useCallback(
+    (level: ReasoningLevel) => {
+      if (previewSelectionBlocked) return;
+      if (handoffMode) {
+        setHandoffReasoningLevel(level);
+        return;
+      }
+      if (isPreviewing && previewSelection?.selectedModel) {
+        onModelChange(previewSelection.selectedModel);
+      }
+      onReasoningChange(level);
+      setPreviewProviderId(null);
+      setMoreModelsOpen(false);
+    },
+    [
+      handoffMode,
+      isPreviewing,
+      previewSelection,
+      onModelChange,
+      onReasoningChange,
+      previewSelectionBlocked,
+    ],
+  );
+
   const paneContext = useOptionalPaneContext();
   const isFocusedPane = paneContext?.isFocused ?? true;
   const isSplitPane = paneContext?.isSplitPane ?? false;
@@ -698,13 +722,22 @@ export function ModelReasoningPicker({
     MODEL_CYCLE_COMMANDS,
     (index, { target }) => {
       if (!ownsCycleChord(target)) return false;
+      const options = handoffMode ? activeModelOptions : modelOptions;
+      const value =
+        handoffMode && isPreviewing
+          ? (previewSelection?.selectedModel ?? "")
+          : modelValue;
       const next =
         index === 0
-          ? nextCycleValue(modelOptions, modelValue)
-          : previousCycleValue(modelOptions, modelValue);
+          ? nextCycleValue(options, value)
+          : previousCycleValue(options, value);
       if (next !== null) {
-        onModelChange(next);
-        setPreviewProviderId(null);
+        if (handoffMode) {
+          handleModelSelect(next);
+        } else {
+          onModelChange(next);
+          setPreviewProviderId(null);
+        }
       }
       return true;
     },
@@ -743,44 +776,26 @@ export function ModelReasoningPicker({
     REASONING_CYCLE_COMMANDS,
     (index, { target }) => {
       if (!ownsCycleChord(target)) return false;
+      const value = handoffMode ? activeReasoningValue : reasoningValue;
+      if (value === "") return true;
       const next = cycleReasoningValue(
-        reasoningOptions,
-        reasoningValue,
+        handoffMode ? activeReasoningOptions : reasoningOptions,
+        value,
         index === 0 ? "forward" : "backward",
       );
       if (next !== null) {
-        onReasoningChange(next);
-        setPreviewProviderId(null);
+        if (handoffMode) {
+          handleReasoningSelect(next);
+        } else {
+          onReasoningChange(next);
+          setPreviewProviderId(null);
+        }
       }
       return true;
     },
     50,
     commandShortcutsEnabled,
   );
-  const handleReasoningSelect = useCallback(
-    (level: ReasoningLevel) => {
-      if (previewSelectionBlocked) return;
-      if (handoffMode) {
-        setHandoffReasoningLevel(level);
-        return;
-      }
-      if (isPreviewing && previewSelection?.selectedModel) {
-        onModelChange(previewSelection.selectedModel);
-      }
-      onReasoningChange(level);
-      setPreviewProviderId(null);
-      setMoreModelsOpen(false);
-    },
-    [
-      handoffMode,
-      isPreviewing,
-      previewSelection,
-      onModelChange,
-      onReasoningChange,
-      previewSelectionBlocked,
-    ],
-  );
-
   const handleReasoningArrowKeyDown: KeyboardEventHandler<HTMLElement> = (
     event,
   ) => {

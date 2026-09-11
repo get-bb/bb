@@ -2,6 +2,7 @@
 
 import type {
   PendingInteraction,
+  PermissionMode,
   PromptTextMention,
   ResolvedThreadExecutionOptions,
   ThreadQueuedMessage,
@@ -30,6 +31,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { workflowRow } from "@/test/fixtures/thread-timeline-rows";
 import type { PromptDraftAttachment } from "@bb/client-core";
 import { BbHttpError } from "@/lib/sdk";
+import type { TypeaheadConfig } from "@/components/promptbox/PromptBoxInternal";
 import type { PluginComposerHost } from "@/components/plugin/plugin-composer-host";
 import { setComposerTextEffect } from "@/lib/composer-text-effects";
 import {
@@ -97,6 +99,8 @@ vi.mock("@/components/promptbox/FollowUpPromptBox", async () => {
   >("@/components/plugin/PluginComposerBanners");
   return {
     FollowUpPromptBox: ({
+      activePromptMode,
+      typeahead,
       attachments,
       composer,
       environmentSummary,
@@ -111,6 +115,8 @@ vi.mock("@/components/promptbox/FollowUpPromptBox", async () => {
       suppressPluginComposerCustomizations,
       textEffects,
     }: {
+      activePromptMode?: ThreadTimelineActivePromptMode | null;
+      typeahead: TypeaheadConfig;
       attachments: {
         items: readonly unknown[];
         onAttachFiles: (files: File[]) => void | Promise<void>;
@@ -127,10 +133,12 @@ vi.mock("@/components/promptbox/FollowUpPromptBox", async () => {
       } | null;
       environmentSummary?: ReactNode;
       execution: {
+        providerRouting: { environmentId?: string; hostId?: string };
         model: {
           active?: { model: string } | null;
         };
         provider: {
+          selectedId: string;
           onChange?: (value: string) => void;
         };
         handoff?: {
@@ -188,6 +196,18 @@ vi.mock("@/components/promptbox/FollowUpPromptBox", async () => {
         <div data-testid="submit-icon">{composer?.submitIcon ?? ""}</div>
         <div data-testid="plugin-customizations-suppressed">
           {suppressPluginComposerCustomizations ? "true" : "false"}
+        </div>
+        <div data-testid="active-permission-mode">{activePromptMode?.mode}</div>
+        <div data-testid="selected-provider">
+          {execution.provider.selectedId}
+        </div>
+        <div data-testid="preview-environment">
+          {execution.providerRouting.environmentId}
+        </div>
+        <div data-testid="command-suggestions">
+          {typeahead.command?.suggestions
+            .map((command) => command.name)
+            .join(",")}
         </div>
         <div data-testid="selected-model">{execution.model.active?.model}</div>
         <div data-testid="selected-reasoning">{execution.reasoning.value}</div>
@@ -496,13 +516,19 @@ vi.mock("@/components/ui/app-toast", () => ({
 }));
 
 vi.mock("@/hooks/useCommandSuggestions", () => ({
-  useCommandSuggestions: () => ({
+  useCommandSuggestions: ({
+    providerId,
+    commandScope,
+  }: {
+    providerId: string;
+    commandScope: string;
+  }) => ({
     hasMore: false,
     isError: false,
     isLoading: false,
     isLoadingMore: false,
     loadMore: vi.fn(),
-    suggestions: [],
+    suggestions: [{ name: `${providerId}:${commandScope}` }],
     trigger: null,
   }),
 }));
@@ -523,20 +549,27 @@ vi.mock("@/hooks/usePromptMentions", () => ({
 vi.mock("@/hooks/useThreadCreationOptions", async () => {
   const { useState } = await import("react");
   return {
-    useThreadCreationOptions: (options: unknown) => {
+    useThreadCreationOptions: (options: {
+      initialProviderId: string;
+      initialPermissionMode?: PermissionMode;
+    }) => {
       mocks.useThreadCreationOptions(options);
-      const [selectedProviderId, setSelectedProviderId] = useState("codex");
+      const [selectedProviderId, setSelectedProviderId] = useState(
+        options.initialProviderId,
+      );
       const isClaude = selectedProviderId === "claude-code";
       return {
         activeModel: null,
         executionInputSources: {},
+        executionOptionsRouting: { hostId: "host_1" },
+        providers: [],
         hasMultipleProviders: true,
         isLoadingModels: false,
         modelLoadError: null,
         modelLoadFailed: false,
         modelOptions: [],
         moreModelOptions: [],
-        permissionMode: "auto",
+        permissionMode: options.initialPermissionMode ?? "auto",
         permissionModeOptions: [],
         providerOptions: [
           { value: "codex", label: "Codex" },
@@ -1416,6 +1449,7 @@ describe("ThreadDetailPromptArea", () => {
     ];
 
     renderPromptArea();
+    fireEvent.click(screen.getByRole("button", { name: "Switch provider" }));
     fireEvent.click(
       screen.getByRole("button", { name: "Edit queued message 1" }),
     );
@@ -1423,6 +1457,27 @@ describe("ThreadDetailPromptArea", () => {
       screen.getByTestId("inline-queued-message-editor"),
     );
 
+    expect(inlineEditor.getByTestId("selected-provider").textContent).toBe(
+      "codex",
+    );
+    expect(inlineEditor.getByTestId("command-suggestions").textContent).toBe(
+      "codex:thread",
+    );
+    const bottom = within(
+      screen
+        .getAllByTestId("follow-up-prompt-box")
+        .find(
+          (element) =>
+            within(element).getByTestId("composer-location").textContent ===
+            "bottom",
+        )!,
+    );
+    expect(bottom.getByTestId("selected-provider").textContent).toBe(
+      "claude-code",
+    );
+    expect(bottom.getByTestId("command-suggestions").textContent).toBe(
+      "claude-code:new-thread",
+    );
     expect(inlineEditor.getByTestId("selected-model").textContent).toBe(
       "queued-model",
     );
@@ -1910,6 +1965,98 @@ describe("ThreadDetailPromptArea", () => {
     expect(screen.getByTestId("submit-icon").textContent).toBe("");
     expect(screen.getByTestId("submit-title").textContent).toBe("Submit");
   });
+
+  it("shows destination permissions instead of the source active Plan mode", async () => {
+    mocks.defaultExecutionOptions = {
+      model: "gpt-5",
+      permissionMode: "full",
+      reasoningLevel: "medium",
+      serviceTier: "default",
+      source: "client/turn/requested",
+    };
+    mocks.createThreadMutateAsync.mockResolvedValue({
+      id: "thr_new",
+      projectId: "proj_1",
+    });
+    renderPromptArea({ activePromptMode: activePlan });
+    expect(screen.getByTestId("active-permission-mode").textContent).toBe(
+      "plan",
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Switch provider" }));
+    expect(screen.getByTestId("active-permission-mode").textContent).toBe("");
+    expect(screen.getByTestId("selected-permission").textContent).toBe("full");
+    fireEvent.click(screen.getByRole("button", { name: "Submit composer" }));
+    await waitFor(() =>
+      expect(mocks.createThreadMutateAsync).toHaveBeenCalledWith(
+        expect.objectContaining({
+          providerId: "claude-code",
+          permissionMode: "full",
+        }),
+      ),
+    );
+    fireEvent.click(
+      screen.getByRole("button", { name: "Switch provider back" }),
+    );
+    expect(screen.getByTestId("active-permission-mode").textContent).toBe(
+      "plan",
+    );
+  });
+
+  it.each([false, true])(
+    "keeps the destination model after a source fallback (scheduled: %s)",
+    async (scheduled) => {
+      const thread = makeThread({
+        providerId: "claude-code",
+        environmentId: "env_1",
+      });
+      mocks.createThreadMutateAsync.mockResolvedValue({
+        id: "thr_new",
+        projectId: "proj_1",
+      });
+      const { rerender } = renderPromptArea({ thread });
+      fireEvent.click(
+        screen.getByRole("button", { name: "Switch provider back" }),
+      );
+      rerender(
+        buildPromptAreaElement({
+          thread,
+          modelFallback: {
+            sourceSeq: 43,
+            detectedAt: 123,
+            originalModel: "claude-fable-5",
+            fallbackModel: "claude-opus-4-8",
+            reason: "refusal",
+            message: "Switched to Opus.",
+          },
+        }),
+      );
+      expect(screen.getByTestId("selected-model").textContent).toBe("gpt-5");
+      expect(screen.getByTestId("preview-environment").textContent).toBe(
+        "env_1",
+      );
+      if (scheduled) {
+        fireEvent.click(
+          screen.getByRole("button", { name: "Capture plugin host" }),
+        );
+        await act(async () => {
+          await mocks.pluginComposerHost?.submit?.({ sendAt: 1234567890 });
+        });
+      } else {
+        fireEvent.click(
+          screen.getByRole("button", { name: "Submit composer" }),
+        );
+      }
+      await waitFor(() =>
+        expect(mocks.createThreadMutateAsync).toHaveBeenCalledWith(
+          expect.objectContaining({
+            providerId: "codex",
+            model: "gpt-5",
+            ...(scheduled ? { sendAt: 1234567890 } : {}),
+          }),
+        ),
+      );
+    },
+  );
 
   it("restores the typed draft when switching back to the thread's provider", () => {
     mocks.promptDraft.text = "Keep going";

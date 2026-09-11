@@ -608,6 +608,7 @@ export function ThreadDetailPromptArea({
     selectedProviderId,
     setSelectedProviderId,
     setProviderModelReasoning,
+    providers,
     providerOptions,
     hasMultipleProviders,
     selectedProviderComposerActions,
@@ -653,7 +654,9 @@ export function ThreadDetailPromptArea({
     string | null
   >(null);
   const isFallbackModelActive =
-    modelFallback !== null && overriddenFallbackIdentity !== fallbackIdentity;
+    selectedProviderId === thread.providerId &&
+    modelFallback !== null &&
+    overriddenFallbackIdentity !== fallbackIdentity;
   const effectiveSelectedModel = isFallbackModelActive
     ? modelFallback.fallbackModel
     : (activeModel?.model ?? selectedModel);
@@ -769,10 +772,25 @@ export function ThreadDetailPromptArea({
   const { typeaheadConfig, promptActions } = useComposerTypeahead({
     projectId: thread.projectId,
     mentionsProjectId: projectId,
-    providerId: thread.providerId,
+    providerId: selectedProviderId,
+    commandScope: isHandoffSelection ? "new-thread" : "thread",
     environmentId: thread.environmentId,
     currentThreadId: thread.id,
     selectedProviderComposerActions,
+    resolveMentionLink,
+  });
+  const {
+    typeaheadConfig: inlineTypeaheadConfig,
+    promptActions: inlinePromptActions,
+  } = useComposerTypeahead({
+    projectId: thread.projectId,
+    mentionsProjectId: projectId,
+    providerId: thread.providerId,
+    environmentId: thread.environmentId,
+    currentThreadId: thread.id,
+    selectedProviderComposerActions: providers.find(
+      (provider) => provider.id === thread.providerId,
+    )?.composerActions,
     resolveMentionLink,
   });
   const runtimeDisplayStatus = thread.runtime.displayStatus;
@@ -1313,7 +1331,10 @@ export function ThreadDetailPromptArea({
   ]);
   const bottomExecutionConfig = useMemo(
     () => ({
-      providerRouting: executionOptionsRouting,
+      providerRouting:
+        thread.environmentId === null
+          ? executionOptionsRouting
+          : { environmentId: thread.environmentId },
       provider: {
         options: providerOptions,
         selectedId: selectedProviderId,
@@ -1372,6 +1393,7 @@ export function ThreadDetailPromptArea({
       setServiceTier,
       supportsServiceTier,
       serviceTierFastLabel,
+      thread.environmentId,
       thread.providerId,
     ],
   );
@@ -1381,8 +1403,11 @@ export function ThreadDetailPromptArea({
       provider: { onChange: _onProviderChange, ...lockedProvider },
       ...lockedExecution
     } = bottomExecutionConfig;
-    return { ...lockedExecution, provider: lockedProvider };
-  }, [bottomExecutionConfig]);
+    return {
+      ...lockedExecution,
+      provider: { ...lockedProvider, selectedId: thread.providerId },
+    };
+  }, [bottomExecutionConfig, thread.providerId]);
   const inlineExecutionConfig = useMemo(() => {
     if (!inlineEditingQueuedMessage) return null;
     return {
@@ -1564,13 +1589,13 @@ export function ThreadDetailPromptArea({
         onSelectHistoryEntry: setActiveComposerDraft,
         permission: inlinePermissionConfig,
         pluginComposerHost: queuedMessagePluginComposerHost,
-        promptActions,
+        promptActions: inlinePromptActions,
         promptPlaceholder,
         submit: handleInlineComposerSubmit,
         submitMode: { kind: "ready" },
         textEffects: queuedComposerTextEffects,
         threadRuntimeDisplayStatus: runtimeDisplayStatus,
-        typeahead: typeaheadConfig,
+        typeahead: inlineTypeaheadConfig,
         collapseResetKey: `queued-message:${queuedMessageId}`,
       }),
     };
@@ -1591,7 +1616,7 @@ export function ThreadDetailPromptArea({
     isAttachingInlineFiles,
     isUpdateQueuedMessagePending,
     projectId,
-    promptActions,
+    inlinePromptActions,
     promptPlaceholder,
     queuedComposerTextEffects,
     queuedMessagePluginComposerHost,
@@ -1599,7 +1624,7 @@ export function ThreadDetailPromptArea({
     runtimeDisplayStatus,
     setActiveComposerDraft,
     thread.id,
-    typeaheadConfig,
+    inlineTypeaheadConfig,
   ]);
   usePublishPluginComposerHost(
     queuedMessageEditor
@@ -1682,7 +1707,7 @@ export function ThreadDetailPromptArea({
             sentMessageEdit.updateDraft(() => nextDraft),
           permission: bottomPermissionConfig,
           pluginComposerHost: sentMessagePluginComposerHost,
-          promptActions,
+          promptActions: inlinePromptActions,
           promptPlaceholder: "Edit message",
           submit: handleSentMessageEditSubmit,
           submitMode: sentMessageEditSubmitMode,
@@ -1690,7 +1715,7 @@ export function ThreadDetailPromptArea({
           suppressPluginComposerCustomizations: true,
           textEffects: sentMessageComposerTextEffects,
           threadRuntimeDisplayStatus: runtimeDisplayStatus,
-          typeahead: typeaheadConfig,
+          typeahead: inlineTypeaheadConfig,
           collapseResetKey: `sent-message:${operationId}`,
         })}
       </InlineMessageEditorFrame>,
@@ -1705,7 +1730,7 @@ export function ThreadDetailPromptArea({
     handleSentMessageEditSubmit,
     isAttachingSentMessageFiles,
     projectId,
-    promptActions,
+    inlinePromptActions,
     runtimeDisplayStatus,
     sentMessageAttachmentError,
     sentMessageComposerTextEffects,
@@ -1713,7 +1738,7 @@ export function ThreadDetailPromptArea({
     sentMessageEditSubmitMode,
     sentMessagePluginComposerHost,
     thread.id,
-    typeaheadConfig,
+    inlineTypeaheadConfig,
   ]);
   const childPendingInteractionBanners = useMemo(
     () =>
@@ -1903,7 +1928,7 @@ export function ThreadDetailPromptArea({
       attachments={bottomAttachmentsConfig}
       stack={pendingInteractionNode ? pendingInteractionStack : promptStack}
       pendingInteraction={pendingInteractionNode}
-      activePromptMode={activePromptMode}
+      activePromptMode={isHandoffSelection ? null : activePromptMode}
       composer={shouldHideComposer ? null : bottomComposerConfig}
       pluginComposerHost={normalPluginComposerHost}
       pluginComposerScope={normalPluginComposerHost.scope}

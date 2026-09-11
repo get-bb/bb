@@ -728,6 +728,96 @@ describe("ModelReasoningPicker", () => {
     expect(trigger.getAttribute("aria-expanded")).toBe("false");
   });
 
+  it.each([
+    ["modelPicker.cycleModel", "claude-sonnet-4-6"],
+    ["modelPicker.cycleModelBackward", "claude-haiku-4-5"],
+  ])(
+    "%s selects from the handoff provider without changing the source",
+    async (command, expectedModel) => {
+      const onSelect = vi.fn();
+      const { onModelChange, onReasoningChange, onSelectedProviderChange } =
+        renderPicker({
+          handoff: { sourceProviderId: "codex", onSelect },
+          providerRouting: { environmentId: "env-source" },
+          alternateProviderModels: [
+            availableModel({
+              value: "claude-opus-4-7",
+              label: "Claude Opus 4.7",
+              isDefault: true,
+            }),
+            availableModel({
+              value: "claude-sonnet-4-6",
+              label: "Claude Sonnet 4.6",
+            }),
+            availableModel({
+              value: "claude-haiku-4-5",
+              label: "Claude Haiku 4.5",
+            }),
+          ],
+        });
+      fireEvent.click(
+        screen.getByRole("button", { name: "Provider, model and reasoning" }),
+      );
+      fireEvent.click(
+        screen.getByRole("button", { name: "Handoff to new thread" }),
+      );
+      await screen.findByText("Opus 4.7");
+      act(() => {
+        commandHandlers.get(command)?.({ target: document.body });
+      });
+      expect(onSelect).toHaveBeenCalledExactlyOnceWith({
+        providerId: "claude-code",
+        model: expectedModel,
+        reasoningLevel: "medium",
+      });
+      expect(onModelChange).not.toHaveBeenCalled();
+      expect(onReasoningChange).not.toHaveBeenCalled();
+      expect(onSelectedProviderChange).not.toHaveBeenCalled();
+    },
+  );
+
+  it.each(["modelPicker.cycleReasoning", "modelPicker.cycleReasoningBackward"])(
+    "%s keeps the handoff preview and applies its reasoning to selection",
+    async (command) => {
+      const onSelect = vi.fn();
+      const { onModelChange, onReasoningChange } = renderPicker({
+        handoff: { sourceProviderId: "codex", onSelect },
+        alternateProviderModels: [
+          {
+            ...availableModel({
+              value: "claude-opus-4-7",
+              label: "Claude Opus 4.7",
+              isDefault: true,
+            }),
+            supportedReasoningEfforts: [
+              { reasoningEffort: "medium", description: "Medium" },
+              { reasoningEffort: "high", description: "High" },
+            ],
+          },
+        ],
+      });
+      fireEvent.click(
+        screen.getByRole("button", { name: "Provider, model and reasoning" }),
+      );
+      fireEvent.click(
+        screen.getByRole("button", { name: "Handoff to new thread" }),
+      );
+      await screen.findByText("Opus 4.7");
+      act(() => {
+        commandHandlers.get(command)?.({ target: document.body });
+      });
+      expect(screen.getByTitle("Codex (current thread)")).not.toBeNull();
+      fireEvent.click(screen.getByText("Opus 4.7"));
+      expect(onSelect).toHaveBeenCalledExactlyOnceWith({
+        providerId: "claude-code",
+        model: "claude-opus-4-7",
+        reasoningLevel: "high",
+      });
+      expect(onModelChange).not.toHaveBeenCalled();
+      expect(onReasoningChange).not.toHaveBeenCalled();
+    },
+  );
+
   it("returns to the thread's provider from the current-thread tab", () => {
     const onSelect = vi.fn();
     const { onSelectedProviderChange } = renderPicker({
