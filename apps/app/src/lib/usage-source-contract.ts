@@ -41,47 +41,55 @@ const usageSchema = z.discriminatedUnion("status", [
     message: z.string(),
   }),
 ]);
-export const usageSnapshotSchema = z.object({
+export const usageResourceSchema = z.object({
+  id: z
+    .string()
+    .min(1)
+    .describe("Stable resource ID within this source plugin."),
+  providerId: z.string().min(1),
+  label: z.string().min(1),
+  scope: z.discriminatedUnion("kind", [
+    z.object({ kind: z.literal("shared") }),
+    z.object({
+      kind: z.literal("host"),
+      hostId: z.string().min(1),
+      hostName: z.string().min(1),
+    }),
+  ]),
+});
+export const usageResourceListSchema = z.object({
   label: z
     .string()
     .min(1)
     .optional()
     .describe(
-      "Declares a shared-usage group, including when resources is empty. Omit for host-only sources. Shared resources without this label use the plugin display name; host groups use machine names.",
+      "Declares a shared group even when empty. Host-only sources omit it; machine groups use host names.",
     ),
-  resources: z.array(
-    z.object({
-      id: z
-        .string()
-        .min(1)
-        .describe("Stable resource ID within the reporting plugin."),
-      providerId: z.string().min(1),
-      label: z.string().min(1),
-      scope: z.discriminatedUnion("kind", [
-        z.object({ kind: z.literal("shared") }),
-        z.object({
-          kind: z.literal("host"),
-          hostId: z.string().min(1),
-          hostName: z.string().min(1),
-        }),
-      ]),
-      observedAt: z
-        .number()
-        .int()
-        .nonnegative()
-        .nullable()
-        .describe(
-          "Measurement time in epoch milliseconds; null if never observed.",
-        ),
-      usage: usageSchema,
-    }),
-  ),
+  resources: z.array(usageResourceSchema),
 });
-export type UsageSnapshot = z.infer<typeof usageSnapshotSchema>;
-export const usageInputSchema = z.object({
+export const usageMeasurementSchema = z.object({
+  observedAt: z
+    .number()
+    .int()
+    .nonnegative()
+    .nullable()
+    .describe(
+      "Last successful measurement time in epoch milliseconds; null if never observed.",
+    ),
+  usage: usageSchema,
+});
+export const usageListInputSchema = z.object({});
+export const usageFetchInputSchema = z.object({
+  resourceId: z.string().min(1),
   refresh: z
     .boolean()
     .describe(
-      "Request fresh collection and wait for the attempt; false permits cached observations.",
+      "False permits a cached measurement but still returns actual usage. True requests a fresh collection attempt for this resource only.",
     ),
 });
+export type UsageResourceList = z.infer<typeof usageResourceListSchema>;
+export type UsageMeasurement = z.infer<typeof usageMeasurementSchema>;
+export type UsageResource = z.infer<typeof usageResourceSchema> &
+  UsageMeasurement;
+export const usageListMethod = "provider-usage.v1.listResources";
+export const usageFetchMethod = "provider-usage.v1.getResource";

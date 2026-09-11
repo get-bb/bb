@@ -41,9 +41,9 @@ it("selects pooled or machine usage without mixing sources, preserves cards, and
     { pluginId: "local", displayName: "Codex provider" },
     { pluginId: "broken", displayName: "Unavailable provider" },
   ]);
-  calls.rpc.mockImplementation(async ({ pluginId }) => {
+  calls.rpc.mockImplementation(async ({ pluginId, method }) => {
     if (pluginId === "broken") throw new Error("Unavailable");
-    return {
+    const snapshot = {
       ...(pluginId === "pool" ? { label: "Account Pooler" } : {}),
       resources: [
         {
@@ -73,6 +73,12 @@ it("selects pooled or machine usage without mixing sources, preserves cards, and
         },
       ],
     };
+    return method.endsWith("listResources")
+      ? snapshot
+      : {
+          observedAt: snapshot.resources[0]!.observedAt,
+          usage: snapshot.resources[0]!.usage,
+        };
   });
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false } },
@@ -108,9 +114,9 @@ it("selects pooled or machine usage without mixing sources, preserves cards, and
     await waitFor(() =>
       expect(calls.rpc).toHaveBeenCalledWith(
         expect.objectContaining({
-          pluginId: "pool",
-          method: "provider-usage.v1.get",
-          input: { refresh: true },
+          pluginId: "local",
+          method: "provider-usage.v1.getResource",
+          input: { resourceId: "same-local-id", refresh: true },
         }),
       ),
     );
@@ -192,7 +198,14 @@ it("keeps successful measurements visible after a failed refresh and recovers", 
       },
     ],
   };
-  calls.rpc.mockResolvedValue(snapshot);
+  calls.rpc.mockImplementation(async ({ method }) =>
+    method.endsWith("listResources")
+      ? snapshot
+      : {
+          observedAt: snapshot.resources[0]!.observedAt,
+          usage: snapshot.resources[0]!.usage,
+        },
+  );
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false } },
   });
@@ -210,11 +223,80 @@ it("keeps successful measurements visible after a failed refresh and recovers", 
     expect(await screen.findByText(/Showing the last update/)).toBeTruthy();
     expect(screen.getByText("42% used")).toBeTruthy();
     expect(screen.queryByText(/Unexpected token/)).toBeNull();
-    calls.rpc.mockResolvedValue(snapshot);
+    calls.rpc.mockImplementation(async ({ method }) =>
+      method.endsWith("listResources")
+        ? snapshot
+        : {
+            observedAt: snapshot.resources[0]!.observedAt,
+            usage: snapshot.resources[0]!.usage,
+          },
+    );
     fireEvent.click(screen.getByLabelText("Reload usage data"));
     await waitFor(() =>
       expect(screen.queryByText(/Showing the last update/)).toBeNull(),
     );
+  } finally {
+    client.clear();
+  }
+});
+
+it("waits for the default shared inventory before fetching a fallback machine", async () => {
+  let release!: (value: { label: string; resources: never[] }) => void;
+  const pool = new Promise<{ label: string; resources: never[] }>((resolve) => {
+    release = resolve;
+  });
+  calls.discover.mockResolvedValue([
+    { pluginId: "pool", displayName: "Pool" },
+    { pluginId: "local", displayName: "Local" },
+  ]);
+  calls.rpc.mockImplementation(async ({ pluginId, method }) => {
+    if (!method.endsWith("listResources"))
+      throw new Error("Should not collect any quota for an empty pool");
+    return pluginId === "pool"
+      ? pool
+      : {
+          resources: [
+            {
+              id: "host-a",
+              providerId: "codex",
+              label: "Codex",
+              scope: {
+                kind: "host",
+                hostId: "host-a",
+                hostName: "Build machine",
+              },
+            },
+          ],
+        };
+  });
+  const client = new QueryClient({
+    defaultOptions: { queries: { retry: false } },
+  });
+  try {
+    render(
+      <QueryClientProvider client={client}>
+        <TooltipProvider>
+          <UsageLimitsSettingsSection />
+        </TooltipProvider>
+      </QueryClientProvider>,
+    );
+    await waitFor(() =>
+      expect(calls.rpc).toHaveBeenCalledWith(
+        expect.objectContaining({
+          pluginId: "local",
+          method: "provider-usage.v1.listResources",
+        }),
+      ),
+    );
+    release({ label: "Pool", resources: [] });
+    expect(
+      await screen.findByText(/No accounts report usage yet/),
+    ).toBeTruthy();
+    expect(
+      calls.rpc.mock.calls.every(([args]) =>
+        args.method.endsWith("listResources"),
+      ),
+    ).toBe(true);
   } finally {
     client.clear();
   }

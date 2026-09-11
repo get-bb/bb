@@ -9,16 +9,18 @@ import {
 } from "./usage-schema.js";
 
 import {
-  usageSourceMethod,
+  usageListMethod,
+  usageFetchMethod,
+  type UsageResourceList,
+  type UsageMeasurement,
   usageSourceRpcContract,
-  type UsageSnapshot as SourceSnapshot,
+  type UsageResource as Resource,
 } from "./usage-source-contract.js";
 
-type Resource = SourceSnapshot["resources"][number];
 interface SourceResult {
   pluginId: string;
   label: string | null;
-  resources: Resource[];
+  resources: UsageResourceList["resources"];
   error: string | null;
 }
 
@@ -30,31 +32,19 @@ export const providerUsageRpcContract = defineRpcContract({
     input: z.strictObject({
       force: z.boolean(),
       machineIds: z.nullable(z.array(z.string().check(z.minLength(1)))),
+      providerId: z.nullable(z.string()),
       maxAgeMs: z.number().check(z.int(), z.nonnegative()),
     }),
     output: usageSnapshotSchema,
   },
 });
 
-const DIRTY_CACHE_MAX_AGE_MS = 2 * 60_000;
-
 interface UsageRequest {
   force: boolean;
   machineIds: string[] | null;
   maxAgeMs: number;
+  providerId: string | null;
 }
-
-interface MachineCacheEntry {
-  dirty: boolean;
-  loadedAt: number;
-  machine: UsageMachine;
-}
-
-interface PendingMachineUsage {
-  force: boolean;
-  promise: Promise<UsageMachine>;
-}
-
 function normalizedTint(
   tint: { light: string; dark: string } | undefined,
 ): { light: string; dark: string } | null {
@@ -132,7 +122,8 @@ function normalizedProvider(
 }
 
 function resourceProvider(
-  resource: Resource,
+  resource: UsageResourceList["resources"][number],
+  measurement: UsageMeasurement | undefined,
   pluginId: string,
   providers: Provider[],
 ): UsageProvider {
@@ -146,7 +137,7 @@ function resourceProvider(
         displayName: resource.providerId,
         logoUrl: null,
       },
-      resource.usage,
+      measurement?.usage,
     ),
     ...(resource.scope.kind === "shared"
       ? {
@@ -158,297 +149,189 @@ function resourceProvider(
       : {}),
     id: `${pluginId}:${resource.id}`,
     accountLabel:
-      resource.scope.kind === "shared" ? resource.usage.accountEmail : null,
-  };
-}
-
-async function loadMachineUsage(
-  bb: BbPluginApi,
-  host: Host,
-  readSources: () => Promise<SourceResult[]>,
-): Promise<UsageMachine> {
-  const [metadata, sources] = await Promise.allSettled([
-    bb.sdk.providers.list({ hostId: host.id, capability: "usage" }),
-    host.status === "disconnected" ? Promise.resolve([]) : readSources(),
-  ]);
-  const providers = metadata.status === "fulfilled" ? metadata.value : [];
-  const results = sources.status === "fulfilled" ? sources.value : [];
-  const providerOrder = new Map(
-    providers.map((provider, index) => [provider.id, index]),
-  );
-  const resources = results
-    .flatMap((source) =>
-      source.resources
-        .filter(
-          (resource) =>
-            resource.scope.kind === "host" && resource.scope.hostId === host.id,
-        )
-        .map((resource) => ({ pluginId: source.pluginId, resource })),
-    )
-    .sort(
-      (left, right) =>
-        (providerOrder.get(left.resource.providerId) ?? providers.length) -
-        (providerOrder.get(right.resource.providerId) ?? providers.length),
-    )
-    .map(({ pluginId, resource }) =>
-      resourceProvider(resource, pluginId, providers),
-    );
-  return {
-    id: host.id,
-    displayName: host.name,
-    status: host.status,
-    providers:
-      host.status === "disconnected"
-        ? providers.map((provider) => normalizedProvider(provider, undefined))
-        : resources,
-    error:
-      sources.status === "rejected"
-        ? "Usage sources could not be discovered."
-        : results.some(
-              (source) =>
-                source.error !== null &&
-                (source.resources.length === 0 ||
-                  source.resources.some(
-                    (resource) =>
-                      resource.scope.kind === "host" &&
-                      resource.scope.hostId === host.id,
-                  )),
-            )
-          ? "Some usage could not be refreshed."
-          : null,
+      resource.scope.kind === "shared"
+        ? (measurement?.usage.accountEmail ?? resource.label)
+        : null,
   };
 }
 
 export default function providerUsagePlugin(bb: BbPluginApi): void {
-  const cache = new Map<string, MachineCacheEntry>();
-  const pendingByMachine = new Map<string, PendingMachineUsage>();
-  let sourceResults: SourceResult[] = [];
-  let sourceLoadedAt = 0;
-  let sourceSignature = "";
-  let sharedDirty = false;
-  const environmentHosts = new Map<string, string | null>();
-
-  const readMachine = async (
-    host: Host,
-    request: UsageRequest,
-    targeted: boolean,
-    readSources: () => Promise<SourceResult[]>,
-  ): Promise<UsageMachine> => {
-    const cached = cache.get(host.id);
-    const effectiveMaxAgeMs =
-      cached?.dirty === true
-        ? Math.min(request.maxAgeMs, DIRTY_CACHE_MAX_AGE_MS)
-        : request.maxAgeMs;
-    const hostChanged =
-      cached !== undefined &&
-      (cached.machine.status !== host.status ||
-        cached.machine.displayName !== host.name);
-    if (
-      cached !== undefined &&
-      (!targeted ||
-        (!request.force &&
-          !hostChanged &&
-          Date.now() - cached.loadedAt < effectiveMaxAgeMs))
-    ) {
-      cached.machine = {
-        ...cached.machine,
-        displayName: host.name,
-        status: host.status,
-      };
-      return cached.machine;
+  const inventories = new Map<string, SourceResult>();
+  const measurements = new Map<
+    string,
+    { value: UsageMeasurement; loadedAt: number }
+  >();
+  const failures = new Set<string>();
+  const pending = new Map<
+    string,
+    { force: boolean; promise: Promise<UsageMeasurement> }
+  >();
+  const keyOf = (pluginId: string, resourceId: string) =>
+    JSON.stringify([pluginId, resourceId]);
+  const fetchResource = async (
+    pluginId: string,
+    resourceId: string,
+    force: boolean,
+  ): Promise<UsageMeasurement> => {
+    const key = keyOf(pluginId, resourceId);
+    const running = pending.get(key);
+    if (running) {
+      if (!force || running.force) return running.promise;
+      await running.promise.catch(() => undefined);
+      return fetchResource(pluginId, resourceId, force);
     }
-    const pending = pendingByMachine.get(host.id);
-    if (pending !== undefined) {
-      if (!request.force || pending.force) return pending.promise;
-      await pending.promise;
-      return readMachine(host, request, targeted, readSources);
-    }
-    const next = loadMachineUsage(bb, host, readSources)
-      .then((machine) => {
-        cache.set(host.id, {
-          dirty: false,
-          loadedAt: Date.now(),
-          machine,
-        });
-        return machine;
+    const promise = bb.sdk.plugins
+      .callRpc({
+        pluginId,
+        method: usageFetchMethod,
+        input: { resourceId, refresh: force },
+        outputSchema: usageSourceRpcContract[usageFetchMethod].output,
+        signal: AbortSignal.timeout(45_000),
       })
-      .finally(() => {
-        pendingByMachine.delete(host.id);
-      });
-    pendingByMachine.set(host.id, { force: request.force, promise: next });
-    return next;
+      .then((value) => {
+        measurements.set(key, { value, loadedAt: Date.now() });
+        failures.delete(key);
+        return value;
+      })
+      .finally(() => pending.delete(key));
+    pending.set(key, { force, promise });
+    return promise;
   };
-
   const readUsage = async (request: UsageRequest): Promise<UsageSnapshot> => {
-    const [hosts, sources] = await Promise.all([
+    const [hosts, sources, providers] = await Promise.all([
       bb.sdk.hosts.list(),
-      bb.sdk.plugins.experimental_discoverRpc({ method: usageSourceMethod }),
+      bb.sdk.plugins.experimental_discoverRpc({ method: usageListMethod }),
+      bb.sdk.providers.list({ capability: "usage" }).catch(() => []),
     ]);
-    const signature = JSON.stringify(sources);
-    if (signature !== sourceSignature) {
-      cache.clear();
-      sourceResults = [];
-      sourceLoadedAt = 0;
-      sourceSignature = signature;
+    for (const id of inventories.keys())
+      if (!sources.some((source) => source.pluginId === id))
+        inventories.delete(id);
+    for (let offset = 0; offset < sources.length; offset += 3) {
+      await Promise.all(
+        sources.slice(offset, offset + 3).map(async (source) => {
+          try {
+            const inventory = await bb.sdk.plugins.callRpc({
+              pluginId: source.pluginId,
+              method: usageListMethod,
+              input: {},
+              outputSchema: usageSourceRpcContract[usageListMethod].output,
+              signal: AbortSignal.timeout(45_000),
+            });
+            inventories.set(source.pluginId, {
+              pluginId: source.pluginId,
+              label: inventory.label ?? null,
+              resources: inventory.resources,
+              error: null,
+            });
+          } catch {
+            const previous = inventories.get(source.pluginId);
+            inventories.set(source.pluginId, {
+              pluginId: source.pluginId,
+              label: previous?.label ?? null,
+              resources: previous?.resources ?? [],
+              error: "Usage resources could not be listed.",
+            });
+          }
+        }),
+      );
     }
-    let pendingSources: Promise<SourceResult[]> | undefined;
-    const readSources = () =>
-      (pendingSources ??= (async () => {
-        const results: SourceResult[] = [];
-        for (let offset = 0; offset < sources.length; offset += 3) {
-          results.push(
-            ...(await Promise.all(
-              sources
-                .slice(offset, offset + 3)
-                .map(async (source): Promise<SourceResult> => {
-                  try {
-                    const snapshot = await bb.sdk.plugins.callRpc({
-                      pluginId: source.pluginId,
-                      method: usageSourceMethod,
-                      input: { refresh: request.force },
-                      outputSchema:
-                        usageSourceRpcContract[usageSourceMethod].output,
-                      signal: AbortSignal.timeout(45_000),
-                    });
-                    return {
-                      pluginId: source.pluginId,
-                      label: snapshot.label ?? null,
-                      resources: snapshot.resources,
-                      error: null,
-                    };
-                  } catch {
-                    return {
-                      pluginId: source.pluginId,
-                      label:
-                        sourceResults.find(
-                          (entry) => entry.pluginId === source.pluginId,
-                        )?.label ?? null,
-                      resources:
-                        sourceResults.find(
-                          (entry) => entry.pluginId === source.pluginId,
-                        )?.resources ?? [],
-                      error:
-                        "Usage could not be loaded from " +
-                        (source.displayName ?? source.pluginId) +
-                        ".",
-                    };
-                  }
-                }),
-            )),
-          );
-        }
-        sourceResults = results;
-        sourceLoadedAt = Date.now();
-        sharedDirty = false;
-        return results;
-      })());
-    const hostIds = new Set(hosts.map((host) => host.id));
-    for (const machineId of cache.keys()) {
-      if (!hostIds.has(machineId)) cache.delete(machineId);
-    }
-    const targetedIds =
-      request.machineIds === null ? null : new Set(request.machineIds);
-    await Promise.all(
-      hosts.map((host) =>
-        readMachine(
-          host,
-          request,
-          targetedIds === null ||
-            targetedIds.has(host.id) ||
-            !cache.has(host.id),
-          readSources,
-        ),
+    const keys = new Set(
+      [...inventories.values()].flatMap((source) =>
+        source.resources.map((resource) => keyOf(source.pluginId, resource.id)),
       ),
     );
-    const sharedTargeted =
-      request.machineIds === null ||
-      request.machineIds.some((id) => id.startsWith("source:"));
-    if (
-      sourceLoadedAt === 0 ||
-      (sharedTargeted &&
-        (request.force ||
-          Date.now() - sourceLoadedAt >=
-            (sharedDirty
-              ? Math.min(request.maxAgeMs, DIRTY_CACHE_MAX_AGE_MS)
-              : request.maxAgeMs)))
-    ) {
-      await readSources();
-    }
-    const machines: UsageMachine[] = [];
-    for (const host of hosts) {
-      const entry = cache.get(host.id);
-      if (entry === undefined) {
-        throw new Error("Provider usage cache is missing " + host.name + ".");
+    for (const key of measurements.keys())
+      if (!keys.has(key)) {
+        measurements.delete(key);
+        failures.delete(key);
       }
-      machines.push(entry.machine);
-    }
-    const sharedProviders = sourceResults.some((source) =>
-      source.resources.some((resource) => resource.scope.kind === "shared"),
-    )
-      ? await bb.sdk.providers.list({ capability: "usage" }).catch(() => [])
-      : [];
-    for (const source of sourceResults) {
-      const shared = source.resources.filter(
-        (resource) => resource.scope.kind === "shared",
+    const selected = [...inventories.values()].flatMap((source) =>
+      source.resources
+        .filter((resource) => {
+          const machineId =
+            resource.scope.kind === "shared"
+              ? `source:${source.pluginId}`
+              : resource.scope.hostId;
+          return (
+            request.providerId !== null &&
+            resource.providerId === request.providerId &&
+            (request.machineIds === null ||
+              request.machineIds.includes(machineId)) &&
+            (resource.scope.kind === "shared" ||
+              hosts.some(
+                (host) =>
+                  resource.scope.kind === "host" &&
+                  host.id === resource.scope.hostId &&
+                  host.status === "connected",
+              ))
+          );
+        })
+        .map((resource) => ({ source, resource })),
+    );
+    for (let offset = 0; offset < selected.length; offset += 3) {
+      await Promise.all(
+        selected.slice(offset, offset + 3).map(async ({ source, resource }) => {
+          const key = keyOf(source.pluginId, resource.id);
+          const cached = measurements.get(key);
+          if (
+            !request.force &&
+            cached &&
+            Date.now() - cached.loadedAt < request.maxAgeMs
+          )
+            return;
+          try {
+            await fetchResource(source.pluginId, resource.id, request.force);
+          } catch {
+            failures.add(key);
+          }
+        }),
       );
-      if (
-        shared.length === 0 &&
-        source.label === null &&
-        (source.resources.length > 0 || source.error === null)
-      )
-        continue;
-      machines.push({
-        id: `source:${source.pluginId}`,
-        displayName:
-          source.label ??
-          sources.find((entry) => entry.pluginId === source.pluginId)
-            ?.displayName ??
-          source.pluginId,
-        status: "connected",
-        providers: shared.map((resource) =>
-          resourceProvider(resource, source.pluginId, sharedProviders),
-        ),
-        error: source.error,
-      });
+    }
+    const machines: UsageMachine[] = hosts.map((host) => ({
+      id: host.id,
+      displayName: host.name,
+      status: host.status,
+      providers: [],
+      error: null,
+    }));
+    for (const source of inventories.values()) {
+      const hasShared =
+        source.label !== null ||
+        source.resources.some((resource) => resource.scope.kind === "shared");
+      if (hasShared || (source.error !== null && source.resources.length === 0))
+        machines.push({
+          id: `source:${source.pluginId}`,
+          displayName:
+            source.label ??
+            sources.find((item) => item.pluginId === source.pluginId)
+              ?.displayName ??
+            source.pluginId,
+          status: "connected",
+          providers: [],
+          error: source.error,
+        });
+      for (const resource of source.resources) {
+        const machineId =
+          resource.scope.kind === "shared"
+            ? `source:${source.pluginId}`
+            : resource.scope.hostId;
+        const machine = machines.find((machine) => machine.id === machineId);
+        if (!machine) continue;
+        const key = keyOf(source.pluginId, resource.id);
+        const cached = measurements.get(key);
+        machine.providers.push(
+          resourceProvider(resource, cached?.value, source.pluginId, providers),
+        );
+        if (source.error !== null || failures.has(key))
+          machine.error = "Some usage could not be refreshed.";
+      }
     }
     return { machines };
   };
-
-  const markDirty = (machineId: string | null): void => {
-    sharedDirty = true;
-    if (machineId === null) {
-      for (const entry of cache.values()) entry.dirty = true;
-    } else {
-      const entry = cache.get(machineId);
-      if (entry !== undefined) entry.dirty = true;
-    }
+  bb.rpc.register(providerUsageRpcContract, { getUsage: readUsage });
+  const markDirty = () => {
+    for (const value of measurements.values()) value.loadedAt = 0;
   };
-
-  const markDirtyForThread = async (environmentId: string | null) => {
-    if (environmentId === null) {
-      markDirty(null);
-      return;
-    }
-    let hostId = environmentHosts.get(environmentId);
-    if (hostId === undefined) {
-      try {
-        const environment = await bb.sdk.environments.get({ environmentId });
-        hostId = environment.hostId;
-      } catch {
-        hostId = null;
-      }
-      environmentHosts.set(environmentId, hostId);
-    }
-    markDirty(hostId);
-  };
-
-  bb.rpc.register(providerUsageRpcContract, {
-    getUsage: readUsage,
-  });
-  bb.events.on("thread.idle", ({ thread }) =>
-    markDirtyForThread(thread.environmentId),
-  );
-  bb.events.on("thread.failed", ({ thread }) =>
-    markDirtyForThread(thread.environmentId),
-  );
+  bb.events.on("thread.idle", markDirty);
+  bb.events.on("thread.failed", markDirty);
 }

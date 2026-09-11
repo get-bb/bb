@@ -1,16 +1,23 @@
 import { useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
 import { sdk } from "@/lib/sdk";
-import { usageSnapshotSchema } from "@/lib/usage-source-contract";
+import {
+  usageListMethod,
+  usageFetchMethod,
+  usageResourceListSchema,
+  usageMeasurementSchema,
+} from "@/lib/usage-source-contract";
 
-const method = "provider-usage.v1.get";
-const discoveryKey = ["pluginRpcDiscovery", method] as const;
+const discoveryKey = ["pluginRpcDiscovery", usageListMethod] as const;
 const sourceKey = (pluginId: string) =>
-  ["pluginUsageSource", pluginId, method] as const;
+  ["pluginUsageInventory", pluginId] as const;
+const resourceKey = (pluginId: string, resourceId: string) =>
+  ["pluginUsageMeasurement", pluginId, resourceId] as const;
 let active = 0;
 const waiting: Array<() => void> = [];
 
-async function loadSource(
+async function loadResource(
   pluginId: string,
+  resourceId: string,
   refresh: boolean,
   signal: AbortSignal,
 ) {
@@ -20,9 +27,9 @@ async function loadSource(
     signal.throwIfAborted();
     return await sdk.plugins.callRpc({
       pluginId,
-      method,
-      input: { refresh },
-      outputSchema: usageSnapshotSchema,
+      method: usageFetchMethod,
+      input: { resourceId, refresh },
+      outputSchema: usageMeasurementSchema,
       signal: AbortSignal.any([signal, AbortSignal.timeout(45_000)]),
     });
   } finally {
@@ -33,10 +40,10 @@ async function loadSource(
 }
 
 export function useUsageSources() {
-  const client = useQueryClient();
   const discovery = useQuery({
     queryKey: discoveryKey,
-    queryFn: () => sdk.plugins.experimental_discoverRpc({ method }),
+    queryFn: () =>
+      sdk.plugins.experimental_discoverRpc({ method: usageListMethod }),
     staleTime: 10_000,
     refetchInterval: 30_000,
   });
@@ -45,8 +52,15 @@ export function useUsageSources() {
     queries: sources.map((source) => ({
       queryKey: sourceKey(source.pluginId),
       queryFn: ({ signal }: { signal: AbortSignal }) =>
-        loadSource(source.pluginId, false, signal),
+        sdk.plugins.callRpc({
+          pluginId: source.pluginId,
+          method: usageListMethod,
+          input: {},
+          outputSchema: usageResourceListSchema,
+          signal: AbortSignal.any([signal, AbortSignal.timeout(45_000)]),
+        }),
       staleTime: 30_000,
+      refetchInterval: 30_000,
       retry: false,
     })),
   });
@@ -59,12 +73,35 @@ export function useUsageSources() {
     isFetching:
       discovery.isFetching || queries.some((query) => query.isFetching),
     async refresh() {
-      const result = await discovery.refetch();
+      await discovery.refetch();
+      await Promise.allSettled(queries.map((query) => query.refetch()));
+    },
+  };
+}
+
+export function useUsageMeasurements(
+  resources: Array<{ pluginId: string; resourceId: string }>,
+) {
+  const client = useQueryClient();
+  const queries = useQueries({
+    queries: resources.map(({ pluginId, resourceId }) => ({
+      queryKey: resourceKey(pluginId, resourceId),
+      queryFn: ({ signal }: { signal: AbortSignal }) =>
+        loadResource(pluginId, resourceId, false, signal),
+      staleTime: 30_000,
+      retry: false,
+    })),
+  });
+  return {
+    queries,
+    isFetching: queries.some((query) => query.isFetching),
+    async refresh() {
       await Promise.allSettled(
-        (result.data ?? []).map((source) =>
+        resources.map(({ pluginId, resourceId }) =>
           client.fetchQuery({
-            queryKey: sourceKey(source.pluginId),
-            queryFn: ({ signal }) => loadSource(source.pluginId, true, signal),
+            queryKey: resourceKey(pluginId, resourceId),
+            queryFn: ({ signal }) =>
+              loadResource(pluginId, resourceId, true, signal),
             staleTime: 0,
           }),
         ),

@@ -1,5 +1,11 @@
-import { useUsageSources } from "@/hooks/queries/usage-source-queries";
-import type { UsageSnapshot } from "@/lib/usage-source-contract";
+import {
+  useUsageSources,
+  useUsageMeasurements,
+} from "@/hooks/queries/usage-source-queries";
+import type {
+  UsageResourceList,
+  UsageMeasurement,
+} from "@/lib/usage-source-contract";
 import { useId, useState } from "react";
 import type { ProviderInfo } from "@bb/domain";
 import type {
@@ -166,7 +172,9 @@ export interface UsageLimitsSettingsSectionContentProps {
   emptySourceMessage?: string;
   resources?: Array<{
     key: string;
-    resource: UsageSnapshot["resources"][number];
+    isError?: boolean;
+    resource: UsageResourceList["resources"][number] &
+      Partial<UsageMeasurement>;
   }>;
   usage: ProviderUsageResponse;
   isLoading: boolean;
@@ -325,8 +333,7 @@ function ProviderUsageBody({
   if (isError) {
     return (
       <p className="text-xs text-muted-foreground">
-        Couldn&apos;t load usage right now. Make sure the selected machine is
-        connected, then reload usage.
+        Couldn&apos;t load usage right now. Try reloading usage.
       </p>
     );
   }
@@ -467,7 +474,7 @@ export function UsageLimitsSettingsSectionContent({
               <p className="text-xs text-muted-foreground">{emptyMessage}</p>
             )
           ) : (
-            resources.map(({ key, resource }) => {
+            resources.map(({ key, resource, isError: resourceIsError }) => {
               const config = providerConfig(
                 resource.providerId,
                 providerById.get(resource.providerId),
@@ -479,7 +486,7 @@ export function UsageLimitsSettingsSectionContent({
                     resource.scope.kind === "shared"
                       ? {
                           ...config,
-                          name: resource.usage.accountEmail ?? config.name,
+                          name: resource.usage?.accountEmail ?? resource.label,
                           signInHint:
                             "Sign in to this account in the source plugin’s settings, then reload usage.",
                           expiredHint:
@@ -488,7 +495,7 @@ export function UsageLimitsSettingsSectionContent({
                       : config
                   }
                   usage={
-                    resource.usage.status === "ok"
+                    resource.usage?.status === "ok"
                       ? {
                           ...resource.usage,
                           windows: resource.usage.windows.map(
@@ -498,8 +505,10 @@ export function UsageLimitsSettingsSectionContent({
                         }
                       : resource.usage
                   }
-                  isLoading={false}
-                  isError={false}
+                  isLoading={isLoading || isFetching}
+                  isError={
+                    resourceIsError === true && resource.usage === undefined
+                  }
                 />
               );
             })
@@ -589,19 +598,18 @@ export function UsageLimitsSettingsSection() {
             resource.scope.hostId === selectedLocation?.id,
         ),
   );
-  const resources = selectedSources
+  const listedResources = selectedSources
     .flatMap(({ source, query }) =>
       (query.data?.resources ?? [])
-        .filter(
-          (resource) =>
-            resource.usage.status !== "not_installed" &&
-            (selectedLocation?.kind === "source"
-              ? resource.scope.kind === "shared"
-              : resource.scope.kind === "host" &&
-                resource.scope.hostId === selectedLocation?.id),
+        .filter((resource) =>
+          selectedLocation?.kind === "source"
+            ? resource.scope.kind === "shared"
+            : resource.scope.kind === "host" &&
+              resource.scope.hostId === selectedLocation?.id,
         )
         .map((resource) => ({
           key: `${source.pluginId}:${resource.id}`,
+          pluginId: source.pluginId,
           resource,
         })),
     )
@@ -612,6 +620,25 @@ export function UsageLimitsSettingsSection() {
       };
       return rank(a.resource.providerId) - rank(b.resource.providerId);
     });
+
+  const measurements = useUsageMeasurements(
+    listedResources
+      .filter(
+        ({ resource }) =>
+          (selectedLocationId !== null ||
+            selectedLocation?.kind === "source" ||
+            usageQuery.sources.every(({ query }) => !query.isPending)) &&
+          (resource.scope.kind === "shared" || !selectedLocation?.disabled),
+      )
+      .map(({ pluginId, resource }) => ({ pluginId, resourceId: resource.id })),
+  );
+  const resources = listedResources
+    .map((entry, index) => ({
+      ...entry,
+      isError: measurements.queries[index]?.isError ?? false,
+      resource: { ...entry.resource, ...measurements.queries[index]?.data },
+    }))
+    .filter(({ resource }) => resource.usage?.status !== "not_installed");
 
   return (
     <UsageLimitsSettingsSectionContent
@@ -633,23 +660,30 @@ export function UsageLimitsSettingsSection() {
                   ({ query }) => query.isError && !query.data,
                 )
               ? "Some usage sources couldn’t be loaded. Try reloading usage."
-              : selectedSources.some(({ query }) => query.isError)
-                ? "Couldn’t refresh usage. Showing the last update. Try reloading usage."
+              : selectedSources.some(({ query }) => query.isError) ||
+                  measurements.queries.some((query) => query.isError)
+                ? measurements.queries.some(
+                    (query) => query.isError && !query.data,
+                  )
+                  ? "Some usage couldn’t be loaded. Try reloading usage."
+                  : "Couldn’t refresh usage. Showing the last update. Try reloading usage."
                 : null
       }
       isLoading={
         usageQuery.discovery.isPending ||
-        selectedSources.some(({ query }) => query.isPending)
+        selectedSources.some(({ query }) => query.isPending) ||
+        measurements.queries.some((query) => query.isPending)
       }
       isError={
         usageQuery.discovery.isError ||
-        selectedSources.some(({ query }) => query.isError)
+        selectedSources.some(({ query }) => query.isError) ||
+        measurements.queries.some((query) => query.isError)
       }
       isProviderListLoading={providersQuery.isLoading}
       isProviderListError={providersQuery.isError}
-      isFetching={usageQuery.isFetching}
+      isFetching={usageQuery.isFetching || measurements.isFetching}
       onRefresh={() => {
-        void usageQuery.refresh();
+        void usageQuery.refresh().then(() => measurements.refresh());
       }}
       providers={providers}
       locations={locations}
