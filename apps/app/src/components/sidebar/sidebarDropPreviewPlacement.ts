@@ -4,6 +4,7 @@ import {
   buildProjectThreadGroups,
   buildSectionThreadList,
   CHRONOLOGICAL_CONTAINER_ID,
+  getProjectThreadItemDescendants,
   type ProjectThreadItem,
   type ProjectThreadNode,
   type SidebarSectionDefinition,
@@ -44,26 +45,6 @@ export function getSidebarItemKey(item: ProjectThreadItem): string {
 
 export function getSidebarNestParentKey(parentThreadId: string): string {
   return `nest:${parentThreadId}`;
-}
-
-function flattenNodeThreads(
-  items: readonly ProjectThreadItem[],
-  out: ThreadListEntry[] = [],
-): ThreadListEntry[] {
-  for (const item of items) {
-    if (item.kind === "thread") {
-      out.push(item.node.thread);
-      flattenNodeThreads(item.node.children, out);
-    } else if (item.kind === "environment") {
-      for (const node of item.group.nodes) {
-        out.push(node.thread);
-        flattenNodeThreads(node.children, out);
-      }
-    } else {
-      flattenNodeThreads(item.group.items, out);
-    }
-  }
-  return out;
 }
 
 function findThreadNode(
@@ -146,7 +127,7 @@ export function resolveSidebarDropPreviewPlacement({
   if (target.kind === "pinned") {
     const projected = buildPinnedSidebarState({
       draftThreadIds,
-      threads: withPatchedThread(flattenNodeThreads(pinnedItems), {
+      threads: withPatchedThread(getProjectThreadItemDescendants(pinnedItems), {
         ...activeThread,
         parentThreadId: null,
         pinnedAt: Number.MAX_SAFE_INTEGER,
@@ -164,7 +145,7 @@ export function resolveSidebarDropPreviewPlacement({
 
   if (target.kind === "group") {
     const projected = buildProjectThreadGroups(
-      withPatchedThread(flattenNodeThreads(target.items), {
+      withPatchedThread(getProjectThreadItemDescendants(target.items), {
         ...activeThread,
         parentThreadId: null,
       }),
@@ -182,11 +163,14 @@ export function resolveSidebarDropPreviewPlacement({
     if (findThreadNode(pinnedItems, target.parentThreadId)) {
       const projected = buildPinnedSidebarState({
         draftThreadIds,
-        threads: withPatchedThread(flattenNodeThreads(pinnedItems), {
-          ...activeThread,
-          parentThreadId: target.parentThreadId,
-          pinnedAt: null,
-        }),
+        threads: withPatchedThread(
+          getProjectThreadItemDescendants(pinnedItems),
+          {
+            ...activeThread,
+            parentThreadId: target.parentThreadId,
+            pinnedAt: null,
+          },
+        ),
       });
       const parentNode = findThreadNode(
         nodesToItems(projected.rootNodes),

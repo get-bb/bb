@@ -109,21 +109,26 @@ interface SectionThreadDndLookup {
   nestParentIdByItemId: Map<string, string>;
 }
 
-interface SectionThreadDropTarget {
-  activeId: string;
-  fromParentKey: string;
-  toParentKey: string;
-}
-
 export type SectionThreadDropDecision =
-  | { kind: "move"; activeId: string; sectionId: string | null }
-  | { kind: "detach"; activeId: string; sectionId?: string | null }
+  | {
+      kind: "move";
+      activeId: string;
+      sectionId: string | null;
+      toParentKey: string;
+    }
+  | {
+      kind: "detach";
+      activeId: string;
+      sectionId?: string | null;
+      toParentKey: string;
+    }
   | { kind: "pin"; activeId: string; detach: boolean }
   | {
       kind: "unpin";
       activeId: string;
       sectionId: string | null;
       move: boolean;
+      toParentKey: string;
     }
   | { kind: "reorder-pinned"; activeId: string; overId: string }
   | {
@@ -363,26 +368,6 @@ function resolveSectionThreadDropParentKey(
   return parentKey ?? null;
 }
 
-export function resolveSectionThreadDropTarget(
-  lookup: SectionThreadDndLookup,
-  activeId: string,
-  overId: string | null,
-): SectionThreadDropTarget | null {
-  if (overId === null || activeId === overId) return null;
-  const activeKind = lookup.itemKindById.get(activeId);
-  const fromParentKey = lookup.parentKeyByItemId.get(activeId);
-  if (activeKind !== "thread" || !fromParentKey) return null;
-  const toParentKey = resolveSectionThreadDropParentKey(lookup, overId);
-  if (!toParentKey) return null;
-  if (
-    fromParentKey === toParentKey &&
-    !lookup.nestParentIdByItemId.has(activeId)
-  ) {
-    return null;
-  }
-  return { activeId, fromParentKey, toParentKey };
-}
-
 interface ResolveSectionThreadDropDecisionOptions {
   groups?: boolean;
 }
@@ -485,24 +470,31 @@ export function resolveSectionThreadDropDecision(
 
   if (!lookup.sectionIdByParentKey.has(toParentKey)) return null;
   if (options.groups) {
-    if (nested) return { kind: "detach", activeId };
+    if (nested) return { kind: "detach", activeId, toParentKey };
     if (fromPinned) {
-      return { kind: "unpin", activeId, sectionId: null, move: false };
+      return {
+        kind: "unpin",
+        activeId,
+        sectionId: null,
+        move: false,
+        toParentKey,
+      };
     }
     return null;
   }
   const sectionId = lookup.sectionIdByParentKey.get(toParentKey) ?? null;
-  if (nested) return { kind: "detach", activeId, sectionId };
+  if (nested) return { kind: "detach", activeId, sectionId, toParentKey };
   if (fromPinned) {
     return {
       kind: "unpin",
       activeId,
       sectionId,
       move: activeThread.sectionId !== sectionId,
+      toParentKey,
     };
   }
   if (fromParentKey === toParentKey) return null;
-  return { kind: "move", activeId, sectionId };
+  return { kind: "move", activeId, sectionId, toParentKey };
 }
 
 export function resolvePinnedReorderPlacement(
@@ -532,25 +524,6 @@ export function resolveSectionThreadSectionOverId(
       : undefined) ??
     overId
   );
-}
-
-export function resolveProjectedSectionThreadDropTarget(
-  lookup: SectionThreadDndLookup,
-  activeId: string,
-  projectedParentKey: string | null,
-): SectionThreadDropTarget | null {
-  if (projectedParentKey === null) return null;
-  const fromParentKey = lookup.parentKeyByItemId.get(activeId);
-  if (
-    lookup.itemKindById.get(activeId) !== "thread" ||
-    !fromParentKey ||
-    (fromParentKey === projectedParentKey &&
-      !lookup.nestParentIdByItemId.has(activeId)) ||
-    !lookup.sectionIdByParentKey.has(projectedParentKey)
-  ) {
-    return null;
-  }
-  return { activeId, fromParentKey, toParentKey: projectedParentKey };
 }
 
 export class SectionThreadProjectionGate {
@@ -622,6 +595,53 @@ function resolvePinnedReorderTarget(
     decision.overId,
   );
   return placement ? { threadId: decision.overId, placement } : null;
+}
+
+function resolveTargetParentKey(
+  decision: SectionThreadDropDecision | null,
+): string | null {
+  switch (decision?.kind) {
+    case "pin":
+      return PINNED_THREAD_PARENT_KEY;
+    case "move":
+    case "detach":
+    case "unpin":
+      return decision.toParentKey;
+    default:
+      return null;
+  }
+}
+
+function resolveDwellExpansion({
+  containerId,
+  onExpandThread,
+  rowDrop,
+  setCollapsedSections,
+  targetParentKey,
+}: {
+  containerId: string;
+  onExpandThread: ((threadId: string) => void) | undefined;
+  rowDrop: RowDropState | null;
+  setCollapsedSections: (update: (current: string[]) => string[]) => void;
+  targetParentKey: string | null;
+}): (() => void) | null {
+  if (rowDrop?.state === "valid") {
+    const parentThreadId = rowDrop.threadId;
+    return onExpandThread ? () => onExpandThread(parentThreadId) : null;
+  }
+  if (
+    targetParentKey === null ||
+    targetParentKey === containerId ||
+    targetParentKey === PINNED_THREAD_PARENT_KEY
+  ) {
+    return null;
+  }
+  return () =>
+    setCollapsedSections((current) =>
+      current.includes(targetParentKey)
+        ? current.filter((key) => key !== targetParentKey)
+        : current,
+    );
 }
 
 function getRowDropTargetKey(rowDrop: RowDropState): string {
@@ -866,28 +886,7 @@ export function useSectionThreadDnd({
         decisionOptions,
       );
       const nextRowDrop = resolveRowDropState(decision);
-      const directDrop = resolveSectionThreadDropTarget(
-        lookup,
-        activeId,
-        overId,
-      );
-      const drop =
-        directDrop ??
-        (overId === activeId && dragOverParentKey !== null
-          ? resolveProjectedSectionThreadDropTarget(
-              lookup,
-              activeId,
-              dragOverParentKey,
-            )
-          : null);
-      const targetParentKey =
-        decision === null ||
-        nextRowDrop !== null ||
-        decision.kind === "reorder-pinned"
-          ? null
-          : decision.kind === "pin"
-            ? PINNED_THREAD_PARENT_KEY
-            : (drop?.toParentKey ?? null);
+      const targetParentKey = resolveTargetParentKey(decision);
       const nextReorderTarget = resolvePinnedReorderTarget(
         lookup,
         activeId,
@@ -912,41 +911,22 @@ export function useSectionThreadDnd({
       setDragOverParentKey(targetParentKey);
       setRowDrop(nextRowDrop);
       if (isPinnedRoot(activeId)) setReorderTarget(nextReorderTarget);
-      if (nextRowDrop?.state === "valid") {
-        const parentThreadId = nextRowDrop.threadId;
-        dwellTimerRef.current = setTimeout(() => {
-          dwellTimerRef.current = null;
-          if (
-            !draggingThreadRef.current ||
-            dwellTargetKeyRef.current !== targetKey
-          ) {
-            return;
-          }
-          onExpandThread?.(parentThreadId);
-        }, SECTION_AUTO_EXPAND_MS);
-        return;
-      }
-      if (
-        targetParentKey === null ||
-        targetParentKey === containerId ||
-        targetParentKey === PINNED_THREAD_PARENT_KEY
-      ) {
-        return;
-      }
-
+      const expand = resolveDwellExpansion({
+        containerId,
+        onExpandThread,
+        rowDrop: nextRowDrop,
+        setCollapsedSections,
+        targetParentKey,
+      });
+      if (!expand) return;
       dwellTimerRef.current = setTimeout(() => {
         dwellTimerRef.current = null;
         if (
-          !draggingThreadRef.current ||
-          dwellTargetKeyRef.current !== targetKey
+          draggingThreadRef.current &&
+          dwellTargetKeyRef.current === targetKey
         ) {
-          return;
+          expand();
         }
-        setCollapsedSections((current) =>
-          current.includes(targetParentKey)
-            ? current.filter((key) => key !== targetParentKey)
-            : current,
-        );
       }, SECTION_AUTO_EXPAND_MS);
     },
     [

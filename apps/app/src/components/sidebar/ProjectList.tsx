@@ -654,7 +654,7 @@ function buildGroupSectionItem(
   threads: readonly ThreadListEntry[],
   compareThreads: ThreadComparator,
   draftThreadIds: ReadonlySet<string>,
-): ProjectThreadItem {
+): Extract<ProjectThreadItem, { kind: "section" }> {
   const items = buildProjectThreadGroups(
     threads,
     compareThreads,
@@ -883,14 +883,14 @@ function ProjectModeSections({
     showPinnedSection,
   });
   const reorderDisabled = order.length < 2;
-  const groupRootItems = useMemo<ProjectThreadItem[]>(
-    () => [
-      ...buildProjectThreadGroups(
-        personalThreads,
-        compareThreads,
-        draftThreadIds,
-      ),
-      ...projectRows.map((row) =>
+  const personalItems = useMemo(
+    () =>
+      buildProjectThreadGroups(personalThreads, compareThreads, draftThreadIds),
+    [compareThreads, draftThreadIds, personalThreads],
+  );
+  const projectGroups = useMemo(
+    () =>
+      projectRows.map((row) =>
         buildGroupSectionItem(
           row.project.id,
           buildSidebarEntitySectionId("project", row.project.id),
@@ -902,8 +902,18 @@ function ProjectModeSections({
           draftThreadIds,
         ),
       ),
-    ],
-    [compareThreads, draftThreadIds, personalThreads, projectRows],
+    [compareThreads, draftThreadIds, projectRows],
+  );
+  const projectItemsByProjectId = useMemo(
+    () =>
+      new Map(
+        projectGroups.map((group) => [group.group.id, group.group.items]),
+      ),
+    [projectGroups],
+  );
+  const groupRootItems = useMemo<ProjectThreadItem[]>(
+    () => [...personalItems, ...projectGroups],
+    [personalItems, projectGroups],
   );
   const nonPinnedThreads = useMemo(
     () => threads.filter((thread) => !effectivePinnedThreadIds.has(thread.id)),
@@ -935,6 +945,7 @@ function ProjectModeSections({
         <ProjectThreadTree
           projectId={PERSONAL_PROJECT_ID}
           dndParentKey={CHRONOLOGICAL_CONTAINER_ID}
+          rootItems={personalItems}
           threadListState={getProjectThreadListState({
             status,
             threads: personalThreads,
@@ -954,12 +965,7 @@ function ProjectModeSections({
   };
 
   return (
-    <ReorderableSidebarSectionOrderList
-      order={order}
-      reorderOrder={persistedOrder}
-      onOrderChange={onOrderChange}
-      threadDnd={threadDnd}
-    >
+    <ReorderableSidebarSectionOrderList order={order} threadDnd={threadDnd}>
       {(sectionId, consumeClickSuppression) => {
         const builtInSection = renderBuiltInSidebarSection({
           sectionId,
@@ -978,6 +984,7 @@ function ProjectModeSections({
             key={sectionId}
             sortableId={sectionId}
             project={row.project}
+            rootItems={projectItemsByProjectId.get(row.project.id)}
             threadListState={row.threadListState}
             progressiveDisclosureEnabled={progressiveDisclosureEnabled}
             selectedThreadId={selectedThreadId}
@@ -1232,16 +1239,20 @@ export function MachineModeSections({
     showPinnedSection,
   });
   const reorderDisabled = order.length < 2;
-  const groupRootItems = useMemo<ProjectThreadItem[]>(
-    () => [
-      ...(machineSections.length === 0
+  const allThreadItems = useMemo(
+    () =>
+      machineSections.length === 0
         ? buildProjectThreadGroups(
             nonPinnedThreads,
             compareThreads,
             draftThreadIds,
           )
-        : []),
-      ...machineSections.map((section) =>
+        : [],
+    [compareThreads, draftThreadIds, machineSections.length, nonPinnedThreads],
+  );
+  const machineGroups = useMemo(
+    () =>
+      machineSections.map((section) =>
         buildGroupSectionItem(
           section.key,
           buildSidebarEntitySectionId("machine", section.key),
@@ -1251,8 +1262,18 @@ export function MachineModeSections({
           draftThreadIds,
         ),
       ),
-    ],
-    [compareThreads, draftThreadIds, machineSections, nonPinnedThreads],
+    [compareThreads, draftThreadIds, machineSections],
+  );
+  const machineItemsBySectionId = useMemo(
+    () =>
+      new Map(
+        machineGroups.map((group) => [group.group.key, group.group.items]),
+      ),
+    [machineGroups],
+  );
+  const groupRootItems = useMemo<ProjectThreadItem[]>(
+    () => [...allThreadItems, ...machineGroups],
+    [allThreadItems, machineGroups],
   );
   const threadDnd = useGroupedModeThreadDnd({
     collapsedThreadIds,
@@ -1279,6 +1300,7 @@ export function MachineModeSections({
       content: (
         <ProjectThreadTree
           dndParentKey={CHRONOLOGICAL_CONTAINER_ID}
+          rootItems={allThreadItems}
           threadListState={allThreadsListState}
           progressiveDisclosureEnabled={progressiveDisclosureEnabled}
           compareThreads={compareThreads}
@@ -1295,12 +1317,7 @@ export function MachineModeSections({
   };
 
   return (
-    <ReorderableSidebarSectionOrderList
-      order={order}
-      reorderOrder={persistedOrder}
-      onOrderChange={onOrderChange}
-      threadDnd={threadDnd}
-    >
+    <ReorderableSidebarSectionOrderList order={order} threadDnd={threadDnd}>
       {(sectionId, consumeClickSuppression) => {
         const builtInSection = renderBuiltInSidebarSection({
           sectionId,
@@ -1333,6 +1350,7 @@ export function MachineModeSections({
           >
             <ProjectThreadTree
               dndParentKey={sectionId}
+              rootItems={machineItemsBySectionId.get(sectionId)}
               threadListState={section.threadListState}
               progressiveDisclosureEnabled={progressiveDisclosureEnabled}
               compareThreads={compareThreads}

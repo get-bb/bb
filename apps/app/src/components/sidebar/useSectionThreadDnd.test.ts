@@ -13,9 +13,7 @@ import {
   PINNED_THREAD_PARENT_KEY,
   resolvePinnedReorderPlacement,
   resolveSectionThreadDropDecision,
-  resolveSectionThreadDropTarget,
   resolveSectionThreadSectionOverId,
-  resolveProjectedSectionThreadDropTarget,
   resolveThreadRowNestCollisions,
 } from "./useSectionThreadDnd";
 import { getSidebarThreadRowDroppableId } from "./sidebarThreadRowDroppable";
@@ -87,10 +85,11 @@ describe("section thread drop targets", () => {
 
     expect(sectionBKey).toBeDefined();
     expect(
-      resolveSectionThreadDropTarget(lookup, "loose", sectionBKey ?? null),
+      resolveSectionThreadDropDecision(lookup, "loose", sectionBKey ?? null),
     ).toEqual({
+      kind: "move",
       activeId: "loose",
-      fromParentKey: CHRONOLOGICAL_CONTAINER_ID,
+      sectionId: "b",
       toParentKey: sectionBKey,
     });
   });
@@ -100,23 +99,26 @@ describe("section thread drop targets", () => {
     const sectionBKey = lookup.sectionParentKeyBySectionId.get("section:b");
 
     expect(
-      resolveSectionThreadDropTarget(lookup, "loose", "section:b"),
+      resolveSectionThreadDropDecision(lookup, "loose", "section:b"),
     ).toEqual({
+      kind: "move",
       activeId: "loose",
-      fromParentKey: CHRONOLOGICAL_CONTAINER_ID,
+      sectionId: "b",
       toParentKey: sectionBKey,
     });
   });
 
   it("moves a section thread back to the loose Threads section", () => {
     const lookup = createLookup();
-    const sectionAKey = lookup.sectionParentKeyBySectionId.get("section:a");
 
-    expect(resolveSectionThreadDropTarget(lookup, "in-a", "threads")).toEqual({
-      activeId: "in-a",
-      fromParentKey: sectionAKey,
-      toParentKey: CHRONOLOGICAL_CONTAINER_ID,
-    });
+    expect(resolveSectionThreadDropDecision(lookup, "in-a", "threads")).toEqual(
+      {
+        kind: "move",
+        activeId: "in-a",
+        sectionId: null,
+        toParentKey: CHRONOLOGICAL_CONTAINER_ID,
+      },
+    );
   });
 
   it("preserves a projected destination through self-collision", () => {
@@ -125,14 +127,16 @@ describe("section thread drop targets", () => {
 
     expect(sectionBKey).toBeDefined();
     expect(
-      resolveProjectedSectionThreadDropTarget(
+      resolveSectionThreadDropDecision(
         lookup,
+        "loose",
         "loose",
         sectionBKey ?? null,
       ),
     ).toEqual({
+      kind: "move",
       activeId: "loose",
-      fromParentKey: CHRONOLOGICAL_CONTAINER_ID,
+      sectionId: "b",
       toParentKey: sectionBKey,
     });
   });
@@ -142,10 +146,10 @@ describe("section thread drop targets", () => {
     const sectionAKey = lookup.sectionParentKeyBySectionId.get("section:a");
 
     expect(
-      resolveSectionThreadDropTarget(lookup, "in-a", sectionAKey ?? null),
+      resolveSectionThreadDropDecision(lookup, "in-a", sectionAKey ?? null),
     ).toBeNull();
     expect(
-      resolveSectionThreadDropTarget(
+      resolveSectionThreadDropDecision(
         lookup,
         sectionAKey ?? "section:a",
         "threads",
@@ -221,6 +225,7 @@ describe("section thread pin drop decisions", () => {
       activeId: "pinned-1",
       sectionId: null,
       move: true,
+      toParentKey: CHRONOLOGICAL_CONTAINER_ID,
     });
   });
 
@@ -236,6 +241,10 @@ describe("section thread pin drop decisions", () => {
       activeId: "pinned-1",
       sectionId: "a",
       move: false,
+      toParentKey:
+        createLookupWithPinnedThread().sectionParentKeyBySectionId.get(
+          "section:a",
+        ),
     });
   });
 
@@ -396,13 +405,20 @@ describe("section thread nest drop decisions", () => {
     const sectionAKey = lookup.sectionParentKeyBySectionId.get("section:a");
     expect(
       resolveSectionThreadDropDecision(lookup, "child-a", sectionAKey ?? null),
-    ).toEqual({ kind: "detach", activeId: "child-a", sectionId: "a" });
+    ).toEqual({
+      kind: "detach",
+      activeId: "child-a",
+      sectionId: "a",
+      toParentKey: sectionAKey,
+    });
     expect(
       resolveSectionThreadDropDecision(lookup, "grandchild-a", "threads"),
-    ).toEqual({ kind: "detach", activeId: "grandchild-a", sectionId: null });
-    expect(
-      resolveSectionThreadDropTarget(lookup, "child-a", sectionAKey ?? null),
-    ).toMatchObject({ activeId: "child-a", toParentKey: sectionAKey });
+    ).toEqual({
+      kind: "detach",
+      activeId: "grandchild-a",
+      sectionId: null,
+      toParentKey: CHRONOLOGICAL_CONTAINER_ID,
+    });
   });
 
   it("detaches before pinning a nested thread", () => {
@@ -436,7 +452,12 @@ describe("section thread nest drop decisions", () => {
     ).toEqual({ kind: "pin", activeId: "pinned-child", detach: true });
     expect(
       resolveSectionThreadDropDecision(lookup, "pinned-child", "threads"),
-    ).toEqual({ kind: "detach", activeId: "pinned-child", sectionId: null });
+    ).toEqual({
+      kind: "detach",
+      activeId: "pinned-child",
+      sectionId: null,
+      toParentKey: CHRONOLOGICAL_CONTAINER_ID,
+    });
   });
 
   it("unpins a pinned thread that nests under a section thread", () => {

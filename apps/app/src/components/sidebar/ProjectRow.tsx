@@ -183,6 +183,7 @@ export type ProjectThreadListState =
 export interface ProjectRowProps {
   project: ProjectResponse;
   threadListState: ProjectThreadListState;
+  rootItems?: readonly ProjectThreadItem[];
   progressiveDisclosureEnabled: boolean;
   selectedThreadId?: string;
   isActive: boolean;
@@ -205,6 +206,7 @@ export interface ProjectRowProps {
 interface ProjectThreadTreeProps {
   projectId?: string;
   dndParentKey?: string;
+  rootItems?: readonly ProjectThreadItem[];
   threadListState: ProjectThreadListState;
   progressiveDisclosureEnabled: boolean;
   compareThreads: ThreadComparator;
@@ -1914,6 +1916,7 @@ function isAttentionProjectThreadItem(
 export const ProjectThreadTree = memo(function ProjectThreadTree({
   projectId,
   dndParentKey,
+  rootItems: providedRootItems,
   threadListState,
   progressiveDisclosureEnabled,
   compareThreads,
@@ -1946,8 +1949,9 @@ export const ProjectThreadTree = memo(function ProjectThreadTree({
   const [focusItemKey, setFocusItemKey] = useState<string>();
   const allRootItems = useMemo(
     () =>
+      providedRootItems ??
       buildProjectThreadGroups(projectThreads, compareThreads, draftThreadIds),
-    [compareThreads, draftThreadIds, projectThreads],
+    [compareThreads, draftThreadIds, projectThreads, providedRootItems],
   );
   const rootItems = useMemo(() => {
     if (!progressiveDisclosureEnabled) {
@@ -2300,6 +2304,7 @@ export const ChronologicalSectionThreadSections = memo(
 function ProjectRowComponent({
   project,
   threadListState,
+  rootItems,
   progressiveDisclosureEnabled,
   selectedThreadId,
   isCollapsed,
@@ -2414,6 +2419,7 @@ function ProjectRowComponent({
           <ProjectThreadTree
             projectId={project.id}
             dndParentKey={buildSidebarEntitySectionId("project", project.id)}
+            rootItems={rootItems}
             threadListState={threadListState}
             progressiveDisclosureEnabled={progressiveDisclosureEnabled}
             selectedThreadId={selectedThreadId}
@@ -2509,6 +2515,7 @@ function areProjectRowPropsEqual(
   if (
     prev.project !== next.project ||
     prev.threadListState !== next.threadListState ||
+    prev.rootItems !== next.rootItems ||
     prev.progressiveDisclosureEnabled !== next.progressiveDisclosureEnabled ||
     prev.isActive !== next.isActive ||
     prev.isCollapsed !== next.isCollapsed ||
