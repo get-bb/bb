@@ -1852,9 +1852,10 @@ describe("ThreadDetailPromptArea", () => {
       screen.getByRole("button", { name: "Complete handoff flow" }),
     );
 
-    expect(
-      screen.getByLabelText("Handoff to new thread").textContent,
-    ).toContain("Claude Code");
+    expect(screen.getByTestId("submit-label").textContent).toBe("New thread");
+    expect(screen.getByTestId("submit-icon").textContent).toBe(
+      "MessageSquarePlus",
+    );
     expect(screen.getByTestId("submit-title").textContent).toBe(
       "Create new thread (Enter)",
     );
