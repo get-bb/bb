@@ -8,7 +8,10 @@ import {
 } from "@get-bb/plugin-sdk/testing";
 import { EnvHttpProxyAgent } from "undici";
 import { describe, expect, it, vi } from "vitest";
-import { listPushSubscriptionsOutputSchema } from "./contract.js";
+import {
+  listPushNotificationHistoryOutputSchema,
+  listPushSubscriptionsOutputSchema,
+} from "./contract.js";
 import { createPushNotificationsPlugin } from "./server.js";
 import type { ExpoPushMessage, PushSenderFetch } from "./sender.js";
 
@@ -302,6 +305,24 @@ describe("push sender", () => {
         priority: "high",
       });
       expect(host.expo.requests[0]?.[0]?.data).not.toHaveProperty("serverUrl");
+      const history = listPushNotificationHistoryOutputSchema.parse(
+        await host.harness.behavior.callRpc("notifications.history", {}),
+      );
+      expect(history.notifications).toEqual([
+        {
+          id: expect.any(String),
+          createdAt: expect.any(Number),
+          title: "Fix the flaky test",
+          body: "Done: the timer race is fixed.",
+          threadId: thread.id,
+          channels: ["web", "desktop", "mobile"],
+        },
+      ]);
+      const historyCli = await host.harness.behavior.runCli([
+        "history",
+        "--json",
+      ]);
+      expect(JSON.parse(historyCli.stdout)).toEqual(history);
       await vi.waitFor(async () => {
         const result = await host.harness.behavior.runCli(["status", "--json"]);
         expect(JSON.parse(result.stdout).lastSendOutcome).toMatchObject({
@@ -434,6 +455,16 @@ describe("push sender", () => {
       host.interactions.set(answered.id, []);
       await waitForCoalesce();
       expect(host.expo.requests).toHaveLength(1);
+      const history = listPushNotificationHistoryOutputSchema.parse(
+        await host.harness.behavior.callRpc("notifications.history", {}),
+      );
+      expect(history.notifications).toEqual([
+        expect.objectContaining({
+          title: "Release",
+          body: "Ship to staging or production?",
+          channels: ["web", "desktop", "mobile"],
+        }),
+      ]);
     } finally {
       await host.cleanup();
     }
@@ -616,4 +647,56 @@ describe("web and desktop delivery", () => {
       await host.cleanup();
     }
   });
+});
+
+it("records only attempted push channels, including failed mobile requests", async () => {
+  const host = await setup({
+    fetch: async () => {
+      throw new Error("offline");
+    },
+  });
+  try {
+    await host.harness.behavior.setSettings({ desktopEnabled: false });
+    const webThread = host.setThread();
+    await host.harness.behavior.emitThreadEvent("thread.idle", {
+      thread: webThread,
+      lastAssistantText: "Web only without mobile subscriptions",
+    });
+    await waitForCoalesce();
+    await host.addSubscription();
+    await host.harness.behavior.setSettings({ webEnabled: false });
+    const mobileThread = host.setThread();
+    await host.harness.behavior.emitThreadEvent("thread.idle", {
+      thread: mobileThread,
+      lastAssistantText: "Mobile request fails",
+    });
+    await waitForCoalesce();
+    await host.harness.behavior.setSettings({ mobileEnabled: false });
+    const disabledThread = host.setThread();
+    await host.harness.behavior.emitThreadEvent("thread.idle", {
+      thread: disabledThread,
+      lastAssistantText: "All channels disabled",
+    });
+    await waitForCoalesce();
+    const history = listPushNotificationHistoryOutputSchema.parse(
+      await host.harness.behavior.callRpc("notifications.history", {}),
+    );
+    expect(history.notifications).toEqual([
+      expect.objectContaining({
+        threadId: mobileThread.id,
+        channels: ["mobile"],
+        body: "Mobile request fails",
+      }),
+      expect.objectContaining({
+        threadId: webThread.id,
+        channels: ["web"],
+        body: "Web only without mobile subscriptions",
+      }),
+    ]);
+    const text = await host.harness.behavior.runCli(["history"]);
+    expect(text.stdout).toContain("OS delivery is not confirmed");
+    expect(text.stdout).toContain("Mobile request fails");
+  } finally {
+    await host.cleanup();
+  }
 });

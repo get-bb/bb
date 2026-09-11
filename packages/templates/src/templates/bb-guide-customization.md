@@ -189,6 +189,7 @@ windows must stay open; browser permission is requested in the plugin settings.
       --platform <ios|android> --label <device-name>
   bb push-notifications remove <id>
   bb push-notifications status
+  bb push-notifications history [--json]
   bb push-notifications test <web|desktop>
   bb plugin config push-notifications set <mobileEnabled|webEnabled|desktopEnabled> <true|false>
 
@@ -201,6 +202,13 @@ config push-notifications set expoPushUrl <url>`. Add `--json` to `list` or
 The three channel switches default to true and apply immediately across this
 server. `test` broadcasts to all connected clients of the selected type with
 permission; OS notification settings still control whether a banner appears.
+
+**Settings → Push notifications → Show history** lists the latest 200 push
+dispatches from this server session, including their outgoing text and channels
+attempted. The palette's **Push notifications settings** entry opens the same
+page. History clears when the server or plugin restarts and does not confirm OS
+delivery or read state. `history --json` and the plugin RPC
+`notifications.history` return `{ notifications: [...] }` with the same entries.
 
 Host files and voice transcription
 

@@ -15,6 +15,14 @@ Click a notification to open its thread. Events arriving together are combined, 
 
 Channel switches apply to this server and save immediately. Browser permission is granted separately on each device with **Allow notifications**. If blocked, change the browser or operating system notification settings. **Send test notification** sends to all connected, permitted clients of the current type. A successful test request confirms broadcast, not OS display; system settings and Focus modes can suppress banners.
 
+## Push notification history
+
+Open **Settings → Push notifications → Show history**, or search for **Push notifications settings** in the command palette's **Plugin settings** group. History lists the latest 200 push dispatches from the current server session, newest first. **Refresh** fetches recent dispatches; select a thread title to open it.
+
+Each entry contains the outgoing title and body, time, and channels attempted. Mobile is included only when a send is attempted with registered devices. Coalesced updates appear once across channels. Test notifications are included. Suppressed events and in-app toasts are excluded.
+
+History is held in server memory and clears when the server or plugin restarts. It does not read the operating system's notification inbox or confirm device delivery, display, or read state. Earlier notifications cannot be recovered.
+
 ## CLI and SDK
 
 - `bb push-notifications list [--json]`: registered mobile devices, with redacted tokens.
@@ -22,6 +30,9 @@ Channel switches apply to this server and save immediately. Browser permission i
 - `bb push-notifications remove <id>`: remove a mobile device.
 - `bb push-notifications status [--json]`: channel switches, mobile relay, subscription count, and last mobile send result.
 - `bb push-notifications test <web|desktop>`: broadcast a test to connected clients of that type. Fails if the channel is disabled.
+- `bb push-notifications history [--json]`: list the current server session's push dispatch history. JSON returns `{ notifications: [...] }`.
 - `bb plugin config push-notifications set <mobileEnabled|webEnabled|desktopEnabled> <true|false>`: change a channel.
 
 Agents can use the SDK’s plugin settings API for the same switches and `sdk.plugins.callRpc({ pluginId: "push-notifications", method: "notifications.test", input: { channel: "web" }, outputSchema: z.object({ ok: z.literal(true) }) })` to send a test. RPC input is validated by `pushNotificationsRpcContract`. Permission requests still require a click in the target client.
+
+History uses `sdk.plugins.callRpc({ pluginId: "push-notifications", method: "notifications.history", input: {}, outputSchema: listPushNotificationHistoryOutputSchema })`. The output schema in `contract.ts` describes each entry's `id`, `title`, `body`, nullable `threadId`, `createdAt` timestamp, and attempted `channels` (`web`, `desktop`, or `mobile`).

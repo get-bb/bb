@@ -17,6 +17,7 @@ import {
   type LastSendOutcome,
 } from "./sender.js";
 import { createPushSubscriptionStore } from "./subscriptions.js";
+import { createPushNotificationHistory } from "./history.js";
 
 interface PushNotificationsPluginOptions {
   coalesceMs?: number;
@@ -164,8 +165,10 @@ export function createPushNotificationsPlugin(
       ...(options.now === undefined ? {} : { now: options.now }),
       ...(options.createId === undefined ? {} : { createId: options.createId }),
     });
+    const history = createPushNotificationHistory();
     const sender = createPushSender({
       bb,
+      history,
       subscriptions,
       getDeliverySettings: () => settings.get(),
       getExpoPushUrl: async () => (await settings.get()).expoPushUrl,
@@ -195,17 +198,23 @@ export function createPushNotificationsPlugin(
       if (!(channel === "web" ? config.webEnabled : config.desktopEnabled)) {
         throw new Error(`${channel} notifications are disabled`);
       }
-      bb.realtime.publish(CLIENT_NOTIFICATION_CHANNEL, {
+      const notification: ClientNotification = {
         id: randomUUID(),
         title: "bb notifications are working",
         body: "You’ll be notified when a thread needs your attention.",
         threadId: null,
         channels: [channel],
-      } satisfies ClientNotification);
+      };
+      bb.realtime.publish(CLIENT_NOTIFICATION_CHANNEL, notification);
+      history.record({
+        ...notification,
+        createdAt: (options.now ?? Date.now)(),
+      });
       return { ok: true as const };
     }
 
     bb.rpc.register(pushNotificationsRpcContract, {
+      "notifications.history": () => ({ notifications: history.list() }),
       "notifications.test": ({ channel }) => sendTest(channel),
       "pushSubscriptions.list": async () => ({
         subscriptions: await subscriptions.listSummaries(),
@@ -223,6 +232,11 @@ export function createPushNotificationsPlugin(
       name: "push-notifications",
       summary: "Manage mobile, web, and desktop notifications",
       commands: [
+        {
+          name: "history",
+          summary: "List push dispatches from the current server session",
+          usage: "bb push-notifications history [--json]",
+        },
         {
           name: "test",
           summary:
@@ -253,6 +267,28 @@ export function createPushNotificationsPlugin(
       ],
       async run(argv) {
         const [command, ...args] = argv;
+        if (
+          command === "history" &&
+          (args.length === 0 || (args.length === 1 && args[0] === "--json"))
+        ) {
+          const notifications = history.list();
+          return {
+            exitCode: 0,
+            stdout:
+              args[0] === "--json"
+                ? JSON.stringify({ notifications })
+                : [
+                    "Push notification history — current server session, latest 200 dispatches. Clears on restart; OS delivery is not confirmed.",
+                    ...notifications.map(
+                      (entry) =>
+                        `${new Date(entry.createdAt).toISOString()} [${entry.channels.join(", ")}] ${entry.title}\n${entry.body}`,
+                    ),
+                    ...(notifications.length === 0
+                      ? ["No push notifications yet."]
+                      : []),
+                  ].join("\n\n"),
+          };
+        }
         if (command === "test" && args.length === 1) {
           const channel = clientChannelSchema.safeParse(args[0]);
           if (!channel.success)
@@ -316,7 +352,7 @@ export function createPushNotificationsPlugin(
         return {
           exitCode: 1,
           stderr:
-            "Usage: bb push-notifications <list|add|remove|status|test> [options]",
+            "Usage: bb push-notifications <list|add|remove|status|test|history> [options]",
         };
       },
     });

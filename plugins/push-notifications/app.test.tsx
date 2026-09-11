@@ -50,3 +50,47 @@ describe("device notification settings", () => {
     expect(requestPermission).not.toHaveBeenCalled();
   });
 });
+
+it("loads push history on demand, recovers from failure, and opens its thread", async () => {
+  let fail = true;
+  const view = renderSlot(
+    app.settingsSections.find((section) => section.id === "history")!,
+    {},
+    {
+      rpc: {
+        "notifications.history": () => {
+          if (fail) throw new Error("Connection lost");
+          return {
+            notifications: [
+              {
+                id: "push-1",
+                title: "Release ready",
+                body: "Run `deploy --dry-run` to preview.",
+                threadId: "thread-1",
+                createdAt: 1_789_200_000_000,
+                channels: ["mobile"],
+              },
+            ],
+          };
+        },
+      },
+    },
+  );
+  expect(view.inspection.rpcCalls).toEqual([]);
+  fireEvent.click(view.getByRole("button", { name: "Show history" }));
+  expect(await view.findByRole("alert")).toHaveProperty(
+    "textContent",
+    "Connection lost",
+  );
+  fail = false;
+  fireEvent.click(view.getByRole("button", { name: "Refresh" }));
+  const thread = await view.findByRole("button", { name: "Release ready" });
+  expect(view.getByText("Run `deploy --dry-run` to preview.")).toBeTruthy();
+  expect(view.getByText(/Channels attempted: mobile/)).toBeTruthy();
+  fireEvent.click(thread);
+  expect(view.inspection.navigateCalls).toEqual([
+    { method: "toThread", threadId: "thread-1" },
+  ]);
+  fireEvent.click(view.getByRole("button", { name: "Hide history" }));
+  expect(view.queryByRole("button", { name: "Release ready" })).toBeNull();
+});

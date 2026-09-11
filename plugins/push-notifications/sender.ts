@@ -12,6 +12,7 @@ import {
   type PushSubscription,
 } from "./contract.js";
 import type { PushSubscriptionStore } from "./subscriptions.js";
+import type { PushNotificationHistory } from "./history.js";
 
 type ThreadResponse = PluginThreadEventPayloads["thread.idle"]["thread"];
 type PendingInteraction =
@@ -131,6 +132,7 @@ export interface PushSender {
 
 export interface CreatePushSenderArgs {
   bb: BbPluginApi;
+  history: PushNotificationHistory;
   subscriptions: PushSubscriptionStore;
   getExpoPushUrl(): Promise<string>;
   getDeliverySettings(): Promise<{
@@ -332,18 +334,23 @@ export function createPushSender(args: CreatePushSenderArgs): PushSender {
     if (resolved === null) return;
     const title = truncate(threadDisplayTitle(thread), PUSH_TITLE_MAX_LENGTH);
     const body = truncate(resolved.body, PUSH_BODY_MAX_LENGTH);
+    const notification = {
+      id: randomUUID(),
+      title,
+      body,
+      threadId: thread.id,
+    };
+    const createdAt = now();
     const config = await args.getDeliverySettings();
     const channels: ClientNotification["channels"] = [];
     if (config.webEnabled) channels.push("web");
     if (config.desktopEnabled) channels.push("desktop");
     if (channels.length > 0) {
       bb.realtime.publish(CLIENT_NOTIFICATION_CHANNEL, {
-        id: randomUUID(),
-        title,
-        body,
-        threadId: thread.id,
+        ...notification,
         channels,
       } satisfies ClientNotification);
+      args.history.record({ ...notification, createdAt, channels });
     }
     if (!config.mobileEnabled) return;
     const rows = await subscriptions.list();
@@ -368,6 +375,13 @@ export function createPushSender(args: CreatePushSenderArgs): PushSender {
     }));
     let sentCount = 0;
     let failure: string | null = null;
+    if (dispatcher !== null) {
+      args.history.record({
+        ...notification,
+        createdAt,
+        channels: [...channels, "mobile"],
+      });
+    }
     for (const batch of chunks(deliveries, EXPO_PUSH_BATCH_SIZE)) {
       const result = await sendBatch(batch);
       sentCount += result.sentCount;

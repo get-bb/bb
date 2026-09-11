@@ -48,12 +48,29 @@ export const clientNotificationSchema = z
   .strict();
 export type ClientNotification = z.infer<typeof clientNotificationSchema>;
 
+export const pushNotificationHistoryEntrySchema = clientNotificationSchema
+  .extend({
+    createdAt: z.number().int().nonnegative(),
+    channels: z.array(z.enum(["web", "desktop", "mobile"])).min(1),
+  })
+  .strict();
+export type PushNotificationHistoryEntry = z.infer<
+  typeof pushNotificationHistoryEntrySchema
+>;
+export const listPushNotificationHistoryOutputSchema = z
+  .object({ notifications: z.array(pushNotificationHistoryEntrySchema) })
+  .strict();
+
 const emptyInputSchema = z.object({}).strict();
 export const listPushSubscriptionsOutputSchema = z
   .object({ subscriptions: z.array(pushSubscriptionSummarySchema) })
   .strict();
 
 export const pushNotificationsRpcContract = defineRpcContract({
+  "notifications.history": {
+    input: emptyInputSchema,
+    output: listPushNotificationHistoryOutputSchema,
+  },
   "notifications.test": {
     input: z.object({ channel: clientChannelSchema }).strict(),
     output: z.object({ ok: z.literal(true) }).strict(),
