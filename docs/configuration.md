@@ -1374,3 +1374,13 @@ silently restores stale state. Open terminals prevent idle suspension.
 Create with `bb machine create --provider modal-sandbox --project PROJECT --json`.
 See [modal-sandboxes](../plugins/environment-modal-sandbox/skills/modal-sandboxes/SKILL.md)
 for prerequisites and lifecycle commands.
+
+## Repository build caches
+
+App production builds persist validated React Compiler transform results at
+`<git-common-dir>/bb-cache/react-compiler`, shared safely across this
+repository's worktrees. Non-Git checkouts use Vite's cache directory. Missing,
+invalid, or corrupt entries are rebuilt; development and compiler diagnostic
+modes bypass the cache. The cache has no user configuration and can be removed
+while no builds are running. See [build performance](build-performance.md) for
+its identity, portability, and verification contract.
