@@ -37,27 +37,42 @@ const PLUGIN_RUNTIME_STATUS_DEFINITIONS: Record<
   degraded: { icon: "AlertTriangle", label: "Degraded", tone: "warning" },
 };
 
+export function pluginFailureHasConfiguredPath(
+  plugin: PluginListItem,
+): boolean {
+  return /\bconfigured\b.*\b(?:directory|folder|path)\b/iu.test(
+    plugin.statusDetail ?? "",
+  );
+}
+
 function pluginRuntimeRecovery(plugin: PluginListItem): string {
   switch (plugin.status) {
+    case "running":
     case "error":
+      if (pluginFailureHasConfiguredPath(plugin)) {
+        return "Check that the configured path exists and bb can access it, then reload the plugin.";
+      }
       if (plugin.source.startsWith("path:")) {
-        return "Fix the plugin, then reload it.";
+        return "Fix the reported problem in the local plugin, then reload it.";
       }
       if (plugin.provenance === "builtin") {
         return "Reload the plugin. If it still fails, restart bb.";
       }
-      return "Reload the plugin. If it still fails, remove it and install it again.";
+      return "Check the cause above, then reload the plugin.";
     case "incompatible":
       return plugin.provenance === "builtin"
         ? "Update bb to load a compatible bundled plugin."
         : "Install a version compatible with this bb.";
     case "missing":
+      if (plugin.source.startsWith("path:")) {
+        return "Restore the local plugin directory, then reload the plugin. If it moved, add it from its new path.";
+      }
       return plugin.provenance === "builtin"
         ? "Restart bb. If the files are still missing, reinstall bb."
         : "Remove the plugin, then install it again from its source.";
     case "needs-configuration":
       return plugin.hasSettings
-        ? "Complete the Configuration section; bb reloads the plugin after you save."
+        ? "Open settings and complete the required configuration; bb reloads the plugin after you save."
         : "Add the required configuration, then reload the plugin.";
     case "degraded":
       return "Wait a moment, then reload the plugin.";
@@ -90,6 +105,33 @@ function pluginRuntimeCondition(plugin: PluginListItem): string {
 export function pluginRuntimeStatusPresentation(
   plugin: PluginListItem,
 ): PluginRuntimeStatusPresentation | null {
+  if (plugin.status === "running") {
+    const detail = plugin.statusDetail?.trim();
+    if (detail) {
+      const reloadFailed = detail.startsWith("reload failed:");
+      return {
+        icon: "AlertTriangle",
+        label: reloadFailed ? "Reload failed" : "Needs attention",
+        tone: "warning",
+        condition: detail,
+        recovery: [
+          reloadFailed ? "The previous plugin instance is still running." : "",
+          pluginRuntimeRecovery(plugin),
+        ]
+          .filter(Boolean)
+          .join(" "),
+      };
+    }
+    if (plugin.services.some((service) => service.state === "backoff")) {
+      return {
+        icon: "RotateCcw",
+        label: "Restarting",
+        tone: "warning",
+        condition: "A background service crashed and bb is restarting it.",
+        recovery: "Wait for it to restart.",
+      };
+    }
+  }
   const definition = PLUGIN_RUNTIME_STATUS_DEFINITIONS[plugin.status];
   if (definition === null) return null;
   return {

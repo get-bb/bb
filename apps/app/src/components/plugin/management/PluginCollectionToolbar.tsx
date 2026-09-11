@@ -1,7 +1,6 @@
 import type { ReactNode } from "react";
 import { useSearchParams } from "react-router-dom";
 import { ResourceSortMenu, ResourceToolbar } from "@bb/shared-ui/resource-list";
-import type { PluginBrowseSort } from "./plugin-browse-discovery";
 import {
   PluginBrowseCategoryFilter,
   pluginBrowseSort,
@@ -16,7 +15,6 @@ interface PluginCollectionToolbarProps {
   action?: ReactNode;
   searchPlaceholder?: string;
   additionalControls?: ReactNode;
-  defaultSort?: PluginBrowseSort;
 }
 
 export function PluginCollectionToolbar({
@@ -25,11 +23,9 @@ export function PluginCollectionToolbar({
   action,
   searchPlaceholder = "Search plugins",
   additionalControls,
-  defaultSort,
 }: PluginCollectionToolbarProps) {
   const [searchParams, setSearchParams] = useSearchParams();
-  const requestedSort =
-    pluginBrowseSort(searchParams.get("sort")) ?? defaultSort ?? null;
+  const requestedSort = pluginBrowseSort(searchParams.get("sort"));
   const sort =
     requestedSort === "most-installed" && !hasInstallCounts
       ? null
@@ -55,6 +51,34 @@ export function PluginCollectionToolbar({
       action={action}
       controls={
         <>
+          <ResourceSortMenu
+            value={sort}
+            direction={direction}
+            compact
+            placeholderLabel="Default"
+            options={pluginBrowseSortOptions(hasInstallCounts)}
+            onChange={(value) =>
+              change((next) => {
+                next.set("sort", value);
+                next.set(
+                  "direction",
+                  value === sort
+                    ? direction === "desc"
+                      ? "asc"
+                      : "desc"
+                    : value === "name"
+                      ? "asc"
+                      : "desc",
+                );
+              })
+            }
+            onClear={() =>
+              change((next) => {
+                next.delete("sort");
+                next.delete("direction");
+              })
+            }
+          />
           <PluginBrowseCategoryFilter
             selectionMode="multiple"
             value={searchParams.getAll("category")}
@@ -64,28 +88,6 @@ export function PluginCollectionToolbar({
                 next.delete("shelf");
                 next.delete("category");
                 for (const value of values) next.append("category", value);
-              })
-            }
-          />
-          <ResourceSortMenu
-            value={sort}
-            direction={direction}
-            compact
-            placeholderLabel="Featured"
-            options={pluginBrowseSortOptions(hasInstallCounts)}
-            onChange={(value) =>
-              change((next) => {
-                next.set("sort", value);
-                next.set(
-                  "direction",
-                  value === sort && direction === "desc" ? "asc" : "desc",
-                );
-              })
-            }
-            onClear={() =>
-              change((next) => {
-                next.delete("sort");
-                next.delete("direction");
               })
             }
           />

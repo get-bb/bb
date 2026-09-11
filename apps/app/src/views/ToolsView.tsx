@@ -201,8 +201,10 @@ function PluginDetailToolView({ pluginId }: { pluginId: string }) {
       const action = plugin.enabled ? "disable" : "enable";
       try {
         await setPluginEnabled(fetch, plugin.id, !plugin.enabled);
-      } catch {
-        throw new Error(`Failed to ${action} plugin`);
+      } catch (error) {
+        throw new Error(
+          `Failed to ${action} plugin: ${error instanceof Error ? error.message : String(error)}`,
+        );
       }
     },
     onSuccess: () => listQuery.refetch(),

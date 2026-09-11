@@ -11,13 +11,13 @@ import type {
 } from "./plugin-browse-discovery";
 
 const PLUGIN_BROWSE_SORTS = [
-  "name",
   "recently-added",
   "most-installed",
+  "name",
 ] as const satisfies readonly PluginBrowseSort[];
 
 const PLUGIN_BROWSE_SORT_LABELS: Record<PluginBrowseSort, string> = {
-  name: "Plugin name",
+  name: "Name",
   "recently-added": "Recently added",
   "most-installed": "Most installed",
 };

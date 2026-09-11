@@ -69,17 +69,14 @@ describe("plugin marketplace author links", () => {
       screen.getByRole("heading", { name: "Requirements", level: 3 }),
     ).toBeTruthy();
     expect(screen.getByText("bb secret request TOKEN")).toBeTruthy();
+    expect(screen.getByText("Listed").parentElement?.textContent).toContain(
+      "Jul 9, 2026",
+    );
     expect(
-      screen.getByRole("rowheader", { name: "Listed" }).closest("tr")
-        ?.textContent,
-    ).toContain("Jul 9, 2026");
-    expect(
-      screen.getByRole("rowheader", { name: "Last updated" }).closest("tr")
-        ?.textContent,
+      screen.getByText("Last updated").parentElement?.textContent,
     ).toContain("Sep 5, 2026");
     expect(
-      screen.getByRole("rowheader", { name: "Marketplace" }).closest("tr")
-        ?.textContent,
+      screen.getByText("Marketplace").parentElement?.textContent,
     ).toContain("BB Community");
   });
 

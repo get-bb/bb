@@ -150,10 +150,12 @@ function ThirdPartySourceDisclosure({
   plan,
   pending,
   error,
+  onRetry,
 }: {
   plan: PluginCatalogInstallPlan | undefined;
   pending: boolean;
   error: unknown;
+  onRetry: () => void;
 }) {
   if (pending) {
     return (
@@ -167,6 +169,9 @@ function ThirdPartySourceDisclosure({
       <p className="text-2xs text-warning-text" role="status">
         Could not resolve this listing&rsquo;s source:{" "}
         {pluginAdminErrorMessage(error)}
+        <Button variant="link" size="sm" onClick={onRetry}>
+          Retry
+        </Button>
       </p>
     );
   }
@@ -339,6 +344,7 @@ function AddPluginDialogContent({
             plan={plan}
             pending={planQuery.isPending}
             error={planQuery.error}
+            onRetry={() => void planQuery.refetch()}
           />
         ) : null}
 

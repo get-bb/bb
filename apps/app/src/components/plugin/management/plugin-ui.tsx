@@ -36,22 +36,22 @@ export function formatPluginInstallCount(installs: number): string {
 }
 
 const PLUGIN_CATEGORY_ACCENT_TOKENS: Record<string, string> = {
-  "themes-and-appearance": "--file-accent",
-  "thread-management": "--file-accent",
-  "thread-content": "--file-accent",
-  "memory-and-context": "--success",
-  security: "--warning",
-  "agents-and-providers": "--success",
-  environments: "--attention",
-  "token-usage-and-limits": "--warning",
-  notifications: "--warning",
-  "code-and-reviews": "--pr-merged",
-  "file-viewers-and-editors": "--pr-merged",
-  "cloud-and-remote": "--attention",
-  "command-line": "--attention",
-  utilities: "--attention",
-  "plugin-development": "--pr-merged",
-  "tasks-and-workflows": "--success",
+  "themes-and-appearance": "--plugin-category-family-experience",
+  "thread-management": "--plugin-category-family-experience",
+  "thread-content": "--plugin-category-family-experience",
+  "memory-and-context": "--plugin-category-family-agent-work",
+  security: "--plugin-category-family-oversight",
+  "agents-and-providers": "--plugin-category-family-agent-work",
+  environments: "--plugin-category-family-environment",
+  "token-usage-and-limits": "--plugin-category-family-oversight",
+  notifications: "--plugin-category-family-oversight",
+  "code-and-reviews": "--plugin-category-family-development",
+  "file-viewers-and-editors": "--plugin-category-family-development",
+  "cloud-and-remote": "--plugin-category-family-environment",
+  "command-line": "--plugin-category-family-environment",
+  utilities: "--plugin-category-family-environment",
+  "plugin-development": "--plugin-category-family-development",
+  "tasks-and-workflows": "--plugin-category-family-agent-work",
 };
 
 function neutral(percent: number): string {
@@ -59,11 +59,11 @@ function neutral(percent: number): string {
 }
 
 function accentTint(token: string, percent: number): string {
-  return `color-mix(in oklch, var(${token}) ${percent}%, var(--canvas))`;
+  return `color-mix(in oklab, var(${token}) ${percent}%, var(--canvas))`;
 }
 
 function accentInk(token: string, percent: number): string {
-  return `color-mix(in oklch, var(${token}) ${percent}%, var(--ink))`;
+  return `color-mix(in oklab, var(${token}) ${percent}%, var(--ink))`;
 }
 
 function pluginCatalogCategoryAccentToken(

@@ -591,26 +591,38 @@ describe("PluginsOverview", () => {
     expect(screen.getAllByText("BB Community")).toHaveLength(1);
 
     const sortTrigger = screen.getByRole("button", {
-      name: "Sort: Plugin name, ascending",
+      name: "Sort: Default",
     });
     expect(sortTrigger.querySelector('[data-icon="ArrowUpDown"]')).toBeTruthy();
     fireEvent.pointerDown(sortTrigger);
-    fireEvent.click(screen.getByRole("menuitemradio", { name: "Plugin name" }));
+    fireEvent.click(screen.getByRole("menuitemradio", { name: "Name" }));
     expect(
       [...document.querySelectorAll('[data-testid^="plugin-card-"]')].map(
         (row) => row.getAttribute("data-testid"),
       ),
     ).toEqual([
+      "plugin-card-enabled-local-alpha",
+      "plugin-card-enabled-official-alpha",
+      "plugin-card-enabled-official-zulu",
+      "plugin-card-inactive-local",
+      "plugin-card-inactive-official",
+    ]);
+    fireEvent.click(screen.getByRole("menuitemradio", { name: "Name" }));
+    expect(
+      [...document.querySelectorAll('[data-testid^="plugin-card-"]')].map(
+        (row) => row.getAttribute("data-testid"),
+      ),
+    ).toEqual([
+      "plugin-card-inactive-official",
+      "plugin-card-inactive-local",
       "plugin-card-enabled-official-zulu",
       "plugin-card-enabled-official-alpha",
       "plugin-card-enabled-local-alpha",
-      "plugin-card-inactive-official",
-      "plugin-card-inactive-local",
     ]);
 
     fireEvent.keyDown(
       screen.getByRole("menu", {
-        name: "Sort: Plugin name, descending",
+        name: "Sort: Name, descending",
       }),
       { key: "Escape" },
     );

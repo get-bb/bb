@@ -113,7 +113,11 @@ describe("plugin detail design behavior", () => {
       .closest("section");
     expect(source).not.toBeNull();
     if (source === null) return;
-    expect(within(source).getByText("~/very-long-local-workspace/plugins/review-notes")).toBeTruthy();
+    expect(
+      within(source).getByText(
+        "~/very-long-local-workspace/plugins/review-notes",
+      ),
+    ).toBeTruthy();
     fireEvent.click(
       within(source).getByRole("button", { name: "Open source" }),
     );
@@ -126,5 +130,59 @@ describe("plugin detail design behavior", () => {
     expect(screen.queryByRole("heading", { name: "Overview" })).toBeNull();
     expect(screen.getByRole("heading", { name: "About" })).toBeTruthy();
     expect(screen.getByText("Install date unavailable")).toBeTruthy();
+  });
+
+  it("opens available configuration for a path failure and keeps local reporting honestly unavailable", () => {
+    const onConfigure = vi.fn();
+    const { wrapper } = createQueryClientTestHarness();
+    render(
+      <MemoryRouter>
+        <PluginDetailBanners
+          plugin={makePluginListItem({
+            status: "error",
+            hasSettings: true,
+            statusDetail: "The configured directory does not exist.",
+          })}
+          onConfigure={onConfigure}
+        />
+        <ComposeProbe />
+      </MemoryRouter>,
+      { wrapper },
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Open settings" }));
+    expect(onConfigure).toHaveBeenCalledOnce();
+    const report = screen.getByRole("button", { name: "Report to author" });
+    expect(report.getAttribute("aria-disabled")).toBe("true");
+    fireEvent.click(report);
+    expect(screen.getByTestId("compose-state").textContent).toBe("null");
+  });
+
+  it("retains a failed reload cause in the banner and report draft", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockRejectedValue(new Error("Host offline")),
+    );
+    const { wrapper } = createQueryClientTestHarness();
+    render(
+      <MemoryRouter>
+        <PluginDetailBanners
+          plugin={makePluginListItem({
+            source: "git:https://github.com/patleeman/bb-plugins.git@main",
+            status: "error",
+            statusDetail: "Startup failed",
+          })}
+        />
+        <ComposeProbe />
+      </MemoryRouter>,
+      { wrapper },
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Reload" }));
+    await waitFor(() => {
+      expect(screen.getByRole("alert").textContent).toContain("Host offline");
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Report to author" }));
+    expect(screen.getByTestId("compose-state").textContent).toContain(
+      "Host offline",
+    );
   });
 });

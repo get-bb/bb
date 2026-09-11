@@ -69,7 +69,8 @@ export function BrowsePluginsTab({
   const selectedCategories = searchParams.getAll("category");
   const requestedSort = pluginBrowseSort(searchParams.get("sort"));
   const sortDirection =
-    pluginBrowseSortDirection(searchParams.get("direction")) ?? "desc";
+    pluginBrowseSortDirection(searchParams.get("direction")) ??
+    (requestedSort === "name" ? "asc" : "desc");
   const [heroRequest, setHeroRequest] = useState<{
     nonce: number;
     seed?: string;
@@ -205,6 +206,13 @@ export function BrowsePluginsTab({
             {searchQuery.isError && entries.length > 0 ? (
               <p className="text-xs text-warning-text" role="status">
                 The latest search failed. The page shows saved catalog results.
+                <Button
+                  variant="link"
+                  size="sm"
+                  onClick={() => void searchQuery.refetch()}
+                >
+                  Retry
+                </Button>
               </p>
             ) : null}
             {searchQuery.isPending ? (

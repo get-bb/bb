@@ -148,15 +148,14 @@ describe("pluginRuntimeStatusPresentation", () => {
     ).toMatchObject({
       label: "Failed",
       condition: "The plugin couldn't start.",
-      recovery: "Fix the plugin, then reload it.",
+      recovery: "Fix the reported problem in the local plugin, then reload it.",
     });
     expect(
       pluginRuntimeStatusPresentation(plugin({}, { status: "error" })),
     ).toMatchObject({
       label: "Failed",
       condition: "The plugin couldn't start.",
-      recovery:
-        "Reload the plugin. If it still fails, remove it and install it again.",
+      recovery: "Check the cause above, then reload the plugin.",
     });
   });
 
@@ -191,7 +190,55 @@ describe("pluginRuntimeStatusPresentation", () => {
       label: "Needs configuration",
       condition: "Required settings are incomplete.",
       recovery:
-        "Complete the Configuration section; bb reloads the plugin after you save.",
+        "Open settings and complete the required configuration; bb reloads the plugin after you save.",
+    });
+  });
+
+  it("recovers a missing configured path without removing installed settings", () => {
+    expect(
+      pluginRuntimeStatusPresentation(
+        plugin(
+          {},
+          {
+            status: "error",
+            statusDetail:
+              "Startup failed: the configured session directory does not exist.",
+          },
+        ),
+      ),
+    ).toMatchObject({
+      condition:
+        "Startup failed: the configured session directory does not exist.",
+      recovery:
+        "Check that the configured path exists and bb can access it, then reload the plugin.",
+    });
+    expect(
+      pluginRuntimeStatusPresentation(
+        plugin({}, { status: "missing", source: "path:/plugins/linear" }),
+      )?.recovery,
+    ).toBe(
+      "Restore the local plugin directory, then reload the plugin. If it moved, add it from its new path.",
+    );
+  });
+
+  it("keeps retained-instance reload failures and service restarts visible", () => {
+    expect(
+      pluginRuntimeStatusPresentation(
+        plugin({}, { statusDetail: "reload failed: invalid manifest" }),
+      ),
+    ).toMatchObject({
+      label: "Reload failed",
+      condition: "reload failed: invalid manifest",
+      recovery:
+        "The previous plugin instance is still running. Check the cause above, then reload the plugin.",
+    });
+    expect(
+      pluginRuntimeStatusPresentation(
+        plugin({}, { services: [{ name: "watcher", state: "backoff" }] }),
+      ),
+    ).toMatchObject({
+      label: "Restarting",
+      condition: "A background service crashed and bb is restarting it.",
     });
   });
 });

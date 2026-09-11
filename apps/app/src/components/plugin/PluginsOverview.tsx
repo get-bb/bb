@@ -12,6 +12,7 @@ import {
 import { cn } from "@bb/shared-ui/lib/utils";
 import { CREATE_PLUGIN_PROMPT } from "@bb/client-core";
 import { CreateWithTemplatesButton } from "@/components/create-via-prompt-examples";
+import { Button } from "@bb/shared-ui/button";
 import { TOOLS_PAGE_BAND_CLASSES } from "@/components/tools/tools-navigation";
 import {
   AddPluginDialog,
@@ -82,13 +83,17 @@ export function PluginsOverview({
   const query = searchParams.get("query") ?? "";
   const normalizedQuery = query.trim().toLocaleLowerCase();
   const categories = searchParams.getAll("category");
-  const sort = pluginBrowseSort(searchParams.get("sort")) ?? "name";
-  const direction =
-    pluginBrowseSortDirection(searchParams.get("direction")) ??
-    (sort === "name" ? "asc" : "desc");
+  const requestedSort = pluginBrowseSort(searchParams.get("sort"));
   const hasInstallCounts = collection.some(
     (entry) => entry.catalogEntry?.installs != null,
   );
+  const sort =
+    requestedSort === "most-installed" && !hasInstallCounts
+      ? null
+      : requestedSort;
+  const direction =
+    pluginBrowseSortDirection(searchParams.get("direction")) ??
+    (sort === null || sort === "name" ? "asc" : "desc");
   const categoryOptions = useMemo(
     () =>
       pluginCategoryFilterOptions(
@@ -126,7 +131,7 @@ export function PluginsOverview({
             .includes(normalizedQuery);
         })
         .sort((left, right) => {
-          if (sort === "name") {
+          if (sort === null) {
             const enabledResult =
               Number(!left.runtime?.enabled) - Number(!right.runtime?.enabled);
             if (enabledResult !== 0) return enabledResult;
@@ -136,7 +141,7 @@ export function PluginsOverview({
                 Number(right.runtime?.publisherLabel === null);
               if (publisherResult !== 0) return publisherResult;
             }
-          } else {
+          } else if (sort !== "name") {
             const leftValue =
               sort === "most-installed"
                 ? (left.catalogEntry?.installs ?? null)
@@ -275,7 +280,6 @@ export function PluginsOverview({
             hasInstallCounts={hasInstallCounts}
             action={installedActions}
             searchPlaceholder="Search installed plugins"
-            defaultSort="name"
             additionalControls={
               plugins.length > 0 ? <CheckPluginUpdatesButton /> : null
             }
@@ -283,6 +287,13 @@ export function PluginsOverview({
           {listingQuery.isError ? (
             <p className="text-xs text-warning-text" role="status">
               Authored plugins are temporarily unavailable.
+              <Button
+                variant="link"
+                size="sm"
+                onClick={() => void listingQuery.refetch()}
+              >
+                Retry
+              </Button>
             </p>
           ) : null}
           {listQuery.isError ? (

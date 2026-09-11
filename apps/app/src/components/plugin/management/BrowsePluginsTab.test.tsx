@@ -296,7 +296,7 @@ describe("BrowsePluginsTab", () => {
     });
 
     const sortTrigger = await screen.findByRole("button", {
-      name: "Sort: Featured",
+      name: "Sort: Default",
     });
     fireEvent.pointerDown(sortTrigger);
     expect(
@@ -370,7 +370,7 @@ describe("BrowsePluginsTab", () => {
     });
     expect(screen.queryByTestId("plugin-browse-shelves")).toBeNull();
     fireEvent.pointerDown(trigger);
-    fireEvent.click(screen.getByRole("menuitemradio", { name: "Featured" }));
+    fireEvent.click(screen.getByRole("menuitemradio", { name: "Default" }));
     expect(await screen.findByTestId("plugin-browse-shelves")).toBeTruthy();
     const params = new URLSearchParams(
       screen.getByTestId("location-search").textContent ?? "",

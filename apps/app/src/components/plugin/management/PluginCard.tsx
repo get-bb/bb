@@ -32,17 +32,24 @@ export function PluginCard(props: PluginCardProps) {
 interface PluginAuthorBylineProps {
   name: string;
   github: string | null;
+  official?: boolean;
   children: ReactNode;
 }
 
 export function PluginAuthorByline({
   name,
   github,
+  official,
   children,
 }: PluginAuthorBylineProps) {
   return (
     <span className="flex min-w-0 items-center gap-1.5">
-      <PluginAuthorAvatar name={name} github={github} size="detail" />
+      <PluginAuthorAvatar
+        name={name}
+        github={github}
+        official={official}
+        size="detail"
+      />
       <span className="min-w-0 truncate">{children}</span>
     </span>
   );
@@ -58,7 +65,11 @@ interface PluginCardAuthorProps {
 export function PluginCardAuthor({ entry }: PluginCardAuthorProps) {
   const name = entry.author?.name ?? entry.publisherLabel;
   return (
-    <PluginAuthorByline name={name} github={pluginAuthorGithub(entry.author)}>
+    <PluginAuthorByline
+      name={name}
+      github={pluginAuthorGithub(entry.author)}
+      official={entry.marketplace === "bb-official"}
+    >
       {entry.author === null ? (
         name
       ) : (

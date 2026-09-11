@@ -105,7 +105,11 @@ export function PluginCollectionCard({
       </PluginAuthorByline>
     ) : runtime?.publisherLabel !== null &&
       runtime?.publisherLabel !== undefined ? (
-      <PluginAuthorByline name={runtime.publisherLabel} github={null}>
+      <PluginAuthorByline
+        name={runtime.publisherLabel}
+        github={null}
+        official={runtime.provenance === "builtin"}
+      >
         {runtime.publisherLabel}
       </PluginAuthorByline>
     ) : null;

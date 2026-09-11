@@ -94,7 +94,7 @@ it("uses one glyph box for host and marketplace catalog icons", () => {
 it("uses theme accents for all built-in categories and neutral unknowns", () => {
   for (const category of PLUGIN_CATALOG_CATEGORIES) {
     const style = pluginCatalogCategoryPillStyle(category.id);
-    expect(String(style.background)).toContain("color-mix(in oklch");
+    expect(String(style.background)).toContain("color-mix(in oklab");
     expect(String(style.background)).toContain("var(--");
     expect(String(style.background)).not.toContain("var(--ink) 8%");
   }

@@ -36,7 +36,9 @@ import {
   pluginRemovalDisabled,
 } from "@/components/plugin/management/plugin-ui";
 import {
-  PluginMarketplaceDetailRows,
+  PluginMarketplaceDetailMetadata,
+  PluginDetailMetadata,
+  PluginDetailMetadataItem,
   PluginMarketplaceHeaderMetadata,
   PluginMarketplaceListingSections,
   PluginMarketplaceOverview,
@@ -51,10 +53,6 @@ import {
   PluginSchedules,
   PluginServices,
 } from "@/components/tools/PluginCapabilities";
-import {
-  PluginDetailFieldRow,
-  PluginDetailTable,
-} from "@/components/tools/plugin-detail-table";
 import { PluginBannerBar } from "@/components/tools/plugin-detail-banner";
 import { ProvenancePill } from "@/components/tools/ProvenancePill";
 import {
@@ -228,7 +226,7 @@ function pluginHealthBannerState(
       plugin: {
         ...plugin,
         status: "error",
-        statusDetail: null,
+        statusDetail: frontendDiagnostic?.lastFailure?.message ?? null,
       },
     };
   }
@@ -346,6 +344,23 @@ export function PluginDetail({
     plugin.hasSettings ||
     settingsSections.some((section) => section.pluginId === plugin.id);
 
+  const installationMetadata = (
+    <>
+      <PluginDetailMetadataItem
+        label={updatesWithBb ? "Delivery" : "Installed"}
+      >
+        {installedValue}
+      </PluginDetailMetadataItem>
+      <PluginDetailMetadataItem label="Version">
+        <span className="font-mono">{plugin.version}</span>
+      </PluginDetailMetadataItem>
+      {hasReleaseUpdate ? (
+        <PluginDetailMetadataItem label="Update" className="col-span-2">
+          <PluginDetailReleaseStatus plugin={plugin} />
+        </PluginDetailMetadataItem>
+      ) : null}
+    </>
+  );
   const pluginName = plugin.name ?? plugin.id;
   const overflowItems: ResourceOverflowMenuItem[] = [
     ...(canEditSource
@@ -447,25 +462,15 @@ export function PluginDetail({
             ) : undefined
           }
         >
-          <PluginDetailTable>
-            {catalogEntry === undefined ? null : (
-              <PluginMarketplaceDetailRows entry={catalogEntry} />
+          <PluginDetailMetadata>
+            {catalogEntry === undefined ? (
+              installationMetadata
+            ) : (
+              <PluginMarketplaceDetailMetadata entry={catalogEntry}>
+                {installationMetadata}
+              </PluginMarketplaceDetailMetadata>
             )}
-            <PluginDetailFieldRow
-              label={updatesWithBb ? "Delivery" : "Installed"}
-              labelClassName="font-medium"
-            >
-              {installedValue}
-            </PluginDetailFieldRow>
-            <PluginDetailFieldRow label="Version" labelClassName="font-medium">
-              <span className="font-mono text-xs">{plugin.version}</span>
-            </PluginDetailFieldRow>
-            {hasReleaseUpdate ? (
-              <PluginDetailFieldRow label="Update" stackOnNarrow>
-                <PluginDetailReleaseStatus plugin={plugin} />
-              </PluginDetailFieldRow>
-            ) : null}
-          </PluginDetailTable>
+          </PluginDetailMetadata>
         </ResourceDetailReleaseSection>
         {plugin.services.length > 0 ? (
           <ResourceActivitySection label="Background services">

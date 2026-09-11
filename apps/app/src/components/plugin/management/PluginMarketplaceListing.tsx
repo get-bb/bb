@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import {
   Carousel,
   CarouselContent,
@@ -12,20 +12,15 @@ import { cn } from "@bb/shared-ui/lib/utils";
 import {
   ResourceDefinitionSection,
   ResourceDetailOverviewSection,
+  ResourceShelfAction,
 } from "@bb/shared-ui/resource-list";
-import {
-  PluginDetailFieldRow,
-  PluginDetailTable,
-} from "@/components/tools/plugin-detail-table";
 import type { PluginCatalogSearchEntry } from "@/hooks/queries/plugin-catalog-queries";
 import { PluginOverviewMarkdown } from "@/components/plugin/management/PluginOverviewMarkdown";
 import { CatalogEntryIconChip, PluginCategoryLabel } from "./plugin-ui";
-import { PluginAuthorAvatar } from "./PluginAuthorAvatar";
 import { PluginAuthorLink } from "./PluginAuthorLink";
 import { PluginCard, PluginCardAuthor } from "./PluginCard";
 import {
   entriesByMarketplaceAuthor,
-  pluginAuthorGithub,
   pluginMarketplaceAuthorKey,
 } from "./plugin-marketplace-author";
 
@@ -38,26 +33,7 @@ export function PluginMarketplaceHeaderMetadata({
 }: {
   entry: PluginCatalogSearchEntry;
 }) {
-  if (entry.author === null) return null;
-  const author = entry.author;
-  return (
-    <span className="inline-flex min-w-0 items-center gap-1.5">
-      <PluginAuthorAvatar
-        name={author.name}
-        github={pluginAuthorGithub(author)}
-        size="detail"
-      />
-      <span className="min-w-0">
-        By{" "}
-        <PluginAuthorLink
-          entry={entry}
-          className="rounded-sm underline underline-offset-2 hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-        >
-          {author.name}
-        </PluginAuthorLink>
-      </span>
-    </span>
-  );
+  return <PluginCardAuthor entry={entry} />;
 }
 
 export function PluginMarketplaceCategoryPill({
@@ -70,22 +46,38 @@ export function PluginMarketplaceCategoryPill({
   );
 }
 
-export function PluginMarketplaceDetailRows({
+export function PluginDetailMetadata({ children }: { children: ReactNode }) {
+  return <dl className="grid grid-cols-2 gap-x-6 gap-y-4">{children}</dl>;
+}
+
+export function PluginDetailMetadataItem({
+  label,
+  children,
+  className,
+}: {
+  label: string;
+  children: ReactNode;
+  className?: string;
+}) {
+  return (
+    <div className={cn("min-w-0 space-y-1", className)}>
+      <dt className="text-2xs font-medium text-subtle-foreground">{label}</dt>
+      <dd className="min-w-0 text-xs text-foreground">{children}</dd>
+    </div>
+  );
+}
+
+export function PluginMarketplaceDetailMetadata({
   entry,
+  children,
 }: {
   entry: PluginCatalogSearchEntry;
+  children?: ReactNode;
 }) {
   return (
     <>
-      {entry.category === undefined ? null : (
-        <PluginDetailFieldRow label="Category">
-          <span className="flex min-w-0 justify-end">
-            <PluginMarketplaceCategoryPill entry={entry} />
-          </span>
-        </PluginDetailFieldRow>
-      )}
       {entry.publishedAt === undefined ? null : (
-        <PluginDetailFieldRow label="Listed">
+        <PluginDetailMetadataItem label="Listed">
           <time dateTime={entry.publishedAt}>
             {new Date(entry.publishedAt).toLocaleDateString(undefined, {
               month: "short",
@@ -93,10 +85,10 @@ export function PluginMarketplaceDetailRows({
               year: "numeric",
             })}
           </time>
-        </PluginDetailFieldRow>
+        </PluginDetailMetadataItem>
       )}
       {entry.updatedAt === undefined ? null : (
-        <PluginDetailFieldRow label="Last updated">
+        <PluginDetailMetadataItem label="Last updated">
           <time dateTime={entry.updatedAt}>
             {new Date(entry.updatedAt).toLocaleDateString(undefined, {
               month: "short",
@@ -104,11 +96,22 @@ export function PluginMarketplaceDetailRows({
               year: "numeric",
             })}
           </time>
-        </PluginDetailFieldRow>
+        </PluginDetailMetadataItem>
       )}
-      <PluginDetailFieldRow label="Marketplace">
+      <PluginDetailMetadataItem label="Marketplace">
         {entry.marketplaceDisplayName}
-      </PluginDetailFieldRow>
+      </PluginDetailMetadataItem>
+      {children}
+      {entry.category === undefined ? null : (
+        <PluginDetailMetadataItem
+          label="Category"
+          className="col-start-2 text-right"
+        >
+          <span className="flex min-w-0 justify-end">
+            <PluginMarketplaceCategoryPill entry={entry} />
+          </span>
+        </PluginDetailMetadataItem>
+      )}
     </>
   );
 }
@@ -268,9 +271,9 @@ export function PluginMarketplaceListingSections({
       <PluginMarketplaceOverview entry={entry} />
       <PluginMarketplaceSource entry={entry} />
       <ResourceDefinitionSection label="Details">
-        <PluginDetailTable>
-          <PluginMarketplaceDetailRows entry={entry} />
-        </PluginDetailTable>
+        <PluginDetailMetadata>
+          <PluginMarketplaceDetailMetadata entry={entry} />
+        </PluginDetailMetadata>
       </ResourceDefinitionSection>
     </>
   );
@@ -307,7 +310,17 @@ export function PluginMoreFromAuthorSection({
   );
   if (moreEntries.length === 0) return null;
   return (
-    <ResourceDefinitionSection label="More from this author">
+    <ResourceDefinitionSection
+      label="More from this author"
+      actions={
+        <ResourceShelfAction asChild>
+          <PluginAuthorLink entry={entry}>
+            View all
+            <Icon name="ChevronRight" className="size-3" aria-hidden />
+          </PluginAuthorLink>
+        </ResourceShelfAction>
+      }
+    >
       <div className="grid grid-cols-[repeat(auto-fit,minmax(min(100%,16rem),1fr))] gap-3">
         {moreEntries.map((candidate) => (
           <PluginCard

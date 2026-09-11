@@ -22,10 +22,17 @@ import {
   PLUGIN_DETAIL_PRIMARY_COLUMN_CLASS,
 } from "@/components/tools/plugin-detail-table";
 import { formatAbsoluteDate } from "@/components/plugin/management/plugin-ui";
-import type { PluginRuntimeStatusPresentation } from "@/components/plugin/management/plugin-status";
+import {
+  pluginFailureHasConfiguredPath,
+  type PluginRuntimeStatusPresentation,
+} from "@/components/plugin/management/plugin-status";
 import type { PluginCatalogSearchEntry } from "@/hooks/queries/plugin-catalog-queries";
-import { pluginErrorReportPrompt } from "./plugin-error-report";
+import {
+  pluginErrorReportPrompt,
+  pluginErrorReportRepository,
+} from "./plugin-error-report";
 import { appToast } from "@/components/ui/app-toast";
+import { pluginAdminErrorMessage } from "@/lib/plugin-admin-error";
 import { invalidatePluginList } from "@/hooks/cache-owners/plugin-cache-owner";
 import {
   reloadPlugin,
@@ -513,13 +520,32 @@ function PluginRuntimeStatusAlert({
     plugin.hasSettings ||
     settingsSections.some((section) => section.pluginId === plugin.id);
   const canOpenSettings =
-    plugin.status === "needs-configuration" && hasSettingsPage;
+    hasSettingsPage &&
+    (plugin.status === "needs-configuration" ||
+      pluginFailureHasConfiguredPath(plugin));
   const canReload =
     plugin.status === "error" ||
     plugin.status === "degraded" ||
+    plugin.status === "running" ||
+    (plugin.status === "missing" && plugin.source.startsWith("path:")) ||
     (plugin.status === "needs-configuration" && !plugin.hasSettings);
   const reportPrompt = pluginErrorReportPrompt({ plugin, catalogEntry });
-  const detail = [runtimeStatus.condition, runtimeStatus.recovery]
+  const reportRepository = pluginErrorReportRepository({
+    plugin,
+    catalogEntry,
+  });
+  const reportUnavailableReason = plugin.source.startsWith("path:")
+    ? "This is a local plugin. Fix it in its source directory."
+    : "No GitHub source repository is available for this plugin.";
+  const reportRecovery =
+    reportPrompt !== null && plugin.status !== "missing"
+      ? "If the problem continues, report it to the author."
+      : "";
+  const detail = [
+    runtimeStatus.condition,
+    runtimeStatus.recovery,
+    reportRecovery,
+  ]
     .filter((part): part is string => part !== null && part.length > 0)
     .map((part) => {
       const capitalized = `${part.charAt(0).toUpperCase()}${part.slice(1)}`;
@@ -535,7 +561,7 @@ function PluginRuntimeStatusAlert({
       detail={detail}
       separator={plugin.status !== "degraded"}
       action={
-        canOpenSettings || canReload || reportPrompt !== null ? (
+        plugin.status !== "starting" ? (
           <span className="flex shrink-0 items-center gap-1">
             {canOpenSettings ? (
               onConfigure === undefined ? (
@@ -579,22 +605,28 @@ function PluginRuntimeStatusAlert({
                 onClick={onReload}
               />
             ) : null}
-            {reportPrompt === null ? null : (
-              <ResourceActionButton
-                label="Report to author"
-                icon="Bug"
-                className="size-7"
-                onClick={() =>
-                  navigate(getRootComposeRoutePath(), {
-                    state: {
-                      focusPrompt: true,
-                      initialPrompt: reportPrompt,
-                      replaceInitialPrompt: true,
-                    },
-                  })
-                }
-              />
-            )}
+            <ResourceActionButton
+              label="Report to author"
+              tooltipLabel={
+                reportRepository === null
+                  ? undefined
+                  : `Prepare a report to ${reportRepository.replace("https://github.com/", "")}`
+              }
+              disabled={reportPrompt === null}
+              disabledReason={reportUnavailableReason}
+              icon="Bug"
+              className="size-7"
+              onClick={() => {
+                if (reportPrompt === null) return;
+                navigate(getRootComposeRoutePath(), {
+                  state: {
+                    focusPrompt: true,
+                    initialPrompt: reportPrompt,
+                    replaceInitialPrompt: true,
+                  },
+                });
+              }}
+            />
           </span>
         ) : undefined
       }
@@ -626,10 +658,26 @@ export function PluginHealthBanner({
   });
   const showOverallState = plugin.enabled && runtimeStatus !== null;
   if (!showOverallState || runtimeStatus === null) return null;
+  const reloadFailure = reload.isError
+    ? pluginAdminErrorMessage(reload.error)
+    : null;
   return (
     <PluginRuntimeStatusAlert
-      plugin={plugin}
-      runtimeStatus={runtimeStatus}
+      plugin={
+        reloadFailure === null
+          ? plugin
+          : { ...plugin, statusDetail: `reload failed: ${reloadFailure}` }
+      }
+      runtimeStatus={
+        reloadFailure === null
+          ? runtimeStatus
+          : {
+              ...runtimeStatus,
+              label: "Reload failed",
+              condition: reloadFailure,
+              recovery: "Resolve the reload error above, then try again.",
+            }
+      }
       reloadPending={reload.isPending}
       onReload={() => reload.mutate()}
       catalogEntry={catalogEntry}

@@ -83,7 +83,8 @@ export function PluginAuthorPage({
   const selectedCategories = searchParams.getAll("category");
   const requestedSort = pluginBrowseSort(searchParams.get("sort"));
   const sortDirection =
-    pluginBrowseSortDirection(searchParams.get("direction")) ?? "desc";
+    pluginBrowseSortDirection(searchParams.get("direction")) ??
+    (requestedSort === "name" ? "asc" : "desc");
   const catalogQuery = usePluginCatalogSearch("", { enabled: true });
   const searchQuery = usePluginCatalogSearch(debouncedQuery, {
     enabled: debouncedQuery !== "",
@@ -153,6 +154,7 @@ export function PluginAuthorPage({
               <PluginAuthorAvatar
                 name={author.name}
                 github={pluginAuthorGithub(author)}
+                official={entries[0]?.marketplace === "bb-official"}
                 size="page"
               />
               <div className="min-w-0 space-y-1">

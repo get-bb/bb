@@ -1,7 +1,9 @@
 import { describe, expect, it } from "vitest";
 import { makePluginListItem } from "@/test/fixtures/plugins";
+import type { PluginCatalogSearchEntry } from "@/hooks/queries/plugin-catalog-queries";
 import {
   pluginErrorReportPrompt,
+  pluginErrorReportRepository,
   pluginIssueRepository,
   sanitizePluginFailure,
 } from "./plugin-error-report";
@@ -29,8 +31,67 @@ describe("plugin error report preparation", () => {
     );
     expect(prompt).toContain("check existing issues for duplicates");
     expect(prompt).toContain(
-      "Show me the prepared report before submitting it.",
+      "Do not create an issue, comment, or send anything to the author without my explicit approval of that draft.",
     );
+  });
+
+  it("uses the installed repository even when a catalog entry with the same ID points elsewhere", () => {
+    const catalogEntry: PluginCatalogSearchEntry = {
+      entryId: "traces",
+      pluginId: "traces",
+      displayName: "Traces",
+      description: "Plugin fixture",
+      icon: null,
+      iconUrl: null,
+      iconTinted: false,
+      screenshots: [],
+      collections: [],
+      source: "git:https://github.com/another-author/traces.git",
+      repositoryUrl: "https://github.com/another-author/traces",
+      marketplace: "community",
+      marketplaceDisplayName: "Community",
+      publisherKey: "community",
+      publisherLabel: "Community",
+      official: false,
+      author: null,
+      installed: true,
+      installs: null,
+      compatible: true,
+      incompatibleReason: null,
+    };
+    expect(
+      pluginErrorReportRepository({
+        plugin: makePluginListItem({
+          id: "traces",
+          catalogEntryId: "traces",
+          source: "git:https://github.com/patleeman/bb-plugins.git@main",
+        }),
+        catalogEntry,
+      }),
+    ).toBe("https://github.com/patleeman/bb-plugins");
+    expect(
+      pluginErrorReportRepository({
+        plugin: makePluginListItem({
+          id: "traces",
+          catalogEntryId: "traces",
+          source: "git:https://gitlab.com/local-author/traces.git",
+        }),
+        catalogEntry,
+      }),
+    ).toBeNull();
+  });
+
+  it("prepares bundled plugin reports for bb and retains a failed reload reason", () => {
+    const prompt = pluginErrorReportPrompt({
+      plugin: makePluginListItem({
+        source: "builtin:connect",
+        provenance: "builtin",
+        statusDetail: "reload failed: missing app bundle",
+      }),
+    });
+    expect(prompt).toContain("Source repository: https://github.com/get-bb/bb");
+    expect(prompt).toContain("reload failed: missing app bundle");
+    expect(prompt).toContain("complete issue title and body for review");
   });
 
   it.each([
