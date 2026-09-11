@@ -6,6 +6,7 @@ import { atomWithStorage } from "jotai/utils";
 import { Link, matchPath, useLocation, useNavigate } from "react-router-dom";
 import type { ProjectResponse } from "@bb/server-contract";
 import { Icon } from "@bb/shared-ui/icon";
+import { TooltipProvider } from "@bb/shared-ui/tooltip";
 import { RESOURCE_ROUTE_LABEL_EVENT } from "@bb/shared-ui/resource-route-label";
 import {
   SidebarInset,
@@ -711,80 +712,82 @@ export function AppLayout({ children }: AppLayoutProps) {
   }, [documentTitle]);
 
   return (
-    <ProjectActionsProvider>
-      <ThreadTitleMentionResourcesProvider {...titleMentionResources}>
-        <ThreadActionsProvider>
-          <SidebarStateBridge>
-            {backToAppRoutePath !== null && !isSidebarResizing ? (
-              <BackToAppCommandHandler routePath={backToAppRoutePath} />
-            ) : null}
-            <AppLayoutSidebar
-              mode={
-                isGlobalSettingsView
-                  ? "settings"
-                  : isPluginsWorkspace
-                    ? "plugins"
-                    : isSkillsWorkspace
-                      ? "skills"
-                      : "app"
-              }
-              onResizeMouseDown={handleResizeMouseDown}
-              isResizing={isSidebarResizing}
-              appRoutePath={appRoutePath}
-              settingsRoutePath={settingsRoutePath}
-              toolsBackRoutePath={toolsBackRoutePath}
-              toolsRoutePath={toolsRoutePath}
-            />
-            <SidebarInset>
-              <div
-                ref={contentShellRef}
-                data-testid="app-layout-content-shell"
-                className="relative flex h-full min-h-0 min-w-0 w-full flex-col pt-[env(safe-area-inset-top)] pr-[env(safe-area-inset-right)] pb-[var(--bb-safe-area-bottom,env(safe-area-inset-bottom))] pl-[env(safe-area-inset-left)]"
-              >
-                {showHeader ? (
-                  <AppHeader
-                    usesDesktopChrome={usesDesktopChrome}
-                    usesProjectChromeStyle={isRootView || isArchivedView}
-                    projectId={projectId}
-                    project={project}
-                    pluginPanel={pluginPanel}
-                    pluginPanelChrome={pluginPanelChrome}
-                    pluginPanelSubPath={pluginPanelSubPath}
-                    meta={meta}
-                  />
-                ) : null}
-                <main className="flex min-h-0 flex-1 flex-col p-4 md:p-5">
-                  {children}
-                </main>
-              </div>
-            </SidebarInset>
-            <SidebarTriggerOverlay
-              reserveMacosTrafficLights={reserveMacosTrafficLights}
-              usesDesktopChrome={usesDesktopChrome}
-            />
+    <TooltipProvider delayDuration={300} disableHoverableContent>
+      <ProjectActionsProvider>
+        <ThreadTitleMentionResourcesProvider {...titleMentionResources}>
+          <ThreadActionsProvider>
+            <SidebarStateBridge>
+              {backToAppRoutePath !== null && !isSidebarResizing ? (
+                <BackToAppCommandHandler routePath={backToAppRoutePath} />
+              ) : null}
+              <AppLayoutSidebar
+                mode={
+                  isGlobalSettingsView
+                    ? "settings"
+                    : isPluginsWorkspace
+                      ? "plugins"
+                      : isSkillsWorkspace
+                        ? "skills"
+                        : "app"
+                }
+                onResizeMouseDown={handleResizeMouseDown}
+                isResizing={isSidebarResizing}
+                appRoutePath={appRoutePath}
+                settingsRoutePath={settingsRoutePath}
+                toolsBackRoutePath={toolsBackRoutePath}
+                toolsRoutePath={toolsRoutePath}
+              />
+              <SidebarInset>
+                <div
+                  ref={contentShellRef}
+                  data-testid="app-layout-content-shell"
+                  className="relative flex h-full min-h-0 min-w-0 w-full flex-col pt-[env(safe-area-inset-top)] pr-[env(safe-area-inset-right)] pb-[var(--bb-safe-area-bottom,env(safe-area-inset-bottom))] pl-[env(safe-area-inset-left)]"
+                >
+                  {showHeader ? (
+                    <AppHeader
+                      usesDesktopChrome={usesDesktopChrome}
+                      usesProjectChromeStyle={isRootView || isArchivedView}
+                      projectId={projectId}
+                      project={project}
+                      pluginPanel={pluginPanel}
+                      pluginPanelChrome={pluginPanelChrome}
+                      pluginPanelSubPath={pluginPanelSubPath}
+                      meta={meta}
+                    />
+                  ) : null}
+                  <main className="flex min-h-0 flex-1 flex-col p-4 md:p-5">
+                    {children}
+                  </main>
+                </div>
+              </SidebarInset>
+              <SidebarTriggerOverlay
+                reserveMacosTrafficLights={reserveMacosTrafficLights}
+                usesDesktopChrome={usesDesktopChrome}
+              />
+            </SidebarStateBridge>
             <PluginAppOverlays />
-          </SidebarStateBridge>
-          <IframeDragGuardOverlay
-            active={isSidebarResizing}
-            cursor="col-resize"
-          />
-          <CommandPalette
-            threadId={threadId ?? null}
-            projectId={projectId ?? null}
-          />
-          <NotificationCenter />
-          <ProjectPathDialog
-            target={quickCreateProject.projectPathDialog.target}
-            pending={quickCreateProject.isCreating}
-            platform={quickCreateProject.platform}
-            hostId={quickCreateProject.hostId}
-            hostName={quickCreateProject.hostName}
-            hosts={quickCreateProject.hosts}
-            onOpenChange={quickCreateProject.projectPathDialog.onOpenChange}
-            onSubmit={quickCreateProject.submitProjectPath}
-          />
-        </ThreadActionsProvider>
-      </ThreadTitleMentionResourcesProvider>
-    </ProjectActionsProvider>
+            <IframeDragGuardOverlay
+              active={isSidebarResizing}
+              cursor="col-resize"
+            />
+            <CommandPalette
+              threadId={threadId ?? null}
+              projectId={projectId ?? null}
+            />
+            <NotificationCenter />
+            <ProjectPathDialog
+              target={quickCreateProject.projectPathDialog.target}
+              pending={quickCreateProject.isCreating}
+              platform={quickCreateProject.platform}
+              hostId={quickCreateProject.hostId}
+              hostName={quickCreateProject.hostName}
+              hosts={quickCreateProject.hosts}
+              onOpenChange={quickCreateProject.projectPathDialog.onOpenChange}
+              onSubmit={quickCreateProject.submitProjectPath}
+            />
+          </ThreadActionsProvider>
+        </ThreadTitleMentionResourcesProvider>
+      </ProjectActionsProvider>
+    </TooltipProvider>
   );
 }

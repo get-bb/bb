@@ -491,8 +491,19 @@ describe("AppLayout plugin overlay contexts", () => {
         }),
       );
 
-      renderLayout();
+      renderLayout(
+        "/",
+        <Tooltip>
+          <TooltipTrigger>Page action</TooltipTrigger>
+          <TooltipContent>Page tooltip</TooltipContent>
+        </Tooltip>,
+      );
 
+      expect(screen.getByRole("button", { name: "Page action" })).toBeDefined();
+      const overlayHost = document.querySelector("[data-bb-plugin-app-overlays]");
+      expect(overlayHost).not.toBeNull();
+      expect(overlayHost?.parentElement).toBe(getRoot().parentElement);
+      expect(getRoot().contains(overlayHost)).toBe(false);
       expect(errors).not.toHaveBeenCalled();
       expect(screen.getByRole("button", { name: "Overlay action" })).toBeDefined();
       expect((await screen.findByRole("tooltip")).textContent).toBe(

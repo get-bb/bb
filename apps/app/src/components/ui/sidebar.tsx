@@ -11,7 +11,6 @@ import { Icon } from "@bb/shared-ui/icon";
 import {
   Tooltip,
   TooltipContent,
-  TooltipProvider,
   TooltipTrigger,
 } from "@bb/shared-ui/tooltip";
 import { setCompactSidebarDrawerShowing } from "./sidebar-mobile-drawer-visibility.js";
@@ -658,25 +657,23 @@ const SidebarProvider = React.forwardRef<
         <SidebarShowingContext.Provider value={isSidebarShowing}>
           <SidebarWidthContext.Provider value={width}>
             {}
-            <TooltipProvider delayDuration={300} disableHoverableContent>
-              <div
-                style={
-                  {
-                    "--sidebar-width-icon": SIDEBAR_WIDTH_ICON,
-                    ...sidebarMobileWidthStyle,
-                    ...style,
-                  } as React.CSSProperties
-                }
-                className={cn(
-                  "group/sidebar-wrapper flex h-full min-h-0 w-full has-[[data-variant=inset]]:bg-sidebar max-md:overflow-clip",
-                  className,
-                )}
-                ref={ref}
-                {...props}
-              >
-                {children}
-              </div>
-            </TooltipProvider>
+            <div
+              style={
+                {
+                  "--sidebar-width-icon": SIDEBAR_WIDTH_ICON,
+                  ...sidebarMobileWidthStyle,
+                  ...style,
+                } as React.CSSProperties
+              }
+              className={cn(
+                "group/sidebar-wrapper flex h-full min-h-0 w-full has-[[data-variant=inset]]:bg-sidebar max-md:overflow-clip",
+                className,
+              )}
+              ref={ref}
+              {...props}
+            >
+              {children}
+            </div>
           </SidebarWidthContext.Provider>
         </SidebarShowingContext.Provider>
       </SidebarContext.Provider>
