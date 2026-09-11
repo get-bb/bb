@@ -39,7 +39,7 @@ export function ResourceToolbar({
 }) {
   return (
     <div className="flex flex-wrap items-center gap-2">
-      <div className="relative w-full min-w-0 sm:w-auto sm:flex-1">
+      <div className="relative w-full min-w-0 sm:w-auto sm:min-w-48 sm:flex-1">
         <Icon
           name="Search"
           className="pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground"
