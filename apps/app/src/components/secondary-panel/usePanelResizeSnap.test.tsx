@@ -44,6 +44,39 @@ function SnapHarness({ onResize }: { onResize: (fraction: number) => void }) {
 afterEach(() => cleanup());
 
 describe("usePanelResizeSnap", () => {
+  it("restores the committed layout before a resize that clamps to the existing limit", () => {
+    const onResize = vi.fn();
+    render(<SnapHarness onResize={onResize} />);
+    const previous = screen.getByTestId("previous");
+    const divider = screen.getByTestId("divider");
+    const next = screen.getByTestId("next");
+    screen.getByTestId("grid").getBoundingClientRect = () => rect(100, 800);
+    previous.getBoundingClientRect = () => rect(100, 240);
+    divider.getBoundingClientRect = () => rect(340, 1);
+    next.getBoundingClientRect = () => rect(341, 559);
+    previous.style.flex = "30 1 0px";
+    next.style.flex = "70 1 0px";
+    onResize.mockImplementation(() => {
+      expect(previous.style.flex).toBe("30 1 0px");
+      expect(next.style.flex).toBe("70 1 0px");
+    });
+
+    fireEvent.pointerDown(divider, { clientX: 340, pointerId: 45 });
+    fireEvent.pointerMove(document.body, {
+      buttons: 1,
+      clientX: 220,
+      pointerId: 45,
+    });
+    expect(previous.style.flex).toBe("15 1 0px");
+    expect(next.style.flex).toBe("85 1 0px");
+
+    fireEvent.pointerUp(window, { clientX: 220, pointerId: 45 });
+
+    expect(onResize).toHaveBeenCalledExactlyOnceWith(0.15);
+    expect(previous.style.flex).toBe("30 1 0px");
+    expect(next.style.flex).toBe("70 1 0px");
+  });
+
   it("previews pointer movement locally and commits once at drag end", () => {
     const onResize = vi.fn();
     render(<SnapHarness onResize={onResize} />);
