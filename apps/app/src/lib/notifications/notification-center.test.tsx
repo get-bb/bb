@@ -37,12 +37,10 @@ it("renders recorded Markdown in notification history", async () => {
     openNotificationCenter();
   });
 
-  await screen.findByTestId("notification-row");
+  const docs = await screen.findByRole("link", { name: "docs" });
   expect(screen.getByText("Install failed").tagName).toBe("STRONG");
   expect(screen.getByText("build").tagName).toBe("CODE");
-  expect(screen.getByRole("link", { name: "docs" }).getAttribute("href")).toBe(
-    "https://example.com/docs",
-  );
+  expect(docs.getAttribute("href")).toBe("https://example.com/docs");
 });
 
 it("keeps notification details open when dismissing the toast restores composer focus", async () => {

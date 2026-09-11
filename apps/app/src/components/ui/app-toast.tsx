@@ -162,7 +162,16 @@ function AppToastOverflowText({
     measure();
     const observer = new ResizeObserver(measure);
     observer.observe(body);
-    return () => observer.disconnect();
+    const contentObserver = new MutationObserver(measure);
+    contentObserver.observe(body, {
+      childList: true,
+      subtree: true,
+      characterData: true,
+    });
+    return () => {
+      observer.disconnect();
+      contentObserver.disconnect();
+    };
   }, [content]);
 
   return (

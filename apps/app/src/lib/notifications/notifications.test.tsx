@@ -16,7 +16,7 @@ beforeEach(() => {
 });
 
 describe("toast history", () => {
-  it("renders Markdown in toast titles and descriptions", () => {
+  it("renders Markdown in toast titles and descriptions", async () => {
     render(
       <AppToastContent
         title="**Install failed**"
@@ -27,16 +27,15 @@ describe("toast history", () => {
       />,
     );
 
+    const docs = await screen.findByRole("link", { name: "docs" });
     expect(screen.getByText("Install failed").tagName).toBe("STRONG");
     expect(screen.getByText("build").tagName).toBe("CODE");
     expect(screen.getByText("dependencies").tagName).toBe("EM");
     expect(screen.getByRole("listitem").textContent).toBe("Check dependencies");
-    expect(screen.getByRole("link", { name: "docs" }).getAttribute("href")).toBe(
-      "https://example.com/docs",
-    );
+    expect(docs.getAttribute("href")).toBe("https://example.com/docs");
   });
 
-  it("preserves supplied React content and does not render unsafe Markdown links or HTML", () => {
+  it("preserves supplied React content and does not render unsafe Markdown links or HTML", async () => {
     const onClick = vi.fn();
     const { container } = render(
       <AppToastContent
@@ -48,6 +47,7 @@ describe("toast history", () => {
       />,
     );
 
+    await screen.findByText("unsafe");
     fireEvent.click(screen.getByRole("button", { name: "**Retry**" }));
     expect(onClick).toHaveBeenCalledOnce();
     expect(
