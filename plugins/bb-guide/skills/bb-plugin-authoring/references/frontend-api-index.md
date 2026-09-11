@@ -58,6 +58,10 @@ Read the installed SDK declarations for the exact current signatures.
 - `PluginEnvironmentProviderInputsProps`
 - `PluginEnvironmentProviderInputsRegistration` — the registration accepted by
   `app.slots.experimental_environmentProviderInputs`
+- `PluginMachineProviderInputsChange`
+- `PluginMachineProviderInputsProps`
+- `PluginMachineProviderInputsRegistration` — the registration accepted by
+  `app.slots.experimental_machineProviderInputs`
 - `PluginSidebarFooterActionProps`
 - `ExperimentalSidebarFooterDisclosureProps`
 - `ExperimentalSidebarNavigationShortcut`

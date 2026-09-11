@@ -786,6 +786,7 @@ export function registerPluginRoutes(
   app.post("/plugins/:id/rpc/:method", async (context) => {
     const id = context.req.param("id");
     const method = context.req.param("method");
+    context.header("Cache-Control", "no-store");
     const problem = localAuthProblem(context, deps);
     if (problem) {
       return context.json({ ok: false, error: problem.error }, problem.status);

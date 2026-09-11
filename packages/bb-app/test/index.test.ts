@@ -746,8 +746,6 @@ describe("bb-app launcher", () => {
         "host_remote",
         "--host-daemon-port",
         "48887",
-        "--host-type",
-        "persistent",
         "--auto-update",
       ]),
     ).toEqual({
@@ -757,7 +755,6 @@ describe("bb-app launcher", () => {
         help: false,
         hostDaemonPort: "48887",
         hostId: "host_remote",
-        hostType: "persistent",
         joinCode: "bbde_supplied",
         json: false,
         serverUrl: "https://bb.example.test",
@@ -2247,4 +2244,34 @@ describe("bb-app launcher", () => {
     expect(webServerEnv.BB_APP_SURFACE).toBe("web");
     expect(invalidSurfaceServerEnv.BB_APP_SURFACE).toBe("web");
   });
+});
+
+it("preserves machine identity and access headers through real config set and unset", async () => {
+  const dataDir = mkdtempSync(join(tmpdir(), "bb-app-config-machine-"));
+  const identity = {
+    serverUrl: "https://machine.example",
+    serverHeaders: { "x-bb-connect-machine": "private-machine-access" },
+    machineCredential: "legacy-private",
+    connectMachineId: "cloud-device",
+  };
+  try {
+    writeFileSync(join(dataDir, "config.json"), JSON.stringify(identity));
+    await runBbApp([
+      "--data-dir",
+      dataDir,
+      "config",
+      "set",
+      "BB_APP_URL",
+      "https://other.example",
+    ]);
+    expect(
+      JSON.parse(readFileSync(join(dataDir, "config.json"), "utf8")),
+    ).toMatchObject(identity);
+    await runBbApp(["--data-dir", dataDir, "config", "unset", "BB_APP_URL"]);
+    expect(
+      JSON.parse(readFileSync(join(dataDir, "config.json"), "utf8")),
+    ).toEqual(identity);
+  } finally {
+    rmSync(dataDir, { recursive: true, force: true });
+  }
 });

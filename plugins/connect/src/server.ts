@@ -1,3 +1,7 @@
+import {
+  createServerAccessRecheck,
+  registerServerAccess,
+} from "./server-access.js";
 import type { BbPluginApi } from "@get-bb/plugin-sdk";
 import { registerConnectCli } from "./cli.js";
 import { createKvCredentialStore } from "./credential.js";
@@ -51,15 +55,20 @@ export default async function plugin(bb: BbPluginApi) {
     },
   });
 
+  const recheckServerAccess = createServerAccessRecheck(bb);
   tunnel = new ConnectTunnel({
     store,
     shares,
     defaultBaseUrl: resolveDefaultConnectBaseUrl(process.env),
     getLoopbackBaseUrl,
     log: bb.log,
-    onStatusChange: (status) =>
-      bb.realtime.publish(CONNECT_REALTIME_CHANNEL, status),
+    onStatusChange: (status) => {
+      bb.realtime.publish(CONNECT_REALTIME_CHANNEL, status);
+      recheckServerAccess(status);
+    },
   });
+
+  await registerServerAccess(bb, tunnel);
 
   const mobilePairing: MobilePairingGate = {
     enabled: async () => (await bb.sdk.system.config()).experiments.mobileApp,

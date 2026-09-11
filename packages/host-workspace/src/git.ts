@@ -38,6 +38,7 @@ export interface RunGitOptions extends GitProcessOptions {
   signal?: AbortSignal;
   maxBufferBytes?: number;
   allowTruncatedStdout?: boolean;
+  onStderr?: (chunk: string) => void;
 }
 
 interface ResolveGitProcessEnvArgs {
@@ -273,7 +274,7 @@ export async function runGit(
     throw createGitCommandCancelledError(args, options.signal.reason);
   }
   try {
-    const result = await execFileAsync("git", args, {
+    const processOptions = {
       cwd: options.cwd,
       encoding: "utf8",
       env: resolveGitProcessEnv({
@@ -283,7 +284,29 @@ export async function runGit(
       maxBuffer: options.maxBufferBytes ?? DEFAULT_BUFFER_BYTES,
       signal: options.signal,
       timeout: options.timeoutMs,
-    });
+    } as const;
+    const stderrListener = options.onStderr;
+    const result =
+      stderrListener === undefined
+        ? await execFileAsync("git", args, processOptions)
+        : await new Promise<{ stdout: string; stderr: string }>(
+            (resolve, reject) => {
+              const child = execFile(
+                "git",
+                args,
+                processOptions,
+                (error, stdout, stderr) => {
+                  if (error) {
+                    error.stdout = stdout;
+                    error.stderr = stderr;
+                    reject(error);
+                  } else resolve({ stdout, stderr });
+                },
+              );
+              child.stderr?.setEncoding("utf8");
+              child.stderr?.on("data", stderrListener);
+            },
+          );
     return {
       stdout: result.stdout,
       stderr: result.stderr,

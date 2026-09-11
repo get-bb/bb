@@ -66,6 +66,7 @@ interface BeginThreadReadStateTransactionArgs extends ThreadIdCacheArgs {
 }
 
 interface BeginThreadMetadataTransactionArgs extends ThreadIdCacheArgs {
+  parentThreadId?: string | null;
   sectionId?: string | null;
   title?: string | null;
 }
@@ -389,6 +390,7 @@ export function beginThreadReadStateTransaction({
 }
 
 export function beginThreadMetadataTransaction({
+  parentThreadId,
   sectionId,
   queryClient,
   threadId,
@@ -397,6 +399,7 @@ export function beginThreadMetadataTransaction({
   const patch = {
     ...(title !== undefined ? { title } : {}),
     ...(sectionId !== undefined ? { sectionId } : {}),
+    ...(parentThreadId !== undefined ? { parentThreadId } : {}),
   };
   return runOptimisticThreadFieldTransaction({
     applyToLists: (queryClient, threadId) =>

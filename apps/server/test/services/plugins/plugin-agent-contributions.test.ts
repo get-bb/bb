@@ -351,13 +351,11 @@ describe("plugin agent contributions reach thread runtime config", () => {
               name: "PLUGIN_CONTEXT",
               value: context.threadId + ":" + context.projectId + ":" + context.hostId,
               reason: "Expose resolution context",
-              secret: false,
             },
             {
               name: "SHARED_TOKEN",
               value: "first",
               reason: "First registration wins",
-              secret: true,
             },
           ]);
         }
@@ -372,13 +370,11 @@ describe("plugin agent contributions reach thread runtime config", () => {
               name: "SHARED_TOKEN",
               value: "second",
               reason: "Conflicting registration",
-              secret: true,
             },
             {
               name: "PLUGIN_PROXY_URL",
               value: { serverPath: "/plugins/env-second/proxy" },
               reason: "Use the server auth proxy",
-              secret: false,
             },
           ]);
         }
@@ -425,21 +421,18 @@ describe("plugin agent contributions reach thread runtime config", () => {
         name: "PLUGIN_CONTEXT",
         value: `${thread.id}:${project.id}:${host.id}`,
         reason: "Expose resolution context",
-        secret: false,
         source: { plugin: "env-first" },
       },
       {
         name: "SHARED_TOKEN",
         value: "first",
         reason: "First registration wins",
-        secret: true,
         source: { plugin: "env-first" },
       },
       {
         name: "PLUGIN_PROXY_URL",
         value: { serverPath: "/plugins/env-second/proxy" },
         reason: "Use the server auth proxy",
-        secret: false,
         source: { plugin: "env-second" },
       },
     ]);

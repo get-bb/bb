@@ -1,3 +1,4 @@
+import { operationEnvironment } from "./operation-environment.js";
 import {
   runEnvironmentHook,
   cancelEnvironmentHook,
@@ -466,7 +467,22 @@ const commandHandlers: CommandHandlerMap = {
     cloneProject({
       dataDir: options.dataDir,
       projectSlug: command.projectSlug,
+      env: operationEnvironment(
+        command.contributedEnv,
+        {
+          ...process.env,
+          ...options.runtimeManager.getShellEnv(),
+        },
+        true,
+      ),
+      contributedEnv: command.contributedEnv,
       remoteUrl: command.remoteUrl,
+      onProgress: (text) =>
+        options.emitEnvironmentHookProgress?.({
+          type: "environment.hook.progress",
+          operationId: command.operationId,
+          entry: { type: "output", text, status: null },
+        }),
       ...userExecutableProcessOptions(options.runtimeManager.getShellEnv()),
       ...(command.targetPath !== undefined
         ? { targetPath: command.targetPath }

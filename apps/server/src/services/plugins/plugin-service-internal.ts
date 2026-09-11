@@ -1,3 +1,4 @@
+import type { MachineEnrollmentService } from "../machines/machine-services.js";
 import type { AiServiceRegistry } from "../ai/ai-service-registry.js";
 import type { DbConnection } from "@bb/db";
 import type {
@@ -65,6 +66,7 @@ export interface PluginHostArtifactSnapshot {
 }
 
 export interface PluginServiceDeps {
+  machineEnrollments?: MachineEnrollmentService;
   db: DbConnection;
   sharedPorts?: Pick<
     HostSharedPortCoordinator,
@@ -127,7 +129,10 @@ export interface PluginServiceDeps {
     durationMs: number,
     onElapsed: () => void,
   ) => () => void;
-  scheduleUpdateCheck?: (delayMs: number, onElapsed: () => void) => () => void;
+  scheduleUpdateCheck?: (
+    delayMs: number,
+    onElapsed: () => Promise<void>,
+  ) => () => void;
   afterPluginRollbackStateRestored?: (args: {
     pluginId: string;
     snapshotId: string;
@@ -206,6 +211,10 @@ export type PluginMentionResolveResult =
   | { ok: false; error: string };
 
 export interface PluginThreadEventEmitter {
+  emitThreadEvents(threadId: string): void;
+  emitTerminalInput(
+    terminal: import("@bb/server-contract").TerminalSession,
+  ): void;
   emitThreadCreated(thread: Thread): void;
   emitThreadActive(thread: Thread): void;
   emitThreadIdle(thread: Thread): void;

@@ -208,7 +208,7 @@ export class ConnectTunnel {
     if (this.credential === null) {
       throw new MachineCodeError("not_paired");
     }
-    return fetchMachineCode(this.credential);
+    return fetchMachineCode(this.credential, AbortSignal.timeout(10_000));
   }
 
   async revokeMachine(machineId: string): Promise<void> {

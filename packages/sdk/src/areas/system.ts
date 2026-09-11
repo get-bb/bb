@@ -1,4 +1,8 @@
 import type {
+  MachineEnvironmentReplace,
+  MachineEnvironmentList,
+} from "@bb/server-contract";
+import type {
   AppKeybindingOverrides,
   AppSettings,
   AppSettingsUpdate,
@@ -105,6 +109,10 @@ export interface SystemUiPreferencesArea {
 }
 
 export interface SystemArea {
+  machineEnvironment(): Promise<MachineEnvironmentList>;
+  replaceMachineEnvironment(
+    input: MachineEnvironmentReplace,
+  ): Promise<MachineEnvironmentList>;
   attention(args?: SystemAttentionArgs): Promise<SystemAttentionResult>;
   config(args?: SystemConfigArgs): Promise<SystemConfigResult>;
   executionOptions(
@@ -175,6 +183,16 @@ export function createSystemArea(args: CreateSdkAreaArgs): SystemArea {
   };
   return {
     uiPreferences,
+    async machineEnvironment() {
+      return transport.readJson(
+        transport.api.v1.settings["machine-environment"].$get(),
+      );
+    },
+    async replaceMachineEnvironment(input) {
+      return transport.readJson(
+        transport.api.v1.settings["machine-environment"].$put({ json: input }),
+      );
+    },
     async attention(input) {
       return transport.readJson(
         transport.api.v1.system.attention.$get(

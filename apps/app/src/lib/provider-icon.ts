@@ -1,3 +1,4 @@
+import type { PluginProviderIconRegistration } from "@get-bb/plugin-sdk/app";
 import type { CSSProperties, ComponentType } from "react";
 import { createElement, useSyncExternalStore } from "react";
 import { isPresentationTintColor, type ProviderInfo } from "@bb/domain";
@@ -90,10 +91,18 @@ function getConfiguredProviderLogoIcon(
 }
 
 function getRegisteredPluginProviderIcon(
+  providerKind: PluginProviderIconRegistration["providerKind"],
   providerId: string,
 ): ComponentType<{ className?: string }> | undefined {
-  return getPluginSlotSnapshot().providerIcons.find(
-    (slot) => slot.providerId === providerId,
+  const slots = getPluginSlotSnapshot().providerIcons;
+  return (
+    slots.find(
+      (slot) =>
+        slot.providerKind === providerKind && slot.providerId === providerId,
+    ) ??
+    slots.find(
+      (slot) => slot.providerKind === "all" && slot.providerId === providerId,
+    )
   )?.icon;
 }
 
@@ -103,11 +112,12 @@ const pluginAwareProviderIcons = new Map<
 >();
 
 function getPluginAwareProviderIcon(
+  providerKind: PluginProviderIconRegistration["providerKind"],
   providerId: string,
   source: ProviderIconSource,
   staticIcon: ComponentType<{ className?: string }> | undefined,
 ): ComponentType<{ className?: string }> {
-  const cacheKey = `${providerId}\0${source.logoUrl ?? ""}\0${source.icon?.glyph ?? ""}\0${source.family ?? ""}`;
+  const cacheKey = `${providerKind}\0${providerId}\0${source.logoUrl ?? ""}\0${source.icon?.glyph ?? ""}\0${source.family ?? ""}`;
   const cached = pluginAwareProviderIcons.get(cacheKey);
   if (cached !== undefined) {
     return cached;
@@ -118,7 +128,7 @@ function getPluginAwareProviderIcon(
     "use no memo";
     const pluginIcon = useSyncExternalStore(
       subscribePluginSlots,
-      () => getRegisteredPluginProviderIcon(providerId),
+      () => getRegisteredPluginProviderIcon(providerKind, providerId),
       () => undefined,
     );
     const ResolvedIcon = pluginIcon ?? staticIcon;
@@ -131,17 +141,19 @@ function getPluginAwareProviderIcon(
 }
 
 export function getProviderIconInfo(
+  providerKind: PluginProviderIconRegistration["providerKind"],
   providerId: string,
   source: ProviderIconSource | null = null,
 ): ProviderIconInfo | undefined {
   const resolvedSource = source ?? { logoUrl: null };
   const staticInfo = resolveStaticProviderIconInfo(providerId, resolvedSource);
-  const pluginIcon = getRegisteredPluginProviderIcon(providerId);
+  const pluginIcon = getRegisteredPluginProviderIcon(providerKind, providerId);
   if (staticInfo === undefined && pluginIcon === undefined) {
     return undefined;
   }
   return {
     icon: getPluginAwareProviderIcon(
+      providerKind,
       providerId,
       resolvedSource,
       staticInfo?.icon,

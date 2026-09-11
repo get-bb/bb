@@ -1,5 +1,6 @@
 import {
   getLatestSessionForHost,
+  getHost,
   listRetiredLoadedEnvironmentIdsOnHost,
   openSession,
   upsertHost,
@@ -69,7 +70,6 @@ export function registerInternalSessionRoutes(
     const daemon = getAuthenticatedDaemon(context);
     assertAuthenticatedHostMatches(daemon, {
       hostId: compatibility.data.hostId,
-      hostType: daemon.hostType,
     });
 
     if (compatibility.data.protocolVersion !== HOST_DAEMON_PROTOCOL_VERSION) {
@@ -107,18 +107,23 @@ export function registerInternalSessionRoutes(
     }
     const payload = parsed.data;
 
+    const host = getHost(deps.db, daemon.hostId);
+    if (host?.phase === "suspending" || host?.phase === "suspended") {
+      throw new ApiError(
+        409,
+        "machine_suspended",
+        "Machine daemon sessions are disabled while the machine is suspending or suspended",
+      );
+    }
+
     const previousSession = getLatestSessionForHost(deps.db, {
       hostId: daemon.hostId,
     });
-    const connectMachineId = resolveReportedConnectMachineId(
-      context,
-      payload.connectMachineId,
-    );
+    const connectMachineId = resolveReportedConnectMachineId(context);
     upsertHost(deps.db, deps.hub, {
       ...(connectMachineId !== undefined ? { connectMachineId } : {}),
       id: daemon.hostId,
       name: payload.hostName,
-      type: daemon.hostType,
     });
     updateHost(deps.db, deps.hub, daemon.hostId, {
       lastRejectedProtocolVersion: null,
@@ -127,7 +132,6 @@ export function registerInternalSessionRoutes(
       hostId: daemon.hostId,
       instanceId: payload.instanceId,
       hostName: payload.hostName,
-      hostType: daemon.hostType,
       dataDir: payload.dataDir,
       protocolVersion: payload.protocolVersion,
       heartbeatIntervalMs: HEARTBEAT_INTERVAL_MS,

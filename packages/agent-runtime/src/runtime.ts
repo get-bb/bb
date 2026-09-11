@@ -1181,39 +1181,15 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
 
   function emitTranslatedEvents(args: EmitTranslatedEventsArgs): void {
     for (const event of args.events) {
-      if (event.type !== "thread/identity" || !event.providerThreadId) {
-        continue;
-      }
-
-      if (args.proc.identity.threadIds.has(event.threadId)) {
-        recordProviderThreadIdentity(
-          args.proc,
-          event.threadId,
-          event.providerThreadId,
-        );
-        continue;
-      }
-
-      const bbThreadId =
-        threadIdentityRegistry.resolvePendingProviderThreadIdentity(
-          args.proc.identity,
-        );
-      if (bbThreadId) {
-        recordProviderThreadIdentity(
-          args.proc,
-          bbThreadId,
-          event.providerThreadId,
-        );
-      }
-    }
-
-    for (const event of args.events) {
+      const scope = {
+        eventThreadId: event.threadId,
+        providerState: args.proc.identity,
+        sourceThreadId: args.sourceThreadId,
+      };
       const resolvedBbThreadId =
-        threadIdentityRegistry.resolveProviderEventThreadId({
-          eventThreadId: event.threadId,
-          providerState: args.proc.identity,
-          sourceThreadId: args.sourceThreadId,
-        });
+        event.type === "thread/identity"
+          ? threadIdentityRegistry.resolveProviderIdentityThreadId(scope)
+          : threadIdentityRegistry.resolveProviderEventThreadId(scope);
 
       if (!resolvedBbThreadId) {
         options.onStderr?.(
@@ -1225,6 +1201,13 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
 
       if (suppressedThreadEventIds.has(targetThreadId)) {
         continue;
+      }
+      if (event.type === "thread/identity" && event.providerThreadId) {
+        recordProviderThreadIdentity(
+          args.proc,
+          targetThreadId,
+          event.providerThreadId,
+        );
       }
       const stampedEvent = stampThreadEventScope({
         event,
@@ -1506,7 +1489,6 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
           threadIdentityRegistry.registerThreadProvider({
             providerId,
             providerState: proc.identity,
-            expectsIdentityNotification: true,
             threadId,
           });
           setThreadRuntimeConfig(threadId, {
@@ -1671,7 +1653,6 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
           threadIdentityRegistry.registerThreadProvider({
             providerId,
             providerState: proc.identity,
-            expectsIdentityNotification: true,
             threadId: stagingThreadId,
           });
           let retainedForDiscard = false;
@@ -1831,7 +1812,6 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
           threadIdentityRegistry.registerThreadProvider({
             providerId,
             providerState: proc.identity,
-            expectsIdentityNotification: providerThreadId === undefined,
             threadId,
           });
           setThreadRuntimeConfig(threadId, {

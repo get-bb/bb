@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { getAppSettings, setAppSettings } from "@bb/db";
+import { getAppSettings, setAppSettings, updateHost } from "@bb/db";
 import {
   hostDaemonServerWsMessageSchema,
   type HostDaemonOnlineRpcRequestMessage,
@@ -12,6 +12,7 @@ import {
 } from "../../src/services/system/execution-options.js";
 import { ApiError } from "../../src/errors.js";
 import { availableModelFixture } from "../helpers/available-models.js";
+import { listQueuedCommands } from "../helpers/commands.js";
 import {
   registerHostRpcResponder,
   registerProviderHostRpcResponder,
@@ -19,6 +20,7 @@ import {
 } from "../helpers/host-rpc.js";
 import {
   seedEnvironment,
+  seedHost,
   seedHostSession,
   seedProjectWithSource,
   seedSession,
@@ -32,6 +34,30 @@ import {
 import { createProviderRegistryService } from "../../src/services/providers/provider-registry.js";
 
 const registry = await createTestProviderRegistry();
+
+const INSTALLED_ONLY_PROVIDER_IDS = [
+  "acp-opencode",
+  "acp-omp",
+  "acp-grok",
+  "acp-hermes-agent",
+] as const;
+
+function registerInstalledOnlyProviderFixtures(harness: TestAppHarness): void {
+  const pluginId = "provider-acp";
+  harness.deps.pluginHostArtifacts.set(pluginId, {
+    digest: "a".repeat(64),
+    byteLength: 1,
+    path: "/unused/provider-acp.mjs",
+    generation: "test-provider-discovery",
+  });
+  for (const providerId of INSTALLED_ONLY_PROVIDER_IDS) {
+    const registration = registry.get(providerId);
+    if (registration === null) {
+      throw new Error(`Missing provider fixture ${providerId}`);
+    }
+    harness.deps.providerRegistry.register(registration);
+  }
+}
 
 function providerDiscoveryHealth(installed: boolean) {
   return {
@@ -561,43 +587,83 @@ describe("resolveSystemExecutionOptions", () => {
     });
   });
 
+  it("skips provider discovery while the host is suspended", async () => {
+    await withTestHarness({}, async (harness) => {
+      const warn = vi.fn();
+      harness.deps.logger = { ...harness.deps.logger, warn };
+      const host = seedHost(harness.deps, {
+        id: "host-execution-options-suspended",
+      });
+      updateHost(harness.db, harness.hub, host.id, {
+        phase: "suspended",
+        suspendedAt: 123,
+      });
+      const request = vi.spyOn(harness.hub, "requestHostOnlineRpc");
+
+      const response = await resolveSystemExecutionOptions(harness.deps, {
+        hostId: host.id,
+        providerId: "codex",
+      });
+
+      expect(response.providers.map((provider) => provider.id)).toEqual([
+        "codex",
+        "claude-code",
+        "pi",
+        "acp-cursor",
+      ]);
+      expect(response.modelLoadError).toEqual({
+        providerId: "codex",
+        code: "failed",
+      });
+      expect(request).not.toHaveBeenCalled();
+      expect(warn).not.toHaveBeenCalled();
+    });
+  });
+
   it("spends one command timeout across installed-only provider discovery", async () => {
-    vi.useFakeTimers();
-    try {
-      await withTestHarness({}, async (harness) => {
+    await withTestHarness(
+      { seedFirstPartyProviders: false },
+      async (harness) => {
+        registerInstalledOnlyProviderFixtures(harness);
         const { host, session } = seedHostSession(harness.deps, {
           id: "host-execution-options-provider-discovery-budget",
         });
-        const responder = registerHostRpcResponder(harness, {
-          hostId: host.id,
-          sessionId: session.id,
-          handle: () => new Promise(() => undefined),
-        });
+        let pendingProviders: ReturnType<
+          typeof listSystemProviderInfos
+        > | null = null;
+        vi.useFakeTimers();
+        try {
+          let settled = false;
+          pendingProviders = listSystemProviderInfos(harness.deps, {
+            hostId: host.id,
+          }).then((providers) => {
+            settled = true;
+            return providers;
+          });
 
-        let settled = false;
-        const pendingProviders = listSystemProviderInfos(harness.deps, {
-          hostId: host.id,
-        }).then((providers) => {
-          settled = true;
-          return providers;
-        });
+          await vi.advanceTimersByTimeAsync(0);
+          expect(listQueuedCommands(harness, "provider.health")).toHaveLength(
+            3,
+          );
+          await vi.advanceTimersByTimeAsync(29_999);
+          expect(settled).toBe(false);
 
-        await vi.advanceTimersByTimeAsync(0);
-        expect(responder.requests).toHaveLength(3);
-        await vi.advanceTimersByTimeAsync(29_999);
-        expect(settled).toBe(false);
-
-        await vi.advanceTimersByTimeAsync(1);
-        const providers = await pendingProviders;
-        expect(settled).toBe(true);
-        expect(responder.requests).toHaveLength(6);
-        expect(providers.map((provider) => provider.id)).not.toContain(
-          "acp-opencode",
-        );
-      });
-    } finally {
-      vi.useRealTimers();
-    }
+          await vi.advanceTimersByTimeAsync(1);
+          const providers = await pendingProviders;
+          expect(settled).toBe(true);
+          expect(listQueuedCommands(harness, "provider.health")).toHaveLength(
+            6,
+          );
+          expect(providers.map((provider) => provider.id)).not.toContain(
+            "acp-opencode",
+          );
+        } finally {
+          harness.hub.unregisterDaemon(session.id);
+          vi.useRealTimers();
+          await pendingProviders?.catch(() => undefined);
+        }
+      },
+    );
   });
 
   it.each([

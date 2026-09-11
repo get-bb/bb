@@ -552,8 +552,18 @@ compatibility roots follow the related config and environment switches.
 
 ## Multi-machine
 
-Settings → Machines can enroll,
-rename, and remove machines; project settings can add a path or clone source on
+Settings → Machines offers Manual machine setup (the built-in `manual` provider)
+alongside installed cloud, SSH and Tailscale providers. Manual machine setup prints
+a private enrollment command and waits for the daemon. The one-line command
+downloads `/install.sh` with a short-lived enrollment header. The server embeds
+the pending bootstrap in its uncached response; cancelled, expired, or consumed
+enrollments are rejected. `bb machine create
+--provider manual` follows the same lifecycle; `--no-wait` returns the creating
+host ID. Manual machines never suspend or retire automatically. Removal
+revokes access; run the original installer with `--uninstall --host-id <id>` on
+that machine to uninstall its daemon. The local host remains provider-less.
+
+Settings → Machines can also rename and remove machines; project settings can add a path or clone source on
 each machine; and thread creation can target any enrolled machine with a usable
 source. The CLI equivalents are `bb machine list`, `bb project create
 --machine <id-or-name> ...`, `bb project source add --machine <id-or-name>
@@ -1151,10 +1161,9 @@ npx bb-app --server-port 48886 --host-daemon-port 48887
 
 The Settings → Machines installer assigns every enrolled standalone host daemon
 a stable local API port so it can coexist with the desktop app and with daemons
-enrolled to other servers. Atomic reservations under
-`~/.bb-machines/host-daemon-ports/` cover both default and custom
-`BB_DATA_DIR` locations. Its generated command accepts `--host-daemon-port
-<port>` when an explicit port is required.
+enrolled to other servers. The selected port is persisted in the machine data
+directory and reused by subsequent runs. Its generated command accepts
+`--host-daemon-port <port>` when an explicit port is required.
 
 ## Source Development
 
@@ -1246,3 +1255,122 @@ message without disabling sharing.
 Use `bb plugin config <id> set <key> true|false` or the SDK's
 `plugins.updateSettings({ pluginId, values })`. These settings apply when
 agent configuration is next assembled, not retroactively to existing text.
+
+### Machine server access
+
+Machines settings expose **Server URL reachable by machines** (`machineServerUrl`)
+and **Default machine access** (`defaultMachineAccess`). The URL must be HTTP
+or HTTPS without embedded credentials. An unset URL falls back to
+`BB_EXTERNAL_URL`. The URL input appears when Manual is selected. An unset access provider selects
+bb connect, even when unpaired; Machines settings links to its setup. Choose
+Manual (`direct`) explicitly to use your own URL. An explicit provider must
+be installed and available. Configure these with `bb settings general
+machineServerUrl <url-or-null>` and `bb settings general defaultMachineAccess
+<provider-id-or-null>`. `bb settings show --json` reports the effective access
+selection. Access grants serve ongoing runtime requests as well as enrolment.
+
+Bootstrap v2 carries optional provider headers. The machine persists them as
+`serverHeaders` in its private `config.json`; the launcher supplies them to the
+daemon through `BB_SERVER_HEADERS` as a JSON string map. These headers are private
+credentials and cover enrollment, HTTP, WebSocket, and runtime proxy requests.
+Direct grants omit headers. Legacy `machineCredential` configuration is translated
+into the corresponding request header when loading an existing machine.
+
+For machine enrollment, `BB_DATA_DIR` selects isolated machine state instead of
+`~/.bb-machines/<server-host>`. `bb machine enroll` refuses the default `~/.bb`
+directory and a conflicting host or server identity. Local `bb machine
+start|stop|uninstall --host-id <id>` treats `BB_DATA_DIR` (or `--data-dir`) as an
+ownership assertion, not permission to act on arbitrary files: lifecycle commands
+require a canonical installer-owned directory under `~/.bb-machines` and verify
+identity and service/process ownership. Optional `--server-url` asserts the server.
+Without an explicit directory, lifecycle commands locate the unique matching host.
+
+### Machine environment
+
+Core resolves machine contributions through
+`apps/server/src/services/hosts/host-environment.ts` before dispatching setup and
+teardown hooks. The `environment.hook.run` command carries `contributedEnv`;
+the daemon applies them to the hook child process. Hook progress and errors are
+forwarded as-is, so contributed values printed by the child remain visible.
+Machine selection and precedence stay in the server
+resolver, which returns no contributions for the local host.
+
+Settings → Machines → Machine environment defines variables for all enrolled
+machine hosts. Local hosts do not receive them. All values are encrypted in the
+database using AES-256-GCM and are never returned by settings reads. The server
+keeps the encryption key in its data directory's `machine-environment-key` file
+(mode 0600); include this file with database backups. Names and notes are public
+metadata. Existing plaintext settings and private secret files migrate on first
+access; each old secret file is removed only after its encrypted record is saved.
+Historical backups may still contain values stored before migration.
+
+Core resolves the environment for each agent turn, project-source clone, host
+setup call, and new BB terminal. User variables override built-ins; agent-provider
+contributions override host variables for agent turns. Existing terminals keep
+the environment they started with: open a new terminal after a change. Agent
+turns receive refreshed values on their next turn and after resume. Codex rebuilds
+its loaded session from the existing conversation when the environment changes.
+
+Machine environment commands require host-daemon protocol 192, covering machine
+lifecycle and contribution fields for core hooks, host plugins, and terminals.
+
+The built-in GitHub row uses `gh auth token --hostname github.com` and `gh api
+--hostname github.com user` on the server host. It supplies `GH_TOKEN`, Git's
+`GIT_CONFIG_*` environment entries for an HTTPS credential helper and SSH URL
+rewrites for github.com, and author/committer identity. The helper expands
+`GH_TOKEN` when Git calls it; no helper file, global Git config, or credential
+store is installed. Private email uses `<id>+<login>@users.noreply.github.com`.
+A user `GH_TOKEN` overrides the built-in token, and the row shows overridden.
+Tokens obtained from gh are never persisted by the server. Image construction
+and Modal filesystem snapshot settings do not receive these contributions.
+
+Use `bb machine env list --json`, `bb machine env set NAME [--note
+text] --json`, and `bb machine env unset NAME --json`. Set reads its value from
+stdin, removes one trailing newline, and never accepts a value in argv. For
+example, `printf '%s' staging | bb machine env set DEPLOY_REGION`. Pipe secrets
+from a secure source instead of putting them in shell history.
+
+SDK parity: `sdk.system.machineEnvironment()` and
+`sdk.system.replaceMachineEnvironment({ variables })`. Replacement is atomic;
+pass every row to retain, using `value: null` for an unchanged saved secret. All
+list rows have `value: null` and `secret: true`.
+`bb machine env list` reports the built-in readiness as `builtInGit`.
+
+Automatic machine GitHub credentials are enabled by default. Use
+`bb settings general machineGitCredentialsEnabled false` to stop forwarding the
+server gh credentials to machines; `true` enables them again. In Machines →
+Advanced settings, the automatic GH_TOKEN switch controls the same setting.
+This does not log the server out or suppress an explicit custom GH_TOKEN.
+Changes apply to new turns, setup commands and terminals.
+
+## Modal machines
+
+The optional Modal sandbox plugin builds/reuses named tools images for new
+machines. Its plugin page keeps the bundled Standard Dockerfile as the first
+image and can add named Dockerfiles, existing Modal image IDs, and named CPU/memory
+presets. CLI: `bb modal image show`, `bb modal image set --file PATH`, and
+`bb modal image reset` (append `--json`). Typed plugin RPCs `image.definition`,
+`image.set({dockerfile})`, and `image.reset` expose the same persistent definition.
+Supported instructions are one FROM followed by RUN, ENV, WORKDIR, and USER; no
+build context or multi-stage builds. Saving does not build or modify existing
+machines. The next new machine uses the saved definition. BB installs the daemon
+on demand, then clones the project and runs its setup hook.
+
+Configure `tokenId` and `tokenSecret` in secret plugin settings; `appName` defaults
+to `bb-sandboxes`. With no size preset, Modal's CPU and memory defaults apply.
+`idleMinutes` defaults to 15 (0 disables idle suspension), and `timeoutMinutes`
+defaults to 1440 with an allowed range of 1–1440. Existing machines use current idle
+policy; running compute keeps its vendor deadline and restored compute uses the
+current lifetime. Resource reservations stay pinned across restore.
+
+There is no automatic retention removal. Use `bb machine remove MACHINE --yes`
+for explicit cleanup. Manual and idle pauses save a filesystem snapshot before
+terminating compute. There is no pre-expiry scheduler: a sandbox that stays active
+until its configured timeout can lose changes since its last successful pause.
+Provider details expose expiry and saved-image status; missing compute never
+silently restores stale state. Open terminals prevent idle suspension.
+
+`bb modal account inspect --json` tests credentials without allocating resources.
+Create with `bb machine create --provider modal-sandbox --project PROJECT --json`.
+See [modal-sandboxes](../plugins/environment-modal-sandbox/skills/modal-sandboxes/SKILL.md)
+for prerequisites and lifecycle commands.

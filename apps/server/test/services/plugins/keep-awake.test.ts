@@ -40,6 +40,7 @@ describe("builtin Keep Awake plugin", () => {
       await vi.waitFor(() => expect(responder.requests).toHaveLength(1));
       expect(responder.requests[0]?.command).toMatchObject({
         type: "plugin.host.call",
+        contributedEnv: [],
         pluginId: "keep-awake",
         method: "setEnabled",
         input: { enabled: false },
@@ -60,6 +61,7 @@ describe("builtin Keep Awake plugin", () => {
       await vi.waitFor(() => expect(responder.requests).toHaveLength(2));
       expect(responder.requests[1]?.command).toMatchObject({
         type: "plugin.host.call",
+        contributedEnv: [],
         pluginId: "keep-awake",
         method: "setEnabled",
         input: { enabled: true },

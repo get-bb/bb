@@ -154,6 +154,7 @@ export const bbAppManagedConfigSchema = z
     customAcpAgents: customAcpAgentsSchema.optional(),
     customModels: z.array(customProviderModelSchema).optional(),
     sharedSkillRoots: providerNativeSkillRootsSchema.optional(),
+    serverHeaders: z.record(z.string(), z.string()).optional(),
     machineCredential: z.string().min(1).optional(),
     connectMachineId: z.string().min(1).optional(),
     serverUrl: z.string().min(1).optional(),
@@ -166,6 +167,7 @@ const bbAppManagedConfigBoundarySchema = z
     customAcpAgents: z.array(z.unknown()).optional(),
     customModels: z.array(z.unknown()).optional(),
     sharedSkillRoots: providerNativeSkillRootsSchema.optional(),
+    serverHeaders: z.record(z.string(), z.string()).optional(),
     machineCredential: z.string().min(1).optional(),
     connectMachineId: z.string().min(1).optional(),
     serverUrl: z.string().min(1).optional(),
@@ -277,6 +279,9 @@ export function parseBbAppManagedConfig(
   }
   if (parsed.serverUrl !== undefined) {
     config.serverUrl = parsed.serverUrl;
+  }
+  if (parsed.serverHeaders !== undefined) {
+    config.serverHeaders = parsed.serverHeaders;
   }
   if (parsed.machineCredential !== undefined) {
     config.machineCredential = parsed.machineCredential;

@@ -44,7 +44,15 @@ export const scriptedEchoBridgeModulePath = join(
 
 export interface ScriptedEchoLaunchScript {
   startDelayMs?: number;
+  turnStartResponseDelayMs?: number;
   answerStartWithoutIdentity?: boolean;
+  identityAfterResponse?: boolean;
+  identityNotificationsBeforeTurn?: {
+    threadId: string;
+    providerThreadId: string;
+    asDelta?: boolean;
+  }[];
+  completionIdentity?: string;
   archivedSession?: boolean;
   unarchiveFails?: boolean;
   exitAfterArchivedError?: boolean;
@@ -68,6 +76,8 @@ export interface ScriptedEchoLaunchScript {
   recoveryThreadIdHint?: string;
   approvalEnforcedBy?: "runtime" | "provider";
   identifyProcess?: boolean;
+  textDeltaChunkSize?: number;
+  stderrChunksOnTurn?: string[];
   failStopForThreadIds?: string[];
   emitIdentityOnSigterm?: boolean;
 }

@@ -144,7 +144,8 @@ export function Environment() {
         <RowStage>
           <EnvironmentRow
             thread={makeThread()}
-            environment={makeEnvironment({})}
+            environment={makeEnvironment({
+            })}
             environmentDisplayHost={localEnvironmentDisplayHost}
           />
         </RowStage>
@@ -153,7 +154,8 @@ export function Environment() {
         <RowStage>
           <EnvironmentRow
             thread={makeThread()}
-            environment={makeEnvironment({})}
+            environment={makeEnvironment({
+            })}
             environmentDisplayHost={remoteEnvironmentDisplayHost}
           />
         </RowStage>

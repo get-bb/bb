@@ -189,6 +189,7 @@ const CACHE_OWNER_QUERY_KEY_IMPORTS: CacheOwnerQueryKeyImportRegistry = {
     "allHostQueryKeyPrefix",
     "allProjectPathsQueryKeyPrefix",
     "allSystemExecutionOptionsQueryKeyPrefix",
+    "allSystemMachineProvidersQueryKeyPrefix",
     "allSystemProvidersQueryKeyPrefix",
     "allSystemThemesQueryKeyPrefix",
     "allTerminalsQueryKeyPrefix",

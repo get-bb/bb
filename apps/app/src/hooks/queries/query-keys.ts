@@ -57,6 +57,8 @@ const THREAD_CONVERSATION_OUTLINE_QUERY_KEY = "threadConversationOutline";
 const THREAD_TIMELINE_TURN_SUMMARY_DETAILS_QUERY_KEY =
   "threadTimelineTurnSummaryDetails";
 const SYSTEM_PROVIDERS_QUERY_KEY = "systemProviders";
+const SYSTEM_MACHINE_PROVIDERS_QUERY_KEY = "systemMachineProviders";
+const MACHINE_ENVIRONMENT_QUERY_KEY = "machine-environment";
 const SYSTEM_CONFIG_QUERY_KEY = "systemConfig";
 const UI_PREFERENCES_QUERY_KEY = "uiPreferences";
 const SYSTEM_THEME_QUERY_KEY = "systemTheme";
@@ -102,7 +104,9 @@ export interface ArchivedThreadsListFilters {
 
 export const ARCHIVED_THREADS_LIST_KIND = "archivedList";
 
-type HostsQueryKey = readonly [typeof HOSTS_QUERY_KEY];
+type HostsQueryKey =
+  | readonly [typeof HOSTS_QUERY_KEY]
+  | readonly [typeof HOSTS_QUERY_KEY, true];
 type HostQueryId = string | null | undefined;
 type HostQueryKey = readonly [typeof HOST_QUERY_KEY, HostQueryId];
 type AllHostQueryKeyPrefix = readonly [typeof HOST_QUERY_KEY];
@@ -447,6 +451,15 @@ type SystemProvidersQueryKey = readonly [
 type AllSystemProvidersQueryKeyPrefix = readonly [
   typeof SYSTEM_PROVIDERS_QUERY_KEY,
 ];
+type SystemMachineProvidersQueryKey = readonly [
+  typeof SYSTEM_MACHINE_PROVIDERS_QUERY_KEY,
+];
+type AllSystemMachineProvidersQueryKeyPrefix = readonly [
+  typeof SYSTEM_MACHINE_PROVIDERS_QUERY_KEY,
+];
+type MachineEnvironmentQueryKey = readonly [
+  typeof MACHINE_ENVIRONMENT_QUERY_KEY,
+];
 type SystemConfigQueryKey = readonly [typeof SYSTEM_CONFIG_QUERY_KEY];
 type UiPreferencesQueryKey = readonly [typeof UI_PREFERENCES_QUERY_KEY];
 type SystemThemeQueryKey = readonly [typeof SYSTEM_THEME_QUERY_KEY, string];
@@ -492,8 +505,8 @@ interface ProjectDefaultExecutionOptionsQueryKeyArgs {
   projectId: string;
 }
 
-export function hostsQueryKey(): HostsQueryKey {
-  return [HOSTS_QUERY_KEY];
+export function hostsQueryKey(includeCreating = false): HostsQueryKey {
+  return includeCreating ? [HOSTS_QUERY_KEY, true] : [HOSTS_QUERY_KEY];
 }
 
 export function hostQueryKey(hostId: HostQueryId): HostQueryKey {
@@ -1074,6 +1087,18 @@ export function systemProvidersQueryKey(
 
 export function allSystemProvidersQueryKeyPrefix(): AllSystemProvidersQueryKeyPrefix {
   return [SYSTEM_PROVIDERS_QUERY_KEY];
+}
+
+export function systemMachineProvidersQueryKey(): SystemMachineProvidersQueryKey {
+  return [SYSTEM_MACHINE_PROVIDERS_QUERY_KEY];
+}
+
+export function allSystemMachineProvidersQueryKeyPrefix(): AllSystemMachineProvidersQueryKeyPrefix {
+  return [SYSTEM_MACHINE_PROVIDERS_QUERY_KEY];
+}
+
+export function machineEnvironmentQueryKey(): MachineEnvironmentQueryKey {
+  return [MACHINE_ENVIRONMENT_QUERY_KEY];
 }
 
 export function systemCliSkillsQueryKey(): SystemCliSkillsQueryKey {
