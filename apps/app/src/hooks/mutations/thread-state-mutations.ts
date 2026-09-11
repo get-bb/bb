@@ -84,15 +84,21 @@ export function useUpdateThread(options?: UpdateThreadMutationOptions) {
     mutationFn: ({ id, ...request }: UpdateThreadMutationRequest) =>
       sdk.threads.update({ threadId: id, ...request }),
     onMutate: ({
+      parentThreadId,
       sectionId,
       id,
       title,
     }): Promise<ThreadListMutationTransaction | undefined> | undefined => {
-      if (title === undefined && sectionId === undefined) {
+      if (
+        title === undefined &&
+        sectionId === undefined &&
+        parentThreadId === undefined
+      ) {
         return undefined;
       }
 
       return beginThreadMetadataTransaction({
+        parentThreadId,
         sectionId,
         queryClient,
         threadId: id,

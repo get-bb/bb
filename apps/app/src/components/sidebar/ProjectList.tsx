@@ -40,7 +40,10 @@ import {
 import { useHosts, usePrimaryHost } from "@/hooks/queries/host-queries";
 import { useDialogState } from "@/hooks/useDialogState";
 import { usePromptDraftInputThreadIds } from "@/hooks/usePromptDraftStorage";
-import { getCollapsedChildActivity } from "@bb/client-core";
+import {
+  getCollapsedChildActivity,
+  type ProjectThreadNode,
+} from "@bb/client-core";
 import { getRootComposeRoutePath } from "@/lib/route-paths";
 import { getThreadDisplayTitle } from "@/lib/thread-title";
 import { getMutationErrorMessage } from "@/lib/mutation-errors";
@@ -863,6 +866,7 @@ interface SectionModeSectionsProps extends BuiltInSectionRenderState {
   onToggleThreadCollapsed: ToggleCollapsedId;
   pinnedSection: BuiltInSidebarSectionOptions;
   pinnedReorderPending: boolean;
+  pinnedRootNodes: readonly ProjectThreadNode[];
   pinnedThreads: readonly ThreadListEntry[];
   onReorderPinnedThread: NonNullable<
     PinnedThreadTreeProps["onReorderPinnedRoot"]
@@ -890,6 +894,7 @@ function SectionModeSections({
   onToggleThreadCollapsed,
   pinnedSection,
   pinnedReorderPending,
+  pinnedRootNodes,
   pinnedThreads,
   onReorderPinnedThread,
   selectedThreadId,
@@ -952,6 +957,7 @@ function SectionModeSections({
         topLevelSectionOrder={order}
         onTopLevelSectionOrderChange={onOrderChange}
         pinnedReorderPending={pinnedReorderPending}
+        pinnedRootNodes={pinnedRootNodes}
         pinnedThreads={pinnedThreads}
         onReorderPinnedThread={onReorderPinnedThread}
         builtInSections={{
@@ -1690,6 +1696,7 @@ function ProjectListComponent({
                 sections={sections}
                 pinnedSection={pinnedSection}
                 pinnedReorderPending={isPinnedReorderPending}
+                pinnedRootNodes={pinnedSidebarState.rootNodes}
                 pinnedThreads={pinnedRootThreads}
                 onReorderPinnedThread={handleReorderPinnedRoot}
                 threadsSection={threadsSection}
