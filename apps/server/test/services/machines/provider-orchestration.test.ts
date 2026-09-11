@@ -318,7 +318,9 @@ describe("machine creation hosts", () => {
     withTestHarness(async (harness) => {
       const checkpointed = createDeferredPromise<void>();
       const release = createDeferredPromise<void>();
-      let lateCheckpoint: ((value: JsonValue) => Promise<void>) | undefined;
+      let lateCheckpoint:
+        | ((value: Exclude<JsonValue, null>) => Promise<void>)
+        | undefined;
       const remove = vi.fn(async () => ({ status: "removed" as const }));
       installMachineProvider({
         create: async ({ checkpoint, signal }) => {
@@ -639,3 +641,45 @@ describe("machine suspension", () => {
       expect(getHost(harness.db, target.host.id)?.phase).toBe("suspended");
     }));
 });
+
+it.each(["null result", "null checkpoint", "missing name"])(
+  "rejects a provider's %s and retains a cleanup path",
+  async (invalid) =>
+    withTestHarness(async (harness) => {
+      const reconcileCleanup = vi.fn(async () => ({
+        status: "removed" as const,
+      }));
+      const record = installMachineProvider({ reconcileCleanup });
+      Reflect.set(
+        record.provider,
+        "create",
+        async (
+          context: Parameters<PluginMachineProviderDeclaration["create"]>[0],
+        ) => {
+          if (invalid === "null checkpoint")
+            await Reflect.apply(context.checkpoint, undefined, [null]);
+          if (invalid === "missing name")
+            return { status: "created", resource: {} };
+          return { status: "created", name: "Invalid machine", resource: null };
+        },
+      );
+      const host = await submitMachine(harness.deps, {
+        key: "invalid-resource",
+        machineProviderId: record.provider.id,
+        inputs: null,
+      });
+      await expect
+        .poll(() => getHost(harness.db, host.id)?.phase)
+        .toBe("removing");
+      expect(getHost(harness.db, host.id)?.teardownStatus).toBe("failed");
+      expect(getHost(harness.db, host.id)?.resource).toBeNull();
+      requestMachineRemoval(harness.deps, host.id);
+      await sweepProviderMachine(harness.deps, host.id);
+      expect(reconcileCleanup).toHaveBeenCalledWith({
+        key: "invalid-resource",
+        report: expect.any(Object),
+        signal: expect.any(AbortSignal),
+      });
+      expect(getHost(harness.db, host.id)?.phase).toBe("destroyed");
+    }),
+);

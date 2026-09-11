@@ -14,8 +14,8 @@ export type PluginEnvironmentProviderInputsSchema =
 type Fact<R, K extends PropertyKey, T> =
   R extends Record<K, true> ? T : T | null;
 type Checkout<R> = R extends { projectCheckout: true } | { gitCheckout: true }
-  ? { path: string; experimental_ownsPath?: boolean }
-  : { path: string; experimental_ownsPath?: boolean } | null;
+  ? { path: string; experimental_ownsPath: boolean }
+  : { path: string; experimental_ownsPath: boolean } | null;
 type InputsValue<S> = S extends StandardSchemaV1
   ? StandardSchemaV1InferOutput<S>
   : null;

@@ -266,6 +266,37 @@ describe("createRealtimeCacheEffects", () => {
     );
   });
 
+  it("refreshes cached access configuration when an installed plugin is disabled", async () => {
+    const { effects, queryClient } = createRealtimeEffectsTestContext();
+    const key = systemConfigQueryKey();
+    const initial = {
+      serverAccess: {
+        providers: [{ id: "relay", availability: { status: "available" } }],
+      },
+    };
+    const removed = { serverAccess: { providers: [] } };
+    queryClient.setQueryData(key, initial);
+    const observer = new QueryObserver(queryClient, {
+      queryKey: key,
+      queryFn: async () => removed,
+      staleTime: Infinity,
+    });
+    const unsubscribe = observer.subscribe(() => {});
+    try {
+      effects.handleChanged({
+        type: "changed",
+        entity: "system",
+        changes: ["plugins-changed"],
+      });
+      await vi.waitFor(() =>
+        expect(queryClient.getQueryData(key)).toEqual(removed),
+      );
+    } finally {
+      unsubscribe();
+      effects.dispose();
+    }
+  });
+
   it("invalidates provider pickers on provider registration changes", () => {
     const { effects, queryClient } = createRealtimeEffectsTestContext();
     const providersKey = systemProvidersQueryKey({ hostId: "host-1" });

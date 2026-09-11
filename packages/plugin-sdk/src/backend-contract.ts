@@ -409,7 +409,7 @@ export interface PluginEnvironments {
       | {
           id: string;
           displayName: string;
-          icon?: string;
+          icon: string;
           machineProviderId: string;
           environmentProviderId: string;
           create?: never;
@@ -438,10 +438,6 @@ export interface ServerAccessGrant {
   id: string;
   serverUrl: string;
   headers?: Record<string, string>;
-}
-
-export interface ServerAccessSelection {
-  providerId: string;
 }
 
 export interface ServerAccessProviderDeclaration {
@@ -473,11 +469,9 @@ export interface ServerAccessProviderDeclaration {
 export interface PluginServerAccess {
   register(declaration: ServerAccessProviderDeclaration): void;
   /**
-   * Ask core to re-read this plugin's provider availability now instead of
-   * waiting for the next request that happens to load system configuration —
-   * call it whenever access is gained or lost (paired, unpaired, credential
-   * revoked). Core re-invokes `availability` and tells connected clients, so
-   * Machines settings stops showing a stale state.
+   * Notify connected clients that server access configuration changed.
+   * Call when access is gained or lost. Clients reload system configuration,
+   * which re-checks availability for Machines settings and creation banners.
    */
   recheck(): void;
 }

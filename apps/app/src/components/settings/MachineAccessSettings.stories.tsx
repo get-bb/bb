@@ -12,6 +12,7 @@ const direct = {
   displayName: "Manual",
   description: "Use your own domain or network address.",
   pluginId: null,
+  availability: null,
 };
 
 function access(): ServerAccessStatus {
@@ -22,6 +23,7 @@ function access(): ServerAccessStatus {
         displayName: "Managed relay",
         description: "Use a managed relay address.",
         pluginId: "relay-plugin",
+        availability: { status: "available" },
       },
       direct,
     ],
@@ -59,9 +61,21 @@ function machineAccessState(
 }
 
 const PROVIDER_SETUP_REQUIRED = access();
+PROVIDER_SETUP_REQUIRED.providers[0]!.availability = {
+  status: "setup-required",
+  message: "Set up the relay",
+};
 const PROVIDER_READY = access();
+PROVIDER_READY.providers[0]!.availability = {
+  status: "available",
+  serverUrl: "https://bb.example.com",
+};
 const PROVIDER_READY_WITHOUT_URL = access();
 const PROVIDER_UNAVAILABLE = access();
+PROVIDER_UNAVAILABLE.providers[0]!.availability = {
+  status: "unavailable",
+  message: "The relay rejected this server’s credential",
+};
 const DIRECT_WITH_URL = {
   ...PROVIDER_SETUP_REQUIRED,
   defaultProviderId: "direct",

@@ -9,10 +9,7 @@ import {
   getNonDestroyedHostByLaunchKey,
   type DbConnection,
 } from "@bb/db";
-import type {
-  ServerAccessGrant,
-  ServerAccessSelection,
-} from "@get-bb/plugin-sdk";
+import type { ServerAccessGrant } from "@get-bb/plugin-sdk";
 import type { MachineAuthService } from "../machine-auth.js";
 
 export interface EnrollmentBootstrap {
@@ -36,7 +33,7 @@ export interface MachineEnrollments {
   clearPending(key: string): void;
   prepare(request: {
     key: string;
-    access?: ServerAccessSelection;
+    signal: AbortSignal;
   }): Promise<MachineEnrollment>;
   waitForConnection(request: {
     enrollmentId: string;
@@ -52,14 +49,8 @@ interface EnrollmentServiceDependencies {
     resolve(request: {
       key: string;
       hostId: string;
-      access?: ServerAccessSelection;
       signal: AbortSignal;
     }): Promise<ServerAccessGrant>;
-    release(request: {
-      key: string;
-      hostId: string;
-      signal: AbortSignal;
-    }): Promise<void>;
   };
   isConnected(hostId: string): boolean;
 }
@@ -148,10 +139,12 @@ export function createMachineEnrollmentService(
         }
       },
       async prepare(request) {
+        request.signal.throwIfAborted();
         if (!request.key.trim())
           throw new Error("Machine enrollment key must not be empty");
         const lockKey = JSON.stringify([owner, request.key]);
         return serialized(lockKey, async () => {
+          request.signal.throwIfAborted();
           const host = getNonDestroyedHostByLaunchKey(deps.db, request.key);
           if (!host) throw new Error("Machine creation host was not found");
           if (
@@ -163,14 +156,6 @@ export function createMachineEnrollmentService(
             getMachineProvider(host.machineProviderId ?? "")?.pluginId !== owner
           )
             throw new Error("Machine creation belongs to a different plugin");
-          if (
-            request.access &&
-            host.serverAccessProviderId &&
-            request.access.providerId !== host.serverAccessProviderId
-          )
-            throw new Error(
-              "Machine enrollment already uses a different server access provider",
-            );
           if (host.lastSeenAt !== null || deps.isConnected(host.id)) {
             pending.delete(host.id);
             return { id: host.id, hostId: host.id, state: "enrolled" };
@@ -178,9 +163,12 @@ export function createMachineEnrollmentService(
           const grant = await deps.serverAccess.resolve({
             key: lockKey,
             hostId: host.id,
-            access: request.access,
-            signal: AbortSignal.timeout(60_000),
+            signal: AbortSignal.any([
+              request.signal,
+              AbortSignal.timeout(60_000),
+            ]),
           });
+          request.signal.throwIfAborted();
           await deps.machineAuth.revokeHostEnrollKeys({ hostId: host.id });
           const credential = await deps.machineAuth.issueHostEnrollKey({
             hostId: host.id,
@@ -201,6 +189,10 @@ export function createMachineEnrollmentService(
               expiresAt,
             },
           };
+          if (request.signal.aborted) {
+            await deps.machineAuth.revokeHostEnrollKeys({ hostId: host.id });
+            request.signal.throwIfAborted();
+          }
           pending.set(host.id, {
             owner,
             launchKey: request.key,

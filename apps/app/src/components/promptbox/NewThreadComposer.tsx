@@ -856,19 +856,10 @@ export function NewThreadComposer({
       : (configurationPlugin?.statusDetail ??
         `${setupRequiredProvider.displayName} needs setting up.`);
   const serverAccess = systemConfigQuery.data?.serverAccess;
-  const selectedServerAccessProvider = serverAccess?.providers.find(
-    (provider) => provider.id === serverAccess.defaultProviderId,
-  );
-  const serverAccessPlugin = pluginList.data?.plugins.find(
-    (plugin) => plugin.id === selectedServerAccessProvider?.pluginId,
-  );
   const machineServerAccessReason =
     selectedEnvironmentProvider?.machineProviderId == null
       ? null
-      : serverAccessPlugin?.status === "needs-configuration"
-        ? (serverAccessPlugin.statusDetail ??
-          "Configure the selected machine access provider.")
-        : machineServerAccessBlockedReason(serverAccess);
+      : machineServerAccessBlockedReason(serverAccess);
   const [environmentProviderInputsOverride, setProviderInputsOverride] =
     useState<{ scopeKey: string; value: JsonValue | null } | null>(null);
   const [environmentProviderInputsBlocked, setProviderInputsBlocked] =

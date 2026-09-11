@@ -1,6 +1,5 @@
 import { validatePluginMachineProviderDeclaration } from "@get-bb/plugin-sdk/internal/host-policy";
-import type { MachineBootstrapApi } from "@get-bb/plugin-sdk";
-import { createMachineBootstrapApi } from "./bootstrap.js";
+import type { MachineEnrollments } from "./enrollments.js";
 import type { MachineEnrollmentService } from "./machine-services.js";
 import { manualEnrollmentCommand } from "./manual-enrollment-command.js";
 import type {
@@ -15,7 +14,7 @@ function errorMessage(error: unknown): string {
 }
 
 export function createManualMachineProviderRecord(
-  machines: MachineBootstrapApi,
+  enrollments: MachineEnrollments,
 ): PluginMachineProviderRecord {
   return {
     pluginId: MANUAL_PROVIDER_OWNER,
@@ -29,11 +28,23 @@ export function createManualMachineProviderRecord(
         context.signal.throwIfAborted();
         const resource = { key: context.key };
         await context.checkpoint(resource);
-        const { hostId } = await machines.bootstrap({
-          key: context.key,
-          report: context.report,
-          signal: context.signal,
-        });
+        context.report.step("Preparing machine enrollment");
+        let hostId: string;
+        try {
+          const enrollment = await enrollments.prepare({
+            key: context.key,
+            signal: context.signal,
+          });
+          context.report.step("Run the enrollment command shown below");
+          ({ hostId } = await enrollments.waitForConnection({
+            enrollmentId: enrollment.id,
+            timeoutMs: 15 * 60_000,
+            signal: context.signal,
+          }));
+        } catch (error) {
+          enrollments.clearPending(context.key);
+          throw error;
+        }
         context.report.step("Machine connected");
         return {
           status: "created",
@@ -59,7 +70,7 @@ export function withManualMachineProvider(
   enrollments: MachineEnrollmentService,
 ): PluginMachineProviderBridge {
   const manual = createManualMachineProviderRecord(
-    createMachineBootstrapApi(enrollments.forOwner(MANUAL_PROVIDER_OWNER)),
+    enrollments.forOwner(MANUAL_PROVIDER_OWNER),
   );
   return {
     decisionTimeoutMs: bridge.decisionTimeoutMs,

@@ -444,7 +444,7 @@ describe("Modal machine provider", () => {
       });
       expect(test.bootstrap).not.toHaveBeenCalled();
       expect(test.backend.states[0]?.terminated).toBe(false);
-      if (resource === undefined) throw new Error("missing checkpoint");
+      if (resource == null) throw new Error("missing checkpoint");
       await test.provider.remove({
         hostId: HOST_ID,
         resource,

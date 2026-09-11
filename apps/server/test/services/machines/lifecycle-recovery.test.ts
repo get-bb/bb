@@ -145,12 +145,14 @@ it.each(["active", "suspended"] as const)(
             id: "direct",
             serverUrl: "https://example.test",
           }),
-          release: async () => {},
         },
       }).forOwner("test-machine-plugin");
       const resume = vi.fn(async () => {
         expect(
-          await enrollment.prepare({ key: "cleanup-machine" }),
+          await enrollment.prepare({
+            signal: new AbortController().signal,
+            key: "cleanup-machine",
+          }),
         ).toMatchObject({ state: "enrolled" });
         seedSession(harness.deps, target.host.id);
         await enrollment.waitForConnection({
@@ -252,7 +254,10 @@ it.each(["active", "suspended"] as const)(
         }),
       ).rejects.toMatchObject({ body: { code: "machine_removing" } });
       await expect(
-        enrollment.prepare({ key: "cleanup-machine" }),
+        enrollment.prepare({
+          signal: new AbortController().signal,
+          key: "cleanup-machine",
+        }),
       ).rejects.toThrow("cancelled");
       await reportQueuedCommandSuccess(harness, call, { output: {} });
       await sweeping;

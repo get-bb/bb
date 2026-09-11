@@ -1822,6 +1822,7 @@ describe("environment targets", () => {
     bb.experimental_environments.register({
       id: "sandbox",
       displayName: "Sandbox",
+      icon: "Cloud",
       machineProviderId: "cloud-machine",
       environmentProviderId: "project-checkout",
     });
@@ -2140,7 +2141,7 @@ describe("environment targets", () => {
       create: async () => ({
         status: "created",
         name: "Temporary machine",
-        resource: null,
+        resource: {},
       }),
       remove: async () => ({ status: "removed" }),
     });
@@ -2162,7 +2163,7 @@ describe("environment targets", () => {
         create: async () => ({
           status: "created",
           name: "Test machine",
-          resource: null,
+          resource: {},
         }),
         reconcileCleanup: async () => ({ status: "removed" }),
         remove: async () => ({ status: "removed" }),
@@ -2174,10 +2175,10 @@ describe("environment targets", () => {
     const create = async () => ({
       status: "created" as const,
       name: "Test machine",
-      resource: null,
+      resource: {},
     });
     const remove = async () => ({ status: "removed" as const });
-    const lifecycle = async () => ({ resource: null });
+    const lifecycle = async () => ({ resource: {} });
     expect(() =>
       createFakePluginHost().bb.experimental_machines.register({
         description: "Provision a test machine.",

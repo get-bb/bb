@@ -25,6 +25,7 @@ export class MachineCodeError extends Error {
 
 export async function fetchMachineCode(
   credential: ConnectCredential,
+  signal: AbortSignal,
 ): Promise<MachineCode> {
   const url = `${deriveConnectBaseUrl(credential.serverUrl).replace(/\/$/u, "")}/api/connect/machine-code`;
   let response: Response;
@@ -32,8 +33,10 @@ export async function fetchMachineCode(
     response = await fetch(url, {
       method: "POST",
       headers: { "x-bb-connect-machine": credential.credential },
+      signal: AbortSignal.any([signal, AbortSignal.timeout(10_000)]),
     });
   } catch {
+    signal.throwIfAborted();
     throw new MachineCodeError("network");
   }
   if (!response.ok) {
@@ -53,6 +56,7 @@ export async function fetchMachineCode(
 export async function lookupMachineCode(
   credential: ConnectCredential,
   code: string,
+  signal: AbortSignal,
 ) {
   const response = await fetch(
     `${deriveConnectBaseUrl(credential.serverUrl)}/api/connect/machine-code`,
@@ -62,7 +66,7 @@ export async function lookupMachineCode(
         "x-bb-connect-machine": credential.credential,
         "x-bb-connect-code": code,
       },
-      signal: AbortSignal.timeout(10_000),
+      signal: AbortSignal.any([signal, AbortSignal.timeout(10_000)]),
     },
   );
   if (!response.ok)

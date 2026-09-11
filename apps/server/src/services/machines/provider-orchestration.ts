@@ -26,6 +26,7 @@ import {
 import { jsonValueSchema, type Host, type JsonValue } from "@bb/domain";
 import type {
   PluginMachineProviderCreateResult,
+  PluginMachineProviderResource,
   PluginMachineProviderProgress,
 } from "@get-bb/plugin-sdk/machine-provider";
 import { summarizeStandardIssues } from "@get-bb/plugin-sdk/internal/host-policy";
@@ -69,15 +70,20 @@ interface ActiveOperation {
   done: Promise<void>;
 }
 
-const resourceSchema = jsonValueSchema.refine(
-  (value) => Buffer.byteLength(JSON.stringify(value)) <= 16_384,
-  "Resource exceeds 16 KiB",
-);
+const resourceSchema = jsonValueSchema
+  .refine(
+    (value): value is PluginMachineProviderResource => value !== null,
+    "Allocated machine resource must not be null",
+  )
+  .refine(
+    (value) => Buffer.byteLength(JSON.stringify(value)) <= 16_384,
+    "Resource exceeds 16 KiB",
+  );
 const createResultSchema = z.discriminatedUnion("status", [
   z
     .object({
       status: z.literal("created"),
-      name: z.string().trim().min(1).max(200).optional(),
+      name: z.string().trim().min(1).max(200),
       resource: resourceSchema,
     })
     .strict(),
@@ -233,10 +239,7 @@ async function invokeCreate(
   host: MachineHostRow,
   deps: Deps,
   signal: AbortSignal,
-): Promise<
-  | { status: "created"; name?: string; resource: JsonValue }
-  | Extract<PluginMachineProviderCreateResult, { status: "failed" }>
-> {
+): Promise<PluginMachineProviderCreateResult> {
   const invocation = await invokeMachineProvider(record, "machine create", () =>
     record.provider.create({
       inputs: host.inputs,
@@ -262,7 +265,11 @@ async function invokeCreate(
 async function removeResource(
   deps: Deps,
   record: PluginMachineProviderRecord,
-  args: { hostId: string; resource: JsonValue; signal: AbortSignal },
+  args: {
+    hostId: string;
+    resource: PluginMachineProviderResource;
+    signal: AbortSignal;
+  },
 ): Promise<void> {
   const invocation = await invokeMachineProvider(record, "machine remove", () =>
     record.provider.remove({
@@ -314,9 +321,7 @@ async function runCreate(
       return;
     }
     updateHost(deps.db, deps.hub, host.id, {
-      name:
-        result.name ??
-        `${record.provider.displayName} ${host.id.replace(/[^a-z0-9]/giu, "").slice(-6)}`,
+      name: result.name,
       phase: "active",
       machineOperationId: null,
       resource: result.resource,
@@ -1244,7 +1249,6 @@ async function removeMachine(deps: Deps, hostId: string): Promise<void> {
             () =>
               record.provider.reconcileCleanup({
                 key: row.launchKey ?? hostId,
-                resource,
                 report: lifecycleReporter(deps, hostId),
                 signal,
               }),

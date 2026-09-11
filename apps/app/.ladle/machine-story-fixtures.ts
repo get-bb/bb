@@ -2,6 +2,7 @@ import type {
   ServerAccessStatus,
   SystemMachineProvider,
 } from "@bb/server-contract";
+import { machineServerAccessBlockedReason } from "../src/components/machines/machine-server-access";
 import type { MachineAccessState } from "../src/components/settings/MachineAccessSettings";
 import modalLogoUrl from "../../../plugins/environment-modal-sandbox/modal-logo.svg";
 
@@ -15,12 +16,17 @@ export const CONNECT_UNPAIRED: ServerAccessStatus = {
       displayName: "bb connect",
       description: "Use a private getbb.app address.",
       pluginId: "connect",
+      availability: {
+        status: "setup-required",
+        message: "Pair with bb connect",
+      },
     },
     {
       id: "direct",
       displayName: "Manual",
       description: "Use your own domain or network address.",
       pluginId: null,
+      availability: null,
     },
   ],
   defaultProviderId: "connect",
@@ -28,11 +34,44 @@ export const CONNECT_UNPAIRED: ServerAccessStatus = {
   urlSource: null,
 };
 
-export const CONNECT_PAIRED = CONNECT_UNPAIRED;
+export const CONNECT_PAIRED: ServerAccessStatus = {
+  ...CONNECT_UNPAIRED,
+  providers: CONNECT_UNPAIRED.providers.map((provider) =>
+    provider.id === "connect"
+      ? {
+          ...provider,
+          availability: {
+            status: "available",
+            serverUrl: "https://bb.example.com",
+          },
+        }
+      : provider,
+  ),
+};
 
-export const CONNECT_PAIRED_WITHOUT_URL = CONNECT_UNPAIRED;
+export const CONNECT_PAIRED_WITHOUT_URL: ServerAccessStatus = {
+  ...CONNECT_PAIRED,
+  providers: CONNECT_PAIRED.providers.map((provider) =>
+    provider.id === "connect"
+      ? { ...provider, availability: { status: "available" } }
+      : provider,
+  ),
+};
 
-export const CONNECT_UNAVAILABLE = CONNECT_UNPAIRED;
+export const CONNECT_UNAVAILABLE: ServerAccessStatus = {
+  ...CONNECT_UNPAIRED,
+  providers: CONNECT_UNPAIRED.providers.map((provider) =>
+    provider.id === "connect"
+      ? {
+          ...provider,
+          availability: {
+            status: "unavailable",
+            message: "Credential revoked",
+          },
+        }
+      : provider,
+  ),
+};
 
 export const MANUAL_WITHOUT_URL: ServerAccessStatus = {
   ...CONNECT_UNPAIRED,
@@ -63,7 +102,7 @@ export function machineAccessState(
     draft: null,
     error: null,
     effective: access.providers.find((provider) => provider.id === selected),
-    configurationMessage: null,
+    configurationMessage: machineServerAccessBlockedReason(access, selected),
     saving: false,
     selected,
     value: access.urlSource === "setting" ? (access.effectiveUrl ?? "") : "",

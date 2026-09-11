@@ -11,6 +11,7 @@ export interface PluginEnvironmentProviderRecord {
 export interface PluginEnvironmentCompositionRecord {
   pluginId: string;
   composition: NormalizedPluginEnvironmentComposition;
+  icon?: { bytes: Uint8Array; contentType: string; hash: string };
 }
 export interface PluginEnvironmentProviderBridge {
   listEnvironmentCompositions?(): PluginEnvironmentCompositionRecord[];

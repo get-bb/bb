@@ -91,7 +91,7 @@ async function validateWith(args: {
   return provider.validate({
     project: PROJECT,
     host: HOST,
-    projectCheckout: { path: CHECKOUT_PATH },
+    projectCheckout: { experimental_ownsPath: false, path: CHECKOUT_PATH },
     gitRemote: null,
     inputs: args.inputs,
   });

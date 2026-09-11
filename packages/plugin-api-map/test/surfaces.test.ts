@@ -26,11 +26,6 @@ function surfaceIds(groupId: string): string[] {
 }
 
 describe("product-map surfaces", () => {
-  it("describes environment selections using only existing enrolled machines", () => {
-    const surface = JSON.stringify(SURFACES_BY_ID.get("environment-providers"));
-    expect(surface).toContain("existing enrolled machine");
-    expect(surface).not.toContain("newly provider-created machine");
-  });
   it("keeps app-window annotations in column-major visual reading order", () => {
     const ordered = [
       "sidebar-navigation",
@@ -208,19 +203,6 @@ describe("surface card copy", () => {
     expect(eventCopy).toContain("cancelled before dispatch");
   });
 
-  it("documents durable machine lifecycle checkpoints", () => {
-    const machineProviders = SURFACES_BY_ID.get("machine-providers");
-    expect(machineProviders?.apiSymbols).toContain(
-      "PluginMachineProviderLifecycleContext",
-    );
-    expect(machineProviders?.bullets.join(" ")).toContain(
-      "Await suspend.checkpoint(resource) before destructive cleanup",
-    );
-    expect(machineProviders?.bullets.join(" ")).toContain(
-      "host's lifecycle phase and message",
-    );
-  });
-
   it("maps bootstrap and checkpointed allocation to the machine surface", () => {
     const machines = SURFACES_BY_ID.get("machine-providers");
     expect(machines?.apiSymbols).toEqual(
@@ -230,21 +212,18 @@ describe("surface card copy", () => {
         "MachineBootstrapRequest",
         "MachineBootstrapApi",
         "PluginMachineProviderCreateContext",
+        "PluginMachineProviderLifecycleContext",
+        "PluginMachineProviderResource",
         "PluginMachineProviderInputsProps",
         "PluginMachineProviderInputsChange",
         "PluginMachineProviderInputsRegistration",
       ]),
     );
-    expect(machines?.bullets.join(" ")).toContain(
-      "Await create.checkpoint(resource)",
-    );
-    expect(machines?.bullets.join(" ")).toContain("--environment-provider");
     expect(SURFACES_BY_ID.get("server-access")?.apiSymbols).toEqual(
       expect.arrayContaining([
         "PluginServerAccess",
         "ServerAccessProviderDeclaration",
         "ServerAccessGrant",
-        "ServerAccessSelection",
       ]),
     );
   });

@@ -76,7 +76,7 @@ Read the installed declarations for exact current signatures.
 - `PluginServerAccess` — `bb.experimental_serverAccess.register`
 - `ServerAccessProviderDeclaration`
 - `ServerAccessGrant`
-- `ServerAccessSelection`
+- `PluginMachineProviderResource` — non-null JSON persisted by machine checkpoints and lifecycle results
 - `PluginMachines` — `bb.experimental_machines.register` and bootstrap helper (see backend-machines.md)
 - `MachineExecutorRequest` — argv, timeout, signal, optional private stdin
 - `MachineExecutor` — transport exec

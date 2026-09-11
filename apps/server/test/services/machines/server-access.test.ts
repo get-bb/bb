@@ -1,3 +1,5 @@
+import { createDeferredPromise } from "@bb/test-helpers";
+import { createFakePluginHost } from "@get-bb/plugin-sdk/testing";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { getHost, setAppSettings, updateHost, upsertHost } from "@bb/db";
 import { defaultAppSettings } from "@bb/domain";
@@ -6,10 +8,7 @@ import {
   serverAccess,
   serverAccessStatus,
 } from "../../../src/services/machines/server-access.js";
-import {
-  setServerAccessBridge,
-  setServerAccessRecheckHandler,
-} from "../../../src/services/plugins/plugin-server-access-registry.js";
+import { setServerAccessBridge } from "../../../src/services/plugins/plugin-server-access-registry.js";
 import { listPublicHostsWithStatus } from "../../../src/services/lib/entity-lookup.js";
 import { withTestHarness } from "../../helpers/test-app.js";
 
@@ -43,17 +42,41 @@ function provider(): ServerAccessProviderDeclaration {
 }
 
 describe("machine server access", () => {
-  it("lists providers without invoking availability", async () => {
+  it("cancels a pending availability check without acquiring access when it later resolves", async () => {
+    await withTestHarness(async ({ deps }) => {
+      const controller = new AbortController();
+      const pending = createDeferredPromise<{ status: "available" }>();
+      const availability = vi.fn(() => pending.promise);
+      const acquire = vi.fn(provider().acquire);
+      installProvider({ ...provider(), availability, acquire });
+      const host = upsertHost(deps.db, deps.hub, { name: "cancelled" })!;
+      const result = serverAccess.resolve(deps, {
+        key: "cancelled",
+        hostId: host.id,
+        signal: controller.signal,
+      });
+      const rejected = expect(result).rejects.toThrow("Cancelled by user");
+      await vi.waitFor(() => expect(availability).toHaveBeenCalledOnce());
+      controller.abort(new Error("Cancelled by user"));
+      await rejected;
+      pending.resolve({ status: "available" });
+      await pending.promise;
+      expect(acquire).not.toHaveBeenCalled();
+      expect(getHost(deps.db, host.id)?.serverAccessProviderId).toBeNull();
+    });
+  });
+
+  it("reports provider availability without acquiring a grant", async () => {
     await withTestHarness(async ({ deps }) => {
       const availability = vi.fn(() => ({ status: "available" as const }));
-      installProvider({
-        ...provider(),
-        availability,
-      });
+      const acquire = vi.fn(provider().acquire);
+      installProvider({ ...provider(), availability, acquire });
       const status = await serverAccessStatus(deps);
       const access = status.providers.find((entry) => entry.id === "relay");
       expect(access).toMatchObject({ id: "relay", pluginId: "access-plugin" });
-      expect(availability).not.toHaveBeenCalled();
+      expect(access?.availability).toEqual({ status: "available" });
+      expect(availability).toHaveBeenCalledOnce();
+      expect(acquire).not.toHaveBeenCalled();
     });
   });
   it("prefers the first registered provider and respects an explicit direct default", async () => {
@@ -95,7 +118,7 @@ describe("machine server access", () => {
         availability,
       });
       expect((await serverAccessStatus(deps)).defaultProviderId).toBe("relay");
-      expect(availability).not.toHaveBeenCalled();
+      availability.mockClear();
       const host = upsertHost(deps.db, deps.hub, { name: "test" })!;
       await expect(
         serverAccess.resolve(deps, { key: "k", hostId: host.id, signal }),
@@ -124,7 +147,6 @@ describe("machine server access", () => {
       const grant = await serverAccess.resolve(deps, {
         key: "direct",
         hostId: host.id,
-        access: { providerId: "direct" },
         signal,
       });
       expect(grant).toEqual({
@@ -148,14 +170,14 @@ describe("machine server access", () => {
       expect(row.serverAccessProviderId).toBe("relay");
       expect(row.serverAccessGrantId).toBe(host.id);
       expect(JSON.stringify(row)).not.toContain("secret-header");
-      await expect(
-        serverAccess.resolve(deps, {
-          key: "k",
-          hostId: host.id,
-          access: { providerId: "direct" },
-          signal,
-        }),
-      ).rejects.toThrow("different");
+      setAppSettings(deps.db, {
+        ...defaultAppSettings,
+        defaultMachineAccess: "direct",
+        machineServerUrl: "https://other.example.com",
+      });
+      expect(
+        await serverAccess.resolve(deps, { key: "k", hostId: host.id, signal }),
+      ).toEqual(grant);
       await serverAccess.release(deps, { key: "k", hostId: host.id });
       expect(getHost(deps.db, host.id)?.serverAccessGrantId).toBeNull();
     });
@@ -252,18 +274,133 @@ it("keeps interrupted access visible and releases the acquisition without a retu
   });
 });
 
-it("routes a provider recheck to core with the calling plugin id", async () => {
+it("refreshes access status through the real recheck notification and configuration route", async () => {
   await withTestHarness(async (h) => {
     await h.pluginService.install("builtin:keep-awake", { kind: "root" });
     const api = h.pluginService.getApi("keep-awake");
     if (!api) throw new Error("Test plugin did not load");
-    const rechecked: string[] = [];
-    setServerAccessRecheckHandler((pluginId) => rechecked.push(pluginId));
-    try {
+    let availability: Awaited<
+      ReturnType<ServerAccessProviderDeclaration["availability"]>
+    > = { status: "setup-required", message: "Pair the relay" };
+    const acquire = vi.fn(provider().acquire);
+    api.experimental_serverAccess.register({
+      ...provider(),
+      availability: () => availability,
+      acquire,
+    });
+    setAppSettings(h.db, {
+      ...defaultAppSettings,
+      defaultMachineAccess: "relay",
+    });
+    const notify = vi.spyOn(h.hub, "notifySystem");
+    for (const next of [
+      { status: "setup-required", message: "Pair the relay" },
+      { status: "available", serverUrl: "https://relay.example.com" },
+      { status: "unavailable", message: "Credential revoked" },
+      { status: "available" },
+    ] as const) {
+      availability = next;
+      notify.mockClear();
       api.experimental_serverAccess.recheck();
-    } finally {
-      setServerAccessRecheckHandler(undefined);
+      expect(notify).toHaveBeenCalledWith(["config-changed"]);
+      const response = await h.app.request("/api/v1/system/config");
+      expect(response.status).toBe(200);
+      const config = await response.json();
+      expect(
+        config.serverAccess.providers.find(
+          (entry: { id: string }) => entry.id === "relay",
+        ).availability,
+      ).toEqual(next);
     }
-    expect(rechecked).toEqual(["keep-awake"]);
+    expect(acquire).not.toHaveBeenCalled();
+  });
+});
+
+it.each([
+  { status: "available", serverUrl: "https://secret:password@example.com" },
+  { status: "unexpected", message: "private diagnostics" },
+  new Error("private diagnostics"),
+])(
+  "fails closed without exposing invalid provider output: %s",
+  async (output) => {
+    await withTestHarness(async ({ deps }) => {
+      const availability = vi.fn();
+      if (output instanceof Error) availability.mockRejectedValue(output);
+      else availability.mockResolvedValue(output);
+      installProvider({ ...provider(), availability });
+      const status = await serverAccessStatus(deps);
+      expect(status.providers[0]?.availability?.status).toBe("unavailable");
+      expect(JSON.stringify(status)).not.toMatch(
+        /secret|password|private diagnostics/,
+      );
+    });
+  },
+);
+
+it("bounds a stalled availability check and recovers on the next read", async () => {
+  await withTestHarness(async ({ deps }) => {
+    const pending = createDeferredPromise<{ status: "available" }>();
+    installProvider({ ...provider(), availability: () => pending.promise });
+    vi.useFakeTimers();
+    try {
+      const result = serverAccessStatus(deps);
+      await vi.advanceTimersByTimeAsync(5_000);
+      expect((await result).providers[0]?.availability?.status).toBe(
+        "unavailable",
+      );
+      pending.resolve({ status: "available" });
+      expect(
+        (await serverAccessStatus(deps)).providers[0]?.availability,
+      ).toEqual({ status: "available" });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+});
+
+it.each([
+  { id: "direct" },
+  { id: "Invalid ID" },
+  { displayName: " " },
+  { description: " " },
+])(
+  "matches real and fake server-access registration validation: %j",
+  async (invalid) => {
+    await withTestHarness(async (h) => {
+      await h.pluginService.install("builtin:keep-awake", { kind: "root" });
+      const real = h.pluginService.getApi("keep-awake");
+      if (!real) throw new Error("Test plugin did not load");
+      const fake = createFakePluginHost();
+      try {
+        for (const api of [real, fake.bb])
+          expect(() =>
+            api.experimental_serverAccess.register({
+              ...provider(),
+              ...invalid,
+            }),
+          ).toThrow();
+      } finally {
+        await fake.harness.lifecycle.dispose();
+      }
+    });
+  },
+);
+
+it("rejects duplicate server-access registrations in real and fake hosts", async () => {
+  await withTestHarness(async (h) => {
+    await h.pluginService.install("builtin:keep-awake", { kind: "root" });
+    const real = h.pluginService.getApi("keep-awake");
+    if (!real) throw new Error("Test plugin did not load");
+    const fake = createFakePluginHost();
+    try {
+      for (const api of [real, fake.bb]) {
+        api.experimental_serverAccess.register(provider());
+        expect(() =>
+          api.experimental_serverAccess.register(provider()),
+        ).toThrow("already registered");
+      }
+    } finally {
+      await fake.harness.lifecycle.dispose();
+    }
   });
 });

@@ -153,8 +153,11 @@ Set Machines → Server URL reachable by machines, or run `bb settings general
 machineServerUrl https://bb.example.com`. An unset value uses BB_EXTERNAL_URL.
 Select Manual to show the URL input. Set Default machine access with
 `bb settings general defaultMachineAccess direct` or `connect`; `null` uses
-bb connect, with setup required if unpaired. Manual never becomes the default implicitly. `bb settings show --json`
-includes provider availability and the effective selection. Machines use this
+the first registered access provider, or direct when none is registered. An
+unpaired provider reports setup required. `bb settings show --json` includes
+fresh provider availability and the effective selection; failed or timed-out
+checks report unavailable without acquiring a grant. Settings and creation
+banners refresh this status when the access provider signals a change. Machines use this
 access for ongoing runtime requests, including account-pool endpoints.
 
 The Tailscale plugin can supply private machine access without a Direct URL.

@@ -25,6 +25,7 @@ import type {
   PluginHookName,
   PluginMentionTrigger,
   PluginMachineProviderDeclaration,
+  ServerAccessProviderDeclaration,
   PluginProviderCapabilities,
   PluginProviderComposerAction,
   PluginProviderDeclaration,
@@ -2252,7 +2253,15 @@ export const environmentCompositionSchema = z
       .trim()
       .min(1)
       .max(ENVIRONMENT_PROVIDER_DISPLAY_NAME_MAX_CHARS),
-    icon: z.string().min(1).optional(),
+    icon: z
+      .string()
+      .trim()
+      .min(1)
+      .transform((icon) =>
+        isPluginOwnedIconPath(icon)
+          ? validateProviderRelativePath(icon, "Composition icon")
+          : icon,
+      ),
     machineProviderId: z.string().regex(ENVIRONMENT_PROVIDER_ID_PATTERN),
     environmentProviderId: z.string().regex(ENVIRONMENT_PROVIDER_ID_PATTERN),
   })
@@ -2574,4 +2583,28 @@ function normalizeMachineProviderInputs(
     );
   }
   return { schema: inputs, jsonSchema: jsonSchema.data };
+}
+
+export function validateServerAccessProviderDeclaration(
+  declaration: ServerAccessProviderDeclaration,
+): ServerAccessProviderDeclaration {
+  if (typeof declaration !== "object" || declaration === null)
+    throw new Error("Invalid server access provider declaration");
+  if (
+    typeof declaration.id !== "string" ||
+    !/^[a-z][a-z0-9-]*$/u.test(declaration.id) ||
+    declaration.id === "direct"
+  )
+    throw new Error("Invalid or reserved server access provider id");
+  if (
+    typeof declaration.displayName !== "string" ||
+    !declaration.displayName.trim() ||
+    typeof declaration.description !== "string" ||
+    !declaration.description.trim() ||
+    typeof declaration.availability !== "function" ||
+    typeof declaration.acquire !== "function" ||
+    typeof declaration.release !== "function"
+  )
+    throw new Error("Invalid server access provider declaration");
+  return declaration;
 }

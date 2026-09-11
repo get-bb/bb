@@ -78,12 +78,13 @@ describe("Modal bootstrap executor", () => {
     const transport = await executor();
     await expect(
       transport.exec({
+        onOutput: vi.fn(),
         command: ["bb", "machine", "enroll"],
         timeoutMs: 1234,
         signal: new AbortController().signal,
         stdin: "credential-secret",
       }),
-    ).resolves.toEqual({ exitCode: 7, stdout: "output", stderr: "error" });
+    ).resolves.toEqual({ exitCode: 7 });
     expect(vendor.exec).toHaveBeenCalledWith(["bb", "machine", "enroll"], {
       mode: "text",
       stdout: "pipe",
@@ -94,34 +95,37 @@ describe("Modal bootstrap executor", () => {
     expect(process.stdin.close).toHaveBeenCalledOnce();
   });
 
-  it("streams stdout and stderr while retaining the collected result", async () => {
+  it("streams stdout and stderr without returning duplicate captured output", async () => {
     const process = processResult();
     vendor.exec.mockResolvedValue(process);
     const transport = await executor();
     const onOutput = vi.fn();
     await expect(
       transport.exec({
+        stdin: "",
         command: ["installer"],
         timeoutMs: 1000,
         signal: new AbortController().signal,
         onOutput,
       }),
-    ).resolves.toEqual({ exitCode: 7, stdout: "output", stderr: "error" });
+    ).resolves.toEqual({ exitCode: 7 });
     expect(onOutput).toHaveBeenCalledWith("output");
     expect(onOutput).toHaveBeenCalledWith("error");
   });
 
-  it("closes stdin when no input is supplied or input delivery fails", async () => {
+  it("closes stdin for empty input and when input delivery fails", async () => {
     const process = processResult();
     vendor.exec.mockResolvedValue(process);
     const transport = await executor();
     const request = {
+      onOutput: vi.fn(),
+      stdin: "",
       command: ["true"],
       timeoutMs: 1000,
       signal: new AbortController().signal,
     };
     await transport.exec(request);
-    expect(process.stdin.writeText).not.toHaveBeenCalled();
+    expect(process.stdin.writeText).toHaveBeenCalledWith("");
     expect(process.stdin.close).toHaveBeenCalledOnce();
     process.stdin.writeText.mockRejectedValueOnce(new Error("write failed"));
     await expect(
@@ -134,6 +138,8 @@ describe("Modal bootstrap executor", () => {
     const controller = new AbortController();
     const transport = await executor();
     const request = {
+      onOutput: vi.fn(),
+      stdin: "",
       command: ["sleep", "60"],
       timeoutMs: 1000,
       signal: controller.signal,

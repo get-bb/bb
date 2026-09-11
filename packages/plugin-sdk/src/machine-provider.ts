@@ -5,6 +5,8 @@ import type {
   StandardSchemaV1InferOutput,
 } from "@get-bb/plugin-sdk";
 
+export type PluginMachineProviderResource = Exclude<JsonValue, null>;
+
 export type PluginMachineProviderInputsSchema = StandardSchemaV1 | undefined;
 type InputsValue<S> = S extends StandardSchemaV1
   ? StandardSchemaV1InferOutput<S>
@@ -27,7 +29,7 @@ export type PluginMachineProviderValidateContext<
 };
 
 export interface PluginMachineProviderLifecycleContext {
-  checkpoint(resource: JsonValue): Promise<void>;
+  checkpoint(resource: PluginMachineProviderResource): Promise<void>;
   report: PluginMachineProviderProgress;
   signal: AbortSignal;
 }
@@ -42,13 +44,13 @@ export type PluginMachineProviderCreateContext<
   };
 
 export type PluginMachineProviderCreateResult =
-  | { status: "created"; name: string; resource: JsonValue }
+  | { status: "created"; name: string; resource: PluginMachineProviderResource }
   | { status: "failed"; message: string };
 
 type PluginMachineProviderResourceLifecycleContext =
   PluginMachineProviderLifecycleContext & {
     hostId: string;
-    resource: JsonValue;
+    resource: PluginMachineProviderResource;
   };
 
 type PluginMachineProviderRemoveContext = Omit<
@@ -57,7 +59,7 @@ type PluginMachineProviderRemoveContext = Omit<
 >;
 
 export interface PluginMachineProviderResourceResult {
-  resource: JsonValue;
+  resource: PluginMachineProviderResource;
 }
 
 export type PluginMachineProviderRemoveResult =
@@ -89,7 +91,6 @@ export interface PluginMachineProviderDefinition<
   /** Reconcile and remove an uncertain allocation by durable key without creating or bootstrapping. Return failed while allocation intent remains unresolved. */
   reconcileCleanup(context: {
     key: string;
-    resource: JsonValue | null;
     report: PluginMachineProviderProgress;
     signal: AbortSignal;
   }): Promise<PluginMachineProviderRemoveResult>;

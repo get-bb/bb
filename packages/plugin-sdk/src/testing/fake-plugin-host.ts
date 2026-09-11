@@ -1,5 +1,6 @@
 import {
   environmentCompositionSchema,
+  validateServerAccessProviderDeclaration,
   type NormalizedPluginEnvironmentComposition,
 } from "../internal/host-policy.js";
 import type { MachineBootstrapApi } from "../machine-bootstrap.js";
@@ -1093,9 +1094,10 @@ function createFakePluginHostInternal(
         );
       }
       const rows = database
-        .prepare<[], { id: number; statement_hash: string | null }>(
-          "SELECT id, statement_hash FROM _bb_migrations ORDER BY id",
-        )
+        .prepare<
+          [],
+          { id: number; statement_hash: string | null }
+        >("SELECT id, statement_hash FROM _bb_migrations ORDER BY id")
         .all();
       const applied = new Map<number, string | null>();
       for (const row of rows) applied.set(row.id, row.statement_hash);
@@ -2150,6 +2152,13 @@ function createFakePluginHostInternal(
       assertLive();
       if ("machineProviderId" in declaration) {
         const composition = environmentCompositionSchema.parse(declaration);
+        const problem = undeclaredIconProblem(
+          pluginId,
+          declaredIconNames,
+          composition.icon,
+        );
+        if (problem !== null)
+          throw new Error(providerIconRefusalMessage(composition.id, problem));
         if (environmentProviders.has(composition.id))
           throw new Error(
             "Environment ID is already registered as a concrete provider",
@@ -2223,6 +2232,11 @@ function createFakePluginHostInternal(
     experimental_serverAccess: {
       register(declaration) {
         assertLive();
+        validateServerAccessProviderDeclaration(declaration);
+        if (serverAccessProviders.has(declaration.id))
+          throw new Error(
+            `Server access provider "${declaration.id}" is already registered`,
+          );
         serverAccessProviders.set(declaration.id, declaration);
       },
       recheck() {

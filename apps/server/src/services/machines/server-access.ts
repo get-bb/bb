@@ -1,10 +1,9 @@
 import { getAppSettings, getHost, hosts } from "@bb/db";
 import { eq } from "drizzle-orm";
 import { z } from "zod";
-import type {
-  ServerAccessGrant,
-  ServerAccessSelection,
-} from "@get-bb/plugin-sdk";
+import type { ServerAccessGrant } from "@get-bb/plugin-sdk";
+import type { ServerAccessStatus } from "@bb/server-contract";
+import { decideWithinBox } from "../threads/dispatch-hooks.js";
 import type { WorkSessionDeps } from "../../types.js";
 import {
   invokeServerAccessProvider,
@@ -62,7 +61,7 @@ export function machineServerUrl(deps: Dependencies) {
   };
 }
 
-export async function serverAccessStatus(deps: Dependencies) {
+function serverAccessConfiguration(deps: Dependencies) {
   const direct = machineServerUrl(deps);
   const records = listServerAccessProviders();
   const providers: Array<{
@@ -92,12 +91,46 @@ export async function serverAccessStatus(deps: Dependencies) {
   };
 }
 
+export async function serverAccessStatus(
+  deps: Dependencies,
+): Promise<ServerAccessStatus> {
+  const configuration = serverAccessConfiguration(deps);
+  const records = listServerAccessProviders();
+  const providers = await Promise.all(
+    configuration.providers.map(async (provider) => {
+      if (provider.id === "direct") return { ...provider, availability: null };
+      const record = records.find((entry) => entry.provider.id === provider.id);
+      const result =
+        record === undefined
+          ? null
+          : await decideWithinBox(
+              () =>
+                invokeServerAccessProvider(record, async () =>
+                  record.provider.availability(),
+                ),
+              5_000,
+            );
+      const parsed = result?.ok
+        ? availabilitySchema.safeParse(result.value)
+        : null;
+      const availability: z.infer<typeof availabilitySchema> = parsed?.success
+        ? parsed.data
+        : {
+            status: "unavailable",
+            message:
+              "Could not check machine access. Try again or check the provider's configuration.",
+          };
+      return { ...provider, availability };
+    }),
+  );
+  return { ...configuration, providers };
+}
+
 async function resolve(
   deps: Dependencies,
   args: {
     key: string;
     hostId: string;
-    access?: ServerAccessSelection;
     signal: AbortSignal;
   },
 ): Promise<ServerAccessGrant> {
@@ -105,18 +138,8 @@ async function resolve(
   const host = getHost(deps.db, args.hostId);
   if (!host || host.destroyedAt !== null)
     throw new Error("Machine identity is unavailable");
-  const status = await serverAccessStatus(deps);
-  const providerId =
-    host.serverAccessProviderId ??
-    args.access?.providerId ??
-    status.defaultProviderId;
-  if (
-    args.access &&
-    host.serverAccessProviderId &&
-    args.access.providerId !== host.serverAccessProviderId
-  ) {
-    throw new Error("Machine already has a different server access provider");
-  }
+  const status = serverAccessConfiguration(deps);
+  const providerId = host.serverAccessProviderId ?? status.defaultProviderId;
   let grant: ServerAccessGrant;
   if (providerId === "direct") {
     const serverUrl = status.effectiveUrl;
@@ -129,15 +152,28 @@ async function resolve(
     );
     if (!record) throw new Error("Server access provider is unavailable");
     let availability: z.infer<typeof availabilitySchema>;
+    let onAbort: (() => void) | undefined;
     try {
+      args.signal.throwIfAborted();
       availability = availabilitySchema.parse(
-        await invokeServerAccessProvider(record, async () =>
-          record.provider.availability(),
-        ),
+        await Promise.race([
+          invokeServerAccessProvider(record, async () =>
+            record.provider.availability(),
+          ),
+          new Promise<never>((_resolve, reject) => {
+            onAbort = () => reject(args.signal.reason);
+            args.signal.addEventListener("abort", onAbort, { once: true });
+            if (args.signal.aborted) onAbort();
+          }),
+        ]),
       );
     } catch {
+      args.signal.throwIfAborted();
       throw new Error("Server access provider is unavailable");
+    } finally {
+      if (onAbort) args.signal.removeEventListener("abort", onAbort);
     }
+    args.signal.throwIfAborted();
     if (availability.status !== "available") {
       throw new Error(availability.message);
     }

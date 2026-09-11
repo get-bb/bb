@@ -766,7 +766,10 @@ describe("core environment orchestration", () => {
       expect(
         await provider.validate({
           ...fixture.context,
-          projectCheckout: { path: "/tmp/project" },
+          projectCheckout: {
+            experimental_ownsPath: false,
+            path: "/tmp/project",
+          },
           inputs: { branch: { kind: "existing", name: "release" } },
         }),
       ).toEqual({
@@ -837,7 +840,7 @@ describe("core environment orchestration", () => {
       });
       const context = {
         ...fixture.context,
-        projectCheckout: { path: "/tmp/project" },
+        projectCheckout: { experimental_ownsPath: false, path: "/tmp/project" },
         inputs: { branch: { kind: "existing", name: "release" } },
       };
       try {

@@ -27,35 +27,59 @@ attached environment's retirement policy. The default is false, so manually enro
 and provider-managed machines intended to persist are never removed automatically.
 
 ```ts
-bb.experimental_machines.register({
-  id: "custom-machine",
-  displayName: "Custom machine",
-  description: "Create a machine with custom compute.",
-  icon: "Server",
-  ephemeral: true,
-  inputs: z.object({ target: z.string() }),
-  async create({ inputs, key, checkpoint, report, signal }) {
-    const target = await allocateTarget({ target: inputs.target, key, signal });
-    const resource = { target: target.id };
-    await checkpoint(resource);
-    const { hostId } = await bb.experimental_machines.bootstrap({
-      key,
-      executor: target.executor,
-      report,
-      signal,
-    });
-    return {
-      status: "created",
-      name: `Custom machine ${hostId.slice(-6)}`,
-      resource,
-    };
+import type { BbPluginApi, MachineExecutor } from "@get-bb/plugin-sdk";
+import { z } from "zod";
+
+export function registerMachine(
+  bb: BbPluginApi,
+  targets: {
+    allocate(request: {
+      target: string;
+      key: string;
+      signal: AbortSignal;
+    }): Promise<{ id: string; executor: MachineExecutor }>;
+    remove(id: string, signal: AbortSignal): Promise<void>;
+    removeByKey(key: string, signal: AbortSignal): Promise<void>;
   },
-  async remove({ resource }) {
-    const owned = z.object({ target: z.string() }).parse(resource);
-    await disconnectTarget(owned.target);
-    return { status: "removed" };
-  },
-});
+) {
+  bb.experimental_machines.register({
+    id: "custom-machine",
+    displayName: "Custom machine",
+    description: "Create a machine with custom compute.",
+    icon: "Server",
+    ephemeral: true,
+    inputs: z.object({ target: z.string() }),
+    async create({ inputs, key, checkpoint, report, signal }) {
+      const target = await targets.allocate({
+        target: inputs.target,
+        key,
+        signal,
+      });
+      const resource = { target: target.id };
+      await checkpoint(resource);
+      const { hostId } = await bb.experimental_machines.bootstrap({
+        key,
+        executor: target.executor,
+        report,
+        signal,
+      });
+      return {
+        status: "created",
+        name: `Custom machine ${hostId.slice(-6)}`,
+        resource,
+      };
+    },
+    async reconcileCleanup({ key, signal }) {
+      await targets.removeByKey(key, signal);
+      return { status: "removed" };
+    },
+    async remove({ resource, signal }) {
+      const owned = z.object({ target: z.string() }).parse(resource);
+      await targets.remove(owned.target, signal);
+      return { status: "removed" };
+    },
+  });
+}
 ```
 
 A machine is not scoped to a project: nothing about creation names one, and
@@ -71,19 +95,20 @@ call reuses the already-enrolled host instead of creating another resource.
 Call `await checkpoint(resource)` after durable allocation and before
 bootstrap. Create's checkpoint is asynchronous and makes
 partial allocation recoverable even if enrollment never succeeds. Never put the
-bootstrap bundle in resource JSON. Return a readable name and private JSON
+bootstrap bundle in resource JSON. Return a readable name and opaque JSON
 resource for later lifecycle operations; core uses the host identity reserved
-on the launch. Core falls back to the provider display name plus a short
-identity suffix for older providers that omit the name.
-`allocateTarget` and `disconnectTarget` above
-stand for provider-owned allocation, transport, and idempotent cleanup; removal
+on the launch. `PluginMachineProviderResource` excludes top-level null; use `{}`
+when no custom metadata is needed. The example’s `targets` adapter supplies
+provider-owned allocation, transport, and idempotent cleanup. Removal
 must handle a checkpointed target whose daemon was never installed or enrolled.
 Core owns enrollment, identity files, and daemon installation internals.
-Automatic unresolved cleanup retries are bounded to a 30-minute launch window;
-unresolved cleanup remains recorded for operator reconciliation.
+Without a checkpoint, `reconcileCleanup` discovers and removes allocations by key.
+With a checkpoint, `remove` receives the stored resource. Failed cleanup remains
+recorded and retries on the core one-minute interval until it succeeds.
 
 Machine registration does not contribute environment-picker entries. Register
-an environment composition with `machineProviderId` and `environmentProviderId`
+an environment composition with required `id`, `displayName`, `icon`,
+`machineProviderId` and `environmentProviderId`
 to offer a new machine plus a concrete environment. Modal combines its machine
 with `project-checkout`; core prepares the missing checkout. CLI users select
 `--environment-provider modal-sandbox` without machine selectors and may pass
@@ -93,8 +118,8 @@ with `project-checkout`; core prepares the missing checkout. CLI users select
 Suspend and resume are optional but must be declared together. Providers own idle
 timing and request pause through the host SDK. Core interrupts active work before
 stopping the host daemon and invoking suspend, and resumes before queued execution.
-Suspend receives `checkpoint(resource)`, which synchronously
-persists a recoverable private resource before destructive cleanup. Use it
+Suspend receives an awaitable `checkpoint(resource)`, which
+persists a recoverable opaque resource before destructive cleanup. Use it
 after creating a recovery artifact and before terminating the live machine or
 deleting an older artifact. A replay receives the last checkpoint.
 Resume receives an awaitable `checkpoint(resource)`. Call it immediately after
@@ -125,42 +150,49 @@ is idempotent by key. Return `{ id, serverUrl, headers?: Record<string, string> 
 as enrolment. Acquire must redeem provider-specific codes server-side and persist
 the revocation identity before returning, so release works before enrolment.
 Direct grants omit headers. Bootstrap carries the headers. Host metadata stores
-the provider id and grant id; pending
-bootstrap credentials are encrypted separately by core.
+the provider id and grant id; pending bootstrap bundles live in server memory.
 The failed result's message is deliberate user-safe recovery copy; ordinary
 thrown errors stay redacted. Release receives a null grantId when acquire was interrupted. Core persists the
-provider before acquisition and retries release by key and hostId. Keep intent
-and credential-bearing grants in secret storage; only non-secret revocation
-metadata belongs in KV.
-
-`attention()` optionally returns a user-safe diagnostic or null,
-synchronously or asynchronously. Machines settings displays it independently of
-availability; never include credentials or raw provider payloads.
+provider before acquisition and retries release by key and hostId. Keep intent and credential-bearing grants in private plugin storage.
+Never put credentials in machine inputs, resources, or progress output.
 
 Machines settings select the default. Without a saved selection, core uses the
-first registered provider, or direct when none are registered. Plugins can pass ServerAccessSelection
-to the machine enrolment/bootstrap APIs. The direct provider reads
+first registered provider, or direct when none are registered. Core retains the
+selected provider for subsequent enrollment of the same machine. The direct provider reads
 machineServerUrl, falling back to BB_EXTERNAL_URL. Declaring a URL does not
 prove reachability from a sandbox.
+
+Call `recheck()` when access is gained or lost. It broadcasts a configuration-change
+notification. Clients reload configuration, which checks provider availability
+in parallel with a five-second deadline per check. Invalid output, exceptions,
+and timeouts appear unavailable. Machines settings, manual setup, and promptbox
+banners use that status; a registered provider alone is not ready.
+Availability's optional public `serverUrl` is validated and displayed in Machines
+settings when available. An available result without a URL is valid. Reading
+configuration never acquires access; the grant's URL is the one used by machines.
 
 ### Machine enrollment and bootstrap
 
 `bb.experimental_machines` implements `MachineBootstrapApi` alongside register:
 
-- `bootstrap({ key, executor?, access?, report, signal })` prepares or recovers
-  enrollment, installs or starts the daemon, waits for its
-  connection, and returns `{ hostId }`. When `executor` is omitted, it waits for
-  the user to run the manual command. Reuse the same key and access selection
-  used before the create checkpoint. Initial installation needs Node, npm, and
-  curl; the helper does not install OS packages.
+- `bootstrap({ key, executor, report, signal })` prepares or recovers enrollment,
+  installs or starts the daemon, waits for its connection, and returns `{ hostId }`.
+  Reuse the create key on recovery. Initial installation needs Node, npm, and curl;
+  the helper does not install OS packages. Manual setup is built into core and
+  uses internal enrollment operations.
 
-A `MachineExecutor` implements `exec({ command, timeoutMs, signal, stdin? })`
-returning `{ exitCode, stdout, stderr }`. Execute argv through the provider's
-transport, honor timeout and cancellation, and keep stdin private.
-The helper suppresses remote output and reports fixed progress messages. It
-restarts enrolled identities, including a restored preinstalled snapshot.
-Create's awaited checkpoint precedes bootstrap; suspend's awaited checkpoint
-persists a recovery artifact before destructive cleanup.
+A `MachineExecutor` implements `exec({ command, stdin, timeoutMs, signal, onOutput })`
+returning `{ exitCode }`. Execute argv through the provider's transport, honor timeout
+and cancellation, and keep stdin private. Stream command output through `onOutput`;
+core forwards it into progress logs and includes its last 20 lines on nonzero exit.
+Do not emit credentials. The helper restarts enrolled identities, including a restored
+preinstalled snapshot. Create's awaited checkpoint precedes bootstrap; suspend's
+awaited checkpoint persists a recovery artifact before destructive cleanup.
+
+Standalone SDK creation with `wait: false` returns before the manual command is
+necessarily ready. Poll `experimental_getEnrollmentCommand({ hostId })` while the
+host is creating; null means there is no current command. Stop on connection or
+creation failure. Reading does not renew a command; regenerate expired setup explicitly.
 
 ### Coordinated suspension
 

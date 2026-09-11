@@ -158,6 +158,19 @@ export const serverAccessStatusSchema = z.object({
       displayName: z.string(),
       description: z.string(),
       pluginId: z.string().min(1).nullable(),
+      availability: z
+        .discriminatedUnion("status", [
+          z.object({
+            status: z.literal("available"),
+            serverUrl: z.string().url().optional(),
+          }),
+          z.object({
+            status: z.literal("setup-required"),
+            message: z.string(),
+          }),
+          z.object({ status: z.literal("unavailable"), message: z.string() }),
+        ])
+        .nullable(),
     }),
   ),
   defaultProviderId: z.string(),

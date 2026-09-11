@@ -99,6 +99,7 @@ export async function redeemConnectCode(args: {
 }
 
 export async function redeemMachineCode(args: {
+  signal: AbortSignal;
   code: string;
   serverUrl: string;
 }): Promise<{ credential: string; machineId: string; serverUrl: string }> {
@@ -108,7 +109,7 @@ export async function redeemMachineCode(args: {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ code: args.code }),
-      signal: AbortSignal.timeout(10_000),
+      signal: AbortSignal.any([args.signal, AbortSignal.timeout(10_000)]),
     },
   );
   if (!response.ok)

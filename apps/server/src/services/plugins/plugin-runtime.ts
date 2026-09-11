@@ -643,7 +643,17 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
     return Array.from(loaded).flatMap(([pluginId, plugin]) =>
       Array.from(
         plugin.handle.environmentCompositions.values(),
-        (composition) => ({ pluginId, composition }),
+        (composition) => {
+          const declared = parseNamespacedGlyph(composition.icon);
+          const icon =
+            declared !== null
+              ? brandingAssets.get(pluginId)?.icons.get(declared.name)
+              : readPluginProviderIcon(
+                  plugin.manifest.rootDir,
+                  composition.icon,
+                );
+          return { pluginId, composition, ...(icon == null ? {} : { icon }) };
+        },
       ),
     );
   }

@@ -142,9 +142,12 @@ every window and client sees the same value.
 Machine access: `bb settings general machineServerUrl https://bb.example.com`
 sets the server URL reachable by machines. Set `null` to use BB_EXTERNAL_URL.
 `bb settings general defaultMachineAccess direct` selects direct access;
-`connect` selects bb Cloud; `null` selects paired Connect, otherwise direct
-when a URL exists. `bb settings show --json` includes serverAccess with the
-effective URL, its source and provider availability. These grants carry runtime
+`connect` selects bb Cloud; `null` selects the first registered access provider,
+or direct when none is registered. An unpaired provider remains selected and
+reports setup required. `bb settings show --json` includes serverAccess with the
+effective direct URL, its source and provider availability. Availability is refreshed
+on each read, with failed or timed-out checks reported as unavailable. It does
+not acquire a machine grant. These grants carry runtime
 requests, including account-pool traffic, after enrolment.
 
 Automatic machine GitHub credentials are enabled by default. Use

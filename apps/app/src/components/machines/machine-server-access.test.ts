@@ -15,6 +15,7 @@ function status(
         displayName: "Relay",
         description: "Use a managed relay.",
         pluginId: "relay-plugin",
+        availability: { status: "available" },
       },
     ],
     defaultProviderId: "relay",
@@ -31,6 +32,25 @@ describe("machine server access readiness", () => {
     expect(machineServerAccessReady(undefined)).toBe(false);
   });
 
+  it("blocks an installed provider until access is available and follows its recovery", () => {
+    const access = status();
+    access.providers[0]!.availability = {
+      status: "setup-required",
+      message: "Pair the relay",
+    };
+    expect(machineServerAccessReady(access)).toBe(false);
+    expect(machineServerAccessBlockedReason(access)).toBe("Pair the relay");
+    access.providers[0]!.availability = { status: "available" };
+    expect(machineServerAccessReady(access)).toBe(true);
+    access.providers[0]!.availability = {
+      status: "unavailable",
+      message: "Credential revoked",
+    };
+    expect(machineServerAccessBlockedReason(access)).toBe("Credential revoked");
+    access.providers[0]!.availability = null;
+    expect(machineServerAccessReady(access)).toBe(false);
+  });
+
   it("requires a reachable address for direct access", () => {
     const direct = status({
       defaultProviderId: "direct",
@@ -40,6 +60,7 @@ describe("machine server access readiness", () => {
           displayName: "Manual",
           description: "Use a network address.",
           pluginId: null,
+          availability: null,
         },
       ],
       effectiveUrl: "https://bb.example.com",

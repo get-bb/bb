@@ -341,3 +341,134 @@ describe("server access recheck", () => {
     expect(host.harness.recheckCount).toBe(3);
   });
 });
+
+it("aborts pending code issuance and lets a later acquisition proceed", async () => {
+  const host = await setup();
+  const controller = new AbortController();
+  let started = false;
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
+      const signal = init?.signal;
+      if (!signal) throw new Error("Missing acquisition signal");
+      started = true;
+      return new Promise<Response>((_resolve, reject) => {
+        signal.addEventListener("abort", () => reject(signal.reason), {
+          once: true,
+        });
+      });
+    }),
+  );
+  const pending = provider(host).acquire({
+    ...request,
+    signal: controller.signal,
+  });
+  await vi.waitFor(() => expect(started).toBe(true));
+  controller.abort(new Error("cancelled"));
+  await expect(pending).rejects.toThrow("cancelled");
+  expect(await host.bb.storage.kv.get(key)).toBeUndefined();
+  const api = cloud();
+  await provider(host).acquire(request);
+  await provider(host).release({
+    key: request.key,
+    hostId: request.hostId,
+    grantId: request.hostId,
+  });
+  expect(api.active()).toBe(false);
+});
+
+it("retains interrupted redemption intent and revokes the committed device", async () => {
+  const host = await setup();
+  const controller = new AbortController();
+  let active = false;
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url.endsWith("/machine-code") && init?.method === "POST")
+        return Response.json({
+          code: "PENDING-CODE",
+          expiresInMs: 600000,
+          serverUrl: credential.serverUrl,
+        });
+      if (url.endsWith("/redeem-machine")) {
+        const signal = init?.signal;
+        if (!signal) throw new Error("Missing redemption signal");
+        active = true;
+        return new Promise<Response>((_resolve, reject) => {
+          signal.addEventListener("abort", () => reject(signal.reason), {
+            once: true,
+          });
+        });
+      }
+      if (url.endsWith("/machine-code") && init?.method === "GET")
+        return Response.json({ consumed: true, machineId: "committed-device" });
+      expect(url).toContain("/revoke-machine");
+      expect(JSON.parse(String(init?.body))).toEqual({
+        machineId: "committed-device",
+      });
+      active = false;
+      return Response.json({ ok: true });
+    }),
+  );
+  const pending = provider(host).acquire({
+    ...request,
+    signal: controller.signal,
+  });
+  await vi.waitFor(() => expect(active).toBe(true));
+  controller.abort(new Error("cancelled"));
+  await expect(pending).rejects.toThrow("cancelled");
+  expect(await host.bb.storage.kv.get(key)).toMatchObject({
+    intent: { code: "PENDING-CODE" },
+  });
+  const restarted = await host.harness.lifecycle.reload((bb) =>
+    registerServerAccess(bb, tunnel),
+  );
+  hosts.push(restarted);
+  await provider(restarted).release({
+    key: request.key,
+    hostId: request.hostId,
+    grantId: null,
+  });
+  expect(active).toBe(false);
+  expect(await restarted.bb.storage.kv.get(key)).toBeUndefined();
+});
+
+it("keeps an unexpired acquisition intent until a late redemption can be ruled out", async () => {
+  const host = await setup(async (host) => {
+    await host.bb.storage.kv.set(key, {
+      intent: {
+        key: request.key,
+        hostId: request.hostId,
+        code: "UNSETTLED-CODE",
+        expiresAt: Date.now() + 60_000,
+        serverUrl: credential.serverUrl,
+      },
+    });
+  });
+  let consumed = false;
+  let revoked = false;
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
+      if (init?.method === "GET")
+        return Response.json({
+          consumed,
+          machineId: consumed ? "late-device" : null,
+        });
+      revoked = true;
+      return Response.json({ ok: true });
+    }),
+  );
+  const release = { key: request.key, hostId: request.hostId, grantId: null };
+  await expect(provider(host).release(release)).rejects.toThrow(
+    "still unsettled",
+  );
+  expect(await host.bb.storage.kv.get(key)).toMatchObject({
+    intent: { code: "UNSETTLED-CODE" },
+  });
+  consumed = true;
+  await provider(host).release(release);
+  expect(revoked).toBe(true);
+  expect(await host.bb.storage.kv.get(key)).toBeUndefined();
+});

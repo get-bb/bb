@@ -125,7 +125,6 @@ const EXPECTED_BACKEND_ROOT_TYPE_EXPORTS = [
   "PluginServerAccess",
   "ServerAccessGrant",
   "ServerAccessProviderDeclaration",
-  "ServerAccessSelection",
 ] as const;
 
 const EXPECTED_BACKEND_ROOT_VALUE_EXPORTS = [

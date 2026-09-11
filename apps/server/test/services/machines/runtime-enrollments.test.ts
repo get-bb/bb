@@ -12,6 +12,7 @@ import type { ServerAccessGrant } from "@get-bb/plugin-sdk";
 import { describe, expect, it, vi } from "vitest";
 import { getMachineEnrollmentService } from "../../../src/services/machines/machine-services.js";
 import { serverAccess } from "../../../src/services/machines/server-access.js";
+import { setPluginEnvironmentProviderBridge } from "../../../src/services/plugins/plugin-environment-provider-registry.js";
 import {
   withTestHarness,
   type TestAppHarness,
@@ -129,6 +130,7 @@ describe("production machine enrollment wiring", () => {
         "enrollment-runtime",
       );
       const enrollment = await enrollments.prepare({
+        signal: new AbortController().signal,
         key: "runtime-launch",
       });
       expect(
@@ -142,6 +144,7 @@ describe("production machine enrollment wiring", () => {
         getMachineEnrollmentService(h.deps),
       );
       const reissued = await enrollments.prepare({
+        signal: new AbortController().signal,
         key: "runtime-launch",
       });
       expect(reissued).toMatchObject({
@@ -189,6 +192,7 @@ describe("production machine enrollment wiring", () => {
       expect(exec).toHaveBeenCalledOnce();
       expect(
         await enrollments.prepare({
+          signal: new AbortController().signal,
           key: "runtime-launch",
         }),
       ).toEqual({
@@ -207,6 +211,7 @@ describe("production machine enrollment wiring", () => {
       expect(() =>
         api.experimental_machines.bootstrap({
           key: "after-disable",
+          executor: { exec },
           report: { step() {}, log() {} },
           signal: new AbortController().signal,
         }),
@@ -245,11 +250,15 @@ describe("production machine enrollment wiring", () => {
         acquire,
         release,
       });
+      setAppSettings(h.db, {
+        ...defaultAppSettings,
+        defaultMachineAccess: "runtime-access",
+      });
       launch(h, "failure-launch", "enrollment-runtime-machine");
       await expect(
         otherEnrollments.prepare({
+          signal: new AbortController().signal,
           key: "failure-launch",
-          access: { providerId: "runtime-access" },
         }),
       ).rejects.toThrow("different plugin");
       acquire.mockResolvedValueOnce({
@@ -258,8 +267,8 @@ describe("production machine enrollment wiring", () => {
       });
       await expect(
         enrollments.prepare({
+          signal: new AbortController().signal,
           key: "failure-launch",
-          access: { providerId: "runtime-access" },
         }),
       ).rejects.toThrow();
       const reserved = getNonDestroyedHostByLaunchKey(h.db, "failure-launch");
@@ -271,8 +280,8 @@ describe("production machine enrollment wiring", () => {
         )?.statusMessage,
       ).toBe("Cloud device may need dashboard revocation");
       const enrollment = await enrollments.prepare({
+        signal: new AbortController().signal,
         key: "failure-launch",
-        access: { providerId: "runtime-access" },
       });
       expect(enrollment.hostId).toBe(reserved?.id);
       expect(
@@ -296,10 +305,49 @@ describe("production machine enrollment wiring", () => {
       ).toBeNull();
       await expect(
         enrollments.prepare({
+          signal: new AbortController().signal,
           key: "standalone",
-          access: { providerId: "runtime-access" },
         }),
       ).rejects.toThrow("host was not found");
     });
+  });
+});
+
+it("serves a composition's explicit icon instead of the machine provider's icon", async () => {
+  await withTestHarness(async (h) => {
+    setPluginEnvironmentProviderBridge(h.pluginService.environmentProviders);
+    const api = await installPlugin(h, "icon-runtime");
+    const svg =
+      '<svg xmlns="http://www.w3.org/2000/svg"><path d="M0 0h1v1z"/></svg>';
+    await writeFile(
+      join(h.config.dataDir, "bb-plugin-icon-runtime", "composition.svg"),
+      svg,
+    );
+    api.experimental_environments.register({
+      id: "icon-workspace",
+      displayName: "Icon workspace",
+      icon: "Folder",
+      create: async () => ({ status: "failed", message: "unused" }),
+      remove: async () => ({ status: "removed" }),
+    });
+    api.experimental_environments.register({
+      id: "icon-composition",
+      displayName: "Explicit composition",
+      icon: "./composition.svg",
+      machineProviderId: "icon-runtime-machine",
+      environmentProviderId: "icon-workspace",
+    });
+    const listing = await h.app.request("/api/v1/system/environment-providers");
+    const data = await listing.json();
+    const composition = data.providers.find(
+      (entry: { id: string }) => entry.id === "icon-composition",
+    );
+    expect(composition).toMatchObject({
+      icon: "./composition.svg",
+      logoUrl: expect.stringContaining("environment%3Aicon-composition"),
+    });
+    const response = await h.app.request(composition.logoUrl);
+    expect(response.status).toBe(200);
+    expect(await response.text()).toBe(svg);
   });
 });

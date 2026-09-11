@@ -428,6 +428,7 @@ export function createModalSandboxPlugin(
     bb.experimental_environments.register({
       id: PROVIDER_ID,
       displayName: "Modal Sandbox",
+      icon: "./modal-logo.svg",
       machineProviderId: PROVIDER_ID,
       environmentProviderId: "project-checkout",
     });
@@ -460,17 +461,10 @@ export function createModalSandboxPlugin(
           return { status: "failed", message: resolved.message };
         context.signal.throwIfAborted();
         const backend = backendFor(resolved.settings);
-        const resource =
-          context.resource === null
-            ? null
-            : readModalMachineResource(context.resource);
-        const sandbox =
-          resource?.sandboxId == null
-            ? await backend.fromName(
-                resource?.appName ?? resolved.settings.appName,
-                context.key,
-              )
-            : await backend.fromId(resource.sandboxId);
+        const sandbox = await backend.fromName(
+          resolved.settings.appName,
+          context.key,
+        );
         await sandbox?.terminate();
         return { status: "removed" };
       },

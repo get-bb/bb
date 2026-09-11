@@ -593,13 +593,14 @@ description and icon; optional ephemeral policy, Standard Schema inputs,
 availability and validate; required create, reconcileCleanup and remove; and optional paired
 suspend/resume callbacks. Core validates descriptions/icons and parses inputs
 at registration/creation boundaries. Inputs and resource JSON must not contain
-credentials. Resource records are bounded to 16 KiB.
+credentials. Resource records are bounded to 16 KiB. `PluginMachineProviderResource` excludes
+top-level null; null in storage means no checkpoint exists.
 
 Core owns enrollment, durable launches, cleanup retries and coordinated lifecycle
 transitions. Plugins own allocation, filesystem preservation and idle policy.
 Each `bootstrap` call revokes any pending credential and issues a fresh one for
 the same durable host identity.
-Create returns a readable machine name and private resource. Create failures are
+Create returns a readable machine name and opaque resource. Create failures are
 terminal; providers retry vendor API hiccups inside create.
 Create awaits checkpoint before bootstrap. Suspend and
 resume also await checkpoint before destructive cleanup/bootstrap. All three
@@ -624,8 +625,8 @@ removal retry timing is internal, not a public retirement policy.
 Exports provider definitions, input schemas, availability/validation results,
 create and lifecycle contexts, progress and resource/removal results.
 Create receives inputs/key/attempt/checkpoint/report/signal and no project.
-ReconcileCleanup receives the last checkpointed resource and only
-discovers/removes uncertain allocations. Suspend and resume share the lifecycle
+ReconcileCleanup receives the durable key and discovers/removes allocations
+when no checkpoint exists; remove receives known resources. Suspend and resume share the lifecycle
 context and must be registered together. Description and icon are required.
 
 Supporting declarations belong to the experimental machine namespace.
@@ -2664,16 +2665,17 @@ and plugin file navigation feed the same opener boundary.
 
 ## `bb.experimental_serverAccess.recheck`
 
-Availability is only read when something loads system configuration, so a
-provider that gains or loses access between reads leaves Machines settings
-showing a stale state. `recheck` is the plugin's way to say its availability
-changed; core re-reads the registered providers and notifies connected clients
-with a system `config-changed` change, exactly like the environment provider
-recheck handler. It is a fire-and-forget signal, not a request for a decision,
-and it carries no payload: core re-invokes `availability` rather than trusting
-anything the caller reports. Callers must debounce to real transitions —
-Connect signals only when its paired state or public URL changes, not on every
-tunnel status publish, because each call broadcasts to every client.
+`recheck` sends a system `config-changed` notification to connected clients.
+It carries no payload. Connect signals when its paired state or public URL
+changes, rather than on every tunnel status publish.
+
+The configuration response refreshes registered providers' availability in
+parallel, with a five-second deadline per check. Exceptions, invalid output, and
+timeouts produce an unavailable result without exposing raw provider errors.
+Machines settings, manual setup, and promptbox banners consume this same status.
+Reading configuration never acquires a grant; acquisition checks its selected
+provider independently, including when an existing machine retains an older
+provider selection.
 
 Stabilization requires proving that a recheck from an unregistered or disposed
 plugin is inert, that a provider cannot use it to force repeated refreshes of
@@ -2682,10 +2684,10 @@ each reach the Machines settings section without a manual reload.
 
 ## `bb.experimental_serverAccess.register`
 
-Availability may include an optional public `serverUrl` for display in Machines
-settings. Core validates HTTP(S) URLs without embedded credentials. This is
-display metadata, not a machine access grant. Audit provider URL safety before
-stabilizing this field.
+Availability may include an optional public `serverUrl`. Core validates HTTP(S)
+URLs without embedded credentials before exposing them through configuration.
+Machines settings displays that URL for available providers; an available result
+without a URL is valid. The acquired grant's URL still drives machine traffic.
 
 `PluginServerAccess` registers server access through `ServerAccessProviderDeclaration`: id,
 displayName, description, availability, acquire({ key, hostId, signal }) and
@@ -2694,7 +2696,7 @@ release({ key, hostId, grantId }). Acquire returns either a `ServerAccessGrant` 
 `{ status: "failed", message }`.
 Machines attach these optional headers to enrollment, HTTP, WebSocket and runtime
 requests. A direct grant omits headers; access providers own credential redemption.
-`ServerAccessSelection` selects a provider explicitly. Core persists only
+Core chooses the configured access provider and retains it for the machine. Core persists only
 provider id and grant id per host; credentials travel in bootstrap delivery.
 Direct access reads machineServerUrl with BB_EXTERNAL_URL fallback.
 defaultMachineAccess selects a provider; otherwise core uses the first registered
@@ -2705,9 +2707,8 @@ Host detail retains connectMachineId from trusted gate metadata for legacy grant
 
 The failed acquisition result exposes its deliberate user-safe recovery message
 through the plugin boundary; ordinary thrown errors stay redacted. Release receives a null grantId when acquire was interrupted. Core persists the
-provider before acquisition and retries release by key and hostId. Keep intent
-and credential-bearing grants in secret storage; only non-secret revocation
-metadata belongs in KV.
+provider before acquisition and retries release by key and hostId. Keep intent and credential-bearing grants in private plugin storage; never
+put credentials in machine resources, inputs, or progress output.
 
 Before stabilization, prove retry-safe acquire/release across process death,
 credential privacy and revocation, explicit and automatic defaults, expired
@@ -2719,7 +2720,7 @@ prove reachability from a remote machine.
 
 `bb.experimental_machines.bootstrap` prepares enrollment and waits for the daemon connection. Enrollment keys are scoped to the calling plugin and retain their host identity. Pending credentials are single-use and short-lived. Manual bootstrap bundles live only in server memory, so the user regenerates the command after a restart. Bootstrap bundles carry optional access headers. A successful exchange is recovered as `enrolled` after a server crash.
 
-`MachineExecutor` carries argv, stdin, a timeout, and an abort signal. `bootstrap` passes the bundle through private stdin, ignores remote output, and reports fixed progress messages. It installs pending enrollments and starts enrolled machines again so snapshot restores can reuse their identity. When the executor is omitted, it waits for a manual connection. It returns the reserved host ID. Installation requires Node, npm, and curl and installs no OS packages.
+`MachineExecutor` requires argv, stdin, a timeout, an abort signal, and an output callback; it returns only an exit code. `bootstrap` requires the executor, passes the bundle through private stdin, and streams command output into progress logs. It installs pending enrollments and restarts enrolled identities after snapshot restoration. Core Manual setup uses internal enrollment operations. Bootstrap returns the reserved host ID. Installation requires Node, npm, and curl and installs no OS packages. Cancellation propagates through enrollment preparation and access acquisition.
 
 Stabilization requires independent Modal and SSH consumers, failure verification for expired credentials, concurrent retries, interrupted exchange, cancellation, identity mismatch, and restored snapshots, plus an audit that credentials never enter resource data or logs. Migration and live vendor verification remain part of the integration release gate.
 
@@ -2737,8 +2738,8 @@ uninstall when installation never began, and retry after partial installation.
 Required reconciliation-only cancellation callback on `PluginMachineProviderDefinition`.
 It remains experimental through `bb.experimental_machines`; the unprefixed callback
 name does not indicate stabilization.
-Core supplies the durable launch key, last checkpointed resource or null,
-progress reporter and a cleanup signal. Providers discover and remove uncertain
+Core supplies the durable launch key, progress reporter and a cleanup signal.
+This callback is only used without a resource checkpoint; remove receives known resources. Providers discover and remove uncertain
 allocations using vendor tags, names or metadata; the callback must never allocate or bootstrap.
 Return removed only after cleanup is settled (including no submitted allocation), or
 failed while the allocation is unresolved. Core persists the core cleanup retry deadline
@@ -2775,14 +2776,12 @@ crash recovery after allocation/before bootstrap, competing lifecycle operations
 wrong-owner rejection and no duplicate enrollment. Standalone launch submission
 is durable; SDK submit/launch/follow/cancel match CLI create/status/cancel.
 
-Unknown-allocation reconciliation stops after a 30-minute launch window;
-unresolved cleanup remains recorded. Known resources and access release keep
-retrying at the core retry interval indefinitely. An explicit cancel retries cleanup even
-after automatic retries are exhausted.
+Unknown-allocation reconciliation, known-resource removal, and access release
+retain failed cleanup state and retry at the core retry interval until successful.
 
 ## Transient provider setup data
 
-Machine setup slots receive host identity and removal controls. Core keeps the
+Manual setup is built into core. Core keeps the
 manual bootstrap bundle in memory and serves the command and expiry through the
 host-keyed enrollment-command endpoint. Reading does not renew the enrollment.
 Completion, removal, expiry, and server restart remove the cached command. Commands stay out of
@@ -2794,8 +2793,8 @@ transcript-redaction coverage.
 ## Project checkout ownership
 
 The provider context's `projectCheckout.experimental_ownsPath` identifies a
-checkout materialised by core; absence from older servers means unowned. Core
-supplies an explicit boolean, derived from persisted source ownership, never
+checkout materialised by core. The field is a required boolean whenever a
+checkout is present, derived from persisted source ownership, never
 from caller inputs. Project checkout reports ownsPath only for that exact path,
 so core's environment hook policy applies to fresh machine clones and leaves
 user-maintained attachments alone. Audit ownership propagation and recovery before stabilizing.
@@ -2855,10 +2854,11 @@ validating missing-resource semantics and use by additional machine providers.
 
 ## Environment compositions
 
-`bb.experimental_environments.register({ id, displayName, machineProviderId,
+`bb.experimental_environments.register({ id, displayName, icon, machineProviderId,
 environmentProviderId })` declares a new-machine environment option backed by
 one concrete environment provider. It cannot also supply lifecycle callbacks
-or inputs. The server resolves the references before creating the launch,
+or inputs. Its required icon is resolved from the composition’s owning plugin;
+a provider-icon slot may customize its rendering. The server resolves the references before creating the launch,
 persists the concrete provider and explicit machine selection, and uses the
 existing provisioning lifecycle. Machine registration alone adds no picker row.
 

@@ -111,6 +111,7 @@ describe("composed machine thread lifecycle", () => {
               composition: {
                 id: "test-sandbox",
                 displayName: "Test sandbox",
+                icon: "Cloud",
                 machineProviderId: machine.provider.id,
                 environmentProviderId: "project-checkout",
               },

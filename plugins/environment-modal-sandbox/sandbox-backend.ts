@@ -1,3 +1,4 @@
+import type { MachineExecutor } from "@get-bb/plugin-sdk";
 import { createHash } from "node:crypto";
 import { z } from "zod";
 import {
@@ -31,14 +32,15 @@ export interface SandboxHandle {
   }): Promise<string>;
 }
 
-export function createSandboxExecutor(sandbox: SandboxHandle) {
+export function createSandboxExecutor(sandbox: SandboxHandle): MachineExecutor {
   return {
-    exec: ({
-      command,
-      ...options
-    }: Parameters<SandboxHandle["exec"]>[1] & {
-      command: string[];
-    }) => sandbox.exec(command, options),
+    async exec({ command, ...options }) {
+      const { exitCode } = await sandbox.exec(command, {
+        ...options,
+        maxOutputBytes: 0,
+      });
+      return { exitCode };
+    },
   };
 }
 

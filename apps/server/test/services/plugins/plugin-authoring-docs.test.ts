@@ -2,6 +2,7 @@ import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
+import ts from "typescript";
 import * as pluginSdkApp from "@get-bb/plugin-sdk/app";
 import {
   type BbPluginApi,
@@ -235,9 +236,7 @@ const THREAD_EVENT_PAYLOAD_FIELDS = {
     "attemptNumber",
   ],
 } as const satisfies {
-  [
-    E in keyof PluginThreadEventPayloads
-  ]: readonly (keyof PluginThreadEventPayloads[E])[];
+  [E in keyof PluginThreadEventPayloads]: readonly (keyof PluginThreadEventPayloads[E])[];
 };
 
 type MissingThreadEventField = {
@@ -522,17 +521,41 @@ describe("bb-plugin-authoring skill", () => {
   const skillEntry = readFileSync(SKILL_PATH, "utf8");
   const skill = readSkillTree();
 
-  it("documents machine creation checkpoints and private bootstrap delivery", () => {
-    expect(skillEntry).toContain("machine providers");
-    const backend = readReference("backend-machines.md");
-    expect(backend).toContain("await checkpoint(resource)");
-    expect(backend).toContain("bb.experimental_machines.bootstrap({");
-    expect(backend).toMatch(
-      /Never put the\s+bootstrap bundle in resource JSON/,
+  it("typechecks the machine provider guide example against the public SDK", () => {
+    const source = readReference("backend-machines.md").match(
+      /```ts\n([\s\S]*?)```/u,
+    )?.[1];
+    expect(source).toBeDefined();
+    const filename = fileURLToPath(
+      new URL("./machine-guide-example.ts", import.meta.url),
     );
-    expect(backend.indexOf("await checkpoint(resource)")).toBeLessThan(
-      backend.indexOf("bb.experimental_machines.bootstrap({"),
-    );
+    const options: ts.CompilerOptions = {
+      strict: true,
+      noEmit: true,
+      skipLibCheck: true,
+      target: ts.ScriptTarget.ESNext,
+      module: ts.ModuleKind.NodeNext,
+      moduleResolution: ts.ModuleResolutionKind.NodeNext,
+    };
+    const host = ts.createCompilerHost(options);
+    const readSource = host.getSourceFile.bind(host);
+    host.getSourceFile = (
+      file,
+      languageVersion,
+      onError,
+      shouldCreateNewSourceFile,
+    ) =>
+      file === filename
+        ? ts.createSourceFile(filename, source!, languageVersion)
+        : readSource(file, languageVersion, onError, shouldCreateNewSourceFile);
+    const program = ts.createProgram([filename], options, host);
+    expect(
+      ts
+        .getPreEmitDiagnostics(program)
+        .map((diagnostic) =>
+          ts.flattenDiagnosticMessageText(diagnostic.messageText, "\n"),
+        ),
+    ).toEqual([]);
   });
 
   it("has frontmatter naming the skill after its directory", () => {

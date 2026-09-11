@@ -76,45 +76,40 @@ export function createMachineBootstrapApi(
     async bootstrap(request) {
       request.signal.throwIfAborted();
       request.report.step("Preparing machine enrollment");
-      const enrollment = await enrollments.prepare({
-        key: request.key,
-        access: request.access,
-      });
       try {
+        const enrollment = await enrollments.prepare({
+          key: request.key,
+          signal: request.signal,
+        });
         request.signal.throwIfAborted();
         request.report.step(
-          request.executor === undefined
-            ? "Run the enrollment command shown below"
-            : enrollment.state === "enrolled"
-              ? "Starting enrolled machine"
-              : "Bootstrapping machine",
+          enrollment.state === "enrolled"
+            ? "Starting enrolled machine"
+            : "Bootstrapping machine",
         );
-        if (request.executor) {
-          const execution = await (enrollment.state === "enrolled"
-            ? installerStartCommand(enrollment.hostId)
-            : installerCommand(enrollment.bootstrap));
-          const output = createOutputReporter(request.report);
-          let result;
-          try {
-            result = await request.executor.exec({
-              ...execution,
-              timeoutMs: 600_000,
-              signal: request.signal,
-              onOutput: output.onOutput,
-            });
-          } catch {
-            request.signal.throwIfAborted();
-            throw new Error("Machine bootstrap command failed");
-          }
-          output.finish();
-          if (result.exitCode !== 0) throw new Error(output.failureMessage());
+        const execution = await (enrollment.state === "enrolled"
+          ? installerStartCommand(enrollment.hostId)
+          : installerCommand(enrollment.bootstrap));
+        const output = createOutputReporter(request.report);
+        let result;
+        try {
+          result = await request.executor.exec({
+            ...execution,
+            timeoutMs: 600_000,
+            signal: request.signal,
+            onOutput: output.onOutput,
+          });
+        } catch {
+          request.signal.throwIfAborted();
+          throw new Error("Machine bootstrap command failed");
         }
+        output.finish();
+        if (result.exitCode !== 0) throw new Error(output.failureMessage());
         request.signal.throwIfAborted();
-        if (request.executor !== undefined)
-          request.report.step("Waiting for machine connection");
+        request.report.step("Waiting for machine connection");
         await enrollments.waitForConnection({
           enrollmentId: enrollment.id,
-          timeoutMs: request.executor ? 120_000 : 15 * 60_000,
+          timeoutMs: 120_000,
           signal: request.signal,
         });
         return { hostId: enrollment.hostId };

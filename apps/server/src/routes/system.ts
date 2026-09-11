@@ -443,7 +443,7 @@ export function registerSystemRoutes(
             : (
                 await Promise.all(
                   listEnvironmentCompositions().map(
-                    async ({ pluginId, composition }) => {
+                    async ({ pluginId, composition, icon }) => {
                       const record = getEnvironmentProvider(
                         composition.environmentProviderId,
                       );
@@ -467,11 +467,11 @@ export function registerSystemRoutes(
                       return {
                         id: composition.id,
                         displayName: composition.displayName,
-                        icon: composition.icon ?? machine.provider.icon,
+                        icon: composition.icon,
                         logoUrl:
-                          machine.icon === undefined
+                          icon === undefined
                             ? null
-                            : `/api/v1/system/providers/${encodeURIComponent("machine:" + machine.provider.id)}/logo?h=${machine.icon.hash}`,
+                            : `/api/v1/system/providers/${encodeURIComponent("environment:" + composition.id)}/logo?h=${icon.hash}`,
                         pluginId,
                         machineProviderId: composition.machineProviderId,
                         environmentProviderId:
@@ -523,7 +523,11 @@ export function registerSystemRoutes(
   get(routes.providerLogo, async (context) => {
     const providerId = context.req.param("id");
     const registration = providerId.startsWith("environment:")
-      ? getEnvironmentProvider(providerId.slice("environment:".length))
+      ? (getEnvironmentProvider(providerId.slice("environment:".length)) ??
+        listEnvironmentCompositions().find(
+          (record) =>
+            record.composition.id === providerId.slice("environment:".length),
+        ))
       : providerId.startsWith("machine:")
         ? getMachineProvider(providerId.slice("machine:".length))
         : deps.providerRegistry.get(providerId);

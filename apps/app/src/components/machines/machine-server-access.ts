@@ -11,7 +11,8 @@ export function machineServerAccessReady(
     (candidate) => candidate.id === access.defaultProviderId,
   );
   if (provider === undefined) return false;
-  if (access.defaultProviderId !== "direct") return true;
+  if (access.defaultProviderId !== "direct")
+    return provider.availability?.status === "available";
   return access.effectiveUrl !== null && !isLocalOnlyUrl(access.effectiveUrl);
 }
 
@@ -20,8 +21,18 @@ export const MACHINE_SERVER_ACCESS_UNSET_REASON =
 
 export function machineServerAccessBlockedReason(
   access: ServerAccessStatus | undefined,
+  providerId = access?.defaultProviderId,
 ): string | null {
-  return machineServerAccessReady(access)
-    ? null
+  if (access === undefined) return MACHINE_SERVER_ACCESS_UNSET_REASON;
+  const selected = {
+    ...access,
+    defaultProviderId: providerId ?? access.defaultProviderId,
+  };
+  if (machineServerAccessReady(selected)) return null;
+  const availability = access.providers.find(
+    (provider) => provider.id === providerId,
+  )?.availability;
+  return availability && availability.status !== "available"
+    ? availability.message
     : MACHINE_SERVER_ACCESS_UNSET_REASON;
 }

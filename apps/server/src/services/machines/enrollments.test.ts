@@ -29,11 +29,16 @@ async function harness() {
     logger: { debug() {}, info() {}, warn() {}, error() {} },
   });
   const serverAccess = {
-    resolve: vi.fn(async () => ({
-      id: "grant",
-      serverUrl: "https://server.example",
-    })),
-    release: vi.fn(async () => {}),
+    resolve: vi.fn(
+      async (_request: {
+        key: string;
+        hostId: string;
+        signal: AbortSignal;
+      }) => ({
+        id: "grant",
+        serverUrl: "https://server.example",
+      }),
+    ),
   };
   const connected = new Set<string>();
   const deps = {
@@ -85,6 +90,7 @@ async function harness() {
     ...deps,
     connected,
     create,
+    service,
     api: service.forOwner("plugin-a"),
     other: service.forOwner("plugin-b"),
     seed,
@@ -96,15 +102,15 @@ describe("machine enrollments", () => {
     const h = await harness();
     h.seed("create");
     const [first, parallel] = await Promise.all([
-      h.api.prepare({ key: "create" }),
-      h.api.prepare({ key: "create" }),
+      h.api.prepare({ signal: new AbortController().signal, key: "create" }),
+      h.api.prepare({ signal: new AbortController().signal, key: "create" }),
     ]);
     expect(parallel.hostId).toBe(first.hostId);
     expect(h.serverAccess.resolve).toHaveBeenCalledTimes(2);
     const restarted = await h
       .create()
       .forOwner("plugin-a")
-      .prepare({ key: "create" });
+      .prepare({ signal: new AbortController().signal, key: "create" });
     expect(restarted.id).toBe(first.id);
     expect(restarted.hostId).toBe(first.hostId);
     expect(first.state).toBe("pending");
@@ -120,37 +126,31 @@ describe("machine enrollments", () => {
     );
   });
 
-  it("rejects conflicting access selection even when a bundle is cached", async () => {
-    const h = await harness();
-    h.seed("access");
-    const prepared = await h.api.prepare({ key: "access" });
-    h.db.$client
-      .prepare("UPDATE hosts SET server_access_provider_id = ? WHERE id = ?")
-      .run("direct", prepared.hostId);
-    await expect(
-      h.api.prepare({ key: "access", access: { providerId: "connect" } }),
-    ).rejects.toThrow("different server access provider");
-  });
-
   it("rejects removed identities", async () => {
     const h = await harness();
     h.seed("removed");
-    const prepared = await h.api.prepare({ key: "removed" });
+    const prepared = await h.api.prepare({
+      signal: new AbortController().signal,
+      key: "removed",
+    });
     if (prepared.state !== "pending") throw new Error("Expected enrollment");
     h.db
       .update(hosts)
       .set({ phase: "destroyed" })
       .where(eq(hosts.id, prepared.hostId))
       .run();
-    await expect(h.api.prepare({ key: "removed" })).rejects.toThrow(
-      "cancelled",
-    );
+    await expect(
+      h.api.prepare({ signal: new AbortController().signal, key: "removed" }),
+    ).rejects.toThrow("cancelled");
   });
 
   it("recovers a lost exchange response with a fresh credential for the same identity", async () => {
     const h = await harness();
     h.seed("lost-response");
-    const first = await h.api.prepare({ key: "lost-response" });
+    const first = await h.api.prepare({
+      signal: new AbortController().signal,
+      key: "lost-response",
+    });
     if (first.state !== "pending")
       throw new Error("Expected pending enrollment");
     const lostResponse = await h.machineAuth.enrollHost({
@@ -166,7 +166,7 @@ describe("machine enrollments", () => {
     const retry = await h
       .create()
       .forOwner("plugin-a")
-      .prepare({ key: "lost-response" });
+      .prepare({ signal: new AbortController().signal, key: "lost-response" });
     if (retry.state !== "pending")
       throw new Error("Expected recoverable pending enrollment");
     expect(retry.hostId).toBe(first.hostId);
@@ -186,7 +186,10 @@ describe("machine enrollments", () => {
     expect(
       await h.machineAuth.verifyDaemonHostKey(lostResponse.hostKey),
     ).toBeNull();
-    const beforeStart = await h.api.prepare({ key: "lost-response" });
+    const beforeStart = await h.api.prepare({
+      signal: new AbortController().signal,
+      key: "lost-response",
+    });
     expect(beforeStart.state).toBe("pending");
     expect(
       await h.machineAuth.verifyDaemonHostKey(recovered.hostKey),
@@ -197,7 +200,10 @@ describe("machine enrollments", () => {
       .where(eq(hosts.id, first.hostId))
       .run();
     expect(
-      await h.create().forOwner("plugin-a").prepare({ key: "lost-response" }),
+      await h.create().forOwner("plugin-a").prepare({
+        signal: new AbortController().signal,
+        key: "lost-response",
+      }),
     ).toEqual({
       id: first.id,
       hostId: first.hostId,
@@ -211,10 +217,40 @@ describe("machine enrollments", () => {
     h.serverAccess.resolve.mockRejectedValueOnce(
       new Error("temporarily unavailable"),
     );
-    await expect(h.api.prepare({ key: "create" })).rejects.toThrow(
-      "temporarily unavailable",
-    );
-    const retry = await h.api.prepare({ key: "create" });
+    await expect(
+      h.api.prepare({ signal: new AbortController().signal, key: "create" }),
+    ).rejects.toThrow("temporarily unavailable");
+    const retry = await h.api.prepare({
+      signal: new AbortController().signal,
+      key: "create",
+    });
     expect(retry.hostId).toBe("host_create");
   });
+});
+
+it("propagates cancellation to acquisition and never publishes a late enrollment command", async () => {
+  const h = await harness();
+  h.seed("cancel");
+  const controller = new AbortController();
+  let finish: () => void = () => {};
+  let acquisitionSignal: AbortSignal | undefined;
+  h.serverAccess.resolve.mockImplementation(async ({ signal }) => {
+    acquisitionSignal = signal;
+    await new Promise<void>((resolve) => {
+      finish = resolve;
+    });
+    return { id: "late-grant", serverUrl: "https://server.example" };
+  });
+  const pending = h.api.prepare({ key: "cancel", signal: controller.signal });
+  await vi.waitFor(() => expect(acquisitionSignal).toBeDefined());
+  controller.abort(new Error("cancelled"));
+  expect(acquisitionSignal?.aborted).toBe(true);
+  finish();
+  await expect(pending).rejects.toThrow("cancelled");
+  expect(
+    await h.service.pendingBootstrapForHost({
+      hostId: "host_cancel",
+      owner: "plugin-a",
+    }),
+  ).toBeNull();
 });

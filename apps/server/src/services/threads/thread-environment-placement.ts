@@ -283,7 +283,15 @@ export async function validateProviderSelection(
       : getProjectSourceByHost(deps.db, args.projectId, host.id);
   const projectCheckout =
     checkout !== null && isLocalPathProjectSource(checkout)
-      ? { path: checkout.path }
+      ? {
+          path: checkout.path,
+          experimental_ownsPath: projectSourceOwnsPath(
+            deps.db,
+            project.id,
+            host.id,
+            checkout.path,
+          ),
+        }
       : null;
   if (requires.gitRemote && project.gitRemoteUrl === null) {
     throw new ApiError(

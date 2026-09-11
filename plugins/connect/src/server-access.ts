@@ -66,19 +66,23 @@ export async function registerServerAccess(
     const raw = await bb.storage.kv.get<unknown>(grantKey(hostId));
     return raw === undefined ? undefined : stateSchema.parse(raw);
   }
-  async function reconcile(intent: z.infer<typeof intentSchema>) {
+  async function reconcile(
+    intent: z.infer<typeof intentSchema>,
+    signal: AbortSignal,
+  ) {
     const credential = tunnel.getCredential();
     if (!credential)
       throw new Error(
         "Pair this bb instance with bb connect to revoke machine access",
       );
     try {
-      const status = await lookupMachineCode(credential, intent.code);
+      const status = await lookupMachineCode(credential, intent.code, signal);
       if (status.consumed && !status.machineId)
         throw new Error("Device identity unavailable");
       if (status.machineId) await revokeMachine(credential, status.machineId);
       return status.consumed;
     } catch {
+      signal.throwIfAborted();
       const message =
         "Cloud device may need dashboard revocation: interrupted machine access acquisition; retry after Cloud lookup is available";
       return acquisitionFailure(message);
@@ -110,13 +114,13 @@ export async function registerServerAccess(
           throw new Error("Pair this bb instance with bb connect");
         let intent = existing?.intent;
         if (intent) {
-          const reconciliation = await reconcile(intent);
+          const reconciliation = await reconcile(intent, signal);
           if (typeof reconciliation !== "boolean") return reconciliation;
           if (reconciliation || intent.expiresAt <= Date.now())
             intent = undefined;
         }
         if (!intent) {
-          const code = await fetchMachineCode(credential);
+          const code = await fetchMachineCode(credential, signal);
           intent = {
             key,
             hostId,
@@ -125,9 +129,16 @@ export async function registerServerAccess(
             expiresAt: code.expiresAt,
           };
         }
+        signal.throwIfAborted();
         await bb.storage.kv.set(grantKey(hostId), { intent });
+        signal.throwIfAborted();
         const pending = intent;
-        const redeemed = await redeemMachineCode(pending).catch(() => null);
+        const redeemed = await redeemMachineCode({ ...pending, signal }).catch(
+          () => {
+            signal.throwIfAborted();
+            return null;
+          },
+        );
         if (redeemed === null)
           return acquisitionFailure(
             "Cloud device may need dashboard revocation: interrupted machine access acquisition",
@@ -148,9 +159,16 @@ export async function registerServerAccess(
         const stored = await load(hostId);
         if (!stored) return;
         if ("intent" in stored) {
-          const reconciliation = await reconcile(stored.intent);
+          const reconciliation = await reconcile(
+            stored.intent,
+            AbortSignal.timeout(30_000),
+          );
           if (typeof reconciliation !== "boolean")
             throw new Error(reconciliation.message);
+          if (!reconciliation && stored.intent.expiresAt > Date.now())
+            throw new Error(
+              "Machine access acquisition is still unsettled; cleanup will retry after redemption or code expiry",
+            );
         } else {
           const credential = tunnel.getCredential();
           if (!credential)

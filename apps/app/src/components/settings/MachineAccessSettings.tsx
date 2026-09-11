@@ -15,7 +15,7 @@ import {
   SettingsSection,
   SettingsWithControl,
 } from "@/components/ui/settings-section";
-import { usePluginList } from "@/hooks/queries/plugin-settings-queries";
+import { machineServerAccessBlockedReason } from "@/components/machines/machine-server-access";
 
 function parseUrl(value: string): URL | null {
   try {
@@ -43,7 +43,6 @@ export interface MachineAccessState {
 function useMachineAccess(): MachineAccessState {
   const config = useSystemConfig();
   const update = useUpdateGeneralSettings();
-  const pluginList = usePluginList({ enabled: true });
   const settings = config.data?.generalSettings;
   const access = config.data?.serverAccess;
   const value = settings?.machineServerUrl ?? "";
@@ -61,19 +60,13 @@ function useMachineAccess(): MachineAccessState {
   const effective = access?.providers.find(
     (provider) => provider.id === selected,
   );
-  const effectivePlugin = pluginList.data?.plugins.find(
-    (plugin) => plugin.id === effective?.pluginId,
-  );
   return {
     access,
     disabled,
     draft,
     error,
     effective,
-    configurationMessage:
-      effectivePlugin?.status === "needs-configuration"
-        ? (effectivePlugin.statusDetail ?? "This provider needs configuration.")
-        : null,
+    configurationMessage: machineServerAccessBlockedReason(access, selected),
     saving: update.isPending,
     selected,
     value,
@@ -245,10 +238,18 @@ function MachineAccessDetails({
                     aria-hidden="true"
                   />
                 ) : null}
-                {ready ? "Ready" : "Needs configuration"}
+                {ready
+                  ? "Ready"
+                  : effective.availability?.status === "unavailable"
+                    ? "Unavailable"
+                    : "Needs configuration"}
               </p>
               <p className="text-xs text-subtle-foreground">
-                {configurationMessage ?? "Ready to add machines."}
+                {configurationMessage ??
+                  (effective.availability?.status === "available"
+                    ? effective.availability.serverUrl
+                    : null) ??
+                  "Ready to add machines."}
               </p>
             </div>
             {effective.pluginId !== null && (

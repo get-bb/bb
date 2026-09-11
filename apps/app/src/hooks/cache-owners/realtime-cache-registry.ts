@@ -525,6 +525,7 @@ export const REALTIME_SYSTEM_CHANGE_REGISTRY = {
   },
   "plugins-changed": {
     dirty: [
+      dirtySystemConfigQueries,
       dirtyPluginContributionQueries,
       dirtyProjectCommandCatalogQueries,
       dirtyPluginManagementQueries,

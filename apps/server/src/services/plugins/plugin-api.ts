@@ -1,5 +1,6 @@
 import {
   environmentCompositionSchema,
+  validateServerAccessProviderDeclaration,
   type NormalizedPluginEnvironmentComposition,
 } from "@get-bb/plugin-sdk/internal/host-policy";
 import { createMachineBootstrapApi } from "../machines/bootstrap.js";
@@ -737,9 +738,10 @@ export function createPluginApi(options: {
         );
       }
       const rows = database
-        .prepare<[], { id: number; statement_hash: string | null }>(
-          "SELECT id, statement_hash FROM _bb_migrations ORDER BY id",
-        )
+        .prepare<
+          [],
+          { id: number; statement_hash: string | null }
+        >("SELECT id, statement_hash FROM _bb_migrations ORDER BY id")
         .all();
       const applied = new Map<number, string | null>();
       for (const row of rows) applied.set(row.id, row.statement_hash);
@@ -1554,6 +1556,13 @@ export function createPluginApi(options: {
       assertLive();
       if ("machineProviderId" in declaration) {
         const composition = environmentCompositionSchema.parse(declaration);
+        const problem = undeclaredIconProblem(
+          pluginId,
+          declaredIconNames,
+          composition.icon,
+        );
+        if (problem !== null)
+          throw new Error(providerIconRefusalMessage(composition.id, problem));
         const owner = options.isEnvironmentProviderIdTaken(composition.id);
         if (owner !== undefined)
           throw new Error(
@@ -1596,23 +1605,7 @@ export function createPluginApi(options: {
     {
       register(declaration) {
         assertLive();
-        if (
-          !/^[a-z][a-z0-9-]*$/u.test(declaration.id) ||
-          declaration.id === "direct"
-        ) {
-          throw new Error("Invalid or reserved server access provider id");
-        }
-        if (
-          typeof declaration.displayName !== "string" ||
-          !declaration.displayName.trim() ||
-          typeof declaration.description !== "string" ||
-          !declaration.description.trim() ||
-          typeof declaration.availability !== "function" ||
-          typeof declaration.acquire !== "function" ||
-          typeof declaration.release !== "function"
-        ) {
-          throw new Error("Invalid server access provider declaration");
-        }
+        validateServerAccessProviderDeclaration(declaration);
         if (
           serverAccessProviders.has(declaration.id) ||
           listServerAccessProviders().some(

@@ -180,16 +180,25 @@ export function ManualMachineSetup({
           await sdk.hosts.delete({ hostId: host.id });
           throw new Error("Machine setup closed");
         }
-        const enrollment = await sdk.hosts.experimental_getEnrollmentCommand({
-          hostId: host.id,
-          signal: controller.signal,
-        });
-        setCommand(
-          enrollment === null
-            ? null
-            : { value: enrollment.command, expiresAt: enrollment.expiresAt },
-        );
+        let enrollment: Awaited<
+          ReturnType<typeof sdk.hosts.experimental_getEnrollmentCommand>
+        > = null;
         while (host.lifecycle.phase === "creating") {
+          controller.signal.throwIfAborted();
+          if (enrollment === null) {
+            enrollment = await sdk.hosts.experimental_getEnrollmentCommand({
+              hostId: host.id,
+              signal: controller.signal,
+            });
+            setCommand(
+              enrollment === null
+                ? null
+                : {
+                    value: enrollment.command,
+                    expiresAt: enrollment.expiresAt,
+                  },
+            );
+          }
           await new Promise<void>((resolve) => setTimeout(resolve, 1_000));
           controller.signal.throwIfAborted();
           host = await sdk.hosts.get({

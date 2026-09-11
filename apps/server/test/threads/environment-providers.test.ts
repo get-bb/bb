@@ -258,6 +258,7 @@ describe("machine and environment provider composition", () => {
           composition: {
             id: "test-sandbox",
             displayName: "Test sandbox",
+            icon: "Cloud",
             machineProviderId: "test-machine",
             environmentProviderId: "project-checkout",
           },
@@ -525,6 +526,7 @@ describe("machine and environment provider composition", () => {
             composition: {
               id: "test-sandbox",
               displayName: "Test sandbox",
+              icon: "Cloud",
               machineProviderId: "test-machine",
               environmentProviderId: "project-checkout",
             },
