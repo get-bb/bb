@@ -75,12 +75,14 @@ machine cannot set it for any machine, so a sandbox machine can stay at Full
 Access while your laptop stays lower. `bb machine list --json` and `bb machine
 show` report the current limit.
 
-Standalone create does not create a thread or workspace. Omitted inputs are
-null; supply JSON when the provider schema requires it. Omit `--key` to let the
-server generate one, or supply a stable key for retries. Creation is durable:
+Standalone create does not create a thread or workspace. Omit inputs to use the
+provider defaults; supply JSON when its schema requires additional values. Omit
+`--key` to let the server generate one, or supply a stable key for retries.
+Creation is durable:
 `--no-wait` returns the creating host ID immediately; otherwise the CLI polls
 that host until active. SIGINT stops following and exits 130 while creation
-continues. Use `bb machine show <host-id>` to inspect progress and `bb machine
+continues. `bb machine list` includes machines still being created.
+Use `bb machine show <host-id>` to inspect progress and `bb machine
 remove <host-id>` to cancel and clean up. The SDK provides
 `hosts.experimental_create`; pass `wait: false` to receive the creating host and
 poll it with `hosts.get`. Aborting a caller signal never cancels the server operation. A connected daemon does not

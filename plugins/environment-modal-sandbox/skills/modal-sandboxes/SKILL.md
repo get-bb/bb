@@ -60,7 +60,7 @@ status. Idle pause defaults to 15 minutes; compute lifetime is fixed at Modal's
 Manual and idle pauses drain BB work, stop the daemon, snapshot the filesystem,
 and durably record the snapshot before terminating compute. Resume restores the
 saved filesystem without rerunning setup. Core defers idle pause while persisted state
-ties a live thread launch or provisioning environment to the machine, or while project
+ties a starting thread launch or provisioning environment to the machine, or while project
 checkout setup is pending; the next scheduled sweep retries. Continue interrupted turns
 explicitly.
 

@@ -290,7 +290,7 @@ configures the machine with optional configured `preset` and `image` names;
 - `bb browser import-sources`
 - `bb browser import-cookies`
 
-Machine creation is durable: `create --no-wait` returns the creating host ID. `machine show <host-id>` reads progress and `machine remove <host-id>` cancels it. SIGINT only stops following.
+Machine lists and name/ID selectors include machines still being created. Machine creation is durable: `create --no-wait` returns the creating host ID. `machine show <host-id>` reads progress and `machine remove <host-id>` cancels it. SIGINT only stops following.
 
 Machine environment: `bb machine env list`, `bb machine env set NAME`
 (value from stdin), and `bb machine env unset NAME`; all accept `--json`.

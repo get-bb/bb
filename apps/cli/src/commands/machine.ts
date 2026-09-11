@@ -163,7 +163,9 @@ export async function resolveMachineHostId(args: {
   serverUrl: string;
   target: string;
 }): Promise<string> {
-  const hosts = await createCliBbSdk(args.serverUrl).hosts.list();
+  const hosts = await createCliBbSdk(args.serverUrl).hosts.list({
+    includeCreating: true,
+  });
   const hostId = resolveMachineId(hosts, args.target);
   if (
     args.requireConnected &&
@@ -301,7 +303,9 @@ export function registerMachineCommands(
     .option("--json", "Print machine-readable JSON output")
     .action(
       action(async (opts: MachineListCommandOptions) => {
-        const hosts = await createCliBbSdk(getUrl()).hosts.list();
+        const hosts = await createCliBbSdk(getUrl()).hosts.list({
+          includeCreating: true,
+        });
         if (outputJson(opts, hosts)) return;
         if (hosts.length === 0) {
           console.log("No machines found");
@@ -318,7 +322,10 @@ export function registerMachineCommands(
     .action(
       action(async (target: string, opts: MachineListCommandOptions) => {
         const sdk = createCliBbSdk(getUrl());
-        const hostId = resolveMachineId(await sdk.hosts.list(), target);
+        const hostId = resolveMachineId(
+          await sdk.hosts.list({ includeCreating: true }),
+          target,
+        );
         const host = await sdk.hosts.get({ hostId });
         if (outputJson(opts, host)) return;
         console.log(JSON.stringify(host, null, 2));
@@ -349,7 +356,10 @@ export function registerMachineCommands(
           opts: MachineListCommandOptions,
         ) => {
           const sdk = createCliBbSdk(getUrl());
-          const hostId = resolveMachineId(await sdk.hosts.list(), target);
+          const hostId = resolveMachineId(
+            await sdk.hosts.list({ includeCreating: true }),
+            target,
+          );
           const host = await sdk.hosts.update({ hostId, name });
           if (outputJson(opts, host)) return;
           console.log(`Machine ${host.id} renamed to ${host.name}`);
@@ -365,7 +375,7 @@ export function registerMachineCommands(
     .action(
       action(async (target: string, opts: MachineMutationCommandOptions) => {
         const sdk = createCliBbSdk(getUrl());
-        const hosts = await sdk.hosts.list();
+        const hosts = await sdk.hosts.list({ includeCreating: true });
         const hostId = resolveMachineId(hosts, target);
         if (
           !opts.yes &&
@@ -385,7 +395,10 @@ export function registerMachineCommands(
     .action(
       action(async (target: string, opts: MachineListCommandOptions) => {
         const sdk = createCliBbSdk(getUrl());
-        const hostId = resolveMachineId(await sdk.hosts.list(), target);
+        const hostId = resolveMachineId(
+          await sdk.hosts.list({ includeCreating: true }),
+          target,
+        );
         const result = await sdk.hosts.retryUpdate({ hostId });
         if (outputJson(opts, result)) return;
         console.log(`Machine ${hostId} update retry requested`);
@@ -399,7 +412,10 @@ export function registerMachineCommands(
     .action(
       action(async (target: string, opts: MachineListCommandOptions) => {
         const sdk = createCliBbSdk(getUrl());
-        const hostId = resolveMachineId(await sdk.hosts.list(), target);
+        const hostId = resolveMachineId(
+          await sdk.hosts.list({ includeCreating: true }),
+          target,
+        );
         const requested = await sdk.hosts.experimental_suspend({ hostId });
         const result = await waitForMachineLifecycle({
           host: requested,
@@ -418,7 +434,10 @@ export function registerMachineCommands(
     .action(
       action(async (target: string, opts: MachineListCommandOptions) => {
         const sdk = createCliBbSdk(getUrl());
-        const hostId = resolveMachineId(await sdk.hosts.list(), target);
+        const hostId = resolveMachineId(
+          await sdk.hosts.list({ includeCreating: true }),
+          target,
+        );
         const requested = await sdk.hosts.experimental_resume({ hostId });
         const result = await waitForMachineLifecycle({
           host: requested,
@@ -437,7 +456,10 @@ export function registerMachineCommands(
     .action(
       action(async (target: string, opts: MachineListCommandOptions) => {
         const sdk = createCliBbSdk(getUrl());
-        const hostId = resolveMachineId(await sdk.hosts.list(), target);
+        const hostId = resolveMachineId(
+          await sdk.hosts.list({ includeCreating: true }),
+          target,
+        );
         const result = await sdk.hosts.experimental_retryCleanup({ hostId });
         if (outputJson(opts, result)) return;
         console.log(`Machine ${hostId} cleanup retried`);
@@ -454,7 +476,10 @@ export function registerMachineCommands(
     .action(
       action(async (target: string, opts: MachineListCommandOptions) => {
         const sdk = createCliBbSdk(getUrl());
-        const hostId = resolveMachineId(await sdk.hosts.list(), target);
+        const hostId = resolveMachineId(
+          await sdk.hosts.list({ includeCreating: true }),
+          target,
+        );
         const result = await sdk.hosts.providerCliStatus({ hostId });
         if (outputJson(opts, result)) return;
         console.log(JSON.stringify(result, null, 2));
@@ -476,7 +501,10 @@ export function registerMachineCommands(
             throw new Error("--action must be install or update.");
           }
           const sdk = createCliBbSdk(getUrl());
-          const hostId = resolveMachineId(await sdk.hosts.list(), target);
+          const hostId = resolveMachineId(
+            await sdk.hosts.list({ includeCreating: true }),
+            target,
+          );
           const events = await sdk.hosts.installProviderCli({
             hostId,
             provider: parseProviderCliKey(provider),

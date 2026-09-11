@@ -149,15 +149,41 @@ describe("bb machine command output", () => {
     ]);
   });
 
-  it("bb machine list --json prints the raw host list", async () => {
-    stubServerApi({ "v1.hosts.$get": vi.fn(async () => hosts) });
+  it.each(["list", "show", "remove"] as const)(
+    "can %s a machine before its first enrollment",
+    async (command) => {
+      const pending = { ...creating, id: "host-pending", name: "pending" };
+      const get = vi.fn(async () => pending);
+      const remove = vi.fn(async () => undefined);
+      stubServerApi({
+        "v1.hosts.$get": vi.fn(
+          async ({ query }: { query: { includeCreating?: string } }) =>
+            query.includeCreating === "true" ? [...hosts, pending] : hosts,
+        ),
+        "v1.hosts.:id.$get": get,
+        "v1.hosts.:id.$delete": remove,
+      });
 
-    await runCommand(["machine", "list", "--json"], register);
+      await runCommand(
+        command === "list"
+          ? ["machine", "list", "--json"]
+          : command === "show"
+            ? ["machine", "show", pending.id, "--json"]
+            : ["machine", "remove", pending.name, "--yes"],
+        register,
+      );
 
-    expect(
-      JSON.parse(String(vi.mocked(console.log).mock.calls[0]?.[0])),
-    ).toEqual(hosts);
-  });
+      if (command === "remove") {
+        expect(remove).toHaveBeenCalledWith({ param: { id: pending.id } });
+      } else {
+        expect(
+          JSON.parse(String(vi.mocked(console.log).mock.calls[0]?.[0])),
+        ).toEqual(command === "list" ? [...hosts, pending] : pending);
+        if (command === "show")
+          expect(get).toHaveBeenCalledWith({ param: { id: pending.id } });
+      }
+    },
+  );
 
   it("bb machine list renders names, IDs, status, and relative last seen", async () => {
     vi.spyOn(Date, "now").mockReturnValue(1_700_000_120_000);
