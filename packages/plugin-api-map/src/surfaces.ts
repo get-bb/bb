@@ -561,6 +561,7 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
         surfaceIds: [
           "storage",
           "bb-sdk",
+          "thread-plugin-metadata",
           "desktop-browsers",
           "ai-services",
           "host-components",
@@ -862,6 +863,25 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
           "Side chat",
           "Tasks",
           "Workflows",
+        ],
+      },
+      {
+        id: "thread-plugin-metadata",
+        tagline: "Keep plugin data with a thread",
+        title: "Thread plugin metadata",
+        summary:
+          "Stores namespaced plugin JSON for a thread without automatically exposing it to the model. With this, a plugin can:",
+        bullets: [
+          "Seed its namespace when spawning a thread or explicitly when forking one",
+          "Read and atomically patch any namespace allowed by ordinary thread access",
+          "Receive only its own deep-frozen namespace in bb.agents.configure",
+          "See the Plugin Guide for limits, fork behavior, and security guidance",
+        ],
+        apiSymbols: [
+          "ThreadSpawnArgs",
+          "ThreadForkArgs",
+          "ThreadsArea",
+          "PluginAgentConfigurationContext",
         ],
       },
       {

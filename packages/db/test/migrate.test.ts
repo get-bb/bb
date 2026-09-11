@@ -261,15 +261,11 @@ interface SeededLargeValueBackfillValues {
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
+const migrationJournal = JSON.parse(
+  readFileSync(resolve(__dirname, "../drizzle/meta/_journal.json"), "utf-8"),
+) as { entries: { tag: string; when: number }[] };
 const latestMigrationWhen = Math.max(
-  ...(
-    JSON.parse(
-      readFileSync(
-        resolve(__dirname, "../drizzle/meta/_journal.json"),
-        "utf-8",
-      ),
-    ) as { entries: { when: number }[] }
-  ).entries.map((entry) => entry.when),
+  ...migrationJournal.entries.map((entry) => entry.when),
 );
 
 function restoreWideExperimentsTable(db: DbConnection): void {
@@ -313,6 +309,7 @@ function dropThreadConversationOutlinesTable(db: DbConnection): void {
 }
 
 function dropRewindAddedTables(db: DbConnection): void {
+  db.$client.prepare("DROP TABLE IF EXISTS thread_plugin_metadata").run();
   rewindEnvironmentRowFactsMigration(db);
   rewindEnvironmentProvidersMigration(db);
   dropThreadConversationOutlinesTable(db);
@@ -423,6 +420,7 @@ const pendingInteractionsMigrationWhen = 1783626227375;
 const permissionModesMigrationWhen = 1784311522462;
 const branchLocalThreadTabsMigrationWhen = 1783633750817;
 const eventParentToolCallMigrationWhen = 1787181956957;
+const environmentProvisioningMigrationWhen = 1789075667774;
 const eventParentToolCallPreJsonValidMigrationHash =
   "79d39e7b68d1db8ba02614fe4cc227cc0c154d77c7183f2e37ed2d8475412993";
 const eventLargeValuesPreOptimizationHash =
@@ -1688,6 +1686,80 @@ describe("migrate", () => {
     }
   });
 
+  it("recreates thread plugin metadata after a populated pre-0117 rewind", () => {
+    const db = createMigratedConnection();
+
+    try {
+      expect(migrationJournal.entries.at(-1)?.tag).toBe(
+        "0117_foamy_puppet_master",
+      );
+      const threadPluginMetadataMigrationWhen = migrationJournal.entries.find(
+        (entry) => entry.tag === "0117_foamy_puppet_master",
+      )?.when;
+      if (threadPluginMetadataMigrationWhen === undefined) {
+        throw new Error("Missing 0117_foamy_puppet_master migration timestamp");
+      }
+      const host = upsertHost(db, noopNotifier, {
+        id: "host-thread-plugin-metadata-rewind",
+        name: "Thread Plugin Metadata Rewind Host",
+        type: "persistent",
+      });
+      const { project } = createProject(db, noopNotifier, {
+        name: "Thread Plugin Metadata Rewind Project",
+        source: {
+          type: "local_path",
+          hostId: host.id,
+          path: "/tmp/thread-plugin-metadata-rewind",
+        },
+      });
+      const thread = createThread(db, noopNotifier, {
+        projectId: project.id,
+        providerId: "codex",
+        title: "rewind-preserved-title",
+      });
+
+      db.$client.prepare("DROP TABLE thread_plugin_metadata").run();
+      db.$client
+        .prepare<DeleteMigrationParameters>(
+          "DELETE FROM __drizzle_migrations WHERE created_at = ?",
+        )
+        .run(threadPluginMetadataMigrationWhen);
+
+      migrate(db);
+
+      expect(
+        db.$client
+          .prepare<[string], { title: string }>(
+            "SELECT title FROM threads WHERE id = ?",
+          )
+          .get(thread.id),
+      ).toEqual({ title: "rewind-preserved-title" });
+      expect(
+        db.$client
+          .prepare<[string], { text: string }>(
+            "SELECT text FROM thread_search_segments WHERE thread_id = ? AND source_kind = 'title'",
+          )
+          .get(thread.id),
+      ).toEqual({ text: "rewind-preserved-title" });
+      expect(
+        db.$client
+          .prepare<[], { count: number }>(
+            "SELECT COUNT(*) AS count FROM thread_plugin_metadata",
+          )
+          .get(),
+      ).toEqual({ count: 0 });
+      expect(
+        db.$client
+          .prepare<[], { pk: number; notnull: number }>(
+            "SELECT pk, \"notnull\" FROM pragma_table_info('thread_plugin_metadata') WHERE name = 'thread_id'",
+          )
+          .get(),
+      ).toEqual({ pk: 1, notnull: 1 });
+    } finally {
+      closeConnection(db);
+    }
+  });
+
   it("backfills the first checkout commit component for every artifact shape", () => {
     const db = createConnection(":memory:");
     const commit = "d".repeat(40);
@@ -2397,6 +2469,7 @@ describe("migrate", () => {
           "DELETE FROM __drizzle_migrations WHERE created_at >= ?",
         )
         .run(permissionModesMigrationWhen);
+      db.$client.prepare("DROP TABLE thread_plugin_metadata").run();
       rewindEnvironmentRowFactsMigration(db);
       rewindEnvironmentProvidersMigration(db);
       dropSideChatPluginExperimentColumn(db);
@@ -2804,6 +2877,7 @@ describe("migrate", () => {
           "DELETE FROM __drizzle_migrations WHERE created_at >= ?",
         )
         .run(threadSectionsRepairMigrationWhen);
+      db.$client.prepare("DROP TABLE thread_plugin_metadata").run();
       rewindEnvironmentRowFactsMigration(db);
       rewindEnvironmentProvidersMigration(db);
       dropSideChatPluginExperimentColumn(db);
@@ -2908,6 +2982,7 @@ describe("migrate", () => {
           "DELETE FROM __drizzle_migrations WHERE created_at >= ?",
         )
         .run(threadSectionsRepairMigrationWhen);
+      db.$client.prepare("DROP TABLE thread_plugin_metadata").run();
       rewindEnvironmentRowFactsMigration(db);
       rewindEnvironmentProvidersMigration(db);
       dropSideChatPluginExperimentColumn(db);
@@ -5491,6 +5566,7 @@ describe("migrate", () => {
         providerId: "codex",
       });
 
+      db.$client.prepare("DROP TABLE thread_plugin_metadata").run();
       rewindEnvironmentRowFactsMigration(db);
       rewindEnvironmentProvidersMigration(db);
       dropEventParentToolCallIdColumn(db);
@@ -5587,6 +5663,7 @@ describe("environment providers migration", () => {
   const environmentProvidersMigrationWhen = 1788386943764;
 
   function seedPreProviderEnvironments(db: DbConnection): void {
+    db.$client.prepare("DROP TABLE thread_plugin_metadata").run();
     db.$client.prepare("DROP TABLE ui_preferences").run();
     db.$client.prepare("DROP TABLE retained_event_outputs").run();
     rewindEnvironmentRowFactsMigration(db);
@@ -5961,6 +6038,7 @@ describe("environment and thread startup ownership migration", () => {
     (phase) => {
       const db = createMigratedConnection();
       try {
+        db.$client.prepare("DROP TABLE thread_plugin_metadata").run();
         rewindEnvironmentProvisioningMigration(db);
         const legacySchema = readFileSync(
           resolve(
@@ -5970,9 +6048,11 @@ describe("environment and thread startup ownership migration", () => {
           "utf8",
         ).split("--> statement-breakpoint")[0]!;
         db.$client.exec(legacySchema);
-        db.$client.exec(
-          "DELETE FROM __drizzle_migrations WHERE created_at = (SELECT MAX(created_at) FROM __drizzle_migrations)",
-        );
+        db.$client
+          .prepare<DeleteMigrationParameters>(
+            "DELETE FROM __drizzle_migrations WHERE created_at >= ?",
+          )
+          .run(environmentProvisioningMigrationWhen);
         db.$client.exec(`
         INSERT INTO hosts (id, name, type, created_at, updated_at) VALUES ('host_ownership', 'test', 'persistent', 1, 1);
         INSERT INTO projects (id, name, created_at, updated_at) VALUES ('proj_ownership', 'test', 1, 1);
