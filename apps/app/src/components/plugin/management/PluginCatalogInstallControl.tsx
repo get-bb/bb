@@ -6,7 +6,7 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@bb/shared-ui/tooltip";
-import { cn } from "@/lib/utils";
+import { cn } from "@bb/shared-ui/lib/utils";
 
 type PluginCatalogInstallControlProps = {
   displayName: string;
@@ -45,7 +45,7 @@ export function PluginCatalogInstallControl(
             className={cn(
               "group/install h-7 min-w-7 shrink-0 gap-1.5 px-2 text-xs shadow-none",
               installed
-                ? "text-subtle-foreground"
+                ? "font-normal text-subtle-foreground"
                 : "border-border/80 bg-background text-foreground hover:bg-state-hover",
               installed && !disabled && "hover:text-destructive-text",
               disabled &&
