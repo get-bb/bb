@@ -127,7 +127,10 @@ export interface PluginServiceDeps {
     durationMs: number,
     onElapsed: () => void,
   ) => () => void;
-  scheduleUpdateCheck?: (delayMs: number, onElapsed: () => void) => () => void;
+  scheduleUpdateCheck?: (
+    delayMs: number,
+    onElapsed: () => Promise<void>,
+  ) => () => void;
   afterPluginRollbackStateRestored?: (args: {
     pluginId: string;
     snapshotId: string;
