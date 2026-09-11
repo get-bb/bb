@@ -17,7 +17,6 @@ import {
   type AppKeybinding,
   type ThreadListEntry,
 } from "@bb/domain";
-import { emptyPromptDraftState } from "@bb/client-core";
 import type { ThreadSearchResponse } from "@bb/server-contract";
 import { CHROME_SECTION_LABEL_CLASS } from "@bb/shared-ui/chrome-style-tokens";
 import { AppCommandProvider, useAppCommandHandler } from "./AppCommandProvider";
@@ -30,7 +29,6 @@ import {
   setPluginLogoUrls,
 } from "@/lib/plugin-logos";
 import { CommandPalette } from "./CommandPalette";
-import type { PaletteNewThreadDraft } from "@/lib/command-palette/palette-thread-search";
 import { makePluginRegistrationSet } from "@/test/fixtures/plugins";
 
 const PALETTE_SHORTCUT = {
@@ -101,11 +99,8 @@ const testState = vi.hoisted(() => ({
 }));
 const modeState = vi.hoisted(() => ({
   activeRecents: [] as ThreadListEntry[],
-  archivedRecents: [] as ThreadListEntry[],
-  drafts: [] as PaletteNewThreadDraft[],
   searchResponse: undefined as ThreadSearchResponse | undefined,
 }));
-const openPaneContentInSplitMock = vi.hoisted(() => vi.fn());
 const openThreadInSplitMock = vi.hoisted(() => vi.fn());
 const routeNavigateMock = vi.hoisted(() => vi.fn());
 
@@ -158,27 +153,8 @@ vi.mock("@/lib/split-layout/openThreadInSplit", () => ({
   openThreadInSplit: openThreadInSplitMock,
 }));
 
-vi.mock("@/lib/split-layout/openPaneContentInSplit", () => ({
-  openPaneContentInSplit: openPaneContentInSplitMock,
-}));
-
 vi.mock("@/components/ui/app-route-anchor", () => ({
   useRouteNavigate: () => routeNavigateMock,
-}));
-
-vi.mock("@/hooks/usePromptDraftStorage", () => ({
-  usePromptDraftStorage: () => {
-    const draft = modeState.drafts[0]?.draft ?? emptyPromptDraftState();
-    return {
-      text: draft.text,
-      mentions: draft.mentions,
-      attachments: draft.attachments,
-    };
-  },
-}));
-
-vi.mock("@/lib/root-compose-selection", () => ({
-  useRootComposeProjectId: () => ["project-1", vi.fn()],
 }));
 
 vi.mock("@/hooks/queries/sidebar-navigation-query", () => ({
@@ -202,10 +178,6 @@ vi.mock("@/hooks/queries/thread-queries", async (importOriginal) => {
     await importOriginal<typeof import("@/hooks/queries/thread-queries")>();
   return {
     ...actual,
-    useArchivedThreads: () => ({
-      data: { pages: [modeState.archivedRecents] },
-      isLoading: false,
-    }),
     useThreadSearch: ({ query }: { query: string }) => ({
       data: modeState.searchResponse,
       debouncedQuery: query.trim(),
@@ -342,10 +314,7 @@ afterEach(() => {
   testState.filesAvailable = false;
   testState.plugins.length = 0;
   modeState.activeRecents = [];
-  modeState.archivedRecents = [];
-  modeState.drafts = [];
   modeState.searchResponse = undefined;
-  openPaneContentInSplitMock.mockReset();
   openThreadInSplitMock.mockReset();
   routeNavigateMock.mockReset();
   window.localStorage.clear();
@@ -423,9 +392,7 @@ describe("CommandPalette", () => {
     expect(
       screen.getByText("Threads").closest("[data-palette-mode-chip]"),
     ).not.toBeNull();
-    expect(
-      screen.getByRole("button", { name: "Thread scope" }).textContent,
-    ).toContain("All");
+    expect(screen.queryByRole("button", { name: "Thread scope" })).toBeNull();
 
     fireEvent.keyDown(screen.getByRole("combobox"), { key: "Escape" });
     await waitFor(() =>
@@ -458,212 +425,73 @@ describe("CommandPalette", () => {
     expect(testState.calls).toEqual([]);
   });
 
-  it("cycles the thread scope and resets it after leaving the mode", async () => {
-    renderPalette();
-    openThreadSearch();
-    await waitFor(() =>
-      expect(screen.getByRole("button", { name: "Thread scope" })).toBeTruthy(),
-    );
-    const scope = screen.getByRole("button", { name: "Thread scope" });
-    scope.focus();
-    fireEvent.keyDown(scope, { key: "ArrowDown" });
-    expect(scope.textContent).toContain("Active");
-    expect(
-      screen.getByRole("listbox", { name: "Thread scope options" }),
-    ).toBeTruthy();
-    fireEvent.keyDown(scope, { key: "Escape" });
-    expect(document.activeElement).toBe(screen.getByRole("combobox"));
-
-    fireEvent.keyDown(screen.getByRole("combobox"), { key: "Escape" });
-    await waitFor(() =>
-      expect(
-        screen.getByRole("combobox", { name: "Search commands" }),
-      ).toBeTruthy(),
-    );
-    const searchCommand = within(bucketGroup("Threads"))
-      .getAllByRole("option")
-      .find((row) => row.textContent?.includes("Search threads"));
-    fireEvent.click(searchCommand as HTMLElement);
-    await waitFor(() =>
-      expect(
-        screen.getByRole("button", { name: "Thread scope" }).textContent,
-      ).toContain("All"),
-    );
-  });
-
-  it("makes scope the input's only sibling tab stop and applies every keyboard choice immediately", async () => {
+  it("shows only active recents before typing even with cached archived matches", async () => {
+    modeState.activeRecents = [makeThread("recent-active")];
     modeState.searchResponse = {
-      active: {
-        total: 1,
-        results: [{ thread: makeThread("matching-active"), matches: [] }],
-      },
+      active: { total: 0, results: [] },
       archived: {
         total: 1,
         results: [
           {
-            thread: makeThread("matching-archived", {
-              archivedAt: Date.now(),
-            }),
+            thread: makeThread("cached-archived", { archivedAt: Date.now() }),
             matches: [],
           },
         ],
       },
     };
-    modeState.drafts = [
-      {
-        id: "matching-draft",
-        title: "matching draft",
-        draft: { ...emptyPromptDraftState(), text: "matching draft" },
-        lastEditedAt: Date.now(),
-        destination: { projectId: "project-1", sectionId: null },
-      },
-    ];
     renderPalette();
     openThreadSearch();
-    await waitFor(() =>
-      expect(
-        screen.getByRole("combobox", { name: "Search threads" }),
-      ).toBeTruthy(),
-    );
-    const input = screen.getByRole("combobox", { name: "Search threads" });
-    const scope = screen.getByRole("button", { name: "Thread scope" });
-    const palette = screen.getByTestId("command-palette");
-    expect(
-      Array.from(
-        palette.querySelectorAll<HTMLElement>(
-          'input:not([disabled]), button:not([disabled]), [tabindex]:not([tabindex="-1"])',
-        ),
-      ),
-    ).toEqual([input, scope]);
+    await screen.findByRole("combobox", { name: "Search threads" });
 
-    fireEvent.change(input, { target: { value: "match" } });
-    const results = screen.getByRole("listbox", { name: "Threads" });
-    await waitFor(() =>
-      expect(within(results).getAllByRole("option")).toHaveLength(3),
-    );
-
-    scope.focus();
-    fireEvent.keyDown(scope, { key: "ArrowDown" });
-    expect(scope.textContent).toContain("Active");
-    const scopeOptions = screen.getByRole("listbox", {
-      name: "Thread scope options",
-    });
-    expect(
-      within(scopeOptions)
-        .getAllByRole("option")
-        .map((option) => option.textContent),
-    ).toEqual(["All", "Active", "Drafts", "Archived"]);
-    expect(within(results).getAllByRole("option")).toHaveLength(1);
-    expect(within(results).getByRole("option").textContent).toContain(
-      "matching-active",
-    );
-    fireEvent.keyDown(scope, { key: "Enter" });
-    expect(document.activeElement).toBe(input);
-    expect(
-      screen.queryByRole("listbox", { name: "Thread scope options" }),
-    ).toBeNull();
-
-    scope.focus();
-    fireEvent.keyDown(scope, { key: "ArrowDown" });
-    expect(scope.textContent).toContain("Drafts");
-    expect(within(results).getAllByRole("option")).toHaveLength(1);
-    expect(within(results).getByRole("option").textContent).toContain(
-      "matching draft",
-    );
-    fireEvent.keyDown(scope, { key: "Escape" });
-    expect(document.activeElement).toBe(input);
-
-    fireEvent.click(within(results).getByRole("option"));
-    await waitFor(() => expect(screen.queryByRole("combobox")).toBeNull());
-    openThreadSearch();
-    await waitFor(() =>
-      expect(
-        screen.getByRole("button", { name: "Thread scope" }).textContent,
-      ).toContain("All"),
-    );
-  });
-
-  it("renders the resting thread mode as one unlabelled active, draft, archived list", async () => {
-    modeState.activeRecents = [makeThread("recent-active")];
-    modeState.archivedRecents = [
-      makeThread("recent-archived", { archivedAt: Date.now() }),
-    ];
-    modeState.drafts = [
-      {
-        id: "recent-draft",
-        title: "recent draft",
-        draft: { ...emptyPromptDraftState(), text: "recent draft" },
-        lastEditedAt: Date.now(),
-        destination: { projectId: "project-1", sectionId: null },
-      },
-    ];
-    renderPalette();
-    openThreadSearch();
-    await waitFor(() =>
-      expect(
-        screen.getByRole("combobox", { name: "Search threads" }),
-      ).toBeTruthy(),
-    );
-
-    const results = screen.getByRole("listbox", { name: "Threads" });
-    await waitFor(() =>
-      expect(within(results).getAllByRole("option")).toHaveLength(3),
-    );
-    const rows = within(results).getAllByRole("option");
+    const rows = within(
+      screen.getByRole("listbox", { name: "Threads" }),
+    ).getAllByRole("option");
+    expect(rows).toHaveLength(1);
     expect(rows[0]?.textContent).toContain("Title recent-active");
-    expect(rows[0]?.textContent).not.toContain("Active");
-    expect(rows[1]?.textContent).toContain("recent draft");
-    expect(rows[1]?.textContent).toContain("Draft");
-    expect(rows[2]?.textContent).toContain("Title recent-archived");
-    expect(rows[2]?.textContent).toContain("Archived");
-    expect(within(results).queryAllByRole("group")).toHaveLength(0);
-    expect(within(results).queryByText("Recent")).toBeNull();
+    expect(screen.queryByRole("button", { name: "Thread scope" })).toBeNull();
   });
 
-  it("renders search matches as one unlabelled active, draft, archived list", async () => {
-    const active = makeThread("active");
-    const archived = makeThread("archived", { archivedAt: Date.now() });
+  it("keeps active and archived search results and restores active recents on clear", async () => {
+    modeState.activeRecents = [makeThread("recent-active")];
     modeState.searchResponse = {
-      active: { total: 1, results: [{ thread: active, matches: [] }] },
-      archived: { total: 1, results: [{ thread: archived, matches: [] }] },
-    };
-    modeState.drafts = [
-      {
-        id: "draft-1",
-        title: "matching draft",
-        draft: { ...emptyPromptDraftState(), text: "matching draft" },
-        lastEditedAt: Date.now(),
-        destination: { projectId: "project-1", sectionId: null },
+      active: {
+        total: 1,
+        results: [{ thread: makeThread("active"), matches: [] }],
       },
-    ];
+      archived: {
+        total: 1,
+        results: [
+          {
+            thread: makeThread("archived", { archivedAt: Date.now() }),
+            matches: [],
+          },
+        ],
+      },
+    };
     renderPalette();
     openThreadSearch();
-    await waitFor(() =>
-      expect(
-        screen.getByRole("combobox", { name: "Search threads" }),
-      ).toBeTruthy(),
-    );
-    fireEvent.change(screen.getByRole("combobox"), {
-      target: { value: "match" },
+    const input = await screen.findByRole("combobox", {
+      name: "Search threads",
     });
+    fireEvent.change(input, { target: { value: "match" } });
 
     const results = screen.getByRole("listbox", { name: "Threads" });
-    await waitFor(() =>
-      expect(within(results).getAllByRole("option")).toHaveLength(3),
-    );
     const rows = within(results).getAllByRole("option");
+    expect(rows).toHaveLength(2);
     expect(rows[0]?.textContent).toContain("Title active");
-    expect(rows[1]?.textContent).toContain("matching draft");
-    expect(rows[1]?.textContent).toContain("Draft");
-    expect(rows[2]?.textContent).toContain("Title archived");
-    expect(rows[2]?.textContent).toContain("Archived");
-    expect(rows[0]?.textContent).not.toContain("Active");
-    expect(within(results).queryAllByRole("group")).toHaveLength(0);
-    expect(within(results).queryByText("Recent")).toBeNull();
-    expect(results.textContent).not.toContain("1/1");
+    expect(rows[1]?.textContent).toContain("Title archived");
+    expect(rows[1]?.textContent).toContain("Archived");
+
+    fireEvent.keyDown(input, { key: "End" });
+    expect(rows[1]?.getAttribute("aria-selected")).toBe("true");
+    fireEvent.change(input, { target: { value: "" } });
+    expect(within(results).getAllByRole("option")).toHaveLength(1);
+    expect(within(results).getByRole("option").textContent).toContain(
+      "recent-active",
+    );
     expect(
-      screen.getByTestId("command-palette").querySelectorAll("svg"),
-    ).toHaveLength(1);
+      within(results).getByRole("option").getAttribute("aria-selected"),
+    ).toBe("true");
   });
 
   it("opens a persisted thread result in a split with Command-Enter", async () => {
@@ -697,65 +525,64 @@ describe("CommandPalette", () => {
     );
   });
 
-  it("opens the current new-thread draft in a split", async () => {
-    modeState.drafts = [
-      {
-        id: "draft-slot-exact",
-        title: "split this draft",
-        draft: { ...emptyPromptDraftState(), text: "split this draft" },
-        lastEditedAt: Date.now(),
-        destination: { projectId: "project-1", sectionId: null },
-      },
-    ];
-    renderPalette();
-    openThreadSearch();
-    const input = await screen.findByRole("combobox", {
-      name: "Search threads",
-    });
-    await screen.findByRole("option", { name: /split this draft/i });
+  it.each([false, true])(
+    "opens an archived message match with its anchor (split=%s)",
+    async (split) => {
+      modeState.searchResponse = {
+        active: { total: 0, results: [] },
+        archived: {
+          total: 1,
+          results: [
+            {
+              thread: makeThread("archived-message", {
+                archivedAt: Date.now(),
+              }),
+              matches: [
+                {
+                  sourceKind: "user_message",
+                  text: "matching archived message",
+                  sourceSeq: 42,
+                  highlightRanges: [{ start: 0, end: 8 }],
+                },
+              ],
+            },
+          ],
+        },
+      };
+      renderPalette();
+      openThreadSearch();
+      const input = await screen.findByRole("combobox", {
+        name: "Search threads",
+      });
+      fireEvent.change(input, { target: { value: "matching" } });
+      expect(
+        screen.getByRole("option").querySelector("mark")?.textContent,
+      ).toBe("matching");
+      fireEvent.keyDown(input, { key: "Enter", metaKey: split });
 
-    fireEvent.keyDown(input, { key: "Enter", metaKey: true });
-
-    await waitFor(() =>
-      expect(openPaneContentInSplitMock).toHaveBeenCalledTimes(1),
-    );
-    expect(openPaneContentInSplitMock).toHaveBeenCalledWith(
-      expect.objectContaining({
-        content: { kind: "new-thread" },
-        enabled: true,
-      }),
-    );
-    expect(routeNavigateMock).not.toHaveBeenCalled();
-  });
-
-  it("keeps ordinary Enter on the current new-thread draft as normal navigation", async () => {
-    modeState.drafts = [
-      {
-        id: "draft-slot-normal",
-        title: "open this draft",
-        draft: { ...emptyPromptDraftState(), text: "open this draft" },
-        lastEditedAt: Date.now(),
-        destination: { projectId: "project-1", sectionId: null },
-      },
-    ];
-    renderPalette();
-    openThreadSearch();
-    const input = await screen.findByRole("combobox", {
-      name: "Search threads",
-    });
-    await screen.findByRole("option", { name: /open this draft/i });
-
-    fireEvent.keyDown(input, { key: "Enter" });
-
-    await waitFor(() => expect(routeNavigateMock).toHaveBeenCalledTimes(1));
-    expect(openPaneContentInSplitMock).not.toHaveBeenCalled();
-    expect(routeNavigateMock).toHaveBeenCalledWith(
-      expect.any(String),
-      expect.objectContaining({
-        state: expect.objectContaining({ focusPrompt: true }),
-      }),
-    );
-  });
+      const state = {
+        searchMessageSeq: 42,
+        searchThreadId: "archived-message",
+      };
+      await waitFor(() => expect(screen.queryByRole("combobox")).toBeNull());
+      if (split) {
+        expect(openThreadInSplitMock).toHaveBeenCalledWith(
+          expect.objectContaining({
+            projectId: "project-1",
+            threadId: "archived-message",
+            state,
+          }),
+        );
+        expect(routeNavigateMock).not.toHaveBeenCalled();
+      } else {
+        expect(routeNavigateMock).toHaveBeenCalledWith(
+          "/projects/project-1/threads/archived-message",
+          { state },
+        );
+        expect(openThreadInSplitMock).not.toHaveBeenCalled();
+      }
+    },
+  );
 
   it("filters as the user types and keeps the selection on a live row", async () => {
     renderPalette();
@@ -936,7 +763,9 @@ describe("CommandPalette", () => {
     fireEvent.change(searchField(), {
       target: { value: "files settings" },
     });
-    await waitFor(() => expect(screen.queryAllByRole("option")).toHaveLength(0));
+    await waitFor(() =>
+      expect(screen.queryAllByRole("option")).toHaveLength(0),
+    );
 
     fireEvent.keyDown(searchField(), { key: "Escape" });
     await waitFor(() => expect(screen.queryByRole("combobox")).toBeNull());

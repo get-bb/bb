@@ -13,25 +13,18 @@ import { useStore } from "jotai";
 import { useIsCompactViewport } from "@bb/shared-ui/hooks/use-compact-viewport";
 import { cn } from "@bb/shared-ui/lib/utils";
 import { COARSE_POINTER_TEXT_SM_CLASS } from "@bb/shared-ui/coarse-pointer-sizing";
-import { isPromptDraftEmpty } from "@bb/client-core";
 import type { ThreadSearchHighlightRange } from "@bb/server-contract";
-import { usePromptDraftStorage } from "@/hooks/usePromptDraftStorage";
 import { useSidebarNavigation } from "@/hooks/queries/sidebar-navigation-query";
 import {
   hasThreadSearchableQuery,
-  useArchivedThreads,
   useThreadSearch,
 } from "@/hooks/queries/thread-queries";
 import { useRouteNavigate } from "@/components/ui/app-route-anchor";
-import { getRootComposeRoutePath, getThreadRoutePath } from "@/lib/route-paths";
-import { useRootComposeProjectId } from "@/lib/root-compose-selection";
-import { openPaneContentInSplit } from "@/lib/split-layout/openPaneContentInSplit";
+import { getThreadRoutePath } from "@/lib/route-paths";
 import { openThreadInSplit } from "@/lib/split-layout/openThreadInSplit";
 import {
   buildPaletteThreadSearchRows,
-  PALETTE_THREAD_SEARCH_SCOPES,
   type PaletteThreadSearchRow,
-  type PaletteThreadSearchScope,
 } from "@/lib/command-palette/palette-thread-search";
 import { windowPaletteThreadSearchText } from "@/lib/command-palette/palette-thread-search-window";
 import type { PaletteModeViewProps } from "@/lib/command-palette/palette-mode";
@@ -50,39 +43,9 @@ export function ThreadSearchPaletteMode({
   const navigate = useRouteNavigate();
   const isCompact = useIsCompactViewport();
   const [query, setQuery] = useState("");
-  const [scope, setScope] = useState<PaletteThreadSearchScope>("all");
   const [highlightedIndex, setHighlightedIndex] = useState(0);
   const [now] = useState(() => Date.now());
-  const rootComposeDraft = usePromptDraftStorage({ kind: "new-thread" });
-  const [rootComposeProjectId] = useRootComposeProjectId();
-  const drafts = useMemo(() => {
-    const draft = {
-      text: rootComposeDraft.text,
-      mentions: rootComposeDraft.mentions,
-      attachments: rootComposeDraft.attachments,
-    };
-    if (isPromptDraftEmpty(draft)) return [];
-    const title = draft.text.replace(/\s+/gu, " ").trim();
-    return [
-      {
-        id: "root-compose",
-        draft,
-        title: title.length > 0 ? title : "New thread",
-        lastEditedAt: null,
-        destination: {
-          projectId: rootComposeProjectId,
-          sectionId: null,
-        },
-      },
-    ];
-  }, [
-    rootComposeDraft.attachments,
-    rootComposeDraft.mentions,
-    rootComposeDraft.text,
-    rootComposeProjectId,
-  ]);
   const navigation = useSidebarNavigation();
-  const archivedThreads = useArchivedThreads({});
   const threadSearch = useThreadSearch({ active: true, query });
   const trimmedQuery = query.trim();
   const searchable = hasThreadSearchableQuery(trimmedQuery);
@@ -106,31 +69,21 @@ export function ThreadSearchPaletteMode({
     ],
     [navigation.data],
   );
-  const recentArchivedThreads = useMemo(
-    () => archivedThreads.data?.pages.flatMap((page) => page) ?? [],
-    [archivedThreads.data],
-  );
   const result = useMemo(
     () =>
       buildPaletteThreadSearchRows({
-        drafts,
         now,
         projectNamesById,
         query,
-        recentArchivedThreads,
         recentThreads,
-        scope,
         searchResponse: threadSearch.data,
         searchResultsAreCurrent,
       }),
     [
-      drafts,
       now,
       projectNamesById,
       query,
-      recentArchivedThreads,
       recentThreads,
-      scope,
       searchResultsAreCurrent,
       threadSearch.data,
     ],
@@ -154,47 +107,31 @@ export function ThreadSearchPaletteMode({
   const openRow = useCallback(
     (row: PaletteThreadSearchRow, split: boolean) => {
       runAfterClose(() => {
-        if (row.threadId !== null) {
-          const state =
-            row.messageSeq === null
-              ? undefined
-              : {
-                  searchMessageSeq: row.messageSeq,
-                  searchThreadId: row.threadId,
-                };
-          if (split) {
-            openThreadInSplit({
-              store,
-              navigate,
-              projectId: row.projectId,
-              threadId: row.threadId,
-              isCompact,
-              state,
-            });
-            return;
-          }
-          navigate(
-            getThreadRoutePath({
-              projectId: row.projectId,
-              threadId: row.threadId,
-            }),
-            { state },
-          );
+        const state =
+          row.messageSeq === null
+            ? undefined
+            : {
+                searchMessageSeq: row.messageSeq,
+                searchThreadId: row.threadId,
+              };
+        if (split) {
+          openThreadInSplit({
+            store,
+            navigate,
+            projectId: row.projectId,
+            threadId: row.threadId,
+            isCompact,
+            state,
+          });
           return;
         }
-        if (row.draftSlotId !== null) {
-          if (split) {
-            openPaneContentInSplit({
-              store,
-              navigate,
-              content: { kind: "new-thread" },
-              route: getRootComposeRoutePath(),
-              enabled: !isCompact,
-            });
-            return;
-          }
-          navigate(getRootComposeRoutePath(), { state: { focusPrompt: true } });
-        }
+        navigate(
+          getThreadRoutePath({
+            projectId: row.projectId,
+            threadId: row.threadId,
+          }),
+          { state },
+        );
       });
     },
     [isCompact, navigate, runAfterClose, store],
@@ -247,8 +184,7 @@ export function ThreadSearchPaletteMode({
       ? "Searching threads"
       : trimmedQuery.length === 1
         ? "Type at least 2 characters"
-        : (navigation.isLoading || archivedThreads.isLoading) &&
-            result.isRecent
+        : navigation.isLoading && result.isRecent
           ? "Loading recent threads"
           : result.isRecent
             ? "No recent threads"
@@ -258,17 +194,6 @@ export function ThreadSearchPaletteMode({
   return (
     <PaletteShell
       activeDescendantId={activeDescendantId}
-      accessory={
-        <ThreadSearchScopeFilter
-          inputRef={inputRef}
-          scope={scope}
-          onScopeChange={(nextScope) => {
-            setScope(nextScope);
-            setHighlightedIndex(0);
-            if (listRef.current !== null) listRef.current.scrollTop = 0;
-          }}
-        />
-      }
       footerKeys={presentation.footerKeys}
       inputLabel={presentation.placeholder}
       inputRef={inputRef}
@@ -302,97 +227,6 @@ export function ThreadSearchPaletteMode({
         </p>
       )}
     </PaletteShell>
-  );
-}
-
-function ThreadSearchScopeFilter({
-  inputRef,
-  onScopeChange,
-  scope,
-}: {
-  inputRef: React.RefObject<HTMLInputElement | null>;
-  onScopeChange: (scope: PaletteThreadSearchScope) => void;
-  scope: PaletteThreadSearchScope;
-}) {
-  const [open, setOpen] = useState(false);
-  const currentIndex = PALETTE_THREAD_SEARCH_SCOPES.findIndex(
-    (candidate) => candidate.id === scope,
-  );
-  const current = PALETTE_THREAD_SEARCH_SCOPES[currentIndex];
-  const returnToInput = () => {
-    setOpen(false);
-    inputRef.current?.focus({ preventScroll: true });
-  };
-  const cycle = (direction: 1 | -1) => {
-    const nextIndex =
-      (currentIndex + direction + PALETTE_THREAD_SEARCH_SCOPES.length) %
-      PALETTE_THREAD_SEARCH_SCOPES.length;
-    const next = PALETTE_THREAD_SEARCH_SCOPES[nextIndex];
-    if (next !== undefined) onScopeChange(next.id);
-    setOpen(true);
-  };
-
-  return (
-    <div className="relative shrink-0">
-      <button
-        type="button"
-        aria-haspopup="listbox"
-        aria-expanded={open}
-        aria-label="Thread scope"
-        className="rounded-md px-2 py-1 text-xs text-muted-foreground outline-none hover:bg-state-hover focus-visible:ring-2 focus-visible:ring-ring"
-        onClick={() => setOpen((value) => !value)}
-        onKeyDown={(event) => {
-          if (event.key === "ArrowDown" || event.key === "ArrowUp") {
-            event.preventDefault();
-            cycle(event.key === "ArrowDown" ? 1 : -1);
-            return;
-          }
-          if (event.key === "Enter") {
-            event.preventDefault();
-            event.stopPropagation();
-            if (open) {
-              returnToInput();
-            } else {
-              setOpen(true);
-            }
-            return;
-          }
-          if (event.key === "Escape") {
-            event.preventDefault();
-            event.stopPropagation();
-            returnToInput();
-          }
-        }}
-      >
-        {current?.label ?? "All"} <span aria-hidden>▾</span>
-      </button>
-      {open ? (
-        <div
-          role="listbox"
-          aria-label="Thread scope options"
-          className="absolute right-0 top-full z-50 mt-1 min-w-28 rounded-md border bg-popover p-1 shadow-md"
-        >
-          {PALETTE_THREAD_SEARCH_SCOPES.map((option) => (
-            <div
-              key={option.id}
-              role="option"
-              aria-selected={option.id === scope}
-              className={cn(
-                "cursor-pointer rounded-sm px-2 py-1.5 text-sm",
-                option.id === scope && "bg-state-hover",
-              )}
-              onPointerDown={(event) => event.preventDefault()}
-              onClick={() => {
-                onScopeChange(option.id);
-                returnToInput();
-              }}
-            >
-              {option.label}
-            </div>
-          ))}
-        </div>
-      ) : null}
-    </div>
   );
 }
 
@@ -438,12 +272,7 @@ function ThreadSearchPaletteRow({
     }
   }, [matchKey, row.highlightRanges.length, shouldWindowMatch]);
 
-  const stateLabel =
-    row.lifecycle === "active"
-      ? null
-      : row.lifecycle === "draft"
-        ? "Draft"
-        : "Archived";
+  const stateLabel = row.lifecycle === "archived" ? "Archived" : null;
   return (
     <div
       id={id}
