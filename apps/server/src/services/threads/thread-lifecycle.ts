@@ -60,13 +60,14 @@ import {
 } from "../../internal/command-result-side-effects.js";
 import {
   appendSystemErrorEventInTransaction,
-  buildSystemErrorEventData,
   appendThreadEventInTransaction,
   appendThreadEventsInTransaction,
   appendThreadInterruptedEventInTransaction,
   appendThreadProvisioningEventInTransaction,
+  buildSystemErrorEventData,
   getActiveTurnId,
   getLastProviderThreadId,
+  requireDispatchableProviderThreadId,
 } from "./thread-events.js";
 import {
   applyLoggedThreadLifecycleEvent,
@@ -767,6 +768,14 @@ function recordEmptyThreadStartProviderSessionInTransaction(
     threadId: args.thread.id,
     environmentId: args.command.environmentId,
     providerThreadId: args.report.result.providerThreadId,
+    type: "thread/identity",
+    scope: threadScope(),
+    data: { providerThreadId: args.report.result.providerThreadId },
+  });
+  appendThreadEventInTransaction(args.deps.db, {
+    threadId: args.thread.id,
+    environmentId: args.command.environmentId,
+    providerThreadId: args.report.result.providerThreadId,
     type: "system/thread-provisioning",
     scope: threadScope(),
     data: {
@@ -955,7 +964,10 @@ export async function prepareReadyThreadTurnCommand(
   await ensureHostSessionReadyForWork(deps, {
     hostId: args.environment.hostId,
   });
-  const providerThreadId = getLastProviderThreadId(deps, args.thread.id);
+  const providerThreadId = requireDispatchableProviderThreadId(
+    deps,
+    args.thread.id,
+  );
   if (providerThreadId) {
     const preparedCommand = await prepareTurnSubmitCommandPayload(deps, {
       environment: args.environment,

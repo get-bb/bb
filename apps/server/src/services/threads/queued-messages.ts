@@ -1,11 +1,12 @@
 import {
-  claimQueuedThreadMessageGroup,
   claimNextQueuedThreadMessageGroup,
+  claimQueuedThreadMessageGroup,
   createQueuedThreadMessageInTransaction,
   deleteClaimedQueuedThreadMessageBatchInTransaction,
-  getQueuedThreadMessage,
   getEnvironment,
   getHost,
+  getQueuedThreadMessage,
+  getStoredProviderSession,
   getThread,
   isOrdinaryTurnEndQueuedMessage,
   isThreadQueueAutoSendPaused,
@@ -178,16 +179,17 @@ export interface CreateQueuedMessageForThreadArgs {
 function admitQueuedMessage(
   db: DbQueryConnection,
   thread: Thread,
-): { providerThreadId: string | null } {
+): { hasProviderSession: boolean } {
   ensureThreadIsWritable(thread);
-  const providerThreadId = getLastProviderThreadId({ db }, thread.id);
+  const hasProviderSession =
+    getStoredProviderSession(db, thread.id).kind !== "none";
   if (thread.environmentId === null) {
-    if (providerThreadId !== null) {
+    if (hasProviderSession) {
       throwThreadEnvironmentUnavailable(
         threadEnvironmentUnavailableDetails("never_attached", null),
       );
     }
-    return { providerThreadId };
+    return { hasProviderSession };
   }
   const environment = getEnvironment(db, thread.environmentId);
   const goneDetails = environment
@@ -196,7 +198,7 @@ function admitQueuedMessage(
   if (goneDetails) {
     throwThreadEnvironmentUnavailable(goneDetails);
   }
-  return { providerThreadId };
+  return { hasProviderSession };
 }
 
 export async function createQueuedMessageForThread(
@@ -217,14 +219,14 @@ export async function createQueuedMessageForThread(
     senderThreadId: payload.senderThreadId,
     targetThread: thread,
   });
-  const { currentThread, providerThreadId, queuedMessage } =
+  const { currentThread, hasProviderSession, queuedMessage } =
     deps.db.transaction(
       (tx) => {
         const currentThread = getThread(tx, thread.id);
         if (!currentThread) {
           throw new ApiError(404, "thread_not_found", "Thread not found");
         }
-        const { providerThreadId } = admitQueuedMessage(tx, currentThread);
+        const { hasProviderSession } = admitQueuedMessage(tx, currentThread);
         const queuedMessage = createQueuedThreadMessageInTransaction(tx, {
           threadId: thread.id,
           content: payload.input,
@@ -242,7 +244,7 @@ export async function createQueuedMessageForThread(
           payload: { kind: "inline" },
           systemNotice: null,
         });
-        return { currentThread, providerThreadId, queuedMessage };
+        return { currentThread, hasProviderSession, queuedMessage };
       },
       { behavior: "immediate" },
     );
@@ -257,7 +259,7 @@ export async function createQueuedMessageForThread(
       },
     });
   }
-  if (currentThread.status === "idle" && providerThreadId !== null) {
+  if (currentThread.status === "idle" && hasProviderSession) {
     requestQueuedMessageDispatch(deps, {
       kind: "thread-ready",
       threadId: thread.id,

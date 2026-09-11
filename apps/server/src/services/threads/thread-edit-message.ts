@@ -8,6 +8,7 @@ import {
   getThread,
   hasQueuedThreadMessages,
   hasRootStoredTurnStarted,
+  classifyStoredProviderThreadClaim,
   listActiveBackgroundTaskCountsByThreadIds,
   type DbQueryConnection,
 } from "@bb/db";
@@ -266,6 +267,23 @@ function resolveEditableTurnCandidate(
       precedingCompletion.providerThreadId === null)
   ) {
     conflict("This earlier turn has no provider history");
+  }
+  const precedingSessionClaim =
+    precedingCompletion?.providerThreadId == null
+      ? null
+      : classifyStoredProviderThreadClaim(db, {
+          providerThreadId: precedingCompletion.providerThreadId,
+          threadId: thread.id,
+        });
+  if (precedingSessionClaim === "foreign") {
+    conflict(
+      "This earlier turn is recorded under another thread's provider session",
+    );
+  }
+  if (precedingSessionClaim === "ambiguous") {
+    conflict(
+      "This earlier turn is recorded under a provider session another thread announced at the same moment",
+    );
   }
   const precedingProviderCheckpoint =
     precedingTurnId === null

@@ -2,6 +2,8 @@ import {
   copyStoredThreadEventsInTransaction,
   findLastCompletedRootStoredTurn,
   findLastRootStoredTurnStarted,
+  classifyStoredProviderThreadClaim,
+  getStoredProviderSession,
   listStoredEventRows,
   listStoredTurnCompletedRowsByTurnIds,
   type StoredEventRow,
@@ -10,10 +12,7 @@ import type { Thread, ThreadEvent, ThreadEventType } from "@bb/domain";
 import type { AppDeps } from "../../types.js";
 import { ApiError } from "../../errors.js";
 import { parseStoredEvent } from "./thread-data.js";
-import {
-  getLastProviderThreadId,
-  parseStoredTurnRequestEvent,
-} from "./thread-events.js";
+import { parseStoredTurnRequestEvent } from "./thread-events.js";
 import { resolveTurnProviderCheckpointId } from "./thread-edit-message.js";
 import type { ThreadForkDescriptor } from "./thread-startup-store.js";
 
@@ -48,6 +47,20 @@ function readTurnCompletion(
     throw new Error(`Expected turn/completed event #${row.sequence}`);
   }
   return { event, sequence: row.sequence };
+}
+
+function classifyCompletionSession(
+  deps: Pick<AppDeps, "db">,
+  args: { completion: StoredTurnCompletion; sourceThreadId: string },
+): "owned" | "foreign" | "ambiguous" {
+  if (args.completion.event.providerThreadId === null) {
+    return "foreign";
+  }
+  const claim = classifyStoredProviderThreadClaim(deps.db, {
+    providerThreadId: args.completion.event.providerThreadId,
+    threadId: args.sourceThreadId,
+  });
+  return claim === "unannounced" ? "owned" : claim;
 }
 
 function resolveCheckpointForkDescriptor(args: {
@@ -99,6 +112,20 @@ function resolveAnchoredForkPoint(
       `Cannot fork at sequence ${args.sourceSeqEnd}: the turn containing it has no provider session`,
     );
   }
+  const completionSession = classifyCompletionSession(deps, {
+    completion,
+    sourceThreadId: args.sourceThread.id,
+  });
+  if (completionSession === "foreign") {
+    forkPointUnavailable(
+      `Cannot fork at sequence ${args.sourceSeqEnd}: the turn containing it is recorded under another thread's provider session`,
+    );
+  }
+  if (completionSession === "ambiguous") {
+    forkPointUnavailable(
+      `Cannot fork at sequence ${args.sourceSeqEnd}: the turn containing it is recorded under a provider session another thread announced at the same moment`,
+    );
+  }
   const latestRootTurn = findLastRootStoredTurnStarted(deps.db, {
     threadId: args.sourceThread.id,
   });
@@ -146,13 +173,21 @@ export function resolveThreadForkPoint(
       sourceThread: args.sourceThread,
     });
   }
-  const sourceProviderThreadId = getLastProviderThreadId(
-    deps,
-    args.sourceThread.id,
-  );
-  if (sourceProviderThreadId === null) {
+  const sourceSession = getStoredProviderSession(deps.db, args.sourceThread.id);
+  if (sourceSession.kind === "none") {
     return null;
   }
+  if (sourceSession.kind === "ambiguous") {
+    forkPointUnavailable(
+      "Cannot fork: another thread announced the source thread's provider session at the same moment, so bb cannot tell whose it is",
+    );
+  }
+  if (sourceSession.kind === "foreign") {
+    forkPointUnavailable(
+      "Cannot fork: the source thread's only provider session belongs to another thread",
+    );
+  }
+  const sourceProviderThreadId = sourceSession.providerThreadId;
   const lastCompletedTurn = findLastCompletedRootStoredTurn(deps.db, {
     threadId: args.sourceThread.id,
   });
@@ -178,7 +213,11 @@ export function resolveThreadForkPoint(
     turnId: lastCompletedTurn.turnId,
   });
   const descriptor =
-    completion === null
+    completion === null ||
+    classifyCompletionSession(deps, {
+      completion,
+      sourceThreadId: args.sourceThread.id,
+    }) !== "owned"
       ? null
       : resolveCheckpointForkDescriptor({
           completion,

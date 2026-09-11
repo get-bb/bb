@@ -333,6 +333,30 @@ export function seedTurnStarted(
   });
 }
 
+export function seedThreadIdentity(
+  deps: Pick<AppDeps, "db" | "hub">,
+  args: {
+    createdAt?: number;
+    environmentId?: string | null;
+    providerThreadId: string;
+    sequence?: number;
+    threadId: string;
+  },
+): void {
+  seedEvent(deps, {
+    threadId: args.threadId,
+    environmentId: args.environmentId ?? null,
+    providerThreadId: args.providerThreadId,
+    createdAt: args.createdAt,
+    sequence:
+      args.sequence ??
+      getLatestThreadSequence(deps.db, { threadId: args.threadId }) + 1,
+    type: "thread/identity",
+    scope: threadScope(),
+    data: {},
+  });
+}
+
 export function seedThreadRuntimeState(
   deps: Pick<AppDeps, "db" | "hub">,
   args: {

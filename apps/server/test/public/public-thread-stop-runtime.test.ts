@@ -4,7 +4,7 @@ import {
   listEvents,
   listQueuedThreadMessages,
 } from "@bb/db";
-import { turnScope } from "@bb/domain";
+import { threadScope, turnScope } from "@bb/domain";
 import { groupHostDaemonEvents } from "@bb/host-daemon-contract";
 import { describe, expect, it } from "vitest";
 import {
@@ -674,6 +674,15 @@ describe("thread runtime stop", () => {
         body: JSON.stringify({
           sessionId: session.id,
           eventGroups: groupHostDaemonEvents([
+            {
+              threadId: thread.id,
+              event: {
+                type: "thread/identity",
+                threadId: thread.id,
+                providerThreadId: "provider-stopped-runtime",
+                scope: threadScope(),
+              },
+            },
             {
               threadId: thread.id,
               event: {
