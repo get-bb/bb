@@ -491,7 +491,7 @@ function resolveMarkdownLocalPath(
       };
 }
 
-export function buildLocalAwareUrlTransform({
+function buildLocalAwareUrlTransform({
   fallbackUrlTransform,
   localFileRouting,
   localImageRouting,
@@ -1536,7 +1536,7 @@ function cssPixels(value: string): number {
 const FRONTMATTER_PATTERN =
   /^---[ \t]*\r?\n([\s\S]*?)\r?\n---[ \t]*(?:\r?\n|$)/;
 
-export function splitMarkdownFrontmatter(markdown: string): {
+function splitMarkdownFrontmatter(markdown: string): {
   frontmatter: string | null;
   body: string;
 } {
