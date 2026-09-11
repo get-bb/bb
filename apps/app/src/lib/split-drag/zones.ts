@@ -85,12 +85,14 @@ interface ThreadDropInput {
   zone: SplitZone;
   threadAlreadyOpen: boolean;
   atMaxPanes: boolean;
+  singlePane?: boolean;
 }
 
 export function decideThreadDrop({
   zone,
   threadAlreadyOpen,
   atMaxPanes,
+  singlePane = false,
 }: ThreadDropInput): ZoneDecision {
   if (threadAlreadyOpen) {
     return { zone: "center", label: "Already open — focus pane" };
@@ -98,9 +100,13 @@ export function decideThreadDrop({
   if (atMaxPanes) {
     return { zone: "center", label: "Replace this chat" };
   }
+  const resolvedZone = singlePane && zone === "center" ? "right" : zone;
   return {
-    zone,
-    label: zone === "center" ? "Replace this chat" : `Split ${zone}`,
+    zone: resolvedZone,
+    label:
+      resolvedZone === "center"
+        ? "Replace this chat"
+        : `Split ${resolvedZone}`,
   };
 }
 

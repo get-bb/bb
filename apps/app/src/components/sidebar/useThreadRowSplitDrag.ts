@@ -82,6 +82,7 @@ export function useThreadRowSplitDrag({
             threadAlreadyOpen:
               findPaneByThread(layout.root, projectId, threadId) !== null,
             atMaxPanes: countPanes(layout.root) >= MAX_PANES,
+            singlePane: countPanes(layout.root) === 1,
           });
         },
         onDrop: (target) => {

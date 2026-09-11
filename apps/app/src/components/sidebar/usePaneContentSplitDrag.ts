@@ -127,6 +127,7 @@ export function usePaneContentSplitActions() {
             zone,
             threadAlreadyOpen: findPaneByContent(layout.root, content) !== null,
             atMaxPanes: countPanes(layout.root) >= MAX_PANES,
+            singlePane: countPanes(layout.root) === 1,
           });
         },
         onDrop: (target) => {

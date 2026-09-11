@@ -89,6 +89,17 @@ describe("decideThreadDrop", () => {
     ).toEqual({ zone: "center", label: "Replace this chat" });
   });
 
+  it("splits a center zone when the workspace has a single pane", () => {
+    expect(
+      decideThreadDrop({
+        zone: "center",
+        threadAlreadyOpen: false,
+        atMaxPanes: false,
+        singlePane: true,
+      }),
+    ).toEqual({ zone: "right", label: "Split right" });
+  });
+
   it("coerces edges to center-replace at the pane cap", () => {
     expect(
       decideThreadDrop({
