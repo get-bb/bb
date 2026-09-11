@@ -12,8 +12,8 @@ describe("CommentProviderAvatar", () => {
       id: "codex",
       name: "Codex",
       logoUrl: "/api/v1/system/providers/codex/logo",
-      iconGlyph: null,
-      iconTint: null,
+      icon: null,
+      strings: { iconTint: null },
     };
     const { container } = render(<CommentProviderAvatar provider={provider} />);
 
@@ -38,8 +38,8 @@ describe("CommentProviderAvatar", () => {
       id: "acp-unknown",
       name: "Unknown Agent",
       logoUrl: null,
-      iconGlyph: "Check",
-      iconTint: { light: "#123456", dark: "#abcdef" },
+      icon: { glyph: "Check" },
+      strings: { iconTint: { light: "#123456", dark: "#abcdef" } },
     };
     const { container } = render(<CommentProviderAvatar provider={provider} />);
 
@@ -47,7 +47,7 @@ describe("CommentProviderAvatar", () => {
     const mark = container.querySelector('[data-provider-id="acp-unknown"]');
     expect(mark?.getAttribute("data-provider-glyph")).toBe("Check");
     expect(mark?.getAttribute("data-provider-tint")).toBe(
-      JSON.stringify(provider.iconTint),
+      JSON.stringify(provider.strings.iconTint),
     );
     expect(mark?.getAttribute("data-provider-fallback")).toBe("Bot");
     expect(container.querySelector("[data-provider-logo]")).toBeNull();

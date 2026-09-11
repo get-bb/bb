@@ -34,9 +34,11 @@ export function getProviderIconInfo(
       className,
     }) =>
       createElement(ProviderIcon, {
-        providerId,
-        logoUrl: source?.logoUrl,
-        glyph: source?.icon?.glyph,
+        provider: {
+          id: providerId,
+          logoUrl: source?.logoUrl,
+          icon: source?.icon,
+        },
         className,
       });
     icon = ResolvedProviderIcon;

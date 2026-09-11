@@ -32,16 +32,16 @@ class ProviderIconErrorBoundary extends Component<
 }
 
 export function ProviderIcon({
-  providerId,
-  logoUrl,
-  glyph,
-  tint,
+  provider,
   fallback = "Code",
   className,
   "aria-hidden": ariaHidden,
   "aria-label": ariaLabel,
 }: ExperimentalProviderIconProps) {
   "use no memo";
+  const { id: providerId, logoUrl, icon } = provider;
+  const glyph = typeof icon === "string" ? icon : icon?.glyph;
+  const tint = provider.strings?.iconTint;
   const ancestors = useContext(ProviderIconAncestors);
   const slot = useSyncExternalStore(
     subscribePluginSlots,

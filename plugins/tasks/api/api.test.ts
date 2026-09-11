@@ -369,30 +369,30 @@ describe("Tasks RPC domain API", () => {
       id: "codex",
       name: "Codex",
       logoUrl: null,
-      iconGlyph: "Check",
-      iconTint: { light: "#123456", dark: "#abcdef" },
+      icon: { glyph: "Check" },
+      strings: { iconTint: { light: "#123456", dark: "#abcdef" } },
     });
     expect(byBody.get("Custom logo")?.provider).toEqual({
       id: "acp-custom",
       name: "Custom Agent",
       logoUrl: "/api/v1/system/providers/acp-custom/logo",
-      iconGlyph: null,
-      iconTint: null,
+      icon: null,
+      strings: { iconTint: null },
     });
     expect(byBody.get("Side chat")?.provider).toEqual({
       id: "claude-code",
       name: "Claude Code",
       logoUrl: null,
-      iconGlyph: null,
-      iconTint: null,
+      icon: null,
+      strings: { iconTint: null },
     });
     expect(byBody.get("Side chat")?.threadTitle).toBeNull();
     expect(byBody.get("Uninstalled")?.provider).toEqual({
       id: "acp-gone",
       name: "acp-gone",
       logoUrl: null,
-      iconGlyph: null,
-      iconTint: null,
+      icon: null,
+      strings: { iconTint: null },
     });
     expect(byBody.get("Missing thread")?.provider).toBeNull();
     expect(byBody.get("Legacy")?.provider).toBeNull();

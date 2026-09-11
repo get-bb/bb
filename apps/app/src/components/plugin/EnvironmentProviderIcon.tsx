@@ -9,12 +9,6 @@ export function EnvironmentProviderIcon({
   className?: string;
 }) {
   return (
-    <ProviderIcon
-      providerId={provider.id}
-      logoUrl={provider.logoUrl}
-      glyph={provider.icon}
-      fallback="Zap"
-      className={className}
-    />
+    <ProviderIcon provider={provider} fallback="Zap" className={className} />
   );
 }

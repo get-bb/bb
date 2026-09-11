@@ -2939,18 +2939,20 @@ the existing manifest fields.
 ## `experimental_ProviderIcon`
 
 Shared frontend renderer for agent and environment provider artwork, exported
-from `@get-bb/plugin-sdk/app`. Props: `providerId`, optional `logoUrl`, `glyph`,
-`tint: { light, dark }`, `fallback` (default `Code`), `className`, `aria-label`,
-and `aria-hidden`. Metadata comes from existing provider queries; the component
-performs no fetch. An id alone resolves frontend slot registrations and fallback.
+from `@get-bb/plugin-sdk/app`. Pass the existing record as `provider`, plus optional
+`fallback` (default `Code`), `className`, `aria-label`, and `aria-hidden`.
+The renderer reads `provider.id`, `logoUrl`, `icon` (agent `{ glyph }` or environment
+string), and `strings.iconTint`. It performs no fetch; `{ id }` alone resolves
+frontend slot registrations and fallback. Marks are decorative by default.
 Resolution is provider slot override, supplied logo mask, supplied glyph through
 the app registry, then fallback. Invalid tints are ignored. Overrides update on
 load/reload/unload, remount per generation, and fall back on render errors or
 recursive provider references. Without an accessible label the mark is decorative.
 
 The BB provider helper, environment provider marks, Provider Usage and Tasks
-comment avatars use the same renderer. Tasks includes nullable glyph/tint fields
-in its computed comment-provider RPC data; no persisted records, manifest API,
+comment avatars use the same renderer. Both plugin responses preserve the SDK's
+`icon` and `strings.iconTint` field shapes so callers pass records directly. Tasks
+adds this artwork to computed comment-provider RPC data; no persisted records, manifest API,
 server/daemon wire fields or registration lifecycle change. This rendering-only
 surface uses existing provider SDK queries and CLI provider/plugin management.
 

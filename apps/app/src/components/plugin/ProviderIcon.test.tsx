@@ -33,9 +33,11 @@ afterEach(() => {
 it("resolves slot, asset, registered glyph and fallback in order", () => {
   const view = render(
     <ProviderIcon
-      providerId="acme"
-      logoUrl="/mark.svg"
-      glyph="acme/mark"
+      provider={{
+        id: "acme",
+        logoUrl: "/mark.svg",
+        icon: { glyph: "acme/mark" },
+      }}
       fallback="Check"
       className="size-4"
       aria-label="Acme"
@@ -65,11 +67,24 @@ it("resolves slot, asset, registered glyph and fallback in order", () => {
   });
   expect(view.container.querySelector("[data-provider-logo]")).not.toBeNull();
   view.rerender(
-    <ProviderIcon providerId="acme" glyph="acme/mark" fallback="Check" />,
+    <ProviderIcon
+      provider={{ id: "acme", icon: { glyph: "acme/mark" } }}
+      fallback="Check"
+    />,
   );
   expect(view.container.querySelector('[data-mark="glyph"]')).not.toBeNull();
   act(() => removePluginSlotRegistrations("acme"));
   expect(view.container.querySelector('[data-icon="Check"]')).not.toBeNull();
+});
+
+it("accepts the environment provider string icon shape", () => {
+  const view = render(
+    <ProviderIcon provider={{ id: "worktree", icon: "Check" }} />,
+  );
+  expect(view.container.querySelector('[data-icon="Check"]')).not.toBeNull();
+  expect(view.container.firstElementChild?.getAttribute("aria-hidden")).toBe(
+    "true",
+  );
 });
 
 it("remounts the same provider component on reload and restores fallback on unload", () => {
@@ -80,7 +95,7 @@ it("remounts the same provider component on reload and restores fallback on unlo
   }
   const setup = (app: PluginAppBuilder) =>
     app.slots.experimental_providerIcon({ providerId: "env", icon: Mark });
-  const view = render(<ProviderIcon providerId="env" />);
+  const view = render(<ProviderIcon provider={{ id: "env" }} />);
   expect(view.container.querySelector('[data-icon="Code"]')).not.toBeNull();
   register(setup);
   expect(view.container.querySelector('[data-generation="1"]')).not.toBeNull();
@@ -92,7 +107,9 @@ it("remounts the same provider component on reload and restores fallback on unlo
 
 it("contains throwing overrides and recovers after reload", () => {
   vi.spyOn(console, "error").mockImplementation(() => {});
-  const view = render(<ProviderIcon providerId="acme" logoUrl="/mark.svg" />);
+  const view = render(
+    <ProviderIcon provider={{ id: "acme", logoUrl: "/mark.svg" }} />,
+  );
   register((app) =>
     app.slots.experimental_providerIcon({
       providerId: "acme",
@@ -115,19 +132,23 @@ it("breaks recursive provider overrides at their declared artwork", () => {
   register((app) =>
     app.slots.experimental_providerIcon({
       providerId: "acme",
-      icon: () => <ProviderIcon providerId="acme" glyph="Check" />,
+      icon: () => (
+        <ProviderIcon provider={{ id: "acme", icon: { glyph: "Check" } }} />
+      ),
     }),
   );
-  const view = render(<ProviderIcon providerId="acme" />);
+  const view = render(<ProviderIcon provider={{ id: "acme" }} />);
   expect(view.container.querySelector('[data-icon="Check"]')).not.toBeNull();
 });
 
 it("escapes asset URLs and applies only valid theme tints", () => {
   const view = render(
     <ProviderIcon
-      providerId="acme"
-      logoUrl={'/mark".svg'}
-      tint={{ light: "#123456", dark: "#abcdef" }}
+      provider={{
+        id: "acme",
+        logoUrl: '/mark".svg',
+        strings: { iconTint: { light: "#123456", dark: "#abcdef" } },
+      }}
       aria-label="Acme"
     />,
   );
@@ -140,8 +161,10 @@ it("escapes asset URLs and applies only valid theme tints", () => {
   );
   view.rerender(
     <ProviderIcon
-      providerId="acme"
-      tint={{ light: "url(evil)", dark: "red" }}
+      provider={{
+        id: "acme",
+        strings: { iconTint: { light: "url(evil)", dark: "red" } },
+      }}
       aria-label="Acme"
     />,
   );

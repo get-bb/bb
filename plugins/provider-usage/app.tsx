@@ -134,26 +134,6 @@ function refreshUsage({
   })();
 }
 
-function ProviderMark({
-  provider,
-  className,
-}: {
-  provider: UsageProvider;
-  className: string;
-}) {
-  return (
-    <ProviderIcon
-      providerId={provider.id}
-      logoUrl={provider.logoUrl}
-      glyph={provider.iconGlyph}
-      tint={provider.iconTint}
-      fallback="Bot"
-      className={className}
-      aria-hidden="true"
-    />
-  );
-}
-
 function barColorClass(usedPercent: number): string {
   if (usedPercent >= 95) return "bg-destructive";
   if (usedPercent >= 80) return "bg-warning";
@@ -481,7 +461,11 @@ function ProviderUsageStatus({
                   onClick={() => selectProvider(provider.id)}
                   onKeyDown={(event) => handleTabKeyDown(event, index)}
                 >
-                  <ProviderMark provider={provider} className="size-4" />
+                  <ProviderIcon
+                    provider={provider}
+                    fallback="Bot"
+                    className="size-4"
+                  />
                   {tone === null ? null : (
                     <span
                       aria-hidden="true"

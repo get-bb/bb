@@ -852,20 +852,21 @@ const testPluginSdkApp = {
   experimental_Icon: ({ name, fallback, ...props }) => (
     <span {...props} data-icon={name} data-icon-fallback={fallback} />
   ),
-  experimental_ProviderIcon: ({
-    providerId,
-    logoUrl,
-    glyph,
-    tint,
-    fallback,
-    ...props
-  }) => (
+  experimental_ProviderIcon: ({ provider, fallback, ...props }) => (
     <span
       {...props}
-      data-provider-id={providerId}
-      data-provider-logo={logoUrl ?? undefined}
-      data-provider-glyph={glyph ?? undefined}
-      data-provider-tint={tint == null ? undefined : JSON.stringify(tint)}
+      data-provider-id={provider.id}
+      data-provider-logo={provider.logoUrl ?? undefined}
+      data-provider-glyph={
+        (typeof provider.icon === "string"
+          ? provider.icon
+          : provider.icon?.glyph) ?? undefined
+      }
+      data-provider-tint={
+        provider.strings?.iconTint == null
+          ? undefined
+          : JSON.stringify(provider.strings.iconTint)
+      }
       data-provider-fallback={fallback}
     />
   ),

@@ -14,7 +14,7 @@ export function CommentProviderAvatar({
 }: {
   provider: CommentProvider | null;
 }) {
-  const hasArtwork = provider?.logoUrl != null || provider?.iconGlyph != null;
+  const hasArtwork = provider?.logoUrl != null || provider?.icon != null;
   return (
     <span
       role="img"
@@ -25,13 +25,9 @@ export function CommentProviderAvatar({
         <Icon name="Bot" className="size-3.5" aria-hidden="true" />
       ) : (
         <ProviderIcon
-          providerId={provider.id}
-          logoUrl={provider.logoUrl}
-          glyph={provider.iconGlyph}
-          tint={provider.iconTint}
+          provider={provider}
           fallback="Bot"
           className={hasArtwork ? "size-4" : "size-3.5"}
-          aria-hidden="true"
         />
       )}
     </span>

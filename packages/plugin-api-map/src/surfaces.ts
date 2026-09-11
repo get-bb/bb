@@ -1017,7 +1017,7 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
           "Inherit bb's styling, so embedded UI matches the rest of the app",
           "Register inline React artwork with app.experimental_icons.register({ name, component }); namespacing is recommended, but any plugin can use any name",
           "Add names or override built-in app icons; conflicts between plugins use the first plugin id in lexical order and warn, while duplicate names within one plugin reject setup",
-          "Render experimental_ProviderIcon with providerId and optional logoUrl, glyph, tint, and fallback (Code by default). It resolves a provider slot override, then the supplied logo, glyph, or fallback; it fetches no metadata. Pass aria-label for a meaningful standalone image; otherwise it is decorative",
+          "Render experimental_ProviderIcon with provider={provider} and optional fallback (Code by default). Pass an existing agent or environment provider record: it reads id, logoUrl, icon, and strings.iconTint, resolving the provider slot override before the declared artwork. It fetches no metadata. Marks are decorative by default; pass aria-label for a meaningful standalone image",
           "Provider icons update on plugin load/reload/unload; throwing or recursive overrides fall back to supplied artwork. Use the same component for agent and environment providers",
           "Render experimental_Icon with a name and optional fallback; missing names try the fallback, then Zap. Registered artwork receives className and should use currentColor",
           "Return nothing from icon registration: bb replaces icons on plugin reload and restores previous definitions on unload. Manifest branding and SVG asset declarations remain separate",

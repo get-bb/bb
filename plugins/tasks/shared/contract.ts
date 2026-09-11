@@ -161,11 +161,15 @@ const commentProviderSchema = z
     id: z.string(),
     name: z.string(),
     logoUrl: z.string().nullable(),
-    iconGlyph: z.string().nullable(),
-    iconTint: z
-      .object({ light: z.string(), dark: z.string() })
-      .strict()
-      .nullable(),
+    icon: z.object({ glyph: z.string() }).strict().nullable(),
+    strings: z
+      .object({
+        iconTint: z
+          .object({ light: z.string(), dark: z.string() })
+          .strict()
+          .nullable(),
+      })
+      .strict(),
   })
   .strict();
 

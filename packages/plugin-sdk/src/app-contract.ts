@@ -1671,14 +1671,18 @@ export interface ExperimentalIconProps {
 
 /** Shared provider artwork without fetching provider metadata. */
 export interface ExperimentalProviderIconProps {
-  /** Agent or environment provider id, not the owning plugin id. */
-  providerId: string;
-  /** Declared asset URL from the provider record, when available. */
-  logoUrl?: string | null;
-  /** Declared glyph; resolves through the shared app icon registry. */
-  glyph?: string | null;
-  /** Optional theme colors from the provider's strings.iconTint. */
-  tint?: { light: string; dark: string } | null;
+  /**
+   * Existing agent or environment provider record. Reads id, logoUrl, icon and
+   * strings.iconTint; other fields are ignored. An id-only record is sufficient
+   * when only frontend registrations and fallback are needed. Does not fetch.
+   */
+  provider: {
+    id: string;
+    logoUrl?: string | null;
+    /** Agent providers use { glyph }; environment providers use a string. */
+    icon?: { glyph: string } | string | null;
+    strings?: { iconTint?: { light: string; dark: string } | null } | null;
+  };
   /** Used when no artwork is available; defaults to Code. */
   fallback?: string;
   className?: string;
@@ -2486,9 +2490,9 @@ export interface BbNavigate {
 export interface PluginSdkApp {
   experimental_Icon: ComponentType<ExperimentalIconProps>;
   /**
-   * Render provider slot override, then logoUrl, then glyph, then fallback.
-   * Supply metadata from providers.list/useProviders or environment providers;
-   * an id alone resolves frontend registrations, without fetching metadata.
+   * Render provider slot override, then its logo, then its glyph, then fallback.
+   * Pass a record from providers.list/useProviders or environment providers;
+   * an id-only record resolves frontend registrations, without fetching metadata.
    * Updates on plugin load, reload and unload. Throwing or recursive overrides
    * fall back to declared artwork. Logo assets render as currentColor masks.
    */
