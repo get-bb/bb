@@ -1,3 +1,4 @@
+import { paneContentRoute } from "@/views/thread-detail/splitThreadNavigation";
 import {
   createContext,
   useCallback,
@@ -138,9 +139,12 @@ export function ThreadActionsProvider({
 
   const syncNavigationAfterClose = useCallback(
     (result: ClosePanesForThreadsResult, navigateAway: () => void) => {
-      if (result.removedAny && result.focusedRoute !== null) {
-        if (result.focusedRoute.threadId !== viewedThreadIdRef.current) {
-          navigate(getThreadRoutePath(result.focusedRoute), { replace: true });
+      if (result.removedAny && result.focusedContent !== null) {
+        if (
+          result.focusedContent.kind !== "thread" ||
+          result.focusedContent.threadId !== viewedThreadIdRef.current
+        ) {
+          navigate(paneContentRoute(result.focusedContent), { replace: true });
         }
         return;
       }

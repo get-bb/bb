@@ -5,7 +5,10 @@ import { fireEvent, render, screen } from "@testing-library/react";
 import { MemoryRouter, Route, Routes, useNavigate } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { PaneContent } from "@/lib/split-layout";
+import { getDraftRoutePath } from "@/lib/draft-route";
 import SplitWorkspaceRoute from "./SplitWorkspaceRoute";
+
+const DRAFT_ID = "drf_workspace_test";
 
 const workspaceLifecycle = vi.hoisted(() => ({ mounts: 0, unmounts: 0 }));
 
@@ -17,7 +20,16 @@ vi.mock("./thread-detail/SplitThreadArea", () => ({
         workspaceLifecycle.unmounts += 1;
       };
     }, []);
-    return <output data-testid="route-content">{routeContent.kind}</output>;
+    return (
+      <output
+        data-testid="route-content"
+        data-draft-id={
+          routeContent.kind === "new-thread" ? routeContent.draftId : undefined
+        }
+      >
+        {routeContent.kind}
+      </output>
+    );
   },
 }));
 
@@ -35,7 +47,9 @@ function NavigationControls() {
   const navigate = useNavigate();
   return (
     <>
-      <button onClick={() => navigate("/")}>compose</button>
+      <button onClick={() => navigate(getDraftRoutePath(DRAFT_ID))}>
+        compose
+      </button>
       <button onClick={() => navigate("/plugins/docs/docs/work/today.md")}>
         plugin
       </button>
@@ -52,7 +66,7 @@ describe("SplitWorkspaceRoute", () => {
 
   it("preserves the workspace mount across focus-driven page URL changes", () => {
     render(
-      <MemoryRouter initialEntries={["/"]}>
+      <MemoryRouter initialEntries={[getDraftRoutePath(DRAFT_ID)]}>
         <NavigationControls />
         <Routes>
           <Route path="*" element={<SplitWorkspaceRoute />} />
@@ -61,6 +75,7 @@ describe("SplitWorkspaceRoute", () => {
     );
 
     expect(screen.getByTestId("route-content").textContent).toBe("new-thread");
+    expect(screen.getByTestId("route-content").dataset.draftId).toBe(DRAFT_ID);
 
     fireEvent.click(screen.getByRole("button", { name: "plugin" }));
     expect(screen.getByTestId("route-content").textContent).toBe(

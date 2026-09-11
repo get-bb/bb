@@ -29,6 +29,57 @@ async function resetPreference(
 }
 
 describe("public ui preferences", () => {
+  it("persists nonempty sidebar lifecycle choices and resets without changing organization", async () => {
+    await withTestHarness(async (harness) => {
+      expect(await readJson(await listPreferences(harness))).toMatchObject({
+        preferences: {
+          "sidebar.lifecycleFilter": { value: ["active"], revision: 0 },
+        },
+      });
+      await putPreference(harness, "sidebar.organizationMode", {
+        expectedRevision: 0,
+        value: "machine",
+      });
+      const saved = await putPreference(harness, "sidebar.lifecycleFilter", {
+        expectedRevision: 0,
+        value: ["drafts", "archived"],
+      });
+      expect(saved.status).toBe(200);
+      expect(await readJson(await listPreferences(harness))).toMatchObject({
+        preferences: {
+          "sidebar.lifecycleFilter": {
+            value: ["drafts", "archived"],
+            revision: 1,
+          },
+          "sidebar.organizationMode": { value: "machine", revision: 1 },
+        },
+      });
+      for (const value of [[], ["active", "active"], ["closed"]]) {
+        expect(
+          (
+            await putPreference(harness, "sidebar.lifecycleFilter", {
+              expectedRevision: 1,
+              value,
+            })
+          ).status,
+        ).toBe(400);
+      }
+      expect(
+        await readJson(
+          await resetPreference(harness, "sidebar.lifecycleFilter"),
+        ),
+      ).toMatchObject({
+        value: ["active"],
+        revision: 2,
+      });
+      expect(await readJson(await listPreferences(harness))).toMatchObject({
+        preferences: {
+          "sidebar.organizationMode": { value: "machine", revision: 1 },
+        },
+      });
+    });
+  });
+
   it("adds sort direction without replacing an existing sort field and can reset it", async () => {
     await withTestHarness(async (harness) => {
       expect(

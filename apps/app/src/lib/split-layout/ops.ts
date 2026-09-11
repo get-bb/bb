@@ -68,7 +68,12 @@ export function findPaneByContent(
     listPanes(root).find((pane) => {
       const candidate = pane.content;
       if (candidate.kind !== content.kind) return false;
-      if (content.kind === "new-thread") return true;
+      if (content.kind === "new-thread") {
+        return (
+          candidate.kind === "new-thread" &&
+          candidate.draftId === content.draftId
+        );
+      }
       if (content.kind === "thread") {
         return (
           candidate.kind === "thread" &&
@@ -205,6 +210,20 @@ export function replacePaneContent(
     root: replacePaneNode(layout.root, paneId, { ...pane, content }),
     focusedPaneId: paneId,
   };
+}
+
+export function replaceDraftPaneContent(
+  layout: SplitLayout | null,
+  paneId: string,
+  draftId: string,
+  content: PaneContent,
+): SplitLayout | null {
+  if (layout === null) return null;
+  const pane = findPane(layout.root, paneId);
+  if (pane?.content.kind !== "new-thread" || pane.content.draftId !== draftId)
+    return layout;
+  const next = replacePaneContent(layout, paneId, content);
+  return { ...next, focusedPaneId: layout.focusedPaneId };
 }
 
 interface DetachResult {

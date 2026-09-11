@@ -9,9 +9,13 @@ import {
   FORK_THREAD_CREATE_SEED_LOCATION_STATE_KEY,
   type ForkThreadCreateSeed,
 } from "@bb/client-core";
-import { getRootComposeRoutePath } from "@/lib/route-paths";
 import { RouteNavigationProvider } from "@/components/ui/app-route-anchor";
 import { useForkThreadFromMessage } from "./useForkThreadFromMessage";
+
+vi.mock("@/lib/drafts/resource-runtime", () => ({
+  createNewThreadDraft: () => "drf_fresh_navigation",
+  initializeNewThreadDraft: vi.fn(),
+}));
 
 const mocks = vi.hoisted(() => ({
   fetchQuery: vi.fn(),
@@ -52,6 +56,7 @@ vi.mock("@tanstack/react-query", async (importOriginal) => {
 });
 
 vi.mock("@/lib/root-compose-selection", () => ({
+  useRootComposeProjectId: () => ["proj_saved", vi.fn()],
   useSetRootComposeProjectId: () => mocks.setRootComposeProjectId,
 }));
 
@@ -101,12 +106,15 @@ describe("useForkThreadFromMessage", () => {
     });
 
     expect(mocks.setRootComposeProjectId).toHaveBeenCalledWith("proj_source");
-    expect(mocks.navigate).toHaveBeenCalledWith(getRootComposeRoutePath(), {
-      state: expect.objectContaining({
-        focusPrompt: true,
-        reuseEnvironmentId: "env_source",
-      }),
-    });
+    expect(mocks.navigate).toHaveBeenCalledWith(
+      "/?draft=drf_fresh_navigation",
+      {
+        state: expect.objectContaining({
+          focusPrompt: true,
+          reuseEnvironmentId: "env_source",
+        }),
+      },
+    );
 
     const navigateState = mocks.navigate.mock.calls[0]?.[1]?.state as
       | Record<string, unknown>

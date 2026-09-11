@@ -13,6 +13,10 @@ are separate from an active thread's unsent follow-up.
   attachment names. Omit --project for all projects. Blank/option-only drafts
   require --include-empty. Use --limit (1–200, default 50) and --offset for
   pagination; JSON returns drafts and nextOffset.
+- `bb thread draft open <id> [--split right|down|left|top|replace]` opens in
+  connected apps and returns a recipient count (zero when no app is connected).
+  It defaults to replacing the focused pane; edge placements add up to 8 panes.
+  An already-open draft is focused. Opening never changes or submits the draft.
 - Read `bb thread draft show <id> --json` (alias `get`) to obtain the revision and full
   content. `bb thread draft update <id> --expected-revision <revision> --text "..."`
   preserves attachments, options and destination. --project and --section edit

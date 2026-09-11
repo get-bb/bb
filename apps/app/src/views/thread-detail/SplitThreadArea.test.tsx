@@ -449,7 +449,10 @@ const pluginGuideContent: PaneContent = {
   subPath: "",
 };
 
-const newThreadContent: PaneContent = { kind: "new-thread" };
+const newThreadContent: PaneContent = {
+  kind: "new-thread",
+  draftId: "drf_navigation_test",
+};
 
 function pluginContent(panelPath: string): PaneContent {
   return {
@@ -1770,6 +1773,26 @@ describe("SplitThreadArea", () => {
     ).toEqual([screen.getByTestId("pane-thr-a")]);
   });
 
+  it("retains an already archived thread when it replaces an active thread in the same pane", async () => {
+    threadStore.set("thr-c", { archivedAt: 123, deletedAt: null });
+    const store = renderSplitArea({
+      path: threadPath("thr-b"),
+      layout: twoPaneLayout("pane-2"),
+      externalTo: threadPath("thr-c"),
+    });
+    expect(await screen.findByTestId("pane-thr-b")).toBeTruthy();
+
+    fireEvent.click(screen.getByTestId("external-nav"));
+
+    expect(await screen.findByTestId("pane-thr-c")).toBeTruthy();
+    expect(screen.getByTestId("pane-thr-a")).toBeTruthy();
+    expect(screen.queryByTestId("pane-thr-b")).toBeNull();
+    expect(store.get(splitLayoutAtom)?.focusedPaneId).toBe("pane-2");
+    expect(screen.getByTestId("location").textContent).toBe(
+      threadPath("thr-c"),
+    );
+  });
+
   it("focuses an already-open pane instead of duplicating on external navigation", async () => {
     renderSplitArea({
       path: threadPath("thr-b"),
@@ -2244,16 +2267,15 @@ describe("SplitThreadArea", () => {
     expect(screen.queryByTestId("pane-thr-b")).toBeNull();
   });
 
-  it("prunes a stale (archived) pane from a restored split", async () => {
+  it("retains an already archived pane from a restored split", async () => {
     threadStore.set("thr-b", { archivedAt: 123, deletedAt: null });
-    renderSplitArea({
+    const store = renderSplitArea({
       path: threadPath("thr-a"),
       layout: twoPaneLayout("pane-1"),
     });
 
-    await waitFor(() => {
-      expect(screen.queryByTestId("pane-thr-b")).toBeNull();
-    });
+    expect(await screen.findByTestId("pane-thr-b")).toBeTruthy();
+    expect(store.get(splitLayoutAtom)).toEqual(twoPaneLayout("pane-1"));
     expect(screen.getByTestId("pane-thr-a")).toBeTruthy();
     expect(screen.getByTestId("location").textContent).toBe(
       threadPath("thr-a"),

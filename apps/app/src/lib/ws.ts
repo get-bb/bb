@@ -1,6 +1,7 @@
 import ReconnectingWebSocket from "partysocket/ws";
 import {
   changedMessageLenientSchema,
+  draftOpenSignalLenientSchema,
   pluginSignalLenientSchema,
   pongMessageLenientSchema,
   realtimeSubscriptionTargetKey,
@@ -9,6 +10,7 @@ import {
 } from "@bb/server-contract";
 import type {
   ClientMessage,
+  DraftOpenSignal,
   ChangedMessage,
   PluginSignal,
   RealtimeSubscriptionTarget,
@@ -23,6 +25,7 @@ import {
 } from "./document-visibility";
 
 type ChangeCallback = (message: ChangedMessage) => void;
+type DraftOpenCallback = (signal: DraftOpenSignal) => void;
 type ThreadOpenCallback = (signal: ThreadOpenSignal) => void;
 type ThreadPaneActionCallback = (signal: ThreadPaneActionSignal) => void;
 type PluginSignalCallback = (signal: PluginSignal) => void;
@@ -73,6 +76,7 @@ export class WebSocketManager {
   private socket: ReconnectingWebSocket | null = null;
   private subscriptions = new Map<string, ActiveSubscription>();
   private callbacks = new Set<ChangeCallback>();
+  private draftOpenCallbacks = new Set<DraftOpenCallback>();
   private threadOpenCallbacks = new Set<ThreadOpenCallback>();
   private threadPaneActionCallbacks = new Set<ThreadPaneActionCallback>();
   private pluginSignalCallbacks = new Set<PluginSignalCallback>();
@@ -281,6 +285,12 @@ export class WebSocketManager {
       return;
     }
 
+    const draftOpen = draftOpenSignalLenientSchema.safeParse(parsed);
+    if (draftOpen.success) {
+      for (const cb of this.draftOpenCallbacks) cb(draftOpen.data);
+      return;
+    }
+
     const threadOpen = threadOpenSignalLenientSchema.safeParse(parsed);
     if (threadOpen.success) {
       if (threadOpen.data.file !== null) {
@@ -373,6 +383,13 @@ export class WebSocketManager {
     this.callbacks.add(callback);
     return () => {
       this.callbacks.delete(callback);
+    };
+  }
+
+  onDraftOpen(callback: DraftOpenCallback): () => void {
+    this.draftOpenCallbacks.add(callback);
+    return () => {
+      this.draftOpenCallbacks.delete(callback);
     };
   }
 

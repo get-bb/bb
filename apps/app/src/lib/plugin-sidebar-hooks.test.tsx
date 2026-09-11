@@ -9,6 +9,11 @@ import {
   useSidebarThreads,
 } from "./plugin-sidebar-hooks";
 
+vi.mock("@/lib/drafts/resource-runtime", () => ({
+  createNewThreadDraft: () => "drf_fresh_navigation",
+  initializeNewThreadDraft: vi.fn(),
+}));
+
 const actions = vi.hoisted(() => ({
   navigate: vi.fn(),
   setRootComposeProjectId: vi.fn(),
@@ -59,6 +64,7 @@ vi.mock("@bb/shared-ui/hooks/use-compact-viewport", () => ({
 }));
 
 vi.mock("./root-compose-selection", () => ({
+  useRootComposeProjectId: () => ["proj_saved", vi.fn()],
   useSetRootComposeProjectId: () => actions.setRootComposeProjectId,
 }));
 
@@ -129,8 +135,11 @@ describe("useSidebarThreadActions", () => {
     });
 
     expect(actions.setRootComposeProjectId).toHaveBeenCalledWith("proj_target");
-    expect(actions.navigate).toHaveBeenCalledWith("/", {
-      state: { focusPrompt: true },
-    });
+    expect(actions.navigate).toHaveBeenCalledWith(
+      "/?draft=drf_fresh_navigation",
+      {
+        state: { focusPrompt: true },
+      },
+    );
   });
 });

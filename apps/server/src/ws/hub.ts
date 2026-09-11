@@ -25,6 +25,7 @@ import {
   serverMessageSchema,
   terminalServerMessageSchema,
   threadOpenSignalSchema,
+  draftOpenSignalSchema,
   threadPaneActionSignalSchema,
   type ThreadPaneAction,
   type ThreadOpenFile,
@@ -816,6 +817,22 @@ export class NotificationHub implements DbNotifier {
       }
       this.threadEventWaiters.delete(threadId);
     }
+  }
+
+  notifyDraftOpen(draftId: string, split: ThreadOpenSplit): number {
+    const payload = JSON.stringify(
+      draftOpenSignalSchema.parse({
+        type: "draft-open",
+        draftId,
+        split,
+      }),
+    );
+    let delivered = 0;
+    for (const socket of this.clientKeysBySocket.keys()) {
+      socket.send(payload);
+      delivered += 1;
+    }
+    return delivered;
   }
 
   notifyThreadOpen(

@@ -20,7 +20,7 @@ const rootComposeProjectIdStorage = createTabScopedStorage<string>(
   { persistInitialValue: true },
 );
 
-const rootComposeProjectIdAtom = atomWithStorage<string>(
+export const rootComposeProjectIdAtom = atomWithStorage<string>(
   ROOT_COMPOSE_PROJECT_ID_STORAGE_KEY,
   PERSONAL_PROJECT_ID,
   rootComposeProjectIdStorage,

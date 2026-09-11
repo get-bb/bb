@@ -5,6 +5,7 @@ import type { Host } from "@bb/domain";
 import { makeHost } from "@bb/test-helpers/domain-fixtures";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { useQuickCreateProject } from "./useQuickCreateProject";
+import type { LocalPathSubmitParams } from "./useLocalPathPicker";
 
 const mocks = vi.hoisted(() => ({
   hosts: [] as Host[] | undefined,
@@ -17,6 +18,7 @@ const mocks = vi.hoisted(() => ({
   openPathEntry: vi.fn(),
   openPicker: vi.fn(),
   setRootComposeProjectId: vi.fn(),
+  submit: null as ((params: LocalPathSubmitParams) => void) | null,
 }));
 
 vi.mock("react-router-dom", () => ({
@@ -34,22 +36,29 @@ vi.mock("@/hooks/queries/host-queries", async (importOriginal) => ({
 }));
 
 vi.mock("@/hooks/useLocalPathPicker", () => ({
-  useLocalPathPicker: () => ({
-    isAvailable: true,
-    hostId: "host_atum",
-    hostName: "atum",
-    openPathEntry: mocks.openPathEntry,
-    openPicker: mocks.openPicker,
-    platform: "linux",
-    projectPathDialog: {
-      isOpen: false,
-      onClose: mocks.onClose,
-      onOpen: mocks.onOpen,
-      onOpenChange: mocks.onOpenChange,
-      target: null,
-    },
-    submitProjectPath: vi.fn(),
-  }),
+  useLocalPathPicker: ({
+    submit,
+  }: {
+    submit: (params: LocalPathSubmitParams) => void;
+  }) => {
+    mocks.submit = submit;
+    return {
+      isAvailable: true,
+      hostId: "host_atum",
+      hostName: "atum",
+      openPathEntry: mocks.openPathEntry,
+      openPicker: mocks.openPicker,
+      platform: "linux",
+      projectPathDialog: {
+        isOpen: false,
+        onClose: mocks.onClose,
+        onOpen: mocks.onOpen,
+        onOpenChange: mocks.onOpenChange,
+        target: null,
+      },
+      submitProjectPath: vi.fn(),
+    };
+  },
 }));
 
 vi.mock("@/lib/root-compose-selection", () => ({
@@ -104,5 +113,40 @@ describe("useQuickCreateProject", () => {
       "host_thoth",
       "host_sandbox",
     ]);
+  });
+
+  it("completes project selection without navigating away from the originating draft", async () => {
+    const selected = vi.fn();
+    const { result } = renderHook(() => useQuickCreateProject());
+    act(() => result.current.openCreateDialogForSelection(selected));
+    act(() =>
+      mocks.submit?.({
+        path: "/work/new-project",
+        hostId: "host_atum",
+        target: { kind: "create" },
+        closeDialog: mocks.onClose,
+      }),
+    );
+    const options = mocks.mutate.mock.calls[0][1];
+    act(() => result.current.openCreateDialog());
+    await act(async () => options.onSuccess({ id: "proj_created" }));
+    expect(selected).toHaveBeenCalledWith("proj_created");
+    expect(mocks.onClose).toHaveBeenCalled();
+    expect(mocks.navigate).not.toHaveBeenCalled();
+    expect(mocks.setRootComposeProjectId).not.toHaveBeenCalled();
+    act(() =>
+      mocks.submit?.({
+        path: "/work/sidebar-project",
+        hostId: "host_atum",
+        target: { kind: "create" },
+        closeDialog: mocks.onClose,
+      }),
+    );
+    await act(async () =>
+      mocks.mutate.mock.calls[1][1].onSuccess({ id: "proj_sidebar" }),
+    );
+    expect(selected).toHaveBeenCalledTimes(1);
+    expect(mocks.setRootComposeProjectId).toHaveBeenCalledWith("proj_sidebar");
+    expect(mocks.navigate).toHaveBeenCalledWith("/", { replace: true });
   });
 });

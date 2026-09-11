@@ -22,6 +22,17 @@ export type SidebarChronologicalSort = z.infer<
   typeof sidebarChronologicalSortSchema
 >;
 
+const threadLifecycleSchema = z.enum(["active", "drafts", "archived"]);
+export type ThreadLifecycle = z.infer<typeof threadLifecycleSchema>;
+
+const threadLifecycleFilterSchema = z
+  .array(threadLifecycleSchema)
+  .min(1)
+  .max(3)
+  .refine((values) => new Set(values).size === values.length, {
+    message: "Thread lifecycle selections must be unique.",
+  });
+
 const collapsibleSidebarSectionIdSchema = z.enum(["pinned", "threads"]);
 
 const uiPreferenceStringSchema = z
@@ -33,6 +44,7 @@ const uiPreferenceStringListSchema = z
   .max(UI_PREFERENCE_LIST_MAX_LENGTH);
 
 export const UI_PREFERENCE_KEYS = [
+  "sidebar.lifecycleFilter",
   "sidebar.organizationMode",
   "sidebar.chronologicalSort",
   "sidebar.sortDirection",
@@ -72,6 +84,11 @@ function defineUiPreference<Schema extends z.ZodTypeAny>(
 }
 
 export const uiPreferenceDefinitions = {
+  "sidebar.lifecycleFilter": defineUiPreference(
+    threadLifecycleFilterSchema,
+    ["active"],
+    "Thread lifecycles shown in the built-in sidebar: active, drafts, and archived; select at least one.",
+  ),
   "sidebar.organizationMode": defineUiPreference(
     sidebarOrganizationModeSchema,
     "project",

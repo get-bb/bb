@@ -27,9 +27,10 @@ import type {
   NewThreadRequest,
   PluginEnvironmentProviderInputsProps,
 } from "@get-bb/plugin-sdk";
-import type {
-  SystemEnvironmentProvider,
-  SystemMachineProvider,
+import {
+  draftSchema,
+  type SystemEnvironmentProvider,
+  type SystemMachineProvider,
 } from "@bb/server-contract";
 import {
   NewThreadComposer,
@@ -42,6 +43,12 @@ import {
 import { encodeReuseValue } from "@/components/pickers/environment-picker-value";
 import { useRootComposeReuseEnvironment } from "@/lib/root-compose-selection";
 import { getPromptDraftAccessor } from "@/hooks/usePromptDraftStorage";
+import { getDraftResourceStore } from "@/lib/drafts/resource-runtime";
+import {
+  draftResourceApi,
+  draftResourceQueryKey,
+} from "@/lib/drafts/resource-api";
+import { parseDraftRouteId } from "@/lib/draft-route";
 import { buildThreadHandoffLocationState } from "@bb/client-core";
 import { makeThreadListEntry } from "@bb/test-helpers/domain-fixtures";
 import { makeProjectWithThreadsResponse } from "@/test/fixtures/projects";
@@ -66,9 +73,11 @@ const mocks = vi.hoisted(() => ({
   sidebarNavigationSettled: true,
   sidebarNavigationReplayed: false,
   extraProjects: [] as Array<Record<string, unknown>>,
+  noProjects: false,
   promptHistoryQueryOptions: [] as Array<{ enabled?: boolean } | undefined>,
   environmentProviders: [] as unknown[],
   closeTerminal: vi.fn(),
+  createProjectForSelection: vi.fn(),
   plugins: [] as unknown[],
   serverAccessReady: true,
   machineProviders: [] as SystemMachineProvider[],
@@ -186,11 +195,13 @@ vi.mock("@/hooks/queries/sidebar-navigation-query", () => ({
     mocks.sidebarNavigationSettled
       ? {
           data: {
-            projects: [
-              { ...PROJECT, threads: mocks.projectThreads },
-              OTHER_PROJECT,
-              ...mocks.extraProjects,
-            ],
+            projects: mocks.noProjects
+              ? []
+              : [
+                  { ...PROJECT, threads: mocks.projectThreads },
+                  OTHER_PROJECT,
+                  ...mocks.extraProjects,
+                ],
             personalProject: makeProjectWithThreadsResponse({
               id: "personal",
               kind: "personal",
@@ -393,6 +404,7 @@ vi.mock("@/hooks/useQuickCreateProject", () => ({
     isAvailable: false,
     isCreating: false,
     openCreateDialog: vi.fn(),
+    openCreateDialogForSelection: mocks.createProjectForSelection,
     platform: null,
     projectPathDialog: {
       isOpen: false,
@@ -644,6 +656,7 @@ describe("PluginNewThreadComposer seeding", () => {
   beforeEach(() => {
     resetFixedPanelTabsStateForTest();
     mocks.closeTerminal.mockClear();
+    mocks.createProjectForSelection.mockClear();
     mocks.promptBoxProps.length = 0;
     mocks.promptHistoryQueryOptions.length = 0;
     mocks.copyAttachments.mockReset();
@@ -652,6 +665,7 @@ describe("PluginNewThreadComposer seeding", () => {
     mocks.sidebarNavigationSettled = true;
     mocks.sidebarNavigationReplayed = false;
     mocks.extraProjects = [];
+    mocks.noProjects = false;
     mocks.plugins = [];
     mocks.serverAccessReady = true;
     mocks.machineProviders = [];
@@ -1447,6 +1461,122 @@ describe("PluginNewThreadComposer seeding", () => {
     },
   );
 
+  it("keeps a reopened composer mounted while replacing its entire message", async () => {
+    mocks.noProjects = true;
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false, staleTime: Infinity } },
+    });
+    const saved = draftSchema.parse({
+      id: "drf_replace_message",
+      revision: 1,
+      createdAt: 1,
+      updatedAt: 1,
+      content: {
+        projectId: PERSONAL_PROJECT_ID,
+        prompt: { text: "Saved before reload" },
+      },
+    });
+    queryClient.setQueryData(draftResourceQueryKey(saved.id), saved);
+    vi.spyOn(draftResourceApi, "update").mockImplementation(
+      async (id, revision, content) => ({
+        ...saved,
+        id,
+        revision: revision + 1,
+        content,
+      }),
+    );
+    render(
+      <Provider>
+        <QueryClientProvider client={queryClient}>
+          <MemoryRouter initialEntries={[`/?draft=${saved.id}`]}>
+            <RootComposeView />
+          </MemoryRouter>
+        </QueryClientProvider>
+      </Provider>,
+    );
+    await waitFor(() =>
+      expect(latestPromptBoxProps().value).toBe("Saved before reload"),
+    );
+    act(() => latestPromptBoxProps().onChange("", []));
+    expect(screen.getByTestId("new-thread-prompt-box")).toBeTruthy();
+    expect(latestPromptBoxProps().value).toBe("");
+    act(() => latestPromptBoxProps().onChange("Replacement text", []));
+    await act(async () => {
+      await getDraftResourceStore(queryClient).flush(saved.id);
+    });
+    expect(
+      getDraftResourceStore(queryClient).getSnapshot(saved.id).content?.prompt
+        .text,
+    ).toBe("Replacement text");
+  });
+
+  it("keeps the same draft and attachments when its picker creates a project", async () => {
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false, staleTime: Infinity } },
+    });
+    const saved = draftSchema.parse({
+      id: "drf_created_project",
+      revision: 1,
+      createdAt: 1,
+      updatedAt: 1,
+      content: {
+        projectId: "proj_1",
+        prompt: {
+          text: "Keep this message in the new project",
+          attachments: [
+            {
+              type: "localFile",
+              name: "notes.txt",
+              path: ".bb/attachments/notes.txt",
+              mimeType: "text/plain",
+              sizeBytes: 5,
+            },
+          ],
+        },
+      },
+    });
+    queryClient.setQueryData(draftResourceQueryKey(saved.id), saved);
+    vi.spyOn(draftResourceApi, "update").mockImplementation(
+      async (id, revision, content) => ({
+        ...saved,
+        id,
+        revision: revision + 1,
+        content,
+      }),
+    );
+    mocks.copyAttachments.mockResolvedValue(undefined);
+    const router = createMemoryRouter(
+      [{ path: "/", element: <RootComposeView /> }],
+      { initialEntries: [`/?draft=${saved.id}`] },
+    );
+    render(
+      <Provider>
+        <QueryClientProvider client={queryClient}>
+          <RouterProvider router={router} />
+        </QueryClientProvider>
+      </Provider>,
+    );
+    await waitFor(() =>
+      expect(latestPromptBoxProps().value).toBe(saved.content.prompt.text),
+    );
+    act(() => latestPromptBoxProps().project.createProject.onCreate());
+    await act(async () => {
+      await mocks.createProjectForSelection.mock.calls[0][0]("proj_2");
+    });
+    await act(async () => {
+      await getDraftResourceStore(queryClient).flush(saved.id);
+    });
+    expect(parseDraftRouteId(router.state.location.search)).toBe(saved.id);
+    expect(mocks.copyAttachments).toHaveBeenCalledWith({
+      projectId: "proj_2",
+      sourceProjectId: "proj_1",
+      paths: [".bb/attachments/notes.txt"],
+    });
+    expect(
+      getDraftResourceStore(queryClient).getSnapshot(saved.id).content,
+    ).toMatchObject({ projectId: "proj_2", prompt: saved.content.prompt });
+  });
+
   it("keeps an unrelated draft attachment out of a RootComposeView handoff", async () => {
     const queryClient = new QueryClient({
       defaultOptions: { queries: { retry: false } },
@@ -1490,10 +1620,10 @@ describe("PluginNewThreadComposer seeding", () => {
     );
 
     expect(mocks.promptBoxProps[0]?.modeConfig.environment.value).toBe(
-      "provider:personal-workspace",
+      "provider:project-checkout",
     );
-    expect(mocks.promptBoxProps[0]?.value).toBe("unrelated draft");
-    expect(mocks.promptBoxProps[0]?.attachments.items).toHaveLength(1);
+    expect(mocks.promptBoxProps[0]?.value).toBe("");
+    expect(mocks.promptBoxProps[0]?.attachments.items).toEqual([]);
     await waitFor(() => {
       expect(latestPromptBoxProps().value).toBe(
         "Continue from @thread:thr_source",
@@ -1555,7 +1685,13 @@ describe("PluginNewThreadComposer seeding", () => {
     await waitFor(() => {
       expect(router.state.location.state).toBeNull();
     });
-    expect(rootDraft.getCurrent().text).toBe("Create a kanban plugin");
+    expect(rootDraft.getCurrent().text).toBe("leftover draft");
+    const draftId = parseDraftRouteId(router.state.location.search);
+    expect(draftId).not.toBeNull();
+    expect(
+      getDraftResourceStore(queryClient).getSnapshot(draftId!).content?.prompt
+        .text,
+    ).toBe("Create a kanban plugin");
     const updateDepthErrors = consoleError.mock.calls.filter((call) =>
       call.some(
         (argument) =>
@@ -1781,6 +1917,7 @@ describe("NewThreadComposer environment providers", () => {
     mocks.sidebarNavigationSettled = true;
     mocks.sidebarNavigationReplayed = false;
     mocks.extraProjects = [];
+    mocks.noProjects = false;
     mocks.plugins = [];
     mocks.serverAccessReady = true;
     mocks.machineProviders = [];

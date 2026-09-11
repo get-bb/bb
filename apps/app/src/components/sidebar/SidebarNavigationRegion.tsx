@@ -35,13 +35,11 @@ import { useSidebarNavigationReplacement } from "./sidebarNavigationProvider";
 import { usePaneContentSplitActions } from "./usePaneContentSplitDrag";
 
 const SIDEBAR_NAVIGATION_SLOT_KIND = "sidebarNavigation";
-const NEW_THREAD_CONTENT = { kind: "new-thread" } as const;
 
 function contentForAction(
   action: ExperimentalSidebarNavigationAction,
   navPanels: ReturnType<typeof usePluginSlots>["navPanels"],
 ) {
-  if (action.kind === "new-thread") return NEW_THREAD_CONTENT;
   if (action.kind !== "open-plugin-panel") return null;
   const panel = navPanels.find(
     (candidate) =>
@@ -73,8 +71,14 @@ export function SidebarNavigationRegion(props: BuiltInSidebarNavigationProps) {
       action: ExperimentalSidebarNavigationAction,
       label: string,
     ): ExperimentalSidebarNavigationItem["experimental_splitProps"] => {
+      if (splitActions.isCompact) return {};
+      if (action.kind === "new-thread") {
+        return props.newThreadSplit?.onPointerDown
+          ? { onPointerDown: props.newThreadSplit.onPointerDown }
+          : {};
+      }
       const content = contentForAction(action, navPanels);
-      if (content === null || splitActions.isCompact) return {};
+      if (content === null) return {};
       return {
         onPointerDown: (event: ReactPointerEvent<HTMLElement>) =>
           splitActions.beginDrag(event, {
@@ -85,7 +89,13 @@ export function SidebarNavigationRegion(props: BuiltInSidebarNavigationProps) {
           }),
       };
     },
-    [navPanels, props.onNavigate, props.splitEnabled, splitActions],
+    [
+      navPanels,
+      props.newThreadSplit,
+      props.onNavigate,
+      props.splitEnabled,
+      splitActions,
+    ],
   );
   const items = useMemo(
     () =>
@@ -177,12 +187,11 @@ export function SidebarNavigationRegion(props: BuiltInSidebarNavigationProps) {
               current.props.onNewChat?.();
               return;
             }
-            current.splitActions.openInSplit({
-              content: NEW_THREAD_CONTENT,
-              enabled: current.props.splitEnabled ?? false,
-              label: "New thread",
-              onNavigate: current.props.onNavigate,
-            });
+            if (current.props.newThreadSplit) {
+              current.props.newThreadSplit.openInSplit();
+            } else {
+              current.props.onNewChat?.();
+            }
           },
           searchThreads: () => {
             current.props.onSearchThreads?.();

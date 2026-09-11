@@ -12,7 +12,10 @@ import { createStore, Provider } from "jotai";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { NO_COLLAPSED_CHILD_ACTIVITY } from "@bb/client-core";
 import { splitLayoutAtom } from "@/lib/split-layout/atoms";
-import { SPLIT_LAYOUT_STORAGE_KEY } from "@/lib/split-layout/persistence";
+import {
+  LEGACY_SPLIT_LAYOUT_STORAGE_KEY,
+  SPLIT_LAYOUT_STORAGE_KEY,
+} from "@/lib/split-layout/persistence";
 import {
   resetPluginThreadRowStatusesForTest,
   setPluginThreadRowStatus,
@@ -25,7 +28,9 @@ afterEach(() => {
   vi.clearAllMocks();
   resetPluginThreadRowStatusesForTest();
   window.localStorage.removeItem(SPLIT_LAYOUT_STORAGE_KEY);
+  window.localStorage.removeItem(LEGACY_SPLIT_LAYOUT_STORAGE_KEY);
   window.sessionStorage.removeItem(SPLIT_LAYOUT_STORAGE_KEY);
+  window.sessionStorage.removeItem(LEGACY_SPLIT_LAYOUT_STORAGE_KEY);
 });
 
 describe("SidebarControlButton", () => {
@@ -201,7 +206,7 @@ describe("TopLevelSidebarSection", () => {
           {
             type: "pane",
             paneId: "pane-compose",
-            content: { kind: "new-thread" },
+            content: { kind: "new-thread", draftId: "drf_sidebarfixture" },
           },
         ],
       },

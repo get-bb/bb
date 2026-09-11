@@ -3,23 +3,14 @@ import { atomWithStorage } from "jotai/utils";
 import {
   createBooleanPreferenceAtom,
   createTabScopedStorage,
-  type SyncStorage,
 } from "@/lib/browser-storage";
 import type { ThreadRoutePathArgs } from "@/lib/route-paths";
 import { findPane, listPanes, removePane } from "./ops";
 import {
-  deserializeSplitLayout,
-  serializeSplitLayout,
+  createSplitLayoutStorage,
   SPLIT_LAYOUT_STORAGE_KEY,
 } from "./persistence";
-import type { SplitLayout } from "./types";
-
-function createSplitLayoutStorage(): SyncStorage<SplitLayout | null> {
-  return createTabScopedStorage<SplitLayout | null>({
-    parse: (storedValue) => deserializeSplitLayout(storedValue),
-    serialize: (value) => (value === null ? "" : serializeSplitLayout(value)),
-  });
-}
+import type { PaneContent, SplitLayout } from "./types";
 
 export const splitLayoutAtom = atomWithStorage<SplitLayout | null>(
   SPLIT_LAYOUT_STORAGE_KEY,
@@ -54,6 +45,7 @@ export const dimInactiveSplitsAtom = createBooleanPreferenceAtom(
 export interface ClosePanesForThreadsResult {
   removedAny: boolean;
   focusedRoute: ThreadRoutePathArgs | null;
+  focusedContent: PaneContent | null;
 }
 
 export const closePanesForThreadsAtom = atom(
@@ -61,7 +53,7 @@ export const closePanesForThreadsAtom = atom(
   (get, set, threadIds: readonly string[]): ClosePanesForThreadsResult => {
     const current = get(splitLayoutAtom);
     if (current === null || threadIds.length === 0) {
-      return { removedAny: false, focusedRoute: null };
+      return { removedAny: false, focusedRoute: null, focusedContent: null };
     }
     const targets = new Set(threadIds);
     let layout = current;
@@ -83,7 +75,7 @@ export const closePanesForThreadsAtom = atom(
       removedAny = true;
     }
     if (!removedAny) {
-      return { removedAny: false, focusedRoute: null };
+      return { removedAny: false, focusedRoute: null, focusedContent: null };
     }
     const maximizedPaneId = get(maximizedPaneIdAtom);
     if (
@@ -103,12 +95,20 @@ export const closePanesForThreadsAtom = atom(
             threadId: focused.content.threadId,
           }
         : null;
-    if (survivorRoute === null) {
+    if (
+      focused === null ||
+      (focused.content.kind === "thread" &&
+        targets.has(focused.content.threadId))
+    ) {
       set(splitLayoutAtom, null);
       set(maximizedPaneIdAtom, null);
-      return { removedAny: true, focusedRoute: null };
+      return { removedAny: true, focusedRoute: null, focusedContent: null };
     }
     set(splitLayoutAtom, layout);
-    return { removedAny: true, focusedRoute: survivorRoute };
+    return {
+      removedAny: true,
+      focusedRoute: survivorRoute,
+      focusedContent: focused.content,
+    };
   },
 );

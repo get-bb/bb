@@ -26,6 +26,14 @@ every window and client sees the same value.
 - `bb settings ui reset <key> [--json]` writes the default and advances the
   revision.
 
+- `sidebar.lifecycleFilter` controls the built-in sidebar's Active, Drafts,
+  and Archived groups. It accepts a unique, nonempty JSON list of `active`,
+  `drafts`, and/or `archived`, with default `["active"]`. For example:
+  `bb settings ui set sidebar.lifecycleFilter '["active","drafts"]'`.
+  Drafts appear above the active tree; archived threads are paginated and
+  fetched only when selected. Reset restores Active. Plugin-owned thread-list
+  replacements are unaffected.
+
 ## Keyboard shortcuts
 
 - `showKeyboardHints` defaults to true. Set it with

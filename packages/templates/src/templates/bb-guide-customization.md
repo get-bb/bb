@@ -247,6 +247,14 @@ Sort by selects a field, and selecting it again reverses its arrow/direction.
 The default preserves each field's original order (newest first for dates,
 A–Z for titles). For example: `bb settings ui set sidebar.sortDirection ascending`.
 
+The built-in sidebar lifecycle filter selects Active, Drafts, and Archived.
+`sidebar.lifecycleFilter` accepts a unique, nonempty JSON list containing
+`active`, `drafts`, and/or `archived`; it defaults to `["active"]`. For example:
+`bb settings ui set sidebar.lifecycleFilter '["active","drafts"]'`.
+Drafts appear before active threads; Archived loads a paginated trailing group
+only when selected. `bb settings ui reset sidebar.lifecycleFilter` restores
+Active. Plugin-owned thread-list replacements keep their own controls.
+
 Client-local UI preferences
 
 Some Settings values live only in the current browser/client. Sidebar width
