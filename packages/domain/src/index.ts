@@ -24,6 +24,7 @@ export * from "./number-utils.js";
 export * from "./pending-interactions.js";
 export * from "./legacy-thread-events.js";
 export * from "./plugin-icon.js";
+export * from "./plugin-metadata.js";
 export * from "./plugin-catalog-category.js";
 export * from "./plugin-marketplace-entry.js";
 export * from "./plugin-id.js";

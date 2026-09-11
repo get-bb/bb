@@ -12,7 +12,9 @@ import {
   isPluginOwnedIconPath,
   type DeclaredCodeTheme,
   type DynamicTool,
+  type JsonObject,
   type JsonValue,
+  validatePluginMetadata,
   type PluginThemeMeta,
   type SystemChangeKind,
   type ThreadEventItemPresentation,
@@ -68,6 +70,7 @@ import {
   listInstalledPlugins,
   listPendingGitPluginArtifacts,
   listPluginMarketplaces,
+  listPersistedThreadPluginMetadataByThreadIds,
   listPluginSchedules,
   markInstalledPluginRemoved,
   recordPluginScheduleResult,
@@ -2261,6 +2264,31 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
       const tools: PluginAgentToolContribution[] = [];
       const selectedSkillIdsByPlugin = new Map<string, ReadonlySet<string>>();
       const dynamicInstructions: Array<{ pluginId: string; text: string }> = [];
+      const metadataByPluginId = new Map<string, JsonObject>();
+      for (const row of listPersistedThreadPluginMetadataByThreadIds(deps.db, [
+        context.thread.id,
+      ])) {
+        try {
+          metadataByPluginId.set(
+            row.pluginId,
+            validatePluginMetadata(JSON.parse(row.metadataJson)),
+          );
+        } catch (error) {
+          logger.warn(
+            `Ignoring corrupt plugin metadata for thread ${context.thread.id}, plugin ${row.pluginId}: ${error instanceof Error ? error.message : String(error)}`,
+          );
+          metadataByPluginId.set(row.pluginId, {});
+        }
+      }
+
+      const deepFreezeMetadata = (metadata: JsonObject): JsonObject => {
+        for (const value of Object.values(metadata)) {
+          if (value !== null && typeof value === "object") {
+            deepFreezeMetadata(value as JsonObject);
+          }
+        }
+        return Object.freeze(metadata);
+      };
 
       for (const [pluginId, plugin] of [...loaded.entries()].sort(([a], [b]) =>
         a.localeCompare(b),
@@ -2289,7 +2317,12 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
             knownSkillIds,
             knownToolIds,
             pluginId,
-            value: provider(context),
+            value: provider({
+              ...context,
+              pluginMetadata: deepFreezeMetadata(
+                metadataByPluginId.get(pluginId) ?? {},
+              ),
+            }),
           }),
         );
         if (!outcome.ok) {
