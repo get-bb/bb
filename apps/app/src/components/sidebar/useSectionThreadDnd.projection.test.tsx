@@ -16,7 +16,6 @@ import {
 } from "@bb/client-core";
 import {
   collectSectionThreadDndLookup,
-  PINNED_NEST_LINGER_MS,
   SectionThreadProjectionGate,
   useSectionThreadDnd,
 } from "./useSectionThreadDnd";
@@ -66,7 +65,7 @@ function dragOver(activeId: string, overId: string): DragOverEvent {
   return { active: { id: activeId }, over: { id: overId } } as DragOverEvent;
 }
 
-function renderSectionThreadDnd(pinnedThreads: ThreadListEntry[] = []) {
+function renderSectionThreadDnd() {
   const queryClient = new QueryClient();
   const wrapper = ({ children }: { children: ReactNode }) => (
     <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
@@ -80,49 +79,11 @@ function renderSectionThreadDnd(pinnedThreads: ThreadListEntry[] = []) {
         topLevelSectionOrder: ["pinned", "section:a", "section:b", "threads"],
         onTopLevelSectionOrderChange: vi.fn(),
         pinnedReorderPending: false,
-        pinnedThreads,
+        pinnedThreads: [],
         onReorderPinnedThread: vi.fn(),
       }),
     { wrapper },
   );
-}
-
-const ROW_RECT = {
-  top: 100,
-  left: 0,
-  width: 200,
-  height: 28,
-  right: 200,
-  bottom: 128,
-};
-
-function collide(
-  collisionDetection: NonNullable<
-    ReturnType<typeof renderSectionThreadDnd>["result"]["current"]
-  >["dndContextProps"]["collisionDetection"],
-  activeId: string,
-  overThreadId: string,
-) {
-  const rowId = getSidebarThreadRowDroppableId(overThreadId);
-  const containers = [rowId, overThreadId].map((id) => ({
-    id,
-    key: id,
-    disabled: false,
-    node: { current: null },
-    rect: { current: ROW_RECT },
-    data: { current: {} },
-  }));
-  return collisionDetection?.({
-    active: {
-      id: activeId,
-      data: { current: {} },
-      rect: { current: { initial: null, translated: null } },
-    },
-    collisionRect: ROW_RECT,
-    droppableRects: new Map(containers.map((c) => [c.id, ROW_RECT])),
-    droppableContainers: containers as never,
-    pointerCoordinates: { x: 20, y: 114 },
-  });
 }
 
 function notePointerMove() {
@@ -225,36 +186,6 @@ describe("useSectionThreadDnd nest projection", () => {
       } as DragCancelEvent),
     );
     expect(result.current?.nestTarget).toBeNull();
-  });
-});
-
-describe("useSectionThreadDnd pinned linger", () => {
-  it("keeps a pinned row as a reorder target until the pointer lingers", () => {
-    vi.useFakeTimers();
-    try {
-      const pinned = [
-        createThread({ id: "pinned-1", pinnedAt: 10 }),
-        createThread({ id: "pinned-2", pinnedAt: 9 }),
-      ];
-      const { result } = renderSectionThreadDnd(pinned);
-      const props = () => result.current!.dndContextProps;
-      act(() => props().onDragStart?.(dragStart("pinned-1")));
-
-      const early = collide(props().collisionDetection, "pinned-1", "pinned-2");
-      expect(early?.[0]?.id).toBe("pinned-2");
-
-      act(() => {
-        vi.advanceTimersByTime(PINNED_NEST_LINGER_MS + 5);
-      });
-      const late = collide(props().collisionDetection, "pinned-1", "pinned-2");
-      expect(late?.[0]?.id).toBe(getSidebarThreadRowDroppableId("pinned-2"));
-
-      act(() => props().onDragStart?.(dragStart("loose")));
-      const loose = collide(props().collisionDetection, "loose", "pinned-2");
-      expect(loose?.[0]?.id).toBe(getSidebarThreadRowDroppableId("pinned-2"));
-    } finally {
-      vi.useRealTimers();
-    }
   });
 });
 

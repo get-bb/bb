@@ -52,7 +52,6 @@ import type { SidebarDropPreviewPlacement } from "./sidebarDropPreviewPlacement"
 export const PINNED_THREAD_PARENT_KEY = "sidebar:pinned-threads";
 export const NEST_BAND_FRACTION = 0.6;
 export const NEST_BAND_ARMED_FRACTION = 0.8;
-export const PINNED_NEST_LINGER_MS = 450;
 
 export interface SectionThreadNestTarget {
   threadId: string;
@@ -287,8 +286,11 @@ export function resolveThreadRowNestCollisions({
   if (rowCollision === null || rowThreadId === null || !pointerCoordinates) {
     return otherCollisions;
   }
+  const bandFraction = getBandFraction(rowThreadId);
   const rect = droppableRects.get(rowCollision.id);
-  if (!rect || rect.height <= 0) return otherCollisions;
+  if (bandFraction === null || !rect || rect.height <= 0) {
+    return otherCollisions;
+  }
   const { x, y } = pointerCoordinates;
   const withinRect =
     x >= rect.left &&
@@ -296,8 +298,6 @@ export function resolveThreadRowNestCollisions({
     y >= rect.top &&
     y <= rect.top + rect.height;
   if (!withinRect) return otherCollisions;
-  const bandFraction = getBandFraction(rowThreadId);
-  if (bandFraction === null) return otherCollisions;
   const offsetFromCenter = Math.abs((y - rect.top) / rect.height - 0.5);
   return offsetFromCenter <= bandFraction / 2
     ? [rowCollision, ...otherCollisions]
@@ -592,53 +592,17 @@ export function useSectionThreadDnd({
   const activeIdRef = useRef<string | null>(null);
   const armedNestThreadIdRef = useRef<string | null>(null);
   const coarsePointerRef = useRef(false);
-  const pinnedLingerRef = useRef<{ threadId: string; since: number } | null>(
-    null,
-  );
-  const lingerTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const [, setLingerTick] = useState(0);
-  const clearPinnedLinger = useCallback(() => {
-    if (lingerTimerRef.current !== null) clearTimeout(lingerTimerRef.current);
-    lingerTimerRef.current = null;
-    pinnedLingerRef.current = null;
-  }, []);
-  const scheduleLingerTick = useCallback((delayMs: number) => {
-    if (lingerTimerRef.current !== null) clearTimeout(lingerTimerRef.current);
-    lingerTimerRef.current = setTimeout(() => {
-      lingerTimerRef.current = null;
-      setLingerTick((tick) => tick + 1);
-    }, delayMs);
-  }, []);
   const getNestBandFraction = useCallback(
     (threadId: string): number | null => {
       const activeId = activeIdRef.current;
       if (activeId === null || threadId === activeId) return null;
       if (lookup.itemKindById.get(threadId) !== "thread") return null;
-      const bothPinned =
-        lookup.parentKeyByItemId.get(activeId) === PINNED_THREAD_PARENT_KEY &&
-        lookup.parentKeyByItemId.get(threadId) === PINNED_THREAD_PARENT_KEY;
-      if (!bothPinned) {
-        pinnedLingerRef.current = null;
-        if (coarsePointerRef.current) return 1;
-        return armedNestThreadIdRef.current === threadId
-          ? NEST_BAND_ARMED_FRACTION
-          : NEST_BAND_FRACTION;
-      }
-      const now = Date.now();
-      const linger = pinnedLingerRef.current;
-      if (linger === null || linger.threadId !== threadId) {
-        pinnedLingerRef.current = { threadId, since: now };
-        scheduleLingerTick(PINNED_NEST_LINGER_MS);
-        return null;
-      }
-      const remaining = PINNED_NEST_LINGER_MS - (now - linger.since);
-      if (remaining > 0) {
-        scheduleLingerTick(remaining);
-        return null;
-      }
-      return 1;
+      if (coarsePointerRef.current) return 1;
+      return armedNestThreadIdRef.current === threadId
+        ? NEST_BAND_ARMED_FRACTION
+        : NEST_BAND_FRACTION;
     },
-    [lookup, scheduleLingerTick],
+    [lookup],
   );
   const collisionDetection = useCallback<CollisionDetection>(
     (args) => {
@@ -734,8 +698,7 @@ export function useSectionThreadDnd({
     setReorderTarget(null);
     armedNestThreadIdRef.current = null;
     activeIdRef.current = null;
-    clearPinnedLinger();
-  }, [clearPinnedLinger]);
+  }, []);
   const clearProjectedDrag = useCallback(() => {
     clearDropSettle();
     clearDropState();
@@ -745,15 +708,9 @@ export function useSectionThreadDnd({
     () => () => {
       clearDropDwell();
       clearDropSettle();
-      clearPinnedLinger();
       stopProjectionInputTracking();
     },
-    [
-      clearDropDwell,
-      clearDropSettle,
-      clearPinnedLinger,
-      stopProjectionInputTracking,
-    ],
+    [clearDropDwell, clearDropSettle, stopProjectionInputTracking],
   );
 
   const handleDragStart = useCallback(
@@ -766,7 +723,6 @@ export function useSectionThreadDnd({
       draggingThreadRef.current = thread !== null;
       activeIdRef.current = thread ? activeId : null;
       armedNestThreadIdRef.current = null;
-      clearPinnedLinger();
       coarsePointerRef.current = isCoarseActivator(
         event.activatorEvent ?? null,
       );
@@ -778,13 +734,7 @@ export function useSectionThreadDnd({
       setRowDrop(null);
       setReorderTarget(null);
     },
-    [
-      clearDropDwell,
-      clearDropSettle,
-      clearPinnedLinger,
-      lookup,
-      startProjectionInputTracking,
-    ],
+    [clearDropDwell, clearDropSettle, lookup, startProjectionInputTracking],
   );
 
   const projectedNestParentId =
