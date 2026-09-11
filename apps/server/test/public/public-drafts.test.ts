@@ -18,6 +18,7 @@ import {
   setPluginHookProvider,
   type PluginHookRegistration,
 } from "../../src/services/plugins/plugin-hook-registry.js";
+import { setPluginEnvironmentProviderBridge } from "../../src/services/plugins/plugin-environment-provider-registry.js";
 import type { PluginHookName } from "@get-bb/plugin-sdk";
 import { readJson } from "../helpers/json.js";
 import {
@@ -75,6 +76,7 @@ function readyContent(harness: TestAppHarness): DraftContentInput {
 afterEach(() => {
   vi.restoreAllMocks();
   setPluginHookProvider(undefined);
+  setPluginEnvironmentProviderBridge(undefined);
 });
 
 describe("durable draft resources", () => {
@@ -210,6 +212,55 @@ describe("durable draft resources", () => {
       );
       expect(current.content.prompt.text).toBe("Winner");
       expect(current.revision).toBe(2);
+    });
+  });
+
+  it("submits provider-owned machine selections through the existing creation contract", async () => {
+    await withTestHarness(async (harness) => {
+      const ready = readyContent(harness);
+      setPluginEnvironmentProviderBridge({
+        listEnvironmentProviders: () => [],
+        getEnvironmentProvider: () => undefined,
+        listEnvironmentCompositions: () => [
+          {
+            pluginId: "draft-machine-fixture",
+            composition: {
+              id: "draft-machine-fixture",
+              displayName: "Draft machine fixture",
+              description: "Prepare a workspace for this draft.",
+              icon: "Cloud",
+              machineProviderId: "fixture-machine",
+              environmentProviderId: "project-checkout",
+            },
+          },
+        ],
+        invokeProvider: async (_pluginId, _label, run) => ({
+          ok: true,
+          value: await run(),
+        }),
+        decisionTimeoutMs: 10_000,
+      });
+      const draft = await create(harness, {
+        ...ready,
+        options: {
+          ...ready.options,
+          environment: {
+            type: "provider",
+            environmentProviderId: "draft-machine-fixture",
+            inputs: null,
+          },
+        },
+      });
+      expect(draft.content.options.environment).toMatchObject({
+        machine: null,
+      });
+      const response = await request(harness, `/${draft.id}/submit`, "POST", {
+        expectedRevision: draft.revision,
+      });
+      expect(response.status).toBe(200);
+      expect(
+        draftSubmitResponseSchema.parse(await readJson(response)).draft,
+      ).toBeNull();
     });
   });
 
@@ -435,6 +486,7 @@ describe("durable draft resources", () => {
         })?.status,
       ).toBe("failed");
       setPluginHookProvider(undefined);
+      setPluginEnvironmentProviderBridge(undefined);
       expect((await submit()).status).toBe(409);
       expect(
         listThreads(harness.db, { projectId: draft.content.projectId! }),

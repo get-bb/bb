@@ -35,7 +35,7 @@ export const draftEnvironmentSchema = z.discriminatedUnion("type", [
   z.object({
     type: z.literal("provider"),
     environmentProviderId: z.string().min(1),
-    machine: environmentMachineSelectionSchema.nullable(),
+    machine: environmentMachineSelectionSchema.nullable().default(null),
     inputs: jsonValueSchema.nullable(),
   }),
 ]);

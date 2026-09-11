@@ -94,7 +94,13 @@ async function performSubmission(
     input: promptDraftToInput(content.prompt),
     origin: args.origin,
     originPluginId: args.originPluginId,
-    environment: options.environment,
+    environment:
+      options.environment?.type === "provider"
+        ? {
+            ...options.environment,
+            machine: options.environment.machine ?? undefined,
+          }
+        : options.environment,
     providerId: options.providerId ?? undefined,
     model: options.model ?? undefined,
     reasoningLevel: options.reasoningLevel ?? undefined,
