@@ -6,7 +6,7 @@ import { ThreadContextWindowCard } from "./ThreadContextWindowIndicator";
 
 afterEach(cleanup);
 
-it("keeps aggregate usage visible and removes expanded details when disabled", () => {
+it("shows details when a snapshot arrives and removes them when only aggregate usage remains", () => {
   const usage: ThreadContextWindowUsage = {
     usedTokens: 1000,
     modelContextWindow: 10000,
@@ -31,15 +31,20 @@ it("keeps aggregate usage visible and removes expanded details when disabled", (
       ],
     },
   };
+  const aggregateUsage = {
+    usedTokens: usage.usedTokens,
+    modelContextWindow: usage.modelContextWindow,
+    estimated: usage.estimated,
+  };
   const { rerender } = render(
-    <ThreadContextWindowCard usage={usage} detailsEnabled={false} />,
+    <ThreadContextWindowCard usage={aggregateUsage} />,
   );
   expect(screen.getByText("10% used")).toBeTruthy();
   expect(screen.queryByRole("button", { name: "Show details" })).toBeNull();
-  rerender(<ThreadContextWindowCard usage={usage} detailsEnabled />);
+  rerender(<ThreadContextWindowCard usage={usage} />);
   fireEvent.click(screen.getByRole("button", { name: "Show details" }));
   expect(screen.getByText("Messages")).toBeTruthy();
-  rerender(<ThreadContextWindowCard usage={usage} detailsEnabled={false} />);
+  rerender(<ThreadContextWindowCard usage={aggregateUsage} />);
   expect(screen.queryByText("Messages")).toBeNull();
   expect(screen.queryByRole("button", { name: "Hide details" })).toBeNull();
   expect(screen.getByText("10% used")).toBeTruthy();

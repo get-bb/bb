@@ -40,11 +40,7 @@ function UsageCardRow({
       hint={hint}
       className="max-md:grid-cols-1 max-md:gap-y-3"
     >
-      <ThreadContextWindowCard
-        detailsEnabled
-        usage={u}
-        className="max-w-full max-md:w-80"
-      />
+      <ThreadContextWindowCard usage={u} className="max-w-full max-md:w-80" />
     </StoryRow>
   );
 }
@@ -231,7 +227,6 @@ export function Overview() {
       >
         <div className="flex h-[42rem] w-full items-end justify-end overflow-hidden rounded-lg border border-border-hairline bg-surface-recessed p-3">
           <ThreadContextWindowCard
-            detailsEnabled
             usage={{
               usedTokens: claudeSnapshot.usedTokens,
               modelContextWindow: claudeSnapshot.contextWindowTokens,

@@ -896,12 +896,6 @@ timelines and large expanded timeline details retain stable height-preserving
 wrappers while mounting only rows near their active scrollport. Toggle it with
 `bb settings experiment timelineWindowing <true|false>`.
 
-The `contextBreakdown` experiment is off by default. Enable it in Settings →
-Experiments → Context breakdown, or with
-`bb settings experiment contextBreakdown true`, to show the provider token
-breakdown in the context window menu. Aggregate usage remains available when
-disabled; provider snapshots remain accessible through the SDK and CLI.
-
 ## Thread Timeline Window
 
 Timeline pages select conversation groups using user-message anchors. The

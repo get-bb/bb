@@ -17,8 +17,6 @@ function renderSection(overrides?: {
       disabled={false}
       mobileAppEnabled={false}
       sidebarProgressiveDisclosureEnabled={false}
-      contextBreakdownEnabled={false}
-      onContextBreakdownEnabledChange={vi.fn()}
       timelineWindowingEnabled={false}
       onChangelogPreviewEnabledChange={
         overrides?.onChangelogPreviewEnabledChange ?? vi.fn()

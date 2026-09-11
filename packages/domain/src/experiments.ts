@@ -2,7 +2,6 @@ import { z } from "zod";
 
 export const experimentKeys = [
   "changelogPreview",
-  "contextBreakdown",
   "mobileApp",
   "sidebarProgressiveDisclosure",
   "timelineWindowing",
@@ -17,6 +16,5 @@ export const defaultExperiments: Experiments = {
   changelogPreview: false,
   mobileApp: false,
   sidebarProgressiveDisclosure: false,
-  contextBreakdown: false,
   timelineWindowing: false,
 };

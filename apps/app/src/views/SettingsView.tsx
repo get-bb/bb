@@ -204,12 +204,10 @@ interface ExperimentsSettingsSectionProps {
   changelogPreviewEnabled: boolean;
   mobileAppEnabled: boolean;
   sidebarProgressiveDisclosureEnabled: boolean;
-  contextBreakdownEnabled: boolean;
   timelineWindowingEnabled: boolean;
   onChangelogPreviewEnabledChange: (enabled: boolean) => void;
   onMobileAppEnabledChange: (enabled: boolean) => void;
   onSidebarProgressiveDisclosureEnabledChange: (enabled: boolean) => void;
-  onContextBreakdownEnabledChange: (enabled: boolean) => void;
   onTimelineWindowingEnabledChange: (enabled: boolean) => void;
 }
 
@@ -1010,12 +1008,10 @@ export function ExperimentsSettingsSection({
   disabled,
   mobileAppEnabled,
   sidebarProgressiveDisclosureEnabled,
-  contextBreakdownEnabled,
   timelineWindowingEnabled,
   onChangelogPreviewEnabledChange,
   onMobileAppEnabledChange,
   onSidebarProgressiveDisclosureEnabledChange,
-  onContextBreakdownEnabledChange,
   onTimelineWindowingEnabledChange,
 }: ExperimentsSettingsSectionProps) {
   return (
@@ -1057,18 +1053,6 @@ export function ExperimentsSettingsSection({
             disabled={disabled}
             onCheckedChange={onSidebarProgressiveDisclosureEnabledChange}
             aria-label={SIDEBAR_PROGRESSIVE_DISCLOSURE_EXPERIMENT_LABEL}
-          />
-        </SettingsWithControl>
-
-        <SettingsWithControl
-          label="Context breakdown"
-          description="Show detailed token usage in the context window menu when the provider supports it."
-        >
-          <Switch
-            checked={contextBreakdownEnabled}
-            disabled={disabled}
-            onCheckedChange={onContextBreakdownEnabledChange}
-            aria-label="Context breakdown"
           />
         </SettingsWithControl>
 
@@ -1275,13 +1259,6 @@ export function SettingsView() {
           updateExperimentsMutation.mutate({
             ...experiments,
             sidebarProgressiveDisclosure: enabled,
-          })
-        }
-        contextBreakdownEnabled={experiments.contextBreakdown}
-        onContextBreakdownEnabledChange={(enabled) =>
-          updateExperimentsMutation.mutate({
-            ...experiments,
-            contextBreakdown: enabled,
           })
         }
         timelineWindowingEnabled={experiments.timelineWindowing}

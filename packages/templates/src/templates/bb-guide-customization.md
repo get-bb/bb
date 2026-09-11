@@ -143,12 +143,6 @@ BB releases restorable provider sessions after 30 idle minutes. The daemon
 checks for these sessions every five minutes. Active turns, commands, agents,
 workflows, and monitors keep their sessions loaded.
 
-The `contextBreakdown` experiment is off by default. Enable it in Settings →
-Experiments → Context breakdown, or with
-`bb settings experiment contextBreakdown true`, to show the provider token
-breakdown in the context window menu. Aggregate usage remains available when
-disabled; provider snapshots remain accessible through the SDK and CLI.
-
 The default-off `sidebarProgressiveDisclosure` experiment shows the first five
 groups in the current sort order in **By project** and **By machine**, keeps
 attention groups visible, and reveals ten more per **Show more** click. Revealed

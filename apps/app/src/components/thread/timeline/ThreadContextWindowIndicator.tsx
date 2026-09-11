@@ -1,4 +1,3 @@
-import { useSystemConfig } from "@/hooks/queries/system-queries";
 import { useId, useState } from "react";
 import { Popover, PopoverContent, PopoverTrigger } from "@bb/shared-ui/popover";
 import type { ThreadContextWindowUsage } from "@bb/server-contract";
@@ -18,7 +17,6 @@ import {
 interface ThreadContextWindowCardProps {
   usage: ThreadContextWindowUsage;
   className?: string;
-  detailsEnabled: boolean;
 }
 
 interface ThreadContextWindowIndicatorProps {
@@ -30,12 +28,10 @@ const CONTEXT_WINDOW_POPOVER_CLOSE_DELAY_MS = 60;
 export function ThreadContextWindowCard({
   usage,
   className,
-  detailsEnabled,
 }: ThreadContextWindowCardProps) {
-  const details =
-    detailsEnabled && usage.snapshot?.categories.length
-      ? usage.snapshot
-      : undefined;
+  const details = usage.snapshot?.categories.length
+    ? usage.snapshot
+    : undefined;
   const [detailsExpanded, setDetailsExpanded] = useState(false);
   const detailsId = useId();
   const usedPercent = calculateContextWindowUsagePercent(usage);
@@ -160,12 +156,9 @@ export function ThreadContextWindowIndicator({
   usage,
   defaultOpen,
 }: ThreadContextWindowIndicatorProps) {
-  const detailsEnabled =
-    useSystemConfig().data?.experiments.contextBreakdown ?? false;
-  const details =
-    detailsEnabled && usage.snapshot?.categories.length
-      ? usage.snapshot
-      : undefined;
+  const details = usage.snapshot?.categories.length
+    ? usage.snapshot
+    : undefined;
   const {
     open: hoverOpen,
     triggerHoverProps,
@@ -239,7 +232,6 @@ export function ThreadContextWindowIndicator({
         className="w-auto border-0 bg-transparent p-0 shadow-none max-md:p-0"
       >
         <ThreadContextWindowCard
-          detailsEnabled={detailsEnabled}
           usage={usage}
           className="max-md:w-full max-md:rounded-none max-md:border-0 max-md:bg-transparent max-md:px-4 max-md:pt-2 max-md:pb-[max(1rem,env(safe-area-inset-bottom))] max-md:shadow-none"
         />

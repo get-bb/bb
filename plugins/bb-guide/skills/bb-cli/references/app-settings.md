@@ -156,11 +156,3 @@ server gh credentials to machines; `true` enables them again. In Machines →
 Advanced settings, the automatic GH_TOKEN switch controls the same setting.
 This does not log the server out or suppress an explicit custom GH_TOKEN.
 Changes apply to new turns, setup commands and terminals.
-
-## Context breakdown
-
-The `contextBreakdown` experiment is off by default. Enable it in Settings →
-Experiments → Context breakdown, or with
-`bb settings experiment contextBreakdown true`, to show the provider token
-breakdown in the context window menu. Aggregate usage remains available when
-disabled; provider snapshots remain accessible through the SDK and CLI.
