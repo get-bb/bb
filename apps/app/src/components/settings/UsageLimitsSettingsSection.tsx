@@ -159,6 +159,7 @@ function UsageWindowRow({ window }: { window: ProviderUsageWindow }) {
 }
 
 interface ProviderUsageBlockProps {
+  accountLabel?: string;
   config: ProviderConfig;
   usage: ProviderUsage | undefined;
   isLoading: boolean;
@@ -256,13 +257,15 @@ function UsageLocationPicker({
 }
 
 function ProviderUsageBlock({
+  accountLabel,
   config,
   usage,
   isLoading,
   isError,
 }: ProviderUsageBlockProps) {
   const planLabel = usage?.status === "ok" ? usage.planLabel : null;
-  const accountEmail = usage?.status === "ok" ? usage.accountEmail : null;
+  const accountEmail =
+    accountLabel ?? (usage?.status === "ok" ? usage.accountEmail : null);
   const iconInfo = getProviderIconInfo(
     "agent",
     config.providerId,
@@ -338,83 +341,77 @@ function UsageResourceGroup({
   resources: NonNullable<UsageLimitsSettingsSectionContentProps["resources"]>;
   isLoading: boolean;
 }) {
-  const headingId = useId();
-  const ProviderIcon = getProviderIconInfo(
-    "agent",
-    config.providerId,
-    config.provider ?? null,
-  )?.icon;
+  const hasIcon = Boolean(
+    getProviderIconInfo("agent", config.providerId, config.provider ?? null)
+      ?.icon,
+  );
   return (
-    <section
-      aria-labelledby={headingId}
-      className="space-y-3 py-3.5 first:pt-0 last:pb-0"
-    >
-      <div className="flex items-center gap-2.5">
-        {ProviderIcon ? (
-          <span aria-hidden="true" className="shrink-0">
-            <ProviderIconMark
-              provider={{ id: config.providerId, strings: config.strings }}
-              icon={ProviderIcon}
-              className="size-4"
-            />
-          </span>
-        ) : null}
-        <h3 id={headingId} className="text-sm font-semibold text-foreground">
-          {config.name}
-        </h3>
-      </div>
-      <div className={cn("divide-y divide-border", ProviderIcon && "pl-6")}>
-        {resources.map(({ key, resource, isError }) => {
-          const email =
-            resource.usage?.accountEmail ??
-            (resource.label === config.name ? "Account" : resource.label);
-          const usage =
-            resource.usage?.status === "ok"
-              ? {
-                  ...resource.usage,
-                  windows: resource.usage.windows.map(({ cost, ...window }) =>
-                    cost === null ? window : { ...window, cost },
-                  ),
-                }
-              : resource.usage;
-          const accountConfig =
-            resource.scope.kind === "shared"
-              ? {
-                  ...config,
-                  signInHint:
-                    "Sign in to this account in the source plugin’s settings, then reload usage.",
-                  expiredHint:
-                    "This account’s session expired. Sign in again in the source plugin’s settings, then reload usage.",
-                }
-              : config;
+    <div className="py-3.5 first:pt-0 last:pb-0">
+      {resources.map(({ key, resource, isError }, index) => {
+        const email =
+          resource.usage?.accountEmail ??
+          (resource.label === config.name ? "Account" : resource.label);
+        const usage =
+          resource.usage?.status === "ok"
+            ? {
+                ...resource.usage,
+                windows: resource.usage.windows.map(({ cost, ...window }) =>
+                  cost === null ? window : { ...window, cost },
+                ),
+              }
+            : resource.usage;
+        const accountConfig =
+          resource.scope.kind === "shared"
+            ? {
+                ...config,
+                signInHint:
+                  "Sign in to this account in the source plugin’s settings, then reload usage.",
+                expiredHint:
+                  "This account’s session expired. Sign in again in the source plugin’s settings, then reload usage.",
+              }
+            : config;
+        const failed = isError === true && usage === undefined;
+        if (index === 0)
           return (
-            <section
+            <ProviderUsageBlock
               key={key}
-              aria-label={email}
-              className="space-y-3 py-3 first:pt-0 last:pb-0"
-            >
-              <div className="flex min-w-0 items-center justify-between gap-2">
-                <h4
-                  className="min-w-0 truncate text-xs font-medium text-foreground"
-                  title={email}
-                >
-                  {email}
-                </h4>
-                {usage?.status === "ok" && usage.planLabel ? (
-                  <SettingsBadge>{usage.planLabel}</SettingsBadge>
-                ) : null}
-              </div>
-              <ProviderUsageBody
-                config={accountConfig}
-                usage={usage}
-                isLoading={isLoading}
-                isError={isError === true && usage === undefined}
-              />
-            </section>
+              accountLabel={email}
+              config={accountConfig}
+              usage={usage}
+              isLoading={isLoading}
+              isError={failed}
+            />
           );
-        })}
-      </div>
-    </section>
+        return (
+          <section
+            key={key}
+            aria-label={email}
+            className={cn(
+              "space-y-3.5 border-t border-border py-3.5 last:pb-0",
+              hasIcon && "ml-6",
+            )}
+          >
+            <div className="flex min-w-0 items-start justify-between gap-2">
+              <p
+                className="min-w-0 truncate text-xs text-muted-foreground"
+                title={email}
+              >
+                {email}
+              </p>
+              {usage?.status === "ok" && usage.planLabel ? (
+                <SettingsBadge>{usage.planLabel}</SettingsBadge>
+              ) : null}
+            </div>
+            <ProviderUsageBody
+              config={accountConfig}
+              usage={usage}
+              isLoading={isLoading}
+              isError={failed}
+            />
+          </section>
+        );
+      })}
+    </div>
   );
 }
 
