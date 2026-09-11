@@ -103,7 +103,10 @@ function refreshUsage({
           method: "POST",
           headers: { "content-type": "application/json" },
           body: JSON.stringify({ force, machineIds, maxAgeMs }),
-          signal,
+          signal:
+            signal === undefined
+              ? AbortSignal.timeout(60_000)
+              : AbortSignal.any([signal, AbortSignal.timeout(60_000)]),
         },
       );
       if (!response.ok)
@@ -319,7 +322,7 @@ function MachineSelector({
         >
           <span className={OPTION_TRIGGER_CONTENT_CLASS_NAME}>
             <span className="min-w-0 truncate">
-              {activeMachine?.displayName ?? "No machines"}
+              {activeMachine?.displayName ?? "Usage"}
             </span>
           </span>
         </Button>
@@ -348,13 +351,19 @@ function MachineSelector({
                   aria-hidden="true"
                   className={cn(
                     "size-1.5 shrink-0 rounded-full",
-                    machine.status === "connected"
-                      ? "bg-success"
-                      : "border border-muted-foreground",
+                    machine.error !== null
+                      ? "bg-warning"
+                      : machine.status === "connected"
+                        ? "bg-success"
+                        : "border border-muted-foreground",
                   )}
                 />
                 <span className="min-w-0 truncate">{machine.displayName}</span>
-                {machine.status === "disconnected" ? (
+                {machine.error !== null ? (
+                  <span className="shrink-0 text-muted-foreground">
+                    Unavailable
+                  </span>
+                ) : machine.status === "disconnected" ? (
                   <span className="shrink-0 text-muted-foreground">
                     Offline
                   </span>
@@ -418,6 +427,7 @@ function ProviderUsageStatus({
       UsageProvider & { accounts: UsageProvider[] }
     >();
     for (const account of activeMachine?.providers ?? []) {
+      if (account.usage?.status === "not_installed") continue;
       const group = groups.get(account.providerId);
       if (group) group.accounts.push(account);
       else
@@ -619,8 +629,11 @@ function ProviderUsageStatus({
             {activeMachine.status === "disconnected"
               ? activeMachine.displayName +
                 " is offline. Usage will refresh when it reconnects."
-              : (activeMachine.error ??
-                "No providers report usage limits on this machine.")}
+              : activeMachine.error !== null
+                ? null
+                : activeMachine.id.startsWith("source:")
+                  ? "No accounts report usage yet. Configure accounts in the source plugin’s settings."
+                  : "No providers report usage limits on this machine."}
           </p>
         ) : (
           <>
@@ -663,12 +676,8 @@ function ProviderUsageStatus({
                         {activeMachine.displayName} is offline. Usage will
                         refresh when it reconnects.
                       </p>
-                    ) : activeMachine.error === null ? (
-                      <ProviderUsageBody provider={account} />
                     ) : (
-                      <p className="text-xs text-muted-foreground">
-                        {activeMachine.error}
-                      </p>
+                      <ProviderUsageBody provider={account} />
                     )}
                   </div>
                 </section>
@@ -676,7 +685,7 @@ function ProviderUsageStatus({
             </div>
           </>
         )}
-        {snapshot.error === null ? null : (
+        {snapshot.error === null && activeMachine?.error == null ? null : (
           <div
             role="status"
             className={cn(
@@ -687,7 +696,7 @@ function ProviderUsageStatus({
             )}
           >
             <span className="min-w-0 flex-1">
-              {snapshot.data === null
+              {snapshot.data === null || activeMachine?.providers.length === 0
                 ? "Couldn’t load usage."
                 : "Couldn’t refresh. Showing the last update."}
             </span>

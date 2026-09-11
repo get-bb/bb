@@ -386,7 +386,9 @@ export function createPluginsArea(args: CreateSdkAreaArgs): PluginsArea {
     },
     async experimental_discoverRpc(input = {}) {
       const query = pluginRpcDiscoveryQuerySchema.parse(input);
-      const params = new URLSearchParams(query);
+      const params = new URLSearchParams();
+      if (query.pluginId !== undefined) params.set("pluginId", query.pluginId);
+      if (query.method !== undefined) params.set("method", query.method);
       return requestParsed(
         `/api/v1/plugins/rpc?${params}`,
         pluginRpcDiscoveryResponseSchema,

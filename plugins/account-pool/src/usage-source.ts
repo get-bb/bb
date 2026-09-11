@@ -111,7 +111,9 @@ export function registerUsageSource(bb: BbPluginApi, hub: AccountPoolHub) {
               planLabel: usagePlanLabel(account),
             };
             const error =
-              account.error ??
+              (account.error === null
+                ? null
+                : "Usage could not be collected for this account. Try refreshing usage.") ??
               (account.observedAt === null
                 ? "Usage has not been observed for this account."
                 : null);

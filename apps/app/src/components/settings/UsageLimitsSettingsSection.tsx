@@ -162,6 +162,8 @@ interface UsageLocation {
 }
 
 export interface UsageLimitsSettingsSectionContentProps {
+  sourceNotice?: string | null;
+  emptySourceMessage?: string;
   resources?: Array<{
     key: string;
     resource: UsageSnapshot["resources"][number];
@@ -374,6 +376,8 @@ function ProviderUsageBody({
 
 export function UsageLimitsSettingsSectionContent({
   usage,
+  sourceNotice = null,
+  emptySourceMessage = "No providers report usage limits on this machine.",
   resources,
   isLoading,
   isError,
@@ -411,7 +415,9 @@ export function UsageLimitsSettingsSectionContent({
       ? "Loading providers and usage…"
       : isError || isProviderListError
         ? "Couldn't load providers or usage right now."
-        : "No providers available.";
+        : resources !== undefined
+          ? emptySourceMessage
+          : "No providers available.";
   return (
     <SettingsSection
       actionPlacement={showLocationPicker ? "responsive" : "inline"}
@@ -450,9 +456,16 @@ export function UsageLimitsSettingsSectionContent({
       }
     >
       <SettingsRowList>
+        {sourceNotice ? (
+          <p role="status" className="mb-3 text-xs text-muted-foreground">
+            {sourceNotice}
+          </p>
+        ) : null}
         {resources !== undefined ? (
           resources.length === 0 ? (
-            <p className="text-xs text-muted-foreground">{emptyMessage}</p>
+            sourceNotice ? null : (
+              <p className="text-xs text-muted-foreground">{emptyMessage}</p>
+            )
           ) : (
             resources.map(({ key, resource }) => {
               const config = providerConfig(
@@ -467,6 +480,10 @@ export function UsageLimitsSettingsSectionContent({
                       ? {
                           ...config,
                           name: resource.usage.accountEmail ?? config.name,
+                          signInHint:
+                            "Sign in to this account in the source plugin’s settings, then reload usage.",
+                          expiredHint:
+                            "This account’s session expired. Sign in again in the source plugin’s settings, then reload usage.",
                         }
                       : config
                   }
@@ -539,7 +556,6 @@ export function UsageLimitsSettingsSection() {
   const sharedSources = usageQuery.sources.filter(
     ({ query }) =>
       query.data?.label !== undefined ||
-      query.data?.resources.length === 0 ||
       query.data?.resources.some(
         (resource) => resource.scope.kind === "shared",
       ),
@@ -601,6 +617,26 @@ export function UsageLimitsSettingsSection() {
     <UsageLimitsSettingsSectionContent
       usage={{}}
       resources={resources}
+      emptySourceMessage={
+        selectedLocation?.kind === "source"
+          ? "No accounts report usage yet. Configure accounts in the source plugin’s settings, or choose a machine."
+          : usageQuery.sources.length === 0
+            ? "No usage sources are available. Enable a plugin that reports usage to see limits here."
+            : "No providers report usage limits on this machine."
+      }
+      sourceNotice={
+        selectedLocation?.disabled
+          ? `${selectedLocation.name} is offline. Usage will refresh when it reconnects.`
+          : usageQuery.discovery.isError
+            ? "Couldn’t discover usage sources. Try reloading usage."
+            : usageQuery.sources.some(
+                  ({ query }) => query.isError && !query.data,
+                )
+              ? "Some usage sources couldn’t be loaded. Try reloading usage."
+              : selectedSources.some(({ query }) => query.isError)
+                ? "Couldn’t refresh usage. Showing the last update. Try reloading usage."
+                : null
+      }
       isLoading={
         usageQuery.discovery.isPending ||
         selectedSources.some(({ query }) => query.isPending)

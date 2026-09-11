@@ -5844,3 +5844,32 @@ it("publishes pooled usage without a display plugin and does not invent unobserv
     ),
   ).toEqual(["provider-usage.v1.get"]);
 });
+
+it("publishes an empty shared usage group before any accounts or settings are configured", async () => {
+  const dataDir = await mkdtemp(path.join(tmpdir(), "bb-empty-usage-pool-"));
+  const host = createFakePluginHost({
+    pluginId: "account-pool",
+    dataDir,
+    sdk: sdkStubs(),
+  });
+  const fetch = vi.fn(async () => {
+    throw new Error("An empty pool must not contact an upstream");
+  });
+  try {
+    await createAccountPoolPlugin({ fetch })(host.bb);
+    expect(
+      host.harness.registrations.experimental_publishedRpcMethods.map(
+        (entry) => entry.method,
+      ),
+    ).toContain("provider-usage.v1.get");
+    for (const refresh of [false, true]) {
+      await expect(
+        host.harness.behavior.callRpc("provider-usage.v1.get", { refresh }),
+      ).resolves.toEqual({ label: "Account Pooler", resources: [] });
+    }
+    expect(fetch).not.toHaveBeenCalled();
+  } finally {
+    await host.harness.lifecycle.dispose();
+    await fs.rm(dataDir, { recursive: true, force: true });
+  }
+});

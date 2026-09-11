@@ -47,7 +47,7 @@ export const usageSnapshotSchema = z.object({
     .min(1)
     .optional()
     .describe(
-      "Optional label for the shared-usage group. Defaults to the source plugin's display name; host groups use machine names.",
+      "Declares a shared-usage group, including when resources is empty. Omit for host-only sources. Shared resources without this label use the plugin display name; host groups use machine names.",
     ),
   resources: z.array(
     z.object({
