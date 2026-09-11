@@ -287,6 +287,7 @@ export function createAccountPoolPlugin(
       "/v1/responses",
       "/v1/images/generations",
       "/v1/images/edits",
+      "/v1/alpha/search",
     ]) {
       bb.http.route(
         "POST",
