@@ -185,6 +185,10 @@ describe("PushNotificationsHost", () => {
     await vi.advanceTimersByTimeAsync(2_000);
     expect(mocks.push).not.toHaveBeenCalled();
     expect(mocks.toastDismiss).not.toHaveBeenCalled();
+    expect(mocks.toastMessage.mock.calls.at(-1)?.[1]).toMatchObject({
+      id: "foreground-1",
+      duration: Infinity,
+    });
     resolveProbe(true);
     await vi.advanceTimersByTimeAsync(0);
     expect(mocks.push).toHaveBeenCalledOnce();
@@ -203,7 +207,28 @@ describe("PushNotificationsHost", () => {
     expect(mocks.toastDismiss).not.toHaveBeenCalled();
     expect(mocks.toastError).toHaveBeenCalledWith("Could not open the thread", {
       description: "None of your saved servers has it.",
+      duration: 2_000,
     });
+    mocks.hasThread.mockResolvedValue(true);
+    action.onClick();
+    await vi.advanceTimersByTimeAsync(500);
+    expect(mocks.push).toHaveBeenCalledOnce();
+    expect(mocks.toastDismiss).toHaveBeenCalledExactlyOnceWith("foreground-1");
+  });
+
+  it("refreshes the original toast for retry after a late failed Open", async () => {
+    vi.useFakeTimers();
+    const action = receive({ threadId: "thr_1" });
+    await vi.advanceTimersByTimeAsync(7_500);
+    action.onClick();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(mocks.toastMessage.mock.calls.at(-1)?.[1]).toMatchObject({
+      id: "foreground-1",
+      duration: 8_000,
+      action,
+    });
+    await vi.advanceTimersByTimeAsync(2_500);
+    expect(mocks.toastDismiss).not.toHaveBeenCalled();
     mocks.hasThread.mockResolvedValue(true);
     action.onClick();
     await vi.advanceTimersByTimeAsync(500);
