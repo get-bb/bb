@@ -27,6 +27,7 @@ const localViewTestCases: LocalViewTestCase[] = [
       details: "The local service failed to start.",
       kind: "error",
       logText: "Failed to bind port",
+      retryable: false,
       title: "Could not open bb",
     },
   },
@@ -74,6 +75,7 @@ describe("local desktop views", () => {
         kind: "error",
         logText:
           "\x1b[2K  \x1b[2m○\x1b[0m  Starting server\r\x1b[2K  \x1b[32m✓\x1b[0m  Server listening\nError: listen EADDRINUSE",
+        retryable: false,
         title: "Could not open bb",
       },
     });
@@ -84,5 +86,30 @@ describe("local desktop views", () => {
     expect(html).toContain("Error: listen EADDRINUSE");
     expect(html).not.toContain("\x1b[");
     expect(html).not.toContain("\r");
+  });
+
+  it("renders an on-screen retry control only for recoverable startup errors", () => {
+    const retryableHtml = decodeLocalViewHtml({
+      viewModel: {
+        details: "The saved server did not answer.",
+        kind: "error",
+        logText: "",
+        retryable: true,
+        title: "Could not reach bb",
+      },
+    });
+    const fatalHtml = decodeLocalViewHtml({
+      viewModel: {
+        details: "The desktop process could not continue.",
+        kind: "error",
+        logText: "",
+        retryable: false,
+        title: "Could not open bb",
+      },
+    });
+
+    expect(retryableHtml).toContain('data-testid="bb-startup-retry"');
+    expect(retryableHtml).toContain(">Try again</button>");
+    expect(fatalHtml).not.toContain('data-testid="bb-startup-retry"');
   });
 });

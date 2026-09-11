@@ -1,4 +1,10 @@
-import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
@@ -160,6 +166,7 @@ it("refuses a manual compaction while pi reports a run still streaming", async (
 
 it("a steer consumed by the run is reported accepted and named in the reply", async () => {
   const threadId = "thr_r2_steer_ok";
+  const filePath = join(harness.workspaceDir, "notes.md");
   await harness.startThread(threadId);
   turnStart(threadId, "/hold", "creq_ab23456789");
   await harness.waitForDelta(threadId, (d) => d.kind === "turn.open");
@@ -168,7 +175,10 @@ it("a steer consumed by the run is reported accepted and named in the reply", as
     providerThreadId: threadId,
     expectedTurnId: "turn-1",
     clientRequestId: "creq_cd23456789",
-    input: [{ type: "text", text: "take the left path", mentions: [] }],
+    input: [
+      { type: "text", text: "take the left path", mentions: [] },
+      { type: "localFile", path: filePath },
+    ],
     options: FULL_PERMISSION_OPTIONS,
   });
   expect(steer.result).toMatchObject({ threadId });
@@ -188,7 +198,9 @@ it("a steer consumed by the run is reported accepted and named in the reply", as
       .some(
         (d) =>
           d.kind === "item.textDelta" &&
-          String(d.text).includes("Steered: take the left path"),
+          String(d.text).includes(
+            `Steered: take the left path\n[Attached file: ${filePath}]`,
+          ),
       ),
   ).toBe(true);
   expect(harness.messages.some((m) => m.method === "error")).toBe(false);
@@ -428,9 +440,7 @@ it("resumes at bb's requested cwd when the session header's cwd was removed", as
 
   turnStart(threadId, '/tool bash {"command":"pwd"}', "creq_rsm2345678");
   await harness.waitForDelta(threadId, (d) => d.kind === "item.close");
-  const opened = harness
-    .deltasOf(threadId)
-    .find((d) => d.kind === "item.open");
+  const opened = harness.deltasOf(threadId).find((d) => d.kind === "item.open");
   expect(opened?.item).toMatchObject({
     type: "command",
     command: "pwd",
