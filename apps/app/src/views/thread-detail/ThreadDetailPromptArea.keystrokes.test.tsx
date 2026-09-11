@@ -190,6 +190,7 @@ vi.mock("@/hooks/useThreadCreationOptions", () => ({
     moreModelOptions: [],
     permissionMode: "auto",
     permissionModeOptions: [],
+    providers: [],
     providerOptions: [],
     reasoningLevel: "medium",
     reasoningOptions: [],

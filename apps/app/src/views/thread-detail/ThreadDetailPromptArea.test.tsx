@@ -1471,21 +1471,19 @@ describe("ThreadDetailPromptArea", () => {
     expect(inlineEditor.getByTestId("command-suggestions").textContent).toBe(
       "codex:thread",
     );
-    const bottom = within(
+    const inlineHost = screen.getByTestId("inline-queued-message-editor");
+    expect(
       screen
-        .getAllByTestId("follow-up-prompt-box")
-        .find(
-          (element) =>
-            within(element).getByTestId("composer-location").textContent ===
-            "bottom",
-        )!,
-    );
-    expect(bottom.getByTestId("selected-provider").textContent).toBe(
-      "claude-code",
-    );
-    expect(bottom.getByTestId("command-suggestions").textContent).toBe(
-      "claude-code:new-thread",
-    );
+        .getAllByTestId("selected-provider")
+        .filter((element) => !inlineHost.contains(element))
+        .map((element) => element.textContent),
+    ).toEqual(["claude-code"]);
+    expect(
+      screen
+        .getAllByTestId("command-suggestions")
+        .filter((element) => !inlineHost.contains(element))
+        .map((element) => element.textContent),
+    ).toEqual(["claude-code:new-thread"]);
     expect(inlineEditor.getByTestId("selected-model").textContent).toBe(
       "queued-model",
     );
