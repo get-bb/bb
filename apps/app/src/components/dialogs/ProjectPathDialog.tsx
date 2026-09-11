@@ -1,4 +1,11 @@
-import { useEffect, useId, useState, type FormEvent } from "react";
+import {
+  lazy,
+  Suspense,
+  useEffect,
+  useId,
+  useState,
+  type FormEvent,
+} from "react";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -24,10 +31,15 @@ import {
 } from "@bb/shared-ui/dialog";
 import { Input } from "@bb/shared-ui/input";
 import { cn } from "@bb/shared-ui/lib/utils";
-import { RemotePathBrowser } from "@/components/dialogs/RemotePathBrowser";
 import { MachineStatusDot } from "@/components/machines/MachineStatusDot";
 import { usePointerCoarse } from "@bb/shared-ui/hooks/use-pointer-coarse";
 import { selectHosts } from "@/hooks/queries/host-queries";
+
+const RemotePathBrowser = lazy(() =>
+  import("./RemotePathBrowser").then((module) => ({
+    default: module.RemotePathBrowser,
+  })),
+);
 
 export type ProjectPathDialogTarget =
   | {
@@ -316,14 +328,22 @@ export function ProjectPathDialogContent({
           </DropdownMenu>
         ) : null}
         {selectedHostId ? (
-          <RemotePathBrowser
-            key={selectedHostId}
-            hostId={selectedHostId}
-            initialPath={target.kind === "update" ? target.currentPath : null}
-            allowCreateFolder={target.kind === "create"}
-            onDirectoryChange={setBrowserDirectory}
-            disabled={pending || !selectedHostConnected}
-          />
+          <Suspense
+            fallback={
+              <p role="status" className="text-sm text-muted-foreground">
+                Loading folders…
+              </p>
+            }
+          >
+            <RemotePathBrowser
+              key={selectedHostId}
+              hostId={selectedHostId}
+              initialPath={target.kind === "update" ? target.currentPath : null}
+              allowCreateFolder={target.kind === "create"}
+              onDirectoryChange={setBrowserDirectory}
+              disabled={pending || !selectedHostConnected}
+            />
+          </Suspense>
         ) : noMachineAvailable ? (
           <p className="rounded-md border px-3 py-6 text-center text-sm text-muted-foreground">
             Every machine is offline. Bring one online to browse its folders.

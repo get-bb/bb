@@ -48,7 +48,7 @@ afterEach(() => {
 });
 
 describe("ProjectPathDialog machine selection", () => {
-  it("creates a project from a folder on the selected connected machine", () => {
+  it("creates a project from a folder on the selected connected machine", async () => {
     const onSubmit = vi.fn();
     render(
       <ProjectPathDialog
@@ -65,9 +65,11 @@ describe("ProjectPathDialog machine selection", () => {
     const trigger = screen.getByRole("button", { name: "Machine" });
     expect(trigger.textContent).toContain("atum");
     expect(
-      screen
-        .getByRole("button", { name: "Choose folder on host_atum" })
-        .getAttribute("data-allow-create-folder"),
+      (
+        await screen.findByRole("button", {
+          name: "Choose folder on host_atum",
+        })
+      ).getAttribute("data-allow-create-folder"),
     ).toBe("true");
 
     fireEvent.pointerDown(trigger, { button: 0 });
@@ -90,7 +92,7 @@ describe("ProjectPathDialog machine selection", () => {
     );
   });
 
-  it("preserves the direct single-machine folder flow", () => {
+  it("preserves the direct single-machine folder flow", async () => {
     const onSubmit = vi.fn();
     render(
       <ProjectPathDialog
@@ -106,7 +108,7 @@ describe("ProjectPathDialog machine selection", () => {
 
     expect(screen.queryByRole("button", { name: "Machine" })).toBeNull();
     fireEvent.click(
-      screen.getByRole("button", { name: "Choose folder on host_atum" }),
+      await screen.findByRole("button", { name: "Choose folder on host_atum" }),
     );
     fireEvent.click(screen.getByRole("button", { name: "Add project" }));
 
@@ -147,7 +149,7 @@ describe("ProjectPathDialog machine selection", () => {
     ).toBeTruthy();
   });
 
-  it("uses a provider-made host as the only project machine", () => {
+  it("uses a provider-made host as the only project machine", async () => {
     const onSubmit = vi.fn();
     render(
       <ProjectPathDialog
@@ -167,7 +169,9 @@ describe("ProjectPathDialog machine selection", () => {
     );
 
     fireEvent.click(
-      screen.getByRole("button", { name: "Choose folder on host_modal" }),
+      await screen.findByRole("button", {
+        name: "Choose folder on host_modal",
+      }),
     );
     fireEvent.click(screen.getByRole("button", { name: "Add project" }));
     expect(onSubmit).toHaveBeenCalledWith(
