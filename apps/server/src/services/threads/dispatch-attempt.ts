@@ -64,7 +64,7 @@ import {
   threadForkDescriptorSchema,
   threadProvisionEnvironmentIntentSchema,
 } from "./thread-startup-store.js";
-import { getThreadProvisionContext } from "./thread-startup-store.js";
+import { readThreadProvisionContext } from "./thread-startup-store.js";
 import {
   buildThreadStatusChangeMetadata,
   toThreadResponseFromThread,
@@ -79,7 +79,7 @@ import {
   type SendThreadMessageTransactionPreflight,
 } from "./thread-send.js";
 import type { TurnRequestRetryMarker } from "./thread-events.js";
-import { restoreFailedThreadStartupRequest } from "./thread-provisioning.js";
+import { restoreInterruptedThreadStartupRequest } from "./thread-provisioning.js";
 
 export const pendingThreadStartContextSchema = z.object({
   environmentIntent: threadProvisionEnvironmentIntentSchema,
@@ -138,7 +138,7 @@ function intendedThreadIntent(
   threadId: string,
 ): PendingThreadStartContext["environmentIntent"] | null {
   return (
-    getThreadProvisionContext(deps.db, threadId)?.request.environmentIntent ??
+    readThreadProvisionContext(deps.db, threadId)?.request.environmentIntent ??
     readPendingThreadStartContext(deps, threadId)?.environmentIntent ??
     null
   );
@@ -315,20 +315,21 @@ async function runDispatchAttempt(
     targetThread: thread,
   });
 
-  const failedStartupRequest =
-    thread.status === "error" && thread.environmentId === null
-      ? await restoreFailedThreadStartupRequest(deps, thread.id)
+  const interruptedStartupRequest =
+    (thread.status === "error" || thread.status === "idle") &&
+    thread.environmentId === null
+      ? await restoreInterruptedThreadStartupRequest(deps, thread.id)
       : null;
   const firstDispatch =
-    thread.status === "pending" || failedStartupRequest !== null;
+    thread.status === "pending" || interruptedStartupRequest !== null;
   const retryStartContext: PendingThreadStartContext | null =
-    failedStartupRequest === null
+    interruptedStartupRequest === null
       ? null
       : {
-          environmentIntent: failedStartupRequest.environmentIntent,
-          fork: failedStartupRequest.fork,
+          environmentIntent: interruptedStartupRequest.environmentIntent,
+          fork: interruptedStartupRequest.fork,
           startedOnBehalfOf: args.startedOnBehalfOf,
-          titleProvided: failedStartupRequest.titleProvided,
+          titleProvided: interruptedStartupRequest.titleProvided,
         };
   const claimed = args.source.kind === "drain" ? args.source.claimed : null;
   const sendNow = args.source.kind === "drain" && args.source.sendNow;

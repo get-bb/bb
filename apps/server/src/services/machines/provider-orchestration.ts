@@ -1342,7 +1342,11 @@ export async function sweepProviderMachine(
     return;
   }
   const now = Date.now();
-  if (operations(removeOperations, deps.db).has(hostId)) return;
+  const removing = operations(removeOperations, deps.db).get(hostId);
+  if (removing !== undefined) {
+    await removing.done;
+    return;
+  }
   if (operations(resumeOperations, deps.db).has(hostId)) return;
   if (
     row.phase !== "removing" ||

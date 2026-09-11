@@ -1,5 +1,5 @@
 import { sweepProviderLifecycles } from "../environments/environment-engine.js";
-import { and, eq, isNull, inArray } from "drizzle-orm";
+import { and, eq, isNull, isNotNull, inArray } from "drizzle-orm";
 import { sweepMachineLifecycles } from "../machines/provider-orchestration.js";
 import {
   CLOSED_SESSION_ROW_RETENTION_MS,
@@ -42,7 +42,10 @@ import {
   advanceProjectDeletion,
   listProjectsPendingDeletion,
 } from "../projects/project-deletion.js";
-import { hasLiveThreadStartInFlight } from "../threads/thread-lifecycle.js";
+import {
+  finalizeStoppedThread,
+  hasLiveThreadStartInFlight,
+} from "../threads/thread-lifecycle.js";
 import { advanceThreadProvisioning } from "../threads/thread-provisioning.js";
 import {
   runQueuedMessageDispatch,
@@ -338,6 +341,14 @@ async function runThreadProvisioningOrphanCleanupSweep(
         "Thread provisioning sweep failed",
       );
     }
+  }
+  const deletedUnattachedThreads = deps.db
+    .select({ id: threads.id })
+    .from(threads)
+    .where(and(isNotNull(threads.deletedAt), isNull(threads.environmentId)))
+    .all();
+  for (const thread of deletedUnattachedThreads) {
+    finalizeStoppedThread(deps, { threadId: thread.id });
   }
 }
 

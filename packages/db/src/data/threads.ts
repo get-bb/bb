@@ -2074,7 +2074,12 @@ export function applyThreadLifecycleEventInTransaction(
     status: evaluation.to,
     updatedAt: now,
   };
-  if (evaluation.to === "active" || evaluation.to === "idle") set.startupContext = null;
+  if (
+    evaluation.to === "active" ||
+    (evaluation.to === "idle" && thread.environmentId !== null)
+  ) {
+    set.startupContext = null;
+  }
   if (
     statusTransitionNeedsAttention({
       currentStatus: thread.status,

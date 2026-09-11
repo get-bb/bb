@@ -1,3 +1,5 @@
+import { getNonDestroyedHostByLaunchKey } from "@bb/db";
+import { sweepProviderMachine } from "../machines/provider-orchestration.js";
 import { readThreadProvisioningStage } from "./thread-provisioning-context.js";
 import { cancelProviderEnvironmentCreation } from "../environments/environment-engine.js";
 import { getPreparingEnvironment } from "@bb/db";
@@ -454,7 +456,7 @@ export function scheduleThreadProvisioningAdvance(
   });
 }
 
-export async function restoreFailedThreadStartupRequest(
+export async function restoreInterruptedThreadStartupRequest(
   deps: ThreadProvisioningDeps,
   threadId: string,
 ): Promise<ThreadProvisionContext["request"] | null> {
@@ -463,6 +465,10 @@ export async function restoreFailedThreadStartupRequest(
   const provisioning = getPreparingEnvironment(deps.db, threadId);
   if (provisioning !== null) {
     await cancelProviderEnvironmentCreation(deps, threadId);
+  }
+  const machine = getNonDestroyedHostByLaunchKey(deps.db, threadId);
+  if (machine?.phase === "removing") {
+    await sweepProviderMachine(deps, machine.id);
   }
   return context.request;
 }

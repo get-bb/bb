@@ -2739,14 +2739,17 @@ it("keeps an existing request waiting when its provider is not registered", asyn
   });
 });
 
-it("stops an unattached provider creation using the thread's durable startup state", async () => {
+it("stops an unattached provider creation and provisions its follow-up", async () => {
   await withTestHarness(async (harness) => {
     const remove = vi.fn(async () => ({ status: "removed" as const }));
     installTarget({
       provision: () => ({ action: "wait", reason: "Allocating" }),
       remove,
     });
-    const { project } = seedTargetFixture(harness, "host-stop-durable-startup");
+    const { project, host } = seedTargetFixture(
+      harness,
+      "host-stop-durable-startup",
+    );
     const created = await createTargetThread(harness, {
       projectId: project.id,
     });
@@ -2768,6 +2771,33 @@ it("stops an unattached provider creation using the thread's durable startup sta
     );
     expect(remove).toHaveBeenCalledTimes(1);
     expect(getThread(harness.db, created.id)?.status).toBe("idle");
-    expect(getThreadStartupContext(harness.db, created.id)).toBeNull();
+    installTarget({ provision: () => readyAt(host), remove });
+    const response = await harness.app.request(
+      `/api/v1/threads/${created.id}/send`,
+      {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          input: textInput("Continue after stopping setup"),
+          mode: "auto",
+        }),
+      },
+    );
+    expect(response.status, await response.text()).toBe(200);
+    const start = await waitForQueuedCommand(
+      harness,
+      ({ command }) =>
+        command.type === "thread.start" && command.threadId === created.id,
+    );
+    expect(start.command).toMatchObject({
+      input: textInput("Continue after stopping setup"),
+    });
+    expect(getThread(harness.db, created.id)?.environmentId).not.toBe(
+      environmentId,
+    );
+    await reportQueuedCommandError(harness, start, {
+      errorCode: "test_cleanup",
+      errorMessage: "Settle test start",
+    });
   });
 });

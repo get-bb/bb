@@ -477,6 +477,40 @@ describe("machine retirement", () => {
       expect(getHost(harness.db, host.id)?.phase).toBe("active");
     }));
 
+  it("waits for in-flight cleanup before a second sweep completes", async () =>
+    withTestHarness(async (harness) => {
+      const started = createDeferredPromise<void>();
+      const release = createDeferredPromise<void>();
+      const remove = vi.fn(async () => {
+        started.resolve();
+        await release.promise;
+        return { status: "removed" as const };
+      });
+      installMachineProvider({ remove });
+      const { host } = seedHostSession(harness.deps);
+      updateHost(harness.db, harness.hub, host.id, {
+        machineProviderId: "test-machine",
+        resource: { allocation: "cancelled" },
+        phase: "active",
+      });
+      expect(requestMachineRemoval(harness.deps, host.id)).toBe(true);
+      const first = sweepProviderMachine(harness.deps, host.id);
+      await started.promise;
+      let settled = false;
+      const second = sweepProviderMachine(harness.deps, host.id).then(() => {
+        settled = true;
+      });
+      try {
+        await new Promise<void>((resolve) => setImmediate(resolve));
+        expect(settled).toBe(false);
+      } finally {
+        release.resolve();
+        await Promise.all([first, second]);
+      }
+      expect(getHost(harness.db, host.id)?.phase).toBe("destroyed");
+      expect(remove).toHaveBeenCalledOnce();
+    }));
+
   it("retries failed teardown at removeRetryAt", async () =>
     withTestHarness(async (harness) => {
       vi.useFakeTimers({ toFake: ["Date"] });
