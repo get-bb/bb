@@ -237,7 +237,7 @@ function WorkspaceStory({
     setName("");
     setContext("");
     setNewAgentId("new");
-    setSelection([selected.id]);
+    setSelection(isWorkspaceAgent ? [] : [selected.id]);
     setDialog(kind);
   }
 
@@ -453,8 +453,8 @@ function WorkspaceStory({
           </header>
           <div className="min-h-0 flex-1 overflow-y-auto px-6 py-8 text-sm leading-relaxed">
             <p>
-              {isWorkspaceAgent
-                ? "I’m keeping the checkout launch moving. Requirements, implementation, and launch preparation are underway."
+              {isWorkspaceAgent && workspace
+                ? `I’m coordinating ${workspace.name}. I can delegate work to sub-threads and keep our shared context up to date.`
                 : selected.id === "thr_workspace_payments"
                   ? "I’ve delegated the retry investigation to Retry failed payments. I’ll incorporate its findings into the payments implementation."
                   : `Continue working on ${threadTitle(selected).toLowerCase()}.`}
@@ -490,7 +490,7 @@ function WorkspaceStory({
               Info
             </div>
             <div className="space-y-5 p-4">
-              <DetailCard appearance="flat" labelWidth="112px">
+              <DetailCard appearance="flat" labelWidth="136px">
                 <DetailRow
                   label={
                     <DetailRowIconLabel icon="Folder">
@@ -575,7 +575,11 @@ function WorkspaceStory({
                     </DetailRowIconLabel>
                   }
                 >
-                  feature/atlas-checkout
+                  {workspace?.id === "workspace_atlas"
+                    ? "feature/atlas-checkout"
+                    : workspace?.id === "workspace_mobile"
+                      ? "feature/mobile-refresh"
+                      : "main"}
                 </DetailRow>
               </DetailCard>
               <div className="border-t border-border pt-3">
