@@ -359,6 +359,8 @@ it("deduplicates known inventory identities without merging unknown accounts sha
     await waitFor(() =>
       expect(screen.getAllByText("42% used")).toHaveLength(3),
     );
+    expect(screen.getAllByRole("heading", { level: 3 })).toHaveLength(1);
+    expect(screen.getAllByRole("heading", { level: 4 })).toHaveLength(3);
     expect(screen.getAllByText("Max (20x)")).toHaveLength(3);
     expect(screen.getAllByText("Weekly limit")).toHaveLength(3);
     expect(

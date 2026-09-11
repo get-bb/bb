@@ -11,7 +11,7 @@ Account authentication failures and plans without reported limits have separate
 states; unavailable usage is never represented as zero consumption.
 
 Settings → Usage limits consumes the same sources independently, using its
-existing full-size provider cards and fetching only resources in the selected pool or machine. Neither display is required for source
+full-size provider groups with email-labeled accounts and fetching only resources in the selected pool or machine. Neither display is required for source
 plugins to publish their usage.
 
 Use `bb plugin rpc list --method provider-usage.v1.listResources --json` to find sources
