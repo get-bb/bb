@@ -873,6 +873,25 @@ describe("FollowUpPromptBox", () => {
     expect(screen.getByText("Local environment")).toBeTruthy();
   });
 
+  it("keeps a collapsed composer steady while a pointer focuses an action", () => {
+    const props = createFollowUpPromptBoxProps({ kind: "ready" });
+    render(<FollowUpPromptBox {...props} />);
+    fireEvent.click(
+      screen.getByRole("button", { name: "Collapse prompt box" }),
+    );
+    const submit = screen.getByRole("button", { name: "Submit" });
+
+    fireEvent.pointerDown(submit, { button: 0, pointerType: "mouse" });
+    act(() => submit.focus());
+
+    expect(screen.getByTestId("prompt-box").getAttribute("data-compact")).toBe(
+      "true",
+    );
+    fireEvent.pointerUp(submit, { button: 0, pointerType: "mouse" });
+    fireEvent.click(submit);
+    expect(props.composer.onSubmit).toHaveBeenCalledOnce();
+  });
+
   it("toggles between focused and collapsed with the composer shortcut", () => {
     const props = createFollowUpPromptBoxProps({ kind: "ready" });
     props.environmentSummary = <span>Local environment</span>;
@@ -1169,6 +1188,57 @@ describe("FollowUpPromptBox", () => {
       vi.useRealTimers();
     }
   });
+
+  it.each([false, true])(
+    "cancels a pending keyboard collapse when pressing a control (overlay: %s)",
+    (isOverlay) => {
+      mocks.isCompactViewport = true;
+      mocks.isPointerCoarse = true;
+      vi.useFakeTimers();
+      const originalDescriptor = Object.getOwnPropertyDescriptor(
+        window,
+        "visualViewport",
+      );
+      const visualViewport = Object.assign(new EventTarget(), { height: 500 });
+      Object.defineProperty(window, "visualViewport", {
+        configurable: true,
+        value: visualViewport,
+      });
+
+      try {
+        const props = createFollowUpPromptBoxProps({ kind: "ready" });
+        render(<FollowUpPromptBox {...props} />);
+        const input = screen.getByRole("textbox", { name: "Follow-up prompt" });
+        const control = screen.getByRole("button", { name: "Submit" });
+        if (isOverlay) control.setAttribute("aria-haspopup", "menu");
+        act(() => input.focus());
+        act(() => {
+          visualViewport.height = 300;
+          visualViewport.dispatchEvent(new Event("resize"));
+          vi.advanceTimersByTime(20);
+        });
+        act(() => input.blur());
+        act(() => vi.advanceTimersByTime(550));
+
+        fireEvent.pointerDown(control, { button: 0, pointerType: "touch" });
+        act(() => vi.advanceTimersByTime(300));
+
+        expect(
+          screen.getByTestId("prompt-box").getAttribute("data-compact"),
+        ).toBe("false");
+        fireEvent.pointerUp(control, { button: 0, pointerType: "touch" });
+        fireEvent.click(control);
+        expect(props.composer.onSubmit).toHaveBeenCalledOnce();
+      } finally {
+        vi.useRealTimers();
+        if (originalDescriptor) {
+          Object.defineProperty(window, "visualViewport", originalDescriptor);
+        } else {
+          Reflect.deleteProperty(window, "visualViewport");
+        }
+      }
+    },
+  );
 
   it("stays expanded after pressing a non-focusable composer control", () => {
     mocks.isCompactViewport = true;
