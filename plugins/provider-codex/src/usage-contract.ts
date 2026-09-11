@@ -42,6 +42,13 @@ const usageSchema = z.discriminatedUnion("status", [
   }),
 ]);
 export const usageSnapshotSchema = z.object({
+  label: z
+    .string()
+    .min(1)
+    .optional()
+    .describe(
+      "Optional label for the shared-usage group. Defaults to the source plugin's display name; host groups use machine names.",
+    ),
   resources: z.array(
     z.object({
       id: z

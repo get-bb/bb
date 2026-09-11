@@ -129,7 +129,7 @@ export function registerUsageSource(bb: BbPluginApi, hub: AccountPoolHub) {
             };
           },
         );
-        return { resources };
+        return { label: "Account Pooler", resources };
       },
     },
     {

@@ -329,6 +329,7 @@ describe("usage source composition", () => {
           callRpc: async ({ pluginId }) => {
             if (pluginId === "broken") throw new Error("Unavailable");
             return usageSnapshotSchema.parse({
+              label: "Pool accounts",
               resources: [
                 {
                   id: "account-1",
@@ -365,6 +366,7 @@ describe("usage source composition", () => {
       machines: [
         {
           id: "source:pool",
+          displayName: "Pool accounts",
           providers: [
             {
               id: "pool:account-1",

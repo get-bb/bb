@@ -136,7 +136,7 @@ Use `provider-usage.v1.get` as the shared method. Provider Usage documents the c
 
 Request: `{ refresh: boolean }`.
 
-Response: a complete snapshot of the resources owned by that implementation. Each resource includes a stable source-local ID, provider ID, display label, host or shared scope, observation timestamp, and a discriminated collection result. Successful results contain individually identified windows with utilization, reset time, optional cost information, and model applicability. Authentication failures, collection failures, and unobserved data must be explicit states rather than zero usage. Finalize and copy one concrete schema before implementing adapters.
+Response: a complete snapshot of the resources owned by that implementation, plus an optional `label` for the shared-usage group. This label is independent of the plugin manifest name; omission falls back to discovery’s plugin display name. Machine groups keep the host name. Each resource includes a stable source-local ID, provider ID, display label, host or shared scope, observation timestamp, and a discriminated collection result. Successful results contain individually identified windows with utilization, reset time, optional cost information, and model applicability. Authentication failures, collection failures, and unobserved data must be explicit states rather than zero usage. Finalize and copy one concrete schema before implementing adapters.
 
 Use the same milliseconds-based timestamp convention throughout. An observation timestamp describes the underlying measurement, not the time the RPC was called. If stale values are retained after a collection failure, preserve their original timestamp and expose the failed refresh separately.
 
