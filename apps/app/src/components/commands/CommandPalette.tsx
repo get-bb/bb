@@ -267,12 +267,11 @@ export function CommandPalette({
     setOpen(false);
   }, []);
 
-  const handleCloseAutoFocus = useCallback((event: Event) => {
+  const handleAfterCloseAutoFocus = useCallback(() => {
     const pending = pendingRunRef.current;
     pendingRunRef.current = null;
     const target = openTargetRef.current;
     if (target instanceof HTMLElement && target.isConnected) {
-      event.preventDefault();
       target.focus({ preventScroll: true });
     }
     pending?.();
@@ -339,7 +338,7 @@ export function CommandPalette({
         hideCloseButton
         aria-describedby={undefined}
         className="top-[12%] max-w-xl translate-y-0 gap-0 p-0"
-        onCloseAutoFocus={handleCloseAutoFocus}
+        onAfterCloseAutoFocus={handleAfterCloseAutoFocus}
         onEscapeKeyDown={(event) => {
           if (activeMode !== undefined) event.preventDefault();
         }}

@@ -99,6 +99,7 @@ const testState = vi.hoisted(() => ({
 }));
 const modeState = vi.hoisted(() => ({
   activeRecents: [] as ThreadListEntry[],
+  compact: false,
   searchResponse: undefined as ThreadSearchResponse | undefined,
 }));
 const openThreadInSplitMock = vi.hoisted(() => vi.fn());
@@ -146,7 +147,7 @@ vi.mock("@/lib/app-query-client", () => ({
 }));
 
 vi.mock("@bb/shared-ui/hooks/use-compact-viewport", () => ({
-  useIsCompactViewport: () => false,
+  useIsCompactViewport: () => modeState.compact,
 }));
 
 vi.mock("@/lib/split-layout/openThreadInSplit", () => ({
@@ -314,6 +315,7 @@ afterEach(() => {
   testState.filesAvailable = false;
   testState.plugins.length = 0;
   modeState.activeRecents = [];
+  modeState.compact = false;
   modeState.searchResponse = undefined;
   openThreadInSplitMock.mockReset();
   routeNavigateMock.mockReset();
@@ -818,21 +820,27 @@ describe("CommandPalette", () => {
     scrollIntoView.mockRestore();
   });
 
-  it("opens Installed plugins in Settings", async () => {
-    renderPalette();
-    openPalette();
-    await waitFor(() => expect(searchField()).toBeTruthy());
-    fireEvent.change(searchField(), { target: { value: "installed plugins" } });
-    await waitFor(() =>
-      expect(selectedOption()?.textContent).toContain("Installed plugins"),
-    );
-    fireEvent.keyDown(searchField(), { key: "Enter" });
-    await waitFor(() =>
-      expect(screen.getByTestId("location").textContent).toBe(
-        "/settings/plugins",
-      ),
-    );
-  });
+  it.each([false, true])(
+    "opens Installed plugins in Settings (compact: %s)",
+    async (compact) => {
+      modeState.compact = compact;
+      renderPalette();
+      openPalette();
+      await waitFor(() => expect(searchField()).toBeTruthy());
+      fireEvent.change(searchField(), {
+        target: { value: "installed plugins" },
+      });
+      await waitFor(() =>
+        expect(selectedOption()?.textContent).toContain("Installed plugins"),
+      );
+      fireEvent.keyDown(searchField(), { key: "Enter" });
+      await waitFor(() =>
+        expect(screen.getByTestId("location").textContent).toBe(
+          "/settings/plugins",
+        ),
+      );
+    },
+  );
 
   it("opens a specific settings page", async () => {
     renderPalette();
