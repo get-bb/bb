@@ -1204,7 +1204,9 @@ function PluginNavSidebarItem({
       splitMiniMap={splitIndicator.miniMap}
       accessory={sidebarAccessory}
       onPointerDown={onPointerDown}
-      onOpenInSplit={splitEnabled ? openInSplit : undefined}
+      onOpenInSplit={
+        splitEnabled && !isCompactViewport ? openInSplit : undefined
+      }
       onOpenDetails={() => {
         onNavigate?.();
         if (
