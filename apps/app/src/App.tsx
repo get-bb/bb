@@ -60,6 +60,7 @@ import {
   getAutomationDetailRoutePath,
   getAutomationEditRoutePath,
   getAutomationsRoutePath,
+  getPluginConfigurationRoutePath,
   getSettingsRoutePath,
   getSettingsProjectRoutePath,
 } from "./lib/route-paths";
@@ -295,6 +296,17 @@ export function AppRoutes() {
     <AppLayout>
       <Suspense fallback={null}>
         <Routes>
+          <Route
+            path="/settings/usage"
+            element={
+              <Navigate
+                to={getPluginConfigurationRoutePath({
+                  pluginId: "provider-usage",
+                })}
+                replace
+              />
+            }
+          />
           <Route path={SETTINGS_ROUTE_PATH} element={<SettingsView />} />
           <Route
             path={SETTINGS_SECTION_ROUTE_PATH}
