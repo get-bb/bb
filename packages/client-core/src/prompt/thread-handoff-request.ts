@@ -69,20 +69,17 @@ function threadHandoffPrefixLength(
         mention.resource.kind === "thread" &&
         mention.resource.threadId === seed.sourceThreadId,
     );
-  if (!hasHandoffMention) {
+  if (!hasHandoffMention || !draft.text.startsWith(handoff.text)) {
     return null;
   }
-  if (
-    draft.text.startsWith(
-      `${handoff.text}${THREAD_HANDOFF_FOLLOW_UP_SEPARATOR}`,
-    )
-  ) {
-    return handoff.text.length + THREAD_HANDOFF_FOLLOW_UP_SEPARATOR.length;
+  let prefixLength = handoff.text.length;
+  if (prefixLength < draft.text.length && draft.text[prefixLength] !== "\n") {
+    return null;
   }
-  if (draft.text === handoff.text) {
-    return handoff.text.length;
+  while (draft.text[prefixLength] === "\n") {
+    prefixLength += 1;
   }
-  return null;
+  return prefixLength;
 }
 
 export function buildThreadHandoffFollowUpDraft(

@@ -144,6 +144,23 @@ describe("stripThreadHandoffPrefix", () => {
     ).toEqual({ text: "", mentions: [], attachments: [] });
   });
 
+  it("tolerates the editor collapsing the blank line after the reference", () => {
+    expect(
+      stripThreadHandoffPrefix(SEED, {
+        text: "Continue from @thread:thr_source\nKeep going\n",
+        mentions: [SOURCE_MENTION],
+        attachments: [],
+      }),
+    ).toEqual({ text: "Keep going\n", mentions: [], attachments: [] });
+    expect(
+      buildThreadHandoffFollowUpDraft(SEED, {
+        text: "Continue from @thread:thr_source\nKeep going",
+        mentions: [SOURCE_MENTION],
+        attachments: [],
+      }).text,
+    ).toBe("Continue from @thread:thr_source\nKeep going");
+  });
+
   it("returns null once the user has changed the reference", () => {
     expect(
       stripThreadHandoffPrefix(SEED, {
