@@ -35,11 +35,13 @@ function renderTimeline(children: ReactNode) {
     defaultOptions: { queries: { retry: false } },
   });
   clients.push(client);
-  return render(
-    <QueryClientProvider client={client}>
-      <MemoryRouter>{children}</MemoryRouter>
-    </QueryClientProvider>,
-  );
+  return render(children, {
+    wrapper: ({ children }) => (
+      <QueryClientProvider client={client}>
+        <MemoryRouter>{children}</MemoryRouter>
+      </QueryClientProvider>
+    ),
+  });
 }
 
 function lightboxImage() {
@@ -102,8 +104,8 @@ it("uses rendered footnote order and excludes unused definitions", () => {
   expect(lightboxImage().getAttribute("alt")).toBe("Inline");
 });
 
-it("preserves occurrence identity across settled and streaming previews", () => {
-  renderTimeline(
+it("preserves occurrence identity when streaming finishes", () => {
+  const { rerender } = renderTimeline(
     <ThreadTimelineRows
       threadId="thread-1"
       threadRuntimeDisplayStatus="active"
@@ -118,6 +120,19 @@ it("preserves occurrence identity across settled and streaming previews", () => 
   );
   fireEvent.click(screen.getByRole("img", { name: "B" }));
   expect(screen.getByRole("status").textContent).toBe("2 / 2");
+  rerender(
+    <ThreadTimelineRows
+      threadId="thread-1"
+      threadRuntimeDisplayStatus="idle"
+      workspaceRootPath={undefined}
+      timelineRows={[
+        conversationRow({
+          id: "streaming",
+          text: "![A](https://example.com/a.png)\n\n![B](https://example.com/a.png)\nFinished",
+        }),
+      ]}
+    />,
+  );
   fireEvent.click(screen.getByRole("button", { name: "Previous image" }));
   expect(lightboxImage().getAttribute("alt")).toBe("A");
 });
@@ -204,5 +219,105 @@ it("never includes images suppressed in ordinary worker messages", () => {
   expect(screen.queryByRole("img", { name: "Suppressed" })).toBeNull();
   fireEvent.click(screen.getByRole("img", { name: "Visible" }));
   expect(lightboxImage().getAttribute("alt")).toBe("Visible");
+  expect(screen.queryByRole("button", { name: "Next image" })).toBeNull();
+});
+
+function galleryContent({ hidden = false, removed = false, extra = false }) {
+  return (
+    <TimelineImageGallery>
+      <div data-timeline-row-id="earlier" hidden={hidden}>
+        <MarkdownPreview content="![Earlier](https://example.com/earlier.png)" />
+      </div>
+      {removed ? null : (
+        <div data-timeline-row-id="selected" hidden={hidden}>
+          <MarkdownPreview content="![Selected](https://example.com/selected.png)" />
+        </div>
+      )}
+      <div data-timeline-row-id="later">
+        <MarkdownPreview content="![Later](https://example.com/later.png)" />
+      </div>
+      {extra ? (
+        <div data-timeline-row-id="new">
+          <MarkdownPreview content="![New](https://example.com/new.png)" />
+        </div>
+      ) : null}
+    </TimelineImageGallery>
+  );
+}
+
+it("retains only the displayed image after hiding and removing its source", async () => {
+  const { rerender } = render(galleryContent({}));
+  fireEvent.click(screen.getByRole("img", { name: "Selected" }));
+  rerender(galleryContent({ hidden: true }));
+  await waitFor(() => expect(screen.getByRole("status").textContent).toBe("1 / 2"));
+  expect(lightboxImage().getAttribute("alt")).toBe("Selected");
+  rerender(galleryContent({ hidden: true, removed: true }));
+  expect(lightboxImage().getAttribute("src")).toBe("https://example.com/selected.png");
+  fireEvent.click(screen.getByRole("button", { name: "Next image" }));
+  expect(lightboxImage().getAttribute("alt")).toBe("Later");
+  expect(screen.queryByRole("button", { name: "Previous image" })).toBeNull();
+  fireEvent.click(screen.getByRole("button", { name: "Close image preview" }));
+  fireEvent.click(screen.getByRole("img", { name: "Later" }));
+  expect(screen.queryByRole("button", { name: "Next image" })).toBeNull();
+});
+
+it("keeps the selected pixels until close even when no eligible images remain", async () => {
+  const { rerender } = render(
+    <TimelineImageGallery>
+      <MarkdownPreview content="![Selected](https://example.com/selected.png)" />
+    </TimelineImageGallery>,
+  );
+  fireEvent.click(screen.getByRole("img", { name: "Selected" }));
+  rerender(<TimelineImageGallery><div hidden><MarkdownPreview content="![Changed](https://example.com/changed.png)" /></div></TimelineImageGallery>);
+  await waitFor(() => expect(lightboxImage().getAttribute("alt")).toBe("Selected"));
+  expect(lightboxImage().getAttribute("src")).toBe("https://example.com/selected.png");
+  expect(screen.queryByRole("button", { name: "Next image" })).toBeNull();
+  fireEvent.click(screen.getByRole("button", { name: "Close image preview" }));
+  rerender(galleryContent({ hidden: true, removed: true }));
+  fireEvent.click(screen.getByRole("img", { name: "Later" }));
+  expect(screen.queryByRole("button", { name: "Next image" })).toBeNull();
+});
+
+it("enables navigation when a second image arrives without reopening", async () => {
+  const { rerender } = render(galleryContent({ hidden: true, removed: true }));
+  fireEvent.click(screen.getByRole("img", { name: "Later" }));
+  expect(screen.queryByRole("button", { name: "Next image" })).toBeNull();
+  rerender(galleryContent({ hidden: true, removed: true, extra: true }));
+  fireEvent.click(await screen.findByRole("button", { name: "Next image" }));
+  expect(lightboxImage().getAttribute("alt")).toBe("New");
+  expect(screen.getByRole("status").textContent).toBe("2 / 2");
+});
+
+it("excludes clipped user-message images until expanded", () => {
+  vi.spyOn(HTMLElement.prototype, "scrollHeight", "get").mockReturnValue(500);
+  vi.spyOn(HTMLElement.prototype, "clientHeight", "get").mockReturnValue(200);
+  vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(function (this: HTMLElement) {
+    if (this instanceof HTMLImageElement && this.alt === "Clipped") {
+      return new DOMRect(0, 300, 100, 100);
+    }
+    return new DOMRect(0, 0, 200, 200);
+  });
+  renderTimeline(
+    <ThreadTimelineRows
+      threadId="thread-1"
+      threadRuntimeDisplayStatus="idle"
+      workspaceRootPath={undefined}
+      timelineRows={[
+        conversationRow({ id: "user", role: "user", initiator: "user", text: `${"A line\n\n".repeat(20)}![Clipped](https://example.com/clipped.png)`, sourceSeqStart: 1 }),
+        conversationRow({ id: "assistant", text: "![Visible](https://example.com/visible.png)", sourceSeqStart: 2 }),
+      ]}
+    />,
+  );
+  fireEvent.click(screen.getByRole("img", { name: "Visible" }));
+  expect(screen.queryByRole("button", { name: "Next image" })).toBeNull();
+  fireEvent.click(screen.getByRole("button", { name: "Close image preview" }));
+  fireEvent.click(screen.getByRole("button", { name: "Show more" }));
+  fireEvent.click(screen.getByRole("img", { name: "Visible" }));
+  expect(screen.getByRole("status").textContent).toBe("2 / 2");
+  fireEvent.click(screen.getByRole("button", { name: "Previous image" }));
+  expect(lightboxImage().getAttribute("alt")).toBe("Clipped");
+  fireEvent.click(screen.getByRole("button", { name: "Close image preview" }));
+  fireEvent.click(screen.getByRole("button", { name: "Show less" }));
+  fireEvent.click(screen.getByRole("img", { name: "Visible" }));
   expect(screen.queryByRole("button", { name: "Next image" })).toBeNull();
 });
