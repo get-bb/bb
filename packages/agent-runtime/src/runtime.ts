@@ -138,6 +138,15 @@ interface RequestRecoveryArgs {
   threadId: string;
 }
 
+export class CompetingTurnError extends Error {
+  constructor(threadId: string) {
+    super(
+      `Refusing to start a competing turn for thread "${threadId}" while another turn is active or starting`,
+    );
+    this.name = "CompetingTurnError";
+  }
+}
+
 export class AgentRuntimeRecoveryError extends Error {
   readonly code: "auth_required" | "rate_limited";
   readonly recovery: AgentRuntimeProviderRecoveryHint;
@@ -765,9 +774,7 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
       turnState.getActiveTurnId(threadId) !== null ||
       pendingTurnStarts.has(threadId)
     ) {
-      throw new Error(
-        `Refusing to start a competing turn for thread "${threadId}" while another turn is active or starting`,
-      );
+      throw new CompetingTurnError(threadId);
     }
   }
 

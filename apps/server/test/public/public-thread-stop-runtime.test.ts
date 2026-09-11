@@ -23,6 +23,7 @@ import {
   seedStoredEvent,
   seedThread,
   seedThreadFixture,
+  seedTurnStarted,
 } from "../helpers/seed.js";
 import { withTestHarness } from "../helpers/test-app.js";
 import { runQueuedMessageDispatch } from "../../src/services/threads/queued-message-dispatch.js";
@@ -58,6 +59,222 @@ describe("thread runtime stop", () => {
           (event) => event.type === "system/thread/interrupted",
         ),
       ).toHaveLength(0);
+    });
+  });
+
+  for (const status of ["idle", "error"] as const) {
+    it(`interrupts a turn the daemon kept when the server believed the thread was ${status}`, async () => {
+      await withTestHarness(async (harness) => {
+        const { environment, thread } = seedThreadFixture(harness, {
+          thread: { status, visibility: "hidden" },
+        });
+        seedTurnStarted(harness.deps, {
+          environmentId: environment.id,
+          providerThreadId: "provider-retained",
+          threadId: thread.id,
+          turnId: "turn-retained",
+        });
+
+        const responsePromise = harness.app.request(
+          `/api/v1/threads/${thread.id}/stop`,
+          { method: "POST" },
+        );
+        const release = await waitForQueuedCommand(
+          harness,
+          ({ command }) =>
+            command.type === "thread.stop" &&
+            command.threadId === thread.id &&
+            command.intent === "release",
+        );
+        await reportQueuedCommandSuccess(harness, release, {
+          providerCheckpointId: null,
+          activeTurnRetained: true,
+        });
+
+        const interrupt = await waitForQueuedCommand(
+          harness,
+          ({ command }) =>
+            command.type === "thread.stop" &&
+            command.threadId === thread.id &&
+            command.intent === "interrupt",
+        );
+        expect(getThread(harness.db, thread.id)?.status).toBe("stopping");
+        await reportQueuedCommandSuccess(harness, interrupt, {
+          providerCheckpointId: null,
+        });
+
+        const response = await responsePromise;
+        expect(response.status).toBe(200);
+        expect(getThread(harness.db, thread.id)?.status).toBe("idle");
+        const events = listEvents(harness.db, { threadId: thread.id });
+        expect(
+          events.filter((event) => event.type === "system/thread/interrupted"),
+        ).toHaveLength(1);
+        const completion = events.find(
+          (event) =>
+            event.type === "turn/completed" && event.turnId === "turn-retained",
+        );
+        expect(completion).toBeDefined();
+        expect(JSON.parse(completion?.data ?? "{}")).toMatchObject({
+          status: "interrupted",
+        });
+      });
+    });
+  }
+
+  it("clears context after interrupting a turn the daemon kept", async () => {
+    await withTestHarness(async (harness) => {
+      const { environment, thread } = seedThreadFixture(harness, {
+        thread: { status: "idle", visibility: "hidden" },
+      });
+      seedTurnStarted(harness.deps, {
+        environmentId: environment.id,
+        providerThreadId: "provider-retained",
+        threadId: thread.id,
+        turnId: "turn-retained",
+      });
+
+      const responsePromise = harness.app.request(
+        `/api/v1/threads/${thread.id}/context/clear`,
+        { method: "POST" },
+      );
+      const release = await waitForQueuedCommand(
+        harness,
+        ({ command }) =>
+          command.type === "thread.stop" &&
+          command.threadId === thread.id &&
+          command.intent === "release",
+      );
+      await reportQueuedCommandSuccess(harness, release, {
+        providerCheckpointId: null,
+        activeTurnRetained: true,
+      });
+      const interrupt = await waitForQueuedCommand(
+        harness,
+        ({ command }) =>
+          command.type === "thread.stop" &&
+          command.threadId === thread.id &&
+          command.intent === "interrupt",
+      );
+      await reportQueuedCommandSuccess(harness, interrupt, {
+        providerCheckpointId: null,
+      });
+
+      const response = await responsePromise;
+      expect(response.status, await response.clone().text()).toBe(200);
+      expect(getThread(harness.db, thread.id)?.status).toBe("idle");
+      expect(
+        listEvents(harness.db, { threadId: thread.id }).filter(
+          (event) =>
+            event.type === "system/operation" &&
+            JSON.parse(event.data).operation === "context_clear",
+        ),
+      ).toHaveLength(1);
+    });
+  });
+
+  it("shares one release and one interrupt across concurrent stops of a kept turn", async () => {
+    await withTestHarness(async (harness) => {
+      const { environment, thread } = seedThreadFixture(harness, {
+        thread: { status: "idle", visibility: "hidden" },
+      });
+      seedTurnStarted(harness.deps, {
+        environmentId: environment.id,
+        providerThreadId: "provider-retained",
+        threadId: thread.id,
+        turnId: "turn-retained",
+      });
+
+      const first = harness.app.request(`/api/v1/threads/${thread.id}/stop`, {
+        method: "POST",
+      });
+      const release = await waitForQueuedCommand(
+        harness,
+        ({ command }) =>
+          command.type === "thread.stop" &&
+          command.threadId === thread.id &&
+          command.intent === "release",
+      );
+      const second = harness.app.request(
+        `/api/v1/threads/${thread.id}/stop`,
+        { method: "POST" },
+      );
+      expect(listQueuedCommands(harness, "thread.stop")).toHaveLength(1);
+      await reportQueuedCommandSuccess(harness, release, {
+        providerCheckpointId: null,
+        activeTurnRetained: true,
+      });
+
+      const interrupt = await waitForQueuedCommand(
+        harness,
+        ({ command }) =>
+          command.type === "thread.stop" &&
+          command.threadId === thread.id &&
+          command.intent === "interrupt",
+      );
+      expect(listQueuedCommands(harness, "thread.stop")).toHaveLength(1);
+      await reportQueuedCommandSuccess(harness, interrupt, {
+        providerCheckpointId: null,
+      });
+
+      expect((await first).status).toBe(200);
+      expect((await second).status).toBe(200);
+      expect(getThread(harness.db, thread.id)?.status).toBe("idle");
+      expect(
+        listEvents(harness.db, { threadId: thread.id }).filter(
+          (event) => event.type === "system/thread/interrupted",
+        ),
+      ).toHaveLength(1);
+    });
+  });
+
+  it("leaves a kept turn stopping when the escalated interrupt fails", async () => {
+    await withTestHarness(async (harness) => {
+      const { environment, thread } = seedThreadFixture(harness, {
+        thread: { status: "idle", visibility: "hidden" },
+      });
+      seedTurnStarted(harness.deps, {
+        environmentId: environment.id,
+        providerThreadId: "provider-retained",
+        threadId: thread.id,
+        turnId: "turn-retained",
+      });
+
+      const responsePromise = harness.app.request(
+        `/api/v1/threads/${thread.id}/stop`,
+        { method: "POST" },
+      );
+      const release = await waitForQueuedCommand(
+        harness,
+        ({ command }) =>
+          command.type === "thread.stop" &&
+          command.threadId === thread.id &&
+          command.intent === "release",
+      );
+      await reportQueuedCommandSuccess(harness, release, {
+        providerCheckpointId: null,
+        activeTurnRetained: true,
+      });
+      const interrupt = await waitForQueuedCommand(
+        harness,
+        ({ command }) =>
+          command.type === "thread.stop" &&
+          command.threadId === thread.id &&
+          command.intent === "interrupt",
+      );
+      await reportQueuedCommandError(harness, interrupt, {
+        errorCode: "test_interrupt_failure",
+        errorMessage: "Test interrupt failure",
+      });
+
+      expect((await responsePromise).status).toBe(200);
+      expect(getThread(harness.db, thread.id)?.status).toBe("stopping");
+      expect(
+        listEvents(harness.db, { threadId: thread.id }).find(
+          (event) =>
+            event.type === "turn/completed" && event.turnId === "turn-retained",
+        ),
+      ).toBeUndefined();
     });
   });
 
