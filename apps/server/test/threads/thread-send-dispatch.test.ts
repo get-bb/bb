@@ -12,6 +12,7 @@ import type { EnvironmentRow } from "@bb/db";
 import {
   changedMessageSchema,
   turnScope,
+  type ServiceTier,
   type Thread,
   type ThreadChangedMessage,
 } from "@bb/domain";
@@ -22,6 +23,7 @@ import * as threadEvents from "../../src/services/threads/thread-events.js";
 import { runQueuedMessageDispatch } from "../../src/services/threads/queued-message-dispatch.js";
 import {
   createAutomaticQueuedMessageGroupEligibility,
+  createQueuedMessageForThread,
   sendQueuedMessage,
   sendQueuedMessageNow,
 } from "../../src/services/threads/queued-messages.js";
@@ -29,6 +31,7 @@ import { queueParentSystemMessage } from "../../src/services/threads/parent-syst
 import { acceptThreadSendRequest } from "../../src/services/threads/thread-send-request.js";
 import { handleUpdateEnvironmentDirectoryToolCall } from "../../src/services/threads/thread-environment-directory.js";
 import { applyLoggedThreadLifecycleEvent } from "../../src/services/threads/lifecycle-outcome.js";
+import { resolveExecutionOptions } from "../../src/services/threads/thread-runtime-config.js";
 import { sendThreadMessage } from "../../src/services/threads/thread-send.js";
 import {
   internalAuthHeaders,
@@ -63,6 +66,7 @@ interface SeedIdleThreadFixtureArgs {
 
 interface SeedProviderThreadFixtureArgs extends SeedIdleThreadFixtureArgs {
   status?: "active" | "idle" | "starting";
+  serviceTier?: ServiceTier;
 }
 
 afterEach(() => vi.restoreAllMocks());
@@ -91,6 +95,7 @@ function seedProviderThreadFixture(
   seedThreadRuntimeState(args.harness.deps, {
     environmentId: environment.id,
     providerThreadId: `provider-send-dispatch-${args.value}`,
+    serviceTier: args.serviceTier,
     threadId: thread.id,
   });
 
@@ -1251,6 +1256,179 @@ describe("idle cold-start activation", () => {
       expect(
         listQueuedThreadCommands(harness, "thread.start", thread.id),
       ).toHaveLength(0);
+    });
+  });
+});
+
+describe("service tier execution lifecycle", () => {
+  it.each(["fast", "default"] as const)(
+    "uses an accepted direct %s choice as the next default",
+    async (serviceTier) => {
+      await withTestHarness(async (harness) => {
+        const { thread } = seedProviderThreadFixture({
+          harness,
+          value: 80,
+          serviceTier: serviceTier === "fast" ? "default" : "fast",
+        });
+        await expect(
+          acceptThreadSendRequest(harness.deps, {
+            thread,
+            payload: {
+              input: textInput("change tier"),
+              mode: "start",
+              serviceTier,
+            },
+          }),
+        ).resolves.toMatchObject({ delivery: "sent" });
+        expect(
+          threadEvents.getLastExecutionOptions(harness.deps, thread.id),
+        ).toMatchObject({ serviceTier });
+        await expect(
+          resolveExecutionOptions(harness.deps, {
+            threadId: thread.id,
+            requestedExecution: { source: "client/turn/requested" },
+          }),
+        ).resolves.toMatchObject({ serviceTier });
+        expect(
+          listQueuedThreadCommands(harness, "turn.submit", thread.id),
+        ).toContainEqual(
+          expect.objectContaining({
+            options: expect.objectContaining({ serviceTier }),
+          }),
+        );
+      });
+    },
+  );
+
+  it("keeps queued choices separate until dispatch and preserves the next row", async () => {
+    await withTestHarness(async (harness) => {
+      const { thread } = seedProviderThreadFixture({
+        harness,
+        value: 81,
+        serviceTier: "fast",
+      });
+      const older = await createQueuedMessageForThread(harness.deps, {
+        thread,
+        payload: {
+          input: textInput("older standard turn"),
+          serviceTier: "default",
+        },
+      });
+      const newer = await createQueuedMessageForThread(harness.deps, {
+        thread,
+        payload: { input: textInput("newer fast turn"), serviceTier: "fast" },
+      });
+      expect(listQueuedThreadMessages(harness.db, thread.id)).toMatchObject([
+        { id: older.id, serviceTier: "default" },
+        { id: newer.id, serviceTier: "fast" },
+      ]);
+      await expect(
+        resolveExecutionOptions(harness.deps, {
+          threadId: thread.id,
+          requestedExecution: { source: "client/turn/requested" },
+        }),
+      ).resolves.toMatchObject({ serviceTier: "fast" });
+      await sendQueuedMessage(harness.deps, {
+        claimPolicy: {
+          kind: "automatic",
+          isGroupEligible: createAutomaticQueuedMessageGroupEligibility(
+            harness.deps,
+            { now: Date.now(), thread },
+          ),
+        },
+        threadId: thread.id,
+        queuedMessageId: older.id,
+        mode: "auto",
+      });
+      expect(
+        threadEvents.getLastExecutionOptions(harness.deps, thread.id),
+      ).toMatchObject({ serviceTier: "default" });
+      await expect(
+        resolveExecutionOptions(harness.deps, {
+          threadId: thread.id,
+          requestedExecution: { source: "client/turn/requested" },
+        }),
+      ).resolves.toMatchObject({ serviceTier: "default" });
+      expect(listQueuedThreadMessages(harness.db, thread.id)).toMatchObject([
+        { id: newer.id, serviceTier: "fast" },
+      ]);
+      expect(
+        listQueuedThreadCommands(harness, "turn.submit", thread.id),
+      ).toContainEqual(
+        expect.objectContaining({
+          options: expect.objectContaining({ serviceTier: "default" }),
+        }),
+      );
+    });
+  });
+
+  it("snapshots a busy follow-up without changing the active tier", async () => {
+    await withTestHarness(async (harness) => {
+      const { thread } = seedProviderThreadFixture({
+        harness,
+        value: 83,
+        status: "active",
+        serviceTier: "fast",
+      });
+      const result = await acceptThreadSendRequest(harness.deps, {
+        thread,
+        payload: {
+          input: textInput("wait for standard"),
+          mode: "queue-if-active",
+          serviceTier: "default",
+        },
+      });
+      expect(result).toMatchObject({
+        delivery: "queued",
+        queuedMessage: { serviceTier: "default" },
+      });
+      expect(
+        threadEvents.getLastExecutionOptions(harness.deps, thread.id),
+      ).toMatchObject({ serviceTier: "fast" });
+      expect(
+        listQueuedThreadCommands(harness, "turn.submit", thread.id),
+      ).toEqual([]);
+    });
+  });
+
+  it("does not save a rejected default choice or consume its queued snapshot", async () => {
+    await withTestHarness(async (harness) => {
+      const { thread } = seedProviderThreadFixture({
+        harness,
+        value: 82,
+        serviceTier: "fast",
+      });
+      const queued = await createQueuedMessageForThread(harness.deps, {
+        thread,
+        payload: { input: textInput("standard turn"), serviceTier: "default" },
+      });
+      archiveThread(harness.db, harness.hub, thread.id);
+      await expect(
+        acceptThreadSendRequest(harness.deps, {
+          thread,
+          payload: {
+            input: textInput("rejected"),
+            mode: "start",
+            serviceTier: "default",
+          },
+        }),
+      ).rejects.toMatchObject({ status: 409 });
+      await expect(
+        sendQueuedMessageNow(harness.deps, {
+          threadId: thread.id,
+          queuedMessageId: queued.id,
+          mode: "auto",
+        }),
+      ).rejects.toMatchObject({ status: 409 });
+      expect(
+        threadEvents.getLastExecutionOptions(harness.deps, thread.id),
+      ).toMatchObject({ serviceTier: "fast" });
+      expect(getQueuedThreadMessage(harness.db, queued.id)).toMatchObject({
+        serviceTier: "default",
+      });
+      expect(
+        listQueuedThreadCommands(harness, "turn.submit", thread.id),
+      ).toEqual([]);
     });
   });
 });

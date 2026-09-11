@@ -627,6 +627,30 @@ describe("useThreadCreationOptions", () => {
     });
   });
 
+  it("refreshes untouched Fast defaults but preserves an unsent choice until thread reset", async () => {
+    const { wrapper } = createQueryClientTestHarness();
+    const { result, rerender } = renderHook(
+      ({ tier, threadId }: { tier: "fast" | "default"; threadId: string }) =>
+        useThreadCreationOptions({
+          scope: "component-local",
+          resetKey: threadId,
+          initialProviderId: GLOBAL_PROVIDER_ID,
+          initialModel: "global-model",
+          initialServiceTier: tier,
+        }),
+      { wrapper, initialProps: { tier: "fast", threadId: "thr_one" } },
+    );
+    await waitFor(() => expect(result.current.serviceTier).toBe("fast"));
+    rerender({ tier: "default", threadId: "thr_one" });
+    expect(result.current.serviceTier).toBe("default");
+    act(() => result.current.setServiceTier("fast"));
+    rerender({ tier: "fast", threadId: "thr_one" });
+    rerender({ tier: "default", threadId: "thr_one" });
+    expect(result.current.serviceTier).toBe("fast");
+    rerender({ tier: "default", threadId: "thr_two" });
+    expect(result.current.serviceTier).toBe("default");
+  });
+
   it("keeps provider selections local in component-local composers", async () => {
     vi.mocked(sdk.system.executionOptions).mockImplementation(async (args) =>
       providerExecutionOptionsResponse(args?.providerId),

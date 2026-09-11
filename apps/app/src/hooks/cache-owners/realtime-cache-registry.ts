@@ -348,6 +348,7 @@ export const REALTIME_THREAD_CHANGE_REGISTRY = {
       dirtyThreadTimelineQueries,
       dirtyThreadPullRequestQueryForCompletedTurn,
       dirtyThreadPromptHistoryQueriesForTurnRequests,
+      dirtyThreadExecutionOptionsForTurnRequests,
     ],
   },
   "history-rewritten": {
@@ -880,6 +881,17 @@ function dirtyThreadTimelineQueries({
       queryKeys: outlineQueryKeys,
     });
   }
+}
+
+function dirtyThreadExecutionOptionsForTurnRequests({
+  eventTypes,
+  queryClient,
+  threadId,
+}: ThreadRealtimeDirtyContext): QueryKey[] {
+  if (!threadId || !eventTypes?.includes("client/turn/requested")) return [];
+  const queryKey = threadDefaultExecutionOptionsQueryKey(threadId);
+  void queryClient.cancelQueries({ queryKey });
+  return [queryKey];
 }
 
 function dirtyThreadPromptHistoryQueriesForTurnRequests({
