@@ -163,6 +163,7 @@ configures the machine with optional configured `preset` and `image` names;
 - `bb thread retry`
 - `bb thread stop`
 - `bb thread compact`
+- `bb thread context`
 - `bb thread clear`
 - `bb thread cancel-plan`
 - `bb thread clear-goal`
