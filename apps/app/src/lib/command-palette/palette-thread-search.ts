@@ -40,6 +40,7 @@ export interface PaletteThreadSearchRow {
   updatedAt: number | null;
   projectId: string;
   threadId: string | null;
+  thread: ThreadListEntry | null;
   draftSlotId: string | null;
   messageSeq: number | null;
 }
@@ -114,6 +115,7 @@ function serverRow(
     projectId: thread.projectId,
     updatedAt: thread.updatedAt,
     threadId: thread.id,
+    thread,
     draftSlotId: null,
     messageSeq: snippetMatch?.sourceSeq ?? null,
   };
@@ -203,6 +205,7 @@ export function buildPaletteThreadSearchRows({
     projectId: item.destination.projectId,
     updatedAt: item.lastEditedAt,
     threadId: null,
+    thread: null,
     draftSlotId: item.id,
     messageSeq: null,
   }));

@@ -111,6 +111,11 @@ describe("buildPaletteThreadSearchRows", () => {
       "draft",
       "archived",
     ]);
+    expect(result.rows.map((row) => row.thread)).toEqual([
+      active,
+      null,
+      archived,
+    ]);
     expect(result.rows.map((row) => row.metadataText)).toEqual([
       "Palette project · just now",
       "Palette project · just now",

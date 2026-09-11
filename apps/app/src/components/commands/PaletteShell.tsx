@@ -82,13 +82,10 @@ export function PaletteShell({
   return (
     <TooltipProvider>
       <div
-        className="rounded-t-[inherit] border-b border-border bg-background px-3 py-2"
+        className="rounded-t-[inherit] border-b border-border bg-background px-3 py-1"
         data-palette-input-band
       >
-        <div
-          className="flex h-10 items-center gap-2 px-3"
-          data-palette-input-frame
-        >
+        <div className="flex h-10 items-center gap-2" data-palette-input-frame>
           {modeChip === undefined ? null : <PaletteModeChip {...modeChip} />}
           <input
             ref={inputRef}
@@ -127,7 +124,7 @@ export function PaletteShell({
           id={listId}
           role="listbox"
           aria-label={listLabel}
-          className="max-h-[min(24rem,50dvh)] overflow-y-auto p-2"
+          className="max-h-[min(24rem,50dvh)] overflow-y-auto p-1"
           style={{
             WebkitMaskImage: resultsMask,
             maskImage: resultsMask,
@@ -152,7 +149,7 @@ export function PaletteShell({
       {!showFooter ? null : (
         <div
           aria-hidden
-          className="relative z-10 flex flex-wrap items-center gap-x-4 gap-y-1 rounded-b-[inherit] border-t border-border/40 bg-surface-recessed-soft-solid px-4 py-2 text-xs text-subtle-foreground"
+          className="relative z-10 flex flex-wrap items-center gap-x-4 gap-y-1 rounded-b-[inherit] border-t border-border/40 bg-surface-recessed-soft-solid px-3 py-2 text-xs text-subtle-foreground"
           data-palette-footer
         >
           {footerKeys.map((hint) => (

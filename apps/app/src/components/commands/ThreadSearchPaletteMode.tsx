@@ -21,9 +21,26 @@ import { Icon } from "@bb/shared-ui/icon";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@bb/shared-ui/tooltip";
 import { useIsCompactViewport } from "@bb/shared-ui/hooks/use-compact-viewport";
 import { cn } from "@bb/shared-ui/lib/utils";
-import { isPromptDraftEmpty } from "@bb/client-core";
+import { CHROME_SECTION_LABEL_CLASS } from "@bb/shared-ui/chrome-style-tokens";
+import {
+  getThreadListIndicatorLabel,
+  hasActiveBackgroundAgentActivity,
+  hasActiveBackgroundCommandActivity,
+  hasActiveGoalActivity,
+  hasActivePlanModeActivity,
+  hasActiveWorkflowActivity,
+  isPromptDraftEmpty,
+  isRuntimeBusyThread,
+  isUnreadDoneThread,
+  resolveThreadListIndicator,
+  type ThreadListIndicatorState,
+} from "@bb/client-core";
 import type { ThreadSearchHighlightRange } from "@bb/server-contract";
-import { usePromptDraftStorage } from "@/hooks/usePromptDraftStorage";
+import {
+  usePromptDraftHasInput,
+  usePromptDraftStorage,
+} from "@/hooks/usePromptDraftStorage";
+import { ThreadStatusGlyph } from "@/components/sidebar/ThreadRow";
 import { useSidebarNavigation } from "@/hooks/queries/sidebar-navigation-query";
 import {
   hasThreadSearchableQuery,
@@ -395,6 +412,11 @@ export function ThreadSearchPaletteMode({
       placeholder={presentation.placeholder}
       value={query}
     >
+      {result.isRecent && result.rows.length > 0 ? (
+        <div className={cn(CHROME_SECTION_LABEL_CLASS, "px-2 py-1")}>
+          Recent
+        </div>
+      ) : null}
       {emptyMessage === null ? (
         result.rows.map((row, index) => (
           <ThreadSearchPaletteRow
@@ -406,10 +428,14 @@ export function ThreadSearchPaletteMode({
             onSelect={() => openRow(row, false)}
           />
         ))
-      ) : showThreadListEmptyState ? (
-        <ThreadListEmptyState className="justify-center px-3 py-8" />
+      ) : showThreadListEmptyState ||
+        (searchable && !isLoading && !hasLoadError) ? (
+        <ThreadListEmptyState
+          message={emptyMessage}
+          className="justify-center px-3 py-4"
+        />
       ) : (
-        <p className="px-3 py-8 text-center text-sm text-muted-foreground">
+        <p className="px-3 py-4 text-center text-sm text-muted-foreground">
           {emptyMessage}
         </p>
       )}
@@ -514,20 +540,14 @@ function ThreadSearchPaletteRow({
     }
   }, [matchKey, row.highlightRanges.length, shouldWindowMatch]);
 
-  const stateLabel =
-    row.lifecycle === "active"
-      ? null
-      : row.lifecycle === "draft"
-        ? "Draft"
-        : "Archived";
-  const metadata = [stateLabel, row.metadataText].filter(Boolean).join(" · ");
+  const metadata = row.metadataText;
   return (
     <div
       id={id}
       role="option"
       aria-selected={isActive}
       className={cn(
-        "flex min-h-11 cursor-pointer items-center gap-3 rounded-md px-3 py-1.5 text-left text-sm",
+        "flex min-h-11 cursor-pointer items-center gap-3 rounded-md px-2 py-1.5 text-left text-sm",
         isActive && "bg-state-hover text-foreground",
       )}
       onPointerMove={onActivate}
@@ -556,7 +576,62 @@ function ThreadSearchPaletteRow({
           </span>
         )}
       </span>
+      <ThreadSearchPaletteStatus row={row} />
     </div>
+  );
+}
+
+function ThreadSearchPaletteStatus({ row }: { row: PaletteThreadSearchRow }) {
+  const hasUnsubmittedDraft = usePromptDraftHasInput(
+    row.threadId === null
+      ? { kind: "new-thread" }
+      : { kind: "thread", projectId: row.projectId, threadId: row.threadId },
+  );
+  const thread = row.thread;
+  const unread = thread !== null && isUnreadDoneThread(thread);
+  const state: ThreadListIndicatorState = {
+    hasPendingInteraction: thread?.hasPendingInteraction ?? false,
+    hasUnsubmittedDraft: row.lifecycle === "draft" || hasUnsubmittedDraft,
+    hasUnreadError: unread && thread?.status === "error",
+    hasUnreadSuccess: unread && thread?.status !== "error",
+    isBackgroundAgentActive:
+      thread !== null && hasActiveBackgroundAgentActivity(thread),
+    isBackgroundCommandActive:
+      thread !== null && hasActiveBackgroundCommandActivity(thread),
+    isGoalActive: thread !== null && hasActiveGoalActivity(thread),
+    isPlanModeActive: thread !== null && hasActivePlanModeActivity(thread),
+    isRuntimeActive: thread !== null && isRuntimeBusyThread(thread),
+    isWorkflowActive: thread !== null && hasActiveWorkflowActivity(thread),
+    queuedWork: thread?.queuedWork ?? "none",
+  };
+  const kind = resolveThreadListIndicator(state);
+  const archived = row.lifecycle === "archived";
+  const label = archived
+    ? "Archived thread"
+    : (getThreadListIndicatorLabel(kind) ?? "Active thread");
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <span
+          role="img"
+          aria-label={label}
+          className="inline-flex size-4 shrink-0 items-center justify-center text-subtle-foreground"
+          data-palette-thread-status
+        >
+          <span aria-hidden="true" className="inline-flex items-center">
+            {archived || kind === "none" ? (
+              <Icon
+                name={archived ? "Archive" : "MessageSquare"}
+                className="size-4"
+              />
+            ) : (
+              <ThreadStatusGlyph {...state} />
+            )}
+          </span>
+        </span>
+      </TooltipTrigger>
+      <TooltipContent side="left">{label}</TooltipContent>
+    </Tooltip>
   );
 }
 

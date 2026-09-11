@@ -374,7 +374,7 @@ export function CommandPalette({
             value={query}
           >
             {!isGroupedRoot && visibleEntries.length === 0 ? (
-              <p className="px-3 py-8 text-center text-sm text-muted-foreground">
+              <p className="px-3 py-4 text-center text-sm text-muted-foreground">
                 No matching commands
               </p>
             ) : isGroupedRoot ? (
@@ -389,10 +389,7 @@ export function CommandPalette({
                   >
                     <div
                       id={labelId}
-                      className={cn(
-                        CHROME_SECTION_LABEL_CLASS,
-                        "px-3 pb-1 pt-3",
-                      )}
+                      className={cn(CHROME_SECTION_LABEL_CLASS, "px-2 py-1")}
                     >
                       {group.bucket}
                     </div>
@@ -459,7 +456,9 @@ function PaletteRow({
   onSelect: () => void;
 }) {
   const metadataGroup =
-    entry.action.group === entry.action.bucket ? null : entry.action.group;
+    entry.action.group === "Browser" || entry.action.id.startsWith("plugin:")
+      ? entry.action.group
+      : null;
   const title = isDrillIn ? `${entry.action.title}…` : entry.action.title;
   const hasTrailing =
     metadataGroup !== null || entry.action.shortcut !== null || isDrillIn;
@@ -470,7 +469,7 @@ function PaletteRow({
       aria-selected={isActive}
       data-palette-action-kind={isDrillIn ? "drill-in" : "terminal"}
       className={cn(
-        "flex min-h-9 w-full min-w-0 cursor-pointer items-center gap-3 rounded-md px-3 py-2 text-left text-sm outline-none",
+        "flex min-h-9 w-full min-w-0 cursor-pointer items-center gap-3 rounded-md px-2 py-2 text-left text-sm outline-none",
         isActive && "bg-state-hover text-foreground",
       )}
       onPointerMove={onActivate}
