@@ -97,7 +97,11 @@ describe("singleton draft import", () => {
         {
           start: 0,
           end: 8,
-          resource: { kind: "project", projectId: "proj_drafts" },
+          resource: {
+            kind: "project",
+            projectId: "proj_drafts",
+            label: "Drafts",
+          },
         },
       ],
       attachments: [
