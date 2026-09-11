@@ -109,6 +109,33 @@ describe("RuntimeThreadIdentityRegistry", () => {
     ).toBeUndefined();
   });
 
+  it("consumes a thread's pending identity slot when its identity is recorded", () => {
+    const registry = new RuntimeThreadIdentityRegistry();
+    const providerState = registry.createProviderState({ providerId: "codex" });
+    for (const threadId of ["thread-1", "thread-2"]) {
+      registry.registerThreadProvider({
+        providerId: "codex",
+        providerState,
+        expectsIdentityNotification: true,
+        threadId,
+      });
+    }
+
+    registry.recordProviderThreadIdentity({
+      providerState,
+      threadId: "thread-1",
+      providerThreadId: "provider-thread-1",
+    });
+
+    expect(providerState.pendingIdentityThreadIds).toEqual(["thread-2"]);
+    expect(registry.resolvePendingProviderThreadIdentity(providerState)).toBe(
+      "thread-2",
+    );
+    expect(
+      registry.resolvePendingProviderThreadIdentity(providerState),
+    ).toBeUndefined();
+  });
+
   it("stamps projected events with the resolved bb thread id", () => {
     const event: ThreadEvent = {
       type: "turn/started",

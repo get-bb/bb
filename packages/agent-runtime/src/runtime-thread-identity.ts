@@ -91,6 +91,10 @@ export class RuntimeThreadIdentityRegistry {
 
   recordProviderThreadIdentity(args: RecordProviderThreadIdentityArgs): void {
     this.threadToProviderThread.set(args.threadId, args.providerThreadId);
+    args.providerState.pendingIdentityThreadIds =
+      args.providerState.pendingIdentityThreadIds.filter(
+        (pendingThreadId) => pendingThreadId !== args.threadId,
+      );
   }
 
   resolveBbThreadIdForProviderThread(

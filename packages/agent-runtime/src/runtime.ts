@@ -778,6 +778,25 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
     });
   }
 
+  function resolveProviderIdentityTargetThreadId(args: {
+    eventThreadId: string;
+    proc: ProviderProcess;
+    sourceThreadId: string | undefined;
+  }): string | undefined {
+    if (
+      args.sourceThreadId !== undefined &&
+      args.proc.identity.threadIds.has(args.sourceThreadId)
+    ) {
+      return args.sourceThreadId;
+    }
+    if (args.proc.identity.threadIds.has(args.eventThreadId)) {
+      return args.eventThreadId;
+    }
+    return threadIdentityRegistry.resolvePendingProviderThreadIdentity(
+      args.proc.identity,
+    );
+  }
+
   function forgetThreadRuntimeStateForProviderState(
     providerState: RuntimeProviderProcess["identity"],
     threadId: string,
@@ -1184,27 +1203,33 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
       if (event.type !== "thread/identity" || !event.providerThreadId) {
         continue;
       }
-
-      if (args.proc.identity.threadIds.has(event.threadId)) {
-        recordProviderThreadIdentity(
-          args.proc,
-          event.threadId,
-          event.providerThreadId,
+      const targetThreadId = resolveProviderIdentityTargetThreadId({
+        eventThreadId: event.threadId,
+        proc: args.proc,
+        sourceThreadId: args.sourceThreadId,
+      });
+      if (targetThreadId === undefined) {
+        options.onStderr?.(
+          `Dropping thread/identity for provider thread "${event.providerThreadId}" from "${args.proc.providerId}"; no bb thread could be resolved`,
         );
         continue;
       }
-
-      const bbThreadId =
-        threadIdentityRegistry.resolvePendingProviderThreadIdentity(
-          args.proc.identity,
+      const ownerThreadId =
+        threadIdentityRegistry.resolveBbThreadIdForProviderThread({
+          providerState: args.proc.identity,
+          providerThreadId: event.providerThreadId,
+        });
+      if (ownerThreadId !== undefined && ownerThreadId !== targetThreadId) {
+        options.onStderr?.(
+          `Ignoring thread/identity that would bind provider thread "${event.providerThreadId}" to bb thread "${targetThreadId}"; bb thread "${ownerThreadId}" already owns it on "${args.proc.providerId}"`,
         );
-      if (bbThreadId) {
-        recordProviderThreadIdentity(
-          args.proc,
-          bbThreadId,
-          event.providerThreadId,
-        );
+        continue;
       }
+      recordProviderThreadIdentity(
+        args.proc,
+        targetThreadId,
+        event.providerThreadId,
+      );
     }
 
     for (const event of args.events) {
@@ -1822,6 +1847,18 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
             options: execOpts,
             providerId,
           });
+          if (providerThreadId !== undefined) {
+            const ownerThreadId =
+              threadIdentityRegistry.resolveBbThreadIdForProviderThread({
+                providerState: proc.identity,
+                providerThreadId,
+              });
+            if (ownerThreadId !== undefined && ownerThreadId !== threadId) {
+              throw new Error(
+                `Cannot resume thread "${threadId}" on "${providerId}": provider thread "${providerThreadId}" is already hosted by thread "${ownerThreadId}"`,
+              );
+            }
+          }
           const resolvedEnvironment = resolveRuntimeThreadEnvironment({
             contributedEnv,
             environmentId,

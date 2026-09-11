@@ -281,6 +281,9 @@ const CHILD_REQUEST_TIMEOUT_MS = 60_000;
 const INTERRUPT_SETTLEMENT_TIMEOUT_MS = 5_000;
 const CODEX_ARCHIVED_SESSION_ERROR_PATTERN =
   /\b(?:session|thread)\s+\S+\s+is archived\b/i;
+const CODEX_ACTIVE_WRITER_ERROR_PATTERN =
+  /\bthread\s+\S+\s+already has an active writer\b/i;
+const CODEX_ACTIVE_WRITER_RETRY_DELAYS_MS = [100, 400, 1_000] as const;
 const CODEX_ALREADY_ARCHIVED_ERROR_PATTERN =
   /\bno rollout found for thread id\b/i;
 const CODEX_NOT_ARCHIVED_ERROR_PATTERN =
@@ -321,6 +324,12 @@ function archivedSessionHint(message: string): ProviderRecoveryHint | null {
   return CODEX_ARCHIVED_SESSION_ERROR_PATTERN.test(message)
     ? { kind: "sessionArchived", message, retryable: true }
     : null;
+}
+
+function withActiveWriterGuidance(message: string): string {
+  return CODEX_ACTIVE_WRITER_ERROR_PATTERN.test(message)
+    ? `${message}. Another Codex process still owns this thread. Close any other Codex session using it; if none is open, wait for a previous Codex process to finish shutting down or stop the leftover codex app-server process, then retry.`
+    : message;
 }
 
 async function delay(ms: number): Promise<void> {
@@ -894,6 +903,40 @@ const codexThreadIdentityResultSchema = z
   .object({ thread: z.object({ id: z.string().min(1) }).passthrough() })
   .passthrough();
 
+async function requestThreadConstructionWithWriterRetry(
+  connection: CodexAppServerConnection,
+  method: string,
+  params: BbThreadStartParams | ThreadResumeParams | BbThreadForkParams,
+): Promise<z.infer<typeof codexThreadIdentityResultSchema>> {
+  const sendOnce = (): Promise<
+    z.infer<typeof codexThreadIdentityResultSchema>
+  > =>
+    connection.request({
+      method,
+      params,
+      resultSchema: codexThreadIdentityResultSchema,
+      timeoutMs: CHILD_REQUEST_TIMEOUT_MS,
+    });
+  for (const [
+    retryIndex,
+    retryDelayMs,
+  ] of CODEX_ACTIVE_WRITER_RETRY_DELAYS_MS.entries()) {
+    try {
+      return await sendOnce();
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      if (!CODEX_ACTIVE_WRITER_ERROR_PATTERN.test(message)) {
+        throw error;
+      }
+      process.stderr.write(
+        `codex ${method} found an active rollout writer; retrying in ${retryDelayMs}ms (${retryIndex + 1}/${CODEX_ACTIVE_WRITER_RETRY_DELAYS_MS.length}).\n`,
+      );
+      await delay(retryDelayMs);
+    }
+  }
+  return await sendOnce();
+}
+
 type CodexSessionConstructionRequest =
   | { kind: "start" }
   | { kind: "resume"; providerThreadId: string }
@@ -1061,12 +1104,11 @@ async function constructThreadSession(
       }
     }
 
-    const result = await connection.request({
+    const result = await requestThreadConstructionWithWriterRetry(
+      connection,
       method,
       params,
-      resultSchema: codexThreadIdentityResultSchema,
-      timeoutMs: CHILD_REQUEST_TIMEOUT_MS,
-    });
+    );
     const codexThreadId = result.thread.id;
     session.codexThreadId = codexThreadId;
     translator.activateThreadGitWritableRoots({
@@ -1307,8 +1349,9 @@ function sendConstructionError(
   error: unknown,
   resumable: boolean,
 ): void {
-  const message = describeCodexLaunchError(error);
-  const recovery = archivedSessionHint(message);
+  const providerMessage = describeCodexLaunchError(error);
+  const recovery = archivedSessionHint(providerMessage);
+  const message = withActiveWriterGuidance(providerMessage);
   sendError(
     id,
     resumable && recovery !== null
@@ -1679,8 +1722,9 @@ async function handleThreadMaintenance(
 }
 
 function rejectWithCodexError(id: string | number, error: unknown): void {
-  const message = describeCodexLaunchError(error);
-  const recovery = archivedSessionHint(message);
+  const providerMessage = describeCodexLaunchError(error);
+  const recovery = archivedSessionHint(providerMessage);
+  const message = withActiveWriterGuidance(providerMessage);
   if (recovery !== null) {
     sendError(id, BRIDGE_JSON_RPC_ERRORS.BRIDGE_ERROR, message, { recovery });
     return;

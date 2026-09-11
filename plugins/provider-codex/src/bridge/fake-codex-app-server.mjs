@@ -29,6 +29,7 @@ import {
   existsSync,
   openSync,
   readFileSync,
+  unlinkSync,
   writeFileSync,
 } from "node:fs";
 import { createInterface } from "node:readline";
@@ -166,7 +167,10 @@ const archivedThreadIds = new Set();
  */
 const processLogPath = script?.processLogPath ?? null;
 const stallThreadStart = script?.stallThreadStart ?? false;
+const writerLockPath = script?.writerLockPath ?? null;
 const sigtermDelayMs = script?.sigtermDelayMs ?? 0;
+let ownsWriterLock = false;
+let servesThread = false;
 
 function logProcessStep(step) {
   if (processLogPath === null) {
@@ -175,13 +179,59 @@ function logProcessStep(step) {
   appendFileSync(processLogPath, `${step}:${process.pid}:${process.ppid}\n`);
 }
 
+function releaseWriterLock() {
+  if (!ownsWriterLock || writerLockPath === null) {
+    return;
+  }
+  ownsWriterLock = false;
+  if (
+    existsSync(writerLockPath) &&
+    readFileSync(writerLockPath, "utf8") === String(process.pid)
+  ) {
+    unlinkSync(writerLockPath);
+  }
+}
+
+function acquireWriterLock() {
+  if (writerLockPath === null || ownsWriterLock) {
+    return true;
+  }
+  try {
+    writeFileSync(writerLockPath, String(process.pid), { flag: "wx" });
+    ownsWriterLock = true;
+    return true;
+  } catch (error) {
+    if (!error || typeof error !== "object" || error.code !== "EEXIST") {
+      throw error;
+    }
+    const ownerPid = Number(readFileSync(writerLockPath, "utf8"));
+    try {
+      process.kill(ownerPid, 0);
+      return false;
+    } catch (ownerError) {
+      if (
+        !ownerError ||
+        typeof ownerError !== "object" ||
+        ownerError.code !== "ESRCH"
+      ) {
+        throw ownerError;
+      }
+      unlinkSync(writerLockPath);
+      return acquireWriterLock();
+    }
+  }
+}
+
 function exitCleanly() {
+  releaseWriterLock();
   logProcessStep("exit");
   process.exit(0);
 }
 
+process.on("exit", releaseWriterLock);
 process.on("SIGTERM", () => {
-  if (sigtermDelayMs > 0) {
+  logProcessStep("sigterm");
+  if (sigtermDelayMs > 0 && servesThread) {
     setTimeout(exitCleanly, sigtermDelayMs);
     return;
   }
@@ -353,6 +403,7 @@ async function handleRequest(message) {
       respond(id, {});
       return;
     case "thread/start": {
+      servesThread = true;
       if (stallThreadStart) {
         await new Promise(() => undefined);
       }
@@ -363,6 +414,16 @@ async function handleRequest(message) {
       return;
     }
     case "thread/resume": {
+      servesThread = true;
+      if (!acquireWriterLock()) {
+        logProcessStep("writer-conflict");
+        respondError(
+          id,
+          -32603,
+          `thread ${params.threadId} already has an active writer`,
+        );
+        return;
+      }
       // Scripted archived-session rejection: the real app-server refuses to
       // resume an archived thread with an error naming the session. Tests use
       // an `archived-` provider-thread-id prefix to trigger it.
@@ -388,6 +449,7 @@ async function handleRequest(message) {
       return;
     }
     case "thread/fork": {
+      servesThread = true;
       // The real app-server reads the source rollout; an archived source is
       // refused with the same wording a resume gets.
       if (
