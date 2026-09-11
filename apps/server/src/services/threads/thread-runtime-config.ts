@@ -185,6 +185,7 @@ export async function resolveThreadRuntimeCommandConfig(
   });
   const conditionalConfiguration = await resolvePluginAgentConfiguration({
     context: {
+      pluginMetadata: {},
       thread: {
         id: args.thread.id,
         title: args.thread.title,

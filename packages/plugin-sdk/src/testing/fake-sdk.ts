@@ -1,3 +1,4 @@
+import { validatePluginMetadata } from "@bb/domain";
 import type { BbPluginApi } from "@get-bb/plugin-sdk";
 
 type BbSdk = BbPluginApi["sdk"];
@@ -53,7 +54,23 @@ export interface FakeSdkHarness {
 function withSpawnAttribution(pluginId: string, args: unknown[]): unknown[] {
   const [first, ...rest] = args;
   if (typeof first !== "object" || first === null) return args;
-  const spawnArgs = first as { origin?: string; originPluginId?: string };
+  const spawnArgs = first as {
+    origin?: string;
+    originPluginId?: string;
+    pluginMetadata?: unknown;
+  };
+  if (spawnArgs.pluginMetadata !== undefined) {
+    return [
+      {
+        ...spawnArgs,
+        pluginMetadata: validatePluginMetadata(spawnArgs.pluginMetadata),
+        origin: "plugin",
+        originPluginId: pluginId,
+      },
+      ...rest,
+    ];
+  }
+
   const origin = spawnArgs.origin ?? "plugin";
   return [
     {
@@ -65,6 +82,44 @@ function withSpawnAttribution(pluginId: string, args: unknown[]): unknown[] {
     },
     ...rest,
   ];
+}
+
+function withPluginMetadataTarget(
+  pluginId: string,
+  args: unknown[],
+  validateSet: boolean,
+): unknown[] {
+  const [first, ...rest] = args;
+  if (typeof first !== "object" || first === null) return args;
+  const input = first as { pluginId?: string; set?: unknown };
+  return [
+    {
+      ...input,
+      pluginId: input.pluginId ?? pluginId,
+      ...(validateSet && input.set !== undefined
+        ? { set: validatePluginMetadata(input.set) }
+        : {}),
+    },
+    ...rest,
+  ];
+}
+
+function withForkAttribution(pluginId: string, args: unknown[]): unknown[] {
+  const [first, ...rest] = args;
+  if (typeof first !== "object" || first === null) return args;
+  const forkArgs = first as { pluginMetadata?: unknown };
+  if (forkArgs.pluginMetadata !== undefined) {
+    return [
+      {
+        ...forkArgs,
+        pluginMetadata: validatePluginMetadata(forkArgs.pluginMetadata),
+        origin: "plugin",
+        originPluginId: pluginId,
+      },
+      ...rest,
+    ];
+  }
+  return args;
 }
 
 export function createFakeSdk(options: {
@@ -90,7 +145,13 @@ export function createFakeSdk(options: {
     const args =
       path === "threads.spawn"
         ? withSpawnAttribution(options.pluginId, rawArgs)
-        : rawArgs;
+        : path === "threads.fork"
+          ? withForkAttribution(options.pluginId, rawArgs)
+          : path === "threads.getPluginMetadata"
+            ? withPluginMetadataTarget(options.pluginId, rawArgs, false)
+            : path === "threads.updatePluginMetadata"
+              ? withPluginMetadataTarget(options.pluginId, rawArgs, true)
+              : rawArgs;
     calls.push({ path, args });
     const stub = stubs.get(path);
     if (!stub) {

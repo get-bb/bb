@@ -593,6 +593,18 @@ export const threads = sqliteTable(
   ],
 );
 
+export const threadPluginMetadata = sqliteTable(
+  "thread_plugin_metadata",
+  {
+    threadId: text("thread_id")
+      .notNull()
+      .references(() => threads.id, { onDelete: "cascade" }),
+    pluginId: text("plugin_id").notNull(),
+    metadataJson: text("metadata_json").notNull(),
+  },
+  (table) => [primaryKey({ columns: [table.threadId, table.pluginId] })],
+);
+
 export const threadTabs = sqliteTable("thread_tabs", {
   threadId: text("thread_id")
     .primaryKey()

@@ -40,6 +40,7 @@ import {
 } from "../schema.js";
 import { createThreadId } from "../ids.js";
 import { createOrderKeyBetween } from "./order-keys.js";
+import { insertThreadPluginMetadata } from "./thread-plugin-metadata.js";
 
 type ThreadWriteConnection = DbConnection | DbTransaction;
 
@@ -272,6 +273,7 @@ export interface CreateThreadInput {
   sourceThreadId?: string | null;
   originKind?: ThreadOriginKind | null;
   originPluginId?: string | null;
+  pluginMetadata?: { pluginId: string; metadata: import("@bb/domain").JsonObject } | null;
   visibility?: ThreadVisibility;
 }
 
@@ -318,6 +320,13 @@ export function createThread(
         titleFallback: createdThread.titleFallback,
         updatedAt: now,
       });
+      if (input.pluginMetadata !== undefined && input.pluginMetadata !== null) {
+        insertThreadPluginMetadata(tx, {
+          threadId: createdThread.id,
+          pluginId: input.pluginMetadata.pluginId,
+          metadata: input.pluginMetadata.metadata,
+        });
+      }
       return createdThread;
     },
     { behavior: "immediate" },

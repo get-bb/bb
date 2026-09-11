@@ -990,6 +990,108 @@ describe("sdk", () => {
     ]);
   });
 
+  it("normalizes metadata-bearing spawn and fork calls with plugin attribution", async () => {
+    const seen: unknown[] = [];
+    const { bb } = createFakePluginHost({
+      pluginId: "active-plugin",
+      sdk: {
+        threads: {
+          spawn: async (args) => {
+            seen.push(args);
+            return { id: "spawned" };
+          },
+          fork: async (args) => {
+            seen.push(args);
+            return { id: "forked" };
+          },
+        },
+      },
+    });
+    const metadata = { source: "test", nested: { ok: true } };
+    await bb.sdk.threads.spawn({
+      projectId: "p1",
+      environment: { type: "reuse", environmentId: "environment-1" },
+      prompt: "hi",
+      pluginMetadata: metadata,
+    });
+    await bb.sdk.threads.fork({
+      sourceThreadId: "source",
+      input: [{ type: "text", text: "fork", mentions: [] }],
+      origin: "sdk",
+      originPluginId: "other-plugin",
+      pluginMetadata: metadata,
+    });
+    expect(seen).toEqual([
+      expect.objectContaining({
+        origin: "plugin",
+        originPluginId: "active-plugin",
+        pluginMetadata: metadata,
+      }),
+      expect.objectContaining({
+        origin: "plugin",
+        originPluginId: "active-plugin",
+        pluginMetadata: metadata,
+      }),
+    ]);
+  });
+
+  it("defaults metadata targets, preserves explicit targets, and validates set before stubs", async () => {
+    const invoked: unknown[] = [];
+    const { bb, harness } = createFakePluginHost({
+      pluginId: "active-plugin",
+      sdk: {
+        threads: {
+          getPluginMetadata: async (args) => {
+            invoked.push(args);
+            return {};
+          },
+          updatePluginMetadata: async (args) => {
+            invoked.push(args);
+            return {};
+          },
+        },
+      },
+    });
+
+    await bb.sdk.threads.getPluginMetadata({ threadId: "thread-1" });
+    await bb.sdk.threads.updatePluginMetadata({
+      threadId: "thread-1",
+      pluginId: "other-plugin",
+      set: { nested: { ok: true } },
+    });
+
+    expect(invoked).toEqual([
+      { threadId: "thread-1", pluginId: "active-plugin" },
+      {
+        threadId: "thread-1",
+        pluginId: "other-plugin",
+        set: { nested: { ok: true } },
+      },
+    ]);
+
+    const cyclic: Record<string, unknown> = {};
+    cyclic.self = cyclic;
+    expect(() =>
+      bb.sdk.threads.updatePluginMetadata({
+        threadId: "thread-1",
+        set: cyclic as never,
+      }),
+    ).toThrow(/cycle/);
+    expect(harness.sdk.callsTo("threads.updatePluginMetadata")).toHaveLength(1);
+  });
+
+  it("passes no-metadata fork arguments through unchanged", async () => {
+    const { bb, harness } = createFakePluginHost({
+      sdk: { threads: { fork: async () => ({ id: "forked" }) } },
+    });
+    const forkArgs = {
+      sourceThreadId: "source",
+      originPluginId: "legacy-plugin",
+    };
+    await bb.sdk.threads.fork(forkArgs);
+    expect(harness.sdk.callsTo("threads.fork").at(-1)?.[0]).toBe(forkArgs);
+  });
+
   it("keeps nested plugin administration available through the backend SDK", async () => {
     const catalog = { pluginCount: 1 };
     const { bb, harness } = createFakePluginHost({
@@ -1266,6 +1368,37 @@ describe("agent tools", () => {
     expect(() =>
       bb.agents.configure(() => ({ tools: [], skills: [] })),
     ).toThrow("agent configuration is already registered");
+  });
+
+  it("defaults, normalizes, and deeply freezes plugin metadata only", async () => {
+    const { bb, harness } = createFakePluginHost();
+    let observed: PluginAgentConfigurationContext | undefined;
+    bb.agents.configure((received) => {
+      observed = received;
+      expect(Object.isFrozen(received.pluginMetadata)).toBe(true);
+      expect(Object.isFrozen(received.pluginMetadata.nested)).toBe(true);
+      expect(() => {
+        (received.pluginMetadata.nested as { count: number }).count = 2;
+      }).toThrow();
+      expect(Object.isFrozen(received.thread)).toBe(false);
+      return { tools: [], skills: [] };
+    });
+    const context = makePluginAgentConfigurationContext({
+      pluginMetadata: { nested: { count: 1 } },
+    });
+    await harness.resolveAgentConfiguration(context);
+    expect(observed?.pluginMetadata).toEqual({ nested: { count: 1 } });
+
+    const defaults = createFakePluginHost();
+    let defaultMetadata: unknown;
+    defaults.bb.agents.configure((received) => {
+      defaultMetadata = received.pluginMetadata;
+      return { tools: [], skills: [] };
+    });
+    await defaults.harness.resolveAgentConfiguration(
+      makePluginAgentConfigurationContext(),
+    );
+    expect(defaultMetadata).toEqual({});
   });
 
   it("resolves conditional tools, skills, context, and capped instructions without rebuilding registrations", async () => {
