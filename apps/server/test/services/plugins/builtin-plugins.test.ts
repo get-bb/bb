@@ -551,11 +551,11 @@ describe("builtin plugin reconciliation", () => {
     ]);
   });
 
-  it("ships Provider usage disabled on a fresh database", async () => {
+  it("ships Provider usage enabled on a fresh database", async () => {
     const providerUsage = BUILTIN_PLUGINS.find(
       (builtin) => builtin.name === "provider-usage",
     );
-    expect(providerUsage?.defaultEnabled).toBe(false);
+    expect(providerUsage?.defaultEnabled).toBe(true);
 
     service = createService({
       db,
@@ -570,8 +570,8 @@ describe("builtin plugin reconciliation", () => {
       {
         id: "provider-usage",
         source: "builtin:provider-usage",
-        enabled: false,
-        status: "disabled",
+        enabled: true,
+        status: "running",
       },
     ]);
   });

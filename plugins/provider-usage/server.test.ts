@@ -73,6 +73,7 @@ it("lists cheaply, fetches only the selected source/provider, preserves failed m
   const host = createFakePluginHost({
     pluginId: "provider-usage",
     sdk: {
+      system: { config: async () => ({ primaryHostId: null }) },
       hosts: {
         list: async () => [
           makeHostResponse({
@@ -228,6 +229,7 @@ it("keeps an unconfigured shared group without hosts or measurement requests", a
   const host = createFakePluginHost({
     pluginId: "provider-usage",
     sdk: {
+      system: { config: async () => ({ primaryHostId: null }) },
       hosts: { list: async () => [] },
       providers: { list: async () => [] },
       plugins: {
@@ -267,6 +269,7 @@ it("keeps an unconfigured shared group without hosts or measurement requests", a
 it("collapses known account observations per machine, preserves unknown identities, and normalizes display labels", async () => {
   const { bb, harness } = createFakePluginHost({
     sdk: {
+      system: { config: async () => ({ primaryHostId: null }) },
       hosts: {
         list: async () => [
           makeHostResponse({ id: "host", status: "connected" }),
