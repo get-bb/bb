@@ -13,6 +13,7 @@ import {
 } from "@/data/notifications";
 import type { ServerProfile } from "@/lib/profiles";
 import { ActionSheet, toast, useSheet } from "@/ui";
+import type { ToastOptions } from "@/ui/Toast";
 import { webViewShellHref } from "@/screens/shell/hrefs";
 import { AppBadgeSync } from "./AppBadgeSync";
 import { getPushNotificationsModule } from "./expo-push-module";
@@ -73,6 +74,7 @@ export function PushNotificationsHost() {
       if (!profile) {
         toast.error("Could not open the thread", {
           description: "None of your saved servers has it.",
+          duration: 2_000,
         });
         return false;
       }
@@ -117,7 +119,8 @@ export function PushNotificationsHost() {
         const target = parsePushNotificationData(content.data);
         if (!target) return;
         let opening = false;
-        const toastId = toast.message(content.title ?? "bb", {
+        const title = content.title ?? "bb";
+        const options: ToastOptions = {
           description: content.body ?? undefined,
           duration: 8_000,
           action: {
@@ -125,14 +128,21 @@ export function PushNotificationsHost() {
             onClick: async () => {
               if (opening) return;
               opening = true;
+              toast.message(title, {
+                ...options,
+                id: toastId,
+                duration: Infinity,
+              });
               if (!(await openTarget(target))) {
+                toast.message(title, { ...options, id: toastId });
                 opening = false;
                 return;
               }
               setTimeout(() => toast.dismiss(toastId), 500);
             },
           },
-        });
+        };
+        const toastId = toast.message(title, options);
       },
     );
     return () => subscription.remove();

@@ -88,6 +88,7 @@ export function Toaster() {
       swipeToDismissDirection="up"
       duration={4000}
       visibleToasts={3}
+      enableStacking
       icons={icons}
       toastOptions={{
         style: {
