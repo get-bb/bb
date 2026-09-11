@@ -30,7 +30,8 @@
   ],
   "scripts": {
     "typecheck": "tsc --noEmit",
-    "test": "vitest run --config vitest.config.ts"
+    "test": "vitest run --config vitest.config.ts",
+    "prepare:bundled": "bb-plugin-build prepare-bundled"
   },
   "dependencies": {
     "@bb/shared-ui": "workspace:*",
@@ -41,6 +42,7 @@
     "@bb/domain": "workspace:*"
   },
   "devDependencies": {
+    "@bb/plugin-build": "workspace:*",
     "@get-bb/plugin-sdk": "workspace:*",
     "@radix-ui/react-dialog": "^1.1.19",
     "@radix-ui/react-dropdown-menu": "^2.1.20",

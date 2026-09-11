@@ -21,3 +21,8 @@ export {
 } from "./svg-asset.js";
 
 export { resolveManifestPath } from "./plugin-manifest.js";
+
+export {
+  copyPluginRuntime,
+  preparePluginRuntime,
+} from "./prepare-plugin-runtime.js";

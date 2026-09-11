@@ -637,6 +637,132 @@ function QuotaDetail({
     </div>
   );
 }
+
+type CopyState = "idle" | "copied" | "manual";
+
+function useCopyToClipboard(text: string, selectFallback: () => void) {
+  const [copyState, setCopyState] = useState<CopyState>("idle");
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(
+    () => () => {
+      if (timerRef.current !== null) clearTimeout(timerRef.current);
+    },
+    [],
+  );
+  useEffect(() => {
+    if (timerRef.current !== null) clearTimeout(timerRef.current);
+    setCopyState("idle");
+  }, [text]);
+
+  const copy = useCallback(() => {
+    navigator.clipboard.writeText(text).then(
+      () => {
+        setCopyState("copied");
+        if (timerRef.current !== null) clearTimeout(timerRef.current);
+        timerRef.current = setTimeout(() => setCopyState("idle"), 1500);
+      },
+      () => {
+        selectFallback();
+        setCopyState("manual");
+      },
+    );
+  }, [text, selectFallback]);
+
+  return { copyState, copy };
+}
+
+function UserCodeBlock({ userCode }: { userCode: string }) {
+  const codeRef = useRef<HTMLSpanElement>(null);
+  const selectCode = useCallback(() => {
+    const element = codeRef.current;
+    if (element === null) return;
+    const selection = window.getSelection();
+    if (selection === null) return;
+    const range = document.createRange();
+    range.selectNodeContents(element);
+    selection.removeAllRanges();
+    selection.addRange(range);
+  }, []);
+  const { copyState, copy } = useCopyToClipboard(userCode, selectCode);
+
+  return (
+    <div className="rounded-lg border border-border bg-surface-recessed px-4 py-4">
+      <div className="grid grid-cols-[1fr_auto_1fr] items-center">
+        <span
+          ref={codeRef}
+          className="col-start-2 select-all text-center font-mono text-2xl font-semibold tracking-widest"
+          aria-label="Codex user code"
+        >
+          {userCode}
+        </span>
+        <Button
+          type="button"
+          variant="ghost"
+          aria-label="Copy Codex sign-in code"
+          className="col-start-3 size-11 justify-self-start text-muted-foreground hover:text-foreground sm:size-9"
+          onClick={copy}
+        >
+          <Icon name={copyState === "copied" ? "Check" : "Copy"} />
+        </Button>
+      </div>
+      <span aria-live="polite" className="sr-only">
+        {copyState === "copied"
+          ? "Sign-in code copied"
+          : copyState === "manual"
+            ? "Your browser blocked copying. The code is selected; copy it manually."
+            : ""}
+      </span>
+    </div>
+  );
+}
+
+function AuthorizationUrlRow({
+  name,
+  url,
+  openUrl,
+}: {
+  name: string;
+  url: string;
+  openUrl: (url: string) => boolean;
+}) {
+  const inputRef = useRef<HTMLInputElement>(null);
+  const selectUrl = useCallback(() => {
+    inputRef.current?.select();
+  }, []);
+  const { copyState, copy } = useCopyToClipboard(url, selectUrl);
+
+  return (
+    <div>
+      <div className="flex gap-2">
+        <Input
+          ref={inputRef}
+          readOnly
+          value={url}
+          aria-label={`${name} authorization URL`}
+        />
+        <Button
+          variant="outline"
+          className="shrink-0"
+          aria-label={`Copy ${name} authorization URL`}
+          onClick={copy}
+        >
+          {copyState === "copied" ? "Copied" : "Copy"}
+        </Button>
+        <Button className="shrink-0" onClick={() => openUrl(url)}>
+          Open
+        </Button>
+      </div>
+      <span aria-live="polite" className="sr-only">
+        {copyState === "copied"
+          ? "Authorization URL copied"
+          : copyState === "manual"
+            ? "Your browser blocked copying. The URL is selected; copy it manually."
+            : ""}
+      </span>
+    </div>
+  );
+}
+
 function DialogFrame({
   title,
   children,
@@ -1628,27 +1754,9 @@ function LoginDialog({
               : "Open the verification page, sign in to ChatGPT, and enter this code."}
           </p>
           {codexStep === null ? null : (
-            <div
-              className="rounded-lg border border-border bg-surface-recessed px-5 py-5 text-center font-mono text-2xl font-semibold tracking-widest"
-              aria-label="Codex user code"
-            >
-              {codexStep.userCode}
-            </div>
+            <UserCodeBlock userCode={codexStep.userCode} />
           )}
-          <div className="flex gap-2">
-            <Input
-              readOnly
-              value={url}
-              aria-label={`${name} authorization URL`}
-            />
-            <Button
-              variant="outline"
-              onClick={() => void navigator.clipboard.writeText(url)}
-            >
-              Copy
-            </Button>
-            <Button onClick={() => openUrl(url)}>Open</Button>
-          </div>
+          <AuthorizationUrlRow name={name} url={url} openUrl={openUrl} />
           {provider === "claude" ? (
             <Input
               aria-label="Claude authorization code"

@@ -1224,7 +1224,7 @@ export function ModelReasoningPicker({
                         value={option.value}
                         aria-label={option.label}
                         className={cn(
-                          "h-6 min-w-0 flex-auto shrink-0 whitespace-nowrap rounded-sm px-1 text-xs font-normal shadow-none data-[state=on]:bg-state-active data-[state=on]:text-foreground",
+                          "h-6 min-w-0 flex-auto shrink-0 whitespace-nowrap rounded-sm px-1 text-xs font-normal shadow-none hover:bg-state-hover hover:text-foreground data-[state=on]:bg-state-active data-[state=on]:text-foreground data-[state=on]:hover:bg-state-active",
                           isCompactViewport && "h-9 text-sm",
                           LIST_HOVER_TRANSITION,
                         )}

@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 
 import {
+  act,
   cleanup,
   fireEvent,
   render,
@@ -22,6 +23,7 @@ import {
   serializeFixedPanelTabsState,
 } from "@/lib/fixed-panel-tabs-state";
 import { PluginPanelRightPanelHost } from "./PluginPanelRightPanelHost";
+import { openPluginDetailsInWorkspace } from "./plugin-detail-opener";
 import { getPluginPagePanelStateId } from "./plugin-page-panel-state";
 import { useAppNavigationHost } from "@/lib/app-navigation-host";
 import {
@@ -805,6 +807,21 @@ describe("PluginPanelRightPanelHost", () => {
     );
   });
 
+  it("accepts sidebar detail requests before the plugin panel registers", async () => {
+    fixedTabState.panelRegistered = false;
+    renderHost("board", "", createStore(), true);
+    act(() => {
+      expect(
+        openPluginDetailsInWorkspace({ pluginId: "secrets", title: "Secrets" }),
+      ).toBe(true);
+    });
+    expect(await screen.findByText("Details for secrets")).toBeTruthy();
+    expect(screen.getByTestId("current-path").textContent).toBe(
+      "/plugins/demo/board",
+    );
+    expect(screen.getByText("Plugin page")).toBeTruthy();
+  });
+
   it("observes only the selected detail tab while retaining inactive tab metadata", async () => {
     renderHost("board", "", createStore(), true);
 
@@ -921,7 +938,7 @@ describe("PluginPanelRightPanelHost", () => {
     fireEvent.click(screen.getByText("Add tab"));
     expect(await screen.findByTestId("plugin-page-new-tab")).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "Close New tab" }));
-    expect(screen.getByText("Navigation for task/123")).toBeTruthy();
+    expect(await screen.findByText("Details for task/123")).toBeTruthy();
     expect(
       screen
         .getByTestId("shared-secondary-panel-region")

@@ -117,6 +117,7 @@ const FOLLOW_UP_PROMPT_BOX_DEFAULT_MIN_HEIGHT = 68;
 const FOLLOW_UP_PROMPT_BOX_ELASTIC_TARGET_HEIGHT =
   FOLLOW_UP_PROMPT_BOX_DEFAULT_MIN_HEIGHT +
   THREAD_PROMPT_CONTEXT_BANNER_ROW_HEIGHT;
+const COMPOSER_CONTROL_SELECTOR = "button, [role='button'], [aria-haspopup]";
 const COMPOSER_OVERLAY_TRIGGER_SELECTOR = "[aria-haspopup]";
 const OPEN_COMPOSER_OVERLAY_TRIGGER_SELECTOR = `${COMPOSER_OVERLAY_TRIGGER_SELECTOR}[aria-expanded="true"]`;
 const MOBILE_KEYBOARD_VIEWPORT_MIN_DELTA_PX = 80;
@@ -302,8 +303,9 @@ function FollowUpPromptBoxWithComposer({
   const interactionExpandedRef = useRef(false);
   const pendingFocusExpansionCleanupRef = useRef<(() => void) | null>(null);
   const pendingFocusLossCleanupRef = useRef<(() => void) | null>(null);
-  const pressedOverlayTriggerRef = useRef(false);
-  const pressedOverlayTriggerCleanupRef = useRef<(() => void) | null>(null);
+  const deferredControlFocusLossRef = useRef<(() => void) | null>(null);
+  const pressedComposerControlRef = useRef(false);
+  const pressedComposerControlCleanupRef = useRef<(() => void) | null>(null);
   const [isInteractionExpanded, setIsInteractionExpanded] = useState(false);
   const [widePromptBoxCollapsedFor, setWidePromptBoxCollapsedFor] = useState<
     string | number | null
@@ -338,13 +340,14 @@ function FollowUpPromptBoxWithComposer({
     pendingFocusExpansionCleanupRef.current = null;
   }, []);
   const cancelPendingFocusLoss = useCallback(() => {
+    deferredControlFocusLossRef.current = null;
     const cleanup = pendingFocusLossCleanupRef.current;
     pendingFocusLossCleanupRef.current = null;
     cleanup?.();
   }, []);
-  const cancelPressedOverlayTrigger = useCallback(() => {
-    const cleanup = pressedOverlayTriggerCleanupRef.current;
-    pressedOverlayTriggerCleanupRef.current = null;
+  const cancelPressedComposerControl = useCallback(() => {
+    const cleanup = pressedComposerControlCleanupRef.current;
+    pressedComposerControlCleanupRef.current = null;
     cleanup?.();
   }, []);
   const handleComposerPointerDown = useCallback(
@@ -352,13 +355,15 @@ function FollowUpPromptBoxWithComposer({
       const target = event.target;
       if (
         !(target instanceof Element) ||
-        !target.closest(COMPOSER_OVERLAY_TRIGGER_SELECTOR)
+        !target.closest(COMPOSER_CONTROL_SELECTOR)
       ) {
         return;
       }
 
-      cancelPressedOverlayTrigger();
-      pressedOverlayTriggerRef.current = true;
+      cancelPendingFocusExpansion();
+      cancelPendingFocusLoss();
+      cancelPressedComposerControl();
+      pressedComposerControlRef.current = true;
       let releaseTimeout: number | null = null;
       const removeReleaseListeners = () => {
         window.removeEventListener("pointerup", finishRelease, true);
@@ -368,8 +373,11 @@ function FollowUpPromptBoxWithComposer({
         removeReleaseListeners();
         releaseTimeout = window.setTimeout(() => {
           releaseTimeout = null;
-          pressedOverlayTriggerRef.current = false;
-          pressedOverlayTriggerCleanupRef.current = null;
+          pressedComposerControlRef.current = false;
+          pressedComposerControlCleanupRef.current = null;
+          const resumeFocusLoss = deferredControlFocusLossRef.current;
+          deferredControlFocusLossRef.current = null;
+          resumeFocusLoss?.();
         });
       };
       const cleanup = () => {
@@ -377,7 +385,7 @@ function FollowUpPromptBoxWithComposer({
         if (releaseTimeout !== null) {
           window.clearTimeout(releaseTimeout);
         }
-        pressedOverlayTriggerRef.current = false;
+        pressedComposerControlRef.current = false;
       };
 
       window.addEventListener("pointerup", finishRelease, {
@@ -388,13 +396,18 @@ function FollowUpPromptBoxWithComposer({
         capture: true,
         once: true,
       });
-      pressedOverlayTriggerCleanupRef.current = cleanup;
+      pressedComposerControlCleanupRef.current = cleanup;
     },
-    [cancelPressedOverlayTrigger],
+    [
+      cancelPendingFocusExpansion,
+      cancelPendingFocusLoss,
+      cancelPressedComposerControl,
+    ],
   );
   const handleComposerFocus = useCallback(
     (event: ReactFocusEvent) => {
       cancelPendingFocusLoss();
+      if (pressedComposerControlRef.current) return;
       setWidePromptBoxCollapsedFor(null);
       if (interactionExpandedRef.current) return;
       if (
@@ -465,14 +478,23 @@ function FollowUpPromptBoxWithComposer({
     (event: ReactFocusEvent) => {
       cancelPendingFocusLoss();
       const dismissedKeyboard = isKeyboardFocusTarget(event.target);
-      const focusLossFrame = window.requestAnimationFrame(() => {
+      const scheduleFocusLoss = () => {
+        const frame = window.requestAnimationFrame(checkFocusLoss);
+        pendingFocusLossCleanupRef.current = () => {
+          window.cancelAnimationFrame(frame);
+        };
+      };
+      const checkFocusLoss = () => {
         pendingFocusLossCleanupRef.current = null;
         const composerElement = composerInteractionRef.current;
         if (!composerElement) return;
 
         if (composerElement.contains(document.activeElement)) return;
 
-        if (pressedOverlayTriggerRef.current) return;
+        if (pressedComposerControlRef.current) {
+          deferredControlFocusLossRef.current = scheduleFocusLoss;
+          return;
+        }
 
         if (
           composerElement.querySelector(OPEN_COMPOSER_OVERLAY_TRIGGER_SELECTOR)
@@ -532,10 +554,8 @@ function FollowUpPromptBoxWithComposer({
           MOBILE_KEYBOARD_DISMISSAL_FALLBACK_MS,
         );
         pendingFocusLossCleanupRef.current = cleanup;
-      });
-      pendingFocusLossCleanupRef.current = () => {
-        window.cancelAnimationFrame(focusLossFrame);
       };
+      scheduleFocusLoss();
     },
     [
       cancelPendingFocusExpansion,
@@ -577,12 +597,12 @@ function FollowUpPromptBoxWithComposer({
     () => () => {
       cancelPendingFocusExpansion();
       cancelPendingFocusLoss();
-      cancelPressedOverlayTrigger();
+      cancelPressedComposerControl();
     },
     [
       cancelPendingFocusExpansion,
       cancelPendingFocusLoss,
-      cancelPressedOverlayTrigger,
+      cancelPressedComposerControl,
     ],
   );
   const steerOnPrimarySubmit =

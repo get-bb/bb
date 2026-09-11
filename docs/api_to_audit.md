@@ -2567,3 +2567,30 @@ routing; malformed context does not fall back to the ambient workspace.
 Explicit absolute paths retain existing host-file behavior. HTML is unaffected.
 Stabilize after plugin consumers verify nested paths, source identity, missing
 files, containment and line locations, then rename and remove this audit entry.
+
+## `PluginFileOpenerProps.experimental_lineRange` (`@get-bb/plugin-sdk/app`)
+
+**What it does.** Passes the owning file tab's latest one-based, inclusive
+`{ startLineNumber, endLineNumber }` range to its opener. `null` means no
+requested navigation; older hosts may omit the optional property. The app
+supplies a new object on each targeted open, even when the active file and
+line numbers match. Openers should observe that identity, reveal the latest
+range after asynchronous loading, and navigate without replacing an existing
+editor model. Monaco selects the complete lines and clamps targets past EOF.
+Columns are not part of the existing preview range contract.
+
+The range uses the existing tab owner and persistence policy. This adds no
+RPC fields, server-daemon messages, file permissions, or new CLI syntax.
+Existing `bb thread open <thread> <path> --line <line>` / SDK thread-open requests
+and plugin file navigation feed the same opener boundary.
+
+**Audit before stabilizing.**
+
+1. Verify first, changed, identical, and rapid targets across workspace, host,
+   and thread-storage files, tab remounts, and server synchronization.
+2. Validate the identity-based repeat signal with third-party openers and
+   decide whether an explicit request sequence is needed before stabilization.
+3. Confirm absent-target, inclusive selection, EOF clamping, column support,
+   file-tree navigation, and unsaved-edit behavior with more editor consumers.
+4. Verify older hosts omit the prop safely and older plugins ignore it; audit
+   reload restoration and cross-client range updates under the existing tab policy.

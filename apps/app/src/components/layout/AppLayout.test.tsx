@@ -15,6 +15,8 @@ import { Link, MemoryRouter, useLocation } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { AppCommandProvider } from "@/components/commands/AppCommandProvider";
 import { AppLayout } from "./AppLayout";
+import { CompactViewportOverrideProvider } from "@bb/shared-ui/hooks/use-compact-viewport";
+import { setCompactSecondaryPanelPresentation } from "@/components/ui/secondary-panel-shelf-visibility";
 
 const SIDEBAR_WIDTH_STORAGE_KEY = "bb.sidebar.width";
 const APP_ROUTE = "/projects/proj_one/threads/thr_one?message=12#event-12";
@@ -198,8 +200,46 @@ beforeEach(() => {
 
 afterEach(() => {
   cleanup();
+  setCompactSecondaryPanelPresentation("closed");
   vi.restoreAllMocks();
   window.localStorage.clear();
+});
+
+describe("mobile workspace sidebar access", () => {
+  it.each([
+    "/plugins",
+    "/plugins/plugin-api-docs",
+    "/plugins/plugin-api-docs/plugin-api",
+    "/settings",
+    "/skills",
+  ])(
+    "opens and collapses the sidebar on %s with a full detail panel",
+    async (route) => {
+      setCompactSecondaryPanelPresentation("full");
+      render(
+        <CompactViewportOverrideProvider isCompactViewport>
+          <MemoryRouter initialEntries={[route]}>
+            <AppCommandProvider>
+              <AppLayout>
+                <div>Workspace content</div>
+              </AppLayout>
+            </AppCommandProvider>
+          </MemoryRouter>
+        </CompactViewportOverrideProvider>,
+      );
+      const toggle = screen.getByRole("button", { name: /^Toggle sidebar/ });
+      expect(toggle.getAttribute("aria-expanded")).toBe("false");
+      fireEvent.click(toggle);
+      await waitFor(() =>
+        expect(toggle.getAttribute("aria-expanded")).toBe("true"),
+      );
+      fireEvent.click(toggle);
+      await waitFor(() =>
+        expect(toggle.getAttribute("aria-expanded")).toBe("false"),
+      );
+      expect(getRoot().hasAttribute("inert")).toBe(false);
+    },
+  );
 });
 
 describe("AppLayout Back to app", () => {

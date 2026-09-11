@@ -77,28 +77,11 @@ await copyBuildOutput({
   label: "@bb/server dist",
   to: resolve(packageRoot, "server", "dist"),
 });
-// Builtin plugins are bundled at packaging time (not in @bb/server's build,
-// which source checkouts don't need — the registry falls back to the repo's
-// plugins/<name> there). Runs in apps/server so tsx + workspace imports
-// resolve; writes straight into the packaged server dist.
-await execFileAsync(
-  "node",
-  [
-    "--conditions=source",
-    "--import",
-    "tsx",
-    resolve(
-      workspaceRoot,
-      "apps",
-      "server",
-      "scripts",
-      "copy-builtin-plugins.ts",
-    ),
-    "--target",
-    resolve(packageRoot, "server", "dist", "builtin-plugins"),
-  ],
-  { cwd: resolve(workspaceRoot, "apps", "server") },
-);
+await copyBuildOutput({
+  from: resolve(workspaceRoot, "packages", "bundled-plugins", "dist"),
+  label: "@bb/bundled-plugins dist",
+  to: resolve(packageRoot, "server", "dist", "builtin-plugins"),
+});
 await copyBuildOutput({
   from: resolve(workspaceRoot, "apps", "host-daemon", "dist"),
   label: "@bb/host-daemon dist",

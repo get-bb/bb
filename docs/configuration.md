@@ -1159,7 +1159,8 @@ enrolled to other servers. Atomic reservations under
 ## Source Development
 
 For source development only, `pnpm dev`, `pnpm start:worktree`,
-`pnpm start:worktree-remote`, and `pnpm start` load the repo-root dotenv
+`pnpm start:worktree-remote`, `pnpm start:worktree --dryrun`,
+and `pnpm start` load the repo-root dotenv
 cascade. Add a repo-root `.env` only when you need to override the defaults
 described above.
 
@@ -1181,6 +1182,12 @@ disabled for this source-development command. Its worktree data directory,
 ports, inherited skills, listener host, absent Vite port, and telemetry policy
 take precedence over conflicting values saved in that instance's `config.json`
 or `env.json`.
+Add `--dryrun` to `pnpm start` or `pnpm start:worktree` to prepare through Turbo,
+print the same resolved ports and paths that normal startup uses, and exit.
+This writes build outputs and may repair native modules, but does not start
+services, migrate instance data or require ports to be free. Normal startup
+also runs Turbo preparation and preserves the command's runtime policy. See
+[Prepared Worktree Restarts](debugging-and-qa.md#prepared-worktree-restarts).
 `pnpm start:worktree-remote` applies the same policy while binding the main
 server to `0.0.0.0` for direct access on a trusted network. The API is
 unauthenticated and permits command execution and file reads, so protect the

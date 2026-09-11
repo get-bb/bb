@@ -54,6 +54,17 @@ export const scriptedEchoOptionsSchema = z
     startDelayMs: z.number().int().nonnegative().optional(),
     turnStartResponseDelayMs: z.number().int().nonnegative().optional(),
     answerStartWithoutIdentity: z.boolean().optional(),
+    identityAfterResponse: z.boolean().optional(),
+    identityNotificationsBeforeTurn: z
+      .array(
+        z.object({
+          threadId: z.string().min(1),
+          providerThreadId: z.string().min(1),
+          asDelta: z.boolean().optional(),
+        }),
+      )
+      .optional(),
+    completionIdentity: z.string().min(1).optional(),
     archivedSession: z.boolean().optional(),
     unarchiveFails: z.boolean().optional(),
     exitAfterArchivedError: z.boolean().optional(),
@@ -434,6 +445,13 @@ function completeTurn(
     status,
     providerTurnId: turn.providerTurnId,
   });
+  if (session.options.completionIdentity !== undefined) {
+    session.providerThreadId = session.options.completionIdentity;
+    deltas.push({
+      kind: "thread.identity",
+      providerThreadId: session.providerThreadId,
+    });
+  }
   emitDeltas(session.threadId, deltas);
 }
 
@@ -505,6 +523,22 @@ function beginTurn(args: {
   clientRequestId?: ClientTurnRequestId;
 }): void {
   const { session } = args;
+  for (const identity of session.options.identityNotificationsBeforeTurn ??
+    []) {
+    if (identity.asDelta === true) {
+      emitDeltas(identity.threadId, [
+        {
+          kind: "thread.identity",
+          providerThreadId: identity.providerThreadId,
+        },
+      ]);
+    } else {
+      notify(BRIDGE_NOTIFICATION_METHODS.threadIdentity, {
+        threadId: identity.threadId,
+        providerThreadId: identity.providerThreadId,
+      });
+    }
+  }
   clearActiveTurn(session);
   const plan = parseTurnPlan(promptText(args.input));
   if (plan.failure !== null && plan.failure.beforeTurn) {
@@ -780,15 +814,21 @@ function openSession(args: {
     options: args.options,
   };
   sessions.set(args.threadId, session);
-  notify(BRIDGE_NOTIFICATION_METHODS.threadIdentity, {
-    threadId: args.threadId,
-    providerThreadId: args.providerThreadId,
-    ...(args.options.sessionRestorable === undefined
-      ? {}
-      : { sessionRestorable: args.options.sessionRestorable }),
-  });
+  if (args.options.identityAfterResponse !== true) {
+    notifySessionIdentity(session);
+  }
   emitDeltas(args.threadId, [{ kind: "session.reset" }]);
   return session;
+}
+
+function notifySessionIdentity(session: Session): void {
+  notify(BRIDGE_NOTIFICATION_METHODS.threadIdentity, {
+    threadId: session.threadId,
+    providerThreadId: session.providerThreadId,
+    ...(session.options.sessionRestorable === undefined
+      ? {}
+      : { sessionRestorable: session.options.sessionRestorable }),
+  });
 }
 
 function mintProviderThreadId(options: ScriptedEchoOptions): string {
@@ -961,6 +1001,9 @@ const handlers: Record<string, RequestHandler> = {
       });
       logProcessStep(`thread/start:${process.pid}:${parsed.data.threadId}`);
       io.sendResult(id, identityResult(session));
+      if (session.options.identityAfterResponse === true) {
+        notifySessionIdentity(session);
+      }
       if (parsed.data.input !== undefined && parsed.data.input.length > 0) {
         beginTurn({ session, input: parsed.data.input });
       }
@@ -991,6 +1034,9 @@ const handlers: Record<string, RequestHandler> = {
         `thread/resume:${process.pid}:${parsed.data.threadId}:${parsed.data.providerThreadId}`,
       );
       io.sendResult(id, identityResult(session));
+      if (session.options.identityAfterResponse === true) {
+        notifySessionIdentity(session);
+      }
     });
   },
 
@@ -1011,6 +1057,9 @@ const handlers: Record<string, RequestHandler> = {
         options,
       });
       io.sendResult(id, identityResult(session));
+      if (session.options.identityAfterResponse === true) {
+        notifySessionIdentity(session);
+      }
     });
   },
 

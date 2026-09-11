@@ -210,17 +210,22 @@ describe("AppLayout plugin panel header", () => {
     ).toBe(true);
   });
 
-  it("shows the fixed left trigger only while the compact right panel is closed", () => {
+  it("keeps the fixed left trigger above compact panels", () => {
     viewportState.compact = true;
     renderPluginPanelRoute();
 
     const trigger = screen.getByTestId("app-sidebar-trigger-overlay");
-    expect(trigger.style.zIndex).toBe(String(APP_OVERLAY_LAYER.sidebarTrigger));
+    expect(trigger.style.zIndex).toBe(
+      String(APP_OVERLAY_LAYER.compactSidebarTrigger),
+    );
+    expect(Number(trigger.style.zIndex)).toBeGreaterThan(
+      APP_OVERLAY_LAYER.secondaryPanelFullPage,
+    );
     act(() => setCompactSecondaryPanelPresentation("shelf"));
-    expect(screen.queryByTestId("app-sidebar-trigger-overlay")).toBeNull();
+    expect(screen.getByTestId("app-sidebar-trigger-overlay")).toBe(trigger);
 
     act(() => setCompactSecondaryPanelPresentation("full"));
-    expect(screen.queryByTestId("app-sidebar-trigger-overlay")).toBeNull();
+    expect(screen.getByTestId("app-sidebar-trigger-overlay")).toBe(trigger);
 
     act(() => setCompactSecondaryPanelPresentation("closed"));
     expect(screen.getByTestId("app-sidebar-trigger-overlay")).not.toBeNull();

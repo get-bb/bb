@@ -1472,6 +1472,49 @@ describe("createRealtimeCacheEffects", () => {
     effects.dispose();
   });
 
+  it("refreshes execution defaults on accepted turns and supersedes an older read", async () => {
+    vi.useFakeTimers();
+    const { effects, queryClient } = createRealtimeEffectsTestContext();
+    const key = threadDefaultExecutionOptionsQueryKey("thr_1");
+    const signals: AbortSignal[] = [];
+    const pending: Array<(value: { serviceTier: string }) => void> = [];
+    const queryFn = vi.fn(({ signal }: { signal: AbortSignal }) => {
+      signals.push(signal);
+      return new Promise<{ serviceTier: string }>((resolve) =>
+        pending.push(resolve),
+      );
+    });
+    const observer = new QueryObserver(queryClient, { queryKey: key, queryFn });
+    const unsubscribe = observer.subscribe(() => {});
+    effects.handleChanged({
+      type: "changed",
+      entity: "thread",
+      id: "thr_1",
+      changes: ["events-appended"],
+      metadata: { eventTypes: ["item/agentMessage/delta"] },
+    });
+    await vi.advanceTimersByTimeAsync(50);
+    expect(queryFn).toHaveBeenCalledTimes(1);
+    expect(signals[0]?.aborted).toBe(false);
+    effects.handleChanged({
+      type: "changed",
+      entity: "thread",
+      id: "thr_1",
+      changes: ["events-appended"],
+      metadata: { eventTypes: ["client/turn/requested"] },
+    });
+    await vi.advanceTimersByTimeAsync(50);
+    expect(signals[0]?.aborted).toBe(true);
+    expect(queryFn).toHaveBeenCalledTimes(2);
+    pending[1]?.({ serviceTier: "default" });
+    await vi.advanceTimersByTimeAsync(0);
+    pending[0]?.({ serviceTier: "fast" });
+    await vi.advanceTimersByTimeAsync(0);
+    expect(queryClient.getQueryData(key)).toEqual({ serviceTier: "default" });
+    unsubscribe();
+    effects.dispose();
+  });
+
   it("does not invalidate timeline queries for status-only thread changes", () => {
     const { effects, queryClient } = createRealtimeEffectsTestContext();
     const timelineKey = threadTimelineQueryKey("thr_1");

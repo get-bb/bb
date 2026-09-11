@@ -1,5 +1,7 @@
 // @vitest-environment jsdom
 
+import { useQuery } from "@tanstack/react-query";
+import { createDeferredPromise } from "@bb/test-helpers";
 import { act, cleanup, renderHook, waitFor } from "@testing-library/react";
 import type { SystemConfigResponse } from "@bb/server-contract";
 import {
@@ -133,6 +135,57 @@ describe("general settings mutation", () => {
 
     expect(queryClient.getQueryState(providersKey)?.isInvalidated).toBe(true);
   });
+
+  it.each(["success", "failure"])(
+    "keeps the save pending through a provider refetch ending in %s",
+    async (outcome) => {
+      const { queryClient, wrapper } = createQueryClientTestHarness();
+      const providersKey = systemProvidersQueryKey();
+      const nextSettings = {
+        ...defaultAppSettings,
+        providerOrder: ["beta", "alpha"],
+      };
+      queryClient.setQueryData(systemConfigQueryKey(), systemConfig());
+      queryClient.setQueryData(providersKey, ["alpha", "beta"]);
+      const refetch = createDeferredPromise<string[]>();
+      const queryFn = vi.fn(() => refetch.promise);
+      vi.mocked(sdk.system.updateGeneralSettings).mockResolvedValue(
+        nextSettings,
+      );
+      const { result } = renderHook(
+        () => ({
+          providers: useQuery({
+            queryKey: providersKey,
+            queryFn,
+            staleTime: Infinity,
+          }),
+          save: useUpdateGeneralSettings(),
+        }),
+        { wrapper },
+      );
+      const settled = vi.fn();
+      act(() => {
+        void result.current.save.mutateAsync(nextSettings).then(settled);
+      });
+      await waitFor(() => expect(queryFn).toHaveBeenCalledOnce());
+      await act(async () => {
+        await Promise.resolve();
+      });
+      expect(result.current.save.isPending).toBe(true);
+      expect(settled).not.toHaveBeenCalled();
+      expect(result.current.providers.data).toEqual(["alpha", "beta"]);
+      await act(async () => {
+        if (outcome === "success") refetch.resolve(["beta", "alpha"]);
+        else refetch.reject(new Error("Provider directory unavailable"));
+      });
+      await waitFor(() => expect(result.current.save.isSuccess).toBe(true));
+      expect(settled).toHaveBeenCalledOnce();
+      expect(result.current.providers.data).toEqual(
+        outcome === "success" ? ["beta", "alpha"] : ["alpha", "beta"],
+      );
+      expect(result.current.providers.isError).toBe(outcome === "failure");
+    },
+  );
 
   it("drops cached model catalogs when streamer mode flips", async () => {
     const { queryClient, wrapper } = createQueryClientTestHarness();

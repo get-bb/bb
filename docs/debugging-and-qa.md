@@ -332,3 +332,66 @@ the explicit flag and skips injection, while Node treats it as a script
 argument. The bridge subprocess receives only its script path. The AppImage
 lifecycle smoke exercises this launch and verifies that its runtime mount
 survives closing the GUI.
+
+## Prepared Worktree Restarts
+
+`pnpm start` and `pnpm start:worktree` always run Turbo-backed preparation before
+launching. Turbo decides which tasks need rebuilding and restores unchanged
+artifacts from cache. Native modules are checked and repaired when necessary.
+Worktree startup retains stable checkout-specific data, ports, telemetry, and
+runtime policy.
+
+Use `pnpm start --dryrun` or `pnpm start:worktree --dryrun` ahead of startup.
+The same command selects its normal dotenv settings and runtime policy, prepares
+artifacts through Turbo, prints resolved ports, bind host, data/config/log paths
+and runtime entrypoints as JSON, then exits. It does not launch services, migrate
+instance data or require ports to be free. Dry runs still write build outputs and
+may repair native modules. Install dependencies with
+`pnpm install --frozen-lockfile` beforehand when needed.
+
+Build tasks clean their own outputs when they run. Startup does not clear output
+directories before invoking Turbo. Cache hits use Turbo's normal restoration
+behavior, which restores cached files but can leave extra files from an earlier
+build. There is no custom preparation receipt or whole-checkout hashing pass.
+Do not prepare concurrently with another preparation or against build files
+still served by a live instance.
+
+Preparation writes build outputs in the checkout. If the previous process serves
+those same paths, preparation can change files it reads: this is not an atomic
+release switch. Use a separate staging checkout to warm the shared Turbo cache
+while the old instance runs, then stop the verified instance, update/install and
+prepare its stable checkout, and launch. For an already stopped, fully prepared
+checkout, normal startup restores its artifacts through Turbo cache hits. Moving
+the serving checkout changes the default instance data and ports; do not move it as a restart shortcut.
+
+The repo-level programmatic entry point is `prepareRuntime()` in
+`scripts/start-bb.mjs`. This is a source-maintenance helper, not a new
+installed `bb` command or public plugin SDK API. The source launcher accepts `--dryrun` for preparation and configuration preview.
+`pnpm start` keeps its existing production dotenv and packaged runtime policy.
+
+Turbo output ownership is separate: server `build` owns `apps/server/dist`,
+`@bb/bundled-plugins#build` assembles `packages/bundled-plugins/dist` from 33 independently
+cached `<plugin-package>#prepare:bundled` tasks. Each plugin declares
+`@bb/plugin-build` as a workspace dev dependency and runs
+`bb-plugin-build prepare-bundled` from its own directory. Turbo builds the shared
+executable through `^build` before preparation. The executable bundles the plugin
+without importing server policy or requiring a TypeScript loader. Each plugin
+task owns only its
+`plugins/<name>/.bundled-runtime` directory; regular plugin builds still own
+`plugins/<name>/dist`. Changing one plugin rebuilds its preparation and final
+assembly, while unchanged plugins restore from cache. Shared SDK/toolchain
+changes deliberately invalidate every plugin. The assembly package declares its
+plugin dependencies in `package.json`; Turbo
+uses `^prepare:bundled` to build them. Adding a bundled plugin requires its
+package script and workspace dependency, checked against the runtime registry
+by the startup test suite. Shared sources are hashed through workspace `topo`
+dependencies rather than repository-wide source globs.
+Bundled preparation uses temporary source copies and never writes the regular
+plugin `dist` directories. `bb-app#build` depends on and
+copies prepared plugins into its own package output. The plugin task hashes
+plugin sources, manifests, branding, skills, staging scripts/entries, lockfile,
+patches, workspace configuration, SDK/build-tool sources and versions, and theme;
+generated modules and SDK artifacts arrive through explicit dependency edges.
+The source preparation runner supplies `BB_BUILD_TOOLCHAIN` with Node, OS, and
+architecture to partition Turbo cache entries; callers should use the runner
+rather than set this internal build identity themselves.

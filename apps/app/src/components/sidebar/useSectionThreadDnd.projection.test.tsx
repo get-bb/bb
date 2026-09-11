@@ -20,6 +20,7 @@ import {
   useSectionThreadDnd,
 } from "./useSectionThreadDnd";
 import { makeThreadListEntry } from "@bb/test-helpers/domain-fixtures";
+import { getSidebarThreadRowDroppableId } from "./sidebarThreadRowDroppable";
 
 function createThread(overrides: Partial<ThreadListEntry>): ThreadListEntry {
   return makeThreadListEntry({
@@ -103,20 +104,16 @@ describe("useSectionThreadDnd projection feedback loop (#1830)", () => {
     act(() => props().onDragStart?.(dragStart("dragged")));
     act(() => props().onDragOver?.(dragOver("dragged", "section:b")));
     expect(result.current?.dragOverParentKey).toBe(SECTION_B_PARENT_KEY);
-    expect(result.current?.projectedSectionId).toBe("b");
 
     act(() => props().onDragOver?.(dragOver("dragged", "peer-a")));
     expect(result.current?.dragOverParentKey).toBe(SECTION_B_PARENT_KEY);
-    expect(result.current?.projectedSectionId).toBe("b");
 
     act(() => props().onDragOver?.(dragOver("dragged", "loose")));
     expect(result.current?.dragOverParentKey).toBe(CHRONOLOGICAL_CONTAINER_ID);
-    expect(result.current?.projectedSectionId).toBeNull();
 
     act(() => notePointerMove());
     act(() => props().onDragOver?.(dragOver("dragged", "peer-a")));
     expect(result.current?.dragOverParentKey).toBeNull();
-    expect(result.current?.projectedSectionId).toBeUndefined();
 
     act(() => notePointerMove());
     act(() => props().onDragOver?.(dragOver("dragged", "section:b")));
@@ -147,6 +144,48 @@ describe("useSectionThreadDnd projection feedback loop (#1830)", () => {
     ).toHaveLength(2);
     addSpy.mockRestore();
     removeSpy.mockRestore();
+  });
+});
+
+describe("useSectionThreadDnd nest projection", () => {
+  it("projects a nest target from a row collision and keeps it through self-collision", () => {
+    const { result } = renderSectionThreadDnd();
+    const props = () => result.current!.dndContextProps;
+
+    act(() => props().onDragStart?.(dragStart("dragged")));
+    act(() =>
+      props().onDragOver?.(
+        dragOver("dragged", getSidebarThreadRowDroppableId("in-b")),
+      ),
+    );
+    expect(result.current?.nestTarget).toEqual({
+      threadId: "in-b",
+      state: "valid",
+    });
+    expect(result.current?.dragOverParentKey).toBeNull();
+
+    act(() => notePointerMove());
+    act(() => props().onDragOver?.(dragOver("dragged", "dragged")));
+    expect(result.current?.nestTarget).toEqual({
+      threadId: "in-b",
+      state: "valid",
+    });
+
+    act(() => notePointerMove());
+    act(() => props().onDragOver?.(dragOver("dragged", "section:b")));
+    expect(result.current?.nestTarget).toBeNull();
+    expect(result.current?.dragOverParentKey).toBe(SECTION_B_PARENT_KEY);
+
+    act(() => notePointerMove());
+    act(() => props().onDragOver?.(dragOver("dragged", "peer-a")));
+    expect(result.current?.dragOverParentKey).toBeNull();
+
+    act(() =>
+      props().onDragCancel?.({
+        active: { id: "dragged" },
+      } as DragCancelEvent),
+    );
+    expect(result.current?.nestTarget).toBeNull();
   });
 });
 

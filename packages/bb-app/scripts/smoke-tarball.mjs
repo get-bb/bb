@@ -1,4 +1,5 @@
 import { fork, spawn } from "node:child_process";
+import { randomUUID } from "node:crypto";
 import { mkdirSync, readdirSync } from "node:fs";
 import {
   copyFile,
@@ -48,7 +49,10 @@ const EXPECTED_RUNNING_BUILTIN_PLUGINS = [
 const PROVIDER_BRIDGE_PROTOCOL_VERSION = 2;
 const BRIDGE_WAIT_TIMEOUT_MS = 10_000;
 const PROCESS_STOP_TIMEOUT_MS = 5_000;
+const PORT_COLLISION_MAX_ATTEMPTS = 3;
 const DEFAULT_HOST_DAEMON_LOCAL_BIND_HOST = "127.0.0.1";
+const PORT_COLLISION_PATTERN =
+  /(?:EADDRINUSE|Host daemon local API port \d+ is already in use)/u;
 
 const scriptsDir = dirname(fileURLToPath(import.meta.url));
 const packageRoot = resolve(scriptsDir, "..");
@@ -156,9 +160,11 @@ function spawnManagedProcess({ args, command, env = {}, label }) {
   };
 }
 
+class PortCollisionError extends Error {}
+
 function reserveFreePort() {
   return new Promise((resolvePromise, reject) => {
-    const server = createServer();
+    const server = createServer((socket) => socket.destroy());
     server.once("error", reject);
     server.listen(0, "127.0.0.1", () => {
       const address = server.address();
@@ -172,36 +178,100 @@ function reserveFreePort() {
   });
 }
 
-async function getFreePorts(count) {
-  const reservations = [];
-  try {
-    // Keep every listener open until the whole set is allocated. Closing each
-    // one immediately lets the OS hand the same port to the next request.
-    for (let index = 0; index < count; index += 1) {
-      reservations.push(await reserveFreePort());
-    }
-    return reservations.map(({ port }) => port);
-  } finally {
-    await Promise.all(
-      reservations.map(
-        ({ server }) =>
-          new Promise((resolvePromise, reject) => {
-            server.close((error) => {
-              if (error) {
-                reject(error);
-                return;
-              }
-              resolvePromise();
-            });
-          }),
-      ),
-    );
+async function closePortReservation(reservation) {
+  if (!reservation.server.listening) {
+    return;
+  }
+  await new Promise((resolvePromise, reject) => {
+    reservation.server.close((error) => {
+      if (error) {
+        reject(error);
+        return;
+      }
+      resolvePromise();
+    });
+  });
+}
+
+async function waitForAllCleanup(promises) {
+  const results = await Promise.allSettled(promises);
+  const failures = results.flatMap((result) =>
+    result.status === "rejected" ? [result.reason] : [],
+  );
+  if (failures.length > 0) {
+    throw new AggregateError(failures, "Smoke cleanup failed");
   }
 }
 
-async function waitForHttp({ label, processRef, url }) {
+async function closePortReservations(reservations) {
+  await waitForAllCleanup(reservations.map(closePortReservation));
+}
+
+async function reserveFreePorts(count) {
+  const reservations = [];
+  try {
+    for (let index = 0; index < count; index += 1) {
+      reservations.push(await reserveFreePort());
+    }
+    return reservations;
+  } catch (error) {
+    await closePortReservations(reservations);
+    throw error;
+  }
+}
+
+async function readPortCollisionDetails(processRef, logPaths) {
+  const sections = [formatProcessOutput(processRef.output)];
+  for (const logPath of logPaths) {
+    try {
+      const contents = await readFile(logPath, "utf8");
+      if (contents.trim()) {
+        sections.push(`${logPath}:\n${contents}`);
+      }
+    } catch (error) {
+      if (error.code !== "ENOENT") throw error;
+    }
+  }
+  const details = sections.filter(Boolean).join("\n\n");
+  return PORT_COLLISION_PATTERN.test(details) ? details : null;
+}
+
+async function retryPortCollisions(label, run) {
+  for (let attempt = 1; attempt <= PORT_COLLISION_MAX_ATTEMPTS; attempt += 1) {
+    try {
+      return await run(attempt);
+    } catch (error) {
+      if (
+        !(error instanceof PortCollisionError) ||
+        attempt === PORT_COLLISION_MAX_ATTEMPTS
+      ) {
+        throw error;
+      }
+      process.stdout.write(
+        `bb-app tarball smoke: ${label} port collision on attempt ${attempt}; retrying with fresh reservations\n`,
+      );
+    }
+  }
+}
+
+async function waitForHttp({
+  acceptResponse = () => true,
+  label,
+  portCollisionLogPaths = [],
+  processRef,
+  url,
+}) {
   const deadline = Date.now() + HTTP_WAIT_TIMEOUT_MS;
   while (Date.now() <= deadline) {
+    const portCollisionDetails = await readPortCollisionDetails(
+      processRef,
+      portCollisionLogPaths,
+    );
+    if (portCollisionDetails !== null) {
+      throw new PortCollisionError(
+        `${label} encountered a selected-port collision\n${portCollisionDetails}`,
+      );
+    }
     if (
       processRef.childProcess.exitCode !== null ||
       processRef.childProcess.signalCode !== null
@@ -212,7 +282,7 @@ async function waitForHttp({ label, processRef, url }) {
     }
     try {
       const response = await fetch(url);
-      if (response.ok) {
+      if (response.ok && (await acceptResponse(response))) {
         return;
       }
     } catch {
@@ -222,6 +292,24 @@ async function waitForHttp({ label, processRef, url }) {
   }
   throw new Error(
     `Timed out waiting for ${label} at ${url}\n${formatProcessOutput(processRef.output)}`,
+  );
+}
+
+async function acceptServerHealthResponse(response, expectedLaunchId) {
+  const body = await response.json();
+  return (
+    isRecord(body) &&
+    body.ok === true &&
+    (expectedLaunchId === undefined || body.launchId === expectedLaunchId)
+  );
+}
+
+async function acceptHostDaemonStatusResponse(response, expectedServerUrl) {
+  const body = await response.json();
+  return (
+    isRecord(body) &&
+    body.connected === true &&
+    body.serverUrl === expectedServerUrl
   );
 }
 
@@ -912,35 +1000,60 @@ async function smokeBuiltinPluginsRunning({ binDir, cliEnv }) {
   );
 }
 
-async function smokeFullStack(binDir, sdkDir) {
-  const dataDir = join(tempRoot, "full-stack-data");
-  const [serverPort, daemonPort] = await getFreePorts(2);
+async function smokeFullStackAttempt(binDir, sdkDir, attempt) {
+  const dataDir = join(tempRoot, `full-stack-data-${attempt}`);
+  const reservations = await reserveFreePorts(2);
+  const [serverReservation, daemonReservation] = reservations;
+  const serverPort = serverReservation.port;
+  const daemonPort = daemonReservation.port;
   const serverUrl = `http://127.0.0.1:${serverPort}`;
-  const stack = spawnManagedProcess({
-    ...createInstalledBinInvocation(binDir, "bb-app", [
-      "--data-dir",
-      dataDir,
-      "--server-port",
-      String(serverPort),
-      "--host-daemon-port",
-      String(daemonPort),
-    ]),
-    env: {
-      BB_LOG_LEVEL: "info",
-    },
-    label: "bb-app full stack",
-  });
+  let stack = null;
 
   try {
+    await closePortReservations(reservations);
+    stack = spawnManagedProcess({
+      ...createInstalledBinInvocation(binDir, "bb-app", [
+        "--data-dir",
+        dataDir,
+        "--server-port",
+        String(serverPort),
+        "--host-daemon-port",
+        String(daemonPort),
+      ]),
+      env: {
+        BB_LOG_LEVEL: "info",
+      },
+      label: "bb-app full stack",
+    });
     await waitForHttp({
+      acceptResponse: (response) => acceptServerHealthResponse(response),
       label: stack.label,
+      portCollisionLogPaths: [
+        join(dataDir, "logs", "server-stdio.log"),
+        join(dataDir, "logs", "host-daemon-stdio.log"),
+      ],
       processRef: stack,
       url: `${serverUrl}/health`,
     });
     await waitForHttp({
       label: stack.label,
+      portCollisionLogPaths: [
+        join(dataDir, "logs", "server-stdio.log"),
+        join(dataDir, "logs", "host-daemon-stdio.log"),
+      ],
       processRef: stack,
       url: `http://${DEFAULT_HOST_DAEMON_LOCAL_BIND_HOST}:${daemonPort}/health`,
+    });
+    await waitForHttp({
+      acceptResponse: (response) =>
+        acceptHostDaemonStatusResponse(response, serverUrl),
+      label: stack.label,
+      portCollisionLogPaths: [
+        join(dataDir, "logs", "server-stdio.log"),
+        join(dataDir, "logs", "host-daemon-stdio.log"),
+      ],
+      processRef: stack,
+      url: `http://${DEFAULT_HOST_DAEMON_LOCAL_BIND_HOST}:${daemonPort}/status`,
     });
     const cliEnv = {
       BB_DATA_DIR: dataDir,
@@ -979,51 +1092,74 @@ async function smokeFullStack(binDir, sdkDir) {
       label: "bb-app SDK status",
     });
   } finally {
-    await stopManagedProcess(stack);
+    await waitForAllCleanup([
+      stack === null ? undefined : stopManagedProcess(stack),
+      closePortReservations(reservations),
+    ]);
   }
 }
 
-async function smokeDaemonJoin(binDir) {
-  const serverDataDir = join(tempRoot, "join-server-data");
-  const [serverPort, firstDaemonPort, secondDaemonPort, staleEnvPort] =
-    await getFreePorts(4);
+async function smokeFullStack(binDir, sdkDir) {
+  await retryPortCollisions("full stack", (attempt) =>
+    smokeFullStackAttempt(binDir, sdkDir, attempt),
+  );
+}
+
+async function smokeDaemonJoinAttempt(binDir, attempt) {
+  const serverDataDir = join(tempRoot, `join-server-data-${attempt}`);
+  const reservations = await reserveFreePorts(4);
+  const [
+    serverReservation,
+    firstDaemonReservation,
+    secondDaemonReservation,
+    staleEnvReservation,
+  ] = reservations;
+  const serverPort = serverReservation.port;
+  const staleEnvPort = staleEnvReservation.port;
+  const serverLaunchId = randomUUID();
   const serverUrl = `http://127.0.0.1:${serverPort}`;
   const staleEnvServerUrl = `http://127.0.0.1:${staleEnvPort}`;
   const daemonSpecs = [
     {
-      dataDir: join(tempRoot, "join-daemon-data-1"),
+      dataDir: join(tempRoot, `join-daemon-data-${attempt}-1`),
       label: "bb-app host-daemon join 1",
-      port: firstDaemonPort,
+      reservation: firstDaemonReservation,
     },
     {
-      dataDir: join(tempRoot, "join-daemon-data-2"),
+      dataDir: join(tempRoot, `join-daemon-data-${attempt}-2`),
       label: "bb-app host-daemon join 2",
-      port: secondDaemonPort,
+      reservation: secondDaemonReservation,
     },
   ];
-  const server = spawnManagedProcess({
-    ...createInstalledBinInvocation(binDir, "bb-server", [
-      "--data-dir",
-      serverDataDir,
-      "--server-port",
-      String(serverPort),
-      "--host-daemon-port",
-      String(firstDaemonPort),
-    ]),
-    env: {
-      BB_LOG_LEVEL: "warn",
-    },
-    label: "bb-server",
-  });
-
+  let server = null;
   const daemons = [];
   try {
+    await closePortReservation(serverReservation);
+    server = spawnManagedProcess({
+      ...createInstalledBinInvocation(binDir, "bb-server", [
+        "--data-dir",
+        serverDataDir,
+        "--server-port",
+        String(serverPort),
+        "--host-daemon-port",
+        String(firstDaemonReservation.port),
+      ]),
+      env: {
+        BB_LOG_LEVEL: "warn",
+        BB_SERVER_LAUNCH_ID: serverLaunchId,
+      },
+      label: "bb-server",
+    });
     await waitForHttp({
+      acceptResponse: (response) =>
+        acceptServerHealthResponse(response, serverLaunchId),
       label: server.label,
+      portCollisionLogPaths: [join(serverDataDir, "logs", "server-stdio.log")],
       processRef: server,
       url: `${serverUrl}/health`,
     });
     for (const spec of daemonSpecs) {
+      await closePortReservation(spec.reservation);
       const daemon = spawnManagedProcess({
         ...createInstalledBinInvocation(binDir, "bb-app", [
           "host-daemon",
@@ -1033,7 +1169,7 @@ async function smokeDaemonJoin(binDir) {
           "--server-url",
           serverUrl,
           "--host-daemon-port",
-          String(spec.port),
+          String(spec.reservation.port),
         ]),
         env: {
           BB_LOG_LEVEL: "info",
@@ -1044,8 +1180,21 @@ async function smokeDaemonJoin(binDir) {
       daemons.push(daemon);
       await waitForHttp({
         label: daemon.label,
+        portCollisionLogPaths: [
+          join(spec.dataDir, "logs", "host-daemon-stdio.log"),
+        ],
         processRef: daemon,
-        url: `http://${DEFAULT_HOST_DAEMON_LOCAL_BIND_HOST}:${spec.port}/health`,
+        url: `http://${DEFAULT_HOST_DAEMON_LOCAL_BIND_HOST}:${spec.reservation.port}/health`,
+      });
+      await waitForHttp({
+        acceptResponse: (response) =>
+          acceptHostDaemonStatusResponse(response, serverUrl),
+        label: daemon.label,
+        portCollisionLogPaths: [
+          join(spec.dataDir, "logs", "host-daemon-stdio.log"),
+        ],
+        processRef: daemon,
+        url: `http://${DEFAULT_HOST_DAEMON_LOCAL_BIND_HOST}:${spec.reservation.port}/status`,
       });
       const configJson = JSON.parse(
         await readFile(join(spec.dataDir, "config.json"), "utf8"),
@@ -1058,7 +1207,7 @@ async function smokeDaemonJoin(binDir) {
     }
     const cliEnv = {
       BB_DATA_DIR: serverDataDir,
-      BB_HOST_DAEMON_PORT: String(firstDaemonPort),
+      BB_HOST_DAEMON_PORT: String(firstDaemonReservation.port),
       BB_SERVER_URL: serverUrl,
     };
     await smokeBuiltinPluginsRunning({ binDir, cliEnv });
@@ -1075,9 +1224,18 @@ async function smokeDaemonJoin(binDir) {
       ),
     );
   } finally {
-    await Promise.all(daemons.map((daemon) => stopManagedProcess(daemon)));
-    await stopManagedProcess(server);
+    await waitForAllCleanup([
+      ...daemons.map((daemon) => stopManagedProcess(daemon)),
+      server === null ? undefined : stopManagedProcess(server),
+      closePortReservations(reservations),
+    ]);
   }
+}
+
+async function smokeDaemonJoin(binDir) {
+  await retryPortCollisions("daemon join", (attempt) =>
+    smokeDaemonJoinAttempt(binDir, attempt),
+  );
 }
 
 try {

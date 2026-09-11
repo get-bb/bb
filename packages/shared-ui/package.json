@@ -219,6 +219,11 @@
       "types": "./src/components/ui/progress.tsx",
       "default": "./src/components/ui/progress.tsx"
     },
+    "./resource-route-label": {
+      "source": "./src/components/ui/resource-route-label.ts",
+      "types": "./src/components/ui/resource-route-label.ts",
+      "default": "./src/components/ui/resource-route-label.ts"
+    },
     "./resource-list": {
       "source": "./src/components/ui/resource-list.tsx",
       "types": "./src/components/ui/resource-list.tsx",

@@ -230,7 +230,9 @@ const THREAD_EVENT_PAYLOAD_FIELDS = {
     "attemptNumber",
   ],
 } as const satisfies {
-  [E in keyof PluginThreadEventPayloads]: readonly (keyof PluginThreadEventPayloads[E])[];
+  [
+    E in keyof PluginThreadEventPayloads
+  ]: readonly (keyof PluginThreadEventPayloads[E])[];
 };
 
 type MissingThreadEventField = {
@@ -347,7 +349,13 @@ const FRONTEND_SLOT_PROP_FIELDS = {
     "projectId",
     "isCompactViewport",
   ],
-  fileOpener: ["path", "source", "Original", "experimental_Original"],
+  fileOpener: [
+    "path",
+    "source",
+    "experimental_lineRange",
+    "Original",
+    "experimental_Original",
+  ],
   experimental_sourceCodeRenderer: [
     "content",
     "path",

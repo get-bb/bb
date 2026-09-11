@@ -221,6 +221,7 @@ interface ResolveWorktreeRuntimePolicyArgs {
 }
 
 interface RunBbAppOptions {
+  dryRun?: boolean;
   beforeServerStart?: () => Promise<void> | void;
   worktreePolicy: WorktreeRuntimePolicy | null;
 }
@@ -3334,6 +3335,25 @@ export async function runBbApp(
         throw error;
       }
     }
+  }
+
+  if (options.dryRun) {
+    if (command.kind !== "start") {
+      throw new Error("--dryrun is supported only for server startup.");
+    }
+    process.stdout.write(
+      `${JSON.stringify(
+        {
+          dryRun: true,
+          ...runtime.context,
+          serverBindHost:
+            runtime.serverEnv.BB_SERVER_BIND_HOST ?? BB_LOOPBACK_HOST,
+        },
+        null,
+        2,
+      )}\n`,
+    );
+    return;
   }
 
   if (command.kind === "config") {

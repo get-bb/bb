@@ -53,7 +53,7 @@ import {
   readForeignRuntimeDetails,
   stopForeignRuntime,
 } from "./foreign-runtime.js";
-import { createLocalViewUrl } from "./local-view.js";
+import { createLocalViewUrl, STARTUP_RETRY_CHANNEL } from "./local-view.js";
 import { installApplicationMenu } from "./menu.js";
 import {
   DEFAULT_APPLICATION_MENU_ACCELERATORS,
@@ -225,6 +225,7 @@ interface DesktopRuntime {
 interface LoadStartupErrorArgs {
   details: string;
   logs: string;
+  retryable: boolean;
   title: string;
 }
 
@@ -337,6 +338,8 @@ let systemConfigRefreshToken = 0;
 let refreshRemoteSystemConfig: (() => void) | null = null;
 const applicationWindowWebContentsIds = new Set<number>();
 let bbAppLoaded = false;
+let startupRetryUrl: string | null = null;
+let startupRetryPending = false;
 let stoppingForQuit = false;
 let quitting = false;
 let serverTargetStore: ServerTargetStore | null = null;
@@ -1172,7 +1175,29 @@ function ensureDesktopMachineEnrolled(): void {
   });
 }
 
+async function retryStartup(): Promise<void> {
+  if (startupRetryUrl === null || startupRetryPending) {
+    return;
+  }
+  startupRetryPending = true;
+  startupRetryUrl = null;
+  try {
+    await loadLoadingView();
+    await applyServerTarget();
+  } catch (error) {
+    await loadStartupError({
+      details: error instanceof Error ? error.message : String(error),
+      logs: "",
+      retryable: false,
+      title: "Could not open bb",
+    });
+  } finally {
+    startupRetryPending = false;
+  }
+}
+
 async function applyServerTarget(): Promise<void> {
+  startupRetryUrl = null;
   desktopBrowserBrokerClient?.reconnect();
   if (serverTargetStore === null) {
     return;
@@ -1193,6 +1218,7 @@ async function applyServerTarget(): Promise<void> {
         details:
           "Could not connect to the local bb server on this Mac. Check that the port is free or that a compatible bb server is running.",
         logs: "",
+        retryable: true,
         title: "Could not connect",
       });
       refreshApplicationMenu();
@@ -1223,6 +1249,7 @@ async function applyServerTarget(): Promise<void> {
           "The desktop app could not establish a session for this Connect server. " +
           `Try switching servers again. (${result.code}: ${result.detail})`,
         logs: "",
+        retryable: true,
         title: "Could not authenticate with bb Connect",
       });
       refreshApplicationMenu();
@@ -1473,6 +1500,7 @@ async function openServerDaemonLogs(): Promise<void> {
 }
 
 async function loadWindowUrl(args: LoadWindowUrlArgs): Promise<void> {
+  startupRetryUrl = null;
   currentWindowUrl = args.url;
   if (desktopWindowFactory === null) {
     return;
@@ -1496,16 +1524,18 @@ async function loadLoadingView(): Promise<void> {
 
 async function loadStartupError(args: LoadStartupErrorArgs): Promise<void> {
   bbAppLoaded = false;
-  await loadWindowUrl({
-    url: createLocalViewUrl({
-      viewModel: {
-        details: `${args.details} Logs are under ${formatLogDirectory()}/.`,
-        kind: "error",
-        logText: args.logs,
-        title: args.title,
-      },
-    }),
+  const url = createLocalViewUrl({
+    viewModel: {
+      details: `${args.details} Logs are under ${formatLogDirectory()}/.`,
+      kind: "error",
+      logText: args.logs,
+      retryable: args.retryable,
+      title: args.title,
+    },
   });
+  const loading = loadWindowUrl({ url });
+  startupRetryUrl = args.retryable ? url : null;
+  await loading;
 }
 
 async function loadBbApp(serverUrl: string): Promise<void> {
@@ -1632,6 +1662,18 @@ function registerDesktopUpdateIpc(): void {
     }
     nativeTheme.themeSource = parsed.data;
   });
+  ipcMain.on(STARTUP_RETRY_CHANNEL, (event, ...payload: unknown[]) => {
+    if (
+      payload.length !== 0 ||
+      startupRetryUrl === null ||
+      !applicationWindowWebContentsIds.has(event.sender.id) ||
+      event.senderFrame !== event.sender.mainFrame ||
+      event.senderFrame?.url !== startupRetryUrl
+    ) {
+      return;
+    }
+    void retryStartup();
+  });
 
   ipcMain.on(BB_DESKTOP_CLOSE_WINDOW_RESPONSE_CHANNEL, (event, payload) => {
     const pending = pendingCloseWindowRequests.get(event.sender.id);
@@ -1745,6 +1787,7 @@ async function startOwnedRuntime(
         exit,
       )}.`,
       logs: bbProcess.logs.text(),
+      retryable: false,
       title: "bb stopped",
     });
   });
@@ -1770,6 +1813,7 @@ async function startOwnedRuntime(
         raceResult.exit,
       )}.`,
       logs: bbProcess.logs.text(),
+      retryable: false,
       title: "Could not start bb",
     });
     setCurrentRuntime(null);
@@ -1786,6 +1830,7 @@ async function startOwnedRuntime(
         ? `Port ${args.serverUrl} is responding, but it does not look like bb: ${raceResult.result.reason}.`
         : `Timed out waiting for bb at ${args.serverUrl}: ${raceResult.result.reason}.`,
     logs: bbProcess.logs.text(),
+    retryable: false,
     title: "Could not start bb",
   });
   await stopOwnedRuntime();
@@ -1868,6 +1913,7 @@ async function decideOnExistingServer(
         `The bb at ${probe.serverUrl} records process ${String(stopResult.pid)}, but that ` +
         "process no longer matches the record. bb did not stop it. Stop it yourself, then open bb again.",
       logs: "",
+      retryable: false,
       title: "Could not stop the running bb",
     });
     return "quit";
@@ -1876,6 +1922,7 @@ async function decideOnExistingServer(
     await loadStartupError({
       details: `bb could not stop process ${String(stopResult.pid)}, even after SIGKILL.`,
       logs: "",
+      retryable: false,
       title: "Could not stop the running bb",
     });
     return "quit";
@@ -1886,6 +1933,7 @@ async function decideOnExistingServer(
         `Another bb started at ${probe.serverUrl} while the question was open, so bb stopped nothing. ` +
         "Open bb again to see the copy that runs now.",
       logs: "",
+      retryable: false,
       title: "Could not stop the running bb",
     });
     return "quit";
@@ -1894,6 +1942,7 @@ async function decideOnExistingServer(
     await loadStartupError({
       details: `The bb at ${probe.serverUrl} stopped, but the address is still in use.`,
       logs: "",
+      retryable: false,
       title: "Could not stop the running bb",
     });
     return "quit";
@@ -1949,6 +1998,7 @@ async function initializeRuntime(args: InitializeRuntimeArgs): Promise<void> {
     await loadStartupError({
       details: `Port ${args.serverUrl} is already in use, but it is not a compatible bb server: ${existingProbe.reason}.`,
       logs: "",
+      retryable: false,
       title: "Port conflict",
     });
     return;
@@ -2393,6 +2443,7 @@ void runDesktopApp().catch((error) => {
   void loadStartupError({
     details: message,
     logs: "",
+    retryable: false,
     title: "Could not open bb",
   });
 });

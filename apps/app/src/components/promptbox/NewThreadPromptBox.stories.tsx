@@ -24,6 +24,7 @@ import {
   HOST_IDS,
   PROJECT_IDS,
   STORY_CLAUDE_CODE_MORE_MODELS,
+  STORY_ENVIRONMENT_PROVIDERS,
   STORY_PROJECTS,
   STORY_PROJECT_SOURCES,
   STORY_WORKTREE_OPTIONS,
@@ -514,8 +515,24 @@ function FullAccessRow() {
   );
 }
 
+const projectlessHosts = [
+  makeHost({ id: HOST_IDS.local, name: "MacBook Air" }),
+  makeHost({
+    id: HOST_IDS.remote,
+    name: "Bersabel’s development MacBook Air with a long machine name",
+  }),
+];
+
 function ProjectlessThreadRow() {
   const { value, mentionRanges, onChange } = useControlledValue("");
+  const execution = useInteractiveExecutionControls(baseExecution);
+  const [permission, setPermission] = useState<PermissionMode>("auto");
+  const [projectId, setProjectId] = useState<string | null>(null);
+  const [hostId, setHostId] = useState<string | null>(HOST_IDS.remote);
+  const [environmentValue, setEnvironmentValue] = useState(
+    "provider:personal-workspace",
+  );
+  const [worktreeId, setWorktreeId] = useState<string | null>(null);
   return (
     <PromptStage>
       <NewThreadPromptBoxUI
@@ -529,13 +546,48 @@ function ProjectlessThreadRow() {
         history={baseHistory}
         typeahead={makeTypeahead()}
         attachments={makeAttachments()}
-        modeConfig={baseModeConfig}
+        modeConfig={{
+          environment: {
+            ...baseEnvironment,
+            value: environmentValue,
+            onChange: setEnvironmentValue,
+            machines: {
+              hosts: projectlessHosts,
+              localDaemonHostId: HOST_IDS.local,
+              primaryHostId: HOST_IDS.local,
+            },
+            providers: STORY_ENVIRONMENT_PROVIDERS,
+            selectedProviderHostId: hostId,
+            onSelectProvider: (provider, selectedHostId) => {
+              setEnvironmentValue(`provider:${provider.id}`);
+              setHostId(selectedHostId);
+            },
+          },
+          worktree: {
+            ...baseWorktree,
+            value: worktreeId,
+            onChange: setWorktreeId,
+          },
+          permission: {
+            ...basePermission,
+            value: permission,
+            onChange: setPermission,
+          },
+        }}
         project={{
           ...baseProject,
-          value: null,
+          value: projectId,
+          onChange: (selectedProjectId) => {
+            setProjectId(selectedProjectId);
+            setEnvironmentValue(
+              selectedProjectId === null
+                ? "provider:personal-workspace"
+                : "provider:project-checkout",
+            );
+          },
           allowNoProject: true,
         }}
-        execution={baseExecution}
+        execution={execution}
       />
     </PromptStage>
   );
@@ -604,7 +656,7 @@ export function Overview() {
         </StoryRow>
         <StoryRow
           label="projectless"
-          hint="host picker replaces environment picker"
+          hint="interactive machine, project, model, and permissions; long machine label truncates"
         >
           <ProjectlessThreadRow />
         </StoryRow>
@@ -624,6 +676,16 @@ export function UnsupportedCodexCli() {
           <UnsupportedCodexCliRow />
         </StoryRow>
       </StoryCard>
+    </ModelPickerStoryQueryProvider>
+  );
+}
+
+export function Mobile() {
+  return (
+    <ModelPickerStoryQueryProvider>
+      <div className="mx-auto w-full max-w-[390px] p-4">
+        <ProjectlessThreadRow />
+      </div>
     </ModelPickerStoryQueryProvider>
   );
 }

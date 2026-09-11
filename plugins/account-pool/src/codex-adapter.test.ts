@@ -187,6 +187,84 @@ describe("codex header quotas", () => {
     expect(isQuotaExhausted(fromUsage, "other", 0.9, 2_000)).toBe(false);
   });
 
+  it("drops a placeholder secondary window with zero usage and no reset", () => {
+    const quota = adapter.quotaFromHeaders(
+      ACCOUNT_ID,
+      new Headers({
+        "x-codex-primary-used-percent": "47",
+        "x-codex-primary-window-minutes": "10080",
+        "x-codex-primary-reset-at": "4102452000",
+        "x-codex-secondary-used-percent": "0",
+        "x-codex-secondary-reset-at": "0",
+      }),
+      emptyQuota(),
+      "other",
+      5_000,
+    );
+    expect(quota.limitWindows.map((window) => window.slot)).toEqual([
+      "primary",
+    ]);
+  });
+
+  it("clears a stored placeholder window when the headers repeat it", () => {
+    const previous: AccountQuota = {
+      ...emptyQuota(),
+      limitWindows: [
+        {
+          slot: "primary",
+          windowMinutes: 10_080,
+          utilization: 0.47,
+          resetAt: 4_102_452_000_000,
+          status: null,
+          observedAt: 1_000,
+          source: "header",
+        },
+        {
+          slot: "secondary",
+          windowMinutes: null,
+          utilization: 0,
+          resetAt: 0,
+          status: null,
+          observedAt: 1_000,
+          source: "header",
+        },
+      ],
+    };
+    const quota = adapter.quotaFromHeaders(
+      ACCOUNT_ID,
+      new Headers({
+        "x-codex-primary-used-percent": "48",
+        "x-codex-secondary-used-percent": "0",
+        "x-codex-secondary-reset-at": "0",
+      }),
+      previous,
+      "other",
+      5_000,
+    );
+    expect(quota.limitWindows.map((window) => window.slot)).toEqual([
+      "primary",
+    ]);
+  });
+
+  it("keeps a zero-usage window that reports a length or a reset", () => {
+    const quota = adapter.quotaFromHeaders(
+      ACCOUNT_ID,
+      new Headers({
+        "x-codex-primary-used-percent": "0",
+        "x-codex-primary-window-minutes": "300",
+        "x-codex-secondary-used-percent": "0",
+        "x-codex-secondary-reset-after-seconds": "60",
+      }),
+      emptyQuota(),
+      "other",
+      5_000,
+    );
+    expect(quota.limitWindows.map((window) => window.slot)).toEqual([
+      "primary",
+      "secondary",
+    ]);
+  });
+
   it("reads both windows and their lengths from response headers", () => {
     const quota = adapter.quotaFromHeaders(
       ACCOUNT_ID,

@@ -1,4 +1,5 @@
 import { lazy, useMemo } from "react";
+import { disableGlobalCursorStyles } from "react-resizable-panels";
 import { matchPath, Navigate, useLocation } from "react-router-dom";
 import { useAtomValue } from "jotai";
 import { splitLayoutAtom } from "@/lib/split-layout/atoms";
@@ -14,6 +15,8 @@ import type { PaneContent } from "@/lib/split-layout";
 import { useRouteState } from "@/hooks/useRouteState";
 import { LegacyProjectComposeRedirect } from "./RootComposeView";
 import { SplitThreadArea } from "./thread-detail/SplitThreadArea";
+
+disableGlobalCursorStyles();
 
 const ROOT_COMPOSE_CONTENT = { kind: "new-thread" } as const;
 
