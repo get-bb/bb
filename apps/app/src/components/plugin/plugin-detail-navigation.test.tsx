@@ -47,10 +47,20 @@ function PanelProbe({ id }: { id: string }) {
       data-active={props.activeTab?.id}
       data-open={props.isOpen}
     >
-      {props.tabs.map((tab) => (
+      {props.tabs.map((tab, index) => (
         <div key={tab.tab.id}>
           <button onClick={tab.onSelect}>{tab.label}</button>
           <button onClick={tab.onClose}>Close {tab.label}</button>
+          <button
+            onClick={() =>
+              props.onTabReorder({
+                activeTabId: tab.tab.id,
+                overTabId: props.tabs[Math.max(0, index - 1)].tab.id,
+              })
+            }
+          >
+            Move {tab.label} left
+          </button>
         </div>
       ))}
       <button onClick={props.onClose}>Hide panel</button>
@@ -81,6 +91,47 @@ afterEach(() => {
 });
 
 describe("plugin details in the active workspace", () => {
+  it("retains detail-tab drag order among details and across existing tabs", () => {
+    const view = render(<Workspace id="workspace" focused />);
+    act(() =>
+      openPluginDetailsInWorkspace({ pluginId: "docs", title: "Docs" }),
+    );
+    act(() =>
+      openPluginDetailsInWorkspace({ pluginId: "tasks", title: "Tasks" }),
+    );
+    const order = () =>
+      screen
+        .getAllByRole("button", { name: /^Move .* left$/ })
+        .map((button) => button.textContent);
+    act(() => screen.getByRole("button", { name: "Move Tasks left" }).click());
+    expect(order()).toEqual([
+      "Move Existing tab left",
+      "Move Tasks left",
+      "Move Docs left",
+    ]);
+    act(() => screen.getByRole("button", { name: "Move Tasks left" }).click());
+    expect(order()).toEqual([
+      "Move Tasks left",
+      "Move Existing tab left",
+      "Move Docs left",
+    ]);
+    act(() => screen.getByRole("button", { name: "Docs" }).click());
+    expect(order()).toEqual([
+      "Move Tasks left",
+      "Move Existing tab left",
+      "Move Docs left",
+    ]);
+    act(() => screen.getByRole("button", { name: "Close Tasks" }).click());
+    expect(order()).toEqual(["Move Existing tab left", "Move Docs left"]);
+    view.rerender(
+      <Workspace id="workspace" focused revision="another-workspace" />,
+    );
+    act(() =>
+      openPluginDetailsInWorkspace({ pluginId: "tasks", title: "Tasks" }),
+    );
+    expect(order()).toEqual(["Move Existing tab left", "Move Tasks left"]);
+  });
+
   it("opens and focuses a single detail tab without replacing existing tabs", () => {
     render(<Workspace id="workspace" focused />);
     act(() => {

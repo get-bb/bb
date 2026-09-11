@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { useEffect, type ReactNode } from "react";
+import { useContext, useEffect, type ReactNode } from "react";
 import { Provider } from "jotai";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import {
@@ -43,6 +43,16 @@ import { buildThreadHandoffLocationState } from "@bb/client-core";
 import { makeThreadListEntry } from "@bb/test-helpers/domain-fixtures";
 import { makeProjectWithThreadsResponse } from "@/test/fixtures/projects";
 import { RootComposeView } from "@/views/RootComposeView";
+import { ROOT_COMPOSE_FIXED_PANEL_STATE_ID } from "@/views/RootComposePanelTabContent";
+import { resetFixedPanelTabsStateForTest } from "@/lib/fixed-panel-tabs";
+import {
+  createEmptyFixedPanelTabsState,
+  createTerminalFixedPanelTab,
+  getFixedPanelTabsStateStorageKey,
+  serializeFixedPanelTabsState,
+} from "@/lib/fixed-panel-tabs-state";
+import { PluginDetailPanelContext } from "./plugin-detail-navigation";
+import { openPluginDetailsInWorkspace } from "./plugin-detail-opener";
 import { PluginNewThreadComposer } from "./PluginNewThreadComposer";
 
 const mocks = vi.hoisted(() => ({
@@ -55,7 +65,44 @@ const mocks = vi.hoisted(() => ({
   extraProjects: [] as Array<Record<string, unknown>>,
   promptHistoryQueryOptions: [] as Array<{ enabled?: boolean } | undefined>,
   environmentProviders: [] as unknown[],
+  closeTerminal: vi.fn(),
 }));
+
+vi.mock("@/views/RootComposePanelCommandHandlers", () => ({
+  RootComposePanelCommandHandlers: ({
+    onClose,
+  }: {
+    onClose: () => boolean;
+  }) => {
+    const details = useContext(PluginDetailPanelContext);
+    return (
+      <button
+        data-active-detail={details?.activePluginId ?? ""}
+        onClick={onClose}
+      >
+        Close panel command
+      </button>
+    );
+  },
+}));
+
+vi.mock("@/components/secondary-panel/SecondaryPanelLayout", () => ({
+  SecondaryPanelLayout: ({ main }: { main: ReactNode }) => main,
+}));
+
+vi.mock("@/hooks/queries/thread-terminal-queries", async (importOriginal) => {
+  const actual =
+    await importOriginal<
+      typeof import("@/hooks/queries/thread-terminal-queries")
+    >();
+  return {
+    ...actual,
+    useTerminals: () => ({ data: undefined }),
+    useEnvironmentTerminals: () => ({ data: undefined }),
+    useCloseTerminal: () => ({ mutate: mocks.closeTerminal }),
+    useCloseEnvironmentTerminal: () => ({ mutate: mocks.closeTerminal }),
+  };
+});
 
 vi.mock("@/components/promptbox/NewThreadPromptBox", () => ({
   NewThreadPromptBox: (props: Record<string, any>) => {
@@ -555,6 +602,8 @@ async function submit(): Promise<void> {
 
 describe("PluginNewThreadComposer seeding", () => {
   beforeEach(() => {
+    resetFixedPanelTabsStateForTest();
+    mocks.closeTerminal.mockClear();
     mocks.promptBoxProps.length = 0;
     mocks.promptHistoryQueryOptions.length = 0;
     mocks.copyAttachments.mockReset();
@@ -1116,6 +1165,54 @@ describe("PluginNewThreadComposer seeding", () => {
         (options) => options?.enabled === false,
       ),
     ).toBe(true);
+  });
+
+  it("closes visible plugin details before an underlying terminal", async () => {
+    const terminal = createTerminalFixedPanelTab({
+      terminalId: "terminal-under-details",
+    });
+    const state = createEmptyFixedPanelTabsState({ lastUsedAt: Date.now() });
+    window.localStorage.setItem(
+      getFixedPanelTabsStateStorageKey({
+        threadId: ROOT_COMPOSE_FIXED_PANEL_STATE_ID,
+      }),
+      serializeFixedPanelTabsState({
+        ...state,
+        secondary: {
+          ...state.secondary,
+          tabs: [terminal],
+          activeTabId: terminal.id,
+          isOpen: true,
+        },
+      }),
+    );
+    window.localStorage.setItem("bb.root-compose.project-id", "proj_1");
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+    const router = createMemoryRouter([
+      { path: "/", element: <RootComposeView /> },
+    ]);
+    render(
+      <Provider>
+        <QueryClientProvider client={queryClient}>
+          <RouterProvider router={router} />
+        </QueryClientProvider>
+      </Provider>,
+    );
+    act(() =>
+      openPluginDetailsInWorkspace({ pluginId: "docs", title: "Docs" }),
+    );
+    const command = screen.getByRole("button", { name: "Close panel command" });
+    expect(command.dataset.activeDetail).toBe("docs");
+    fireEvent.click(command);
+    expect(mocks.closeTerminal).not.toHaveBeenCalled();
+    expect(command.dataset.activeDetail).toBe("");
+    fireEvent.click(command);
+    expect(mocks.closeTerminal).toHaveBeenCalledWith(
+      { mode: "force", terminalId: "terminal-under-details" },
+      expect.anything(),
+    );
   });
 
   it("keeps a seeded fork's exact reuse selection while the sidebar bootstrap settles", async () => {
