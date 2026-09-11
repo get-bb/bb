@@ -2333,6 +2333,55 @@ describe("PromptBoxInternal compact layout", () => {
     }
   });
 
+  it.each([false, true])(
+    "keeps voice input available beside stop while running (compact: %s)",
+    (isCompact) => {
+      const restoreMatchMedia = mockPointerCoarse(true);
+      try {
+        const start = vi.fn();
+        const onStop = vi.fn();
+        render(
+          <PromptBoxInternal
+            {...createPromptBoxProps({
+              submission: { isRunning: true, onStop },
+              compact: { isCompact, placeholder: "Ask a follow-up" },
+              voice: {
+                state: "idle",
+                isSupported: true,
+                stream: null,
+                start,
+                stop: vi.fn(),
+                cancel: vi.fn(),
+              },
+            })}
+          />,
+        );
+
+        const voiceButton = screen.getByRole("button", {
+          name: "Start voice input",
+        });
+        const stopButton = screen.getByRole("button", { name: "Stop run" });
+        expect(voiceButton.hasAttribute("disabled")).toBe(false);
+        fireEvent.pointerDown(voiceButton, {
+          button: 0,
+          pointerType: "touch",
+        });
+        fireEvent.click(voiceButton, { detail: 1 });
+        expect(start).toHaveBeenCalledOnce();
+        expect(onStop).not.toHaveBeenCalled();
+
+        fireEvent.pointerDown(stopButton, {
+          button: 0,
+          pointerType: "touch",
+        });
+        fireEvent.click(stopButton, { detail: 1 });
+        expect(onStop).toHaveBeenCalledOnce();
+      } finally {
+        restoreMatchMedia();
+      }
+    },
+  );
+
   it("does not start voice input from the trailing click of a touch submit", () => {
     const restoreMatchMedia = mockPointerCoarse(true);
     try {
