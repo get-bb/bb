@@ -233,6 +233,8 @@ it.each(["active", "suspended"] as const)(
         provider: validatePluginEnvironmentProviderDeclaration({
           id: "review-worktree",
           displayName: "Review worktree",
+          description: "Prepare a workspace for this thread.",
+          icon: "Folder",
           create: async () => ({
             status: "created",
             path: "/tmp/review-worktree",

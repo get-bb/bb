@@ -322,6 +322,7 @@ export const systemEnvironmentProviderSchema = z.object({
   machineProviderId: z.string().min(1).nullable(),
   id: z.string().min(1),
   displayName: z.string().min(1),
+  description: z.string().min(1).nullable(),
   icon: z.string().min(1).nullable(),
   logoUrl: z.string().min(1).nullable(),
   pluginId: z.string().min(1),

@@ -87,6 +87,8 @@ function setup(
     provider: validatePluginEnvironmentProviderDeclaration({
       id: "test-provider",
       displayName: "Test",
+      description: "Prepare a workspace for this thread.",
+      icon: "Folder",
       create: async () => ({
         status: "created",
         path: `/tmp/${thread.id}`,

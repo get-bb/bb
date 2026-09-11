@@ -326,6 +326,7 @@ it("serves a composition's explicit icon instead of the machine provider's icon"
     api.experimental_environments.register({
       id: "icon-workspace",
       displayName: "Icon workspace",
+      description: "Prepare a workspace for this thread.",
       icon: "Folder",
       create: async () => ({ status: "failed", message: "unused" }),
       remove: async () => ({ status: "removed" }),
@@ -333,6 +334,7 @@ it("serves a composition's explicit icon instead of the machine provider's icon"
     api.experimental_environments.register({
       id: "icon-composition",
       displayName: "Explicit composition",
+      description: "Prepare a workspace for this thread.",
       icon: "./composition.svg",
       machineProviderId: "icon-runtime-machine",
       environmentProviderId: "icon-workspace",

@@ -417,6 +417,7 @@ export function registerSystemRoutes(
                 machineProviderId: null,
                 id: record.provider.id,
                 displayName: record.provider.displayName,
+                description: record.provider.description,
                 icon: record.provider.icon,
                 logoUrl:
                   record.icon === undefined
@@ -467,11 +468,16 @@ export function registerSystemRoutes(
                       return {
                         id: composition.id,
                         displayName: composition.displayName,
-                        icon: composition.icon,
+                        description: composition.description,
+                        icon: composition.icon ?? machine.provider.icon,
                         logoUrl:
-                          icon === undefined
-                            ? null
-                            : `/api/v1/system/providers/${encodeURIComponent("environment:" + composition.id)}/logo?h=${icon.hash}`,
+                          composition.icon === null
+                            ? machine.icon === undefined
+                              ? null
+                              : `/api/v1/system/providers/${encodeURIComponent("machine:" + machine.provider.id)}/logo?h=${machine.icon.hash}`
+                            : icon === undefined
+                              ? null
+                              : `/api/v1/system/providers/${encodeURIComponent("environment:" + composition.id)}/logo?h=${icon.hash}`,
                         pluginId,
                         machineProviderId: composition.machineProviderId,
                         environmentProviderId:

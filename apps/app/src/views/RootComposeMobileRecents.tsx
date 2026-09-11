@@ -304,7 +304,11 @@ function MobileRecentThreadRow({
   const workspaceIconName = getEnvironmentDisplayIconName(
     environmentProviderLookup,
   );
-  const providerIcon = getProviderIconInfo(thread.providerId, provider);
+  const providerIcon = getProviderIconInfo(
+    "agent",
+    thread.providerId,
+    provider,
+  );
   const ProviderMark = providerIcon?.icon;
   return (
     <li

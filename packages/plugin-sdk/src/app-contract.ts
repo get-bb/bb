@@ -1304,20 +1304,21 @@ export interface PluginCommandPaletteActionRegistration {
 }
 
 /**
- * Supply the inline React mark bb draws for one agent provider.
+ * Supply an inline React mark for a provider. Agent, machine, and environment
+ * icon renderers select the mark by provider kind and id.
+ * Only surfaces using the provider icon renderer consult this slot. Persistent
+ * machine labels use a laptop glyph directly.
  *
- * A manifest `branding.icon` (or a provider's `logoUrl`) is fetched and drawn
- * through `<img>`, a separate document where `currentColor` resolves to black
- * — invisible on dark themes and unreachable from app CSS. A component is
- * rendered inline, so it inherits the app's theme colors and the host's sizing
- * classes. Register a static color logo as a file and a theme-aware mark here.
+ * Provider logo assets use a currentColor mask. Inline components can also
+ * render multiple colors and inherit the app's theme and sizing classes.
  *
  * The host passes only `className` (sizing plus the provider's color class);
  * the component must render an inline SVG (or other inline markup) and must
- * not fetch. One registration per provider id per plugin; when two plugins
- * claim the same provider id the host keeps the first by plugin id and warns.
+ * not fetch. One registration per provider kind and id per plugin; when two
+ * plugins claim the same pair the host keeps the first by plugin id and warns.
  */
 export interface PluginProviderIconRegistration {
+  providerKind: "agent" | "machine" | "environment";
   /**
    * The provider this mark is for — the id bb knows the provider by (the
    * provider declaration's id, e.g. `codex` or `acp-cursor`), not the plugin
@@ -1561,7 +1562,7 @@ export interface PluginAppSlots {
   ): void;
   /**
    * Draw one agent, environment, or machine provider's icon with an inline
-   * React component instead of its `<img>`-rendered logo file (see
+   * React component instead of its masked logo asset (see
    * {@link PluginProviderIconRegistration}). Experimental: see
    * docs/api_to_audit.md.
    */

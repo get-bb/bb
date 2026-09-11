@@ -1,8 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
-  createModalBackend,
-  createSandboxExecutor,
-} from "./sandbox-backend.js";
+  createModalSandboxClient,
+  createModalSandboxExecutor,
+} from "./client.js";
 
 const vendor = vi.hoisted(() => ({
   exec: vi.fn(),
@@ -28,12 +28,12 @@ vi.mock("modal", () => ({
 }));
 
 async function executor() {
-  const sandbox = await createModalBackend({
+  const sandbox = await createModalSandboxClient({
     tokenId: "id",
     tokenSecret: "secret",
   }).fromId("sandbox-1");
   if (sandbox === null) throw new Error("missing sandbox");
-  return createSandboxExecutor(sandbox);
+  return createModalSandboxExecutor(sandbox);
 }
 
 function processResult() {
@@ -66,7 +66,7 @@ describe("Modal bootstrap executor", () => {
   it("treats terminated allocations as absent so a checkpoint can restore its snapshot", async () => {
     vendor.poll.mockResolvedValue(0);
     await expect(
-      createModalBackend({ tokenId: "id", tokenSecret: "secret" }).fromId(
+      createModalSandboxClient({ tokenId: "id", tokenSecret: "secret" }).fromId(
         "sandbox-1",
       ),
     ).resolves.toBeNull();
@@ -168,7 +168,10 @@ it("uses the vendor start and timeout for expiry and scopes inventory to the own
   vendor.list.mockResolvedValue({
     sandboxes: [{ id: "sandbox-1", createdAt: 100.123456, timeoutSecs: 60 }],
   });
-  const backend = createModalBackend({ tokenId: "id", tokenSecret: "secret" });
+  const backend = createModalSandboxClient({
+    tokenId: "id",
+    tokenSecret: "secret",
+  });
   expect(
     await backend.observe({
       sandboxId: "sandbox-1",
@@ -207,7 +210,7 @@ it("bounds debug output while draining streams and preserving command failure", 
     stdout: stream(),
     stderr: stream(),
   });
-  const sandbox = await createModalBackend({
+  const sandbox = await createModalSandboxClient({
     tokenId: "id",
     tokenSecret: "secret",
   }).fromId("sandbox-1");

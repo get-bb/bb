@@ -1,6 +1,11 @@
 import { readFile } from "node:fs/promises";
 import { describe, expect, expectTypeOf, it } from "vitest";
-import type { BbPluginApi } from "../index.js";
+import type {
+  BbPluginApi,
+  PluginEnvironmentProviderDeclaration,
+  PluginEnvironments,
+} from "../index.js";
+import type { PluginProviderIconRegistration } from "../app-contract.js";
 
 type ExpectedBbPluginApiKey =
   | "agents"
@@ -286,4 +291,24 @@ describe("backend plugin SDK public surface", () => {
       expect(rootValueExports.has(exportName), exportName).toBe(true);
     }
   });
+});
+
+it("requires provider presentation fields in author-facing declarations", () => {
+  expectTypeOf<
+    Pick<PluginProviderIconRegistration, "providerKind">
+  >().toEqualTypeOf<{
+    providerKind: "agent" | "machine" | "environment";
+  }>();
+  expectTypeOf<
+    Pick<PluginEnvironmentProviderDeclaration, "description" | "icon">
+  >().toEqualTypeOf<{
+    description: string;
+    icon: string;
+  }>();
+  expectTypeOf<
+    Pick<Parameters<PluginEnvironments["register"]>[0], "description" | "icon">
+  >().toEqualTypeOf<{
+    description: string;
+    icon: string;
+  }>();
 });

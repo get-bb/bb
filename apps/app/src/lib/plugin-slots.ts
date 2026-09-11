@@ -13,7 +13,6 @@ import type {
   PluginMessageDirectiveRegistration,
   PluginNavPanelRegistration,
   PluginNewThreadPanelActionRegistration,
-  PluginProviderIconRegistration,
   PluginSettingsSectionRegistration,
   PluginSidebarFooterActionRegistration,
   ExperimentalSidebarNavigationRegistration,
@@ -26,6 +25,7 @@ import type {
 import {
   adaptSidebarFooterAction,
   getCollectedSidebarFooterItems,
+  type CollectedPluginProviderIconRegistration,
   type CollectedExperimentalSidebarFooterItem,
   type CollectedManagedSidebarFooterItem,
   type CollectedSidebarFooterItem,
@@ -51,7 +51,7 @@ export interface PluginRegistrationSet {
   messageDirectives: readonly PluginMessageDirectiveRegistration[];
   messageActions?: readonly PluginMessageActionRegistration[];
   commandPaletteActions?: readonly PluginCommandPaletteActionRegistration[];
-  providerIcons?: readonly PluginProviderIconRegistration[];
+  providerIcons?: readonly CollectedPluginProviderIconRegistration[];
   timelineRenderers?: readonly PluginTimelineRendererRegistration[];
   environmentProviderInputs?: readonly PluginEnvironmentProviderInputsRegistration[];
   machineProviderInputs?: readonly PluginMachineProviderInputsRegistration[];
@@ -99,7 +99,7 @@ export interface PluginMessageActionSlot
 export interface PluginCommandPaletteActionSlot
   extends PluginCommandPaletteActionRegistration, PluginSlotBase {}
 interface PluginProviderIconSlot
-  extends PluginProviderIconRegistration, PluginSlotBase {}
+  extends CollectedPluginProviderIconRegistration, PluginSlotBase {}
 export interface PluginTimelineRendererSlot
   extends PluginTimelineRendererRegistration, PluginSlotBase {}
 export interface PluginEnvironmentProviderInputsSlot
@@ -279,7 +279,9 @@ function collectProviderIcons(
     if (flattened === undefined) continue;
     for (const slot of flattened.providerIcons) {
       const claimed = collected.find(
-        (existing) => existing.providerId === slot.providerId,
+        (existing) =>
+          existing.providerKind === slot.providerKind &&
+          existing.providerId === slot.providerId,
       );
       if (claimed !== undefined) {
         console.warn(

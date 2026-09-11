@@ -87,7 +87,7 @@ mask, so a monochrome mark follows the bb theme (and the declared
 ships gets its brand mark; core vendors none. A full-colour logo renders as a silhouette. A glyph name carries no
 bytes, so there is no `logoUrl` and clients draw the glyph from the shared
 icon set. A plugin that wants custom inline React for its mark can still
-register `app.slots.experimental_providerIcon({ providerId, icon })` from
+register `app.slots.experimental_providerIcon({ providerKind, providerId, icon })` from
 an `app.tsx`. Example:
 
 ```tsx
@@ -104,6 +104,7 @@ function EchoIcon({ className }: { className?: string }) {
 
 export default definePluginApp((app) => {
   app.slots.experimental_providerIcon({
+    providerKind: "agent",
     providerId: "echo-agent",
     icon: EchoIcon,
   });

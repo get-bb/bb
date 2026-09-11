@@ -243,6 +243,67 @@ describe("bb.providers.register (server)", () => {
     });
   });
 
+  it.each(["Terminal", "./icons/agent.svg"])(
+    "loads legacy environments and inherits the machine icon %s",
+    async (icon) => {
+      await withTestHarness(async (harness) => {
+        const rootDir = await writePlugin(workDir, {
+          name: "bb-plugin-legacy-environments",
+          withBridge: false,
+          serverSource: `export default function(bb) {
+          bb.experimental_machines.register({
+            id: "legacy-machine", displayName: "Legacy machine", description: "Create a test machine.", icon: ${JSON.stringify(icon)},
+            create: async () => ({ status: "failed", message: "unused" }),
+            reconcileCleanup: async () => ({ status: "removed" }), remove: async () => ({ status: "removed" })
+          });
+          bb.experimental_environments.register({
+            id: "legacy-workspace", displayName: "Legacy workspace",
+            create: async () => ({ status: "failed", message: "unused" }), remove: async () => ({ status: "removed" })
+          });
+          bb.experimental_environments.register({
+            id: "legacy-composition", displayName: "Legacy composition",
+            machineProviderId: "legacy-machine", environmentProviderId: "legacy-workspace"
+          });
+        }`,
+        });
+        const svg =
+          '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 8 8"><path d="M0 0h4v4z"/></svg>';
+        await mkdir(join(rootDir, "icons"), { recursive: true });
+        await writeFile(join(rootDir, "icons/agent.svg"), svg);
+        const entry = await harness.pluginService.installPath(rootDir);
+        expect(entry.status, entry.statusDetail ?? "").toBe("running");
+        setPluginEnvironmentProviderBridge(
+          harness.pluginService.environmentProviders,
+        );
+        const response = await harness.app.request(
+          "/api/v1/system/environment-providers",
+        );
+        expect(response.status).toBe(200);
+        const { providers } = systemEnvironmentProvidersResponseSchema.parse(
+          await response.json(),
+        );
+        expect(
+          providers.find((provider) => provider.id === "legacy-workspace"),
+        ).toMatchObject({ description: null, icon: null, logoUrl: null });
+        const composition = providers.find(
+          (provider) => provider.id === "legacy-composition",
+        );
+        expect(composition).toMatchObject({ description: null, icon });
+        if (icon === "Terminal") expect(composition?.logoUrl).toBeNull();
+        else {
+          expect(composition?.logoUrl).toContain(
+            "machine%3Alegacy-machine/logo?h=",
+          );
+          if (!composition?.logoUrl)
+            throw new Error("Missing inherited asset URL");
+          const logo = await harness.app.request(composition.logoUrl);
+          expect(logo.status).toBe(200);
+          expect(await logo.text()).toBe(svg);
+        }
+      });
+    },
+  );
+
   it.each(["./icons/agent.svg", "marked-environment/mark"])(
     "serves environment provider icon %s with a hashed logo URL",
     async (icon) => {
@@ -251,7 +312,7 @@ describe("bb.providers.register (server)", () => {
           name: "bb-plugin-marked-environment",
           withBridge: false,
           icons: { mark: "./icons/agent.svg" },
-          serverSource: `export default function plugin(bb) { bb.experimental_environments.register({ id: "marked-environment", displayName: "Marked", icon: ${JSON.stringify(icon)}, create: async () => ({ status: "failed", message: "waiting" }), remove: async () => ({ status: "removed" }) }); }`,
+          serverSource: `export default function plugin(bb) { bb.experimental_environments.register({ id: "marked-environment", displayName: "Marked", description: "Prepare a marked workspace.", icon: ${JSON.stringify(icon)}, create: async () => ({ status: "failed", message: "waiting" }), remove: async () => ({ status: "removed" }) }); }`,
         });
         const svg =
           '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 8 8"><path d="M0 0h4v4z"/></svg>';
@@ -271,6 +332,10 @@ describe("bb.providers.register (server)", () => {
         const provider = providers.find(
           (provider) => provider.id === "marked-environment",
         );
+        expect(provider).toMatchObject({
+          description: "Prepare a marked workspace.",
+          icon,
+        });
         expect(provider?.logoUrl).toContain(
           "environment%3Amarked-environment/logo?h=",
         );

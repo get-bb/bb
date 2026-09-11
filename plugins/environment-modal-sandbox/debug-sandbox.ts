@@ -3,7 +3,7 @@ import { randomUUID } from "node:crypto";
 import { z } from "zod";
 import type { ResolvedSettings } from "./configuration.js";
 import type { ImageDefinition } from "./image-definition.js";
-import type { SandboxBackend } from "./sandbox-backend.js";
+import type { ModalSandboxClient } from "./providers/modal/client.js";
 
 const recordSchema = z.object({
   accountIdentity: z.string(),
@@ -29,12 +29,12 @@ export function debugSandbox(
   bb: BbPluginApi,
   image: ImageDefinition,
   resolve: () => Promise<{
-    backend: SandboxBackend;
+    client: ModalSandboxClient;
     settings: ResolvedSettings;
   }>,
 ) {
   async function buildWith(
-    { backend, settings }: Awaited<ReturnType<typeof resolve>>,
+    { client, settings }: Awaited<ReturnType<typeof resolve>>,
     signal: AbortSignal,
   ) {
     let logs = "";
@@ -42,7 +42,7 @@ export function debugSandbox(
       logs = (logs + line + "\n").slice(-65_536);
     };
     try {
-      const imageId = await backend.ensureStandardImage({
+      const imageId = await client.ensureModalImage({
         appName: settings.appName,
         displayName: "Default",
         dockerfile: (await image.get()).dockerfile,
@@ -63,17 +63,17 @@ export function debugSandbox(
         "Unknown debug sandbox; use an ID returned by bb modal sandbox run",
       );
     const record = recordSchema.parse(stored);
-    const { backend } = await resolve();
-    if (record.accountIdentity !== (await backend.accountIdentity()))
+    const { client } = await resolve();
+    if (record.accountIdentity !== (await client.accountIdentity()))
       throw new Error(
         "Restore the Modal account that created this debug sandbox",
       );
-    const observed = await backend.observe({
+    const observed = await client.observe({
       sandboxId,
       appName: record.appName,
       key: record.key,
     });
-    return observed.running ? backend.fromId(sandboxId) : null;
+    return observed.running ? client.fromId(sandboxId) : null;
   }
   return {
     async build(signal = new AbortController().signal) {
@@ -81,13 +81,13 @@ export function debugSandbox(
     },
     async run(signal = new AbortController().signal) {
       const resolved = await resolve();
-      const { backend, settings } = resolved;
+      const { client, settings } = resolved;
       const built = await buildWith(resolved, signal);
-      const accountIdentity = await backend.accountIdentity();
+      const accountIdentity = await client.accountIdentity();
       signal.throwIfAborted();
       const key = `bb-debug-${randomUUID()}`;
       const expiresAt = Date.now() + 30 * 60_000;
-      const sandbox = await backend.create({
+      const sandbox = await client.create({
         appName: settings.appName,
         name: key,
         image: { type: "image", imageId: built.imageId },

@@ -1,5 +1,5 @@
 import { expect, it } from "vitest";
-import { readModalMachineResource } from "./lifecycle.js";
+import { readModalMachineResource } from "./resource.js";
 
 it("drops obsolete expiration metadata while retaining current snapshot recovery state", () => {
   const resource = {

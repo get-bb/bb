@@ -1,19 +1,16 @@
 import type { MachineExecutor } from "@get-bb/plugin-sdk";
 import { createHash } from "node:crypto";
 import { z } from "zod";
-import {
-  ensureStandardImage,
-  type StandardImageRequest,
-} from "./standard-image.js";
+import { ensureModalImage, type ModalImageRequest } from "./image.js";
 import { ModalClient, NotFoundError, type Sandbox } from "modal";
 
-export interface SandboxExecResult {
+export interface ModalSandboxExecResult {
   exitCode: number;
   stdout: string;
   stderr: string;
 }
 
-export interface SandboxHandle {
+export interface ModalSandboxHandle {
   readonly sandboxId: string;
   exec(
     command: readonly string[],
@@ -24,7 +21,7 @@ export interface SandboxHandle {
       maxOutputBytes?: number;
       onOutput?: (chunk: string) => void;
     },
-  ): Promise<SandboxExecResult>;
+  ): Promise<ModalSandboxExecResult>;
   terminate(): Promise<void>;
   snapshotFilesystem(options: {
     timeoutMs: number;
@@ -32,7 +29,9 @@ export interface SandboxHandle {
   }): Promise<string>;
 }
 
-export function createSandboxExecutor(sandbox: SandboxHandle): MachineExecutor {
+export function createModalSandboxExecutor(
+  sandbox: ModalSandboxHandle,
+): MachineExecutor {
   return {
     async exec({ command, ...options }) {
       const { exitCode } = await sandbox.exec(command, {
@@ -44,33 +43,33 @@ export function createSandboxExecutor(sandbox: SandboxHandle): MachineExecutor {
   };
 }
 
-export type SandboxImage =
+export type ModalSandboxImage =
   | { type: "snapshot"; imageId: string }
   | { type: "image"; imageId: string };
 
-export interface SandboxCreateRequest {
+export interface ModalSandboxCreateRequest {
   appName: string;
   name: string;
-  image: SandboxImage;
+  image: ModalSandboxImage;
   timeoutMs: number;
   cpu: number | null;
   memoryMiB: number | null;
   tags: Record<string, string>;
 }
 
-export interface SandboxBackend {
+export interface ModalSandboxClient {
   accountIdentity(): Promise<string>;
-  ensureStandardImage(request: StandardImageRequest): Promise<string>;
+  ensureModalImage(request: ModalImageRequest): Promise<string>;
   close(): void;
   observe(request: {
     sandboxId: string;
     appName: string;
     key: string;
   }): Promise<{ running: boolean; expiresAt: number | null }>;
-  create(request: SandboxCreateRequest): Promise<SandboxHandle>;
+  create(request: ModalSandboxCreateRequest): Promise<ModalSandboxHandle>;
   deleteSnapshot(imageId: string): Promise<void>;
-  fromId(sandboxId: string): Promise<SandboxHandle | null>;
-  fromName(appName: string, name: string): Promise<SandboxHandle | null>;
+  fromId(sandboxId: string): Promise<ModalSandboxHandle | null>;
+  fromName(appName: string, name: string): Promise<ModalSandboxHandle | null>;
 }
 
 export interface ModalCredentials {
@@ -78,9 +77,9 @@ export interface ModalCredentials {
   tokenSecret: string;
 }
 
-export type SandboxBackendFactory = (
+export type ModalSandboxClientFactory = (
   credentials: ModalCredentials,
-) => SandboxBackend;
+) => ModalSandboxClient;
 
 async function collectOutput(
   stream: AsyncIterable<string>,
@@ -107,7 +106,7 @@ async function collectOutput(
   );
 }
 
-function wrapSandbox(sandbox: Sandbox): SandboxHandle {
+function wrapSandbox(sandbox: Sandbox): ModalSandboxHandle {
   return {
     sandboxId: sandbox.sandboxId,
     async exec(command, options) {
@@ -174,14 +173,16 @@ function wrapSandbox(sandbox: Sandbox): SandboxHandle {
   };
 }
 
-export const createModalBackend: SandboxBackendFactory = (credentials) => {
+export const createModalSandboxClient: ModalSandboxClientFactory = (
+  credentials,
+) => {
   const client = new ModalClient({
     tokenId: credentials.tokenId,
     tokenSecret: credentials.tokenSecret,
   });
   return {
     close: () => client.close(),
-    ensureStandardImage: (request) => ensureStandardImage(credentials, request),
+    ensureModalImage: (request) => ensureModalImage(credentials, request),
     async accountIdentity() {
       const identity = z
         .object({ workspaceId: z.string().min(1) })

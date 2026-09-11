@@ -644,13 +644,16 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
       Array.from(
         plugin.handle.environmentCompositions.values(),
         (composition) => {
-          const declared = parseNamespacedGlyph(composition.icon);
+          const declared =
+            composition.icon === null
+              ? null
+              : parseNamespacedGlyph(composition.icon);
           const icon =
             declared !== null
               ? brandingAssets.get(pluginId)?.icons.get(declared.name)
               : readPluginProviderIcon(
                   plugin.manifest.rootDir,
-                  composition.icon,
+                  composition.icon ?? undefined,
                 );
           return { pluginId, composition, ...(icon == null ? {} : { icon }) };
         },

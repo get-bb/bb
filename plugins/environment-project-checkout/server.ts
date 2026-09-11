@@ -141,6 +141,7 @@ export default async function checkoutPlugin(bb: BbPluginApi): Promise<void> {
   bb.experimental_environments.register({
     id: PROJECT_CHECKOUT_ENVIRONMENT_PROVIDER_ID,
     displayName: "Project checkout",
+    description: "Work in a project checkout on this machine.",
     icon: "Laptop",
     requires: { projectCheckout: true },
     inputs: checkoutInputsSchema,

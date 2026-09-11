@@ -397,7 +397,7 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
         bullets: [
           "Appear in the model picker beside bb's built-in providers",
           "Declare what the provider supports, then serve its model list at runtime",
-          "Supply a small icon that appears next to its name",
+          "Supply a small icon that appears next to its name; React icon overrides require providerKind and providerId",
           "Receive every message in a thread started with it, through a bridge process the plugin ships",
           "Contribute validated environment variables to any provider for each session and turn",
         ],
@@ -734,8 +734,8 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
         summary:
           "Offers plugin-provisioned places a thread can run, picked like any environment. With this, a plugin can:",
         bullets: [
-          "Declare a provider with a display name and icon, picked in New Thread or bb thread spawn --environment-provider",
-          "Use a host glyph, plugin-relative asset, declared icon, or React provider icon slot",
+          "Declare a provider with a required display name, description, and icon, picked in New Thread or bb thread spawn --environment-provider",
+          "Use a host glyph, plugin-relative asset, declared icon, or React provider icon slot targeted by required providerKind and providerId",
           "Declare the project facts it consumes in one place — requires.projectCheckout, requires.gitCheckout, requires.gitRemote, requires.projectless — which structurally decides where the picker offers it",
           "Answer availability for a project and machine with available, setup-required, or unavailable; core probes connected machines in the background so pickers hide unsupported ones, caches the answer, and checks it afresh for the selected machine at thread creation",
           "Declare what it needs from the request as a zod inputs schema; bb parses the request with it before the thread exists, publishes it as JSON Schema for the CLI, and hands create the parsed value as inputs",
@@ -752,7 +752,7 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
           "Honor create and remove abort signals; core aborts create before asking remove to clean everything under the same path key",
           "Work on the existing enrolled machine carried by the selection, returning the path it produced",
           "Environment input controls receive target: { kind: 'existing-host', hostId } or { kind: 'new-host' }; compositions reuse the underlying control before provisioning, and backend create receives the real host",
-          "Register a composition with an explicit icon, machineProviderId and environmentProviderId instead of lifecycle callbacks; core creates the machine and uses the concrete environment provider, preserving its checkout ownership",
+          "Register a composition with an explicit display name, description, icon, machineProviderId and environmentProviderId instead of lifecycle callbacks; core creates the machine and uses the concrete environment provider, preserving its checkout ownership",
           "Return an opaque JSON resource handle from a created launch; core keeps up to 16 KiB private and supplies it only to recovery and removal callbacks from the recorded owning plugin",
         ],
         apiSymbols: [

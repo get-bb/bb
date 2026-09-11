@@ -118,21 +118,18 @@ providerId }`) and `Original`, the host's declarative base for the body —
   glyph when the name is no longer declared. With no renderer registered,
   the declarative base renders, so a row never goes blank; a crash in the
   component is contained to that row.
-- `experimental_providerIcon` → the React component bb draws as one agent,
+- `experimental_providerIcon` → the React component bb draws as one agent, machine,
   or environment provider's icon. Registration:
-  `{ providerId, icon }`, where `providerId` is the provider's id (`"codex"`,
+  `{ providerKind, providerId, icon }`, with required `providerKind` (`"agent"`, `"machine"`, or `"environment"`); `providerId` is the provider's id (`"codex"`,
   `"git-worktree"`) — not the plugin id — and
   `icon` is a component receiving only `className` (host sizing plus the
-  provider color class). Use it for a theme-aware mark: a file logo
-  (`bb.branding.icon`, or a path-shaped provider declaration `icon`) is drawn
-  through `<img>`, a separate document where `currentColor` resolves to black
-  and is invisible on dark themes, so keep files for intentionally colored
-  logos and register a component for anything that should follow the theme.
+  provider color class). Provider logo assets render as a `currentColor`
+  mask; use an inline component when the mark needs custom theme-aware or
+  multicolor rendering.
   A component beats the file logo for that provider; disabling the plugin
   falls back to it, and so does every surface shown before the plugin's
   deferred `app.tsx` has loaded. Read `references/providers.md` for provider
   icon declaration and registration details.
-  One registration per provider id per plugin; if two plugins claim one
-  provider id the host keeps the first by plugin id and warns. See the
+  One registration per provider kind and id per plugin; if two plugins claim one
+  provider kind and id the host keeps the first by plugin id and warns. See the
   `app.tsx` example in `references/providers.md`.
-

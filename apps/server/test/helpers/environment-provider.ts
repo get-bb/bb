@@ -71,6 +71,8 @@ export function defaultEnvironmentProviderRecords(): PluginEnvironmentProviderRe
   const checkout = validatePluginEnvironmentProviderDeclaration({
     id: DEFAULT_ENVIRONMENT_PROVIDER_ID.projectCheckout,
     displayName: "Checkout",
+    description: "Prepare a workspace for this thread.",
+    icon: "Folder",
     requires: { projectCheckout: true },
     inputs: checkoutProviderInputsSchema,
     ...providerOperations((context) => {
@@ -119,6 +121,8 @@ export function installFakeEnvironmentProvider(
   const normalized = validatePluginEnvironmentProviderDeclaration({
     id: args.id,
     displayName: args.displayName,
+    description: "Prepare a workspace for this thread.",
+    icon: "Folder",
     requires: args.requires,
     ...(args.inputs === undefined ? {} : { inputs: args.inputs }),
     ...(args.validate === undefined ? {} : { validate: args.validate }),

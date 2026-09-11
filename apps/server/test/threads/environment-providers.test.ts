@@ -118,6 +118,8 @@ function installTargets(
     provider: validatePluginEnvironmentProviderDeclaration({
       id: fake.id ?? PROVIDER_ID,
       displayName: "Fake container",
+      description: "Prepare a workspace for this thread.",
+      icon: "Folder",
       requires: {
         projectCheckout: fake.requiresProjectCheckout ?? false,
         gitCheckout: fake.requiresGitCheckout ?? false,
@@ -258,6 +260,7 @@ describe("machine and environment provider composition", () => {
           composition: {
             id: "test-sandbox",
             displayName: "Test sandbox",
+            description: "Prepare a workspace for this thread.",
             icon: "Cloud",
             machineProviderId: "test-machine",
             environmentProviderId: "project-checkout",
@@ -526,6 +529,7 @@ describe("machine and environment provider composition", () => {
             composition: {
               id: "test-sandbox",
               displayName: "Test sandbox",
+              description: "Prepare a workspace for this thread.",
               icon: "Cloud",
               machineProviderId: "test-machine",
               environmentProviderId: "project-checkout",
@@ -1825,7 +1829,8 @@ describe("provider inputs are parsed at create time", () => {
           machineProviderId: null,
           id: PROVIDER_ID,
           displayName: "Fake container",
-          icon: null,
+          description: "Prepare a workspace for this thread.",
+          icon: "Folder",
           logoUrl: null,
           pluginId: PLUGIN_ID,
           requires: {
@@ -1850,7 +1855,8 @@ describe("provider inputs are parsed at create time", () => {
           machineProviderId: null,
           id: "plain",
           displayName: "Fake container",
-          icon: null,
+          description: "Prepare a workspace for this thread.",
+          icon: "Folder",
           logoUrl: null,
           pluginId: PLUGIN_ID,
           requires: {

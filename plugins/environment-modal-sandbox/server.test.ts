@@ -10,11 +10,11 @@ import {
 import { readFileSync } from "node:fs";
 import { describe, expect, it, vi } from "vitest";
 import type {
-  SandboxBackend,
-  SandboxCreateRequest,
-  SandboxHandle,
-} from "./sandbox-backend.js";
-import { readModalMachineResource } from "./lifecycle.js";
+  ModalSandboxClient,
+  ModalSandboxCreateRequest,
+  ModalSandboxHandle,
+} from "./providers/modal/client.js";
+import { readModalMachineResource } from "./providers/modal/resource.js";
 import { modalLaunchOptionsSchema } from "./launch-options.js";
 import { createModalSandboxPlugin, PROVIDER_ID } from "./server.js";
 
@@ -65,7 +65,7 @@ function createBackend(
     failSnapshotOnce?: boolean;
   } = {},
 ) {
-  const creates: SandboxCreateRequest[] = [];
+  const creates: ModalSandboxCreateRequest[] = [];
   const states: FakeSandboxState[] = [];
   const deletedSnapshots: string[] = [];
   let nextSandbox = 0;
@@ -73,7 +73,7 @@ function createBackend(
   let crashAfterTerminate = options.crashAfterTerminateOnce === true;
   let failSnapshot = options.failSnapshotOnce === true;
 
-  function handle(state: FakeSandboxState): SandboxHandle {
+  function handle(state: FakeSandboxState): ModalSandboxHandle {
     return {
       sandboxId: state.id,
       async exec(command) {
@@ -100,9 +100,9 @@ function createBackend(
   }
 
   const image = vi.fn(async () => "im-standard");
-  const backend: SandboxBackend = {
+  const backend: ModalSandboxClient = {
     accountIdentity: async () => "modal-account",
-    ensureStandardImage: image,
+    ensureModalImage: image,
     close() {},
     async observe({ sandboxId }) {
       return {
@@ -206,7 +206,7 @@ async function setup(
     bootstrap,
   });
   await createModalSandboxPlugin({
-    backendFactory: (credentials) => ({
+    clientFactory: (credentials) => ({
       ...backend.backend,
       accountIdentity: async () =>
         credentials.tokenId === SETTINGS.tokenId

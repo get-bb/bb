@@ -410,6 +410,8 @@ registering the same provider ID cannot recover or remove its resources.
 Migration assigns the three bundled owners explicitly and leaves unknown
 historical owners unassigned, preventing automatic adoption.
 
+Concrete providers and compositions require a nonblank description (up to 200 characters) and icon, alongside their display name. The provider listing exposes both; creation choices show the description unless setup or availability guidance takes precedence. Icons remain required when a frontend slot supplies an override.
+
 A declaration has four eligibility facts in `requires` (`projectCheckout`,
 `gitCheckout`, `gitRemote`, `projectless`), all defaulted to
 false at registration. Optional `inputs` uses Standard Schema v1; core parses it
@@ -1772,14 +1774,19 @@ while a palette switch resolves, so a consumer never paints an unthemed frame.
 **Kept experimental (2026-08-22).** zero shipped registrations — first-party
 agent, environment, and machine providers use declared glyphs or SVG assets,
 and the provider catalogs' `glyph` / `logoUrl` icon metadata covers both forms
-without a frontend bundle; the open questions are id squatting and whether the
-slot should exist at all (deleting it is the owner's call).
+without a frontend bundle; the remaining questions concern bundle loading cost
+and rendering behavior.
 
 **What it does.** Lets a plugin frontend supply the React component bb draws
-as one agent, environment, or machine provider's icon: `{ providerId, icon }`,
+as one agent, environment, or machine provider's icon: `{ providerKind, providerId, icon }`,
 where `icon` receives only the host's `className` (sizing; agent providers also
 have the declared `strings.iconTint`). The component wins over the provider's
 served `logoUrl`, which the host otherwise draws as a `currentColor` mask.
+Registrations target a provider kind and id. Omitted kinds in older plugins
+normalize to all kinds; exact-kind matches take precedence over all-kind matches.
+Persistent machine labels draw a laptop directly and bypass the slot. Existing
+environment reuse, sidebar, and metadata rows still resolve only built-in glyphs;
+those rows bypass both asset URLs and the slot.
 Registrations are replaced wholesale with the rest of the plugin's slot set,
 so disable/uninstall/failed reload falls back to `logoUrl`, then the declared
 glyph, then the generic glyph. No provider bb ships registers the slot: each
@@ -1789,13 +1796,10 @@ every boot).
 
 **Audit before stabilizing.**
 
-1. **Id squatting and scoping.** `providerId` names a provider in a shared
-   namespace, not a per-plugin slot id, and nothing checks that the plugin
-   registering it also declared that provider. Today the host keeps the first
-   claim by sorted plugin id and warns. Before stabilizing, decide whether the
-   host should reject an icon for a provider the plugin does not own (the
-   frontend does not currently know the registry's provider→plugin mapping),
-   and whether the picker should surface a rejected claim to the user.
+1. **Scoping and overrides.** `providerKind` and `providerId` select the target;
+   cross-plugin icon overrides are allowed. Within each kind/id pair, the first
+   claim by sorted plugin id wins and later claims warn. Verify kind isolation,
+   specific-over-all precedence, and fallback after unload before stabilizing.
 2. **Bundle size and boot ordering.** An icon now costs a frontend bundle: a
    provider plugin that previously shipped only a server entry pays esbuild +
    Tailwind on install and an extra module fetch, and the served logo covers
@@ -2854,7 +2858,7 @@ validating missing-resource semantics and use by additional machine providers.
 
 ## Environment compositions
 
-`bb.experimental_environments.register({ id, displayName, icon, machineProviderId,
+`bb.experimental_environments.register({ id, displayName, description, icon, machineProviderId,
 environmentProviderId })` declares a new-machine environment option backed by
 one concrete environment provider. It cannot also supply lifecycle callbacks
 or inputs. Its required icon is resolved from the composition’s owning plugin;

@@ -771,7 +771,8 @@ describe("@bb/sdk", () => {
       {
         id: "project-checkout",
         displayName: "Project checkout",
-        icon: null,
+        description: "Prepare a workspace for this thread.",
+        icon: "Folder",
         logoUrl: null,
         pluginId: "environment-project-checkout",
         requires: {

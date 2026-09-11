@@ -111,8 +111,10 @@ export interface PluginEnvironmentProviderDefinition<
 > {
   id: string;
   displayName: string;
+  /** Short explanation shown in environment choices. */
+  description: string;
   /** Host glyph, plugin-relative icon path, or this plugin’s declared namespaced icon. */
-  icon?: string;
+  icon: string;
   requires?: R;
   inputs?: S;
   policy?: Partial<PluginEnvironmentProviderPolicy>;

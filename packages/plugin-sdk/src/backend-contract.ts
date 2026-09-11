@@ -409,6 +409,7 @@ export interface PluginEnvironments {
       | {
           id: string;
           displayName: string;
+          description: string;
           icon: string;
           machineProviderId: string;
           environmentProviderId: string;

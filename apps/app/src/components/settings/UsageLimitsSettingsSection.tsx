@@ -229,6 +229,7 @@ function ProviderUsageBlock({
   const planLabel = usage?.status === "ok" ? usage.planLabel : null;
   const accountEmail = usage?.status === "ok" ? usage.accountEmail : null;
   const iconInfo = getProviderIconInfo(
+    "agent",
     config.providerId,
     config.provider ?? null,
   );

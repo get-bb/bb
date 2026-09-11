@@ -17,6 +17,7 @@ const checkoutProvider: SystemEnvironmentProvider = {
   machineProviderId: null,
   id: "project-checkout",
   displayName: "Project checkout",
+  description: "Work in this project checkout.",
   icon: "Laptop",
   logoUrl: null,
   pluginId: "environment-project-checkout",
@@ -36,6 +37,7 @@ const branchProvider: SystemEnvironmentProvider = {
   machineProviderId: null,
   id: "branchy",
   displayName: "New branch workspace",
+  description: "Prepare a workspace for this thread.",
   icon: "GitBranch",
   logoUrl: null,
   pluginId: "branchy",
@@ -55,6 +57,7 @@ const sandboxProvider: SystemEnvironmentProvider = {
   machineProviderId: null,
   id: "container",
   displayName: "Docker container",
+  description: "Prepare a workspace for this thread.",
   icon: "Container",
   logoUrl: null,
   pluginId: "docker-sandbox",
@@ -78,6 +81,7 @@ const optionalInputsProvider: SystemEnvironmentProvider = {
   machineProviderId: null,
   id: "optional-sandbox",
   displayName: "Optional sandbox",
+  description: "Prepare a workspace for this thread.",
   icon: "Container",
   logoUrl: null,
   pluginId: "optional-sandbox",
@@ -124,6 +128,37 @@ function renderPicker(ui: ReactElement) {
 }
 
 describe("EnvironmentPickerUI", () => {
+  it.each([
+    null,
+    { status: "setup-required" as const, message: "Configure checkout access" },
+  ])(
+    "shows the provider description unless setup guidance takes precedence (%j)",
+    (availability) => {
+      const provider = { ...checkoutProvider, availability };
+      renderPicker(
+        <EnvironmentPickerUI
+          value="provider:project-checkout"
+          sources={sources}
+          host={host}
+          isLocal
+          providers={[provider]}
+          onSelectProvider={vi.fn()}
+          modal={false}
+        />,
+      );
+      fireEvent.pointerDown(
+        screen.getByRole("button", { name: "Environment" }),
+        { button: 0 },
+      );
+      const item = screen.getByRole("menuitem", { name: /Project checkout/u });
+      expect(item.textContent).toContain(
+        availability?.message ?? provider.description,
+      );
+      if (availability !== null)
+        expect(item.textContent).not.toContain(provider.description);
+    },
+  );
+
   it("does not expose an ephemeral host through the single-machine fallback", () => {
     const ephemeralHost: Host = {
       ...host,
@@ -294,6 +329,8 @@ describe("EnvironmentPickerUI", () => {
             ...optionalInputsProvider,
             id: "personal-workspace",
             displayName: "Personal workspace",
+            description: "Prepare a workspace for this thread.",
+            icon: "Folder",
             requires: {
               projectCheckout: false,
               gitCheckout: false,
@@ -888,6 +925,8 @@ describe("EnvironmentPickerUI multi-machine menu", () => {
       ...checkoutProvider,
       id: "host-sandbox",
       displayName: "Host sandbox",
+      description: "Prepare a workspace for this thread.",
+      icon: "Folder",
       requires: {
         ...checkoutProvider.requires,
         projectCheckout: false,

@@ -120,7 +120,9 @@ function providerDescription(
     return provider.availability.message;
   }
   return (
-    providerDisabledReason(provider, inputsControlProviderIds) ?? undefined
+    providerDisabledReason(provider, inputsControlProviderIds) ??
+    provider.description ??
+    undefined
   );
 }
 

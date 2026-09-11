@@ -9,6 +9,7 @@ const provider: SystemEnvironmentProvider = {
   machineProviderId: null,
   id: "project-checkout",
   displayName: "Project checkout",
+  description: "Prepare a workspace for this thread.",
   icon: "Laptop",
   logoUrl: null,
   pluginId: "environment-project-checkout",

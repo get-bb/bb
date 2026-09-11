@@ -21,6 +21,7 @@ const personalProvider: SystemEnvironmentProvider = {
   machineProviderId: null,
   id: "personal-workspace",
   displayName: "Personal workspace",
+  description: "Prepare a workspace for this thread.",
   icon: "Folder",
   logoUrl: null,
   pluginId: "environment-personal-workspace",

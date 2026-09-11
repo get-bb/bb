@@ -2233,6 +2233,7 @@ export function pluginHookAlreadyRegisteredMessage(
 
 export const ENVIRONMENT_PROVIDER_ID_PATTERN = /^[a-z0-9][a-z0-9-]{1,63}$/;
 export const ENVIRONMENT_PROVIDER_DISPLAY_NAME_MAX_CHARS = 80;
+export const ENVIRONMENT_PROVIDER_DESCRIPTION_MAX_CHARS = 200;
 
 export const ENVIRONMENT_PROVIDER_REQUIREMENT_NAMES = [
   "projectCheckout",
@@ -2253,6 +2254,13 @@ export const environmentCompositionSchema = z
       .trim()
       .min(1)
       .max(ENVIRONMENT_PROVIDER_DISPLAY_NAME_MAX_CHARS),
+    description: z
+      .string()
+      .trim()
+      .min(1)
+      .max(ENVIRONMENT_PROVIDER_DESCRIPTION_MAX_CHARS)
+      .optional()
+      .transform((value) => value ?? null),
     icon: z
       .string()
       .trim()
@@ -2261,7 +2269,9 @@ export const environmentCompositionSchema = z
         isPluginOwnedIconPath(icon)
           ? validateProviderRelativePath(icon, "Composition icon")
           : icon,
-      ),
+      )
+      .optional()
+      .transform((value) => value ?? null),
     machineProviderId: z.string().regex(ENVIRONMENT_PROVIDER_ID_PATTERN),
     environmentProviderId: z.string().regex(ENVIRONMENT_PROVIDER_ID_PATTERN),
   })
@@ -2273,6 +2283,7 @@ export type NormalizedPluginEnvironmentComposition = z.infer<
 export interface NormalizedPluginEnvironmentProvider {
   id: string;
   displayName: string;
+  description: string | null;
   icon: string | null;
   requires: NormalizedPluginEnvironmentProviderRequirements;
   inputs: StandardSchemaV1 | null;
@@ -2312,20 +2323,27 @@ export function validatePluginEnvironmentProviderDeclaration(
       `environment provider "${id}" needs a displayName of 1-${ENVIRONMENT_PROVIDER_DISPLAY_NAME_MAX_CHARS} characters`,
     );
   }
-  const icon =
-    declaration.icon === undefined
-      ? null
-      : z.string().min(1).parse(declaration.icon).trim();
-  if (icon !== null) {
-    if (isPluginOwnedIconPath(icon))
-      validateProviderRelativePath(icon, `"${id}" icon`);
-    else if (!isNamespacedGlyph(icon) && /[/\\]/u.test(icon))
-      throw new Error(
-        `environment provider "${id}" icon must be a glyph, declared icon, or plugin-relative path`,
-      );
-  }
-  if (icon !== null && icon.length === 0) {
-    throw new Error(`environment provider "${id}" declares an empty icon`);
+  const description = z
+    .string()
+    .trim()
+    .min(1)
+    .max(ENVIRONMENT_PROVIDER_DESCRIPTION_MAX_CHARS)
+    .optional()
+    .transform((value) => value ?? null)
+    .parse(declaration.description);
+  const icon = z
+    .string()
+    .trim()
+    .min(1)
+    .optional()
+    .transform((value) => value ?? null)
+    .parse(declaration.icon);
+  if (icon !== null && isPluginOwnedIconPath(icon)) {
+    validateProviderRelativePath(icon, `"${id}" icon`);
+  } else if (icon !== null && !isNamespacedGlyph(icon) && /[/\\]/u.test(icon)) {
+    throw new Error(
+      `environment provider "${id}" icon must be a glyph, declared icon, or plugin-relative path`,
+    );
   }
   const requires = normalizeEnvironmentProviderRequirements(id, declaration);
   const inputs = normalizeEnvironmentProviderInputs(id, declaration);
@@ -2356,6 +2374,7 @@ export function validatePluginEnvironmentProviderDeclaration(
   return {
     id,
     displayName,
+    description,
     icon,
     requires,
     inputs: inputs === null ? null : inputs.schema,

@@ -16,7 +16,7 @@ export function MachineProviderIcon({
   provider: MachineProviderPresentation;
   className?: string;
 }) {
-  const info = getProviderIconInfo(provider.id, {
+  const info = getProviderIconInfo("machine", provider.id, {
     logoUrl: provider.logoUrl,
     displayName: provider.displayName,
     icon: { glyph: provider.icon },

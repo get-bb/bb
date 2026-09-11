@@ -317,7 +317,11 @@ export function MachineSettingsView() {
           ...entry,
           providerId,
           provider,
-          ProviderIcon: getProviderIconInfo(providerId, provider ?? null)?.icon,
+          ProviderIcon: getProviderIconInfo(
+            "agent",
+            providerId,
+            provider ?? null,
+          )?.icon,
         },
       ];
     });

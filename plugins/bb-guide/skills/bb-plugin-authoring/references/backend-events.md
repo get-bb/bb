@@ -183,12 +183,13 @@ Register resource operations with `bb.experimental_environments.register`.
 `icon` accepts host glyphs, plugin-relative assets, and this plugin's declared
 namespaced icons, just like agent providers. The provider listing includes a
 hashed `logoUrl` for assets. `app.slots.experimental_providerIcon` can override
-an environment provider's icon by its provider ID.
+an environment provider's icon with `providerKind: "environment"` and its `providerId`.
 
 ```ts
 bb.experimental_environments.register({
   id: "personal-workspace",
   displayName: "Personal workspace",
+  description: "Create a personal directory without a project.",
   icon: "Folder",
   requires: { projectless: true },
   async create({ host, pathKey, report, signal }) {

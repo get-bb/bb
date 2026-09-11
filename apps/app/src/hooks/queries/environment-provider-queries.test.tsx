@@ -20,6 +20,7 @@ const WORKTREE_PROVIDER: SystemEnvironmentProvider = {
   machineProviderId: null,
   id: "git-worktree",
   displayName: "Worktree",
+  description: "Prepare a workspace for this thread.",
   icon: "GitBranch",
   logoUrl: null,
   pluginId: "environment-git-worktree",

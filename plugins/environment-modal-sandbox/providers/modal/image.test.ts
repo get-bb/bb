@@ -1,6 +1,7 @@
 import { readFileSync } from "node:fs";
 import { beforeEach, expect, it, vi } from "vitest";
-import { readStandardImage, ensureStandardImage } from "./standard-image.js";
+import { readStandardImage } from "../../standard-image.js";
+import { ensureModalImage } from "./image.js";
 
 const vendor = vi.hoisted(() => ({
   options: vi.fn(),
@@ -28,7 +29,10 @@ const credentials = { tokenId: "test-id", tokenSecret: "test-secret" };
 const request = () => ({
   appName: "test-app",
   displayName: "Image 2",
-  dockerfile: readFileSync(new URL("./Dockerfile", import.meta.url), "utf8"),
+  dockerfile: readFileSync(
+    new URL("../../Dockerfile", import.meta.url),
+    "utf8",
+  ),
   signal: new AbortController().signal,
   report: { step: vi.fn(), log: vi.fn() },
 });
@@ -61,7 +65,7 @@ it("builds and publishes the bundled tools image without daemon or credentials",
   expect(definition.commands.join("\n")).not.toMatch(
     /bb-app|machine enroll|daemon|token|secret|COPY/i,
   );
-  expect(await ensureStandardImage(credentials, request())).toBe("im-standard");
+  expect(await ensureModalImage(credentials, request())).toBe("im-standard");
   expect(vendor.registry).toHaveBeenCalledWith(definition.reference);
   expect(vendor.commands).toHaveBeenCalledWith(definition.commands);
   expect(vendor.publish).toHaveBeenCalledWith(definition.name);
@@ -71,7 +75,7 @@ it("builds and publishes the bundled tools image without daemon or credentials",
 it("reuses the named image without starting another build", async () => {
   vendor.lookup.mockResolvedValue({ imageId: "im-existing" });
   const input = request();
-  expect(await ensureStandardImage(credentials, input)).toBe("im-existing");
+  expect(await ensureModalImage(credentials, input)).toBe("im-existing");
   expect(input.report.log).toHaveBeenCalledWith(
     "Reusing the Image 2 Modal image",
   );
@@ -81,7 +85,7 @@ it("reuses the named image without starting another build", async () => {
 
 it("does not interpret account failures as a missing image", async () => {
   vendor.lookup.mockRejectedValue(new Error("permission denied"));
-  await expect(ensureStandardImage(credentials, request())).rejects.toThrow(
+  await expect(ensureModalImage(credentials, request())).rejects.toThrow(
     "permission denied",
   );
   expect(vendor.build).not.toHaveBeenCalled();
@@ -90,11 +94,11 @@ it("does not interpret account failures as a missing image", async () => {
 
 it("reports a failed build and permits the next launch to retry", async () => {
   vendor.build.mockRejectedValueOnce(new Error("build failed"));
-  await expect(ensureStandardImage(credentials, request())).rejects.toThrow(
+  await expect(ensureModalImage(credentials, request())).rejects.toThrow(
     "build failed",
   );
   expect(vendor.publish).not.toHaveBeenCalled();
-  expect(await ensureStandardImage(credentials, request())).toBe("im-standard");
+  expect(await ensureModalImage(credentials, request())).toBe("im-standard");
   expect(vendor.build).toHaveBeenCalledTimes(2);
 });
 
@@ -102,7 +106,7 @@ it("does not start cancelled builds and saves a completed shared image when canc
   const controller = new AbortController();
   controller.abort(new Error("cancelled"));
   await expect(
-    ensureStandardImage(credentials, {
+    ensureModalImage(credentials, {
       ...request(),
       signal: controller.signal,
     }),
@@ -114,7 +118,7 @@ it("does not start cancelled builds and saves a completed shared image when canc
     return { imageId: "im-standard", publish: vendor.publish };
   });
   await expect(
-    ensureStandardImage(credentials, {
+    ensureModalImage(credentials, {
       ...request(),
       signal: duringBuild.signal,
     }),
@@ -125,7 +129,7 @@ it("does not start cancelled builds and saves a completed shared image when canc
 
 it("captures build output without swallowing unary API responses", async () => {
   const input = request();
-  await ensureStandardImage(credentials, input);
+  await ensureModalImage(credentials, input);
   const options: NonNullable<ConstructorParameters<typeof ModalClient>[0]> =
     vendor.options.mock.calls[0]![0];
   const middleware = options.grpcMiddleware![0]!;

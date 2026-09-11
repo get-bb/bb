@@ -1817,11 +1817,88 @@ describe("experimental_aiServices.register", () => {
 });
 
 describe("environment targets", () => {
+  it("accepts legacy environment declarations without presentation fields", () => {
+    const { bb, harness } = createFakePluginHost();
+    bb.experimental_environments.register(
+      // @ts-expect-error legacy plugin declaration
+      {
+        id: "legacy-workspace",
+        displayName: "Legacy workspace",
+        create: async () => ({
+          status: "created",
+          path: "/workspace",
+          ownsPath: true,
+        }),
+        remove: async () => ({ status: "removed" }),
+      },
+    );
+    bb.experimental_environments.register(
+      // @ts-expect-error legacy plugin declaration
+      {
+        id: "legacy-composition",
+        displayName: "Legacy composition",
+        machineProviderId: "cloud-machine",
+        environmentProviderId: "legacy-workspace",
+      },
+    );
+    expect(
+      harness.registrations.environmentProviders.get("legacy-workspace"),
+    ).toMatchObject({ description: null, icon: null });
+    expect(
+      harness.registrations.environmentCompositions.get("legacy-composition"),
+    ).toMatchObject({ description: null, icon: null });
+  });
+
+  it.each([
+    ["description", null],
+    ["description", ""],
+    ["description", "   "],
+    ["description", "x".repeat(201)],
+    ["icon", null],
+    ["icon", ""],
+    ["icon", "   "],
+  ])(
+    "rejects invalid %s (%j) for concrete and composed environments",
+    (field, value) => {
+      const { bb, harness } = createFakePluginHost();
+      const presentation = {
+        id: "workspace",
+        displayName: "Workspace",
+        description: "Prepare a workspace.",
+        icon: "Folder",
+      };
+      for (const declaration of [
+        {
+          ...presentation,
+          create: async () => ({
+            status: "created" as const,
+            path: "/workspace",
+            ownsPath: true,
+          }),
+          remove: async () => ({ status: "removed" as const }),
+        },
+        {
+          ...presentation,
+          machineProviderId: "cloud-machine",
+          environmentProviderId: "project-checkout",
+        },
+      ]) {
+        Reflect.set(declaration, field, value);
+        expect(() =>
+          bb.experimental_environments.register(declaration),
+        ).toThrow();
+        expect(harness.registrations.environmentProviders.size).toBe(0);
+        expect(harness.registrations.environmentCompositions.size).toBe(0);
+      }
+    },
+  );
+
   it("keeps compositions separate from concrete lifecycle providers", () => {
     const { bb, harness } = createFakePluginHost();
     bb.experimental_environments.register({
       id: "sandbox",
       displayName: "Sandbox",
+      description: "Prepare a workspace for this thread.",
       icon: "Cloud",
       machineProviderId: "cloud-machine",
       environmentProviderId: "project-checkout",
@@ -1839,6 +1916,8 @@ describe("environment targets", () => {
       bb.experimental_environments.register({
         id: "sandbox",
         displayName: "Conflicting concrete provider",
+        description: "Prepare a workspace for this thread.",
+        icon: "Folder",
         create: async () => ({
           status: "created",
           path: "/checkout",
@@ -1860,6 +1939,8 @@ describe("environment targets", () => {
     bb.experimental_environments.register({
       id: "container",
       displayName: "  Docker container  ",
+      description: "Prepare a workspace for this thread.",
+      icon: "Folder",
       requires: { gitRemote: true },
       inputs,
       create,
@@ -1869,7 +1950,8 @@ describe("environment targets", () => {
     expect(target).toMatchObject({
       id: "container",
       displayName: "Docker container",
-      icon: null,
+      description: "Prepare a workspace for this thread.",
+      icon: "Folder",
       requires: {
         projectCheckout: false,
         gitCheckout: false,
@@ -1900,6 +1982,7 @@ describe("environment targets", () => {
       bb.experimental_environments.register({
         id: "env",
         displayName: "Environment",
+        description: "Prepare a workspace for this thread.",
         icon,
         create: async () => ({
           status: "failed",
@@ -1922,6 +2005,8 @@ describe("environment targets", () => {
     bb.experimental_environments.register({
       id: "plain",
       displayName: "Plain",
+      description: "Prepare a workspace for this thread.",
+      icon: "Folder",
       create: async () => ({
         status: "failed",
         failure: "transient",
@@ -1950,6 +2035,8 @@ describe("environment targets", () => {
       bb.experimental_environments.register({
         id: "ok",
         displayName: "x",
+        description: "Prepare a workspace for this thread.",
+        icon: "Folder",
         // @ts-expect-error deliberately not a schema
         inputs: { type: "object" },
         create: async () => ({
@@ -1968,6 +2055,8 @@ describe("environment targets", () => {
       bb.experimental_environments.register({
         id: "bad id!",
         displayName: "x",
+        description: "Prepare a workspace for this thread.",
+        icon: "Folder",
         create: async () => ({
           status: "failed",
           failure: "transient",
@@ -1981,6 +2070,8 @@ describe("environment targets", () => {
         bb.experimental_environments.register({
           id,
           displayName: "x",
+          description: "Prepare a workspace for this thread.",
+          icon: "Folder",
           create: async () => ({
             status: "failed",
             failure: "transient",
@@ -1996,6 +2087,8 @@ describe("environment targets", () => {
         {
           id: "ok",
           displayName: "x",
+          description: "Prepare a workspace for this thread.",
+          icon: "Folder",
         },
       ),
     ).toThrow(/create/);
@@ -2007,6 +2100,8 @@ describe("environment targets", () => {
       bb.experimental_environments.register({
         id: "ok",
         displayName: "x",
+        description: "Prepare a workspace for this thread.",
+        icon: "Folder",
         // @ts-expect-error deliberately not a boolean
         requires: { gitRemote: "yes" },
         create: async () => ({
@@ -2025,6 +2120,8 @@ describe("environment targets", () => {
       bb.experimental_environments.register({
         id: "scratch",
         displayName: "Scratch",
+        description: "Prepare a workspace for this thread.",
+        icon: "Folder",
         requires: { gitRemote: true, projectless: true },
         create: async () => ({
           status: "failed",
@@ -2042,6 +2139,8 @@ describe("environment targets", () => {
       bb.experimental_environments.register({
         id: "scratch",
         displayName: "Scratch",
+        description: "Prepare a workspace for this thread.",
+        icon: "Folder",
         requires: { projectCheckout: true, projectless: true },
         create: async () => ({
           status: "failed",
@@ -2058,6 +2157,8 @@ describe("environment targets", () => {
     bb.experimental_environments.register({
       id: "syncy",
       displayName: "Syncy",
+      description: "Prepare a workspace for this thread.",
+      icon: "Folder",
       requires: { projectCheckout: true },
       create: async () => ({
         status: "failed",
@@ -2083,6 +2184,8 @@ describe("environment targets", () => {
     bb.experimental_environments.register({
       id: "branchy",
       displayName: "Branchy",
+      description: "Prepare a workspace for this thread.",
+      icon: "Folder",
       requires: { gitCheckout: true },
       create: async () => ({
         status: "failed",
