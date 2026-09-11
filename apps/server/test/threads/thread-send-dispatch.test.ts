@@ -1485,7 +1485,7 @@ describe("competing turn refusals", () => {
     if (queued.command.type !== "turn.submit") {
       throw new Error("Expected a turn.submit command");
     }
-    return queued;
+    return { queued, requestId: queued.command.requestId };
   }
 
   it("keeps the thread active when the daemon refuses a competing turn while a root turn is running", async () => {
@@ -1495,7 +1495,7 @@ describe("competing turn refusals", () => {
         status: "idle",
         value: 61,
       });
-      const queued = await sendStartFromIdle(harness, fixture);
+      const { queued, requestId } = await sendStartFromIdle(harness, fixture);
       seedTurnStarted(harness.deps, {
         environmentId: fixture.environment.id,
         providerThreadId: "provider-send-dispatch-61",
@@ -1513,7 +1513,7 @@ describe("competing turn refusals", () => {
         (event) => event.type === "client/turn/rejected",
       );
       expect(JSON.parse(rejection?.data ?? "{}")).toEqual({
-        requestId: queued.command.requestId,
+        requestId,
         reason: "competing_turn",
         message: competingTurnMessage(fixture.thread.id),
       });
@@ -1551,7 +1551,7 @@ describe("competing turn refusals", () => {
         status: "idle",
         value: 62,
       });
-      const queued = await sendStartFromIdle(harness, fixture);
+      const { queued } = await sendStartFromIdle(harness, fixture);
 
       await reportQueuedCommandError(harness, queued, {
         errorCode: "competing_turn",
@@ -1574,7 +1574,7 @@ describe("competing turn refusals", () => {
         status: "idle",
         value: 63,
       });
-      const queued = await sendStartFromIdle(harness, fixture);
+      const { queued } = await sendStartFromIdle(harness, fixture);
       seedTurnStarted(harness.deps, {
         environmentId: fixture.environment.id,
         providerThreadId: "provider-send-dispatch-63",
