@@ -65,8 +65,8 @@ describe("provider usage footer disclosure", () => {
       accountLabel: email,
       displayName: displayName,
       logoUrl: `/api/v1/system/providers/${providerId}/logo`,
-      iconGlyph: null,
-      iconTint: null,
+      icon: null,
+      strings: { iconTint: null },
       signInHint: "Sign in.",
       expiredHint: "Sign in again.",
       usage: {
@@ -106,8 +106,10 @@ describe("provider usage footer disclosure", () => {
                       displayName: "Claude Code",
                       logoUrl:
                         "/api/v1/system/providers/claude-code/logo?h=claude",
-                      iconGlyph: null,
-                      iconTint: { light: "#D97757", dark: "#E38A6E" },
+                      icon: null,
+                      strings: {
+                        iconTint: { light: "#D97757", dark: "#E38A6E" },
+                      },
                       signInHint: "Sign in to Claude Code.",
                       expiredHint: "Sign in to Claude Code again.",
                       usage: {
@@ -130,8 +132,8 @@ describe("provider usage footer disclosure", () => {
                       accountLabel: null,
                       displayName: "Codex",
                       logoUrl: "/api/v1/system/providers/codex/logo?h=codex",
-                      iconGlyph: null,
-                      iconTint: null,
+                      icon: null,
+                      strings: { iconTint: null },
                       signInHint: "Sign in to Codex.",
                       expiredHint: "Sign in to Codex again.",
                       usage: {
@@ -162,8 +164,8 @@ describe("provider usage footer disclosure", () => {
                       accountLabel: null,
                       displayName: "Codex",
                       logoUrl: "/api/v1/system/providers/codex/logo?h=codex",
-                      iconGlyph: null,
-                      iconTint: null,
+                      icon: null,
+                      strings: { iconTint: null },
                       signInHint: "Sign in to Codex.",
                       expiredHint: "Sign in to Codex again.",
                       usage: {
@@ -447,8 +449,8 @@ it.each([
     accountLabel: "review@example.com",
     displayName: "Codex",
     logoUrl: null,
-    iconGlyph: null,
-    iconTint: null,
+    icon: null,
+    strings: { iconTint: null },
     signInHint: "Sign in to this account in the source plugin’s settings.",
     expiredHint: "Sign in again in the source plugin’s settings.",
     usage,

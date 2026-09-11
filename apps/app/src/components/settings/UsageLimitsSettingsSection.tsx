@@ -7,7 +7,7 @@ import type {
   UsageResourceList,
   UsageMeasurement,
 } from "@/lib/usage-source-contract";
-import { useId, useState } from "react";
+import { useId, useMemo, useState } from "react";
 import type { ProviderInfo } from "@bb/domain";
 import type {
   ProviderUsage,
@@ -34,7 +34,11 @@ import {
   useSystemProviders,
   type ProviderUsageQueryState,
 } from "@/hooks/queries/system-queries";
-import { selectPrimaryHost, useHosts } from "@/hooks/queries/host-queries";
+import {
+  selectHosts,
+  selectPrimaryHost,
+  useHosts,
+} from "@/hooks/queries/host-queries";
 import { getProviderIconInfo } from "@/lib/provider-icon";
 import { ProviderIconMark } from "./ProviderIconMark";
 import { cn } from "@bb/shared-ui/lib/utils";
@@ -537,7 +541,10 @@ export function UsageLimitsSettingsSectionContent({
 export function UsageLimitsSettingsSection() {
   const systemConfigQuery = useSystemConfig();
   const hostsQuery = useHosts();
-  const hosts = hostsQuery.data ?? [];
+  const hosts = useMemo(
+    () => selectHosts(hostsQuery.data, "persistent"),
+    [hostsQuery.data],
+  );
   const [selectedLocationId, setSelectedLocationId] = useState<string | null>(
     null,
   );

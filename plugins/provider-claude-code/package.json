@@ -6,7 +6,7 @@
   "description": "Run bb threads with Claude Code.",
   "engines": {
     "bb": ">=0.0",
-    "bbPluginSdk": ">=0.4.56"
+    "bbPluginSdk": ">=0.4.85"
   },
   "bb": {
     "name": "Claude Code provider",
