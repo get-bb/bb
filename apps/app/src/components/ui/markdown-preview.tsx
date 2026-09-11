@@ -38,10 +38,7 @@ import remarkBreaks from "remark-breaks";
 import remarkGfm from "remark-gfm";
 import remarkMath from "remark-math";
 import { ImageLightbox } from "./image-lightbox.js";
-import {
-  InlineImageGalleryContext,
-  InlineImageMessageContext,
-} from "./inline-image-gallery-context.js";
+import { InlineImageGalleryContext } from "./inline-image-gallery-context.js";
 import { normalizeMathFences } from "./markdown-math-fences.js";
 import {
   markdownMayContainMath,
@@ -953,7 +950,6 @@ function MarkdownRenderedImage({
   src,
 }: MarkdownImageRendererArgs) {
   const openGallery = useContext(InlineImageGalleryContext);
-  const rowId = useContext(InlineImageMessageContext);
   const imageUrl = typeof src === "string" ? src : "";
   if (!imageUrl) return null;
   return (
@@ -965,13 +961,8 @@ function MarkdownRenderedImage({
       loading="lazy"
       data-markdown-image=""
       onClick={(event) => {
-        if (openGallery && rowId !== null) {
-          const image = event.currentTarget;
-          const siblings = image
-            .closest("[data-markdown-preview]")
-            ?.querySelectorAll("img[data-markdown-image]");
-          const imageIndex = siblings ? Array.from(siblings).indexOf(image) : 0;
-          openGallery({ rowId, imageIndex, src: imageUrl, alt: image.alt });
+        if (openGallery) {
+          openGallery(event.currentTarget);
         } else {
           setExpandedImageUrl(imageUrl);
         }

@@ -42,7 +42,6 @@ interface WrappedImageIndexInput {
 
 interface ImageLightboxProps {
   hasMultipleImages?: boolean;
-  navigationDisabled?: boolean;
   navigationStatus?: string;
   imageAlt: string;
   imageSrc: string | null;
@@ -100,7 +99,6 @@ export function getWrappedImageIndex({
 
 export function ImageLightbox({
   hasMultipleImages = false,
-  navigationDisabled = false,
   navigationStatus,
   imageAlt,
   imageSrc,
@@ -134,7 +132,7 @@ export function ImageLightbox({
     const handleKeyDown = (event: KeyboardEvent) => {
       const action = getImageLightboxKeyAction({
         event,
-        hasNavigation: hasNavigation && !navigationDisabled,
+        hasNavigation,
       });
       if (!action) {
         return;
@@ -166,7 +164,6 @@ export function ImageLightbox({
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [
     hasNavigation,
-    navigationDisabled,
     imageSrc,
     onClose,
     onNext,
@@ -212,7 +209,6 @@ export function ImageLightbox({
             variant="ghost"
             size="icon"
             className="absolute left-[max(0.5rem,env(safe-area-inset-left))] top-1/2 size-11 -translate-y-1/2 rounded-full bg-black/45 text-white hover:bg-black/60 hover:text-white"
-            disabled={navigationDisabled}
             onClick={onPrevious}
             aria-label="Previous image"
           >
@@ -223,7 +219,6 @@ export function ImageLightbox({
             variant="ghost"
             size="icon"
             className="absolute right-[max(0.5rem,env(safe-area-inset-right))] top-1/2 size-11 -translate-y-1/2 rounded-full bg-black/45 text-white hover:bg-black/60 hover:text-white"
-            disabled={navigationDisabled}
             onClick={onNext}
             aria-label="Next image"
           >

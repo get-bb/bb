@@ -9,10 +9,7 @@ import {
   waitFor,
 } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import {
-  InlineImageGalleryContext,
-  InlineImageMessageContext,
-} from "./inline-image-gallery-context";
+import { InlineImageGalleryContext } from "./inline-image-gallery-context";
 import { MarkdownPreview } from "./markdown-preview";
 import {
   MarkdownLocalFileContextMenuContext,
@@ -545,21 +542,16 @@ it("opens the specific table image occurrence in the timeline gallery", () => {
   const open = vi.fn();
   render(
     <InlineImageGalleryContext.Provider value={open}>
-      <InlineImageMessageContext.Provider value="message-2">
-        <MarkdownPreview
-          content={
-            "![Inline](https://example.com/image.png)\n\n| Preview |\n| --- |\n| ![Table](https://example.com/image.png) |"
-          }
-        />
-      </InlineImageMessageContext.Provider>
+      <MarkdownPreview
+        content={
+          "![Inline](https://example.com/image.png)\n\n| Preview |\n| --- |\n| ![Table](https://example.com/image.png) |"
+        }
+      />
     </InlineImageGalleryContext.Provider>,
   );
   fireEvent.click(screen.getByRole("img", { name: "Table" }));
-  expect(open).toHaveBeenCalledWith({
-    rowId: "message-2",
-    imageIndex: 1,
-    src: "https://example.com/image.png",
-    alt: "Table",
-  });
+  expect(open).toHaveBeenCalledWith(
+    screen.getByRole("img", { name: "Table" }),
+  );
   expect(screen.queryByRole("dialog")).toBeNull();
 });

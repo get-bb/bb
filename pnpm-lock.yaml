@@ -344,9 +344,6 @@ importers:
       remark-math:
         specifier: ^6.0.0
         version: 6.0.0
-      remark-parse:
-        specifier: ^11.0.0
-        version: 11.0.0
       remend:
         specifier: 1.3.1
         version: 1.3.1
@@ -362,9 +359,6 @@ importers:
       tw-animate-css:
         specifier: ^1.4.0
         version: 1.4.0
-      unified:
-        specifier: ^11.0.5
-        version: 11.0.5
       unist-util-visit:
         specifier: ^5.1.0
         version: 5.1.0

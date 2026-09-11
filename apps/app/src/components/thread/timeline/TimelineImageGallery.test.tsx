@@ -1,7 +1,6 @@
 // @vitest-environment jsdom
 
 import {
-  act,
   cleanup,
   fireEvent,
   render,
@@ -9,135 +8,199 @@ import {
   waitFor,
   within,
 } from "@testing-library/react";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { MemoryRouter } from "react-router-dom";
+import type { ReactNode } from "react";
 import { afterEach, expect, it, vi } from "vitest";
-import type {
-  TimelineConversationRow,
-  ThreadTimelineResponse,
-} from "@bb/server-contract";
 import { sdk } from "@/lib/sdk";
-import { makeThreadTimelineResponse } from "@/test/fixtures/thread-responses";
 import { MarkdownPreview } from "@/components/ui/markdown-preview";
-import { InlineImageMessageContext } from "@/components/ui/inline-image-gallery-context";
+import {
+  conversationRow,
+  turnRow,
+} from "@/test/fixtures/thread-timeline-rows";
+import { ThreadTimelineRows } from "./ThreadTimelineRows";
 import { TimelineImageGallery } from "./TimelineImageGallery";
 
-vi.mock("@/lib/sdk", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("@/lib/sdk")>();
-  return { ...actual, sdk: { threads: { timeline: vi.fn() } } };
-});
+const clients: QueryClient[] = [];
 
 afterEach(() => {
   cleanup();
-  vi.resetAllMocks();
+  for (const client of clients) client.clear();
+  clients.length = 0;
+  vi.restoreAllMocks();
 });
 
-function row(
-  id: string,
-  sequence: number,
-  text: string,
-): TimelineConversationRow {
-  return {
-    id,
-    kind: "conversation",
-    role: "assistant",
-    threadId: "thread-1",
-    turnId: "turn-1",
-    sourceSeqStart: sequence,
-    sourceSeqEnd: sequence,
-    startedAt: 1,
-    createdAt: 1,
-    text,
-    attachments: null,
-    turnRequest: null,
-  };
+function renderTimeline(children: ReactNode) {
+  const client = new QueryClient({
+    defaultOptions: { queries: { retry: false } },
+  });
+  clients.push(client);
+  return render(
+    <QueryClientProvider client={client}>
+      <MemoryRouter>{children}</MemoryRouter>
+    </QueryClientProvider>,
+  );
 }
-const earlier = row("earlier", 1, "![Earlier](https://example.com/a.png)");
-const recent = row(
-  "recent",
-  10,
-  "![Inline](https://example.com/b.png)\n\n| Preview |\n| --- |\n| ![Table](https://example.com/a.png) |",
-);
 
-function Preview() {
-  return (
-    <TimelineImageGallery
-      timelineRows={[recent]}
+function lightboxImage() {
+  return within(screen.getByRole("dialog")).getByRole("img");
+}
+
+it("navigates the loaded page immediately without fetching older history, preserving duplicate URLs", () => {
+  const history = vi.spyOn(sdk.threads, "timeline");
+  renderTimeline(
+    <>
+      <MarkdownPreview content="![Outside](https://example.com/outside.png)" />
+      <ThreadTimelineRows
+        threadId="thread-1"
+        workspaceRootPath={undefined}
+        hasOlderTimelineRows
+        timelineRows={[
+          conversationRow({
+            id: "earlier",
+            text: "![Earlier](https://example.com/a.png)",
+            sourceSeqStart: 1,
+          }),
+          conversationRow({
+            id: "recent",
+            text: "![Inline](https://example.com/b.png)\n\n| Preview |\n| --- |\n| ![Table](https://example.com/a.png) |",
+            sourceSeqStart: 10,
+          }),
+        ]}
+      />
+    </>,
+  );
+  fireEvent.click(screen.getByRole("img", { name: "Table" }));
+  expect(screen.getByRole("status").textContent).toBe("3 / 3");
+  fireEvent.click(screen.getByRole("button", { name: "Next image" }));
+  expect(lightboxImage().getAttribute("alt")).toBe("Earlier");
+  fireEvent.keyDown(window, { key: "ArrowRight" });
+  expect(lightboxImage().getAttribute("alt")).toBe("Inline");
+  fireEvent.keyDown(window, { key: "ArrowLeft" });
+  expect(lightboxImage().getAttribute("alt")).toBe("Earlier");
+  fireEvent.click(screen.getByRole("button", { name: "Previous image" }));
+  expect(lightboxImage().getAttribute("alt")).toBe("Table");
+  expect(history).not.toHaveBeenCalled();
+});
+
+it("uses rendered footnote order and excludes unused definitions", () => {
+  render(
+    <TimelineImageGallery>
+      <MarkdownPreview
+        content={
+          "See note[^n].\n\n[^unused]: ![Unused](https://example.com/u.png)\n\n[^n]: ![Footnote](https://example.com/f.png)\n\n![Inline](https://example.com/i.png)"
+        }
+      />
+    </TimelineImageGallery>,
+  );
+  fireEvent.click(screen.getByRole("img", { name: "Inline" }));
+  expect(screen.getByRole("status").textContent).toBe("1 / 2");
+  fireEvent.click(screen.getByRole("button", { name: "Next image" }));
+  expect(lightboxImage().getAttribute("alt")).toBe("Footnote");
+  fireEvent.click(screen.getByRole("button", { name: "Next image" }));
+  expect(lightboxImage().getAttribute("alt")).toBe("Inline");
+});
+
+it("preserves occurrence identity across settled and streaming previews", () => {
+  renderTimeline(
+    <ThreadTimelineRows
+      threadId="thread-1"
+      threadRuntimeDisplayStatus="active"
+      workspaceRootPath={undefined}
+      timelineRows={[
+        conversationRow({
+          id: "streaming",
+          text: "![A](https://example.com/a.png)\n\n![B](https://example.com/a.png)\nStill streaming",
+        }),
+      ]}
+    />,
+  );
+  fireEvent.click(screen.getByRole("img", { name: "B" }));
+  expect(screen.getByRole("status").textContent).toBe("2 / 2");
+  fireEvent.click(screen.getByRole("button", { name: "Previous image" }));
+  expect(lightboxImage().getAttribute("alt")).toBe("A");
+});
+
+it("includes lazy turn details only while expanded, including during the collapse transition", async () => {
+  vi.spyOn(sdk.threads, "timelineTurnSummaryDetails").mockResolvedValue({
+    rows: [
+      conversationRow({
+        id: "nested",
+        text: "![Nested](https://example.com/n.png)",
+        sourceSeqStart: 11,
+      }),
+    ],
+    olderCursor: null,
+  });
+  const { container } = renderTimeline(
+    <ThreadTimelineRows
+      threadId="thread-1"
+      threadRuntimeDisplayStatus="idle"
+      workspaceRootPath={undefined}
+      timelineRows={[
+        turnRow({
+          id: "completed-turn",
+          sourceSeqStart: 10,
+          sourceSeqEnd: 12,
+          children: null,
+        }),
+        conversationRow({
+          id: "final",
+          text: "![Final](https://example.com/f.png)",
+          sourceSeqStart: 13,
+        }),
+      ]}
+    />,
+  );
+  const turn = container.querySelector(
+    '[data-timeline-row-id="completed-turn"]',
+  );
+  const toggle = turn?.querySelector("button[aria-expanded]");
+  if (!(toggle instanceof HTMLButtonElement)) {
+    throw new Error("Missing turn toggle");
+  }
+  if (toggle.getAttribute("aria-expanded") === "true") fireEvent.click(toggle);
+  fireEvent.click(screen.getByRole("img", { name: "Final" }));
+  expect(screen.queryByRole("button", { name: "Next image" })).toBeNull();
+  fireEvent.click(screen.getByRole("button", { name: "Close image preview" }));
+  fireEvent.click(toggle);
+  fireEvent.click(await screen.findByRole("img", { name: "Nested" }));
+  expect(screen.getByRole("status").textContent).toBe("1 / 2");
+  fireEvent.click(screen.getByRole("button", { name: "Next image" }));
+  expect(lightboxImage().getAttribute("alt")).toBe("Final");
+  fireEvent.click(screen.getByRole("button", { name: "Close image preview" }));
+  fireEvent.click(toggle);
+  fireEvent.click(screen.getByRole("img", { name: "Final" }));
+  expect(screen.queryByRole("button", { name: "Next image" })).toBeNull();
+  await waitFor(() =>
+    expect(screen.queryByRole("img", { name: "Nested" })).toBeNull(),
+  );
+});
+
+it("never includes images suppressed in ordinary worker messages", () => {
+  renderTimeline(
+    <ThreadTimelineRows
       threadId="thread-1"
       workspaceRootPath={undefined}
-      hasOlderTimelineRows
-    >
-      <InlineImageMessageContext.Provider value={recent.id}>
-        <MarkdownPreview content={recent.text} />
-      </InlineImageMessageContext.Provider>
-    </TimelineImageGallery>
+      timelineRows={[
+        conversationRow({
+          id: "worker-message",
+          role: "user",
+          initiator: "agent",
+          senderThreadId: "worker",
+          text: "![Suppressed](https://example.com/private.png)",
+          sourceSeqStart: 1,
+        }),
+        conversationRow({
+          id: "visible",
+          text: "![Visible](https://example.com/visible.png)",
+          sourceSeqStart: 2,
+        }),
+      ]}
+    />,
   );
-}
-
-it("navigates from a table through earlier history in chronological order, preserving duplicate URLs", async () => {
-  vi.mocked(sdk.threads.timeline)
-    .mockResolvedValueOnce(
-      makeThreadTimelineResponse({
-        rows: [recent],
-        timelinePage: {
-          olderCursor: { anchorId: "older", anchorSeq: 10 },
-          hasOlderRows: true,
-        },
-      }),
-    )
-    .mockResolvedValueOnce(makeThreadTimelineResponse({ rows: [earlier] }));
-  render(<Preview />);
-  fireEvent.click(screen.getByRole("img", { name: "Table" }));
-  const dialog = screen.getByRole("dialog", { name: "Timeline image preview" });
-  await waitFor(() =>
-    expect(screen.getByRole("status").textContent).toBe("3 / 3"),
-  );
-  expect(sdk.threads.timeline).toHaveBeenLastCalledWith(
-    expect.objectContaining({ beforeAnchorId: "older", beforeAnchorSeq: "10" }),
-  );
-  fireEvent.click(screen.getByRole("button", { name: "Next image" }));
-  expect(within(dialog).getByRole("img").getAttribute("alt")).toBe("Earlier");
-  fireEvent.keyDown(window, { key: "ArrowRight" });
-  expect(within(dialog).getByRole("img").getAttribute("alt")).toBe("Inline");
-  fireEvent.keyDown(window, { key: "ArrowLeft" });
-  expect(within(dialog).getByRole("img").getAttribute("alt")).toBe("Earlier");
-  fireEvent.click(screen.getByRole("button", { name: "Previous image" }));
-  expect(within(dialog).getByRole("img").getAttribute("alt")).toBe("Table");
-});
-
-it("cancels pending history on dismissal without reopening the lightbox", async () => {
-  let resolvePage: (page: ThreadTimelineResponse) => void = () => {};
-  vi.mocked(sdk.threads.timeline).mockImplementationOnce(
-    () =>
-      new Promise((resolve) => {
-        resolvePage = resolve;
-      }),
-  );
-  render(<Preview />);
-  fireEvent.click(screen.getByRole("img", { name: "Table" }));
-  expect(
-    screen.getByRole("button", { name: "Next image" }).hasAttribute("disabled"),
-  ).toBe(true);
-  const signal = vi.mocked(sdk.threads.timeline).mock.calls[0][0].signal;
-  fireEvent.click(screen.getByRole("button", { name: "Close image preview" }));
-  expect(signal?.aborted).toBe(true);
-  await act(async () =>
-    resolvePage(makeThreadTimelineResponse({ rows: [earlier, recent] })),
-  );
-  expect(screen.queryByRole("dialog")).toBeNull();
-});
-
-it("keeps dismissal and loaded-image navigation available when history fails", async () => {
-  vi.mocked(sdk.threads.timeline).mockRejectedValueOnce(new Error("offline"));
-  render(<Preview />);
-  fireEvent.click(screen.getByRole("img", { name: "Table" }));
-  await waitFor(() =>
-    expect(screen.getByRole("status").textContent).toContain(
-      "Earlier images unavailable",
-    ),
-  );
-  fireEvent.click(screen.getByRole("button", { name: "Previous image" }));
-  expect(
-    within(screen.getByRole("dialog")).getByRole("img").getAttribute("alt"),
-  ).toBe("Inline");
-  fireEvent.click(screen.getByRole("button", { name: "Close image preview" }));
-  expect(screen.queryByRole("dialog")).toBeNull();
+  expect(screen.queryByRole("img", { name: "Suppressed" })).toBeNull();
+  fireEvent.click(screen.getByRole("img", { name: "Visible" }));
+  expect(lightboxImage().getAttribute("alt")).toBe("Visible");
+  expect(screen.queryByRole("button", { name: "Next image" })).toBeNull();
 });
