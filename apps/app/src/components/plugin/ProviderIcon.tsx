@@ -32,6 +32,7 @@ class ProviderIconErrorBoundary extends Component<
 }
 
 export function ProviderIcon({
+  providerKind,
   provider,
   fallback = "Code",
   className,
@@ -42,13 +43,24 @@ export function ProviderIcon({
   const { id: providerId, logoUrl, icon } = provider;
   const glyph = typeof icon === "string" ? icon : icon?.glyph;
   const tint = provider.strings?.iconTint;
+  const providerKey = `${providerKind}:${providerId}`;
   const ancestors = useContext(ProviderIconAncestors);
   const slot = useSyncExternalStore(
     subscribePluginSlots,
-    () =>
-      getPluginSlotSnapshot().providerIcons.find(
-        (entry) => entry.providerId === providerId,
-      ),
+    () => {
+      const icons = getPluginSlotSnapshot().providerIcons;
+      return (
+        icons.find(
+          (entry) =>
+            entry.providerKind === providerKind &&
+            entry.providerId === providerId,
+        ) ??
+        icons.find(
+          (entry) =>
+            entry.providerKind === "all" && entry.providerId === providerId,
+        )
+      );
+    },
     () => undefined,
   );
   const image =
@@ -96,10 +108,10 @@ export function ProviderIcon({
     >
       {slot !== undefined &&
       CustomIcon !== undefined &&
-      !ancestors.includes(providerId) ? (
-        <ProviderIconAncestors.Provider value={[...ancestors, providerId]}>
+      !ancestors.includes(providerKey) ? (
+        <ProviderIconAncestors.Provider value={[...ancestors, providerKey]}>
           <ProviderIconErrorBoundary
-            key={`${slot.pluginId}:${slot.generation}:${providerId}`}
+            key={`${slot.pluginId}:${slot.generation}:${providerKey}`}
             fallback={declared}
           >
             <CustomIcon className="size-full" />

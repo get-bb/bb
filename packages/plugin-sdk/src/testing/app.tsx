@@ -852,9 +852,15 @@ const testPluginSdkApp = {
   experimental_Icon: ({ name, fallback, ...props }) => (
     <span {...props} data-icon={name} data-icon-fallback={fallback} />
   ),
-  experimental_ProviderIcon: ({ provider, fallback, ...props }) => (
+  experimental_ProviderIcon: ({
+    providerKind,
+    provider,
+    fallback,
+    ...props
+  }) => (
     <span
       {...props}
+      data-provider-kind={providerKind}
       data-provider-id={provider.id}
       data-provider-logo={provider.logoUrl ?? undefined}
       data-provider-glyph={

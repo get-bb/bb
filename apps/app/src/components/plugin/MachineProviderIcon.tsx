@@ -1,6 +1,4 @@
-import { Icon } from "@bb/shared-ui/icon";
-import { getProviderIconInfo } from "@/lib/provider-icon";
-import { pluginIconName } from "./PluginIcon";
+import { ProviderIcon } from "./ProviderIcon";
 
 export interface MachineProviderPresentation {
   id: string;
@@ -16,15 +14,12 @@ export function MachineProviderIcon({
   provider: MachineProviderPresentation;
   className?: string;
 }) {
-  const info = getProviderIconInfo("machine", provider.id, {
-    logoUrl: provider.logoUrl,
-    displayName: provider.displayName,
-    icon: { glyph: provider.icon },
-  });
-  const ProviderIcon = info?.icon;
-  return ProviderIcon === undefined ? (
-    <Icon name={pluginIconName(provider.icon)} className={className} />
-  ) : (
-    <ProviderIcon className={className} />
+  return (
+    <ProviderIcon
+      providerKind="machine"
+      provider={provider}
+      fallback="Zap"
+      className={className}
+    />
   );
 }

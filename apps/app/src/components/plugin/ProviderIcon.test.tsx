@@ -33,6 +33,7 @@ afterEach(() => {
 it("resolves slot, asset, registered glyph and fallback in order", () => {
   const view = render(
     <ProviderIcon
+      providerKind="agent"
       provider={{
         id: "acme",
         logoUrl: "/mark.svg",
@@ -53,6 +54,7 @@ it("resolves slot, asset, registered glyph and fallback in order", () => {
       component: () => <svg data-mark="glyph" />,
     });
     app.slots.experimental_providerIcon({
+      providerKind: "agent",
       providerId: "acme",
       icon: () => <Icon name="acme/mark" />,
     });
@@ -68,6 +70,7 @@ it("resolves slot, asset, registered glyph and fallback in order", () => {
   expect(view.container.querySelector("[data-provider-logo]")).not.toBeNull();
   view.rerender(
     <ProviderIcon
+      providerKind="agent"
       provider={{ id: "acme", icon: { glyph: "acme/mark" } }}
       fallback="Check"
     />,
@@ -79,7 +82,10 @@ it("resolves slot, asset, registered glyph and fallback in order", () => {
 
 it("accepts the environment provider string icon shape", () => {
   const view = render(
-    <ProviderIcon provider={{ id: "worktree", icon: "Check" }} />,
+    <ProviderIcon
+      providerKind="environment"
+      provider={{ id: "worktree", icon: "Check" }}
+    />,
   );
   expect(view.container.querySelector('[data-icon="Check"]')).not.toBeNull();
   expect(view.container.firstElementChild?.getAttribute("aria-hidden")).toBe(
@@ -94,8 +100,14 @@ it("remounts the same provider component on reload and restores fallback on unlo
     return <svg data-generation={generation} />;
   }
   const setup = (app: PluginAppBuilder) =>
-    app.slots.experimental_providerIcon({ providerId: "env", icon: Mark });
-  const view = render(<ProviderIcon provider={{ id: "env" }} />);
+    app.slots.experimental_providerIcon({
+      providerKind: "agent",
+      providerId: "env",
+      icon: Mark,
+    });
+  const view = render(
+    <ProviderIcon providerKind="agent" provider={{ id: "env" }} />,
+  );
   expect(view.container.querySelector('[data-icon="Code"]')).not.toBeNull();
   register(setup);
   expect(view.container.querySelector('[data-generation="1"]')).not.toBeNull();
@@ -108,10 +120,14 @@ it("remounts the same provider component on reload and restores fallback on unlo
 it("contains throwing overrides and recovers after reload", () => {
   vi.spyOn(console, "error").mockImplementation(() => {});
   const view = render(
-    <ProviderIcon provider={{ id: "acme", logoUrl: "/mark.svg" }} />,
+    <ProviderIcon
+      providerKind="agent"
+      provider={{ id: "acme", logoUrl: "/mark.svg" }}
+    />,
   );
   register((app) =>
     app.slots.experimental_providerIcon({
+      providerKind: "agent",
       providerId: "acme",
       icon: () => {
         throw new Error("broken artwork");
@@ -121,6 +137,7 @@ it("contains throwing overrides and recovers after reload", () => {
   expect(view.container.querySelector("[data-provider-logo]")).not.toBeNull();
   register((app) =>
     app.slots.experimental_providerIcon({
+      providerKind: "agent",
       providerId: "acme",
       icon: () => <svg data-recovered="" />,
     }),
@@ -131,19 +148,26 @@ it("contains throwing overrides and recovers after reload", () => {
 it("breaks recursive provider overrides at their declared artwork", () => {
   register((app) =>
     app.slots.experimental_providerIcon({
+      providerKind: "agent",
       providerId: "acme",
       icon: () => (
-        <ProviderIcon provider={{ id: "acme", icon: { glyph: "Check" } }} />
+        <ProviderIcon
+          providerKind="agent"
+          provider={{ id: "acme", icon: { glyph: "Check" } }}
+        />
       ),
     }),
   );
-  const view = render(<ProviderIcon provider={{ id: "acme" }} />);
+  const view = render(
+    <ProviderIcon providerKind="agent" provider={{ id: "acme" }} />,
+  );
   expect(view.container.querySelector('[data-icon="Check"]')).not.toBeNull();
 });
 
 it("escapes asset URLs and applies only valid theme tints", () => {
   const view = render(
     <ProviderIcon
+      providerKind="agent"
       provider={{
         id: "acme",
         logoUrl: '/mark".svg',
@@ -161,6 +185,7 @@ it("escapes asset URLs and applies only valid theme tints", () => {
   );
   view.rerender(
     <ProviderIcon
+      providerKind="agent"
       provider={{
         id: "acme",
         strings: { iconTint: { light: "url(evil)", dark: "red" } },
@@ -169,4 +194,27 @@ it("escapes asset URLs and applies only valid theme tints", () => {
     />,
   );
   expect(view.getByRole("img").style.color).toBe("");
+});
+
+it("allows a provider override to render another kind with the same id", () => {
+  register((app) => {
+    app.slots.experimental_providerIcon({
+      providerKind: "agent",
+      providerId: "shared",
+      icon: () => (
+        <ProviderIcon providerKind="machine" provider={{ id: "shared" }} />
+      ),
+    });
+    app.slots.experimental_providerIcon({
+      providerKind: "machine",
+      providerId: "shared",
+      icon: () => <svg data-cross-kind="machine" />,
+    });
+  });
+  const view = render(
+    <ProviderIcon providerKind="agent" provider={{ id: "shared" }} />,
+  );
+  expect(
+    view.container.querySelector('[data-cross-kind="machine"]'),
+  ).not.toBeNull();
 });

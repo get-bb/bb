@@ -1317,7 +1317,7 @@ export interface PluginCommandPaletteActionRegistration {
  * Provider logo assets use a currentColor mask. Inline components can also
  * render multiple colors and inherit the app's theme and sizing classes.
  *
- * The host passes only `className` (sizing plus the provider's color class);
+ * The host passes `className` for sizing; color inherits from its wrapper.
  * the component must render an inline SVG (or other inline markup) and must
  * not fetch. One registration per provider kind and id per plugin; when two
  * plugins claim the same pair the host keeps the first by plugin id and warns.
@@ -1669,17 +1669,19 @@ export interface ExperimentalIconProps {
   "aria-label"?: string;
 }
 
-/** Shared provider artwork without fetching provider metadata. */
+/** Shared agent, machine, or environment artwork without fetching metadata. */
 export interface ExperimentalProviderIconProps {
+  /** Keeps same-id agent, machine, and environment providers distinct. */
+  providerKind: PluginProviderIconRegistration["providerKind"];
   /**
-   * Existing agent or environment provider record. Reads id, logoUrl, icon and
+   * Existing agent, machine, or environment provider record. Reads id, logoUrl, icon and
    * strings.iconTint; other fields are ignored. An id-only record is sufficient
    * when only frontend registrations and fallback are needed. Does not fetch.
    */
   provider: {
     id: string;
     logoUrl?: string | null;
-    /** Agent providers use { glyph }; environment providers use a string. */
+    /** Agent providers use { glyph }; machine and environment providers use a string. */
     icon?: { glyph: string } | string | null;
     strings?: { iconTint?: { light: string; dark: string } | null } | null;
   };
@@ -2491,7 +2493,7 @@ export interface PluginSdkApp {
   experimental_Icon: ComponentType<ExperimentalIconProps>;
   /**
    * Render provider slot override, then its logo, then its glyph, then fallback.
-   * Pass a record from providers.list/useProviders or environment providers;
+   * Pass a record from agent, machine, or environment provider queries;
    * an id-only record resolves frontend registrations, without fetching metadata.
    * Updates on plugin load, reload and unload. Throwing or recursive overrides
    * fall back to declared artwork. Logo assets render as currentColor masks.

@@ -327,17 +327,18 @@ the next owner or built-in. A rejected setup preserves the previous generation.
 built-in `Zap`; throwing and recursive artwork is contained. Mounted icons update
 when plugins load, reload or unload.
 
-`experimental_ProviderIcon` accepts the existing agent or environment record as
-`provider`, plus optional `fallback` (default `Code`), `className`, `aria-label`,
-and `aria-hidden`. It reads `id`, `logoUrl`, `icon` (agent `{ glyph }` or environment
+`experimental_ProviderIcon` requires `providerKind` (`agent`, `machine`, or
+`environment`) and the existing provider record as `provider`, plus optional `fallback` (default `Code`), `className`, `aria-label`,
+and `aria-hidden`. It reads `id`, `logoUrl`, `icon` (agent `{ glyph }` or machine/environment
 string), and `strings.iconTint` without fetching. An id-only record resolves a
 frontend registration or fallback. For example:
 
 ```tsx
-<ProviderIcon provider={provider} fallback="Bot" className="size-4" />
+<ProviderIcon providerKind="agent" provider={provider} fallback="Bot" className="size-4" />
 ```
 
- Resolution is `app.slots.experimental_providerIcon` override, then
+ Resolution is the matching kind/id `app.slots.experimental_providerIcon` override,
+then a legacy unscoped override, then
 declared logo mask, then glyph through the shared app registry, then fallback.
 Invalid tints are ignored. Overrides update and remount per plugin generation;
 throwing or recursive overrides fall back to declared artwork. Without a label,

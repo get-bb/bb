@@ -25,6 +25,7 @@ export function CommentProviderAvatar({
         <Icon name="Bot" className="size-3.5" aria-hidden="true" />
       ) : (
         <ProviderIcon
+          providerKind="agent"
           provider={provider}
           fallback="Bot"
           className={hasArtwork ? "size-4" : "size-3.5"}

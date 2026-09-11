@@ -144,13 +144,15 @@ describe("getProviderIconInfo", () => {
   });
 
   it("renders a generic fallback for a provider known only by id", () => {
-    const info = getProviderIconInfo("codex");
+    const info = getProviderIconInfo("agent", "codex");
     const view = render(createElement(info.icon));
     expect(view.container.querySelector('[data-icon="Code"]')).not.toBeNull();
     act(() =>
       setPluginSlotRegistrations("provider-codex", {
         ...EMPTY_REGISTRATIONS,
-        providerIcons: [{ providerId: "codex", icon: PluginCodexIcon }],
+        providerIcons: [
+          { providerKind: "agent", providerId: "codex", icon: PluginCodexIcon },
+        ],
       }),
     );
     expect(
@@ -184,7 +186,7 @@ describe("getProviderIconInfo", () => {
     ).not.toBeNull();
     glyphView.unmount();
 
-    const missingInfo = getProviderIconInfo("echo-agent", {
+    const missingInfo = getProviderIconInfo("agent", "echo-agent", {
       logoUrl: null,
       icon: { glyph: "NoSuchGlyph" },
     });
@@ -208,7 +210,9 @@ describe("getProviderIconInfo", () => {
     ).not.toBeNull();
     bothView.unmount();
 
-    expect(getProviderIconInfo("echo-agent", { logoUrl: null })).toBeDefined();
+    expect(
+      getProviderIconInfo("agent", "echo-agent", { logoUrl: null }),
+    ).toBeDefined();
   });
 
   it("lets a plugin-registered component win, and falls back when it goes away", () => {
@@ -312,6 +316,6 @@ describe("getProviderIconInfo", () => {
     expect(byFamily.ariaLabel).toBe("ACP provider");
     familyView.unmount();
 
-    expect(getProviderIconInfo("acp-unregistered")).toBeDefined();
+    expect(getProviderIconInfo("agent", "acp-unregistered")).toBeDefined();
   });
 });

@@ -9,6 +9,11 @@ export function EnvironmentProviderIcon({
   className?: string;
 }) {
   return (
-    <ProviderIcon provider={provider} fallback="Zap" className={className} />
+    <ProviderIcon
+      providerKind="environment"
+      provider={provider}
+      fallback="Zap"
+      className={className}
+    />
   );
 }

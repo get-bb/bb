@@ -24,6 +24,7 @@ export function getProviderIconInfo(
   source: ProviderIconSource | null = null,
 ): ProviderIconInfo {
   const cacheKey = JSON.stringify([
+    providerKind,
     providerId,
     source?.logoUrl,
     source?.icon?.glyph,
@@ -34,6 +35,7 @@ export function getProviderIconInfo(
       className,
     }) =>
       createElement(ProviderIcon, {
+        providerKind,
         provider: {
           id: providerId,
           logoUrl: source?.logoUrl,

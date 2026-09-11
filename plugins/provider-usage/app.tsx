@@ -462,6 +462,7 @@ function ProviderUsageStatus({
                   onKeyDown={(event) => handleTabKeyDown(event, index)}
                 >
                   <ProviderIcon
+                    providerKind="agent"
                     provider={provider}
                     fallback="Bot"
                     className="size-4"
