@@ -64,6 +64,9 @@ const COMPACTION_TURN_DELAY_MS = Number(
 const COMPACTION_MODE = process.env.FAKE_CODEX_COMPACTION_MODE ?? "turn";
 
 const LATE_TURN_START_PROMPT_TEXT = "/late-start";
+
+const LATE_START_INTERRUPTIBLE_PROMPT_TEXT = "/late-start-interruptible";
+const lateStartTurnIdsByThreadId = new Map();
 const LATE_TURN_START_DELAY_MS = 350;
 
 const RESPOND_THEN_EXIT_PROMPT_TEXT = "/respond-then-exit";
@@ -502,6 +505,23 @@ async function handleRequest(message) {
         );
         return;
       }
+      if (
+        firstInputText(params.input) === LATE_START_INTERRUPTIBLE_PROMPT_TEXT
+      ) {
+        turnCounter += 1;
+        const turnId = `turn-fx-${turnCounter}`;
+        lateStartTurnIdsByThreadId.set(params.threadId, turnId);
+        respond(id, { turn: { id: turnId, status: "inProgress" } });
+        setTimeout(() => {
+          lateStartTurnIdsByThreadId.delete(params.threadId);
+          openTurnIdsByThreadId.set(params.threadId, turnId);
+          notify("turn/started", {
+            threadId: params.threadId,
+            turn: { id: turnId, status: "inProgress" },
+          });
+        }, LATE_TURN_START_DELAY_MS);
+        return;
+      }
       if (firstInputText(params.input) === RESPOND_THEN_EXIT_PROMPT_TEXT) {
         turnCounter += 1;
         const turnId = `turn-fx-${turnCounter}`;
@@ -550,6 +570,10 @@ async function handleRequest(message) {
       respond(id, {});
       return;
     case "turn/interrupt": {
+      if (lateStartTurnIdsByThreadId.has(params.threadId)) {
+        respondError(id, -32600, "no active turn to interrupt");
+        return;
+      }
       const pendingTurnId = pendingStartTurnIdsByThreadId.get(params.threadId);
       if (pendingTurnId !== undefined) {
         pendingStartTurnIdsByThreadId.delete(params.threadId);
