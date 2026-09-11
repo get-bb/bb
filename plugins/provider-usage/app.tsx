@@ -91,11 +91,13 @@ function refreshUsage({
   force,
   machineIds,
   maxAgeMs,
+  providerId = null,
   signal,
 }: {
   force: boolean;
   machineIds: string[] | null;
   maxAgeMs: number;
+  providerId?: string | null;
   signal?: AbortSignal;
 }): Promise<void> {
   activeRefreshCount += 1;
@@ -107,7 +109,7 @@ function refreshUsage({
         {
           method: "POST",
           headers: { "content-type": "application/json" },
-          body: JSON.stringify({ force, machineIds, maxAgeMs }),
+          body: JSON.stringify({ force, machineIds, maxAgeMs, providerId }),
           signal:
             signal === undefined
               ? AbortSignal.timeout(60_000)
@@ -412,14 +414,27 @@ function ProviderUsageStatus({
     null;
   const panelId = useId();
   const activeMachineId = activeMachine?.id ?? null;
+  const activeProviderId = activeProvider?.id ?? null;
 
   useEffect(() => {
-    void refreshUsage({
-      force: false,
-      machineIds: activeMachineId === null ? null : [activeMachineId],
-      maxAgeMs: CARD_MAX_AGE_MS,
-    });
-  }, [activeMachineId]);
+    if (activeMachineId === null || activeProviderId === null) return;
+    const refresh = () => {
+      if (document.visibilityState === "hidden") return;
+      void refreshUsage({
+        force: false,
+        machineIds: [activeMachineId],
+        providerId: activeProviderId,
+        maxAgeMs: CARD_MAX_AGE_MS,
+      });
+    };
+    refresh();
+    const timer = window.setInterval(refresh, CARD_MAX_AGE_MS);
+    window.addEventListener("focus", refresh);
+    return () => {
+      window.clearInterval(timer);
+      window.removeEventListener("focus", refresh);
+    };
+  }, [activeMachineId, activeProviderId]);
 
   const selectMachine = useCallback((machineId: string) => {
     lastMachineId = machineId;
@@ -546,6 +561,7 @@ function ProviderUsageStatus({
               force: true,
               machineIds: activeMachineId === null ? null : [activeMachineId],
               maxAgeMs: 0,
+              providerId: activeProvider?.id ?? null,
             })
           }
         >
@@ -639,6 +655,15 @@ function ProviderUsageStatus({
                         {activeMachine.displayName} is offline. Usage will
                         refresh when it reconnects.
                       </p>
+                    ) : account.usage === null && snapshot.isRefreshing ? (
+                      <p className="text-xs text-muted-foreground">
+                        Loading usage…
+                      </p>
+                    ) : account.usage === null &&
+                      activeMachine.error !== null ? (
+                      <p className="text-xs text-muted-foreground">
+                        Couldn’t load this account’s usage.
+                      </p>
                     ) : (
                       <ProviderUsageBody provider={account} />
                     )}
@@ -659,7 +684,10 @@ function ProviderUsageStatus({
             )}
           >
             <span className="min-w-0 flex-1">
-              {snapshot.data === null || activeMachine?.providers.length === 0
+              {snapshot.data === null ||
+              !activeProvider?.accounts.some(
+                (account) => account.usage !== null,
+              )
                 ? "Couldn’t load usage."
                 : "Couldn’t refresh. Showing the last update."}
             </span>
@@ -674,6 +702,7 @@ function ProviderUsageStatus({
                   machineIds:
                     activeMachineId === null ? null : [activeMachineId],
                   maxAgeMs: 0,
+                  providerId: activeProvider?.id ?? null,
                 })
               }
             >

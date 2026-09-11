@@ -1,3 +1,4 @@
+import { defineRpcContract } from "@get-bb/plugin-sdk";
 import { z } from "zod";
 
 const accountFields = {
@@ -41,47 +42,69 @@ const usageSchema = z.discriminatedUnion("status", [
     message: z.string(),
   }),
 ]);
-export const usageSnapshotSchema = z.object({
+export const usageResourceSchema = z.object({
+  id: z
+    .string()
+    .min(1)
+    .describe("Stable resource ID within this source plugin."),
+  providerId: z.string().min(1),
+  label: z.string().min(1),
+  scope: z.discriminatedUnion("kind", [
+    z.object({ kind: z.literal("shared") }),
+    z.object({
+      kind: z.literal("host"),
+      hostId: z.string().min(1),
+      hostName: z.string().min(1),
+    }),
+  ]),
+});
+export const usageResourceListSchema = z.object({
   label: z
     .string()
     .min(1)
     .optional()
     .describe(
-      "Declares a shared-usage group, including when resources is empty. Omit for host-only sources. Shared resources without this label use the plugin display name; host groups use machine names.",
+      "Declares a shared group even when empty. Host-only sources omit it; machine groups use host names.",
     ),
-  resources: z.array(
-    z.object({
-      id: z
-        .string()
-        .min(1)
-        .describe("Stable resource ID within the reporting plugin."),
-      providerId: z.string().min(1),
-      label: z.string().min(1),
-      scope: z.discriminatedUnion("kind", [
-        z.object({ kind: z.literal("shared") }),
-        z.object({
-          kind: z.literal("host"),
-          hostId: z.string().min(1),
-          hostName: z.string().min(1),
-        }),
-      ]),
-      observedAt: z
-        .number()
-        .int()
-        .nonnegative()
-        .nullable()
-        .describe(
-          "Measurement time in epoch milliseconds; null if never observed.",
-        ),
-      usage: usageSchema,
-    }),
-  ),
+  resources: z.array(usageResourceSchema),
 });
-export type UsageSnapshot = z.infer<typeof usageSnapshotSchema>;
-export const usageInputSchema = z.object({
+export const usageMeasurementSchema = z.object({
+  observedAt: z
+    .number()
+    .int()
+    .nonnegative()
+    .nullable()
+    .describe(
+      "Last successful measurement time in epoch milliseconds; null if never observed.",
+    ),
+  usage: usageSchema,
+});
+export const usageListInputSchema = z.object({});
+export const usageFetchInputSchema = z.object({
+  resourceId: z.string().min(1),
   refresh: z
     .boolean()
     .describe(
-      "Request fresh collection and wait for the attempt; false permits cached observations.",
+      "False permits a cached measurement but still returns actual usage. True requests a fresh collection attempt for this resource only.",
     ),
+});
+export type UsageResourceList = z.infer<typeof usageResourceListSchema>;
+export type UsageMeasurement = z.infer<typeof usageMeasurementSchema>;
+export type UsageResource = z.infer<typeof usageResourceSchema> &
+  UsageMeasurement;
+export const usageListMethod = "provider-usage.v1.listResources";
+export const usageFetchMethod = "provider-usage.v1.getResource";
+export const usageSourceRpcContract = defineRpcContract({
+  [usageListMethod]: {
+    input: usageListInputSchema,
+    output: usageResourceListSchema,
+    experimental_description:
+      "Cheap complete inventory of resources owned by this source. Reads local metadata only; never refreshes quota or contacts providers. IDs are stable and source-local. Resource order is display order. Shared label preserves empty groups. Resources may disappear between list and fetch.",
+  },
+  [usageFetchMethod]: {
+    input: usageFetchInputSchema,
+    output: usageMeasurementSchema,
+    experimental_description:
+      "Returns actual usage for exactly one listed resource, even when refresh is false. False permits cached observations; true requests a fresh attempt. Never collects other resources as a side effect. A removed resource fails the RPC; consumers relist. Per-account authentication and collection failures are usage states. observedAt is the last successful measurement time.",
+  },
 });

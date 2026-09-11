@@ -1,4 +1,9 @@
-import { usageSnapshotSchema } from "./usage-contract.js";
+import {
+  usageMeasurementSchema,
+  usageResourceListSchema,
+  usageListMethod,
+  usageFetchMethod,
+} from "./usage-contract.js";
 import fs from "node:fs/promises";
 import http, { type IncomingMessage, type ServerResponse } from "node:http";
 import path from "node:path";
@@ -5820,29 +5825,35 @@ it("publishes pooled usage without a display plugin and does not invent unobserv
   });
   cleanups.push(upstream.close);
   const fixture = await createFixture({ upstreamUrl: upstream.url });
-  const result = usageSnapshotSchema.parse(
-    await fixture.host.harness.behavior.callRpc("provider-usage.v1.get", {
-      refresh: false,
-    }),
+  const inventory = usageResourceListSchema.parse(
+    await fixture.host.harness.behavior.callRpc(usageListMethod, {}),
   );
-  expect(result.label).toBe("Account Pooler");
-  expect(result.resources).toEqual([
+  expect(inventory.label).toBe("Account Pooler");
+  expect(inventory.resources).toEqual([
     expect.objectContaining({
       id: fixture.account.id,
       providerId: "claude-code",
       scope: { kind: "shared" },
-      observedAt: null,
-      usage: expect.objectContaining({
-        status: "error",
-        message: "Usage has not been observed for this account.",
-      }),
     }),
   ]);
+  const result = usageMeasurementSchema.parse(
+    await fixture.host.harness.behavior.callRpc(usageFetchMethod, {
+      resourceId: fixture.account.id,
+      refresh: false,
+    }),
+  );
+  expect(result).toMatchObject({
+    observedAt: null,
+    usage: {
+      status: "error",
+      message: "Usage has not been observed for this account.",
+    },
+  });
   expect(
     fixture.host.harness.registrations.experimental_publishedRpcMethods.map(
       (entry) => entry.method,
     ),
-  ).toEqual(["provider-usage.v1.get"]);
+  ).toEqual([usageListMethod, usageFetchMethod]);
 });
 
 it("publishes an empty shared usage group before any accounts or settings are configured", async () => {
@@ -5861,12 +5872,16 @@ it("publishes an empty shared usage group before any accounts or settings are co
       host.harness.registrations.experimental_publishedRpcMethods.map(
         (entry) => entry.method,
       ),
-    ).toContain("provider-usage.v1.get");
-    for (const refresh of [false, true]) {
-      await expect(
-        host.harness.behavior.callRpc("provider-usage.v1.get", { refresh }),
-      ).resolves.toEqual({ label: "Account Pooler", resources: [] });
-    }
+    ).toContain(usageListMethod);
+    await expect(
+      host.harness.behavior.callRpc(usageListMethod, {}),
+    ).resolves.toEqual({ label: "Account Pooler", resources: [] });
+    await expect(
+      host.harness.behavior.callRpc(usageFetchMethod, {
+        resourceId: "removed",
+        refresh: false,
+      }),
+    ).rejects.toThrow("no longer exists");
     expect(fetch).not.toHaveBeenCalled();
   } finally {
     await host.harness.lifecycle.dispose();

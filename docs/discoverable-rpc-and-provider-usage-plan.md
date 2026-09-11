@@ -4,13 +4,12 @@ Status: prototype implemented for discoverable RPC, Account Pooler, Codex, Claud
 
 ## Prototype verification
 
-- Relevant typechecks passed across the server, app, CLI, SDK, Plugin SDK, and three source plugins (13 Turbo tasks).
-- Focused tests passed: 3 RPC publication tests, 10 server SDK tests, 1 SDK discovery/call test, 2 provider-source tests, 141 Account Pooler server tests, and 13 settings usage tests.
-- The isolated dev server advertises all three implementations with registration/method descriptions and JSON Schemas. CLI inspection and invocation passed.
-- Desktop and 390-pixel mobile browser checks passed, including refresh and no horizontal overflow. The fresh dev store has no pooled accounts; live host usage and authentication-error states were exercised.
-- The prototype trusts the Standard JSON Schema exporter for semantic fidelity; exhaustive refinement/transform fidelity auditing remains a stabilization task. `bb settings usage` remains on its previous collection path. Provider Usage uses discovery through its existing `getUsage` display RPC; call it with `bb plugin rpc call provider-usage getUsage`. Shared sources appear once in the existing sidebar picker and are selected by default; explicit machine choices win. The sidebar groups accounts under provider tabs with provider branding and compact usage rows. Source adapters preserve account labels and normalize window and plan names.
-- The repository verification inventory reports an existing unmapped `browser` CLI family; this prototype does not rewrite that unrelated baseline.
-
+- Relevant typechecks pass for the app and all four plugins. Current focused/full package suites pass: 16 settings tests, 10 Provider Usage tests, 276 Account Pooler tests, 269 Codex tests, and 349 Claude Code tests.
+- Source tests prove that listing does not collect quota and fetching addresses one resource, including cached reads, forced reads, offline hosts, and removed resource IDs.
+- Display tests prove inventory-only discovery, selected provider/account fetching, cached failure preservation, empty groups, resource removal, and tab/source changes. Settings waits for default shared-source discovery before fetching a fallback host.
+- Live CLI discovery advertises both methods from all three sources. Browser request traces show only pool Codex on first open, Claude on tab selection, and four selected pool resources on settings. Existing configured accounts were retained.
+- `pnpm start:worktree` serves the review instance. Provider Usage background reconciliation lists metadata only; its open card refreshes only the active provider’s resources.
+- JSON Schema exporter fidelity remains an experimental stabilization audit. The unrelated verification inventory still reports an unmapped `browser` CLI family.
 
 ## Outcome
 
@@ -26,16 +25,22 @@ Keep the existing `defineRpcContract` shape, method addressing, and calls. Add o
 
 ```ts
 const usageContract = defineRpcContract({
-  "provider-usage.v1.get": {
+  "provider-usage.v1.listResources": {
     experimental_description:
-      "Returns a complete usage snapshot. refresh=true requests fresh collection and waits for the attempt; individual resource failures are included in the result.",
-    input: usageInputSchema,
-    output: usageSnapshotSchema,
+      "Cheap ordered resource inventory; reads local metadata only and never collects quota.",
+    input: usageListInputSchema,
+    output: usageResourceListSchema,
+  },
+  "provider-usage.v1.getResource": {
+    input: usageFetchInputSchema,
+    output: usageMeasurementSchema,
+    experimental_description: "Fetch one resource’s actual usage; refresh=false permits cache, refresh=true requests a fresh attempt for this resource only.",
   },
 });
 
 bb.rpc.register(usageContract, {
-  "provider-usage.v1.get": getUsage,
+  "provider-usage.v1.listResources": listResources,
+  "provider-usage.v1.getResource": getResource,
 }, {
   experimental_discoverable: true,
   experimental_description:
@@ -51,7 +56,7 @@ Add a proposed SDK query:
 
 ```ts
 const sources = await bb.sdk.plugins.experimental_discoverRpc({
-  method: "provider-usage.v1.get",
+  method: "provider-usage.v1.listResources",
 });
 ```
 
@@ -61,10 +66,10 @@ Support optional `pluginId` and exact `method` filters; omitting both lists publ
 {
   pluginId: "account-pool",
   displayName: "Account Pooler",
-  method: "provider-usage.v1.get",
+  method: "provider-usage.v1.listResources",
   registrationDescription: "Usage windows for accounts managed by Account Pooler.",
   methodDescription:
-    "Returns a complete usage snapshot. refresh=true requests fresh collection and waits for the attempt; individual resource failures are included in the result.",
+    "Cheap ordered resource inventory; reads local metadata only and never collects quota.",
   inputSchema: publishedInputJsonSchema,
   outputSchema: publishedOutputJsonSchema,
 }
@@ -80,9 +85,9 @@ Consumers retain their own expected schemas and use the existing call API:
 const results = await Promise.allSettled(
   sources.map((source) => bb.sdk.plugins.callRpc({
     pluginId: source.pluginId,
-    method: "provider-usage.v1.get",
-    input: { refresh: false },
-    outputSchema: usageSnapshotSchema,
+    method: "provider-usage.v1.listResources",
+    input: {},
+    outputSchema: usageResourceListSchema,
   })),
 );
 ```
@@ -111,7 +116,7 @@ Runtime descriptors have size limits and are generated at registration, not on e
 - Keep duplicate method rejection within a plugin. Different plugins may publish the same method name.
 - Preserve existing authentication for inspection and calls. Never include credentials, settings values, or handler results in descriptors.
 - Discovery is a snapshot. A source may unload before invocation; callers handle individual failures. Do not retry arbitrary RPC calls automatically.
-- Preserve plugin-and-method addressing. Optional versioning uses names such as `provider-usage.v1.get` and `provider-usage.v2.get`. Both can coexist.
+- Preserve plugin-and-method addressing. Optional versioning uses names such as `provider-usage.v1.listResources` and `provider-usage.v2.listResources`. Both can coexist.
 - A method-name match does not prove compatibility. Breaking schema or behavioral changes require a new method name by convention; compatible changes retain the name.
 - No runtime dependency on the plugin that originally authored the convention is introduced.
 
@@ -121,9 +126,9 @@ Add discoverable CLI surfaces backed by the same SDK query:
 
 ```sh
 bb plugin rpc list --json
-bb plugin rpc list --method provider-usage.v1.get --json
+bb plugin rpc list --method provider-usage.v1.listResources --json
 bb plugin rpc inspect account-pool --json
-bb plugin rpc inspect account-pool --method provider-usage.v1.get --json
+bb plugin rpc inspect account-pool --method provider-usage.v1.listResources --json
 ```
 
 Listing presents identities and method names; inspection includes registration descriptions, method descriptions, and published schemas with field descriptions preserved. JSON output is sufficient for copying or generating local schema definitions. TypeScript generation is outside the initial scope because JSON Schema cannot reconstruct arbitrary validator source.
@@ -132,15 +137,14 @@ A consumer author inspects a producer's source or CLI output, copies the relevan
 
 ## Usage pilot
 
-Use `provider-usage.v1.get` as the shared method. Provider Usage documents the canonical convention in its source; each producer and alternative consumer owns a local definition. Producers publish its calling semantics in the method description and describe their own resource scope in the registration description.
+Use two methods defined canonically by Provider Usage and copied locally by each producer and independent consumer:
 
-Request: `{ refresh: boolean }`.
+- `provider-usage.v1.listResources({})` returns `{ label?, resources: [{ id, providerId, label, scope }] }`. This is cheap local inventory; it never refreshes usage or contacts providers. The optional label declares an empty shared group. Host-only sources omit it. List order is display order.
+- `provider-usage.v1.getResource({ resourceId, refresh })` returns `{ observedAt, usage }` for exactly one listed resource. False permits cached measurements but still returns actual usage. True requests a fresh collection attempt for that resource only. A removed resource fails explicitly, and consumers relist.
 
-Response: a complete snapshot of the resources owned by that implementation, plus an optional `label` for the shared-usage group. Presence of this label declares the shared group even when its resources are empty; host-only sources omit it. An empty unlabeled snapshot declares no shared group. For nonempty shared resources, omission falls back to discovery’s plugin display name. The label is independent of the plugin manifest name. Machine groups keep the host name. Each resource includes a stable source-local ID, provider ID, display label, host or shared scope, observation timestamp, and a discriminated collection result. Successful results contain individually identified windows with utilization, reset time, optional cost information, and model applicability. Authentication failures, collection failures, and unobserved data must be explicit states rather than zero usage. Finalize and copy one concrete schema before implementing adapters.
+The sidebar lists all sources to construct its source picker and provider tabs, then fetches only accounts belonging to the selected provider and source/machine. Background reconciliation lists metadata only. Unopened tabs have unknown usage rather than a fabricated healthy badge; retained measurements may still supply badges. Settings fetches the resources in its selected pool or machine. Both keep independent per-resource caches, bounded collection concurrency, stale-data notices, and graceful failures.
 
-Use the same milliseconds-based timestamp convention throughout. An observation timestamp describes the underlying measurement, not the time the RPC was called. If stale values are retained after a collection failure, preserve their original timestamp and expose the failed refresh separately.
-
-`refresh: false` permits the source's cached measurements. `refresh: true` requests fresh collection and waits for the attempt; collection failures must remain visible. Coalesce overlapping refreshes in sources. The display owns its own fetch cache, but does not relabel cached measurements as freshly observed.
+Account Pooler lists account metadata without refreshing, then calls its existing account-specific collection for fetch. Local provider sources list hosts without collecting quota and fetch only the requested host/provider pair. No display plugin is required for source registration or collection.
 
 ### Source implementations
 
@@ -160,7 +164,7 @@ An alternative display uses the same discovery query and its own copied response
 
 Preserve `bb.sdk.system.usageLimits()` and `bb settings usage --json` as existing host-provider maintenance views during the first rollout. Do not silently change their response shape or use them as the unified view.
 
-Expose Provider Usage's unified display snapshot through its RPC and a plugin-owned CLI command, proposed as `bb provider-usage status [--refresh] [--json]`. Document the distinction. Consumers needing replacement-independent data can discover and call the source methods directly. Provider Usage must stop collecting the same host usage independently once provider plugins supply it through discovery.
+Provider Usage exposes its display snapshot through `bb plugin rpc call provider-usage getUsage --input-file <request.json> --json`. The private display request includes `force`, nullable `machineIds`, nullable `providerId`, and `maxAgeMs`; null providerId lists metadata without collecting usage. Source fetch requests use a JSON file containing `resourceId` and `refresh`. Consumers needing replacement-independent data can discover and call the source methods directly. Provider Usage must stop collecting the same host usage independently once provider plugins supply it through discovery.
 
 ## Delivery sequence
 

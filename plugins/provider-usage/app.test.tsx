@@ -225,6 +225,7 @@ describe("provider usage footer disclosure", () => {
             force: false,
             machineIds: null,
             maxAgeMs: 30 * 60_000,
+            providerId: null,
           }),
         }),
       ),
@@ -313,6 +314,7 @@ describe("provider usage footer disclosure", () => {
           force: true,
           machineIds: ["host-intel"],
           maxAgeMs: 0,
+          providerId: null,
         }),
       }),
     );
@@ -331,6 +333,7 @@ describe("provider usage footer disclosure", () => {
           force: false,
           machineIds: null,
           maxAgeMs: 5 * 60_000,
+          providerId: null,
         }),
       }),
     );
