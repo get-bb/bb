@@ -26,16 +26,17 @@
     "test": "vitest run --config vitest.config.ts",
     "smoke": "tsx --tsconfig tsconfig.smoke.json --conditions=source smoke.ts",
     "smoke:install": "tsx --tsconfig tsconfig.smoke.json --conditions=source smoke-install.ts",
-    "prepare:bundled": "cd ../.. && node --conditions=source --import tsx apps/server/scripts/copy-builtin-plugins.ts --plugin browser-automation"
+    "prepare:bundled": "bb-plugin-build prepare-bundled"
   },
   "dependencies": {
     "zod": "^4.3.6"
   },
   "devDependencies": {
+    "@bb/plugin-build": "workspace:*",
     "@get-bb/plugin-sdk": "workspace:*",
     "@types/node": "^22.0.0",
+    "tsx": "^4.21.0",
     "typescript": "npm:@typescript/typescript6@^6.0.2",
-    "vitest": "^4.1.1",
-    "tsx": "^4.21.0"
+    "vitest": "^4.1.1"
   }
 }

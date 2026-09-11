@@ -14,8 +14,9 @@ describe("bundled plugin task graph", () => {
         readFileSync(resolve(root, "plugins", name, "package.json"), "utf8"),
       );
       expect(manifest.scripts["prepare:bundled"]).toBe(
-        `cd ../.. && node --conditions=source --import tsx apps/server/scripts/copy-builtin-plugins.ts --plugin ${name}`,
+        "bb-plugin-build prepare-bundled",
       );
+      expect(manifest.devDependencies["@bb/plugin-build"]).toBe("workspace:*");
       return manifest.name;
     });
     const bundle = JSON.parse(
@@ -33,11 +34,7 @@ describe("bundled plugin task graph", () => {
     expect(assembly.outputs).toEqual(["dist/**"]);
     const plugin = turbo.tasks["prepare:bundled"];
     expect(plugin.outputs).toEqual([".bundled-runtime/**"]);
-    expect(plugin.dependsOn).toEqual([
-      "topo",
-      "@get-bb/plugin-sdk#build",
-      "@bb/plugin-build#topo",
-    ]);
+    expect(plugin.dependsOn).toEqual(["topo", "^build"]);
     expect(plugin.inputs).toContain("!.bundled-runtime/**");
     expect(plugin.inputs).toContain("!dist/**");
     expect(

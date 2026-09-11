@@ -21,7 +21,7 @@ await cp(
 );
 for (const { name } of BUNDLED_PLUGINS) {
   await cp(
-    resolve(root, "plugins", name, ".bundled-runtime", name),
+    resolve(root, "plugins", name, ".bundled-runtime"),
     resolve(output, name),
     { recursive: true },
   );

@@ -44,9 +44,10 @@
     "build": "node --conditions=source --import tsx ../../scripts/build-official-plugins.mjs docs",
     "typecheck": "tsc --noEmit",
     "test": "vitest run --config vitest.config.ts",
-    "prepare:bundled": "cd ../.. && node --conditions=source --import tsx apps/server/scripts/copy-builtin-plugins.ts --plugin docs"
+    "prepare:bundled": "bb-plugin-build prepare-bundled"
   },
   "devDependencies": {
+    "@bb/plugin-build": "workspace:*",
     "@get-bb/plugin-sdk": "workspace:*",
     "@radix-ui/react-dropdown-menu": "^2.1.20",
     "@testing-library/react": "^16.3.2",

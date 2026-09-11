@@ -381,17 +381,23 @@ installed `bb` commands or public plugin SDK APIs. The source launcher also acce
 
 Turbo output ownership is separate: server `build` owns `apps/server/dist`,
 `@bb/bundled-plugins#build` assembles `packages/bundled-plugins/dist` from 33 independently
-cached `<plugin-package>#prepare:bundled` tasks. Each plugin task owns only its
+cached `<plugin-package>#prepare:bundled` tasks. Each plugin declares
+`@bb/plugin-build` as a workspace dev dependency and runs
+`bb-plugin-build prepare-bundled` from its own directory. Turbo builds the shared
+executable through `^build` before preparation. The executable bundles the plugin
+without importing server policy or requiring a TypeScript loader. Each plugin
+task owns only its
 `plugins/<name>/.bundled-runtime` directory; regular plugin builds still own
 `plugins/<name>/dist`. Changing one plugin rebuilds its preparation and final
 assembly, while unchanged plugins restore from cache. Shared SDK/toolchain
-changes deliberately invalidate every plugin. The assembly package declares its plugin dependencies in `package.json`; Turbo
+changes deliberately invalidate every plugin. The assembly package declares its
+plugin dependencies in `package.json`; Turbo
 uses `^prepare:bundled` to build them. Adding a bundled plugin requires its
 package script and workspace dependency, checked against the runtime registry
 by the startup test suite. Shared sources are hashed through workspace `topo`
 dependencies rather than repository-wide source globs.
-Bundled preparation uses temporary source copies
-and never writes those individual output trees. `bb-app#build` depends on and
+Bundled preparation uses temporary source copies and never writes the regular
+plugin `dist` directories. `bb-app#build` depends on and
 copies prepared plugins into its own package output. The plugin task hashes
 plugin sources, manifests, branding, skills, staging scripts/entries, lockfile,
 patches, workspace configuration, SDK/build-tool sources and versions, and theme;

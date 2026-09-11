@@ -14,7 +14,8 @@
     "clean": "rimraf tsconfig.tsbuildinfo",
     "test": "vitest run --config vitest.config.ts",
     "generate": "node ./scripts/generate-plugin-theme.mjs && node ./scripts/generate-runtime-export-manifest.mjs",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "build": "node ../../scripts/build-node-entry.mjs src/cli.ts dist/cli.js --clean-dist"
   },
   "dependencies": {
     "@bb/domain": "workspace:*",
@@ -32,5 +33,8 @@
     "typescript": "npm:@typescript/typescript6@^6.0.2",
     "typescript-7": "npm:typescript@^7.0.2",
     "vitest": "^4.1.1"
+  },
+  "bin": {
+    "bb-plugin-build": "./bin/bb-plugin-build.mjs"
   }
 }

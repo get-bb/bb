@@ -22,10 +22,11 @@
   "scripts": {
     "test": "vitest run --config vitest.config.ts",
     "typecheck": "tsc --noEmit",
-    "prepare:bundled": "cd ../.. && node --conditions=source --import tsx apps/server/scripts/copy-builtin-plugins.ts --plugin provider-claude-code"
+    "prepare:bundled": "bb-plugin-build prepare-bundled"
   },
   "devDependencies": {
     "@bb/domain": "workspace:*",
+    "@bb/plugin-build": "workspace:*",
     "@bb/provider-bridge-protocol": "workspace:*",
     "@types/node": "^22.0.0",
     "typescript": "npm:@typescript/typescript6@^6.0.2",

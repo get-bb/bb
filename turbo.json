@@ -145,21 +145,19 @@
         "$TURBO_ROOT$/turbo.json"
       ]
     },
-    "prepare:bundled": {
-      "dependsOn": [
-        "topo",
-        "@get-bb/plugin-sdk#build",
-        "@bb/plugin-build#topo"
-      ],
+    "@bb/plugin-build#build": {
+      "dependsOn": ["topo"],
       "inputs": [
         "$TURBO_DEFAULT$",
-        "!dist/**",
-        "!.bundled-runtime/**",
-        "$TURBO_ROOT$/apps/server/scripts/copy-builtin-plugins.ts",
-        "$TURBO_ROOT$/apps/server/src/services/plugins/builtin-registry.ts",
-        "$TURBO_ROOT$/apps/server/src/services/plugin-catalog/bundled-marketplace-paths.ts",
+        "$TURBO_ROOT$/scripts/build-utils.mjs",
+        "$TURBO_ROOT$/scripts/build-node-entry.mjs",
         "$TURBO_ROOT$/packages/bb-app/package.json"
       ],
+      "outputs": ["dist/**"]
+    },
+    "prepare:bundled": {
+      "dependsOn": ["topo", "^build"],
+      "inputs": ["$TURBO_DEFAULT$", "!dist/**", "!.bundled-runtime/**"],
       "outputs": [".bundled-runtime/**"]
     },
     "@bb/bundled-plugins#build": {
