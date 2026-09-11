@@ -12,6 +12,7 @@ import { useAppCommandHandler } from "@/components/commands/AppCommandProvider";
 import { appToast, iconForTone } from "@/components/ui/app-toast";
 import { copyTextToClipboard } from "@/lib/clipboard";
 import { formatRelativeTime } from "@/lib/relative-time";
+import { NotificationNavigationProvider } from "./NotificationNavigationProvider";
 import {
   clearNotifications,
   closeNotificationCenter,
@@ -219,12 +220,17 @@ export function NotificationCenter() {
         ) : (
           <ul className="max-h-[min(60vh,26rem)] divide-y divide-border overflow-y-auto">
             {notifications.map((notification) => (
-              <NotificationRow
+              <NotificationNavigationProvider
                 key={notification.id}
-                focused={notification.id === focusedId}
-                notification={notification}
-                now={now}
-              />
+                notificationId={notification.id}
+                toastId={notification.toastId}
+              >
+                <NotificationRow
+                  focused={notification.id === focusedId}
+                  notification={notification}
+                  now={now}
+                />
+              </NotificationNavigationProvider>
             ))}
           </ul>
         )}
