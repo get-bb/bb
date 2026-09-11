@@ -1,3 +1,4 @@
+import { openSecondaryPanelTabInState } from "@bb/client-core";
 import { describe, expect, it } from "vitest";
 import {
   createEmptyFixedPanelTabsState,
@@ -224,7 +225,7 @@ describe("terminalPanelTabs", () => {
     expect(nextState.secondary.activeTabId).toBe(fileTab.id);
   });
 
-  it("removes stale fixed terminal tabs and clears stale active state", () => {
+  it("removes stale fixed terminal tabs and selects the remaining neighbor", () => {
     const staleTerminalTab = createTerminalFixedPanelTab({
       terminalId: "term_stale",
     });
@@ -245,7 +246,7 @@ describe("terminalPanelTabs", () => {
     });
 
     expect(tabIds(nextState.secondary.tabs)).toEqual(["terminal:term_1:none"]);
-    expect(nextState.secondary.activeTabId).toBeNull();
+    expect(nextState.secondary.activeTabId).toBe(currentTerminalTab.id);
   });
 
   it("removes a disconnected terminal without disturbing the active file tab", () => {
@@ -337,4 +338,34 @@ describe("terminalPanelTabs", () => {
     ]);
     expect(nextState.secondary.activeTabId).toBe(disconnectedTerminal.id);
   });
+});
+
+it("returns to the source if session synchronization removes an active terminal before its close callback", () => {
+  const source = createHostFilePreviewFixedPanelTab({
+    environmentId: "env_1",
+    threadId: "thr_1",
+    tab: { path: "/source.txt", lineRange: null },
+  });
+  const neighbor = createHostFilePreviewFixedPanelTab({
+    environmentId: "env_1",
+    threadId: "thr_1",
+    tab: { path: "/neighbor.txt", lineRange: null },
+  });
+  const terminal = createTerminalFixedPanelTab({ terminalId: "closing" });
+  const state = openSecondaryPanelTabInState({
+    state: createEmptyFixedPanelTabsState({
+      secondary: {
+        tabs: [source, neighbor],
+        activeTabId: source.id,
+        isOpen: true,
+      },
+    }),
+    tab: terminal,
+  });
+  const next = syncTerminalTabsInFixedPanelState({
+    state,
+    retainedTerminalId: null,
+    terminalSessions: [],
+  });
+  expect(next.secondary.activeTabId).toBe(source.id);
 });

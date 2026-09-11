@@ -15,6 +15,7 @@ import { createLocalStorageSyncStorage } from "./browser-storage";
 import { useThreadTabs } from "@/hooks/queries/thread-tabs-query";
 import {
   closeSecondaryPanelTabInState,
+  setSecondaryPanelTabsInState,
   reconcileFixedPanelViewTabsInState,
 } from "@bb/client-core";
 import {
@@ -92,7 +93,11 @@ const fixedPanelTabsStateAtomFamily = atomFamily((threadId: string) =>
   atomWithStorage<FixedPanelTabsState>(
     getFixedPanelTabsStateStorageKey({ threadId }),
     EMPTY_FIXED_PANEL_TABS_STATE,
-    fixedPanelTabsStateStorage,
+    {
+      getItem: fixedPanelTabsStateStorage.getItem,
+      setItem: fixedPanelTabsStateStorage.setItem,
+      removeItem: fixedPanelTabsStateStorage.removeItem,
+    },
     { getOnInit: true },
   ),
 );
@@ -332,6 +337,7 @@ export function useUpdateFixedPanelTabsState(
         )
       ) {
         scheduleThreadTabsPersistence({
+          previousTabs: current.secondary.tabs,
           tabs: touched.secondary.tabs,
           queryClient,
           threadId: syncThreadId,
@@ -512,21 +518,12 @@ export function useSetFixedRightTerminalActiveTerminal(
           terminalId,
           target,
         }).id;
-        if (
-          tabs === current.secondary.tabs &&
-          current.secondary.activeTabId === activeTabId &&
-          current.secondary.isOpen
-        ) {
-          return current;
-        }
-        return {
-          ...current,
-          secondary: {
-            tabs,
-            activeTabId,
-            isOpen: true,
-          },
-        };
+        return setSecondaryPanelTabsInState({
+          state: current,
+          tabs,
+          activeTabId,
+          isOpen: true,
+        });
       });
     },
     [target, updateState],
@@ -544,8 +541,7 @@ export function useRemoveFixedRightTerminalTab(
       let didCloseLastTab = false;
       updateState((current) => {
         const next = removeFixedRightTerminalTabInState(current, terminalId);
-        didCloseLastTab =
-          next !== current && next.secondary.tabs.length === 0;
+        didCloseLastTab = next !== current && next.secondary.tabs.length === 0;
         return next;
       });
       if (didCloseLastTab) onCloseLastTab?.();

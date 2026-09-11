@@ -921,7 +921,7 @@ describe("PluginPanelRightPanelHost", () => {
     fireEvent.click(screen.getByText("Add tab"));
     expect(await screen.findByTestId("plugin-page-new-tab")).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "Close New tab" }));
-    expect(screen.getByText("Navigation for task/123")).toBeTruthy();
+    expect(await screen.findByText("Details for task/123")).toBeTruthy();
     expect(
       screen
         .getByTestId("shared-secondary-panel-region")
