@@ -16,6 +16,7 @@ import type {
   HostRetryUpdateResponse,
   UpdateHostRequest,
 } from "@bb/server-contract";
+import type { SdkResponseLike } from "../response.js";
 import { signalRequestArgs, type CreateSdkAreaArgs } from "./common.js";
 
 export interface HostGetArgs {
@@ -144,7 +145,7 @@ export function createHostsArea(args: CreateSdkAreaArgs): HostsArea {
       );
     },
     async installProviderCli(input) {
-      const response = await transport.resolve(
+      const response: SdkResponseLike = await transport.resolve(
         transport.api.v1.hosts[":id"]["provider-clis"].install.$post({
           param: { id: input.hostId },
           json: {
@@ -153,7 +154,7 @@ export function createHostsArea(args: CreateSdkAreaArgs): HostsArea {
           },
         }),
       );
-      const text = await Response.prototype.text.call(response);
+      const text = await response.text();
       return text
         .split(/\r?\n/u)
         .filter((line) => line.trim().length > 0)
