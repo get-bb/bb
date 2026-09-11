@@ -461,11 +461,19 @@
     z-index: 1;
   }
 
-  [data-follow-up-composer] [data-promptbox-submit-action] {
+  [data-follow-up-composer]
+    [data-promptbox-submit-action]:not([data-promptbox-submit-labeled]) {
     width: 2rem;
     height: 2rem;
     margin-left: 0;
     padding: 0;
+  }
+
+  [data-follow-up-composer]
+    [data-promptbox-submit-action][data-promptbox-submit-labeled] {
+    height: 2rem;
+    margin-left: 0;
+    padding-inline: 0.625rem;
   }
 
   [data-follow-up-composer] [data-follow-up-composer-footer] {

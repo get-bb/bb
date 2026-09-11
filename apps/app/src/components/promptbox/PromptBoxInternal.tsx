@@ -260,6 +260,7 @@ function PromptSubmitButton({
   const button = (
     <Button
       data-promptbox-submit-action=""
+      data-promptbox-submit-labeled={label !== undefined ? "" : undefined}
       type="submit"
       size={isCompact ? "icon" : "sm"}
       variant="default"
