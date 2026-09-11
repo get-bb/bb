@@ -59,6 +59,20 @@ export function compilerTransformKey(
   );
 }
 
+export function compilerCacheNamespace(identity: {
+  dependencies: Array<[string, string]>;
+  node: string;
+  nodeOptions: string | null;
+  execArgv: string[];
+  platform: NodeJS.Platform;
+  arch: string;
+  mode: string;
+  production: boolean;
+  env: Array<[string, string | undefined]>;
+}) {
+  return digest(JSON.stringify({ schema: 1, ...identity }));
+}
+
 export async function cachedReactCompiler(cacheDirectory?: string): Promise<
   Awaited<ReturnType<typeof babel>> & {
     api: {
@@ -115,29 +129,28 @@ export async function cachedReactCompiler(cacheDirectory?: string): Promise<
       ]),
     ].sort((a, b) => relative(root, a).localeCompare(relative(root, b)));
     const dependencies = await Promise.all(
-      files.map(async (file) => [
-        relative(root, file),
-        await readFile(file, "utf8"),
-      ]),
+      files.map(
+        async (file): Promise<[string, string]> => [
+          relative(root, file),
+          await readFile(file, "utf8"),
+        ],
+      ),
     );
     cache = {
       directory: cacheDirectory ?? directory,
-      namespace: digest(
-        JSON.stringify({
-          schema: 1,
-          dependencies,
-          node: process.version,
-          nodeOptions: process.env.NODE_OPTIONS ?? null,
-          execArgv: process.execArgv,
-          platform: process.platform,
-          arch: process.arch,
-          mode: config.mode,
-          production: config.isProduction,
-          env: Object.entries(process.env)
-            .filter(([key]) => key.startsWith("BABEL_") || key === "NODE_ENV")
-            .sort(),
-        }),
-      ),
+      namespace: compilerCacheNamespace({
+        dependencies,
+        node: process.version,
+        nodeOptions: process.env.NODE_OPTIONS ?? null,
+        execArgv: process.execArgv,
+        platform: process.platform,
+        arch: process.arch,
+        mode: config.mode,
+        production: config.isProduction,
+        env: Object.entries(process.env)
+          .filter(([key]) => key.startsWith("BABEL_") || key === "NODE_ENV")
+          .sort(),
+      }),
     };
   };
   transform.handler = async function (code, id, options) {

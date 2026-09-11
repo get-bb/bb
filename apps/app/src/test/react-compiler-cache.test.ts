@@ -6,6 +6,7 @@ import * as cacache from "cacache";
 import { build } from "vite";
 import { afterEach, expect, it, vi } from "vitest";
 import {
+  compilerCacheNamespace,
   cachedReactCompiler,
   compilerTransformKey,
   containsWorktreePath,
@@ -197,6 +198,35 @@ it("shares relative identities while separating transform inputs", () => {
       "client",
     ),
   ).toBeNull();
+});
+
+it("invalidates dependency, configuration, toolchain, and environment identity", () => {
+  const identity: Parameters<typeof compilerCacheNamespace>[0] = {
+    dependencies: [["vite.config.ts", "config"]],
+    node: "v22.23.1",
+    nodeOptions: null,
+    execArgv: [],
+    platform: "darwin" as const,
+    arch: "arm64",
+    mode: "production",
+    production: true,
+    env: [["NODE_ENV", "production"]],
+  };
+  const key = compilerCacheNamespace(identity);
+  const changes: Array<Partial<typeof identity>> = [
+    { dependencies: [["vite.config.ts", "changed"]] },
+    { node: "v24.0.0" },
+    { nodeOptions: "--max-old-space-size=4096" },
+    { execArgv: ["--conditions=source"] },
+    { platform: "linux" as const },
+    { arch: "x64" },
+    { mode: "staging" },
+    { production: false },
+    { env: [["BABEL_ENV", "test"]] },
+  ];
+  for (const changed of changes) {
+    expect(compilerCacheNamespace({ ...identity, ...changed })).not.toBe(key);
+  }
 });
 
 it("rejects worktree paths in maps and escaped generated literals", () => {
