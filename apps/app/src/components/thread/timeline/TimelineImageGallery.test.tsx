@@ -28,6 +28,7 @@ afterEach(() => {
   for (const client of clients) client.clear();
   clients.length = 0;
   vi.restoreAllMocks();
+  vi.unstubAllGlobals();
 });
 
 function renderTimeline(children: ReactNode) {
@@ -289,6 +290,7 @@ it("enables navigation when a second image arrives without reopening", async () 
 });
 
 it("excludes clipped user-message images until expanded", () => {
+  vi.stubGlobal("ResizeObserver", undefined);
   vi.spyOn(HTMLElement.prototype, "scrollHeight", "get").mockReturnValue(500);
   vi.spyOn(HTMLElement.prototype, "clientHeight", "get").mockReturnValue(200);
   vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(function (this: HTMLElement) {
