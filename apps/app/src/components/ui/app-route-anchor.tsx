@@ -19,7 +19,7 @@ import { getDesktopBrowserApi } from "@/lib/bb-desktop";
 import { openPaneContentInSplit } from "@/lib/split-layout/openPaneContentInSplit";
 import { paneContentForPathname } from "@/views/thread-detail/splitThreadNavigation";
 import { useOptionalPaneContext } from "@/views/thread-detail/PaneContext";
-import { usePublishPluginDetailOpener } from "@/components/plugin/plugin-detail-navigation";
+import { usePublishPluginDetailOpener } from "@/components/plugin/plugin-detail-opener";
 
 interface RouteNavigationProviderProps {
   children: ReactNode;

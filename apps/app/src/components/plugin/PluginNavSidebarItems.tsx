@@ -108,7 +108,7 @@ import {
   togglePluginNavPanelVisibility,
 } from "./pluginNavSidebarOrder";
 import { haveSameOrder, reorderStoredOrder } from "@/lib/stored-order";
-import { openPluginDetailsInWorkspace } from "./plugin-detail-navigation";
+import { openPluginDetailsInWorkspace } from "./plugin-detail-opener";
 
 const MORE_TRIGGER_TEST_ID = "sidebar-navigation-more-trigger";
 

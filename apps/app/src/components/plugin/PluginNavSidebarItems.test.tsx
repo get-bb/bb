@@ -54,7 +54,7 @@ import {
   findPaneByContent,
   type SplitLayout,
 } from "@/lib/split-layout";
-import { usePublishPluginDetailOpener } from "./plugin-detail-navigation";
+import { usePublishPluginDetailOpener } from "./plugin-detail-opener";
 vi.mock("@/components/ui/app-toast", () => ({
   appToast: {
     dismiss: vi.fn(),

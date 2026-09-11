@@ -3,11 +3,11 @@ import { act, cleanup, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { ThreadSecondaryPanelProps } from "@/components/secondary-panel/ThreadSecondaryPanel";
 import {
-  openPluginDetailsInWorkspace,
   PluginDetailPanelContext,
   usePluginDetailPanelProps,
   usePluginDetailPanelState,
 } from "./plugin-detail-navigation";
+import { openPluginDetailsInWorkspace } from "./plugin-detail-opener";
 
 const selectExisting = vi.fn();
 const closePanel = vi.fn();
