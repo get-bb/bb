@@ -13,9 +13,13 @@ env:
 - tapOn:
     id: "add-server-submit"
 - extendedWaitUntil:
-    visible: "Turn on notifications"
-    timeout: 30000
-- tapOn: "Turn on notifications"
+    visible: ".*(Turn on notifications|Ask anything).*"
+    timeout: 60000
+- runFlow:
+    when:
+      visible: "Turn on notifications"
+    commands:
+      - tapOn: "Turn on notifications"
 - extendedWaitUntil:
     visible: ".*Ask anything.*"
     timeout: 60000
