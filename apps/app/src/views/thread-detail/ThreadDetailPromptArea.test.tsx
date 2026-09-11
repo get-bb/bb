@@ -28,6 +28,7 @@ import {
 import type { ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { workflowRow } from "@/test/fixtures/thread-timeline-rows";
+import type { PromptDraftAttachment } from "@bb/client-core";
 import { BbHttpError } from "@/lib/sdk";
 import type { PluginComposerHost } from "@/components/plugin/plugin-composer-host";
 import { setComposerTextEffect } from "@/lib/composer-text-effects";
@@ -53,7 +54,7 @@ const mocks = vi.hoisted(() => ({
   pluginComposerHost: null as PluginComposerHost | null,
   promptDraft: {
     addAttachment: vi.fn(),
-    attachments: [],
+    attachments: [] as PromptDraftAttachment[],
     clearIfCurrentMatches: vi.fn(),
     getCurrent: vi.fn(),
     mentions: [] as PromptTextMention[],
@@ -819,11 +820,23 @@ beforeEach(() => {
   mocks.pluginComposerHost = null;
   mocks.promptDraft.text = "";
   mocks.promptDraft.mentions = [];
+  mocks.promptDraft.attachments = [];
   mocks.promptDraft.getCurrent.mockImplementation(() => ({
     attachments: mocks.promptDraft.attachments,
     mentions: mocks.promptDraft.mentions,
     text: mocks.promptDraft.text,
   }));
+  mocks.promptDraft.setDraft.mockImplementation(
+    (draft: {
+      attachments: PromptDraftAttachment[];
+      mentions: PromptTextMention[];
+      text: string;
+    }) => {
+      mocks.promptDraft.attachments = draft.attachments;
+      mocks.promptDraft.mentions = draft.mentions;
+      mocks.promptDraft.text = draft.text;
+    },
+  );
   mocks.queuedMessages = [];
   mocks.updateQueuedMessageMutateAsync.mockResolvedValue(undefined);
   mocks.useThreadCreationOptions.mockClear();
@@ -1898,29 +1911,21 @@ describe("ThreadDetailPromptArea", () => {
   });
 
   it("restores the typed draft when switching back to the thread's provider", () => {
-    mocks.promptDraft.text = "Continue from @thread:thr_1\n\nKeep going";
-    mocks.promptDraft.mentions = [
-      {
-        start: 14,
-        end: 27,
-        resource: {
-          kind: "thread",
-          projectId: "proj_1",
-          threadId: "thr_1",
-          label: "Test thread",
-        },
-      },
-    ];
+    mocks.promptDraft.text = "Keep going";
 
     renderPromptArea();
     fireEvent.click(screen.getByRole("button", { name: "Switch provider" }));
-    expect(mocks.promptDraft.setDraft).not.toHaveBeenCalled();
+    expect(mocks.promptDraft.setDraft).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        text: "Continue from @thread:thr_1\n\nKeep going",
+      }),
+    );
 
     fireEvent.click(
       screen.getByRole("button", { name: "Switch provider back" }),
     );
 
-    expect(mocks.promptDraft.setDraft).toHaveBeenCalledWith({
+    expect(mocks.promptDraft.setDraft).toHaveBeenLastCalledWith({
       attachments: [],
       mentions: [],
       text: "Keep going",
@@ -1929,20 +1934,7 @@ describe("ThreadDetailPromptArea", () => {
   });
 
   it("creates a new thread from the draft as typed and navigates to it", async () => {
-    mocks.promptDraft.text =
-      "Continue from @thread:thr_source\n\nRefactor the tests";
-    mocks.promptDraft.mentions = [
-      {
-        start: 14,
-        end: 32,
-        resource: {
-          kind: "thread",
-          projectId: "proj_source",
-          threadId: "thr_source",
-          label: "Source thread",
-        },
-      },
-    ];
+    mocks.promptDraft.text = "Refactor the tests";
     mocks.createThreadMutateAsync.mockResolvedValue({
       id: "thr_new",
       projectId: "proj_source",
@@ -1960,7 +1952,6 @@ describe("ThreadDetailPromptArea", () => {
       }),
     });
     fireEvent.click(screen.getByRole("button", { name: "Switch provider" }));
-    expect(mocks.promptDraft.setDraft).not.toHaveBeenCalled();
     fireEvent.click(screen.getByRole("button", { name: "Submit composer" }));
 
     await waitFor(() =>

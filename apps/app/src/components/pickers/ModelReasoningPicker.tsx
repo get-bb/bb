@@ -589,6 +589,17 @@ export function ModelReasoningPicker({
           ),
     [handoff, providerOptions],
   );
+  const handleProviderSelect = useCallback(
+    (providerId: string) => {
+      onSelectedProviderChange?.(providerId);
+      const nextPreviewProviderId =
+        open && providerId !== selectedProviderId ? providerId : null;
+      setPreviewProviderId(nextPreviewProviderId);
+      setSearchQuery("");
+      setActiveIndex(-1);
+    },
+    [onSelectedProviderChange, open, selectedProviderId],
+  );
   const handleHandoffProviderSelect = useCallback(
     (providerId: string) => {
       setPreviewProviderId(

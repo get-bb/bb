@@ -689,7 +689,7 @@ describe("ModelReasoningPicker", () => {
     const currentTab = screen.getByTitle("Codex (current thread)");
     expect(currentTab).toHaveProperty("disabled", true);
     expect(await screen.findByText("Opus 4.7")).not.toBeNull();
-    expect(screen.queryByText("5.5")).toBeNull();
+    expect(screen.getAllByText("5.5")).toHaveLength(1);
     expect(onSelectedProviderChange).not.toHaveBeenCalled();
     expect(
       screen.queryByRole("button", { name: "Handoff to new thread" }),
