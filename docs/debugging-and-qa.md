@@ -348,14 +348,12 @@ dotenv cascade; both build production artifacts. Install dependencies with
 `pnpm install --frozen-lockfile` beforehand when needed. There is no separate
 launch mode: use the same normal start command afterward.
 
-Preparation clears the generated runtime directories and per-plugin
-`.bundled-runtime` outputs before Turbo restores or rebuilds them. Turbo restores
-missing files but does not remove unexpected files from cached output directories;
-cleaning first prevents obsolete artifacts from surviving a cache restore.
-Plugin development `dist` directories, source files, toolchain installations,
-and instance data are preserved. There is no custom preparation receipt or
-whole-checkout hashing pass. Do not prepare concurrently with another preparation
-or against build files still served by a live instance.
+Build tasks clean their own outputs when they run. Startup does not clear output
+directories before invoking Turbo. Cache hits use Turbo's normal restoration
+behavior, which restores cached files but can leave extra files from an earlier
+build. There is no custom preparation receipt or whole-checkout hashing pass.
+Do not prepare concurrently with another preparation or against build files
+still served by a live instance.
 
 Preparation writes build outputs in the checkout. If the previous process serves
 those same paths, preparation can change files it reads: this is not an atomic

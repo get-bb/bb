@@ -135,7 +135,7 @@ Verify missing/stale preparation is rebuilt automatically before services start,
 and native modules are checked and repaired when necessary.
 Preparation writes build outputs, so use a separate staging checkout to warm
 cache while a live instance still serves those files. Keep the serving checkout
-path stable. See `docs/debugging-and-qa.md` for the preparation and cleanup contract.
+path stable. See `docs/debugging-and-qa.md` for the preparation behavior.
 Stop only verified PIDs spawned by this test; `bb-dev-app stop` is for instances
 managed by that launcher, not arbitrary `pnpm start:worktree` processes.
 

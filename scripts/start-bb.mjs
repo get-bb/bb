@@ -8,8 +8,6 @@ import {
   supportsProcessGroups,
 } from "../packages/process-utils/src/index.ts";
 
-import { cleanRuntimeOutputs } from "./clean-runtime-outputs.mjs";
-
 const scriptDir = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(scriptDir, "..");
 const requireFromRoot = createRequire(resolve(repoRoot, "package.json"));
@@ -131,7 +129,6 @@ export function parseStartBbArgs(args) {
 
 export async function prepareRuntime() {
   await runNativeModulePreflight();
-  await cleanRuntimeOutputs(repoRoot);
   await buildRuntimeArtifacts();
 }
 
