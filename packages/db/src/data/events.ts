@@ -3492,33 +3492,314 @@ export function getLatestCompletedThreadContextClearSequence(
   return row?.sequence ?? null;
 }
 
+interface StoredProviderThreadIdentityScope {
+  hostId: string | null;
+  providerId: string;
+  threadId: string;
+}
+
+interface StoredProviderThreadIdentityCandidate {
+  providerThreadId: string;
+  threadId: string;
+}
+
+interface ListStoredProviderThreadClaimsArgs {
+  hostId: string | null;
+  providerId: string;
+  providerThreadIds: readonly string[];
+}
+
+interface ResolveStoredProviderSessionsArgs {
+  threadIds: readonly string[];
+}
+
+interface ClassifyStoredProviderThreadClaimArgs {
+  providerThreadId: string;
+  threadId: string;
+}
+
+type StoredProviderThreadClaim =
+  | { kind: "owned"; threadId: string }
+  | { kind: "tied"; threadIds: string[] };
+
+export type StoredProviderSession =
+  | { kind: "none" }
+  | { kind: "owned"; providerThreadId: string }
+  | {
+      kind: "foreign";
+      providerThreadId: string;
+      claimantThreadIds: string[];
+    }
+  | {
+      kind: "ambiguous";
+      providerThreadId: string;
+      claimantThreadIds: string[];
+    };
+
+export type StoredProviderThreadClaimClass =
+  | "owned"
+  | "unannounced"
+  | "foreign"
+  | "ambiguous";
+
+const storedProviderThreadIdentityEpochFilter = sql`${events.sequence} > COALESCE((
+  SELECT MAX(context_clear.sequence)
+  FROM events AS context_clear
+  WHERE context_clear.thread_id = ${events.threadId}
+    AND context_clear.type = 'system/operation'
+    AND json_extract(context_clear.data, '$.operation') = ${THREAD_CONTEXT_CLEAR_OPERATION}
+    AND json_extract(context_clear.data, '$.status') = 'completed'
+), 0)`;
+
+function listStoredProviderThreadIdentityScopes(
+  db: DbQueryConnection,
+  threadIds: readonly string[],
+): StoredProviderThreadIdentityScope[] {
+  return db
+    .select({
+      hostId: environments.hostId,
+      providerId: threads.providerId,
+      threadId: threads.id,
+    })
+    .from(threads)
+    .leftJoin(environments, eq(environments.id, threads.environmentId))
+    .where(inArray(threads.id, [...threadIds]))
+    .all();
+}
+
+function listStoredProviderThreadIdentityCandidates(
+  db: DbQueryConnection,
+  threadIds: readonly string[],
+): StoredProviderThreadIdentityCandidate[] {
+  return db
+    .select({
+      providerThreadId: sql<string>`${events.providerThreadId}`,
+      threadId: events.threadId,
+    })
+    .from(events)
+    .where(
+      and(
+        inArray(events.threadId, [...threadIds]),
+        eq(events.type, "thread/identity"),
+        isNotNull(events.providerThreadId),
+        storedProviderThreadIdentityEpochFilter,
+      ),
+    )
+    .orderBy(events.threadId, desc(events.sequence))
+    .all();
+}
+
+function listStoredProviderThreadClaims(
+  db: DbQueryConnection,
+  args: ListStoredProviderThreadClaimsArgs,
+): Map<string, StoredProviderThreadClaim> {
+  const claims = new Map<string, StoredProviderThreadClaim>();
+  if (args.providerThreadIds.length === 0) {
+    return claims;
+  }
+  const rows = db
+    .select({
+      firstClaimedAt: sql<number>`MIN(${events.createdAt})`,
+      providerThreadId: sql<string>`${events.providerThreadId}`,
+      threadId: events.threadId,
+    })
+    .from(events)
+    .innerJoin(threads, eq(threads.id, events.threadId))
+    .leftJoin(environments, eq(environments.id, threads.environmentId))
+    .where(
+      and(
+        eq(events.type, "thread/identity"),
+        inArray(events.providerThreadId, [...args.providerThreadIds]),
+        eq(threads.providerId, args.providerId),
+        args.hostId === null
+          ? undefined
+          : or(
+              isNull(environments.hostId),
+              eq(environments.hostId, args.hostId),
+            ),
+      ),
+    )
+    .groupBy(events.providerThreadId, events.threadId)
+    .all();
+  const earliestByProviderThreadId = new Map<
+    string,
+    { firstClaimedAt: number; threadIds: string[] }
+  >();
+  for (const row of rows) {
+    const earliest = earliestByProviderThreadId.get(row.providerThreadId);
+    if (earliest === undefined || row.firstClaimedAt < earliest.firstClaimedAt) {
+      earliestByProviderThreadId.set(row.providerThreadId, {
+        firstClaimedAt: row.firstClaimedAt,
+        threadIds: [row.threadId],
+      });
+    } else if (row.firstClaimedAt === earliest.firstClaimedAt) {
+      earliest.threadIds.push(row.threadId);
+    }
+  }
+  for (const [providerThreadId, earliest] of earliestByProviderThreadId) {
+    const [owner, ...others] = earliest.threadIds;
+    if (owner === undefined) {
+      continue;
+    }
+    claims.set(
+      providerThreadId,
+      others.length === 0
+        ? { kind: "owned", threadId: owner }
+        : { kind: "tied", threadIds: [...earliest.threadIds].sort() },
+    );
+  }
+  return claims;
+}
+
+function classifyClaim(
+  claim: StoredProviderThreadClaim | undefined,
+  threadId: string,
+): StoredProviderThreadClaimClass {
+  if (claim === undefined) {
+    return "unannounced";
+  }
+  if (claim.kind === "owned") {
+    return claim.threadId === threadId ? "owned" : "foreign";
+  }
+  return claim.threadIds.includes(threadId) ? "ambiguous" : "foreign";
+}
+
+function otherClaimants(
+  claim: StoredProviderThreadClaim | undefined,
+  threadId: string,
+): string[] {
+  if (claim === undefined) {
+    return [];
+  }
+  const claimants = claim.kind === "owned" ? [claim.threadId] : claim.threadIds;
+  return claimants.filter((claimant) => claimant !== threadId);
+}
+
+function resolveThreadProviderSession(args: {
+  candidates: readonly string[];
+  claims: ReadonlyMap<string, StoredProviderThreadClaim>;
+  threadId: string;
+}): StoredProviderSession {
+  let firstForeign: StoredProviderSession | null = null;
+  for (const providerThreadId of args.candidates) {
+    const claim = args.claims.get(providerThreadId);
+    switch (classifyClaim(claim, args.threadId)) {
+      case "owned":
+      case "unannounced":
+        return { kind: "owned", providerThreadId };
+      case "ambiguous":
+        return {
+          kind: "ambiguous",
+          providerThreadId,
+          claimantThreadIds: otherClaimants(claim, args.threadId),
+        };
+      case "foreign":
+        firstForeign ??= {
+          kind: "foreign",
+          providerThreadId,
+          claimantThreadIds: otherClaimants(claim, args.threadId),
+        };
+    }
+  }
+  return firstForeign ?? { kind: "none" };
+}
+
+function identityScopeKey(scope: StoredProviderThreadIdentityScope): string {
+  return `${scope.providerId}\n${scope.hostId ?? ""}`;
+}
+
+export function resolveStoredProviderSessions(
+  db: DbQueryConnection,
+  args: ResolveStoredProviderSessionsArgs,
+): Map<string, StoredProviderSession> {
+  const threadIds = [...new Set(args.threadIds)];
+  const resolved = new Map<string, StoredProviderSession>(
+    threadIds.map((threadId) => [threadId, { kind: "none" }]),
+  );
+  if (threadIds.length === 0) {
+    return resolved;
+  }
+  const candidatesByThreadId = new Map<string, string[]>();
+  for (const row of listStoredProviderThreadIdentityCandidates(db, threadIds)) {
+    const candidates = candidatesByThreadId.get(row.threadId) ?? [];
+    if (candidates.at(-1) !== row.providerThreadId) {
+      candidates.push(row.providerThreadId);
+    }
+    candidatesByThreadId.set(row.threadId, candidates);
+  }
+  if (candidatesByThreadId.size === 0) {
+    return resolved;
+  }
+  const scopeGroups = new Map<string, StoredProviderThreadIdentityScope[]>();
+  for (const scope of listStoredProviderThreadIdentityScopes(db, [
+    ...candidatesByThreadId.keys(),
+  ])) {
+    const key = identityScopeKey(scope);
+    scopeGroups.set(key, [...(scopeGroups.get(key) ?? []), scope]);
+  }
+  for (const group of scopeGroups.values()) {
+    const [first] = group;
+    if (first === undefined) {
+      continue;
+    }
+    const claims = listStoredProviderThreadClaims(db, {
+      hostId: first.hostId,
+      providerId: first.providerId,
+      providerThreadIds: [
+        ...new Set(
+          group.flatMap(
+            (scope) => candidatesByThreadId.get(scope.threadId) ?? [],
+          ),
+        ),
+      ],
+    });
+    for (const scope of group) {
+      resolved.set(
+        scope.threadId,
+        resolveThreadProviderSession({
+          candidates: candidatesByThreadId.get(scope.threadId) ?? [],
+          claims,
+          threadId: scope.threadId,
+        }),
+      );
+    }
+  }
+  return resolved;
+}
+
+export function getStoredProviderSession(
+  db: DbQueryConnection,
+  threadId: string,
+): StoredProviderSession {
+  return (
+    resolveStoredProviderSessions(db, { threadIds: [threadId] }).get(
+      threadId,
+    ) ?? { kind: "none" }
+  );
+}
+
 export function getLastStoredProviderThreadId(
   db: DbQueryConnection,
   threadId: string,
 ): string | null {
-  const latestProviderRow = db
-    .select({ providerThreadId: events.providerThreadId })
-    .from(events)
-    .where(
-      sql`${events.threadId} = ${threadId}
-        AND ${events.providerThreadId} IS NOT NULL
-        AND ${events.sequence} > COALESCE((
-          SELECT MAX(context_clear.sequence)
-          FROM events AS context_clear
-          WHERE context_clear.thread_id = ${threadId}
-            AND context_clear.type = 'system/operation'
-            AND json_extract(context_clear.data, '$.operation') = ${THREAD_CONTEXT_CLEAR_OPERATION}
-            AND json_extract(context_clear.data, '$.status') = 'completed'
-        ), 0)`,
-    )
-    .orderBy(sql`${events.sequence} DESC`)
-    .limit(1)
-    .get();
-  if (!latestProviderRow?.providerThreadId) {
-    return null;
-  }
+  const session = getStoredProviderSession(db, threadId);
+  return session.kind === "owned" ? session.providerThreadId : null;
+}
 
-  return latestProviderRow.providerThreadId;
+export function classifyStoredProviderThreadClaim(
+  db: DbQueryConnection,
+  args: ClassifyStoredProviderThreadClaimArgs,
+): StoredProviderThreadClaimClass {
+  const [scope] = listStoredProviderThreadIdentityScopes(db, [args.threadId]);
+  if (scope === undefined) {
+    return "foreign";
+  }
+  const claims = listStoredProviderThreadClaims(db, {
+    hostId: scope.hostId,
+    providerId: scope.providerId,
+    providerThreadIds: [args.providerThreadId],
+  });
+  return classifyClaim(claims.get(args.providerThreadId), args.threadId);
 }
 
 export function listThreadTurnInterruptionEventStates(
@@ -3581,40 +3862,13 @@ export function listThreadTurnInterruptionEventStates(
     }
   }
 
-  const latestProviderRows = db
-    .select({
-      providerThreadId: events.providerThreadId,
-      threadId: events.threadId,
-    })
-    .from(events)
-    .where(
-      and(
-        inArray(events.threadId, threadIds),
-        isNotNull(events.providerThreadId),
-        sql`${events.sequence} = (
-          SELECT MAX(latest.sequence)
-          FROM events AS latest
-          WHERE latest.thread_id = ${events.threadId}
-            AND latest.provider_thread_id IS NOT NULL
-            AND latest.sequence > COALESCE((
-              SELECT MAX(context_clear.sequence)
-              FROM events AS context_clear
-              WHERE context_clear.thread_id = ${events.threadId}
-                AND context_clear.type = 'system/operation'
-                AND json_extract(context_clear.data, '$.operation') = ${THREAD_CONTEXT_CLEAR_OPERATION}
-                AND json_extract(context_clear.data, '$.status') = 'completed'
-            ), 0)
-        )`,
-      ),
-    )
-    .all();
-  for (const row of latestProviderRows) {
-    if (row.providerThreadId === null) {
-      continue;
-    }
-    const state = statesByThreadId.get(row.threadId);
+  for (const [threadId, session] of resolveStoredProviderSessions(db, {
+    threadIds,
+  })) {
+    const state = statesByThreadId.get(threadId);
     if (state) {
-      state.latestProviderThreadId = row.providerThreadId;
+      state.latestProviderThreadId =
+        session.kind === "owned" ? session.providerThreadId : null;
     }
   }
 

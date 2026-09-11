@@ -1,0 +1,1 @@
+CREATE INDEX IF NOT EXISTS `events_provider_identity_idx` ON `events` (`provider_thread_id`,`created_at`) WHERE "events"."type" = 'thread/identity';
