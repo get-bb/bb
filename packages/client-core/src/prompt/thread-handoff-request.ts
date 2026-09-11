@@ -48,43 +48,96 @@ export interface ThreadHandoffExecutionSelection {
 }
 
 interface BuildThreadHandoffCreateRequestArgs {
+  draft: PromptDraftState;
   execution: ThreadHandoffExecutionSelection;
-  followUp: PromptDraftState;
   seed: ThreadHandoffCreateSeed;
   sendAt?: number;
 }
 
+function threadHandoffPrefixLength(
+  seed: ThreadHandoffCreateSeed,
+  draft: PromptDraftState,
+): number | null {
+  const handoff = buildThreadHandoffPromptDraft(seed);
+  const [handoffMention] = handoff.mentions;
+  const hasHandoffMention =
+    handoffMention !== undefined &&
+    draft.mentions.some(
+      (mention) =>
+        mention.start === handoffMention.start &&
+        mention.end === handoffMention.end &&
+        mention.resource.kind === "thread" &&
+        mention.resource.threadId === seed.sourceThreadId,
+    );
+  if (!hasHandoffMention) {
+    return null;
+  }
+  if (
+    draft.text.startsWith(
+      `${handoff.text}${THREAD_HANDOFF_FOLLOW_UP_SEPARATOR}`,
+    )
+  ) {
+    return handoff.text.length + THREAD_HANDOFF_FOLLOW_UP_SEPARATOR.length;
+  }
+  if (draft.text === handoff.text) {
+    return handoff.text.length;
+  }
+  return null;
+}
+
 export function buildThreadHandoffFollowUpDraft(
   seed: ThreadHandoffCreateSeed,
-  followUp: PromptDraftState,
+  draft: PromptDraftState,
 ): PromptDraftState {
+  if (threadHandoffPrefixLength(seed, draft) !== null) {
+    return draft;
+  }
   const handoff = buildThreadHandoffPromptDraft(seed);
   const offset =
     handoff.text.length + THREAD_HANDOFF_FOLLOW_UP_SEPARATOR.length;
   return {
-    text: `${handoff.text}${THREAD_HANDOFF_FOLLOW_UP_SEPARATOR}${followUp.text}`,
+    text: `${handoff.text}${THREAD_HANDOFF_FOLLOW_UP_SEPARATOR}${draft.text}`,
     mentions: [
       ...handoff.mentions,
-      ...followUp.mentions.map((mention) => ({
+      ...draft.mentions.map((mention) => ({
         ...mention,
         start: mention.start + offset,
         end: mention.end + offset,
       })),
     ],
-    attachments: followUp.attachments,
+    attachments: draft.attachments,
+  };
+}
+
+export function stripThreadHandoffPrefix(
+  seed: ThreadHandoffCreateSeed,
+  draft: PromptDraftState,
+): PromptDraftState | null {
+  const prefixLength = threadHandoffPrefixLength(seed, draft);
+  if (prefixLength === null) {
+    return null;
+  }
+  return {
+    text: draft.text.slice(prefixLength),
+    mentions: draft.mentions
+      .filter((mention) => mention.start >= prefixLength)
+      .map((mention) => ({
+        ...mention,
+        start: mention.start - prefixLength,
+        end: mention.end - prefixLength,
+      })),
+    attachments: draft.attachments,
   };
 }
 
 export function buildThreadHandoffCreateRequest({
+  draft,
   execution,
-  followUp,
   seed,
   sendAt,
 }: BuildThreadHandoffCreateRequestArgs): AppCreateThreadRequest | null {
-  if (
-    execution.model.length === 0 ||
-    promptDraftToInput(followUp).length === 0
-  ) {
+  const input = promptDraftToInput(draft);
+  if (execution.model.length === 0 || input.length === 0) {
     return null;
   }
 
@@ -97,7 +150,7 @@ export function buildThreadHandoffCreateRequest({
       providerId: "explicit",
       ...execution.executionInputSources,
     },
-    input: promptDraftToInput(buildThreadHandoffFollowUpDraft(seed, followUp)),
+    input,
     model: execution.model,
     permissionMode: execution.permissionMode,
     projectId: seed.projectId,

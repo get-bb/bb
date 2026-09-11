@@ -2,6 +2,7 @@
 
 import type {
   PendingInteraction,
+  PromptTextMention,
   ResolvedThreadExecutionOptions,
   ThreadQueuedMessage,
   ThreadTimelineActivePromptMode,
@@ -55,7 +56,7 @@ const mocks = vi.hoisted(() => ({
     attachments: [],
     clearIfCurrentMatches: vi.fn(),
     getCurrent: vi.fn(),
-    mentions: [],
+    mentions: [] as PromptTextMention[],
     removeAttachment: vi.fn(),
     restoreIfEmpty: vi.fn(),
     setDraft: vi.fn(),
@@ -280,12 +281,20 @@ vi.mock("@/components/promptbox/FollowUpPromptBox", async () => {
           {execution.provider.onChange ? "true" : "false"}
         </div>
         {execution.provider.onChange ? (
-          <button
-            type="button"
-            onClick={() => execution.provider.onChange?.("claude-code")}
-          >
-            Switch provider
-          </button>
+          <>
+            <button
+              type="button"
+              onClick={() => execution.provider.onChange?.("claude-code")}
+            >
+              Switch provider
+            </button>
+            <button
+              type="button"
+              onClick={() => execution.provider.onChange?.("codex")}
+            >
+              Switch provider back
+            </button>
+          </>
         ) : null}
       </div>
     ),
@@ -778,6 +787,7 @@ beforeEach(() => {
   mocks.defaultExecutionOptions = null;
   mocks.pluginComposerHost = null;
   mocks.promptDraft.text = "";
+  mocks.promptDraft.mentions = [];
   mocks.promptDraft.getCurrent.mockImplementation(() => ({
     attachments: mocks.promptDraft.attachments,
     mentions: mocks.promptDraft.mentions,
@@ -1803,11 +1813,69 @@ describe("ThreadDetailPromptArea", () => {
       "claude-opus-5",
     );
     expect(screen.getByTestId("submit-mode").textContent).toBe("ready:");
+    expect(mocks.promptDraft.setDraft).toHaveBeenCalledWith({
+      attachments: [],
+      mentions: [
+        {
+          start: 14,
+          end: 27,
+          resource: expect.objectContaining({
+            kind: "thread",
+            threadId: "thr_1",
+          }),
+        },
+      ],
+      text: "Continue from @thread:thr_1\n\n",
+    });
     expect(mocks.toastError).not.toHaveBeenCalled();
   });
 
-  it("creates a new thread from the follow-up and navigates to it", async () => {
-    mocks.promptDraft.text = "Refactor the tests";
+  it("restores the typed draft when switching back to the thread's provider", () => {
+    mocks.promptDraft.text = "Continue from @thread:thr_1\n\nKeep going";
+    mocks.promptDraft.mentions = [
+      {
+        start: 14,
+        end: 27,
+        resource: {
+          kind: "thread",
+          projectId: "proj_1",
+          threadId: "thr_1",
+          label: "Test thread",
+        },
+      },
+    ];
+
+    renderPromptArea();
+    fireEvent.click(screen.getByRole("button", { name: "Switch provider" }));
+    expect(mocks.promptDraft.setDraft).not.toHaveBeenCalled();
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Switch provider back" }),
+    );
+
+    expect(mocks.promptDraft.setDraft).toHaveBeenCalledWith({
+      attachments: [],
+      mentions: [],
+      text: "Keep going",
+    });
+    expect(screen.getByTestId("submit-title").textContent).toBe("Submit");
+  });
+
+  it("creates a new thread from the draft as typed and navigates to it", async () => {
+    mocks.promptDraft.text =
+      "Continue from @thread:thr_source\n\nRefactor the tests";
+    mocks.promptDraft.mentions = [
+      {
+        start: 14,
+        end: 32,
+        resource: {
+          kind: "thread",
+          projectId: "proj_source",
+          threadId: "thr_source",
+          label: "Source thread",
+        },
+      },
+    ];
     mocks.createThreadMutateAsync.mockResolvedValue({
       id: "thr_new",
       projectId: "proj_source",
@@ -1825,6 +1893,7 @@ describe("ThreadDetailPromptArea", () => {
       }),
     });
     fireEvent.click(screen.getByRole("button", { name: "Switch provider" }));
+    expect(mocks.promptDraft.setDraft).not.toHaveBeenCalled();
     fireEvent.click(screen.getByRole("button", { name: "Submit composer" }));
 
     await waitFor(() =>
@@ -1839,6 +1908,13 @@ describe("ThreadDetailPromptArea", () => {
           expect.objectContaining({
             type: "text",
             text: "Continue from @thread:thr_source\n\nRefactor the tests",
+            mentions: [
+              expect.objectContaining({
+                start: 14,
+                end: 32,
+                resource: expect.objectContaining({ threadId: "thr_source" }),
+              }),
+            ],
           }),
         ],
         model: "claude-opus-5",

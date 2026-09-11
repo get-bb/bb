@@ -3,6 +3,7 @@ import {
   buildThreadHandoffCreateRequest,
   buildThreadHandoffFollowUpDraft,
   buildThreadHandoffPromptDraft,
+  stripThreadHandoffPrefix,
   type ThreadHandoffCreateSeed,
   type ThreadHandoffExecutionSelection,
 } from "../src/prompt/thread-handoff-request.js";
@@ -45,6 +46,17 @@ const EXECUTION: ThreadHandoffExecutionSelection = {
   executionInputSources: { model: "explicit", reasoningLevel: "explicit" },
 };
 
+const SOURCE_MENTION = {
+  start: 14,
+  end: 32,
+  resource: {
+    kind: "thread" as const,
+    projectId: "proj_source",
+    threadId: "thr_source",
+    label: "Source thread",
+  },
+};
+
 describe("buildThreadHandoffFollowUpDraft", () => {
   it("keeps follow-up mentions anchored after the source thread mention", () => {
     const draft = buildThreadHandoffFollowUpDraft(SEED, {
@@ -75,13 +87,90 @@ describe("buildThreadHandoffFollowUpDraft", () => {
       draft.text.slice(draft.mentions[1]!.start, draft.mentions[1]!.end),
     ).toBe("@thread:thr_other");
   });
+
+  it("leaves a draft alone when it already starts with the source reference", () => {
+    const draft = {
+      text: "Continue from @thread:thr_source\n\nKeep going",
+      mentions: [SOURCE_MENTION],
+      attachments: [],
+    };
+
+    expect(buildThreadHandoffFollowUpDraft(SEED, draft)).toBe(draft);
+  });
+});
+
+describe("stripThreadHandoffPrefix", () => {
+  it("removes the inserted reference and re-anchors later mentions", () => {
+    expect(
+      stripThreadHandoffPrefix(SEED, {
+        text: "Continue from @thread:thr_source\n\nSee @thread:thr_other",
+        mentions: [
+          SOURCE_MENTION,
+          {
+            start: 38,
+            end: 55,
+            resource: {
+              kind: "thread",
+              projectId: "proj_source",
+              threadId: "thr_other",
+              label: "Other thread",
+            },
+          },
+        ],
+        attachments: [],
+      }),
+    ).toEqual({
+      text: "See @thread:thr_other",
+      mentions: [
+        {
+          start: 4,
+          end: 21,
+          resource: {
+            kind: "thread",
+            projectId: "proj_source",
+            threadId: "thr_other",
+            label: "Other thread",
+          },
+        },
+      ],
+      attachments: [],
+    });
+    expect(
+      stripThreadHandoffPrefix(SEED, {
+        text: "Continue from @thread:thr_source",
+        mentions: [SOURCE_MENTION],
+        attachments: [],
+      }),
+    ).toEqual({ text: "", mentions: [], attachments: [] });
+  });
+
+  it("returns null once the user has changed the reference", () => {
+    expect(
+      stripThreadHandoffPrefix(SEED, {
+        text: "Continue from @thread:thr_source please",
+        mentions: [SOURCE_MENTION],
+        attachments: [],
+      }),
+    ).toBeNull();
+    expect(
+      stripThreadHandoffPrefix(SEED, {
+        text: "Continue from @thread:thr_source\n\nKeep going",
+        mentions: [],
+        attachments: [],
+      }),
+    ).toBeNull();
+  });
 });
 
 describe("buildThreadHandoffCreateRequest", () => {
-  it("creates a thread on the selected provider that continues the source thread", () => {
+  it("creates a thread on the selected provider from the draft as typed", () => {
     const request = buildThreadHandoffCreateRequest({
+      draft: {
+        text: "Continue from @thread:thr_source\n\nRefactor the tests",
+        mentions: [SOURCE_MENTION],
+        attachments: [],
+      },
       execution: EXECUTION,
-      followUp: { text: "Refactor the tests", mentions: [], attachments: [] },
       seed: SEED,
     });
 
@@ -122,8 +211,8 @@ describe("buildThreadHandoffCreateRequest", () => {
 
   it("falls back to the project default environment and drops unsupported service tiers", () => {
     const request = buildThreadHandoffCreateRequest({
+      draft: { text: "Keep going", mentions: [], attachments: [] },
       execution: { ...EXECUTION, supportsServiceTier: false },
-      followUp: { text: "Keep going", mentions: [], attachments: [] },
       seed: { ...SEED, environmentId: null },
       sendAt: 1_700_000_000_000,
     });
@@ -136,15 +225,15 @@ describe("buildThreadHandoffCreateRequest", () => {
   it("returns null without follow-up input or a resolved model", () => {
     expect(
       buildThreadHandoffCreateRequest({
+        draft: { text: "   ", mentions: [], attachments: [] },
         execution: EXECUTION,
-        followUp: { text: "   ", mentions: [], attachments: [] },
         seed: SEED,
       }),
     ).toBeNull();
     expect(
       buildThreadHandoffCreateRequest({
+        draft: { text: "Keep going", mentions: [], attachments: [] },
         execution: { ...EXECUTION, model: "" },
-        followUp: { text: "Keep going", mentions: [], attachments: [] },
         seed: SEED,
       }),
     ).toBeNull();

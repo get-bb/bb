@@ -103,6 +103,8 @@ import { getThreadDisplayTitle } from "@/lib/thread-title";
 import { appToast } from "@/components/ui/app-toast";
 import {
   buildThreadHandoffCreateRequest,
+  buildThreadHandoffFollowUpDraft,
+  stripThreadHandoffPrefix,
   type ThreadHandoffCreateSeed,
 } from "@bb/client-core";
 import {
@@ -702,14 +704,38 @@ export function ThreadDetailPromptArea({
   const selectedProviderDisplayNameRef = useLatestRef(
     selectedProviderDisplayName,
   );
+  const wasHandoffSelectionRef = useRef(false);
   useEffect(() => {
-    if (!isHandoffSelection) {
+    if (wasHandoffSelectionRef.current === isHandoffSelection) {
       return;
     }
+    wasHandoffSelectionRef.current = isHandoffSelection;
+    const currentDraft = promptDraft.getCurrent();
+    if (!isHandoffSelection) {
+      const restoredDraft = stripThreadHandoffPrefix(handoffSeed, currentDraft);
+      if (restoredDraft !== null) {
+        promptDraft.setDraft(restoredDraft);
+      }
+      return;
+    }
+    const seededDraft = buildThreadHandoffFollowUpDraft(
+      handoffSeed,
+      currentDraft,
+    );
+    if (seededDraft !== currentDraft) {
+      promptDraft.setDraft(seededDraft);
+      focusBottomPluginComposer();
+    }
     appToast.message("Submitting will create a new thread", {
-      description: `Your follow-up starts a new ${selectedProviderDisplayNameRef.current} thread that continues from this one.`,
+      description: `A reference to this thread was added to your message. Edit it, then submit to start a new ${selectedProviderDisplayNameRef.current} thread.`,
     });
-  }, [isHandoffSelection, selectedProviderDisplayNameRef]);
+  }, [
+    focusBottomPluginComposer,
+    handoffSeed,
+    isHandoffSelection,
+    promptDraft,
+    selectedProviderDisplayNameRef,
+  ]);
   const hasSentMessageEdit = sentMessageEdit !== undefined;
   useEffect(() => {
     if (hasSentMessageEdit && isHandoffSelection) {
@@ -884,7 +910,7 @@ export function ThreadDetailPromptArea({
           permissionMode,
           executionInputSources,
         },
-        followUp: submittedDraft,
+        draft: submittedDraft,
         seed: handoffSeed,
         ...(sendAt === undefined ? {} : { sendAt }),
       });
