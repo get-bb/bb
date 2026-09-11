@@ -876,6 +876,13 @@
       "when": 1789586944199,
       "tag": "0124_thread_pruning",
       "breakpoints": true
+    },
+    {
+      "idx": 125,
+      "version": "6",
+      "when": 1789588549270,
+      "tag": "0125_silent_guardian",
+      "breakpoints": true
     }
   ]
 }

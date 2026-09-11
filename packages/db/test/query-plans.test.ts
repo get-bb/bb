@@ -19,6 +19,7 @@ import {
   getFirstParentedTimelineBoundarySequence,
   hasTimelineGroupingContextRowsInRange,
   listStoredEventRowsInSequenceRange,
+  getLastStoredProviderThreadId,
   insertEvents,
   listActiveBackgroundTaskCountsByThreadIds,
   listItemEventSpansByItems,
@@ -241,6 +242,39 @@ function assertEmittedQueryPlanUsesIndex(
 }
 
 describe("slow query index plans", () => {
+  it("looks up provider thread owners through the identity index", () => {
+    const { db, thread } = setup();
+    try {
+      insertEvents(db, noopNotifier, [
+        {
+          threadId: thread.id,
+          sequence: 1,
+          scope: threadScope(),
+          providerThreadId: "provider-owner-plan",
+          type: "thread/identity",
+          itemId: null,
+          itemKind: null,
+          parentToolCallId: null,
+          data: JSON.stringify({ providerThreadId: "provider-owner-plan" }),
+        },
+      ]);
+      const captured = captureStatements(db, () => {
+        expect(getLastStoredProviderThreadId(db, thread.id)).toBe(
+          "provider-owner-plan",
+        );
+      });
+      const ownerQuery = captured.find((statement) =>
+        statement.sql.includes('inner join "threads"'),
+      );
+      expect(ownerQuery).toBeDefined();
+      expect(queryPlanDetails({ db, ...ownerQuery! })).toContain(
+        "USING INDEX events_provider_identity_idx",
+      );
+    } finally {
+      db.$client.close();
+    }
+  });
+
   it("seeks accepted inputs past each thread's latest interruption", () => {
     const { db, thread } = setup();
     try {
