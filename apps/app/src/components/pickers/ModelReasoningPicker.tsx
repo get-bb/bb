@@ -1274,21 +1274,16 @@ function HandoffFlowHeader({
           {step === "provider" ? "Step 1 of 2" : "Step 2 of 2"}
         </span>
         <span aria-hidden>·</span>
-        {step === "provider" ? (
-          <span className="truncate">Choose a provider</span>
-        ) : (
-          <>
-            {ProviderIcon ? (
-              <ProviderIcon className="size-3.5 shrink-0" />
-            ) : null}
-            <span className="truncate text-foreground">
-              {provider?.label ?? ""}
-            </span>
-            <span aria-hidden>·</span>
-            <span className="truncate">Choose a model</span>
-          </>
-        )}
+        <span className="truncate">
+          {step === "provider" ? "Choose a provider" : "Choose a model"}
+        </span>
       </div>
+      {step === "model" && provider ? (
+        <div className="flex min-w-0 items-center gap-1.5 pl-7 text-xs text-foreground">
+          {ProviderIcon ? <ProviderIcon className="size-3.5 shrink-0" /> : null}
+          <span className="truncate">{provider.label}</span>
+        </div>
+      ) : null}
     </div>
   );
 }
