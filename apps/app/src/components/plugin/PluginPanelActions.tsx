@@ -327,11 +327,12 @@ function FileOpenerTabContent({
     () => parseFileOpenerParams(tab.paramsJson),
     [tab.paramsJson],
   );
-  if (
-    file === null ||
-    tab.fileOpenerOwner === undefined ||
-    original === undefined
-  ) {
+  const owner = tab.fileOpenerOwner;
+  const lineRange = useMemo(() => {
+    const range = owner?.tab.lineRange;
+    return range == null ? null : { ...range };
+  }, [owner]);
+  if (file === null || owner === undefined || original === undefined) {
     return <UnavailableFileOpenerTab />;
   }
   return (
@@ -348,6 +349,7 @@ function FileOpenerTabContent({
           <opener.component
             path={file.path}
             source={file.source}
+            experimental_lineRange={lineRange}
             Original={BoundOriginal}
             experimental_Original={deprecatedOriginalAlias(BoundOriginal)}
           />

@@ -236,6 +236,7 @@ function getPreviousActiveTabIdAfterActivation({
 function upsertSecondaryPanelTab(
   tabs: readonly FixedPanelTab[],
   tab: FixedPanelTab,
+  refreshTarget: boolean,
 ): readonly FixedPanelTab[] {
   const existingTabIndex = tabs.findIndex(
     (currentTab) => currentTab.id === tab.id,
@@ -245,7 +246,11 @@ function upsertSecondaryPanelTab(
   }
 
   const existingTab = tabs[existingTabIndex];
-  if (existingTab && areFixedPanelTabsEquivalent(existingTab, tab)) {
+  if (
+    !refreshTarget &&
+    existingTab &&
+    areFixedPanelTabsEquivalent(existingTab, tab)
+  ) {
     return tabs;
   }
 
@@ -266,7 +271,13 @@ export function openSecondaryPanelTabInState({
   state,
   tab,
 }: OpenSecondaryPanelTabInStateArgs): FixedPanelTabsState {
-  const tabs = upsertSecondaryPanelTab(state.secondary.tabs, tab);
+  const refreshTarget =
+    tab.kind === "plugin-panel" && tab.fileOpenerOwner?.tab.lineRange != null;
+  const tabs = upsertSecondaryPanelTab(
+    state.secondary.tabs,
+    tab,
+    refreshTarget,
+  );
   if (
     tabs === state.secondary.tabs &&
     state.secondary.activeTabId === tab.id &&
@@ -307,7 +318,7 @@ export function replaceNewTabWithSecondaryPanelTabInState({
 
   const tabs =
     newTab === null
-      ? upsertSecondaryPanelTab(tabsWithoutNewTab, tab)
+      ? upsertSecondaryPanelTab(tabsWithoutNewTab, tab, false)
       : state.secondary.tabs.map((currentTab) =>
           currentTab.id === newTab.id ? tab : currentTab,
         );
@@ -325,7 +336,7 @@ export function updateSecondaryPanelTabInState({
   state,
   tab,
 }: UpdateSecondaryPanelTabInStateArgs): FixedPanelTabsState {
-  const tabs = upsertSecondaryPanelTab(state.secondary.tabs, tab);
+  const tabs = upsertSecondaryPanelTab(state.secondary.tabs, tab, false);
   if (tabs === state.secondary.tabs) {
     return state;
   }

@@ -244,9 +244,10 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
           "Declare the file extensions it handles, for example `.csv` or `.excalidraw`",
           "Render its own viewer or editor whenever a file of that type is opened in bb",
           "Receive the file's path, then read it however the plugin already reads files",
+          "Reveal linked lines with experimental_lineRange, including repeated targets in an already open editor",
         ],
-        apiSymbols: ["PluginFileOpenerRegistration"],
-        firstParty: ["Docs"],
+        apiSymbols: ["PluginFileOpenerRegistration", "PluginFileOpenerProps"],
+        firstParty: ["Docs", "File Editor"],
       },
       {
         id: "app-overlay",
