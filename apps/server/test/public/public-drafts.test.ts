@@ -19,6 +19,11 @@ import {
   type PluginHookRegistration,
 } from "../../src/services/plugins/plugin-hook-registry.js";
 import { setPluginEnvironmentProviderBridge } from "../../src/services/plugins/plugin-environment-provider-registry.js";
+import { setPluginMachineProviderBridge } from "../../src/services/plugins/plugin-machine-provider-registry.js";
+import {
+  validatePluginEnvironmentProviderDeclaration,
+  validatePluginMachineProviderDeclaration,
+} from "@get-bb/plugin-sdk/internal/host-policy";
 import type { PluginHookName } from "@get-bb/plugin-sdk";
 import { readJson } from "../helpers/json.js";
 import {
@@ -77,6 +82,7 @@ afterEach(() => {
   vi.restoreAllMocks();
   setPluginHookProvider(undefined);
   setPluginEnvironmentProviderBridge(undefined);
+  setPluginMachineProviderBridge(undefined);
 });
 
 describe("durable draft resources", () => {
@@ -120,7 +126,10 @@ describe("durable draft resources", () => {
       const submit = await request(harness, `/${first.id}/submit`, "POST", {
         expectedRevision: 1,
       });
-      expect(submit.status).toBe(400);
+      expect(submit.status).toBe(404);
+      expect(await readJson(submit)).toMatchObject({
+        code: "project_not_found",
+      });
       expect(
         draftSchema.parse(
           await readJson(
@@ -218,9 +227,44 @@ describe("durable draft resources", () => {
   it("submits provider-owned machine selections through the existing creation contract", async () => {
     await withTestHarness(async (harness) => {
       const ready = readyContent(harness);
+      const target = {
+        pluginId: "draft-machine-fixture",
+        provider: validatePluginEnvironmentProviderDeclaration({
+          id: "draft-workspace-fixture",
+          displayName: "Draft workspace fixture",
+          description: "Prepare a workspace for this draft.",
+          icon: "Folder",
+          requires: {},
+          create: async () => ({ status: "failed", message: "Not dispatched" }),
+          remove: async () => ({ status: "removed" }),
+        }),
+      };
+      const machine = {
+        pluginId: "draft-machine-fixture",
+        provider: validatePluginMachineProviderDeclaration({
+          id: "fixture-machine",
+          displayName: "Draft machine fixture",
+          description: "Prepare a machine for this draft.",
+          icon: "Cloud",
+          create: async () => ({ status: "failed", message: "Not dispatched" }),
+          reconcileCleanup: async () => ({ status: "removed" }),
+          remove: async () => ({ status: "removed" }),
+        }),
+      };
+      setPluginMachineProviderBridge({
+        listMachineProviders: () => [machine],
+        getMachineProvider: (id) =>
+          id === machine.provider.id ? machine : undefined,
+        invokeProvider: async (_pluginId, _label, run) => ({
+          ok: true,
+          value: await run(),
+        }),
+        decisionTimeoutMs: 10_000,
+      });
       setPluginEnvironmentProviderBridge({
-        listEnvironmentProviders: () => [],
-        getEnvironmentProvider: () => undefined,
+        listEnvironmentProviders: () => [target],
+        getEnvironmentProvider: (id) =>
+          id === target.provider.id ? target : undefined,
         listEnvironmentCompositions: () => [
           {
             pluginId: "draft-machine-fixture",
@@ -230,7 +274,7 @@ describe("durable draft resources", () => {
               description: "Prepare a workspace for this draft.",
               icon: "Cloud",
               machineProviderId: "fixture-machine",
-              environmentProviderId: "project-checkout",
+              environmentProviderId: target.provider.id,
             },
           },
         ],
@@ -257,10 +301,9 @@ describe("durable draft resources", () => {
       const response = await request(harness, `/${draft.id}/submit`, "POST", {
         expectedRevision: draft.revision,
       });
-      expect(response.status).toBe(200);
-      expect(
-        draftSubmitResponseSchema.parse(await readJson(response)).draft,
-      ).toBeNull();
+      const body = await readJson(response);
+      expect(response.status, JSON.stringify(body)).toBe(200);
+      expect(draftSubmitResponseSchema.parse(body).draft).toBeNull();
     });
   });
 
