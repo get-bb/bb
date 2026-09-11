@@ -80,11 +80,7 @@ export function PluginMarketplaceDetailMetadata({
         {entry.marketplaceDisplayName}
       </PluginDetailMetadataItem>
       <PluginDetailMetadataItem label="Category">
-        {entry.category === undefined ? (
-          "Not categorized"
-        ) : (
-          <PluginMarketplaceCategoryPill entry={entry} />
-        )}
+        {entry.category ?? "Not categorized"}
       </PluginDetailMetadataItem>
       <PluginDetailMetadataItem label="Listed">
         {entry.publishedAt === undefined ? (

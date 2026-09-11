@@ -15,7 +15,6 @@ import {
   PluginMarketplaceOverview,
   PluginMarketplaceSource,
 } from "./PluginMarketplaceListing";
-import { PluginCategoryLabel } from "./plugin-ui";
 import { pluginCatalogCategory } from "@bb/domain";
 
 interface AuthoredPluginDetailProps {
@@ -91,12 +90,7 @@ export function AuthoredPluginDetail({ record }: AuthoredPluginDetailProps) {
             </PluginDetailFieldRow>
             {category !== undefined ? (
               <PluginDetailFieldRow label="Category">
-                <span className="flex justify-end">
-                  <PluginCategoryLabel
-                    label={category}
-                    categoryId={entry.category}
-                  />
-                </span>
+                {category}
               </PluginDetailFieldRow>
             ) : null}
             {lifecycle.status !== "draft" ? (
