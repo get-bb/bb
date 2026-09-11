@@ -48,6 +48,7 @@ describe("useDrafts", () => {
       { query: "Saved", limit: "50", offset: "0" },
       expect.any(AbortSignal),
     );
+    expect(result.current.hasNextPage).toBe(true);
     await act(async () => {
       await result.current.fetchNextPage();
     });

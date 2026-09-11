@@ -1509,7 +1509,7 @@ describe("PluginNewThreadComposer seeding", () => {
     );
 
     expect(mocks.promptBoxProps[0]?.modeConfig.environment.value).toBe(
-      "provider:personal-workspace",
+      "provider:project-checkout",
     );
     expect(mocks.promptBoxProps[0]?.value).toBe("");
     expect(mocks.promptBoxProps[0]?.attachments.items).toEqual([]);
