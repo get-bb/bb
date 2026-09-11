@@ -1,7 +1,5 @@
 import type { SystemEnvironmentProvider } from "@bb/server-contract";
-import { Icon } from "@bb/shared-ui/icon";
-import { getProviderIconInfo } from "@/lib/provider-icon";
-import { pluginIconName } from "./PluginIcon";
+import { ProviderIcon } from "./ProviderIcon";
 
 export function EnvironmentProviderIcon({
   provider,
@@ -10,15 +8,12 @@ export function EnvironmentProviderIcon({
   provider: SystemEnvironmentProvider;
   className?: string;
 }) {
-  const info = getProviderIconInfo("environment", provider.id, {
-    logoUrl: provider.logoUrl,
-    displayName: provider.displayName,
-    ...(provider.icon === null ? {} : { icon: { glyph: provider.icon } }),
-  });
-  const ProviderIcon = info?.icon;
-  return ProviderIcon === undefined ? (
-    <Icon name={pluginIconName(provider.icon)} className={className} />
-  ) : (
-    <ProviderIcon className={className} />
+  return (
+    <ProviderIcon
+      providerKind="environment"
+      provider={provider}
+      fallback="Zap"
+      className={className}
+    />
   );
 }

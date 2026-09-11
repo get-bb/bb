@@ -138,22 +138,27 @@ describe("getProviderIconInfo", () => {
       "/api/v1/system/providers/acp-do-computer/logo",
     );
     expect(mask.className).toContain("bg-current");
-    expect(mask.className).toContain("size-4");
+    expect(mask.parentElement?.className).toContain("size-4");
 
     expect(view.container.querySelector("img")).toBeNull();
   });
 
-  it("vendors no brand marks: a provider known only by id has no icon", () => {
-    for (const providerId of ["codex", "claude-code", "pi", "acp-opencode"]) {
-      expect(
-        getProviderIconInfo("agent", providerId),
-        providerId,
-      ).toBeUndefined();
-      expect(
-        getProviderIconInfo("agent", providerId, { logoUrl: null }),
-        providerId,
-      ).toBeUndefined();
-    }
+  it("renders a generic fallback for a provider known only by id", () => {
+    const info = getProviderIconInfo("agent", "codex");
+    const view = render(createElement(info.icon));
+    expect(view.container.querySelector('[data-icon="Code"]')).not.toBeNull();
+    act(() =>
+      setPluginSlotRegistrations("provider-codex", {
+        ...EMPTY_REGISTRATIONS,
+        providerIcons: [
+          { providerKind: "agent", providerId: "codex", icon: PluginCodexIcon },
+        ],
+      }),
+    );
+    expect(
+      view.container.querySelector('[data-testid="plugin-codex-icon"]'),
+    ).not.toBeNull();
+    view.unmount();
   });
 
   it("draws a declared host glyph for a provider without a logo, and keeps it below a logo", () => {
@@ -181,12 +186,16 @@ describe("getProviderIconInfo", () => {
     ).not.toBeNull();
     glyphView.unmount();
 
+    const missingInfo = getProviderIconInfo("agent", "echo-agent", {
+      logoUrl: null,
+      icon: { glyph: "NoSuchGlyph" },
+    });
+    expect(missingInfo).toBeDefined();
+    const missingView = render(createElement(missingInfo!.icon, {}));
     expect(
-      getProviderIconInfo("agent", "echo-agent", {
-        logoUrl: null,
-        icon: { glyph: "NoSuchGlyph" },
-      }),
-    ).toBeUndefined();
+      missingView.container.querySelector('[data-icon="Code"]'),
+    ).not.toBeNull();
+    missingView.unmount();
 
     const bothInfo = getProviderIconInfo("agent", "echo-agent", {
       logoUrl: "/api/v1/system/providers/echo-agent/logo",
@@ -203,7 +212,7 @@ describe("getProviderIconInfo", () => {
 
     expect(
       getProviderIconInfo("agent", "echo-agent", { logoUrl: null }),
-    ).toBeUndefined();
+    ).toBeDefined();
   });
 
   it("lets a plugin-registered component win, and falls back when it goes away", () => {
@@ -307,6 +316,6 @@ describe("getProviderIconInfo", () => {
     expect(byFamily.ariaLabel).toBe("ACP provider");
     familyView.unmount();
 
-    expect(getProviderIconInfo("agent", "acp-unregistered")).toBeUndefined();
+    expect(getProviderIconInfo("agent", "acp-unregistered")).toBeDefined();
   });
 });

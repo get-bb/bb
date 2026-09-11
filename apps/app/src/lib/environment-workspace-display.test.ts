@@ -176,13 +176,13 @@ describe("getEnvironmentDisplayIconName", () => {
     );
   });
 
-  it("falls back to the plugin placeholder icon for an unknown icon name", () => {
+  it("preserves a custom icon reference for the reactive renderer", () => {
     expect(
       getEnvironmentDisplayIconName({
         status: "loaded",
-        provider: { ...worktreeProvider, icon: "NotAnIconName" },
+        provider: { ...worktreeProvider, icon: "acme/workspace" },
       }),
-    ).toBe("Zap");
+    ).toBe("acme/workspace");
   });
 
   it("has no icon for a row with no provider or while the list loads", () => {

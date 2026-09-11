@@ -37,6 +37,7 @@ import {
   type PluginNavPanelRegistration,
   type PluginNewThreadPanelActionRegistration,
   type PluginPendingInteractionRegistration,
+  type ExperimentalIconRegistration,
   type PluginTimelineRendererRegistration,
   type PluginRealtimeConnectionState,
   type PluginRpcClient,
@@ -848,6 +849,33 @@ const testPluginSdkApp = {
   ThreadChat: TestThreadChat,
   Markdown: TestMarkdown,
   experimental_FileLink: TestFileLink,
+  experimental_Icon: ({ name, fallback, ...props }) => (
+    <span {...props} data-icon={name} data-icon-fallback={fallback} />
+  ),
+  experimental_ProviderIcon: ({
+    providerKind,
+    provider,
+    fallback,
+    ...props
+  }) => (
+    <span
+      {...props}
+      data-provider-kind={providerKind}
+      data-provider-id={provider.id}
+      data-provider-logo={provider.logoUrl ?? undefined}
+      data-provider-glyph={
+        (typeof provider.icon === "string"
+          ? provider.icon
+          : provider.icon?.glyph) ?? undefined
+      }
+      data-provider-tint={
+        provider.strings?.iconTint == null
+          ? undefined
+          : JSON.stringify(provider.strings.iconTint)
+      }
+      data-provider-fallback={fallback}
+    />
+  ),
   UrlLink: TestUrlLink,
   experimental_NewThreadComposer: TestNewThreadComposer,
   experimental_ProviderModelPicker: TestProviderModelPicker,
@@ -965,6 +993,7 @@ export interface CapturedPluginApp {
   messageDirectives: PluginMessageDirectiveRegistration[];
   messageActions: PluginMessageActionRegistration[];
   providerIcons: CollectedPluginProviderIconRegistration[];
+  icons: ExperimentalIconRegistration[];
   timelineRenderers: PluginTimelineRendererRegistration[];
   environmentProviderInputs: PluginEnvironmentProviderInputsRegistration[];
   machineProviderInputs: PluginMachineProviderInputsRegistration[];

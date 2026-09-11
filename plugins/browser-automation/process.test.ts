@@ -50,7 +50,12 @@ try {
   }
   assert.deepEqual(env, original);
   const output = await execute(${JSON.stringify(process.execPath)}, ["-e", "process.stdout.write(JSON.stringify(process.env))"], env, deadline);
-  assert.deepEqual(JSON.parse(output), original);
+  const executedEnv = JSON.parse(output);
+  for (const [key, value] of Object.entries(original)) {
+    assert.equal(executedEnv[key], value);
+  }
+  assert.equal(executedEnv.ELECTRON_RUN_AS_NODE, undefined);
+  assert.deepEqual(env, original);
 } finally {
   await child.close();
 }

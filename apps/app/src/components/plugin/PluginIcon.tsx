@@ -1,12 +1,10 @@
 import type { CSSProperties } from "react";
-import { Icon, ICON_NAMES, type IconName } from "@bb/shared-ui/icon";
+import { Icon, type IconName } from "@bb/shared-ui/icon";
 import { usePluginCompactBranding } from "@/lib/plugin-logos";
 import { cn } from "@bb/shared-ui/lib/utils";
 
 export function pluginIconName(icon: string | null): IconName {
-  return icon !== null && (ICON_NAMES as readonly string[]).includes(icon)
-    ? (icon as IconName)
-    : "Zap";
+  return icon ?? "Zap";
 }
 
 export function PluginCompactIconMask({

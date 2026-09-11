@@ -309,3 +309,42 @@ serviceTier?, executionInputSources, environment, input }`. Forward it
   Experimental: the `experimental_` prefix will drop once the entry in
   `docs/api_to_audit.md` is audited. Give it real width — the control row
   does not fit in a ~420px column.
+
+
+## Shared app and provider icons
+
+Use `app.experimental_icons.register({ name, component })` during
+`definePluginApp` setup to add or override a shared app icon. Names are trimmed
+and must be nonempty; namespacing is recommended, not required. Any plugin can
+render the name with `experimental_Icon`. Duplicate names within a plugin reject
+setup. Across plugins, the first plugin id in lexical order wins and bb warns.
+Registration returns `void`; reload replaces registrations and unload restores
+the next owner or built-in. A rejected setup preserves the previous generation.
+
+`experimental_Icon` accepts `name`, optional `fallback` (default `Zap`),
+`className`, `style`, `aria-label`, and `aria-hidden`. Registered artwork receives
+`className` for sizing and inherits color. Missing names try the fallback, then
+built-in `Zap`; throwing and recursive artwork is contained. Mounted icons update
+when plugins load, reload or unload.
+
+`experimental_ProviderIcon` requires `providerKind` (`agent`, `machine`, or
+`environment`) and the existing provider record as `provider`, plus optional `fallback` (default `Code`), `className`, `aria-label`,
+and `aria-hidden`. It reads `id`, `logoUrl`, `icon` (agent `{ glyph }` or machine/environment
+string), and `strings.iconTint` without fetching. An id-only record resolves a
+frontend registration or fallback. For example:
+
+```tsx
+<ProviderIcon providerKind="agent" provider={provider} fallback="Bot" className="size-4" />
+```
+
+ Resolution is the matching kind/id `app.slots.experimental_providerIcon` override,
+then a legacy unscoped override, then
+declared logo mask, then glyph through the shared app registry, then fallback.
+Invalid tints are ignored. Overrides update and remount per plugin generation;
+throwing or recursive overrides fall back to declared artwork. Without a label,
+the mark is decorative. Provider Usage and Tasks use this shared renderer.
+
+These APIs do not change manifest branding, declared SVG assets, or server-side
+presentation validation. Plugin branding does not consult provider icon slots.
+The Plugin Guide's Host components card documents the public contract and the
+SDK declarations supply the exact types.

@@ -1,4 +1,9 @@
-import type { ComponentPropsWithoutRef, ComponentType, ReactNode } from "react";
+import type {
+  ComponentPropsWithoutRef,
+  ComponentType,
+  CSSProperties,
+  ReactNode,
+} from "react";
 import type {
   PermissionMode,
   PromptInput,
@@ -1312,7 +1317,7 @@ export interface PluginCommandPaletteActionRegistration {
  * Provider logo assets use a currentColor mask. Inline components can also
  * render multiple colors and inherit the app's theme and sizing classes.
  *
- * The host passes only `className` (sizing plus the provider's color class);
+ * The host passes `className` for sizing; color inherits from its wrapper.
  * the component must render an inline SVG (or other inline markup) and must
  * not fetch. One registration per provider kind and id per plugin; when two
  * plugins claim the same pair the host keeps the first by plugin id and warns.
@@ -1654,7 +1659,58 @@ export interface PluginAppContentScripts {
   register(registration: PluginContentScriptRegistration): void;
 }
 
+export interface ExperimentalIconProps {
+  name: string;
+  /** Used when the requested name is missing; defaults to the host Zap icon. */
+  fallback?: string;
+  className?: string;
+  style?: CSSProperties;
+  "aria-hidden"?: boolean | "true" | "false";
+  "aria-label"?: string;
+}
+
+/** Shared agent, machine, or environment artwork without fetching metadata. */
+export interface ExperimentalProviderIconProps {
+  /** Keeps same-id agent, machine, and environment providers distinct. */
+  providerKind: PluginProviderIconRegistration["providerKind"];
+  /**
+   * Existing agent, machine, or environment provider record. Reads id, logoUrl, icon and
+   * strings.iconTint; other fields are ignored. An id-only record is sufficient
+   * when only frontend registrations and fallback are needed. Does not fetch.
+   */
+  provider: {
+    id: string;
+    logoUrl?: string | null;
+    /** Agent providers use { glyph }; machine and environment providers use a string. */
+    icon?: { glyph: string } | string | null;
+    strings?: { iconTint?: { light: string; dark: string } | null } | null;
+  };
+  /** Used when no artwork is available; defaults to Code. */
+  fallback?: string;
+  className?: string;
+  "aria-hidden"?: boolean | "true" | "false";
+  "aria-label"?: string;
+}
+
+export interface ExperimentalIconRegistration {
+  /** Shared app name. Namespacing is recommended, but not required. */
+  name: string;
+  /** Inline artwork. Honor className for sizing; use currentColor for tint. */
+  component: ComponentType<{ className?: string }>;
+}
+
+export interface ExperimentalAppIcons {
+  /**
+   * Add or override an app icon during setup. Returns nothing; the host
+   * replaces registrations on reload and removes them on unload. Duplicate
+   * names within a plugin reject setup. Between plugins, the first plugin id
+   * in lexical order wins, independent of bundle load order.
+   */
+  register(registration: ExperimentalIconRegistration): void;
+}
+
 export interface PluginAppBuilder {
+  experimental_icons: ExperimentalAppIcons;
   slots: PluginAppSlots;
   composer: PluginAppComposer;
   contentScripts: PluginAppContentScripts;
@@ -2434,6 +2490,15 @@ export interface BbNavigate {
  * shims the specifier to that object on `globalThis.__bbPluginRuntime`.
  */
 export interface PluginSdkApp {
+  experimental_Icon: ComponentType<ExperimentalIconProps>;
+  /**
+   * Render provider slot override, then its logo, then its glyph, then fallback.
+   * Pass a record from agent, machine, or environment provider queries;
+   * an id-only record resolves frontend registrations, without fetching metadata.
+   * Updates on plugin load, reload and unload. Throwing or recursive overrides
+   * fall back to declared artwork. Logo assets render as currentColor masks.
+   */
+  experimental_ProviderIcon: ComponentType<ExperimentalProviderIconProps>;
   definePluginApp(setup: PluginAppSetup): PluginAppDefinition;
   useRpc<
     Contract extends PluginRpcContract = PluginRpcContract,

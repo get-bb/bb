@@ -43,6 +43,7 @@ interface ExpandableTimelineRowProps {
   expandable?: boolean;
   horizontalPadding?: TimelineRowHorizontalPadding;
   leadingIcon?: IconName;
+  leadingIconFallback?: IconName;
   leadingIconUrl?: string;
   leadingIconStyle?: CSSProperties;
   summaryClassName?: string;
@@ -83,6 +84,7 @@ function ExpandableTimelineRowComponent({
   forceExpanded = false,
   horizontalPadding = "default",
   leadingIcon,
+  leadingIconFallback,
   leadingIconUrl,
   leadingIconStyle,
   onTitleAction,
@@ -212,6 +214,7 @@ function ExpandableTimelineRowComponent({
           ) : leadingIcon ? (
             <Icon
               name={leadingIcon}
+              fallback={leadingIconFallback}
               className="size-3.5 shrink-0 text-muted-foreground"
               style={leadingIconStyle}
               aria-hidden
