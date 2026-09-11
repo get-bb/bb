@@ -389,7 +389,7 @@ it("removes a suspended machine when its last thread is archived with an offline
       listThreadIdsWithHostOfflineQueueWaits(harness.db, target.host.id),
     ).toEqual([thread.id]);
     const response = await harness.app.request(
-      `/api/v1/threads/${thread.id}/archive`,
+      `/api/v1/threads/${thread.id}/archive-all`,
       { method: "POST" },
     );
     expect(response.status).toBe(200);

@@ -70,6 +70,95 @@ function makeSidebarNavigation(
 }
 
 describe("thread state cache owner", () => {
+  it.each([
+    {
+      source: "sidebar",
+      parentSection: "parent-section",
+      sectionId: undefined,
+    },
+    { source: "detail", parentSection: "parent-section", sectionId: undefined },
+    { source: "list", parentSection: "parent-section", sectionId: undefined },
+    { source: "sidebar", parentSection: null, sectionId: undefined },
+    {
+      source: "sidebar",
+      parentSection: "parent-section",
+      sectionId: "destination",
+    },
+    { source: "sidebar", parentSection: "parent-section", sectionId: null },
+    {
+      source: "missing",
+      parentSection: "parent-section",
+      sectionId: undefined,
+    },
+  ])(
+    "unparents without flashing the old section ($source, $parentSection, $sectionId)",
+    async ({ source, parentSection, sectionId }) => {
+      const { queryClient } = createQueryClientTestHarness();
+      const child = makeThreadWithRuntime({
+        parentThreadId: "parent",
+        sectionId: "old-section",
+      });
+      const childEntry = makeThreadListEntry(child);
+      const parent = makeThreadListEntry({
+        id: "parent",
+        sectionId: parentSection,
+      });
+      const listKey = threadListQueryKey({
+        archived: false,
+        projectId: "project-1",
+      });
+      queryClient.setQueryData(threadQueryKey(child.id), child);
+      queryClient.setQueryData(
+        listKey,
+        source === "list" ? [childEntry, parent] : [childEntry],
+      );
+      queryClient.setQueryData(
+        sidebarNavigationQueryKey(),
+        makeSidebarNavigation(
+          source === "sidebar" ? [childEntry, parent] : [childEntry],
+        ),
+      );
+      if (source === "detail") {
+        queryClient.setQueryData(
+          threadQueryKey(parent.id),
+          makeThreadWithRuntime(parent),
+        );
+      }
+      const transaction = await beginThreadMetadataTransaction({
+        queryClient,
+        threadId: child.id,
+        parentThreadId: null,
+        sectionId,
+      });
+      const expected =
+        source === "missing"
+          ? { parentThreadId: "parent", sectionId: "old-section" }
+          : {
+              parentThreadId: null,
+              sectionId: sectionId === undefined ? parentSection : sectionId,
+            };
+      const cachedChild = () => [
+        queryClient.getQueryData<ThreadWithRuntime>(threadQueryKey(child.id)),
+        queryClient.getQueryData<ThreadListEntry[]>(listKey)?.[0],
+        queryClient.getQueryData<SidebarBootstrapResponse>(
+          sidebarNavigationQueryKey(),
+        )?.projects[0]?.threads[0],
+      ];
+      for (const cached of cachedChild())
+        expect(cached).toMatchObject(expected);
+      rollbackThreadListMutationTransaction({
+        queryClient,
+        threadId: child.id,
+        transaction,
+      });
+      for (const cached of cachedChild())
+        expect(cached).toMatchObject({
+          parentThreadId: "parent",
+          sectionId: "old-section",
+        });
+    },
+  );
+
   it("optimistically renames thread in thread, list, and sidebar caches", async () => {
     const { queryClient } = createQueryClientTestHarness();
     const threadId = "thread-1";

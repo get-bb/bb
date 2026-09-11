@@ -284,6 +284,10 @@ Ownership:
     --reasoning-level <level>              Set the sticky reasoning level (provider-dependent)
     --visibility <visibility>              Set visible or hidden
 
+  Clearing a parent inherits the former parent's section unless --section or
+  --clear-section is also supplied. Children released by environment archiving
+  also inherit their former parent's section.
+
   Model and reasoning updates stay within the thread's current provider. BB
   validates them against that provider's current model catalog, applies them on
   the next turn, and keeps using them on later turns until changed.

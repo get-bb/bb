@@ -440,7 +440,7 @@ describe("plugin thread lifecycle events", () => {
       });
 
       const response = await harness.app.request(
-        `/api/v1/threads/${thread.id}/archive`,
+        `/api/v1/threads/${thread.id}/archive-all`,
         { method: "POST" },
       );
 

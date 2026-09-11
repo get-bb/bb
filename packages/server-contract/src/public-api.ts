@@ -1411,12 +1411,6 @@ export const publicApiRoutes = {
       request: noRequest<PathThreadInteractionId>(),
       response: jsonResponse<PendingInteraction>(),
     }),
-    archive: defineRoute({
-      path: "/threads/:id/archive",
-      method: "post",
-      request: noRequest<PathId>(),
-      response: jsonResponse<{ ok: true }>(),
-    }),
     archiveAll: defineRoute({
       path: "/threads/:id/archive-all",
       method: "post",

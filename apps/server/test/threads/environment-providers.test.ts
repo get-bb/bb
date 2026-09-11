@@ -2642,9 +2642,12 @@ describe("a provider-produced environment over its life", () => {
         });
         expect(
           (
-            await harness.app.request(`/api/v1/threads/${thread.id}/archive`, {
-              method: "POST",
-            })
+            await harness.app.request(
+              `/api/v1/threads/${thread.id}/archive-all`,
+              {
+                method: "POST",
+              },
+            )
           ).status,
         ).toBe(200);
         expect(

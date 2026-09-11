@@ -1578,7 +1578,7 @@ describe("public terminal routes", () => {
     fixture.harness.hub.registerTerminalClient(stored.id, browserSocket);
 
     const response = await fixture.harness.app.request(
-      `/api/v1/threads/${fixture.thread.id}/archive`,
+      `/api/v1/threads/${fixture.thread.id}/archive-all`,
       {
         method: "POST",
       },
