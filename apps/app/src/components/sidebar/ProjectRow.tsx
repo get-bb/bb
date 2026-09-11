@@ -1008,6 +1008,7 @@ function EnvironmentThreadGroupHeader({
             SIDEBAR_HOVER_ACTIONS_CLASS,
             SIDEBAR_CONTROL_PAIR_SIZE_CLASS,
             "relative flex items-center justify-end",
+            isCollapsed && "max-md:pointer-coarse:hidden",
           )}
         >
           <EnvironmentThreadGroupHeaderActions

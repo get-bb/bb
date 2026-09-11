@@ -241,6 +241,8 @@ export function TopLevelSidebarSection({
                   "inline-flex shrink-0 items-center",
                   SIDEBAR_HOVER_ACTIONS_GAP_CLASS,
                   !actionsAlwaysVisible && SIDEBAR_HOVER_ACTIONS_CLASS,
+                  collapseControl?.isCollapsed &&
+                    "max-md:pointer-coarse:hidden",
                 )}
               >
                 {actions}
