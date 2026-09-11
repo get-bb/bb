@@ -12,7 +12,7 @@ import { ApiError } from "../errors.js";
 import { browserRequestProblem } from "../browser-request-guard.js";
 import type { AppDeps, LoggedWorkSessionDeps } from "../types.js";
 import {
-  callHostOnlineRpc,
+  callHostOnlineRpcForWork,
   callHostRetryableOnlineRpc,
 } from "../services/hosts/online-rpc.js";
 import {
@@ -232,7 +232,7 @@ export function registerFileRoutes(app: Hono, deps: AppDeps): void {
     const hostId = resolveHostId(payload.hostId);
     try {
       const result = await runHostFileMutation(hostId, () =>
-        callHostOnlineRpc(deps, {
+        callHostOnlineRpcForWork(deps, {
           hostId,
           timeoutMs: COMMAND_TIMEOUT_MS,
           command: {
@@ -313,7 +313,7 @@ export function registerFileRoutes(app: Hono, deps: AppDeps): void {
     const hostId = resolveHostId(payload.hostId);
     try {
       const result = await runHostFileMutation(hostId, () =>
-        callHostOnlineRpc(deps, {
+        callHostOnlineRpcForWork(deps, {
           hostId,
           timeoutMs: COMMAND_TIMEOUT_MS,
           command: {
@@ -336,7 +336,7 @@ export function registerFileRoutes(app: Hono, deps: AppDeps): void {
     const hostId = resolveHostId(payload.hostId);
     try {
       const result = await runHostFileMutation(hostId, () =>
-        callHostOnlineRpc(deps, {
+        callHostOnlineRpcForWork(deps, {
           hostId,
           timeoutMs: COMMAND_TIMEOUT_MS,
           command: {
@@ -359,7 +359,7 @@ export function registerFileRoutes(app: Hono, deps: AppDeps): void {
     const hostId = resolveHostId(payload.hostId);
     try {
       const result = await runHostFileMutation(hostId, () =>
-        callHostOnlineRpc(deps, {
+        callHostOnlineRpcForWork(deps, {
           hostId,
           timeoutMs: COMMAND_TIMEOUT_MS,
           command: {

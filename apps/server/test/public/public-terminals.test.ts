@@ -1,3 +1,6 @@
+import { updateMachineEnvironment } from "../../src/services/machines/environment-settings.js";
+import * as gitCredentials from "../../src/services/machines/git-credentials.js";
+import { updateHost } from "@bb/db";
 import {
   createTerminalSession,
   getTerminalSession,
@@ -382,6 +385,63 @@ describe("public terminal routes", () => {
   afterEach(async () => {
     for (const harness of harnesses) {
       await harness.cleanup();
+    }
+  });
+
+  it("resolves host credentials for machine terminals and excludes local terminals", async () => {
+    const resolve = vi
+      .spyOn(gitCredentials, "resolveGitCredentials")
+      .mockResolvedValue([
+        {
+          name: "GH_TOKEN",
+          value: "terminal-secret",
+          source: { core: "machine-git" },
+          reason: "Server gh login",
+        },
+      ]);
+    try {
+      for (const enrolled of [false, true]) {
+        const fixture = await createTerminalRouteFixture();
+        harnesses.push(fixture.harness);
+        if (enrolled)
+          updateHost(fixture.harness.db, fixture.harness.hub, fixture.host.id, {
+            machineProviderId: "manual",
+          });
+        await updateMachineEnvironment(
+          fixture.harness.db,
+          fixture.harness.config.dataDir,
+          "CUSTOM_TERMINAL",
+          {
+            name: "CUSTOM_TERMINAL",
+            value: "terminal-value",
+            note: null,
+          },
+        );
+        const pending = await startPendingTerminalOpen(fixture);
+        expect(pending.openMessage.contributedEnv).toEqual(
+          enrolled
+            ? [
+                ...(await resolve()),
+                expect.objectContaining({
+                  name: "CUSTOM_TERMINAL",
+                  value: "terminal-value",
+                }),
+              ]
+            : [],
+        );
+        acknowledgeTerminalOpen(fixture, pending.openMessage);
+        expect((await pending.responsePromise).status).toBe(201);
+        expect(
+          JSON.stringify(
+            listTerminalSessions(fixture.harness.db, {
+              scope: { threadId: fixture.thread.id, kind: "thread" },
+              visible: true,
+            }),
+          ),
+        ).not.toContain("terminal-secret");
+      }
+    } finally {
+      resolve.mockRestore();
     }
   });
 
@@ -913,6 +973,10 @@ describe("public terminal routes", () => {
       title: "Terminal 1",
     });
 
+    const notify = vi.spyOn(
+      fixture.harness.pluginService.events,
+      "emitTerminalInput",
+    );
     const response = await fixture.harness.app.request(
       `/api/v1/terminals/${session.id}/input`,
       {
@@ -925,6 +989,12 @@ describe("public terminal routes", () => {
     );
 
     expect(response.status).toBe(200);
+    expect(notify).toHaveBeenCalledOnce();
+    expect(notify.mock.calls[0]?.[0]).toMatchObject({
+      id: session.id,
+      hostId: fixture.host.id,
+    });
+    expect(notify.mock.calls[0]?.[0]).not.toHaveProperty("dataBase64");
     const inputMessage = await waitForDaemonMessage(fixture.socket);
     expect(inputMessage).toMatchObject({
       type: "terminal.input",

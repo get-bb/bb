@@ -342,8 +342,6 @@ export class ServerConnection {
         hostId: this.options.hostId,
         instanceId: this.options.instanceId,
         hostName: this.options.hostName,
-        hostType: this.options.hostType,
-        connectMachineId: this.options.connectMachineId,
         dataDir: this.options.dataDir,
         localApiPort: this.options.localApiPort,
         activeThreads: this.options.getActiveThreads?.() ?? [],
@@ -420,11 +418,7 @@ export class ServerConnection {
           authorization: buildHostDaemonWebSocketAuthorizationHeader(
             this.options.hostKey,
           ),
-          ...(this.options.machineCredential !== undefined
-            ? {
-                "x-bb-connect-machine": this.options.machineCredential,
-              }
-            : {}),
+          ...this.options.serverHeaders,
         },
         maxRetries: Number.POSITIVE_INFINITY,
         protocols: buildHostDaemonWebSocketProtocols(),
@@ -587,6 +581,18 @@ export class ServerConnection {
 
     if (message.data.type === "session-close") {
       this.handleSessionCloseMessage(message.data.reason);
+      return;
+    }
+
+    if (message.data.type === "machine.shutdown") {
+      void Promise.resolve(this.options.onMachineShutdown?.()).catch(
+        (error) => {
+          this.options.logger.error(
+            { ...runtimeErrorLogFields(error) },
+            "Machine shutdown failed",
+          );
+        },
+      );
       return;
     }
 

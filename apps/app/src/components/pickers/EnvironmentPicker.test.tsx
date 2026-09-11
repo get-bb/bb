@@ -1,6 +1,8 @@
 // @vitest-environment jsdom
 
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import type { ReactElement } from "react";
+import { MemoryRouter } from "react-router-dom";
 import type { Host, ProjectSource } from "@bb/domain";
 import { makeHost } from "@bb/test-helpers/domain-fixtures";
 import { HOST_DAEMON_PROTOCOL_VERSION } from "@bb/host-daemon-contract";
@@ -12,8 +14,10 @@ import {
 } from "./EnvironmentPicker";
 
 const checkoutProvider: SystemEnvironmentProvider = {
+  machineProviderId: null,
   id: "project-checkout",
   displayName: "Project checkout",
+  description: "Work in this project checkout.",
   icon: "Laptop",
   logoUrl: null,
   pluginId: "environment-project-checkout",
@@ -30,8 +34,10 @@ const checkoutProvider: SystemEnvironmentProvider = {
 };
 
 const branchProvider: SystemEnvironmentProvider = {
+  machineProviderId: null,
   id: "branchy",
   displayName: "New branch workspace",
+  description: "Prepare a workspace for this thread.",
   icon: "GitBranch",
   logoUrl: null,
   pluginId: "branchy",
@@ -48,8 +54,10 @@ const branchProvider: SystemEnvironmentProvider = {
 };
 
 const sandboxProvider: SystemEnvironmentProvider = {
+  machineProviderId: null,
   id: "container",
   displayName: "Docker container",
+  description: "Prepare a workspace for this thread.",
   icon: "Container",
   logoUrl: null,
   pluginId: "docker-sandbox",
@@ -70,8 +78,10 @@ const sandboxProvider: SystemEnvironmentProvider = {
 };
 
 const optionalInputsProvider: SystemEnvironmentProvider = {
+  machineProviderId: null,
   id: "optional-sandbox",
   displayName: "Optional sandbox",
+  description: "Prepare a workspace for this thread.",
   icon: "Container",
   logoUrl: null,
   pluginId: "optional-sandbox",
@@ -113,7 +123,42 @@ afterEach(() => {
   vi.clearAllMocks();
 });
 
+function renderPicker(ui: ReactElement) {
+  return render(<MemoryRouter>{ui}</MemoryRouter>);
+}
+
 describe("EnvironmentPickerUI", () => {
+  it("does not expose an ephemeral host through the single-machine fallback", () => {
+    const ephemeralHost: Host = {
+      ...host,
+      name: "Modal sandbox 3f9a",
+      type: "ephemeral",
+      machineProviderId: "modal-sandbox",
+    };
+    renderPicker(
+      <EnvironmentPickerUI
+        value="provider:project-checkout"
+        sources={sources}
+        host={ephemeralHost}
+        isLocal={false}
+        providers={[checkoutProvider]}
+        onSelectProvider={vi.fn()}
+        modal={false}
+      />,
+    );
+
+    fireEvent.pointerDown(screen.getByRole("button", { name: "Environment" }), {
+      button: 0,
+    });
+    expect(screen.queryByText(ephemeralHost.name)).toBeNull();
+    expect(
+      screen.getByRole("menuitem", { name: "No host connected" }),
+    ).toBeTruthy();
+    expect(
+      screen.queryByRole("menuitem", { name: /Project checkout/u }),
+    ).toBeNull();
+  });
+
   it.each([false, true])(
     "shows loading instead of empty options (multiple machines: %s)",
     (multipleMachines) => {
@@ -179,7 +224,7 @@ describe("EnvironmentPickerUI", () => {
       displayName: "Project checkout with a deliberately long provider label",
     };
     const onSelectProvider = vi.fn();
-    render(
+    renderPicker(
       <EnvironmentPickerUI
         value="provider:project-checkout"
         sources={sources}
@@ -240,9 +285,8 @@ describe("EnvironmentPickerUI", () => {
     ).toBeTruthy();
     expect(screen.getByText("Configure credentials")).toBeTruthy();
   });
-
   it("omits a projectless-only provider from a project picker", () => {
-    render(
+    renderPicker(
       <EnvironmentPickerUI
         value="provider:project-checkout"
         sources={sources}
@@ -254,6 +298,8 @@ describe("EnvironmentPickerUI", () => {
             ...optionalInputsProvider,
             id: "personal-workspace",
             displayName: "Personal workspace",
+            description: "Prepare a workspace for this thread.",
+            icon: "Folder",
             requires: {
               projectCheckout: false,
               gitCheckout: false,
@@ -384,10 +430,11 @@ describe("EnvironmentPickerUI", () => {
     expect(screen.getByText("Configure credentials")).toBeTruthy();
   });
 
-  it("keeps a setup-required provider selectable and shows its message", () => {
+  it("selects a setup-required composed provider without navigating away", () => {
     const onSelectProvider = vi.fn();
     const setupRequiredProvider: SystemEnvironmentProvider = {
       ...sandboxProvider,
+      machineProviderId: "modal-sandbox",
       acceptsEmptyInputs: true,
       machineAvailability: {},
       inputs: null,
@@ -396,7 +443,7 @@ describe("EnvironmentPickerUI", () => {
         message: "Add Modal credentials",
       },
     };
-    render(
+    renderPicker(
       <EnvironmentPickerUI
         value="provider:project-checkout"
         sources={sources}
@@ -415,13 +462,12 @@ describe("EnvironmentPickerUI", () => {
     const providerItem = screen.getByRole("menuitem", {
       name: /Docker container/u,
     });
+    expect(providerItem.getAttribute("href")).toBeNull();
+    expect(screen.queryByText("Set it up in plugin settings")).toBeNull();
     expect(providerItem.getAttribute("aria-disabled")).toBeNull();
     expect(screen.getByText("Add Modal credentials")).toBeTruthy();
     fireEvent.click(providerItem);
-    expect(onSelectProvider).toHaveBeenCalledWith(
-      setupRequiredProvider,
-      host.id,
-    );
+    expect(onSelectProvider).toHaveBeenCalledWith(setupRequiredProvider, null);
   });
 
   it("disables a provider that declares inputs until its plugin registers a control", () => {
@@ -471,7 +517,7 @@ describe("EnvironmentPickerUI", () => {
 
   it("keeps a provider whose inputs schema requires nothing selectable without a control", () => {
     const onSelectProvider = vi.fn();
-    render(
+    renderPicker(
       <EnvironmentPickerUI
         value="provider:project-checkout"
         sources={sources}
@@ -534,7 +580,7 @@ describe("EnvironmentPickerUI multi-machine menu", () => {
       hostId: string | null,
     ) => void;
   }) {
-    render(
+    renderPicker(
       <EnvironmentPickerUI
         value={overrides?.value ?? "provider:project-checkout"}
         sources={machineSources}
@@ -565,6 +611,11 @@ describe("EnvironmentPickerUI multi-machine menu", () => {
     expect(screen.getByText("MacBook Pro")).toBeTruthy();
     expect(screen.getByText("this machine")).toBeTruthy();
     expect(screen.getByText("Mac Studio")).toBeTruthy();
+    expect(
+      screen
+        .getByText("MacBook Pro")
+        .parentElement?.querySelector('[data-icon="Laptop"]'),
+    ).not.toBeNull();
 
     const checkoutItems = screen.getAllByRole("menuitem", {
       name: /Project checkout/u,
@@ -594,6 +645,50 @@ describe("EnvironmentPickerUI multi-machine menu", () => {
     expect(providerItems).toHaveLength(3);
     fireEvent.click(providerItems[1]!);
     expect(onSelectProvider).toHaveBeenCalledWith(branchProvider, studio.id);
+  });
+
+  it("hides existing ephemeral hosts and keeps their composition entry", () => {
+    const ephemeralHost: Host = {
+      ...studio,
+      id: "host_sandbox",
+      name: "Modal sandbox 3f9a",
+      type: "ephemeral",
+      machineProviderId: "modal-sandbox",
+    };
+    const modalComposition: SystemEnvironmentProvider = {
+      ...sandboxProvider,
+      id: "modal-composition",
+      displayName: "Modal Sandbox",
+      machineProviderId: "modal-sandbox",
+    };
+    renderPicker(
+      <EnvironmentPickerUI
+        value="provider:project-checkout"
+        sources={machineSources}
+        host={thisMachine}
+        isLocal
+        machines={{
+          hosts: [thisMachine, studio, ephemeralHost],
+          localDaemonHostId: thisMachine.id,
+          primaryHostId: thisMachine.id,
+        }}
+        providers={[checkoutProvider, modalComposition]}
+        selectedProviderHostId={thisMachine.id}
+        onSelectProvider={vi.fn()}
+        modal={false}
+      />,
+    );
+    fireEvent.pointerDown(screen.getByRole("button", { name: "Environment" }), {
+      button: 0,
+    });
+
+    expect(screen.queryByText(ephemeralHost.name)).toBeNull();
+    expect(
+      screen.getByRole("menuitem", { name: /Modal Sandbox/u }),
+    ).toBeTruthy();
+    expect(
+      screen.getAllByRole("menuitem", { name: /Project checkout/u }),
+    ).toHaveLength(2);
   });
 
   it("hides a provider on the machine that reports it unavailable", () => {
@@ -667,7 +762,7 @@ describe("EnvironmentPickerUI multi-machine menu", () => {
       ...devVm,
       lastRejectedProtocolVersion: HOST_DAEMON_PROTOCOL_VERSION - 1,
     };
-    render(
+    renderPicker(
       <EnvironmentPickerUI
         value="provider:project-checkout"
         sources={machineSources}
@@ -695,7 +790,7 @@ describe("EnvironmentPickerUI multi-machine menu", () => {
 
   it("disables options on an offline machine that has a source", () => {
     const offlineStudio: Host = { ...studio, status: "disconnected" };
-    render(
+    renderPicker(
       <EnvironmentPickerUI
         value="provider:project-checkout"
         sources={machineSources}
@@ -724,10 +819,48 @@ describe("EnvironmentPickerUI multi-machine menu", () => {
     expect(checkoutItems[1]!.getAttribute("aria-disabled")).toBe("true");
   });
 
+  it.each(["removing", "resuming"] as const)(
+    "disables options on a machine that is %s",
+    (phase) => {
+      const unavailableStudio: Host = {
+        ...studio,
+        lifecycle: { ...studio.lifecycle, phase },
+      };
+      renderPicker(
+        <EnvironmentPickerUI
+          value="provider:project-checkout"
+          sources={machineSources}
+          host={thisMachine}
+          isLocal
+          machines={{
+            hosts: [thisMachine, unavailableStudio],
+            localDaemonHostId: thisMachine.id,
+            primaryHostId: thisMachine.id,
+          }}
+          providers={[checkoutProvider]}
+          selectedProviderHostId={thisMachine.id}
+          onSelectProvider={vi.fn()}
+          modal={false}
+        />,
+      );
+      fireEvent.pointerDown(
+        screen.getByRole("button", { name: "Environment" }),
+        {
+          button: 0,
+        },
+      );
+
+      const checkoutItems = screen.getAllByRole("menuitem", {
+        name: /Project checkout/u,
+      });
+      expect(checkoutItems[1]!.getAttribute("aria-disabled")).toBe("true");
+    },
+  );
+
   it("offers guided setup for a connected machine without a source", () => {
     const onRequestMachineSetup = vi.fn();
     const onlineVm: Host = { ...devVm, status: "connected", lastSeenAt: null };
-    render(
+    renderPicker(
       <EnvironmentPickerUI
         value="provider:project-checkout"
         sources={machineSources}
@@ -761,12 +894,14 @@ describe("EnvironmentPickerUI multi-machine menu", () => {
       ...checkoutProvider,
       id: "host-sandbox",
       displayName: "Host sandbox",
+      description: "Prepare a workspace for this thread.",
+      icon: "Folder",
       requires: {
         ...checkoutProvider.requires,
         projectCheckout: false,
       },
     };
-    render(
+    renderPicker(
       <EnvironmentPickerUI
         value="provider:project-checkout"
         sources={machineSources}
@@ -798,7 +933,7 @@ describe("EnvironmentPickerUI multi-machine menu", () => {
   });
 
   it("keeps the disabled not-set-up row for an offline machine", () => {
-    render(
+    renderPicker(
       <EnvironmentPickerUI
         value="provider:project-checkout"
         sources={machineSources}
@@ -841,7 +976,7 @@ describe("EnvironmentPickerUI multi-machine menu", () => {
 
   it("lists every eligible provider row under each machine", () => {
     const onSelectProvider = vi.fn();
-    render(
+    renderPicker(
       <EnvironmentPickerUI
         value="provider:project-checkout"
         sources={machineSources}
@@ -885,7 +1020,7 @@ describe("EnvironmentPickerUI multi-machine menu", () => {
   });
 
   it("names the selected machine and provider display name in the trigger label", () => {
-    render(
+    renderPicker(
       <EnvironmentPickerUI
         value="provider:branchy"
         sources={machineSources}
@@ -908,7 +1043,7 @@ describe("EnvironmentPickerUI multi-machine menu", () => {
 
   it("reports an offline machine ahead of the provider it was selected on", () => {
     const offlineStudio: Host = { ...studio, status: "disconnected" };
-    render(
+    renderPicker(
       <EnvironmentPickerUI
         value="provider:branchy"
         sources={machineSources}
@@ -932,7 +1067,7 @@ describe("EnvironmentPickerUI multi-machine menu", () => {
   });
 
   it("keeps the single-host menu when only one host exists", () => {
-    render(
+    renderPicker(
       <EnvironmentPickerUI
         value="provider:project-checkout"
         sources={machineSources}

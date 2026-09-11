@@ -14,7 +14,7 @@ import { COMMAND_TIMEOUT_MS } from "../../constants.js";
 import { ApiError } from "../../errors.js";
 import type { AppDeps } from "../../types.js";
 import {
-  callHostOnlineRpc,
+  callHostOnlineRpcForWork,
   callHostRetryableOnlineRpc,
 } from "../hosts/online-rpc.js";
 import type { ProjectCommandWorkspace as CommandWorkspace } from "../projects/project-workspace.js";
@@ -514,7 +514,7 @@ export async function writeProjectSkill(
     return { filePath: skillFilePath, revision };
   }
   if (editableScope.data !== "bb-user" && editableScope.data !== "bb-project") {
-    const result = await callHostOnlineRpc(deps, {
+    const result = await callHostOnlineRpcForWork(deps, {
       hostId: args.workspace.hostId,
       timeoutMs: COMMAND_TIMEOUT_MS,
       command: {
@@ -532,7 +532,7 @@ export async function writeProjectSkill(
     }
     return { filePath: skill.filePath, revision: result.sha256 };
   }
-  const result = await callHostOnlineRpc(deps, {
+  const result = await callHostOnlineRpcForWork(deps, {
     hostId: args.workspace.hostId,
     timeoutMs: COMMAND_TIMEOUT_MS,
     command: {
@@ -608,7 +608,7 @@ export async function deleteProjectSkill(
     daemonName = hostPathBasename(skillDirPath);
     rootPath = hostPathDirname(skillDirPath);
   }
-  const result = await callHostOnlineRpc(deps, {
+  const result = await callHostOnlineRpcForWork(deps, {
     hostId: args.workspace.hostId,
     timeoutMs: COMMAND_TIMEOUT_MS,
     command: {

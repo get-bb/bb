@@ -11,7 +11,10 @@ import type {
 import { COMMAND_TIMEOUT_MS } from "../../constants.js";
 import { ApiError } from "../../errors.js";
 import type { AppDeps } from "../../types.js";
-import { callHostOnlineRpc } from "../hosts/online-rpc.js";
+import {
+  callHostOnlineRpc,
+  callHostOnlineRpcForWork,
+} from "../hosts/online-rpc.js";
 import { resolveServerOwnedSkillCatalogEntries } from "./injected-skills.js";
 
 const GLOBAL_CLI_SKILL_NAMES: readonly string[] = ["bb-cli"];
@@ -21,7 +24,9 @@ const STATUS_TIMEOUT_MS = 5_000;
 export function listInstallableMachineIds(
   deps: GlobalSkillInstallDeps,
 ): string[] {
-  return listHosts(deps.db).map((host) => host.id);
+  return listHosts(deps.db)
+    .filter((host) => host.type !== "ephemeral")
+    .map((host) => host.id);
 }
 
 type InstallGlobalCliSkillsResult = SystemInstallCliSkillsResponse;
@@ -161,7 +166,7 @@ export async function installGlobalCliSkills(
   const results = await Promise.all(
     hosts.map(async (host) => {
       try {
-        const result = await callHostOnlineRpc(deps, {
+        const result = await callHostOnlineRpcForWork(deps, {
           hostId: host.id,
           timeoutMs: COMMAND_TIMEOUT_MS,
           command: { type: "host.install_global_skills", skills },

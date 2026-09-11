@@ -4,6 +4,7 @@ import type {
   ExperimentalAppOverlayRegistration,
   PluginDiffRendererRegistration,
   PluginEnvironmentProviderInputsRegistration,
+  PluginMachineProviderInputsRegistration,
   PluginPendingInteractionRegistration,
   PluginFileOpenerRegistration,
   PluginHomepageSectionRegistration,
@@ -12,7 +13,6 @@ import type {
   PluginMessageDirectiveRegistration,
   PluginNavPanelRegistration,
   PluginNewThreadPanelActionRegistration,
-  PluginProviderIconRegistration,
   PluginSettingsSectionRegistration,
   PluginSidebarFooterActionRegistration,
   ExperimentalSidebarNavigationRegistration,
@@ -25,6 +25,7 @@ import type {
 import {
   adaptSidebarFooterAction,
   getCollectedSidebarFooterItems,
+  type CollectedPluginProviderIconRegistration,
   type CollectedExperimentalSidebarFooterItem,
   type CollectedManagedSidebarFooterItem,
   type CollectedSidebarFooterItem,
@@ -50,9 +51,10 @@ export interface PluginRegistrationSet {
   messageDirectives: readonly PluginMessageDirectiveRegistration[];
   messageActions?: readonly PluginMessageActionRegistration[];
   commandPaletteActions?: readonly PluginCommandPaletteActionRegistration[];
-  providerIcons?: readonly PluginProviderIconRegistration[];
+  providerIcons?: readonly CollectedPluginProviderIconRegistration[];
   timelineRenderers?: readonly PluginTimelineRendererRegistration[];
   environmentProviderInputs?: readonly PluginEnvironmentProviderInputsRegistration[];
+  machineProviderInputs?: readonly PluginMachineProviderInputsRegistration[];
 }
 
 interface PluginSlotBase {
@@ -97,11 +99,13 @@ export interface PluginMessageActionSlot
 export interface PluginCommandPaletteActionSlot
   extends PluginCommandPaletteActionRegistration, PluginSlotBase {}
 interface PluginProviderIconSlot
-  extends PluginProviderIconRegistration, PluginSlotBase {}
+  extends CollectedPluginProviderIconRegistration, PluginSlotBase {}
 export interface PluginTimelineRendererSlot
   extends PluginTimelineRendererRegistration, PluginSlotBase {}
 export interface PluginEnvironmentProviderInputsSlot
   extends PluginEnvironmentProviderInputsRegistration, PluginSlotBase {}
+export interface PluginMachineProviderInputsSlot
+  extends PluginMachineProviderInputsRegistration, PluginSlotBase {}
 
 export interface PluginSlotSnapshot {
   homepageSections: readonly PluginHomepageSectionSlot[];
@@ -125,6 +129,7 @@ export interface PluginSlotSnapshot {
   providerIcons: readonly PluginProviderIconSlot[];
   timelineRenderers: readonly PluginTimelineRendererSlot[];
   environmentProviderInputs: readonly PluginEnvironmentProviderInputsSlot[];
+  machineProviderInputs: readonly PluginMachineProviderInputsSlot[];
 }
 
 export const EMPTY_PLUGIN_SLOT_SNAPSHOT: PluginSlotSnapshot = {
@@ -149,6 +154,7 @@ export const EMPTY_PLUGIN_SLOT_SNAPSHOT: PluginSlotSnapshot = {
   providerIcons: [],
   timelineRenderers: [],
   environmentProviderInputs: [],
+  machineProviderInputs: [],
 };
 
 const registrationsByPluginId = new Map<string, PluginRegistrationSet>();
@@ -180,6 +186,7 @@ const SLOT_KINDS: readonly SlotKind[] = [
   "providerIcons",
   "timelineRenderers",
   "environmentProviderInputs",
+  "machineProviderInputs",
 ];
 
 type FlattenedPluginSlots = {
@@ -235,6 +242,7 @@ function flattenRegistrations(
     providerIcons: stamp(set.providerIcons),
     timelineRenderers: stamp(set.timelineRenderers),
     environmentProviderInputs: stamp(set.environmentProviderInputs),
+    machineProviderInputs: stamp(set.machineProviderInputs),
   };
 }
 
@@ -271,7 +279,9 @@ function collectProviderIcons(
     if (flattened === undefined) continue;
     for (const slot of flattened.providerIcons) {
       const claimed = collected.find(
-        (existing) => existing.providerId === slot.providerId,
+        (existing) =>
+          existing.providerKind === slot.providerKind &&
+          existing.providerId === slot.providerId,
       );
       if (claimed !== undefined) {
         console.warn(

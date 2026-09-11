@@ -37,7 +37,6 @@ import {
   type PluginNavPanelRegistration,
   type PluginNewThreadPanelActionRegistration,
   type PluginPendingInteractionRegistration,
-  type PluginProviderIconRegistration,
   type PluginTimelineRendererRegistration,
   type PluginRealtimeConnectionState,
   type PluginRpcClient,
@@ -73,6 +72,7 @@ import {
   type ExperimentalPermissionModePickerProps,
   type ExperimentalProviderModelPickerProps,
   type PluginEnvironmentProviderInputsRegistration,
+  type PluginMachineProviderInputsRegistration,
   type ThreadChatProps,
   type DiffProps,
   type SourceCodeProps,
@@ -83,6 +83,7 @@ import { normalizePluginThreadRowStatus } from "../internal/composer-customizati
 import { normalizeExperimentalFileOpenOptions } from "../internal/file-navigation-validation.js";
 import {
   collectPluginAppRegistrations,
+  type CollectedPluginProviderIconRegistration,
   type CollectedExperimentalSidebarFooterItem,
 } from "../internal/plugin-app-collector.js";
 
@@ -963,9 +964,10 @@ export interface CapturedPluginApp {
   diffRenderers: PluginDiffRendererRegistration[];
   messageDirectives: PluginMessageDirectiveRegistration[];
   messageActions: PluginMessageActionRegistration[];
-  providerIcons: PluginProviderIconRegistration[];
+  providerIcons: CollectedPluginProviderIconRegistration[];
   timelineRenderers: PluginTimelineRendererRegistration[];
   environmentProviderInputs: PluginEnvironmentProviderInputsRegistration[];
+  machineProviderInputs: PluginMachineProviderInputsRegistration[];
   contentScripts: PluginContentScriptRegistration[];
 }
 

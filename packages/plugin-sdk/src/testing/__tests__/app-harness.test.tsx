@@ -1233,10 +1233,56 @@ describe("loadPluginApp", () => {
     ).rejects.toThrow('slots.messageAction: duplicate id "dup"');
   });
 
+  it("collects separate provider kinds and the legacy all-kinds registration", async () => {
+    const captured = await loadPluginApp(
+      definePluginApp((builder) => {
+        for (const providerKind of [
+          "agent",
+          "machine",
+          "environment",
+        ] as const) {
+          builder.slots.experimental_providerIcon({
+            providerKind,
+            providerId: "shared",
+            icon: () => null,
+          });
+        }
+        // @ts-expect-error legacy plugin declaration
+        builder.slots.experimental_providerIcon({
+          providerId: "shared",
+          icon: () => null,
+        });
+      }),
+    );
+    expect(
+      captured.providerIcons.map(({ providerKind }) => providerKind),
+    ).toEqual(["agent", "machine", "environment", "all"]);
+  });
+
+  it.each([null, "all", "unknown", 7])(
+    "rejects an explicit invalid provider kind %j",
+    async (providerKind) => {
+      await expect(
+        loadPluginApp(
+          definePluginApp((builder) => {
+            const registration = {
+              providerKind: "agent" as const,
+              providerId: "shared",
+              icon: () => null,
+            };
+            Reflect.set(registration, "providerKind", providerKind);
+            builder.slots.experimental_providerIcon(registration);
+          }),
+        ),
+      ).rejects.toThrow("providerKind");
+    },
+  );
+
   it("validates experimental_providerIcon registrations like the host", async () => {
     const captured = await loadPluginApp(
       definePluginApp((builder) => {
         builder.slots.experimental_providerIcon({
+          providerKind: "agent",
           providerId: "acp-cursor",
           icon: () => null,
         });
@@ -1248,6 +1294,7 @@ describe("loadPluginApp", () => {
       loadPluginApp(
         definePluginApp((builder) => {
           builder.slots.experimental_providerIcon({
+            providerKind: "agent",
             providerId: "bb-plugin-x/codex",
             icon: () => null,
           });
@@ -1260,16 +1307,20 @@ describe("loadPluginApp", () => {
       loadPluginApp(
         definePluginApp((builder) => {
           builder.slots.experimental_providerIcon({
+            providerKind: "agent",
             providerId: "codex",
             icon: () => null,
           });
           builder.slots.experimental_providerIcon({
+            providerKind: "agent",
             providerId: "codex",
             icon: () => null,
           });
         }),
       ),
-    ).rejects.toThrow('slots.experimental_providerIcon: duplicate id "codex"');
+    ).rejects.toThrow(
+      'slots.experimental_providerIcon: duplicate id "agent:codex"',
+    );
   });
 
   it("invokes a captured messageAction run with a plugin-authored context", () => {

@@ -44,6 +44,7 @@ export const scriptedEchoBridgeModulePath = join(
 
 export interface ScriptedEchoLaunchScript {
   startDelayMs?: number;
+  turnStartResponseDelayMs?: number;
   answerStartWithoutIdentity?: boolean;
   identityAfterResponse?: boolean;
   identityNotificationsBeforeTurn?: {
@@ -75,6 +76,8 @@ export interface ScriptedEchoLaunchScript {
   recoveryThreadIdHint?: string;
   approvalEnforcedBy?: "runtime" | "provider";
   identifyProcess?: boolean;
+  textDeltaChunkSize?: number;
+  stderrChunksOnTurn?: string[];
   failStopForThreadIds?: string[];
   emitIdentityOnSigterm?: boolean;
 }

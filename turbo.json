@@ -583,6 +583,7 @@
     // bundling step — so the SDK dist must exist before the suite runs.
     "@bb/server#test": {
       "dependsOn": [
+        "@bb/agent-runtime#generate:test-bridges",
         "//#ensure-native-modules",
         "@get-bb/plugin-sdk#build",
         "topo"
@@ -862,6 +863,9 @@
       "dependsOn": ["@get-bb/plugin-sdk#build:types", "topo"]
     },
     "bb-plugin-environment-personal-workspace#typecheck": {
+      "dependsOn": ["@get-bb/plugin-sdk#build:types", "topo"]
+    },
+    "bb-plugin-environment-modal-sandbox#typecheck": {
       "dependsOn": ["@get-bb/plugin-sdk#build:types", "topo"]
     },
     "bb-plugin-connect#typecheck": {

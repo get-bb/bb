@@ -472,6 +472,8 @@ describe("bb.agents.registerTool", () => {
           bb.experimental_environments.register({
             id: "shared-env",
             displayName: "Shared",
+            description: "Create a shared workspace.",
+            icon: "Folder",
             create: async () => ({ status: "failed", message: "waiting" }), remove: async () => ({ status: "removed" }),
           });
         }
@@ -484,6 +486,8 @@ describe("bb.agents.registerTool", () => {
           bb.experimental_environments.register({
             id: "shared-env",
             displayName: "Shared again",
+            description: "Create another shared workspace.",
+            icon: "Folder",
             create: async () => ({ status: "failed", message: "waiting" }), remove: async () => ({ status: "removed" }),
           });
         }

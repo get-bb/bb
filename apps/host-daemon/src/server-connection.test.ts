@@ -23,10 +23,10 @@ interface CreateWebSocketFixtureArgs {
 
 interface ConnectionFixtureArgs extends CreateServerClientFixtureArgs {
   autoReconnect?: boolean;
-  connectMachineId?: string;
-  machineCredential?: string;
+  serverHeaders?: Record<string, string>;
   protocolSelfUpdater?: ProtocolSelfUpdater;
   onSelfUpdateInstalled?: () => void | Promise<void>;
+  onMachineShutdown?: () => void | Promise<void>;
   startupTimeoutMs?: number;
 }
 
@@ -170,20 +170,17 @@ function createConnectionFixture(args: ConnectionFixtureArgs = {}) {
     hostId: "host-server-connection-test",
     hostKey: "host-key-server-connection-test",
     hostName: "Server Connection Test Host",
-    hostType: "persistent",
     instanceId: "instance-server-connection-test",
     localApiPort: 38_887,
     logger,
-    ...(args.machineCredential !== undefined
-      ? { machineCredential: args.machineCredential }
-      : {}),
-    ...(args.connectMachineId !== undefined
-      ? { connectMachineId: args.connectMachineId }
+    ...(args.serverHeaders !== undefined
+      ? { serverHeaders: args.serverHeaders }
       : {}),
     serverClient: serverClient.serverClient,
     serverUrl: "http://127.0.0.1:3334",
     protocolSelfUpdater: args.protocolSelfUpdater,
     onSelfUpdateInstalled: args.onSelfUpdateInstalled,
+    onMachineShutdown: args.onMachineShutdown,
     startupTimeoutMs: args.startupTimeoutMs,
     setSession,
     createWebSocket: webSocket.createWebSocket,
@@ -204,6 +201,27 @@ afterEach(() => {
 });
 
 describe("ServerConnection", () => {
+  it("dispatches the machine shutdown command", async () => {
+    const onMachineShutdown = vi.fn(async () => undefined);
+    const { connection, webSocket } = createConnectionFixture({
+      onMachineShutdown,
+    });
+    await connection.start();
+    const socket = webSocket.sockets[0];
+    if (!socket) throw new Error("Expected test socket");
+
+    socket.onmessage?.({
+      data: JSON.stringify({
+        type: "machine.shutdown",
+      }),
+    });
+
+    await vi.waitFor(() => {
+      expect(onMachineShutdown).toHaveBeenCalledOnce();
+    });
+    await connection.shutdown();
+  });
+
   it("runs protocol self-update handling only for protocol mismatch rejection", async () => {
     const handleProtocolMismatch = vi.fn(async () => "updated" as const);
     const onSelfUpdateInstalled = vi.fn();
@@ -280,7 +298,10 @@ describe("ServerConnection", () => {
 
   it("adds the machine credential to WS dial headers only when configured", async () => {
     const configured = createConnectionFixture({
-      machineCredential: "bbcm_machine",
+      serverHeaders: {
+        "x-bb-connect-machine": "bbcm_machine",
+        "x-test-access": "opaque",
+      },
     });
     const plain = createConnectionFixture();
     try {
@@ -289,6 +310,7 @@ describe("ServerConnection", () => {
       expect(configured.webSocket.headers[0]).toEqual({
         authorization: "Bearer host-key-server-connection-test",
         "x-bb-connect-machine": "bbcm_machine",
+        "x-test-access": "opaque",
       });
       expect(plain.webSocket.headers[0]).toEqual({
         authorization: "Bearer host-key-server-connection-test",
@@ -296,23 +318,6 @@ describe("ServerConnection", () => {
     } finally {
       await configured.connection.shutdown();
       await plain.connection.shutdown();
-    }
-  });
-
-  it("reports the connect machine id when opening a session", async () => {
-    const fixture = createConnectionFixture({
-      connectMachineId: "machine-cloud-1",
-    });
-    try {
-      await fixture.connection.start();
-      expect(fixture.openSession).toHaveBeenCalledWith(
-        expect.objectContaining({
-          connectMachineId: "machine-cloud-1",
-          localApiPort: 38_887,
-        }),
-      );
-    } finally {
-      await fixture.connection.shutdown();
     }
   });
 

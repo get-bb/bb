@@ -820,6 +820,13 @@
       "when": 1789075667774,
       "tag": "0116_majestic_swordsman",
       "breakpoints": true
+    },
+    {
+      "idx": 117,
+      "version": "6",
+      "when": 1789081162875,
+      "tag": "0117_machine_providers",
+      "breakpoints": true
     }
   ]
 }

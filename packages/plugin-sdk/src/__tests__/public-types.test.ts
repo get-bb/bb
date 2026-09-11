@@ -1,6 +1,11 @@
 import { readFile } from "node:fs/promises";
 import { describe, expect, expectTypeOf, it } from "vitest";
-import type { BbPluginApi } from "../index.js";
+import type {
+  BbPluginApi,
+  PluginEnvironmentProviderDeclaration,
+  PluginEnvironments,
+} from "../index.js";
+import type { PluginProviderIconRegistration } from "../app-contract.js";
 
 type ExpectedBbPluginApiKey =
   | "agents"
@@ -10,6 +15,8 @@ type ExpectedBbPluginApiKey =
   | "experimental_aiServices"
   | "experimental_environments"
   | "experimental_hooks"
+  | "experimental_machines"
+  | "experimental_serverAccess"
   | "hosts"
   | "http"
   | "log"
@@ -77,6 +84,9 @@ const EXPECTED_BACKEND_ROOT_TYPE_EXPORTS = [
   "PluginInteractionResult",
   "PluginKvStorage",
   "PluginLogger",
+  "PluginMachineProviderDeclaration",
+  "PluginMachineValidateDecision",
+  "PluginMachines",
   "PluginMentionItem",
   "PluginMentionProviderRegistration",
   "PluginMentionSearchContext",
@@ -117,6 +127,9 @@ const EXPECTED_BACKEND_ROOT_TYPE_EXPORTS = [
   "PluginThreadEventPayloads",
   "PluginTurnFailedEvent",
   "PluginUi",
+  "PluginServerAccess",
+  "ServerAccessGrant",
+  "ServerAccessProviderDeclaration",
 ] as const;
 
 const EXPECTED_BACKEND_ROOT_VALUE_EXPORTS = [
@@ -278,4 +291,24 @@ describe("backend plugin SDK public surface", () => {
       expect(rootValueExports.has(exportName), exportName).toBe(true);
     }
   });
+});
+
+it("requires provider presentation fields in author-facing declarations", () => {
+  expectTypeOf<
+    Pick<PluginProviderIconRegistration, "providerKind">
+  >().toEqualTypeOf<{
+    providerKind: "agent" | "machine" | "environment";
+  }>();
+  expectTypeOf<
+    Pick<PluginEnvironmentProviderDeclaration, "description" | "icon">
+  >().toEqualTypeOf<{
+    description: string;
+    icon: string;
+  }>();
+  expectTypeOf<
+    Pick<Parameters<PluginEnvironments["register"]>[0], "description" | "icon">
+  >().toEqualTypeOf<{
+    description: string;
+    icon: string;
+  }>();
 });

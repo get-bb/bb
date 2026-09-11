@@ -72,6 +72,10 @@ const outputs = {
     pkgRoot,
     "src/environment-provider.ts",
   ),
+  "bb-plugin-sdk-machine-provider.d.ts": path.join(
+    pkgRoot,
+    "src/machine-provider.ts",
+  ),
   "bb-plugin-sdk-internal-composer-customization-validation.d.ts": path.join(
     pkgRoot,
     "src/internal/composer-customization-validation.ts",

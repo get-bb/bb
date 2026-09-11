@@ -1063,6 +1063,7 @@ export function MachineUpdatesRows({
       (candidate) => candidate.id === providerId,
     );
     const ProviderIcon = getProviderIconInfo(
+      "agent",
       providerId,
       providerInfo ?? null,
     )?.icon;

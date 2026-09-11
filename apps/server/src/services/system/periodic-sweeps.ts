@@ -1,5 +1,6 @@
 import { sweepProviderLifecycles } from "../environments/environment-engine.js";
-import { and, eq, isNull, inArray } from "drizzle-orm";
+import { and, eq, isNull, isNotNull, inArray } from "drizzle-orm";
+import { sweepMachineLifecycles } from "../machines/provider-orchestration.js";
 import {
   CLOSED_SESSION_ROW_RETENTION_MS,
   compactDatabase,
@@ -41,7 +42,10 @@ import {
   advanceProjectDeletion,
   listProjectsPendingDeletion,
 } from "../projects/project-deletion.js";
-import { hasLiveThreadStartInFlight } from "../threads/thread-lifecycle.js";
+import {
+  finalizeStoppedThread,
+  hasLiveThreadStartInFlight,
+} from "../threads/thread-lifecycle.js";
 import { advanceThreadProvisioning } from "../threads/thread-provisioning.js";
 import {
   runQueuedMessageDispatch,
@@ -338,6 +342,14 @@ async function runThreadProvisioningOrphanCleanupSweep(
       );
     }
   }
+  const deletedUnattachedThreads = deps.db
+    .select({ id: threads.id })
+    .from(threads)
+    .where(and(isNotNull(threads.deletedAt), isNull(threads.environmentId)))
+    .all();
+  for (const thread of deletedUnattachedThreads) {
+    finalizeStoppedThread(deps, { threadId: thread.id });
+  }
 }
 
 export async function runThreadLifecycleSweep(
@@ -345,6 +357,7 @@ export async function runThreadLifecycleSweep(
 ): Promise<void> {
   await runThreadProvisioningOrphanCleanupSweep(deps);
   await sweepProviderLifecycles(deps);
+  await sweepMachineLifecycles(deps);
 }
 
 async function runMachineAuthPruneSweep(
@@ -480,6 +493,12 @@ const PERIODIC_SWEEP_JOBS: PeriodicSweepJob[] = [
     category: "durable-intent-retry",
     name: "environment-provider-lifecycle",
     run: sweepProviderLifecycles,
+  },
+  {
+    cadenceMs: 0,
+    category: "durable-intent-retry",
+    name: "machine-provider-lifecycle",
+    run: (deps) => sweepMachineLifecycles(deps, { background: true }),
   },
   {
     cadenceMs: 0,

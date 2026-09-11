@@ -165,6 +165,11 @@ export const BUILTIN_PLUGINS = [
 
 export const OFFICIAL_PLUGINS = [
   {
+    name: "environment-modal-sandbox",
+    pluginId: "environment-modal-sandbox",
+    defaultEnabled: true,
+  },
+  {
     name: "browser-automation",
     pluginId: "browser-automation",
     defaultEnabled: false,

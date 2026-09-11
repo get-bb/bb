@@ -383,21 +383,20 @@ export function createPluginUpdates(
     return Math.max(0, PLUGIN_UPDATE_CHECK_INTERVAL_MS - (now() - oldest));
   }
 
-  function runPeriodicCheck(): void {
+  async function runPeriodicCheck(): Promise<void> {
     if (periodicChecksStopped) return;
-    void updates
-      .checkForUpdates()
-      .catch((error: unknown) => {
-        deps.logger.warn({ err: error }, "periodic plugin update check failed");
-      })
-      .finally(() => {
-        if (!periodicChecksStopped) {
-          cancelPeriodicCheck = scheduleUpdateCheck(
-            PLUGIN_UPDATE_CHECK_INTERVAL_MS,
-            runPeriodicCheck,
-          );
-        }
-      });
+    try {
+      await updates.checkForUpdates();
+    } catch (error: unknown) {
+      deps.logger.warn({ err: error }, "periodic plugin update check failed");
+    } finally {
+      if (!periodicChecksStopped) {
+        cancelPeriodicCheck = scheduleUpdateCheck(
+          PLUGIN_UPDATE_CHECK_INTERVAL_MS,
+          runPeriodicCheck,
+        );
+      }
+    }
   }
 
   async function checkRows(

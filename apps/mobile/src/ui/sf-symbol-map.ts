@@ -94,6 +94,7 @@ export const SF_SYMBOL_MAP = {
   FolderMinus: "folder.badge.minus",
   FolderPlus: "folder.badge.plus",
   FolderSync: "folder.badge.gearshape",
+  FolderUnknown: "folder.badge.questionmark",
   Fork: "arrow.triangle.branch",
   GitBranch: "arrow.triangle.branch",
   GitMerge: "arrow.triangle.merge",

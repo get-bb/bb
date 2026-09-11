@@ -5,7 +5,7 @@ import type { RegistryRanking, RegistrySkill } from "@bb/server-contract";
 import type { SkillsRegistryArea } from "@bb/sdk";
 import { action } from "../action.js";
 import { createCliBbSdk } from "../client.js";
-import { resolveMachineId } from "./machine.js";
+import { resolveMachineId, selectMachines } from "./machine.js";
 import type { ContextSnapshot } from "../context-env.js";
 import { renderBorderlessTable } from "../table.js";
 import {
@@ -402,7 +402,7 @@ export function registerSkillCommands(
     )
     .option(
       "--machine <id-or-name>",
-      "Machine to report on (repeatable, defaults to every machine)",
+      "Machine to report on (repeatable, defaults to every persistent machine)",
       collectMachineTarget,
       [],
     )
@@ -442,7 +442,7 @@ export function registerSkillCommands(
     )
     .option(
       "--machine <id-or-name>",
-      "Machine to install onto (repeatable, defaults to every connected machine)",
+      "Machine to install onto (repeatable, defaults to every connected persistent machine)",
       collectMachineTarget,
       [],
     )
@@ -454,7 +454,7 @@ export function registerSkillCommands(
         const hostIds =
           options.machine.length > 0
             ? options.machine.map((target) => resolveMachineId(hosts, target))
-            : hosts
+            : selectMachines(hosts, "persistent")
                 .filter((host) => host.status === "connected")
                 .map((host) => host.id);
         if (hostIds.length === 0) {

@@ -16,7 +16,7 @@ import { ApiError } from "../../errors.js";
 import {
   destroyedHostUnavailableDetails,
   destroyedThreadEnvironmentDetails,
-  disconnectedHostUnavailableDetails,
+  inactiveHostUnavailableDetails,
   throwEnvironmentNotReady,
   throwHostUnavailable,
   throwProjectUnavailable,
@@ -78,8 +78,22 @@ function toHostRecord(row: HostRow, status: Host["status"]): Host {
   return {
     id: row.id,
     name: row.name,
-    status,
     type: row.type,
+    status,
+    machineProviderId: row.machineProviderId,
+    lifecycle: {
+      phase: row.phase,
+      suspendedAt: row.suspendedAt,
+      message: row.statusMessage,
+      pendingLog: row.pendingLog,
+      teardown:
+        row.teardownStatus === null
+          ? null
+          : {
+              status: row.teardownStatus,
+              attempt: row.teardownAttempt,
+            },
+    },
     maxPermissionMode: row.maxPermissionMode,
     lastSeenAt: row.lastSeenAt,
     lastRejectedProtocolVersion: row.lastRejectedProtocolVersion,
@@ -96,8 +110,11 @@ function isStandardProject(project: ProjectRow): project is StandardProject {
   return project.kind === "standard";
 }
 
-export function listPublicHostsWithStatus(deps: HostLookupDeps): Host[] {
-  const rows = listPublicHosts(deps.db);
+export function listPublicHostsWithStatus(
+  deps: HostLookupDeps,
+  options?: { includeCreating?: boolean },
+): Host[] {
+  const rows = listPublicHosts(deps.db, options);
 
   return rows.map((row) =>
     toHostRecord(
@@ -140,25 +157,27 @@ export function requireConnectedHostSession(
   deps: HostLookupDeps,
   hostId: string,
 ) {
-  const session = getOpenDaemonSessionForHost(deps, hostId);
-  if (!session) {
-    const host = getHost(deps.db, hostId);
-    if (!host) {
-      throwHostNotFound();
-    }
-    if (host.destroyedAt !== null) {
-      throwHostUnavailable(
-        404,
-        "Host is unavailable",
-        destroyedHostUnavailableDetails(host.destroyedAt),
-      );
-    }
-    const hostStatus = toHostStatus(deps, hostId);
+  const host = getHost(deps.db, hostId);
+  if (!host) {
+    throwHostNotFound();
+  }
+  if (host.destroyedAt !== null) {
     throwHostUnavailable(
-      502,
-      "Host is not connected",
-      disconnectedHostUnavailableDetails(hostStatus),
+      404,
+      "Host is unavailable",
+      destroyedHostUnavailableDetails(host.destroyedAt),
     );
+  }
+  const session = getOpenDaemonSessionForHost(deps, hostId);
+  const details = inactiveHostUnavailableDetails(
+    session ? "connected" : "disconnected",
+    host,
+  );
+  if (details.reason === "suspended") {
+    throwHostUnavailable(502, "Host is suspended", details);
+  }
+  if (!session) {
+    throwHostUnavailable(502, "Host is not connected", details);
   }
   return session;
 }

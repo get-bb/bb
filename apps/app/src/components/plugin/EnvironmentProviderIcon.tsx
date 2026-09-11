@@ -10,7 +10,7 @@ export function EnvironmentProviderIcon({
   provider: SystemEnvironmentProvider;
   className?: string;
 }) {
-  const info = getProviderIconInfo(provider.id, {
+  const info = getProviderIconInfo("environment", provider.id, {
     logoUrl: provider.logoUrl,
     displayName: provider.displayName,
     ...(provider.icon === null ? {} : { icon: { glyph: provider.icon } }),
