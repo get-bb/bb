@@ -443,7 +443,7 @@ describe("QueuedMessagesList", () => {
     ).toBe("collapsed");
   });
 
-  it("uses labeled hover-revealed icon actions on desktop and an overflow menu on mobile widths", async () => {
+  it("uses labeled inline icon actions with tooltips", async () => {
     const { container, findByRole, getByRole, queryByRole } =
       renderQueuedMessages([
         makeQueuedMessage("q_one", "First queued message"),
@@ -486,6 +486,38 @@ describe("QueuedMessagesList", () => {
         expect(queryByRole("tooltip")).toBeNull();
       });
     }
+  });
+
+  it("expands one row's actions inline and resets them outside the queue", () => {
+    const { getByRole, getByText, queryByRole } = renderQueuedMessages([
+      makeQueuedMessage("q_one", "First queued message"),
+      makeQueuedMessage("q_two", "Second queued message"),
+    ]);
+    const firstActions = getByRole("button", {
+      name: "Queued message 1 actions",
+    });
+    const secondActions = getByRole("button", {
+      name: "Queued message 2 actions",
+    });
+
+    fireEvent.click(firstActions);
+    expect(firstActions.getAttribute("aria-expanded")).toBe("true");
+    expect(queryByRole("menu")).toBeNull();
+    expect(queryByRole("dialog")).toBeNull();
+
+    fireEvent.pointerDown(getByText("Second queued message"));
+    expect(firstActions.getAttribute("aria-expanded")).toBe("true");
+    fireEvent.click(secondActions);
+    expect(firstActions.getAttribute("aria-expanded")).toBe("false");
+    expect(secondActions.getAttribute("aria-expanded")).toBe("true");
+
+    fireEvent.pointerDown(document.body);
+    expect(secondActions.getAttribute("aria-expanded")).toBe("false");
+
+    fireEvent.click(firstActions);
+    fireEvent.click(getByRole("button", { name: "Collapse queued messages" }));
+    fireEvent.click(getByRole("button", { name: "Show queued messages" }));
+    expect(firstActions.getAttribute("aria-expanded")).toBe("false");
   });
 
   it("replaces the edited row with the real inline composer", () => {

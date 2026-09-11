@@ -55,13 +55,6 @@ import type {
   ThreadQueuedMessage,
 } from "@bb/domain";
 import { Button } from "@bb/shared-ui/button";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from "@bb/shared-ui/dropdown-menu";
 import { Icon } from "@bb/shared-ui/icon";
 import {
   PROMPT_STACK_EDGE_CARET_BUTTON_WIDTH_CLASS,
@@ -161,6 +154,8 @@ interface QueuedMessageRowProps {
   sendAction: QueuedMessageSendAction;
   sendDisabled: boolean;
   actionDisabled: boolean;
+  mobileActionsExpanded: boolean;
+  onExpandMobileActions: (id: string) => void;
   onSend: (id: string) => void;
   onEdit: (request: QueuedMessageEditRequest) => void;
   onDelete: (id: string) => void;
@@ -756,6 +751,8 @@ const QueuedMessageRow = memo(function QueuedMessageRow({
   sendAction,
   sendDisabled,
   actionDisabled,
+  mobileActionsExpanded,
+  onExpandMobileActions,
   onSend,
   onEdit,
   onDelete,
@@ -926,7 +923,10 @@ const QueuedMessageRow = memo(function QueuedMessageRow({
                 data-queued-message-actions=""
                 className={cn(
                   QUEUED_MESSAGE_ACTION_TAKEOVER_CLASS,
-                  "pointer-events-none absolute right-2.5 top-1/2 hidden -translate-y-1/2 items-center gap-0.5 rounded-md opacity-0 transition-opacity duration-[120ms] ease-out md:flex",
+                  "pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 items-center gap-0.5 rounded-md opacity-0 transition-opacity duration-[120ms] ease-out md:flex",
+                  mobileActionsExpanded
+                    ? "flex max-md:pointer-events-auto max-md:opacity-100"
+                    : "hidden",
                   "group-hover/dispatch-row:pointer-events-auto group-hover/dispatch-row:opacity-100",
                   "group-focus-within/dispatch-row:pointer-events-auto group-focus-within/dispatch-row:opacity-100",
                 )}
@@ -999,60 +999,26 @@ const QueuedMessageRow = memo(function QueuedMessageRow({
                 </Tooltip>
               </div>
             </TooltipProvider>
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button
-                  type="button"
-                  size="icon"
-                  variant="ghost"
-                  className={cn(
-                    QUEUED_MESSAGE_ACTION_TAKEOVER_CLASS,
-                    "pointer-events-none absolute right-2.5 top-1/2 shrink-0 -translate-y-1/2 text-muted-foreground opacity-0 transition-opacity duration-[120ms] ease-out md:hidden",
-                    "group-hover/dispatch-row:pointer-events-auto group-hover/dispatch-row:opacity-100",
-                    "group-focus-within/dispatch-row:pointer-events-auto group-focus-within/dispatch-row:opacity-100",
-                    "data-[state=open]:pointer-events-auto data-[state=open]:opacity-100",
-                    "[@media(hover:none)]:pointer-events-auto [@media(hover:none)]:opacity-100",
-                    compact ? "size-7" : "size-8",
-                  )}
-                  disabled={actionDisabled}
-                  aria-label={`Queued message ${index + 1} actions`}
-                >
-                  <Icon name="MoreHorizontal" className="size-4" aria-hidden />
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" className="min-w-[7rem]">
-                {sendAllowed ? (
-                  <DropdownMenuItem
-                    disabled={sendDisabled}
-                    onSelect={() => onSend(queuedMessage.id)}
-                  >
-                    <Icon name="Sent" aria-hidden />
-                    {sendLabel}
-                  </DropdownMenuItem>
-                ) : null}
-                {queuedMessage.editable ? (
-                  <DropdownMenuItem
-                    onSelect={() =>
-                      onEdit({
-                        queuedMessageId: queuedMessage.id,
-                        queuedMessageIndex: index,
-                      })
-                    }
-                  >
-                    <Icon name="Edit" aria-hidden />
-                    Edit
-                  </DropdownMenuItem>
-                ) : null}
-                <DropdownMenuSeparator />
-                <DropdownMenuItem
-                  variant="destructive"
-                  onSelect={() => onDelete(queuedMessage.id)}
-                >
-                  <Icon name="Trash2" aria-hidden />
-                  Delete
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
+            <Button
+              type="button"
+              size="icon"
+              variant="ghost"
+              className={cn(
+                QUEUED_MESSAGE_ACTION_TAKEOVER_CLASS,
+                "pointer-events-none absolute right-2.5 top-1/2 shrink-0 -translate-y-1/2 text-muted-foreground opacity-0 transition-opacity duration-[120ms] ease-out md:hidden",
+                "group-hover/dispatch-row:pointer-events-auto group-hover/dispatch-row:opacity-100",
+                "group-focus-within/dispatch-row:pointer-events-auto group-focus-within/dispatch-row:opacity-100",
+                "[@media(hover:none)]:pointer-events-auto [@media(hover:none)]:opacity-100",
+                compact ? "size-7" : "size-8",
+                mobileActionsExpanded && "hidden",
+              )}
+              disabled={actionDisabled}
+              aria-label={`Queued message ${index + 1} actions`}
+              aria-expanded={mobileActionsExpanded}
+              onClick={() => onExpandMobileActions(queuedMessage.id)}
+            >
+              <Icon name="MoreHorizontal" className="size-4" aria-hidden />
+            </Button>
           </>
         )}
       </div>
@@ -1223,6 +1189,9 @@ export function QueuedMessagesList({
   const [mode, setMode] = useState<QueueSurfaceMode>(
     queuedMessages.length > 0 ? "drawer" : "collapsed",
   );
+  const [expandedMobileActionsId, setExpandedMobileActionsId] = useState<
+    string | null
+  >(null);
   const [surfaceDragging, setSurfaceDragging] = useState(false);
   const [surfaceDragOffset, setSurfaceDragOffset] = useState(0);
   const [inlineEditorMaxHeight, setInlineEditorMaxHeight] = useState<
@@ -1241,6 +1210,22 @@ export function QueuedMessagesList({
   const wasInlineEditingRef = useRef(false);
   const inlineEditorDismissModeRef = useRef<QueueSurfaceMode | null>(null);
   const previousMessageCountRef = useRef(queuedMessages.length);
+  useEffect(() => {
+    if (expandedMobileActionsId === null) return;
+
+    const handlePointerDown = (event: PointerEvent) => {
+      if (
+        event.target instanceof Node &&
+        !surfaceRef.current?.contains(event.target)
+      ) {
+        setExpandedMobileActionsId(null);
+      }
+    };
+    document.addEventListener("pointerdown", handlePointerDown, true);
+    return () => {
+      document.removeEventListener("pointerdown", handlePointerDown, true);
+    };
+  }, [expandedMobileActionsId]);
   const {
     aboveOverflow,
     belowOverflow,
@@ -1547,6 +1532,7 @@ export function QueuedMessagesList({
     surfaceDragOffsetRef.current = 0;
   }, [inlineEditor]);
   const collapseDrawer = useCallback(() => {
+    setExpandedMobileActionsId(null);
     setMode("collapsed");
     inlineEditorDismissModeRef.current = "collapsed";
     inlineEditor?.onDismiss();
@@ -1560,6 +1546,7 @@ export function QueuedMessagesList({
   }, []);
   const handleEdit = useCallback(
     (request: QueuedMessageEditRequest) => {
+      setExpandedMobileActionsId(null);
       openWorkspace();
       onEdit(request);
     },
@@ -1710,6 +1697,8 @@ export function QueuedMessagesList({
           sendAction={sendAction}
           sendDisabled={sendDisabled}
           actionDisabled={actionDisabled}
+          mobileActionsExpanded={expandedMobileActionsId === queuedMessage.id}
+          onExpandMobileActions={setExpandedMobileActionsId}
           compact={mode !== "workspace"}
           isGroupBoundary={messageIndex === groupBoundaryIndex}
           onSend={onSend}
