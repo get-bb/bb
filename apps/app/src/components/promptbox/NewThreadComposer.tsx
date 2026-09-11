@@ -1083,9 +1083,9 @@ export function NewThreadComposer({
   );
 
   const seedInitialPrompt = promptDraft.restoreIfEmpty;
-  function focusPromptBox() {
+  const focusPromptBox = useCallback(() => {
     setLocalPromptBoxFocusRequest((current) => (current ?? 0) + 1);
-  }
+  }, []);
   useEffect(() => {
     if (!seed?.initialPrompt) return;
     seedInitialPrompt({
@@ -1288,6 +1288,7 @@ export function NewThreadComposer({
       submit: submitScheduledThroughRef,
     }),
     [
+      focusPromptBox,
       projectId,
       promptDraft.getCurrent,
       promptDraft.setDraft,
