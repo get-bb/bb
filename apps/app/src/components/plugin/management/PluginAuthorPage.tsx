@@ -98,6 +98,8 @@ export function PluginAuthorPage({
     [authorKey, catalogQuery.data?.entries],
   );
   const author = useMemo(() => authorForEntries(entries), [entries]);
+  const authorName =
+    entries[0]?.marketplace === "bb-official" ? "BB Official" : author?.name;
   const installsKnown = entries.some((entry) => entry.installs !== null);
   const sort =
     requestedSort === "most-installed" && !installsKnown ? null : requestedSort;
@@ -154,14 +156,14 @@ export function PluginAuthorPage({
           {author === null ? null : (
             <div className="flex items-center gap-3">
               <PluginAuthorAvatar
-                name={author.name}
+                name={authorName ?? author.name}
                 github={pluginAuthorGithub(author)}
                 official={entries[0]?.marketplace === "bb-official"}
                 size="page"
               />
               <div className="min-w-0 space-y-1">
                 <h1 className="flex flex-wrap items-center gap-2 text-xl font-semibold text-foreground">
-                  <span>{author.name}</span>
+                  <span>{authorName}</span>
                   <span className="rounded-md bg-muted px-2 py-1 text-2xs font-medium tabular-nums text-subtle-foreground">
                     {entries.length.toLocaleString()}{" "}
                     {entries.length === 1 ? "plugin" : "plugins"}

@@ -106,11 +106,13 @@ export function PluginCollectionCard({
     ) : runtime?.publisherLabel !== null &&
       runtime?.publisherLabel !== undefined ? (
       <PluginAuthorByline
-        name={runtime.publisherLabel}
+        name={
+          runtime.provenance === "builtin" ? "BB Official" : runtime.publisherLabel
+        }
         github={null}
         official={runtime.provenance === "builtin"}
       >
-        {runtime.publisherLabel}
+        {runtime.provenance === "builtin" ? "BB Official" : runtime.publisherLabel}
       </PluginAuthorByline>
     ) : null;
   return (

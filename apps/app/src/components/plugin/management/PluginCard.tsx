@@ -63,7 +63,10 @@ interface PluginCardAuthorProps {
 }
 
 export function PluginCardAuthor({ entry }: PluginCardAuthorProps) {
-  const name = entry.author?.name ?? entry.publisherLabel;
+  const name =
+    entry.marketplace === "bb-official"
+      ? "BB Official"
+      : (entry.author?.name ?? entry.publisherLabel);
   return (
     <PluginAuthorByline
       name={name}
