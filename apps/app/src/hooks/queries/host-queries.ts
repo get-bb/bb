@@ -27,15 +27,23 @@ export function useHosts(
   });
 }
 
-export function selectHosts(hosts: readonly Host[] | undefined): Host[] {
-  return hosts ? [...hosts] : [];
+export type HostScope = "persistent" | "all";
+
+export function selectHosts(
+  hosts: readonly Host[] | undefined,
+  scope: HostScope,
+): Host[] {
+  const everyHost = hosts ? [...hosts] : [];
+  return scope === "all"
+    ? everyHost
+    : everyHost.filter((host) => host.type !== "ephemeral");
 }
 
 export function selectPrimaryHost(
   hosts: readonly Host[] | undefined,
   primaryHostId: string | null,
 ): Host | null {
-  const availableHosts = selectHosts(hosts);
+  const availableHosts = selectHosts(hosts, "persistent");
   if (availableHosts.length === 0) return null;
   if (primaryHostId !== null) {
     return availableHosts.find((host) => host.id === primaryHostId) ?? null;

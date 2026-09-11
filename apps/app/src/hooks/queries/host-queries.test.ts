@@ -50,12 +50,25 @@ describe("selectPrimaryHost", () => {
 });
 
 describe("selectHosts", () => {
-  it("keeps user-enrolled and provider-made machines in menus", () => {
+  const hosts = [
+    host({ id: "host_local", type: "persistent" }),
+    host({
+      id: "host_modal",
+      type: "ephemeral",
+      machineProviderId: "modal-sandbox",
+    }),
+  ];
+
+  it("drops disposable sandboxes from machine choices", () => {
     expect(
-      selectHosts([
-        host({ id: "host_local" }),
-        host({ id: "host_modal", machineProviderId: "modal-sandbox" }),
-      ]).map((candidate) => candidate.id),
-    ).toEqual(["host_local", "host_modal"]);
+      selectHosts(hosts, "persistent").map((candidate) => candidate.id),
+    ).toEqual(["host_local"]);
+  });
+
+  it("keeps every machine when a caller asks for all of them", () => {
+    expect(selectHosts(hosts, "all").map((candidate) => candidate.id)).toEqual([
+      "host_local",
+      "host_modal",
+    ]);
   });
 });

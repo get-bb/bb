@@ -48,7 +48,10 @@ const quickCreateProjectContext =
 export function useQuickCreateProject(): QuickCreateProjectController {
   const { mutate, isPending } = useCreateProject();
   const hostsQuery = useHosts();
-  const hosts = useMemo(() => selectHosts(hostsQuery.data), [hostsQuery.data]);
+  const hosts = useMemo(
+    () => selectHosts(hostsQuery.data, "all"),
+    [hostsQuery.data],
+  );
   const navigate = useNavigate();
   const location = useLocation();
   const setRootComposeProjectId = useSetRootComposeProjectId();

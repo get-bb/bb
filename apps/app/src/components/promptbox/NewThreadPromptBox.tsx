@@ -499,10 +499,17 @@ export function ProjectlessMachineSlot({
   environment,
 }: ProjectlessMachineSlotProps) {
   const machines = environment.machines ?? null;
-  const availableHosts = useMemo(
-    () => selectHosts(machines?.hosts),
-    [machines?.hosts],
-  );
+  const selectedProviderHostId = environment.selectedProviderHostId ?? null;
+  const availableHosts = useMemo(() => {
+    const selectable = selectHosts(machines?.hosts, "persistent");
+    const selected = machines?.hosts.find(
+      (candidate) => candidate.id === selectedProviderHostId,
+    );
+    return selected === undefined ||
+      selectable.some((candidate) => candidate.id === selected.id)
+      ? selectable
+      : [...selectable, selected];
+  }, [machines?.hosts, selectedProviderHostId]);
   const parsedEnvironment = useMemo(
     () => parseEnvironmentValue(environment.value),
     [environment.value],
@@ -581,7 +588,10 @@ export function NewThreadPromptBox({
   const systemConfigQuery = useSystemConfig();
   const { providers: machineProviders } = useSystemMachineProviders();
   const primaryHostId = systemConfigQuery.data?.primaryHostId ?? null;
-  const availableHosts = useMemo(() => selectHosts(hosts), [hosts]);
+  const availableHosts = useMemo(
+    () => selectHosts(hosts, "persistent"),
+    [hosts],
+  );
   const primaryHost = useMemo(
     () => selectPrimaryHost(availableHosts, primaryHostId),
     [availableHosts, primaryHostId],

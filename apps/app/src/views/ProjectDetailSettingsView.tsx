@@ -231,10 +231,17 @@ export function ProjectDetailSettingsView() {
   const projectSources = project?.sources;
   const sources = useMemo(() => projectSources ?? [], [projectSources]);
   const projectName = project?.name ?? "";
-  const hosts = useMemo(
-    () => selectHosts(hostsQuery.data),
+  const everyHost = useMemo(
+    () => selectHosts(hostsQuery.data, "all"),
     [hostsQuery.data],
   );
+  const persistentHosts = useMemo(
+    () => selectHosts(hostsQuery.data, "persistent"),
+    [hostsQuery.data],
+  );
+  const [showAllMachines, setShowAllMachines] = useState(false);
+  const hosts = showAllMachines ? everyHost : persistentHosts;
+  const hiddenMachineCount = everyHost.length - persistentHosts.length;
   const primaryHostId = systemConfig.data?.primaryHostId ?? null;
 
   const localSourcePending =
@@ -444,6 +451,26 @@ export function ProjectDetailSettingsView() {
               })}
             </SettingsRowList>
           )}
+          {hiddenMachineCount > 0 ? (
+            <button
+              type="button"
+              aria-expanded={showAllMachines}
+              onClick={() => setShowAllMachines((previous) => !previous)}
+              className="-ml-1 inline-flex items-center gap-1.5 self-start rounded-md px-1.5 py-0.5 text-xs text-muted-foreground transition-colors hover:bg-state-hover hover:text-foreground"
+            >
+              <Icon
+                name="ChevronDown"
+                className={cn(
+                  "size-3.5 transition-transform",
+                  showAllMachines && "rotate-180",
+                )}
+                aria-hidden
+              />
+              <span>
+                {showAllMachines ? "Show fewer machines" : "Show all machines"}
+              </span>
+            </button>
+          ) : null}
         </SettingsSection>
 
         <SettingsSection

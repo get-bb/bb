@@ -947,7 +947,8 @@ function ThreadDetailViewInternal(props: ThreadRoutePathArgs) {
     if (!environmentHostId) return null;
     return hosts.find((host) => host.id === environmentHostId) ?? null;
   }, [environment?.hostId, hostsQuery.data]);
-  const hasMultipleMachines = selectHosts(hostsQuery.data).length > 1;
+  const hasMultipleMachines =
+    selectHosts(hostsQuery.data, "persistent").length > 1;
   const threadEnvironmentHost = shouldShowEnvironmentHostIdentity(
     hasMultipleMachines,
     thread?.projectId === PERSONAL_PROJECT_ID,

@@ -159,7 +159,7 @@ export function ProjectPathDialogContent({
   const inputId = useId();
   const isPointerCoarse = usePointerCoarse();
   const machineOptions =
-    target.kind === "create" ? selectHosts(hosts) : undefined;
+    target.kind === "create" ? selectHosts(hosts, "all") : undefined;
   const firstConnectedHostId = machineOptions?.find(
     (host) => host.status === "connected",
   )?.id;

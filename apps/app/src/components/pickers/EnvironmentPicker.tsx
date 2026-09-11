@@ -182,9 +182,7 @@ export function EnvironmentPickerUI({
         ? null
         : {
             ...machines,
-            hosts: selectHosts(machines.hosts).filter(
-              (machineHost) => machineHost.type === "persistent",
-            ),
+            hosts: selectHosts(machines.hosts, "persistent"),
           },
     [machines],
   );

@@ -60,7 +60,7 @@ export function MachinePickerUI({
   modal,
   machineProviders = [],
 }: MachinePickerUIProps) {
-  const availableHosts = useMemo(() => selectHosts(hosts), [hosts]);
+  const availableHosts = useMemo(() => selectHosts(hosts, "all"), [hosts]);
   const selectedHost = useMemo(
     () =>
       availableHosts.find((host) => host.id === selectedHostId) ??

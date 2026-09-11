@@ -75,7 +75,7 @@ export function useLocalPathPicker({
     usePathPickerHost();
   const hostsQuery = useHosts();
   const isLoadingHosts = hostsQuery.isPending;
-  const connectedHostCount = selectHosts(hostsQuery.data).filter(
+  const connectedHostCount = selectHosts(hostsQuery.data, "all").filter(
     (host) => host.status === "connected",
   ).length;
   const projectPathDialog = useDialogState<ProjectPathDialogTarget>();

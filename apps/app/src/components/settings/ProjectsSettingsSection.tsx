@@ -110,6 +110,7 @@ interface ProjectSummary {
 function summarizeMachines(
   project: ProjectWithThreadsResponse,
   hostById: ReadonlyMap<string, Host>,
+  totalMachineCount: number,
 ): ProjectSummary {
   let configuredMachineCount = 0;
   let onlineMachineCount = 0;
@@ -124,7 +125,7 @@ function summarizeMachines(
   return {
     configuredMachineCount,
     onlineMachineCount,
-    totalMachineCount: hostById.size,
+    totalMachineCount,
   };
 }
 
@@ -289,7 +290,11 @@ export function ProjectsSettingsSection() {
     [projects],
   );
   const hosts = useMemo(
-    () => selectHosts(hostsQuery.data),
+    () => selectHosts(hostsQuery.data, "all"),
+    [hostsQuery.data],
+  );
+  const persistentMachineCount = useMemo(
+    () => selectHosts(hostsQuery.data, "persistent").length,
     [hostsQuery.data],
   );
   const hostById = useMemo(
@@ -376,7 +381,11 @@ export function ProjectsSettingsSection() {
                   <SortableProjectRow
                     key={project.id}
                     project={project}
-                    summary={summarizeMachines(project, hostById)}
+                    summary={summarizeMachines(
+                      project,
+                      hostById,
+                      persistentMachineCount,
+                    )}
                     dragDisabled={dragDisabled}
                     onRename={() => {
                       updateProject.reset();

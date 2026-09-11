@@ -862,6 +862,7 @@ describe("useThreadCreationOptions", () => {
       {
         id: "capped-host",
         name: "capped",
+        type: "persistent",
         status: "connected",
         maxPermissionMode: "accept-edits",
         lastSeenAt: null,

@@ -445,7 +445,7 @@ export function NewThreadComposer({
   const hostsQuery = useHosts();
   const availableHosts = useMemo(
     () =>
-      selectHosts(hostsQuery.data).filter((host) => host.type !== "ephemeral"),
+      selectHosts(hostsQuery.data, "persistent"),
     [hostsQuery.data],
   );
   const systemConfigQuery = useSystemConfig();
