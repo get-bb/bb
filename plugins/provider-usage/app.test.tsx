@@ -62,7 +62,7 @@ describe("provider usage footer disclosure", () => {
     ).map(([providerId, displayName, email, usedPercent]) => ({
       id: email,
       providerId: providerId,
-      accountLabel: email,
+      accountLabel: email === "personal@example.com" ? "Personal" : email,
       displayName: displayName,
       logoUrl: `/api/v1/system/providers/${providerId}/logo`,
       iconGlyph: null,
@@ -237,6 +237,15 @@ describe("provider usage footer disclosure", () => {
         },
       },
     );
+    expect(
+      slot.getByRole("button", { name: "Usage machine: Account Pooler" }),
+    ).toBeTruthy();
+    expect(slot.getByRole("heading", { name: "Personal" })).toBeTruthy();
+    fireEvent.pointerDown(
+      slot.getByRole("button", { name: "Usage machine: Account Pooler" }),
+      { button: 0 },
+    );
+    fireEvent.click(slot.getByRole("menuitemradio", { name: "M5" }));
     const machinePicker = slot.getByRole("button", {
       name: "Usage machine: M5",
     });
@@ -338,8 +347,13 @@ describe("provider usage footer disclosure", () => {
     ).not.toBeNull();
     expect(slot.getAllByText("team@example.com")).toHaveLength(1);
     expect(slot.getAllByText("personal@example.com")).toHaveLength(1);
-    expect(slot.getByText("46% used")).toBeTruthy();
-    expect(slot.getByText("82% used")).toBeTruthy();
+    expect(slot.getByText("46%")).toBeTruthy();
+    const windowButton = slot.getByRole("button", {
+      name: "Weekly limit: 46% used. Reset time not reported",
+    });
+    fireEvent.click(windowButton);
+    expect(slot.getByText("Reset time not reported.")).toBeTruthy();
+    expect(slot.getByText("82%")).toBeTruthy();
     fireEvent.click(slot.getByRole("tab", { name: "Claude Code" }));
     expect(slot.getByText("claude-team@example.com")).toBeTruthy();
     expect(slot.queryByText("personal@example.com")).toBeNull();

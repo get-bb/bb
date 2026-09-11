@@ -32,6 +32,7 @@ import {
 } from "@bb/shared-ui/option-display";
 import {
   providerUsageTone,
+  selectUsageMachine,
   usageRpcSuccessSchema,
   type UsageMachine,
   type UsageProvider,
@@ -176,7 +177,14 @@ function formatUsdCents(cents: number, alwaysShowCents: boolean): string {
   }).format(cents / 100);
 }
 
-function UsageWindow({ window }: { window: UsageWindowValue }) {
+function UsageWindow({
+  window,
+  compact,
+}: {
+  window: UsageWindowValue;
+  compact: boolean;
+}) {
+  const [showReset, setShowReset] = useState(false);
   const reset = formatReset(window.resetsAt);
   const value =
     window.cost === null
@@ -184,6 +192,47 @@ function UsageWindow({ window }: { window: UsageWindowValue }) {
       : formatUsdCents(window.cost.usedUsdCents, true) +
         " / " +
         formatUsdCents(window.cost.limitUsdCents, false);
+  if (compact) {
+    const label = window.label
+      .replace(/^Five-hour limit$|^5 hours$/u, "5h")
+      .replace(/^Weekly limit$|^Weekly/u, "7d")
+      .replace(/^Daily limit$/u, "1d");
+    return (
+      <button
+        type="button"
+        className="block w-full rounded-sm py-0.5 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sidebar-ring"
+        title={`${window.label} · ${reset ?? "Reset time not reported"}`}
+        aria-label={`${window.label}: ${value}. ${reset ?? "Reset time not reported"}`}
+        aria-expanded={showReset}
+        onClick={() => setShowReset((shown) => !shown)}
+      >
+        <span className="flex items-center gap-2 text-2xs">
+          <span className="w-16 shrink-0 truncate text-subtle-foreground">
+            {label}
+          </span>
+          <span className="h-1 min-w-0 flex-1 overflow-hidden rounded-full bg-sidebar-border">
+            <span
+              className={
+                "block h-full rounded-full " + barColorClass(window.usedPercent)
+              }
+              style={{
+                width: Math.max(2, Math.min(100, window.usedPercent)) + "%",
+              }}
+            />
+          </span>
+          <span className="w-9 shrink-0 text-right tabular-nums text-sidebar-foreground">
+            {Math.round(window.usedPercent)}%
+          </span>
+        </span>
+        {showReset ? (
+          <span className="mt-1 block text-2xs text-subtle-foreground">
+            {reset ?? "Reset time not reported."}
+            {window.cost === null ? "" : ` · ${value}`}
+          </span>
+        ) : null}
+      </button>
+    );
+  }
   return (
     <div className="space-y-1.5">
       <div className="flex items-baseline justify-between gap-2 text-xs">
@@ -207,7 +256,13 @@ function UsageWindow({ window }: { window: UsageWindowValue }) {
   );
 }
 
-function ProviderUsageBody({ provider }: { provider: UsageProvider }) {
+function ProviderUsageBody({
+  provider,
+  compact,
+}: {
+  provider: UsageProvider;
+  compact: boolean;
+}) {
   const usage = provider.usage;
   if (usage === null) {
     return <p className="text-xs text-muted-foreground">Usage not reported.</p>;
@@ -219,9 +274,9 @@ function ProviderUsageBody({ provider }: { provider: UsageProvider }) {
           No usage limits reported for this plan.
         </p>
       ) : (
-        <div className="space-y-3">
+        <div className={compact ? "space-y-0.5" : "space-y-3"}>
           {usage.windows.map((window) => (
-            <UsageWindow key={window.label} window={window} />
+            <UsageWindow key={window.label} window={window} compact={compact} />
           ))}
         </div>
       );
@@ -355,12 +410,12 @@ function ProviderUsageStatus({
   const [requestedProviderIds, setRequestedProviderIds] = useState(
     lastProviderIdByMachine,
   );
-  const activeMachine =
-    machines.find((machine) => machine.id === requestedMachineId) ??
-    machines.find((machine) => machine.id === threadMachineId) ??
-    machines.find((machine) => machine.status === "connected") ??
-    machines[0] ??
-    null;
+  const activeMachine = selectUsageMachine(
+    machines,
+    requestedMachineId,
+    threadMachineId,
+  );
+  const compactAccounts = activeMachine?.id.startsWith("source:") === true;
   const providers = useMemo(() => {
     const groups = new Map<
       string,
@@ -468,7 +523,11 @@ function ProviderUsageStatus({
                   key={provider.id}
                   type="button"
                   role="tab"
-                  title={provider.displayName}
+                  title={
+                    tone === null
+                      ? provider.displayName
+                      : `${provider.displayName}: an account usage window is at least ${tone === "critical" ? "95" : "80"}% used.`
+                  }
                   aria-label={provider.displayName}
                   aria-selected={isActive}
                   aria-controls={panelId}
@@ -573,11 +632,17 @@ function ProviderUsageStatus({
                 <section
                   key={account.id}
                   aria-label={account.accountLabel ?? account.displayName}
-                  className="py-3 first:pt-0 last:pb-0"
+                  className={cn(
+                    compactAccounts ? "py-2" : "py-3",
+                    "first:pt-0 last:pb-0",
+                  )}
                 >
                   <div className="flex min-w-0 items-start gap-2">
                     <div className="min-w-0 flex-1">
-                      <h2 className="truncate text-xs font-medium text-sidebar-foreground">
+                      <h2
+                        title={account.accountLabel ?? account.displayName}
+                        className="truncate text-xs font-medium text-sidebar-foreground"
+                      >
                         {account.accountLabel ?? account.displayName}
                       </h2>
                       {account.usage?.status === "ok" &&
@@ -598,14 +663,17 @@ function ProviderUsageStatus({
                       </span>
                     ) : null}
                   </div>
-                  <div className="mt-2.5">
+                  <div className={compactAccounts ? "mt-1" : "mt-2.5"}>
                     {activeMachine.status === "disconnected" ? (
                       <p className="text-xs text-muted-foreground">
                         {activeMachine.displayName} is offline. Usage will
                         refresh when it reconnects.
                       </p>
                     ) : activeMachine.error === null ? (
-                      <ProviderUsageBody provider={account} />
+                      <ProviderUsageBody
+                        provider={account}
+                        compact={compactAccounts}
+                      />
                     ) : (
                       <p className="text-xs text-muted-foreground">
                         {activeMachine.error}

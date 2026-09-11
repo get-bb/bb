@@ -1,10 +1,35 @@
 import { defineRpcContract, type BbPluginApi } from "@get-bb/plugin-sdk";
+import type { AccountSummary } from "./contracts.js";
 import type { AccountPoolHub } from "./hub.js";
 import {
   usageInputSchema,
   usageSnapshotSchema,
   type UsageSnapshot,
 } from "./usage-contract.js";
+
+export function usageWindowLabel(
+  minutes: number | null,
+  fallback: string,
+): string {
+  if (minutes === 300) return "Five-hour limit";
+  if (minutes === 1_440) return "Daily limit";
+  if (minutes === 10_080) return "Weekly limit";
+  if (minutes === null) return fallback;
+  return minutes % 1_440 === 0
+    ? `${minutes / 1_440} day limit`
+    : `${minutes / 60} hour limit`;
+}
+
+export function usagePlanLabel(
+  account: Pick<AccountSummary, "subscriptionType" | "rateLimitTier">,
+): string | null {
+  const maxMatch = (account.rateLimitTier ?? "").match(/max_(\d+)x/u);
+  if (maxMatch) return `Max (${maxMatch[1]}x)`;
+  const subscription = account.subscriptionType;
+  return subscription
+    ? subscription.charAt(0).toUpperCase() + subscription.slice(1)
+    : null;
+}
 
 export function registerUsageSource(bb: BbPluginApi, hub: AccountPoolHub) {
   bb.rpc.register(
@@ -47,9 +72,7 @@ export function registerUsageSource(bb: BbPluginApi, hub: AccountPoolHub) {
               for (const window of account.limitWindows) {
                 add(
                   window.slot,
-                  window.windowMinutes === null
-                    ? window.slot
-                    : `${window.windowMinutes / 60} hour window`,
+                  usageWindowLabel(window.windowMinutes, window.slot),
                   window.utilization,
                   window.resetAt,
                   null,
@@ -58,14 +81,14 @@ export function registerUsageSource(bb: BbPluginApi, hub: AccountPoolHub) {
             } else {
               add(
                 "five-hour",
-                "5 hours",
+                "Five-hour limit",
                 account.fiveHourUtilization,
                 account.fiveHourResetAt,
                 null,
               );
               add(
                 "weekly",
-                "Weekly",
+                "Weekly limit",
                 account.sevenDayUtilization,
                 account.sevenDayResetAt,
                 null,
@@ -85,7 +108,7 @@ export function registerUsageSource(bb: BbPluginApi, hub: AccountPoolHub) {
             }
             const accountFields = {
               accountEmail: account.email,
-              planLabel: account.subscriptionType,
+              planLabel: usagePlanLabel(account),
             };
             const error =
               account.error ??

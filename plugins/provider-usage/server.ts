@@ -362,7 +362,12 @@ export default function providerUsagePlugin(bb: BbPluginApi): void {
       const shared = source.resources.filter(
         (resource) => resource.scope.kind === "shared",
       );
-      if (shared.length === 0 && source.error === null) continue;
+      if (
+        shared.length === 0 &&
+        source.resources.length > 0 &&
+        source.error === null
+      )
+        continue;
       machines.push({
         id: `source:${source.pluginId}`,
         displayName:
