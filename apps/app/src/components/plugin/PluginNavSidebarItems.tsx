@@ -443,6 +443,7 @@ function PluginNavSidebarItemList({
     onNavigate,
     pathname: location.pathname,
     splitEnabled,
+    onHide: (key: string) => setPanelVisible(key, false),
     disablePending: disablePendingPluginId !== null,
     onDisable: (row: PluginSidebarNavRow) => void handleDisable(row),
   };
@@ -1008,6 +1009,7 @@ interface SidebarNavRowItemProps {
   onNavigate?: () => void;
   splitEnabled: boolean;
   disablePending: boolean;
+  onHide: (key: string) => void;
   onDisable: (row: PluginSidebarNavRow) => void;
   dragBindings?: SidebarSortableDragBindings;
   rowRef?: (element: HTMLElement | null) => void;
@@ -1035,7 +1037,7 @@ function PluginNavRowMenuItem({
 }: {
   children: ReactNode;
   disabled?: boolean;
-  icon: "Columns2" | "Info" | "Unavailable";
+  icon: "Columns2" | "Info" | "EyeOff" | "Unavailable";
   onSelect: () => void;
   surface: PluginNavRowMenuSurface;
 }) {
@@ -1080,6 +1082,7 @@ function PluginNavRowMenuItems({
   canOpenInSplit,
   disablePending,
   onDisable,
+  onHide,
   onOpenInSplit,
   onOpenDetails,
   surface,
@@ -1087,6 +1090,7 @@ function PluginNavRowMenuItems({
   canOpenInSplit: boolean;
   disablePending: boolean;
   onDisable: () => void;
+  onHide: () => void;
   onOpenInSplit: () => void;
   onOpenDetails: () => void;
   surface: PluginNavRowMenuSurface;
@@ -1108,6 +1112,9 @@ function PluginNavRowMenuItems({
         onSelect={onOpenDetails}
       >
         View details
+      </PluginNavRowMenuItem>
+      <PluginNavRowMenuItem surface={surface} icon="EyeOff" onSelect={onHide}>
+        Hide from sidebar
       </PluginNavRowMenuItem>
       <PluginNavRowMenuSeparator surface={surface} />
       <PluginNavRowMenuItem
@@ -1242,6 +1249,7 @@ interface SidebarNavRowChromeProps {
   onOpenInSplit?: () => void;
   onOpenDetails: () => void;
   onDisable: () => void;
+  onHide: (key: string) => void;
   disablePending: boolean;
   splitMiniMap?: MiniMapSlot[] | null;
   accessory?: ReactNode;
@@ -1261,6 +1269,7 @@ function SidebarNavRowChrome({
   onOpenInSplit,
   onOpenDetails,
   onDisable,
+  onHide,
   disablePending,
   splitMiniMap = null,
   accessory,
@@ -1277,6 +1286,7 @@ function SidebarNavRowChrome({
       canOpenInSplit={onOpenInSplit !== undefined}
       disablePending={disablePending}
       onDisable={onDisable}
+      onHide={() => onHide(rowKey)}
       onOpenInSplit={() => onOpenInSplit?.()}
       onOpenDetails={onOpenDetails}
     />

@@ -477,6 +477,7 @@ describe("PluginNavSidebarItems", () => {
       const expected = [
         ...(compactViewport ? [] : [["Open in split", "Columns2"]]),
         ["View details", "Info"],
+        ["Hide from sidebar", "EyeOff"],
         ["Disable", "Unavailable"],
       ] as const;
       const expectFocusedMenu = (menu: HTMLElement) => {
@@ -495,7 +496,6 @@ describe("PluginNavSidebarItems", () => {
         }
         expect(within(menu).queryByText("Move to top")).toBeNull();
         expect(within(menu).queryByText("Move to overflow")).toBeNull();
-        expect(within(menu).queryByText("Hide from sidebar")).toBeNull();
       };
       expectFocusedMenu(dropdownMenu);
       fireEvent.keyDown(dropdownMenu, { key: "Escape" });
@@ -503,6 +503,60 @@ describe("PluginNavSidebarItems", () => {
 
       fireEvent.contextMenu(screen.getByRole("button", { name: "Docs" }));
       expectFocusedMenu(await screen.findByRole("menu"));
+    },
+  );
+
+  it.each([
+    { surface: "dropdown", compactViewport: false },
+    { surface: "context", compactViewport: false },
+    { surface: "dropdown", compactViewport: true },
+    { surface: "context", compactViewport: true },
+  ])(
+    "hides an active plugin without disabling or navigating ($surface, compact=$compactViewport)",
+    async ({ surface, compactViewport }) => {
+      const fetchMock = vi.fn<typeof fetch>();
+      vi.stubGlobal("fetch", fetchMock);
+      registerPanel("docs", "Docs");
+      const initialLayout: SplitLayout = {
+        root: {
+          type: "pane",
+          paneId: "docs-pane",
+          content: {
+            kind: "plugin-panel",
+            pluginId: "docs",
+            panelPath: "main",
+            subPath: "",
+          },
+        },
+        focusedPaneId: "docs-pane",
+      };
+      const { store } = renderSidebarItems({
+        compactViewport,
+        initialEntry: "/plugins/docs/main",
+        initialLayout,
+      });
+      if (surface === "dropdown") {
+        fireEvent.pointerDown(
+          screen.getByRole("button", { name: "Docs panel options" }),
+          { button: 0 },
+        );
+      } else {
+        fireEvent.contextMenu(screen.getByRole("button", { name: "Docs" }));
+      }
+      fireEvent.click(
+        await screen.findByRole("menuitem", { name: "Hide from sidebar" }),
+      );
+
+      expect(store.get(pluginNavVisiblePanelKeysAtom)).toEqual([]);
+      expect(visibleRowKeys()).toEqual([]);
+      expect(store.get(splitLayoutAtom)).toEqual(initialLayout);
+      expect(screen.getByTestId("location-path").textContent).toBe(
+        "/plugins/docs/main",
+      );
+      expect(fetchMock).not.toHaveBeenCalled();
+      expect(
+        (await openMoreMenu()).map((item) => item.textContent?.trim()),
+      ).toEqual(["Docs", "Customize sidebar"]);
     },
   );
 
