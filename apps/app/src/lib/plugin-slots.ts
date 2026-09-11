@@ -1,3 +1,4 @@
+import { setAppIcons } from "@bb/shared-ui/icon-registry";
 import { useSyncExternalStore } from "react";
 import type {
   ComposerCustomization,
@@ -13,6 +14,7 @@ import type {
   PluginMessageDirectiveRegistration,
   PluginNavPanelRegistration,
   PluginNewThreadPanelActionRegistration,
+  ExperimentalIconRegistration,
   PluginSettingsSectionRegistration,
   PluginSidebarFooterActionRegistration,
   ExperimentalSidebarNavigationRegistration,
@@ -51,7 +53,8 @@ export interface PluginRegistrationSet {
   messageDirectives: readonly PluginMessageDirectiveRegistration[];
   messageActions?: readonly PluginMessageActionRegistration[];
   commandPaletteActions?: readonly PluginCommandPaletteActionRegistration[];
-  providerIcons?: readonly CollectedPluginProviderIconRegistration[];
+  providerIcons?: readonly PluginProviderIconRegistration[];
+  icons?: readonly ExperimentalIconRegistration[];
   timelineRenderers?: readonly PluginTimelineRendererRegistration[];
   environmentProviderInputs?: readonly PluginEnvironmentProviderInputsRegistration[];
   machineProviderInputs?: readonly PluginMachineProviderInputsRegistration[];
@@ -98,6 +101,7 @@ export interface PluginMessageActionSlot
   extends PluginMessageActionRegistration, PluginSlotBase {}
 export interface PluginCommandPaletteActionSlot
   extends PluginCommandPaletteActionRegistration, PluginSlotBase {}
+interface PluginIconSlot extends ExperimentalIconRegistration, PluginSlotBase {}
 interface PluginProviderIconSlot
   extends CollectedPluginProviderIconRegistration, PluginSlotBase {}
 export interface PluginTimelineRendererSlot
@@ -127,6 +131,7 @@ export interface PluginSlotSnapshot {
   messageActions: readonly PluginMessageActionSlot[];
   commandPaletteActions: readonly PluginCommandPaletteActionSlot[];
   providerIcons: readonly PluginProviderIconSlot[];
+  icons: readonly PluginIconSlot[];
   timelineRenderers: readonly PluginTimelineRendererSlot[];
   environmentProviderInputs: readonly PluginEnvironmentProviderInputsSlot[];
   machineProviderInputs: readonly PluginMachineProviderInputsSlot[];
@@ -152,6 +157,7 @@ export const EMPTY_PLUGIN_SLOT_SNAPSHOT: PluginSlotSnapshot = {
   messageActions: [],
   commandPaletteActions: [],
   providerIcons: [],
+  icons: [],
   timelineRenderers: [],
   environmentProviderInputs: [],
   machineProviderInputs: [],
@@ -184,6 +190,7 @@ const SLOT_KINDS: readonly SlotKind[] = [
   "messageActions",
   "commandPaletteActions",
   "providerIcons",
+  "icons",
   "timelineRenderers",
   "environmentProviderInputs",
   "machineProviderInputs",
@@ -240,6 +247,7 @@ function flattenRegistrations(
     messageActions: stamp(set.messageActions),
     commandPaletteActions: stamp(set.commandPaletteActions),
     providerIcons: stamp(set.providerIcons),
+    icons: stamp(set.icons),
     timelineRenderers: stamp(set.timelineRenderers),
     environmentProviderInputs: stamp(set.environmentProviderInputs),
     machineProviderInputs: stamp(set.machineProviderInputs),
@@ -335,6 +343,7 @@ function buildSnapshot(previous: PluginSlotSnapshot): PluginSlotSnapshot {
   return changed ? next : previous;
 }
 
+let appliedIcons: PluginSlotSnapshot["icons"] = [];
 let openBatchDepth = 0;
 let batchMaxHoldMs = 0;
 let snapshotStale = false;
@@ -355,6 +364,31 @@ function flushChange(): void {
     batchFlushTimer = null;
   }
   rebuildIfStale();
+  if (snapshot.icons !== appliedIcons) {
+    appliedIcons = snapshot.icons;
+    const icons = new Map<string, PluginIconSlot>();
+    for (const icon of snapshot.icons) {
+      const previousIcon = icons.get(icon.name);
+      if (previousIcon !== undefined) {
+        console.warn(
+          `plugin ${icon.pluginId}: icon "${icon.name}" ignored; already registered by plugin ${previousIcon.pluginId}`,
+        );
+      } else {
+        icons.set(icon.name, icon);
+      }
+    }
+    setAppIcons(
+      new Map(
+        [...icons].map(([name, icon]) => [
+          name,
+          {
+            component: icon.component,
+            key: `${icon.pluginId}:${icon.generation}:${name}`,
+          },
+        ]),
+      ),
+    );
+  }
   if (!notifyPending) return;
   notifyPending = false;
   for (const listener of listeners) listener();

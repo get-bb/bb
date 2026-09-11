@@ -240,7 +240,13 @@ describe("bb tasks CLI", () => {
           kind: "agent",
           body: "Ready for review.",
           threadTitle: "CLI provider worker",
-          provider: { id: "codex", name: "Codex", logoUrl: null },
+          provider: {
+            id: "codex",
+            name: "Codex",
+            logoUrl: null,
+            iconGlyph: null,
+            iconTint: null,
+          },
         }),
       ]),
     );

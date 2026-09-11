@@ -21,6 +21,7 @@ import type {
   PluginNewThreadPanelActionRegistration,
   PluginPendingInteractionRegistration,
   PluginProviderIconRegistration,
+  ExperimentalIconRegistration,
   PluginSettingsSectionRegistration,
   PluginSidebarFooterActionRegistration,
   ExperimentalSidebarNavigationRegistration,
@@ -311,6 +312,7 @@ export interface CollectedPluginAppRegistrations {
   messageActions: PluginMessageActionRegistration[];
   commandPaletteActions: PluginCommandPaletteActionRegistration[];
   providerIcons: CollectedPluginProviderIconRegistration[];
+  icons: ExperimentalIconRegistration[];
   timelineRenderers: PluginTimelineRendererRegistration[];
   environmentProviderInputs: PluginEnvironmentProviderInputsRegistration[];
   machineProviderInputs: PluginMachineProviderInputsRegistration[];
@@ -361,6 +363,7 @@ export function collectPluginAppRegistrations(
     messageActions: [],
     commandPaletteActions: [],
     providerIcons: [],
+    icons: [],
     timelineRenderers: [],
     environmentProviderInputs: [],
     machineProviderInputs: [],
@@ -856,6 +859,25 @@ export function collectPluginAppRegistrations(
         if (customization !== null) {
           collected.composerCustomizations.push(customization);
         }
+      },
+    },
+    experimental_icons: {
+      register(registration) {
+        const kind = "experimental_icons.register";
+        const name = requireNonEmptyString(
+          kind,
+          "name",
+          registration?.name,
+        ).trim();
+        if (name.length === 0)
+          throw new Error(`${kind}: "name" must not be blank`);
+        if (collected.icons.some((icon) => icon.name === name)) {
+          throw new Error(`${kind}: duplicate icon name "${name}"`);
+        }
+        collected.icons.push({
+          name,
+          component: requireComponent(kind, registration.component),
+        });
       },
     },
     contentScripts: {

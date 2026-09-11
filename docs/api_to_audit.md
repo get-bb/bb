@@ -2897,3 +2897,64 @@ returns a credential only while that host is creating.
 
 Before stabilizing, verify creation cancellation through host removal,
 same-host restoration, serialized removal, plugin callers and UI/CLI parity.
+
+
+## `app.experimental_icons.register` and `experimental_Icon`
+
+Plugins register inline React artwork during app setup with `{ name, component }`.
+Names are trimmed, nonempty strings; namespaces are recommended but optional.
+Names are shared across plugins, and any client component or app icon field may
+reference them. Registration returns `void`. Duplicate names within one plugin
+reject setup; across plugins the first plugin id in lexical order wins and the
+host warns about collisions. All explicit registrations override built-ins.
+The host commits icons with the plugin's other app registrations and removes
+or replaces them on unload or reload, restoring the next owner or built-in.
+A rejected setup leaves the previous generation intact.
+
+`experimental_Icon` is the same renderer used by host app icons. It accepts
+`name`, optional `fallback` (default `Zap`), `className`, `style`, `aria-label`,
+and `aria-hidden`. Custom components receive sizing through `className`; the
+host owns the accessible wrapper and applies tint through inherited color.
+Missing references try the fallback, then the built-in `Zap`. Recursive
+components terminate at the underlying built-in or `Zap`; throwing components
+are contained and recover when their registration is replaced. Mounted icons
+subscribe to changes in their requested and fallback definitions.
+
+This is an app registry, independent of all manifest branding and declared SVG
+asset contracts. It adds no server/daemon wire fields, persisted icon definitions,
+or cross-client delivery. Mobile and desktop load the same web app and plugin
+frontend registrations. Server-side presentation validation remains unchanged;
+registering an app icon does not declare a manifest SVG or authorize a new
+namespaced server presentation glyph.
+
+Before stabilizing, audit component sizing and accessibility, fallback behavior,
+collision precedence, whether per-registration disposal is needed beyond the
+existing setup lifecycle, and compatibility for plugins vendoring older Icon
+components. The existing built-in icon list and artwork remain fixed; new
+plugin app icons use this registration API. The manifest API is unchanged,
+and individual plugins can still declare their own branding SVG assets using
+the existing manifest fields.
+
+
+## `experimental_ProviderIcon`
+
+Shared frontend renderer for agent and environment provider artwork, exported
+from `@get-bb/plugin-sdk/app`. Props: `providerId`, optional `logoUrl`, `glyph`,
+`tint: { light, dark }`, `fallback` (default `Code`), `className`, `aria-label`,
+and `aria-hidden`. Metadata comes from existing provider queries; the component
+performs no fetch. An id alone resolves frontend slot registrations and fallback.
+Resolution is provider slot override, supplied logo mask, supplied glyph through
+the app registry, then fallback. Invalid tints are ignored. Overrides update on
+load/reload/unload, remount per generation, and fall back on render errors or
+recursive provider references. Without an accessible label the mark is decorative.
+
+The BB provider helper, environment provider marks, Provider Usage and Tasks
+comment avatars use the same renderer. Tasks includes nullable glyph/tint fields
+in its computed comment-provider RPC data; no persisted records, manifest API,
+server/daemon wire fields or registration lifecycle change. This rendering-only
+surface uses existing provider SDK queries and CLI provider/plugin management.
+
+Stabilization: audit SDK prop ergonomics against both provider record shapes,
+asset-vs-glyph precedence, cross-plugin overrides, reload/error/recursion behavior,
+accessibility and theme rendering on desktop and mobile. Keep metadata fetching
+and plugin branding separate from provider artwork resolution.

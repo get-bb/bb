@@ -5,16 +5,16 @@ import {
   useMemo,
   useState,
   useSyncExternalStore,
-  type CSSProperties,
   type KeyboardEvent,
 } from "react";
 import {
   definePluginApp,
+  experimental_ProviderIcon as ProviderIcon,
   experimental_useSidebarThreads,
   type ExperimentalSidebarFooterDisclosureProps,
   useBbContext,
 } from "@get-bb/plugin-sdk/app";
-import { ICON_NAMES, Icon, type IconName } from "@bb/shared-ui/icon";
+import { Icon } from "@bb/shared-ui/icon";
 import { Button } from "@bb/shared-ui/button";
 import {
   DropdownMenu,
@@ -134,22 +134,6 @@ function refreshUsage({
   })();
 }
 
-function providerIconStyle(provider: UsageProvider): CSSProperties | undefined {
-  if (provider.iconTint === null) return undefined;
-  return {
-    color:
-      "light-dark(" +
-      provider.iconTint.light +
-      ", " +
-      provider.iconTint.dark +
-      ")",
-  };
-}
-
-function isIconName(value: string): value is IconName {
-  return ICON_NAMES.some((iconName) => iconName === value);
-}
-
 function ProviderMark({
   provider,
   className,
@@ -157,36 +141,16 @@ function ProviderMark({
   provider: UsageProvider;
   className: string;
 }) {
-  const tintStyle = providerIconStyle(provider);
-  if (provider.logoUrl !== null) {
-    const image = 'url("' + provider.logoUrl.replace(/["\\]/gu, "\\$&") + '")';
-    return (
-      <span
-        aria-hidden="true"
-        data-provider-logo={provider.logoUrl}
-        className={className + " inline-block shrink-0 bg-current"}
-        style={{
-          ...tintStyle,
-          maskImage: image,
-          WebkitMaskImage: image,
-          maskRepeat: "no-repeat",
-          WebkitMaskRepeat: "no-repeat",
-          maskPosition: "center",
-          WebkitMaskPosition: "center",
-          maskSize: "contain",
-          WebkitMaskSize: "contain",
-        }}
-      />
-    );
-  }
-  const iconName =
-    provider.iconGlyph !== null && isIconName(provider.iconGlyph)
-      ? provider.iconGlyph
-      : "Bot";
   return (
-    <span aria-hidden="true" style={tintStyle}>
-      <Icon name={iconName} className={className} />
-    </span>
+    <ProviderIcon
+      providerId={provider.id}
+      logoUrl={provider.logoUrl}
+      glyph={provider.iconGlyph}
+      tint={provider.iconTint}
+      fallback="Bot"
+      className={className}
+      aria-hidden="true"
+    />
   );
 }
 
