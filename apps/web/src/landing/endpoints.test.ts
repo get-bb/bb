@@ -1,11 +1,11 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
-  DOWNLOAD_MACOS_FALLBACK_URL,
-  DOWNLOAD_MACOS_RELEASE_ASSET_BASE_URL,
-  DOWNLOAD_MACOS_VERSION_FEED_URL,
+  DESKTOP_DOWNLOADS,
+  DOWNLOAD_FALLBACK_URL,
+  DOWNLOAD_RELEASE_ASSET_BASE_URL,
 } from "./site";
-import { handleDownloadMacos, handleSubscribe } from "./endpoints";
+import { handleDownload, handleSubscribe } from "./endpoints";
 
 describe("marketing download redirect", () => {
   afterEach(() => {
@@ -26,19 +26,71 @@ describe("marketing download redirect", () => {
     });
     vi.stubGlobal("fetch", fetchMock);
 
-    const response = await handleDownloadMacos(
+    const response = await handleDownload(
+      "macos",
       new Request("https://getbb.app/download/macos?placement=hero"),
       {},
       vi.fn(),
     );
 
-    expect(fetchMock).toHaveBeenCalledWith(DOWNLOAD_MACOS_VERSION_FEED_URL, {
-      headers: { accept: "application/json" },
-    });
+    expect(fetchMock).toHaveBeenCalledWith(
+      DESKTOP_DOWNLOADS.macos.versionFeedUrl,
+      { headers: { accept: "application/json" } },
+    );
     expect(response.status).toBe(302);
     expect(response.headers.get("Location")).toBe(
-      `${DOWNLOAD_MACOS_RELEASE_ASSET_BASE_URL}/bb-0.0.26-arm64.dmg`,
+      `${DOWNLOAD_RELEASE_ASSET_BASE_URL}/bb-0.0.26-arm64.dmg`,
     );
+  });
+
+  it("redirects Linux downloads to the AppImage from the Linux feed", async () => {
+    const fetchMock = vi.fn(async () => {
+      return new Response(
+        JSON.stringify({
+          files: [
+            { url: "bb-0.42.1-x86_64.AppImage" },
+            { url: "bb-0.42.1-x86_64.AppImage.blockmap" },
+          ],
+        }),
+      );
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const response = await handleDownload(
+      "linux",
+      new Request("https://getbb.app/download/linux?placement=hero"),
+      {},
+      vi.fn(),
+    );
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      DESKTOP_DOWNLOADS.linux.versionFeedUrl,
+      { headers: { accept: "application/json" } },
+    );
+    expect(response.status).toBe(302);
+    expect(response.headers.get("Location")).toBe(
+      `${DOWNLOAD_RELEASE_ASSET_BASE_URL}/bb-0.42.1-x86_64.AppImage`,
+    );
+  });
+
+  it("never serves a macOS installer for a Linux request", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => {
+        return new Response(
+          JSON.stringify({ files: [{ url: "bb-0.42.1-arm64.dmg" }] }),
+        );
+      }),
+    );
+
+    const response = await handleDownload(
+      "linux",
+      new Request("https://getbb.app/download/linux"),
+      {},
+      vi.fn(),
+    );
+
+    expect(response.headers.get("Location")).toBe(DOWNLOAD_FALLBACK_URL);
   });
 
   it("falls back to the release page when the feed has no dmg", async () => {
@@ -49,14 +101,15 @@ describe("marketing download redirect", () => {
       }),
     );
 
-    const response = await handleDownloadMacos(
+    const response = await handleDownload(
+      "macos",
       new Request("https://getbb.app/download/macos"),
       {},
       vi.fn(),
     );
 
     expect(response.status).toBe(302);
-    expect(response.headers.get("Location")).toBe(DOWNLOAD_MACOS_FALLBACK_URL);
+    expect(response.headers.get("Location")).toBe(DOWNLOAD_FALLBACK_URL);
   });
 
   it("tracks the click through waitUntil when a PostHog key is set", async () => {
@@ -66,8 +119,9 @@ describe("marketing download redirect", () => {
     vi.stubGlobal("fetch", fetchMock);
     const waitUntil = vi.fn<(promise: Promise<void>) => void>();
 
-    await handleDownloadMacos(
-      new Request("https://getbb.app/download/macos?placement=nav"),
+    await handleDownload(
+      "linux",
+      new Request("https://getbb.app/download/linux?placement=nav"),
       { LANDING_POSTHOG_KEY: "phc_test" },
       waitUntil,
     );
@@ -78,6 +132,13 @@ describe("marketing download redirect", () => {
       ([url]) => typeof url === "string" && url.includes("posthog"),
     );
     expect(captureCall).toBeTruthy();
+    const body = JSON.parse(String(captureCall?.[1]?.body)) as {
+      event: string;
+      properties: { download_target: string; placement: string };
+    };
+    expect(body.event).toBe("landing_download_linux_clicked");
+    expect(body.properties.download_target).toBe("linux");
+    expect(body.properties.placement).toBe("nav");
   });
 });
 

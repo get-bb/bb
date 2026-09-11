@@ -33,7 +33,33 @@ type SaveState =
   | { kind: "error"; message: string }
   | { kind: "conflict" };
 
-function MonacoFileOpener({ path, source, Original }: PluginFileOpenerProps) {
+function revealLineRange(
+  editor: MonacoNs.editor.IStandaloneCodeEditor,
+  lineRange: PluginFileOpenerProps["experimental_lineRange"],
+) {
+  const model = editor.getModel();
+  if (lineRange == null || model === null) return;
+  const startLineNumber = Math.min(
+    lineRange.startLineNumber,
+    model.getLineCount(),
+  );
+  const endLineNumber = Math.min(lineRange.endLineNumber, model.getLineCount());
+  const selection = {
+    startLineNumber,
+    startColumn: 1,
+    endLineNumber,
+    endColumn: model.getLineMaxColumn(endLineNumber),
+  };
+  editor.setSelection(selection);
+  editor.revealRangeInCenter(selection);
+}
+
+function MonacoFileOpener({
+  path,
+  source,
+  Original,
+  experimental_lineRange,
+}: PluginFileOpenerProps) {
   const rpc = useRpc<typeof rpcContract>();
   const codeTheme = experimental_useCodeTheme();
   const codeThemeRef = useRef(codeTheme);
@@ -41,6 +67,8 @@ function MonacoFileOpener({ path, source, Original }: PluginFileOpenerProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const monacoRef = useRef<typeof MonacoNs | null>(null);
   const editorRef = useRef<MonacoNs.editor.IStandaloneCodeEditor | null>(null);
+
+  const navigationRef = useRef({ path, lineRange: experimental_lineRange });
 
   const [activePath, setActivePath] = useState(path);
   useEffect(() => setActivePath(path), [path]);
@@ -251,6 +279,9 @@ function MonacoFileOpener({ path, source, Original }: PluginFileOpenerProps) {
           overflowWidgetsDomNode: overflowWidgetsNode(),
         });
         editorRef.current = editor;
+        if (activePath === navigationRef.current.path) {
+          revealLineRange(editor, navigationRef.current.lineRange);
+        }
         const active = {
           editor,
           absolutePath: file.absolutePath,
@@ -287,6 +318,14 @@ function MonacoFileOpener({ path, source, Original }: PluginFileOpenerProps) {
       editorRef.current = null;
     };
   }, [activePath, rpc, setSaveState, source]);
+
+  useEffect(() => {
+    navigationRef.current = { path, lineRange: experimental_lineRange };
+    const editor = editorRef.current;
+    if (editor !== null && activePath === path) {
+      revealLineRange(editor, experimental_lineRange);
+    }
+  }, [activePath, path, experimental_lineRange]);
 
   useEffect(() => {
     const monaco = monacoRef.current;

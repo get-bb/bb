@@ -3,12 +3,30 @@ import * as TooltipPrimitive from "@radix-ui/react-tooltip";
 
 import { cn } from "../../lib/utils";
 import { usePortalScopeProps } from "../../lib/portal-scope";
+import { isLastInputKeyboard } from "./overlay-trigger.js";
 
 const TooltipProvider = TooltipPrimitive.Provider;
 
 const Tooltip = TooltipPrimitive.Root;
 
-const TooltipTrigger = TooltipPrimitive.Trigger;
+const TooltipTrigger = React.forwardRef<
+  React.ComponentRef<typeof TooltipPrimitive.Trigger>,
+  React.ComponentPropsWithoutRef<typeof TooltipPrimitive.Trigger>
+>(function TooltipTriggerComponent({ onFocus, ...props }, ref) {
+  return (
+    <TooltipPrimitive.Trigger
+      ref={ref}
+      onFocus={(event) => {
+        onFocus?.(event);
+        if (!event.defaultPrevented && !isLastInputKeyboard()) {
+          event.preventDefault();
+        }
+      }}
+      {...props}
+    />
+  );
+});
+TooltipTrigger.displayName = TooltipPrimitive.Trigger.displayName;
 
 const TooltipContent = React.forwardRef<
   React.ComponentRef<typeof TooltipPrimitive.Content>,

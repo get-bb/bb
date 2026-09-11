@@ -64,6 +64,7 @@ async function buildRuntimeArtifacts() {
       turboEntrypoint,
       "run",
       "build",
+      "--filter=@bb/bundled-plugins",
       "--filter=@get-bb/plugin-sdk",
       "--filter=@bb/app",
       "--filter=@bb/server",
@@ -76,7 +77,10 @@ async function buildRuntimeArtifacts() {
     ],
     command: process.execPath,
     cwd: repoRoot,
-    env: process.env,
+    env: {
+      ...process.env,
+      BB_BUILD_TOOLCHAIN: `${process.version}-${process.platform}-${process.arch}`,
+    },
   });
   if (result.code === 0) {
     return;
@@ -87,30 +91,8 @@ async function buildRuntimeArtifacts() {
   throw new Error(`Runtime build failed with exit code ${result.code ?? 1}`);
 }
 
-async function buildBundledPlugins() {
-  const result = await runBuildProcess({
-    args: [
-      "--conditions=source",
-      "--import",
-      "tsx",
-      resolve(repoRoot, "apps/server/scripts/copy-builtin-plugins.ts"),
-    ],
-    command: process.execPath,
-    cwd: repoRoot,
-    env: process.env,
-  });
-  if (result.code === 0) {
-    return;
-  }
-  if (result.signal !== null) {
-    throw new Error(`Bundled plugin build stopped by ${result.signal}`);
-  }
-  throw new Error(
-    `Bundled plugin build failed with exit code ${result.code ?? 1}`,
-  );
-}
-
 export async function runNativeModulePreflight({
+  checkOnly = false,
   cwd = repoRoot,
   env = process.env,
   nodePath = process.execPath,
@@ -119,7 +101,7 @@ export async function runNativeModulePreflight({
   // Each check needs a fresh module cache. The process group also lets the
   // launcher stop a blocked download or source build during shutdown.
   const result = await runBuildProcess({
-    args: [scriptPath],
+    args: [scriptPath, ...(checkOnly ? ["--check"] : [])],
     command: nodePath,
     cwd,
     env,
@@ -145,14 +127,28 @@ export function parseStartBbArgs(args) {
   };
 }
 
-export async function main(args = process.argv.slice(2)) {
-  const parsedArgs = parseStartBbArgs(args);
+export async function prepareRuntime() {
+  await runNativeModulePreflight();
   await buildRuntimeArtifacts();
-  await buildBundledPlugins();
+}
+
+export async function main(args = process.argv.slice(2)) {
+  const dryRun = args.includes("--dryrun");
+  const parsedArgs = parseStartBbArgs(args.filter((arg) => arg !== "--dryrun"));
+  await prepareRuntime();
+  if (
+    parsedArgs.cliArgs.includes("--help") ||
+    parsedArgs.cliArgs.includes("-h")
+  ) {
+    process.stdout.write(
+      "Source startup: --dryrun prepares artifacts and prints resolved paths/ports without starting services. It writes build outputs and may repair native modules.\n\n",
+    );
+  }
   const { resolveWorktreeRuntimePolicy, runBbApp } =
     await import("../packages/bb-app/src/launcher.ts");
   await runBbApp(parsedArgs.cliArgs, {
-    beforeServerStart: runNativeModulePreflight,
+    dryRun,
+    beforeServerStart: () => runNativeModulePreflight({ checkOnly: true }),
     worktreePolicy: parsedArgs.useWorktreeRuntimePolicy
       ? resolveWorktreeRuntimePolicy({
           env: process.env,

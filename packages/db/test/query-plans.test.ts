@@ -1,4 +1,4 @@
-import { findEnvironmentLaunchPathClaim } from "../src/data/environment-launches.js";
+import { findEnvironmentPathClaim } from "../src/data/environments.js";
 import { describe, expect, it } from "vitest";
 import { threadScope, turnScope } from "@bb/domain";
 import {
@@ -19,6 +19,7 @@ import {
   insertEvents,
   listActiveBackgroundTaskCountsByThreadIds,
   listItemEventSpansByItems,
+  listOpenTurnInputAcceptedRowsByThreadIds,
   listLatestThreadStateEventRowsByThreadIds,
   listLatestOpenBackgroundTaskStateRowsForThread,
   listStoredConversationOutlineEventRows,
@@ -236,13 +237,31 @@ function assertEmittedQueryPlanUsesIndex(
 }
 
 describe("slow query index plans", () => {
+  it("seeks accepted inputs past each thread's latest interruption", () => {
+    const { db, thread } = setup();
+    try {
+      const captured = captureStatements(db, () => {
+        listOpenTurnInputAcceptedRowsByThreadIds(db, {
+          threadIds: [thread.id, "missing"],
+        });
+      });
+      expect(captured).toHaveLength(1);
+      const query = captured[0]!;
+      expect(queryPlanDetails({ db, ...query })).toContain(
+        "events_thread_type_sequence_idx (thread_id=? AND type=? AND sequence>?)",
+      );
+    } finally {
+      db.$client.close();
+    }
+  });
+
   it.each([null, "/tmp/claimed"])(
-    "indexes active launch claims for path %s",
+    "indexes active environment claims for path %s",
     (path) => {
       const { db } = setup();
       const captured = captureStatements(db, () => {
         expect(
-          findEnvironmentLaunchPathClaim(db, "host_test", path, null),
+          findEnvironmentPathClaim(db, "host_test", path, null),
         ).toBeNull();
       });
       expect(captured).toHaveLength(1);
@@ -252,10 +271,8 @@ describe("slow query index plans", () => {
         params: query.params,
         sql: query.sql,
       });
-      expect(details).toContain(
-        "USING INDEX environment_launches_active_claim_idx",
-      );
-      expect(details).not.toContain("SCAN environment_launches");
+      expect(details).toContain("USING INDEX environments_claim_idx");
+      expect(details).not.toContain("SCAN environments");
     },
   );
 
@@ -731,8 +748,8 @@ describe("slow query index plans", () => {
     const debugLog = findOnlyDebugLog({
       logger,
       predicate: (fields) =>
-        fields.operation === "run" &&
-        fields.sql.startsWith("UPDATE events SET environment_id = NULL"),
+        fields.operation === "all" &&
+        fields.sql.startsWith("SELECT rowid, octet_length(data)"),
     });
     assertEmittedQueryPlanUsesIndex({
       db,

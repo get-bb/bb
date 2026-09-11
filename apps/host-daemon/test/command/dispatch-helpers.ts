@@ -24,7 +24,7 @@ import type {
   PullRequestActionOptions,
 } from "@bb/host-workspace";
 import { RuntimeManager } from "../../src/runtime-manager.js";
-import { listFilesRecursively } from "../../src/command-handlers/file-list.js";
+import { listWorkspacePaths } from "../../src/command-handlers/file-list.js";
 import { noopEventSink } from "../../src/command-dispatch-support.js";
 import type { CommandDispatchOptions } from "../../src/command-dispatch-support.js";
 import type { FetchProjectAttachment } from "../../src/project-attachments.js";
@@ -240,12 +240,16 @@ export function createFakeWorkspace(pathname: string) {
       state.pullRequestActionShellPath = options?.shellPath;
     },
     async listFiles() {
-      return listFilesRecursively({
-        dir: pathname,
-        root: pathname,
-        includeHidden: false,
-        excludeNames: new Set<string>(),
-      });
+      return (
+        await listWorkspacePaths({
+          root: pathname,
+          includeHidden: false,
+          respectGitIgnore: false,
+          includeFiles: true,
+          includeDirectories: false,
+          excludeNames: [],
+        })
+      ).map((entry) => entry.path);
     },
     async commit(options: { message: string; noVerify: boolean }) {
       state.lastCommitMessage = options.message;

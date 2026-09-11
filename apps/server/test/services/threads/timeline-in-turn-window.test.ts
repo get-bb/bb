@@ -1,3 +1,4 @@
+import { prependOlderTimelineRows } from "@bb/client-core";
 import { describe, expect, it } from "vitest";
 import {
   encodeClientTurnRequestIdNumber,
@@ -24,7 +25,7 @@ import type {
 } from "@bb/server-contract";
 import {
   buildThreadTimeline,
-  buildTimelineTurnSummaryDetails,
+  buildTimelineTurnSummaryDetails as buildTurnDetailsPage,
   buildThreadTimelineWithProfile,
   THREAD_TIMELINE_EVENT_DATA_BYTE_LIMIT,
 } from "../../../src/services/threads/timeline.js";
@@ -432,6 +433,30 @@ function buildNestedPage(
   });
 }
 
+function buildTimelineTurnSummaryDetails(
+  db: DbConnection,
+  thread: Thread,
+  options: Parameters<typeof buildTurnDetailsPage>[2],
+) {
+  const response = buildTurnDetailsPage(db, thread, options);
+  let rows = response.rows;
+  let cursor = response.olderCursor;
+  let pages = 0;
+  while (cursor) {
+    const older = buildTurnDetailsPage(db, thread, {
+      ...options,
+      beforeCursor: cursor,
+    });
+    rows = prependOlderTimelineRows({
+      olderRows: older.rows,
+      loadedRows: rows,
+    });
+    cursor = older.olderCursor;
+    expect(++pages).toBeLessThan(100);
+  }
+  return { ...response, rows, olderCursor: null };
+}
+
 function collectCommandCallIds(
   rows: readonly TimelineRow[],
   target: Set<string>,
@@ -460,7 +485,7 @@ function walkAllPages(
   thread: Thread,
   eventBudget: number,
 ): WalkResult {
-  const rowsByPage: string[][] = [];
+  let mergedRows: TimelineRow[] = [];
   const seenCursors = new Set<string>();
   let cursor: TimelinePaginationCursor | null = null;
   let maxEventRowCount = 0;
@@ -470,7 +495,10 @@ function walkAllPages(
     const { profile, response } = buildPage(db, thread, eventBudget, cursor);
     pages += 1;
     maxEventRowCount = Math.max(maxEventRowCount, profile.eventRowCount);
-    rowsByPage.push(response.rows.map((row) => JSON.stringify(row)));
+    mergedRows = prependOlderTimelineRows({
+      olderRows: response.rows,
+      loadedRows: mergedRows,
+    });
     if (!response.timelinePage.hasOlderRows) {
       break;
     }
@@ -486,7 +514,11 @@ function walkAllPages(
     expect(pages).toBeLessThan(100);
   }
 
-  return { maxEventRowCount, pages, rows: rowsByPage.reverse().flat() };
+  return {
+    maxEventRowCount,
+    pages,
+    rows: mergedRows.map((row) => JSON.stringify(row)),
+  };
 }
 
 describe("in-turn timeline windows", () => {
@@ -709,17 +741,23 @@ describe("in-turn timeline windows", () => {
     expect(unbudgeted.response.timelinePage.hasOlderRows).toBe(false);
 
     const budgeted = buildPage(db, thread, 100, null);
-    expect(budgeted.profile.eventRowCount).toBeLessThanOrEqual(120);
+    expect(budgeted.profile.eventRowCount).toBe(
+      unbudgeted.profile.eventRowCount,
+    );
+    expect(
+      budgeted.response.timelinePage.contentPage?.end! -
+        budgeted.response.timelinePage.contentPage?.start!,
+    ).toBeLessThanOrEqual(100);
     expect(budgeted.response.rows.length).toBeLessThan(
       unbudgeted.response.rows.length,
     );
     expect(budgeted.response.timelinePage.hasOlderRows).toBe(true);
     expect(budgeted.response.timelinePage.olderCursor?.anchorId).toMatch(
-      new RegExp(`^${thread.id}:in-turn:\\d+$`),
+      /^timeline-v1:/,
     );
   });
 
-  it("pages a compact byte slice with hundreds of item identities", () => {
+  it("keeps a compact summary stable despite large source events", () => {
     const { db, thread } = setup();
     seedTurns(db, thread, {
       commandChars: THREAD_TIMELINE_EVENT_DATA_BYTE_LIMIT - 500_000,
@@ -747,7 +785,7 @@ describe("in-turn timeline windows", () => {
 
     const walked = walkAllPages(db, thread, LARGE_BUDGET);
 
-    expect(walked.pages).toBeGreaterThan(1);
+    expect(walked.pages).toBe(1);
     expect(walked.rows).not.toHaveLength(0);
   });
 
@@ -763,9 +801,7 @@ describe("in-turn timeline windows", () => {
 
     expect(budgeted.rows).toEqual(unbudgeted.rows);
     expect(budgeted.pages).toBeGreaterThan(1);
-    expect(budgeted.maxEventRowCount).toBeLessThan(
-      unbudgeted.maxEventRowCount / 2,
-    );
+    expect(budgeted.maxEventRowCount).toBeLessThan(unbudgeted.maxEventRowCount);
   });
 
   it("keeps a finished turn whole under the event-count budget", () => {
@@ -803,7 +839,7 @@ describe("in-turn timeline windows", () => {
           continue;
         }
         expect(row.status).toBe("completed");
-        expect(turnRowIds.has(row.id)).toBe(false);
+        expect(row.id).not.toContain(":sequence-page:");
         turnRowIds.add(row.id);
         const details = buildTimelineTurnSummaryDetails(db, thread, {
           includeDiagnosticOperations: false,
@@ -814,56 +850,57 @@ describe("in-turn timeline windows", () => {
         const pageDetailCallIds = new Set<string>();
         collectCommandCallIds(details.rows, pageDetailCallIds);
         expect(pageDetailCallIds.size).toBeGreaterThan(0);
-        expect(pageDetailCallIds.size).toBeLessThan(BYTE_WINDOW_ITEM_COUNT);
+        expect(pageDetailCallIds.size).toBe(BYTE_WINDOW_ITEM_COUNT);
         for (const callId of pageDetailCallIds) {
           expandedCommandCallIds.add(callId);
         }
       }
-      expect(page.profile.eventDataBytes, `page ${pages}`).toBeLessThanOrEqual(
-        THREAD_TIMELINE_EVENT_DATA_BYTE_LIMIT,
-      );
+      expect(
+        Buffer.byteLength(JSON.stringify(page.response.rows)),
+        `page ${pages}`,
+      ).toBeLessThanOrEqual(THREAD_TIMELINE_EVENT_DATA_BYTE_LIMIT);
       if (!page.response.timelinePage.hasOlderRows) {
         break;
       }
       cursor = page.response.timelinePage.olderCursor;
       expect(cursor).not.toBeNull();
-      expect(cursor?.anchorId).toContain(":byte-window:");
+      expect(cursor?.anchorId).toMatch(/^timeline-v1:/);
       expect(pages).toBeLessThan(10);
     }
 
     expect(pages).toBeGreaterThan(2);
     expect(commandCallIds.size).toBe(BYTE_WINDOW_ITEM_COUNT);
     expect(expandedCommandCallIds.size).toBe(BYTE_WINDOW_ITEM_COUNT);
-    expect(turnRowIds.size).toBe(pages);
+    expect(turnRowIds.size).toBe(1);
   }, 15_000);
 
   it("keeps latest byte-page row identities stable while a turn grows", () => {
     const { db, thread } = setup();
     seedTurns(db, thread, {
-      commandChars: 25_000,
+      commandChars: 50_000,
       completeLastTurn: false,
-      itemsPerTurn: [75],
+      itemsPerTurn: [100],
     });
 
     const first = buildPage(db, thread, LARGE_BUDGET, null).response;
     appendCommandItems(db, thread, {
-      commandChars: 25_000,
+      commandChars: 50_000,
       count: 20,
-      itemStart: 75,
+      itemStart: 100,
     });
     const second = buildPage(db, thread, LARGE_BUDGET, null).response;
     appendCommandItems(db, thread, {
-      commandChars: 25_000,
+      commandChars: 50_000,
       count: 10,
-      itemStart: 95,
+      itemStart: 120,
     });
     const third = buildPage(db, thread, LARGE_BUDGET, null).response;
 
-    expect(first.timelinePage.olderCursor?.anchorSeq).not.toBe(
-      second.timelinePage.olderCursor?.anchorSeq,
+    expect(first.timelinePage.olderCursor?.anchorId).not.toBe(
+      second.timelinePage.olderCursor?.anchorId,
     );
-    expect(second.timelinePage.olderCursor?.anchorSeq).not.toBe(
-      third.timelinePage.olderCursor?.anchorSeq,
+    expect(second.timelinePage.olderCursor?.anchorId).not.toBe(
+      third.timelinePage.olderCursor?.anchorId,
     );
     for (const [previous, next] of [
       [first, second],
@@ -947,7 +984,7 @@ describe("in-turn timeline windows", () => {
           continue;
         }
         if (pages === 1) {
-          expect(row.sourceSeqStart).toBeGreaterThan(4);
+          expect(row.sourceSeqStart).toBeLessThanOrEqual(4);
         }
         const details = buildTimelineTurnSummaryDetails(db, thread, {
           includeDiagnosticOperations: false,
@@ -957,14 +994,15 @@ describe("in-turn timeline windows", () => {
         });
         const pageDetailCallIds = new Set<string>();
         collectCommandCallIds(details.rows, pageDetailCallIds);
-        expect(pageDetailCallIds.size).toBeLessThan(BYTE_WINDOW_ITEM_COUNT);
+        expect(pageDetailCallIds.size).toBe(BYTE_WINDOW_ITEM_COUNT);
         for (const callId of pageDetailCallIds) {
           expandedCommandCallIds.add(callId);
         }
       }
-      expect(page.profile.eventDataBytes, `page ${pages}`).toBeLessThanOrEqual(
-        THREAD_TIMELINE_EVENT_DATA_BYTE_LIMIT,
-      );
+      expect(
+        Buffer.byteLength(JSON.stringify(page.response.rows)),
+        `page ${pages}`,
+      ).toBeLessThanOrEqual(THREAD_TIMELINE_EVENT_DATA_BYTE_LIMIT);
       if (!page.response.timelinePage.hasOlderRows) {
         break;
       }
@@ -978,7 +1016,7 @@ describe("in-turn timeline windows", () => {
     expect(expandedCommandCallIds.size).toBe(BYTE_WINDOW_ITEM_COUNT);
   }, 15_000);
 
-  it("returns a placeholder when one event exceeds the byte limit", () => {
+  it("returns one oversized atomic row without discarding its content", () => {
     const { db, thread } = setup();
     insertEvents(db, noopNotifier, [
       {
@@ -998,16 +1036,13 @@ describe("in-turn timeline windows", () => {
     const latest = buildPage(db, thread, LARGE_BUDGET, null);
     expect(latest.response.timelinePage.hasOlderRows).toBe(false);
     expect(latest.response.timelinePage.olderCursor).toBeNull();
-    expect(latest.response.rows).toEqual([
-      expect.objectContaining({
-        kind: "system",
-        sourceSeqStart: 1,
-        status: "error",
-        systemKind: "error",
-        title: "Timeline event is too large to display",
-      }),
-    ]);
-    expect(latest.profile.eventRowCount).toBe(0);
+    expect(latest.response.rows).toHaveLength(1);
+    const row = latest.response.rows[0]!;
+    expect(row.kind).toBe("system");
+    expect(row.kind === "system" ? row.detail?.length : 0).toBe(
+      THREAD_TIMELINE_EVENT_DATA_BYTE_LIMIT,
+    );
+    expect(latest.profile.eventRowCount).toBe(1);
   });
 
   it("keeps bounded legacy image completions visible before and after migration sweeps", () => {
@@ -1182,9 +1217,11 @@ describe("in-turn timeline windows", () => {
     const unbudgeted = buildPage(db, thread, LARGE_BUDGET, null);
     const budgeted = buildPage(db, thread, 100, null);
 
-    expect(budgeted.response.timelinePage.hasOlderRows).toBe(false);
+    expect(budgeted.response.timelinePage.hasOlderRows).toBe(true);
     expect(budgeted.profile.eventRowCount).toBeGreaterThan(600);
-    expect(budgeted.response.rows).toEqual(unbudgeted.response.rows);
+    expect(walkAllPages(db, thread, 100).rows).toEqual(
+      unbudgeted.response.rows.map((row) => JSON.stringify(row)),
+    );
   });
 
   it("gives an item straddling the cut to exactly one page, completed", () => {
@@ -1219,13 +1256,15 @@ describe("in-turn timeline windows", () => {
     const straddlingDetailRows: TimelineRow[] = [];
     let cursor: TimelinePaginationCursor | null = null;
     let pages = 0;
+    const seenSummaries = new Set<string>();
     for (;;) {
       const page = buildNestedPage(db, thread, LARGE_BUDGET, cursor);
       pages += 1;
       for (const row of page.response.rows) {
-        if (row.kind !== "turn") {
+        if (row.kind !== "turn" || seenSummaries.has(row.id)) {
           continue;
         }
+        seenSummaries.add(row.id);
         const details = buildTimelineTurnSummaryDetails(db, thread, {
           includeDiagnosticOperations: false,
           sourceSeqEnd: row.sourceSeqEnd,
@@ -1398,10 +1437,7 @@ describe("timeline segment anchors", () => {
     );
 
     const budgeted = buildPage(db, thread, 1_500, null).response;
-    expect(budgeted.timelinePage.olderCursor).toEqual({
-      anchorSeq: 3,
-      anchorId: `${thread.id}:user-seed:3`,
-    });
+    expect(budgeted.timelinePage.olderCursor).toMatchObject({ anchorSeq: 3 });
     expect(
       budgeted.rows.some(
         (row) =>
@@ -1413,10 +1449,7 @@ describe("timeline segment anchors", () => {
 
     insertEvents(db, noopNotifier, [fillerEvent(1_502), fillerEvent(1_503)]);
     const exactFloor = buildPage(db, thread, 1_500, null).response.timelinePage;
-    expect(exactFloor.olderCursor).toEqual({
-      anchorSeq: 3,
-      anchorId: `${thread.id}:user-seed:3`,
-    });
+    expect(exactFloor.olderCursor).toMatchObject({ anchorSeq: 3 });
 
     const latest = buildPage(db, thread, LARGE_BUDGET, null, 1).response;
     expect(latest.timelinePage.hasOlderRows).toBe(true);
@@ -1674,9 +1707,13 @@ describe("background tasks across an in-turn window", () => {
 
     const budgeted = buildPage(db, thread, 100, null);
     expect(budgeted.response.timelinePage.olderCursor?.anchorId).toMatch(
-      /:in-turn:/,
+      /^timeline-v1:/,
     );
-    expect(budgeted.profile.eventRowCount).toBeLessThanOrEqual(120);
+    expect(budgeted.profile.eventRowCount).toBeGreaterThan(600);
+    expect(
+      budgeted.response.timelinePage.contentPage?.end! -
+        budgeted.response.timelinePage.contentPage?.start!,
+    ).toBeLessThanOrEqual(100);
     expect(budgeted.response.activeWorkflows).toHaveLength(1);
     expect(budgeted.response.activeWorkflows).toEqual(
       buildPage(db, thread, LARGE_BUDGET, null).response.activeWorkflows,
@@ -2003,13 +2040,14 @@ describe("turn details for an item that finishes in a later turn", () => {
       }),
     });
     insertEvents(db, noopNotifier, events.slice(storedCount));
-    const unfinishedLatest = buildPage(
-      db,
-      thread,
-      LARGE_BUDGET,
-      null,
-      1,
-    ).response;
+    const unfinishedLatest = buildThreadTimeline(db, thread, {
+      eventBudget: LARGE_BUDGET,
+      includeDiagnosticOperations: false,
+      includeNestedRows: true,
+      maxInlineOutputChars: 32_000,
+      maxSeq: 0,
+      page: { kind: "latest", segmentLimit: 1 },
+    });
     const unfinishedOlder = buildNestedPage(
       db,
       thread,

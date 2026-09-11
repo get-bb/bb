@@ -1,8 +1,9 @@
+import { advanceEnvironmentProvisioning } from "../environments/environment-engine.js";
 import { revokeThreadDesktopBrowserControl } from "../desktop-browsers.js";
 import {
-  providerLaunchHasPendingWork,
+  providerEnvironmentHasPendingWork,
   refreshProviderRetirement,
-} from "../environments/provider-orchestration.js";
+} from "../environments/environment-engine.js";
 import {
   and,
   eq,
@@ -86,7 +87,6 @@ import { isHostUnavailableApiError } from "../hosts/online-rpc.js";
 import {
   LIVE_DAEMON_COMMAND_TIMEOUT_MS,
   runLiveHostCommand,
-  startLiveHostCommand,
 } from "../hosts/live-command.js";
 import { createAsyncDeduper } from "../lib/async-deduper.js";
 import { requestQueuedMessageDispatch } from "./queued-message-dispatch.js";
@@ -95,11 +95,10 @@ import { NotificationBuffer } from "../lib/notification-buffer.js";
 import { queueChildThreadTurnNotificationBestEffort } from "./child-thread-notifications.js";
 import { isParentNotifiableChildThread } from "./thread-parent.js";
 import {
-  forgetActiveThreadProvisionContext,
-  getActiveThreadProvisionContext,
-} from "./thread-provisioning-active-context.js";
-import { cancelEnvironmentProviderLaunch } from "./thread-environment-providers.js";
-import { hasProvisioningTimelineRow } from "./thread-provisioning-context.js";
+  clearThreadProvisionSchedule,
+  getThreadProvisionContext,
+} from "./thread-startup-store.js";
+import { cancelEnvironmentProviderCreation } from "./thread-environment-providers.js";
 import { isPreStartThreadStatus } from "./thread-status.js";
 import { settleDanglingBackgroundTasksForStoppedThreadInTransaction } from "./background-task-reconciliation.js";
 
@@ -429,8 +428,11 @@ interface MarkThreadStopRequestedWithEventArgs {
   threadId: string;
 }
 
-function hasActiveThreadProvisioningContext(threadId: string): boolean {
-  return getActiveThreadProvisionContext(threadId) !== null;
+function hasActiveThreadProvisioningContext(
+  deps: ThreadLifecycleReadDeps,
+  threadId: string,
+): boolean {
+  return getThreadProvisionContext(deps.db, threadId) !== null;
 }
 
 function hasThreadInterruptedEvent(
@@ -466,12 +468,12 @@ function appendProvisioningInterruptedEventInTransaction(
   thread: ProvisioningInterruptedThread,
 ): void {
   const currentThread = getThread(deps.db, thread.id);
-  const context = getActiveThreadProvisionContext(thread.id);
+  const context = getThreadProvisionContext(deps.db, thread.id);
   if (!currentThread || !context) {
     return;
   }
   const environmentId = context.state.environmentId ?? thread.environmentId;
-  if (!hasProvisioningTimelineRow(context)) {
+  if (context.state.provisionEventSequence === null) {
     return;
   }
 
@@ -810,7 +812,7 @@ export function settleThreadStartCommandResult(
     return emptyCommandResultSideEffects();
   }
   if (!args.report.ok) {
-    forgetActiveThreadProvisionContext(thread.id);
+    clearThreadProvisionSchedule(thread.id);
     return settleThreadCommandFailure({
       command: args.command,
       deps: args.deps,
@@ -821,7 +823,7 @@ export function settleThreadStartCommandResult(
   const shouldSyncTitle =
     thread.title !== null &&
     inFlightThreadRpcGuard.isHeld(thread.id, "thread.start.title-sync");
-  forgetActiveThreadProvisionContext(thread.id);
+  clearThreadProvisionSchedule(thread.id);
   const currentThread = getThread(args.deps.db, args.command.threadId);
   if (currentThread && currentThread.deletedAt !== null) {
     finalizeStoppedThreadInTransaction(args.deps, {
@@ -1008,7 +1010,7 @@ function dispatchThreadStartFromRequest(
       const currentThread = getThread(tx, args.threadId);
       const activeProvisionContext =
         args.sourceThreadStatus === "starting"
-          ? getActiveThreadProvisionContext(args.threadId)
+          ? getThreadProvisionContext(deps.db, args.threadId)
           : null;
       const isProvisionHandoff = activeProvisionContext !== null;
       if (
@@ -1030,10 +1032,23 @@ function dispatchThreadStartFromRequest(
         };
       }
 
+      if (activeProvisionContext !== null) {
+        tx.update(threads)
+          .set({
+            startupContext: sql`json_set(${threads.startupContext}, '$.kind', 'dispatched')`,
+          })
+          .where(
+            and(
+              eq(threads.id, args.threadId),
+              sql`json_extract(${threads.startupContext}, '$.state.provisioningId') = ${activeProvisionContext.state.provisioningId}`,
+            ),
+          )
+          .run();
+      }
       let completedProvisionSequence: number | null = null;
       if (
         activeProvisionContext !== null &&
-        hasProvisioningTimelineRow(activeProvisionContext)
+        activeProvisionContext.state.provisionEventSequence !== null
       ) {
         completedProvisionSequence = appendThreadProvisioningEventInTransaction(
           tx,
@@ -1214,7 +1229,7 @@ function requestPreStartThreadStop(
 
       const hasProvisioningContext =
         currentThread.status === "starting" &&
-        hasActiveThreadProvisioningContext(currentThread.id);
+        hasActiveThreadProvisioningContext(deps, currentThread.id);
       if (
         !isPreStartThreadStatus(currentThread.status) &&
         currentThread.status !== "stopping" &&
@@ -1235,7 +1250,7 @@ function requestPreStartThreadStop(
         });
       }
       const abandonedContext = hasProvisioningContext
-        ? getActiveThreadProvisionContext(currentThread.id)
+        ? getThreadProvisionContext(deps.db, currentThread.id)
         : null;
       const abandonedIntent = abandonedContext?.request.environmentIntent;
       const abandonedProvider =
@@ -1246,7 +1261,7 @@ function requestPreStartThreadStop(
       if (hasProvisioningContext) {
         appendProvisioningInterruptedEventInTransaction(txDeps, currentThread);
       }
-      forgetActiveThreadProvisionContext(currentThread.id);
+      clearThreadProvisionSchedule(currentThread.id);
 
       const environmentId = currentThread.environmentId;
       const environment =
@@ -1281,31 +1296,21 @@ function requestPreStartThreadStop(
   );
   notificationBuffer.flushInto(deps.hub);
   if (result.abandonedProvider !== null) {
-    cancelEnvironmentProviderLaunch(deps, {
+    cancelEnvironmentProviderCreation(deps, {
       ...result.abandonedProvider,
       threadId: thread.id,
     });
   }
 
   if (!result.finalized && result.environmentId && result.cancelHostId) {
-    startLiveHostCommand(deps, {
-      command: {
-        type: "environment.attach.cancel",
-        environmentId: result.environmentId,
-      },
-      hostId: result.cancelHostId,
-      timeoutMs: LIVE_DAEMON_COMMAND_TIMEOUT_MS,
-      onError: ({ error }) => {
-        deps.logger.warn(
-          {
-            err: error,
-            environmentId: result.environmentId,
-            threadId: thread.id,
-          },
-          "Live environment provision cancel command failed",
-        );
-      },
-    });
+    void advanceEnvironmentProvisioning(deps, {
+      environmentId: result.environmentId,
+    }).catch((error) =>
+      deps.logger.warn(
+        { environmentId: result.environmentId, error },
+        "Environment cancellation failed",
+      ),
+    );
     return;
   }
 }
@@ -1335,7 +1340,7 @@ export function requestThreadStopForCurrentState(
   if (
     isPreStartThreadStatus(thread.status) ||
     thread.status === "stopping" ||
-    hasActiveThreadProvisioningContext(thread.id)
+    hasActiveThreadProvisioningContext(deps, thread.id)
   ) {
     requestPreStartThreadStop(deps, thread);
   }
@@ -1383,7 +1388,7 @@ export async function stopThreadForCurrentState(
   if (
     isPreStartThreadStatus(thread.status) ||
     thread.status === "stopping" ||
-    hasActiveThreadProvisioningContext(thread.id)
+    hasActiveThreadProvisioningContext(deps, thread.id)
   ) {
     requestPreStartThreadStop(deps, thread);
     return;
@@ -1751,8 +1756,8 @@ export function finalizeStoppedThreadInTransaction(
       },
     );
 
-    forgetActiveThreadProvisionContext(finalizedThread.id);
-    if (providerLaunchHasPendingWork(deps.db, finalizedThread.id)) return;
+    clearThreadProvisionSchedule(finalizedThread.id);
+    if (providerEnvironmentHasPendingWork(deps.db, finalizedThread.id)) return;
     deleteThread(deps.db, deps.hub, finalizedThread.id);
     if (finalizedThread.environmentId !== null)
       refreshProviderRetirement(deps, finalizedThread.environmentId);
@@ -1885,6 +1890,6 @@ export async function reconcileDaemonReportedThreads(
       event: { type: "run.started" },
       threadId: thread.id,
     });
-    forgetActiveThreadProvisionContext(thread.id);
+    clearThreadProvisionSchedule(thread.id);
   }
 }

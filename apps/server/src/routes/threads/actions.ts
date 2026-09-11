@@ -1,4 +1,4 @@
-import { refreshProviderRetirement } from "../../services/environments/provider-orchestration.js";
+import { refreshProviderRetirement } from "../../services/environments/environment-engine.js";
 import {
   deleteQueuedThreadMessage,
   getEnvironment,

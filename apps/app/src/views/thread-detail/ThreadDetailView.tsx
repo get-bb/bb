@@ -1018,7 +1018,6 @@ function ThreadDetailViewInternal(props: ThreadRoutePathArgs) {
       : null;
   const canEditSentMessages =
     thread !== undefined &&
-    (systemConfigQuery.data?.experiments.editMessages ?? false) &&
     (threadProviderInfo?.capabilities.supportsSessionRewind ?? false) &&
     thread.archivedAt === null &&
     thread.deletedAt === null &&

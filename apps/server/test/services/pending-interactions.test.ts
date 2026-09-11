@@ -80,6 +80,43 @@ function requestPluginInteraction(
 }
 
 describe("pending interaction lifecycle", () => {
+  it("announces each committed plugin prompt once without read duplicates", async () => {
+    await withTestHarness(async (harness) => {
+      const thread = seedPluginInteractionThread(harness.deps, "pending-event");
+      const emit = vi.spyOn(
+        harness.pluginService.events,
+        "emitInteractionPending",
+      );
+      const controller = new AbortController();
+      try {
+        const pending = requestPluginInteraction(harness.deps, {
+          threadId: thread.id,
+          signal: controller.signal,
+        });
+        const [interaction] =
+          harness.deps.pendingInteractions.listPendingThreadInteractions(
+            thread.id,
+          );
+        expect(interaction).toMatchObject({
+          origin: { kind: "plugin" },
+          status: "pending",
+          threadId: thread.id,
+        });
+        expect(emit).toHaveBeenCalledExactlyOnceWith(thread, interaction);
+        harness.deps.pendingInteractions.listPendingThreadInteractions(
+          thread.id,
+        );
+        harness.deps.pendingInteractions.listThreadInteractions(thread.id);
+        expect(emit).toHaveBeenCalledTimes(1);
+        controller.abort();
+        await expect(pending).resolves.toMatchObject({ outcome: "cancelled" });
+      } finally {
+        controller.abort();
+        emit.mockRestore();
+      }
+    });
+  });
+
   it("returns a plugin response only through memory and persists metadata only", async () => {
     await withTestHarness(async (harness) => {
       const thread = seedPluginInteractionThread(harness.deps, "memory-only");

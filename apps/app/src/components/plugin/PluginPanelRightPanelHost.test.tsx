@@ -632,8 +632,8 @@ function PluginDetailNavigationLink() {
   const onRouteAnchorClick = useRouteAnchorDelegate();
   return (
     <div onClick={onRouteAnchorClick}>
-      <a href="/extensions/plugins/secrets">Open Secrets plugin</a>
-      <a href="/extensions/plugins/automations">Open Automations plugin</a>
+      <a href="/plugins/secrets">Open Secrets plugin</a>
+      <a href="/plugins/automations">Open Automations plugin</a>
     </div>
   );
 }
@@ -833,7 +833,7 @@ describe("PluginPanelRightPanelHost", () => {
     expect(openPaneContentInSplit).toHaveBeenCalledWith(
       expect.objectContaining({
         content: { kind: "plugin-detail", pluginId: "secrets" },
-        route: "/extensions/plugins/secrets",
+        route: "/plugins/secrets",
       }),
     );
     expect(screen.queryByTestId("marketplace-plugin-detail")).toBeNull();
@@ -921,7 +921,7 @@ describe("PluginPanelRightPanelHost", () => {
     fireEvent.click(screen.getByText("Add tab"));
     expect(await screen.findByTestId("plugin-page-new-tab")).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "Close New tab" }));
-    expect(screen.getByText("Navigation for task/123")).toBeTruthy();
+    expect(await screen.findByText("Details for task/123")).toBeTruthy();
     expect(
       screen
         .getByTestId("shared-secondary-panel-region")

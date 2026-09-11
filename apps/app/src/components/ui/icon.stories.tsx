@@ -85,8 +85,9 @@ const USAGE: Partial<Record<IconName, string>> = {
   Paperclip: "Attach files button",
   Pin: "Pin thread action",
   PinOff: "Unpin thread action",
+  Plug02: "Plugins sidebar and prompt action",
   Plus: "New host button, new terminal button, “new branch” option in branch picker",
-  Repeat: "Automation prompt action",
+  Repeat: "Automations sidebar and prompt action",
   RotateCcw:
     "Retry button when fetching timeline turn details fails, reset Mermaid diagram view",
   Rows2: "Git diff toolbar “unified view”",

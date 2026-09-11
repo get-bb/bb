@@ -36,10 +36,7 @@ import {
   resetPluginSlotStoreForTest,
   setPluginSlotRegistrations,
 } from "@/lib/plugin-slots";
-import {
-  encodeReuseValue,
-  REUSE_VALUE_WITHOUT_ENVIRONMENT,
-} from "@/components/pickers/environment-picker-value";
+import { encodeReuseValue } from "@/components/pickers/environment-picker-value";
 import { useRootComposeReuseEnvironment } from "@/lib/root-compose-selection";
 import { getPromptDraftAccessor } from "@/hooks/usePromptDraftStorage";
 import { buildThreadHandoffLocationState } from "@bb/client-core";
@@ -102,6 +99,16 @@ const PROJECT = makeProjectWithThreadsResponse({
       createdAt: 0,
       updatedAt: 0,
     },
+    {
+      id: "src_remote",
+      projectId: "proj_1",
+      type: "local_path",
+      hostId: "host_2",
+      path: "/remote-repo",
+      isDefault: false,
+      createdAt: 0,
+      updatedAt: 0,
+    },
   ],
 });
 
@@ -146,7 +153,10 @@ vi.mock("@/hooks/queries/sidebar-navigation-query", () => ({
 
 vi.mock("@/hooks/queries/host-queries", () => ({
   useHosts: () => ({
-    data: [{ id: "host_1", name: "Machine" }],
+    data: [
+      { id: "host_1", name: "Machine" },
+      { id: "host_2", name: "Other machine" },
+    ],
   }),
   selectPersistentHosts: <T,>(hosts: T[] | undefined) => hosts ?? [],
   selectPrimaryHost: (
@@ -398,6 +408,7 @@ const CHECKOUT_PROVIDER: SystemEnvironmentProvider = {
   logoUrl: null,
   pluginId: "environment-project-checkout",
   acceptsEmptyInputs: true,
+  machineAvailability: {},
   availability: null,
   requires: {
     projectCheckout: true,
@@ -418,6 +429,7 @@ const PERSONAL_WORKSPACE_PROVIDER: SystemEnvironmentProvider = {
   logoUrl: null,
   pluginId: "environment-personal-workspace",
   acceptsEmptyInputs: true,
+  machineAvailability: {},
   availability: null,
   requires: {
     projectCheckout: false,
@@ -435,6 +447,7 @@ const MANAGED_WORKTREE_SUGAR_PROVIDER: SystemEnvironmentProvider = {
   logoUrl: null,
   pluginId: "environment-git-worktree",
   acceptsEmptyInputs: false,
+  machineAvailability: {},
   availability: null,
   requires: {
     projectCheckout: true,
@@ -559,6 +572,7 @@ describe("PluginNewThreadComposer seeding", () => {
     registerWorktreeInputsControl();
     registerCheckoutInputsControl();
     window.localStorage.clear();
+    window.sessionStorage.clear();
     getPromptDraftAccessor({ kind: "new-thread" }).setDraft({
       text: "",
       mentions: [],
@@ -568,6 +582,102 @@ describe("PluginNewThreadComposer seeding", () => {
 
   afterEach(() => {
     cleanup();
+    vi.restoreAllMocks();
+  });
+
+  function newThreadElement(projectId: string) {
+    return (
+      <Provider>
+        <MemoryRouter>
+          <NewThreadComposer
+            projectId={projectId}
+            onProjectChange={() => undefined}
+            draftStorage={{ kind: "new-thread" }}
+            selectionScope="new-thread"
+            onSubmit={() => undefined}
+          >
+            {(composer) => composer.renderPromptBox({})}
+          </NewThreadComposer>
+        </MemoryRouter>
+      </Provider>
+    );
+  }
+
+  it("restores the environment type and machine after reload and project switching", async () => {
+    const first = render(newThreadElement("proj_1"));
+    await act(async () => {
+      latestPromptBoxProps().modeConfig.environment.onSelectProvider(
+        MANAGED_WORKTREE_SUGAR_PROVIDER,
+        "host_2",
+      );
+    });
+    expect(latestPromptBoxProps().modeConfig.environment.value).toBe(
+      "provider:git-worktree",
+    );
+    expect(
+      latestPromptBoxProps().modeConfig.environment.selectedProviderHostId,
+    ).toBe("host_2");
+    first.rerender(newThreadElement("proj_2"));
+    expect(
+      latestPromptBoxProps().modeConfig.environment.selectedProviderHostId,
+    ).toBe("host_1");
+    first.rerender(newThreadElement("proj_1"));
+    expect(latestPromptBoxProps().modeConfig.environment.value).toBe(
+      "provider:git-worktree",
+    );
+    expect(
+      latestPromptBoxProps().modeConfig.environment.selectedProviderHostId,
+    ).toBe("host_2");
+    first.unmount();
+    render(newThreadElement("proj_1"));
+    await waitFor(() => {
+      expect(latestPromptBoxProps().modeConfig.environment.value).toBe(
+        "provider:git-worktree",
+      );
+      expect(
+        latestPromptBoxProps().modeConfig.environment.selectedProviderHostId,
+      ).toBe("host_2");
+    });
+  });
+
+  it.each(["host_deleted", "host_2"])(
+    "falls back when remembered machine %s cannot run the project",
+    async (hostId) => {
+      window.localStorage.setItem(
+        "bb.promptbox.environment-proj_2-1",
+        "provider:git-worktree",
+      );
+      window.localStorage.setItem("bb.promptbox.machine-proj_2-1", hostId);
+      render(newThreadElement("proj_2"));
+      await waitFor(() => {
+        expect(latestPromptBoxProps().modeConfig.environment.value).toBe(
+          "provider:git-worktree",
+        );
+        expect(
+          latestPromptBoxProps().modeConfig.environment.selectedProviderHostId,
+        ).toBe("host_1");
+      });
+      expect(window.localStorage.getItem("bb.promptbox.machine-proj_2-1")).toBe(
+        hostId,
+      );
+    },
+  );
+
+  it("keeps a plugin composer's machine separate from the new-thread preference", async () => {
+    window.localStorage.setItem("bb.promptbox.machine-proj_1-1", "host_2");
+    renderComposer(STORED_REQUEST, () => undefined, "local-machine");
+    expect(
+      latestPromptBoxProps().modeConfig.environment.selectedProviderHostId,
+    ).toBe("host_1");
+    await act(async () => {
+      latestPromptBoxProps().modeConfig.environment.onSelectProvider(
+        CHECKOUT_PROVIDER,
+        "host_1",
+      );
+    });
+    expect(window.localStorage.getItem("bb.promptbox.machine-proj_1-1")).toBe(
+      "host_2",
+    );
   });
 
   it("round-trips a stored request submitted untouched", async () => {
@@ -1008,7 +1118,7 @@ describe("PluginNewThreadComposer seeding", () => {
     ).toBe(true);
   });
 
-  it("keeps a seeded fork's reuse selection pending until the sidebar bootstrap settles", async () => {
+  it("keeps a seeded fork's exact reuse selection while the sidebar bootstrap settles", async () => {
     mocks.sidebarNavigationSettled = false;
     const submitted: NewThreadRequest[] = [];
     const seed = {
@@ -1039,7 +1149,7 @@ describe("PluginNewThreadComposer seeding", () => {
 
     await waitFor(() => {
       expect(latestPromptBoxProps().modeConfig.environment.value).toBe(
-        REUSE_VALUE_WITHOUT_ENVIRONMENT,
+        encodeReuseValue("env-source"),
       );
     });
     expect(latestPromptBoxProps().modeConfig.worktree.options).toEqual([]);
@@ -1094,6 +1204,106 @@ describe("PluginNewThreadComposer seeding", () => {
     expect(latestPromptBoxProps().project.isLoading).toBe(false);
     expect(mocks.promptHistoryQueryOptions.at(-1)?.enabled).toBe(true);
   });
+
+  it.each(["proj_other_tab", PERSONAL_PROJECT_ID])(
+    "ignores another tab selecting %s",
+    async (remoteProjectId) => {
+      const queryClient = new QueryClient({
+        defaultOptions: { queries: { retry: false } },
+      });
+      window.localStorage.setItem("bb.root-compose.project-id", "proj_1");
+      const router = createMemoryRouter(
+        [{ path: "/", element: <RootComposeView /> }],
+        { initialEntries: ["/"] },
+      );
+      render(
+        <Provider>
+          <QueryClientProvider client={queryClient}>
+            <RouterProvider router={router} />
+          </QueryClientProvider>
+        </Provider>,
+      );
+      await waitFor(() => {
+        expect(latestPromptBoxProps().project.value).toBe("proj_1");
+      });
+      const setItem = vi.spyOn(Storage.prototype, "setItem");
+
+      act(() => {
+        window.dispatchEvent(
+          new StorageEvent("storage", {
+            key: "bb.root-compose.project-id",
+            oldValue: "proj_1",
+            newValue: remoteProjectId,
+            storageArea: window.localStorage,
+          }),
+        );
+      });
+
+      await waitFor(() => {
+        expect(setItem).not.toHaveBeenCalledWith(
+          "bb.root-compose.project-id",
+          PERSONAL_PROJECT_ID,
+        );
+      });
+      expect(latestPromptBoxProps().project.value).toBe("proj_1");
+      setItem.mockRestore();
+    },
+  );
+
+  it.each(["proj_1", PERSONAL_PROJECT_ID])(
+    "retains inherited project %s when remounted after another tab changes the seed",
+    async (inheritedProjectId) => {
+      const mountRoot = () => {
+        const queryClient = new QueryClient({
+          defaultOptions: { queries: { retry: false } },
+        });
+        const router = createMemoryRouter(
+          [{ path: "/", element: <RootComposeView /> }],
+          { initialEntries: ["/"] },
+        );
+        return render(
+          <Provider>
+            <QueryClientProvider client={queryClient}>
+              <RouterProvider router={router} />
+            </QueryClientProvider>
+          </Provider>,
+        );
+      };
+      window.localStorage.setItem(
+        "bb.root-compose.project-id",
+        inheritedProjectId,
+      );
+      const first = mountRoot();
+      await waitFor(() => {
+        expect(latestPromptBoxProps().project.value).toBe(
+          inheritedProjectId === PERSONAL_PROJECT_ID
+            ? null
+            : inheritedProjectId,
+        );
+      });
+      first.unmount();
+      const remoteProjectId =
+        inheritedProjectId === "proj_1" ? PERSONAL_PROJECT_ID : "proj_1";
+      window.localStorage.setItem(
+        "bb.root-compose.project-id",
+        remoteProjectId,
+      );
+      mountRoot();
+      await waitFor(() => {
+        expect(latestPromptBoxProps().project.value).toBe(
+          inheritedProjectId === PERSONAL_PROJECT_ID
+            ? null
+            : inheritedProjectId,
+        );
+      });
+      expect(window.sessionStorage.getItem("bb.root-compose.project-id")).toBe(
+        inheritedProjectId,
+      );
+      expect(window.localStorage.getItem("bb.root-compose.project-id")).toBe(
+        remoteProjectId,
+      );
+    },
+  );
 
   it("keeps an unrelated draft attachment out of a RootComposeView handoff", async () => {
     const queryClient = new QueryClient({
@@ -1335,6 +1545,7 @@ const SANDBOX_PROVIDER: SystemEnvironmentProvider = {
   logoUrl: null,
   pluginId: "docker-sandbox",
   acceptsEmptyInputs: false,
+  machineAvailability: {},
   availability: null,
   requires: {
     projectCheckout: false,
@@ -1356,6 +1567,7 @@ const OPTIONAL_INPUTS_PROVIDER: SystemEnvironmentProvider = {
   logoUrl: null,
   pluginId: "optional-sandbox",
   acceptsEmptyInputs: true,
+  machineAvailability: {},
   availability: null,
   requires: {
     projectCheckout: false,
@@ -1376,6 +1588,7 @@ const BRANCH_PROVIDER: SystemEnvironmentProvider = {
   logoUrl: null,
   pluginId: "branchy",
   acceptsEmptyInputs: true,
+  machineAvailability: {},
   availability: null,
   requires: {
     projectCheckout: true,
@@ -1393,6 +1606,7 @@ const HOST_PROVIDER: SystemEnvironmentProvider = {
   logoUrl: null,
   pluginId: "hosted",
   acceptsEmptyInputs: true,
+  machineAvailability: {},
   availability: null,
   requires: {
     projectCheckout: false,
@@ -1421,6 +1635,7 @@ describe("NewThreadComposer environment providers", () => {
     resetPluginSlotStoreForTest();
     registerCheckoutInputsControl();
     window.localStorage.clear();
+    window.sessionStorage.clear();
     getPromptDraftAccessor({ kind: "new-thread" }).setDraft({
       text: "",
       mentions: [],

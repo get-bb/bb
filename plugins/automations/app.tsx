@@ -709,7 +709,7 @@ export default definePluginApp((app) => {
   app.slots.navPanel({
     id: "automations",
     title: "Automations",
-    icon: "TimeSchedule",
+    icon: "Repeat",
     path: PANEL_PATH,
     component: AutomationsPanel,
   });

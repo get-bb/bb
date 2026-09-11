@@ -205,7 +205,7 @@ export function CommandPalette({
     MODE_ENTRY_HANDLER_PRIORITY,
   );
 
-  const availableActions = useMemo(
+  const availableActions = useMemo<readonly PaletteAction[]>(
     () => [...actions, ...settingsActions, ...pluginPageActions],
     [actions, pluginPageActions, settingsActions],
   );
@@ -289,6 +289,7 @@ export function CommandPalette({
 
   const handleKeyDown = useCallback(
     (event: ReactKeyboardEvent<HTMLInputElement>) => {
+      if (event.nativeEvent.isComposing) return;
       if (visibleEntries.length === 0) return;
       if (event.key === "ArrowDown") {
         event.preventDefault();

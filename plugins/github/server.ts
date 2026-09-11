@@ -2,7 +2,8 @@ import { execFile } from "node:child_process";
 import { defineRpcContract, type BbPluginApi } from "@get-bb/plugin-sdk";
 import { z } from "zod";
 
-const SYNC_INTERVAL_MS = 5 * 60_000;
+const SYNC_INTERVAL_MS = 15 * 60_000;
+const SYNC_RETRY_MAX_MS = 5 * 60_000;
 const SYNC_RETRY_BASE_MS = 30_000;
 const ISSUE_PAGE = 100;
 const CLOSED_ISSUE_PAGE = 50;
@@ -416,100 +417,119 @@ export function validateGithubCliArgs(argv: string[]): string | null {
   return null;
 }
 
-function toItems(
-  raw: string,
-  repo: string,
-  kind: "issue" | "pr",
-): CachedItem[] {
-  const entries = JSON.parse(raw) as GhListEntry[];
-  return entries
-    .filter(
-      (entry): entry is GhListEntry & { number: number } =>
-        typeof entry?.number === "number",
-    )
-    .map((entry) => ({
-      repo,
-      number: entry.number,
-      kind,
-      title: String(entry.title ?? ""),
-      state: String(entry.state ?? "OPEN"),
-      author: String(entry.author?.login ?? ""),
-      labels: (entry.labels ?? []).map((label) => String(label?.name ?? "")),
-      assignees: (entry.assignees ?? []).map((user) =>
-        String(user?.login ?? ""),
-      ),
-      url: String(entry.url ?? ""),
-      body: typeof entry.body === "string" ? entry.body : "",
-      updatedAt: String(entry.updatedAt ?? ""),
-    }));
-}
+const listNodeSchema = z.object({
+  number: itemNumberSchema,
+  title: z.string(),
+  state: z.enum(["OPEN", "CLOSED", "MERGED"]),
+  author: z.object({ login: z.string(), id: z.string().optional() }).nullable(),
+  labels: z.object({ nodes: z.array(z.object({ name: z.string() })).max(100) }),
+  assignees: z.object({
+    nodes: z.array(z.object({ login: z.string() })).max(100),
+  }),
+  url: z.string(),
+  body: z.string(),
+  updatedAt: z.string(),
+});
+const repositoryListsSchema = z.object({
+  data: z.object({
+    repository: z.object({
+      hasIssuesEnabled: z.boolean(),
+      openIssues: z.object({
+        nodes: z
+          .array(listNodeSchema.extend({ state: z.literal("OPEN") }))
+          .max(ISSUE_PAGE),
+      }),
+      closedIssues: z.object({
+        nodes: z
+          .array(listNodeSchema.extend({ state: z.literal("CLOSED") }))
+          .max(CLOSED_ISSUE_PAGE),
+      }),
+      openPrs: z.object({
+        nodes: z
+          .array(listNodeSchema.extend({ state: z.literal("OPEN") }))
+          .max(PR_PAGE),
+      }),
+      closedPrs: z.object({
+        nodes: z
+          .array(listNodeSchema.extend({ state: z.enum(["CLOSED", "MERGED"]) }))
+          .max(CLOSED_PR_PAGE),
+      }),
+    }),
+  }),
+  errors: z.array(z.unknown()).max(0).optional(),
+});
+const listFields = `
+  number title state author { login ... on User { id } }
+  labels(first: 100) { nodes { name } }
+  assignees(first: 100) { nodes { login } }
+  url body updatedAt
+`;
+const repositoryListsQuery = `query RepositoryLists($owner: String!, $name: String!) {
+  repository(owner: $owner, name: $name) {
+    hasIssuesEnabled
+    openIssues: issues(first: ${ISSUE_PAGE}, states: [OPEN], orderBy: {field: CREATED_AT, direction: DESC}) {
+      nodes { ${listFields} }
+    }
+    closedIssues: issues(first: ${CLOSED_ISSUE_PAGE}, states: [CLOSED], orderBy: {field: CREATED_AT, direction: DESC}) {
+      nodes { ${listFields} }
+    }
+    openPrs: pullRequests(first: ${PR_PAGE}, states: [OPEN], orderBy: {field: CREATED_AT, direction: DESC}) {
+      nodes { ${listFields} }
+    }
+    closedPrs: pullRequests(first: ${CLOSED_PR_PAGE}, states: [CLOSED, MERGED], orderBy: {field: CREATED_AT, direction: DESC}) {
+      nodes { ${listFields} }
+    }
+  }
+}`;
 
 export async function fetchRepoItems(
   gh: GhRunner,
   repo: string,
 ): Promise<CachedItem[]> {
-  const fields =
-    "number,title,state,author,labels,assignees,url,body,updatedAt";
-  const ghIssuesTolerant = (args: string[]) =>
-    gh(args).catch((error: unknown) => {
-      if (String(error).toLowerCase().includes("disabled issues")) return "[]";
-      throw error;
-    });
-  const [openIssues, closedIssues, openPrs, closedPrs] = await Promise.all([
-    ghIssuesTolerant([
-      "issue",
-      "list",
-      "-R",
-      repo,
-      "--state",
-      "open",
-      "--limit",
-      String(ISSUE_PAGE),
-      "--json",
-      fields,
-    ]),
-    ghIssuesTolerant([
-      "issue",
-      "list",
-      "-R",
-      repo,
-      "--state",
-      "closed",
-      "--limit",
-      String(CLOSED_ISSUE_PAGE),
-      "--json",
-      fields,
-    ]),
-    gh([
-      "pr",
-      "list",
-      "-R",
-      repo,
-      "--state",
-      "open",
-      "--limit",
-      String(PR_PAGE),
-      "--json",
-      fields,
-    ]),
-    gh([
-      "pr",
-      "list",
-      "-R",
-      repo,
-      "--state",
-      "closed",
-      "--limit",
-      String(CLOSED_PR_PAGE),
-      "--json",
-      fields,
-    ]),
+  const [owner, name] = repoNameSchema.parse(repo).split("/");
+  const raw = await gh([
+    "api",
+    "graphql",
+    "--hostname",
+    GH_HOST,
+    "-f",
+    `query=${repositoryListsQuery}`,
+    "-f",
+    `owner=${owner}`,
+    "-f",
+    `name=${name}`,
   ]);
+  const {
+    data: { repository },
+  } = repositoryListsSchema.parse(JSON.parse(raw));
+  const toItems = (
+    nodes: z.infer<typeof listNodeSchema>[],
+    kind: "issue" | "pr",
+  ): CachedItem[] =>
+    nodes.map((entry) => ({
+      repo,
+      number: entry.number,
+      kind,
+      title: entry.title,
+      state: entry.state,
+      author: entry.author?.id
+        ? entry.author.login
+        : `app/${entry.author?.login ?? ""}`,
+      labels: entry.labels.nodes.map((label) => label.name),
+      assignees: entry.assignees.nodes.map((user) => user.login),
+      url: entry.url,
+      body: entry.body,
+      updatedAt: entry.updatedAt,
+    }));
   return [
-    ...toItems(openIssues, repo, "issue"),
-    ...toItems(closedIssues, repo, "issue"),
-    ...toItems(openPrs, repo, "pr"),
-    ...toItems(closedPrs, repo, "pr"),
+    ...(repository.hasIssuesEnabled
+      ? [
+          ...toItems(repository.openIssues.nodes, "issue"),
+          ...toItems(repository.closedIssues.nodes, "issue"),
+        ]
+      : []),
+    ...toItems(repository.openPrs.nodes, "pr"),
+    ...toItems(repository.closedPrs.nodes, "pr"),
   ];
 }
 
@@ -867,7 +887,7 @@ export default async function plugin(bb: BbPluginApi) {
           failures += 1;
           delayMs = Math.min(
             SYNC_RETRY_BASE_MS * 2 ** (failures - 1),
-            SYNC_INTERVAL_MS,
+            SYNC_RETRY_MAX_MS,
           );
           bb.log.warn(
             `sync failed (retry in ${Math.round(delayMs / 1000)}s): ${

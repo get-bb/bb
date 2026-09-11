@@ -12,7 +12,7 @@ import {
 import {
   settleEnvironmentProvisionCancelCommandResult,
   settleEnvironmentProvisionCommandResult,
-} from "../services/environments/environment-provisioning-internal.js";
+} from "../services/environments/environment-engine.js";
 import {
   settleThreadPlanCancelCommandResult,
   settleThreadStartCommandResult,

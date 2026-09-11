@@ -180,7 +180,7 @@ const hostSchema = z
     createdAt: z.number(),
     updatedAt: z.number(),
   })
-  .strict();
+  .strip();
 const pathResultSchema = z.object({ path: z.string().min(1) }).strict();
 const okResultSchema = z.object({ ok: z.literal(true) }).strict();
 const syncScopeSchema = z.discriminatedUnion("kind", [

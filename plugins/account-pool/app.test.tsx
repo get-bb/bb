@@ -12,7 +12,19 @@ const app = await loadPluginApp(() => import("./app"));
 afterEach(() => {
   cleanup();
   vi.restoreAllMocks();
+  vi.unstubAllGlobals();
+  window.localStorage.clear();
 });
+
+const STATUS_CACHE_KEY = "account-pool:status";
+
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((next) => {
+    resolve = next;
+  });
+  return { promise, resolve };
+}
 
 function measureAccountRows() {
   vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(
@@ -83,7 +95,6 @@ function status(accounts: AccountSummary[] = [account()]): PoolStatus {
     hosts: [
       { hostId: "host-one", hostName: "bee", mintedAt: 1, lastUsedAt: 2 },
     ],
-    routedThreadsWithoutLocalLogin: [],
     accounts,
     routing: { claude: true, codex: true },
   };
@@ -100,7 +111,7 @@ function config(overrides: Partial<AccountPoolConfig> = {}): AccountPoolConfig {
 
 function render(
   accounts = [account()],
-  extraRpc: Record<string, () => object | null> = {},
+  extraRpc: Record<string, () => object | null | Promise<object | null>> = {},
 ) {
   return renderSlot(
     app.settingsSections[0]!,
@@ -117,6 +128,54 @@ function render(
 }
 
 describe("Account Pool settings", () => {
+  it("renders cached accounts as refreshing until live status arrives, then caches it", async () => {
+    window.localStorage.setItem(
+      STATUS_CACHE_KEY,
+      JSON.stringify(status([account({ fiveHourUtilization: 0.21 })])),
+    );
+    const live = deferred<PoolStatus>();
+    const slot = render([], { "status.get": () => live.promise });
+    expect(slot.getByText("person@example.com")).toBeTruthy();
+    expect(slot.getByText("21%")).toBeTruthy();
+    expect(slot.getByText("refreshing usage…")).toBeTruthy();
+    expect(slot.getByText(/· refreshing…$/)).toBeTruthy();
+    expect(slot.queryByText("Loading…")).toBeNull();
+    expect(slot.queryByText("No accounts in the pool")).toBeNull();
+    live.resolve(status([account({ fiveHourUtilization: 0.6 })]));
+    expect(await slot.findByText("60%")).toBeTruthy();
+    expect(slot.queryByText("refreshing usage…")).toBeNull();
+    expect(slot.queryByText(/· refreshing…$/)).toBeNull();
+    const cached = JSON.parse(
+      window.localStorage.getItem(STATUS_CACHE_KEY) ?? "null",
+    ) as PoolStatus;
+    expect(cached.accounts[0]?.fiveHourUtilization).toBe(0.6);
+  });
+
+  it("ignores a malformed status cache and shows the loading state", async () => {
+    window.localStorage.setItem(STATUS_CACHE_KEY, '{"accounts":"nope"}');
+    const live = deferred<PoolStatus>();
+    const slot = render([], { "status.get": () => live.promise });
+    expect(slot.getAllByText("Loading…")).toHaveLength(2);
+    live.resolve(status());
+    expect(await slot.findByText("person@example.com")).toBeTruthy();
+  });
+
+  it("marks a row as refreshing while its usage refresh is in flight", async () => {
+    const refresh = deferred<{ account: null }>();
+    const slot = render([account()], {
+      "account.refreshUsage": () => refresh.promise,
+    });
+    fireEvent.pointerDown(
+      await slot.findByRole("button", { name: "person@example.com actions" }),
+    );
+    fireEvent.click(await slot.findByText("Refresh usage"));
+    expect(await slot.findByText("refreshing usage…")).toBeTruthy();
+    refresh.resolve({ account: null });
+    await waitFor(() =>
+      expect(slot.queryByText("refreshing usage…")).toBeNull(),
+    );
+  });
+
   it("renders fixed quota slots with missing buckets as em dashes", async () => {
     const slot = render();
     expect(await slot.findByText("person@example.com")).toBeTruthy();
@@ -334,6 +393,187 @@ describe("Account Pool settings", () => {
     );
     expect(await slot.findByText("Fable 7 day")).toBeTruthy();
     expect(slot.getByText("Opus 7 day")).toBeTruthy();
+  });
+
+  function codexLoginStart() {
+    return {
+      sessionId: "33333333-3333-4333-8333-333333333333",
+      verificationUri: "https://auth.openai.com/codex/device",
+      userCode: "ABCD-1234",
+      expiresAt: Date.now() + 600_000,
+      intervalMs: 60_000,
+    };
+  }
+
+  function mockCompactViewport(matches: boolean) {
+    vi.stubGlobal("matchMedia", (query: string) => ({
+      matches: query === "(max-width: 767px)" && matches,
+      media: query,
+      onchange: null,
+      addListener: () => {},
+      removeListener: () => {},
+      addEventListener: () => {},
+      removeEventListener: () => {},
+      dispatchEvent: () => false,
+    }));
+  }
+
+  it("names the sign-in dialog once and keeps the step instructions", async () => {
+    const slot = render([], { "codexLogin.start": codexLoginStart });
+    fireEvent.click(
+      await slot.findByRole("button", { name: "Sign in to Codex" }),
+    );
+    const dialog = await slot.findByRole("dialog", {
+      name: "Sign in to Codex",
+    });
+    expect(
+      slot.getAllByRole("heading", { name: "Sign in to Codex" }),
+    ).toHaveLength(1);
+    expect(dialog.textContent).toContain(
+      "Open the verification page, sign in to ChatGPT, and enter this code.",
+    );
+    expect(
+      (await slot.findByLabelText("Codex user code")).textContent,
+    ).toContain("ABCD-1234");
+    expect(slot.queryByRole("button", { name: "Cancel" })).toBeNull();
+  });
+
+  it.each([false, true])(
+    "cancels the pending sign-in from the header close with compact viewport %s",
+    async (compact) => {
+      mockCompactViewport(compact);
+      const slot = render([], {
+        "codexLogin.start": codexLoginStart,
+        "codexLogin.poll": () => ({ status: "pending" }),
+        "codexLogin.cancel": () => ({ cancelled: true }),
+      });
+      fireEvent.click(
+        await slot.findByRole("button", { name: "Sign in to Codex" }),
+      );
+      await slot.findByRole("dialog", { name: "Sign in to Codex" });
+      fireEvent.click(slot.getByRole("button", { name: "Close" }));
+      await waitFor(() =>
+        expect(slot.rpcCalls).toContainEqual({
+          method: "codexLogin.cancel",
+          input: { sessionId: codexLoginStart().sessionId },
+        }),
+      );
+      await waitFor(() =>
+        expect(slot.queryByRole("dialog", { name: "Sign in to Codex" })).toBe(
+          null,
+        ),
+      );
+      const polls = () =>
+        slot.rpcCalls.filter((call) => call.method === "codexLogin.poll")
+          .length;
+      const settled = polls();
+      await new Promise((resolve) => setTimeout(resolve, 50));
+      expect(polls()).toBe(settled);
+    },
+  );
+
+  it("copies the exact device code and distinguishes it from the URL copy", async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    vi.stubGlobal("navigator", {
+      ...navigator,
+      clipboard: { writeText },
+    });
+    const slot = render([], { "codexLogin.start": codexLoginStart });
+    fireEvent.click(
+      await slot.findByRole("button", { name: "Sign in to Codex" }),
+    );
+    fireEvent.click(
+      await slot.findByRole("button", { name: "Copy Codex sign-in code" }),
+    );
+    await waitFor(() => expect(writeText).toHaveBeenCalledWith("ABCD-1234"));
+    await waitFor(() =>
+      expect(slot.getByText("Sign-in code copied")).toBeTruthy(),
+    );
+    expect(
+      slot
+        .getByRole("button", { name: "Copy Codex sign-in code" })
+        .querySelector('[data-icon="Check"]'),
+    ).not.toBeNull();
+
+    fireEvent.click(
+      slot.getByRole("button", { name: "Copy Codex authorization URL" }),
+    );
+    await waitFor(() =>
+      expect(writeText).toHaveBeenCalledWith(
+        "https://auth.openai.com/codex/device",
+      ),
+    );
+  });
+
+  it("does not claim success when copying the device code fails", async () => {
+    const writeText = vi.fn().mockRejectedValue(new Error("denied"));
+    vi.stubGlobal("navigator", {
+      ...navigator,
+      clipboard: { writeText },
+    });
+    const slot = render([], { "codexLogin.start": codexLoginStart });
+    fireEvent.click(
+      await slot.findByRole("button", { name: "Sign in to Codex" }),
+    );
+    const button = await slot.findByRole("button", {
+      name: "Copy Codex sign-in code",
+    });
+    fireEvent.click(button);
+    await waitFor(() =>
+      expect(window.getSelection()?.toString()).toBe("ABCD-1234"),
+    );
+    expect(slot.queryByText("Sign-in code copied")).toBeNull();
+    expect(button.querySelector('[data-icon="Check"]')).toBeNull();
+  });
+
+  it("does not claim success when copying the authorization URL fails", async () => {
+    const writeText = vi.fn().mockRejectedValue(new Error("denied"));
+    vi.stubGlobal("navigator", {
+      ...navigator,
+      clipboard: { writeText },
+    });
+    const slot = render([], { "codexLogin.start": codexLoginStart });
+    fireEvent.click(
+      await slot.findByRole("button", { name: "Sign in to Codex" }),
+    );
+    const button = await slot.findByRole("button", {
+      name: "Copy Codex authorization URL",
+    });
+    fireEvent.click(button);
+    await waitFor(() => expect(writeText).toHaveBeenCalled());
+    expect(button.textContent).not.toContain("Copied");
+    expect(slot.queryByText("Authorization URL copied")).toBeNull();
+  });
+
+  it("keeps polling and the close action working after copying the code", async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    vi.stubGlobal("navigator", {
+      ...navigator,
+      clipboard: { writeText },
+    });
+    const slot = render([], {
+      "codexLogin.start": codexLoginStart,
+      "codexLogin.poll": () => ({ status: "pending" }),
+      "codexLogin.cancel": () => ({ cancelled: true }),
+    });
+    fireEvent.click(
+      await slot.findByRole("button", { name: "Sign in to Codex" }),
+    );
+    fireEvent.click(
+      await slot.findByRole("button", { name: "Copy Codex sign-in code" }),
+    );
+    await waitFor(() => expect(writeText).toHaveBeenCalledWith("ABCD-1234"));
+    expect(
+      (await slot.findByRole("dialog", { name: "Sign in to Codex" }))
+        .textContent,
+    ).toContain("Waiting for you to authorize");
+    fireEvent.click(slot.getByRole("button", { name: "Close" }));
+    await waitFor(() =>
+      expect(slot.rpcCalls).toContainEqual({
+        method: "codexLogin.cancel",
+        input: { sessionId: codexLoginStart().sessionId },
+      }),
+    );
   });
 
   it("offers a fresh Codex login after device-code polling fails", async () => {

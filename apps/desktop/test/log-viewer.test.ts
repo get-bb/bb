@@ -5,6 +5,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import {
   createLogLineBuffer,
   createLogTailer,
+  formatLogLine,
   resolveCurrentLogFile,
   type LogTailer,
 } from "../src/log-viewer.js";
@@ -73,6 +74,63 @@ function createTestLogLine(args: CreateTestLogLineArgs): LogViewerLine {
     text: `line-${args.index}`,
   };
 }
+
+describe("formatLogLine", () => {
+  const timeMs = new Date(2026, 8, 9, 9, 25, 50, 443).getTime();
+
+  it("renders pino records with a local timestamp, level, message, and remaining fields", () => {
+    const line = JSON.stringify({
+      level: 40,
+      time: timeMs,
+      component: "server",
+      errorCode: "host_unavailable",
+      errorDetails: { reason: "disconnected" },
+      msg: "Failed to resolve host",
+    });
+
+    expect(formatLogLine({ component: "server", line })).toBe(
+      '2026-09-09 09:25:50.443 [warn] [server] Failed to resolve host {"errorCode":"host_unavailable","errorDetails":{"reason":"disconnected"}}',
+    );
+  });
+
+  it("omits the field suffix when only core fields are present", () => {
+    const line = JSON.stringify({
+      level: 30,
+      time: timeMs,
+      component: "server",
+      msg: "Daemon WebSocket closed",
+    });
+
+    expect(formatLogLine({ component: "server", line })).toBe(
+      "2026-09-09 09:25:50.443 [info] [server] Daemon WebSocket closed",
+    );
+  });
+
+  it("keeps a sub-component that differs from the log file component", () => {
+    const line = JSON.stringify({
+      level: 50,
+      time: timeMs,
+      component: "provider",
+      msg: "boom",
+    });
+
+    expect(formatLogLine({ component: "host-daemon", line })).toBe(
+      "2026-09-09 09:25:50.443 [error] [host-daemon:provider] boom",
+    );
+  });
+
+  it("falls back to the raw line for non-pino output", () => {
+    expect(formatLogLine({ component: "server", line: "plain text" })).toBe(
+      "[server] plain text",
+    );
+    expect(formatLogLine({ component: "server", line: '{"msg":"x"}' })).toBe(
+      '[server] {"msg":"x"}',
+    );
+    expect(formatLogLine({ component: "server", line: "{not json" })).toBe(
+      "[server] {not json",
+    );
+  });
+});
 
 describe("log viewer", () => {
   it("selects the newest matching server log file", async () => {

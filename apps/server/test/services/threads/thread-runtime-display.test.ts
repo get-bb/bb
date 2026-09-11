@@ -235,7 +235,7 @@ function createThreadListEntry(
     hasPendingInteraction: false,
     // Only a `pending` thread whose first message queued carries one, and
     // these fixtures are all threads that already started.
-    pendingStartContext: null,
+    startupContext: null,
   };
 }
 

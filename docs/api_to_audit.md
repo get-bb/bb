@@ -421,7 +421,7 @@ must still check mutable conditions and report resource-operation failures.
 
 Core invokes `create` and `remove` and records results directly. Policy drives
 cancellation and retirement; core fixes removal retries at 60 seconds and
-transient creation retries at 30 seconds with a limit of three. Policy exposes
+terminal creation failures; explicit retries start a new attempt on the same row. Policy exposes
 only retirement grace and path-key strategy; creation has no overall core
 timeout. Providers return resource-operation
 results. Created directories include explicit ownsPath. The core lifecycle
@@ -485,11 +485,16 @@ Core persists launch attempts, progress, cancellation, direct resource
 attachment, retirement deadlines and teardown state in SQLite. Providers supply
 idempotent long-running create and remove calls plus policy. Values retain their
 experimental\_ prefix; public types follow the existing declaration convention.
-The optional `availability(context)` method answers whether the selected
-provider is available, needs setup, or is unavailable for a project and
-machine during thread creation. Discovery does not invoke it. Its context
-contains project, host, projectCheckout, and gitRemote; its named types
-intentionally have no experimental prefix.
+The optional `availability(context)` method answers whether the provider is
+available, needs setup, or is unavailable for a project and machine. Core
+invokes it in the background for each connected persistent machine when a
+project's providers are listed, caches the answer per project and machine for
+ten minutes or until the plugin rechecks, and reports it through
+`machineAvailability` so pickers can hide unsupported machines without waiting;
+listing never blocks on the answer. Core invokes it again for the selected
+provider and machine during thread creation. Its context contains project,
+host, projectCheckout, and gitRemote; its named types intentionally have no
+experimental prefix.
 
 **Audit before stabilizing.** Verify monotonic attempts and path-key recovery
 across cancellation/restart; per-environment
@@ -2080,8 +2085,8 @@ renders in the same footer row.
 ## `app.slots.experimental_sidebarNavigation` (`@get-bb/plugin-sdk/app`)
 
 **What it does.** Replaces the bounded sidebar navigation controls for New
-thread, Search threads, Extensions, and plugin panel destinations. The plugin
-receives semantic items, split-drag bindings, and one host activation callback.
+thread, Search threads, Plugins, Skills, and plugin panel destinations. The
+plugin receives semantic items, split-drag bindings, and one host activation callback.
 BB retains the drawer, thread list, footer, resize handle, and hidden-body
 shortcut policy.
 
@@ -2549,3 +2554,43 @@ describing it as merely too large.
    boolean indicating whether a detail read can succeed.
 3. Verify old persisted previews and mixed-version clients still receive a
    deterministic state before making the field stable.
+
+## Document Markdown (`MarkdownProps.experimental_document`)
+
+The existing Markdown component accepts explicit `{ target, rootPath, threadId }`
+document context. `target` is an existing workspace or thread-storage live-file
+identity; `rootPath` is its resolved filesystem root. Relative links and images
+resolve from the document directory within that root. Links open the explicit
+file target; images use the selected thread's existing source-confined route.
+Thread-storage targets must name the same thread. Omission retains message
+routing; malformed context does not fall back to the ambient workspace.
+Explicit absolute paths retain existing host-file behavior. HTML is unaffected.
+Stabilize after plugin consumers verify nested paths, source identity, missing
+files, containment and line locations, then rename and remove this audit entry.
+
+## `PluginFileOpenerProps.experimental_lineRange` (`@get-bb/plugin-sdk/app`)
+
+**What it does.** Passes the owning file tab's latest one-based, inclusive
+`{ startLineNumber, endLineNumber }` range to its opener. `null` means no
+requested navigation; older hosts may omit the optional property. The app
+supplies a new object on each targeted open, even when the active file and
+line numbers match. Openers should observe that identity, reveal the latest
+range after asynchronous loading, and navigate without replacing an existing
+editor model. Monaco selects the complete lines and clamps targets past EOF.
+Columns are not part of the existing preview range contract.
+
+The range uses the existing tab owner and persistence policy. This adds no
+RPC fields, server-daemon messages, file permissions, or new CLI syntax.
+Existing `bb thread open <thread> <path> --line <line>` / SDK thread-open requests
+and plugin file navigation feed the same opener boundary.
+
+**Audit before stabilizing.**
+
+1. Verify first, changed, identical, and rapid targets across workspace, host,
+   and thread-storage files, tab remounts, and server synchronization.
+2. Validate the identity-based repeat signal with third-party openers and
+   decide whether an explicit request sequence is needed before stabilization.
+3. Confirm absent-target, inclusive selection, EOF clamping, column support,
+   file-tree navigation, and unsaved-edit behavior with more editor consumers.
+4. Verify older hosts omit the prop safely and older plugins ignore it; audit
+   reload restoration and cross-client range updates under the existing tab policy.

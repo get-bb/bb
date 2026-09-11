@@ -119,6 +119,12 @@ same targets. Never rely on variables surviving separate agent shell calls.
 When resuming this run, require its marker to contain the exact run directory
 and verify the processes still belong to this checkout.
 
+For source startup checks, run `pnpm start:worktree --dryrun` first. It prepares
+through Turbo and prints the resolved paths/ports without starting services or
+migrating instance data. Repeat to verify cache hits, then run normally and check
+server/daemon health. Dry runs write build outputs and may repair native modules;
+use an isolated checkout and keep the serving checkout's data/ports stable.
+
 ## Doctor
 
 ```bash

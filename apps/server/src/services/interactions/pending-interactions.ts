@@ -532,6 +532,7 @@ export class PendingInteractionLifecycle {
         hasPendingInteraction: true,
         threadId: interaction.threadId,
       });
+      emitPluginInteractionPending(thread, interaction);
     } catch (error) {
       try {
         setPendingInteractionInterrupted(this.deps.db, {

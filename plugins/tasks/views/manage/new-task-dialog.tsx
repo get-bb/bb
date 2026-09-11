@@ -386,6 +386,7 @@ export function NewTaskDialog({
             onKeyDown={(event) => {
               if (event.key === "Enter" && !event.nativeEvent.isComposing) {
                 event.preventDefault();
+                event.stopPropagation();
                 void submit();
               }
             }}

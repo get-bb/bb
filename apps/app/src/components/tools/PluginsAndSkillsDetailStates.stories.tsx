@@ -48,7 +48,7 @@ import {
 } from "@/test/fixtures/plugins";
 
 export default {
-  title: "Extensions",
+  title: "Plugins and Skills/Detail states",
 };
 
 const noop = () => {};

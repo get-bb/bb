@@ -1594,6 +1594,19 @@ export function createTasksStore(db: PluginDatabase) {
     return row ? taskThreadFromRow(row) : undefined;
   }
 
+  function listTaskThreadsByThreadId(threadId: string): TaskThread[] {
+    return db
+      .prepare<[string], TaskThreadRow>(
+        `
+        SELECT * FROM task_threads
+        WHERE thread_id = ?
+        ORDER BY task_id, id
+      `,
+      )
+      .all(threadId)
+      .map(taskThreadFromRow);
+  }
+
   function requireTaskThread(id: string): TaskThread {
     const thread = getTaskThread(id);
     if (!thread) throw new Error(`Task thread not found: ${id}`);
@@ -1856,6 +1869,7 @@ export function createTasksStore(db: PluginDatabase) {
     upsertTaskThread,
     getTaskThread,
     getTaskThreadByThreadId,
+    listTaskThreadsByThreadId,
     listTaskThreads,
     updateTaskThreadStatus,
     deleteTaskThread,

@@ -431,3 +431,46 @@ describe("ensure-native-modules", () => {
     );
   });
 });
+
+it("validates a broken native binding without installing, rebuilding, or detaching it", async () => {
+  const { createRequire } = await import("node:module");
+  const root = mkdtempSync(join(tmpdir(), "bb-native-check-only-"));
+  try {
+    const packageDir = join(root, "node_modules", "broken-native-fixture");
+    mkdirSync(packageDir, { recursive: true });
+    writeFileSync(
+      join(packageDir, "package.json"),
+      JSON.stringify({ name: "broken-native-fixture", main: "index.cjs" }),
+    );
+    writeFileSync(
+      join(packageDir, "index.cjs"),
+      'module.exports = require("./binding.node");',
+    );
+    const binary = join(packageDir, "binding.node");
+    writeFileSync(binary, "invalid native binary");
+    linkSync(binary, join(root, "shared-binding.node"));
+    const before = statSync(binary);
+    const run = vi.fn();
+    expect(() =>
+      ensureNativeModules({
+        repoRoot: root,
+        checkOnly: true,
+        modules: [
+          {
+            name: "broken-native-fixture",
+            resolveFrom: "package.json",
+            binaryPath: "binding.node",
+          },
+        ],
+        createRequire,
+        execFileSync: run,
+      }),
+    ).toThrow("Run pnpm start --dryrun");
+    expect(run).not.toHaveBeenCalled();
+    expect(statSync(binary).ino).toBe(before.ino);
+    expect(statSync(binary).nlink).toBe(before.nlink);
+    expect(readFileSync(binary, "utf8")).toBe("invalid native binary");
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});

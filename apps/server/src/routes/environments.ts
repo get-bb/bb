@@ -28,7 +28,7 @@ import {
   WORKSPACE_DIFF_MAX_FILE_LIST_BYTES,
 } from "../constants.js";
 import { ApiError } from "../errors.js";
-import { requestEnvironmentRemoval } from "../services/environments/provider-orchestration.js";
+import { requestEnvironmentRemoval } from "../services/environments/environment-engine.js";
 import { toEnvironmentResponse } from "../services/environments/environment-response.js";
 import {
   requireEnvironment,
@@ -612,6 +612,7 @@ export function registerEnvironmentRoutes(app: Hono, deps: AppDeps): void {
           includeFiles: inclusion.includeFiles,
           includeDirectories: inclusion.includeDirectories,
           includeHidden: WORKSPACE_PATH_LIST_INCLUDE_HIDDEN,
+          respectGitIgnore: true,
           excludeNames: [...DEFAULT_PATH_LIST_EXCLUDE_NAMES],
         },
       });

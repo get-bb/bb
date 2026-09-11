@@ -74,7 +74,7 @@ export async function dispatchTurnDuringReprovision(
     if (!prepared.applied) {
       throwEnvironmentNotReady(args.environment);
     }
-    const context = requestThreadTargetReprovision(args.deps, {
+    requestThreadTargetReprovision(args.deps, {
       beforeRequestAppendInTransaction: args.beforeRequestAppendInTransaction,
       environment: args.environment,
       execution: args.execution,
@@ -90,7 +90,7 @@ export async function dispatchTurnDuringReprovision(
       },
       thread: args.thread,
     });
-    scheduleThreadProvisioningAdvance(args.deps, context, args.thread.id);
+    scheduleThreadProvisioningAdvance(args.deps, args.thread.id);
     return true;
   }
 

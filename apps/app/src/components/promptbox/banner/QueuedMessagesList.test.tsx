@@ -17,6 +17,7 @@ import {
   makeThreadQueuedMessage,
 } from "@bb/test-helpers/domain-fixtures";
 import type { Active, DroppableContainer } from "@dnd-kit/core";
+import { focusWithKeyboard } from "@/test/keyboard-focus";
 import {
   QueuedMessagesList as QueuedMessagesListComponent,
   clampQueuedMessageDragTransform,
@@ -478,7 +479,7 @@ describe("QueuedMessagesList", () => {
       [editButton, "Edit"],
       [deleteButton, "Delete"],
     ] as const) {
-      fireEvent.focus(button);
+      focusWithKeyboard(button);
       expect((await findByRole("tooltip")).textContent).toBe(label);
       fireEvent.blur(button);
       await waitFor(() => {

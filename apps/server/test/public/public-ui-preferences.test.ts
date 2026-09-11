@@ -29,6 +29,44 @@ async function resetPreference(
 }
 
 describe("public ui preferences", () => {
+  it("adds sort direction without replacing an existing sort field and can reset it", async () => {
+    await withTestHarness(async (harness) => {
+      expect(
+        (
+          await putPreference(harness, "sidebar.chronologicalSort", {
+            expectedRevision: 0,
+            value: "alpha",
+          })
+        ).status,
+      ).toBe(200);
+      expect(
+        (
+          await putPreference(harness, "sidebar.sortDirection", {
+            expectedRevision: 0,
+            value: "descending",
+          })
+        ).status,
+      ).toBe(200);
+      expect(await readJson(await listPreferences(harness))).toMatchObject({
+        preferences: {
+          "sidebar.chronologicalSort": { value: "alpha", revision: 1 },
+          "sidebar.sortDirection": { value: "descending", revision: 1 },
+        },
+      });
+      expect(
+        (
+          await putPreference(harness, "sidebar.sortDirection", {
+            expectedRevision: 1,
+            value: "sideways",
+          })
+        ).status,
+      ).toBe(400);
+      expect(
+        await readJson(await resetPreference(harness, "sidebar.sortDirection")),
+      ).toMatchObject({ value: "default" });
+    });
+  });
+
   it("lists every registered preference with defaults at revision 0", async () => {
     await withTestHarness(async (harness) => {
       const response = await listPreferences(harness);

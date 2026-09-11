@@ -139,6 +139,7 @@ export function ThreadSearchPaletteMode({
 
   const handleInputKeyDown = useCallback(
     (event: ReactKeyboardEvent<HTMLInputElement>) => {
+      if (event.nativeEvent.isComposing) return;
       if (event.key === "Escape") {
         event.preventDefault();
         event.stopPropagation();

@@ -24,7 +24,6 @@ const unavailableSystemConfig: SystemConfigResponse = {
   keybindingOverrides: [],
   experiments: {
     changelogPreview: false,
-    editMessages: false,
     mobileApp: false,
     sidebarProgressiveDisclosure: false,
     timelineWindowing: false,

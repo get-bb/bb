@@ -252,6 +252,18 @@ export interface PluginFileOpenerProps {
   path: string;
   source: PluginFileOpenerSource;
   /**
+   * One-based, inclusive lines requested by the latest file open, or null when
+   * untargeted. BB supplies a new object for each targeted open, including an
+   * identical target in the active tab. Observe object identity to navigate
+   * again; keep the editor model intact. Older hosts may omit this prop.
+   *
+   * @experimental Audit navigation, remount, and persistence semantics before stabilizing.
+   */
+  experimental_lineRange?: {
+    startLineNumber: number;
+    endLineNumber: number;
+  } | null;
+  /**
    * BB's file preview, bound to this file. Render it to delegate conditionally
    * without re-entering plugin replacement resolution.
    *
@@ -2241,6 +2253,12 @@ export interface MarkdownProps {
   /** Markdown source, rendered exactly like a chat message body. */
   content: string;
   className?: string;
+  /** Resolve local destinations from this document; omission keeps message routing. */
+  experimental_document?: {
+    threadId: string;
+    rootPath: string;
+    target: Exclude<ExperimentalLiveFileTarget, { kind: "host" }>;
+  };
 }
 
 /**

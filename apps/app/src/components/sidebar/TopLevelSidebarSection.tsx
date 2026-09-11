@@ -23,7 +23,11 @@ import {
   SIDEBAR_HOVER_ACTIONS_ROW_CLASS,
 } from "@/components/ui/sidebar-hover-actions.js";
 import type { ConsumeDragClickSuppression } from "@/components/ui/use-drag-click-suppression";
-import { SIDEBAR_STANDARD_ROW_PADDING_CLASS } from "./sidebarRowClasses";
+import {
+  SIDEBAR_STANDARD_ROW_PADDING_CLASS,
+  SIDEBAR_CONTROL_STATE_CLASS,
+  SIDEBAR_GROUP_TEXT_CLASS,
+} from "./sidebarRowClasses";
 import type { SidebarSortableDragBindings } from "./sortableMotion";
 import {
   NO_COLLAPSED_CHILD_ACTIVITY,
@@ -53,6 +57,7 @@ export interface TopLevelSidebarSectionProps {
   label: string;
   children: ReactNode;
   sectionId?: string;
+  stickyHeader?: boolean;
   actions?: ReactNode;
   actionsAlwaysVisible?: boolean;
   actionsMobileAlways?: boolean;
@@ -71,6 +76,7 @@ export function TopLevelSidebarSection({
   label,
   children,
   sectionId,
+  stickyHeader = true,
   actions,
   actionsAlwaysVisible = false,
   actionsMobileAlways = false,
@@ -168,8 +174,10 @@ export function TopLevelSidebarSection({
         className={cn(
           SIDEBAR_HOVER_ACTIONS_ROW_CLASS,
           CHROME_SECTION_LABEL_CLASS,
+          SIDEBAR_GROUP_TEXT_CLASS,
           SIDEBAR_STANDARD_ROW_PADDING_CLASS,
           "rounded-md pr-0 transition-colors",
+          !stickyHeader && "relative top-auto",
           dragBindings && !dragBindings.disabled && "select-none",
         )}
         {...dragBindings?.attributes}
@@ -193,7 +201,8 @@ export function TopLevelSidebarSection({
               }
               className={cn(
                 !collapseControl.isCollapsed && SIDEBAR_HOVER_ACTIONS_CLASS,
-                "relative z-20 inline-flex size-6 shrink-0 cursor-pointer items-center justify-center rounded-md text-subtle-foreground outline-none ring-sidebar-ring hover:bg-sidebar-accent hover:text-sidebar-accent-foreground focus-visible:ring-2",
+                "relative z-20 inline-flex size-6 shrink-0 cursor-pointer items-center justify-center rounded-md outline-none ring-sidebar-ring focus-visible:ring-2",
+                SIDEBAR_CONTROL_STATE_CLASS,
                 LIST_HOVER_TRANSITION,
               )}
               onClick={handleCollapseControlClick}
@@ -214,7 +223,7 @@ export function TopLevelSidebarSection({
         {actions || collapsedActivityIndicator ? (
           <span
             data-sidebar-trailing-controls=""
-            className="relative z-20 inline-flex h-6 shrink-0 items-center"
+            className="relative z-20 inline-flex h-7 shrink-0 items-center max-md:pointer-coarse:h-9"
             onClick={actions ? stopActionsClick : undefined}
           >
             {collapsedActivityIndicator}

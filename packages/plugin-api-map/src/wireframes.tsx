@@ -23,6 +23,8 @@ import {
   InformationCircleIcon,
   MessageAdd01Icon,
   Mic01Icon,
+  Plug02Icon,
+  ZapIcon,
   MoreHorizontalIcon,
   PencilEdit01Icon,
   PlusSignIcon,
@@ -566,8 +568,12 @@ const SIDEBAR_SECTION_RENDERERS: Record<string, () => ReactNode> = {
         showChip={false}
       >
         <span className="flex h-6.5 items-center gap-2 rounded-md px-2">
-          <MiniIcon icon={ToolboxIcon} />
-          Extensions
+          <MiniIcon icon={Plug02Icon} />
+          Plugins
+        </span>
+        <span className="flex h-6.5 items-center gap-2 rounded-md px-2">
+          <MiniIcon icon={ZapIcon} />
+          Skills
         </span>
         <span className="flex h-6.5 items-center gap-2 rounded-md bg-sidebar-accent px-2 font-medium text-sidebar-foreground">
           <PluginGlyph />
@@ -1856,7 +1862,7 @@ export function ExtensionsPluginPageWireframe() {
     <WindowFrame>
       <div className="flex h-10 items-center gap-2 border-b border-border-hairline px-3 text-sm">
         <TrafficLights />
-        <span className="text-foreground">Extensions</span>
+        <span className="text-foreground">Plugins</span>
       </div>
       <div className="flex min-h-[470px] flex-col">
         {}

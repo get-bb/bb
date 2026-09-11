@@ -74,6 +74,7 @@ describe("internal environment change websocket hints", () => {
             path: "/tmp/session-scope-test",
             limit: 10,
             includeHidden: false,
+            respectGitIgnore: false,
             excludeNames: [],
           },
         },

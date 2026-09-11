@@ -554,8 +554,8 @@ export function toCodexPermissionSettings(
 
 export function toCodexServiceTier(
   tier: ServiceTier | undefined,
-): "fast" | undefined {
-  return tier === "fast" ? "fast" : undefined;
+): "fast" | null | undefined {
+  return tier === "default" ? null : tier;
 }
 
 export function toCodexReasoningEffort(

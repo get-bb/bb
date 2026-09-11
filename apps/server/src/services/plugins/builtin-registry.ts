@@ -224,6 +224,13 @@ export function resolveBuiltinPluginRootPathForModuleDir(
   );
   if (existsSync(packagedCandidate)) return packagedCandidate;
 
+  const preparedCandidate = path.resolve(
+    args.moduleDir,
+    "../../../packages/bundled-plugins/dist",
+    args.name,
+  );
+  if (existsSync(preparedCandidate)) return preparedCandidate;
+
   const builtCheckoutCandidate = path.resolve(
     args.moduleDir,
     "../../..",

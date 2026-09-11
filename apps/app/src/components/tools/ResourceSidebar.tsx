@@ -2,23 +2,25 @@ import type { MouseEvent as ReactMouseEvent } from "react";
 import { useLocation } from "react-router-dom";
 import {
   SectionSidebar,
-  SectionSidebarIcon,
   SectionSidebarLabel,
   SectionSidebarRow,
 } from "@/components/sidebar/SectionSidebar";
 import {
+  PLUGIN_PAGES,
   resolveToolsActivePage,
-  TOOLS_NAV_ITEMS,
-  TOOLS_PAGES,
+  SKILL_PAGES,
+  type ToolsSectionId,
 } from "./tools-navigation";
 
-export function ToolsSidebar({
+export function ResourceSidebar({
+  workspace,
   appRoutePath,
   isResizing,
   mobileHosted,
   onResizeMouseDown,
   showTopReserve,
 }: {
+  workspace: ToolsSectionId;
   appRoutePath: string;
   isResizing: boolean;
   mobileHosted?: boolean;
@@ -27,6 +29,7 @@ export function ToolsSidebar({
 }) {
   const location = useLocation();
   const activePage = resolveToolsActivePage(location.pathname, location.search);
+  const pages = workspace === "plugins" ? PLUGIN_PAGES : SKILL_PAGES;
 
   return (
     <SectionSidebar
@@ -36,27 +39,21 @@ export function ToolsSidebar({
       mobileHosted={mobileHosted}
       onResizeMouseDown={onResizeMouseDown}
       showTopReserve={showTopReserve}
-      testIdPrefix="tools"
+      testIdPrefix={workspace}
     >
-      {TOOLS_NAV_ITEMS.map((section, index) => (
-        <div key={section.id} className={index > 0 ? "mt-4" : undefined}>
-          <SectionSidebarLabel>{section.label}</SectionSidebarLabel>
-          <div className="mt-1 space-y-0.5">
-            {TOOLS_PAGES.filter((page) => page.section === section.id).map(
-              (page) => (
-                <SectionSidebarRow
-                  key={page.id}
-                  active={activePage === page.id}
-                  label={page.label}
-                  to={page.to}
-                >
-                  <SectionSidebarIcon name={page.icon} />
-                </SectionSidebarRow>
-              ),
-            )}
-          </div>
-        </div>
-      ))}
+      <SectionSidebarLabel>
+        {workspace === "plugins" ? "Plugins" : "Skills"}
+      </SectionSidebarLabel>
+      <div className="mt-1 space-y-0.5">
+        {pages.map((page) => (
+          <SectionSidebarRow
+            key={page.id}
+            active={activePage === page.id}
+            label={page.label}
+            to={page.to}
+          />
+        ))}
+      </div>
     </SectionSidebar>
   );
 }

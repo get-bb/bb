@@ -48,7 +48,7 @@ export function providerOperations(
       if (decision.action === "reject")
         return {
           status: "failed",
-          failure: "terminal",
+
           message: decision.message,
         };
       if (decision.log !== undefined) report.log(decision.log);
@@ -60,7 +60,7 @@ export function providerOperations(
       if (decision.environment.type !== "host")
         return {
           status: "failed",
-          failure: "terminal",
+
           message: "Providers return directories, not reuse decisions",
         };
       return {

@@ -623,6 +623,89 @@ describe("CommandPalette", () => {
     expect(selectedOption()?.textContent).toContain("New thread");
   });
 
+  it.each(["Enter", "ArrowDown", "ArrowUp", "Home", "End"])(
+    "leaves %s to an active IME composition",
+    async (key) => {
+      renderPalette();
+      openPalette();
+      await waitFor(() => expect(searchField()).toBeTruthy());
+      fireEvent.keyDown(searchField(), { key: "ArrowDown" });
+      fireEvent.keyDown(searchField(), { key: "ArrowDown" });
+      const activeDescendant = searchField().getAttribute(
+        "aria-activedescendant",
+      );
+
+      fireEvent.compositionStart(searchField());
+      const composingKey = new KeyboardEvent("keydown", {
+        key,
+        isComposing: true,
+        bubbles: true,
+        cancelable: true,
+      });
+      fireEvent(searchField(), composingKey);
+
+      expect(composingKey.defaultPrevented).toBe(false);
+
+      expect(screen.getByRole("combobox")).toBeTruthy();
+      expect(searchField().getAttribute("aria-activedescendant")).toBe(
+        activeDescendant,
+      );
+      expect(testState.calls).toEqual([]);
+
+      fireEvent.compositionEnd(searchField());
+      if (key !== "Enter") {
+        const navigation = new KeyboardEvent("keydown", {
+          key,
+          bubbles: true,
+          cancelable: true,
+        });
+        fireEvent(searchField(), navigation);
+
+        expect(navigation.defaultPrevented).toBe(true);
+        expect(searchField().getAttribute("aria-activedescendant")).not.toBe(
+          activeDescendant,
+        );
+        expect(testState.calls).toEqual([]);
+      }
+    },
+  );
+
+  it("keeps composition confirmation separate from command activation", async () => {
+    renderPalette();
+    openPalette();
+    await waitFor(() => expect(searchField()).toBeTruthy());
+
+    fireEvent.change(searchField(), { target: { value: "toggle panel" } });
+    await waitFor(() =>
+      expect(selectedOption()?.textContent).toContain("Toggle panel"),
+    );
+    const input = searchField();
+    fireEvent.compositionStart(input);
+    const confirmation = new KeyboardEvent("keydown", {
+      key: "Enter",
+      isComposing: true,
+      bubbles: true,
+      cancelable: true,
+    });
+    fireEvent(input, confirmation);
+
+    expect(confirmation.defaultPrevented).toBe(false);
+    expect(screen.queryByRole("combobox")).toBe(input);
+    expect(testState.calls).toEqual([]);
+
+    fireEvent.compositionEnd(input);
+    const activation = new KeyboardEvent("keydown", {
+      key: "Enter",
+      bubbles: true,
+      cancelable: true,
+    });
+    fireEvent(input, activation);
+
+    expect(activation.defaultPrevented).toBe(true);
+    await waitFor(() => expect(testState.calls).toEqual(["panel.toggle"]));
+    expect(screen.queryByRole("combobox")).toBeNull();
+  });
+
   it("runs the highlighted command, closes, and restores focus", async () => {
     renderPalette();
     openPalette();
@@ -733,6 +816,22 @@ describe("CommandPalette", () => {
     expect(scrollIntoView).not.toHaveBeenCalled();
 
     scrollIntoView.mockRestore();
+  });
+
+  it("opens Installed plugins in Settings", async () => {
+    renderPalette();
+    openPalette();
+    await waitFor(() => expect(searchField()).toBeTruthy());
+    fireEvent.change(searchField(), { target: { value: "installed plugins" } });
+    await waitFor(() =>
+      expect(selectedOption()?.textContent).toContain("Installed plugins"),
+    );
+    fireEvent.keyDown(searchField(), { key: "Enter" });
+    await waitFor(() =>
+      expect(screen.getByTestId("location").textContent).toBe(
+        "/settings/plugins",
+      ),
+    );
   });
 
   it("opens a specific settings page", async () => {

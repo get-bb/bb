@@ -1,4 +1,4 @@
-import { cancelAbandonedProviderLaunches } from "../../services/threads/thread-environment-providers.js";
+import { cancelAbandonedProviderCreations } from "../../services/threads/thread-environment-providers.js";
 import {
   THREAD_SEARCH_LIMIT_PER_GROUP_DEFAULT,
   THREAD_SEARCH_LIMIT_PER_GROUP_MAX,
@@ -472,7 +472,7 @@ export function registerThreadBaseRoutes(app: Hono, deps: AppDeps): void {
       threadId: thread.id,
     });
     if (deletedThread) emitPluginThreadDeleted(deletedThread);
-    cancelAbandonedProviderLaunches(deps, thread.id);
+    cancelAbandonedProviderCreations(deps, thread.id);
     deps.terminalSessions.closeDeletedThreadTerminals({ threadId: thread.id });
     if (thread.environmentId === null) {
       finalizeStoppedThread(deps, {

@@ -163,7 +163,7 @@ describe("timeline pages with provider-recorded input", () => {
       page: { kind: "latest", segmentLimit: 20 },
     });
 
-    expect(response.timelinePage).toEqual({
+    expect(response.timelinePage).toMatchObject({
       kind: "latest",
       segmentLimit: 20,
       returnedSegmentCount: 1,

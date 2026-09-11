@@ -66,7 +66,7 @@ export default async function worktreePlugin(bb: BbPluginApi): Promise<void> {
         if (result.status === "failed") {
           return {
             status: "failed",
-            failure: "terminal",
+
             message: result.message,
           };
         }
@@ -82,7 +82,7 @@ export default async function worktreePlugin(bb: BbPluginApi): Promise<void> {
         if (context.signal.aborted) throw error;
         return {
           status: "failed",
-          failure: "transient",
+
           message: errorMessage(error),
         };
       } finally {

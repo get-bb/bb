@@ -11,8 +11,11 @@ import {
   getSkillDetailRoutePath,
   getSkillsRoutePath,
   getThreadRoutePath,
+  isPluginsRoutePath,
   isRoutePath,
   isProjectlessProjectId,
+  isSkillsRoutePath,
+  isToolsRoutePath,
   LEGACY_AUTOMATION_DETAIL_ROUTE_PATH,
   LEGACY_AUTOMATIONS_ROUTE_PATH,
   LEGACY_SKILLS_ROUTE_PATH,
@@ -73,21 +76,21 @@ describe("route path helpers", () => {
     expect(isRoutePath({ path: "/settings" })).toBe(true);
   });
 
-  it("builds and recognizes the Extensions routes", () => {
-    expect(getSkillsRoutePath()).toBe("/extensions/skills");
+  it("builds and recognizes canonical Plugins and Skills routes", () => {
+    expect(getSkillsRoutePath()).toBe("/skills");
     expect(
       getSkillDetailRoutePath({
         skillId: "skill_abc123",
       }),
-    ).toBe("/extensions/skills/library/skill_abc123");
+    ).toBe("/skills/library/skill_abc123");
     expect(
       getRegistrySkillDetailRoutePath({
         registrySkillId: "moss-skills/moss-notes",
       }),
-    ).toBe("/extensions/skills/registry/moss-skills%2Fmoss-notes");
-    expect(getPluginsRoutePath()).toBe("/extensions/plugins");
+    ).toBe("/skills/registry/moss-skills%2Fmoss-notes");
+    expect(getPluginsRoutePath()).toBe("/plugins");
     expect(getPluginDetailRoutePath({ pluginId: "github" })).toBe(
-      "/extensions/plugins/github",
+      "/plugins/github",
     );
     expect(
       getPluginDetailRoutePath({ pluginId: "github", view: "installed" }),
@@ -95,7 +98,19 @@ describe("route path helpers", () => {
     expect(getPluginConfigurationRoutePath({ pluginId: "github" })).toBe(
       "/settings/plugins/github",
     );
+    expect(isPluginsRoutePath("/plugins/github")).toBe(true);
+    expect(isPluginsRoutePath("/plugins/automations/automations")).toBe(false);
+    expect(isPluginsRoutePath("/extensions/plugins/github")).toBe(false);
+    expect(isPluginsRoutePath("/skills")).toBe(false);
+    expect(isSkillsRoutePath("/skills/library/skill_abc123")).toBe(true);
+    expect(isSkillsRoutePath("/extensions/skills")).toBe(false);
+    expect(isSkillsRoutePath("/plugins")).toBe(false);
     for (const path of [
+      "/plugins",
+      "/plugins/github",
+      "/skills",
+      "/skills/library/skill_abc123",
+      "/skills/registry/moss-skills%2Fmoss-notes",
       "/extensions",
       "/tools",
       "/tools/plugins/github",
@@ -109,6 +124,19 @@ describe("route path helpers", () => {
     ]) {
       expect(isRoutePath({ path })).toBe(true);
     }
+  });
+
+  it.each([
+    ["/plugins/", "plugins"],
+    ["/plugins/github/", "plugins"],
+    ["/skills/", "skills"],
+    ["/skills/registry/", "skills"],
+    ["/skills/library/skill_abc123/", "skills"],
+  ])("keeps %s in its workspace", (pathname, workspace) => {
+    expect(isRoutePath({ path: pathname })).toBe(true);
+    expect(isToolsRoutePath(pathname)).toBe(true);
+    expect(isPluginsRoutePath(pathname)).toBe(workspace === "plugins");
+    expect(isSkillsRoutePath(pathname)).toBe(workspace === "skills");
   });
 
   it("builds canonical Automations plugin routes", () => {
@@ -136,7 +164,7 @@ describe("route path helpers", () => {
     }
   });
 
-  it("keeps old Skills and Automations paths recognizable for redirects", () => {
+  it("preserves the Skills alias and legacy Automations paths", () => {
     expect(LEGACY_SKILLS_ROUTE_PATH).toBe("/skills");
     expect(LEGACY_AUTOMATIONS_ROUTE_PATH).toBe("/automations");
     expect(LEGACY_AUTOMATION_DETAIL_ROUTE_PATH).toBe(

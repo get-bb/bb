@@ -1,4 +1,4 @@
-import { useEffect, type CSSProperties, type ReactNode } from "react";
+import type { CSSProperties, ReactNode } from "react";
 import { Icon, type IconName } from "../icon";
 import {
   Tooltip,
@@ -10,30 +10,10 @@ import { cn } from "../../../lib/utils";
 
 export type ResourceStatusTone = "success" | "warning" | "error" | "muted";
 
-export const RESOURCE_ROUTE_LABEL_EVENT = "bb:resource-route-label";
-
-export function useResourceRouteLabel(label: string | null | undefined) {
-  useEffect(() => {
-    if (!label || typeof window === "undefined") return;
-
-    let active = true;
-    queueMicrotask(() => {
-      if (!active) return;
-      window.dispatchEvent(
-        new CustomEvent(RESOURCE_ROUTE_LABEL_EVENT, { detail: { label } }),
-      );
-    });
-
-    return () => {
-      active = false;
-      window.dispatchEvent(
-        new CustomEvent(RESOURCE_ROUTE_LABEL_EVENT, {
-          detail: { label: null },
-        }),
-      );
-    };
-  }, [label]);
-}
+export {
+  RESOURCE_ROUTE_LABEL_EVENT,
+  useResourceRouteLabel,
+} from "../resource-route-label";
 
 export function ResourceState({
   tone,

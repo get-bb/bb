@@ -387,8 +387,16 @@ export function registerEnvironmentCommands(
             .join(", ");
           const inputs =
             provider.inputs === null ? "" : "  takes --environment-inputs";
+          const availability =
+            hostId === undefined
+              ? ""
+              : provider.availability === null
+                ? "  availability: unknown"
+                : provider.availability.status === "available"
+                  ? "  availability: available"
+                  : `  availability: ${provider.availability.status} (${provider.availability.message})`;
           console.log(
-            `${provider.id}  ${provider.displayName}  ${requirements || "-"}${inputs}`,
+            `${provider.id}  ${provider.displayName}  ${requirements || "-"}${inputs}${availability}`,
           );
         }
       }),

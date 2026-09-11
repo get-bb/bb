@@ -2,10 +2,9 @@ import {
   deleteClaimedQueuedThreadMessageBatchInTransaction,
   getEnvironment,
   getThread,
-  getThreadPendingStartContext,
+  getThreadStartupContext,
   isThreadQueueAutoSendPaused,
   listRunningThreads,
-  setThreadPendingStartContext,
   type ClaimedQueuedThreadMessageRow,
   type RunningThreadRow,
 } from "@bb/db";
@@ -59,8 +58,8 @@ import {
 import {
   threadForkDescriptorSchema,
   threadProvisionEnvironmentIntentSchema,
-} from "./thread-provisioning-context.js";
-import { getActiveThreadProvisionContext } from "./thread-provisioning-active-context.js";
+} from "./thread-startup-store.js";
+import { getThreadProvisionContext } from "./thread-startup-store.js";
 import {
   buildThreadStatusChangeMetadata,
   toThreadResponseFromThread,
@@ -75,18 +74,8 @@ import {
   type SendThreadMessageTransactionPreflight,
 } from "./thread-send.js";
 import type { TurnRequestRetryMarker } from "./thread-events.js";
-import { restoreFailedProviderLaunchRequest } from "../environments/provider-orchestration.js";
+import { restoreFailedThreadStartupRequest } from "./thread-provisioning.js";
 
-/**
- * The half of a never-started thread's first turn that the message itself does
- * not carry: where the thread will run and how it will be established.
- *
- * Persisted on the thread (`threads.pending_start_context`) rather than
- * recomputed, because the live provisioning context is in-memory only and
- * requires the thread to be `starting` — a `pending` thread's first message can
- * wait for a week and across a restart, so an in-memory context would not survive
- * the wait.
- */
 export const pendingThreadStartContextSchema = z.object({
   environmentIntent: threadProvisionEnvironmentIntentSchema,
   fork: threadForkDescriptorSchema.nullable(),
@@ -103,9 +92,14 @@ export function readPendingThreadStartContext(
   deps: Pick<LoggedPendingInteractionWorkSessionDeps, "db">,
   threadId: string,
 ): PendingThreadStartContext | null {
-  const stored = getThreadPendingStartContext(deps.db, threadId);
+  const stored = getThreadStartupContext(deps.db, threadId);
   if (stored === null) return null;
-  return pendingThreadStartContextSchema.parse(JSON.parse(stored));
+  const value: unknown = JSON.parse(stored);
+  const header = z
+    .object({ kind: z.enum(["pending", "provisioning", "dispatched"]) })
+    .parse(value);
+  if (header.kind !== "pending") return null;
+  return pendingThreadStartContextSchema.parse(value);
 }
 
 export function hostIdForEnvironmentIntent(
@@ -139,7 +133,7 @@ function intendedThreadIntent(
   threadId: string,
 ): PendingThreadStartContext["environmentIntent"] | null {
   return (
-    getActiveThreadProvisionContext(threadId)?.request.environmentIntent ??
+    getThreadProvisionContext(deps.db, threadId)?.request.environmentIntent ??
     readPendingThreadStartContext(deps, threadId)?.environmentIntent ??
     null
   );
@@ -309,20 +303,20 @@ async function runDispatchAttempt(
     targetThread: thread,
   });
 
-  const failedProviderLaunch =
+  const failedStartupRequest =
     thread.status === "error" && thread.environmentId === null
-      ? await restoreFailedProviderLaunchRequest(deps, thread.id)
+      ? await restoreFailedThreadStartupRequest(deps, thread.id)
       : null;
   const firstDispatch =
-    thread.status === "pending" || failedProviderLaunch !== null;
+    thread.status === "pending" || failedStartupRequest !== null;
   const retryStartContext: PendingThreadStartContext | null =
-    failedProviderLaunch === null
+    failedStartupRequest === null
       ? null
       : {
-          environmentIntent: failedProviderLaunch.environmentIntent,
-          fork: failedProviderLaunch.fork,
+          environmentIntent: failedStartupRequest.environmentIntent,
+          fork: failedStartupRequest.fork,
           startedOnBehalfOf: args.startedOnBehalfOf,
-          titleProvided: failedProviderLaunch.titleProvided,
+          titleProvided: failedStartupRequest.titleProvided,
         };
   const claimed = args.source.kind === "drain" ? args.source.claimed : null;
   const sendNow = args.source.kind === "drain" && args.source.sendNow;
@@ -634,15 +628,8 @@ interface AdmitPendingThreadArgs {
   thread: Thread;
 }
 
-/**
- * What a committed admission hands to the launch half: everything already
- * resolved, so launching cannot fail its way back into `pending`.
- */
 interface PendingThreadAdmission {
   claimedRow: ClaimedQueuedThreadMessageRow | null;
-  execution: Awaited<ReturnType<typeof buildExecutionOptions>>;
-  input: PromptInput[];
-  startContext: PendingThreadStartContext;
   startingThread: Thread;
 }
 
@@ -694,6 +681,7 @@ async function admitPendingThread(
   });
   const claimedRow = args.claimed?.[0] ?? null;
   let startingThread: Thread | null;
+  let provisionContext: ReturnType<typeof requestThreadProvision> | null = null;
   try {
     startingThread = deps.db.transaction(
       (tx) => {
@@ -715,11 +703,21 @@ async function admitPendingThread(
         if (!prepared.applied) {
           throw new PendingThreadAdmissionLost();
         }
-        setThreadPendingStartContext(tx, {
-          threadId: args.thread.id,
-          pendingStartContext: null,
+        const starting = getThread(tx, args.thread.id);
+        if (starting === null) throw new PendingThreadAdmissionLost();
+        provisionContext = requestThreadProvision(deps, {
+          thread: starting,
+          environmentIntent: startContext.environmentIntent,
+          execution,
+          fork: startContext.fork,
+          input: args.payload.input,
+          ...(startContext.providerInput === undefined
+            ? {}
+            : { providerInput: startContext.providerInput }),
+          startedOnBehalfOf: startContext.startedOnBehalfOf,
+          titleProvided: startContext.titleProvided,
         });
-        return getThread(tx, args.thread.id);
+        return starting;
       },
       { behavior: "immediate" },
     );
@@ -735,7 +733,7 @@ async function admitPendingThread(
     );
     return null;
   }
-  if (!startingThread) {
+  if (!startingThread || provisionContext === null) {
     return null;
   }
   deps.hub.notifyThread(
@@ -745,41 +743,19 @@ async function admitPendingThread(
   );
   return {
     claimedRow,
-    execution,
-    input: args.payload.input,
-    startContext,
     startingThread,
   };
 }
 
-/**
- * The launching half: the existing provisioning machinery takes over with the
- * message riding the cold-start command, exactly as creation has always done
- * it. Deliberately outside the evaluation lock — provisioning can take as long
- * as a clone, and holding the lock across it would stall every other dispatch
- * in the server.
- */
 async function launchAdmittedThread(
   deps: LoggedPendingInteractionWorkSessionDeps,
   admission: PendingThreadAdmission,
 ): Promise<void> {
-  const { claimedRow, startContext, startingThread } = admission;
-  const context = requestThreadProvision(deps, {
-    thread: startingThread,
-    environmentIntent: startContext.environmentIntent,
-    execution: admission.execution,
-    fork: startContext.fork,
-    input: admission.input,
-    ...(startContext.providerInput !== undefined
-      ? { providerInput: startContext.providerInput }
-      : {}),
-    startedOnBehalfOf: startContext.startedOnBehalfOf,
-    titleProvided: startContext.titleProvided,
-  });
+  const { claimedRow, startingThread } = admission;
   if (claimedRow !== null) {
     settleQueueRowDispatched({ row: claimedRow });
   }
-  scheduleThreadProvisioningAdvance(deps, context, startingThread.id);
+  scheduleThreadProvisioningAdvance(deps, startingThread.id);
 }
 
 /**

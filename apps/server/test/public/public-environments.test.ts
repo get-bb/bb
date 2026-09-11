@@ -339,8 +339,11 @@ describe("public environments", () => {
         includeFiles: true,
         includeDirectories: false,
         includeHidden: true,
+        respectGitIgnore: true,
         excludeNames: [
           "node_modules",
+          ".pnpm-store",
+          ".claude/worktrees",
           ".venv",
           "venv",
           ".turbo",
@@ -633,7 +636,7 @@ describe("environment list and delete", () => {
       );
       expect(response.status).toBe(200);
       expect(getEnvironment(harness.db, environment.id)).toMatchObject({
-        status: "error",
+        status: "ready",
         path: environment.path,
         teardownStatus: "running",
         teardownAttempt: 0,
@@ -688,7 +691,7 @@ describe("environment list and delete", () => {
       );
       expect(response.status).toBe(200);
       expect(getEnvironment(harness.db, environment.id)).toMatchObject({
-        status: "error",
+        status: "ready",
         path: environment.path,
         teardownStatus: "running",
         teardownAttempt: 0,

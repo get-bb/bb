@@ -79,7 +79,7 @@ describe("diagnostic timeline visibility", () => {
   );
 });
 
-it("excludes hidden diagnostics before budgets and cache sequence selection, retaining fallback events", async () => {
+it("excludes hidden diagnostics from rows and budgets while advancing the history snapshot", async () => {
   await withTestHarness(async (harness) => {
     const { thread } = seedThreadFixture(harness);
     const common = {
@@ -125,7 +125,12 @@ it("excludes hidden diagnostics before budgets and cache sequence selection, ret
         rawEvent: { jsonrpc: "2.0", method: "noise" },
       },
     });
-    expect(await readTimeline()).toEqual(before);
+    const after = await readTimeline();
+    expect(after.rows).toEqual(before.rows);
+    expect(after.maxSeq).toBe(3);
+    expect(after.timelinePage.historySnapshot).not.toBe(
+      before.timelinePage.historySnapshot,
+    );
     expect(
       findTimelineWindowBudgetFloorSequence(harness.db, {
         threadId: thread.id,

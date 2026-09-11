@@ -1,3 +1,4 @@
+import { closeSecondaryPanelTabInState } from "@bb/client-core";
 import type { TerminalSession } from "@bb/server-contract";
 import {
   createTerminalFixedPanelTab,
@@ -71,6 +72,27 @@ export function pruneTerminalTabsForSessions({
   return nextTabs.length === tabs.length ? tabs : nextTabs;
 }
 
+export function pruneTerminalTabsInFixedPanelState({
+  state,
+  retainedTerminalId,
+  terminalSessions,
+}: SyncTerminalTabsInFixedPanelStateArgs): FixedPanelTabsState {
+  const tabs = pruneTerminalTabsForSessions({
+    tabs: state.secondary.tabs,
+    retainedTerminalId,
+    terminalSessions,
+  });
+  if (tabs === state.secondary.tabs) return state;
+  const retainedIds = new Set(tabs.map((tab) => tab.id));
+  let next = state;
+  for (const tab of state.secondary.tabs) {
+    if (!retainedIds.has(tab.id)) {
+      next = closeSecondaryPanelTabInState(next, tab.id);
+    }
+  }
+  return next;
+}
+
 export function buildTerminalSyncedSecondaryFileTabs({
   orderedTabs,
   retainedTerminalId,
@@ -117,6 +139,11 @@ export function syncTerminalTabsInFixedPanelState({
   state,
   terminalSessions,
 }: SyncTerminalTabsInFixedPanelStateArgs): FixedPanelTabsState {
+  state = pruneTerminalTabsInFixedPanelState({
+    state,
+    retainedTerminalId,
+    terminalSessions,
+  });
   const terminalSessionIds = getTerminalSessionTabIds({
     retainedTerminalId,
     terminalSessions,

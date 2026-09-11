@@ -2,7 +2,7 @@ import type { ComponentProps } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   type BuiltInSidebarNavEntry,
-  ExtensionsNavSidebarItem,
+  ResourceNavSidebarItem,
   PluginNavSidebarItems,
   type SidebarNavActivationModifiers,
 } from "@/components/plugin/PluginNavSidebarItems";
@@ -14,6 +14,7 @@ import {
   ProjectListSearchThreadsAction,
 } from "./ProjectList";
 import { DEFAULT_BUILT_IN_SIDEBAR_NAVIGATION_ORDER } from "@/components/plugin/pluginNavSidebarOrder";
+import { getPluginsRoutePath, getSkillsRoutePath } from "@/lib/route-paths";
 
 export type BuiltInSidebarNavigationProps = ComponentProps<
   typeof ProjectListNewThreadAction
@@ -36,6 +37,8 @@ export function BuiltInSidebarNavigation({
   const navigate = useNavigate();
   const commandRunner = useAppCommandRunner();
   const pluginNavPanels = usePluginNavPanelChrome();
+  const pluginsRoutePath = getPluginsRoutePath();
+  const skillsRoutePath = getSkillsRoutePath();
   const builtInEntries: BuiltInSidebarNavEntry[] = [
     {
       kind: "built-in",
@@ -80,17 +83,38 @@ export function BuiltInSidebarNavigation({
             kind: "built-in" as const,
             pluginId: "__bb__" as const,
             id: "extensions",
-            title: "Extensions",
-            icon: <Icon name="Toolbox" aria-hidden="true" />,
+            title: "Plugins",
+            icon: <Icon name="Plug02" aria-hidden="true" />,
             content: (
-              <ExtensionsNavSidebarItem
-                routePath={toolsRoutePath}
+              <ResourceNavSidebarItem
+                icon="Plug02"
+                title="Plugins"
+                routePath={pluginsRoutePath}
                 onNavigate={onNavigate}
               />
             ),
             onActivate: () => {
               onNavigate?.();
-              void navigate(toolsRoutePath);
+              void navigate(pluginsRoutePath);
+            },
+          },
+          {
+            kind: "built-in" as const,
+            pluginId: "__bb__" as const,
+            id: "skills",
+            title: "Skills",
+            icon: <Icon name="Zap" aria-hidden="true" />,
+            content: (
+              <ResourceNavSidebarItem
+                icon="Zap"
+                title="Skills"
+                routePath={skillsRoutePath}
+                onNavigate={onNavigate}
+              />
+            ),
+            onActivate: () => {
+              onNavigate?.();
+              void navigate(skillsRoutePath);
             },
           },
         ]
