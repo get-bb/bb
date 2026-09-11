@@ -621,6 +621,7 @@
       // The SVG validator suite reads every first-party branding SVG.
       "inputs": [
         "$TURBO_DEFAULT$",
+        "$TURBO_ROOT$/pnpm-workspace.yaml",
         "$TURBO_ROOT$/vitest.shared.ts",
         "$TURBO_ROOT$/plugins/*/icons/**",
         "$TURBO_ROOT$/examples/plugins/*/icons/**"
