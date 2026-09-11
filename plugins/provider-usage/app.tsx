@@ -263,7 +263,7 @@ function ProviderUsageBody({ provider }: { provider: UsageProvider }) {
           No usage limits reported for this plan.
         </p>
       ) : (
-        <div className="grid grid-cols-[max-content_minmax(0,1fr)_max-content_max-content] gap-x-2 gap-y-0.5">
+        <div className="grid grid-cols-[max-content_minmax(0,1fr)_max-content_max-content] gap-x-3 gap-y-0.5">
           {usage.windows.map((window) => (
             <UsageWindow key={window.label} window={window} />
           ))}
