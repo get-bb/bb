@@ -58,7 +58,7 @@ export function useUpdateGeneralSettings() {
           (providerId, index) => providerId !== written.providerOrder[index],
         );
       if (providerOrderChanged) {
-        void invalidateSystemProviders({ queryClient });
+        return invalidateSystemProviders({ queryClient });
       }
     },
   });

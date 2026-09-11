@@ -201,9 +201,7 @@ async function listInstalledPluginProviderInfos(
                 bridgeLaunch,
               },
             });
-            return (
-              result.supported && result.health.status !== "not_installed"
-            );
+            return result.supported && result.health.status !== "not_installed";
           })();
         if (cached === undefined) {
           deps.providerRegistry.rememberInstalled(cacheKey, installed);
@@ -236,9 +234,20 @@ async function listSystemProviderInfosForHost(
   hostId: string,
   capability?: ProviderCapabilityFilter,
 ): Promise<ProviderInfo[]> {
-  return listConfiguredSystemProviderInfos(deps, capability).concat(
-    await listInstalledPluginProviderInfos(deps, hostId, capability),
+  const configured = listConfiguredSystemProviderInfos(deps, capability);
+  const installed = await listInstalledPluginProviderInfos(
+    deps,
+    hostId,
+    capability,
   );
+  const visibleIds = new Set([
+    ...configured.map((provider) => provider.id),
+    ...installed.map((provider) => provider.id),
+  ]);
+  return deps.providerRegistry
+    .list()
+    .filter((registration) => visibleIds.has(registration.info.id))
+    .map((registration) => registration.info);
 }
 
 function resolveSystemProviderInfosPlan(
