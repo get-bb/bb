@@ -395,3 +395,10 @@ generated modules and SDK artifacts arrive through explicit dependency edges.
 The source preparation runner supplies `BB_BUILD_TOOLCHAIN` with Node, OS, and
 architecture to partition Turbo cache entries; callers should use the runner
 rather than set this internal build identity themselves.
+
+Built source servers resolve plugins and the bundled marketplace from
+`packages/bundled-plugins/dist` before looking beside the server bundle.
+This prevents legacy `apps/server/dist/builtin-plugins` artifacts left by a
+Turbo cache restore from overriding newly prepared plugins. Installed packages
+use their shipped `server/dist/builtin-plugins` directory. Built-in plugins
+update with the server; users do not update them separately.
