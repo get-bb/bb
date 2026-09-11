@@ -597,6 +597,12 @@ export interface ThreadsArea {
   search(args: ThreadSearchArgs): Promise<ThreadSearchResult>;
   send(args: ThreadSendArgs): Promise<ThreadSendResult>;
   spawn(args: ThreadSpawnArgs): Promise<ThreadSpawnResult>;
+  /**
+   * Stop the thread's work and release its loaded runtime. An explicit stop
+   * wins over running work: a turn the machine still runs while the thread
+   * looks idle or failed, or a turn that starts while the stop is delivered,
+   * is interrupted, and the call resolves after that turn has settled.
+   */
   stop(args: ThreadActionArgs): Promise<ThreadStopResult>;
   tabs: ThreadTabsArea;
   context(args: ThreadStatusArgs): Promise<ThreadContextResult>;
