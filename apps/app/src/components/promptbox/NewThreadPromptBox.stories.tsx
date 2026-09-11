@@ -528,7 +528,7 @@ function ProjectlessThreadRow() {
   const execution = useInteractiveExecutionControls(baseExecution);
   const [permission, setPermission] = useState<PermissionMode>("auto");
   const [projectId, setProjectId] = useState<string | null>(null);
-  const [hostId, setHostId] = useState<string>(HOST_IDS.remote);
+  const [hostId, setHostId] = useState<string | null>(HOST_IDS.remote);
   const [environmentValue, setEnvironmentValue] = useState(
     "provider:personal-workspace",
   );
