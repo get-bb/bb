@@ -46,7 +46,10 @@ import {
   resolveStableThreadRequestEnvironment,
   type ResolvedStableThreadRequestEnvironment,
 } from "./thread-request-eligibility.js";
-import { resolveThreadEnvironmentPlacement } from "./thread-environment-placement.js";
+import {
+  requireEnvironmentPlacementHost,
+  resolveThreadEnvironmentPlacement,
+} from "./thread-environment-placement.js";
 import {
   buildProviderThreadExecutionDefaults,
   resolveCreateThreadEnvironment,
@@ -392,6 +395,12 @@ async function createPendingThreadAndAttemptFirstDispatch(
       startedOnBehalfOf: args.request.startedOnBehalfOf,
       titleProvided: Boolean(args.request.title),
     };
+    const placementHostId = hostIdForEnvironmentIntent(
+      deps,
+      args.environmentIntent,
+    );
+    if (placementHostId !== null)
+      requireEnvironmentPlacementHost(deps, placementHostId);
     setThreadStartupContext(deps.db, {
       threadId: thread.id,
       startupContext: JSON.stringify({ kind: "pending", ...startContext }),

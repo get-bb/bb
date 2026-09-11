@@ -1,4 +1,4 @@
-import { and, eq, inArray, isNull, or } from "drizzle-orm";
+import { and, eq, inArray, isNull, or, sql } from "drizzle-orm";
 import type { DbConnection, DbTransaction } from "../connection.js";
 import { environments, hosts, threads } from "../schema.js";
 
@@ -44,6 +44,60 @@ export function machineHasLiveThreadLaunch(
           eq(hosts.id, hostId),
           isNull(hosts.destroyedAt),
           liveThreadCondition,
+        ),
+      )
+      .limit(1)
+      .get() !== undefined
+  );
+}
+
+export function machineHasPendingThreads(
+  db: Connection,
+  hostId: string,
+): boolean {
+  const intent = sql`case json_extract(${threads.startupContext}, '$.kind')
+    when 'pending' then json_extract(${threads.startupContext}, '$.environmentIntent')
+    when 'provisioning' then json_extract(${threads.startupContext}, '$.request.environmentIntent')
+  end`;
+  return (
+    db
+      .select({ id: threads.id })
+      .from(threads)
+      .leftJoin(
+        environments,
+        or(
+          and(
+            eq(environments.ownerThreadId, threads.id),
+            eq(threads.status, "starting"),
+          ),
+          and(
+            sql`json_extract(${intent}, '$.type') = 'reuse'`,
+            eq(
+              environments.id,
+              sql`json_extract(${intent}, '$.environmentId')`,
+            ),
+          ),
+        ),
+      )
+      .where(
+        and(
+          inArray(threads.status, ["pending", "starting"]),
+          isNull(threads.archivedAt),
+          isNull(threads.deletedAt),
+          or(
+            and(
+              eq(environments.hostId, hostId),
+              inArray(environments.status, [
+                "creating",
+                "provisioning",
+                "ready",
+              ]),
+              isNull(environments.teardownStatus),
+            ),
+            sql`json_extract(${intent}, '$.type') = 'provider'
+          and json_extract(${intent}, '$.machine.type') = 'existing'
+          and json_extract(${intent}, '$.machine.hostId') = ${hostId}`,
+          ),
         ),
       )
       .limit(1)
