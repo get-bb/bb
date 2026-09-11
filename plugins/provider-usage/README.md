@@ -33,13 +33,7 @@ location. Unknown identities are never merged by email. Structured plan and quot
 window metadata give both displays consistent labels.
 
 Provider Usage is enabled by default for newly registered installations. Existing
-explicit enable/disable choices are preserved. Turn off **Show footer card** in
-the plugin settings to hide its shortcut and card while keeping the usage page.
-The setting applies to all clients connected to this bb server.
-
-```sh
-bb plugin config provider-usage set showFooterCard false
-bb plugin config provider-usage set showFooterCard true
-```
-
-SDK: `bb.sdk.plugins.updateSettings({ pluginId: "provider-usage", values: { showFooterCard: false } })`.
+explicit enable/disable choices are preserved. Right-click the footer shortcut and
+choose **Hide** to move it into **More**. Settings → Appearance → Sidebar footer
+controls order and visibility for every footer action. The usage settings page
+remains available. These preferences belong to BB, not the plugin.

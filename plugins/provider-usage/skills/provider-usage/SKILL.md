@@ -10,14 +10,10 @@ for an account pool or machine. Provider Usage is enabled by default. An enabled
 unconfigured account pool shows setup guidance; choose a machine to inspect its
 local accounts instead.
 
-Hide the sidebar shortcut and card without disabling the usage settings page:
-
-```sh
-bb plugin config provider-usage set showFooterCard false
-```
-
-Set `showFooterCard` to `true` to restore them. This setting applies to all clients
-connected to this server. Inspect effective values with `bb plugin config provider-usage`.
+Right-click the sidebar shortcut and choose Hide to move it into More. Restore or
+reorder footer actions in Settings → Appearance → Sidebar footer. These are BB
+UI preferences shared across clients; they do not disable the usage source or its
+settings page. The `bb settings ui` commands expose the same preferences.
 
 Discover usage-source plugins with
 `bb plugin rpc list --method provider-usage.v1.listResources --json`.

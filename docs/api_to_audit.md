@@ -2137,15 +2137,13 @@ single active disclosure across all plugins. A disclosure component owns
 everything inside its boundary and receives only `dismiss()`.
 
 Registering an action returns nothing. Registering a disclosure returns a
-controller that can request `open`, `close`, or `toggle`. Its
-`experimental_setVisible(boolean)` hides or restores both the shortcut and
-disclosure. Hiding closes the disclosure; showing leaves it closed. Hidden
-items ignore open requests. Audit reactive setting changes, sibling isolation,
-unload and reload, and focus behavior before stabilizing visibility. Those requests go
+controller that can request `open`, `close`, or `toggle`. Those requests go
 through the host's shared active-item coordinator, so opening one plugin's
 disclosure replaces another and a stale scoped `close` cannot dismiss a sibling.
 The existing `app.slots.sidebarFooterAction` remains a compatibility surface and
-renders in the same footer row.
+renders in the same footer row. User appearance preferences order the items and
+move hidden shortcuts into More; hiding does not disable plugin callbacks or
+programmatic disclosure controls.
 
 **Audit before stabilizing.**
 

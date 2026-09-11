@@ -170,19 +170,6 @@ it("retains measured accounts when reloading fails", async () => {
   expect(slot.getByText("42% used")).toBeTruthy();
 });
 
-it("hides the entire footer item independently of the settings page", async () => {
-  const app = await loadPluginApp(() => import("./app"));
-  const visibility = app.appOverlays.find(
-    (item) => item.id === "footer-visibility",
-  );
-  if (!visibility) throw new Error("Missing visibility overlay");
-  renderSlot(visibility, {}, { settings: { showFooterCard: false } });
-  expect(
-    app.experimentalSidebarFooterItems[0]?.runtime.getSnapshot().visible,
-  ).toBe(false);
-  expect(app.settingsSections).toHaveLength(1);
-});
-
 it("shows pending measurements without inventing usage, then reports an unavailable account gracefully", async () => {
   const app = await loadPluginApp(() => import("./app"));
   const resource = { ...account("pending"), usage: null };

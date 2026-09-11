@@ -931,6 +931,6 @@ Modal image debugging: `bb modal image build [--json]` prepares the saved image;
 ### Provider usage
 
 Provider Usage is enabled by default and shows usage in its plugin settings page
-and sidebar footer. Set `bb plugin config provider-usage set showFooterCard false`
-to hide the footer shortcut and card while retaining the settings page. Set it to
-`true` to restore them. See the `provider-usage` skill for source discovery.
+and sidebar footer. Right-click its footer shortcut and choose Hide to move it
+into More. Settings → Appearance → Sidebar footer controls order and visibility.
+See the `provider-usage` skill for source discovery.

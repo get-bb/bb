@@ -1414,6 +1414,19 @@ its identity, portability, and verification contract.
 
 Provider Usage is enabled by default for newly registered installations; existing
 plugin enable/disable choices are preserved. Its plugin settings page contains
-provider subscription usage. The server-wide boolean `showFooterCard` (default
-`true`) hides or restores the sidebar shortcut and card without disabling the
-settings page: `bb plugin config provider-usage set showFooterCard false`.
+provider subscription usage. Sidebar footer order and visibility are BB UI
+preferences, configured in Settings → Appearance → Sidebar footer. Right-click
+an action and choose Hide to move it into More without disabling the action.
+
+Footer keys are `builtin:settings`, `builtin:report-bug`, or
+`plugin:<encoded pluginId>/<encoded registrationId>`. Plugin keys omit the load
+generation so preferences survive reloads; unavailable entries retain their
+preferences and new actions appear by default. For example:
+
+```sh
+bb settings ui set sidebar.hiddenFooterItems '["plugin:provider-usage/usage"]'
+bb settings ui reset sidebar.hiddenFooterItems
+bb settings ui set sidebar.footerOrder '["plugin:provider-usage/usage","builtin:settings"]'
+```
+
+Hiding an open disclosure closes it. Selecting it from More can open it again.

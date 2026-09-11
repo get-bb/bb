@@ -160,15 +160,6 @@ function resourceProvider(
 }
 
 export default function providerUsagePlugin(bb: BbPluginApi): void {
-  bb.settings.define({
-    showFooterCard: {
-      type: "boolean",
-      label: "Show footer card",
-      description:
-        "Show the usage card and shortcut in the sidebar footer. Usage remains available in this plugin’s settings.",
-      default: true,
-    },
-  });
   const inventories = new Map<string, SourceResult>();
   const measurements = new Map<
     string,
