@@ -60,6 +60,7 @@ export function pluginErrorReportRepository({
 export function sanitizePluginFailure(detail: string): string {
   return detail
     .replace(/[\u0000-\u001f\u007f]/gu, " ")
+    .replace(/https?:\/\/[^\s<>"']+/giu, "[redacted URL]")
     .replace(
       /\b(?:authorization\s*[:=]\s*)?bearer\s+\S+/giu,
       "[redacted credential]",
@@ -72,7 +73,6 @@ export function sanitizePluginFailure(detail: string): string {
       /\b(?:gh[pousr]_[a-z\d_]+|github_pat_[a-z\d_]+|sk-[a-z\d_-]{16,})\b/giu,
       "[redacted credential]",
     )
-    .replace(/https?:\/\/[^\s<>"']+/giu, "[redacted URL]")
     .replace(/["'](?:[a-z]:\\|\\\\|~\/|\/)[^"']*["']/giu, "[private path]")
     .replace(/(?:[a-z]:\\|\\\\|~\/|\/)[^\s<>"'`,;]+/giu, "[private path]")
     .replace(/\s+/gu, " ")

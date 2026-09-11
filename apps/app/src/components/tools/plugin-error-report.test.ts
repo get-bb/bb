@@ -136,6 +136,11 @@ describe("plugin error report preparation", () => {
   );
 
   it("removes credentials and private paths while retaining useful failure context", () => {
+    expect(
+      sanitizePluginFailure(
+        "Request failed at https://service.test?secret=fixture-query",
+      ),
+    ).toBe("Request failed at [redacted URL]");
     const detail = sanitizePluginFailure(
       'Startup failed in "/Users/private-user/Private Project/data"; API_TOKEN=fixture-secret password="fixture password" Bearer fixture-bearer at C:\\Users\\private-windows\\data https://service.test?key=fixture-url ghp_fixturetoken',
     );

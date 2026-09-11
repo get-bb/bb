@@ -153,11 +153,14 @@ afterEach(() => {
 
 describe("PluginAuthorPage", () => {
   it("aligns the author header with the toolbar and card grid", async () => {
-    renderPage(
-      "/plugins?author=12%3Abb-community%3Agithub%3Apatlee",
-    );
+    renderPage("/plugins?author=12%3Abb-community%3Agithub%3Apatlee");
 
     await screen.findByRole("heading", { name: /^Pat Lee/u });
+    expect(cardOrder()).toEqual([
+      "Open Alpha details",
+      "Open Beta details",
+      "Open Gamma details",
+    ]);
     const headerContainer = screen
       .getByRole("link", { name: "Browse plugins" })
       .closest(".max-w-3xl");

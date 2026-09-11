@@ -118,9 +118,11 @@ export function PluginAuthorPage({
       (entry) =>
         selected.size === 0 || selected.has(pluginCategoryFilterId(entry)),
     );
-    return sort === null
-      ? filtered
-      : sortPluginEntries(filtered, sort, sortDirection);
+    return sortPluginEntries(
+      filtered,
+      sort ?? "name",
+      sort === null ? "asc" : sortDirection,
+    );
   }, [
     authorKey,
     catalogQuery.data?.entries,
