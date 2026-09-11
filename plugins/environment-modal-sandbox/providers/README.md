@@ -36,7 +36,11 @@ The backend must preserve these lifecycle invariants:
 - `create` converges on the durable allocation key and checkpoints an
   allocation before returning its executor.
 - `reconcileCleanup` removes uncertain allocations by key without creating or
-  bootstrapping anything.
+  bootstrapping anything. Modal lists sandboxes tagged with `bbMachineKey` across
+  apps in the credentials' current environment, then terminates and checks each
+  sandbox by ID. Changing App Name does not redirect cleanup. Enumeration or
+  termination failures remain retryable; credentials must still access the
+  original account/environment. No additional persisted allocation state is used.
 - `suspend`, `resume`, and `remove` are idempotent.
 - `suspend` returns a resource from which `resume` can converge; the mechanism
   remains vendor-specific.

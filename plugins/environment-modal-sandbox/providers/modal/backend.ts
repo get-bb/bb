@@ -286,11 +286,17 @@ export function createModalSandboxBackend(
     async reconcileCleanup(context: SandboxOperationContext & { key: string }) {
       const resolved = await requireSettings();
       context.signal.throwIfAborted();
-      const sandbox = await clientFor(resolved).fromName(
-        resolved.appName,
-        context.key,
-      );
-      await sandbox?.terminate();
+      const client = clientFor(resolved);
+      for await (const sandbox of client.listByKey(context.key)) {
+        context.signal.throwIfAborted();
+        await sandbox.terminate();
+        if ((await client.fromId(sandbox.sandboxId)) !== null) {
+          throw new Error(
+            "The Modal allocation is still present; retry cleanup.",
+          );
+        }
+      }
+      context.signal.throwIfAborted();
     },
     async suspend(
       context: SandboxLifecycleContext<ModalMachineResource>,
