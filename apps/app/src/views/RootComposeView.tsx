@@ -611,6 +611,14 @@ function RootComposeDraft({
         location,
       ) && shouldStartComposingFromLocationState(location.state),
   );
+  useEffect(() => {
+    if (
+      resource.promptDraft.text.length > 0 ||
+      resource.promptDraft.attachments.length > 0
+    ) {
+      setStartedComposing(true);
+    }
+  }, [resource.promptDraft.text, resource.promptDraft.attachments.length]);
   const [sourceThreadTitle, setSourceThreadTitle] = useState("Source thread");
   const [actionError, setActionError] = useState<string | null>(null);
   const [actionPending, setActionPending] = useState(false);

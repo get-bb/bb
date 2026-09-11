@@ -27,7 +27,10 @@ import type {
   NewThreadRequest,
   PluginEnvironmentProviderInputsProps,
 } from "@get-bb/plugin-sdk";
-import type { SystemEnvironmentProvider } from "@bb/server-contract";
+import {
+  draftSchema,
+  type SystemEnvironmentProvider,
+} from "@bb/server-contract";
 import {
   NewThreadComposer,
   type NewThreadComposerState,
@@ -40,6 +43,10 @@ import { encodeReuseValue } from "@/components/pickers/environment-picker-value"
 import { useRootComposeReuseEnvironment } from "@/lib/root-compose-selection";
 import { getPromptDraftAccessor } from "@/hooks/usePromptDraftStorage";
 import { getDraftResourceStore } from "@/lib/drafts/resource-runtime";
+import {
+  draftResourceApi,
+  draftResourceQueryKey,
+} from "@/lib/drafts/resource-api";
 import { parseDraftRouteId } from "@/lib/draft-route";
 import { buildThreadHandoffLocationState } from "@bb/client-core";
 import { makeThreadListEntry } from "@bb/test-helpers/domain-fixtures";
@@ -65,6 +72,7 @@ const mocks = vi.hoisted(() => ({
   sidebarNavigationSettled: true,
   sidebarNavigationReplayed: false,
   extraProjects: [] as Array<Record<string, unknown>>,
+  noProjects: false,
   promptHistoryQueryOptions: [] as Array<{ enabled?: boolean } | undefined>,
   environmentProviders: [] as unknown[],
   closeTerminal: vi.fn(),
@@ -173,11 +181,13 @@ vi.mock("@/hooks/queries/sidebar-navigation-query", () => ({
     mocks.sidebarNavigationSettled
       ? {
           data: {
-            projects: [
-              { ...PROJECT, threads: mocks.projectThreads },
-              OTHER_PROJECT,
-              ...mocks.extraProjects,
-            ],
+            projects: mocks.noProjects
+              ? []
+              : [
+                  { ...PROJECT, threads: mocks.projectThreads },
+                  OTHER_PROJECT,
+                  ...mocks.extraProjects,
+                ],
             personalProject: makeProjectWithThreadsResponse({
               id: "personal",
               kind: "personal",
@@ -614,6 +624,7 @@ describe("PluginNewThreadComposer seeding", () => {
     mocks.sidebarNavigationSettled = true;
     mocks.sidebarNavigationReplayed = false;
     mocks.extraProjects = [];
+    mocks.noProjects = false;
     mocks.environmentProviders = [
       CHECKOUT_PROVIDER,
       MANAGED_WORKTREE_SUGAR_PROVIDER,
@@ -1406,6 +1417,55 @@ describe("PluginNewThreadComposer seeding", () => {
     },
   );
 
+  it("keeps a reopened composer mounted while replacing its entire message", async () => {
+    mocks.noProjects = true;
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false, staleTime: Infinity } },
+    });
+    const saved = draftSchema.parse({
+      id: "drf_replace_message",
+      revision: 1,
+      createdAt: 1,
+      updatedAt: 1,
+      content: {
+        projectId: PERSONAL_PROJECT_ID,
+        prompt: { text: "Saved before reload" },
+      },
+    });
+    queryClient.setQueryData(draftResourceQueryKey(saved.id), saved);
+    vi.spyOn(draftResourceApi, "update").mockImplementation(
+      async (id, revision, content) => ({
+        ...saved,
+        id,
+        revision: revision + 1,
+        content,
+      }),
+    );
+    render(
+      <Provider>
+        <QueryClientProvider client={queryClient}>
+          <MemoryRouter initialEntries={[`/?draft=${saved.id}`]}>
+            <RootComposeView />
+          </MemoryRouter>
+        </QueryClientProvider>
+      </Provider>,
+    );
+    await waitFor(() =>
+      expect(latestPromptBoxProps().value).toBe("Saved before reload"),
+    );
+    act(() => latestPromptBoxProps().onChange("", []));
+    expect(screen.getByTestId("new-thread-prompt-box")).toBeTruthy();
+    expect(latestPromptBoxProps().value).toBe("");
+    act(() => latestPromptBoxProps().onChange("Replacement text", []));
+    await act(async () => {
+      await getDraftResourceStore(queryClient).flush(saved.id);
+    });
+    expect(
+      getDraftResourceStore(queryClient).getSnapshot(saved.id).content?.prompt
+        .text,
+    ).toBe("Replacement text");
+  });
+
   it("keeps an unrelated draft attachment out of a RootComposeView handoff", async () => {
     const queryClient = new QueryClient({
       defaultOptions: { queries: { retry: false } },
@@ -1738,6 +1798,7 @@ describe("NewThreadComposer environment providers", () => {
     mocks.sidebarNavigationSettled = true;
     mocks.sidebarNavigationReplayed = false;
     mocks.extraProjects = [];
+    mocks.noProjects = false;
     mocks.environmentProviders = [CHECKOUT_PROVIDER];
     resetPluginSlotStoreForTest();
     registerCheckoutInputsControl();
