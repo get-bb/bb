@@ -495,31 +495,47 @@ describe("BrowsePluginsTab", () => {
     );
   });
 
-  it("uses category shelves instead of publisher collections when filtered", async () => {
+  it("keeps matching collection shelves before category shelves when filtered", async () => {
     renderBrowse(
       {
         entries: [
           { ...MEMORY_ENTRY, collections: [{ id: "bb-official", rank: 0 }] },
-          SECURITY_ENTRY,
+          { ...SECURITY_ENTRY, collections: [{ id: "new-and-notable", rank: 0 }] },
+          { ...TASKS_ENTRY, collections: [{ id: "new-and-notable", rank: 1 }] },
         ],
         collections: [
           {
             id: "bb-official",
-            displayName: "BB Official plugins",
+            displayName: "BB Official",
             pluginIds: ["memory"],
+          },
+          {
+            id: "new-and-notable",
+            displayName: "New & notable",
+            pluginIds: ["security", "tasks"],
           },
         ],
       },
       "/plugins?category=memory-and-context&category=security",
     );
     await screen.findByTestId("plugin-browse-shelves");
+    const shelves = screen.getByTestId("plugin-browse-shelves");
+    const labels = [...shelves.querySelectorAll("h2")].map(
+      (heading) => heading.textContent,
+    );
+    expect(labels).toEqual([
+      "BB Official1",
+      "New & notable1",
+      "Memory & Context1",
+      "Security1",
+    ]);
     expect(
-      screen.queryByRole("heading", { name: "BB Official plugins" }),
-    ).toBeNull();
+      screen.getAllByRole("button", { name: "Open Memory details" }),
+    ).toHaveLength(2);
     expect(
-      screen.getByRole("heading", { name: /Memory & Context/u }),
-    ).toBeTruthy();
-    expect(screen.getByRole("heading", { name: /Security/u })).toBeTruthy();
+      screen.getAllByRole("button", { name: "Open Security details" }),
+    ).toHaveLength(2);
+    expect(screen.queryByRole("button", { name: "Open Tasks details" })).toBeNull();
   });
 
   it("swaps the browse body for examples while composing", async () => {

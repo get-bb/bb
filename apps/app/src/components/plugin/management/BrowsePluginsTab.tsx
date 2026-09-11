@@ -107,9 +107,9 @@ export function BrowsePluginsTab({
     () =>
       pluginBrowseShelves({
         entries: filteredEntries,
-        collections: selectedCategories.length === 0 ? catalog.collections : [],
+        collections: catalog.collections,
       }),
-    [catalog.collections, filteredEntries, selectedCategories.length],
+    [catalog.collections, filteredEntries],
   );
   const activeShelf = shelves.find((shelf) => shelf.key === activeShelfKey);
   const displayedEntries = activeShelf?.entries ?? filteredEntries;
