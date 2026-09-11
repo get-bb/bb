@@ -256,7 +256,7 @@ describe("provider usage footer disclosure", () => {
     });
     expect(slot.getByRole("heading", { name: "Codex" })).toBeTruthy();
     expect(slot.getByText("codex@example.com")).toBeTruthy();
-    expect(slot.getByText("97% used")).toBeTruthy();
+    expect(slot.getByText("97%")).toBeTruthy();
 
     fireEvent.pointerDown(machinePicker, { button: 0 });
     fireEvent.click(slot.getByRole("menuitemradio", { name: "M4" }));
@@ -275,12 +275,12 @@ describe("provider usage footer disclosure", () => {
     ).not.toBeNull();
     expect(slot.getByRole("heading", { name: "Claude Code" })).toBeTruthy();
     expect(slot.getByText("claude@example.com")).toBeTruthy();
-    expect(slot.getByText("82% used")).toBeTruthy();
+    expect(slot.getByText("82%")).toBeTruthy();
 
     fireEvent.click(codexTab);
     expect(slot.getByRole("heading", { name: "Codex" })).toBeTruthy();
     expect(slot.getByText("codex@example.com")).toBeTruthy();
-    expect(slot.getByText("37% used")).toBeTruthy();
+    expect(slot.getByText("37%")).toBeTruthy();
     fireEvent.keyDown(codexTab, { key: "ArrowLeft" });
     expect(claudeTab.getAttribute("aria-selected")).toBe("true");
 
