@@ -105,7 +105,12 @@ import type {
   NormalizedPluginEnvironmentProvider,
   NormalizedPluginProviderDeclaration,
 } from "@get-bb/plugin-sdk/internal/host-policy";
-import type { BbSdk, ThreadForkArgs, ThreadSpawnArgs } from "@bb/sdk";
+import type {
+  BbSdk,
+  DraftSubmitArgs,
+  ThreadForkArgs,
+  ThreadSpawnArgs,
+} from "@bb/sdk";
 import { requestEnvironmentProviderRecheck } from "./plugin-environment-provider-registry.js";
 import type { ServerLogger } from "../../types.js";
 import type { PluginInteractionResult } from "../interactions/pending-interactions.js";
@@ -312,6 +317,19 @@ export type PluginProviderEnvHealthResolver = (
 function wrapSdkForPlugin(sdk: BbSdk, pluginId: string): BbSdk {
   return {
     ...sdk,
+    drafts: {
+      ...sdk.drafts,
+      submit(args: DraftSubmitArgs) {
+        const origin = args.origin ?? "plugin";
+        return sdk.drafts.submit({
+          ...args,
+          origin,
+          ...(origin === "plugin"
+            ? { originPluginId: args.originPluginId ?? pluginId }
+            : {}),
+        });
+      },
+    },
     threads: {
       ...sdk.threads,
       fork(args: ThreadForkArgs) {

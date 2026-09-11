@@ -11,6 +11,7 @@ import {
 } from "@/lib/path-list-options";
 
 const HOSTS_QUERY_KEY = "hosts";
+export const allDraftQueryKeyPrefix = () => ["drafts"] as const;
 const HOST_QUERY_KEY = "host";
 const HOST_DIRECTORY_QUERY_KEY = "hostDirectory";
 const HOST_CLONE_DEFAULT_PATH_QUERY_KEY = "hostCloneDefaultPath";

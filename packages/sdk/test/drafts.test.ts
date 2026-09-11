@@ -188,9 +188,9 @@ describe("draft SDK", () => {
     });
     expect(fetch.mock.calls[0]?.[1]?.signal).toBe(controller.signal);
     expect(fetch.mock.calls[1]?.[1]?.signal).toBe(controller.signal);
-    expect(String(fetch.mock.calls[2]?.[0])).toBe(
-      "http://bb.test/api/v1/drafts",
-    );
+    const defaultListUrl = new URL(String(fetch.mock.calls[2]?.[0]));
+    expect(defaultListUrl.pathname).toBe("/api/v1/drafts");
+    expect(defaultListUrl.search).toBe("");
   });
 
   it("keeps consumed creation receipts and repeated submit results intact", async () => {

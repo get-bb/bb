@@ -48,6 +48,22 @@ describe("bb draft commands", () => {
   const register: CommandRegistrar = (program) =>
     registerDraftCommands(program, () => "http://server");
 
+  it("prints complete generated and caller-supplied identities for reuse", async () => {
+    const ids = [
+      "drf_c4f849da-569e-4822-bb8d-b143438b20b7",
+      `drf_${"a".repeat(128)}`,
+    ];
+    stubServerApi({
+      "v1.drafts.$get": vi.fn(async () => ({
+        drafts: ids.map((id) => ({ ...draft, id })),
+        nextOffset: null,
+      })),
+    });
+    await runCommand(["draft", "list"], register);
+    const output = collectLogLines(vi.mocked(console.log)).join("\n");
+    for (const id of ids) expect(output).toContain(id);
+  });
+
   it("creates a retryable identity from a content file without losing composer choices", async () => {
     const post = vi.fn(async () => ({ id: draft.id, draft }));
     stubServerApi({ "v1.drafts.$post": post });

@@ -31,6 +31,7 @@ import {
   iterateThreadListCacheEntries,
 } from "./thread-list-cache-data";
 import {
+  allDraftQueryKeyPrefix,
   allHostQueryKeyPrefix,
   allPluginCatalogSearchQueryKeyPrefix,
   allPluginContributionsQueryKeyPrefix,
@@ -514,6 +515,9 @@ export const REALTIME_HOST_CHANGE_REGISTRY = {
 } satisfies HostChangeRegistry;
 
 export const REALTIME_SYSTEM_CHANGE_REGISTRY = {
+  "drafts-changed": {
+    dirty: [() => [allDraftQueryKeyPrefix()]],
+  },
   "config-changed": {
     dirty: [
       dirtySystemConfigQueries,

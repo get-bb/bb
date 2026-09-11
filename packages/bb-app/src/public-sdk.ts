@@ -60,6 +60,7 @@ export type ThreadWaitUnreachableErrorConstructor =
   typeof ThreadWaitUnreachableError;
 
 export class BBSdk implements BbSdk {
+  readonly drafts: BbSdk["drafts"];
   readonly environments: BbSdk["environments"];
   readonly experimental_desktopBrowsers: BbSdk["experimental_desktopBrowsers"];
   readonly files: BbSdk["files"];
@@ -92,6 +93,7 @@ export class BBSdk implements BbSdk {
     this.system = sdk.system;
     this.terminals = sdk.terminals;
     this.theme = sdk.theme;
+    this.drafts = sdk.drafts;
     this.threadSections = sdk.threadSections;
     this.threads = sdk.threads;
     this.subscribe = sdk.subscribe;

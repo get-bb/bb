@@ -377,6 +377,64 @@ describe("plugin bb.sdk bind gate", () => {
 });
 
 describe("plugin bb.sdk against a running server", () => {
+  it("attributes submitted drafts to the plugin while preserving explicit origins", async () => {
+    const server = await startTestServer();
+    const workDir = await mkdtemp(join(tmpdir(), "bb-plugin-drafts-live-"));
+    try {
+      const { host } = seedHostSession(server.deps);
+      const { project } = seedProjectWithSource(server.deps, {
+        hostId: host.id,
+      });
+      const environment = seedEnvironment(server.deps, {
+        hostId: host.id,
+        projectId: project.id,
+      });
+      server.pluginService.bindSdk({ baseUrl: server.baseUrl });
+      const rootDir = await writePlugin(workDir, {
+        name: "bb-plugin-drafter",
+        serverSource: `export default function plugin() {}`,
+      });
+      await server.pluginService.installPath(rootDir);
+      const api = requireApi(server.pluginService, "drafter");
+      for (const override of [
+        {},
+        { origin: "plugin" as const, originPluginId: "explicit-plugin" },
+        { origin: "sdk" as const },
+      ]) {
+        const { draft } = await api.sdk.drafts.create({
+          content: {
+            projectId: project.id,
+            prompt: { text: "Plugin draft" },
+            options: {
+              providerId: "codex",
+              model: "gpt-5",
+              environment: { type: "reuse", environmentId: environment.id },
+              sendAt: Date.now() + 86_400_000,
+            },
+          },
+        });
+        if (!draft) throw new Error("Expected a new draft");
+        const { thread } = await api.sdk.drafts.submit({
+          draftId: draft.id,
+          expectedRevision: draft.revision,
+          ...override,
+        });
+        const originPluginId =
+          override.origin === "sdk"
+            ? null
+            : (override.originPluginId ?? "drafter");
+        expect(thread.originPluginId).toBe(originPluginId);
+        expect(getThread(server.db, thread.id)?.originPluginId).toBe(
+          originPluginId,
+        );
+      }
+    } finally {
+      await server.pluginService.stop();
+      await server.close();
+      await rm(workDir, { recursive: true, force: true });
+    }
+  });
+
   it("returns the server-side Standard Schema output after the host JSON wire", async () => {
     const server = await startTestServer();
     const workDir = await mkdtemp(join(tmpdir(), "bb-plugin-host-transform-"));

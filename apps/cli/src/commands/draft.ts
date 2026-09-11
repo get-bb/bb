@@ -172,7 +172,12 @@ export function registerDraftCommands(
           renderBorderlessTable(
             {
               head: ["ID", "REVISION", "PROJECT", "PROMPT"],
-              colWidths: [32, 10, 24, 60],
+              colWidths: [
+                Math.max(2, ...result.drafts.map((entry) => entry.id.length)),
+                10,
+                24,
+                60,
+              ],
               trimTrailingWhitespace: true,
             },
             result.drafts.map((entry) => [
