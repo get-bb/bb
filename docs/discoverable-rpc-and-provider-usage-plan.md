@@ -1,6 +1,6 @@
 # Discoverable RPC and replaceable provider usage displays
 
-The former core usage page is removed; `/settings/usage` remains a temporary redirect to `/settings/plugins/provider-usage`. Provider Usage is enabled by default and owns the usage settings page, plus a `showFooterCard` setting (default true). Both surfaces reuse its private aggregation RPC and measurement cache.
+The former core usage page is removed; `/settings/usage` remains a temporary redirect to `/settings/plugins/provider-usage`. Provider Usage is enabled by default and owns the usage settings page, with footer order and visibility controlled by BB’s appearance preferences. Both surfaces reuse its private aggregation RPC and measurement cache.
 
 Status: prototype implemented for discoverable RPC, Account Pooler, the Codex, Claude Code, and ACP provider plugins, and Provider Usage’s settings page and footer card. Provider Usage defines the canonical contract in `plugins/provider-usage/usage-source-contract.ts` and consumes discovered sources through it. The plugin settings page preserves its existing provider cards and extends the machine picker to select shared sources such as Account Pooler. Shared sources are selected by default.
 

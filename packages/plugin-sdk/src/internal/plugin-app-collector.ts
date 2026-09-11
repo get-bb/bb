@@ -48,7 +48,6 @@ import {
 export type ExperimentalSidebarFooterCommandKind = "open" | "close" | "toggle";
 
 export interface ExperimentalSidebarFooterRuntimeSnapshot {
-  visible: boolean;
   command: {
     sequence: number;
     kind: ExperimentalSidebarFooterCommandKind;
@@ -108,7 +107,6 @@ const SIDEBAR_FOOTER_DISCLOSURE_KEYS: ReadonlySet<string> = new Set([
 class SidebarFooterItemRuntime implements ExperimentalSidebarFooterItemRuntime {
   private readonly listeners = new Set<() => void>();
   private snapshot: ExperimentalSidebarFooterRuntimeSnapshot = {
-    visible: true,
     command: null,
   };
 
@@ -128,12 +126,6 @@ class SidebarFooterItemRuntime implements ExperimentalSidebarFooterItemRuntime {
 
   createDisclosureController(): ExperimentalSidebarFooterDisclosureController {
     return Object.freeze({
-      experimental_setVisible: (visible: boolean) => {
-        if (this.snapshot.visible === visible) return;
-        this.snapshot = { ...this.snapshot, visible };
-        if (!visible) this.request("close");
-        else this.emit();
-      },
       open: () => this.request("open"),
       close: () => this.request("close"),
       toggle: () => this.request("toggle"),

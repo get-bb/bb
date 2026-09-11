@@ -13,7 +13,6 @@ import {
   experimental_useSidebarThreads,
   type ExperimentalSidebarFooterDisclosureProps,
   useBbContext,
-  useSettings,
 } from "@get-bb/plugin-sdk/app";
 import { Icon } from "@bb/shared-ui/icon";
 import { Button } from "@bb/shared-ui/button";
@@ -47,8 +46,6 @@ import {
 } from "./usage-schema.js";
 
 import { UsageSettings } from "./settings.js";
-
-let footerVisible = true;
 
 interface UsageStoreSnapshot {
   data: UsageSnapshot | null;
@@ -722,25 +719,12 @@ function ProviderUsageStatus({
 
 export default definePluginApp((app) => {
   app.slots.settingsSection({ id: "usage", component: UsageSettings });
-  const footer = app.experimental_sidebarFooter.register({
+  app.experimental_sidebarFooter.register({
     kind: "disclosure",
     id: "usage",
     label: "Provider usage",
     icon: "ChartColumn",
     component: ProviderUsageStatus,
-  });
-  function FooterVisibility() {
-    const { values, isLoading } = useSettings();
-    useEffect(() => {
-      if (isLoading) return;
-      footerVisible = values?.showFooterCard !== false;
-      footer.experimental_setVisible(footerVisible);
-    }, [values, isLoading]);
-    return null;
-  }
-  app.slots.experimental_appOverlay({
-    id: "footer-visibility",
-    component: FooterVisibility,
   });
   app.contentScripts.register({
     id: "refresh-usage",
@@ -755,7 +739,6 @@ export default definePluginApp((app) => {
         timer = window.setTimeout(runSafetyRefresh, SAFETY_REFRESH_INTERVAL_MS);
       };
       const reconcile = (maxAgeMs: number, machineIds: string[] | null) => {
-        if (!footerVisible) return;
         void refreshUsage({
           force: false,
           machineIds,

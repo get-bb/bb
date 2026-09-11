@@ -761,8 +761,6 @@ export type ExperimentalSidebarFooterItemRegistration =
 
 /** Live controls for an experimental sidebar-footer disclosure. */
 export interface ExperimentalSidebarFooterDisclosureController {
-  /** Hide or show this item’s shortcut and disclosure. Hiding closes it; showing does not reopen it. */
-  experimental_setVisible(visible: boolean): void;
   /** Request that the host open this disclosure, replacing any open sibling. */
   open(): void;
   /** Close this disclosure if it is currently open. */
