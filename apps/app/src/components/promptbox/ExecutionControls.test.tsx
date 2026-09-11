@@ -112,7 +112,7 @@ describe("ExecutionControls", () => {
     );
 
     expect(
-      screen.getByText("Pick a provider and model for the new thread"),
+      screen.getByRole("button", { name: "Back to model picker" }),
     ).not.toBeNull();
     expect(screen.getByTitle("Codex (current thread)")).toHaveProperty(
       "disabled",

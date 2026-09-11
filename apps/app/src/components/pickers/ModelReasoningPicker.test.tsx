@@ -684,7 +684,7 @@ describe("ModelReasoningPicker", () => {
     );
 
     expect(
-      screen.getByText("Pick a provider and model for the new thread"),
+      screen.getByRole("button", { name: "Back to model picker" }),
     ).not.toBeNull();
     const currentTab = screen.getByTitle("Codex (current thread)");
     expect(currentTab).toHaveProperty("disabled", true);
@@ -699,7 +699,7 @@ describe("ModelReasoningPicker", () => {
       screen.getByRole("button", { name: "Back to model picker" }),
     );
     expect(
-      screen.queryByText("Pick a provider and model for the new thread"),
+      screen.queryByRole("button", { name: "Back to model picker" }),
     ).toBeNull();
     expect(screen.getByTitle("Codex")).toHaveProperty("disabled", false);
     expect(screen.getAllByText("5.5")).toHaveLength(2);
