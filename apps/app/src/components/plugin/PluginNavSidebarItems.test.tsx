@@ -469,11 +469,17 @@ describe("PluginNavSidebarItems", () => {
       registerPanel("docs", "Docs");
       renderSidebarItems({ splitEnabled: true, compactViewport });
 
-      fireEvent.pointerDown(
-        screen.getByRole("button", { name: "Docs panel options" }),
-        { button: 0 },
-      );
-      const dropdownMenu = await screen.findByRole("menu");
+      const trigger = screen.getByRole("button", {
+        name: "Docs panel options",
+      });
+      if (compactViewport) {
+        fireEvent.click(trigger);
+      } else {
+        fireEvent.pointerDown(trigger, { button: 0 });
+      }
+      await screen.findByRole("menuitem", { name: "Hide from sidebar" });
+      const dropdownRole = compactViewport ? "dialog" : "menu";
+      const dropdownMenu = screen.getByRole(dropdownRole);
       const expected = [
         ...(compactViewport ? [] : [["Open in split", "Columns2"]]),
         ["View details", "Info"],
@@ -499,7 +505,7 @@ describe("PluginNavSidebarItems", () => {
       };
       expectFocusedMenu(dropdownMenu);
       fireEvent.keyDown(dropdownMenu, { key: "Escape" });
-      await waitFor(() => expect(screen.queryByRole("menu")).toBeNull());
+      await waitFor(() => expect(screen.queryByRole(dropdownRole)).toBeNull());
 
       fireEvent.contextMenu(screen.getByRole("button", { name: "Docs" }));
       expectFocusedMenu(await screen.findByRole("menu"));
@@ -536,10 +542,14 @@ describe("PluginNavSidebarItems", () => {
         initialLayout,
       });
       if (surface === "dropdown") {
-        fireEvent.pointerDown(
-          screen.getByRole("button", { name: "Docs panel options" }),
-          { button: 0 },
-        );
+        const trigger = screen.getByRole("button", {
+          name: "Docs panel options",
+        });
+        if (compactViewport) {
+          fireEvent.click(trigger);
+        } else {
+          fireEvent.pointerDown(trigger, { button: 0 });
+        }
       } else {
         fireEvent.contextMenu(screen.getByRole("button", { name: "Docs" }));
       }
@@ -554,8 +564,16 @@ describe("PluginNavSidebarItems", () => {
         "/plugins/docs/main",
       );
       expect(fetchMock).not.toHaveBeenCalled();
+      if (compactViewport) {
+        fireEvent.click(moreTrigger());
+      } else {
+        fireEvent.pointerDown(moreTrigger(), { button: 0 });
+      }
       expect(
-        (await openMoreMenu()).map((item) => item.textContent?.trim()),
+        await screen.findByRole("menuitem", { name: "Docs" }),
+      ).not.toBeNull();
+      expect(
+        screen.getAllByRole("menuitem").map((item) => item.textContent?.trim()),
       ).toEqual(["Docs", "Customize sidebar"]);
     },
   );
