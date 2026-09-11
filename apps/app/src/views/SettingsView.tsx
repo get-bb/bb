@@ -51,6 +51,7 @@ import { CodeRendererSettings } from "@/components/settings/CodeRendererSettings
 import { SidebarThreadListSetting } from "@/components/settings/SidebarThreadListSetting";
 import { SidebarNavigationSetting } from "@/components/settings/SidebarNavigationSetting";
 import { SplitDimmingSetting } from "@/components/settings/SplitDimmingSetting";
+import { PluginSettingsPage } from "@/components/plugin/PluginSettings";
 import { useSettingsNavState } from "@/components/settings/settings-nav";
 import {
   SETTINGS_PLUGIN_ROUTE_PATH,
@@ -1107,12 +1108,11 @@ export function SettingsView() {
     return <Navigate to={SETTINGS_ROUTE_PATH} replace />;
   }
 
-  if (activeSection === "plugins" || activePluginId !== null) {
+  if (activeSection === "plugins") {
     const pluginId = matchPath(SETTINGS_PLUGIN_ROUTE_PATH, location.pathname)
       ?.params.pluginId;
     const params = new URLSearchParams(location.search);
     params.set("view", "installed");
-    if (activePluginId !== null) params.set("configure", activePluginId);
     return (
       <Navigate
         replace
@@ -1127,7 +1127,9 @@ export function SettingsView() {
   }
 
   let content: ReactNode = null;
-  if (activeSection === "providers") {
+  if (activePluginId !== null) {
+    content = <PluginSettingsPage pluginId={activePluginId} />;
+  } else if (activeSection === "providers") {
     content = (
       <ProvidersSettingsSection
         disabled={
