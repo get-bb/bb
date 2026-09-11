@@ -409,6 +409,22 @@ interface CodexSessionConstruction {
   dynamicTools: DynamicTool[] | undefined;
 }
 
+interface UnopenedDispatch {
+  clientRequestId: TurnStartParamsShape["clientRequestId"];
+  prepared: PreparedProviderCommandDispatch;
+}
+
+type UnopenedDispatchOutcome =
+  | { status: "completed" }
+  | { status: "failed"; error: { message: string } };
+
+const codexThreadStatusChangedParamsSchema = z
+  .object({
+    threadId: z.string(),
+    status: z.object({ type: z.string() }).passthrough(),
+  })
+  .passthrough();
+
 interface CodexBridgeSession {
   bbThreadId: string;
   codexThreadId: string | null;
@@ -418,6 +434,7 @@ interface CodexBridgeSession {
   construction: CodexSessionConstruction;
   constructionSignature: string;
   openCodexTurnIds: Set<string>;
+  unopenedCompactionDispatches: UnopenedDispatch[];
   turnSettledWaiters: Map<string, Array<() => void>>;
   awaitingReplayedUsage: boolean;
   identityAnnounced: boolean;
@@ -632,6 +649,9 @@ function handleChildNotification(
       announceSessionIdentity(session, parsed.data.thread.id);
     }
   }
+  if (method === "thread/status/changed") {
+    settleCompactionDispatchesWhenCodexIsNotRunning(session, params);
+  }
   const deltas = session.translator.translateEvent(
     toProviderRuntimeEvent(method, params),
   );
@@ -812,6 +832,14 @@ function handleChildExit(
     })),
   );
   session.openCodexTurnIds.clear();
+  const unopenedCompactions = session.unopenedCompactionDispatches;
+  session.unopenedCompactionDispatches = [];
+  for (const dispatch of unopenedCompactions) {
+    settleUnopenedDispatch(session, dispatch, {
+      status: "failed",
+      error: { message },
+    });
+  }
   sendNotification(BRIDGE_NOTIFICATION_METHODS.error, {
     threadId: session.bbThreadId,
     ...(session.codexThreadId !== null
@@ -953,6 +981,7 @@ async function constructThreadSession(
       decoded.sessionOptions,
     ),
     openCodexTurnIds: new Set(),
+    unopenedCompactionDispatches: [],
     turnSettledWaiters: new Map(),
     awaitingReplayedUsage: args.request.kind !== "start",
     identityAnnounced: false,
@@ -1111,6 +1140,7 @@ function registerResumableSession(session: CodexBridgeSession): void {
     construction: session.construction,
     constructionSignature: session.constructionSignature,
     openCodexTurnIds: new Set(),
+    unopenedCompactionDispatches: [],
     turnSettledWaiters: new Map(),
     awaitingReplayedUsage: true,
     identityAnnounced: session.identityAnnounced,
@@ -1394,11 +1424,16 @@ const codexTurnStartResultSchema = z
 
 function settleAcceptedDispatch(args: {
   clientRequestId: TurnStartParamsShape["clientRequestId"];
+  compaction: boolean;
   prepared: PreparedProviderCommandDispatch | null;
   session: CodexBridgeSession;
   result: unknown;
 }): void {
   const { clientRequestId, prepared, session, result } = args;
+  if (args.compaction) {
+    awaitCompactionTurn({ clientRequestId, prepared, session });
+    return;
+  }
   const parsed = codexTurnStartResultSchema.safeParse(result);
   if (!parsed.success) {
     scheduleZeroWorkTurnSettlement({ clientRequestId, prepared, session });
@@ -1426,6 +1461,34 @@ const ZERO_WORK_SETTLEMENT_GRACE_MS = 250;
 
 let syntheticZeroWorkTurnCounter = 0;
 
+function settleUnopenedDispatch(
+  session: CodexBridgeSession,
+  dispatch: UnopenedDispatch,
+  outcome: UnopenedDispatchOutcome,
+): void {
+  if (!dispatch.prepared.claim()) {
+    return;
+  }
+  syntheticZeroWorkTurnCounter += 1;
+  const providerTurnId = `zero-work-${syntheticZeroWorkTurnCounter}`;
+  sendThreadDeltas(session, [
+    { kind: "turn.open", providerTurnId },
+    {
+      kind: "input.accepted",
+      clientRequestId: dispatch.clientRequestId,
+      providerTurnId,
+    },
+    outcome.status === "completed"
+      ? { kind: "turn.boundary", providerTurnId, status: "completed" }
+      : {
+          kind: "turn.boundary",
+          providerTurnId,
+          status: "failed",
+          error: outcome.error,
+        },
+  ]);
+}
+
 function scheduleZeroWorkTurnSettlement(args: {
   clientRequestId: TurnStartParamsShape["clientRequestId"];
   prepared: PreparedProviderCommandDispatch | null;
@@ -1441,18 +1504,67 @@ function scheduleZeroWorkTurnSettlement(args: {
     if (!live || live.openCodexTurnIds.size > 0) {
       return;
     }
-    if (!prepared.claim()) {
-      return;
-    }
-    syntheticZeroWorkTurnCounter += 1;
-    const providerTurnId = `zero-work-${syntheticZeroWorkTurnCounter}`;
-    sendThreadDeltas(live, [
-      { kind: "turn.open", providerTurnId },
-      { kind: "input.accepted", clientRequestId, providerTurnId },
-      { kind: "turn.boundary", providerTurnId, status: "completed" },
-    ]);
+    settleUnopenedDispatch(
+      live,
+      { clientRequestId, prepared },
+      { status: "completed" },
+    );
   }, ZERO_WORK_SETTLEMENT_GRACE_MS);
   timer.unref?.();
+}
+
+function awaitCompactionTurn(args: {
+  clientRequestId: TurnStartParamsShape["clientRequestId"];
+  prepared: PreparedProviderCommandDispatch | null;
+  session: CodexBridgeSession;
+}): void {
+  const { clientRequestId, prepared, session } = args;
+  if (prepared === null) {
+    return;
+  }
+  const live = currentSession(session.bbThreadId, session.serial);
+  if (!live) {
+    return;
+  }
+  live.unopenedCompactionDispatches.push({ clientRequestId, prepared });
+}
+
+function settleCompactionDispatchesWhenCodexIsNotRunning(
+  session: CodexBridgeSession,
+  params: unknown,
+): void {
+  if (session.unopenedCompactionDispatches.length === 0) {
+    return;
+  }
+  const parsed = codexThreadStatusChangedParamsSchema.safeParse(params);
+  if (
+    !parsed.success ||
+    parsed.data.threadId !== session.codexThreadId ||
+    session.openCodexTurnIds.size > 0
+  ) {
+    return;
+  }
+  const status = parsed.data.status.type;
+  if (status !== "idle" && status !== "systemError") {
+    return;
+  }
+  const dispatches = session.unopenedCompactionDispatches;
+  session.unopenedCompactionDispatches = [];
+  for (const dispatch of dispatches) {
+    settleUnopenedDispatch(
+      session,
+      dispatch,
+      status === "idle"
+        ? { status: "completed" }
+        : {
+            status: "failed",
+            error: {
+              message:
+                "codex reported a system error before the compaction turn started",
+            },
+          },
+    );
+  }
 }
 
 async function handleTurnStart(
@@ -1485,9 +1597,10 @@ async function handleTurnStart(
     providerThreadId: codexThreadId,
   });
 
+  const compaction = isStandaloneBuiltinCompactCommand(input);
   try {
     let result: unknown;
-    if (isStandaloneBuiltinCompactCommand(input)) {
+    if (compaction) {
       result = await connection.request({
         method: "thread/compact/start",
         params: { threadId: codexThreadId },
@@ -1520,6 +1633,7 @@ async function handleTurnStart(
     sendResult(id, { threadId: params.threadId });
     settleAcceptedDispatch({
       clientRequestId: params.clientRequestId,
+      compaction,
       prepared,
       session,
       result,

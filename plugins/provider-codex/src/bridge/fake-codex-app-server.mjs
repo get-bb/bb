@@ -58,6 +58,11 @@ function respondError(id, code, message) {
 /** The prompt the kit's turn/settles-without-activity scenario sends. */
 const ZERO_WORK_PROMPT_TEXT = "/clear";
 
+const COMPACTION_TURN_DELAY_MS = Number(
+  process.env.FAKE_CODEX_COMPACTION_TURN_DELAY_MS ?? "20",
+);
+const COMPACTION_MODE = process.env.FAKE_CODEX_COMPACTION_MODE ?? "turn";
+
 const LATE_TURN_START_PROMPT_TEXT = "/late-start";
 const LATE_TURN_START_DELAY_MS = 350;
 
@@ -102,6 +107,45 @@ const FIXED_TOKEN_USAGE = {
   },
   modelContextWindow: 258400,
 };
+
+function runCompaction(threadId) {
+  if (COMPACTION_MODE === "exit-before-turn") {
+    setTimeout(() => process.exit(1), 20);
+    return;
+  }
+  setTimeout(() => {
+    if (COMPACTION_MODE === "idle-without-turn") {
+      notify("thread/status/changed", { threadId, status: { type: "idle" } });
+      return;
+    }
+    turnCounter += 1;
+    const turnId = `turn-fx-${turnCounter}`;
+    const itemId = `compaction-fx-${turnCounter}`;
+    notify("thread/status/changed", {
+      threadId,
+      status: { type: "active", activeFlags: [] },
+    });
+    notify("turn/started", {
+      threadId,
+      turn: { id: turnId, status: "inProgress" },
+    });
+    notify("item/started", {
+      threadId,
+      turnId,
+      item: { type: "contextCompaction", id: itemId },
+    });
+    notify("item/completed", {
+      threadId,
+      turnId,
+      item: { type: "contextCompaction", id: itemId },
+    });
+    notify("thread/status/changed", { threadId, status: { type: "idle" } });
+    notify("turn/completed", {
+      threadId,
+      turn: { id: turnId, status: "completed" },
+    });
+  }, COMPACTION_TURN_DELAY_MS);
+}
 
 function runScriptedTurn(threadId, presetTurnId) {
   turnCounter += 1;
@@ -570,6 +614,9 @@ async function handleRequest(message) {
       respond(id, {});
       return;
     case "thread/compact/start":
+      respond(id, {});
+      runCompaction(params.threadId);
+      return;
     case "thread/goal/clear":
       respond(id, {});
       return;

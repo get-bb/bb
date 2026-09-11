@@ -3,7 +3,10 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
-import type { ThreadEvent } from "@bb/domain";
+import {
+  createStandaloneBuiltinCompactCommandInput,
+  type ThreadEvent,
+} from "@bb/domain";
 import {
   experimental_assembleCapturedThreadEvents as assembleCapturedThreadEvents,
   experimental_createBridgeJsonRpcTestHarness as createBridgeJsonRpcTestHarness,
@@ -380,4 +383,75 @@ it("does not resurrect a response-opened turn settled before its turn/started ar
       scope: { kind: "turn", turnId },
     }),
   ]);
+}, 30_000);
+
+async function compactAndWaitForCompletion(
+  clientRequestId: string,
+): Promise<ThreadEvent[]> {
+  const providerThreadId = await startSession();
+  harness.sendRequest(2, "turn/start", {
+    threadId: THREAD_ID,
+    providerThreadId,
+    input: createStandaloneBuiltinCompactCommandInput(),
+    clientRequestId,
+    options: { ...sessionOptions },
+  });
+  const response = await harness.waitForResponse(2);
+  expect(response.error).toBeUndefined();
+  await waitForEvents((all) =>
+    all.some((event) => event.type === "turn/completed"),
+  );
+  await new Promise((resolve) => setTimeout(resolve, 400));
+  return threadEvents();
+}
+
+it("waits for a compaction turn that starts long after the empty compact response", async () => {
+  vi.stubEnv("FAKE_CODEX_COMPACTION_TURN_DELAY_MS", "600");
+  const events = await compactAndWaitForCompletion("creq_cmpktate23");
+
+  const started = events.filter((event) => event.type === "turn/started");
+  const completed = events.filter((event) => event.type === "turn/completed");
+  expect(started).toHaveLength(1);
+  expect(completed).toHaveLength(1);
+  const turnId =
+    started[0]?.scope.kind === "turn" ? started[0].scope.turnId : "";
+  expect(turnId).not.toMatch(/zero-work/);
+  expect(completed[0]).toMatchObject({
+    status: "completed",
+    scope: { kind: "turn", turnId },
+  });
+  expect(
+    events.filter((event) => event.type === "turn/input/accepted"),
+  ).toEqual([
+    expect.objectContaining({
+      clientRequestId: "creq_cmpktate23",
+      scope: { kind: "turn", turnId },
+    }),
+  ]);
+}, 30_000);
+
+it("settles a compaction when codex reports the thread idle without starting a turn", async () => {
+  vi.stubEnv("FAKE_CODEX_COMPACTION_MODE", "idle-without-turn");
+  const events = await compactAndWaitForCompletion("creq_cmpktdey23");
+
+  const completed = events.filter((event) => event.type === "turn/completed");
+  expect(events.filter((event) => event.type === "turn/started")).toHaveLength(
+    1,
+  );
+  expect(completed).toEqual([expect.objectContaining({ status: "completed" })]);
+  expect(
+    events.filter((event) => event.type === "turn/input/accepted"),
+  ).toEqual([expect.objectContaining({ clientRequestId: "creq_cmpktdey23" })]);
+}, 30_000);
+
+it("fails a compaction when the app-server exits before its turn starts", async () => {
+  vi.stubEnv("FAKE_CODEX_COMPACTION_MODE", "exit-before-turn");
+  const events = await compactAndWaitForCompletion("creq_cmpktext23");
+
+  expect(events.filter((event) => event.type === "turn/completed")).toEqual([
+    expect.objectContaining({ status: "failed" }),
+  ]);
+  expect(
+    events.filter((event) => event.type === "turn/input/accepted"),
+  ).toEqual([expect.objectContaining({ clientRequestId: "creq_cmpktext23" })]);
 }, 30_000);

@@ -687,7 +687,6 @@ export function createCodexEventTranslator(
         clientRequestId,
         providerThreadId,
       });
-      responseOpenedTurnIds.add(turn.id);
       return [
         { kind: "input.accepted", clientRequestId, providerTurnId: turn.id },
       ];
