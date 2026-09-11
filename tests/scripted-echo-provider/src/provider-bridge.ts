@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import {
   type ClientTurnRequestId,
   type PendingInteractionPayload,
@@ -97,6 +98,7 @@ export const scriptedEchoOptionsSchema = z
     recoveryThreadIdHint: z.string().min(1).optional(),
     approvalEnforcedBy: z.enum(["runtime", "provider"]).optional(),
     identifyProcess: z.boolean().optional(),
+    uniqueProviderThreadIds: z.boolean().optional(),
     textDeltaChunkSize: z.number().int().positive().optional(),
     stderrChunksOnTurn: z.array(z.string()).optional(),
     failStopForThreadIds: z.array(z.string().min(1)).optional(),
@@ -189,6 +191,7 @@ const openBackgroundTasks = new Map<
 >();
 let discardFailed = false;
 let providerThreadCounter = 0;
+const providerThreadNonce = randomUUID().slice(0, 8);
 let outboundRequestCounter = 0;
 
 type OutboundMessage = { jsonrpc: "2.0" } & Record<string, unknown>;
@@ -864,8 +867,11 @@ function notifySessionIdentity(session: Session): void {
 
 function mintProviderThreadId(options: ScriptedEchoOptions): string {
   providerThreadCounter += 1;
-  return options.identifyProcess === true
-    ? `prov-${process.pid}-${providerThreadCounter}`
+  if (options.identifyProcess === true) {
+    return `prov-${process.pid}-${providerThreadCounter}`;
+  }
+  return options.uniqueProviderThreadIds === true
+    ? `prov-${providerThreadCounter}-${providerThreadNonce}`
     : `prov-${providerThreadCounter}`;
 }
 
