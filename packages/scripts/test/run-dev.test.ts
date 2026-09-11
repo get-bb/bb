@@ -244,14 +244,6 @@ describe("run-dev", () => {
     ]);
   });
 
-  it("uses validated launch while retaining worktree runtime policy", () => {
-    const command = createStartWorktreeCommand(true);
-    expect(command.args.slice(-2)).toEqual([
-      "launch",
-      "--worktree-runtime-policy",
-    ]);
-  });
-
   it("accepts only the supported dev launch mode", () => {
     expect(resolveDevLaunchMode([])).toBe("vite");
     expect(resolveDevLaunchMode(["--worktree"])).toBe("worktree");

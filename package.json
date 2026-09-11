@@ -50,8 +50,7 @@
     "server": "pnpm --filter @bb/server start",
     "drizzle-studio": "cross-env NODE_ENV=development pnpm --filter @bb/db db:studio",
     "drizzle-studio:prod": "cross-env NODE_ENV=production pnpm --filter @bb/db db:studio",
-    "prepare:worktree": "cross-env NODE_ENV=production dotenv -c development -- node --conditions=source --import tsx scripts/start-bb.mjs prepare",
-    "launch:worktree": "cross-env NODE_ENV=development dotenv -c development -- node --conditions=source --import tsx packages/scripts/src/commands/run-dev.ts --worktree --prepared"
+    "prepare:start": "node --conditions=source --import tsx scripts/prepare-start.mjs"
   },
   "devDependencies": {
     "@vitest/coverage-v8": "4.1.1",

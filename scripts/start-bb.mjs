@@ -136,30 +136,26 @@ export function parseStartBbArgs(args) {
 }
 
 export async function prepareRuntime() {
-  let reusable = false;
+  await runNativeModulePreflight();
   try {
     await validatePreparedRuntime(repoRoot);
-    reusable = true;
+    return;
   } catch {}
   await clearPreparedRuntime(repoRoot);
-  if (!reusable) await clearRuntimeOutputs(repoRoot);
-  await runNativeModulePreflight();
+  await clearRuntimeOutputs(repoRoot);
   const sourceFingerprint = runtimeSourceFingerprint(repoRoot);
   await buildRuntimeArtifacts();
   await sealPreparedRuntime(repoRoot, sourceFingerprint);
 }
 
 export async function main(args = process.argv.slice(2)) {
-  const action = ["prepare", "launch"].includes(args[0])
-    ? args.shift()
-    : "start";
+  const action = args[0] === "prepare" ? args.shift() : "start";
   if (action === "prepare" && args.length !== 0) {
     throw new Error("Preparation accepts no runtime arguments");
   }
   const parsedArgs = parseStartBbArgs(args);
-  if (action !== "launch") await prepareRuntime();
+  await prepareRuntime();
   if (action === "prepare") return;
-  if (action === "launch") await validatePreparedRuntime(repoRoot);
   const { resolveWorktreeRuntimePolicy, runBbApp } =
     await import("../packages/bb-app/src/launcher.ts");
   await runBbApp(parsedArgs.cliArgs, {

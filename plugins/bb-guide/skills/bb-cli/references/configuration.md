@@ -91,12 +91,13 @@ available through their own sources.
 
 ## BB source runtime preparation
 
-In the BB repository, use `pnpm prepare:worktree` before a planned restart and
-`pnpm launch:worktree` for validated launch without installs, builds, or native
-repairs. `pnpm start:worktree` still prepares and launches in one command. All
-worktree launches retain checkout-specific data/ports and worktree runtime
-policy. Install dependencies before preparation when needed. Source, Node,
-dependency, build-environment, or artifact changes require fresh preparation.
+In the BB repository, `pnpm prepare:start` optionally prepares ahead of
+`pnpm start`; use `pnpm prepare:start --worktree` ahead of `pnpm start:worktree`
+to match its development dotenv configuration. Both start commands reuse valid
+prepared artifacts without Turbo and automatically prepare stale or missing
+artifacts. Native modules are checked and repaired when necessary. Worktree
+startup retains checkout-specific data/ports and runtime policy. Install
+dependencies before preparation when needed.
 Preparation writes the checkout's build outputs; use a separate staging checkout
 to warm Turbo while a live instance serves its existing files, then prepare the
 stable serving checkout before launch. See `docs/debugging-and-qa.md` and

@@ -160,7 +160,7 @@ export function ensureNativeModules({
       const message = formatThrownValue(err);
       if (checkOnly) {
         throw new Error(
-          `[ensure-native-modules] ${name} failed validation: ${message}. Run pnpm prepare:worktree to repair it before launch.`,
+          `[ensure-native-modules] ${name} failed validation: ${message}. Run pnpm prepare:start to repair it before launch.`,
         );
       }
       if (!shouldRebuildNativeModule(message)) throw err;

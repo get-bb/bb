@@ -122,7 +122,8 @@ and verify the processes still belong to this checkout.
 ## Prepared source startup
 
 For worktree startup changes, use the same fresh data marker and port ownership
-checks, but run `pnpm prepare:worktree` and `pnpm launch:worktree` separately.
+checks, but run `pnpm prepare:start --worktree` followed by `pnpm start:worktree`.
+Verify the start reuses valid artifacts without invoking Turbo.
 The app is served at the server URL with no Vite listener. Record preparation
 and time to server/daemon health independently; repeat preparation to verify
 Turbo hits. Check code, asset, skill, manifest, SDK/toolchain, and staged-asset
@@ -130,13 +131,13 @@ invalidation plus restoration after deleting only this checkout's build outputs.
 Check that a plugin-only edit misses only its `prepare:bundled` task and final
 assembly; SDK/toolchain edits must invalidate every plugin. Delete per-plugin
 `.bundled-runtime` outputs as well when checking complete cache restoration.
-Verify missing/stale preparation fails before services start and native validation
-never repairs on launch. `pnpm start:worktree` remains prepare-and-launch.
+Verify missing/stale preparation is rebuilt automatically before services start,
+and native modules are checked and repaired when necessary.
 Preparation writes build outputs, so use a separate staging checkout to warm
 cache while a live instance still serves those files. Keep the serving checkout
 path stable. See `docs/debugging-and-qa.md` for the preparation receipt contract.
 Stop only verified PIDs spawned by this test; `bb-dev-app stop` is for instances
-managed by that launcher, not arbitrary `pnpm launch:worktree` processes.
+managed by that launcher, not arbitrary `pnpm start:worktree` processes.
 
 ## Doctor
 

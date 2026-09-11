@@ -24,7 +24,7 @@ export const runtimeOutputRoots = [
 
 const receiptPath = "node_modules/.bb-prepared-runtime.json";
 const instruction =
-  "Run pnpm prepare:worktree before launching the prepared runtime.";
+  "Run pnpm prepare:start before launching the prepared runtime.";
 
 export function hashFiles(root, paths) {
   const hash = createHash("sha256");

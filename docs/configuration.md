@@ -1159,7 +1159,7 @@ enrolled to other servers. Atomic reservations under
 ## Source Development
 
 For source development only, `pnpm dev`, `pnpm start:worktree`,
-`pnpm start:worktree-remote`, `pnpm prepare:worktree`, `pnpm launch:worktree`,
+`pnpm start:worktree-remote`, `pnpm prepare:start --worktree`,
 and `pnpm start` load the repo-root dotenv
 cascade. Add a repo-root `.env` only when you need to override the defaults
 described above.
@@ -1182,11 +1182,13 @@ disabled for this source-development command. Its worktree data directory,
 ports, inherited skills, listener host, absent Vite port, and telemetry policy
 take precedence over conflicting values saved in that instance's `config.json`
 or `env.json`.
-`pnpm prepare:worktree` uses the development dotenv cascade to prepare production
-artifacts without starting services. `pnpm launch:worktree` validates that prepared
-state and applies exactly the same worktree runtime policy without building or
-repairing native modules. Both use the same build environment as
-`pnpm start:worktree`; see [Prepared Worktree Restarts](debugging-and-qa.md#prepared-worktree-restarts)
+`pnpm prepare:start` optionally prepares artifacts ahead of `pnpm start`, using
+the same production dotenv cascade. Add `--worktree` to use the development
+dotenv cascade ahead of `pnpm start:worktree`. Neither preparation variant starts
+services or touches instance data/ports. Both start commands reuse valid prepared
+artifacts and automatically prepare missing or stale artifacts. Native modules
+are always validated and repaired when necessary. See
+[Prepared Worktree Restarts](debugging-and-qa.md#prepared-worktree-restarts)
 for installation, invalidation, and maintenance sequencing.
 `pnpm start:worktree-remote` applies the same policy while binding the main
 server to `0.0.0.0` for direct access on a trusted network. The API is

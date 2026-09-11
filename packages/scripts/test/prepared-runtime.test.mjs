@@ -50,14 +50,14 @@ describe("prepared runtime", () => {
   it("requires a valid receipt and detects artifact deletion, corruption, and unexpected files", async () => {
     const root = fixture();
     await expect(validatePreparedRuntime(root)).rejects.toThrow(
-      "pnpm prepare:worktree",
+      "pnpm prepare:start",
     );
     await sealPreparedRuntime(root, runtimeSourceFingerprint(root));
     await expect(validatePreparedRuntime(root)).resolves.toBeUndefined();
     const artifact = `${runtimeOutputRoots[0]}/artifact`;
     rmSync(join(root, artifact));
     await expect(validatePreparedRuntime(root)).rejects.toThrow(
-      "pnpm prepare:worktree",
+      "pnpm prepare:start",
     );
     write(root, artifact, "corrupt");
     await expect(validatePreparedRuntime(root)).rejects.toThrow(
@@ -70,7 +70,7 @@ describe("prepared runtime", () => {
     );
     await clearRuntimeOutputs(root);
     await expect(validatePreparedRuntime(root)).rejects.toThrow(
-      "pnpm prepare:worktree",
+      "pnpm prepare:start",
     );
   });
 
@@ -102,7 +102,7 @@ describe("prepared runtime", () => {
     await expect(validatePreparedRuntime(root)).resolves.toBeUndefined();
     await clearPreparedRuntime(root);
     await expect(validatePreparedRuntime(root)).rejects.toThrow(
-      "pnpm prepare:worktree",
+      "pnpm prepare:start",
     );
   });
 
@@ -131,7 +131,7 @@ describe("prepared runtime", () => {
     ]) {
       write(root, "node_modules/.bb-prepared-runtime.json", receipt);
       await expect(validatePreparedRuntime(root)).rejects.toThrow(
-        "pnpm prepare:worktree",
+        "pnpm prepare:start",
       );
     }
   });

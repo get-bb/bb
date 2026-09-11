@@ -335,28 +335,27 @@ survives closing the GUI.
 
 ## Prepared Worktree Restarts
 
-Use `pnpm prepare:worktree` to prepare the production runtime with the development
-dotenv cascade, without starting services or touching instance data or ports.
-Install dependencies with `pnpm install --frozen-lockfile` beforehand when needed.
-Preparation repairs/checks native modules, runs Turbo builds including
-`@bb/bundled-plugins#build`, and writes a local preparation receipt only after
-successful builds. Repeated preparation restores the cached plugin bundles,
-branding, skills, marketplace manifest, and staged Monaco assets.
+`pnpm start` and `pnpm start:worktree` automatically prepare missing or stale
+artifacts before launching. When the preparation receipt is valid, they skip
+Turbo and reuse the existing artifacts. Native modules are still checked and
+repaired when necessary. Worktree startup retains stable checkout-specific data,
+ports, telemetry, and runtime policy.
 
-Once preparation succeeds, `pnpm launch:worktree` validates the receipt and
-launches with the same checkout-specific data, ports, telemetry, and runtime
-policy as `pnpm start:worktree`. It runs no install, Turbo task, or native repair.
-It checks native modules in a fresh process and fails with a preparation
-instruction if they cannot load. `pnpm start:worktree` remains the convenient
-prepare-and-launch command. For trusted-network launch, use
-`BB_SERVER_BIND_HOST=0.0.0.0 pnpm launch:worktree`.
+Optionally run `pnpm prepare:start` ahead of time to prepare without starting
+services. It uses the production dotenv cascade to match `pnpm start`.
+Use `pnpm prepare:start --worktree` to match `pnpm start:worktree`'s development
+dotenv cascade; both build production artifacts. Install dependencies with
+`pnpm install --frozen-lockfile` beforehand when needed. Preparation repairs/checks
+native modules, runs Turbo builds including `@bb/bundled-plugins#build` when
+needed, and writes a local preparation receipt after successful builds.
+There is no separate launch mode: use the same normal start command afterward.
 
 The receipt checks content and file modes for runtime output trees, all tracked
 and non-ignored source files, root and app dotenv files, pnpm installation metadata,
 Node version/platform/architecture, checkout path, and build environment
 (`NODE_ENV` and `VITE_*`). Missing, edited, added, or removed artifacts and
-changed sources invalidate launch; even an unrelated tracked documentation edit
-requires preparation again. The receipt is local to this checkout and is not
+changed sources trigger automatic preparation at startup; even an unrelated
+tracked documentation edit requires preparation again. The receipt is local to this checkout and is not
 an install stamp or a portable deployment artifact. Do not edit the checkout,
 install dependencies, or prepare concurrently with another preparation or launch.
 Preparation verifies that sources did not change while it ran. If the previous
@@ -369,14 +368,14 @@ those same paths, preparation can change files it reads: this is not an atomic
 release switch. Use a separate staging checkout to warm the shared Turbo cache
 while the old instance runs, then stop the verified instance, update/install and
 prepare its stable checkout, and launch. For an already stopped, fully prepared
-checkout, downtime contains only validated launch. Moving the serving checkout
+checkout, normal startup reuses its artifacts without invoking Turbo. Moving the serving checkout
 changes the default instance data and ports; do not move it as a restart shortcut.
 
 The repo-level programmatic entry points are `prepareRuntime()` in
 `scripts/start-bb.mjs` and `validatePreparedRuntime(repoRoot)` in
 `scripts/prepared-runtime.mjs`. These are source-maintenance helpers, not new
 installed `bb` commands or public plugin SDK APIs. The source launcher also accepts
-`prepare` (no runtime arguments) and `launch` before its normal launcher arguments.
+`prepare` (no runtime arguments) for the preparation helper.
 `pnpm start` keeps its existing production dotenv and packaged runtime policy.
 
 Turbo output ownership is separate: server `build` owns `apps/server/dist`,

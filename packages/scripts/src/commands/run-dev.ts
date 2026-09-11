@@ -48,14 +48,13 @@ export function createDevTurboCommand(): DevCommand {
   };
 }
 
-export function createStartWorktreeCommand(prepared = false): DevCommand {
+export function createStartWorktreeCommand(): DevCommand {
   return {
     args: [
       "--conditions=source",
       "--import",
       "tsx",
       resolve(repoRoot, "scripts", "start-bb.mjs"),
-      ...(prepared ? ["launch"] : []),
       "--worktree-runtime-policy",
     ],
     command: process.execPath,
@@ -153,9 +152,7 @@ async function resolveExistingRepoRoot(): Promise<string> {
 
 async function main(): Promise<void> {
   const args = process.argv.slice(2);
-  const prepared =
-    args.length === 2 && args[0] === "--worktree" && args[1] === "--prepared";
-  const mode = resolveDevLaunchMode(prepared ? ["--worktree"] : args);
+  const mode = resolveDevLaunchMode(args);
   const resolvedRepoRoot = await resolveExistingRepoRoot();
   const config = resolveCurrentDevInstanceConfig(resolvedRepoRoot);
   const migration = await migrateLegacyDevData({
@@ -172,7 +169,7 @@ async function main(): Promise<void> {
 
   const command =
     mode === "worktree"
-      ? createStartWorktreeCommand(prepared)
+      ? createStartWorktreeCommand()
       : createDevTurboCommand();
   process.exitCode = await runScriptProcess({
     args: command.args,

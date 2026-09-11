@@ -246,12 +246,12 @@ BB source checkout startup
 
   In the BB repository, `pnpm start:worktree` prepares and serves production
   artifacts using stable checkout-specific dev data and ports (no Vite).
-  `pnpm prepare:worktree` performs native repair and cached Turbo preparation
-  without starting services; install dependencies beforehand when needed.
-  `pnpm launch:worktree` validates that preparation and starts without installing,
-  building, or repairing native modules. Changed sources, dependencies, Node,
-  build environment, or missing/modified artifacts require preparation again.
-  Both launch commands preserve worktree runtime policy. Preparation writes the
+  `pnpm prepare:start` optionally prepares ahead of `pnpm start`; add `--worktree`
+  to match `pnpm start:worktree`'s dotenv configuration. Install dependencies
+  beforehand when needed. Both start commands reuse valid prepared artifacts
+  without running Turbo and automatically prepare stale or missing artifacts.
+  Native modules are checked and repaired when necessary. Worktree startup
+  preserves its runtime policy. Preparation writes the
   checkout's build files; warm a separate staging checkout's cache if the live
   instance still serves those paths. Keep the serving checkout path stable to
   preserve its data and ports. See `docs/debugging-and-qa.md` for the restart
