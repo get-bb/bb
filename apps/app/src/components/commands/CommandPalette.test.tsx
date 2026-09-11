@@ -555,10 +555,7 @@ describe("CommandPalette", () => {
       screen.getByRole("button", { name: "Return to commands" }),
       "data-tab-pill-close",
     );
-    const scope = screen.getByRole("button", { name: "Thread scope" });
-    expect(scope.textContent).toContain("All");
-    expectClasses(scope, "text-subtle-foreground");
-    expect(scope.querySelector('[data-icon="ChevronDown"]')).not.toBeNull();
+    expect(screen.queryByRole("button", { name: "Thread scope" })).toBeNull();
     expect(screen.getByRole("button", { name: "Open in split" })).toBeTruthy();
     expect(document.querySelector("[data-palette-footer]")).toBeNull();
     await requestShortcutHints();
@@ -744,7 +741,7 @@ describe("CommandPalette", () => {
     },
   );
 
-  it("reveals split guidance on demand and hides it on release, menu focus, no matches, and Commands", async () => {
+  it("reveals split guidance on demand and hides it on release, action focus, no matches, and Commands", async () => {
     modeState.activeRecents = [makeThread("selected")];
     renderPalette();
     openThreadSearch();
@@ -758,15 +755,10 @@ describe("CommandPalette", () => {
     fireEvent.keyUp(window, { key: "Control" });
     expect(palette.querySelector("[data-palette-footer]")).toBeNull();
     await requestShortcutHints();
-    const scope = screen.getByRole("button", { name: "Thread scope" });
-    act(() => scope.focus());
-    fireEvent.keyDown(scope, { key: "Enter" });
-    await screen.findByRole("menu", { name: "Thread scope" });
+    const split = screen.getByRole("button", { name: "Open in split" });
+    act(() => split.focus());
     expect(palette.querySelector("[data-palette-footer]")).toBeNull();
-    fireEvent.keyDown(screen.getByRole("menuitemradio", { name: "All" }), {
-      key: "Escape",
-    });
-    await waitFor(() => expect(document.activeElement).toBe(searchField()));
+    act(() => searchField().focus());
     await requestShortcutHints();
     expect(
       palette.querySelector("[data-palette-footer]")?.textContent,
