@@ -65,6 +65,7 @@ const SYSTEM_CONFIG = systemConfigResponseSchema.parse({
         displayName: "Direct URL",
         description: "Connect machines directly to this server URL.",
         pluginId: null,
+        availability: null,
       },
     ],
   },
