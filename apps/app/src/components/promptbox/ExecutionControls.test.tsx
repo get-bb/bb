@@ -114,10 +114,7 @@ describe("ExecutionControls", () => {
     expect(
       screen.getByRole("button", { name: "Back to model picker" }),
     ).not.toBeNull();
-    expect(screen.getByTitle("Codex (current thread)")).toHaveProperty(
-      "disabled",
-      true,
-    );
+    expect(screen.getByTitle("Codex (current thread)")).not.toBeNull();
     expect(screen.getByTitle("Claude Code")).toHaveProperty("disabled", false);
   });
 

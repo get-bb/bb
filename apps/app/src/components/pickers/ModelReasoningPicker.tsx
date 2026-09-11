@@ -625,6 +625,15 @@ export function ModelReasoningPicker({
     setSearchQuery("");
     setActiveIndex(-1);
   }, []);
+  const returnToSourceProvider = useCallback(() => {
+    if (handoff === undefined) {
+      return;
+    }
+    exitHandoffMode();
+    if (selectedProviderId !== handoff.sourceProviderId) {
+      onSelectedProviderChange?.(handoff.sourceProviderId);
+    }
+  }, [exitHandoffMode, handoff, onSelectedProviderChange, selectedProviderId]);
 
   const paneContext = useOptionalPaneContext();
   const isFocusedPane = paneContext?.isFocused ?? true;
@@ -1017,13 +1026,13 @@ export function ModelReasoningPicker({
                       ? `${provider.label} (current thread)`
                       : provider.label
                   }
-                  disabled={isHandoffSource}
                   onMouseDown={(event) => event.preventDefault()}
                   onClick={() => {
-                    if (
-                      isHandoffSource ||
-                      provider.value === activeProviderId
-                    ) {
+                    if (isHandoffSource) {
+                      returnToSourceProvider();
+                      return;
+                    }
+                    if (provider.value === activeProviderId) {
                       return;
                     }
                     if (handoffMode) {
