@@ -27,7 +27,7 @@ export function registerPluginListingCommands(
     .action(
       action(async (opts: JsonOutputOptions) => {
         const result = await createCliBbSdk(getUrl()).plugins.listings.list();
-        if (opts.json) return outputJson(opts, result);
+        if (outputJson(opts, result)) return;
         if (result.records.length === 0)
           console.log("No authored listing drafts.");
         for (const record of result.records) {
@@ -61,7 +61,7 @@ export function registerPluginListingCommands(
           pluginId: id,
           entry,
         });
-        if (opts.json) return outputJson(opts, record);
+        if (outputJson(opts, record)) return;
         console.log(`${record.pluginId}: ${record.lifecycle.status}`);
       }),
     );
@@ -81,7 +81,7 @@ export function registerPluginListingCommands(
             pluginId: id,
             pullRequestUrl,
           });
-          if (opts.json) return outputJson(opts, record);
+          if (outputJson(opts, record)) return;
           console.log(`${record.pluginId}: ${record.lifecycle.status}`);
         },
       ),
@@ -96,7 +96,7 @@ export function registerPluginListingCommands(
         const consumed = await createCliBbSdk(
           getUrl(),
         ).plugins.listings.consumeNotice({ noticeId });
-        if (opts.json) return outputJson(opts, { consumed });
+        if (outputJson(opts, { consumed })) return;
         console.log(
           consumed
             ? "Notice acknowledged."

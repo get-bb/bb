@@ -129,7 +129,7 @@ export function PluginMarketplaceSource({
       >
         {entry.repositoryUrl.startsWith("https://github.com/") ? (
           <Icon
-            name="GithubFilled"
+            name="GithubLogo"
             className="size-4.5 shrink-0 fill-current [&_*]:stroke-0"
             aria-hidden
           />

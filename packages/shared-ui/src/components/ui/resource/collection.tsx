@@ -177,7 +177,10 @@ export function ResourceCollectionViewport({
         viewportRef={viewportRef}
         viewportProps={{
           id: scrollId,
-          className: cn("overscroll-contain pr-3", contentClassName),
+          className: cn(
+            "overscroll-contain pr-3 [&>div]:!block [&>div]:w-full",
+            contentClassName,
+          ),
           "data-resource-collection-scroll": true,
         }}
       >

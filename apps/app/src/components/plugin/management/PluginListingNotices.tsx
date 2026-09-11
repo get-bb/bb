@@ -1,10 +1,8 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { ResourceActionButton } from "@bb/shared-ui/resource-list";
 import { PluginBannerBar } from "@/components/tools/plugin-detail-banner";
-import {
-  usePluginListings,
-  pluginListingsQueryKey,
-} from "@/hooks/queries/plugin-listing-queries";
+import { usePluginListings } from "@/hooks/queries/plugin-listing-queries";
+import { invalidatePluginListings } from "@/hooks/cache-owners/plugin-cache-owner";
 import { createPluginsClient } from "@/hooks/queries/plugin-client";
 
 export function PluginListingNotices() {
@@ -13,8 +11,7 @@ export function PluginListingNotices() {
   const acknowledge = useMutation({
     mutationFn: (noticeId: string) =>
       createPluginsClient(fetch).listings.consumeNotice({ noticeId }),
-    onSuccess: () =>
-      queryClient.invalidateQueries({ queryKey: pluginListingsQueryKey() }),
+    onSuccess: () => invalidatePluginListings({ queryClient }),
   });
   return (
     <>

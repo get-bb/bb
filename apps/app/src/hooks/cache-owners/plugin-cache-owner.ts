@@ -8,6 +8,7 @@ import {
   allPluginCatalogSearchQueryKeyPrefix,
   allPluginListQueryKeyPrefix,
   pluginListQueryKey,
+  pluginListingsQueryKey,
   pluginMarketplacesQueryKey,
   pluginSettingsViewQueryKey,
 } from "../queries/query-keys";
@@ -49,6 +50,14 @@ export function invalidatePluginList(args: {
 }): Promise<void> {
   return args.queryClient.invalidateQueries({
     queryKey: allPluginListQueryKeyPrefix(),
+  });
+}
+
+export function invalidatePluginListings(args: {
+  queryClient: QueryClient;
+}): Promise<void> {
+  return args.queryClient.invalidateQueries({
+    queryKey: pluginListingsQueryKey(),
   });
 }
 

@@ -836,9 +836,11 @@ describe("BB Official plugin detail routing", () => {
       fireEvent.click(pluginButton);
     }
 
-    const relatedPluginButton = await screen.findByRole("button", {
-      name: "Open Automations details",
-    });
+    const relatedPluginButton = (
+      await screen.findAllByRole("button", {
+        name: "Open Automations details",
+      })
+    )[0]!;
     expect(screen.getAllByText("GitHub", { selector: "h1" })).toHaveLength(1);
     fireEvent.click(relatedPluginButton);
     await waitFor(() => {

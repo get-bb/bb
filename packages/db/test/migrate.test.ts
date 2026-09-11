@@ -11,6 +11,9 @@ import {
   createProject,
   getAppKeybindingOverrides,
   getAppSettings,
+  getInstalledPlugin,
+  listPluginListingNotices,
+  listPluginListings,
   migrate,
   noopNotifier,
   upsertHost,
@@ -312,6 +315,11 @@ function dropThreadConversationOutlinesTable(db: DbConnection): void {
   db.$client.prepare("DROP TABLE IF EXISTS thread_conversation_outlines").run();
 }
 
+function dropPluginListingTables(db: DbConnection): void {
+  db.$client.prepare("DROP TABLE IF EXISTS plugin_listing_notices").run();
+  db.$client.prepare("DROP TABLE IF EXISTS plugin_listings").run();
+}
+
 function dropRewindAddedTables(db: DbConnection): void {
   rewindEnvironmentRowFactsMigration(db);
   rewindEnvironmentProvidersMigration(db);
@@ -423,6 +431,8 @@ const pendingInteractionsMigrationWhen = 1783626227375;
 const permissionModesMigrationWhen = 1784311522462;
 const branchLocalThreadTabsMigrationWhen = 1783633750817;
 const eventParentToolCallMigrationWhen = 1787181956957;
+const environmentStartupOwnershipMigrationWhen = 1789075667774;
+const pluginListingMigrationWhen = 1789138925560;
 const eventParentToolCallPreJsonValidMigrationHash =
   "79d39e7b68d1db8ba02614fe4cc227cc0c154d77c7183f2e37ed2d8475412993";
 const eventLargeValuesPreOptimizationHash =
@@ -728,6 +738,7 @@ function dropMarketplaceStatsColumn(db: DbConnection): void {
  * 0108's, so the replay recreates the table before 0110 drops it again.
  */
 function rewindEnvironmentProvisioningMigration(db: DbConnection): void {
+  dropPluginListingTables(db);
   const columns = db.$client
     .prepare<[], TableInfoRow>("PRAGMA table_info(environments)")
     .all();
@@ -1612,6 +1623,45 @@ function deleteDeferredCleanupMigrationRows(db: DbConnection): void {
 describe("migrate", () => {
   beforeAll(() => {
     prepareMigratedConnectionTemplate();
+  });
+
+  it("adds authored listing storage without claiming or changing installed local plugins", () => {
+    const db = createMigratedConnection();
+
+    try {
+      dropPluginListingTables(db);
+      db.$client
+        .prepare<[number]>(
+          "DELETE FROM __drizzle_migrations WHERE created_at >= ?",
+        )
+        .run(pluginListingMigrationWhen);
+      db.$client.exec(`
+        INSERT INTO plugins (
+          id, source, provenance, source_kind, source_path, root_dir,
+          version, enabled, installed_at, updated_at
+        ) VALUES (
+          'third-party-local', 'path:/plugins/third-party-local', 'direct',
+          'path', '/plugins/third-party-local', '/plugins/third-party-local',
+          '1.2.3', 1, 1000, 2000
+        );
+      `);
+      const installed = getInstalledPlugin(db, "third-party-local");
+      expect(installed).toBeDefined();
+
+      migrate(db);
+      migrate(db);
+
+      expect(getInstalledPlugin(db, "third-party-local")).toEqual(installed);
+      expect(listPluginListings(db)).toEqual([]);
+      expect(listPluginListingNotices(db)).toEqual([]);
+      expect(
+        readAppliedMigrationCreatedAts(db).filter(
+          (createdAt) => createdAt === pluginListingMigrationWhen,
+        ),
+      ).toHaveLength(1);
+    } finally {
+      closeConnection(db);
+    }
   });
 
   it("adds retained outputs without rewriting events", () => {
@@ -5970,9 +6020,11 @@ describe("environment and thread startup ownership migration", () => {
           "utf8",
         ).split("--> statement-breakpoint")[0]!;
         db.$client.exec(legacySchema);
-        db.$client.exec(
-          "DELETE FROM __drizzle_migrations WHERE created_at = (SELECT MAX(created_at) FROM __drizzle_migrations)",
-        );
+        db.$client
+          .prepare<[number]>(
+            "DELETE FROM __drizzle_migrations WHERE created_at >= ?",
+          )
+          .run(environmentStartupOwnershipMigrationWhen);
         db.$client.exec(`
         INSERT INTO hosts (id, name, type, created_at, updated_at) VALUES ('host_ownership', 'test', 'persistent', 1, 1);
         INSERT INTO projects (id, name, created_at, updated_at) VALUES ('proj_ownership', 'test', 1, 1);

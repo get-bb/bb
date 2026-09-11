@@ -157,12 +157,12 @@ function renderPlugin(
 }
 
 describe("Plugin detail recipe", () => {
-  it("omits Capabilities when the plugin has no capability rows", () => {
+  it("omits Includes when the plugin has no capability rows", () => {
     const { container } = renderPlugin(PLUGIN);
 
     expect(renderedRecipe(container)).toEqual([
-      ["overview", ""],
-      ["release", "Release"],
+      ["overview", "About"],
+      ["release", "Details"],
     ]);
   });
 
@@ -183,8 +183,8 @@ describe("Plugin detail recipe", () => {
     });
 
     expect(renderedRecipe(container)).toEqual([
-      ["overview", ""],
-      ["release", "Release"],
+      ["overview", "About"],
+      ["release", "Details"],
       ["activity", "Background services"],
       ["activity", "Scheduled jobs"],
     ]);
@@ -197,8 +197,8 @@ describe("Plugin detail recipe", () => {
     });
 
     expect(renderedRecipe(container)).toEqual([
-      ["overview", ""],
-      ["release", "Release"],
+      ["overview", "About"],
+      ["release", "Details"],
       ["activity", "Background services"],
     ]);
   });
@@ -296,7 +296,7 @@ describe("Plugin detail recipe", () => {
     expect(container.textContent).toContain(description);
   });
 
-  it("keeps browser-registered app surfaces in Capabilities", () => {
+  it("keeps browser-registered app surfaces in Includes", () => {
     setPluginSlotRegistrations(
       "github",
       makePluginRegistrationSet({
@@ -431,10 +431,16 @@ describe("Plugin detail recipe", () => {
         href,
       );
     }
-    expect(renderedRecipe(container)).toContainEqual([
-      "configuration",
-      "Configuration",
+    expect(renderedRecipe(container)).toEqual([
+      ["overview", "About"],
+      ["includes", "Includes"],
+      ["release", "Details"],
     ]);
+    expect(
+      screen
+        .getByRole("button", { name: "Configure" })
+        .closest("[data-resource-detail-section]"),
+    ).toBeNull();
     expect(screen.getAllByRole("link", { name: "Settings" })).toHaveLength(1);
     expect(screen.queryByRole("link", { name: "Inspect issue" })).toBeNull();
     expect(screen.queryByRole("link", { name: "Sync status" })).toBeNull();
@@ -475,12 +481,12 @@ describe("Plugin detail recipe", () => {
 
     expect(renderedRecipe(container)).not.toContainEqual([
       "includes",
-      "Capabilities",
+      "Includes",
     ]);
     expect(screen.queryByText("Frontend app")).toBeNull();
   });
 
-  it("hides the entire Capabilities section for a disabled plugin", () => {
+  it("hides the entire Includes section for a disabled plugin", () => {
     const { container } = renderPlugin({
       ...PLUGIN,
       enabled: false,
@@ -497,7 +503,7 @@ describe("Plugin detail recipe", () => {
 
     expect(renderedRecipe(container)).not.toContainEqual([
       "includes",
-      "Capabilities",
+      "Includes",
     ]);
     expect(screen.queryByText("GitHub Dark")).toBeNull();
     expect(
@@ -507,7 +513,7 @@ describe("Plugin detail recipe", () => {
     ).toBeNull();
   });
 
-  it("keeps the Capabilities section for an enabled plugin", () => {
+  it("keeps the Includes section for an enabled plugin", () => {
     const { container } = renderPlugin({
       ...PLUGIN,
       capabilities: [
@@ -520,10 +526,7 @@ describe("Plugin detail recipe", () => {
       ],
     });
 
-    expect(renderedRecipe(container)).toContainEqual([
-      "includes",
-      "Capabilities",
-    ]);
+    expect(renderedRecipe(container)).toContainEqual(["includes", "Includes"]);
     expect(screen.getByText("GitHub Dark")).toBeTruthy();
   });
 
@@ -546,7 +549,7 @@ describe("Plugin detail recipe", () => {
     expect(screen.queryByText(/commands, settings, agent tools/)).toBeNull();
   });
 
-  it("omits Capabilities when an enabled plugin is not running and has no static rows", () => {
+  it("omits Includes when an enabled plugin is not running and has no static rows", () => {
     const { container } = renderPlugin({
       ...PLUGIN,
       enabled: true,
@@ -554,11 +557,11 @@ describe("Plugin detail recipe", () => {
     });
 
     expect(renderedRecipe(container).map(([, label]) => label)).not.toContain(
-      "Capabilities",
+      "Includes",
     );
   });
 
-  it("omits Capabilities when a disabled plugin has no static rows", () => {
+  it("omits Includes when a disabled plugin has no static rows", () => {
     const { container } = renderPlugin({
       ...PLUGIN,
       enabled: false,
@@ -566,7 +569,7 @@ describe("Plugin detail recipe", () => {
     });
 
     expect(renderedRecipe(container).map(([, label]) => label)).not.toContain(
-      "Capabilities",
+      "Includes",
     );
   });
 });
