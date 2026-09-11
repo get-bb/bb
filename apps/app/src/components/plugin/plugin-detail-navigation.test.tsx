@@ -1,5 +1,7 @@
 // @vitest-environment jsdom
 import { act, cleanup, render, screen } from "@testing-library/react";
+import { useState } from "react";
+import { arrayMove } from "@bb/client-core";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { ThreadSecondaryPanelProps } from "@/components/secondary-panel/ThreadSecondaryPanel";
 import {
@@ -39,8 +41,14 @@ const baseProps: ThreadSecondaryPanelProps = {
   renderAsDrawer: false,
 };
 
-function PanelProbe({ id }: { id: string }) {
-  const props = usePluginDetailPanelProps(baseProps);
+function PanelProbe({
+  id,
+  input = baseProps,
+}: {
+  id: string;
+  input?: ThreadSecondaryPanelProps;
+}) {
+  const props = usePluginDetailPanelProps(input);
   return (
     <div
       data-testid={id}
@@ -61,10 +69,48 @@ function PanelProbe({ id }: { id: string }) {
           >
             Move {tab.label} left
           </button>
+          <button
+            onClick={() =>
+              props.onTabReorder({
+                activeTabId: tab.tab.id,
+                overTabId: props.tabs[0].tab.id,
+              })
+            }
+          >
+            Move {tab.label} first
+          </button>
         </div>
       ))}
       <button onClick={props.onClose}>Hide panel</button>
     </div>
+  );
+}
+
+function ReorderingWorkspace() {
+  const state = usePluginDetailPanelState("reordering", true);
+  const [tabs, setTabs] = useState([
+    baseProps.tabs[0],
+    {
+      ...baseProps.tabs[0],
+      label: "Another tab",
+      tab: { id: "new-tab:another", kind: "new-tab" as const },
+    },
+  ]);
+  return (
+    <PluginDetailPanelContext.Provider value={state}>
+      <PanelProbe
+        id="reordering"
+        input={{
+          ...baseProps,
+          tabs,
+          onTabReorder: ({ activeTabId, overTabId }) => {
+            const from = tabs.findIndex((tab) => tab.tab.id === activeTabId);
+            const to = tabs.findIndex((tab) => tab.tab.id === overTabId);
+            if (from !== -1 && to !== -1) setTabs(arrayMove(tabs, from, to));
+          },
+        }}
+      />
+    </PluginDetailPanelContext.Provider>
   );
 }
 
@@ -91,6 +137,32 @@ afterEach(() => {
 });
 
 describe("plugin details in the active workspace", () => {
+  it("preserves ordinary tab order after dragging across details and closing them", () => {
+    render(<ReorderingWorkspace />);
+    act(() =>
+      openPluginDetailsInWorkspace({ pluginId: "docs", title: "Docs" }),
+    );
+    act(() => screen.getByRole("button", { name: "Move Docs first" }).click());
+    act(() =>
+      screen.getByRole("button", { name: "Move Another tab first" }).click(),
+    );
+    expect(
+      screen
+        .getAllByRole("button", { name: /^Move .* left$/ })
+        .map((button) => button.textContent),
+    ).toEqual([
+      "Move Another tab left",
+      "Move Docs left",
+      "Move Existing tab left",
+    ]);
+    act(() => screen.getByRole("button", { name: "Close Docs" }).click());
+    expect(
+      screen
+        .getAllByRole("button", { name: /^Move .* left$/ })
+        .map((button) => button.textContent),
+    ).toEqual(["Move Another tab left", "Move Existing tab left"]);
+  });
+
   it("retains detail-tab drag order among details and across existing tabs", () => {
     const view = render(<Workspace id="workspace" focused />);
     act(() =>

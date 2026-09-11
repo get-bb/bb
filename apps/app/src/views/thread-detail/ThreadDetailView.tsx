@@ -1686,6 +1686,10 @@ function ThreadDetailViewInternal(props: ThreadRoutePathArgs) {
     [closeTerminal, removeFixedTerminalTab, threadId],
   );
   const handleCloseWindowRequest = useCallback(() => {
+    if (pluginDetails.activePluginId !== null) {
+      pluginDetails.close(pluginDetails.activePluginId);
+      return true;
+    }
     if (!isSecondaryPanelOpen) {
       return false;
     }
@@ -1708,6 +1712,7 @@ function ThreadDetailViewInternal(props: ThreadRoutePathArgs) {
     closeTab,
     handleCloseTerminalTab,
     isSecondaryPanelOpen,
+    pluginDetails,
   ]);
   useAppCommandHandler("panel.toggle", () => {
     if (!isFocused) return false;

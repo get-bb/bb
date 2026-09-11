@@ -112,6 +112,7 @@ import {
 } from "@/components/ui/context-selection";
 import { PaneMaximizeButton } from "./PaneMaximizeButton";
 import { wsManager } from "@/lib/ws";
+import { PluginDetailOpenerBoundary } from "@/components/plugin/plugin-detail-opener";
 
 const LazyPluginPanelRightPanelHost = lazy(() =>
   import("@/components/plugin/PluginPanelRightPanelHost").then(
@@ -144,16 +145,18 @@ function PluginPagePanelHost({
   pluginId: string;
   subPath: string;
 }) {
+  const pane = useOptionalPaneContext();
   return (
-    <Suspense fallback={null}>
-      <LazyPluginPanelRightPanelHost
-        key={`${props.pluginId}/${props.panelPath}`}
-        {...props}
-        pluginDetailTabsEnabled
-      >
-        {children}
-      </LazyPluginPanelRightPanelHost>
-    </Suspense>
+    <PluginDetailOpenerBoundary
+      key={`${props.pluginId}/${props.panelPath}`}
+      isFocused={pane?.isFocused ?? true}
+    >
+      <Suspense fallback={null}>
+        <LazyPluginPanelRightPanelHost {...props} pluginDetailTabsEnabled>
+          {children}
+        </LazyPluginPanelRightPanelHost>
+      </Suspense>
+    </PluginDetailOpenerBoundary>
   );
 }
 

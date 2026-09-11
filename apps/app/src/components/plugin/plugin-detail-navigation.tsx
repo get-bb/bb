@@ -11,6 +11,9 @@ import {
   type Key,
 } from "react";
 import { PluginIcon } from "./PluginIcon";
+import { arrayMove } from "@bb/client-core";
+import { arrangeByStoredOrder } from "@/lib/stored-order";
+import type { SecondaryPanelRenderableTab } from "@/components/secondary-panel/ThreadSecondaryPanel";
 import type { ThreadSecondaryPanelProps } from "@/components/secondary-panel/ThreadSecondaryPanel";
 import { SecondaryPanelContentSkeleton } from "@/components/secondary-panel/lazySecondaryPanelComponents";
 import {
@@ -39,6 +42,8 @@ interface PluginDetailPanelState {
   dismiss: () => void;
   close: (pluginId: string) => void;
   open: PluginDetailOpener;
+  tabOrder: readonly string[];
+  setTabOrder: (order: string[]) => void;
 }
 
 export const PluginDetailPanelContext =
@@ -49,11 +54,23 @@ export function usePluginDetailPanelState(resetKey: Key, isFocused: boolean) {
     [],
   );
   const [activePluginId, setActivePluginId] = useState<string | null>(null);
+  const [tabOrder, setTabOrder] = useState<string[]>([]);
+  const orderedDestinations = useMemo(
+    () =>
+      arrangeByStoredOrder({
+        items: destinations,
+        getId: (destination) => `marketplace-plugin:${destination.pluginId}`,
+        storedOrder: tabOrder,
+      }).ordered,
+    [destinations, tabOrder],
+  );
   useLayoutEffect(() => {
     // oxlint-disable-next-line react/set-state-in-effect
     setDestinations([]);
     // oxlint-disable-next-line react/set-state-in-effect
     setActivePluginId(null);
+    // oxlint-disable-next-line react/set-state-in-effect
+    setTabOrder([]);
   }, [resetKey]);
   const dismiss = useCallback(() => setActivePluginId(null), []);
   const open = useCallback<PluginDetailOpener>((destination) => {
@@ -67,25 +84,36 @@ export function usePluginDetailPanelState(resetKey: Key, isFocused: boolean) {
   }, []);
   const close = useCallback(
     (pluginId: string) => {
-      const index = destinations.findIndex(
+      const index = orderedDestinations.findIndex(
         (entry) => entry.pluginId === pluginId,
       );
-      const remaining = destinations.filter(
+      const remaining = orderedDestinations.filter(
         (entry) => entry.pluginId !== pluginId,
       );
       setDestinations(remaining);
+      setTabOrder((current) =>
+        current.filter((id) => id !== `marketplace-plugin:${pluginId}`),
+      );
       if (activePluginId === pluginId) {
         setActivePluginId(
           remaining[Math.min(index, remaining.length - 1)]?.pluginId ?? null,
         );
       }
     },
-    [activePluginId, destinations],
+    [activePluginId, orderedDestinations],
   );
   usePublishPluginDetailOpener(open, isFocused);
   return useMemo(
-    () => ({ activePluginId, destinations, dismiss, close, open }),
-    [activePluginId, destinations, dismiss, close, open],
+    () => ({
+      activePluginId,
+      destinations: orderedDestinations,
+      dismiss,
+      close,
+      open,
+      tabOrder,
+      setTabOrder,
+    }),
+    [activePluginId, orderedDestinations, dismiss, close, open, tabOrder],
   );
 }
 
@@ -106,25 +134,8 @@ export function usePluginDetailPanelProps(
     details.dismiss();
     select();
   };
-  return {
-    ...props,
-    activeTab:
-      active === null
-        ? props.activeTab
-        : {
-            id: `marketplace-plugin:${active}`,
-            kind: "marketplace-plugin-detail",
-          },
-    isOpen: active !== null || props.isOpen,
-    splitPanelStateId: active === null ? props.splitPanelStateId : undefined,
-    onClose: selectExisting(props.onClose),
-    onCollapse: selectExisting(props.onCollapse),
-    onOpenNewTab: selectExisting(props.onOpenNewTab),
-    fixedTabs: props.fixedTabs.map((tab) => ({
-      ...tab,
-      onSelect: selectExisting(tab.onSelect),
-    })),
-    tabs: [
+  const { ordered: tabs } = arrangeByStoredOrder<SecondaryPanelRenderableTab>({
+    items: [
       ...props.tabs.map((tab) => ({
         ...tab,
         onSelect: selectExisting(tab.onSelect),
@@ -151,5 +162,44 @@ export function usePluginDetailPanelProps(
         },
       })),
     ],
+    getId: (tab) => tab.tab.id,
+    storedOrder: details.tabOrder,
+  });
+  return {
+    ...props,
+    activeTab:
+      active === null
+        ? props.activeTab
+        : {
+            id: `marketplace-plugin:${active}`,
+            kind: "marketplace-plugin-detail",
+          },
+    isOpen: active !== null || props.isOpen,
+    splitPanelStateId: active === null ? props.splitPanelStateId : undefined,
+    onClose: selectExisting(props.onClose),
+    onCollapse: selectExisting(props.onCollapse),
+    onOpenNewTab: selectExisting(props.onOpenNewTab),
+    fixedTabs: props.fixedTabs.map((tab) => ({
+      ...tab,
+      onSelect: selectExisting(tab.onSelect),
+    })),
+    tabs,
+    onTabReorder: ({ activeTabId, overTabId }) => {
+      const ids = tabs.map((tab) => tab.tab.id);
+      const from = ids.indexOf(activeTabId);
+      const to = ids.indexOf(overTabId);
+      if (from === -1 || to === -1 || from === to) return;
+      const nextOrder = arrayMove(ids, from, to);
+      details.setTabOrder(nextOrder);
+      const existingIds = new Set(props.tabs.map((tab) => tab.tab.id));
+      if (!existingIds.has(activeTabId)) return;
+      const nextIndex = nextOrder
+        .filter((id) => existingIds.has(id))
+        .indexOf(activeTabId);
+      const existingTarget = props.tabs[nextIndex];
+      if (existingTarget !== undefined) {
+        props.onTabReorder({ activeTabId, overTabId: existingTarget.tab.id });
+      }
+    },
   };
 }

@@ -427,7 +427,7 @@ export function PluginPanelRightPanelHost({
   }, []);
   const openPluginDetail = useCallback(
     (nextPluginId: string) => {
-      if (!pluginDetailTabsEnabled || panel === null) return false;
+      if (!pluginDetailTabsEnabled) return false;
       setOpenedPluginIds((current) =>
         current.includes(nextPluginId) ? current : [...current, nextPluginId],
       );
@@ -436,7 +436,7 @@ export function PluginPanelRightPanelHost({
       revealPanel();
       return true;
     },
-    [panel, pluginDetailTabsEnabled, revealPanel],
+    [pluginDetailTabsEnabled, revealPanel],
   );
   const targetStore = useStore();
   const fixedTabOwnerId = getPluginFixedTabOwnerId(
