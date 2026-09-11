@@ -955,7 +955,7 @@ function renderMarkdownImage({
       {...imageAttributes}
       src={imageUrl}
       alt={typeof alt === "string" ? alt : "Image"}
-      className="my-2 max-h-96 max-w-full cursor-zoom-in object-contain"
+      className="my-2 max-h-[max(384px,50vh)] max-w-full cursor-zoom-in object-contain"
       loading="lazy"
       onClick={() => setExpandedImageUrl(imageUrl)}
     />
