@@ -11,7 +11,7 @@ import {
   type CommandRegistrar,
 } from "../helpers/command-output-harness.js";
 import { makeThread } from "../helpers/command-output-fixtures.js";
-import { registerDraftCommands } from "../../commands/draft.js";
+import { registerDraftCommands } from "../../commands/thread/draft.js";
 
 const draft = draftSchema.parse({
   id: "drf_cli_roundtrip",
@@ -42,11 +42,11 @@ const draft = draftSchema.parse({
   },
 });
 
-describe("bb draft commands", () => {
+describe("bb thread draft commands", () => {
   setupCommandOutputTestEnvironment();
 
   const register: CommandRegistrar = (program) =>
-    registerDraftCommands(program, () => "http://server");
+    registerDraftCommands(program.command("thread"), () => "http://server");
 
   it("prints complete generated and caller-supplied identities for reuse", async () => {
     const ids = [
@@ -59,7 +59,7 @@ describe("bb draft commands", () => {
         nextOffset: null,
       })),
     });
-    await runCommand(["draft", "list"], register);
+    await runCommand(["thread", "draft", "list"], register);
     const output = collectLogLines(vi.mocked(console.log)).join("\n");
     for (const id of ids) expect(output).toContain(id);
   });
@@ -72,7 +72,16 @@ describe("bb draft commands", () => {
       const file = join(directory, "content.json");
       await writeFile(file, JSON.stringify(draft.content));
       await runCommand(
-        ["draft", "create", "--id", draft.id, "--content-file", file, "--json"],
+        [
+          "thread",
+          "draft",
+          "create",
+          "--id",
+          draft.id,
+          "--content-file",
+          file,
+          "--json",
+        ],
         register,
       );
     } finally {
@@ -91,7 +100,7 @@ describe("bb draft commands", () => {
     const post = vi.fn(async () => ({ id: draft.id, draft: null }));
     stubServerApi({ "v1.drafts.$post": post });
     await runCommand(
-      ["draft", "create", "--id", draft.id, "--text", "Retry"],
+      ["thread", "draft", "create", "--id", draft.id, "--text", "Retry"],
       register,
     );
     expect(collectLogLines(vi.mocked(console.log))).toEqual([
@@ -106,7 +115,14 @@ describe("bb draft commands", () => {
       program.configureOutput({ writeErr: vi.fn() });
       register(program);
       await expect(
-        program.parseAsync(["node", "bb", "draft", command, draft.id]),
+        program.parseAsync([
+          "node",
+          "bb",
+          "thread",
+          "draft",
+          command,
+          draft.id,
+        ]),
       ).rejects.toMatchObject({
         code: "commander.missingMandatoryOptionValue",
       });
@@ -125,6 +141,7 @@ describe("bb draft commands", () => {
 
     await runCommand(
       [
+        "thread",
         "draft",
         "update",
         draft.id,
@@ -152,6 +169,7 @@ describe("bb draft commands", () => {
     await expect(
       runCommand(
         [
+          "thread",
           "draft",
           "update",
           draft.id,
@@ -197,6 +215,7 @@ describe("bb draft commands", () => {
     await expect(
       runCommand(
         [
+          "thread",
           "draft",
           "update",
           draft.id,
@@ -225,6 +244,7 @@ describe("bb draft commands", () => {
       await writeFile(file, JSON.stringify(content));
       await runCommand(
         [
+          "thread",
           "draft",
           "update",
           draft.id,
@@ -256,6 +276,7 @@ describe("bb draft commands", () => {
     await expect(
       runCommand(
         [
+          "thread",
           "draft",
           "update",
           draft.id,
@@ -278,6 +299,7 @@ describe("bb draft commands", () => {
     stubServerApi({ "v1.drafts.$get": get });
     await runCommand(
       [
+        "thread",
         "draft",
         "list",
         "--project",
@@ -315,7 +337,14 @@ describe("bb draft commands", () => {
       stubServerApi({ "v1.drafts.:id.submit.$post": post });
       await expect(
         runCommand(
-          ["draft", "submit", draft.id, "--expected-revision", revision],
+          [
+            "thread",
+            "draft",
+            "submit",
+            draft.id,
+            "--expected-revision",
+            revision,
+          ],
           register,
         ),
       ).rejects.toThrow("process.exit:1");
@@ -336,7 +365,15 @@ describe("bb draft commands", () => {
     const post = vi.fn(async () => ({ thread, draft: newer }));
     stubServerApi({ "v1.drafts.:id.submit.$post": post });
     await runCommand(
-      ["draft", "submit", draft.id, "--expected-revision", "4", "--json"],
+      [
+        "thread",
+        "draft",
+        "submit",
+        draft.id,
+        "--expected-revision",
+        "4",
+        "--json",
+      ],
       register,
     );
     expect(post).toHaveBeenCalledWith({
@@ -354,6 +391,7 @@ describe("bb draft commands", () => {
     stubServerApi({ "v1.drafts.:id.$delete": remove });
     await runCommand(
       [
+        "thread",
         "draft",
         "delete",
         draft.id,

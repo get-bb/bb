@@ -46,7 +46,7 @@ BB_HOST_DAEMON_PORT only for an intentional non-default target.
 
 - Resolve names and IDs with a list or show command before mutation.
 - Pass an explicit project when a command can act across projects.
-- Manage saved prompts through `bb draft` even with the app closed. Read the
+- Manage saved prompts through `bb thread draft` even with the app closed. Read the
   current revision before update/delete/submit, and pass --expected-revision.
   Use --content-file for full composer content and mention-safe text edits.
 - Pass an environment or machine selector when the default host is uncertain.

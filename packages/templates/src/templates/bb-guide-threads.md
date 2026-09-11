@@ -11,16 +11,16 @@ Every command supports --json for machine-readable output.
 
 Saved drafts:
 
-  bb draft create [--text <text>] [--project <id>] [--section <id>]
+  bb thread draft create [--text <text>] [--project <id>] [--section <id>]
                   [--content-file <path>] [--id <draft-id>]
-  bb draft list [--project <id>] [--query <text>] [--include-empty]
+  bb thread draft list [--project <id>] [--query <text>] [--include-empty]
                 [--limit <number>] [--offset <number>]
-  bb draft show <draft-id>                 (alias: bb draft get)
-  bb draft update <draft-id> --expected-revision <number>
+  bb thread draft show <draft-id>                 (alias: bb thread draft get)
+  bb thread draft update <draft-id> --expected-revision <number>
                   [--text <text>] [--project <id>] [--section <id>]
                   [--content-file <path>]
-  bb draft delete <draft-id> --expected-revision <number> [--yes]
-  bb draft submit <draft-id> --expected-revision <number>
+  bb thread draft delete <draft-id> --expected-revision <number> [--yes]
+  bb thread draft submit <draft-id> --expected-revision <number>
 
   Drafts persist prompt text, mentions, uploaded attachment references, project,
   section and composer choices on the server. All these operations work with
@@ -43,9 +43,9 @@ Saved drafts:
 
   To edit every field, extract the content object (not the complete draft):
 
-    bb draft show <draft-id> --json > draft.json
+    bb thread draft show <draft-id> --json > draft.json
     jq '.content' draft.json > content.json
-    bb draft update <draft-id> --expected-revision <revision-from-draft.json> --content-file content.json
+    bb thread draft update <draft-id> --expected-revision <revision-from-draft.json> --content-file content.json
 
   content.json has projectId, sectionId, prompt {text, mentions, attachments},
   and options {providerId, model, reasoningLevel, serviceTier, permissionMode,
@@ -70,7 +70,7 @@ Saved drafts:
   ID operations, expectedRevision for mutations, and content for create/update.
   list accepts projectId, query, includeEmpty (boolean), limit and offset
   (numbers); list/get accept signal. SDK submit defaults origin to "sdk";
-  bb draft submit records origin "cli". The SDK exports Draft, DraftContent,
+  bb thread draft submit records origin "cli". The SDK exports Draft, DraftContent,
   DraftContentInput, DraftPrompt, DraftOptions and each operation's args/results.
 
 Spawning:

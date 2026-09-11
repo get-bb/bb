@@ -1,14 +1,14 @@
 import { readFile } from "node:fs/promises";
 import { Command } from "commander";
 import { draftContentSchema, type DraftContent } from "@bb/server-contract";
-import { action } from "../action.js";
-import { createCliBbSdk } from "../client.js";
-import { renderBorderlessTable } from "../table.js";
+import { action } from "../../action.js";
+import { createCliBbSdk } from "../../client.js";
+import { renderBorderlessTable } from "../../table.js";
 import {
   confirmDestructiveAction,
   outputJson,
   type JsonOutputOptions,
-} from "./helpers.js";
+} from "../helpers.js";
 
 interface DraftContentOptions extends JsonOutputOptions {
   contentFile?: string;
