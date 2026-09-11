@@ -22,6 +22,8 @@ import type { SkillSummary } from "@bb/server-contract";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createQueryClientTestHarness } from "@/test/queryClientTestHarness";
 import { makeProviderInfo } from "@bb/test-helpers/domain-fixtures";
+import { RouteNavigationProvider } from "@/components/ui/app-route-anchor";
+import { parseDraftRouteId } from "@/lib/draft-route";
 import { sdk } from "@/lib/sdk";
 import {
   buildRegistrySkillReferencePrompt,
@@ -39,9 +41,16 @@ import {
 import { SkillsLibrary } from "../components/tools/SkillsLibrary";
 import { focusWithKeyboard } from "@/test/keyboard-focus";
 
+vi.mock("@/lib/drafts/resource-runtime", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/lib/drafts/resource-runtime")>()),
+  createNewThreadDraft: vi.fn(() => `drf_${crypto.randomUUID()}`),
+}));
+
 afterEach(() => {
   focusManager.setFocused(undefined);
   cleanup();
+  window.localStorage.clear();
+  window.sessionStorage.clear();
   vi.restoreAllMocks();
   vi.unstubAllGlobals();
 });
@@ -87,7 +96,10 @@ function requestPath(input: RequestInfo | URL): string {
 function LocationStateProbe() {
   const location = useLocation();
   return (
-    <output data-testid="location-state">
+    <output
+      data-testid="location-state"
+      data-draft-id={parseDraftRouteId(location.search) ?? undefined}
+    >
       {JSON.stringify(location.state)}
     </output>
   );
@@ -901,12 +913,14 @@ describe("SkillsLibrary registry detail lifecycle", () => {
       renderDom(
         <MemoryRouter initialEntries={[path]}>
           <QueryClientWrapper>
-            <Routes>
-              <Route path="/skills" element={<SkillsLibrary />} />
-              <Route path="/" element={<LocationStateProbe />} />
-            </Routes>
-            <NavigateButton to={`${path}?view=library`} label="go-library" />
-            <NavigateButton to={path} label="go-browse" />
+            <RouteNavigationProvider>
+              <Routes>
+                <Route path="/skills" element={<SkillsLibrary />} />
+                <Route path="/" element={<LocationStateProbe />} />
+              </Routes>
+              <NavigateButton to={`${path}?view=library`} label="go-library" />
+              <NavigateButton to={path} label="go-browse" />
+            </RouteNavigationProvider>
           </QueryClientWrapper>
         </MemoryRouter>,
       );
@@ -940,6 +954,7 @@ describe("SkillsLibrary registry detail lifecycle", () => {
       const state = JSON.parse(
         (await screen.findByTestId("location-state")).textContent ?? "null",
       );
+      expect(screen.getByTestId("location-state").dataset.draftId).toBeTruthy();
       expect(state).toEqual({
         focusPrompt: true,
         initialPrompt: buildRegistrySkillReferencePrompt(registrySkill),

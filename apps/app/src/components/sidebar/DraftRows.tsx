@@ -70,7 +70,6 @@ function DraftRow({
       to={getDraftRoutePath(draft.id)}
       aria-current={isSelected ? "page" : undefined}
       aria-label={`${title}, draft, ${projectName}${recoveryLabel ? `, ${recoveryLabel}` : ""}`}
-      title={`${title} — ${projectName}${recoveryLabel ? ` — ${recoveryLabel}` : ""}`}
       data-sidebar-draft-id={draft.id}
       onPointerDown={split.onPointerDown}
       onClick={(event) => {
@@ -98,7 +97,12 @@ function DraftRow({
         "pr-2 outline-none ring-sidebar-ring focus-visible:ring-2",
       )}
     >
-      <span className="min-w-0 flex-1 truncate">{title}</span>
+      <span
+        className="min-w-0 flex-1 truncate"
+        title={`${title} — ${projectName}${recoveryLabel ? ` — ${recoveryLabel}` : ""}`}
+      >
+        {title}
+      </span>
       {recoveryLabel ? (
         <span className="shrink-0 text-xs text-muted-foreground">
           {recoveryLabel}

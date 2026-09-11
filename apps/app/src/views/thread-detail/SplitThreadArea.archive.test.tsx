@@ -195,6 +195,7 @@ afterEach(() => {
   cleanup();
   pendingArchive = null;
   window.localStorage.clear();
+  window.sessionStorage.clear();
 });
 
 describe("SplitThreadArea archive pruning", () => {

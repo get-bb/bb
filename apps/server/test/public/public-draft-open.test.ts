@@ -89,7 +89,7 @@ describe("public draft open", () => {
       });
       expect(deletion.status).toBe(200);
       socket.messages.length = 0;
-      expect((await open(harness, id, {})).status).toBe(404);
+      expect((await open(harness, id, {})).status).toBe(410);
       expect(socket.messages).toHaveLength(0);
     });
   });

@@ -8,8 +8,10 @@ import {
   screen,
   waitFor,
 } from "@testing-library/react";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { MemoryRouter, useLocation, useNavigate } from "react-router-dom";
+import { RouteNavigationProvider } from "@/components/ui/app-route-anchor";
+import { parseDraftRouteId } from "./draft-route";
 import { PluginContext } from "@/components/plugin/plugin-context";
 import { SidebarHistoryNavigationControls } from "@/components/sidebar/SidebarHistoryNavigationControls";
 import { useBbNavigate } from "./plugin-sdk-hooks";
@@ -26,6 +28,11 @@ import {
   resetAppRouteHistoryForTest,
   useRouteStateHistoryNavigation,
 } from "./app-route-history";
+
+vi.mock("@/lib/drafts/resource-runtime", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/lib/drafts/resource-runtime")>()),
+  createNewThreadDraft: vi.fn(() => `drf_${crypto.randomUUID()}`),
+}));
 
 const TOOL_SKILL_DETAIL_ROUTE = getSkillDetailRoutePath({
   skillId: "skill_review_loop",
@@ -113,7 +120,12 @@ function PluginNavigationHarness() {
 
   return (
     <div>
-      <div data-testid="path">{location.pathname}</div>
+      <div
+        data-testid="path"
+        data-draft-id={parseDraftRouteId(location.search) ?? undefined}
+      >
+        {location.pathname}
+      </div>
       <button type="button" onClick={() => navigate(detailPath)}>
         Open detail
       </button>
@@ -172,9 +184,11 @@ function RemountablePluginNavigationHarness() {
       <button type="button" onClick={() => setMountKey((value) => value + 1)}>
         Remount plugin
       </button>
-      <PluginContext.Provider value={AUTOMATIONS_PLUGIN_ID}>
-        <PluginNavigationHarness key={mountKey} />
-      </PluginContext.Provider>
+      <RouteNavigationProvider>
+        <PluginContext.Provider value={AUTOMATIONS_PLUGIN_ID}>
+          <PluginNavigationHarness key={mountKey} />
+        </PluginContext.Provider>
+      </RouteNavigationProvider>
     </>
   );
 }
@@ -202,6 +216,8 @@ describe("useRouteStateHistoryNavigation", () => {
   afterEach(() => {
     cleanup();
     resetAppRouteHistoryForTest();
+    window.localStorage.clear();
+    window.sessionStorage.clear();
   });
 
   it("keeps the stack when the controls remount across sidebar layouts", async () => {
@@ -296,12 +312,16 @@ describe("useRouteStateHistoryNavigation", () => {
     await clickAndExpectPath("Edit from detail", editPath);
     await clickAndExpectPath("Remount plugin", editPath);
     await clickAndExpectPath("Redirect edit to compose", "/");
+    const firstDraftId = screen.getByTestId("path").dataset.draftId;
+    expect(firstDraftId).toBeTruthy();
     await clickAndExpectPath("Native back", detailPath);
     await clickAndExpectPath("Native back", getAutomationsRoutePath());
 
     await clickAndExpectPath("Open direct edit", editPath);
     await clickAndExpectPath("Remount plugin", editPath);
     await clickAndExpectPath("Redirect edit to compose", "/");
+    expect(screen.getByTestId("path").dataset.draftId).toBeTruthy();
+    expect(screen.getByTestId("path").dataset.draftId).not.toBe(firstDraftId);
     await clickAndExpectPath("Native back", getAutomationsRoutePath());
   });
 

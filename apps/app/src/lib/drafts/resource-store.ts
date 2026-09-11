@@ -8,7 +8,10 @@ import {
   type DraftSubmitResponse,
 } from "@bb/server-contract";
 import { isPromptDraftEmpty } from "@bb/client-core";
-import { allDraftQueryKeyPrefix } from "@/hooks/queries/query-keys";
+import {
+  cacheDraftResource,
+  invalidateDraftLists,
+} from "@/hooks/cache-owners/draft-cache-owner";
 import { HttpError } from "../api";
 import {
   draftResourceQueryKey,
@@ -525,20 +528,9 @@ export class DraftResourceStore {
   }
 
   private async setRemote(id: string, draft: Draft | null): Promise<void> {
-    await this.queryClient.cancelQueries({
-      queryKey: draftResourceQueryKey(id),
-      exact: true,
-    });
-    const current = this.remote(id);
-    if (draft && current && current.revision > draft.revision) return;
-    this.queryClient.setQueryData<Draft | null>(
-      draftResourceQueryKey(id),
-      draft,
-    );
-    void this.queryClient.invalidateQueries({
-      queryKey: allDraftQueryKeyPrefix(),
-      predicate: (query) => query.queryKey[1] !== "detail",
-    });
+    if (await cacheDraftResource(this.queryClient, id, draft)) {
+      void invalidateDraftLists(this.queryClient);
+    }
   }
 
   private async save(entry: Entry, forDelete = false): Promise<Draft> {

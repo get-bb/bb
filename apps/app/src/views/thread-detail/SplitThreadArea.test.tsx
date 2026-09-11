@@ -2247,16 +2247,15 @@ describe("SplitThreadArea", () => {
     expect(screen.queryByTestId("pane-thr-b")).toBeNull();
   });
 
-  it("prunes a stale (archived) pane from a restored split", async () => {
+  it("retains an already archived pane from a restored split", async () => {
     threadStore.set("thr-b", { archivedAt: 123, deletedAt: null });
-    renderSplitArea({
+    const store = renderSplitArea({
       path: threadPath("thr-a"),
       layout: twoPaneLayout("pane-1"),
     });
 
-    await waitFor(() => {
-      expect(screen.queryByTestId("pane-thr-b")).toBeNull();
-    });
+    expect(await screen.findByTestId("pane-thr-b")).toBeTruthy();
+    expect(store.get(splitLayoutAtom)).toEqual(twoPaneLayout("pane-1"));
     expect(screen.getByTestId("pane-thr-a")).toBeTruthy();
     expect(screen.getByTestId("location").textContent).toBe(
       threadPath("thr-a"),

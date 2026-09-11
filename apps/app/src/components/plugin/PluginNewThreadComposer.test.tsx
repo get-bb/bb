@@ -39,6 +39,8 @@ import {
 import { encodeReuseValue } from "@/components/pickers/environment-picker-value";
 import { useRootComposeReuseEnvironment } from "@/lib/root-compose-selection";
 import { getPromptDraftAccessor } from "@/hooks/usePromptDraftStorage";
+import { getDraftResourceStore } from "@/lib/drafts/resource-runtime";
+import { parseDraftRouteId } from "@/lib/draft-route";
 import { buildThreadHandoffLocationState } from "@bb/client-core";
 import { makeThreadListEntry } from "@bb/test-helpers/domain-fixtures";
 import { makeProjectWithThreadsResponse } from "@/test/fixtures/projects";
@@ -1449,8 +1451,8 @@ describe("PluginNewThreadComposer seeding", () => {
     expect(mocks.promptBoxProps[0]?.modeConfig.environment.value).toBe(
       "provider:personal-workspace",
     );
-    expect(mocks.promptBoxProps[0]?.value).toBe("unrelated draft");
-    expect(mocks.promptBoxProps[0]?.attachments.items).toHaveLength(1);
+    expect(mocks.promptBoxProps[0]?.value).toBe("");
+    expect(mocks.promptBoxProps[0]?.attachments.items).toEqual([]);
     await waitFor(() => {
       expect(latestPromptBoxProps().value).toBe(
         "Continue from @thread:thr_source",
@@ -1512,7 +1514,13 @@ describe("PluginNewThreadComposer seeding", () => {
     await waitFor(() => {
       expect(router.state.location.state).toBeNull();
     });
-    expect(rootDraft.getCurrent().text).toBe("Create a kanban plugin");
+    expect(rootDraft.getCurrent().text).toBe("leftover draft");
+    const draftId = parseDraftRouteId(router.state.location.search);
+    expect(draftId).not.toBeNull();
+    expect(
+      getDraftResourceStore(queryClient).getSnapshot(draftId!).content?.prompt
+        .text,
+    ).toBe("Create a kanban plugin");
     const updateDepthErrors = consoleError.mock.calls.filter((call) =>
       call.some(
         (argument) =>

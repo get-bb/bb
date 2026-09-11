@@ -16,12 +16,20 @@ import {
   useNavigate,
 } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { CREATE_PLUGIN_PROMPT } from "@bb/client-core";
+import { RouteNavigationProvider } from "@/components/ui/app-route-anchor";
+import { parseDraftRouteId } from "@/lib/draft-route";
 import { focusManager } from "@tanstack/react-query";
 import { createQueryClientTestHarness } from "@/test/queryClientTestHarness";
 import { makeSystemConfig } from "@/test/fixtures/system-config";
 import { SidebarHistoryNavigationControls } from "@/components/sidebar/SidebarHistoryNavigationControls";
 import { resetAppRouteHistoryForTest } from "@/lib/app-route-history";
 import { PluginsOverview } from "./PluginsOverview";
+
+vi.mock("@/lib/drafts/resource-runtime", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/lib/drafts/resource-runtime")>()),
+  createNewThreadDraft: vi.fn(() => `drf_${crypto.randomUUID()}`),
+}));
 
 vi.mock("@/components/plugin/PluginNewThreadComposer", () => ({
   PluginNewThreadComposer: ({ initialPrompt }: { initialPrompt?: string }) => (
@@ -186,13 +194,28 @@ function installFetch(plugins: readonly unknown[] = [AUTOMATIONS_PLUGIN]) {
 }
 
 function LocationPath() {
-  return <span data-testid="location-path">{useLocation().pathname}</span>;
+  const location = useLocation();
+  return (
+    <>
+      <span
+        data-testid="location-path"
+        data-draft-id={parseDraftRouteId(location.search) ?? undefined}
+      >
+        {location.pathname}
+      </span>
+      <output data-testid="location-state">
+        {JSON.stringify(location.state)}
+      </output>
+    </>
+  );
 }
 
 afterEach(() => {
   focusManager.setFocused(undefined);
   cleanup();
   resetAppRouteHistoryForTest();
+  window.localStorage.clear();
+  window.sessionStorage.clear();
   vi.restoreAllMocks();
   vi.unstubAllGlobals();
 });
@@ -327,8 +350,10 @@ describe("PluginsOverview", () => {
     render(
       <MemoryRouter initialEntries={["/plugins?view=installed"]}>
         <QueryClientWrapper>
-          <PluginsOverview />
-          <LocationPath />
+          <RouteNavigationProvider>
+            <PluginsOverview />
+            <LocationPath />
+          </RouteNavigationProvider>
         </QueryClientWrapper>
       </MemoryRouter>,
     );
@@ -336,7 +361,17 @@ describe("PluginsOverview", () => {
     expect(await screen.findByText("Automations")).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "New plugin" }));
 
-    expect(screen.getByTestId("location-path").textContent).toBe("/");
+    await waitFor(() =>
+      expect(screen.getByTestId("location-path").textContent).toBe("/"),
+    );
+    expect(screen.getByTestId("location-path").dataset.draftId).toBeTruthy();
+    expect(
+      JSON.parse(screen.getByTestId("location-state").textContent ?? "null"),
+    ).toEqual({
+      focusPrompt: true,
+      initialPrompt: CREATE_PLUGIN_PROMPT,
+      replaceInitialPrompt: false,
+    });
   });
 
   it("shows the Type filter on Installed instead of Category", async () => {

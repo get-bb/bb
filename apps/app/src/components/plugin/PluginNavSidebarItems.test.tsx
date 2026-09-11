@@ -58,6 +58,11 @@ import {
   type SplitLayout,
 } from "@/lib/split-layout";
 import { usePublishPluginDetailOpener } from "./plugin-detail-opener";
+vi.mock("@/lib/drafts/resource-runtime", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/lib/drafts/resource-runtime")>()),
+  createNewThreadDraft: vi.fn(() => `drf_${crypto.randomUUID()}`),
+}));
+
 vi.mock("@/components/ui/app-toast", () => ({
   appToast: {
     dismiss: vi.fn(),
@@ -197,7 +202,7 @@ function renderSidebarItems(options: RenderSidebarItemsOptions = {}) {
       root: {
         type: "pane",
         paneId: "pane-1",
-        content: { kind: "new-thread" },
+        content: { kind: "new-thread", draftId: "drf_sidebar_test" },
       },
       focusedPaneId: "pane-1",
     });
@@ -313,6 +318,7 @@ beforeEach(() => {
   resetPluginFrontendBootStateForTest();
   markPluginFrontendsSettled();
   window.localStorage.clear();
+  window.sessionStorage.clear();
   resetAllCrashedPluginSlotsForTest();
   vi.spyOn(console, "error").mockImplementation(() => {});
   vi.spyOn(console, "warn").mockImplementation(() => {});
@@ -326,6 +332,7 @@ afterEach(() => {
   vi.restoreAllMocks();
   vi.unstubAllGlobals();
   window.localStorage.clear();
+  window.sessionStorage.clear();
 });
 
 describe("PluginNavSidebarItems", () => {
@@ -659,7 +666,7 @@ describe("PluginNavSidebarItems", () => {
           root: {
             type: "split",
             dir: "row",
-            sizes: [1, 1, 1],
+            sizes: [1 / 3, 1 / 3, 1 / 3],
             children: [
               {
                 type: "pane",

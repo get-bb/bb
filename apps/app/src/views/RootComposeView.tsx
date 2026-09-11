@@ -157,6 +157,7 @@ import {
   toFilePreviewLineRange,
 } from "@/lib/live-file-navigation";
 import {
+  rootComposeProjectIdAtom,
   useRootComposeProjectId,
   useSetRootComposeProjectId,
 } from "@/lib/root-compose-selection";
@@ -525,6 +526,7 @@ export function RootComposeView({
   draftId: paneDraftId,
 }: { draftId?: string } = {}) {
   const [defaultProjectId] = useRootComposeProjectId();
+  const store = useStore();
   const [lastCreatedThreadId, setLastCreatedThreadId] = useState<string | null>(
     null,
   );
@@ -543,7 +545,7 @@ export function RootComposeView({
     const id =
       bootstrapDraftId.current ??
       createNewThreadDraft({
-        projectId: defaultProjectId,
+        projectId: store.get(rootComposeProjectIdAtom),
         sectionId: readSectionIdFromLocationState(location.state),
       });
     bootstrapDraftId.current = id;
@@ -555,6 +557,7 @@ export function RootComposeView({
     });
   }, [
     defaultProjectId,
+    store,
     draftId,
     location.pathname,
     location.search,
@@ -585,6 +588,12 @@ function RootComposeDraft({
   onCreatedThread: (id: string) => void;
 }) {
   const resource = useDraftResource(draftId);
+  const {
+    edit: editDraft,
+    submit: submitDraft,
+    retry: retryDraft,
+    reloadRemote: reloadDraft,
+  } = resource;
   const setDefaultProjectId = useSetRootComposeProjectId();
   const location = useLocation();
   const navigate = useNavigate();
@@ -651,7 +660,7 @@ function RootComposeDraft({
   );
   const handleProjectChange = useCallback(
     (projectId: string) => {
-      resource.edit((current) => ({
+      editDraft((current) => ({
         ...current,
         projectId,
         options: {
@@ -663,12 +672,12 @@ function RootComposeDraft({
       }));
       setDefaultProjectId(projectId);
     },
-    [resource.edit, setDefaultProjectId],
+    [editDraft, setDefaultProjectId],
   );
   const setForkSeed = useCallback(
     (seed: ForkThreadCreateSeed | null) => {
       if (seed === null) {
-        resource.edit((current) => ({
+        editDraft((current) => ({
           ...current,
           options: {
             ...current.options,
@@ -681,7 +690,7 @@ function RootComposeDraft({
       }
       setSourceThreadTitle(seed.sourceThreadTitle);
       setDefaultProjectId(seed.projectId);
-      resource.edit((current) => ({
+      editDraft((current) => ({
         ...current,
         projectId: seed.projectId,
         options: {
@@ -698,17 +707,17 @@ function RootComposeDraft({
         },
       }));
     },
-    [resource.edit, setDefaultProjectId],
+    [editDraft, setDefaultProjectId],
   );
   const setSectionId = useCallback(
     (sectionId: string | null) => {
-      resource.edit((current) => ({ ...current, sectionId }));
+      editDraft((current) => ({ ...current, sectionId }));
     },
-    [resource.edit],
+    [editDraft],
   );
   const setReuseEnvironment = useCallback(
     (environmentId: string) => {
-      resource.edit((current) => ({
+      editDraft((current) => ({
         ...current,
         options: {
           ...current.options,
@@ -716,7 +725,7 @@ function RootComposeDraft({
         },
       }));
     },
-    [resource.edit],
+    [editDraft],
   );
   const awaitingLocationSeed =
     ownsRootComposeLocation(
@@ -743,16 +752,16 @@ function RootComposeDraft({
         resource.content === null
       )
         return;
-      resource.edit((current) => ({
+      editDraft((current) => ({
         ...current,
         options: { ...current.options, ...options },
       }));
     },
-    [awaitingLocationSeed, resource.content, resource.edit, resource.status],
+    [awaitingLocationSeed, resource.content, editDraft, resource.status],
   );
   const completeSubmission = useCallback(
     (
-      result: Awaited<ReturnType<typeof resource.submit>>,
+      result: Awaited<ReturnType<typeof submitDraft>>,
       submission: { origin: RootDraftOrigin; navigateAfter: boolean },
     ) => {
       pendingSubmission.current = null;
@@ -794,12 +803,12 @@ function RootComposeDraft({
       submissionInFlight.current = true;
       pendingSubmission.current = submission;
       try {
-        completeSubmission(await resource.submit(), submission);
+        completeSubmission(await submitDraft(), submission);
       } finally {
         submissionInFlight.current = false;
       }
     },
-    [completeSubmission, resource.submit],
+    [completeSubmission, submitDraft],
   );
   const retryResource = useCallback(async () => {
     if (pendingSubmission.current !== null) {
@@ -815,7 +824,7 @@ function RootComposeDraft({
     };
     submissionInFlight.current = true;
     try {
-      const result = await resource.retry();
+      const result = await retryDraft();
       if (result !== null) completeSubmission(result, submission);
     } finally {
       submissionInFlight.current = false;
@@ -825,16 +834,16 @@ function RootComposeDraft({
     isForkDraft,
     navigateToThreadAfterCreate,
     origin,
-    resource.retry,
+    retryDraft,
     submitResource,
   ]);
   const useSavedVersion = useCallback(async () => {
-    await resource.reloadRemote();
+    await reloadDraft();
     pendingSubmission.current = null;
-  }, [resource.reloadRemote]);
+  }, [reloadDraft]);
   const handleSubmit = useCallback(
     async (request: NewThreadComposerSubmission) => {
-      resource.edit((current) => rootDraftSubmissionContent(current, request));
+      editDraft((current) => rootDraftSubmissionContent(current, request));
       await submitResource({
         origin: origin(),
         navigateAfter: shouldNavigateAfterThreadCreate({
@@ -847,7 +856,7 @@ function RootComposeDraft({
       isForkDraft,
       navigateToThreadAfterCreate,
       origin,
-      resource.edit,
+      editDraft,
       submitResource,
     ],
   );
@@ -956,7 +965,7 @@ function RootComposeDraft({
   const composerSeed = useMemo(
     () =>
       content === null ? undefined : rootDraftComposerSeed(content.options),
-    [content?.options],
+    [content],
   );
   if (content === null) {
     return (

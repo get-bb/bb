@@ -56,7 +56,7 @@ describe("useDrafts", () => {
       { query: "Saved", limit: "50", offset: "12" },
       expect.any(AbortSignal),
     );
-    expect(result.current.hasNextPage).toBe(false);
+    await waitFor(() => expect(result.current.hasNextPage).toBe(false));
     await act(async () => {
       await queryClient.invalidateQueries({
         queryKey: allDraftQueryKeyPrefix(),

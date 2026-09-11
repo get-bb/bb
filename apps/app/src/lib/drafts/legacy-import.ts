@@ -8,13 +8,12 @@ import {
 } from "@bb/server-contract";
 import { z } from "zod";
 import type { QueryClient } from "@tanstack/react-query";
-import { allDraftQueryKeyPrefix } from "@/hooks/queries/query-keys";
-import { appQueryClient } from "../app-query-client";
 import {
-  draftResourceApi,
-  draftResourceQueryKey,
-  type DraftResourceApi,
-} from "./resource-api";
+  cacheDraftResource,
+  invalidateDraftResources,
+} from "@/hooks/cache-owners/draft-cache-owner";
+import { appQueryClient } from "../app-query-client";
+import { draftResourceApi, type DraftResourceApi } from "./resource-api";
 import {
   browserDraftRecoveryStorage,
   type DraftRecoveryStorage,
@@ -97,19 +96,11 @@ export async function importLegacyNewThreadDraft(
         result.draft = response.draft;
         record.acknowledged = true;
         storage.setItem(key, JSON.stringify(record));
-        queryClient.setQueryData<Draft | null>(
-          draftResourceQueryKey(id),
-          response.draft,
-        );
-        await queryClient.invalidateQueries({
-          queryKey: allDraftQueryKeyPrefix(),
-        });
+        await cacheDraftResource(queryClient, id, response.draft);
+        await invalidateDraftResources(queryClient);
       } else {
         result.draft = await api.get(id);
-        queryClient.setQueryData<Draft | null>(
-          draftResourceQueryKey(id),
-          result.draft,
-        );
+        await cacheDraftResource(queryClient, id, result.draft);
       }
       const latest = storage.getItem(LEGACY_NEW_THREAD_DRAFT_KEY);
       if (latest === rawValue) storage.removeItem(LEGACY_NEW_THREAD_DRAFT_KEY);
