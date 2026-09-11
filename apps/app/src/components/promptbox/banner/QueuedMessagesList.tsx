@@ -759,6 +759,15 @@ const QueuedMessageRow = memo(function QueuedMessageRow({
   compact,
   isGroupBoundary,
 }: QueuedMessageRowProps) {
+  const actionsRef = useRef<HTMLDivElement>(null);
+  const focusActionsOnExpandRef = useRef(false);
+  useLayoutEffect(() => {
+    if (!mobileActionsExpanded || !focusActionsOnExpandRef.current) return;
+    focusActionsOnExpandRef.current = false;
+    actionsRef.current
+      ?.querySelector<HTMLButtonElement>("button:not(:disabled)")
+      ?.focus({ preventScroll: true });
+  }, [mobileActionsExpanded]);
   const attachmentCount = useMemo(
     () => countQueuedMessageAttachments(queuedMessage.content),
     [queuedMessage.content],
@@ -920,6 +929,7 @@ const QueuedMessageRow = memo(function QueuedMessageRow({
           <>
             <TooltipProvider delayDuration={300}>
               <div
+                ref={actionsRef}
                 data-queued-message-actions=""
                 className={cn(
                   QUEUED_MESSAGE_ACTION_TAKEOVER_CLASS,
@@ -1015,7 +1025,10 @@ const QueuedMessageRow = memo(function QueuedMessageRow({
               disabled={actionDisabled}
               aria-label={`Queued message ${index + 1} actions`}
               aria-expanded={mobileActionsExpanded}
-              onClick={() => onExpandMobileActions(queuedMessage.id)}
+              onClick={(event) => {
+                focusActionsOnExpandRef.current = event.detail === 0;
+                onExpandMobileActions(queuedMessage.id);
+              }}
             >
               <Icon name="MoreHorizontal" className="size-4" aria-hidden />
             </Button>

@@ -520,6 +520,55 @@ describe("QueuedMessagesList", () => {
     expect(firstActions.getAttribute("aria-expanded")).toBe("false");
   });
 
+  it.each([
+    { sendDisabled: false, expectedAction: "Send queued message 1 now" },
+    { sendDisabled: true, expectedAction: "Edit queued message 1" },
+  ])(
+    "focuses $expectedAction after keyboard expansion",
+    ({ sendDisabled, expectedAction }) => {
+      const { getByRole } = render(
+        <QueuedMessagesList
+          queuedMessages={[makeQueuedMessage("q_one", "First queued message")]}
+          sendDisabled={sendDisabled}
+          actionDisabled={false}
+          processingMessageId={null}
+          processingAction={null}
+          onSend={noop}
+          onReorder={noop}
+          onSetGroupBoundary={noop}
+          onEdit={noop}
+          onDelete={noop}
+        />,
+      );
+      const trigger = getByRole("button", {
+        name: "Queued message 1 actions",
+      });
+
+      focusWithKeyboard(trigger);
+      fireEvent.click(trigger, { detail: 0 });
+
+      expect(document.activeElement).toBe(
+        getByRole("button", { name: expectedAction }),
+      );
+    },
+  );
+
+  it("does not move focus into actions after pointer expansion", () => {
+    const { getByRole } = renderQueuedMessages([
+      makeQueuedMessage("q_one", "First queued message"),
+    ]);
+    const reorderButton = getByRole("button", {
+      name: "Reorder queued message 1",
+    });
+    focusWithKeyboard(reorderButton);
+
+    fireEvent.click(getByRole("button", { name: "Queued message 1 actions" }), {
+      detail: 1,
+    });
+
+    expect(document.activeElement).toBe(reorderButton);
+  });
+
   it("replaces the edited row with the real inline composer", () => {
     const onDismiss = vi.fn();
     const queuedMessages = [
