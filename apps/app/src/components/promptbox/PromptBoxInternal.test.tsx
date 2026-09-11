@@ -2119,8 +2119,8 @@ describe("PromptBoxInternal compact layout", () => {
       expect(submit.hasAttribute("disabled")).toBe(true);
       expect(submit.querySelector('[data-icon="Spinner"]')).not.toBeNull();
       expect(
-        screen.queryByRole("button", { name: "Start voice input" }),
-      ).toBeNull();
+        screen.getByRole("button", { name: "Start voice input" }),
+      ).toBeTruthy();
     } finally {
       restoreMatchMedia();
     }
