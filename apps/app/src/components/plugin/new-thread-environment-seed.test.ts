@@ -22,6 +22,7 @@ const ENVIRONMENT_PROVIDERS: SystemEnvironmentProvider[] = [
     logoUrl: null,
     pluginId: "branchy",
     acceptsEmptyInputs: false,
+    machineAvailability: {},
     availability: null,
     requires: {
       projectCheckout: true,
@@ -38,6 +39,7 @@ const ENVIRONMENT_PROVIDERS: SystemEnvironmentProvider[] = [
     logoUrl: null,
     pluginId: "environment-project-checkout",
     acceptsEmptyInputs: true,
+    machineAvailability: {},
     availability: null,
     requires: {
       projectCheckout: true,
@@ -57,6 +59,7 @@ const ENVIRONMENT_PROVIDERS: SystemEnvironmentProvider[] = [
     logoUrl: null,
     pluginId: "environment-git-worktree",
     acceptsEmptyInputs: false,
+    machineAvailability: {},
     availability: null,
     requires: {
       projectCheckout: true,
@@ -73,6 +76,7 @@ const ENVIRONMENT_PROVIDERS: SystemEnvironmentProvider[] = [
     logoUrl: null,
     pluginId: "environment-personal-workspace",
     acceptsEmptyInputs: true,
+    machineAvailability: {},
     availability: null,
     requires: {
       projectCheckout: false,
@@ -89,6 +93,7 @@ const ENVIRONMENT_PROVIDERS: SystemEnvironmentProvider[] = [
     logoUrl: null,
     pluginId: "docker-sandbox",
     acceptsEmptyInputs: false,
+    machineAvailability: {},
     availability: null,
     requires: {
       projectCheckout: false,

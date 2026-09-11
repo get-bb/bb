@@ -129,6 +129,10 @@ import {
 import { parsePromptMentionClipboardElement } from "./mentions/prompt-mention-clipboard";
 import { ComposerEditorSlot } from "./ComposerEditorSlot";
 import { QueuedEditorTypeaheadLayoutContext } from "./queued-editor-typeahead-layout";
+import {
+  isModifierSubmitKeyEvent,
+  modifierSubmitShortcutAria,
+} from "./modifier-submit-shortcut";
 
 const PROMPTBOX_MIN_HEIGHT = 68;
 const PROMPTBOX_SELECTION_REVEAL_MARGIN = 12;
@@ -1658,7 +1662,9 @@ export function PromptBoxInternal({
         attributes: {
           "aria-label": effectivePlaceholder,
           "data-placeholder": effectivePlaceholder,
-          ...(onModifierSubmit ? { "aria-keyshortcuts": "Meta+Enter" } : {}),
+          ...(onModifierSubmit
+            ? { "aria-keyshortcuts": modifierSubmitShortcutAria() }
+            : {}),
           autocomplete: "off",
           class: cn(
             "min-h-full whitespace-pre-wrap break-words outline-none",
@@ -2596,6 +2602,23 @@ export function PromptBoxInternal({
     !isAttaching &&
     !hasSubmittableInput &&
     canStartVoiceInput;
+  const stopGestureButtonRef = useRef<HTMLButtonElement | null>(null);
+  const handleStopPointerDown = useCallback(
+    (event: ReactPointerEvent<HTMLButtonElement>) => {
+      if (event.button !== 0) return;
+      stopGestureButtonRef.current = event.currentTarget;
+    },
+    [],
+  );
+  const handleStopClick = useCallback(
+    (event: ReactMouseEvent<HTMLButtonElement>) => {
+      const gestureButton = stopGestureButtonRef.current;
+      stopGestureButtonRef.current = null;
+      if (event.detail > 0 && gestureButton !== event.currentTarget) return;
+      onStop?.();
+    },
+    [onStop],
+  );
   const voiceGestureButtonRef = useRef<HTMLButtonElement | null>(null);
   const handleVoicePointerDown = useCallback(
     (event: ReactPointerEvent<HTMLButtonElement>) => {
@@ -2926,13 +2949,7 @@ export function PromptBoxInternal({
         }
       }
 
-      const isModifierSubmitKey =
-        event.key === "Enter" &&
-        event.metaKey &&
-        !event.shiftKey &&
-        !event.altKey &&
-        !event.ctrlKey;
-      if (isModifierSubmitKey && onModifierSubmit) {
+      if (isModifierSubmitKeyEvent(event) && onModifierSubmit) {
         event.preventDefault();
         submitModifierPrompt();
         return true;
@@ -3069,14 +3086,14 @@ export function PromptBoxInternal({
       />
       <div
         data-promptbox-layout=""
-        className={COLLAPSING_GRID_CLASS}
+        className={cn(COLLAPSING_GRID_CLASS, showCompactLayout && "relative")}
         style={{ gridTemplateRows: "1fr" }}
       >
         <div
           data-promptbox-main=""
           className={cn(
             "min-h-0 overflow-hidden transition-opacity duration-[180ms] motion-reduce:transition-none",
-            showCompactLayout && "relative h-12",
+            showCompactLayout && "relative flex h-12 items-center",
             showVoiceActionGroup && "pointer-events-none",
           )}
         >
@@ -3089,7 +3106,20 @@ export function PromptBoxInternal({
               {header}
             </div>
           ) : null}
-          <div data-promptbox-input-region="" className="relative">
+          {showCompactLayout ? (
+            <AttachmentPreview
+              compact
+              attachments={attachments}
+              attachmentProjectId={attachmentProjectId}
+              expandedImageIndex={expandedImageIndex}
+              onExpandedImageIndexChange={setExpandedImageIndex}
+              onRemoveAttachment={onRemoveAttachment}
+            />
+          ) : null}
+          <div
+            data-promptbox-input-region=""
+            className={cn("relative", showCompactLayout && "min-w-0 flex-1")}
+          >
             {!showCompactLayout ? (
               <>
                 <div data-promptbox-expanded-only="">
@@ -3299,7 +3329,8 @@ export function PromptBoxInternal({
                         size="icon"
                         variant="secondary"
                         aria-label="Stop run"
-                        onClick={onStop}
+                        onPointerDown={handleStopPointerDown}
+                        onClick={handleStopClick}
                         className={
                           showCompactLayout
                             ? COMPACT_PROMPT_ACTION_BUTTON_CLASS

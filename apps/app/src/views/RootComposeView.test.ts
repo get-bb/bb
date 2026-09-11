@@ -280,6 +280,7 @@ function makeProjectProvider(id: string): SystemEnvironmentProvider {
     logoUrl: null,
     pluginId: id,
     acceptsEmptyInputs: true,
+    machineAvailability: {},
     availability: null,
     requires: {
       projectCheckout: true,
@@ -302,6 +303,7 @@ function makeProjectlessProvider(
     logoUrl: null,
     pluginId: id,
     acceptsEmptyInputs: true,
+    machineAvailability: {},
     availability: null,
     requires: {
       projectCheckout: false,

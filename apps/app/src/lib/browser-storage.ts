@@ -48,11 +48,16 @@ export function withLocalStorage<T>(
   }
 }
 
-function getSessionStorage(): Storage | null {
-  if (typeof window === "undefined") {
-    return null;
+function withSessionStorage<T>(
+  operation: (storage: Storage) => T,
+  fallback: T,
+): T {
+  if (typeof window === "undefined") return fallback;
+  try {
+    return operation(window.sessionStorage);
+  } catch {
+    return fallback;
   }
-  return window.sessionStorage;
 }
 
 function subscribeToLocalStorageKey(
@@ -134,21 +139,35 @@ export function createBooleanPreferenceAtom(
 
 export function createTabScopedStorage<T>(
   codec: StoredValueCodec<T>,
+  { persistInitialValue = false }: { persistInitialValue?: boolean } = {},
 ): SyncStorage<T> {
   return {
     getItem: (key: string, initialValue: T) => {
-      const tabValue = getSessionStorage()?.getItem(key) ?? null;
-      const storedValue = tabValue ?? getLocalStorage()?.getItem(key) ?? null;
-      return codec.parse(storedValue, initialValue);
+      const tabValue = withSessionStorage(
+        (storage) => storage.getItem(key),
+        null,
+      );
+      const storedValue = tabValue ?? localStorageStringStorage.getItem(key);
+      const value = codec.parse(storedValue, initialValue);
+      if (persistInitialValue) {
+        withSessionStorage(
+          (storage) => storage.setItem(key, codec.serialize(value)),
+          undefined,
+        );
+      }
+      return value;
     },
     setItem: (key: string, value: T) => {
       const serialized = codec.serialize(value);
-      getSessionStorage()?.setItem(key, serialized);
-      getLocalStorage()?.setItem(key, serialized);
+      withSessionStorage(
+        (storage) => storage.setItem(key, serialized),
+        undefined,
+      );
+      localStorageStringStorage.setItem(key, serialized);
     },
     removeItem: (key: string) => {
-      getSessionStorage()?.removeItem(key);
-      getLocalStorage()?.removeItem(key);
+      withSessionStorage((storage) => storage.removeItem(key), undefined);
+      localStorageStringStorage.removeItem(key);
     },
   };
 }

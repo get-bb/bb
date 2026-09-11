@@ -165,6 +165,15 @@ export function resolveReuseThreadRequestEnvironment(
     deps.db,
     environment.environmentId,
   );
+  if (reusedEnvironment.ownerThreadId !== null) {
+    throw new ApiError(
+      409,
+      "workspace_busy",
+      reusedEnvironment.path === null
+        ? "Environment is still being prepared"
+        : "Cannot checkout branch while another thread is using this workspace",
+    );
+  }
   if (reusedEnvironment.projectId !== projectId) {
     throw new ApiError(
       409,

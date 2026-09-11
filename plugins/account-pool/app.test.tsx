@@ -13,7 +13,18 @@ afterEach(() => {
   cleanup();
   vi.restoreAllMocks();
   vi.unstubAllGlobals();
+  window.localStorage.clear();
 });
+
+const STATUS_CACHE_KEY = "account-pool:status";
+
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((next) => {
+    resolve = next;
+  });
+  return { promise, resolve };
+}
 
 function measureAccountRows() {
   vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(
@@ -84,7 +95,6 @@ function status(accounts: AccountSummary[] = [account()]): PoolStatus {
     hosts: [
       { hostId: "host-one", hostName: "bee", mintedAt: 1, lastUsedAt: 2 },
     ],
-    routedThreadsWithoutLocalLogin: [],
     accounts,
     routing: { claude: true, codex: true },
   };
@@ -101,7 +111,7 @@ function config(overrides: Partial<AccountPoolConfig> = {}): AccountPoolConfig {
 
 function render(
   accounts = [account()],
-  extraRpc: Record<string, () => object | null> = {},
+  extraRpc: Record<string, () => object | null | Promise<object | null>> = {},
 ) {
   return renderSlot(
     app.settingsSections[0]!,
@@ -118,6 +128,54 @@ function render(
 }
 
 describe("Account Pool settings", () => {
+  it("renders cached accounts as refreshing until live status arrives, then caches it", async () => {
+    window.localStorage.setItem(
+      STATUS_CACHE_KEY,
+      JSON.stringify(status([account({ fiveHourUtilization: 0.21 })])),
+    );
+    const live = deferred<PoolStatus>();
+    const slot = render([], { "status.get": () => live.promise });
+    expect(slot.getByText("person@example.com")).toBeTruthy();
+    expect(slot.getByText("21%")).toBeTruthy();
+    expect(slot.getByText("refreshing usage…")).toBeTruthy();
+    expect(slot.getByText(/· refreshing…$/)).toBeTruthy();
+    expect(slot.queryByText("Loading…")).toBeNull();
+    expect(slot.queryByText("No accounts in the pool")).toBeNull();
+    live.resolve(status([account({ fiveHourUtilization: 0.6 })]));
+    expect(await slot.findByText("60%")).toBeTruthy();
+    expect(slot.queryByText("refreshing usage…")).toBeNull();
+    expect(slot.queryByText(/· refreshing…$/)).toBeNull();
+    const cached = JSON.parse(
+      window.localStorage.getItem(STATUS_CACHE_KEY) ?? "null",
+    ) as PoolStatus;
+    expect(cached.accounts[0]?.fiveHourUtilization).toBe(0.6);
+  });
+
+  it("ignores a malformed status cache and shows the loading state", async () => {
+    window.localStorage.setItem(STATUS_CACHE_KEY, '{"accounts":"nope"}');
+    const live = deferred<PoolStatus>();
+    const slot = render([], { "status.get": () => live.promise });
+    expect(slot.getAllByText("Loading…")).toHaveLength(2);
+    live.resolve(status());
+    expect(await slot.findByText("person@example.com")).toBeTruthy();
+  });
+
+  it("marks a row as refreshing while its usage refresh is in flight", async () => {
+    const refresh = deferred<{ account: null }>();
+    const slot = render([account()], {
+      "account.refreshUsage": () => refresh.promise,
+    });
+    fireEvent.pointerDown(
+      await slot.findByRole("button", { name: "person@example.com actions" }),
+    );
+    fireEvent.click(await slot.findByText("Refresh usage"));
+    expect(await slot.findByText("refreshing usage…")).toBeTruthy();
+    refresh.resolve({ account: null });
+    await waitFor(() =>
+      expect(slot.queryByText("refreshing usage…")).toBeNull(),
+    );
+  });
+
   it("renders fixed quota slots with missing buckets as em dashes", async () => {
     const slot = render();
     expect(await slot.findByText("person@example.com")).toBeTruthy();

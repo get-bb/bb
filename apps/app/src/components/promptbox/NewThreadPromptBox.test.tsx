@@ -32,6 +32,7 @@ describe("ProjectlessMachineSlot", () => {
     logoUrl: null,
     pluginId: "environment-personal-workspace",
     acceptsEmptyInputs: true,
+    machineAvailability: {},
     availability: null,
     requires: {
       projectCheckout: false,
@@ -173,6 +174,7 @@ describe("EnvironmentSlot", () => {
     logoUrl: null,
     pluginId: "environment-personal-workspace",
     acceptsEmptyInputs: true,
+    machineAvailability: {},
     availability: null,
     requires: {
       projectCheckout: false,
@@ -190,6 +192,7 @@ describe("EnvironmentSlot", () => {
     logoUrl: null,
     pluginId: "environment-modal-sandbox",
     acceptsEmptyInputs: true,
+    machineAvailability: {},
     availability: null,
     requires: {
       projectCheckout: false,

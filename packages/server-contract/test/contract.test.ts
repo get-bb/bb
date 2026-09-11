@@ -1922,6 +1922,7 @@ describe("environment provider contracts", () => {
       logoUrl: null,
       pluginId: "sandbox",
       acceptsEmptyInputs: false,
+      machineAvailability: {},
       availability: {
         status: "setup-required" as const,
         message: "Add credentials",

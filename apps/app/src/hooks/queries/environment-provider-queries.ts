@@ -4,6 +4,11 @@ import type {
   SystemEnvironmentProvidersQuery,
 } from "@bb/server-contract";
 import { sdk } from "@/lib/sdk";
+import {
+  environmentProviderListCacheKey,
+  readCachedEnvironmentProviderList,
+  writeCachedEnvironmentProviderList,
+} from "@/lib/environment-provider-list-cache";
 import { SERVER_SESSION_QUERY_POLICY } from "./query-policies";
 
 const SYSTEM_ENVIRONMENT_PROVIDERS_QUERY_KEY = "systemEnvironmentProviders";
@@ -40,9 +45,19 @@ const NO_ENVIRONMENT_PROVIDERS: readonly SystemEnvironmentProvider[] = [];
 function environmentProvidersQueryOptions(
   query: SystemEnvironmentProvidersQuery,
 ) {
+  const cacheKey = environmentProviderListCacheKey({
+    projectId: query.projectId ?? null,
+    hostId: query.hostId ?? null,
+  });
   return {
     queryKey: systemEnvironmentProvidersQueryKey(query),
-    queryFn: () => sdk.environments.listProviders(query),
+    queryFn: async () => {
+      const providers = await sdk.environments.listProviders(query);
+      writeCachedEnvironmentProviderList(cacheKey, providers);
+      return providers;
+    },
+    placeholderData: () =>
+      readCachedEnvironmentProviderList(cacheKey) ?? undefined,
     ...SERVER_SESSION_QUERY_POLICY,
   };
 }

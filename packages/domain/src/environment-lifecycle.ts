@@ -22,6 +22,12 @@ export const ENVIRONMENT_LIFECYCLE: Record<
   EnvironmentStatus,
   Partial<Record<EnvironmentLifecycleEventType, EnvironmentLifecycleTarget>>
 > = {
+  creating: {
+    "provision.requested": "provisioning",
+    "provision.failed": "error",
+    "provision.cancelled": "error",
+    "destroy.recorded": "destroyed",
+  },
   provisioning: {
     "provision.succeeded": "ready",
     "provision.failed": "error",

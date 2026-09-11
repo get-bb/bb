@@ -1,4 +1,4 @@
-import { sweepProviderLifecycles } from "../../../apps/server/src/services/environments/provider-orchestration.js";
+import { sweepProviderLifecycles } from "../../../apps/server/src/services/environments/environment-engine.js";
 import { randomUUID } from "node:crypto";
 import fs from "node:fs/promises";
 import { tmpdir } from "node:os";

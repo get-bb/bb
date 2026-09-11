@@ -64,14 +64,14 @@ export function requestEnvironmentProviderRecheck(pluginId: string): void {
   recheckHandler?.(pluginId);
 }
 
-let launchRecheckHandler: ((threadId: string) => void) | undefined;
+let provisioningRecheckHandler: ((threadId: string) => void) | undefined;
 
-export function setEnvironmentLaunchRecheckHandler(
+export function setEnvironmentProvisioningRecheckHandler(
   handler: ((threadId: string) => void) | undefined,
 ): void {
-  launchRecheckHandler = handler;
+  provisioningRecheckHandler = handler;
 }
 
-export function requestEnvironmentLaunchRecheck(threadId: string): void {
-  launchRecheckHandler?.(threadId);
+export function requestEnvironmentProvisioningRecheck(threadId: string): void {
+  provisioningRecheckHandler?.(threadId);
 }

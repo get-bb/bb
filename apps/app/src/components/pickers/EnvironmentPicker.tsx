@@ -98,6 +98,9 @@ function providerDisabledReason(
   provider: SystemEnvironmentProvider,
   inputsControlProviderIds: ReadonlySet<string>,
 ): string | null {
+  if (provider.availability?.status === "unavailable") {
+    return provider.availability.message;
+  }
   if (
     !inputsControlProviderIds.has(provider.id) &&
     providerInputsControlRequired(provider)
@@ -111,6 +114,9 @@ function providerDescription(
   provider: SystemEnvironmentProvider,
   inputsControlProviderIds: ReadonlySet<string>,
 ): string | undefined {
+  if (provider.availability?.status === "setup-required") {
+    return provider.availability.message;
+  }
   return (
     providerDisabledReason(provider, inputsControlProviderIds) ?? undefined
   );
@@ -120,13 +126,26 @@ function scopedProviders(
   providers: readonly SystemEnvironmentProvider[],
   providersByHostId: EnvironmentPickerUIProps["providersByHostId"],
   hostId: string | null,
+  selection: { value: string; selectedProviderHostId: string | null },
 ): readonly SystemEnvironmentProvider[] {
-  if (hostId === null || providersByHostId === undefined) return providers;
+  const hostProviders =
+    hostId === null || providersByHostId === undefined
+      ? providers
+      : mergeHostProviders(providers, providersByHostId.get(hostId) ?? []);
+  return hostProviders.filter(
+    (provider) =>
+      provider.availability?.status !== "unavailable" ||
+      (providerValueSelected(selection.value, provider) &&
+        selection.selectedProviderHostId === hostId),
+  );
+}
+
+function mergeHostProviders(
+  providers: readonly SystemEnvironmentProvider[],
+  resolved: readonly SystemEnvironmentProvider[],
+): readonly SystemEnvironmentProvider[] {
   const hostProviders = new Map(
-    (providersByHostId.get(hostId) ?? []).map((provider) => [
-      provider.id,
-      provider,
-    ]),
+    resolved.map((provider) => [provider.id, provider]),
   );
   return providers.flatMap((provider) => {
     const hostProvider = hostProviders.get(provider.id);
@@ -350,6 +369,7 @@ export function EnvironmentPickerUI({
               environmentProviders,
               providersByHostId,
               hostId,
+              { value, selectedProviderHostId },
             )}
             selectedProviderHostId={selectedProviderHostId}
             inputsControlProviderIds={inputsControlProviderIds}
@@ -511,6 +531,7 @@ function MachineGroupedEnvironmentOptions({
             machineProviders,
             providersByHostId,
             machineHost.id,
+            { value, selectedProviderHostId },
           )}
           selectedProviderHostId={selectedProviderHostId}
           inputsControlProviderIds={inputsControlProviderIds}

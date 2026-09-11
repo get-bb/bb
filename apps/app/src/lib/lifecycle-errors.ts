@@ -174,6 +174,7 @@ function describeEnvironmentNotReady({
 }: EnvironmentNotReadyDescriptionArgs): LifecycleErrorDescription {
   const { details } = error;
   switch (details.environmentStatus) {
+    case "creating":
     case "provisioning":
       return info({
         operation,

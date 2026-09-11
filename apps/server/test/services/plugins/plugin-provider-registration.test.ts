@@ -251,7 +251,7 @@ describe("bb.providers.register (server)", () => {
           name: "bb-plugin-marked-environment",
           withBridge: false,
           icons: { mark: "./icons/agent.svg" },
-          serverSource: `export default function plugin(bb) { bb.experimental_environments.register({ id: "marked-environment", displayName: "Marked", icon: ${JSON.stringify(icon)}, create: async () => ({ status: "failed", failure: "transient", message: "waiting" }), remove: async () => ({ status: "removed" }) }); }`,
+          serverSource: `export default function plugin(bb) { bb.experimental_environments.register({ id: "marked-environment", displayName: "Marked", icon: ${JSON.stringify(icon)}, create: async () => ({ status: "failed", message: "waiting" }), remove: async () => ({ status: "removed" }) }); }`,
         });
         const svg =
           '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 8 8"><path d="M0 0h4v4z"/></svg>';

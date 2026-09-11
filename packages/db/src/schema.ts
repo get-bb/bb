@@ -478,6 +478,11 @@ export const environments = sqliteTable(
     >(),
     teardownMessage: text("teardown_message"),
     resource: text("resource", { mode: "json" }).$type<JsonValue>(),
+    ownerThreadId: text("owner_thread_id"),
+    attempt: integer("attempt").notNull().default(0),
+    statusMessage: text("status_message"),
+    pendingLog: text("pending_log").notNull().default(""),
+    claimPath: text("claim_path"),
     status: text("status")
       .$type<EnvironmentStatus>()
       .notNull()
@@ -492,6 +497,8 @@ export const environments = sqliteTable(
       table.path,
     ),
     index("environments_host_path_lookup_idx").on(table.hostId, table.path),
+    uniqueIndex("environments_owner_thread_idx").on(table.ownerThreadId),
+    index("environments_claim_idx").on(table.hostId, table.claimPath),
     index("environments_project_idx").on(table.projectId),
     index("environments_status_idx").on(table.status),
     index("environments_provider_instance_idx").on(
@@ -524,19 +531,7 @@ export const threads = sqliteTable(
     status: text("status", { enum: threadStatusValues })
       .notNull()
       .default("starting"),
-    // How a `pending` thread will be established once its first message clears
-    // a dispatch attempt: the resolved environment intent, the fork descriptor,
-    // the provider-facing input and the `startedOnBehalfOf`/title facts that
-    // `requestThreadProvision` needs and that nothing else persists.
-    //
-    // It lives on the THREAD rather than on the queued message because it
-    // describes how to start the thread, not what to say once it has started —
-    // and because the live provisioning context is in-memory and only valid
-    // while a thread is `starting`, so a thread queued for a week (or across a
-    // restart) would otherwise have nothing to start from. Written only when a
-    // first message actually queues, and cleared when the thread leaves
-    // `pending`, so it is NULL for every thread that started immediately.
-    pendingStartContext: text("pending_start_context"),
+    startupContext: text("startup_context"),
     parentThreadId: text("parent_thread_id").references(
       (): AnySQLiteColumn => threads.id,
       { onDelete: "set null" },
@@ -1067,52 +1062,5 @@ export const pendingInteractions = sqliteTable(
       table.status,
       table.createdAt,
     ),
-  ],
-);
-
-export const environmentLaunches = sqliteTable(
-  "environment_launches",
-  {
-    threadId: text("thread_id").primaryKey(),
-    providerId: text("provider_id").notNull(),
-    providerPluginId: text("provider_plugin_id"),
-    pathRejected: integer("path_rejected", { mode: "boolean" })
-      .notNull()
-      .default(false),
-    attempt: integer("attempt").notNull(),
-    phase: text("phase")
-      .$type<"creating" | "ready" | "failed" | "cancelled">()
-      .notNull(),
-    startedAt: integer("started_at").notNull(),
-    failedAt: integer("failed_at"),
-    failure: text("failure").$type<"terminal" | "transient">(),
-    message: text("message"),
-    transientFailures: integer("transient_failures").notNull(),
-    pathKey: text("path_key").notNull(),
-    hostId: text("host_id"),
-    path: text("path"),
-    claimPath: text("claim_path"),
-    ownsPath: integer("owns_path", { mode: "boolean" })
-      .notNull()
-      .default(false),
-    mergeBaseBranch: text("merge_base_branch"),
-    resource: text("resource", { mode: "json" }).$type<JsonValue>(),
-    stepText: text("step_text").notNull(),
-    pendingLog: text("pending_log").notNull(),
-    replacedEnvironmentId: text("replaced_environment_id"),
-    environmentId: text("environment_id"),
-    selection: text("selection", { mode: "json" })
-      .$type<EnvironmentProviderSelection>()
-      .notNull(),
-    request: text("request", { mode: "json" }).$type<JsonValue>(),
-    cancelPending: integer("cancel_pending", { mode: "boolean" }).notNull(),
-  },
-  (table) => [
-    index("environment_launches_phase_idx").on(table.phase),
-    index("environment_launches_active_claim_idx")
-      .on(table.hostId, table.claimPath)
-      .where(
-        sql`${table.environmentId} is null and ${table.claimPath} is not null`,
-      ),
   ],
 );

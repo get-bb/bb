@@ -111,6 +111,7 @@ describe("bb environment command output", () => {
             icon: null,
             pluginId: "environment-git-worktree",
             acceptsEmptyInputs: false,
+            machineAvailability: {},
             availability: { status: "available" },
             requires: {
               projectCheckout: true,
@@ -130,6 +131,7 @@ describe("bb environment command output", () => {
             icon: null,
             pluginId: "environment-modal-sandbox",
             acceptsEmptyInputs: true,
+            machineAvailability: {},
             availability: {
               status: "setup-required",
               message: "Add Modal credentials",
@@ -186,6 +188,76 @@ describe("bb environment command output", () => {
     expect(getProviders).toHaveBeenCalledWith({
       query: { projectId: "proj-1", hostId: "host-remote" },
     });
+  });
+
+  it("bb environment providers prints each provider's availability on the chosen machine", async () => {
+    const provider = {
+      displayName: "Provider",
+      icon: null,
+      pluginId: "plugin",
+      acceptsEmptyInputs: true,
+      inputs: null,
+      requires: {
+        projectCheckout: false,
+        gitCheckout: false,
+        gitRemote: false,
+        projectless: false,
+      },
+    };
+    stubServerApi({
+      "v1.hosts.$get": vi.fn(async () => [
+        {
+          id: "host-remote",
+          name: "builder",
+          status: "connected",
+          lastSeenAt: 1,
+          createdAt: 1,
+          updatedAt: 1,
+        },
+      ]),
+      "v1.system.environment-providers.$get": vi.fn(async () => ({
+        providers: [
+          {
+            ...provider,
+            id: "ready",
+            availability: { status: "available" },
+            machineAvailability: { "host-remote": { status: "available" } },
+          },
+          {
+            ...provider,
+            id: "blocked",
+            availability: { status: "unavailable", message: "No reflinks" },
+            machineAvailability: {
+              "host-remote": { status: "unavailable", message: "No reflinks" },
+            },
+          },
+          {
+            ...provider,
+            id: "pending",
+            availability: null,
+            machineAvailability: { "host-remote": null },
+          },
+        ],
+      })),
+    });
+
+    await runCommand(
+      [
+        "environment",
+        "providers",
+        "--project",
+        "proj-1",
+        "--machine",
+        "builder",
+      ],
+      register,
+    );
+
+    expect(collectLogLines(vi.mocked(console.log))).toEqual([
+      "ready  Provider  -  availability: available",
+      "blocked  Provider  -  availability: unavailable (No reflinks)",
+      "pending  Provider  -  availability: unknown",
+    ]);
   });
 
   it("bb environment list names the provider that produced each row", async () => {

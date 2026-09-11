@@ -186,7 +186,7 @@ export default async function checkoutPlugin(bb: BbPluginApi): Promise<void> {
       if (!(await context.experimental_claimPath(path))) {
         return {
           status: "failed",
-          failure: "terminal",
+
           message: LIVE_THREAD_MESSAGE,
         };
       }
@@ -200,7 +200,7 @@ export default async function checkoutPlugin(bb: BbPluginApi): Promise<void> {
       ) {
         return {
           status: "failed",
-          failure: "terminal",
+
           message: LIVE_THREAD_MESSAGE,
         };
       }
@@ -225,7 +225,7 @@ export default async function checkoutPlugin(bb: BbPluginApi): Promise<void> {
         if (result.status === "failed") {
           return {
             status: "failed",
-            failure: "terminal",
+
             message: result.message,
           };
         }
@@ -238,7 +238,7 @@ export default async function checkoutPlugin(bb: BbPluginApi): Promise<void> {
         if (context.signal.aborted) throw error;
         return {
           status: "failed",
-          failure: "transient",
+
           message: errorMessage(error),
         };
       } finally {

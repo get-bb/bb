@@ -69,6 +69,7 @@ import {
   type PromptDraftScope,
 } from "@/hooks/usePromptDraftStorage";
 import { usePromptMentions } from "@/hooks/usePromptMentions";
+import { usePromptBoxMachinePreference } from "@/hooks/thread-creation-options/persisted-selection-fields";
 import { useThreadCreationOptions } from "@/hooks/useThreadCreationOptions";
 import { useComposerTextEffects } from "@/lib/composer-text-effects";
 import { getMutationErrorMessage } from "@/lib/mutation-errors";
@@ -445,7 +446,7 @@ export function NewThreadComposer({
   );
 
   const { providers: registeredEnvironmentProviders } =
-    useSystemEnvironmentProviders();
+    useSystemEnvironmentProviders({ projectId });
   const environmentProviders = useMemo(
     () =>
       registeredEnvironmentProviders?.filter((provider) =>
@@ -461,29 +462,35 @@ export function NewThreadComposer({
       new Map(
         availableHosts.map((host) => [
           host.id,
-          environmentProviders?.filter((provider) => {
-            if (
-              (provider.requires.projectCheckout ||
-                provider.requires.gitCheckout) &&
-              findLocalPathProjectSourceForHost(projectSources, host.id) ===
-                undefined
-            ) {
-              return false;
-            }
-            if (
-              provider.requires.gitRemote &&
-              (projectGitRemoteUrl === undefined ||
-                projectGitRemoteUrl === null)
-            ) {
-              return false;
-            }
-            return true;
-          }),
+          environmentProviders
+            ?.filter((provider) => {
+              if (
+                (provider.requires.projectCheckout ||
+                  provider.requires.gitCheckout) &&
+                findLocalPathProjectSourceForHost(projectSources, host.id) ===
+                  undefined
+              ) {
+                return false;
+              }
+              if (
+                provider.requires.gitRemote &&
+                (projectGitRemoteUrl === undefined ||
+                  projectGitRemoteUrl === null)
+              ) {
+                return false;
+              }
+              return true;
+            })
+            .map((provider) => ({
+              ...provider,
+              availability: provider.machineAvailability[host.id] ?? null,
+            })),
         ]),
       ),
     [availableHosts, environmentProviders, projectGitRemoteUrl, projectSources],
   );
   const seedSignature = JSON.stringify([
+    projectId,
     resetKey ?? null,
     seed?.providerId ?? null,
     seed?.model ?? null,
@@ -499,6 +506,8 @@ export function NewThreadComposer({
         : newThreadEnvironmentArgsToSeed(seed.environment),
     [seed?.environment],
   );
+  const { value: storedMachineId, setValue: setStoredMachineId } =
+    usePromptBoxMachinePreference(projectId);
   const [activeSeedSignature, setActiveSeedSignature] = useState(seedSignature);
   const [seedOverridden, setBranchSeedOverridden] = useState(false);
   const [pickedProviderMachine, setPickedProviderMachine] = useState<{
@@ -542,7 +551,11 @@ export function NewThreadComposer({
         environmentSeed.selectionValue === effectiveValue
           ? environmentSeed.providerMachine
           : null;
-      const candidate = picked ?? seeded;
+      const remembered: EnvironmentMachineSelection | null =
+        selectionScope === "new-thread" && storedMachineId !== ""
+          ? { type: "existing", hostId: storedMachineId }
+          : null;
+      const candidate = picked ?? seeded ?? remembered;
       if (usable(candidate?.hostId ?? null)) {
         return { provider, machine: candidate };
       }
@@ -561,6 +574,8 @@ export function NewThreadComposer({
       isProjectless,
       knownHostIds,
       pickedProviderMachine,
+      selectionScope,
+      storedMachineId,
       primaryHostId,
       projectSources,
     ],
@@ -725,12 +740,22 @@ export function NewThreadComposer({
           ? null
           : { selectionValue: value, machine: providerMachine },
       );
+      if (
+        selectionScope === "new-thread" &&
+        parseEnvironmentValue(value)?.type === "provider"
+      ) {
+        setStoredMachineId(
+          providerMachine?.type === "existing" ? providerMachine.hostId : "",
+        );
+      }
       setCreationEnvironmentSelectionValue(value);
     },
     [
       environmentSelectionValue,
       pickedProviderMachine,
       setCreationEnvironmentSelectionValue,
+      selectionScope,
+      setStoredMachineId,
       snapshotDraftBeforeOptionChange,
     ],
   );

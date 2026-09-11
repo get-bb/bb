@@ -12,6 +12,7 @@ const provider: SystemEnvironmentProvider = {
   logoUrl: null,
   pluginId: "environment-project-checkout",
   acceptsEmptyInputs: true,
+  machineAvailability: {},
   availability: null,
   requires: {
     projectCheckout: true,

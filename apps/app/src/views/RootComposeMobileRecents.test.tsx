@@ -24,6 +24,7 @@ const personalProvider: SystemEnvironmentProvider = {
   logoUrl: null,
   pluginId: "environment-personal-workspace",
   acceptsEmptyInputs: true,
+  machineAvailability: {},
   availability: null,
   requires: {
     projectCheckout: false,

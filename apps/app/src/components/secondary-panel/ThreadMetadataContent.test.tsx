@@ -58,6 +58,7 @@ const worktreeProvider: SystemEnvironmentProvider = {
   logoUrl: null,
   pluginId: "environment-git-worktree",
   acceptsEmptyInputs: true,
+  machineAvailability: {},
   availability: null,
   requires: {
     projectCheckout: true,
@@ -75,6 +76,7 @@ const modalProvider: SystemEnvironmentProvider = {
   logoUrl: null,
   pluginId: "environment-modal-sandbox",
   acceptsEmptyInputs: true,
+  machineAvailability: {},
   availability: null,
   requires: {
     projectCheckout: false,
@@ -92,6 +94,7 @@ const personalProvider: SystemEnvironmentProvider = {
   logoUrl: null,
   pluginId: "environment-personal-workspace",
   acceptsEmptyInputs: true,
+  machineAvailability: {},
   availability: null,
   requires: {
     projectCheckout: false,

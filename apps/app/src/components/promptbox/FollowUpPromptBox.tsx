@@ -20,6 +20,7 @@ import type {
 } from "@bb/domain";
 import type { ComposerView, PluginComposerScope } from "@get-bb/plugin-sdk";
 import type { ComposerTextEffectSource } from "@/lib/composer-text-effects";
+import { modifierSubmitShortcutLabel } from "./modifier-submit-shortcut";
 import { isKeyboardFocusTarget } from "@/components/layout/useMobileVisualViewportHeight";
 import { ComposerBannersSlot } from "@/components/plugin/PluginComposerBanners";
 import {
@@ -595,6 +596,8 @@ function FollowUpPromptBoxWithComposer({
       ? composer.onSubmit
       : composer.onModifierSubmit
     : undefined;
+  const modifierSubmitHint = (action: "queue" | "steer"): string =>
+    onModifierSubmit ? `, ${modifierSubmitShortcutLabel()} to ${action}` : "";
   const executionControlsDisabled =
     (executionReadOnly ?? readOnly ?? false) || hasPendingInteraction;
   const footerStart = useMemo(
@@ -739,9 +742,9 @@ function FollowUpPromptBoxWithComposer({
               : canQueueFollowUp
                 ? steerOnPrimarySubmit
                   ? isSteeringWhenReady
-                    ? "Steer when ready (Enter)"
-                    : "Steer current run (Enter)"
-                  : "Queue follow-up (Enter)"
+                    ? `Steer when ready (Enter)${modifierSubmitHint("queue")}`
+                    : `Steer current run (Enter)${modifierSubmitHint("queue")}`
+                  : `Queue follow-up (Enter)${modifierSubmitHint("steer")}`
                 : isStopping
                   ? "Stopping run..."
                   : isLoadingExecutionOptions
