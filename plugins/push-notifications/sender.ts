@@ -12,6 +12,7 @@ import {
   type PushSubscription,
 } from "./contract.js";
 import type { PushSubscriptionStore } from "./subscriptions.js";
+import { markdownPreview } from "./preview.js";
 
 type ThreadResponse = PluginThreadEventPayloads["thread.idle"]["thread"];
 type PendingInteraction =
@@ -157,9 +158,9 @@ function truncate(text: string, maxLength: number): string {
 }
 
 function threadDisplayTitle(thread: ThreadResponse): string {
-  const title = thread.title?.trim();
+  const title = markdownPreview(thread.title ?? "");
   if (title) return title;
-  const fallback = thread.titleFallback?.trim();
+  const fallback = markdownPreview(thread.titleFallback ?? "");
   if (fallback) return fallback;
   return `Thread ${thread.id.slice(0, 8)}`;
 }
@@ -167,7 +168,7 @@ function threadDisplayTitle(thread: ThreadResponse): string {
 function describePendingInteraction(interaction: PendingInteraction): string {
   const payload = interaction.payload;
   if (payload.kind === "user_question") {
-    const prompt = firstLine(payload.questions[0]?.prompt ?? "");
+    const prompt = markdownPreview(payload.questions[0]?.prompt ?? "");
     return prompt || "The agent has a question for you";
   }
   if (payload.kind === "approval") {
@@ -183,7 +184,9 @@ function describePendingInteraction(interaction: PendingInteraction): string {
     }
     return "Review the plan before the agent continues";
   }
-  if ("title" in payload) return payload.title;
+  if ("title" in payload) {
+    return markdownPreview(payload.title) || "Waiting for your input";
+  }
   return "Waiting for your input";
 }
 
@@ -300,7 +303,7 @@ export function createPushSender(args: CreatePushSenderArgs): PushSender {
     return {
       kind,
       body:
-        entry.bodies.get(kind) ??
+        markdownPreview(entry.bodies.get(kind) ?? "") ||
         (kind === "thread-error"
           ? "The thread hit an error"
           : "Finished and waiting for you"),
@@ -481,21 +484,13 @@ export function createPushSender(args: CreatePushSenderArgs): PushSender {
       );
     },
     onThreadFailed({ thread, error }) {
-      schedule(
-        thread.id,
-        "thread-error",
-        firstLine(error ?? "") || "The thread hit an error",
-      );
+      schedule(thread.id, "thread-error", error ?? "");
     },
     onThreadIdle({ thread, lastAssistantText }) {
       if (thread.parentThreadId !== null || thread.visibility !== "visible") {
         return;
       }
-      schedule(
-        thread.id,
-        "turn-finished",
-        firstLine(lastAssistantText ?? "") || "Finished and waiting for you",
-      );
+      schedule(thread.id, "turn-finished", lastAssistantText ?? "");
     },
     settle,
     async start() {

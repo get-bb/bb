@@ -271,6 +271,134 @@ describe("push subscription RPC and CLI", () => {
 });
 
 describe("push sender", () => {
+  it.each(["turn-finished", "thread-error", "pending-interaction"] as const)(
+    "sends readable Markdown for %s on mobile, web, and desktop",
+    async (kind) => {
+      const host = await setup();
+      try {
+        await host.addSubscription();
+        const thread = host.setThread({
+          title: "**Release** `v2`",
+          status: kind === "thread-error" ? "error" : "idle",
+        });
+        const markdown =
+          "See [the **report**][report]\n\n[report]: https://example.com/report";
+        if (kind === "pending-interaction") {
+          const interaction = pendingQuestion(thread.id, markdown);
+          host.interactions.set(thread.id, [interaction]);
+          await host.harness.behavior.emitThreadEvent("interaction.pending", {
+            thread,
+            interaction,
+          });
+        } else if (kind === "thread-error") {
+          await host.harness.behavior.emitThreadEvent("thread.failed", {
+            thread,
+            error: markdown,
+          });
+        } else {
+          await host.harness.behavior.emitThreadEvent("thread.idle", {
+            thread,
+            lastAssistantText: markdown,
+          });
+        }
+
+        await vi.waitFor(() => expect(host.expo.requests).toHaveLength(1));
+        const preview = { title: "Release v2", body: "See the report" };
+        expect(host.expo.requests[0]?.[0]).toMatchObject({
+          ...preview,
+          data: { kind, threadId: thread.id },
+        });
+        expect(host.harness.realtimeSignals[0]?.payload).toMatchObject({
+          ...preview,
+          channels: ["web", "desktop"],
+          threadId: thread.id,
+        });
+      } finally {
+        await host.cleanup();
+      }
+    },
+  );
+
+  it("truncates visible text after Markdown conversion", async () => {
+    const host = await setup();
+    try {
+      const thread = host.setThread({ title: `**${"T".repeat(90)}**` });
+      await host.harness.behavior.emitThreadEvent("thread.idle", {
+        thread,
+        lastAssistantText: `**${"A".repeat(179)}** [report](https://example.com)`,
+      });
+      await vi.waitFor(() =>
+        expect(host.harness.realtimeSignals).toHaveLength(1),
+      );
+      expect(host.harness.realtimeSignals[0]?.payload).toMatchObject({
+        title: `${"T".repeat(79)}…`,
+        body: `${"A".repeat(179)}…`,
+      });
+    } finally {
+      await host.cleanup();
+    }
+  });
+
+  it("falls back when Markdown has no visible content", async () => {
+    const host = await setup();
+    try {
+      const thread = host.setThread({
+        title: "---",
+        titleFallback: "**Release**",
+      });
+      await host.harness.behavior.emitThreadEvent("thread.idle", {
+        thread,
+        lastAssistantText: "[report]: https://example.com",
+      });
+      await vi.waitFor(() =>
+        expect(host.harness.realtimeSignals).toHaveLength(1),
+      );
+      expect(host.harness.realtimeSignals[0]?.payload).toMatchObject({
+        title: "Release",
+        body: "Finished and waiting for you",
+      });
+    } finally {
+      await host.cleanup();
+    }
+  });
+
+  it("preserves Markdown-like syntax in approval commands", async () => {
+    const host = await setup();
+    try {
+      const thread = host.setThread();
+      const command = "echo '*literal*' `pwd` && cat snake_case";
+      const interaction: PendingInteraction = {
+        ...pendingQuestion(thread.id, ""),
+        payload: {
+          kind: "approval",
+          subject: {
+            kind: "command",
+            itemId: "command-1",
+            command,
+            cwd: null,
+            actions: [],
+            sessionGrant: null,
+          },
+          reason: null,
+          availableDecisions: ["allow_once", "deny"],
+        },
+      };
+      host.interactions.set(thread.id, [interaction]);
+      await host.harness.behavior.emitThreadEvent("interaction.pending", {
+        thread,
+        interaction,
+      });
+      await vi.waitFor(() =>
+        expect(host.harness.realtimeSignals).toHaveLength(1),
+      );
+      expect(host.harness.realtimeSignals[0]?.payload).toMatchObject({
+        body: `Approve command: ${command}`,
+      });
+    } finally {
+      await host.cleanup();
+    }
+  });
+
   it("sends a root idle preview to each device and reads the relay setting at flush", async () => {
     const host = await setup();
     try {

@@ -9,7 +9,6 @@ import { toast as sonnerToast, type Action, type ExternalToast } from "sonner";
 import { Button } from "@bb/shared-ui/button";
 import { Icon, type IconName } from "@bb/shared-ui/icon";
 import { cn } from "@bb/shared-ui/lib/utils";
-import { NotificationText } from "@/components/notifications/NotificationText";
 import {
   openNotificationCenter,
   recordNotification,
@@ -162,16 +161,7 @@ function AppToastOverflowText({
     measure();
     const observer = new ResizeObserver(measure);
     observer.observe(body);
-    const contentObserver = new MutationObserver(measure);
-    contentObserver.observe(body, {
-      childList: true,
-      subtree: true,
-      characterData: true,
-    });
-    return () => {
-      observer.disconnect();
-      contentObserver.disconnect();
-    };
+    return () => observer.disconnect();
   }, [content]);
 
   return (
@@ -184,7 +174,7 @@ function AppToastOverflowText({
           className,
         )}
       >
-        <NotificationText>{content}</NotificationText>
+        {content}
       </div>
       {truncated && notificationId !== null ? (
         <Button

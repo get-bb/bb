@@ -8,6 +8,10 @@ const scan = scanPublicSdkOnly(dirname(fileURLToPath(import.meta.url)), {
   allow: [
     /^(?:\.\.\/)+vitest\.shared\.js$/u,
     /^undici$/u,
+    /^mdast$/u,
+    /^mdast-util-from-markdown$/u,
+    /^mdast-util-gfm$/u,
+    /^micromark-extension-gfm$/u,
     /^zod$/u,
     /^react$/u,
     /^@testing-library\/react$/u,

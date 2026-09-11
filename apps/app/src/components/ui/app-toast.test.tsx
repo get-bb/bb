@@ -22,12 +22,12 @@ describe("AppToastContent", () => {
 
     expect(
       screen
-        .getByTestId("app-toast-title")
+        .getByText("A deliberately long visual bell title that can wrap")
         .classList.contains("line-clamp-4"),
     ).toBe(true);
     expect(
       screen
-        .getByTestId("app-toast-description")
+        .getByText("A deliberately long detail that can wrap")
         .classList.contains("line-clamp-4"),
     ).toBe(true);
     expect(
