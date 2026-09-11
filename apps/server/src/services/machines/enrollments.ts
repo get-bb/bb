@@ -1,3 +1,4 @@
+import { isHostCleanupAllowed } from "../hosts/cleanup-context.js";
 import { defaultKeyHasher } from "@better-auth/api-key";
 import { getMachineProvider } from "../plugins/plugin-machine-provider-registry.js";
 import { setTimeout as delay } from "node:timers/promises";
@@ -153,7 +154,10 @@ export function createMachineEnrollmentService(
         return serialized(lockKey, async () => {
           const host = getNonDestroyedHostByLaunchKey(deps.db, request.key);
           if (!host) throw new Error("Machine creation host was not found");
-          if (host.phase === "destroyed" || host.phase === "removing")
+          if (
+            host.phase === "destroyed" ||
+            (host.phase === "removing" && !isHostCleanupAllowed(deps, host.id))
+          )
             throw new Error("Machine enrollment was cancelled");
           if (
             getMachineProvider(host.machineProviderId ?? "")?.pluginId !== owner
@@ -212,7 +216,10 @@ export function createMachineEnrollmentService(
         while (true) {
           signal.throwIfAborted();
           const host = hostForId(enrollmentId);
-          if (host.destroyedAt !== null || host.phase === "removing")
+          if (
+            host.destroyedAt !== null ||
+            (host.phase === "removing" && !isHostCleanupAllowed(deps, host.id))
+          )
             throw new Error("Machine enrollment was cancelled");
           if (deps.isConnected(host.id)) {
             pending.delete(host.id);

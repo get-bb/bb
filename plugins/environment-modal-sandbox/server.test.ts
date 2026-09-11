@@ -471,7 +471,7 @@ describe("Modal machine provider", () => {
     expect(test.backend.creates).toHaveLength(1);
   });
 
-  it("suspends to a snapshot, resumes, and removes the machine resource", async () => {
+  it("preserves resources across provider suspend, resume, and remove callbacks", async () => {
     const harness = await setup({
       ...SETTINGS,
       environmentVariables: "GH_TOKEN=image-secret-sentinel",
@@ -597,7 +597,7 @@ describe("Modal machine provider", () => {
     ).resolves.toEqual({ resource: checkpoint });
   });
 
-  it("resumes a surviving sandbox when suspension failed before its first snapshot", async () => {
+  it("reboots surviving compute when resume receives a resource without a snapshot", async () => {
     const harness = await setup(SETTINGS, { failSnapshotOnce: true });
     const created = await harness.provider.create(createContext());
     if (created.status !== "created") throw new Error(created.message);

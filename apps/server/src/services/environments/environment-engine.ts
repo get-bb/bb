@@ -1,3 +1,4 @@
+import { withHostCleanup } from "../hosts/cleanup-context.js";
 import { findHostDataDir } from "../lib/entity-lookup.js";
 import { updateThread } from "@bb/db";
 import {
@@ -642,71 +643,73 @@ async function runRemove(
     throw new Error(
       `Environment provider "${row.environmentProviderId}" is unavailable or belongs to another plugin`,
     );
-  try {
-    if (row.providerOwnsPath && row.hostId !== null && row.path !== null) {
-      await runEnvironmentHook(deps, {
-        id: `environment:${environmentId}:${row.environmentProviderInstanceKey}:teardown`,
-        hostId: row.hostId,
-        path: row.path,
-        kind: "teardown",
-        resumeOnly,
-        report: {
-          step: () => undefined,
-          log: (text) =>
-            deps.logger.warn(
-              { environmentId, text },
-              "Environment teardown hook",
-            ),
-        },
-        signal,
-      });
-    }
-    const invocation = await invokeEnvironmentProvider(
-      record,
-      "environment remove",
-      () =>
-        record.provider.remove({
-          environment:
-            row.ownerThreadId !== null ? null : toEnvironmentResponse(row),
+  await withHostCleanup(deps, row.hostId, async () => {
+    try {
+      if (row.providerOwnsPath && row.hostId !== null && row.path !== null) {
+        await runEnvironmentHook(deps, {
+          id: `environment:${environmentId}:${row.environmentProviderInstanceKey}:teardown`,
           hostId: row.hostId,
           path: row.path,
-          pathKey: row.environmentProviderInstanceKey ?? row.id,
-          resource: row.resource,
-          attempt,
-          report: emptyReporter(),
+          kind: "teardown",
+          resumeOnly,
+          report: {
+            step: () => undefined,
+            log: (text) =>
+              deps.logger.warn(
+                { environmentId, text },
+                "Environment teardown hook",
+              ),
+          },
           signal,
-        }),
-    );
-    if (!invocation.ok) throw new Error(invocation.error);
-    if (invocation.value === null)
-      throw new Error("The environment provider became unavailable.");
-    const result = removeResultSchema.parse(invocation.value);
-    if (result.status === "failed") {
+        });
+      }
+      const invocation = await invokeEnvironmentProvider(
+        record,
+        "environment remove",
+        () =>
+          record.provider.remove({
+            environment:
+              row.ownerThreadId !== null ? null : toEnvironmentResponse(row),
+            hostId: row.hostId,
+            path: row.path,
+            pathKey: row.environmentProviderInstanceKey ?? row.id,
+            resource: row.resource,
+            attempt,
+            report: emptyReporter(),
+            signal,
+          }),
+      );
+      if (!invocation.ok) throw new Error(invocation.error);
+      if (invocation.value === null)
+        throw new Error("The environment provider became unavailable.");
+      const result = removeResultSchema.parse(invocation.value);
+      if (result.status === "failed") {
+        writeEnvironment(deps, environmentId, {
+          teardownStatus: "failed",
+          teardownMessage: result.message,
+          retireAt: Date.now() + REMOVE_RETRY_MS,
+        });
+        return;
+      }
+      writeEnvironment(deps, environmentId, {
+        teardownStatus: "removed",
+        teardownMessage: null,
+        claimPath: null,
+        resource: null,
+        retireAt: null,
+      });
+      applyLoggedEnvironmentLifecycleEvent(deps, {
+        environmentId,
+        event: { type: "destroy.recorded" },
+      });
+    } catch (error) {
       writeEnvironment(deps, environmentId, {
         teardownStatus: "failed",
-        teardownMessage: result.message,
+        teardownMessage: message(error),
         retireAt: Date.now() + REMOVE_RETRY_MS,
       });
-      return;
     }
-    writeEnvironment(deps, environmentId, {
-      teardownStatus: "removed",
-      teardownMessage: null,
-      claimPath: null,
-      resource: null,
-      retireAt: null,
-    });
-    applyLoggedEnvironmentLifecycleEvent(deps, {
-      environmentId,
-      event: { type: "destroy.recorded" },
-    });
-  } catch (error) {
-    writeEnvironment(deps, environmentId, {
-      teardownStatus: "failed",
-      teardownMessage: message(error),
-      retireAt: Date.now() + REMOVE_RETRY_MS,
-    });
-  }
+  });
 }
 
 async function removeEnvironment(

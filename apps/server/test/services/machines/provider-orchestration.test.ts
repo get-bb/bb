@@ -85,7 +85,7 @@ afterEach(() => {
 });
 
 describe("machine creation hosts", () => {
-  it("persists a creating host before allocation and resumes it after restart", async () =>
+  it("recovers a persisted creating host with its original launch key", async () =>
     withTestHarness(async (harness) => {
       const started = createDeferredPromise<void>();
       const release = createDeferredPromise<void>();
@@ -164,6 +164,7 @@ describe("machine creation hosts", () => {
       const record = installMachineProvider();
       expect(
         askMachineLaunch(harness.deps, {
+          lifetime: "standalone",
           key: "stable-key",
           record,
           inputs: null,
@@ -189,6 +190,7 @@ describe("machine creation hosts", () => {
       expect(getHost(harness.db, firstHost.id)?.phase).toBe("destroyed");
 
       askMachineLaunch(harness.deps, {
+        lifetime: "standalone",
         key: "stable-key",
         record,
         inputs: null,
@@ -229,6 +231,7 @@ describe("machine creation hosts", () => {
 
       expect(
         askMachineLaunch(harness.deps, {
+          lifetime: "standalone",
           key: "failed-bootstrap",
           record,
           inputs: null,
@@ -246,6 +249,7 @@ describe("machine creation hosts", () => {
         .toBe("removing");
 
       const rejected = askMachineLaunch(harness.deps, {
+        lifetime: "standalone",
         key: "failed-bootstrap",
         record,
         inputs: null,

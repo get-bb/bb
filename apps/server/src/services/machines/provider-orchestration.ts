@@ -1,3 +1,4 @@
+import { withHostCleanup } from "../hosts/cleanup-context.js";
 import { requestQueuedMachineReadiness } from "../threads/queued-message-dispatch.js";
 import { and, desc, eq } from "drizzle-orm";
 import { createHostId, hostDaemonSessions, hosts } from "@bb/db";
@@ -17,6 +18,7 @@ import {
   listThreadIdsWithHostOfflineQueueWaits,
   markHostEnvironmentsDestroyed,
   machineHasLiveThreadLaunch,
+  machineHasStartingThreadLaunch,
   machineHasProvisioningEnvironment,
   machineHasLiveThreads,
   updateHost,
@@ -379,17 +381,10 @@ export async function parseMachineProviderInputs(
     }
     return null;
   }
-  if (inputs === null) {
-    throw new ApiError(
-      400,
-      "invalid_request",
-      `The "${record.provider.id}" machine provider needs inputs, and the request carried none`,
-    );
-  }
   const invocation = await invokeMachineProvider(
     record,
     `"${record.provider.id}" machine provider inputs`,
-    async () => schema["~standard"].validate(inputs),
+    async () => schema["~standard"].validate(inputs ?? {}),
   );
   if (!invocation.ok) {
     throw new ApiError(
@@ -488,6 +483,7 @@ export function askMachineLaunch(
   deps: Deps,
   args: {
     key: string;
+    lifetime: "thread" | "standalone";
     record: PluginMachineProviderRecord;
     inputs: JsonValue | null;
   },
@@ -546,7 +542,10 @@ export function askMachineLaunch(
       .values({
         id,
         name: `${args.record.provider.displayName} ${suffix}`,
-        type: args.record.provider.ephemeral ? "ephemeral" : "persistent",
+        type:
+          args.lifetime === "thread" && args.record.provider.ephemeral
+            ? "ephemeral"
+            : "persistent",
         machineProviderId: args.record.provider.id,
         machineOperationId: operationId,
         launchKey: args.key,
@@ -631,6 +630,7 @@ export async function submitMachine(
   const prepared = await prepareMachineProviderSelection(deps, args);
   const decision = askMachineLaunch(deps, {
     key,
+    lifetime: "standalone",
     record: prepared.record,
     inputs: prepared.inputs,
   });
@@ -752,7 +752,6 @@ async function suspendMachine(
     key: hostId,
     run: async (signal) => {
       const run = async () => {
-        let checkpointed = false;
         updateHost(deps.db, deps.hub, hostId, {
           phase: "suspending",
           machineOperationId: operationId,
@@ -778,6 +777,7 @@ async function suspendMachine(
             );
           }
         }
+        updateHost(deps.db, deps.hub, hostId, { suspendedAt: Date.now() });
         const invocation = await invokeMachineProvider(
           record,
           "machine suspend",
@@ -801,16 +801,10 @@ async function suspendMachine(
                 updateHost(deps.db, deps.hub, hostId, {
                   resource: parsed,
                 });
-                checkpointed = true;
               },
             }),
         );
         if (!invocation.ok) {
-          if (checkpointed) {
-            updateHost(deps.db, deps.hub, hostId, {
-              suspendedAt: Date.now(),
-            });
-          }
           throw new Error(invocation.error);
         }
         const result = resourceResultSchema.parse(invocation.value);
@@ -876,7 +870,7 @@ function assertMachineProvisioningComplete(deps: Deps, hostId: string): void {
   if (
     !hasPendingProjectSourceSetupOnHost(deps.db, hostId) &&
     !machineHasProvisioningEnvironment(deps.db, hostId) &&
-    !machineHasLiveThreadLaunch(deps.db, hostId)
+    !machineHasStartingThreadLaunch(deps.db, hostId)
   )
     return;
   throw new ApiError(
@@ -1324,6 +1318,7 @@ export async function sweepProviderMachine(
     return;
   }
   if (
+    row.phase !== "removing" &&
     row.suspendedAt !== null &&
     listThreadIdsWithHostOfflineQueueWaits(deps.db, hostId).length > 0
   ) {
@@ -1382,7 +1377,9 @@ export async function sweepProviderMachine(
       environments.some((environment) => environment.providerOwnsPath) &&
       row.suspendedAt !== null
     ) {
-      await resumeRemovingMachine(deps, hostId);
+      await withHostCleanup(deps, hostId, () =>
+        resumeRemovingMachine(deps, hostId),
+      );
       row = getHost(deps.db, hostId);
       if (row === null || row.phase !== "removing") return;
     }

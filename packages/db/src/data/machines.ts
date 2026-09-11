@@ -69,3 +69,26 @@ export function machineHasProvisioningEnvironment(
       .get() !== undefined
   );
 }
+
+export function machineHasStartingThreadLaunch(
+  db: Connection,
+  hostId: string,
+): boolean {
+  return (
+    db
+      .select({ id: threads.id })
+      .from(hosts)
+      .innerJoin(threads, eq(hosts.launchKey, threads.id))
+      .where(
+        and(
+          eq(hosts.id, hostId),
+          isNull(hosts.destroyedAt),
+          eq(threads.status, "starting"),
+          isNull(threads.archivedAt),
+          isNull(threads.deletedAt),
+        ),
+      )
+      .limit(1)
+      .get() !== undefined
+  );
+}

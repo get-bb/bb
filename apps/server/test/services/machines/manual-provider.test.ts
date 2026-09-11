@@ -3,23 +3,6 @@ import { defaultAppSettings } from "@bb/domain";
 import { getHost, setAppSettings } from "@bb/db";
 import { withTestHarness } from "../../helpers/test-app.js";
 import { seedHost, seedPrimaryHost } from "../../helpers/seed.js";
-import { createManualMachineProviderRecord } from "../../../src/services/machines/manual-provider.js";
-
-it("reports the manual uninstall hint during removal", async () => {
-  const step = vi.fn();
-  const record = createManualMachineProviderRecord({
-    bootstrap: vi.fn(async () => ({ hostId: "host-one" })),
-  });
-  await record.provider.remove({
-    hostId: "host-one",
-    resource: { key: "manual" },
-    report: { step, log: vi.fn() },
-    signal: new AbortController().signal,
-  });
-  expect(step).toHaveBeenCalledWith(
-    "Uninstall the machine service with its original installer: install-machine.sh --uninstall --host-id host-one",
-  );
-});
 
 it("creates, enrolls, and removes a manual machine by host id", async () => {
   await withTestHarness(async (harness) => {

@@ -1,3 +1,4 @@
+import { isHostCleanupAllowed } from "./cleanup-context.js";
 import { assertMachineLifecycleAdmission } from "../machines/lifecycle.js";
 import { getHost, getThread } from "@bb/db";
 import { randomUUID } from "node:crypto";
@@ -98,11 +99,25 @@ export async function callHostRetryableOnlineRpcForWork(
   });
 }
 
+function isCleanupRpc(
+  deps: WorkSessionDeps,
+  args: CallHostOnlineRpcArgs<HostDaemonRpcCommand>,
+): boolean {
+  return (
+    getHost(deps.db, args.hostId)?.phase === "removing" &&
+    isHostCleanupAllowed(deps, args.hostId) &&
+    (args.command.type === "plugin.host.call" ||
+      (args.command.type === "environment.hook.run" &&
+        args.command.kind === "teardown"))
+  );
+}
+
 function assertHostActiveForRead(
   deps: WorkSessionDeps,
   args: CallHostOnlineRpcArgs<HostDaemonRpcCommand>,
 ): void {
   if (
+    isCleanupRpc(deps, args) ||
     args.command.type === "thread.stop" ||
     args.command.type === "environment.hook.cancel" ||
     args.command.type === "plugin.host.cancel" ||
@@ -129,6 +144,7 @@ async function prepareHostForWork(
   args: CallHostOnlineRpcArgs<HostDaemonRpcCommand>,
   retryOnTransportFailure: boolean,
 ): Promise<void> {
+  if (isCleanupRpc(deps, args)) return;
   await ensureHostSessionReadyForWork(deps, { hostId: args.hostId }).catch(
     async (error) => {
       if (!retryOnTransportFailure || !isHostUnavailableApiError(error)) {

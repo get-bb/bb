@@ -476,12 +476,10 @@ export async function resolveThreadEnvironmentPlacement(
           "requires a project with a Git remote",
         );
     }
-    return providerPlacement(
-      deps,
-      args.projectId,
-      environmentProviderId,
-      { machine, inputs: requested.inputs },
-    );
+    return providerPlacement(deps, args.projectId, environmentProviderId, {
+      machine,
+      inputs: requested.inputs,
+    });
   }
   const resolvedEnvironment = resolveStableThreadRequestEnvironment(deps, {
     ...(args.allowUnmanagedPersonalProjectReuseEnvironmentId !== undefined
@@ -592,6 +590,7 @@ export async function resolveProviderOperationContext(
     selection.machine.type === "new"
       ? askMachineLaunch(deps, {
           key: thread.id,
+          lifetime: "thread",
           record:
             getMachineProvider(selection.machine.machineProviderId) ??
             (() => {
@@ -877,6 +876,7 @@ async function reserveEnvironmentBeforeMachine(
     );
   const machineDecision = askMachineLaunch(deps, {
     key: args.thread.id,
+    lifetime: "thread",
     record: machineRecord,
     inputs: selection.machine.inputs,
   });

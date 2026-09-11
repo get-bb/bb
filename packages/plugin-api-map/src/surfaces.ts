@@ -795,7 +795,7 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
         bullets: [
           "Register bb.experimental_machines with a display name, one-line description, and required glyph, plugin-relative SVG, declared icon, or React icon",
           "Show the provider display name and icon as the kind next to every machine it creates; manually enrolled machines have no kind",
-          "Declare ephemeral machines, Standard Schema inputs, availability and validation; core parses and persists inputs and checks availability before create",
+          "Declare automatic retirement for thread-created ephemeral machines; standalone machines remain until explicit removal. Core parses Standard Schema inputs and checks availability and validation before create",
           "Keep secrets in plugin settings because persisted machine inputs are readable by every plugin; pass only non-secret configuration or references",
           "Register an environment composition with machineProviderId and environmentProviderId to create a machine and then use a concrete environment provider; machine registration alone adds no picker option; CLI selects the composition with --environment-provider",
           "Create machines that belong to no project; projects reach a machine later through project sources",
@@ -813,7 +813,7 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
           "Own idle timing in the plugin using thread-sequence and terminal-input events plus background schedules",
           "Render one compact machine-inputs control in composed thread creation with app.slots.experimental_machineProviderInputs, reporting a ready non-secret JSON value on mount or a one-sentence blocked reason",
 
-          "Request suspend/resume through the host SDK; calls return the updated host when the tracked operation starts, core coordinates drain, persisted live thread launches, provisioning environments, and project checkout setup reject suspend with machine_busy, and plugins own idle policy",
+          "Request suspend/resume through the host SDK; calls return the updated host when the tracked operation starts, core coordinates drain, starting thread launches, provisioning environments, and project checkout setup reject suspend with machine_busy, and plugins own idle policy",
           "Read maintenance state and lifecycle failures from each host's lifecycle phase and message",
           "Await suspend.checkpoint(resource) to persist opaque resource state before termination; schedule vendor maintenance in the plugin using bb.background.schedule and bb.sdk.hosts.experimental_suspend",
           "Optionally declare suspend and resume together; plugins own idle timing and core coordinates transitions",

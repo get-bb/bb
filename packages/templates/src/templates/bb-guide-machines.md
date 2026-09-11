@@ -135,7 +135,9 @@ the same host. After a server restart, it registers a completed checkout whose
 remote matches instead of cloning again; a conflicting target is refused.
 The project needs a Git remote and the machine needs Git access to it. Choosing
 Personal workspace first does not clone a project. Standalone `bb machine create`
-does not set up a project source.
+does not set up a project source and remains available until explicitly removed.
+Machines created for threads retire after their last live thread is archived
+when the provider declares them ephemeral.
 
 For project creation and sources, `--root`/`--path` refers to a path on the
 selected connected machine. Omit the selector to keep the existing local CLI

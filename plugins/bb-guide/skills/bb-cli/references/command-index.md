@@ -294,3 +294,5 @@ Machine creation is durable: `create --no-wait` returns the creating host ID. `m
 
 Machine environment: `bb machine env list`, `bb machine env set NAME`
 (value from stdin), and `bb machine env unset NAME`; all accept `--json`.
+
+Standalone `bb machine create` machines remain until explicitly removed.

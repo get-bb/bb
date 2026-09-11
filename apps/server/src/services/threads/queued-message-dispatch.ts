@@ -60,7 +60,7 @@ interface QueuedMessageDispatchRef {
 
 type PreparedQueuedMessageDispatchWake = Exclude<
   QueuedMessageDispatchWake,
-  { kind: "provisioning-ended" } | { kind: "host-connected" }
+  { kind: "provisioning-ended" }
 >;
 
 const pendingPluginRechecks = new WeakSet<
@@ -96,20 +96,7 @@ function prepareQueuedMessageDispatchWake(
       return [];
     case "host-connected": {
       if (isMachineWaitingForExecution(deps, wake.hostId)) return [];
-      const prepared: PreparedQueuedMessageDispatchWake[] = [];
-      for (const threadId of listThreadIdsWithHostOfflineQueueWaits(
-        deps.db,
-        wake.hostId,
-      )) {
-        const cleared = clearThreadQueueWaitsOfKind(deps, {
-          threadId,
-          kind: "host-offline",
-        });
-        if (cleared > 0) {
-          prepared.push({ kind: "thread-ready", threadId });
-        }
-      }
-      return prepared;
+      return [wake];
     }
     default:
       return [wake];
@@ -120,6 +107,8 @@ function dispatchWakeContext(
   wake: PreparedQueuedMessageDispatchWake,
 ): Record<string, number | string | undefined> {
   switch (wake.kind) {
+    case "host-connected":
+      return { hostId: wake.hostId, wake: wake.kind };
     case "workspace-ready":
     case "thread-ready":
     case "turn-started":
@@ -223,6 +212,22 @@ async function executePreparedQueuedMessageDispatch(
   wake: PreparedQueuedMessageDispatchWake,
 ): Promise<void> {
   switch (wake.kind) {
+    case "host-connected":
+      for (const threadId of listThreadIdsWithHostOfflineQueueWaits(
+        deps.db,
+        wake.hostId,
+      )) {
+        for (const row of listQueuedThreadMessagesWaitingOnKind(deps.db, {
+          kind: "host-offline",
+          threadId,
+        })) {
+          await attemptAutomaticQueuedMessage(deps, row, {
+            now: Date.now(),
+            respectRequeuePacing: false,
+          });
+        }
+      }
+      return;
     case "workspace-ready":
       await runWorkspaceReadyDispatch(deps, wake.threadId);
       return;

@@ -5,11 +5,12 @@ import { updateHost, upsertHost } from "../../src/data/hosts.js";
 import {
   machineHasLiveThreadLaunch,
   machineHasProvisioningEnvironment,
+  machineHasStartingThreadLaunch,
 } from "../../src/data/machines.js";
 import { createProject } from "../../src/data/projects.js";
 import { archiveThread, createThread } from "../../src/data/threads.js";
 import { noopNotifier } from "../../src/notifier.js";
-import { environments } from "../../src/schema.js";
+import { environments, threads } from "../../src/schema.js";
 import { createMigratedConnection } from "../helpers/migrated-connection.js";
 
 function setup() {
@@ -23,7 +24,7 @@ function setup() {
 }
 
 describe("machine provisioning state", () => {
-  it("finds a live thread from the machine launch key until it is archived", () => {
+  it("distinguishes starting launches from live threads retained until archive", () => {
     const { db, host, project } = setup();
     const thread = createThread(db, noopNotifier, {
       projectId: project.id,
@@ -33,8 +34,18 @@ describe("machine provisioning state", () => {
     updateHost(db, noopNotifier, host.id, { launchKey: thread.id });
 
     expect(machineHasLiveThreadLaunch(db, host.id)).toBe(true);
+    expect(machineHasStartingThreadLaunch(db, host.id)).toBe(true);
+    for (const status of ["active", "idle", "error"] as const) {
+      db.update(threads)
+        .set({ status })
+        .where(eq(threads.id, thread.id))
+        .run();
+      expect(machineHasStartingThreadLaunch(db, host.id)).toBe(false);
+      expect(machineHasLiveThreadLaunch(db, host.id)).toBe(true);
+    }
     archiveThread(db, noopNotifier, thread.id);
     expect(machineHasLiveThreadLaunch(db, host.id)).toBe(false);
+    expect(machineHasStartingThreadLaunch(db, host.id)).toBe(false);
   });
 
   it("finds a provisioning environment on the host until it is ready", () => {

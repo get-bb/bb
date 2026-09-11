@@ -15,9 +15,11 @@ description: Connect Modal and create reusable cloud machines with the bundled s
    (`account.inspect`) through `sdk.plugins.callRpc`.
 3. Resolve the project with `bb project list --json`. It needs a Git remote,
    credentials to clone it, and machine server access reachable from Modal.
-4. Select the project and create a machine in the UI, or run
+4. Create a standalone machine with
    `bb machine create --provider modal-sandbox --json`.
    SDK: `hosts.experimental_create({machineProviderId:"modal-sandbox",key})`.
+   Standalone machines remain until explicitly removed. Sandboxes created with
+   a thread retire after their last live thread is archived.
    Use a stable creation key for retries. Composed thread creation accepts
    optional configured names as `{"preset":"Large","image":"Node 22"}`.
 
