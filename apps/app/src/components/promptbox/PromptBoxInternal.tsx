@@ -221,6 +221,7 @@ export interface PromptBoxSubmissionConfig {
   isSubmitting?: boolean;
   disabled?: boolean;
   disabledReason?: string;
+  label?: string;
   title?: string;
   isRunning?: boolean;
   onStop?: () => void;
@@ -233,6 +234,7 @@ interface PromptSubmitButtonProps {
   disabledReason: string | undefined;
   isBusy: boolean;
   isCompact: boolean;
+  label: string | undefined;
   onClick: (event: ReactMouseEvent<HTMLButtonElement>) => void;
   onPointerDown: (event: ReactPointerEvent<HTMLButtonElement>) => void;
   onTouchSubmit: () => void;
@@ -245,6 +247,7 @@ function PromptSubmitButton({
   disabledReason,
   isBusy,
   isCompact,
+  label,
   onClick,
   onPointerDown,
   onTouchSubmit,
@@ -312,12 +315,15 @@ function PromptSubmitButton({
         }
         onClick(event);
       }}
-      className={className}
+      className={cn(className, label !== undefined && "w-auto gap-1.5 px-2.5")}
     >
       {isBusy ? (
         <Icon name="Spinner" className="size-4 animate-spin" />
       ) : (
-        <Icon name="CornerDownLeft" className="size-4" />
+        <>
+          {label !== undefined ? <span>{label}</span> : null}
+          <Icon name="CornerDownLeft" className="size-4" />
+        </>
       )}
     </Button>
   );
@@ -1187,6 +1193,7 @@ export function PromptBoxInternal({
     isSubmitting = false,
     disabled: submitDisabled = false,
     disabledReason: submitDisabledReason,
+    label: submitLabel,
     title: submitTitle = "Submit (Enter)",
     isRunning = false,
     onStop,
@@ -3366,6 +3373,7 @@ export function PromptBoxInternal({
                     ) : (
                       <PromptSubmitButton
                         canSubmit={canSubmit}
+                        label={submitLabel}
                         className={cn(
                           showCompactLayout
                             ? COMPACT_PROMPT_ACTION_BUTTON_CLASS

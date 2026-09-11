@@ -111,9 +111,14 @@ describe("ExecutionControls", () => {
       screen.getByRole("button", { name: "Handoff to new thread" }),
     );
 
-    expect(screen.getByText("Choose a provider")).not.toBeNull();
-    expect(screen.queryByRole("button", { name: "Codex" })).toBeNull();
-    expect(screen.getByRole("button", { name: "Claude Code" })).not.toBeNull();
+    expect(
+      screen.getByText("Pick a provider and model for the new thread"),
+    ).not.toBeNull();
+    expect(screen.getByTitle("Codex (current thread)")).toHaveProperty(
+      "disabled",
+      true,
+    );
+    expect(screen.getByTitle("Claude Code")).toHaveProperty("disabled", false);
   });
 
   it("maps disabled fast mode to the explicit default service tier", () => {

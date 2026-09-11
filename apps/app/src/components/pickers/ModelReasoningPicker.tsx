@@ -104,8 +104,6 @@ export interface ModelReasoningPickerHandoff {
   onSelect: (selection: ModelReasoningPickerHandoffSelection) => void;
 }
 
-type HandoffStep = "provider" | "model";
-
 const FAILED_TO_LOAD_MODELS_LABEL = "Failed to load models";
 const EMPTY_MODEL_OPTIONS: readonly ModelPickerOption[] = [];
 const preserveModelLabel = (displayName: string): string => displayName;
@@ -263,11 +261,14 @@ export function ModelReasoningPicker({
   const [moreModelsOpen, setMoreModelsOpen] = useState(false);
   const [trackedSelectedProviderId, setTrackedSelectedProviderId] =
     useState(selectedProviderId);
-  const [handoffStep, setHandoffStep] = useState<HandoffStep | null>(null);
+  const [handoffMode, setHandoffMode] = useState(false);
+  const [handoffReasoningLevel, setHandoffReasoningLevel] =
+    useState<ReasoningLevel | null>(null);
 
   if (trackedSelectedProviderId !== selectedProviderId) {
     setTrackedSelectedProviderId(selectedProviderId);
-    setHandoffStep(null);
+    setHandoffMode(false);
+    setHandoffReasoningLevel(null);
     setPreviewProviderId(null);
     setShowMoreModels(false);
     setMoreModelsOpen(false);
@@ -411,6 +412,13 @@ export function ModelReasoningPicker({
   const activeReasoningOptions = isPreviewing
     ? (previewSelection?.reasoningOptions ?? [])
     : reasoningOptions;
+  const activeReasoningValue: ReasoningLevel | "" = handoffMode
+    ? (handoffReasoningLevel ??
+      (isPreviewing ? previewSelection?.reasoningLevel : reasoningValue) ??
+      "")
+    : isPreviewing
+      ? ""
+      : reasoningValue;
   const activeModelLoadError = isPreviewing
     ? (previewQuery.data?.modelLoadError ?? null)
     : (modelLoadError ?? null);
@@ -445,9 +453,8 @@ export function ModelReasoningPicker({
   const isShowingModelError =
     !activeModelIsLoading && !hasActiveModelOptions && activeModelLoadFailed;
   const showProviderTabs =
-    handoffStep === null &&
-    hasMultipleProviders &&
-    onSelectedProviderChange !== undefined &&
+    (handoffMode ||
+      (hasMultipleProviders && onSelectedProviderChange !== undefined)) &&
     providerOptions.length > 1 &&
     (!isShowingModelError || activeModelErrorIsProviderSpecific);
 
@@ -499,7 +506,7 @@ export function ModelReasoningPicker({
     activeIndex >= 0 && activeIndex < navRows.length ? activeIndex : -1;
 
   const effectiveShowFastModeToggle =
-    handoffStep === null &&
+    !handoffMode &&
     hasActiveModelOptions &&
     (serviceTierSupportByProvider
       ? (serviceTierSupportByProvider[activeProviderId] ?? false)
@@ -511,7 +518,6 @@ export function ModelReasoningPicker({
   const showSelectedFastMode =
     hasSelectedModel && fastModeEnabled && modelOptions.length > 0;
   const showReasoningSection =
-    handoffStep === null &&
     !isShowingModelError &&
     activeReasoningOptions.length > 0 &&
     (isPreviewing
@@ -519,7 +525,8 @@ export function ModelReasoningPicker({
       : hasSelectedModel && !modelIsLoading && !selectedModelLoadFailed);
 
   const resetBrowseState = useCallback(() => {
-    setHandoffStep(null);
+    setHandoffMode(false);
+    setHandoffReasoningLevel(null);
     setPreviewProviderId(null);
     setShowMoreModels(false);
     setMoreModelsOpen(false);
@@ -542,11 +549,12 @@ export function ModelReasoningPicker({
   const handleModelSelect = useCallback(
     (model: string) => {
       if (previewSelectionBlocked) return;
-      if (handoff !== undefined && handoffStep === "model") {
+      if (handoff !== undefined && handoffMode) {
         handoff.onSelect({
           providerId: activeProviderId,
           model,
           reasoningLevel:
+            handoffReasoningLevel ??
             (isPreviewing ? previewSelection?.reasoningLevel : undefined) ??
             reasoningValue,
         });
@@ -561,7 +569,8 @@ export function ModelReasoningPicker({
     [
       activeProviderId,
       handoff,
-      handoffStep,
+      handoffMode,
+      handoffReasoningLevel,
       isPreviewing,
       onModelChange,
       previewSelection,
@@ -571,43 +580,40 @@ export function ModelReasoningPicker({
     ],
   );
 
-  const startHandoffFlow = useCallback(() => {
-    setHandoffStep("provider");
-    setPreviewProviderId(null);
-    setShowMoreModels(false);
-    setMoreModelsOpen(false);
-    setSearchQuery("");
-    setActiveIndex(-1);
-  }, []);
+  const handoffProviderOptions = useMemo(
+    () =>
+      handoff === undefined
+        ? providerOptions
+        : providerOptions.filter(
+            (provider) => provider.value !== handoff.sourceProviderId,
+          ),
+    [handoff, providerOptions],
+  );
   const handleHandoffProviderSelect = useCallback(
     (providerId: string) => {
       setPreviewProviderId(
         providerId === selectedProviderId ? null : providerId,
       );
-      setHandoffStep("model");
+      setHandoffReasoningLevel(null);
+      setShowMoreModels(false);
+      setMoreModelsOpen(false);
       setSearchQuery("");
       setActiveIndex(-1);
     },
     [selectedProviderId],
   );
-  const handleHandoffBack = useCallback(() => {
+  const startHandoffMode = useCallback(() => {
+    const firstProvider = handoffProviderOptions[0];
+    setHandoffMode(true);
+    handleHandoffProviderSelect(firstProvider?.value ?? selectedProviderId);
+  }, [handleHandoffProviderSelect, handoffProviderOptions, selectedProviderId]);
+  const exitHandoffMode = useCallback(() => {
+    setHandoffMode(false);
+    setHandoffReasoningLevel(null);
     setPreviewProviderId(null);
     setSearchQuery("");
     setActiveIndex(-1);
-    setHandoffStep((current) => (current === "model" ? "provider" : null));
   }, []);
-
-  const handleProviderSelect = useCallback(
-    (providerId: string) => {
-      onSelectedProviderChange?.(providerId);
-      const nextPreviewProviderId =
-        open && providerId !== selectedProviderId ? providerId : null;
-      setPreviewProviderId(nextPreviewProviderId);
-      setSearchQuery("");
-      setActiveIndex(-1);
-    },
-    [onSelectedProviderChange, open, selectedProviderId],
-  );
 
   const paneContext = useOptionalPaneContext();
   const isFocusedPane = paneContext?.isFocused ?? true;
@@ -686,6 +692,16 @@ export function ModelReasoningPicker({
     PROVIDER_CYCLE_COMMANDS,
     (index, { target }) => {
       if (!ownsCycleChord(target)) return false;
+      if (handoffMode) {
+        const next =
+          index === 0
+            ? nextCycleValue(handoffProviderOptions, activeProviderId)
+            : previousCycleValue(handoffProviderOptions, activeProviderId);
+        if (next !== null) {
+          handleHandoffProviderSelect(next);
+        }
+        return true;
+      }
       if (canSwitchProviders && onSelectedProviderChange !== undefined) {
         const next =
           index === 0
@@ -721,6 +737,10 @@ export function ModelReasoningPicker({
   const handleReasoningSelect = useCallback(
     (level: ReasoningLevel) => {
       if (previewSelectionBlocked) return;
+      if (handoffMode) {
+        setHandoffReasoningLevel(level);
+        return;
+      }
       if (isPreviewing && previewSelection?.selectedModel) {
         onModelChange(previewSelection.selectedModel);
       }
@@ -729,6 +749,7 @@ export function ModelReasoningPicker({
       setMoreModelsOpen(false);
     },
     [
+      handoffMode,
       isPreviewing,
       previewSelection,
       onModelChange,
@@ -759,11 +780,8 @@ export function ModelReasoningPicker({
     ) {
       return;
     }
-    const value = isPreviewing
-      ? previewSelection?.reasoningLevel
-      : reasoningValue;
     const index = activeReasoningOptions.findIndex(
-      (option) => option.value === value,
+      (option) => option.value === activeReasoningValue,
     );
     if (index < 0) return;
     event.preventDefault();
@@ -940,7 +958,6 @@ export function ModelReasoningPicker({
   }
 
   const showSearchInput =
-    handoffStep !== "provider" &&
     hasActiveModelOptions &&
     !activeModelIsLoading &&
     !isShowingModelError &&
@@ -952,7 +969,7 @@ export function ModelReasoningPicker({
       <PopoverTrigger asChild>{trigger}</PopoverTrigger>
       <PopoverContent
         align={align}
-        mobileTitle={handoffStep === null ? "Model" : "Handoff to new thread"}
+        mobileTitle={handoffMode ? "Handoff to new thread" : "Model"}
         onKeyDown={handleReasoningArrowKeyDown}
         onMobileContentAnimationEnd={handleMobileContentAnimationEnd}
         autoFocusRef={showSearchInput ? searchInputRef : undefined}
@@ -965,13 +982,7 @@ export function ModelReasoningPicker({
         )}
       >
         <ResetBrowseStateOnContentUnmount onReset={resetBrowseState} />
-        {handoffStep !== null ? (
-          <HandoffFlowHeader
-            step={handoffStep}
-            provider={handoffStep === "model" ? activeProvider : undefined}
-            onBack={handleHandoffBack}
-          />
-        ) : null}
+        {handoffMode ? <HandoffModeHeader onBack={exitHandoffMode} /> : null}
         {showProviderTabs ? (
           <div
             className={cn(
@@ -982,26 +993,50 @@ export function ModelReasoningPicker({
             {providerOptions.map((provider) => {
               const TabIcon = provider.icon;
               const isActive = provider.value === activeProviderId;
+              const isHandoffSource =
+                handoffMode &&
+                handoff !== undefined &&
+                provider.value === handoff.sourceProviderId;
               return (
                 <button
                   key={provider.value}
                   type="button"
-                  title={provider.label}
+                  title={
+                    isHandoffSource
+                      ? `${provider.label} (current thread)`
+                      : provider.label
+                  }
+                  disabled={isHandoffSource}
                   onMouseDown={(event) => event.preventDefault()}
                   onClick={() => {
-                    if (provider.value !== activeProviderId) {
-                      handleProviderSelect(provider.value);
+                    if (
+                      isHandoffSource ||
+                      provider.value === activeProviderId
+                    ) {
+                      return;
                     }
+                    if (handoffMode) {
+                      handleHandoffProviderSelect(provider.value);
+                      return;
+                    }
+                    handleProviderSelect(provider.value);
                   }}
                   className={cn(
-                    "flex items-center justify-center border-b-2 focus-visible:outline-none",
+                    "relative flex items-center justify-center border-b-2 focus-visible:outline-none",
                     LIST_HOVER_TRANSITION,
                     COARSE_POINTER_PROVIDER_TAB_SIZE_CLASS,
                     isActive
                       ? "border-foreground text-foreground"
                       : "border-transparent text-muted-foreground hover:text-foreground",
+                    isHandoffSource && "opacity-40 hover:text-muted-foreground",
                   )}
                 >
+                  {isHandoffSource ? (
+                    <span
+                      aria-hidden
+                      className="pointer-events-none absolute inset-x-1 top-1/2 h-px -rotate-[40deg] bg-current"
+                    />
+                  ) : null}
                   {TabIcon ? (
                     <TabIcon className={COARSE_POINTER_ICON_SIZE_CLASS} />
                   ) : (
@@ -1035,118 +1070,107 @@ export function ModelReasoningPicker({
 
         <MenuHoverProvider>
           <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
-            {handoff !== undefined && handoffStep === "provider" ? (
-              <HandoffProviderList
-                providers={providerOptions.filter(
-                  (provider) => provider.value !== handoff.sourceProviderId,
-                )}
-                onSelect={handleHandoffProviderSelect}
-              />
-            ) : (
-              <div
-                ref={listRef}
-                key={activeProviderId || "no-provider"}
-                role={showSearchInput ? "listbox" : undefined}
-                id={showSearchInput ? listboxId : undefined}
-                aria-label={showSearchInput ? "Models" : undefined}
-                className={cn(
-                  "min-h-0 flex-1 overflow-y-auto overscroll-contain px-1 pb-1 pt-0",
-                  !isCompactViewport && "max-h-64",
-                )}
-              >
-                {isShowingModelError ? null : (
-                  <MenuSectionLabel>Model</MenuSectionLabel>
-                )}
-                {activeModelIsLoading ? (
-                  <ModelPickerLoadingRows />
-                ) : hasActiveModelOptions ? (
-                  <>
-                    {navRows.map((row, index) => {
-                      const active = highlightedIndex === index;
-                      const domId = optionDomId(index);
-                      if (row.kind === "more-toggle") {
-                        return (
-                          <MoreModelsToggleRow
-                            key="more-toggle"
-                            id={domId}
-                            isActive={active}
-                            expanded={showMoreModels}
-                            onToggle={() =>
-                              setShowMoreModels((current) => !current)
-                            }
-                          />
-                        );
-                      }
-                      const option = row.option;
+            <div
+              ref={listRef}
+              key={activeProviderId || "no-provider"}
+              role={showSearchInput ? "listbox" : undefined}
+              id={showSearchInput ? listboxId : undefined}
+              aria-label={showSearchInput ? "Models" : undefined}
+              className={cn(
+                "min-h-0 flex-1 overflow-y-auto overscroll-contain px-1 pb-1 pt-0",
+                !isCompactViewport && "max-h-64",
+              )}
+            >
+              {isShowingModelError ? null : (
+                <MenuSectionLabel>Model</MenuSectionLabel>
+              )}
+              {activeModelIsLoading ? (
+                <ModelPickerLoadingRows />
+              ) : hasActiveModelOptions ? (
+                <>
+                  {navRows.map((row, index) => {
+                    const active = highlightedIndex === index;
+                    const domId = optionDomId(index);
+                    if (row.kind === "more-toggle") {
                       return (
-                        <MenuRowButton
-                          key={option.value}
+                        <MoreModelsToggleRow
+                          key="more-toggle"
                           id={domId}
-                          role={showSearchInput ? "option" : undefined}
                           isActive={active}
-                          label={stripModelBrandPrefix(
-                            option.label,
-                            activeBrandPrefix,
-                          )}
-                          qualifier={option.routeProviderId}
-                          selected={
-                            !isPreviewing && option.value === modelValue
+                          expanded={showMoreModels}
+                          onToggle={() =>
+                            setShowMoreModels((current) => !current)
                           }
-                          disabled={previewSelectionBlocked}
-                          onClick={() => handleModelSelect(option.value)}
                         />
                       );
-                    })}
-                    {!isCompactViewport &&
-                    !isSearching &&
-                    filteredMoreModelOptions.length > 0 ? (
-                      <MoreModelsSubmenu
-                        open={moreModelsOpen}
-                        onOpenChange={setMoreModelsOpen}
-                        openSub={openSub}
-                        activeBrandPrefix={activeBrandPrefix}
-                        isPreviewing={isPreviewing}
-                        modelValue={modelValue}
-                        options={filteredMoreModelOptions}
-                        onSelect={handleModelSelect}
-                      />
-                    ) : null}
-                    {isSearching && navRows.length === 0 ? (
-                      <div
-                        className={cn(
-                          "px-2 text-xs text-muted-foreground",
-                          isCompactViewport ? "py-2" : "py-[0.3125rem]",
+                    }
+                    const option = row.option;
+                    return (
+                      <MenuRowButton
+                        key={option.value}
+                        id={domId}
+                        role={showSearchInput ? "option" : undefined}
+                        isActive={active}
+                        label={stripModelBrandPrefix(
+                          option.label,
+                          activeBrandPrefix,
                         )}
-                      >
-                        No models match your search
-                      </div>
-                    ) : null}
-                  </>
-                ) : (
-                  <div
-                    className={cn(
-                      "px-2 text-xs leading-relaxed text-muted-foreground",
-                      isCompactViewport ? "pb-3 pt-2" : "pb-2 pt-1.5",
-                    )}
-                    title={activeModelLoadErrorMessage ?? undefined}
-                  >
-                    {activeModelLoadErrorMatches && activeModelLoadError ? (
-                      <ModelLoadErrorMessage
-                        error={activeModelLoadError}
-                        providerLabel={activeProviderLabel}
-                        {...(activeProvider?.installUrl === undefined
-                          ? {}
-                          : { installUrl: activeProvider.installUrl })}
+                        qualifier={option.routeProviderId}
+                        selected={!isPreviewing && option.value === modelValue}
+                        disabled={previewSelectionBlocked}
+                        onClick={() => handleModelSelect(option.value)}
                       />
-                    ) : activeModelLoadFailed ? (
-                      activeModelFailureMessage
-                    ) : (
-                      "No models available"
-                    )}
-                  </div>
-                )}
-              </div>
-            )}
+                    );
+                  })}
+                  {!isCompactViewport &&
+                  !isSearching &&
+                  filteredMoreModelOptions.length > 0 ? (
+                    <MoreModelsSubmenu
+                      open={moreModelsOpen}
+                      onOpenChange={setMoreModelsOpen}
+                      openSub={openSub}
+                      activeBrandPrefix={activeBrandPrefix}
+                      isPreviewing={isPreviewing}
+                      modelValue={modelValue}
+                      options={filteredMoreModelOptions}
+                      onSelect={handleModelSelect}
+                    />
+                  ) : null}
+                  {isSearching && navRows.length === 0 ? (
+                    <div
+                      className={cn(
+                        "px-2 text-xs text-muted-foreground",
+                        isCompactViewport ? "py-2" : "py-[0.3125rem]",
+                      )}
+                    >
+                      No models match your search
+                    </div>
+                  ) : null}
+                </>
+              ) : (
+                <div
+                  className={cn(
+                    "px-2 text-xs leading-relaxed text-muted-foreground",
+                    isCompactViewport ? "pb-3 pt-2" : "pb-2 pt-1.5",
+                  )}
+                  title={activeModelLoadErrorMessage ?? undefined}
+                >
+                  {activeModelLoadErrorMatches && activeModelLoadError ? (
+                    <ModelLoadErrorMessage
+                      error={activeModelLoadError}
+                      providerLabel={activeProviderLabel}
+                      {...(activeProvider?.installUrl === undefined
+                        ? {}
+                        : { installUrl: activeProvider.installUrl })}
+                    />
+                  ) : activeModelLoadFailed ? (
+                    activeModelFailureMessage
+                  ) : (
+                    "No models available"
+                  )}
+                </div>
+              )}
+            </div>
 
             {showReasoningSection ? (
               <>
@@ -1158,7 +1182,7 @@ export function ModelReasoningPicker({
                   <ToggleGroup
                     type="single"
                     aria-label="Reasoning"
-                    value={isPreviewing ? "" : reasoningValue}
+                    value={activeReasoningValue}
                     onValueChange={(value) => {
                       const option = activeReasoningOptions.find(
                         (candidate) => candidate.value === value,
@@ -1210,14 +1234,16 @@ export function ModelReasoningPicker({
               </>
             ) : null}
 
-            {handoff !== undefined && handoffStep === null ? (
+            {handoff !== undefined &&
+            !handoffMode &&
+            handoffProviderOptions.length > 0 ? (
               <>
                 <div className="shrink-0 border-t border-border" />
                 <div className="shrink-0 p-1">
                   <MenuActionButton
                     label="Handoff to new thread"
                     iconName="MessageSquarePlus"
-                    onClick={startHandoffFlow}
+                    onClick={startHandoffMode}
                   />
                 </div>
               </>
@@ -1229,131 +1255,35 @@ export function ModelReasoningPicker({
   );
 }
 
-function HandoffFlowHeader({
-  step,
-  provider,
-  onBack,
-}: {
-  step: HandoffStep;
-  provider: ProviderPickerOption | undefined;
-  onBack: () => void;
-}) {
+function HandoffModeHeader({ onBack }: { onBack: () => void }) {
   const isCompactViewport = useIsCompactViewport();
-  const ProviderIcon = provider?.icon;
   return (
     <div
       className={cn(
-        "flex shrink-0 flex-col gap-1 border-b border-border px-2 py-2",
+        "flex shrink-0 flex-col gap-0.5 px-2 pb-1.5 pt-2",
         isCompactViewport ? "bg-background" : "bg-surface-recessed",
       )}
     >
       <div className="flex items-center gap-1">
         <button
           type="button"
-          aria-label={
-            step === "provider" ? "Cancel handoff" : "Back to providers"
-          }
+          aria-label="Back to model picker"
           onClick={onBack}
           className={cn(
             "flex size-6 shrink-0 items-center justify-center rounded-sm text-muted-foreground hover:bg-state-hover hover:text-foreground",
             LIST_HOVER_TRANSITION,
           )}
         >
-          <Icon
-            name={step === "provider" ? "X" : "ChevronLeft"}
-            className="size-3.5"
-            aria-hidden
-          />
+          <Icon name="ChevronLeft" className="size-3.5" aria-hidden />
         </button>
         <span className="min-w-0 truncate text-xs font-medium text-foreground">
           Handoff to new thread
         </span>
       </div>
-      <div className="flex min-w-0 items-center gap-1.5 pl-7 text-xs text-muted-foreground">
-        <span className="shrink-0">
-          {step === "provider" ? "Step 1 of 2" : "Step 2 of 2"}
-        </span>
-        <span aria-hidden>·</span>
-        <span className="truncate">
-          {step === "provider" ? "Choose a provider" : "Choose a model"}
-        </span>
+      <div className="pl-7 text-xs text-muted-foreground">
+        Pick a provider and model for the new thread
       </div>
-      {step === "model" && provider ? (
-        <div className="flex min-w-0 items-center gap-1.5 pl-7 text-xs text-foreground">
-          {ProviderIcon ? <ProviderIcon className="size-3.5 shrink-0" /> : null}
-          <span className="truncate">{provider.label}</span>
-        </div>
-      ) : null}
     </div>
-  );
-}
-
-function HandoffProviderList({
-  providers,
-  onSelect,
-}: {
-  providers: readonly ProviderPickerOption[];
-  onSelect: (providerId: string) => void;
-}) {
-  const isCompactViewport = useIsCompactViewport();
-  if (providers.length === 0) {
-    return (
-      <div
-        className={cn(
-          "px-2 text-xs leading-relaxed text-muted-foreground",
-          isCompactViewport ? "pb-3 pt-2" : "pb-2 pt-1.5",
-        )}
-      >
-        No other providers are available.
-      </div>
-    );
-  }
-  return (
-    <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-1 pb-1 pt-0">
-      <MenuSectionLabel>Provider</MenuSectionLabel>
-      {providers.map((provider) => (
-        <HandoffProviderRow
-          key={provider.value}
-          provider={provider}
-          onClick={() => onSelect(provider.value)}
-        />
-      ))}
-    </div>
-  );
-}
-
-function HandoffProviderRow({
-  provider,
-  onClick,
-}: {
-  provider: ProviderPickerOption;
-  onClick: () => void;
-}) {
-  const { hoverProps } = useMenuItemHover();
-  const isCompactViewport = useIsCompactViewport();
-  const ProviderIcon = provider.icon;
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className={cn(
-        "relative flex w-full cursor-default select-none items-center justify-between gap-3 rounded-sm px-2 text-xs outline-none hover:bg-state-hover hover:text-foreground",
-        LIST_HOVER_TRANSITION,
-        MENU_ITEM_LAST_HOVERED_CLASS,
-        isCompactViewport ? "py-2" : "py-[0.3125rem]",
-      )}
-      {...hoverProps}
-    >
-      <span className="flex min-w-0 items-center gap-2">
-        {ProviderIcon ? <ProviderIcon className="size-4 shrink-0" /> : null}
-        <span className="truncate">{provider.label}</span>
-      </span>
-      <Icon
-        name="ChevronRight"
-        className="size-3.5 shrink-0 text-subtle-foreground"
-        aria-hidden
-      />
-    </button>
   );
 }
 

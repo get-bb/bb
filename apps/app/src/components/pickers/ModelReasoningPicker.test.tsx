@@ -670,11 +670,10 @@ describe("ModelReasoningPicker", () => {
     expect(onModelChange).toHaveBeenCalledWith("claude-opus-4-7");
   });
 
-  it("guides a handoff through provider and model without leaving the picker", async () => {
+  it("switches the picker into handoff mode without leaving the thread", async () => {
     const onSelect = vi.fn();
-    const { onSelectedProviderChange, onModelChange } = renderPicker({
-      handoff: { sourceProviderId: "codex", onSelect },
-    });
+    const { onSelectedProviderChange, onModelChange, onReasoningChange } =
+      renderPicker({ handoff: { sourceProviderId: "codex", onSelect } });
     const trigger = screen.getByRole("button", {
       name: "Provider, model and reasoning",
     });
@@ -684,20 +683,30 @@ describe("ModelReasoningPicker", () => {
       screen.getByRole("button", { name: "Handoff to new thread" }),
     );
 
-    expect(screen.getByText("Choose a provider")).not.toBeNull();
-    expect(screen.queryByRole("button", { name: "Codex" })).toBeNull();
-    expect(screen.queryByTitle("Claude Code")).toBeNull();
-
-    fireEvent.click(screen.getByRole("button", { name: "Claude Code" }));
-
-    expect(screen.getByText("Choose a model")).not.toBeNull();
-    expect(screen.getByText("Claude Code")).not.toBeNull();
+    expect(
+      screen.getByText("Pick a provider and model for the new thread"),
+    ).not.toBeNull();
+    const currentTab = screen.getByTitle("Codex (current thread)");
+    expect(currentTab).toHaveProperty("disabled", true);
     expect(await screen.findByText("Opus 4.7")).not.toBeNull();
+    expect(screen.queryByText("5.5")).toBeNull();
     expect(onSelectedProviderChange).not.toHaveBeenCalled();
+    expect(
+      screen.queryByRole("button", { name: "Handoff to new thread" }),
+    ).toBeNull();
 
-    fireEvent.click(screen.getByRole("button", { name: "Back to providers" }));
-    expect(screen.getByText("Choose a provider")).not.toBeNull();
-    fireEvent.click(screen.getByRole("button", { name: "Claude Code" }));
+    fireEvent.click(
+      screen.getByRole("button", { name: "Back to model picker" }),
+    );
+    expect(
+      screen.queryByText("Pick a provider and model for the new thread"),
+    ).toBeNull();
+    expect(screen.getByTitle("Codex")).toHaveProperty("disabled", false);
+    expect(screen.getAllByText("5.5")).toHaveLength(2);
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Handoff to new thread" }),
+    );
     fireEvent.click(await screen.findByText("Opus 4.7"));
 
     expect(onSelect).toHaveBeenCalledExactlyOnceWith({
@@ -707,6 +716,7 @@ describe("ModelReasoningPicker", () => {
     });
     expect(onSelectedProviderChange).not.toHaveBeenCalled();
     expect(onModelChange).not.toHaveBeenCalled();
+    expect(onReasoningChange).not.toHaveBeenCalled();
     expect(trigger.getAttribute("aria-expanded")).toBe("false");
   });
 

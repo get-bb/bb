@@ -98,6 +98,7 @@ vi.mock("@/components/promptbox/FollowUpPromptBox", async () => {
     FollowUpPromptBox: ({
       attachments,
       composer,
+      composerCap,
       environmentSummary,
       execution,
       executionReadOnly,
@@ -119,9 +120,11 @@ vi.mock("@/components/promptbox/FollowUpPromptBox", async () => {
         onChangeMessage: (message: string, mentions: []) => void;
         onEscape?: () => void;
         onSubmit: () => void;
+        submitLabel?: string;
         submitTitle?: string;
         submitMode: { kind: string; reason?: string };
       } | null;
+      composerCap?: ReactNode;
       environmentSummary?: ReactNode;
       execution: {
         model: {
@@ -181,6 +184,8 @@ vi.mock("@/components/promptbox/FollowUpPromptBox", async () => {
         <div data-testid="submit-title">
           {composer?.submitTitle ?? "Submit"}
         </div>
+        <div data-testid="submit-label">{composer?.submitLabel ?? ""}</div>
+        <div data-testid="composer-cap">{composerCap}</div>
         <div data-testid="plugin-customizations-suppressed">
           {suppressPluginComposerCustomizations ? "true" : "false"}
         </div>
@@ -1835,7 +1840,9 @@ describe("ThreadDetailPromptArea", () => {
       screen.getByRole("button", { name: "Complete handoff flow" }),
     );
 
-    expect(mocks.toastMessage).toHaveBeenCalledTimes(1);
+    expect(
+      screen.getByLabelText("Handoff to new thread").textContent,
+    ).toContain("Claude Code");
     expect(screen.getByTestId("submit-title").textContent).toBe(
       "Create new thread (Enter)",
     );
@@ -1847,19 +1854,19 @@ describe("ThreadDetailPromptArea", () => {
     );
   });
 
-  it("notifies that submitting will create a new thread after picking another provider", () => {
+  it("caps the composer and relabels submit after picking another provider", () => {
     renderPromptArea();
     expect(screen.getByTestId("submit-title").textContent).toBe("Submit");
+    expect(screen.queryByLabelText("Handoff to new thread")).toBeNull();
 
     fireEvent.click(screen.getByRole("button", { name: "Switch provider" }));
 
-    expect(mocks.toastMessage).toHaveBeenCalledTimes(1);
-    expect(mocks.toastMessage).toHaveBeenCalledWith(
-      "Submitting will create a new thread",
-      expect.objectContaining({
-        description: expect.stringContaining("Claude Code"),
-      }),
-    );
+    expect(mocks.toastMessage).not.toHaveBeenCalled();
+    const cap = screen.getByLabelText("Handoff to new thread");
+    expect(cap.textContent).toContain("New thread");
+    expect(cap.textContent).toContain("Claude Code");
+    expect(cap.textContent).toContain("claude-opus-5");
+    expect(screen.getByTestId("submit-label").textContent).toBe("New thread");
     expect(screen.getByTestId("submit-title").textContent).toBe(
       "Create new thread (Enter)",
     );
@@ -1882,6 +1889,12 @@ describe("ThreadDetailPromptArea", () => {
       text: "Continue from @thread:thr_1\n\n",
     });
     expect(mocks.toastError).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByRole("button", { name: "Cancel handoff" }));
+
+    expect(screen.queryByLabelText("Handoff to new thread")).toBeNull();
+    expect(screen.getByTestId("submit-label").textContent).toBe("");
+    expect(screen.getByTestId("submit-title").textContent).toBe("Submit");
   });
 
   it("restores the typed draft when switching back to the thread's provider", () => {

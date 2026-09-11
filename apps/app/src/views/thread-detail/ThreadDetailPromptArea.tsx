@@ -53,6 +53,8 @@ import { ThreadPromptModeCard } from "@/components/promptbox/banner/ThreadPrompt
 import { ThreadWorkflowCard } from "@/components/promptbox/banner/ThreadWorkflowCard";
 import { ThreadBackgroundCommandsCard } from "@/components/promptbox/banner/ThreadBackgroundCommandsCard";
 import { ThreadModelFallbackCard } from "@/components/promptbox/banner/ThreadModelFallbackCard";
+import { ThreadHandoffCap } from "@/components/promptbox/banner/ThreadHandoffCap";
+import { stripModelBrandPrefix } from "@/components/pickers/model-brand-prefix";
 import { InlineMessageEditorFrame } from "@/components/promptbox/InlineMessageEditorFrame";
 import type { ModelReasoningPickerHandoffSelection } from "@/components/pickers/ModelReasoningPicker";
 import type {
@@ -101,7 +103,6 @@ import { promptHistoryEntriesToDrafts } from "@/lib/prompt-history";
 import { usePromptHistoryEnabled } from "@/hooks/usePromptHistoryEnabled";
 import { getThreadRoutePath } from "@/lib/route-paths";
 import { getThreadDisplayTitle } from "@/lib/thread-title";
-import { appToast } from "@/components/ui/app-toast";
 import {
   buildThreadHandoffCreateRequest,
   buildThreadHandoffFollowUpDraft,
@@ -668,31 +669,14 @@ export function ThreadDetailPromptArea({
     },
     [fallbackIdentity, setSelectedModel],
   );
-  const handleProviderChange = useCallback(
-    (providerId: string) => {
-      if (providerId === selectedProviderId) {
-        return;
-      }
-      if (fallbackIdentity !== null) {
-        setOverriddenFallbackIdentity(fallbackIdentity);
-      }
-      setSelectedProviderId(providerId);
-    },
-    [fallbackIdentity, selectedProviderId, setSelectedProviderId],
+  const isHandoffProviderId = useCallback(
+    (providerId: string) =>
+      providerId.length > 0 &&
+      providerId !== thread.providerId &&
+      providerOptions.some((option) => option.value === thread.providerId),
+    [providerOptions, thread.providerId],
   );
-  const handleHandoffSelect = useCallback(
-    (selection: ModelReasoningPickerHandoffSelection) => {
-      if (fallbackIdentity !== null) {
-        setOverriddenFallbackIdentity(fallbackIdentity);
-      }
-      setProviderModelReasoning(selection);
-    },
-    [fallbackIdentity, setProviderModelReasoning],
-  );
-  const isHandoffSelection =
-    selectedProviderId.length > 0 &&
-    selectedProviderId !== thread.providerId &&
-    providerOptions.some((option) => option.value === thread.providerId);
+  const isHandoffSelection = isHandoffProviderId(selectedProviderId);
   const sourceThreadDisplayTitle = getThreadDisplayTitle({
     id: thread.id,
     title: thread.title,
@@ -712,50 +696,110 @@ export function ThreadDetailPromptArea({
       thread.projectId,
     ],
   );
-  const selectedProviderDisplayNameRef = useLatestRef(
-    selectedProviderDisplayName,
-  );
-  const wasHandoffSelectionRef = useRef(false);
-  useEffect(() => {
-    if (wasHandoffSelectionRef.current === isHandoffSelection) {
-      return;
-    }
-    wasHandoffSelectionRef.current = isHandoffSelection;
-    const currentDraft = promptDraft.getCurrent();
-    if (!isHandoffSelection) {
+  const syncHandoffDraft = useCallback(
+    (nextProviderId: string) => {
+      const currentDraft = promptDraft.getCurrent();
+      if (isHandoffProviderId(nextProviderId)) {
+        const seededDraft = buildThreadHandoffFollowUpDraft(
+          handoffSeed,
+          currentDraft,
+        );
+        if (seededDraft !== currentDraft) {
+          promptDraft.setDraft(seededDraft);
+        }
+        return;
+      }
       const restoredDraft = stripThreadHandoffPrefix(handoffSeed, currentDraft);
       if (restoredDraft !== null) {
         promptDraft.setDraft(restoredDraft);
       }
+    },
+    [handoffSeed, isHandoffProviderId, promptDraft],
+  );
+  const handleProviderChange = useCallback(
+    (providerId: string) => {
+      if (providerId === selectedProviderId) {
+        return;
+      }
+      if (fallbackIdentity !== null) {
+        setOverriddenFallbackIdentity(fallbackIdentity);
+      }
+      setSelectedProviderId(providerId);
+      syncHandoffDraft(providerId);
+    },
+    [
+      fallbackIdentity,
+      selectedProviderId,
+      setSelectedProviderId,
+      syncHandoffDraft,
+    ],
+  );
+  const handleHandoffSelect = useCallback(
+    (selection: ModelReasoningPickerHandoffSelection) => {
+      if (fallbackIdentity !== null) {
+        setOverriddenFallbackIdentity(fallbackIdentity);
+      }
+      setProviderModelReasoning(selection);
+      syncHandoffDraft(selection.providerId);
+    },
+    [fallbackIdentity, setProviderModelReasoning, syncHandoffDraft],
+  );
+  useEffect(() => {
+    if (isHandoffSelection) {
       return;
     }
-    const seededDraft = buildThreadHandoffFollowUpDraft(
+    const restoredDraft = stripThreadHandoffPrefix(
       handoffSeed,
-      currentDraft,
+      promptDraft.getCurrent(),
     );
-    if (seededDraft !== currentDraft) {
-      promptDraft.setDraft(seededDraft);
-      focusBottomPluginComposer();
+    if (restoredDraft !== null) {
+      promptDraft.setDraft(restoredDraft);
     }
-    appToast.message("Submitting will create a new thread", {
-      description: `A reference to this thread was added to your message. Edit it, then submit to start a new ${selectedProviderDisplayNameRef.current} thread.`,
-    });
+  }, [handoffSeed, isHandoffSelection, promptDraft]);
+  const handleCancelHandoff = useCallback(() => {
+    setSelectedProviderId(thread.providerId);
+    syncHandoffDraft(thread.providerId);
+  }, [setSelectedProviderId, syncHandoffDraft, thread.providerId]);
+  const handoffCap = useMemo(() => {
+    if (!isHandoffSelection) {
+      return null;
+    }
+    const providerOption = providerOptions.find(
+      (option) => option.value === selectedProviderId,
+    );
+    const modelLabel = stripModelBrandPrefix(
+      modelOptions.find((option) => option.value === effectiveSelectedModel)
+        ?.label ?? effectiveSelectedModel,
+      providerOption?.brandPrefix,
+    );
+    return (
+      <ThreadHandoffCap
+        modelLabel={modelLabel}
+        onCancel={handleCancelHandoff}
+        providerIcon={providerOption?.icon}
+        providerLabel={selectedProviderDisplayName}
+      />
+    );
   }, [
-    focusBottomPluginComposer,
-    handoffSeed,
+    effectiveSelectedModel,
+    handleCancelHandoff,
     isHandoffSelection,
-    promptDraft,
-    selectedProviderDisplayNameRef,
+    modelOptions,
+    providerOptions,
+    selectedProviderDisplayName,
+    selectedProviderId,
   ]);
   const hasSentMessageEdit = sentMessageEdit !== undefined;
   useEffect(() => {
     if (hasSentMessageEdit && isHandoffSelection) {
       setSelectedProviderId(thread.providerId);
+      syncHandoffDraft(thread.providerId);
     }
   }, [
     hasSentMessageEdit,
     isHandoffSelection,
     setSelectedProviderId,
+    syncHandoffDraft,
     thread.providerId,
   ]);
   const { typeaheadConfig, promptActions } = useComposerTypeahead({
@@ -1231,7 +1275,10 @@ export function ThreadDetailPromptArea({
       onModifierSubmit: handleBottomComposerModifierSubmit,
       onSubmit: handleBottomComposerSubmit,
       ...(isHandoffSelection
-        ? { submitTitle: "Create new thread (Enter)" }
+        ? {
+            submitLabel: "New thread",
+            submitTitle: "Create new thread (Enter)",
+          }
         : {}),
       compactPromptPlaceholder,
       promptPlaceholder,
@@ -1893,6 +1940,7 @@ export function ThreadDetailPromptArea({
       pendingInteraction={pendingInteractionNode}
       activePromptMode={activePromptMode}
       composer={shouldHideComposer ? null : bottomComposerConfig}
+      composerCap={shouldHideComposer ? null : handoffCap}
       pluginComposerHost={normalPluginComposerHost}
       pluginComposerScope={normalPluginComposerHost.scope}
       textEffects={promptTextEffects}

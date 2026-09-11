@@ -140,6 +140,7 @@ export interface FollowUpComposerProps {
   onModifierSubmit: () => void;
   onSubmit: () => void;
   onEscape?: () => void;
+  submitLabel?: string;
   submitTitle?: string;
   compactPromptPlaceholder: string;
   promptPlaceholder: string;
@@ -159,6 +160,7 @@ export interface FollowUpPromptBoxProps {
   stack: ReactNode | null;
   activePromptMode?: ThreadTimelineActivePromptMode | null;
   composer: FollowUpComposerProps | null;
+  composerCap?: ReactNode;
   environmentSummary: ReactNode | null;
   contextWindowUsage: ContextWindowUsage | null;
   execution: ExecutionControlsProps;
@@ -231,6 +233,7 @@ function FollowUpPromptBoxWithComposer({
   stack,
   activePromptMode,
   composer,
+  composerCap = null,
   environmentSummary,
   contextWindowUsage,
   execution,
@@ -728,6 +731,7 @@ function FollowUpPromptBoxWithComposer({
         heightAnimationKey={isInteractionExpanded ? "expanded" : "compact"}
         mentionMenuPlacement="top"
         submission={{
+          label: composer.submitLabel,
           onStop: onStopRuntime,
           isSubmitting: composer.isFollowUpSubmitting || isStopping,
           disabled:
@@ -794,6 +798,7 @@ function FollowUpPromptBoxWithComposer({
       defaultRenderer={
         <DefaultFollowUpComposer
           active={composer.threadRuntimeDisplayStatus === "active"}
+          composerCap={composerCap}
           composerElement={composerElement}
           hasPluginComposerScope={composerScope !== null}
           isPrimaryComposer={isPrimaryComposer}
@@ -809,6 +814,7 @@ function FollowUpPromptBoxWithComposer({
 
 interface DefaultFollowUpComposerProps {
   active: boolean;
+  composerCap: ReactNode;
   composerElement: ReactNode;
   hasPluginComposerScope: boolean;
   isPrimaryComposer: boolean;
@@ -820,6 +826,7 @@ interface DefaultFollowUpComposerProps {
 
 function DefaultFollowUpComposer({
   active,
+  composerCap,
   composerElement,
   hasPluginComposerScope,
   isPrimaryComposer,
@@ -850,6 +857,7 @@ function DefaultFollowUpComposer({
           )}
           {pendingInteraction}
         </div>
+        {composerCap}
         <div data-follow-up-composer-anchor="">{composerElement}</div>
       </div>
     </>
