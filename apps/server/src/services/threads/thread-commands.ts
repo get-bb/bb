@@ -25,7 +25,7 @@ import {
   startLiveHostCommand,
 } from "../hosts/live-command.js";
 import { getLastProviderThreadId } from "./thread-events.js";
-import type { ThreadForkDescriptor } from "./thread-provisioning-context.js";
+import type { ThreadForkDescriptor } from "./thread-startup-store.js";
 import {
   resolveThreadRuntimeCommandConfig,
   type ResolvedThreadRuntimeCommandConfig,

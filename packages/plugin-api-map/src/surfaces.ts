@@ -739,7 +739,7 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
           "Read the facts as typed values on the create context: host is always non-null, while projectCheckout and gitRemote are non-null exactly when required",
           "Render its own control for those inputs beside the picked provider with app.slots.experimental_environmentProviderInputs, reporting either ready inputs or a blocked reason",
           "Use experimental_BranchPicker for a standard branch choice, or compose experimental_useBranches with experimental_useCheckoutState when it needs checkout-aware branch selection",
-          "Run one idempotent long create call that returns a created directory or terminal/transient failure; core owns attempts and retry behavior; provider policy exposes only retirement grace and path-key strategy",
+          "Run one idempotent long create call that returns a created directory or failure; a failed create is terminal and an explicit retry starts a new attempt on the same environment; provider policy exposes only retirement grace and path-key strategy",
           "Let bb run the repo setup hook after an owned-path create and teardown before removal; attached paths skip both hooks; unknown hook outcomes after daemon restart block automatic cleanup",
           "Use core's pathKey for stable resource identity; core records it as the environment instance key",
           "Reserve a shared checkout before mutation with create.experimental_claimPath; core holds the host/path claim through attachment or cleanup",
@@ -915,11 +915,13 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
         bullets: [
           "Embed the thread view and the new-thread prompt box as components",
           "Render message text with the same Markdown renderer bb uses",
+          "Resolve document links and images beside a workspace or thread-storage file with Markdown.experimental_document",
           "Inherit bb's styling, so embedded UI matches the rest of the app",
         ],
         apiSymbols: [
           "ThreadChat",
           "Markdown",
+          "MarkdownProps.experimental_document",
           "experimental_NewThreadComposer",
         ],
         firstParty: ["Side chat"],

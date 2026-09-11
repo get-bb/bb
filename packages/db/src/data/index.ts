@@ -66,8 +66,8 @@ export {
   getThreadExecutionOverride,
   hasActiveThreadAttention,
   setThreadExecutionOverride,
-  getThreadPendingStartContext,
-  setThreadPendingStartContext,
+  getThreadStartupContext,
+  setThreadStartupContext,
   hasPendingThreadShutdownInEnvironment,
   hasRevivableArchivedThreadInEnvironment,
   listHostThreadIds,
@@ -225,6 +225,15 @@ export {
 } from "./app-theme.js";
 
 export {
+  getPreparingEnvironment,
+  reserveEnvironment,
+  updatePreparingEnvironment,
+  listProviderLifecycleEnvironments,
+  environmentHasLiveThreads,
+  releaseFinishedEnvironmentPreparationOwners,
+  claimEnvironmentPath,
+  findEnvironmentPathClaim,
+  bindEnvironmentPath,
   createEnvironment,
   getEnvironment,
   findProjectEnvironmentByHostPath,
@@ -477,4 +486,3 @@ export {
   shouldCompactDatabase,
   shouldRunIncrementalVacuum,
 } from "./maintenance.js";
-export * from "./environment-launches.js";

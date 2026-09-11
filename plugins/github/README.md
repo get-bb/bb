@@ -45,8 +45,24 @@ bb plugin config github set extraRepos "owner/repo, owner/other"
 bb plugin reload github
 ```
 
-A background service refreshes the issue/PR cache every 5 minutes; the
-panel's Refresh button (or `bb github sync`) forces it.
+A background service refreshes immediately on startup, then waits 15 minutes
+after each completed sync. Each tracked repository uses one bounded `gh api graphql`
+request per sweep, using the existing GitHub CLI authentication. It fetches
+100 open and 50 closed issues, plus 50 open and 30 closed or merged PRs,
+ordered by creation time descending. Labels and assignees are each limited to
+100 per item, matching the previous list commands. Repositories with Issues
+disabled still sync PRs. Failed or incomplete repository responses retain that
+repository’s cached rows.
+
+Batching reduces list-fetch process invocations from four to one per repository
+(75%). This does not measure GraphQL rate-limit point savings.
+Background data may take 15 minutes plus sync time to refresh. The panel's
+Refresh button, the `refresh` RPC, or `bb github sync` starts a sync immediately.
+
+Transient authentication failures and failures across all repositories retain
+the existing retry backoff: 30 seconds, doubling to a five-minute cap, reset
+after a successful sync. Partial repository failures use the normal interval.
+The interval is internal policy; there is no polling setting.
 
 ## Development
 

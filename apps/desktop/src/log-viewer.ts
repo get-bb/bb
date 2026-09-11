@@ -3,6 +3,7 @@ import { mkdir, readdir, stat } from "node:fs/promises";
 import { watch, type FSWatcher } from "node:fs";
 import { join } from "node:path";
 import { escapeHtmlText } from "@bb/domain";
+import { z } from "zod";
 import {
   LOG_VIEWER_VISIBLE_LINE_LIMIT,
   type LogViewerComponent,
@@ -15,6 +16,76 @@ export const LOG_VIEWER_IPC_BATCH_LINE_LIMIT = 250;
 const LOG_VIEWER_INITIAL_TAIL_LINES = 400;
 const LOG_VIEWER_ROTATION_POLL_INTERVAL_MS = 2_000;
 const LOG_VIEWER_COMPONENTS: LogViewerComponent[] = ["server", "host-daemon"];
+const PINO_LEVEL_LABELS = new Map<number, string>([
+  [10, "trace"],
+  [20, "debug"],
+  [30, "info"],
+  [40, "warn"],
+  [50, "error"],
+  [60, "fatal"],
+]);
+
+const pinoLogRecordSchema = z
+  .object({
+    component: z.string().optional(),
+    level: z.number(),
+    msg: z.string().optional(),
+    time: z.number(),
+  })
+  .loose();
+
+interface FormatLogLineArgs {
+  component: LogViewerComponent;
+  line: string;
+}
+
+function padNumber(value: number, length: number): string {
+  return String(value).padStart(length, "0");
+}
+
+function formatLogTimestamp(timeMs: number): string {
+  const date = new Date(timeMs);
+  const datePart = `${date.getFullYear()}-${padNumber(date.getMonth() + 1, 2)}-${padNumber(date.getDate(), 2)}`;
+  const timePart = `${padNumber(date.getHours(), 2)}:${padNumber(date.getMinutes(), 2)}:${padNumber(date.getSeconds(), 2)}.${padNumber(date.getMilliseconds(), 3)}`;
+  return `${datePart} ${timePart}`;
+}
+
+function parseJsonObject(line: string): unknown {
+  if (!line.startsWith("{")) {
+    return null;
+  }
+  try {
+    return JSON.parse(line);
+  } catch {
+    return null;
+  }
+}
+
+export function formatLogLine(args: FormatLogLineArgs): string {
+  const parsed = pinoLogRecordSchema.safeParse(parseJsonObject(args.line));
+  if (!parsed.success) {
+    return `[${args.component}] ${args.line}`;
+  }
+
+  const { component, level, msg, time, ...fields } = parsed.data;
+  const levelLabel = PINO_LEVEL_LABELS.get(level) ?? `level ${level}`;
+  const sourceLabel =
+    component === undefined || component === args.component
+      ? args.component
+      : `${args.component}:${component}`;
+  const parts = [
+    formatLogTimestamp(time),
+    `[${levelLabel}]`,
+    `[${sourceLabel}]`,
+  ];
+  if (msg !== undefined && msg.length > 0) {
+    parts.push(msg);
+  }
+  if (Object.keys(fields).length > 0) {
+    parts.push(JSON.stringify(fields));
+  }
+  return parts.join(" ");
+}
 
 interface CreateLogViewerViewUrlArgs {
   logDir: string;
@@ -506,7 +577,7 @@ export function createLogTailer(args: CreateLogTailerArgs): LogTailer {
         .filter((line) => line.length > 0)
         .map((line) => ({
           source: emitArgs.component,
-          text: `[${emitArgs.component}] ${line}`,
+          text: formatLogLine({ component: emitArgs.component, line }),
         })),
     );
   }

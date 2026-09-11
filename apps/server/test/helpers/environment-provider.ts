@@ -20,7 +20,7 @@ import {
   type PluginEnvironmentProviderRecord,
 } from "../../src/services/plugins/plugin-environment-provider-registry.js";
 import { DEFAULT_ENVIRONMENT_PROVIDER_ID } from "../../src/services/environments/environment-provider-ids.js";
-import { forgetAllActiveThreadProvisionContexts } from "../../src/services/threads/thread-provisioning-active-context.js";
+import { clearAllThreadProvisionSchedules } from "../../src/services/threads/thread-startup-store.js";
 
 export interface FakeEnvironmentProvider {
   contexts: TestEnvironmentProviderContext[];
@@ -150,7 +150,7 @@ export function installFakeEnvironmentProvider(
     decisionTimeoutMs: 10_000,
   });
   onTestFinished(() => {
-    forgetAllActiveThreadProvisionContexts();
+    clearAllThreadProvisionSchedules();
     setPluginEnvironmentProviderBridge(undefined);
   });
 

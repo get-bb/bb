@@ -59,6 +59,12 @@ describe("ENVIRONMENT_LIFECYCLE table", () => {
 
   it("matches the designed transitions exactly", () => {
     expect(ENVIRONMENT_LIFECYCLE).toEqual({
+      creating: {
+        "provision.requested": "provisioning",
+        "provision.failed": "error",
+        "provision.cancelled": "error",
+        "destroy.recorded": "destroyed",
+      },
       provisioning: {
         "provision.succeeded": "ready",
         "provision.failed": "error",

@@ -472,7 +472,7 @@ describe("bb.agents.registerTool", () => {
           bb.experimental_environments.register({
             id: "shared-env",
             displayName: "Shared",
-            create: async () => ({ status: "failed", failure: "transient", message: "waiting" }), remove: async () => ({ status: "removed" }),
+            create: async () => ({ status: "failed", message: "waiting" }), remove: async () => ({ status: "removed" }),
           });
         }
       `,
@@ -484,7 +484,7 @@ describe("bb.agents.registerTool", () => {
           bb.experimental_environments.register({
             id: "shared-env",
             displayName: "Shared again",
-            create: async () => ({ status: "failed", failure: "transient", message: "waiting" }), remove: async () => ({ status: "removed" }),
+            create: async () => ({ status: "failed", message: "waiting" }), remove: async () => ({ status: "removed" }),
           });
         }
       `,

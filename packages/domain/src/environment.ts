@@ -17,6 +17,7 @@ export type EnvironmentProviderSelection = z.infer<
   typeof environmentProviderSelectionSchema
 >;
 export const environmentStatusValues = [
+  "creating",
   "provisioning",
   "ready",
   "error",
