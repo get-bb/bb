@@ -104,6 +104,9 @@ interface RegisterTestHostRpcCaptureArgs {
   hostId: string;
   sessionId: string;
   queueBranchOptions?: boolean;
+  onPluginHostCall?: (
+    command: Extract<HostDaemonRpcCommand, { type: "plugin.host.call" }>,
+  ) => Promise<HostDaemonOnlineRpcResult<"plugin.host.call">>;
   onEnvironmentHook?: (
     command: Extract<HostDaemonRpcCommand, { type: "environment.hook.run" }>,
   ) => Promise<void>;
@@ -417,6 +420,38 @@ export function registerTestHostRpcCapture(
                 sessionId: args.sessionId,
               }),
           );
+        return;
+      }
+      if (
+        command.type === "plugin.host.call" &&
+        args.onPluginHostCall !== undefined
+      ) {
+        void args.onPluginHostCall(command).then(
+          (result) =>
+            deps.hub.recordHostOnlineRpcResponse({
+              message: hostDaemonOnlineRpcResponseMessageSchema.parse({
+                type: "host-rpc.response",
+                requestId: message.requestId,
+                commandType: command.type,
+                ok: true,
+                result,
+              }),
+              sessionId: args.sessionId,
+            }),
+          (error: unknown) =>
+            deps.hub.recordHostOnlineRpcResponse({
+              message: hostDaemonOnlineRpcResponseMessageSchema.parse({
+                type: "host-rpc.response",
+                requestId: message.requestId,
+                commandType: command.type,
+                ok: false,
+                errorCode: "test_plugin_host_call_failed",
+                errorMessage:
+                  error instanceof Error ? error.message : String(error),
+              }),
+              sessionId: args.sessionId,
+            }),
+        );
         return;
       }
       if (respondToRuntimeWorkspaceFileCommand(deps, args, message)) {
