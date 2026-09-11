@@ -52,7 +52,10 @@ function createFakeExpo(): FakeExpo {
   return { fetch, requests, ticketErrors, urls };
 }
 
-function pendingQuestion(threadId: string, prompt: string): PendingInteraction {
+function pendingQuestion(
+  threadId: string,
+  prompt: string,
+): Extract<PendingInteraction, { payload: { kind: "user_question" } }> {
   return {
     id: `interaction-${threadId}`,
     threadId,
@@ -369,6 +372,7 @@ describe("push sender", () => {
       const command = "echo '*literal*' `pwd` && cat snake_case";
       const interaction: PendingInteraction = {
         ...pendingQuestion(thread.id, ""),
+        resolution: null,
         payload: {
           kind: "approval",
           subject: {
