@@ -50,6 +50,8 @@ describe("provider usage backend", () => {
           list: async () => [
             {
               id: "claude-code",
+              providerId: "claude-code",
+              accountLabel: null,
               displayName: "Claude Code",
               logoUrl: "/api/v1/system/providers/claude-code/logo?h=claude",
               strings: {
@@ -60,6 +62,8 @@ describe("provider usage backend", () => {
             },
             {
               id: "codex",
+              providerId: "codex",
+              accountLabel: null,
               displayName: "Codex",
               logoUrl: "/api/v1/system/providers/codex/logo?h=codex",
             },
@@ -127,6 +131,8 @@ describe("provider usage backend", () => {
           providers: [
             {
               id: "local-source:claude-code",
+              providerId: "claude-code",
+              accountLabel: null,
               displayName: "Claude Code",
               logoUrl: "/api/v1/system/providers/claude-code/logo?h=claude",
               icon: null,
@@ -149,6 +155,8 @@ describe("provider usage backend", () => {
             },
             {
               id: "local-source:codex",
+              providerId: "codex",
+              accountLabel: null,
               displayName: "Codex",
               logoUrl: "/api/v1/system/providers/codex/logo?h=codex",
               icon: null,
@@ -168,6 +176,8 @@ describe("provider usage backend", () => {
           providers: [
             {
               id: "claude-code",
+              providerId: "claude-code",
+              accountLabel: null,
               displayName: "Claude Code",
               logoUrl: "/api/v1/system/providers/claude-code/logo?h=claude",
               icon: null,
@@ -178,6 +188,8 @@ describe("provider usage backend", () => {
             },
             {
               id: "codex",
+              providerId: "codex",
+              accountLabel: null,
               displayName: "Codex",
               logoUrl: "/api/v1/system/providers/codex/logo?h=codex",
               icon: null,
@@ -301,6 +313,11 @@ describe("usage source composition", () => {
       pluginId: "provider-usage",
       sdk: {
         hosts: { list: async () => [] },
+        providers: {
+          list: async () => [
+            { id: "codex", displayName: "Codex", logoUrl: "/codex.svg" },
+          ],
+        },
         plugins: {
           experimental_discoverRpc: async () =>
             enabled
@@ -351,7 +368,10 @@ describe("usage source composition", () => {
           providers: [
             {
               id: "pool:account-1",
-              displayName: "Team account",
+              accountLabel: "Team account",
+              providerId: "codex",
+              displayName: "Codex",
+              logoUrl: "/codex.svg",
               usage: {
                 status: "ok",
                 windows: [{ usedPercent: 120, cost: { usedUsdCents: 1.2 } }],

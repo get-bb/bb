@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import { cleanup, fireEvent, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import type { UsageProvider } from "./usage-schema.js";
 import type { PluginSidebarThread } from "@get-bb/plugin-sdk/app";
 import {
   loadPluginApp,
@@ -50,13 +51,39 @@ function threadOnMachine(
   };
 }
 
-const app = await loadPluginApp(() => import("./app"));
-const item = app.experimentalSidebarFooterItems[0];
-if (item?.kind !== "disclosure") throw new Error("missing disclosure");
-
 describe("provider usage footer disclosure", () => {
-  function createFetchMock() {
-    return vi.fn(
+  it("aggregates every machine and keeps machine and provider selection local to the card", async () => {
+    const pooledAccounts: UsageProvider[] = (
+      [
+        ["codex", "Codex", "team@example.com", 46],
+        ["codex", "Codex", "personal@example.com", 82],
+        ["claude-code", "Claude Code", "claude-team@example.com", 97],
+      ] as const
+    ).map(([providerId, displayName, email, usedPercent]) => ({
+      id: email,
+      providerId: providerId,
+      accountLabel: email,
+      displayName: displayName,
+      logoUrl: `/api/v1/system/providers/${providerId}/logo`,
+      iconGlyph: null,
+      iconTint: null,
+      signInHint: "Sign in.",
+      expiredHint: "Sign in again.",
+      usage: {
+        status: "ok",
+        accountEmail: email,
+        planLabel: "Pro",
+        windows: [
+          {
+            label: "Weekly limit",
+            usedPercent: usedPercent,
+            resetsAt: null,
+            cost: null,
+          },
+        ],
+      },
+    }));
+    const fetchMock = vi.fn(
       async (_input: RequestInfo | URL, _init?: RequestInit) =>
         new Response(
           JSON.stringify({
@@ -71,13 +98,13 @@ describe("provider usage footer disclosure", () => {
                   providers: [
                     {
                       id: "claude-code",
+                      providerId: "claude-code",
+                      accountLabel: null,
                       displayName: "Claude Code",
                       logoUrl:
                         "/api/v1/system/providers/claude-code/logo?h=claude",
-                      icon: null,
-                      strings: {
-                        iconTint: { light: "#D97757", dark: "#E38A6E" },
-                      },
+                      iconGlyph: null,
+                      iconTint: { light: "#D97757", dark: "#E38A6E" },
                       signInHint: "Sign in to Claude Code.",
                       expiredHint: "Sign in to Claude Code again.",
                       usage: {
@@ -96,10 +123,12 @@ describe("provider usage footer disclosure", () => {
                     },
                     {
                       id: "codex",
+                      providerId: "codex",
+                      accountLabel: null,
                       displayName: "Codex",
                       logoUrl: "/api/v1/system/providers/codex/logo?h=codex",
-                      icon: null,
-                      strings: { iconTint: null },
+                      iconGlyph: null,
+                      iconTint: null,
                       signInHint: "Sign in to Codex.",
                       expiredHint: "Sign in to Codex again.",
                       usage: {
@@ -126,10 +155,12 @@ describe("provider usage footer disclosure", () => {
                   providers: [
                     {
                       id: "codex",
+                      providerId: "codex",
+                      accountLabel: null,
                       displayName: "Codex",
                       logoUrl: "/api/v1/system/providers/codex/logo?h=codex",
-                      icon: null,
-                      strings: { iconTint: null },
+                      iconGlyph: null,
+                      iconTint: null,
                       signInHint: "Sign in to Codex.",
                       expiredHint: "Sign in to Codex again.",
                       usage: {
@@ -149,6 +180,13 @@ describe("provider usage footer disclosure", () => {
                   ],
                 },
                 {
+                  id: "source:account-pool",
+                  displayName: "Account Pooler",
+                  status: "connected",
+                  error: null,
+                  providers: pooledAccounts,
+                },
+                {
                   id: "host-intel",
                   displayName: "Intel",
                   status: "disconnected",
@@ -161,63 +199,33 @@ describe("provider usage footer disclosure", () => {
           { status: 200, headers: { "content-type": "application/json" } },
         ),
     );
-  }
-
-  it("registers the footer disclosure", () => {
+    vi.stubGlobal("fetch", fetchMock);
+    const app = await loadPluginApp(() => import("./app"));
+    const mounted = await mountPluginContentScripts(app, {
+      pluginId: "provider-usage",
+    });
+    const item = app.experimentalSidebarFooterItems[0];
     expect(item).toMatchObject({
       kind: "disclosure",
       id: "usage",
       label: "Provider usage",
       icon: "ChartColumn",
     });
-  });
+    if (item?.kind !== "disclosure") throw new Error("missing disclosure");
 
-  it("preloads usage and refreshes after an extended focus loss", async () => {
-    const fetchMock = createFetchMock();
-    vi.stubGlobal("fetch", fetchMock);
-    const mounted = await mountPluginContentScripts(app, {
-      pluginId: "provider-usage",
-    });
-    try {
-      await waitFor(() =>
-        expect(fetchMock).toHaveBeenCalledWith(
-          "/api/v1/plugins/provider-usage/rpc/getUsage",
-          expect.objectContaining({
-            method: "POST",
-            body: JSON.stringify({
-              force: false,
-              machineIds: null,
-              maxAgeMs: 30 * 60_000,
-            }),
-          }),
-        ),
-      );
-
-      const now = vi.spyOn(Date, "now").mockReturnValue(1_000);
-      window.dispatchEvent(new Event("blur"));
-      now.mockReturnValue(5 * 60_000 + 1_001);
-      const callsBeforeFocus = fetchMock.mock.calls.length;
-      window.dispatchEvent(new Event("focus"));
-      await waitFor(() =>
-        expect(fetchMock).toHaveBeenCalledTimes(callsBeforeFocus + 1),
-      );
-      expect(fetchMock.mock.calls.at(-1)?.[1]).toEqual(
+    await waitFor(() =>
+      expect(fetchMock).toHaveBeenCalledWith(
+        "/api/v1/plugins/provider-usage/rpc/getUsage",
         expect.objectContaining({
+          method: "POST",
           body: JSON.stringify({
             force: false,
             machineIds: null,
-            maxAgeMs: 5 * 60_000,
+            maxAgeMs: 30 * 60_000,
           }),
         }),
-      );
-    } finally {
-      await mounted.lifecycle.dispose();
-    }
-  });
-
-  it("shows disconnected usage and scopes manual refresh to that machine", async () => {
-    const fetchMock = createFetchMock();
-    vi.stubGlobal("fetch", fetchMock);
+      ),
+    );
     const dismiss = vi.fn();
     const slot = renderSlot(
       item,
@@ -225,12 +233,50 @@ describe("provider usage footer disclosure", () => {
       {
         context: { threadId: "thread-active" },
         sidebarThreads: {
-          threads: [threadOnMachine("host-intel", "Intel")],
+          threads: [threadOnMachine("host-m5", "M5")],
         },
       },
     );
+    const machinePicker = slot.getByRole("button", {
+      name: "Usage machine: M5",
+    });
+    expect(slot.getByRole("heading", { name: "Codex" })).toBeTruthy();
+    expect(slot.getByText("codex@example.com")).toBeTruthy();
+    expect(slot.getByText("97% used")).toBeTruthy();
+
+    fireEvent.pointerDown(machinePicker, { button: 0 });
+    fireEvent.click(slot.getByRole("menuitemradio", { name: "M4" }));
+    const claudeTab = slot.getByRole("tab", { name: "Claude Code" });
+    const codexTab = slot.getByRole("tab", { name: "Codex" });
     expect(
-      await slot.findByText(
+      slot
+        .getByRole("button", { name: "Usage machine: M4" })
+        .closest('[data-provider-usage-header=""]'),
+    ).toBe(claudeTab.closest('[data-provider-usage-header=""]'));
+    expect(
+      claudeTab.querySelector("[data-provider-logo*='claude-code']"),
+    ).not.toBeNull();
+    expect(
+      codexTab.querySelector("[data-provider-logo*='/codex/']"),
+    ).not.toBeNull();
+    expect(slot.getByRole("heading", { name: "Claude Code" })).toBeTruthy();
+    expect(slot.getByText("claude@example.com")).toBeTruthy();
+    expect(slot.getByText("82% used")).toBeTruthy();
+
+    fireEvent.click(codexTab);
+    expect(slot.getByRole("heading", { name: "Codex" })).toBeTruthy();
+    expect(slot.getByText("codex@example.com")).toBeTruthy();
+    expect(slot.getByText("37% used")).toBeTruthy();
+    fireEvent.keyDown(codexTab, { key: "ArrowLeft" });
+    expect(claudeTab.getAttribute("aria-selected")).toBe("true");
+
+    fireEvent.pointerDown(
+      slot.getByRole("button", { name: "Usage machine: M4" }),
+      { button: 0 },
+    );
+    fireEvent.click(slot.getByRole("menuitemradio", { name: "Intel" }));
+    expect(
+      slot.getByText(
         "Intel is offline. Usage will refresh when it reconnects.",
       ),
     ).toBeTruthy();
@@ -256,54 +302,47 @@ describe("provider usage footer disclosure", () => {
         }),
       }),
     );
-  });
 
-  it("aggregates machines and keeps provider selection local to the card", async () => {
-    const fetchMock = createFetchMock();
-    vi.stubGlobal("fetch", fetchMock);
-    const slot = renderSlot(
-      item,
-      { dismiss: vi.fn() },
-      {
-        context: { threadId: "thread-active" },
-        sidebarThreads: {
-          threads: [threadOnMachine("host-m5", "M5")],
-        },
-      },
+    const now = vi.spyOn(Date, "now").mockReturnValue(1_000);
+    window.dispatchEvent(new Event("blur"));
+    now.mockReturnValue(5 * 60_000 + 1_001);
+    const callsBeforeFocus = fetchMock.mock.calls.length;
+    window.dispatchEvent(new Event("focus"));
+    await waitFor(() =>
+      expect(fetchMock).toHaveBeenCalledTimes(callsBeforeFocus + 1),
     );
-    const machinePicker = await slot.findByRole("button", {
-      name: "Usage machine: M5",
-    });
-    expect(slot.getByRole("heading", { name: "Codex" })).toBeTruthy();
-    expect(slot.getByText("codex@example.com")).toBeTruthy();
-    expect(slot.getByText("97% used")).toBeTruthy();
+    expect(fetchMock.mock.calls.at(-1)?.[1]).toEqual(
+      expect.objectContaining({
+        body: JSON.stringify({
+          force: false,
+          machineIds: null,
+          maxAgeMs: 5 * 60_000,
+        }),
+      }),
+    );
 
-    fireEvent.pointerDown(machinePicker, { button: 0 });
-    expect(slot.getByRole("menuitemradio", { name: "M5" })).toBeTruthy();
-    expect(slot.getByRole("menuitemradio", { name: "Intel" })).toBeTruthy();
-    fireEvent.click(slot.getByRole("menuitemradio", { name: "M4" }));
-    const claudeTab = slot.getByRole("tab", { name: "Claude Code" });
-    const codexTab = slot.getByRole("tab", { name: "Codex" });
+    fireEvent.pointerDown(
+      slot.getByRole("button", { name: "Usage machine: Intel" }),
+      { button: 0 },
+    );
+    fireEvent.click(
+      slot.getByRole("menuitemradio", { name: "Account Pooler" }),
+    );
+    expect(slot.getAllByRole("tab")).toHaveLength(2);
+    const poolCodexTab = slot.getByRole("tab", { name: "Codex" });
     expect(
-      slot
-        .getByRole("button", { name: "Usage machine: M4" })
-        .closest('[data-provider-usage-header=""]'),
-    ).toBe(claudeTab.closest('[data-provider-usage-header=""]'));
-    expect(
-      claudeTab.querySelector("[data-provider-logo*='claude-code']"),
+      poolCodexTab.querySelector("[data-provider-logo*='/codex/']"),
     ).not.toBeNull();
     expect(
-      codexTab.querySelector("[data-provider-logo*='/codex/']"),
+      poolCodexTab.querySelector('[data-provider-usage-tone="warning"]'),
     ).not.toBeNull();
-    expect(slot.getByRole("heading", { name: "Claude Code" })).toBeTruthy();
-    expect(slot.getByText("claude@example.com")).toBeTruthy();
+    expect(slot.getAllByText("team@example.com")).toHaveLength(1);
+    expect(slot.getAllByText("personal@example.com")).toHaveLength(1);
+    expect(slot.getByText("46% used")).toBeTruthy();
     expect(slot.getByText("82% used")).toBeTruthy();
-
-    fireEvent.click(codexTab);
-    expect(slot.getByRole("heading", { name: "Codex" })).toBeTruthy();
-    expect(slot.getByText("codex@example.com")).toBeTruthy();
-    expect(slot.getByText("37% used")).toBeTruthy();
-    fireEvent.keyDown(codexTab, { key: "ArrowLeft" });
-    expect(claudeTab.getAttribute("aria-selected")).toBe("true");
-  });
+    fireEvent.click(slot.getByRole("tab", { name: "Claude Code" }));
+    expect(slot.getByText("claude-team@example.com")).toBeTruthy();
+    expect(slot.queryByText("personal@example.com")).toBeNull();
+    await mounted.lifecycle.dispose();
+  }, 15_000);
 });

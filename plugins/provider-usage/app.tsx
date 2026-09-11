@@ -361,7 +361,23 @@ function ProviderUsageStatus({
     machines.find((machine) => machine.status === "connected") ??
     machines[0] ??
     null;
-  const providers = activeMachine?.providers ?? [];
+  const providers = useMemo(() => {
+    const groups = new Map<
+      string,
+      UsageProvider & { accounts: UsageProvider[] }
+    >();
+    for (const account of activeMachine?.providers ?? []) {
+      const group = groups.get(account.providerId);
+      if (group) group.accounts.push(account);
+      else
+        groups.set(account.providerId, {
+          ...account,
+          id: account.providerId,
+          accounts: [account],
+        });
+    }
+    return [...groups.values()];
+  }, [activeMachine]);
   const requestedProviderId =
     activeMachine === null
       ? null
@@ -426,10 +442,10 @@ function ProviderUsageStatus({
   };
 
   return (
-    <div>
+    <div className="flex max-h-80 flex-col">
       <div
         data-provider-usage-header=""
-        className="flex min-w-0 items-center gap-1 border-b border-sidebar-border px-1.5"
+        className="flex min-w-0 shrink-0 items-center gap-1 border-b border-sidebar-border px-1.5"
       >
         {providers.length === 0 ? (
           <div className="min-w-0 flex-1" />
@@ -441,7 +457,12 @@ function ProviderUsageStatus({
           >
             {providers.map((provider, index) => {
               const isActive = provider.id === activeProvider?.id;
-              const tone = providerUsageTone(provider);
+              const tones = provider.accounts.map(providerUsageTone);
+              const tone = tones.includes("critical")
+                ? "critical"
+                : tones.includes("warning")
+                  ? "warning"
+                  : null;
               return (
                 <button
                   key={provider.id}
@@ -528,7 +549,7 @@ function ProviderUsageStatus({
               activeProvider.displayName +
               " usage"
         }
-        className="p-2.5"
+        className="min-h-0 overflow-y-auto p-2.5"
       >
         {activeMachine === null ? (
           <p className="text-xs text-muted-foreground">
@@ -547,41 +568,52 @@ function ProviderUsageStatus({
           </p>
         ) : (
           <>
-            <div className="flex min-w-0 items-start gap-2">
-              <div className="min-w-0 flex-1">
-                <h2 className="truncate text-xs font-medium text-sidebar-foreground">
-                  {activeProvider.displayName}
-                </h2>
-                {activeProvider.usage?.status === "ok" &&
-                activeProvider.usage.accountEmail !== null ? (
-                  <p
-                    title={activeProvider.usage.accountEmail}
-                    className="truncate text-2xs text-subtle-foreground"
-                  >
-                    {activeProvider.usage.accountEmail}
-                  </p>
-                ) : null}
-              </div>
-              {activeProvider.usage?.status === "ok" &&
-              activeProvider.usage.planLabel !== null ? (
-                <span className="ml-auto shrink-0 rounded-sm bg-sidebar-border/60 px-1 py-0.5 text-2xs leading-none text-subtle-foreground">
-                  {activeProvider.usage.planLabel}
-                </span>
-              ) : null}
-            </div>
-            <div className="mt-2.5">
-              {activeMachine.status === "disconnected" ? (
-                <p className="text-xs text-muted-foreground">
-                  {activeMachine.displayName} is offline. Usage will refresh
-                  when it reconnects.
-                </p>
-              ) : activeMachine.error === null ? (
-                <ProviderUsageBody provider={activeProvider} />
-              ) : (
-                <p className="text-xs text-muted-foreground">
-                  {activeMachine.error}
-                </p>
-              )}
+            <div className="divide-y divide-sidebar-border">
+              {activeProvider.accounts.map((account) => (
+                <section
+                  key={account.id}
+                  aria-label={account.accountLabel ?? account.displayName}
+                  className="py-3 first:pt-0 last:pb-0"
+                >
+                  <div className="flex min-w-0 items-start gap-2">
+                    <div className="min-w-0 flex-1">
+                      <h2 className="truncate text-xs font-medium text-sidebar-foreground">
+                        {account.accountLabel ?? account.displayName}
+                      </h2>
+                      {account.usage?.status === "ok" &&
+                      account.usage.accountEmail !== null &&
+                      account.usage.accountEmail !== account.accountLabel ? (
+                        <p
+                          title={account.usage.accountEmail}
+                          className="truncate text-2xs text-subtle-foreground"
+                        >
+                          {account.usage.accountEmail}
+                        </p>
+                      ) : null}
+                    </div>
+                    {account.usage?.status === "ok" &&
+                    account.usage.planLabel !== null ? (
+                      <span className="ml-auto shrink-0 rounded-sm bg-sidebar-border/60 px-1 py-0.5 text-2xs leading-none text-subtle-foreground">
+                        {account.usage.planLabel}
+                      </span>
+                    ) : null}
+                  </div>
+                  <div className="mt-2.5">
+                    {activeMachine.status === "disconnected" ? (
+                      <p className="text-xs text-muted-foreground">
+                        {activeMachine.displayName} is offline. Usage will
+                        refresh when it reconnects.
+                      </p>
+                    ) : activeMachine.error === null ? (
+                      <ProviderUsageBody provider={account} />
+                    ) : (
+                      <p className="text-xs text-muted-foreground">
+                        {activeMachine.error}
+                      </p>
+                    )}
+                  </div>
+                </section>
+              ))}
             </div>
             {snapshot.error === null ? null : (
               <p role="status" className="mt-2 text-xs text-warning-text">

@@ -112,6 +112,8 @@ function normalizedProvider(
 ): UsageProvider {
   return {
     id: provider.id,
+    providerId: provider.id,
+    accountLabel: null,
     displayName: provider.displayName,
     logoUrl: provider.logoUrl,
     icon: provider.icon ?? null,
@@ -140,13 +142,13 @@ function resourceProvider(
     ...normalizedProvider(
       metadata ?? {
         id: resource.providerId,
-        displayName: resource.label,
+        displayName: resource.providerId,
         logoUrl: null,
       },
       resource.usage,
     ),
     id: `${pluginId}:${resource.id}`,
-    displayName: resource.label,
+    accountLabel: resource.scope.kind === "shared" ? resource.label : null,
   };
 }
 
@@ -351,6 +353,11 @@ export default function providerUsagePlugin(bb: BbPluginApi): void {
       }
       machines.push(entry.machine);
     }
+    const sharedProviders = sourceResults.some((source) =>
+      source.resources.some((resource) => resource.scope.kind === "shared"),
+    )
+      ? await bb.sdk.providers.list({ capability: "usage" }).catch(() => [])
+      : [];
     for (const source of sourceResults) {
       const shared = source.resources.filter(
         (resource) => resource.scope.kind === "shared",
@@ -358,10 +365,12 @@ export default function providerUsagePlugin(bb: BbPluginApi): void {
       if (shared.length === 0 && source.error === null) continue;
       machines.push({
         id: `source:${source.pluginId}`,
-        displayName: `Shared · ${source.pluginId}`,
+        displayName:
+          sources.find((entry) => entry.pluginId === source.pluginId)
+            ?.displayName ?? source.pluginId,
         status: "connected",
         providers: shared.map((resource) =>
-          resourceProvider(resource, source.pluginId, []),
+          resourceProvider(resource, source.pluginId, sharedProviders),
         ),
         error: source.error,
       });

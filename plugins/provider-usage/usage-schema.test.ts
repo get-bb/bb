@@ -8,6 +8,8 @@ function provider(
 ): UsageProvider {
   return {
     id,
+    providerId: id,
+    accountLabel: null,
     displayName,
     logoUrl: null,
     icon: null,
