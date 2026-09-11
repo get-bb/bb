@@ -42,15 +42,15 @@ export function ResourceToolbar({
   const toolbar = (
     <div
       className={cn(
-        "flex flex-wrap items-center gap-2",
-        compact && "@[30rem]/resource-toolbar:flex-nowrap",
+        "flex items-center gap-2",
+        compact ? "flex-nowrap" : "flex-wrap",
       )}
     >
       <div
         className={cn(
           "relative",
           compact
-            ? "min-w-16 flex-1"
+            ? "min-w-12 flex-1"
             : "w-full min-w-0 sm:w-auto sm:min-w-48 sm:flex-1",
         )}
       >
@@ -81,7 +81,7 @@ export function ResourceToolbar({
         <div
           className={cn(
             "ml-auto flex shrink-0 items-center gap-1.5",
-            compact && "w-full justify-end @[30rem]/resource-toolbar:w-auto",
+            compact && "justify-end",
           )}
         >
           {action}
@@ -577,6 +577,7 @@ export interface ResourceCreateTemplateGroup {
 
 export function ResourceCreateButton({
   label,
+  compactWhenNarrow = false,
   templates,
   templateMenuLabel = "Examples",
   templateGroups,
@@ -584,6 +585,7 @@ export function ResourceCreateButton({
   onCreate,
 }: {
   label: string;
+  compactWhenNarrow?: boolean;
   templates: readonly ResourceCreateTemplate[];
   templateMenuLabel?: string;
   templateGroups?: readonly ResourceCreateTemplateGroup[];
@@ -595,15 +597,33 @@ export function ResourceCreateButton({
   ];
   return (
     <div className="flex shrink-0 items-stretch">
-      <Button
-        type="button"
-        size="sm"
-        className="rounded-r-none"
-        onClick={() => onCreate()}
-      >
-        <Icon name="MessageCirclePlus" className="size-4" aria-hidden />
-        {label}
-      </Button>
+      <TooltipProvider delayDuration={250}>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button
+              type="button"
+              size="sm"
+              aria-label={label}
+              className={cn(
+                "rounded-r-none",
+                compactWhenNarrow &&
+                  "@max-[36rem]/resource-toolbar:w-8 @max-[36rem]/resource-toolbar:px-0",
+              )}
+              onClick={() => onCreate()}
+            >
+              <Icon name="MessageCirclePlus" className="size-4" aria-hidden />
+              <span
+                className={cn(
+                  compactWhenNarrow && "@max-[36rem]/resource-toolbar:hidden",
+                )}
+              >
+                {label}
+              </span>
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent side="bottom">{label}</TooltipContent>
+        </Tooltip>
+      </TooltipProvider>
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
           <Button

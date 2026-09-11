@@ -221,10 +221,11 @@ export function PluginsOverview({
       },
     });
   const installedActions = (
-    <span className="flex flex-wrap items-center justify-end gap-2 @max-[30rem]/resource-toolbar:gap-1.5">
-      <OpenPluginGuideButton variant="secondary" />
+    <span className="flex items-center justify-end gap-1.5">
+      <OpenPluginGuideButton compactWhenNarrow />
       <CreateWithTemplatesButton
         kind="plugin"
+        compactWhenNarrow
         label="New plugin"
         menuActions={[
           {

@@ -83,6 +83,7 @@ export function getCreateExamples(kind: CreateViaPromptKind): {
 }
 
 interface CreateWithTemplatesButtonProps {
+  compactWhenNarrow?: boolean;
   kind: CreateViaPromptKind;
   label: string;
   menuActions?: readonly ResourceCreateMenuAction[];
@@ -91,6 +92,7 @@ interface CreateWithTemplatesButtonProps {
 
 export function CreateWithTemplatesButton({
   kind,
+  compactWhenNarrow,
   label,
   menuActions,
   onCreate,
@@ -114,6 +116,7 @@ export function CreateWithTemplatesButton({
   return (
     <ResourceCreateButton
       label={label}
+      compactWhenNarrow={compactWhenNarrow}
       templates={examples}
       templateGroups={templateGroups}
       menuActions={menuActions}

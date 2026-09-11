@@ -1,35 +1,63 @@
 import { Icon } from "@bb/shared-ui/icon";
 import { buttonVariants } from "@bb/shared-ui/button";
 import { cn } from "@bb/shared-ui/lib/utils";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@bb/shared-ui/tooltip";
 
 export function OpenPluginGuideButton({
-  variant = "ghost",
+  compactWhenNarrow = false,
 }: {
-  variant?: "ghost" | "secondary";
+  compactWhenNarrow?: boolean;
 }) {
   return (
-    <a
-      href="/plugins/plugin-api-docs/plugin-api"
-      target="_blank"
-      rel="noreferrer"
-      className={cn(
-        buttonVariants({ variant, size: "sm" }),
-        "group/guide shrink-0 gap-1.5",
-        variant === "secondary" && "@max-[30rem]/resource-toolbar:px-1.5",
-        variant === "ghost" && "text-muted-foreground",
-      )}
-    >
-      <span className="relative size-4">
-        <Icon name="Explore" className="size-4" aria-hidden />
-        <Icon
-          name="Pin"
-          className="absolute -right-1 -top-1 size-3 opacity-0 transition-opacity group-hover/guide:opacity-100 group-focus-visible/guide:opacity-100"
-          aria-hidden
-        />
-      </span>
-      Plugin Guide
-      <Icon name="ExternalLink" className="size-3.5" aria-hidden />
-      <span className="sr-only">Opens in a new tab</span>
-    </a>
+    <TooltipProvider delayDuration={250}>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <a
+            href="/plugins/plugin-api-docs/plugin-api"
+            target="_blank"
+            rel="noreferrer"
+            aria-label="Plugin Guide (opens in a new tab)"
+            className={cn(
+              buttonVariants({ variant: "link", size: "sm" }),
+              "shrink-0 gap-1.5 px-0 text-muted-foreground hover:text-foreground",
+              compactWhenNarrow && "@max-[36rem]/resource-toolbar:w-8",
+            )}
+          >
+            <Icon
+              name="Explore"
+              className={cn(
+                "size-4",
+                !compactWhenNarrow && "max-[360px]:hidden",
+              )}
+              aria-hidden
+            />
+            <span
+              className={cn(
+                "underline underline-offset-4",
+                compactWhenNarrow && "@max-[36rem]/resource-toolbar:hidden",
+              )}
+            >
+              Plugin Guide
+            </span>
+            <Icon
+              name="ExternalLink"
+              className={cn(
+                "size-3.5",
+                compactWhenNarrow && "@max-[36rem]/resource-toolbar:hidden",
+              )}
+              aria-hidden
+            />
+          </a>
+        </TooltipTrigger>
+        <TooltipContent side="bottom">
+          Plugin Guide · Opens in a new tab
+        </TooltipContent>
+      </Tooltip>
+    </TooltipProvider>
   );
 }
