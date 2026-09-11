@@ -78,6 +78,7 @@ export function buildEnvironmentProvisionCommand(
 ): EnvironmentProvisionCommand {
   return {
     type: "environment.attach" as const,
+    contributedEnv: [],
     environmentId: args.environmentId,
     initiator: args.initiator,
     path: args.path,

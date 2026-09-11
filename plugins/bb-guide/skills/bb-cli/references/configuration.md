@@ -119,6 +119,10 @@ all server requests. Do not print these headers; they can contain access tokens.
 
 ## Machine environment
 
+Repository setup receives freshly resolved machine variables on each dispatch,
+including recovery. Values are sent transiently to the setup process and are
+not stored in provisioning requests. Existing attached paths skip setup.
+
 Use `bb machine env list --json` for variables and built-in gh health.
 `bb machine env set NAME [--note text] --json` reads the value from
 stdin and removes one trailing newline; never pass secrets in argv. Runtime

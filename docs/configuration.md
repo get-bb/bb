@@ -1292,7 +1292,8 @@ Without an explicit directory, lifecycle commands locate the unique matching hos
 
 Core resolves machine contributions through
 `apps/server/src/services/hosts/host-environment.ts` before dispatching setup and
-teardown hooks. The `environment.hook.run` command carries `contributedEnv`;
+teardown hooks. Ordinary setup uses `environment.attach`; explicit hooks use
+`environment.hook.run`. Both carry transient `contributedEnv` values;
 the daemon applies them to the hook child process. Hook progress and errors are
 forwarded as-is, so contributed values printed by the child remain visible.
 Machine selection and precedence stay in the server
@@ -1314,8 +1315,8 @@ the environment they started with: open a new terminal after a change. Agent
 turns receive refreshed values on their next turn and after resume. Codex rebuilds
 its loaded session from the existing conversation when the environment changes.
 
-Machine environment commands require host-daemon protocol 192, covering machine
-lifecycle and contribution fields for core hooks, host plugins, and terminals.
+Ordinary setup variable delivery requires host-daemon protocol 205. Older
+daemons must update before the server accepts their session.
 
 The built-in GitHub row uses `gh auth token --hostname github.com` and `gh api
 --hostname github.com user` on the server host. It supplies `GH_TOKEN`, Git's

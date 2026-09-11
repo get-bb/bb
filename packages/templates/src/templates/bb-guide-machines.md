@@ -255,6 +255,10 @@ original `BB_DATA_DIR` if explicitly configured, to remove its installation.
 
 ## Machine environment
 
+Repository setup receives freshly resolved machine variables on each dispatch,
+including recovery. Values are sent transiently to the setup process and are
+not stored in provisioning requests. Existing attached paths skip setup.
+
 `bb machine env list --json` lists global machine variables and built-in GitHub
 health. `bb machine env set NAME [--note text] --json` reads its value
 from stdin, removing one trailing newline; values are never accepted in argv.

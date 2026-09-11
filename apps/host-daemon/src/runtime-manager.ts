@@ -17,6 +17,7 @@ import type {
 import { threadScope, turnScope } from "@bb/domain";
 import type {
   HostDaemonActiveThread,
+  HostDaemonContributedEnvEntry,
   HostDaemonEnvironmentChange,
   HostDaemonLoadedEnvironment,
   HostDaemonInjectedSkillSource,
@@ -142,6 +143,7 @@ export interface EnsureEnvironmentArgs {
   environmentId: string;
   injectedSkillSources?: readonly HostDaemonInjectedSkillSource[];
   setupScriptTimeoutMs?: number | null;
+  setupContributedEnv?: readonly HostDaemonContributedEnvEntry[];
   targetThreadId?: string;
   workspacePath?: string;
   provision?: ProvisionWorkspaceArgs;
@@ -1216,6 +1218,7 @@ export class RuntimeManager {
       await runSetupScript({
         workspacePath: provision.path,
         timeoutMs: args.setupScriptTimeoutMs,
+        contributedEnv: args.setupContributedEnv,
         shellPath: this.getShellEnv().PATH,
         signal: args.provisionSignal,
         onProgress: provision.onProgress,
