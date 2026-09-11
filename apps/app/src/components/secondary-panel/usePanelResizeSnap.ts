@@ -149,13 +149,10 @@ export function usePanelResizeSnap({
         ) {
           activeDragRef.current = null;
         }
+        previous.style.flex = previousFlex;
+        next.style.flex = nextFlex;
         if (commit && pendingFraction !== null) {
           onResize(pendingFraction);
-          return;
-        }
-        if (!commit) {
-          previous.style.flex = previousFlex;
-          next.style.flex = nextFlex;
         }
       };
       const commitDrag = () => complete(true);
