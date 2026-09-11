@@ -53,8 +53,6 @@ import { ThreadPromptModeCard } from "@/components/promptbox/banner/ThreadPrompt
 import { ThreadWorkflowCard } from "@/components/promptbox/banner/ThreadWorkflowCard";
 import { ThreadBackgroundCommandsCard } from "@/components/promptbox/banner/ThreadBackgroundCommandsCard";
 import { ThreadModelFallbackCard } from "@/components/promptbox/banner/ThreadModelFallbackCard";
-import { ThreadHandoffCap } from "@/components/promptbox/banner/ThreadHandoffCap";
-import { stripModelBrandPrefix } from "@/components/pickers/model-brand-prefix";
 import { InlineMessageEditorFrame } from "@/components/promptbox/InlineMessageEditorFrame";
 import type { ModelReasoningPickerHandoffSelection } from "@/components/pickers/ModelReasoningPicker";
 import type {
@@ -612,7 +610,6 @@ export function ThreadDetailPromptArea({
     setProviderModelReasoning,
     providerOptions,
     hasMultipleProviders,
-    selectedProviderDisplayName,
     selectedProviderComposerActions,
     selectedModel,
     setSelectedModel,
@@ -756,39 +753,6 @@ export function ThreadDetailPromptArea({
       promptDraft.setDraft(restoredDraft);
     }
   }, [handoffSeed, isHandoffSelection, promptDraft]);
-  const handleCancelHandoff = useCallback(() => {
-    setSelectedProviderId(thread.providerId);
-    syncHandoffDraft(thread.providerId);
-  }, [setSelectedProviderId, syncHandoffDraft, thread.providerId]);
-  const handoffCap = useMemo(() => {
-    if (!isHandoffSelection) {
-      return null;
-    }
-    const providerOption = providerOptions.find(
-      (option) => option.value === selectedProviderId,
-    );
-    const modelLabel = stripModelBrandPrefix(
-      modelOptions.find((option) => option.value === effectiveSelectedModel)
-        ?.label ?? effectiveSelectedModel,
-      providerOption?.brandPrefix,
-    );
-    return (
-      <ThreadHandoffCap
-        modelLabel={modelLabel}
-        onCancel={handleCancelHandoff}
-        providerIcon={providerOption?.icon}
-        providerLabel={selectedProviderDisplayName}
-      />
-    );
-  }, [
-    effectiveSelectedModel,
-    handleCancelHandoff,
-    isHandoffSelection,
-    modelOptions,
-    providerOptions,
-    selectedProviderDisplayName,
-    selectedProviderId,
-  ]);
   const hasSentMessageEdit = sentMessageEdit !== undefined;
   useEffect(() => {
     if (hasSentMessageEdit && isHandoffSelection) {
@@ -1940,7 +1904,6 @@ export function ThreadDetailPromptArea({
       pendingInteraction={pendingInteractionNode}
       activePromptMode={activePromptMode}
       composer={shouldHideComposer ? null : bottomComposerConfig}
-      composerCap={shouldHideComposer ? null : handoffCap}
       pluginComposerHost={normalPluginComposerHost}
       pluginComposerScope={normalPluginComposerHost.scope}
       textEffects={promptTextEffects}

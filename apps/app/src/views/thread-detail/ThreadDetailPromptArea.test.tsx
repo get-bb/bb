@@ -99,7 +99,6 @@ vi.mock("@/components/promptbox/FollowUpPromptBox", async () => {
     FollowUpPromptBox: ({
       attachments,
       composer,
-      composerCap,
       environmentSummary,
       execution,
       executionReadOnly,
@@ -125,7 +124,6 @@ vi.mock("@/components/promptbox/FollowUpPromptBox", async () => {
         submitTitle?: string;
         submitMode: { kind: string; reason?: string };
       } | null;
-      composerCap?: ReactNode;
       environmentSummary?: ReactNode;
       execution: {
         model: {
@@ -186,7 +184,6 @@ vi.mock("@/components/promptbox/FollowUpPromptBox", async () => {
           {composer?.submitTitle ?? "Submit"}
         </div>
         <div data-testid="submit-label">{composer?.submitLabel ?? ""}</div>
-        <div data-testid="composer-cap">{composerCap}</div>
         <div data-testid="plugin-customizations-suppressed">
           {suppressPluginComposerCustomizations ? "true" : "false"}
         </div>
@@ -1867,18 +1864,14 @@ describe("ThreadDetailPromptArea", () => {
     );
   });
 
-  it("caps the composer and relabels submit after picking another provider", () => {
+  it("relabels submit after picking another provider", () => {
     renderPromptArea();
     expect(screen.getByTestId("submit-title").textContent).toBe("Submit");
-    expect(screen.queryByLabelText("Handoff to new thread")).toBeNull();
+    expect(screen.getByTestId("submit-label").textContent).toBe("");
 
     fireEvent.click(screen.getByRole("button", { name: "Switch provider" }));
 
     expect(mocks.toastMessage).not.toHaveBeenCalled();
-    const cap = screen.getByLabelText("Handoff to new thread");
-    expect(cap.textContent).toContain("New thread");
-    expect(cap.textContent).toContain("Claude Code");
-    expect(cap.textContent).toContain("claude-opus-5");
     expect(screen.getByTestId("submit-label").textContent).toBe("New thread");
     expect(screen.getByTestId("submit-title").textContent).toBe(
       "Create new thread (Enter)",
@@ -1903,9 +1896,10 @@ describe("ThreadDetailPromptArea", () => {
     });
     expect(mocks.toastError).not.toHaveBeenCalled();
 
-    fireEvent.click(screen.getByRole("button", { name: "Cancel handoff" }));
+    fireEvent.click(
+      screen.getByRole("button", { name: "Switch provider back" }),
+    );
 
-    expect(screen.queryByLabelText("Handoff to new thread")).toBeNull();
     expect(screen.getByTestId("submit-label").textContent).toBe("");
     expect(screen.getByTestId("submit-title").textContent).toBe("Submit");
   });
