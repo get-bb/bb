@@ -55,6 +55,40 @@ describe("internal session protocol version", () => {
     },
   );
 
+  it("accepts a session open while the machine is resuming", async () => {
+    const server = await startTestServer();
+    try {
+      const hostId = "host-resuming";
+      const hostKey = createTestDaemonHostKey({ hostId });
+      upsertHost(server.db, server.hub, { id: hostId, name: "Resuming Host" });
+      updateHost(server.db, server.hub, hostId, { phase: "resuming" });
+
+      const response = await fetch(`${server.baseUrl}/internal/session/open`, {
+        method: "POST",
+        headers: {
+          authorization: `Bearer ${hostKey}`,
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({
+          hostId,
+          instanceId: "instance-resuming",
+          hostName: "Resuming Host",
+          hasMachineCredential: true,
+          platform: "linux",
+          dataDir: `/tmp/${hostId}`,
+          localApiPort: 38_888,
+          protocolVersion: HOST_DAEMON_PROTOCOL_VERSION,
+          activeThreads: [],
+          loadedEnvironments: [],
+        }),
+      });
+
+      expect(response.status).toBe(201);
+    } finally {
+      await server.close();
+    }
+  });
+
   it("requires a PR-1 version 191 daemon to upgrade before accepting its session", async () => {
     const server = await startTestServer();
     try {

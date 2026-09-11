@@ -56,7 +56,8 @@ export function isMachineWaitingForExecution(
   return (
     host?.suspendedAt != null ||
     host?.phase === "suspending" ||
-    host?.phase === "suspended"
+    host?.phase === "suspended" ||
+    host?.phase === "resuming"
   );
 }
 

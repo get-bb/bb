@@ -615,7 +615,7 @@ function MachineSection({
 }: MachineSectionProps) {
   const connected = host.status === "connected";
   const hostProviders = environmentProviders;
-  const selectable = connected && host.lifecycle.phase !== "removing";
+  const selectable = connected && host.lifecycle.phase === "active";
   return (
     <DropdownMenuGroup>
       <DropdownMenuLabel className="min-w-0 text-muted-foreground">

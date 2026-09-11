@@ -110,6 +110,7 @@ export const hosts = sqliteTable(
         | "active"
         | "suspending"
         | "suspended"
+        | "resuming"
         | "removing"
         | "destroyed"
       >()

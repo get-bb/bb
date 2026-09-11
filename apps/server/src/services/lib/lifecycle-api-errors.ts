@@ -136,6 +136,7 @@ export function inactiveHostUnavailableDetails(
     lifecycle !== undefined &&
     (lifecycle.phase === "suspending" ||
       lifecycle.phase === "suspended" ||
+      lifecycle.phase === "resuming" ||
       lifecycle.suspendedAt !== null);
   return {
     reason: suspended ? "suspended" : "disconnected",

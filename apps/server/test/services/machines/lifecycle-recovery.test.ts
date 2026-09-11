@@ -123,6 +123,36 @@ it("can resume after a snapshot fails following daemon shutdown", async () =>
     expect(harness.hub.hasDaemonForHost(target.host.id)).toBe(true);
   }));
 
+it("recovers a persisted resuming machine without queued work", async () =>
+  withTestHarness(async (harness) => {
+    const target = seedHostSession(harness.deps, {
+      id: "interrupted-resume",
+    });
+    const resume = vi.fn(async () => ({ resource: { id: "restored" } }));
+    installMachineProvider({
+      suspend: async () => ({ resource: { id: "owned" } }),
+      resume,
+    });
+    updateHost(harness.db, harness.hub, target.host.id, {
+      machineProviderId: "test-machine",
+      machineOperationId: "test-machine-plugin:interrupted",
+      phase: "resuming",
+      resource: { id: "owned" },
+      suspendedAt: Date.now(),
+    });
+    harness.hub.unregisterDaemon(target.session.id);
+
+    await sweepProviderMachine(harness.deps, target.host.id);
+
+    expect(resume).toHaveBeenCalledOnce();
+    expect(getHost(harness.db, target.host.id)).toMatchObject({
+      machineOperationId: expect.stringMatching(/^test-machine-plugin:/u),
+      phase: "active",
+      resource: { id: "restored" },
+      suspendedAt: null,
+    });
+  }));
+
 it.each(["active", "suspended"] as const)(
   "removes environments on a %s persistent machine without admitting new work",
   async (phase) =>

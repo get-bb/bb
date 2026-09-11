@@ -14,9 +14,11 @@ command’s `--help` before mutation. Use fresh browser snapshots for controls.
 ## Source
 
 - `apps/app/src/views/MachineSettingsView.tsx`
+- `apps/app/src/components/promptbox/banner/ThreadMachineStatus.tsx`
 - `apps/cli/src/commands/machine.ts`
 - `apps/cli/src/commands/updates.ts`
 - `apps/host-daemon/src/server-connection.ts`
+- `apps/server/src/services/machines/provider-orchestration.ts`
 
 ## Feature recipes
 
@@ -26,6 +28,7 @@ command’s `--help` before mutation. Use fresh browser snapshots for controls.
 | Pair and enroll | Create machine join-code and redeem on the disposable host; attempt expired/reused code. | Exactly one intended host enrolls; invalid or consumed codes do not enroll another. |
 | Permission ceiling | Change the disposable machine ceiling and request a more permissive thread. | Host ceiling is enforced across UI, CLI, and runtime rather than merely hidden in the picker. |
 | Disconnect and reconnect | Stop only the disposable daemon, observe unavailable host, restart it, and retry a targeted read. | Status and routing recover to the same host; offline operations do not route to a different machine. |
+| Suspend and resume | Suspend a disposable provider-managed machine, send a thread follow-up to wake it, then repeat with the prompt banner's Resume action. | Every wake exposes a durable `resuming` lifecycle phase; the prompt banner says “Machine is resuming…” until the machine becomes active, and queued work dispatches once. |
 | Protocol mismatch and automatic update | Use the documented QA setup with a deliberately older disposable daemon; inspect rejected protocol and retry-update. | Mismatch initiates the expected update or actionable failure; incompatible payloads are not accepted in a reconnect loop. |
 | Provider CLI installation | Inspect machine provider-cli status; install/update a chosen provider on the disposable host. | Version and health refresh on that host; failure does not claim installation. |
 | Updates status and apply | Compare updates status and Settings → Updates; apply only available fixture-host updates. | Per-host/per-provider outcomes are reported; absent updates produce a truthful no-op. |

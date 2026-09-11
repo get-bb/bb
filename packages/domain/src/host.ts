@@ -10,6 +10,7 @@ export const machineLifecycleSchema = z.object({
     "active",
     "suspending",
     "suspended",
+    "resuming",
     "removing",
     "destroyed",
   ]),

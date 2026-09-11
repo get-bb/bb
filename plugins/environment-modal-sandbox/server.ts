@@ -250,7 +250,8 @@ export function createModalSandboxPlugin(
             .catch(() => null);
           if (
             current?.lifecycle.phase === "suspending" ||
-            current?.lifecycle.phase === "suspended"
+            current?.lifecycle.phase === "suspended" ||
+            current?.lifecycle.phase === "resuming"
           ) {
             continue;
           }

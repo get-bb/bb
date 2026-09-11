@@ -17,7 +17,7 @@ export function MachineLifecycleNoticeContent({
       aria-label="Machine maintenance"
       className={cn(
         "min-w-0 text-xs",
-        notice.phase === "suspending"
+        notice.phase === "suspending" || notice.phase === "resuming"
           ? "text-subtle-foreground"
           : "text-destructive-text",
       )}

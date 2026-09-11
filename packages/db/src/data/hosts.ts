@@ -32,6 +32,7 @@ export interface UpdateHostInput {
     | "active"
     | "suspending"
     | "suspended"
+    | "resuming"
     | "removing"
     | "destroyed";
   resource?: JsonValue | null;

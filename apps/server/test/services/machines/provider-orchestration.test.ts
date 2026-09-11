@@ -554,6 +554,51 @@ describe("machine retirement", () => {
 });
 
 describe("machine suspension", () => {
+  it("returns the durable resuming phase from an explicit resume request", async () =>
+    withTestHarness(async (harness) => {
+      const started = createDeferredPromise<void>();
+      const release = createDeferredPromise<void>();
+      const target = seedHostSession(harness.deps, { id: "explicit-resume" });
+      installMachineProvider({
+        suspend: async () => ({ resource: { id: "owned" } }),
+        resume: async () => {
+          started.resolve();
+          await release.promise;
+          return { resource: { id: "owned" } };
+        },
+      });
+      updateHost(harness.db, harness.hub, target.host.id, {
+        machineProviderId: "test-machine",
+        phase: "suspended",
+        resource: { id: "owned" },
+        suspendedAt: Date.now(),
+      });
+      harness.hub.unregisterDaemon(target.session.id);
+      const notifyHost = vi.spyOn(harness.hub, "notifyHost");
+
+      const response = await harness.app.request(
+        `/api/v1/hosts/${target.host.id}/resume`,
+        { method: "POST" },
+      );
+      await started.promise;
+      try {
+        expect(response.status).toBe(202);
+        expect(await readJson(response)).toMatchObject({
+          lifecycle: { phase: "resuming" },
+        });
+        expect(getHost(harness.db, target.host.id)?.phase).toBe("resuming");
+        expect(notifyHost).toHaveBeenCalledWith(target.host.id, [
+          "host-disconnected",
+        ]);
+      } finally {
+        release.resolve();
+      }
+
+      await expect
+        .poll(() => getHost(harness.db, target.host.id)?.phase)
+        .toBe("active");
+    }));
+
   it("rejects each persisted provisioning state and suspends after all clear", async () =>
     withTestHarness(async (harness) => {
       const source = seedHostSession(harness.deps, { id: "setup-source" });

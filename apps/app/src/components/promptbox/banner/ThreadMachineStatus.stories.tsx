@@ -1,6 +1,6 @@
 import type { SystemMachineProvider } from "@bb/server-contract";
 import modalLogoUrl from "../../../../../../plugins/environment-modal-sandbox/modal-logo.svg?url";
-import { useState, type ReactNode } from "react";
+import type { ReactNode } from "react";
 import { StoryCard, StoryRow } from "../../../../.ladle/story-card";
 import { ThreadMachineStatusBanner } from "./ThreadMachineStatus";
 
@@ -36,7 +36,6 @@ function ResponsiveStage({ children }: { children: ReactNode }) {
 }
 
 function PausedMachine({ hostName }: { hostName: string }) {
-  const [resuming, setResuming] = useState(false);
   return (
     <ThreadMachineStatusBanner
       provider={modalProvider}
@@ -46,9 +45,8 @@ function PausedMachine({ hostName }: { hostName: string }) {
         machineProviderId: modalProvider.id,
       }}
       phase="suspended"
-      resuming={resuming}
       error={null}
-      onResume={() => setResuming(true)}
+      onResume={noop}
     />
   );
 }
@@ -56,7 +54,7 @@ function PausedMachine({ hostName }: { hostName: string }) {
 export function States() {
   return (
     <StoryCard labelWidth="230px">
-      <StoryRow label="paused" hint="Resume switches to the pending state">
+      <StoryRow label="paused" hint="Resume is available while paused">
         <ResponsiveStage>
           <PausedMachine hostName="Modal Sandbox" />
         </ResponsiveStage>
@@ -71,13 +69,12 @@ export function States() {
               machineProviderId: modalProvider.id,
             }}
             phase="suspending"
-            resuming={false}
             error={null}
             onResume={noop}
           />
         </ResponsiveStage>
       </StoryRow>
-      <StoryRow label="resuming" hint="the action stays disabled while pending">
+      <StoryRow label="resuming" hint="the server lifecycle owns this state">
         <ResponsiveStage>
           <ThreadMachineStatusBanner
             provider={modalProvider}
@@ -86,8 +83,7 @@ export function States() {
               type: "ephemeral",
               machineProviderId: modalProvider.id,
             }}
-            phase="suspended"
-            resuming
+            phase="resuming"
             error={null}
             onResume={noop}
           />
@@ -106,7 +102,6 @@ export function States() {
               machineProviderId: modalProvider.id,
             }}
             phase="suspended"
-            resuming={false}
             error="Modal is temporarily unavailable. Your machine is still paused."
             onResume={noop}
           />

@@ -10,6 +10,7 @@ import {
 import { threadScope, turnScope, type ThreadEvent } from "@bb/domain";
 import { groupHostDaemonEvents } from "@bb/host-daemon-contract";
 import { validatePluginMachineProviderDeclaration } from "@get-bb/plugin-sdk/internal/host-policy";
+import { createDeferredPromise } from "@bb/test-helpers";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { sweepMachineLifecycles } from "../../src/services/machines/provider-orchestration.js";
 import { setPluginEnvironmentProviderBridge } from "../../src/services/plugins/plugin-environment-provider-registry.js";
@@ -61,8 +62,12 @@ describe("composed machine thread lifecycle", () => {
           expect(harness.hub.hasDaemonForHost(hostId)).toBe(false);
           return { resource: { snapshot: "saved" } };
         });
+        const resumeStarted = createDeferredPromise<void>();
+        const finishResume = createDeferredPromise<void>();
         const resume = vi.fn(async ({ hostId }: { hostId: string }) => {
           seedSession(harness.deps, hostId);
+          resumeStarted.resolve();
+          await finishResume.promise;
           return { resource: { snapshot: "saved" } };
         });
         const remove = vi.fn(async () => ({ status: "removed" as const }));
@@ -286,6 +291,18 @@ describe("composed machine thread lifecycle", () => {
           },
         );
         expect(send.status).toBe(200);
+        await resumeStarted.promise;
+        try {
+          expect(getHost(harness.db, hostId)?.phase).toBe("resuming");
+          const resuming = await harness.app.request(`/api/v1/hosts/${hostId}`);
+          expect(resuming.status).toBe(200);
+          expect(await resuming.json()).toMatchObject({
+            status: "connected",
+            lifecycle: { phase: "resuming" },
+          });
+        } finally {
+          finishResume.resolve();
+        }
         const followup = await waitForQueuedCommand(
           harness,
           ({ command }) => command.type === "turn.submit",

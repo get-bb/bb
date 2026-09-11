@@ -941,7 +941,8 @@ export async function requestMachineResume(
   if (
     row.phase !== "active" &&
     row.phase !== "suspended" &&
-    row.phase !== "suspending"
+    row.phase !== "suspending" &&
+    row.phase !== "resuming"
   ) {
     throw new ApiError(
       409,
@@ -958,7 +959,8 @@ export function startMachineResume(deps: Deps, hostId: string): void {
   if (
     row.phase !== "active" &&
     row.phase !== "suspended" &&
-    row.phase !== "suspending"
+    row.phase !== "suspending" &&
+    row.phase !== "resuming"
   ) {
     throw new ApiError(
       409,
@@ -972,18 +974,6 @@ export function startMachineResume(deps: Deps, hostId: string): void {
       "Requested machine resume will retry in the lifecycle sweep",
     );
   });
-}
-
-export function isMachineResumeInFlight(
-  deps: Pick<Deps, "db">,
-  hostId: string,
-): boolean {
-  const row = getHost(deps.db, hostId);
-  return (
-    row?.phase === "suspended" &&
-    row.machineOperationId !== null &&
-    operations(resumeOperations, deps.db).has(hostId)
-  );
 }
 
 export async function resumeMachine(
@@ -1017,6 +1007,7 @@ async function resumeMachineWithIntent(
   if (
     row.phase !== "suspended" &&
     row.phase !== "suspending" &&
+    row.phase !== "resuming" &&
     !(row.phase === "removing" && row.suspendedAt !== null && preserveRemoval)
   ) {
     return;
@@ -1034,8 +1025,8 @@ async function resumeMachineWithIntent(
     throw new Error(`Machine "${hostId}" has no provider resource`);
   }
   const operationId = `${record.pluginId}:${randomUUID()}`;
-  const phase = row.phase;
-  const resumePhase = phase === "suspending" ? "suspended" : phase;
+  const initialPhase = row.phase;
+  const resumePhase = preserveRemoval ? "removing" : "resuming";
   const resume = record.provider.resume;
   const resource = row.resource;
   const operation = runTrackedOperation({
@@ -1047,6 +1038,7 @@ async function resumeMachineWithIntent(
         phase: resumePhase,
         statusMessage: "Resuming…",
       });
+      deps.hub.notifyHost(hostId, ["host-disconnected"]);
       const invocation = await invokeMachineProvider(
         record,
         "machine resume",
@@ -1103,16 +1095,22 @@ async function resumeMachineWithIntent(
     });
   } catch (error) {
     const current = getHost(deps.db, hostId);
-    if (
-      resumePhase !== phase &&
-      lifecycleOwns(current, record.provider.id, operationId, resumePhase)
-    ) {
-      updateHost(deps.db, deps.hub, hostId, { phase });
-    }
+    const ownsResume = lifecycleOwns(
+      current,
+      record.provider.id,
+      operationId,
+      resumePhase,
+    );
     updateHost(deps.db, deps.hub, hostId, {
+      ...(ownsResume && !preserveRemoval
+        ? {
+            phase: initialPhase === "suspending" ? "suspending" : "suspended",
+          }
+        : {}),
       statusMessage: `Machine resume failed: ${errorMessage(error)}`,
       suspendRetryAt: Date.now() + 10_000,
     });
+    deps.hub.notifyHost(hostId, ["host-disconnected"]);
     throw error;
   }
 }
@@ -1319,6 +1317,10 @@ export async function sweepProviderMachine(
   if (record === undefined) return;
   if (row.phase === "creating") {
     await startCreate(deps, record, row).done;
+    return;
+  }
+  if (row.phase === "resuming") {
+    await resumeMachine(deps, hostId);
     return;
   }
   if (

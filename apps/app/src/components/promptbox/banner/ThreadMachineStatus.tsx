@@ -31,17 +31,16 @@ export function ThreadMachineStatus({ hostId }: { hostId: string }) {
   const resume = useResumeHost();
   const host = hosts.data?.find((candidate) => candidate.id === hostId);
   if (!host || host.machineProviderId === null) return null;
-  const pausing = host.lifecycle.phase === "suspending";
-  const paused = host.lifecycle.phase === "suspended";
-  if (!pausing && !paused) return null;
+  const phase = host.lifecycle.phase;
+  if (phase !== "suspending" && phase !== "suspended" && phase !== "resuming")
+    return null;
   return (
     <ThreadMachineStatusBanner
       host={host}
       provider={providers?.find(
         (provider) => provider.id === host.machineProviderId,
       )}
-      phase={pausing ? "suspending" : "suspended"}
-      resuming={resume.isPending}
+      phase={phase}
       error={
         resume.error
           ? getMutationErrorMessage({
@@ -59,24 +58,23 @@ export function ThreadMachineStatusBanner({
   host,
   provider,
   phase,
-  resuming,
   error,
   onResume,
 }: {
   host: MachineLabelHost;
   provider: SystemMachineProvider | undefined;
-  phase: "suspending" | "suspended";
-  resuming: boolean;
+  phase: "suspending" | "suspended" | "resuming";
   error: string | null;
   onResume: () => void;
 }) {
-  const phaseWord = resuming
-    ? "resuming…"
-    : phase === "suspending"
-      ? "pausing…"
-      : "paused";
+  const phaseWord =
+    phase === "resuming"
+      ? "resuming…"
+      : phase === "suspending"
+        ? "pausing…"
+        : "paused";
   const status = `Machine is ${phaseWord}`;
-  const detail = error && !resuming ? error : null;
+  const detail = error && phase !== "resuming" ? error : null;
   const [isExpanded, setIsExpanded] = useState(false);
   const expandable = detail !== null;
   return (
@@ -131,7 +129,7 @@ export function ThreadMachineStatusBanner({
         )}
         {phase === "suspended" ? (
           <BannerActionSlot hideInTiny={false}>
-            <PromptBannerActionButton disabled={resuming} onClick={onResume}>
+            <PromptBannerActionButton onClick={onResume}>
               {expandable ? "Retry" : "Resume"}
             </PromptBannerActionButton>
           </BannerActionSlot>

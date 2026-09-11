@@ -813,37 +813,43 @@ describe("EnvironmentPickerUI multi-machine menu", () => {
     expect(checkoutItems[1]!.getAttribute("aria-disabled")).toBe("true");
   });
 
-  it("disables options on a machine being removed", () => {
-    const removingStudio: Host = {
-      ...studio,
-      lifecycle: { ...studio.lifecycle, phase: "removing" },
-    };
-    renderPicker(
-      <EnvironmentPickerUI
-        value="provider:project-checkout"
-        sources={machineSources}
-        host={thisMachine}
-        isLocal
-        machines={{
-          hosts: [thisMachine, removingStudio],
-          localDaemonHostId: thisMachine.id,
-          primaryHostId: thisMachine.id,
-        }}
-        providers={[checkoutProvider]}
-        selectedProviderHostId={thisMachine.id}
-        onSelectProvider={vi.fn()}
-        modal={false}
-      />,
-    );
-    fireEvent.pointerDown(screen.getByRole("button", { name: "Environment" }), {
-      button: 0,
-    });
+  it.each(["removing", "resuming"] as const)(
+    "disables options on a machine that is %s",
+    (phase) => {
+      const unavailableStudio: Host = {
+        ...studio,
+        lifecycle: { ...studio.lifecycle, phase },
+      };
+      renderPicker(
+        <EnvironmentPickerUI
+          value="provider:project-checkout"
+          sources={machineSources}
+          host={thisMachine}
+          isLocal
+          machines={{
+            hosts: [thisMachine, unavailableStudio],
+            localDaemonHostId: thisMachine.id,
+            primaryHostId: thisMachine.id,
+          }}
+          providers={[checkoutProvider]}
+          selectedProviderHostId={thisMachine.id}
+          onSelectProvider={vi.fn()}
+          modal={false}
+        />,
+      );
+      fireEvent.pointerDown(
+        screen.getByRole("button", { name: "Environment" }),
+        {
+          button: 0,
+        },
+      );
 
-    const checkoutItems = screen.getAllByRole("menuitem", {
-      name: /Project checkout/u,
-    });
-    expect(checkoutItems[1]!.getAttribute("aria-disabled")).toBe("true");
-  });
+      const checkoutItems = screen.getAllByRole("menuitem", {
+        name: /Project checkout/u,
+      });
+      expect(checkoutItems[1]!.getAttribute("aria-disabled")).toBe("true");
+    },
+  );
 
   it("offers guided setup for a connected machine without a source", () => {
     const onRequestMachineSetup = vi.fn();
