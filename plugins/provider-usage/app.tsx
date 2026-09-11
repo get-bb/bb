@@ -106,9 +106,11 @@ function refreshUsage({
           signal,
         },
       );
+      if (!response.ok)
+        throw new Error(`Usage request returned HTTP ${response.status}.`);
       const body: unknown = await response.json();
       const parsed = usageRpcSuccessSchema.safeParse(body);
-      if (!response.ok || !parsed.success) {
+      if (!parsed.success) {
         throw new Error(
           rpcErrorMessage(body) ?? "Provider usage could not be loaded.",
         );
@@ -122,9 +124,10 @@ function refreshUsage({
       if (signal?.aborted === true) {
         return;
       }
+      console.warn("Provider usage refresh failed", cause);
       updateStore({
         ...storeSnapshot,
-        error: cause instanceof Error ? cause.message : String(cause),
+        error: "Couldn’t refresh usage.",
       });
     } finally {
       activeRefreshCount -= 1;
@@ -640,12 +643,13 @@ function ProviderUsageStatus({
         className="min-h-0 overflow-y-auto p-2.5"
       >
         {activeMachine === null ? (
-          <p className="text-xs text-muted-foreground">
-            {snapshot.error ??
-              (snapshot.isRefreshing
+          snapshot.error !== null ? null : (
+            <p className="text-xs text-muted-foreground">
+              {snapshot.isRefreshing
                 ? "Loading provider usage…"
-                : "No machines are enrolled.")}
-          </p>
+                : "No machines are enrolled."}
+            </p>
+          )
         ) : activeProvider === null ? (
           <p className="text-xs text-muted-foreground">
             {activeMachine.status === "disconnected"
@@ -712,12 +716,40 @@ function ProviderUsageStatus({
                 </section>
               ))}
             </div>
-            {snapshot.error === null ? null : (
-              <p role="status" className="mt-2 text-xs text-warning-text">
-                Showing the last update. {snapshot.error}
-              </p>
-            )}
           </>
+        )}
+        {snapshot.error === null ? null : (
+          <div
+            role="status"
+            className={cn(
+              "flex items-center gap-2 text-2xs text-subtle-foreground",
+              snapshot.data === null
+                ? ""
+                : "mt-2 border-t border-sidebar-border pt-2",
+            )}
+          >
+            <span className="min-w-0 flex-1">
+              {snapshot.data === null
+                ? "Couldn’t load usage."
+                : "Couldn’t refresh. Showing the last update."}
+            </span>
+            <button
+              type="button"
+              disabled={snapshot.isRefreshing}
+              aria-label="Retry usage refresh"
+              className="shrink-0 rounded-sm px-1 py-0.5 font-medium text-sidebar-foreground hover:bg-sidebar-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sidebar-ring disabled:opacity-50"
+              onClick={() =>
+                void refreshUsage({
+                  force: true,
+                  machineIds:
+                    activeMachineId === null ? null : [activeMachineId],
+                  maxAgeMs: 0,
+                })
+              }
+            >
+              Retry
+            </button>
+          </div>
         )}
       </div>
     </div>

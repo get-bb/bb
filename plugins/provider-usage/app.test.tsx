@@ -367,6 +367,44 @@ describe("provider usage footer disclosure", () => {
     fireEvent.click(slot.getByRole("tab", { name: "Claude Code" }));
     expect(slot.getByText("claude-team@example.com")).toBeTruthy();
     expect(slot.queryByText("personal@example.com")).toBeNull();
+    const diagnostics = vi
+      .spyOn(console, "warn")
+      .mockImplementation(() => undefined);
+    for (const failure of [
+      () => new Response("bb connect temporarily unavailable", { status: 503 }),
+      () => new Response("bb connect is not JSON", { status: 200 }),
+      () => Response.json({ ok: true, result: { machines: "invalid" } }),
+    ]) {
+      await waitFor(() =>
+        expect(
+          slot
+            .getByRole("button", { name: "Reload provider usage" })
+            .hasAttribute("disabled"),
+        ).toBe(false),
+      );
+      fetchMock.mockResolvedValueOnce(failure());
+      fireEvent.click(
+        slot.getByRole("button", { name: "Reload provider usage" }),
+      );
+      await waitFor(() =>
+        expect(
+          slot.getByText("Couldn’t refresh. Showing the last update."),
+        ).toBeTruthy(),
+      );
+      expect(slot.getByText("claude-team@example.com")).toBeTruthy();
+      expect(
+        slot.queryByText(/Unexpected token|bb connect|invalid JSON/i),
+      ).toBeNull();
+      fireEvent.click(
+        slot.getByRole("button", { name: "Retry usage refresh" }),
+      );
+      await waitFor(() =>
+        expect(
+          slot.queryByText("Couldn’t refresh. Showing the last update."),
+        ).toBeNull(),
+      );
+    }
+    expect(diagnostics).toHaveBeenCalledTimes(3);
     await mounted.lifecycle.dispose();
   }, 15_000);
 });
