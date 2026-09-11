@@ -370,7 +370,7 @@ describe("BrowsePluginsTab", () => {
     });
     expect(screen.queryByTestId("plugin-browse-shelves")).toBeNull();
     fireEvent.pointerDown(trigger);
-    fireEvent.click(screen.getByRole("menuitemradio", { name: "Default" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "Clear sort" }));
     expect(await screen.findByTestId("plugin-browse-shelves")).toBeTruthy();
     const params = new URLSearchParams(
       screen.getByTestId("location-search").textContent ?? "",

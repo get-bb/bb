@@ -456,30 +456,6 @@ export function ResourceSortMenu({
         >
           Sort by
         </DropdownMenuLabel>
-        {onClear === undefined ? null : (
-          <DropdownMenuItem
-            role="menuitemradio"
-            aria-checked={value === null}
-            onSelect={(event) => {
-              event.preventDefault();
-              onClear();
-            }}
-            className={cn(
-              "flex items-center justify-between gap-3",
-              compact && "md:gap-2 md:px-1.5 md:py-1",
-            )}
-          >
-            {placeholderLabel}
-            <Icon
-              name="Check"
-              aria-hidden
-              className={cn(
-                "size-4 text-subtle-foreground",
-                value === null ? "opacity-100" : "opacity-0",
-              )}
-            />
-          </DropdownMenuItem>
-        )}
         {options.map((option) => {
           const selected = option.id === value;
           return (
@@ -514,6 +490,19 @@ export function ResourceSortMenu({
             </DropdownMenuItem>
           );
         })}
+        {onClear !== undefined && value !== null ? (
+          <div className="mt-0.5 border-t border-border-seam pt-0.5">
+            <DropdownMenuItem
+              onSelect={(event) => {
+                event.preventDefault();
+                onClear();
+              }}
+              className="px-2 py-1 text-muted-foreground"
+            >
+              Clear sort
+            </DropdownMenuItem>
+          </div>
+        ) : null}
       </DropdownMenuContent>
     </DropdownMenu>
   );
