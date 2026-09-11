@@ -271,6 +271,7 @@ export interface ThreadRetryArgs {
 }
 
 export interface ThreadActionArgs {
+  signal?: AbortSignal;
   threadId: string;
 }
 
@@ -1132,14 +1133,14 @@ export function createThreadsArea(args: CreateSdkAreaArgs): ThreadsArea {
       return transport.readJson(
         transport.api.v1.threads[":id"].read.$post({
           param: { id: input.threadId },
-        }),
+        }, ...signalRequestArgs(input.signal)),
       );
     },
     async markUnread(input) {
       return transport.readJson(
         transport.api.v1.threads[":id"].unread.$post({
           param: { id: input.threadId },
-        }),
+        }, ...signalRequestArgs(input.signal)),
       );
     },
     async output(input) {

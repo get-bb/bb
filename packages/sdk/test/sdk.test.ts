@@ -317,6 +317,29 @@ describe("@bb/sdk", () => {
     expect(receivedSignal).toBe(controller.signal);
   });
 
+  it("forwards thread read action abort signals to fetch", async () => {
+    const controller = new AbortController();
+    let receivedSignal: AbortSignal | null | undefined;
+    const fetch: FetchImplementation = async (_input, init) => {
+      receivedSignal = init?.signal;
+      return jsonResponse({ body: {} });
+    };
+    const sdk = createBbSdk({
+      transport: createHttpTransport({
+        baseUrl: "http://bb.test",
+        fetch,
+        runtime: "node",
+      }),
+    });
+
+    await sdk.threads.markRead({
+      signal: controller.signal,
+      threadId: "thr_test",
+    });
+
+    expect(receivedSignal).toBe(controller.signal);
+  });
+
   it("maps personal-project list options while forwarding the abort signal", async () => {
     const controller = new AbortController();
     let receivedSignal: AbortSignal | null | undefined;
