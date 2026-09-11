@@ -22,6 +22,10 @@ on:
         description: Space-separated flow names (default = the CI set; see apps/mobile/e2e/scripts/ci-run-flows.sh)
         required: false
         default: ""
+      source_ref:
+        description: Optional full source commit for baseline comparisons using this revision's flows
+        required: false
+        default: ""
   schedule:
     # Nightly, 09:17 UTC (runs on the default branch).
     - cron: "17 9 * * *"
@@ -30,7 +34,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: mobile-e2e-${{ github.ref }}
+  group: mobile-e2e-${{ github.ref }}-${{ inputs.source_ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 env:
@@ -67,6 +71,21 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Preserve flows and select comparison source
+        env:
+          SOURCE_REF: ${{ inputs.source_ref }}
+        run: |
+          driver=$(mktemp -d "$GITHUB_WORKSPACE/.mobile-e2e-driver.XXXXXX")
+          cp -R apps/mobile/e2e/. "$driver/"
+          echo "E2E_DRIVER=$driver" >> "$GITHUB_ENV"
+          if [ -n "$SOURCE_REF" ]; then
+            [[ "$SOURCE_REF" =~ ^[0-9a-f]{40}$ ]] || exit 1
+            git fetch origin "$SOURCE_REF"
+            git checkout --detach FETCH_HEAD
+          fi
+          mkdir -p e2e-artifacts
+          git rev-parse HEAD > e2e-artifacts/source-commit.txt
 
       # No Turbo cache on macOS: the cache moves over GitHub's service at
       # ~50 MB/s on these runners and costs more than the tasks it skips
@@ -306,7 +325,7 @@ jobs:
           MAESTRO_DRIVER_STARTUP_TIMEOUT: "180000"
         run: |
           # shellcheck disable=SC2086
-          apps/mobile/e2e/scripts/ci-run-flows.sh "$SIMULATOR_UDID" "$GITHUB_WORKSPACE/e2e-artifacts/maestro" $FLOWS
+          "$E2E_DRIVER/scripts/ci-run-flows.sh" "$SIMULATOR_UDID" "$GITHUB_WORKSPACE/e2e-artifacts/maestro" $FLOWS
 
       - name: Collect simulator logs
         if: always()

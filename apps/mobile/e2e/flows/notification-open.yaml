@@ -1,0 +1,72 @@
+appId: app.getbb.mobile
+env:
+  SERVER_URL: "http://127.0.0.1:41999"
+---
+- runFlow: ../subflows/launch-app.yaml
+- tapOn:
+    id: "server-url-input"
+- inputText: "${SERVER_URL}"
+- tapOn:
+    id: "server-label-input"
+- inputText: "E2E backend"
+- tapOn: "Server URL"
+- tapOn:
+    id: "add-server-submit"
+- extendedWaitUntil:
+    visible: "Turn on notifications"
+    timeout: 30000
+- tapOn: "Turn on notifications"
+- extendedWaitUntil:
+    visible: ".*Ask anything.*"
+    timeout: 60000
+- startRecording: notification-open
+- runScript:
+    file: ../scripts/send-notification.js
+    env:
+      SCENARIO: completed
+- extendedWaitUntil:
+    visible: "Thread finished"
+    timeout: 5000
+- takeScreenshot: notification-arrived
+- tapOn:
+    text: "Open"
+    waitToSettleTimeoutMs: 0
+- takeScreenshot: notification-opened
+- extendedWaitUntil:
+    visible: ".*Response to: Hello from the seed.*"
+    timeout: 30000
+- takeScreenshot: notification-thread
+- extendedWaitUntil:
+    notVisible: "Thread finished"
+    timeout: 12000
+- takeScreenshot: notification-dismissed
+- stopRecording
+- runScript:
+    file: ../scripts/send-notification.js
+    env:
+      SCENARIO: missing
+- extendedWaitUntil:
+    visible: "Unavailable thread"
+    timeout: 5000
+- tapOn:
+    text: "Open"
+    waitToSettleTimeoutMs: 0
+- extendedWaitUntil:
+    visible: "Could not open the thread"
+    timeout: 5000
+- assertVisible: "Unavailable thread"
+- takeScreenshot: notification-unresolved
+- extendedWaitUntil:
+    notVisible: "Unavailable thread"
+    timeout: 12000
+- runScript:
+    file: ../scripts/send-notification.js
+    env:
+      SCENARIO: completed
+- extendedWaitUntil:
+    visible: "Thread finished"
+    timeout: 5000
+- extendedWaitUntil:
+    notVisible: "Thread finished"
+    timeout: 12000
+- takeScreenshot: notification-expired

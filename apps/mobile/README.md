@@ -696,7 +696,10 @@ add-root-cert`). Env: `BB_MOBILE_E2E_GATE_PORT` (42998),
   characters in `tokenSuffix`. A token can receive pushes but cannot read
   server data.
 - Handling: a foreground arrival becomes a toast with "Open" (no system
-  banner); a tap on a background / cold-start notification opens
+  banner). Open dismisses that toast 500 ms after resolving its server and
+  navigating. Failed lookups leave it available for retry, and repeated taps
+  do not repeat navigation. Unopened toasts keep their eight-second lifetime.
+  A tap on a background / cold-start notification opens
   `/threads/<threadId>` on the profile that owns it. The phone first matches
   the optional `serverUrl` hint. It probes saved profiles for the thread only
   when no hint matches. The web page sends the app-icon badge count through
@@ -706,6 +709,11 @@ payload.apns` with `{"aps":{"alert":{…}},"body":{"kind":"turn-finished",
 "threadId":"…","projectId":"…","serverUrl":"https://…"}}`
   (expo-notifications reads remote `data` from the `body` key) after the user
   grants permission.
+- Automated simulator coverage: dispatch Mobile E2E with the
+  `notification-open` flow to record foreground Open, unresolved targets, and
+  normal expiry. The optional `source_ref` input builds an exact source commit
+  with the dispatch revision's flows for before/after comparisons. The artifact
+  records the built commit alongside native screenshots and video.
 - Deep links: `bb://<mobile path>` (`bb://threads/<id>`, `bb://settings/servers`,
   `bb://projects/<p>/threads/<t>`, …) and universal / app links
   `https://<handle>.getbb.app/{threads,projects,settings}/*` (iOS

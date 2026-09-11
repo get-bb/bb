@@ -74,7 +74,7 @@ export function PushNotificationsHost() {
         toast.error("Could not open the thread", {
           description: "None of your saved servers has it.",
         });
-        return;
+        return false;
       }
       router.push(
         webViewShellHref({
@@ -88,6 +88,7 @@ export function PushNotificationsHost() {
                 }),
         }),
       );
+      return true;
     },
     [router],
   );
@@ -115,10 +116,22 @@ export function PushNotificationsHost() {
         const content = notification.request.content;
         const target = parsePushNotificationData(content.data);
         if (!target) return;
-        toast.message(content.title ?? "bb", {
+        let opening = false;
+        const toastId = toast.message(content.title ?? "bb", {
           description: content.body ?? undefined,
           duration: 8_000,
-          action: { label: "Open", onClick: () => void openTarget(target) },
+          action: {
+            label: "Open",
+            onClick: async () => {
+              if (opening) return;
+              opening = true;
+              if (!(await openTarget(target))) {
+                opening = false;
+                return;
+              }
+              setTimeout(() => toast.dismiss(toastId), 500);
+            },
+          },
         });
       },
     );

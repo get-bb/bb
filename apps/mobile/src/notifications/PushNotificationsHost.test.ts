@@ -14,7 +14,7 @@ interface NotificationResponse {
 const mocks = vi.hoisted(() => ({
   addTokenListener: vi.fn(() => () => undefined),
   clearLastNotificationResponse: vi.fn(),
-  getLastNotificationResponse: vi.fn(() => null),
+  getLastNotificationResponse: vi.fn<() => NotificationResponse | null>(() => null),
   hasThread: vi.fn(async () => false),
   push: vi.fn(),
   receivedListener: vi.fn(),
@@ -122,7 +122,9 @@ describe("PushNotificationsHost", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mocks.hasThread.mockResolvedValue(false);
-    mocks.toastMessage.mockImplementation((_, options) => options?.id?.toString() ?? "foreground-1");
+    mocks.toastMessage.mockImplementation(
+      (_, options) => options?.id?.toString() ?? "foreground-1",
+    );
     PushNotificationsHost();
   });
 
@@ -174,9 +176,11 @@ describe("PushNotificationsHost", () => {
   it("starts the dismissal delay after resolving the target profile", async () => {
     vi.useFakeTimers();
     let resolveProbe: (found: boolean) => void = () => {};
-    mocks.hasThread.mockImplementationOnce(() => new Promise<boolean>((resolve) => {
-      resolveProbe = resolve;
-    }));
+    mocks.hasThread.mockImplementationOnce(
+      () => new Promise<boolean>((resolve) => {
+        resolveProbe = resolve;
+      }),
+    );
     receive({ threadId: "thr_1" }).onClick();
     await vi.advanceTimersByTimeAsync(2_000);
     expect(mocks.push).not.toHaveBeenCalled();
@@ -209,7 +213,10 @@ describe("PushNotificationsHost", () => {
 
   it("ignores repeated Open taps while navigation and dismissal are pending", async () => {
     vi.useFakeTimers();
-    const action = receive({ serverUrl: "https://bb.example.test", threadId: "thr_1" });
+    const action = receive({
+      serverUrl: "https://bb.example.test",
+      threadId: "thr_1",
+    });
     action.onClick();
     action.onClick();
     await vi.advanceTimersByTimeAsync(250);
@@ -223,9 +230,60 @@ describe("PushNotificationsHost", () => {
     vi.useFakeTimers();
     receive({ serverUrl: "https://bb.example.test", threadId: "thr_1" }).onClick();
     await vi.advanceTimersByTimeAsync(250);
-    receive({ serverUrl: "https://bb.example.test", threadId: "thr_2" }, "foreground-2");
+    receive(
+      { serverUrl: "https://bb.example.test", threadId: "thr_2" },
+      "foreground-2",
+    );
     await vi.advanceTimersByTimeAsync(250);
     expect(mocks.toastDismiss).toHaveBeenCalledExactlyOnceWith("foreground-1");
+  });
+
+  it("leaves an unopened notification on its existing eight-second lifetime", async () => {
+    vi.useFakeTimers();
+    receive({ threadId: "thr_1" });
+    expect(mocks.toastMessage.mock.calls[0]?.[1]?.duration).toBe(8_000);
+    await vi.advanceTimersByTimeAsync(8_000);
+    expect(mocks.push).not.toHaveBeenCalled();
+    expect(mocks.toastDismiss).not.toHaveBeenCalled();
+  });
+
+  it("ignores a notification without a valid thread target", () => {
+    mocks.receivedListener({ request: { content: { data: {} } } });
+    expect(mocks.toastMessage).not.toHaveBeenCalled();
+    expect(mocks.push).not.toHaveBeenCalled();
+  });
+
+  it("keeps a notification available when the server probe rejects", async () => {
+    vi.useFakeTimers();
+    mocks.hasThread.mockRejectedValueOnce(new Error("Server disconnected"));
+    receive({ threadId: "thr_1" }).onClick();
+    await vi.advanceTimersByTimeAsync(1_000);
+    expect(mocks.push).not.toHaveBeenCalled();
+    expect(mocks.toastDismiss).not.toHaveBeenCalled();
+    expect(mocks.toastError).toHaveBeenCalledOnce();
+  });
+
+  it("opens a cold-start response without applying a foreground toast delay", async () => {
+    vi.useFakeTimers();
+    mocks.getLastNotificationResponse.mockReturnValueOnce({
+      notification: {
+        request: {
+          content: {
+            data: { serverUrl: "https://bb.example.test", threadId: "thr_1" },
+          },
+        },
+      },
+    });
+    PushNotificationsHost();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(mocks.clearLastNotificationResponse).toHaveBeenCalledOnce();
+    expect(mocks.push).toHaveBeenCalledExactlyOnceWith({
+      pathname: "/webview",
+      params: { path: "/threads/thr_1", profileId: "profile-1" },
+    });
+    await vi.advanceTimersByTimeAsync(1_000);
+    expect(mocks.toastMessage).not.toHaveBeenCalled();
+    expect(mocks.toastDismiss).not.toHaveBeenCalled();
   });
 
   it("opens a project thread from a push response with its project route", async () => {
@@ -251,5 +309,7 @@ describe("PushNotificationsHost", () => {
         },
       }),
     );
+    expect(mocks.toastMessage).not.toHaveBeenCalled();
+    expect(mocks.toastDismiss).not.toHaveBeenCalled();
   });
 });
