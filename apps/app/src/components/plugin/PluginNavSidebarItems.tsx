@@ -11,7 +11,8 @@ import {
   type ReactNode,
 } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
-import { useAtom } from "jotai";
+import { useAtom, useStore } from "jotai";
+import { flushSync } from "react-dom";
 import { DndContext, type DragEndEvent } from "@dnd-kit/core";
 import {
   FilterHorizontalIcon,
@@ -54,7 +55,7 @@ import {
   getPluginDetailRoutePath,
   getPluginPanelRoutePath,
   getPluginPanelRoutePluginId,
-  getPluginsRoutePath,
+  getRootComposeRoutePath,
 } from "@/lib/route-paths";
 import {
   usePluginNavPanelChrome,
@@ -87,6 +88,14 @@ import { appToast } from "@/components/ui/app-toast";
 import { invalidatePluginList } from "@/hooks/cache-owners/plugin-cache-owner";
 import { setPluginEnabled } from "@/hooks/queries/plugin-settings-queries";
 import { appQueryClient } from "@/lib/app-query-client";
+import { maximizedPaneIdAtom, splitLayoutAtom } from "@/lib/split-layout/atoms";
+import {
+  findPane,
+  listPanes,
+  removePane,
+  replacePaneContent,
+} from "@/lib/split-layout";
+import { focusedPaneRoute } from "@/views/thread-detail/splitThreadNavigation";
 import {
   pluginNavPanelOrderAtom,
   pluginNavVisiblePanelKeysAtom,
@@ -213,6 +222,7 @@ function PluginNavSidebarItemList({
 }) {
   const location = useLocation();
   const navigate = useNavigate();
+  const store = useStore();
   const isCompactViewport = useIsCompactViewport();
   const splitActions = usePaneContentSplitActions();
   const [storedOrder, setStoredOrder] = useAtom(pluginNavPanelOrderAtom);
@@ -247,14 +257,47 @@ function PluginNavSidebarItemList({
   >(null);
   const handleDisable = useCallback(
     async (row: PluginSidebarNavRow) => {
-      setDisablePendingPluginId(row.pluginId);
+      const pluginId = row.chrome.pluginId;
+      setDisablePendingPluginId(pluginId);
       try {
-        await setPluginEnabled(fetch, row.pluginId, false);
-        appToast.success(`${row.title} disabled`);
-        if (getPluginPanelRoutePluginId(location.pathname) === row.pluginId) {
-          onNavigate?.();
-          void navigate(getPluginsRoutePath());
+        const current = store.get(splitLayoutAtom);
+        let next = current;
+        if (next !== null) {
+          for (const pane of listPanes(next.root)) {
+            if (
+              pane.content.kind !== "plugin-panel" ||
+              pane.content.pluginId !== pluginId
+            )
+              continue;
+            next =
+              listPanes(next.root).length === 1
+                ? replacePaneContent(next, pane.paneId, { kind: "new-thread" })
+                : removePane(next, pane.paneId);
+          }
         }
+        flushSync(() => {
+          if (next !== current) {
+            store.set(splitLayoutAtom, next);
+            const maximized = store.get(maximizedPaneIdAtom);
+            if (
+              maximized !== null &&
+              (next === null ||
+                listPanes(next.root).length < 2 ||
+                findPane(next.root, maximized) === null)
+            ) {
+              store.set(maximizedPaneIdAtom, null);
+            }
+          }
+          if (getPluginPanelRoutePluginId(location.pathname) === pluginId) {
+            onNavigate?.();
+            void navigate(
+              (next && focusedPaneRoute(next)) ?? getRootComposeRoutePath(),
+              { replace: true },
+            );
+          }
+        });
+        await setPluginEnabled(fetch, pluginId, false);
+        appToast.success(`${row.title} disabled`);
       } catch (error) {
         appToast.error(`Failed to disable ${row.title}`, {
           description: error instanceof Error ? error.message : String(error),
@@ -264,7 +307,7 @@ function PluginNavSidebarItemList({
         setDisablePendingPluginId(null);
       }
     },
-    [location.pathname, navigate, onNavigate],
+    [location.pathname, navigate, onNavigate, store],
   );
   const newLeadingKeys = useMemo(
     () =>
