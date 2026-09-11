@@ -6,6 +6,7 @@ import {
   CHRONOLOGICAL_CONTAINER_ID,
 } from "@bb/client-core";
 import {
+  buildPinInsertRequest,
   collectSectionThreadDndLookup,
   NEST_BAND_ARMED_FRACTION,
   NEST_BAND_FRACTION,
@@ -482,6 +483,38 @@ describe("section thread nest drop decisions", () => {
   });
 });
 
+describe("pin insert requests", () => {
+  it("pins before or after the hovered pinned root", () => {
+    const lookup = createLookupWithPinnedThread();
+    expect(
+      buildPinInsertRequest(lookup, "loose", {
+        threadId: "pinned-2",
+        placement: "before",
+      }),
+    ).toEqual({
+      itemId: "loose",
+      previousItemId: "pinned-1",
+      nextItemId: "pinned-2",
+    });
+    expect(
+      buildPinInsertRequest(lookup, "loose", {
+        threadId: "pinned-2",
+        placement: "after",
+      }),
+    ).toEqual({
+      itemId: "loose",
+      previousItemId: "pinned-2",
+      nextItemId: null,
+    });
+    expect(
+      buildPinInsertRequest(lookup, "loose", {
+        threadId: "in-a",
+        placement: "after",
+      }),
+    ).toBeNull();
+  });
+});
+
 describe("thread row nest collisions", () => {
   const rect = {
     top: 100,
@@ -516,6 +549,20 @@ describe("thread row nest collisions", () => {
     expect(resolve(104, NEST_BAND_ARMED_FRACTION)).toEqual([
       rowCollision,
       groupCollision,
+    ]);
+  });
+
+  it("reports where the pointer sits on the row", () => {
+    const seen: unknown[] = [];
+    resolveThreadRowNestCollisions({
+      collisions: [rowCollision, groupCollision],
+      droppableRects,
+      pointerCoordinates: { x: 20, y: 103 },
+      getBandFraction: () => NEST_BAND_FRACTION,
+      onRowPointer: (info) => seen.push(info),
+    });
+    expect(seen).toEqual([
+      { threadId: "parent-a", relativeY: 3 / 28, nesting: false },
     ]);
   });
 

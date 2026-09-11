@@ -287,10 +287,12 @@ const EMPTY_PINNED_ROOT_NODES: readonly ProjectThreadNode[] = [];
 function resolveDropPreviewTarget({
   dragOverParentKey,
   nestTarget,
+  reorderTarget,
   rootItems,
 }: {
   dragOverParentKey: string | null;
   nestTarget: SectionThreadDndState["nestTarget"];
+  reorderTarget: SectionThreadDndState["reorderTarget"];
   rootItems: readonly ProjectThreadItem[];
 }): SidebarDropPreviewTarget | null {
   if (nestTarget?.state === "valid") {
@@ -298,7 +300,9 @@ function resolveDropPreviewTarget({
   }
   if (dragOverParentKey === null) return null;
   if (dragOverParentKey === PINNED_THREAD_PARENT_KEY) {
-    return { kind: "pinned", parentKey: PINNED_THREAD_PARENT_KEY };
+    return reorderTarget
+      ? null
+      : { kind: "pinned", parentKey: PINNED_THREAD_PARENT_KEY };
   }
   if (dragOverParentKey === CHRONOLOGICAL_CONTAINER_ID) {
     return {
@@ -2156,6 +2160,7 @@ export const ChronologicalSectionThreadSections = memo(
       const target = resolveDropPreviewTarget({
         dragOverParentKey: sectionDnd.dragOverParentKey,
         nestTarget: sectionDnd.nestTarget,
+        reorderTarget: sectionDnd.reorderTarget,
         rootItems,
       });
       return {

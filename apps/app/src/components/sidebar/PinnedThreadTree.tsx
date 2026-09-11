@@ -196,6 +196,7 @@ export const PinnedThreadTree = memo(function PinnedThreadTree({
         : null;
     const showDropPreview =
       chronologicalDnd.dragOverParentKey === PINNED_THREAD_PARENT_KEY &&
+      chronologicalDnd.reorderTarget === null &&
       previewBeforeKey === null;
     return (
       <div
