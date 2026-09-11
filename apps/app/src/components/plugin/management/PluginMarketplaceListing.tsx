@@ -76,7 +76,6 @@ export function PluginMarketplaceDetailMetadata({
 }) {
   return (
     <>
-      {children}
       <PluginDetailMetadataItem label="Marketplace">
         {entry.marketplaceDisplayName}
       </PluginDetailMetadataItem>
@@ -100,6 +99,7 @@ export function PluginMarketplaceDetailMetadata({
           </time>
         )}
       </PluginDetailMetadataItem>
+      {children}
       <PluginDetailMetadataItem label="Last updated">
         {entry.updatedAt === undefined ? (
           "Not provided"

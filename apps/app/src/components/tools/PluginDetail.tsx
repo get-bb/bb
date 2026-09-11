@@ -354,9 +354,6 @@ export function PluginDetail({
 
   const installationMetadata = (
     <>
-      <PluginDetailMetadataItem label="Version">
-        <span className="font-mono">{plugin.version}</span>
-      </PluginDetailMetadataItem>
       <PluginDetailMetadataItem
         label={updatesWithBb ? "Delivery" : "Installed"}
       >
@@ -372,6 +369,9 @@ export function PluginDetail({
             Retry
           </button>
         ) : null}
+      </PluginDetailMetadataItem>
+      <PluginDetailMetadataItem label="Version">
+        <span className="font-mono">{plugin.version}</span>
       </PluginDetailMetadataItem>
     </>
   );
