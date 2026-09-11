@@ -338,7 +338,10 @@ export function ProjectDetailSettingsView() {
     project.gitRemoteUrl === null
       ? null
       : formatGitRemote(project.gitRemoteUrl);
-  const configuredCount = new Set(sources.map((source) => source.hostId)).size;
+  const configuredHostIds = new Set(sources.map((source) => source.hostId));
+  const configuredCount = hosts.filter((host) =>
+    configuredHostIds.has(host.id),
+  ).length;
   const defaults = defaultsQuery.data ?? null;
   const permissionLabel =
     defaults === null

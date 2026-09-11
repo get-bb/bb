@@ -1,3 +1,4 @@
+import type { Host } from "@bb/domain";
 import { describe, expect, it } from "vitest";
 import type { EnvironmentDisplayInfo } from "@bb/core-ui";
 import type { SystemEnvironmentProvider } from "@bb/server-contract";
@@ -11,8 +12,12 @@ import {
 
 describe("shouldShowEnvironmentHostIdentity", () => {
   it("keeps the machine identity for a projectless thread with one machine", () => {
-    expect(shouldShowEnvironmentHostIdentity(false, true)).toBe(true);
-    expect(shouldShowEnvironmentHostIdentity(false, false)).toBe(false);
+    expect(shouldShowEnvironmentHostIdentity(false, true, "persistent")).toBe(
+      true,
+    );
+    expect(shouldShowEnvironmentHostIdentity(false, false, "persistent")).toBe(
+      false,
+    );
   });
 });
 
@@ -114,6 +119,7 @@ interface SummaryDisplayOverrides {
   environmentName?: string | null;
   hasMultipleMachines?: boolean;
   hostName?: string | null;
+  hostType?: Host["type"] | null;
   isProjectless?: boolean;
 }
 
@@ -123,6 +129,7 @@ function getSummaryDisplay({
   environmentName = null,
   hasMultipleMachines = false,
   hostName = "Michael-M4",
+  hostType = "persistent",
   isProjectless = false,
 }: SummaryDisplayOverrides = {}) {
   return getEnvironmentWorkspaceSummaryDisplay({
@@ -131,6 +138,7 @@ function getSummaryDisplay({
     environmentName,
     hasMultipleMachines,
     hostName,
+    hostType,
     isProjectless,
   });
 }
@@ -184,6 +192,24 @@ describe("getEnvironmentDisplayIconName", () => {
 });
 
 describe("getEnvironmentWorkspaceSummaryDisplay", () => {
+  it("retains the current sandbox identity when persistent machine choices are singular", () => {
+    expect(shouldShowEnvironmentHostIdentity(false, false, "ephemeral")).toBe(
+      true,
+    );
+    expect(
+      getSummaryDisplay({
+        providerLookup: worktreeProviderLookup,
+        hostName: "Modal sandbox",
+        hostType: "ephemeral",
+        hasMultipleMachines: false,
+      }),
+    ).toMatchObject({
+      label: "Modal sandbox",
+      compactLabel: "Modal sandbox",
+      icon: "FolderGit",
+    });
+  });
+
   it("keeps provisioning ahead of the provider icon and label", () => {
     expect(
       getSummaryDisplay({

@@ -207,6 +207,7 @@ function PluginThreadChatBody({
       environmentName: environment.name,
       hasMultipleMachines,
       hostName: environmentHostName,
+      hostType: environmentHost?.type ?? null,
       isProjectless: thread?.projectId === PERSONAL_PROJECT_ID,
     });
     const summaryHost =

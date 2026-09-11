@@ -952,6 +952,7 @@ function ThreadDetailViewInternal(props: ThreadRoutePathArgs) {
   const threadEnvironmentHost = shouldShowEnvironmentHostIdentity(
     hasMultipleMachines,
     thread?.projectId === PERSONAL_PROJECT_ID,
+    resolvedThreadEnvironmentHost?.type ?? null,
   )
     ? resolvedThreadEnvironmentHost
     : null;
@@ -2407,6 +2408,7 @@ function ThreadDetailViewInternal(props: ThreadRoutePathArgs) {
         environmentName: environment?.name ?? null,
         hasMultipleMachines,
         hostName: resolvedThreadEnvironmentHost?.name ?? null,
+        hostType: resolvedThreadEnvironmentHost?.type ?? null,
         isProjectless: thread.projectId === PERSONAL_PROJECT_ID,
       })
     : undefined;
