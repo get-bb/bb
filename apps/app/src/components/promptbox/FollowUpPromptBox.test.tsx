@@ -889,7 +889,7 @@ describe("FollowUpPromptBox", () => {
     );
     fireEvent.pointerUp(submit, { button: 0, pointerType: "mouse" });
     fireEvent.click(submit);
-    expect(props.composer.onSubmit).toHaveBeenCalledOnce();
+    expect(props.composer?.onSubmit).toHaveBeenCalledOnce();
   });
 
   it("toggles between focused and collapsed with the composer shortcut", () => {
@@ -1228,7 +1228,7 @@ describe("FollowUpPromptBox", () => {
         ).toBe("false");
         fireEvent.pointerUp(control, { button: 0, pointerType: "touch" });
         fireEvent.click(control);
-        expect(props.composer.onSubmit).toHaveBeenCalledOnce();
+        expect(props.composer?.onSubmit).toHaveBeenCalledOnce();
       } finally {
         vi.useRealTimers();
         if (originalDescriptor) {
