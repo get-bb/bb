@@ -409,6 +409,8 @@ const branchLocalThreadSearchRowidFtsMigrationWhen = 1781403656071;
 const rowidThreadSearchMigrationHash =
   "025358fe89253aec7f5bd970dc3eb88d0e834f0d58fb9d75329a5d39899340f4";
 const legacyExperimentsMigrationWhen = 1781299832942;
+const environmentProvisioningMigrationWhen = 1789075667774;
+const machineProvidersMigrationWhen = 1789081162875;
 const eventLargeValuesMigrationWhen = 1781403656069;
 const eventLargeValuesRestoreMigrationWhen = 1781557200000;
 const cleanupModeDropMigrationWhen = 1781557300000;
@@ -528,6 +530,12 @@ const eventLargeValuesMigrationPath = resolve(
   "..",
   "drizzle",
   "0031_mysterious_zaran.sql",
+);
+const machineProvidersMigrationPath = resolve(
+  __dirname,
+  "..",
+  "drizzle",
+  "0117_machine_providers.sql",
 );
 function closeConnection(db: DbConnection): void {
   db.$client.close();
@@ -837,11 +845,78 @@ function rewindEnvironmentRowFactsMigration(db: DbConnection): void {
   }
 }
 
-function rewindEnvironmentProvidersMigration(db: DbConnection): void {
-  rewindEnvironmentProvisioningMigration(db);
+function rewindMachineProvidersMigration(db: DbConnection): void {
   db.$client.exec("DROP TABLE IF EXISTS environment_hook_operations");
+  if (
+    db.$client
+      .prepare<[], TableInfoRow>("PRAGMA table_info(project_sources)")
+      .all()
+      .some((column) => column.name === "owns_path")
+  ) {
+    db.$client.exec("ALTER TABLE project_sources DROP COLUMN owns_path");
+  }
+  db.$client.exec("DROP INDEX IF EXISTS hosts_live_launch_key_idx");
+  for (const column of [
+    "machine_provider_id",
+    "launch_key",
+    "machine_inputs",
+    "machine_attempt",
+    "pending_log",
+    "machine_operation_id",
+    "server_access_provider_id",
+    "server_access_grant_id",
+    "resource",
+    "phase",
+    "suspended_at",
+    "status_message",
+    "suspend_retry_at",
+    "idle_since",
+    "remove_retry_at",
+    "teardown_attempt",
+    "teardown_status",
+  ]) {
+    const columns = db.$client
+      .prepare<[], TableInfoRow>("PRAGMA table_info(hosts)")
+      .all();
+    if (columns.some((entry) => entry.name === column)) {
+      db.$client.exec(`ALTER TABLE hosts DROP COLUMN ${column}`);
+    }
+  }
+  const sessionColumns = db.$client
+    .prepare<[], TableInfoRow>("PRAGMA table_info(host_daemon_sessions)")
+    .all();
+  if (!sessionColumns.some((column) => column.name === "host_type")) {
+    db.$client
+      .prepare(
+        "ALTER TABLE host_daemon_sessions ADD COLUMN host_type text NOT NULL DEFAULT 'persistent'",
+      )
+      .run();
+  }
+  db.$client
+    .prepare<[number]>("DELETE FROM __drizzle_migrations WHERE created_at >= ?")
+    .run(machineProvidersMigrationWhen);
+}
+
+function rewindEnvironmentProvidersMigration(db: DbConnection): void {
+  rewindMachineProvidersMigration(db);
+  rewindEnvironmentProvisioningMigration(db);
+  db.$client.exec("DROP TABLE IF EXISTS machine_workspace_setups");
+  db.$client.exec("DROP TABLE IF EXISTS environment_setup_outcomes");
   db.$client.exec("DROP TABLE IF EXISTS environment_launches");
   db.$client.exec("DROP INDEX IF EXISTS environments_project_host_path_idx");
+  const hostColumns = new Set(
+    db.$client
+      .prepare<[], TableInfoRow>("PRAGMA table_info(hosts)")
+      .all()
+      .map((column) => column.name),
+  );
+  if (!hostColumns.has("type")) {
+    db.$client
+      .prepare(
+        "ALTER TABLE hosts ADD COLUMN type text NOT NULL DEFAULT 'persistent'",
+      )
+      .run();
+  }
   const lifecycleColumns = [
     "environment_provider_plugin_id",
     "canonical_path",
@@ -1627,7 +1702,6 @@ describe("migrate", () => {
       const host = upsertHost(db, noopNotifier, {
         id: "host-retained-output-migration",
         name: "Migration Host",
-        type: "persistent",
       });
       const { project } = createProject(db, noopNotifier, {
         name: "Migration Project",
@@ -1865,6 +1939,9 @@ describe("migrate", () => {
         showDiagnosticEvents: true,
         providerOrder: [],
         defaultProviderId: null,
+        machineServerUrl: null,
+        defaultMachineAccess: null,
+        machineGitCredentialsEnabled: true,
         streamerMode: false,
         managedBranchPrefix: "bb/",
       });
@@ -2183,7 +2260,6 @@ describe("migrate", () => {
       migrate(db);
       const host = upsertHost(db, noopNotifier, {
         name: "side-chat-adoption-host",
-        type: "persistent",
       });
       const { project } = createProject(db, noopNotifier, {
         name: "side-chat-adoption-project",
@@ -2263,7 +2339,6 @@ describe("migrate", () => {
       migrate(db);
       const host = upsertHost(db, noopNotifier, {
         name: "permission-migration-host",
-        type: "persistent",
       });
       const { project } = createProject(db, noopNotifier, {
         name: "permission-migration-project",
@@ -5413,7 +5488,6 @@ describe("migrate", () => {
       const host = upsertHost(db, noopNotifier, {
         id: "host-side-chat-visibility",
         name: "Migration Host",
-        type: "persistent",
       });
       const { project } = createProject(db, noopNotifier, {
         name: "Migration Project",
@@ -5482,7 +5556,6 @@ describe("migrate", () => {
       migrate(db);
       const host = upsertHost(db, noopNotifier, {
         name: "event-parent-migration-host",
-        type: "persistent",
       });
       const { project } = createProject(db, noopNotifier, {
         name: "event-parent-migration-project",
@@ -5961,14 +6034,54 @@ describe("environment providers migration", () => {
   });
 });
 
-describe("environment and thread startup ownership migration", () => {
-  const environmentProvisioningMigrationWhen = 1789075667774;
+describe("machine providers migration", () => {
+  it("backfills server access for machines with a legacy access identity", () => {
+    const db = createConnection(":memory:");
+    try {
+      db.$client.exec(`
+        CREATE TABLE hosts (
+          id text PRIMARY KEY NOT NULL,
+          name text NOT NULL,
+          type text NOT NULL,
+          connect_machine_id text,
+          destroyed_at integer
+        );
+        CREATE TABLE project_sources (id text PRIMARY KEY NOT NULL);
+        CREATE TABLE host_daemon_sessions (
+          id text PRIMARY KEY NOT NULL,
+          host_type text NOT NULL
+        );
+        CREATE TEMP TABLE bb_migration_local_host (id text PRIMARY KEY NOT NULL);
+        INSERT INTO hosts VALUES
+          ('legacy', 'Legacy', 'persistent', 'cloud-machine', NULL),
+          ('direct', 'Direct', 'persistent', NULL, NULL);
+      `);
 
+      runMigrationFile({ db, migrationPath: machineProvidersMigrationPath });
+
+      expect(
+        db.$client
+          .prepare<[], { id: string; providerId: string | null; type: string }>(
+            "SELECT id, server_access_provider_id AS providerId, type FROM hosts ORDER BY id",
+          )
+          .all(),
+      ).toEqual([
+        { id: "direct", providerId: null, type: "persistent" },
+        { id: "legacy", providerId: "connect", type: "persistent" },
+      ]);
+    } finally {
+      closeConnection(db);
+    }
+  });
+});
+
+describe("environment and thread startup ownership migration", () => {
   it.each(["creating", "cancelled"])(
     "preserves %s allocation checkpoints and keeps attached environment resources authoritative",
     (phase) => {
       const db = createMigratedConnection();
       try {
+        rewindMachineProvidersMigration(db);
         rewindEnvironmentProvisioningMigration(db);
         const legacySchema = readFileSync(
           resolve(
@@ -5978,6 +6091,7 @@ describe("environment and thread startup ownership migration", () => {
           "utf8",
         ).split("--> statement-breakpoint")[0]!;
         db.$client.exec(legacySchema);
+        db.$client.exec("DROP TABLE IF EXISTS environment_hook_operations");
         db.$client
           .prepare<[number]>(
             "DELETE FROM __drizzle_migrations WHERE created_at >= ?",

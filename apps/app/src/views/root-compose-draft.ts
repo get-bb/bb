@@ -57,7 +57,13 @@ export function rootDraftSubmissionContent(
       reasoningLevel: request.reasoningLevel,
       serviceTier: request.serviceTier ?? null,
       permissionMode: request.permissionMode,
-      environment: request.environment,
+      environment:
+        request.environment.type === "provider"
+          ? {
+              ...request.environment,
+              machine: request.environment.machine ?? null,
+            }
+          : request.environment,
       sendAt: request.sendAt ?? null,
     },
   };

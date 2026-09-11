@@ -170,7 +170,7 @@
   "codex/auth-failure": {
     "events": 16,
     "rows": 3,
-    "unhandled": 1,
+    "unhandled": 0,
     "grammarDrops": 0
   },
   "codex/compaction": {

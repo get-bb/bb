@@ -231,6 +231,9 @@ export function onDaemonSocketMessage(
         args.socket.send(JSON.stringify({ type: "heartbeat-ack" }));
         return;
       }
+      if (result.data.type === "machine.shutdown-ack") {
+        return;
+      }
       deps.terminalSessions.handleDaemonTerminalMessage({
         hostId: args.hostId,
         message: result.data,

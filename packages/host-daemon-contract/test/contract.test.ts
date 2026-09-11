@@ -994,13 +994,12 @@ const CONTRIBUTED_ENV = [
     value: { serverPath: "/plugins/auth-proxy/api" },
     source: { plugin: "auth-proxy" },
     reason: "Route provider traffic through the plugin",
-    secret: true,
   },
 ] as const;
 
 describe("host-daemon command schemas", () => {
   it("uses the current host-daemon protocol version", () => {
-    expect(HOST_DAEMON_PROTOCOL_VERSION).toBe(199);
+    expect(HOST_DAEMON_PROTOCOL_VERSION).toBe(203);
     expect(HOST_ARTIFACT_MAX_BYTES).toBe(256 * 1024 * 1024);
   });
 
@@ -1105,11 +1104,9 @@ describe("host-daemon command schemas", () => {
       hostDaemonEnrollRequestSchema.parse({
         hostId: "host_123",
         hostName: "test-host",
-        hostType: "persistent",
       }),
     ).toMatchObject({
       hostId: "host_123",
-      hostType: "persistent",
     });
 
     expect(
@@ -3052,7 +3049,7 @@ describe("host-daemon session schemas", () => {
       hostDaemonEnrollRequestSchema.safeParse({
         hostId: "host_123",
         hostName: "test-host",
-        hostType: "ephemeral",
+        hostType: "persistent",
       }).success,
     ).toBe(false);
     expect(
@@ -3060,7 +3057,7 @@ describe("host-daemon session schemas", () => {
         hostId: "host_123",
         instanceId: "instance_1",
         hostName: "test-host",
-        hostType: "ephemeral",
+        hostType: "persistent",
         hasMachineCredential: true,
         platform: "linux",
         dataDir: "/tmp/bb-data",
@@ -3076,7 +3073,6 @@ describe("host-daemon session schemas", () => {
       hostDaemonSessionOpenRequestSchema.parse({
         hostId: "host_123",
         instanceId: "instance_1",
-        hostType: "persistent",
         hostName: "Michael's MacBook",
         hasMachineCredential: true,
         platform: "darwin",
@@ -3091,7 +3087,6 @@ describe("host-daemon session schemas", () => {
       }),
     ).toMatchObject({
       hostId: "host_123",
-      hostType: "persistent",
       hasMachineCredential: true,
       loadedEnvironments: [],
     });
@@ -3101,7 +3096,6 @@ describe("host-daemon session schemas", () => {
         hostId: "host_123",
         instanceId: "instance_1",
         hostName: "Michael's MacBook",
-        hostType: "persistent",
         hasMachineCredential: false,
         platform: "darwin",
         dataDir: "/tmp/bb-data",
@@ -3127,7 +3121,6 @@ describe("host-daemon session schemas", () => {
         hostId: "host_123",
         instanceId: "instance_1",
         hostName: "Michael's MacBook",
-        hostType: "persistent",
         hasMachineCredential: true,
         platform: "darwin",
         dataDir: "/tmp/bb-data",
@@ -3146,7 +3139,6 @@ describe("host-daemon session schemas", () => {
         hostId: "host_123",
         instanceId: "instance_1",
         hostName: "Michael's MacBook",
-        hostType: "persistent",
         hasMachineCredential: true,
         platform: "darwin",
         dataDir: "/tmp/bb-data",
@@ -3163,7 +3155,6 @@ describe("host-daemon session schemas", () => {
         hostId: "host_123",
         instanceId: "instance_1",
         hostName: "Michael's MacBook",
-        hostType: "persistent",
         hasMachineCredential: true,
         platform: "darwin",
         dataDir: "/tmp/bb-data",
@@ -3855,6 +3846,7 @@ describe("host-daemon session schemas", () => {
     expect(
       hostDaemonServerWsMessageSchema.safeParse({
         type: "terminal.open",
+        contributedEnv: [],
         requestId: "request-1",
         terminalId: "term_123",
         threadId: "thr_123",

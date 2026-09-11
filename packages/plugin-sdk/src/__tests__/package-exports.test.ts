@@ -28,6 +28,7 @@ describe("packed plugin SDK exports", () => {
       "./provider-bridge/testing",
       "./provider-bridge/acp",
       "./environment-provider",
+      "./machine-provider",
       "./app",
       "./host",
       "./internal/composer-customization-validation",

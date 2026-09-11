@@ -69,7 +69,6 @@ function setup() {
   const db = createMigratedConnection();
   const host = upsertHost(db, noopNotifier, {
     name: "test-host",
-    type: "persistent",
   });
   const { project } = createProject(db, noopNotifier, {
     name: "test-project",
@@ -4677,7 +4676,7 @@ describe("events", () => {
 
   it("lists the latest lifecycle row per open backgroundTask item on a host", () => {
     const db = createMigratedConnection();
-    const host = upsertHost(db, noopNotifier, { type: "persistent",
+    const host = upsertHost(db, noopNotifier, {
       name: "task-host",
     });
     const { project } = createProject(db, noopNotifier, {
@@ -4781,7 +4780,6 @@ describe("events", () => {
 
     const otherHost = upsertHost(db, noopNotifier, {
       name: "other-host",
-      type: "persistent",
     });
     expect(
       listOpenBackgroundTaskItemRowsForHost(db, { hostId: otherHost.id }),

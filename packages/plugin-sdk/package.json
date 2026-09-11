@@ -1,6 +1,6 @@
 {
   "name": "@get-bb/plugin-sdk",
-  "version": "0.4.58",
+  "version": "0.4.85",
   "homepage": "https://github.com/get-bb/bb#readme",
   "bugs": {
     "url": "https://github.com/get-bb/bb/issues"
@@ -55,6 +55,12 @@
       "types": "./bundled-types/bb-plugin-sdk-environment-provider.d.ts",
       "import": "./dist/environment-provider.js",
       "default": "./dist/environment-provider.js"
+    },
+    "./machine-provider": {
+      "source": "./src/machine-provider.ts",
+      "types": "./bundled-types/bb-plugin-sdk-machine-provider.d.ts",
+      "import": "./dist/machine-provider.js",
+      "default": "./dist/machine-provider.js"
     },
     "./app": {
       "source": "./src/app.ts",

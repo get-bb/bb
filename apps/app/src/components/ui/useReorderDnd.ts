@@ -16,6 +16,7 @@ import {
   type CollisionDetection,
   type DndContextProps,
   type DragEndEvent,
+  type DragMoveEvent,
   type DragOverEvent,
   type DragStartEvent,
   type Modifier,
@@ -43,6 +44,7 @@ const REORDER_MODIFIERS: Modifier[] = [restrictDragToVerticalAxis];
 export interface UseReorderDndArgs {
   onDragEnd: (event: DragEndEvent) => void;
   onDragStart?: (event: DragStartEvent) => void;
+  onDragMove?: (event: DragMoveEvent) => void;
   onDragOver?: (event: DragOverEvent) => void;
   onDragCancel?: () => void;
   collisionDetection?: CollisionDetection;
@@ -54,6 +56,7 @@ export type ReorderDndContextProps = Pick<
   | "sensors"
   | "collisionDetection"
   | "onDragStart"
+  | "onDragMove"
   | "onDragOver"
   | "onDragCancel"
   | "onDragEnd"
@@ -69,6 +72,7 @@ export interface UseReorderDndResult {
 export function useReorderDnd({
   onDragEnd,
   onDragStart,
+  onDragMove,
   onDragOver,
   onDragCancel,
   collisionDetection = reorderCollisionDetection,
@@ -142,6 +146,7 @@ export function useReorderDnd({
       collisionDetection,
       modifiers: REORDER_MODIFIERS,
       onDragStart: handleDragStart,
+      onDragMove,
       onDragOver,
       onDragCancel: handleDragCancel,
       onDragEnd: handleDragEnd,
@@ -151,6 +156,7 @@ export function useReorderDnd({
       handleDragCancel,
       handleDragEnd,
       handleDragStart,
+      onDragMove,
       onDragOver,
       sensors,
     ],

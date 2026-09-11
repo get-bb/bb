@@ -2602,6 +2602,10 @@ export function PromptBoxInternal({
     !isAttaching &&
     !hasSubmittableInput &&
     canStartVoiceInput;
+  const showCompactVoiceAction =
+    showCompactLayout &&
+    canStartVoiceInput &&
+    (!showVoiceAsPrimaryAction || showStop);
   const stopGestureButtonRef = useRef<HTMLButtonElement | null>(null);
   const handleStopPointerDown = useCallback(
     (event: ReactPointerEvent<HTMLButtonElement>) => {
@@ -3118,7 +3122,11 @@ export function PromptBoxInternal({
           ) : null}
           <div
             data-promptbox-input-region=""
-            className={cn("relative", showCompactLayout && "min-w-0 flex-1")}
+            className={cn(
+              "relative",
+              showCompactLayout && "min-w-0 flex-1",
+              showCompactVoiceAction && "pr-9",
+            )}
           >
             {!showCompactLayout ? (
               <>
@@ -3289,13 +3297,15 @@ export function PromptBoxInternal({
                     !showCompactLayout && !suppressPluginComposerCustomizations
                   }
                 >
-                  {!showCompactLayout ? (
+                  {!showCompactLayout || showCompactVoiceAction ? (
                     <>
                       {voice &&
                       !showVoiceActionGroup &&
                       (!showVoiceAsPrimaryAction || showStop) ? (
                         <Button
-                          data-promptbox-expanded-only=""
+                          data-promptbox-expanded-only={
+                            showCompactLayout ? undefined : ""
+                          }
                           type="button"
                           size="icon"
                           variant="ghost"
@@ -3310,7 +3320,9 @@ export function PromptBoxInternal({
                           onPointerDown={handleVoicePointerDown}
                           onClick={handleVoiceClick}
                           className={
-                            COARSE_POINTER_PROMPT_ICON_ACTION_BUTTON_CLASS
+                            showCompactLayout
+                              ? COMPACT_PROMPT_ACTION_BUTTON_CLASS
+                              : COARSE_POINTER_PROMPT_ICON_ACTION_BUTTON_CLASS
                           }
                         >
                           <Icon name="Mic" className="size-4" />

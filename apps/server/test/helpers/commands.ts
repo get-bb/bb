@@ -12,7 +12,7 @@ import {
   hostDaemonServerWsMessageSchema,
   parseHostDaemonRpcResultForCommand,
 } from "@bb/host-daemon-contract";
-import { type HostType, type ThreadEvent } from "@bb/domain";
+import { type ThreadEvent } from "@bb/domain";
 import type {
   HostDaemonCommand,
   HostDaemonEventEnvelope,
@@ -300,12 +300,11 @@ export function createTestDaemonEventEnvelope(
 
 export function internalAuthHeaders(
   harness: TestAppHarness,
-  args: { hostId?: string; hostType?: HostType } = {},
+  args: { hostId?: string } = {},
 ): HeadersInit {
   const activeSessions = harness.db
     .select({
       hostId: hostDaemonSessions.hostId,
-      hostType: hostDaemonSessions.hostType,
     })
     .from(hostDaemonSessions)
     .where(eq(hostDaemonSessions.status, "active"))
@@ -316,7 +315,6 @@ export function internalAuthHeaders(
   return {
     authorization: `Bearer ${createTestDaemonHostKey({
       hostId: args.hostId ?? inferredHost?.hostId ?? "host-1",
-      hostType: args.hostType ?? inferredHost?.hostType ?? "persistent",
     })}`,
     "content-type": "application/json",
   };
@@ -353,6 +351,10 @@ export function registerTestHostRpcCapture(
     close() {},
     send(data) {
       const message = hostDaemonServerWsMessageSchema.parse(JSON.parse(data));
+      if (message.type === "machine.shutdown") {
+        deps.hub.unregisterDaemon(args.sessionId);
+        return;
+      }
       if (message.type !== "host-rpc.request") {
         return;
       }
@@ -554,7 +556,7 @@ export async function reportQueuedCommandSuccess<
   harness: TestAppHarness,
   queued: QueuedCommand<TCommand>,
   result: QueuedCommandResult<TCommand>,
-  args: { hostId?: string; hostType?: HostType } = {},
+  args: { hostId?: string } = {},
 ): Promise<Response> {
   const sessionId = queued.row.sessionId;
   if (!sessionId) {
@@ -610,7 +612,7 @@ export async function reportQueuedCommandError(
   harness: TestAppHarness,
   queued: QueuedCommand,
   args: { errorCode: string; errorMessage: string },
-  auth: { hostId?: string; hostType?: HostType } = {},
+  auth: { hostId?: string } = {},
 ): Promise<Response> {
   const sessionId = queued.row.sessionId;
   if (!sessionId) {

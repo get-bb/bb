@@ -9,7 +9,7 @@ import { action } from "../action.js";
 import { createCliBbSdk } from "../client.js";
 import { renderBorderlessTable } from "../table.js";
 import { outputJson } from "./helpers.js";
-import { resolveMachineId } from "./machine.js";
+import { resolveMachineId, selectMachines } from "./machine.js";
 
 type ProviderCliKey = string;
 type ProviderCliStatus = HostProviderCliStatusResponse[string];
@@ -168,7 +168,7 @@ export function registerUpdatesCommands(
         ]);
         const selectedHosts =
           opts.machine === undefined
-            ? hosts
+            ? selectMachines(hosts, "persistent")
             : hosts.filter(
                 (host) => host.id === resolveMachineId(hosts, opts.machine!),
               );
@@ -214,7 +214,7 @@ export function registerUpdatesCommands(
         const hosts = await sdk.hosts.list();
         const selectedHosts =
           opts.machine === undefined
-            ? hosts
+            ? selectMachines(hosts, "persistent")
             : hosts.filter(
                 (host) => host.id === resolveMachineId(hosts, opts.machine!),
               );

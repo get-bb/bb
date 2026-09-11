@@ -1089,7 +1089,7 @@ function RootComposeSurface({
     panelThreadId: rootPanelThreadId,
     selectedProviderId,
     promptDraft,
-    promptBoxRef,
+    focusPromptBox,
     pluginComposerHost: sharedPluginComposerHost,
     textEffects: promptTextEffects,
     isSubmitting,
@@ -1116,17 +1116,17 @@ function RootComposeSurface({
     () =>
       subscribeComposerFocusRequests(promptDraft.storageKey, () => {
         setStartedComposing(true);
-        window.requestAnimationFrame(() => promptBoxRef.current?.focusEnd());
+        window.requestAnimationFrame(focusPromptBox);
       }),
-    [promptBoxRef, promptDraft.storageKey, setStartedComposing],
+    [focusPromptBox, promptDraft.storageKey, setStartedComposing],
   );
   const handleRootPanelSelectionAddToChat = useCallback(
     (text: string, attachments?: readonly PromptDraftAttachment[]) => {
       promptDraft.addQuote(text, attachments);
       setStartedComposing(true);
-      window.requestAnimationFrame(() => promptBoxRef.current?.focusEnd());
+      window.requestAnimationFrame(focusPromptBox);
     },
-    [promptBoxRef, promptDraft, setStartedComposing],
+    [focusPromptBox, promptDraft, setStartedComposing],
   );
 
   const setPromptDraft = promptDraft.setDraft;
@@ -1207,7 +1207,7 @@ function RootComposeSurface({
     ) {
       setStartedComposing(true);
       if (!isPointerCoarse) {
-        window.requestAnimationFrame(() => promptBoxRef.current?.focusEnd());
+        window.requestAnimationFrame(focusPromptBox);
       }
     }
     navigate(
@@ -1221,7 +1221,7 @@ function RootComposeSurface({
     location.state,
     navigate,
     ownsLocation,
-    promptBoxRef,
+    focusPromptBox,
     restorePromptDraftIfEmpty,
     seedEnvironmentSelectionValue,
     setForkSeed,
@@ -2215,15 +2215,13 @@ function RootComposeSurface({
     if (!startedComposing || !isFocusedPane) return;
     if (isProviderCliVersionBlocked) return;
     if (isPointerCoarse) return;
-    const handle = window.requestAnimationFrame(() => {
-      promptBoxRef.current?.focusEnd();
-    });
+    const handle = window.requestAnimationFrame(focusPromptBox);
     return () => window.cancelAnimationFrame(handle);
   }, [
     isFocusedPane,
     isProviderCliVersionBlocked,
     isPointerCoarse,
-    promptBoxRef,
+    focusPromptBox,
     startedComposing,
   ]);
   const [machineSetupTarget, setMachineSetupTarget] =
@@ -2262,10 +2260,8 @@ function RootComposeSurface({
   );
   const handleCancelForkDraft = useCallback(() => {
     setForkSeed(null);
-    window.requestAnimationFrame(() => {
-      promptBoxRef.current?.focusEnd();
-    });
-  }, [promptBoxRef, setForkSeed]);
+    window.requestAnimationFrame(focusPromptBox);
+  }, [focusPromptBox, setForkSeed]);
 
   const promptHeader = useMemo(() => {
     if (forkSeed === null) {

@@ -11,6 +11,7 @@ import type {
   PluginContentScriptRegistration,
   PluginDiffRendererRegistration,
   PluginEnvironmentProviderInputsRegistration,
+  PluginMachineProviderInputsRegistration,
   PluginFileOpenerRegistration,
   PluginHomepageSectionRegistration,
   PluginCommandPaletteActionRegistration,
@@ -281,6 +282,13 @@ function rejectStaleNavPanelKeys(kind: string, registration: object): void {
   }
 }
 
+export type CollectedPluginProviderIconRegistration = Omit<
+  PluginProviderIconRegistration,
+  "providerKind"
+> & {
+  providerKind: PluginProviderIconRegistration["providerKind"] | "all";
+};
+
 /** Validated registrations produced by one plugin app setup execution. */
 export interface CollectedPluginAppRegistrations {
   homepageSections: PluginHomepageSectionRegistration[];
@@ -302,9 +310,10 @@ export interface CollectedPluginAppRegistrations {
   messageDirectives: PluginMessageDirectiveRegistration[];
   messageActions: PluginMessageActionRegistration[];
   commandPaletteActions: PluginCommandPaletteActionRegistration[];
-  providerIcons: PluginProviderIconRegistration[];
+  providerIcons: CollectedPluginProviderIconRegistration[];
   timelineRenderers: PluginTimelineRendererRegistration[];
   environmentProviderInputs: PluginEnvironmentProviderInputsRegistration[];
+  machineProviderInputs: PluginMachineProviderInputsRegistration[];
   contentScripts: PluginContentScriptRegistration[];
 }
 
@@ -354,6 +363,7 @@ export function collectPluginAppRegistrations(
     providerIcons: [],
     timelineRenderers: [],
     environmentProviderInputs: [],
+    machineProviderInputs: [],
     contentScripts: [],
   };
   sidebarFooterItemsByRegistrationSet.set(collected, sidebarFooterItems);
@@ -379,6 +389,7 @@ export function collectPluginAppRegistrations(
     providerIcon: new Set<string>(),
     timelineRenderer: new Set<string>(),
     environmentProviderInputs: new Set<string>(),
+    machineProviderInputs: new Set<string>(),
     contentScript: new Set<string>(),
   };
 
@@ -771,8 +782,23 @@ export function collectPluginAppRegistrations(
       experimental_providerIcon(registration) {
         const kind = "slots.experimental_providerIcon";
         const providerId = requireProviderId(kind, registration?.providerId);
-        requireUniqueId(kind, seenIds.providerIcon, providerId);
+        const declaredKind = registration.providerKind;
+        if (
+          declaredKind !== undefined &&
+          declaredKind !== "agent" &&
+          declaredKind !== "machine" &&
+          declaredKind !== "environment"
+        ) {
+          throw new Error(`${kind}: invalid providerKind`);
+        }
+        const providerKind = declaredKind ?? "all";
+        requireUniqueId(
+          kind,
+          seenIds.providerIcon,
+          `${providerKind}:${providerId}`,
+        );
         collected.providerIcons.push({
+          providerKind,
           providerId,
           icon: requireComponent(kind, registration.icon),
         });
@@ -799,6 +825,18 @@ export function collectPluginAppRegistrations(
         );
         collected.environmentProviderInputs.push({
           environmentProviderId,
+          component: requireComponent(kind, registration.component),
+        });
+      },
+      experimental_machineProviderInputs(registration) {
+        const kind = "slots.experimental_machineProviderInputs";
+        const machineProviderId = requireProviderId(
+          kind,
+          registration?.machineProviderId,
+        );
+        requireUniqueId(kind, seenIds.machineProviderInputs, machineProviderId);
+        collected.machineProviderInputs.push({
+          machineProviderId,
           component: requireComponent(kind, registration.component),
         });
       },

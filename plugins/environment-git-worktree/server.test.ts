@@ -66,7 +66,7 @@ async function setup(
     thread: makeThreadResponse({ id: THREAD_ID, projectId: PROJECT_ID }),
     project: PROJECT,
     host: PROVISION_HOST,
-    projectCheckout: { path: SOURCE_PATH },
+    projectCheckout: { experimental_ownsPath: false, path: SOURCE_PATH },
     gitRemote: null,
     inputs: { branch: { kind: "default" } },
     suggestedBranchName: "bb/test",

@@ -81,7 +81,6 @@ export function loadCorpusThreadIntoDb(
   if (connection === undefined) migrate(db);
   const host = upsertHost(db, noopNotifier, {
     name: "provider-corpus-host",
-    type: "persistent",
   });
   const { project } = createProject(db, noopNotifier, {
     name: "provider-corpus",

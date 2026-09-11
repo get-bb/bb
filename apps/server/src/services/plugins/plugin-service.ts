@@ -64,6 +64,8 @@ import {
   deleteInstalledPlugin,
   deletePluginSchedules,
   getInstalledPlugin,
+  getThread,
+  getLatestThreadSequence,
   listDuePluginSchedules,
   listInstalledPlugins,
   listPendingGitPluginArtifacts,
@@ -156,6 +158,7 @@ import type {
   PluginResolvedProviderEnv,
   PluginResolvedProviderEnvHealth,
 } from "./plugin-service-internal.js";
+import type { PluginMachineProviderBridge } from "./plugin-machine-provider-registry.js";
 export type {
   PluginAgentToolContribution,
   PluginMentionResolveResult,
@@ -186,6 +189,8 @@ export interface PluginService {
   /** The hook chain the dispatch pipeline consults; registered in createApp. */
   hooks: PluginHookProvider;
   environmentProviders: PluginEnvironmentProviderBridge;
+  machineProviders: PluginMachineProviderBridge;
+  serverAccessProviders: import("./plugin-server-access-registry.js").ServerAccessBridge;
   /**
    * Bind the in-process BB SDK to the running server. Call once the HTTP
    * listener is up, before start(): bb.sdk throws until this runs.
@@ -917,8 +922,12 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
     invokeWrapped,
     isBuiltinPluginId,
     listPluginHooks,
+    listPluginEnvironmentCompositions,
     listPluginEnvironmentProviders,
     getPluginEnvironmentProvider,
+    listPluginMachineProviders,
+    listPluginServerAccessProviders,
+    getPluginMachineProvider,
     isPackagedBuiltinEntry,
     loadAll,
     loaded,
@@ -936,6 +945,7 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
     withPluginOperationLock,
   } = createPluginRuntime({
     deps,
+    machineEnrollments: deps.machineEnrollments ?? null,
     nextCronRunAt,
     settingsChanged: notifyPluginsChanged,
     settledWithin,
@@ -1535,6 +1545,20 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
     },
 
     events: {
+      emitThreadEvents(threadId) {
+        emitThreadEvent("experimental_thread.events", () => {
+          const thread = getThread(deps.db, threadId);
+          return thread === null
+            ? null
+            : {
+                thread: buildThreadDto(thread),
+                sequence: getLatestThreadSequence(deps.db, { threadId }),
+              };
+        });
+      },
+      emitTerminalInput(terminal) {
+        emitThreadEvent("experimental_terminal.input", () => ({ terminal }));
+      },
       emitThreadCreated(thread) {
         emitThreadEvent("thread.created", () => ({
           thread: buildThreadDto(thread),
@@ -1603,8 +1627,30 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
     },
 
     environmentProviders: {
+      listEnvironmentCompositions: listPluginEnvironmentCompositions,
       listEnvironmentProviders: listPluginEnvironmentProviders,
       getEnvironmentProvider: getPluginEnvironmentProvider,
+      invokeProvider: async (pluginId, label, run) => {
+        const outcome = await invokeWrapped(pluginId, label, run);
+        return outcome.ok
+          ? { ok: true, value: outcome.value }
+          : { ok: false, error: outcome.error };
+      },
+      decisionTimeoutMs: pluginHookTimeoutMs,
+    },
+
+    serverAccessProviders: {
+      list: listPluginServerAccessProviders,
+      invoke: async (pluginId, run) => {
+        const outcome = await invokeWrapped(pluginId, "server access", run);
+        if (!outcome.ok) throw new Error("Server access provider failed");
+        return outcome.value;
+      },
+    },
+
+    machineProviders: {
+      listMachineProviders: listPluginMachineProviders,
+      getMachineProvider: getPluginMachineProvider,
       invokeProvider: async (pluginId, label, run) => {
         const outcome = await invokeWrapped(pluginId, label, run);
         return outcome.ok

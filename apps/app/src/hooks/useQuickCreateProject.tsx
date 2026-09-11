@@ -10,7 +10,7 @@ import { useLocation, useNavigate } from "react-router-dom";
 import { deriveProjectNameFromPath, type Host } from "@bb/domain";
 import type { HostPlatform } from "@bb/host-daemon-contract";
 import { useCreateProject } from "@/hooks/mutations/project-mutations";
-import { selectPersistentHosts, useHosts } from "@/hooks/queries/host-queries";
+import { selectHosts, useHosts } from "@/hooks/queries/host-queries";
 import {
   useLocalPathPicker,
   type LocalPathSubmitParams,
@@ -53,7 +53,7 @@ export function useQuickCreateProject(): QuickCreateProjectController {
   const { mutate, isPending } = useCreateProject();
   const hostsQuery = useHosts();
   const hosts = useMemo(
-    () => selectPersistentHosts(hostsQuery.data),
+    () => selectHosts(hostsQuery.data, "all"),
     [hostsQuery.data],
   );
   const navigate = useNavigate();

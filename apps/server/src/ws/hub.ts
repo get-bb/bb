@@ -1,3 +1,4 @@
+import { emitPluginThreadEvents } from "../services/plugins/plugin-thread-events.js";
 import { Buffer } from "node:buffer";
 import {
   realtimeSubscriptionTargetKey as subscriptionKey,
@@ -130,6 +131,11 @@ interface DaemonRegistrationWaiter {
   timeout: ReturnType<typeof setTimeout>;
 }
 
+interface DaemonSessionCloseWaiter {
+  resolve: (closed: boolean) => void;
+  timeout: ReturnType<typeof setTimeout>;
+}
+
 interface HostOnlineRpcWaiter {
   reject: (reason?: Error) => void;
   resolve: (message: HostDaemonOnlineRpcResponseMessage) => void;
@@ -188,6 +194,10 @@ export class NotificationHub implements DbNotifier {
   private readonly daemonRegistrationWaiters = new Map<
     string,
     Set<DaemonRegistrationWaiter>
+  >();
+  private readonly daemonSessionCloseWaiters = new Map<
+    string,
+    Set<DaemonSessionCloseWaiter>
   >();
   private readonly daemonSessionIdsByHost = new Map<string, string>();
   private readonly hostOnlineRpcWaiters = new Map<
@@ -527,6 +537,14 @@ export class NotificationHub implements DbNotifier {
     if (this.daemonSessionIdsByHost.get(entry.hostId) === sessionId) {
       this.daemonSessionIdsByHost.delete(entry.hostId);
     }
+    const waiters = this.daemonSessionCloseWaiters.get(sessionId);
+    if (waiters !== undefined) {
+      this.daemonSessionCloseWaiters.delete(sessionId);
+      for (const waiter of waiters) {
+        clearTimeout(waiter.timeout);
+        waiter.resolve(true);
+      }
+    }
   }
 
   hasDaemonForHost(hostId: string): boolean {
@@ -582,6 +600,42 @@ export class NotificationHub implements DbNotifier {
       waiters.add(waiter);
       this.daemonRegistrationWaiters.set(hostId, waiters);
     });
+  }
+
+  async waitForDaemonSessionClose(
+    sessionId: string,
+    timeoutMs: number,
+  ): Promise<boolean> {
+    if (!this.daemonSessions.has(sessionId)) {
+      return true;
+    }
+    return new Promise<boolean>((resolve) => {
+      const waiter: DaemonSessionCloseWaiter = {
+        resolve,
+        timeout: setTimeout(() => {
+          const waiters = this.daemonSessionCloseWaiters.get(sessionId);
+          waiters?.delete(waiter);
+          if (waiters?.size === 0) {
+            this.daemonSessionCloseWaiters.delete(sessionId);
+          }
+          resolve(false);
+        }, timeoutMs),
+      };
+      const waiters =
+        this.daemonSessionCloseWaiters.get(sessionId) ??
+        new Set<DaemonSessionCloseWaiter>();
+      waiters.add(waiter);
+      this.daemonSessionCloseWaiters.set(sessionId, waiters);
+    });
+  }
+
+  requestDaemonShutdown(sessionId: string): boolean {
+    const entry = this.daemonSessions.get(sessionId);
+    if (entry === undefined) {
+      return false;
+    }
+    entry.socket.send(JSON.stringify({ type: "machine.shutdown" }));
+    return true;
   }
 
   closeDaemonSession(
@@ -741,6 +795,7 @@ export class NotificationHub implements DbNotifier {
     changes: ThreadChangeKind[],
     metadata?: ThreadChangeMetadata,
   ): void {
+    if (changes.includes("events-appended")) emitPluginThreadEvents(threadId);
     const message: ThreadChangedMessage = {
       type: "changed",
       entity: "thread",

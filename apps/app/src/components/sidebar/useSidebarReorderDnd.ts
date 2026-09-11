@@ -81,6 +81,7 @@ export class SidebarTouchSensor extends TouchSensor {
 export function useSidebarReorderDnd({
   onDragEnd,
   onDragStart,
+  onDragMove,
   onDragOver,
   onDragCancel,
   collisionDetection = sidebarReorderCollisionDetection,
@@ -113,6 +114,7 @@ export function useSidebarReorderDnd({
   return useReorderDnd({
     onDragEnd: handleDragEnd,
     onDragStart: handleDragStart,
+    onDragMove,
     onDragOver,
     onDragCancel: handleDragCancel,
     collisionDetection,

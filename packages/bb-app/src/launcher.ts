@@ -296,7 +296,6 @@ interface LauncherCliOptions {
   help: boolean;
   hostDaemonPort?: string;
   hostId?: string;
-  hostType?: string;
   joinCode?: string;
   json?: boolean;
   serverBindHost?: string;
@@ -714,7 +713,6 @@ export function parseLauncherArgs(args: string[]): ParsedLauncherArgs {
       "enroll-key": { type: "string" },
       "host-daemon-port": { type: "string" },
       "host-id": { type: "string" },
-      "host-type": { type: "string" },
       "join-code": { type: "string" },
       "server-bind-host": { type: "string" },
       "server-port": { type: "string" },
@@ -735,7 +733,6 @@ export function parseLauncherArgs(args: string[]): ParsedLauncherArgs {
   const enrollKey = readStringOption(parsed.values["enroll-key"]);
   const hostDaemonPort = readStringOption(parsed.values["host-daemon-port"]);
   const hostId = readStringOption(parsed.values["host-id"]);
-  const hostType = readStringOption(parsed.values["host-type"]);
   const joinCode = readStringOption(parsed.values["join-code"]);
   const serverBindHost = readStringOption(parsed.values["server-bind-host"]);
   const serverPort = readStringOption(parsed.values["server-port"]);
@@ -754,9 +751,6 @@ export function parseLauncherArgs(args: string[]): ParsedLauncherArgs {
   }
   if (hostId !== undefined) {
     options.hostId = hostId;
-  }
-  if (hostType !== undefined) {
-    options.hostType = hostType;
   }
   if (joinCode !== undefined) {
     options.joinCode = joinCode;
@@ -876,9 +870,6 @@ function createEnvFromOptions(
   if (args.options.hostId !== undefined) {
     env.BB_HOST_ID = args.options.hostId;
   }
-  if (args.options.hostType !== undefined) {
-    env.BB_HOST_TYPE = args.options.hostType;
-  }
   if (args.options.joinCode !== undefined) {
     env.BB_HOST_ENROLL_KEY = args.options.joinCode;
   }
@@ -909,13 +900,15 @@ function applyManagedConfigEnv(
 ): NodeJS.ProcessEnv {
   return {
     ...args.env,
-    ...(args.config.machineCredential !== undefined
+    ...(args.config.serverHeaders !== undefined ||
+    args.config.machineCredential !== undefined
       ? {
-          BB_CONNECT_MACHINE_CREDENTIAL: args.config.machineCredential,
+          BB_SERVER_HEADERS: JSON.stringify(
+            args.config.serverHeaders ?? {
+              "x-bb-connect-machine": args.config.machineCredential,
+            },
+          ),
         }
-      : {}),
-    ...(args.config.connectMachineId !== undefined
-      ? { BB_CONNECT_MACHINE_ID: args.config.connectMachineId }
       : {}),
     ...args.config.config,
     ...args.envFile.env,
@@ -1087,6 +1080,12 @@ function mergeManagedConfig(
   if (patchConfig.serverUrl !== undefined) {
     nextConfig.serverUrl = patchConfig.serverUrl;
   }
+  if (patchConfig.serverHeaders !== undefined) {
+    nextConfig.serverHeaders = patchConfig.serverHeaders;
+  }
+  if (patchConfig.sharedSkillRoots !== undefined) {
+    nextConfig.sharedSkillRoots = patchConfig.sharedSkillRoots;
+  }
   if (patchConfig.machineCredential !== undefined) {
     nextConfig.machineCredential = patchConfig.machineCredential;
   }
@@ -1114,28 +1113,12 @@ function mergeManagedConfig(
 function pruneManagedConfig(
   config: ManagedConfigForWrite,
 ): ManagedConfigForWrite {
-  const nextConfig: ManagedConfigForWrite = {};
-  if (config.serverUrl !== undefined) {
-    nextConfig.serverUrl = config.serverUrl;
-  }
-  if (config.machineCredential !== undefined) {
-    nextConfig.machineCredential = config.machineCredential;
-  }
-  if (config.connectMachineId !== undefined) {
-    nextConfig.connectMachineId = config.connectMachineId;
-  }
-  if (config.config !== undefined && Object.keys(config.config).length > 0) {
-    nextConfig.config = config.config;
-  }
-  if (config.customModels !== undefined && config.customModels.length > 0) {
-    nextConfig.customModels = config.customModels;
-  }
-  if (
-    config.customAcpAgents !== undefined &&
-    config.customAcpAgents.length > 0
-  ) {
-    nextConfig.customAcpAgents = config.customAcpAgents;
-  }
+  const nextConfig: ManagedConfigForWrite = { ...config };
+  if (nextConfig.config && Object.keys(nextConfig.config).length === 0)
+    delete nextConfig.config;
+  if (nextConfig.customModels?.length === 0) delete nextConfig.customModels;
+  if (nextConfig.customAcpAgents?.length === 0)
+    delete nextConfig.customAcpAgents;
   return nextConfig;
 }
 
@@ -2930,7 +2913,7 @@ export async function runBbHostDaemon(
     process.stdout.write(`bb-host-daemon
 
 Usage:
-  bb-host-daemon [--server-url <url>] [--host-daemon-port <port>] [--host-id <id>] [--host-type <type>] [--enroll-key <key>] [--auto-update]
+  bb-host-daemon [--server-url <url>] [--host-daemon-port <port>] [--host-id <id>] [--enroll-key <key>] [--auto-update]
   bb-host-daemon join --server-url <url> [--host-daemon-port <port>] [--join-code <code> --host-id <id>] [--auto-update]
 `);
     return;
@@ -2976,7 +2959,7 @@ Usage:
   bb-app config refresh
   bb-app env set <key> <value>
   bb-app client ssh-target set <server-origin> <ssh-target> [--host-id <id>]
-  bb-app host-daemon [--server-url <url>] [--host-daemon-port <port>] [--host-id <id>] [--host-type <type>] [--enroll-key <key>] [--auto-update]
+  bb-app host-daemon [--server-url <url>] [--host-daemon-port <port>] [--host-id <id>] [--enroll-key <key>] [--auto-update]
   bb-app host-daemon join --server-url <url> [--host-daemon-port <port>] [--join-code <code> --host-id <id>] [--auto-update]
 
 CLI:

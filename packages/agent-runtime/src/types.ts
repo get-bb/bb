@@ -28,9 +28,8 @@ export type AgentRuntimeShellEnvironment = Record<string, string>;
 export interface AgentRuntimeContributedEnvEntry {
   name: string;
   value: string | { serverPath: string };
-  source: { plugin: string };
+  source: { plugin: string } | { core: "machine-git" | "machine-environment" };
   reason: string;
-  secret: boolean;
 }
 
 export type AgentRuntimeExecutionOptions = RuntimeThreadExecutionOptions;

@@ -885,7 +885,6 @@ describe("bb thread spawn command output", () => {
         {
           id: "host-remote",
           name: "builder",
-          type: "persistent",
           status: "connected",
           lastSeenAt: 1,
           createdAt: 1,
@@ -934,7 +933,6 @@ describe("bb thread spawn command output", () => {
         {
           id: "host-remote",
           name: "builder",
-          type: "persistent",
           status: "connected",
           lastSeenAt: 1,
           createdAt: 1,
@@ -984,7 +982,6 @@ describe("bb thread spawn command output", () => {
         {
           id: "host-remote",
           name: "builder",
-          type: "persistent",
           status: "connected",
           lastSeenAt: 1,
           createdAt: 1,
@@ -1059,7 +1056,8 @@ describe("bb thread spawn command output", () => {
       {
         id: "git-worktree",
         displayName: "Worktree",
-        icon: null,
+        description: "Prepare a workspace for this thread.",
+        icon: "Folder",
         pluginId: "environment-git-worktree",
         acceptsEmptyInputs: false,
         machineAvailability: {},
@@ -1079,7 +1077,8 @@ describe("bb thread spawn command output", () => {
       {
         id: "plain",
         displayName: "Plain",
-        icon: null,
+        description: "Prepare a workspace for this thread.",
+        icon: "Folder",
         pluginId: "plain",
         acceptsEmptyInputs: true,
         machineAvailability: {},
@@ -1095,7 +1094,8 @@ describe("bb thread spawn command output", () => {
       {
         id: "optional",
         displayName: "Optional inputs",
-        icon: null,
+        description: "Prepare a workspace for this thread.",
+        icon: "Folder",
         pluginId: "optional",
         acceptsEmptyInputs: true,
         machineAvailability: {},

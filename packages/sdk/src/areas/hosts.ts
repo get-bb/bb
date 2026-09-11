@@ -2,10 +2,13 @@ import { hostProviderCliInstallEventSchema } from "@bb/server-contract";
 import type { Host } from "@bb/domain";
 import type {
   CreateHostJoinCodeResponse,
+  CreateMachineRequest,
+  HostEnrollmentCommandResponse,
   HostCloneDefaultPathQuery,
   HostCloneDefaultPathResponse,
   HostDirectoryListing,
   HostDirectoryQuery,
+  HostActionResponse,
   HostPathsExistRequest,
   HostPathsExistResponse,
   HostPickFolderRequest,
@@ -15,6 +18,7 @@ import type {
   HostProviderCliStatusResponse,
   HostRetryUpdateResponse,
   UpdateHostRequest,
+  SystemMachineProvider,
 } from "@bb/server-contract";
 import { signalRequestArgs, type CreateSdkAreaArgs } from "./common.js";
 
@@ -32,6 +36,10 @@ export interface HostUpdateArgs extends UpdateHostRequest {
 }
 
 export interface HostRetryUpdateArgs {
+  hostId: string;
+}
+
+export interface HostActionArgs {
   hostId: string;
 }
 
@@ -60,13 +68,24 @@ export interface HostProviderCliInstallArgs extends HostProviderCliInstallReques
 }
 
 export interface HostListArgs {
+  includeCreating?: boolean;
+  signal?: AbortSignal;
+}
+
+export interface MachineCreateArgs extends CreateMachineRequest {
+  wait?: boolean;
+  signal?: AbortSignal;
+}
+
+export interface MachineProviderListArgs {
   signal?: AbortSignal;
 }
 
 export type HostCreateJoinCodeResult = CreateHostJoinCodeResponse;
 export type HostDeleteResult = { ok: true };
 export type HostDirectoryResult = HostDirectoryListing;
-export type HostGetResult = Host;
+export type HostGetResult = Host & { connectMachineId: string | null };
+export type HostEnrollmentCommandResult = HostEnrollmentCommandResponse;
 export type HostCloneDefaultPathResult = HostCloneDefaultPathResponse;
 export type HostProviderCliInstallResult = HostProviderCliInstallEvent[];
 export type HostListResult = Host[];
@@ -74,9 +93,15 @@ export type HostPathsExistResult = HostPathsExistResponse;
 export type HostPickFolderResult = HostPickFolderResponse;
 export type HostProviderCliStatusResult = HostProviderCliStatusResponse;
 export type HostRetryUpdateResult = HostRetryUpdateResponse;
+export type HostActionResult = HostActionResponse;
 export type HostUpdateResult = Host;
+export type MachineProviderListResult = SystemMachineProvider[];
 
 export interface HostsArea {
+  experimental_create(args: MachineCreateArgs): Promise<Host>;
+  experimental_getEnrollmentCommand(
+    args: HostGetArgs,
+  ): Promise<HostEnrollmentCommandResult>;
   createJoinCode(): Promise<HostCreateJoinCodeResult>;
   delete(args: HostDeleteArgs): Promise<HostDeleteResult>;
   directory(args: HostDirectoryArgs): Promise<HostDirectoryResult>;
@@ -88,19 +113,65 @@ export interface HostsArea {
     args: HostProviderCliInstallArgs,
   ): Promise<HostProviderCliInstallResult>;
   list(args?: HostListArgs): Promise<HostListResult>;
+  experimental_listProviders(
+    args?: MachineProviderListArgs,
+  ): Promise<MachineProviderListResult>;
   pathsExist(args: HostPathsExistArgs): Promise<HostPathsExistResult>;
   pickFolder(args: HostPickFolderArgs): Promise<HostPickFolderResult>;
   providerCliStatus(args: HostGetArgs): Promise<HostProviderCliStatusResult>;
+  experimental_resume(args: HostActionArgs): Promise<Host>;
+  experimental_retryCleanup(args: HostActionArgs): Promise<HostActionResult>;
   retryUpdate(args: HostRetryUpdateArgs): Promise<HostRetryUpdateResult>;
+  experimental_suspend(args: HostActionArgs): Promise<Host>;
   update(args: HostUpdateArgs): Promise<HostUpdateResult>;
 }
 
 export function createHostsArea(args: CreateSdkAreaArgs): HostsArea {
   const { transport } = args;
   return {
+    async experimental_create(input) {
+      let host = await transport.readJson(
+        transport.api.v1.hosts.$post(
+          {
+            json: {
+              machineProviderId: input.machineProviderId,
+              inputs: input.inputs,
+              ...(input.key === undefined ? {} : { key: input.key }),
+            },
+          },
+          ...signalRequestArgs(input.signal),
+        ),
+      );
+      if (input.wait === false) return host;
+      for (;;) {
+        input.signal?.throwIfAborted();
+        if (host.lifecycle.phase === "active") return host;
+        if (
+          host.lifecycle.phase === "removing" ||
+          host.lifecycle.phase === "destroyed"
+        )
+          throw new Error(
+            host.lifecycle.message ?? "Machine creation cancelled",
+          );
+        await new Promise<void>((resolve) => setTimeout(resolve, 1000));
+        host = await this.get({ hostId: host.id, signal: input.signal });
+      }
+    },
+    async experimental_getEnrollmentCommand(input) {
+      return transport.readJson(
+        transport.api.v1.hosts[":id"]["enrollment-command"].$get(
+          {
+            param: { id: input.hostId },
+          },
+          ...signalRequestArgs(input.signal),
+        ),
+      );
+    },
     async createJoinCode() {
       return transport.readJson(
-        transport.api.v1.hosts["join-codes"].$post({ json: {} }),
+        transport.api.v1.hosts["join-codes"].$post({
+          json: {},
+        }),
       );
     },
     async delete(input) {
@@ -153,7 +224,7 @@ export function createHostsArea(args: CreateSdkAreaArgs): HostsArea {
           },
         }),
       );
-      const text = await Response.prototype.text.call(response);
+      const text: string = await response.text();
       return text
         .split(/\r?\n/u)
         .filter((line) => line.trim().length > 0)
@@ -163,8 +234,28 @@ export function createHostsArea(args: CreateSdkAreaArgs): HostsArea {
     },
     async list(input) {
       return transport.readJson(
-        transport.api.v1.hosts.$get({}, ...signalRequestArgs(input?.signal)),
+        transport.api.v1.hosts.$get(
+          {
+            query: {
+              ...(input?.includeCreating === undefined
+                ? {}
+                : {
+                    includeCreating: input.includeCreating ? "true" : "false",
+                  }),
+            },
+          },
+          ...signalRequestArgs(input?.signal),
+        ),
       );
+    },
+    async experimental_listProviders(input) {
+      const response = await transport.readJson(
+        transport.api.v1.system["machine-providers"].$get(
+          {},
+          ...signalRequestArgs(input?.signal),
+        ),
+      );
+      return response.providers;
     },
     async pathsExist(input) {
       return transport.readJson(
@@ -198,9 +289,30 @@ export function createHostsArea(args: CreateSdkAreaArgs): HostsArea {
         ),
       );
     },
+    async experimental_resume(input) {
+      return transport.readJson(
+        transport.api.v1.hosts[":id"].resume.$post({
+          param: { id: input.hostId },
+        }),
+      );
+    },
+    async experimental_retryCleanup(input) {
+      return transport.readJson(
+        transport.api.v1.hosts[":id"]["retry-cleanup"].$post({
+          param: { id: input.hostId },
+        }),
+      );
+    },
     async retryUpdate(input) {
       return transport.readJson(
         transport.api.v1.hosts[":id"]["retry-update"].$post({
+          param: { id: input.hostId },
+        }),
+      );
+    },
+    async experimental_suspend(input) {
+      return transport.readJson(
+        transport.api.v1.hosts[":id"].suspend.$post({
           param: { id: input.hostId },
         }),
       );
