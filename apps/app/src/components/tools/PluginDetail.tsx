@@ -32,6 +32,7 @@ import {
   formatAbsoluteDate,
   formatPluginInstallCount,
   PluginLogo,
+  PluginCategoryLabel,
   pluginRemovalDisabled,
 } from "@/components/plugin/management/plugin-ui";
 import {
@@ -472,7 +473,22 @@ export function PluginDetail({
         >
           <PluginDetailMetadata>
             {catalogEntry === undefined ? (
-              installationMetadata
+              <>
+                {installationMetadata}
+                <PluginDetailMetadataItem label="Plugin ID">
+                  <span className="break-all font-mono">{plugin.id}</span>
+                </PluginDetailMetadataItem>
+                <PluginDetailMetadataItem label="Category">
+                  {plugin.category === undefined ? (
+                    "Not categorized"
+                  ) : (
+                    <PluginCategoryLabel
+                      categoryId={plugin.categoryId}
+                      label={plugin.category}
+                    />
+                  )}
+                </PluginDetailMetadataItem>
+              </>
             ) : (
               <PluginMarketplaceDetailMetadata entry={catalogEntry}>
                 {installationMetadata}
