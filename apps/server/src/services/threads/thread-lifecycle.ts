@@ -99,6 +99,7 @@ import {
   getThreadProvisionContext,
 } from "./thread-startup-store.js";
 import { cancelEnvironmentProviderCreation } from "./thread-environment-providers.js";
+import { scheduleThreadProvisioningAdvance } from "./thread-provisioning.js";
 import { isPreStartThreadStatus } from "./thread-status.js";
 import { settleDanglingBackgroundTasksForStoppedThreadInTransaction } from "./background-task-reconciliation.js";
 
@@ -1132,6 +1133,9 @@ async function requestThreadStartOnce(
           args.thread.id,
           "thread.start.title-sync",
         );
+        if (getThreadProvisionContext(deps.db, args.thread.id) !== null) {
+          scheduleThreadProvisioningAdvance(deps, args.thread.id);
+        }
       });
   }
 }
