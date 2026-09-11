@@ -14,8 +14,6 @@ import { useDebouncedValue } from "@/hooks/useDebouncedValue";
 import {
   ResourceBrowseGrid,
   ResourceCollectionViewport,
-  ResourceInstallControl,
-  ResourceInstalledControl,
   ResourceListState,
   ResourceShelfAction,
 } from "@bb/shared-ui/resource-list";
@@ -29,6 +27,7 @@ import {
 } from "@/hooks/queries/plugin-catalog-queries";
 import type { AddPluginInitial } from "./AddPluginDialog";
 import { PluginCard, PluginCardAuthor } from "./PluginCard";
+import { PluginCatalogInstallControl } from "./PluginCatalogInstallControl";
 import { PluginCollectionToolbar } from "./PluginCollectionToolbar";
 import { OpenPluginGuideButton } from "./OpenPluginGuideButton";
 import {
@@ -493,12 +492,11 @@ export function PluginCatalogCard({
       }
       headerAction={
         entry.installed ? (
-          <ResourceInstalledControl
-            accessibleLabel="Installed"
-            presentation="compact"
-            tooltip="Installed"
-            disabled={entry.source.startsWith("builtin:")}
-            onAction={
+          <PluginCatalogInstallControl
+            displayName={entry.displayName}
+            installed
+            included={entry.source.startsWith("builtin:")}
+            onUninstall={
               onUninstall === undefined
                 ? undefined
                 : () => onUninstall(entry.pluginId)
@@ -506,16 +504,12 @@ export function PluginCatalogCard({
             count={count}
           />
         ) : (
-          <ResourceInstallControl
-            accessibleLabel={`Install ${entry.displayName}${
-              count === undefined ? "" : ` — ${count.accessibleLabel}`
-            }`}
+          <PluginCatalogInstallControl
+            displayName={entry.displayName}
+            installed={false}
             disabled={!entry.compatible}
-            presentation="compact"
-            tooltip={`Install ${entry.displayName}`}
             count={count}
-            className="border-border/80 bg-background text-foreground shadow-none hover:bg-state-hover"
-            onAction={() =>
+            onInstall={() =>
               onInstall({
                 entryId: entry.entryId,
                 marketplace: entry.marketplace,

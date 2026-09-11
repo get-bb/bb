@@ -170,7 +170,6 @@ export function ResourceInstalledControl({
   actionLabel = "Uninstall",
   pendingLabel = "Uninstalling",
   pending = false,
-  disabled = false,
   presentation = "label",
   tooltip,
   count,
@@ -184,7 +183,6 @@ export function ResourceInstalledControl({
   actionLabel?: string;
   pendingLabel?: string;
   pending?: boolean;
-  disabled?: boolean;
   presentation?: "label" | "icon" | "compact";
   tooltip?: ReactNode;
   count?: { display: string; accessibleLabel: string };
@@ -206,7 +204,7 @@ export function ResourceInstalledControl({
     </span>
   );
 
-  if (onAction === undefined && !disabled) {
+  if (onAction === undefined) {
     const status = (
       <span
         aria-label={accessibleLabel}
@@ -247,12 +245,9 @@ export function ResourceInstalledControl({
           : presentation === "icon"
             ? "w-7 px-0"
             : "min-w-7 px-2",
-        disabled &&
-          "disabled:pointer-events-auto disabled:cursor-not-allowed disabled:opacity-100 hover:border-success/30 hover:bg-success/10 hover:text-[color:color-mix(in_oklab,var(--success)_72%,var(--ink))]",
         className,
       )}
-      disabled={pending || disabled}
-      aria-disabled={pending || disabled}
+      disabled={pending}
       aria-label={accessibleLabel}
       onClick={onAction}
     >
@@ -261,8 +256,6 @@ export function ResourceInstalledControl({
           <Icon name="Loading" className="size-3.5 animate-spin" aria-hidden />
           {presentation === "label" ? pendingLabel : null}
         </span>
-      ) : disabled ? (
-        installedContent
       ) : (
         <span className="grid place-items-center">
           <span className="col-start-1 row-start-1 inline-flex items-center justify-center transition-opacity group-hover/install:opacity-0 group-focus-visible/install:opacity-0">
