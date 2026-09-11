@@ -17,6 +17,7 @@ import {
 type Resource = SourceSnapshot["resources"][number];
 interface SourceResult {
   pluginId: string;
+  label: string | null;
   resources: Resource[];
   error: string | null;
 }
@@ -148,7 +149,8 @@ function resourceProvider(
       resource.usage,
     ),
     id: `${pluginId}:${resource.id}`,
-    accountLabel: resource.scope.kind === "shared" ? resource.usage.accountEmail : null,
+    accountLabel:
+      resource.scope.kind === "shared" ? resource.usage.accountEmail : null,
   };
 }
 
@@ -291,12 +293,17 @@ export default function providerUsagePlugin(bb: BbPluginApi): void {
                     });
                     return {
                       pluginId: source.pluginId,
+                      label: snapshot.label ?? null,
                       resources: snapshot.resources,
                       error: null,
                     };
                   } catch {
                     return {
                       pluginId: source.pluginId,
+                      label:
+                        sourceResults.find(
+                          (entry) => entry.pluginId === source.pluginId,
+                        )?.label ?? null,
                       resources: [],
                       error:
                         "Usage could not be loaded from " +
@@ -371,8 +378,10 @@ export default function providerUsagePlugin(bb: BbPluginApi): void {
       machines.push({
         id: `source:${source.pluginId}`,
         displayName:
+          source.label ??
           sources.find((entry) => entry.pluginId === source.pluginId)
-            ?.displayName ?? source.pluginId,
+            ?.displayName ??
+          source.pluginId,
         status: "connected",
         providers: shared.map((resource) =>
           resourceProvider(resource, source.pluginId, sharedProviders),

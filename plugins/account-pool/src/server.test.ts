@@ -5825,6 +5825,7 @@ it("publishes pooled usage without a display plugin and does not invent unobserv
       refresh: false,
     }),
   );
+  expect(result.label).toBe("Account Pooler");
   expect(result.resources).toEqual([
     expect.objectContaining({
       id: fixture.account.id,
