@@ -279,7 +279,6 @@ export async function revokeMachine(
       and(eq(labelClaim.kind, "machine"), eq(labelClaim.ownerId, machineId)),
     )
     .get();
-  if (!claim && existing.revokedAt !== null) return { error: "not-found" };
 
   if (claim) {
     try {
