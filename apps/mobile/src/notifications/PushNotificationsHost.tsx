@@ -75,6 +75,7 @@ export function PushNotificationsHost() {
         toast.error("Could not open the thread", {
           description: "None of your saved servers has it.",
           duration: 2_000,
+          overlay: true,
         });
         return false;
       }

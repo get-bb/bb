@@ -12,6 +12,7 @@ export interface ToastOptions {
   duration?: number;
   action?: { label: string; onClick: () => void };
   id?: ToastId;
+  overlay?: boolean;
 }
 
 function show(
@@ -24,6 +25,7 @@ function show(
     duration: options?.duration,
     action: options?.action,
     id: options?.id,
+    toasterId: options?.overlay ? "overlay" : undefined,
   };
   switch (kind) {
     case "success":
@@ -81,14 +83,15 @@ export function Toaster() {
     }),
     [tokens],
   );
-  return (
+  return [undefined, "overlay"].map((id) => (
     <SonnerToaster
+      key={id ?? "default"}
+      id={id}
       theme={mode}
       position="top-center"
       swipeToDismissDirection="up"
       duration={4000}
-      visibleToasts={3}
-      enableStacking
+      visibleToasts={id ? 1 : 3}
       icons={icons}
       toastOptions={{
         style: {
@@ -119,5 +122,5 @@ export function Toaster() {
         },
       }}
     />
-  );
+  ));
 }

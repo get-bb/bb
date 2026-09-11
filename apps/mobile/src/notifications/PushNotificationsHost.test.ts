@@ -208,6 +208,7 @@ describe("PushNotificationsHost", () => {
     expect(mocks.toastError).toHaveBeenCalledWith("Could not open the thread", {
       description: "None of your saved servers has it.",
       duration: 2_000,
+      overlay: true,
     });
     mocks.hasThread.mockResolvedValue(true);
     action.onClick();
