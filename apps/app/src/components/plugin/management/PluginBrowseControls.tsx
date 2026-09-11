@@ -4,6 +4,12 @@ import { Icon, type IconName } from "@bb/shared-ui/icon";
 import { Input } from "@bb/shared-ui/input";
 import { Popover, PopoverContent, PopoverTrigger } from "@bb/shared-ui/popover";
 import { cn } from "@bb/shared-ui/lib/utils";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@bb/shared-ui/tooltip";
 import { useScrollOverflowState } from "@/components/thread/timeline/useScrollOverflowState";
 import type {
   PluginBrowseSort,
@@ -93,6 +99,7 @@ function CategoryOptionCheckbox({ enabled }: { enabled: boolean }) {
 export function PluginBrowseCategoryFilter(
   props: {
     options: readonly PluginBrowseCategoryOption[];
+    compactWhenNarrow?: boolean;
   } & PluginBrowseCategoryFilterSelection,
 ) {
   const { options } = props;
@@ -213,40 +220,67 @@ export function PluginBrowseCategoryFilter(
         if (!nextOpen) setSearch("");
       }}
     >
-      <PopoverTrigger asChild>
-        <Button
-          type="button"
-          variant="outline"
-          className={cn(
-            "h-8 max-w-52 gap-2 px-2.5 text-xs font-normal",
-            (open || selectedValues.length > 0) && ENGAGED_CONTROL_CLASS,
-          )}
-          aria-label={`Filter plugins by category: ${accessibleSelectionLabel}`}
-          aria-expanded={open}
-          onPointerDown={() => {
-            keyboardFocusRef.current = false;
-            setShowKeyboardFocus(false);
-          }}
-          onKeyDown={(event) => {
-            if (
-              event.key === "Enter" ||
-              event.key === " " ||
-              event.key === "ArrowDown"
-            ) {
-              keyboardFocusRef.current = true;
-              setShowKeyboardFocus(true);
-            }
-          }}
-        >
-          <Icon
-            name="SlidersHorizontal"
-            className="size-3.5 shrink-0"
-            aria-hidden
-          />
-          <span className="min-w-0 truncate">{selectionLabel}</span>
-          <Icon name="ChevronDown" className="size-3 shrink-0" aria-hidden />
-        </Button>
-      </PopoverTrigger>
+      <TooltipProvider delayDuration={250}>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <PopoverTrigger asChild>
+              <Button
+                type="button"
+                variant="outline"
+                className={cn(
+                  "h-8 max-w-52 gap-2 px-2.5 text-xs font-normal",
+                  props.compactWhenNarrow &&
+                    "w-8 shrink-0 gap-0 px-0 @[42rem]/resource-toolbar:w-auto @[42rem]/resource-toolbar:gap-2 @[42rem]/resource-toolbar:px-2.5",
+                  (open || selectedValues.length > 0) && ENGAGED_CONTROL_CLASS,
+                )}
+                aria-label={`Filter plugins by category: ${accessibleSelectionLabel}`}
+                aria-expanded={open}
+                onPointerDown={() => {
+                  keyboardFocusRef.current = false;
+                  setShowKeyboardFocus(false);
+                }}
+                onKeyDown={(event) => {
+                  if (
+                    event.key === "Enter" ||
+                    event.key === " " ||
+                    event.key === "ArrowDown"
+                  ) {
+                    keyboardFocusRef.current = true;
+                    setShowKeyboardFocus(true);
+                  }
+                }}
+              >
+                <Icon
+                  name="SlidersHorizontal"
+                  className="size-3.5 shrink-0"
+                  aria-hidden
+                />
+                <span
+                  className={cn(
+                    "min-w-0 truncate",
+                    props.compactWhenNarrow &&
+                      "hidden @[42rem]/resource-toolbar:inline",
+                  )}
+                >
+                  {selectionLabel}
+                </span>
+                <Icon
+                  name="ChevronDown"
+                  className={cn(
+                    "size-3 shrink-0",
+                    props.compactWhenNarrow &&
+                      "hidden @[42rem]/resource-toolbar:inline",
+                  )}
+                  aria-hidden
+                />
+              </Button>
+            </PopoverTrigger>
+          </TooltipTrigger>
+          <TooltipContent>
+            Filter plugins by category: {accessibleSelectionLabel}
+          </TooltipContent>
+        </Tooltip>
+      </TooltipProvider>
       <PopoverContent
         align="end"
         mobileTitle="Filter plugins by category"

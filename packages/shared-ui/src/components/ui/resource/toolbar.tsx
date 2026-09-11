@@ -28,6 +28,7 @@ export function ResourceToolbar({
   controls,
   controlsClassName,
   action,
+  compact = false,
 }: {
   searchValue: string;
   searchPlaceholder: string;
@@ -36,10 +37,23 @@ export function ResourceToolbar({
   controls?: ReactNode;
   controlsClassName?: string;
   action?: ReactNode;
+  compact?: boolean;
 }) {
-  return (
-    <div className="flex flex-wrap items-center gap-2">
-      <div className="relative w-full min-w-0 sm:w-auto sm:min-w-48 sm:flex-1">
+  const toolbar = (
+    <div
+      className={cn(
+        "flex flex-wrap items-center gap-2",
+        compact && "@[30rem]/resource-toolbar:flex-nowrap",
+      )}
+    >
+      <div
+        className={cn(
+          "relative",
+          compact
+            ? "min-w-16 flex-1"
+            : "w-full min-w-0 sm:w-auto sm:min-w-48 sm:flex-1",
+        )}
+      >
         <Icon
           name="Search"
           className="pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground"
@@ -64,11 +78,21 @@ export function ResourceToolbar({
         </div>
       ) : null}
       {action ? (
-        <div className="ml-auto flex shrink-0 items-center gap-1.5">
+        <div
+          className={cn(
+            "ml-auto flex shrink-0 items-center gap-1.5",
+            compact && "w-full justify-end @[30rem]/resource-toolbar:w-auto",
+          )}
+        >
           {action}
         </div>
       ) : null}
     </div>
+  );
+  return compact ? (
+    <div className="@container/resource-toolbar">{toolbar}</div>
+  ) : (
+    toolbar
   );
 }
 

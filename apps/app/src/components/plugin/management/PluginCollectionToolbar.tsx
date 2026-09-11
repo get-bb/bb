@@ -40,6 +40,7 @@ export function PluginCollectionToolbar({
   };
   return (
     <ResourceToolbar
+      compact
       searchValue={searchParams.get("query") ?? ""}
       searchPlaceholder={searchPlaceholder}
       onSearchChange={(value) =>
@@ -80,6 +81,7 @@ export function PluginCollectionToolbar({
             }
           />
           <PluginBrowseCategoryFilter
+            compactWhenNarrow
             selectionMode="multiple"
             value={searchParams.getAll("category")}
             options={categoryOptions}
