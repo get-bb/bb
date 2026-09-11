@@ -149,8 +149,10 @@ export function usePanelResizeSnap({
         ) {
           activeDragRef.current = null;
         }
-        previous.style.flex = previousFlex;
-        next.style.flex = nextFlex;
+        if (!commit || pendingFraction !== null) {
+          previous.style.flex = previousFlex;
+          next.style.flex = nextFlex;
+        }
         if (commit && pendingFraction !== null) {
           onResize(pendingFraction);
         }
