@@ -21,7 +21,6 @@ import {
   SettingsRowList,
   SettingsSection,
 } from "@/components/ui/settings-section";
-import { MachineStatusDot } from "@/components/machines/MachineStatusDot";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -226,9 +225,6 @@ function UsageLocationPicker({
           <span className="min-w-0 truncate">
             {selectedLocation?.name ?? "Source"}
           </span>
-          {selectedLocation?.kind === "host" ? (
-            <MachineStatusDot connected={!selectedLocation.disabled} />
-          ) : null}
           <Icon name="ChevronDown" className="size-3.5 shrink-0" />
         </Button>
       </DropdownMenuTrigger>
@@ -247,9 +243,6 @@ function UsageLocationPicker({
                 className="size-3.5 shrink-0"
               />
               <span className="min-w-0 flex-1 truncate">{location.name}</span>
-              {location.kind === "host" ? (
-                <MachineStatusDot connected={connected} />
-              ) : null}
               {location.id === selectedLocation?.id ? (
                 <Icon name="Check" className="size-3.5 shrink-0" />
               ) : null}
