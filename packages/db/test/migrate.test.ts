@@ -261,15 +261,11 @@ interface SeededLargeValueBackfillValues {
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
+const migrationJournal = JSON.parse(
+  readFileSync(resolve(__dirname, "../drizzle/meta/_journal.json"), "utf-8"),
+) as { entries: { tag: string; when: number }[] };
 const latestMigrationWhen = Math.max(
-  ...(
-    JSON.parse(
-      readFileSync(
-        resolve(__dirname, "../drizzle/meta/_journal.json"),
-        "utf-8",
-      ),
-    ) as { entries: { when: number }[] }
-  ).entries.map((entry) => entry.when),
+  ...migrationJournal.entries.map((entry) => entry.when),
 );
 
 function restoreWideExperimentsTable(db: DbConnection): void {
@@ -779,6 +775,7 @@ function dropEnvironmentDestroyAttemptIdColumn(db: DbConnection): void {
 }
 
 function rewindEnvironmentRowFactsMigration(db: DbConnection): void {
+  db.$client.prepare("DROP TABLE IF EXISTS thread_plugin_metadata").run();
   const columns = new Set(
     db.$client
       .prepare<[], TableInfoRow>("PRAGMA table_info(environments)")
@@ -1647,6 +1644,80 @@ describe("migrate", () => {
         parentColumn: "id",
         parentTable: "events",
       });
+    } finally {
+      closeConnection(db);
+    }
+  });
+
+  it("recreates thread plugin metadata after a populated pre-0115 rewind", () => {
+    const db = createMigratedConnection();
+
+    try {
+      expect(migrationJournal.entries.at(-1)?.tag).toBe(
+        "0115_talented_kulan_gath",
+      );
+      const threadPluginMetadataMigrationWhen = migrationJournal.entries.find(
+        (entry) => entry.tag === "0115_talented_kulan_gath",
+      )?.when;
+      if (threadPluginMetadataMigrationWhen === undefined) {
+        throw new Error("Missing 0115_talented_kulan_gath migration timestamp");
+      }
+      const host = upsertHost(db, noopNotifier, {
+        id: "host-thread-plugin-metadata-rewind",
+        name: "Thread Plugin Metadata Rewind Host",
+        type: "persistent",
+      });
+      const { project } = createProject(db, noopNotifier, {
+        name: "Thread Plugin Metadata Rewind Project",
+        source: {
+          type: "local_path",
+          hostId: host.id,
+          path: "/tmp/thread-plugin-metadata-rewind",
+        },
+      });
+      const thread = createThread(db, noopNotifier, {
+        projectId: project.id,
+        providerId: "codex",
+        title: "rewind-preserved-title",
+      });
+
+      db.$client.prepare("DROP TABLE thread_plugin_metadata").run();
+      db.$client
+        .prepare<DeleteMigrationParameters>(
+          "DELETE FROM __drizzle_migrations WHERE created_at = ?",
+        )
+        .run(threadPluginMetadataMigrationWhen);
+
+      migrate(db);
+
+      expect(
+        db.$client
+          .prepare<[string], { title: string }>(
+            "SELECT title FROM threads WHERE id = ?",
+          )
+          .get(thread.id),
+      ).toEqual({ title: "rewind-preserved-title" });
+      expect(
+        db.$client
+          .prepare<[string], { text: string }>(
+            "SELECT text FROM thread_search_segments WHERE thread_id = ? AND source_kind = 'title'",
+          )
+          .get(thread.id),
+      ).toEqual({ text: "rewind-preserved-title" });
+      expect(
+        db.$client
+          .prepare<[], { count: number }>(
+            "SELECT COUNT(*) AS count FROM thread_plugin_metadata",
+          )
+          .get(),
+      ).toEqual({ count: 0 });
+      expect(
+        db.$client
+          .prepare<[], { pk: number; notnull: number }>(
+            "SELECT pk, \"notnull\" FROM pragma_table_info('thread_plugin_metadata') WHERE name = 'thread_id'",
+          )
+          .get(),
+      ).toEqual({ pk: 1, notnull: 1 });
     } finally {
       closeConnection(db);
     }
