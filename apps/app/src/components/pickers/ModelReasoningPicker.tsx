@@ -1271,29 +1271,24 @@ function HandoffModeHeader({ onBack }: { onBack: () => void }) {
   return (
     <div
       className={cn(
-        "flex shrink-0 flex-col gap-0.5 px-2 pb-1.5 pt-2",
+        "flex shrink-0 items-center gap-1 px-2 pb-1 pt-1.5",
         isCompactViewport ? "bg-background" : "bg-surface-recessed",
       )}
     >
-      <div className="flex items-center gap-1">
-        <button
-          type="button"
-          aria-label="Back to model picker"
-          onClick={onBack}
-          className={cn(
-            "flex size-6 shrink-0 items-center justify-center rounded-sm text-muted-foreground hover:bg-state-hover hover:text-foreground",
-            LIST_HOVER_TRANSITION,
-          )}
-        >
-          <Icon name="ChevronLeft" className="size-3.5" aria-hidden />
-        </button>
-        <span className="min-w-0 truncate text-xs font-medium text-foreground">
-          Handoff to new thread
-        </span>
-      </div>
-      <div className="pl-7 text-xs text-muted-foreground">
-        Pick a provider and model for the new thread
-      </div>
+      <button
+        type="button"
+        aria-label="Back to model picker"
+        onClick={onBack}
+        className={cn(
+          "flex size-6 shrink-0 items-center justify-center rounded-sm text-muted-foreground hover:bg-state-hover hover:text-foreground",
+          LIST_HOVER_TRANSITION,
+        )}
+      >
+        <Icon name="ChevronLeft" className="size-3.5" aria-hidden />
+      </button>
+      <span className="min-w-0 truncate text-xs font-medium text-foreground">
+        Handoff to new thread
+      </span>
     </div>
   );
 }
