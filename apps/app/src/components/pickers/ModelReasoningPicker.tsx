@@ -1276,14 +1276,8 @@ export function ModelReasoningPicker({
 }
 
 function HandoffModeHeader({ onBack }: { onBack: () => void }) {
-  const isCompactViewport = useIsCompactViewport();
   return (
-    <div
-      className={cn(
-        "flex shrink-0 items-center gap-1 px-2 pb-1 pt-1.5",
-        isCompactViewport ? "bg-background" : "bg-surface-recessed",
-      )}
-    >
+    <div className="flex shrink-0 items-center gap-1 bg-state-active px-2 pb-1 pt-1.5">
       <button
         type="button"
         aria-label="Back to model picker"
