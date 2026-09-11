@@ -15,6 +15,7 @@ describe("experiments settings", () => {
         changelogPreview: false,
         mobileApp: false,
         sidebarProgressiveDisclosure: false,
+        contextBreakdown: false,
         timelineWindowing: false,
       });
     });
@@ -29,6 +30,7 @@ describe("experiments settings", () => {
           changelogPreview: true,
           mobileApp: true,
           sidebarProgressiveDisclosure: true,
+          contextBreakdown: true,
           timelineWindowing: true,
         }),
       });
@@ -37,12 +39,14 @@ describe("experiments settings", () => {
         changelogPreview: true,
         mobileApp: true,
         sidebarProgressiveDisclosure: true,
+        contextBreakdown: true,
         timelineWindowing: true,
       });
       expect(getExperiments(harness.db)).toEqual({
         changelogPreview: true,
         mobileApp: true,
         sidebarProgressiveDisclosure: true,
+        contextBreakdown: true,
         timelineWindowing: true,
       });
 
@@ -53,6 +57,7 @@ describe("experiments settings", () => {
         changelogPreview: true,
         mobileApp: true,
         sidebarProgressiveDisclosure: true,
+        contextBreakdown: true,
         timelineWindowing: true,
       });
     });
@@ -70,6 +75,7 @@ describe("experiments settings", () => {
           changelogPreview: false,
           mobileApp: false,
           sidebarProgressiveDisclosure: false,
+          contextBreakdown: false,
           timelineWindowing: false,
         }),
       });

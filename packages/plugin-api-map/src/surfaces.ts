@@ -398,10 +398,15 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
           "Appear in the model picker beside bb's built-in providers",
           "Declare what the provider supports, then serve its model list at runtime",
           "Supply a small icon that appears next to its name; React icon overrides require providerKind and providerId",
+          "Publish context snapshots through contextWindow deltas, with provider-defined category IDs and labels. Each category declares used, free, reserved, or deferred accounting; entries are included in its total and may be partial. Snapshots include capture time, session identity, model, totals, and an optional auto-compaction threshold",
           "Receive every message in a thread started with it, through a bridge process the plugin ships",
           "Contribute validated environment variables to any provider for each session and turn",
         ],
         apiSymbols: [
+          "contextSnapshotSchema",
+          "ContextSnapshot",
+          "ContextCategory",
+          "ContextEntry",
           "PluginProviderDeclaration",
           "PluginProviderIconRegistration",
           "ExperimentalPluginProviderEnvContext",
@@ -942,6 +947,7 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
         bullets: [
           "Create threads, send messages to them, and manage projects",
           "List machines and suspend, resume, or remove provider-managed machines",
+          "Read recorded context usage with sdk.threads.context({ threadId }); usage is null when unavailable, and its snapshot is present only when the latest measurement includes a breakdown",
           "Reach the same operations the [bb CLI](cli) and the bb UI use",
           "Have the threads it creates attributed back to the plugin",
           "Read the server's loopback URL, public app URL, and data directory when it needs server facts",

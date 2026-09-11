@@ -366,6 +366,13 @@ function ExperimentsStory() {
       sidebarProgressiveDisclosureEnabled={
         state.experiments.sidebarProgressiveDisclosure
       }
+      contextBreakdownEnabled={state.experiments.contextBreakdown}
+      onContextBreakdownEnabledChange={(enabled) =>
+        state.setExperiments((current) => ({
+          ...current,
+          contextBreakdown: enabled,
+        }))
+      }
       timelineWindowingEnabled={state.experiments.timelineWindowing}
       onChangelogPreviewEnabledChange={(enabled) =>
         state.setExperiments((current) => ({

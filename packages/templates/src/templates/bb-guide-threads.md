@@ -170,6 +170,7 @@ Sections:
 
 Inspecting:
 
+  bb thread context [id]                   Show recorded context usage and available breakdown (--self, --json)
   bb thread show [id]                      Show thread details and pull request status
     --self                                 Target current thread
     --work-status                          Include git working-tree status
@@ -393,3 +394,10 @@ Lifecycle:
 
 Read-only commands require a thread ID or --self where supported.
 Mutating thread lifecycle and messaging commands require an explicit ID or --self.
+
+`bb thread context [id]` reads the latest stored context measurement without
+starting a provider request. Use `--self` for the current thread and `--json` for
+`{ usage: ... }` (`null` when unavailable). Claude Code refreshes the estimated
+breakdown after turns and compaction when its SDK supports context inspection.
+A later aggregate-only measurement replaces any older breakdown. Other providers
+continue to expose their available totals.

@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import { ClaudeContextUsageCollector } from "./context-usage.js";
 
 import {
   type PendingInteractionGrantedPermissionProfile,
@@ -212,6 +213,7 @@ interface ClaudeSessionRestart {
 }
 
 interface ThreadSession {
+  contextUsageCollector: ClaudeContextUsageCollector;
   session: SdkSession;
   attachment: ThreadAttachment;
   sessionSerial: number;
@@ -668,7 +670,15 @@ function sendThreadDeltas(
 }
 
 function sendSessionReset(threadId: string): void {
-  sendThreadDeltas(threadId, [{ kind: "session.reset" }]);
+  sendThreadDeltas(threadId, [
+    { kind: "session.reset" },
+    {
+      kind: "contextWindow",
+      used: null,
+      estimated: true,
+      attach: "currentOrLast",
+    },
+  ]);
 }
 
 function emitForSession(
@@ -808,6 +818,7 @@ function emitCanonicalTurnInputAccepted(
   acceptance: CanonicalTurnAcceptance,
   threadId: string,
 ): void {
+  threadSession.contextUsageCollector.invalidate();
   sendThreadDeltas(
     threadId,
     threadSession.translator.acceptInput(threadId, acceptance.clientRequestId),
@@ -962,6 +973,7 @@ function createThreadSession(attachment: ThreadAttachment): ThreadSession {
     })),
   );
   const threadSession: ThreadSession = {
+    contextUsageCollector: new ClaudeContextUsageCollector(),
     session,
     attachment,
     sessionSerial,
@@ -1408,6 +1420,13 @@ function createOnSdkMessage(
       threadId: args.threadIdRef.current,
     });
     if (!threadSession) return;
+    if (
+      message.type === "assistant" ||
+      message.type === "user" ||
+      message.type === "stream_event"
+    ) {
+      threadSession.contextUsageCollector.invalidate();
+    }
     const providerThreadId = message.session_id?.trim() ?? "";
     if (
       providerThreadId.length > 0 &&
@@ -1435,6 +1454,43 @@ function createOnSdkMessage(
       threadId: args.threadIdRef.current,
       message,
     });
+    if (
+      message.type === "result" ||
+      (message.type === "system" && message.subtype === "compact_boundary")
+    ) {
+      if (message.type === "system") {
+        sendThreadDeltas(args.threadIdRef.current, [
+          {
+            kind: "contextWindow",
+            used: null,
+            estimated: true,
+            attach: "currentOrLast",
+          },
+        ]);
+      }
+      if (providerThreadId) {
+        void threadSession.contextUsageCollector.capture({
+          read: () => threadSession.session.getContextUsage(),
+          providerSessionId: providerThreadId,
+          isCurrent: () =>
+            getCurrentThreadSession({
+              sessionSerial: args.sessionSerial,
+              threadId: args.threadIdRef.current,
+            }) === threadSession && !threadSession.streamEnded,
+          publish: (snapshot) =>
+            sendThreadDeltas(args.threadIdRef.current, [
+              {
+                kind: "contextWindow",
+                used: snapshot.usedTokens,
+                size: snapshot.contextWindowTokens,
+                estimated: snapshot.estimated,
+                snapshot,
+                attach: "currentOrLast",
+              },
+            ]),
+        });
+      }
+    }
     const recoveryKind = getAssistantMessageRecoveryKind(message);
     if (recoveryKind !== null) {
       emitTerminalAccountErrorHint(

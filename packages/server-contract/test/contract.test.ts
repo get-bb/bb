@@ -289,6 +289,11 @@ const OPTIONAL_SERVER_FIELD_GROUPS: readonly OptionalServerFieldGroup[] = [
   },
   {
     reason:
+      "Context snapshots are omitted when the latest measurement has no breakdown.",
+    fields: ["threadTimelineResponseSchema.contextWindowUsage.snapshot"],
+  },
+  {
+    reason:
       "Timeline responses carry a row-patch delta only for a usable afterSequence, and that delta carries rowOrder only when membership or ordering changed.",
     fields: [
       "threadTimelineResponseSchema.delta",

@@ -364,6 +364,7 @@ type ExpectedThemeKey = "catalog" | "get" | "resolve" | "set";
 type ExpectedThreadSectionsKey = "create" | "delete" | "list" | "update";
 
 type ExpectedThreadsKey =
+  | "context"
   | "archive"
   | "archiveAll"
   | "cancelPlan"
