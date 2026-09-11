@@ -77,6 +77,11 @@ export const CORE_COMMAND_GROUPS: readonly CommandGroup[] = [
     (m) => (program, deps) => m.registerThreadCommands(program, deps.getUrl),
   ),
   group(
+    "draft",
+    () => import("./commands/draft.js"),
+    (m) => (program, deps) => m.registerDraftCommands(program, deps.getUrl),
+  ),
+  group(
     "environment",
     () => import("./commands/environment.js"),
     (m) => (program, deps) =>

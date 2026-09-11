@@ -508,6 +508,46 @@ export const environments = sqliteTable(
   ],
 );
 
+export const drafts = sqliteTable(
+  "drafts",
+  {
+    id: text("id").primaryKey(),
+    projectId: text("project_id"),
+    payloadJson: text("payload_json"),
+    creationFingerprint: text("creation_fingerprint").notNull(),
+    searchText: text("search_text").notNull(),
+    hasInput: integer("has_input", { mode: "boolean" }).notNull(),
+    revision: integer("revision").notNull().default(1),
+    createdAt: integer("created_at").notNull(),
+    updatedAt: integer("updated_at").notNull(),
+    deletedAt: integer("deleted_at"),
+    submittedAt: integer("submitted_at"),
+  },
+  (table) => [
+    index("drafts_live_updated_idx")
+      .on(table.updatedAt, table.id)
+      .where(sql`${table.deletedAt} IS NULL AND ${table.submittedAt} IS NULL`),
+    index("drafts_live_project_updated_idx")
+      .on(table.projectId, table.updatedAt, table.id)
+      .where(sql`${table.deletedAt} IS NULL AND ${table.submittedAt} IS NULL`),
+  ],
+);
+
+export const draftSubmissionReceipts = sqliteTable(
+  "draft_submission_receipts",
+  {
+    draftId: text("draft_id").notNull(),
+    revision: integer("revision").notNull(),
+    threadId: text("thread_id").notNull(),
+    status: text("status")
+      .$type<"pending" | "submitted" | "failed">()
+      .notNull(),
+    createdAt: integer("created_at").notNull(),
+    updatedAt: integer("updated_at").notNull(),
+  },
+  (table) => [primaryKey({ columns: [table.draftId, table.revision] })],
+);
+
 export const threads = sqliteTable(
   "threads",
   {

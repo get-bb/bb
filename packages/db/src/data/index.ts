@@ -1,4 +1,27 @@
 export {
+  completeDraftSubmissionReceipt,
+  createDraft,
+  createDraftSubmissionReceipt,
+  deleteDraft,
+  failDraftSubmissionReceipt,
+  getDraft,
+  getDraftSubmissionReceipt,
+  getStoredDraft,
+  listDrafts,
+  updateDraft,
+} from "./drafts.js";
+export type {
+  CreateDraftInput,
+  CreateDraftSubmissionReceiptInput,
+  DeleteDraftInput,
+  DraftRow,
+  DraftSubmissionIdentity,
+  DraftSubmissionReceiptRow,
+  ListDraftsInput,
+  UpdateDraftInput,
+} from "./drafts.js";
+
+export {
   createProject,
   ensurePersonalProject,
   findOrCreateProjectByLocalPathSource,

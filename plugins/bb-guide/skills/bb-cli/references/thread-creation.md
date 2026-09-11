@@ -1,5 +1,46 @@
 # Thread, project, environment, and machine creation
 
+## Saved drafts
+
+`bb draft` manages server-backed prompt drafts with the app closed. It does not
+start a thread until `submit` succeeds. Drafts have independent `drf_` IDs and
+are separate from an active thread's unsent follow-up.
+
+- Create with `bb draft create --text "..." --project <id>`, or use
+  `--content-file <path>` for a JSON content object. Drafts may be incomplete;
+  no project is inferred from the current thread. `--section` sets a section.
+- `bb draft list --project <id> --query <text> --json` searches prompt text and
+  attachment names. Omit --project for all projects. Blank/option-only drafts
+  require --include-empty. Use --limit (1–200, default 50) and --offset for
+  pagination; JSON returns drafts and nextOffset.
+- Read `bb draft show <id> --json` (alias `get`) to obtain the revision and full
+  content. `bb draft update <id> --expected-revision <revision> --text "..."`
+  preserves attachments, options and destination. --project and --section edit
+  those destinations. A stale revision fails instead of replacing unseen work.
+- For full replacement, extract `.content` from show's JSON into a local file,
+  edit it, then pass `--content-file <path>` and the revision you inspected.
+  Content fields are projectId, sectionId, prompt {text, mentions, attachments},
+  and options {providerId, model, reasoningLevel, serviceTier, permissionMode,
+  environment, title, parentThreadId, sourceThreadId, sourceSeqEnd, originKind,
+  sendAt}. Omitted fields reset to defaults; null clears nullable fields.
+  Text/project/section flags override a content file. Changing text with
+  mentions requires a content file so its mention positions remain explicit.
+  Upload files with `bb project attachment upload` and use the returned
+  attachment references; content files are read on the CLI machine.
+- `bb draft delete <id> --expected-revision <revision> --yes` deletes that
+  revision. All draft commands support --json.
+- `bb draft submit <id> --expected-revision <revision> --json` returns the
+  ordinary thread and a remaining draft (null if consumed). Newer edits survive.
+  Retrying the same revision never creates a second thread. A failure after
+  thread reservation requires saving a new revision before an intentional retry.
+- Retried creation/import must reuse --id and the exact original content.
+  Create returns `{id, draft}`; draft: null acknowledges an already consumed or
+  deleted identity. Reusing an ID with different creation content is a conflict.
+
+The SDK exposes the same operations through sdk.drafts. See `bb guide threads`
+for request fields and retry behavior. Keep unsaved local contents when an
+operation fails; inspect the current revision before reconciling a conflict.
+
 ## Spawning Threads
 
 - Use `bb thread spawn --project <project-id> --prompt "..."` to create another

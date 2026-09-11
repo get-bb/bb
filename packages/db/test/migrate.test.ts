@@ -713,6 +713,11 @@ function dropMarketplaceStatsColumn(db: DbConnection): void {
   }
 }
 
+function rewindDraftResourcesMigration(db: DbConnection): void {
+  db.$client.exec("DROP TABLE IF EXISTS draft_submission_receipts");
+  db.$client.exec("DROP TABLE IF EXISTS drafts");
+}
+
 /**
  * Undo migration 0110, the dispatch-queue rework.
  *
@@ -728,6 +733,7 @@ function dropMarketplaceStatsColumn(db: DbConnection): void {
  * 0108's, so the replay recreates the table before 0110 drops it again.
  */
 function rewindEnvironmentProvisioningMigration(db: DbConnection): void {
+  rewindDraftResourcesMigration(db);
   const columns = db.$client
     .prepare<[], TableInfoRow>("PRAGMA table_info(environments)")
     .all();
@@ -5956,6 +5962,8 @@ describe("environment providers migration", () => {
 });
 
 describe("environment and thread startup ownership migration", () => {
+  const environmentProvisioningMigrationWhen = 1789075667774;
+
   it.each(["creating", "cancelled"])(
     "preserves %s allocation checkpoints and keeps attached environment resources authoritative",
     (phase) => {
@@ -5970,9 +5978,11 @@ describe("environment and thread startup ownership migration", () => {
           "utf8",
         ).split("--> statement-breakpoint")[0]!;
         db.$client.exec(legacySchema);
-        db.$client.exec(
-          "DELETE FROM __drizzle_migrations WHERE created_at = (SELECT MAX(created_at) FROM __drizzle_migrations)",
-        );
+        db.$client
+          .prepare<[number]>(
+            "DELETE FROM __drizzle_migrations WHERE created_at >= ?",
+          )
+          .run(environmentProvisioningMigrationWhen);
         db.$client.exec(`
         INSERT INTO hosts (id, name, type, created_at, updated_at) VALUES ('host_ownership', 'test', 'persistent', 1, 1);
         INSERT INTO projects (id, name, created_at, updated_at) VALUES ('proj_ownership', 'test', 1, 1);

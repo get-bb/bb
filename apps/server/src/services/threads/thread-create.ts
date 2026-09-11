@@ -4,6 +4,7 @@ import {
   getEnvironment,
   getProjectSourceByHost,
   getThread,
+  failDraftSubmissionReceipt,
 } from "@bb/db";
 import type {
   ProjectExecutionDefaults,
@@ -60,10 +61,15 @@ import { deriveTitleFallback } from "./title-generation.js";
 import type { ThreadProvisionEnvironmentIntent } from "./thread-startup-store.js";
 import { resolveSystemProviderModels } from "../system/execution-options.js";
 import { getEnvironmentProvider } from "../plugins/plugin-environment-provider-registry.js";
+import {
+  createDraftThreadRecord,
+  type DraftSubmissionSource,
+} from "../drafts/draft-thread-record.js";
 
 type ThreadCreateDeps = LoggedPendingInteractionWorkSessionDeps;
 
 interface CreateProvisioningThreadArgs {
+  draftSubmission?: DraftSubmissionSource;
   environmentId: string | null;
   executionDefaults: Parameters<
     typeof buildExecutionOptions
@@ -343,11 +349,15 @@ async function createPendingThreadAndAttemptFirstDispatch(
     args.environmentId === null
       ? null
       : getEnvironment(deps.db, args.environmentId);
-  const create = () =>
+  const createRecord = () =>
     createThreadRecord(deps, {
       request: args.request,
       environmentId: args.environmentId,
     });
+  const create = () =>
+    args.draftSubmission === undefined
+      ? createRecord()
+      : createDraftThreadRecord(deps, args.draftSubmission, createRecord);
   const thread =
     environment === null
       ? create()
@@ -424,6 +434,10 @@ async function createPendingThreadAndAttemptFirstDispatch(
       updatedAt: Date.now(),
     });
     deleteThread(deps.db, deps.hub, thread.id);
+    if (args.draftSubmission !== undefined) {
+      failDraftSubmissionReceipt(deps.db, args.draftSubmission);
+      deps.hub.notifySystem(["drafts-changed"]);
+    }
     throw error;
   }
   rememberProjectExecutionDefaultsForCreate(deps, {
@@ -451,6 +465,7 @@ export async function createThreadFromRequest(
   deps: ThreadCreateDeps,
   rawRequestInput: ThreadCreateServiceRequestInput,
   options: {
+    draftSubmission?: DraftSubmissionSource;
     providerInput?: ThreadCreateServiceRequestInput["input"];
     forkSourceEnvironmentId?: string;
   } = {},
@@ -688,6 +703,9 @@ export async function createThreadFromRequest(
   }
 
   const createArgs = {
+    ...(options.draftSubmission !== undefined
+      ? { draftSubmission: options.draftSubmission }
+      : {}),
     environmentId,
     environmentIntent,
     executionDefaults: resolvedExecutionDefaults,

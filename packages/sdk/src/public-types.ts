@@ -11,6 +11,11 @@ export type {
 } from "@bb/domain";
 export type {
   CreateExecutionInputSources,
+  Draft,
+  DraftContent,
+  DraftContentInput,
+  DraftOptions,
+  DraftPrompt,
   EnvironmentArgs,
   ExistingThreadExecutionInputSources,
   UnmanagedBranchSpec,
@@ -18,6 +23,7 @@ export type {
 } from "@bb/server-contract";
 
 export type * from "./realtime.js";
+export type * from "./areas/drafts.js";
 export type * from "./areas/environments.js";
 export type * from "./areas/files.js";
 export type * from "./areas/guide.js";

@@ -27,6 +27,17 @@ This index lists every command path that the core CLI registers. Read the task-s
 - `bb settings version`
 - `bb settings reload`
 
+## draft
+
+- `bb draft`
+- `bb draft create`
+- `bb draft list`
+- `bb draft show`
+- `bb draft get`
+- `bb draft update`
+- `bb draft delete`
+- `bb draft submit`
+
 ## project
 
 - `bb project`
