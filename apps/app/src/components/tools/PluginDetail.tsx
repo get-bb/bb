@@ -1,7 +1,8 @@
-import { useSyncExternalStore } from "react";
+import { useSyncExternalStore, type ReactNode } from "react";
 import {
   ResourceActivitySection,
-  ResourceDetailConfigurationSection,
+  ResourceActionButton,
+  ResourceDefinitionSection,
   ResourceDetailPage,
   ResourceDetailReleaseSection,
   ResourceDetailStack,
@@ -19,7 +20,7 @@ import {
 } from "@bb/shared-ui/tooltip";
 import { formatHomePathForDisplay } from "@bb/shared-ui/lib/utils";
 import { Icon } from "@bb/shared-ui/icon";
-import { Link } from "react-router-dom";
+import { useNavigate } from "react-router-dom";
 import { getPluginConfigurationRoutePath } from "@/lib/route-paths";
 import { CheckPluginUpdatesButton } from "@/components/plugin/management/CheckPluginUpdatesButton";
 import {
@@ -32,11 +33,14 @@ import {
   formatAbsoluteDate,
   formatPluginInstallCount,
   PluginLogo,
+  pluginRemovalDisabled,
 } from "@/components/plugin/management/plugin-ui";
 import {
-  PluginMarketplaceCategoryPill,
+  PluginMarketplaceDetailRows,
   PluginMarketplaceHeaderMetadata,
   PluginMarketplaceListingSections,
+  PluginMarketplaceOverview,
+  PluginMarketplaceSource,
   PluginMoreFromAuthorSection,
   PluginOverviewLead,
 } from "@/components/plugin/management/PluginMarketplaceListing";
@@ -85,35 +89,63 @@ export function pluginRemovalDescription(plugin: PluginListItem): string {
     : `Uninstall "${plugin.id}" and delete its managed files, settings, secrets, and schedules?`;
 }
 
-function PluginPath({ path }: { path: string }) {
+function PluginLocalSource({
+  path,
+  openDisabled,
+  onOpen,
+}: {
+  path: string;
+  openDisabled: boolean;
+  onOpen: () => void;
+}) {
   const { copied, copy } = useClipboardCopy({
     text: path,
     errorMessage: "Failed to copy path.",
   });
 
   return (
-    <TooltipProvider delayDuration={250}>
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <button
-            type="button"
-            aria-label={`Copy plugin path: ${path}`}
+    <ResourceDefinitionSection label="Source">
+      <div className="flex min-w-0 items-center gap-3">
+        <Icon
+          name="Folder"
+          className="size-4 shrink-0 text-muted-foreground"
+          aria-hidden
+        />
+        <div className="min-w-0 flex-1">
+          <p className="text-sm text-foreground">Local source</p>
+          <TooltipProvider delayDuration={250}>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <span
+                  tabIndex={0}
+                  className="block truncate rounded-sm font-mono text-xs text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                >
+                  {formatHomePathForDisplay(path)}
+                </span>
+              </TooltipTrigger>
+              <TooltipContent className="max-w-sm break-all">
+                {path}
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+        </div>
+        <div className="flex shrink-0 items-center gap-1">
+          <ResourceActionButton
+            label="Open source"
+            icon="ExternalLink"
+            disabled={openDisabled}
+            disabledReason={openDisabled ? "No editor configured" : undefined}
+            onClick={onOpen}
+          />
+          <ResourceActionButton
+            label={`Copy plugin path: ${path}`}
+            tooltipLabel={copied ? "Copied" : "Copy path"}
+            icon={copied ? "Check" : "Copy"}
             onClick={() => void copy()}
-            className="group -ml-1.5 mt-0.5 inline-flex max-w-full cursor-pointer items-center gap-1 rounded-md px-1.5 py-0.5 text-xs text-subtle-foreground transition-colors hover:bg-state-hover hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-          >
-            <span className="min-w-0 truncate text-left font-mono">
-              {formatHomePathForDisplay(path)}
-            </span>
-            <Icon
-              name={copied ? "Check" : "Copy"}
-              className="size-3 shrink-0 opacity-0 transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100"
-              aria-hidden
-            />
-          </button>
-        </TooltipTrigger>
-        <TooltipContent>{copied ? "Copied" : "Copy path"}</TooltipContent>
-      </Tooltip>
-    </TooltipProvider>
+          />
+        </div>
+      </div>
+    </ResourceDefinitionSection>
   );
 }
 
@@ -122,11 +154,13 @@ export function CatalogPluginDetail({
   onInstall,
   catalogEntries,
   onOpenPlugin,
+  headerActions,
 }: {
   entry: PluginCatalogSearchEntry;
   onInstall: (entry: PluginCatalogSearchEntry) => void;
   catalogEntries: readonly PluginCatalogSearchEntry[];
   onOpenPlugin: (pluginId: string) => void;
+  headerActions?: ReactNode;
 }) {
   const count =
     entry.installs === null
@@ -139,17 +173,19 @@ export function CatalogPluginDetail({
     <ResourceDetailPage
       maxWidthClassName="max-w-5xl"
       leading={<CatalogEntryIconChip entry={entry} />}
-      leadingClassName="size-10"
+      leadingClassName="size-6"
       title={entry.displayName}
-      titleMeta={<PluginMarketplaceCategoryPill entry={entry} />}
       metadata={<PluginMarketplaceHeaderMetadata entry={entry} />}
       actions={
-        <ResourceInstallControl
-          accessibleLabel={`Install ${entry.displayName}`}
-          disabled={!entry.compatible}
-          count={count}
-          onAction={() => onInstall(entry)}
-        />
+        <>
+          {headerActions}
+          <ResourceInstallControl
+            accessibleLabel={`Install ${entry.displayName}`}
+            disabled={!entry.compatible}
+            count={count}
+            onAction={() => onInstall(entry)}
+          />
+        </>
       }
     >
       <ResourceDetailStack>
@@ -205,7 +241,15 @@ export function pluginFrontendDiagnosticRequiresFailureBanner(
   return diagnostic?.status === "failed";
 }
 
-export function PluginDetailBanners({ plugin }: { plugin: PluginListItem }) {
+export function PluginDetailBanners({
+  plugin,
+  catalogEntry,
+  onConfigure,
+}: {
+  plugin: PluginListItem;
+  catalogEntry?: PluginCatalogSearchEntry;
+  onConfigure?: () => void;
+}) {
   const frontendDiagnostics = useSyncExternalStore(
     subscribePluginFrontendDiagnostics,
     getPluginFrontendDiagnostics,
@@ -218,6 +262,8 @@ export function PluginDetailBanners({ plugin }: { plugin: PluginListItem }) {
     <PluginHealthBanner
       plugin={banner.plugin}
       runtimeStatus={pluginRuntimeStatusPresentation(banner.plugin)}
+      catalogEntry={catalogEntry}
+      onConfigure={onConfigure}
     />
   );
 }
@@ -234,6 +280,8 @@ export function PluginDetail({
   catalogEntry,
   catalogEntries,
   onOpenPlugin,
+  onConfigure,
+  headerActions,
 }: {
   isLoading: boolean;
   plugin: PluginListItem | null;
@@ -246,10 +294,13 @@ export function PluginDetail({
   catalogEntry?: PluginCatalogSearchEntry;
   catalogEntries: readonly PluginCatalogSearchEntry[];
   onOpenPlugin: (pluginId: string) => void;
+  onConfigure?: () => void;
+  headerActions?: ReactNode;
 }) {
+  const navigate = useNavigate();
   const { settingsSections } = usePluginSlots();
   const sourceQuery = usePluginSource(plugin?.id ?? "", {
-    enabled: plugin !== null && pluginHasUpdateSurfaces(plugin),
+    enabled: plugin !== null && !plugin.source.startsWith("builtin:"),
   });
   if (isLoading) {
     return (
@@ -305,27 +356,19 @@ export function PluginDetail({
             disabled: pending,
             onSelect: () => onEdit(plugin),
           },
-          {
-            label: "Open source",
-            icon: "ExternalLink" as const,
-            disabled: pending || openSourceDisabled,
-            disabledReason: openSourceDisabled
-              ? "No editor configured"
-              : undefined,
-            onSelect: () => onOpenSource(plugin),
-          },
         ]
       : []),
     {
       label: pluginRemovalLabel(plugin),
       icon: "Trash2" as const,
       tone: "destructive" as const,
-      disabled: pending || plugin.provenance === "builtin",
-      disabledReason:
-        plugin.provenance === "builtin"
-          ? "Included with BB; disable this plugin instead."
-          : undefined,
-      onSelect: () => onDelete(plugin),
+      disabled: pending || pluginRemovalDisabled(plugin),
+      disabledReason: pluginRemovalDisabled(plugin)
+        ? "Included with BB; disable this plugin instead."
+        : undefined,
+      onSelect: () => {
+        if (!pending && !pluginRemovalDisabled(plugin)) onDelete(plugin);
+      },
     },
   ];
   return (
@@ -333,21 +376,28 @@ export function PluginDetail({
       maxWidthClassName="max-w-5xl"
       leading={<PluginLogo plugin={plugin} className="size-4" />}
       title={pluginName}
-      titleMeta={
-        <span className="flex flex-wrap items-center gap-1.5">
-          <PluginProvenancePill plugin={plugin} />
-          {catalogEntry === undefined ? null : (
-            <PluginMarketplaceCategoryPill entry={catalogEntry} />
-          )}
-        </span>
-      }
       metadata={
-        <div className="space-y-1">
-          {catalogEntry === undefined ? null : (
-            <PluginMarketplaceHeaderMetadata entry={catalogEntry} />
-          )}
-          <PluginPath path={plugin.rootDir} />
-        </div>
+        catalogEntry === undefined ? undefined : (
+          <PluginMarketplaceHeaderMetadata entry={catalogEntry} />
+        )
+      }
+      actions={
+        <>
+          {headerActions}
+          {hasConfiguration ? (
+            <ResourceActionButton
+              label="Configure"
+              icon="Settings"
+              onClick={() => {
+                if (onConfigure !== undefined) onConfigure();
+                else
+                  navigate(
+                    getPluginConfigurationRoutePath({ pluginId: plugin.id }),
+                  );
+              }}
+            />
+          ) : null}
+        </>
       }
       lifecycleControl={
         <Switch
@@ -366,48 +416,26 @@ export function PluginDetail({
     >
       <ResourceDetailStack>
         {catalogEntry === undefined ? (
-          <section data-resource-detail-section="overview">
-            <PluginOverviewLead
-              description={
-                plugin.description ?? "This plugin does not describe itself."
-              }
-            />
-          </section>
+          <PluginOverviewLead
+            description={
+              plugin.description ?? "This plugin does not describe itself."
+            }
+          />
         ) : (
-          <>
-            <PluginMarketplaceListingSections entry={catalogEntry} />
-            <PluginMoreFromAuthorSection
-              entry={catalogEntry}
-              catalogEntries={catalogEntries}
-              onOpenPlugin={onOpenPlugin}
-            />
-          </>
+          <PluginMarketplaceOverview entry={catalogEntry} />
         )}
-        {hasConfiguration ? (
-          <ResourceDetailConfigurationSection
-            id="configuration"
-            className="scroll-mt-4"
-            label="Configuration"
-          >
-            {}
-            <p className="max-w-none text-sm leading-relaxed text-muted-foreground">
-              This plugin is configured from{" "}
-              <Link
-                to={getPluginConfigurationRoutePath({ pluginId: plugin.id })}
-                className="inline-flex items-center gap-0.5 rounded-sm underline underline-offset-2 hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-              >
-                its Settings page
-                <Icon
-                  name="ChevronRight"
-                  className="size-3.5 no-underline"
-                  aria-hidden
-                />
-              </Link>
-            </p>
-          </ResourceDetailConfigurationSection>
-        ) : null}
+        <PluginIncludes plugin={plugin} />
+        {canEditSource ? (
+          <PluginLocalSource
+            path={plugin.rootDir}
+            openDisabled={openSourceDisabled}
+            onOpen={() => onOpenSource(plugin)}
+          />
+        ) : catalogEntry === undefined ? null : (
+          <PluginMarketplaceSource entry={catalogEntry} />
+        )}
         <ResourceDetailReleaseSection
-          label="Release"
+          label="Details"
           actions={
             hasReleaseControl ? (
               <PluginDetailReleaseControl plugin={plugin} />
@@ -420,6 +448,9 @@ export function PluginDetail({
           }
         >
           <PluginDetailTable>
+            {catalogEntry === undefined ? null : (
+              <PluginMarketplaceDetailRows entry={catalogEntry} />
+            )}
             <PluginDetailFieldRow
               label={updatesWithBb ? "Delivery" : "Installed"}
               labelClassName="font-medium"
@@ -436,8 +467,6 @@ export function PluginDetail({
             ) : null}
           </PluginDetailTable>
         </ResourceDetailReleaseSection>
-        <PluginIncludes plugin={plugin} />
-        {}
         {plugin.services.length > 0 ? (
           <ResourceActivitySection label="Background services">
             <PluginServices plugin={plugin} />
@@ -448,6 +477,13 @@ export function PluginDetail({
             <PluginSchedules plugin={plugin} />
           </ResourceActivitySection>
         ) : null}
+        {catalogEntry === undefined ? null : (
+          <PluginMoreFromAuthorSection
+            entry={catalogEntry}
+            catalogEntries={catalogEntries}
+            onOpenPlugin={onOpenPlugin}
+          />
+        )}
       </ResourceDetailStack>
     </ResourceDetailPage>
   );

@@ -52,10 +52,11 @@ import { SidebarThreadListSetting } from "@/components/settings/SidebarThreadLis
 import { SidebarNavigationSetting } from "@/components/settings/SidebarNavigationSetting";
 import { SplitDimmingSetting } from "@/components/settings/SplitDimmingSetting";
 import { useSettingsNavState } from "@/components/settings/settings-nav";
-import { PluginsOverview } from "@/components/plugin/PluginsOverview";
-import { PluginDetailPaneView } from "@/views/ToolsView";
-import { SETTINGS_PLUGIN_ROUTE_PATH } from "@/lib/route-paths";
-import { PluginSettingsPage } from "@/components/plugin/PluginSettings";
+import {
+  SETTINGS_PLUGIN_ROUTE_PATH,
+  getPluginDetailRoutePath,
+  getPluginsRoutePath,
+} from "@/lib/route-paths";
 import { FileOpenersSettingsSection } from "@/components/settings/FileOpenersSettingsSection";
 import { VoiceInputSettingsSection } from "@/components/settings/VoiceInputSettingsSection";
 import { CommunitySettingsSection } from "@/components/settings/CommunitySettingsSection";
@@ -1106,26 +1107,27 @@ export function SettingsView() {
     return <Navigate to={SETTINGS_ROUTE_PATH} replace />;
   }
 
-  if (activeSection === "plugins") {
+  if (activeSection === "plugins" || activePluginId !== null) {
     const pluginId = matchPath(SETTINGS_PLUGIN_ROUTE_PATH, location.pathname)
       ?.params.pluginId;
+    const params = new URLSearchParams(location.search);
+    params.set("view", "installed");
+    if (activePluginId !== null) params.set("configure", activePluginId);
     return (
-      <div className="-mx-4 -mt-4 flex min-h-0 flex-1 flex-col overflow-hidden md:-mx-5 md:-mt-5">
-        {pluginId ? (
-          <PluginDetailPaneView pluginId={pluginId} />
-        ) : (
-          <div className="flex min-h-0 flex-1 flex-col pt-4 md:pt-5">
-            <PluginsOverview mode="installed" />
-          </div>
-        )}
-      </div>
+      <Navigate
+        replace
+        to={{
+          pathname: pluginId
+            ? getPluginDetailRoutePath({ pluginId })
+            : getPluginsRoutePath(),
+          search: params.toString(),
+        }}
+      />
     );
   }
 
   let content: ReactNode = null;
-  if (activePluginId !== null) {
-    content = <PluginSettingsPage pluginId={activePluginId} />;
-  } else if (activeSection === "providers") {
+  if (activeSection === "providers") {
     content = (
       <ProvidersSettingsSection
         disabled={

@@ -558,14 +558,18 @@ export function ResourceBrowseCard({
           {description}
         </span>
       ) : null}
-      {byline ? (
-        <span className="pointer-events-none relative col-start-1 row-start-3 mt-1.5 flex min-h-4 min-w-0 items-center text-left text-xs text-subtle-foreground">
-          <span className="block min-w-0 truncate">{byline}</span>
-        </span>
-      ) : null}
-      {footerMeta ? (
-        <span className="pointer-events-none relative col-start-2 row-start-3 mt-1.5 flex min-h-4 min-w-0 items-center justify-end text-right">
-          {footerMeta}
+      {byline || footerMeta ? (
+        <span className="pointer-events-none relative col-span-2 row-start-3 mt-1.5 flex min-h-4 min-w-0 flex-wrap items-center justify-between gap-x-3 gap-y-2">
+          {byline ? (
+            <span className="min-w-0 flex-1 truncate text-left text-xs text-subtle-foreground">
+              {byline}
+            </span>
+          ) : null}
+          {footerMeta ? (
+            <span className="ml-auto flex min-w-0 max-w-full items-center justify-end text-right">
+              {footerMeta}
+            </span>
+          ) : null}
         </span>
       ) : null}
     </div>

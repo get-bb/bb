@@ -1174,6 +1174,10 @@ export function skillFilesQueryKey(projectId: string, skillId: string) {
   return [SKILL_FILES_QUERY_KEY, projectId, skillId] as const;
 }
 
+export function pluginListingsQueryKey() {
+  return ["plugin-listings"] as const;
+}
+
 export function pluginListQueryKey(enabled: boolean) {
   return [PLUGIN_LIST_QUERY_KEY, enabled] as const;
 }

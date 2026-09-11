@@ -52,6 +52,8 @@ export interface PluginListItem {
   source: string;
   isOrphanedBuiltin: boolean;
   catalogEntryId: string | null;
+  categoryId?: string;
+  category?: string;
   publisherLabel: string | null;
   sourceDisplay: string;
   updateState: PluginUpdateState;
@@ -108,6 +110,10 @@ export function toPluginListItem(plugin: InstalledPlugin): PluginListItem {
     source: plugin.source,
     isOrphanedBuiltin: plugin.isOrphanedBuiltin,
     catalogEntryId: plugin.catalogEntryId ?? null,
+    ...(plugin.categoryId === undefined
+      ? {}
+      : { categoryId: plugin.categoryId }),
+    ...(plugin.category === undefined ? {} : { category: plugin.category }),
     publisherLabel: plugin.publisherLabel,
     sourceDisplay: plugin.sourceDisplay,
     updateState: {

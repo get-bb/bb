@@ -43,6 +43,7 @@ import { resolveBbCliVersion } from "../version.js";
 
 import { outputJson, type JsonOutputOptions } from "./helpers.js";
 import { renderBorderlessTable } from "../table.js";
+import { registerPluginListingCommands } from "./plugin-listing.js";
 
 interface NewPluginTarget {
   packageName: string;
@@ -777,6 +778,8 @@ export function registerPluginCommands(
     .command("plugin")
     .description("Manage BB plugins")
     .enablePositionalOptions();
+
+  registerPluginListingCommands(plugin, getUrl);
 
   plugin
     .command("search <query>")

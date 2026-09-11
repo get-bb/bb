@@ -85,9 +85,9 @@ export function pluginCatalogCategoryPillStyle(
         color: neutral(55),
       }
     : {
-        background: accentTint(accentToken, 16),
-        borderColor: accentTint(accentToken, 24),
-        color: accentInk(accentToken, 52),
+        background: accentTint(accentToken, 10),
+        borderColor: accentTint(accentToken, 18),
+        color: accentInk(accentToken, 50),
       };
 }
 
@@ -188,10 +188,10 @@ export function PluginCategoryLabel({
 }) {
   return (
     <span
-      className="shrink-0 truncate rounded border px-2 py-1 text-2xs leading-none"
+      className="max-w-full rounded border px-1.5 py-1 text-right text-2xs leading-snug"
       style={pluginCatalogCategoryPillStyle(categoryId)}
     >
-      {label}
+      {pluginCategoryDisplayName(categoryId, label)}
     </span>
   );
 }
@@ -210,14 +210,14 @@ export function CatalogEntryIconChip({
 }) {
   return (
     <ResourceIconFrame
-      className={cn("size-10 rounded-md border", className)}
+      className={cn("size-6 rounded border", className)}
       style={{
         background: neutral(5),
         borderColor: neutral(14),
         color: neutral(55),
       }}
     >
-      {() => <CatalogEntryIcon entry={entry} className="size-6" />}
+      {() => <CatalogEntryIcon entry={entry} className="size-4" />}
     </ResourceIconFrame>
   );
 }
@@ -324,5 +324,20 @@ export function RollbackNote({
         bb restores {fromVersion} and its data automatically.
       </span>
     </div>
+  );
+}
+
+export function pluginCategoryDisplayName(
+  categoryId: string | undefined,
+  label: string,
+): string {
+  return categoryId === "utilities" ? "Machines & Hosts" : label;
+}
+
+export function pluginRemovalDisabled(
+  plugin: Pick<PluginListItem, "provenance" | "source">,
+): boolean {
+  return (
+    plugin.provenance === "builtin" || plugin.source.startsWith("builtin:")
   );
 }

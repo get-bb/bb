@@ -85,8 +85,8 @@ it("uses one glyph box for host and marketplace catalog icons", () => {
   );
   expect(glyphs).toHaveLength(2);
   for (const glyph of glyphs) {
-    expect(glyph.classList.contains("size-6")).toBe(true);
-    expect(glyph.parentElement?.classList.contains("size-10")).toBe(true);
+    expect(glyph.classList.contains("size-4")).toBe(true);
+    expect(glyph.parentElement?.classList.contains("size-6")).toBe(true);
     expect(glyph.firstElementChild?.classList.contains("size-full")).toBe(true);
   }
 });

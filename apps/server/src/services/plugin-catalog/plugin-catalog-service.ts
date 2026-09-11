@@ -86,6 +86,7 @@ import {
 import { BUNDLED_CURATED_MARKETPLACE } from "./curated-marketplace.js";
 import { loadBundledMarketplace } from "./bundled-marketplace.js";
 import { marketplacePublisherLabel } from "./marketplace-publishers.js";
+import { reconcilePluginListings } from "../plugins/plugin-listing-lifecycle.js";
 
 const MARKETPLACE_REFRESH_INTERVAL_MS = 2 * 60 * 60 * 1_000;
 
@@ -703,13 +704,30 @@ export function createPluginCatalogService(deps: {
     const attemptedAt = args?.attemptedAt ?? now();
     if (args?.name !== undefined) {
       requireRow(args.name);
-      return [await refreshOne(args.name, attemptedAt)];
+      const result = await refreshOne(args.name, attemptedAt);
+      if (args.name === CURATED_MARKETPLACE_NAME) await reconcileListings();
+      return [result];
     }
     const results: PluginMarketplaceRefreshResult[] = [];
     for (const row of orderedMarketplaces()) {
       results.push(await refreshOne(row.name, attemptedAt));
     }
+    await reconcileListings();
     return results;
+  }
+
+  async function reconcileListings(): Promise<void> {
+    const catalog = catalogOf(requireRow(CURATED_MARKETPLACE_NAME));
+    const changed = await reconcilePluginListings({
+      db: deps.db,
+      acceptedEntries: new Map(
+        catalog?.plugins.map((entry) => [entry.id, entry.source]) ?? [],
+      ),
+      fetch: fetchMarketplace,
+      now,
+      warn: (message) => deps.warn?.(message),
+    });
+    if (changed) deps.notifyCatalogChanged?.();
   }
 
   function scheduleNextPeriodicRefresh(): void {

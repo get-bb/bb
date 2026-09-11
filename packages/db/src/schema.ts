@@ -268,6 +268,33 @@ export const installedPlugins = sqliteTable("plugins", {
   updatedAt: integer("updated_at").notNull(),
 });
 
+export const pluginListings = sqliteTable(
+  "plugin_listings",
+  {
+    pluginId: text("plugin_id").primaryKey(),
+    status: text("status", {
+      enum: ["draft", "in-review", "published"],
+    }).notNull(),
+    recordJson: text("record_json").notNull(),
+    createdAt: integer("created_at").notNull(),
+    updatedAt: integer("updated_at").notNull(),
+  },
+  (table) => [index("plugin_listings_status_idx").on(table.status)],
+);
+
+export const pluginListingNotices = sqliteTable(
+  "plugin_listing_notices",
+  {
+    id: text("id").primaryKey(),
+    noticeJson: text("notice_json").notNull(),
+    createdAt: integer("created_at").notNull(),
+    consumedAt: integer("consumed_at"),
+  },
+  (table) => [
+    index("plugin_listing_notices_consumed_idx").on(table.consumedAt),
+  ],
+);
+
 export const pluginArtifacts = sqliteTable(
   "plugin_artifacts",
   {

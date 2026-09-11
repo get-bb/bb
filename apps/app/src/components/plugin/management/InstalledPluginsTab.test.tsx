@@ -5,7 +5,7 @@ import { MemoryRouter } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createQueryClientTestHarness } from "@/test/queryClientTestHarness";
 import { type PluginListItem } from "@/hooks/queries/plugin-settings-queries";
-import { InstalledPluginRow } from "./InstalledPluginsTab";
+import { PluginCollectionCard } from "./PluginCollectionCard";
 import { makePluginListItem } from "@/test/fixtures/plugins";
 
 function plugin(overrides: Partial<PluginListItem> = {}): PluginListItem {
@@ -21,12 +21,22 @@ function plugin(overrides: Partial<PluginListItem> = {}): PluginListItem {
   });
 }
 
-function renderRow(item: PluginListItem) {
+function renderCard(item: PluginListItem) {
   const { wrapper: QueryClientWrapper } = createQueryClientTestHarness();
   return render(
     <MemoryRouter>
       <QueryClientWrapper>
-        <InstalledPluginRow plugin={item} onUpdateClick={vi.fn()} />
+        <PluginCollectionCard
+          entry={{
+            pluginId: item.id,
+            runtime: item,
+            listing: null,
+            catalogEntry: null,
+          }}
+          onUpdate={vi.fn()}
+          onOpen={vi.fn()}
+          onListingAction={vi.fn()}
+        />
       </QueryClientWrapper>
     </MemoryRouter>,
   );
@@ -36,9 +46,9 @@ afterEach(() => {
   cleanup();
 });
 
-describe("InstalledPluginRow", () => {
+describe("Installed plugin cards", () => {
   it("shows the status word and detail and marks the switch when a plugin is not running", () => {
-    renderRow(
+    renderCard(
       plugin({
         status: "incompatible",
         statusDetail: "requires bb >=0.38.0 <0.39.0, this is 0.39.0",
@@ -61,7 +71,7 @@ describe("InstalledPluginRow", () => {
   });
 
   it("does not call a needs-configuration plugin not running", () => {
-    renderRow(
+    renderCard(
       plugin({
         status: "needs-configuration",
         statusDetail: "Set an API token.",

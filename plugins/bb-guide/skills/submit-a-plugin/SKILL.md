@@ -56,6 +56,22 @@ rules.
 9. Commit only the entry, icon, screenshots, and overview file.
 10. Open a pull request from the submitter account.
 
+Once the user has authorized preparing their own plugin's listing, persist
+the completed entry with
+`bb plugin listing draft <plugin-id> --file entries/<plugin-id>.json`.
+This explicitly records authorship and makes the draft visible in Installed
+plugins; installing somebody else's local plugin does not establish ownership.
+Keep the saved entry current when updating an existing submission.
+
+After opening the marketplace PR, record its canonical URL with
+`bb plugin listing record-submission <plugin-id> <pull-request-url>`.
+The server verifies the PR repository and the changed entry against the draft.
+This command records an existing PR and never opens another. If a result is
+lost or work resumes, inspect `bb plugin listing list --json` and the existing
+GitHub PR before retrying. Repeating the same record command is safe. The
+server reconciles merged and closed PRs during catalog refresh and preserves
+authorship when a listing returns to draft.
+
 Read these references as the task reaches each stage:
 
 - Read references/plugin-release.md before validating or releasing a plugin.

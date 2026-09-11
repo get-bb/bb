@@ -7,7 +7,7 @@ import type {
 
 export const UNCATEGORIZED_PLUGIN_CATEGORY_ID = "uncategorized";
 
-export type PluginBrowseSort = "recently-added" | "most-installed";
+export type PluginBrowseSort = "name" | "recently-added" | "most-installed";
 export type PluginBrowseSortDirection = "asc" | "desc";
 
 export interface PluginBrowseShelf {
@@ -19,7 +19,9 @@ export interface PluginBrowseShelf {
   kind: "collection" | "category" | "uncategorized";
 }
 
-function isCategorized(entry: PluginCatalogSearchEntry): boolean {
+function isCategorized(
+  entry: Pick<PluginCatalogSearchEntry, "categoryId" | "category">,
+): boolean {
   return entry.categoryId !== undefined && entry.category !== undefined;
 }
 
@@ -115,7 +117,7 @@ export function pluginBrowseShelves({
 }
 
 export function pluginCategoryFilterId(
-  entry: PluginCatalogSearchEntry,
+  entry: Pick<PluginCatalogSearchEntry, "categoryId" | "category">,
 ): string {
   return isCategorized(entry)
     ? (entry.categoryId ?? UNCATEGORIZED_PLUGIN_CATEGORY_ID)
@@ -140,23 +142,26 @@ export function sortPluginEntries(
 ): PluginCatalogSearchEntry[] {
   return [...entries].sort((left, right) => {
     const sortResult =
-      sort === "recently-added"
-        ? compareOptionalNumbers(
-            left.publishedAt === undefined
-              ? undefined
-              : Date.parse(left.publishedAt),
-            right.publishedAt === undefined
-              ? undefined
-              : Date.parse(right.publishedAt),
-            direction,
-          )
-        : compareOptionalNumbers(
-            left.installs ?? undefined,
-            right.installs ?? undefined,
-            direction,
-          );
+      sort === "name"
+        ? 0
+        : sort === "recently-added"
+          ? compareOptionalNumbers(
+              left.publishedAt === undefined
+                ? undefined
+                : Date.parse(left.publishedAt),
+              right.publishedAt === undefined
+                ? undefined
+                : Date.parse(right.publishedAt),
+              direction,
+            )
+          : compareOptionalNumbers(
+              left.installs ?? undefined,
+              right.installs ?? undefined,
+              direction,
+            );
     if (sortResult !== 0) return sortResult;
     const nameResult = left.displayName.localeCompare(right.displayName);
-    return nameResult || left.entryId.localeCompare(right.entryId);
+    const result = nameResult || left.entryId.localeCompare(right.entryId);
+    return sort === "name" && direction === "desc" ? -result : result;
   });
 }

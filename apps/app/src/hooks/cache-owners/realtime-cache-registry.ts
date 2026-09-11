@@ -35,6 +35,7 @@ import {
   allPluginCatalogSearchQueryKeyPrefix,
   allPluginContributionsQueryKeyPrefix,
   allPluginListQueryKeyPrefix,
+  pluginListingsQueryKey,
   allPluginSettingsQueryKeyPrefix,
   allPluginSettingsViewQueryKeyPrefix,
   allPluginSourceQueryKeyPrefix,
@@ -1164,6 +1165,7 @@ function dirtyProjectCommandCatalogQueries(): QueryKey[] {
 
 function dirtyPluginManagementQueries(): QueryKey[] {
   return [
+    pluginListingsQueryKey(),
     allPluginListQueryKeyPrefix(),
     allPluginSettingsViewQueryKeyPrefix(),
     allPluginSettingsQueryKeyPrefix(),

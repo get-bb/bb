@@ -41,7 +41,7 @@ export function PluginBannerBar({
           className={cn("mt-0.5 size-4 shrink-0", TONE_ICON[tone])}
           aria-hidden
         />
-        <div className="min-w-0 flex-1 basis-64">
+        <div className="min-w-0 flex-1 basis-48">
           <p className="text-sm font-medium text-foreground">{title}</p>
           {detail === null || detail === undefined ? null : (
             <p className="mt-0.5 text-xs leading-relaxed text-muted-foreground">

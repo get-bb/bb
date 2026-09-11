@@ -1,3 +1,4 @@
+export * from "./plugin-listings.js";
 export {
   createProject,
   ensurePersonalProject,

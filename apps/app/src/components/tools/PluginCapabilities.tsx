@@ -2,12 +2,13 @@ import type { ReactNode } from "react";
 import { PERSONAL_PROJECT_ID } from "@bb/domain";
 import { pluginCliCall } from "@bb/domain/plugin-cli";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { Button } from "@bb/shared-ui/button";
 import type { PluginCapability, SkillListResponse } from "@bb/server-contract";
 import { Icon, type IconName } from "@bb/shared-ui/icon";
 import {
   ResourceDetailIncludesSection,
+  ResourceActionButton,
   ResourceStatus,
   type ResourceStatusTone,
 } from "@bb/shared-ui/resource-list";
@@ -22,6 +23,8 @@ import {
 } from "@/components/tools/plugin-detail-table";
 import { formatAbsoluteDate } from "@/components/plugin/management/plugin-ui";
 import type { PluginRuntimeStatusPresentation } from "@/components/plugin/management/plugin-status";
+import type { PluginCatalogSearchEntry } from "@/hooks/queries/plugin-catalog-queries";
+import { pluginErrorReportPrompt } from "./plugin-error-report";
 import { appToast } from "@/components/ui/app-toast";
 import { invalidatePluginList } from "@/hooks/cache-owners/plugin-cache-owner";
 import {
@@ -448,7 +451,7 @@ export function PluginIncludes({ plugin }: { plugin: PluginListItem }) {
     "This plugin isn't running, so its commands, settings, agent tools, app surfaces, and thread integrations can't be listed.";
 
   return (
-    <ResourceDetailIncludesSection label="Capabilities">
+    <ResourceDetailIncludesSection label="Includes">
       <div className="space-y-3">
         <PluginDetailTable>
           {items.map((item) => (
@@ -494,12 +497,17 @@ function PluginRuntimeStatusAlert({
   runtimeStatus,
   onReload,
   reloadPending,
+  catalogEntry,
+  onConfigure,
 }: {
   plugin: PluginListItem;
   runtimeStatus: PluginRuntimeStatusPresentation;
   onReload: () => void;
   reloadPending: boolean;
+  catalogEntry?: PluginCatalogSearchEntry;
+  onConfigure?: () => void;
 }) {
+  const navigate = useNavigate();
   const { settingsSections } = usePluginSlots();
   const hasSettingsPage =
     plugin.hasSettings ||
@@ -510,11 +518,8 @@ function PluginRuntimeStatusAlert({
     plugin.status === "error" ||
     plugin.status === "degraded" ||
     (plugin.status === "needs-configuration" && !plugin.hasSettings);
-  const condition =
-    plugin.status === "needs-configuration" && plugin.statusDetail?.trim()
-      ? plugin.statusDetail
-      : runtimeStatus.condition;
-  const detail = [condition, runtimeStatus.recovery]
+  const reportPrompt = pluginErrorReportPrompt({ plugin, catalogEntry });
+  const detail = [runtimeStatus.condition, runtimeStatus.recovery]
     .filter((part): part is string => part !== null && part.length > 0)
     .map((part) => {
       const capitalized = `${part.charAt(0).toUpperCase()}${part.slice(1)}`;
@@ -530,37 +535,66 @@ function PluginRuntimeStatusAlert({
       detail={detail}
       separator={plugin.status !== "degraded"}
       action={
-        canOpenSettings || canReload ? (
-          <span className="flex items-center gap-2">
+        canOpenSettings || canReload || reportPrompt !== null ? (
+          <span className="flex shrink-0 items-center gap-1">
             {canOpenSettings ? (
-              <Button asChild size="sm" className="h-7 gap-0.5 px-2.5 text-xs">
-                <Link
-                  to={getPluginConfigurationRoutePath({ pluginId: plugin.id })}
+              onConfigure === undefined ? (
+                <Button
+                  asChild
+                  size="sm"
+                  className="h-7 gap-0.5 px-2.5 text-xs"
+                >
+                  <Link
+                    to={getPluginConfigurationRoutePath({
+                      pluginId: plugin.id,
+                    })}
+                  >
+                    Open settings
+                    <Icon
+                      name="ChevronRight"
+                      className="size-3.5"
+                      aria-hidden
+                    />
+                  </Link>
+                </Button>
+              ) : (
+                <Button
+                  type="button"
+                  size="sm"
+                  className="h-7 gap-0.5 px-2.5 text-xs"
+                  onClick={onConfigure}
                 >
                   Open settings
                   <Icon name="ChevronRight" className="size-3.5" aria-hidden />
-                </Link>
-              </Button>
+                </Button>
+              )
             ) : null}
             {canReload ? (
-              <Button
-                type="button"
-                size="sm"
-                variant={canOpenSettings ? "outline" : "default"}
+              <ResourceActionButton
+                label="Reload"
+                icon="RotateCcw"
+                loading={reloadPending}
                 disabled={reloadPending}
-                className="h-7 px-2.5 text-xs"
+                className="size-7"
                 onClick={onReload}
-              >
-                {reloadPending ? (
-                  <Icon
-                    name="Loading"
-                    className="size-3.5 animate-spin"
-                    aria-hidden
-                  />
-                ) : null}
-                {reloadPending ? "Reloading\u2026" : "Reload"}
-              </Button>
+              />
             ) : null}
+            {reportPrompt === null ? null : (
+              <ResourceActionButton
+                label="Report to author"
+                icon="Bug"
+                className="size-7"
+                onClick={() =>
+                  navigate(getRootComposeRoutePath(), {
+                    state: {
+                      focusPrompt: true,
+                      initialPrompt: reportPrompt,
+                      replaceInitialPrompt: true,
+                    },
+                  })
+                }
+              />
+            )}
           </span>
         ) : undefined
       }
@@ -571,9 +605,13 @@ function PluginRuntimeStatusAlert({
 export function PluginHealthBanner({
   plugin,
   runtimeStatus,
+  catalogEntry,
+  onConfigure,
 }: {
   plugin: PluginListItem;
   runtimeStatus: PluginRuntimeStatusPresentation | null;
+  catalogEntry?: PluginCatalogSearchEntry;
+  onConfigure?: () => void;
 }) {
   const queryClient = useQueryClient();
   const reload = useMutation({
@@ -594,6 +632,8 @@ export function PluginHealthBanner({
       runtimeStatus={runtimeStatus}
       reloadPending={reload.isPending}
       onReload={() => reload.mutate()}
+      catalogEntry={catalogEntry}
+      onConfigure={onConfigure}
     />
   );
 }

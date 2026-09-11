@@ -3,6 +3,9 @@
 import { cleanup, render, screen } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, describe, expect, it } from "vitest";
+import { createQueryClientTestHarness } from "@/test/queryClientTestHarness";
+import { pluginListQueryKey } from "@/hooks/queries/query-keys";
+import { pluginListingsQueryKey } from "@/hooks/queries/plugin-listing-queries";
 import { SidebarProvider } from "@/components/ui/sidebar";
 import { ResourceSidebar } from "./ResourceSidebar";
 import type { ToolsSectionId } from "./tools-navigation";
@@ -14,6 +17,7 @@ function renderSidebarAt(
   path: string,
   appRoutePath = "/",
 ) {
+  const { wrapper } = createQueryClientTestHarness();
   return render(
     <MemoryRouter initialEntries={[path]}>
       <SidebarProvider>
@@ -26,6 +30,7 @@ function renderSidebarAt(
         />
       </SidebarProvider>
     </MemoryRouter>,
+    { wrapper },
   );
 }
 
@@ -47,6 +52,57 @@ describe("Plugins sidebar", () => {
     expect(screen.queryByRole("link", { name: "My skills" })).toBeNull();
     expect(row("Back to app").getAttribute("href")).toBe("/projects/proj_one");
   });
+
+  it.each([false, true])(
+    "hides Installed only when both collections are empty (authored: %s)",
+    (authored) => {
+      const { queryClient, wrapper } = createQueryClientTestHarness();
+      queryClient.setQueryData(pluginListQueryKey(true), []);
+      queryClient.setQueryData(pluginListingsQueryKey(), {
+        records: authored
+          ? [
+              {
+                pluginId: "review-notes",
+                authorship: "explicit",
+                entry: {
+                  id: "review-notes",
+                  displayName: "Review Notes",
+                  description: "Review notes",
+                  icon: "BookOpen",
+                  author: { name: "Bersabel" },
+                  source: {
+                    git: {
+                      url: "https://github.com/brsbl/review-notes",
+                      ref: "main",
+                    },
+                  },
+                },
+                lifecycle: { status: "draft" },
+              },
+            ]
+          : [],
+        notices: [],
+      });
+      render(
+        <MemoryRouter initialEntries={["/plugins"]}>
+          <SidebarProvider>
+            <ResourceSidebar
+              workspace="plugins"
+              appRoutePath="/"
+              isResizing={false}
+              onResizeMouseDown={() => {}}
+              showTopReserve={false}
+            />
+          </SidebarProvider>
+        </MemoryRouter>,
+        { wrapper },
+      );
+      expect(
+        screen.queryByRole("link", { name: "Installed plugins" }) !== null,
+      ).toBe(authored);
+      expect(screen.getByRole("link", { name: "Browse plugins" })).toBeTruthy();
+    },
+  );
 
   it.each([
     ["/plugins", "Browse plugins"],

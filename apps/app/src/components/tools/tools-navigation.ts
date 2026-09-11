@@ -51,7 +51,7 @@ const TOOLS_OWNED_COLLECTION_VIEW = {
 
 export function getToolsOwnedCollectionRoutePath(id: ToolsSectionId): string {
   return id === "plugins"
-    ? SETTINGS_PLUGINS_ROUTE_PATH
+    ? `${TOOLS_SECTIONS.plugins.to}?view=installed`
     : `${TOOLS_SECTIONS[id].to}?view=${TOOLS_OWNED_COLLECTION_VIEW[id]}`;
 }
 

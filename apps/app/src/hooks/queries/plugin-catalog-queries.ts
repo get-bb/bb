@@ -223,6 +223,7 @@ export interface PluginCatalogSearchEntry {
   overview?: string;
   collections: PluginCatalogCollectionMembership[];
   publishedAt?: string;
+  updatedAt?: string;
   source: string;
   repositoryUrl: string | null;
   marketplace: string;
@@ -256,6 +257,7 @@ function toPluginCatalogSearchEntry(
     ...(data.publishedAt === undefined
       ? {}
       : { publishedAt: data.publishedAt }),
+    ...(data.updatedAt === undefined ? {} : { updatedAt: data.updatedAt }),
     source: data.source,
     repositoryUrl: data.repositoryUrl,
     marketplace: data.marketplace,

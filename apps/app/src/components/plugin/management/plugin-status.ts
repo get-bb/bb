@@ -67,6 +67,8 @@ function pluginRuntimeRecovery(plugin: PluginListItem): string {
 }
 
 function pluginRuntimeCondition(plugin: PluginListItem): string {
+  const detail = plugin.statusDetail?.trim();
+  if (plugin.status !== "starting" && detail) return detail;
   switch (plugin.status) {
     case "starting":
       return "The plugin is starting. This can take a moment.";

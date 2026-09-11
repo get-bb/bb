@@ -379,7 +379,7 @@ describe("BrowsePluginsTab", () => {
     expect(params.has("direction")).toBe(false);
   });
 
-  it("expands a shelf beyond the six-entry limit", async () => {
+  it("opens a URL-backed shelf beyond the six-entry limit and returns to Browse", async () => {
     const entries = Array.from({ length: 8 }, (_, index) => ({
       ...MEMORY_ENTRY,
       entryId: `memory-${index}`,
@@ -390,8 +390,16 @@ describe("BrowsePluginsTab", () => {
 
     await screen.findByTestId("plugin-browse-shelves");
     expect(cardOrder()).toHaveLength(6);
-    fireEvent.click(screen.getByRole("button", { name: "See all" }));
+    fireEvent.click(screen.getByRole("button", { name: "View all" }));
     expect(cardOrder()).toHaveLength(8);
+    expect(screen.getByTestId("location-search").textContent).toContain(
+      "shelf=category%3Amemory-and-context",
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Back to Browse" }));
+    expect(cardOrder()).toHaveLength(6);
+    expect(screen.getByTestId("location-search").textContent).not.toContain(
+      "shelf=",
+    );
   });
 
   it("shows all five cards in a narrow shelf", async () => {
@@ -410,7 +418,7 @@ describe("BrowsePluginsTab", () => {
 
     await screen.findByTestId("plugin-browse-shelves");
     expect(cardOrder()).toHaveLength(5);
-    expect(screen.queryByRole("button", { name: "See all" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "View all" })).toBeNull();
     Object.defineProperty(window, "innerWidth", {
       configurable: true,
       value: originalWidth,
@@ -461,10 +469,54 @@ describe("BrowsePluginsTab", () => {
     expect(installed.textContent).toContain("Installed");
     expect(installed.querySelector('[data-icon="Check"]')).toBeTruthy();
     expect(screen.getByLabelText("4,210 installs")).toBeTruthy();
-    expect(installed.tagName).toBe("SPAN");
+    expect(installed.tagName).toBe("BUTTON");
+    expect(installed.getAttribute("aria-disabled")).toBe("true");
     expect(
       screen.queryByRole("button", { name: /Install Memory/u }),
     ).toBeNull();
+  });
+
+  it("keeps included controls disabled without opening their surrounding card", async () => {
+    const { onOpenPlugin, onInstall } = renderBrowse({
+      entries: [{ ...MEMORY_ENTRY, installed: true }],
+      collections: [],
+    });
+    const installed = await screen.findByRole("button", { name: "Installed" });
+    fireEvent.click(installed);
+    fireEvent.keyDown(installed, { key: "Enter" });
+    expect(installed.hasAttribute("disabled")).toBe(true);
+    expect(installed.className).toContain("disabled:cursor-not-allowed");
+    expect(onOpenPlugin).not.toHaveBeenCalled();
+    expect(onInstall).not.toHaveBeenCalled();
+    expect(screen.queryByText("By")).toBeNull();
+    expect(screen.getByRole("link", { name: "BB" })).toBeTruthy();
+  });
+
+  it("uses category shelves instead of publisher collections when filtered", async () => {
+    renderBrowse(
+      {
+        entries: [
+          { ...MEMORY_ENTRY, collections: [{ id: "bb-official", rank: 0 }] },
+          SECURITY_ENTRY,
+        ],
+        collections: [
+          {
+            id: "bb-official",
+            displayName: "BB Official plugins",
+            pluginIds: ["memory"],
+          },
+        ],
+      },
+      "/plugins?category=memory-and-context&category=security",
+    );
+    await screen.findByTestId("plugin-browse-shelves");
+    expect(
+      screen.queryByRole("heading", { name: "BB Official plugins" }),
+    ).toBeNull();
+    expect(
+      screen.getByRole("heading", { name: /Memory & Context/u }),
+    ).toBeTruthy();
+    expect(screen.getByRole("heading", { name: /Security/u })).toBeTruthy();
   });
 
   it("swaps the browse body for examples while composing", async () => {

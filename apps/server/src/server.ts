@@ -24,6 +24,7 @@ import { registerThreadRoutes } from "./routes/threads/index.js";
 import { registerQueueRoutes } from "./routes/queue.js";
 import { registerPluginRoutes } from "./routes/plugins.js";
 import { registerPluginCatalogRoutes } from "./routes/plugin-catalog.js";
+import { registerPluginListingRoutes } from "./routes/plugin-listings.js";
 import { registerSkillsRegistryRoutes } from "./routes/skills-registry.js";
 import {
   createPluginService,
@@ -655,6 +656,11 @@ export function createApp(
   registerSystemRoutes(publicApi, deps, pluginService);
   registerUiPreferenceRoutes(publicApi, deps);
   registerPluginCatalogRoutes(publicApi, pluginCatalogService);
+  registerPluginListingRoutes(publicApi, {
+    db: deps.db,
+    config: deps.config,
+    notifyChanged: () => deps.hub.notifySystem(["plugins-changed"]),
+  });
   registerPluginRoutes(publicApi, deps, pluginService, upgradeWebSocket);
   registerSkillsRegistryRoutes(publicApi, deps);
   app.route("/api/v1", publicApi);

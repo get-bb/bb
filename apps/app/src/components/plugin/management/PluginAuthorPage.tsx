@@ -4,8 +4,6 @@ import { Icon } from "@bb/shared-ui/icon";
 import {
   ResourceCollectionViewport,
   ResourceListState,
-  ResourceSortMenu,
-  ResourceToolbar,
 } from "@bb/shared-ui/resource-list";
 import { cn } from "@bb/shared-ui/lib/utils";
 import { TOOLS_PAGE_BAND_CLASSES } from "@/components/tools/tools-navigation";
@@ -21,11 +19,10 @@ import {
   pluginCategoryFilterOptions,
 } from "./BrowsePluginsTab";
 import { PluginAuthorAvatar } from "./PluginAuthorAvatar";
+import { PluginCollectionToolbar } from "./PluginCollectionToolbar";
 import {
-  PluginBrowseCategoryFilter,
   pluginBrowseSort,
   pluginBrowseSortDirection,
-  pluginBrowseSortOptions,
 } from "./PluginBrowseControls";
 import {
   pluginCategoryFilterId,
@@ -73,12 +70,14 @@ export function PluginAuthorPage({
   authorKey,
   onInstall,
   onOpenPlugin,
+  onUninstall,
 }: {
   authorKey: string;
   onInstall: (initial: AddPluginInitial) => void;
   onOpenPlugin: (pluginId: string, trigger: HTMLButtonElement) => void;
+  onUninstall?: (pluginId: string) => void;
 }) {
-  const [searchParams, setSearchParams] = useSearchParams();
+  const [searchParams] = useSearchParams();
   const query = searchParams.get("query") ?? "";
   const debouncedQuery = useDebouncedValue(query.trim(), 300);
   const selectedCategories = searchParams.getAll("category");
@@ -135,12 +134,6 @@ export function PluginAuthorPage({
   browseParams.delete("author");
   const browseSearch = browseParams.toString();
 
-  const changeSearchParams = (change: (next: URLSearchParams) => void) => {
-    const next = new URLSearchParams(searchParams);
-    change(next);
-    setSearchParams(next, { replace: true });
-  };
-
   return (
     <ResourceCollectionViewport scrollId="plugin-author-results">
       <div className={cn("space-y-6 pb-8", TOOLS_PAGE_BAND_CLASSES)}>
@@ -175,9 +168,19 @@ export function PluginAuthorPage({
                     href={author.url}
                     target="_blank"
                     rel="noreferrer"
-                    className="inline-flex items-center gap-1 rounded-sm text-xs text-subtle-foreground underline underline-offset-2 hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                    className="inline-flex max-w-full items-center gap-1.5 rounded-sm text-xs text-subtle-foreground underline underline-offset-2 hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
                   >
-                    {authorUrlLabel(author.url)}
+                    {new URL(author.url).hostname.toLowerCase() ===
+                    "github.com" ? (
+                      <Icon
+                        name="GithubFilled"
+                        className="size-4.5 shrink-0 fill-current [&_*]:stroke-0"
+                        aria-hidden
+                      />
+                    ) : null}
+                    <span className="truncate">
+                      {authorUrlLabel(author.url)}
+                    </span>
                     <Icon name="ExternalLink" className="size-3" aria-hidden />
                     <span className="sr-only">Opens in a new tab</span>
                   </a>
@@ -200,58 +203,9 @@ export function PluginAuthorPage({
         ) : (
           <section className="space-y-6">
             <div className="mx-auto w-full max-w-3xl">
-              <ResourceToolbar
-                searchValue={query}
-                searchPlaceholder="Search plugins"
-                onSearchChange={(value) =>
-                  changeSearchParams((next) => {
-                    if (value === "") next.delete("query");
-                    else next.set("query", value);
-                  })
-                }
-                controls={
-                  <>
-                    <PluginBrowseCategoryFilter
-                      selectionMode="multiple"
-                      value={selectedCategories}
-                      options={categoryOptions}
-                      onChange={(values) =>
-                        changeSearchParams((next) => {
-                          next.delete("category");
-                          for (const value of values) {
-                            next.append("category", value);
-                          }
-                        })
-                      }
-                    />
-                    <ResourceSortMenu
-                      value={sort}
-                      direction={sortDirection}
-                      compact
-                      placeholderLabel="Featured"
-                      options={pluginBrowseSortOptions(installsKnown)}
-                      onChange={(value) =>
-                        changeSearchParams((next) => {
-                          if (value === sort) {
-                            next.set(
-                              "direction",
-                              sortDirection === "asc" ? "desc" : "asc",
-                            );
-                          } else {
-                            next.set("sort", value);
-                            next.set("direction", "desc");
-                          }
-                        })
-                      }
-                      onClear={() =>
-                        changeSearchParams((next) => {
-                          next.delete("sort");
-                          next.delete("direction");
-                        })
-                      }
-                    />
-                  </>
-                }
+              <PluginCollectionToolbar
+                categoryOptions={categoryOptions}
+                hasInstallCounts={installsKnown}
               />
             </div>
             {catalogQuery.isError || searchQuery.isError ? (
@@ -272,6 +226,7 @@ export function PluginAuthorPage({
                 showCategory
                 onInstall={onInstall}
                 onOpenPlugin={onOpenPlugin}
+                onUninstall={onUninstall}
               />
             )}
           </section>

@@ -143,6 +143,7 @@ function HistoryBackButton() {
 
 afterEach(() => {
   cleanup();
+  window.localStorage.removeItem("bb.plugins.workspace.tabs");
   resetPluginSlotStoreForTest();
   vi.restoreAllMocks();
   vi.unstubAllGlobals();
@@ -281,8 +282,6 @@ describe("PluginDetail official catalog lifecycle", () => {
   });
 
   it("keeps catalog provenance and release management in the unified detail taxonomy", async () => {
-    const writeText = vi.fn().mockResolvedValue(undefined);
-    Object.assign(navigator, { clipboard: { writeText } });
     const { wrapper: QueryClientWrapper } = createQueryClientTestHarness();
     const onDelete = vi.fn();
     const { container } = render(
@@ -311,7 +310,7 @@ describe("PluginDetail official catalog lifecycle", () => {
       screen.queryByRole("button", { name: "Uninstall GitHub" }),
     ).toBeNull();
 
-    expect(screen.getByText("Release")).toBeTruthy();
+    expect(screen.getByRole("heading", { name: "Details" })).toBeTruthy();
     expect(
       screen.getByText("Browse GitHub issues and pull requests in BB."),
     ).toBeTruthy();
@@ -321,15 +320,10 @@ describe("PluginDetail official catalog lifecycle", () => {
         .closest("[data-resource-detail-section]")
         ?.getAttribute("data-resource-detail-section"),
     ).toBe("release");
-    expect(screen.getByText("~/.bb/plugins/github")).toBeTruthy();
-    fireEvent.click(
-      screen.getByRole("button", {
-        name: "Copy plugin path: /Users/you/.bb/plugins/github",
-      }),
-    );
-    await waitFor(() => {
-      expect(writeText).toHaveBeenCalledWith("/Users/you/.bb/plugins/github");
-    });
+    expect(screen.queryByText("~/.bb/plugins/github")).toBeNull();
+    expect(
+      screen.queryByRole("button", { name: /Copy plugin path/u }),
+    ).toBeNull();
     expect(screen.getByText("Updates with bb")).toBeTruthy();
     expect(screen.queryByRole("button", { name: "Check now" })).toBeNull();
 
@@ -339,10 +333,10 @@ describe("PluginDetail official catalog lifecycle", () => {
       screen.getByRole("button", { name: "GitHub actions" }),
     );
     fireEvent.click(await screen.findByRole("menuitem", { name: "Uninstall" }));
-    expect(onDelete).toHaveBeenCalledWith(GITHUB_PLUGIN);
+    expect(onDelete).not.toHaveBeenCalled();
   });
 
-  it("keeps update in the Release section without embedding it in the table", () => {
+  it("keeps update in Details without embedding its action in the table", () => {
     const { wrapper: QueryClientWrapper } = createQueryClientTestHarness();
     const plugin: PluginListItem = {
       ...GITHUB_PLUGIN,
@@ -379,7 +373,7 @@ describe("PluginDetail official catalog lifecycle", () => {
       name: "Update GitHub to 1.5.0",
     });
     const activation = screen.getByRole("switch", { name: "Disable GitHub" });
-    const path = screen.getByText("~/.bb/plugins/github");
+    const path = screen.queryByText("~/.bb/plugins/github");
     const releaseSection = document.querySelector(
       '[data-resource-detail-section="release"]',
     );
@@ -387,7 +381,7 @@ describe("PluginDetail official catalog lifecycle", () => {
     expect(releaseSection?.contains(version)).toBe(true);
     expect(releaseSection?.contains(update)).toBe(true);
     expect(releaseSection?.contains(activation)).toBe(false);
-    expect(releaseSection?.contains(path)).toBe(false);
+    expect(path).toBeNull();
     expect(version.closest("td")).not.toBe(update.closest("td"));
     expect(update.closest("table")).toBeNull();
     const updateRow = screen
@@ -585,7 +579,7 @@ describe("PluginDetail official catalog lifecycle", () => {
       </MemoryRouter>,
     );
 
-    expect(screen.getByText("BB Official")).toBeTruthy();
+    expect(screen.queryByText("BB Official")).toBeNull();
     expect(
       screen.getByRole("switch", { name: "Disable Automations" }),
     ).toBeTruthy();
@@ -838,7 +832,7 @@ describe("BB Official plugin detail routing", () => {
           .mock.calls.some(([input]) =>
             String(input).startsWith("/api/v1/plugin-catalog/search"),
           ),
-      ).toBe(false);
+      ).toBe(true);
       fireEvent.click(pluginButton);
     }
 
@@ -856,8 +850,63 @@ describe("BB Official plugin detail routing", () => {
       "?view=installed",
     );
     expect(
-      screen.queryByRole("button", { name: "Close Automations" }),
-    ).toBeNull();
+      await screen.findByRole("button", { name: "Close Automations" }),
+    ).toBeTruthy();
+  });
+
+  it("keeps two detail tabs and closes one without losing the other or the collection query", async () => {
+    const entries = [
+      GITHUB_CATALOG_ENTRY,
+      {
+        ...GITHUB_CATALOG_ENTRY,
+        pluginId: "traces",
+        entryId: "traces",
+        displayName: "Traces",
+      },
+    ];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL) => {
+        const url = String(input);
+        const body =
+          url === "/api/v1/plugins"
+            ? { plugins: [] }
+            : url === "/api/v1/plugin-listings"
+              ? { records: [], notices: [] }
+              : url.startsWith("/api/v1/plugin-catalog/search")
+                ? { results: entries, collections: [] }
+                : {};
+        return new Response(JSON.stringify(body), {
+          headers: { "content-type": "application/json" },
+        });
+      }),
+    );
+    const { wrapper } = createQueryClientTestHarness();
+    render(
+      <MemoryRouter initialEntries={["/plugins?sort=recently-added"]}>
+        <RoutedPluginsView />
+      </MemoryRouter>,
+      { wrapper },
+    );
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Open GitHub details" }),
+    );
+    await screen.findByRole("button", { name: "Close GitHub" });
+    fireEvent.click(
+      screen.getAllByRole("button", { name: "Open Traces details" })[0]!,
+    );
+    expect(
+      await screen.findByRole("button", { name: "Close Traces" }),
+    ).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Close GitHub" })).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Close GitHub" }));
+    expect(screen.getByRole("button", { name: "Close Traces" })).toBeTruthy();
+    expect(screen.getByTestId("route-path").textContent).toBe(
+      "/plugins/traces",
+    );
+    expect(screen.getByTestId("route-search").textContent).toBe(
+      "?sort=recently-added",
+    );
   });
 
   it("opens an author from a card and returns to the prior Browse filters", async () => {
@@ -1129,20 +1178,25 @@ describe("PluginDetail banner precedence", () => {
     },
   };
 
-  it("renders only current health and keeps diagnostics out of user copy", () => {
+  it("renders the current failure and keeps cumulative diagnostics out of user copy", () => {
     const { wrapper } = createQueryClientTestHarness();
-    render(<PluginDetailBanners plugin={collision} />, { wrapper });
+    render(
+      <MemoryRouter>
+        <PluginDetailBanners plugin={collision} />
+      </MemoryRouter>,
+      { wrapper },
+    );
 
     const alerts = screen.getAllByRole("alert");
     expect(alerts).toHaveLength(1);
     expect(alerts[0]?.textContent).toContain("Degraded");
     expect(alerts[0]?.textContent).toContain(
-      "A background service is still stopping.",
+      "Service issue-sync did not stop.",
     );
     expect(alerts[0]?.textContent).toContain(
       "Wait a moment, then reload the plugin.",
     );
-    expect(alerts[0]?.textContent).not.toContain("issue-sync");
+    expect(alerts[0]?.textContent).toContain("issue-sync");
     expect(alerts[0]?.textContent).not.toContain("handler");
     expect(screen.getByRole("button", { name: "Reload" })).toBeTruthy();
     expect(screen.queryByRole("button", { name: "Update" })).toBeNull();
@@ -1258,8 +1312,8 @@ describe("PluginDetail runtime health", () => {
     const alert = screen.getByRole("alert");
 
     expect(alert.textContent).toContain("Failed");
-    expect(alert.textContent).toContain("The plugin couldn't start.");
-    expect(alert.textContent).not.toContain("runtime reported");
+    expect(alert.textContent).toContain("The runtime reported a problem.");
+    expect(alert.textContent).not.toContain("The plugin couldn't start.");
     expect(alert.textContent).toContain("Reload the plugin.");
     expect(screen.getByRole("button", { name: "Reload" })).toBeTruthy();
 
@@ -1277,13 +1331,11 @@ describe("PluginDetail runtime health", () => {
     });
 
     const alert = screen.getByRole("alert");
-    expect(alert.textContent).toContain(
-      "A background service is still stopping.",
-    );
+    expect(alert.textContent).toContain("Service issue-sync did not stop.");
     expect(alert.textContent).toContain(
       "Wait a moment, then reload the plugin.",
     );
-    expect(alert.textContent).not.toContain("issue-sync");
+    expect(alert.textContent).toContain("issue-sync");
     expect(alert.textContent).not.toContain("Restart bb");
     expect(screen.getByRole("button", { name: "Reload" })).toBeTruthy();
   });
@@ -1325,7 +1377,7 @@ describe("PluginDetail runtime health", () => {
   ] as const)(
     "explains the %s condition and a supported recovery",
     (status, condition, recovery) => {
-      renderRuntimeStatus(status);
+      renderRuntimeStatus(status, { statusDetail: null });
 
       const alert = screen.getByRole("alert");
       expect(alert.textContent).toContain(condition);
@@ -1447,7 +1499,8 @@ describe("PluginDetail runtime health", () => {
         expect.objectContaining({ method: "POST" }),
       );
     });
-    const pending = screen.getByRole("button", { name: "Reloading…" });
+    const pending = screen.getByRole("button", { name: "Reload" });
+    expect(pending.getAttribute("aria-busy")).toBe("true");
     expect(pending.getAttribute("disabled")).not.toBeNull();
 
     resolveReload?.(

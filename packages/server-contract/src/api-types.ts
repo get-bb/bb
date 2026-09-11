@@ -5,6 +5,7 @@ export * from "./api/environments.js";
 export * from "./api/files.js";
 export * from "./api/hosts.js";
 export * from "./api/plugins.js";
+export * from "./api/plugin-listings.js";
 export * from "./api/system.js";
 export * from "./api/ui-preferences.js";
 export * from "./api/terminals.js";

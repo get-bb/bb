@@ -12,7 +12,12 @@ import { DetailsDisclosure, displayPluginVersion } from "./plugin-ui";
 import { UpdatePluginDialog } from "./UpdatePluginDialog";
 
 export function pluginHasUpdateSurfaces(plugin: PluginListItem): boolean {
-  if (plugin.source.startsWith("builtin:")) return false;
+  if (
+    plugin.source.startsWith("builtin:") ||
+    plugin.source.startsWith("path:")
+  ) {
+    return false;
+  }
   return plugin.provenance === "direct" || plugin.provenance === "catalog";
 }
 

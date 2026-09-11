@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   Carousel,
   CarouselContent,
@@ -11,15 +11,18 @@ import { Icon } from "@bb/shared-ui/icon";
 import { cn } from "@bb/shared-ui/lib/utils";
 import {
   ResourceDefinitionSection,
-  ResourceListPanel,
-  ResourceRow,
-  ResourceRowDetailChevron,
+  ResourceDetailOverviewSection,
 } from "@bb/shared-ui/resource-list";
+import {
+  PluginDetailFieldRow,
+  PluginDetailTable,
+} from "@/components/tools/plugin-detail-table";
 import type { PluginCatalogSearchEntry } from "@/hooks/queries/plugin-catalog-queries";
 import { PluginOverviewMarkdown } from "@/components/plugin/management/PluginOverviewMarkdown";
 import { CatalogEntryIconChip, PluginCategoryLabel } from "./plugin-ui";
 import { PluginAuthorAvatar } from "./PluginAuthorAvatar";
 import { PluginAuthorLink } from "./PluginAuthorLink";
+import { PluginCard, PluginCardAuthor } from "./PluginCard";
 import {
   entriesByMarketplaceAuthor,
   pluginAuthorGithub,
@@ -67,52 +70,53 @@ export function PluginMarketplaceCategoryPill({
   );
 }
 
-function PluginMarketplaceDetail({
-  label,
-  children,
-}: {
-  label: string;
-  children: ReactNode;
-}) {
-  return (
-    <div className="min-w-0 space-y-1">
-      <dt className="text-2xs font-medium text-subtle-foreground">{label}</dt>
-      <dd className="min-w-0 text-xs text-muted-foreground">{children}</dd>
-    </div>
-  );
-}
-
-function PluginMarketplaceDetails({
+export function PluginMarketplaceDetailRows({
   entry,
 }: {
   entry: PluginCatalogSearchEntry;
 }) {
   return (
-    <ResourceDefinitionSection label="Details">
-      <dl className="grid gap-x-6 gap-y-4 sm:grid-cols-2">
-        {entry.publishedAt === undefined ? null : (
-          <PluginMarketplaceDetail label="Listed">
-            <time dateTime={entry.publishedAt}>
-              {new Date(entry.publishedAt).toLocaleDateString(undefined, {
-                month: "short",
-                day: "numeric",
-                year: "numeric",
-              })}
-            </time>
-          </PluginMarketplaceDetail>
-        )}
-        <PluginMarketplaceDetail label="Marketplace">
-          {entry.marketplaceDisplayName}
-        </PluginMarketplaceDetail>
-      </dl>
-    </ResourceDefinitionSection>
+    <>
+      {entry.category === undefined ? null : (
+        <PluginDetailFieldRow label="Category">
+          <span className="flex min-w-0 justify-end">
+            <PluginMarketplaceCategoryPill entry={entry} />
+          </span>
+        </PluginDetailFieldRow>
+      )}
+      {entry.publishedAt === undefined ? null : (
+        <PluginDetailFieldRow label="Listed">
+          <time dateTime={entry.publishedAt}>
+            {new Date(entry.publishedAt).toLocaleDateString(undefined, {
+              month: "short",
+              day: "numeric",
+              year: "numeric",
+            })}
+          </time>
+        </PluginDetailFieldRow>
+      )}
+      {entry.updatedAt === undefined ? null : (
+        <PluginDetailFieldRow label="Last updated">
+          <time dateTime={entry.updatedAt}>
+            {new Date(entry.updatedAt).toLocaleDateString(undefined, {
+              month: "short",
+              day: "numeric",
+              year: "numeric",
+            })}
+          </time>
+        </PluginDetailFieldRow>
+      )}
+      <PluginDetailFieldRow label="Marketplace">
+        {entry.marketplaceDisplayName}
+      </PluginDetailFieldRow>
+    </>
   );
 }
 
-function PluginMarketplaceSource({
+export function PluginMarketplaceSource({
   entry,
 }: {
-  entry: PluginCatalogSearchEntry;
+  entry: Pick<PluginCatalogSearchEntry, "repositoryUrl">;
 }) {
   if (entry.repositoryUrl === null) return null;
   return (
@@ -123,6 +127,13 @@ function PluginMarketplaceSource({
         rel="noreferrer"
         className="inline-flex max-w-full items-center gap-1.5 rounded-sm text-sm text-muted-foreground underline underline-offset-2 hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
       >
+        {entry.repositoryUrl.startsWith("https://github.com/") ? (
+          <Icon
+            name="GithubFilled"
+            className="size-4.5 shrink-0 fill-current [&_*]:stroke-0"
+            aria-hidden
+          />
+        ) : null}
         <span className="truncate">
           {repositoryLinkLabel(entry.repositoryUrl)}
         </span>
@@ -138,7 +149,7 @@ const SCREENSHOT_ROW_HEIGHT = 420;
 function PluginScreenshotGallery({
   entry,
 }: {
-  entry: PluginCatalogSearchEntry;
+  entry: Pick<PluginCatalogSearchEntry, "screenshots" | "displayName">;
 }) {
   const [api, setApi] = useState<CarouselApi>();
   const [selectedIndex, setSelectedIndex] = useState(0);
@@ -162,21 +173,17 @@ function PluginScreenshotGallery({
         aria-label={`${entry.displayName} screenshots`}
         className={cn("w-full", entry.screenshots.length > 1 && "px-11")}
       >
-        <CarouselContent
-          className="-ml-3 items-center"
-          style={{ minHeight: `${SCREENSHOT_ROW_HEIGHT}px` }}
-        >
+        <CarouselContent className="-ml-3 items-center">
           {entry.screenshots.map((screenshot, index) => (
-            <CarouselItem key={screenshot} className="basis-auto pl-3">
+            <CarouselItem key={screenshot} className="min-w-0 basis-full pl-3">
               <img
                 src={screenshot}
                 alt={`${entry.displayName} screenshot ${index + 1}`}
                 referrerPolicy="no-referrer"
                 loading="lazy"
-                className="h-auto w-auto rounded-md border border-border object-contain"
+                className="mx-auto h-auto w-full rounded-md border border-border object-contain"
                 style={{
                   maxHeight: `${SCREENSHOT_ROW_HEIGHT}px`,
-                  maxWidth: `${SCREENSHOT_ROW_HEIGHT * 2}px`,
                 }}
               />
             </CarouselItem>
@@ -215,34 +222,39 @@ function PluginScreenshotGallery({
 
 export function PluginOverviewLead({ description }: { description: string }) {
   return (
-    <p
-      className="max-w-prose text-base leading-relaxed text-foreground"
-      data-plugin-summary=""
-    >
-      {description}
-    </p>
+    <ResourceDetailOverviewSection label="About">
+      <p
+        className="max-w-prose text-sm leading-relaxed text-muted-foreground"
+        data-plugin-summary=""
+      >
+        {description}
+      </p>
+    </ResourceDetailOverviewSection>
   );
 }
 
-function PluginMarketplaceOverview({
+export function PluginMarketplaceOverview({
   entry,
 }: {
-  entry: PluginCatalogSearchEntry;
+  entry: Pick<
+    PluginCatalogSearchEntry,
+    "screenshots" | "description" | "overview" | "displayName"
+  >;
 }) {
   return (
-    <section className="space-y-6" data-resource-detail-section="overview">
-      <PluginScreenshotGallery entry={entry} />
-      <div className="space-y-3">
-        <PluginOverviewLead description={entry.description} />
-        {entry.overview === undefined ? null : (
-          <>
-            <hr className="border-t border-border" />
-            <h2 className="text-sm font-medium text-foreground">Overview</h2>
-            <PluginOverviewMarkdown markdown={entry.overview} />
-          </>
-        )}
-      </div>
-    </section>
+    <>
+      {entry.screenshots.length === 0 ? null : (
+        <section className="space-y-3" data-resource-detail-section="overview">
+          <PluginScreenshotGallery entry={entry} />
+        </section>
+      )}
+      <PluginOverviewLead description={entry.description} />
+      {entry.overview === undefined ? null : (
+        <ResourceDetailOverviewSection label="Overview">
+          <PluginOverviewMarkdown markdown={entry.overview} />
+        </ResourceDetailOverviewSection>
+      )}
+    </>
   );
 }
 
@@ -255,7 +267,11 @@ export function PluginMarketplaceListingSections({
     <>
       <PluginMarketplaceOverview entry={entry} />
       <PluginMarketplaceSource entry={entry} />
-      <PluginMarketplaceDetails entry={entry} />
+      <ResourceDefinitionSection label="Details">
+        <PluginDetailTable>
+          <PluginMarketplaceDetailRows entry={entry} />
+        </PluginDetailTable>
+      </ResourceDefinitionSection>
     </>
   );
 }
@@ -292,19 +308,21 @@ export function PluginMoreFromAuthorSection({
   if (moreEntries.length === 0) return null;
   return (
     <ResourceDefinitionSection label="More from this author">
-      <ResourceListPanel className="py-0">
+      <div className="grid grid-cols-[repeat(auto-fit,minmax(min(100%,16rem),1fr))] gap-3">
         {moreEntries.map((candidate) => (
-          <ResourceRow
+          <PluginCard
             key={`${candidate.marketplace}/${candidate.entryId}`}
             leading={<CatalogEntryIconChip entry={candidate} />}
             title={candidate.displayName}
-            description={candidate.description || undefined}
-            trailingVisual={<ResourceRowDetailChevron />}
+            description={candidate.description}
+            byline={<PluginCardAuthor entry={candidate} />}
+            footerMeta={<PluginMarketplaceCategoryPill entry={candidate} />}
+            headerAction={null}
             openLabel={`Open ${candidate.displayName} details`}
             onOpen={() => onOpenPlugin(candidate.pluginId)}
           />
         ))}
-      </ResourceListPanel>
+      </div>
     </ResourceDefinitionSection>
   );
 }

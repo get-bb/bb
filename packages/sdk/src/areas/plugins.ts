@@ -43,6 +43,10 @@ import {
 } from "@bb/server-contract";
 import { z } from "zod";
 import type { CreateSdkAreaArgs } from "./common.js";
+import {
+  createPluginListingsArea,
+  type PluginListingsArea,
+} from "./plugin-listings.js";
 
 /**
  * A server older than `providerIds` (bb-app < 0.39) or `icons` answers with
@@ -218,6 +222,7 @@ export interface PluginMarketplacesArea {
 }
 
 export interface PluginsArea {
+  listings: PluginListingsArea;
   applyUpdate(args: PluginIdArgs): Promise<PluginApplyUpdateResult>;
   callRpc<TOutput>(args: PluginRpcArgs<TOutput>): Promise<TOutput>;
   checkUpdates(
@@ -368,6 +373,7 @@ export function createPluginsArea(args: CreateSdkAreaArgs): PluginsArea {
   };
 
   return {
+    listings: createPluginListingsArea(args),
     async applyUpdate(input) {
       const body = pluginApplyUpdateRequestSchema.parse({});
       return requestParsed(

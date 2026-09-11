@@ -6,6 +6,21 @@
   it with services, schedules, HTTP/RPC endpoints, settings — and `bb` CLI
   subcommands that agents run through bash like any other command.
 - Use `bb plugin list` to inspect installed plugins and their current state.
+- Authored plugins share Installed plugins with installed runtimes. A local
+  path installation alone does not establish authorship. Use
+  `bb plugin listing draft <id> --file entries/<id>.json` only for a plugin
+  the user authors; it explicitly registers or updates its validated v2 entry
+  without requiring an installed runtime. `bb plugin listing list --json`
+  returns these records and unread publication notices. Drafts persist across
+  restarts. Saving a changed entry while in review retains its current PR.
+  `bb plugin listing record-submission <id> <pull-request-url>` verifies an
+  existing get-bb/marketplace PR against that entry and records it. It never
+  opens a PR. Repeating the same request is safe. Catalog refresh reconciles
+  merged PRs after the accepted source appears in the catalog; a closed,
+  unmerged PR returns the entry to draft. Acknowledging with
+  `bb plugin listing consume-notice <notice-id>` consumes a notice once.
+  The SDK equivalents are `sdk.plugins.listings.list()`, `saveDraft()`,
+  `recordSubmission()`, and `consumeNotice()` from `@bb/sdk`.
 - **BB plugin catalog** (store under `/api/v1/plugin-catalog`):
   - The reserved **BB Official marketplace** has the name `bb-official`. It
     describes all plugins in the app bundle with a generated v2 document.
