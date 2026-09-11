@@ -74,6 +74,7 @@ const PLUGIN_SETTINGS_VIEW_QUERY_KEY = "plugin-settings-view";
 const PLUGIN_CONTRIBUTIONS_QUERY_KEY = "plugin-contributions";
 const PLUGIN_SDK_SETTINGS_QUERY_KEY = "plugin-settings";
 const PLUGIN_SOURCE_QUERY_KEY = "plugin-source";
+const PLUGIN_UPDATE_CHECK_QUERY_KEY = "plugin-update-check";
 const PLUGIN_CATALOG_SEARCH_QUERY_KEY = "plugin-catalog-search";
 const PLUGIN_CATALOG_INSTALL_PLAN_QUERY_KEY = "plugin-catalog-install-plan";
 const PLUGIN_MARKETPLACES_QUERY_KEY = "plugin-marketplaces";
@@ -1212,6 +1213,10 @@ export function allPluginSettingsQueryKeyPrefix() {
 
 export function pluginSourceQueryKey(pluginId: string) {
   return [PLUGIN_SOURCE_QUERY_KEY, pluginId] as const;
+}
+
+export function pluginUpdateCheckQueryKey(pluginId: string) {
+  return [PLUGIN_UPDATE_CHECK_QUERY_KEY, pluginId] as const;
 }
 
 export function allPluginSourceQueryKeyPrefix() {

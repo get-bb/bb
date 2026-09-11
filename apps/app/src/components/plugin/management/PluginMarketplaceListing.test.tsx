@@ -78,6 +78,13 @@ describe("plugin marketplace author links", () => {
     expect(
       screen.getByText("Marketplace").parentElement?.textContent,
     ).toContain("BB Community");
+    const grid = screen.getByText("Marketplace").closest("dl");
+    expect(
+      Array.from(
+        grid?.querySelectorAll("dt") ?? [],
+        (label) => label.textContent,
+      ),
+    ).toEqual(["Marketplace", "Category", "Listed", "Last updated"]);
   });
 
   it("does not create an empty Overview for a description-only plugin", () => {

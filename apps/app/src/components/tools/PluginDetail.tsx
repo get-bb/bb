@@ -22,7 +22,6 @@ import { formatHomePathForDisplay } from "@bb/shared-ui/lib/utils";
 import { Icon } from "@bb/shared-ui/icon";
 import { useNavigate } from "react-router-dom";
 import { getPluginConfigurationRoutePath } from "@/lib/route-paths";
-import { CheckPluginUpdatesButton } from "@/components/plugin/management/CheckPluginUpdatesButton";
 import {
   PluginDetailReleaseControl,
   PluginDetailReleaseStatus,
@@ -57,6 +56,7 @@ import { PluginBannerBar } from "@/components/tools/plugin-detail-banner";
 import { ProvenancePill } from "@/components/tools/ProvenancePill";
 import {
   usePluginSource,
+  usePluginUpdateCheck,
   type PluginCatalogSearchEntry,
 } from "@/hooks/queries/plugin-catalog-queries";
 import type { PluginListItem } from "@/hooks/queries/plugin-settings-queries";
@@ -300,6 +300,9 @@ export function PluginDetail({
   const sourceQuery = usePluginSource(plugin?.id ?? "", {
     enabled: plugin !== null && !plugin.source.startsWith("builtin:"),
   });
+  const updateCheck = usePluginUpdateCheck(plugin?.id ?? "", {
+    enabled: plugin !== null && pluginHasUpdateSurfaces(plugin),
+  });
   if (isLoading) {
     return (
       <ResourceListState
@@ -332,33 +335,43 @@ export function PluginDetail({
       ? formatAbsoluteDate(installedAt)
       : sourceQuery.isPending
         ? "Loading…"
-        : "Install date unavailable";
+        : sourceQuery.isError
+          ? "Couldn’t load date"
+          : "Install date unavailable";
   const hasReleaseControl =
     hasUpdateManagement && plugin.updateState.availableVersion !== null;
   const hasReleaseUpdate =
     hasUpdateManagement &&
     (plugin.updateState.availableVersion !== null ||
       plugin.updateState.blockedVersion !== null ||
-      plugin.updateState.lastFailure !== null);
+      plugin.updateState.lastFailure !== null ||
+      (plugin.updateState.outcome === "unavailable" &&
+        plugin.updateState.detail !== null));
   const hasConfiguration =
     plugin.hasSettings ||
     settingsSections.some((section) => section.pluginId === plugin.id);
 
   const installationMetadata = (
     <>
+      <PluginDetailMetadataItem label="Version">
+        <span className="font-mono">{plugin.version}</span>
+      </PluginDetailMetadataItem>
       <PluginDetailMetadataItem
         label={updatesWithBb ? "Delivery" : "Installed"}
       >
         {installedValue}
+        {!updatesWithBb && installedAt === null && sourceQuery.isError ? (
+          <button
+            type="button"
+            aria-label="Retry install date"
+            disabled={sourceQuery.isFetching}
+            onClick={() => void sourceQuery.refetch()}
+            className="ml-2 rounded-sm text-xs text-muted-foreground underline underline-offset-2 hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+          >
+            Retry
+          </button>
+        ) : null}
       </PluginDetailMetadataItem>
-      <PluginDetailMetadataItem label="Version">
-        <span className="font-mono">{plugin.version}</span>
-      </PluginDetailMetadataItem>
-      {hasReleaseUpdate ? (
-        <PluginDetailMetadataItem label="Update" className="col-span-2">
-          <PluginDetailReleaseStatus plugin={plugin} />
-        </PluginDetailMetadataItem>
-      ) : null}
     </>
   );
   const pluginName = plugin.name ?? plugin.id;
@@ -454,11 +467,6 @@ export function PluginDetail({
           actions={
             hasReleaseControl ? (
               <PluginDetailReleaseControl plugin={plugin} />
-            ) : hasUpdateManagement ? (
-              <CheckPluginUpdatesButton
-                pluginId={plugin.id}
-                appearance="inline"
-              />
             ) : undefined
           }
         >
@@ -471,6 +479,28 @@ export function PluginDetail({
               </PluginMarketplaceDetailMetadata>
             )}
           </PluginDetailMetadata>
+          {hasReleaseUpdate ? (
+            <div className="space-y-1">
+              <p className="text-2xs font-medium text-subtle-foreground">
+                Update
+              </p>
+              <PluginDetailReleaseStatus plugin={plugin} />
+            </div>
+          ) : null}
+          {updateCheck.isError ? (
+            <p role="status" className="text-xs text-muted-foreground">
+              Couldn’t check for updates.
+              <button
+                type="button"
+                aria-label="Retry update check"
+                disabled={updateCheck.isFetching}
+                onClick={() => void updateCheck.refetch()}
+                className="ml-2 rounded-sm underline underline-offset-2 hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+              >
+                Retry
+              </button>
+            </p>
+          ) : null}
         </ResourceDetailReleaseSection>
         {plugin.services.length > 0 ? (
           <ResourceActivitySection label="Background services">

@@ -76,8 +76,21 @@ export function PluginMarketplaceDetailMetadata({
 }) {
   return (
     <>
-      {entry.publishedAt === undefined ? null : (
-        <PluginDetailMetadataItem label="Listed">
+      {children}
+      <PluginDetailMetadataItem label="Marketplace">
+        {entry.marketplaceDisplayName}
+      </PluginDetailMetadataItem>
+      <PluginDetailMetadataItem label="Category">
+        {entry.category === undefined ? (
+          "Not categorized"
+        ) : (
+          <PluginMarketplaceCategoryPill entry={entry} />
+        )}
+      </PluginDetailMetadataItem>
+      <PluginDetailMetadataItem label="Listed">
+        {entry.publishedAt === undefined ? (
+          "Not provided"
+        ) : (
           <time dateTime={entry.publishedAt}>
             {new Date(entry.publishedAt).toLocaleDateString(undefined, {
               month: "short",
@@ -85,10 +98,12 @@ export function PluginMarketplaceDetailMetadata({
               year: "numeric",
             })}
           </time>
-        </PluginDetailMetadataItem>
-      )}
-      {entry.updatedAt === undefined ? null : (
-        <PluginDetailMetadataItem label="Last updated">
+        )}
+      </PluginDetailMetadataItem>
+      <PluginDetailMetadataItem label="Last updated">
+        {entry.updatedAt === undefined ? (
+          "Not provided"
+        ) : (
           <time dateTime={entry.updatedAt}>
             {new Date(entry.updatedAt).toLocaleDateString(undefined, {
               month: "short",
@@ -96,22 +111,8 @@ export function PluginMarketplaceDetailMetadata({
               year: "numeric",
             })}
           </time>
-        </PluginDetailMetadataItem>
-      )}
-      <PluginDetailMetadataItem label="Marketplace">
-        {entry.marketplaceDisplayName}
+        )}
       </PluginDetailMetadataItem>
-      {children}
-      {entry.category === undefined ? null : (
-        <PluginDetailMetadataItem
-          label="Category"
-          className="col-start-2 text-right"
-        >
-          <span className="flex min-w-0 justify-end">
-            <PluginMarketplaceCategoryPill entry={entry} />
-          </span>
-        </PluginDetailMetadataItem>
-      )}
     </>
   );
 }

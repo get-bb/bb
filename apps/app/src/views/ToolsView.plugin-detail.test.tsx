@@ -217,7 +217,7 @@ describe("PluginDetail official catalog lifecycle", () => {
     expect(screenshot.getAttribute("referrerpolicy")).toBe("no-referrer");
     expect(screenshot.getAttribute("loading")).toBe("lazy");
     expect(screen.getByText("Listed")).toBeTruthy();
-    expect(container.textContent).not.toContain("Last updated");
+    expect(container.textContent).toContain("Last updatedNot provided");
   });
 
   it("explains why an incompatible official plugin cannot be installed", () => {
@@ -384,11 +384,12 @@ describe("PluginDetail official catalog lifecycle", () => {
     expect(path).toBeNull();
     expect(version.closest("dl")).not.toBeNull();
     expect(update.closest("dl")).toBeNull();
-    const updateLabel = screen.getByText("Update", { selector: "dt" });
+    const updateLabel = screen.getByText("Update", { selector: "p" });
     const updateRow = updateLabel.parentElement;
     expect(updateRow).not.toBeNull();
     if (updateRow === null) return;
-    const updateDetails = updateRow.querySelector("dd");
+    const updateDetails = updateRow.querySelector('[role="status"]');
+    expect(updateRow.closest("dl")).toBeNull();
     expect(updateRow?.textContent).toContain("1.5.0");
     expect(updateRow?.textContent).toContain("Available");
     expect(updateRow?.contains(update)).toBe(false);
