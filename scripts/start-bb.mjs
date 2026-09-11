@@ -133,16 +133,21 @@ export async function prepareRuntime() {
 }
 
 export async function main(args = process.argv.slice(2)) {
-  const action = args[0] === "prepare" ? args.shift() : "start";
-  if (action === "prepare" && args.length !== 0) {
-    throw new Error("Preparation accepts no runtime arguments");
-  }
-  const parsedArgs = parseStartBbArgs(args);
+  const dryRun = args.includes("--dryrun");
+  const parsedArgs = parseStartBbArgs(args.filter((arg) => arg !== "--dryrun"));
   await prepareRuntime();
-  if (action === "prepare") return;
+  if (
+    parsedArgs.cliArgs.includes("--help") ||
+    parsedArgs.cliArgs.includes("-h")
+  ) {
+    process.stdout.write(
+      "Source startup: --dryrun prepares artifacts and prints resolved paths/ports without starting services. It writes build outputs and may repair native modules.\n\n",
+    );
+  }
   const { resolveWorktreeRuntimePolicy, runBbApp } =
     await import("../packages/bb-app/src/launcher.ts");
   await runBbApp(parsedArgs.cliArgs, {
+    dryRun,
     beforeServerStart: () => runNativeModulePreflight({ checkOnly: true }),
     worktreePolicy: parsedArgs.useWorktreeRuntimePolicy
       ? resolveWorktreeRuntimePolicy({

@@ -465,7 +465,7 @@ it("validates a broken native binding without installing, rebuilding, or detachi
         createRequire,
         execFileSync: run,
       }),
-    ).toThrow("Run pnpm prepare:start");
+    ).toThrow("Run pnpm start --dryrun");
     expect(run).not.toHaveBeenCalled();
     expect(statSync(binary).ino).toBe(before.ino);
     expect(statSync(binary).nlink).toBe(before.nlink);

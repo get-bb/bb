@@ -341,12 +341,13 @@ artifacts from cache. Native modules are checked and repaired when necessary.
 Worktree startup retains stable checkout-specific data, ports, telemetry, and
 runtime policy.
 
-Optionally run `pnpm prepare:start` ahead of time to warm the build cache without
-starting services. It uses the production dotenv cascade to match `pnpm start`.
-Use `pnpm prepare:start --worktree` to match `pnpm start:worktree`'s development
-dotenv cascade; both build production artifacts. Install dependencies with
-`pnpm install --frozen-lockfile` beforehand when needed. There is no separate
-launch mode: use the same normal start command afterward.
+Use `pnpm start --dryrun` or `pnpm start:worktree --dryrun` ahead of startup.
+The same command selects its normal dotenv settings and runtime policy, prepares
+artifacts through Turbo, prints resolved ports, bind host, data/config/log paths
+and runtime entrypoints as JSON, then exits. It does not launch services, migrate
+instance data or require ports to be free. Dry runs still write build outputs and
+may repair native modules. Install dependencies with
+`pnpm install --frozen-lockfile` beforehand when needed.
 
 Build tasks clean their own outputs when they run. Startup does not clear output
 directories before invoking Turbo. Cache hits use Turbo's normal restoration
@@ -365,8 +366,7 @@ the serving checkout changes the default instance data and ports; do not move it
 
 The repo-level programmatic entry point is `prepareRuntime()` in
 `scripts/start-bb.mjs`. This is a source-maintenance helper, not a new
-installed `bb` command or public plugin SDK API. The source launcher also accepts
-`prepare` (no runtime arguments) for the preparation helper.
+installed `bb` command or public plugin SDK API. The source launcher accepts `--dryrun` for preparation and configuration preview.
 `pnpm start` keeps its existing production dotenv and packaged runtime policy.
 
 Turbo output ownership is separate: server `build` owns `apps/server/dist`,

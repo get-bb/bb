@@ -91,13 +91,11 @@ available through their own sources.
 
 ## BB source runtime preparation
 
-In the BB repository, `pnpm prepare:start` optionally prepares ahead of
-`pnpm start`; use `pnpm prepare:start --worktree` ahead of `pnpm start:worktree`
-to match its development dotenv configuration. Both start commands always run
-Turbo preparation, restoring cached artifacts and rebuilding tasks whose inputs
-changed. Native modules are checked and repaired when necessary. Worktree
-startup retains checkout-specific data/ports and runtime policy. Install
-dependencies before preparation when needed.
+In the BB repository, add `--dryrun` to `pnpm start` or `pnpm start:worktree`
+to run Turbo preparation, print resolved paths/ports and exit. The dry run uses
+the same dotenv settings and runtime policy as normal startup. It does not start
+services, migrate instance data or require ports to be free, but still writes
+build outputs and may repair native modules. Install dependencies beforehand.
 Preparation writes the checkout's build outputs; use a separate staging checkout
 to warm Turbo while a live instance serves its existing files, then prepare the
 stable serving checkout before launch. See `docs/debugging-and-qa.md` and

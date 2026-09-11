@@ -48,7 +48,7 @@ export function createDevTurboCommand(): DevCommand {
   };
 }
 
-export function createStartWorktreeCommand(): DevCommand {
+export function createStartWorktreeCommand(dryRun = false): DevCommand {
   return {
     args: [
       "--conditions=source",
@@ -56,6 +56,7 @@ export function createStartWorktreeCommand(): DevCommand {
       "tsx",
       resolve(repoRoot, "scripts", "start-bb.mjs"),
       "--worktree-runtime-policy",
+      ...(dryRun ? ["--dryrun"] : []),
     ],
     command: process.execPath,
   };
@@ -152,24 +153,32 @@ async function resolveExistingRepoRoot(): Promise<string> {
 
 async function main(): Promise<void> {
   const args = process.argv.slice(2);
-  const mode = resolveDevLaunchMode(args);
-  const resolvedRepoRoot = await resolveExistingRepoRoot();
-  const config = resolveCurrentDevInstanceConfig(resolvedRepoRoot);
-  const migration = await migrateLegacyDevData({
-    config,
-    output: process.stdout,
-  });
-  if (migration.skippedReason === "legacy-dev-process-running") {
+  const dryRun = args.includes("--dryrun");
+  const mode = resolveDevLaunchMode(args.filter((arg) => arg !== "--dryrun"));
+  if (dryRun && mode !== "worktree") {
     throw new Error(
-      "[dev] Legacy ~/.bb-dev data was found, but an old dev server or host-daemon is still running. Stop the old dev process and rerun pnpm dev to migrate it.",
+      "--dryrun is supported by pnpm start and pnpm start:worktree.",
     );
   }
-  await assertPortsAvailable(config, mode);
-  process.stdout.write(`${formatConfig(config, mode)}\n`);
+  const resolvedRepoRoot = await resolveExistingRepoRoot();
+  const config = resolveCurrentDevInstanceConfig(resolvedRepoRoot);
+  if (!dryRun) {
+    const migration = await migrateLegacyDevData({
+      config,
+      output: process.stdout,
+    });
+    if (migration.skippedReason === "legacy-dev-process-running") {
+      throw new Error(
+        "[dev] Legacy ~/.bb-dev data was found, but an old dev server or host-daemon is still running. Stop the old dev process and rerun pnpm dev to migrate it.",
+      );
+    }
+    await assertPortsAvailable(config, mode);
+    process.stdout.write(`${formatConfig(config, mode)}\n`);
+  }
 
   const command =
     mode === "worktree"
-      ? createStartWorktreeCommand()
+      ? createStartWorktreeCommand(dryRun)
       : createDevTurboCommand();
   process.exitCode = await runScriptProcess({
     args: command.args,
