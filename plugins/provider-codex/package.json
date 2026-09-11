@@ -5,7 +5,8 @@
   "type": "module",
   "description": "Run bb threads with Codex.",
   "engines": {
-    "bb": ">=0.0"
+    "bb": ">=0.0",
+    "bbPluginSdk": ">=0.4.56"
   },
   "bb": {
     "name": "Codex provider",
