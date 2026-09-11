@@ -46,6 +46,7 @@ import {
 import { SIDEBAR_ROW_BASE_CLASS } from "@/components/sidebar/sidebarRowClasses";
 import { ThreadActionsProvider } from "@/components/thread/ThreadActionsProvider";
 import { getThreadRoutePath } from "@/lib/route-paths";
+import { getThreadDisplayTitle as threadTitle } from "@/lib/thread-title";
 import {
   makeExecutionControlsProps,
   useInteractiveExecutionControls,
@@ -61,9 +62,6 @@ import {
 } from "./WorkspaceOverview.fixtures";
 
 export default { title: "Workspaces/Draft" };
-
-const threadTitle = (thread: ThreadListEntry) =>
-  thread.title ?? thread.titleFallback;
 
 const noop = () => {};
 const executionFixture = makeExecutionControlsProps();
