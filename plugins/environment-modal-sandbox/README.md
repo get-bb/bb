@@ -33,12 +33,13 @@ and `sdk.plugins.callRpc`. They return `{dockerfile, customized}`. Definitions
 are limited to 65,536 characters. Editing needs no Modal credentials.
 
 The plugin ships a [Dockerfile](Dockerfile) with Debian, Node, Git/GitHub CLI,
-build tools, Python, ripgrep, jq, pnpm, Pi, Codex and Claude Code. It contains no BB
-daemon, project files, enrollment state or credentials. The image is named by the
-Dockerfile's SHA-256 and reused within the Modal account. The first launch builds
-and publishes it automatically; later launches reuse it. Changing the Dockerfile
-creates a new image version for future machines. Modal also caches build layers.
-There is no project recipe, uploaded context, smoke-test gate or image promotion.
+build tools, Python, bubblewrap, ripgrep, jq, pnpm, Pi, Codex and Claude Code. It
+contains no BB daemon, project files, enrollment state or credentials. The image
+is named by the Dockerfile's SHA-256 and reused within the Modal account. The
+first launch builds and publishes it automatically; later launches reuse it.
+Changing the Dockerfile creates a new image version for future machines. Modal
+also caches build layers. There is no project recipe, uploaded context,
+smoke-test gate or image promotion.
 
 Machine creation reports image preparation and allocation progress. Build failures
 surface on the machine launch and may be retried. Cancelling a launch prevents

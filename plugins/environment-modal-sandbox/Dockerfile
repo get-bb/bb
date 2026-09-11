@@ -4,6 +4,7 @@ FROM node:22.19.0-bookworm-slim@sha256:4a4884e8a44826194dff92ba316264f392056cbe2
 # Git/GitHub access, HTTP and JSON tools, fast search, and native build support.
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \
+        bubblewrap \
         ca-certificates \
         curl \
         git \
