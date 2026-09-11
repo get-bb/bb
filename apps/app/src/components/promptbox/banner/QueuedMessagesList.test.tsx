@@ -443,7 +443,7 @@ describe("QueuedMessagesList", () => {
     ).toBe("collapsed");
   });
 
-  it("uses labeled hover-revealed icon actions on desktop and an overflow menu on mobile widths", async () => {
+  it("uses labeled inline icon actions with tooltips", async () => {
     const { container, findByRole, getByRole, queryByRole } =
       renderQueuedMessages([
         makeQueuedMessage("q_one", "First queued message"),
@@ -486,6 +486,87 @@ describe("QueuedMessagesList", () => {
         expect(queryByRole("tooltip")).toBeNull();
       });
     }
+  });
+
+  it("expands one row's actions inline and resets them outside the queue", () => {
+    const { getByRole, getByText, queryByRole } = renderQueuedMessages([
+      makeQueuedMessage("q_one", "First queued message"),
+      makeQueuedMessage("q_two", "Second queued message"),
+    ]);
+    const firstActions = getByRole("button", {
+      name: "Queued message 1 actions",
+    });
+    const secondActions = getByRole("button", {
+      name: "Queued message 2 actions",
+    });
+
+    fireEvent.click(firstActions);
+    expect(firstActions.getAttribute("aria-expanded")).toBe("true");
+    expect(queryByRole("menu")).toBeNull();
+    expect(queryByRole("dialog")).toBeNull();
+
+    fireEvent.pointerDown(getByText("Second queued message"));
+    expect(firstActions.getAttribute("aria-expanded")).toBe("true");
+    fireEvent.click(secondActions);
+    expect(firstActions.getAttribute("aria-expanded")).toBe("false");
+    expect(secondActions.getAttribute("aria-expanded")).toBe("true");
+
+    fireEvent.pointerDown(document.body);
+    expect(secondActions.getAttribute("aria-expanded")).toBe("false");
+
+    fireEvent.click(firstActions);
+    fireEvent.click(getByRole("button", { name: "Collapse queued messages" }));
+    fireEvent.click(getByRole("button", { name: "Show queued messages" }));
+    expect(firstActions.getAttribute("aria-expanded")).toBe("false");
+  });
+
+  it.each([
+    { sendDisabled: false, expectedAction: "Send queued message 1 now" },
+    { sendDisabled: true, expectedAction: "Edit queued message 1" },
+  ])(
+    "focuses $expectedAction after keyboard expansion",
+    ({ sendDisabled, expectedAction }) => {
+      const { getByRole } = render(
+        <QueuedMessagesList
+          queuedMessages={[makeQueuedMessage("q_one", "First queued message")]}
+          sendDisabled={sendDisabled}
+          actionDisabled={false}
+          processingMessageId={null}
+          processingAction={null}
+          onSend={noop}
+          onReorder={noop}
+          onSetGroupBoundary={noop}
+          onEdit={noop}
+          onDelete={noop}
+        />,
+      );
+      const trigger = getByRole("button", {
+        name: "Queued message 1 actions",
+      });
+
+      focusWithKeyboard(trigger);
+      fireEvent.click(trigger, { detail: 0 });
+
+      expect(document.activeElement).toBe(
+        getByRole("button", { name: expectedAction }),
+      );
+    },
+  );
+
+  it("does not move focus into actions after pointer expansion", () => {
+    const { getByRole } = renderQueuedMessages([
+      makeQueuedMessage("q_one", "First queued message"),
+    ]);
+    const reorderButton = getByRole("button", {
+      name: "Reorder queued message 1",
+    });
+    focusWithKeyboard(reorderButton);
+
+    fireEvent.click(getByRole("button", { name: "Queued message 1 actions" }), {
+      detail: 1,
+    });
+
+    expect(document.activeElement).toBe(reorderButton);
   });
 
   it("replaces the edited row with the real inline composer", () => {
