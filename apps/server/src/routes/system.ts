@@ -469,15 +469,11 @@ export function registerSystemRoutes(
                         id: composition.id,
                         displayName: composition.displayName,
                         description: composition.description,
-                        icon: composition.icon ?? machine.provider.icon,
+                        icon: composition.icon ?? "FolderUnknown",
                         logoUrl:
-                          composition.icon === null
-                            ? machine.icon === undefined
-                              ? null
-                              : `/api/v1/system/providers/${encodeURIComponent("machine:" + machine.provider.id)}/logo?h=${machine.icon.hash}`
-                            : icon === undefined
-                              ? null
-                              : `/api/v1/system/providers/${encodeURIComponent("environment:" + composition.id)}/logo?h=${icon.hash}`,
+                          icon === undefined
+                            ? null
+                            : `/api/v1/system/providers/${encodeURIComponent("environment:" + composition.id)}/logo?h=${icon.hash}`,
                         pluginId,
                         machineProviderId: composition.machineProviderId,
                         environmentProviderId:

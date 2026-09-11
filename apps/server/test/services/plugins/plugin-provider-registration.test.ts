@@ -244,7 +244,7 @@ describe("bb.providers.register (server)", () => {
   });
 
   it.each(["Terminal", "./icons/agent.svg"])(
-    "loads legacy environments and inherits the machine icon %s",
+    "uses the unknown-folder fallback for legacy compositions with machine icon %s",
     async (icon) => {
       await withTestHarness(async (harness) => {
         const rootDir = await writePlugin(workDir, {
@@ -288,18 +288,11 @@ describe("bb.providers.register (server)", () => {
         const composition = providers.find(
           (provider) => provider.id === "legacy-composition",
         );
-        expect(composition).toMatchObject({ description: null, icon });
-        if (icon === "Terminal") expect(composition?.logoUrl).toBeNull();
-        else {
-          expect(composition?.logoUrl).toContain(
-            "machine%3Alegacy-machine/logo?h=",
-          );
-          if (!composition?.logoUrl)
-            throw new Error("Missing inherited asset URL");
-          const logo = await harness.app.request(composition.logoUrl);
-          expect(logo.status).toBe(200);
-          expect(await logo.text()).toBe(svg);
-        }
+        expect(composition).toMatchObject({
+          description: null,
+          icon: "FolderUnknown",
+          logoUrl: null,
+        });
       });
     },
   );
