@@ -28,6 +28,23 @@ afterEach(() => {
   vi.useRealTimers();
 });
 
+it("renders recorded Markdown in notification history", async () => {
+  render(<NotificationCenter />);
+  act(() => {
+    appToast.error("**Install failed**", {
+      description: "Retry `build` or read the [docs](https://example.com/docs).",
+    });
+    openNotificationCenter();
+  });
+
+  await screen.findByTestId("notification-row");
+  expect(screen.getByText("Install failed").tagName).toBe("STRONG");
+  expect(screen.getByText("build").tagName).toBe("CODE");
+  expect(screen.getByRole("link", { name: "docs" }).getAttribute("href")).toBe(
+    "https://example.com/docs",
+  );
+});
+
 it("keeps notification details open when dismissing the toast restores composer focus", async () => {
   vi.useFakeTimers();
   vi.spyOn(HTMLElement.prototype, "scrollWidth", "get").mockReturnValue(600);

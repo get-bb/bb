@@ -12,6 +12,7 @@ import { useAppCommandHandler } from "@/components/commands/AppCommandProvider";
 import { appToast, iconForTone } from "@/components/ui/app-toast";
 import { copyTextToClipboard } from "@/lib/clipboard";
 import { formatRelativeTime } from "@/lib/relative-time";
+import { NotificationText } from "./NotificationText";
 import {
   clearNotifications,
   closeNotificationCenter,
@@ -94,11 +95,11 @@ function NotificationRow({ focused, notification, now }: NotificationRowProps) {
       </div>
       <div ref={bodyRef} className="min-w-0 flex-1">
         <div className="break-words text-sm font-medium leading-5">
-          {notification.title}
+          <NotificationText>{notification.title}</NotificationText>
         </div>
         {notification.description === null ? null : (
           <div className="mt-0.5 break-words text-xs leading-5 text-muted-foreground">
-            {notification.description}
+            <NotificationText>{notification.description}</NotificationText>
           </div>
         )}
         <div className="mt-1 text-xs leading-5 text-muted-foreground">

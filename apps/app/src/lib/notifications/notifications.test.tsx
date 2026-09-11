@@ -16,6 +16,45 @@ beforeEach(() => {
 });
 
 describe("toast history", () => {
+  it("renders Markdown in toast titles and descriptions", () => {
+    render(
+      <AppToastContent
+        title="**Install failed**"
+        description={
+          "Retry `build` or read the [docs](https://example.com/docs).\n\n- Check *dependencies*"
+        }
+        tone="error"
+      />,
+    );
+
+    expect(screen.getByText("Install failed").tagName).toBe("STRONG");
+    expect(screen.getByText("build").tagName).toBe("CODE");
+    expect(screen.getByText("dependencies").tagName).toBe("EM");
+    expect(screen.getByRole("listitem").textContent).toBe("Check dependencies");
+    expect(screen.getByRole("link", { name: "docs" }).getAttribute("href")).toBe(
+      "https://example.com/docs",
+    );
+  });
+
+  it("preserves supplied React content and does not render unsafe Markdown links or HTML", () => {
+    const onClick = vi.fn();
+    const { container } = render(
+      <AppToastContent
+        title={<button onClick={onClick}>**Retry**</button>}
+        description={
+          '[unsafe](javascript:alert%281%29) <img src="x" onerror="alert(1)">'
+        }
+        tone="error"
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "**Retry**" }));
+    expect(onClick).toHaveBeenCalledOnce();
+    expect(
+      container.querySelector("strong, img, [href^='javascript:']"),
+    ).toBeNull();
+  });
+
   it("collapses a toast that is replaced by its result into one entry", () => {
     appToast.message("Installing…", { id: "install" });
     appToast.error("Install failed", {
