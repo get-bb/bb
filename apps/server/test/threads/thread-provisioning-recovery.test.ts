@@ -102,7 +102,7 @@ describe("thread provisioning recovery", () => {
     });
   });
 
-  it("does not record a restart error while same-process workspace-ready provisioning is still live", async () => {
+  it("does not fail a live start when provisioning advances again after dispatch", async () => {
     await withTestHarness(async (harness) => {
       const { host } = seedHostSession(harness.deps, {
         id: "host-live-thread-start-recovery",
@@ -174,7 +174,7 @@ describe("thread provisioning recovery", () => {
         expect(
           listQueuedThreadCommands(harness, "thread.start", thread.id),
         ).toHaveLength(1);
-        expect(getThread(harness.db, thread.id)?.status).not.toBe("error");
+        expect(getThread(harness.db, thread.id)?.status).toBe("starting");
         expect(
           listEvents(harness.db, { threadId: thread.id }).map(
             (event) => event.type,

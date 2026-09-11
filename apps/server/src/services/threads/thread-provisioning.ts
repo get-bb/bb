@@ -368,14 +368,17 @@ async function advanceThreadProvisioningOnce(
   args: AdvanceThreadProvisioningArgs,
 ): Promise<void> {
   const thread = getThread(deps.db, args.threadId);
-  if (!thread || thread.deletedAt !== null) {
+  if (
+    !thread ||
+    thread.deletedAt !== null ||
+    hasLiveThreadStartInFlight(thread.id)
+  ) {
     return;
   }
   if (readThreadProvisioningStage(deps.db, thread.id) === "inactive") {
     clearThreadProvisionSchedule(thread.id);
     return;
   }
-  if (hasLiveThreadStartInFlight(thread.id)) return;
   let context = loadActiveThreadProvisionContext(deps, thread.id);
   if (!context) {
     failThreadProvisioning(deps, {

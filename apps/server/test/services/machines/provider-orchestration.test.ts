@@ -4,6 +4,7 @@ import {
   createHostId,
   environments,
   getHost,
+  getEnvironment,
   hosts,
   archiveThread,
   updateHost,
@@ -363,50 +364,117 @@ describe("machine creation hosts", () => {
 });
 
 describe("machine retirement", () => {
-  it("keeps persistent machines and ephemeral machines with live threads", async () =>
+  it.each([1, 2])(
+    "retires each of %i machines only after every project and shared environment releases it",
+    async (machineCount) =>
+      withTestHarness(async (harness) => {
+        const remove = vi.fn(async () => ({ status: "removed" as const }));
+        installMachineProvider({ ephemeral: true, remove });
+        const machineIds = Array.from({ length: machineCount }, () => {
+          const id = createHostId();
+          const now = Date.now();
+          harness.db
+            .insert(hosts)
+            .values({
+              id,
+              name: id,
+              type: "ephemeral",
+              machineProviderId: "test-machine",
+              phase: "active",
+              resource: { allocation: id },
+              createdAt: now,
+              updatedAt: now,
+            })
+            .run();
+          return id;
+        });
+        const projects = ["alpha", "beta"].map(
+          (name) =>
+            seedProjectWithSource(harness.deps, {
+              hostId: machineIds[0],
+              path: `/tmp/${name}`,
+            }).project,
+        );
+        const allocations = machineIds.map((hostId) => ({
+          hostId,
+          environments: projects.flatMap((project) =>
+            ["checkout", "worktree"].map((kind) => {
+              const environment = createEnvironment(harness.db, harness.hub, {
+                projectId: project.id,
+                hostId,
+                path: `/tmp/${hostId}/${project.id}/${kind}`,
+                providerOwnsPath: false,
+                status: "ready",
+                environmentProvider: null,
+              });
+              return {
+                environment,
+                threads: Array.from({ length: 2 }, () =>
+                  seedThread(harness.deps, {
+                    projectId: project.id,
+                    environmentId: environment.id,
+                    status: "idle",
+                  }),
+                ),
+              };
+            }),
+          ),
+        }));
+        for (const allocation of allocations) {
+          updateHost(harness.db, harness.hub, allocation.hostId, {
+            launchKey: allocation.environments[0].threads[0].id,
+          });
+          const owners = allocation.environments.flatMap(
+            (entry) => entry.threads,
+          );
+          for (const [index, thread] of owners.entries()) {
+            expect(
+              requestAutomaticMachineRemoval(harness.deps, allocation.hostId),
+            ).toBe(false);
+            archiveThread(harness.db, harness.hub, thread.id);
+            expect(
+              requestAutomaticMachineRemoval(harness.deps, allocation.hostId),
+            ).toBe(index === owners.length - 1);
+          }
+          await sweepProviderMachine(harness.deps, allocation.hostId);
+          expect(getHost(harness.db, allocation.hostId)).toMatchObject({
+            phase: "destroyed",
+            teardownAttempt: 1,
+            teardownStatus: "removed",
+            resource: null,
+          });
+          for (const entry of allocation.environments) {
+            expect(
+              getEnvironment(harness.db, entry.environment.id)?.status,
+            ).toBe("destroyed");
+          }
+          for (const other of allocations.slice(
+            allocations.indexOf(allocation) + 1,
+          )) {
+            expect(getHost(harness.db, other.hostId)?.phase).toBe("active");
+            for (const entry of other.environments) {
+              expect(
+                getEnvironment(harness.db, entry.environment.id)?.status,
+              ).toBe("ready");
+            }
+          }
+        }
+        expect(remove).toHaveBeenCalledTimes(machineCount);
+      }),
+  );
+
+  it("keeps a persistent machine with no threads", async () =>
     withTestHarness(async (harness) => {
-      installMachineProvider({ ephemeral: true });
-      const ephemeralId = createHostId();
-      const now = Date.now();
-      harness.db
-        .insert(hosts)
-        .values({
-          id: ephemeralId,
-          name: "Ephemeral machine",
-          type: "ephemeral",
-          machineProviderId: "test-machine",
-          phase: "active",
-          resource: { allocation: "one" },
-          createdAt: now,
-          updatedAt: now,
-        })
-        .run();
-      const { project } = seedProjectWithSource(harness.deps, {
-        hostId: ephemeralId,
-        path: "/tmp/ephemeral",
-      });
-      const environment = createEnvironment(harness.db, harness.hub, {
-        projectId: project.id,
-        hostId: ephemeralId,
-        path: "/tmp/ephemeral",
-        providerOwnsPath: false,
-        status: "ready",
-        environmentProvider: null,
-      });
-      seedThread(harness.deps, {
-        projectId: project.id,
-        environmentId: environment.id,
-        status: "idle",
-      });
-      expect(requestAutomaticMachineRemoval(harness.deps, ephemeralId)).toBe(
-        false,
-      );
-      updateHost(harness.db, harness.hub, ephemeralId, {
+      installMachineProvider();
+      const { host } = seedHostSession(harness.deps);
+      updateHost(harness.db, harness.hub, host.id, {
+        machineProviderId: "test-machine",
         type: "persistent",
+        phase: "active",
+        resource: { allocation: "persistent" },
       });
-      expect(requestAutomaticMachineRemoval(harness.deps, ephemeralId)).toBe(
-        false,
-      );
+      expect(requestAutomaticMachineRemoval(harness.deps, host.id)).toBe(false);
+      expect(getHost(harness.db, host.id)?.phase).toBe("active");
     }));
 
   it("retries failed teardown at removeRetryAt", async () =>
