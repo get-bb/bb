@@ -231,8 +231,8 @@ DigitalOcean contributes no new-machine/project-checkout shortcut row.
 
 Existing machines
 
-`bb machine create --provider manual` prints a private enrollment command and
-follows the host until the daemon connects. Run that command on the target
+`bb machine create --provider manual` waits for a private enrollment command,
+prints it once, and follows the host until the daemon connects. Run that command on the target
 machine; it installs bb if needed. Server access is resolved through the selected
 default access provider, just like SSH or cloud machines. `--no-wait` returns the
 creating host ID. The CLI prints the enrollment command and its expiry while it

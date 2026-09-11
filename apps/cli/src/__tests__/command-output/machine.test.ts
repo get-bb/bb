@@ -113,6 +113,31 @@ describe("bb machine command output", () => {
     expect(collectLogPayloads(vi.mocked(console.error))).toContain(command);
   });
 
+  it("waits for delayed manual enrollment readiness and prints the command once", async () => {
+    const command = "curl -fsSL https://machine.example/install.sh | sh";
+    const enrollment = vi
+      .fn()
+      .mockResolvedValueOnce(null)
+      .mockResolvedValue({ command, expiresAt: Date.now() + 60_000 });
+    const get = vi
+      .fn()
+      .mockResolvedValueOnce(creating)
+      .mockResolvedValueOnce(creating)
+      .mockResolvedValue(hosts[1]);
+    stubServerApi({
+      "v1.hosts.$post": vi.fn(async () => creating),
+      "v1.hosts.:id.enrollment-command.$get": enrollment,
+      "v1.hosts.:id.$get": get,
+    });
+    await runCommand(["machine", "create", "--provider", "manual"], register);
+    expect(
+      collectLogPayloads(vi.mocked(console.error)).filter(
+        (value) => value === command,
+      ),
+    ).toEqual([command]);
+    expect(enrollment).toHaveBeenCalledTimes(2);
+  });
+
   it("rejects malformed JSON without submitting inputs", async () => {
     const create = vi.fn(async () => creating);
     stubServerApi({ "v1.hosts.$post": create });

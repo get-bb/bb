@@ -106,7 +106,8 @@ installed `bb` commands and `.bb-env-setup.sh`.
 
 Machine access `machineServerUrl` is the URL reachable by machines; unset uses
 `BB_EXTERNAL_URL`. `defaultMachineAccess` selects an access provider; unset
-prefers paired Connect, then direct when a URL exists. Inspect effective values
+uses the first registered access provider, or direct when none are registered.
+Inspect effective values
 with `bb settings show --json` and change them with `bb settings general`.
 `BB_DATA_DIR` selects isolated enrollment state. Local machine lifecycle commands
 treat it as an ownership assertion and refuse the default BB installation; see

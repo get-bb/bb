@@ -1544,6 +1544,9 @@ importers:
       bb-plugin-environment-git-worktree:
         specifier: workspace:*
         version: link:../../plugins/environment-git-worktree
+      bb-plugin-environment-modal-sandbox:
+        specifier: workspace:*
+        version: link:../../plugins/environment-modal-sandbox
       bb-plugin-environment-personal-workspace:
         specifier: workspace:*
         version: link:../../plugins/environment-personal-workspace
@@ -3429,6 +3432,9 @@ importers:
         specifier: 4.3.6
         version: 4.3.6
     devDependencies:
+      '@bb/plugin-build':
+        specifier: workspace:*
+        version: link:../../packages/plugin-build
       '@get-bb/plugin-sdk':
         specifier: workspace:*
         version: link:../../packages/plugin-sdk
@@ -10457,7 +10463,7 @@ packages:
 
   bunyan@1.8.15:
     resolution: {integrity: sha512-0tECWShh6wUysgucJcBAoYegf3JJoZWibxdqhTm7OHPeT42qdjkZ29QCMcKwbgU1kiH+auSIasNRXMLWXafXig==}
-    engines: {'0': node >=0.10.0}
+    engines: {node: '>=0.10.0'}
     hasBin: true
 
   bytes@3.1.2:

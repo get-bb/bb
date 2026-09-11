@@ -244,21 +244,39 @@ export function registerMachineCommands(
             if (!outputJson(opts, host)) console.log(host.id);
             return;
           }
-          const enrollmentCommand =
-            await sdk.hosts.experimental_getEnrollmentCommand({
-              hostId: host.id,
-              signal: controller.signal,
-            });
-          if (enrollmentCommand !== null) {
-            console.error(enrollmentCommand.command);
-            console.error(enrollmentExpiryNotice(enrollmentCommand.expiresAt));
-          }
+          let enrollmentCommandShown = false;
+          const reportEnrollmentCommand = async (current: Host) => {
+            if (
+              enrollmentCommandShown ||
+              current.lifecycle.phase !== "creating"
+            )
+              return;
+            const enrollmentCommand =
+              await sdk.hosts.experimental_getEnrollmentCommand({
+                hostId: current.id,
+                signal: controller.signal,
+              });
+            if (enrollmentCommand !== null) {
+              console.error(enrollmentCommand.command);
+              console.error(
+                enrollmentExpiryNotice(enrollmentCommand.expiresAt),
+              );
+              enrollmentCommandShown = true;
+            }
+          };
+          await reportEnrollmentCommand(host);
           console.error(`Following machine ${host.id}`);
           host = await waitForMachineLifecycle({
             host,
             targetPhase: "active",
-            getHost: () =>
-              sdk.hosts.get({ hostId: host.id, signal: controller.signal }),
+            getHost: async () => {
+              const current = await sdk.hosts.get({
+                hostId: host.id,
+                signal: controller.signal,
+              });
+              await reportEnrollmentCommand(current);
+              return current;
+            },
           });
           if (!outputJson(opts, host))
             console.log(`Machine ${host.name} created`);
