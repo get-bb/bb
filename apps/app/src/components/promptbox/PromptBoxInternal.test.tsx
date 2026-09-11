@@ -2234,7 +2234,7 @@ describe("PromptBoxInternal compact layout", () => {
     expect(form.style.height).toBe("");
   });
 
-  it("keeps only the one-line editor and primary action", () => {
+  it("keeps the one-line editor, voice input, and submit action", () => {
     const voice: PromptVoiceConfig = {
       state: "idle",
       isSupported: true,
@@ -2268,8 +2268,8 @@ describe("PromptBoxInternal compact layout", () => {
     expect(screen.queryByRole("button", { name: "Model selector" })).toBeNull();
     expect(screen.queryByRole("button", { name: "Attach files" })).toBeNull();
     expect(
-      screen.queryByRole("button", { name: "Start voice input" }),
-    ).toBeNull();
+      screen.getByRole("button", { name: "Start voice input" }),
+    ).toBeTruthy();
     expect(
       screen.queryByRole("button", { name: /Make prompt box/u }),
     ).toBeNull();
@@ -2376,6 +2376,52 @@ describe("PromptBoxInternal compact layout", () => {
         });
         fireEvent.click(stopButton, { detail: 1 });
         expect(onStop).toHaveBeenCalledOnce();
+      } finally {
+        restoreMatchMedia();
+      }
+    },
+  );
+
+  it.each([false, true])(
+    "dictates into a compact draft without submitting (running: %s)",
+    (isRunning) => {
+      const restoreMatchMedia = mockPointerCoarse(true);
+      try {
+        const start = vi.fn();
+        const onSubmit = vi.fn();
+        render(
+          <PromptBoxInternal
+            {...createPromptBoxProps({
+              value: "Please also check the mobile layout.",
+              onSubmit,
+              submission: { isRunning, onStop: vi.fn() },
+              compact: { isCompact: true, placeholder: "Ask a follow-up" },
+              voice: {
+                state: "idle",
+                isSupported: true,
+                stream: null,
+                start,
+                stop: vi.fn(),
+                cancel: vi.fn(),
+              },
+            })}
+          />,
+        );
+
+        const voiceButton = screen.getByRole("button", {
+          name: "Start voice input",
+        });
+        expect(screen.getByRole("button", { name: "Submit (Enter)" })).toBeTruthy();
+        fireEvent.pointerDown(voiceButton, {
+          button: 0,
+          pointerType: "touch",
+        });
+        fireEvent.click(voiceButton, { detail: 1 });
+        expect(start).toHaveBeenCalledOnce();
+        expect(onSubmit).not.toHaveBeenCalled();
+        expect(getPromptEditorElement().textContent).toBe(
+          "Please also check the mobile layout.",
+        );
       } finally {
         restoreMatchMedia();
       }

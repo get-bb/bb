@@ -2603,7 +2603,9 @@ export function PromptBoxInternal({
     !hasSubmittableInput &&
     canStartVoiceInput;
   const showCompactVoiceAction =
-    showCompactLayout && showStop && canStartVoiceInput;
+    showCompactLayout &&
+    canStartVoiceInput &&
+    (!showVoiceAsPrimaryAction || showStop);
   const stopGestureButtonRef = useRef<HTMLButtonElement | null>(null);
   const handleStopPointerDown = useCallback(
     (event: ReactPointerEvent<HTMLButtonElement>) => {
