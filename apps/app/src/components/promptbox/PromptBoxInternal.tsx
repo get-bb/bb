@@ -47,7 +47,7 @@ import {
   type VoiceUnsupportedReason,
 } from "@/hooks/voice-input-support";
 import { Button } from "@bb/shared-ui/button";
-import { Icon } from "@bb/shared-ui/icon";
+import { Icon, type IconName } from "@bb/shared-ui/icon";
 import {
   Tooltip,
   TooltipContent,
@@ -222,6 +222,7 @@ export interface PromptBoxSubmissionConfig {
   disabled?: boolean;
   disabledReason?: string;
   label?: string;
+  icon?: IconName;
   title?: string;
   isRunning?: boolean;
   onStop?: () => void;
@@ -232,6 +233,7 @@ interface PromptSubmitButtonProps {
   canSubmit: boolean;
   className: string;
   disabledReason: string | undefined;
+  icon: IconName | undefined;
   isBusy: boolean;
   isCompact: boolean;
   label: string | undefined;
@@ -245,6 +247,7 @@ function PromptSubmitButton({
   canSubmit,
   className,
   disabledReason,
+  icon,
   isBusy,
   isCompact,
   label,
@@ -260,7 +263,6 @@ function PromptSubmitButton({
   const button = (
     <Button
       data-promptbox-submit-action=""
-      data-promptbox-submit-labeled={label !== undefined ? "" : undefined}
       type="submit"
       size={isCompact ? "icon" : "sm"}
       variant="default"
@@ -318,15 +320,17 @@ function PromptSubmitButton({
       }}
       className={cn(
         className,
-        label !== undefined && "size-auto h-8 gap-1.5 px-2.5",
+        label !== undefined && !isCompact && "size-auto h-8 gap-1.5 px-2.5",
       )}
     >
       {isBusy ? (
         <Icon name="Spinner" className="size-4 animate-spin" />
       ) : (
         <>
-          {label !== undefined ? <span>{label}</span> : null}
-          <Icon name="CornerDownLeft" className="size-4" />
+          {label !== undefined && !isCompact ? (
+            <span data-promptbox-submit-label="">{label}</span>
+          ) : null}
+          <Icon name={icon ?? "CornerDownLeft"} className="size-4" />
         </>
       )}
     </Button>
@@ -1198,6 +1202,7 @@ export function PromptBoxInternal({
     disabled: submitDisabled = false,
     disabledReason: submitDisabledReason,
     label: submitLabel,
+    icon: submitIcon,
     title: submitTitle = "Submit (Enter)",
     isRunning = false,
     onStop,
@@ -3377,6 +3382,7 @@ export function PromptBoxInternal({
                     ) : (
                       <PromptSubmitButton
                         canSubmit={canSubmit}
+                        icon={submitIcon}
                         label={submitLabel}
                         className={cn(
                           showCompactLayout

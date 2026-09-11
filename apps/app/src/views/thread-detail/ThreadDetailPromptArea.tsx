@@ -1241,6 +1241,7 @@ export function ThreadDetailPromptArea({
       ...(isHandoffSelection
         ? {
             submitLabel: "New thread",
+            submitIcon: "MessageSquarePlus",
             submitTitle: "Create new thread (Enter)",
           }
         : {}),

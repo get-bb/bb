@@ -121,6 +121,7 @@ vi.mock("@/components/promptbox/FollowUpPromptBox", async () => {
         onEscape?: () => void;
         onSubmit: () => void;
         submitLabel?: string;
+        submitIcon?: string;
         submitTitle?: string;
         submitMode: { kind: string; reason?: string };
       } | null;
@@ -184,6 +185,7 @@ vi.mock("@/components/promptbox/FollowUpPromptBox", async () => {
           {composer?.submitTitle ?? "Submit"}
         </div>
         <div data-testid="submit-label">{composer?.submitLabel ?? ""}</div>
+        <div data-testid="submit-icon">{composer?.submitIcon ?? ""}</div>
         <div data-testid="plugin-customizations-suppressed">
           {suppressPluginComposerCustomizations ? "true" : "false"}
         </div>
@@ -1873,6 +1875,9 @@ describe("ThreadDetailPromptArea", () => {
 
     expect(mocks.toastMessage).not.toHaveBeenCalled();
     expect(screen.getByTestId("submit-label").textContent).toBe("New thread");
+    expect(screen.getByTestId("submit-icon").textContent).toBe(
+      "MessageSquarePlus",
+    );
     expect(screen.getByTestId("submit-title").textContent).toBe(
       "Create new thread (Enter)",
     );
@@ -1901,6 +1906,7 @@ describe("ThreadDetailPromptArea", () => {
     );
 
     expect(screen.getByTestId("submit-label").textContent).toBe("");
+    expect(screen.getByTestId("submit-icon").textContent).toBe("");
     expect(screen.getByTestId("submit-title").textContent).toBe("Submit");
   });
 
