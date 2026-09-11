@@ -1,7 +1,7 @@
 import { useUsageSources } from "@/hooks/queries/usage-source-queries";
 import type { UsageSnapshot } from "@/lib/usage-source-contract";
 import { useId, useState } from "react";
-import type { Host, ProviderInfo } from "@bb/domain";
+import type { ProviderInfo } from "@bb/domain";
 import type {
   ProviderUsage,
   ProviderUsageResponse,
@@ -154,6 +154,13 @@ interface ProviderUsageBlockProps {
   isError: boolean;
 }
 
+interface UsageLocation {
+  id: string;
+  name: string;
+  kind: "host" | "source";
+  disabled: boolean;
+}
+
 export interface UsageLimitsSettingsSectionContentProps {
   resources?: Array<{
     key: string;
@@ -168,22 +175,23 @@ export interface UsageLimitsSettingsSectionContentProps {
   onRefresh: () => void;
   providerStates?: Readonly<Record<string, ProviderUsageQueryState>>;
   providers?: readonly ProviderInfo[];
-  hosts?: readonly Host[];
-  selectedHostId?: string | null;
-  onSelectHost?: (hostId: string) => void;
+  locations?: readonly UsageLocation[];
+  selectedLocationId?: string | null;
+  onSelectLocation?: (locationId: string) => void;
 }
 
-function UsageMachinePicker({
-  hosts,
-  selectedHostId,
-  onSelectHost,
+function UsageLocationPicker({
+  locations,
+  selectedLocationId,
+  onSelectLocation,
 }: {
-  hosts: readonly Host[];
-  selectedHostId: string | null;
-  onSelectHost: (hostId: string) => void;
+  locations: readonly UsageLocation[];
+  selectedLocationId: string | null;
+  onSelectLocation: (locationId: string) => void;
 }) {
-  const selectedHost =
-    hosts.find((host) => host.id === selectedHostId) ?? hosts[0];
+  const selectedLocation =
+    locations.find((location) => location.id === selectedLocationId) ??
+    locations[0];
 
   return (
     <DropdownMenu>
@@ -193,28 +201,35 @@ function UsageMachinePicker({
           variant="outline"
           size="sm"
           className="max-w-48 gap-1.5"
-          aria-label="Usage limits machine"
+          aria-label="Usage source"
         >
-          <Icon name="Laptop" className="size-3.5 shrink-0" />
+          <Icon
+            name={selectedLocation?.kind === "source" ? "Layers" : "Laptop"}
+            className="size-3.5 shrink-0"
+          />
           <span className="min-w-0 truncate">
-            {selectedHost?.name ?? "Machine"}
+            {selectedLocation?.name ?? "Source"}
           </span>
           <Icon name="ChevronDown" className="size-3.5 shrink-0" />
         </Button>
       </DropdownMenuTrigger>
-      <DropdownMenuContent align="end" mobileTitle="Usage limits machine">
-        {hosts.map((host) => {
-          const connected = host.status === "connected";
+      <DropdownMenuContent align="end" mobileTitle="Usage source">
+        {locations.map((location) => {
+          const connected = !location.disabled;
           return (
             <DropdownMenuItem
-              key={host.id}
+              key={location.id}
               disabled={!connected}
-              onSelect={() => onSelectHost(host.id)}
+              onSelect={() => onSelectLocation(location.id)}
               className="flex items-center gap-2"
             >
-              <MachineStatusDot connected={connected} />
-              <span className="min-w-0 flex-1 truncate">{host.name}</span>
-              {host.id === selectedHost?.id ? (
+              {location.kind === "host" ? (
+                <MachineStatusDot connected={connected} />
+              ) : (
+                <Icon name="Layers" className="size-3.5" />
+              )}
+              <span className="min-w-0 flex-1 truncate">{location.name}</span>
+              {location.id === selectedLocation?.id ? (
                 <Icon name="Check" className="size-3.5 shrink-0" />
               ) : null}
             </DropdownMenuItem>
@@ -266,7 +281,7 @@ function ProviderUsageBlock({
             >
               {config.name}
             </h3>
-            {accountEmail ? (
+            {accountEmail && accountEmail !== config.name ? (
               <p className="truncate text-xs text-muted-foreground">
                 {accountEmail}
               </p>
@@ -368,11 +383,12 @@ export function UsageLimitsSettingsSectionContent({
   onRefresh,
   providerStates = {},
   providers = [],
-  hosts = [],
-  selectedHostId = null,
-  onSelectHost,
+  locations = [],
+  selectedLocationId = null,
+  onSelectLocation,
 }: UsageLimitsSettingsSectionContentProps) {
-  const showMachinePicker = hosts.length > 1 && onSelectHost !== undefined;
+  const showLocationPicker =
+    locations.length > 1 && onSelectLocation !== undefined;
   const providerById = new Map(
     providers.map((provider) => [provider.id, provider] as const),
   );
@@ -398,16 +414,16 @@ export function UsageLimitsSettingsSectionContent({
         : "No providers available.";
   return (
     <SettingsSection
-      actionPlacement={showMachinePicker ? "responsive" : "inline"}
+      actionPlacement={showLocationPicker ? "responsive" : "inline"}
       title="Usage limits"
       description="Your provider subscription usage."
       action={
         <div className="flex items-center gap-1">
-          {showMachinePicker ? (
-            <UsageMachinePicker
-              hosts={hosts}
-              selectedHostId={selectedHostId}
-              onSelectHost={onSelectHost}
+          {showLocationPicker ? (
+            <UsageLocationPicker
+              locations={locations}
+              selectedLocationId={selectedLocationId}
+              onSelectLocation={onSelectLocation}
             />
           ) : null}
           <Tooltip delayDuration={300} disableHoverableContent>
@@ -434,36 +450,43 @@ export function UsageLimitsSettingsSectionContent({
       }
     >
       <SettingsRowList>
-        {resources !== undefined && resources.length > 0 ? (
-          resources.map(({ key, resource }) => {
-            const config = providerConfig(
-              resource.providerId,
-              providerById.get(resource.providerId),
-            );
-            return (
-              <ProviderUsageBlock
-                key={key}
-                config={
-                  resource.scope.kind === "shared"
-                    ? { ...config, name: resource.label }
-                    : config
-                }
-                usage={
-                  resource.usage.status === "ok"
-                    ? {
-                        ...resource.usage,
-                        windows: resource.usage.windows.map(
-                          ({ cost, ...window }) =>
-                            cost === null ? window : { ...window, cost },
-                        ),
-                      }
-                    : resource.usage
-                }
-                isLoading={false}
-                isError={false}
-              />
-            );
-          })
+        {resources !== undefined ? (
+          resources.length === 0 ? (
+            <p className="text-xs text-muted-foreground">{emptyMessage}</p>
+          ) : (
+            resources.map(({ key, resource }) => {
+              const config = providerConfig(
+                resource.providerId,
+                providerById.get(resource.providerId),
+              );
+              return (
+                <ProviderUsageBlock
+                  key={key}
+                  config={
+                    resource.scope.kind === "shared"
+                      ? {
+                          ...config,
+                          name: resource.usage.accountEmail ?? config.name,
+                        }
+                      : config
+                  }
+                  usage={
+                    resource.usage.status === "ok"
+                      ? {
+                          ...resource.usage,
+                          windows: resource.usage.windows.map(
+                            ({ cost, ...window }) =>
+                              cost === null ? window : { ...window, cost },
+                          ),
+                        }
+                      : resource.usage
+                  }
+                  isLoading={false}
+                  isError={false}
+                />
+              );
+            })
+          )
         ) : providerConfigs.length === 0 ? (
           <p className="text-xs text-muted-foreground">{emptyMessage}</p>
         ) : (
@@ -488,13 +511,15 @@ export function UsageLimitsSettingsSection() {
   const systemConfigQuery = useSystemConfig();
   const hostsQuery = useHosts();
   const hosts = hostsQuery.data ?? [];
-  const [selectedHostId, setSelectedHostId] = useState<string | null>(null);
+  const [selectedLocationId, setSelectedLocationId] = useState<string | null>(
+    null,
+  );
   const primaryHost = selectPrimaryHost(
     hosts,
     systemConfigQuery.data?.primaryHostId ?? null,
   );
   const selectedHost =
-    hosts.find((host) => host.id === selectedHostId) ?? primaryHost;
+    hosts.find((host) => host.id === selectedLocationId) ?? primaryHost;
   const usageHostId =
     selectedHost?.id ?? systemConfigQuery.data?.primaryHostId ?? undefined;
   const providersQuery = useSystemProviders(
@@ -511,14 +536,53 @@ export function UsageLimitsSettingsSection() {
   );
   const providers = providersQuery.data ?? [];
   const usageQuery = useUsageSources();
-  const resources = usageQuery.sources
+  const sharedSources = usageQuery.sources.filter(
+    ({ query }) =>
+      query.data?.label !== undefined ||
+      query.data?.resources.length === 0 ||
+      query.data?.resources.some(
+        (resource) => resource.scope.kind === "shared",
+      ),
+  );
+  const locations: UsageLocation[] = [
+    ...sharedSources.map(({ source, query }) => ({
+      id: `source:${source.pluginId}`,
+      name: query.data?.label ?? source.displayName,
+      kind: "source" as const,
+      disabled: false,
+    })),
+    ...hosts.map((host) => ({
+      id: host.id,
+      name: host.name,
+      kind: "host" as const,
+      disabled: host.status !== "connected",
+    })),
+  ];
+  const selectedLocation =
+    locations.find((location) => location.id === selectedLocationId) ??
+    locations.find((location) => location.kind === "source") ??
+    locations.find((location) => location.id === primaryHost?.id) ??
+    locations[0];
+  const selectedSources = usageQuery.sources.filter(({ source, query }) =>
+    selectedLocation?.kind === "source"
+      ? selectedLocation.id === `source:${source.pluginId}`
+      : !query.data ||
+        query.data.resources.some(
+          (resource) =>
+            resource.scope.kind === "host" &&
+            resource.scope.hostId === selectedLocation?.id,
+        ),
+  );
+  const resources = selectedSources
     .flatMap(({ source, query }) =>
       (query.data?.resources ?? [])
         .filter(
           (resource) =>
             resource.usage.status !== "not_installed" &&
-            (resource.scope.kind === "shared" ||
-              resource.scope.hostId === usageHostId),
+            (selectedLocation?.kind === "source"
+              ? resource.scope.kind === "shared"
+              : resource.scope.kind === "host" &&
+                resource.scope.hostId === selectedLocation?.id),
         )
         .map((resource) => ({
           key: `${source.pluginId}:${resource.id}`,
@@ -539,11 +603,11 @@ export function UsageLimitsSettingsSection() {
       resources={resources}
       isLoading={
         usageQuery.discovery.isPending ||
-        usageQuery.sources.some(({ query }) => query.isPending)
+        selectedSources.some(({ query }) => query.isPending)
       }
       isError={
         usageQuery.discovery.isError ||
-        usageQuery.sources.some(({ query }) => query.isError)
+        selectedSources.some(({ query }) => query.isError)
       }
       isProviderListLoading={providersQuery.isLoading}
       isProviderListError={providersQuery.isError}
@@ -552,9 +616,9 @@ export function UsageLimitsSettingsSection() {
         void usageQuery.refresh();
       }}
       providers={providers}
-      hosts={hosts}
-      selectedHostId={selectedHost?.id ?? null}
-      onSelectHost={setSelectedHostId}
+      locations={locations}
+      selectedLocationId={selectedLocation?.id ?? null}
+      onSelectLocation={setSelectedLocationId}
     />
   );
 }

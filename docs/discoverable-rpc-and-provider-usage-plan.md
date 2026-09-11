@@ -1,6 +1,6 @@
 # Discoverable RPC and replaceable provider usage displays
 
-Status: prototype implemented for discoverable RPC, Account Pooler, Codex, Claude Code, and the core `/settings/usage` page. Provider Usage defines the canonical contract in `plugins/provider-usage/usage-source-contract.ts` and consumes discovered sources through it. The core settings page preserves its existing presentation and machine picker; only its data source changes.
+Status: prototype implemented for discoverable RPC, Account Pooler, Codex, Claude Code, and the core `/settings/usage` page. Provider Usage defines the canonical contract in `plugins/provider-usage/usage-source-contract.ts` and consumes discovered sources through it. The core settings page preserves its existing provider cards and extends the machine picker to select shared sources such as Account Pooler. Shared sources are selected by default.
 
 ## Prototype verification
 
@@ -150,9 +150,9 @@ Use the same milliseconds-based timestamp convention throughout. An observation 
 
 ### Display implementation
 
-Provider Usage discovers sources whenever it loads or refreshes data, invokes them with bounded concurrency and bounded wait, and renders successful results even if another source fails. The core settings prototype preserves the existing provider-card presentation, refresh control, and machine picker. Host-local observations follow the selected machine; shared accounts use the same cards. Source-group headings and observation timestamps are not added to this page. Other display plugins can choose their own presentation using the same metadata.
+Provider Usage discovers sources whenever it loads or refreshes data, invokes them with bounded concurrency and bounded wait, and renders successful results even if another source fails. The core settings prototype preserves the existing provider-card presentation and refresh control. Its source picker defaults to a shared source when available, or the primary machine otherwise; explicit selections win. Shared-source selections show only that source’s shared accounts, and machine selections show only that machine’s host-local observations. Account headings use email without repeating it as a subtitle. Source-group headings and observation timestamps are not added to this page. Other display plugins can choose their own presentation using the same metadata.
 
-Namespace resource keys by reporting plugin ID. Do not deduplicate by email or sum unrelated quota percentages. A shared pool appears once; a local account and a pool account may both appear even when their labels match. Source removal evicts its current display entries on the next reconciliation.
+Namespace resource keys by reporting plugin ID. Do not deduplicate by email or sum unrelated quota percentages. A shared pool appears once in the source picker; local and pooled observations remain separate choices even when their account emails match. Source removal evicts its current display entries on the next reconciliation.
 
 An alternative display uses the same discovery query and its own copied response schema. It may render richer UI without changing any producer. Both displays can run at once; producer refresh coalescing limits duplicate work.
 

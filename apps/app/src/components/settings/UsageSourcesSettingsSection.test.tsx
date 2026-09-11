@@ -35,15 +35,16 @@ afterEach(() => {
   vi.clearAllMocks();
 });
 
-it("keeps the existing presentation for discovered shared and host usage and refreshes through the copied contract", async () => {
+it("selects pooled or machine usage without mixing sources, preserves cards, and refreshes through the copied contract", async () => {
   calls.discover.mockResolvedValue([
-    { pluginId: "pool", displayName: "Account Pooler" },
+    { pluginId: "pool", displayName: "Account Pooler [Experimental]" },
     { pluginId: "local", displayName: "Codex provider" },
     { pluginId: "broken", displayName: "Unavailable provider" },
   ]);
   calls.rpc.mockImplementation(async ({ pluginId }) => {
     if (pluginId === "broken") throw new Error("Unavailable");
     return {
+      ...(pluginId === "pool" ? { label: "Account Pooler" } : {}),
       resources: [
         {
           id: "same-local-id",
@@ -56,7 +57,7 @@ it("keeps the existing presentation for discovered shared and host usage and ref
           observedAt: 1_700_000_000_000,
           usage: {
             status: "ok",
-            accountEmail: null,
+            accountEmail: "person@example.com",
             planLabel: null,
             windows: [
               {
@@ -85,9 +86,17 @@ it("keeps the existing presentation for discovered shared and host usage and ref
       </QueryClientProvider>,
     );
     expect(await screen.findByText("42% used")).toBeTruthy();
-    expect(await screen.findByText("81% used")).toBeTruthy();
+    expect(screen.queryByText("81% used")).toBeNull();
+    expect(screen.getAllByText("person@example.com")).toHaveLength(1);
     expect(screen.queryByText(/Shared across machines/)).toBeNull();
-    expect(screen.queryByText("Account Pooler")).toBeNull();
+    expect(screen.getByText("Account Pooler")).toBeTruthy();
+    fireEvent.pointerDown(
+      screen.getByRole("button", { name: "Usage source" }),
+      { button: 0 },
+    );
+    fireEvent.click(screen.getByRole("menuitem", { name: "Build machine" }));
+    expect(await screen.findByText("81% used")).toBeTruthy();
+    expect(screen.queryByText("42% used")).toBeNull();
     expect(screen.queryByText(/Observed/)).toBeNull();
     expect(screen.getByText("Your provider subscription usage.")).toBeTruthy();
     await waitFor(() =>

@@ -409,9 +409,14 @@ function UsageLimitsStory() {
         setIsFetching(true);
         window.setTimeout(() => setIsFetching(false), 500);
       }}
-      hosts={usageHosts}
-      selectedHostId={selectedHostId}
-      onSelectHost={setSelectedHostId}
+      locations={usageHosts.map((host) => ({
+        id: host.id,
+        name: host.name,
+        kind: "host",
+        disabled: host.status !== "connected",
+      }))}
+      selectedLocationId={selectedHostId}
+      onSelectLocation={setSelectedHostId}
     />
   );
 }
