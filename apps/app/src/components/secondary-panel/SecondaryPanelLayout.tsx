@@ -92,6 +92,8 @@ export function SecondaryPanelLayout({
 }: SecondaryPanelLayoutProps) {
   const paneContext = useOptionalPaneContext();
   const secondaryPanelHost = paneContext?.secondaryPanelHost ?? null;
+  const inlinePaneTargetId =
+    secondaryPanelHost === null ? paneContext?.paneId : undefined;
   const renderAsDrawer = useIsCompactViewport();
   const sidebarDrawerShowing = useSyncExternalStore(
     subscribeCompactSidebarDrawerShowing,
@@ -297,6 +299,7 @@ export function SecondaryPanelLayout({
 
   const mainContent = (
     <div
+      data-split-pane-id={inlinePaneTargetId}
       data-conversation-collapsed={isMainCollapsed}
       inert={isMainCollapsed}
       className={cn(
