@@ -77,7 +77,10 @@ describe("provider usage footer disclosure", () => {
           {
             label: "Weekly limit",
             usedPercent: usedPercent,
-            resetsAt: null,
+            resetsAt:
+              email === "personal@example.com"
+                ? new Date(Date.now() + 51 * 60 * 60_000).toISOString()
+                : null,
             cost: null,
           },
         ],
@@ -240,7 +243,9 @@ describe("provider usage footer disclosure", () => {
     expect(
       slot.getByRole("button", { name: "Usage machine: Account Pooler" }),
     ).toBeTruthy();
-    expect(slot.getByRole("heading", { name: "personal@example.com" })).toBeTruthy();
+    expect(
+      slot.getByRole("heading", { name: "personal@example.com" }),
+    ).toBeTruthy();
     fireEvent.pointerDown(
       slot.getByRole("button", { name: "Usage machine: Account Pooler" }),
       { button: 0 },
@@ -330,6 +335,7 @@ describe("provider usage footer disclosure", () => {
       }),
     );
 
+    now.mockRestore();
     fireEvent.pointerDown(
       slot.getByRole("button", { name: "Usage machine: Intel" }),
       { button: 0 },
@@ -348,6 +354,10 @@ describe("provider usage footer disclosure", () => {
     expect(slot.getAllByText("team@example.com")).toHaveLength(1);
     expect(slot.getAllByText("personal@example.com")).toHaveLength(1);
     expect(slot.getByText("46%")).toBeTruthy();
+    expect(slot.getByText("2d 3h")).toBeTruthy();
+    expect(
+      slot.getAllByRole("heading").map((heading) => heading.textContent),
+    ).toEqual(["team@example.com", "personal@example.com"]);
     const windowButton = slot.getByRole("button", {
       name: "Weekly limit: 46% used. Reset time not reported",
     });
