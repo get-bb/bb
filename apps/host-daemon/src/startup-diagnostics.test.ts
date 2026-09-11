@@ -37,4 +37,14 @@ describe("host daemon startup diagnostics", () => {
       "src/start-host-daemon.ts dist/start-host-daemon.js",
     );
   });
+
+  it("exits after a fatal startup failure even with active resources", async () => {
+    const source = await readHostDaemonEntrypoint();
+    const writeIndex = source.indexOf("process.stderr.write");
+    const exitIndex = source.indexOf("process.exit(1)");
+
+    expect(writeIndex).toBeGreaterThanOrEqual(0);
+    expect(exitIndex).toBeGreaterThan(writeIndex);
+    expect(source).not.toContain("process.exitCode = 1");
+  });
 });
