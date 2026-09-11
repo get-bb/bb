@@ -1177,12 +1177,14 @@ describe("PluginNewThreadComposer seeding", () => {
         threadId: ROOT_COMPOSE_FIXED_PANEL_STATE_ID,
       }),
       serializeFixedPanelTabsState({
-        ...state,
-        secondary: {
-          ...state.secondary,
-          tabs: [terminal],
-          activeTabId: terminal.id,
-          isOpen: true,
+        state: {
+          ...state,
+          secondary: {
+            ...state.secondary,
+            tabs: [terminal],
+            activeTabId: terminal.id,
+            isOpen: true,
+          },
         },
       }),
     );
