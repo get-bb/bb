@@ -45,7 +45,7 @@ interface RouteNavigation {
   openInSplit: (path: string) => boolean;
 }
 
-export const RouteNavigationContext = createContext<RouteNavigation | null>(null);
+const RouteNavigationContext = createContext<RouteNavigation | null>(null);
 const PluginDetailRouteNavigationContext = createContext<
   ((pluginId: string) => boolean) | null
 >(null);

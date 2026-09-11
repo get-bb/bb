@@ -9,7 +9,6 @@ import { toast as sonnerToast, type Action, type ExternalToast } from "sonner";
 import { Button } from "@bb/shared-ui/button";
 import { Icon, type IconName } from "@bb/shared-ui/icon";
 import { cn } from "@bb/shared-ui/lib/utils";
-import { NotificationNavigationProvider } from "@/components/notifications/NotificationNavigationProvider";
 import {
   openNotificationCenter,
   recordNotification,
@@ -207,18 +206,7 @@ export function AppToastDescription({
   );
 }
 
-export function AppToastContent(props: AppToastContentProps) {
-  return (
-    <NotificationNavigationProvider
-      notificationId={props.notificationId ?? null}
-      toastId={props.id ?? null}
-    >
-      <AppToastBody {...props} />
-    </NotificationNavigationProvider>
-  );
-}
-
-function AppToastBody({
+export function AppToastContent({
   action,
   cancel,
   description,
