@@ -76,7 +76,6 @@ const mocks = vi.hoisted(() => ({
   setQueuedMessageGroupBoundaryMutateAsync: vi.fn(),
   stopThreadMutate: vi.fn(),
   toastError: vi.fn(),
-  toastMessage: vi.fn(),
   unarchiveThreadMutate: vi.fn(),
   uploadPromptAttachmentMutateAsync: vi.fn(),
   updateQueuedMessageMutateAsync: vi.fn(),
@@ -310,9 +309,6 @@ vi.mock("@/components/promptbox/FollowUpPromptBox", async () => {
             </button>
           </>
         ) : null}
-        <div data-testid="provider-switchable">
-          {execution.provider.onChange ? "true" : "false"}
-        </div>
         {execution.provider.onChange ? (
           <>
             <button
@@ -329,9 +325,6 @@ vi.mock("@/components/promptbox/FollowUpPromptBox", async () => {
             </button>
           </>
         ) : null}
-        <div data-testid="handoff-flow">
-          {execution.handoff ? "true" : "false"}
-        </div>
         {execution.handoff ? (
           <button
             type="button"
@@ -513,7 +506,7 @@ vi.mock("@/components/plugin/PluginPendingInteractionComposer", () => ({
 }));
 
 vi.mock("@/components/ui/app-toast", () => ({
-  appToast: { error: mocks.toastError, message: mocks.toastMessage },
+  appToast: { error: mocks.toastError },
 }));
 
 vi.mock("@/hooks/useCommandSuggestions", () => ({
@@ -1439,7 +1432,7 @@ describe("ThreadDetailPromptArea", () => {
     ).toBe("Second queued draft");
   });
 
-  it("shows the queued execution values as read-only while editing", () => {
+  it("keeps queued execution and commands source-locked during a bottom handoff", () => {
     mocks.defaultExecutionOptions = {
       model: "bottom-model",
       permissionMode: "auto",
@@ -1472,6 +1465,10 @@ describe("ThreadDetailPromptArea", () => {
       "codex:thread",
     );
     const inlineHost = screen.getByTestId("inline-queued-message-editor");
+    for (const name of ["Switch provider", "Complete handoff flow"]) {
+      expect(inlineEditor.queryByRole("button", { name })).toBeNull();
+      expect(screen.getByRole("button", { name })).not.toBeNull();
+    }
     expect(
       screen
         .getAllByTestId("selected-provider")
@@ -1877,100 +1874,47 @@ describe("ThreadDetailPromptArea", () => {
     expect(screen.getByText("Model fallback")).toBeTruthy();
   });
 
-  it("lets only the bottom composer switch providers", () => {
-    mocks.queuedMessages = [makeQueuedMessage()];
+  it.each(["Switch provider", "Complete handoff flow"])(
+    "%s prepares a handoff and restores the draft on return",
+    (entryAction) => {
+      mocks.promptDraft.text = "Keep going";
+      renderPromptArea();
+      expect(screen.getByTestId("submit-title").textContent).toBe("Submit");
+      expect(screen.getByTestId("submit-label").textContent).toBe("");
 
-    renderPromptArea();
-    fireEvent.click(
-      screen.getByRole("button", { name: "Edit queued message 1" }),
-    );
+      fireEvent.click(screen.getByRole("button", { name: entryAction }));
 
-    const inlineEditorHost = screen.getByTestId("inline-queued-message-editor");
-    expect(
-      within(inlineEditorHost).getByTestId("provider-switchable").textContent,
-    ).toBe("false");
-    const bottomSwitchable = screen
-      .getAllByTestId("provider-switchable")
-      .filter((element) => !inlineEditorHost.contains(element));
-    expect(bottomSwitchable.map((element) => element.textContent)).toEqual([
-      "true",
-    ]);
-    expect(
-      within(inlineEditorHost).getByTestId("handoff-flow").textContent,
-    ).toBe("false");
-    expect(
-      screen
-        .getAllByTestId("handoff-flow")
-        .filter((element) => !inlineEditorHost.contains(element))
-        .map((element) => element.textContent),
-    ).toEqual(["true"]);
-  });
+      expect(screen.getByTestId("submit-label").textContent).toBe("New thread");
+      expect(screen.getByTestId("submit-icon").textContent).toBe(
+        "MessageSquarePlus",
+      );
+      expect(screen.getByTestId("submit-title").textContent).toBe(
+        "Create new thread (Enter)",
+      );
+      expect(screen.getByTestId("selected-model").textContent).toBe(
+        "claude-opus-5",
+      );
+      expect(screen.getByTestId("submit-mode").textContent).toBe("ready:");
+      expect(mocks.promptDraft.setDraft).toHaveBeenLastCalledWith(
+        expect.objectContaining({
+          text: "Continue from @thread:thr_1\n\nKeep going",
+        }),
+      );
 
-  it("enters handoff mode when the picker flow selects a provider and model", () => {
-    renderPromptArea();
+      fireEvent.click(
+        screen.getByRole("button", { name: "Switch provider back" }),
+      );
 
-    fireEvent.click(
-      screen.getByRole("button", { name: "Complete handoff flow" }),
-    );
-
-    expect(screen.getByTestId("submit-label").textContent).toBe("New thread");
-    expect(screen.getByTestId("submit-icon").textContent).toBe(
-      "MessageSquarePlus",
-    );
-    expect(screen.getByTestId("submit-title").textContent).toBe(
-      "Create new thread (Enter)",
-    );
-    expect(screen.getByTestId("selected-model").textContent).toBe(
-      "claude-opus-5",
-    );
-    expect(mocks.promptDraft.setDraft).toHaveBeenCalledWith(
-      expect.objectContaining({ text: "Continue from @thread:thr_1\n\n" }),
-    );
-  });
-
-  it("relabels submit after picking another provider", () => {
-    renderPromptArea();
-    expect(screen.getByTestId("submit-title").textContent).toBe("Submit");
-    expect(screen.getByTestId("submit-label").textContent).toBe("");
-
-    fireEvent.click(screen.getByRole("button", { name: "Switch provider" }));
-
-    expect(mocks.toastMessage).not.toHaveBeenCalled();
-    expect(screen.getByTestId("submit-label").textContent).toBe("New thread");
-    expect(screen.getByTestId("submit-icon").textContent).toBe(
-      "MessageSquarePlus",
-    );
-    expect(screen.getByTestId("submit-title").textContent).toBe(
-      "Create new thread (Enter)",
-    );
-    expect(screen.getByTestId("selected-model").textContent).toBe(
-      "claude-opus-5",
-    );
-    expect(screen.getByTestId("submit-mode").textContent).toBe("ready:");
-    expect(mocks.promptDraft.setDraft).toHaveBeenCalledWith({
-      attachments: [],
-      mentions: [
-        {
-          start: 14,
-          end: 27,
-          resource: expect.objectContaining({
-            kind: "thread",
-            threadId: "thr_1",
-          }),
-        },
-      ],
-      text: "Continue from @thread:thr_1\n\n",
-    });
-    expect(mocks.toastError).not.toHaveBeenCalled();
-
-    fireEvent.click(
-      screen.getByRole("button", { name: "Switch provider back" }),
-    );
-
-    expect(screen.getByTestId("submit-label").textContent).toBe("");
-    expect(screen.getByTestId("submit-icon").textContent).toBe("");
-    expect(screen.getByTestId("submit-title").textContent).toBe("Submit");
-  });
+      expect(mocks.promptDraft.setDraft).toHaveBeenLastCalledWith({
+        attachments: [],
+        mentions: [],
+        text: "Keep going",
+      });
+      expect(screen.getByTestId("submit-label").textContent).toBe("");
+      expect(screen.getByTestId("submit-icon").textContent).toBe("");
+      expect(screen.getByTestId("submit-title").textContent).toBe("Submit");
+    },
+  );
 
   it("shows destination permissions instead of the source active Plan mode", async () => {
     mocks.defaultExecutionOptions = {
@@ -2063,29 +2007,6 @@ describe("ThreadDetailPromptArea", () => {
       );
     },
   );
-
-  it("restores the typed draft when switching back to the thread's provider", () => {
-    mocks.promptDraft.text = "Keep going";
-
-    renderPromptArea();
-    fireEvent.click(screen.getByRole("button", { name: "Switch provider" }));
-    expect(mocks.promptDraft.setDraft).toHaveBeenLastCalledWith(
-      expect.objectContaining({
-        text: "Continue from @thread:thr_1\n\nKeep going",
-      }),
-    );
-
-    fireEvent.click(
-      screen.getByRole("button", { name: "Switch provider back" }),
-    );
-
-    expect(mocks.promptDraft.setDraft).toHaveBeenLastCalledWith({
-      attachments: [],
-      mentions: [],
-      text: "Keep going",
-    });
-    expect(screen.getByTestId("submit-title").textContent).toBe("Submit");
-  });
 
   it("creates a new thread from the draft as typed and navigates to it", async () => {
     mocks.promptDraft.text = "Refactor the tests";

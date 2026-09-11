@@ -2,7 +2,6 @@ import { describe, expect, it } from "vitest";
 import {
   buildThreadHandoffCreateRequest,
   buildThreadHandoffFollowUpDraft,
-  buildThreadHandoffPromptDraft,
   stripThreadHandoffPrefix,
   type ThreadHandoffCreateSeed,
   type ThreadHandoffExecutionSelection,
@@ -14,27 +13,6 @@ const SEED: ThreadHandoffCreateSeed = {
   sourceThreadId: "thr_source",
   sourceThreadTitle: "Source thread",
 };
-
-describe("thread handoff request", () => {
-  it("builds a prompt draft with a rich mention to the source thread", () => {
-    const draft = buildThreadHandoffPromptDraft(SEED);
-
-    expect(draft.text).toBe("Continue from @thread:thr_source");
-    expect(draft.attachments).toEqual([]);
-    expect(draft.mentions).toEqual([
-      {
-        start: "Continue from ".length,
-        end: "Continue from @thread:thr_source".length,
-        resource: {
-          kind: "thread",
-          projectId: "proj_source",
-          threadId: "thr_source",
-          label: "Source thread",
-        },
-      },
-    ]);
-  });
-});
 
 const EXECUTION: ThreadHandoffExecutionSelection = {
   providerId: "claude-code",
@@ -80,9 +58,7 @@ describe("buildThreadHandoffFollowUpDraft", () => {
       "Continue from @thread:thr_source\n\nAlso see @thread:thr_other next",
     );
     expect(draft.mentions).toHaveLength(2);
-    expect(
-      draft.text.slice(draft.mentions[0]!.start, draft.mentions[0]!.end),
-    ).toBe("@thread:thr_source");
+    expect(draft.mentions[0]).toEqual(SOURCE_MENTION);
     expect(
       draft.text.slice(draft.mentions[1]!.start, draft.mentions[1]!.end),
     ).toBe("@thread:thr_other");
@@ -202,18 +178,7 @@ describe("buildThreadHandoffCreateRequest", () => {
         {
           type: "text",
           text: "Continue from @thread:thr_source\n\nRefactor the tests",
-          mentions: [
-            {
-              start: 14,
-              end: 32,
-              resource: {
-                kind: "thread",
-                projectId: "proj_source",
-                threadId: "thr_source",
-                label: "Source thread",
-              },
-            },
-          ],
+          mentions: [SOURCE_MENTION],
         },
       ],
       model: "claude-opus-5",

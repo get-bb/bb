@@ -1317,35 +1317,6 @@ function HandoffModeHeader({ onBack }: { onBack: () => void }) {
   );
 }
 
-function MenuActionButton({
-  label,
-  iconName,
-  onClick,
-}: {
-  label: string;
-  iconName: IconName;
-  onClick: () => void;
-}) {
-  const { hoverProps } = useMenuItemHover();
-  const isCompactViewport = useIsCompactViewport();
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className={cn(
-        "relative flex w-full cursor-default select-none items-center gap-2 rounded-sm px-2 text-xs outline-none hover:bg-state-hover hover:text-foreground",
-        LIST_HOVER_TRANSITION,
-        MENU_ITEM_LAST_HOVERED_CLASS,
-        isCompactViewport ? "py-2" : "py-[0.3125rem]",
-      )}
-      {...hoverProps}
-    >
-      <Icon name={iconName} className="size-3.5 shrink-0" aria-hidden />
-      <span className="min-w-0 truncate">{label}</span>
-    </button>
-  );
-}
-
 function MenuSectionLabel({
   children,
   className,
@@ -1628,6 +1599,35 @@ function MenuRowButton({
           )}
         />
       </span>
+    </button>
+  );
+}
+
+function MenuActionButton({
+  label,
+  iconName,
+  onClick,
+}: {
+  label: string;
+  iconName: IconName;
+  onClick: () => void;
+}) {
+  const { hoverProps } = useMenuItemHover();
+  const isCompactViewport = useIsCompactViewport();
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={cn(
+        "relative flex w-full cursor-default select-none items-center gap-2 rounded-sm px-2 text-xs outline-none hover:bg-state-hover hover:text-foreground",
+        LIST_HOVER_TRANSITION,
+        MENU_ITEM_LAST_HOVERED_CLASS,
+        isCompactViewport ? "py-2" : "py-[0.3125rem]",
+      )}
+      {...hoverProps}
+    >
+      <Icon name={iconName} className="size-3.5 shrink-0" aria-hidden />
+      <span className="min-w-0 truncate">{label}</span>
     </button>
   );
 }
