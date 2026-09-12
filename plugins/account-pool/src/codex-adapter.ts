@@ -189,6 +189,7 @@ const usageWindowSchema = z
 
 const usageResponseSchema = z
   .object({
+    plan_type: z.string().trim().min(1).nullish().catch(null),
     rate_limit: z
       .object({
         primary_window: usageWindowSchema.nullish(),
@@ -370,9 +371,19 @@ export function createCodexAdapter(options: {
         await response.body?.cancel();
         return;
       }
+      const parsed = usageResponseSchema.safeParse(
+        await response.json().catch(() => null),
+      );
+      if (!parsed.success) return;
+      if (parsed.data.plan_type != null) {
+        await context.accounts.setSubscriptionType(
+          context.account.id,
+          parsed.data.plan_type,
+        );
+      }
       const quota = codexQuotaFromUsage(
         context.account.id,
-        await response.json().catch(() => null),
+        parsed.data,
         context.quotas.get(context.account.id),
         context.now(),
       );
