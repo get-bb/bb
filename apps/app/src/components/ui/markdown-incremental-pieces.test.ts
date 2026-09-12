@@ -13,10 +13,7 @@ import remarkDirective from "remark-directive";
 import remarkGfm from "remark-gfm";
 import remarkMath from "remark-math";
 import { describe, expect, it } from "vitest";
-import {
-  FIXTURE_NAMES,
-  getFixture,
-} from "bb-plugin-bench-stream-provider/fixtures";
+import { STREAMING_MARKDOWN_FIXTURES } from "@/test/fixtures/streaming-markdown";
 import {
   repairStreamingMarkdownTail,
   splitStreamingMarkdown,
@@ -36,11 +33,6 @@ import {
   type MountedMessageDirective,
 } from "./markdown-message-directives";
 import { remarkThreadMentions } from "./markdown-thread-mentions";
-
-const MARKDOWN_FIXTURES = FIXTURE_NAMES.map((name) => ({
-  name,
-  text: getFixture(name),
-}));
 
 interface RenderedMarkdownDocument {
   html: string;
@@ -361,7 +353,7 @@ describe("resolveMarkdownPieces", () => {
 
   it("parses a completed document once on a cold cache", () => {
     const body = normalizeMathFences(
-      `${MARKDOWN_FIXTURES[0]?.text ?? ""}\n\nSee [the docs] and a note[^1].\n\n[the docs]: https://example.com\n\n[^1]: The note.`,
+      `${STREAMING_MARKDOWN_FIXTURES[0]?.text ?? ""}\n\nSee [the docs] and a note[^1].\n\n[the docs]: https://example.com\n\n[^1]: The note.`,
     );
     const recorded: string[] = [];
     resolveMarkdownPieces(
@@ -418,7 +410,7 @@ describe("resolveMarkdownPieces", () => {
   });
 
   it("keeps the settled parse volume near the message length while fixtures stream in chunks", () => {
-    for (const { name, text } of MARKDOWN_FIXTURES) {
+    for (const { name, text } of STREAMING_MARKDOWN_FIXTURES) {
       const recorded: string[] = [];
       const recordingConfig = createRecordingConfig(recorded);
       const cache = createMarkdownPieceCache();
@@ -532,7 +524,7 @@ describe("resolveMarkdownPieces", () => {
     }
   }, 60_000);
 
-  it.each(MARKDOWN_FIXTURES)(
+  it.each(STREAMING_MARKDOWN_FIXTURES)(
     "matches single documents for every streamed chunk of the $name fixture",
     ({ name, text }) => {
       const settledCache = createMarkdownPieceCache();

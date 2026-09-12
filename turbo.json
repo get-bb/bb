@@ -848,9 +848,6 @@
     "bb-plugin-scripted-echo-provider#typecheck": {
       "dependsOn": ["@get-bb/plugin-sdk#build:types", "topo"]
     },
-    "bb-plugin-bench-stream-provider#typecheck": {
-      "dependsOn": ["@get-bb/plugin-sdk#build:types", "topo"]
-    },
     "bb-plugin-replacement-lab-alpha#typecheck": {
       "dependsOn": ["@get-bb/plugin-sdk#build:types", "topo"]
     },
