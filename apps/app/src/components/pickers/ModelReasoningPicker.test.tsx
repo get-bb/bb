@@ -577,24 +577,29 @@ describe("ModelReasoningPicker", () => {
     expect(onSelectedProviderChange).toHaveBeenCalledWith("cursor");
   });
 
-  it("stays open while changing both the model and reasoning effort", () => {
-    const { onModelChange, onReasoningChange } = renderPicker({
-      modelOptions: [...codexModels, { value: "gpt-5.2", label: "GPT-5.2" }],
-    });
+  it.each([false, true])(
+    "keeps reasoning changes open and closes on model selection (compact: %s)",
+    async (compact) => {
+      const { onModelChange, onReasoningChange } = renderPicker({
+        compact,
+        modelOptions: [...codexModels, { value: "gpt-5.2", label: "GPT-5.2" }],
+      });
+      const trigger = screen.getByRole("button", {
+        name: "Provider, model and reasoning",
+      });
 
-    fireEvent.click(
-      screen.getByRole("button", { name: "Provider, model and reasoning" }),
-    );
-    fireEvent.click(screen.getByText("5.2"));
+      fireEvent.click(trigger);
+      fireEvent.click(await screen.findByText("High"));
 
-    expect(onModelChange).toHaveBeenCalledWith("gpt-5.2");
-    expect(screen.getByRole("dialog")).not.toBeNull();
+      expect(onReasoningChange).toHaveBeenCalledWith("high");
+      expect(trigger.getAttribute("aria-expanded")).toBe("true");
 
-    fireEvent.click(screen.getByText("High"));
+      fireEvent.click(screen.getByText("5.2"));
 
-    expect(onReasoningChange).toHaveBeenCalledWith("high");
-    expect(screen.getByRole("dialog")).not.toBeNull();
-  });
+      expect(onModelChange).toHaveBeenCalledWith("gpt-5.2");
+      expect(trigger.getAttribute("aria-expanded")).toBe("false");
+    },
+  );
 
   it("marks the portaled picker as native no-drag content", () => {
     renderPicker();
@@ -668,6 +673,7 @@ describe("ModelReasoningPicker", () => {
 
     expect(onSelectedProviderChange).toHaveBeenCalledTimes(1);
     expect(onModelChange).toHaveBeenCalledWith("claude-opus-4-7");
+    expect(screen.queryByRole("dialog")).toBeNull();
   });
 
   it("switches the picker into handoff mode without leaving the thread", async () => {
@@ -905,6 +911,7 @@ describe("ModelReasoningPicker", () => {
     fireEvent.keyDown(search, { key: "Enter" });
 
     expect(onModelChange).toHaveBeenCalledWith("o4-mini");
+    expect(screen.queryByRole("dialog")).toBeNull();
   });
 
   it("ranks primary and selected-only model matches together", () => {

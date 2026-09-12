@@ -561,13 +561,11 @@ export function ModelReasoningPicker({
             (isPreviewing ? previewSelection?.reasoningLevel : undefined) ??
             reasoningValue,
         });
-        setOpen(false);
-        resetBrowseState();
-        return;
+      } else {
+        onModelChange(model);
       }
-      onModelChange(model);
-      setMoreModelsOpen(false);
-      setPreviewProviderId(null);
+      setOpen(false);
+      resetBrowseState();
     },
     [
       activeProviderId,
