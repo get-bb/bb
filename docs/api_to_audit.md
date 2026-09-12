@@ -2050,7 +2050,11 @@ window, outside route-owned layout regions and inside `PluginSlotMount`. The
 component receives no props and owns its chrome, positioning, visibility,
 focus, and responsive behavior. It can call app-level SDK hooks and either
 render fixed UI directly or create a React portal without losing plugin,
-router, query, realtime, or sidebar thread/action context. Hooks whose contract
+router, query, realtime, or sidebar thread/action context. Overlays share the
+app's tooltip provider (300 ms delay, hoverable content disabled), including
+through portals; host SDK components need no plugin-owned tooltip provider.
+The pane-local code-highlighting worker pool is not inherited here; its hooks
+support rendering without a pool. Hooks whose contract
 requires a particular surface, including `useComposer` and `useComposerView`,
 remain limited to that surface. One overlay crash hides only that registration;
 sibling overlays remain mounted.

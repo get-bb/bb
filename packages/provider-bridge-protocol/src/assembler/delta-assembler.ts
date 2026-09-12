@@ -1848,9 +1848,11 @@ export function createDeltaAssembler(
           providerThreadId: "",
           scope: turnId === undefined ? threadScope() : turnScope(turnId),
           contextWindowUsage: {
-            usedTokens: delta.used,
-            modelContextWindow: delta.size ?? null,
-            estimated: delta.estimated,
+            usedTokens: delta.snapshot?.usedTokens ?? delta.used,
+            modelContextWindow:
+              delta.snapshot?.contextWindowTokens ?? delta.size ?? null,
+            estimated: delta.snapshot?.estimated ?? delta.estimated,
+            ...(delta.snapshot ? { snapshot: delta.snapshot } : {}),
           },
         });
         return;

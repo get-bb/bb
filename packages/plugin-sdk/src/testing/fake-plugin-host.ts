@@ -11,6 +11,7 @@ import { join } from "node:path";
 import Database from "better-sqlite3";
 import { CronExpressionParser } from "cron-parser";
 import { Hono } from "hono";
+import { deepFreezePluginMetadata, validatePluginMetadata } from "@bb/domain";
 import { PLUGIN_INTERACTION_MAX_TITLE_LENGTH } from "@bb/domain/plugin-interaction-limits";
 import {
   adoptHttpRouteResponse,
@@ -446,7 +447,10 @@ export interface FakePluginBehaviorDrivers {
   ): Promise<PluginAgentToolResult>;
   /** Evaluate `bb.agents.configure` with production validation/fail-closed
    * semantics. With no callback, every registered tool/declared test skill is
-   * selected. Callback failures are logged and return empty selections. */
+   * selected. The callback receives a copy of `context` whose `pluginMetadata`
+   * is a validated, deep-frozen clone; invalid metadata rejects instead of
+   * reaching the callback. Callback failures are logged and return empty
+   * selections. */
   resolveAgentConfiguration(context: PluginAgentConfigurationContext): Promise<{
     tools: FakeAgentToolRecord[];
     skills: string[];
@@ -2784,12 +2788,15 @@ function createFakePluginHostInternal(
           instructions: null,
         };
       }
+      const pluginMetadata = deepFreezePluginMetadata(
+        validatePluginMetadata(context.pluginMetadata ?? {}),
+      );
       try {
         const normalized = normalizeAgentConfiguration({
           knownSkillIds: new Set(agentSkillIds),
           knownToolIds: new Set(agentTools.map((tool) => tool.name)),
           pluginId,
-          value: agentConfigurationProvider(context),
+          value: agentConfigurationProvider({ ...context, pluginMetadata }),
         });
         const selectedTools = new Set(normalized.toolIds);
         return {

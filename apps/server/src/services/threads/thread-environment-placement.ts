@@ -175,6 +175,21 @@ export async function parseProviderInputs(
   return value.data;
 }
 
+export function requireEnvironmentPlacementHost(
+  deps: PlacementDeps,
+  hostId: string,
+) {
+  const host = requireNonDestroyedHostWithStatus(deps, hostId);
+  if (host.lifecycle.phase === "removing") {
+    throw new ApiError(
+      409,
+      "machine_removing",
+      "Machine is being removed and cannot accept new environments",
+    );
+  }
+  return host;
+}
+
 export async function completeProviderSelection(
   deps: PlacementDeps,
   record: PluginEnvironmentProviderRecord,
@@ -185,17 +200,7 @@ export async function completeProviderSelection(
   const requires = record.provider.requires;
   let machine: EnvironmentMachineSelection;
   if (selection.machine.type === "existing") {
-    const host = requireNonDestroyedHostWithStatus(
-      deps,
-      selection.machine.hostId,
-    );
-    if (host.lifecycle.phase === "removing") {
-      throw new ApiError(
-        409,
-        "machine_removing",
-        "Machine is being removed and cannot accept new environments",
-      );
-    }
+    requireEnvironmentPlacementHost(deps, selection.machine.hostId);
     if (requires.projectCheckout) {
       requireSourceForHost(deps, projectId, selection.machine.hostId);
     }
@@ -1070,6 +1075,7 @@ export function prepareProviderEnvironment(
     statusMessage?: string;
   } = {},
 ): ProviderEnvironmentCreationDecision {
+  requireEnvironmentPlacementHost(deps, context.host.id);
   const now = Date.now();
   const policy = record.provider.policy;
   const previous =

@@ -30,6 +30,31 @@ afterEach(async () => {
 });
 
 describe("core environment scripts", () => {
+  it.each(["setup", "teardown"] as const)(
+    "supplies stdin EOF so %s continues to completion",
+    async (kind) => {
+      const workspacePath = await workspace(
+        kind,
+        'cat >/dev/null\nprintf complete > marker\nprintf "\\342"\nsleep 0.05\nprintf "\\234\\223\\n"\nprintf "done\\n" >&2\n',
+      );
+      const output: string[] = [];
+      const run = kind === "setup" ? runSetupScript : runTeardownScript;
+      const result = await run({
+        workspacePath,
+        timeoutMs: 1000,
+        env: { PATH: "/usr/bin:/bin" },
+        onProgress: (entry) => output.push(entry.text),
+      });
+      expect(result).toMatchObject({ ran: true, exitCode: 0 });
+      expect(await readFile(join(workspacePath, "marker"), "utf8")).toBe(
+        "complete",
+      );
+      expect(output).toContain("✓");
+      expect(output).toContain("done");
+      expect(result.output).toContain("✓\n");
+    },
+  );
+
   it("runs in the environment directory and streams stdout and stderr", async () => {
     const workspacePath = await workspace(
       "setup",

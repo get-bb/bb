@@ -12,6 +12,7 @@ type ThreadResponse = PluginThreadEventPayloads["thread.created"]["thread"];
 type QueueEntry = PluginThreadEventPayloads["message.queued"]["entry"];
 type TurnFailedEvent = PluginThreadEventPayloads["turn.failed"];
 type PluginAgentConfigurationContextOverrides = {
+  pluginMetadata?: PluginAgentConfigurationContext["pluginMetadata"];
   thread?: Partial<PluginAgentConfigurationContext["thread"]>;
   project?: Partial<PluginAgentConfigurationContext["project"]>;
   environment?: Partial<PluginAgentConfigurationContext["environment"]>;
@@ -132,6 +133,7 @@ export function makePluginAgentConfigurationContext(
   overrides: PluginAgentConfigurationContextOverrides = {},
 ): PluginAgentConfigurationContext {
   const context: PluginAgentConfigurationContext = {
+    pluginMetadata: {},
     thread: {
       id: "thread-test",
       title: null,
@@ -160,6 +162,7 @@ export function makePluginAgentConfigurationContext(
     origin: { kind: null, pluginId: null },
   };
   return {
+    pluginMetadata: overrides.pluginMetadata ?? context.pluginMetadata,
     thread: { ...context.thread, ...overrides.thread },
     project: { ...context.project, ...overrides.project },
     environment: { ...context.environment, ...overrides.environment },

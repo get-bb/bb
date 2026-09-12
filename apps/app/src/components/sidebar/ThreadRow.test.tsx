@@ -390,7 +390,10 @@ describe("ThreadRow", () => {
   );
 
   it("puts the draft icon in the trailing status slot", () => {
-    const { container } = renderThreadRow({ hasComposerDraft: true });
+    const { container } = renderThreadRow({
+      hasComposerDraft: true,
+      thread: createThread({ lastReadAt: 1, latestAttentionAt: 1 }),
+    });
 
     const draftIcon = container.querySelector('[data-icon="Edit"]');
     expect(draftIcon).not.toBeNull();
@@ -409,7 +412,10 @@ describe("ThreadRow", () => {
       icon: "AiContentGenerator01",
       label: "Plugin improving draft",
     });
-    const { container } = renderThreadRow({ hasComposerDraft: true });
+    const { container } = renderThreadRow({
+      hasComposerDraft: true,
+      thread: createThread({ lastReadAt: 1, latestAttentionAt: 1 }),
+    });
 
     const runningIcon = screen.getByLabelText("Plugin improving draft");
     expect(runningIcon.getAttribute("data-icon")).toBe("AiContentGenerator01");
@@ -853,7 +859,11 @@ describe("ThreadRow", () => {
 
   it("clocks a thread with queued work, and drops the clock once it runs", () => {
     const { rerenderThreadRow } = renderThreadRow({
-      thread: createThread({ queuedWork: "waiting" }),
+      thread: createThread({
+        lastReadAt: 1,
+        latestAttentionAt: 1,
+        queuedWork: "waiting",
+      }),
     });
 
     expect(
@@ -864,6 +874,8 @@ describe("ThreadRow", () => {
 
     rerenderThreadRow(
       createThread({
+        lastReadAt: 1,
+        latestAttentionAt: 1,
         queuedWork: "waiting",
         runtime: { displayStatus: "active", hostReconnectGraceExpiresAt: null },
       }),
@@ -876,8 +888,30 @@ describe("ThreadRow", () => {
     ).toBe("Loading");
   });
 
+  it("shows unread success instead of queued work", () => {
+    renderThreadRow({
+      thread: createThread({
+        status: "idle",
+        lastReadAt: 1_000,
+        latestAttentionAt: 2_000,
+        queuedWork: "waiting",
+      }),
+    });
+
+    expect(screen.getByLabelText("Unread thread succeeded")).not.toBeNull();
+    expect(
+      screen.queryByLabelText("Thread has a message waiting to send"),
+    ).toBeNull();
+  });
+
   it("gives a failed queued row the same glyph a failed thread gets", () => {
-    renderThreadRow({ thread: createThread({ queuedWork: "failed" }) });
+    renderThreadRow({
+      thread: createThread({
+        lastReadAt: 1,
+        latestAttentionAt: 1,
+        queuedWork: "failed",
+      }),
+    });
     const queueFailure = screen.getByLabelText("Queued message failed to send");
 
     cleanup();

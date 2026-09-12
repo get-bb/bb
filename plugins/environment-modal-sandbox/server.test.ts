@@ -55,6 +55,8 @@ function host(status: Host["status"]): Host {
 interface FakeSandboxState {
   id: string;
   name: string;
+  appName: string;
+  tags: Record<string, string>;
   connected: boolean;
   terminated: boolean;
 }
@@ -118,6 +120,8 @@ function createBackend(
       const state = {
         id: `sandbox-${nextSandbox}`,
         name: request.name,
+        appName: request.appName,
+        tags: request.tags,
         connected: false,
         terminated: false,
       } satisfies FakeSandboxState;
@@ -130,11 +134,20 @@ function createBackend(
       );
       return state === undefined ? null : handle(state);
     },
-    async fromName(_appName, name) {
+    async fromName(appName, name) {
       const state = states.find(
-        (candidate) => candidate.name === name && !candidate.terminated,
+        (candidate) =>
+          candidate.appName === appName &&
+          candidate.name === name &&
+          !candidate.terminated,
       );
       return state === undefined ? null : handle(state);
+    },
+    async *listByKey(key) {
+      for (const state of states) {
+        if (!state.terminated && state.tags.bbMachineKey === key)
+          yield handle(state);
+      }
     },
     async deleteSnapshot(imageId) {
       deletedSnapshots.push(imageId);
@@ -215,6 +228,7 @@ async function setup(
       create: (request) => backend.backend.create(request),
       fromId: (id) => backend.backend.fromId(id),
       fromName: (appName, name) => backend.backend.fromName(appName, name),
+      listByKey: (key) => backend.backend.listByKey(key),
     }),
     now: () => Date.now(),
     sleep: async () => {},
@@ -470,6 +484,84 @@ describe("Modal machine provider", () => {
     });
     expect(test.backend.creates).toHaveLength(1);
   });
+
+  it("cleans matching allocations across apps after checkpoint failure without touching unrelated compute", async () => {
+    const test = await setup({ ...SETTINGS, appName: "original" });
+    try {
+      const context = createContext();
+      context.checkpoint = async () => {
+        throw new Error("checkpoint refused");
+      };
+      expect(await test.provider.create(context)).toMatchObject({
+        status: "failed",
+      });
+      await test.harness.behavior.setSettings({ appName: "changed" });
+      expect(await test.provider.create(context)).toMatchObject({
+        status: "failed",
+      });
+      test.backend.states.push({
+        id: "unrelated",
+        name: context.key,
+        appName: "other",
+        tags: {},
+        connected: false,
+        terminated: false,
+      });
+      expect(await test.provider.reconcileCleanup(context)).toEqual({
+        status: "removed",
+      });
+      expect(test.backend.states.map((state) => state.terminated)).toEqual([
+        true,
+        true,
+        false,
+      ]);
+      expect(await test.provider.reconcileCleanup(context)).toEqual({
+        status: "removed",
+      });
+      expect(test.backend.creates).toHaveLength(2);
+      expect(test.bootstrap).not.toHaveBeenCalled();
+    } finally {
+      await test.harness.lifecycle.dispose();
+    }
+  });
+
+  it.each(["enumeration", "termination", "still running"])(
+    "keeps tagged cleanup retryable after %s failure",
+    async (failure) => {
+      const test = await setup(SETTINGS, {
+        crashAfterTerminateOnce: failure === "termination",
+      });
+      try {
+        const context = createContext();
+        await test.provider.create(context);
+        const list = test.backend.backend.listByKey;
+        const lookup = vi.spyOn(test.backend.backend, "listByKey");
+        if (failure === "enumeration")
+          lookup.mockImplementationOnce(async function* (key) {
+            yield* list(key);
+            throw new Error("enumeration failed");
+          });
+        if (failure === "still running")
+          lookup.mockImplementationOnce(async function* (key) {
+            for await (const sandbox of list(key))
+              yield { ...sandbox, terminate: async () => {} };
+          });
+        expect(await test.provider.reconcileCleanup(context)).toMatchObject({
+          status: "failed",
+        });
+        expect(await test.provider.reconcileCleanup(context)).toEqual({
+          status: "removed",
+        });
+        expect(await test.provider.reconcileCleanup(context)).toEqual({
+          status: "removed",
+        });
+        expect(test.backend.states[0]?.terminated).toBe(true);
+        expect(test.backend.creates).toHaveLength(1);
+      } finally {
+        await test.harness.lifecycle.dispose();
+      }
+    },
+  );
 
   it("preserves resources across provider suspend, resume, and remove callbacks", async () => {
     const harness = await setup({
@@ -736,6 +828,8 @@ it("reconciles uncertain named allocations without creating or bootstrapping", a
   test.backend.states.push({
     id: "uncertain",
     name: request.key,
+    appName: "bb-sandboxes",
+    tags: { bbMachineKey: request.key },
     connected: false,
     terminated: false,
   });

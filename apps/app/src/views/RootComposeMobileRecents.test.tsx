@@ -748,7 +748,7 @@ describe("RootComposeMobileRecents", () => {
     expect(screen.queryByLabelText("Plan mode active")).toBeNull();
   });
 
-  it("includes only the resolved idle draft indicator in the link label", () => {
+  it("includes only the resolved unread-success indicator in the link label", () => {
     window.localStorage.setItem(
       "bb.promptbox.contents-proj_mobile-thr_mobile-3",
       JSON.stringify({ text: "Keep editing", attachments: [] }),
@@ -783,7 +783,7 @@ describe("RootComposeMobileRecents", () => {
 
     expect(
       screen.getByRole("link", {
-        name: "Open Mobile activity — Thread has unsubmitted draft",
+        name: "Open Mobile activity — Unread thread succeeded",
       }),
     ).not.toBeNull();
     expect(screen.queryByLabelText("Plan mode active")).toBeNull();

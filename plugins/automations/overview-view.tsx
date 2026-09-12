@@ -158,7 +158,7 @@ export function automationProjectLabel(
   project: OverviewEntry["project"] | null | undefined,
 ): string {
   if (project == null) return "Workspace";
-  return project.id === PERSONAL_PROJECT_ID ? "Local" : project.name;
+  return project.name;
 }
 
 function automationProjectFilterId(
@@ -223,8 +223,8 @@ function AutomationRowMetadata({
     <ResourceMeta
       items={[
         <AutomationMetadataItem
-          icon={personalProject ? "Laptop" : "Folder"}
-          iconLabel={personalProject ? "Local project" : "Project"}
+          icon="Folder"
+          iconLabel={personalProject ? `Project: ${projectLabel}` : "Project"}
           title={projectLabel}
         >
           {projectLabel}
@@ -248,7 +248,7 @@ function AutomationRowMetadata({
   );
 }
 
-function OverviewRow({
+export function OverviewRow({
   automation,
   project,
   onNavigate,

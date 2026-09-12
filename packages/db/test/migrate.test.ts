@@ -840,6 +840,7 @@ function rewindEnvironmentRowFactsMigration(db: DbConnection): void {
 }
 
 function rewindMachineProvidersMigration(db: DbConnection): void {
+  db.$client.exec("DROP TABLE IF EXISTS thread_plugin_metadata");
   db.$client.exec("DROP TABLE IF EXISTS environment_hook_operations");
   if (
     db.$client

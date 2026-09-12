@@ -6,12 +6,15 @@ import { CronExpressionParser } from "cron-parser";
 import type { Context } from "hono";
 import {
   CUSTOM_THEME_CSS_MAX_LENGTH,
+  deepFreezePluginMetadata,
   derivePluginId,
   formatPluginThemeId,
   isNamespacedGlyph,
   isPluginOwnedIconPath,
+  parsePersistedPluginMetadata,
   type DeclaredCodeTheme,
   type DynamicTool,
+  type JsonObject,
   type JsonValue,
   type PluginThemeMeta,
   type SystemChangeKind,
@@ -71,6 +74,7 @@ import {
   listPendingGitPluginArtifacts,
   listPluginMarketplaces,
   listPluginSchedules,
+  listThreadPluginMetadataRows,
   markInstalledPluginRemoved,
   recordPluginScheduleResult,
   setInstalledPluginEnabled,
@@ -337,7 +341,7 @@ export interface PluginService {
   listSkillRootContributions(): PluginSkillRootContribution[];
   listAgentTools(): PluginAgentToolContribution[];
   resolveAgentConfiguration(args: {
-    context: PluginAgentConfigurationContext;
+    context: Omit<PluginAgentConfigurationContext, "pluginMetadata">;
     skillIdsByPlugin: ReadonlyMap<string, readonly string[]>;
   }): Promise<PluginResolvedAgentConfiguration>;
   resolveProviderEnv(args: {
@@ -2307,14 +2311,34 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
       const tools: PluginAgentToolContribution[] = [];
       const selectedSkillIdsByPlugin = new Map<string, ReadonlySet<string>>();
       const dynamicInstructions: Array<{ pluginId: string; text: string }> = [];
-
-      for (const [pluginId, plugin] of [...loaded.entries()].sort(([a], [b]) =>
-        a.localeCompare(b),
+      const plugins = [...loaded.entries()]
+        .sort(([a], [b]) => a.localeCompare(b))
+        .map(([pluginId, plugin]) => ({
+          pluginId,
+          provider: plugin.handle.agentConfigurationProvider,
+        }));
+      const configuringPluginIds = plugins
+        .filter(({ provider }) => provider !== null)
+        .map(({ pluginId }) => pluginId);
+      const metadataByPluginId = new Map<string, JsonObject>();
+      for (const row of listThreadPluginMetadataRows(
+        deps.db,
+        context.thread.id,
+        configuringPluginIds,
       )) {
+        const metadata = parsePersistedPluginMetadata(row.metadataJson);
+        if (metadata === undefined) {
+          logger.warn(
+            `Ignoring corrupt plugin metadata for thread ${context.thread.id}, plugin ${row.pluginId}`,
+          );
+        }
+        metadataByPluginId.set(row.pluginId, metadata ?? {});
+      }
+
+      for (const { pluginId, provider } of plugins) {
         const pluginTools = allTools.filter(
           (entry) => entry.pluginId === pluginId,
         );
-        const provider = plugin.handle.agentConfigurationProvider;
         if (provider === null) {
           tools.push(
             ...pluginTools.map(({ record }) => ({
@@ -2335,7 +2359,12 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
             knownSkillIds,
             knownToolIds,
             pluginId,
-            value: provider(context),
+            value: provider({
+              ...context,
+              pluginMetadata: deepFreezePluginMetadata(
+                metadataByPluginId.get(pluginId) ?? {},
+              ),
+            }),
           }),
         );
         if (!outcome.ok) {

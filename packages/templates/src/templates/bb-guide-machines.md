@@ -255,6 +255,10 @@ original `BB_DATA_DIR` if explicitly configured, to remove its installation.
 
 ## Machine environment
 
+Repository setup receives freshly resolved machine variables on each dispatch,
+including recovery. Values are sent transiently to the setup process and are
+not stored in provisioning requests. Existing attached paths skip setup.
+
 `bb machine env list --json` lists global machine variables and built-in GitHub
 health. `bb machine env set NAME [--note text] --json` reads its value
 from stdin, removing one trailing newline; values are never accepted in argv.
@@ -269,6 +273,11 @@ Agent-provider variables win over these host values for agent turns. Changes
 apply to the next turn, setup operation, or newly opened BB terminal; existing
 terminals retain their launch environment. Runtime output is forwarded as-is,
 so commands and providers can print contributed values.
+
+Plugin host calls start immediately using the current environment while any calls
+are active in that plugin worker. Changed or removed machine variables take
+effect on the next call after all active calls finish. Continuous overlapping
+calls can keep the previous values until the worker becomes idle.
 
 The server's gh login provides GitHub credentials, a Git environment-only HTTPS
 helper and SSH rewrites, and commit identity. The built-in row reports logged in,

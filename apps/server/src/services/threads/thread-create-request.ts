@@ -1,4 +1,5 @@
 import type {
+  JsonObject,
   PromptInput,
   ThreadOriginKind,
   ThreadVisibility,
@@ -23,6 +24,7 @@ export interface ThreadCreateServiceRequestInput {
   sendAt?: CreateThreadRequest["sendAt"];
   manualQueue?: CreateThreadRequest["manualQueue"];
   input: PromptInput[];
+  pluginMetadata?: CreateThreadRequest["pluginMetadata"];
   sectionId?: CreateThreadRequest["sectionId"];
   model?: CreateThreadRequest["model"];
   origin: ThreadCreateOrigin | null;
@@ -43,9 +45,10 @@ export interface ThreadCreateServiceRequestInput {
 
 export interface ThreadCreateServiceRequest extends Omit<
   ThreadCreateServiceRequestInput,
-  "environment" | "providerId"
+  "environment" | "pluginMetadata" | "providerId"
 > {
   environment: EnvironmentArgs | ProviderEnvironmentArgs;
+  pluginMetadata: { pluginId: string; metadata: JsonObject } | null;
   providerId: string;
   titleFallback: string | null;
   visibility: ThreadVisibility;

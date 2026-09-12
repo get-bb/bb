@@ -8,6 +8,7 @@ const vendor = vi.hoisted(() => ({
   exec: vi.fn(),
   poll: vi.fn(),
   list: vi.fn(),
+  tagged: vi.fn(),
 }));
 vi.mock("modal", () => ({
   NotFoundError: class extends Error {},
@@ -18,6 +19,7 @@ vi.mock("modal", () => ({
       return "main";
     }
     sandboxes = {
+      list: vendor.tagged,
       fromId: async () => ({
         sandboxId: "sandbox-1",
         exec: vendor.exec,
@@ -59,6 +61,7 @@ function processResult() {
 
 beforeEach(() => {
   vendor.exec.mockReset();
+  vendor.tagged.mockReset();
   vendor.poll.mockReset().mockResolvedValue(null);
 });
 
@@ -224,5 +227,32 @@ it("bounds debug output while draining streams and preserving command failure", 
     exitCode: 7,
     stdout: "abcd\n[output truncated]",
     stderr: "abcd\n[output truncated]",
+  });
+});
+
+it("lists every tagged sandbox across apps and propagates enumeration failures", async () => {
+  const client = createModalSandboxClient({
+    tokenId: "id",
+    tokenSecret: "secret",
+  });
+  const terminate = vi.fn(async () => {});
+  vendor.tagged.mockImplementation(async function* () {
+    yield { sandboxId: "first-app-sandbox", terminate };
+    yield { sandboxId: "second-app-sandbox", terminate };
+    throw new Error("next page failed");
+  });
+  const ids: string[] = [];
+  await expect(
+    (async () => {
+      for await (const sandbox of client.listByKey("owned-key")) {
+        ids.push(sandbox.sandboxId);
+        await sandbox.terminate();
+      }
+    })(),
+  ).rejects.toThrow("next page failed");
+  expect(ids).toEqual(["first-app-sandbox", "second-app-sandbox"]);
+  expect(terminate).toHaveBeenCalledTimes(2);
+  expect(vendor.tagged).toHaveBeenCalledExactlyOnceWith({
+    tags: { bbMachineKey: "owned-key" },
   });
 });

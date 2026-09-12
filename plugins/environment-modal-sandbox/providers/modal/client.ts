@@ -70,6 +70,7 @@ export interface ModalSandboxClient {
   deleteSnapshot(imageId: string): Promise<void>;
   fromId(sandboxId: string): Promise<ModalSandboxHandle | null>;
   fromName(appName: string, name: string): Promise<ModalSandboxHandle | null>;
+  listByKey(key: string): AsyncIterable<ModalSandboxHandle>;
 }
 
 export interface ModalCredentials {
@@ -239,6 +240,13 @@ export const createModalSandboxClient: ModalSandboxClientFactory = (
       } catch (error) {
         if (error instanceof NotFoundError) return null;
         throw error;
+      }
+    },
+    async *listByKey(key) {
+      for await (const sandbox of client.sandboxes.list({
+        tags: { bbMachineKey: key },
+      })) {
+        yield wrapSandbox(sandbox);
       }
     },
     async fromName(appName, name) {

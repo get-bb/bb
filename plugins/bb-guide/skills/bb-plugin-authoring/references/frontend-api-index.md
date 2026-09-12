@@ -195,6 +195,7 @@ Read the installed SDK declarations for the exact current signatures.
 - `BbNavigate`
 - `PluginSdkApp`
 - `JsonValue`
+- `ReadonlyJsonValue`
 - `PluginRpcCallArgs`
 - `PluginRpcContract`
 - `PluginRpcError`

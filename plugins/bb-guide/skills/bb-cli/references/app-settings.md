@@ -156,3 +156,11 @@ server gh credentials to machines; `true` enables them again. In Machines →
 Advanced settings, the automatic GH_TOKEN switch controls the same setting.
 This does not log the server out or suppress an explicit custom GH_TOKEN.
 Changes apply to new turns, setup commands and terminals.
+
+Sidebar footer actions use `sidebar.footerOrder` and `sidebar.hiddenFooterItems`.
+Both are string lists shared across clients. Keys are `builtin:settings`,
+`builtin:report-bug`, or `plugin:<encoded pluginId>/<encoded registrationId>`.
+Right-click Hide moves an action into More; Settings → Appearance → Sidebar footer
+restores visibility and drag-reorders actions. CLI example:
+`bb settings ui set sidebar.hiddenFooterItems '["plugin:provider-usage/usage"]'`.
+Use `bb settings ui reset sidebar.hiddenFooterItems` to show everything again.
