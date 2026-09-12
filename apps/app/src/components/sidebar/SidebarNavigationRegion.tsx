@@ -247,7 +247,7 @@ export function SidebarNavigationRegion(props: BuiltInSidebarNavigationProps) {
         slotKind={SIDEBAR_NAVIGATION_SLOT_KIND}
         onCrash={(pluginId) => {
           appToast.error("Sidebar navigation plugin crashed", {
-            description: `${title} (${pluginId}) stopped working, so bb's own navigation is back.`,
+            description: `${title} (${pluginId}) stopped working, so Opulent's own navigation is back.`,
           });
         }}
       >

@@ -7,11 +7,11 @@ export interface DesktopUpdateMetadataFileNames {
 }
 
 export interface DesktopReleaseConfig {
-  appId: "dev.bb.desktop" | "dev.bb.desktop.nightly";
-  applicationName: "bb" | "bb Nightly";
+  appId: "ai.opulent.desktop" | "ai.opulent.desktop.nightly";
+  applicationName: "Opulent" | "Opulent Nightly";
   artifactName: string;
   iconFileName: "icon.png" | "icon-nightly.png";
-  linuxExecutableName: "bb" | "bb-nightly";
+  linuxExecutableName: "opulent" | "opulent-nightly";
   macIconPath: "assets/icon.icns" | "assets/icon-nightly.icns";
   releaseTag: "desktop-latest" | "desktop-nightly";
   updateMetadataFileNames: DesktopUpdateMetadataFileNames;

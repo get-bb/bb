@@ -106,7 +106,7 @@ function missingInstallIssue(
     },
     action: null,
     title: `${displayName} CLI not installed`,
-    description: `Install ${displayName} so bb can start ${displayName} sessions.`,
+    description: `Install ${displayName} so Opulent can start ${displayName} sessions.`,
     fingerprint: `${provider}:missing:1.1.0`,
   };
 }

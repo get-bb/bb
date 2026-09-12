@@ -59,7 +59,7 @@ describe("UpdatePluginDialog", () => {
 
     expect(screen.getByText("Update Linear to 1.7.0?")).toBeTruthy();
     expect(screen.getByTestId("rollback-note").textContent).toContain(
-      "if 1.7.0 fails to start, bb restores 1.6.2",
+      "if 1.7.0 fails to start, Opulent restores 1.6.2",
     );
     expect(
       screen
@@ -132,7 +132,7 @@ describe("UpdatePluginDialog", () => {
     expect(screen.getByText("Failed on Jul 22, 2026.")).toBeTruthy();
     expect(
       screen.getByText(
-        "bb couldn’t activate 1.7.0. It restored 1.6.2 and its data.",
+        "Opulent couldn’t activate 1.7.0. It restored 1.6.2 and its data.",
       ),
     ).toBeTruthy();
     expect(screen.getByText("factory threw during activation")).toBeTruthy();

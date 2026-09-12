@@ -54,7 +54,7 @@ export function buildProviderCliIssue(
       status,
       action: status.installAction,
       title: `${status.displayName} CLI not installed`,
-      description: `Install ${status.displayName} so bb can start ${status.displayName} sessions.`,
+      description: `Install ${status.displayName} so Opulent can start ${status.displayName} sessions.`,
       fingerprint: `${provider}:missing:${status.latestVersion ?? "latest"}`,
     };
   }

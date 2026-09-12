@@ -42,7 +42,7 @@ describe("BrowseHeroCarousel", () => {
     render(<BrowseHeroCarousel autoplay={false} />);
 
     const heading = screen.getByRole("heading", { level: 2 });
-    expect(heading.textContent).toContain("Turn bb into");
+    expect(heading.textContent).toContain("Turn Opulent into");
     expect(heading.textContent).toContain(BROWSE_ARCHETYPES[0]?.noun);
     expect(screen.getByText("Plugin")).toBeTruthy();
     expect(

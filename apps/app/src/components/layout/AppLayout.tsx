@@ -259,7 +259,7 @@ function SidebarTriggerOverlay({
 }
 
 const routeTitles: Record<string, { title: string }> = {
-  "/": { title: "bb" },
+  "/": { title: "Opulent" },
   "/settings": { title: "Settings" },
   "/automations": { title: "Automations" },
   "/skills": { title: "Skills" },

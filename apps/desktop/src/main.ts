@@ -1118,7 +1118,7 @@ async function authenticateConnectTarget(
       cachedFailure ?? {
         code: "network",
         detail:
-          "the local bb server is unavailable, and this app has no stored bb Connect credential",
+          "the local Opulent server is unavailable, and this app has no stored bb Connect credential",
         ok: false,
       }
     );
@@ -1154,7 +1154,7 @@ function ensureDesktopMachineEnrolled(): void {
   }
   if (!cache.canPersist()) {
     createDesktopLogger().info(
-      "[desktop] no OS keychain available — keeping the local bb server for bb Connect sessions",
+      "[desktop] no OS keychain available — keeping the local Opulent server for bb Connect sessions",
     );
     return;
   }
@@ -1189,7 +1189,7 @@ async function retryStartup(): Promise<void> {
       details: error instanceof Error ? error.message : String(error),
       logs: "",
       retryable: false,
-      title: "Could not open bb",
+      title: "Could not open Opulent",
     });
   } finally {
     startupRetryPending = false;
@@ -1216,7 +1216,7 @@ async function applyServerTarget(): Promise<void> {
     if (!attached) {
       await loadStartupError({
         details:
-          "Could not connect to the local bb server on this Mac. Check that the port is free or that a compatible bb server is running.",
+          "Could not connect to the local Opulent server on this Mac. Check that the port is free or that a compatible Opulent server is running.",
         logs: "",
         retryable: true,
         title: "Could not connect",
@@ -1910,40 +1910,40 @@ async function decideOnExistingServer(
   if (stopResult.kind === "unverified") {
     await loadStartupError({
       details:
-        `The bb at ${probe.serverUrl} records process ${String(stopResult.pid)}, but that ` +
-        "process no longer matches the record. bb did not stop it. Stop it yourself, then open bb again.",
+        `The Opulent at ${probe.serverUrl} records process ${String(stopResult.pid)}, but that ` +
+        "process no longer matches the record. Opulent did not stop it. Stop it yourself, then open Opulent again.",
       logs: "",
       retryable: false,
-      title: "Could not stop the running bb",
+      title: "Could not stop the running Opulent",
     });
     return "quit";
   }
   if (stopResult.kind === "still-running") {
     await loadStartupError({
-      details: `bb could not stop process ${String(stopResult.pid)}, even after SIGKILL.`,
+      details: `Opulent could not stop process ${String(stopResult.pid)}, even after SIGKILL.`,
       logs: "",
       retryable: false,
-      title: "Could not stop the running bb",
+      title: "Could not stop the running Opulent",
     });
     return "quit";
   }
   if (stopResult.kind === "replaced") {
     await loadStartupError({
       details:
-        `Another bb started at ${probe.serverUrl} while the question was open, so bb stopped nothing. ` +
-        "Open bb again to see the copy that runs now.",
+        `Another Opulent started at ${probe.serverUrl} while the question was open, so Opulent stopped nothing. ` +
+        "Open Opulent again to see the copy that runs now.",
       logs: "",
       retryable: false,
-      title: "Could not stop the running bb",
+      title: "Could not stop the running Opulent",
     });
     return "quit";
   }
   if (!(await waitForServerToStop(probe.serverUrl))) {
     await loadStartupError({
-      details: `The bb at ${probe.serverUrl} stopped, but the address is still in use.`,
+      details: `The Opulent at ${probe.serverUrl} stopped, but the address is still in use.`,
       logs: "",
       retryable: false,
-      title: "Could not stop the running bb",
+      title: "Could not stop the running Opulent",
     });
     return "quit";
   }
@@ -1996,7 +1996,7 @@ async function initializeRuntime(args: InitializeRuntimeArgs): Promise<void> {
 
   if (existingProbe.kind === "incompatible") {
     await loadStartupError({
-      details: `Port ${args.serverUrl} is already in use, but it is not a compatible bb server: ${existingProbe.reason}.`,
+      details: `Port ${args.serverUrl} is already in use, but it is not a compatible Opulent server: ${existingProbe.reason}.`,
       logs: "",
       retryable: false,
       title: "Port conflict",
@@ -2026,7 +2026,7 @@ async function runDesktopApp(): Promise<void> {
 
   const applicationName = app.isPackaged
     ? DESKTOP_RELEASE_INFO.applicationName
-    : "bb-dev";
+    : "Opulent Dev";
   app.setName(applicationName);
   installAboutPanel(applicationName);
 
@@ -2444,6 +2444,6 @@ void runDesktopApp().catch((error) => {
     details: message,
     logs: "",
     retryable: false,
-    title: "Could not open bb",
+    title: "Could not open Opulent",
   });
 });

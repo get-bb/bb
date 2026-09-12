@@ -147,7 +147,7 @@ export function PluginDetailReleaseStatus({
           aria-hidden
         />
         <p className="min-w-0 text-xs leading-relaxed text-muted-foreground">
-          bb couldn&rsquo;t activate {displayPluginVersion(failure.version)}. It
+          Opulent couldn&rsquo;t activate {displayPluginVersion(failure.version)}. It
           restored {displayPluginVersion(plugin.version)} and its data.
         </p>
       </div>

@@ -1,0 +1,53 @@
+{
+  "name": "@opulent/learning-contracts",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    "./acp": {
+      "source": "./src/acp/acp.ts",
+      "types": "./src/acp/acp.ts",
+      "default": "./src/acp/acp.ts"
+    },
+    "./compaction": {
+      "source": "./src/compaction/compaction.ts",
+      "types": "./src/compaction/compaction.ts",
+      "default": "./src/compaction/compaction.ts"
+    },
+    "./envauthor": {
+      "source": "./src/envauthor/envauthor.ts",
+      "types": "./src/envauthor/envauthor.ts",
+      "default": "./src/envauthor/envauthor.ts"
+    },
+    "./events": {
+      "source": "./src/events/events.ts",
+      "types": "./src/events/events.ts",
+      "default": "./src/events/events.ts"
+    },
+    "./harbor": {
+      "source": "./src/harbor/harbor.ts",
+      "types": "./src/harbor/harbor.ts",
+      "default": "./src/harbor/harbor.ts"
+    },
+    "./providers": {
+      "source": "./src/providers/providers.ts",
+      "types": "./src/providers/providers.ts",
+      "default": "./src/providers/providers.ts"
+    },
+    "./trajectory": {
+      "source": "./src/trajectory/trajectory.ts",
+      "types": "./src/trajectory/trajectory.ts",
+      "default": "./src/trajectory/trajectory.ts"
+    }
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run --config vitest.config.ts"
+  },
+  "devDependencies": {
+    "@bb/tsconfig": "workspace:*",
+    "@types/node": "^22.0.0",
+    "typescript": "npm:@typescript/typescript6@^6.0.2",
+    "vitest": "^4.1.1"
+  }
+}

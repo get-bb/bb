@@ -390,7 +390,7 @@ describe("PluginsOverview", () => {
     expect(toolbar.contains(sort)).toBe(true);
     const heroHeading = screen.getByRole("heading", {
       level: 2,
-      name: /^Turn bb into/,
+      name: /^Turn Opulent into/,
     });
     expect(
       heroHeading.compareDocumentPosition(toolbar) &

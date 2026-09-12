@@ -293,7 +293,7 @@ describe("SidebarNavigationRegion", () => {
       expect.objectContaining({
         title: "Sidebar navigation plugin crashed",
         description:
-          "Garden Navbar (garden) stopped working, so bb's own navigation is back.",
+          "Garden Navbar (garden) stopped working, so Opulent's own navigation is back.",
       }),
     ]);
   });

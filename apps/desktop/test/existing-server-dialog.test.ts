@@ -32,7 +32,7 @@ describe("formatStartedAt", () => {
 
 describe("formatSurface", () => {
   it("names how bb was started", () => {
-    expect(formatSurface("desktop")).toBe("the bb desktop app");
+    expect(formatSurface("desktop")).toBe("the Opulent desktop app");
     expect(formatSurface("web")).toBe("a terminal");
   });
 });
@@ -53,7 +53,7 @@ describe("renderExistingServerDialogHtml", () => {
     expect(html).toContain(">Connect<");
   });
 
-  it("describes the running bb", () => {
+  it("describes the running Opulent", () => {
     const html = renderExistingServerDialogHtml({
       details: DETAILS,
       now: NOW,
@@ -79,7 +79,7 @@ describe("renderExistingServerDialogHtml", () => {
     expect(html).not.toContain("agent threads stop too");
   });
 
-  it("escapes values that come from the running bb", () => {
+  it("escapes values that come from the running Opulent", () => {
     const html = renderExistingServerDialogHtml({
       details: { ...DETAILS, dataDir: '/tmp/<img src=x onerror="boom">' },
       now: NOW,

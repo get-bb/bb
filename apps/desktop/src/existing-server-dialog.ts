@@ -43,7 +43,7 @@ export function formatStartedAt(startedAt: string, now: Date): string {
 }
 
 export function formatSurface(surface: string): string {
-  return surface === "desktop" ? "the bb desktop app" : "a terminal";
+  return surface === "desktop" ? "the Opulent desktop app" : "a terminal";
 }
 
 function buildDetailRows(args: {

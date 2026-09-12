@@ -173,7 +173,7 @@ describe("pluginRuntimeStatusPresentation", () => {
         ),
       ),
     ).toMatchObject({
-      recovery: "Restart bb. If the files are still missing, reinstall bb.",
+      recovery: "Restart Opulent. If the files are still missing, reinstall bb.",
     });
     expect(
       pluginRuntimeStatusPresentation(plugin({}, { status: "missing" })),
@@ -191,7 +191,7 @@ describe("pluginRuntimeStatusPresentation", () => {
       label: "Needs configuration",
       condition: "Required settings are incomplete.",
       recovery:
-        "Complete the Configuration section; bb reloads the plugin after you save.",
+        "Complete the Configuration section; Opulent reloads the plugin after you save.",
     });
   });
 });

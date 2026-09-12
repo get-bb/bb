@@ -305,7 +305,7 @@ describe("SkillsOverview", () => {
     expect(markup).toContain("Sort");
     expect(markup).not.toContain('role="tab"');
     expect(markup).toContain("BB Official");
-    expect(markup).toContain("New bb skill");
+    expect(markup).toContain("New Opulent skill");
     expect(markup).not.toContain('aria-label="Open zz-official-skill"');
     expect(markup.indexOf("zz-official-skill")).toBeLessThan(
       markup.indexOf("aa-user-skill"),
@@ -842,7 +842,7 @@ describe("SkillsLibrary library detail routing", () => {
     renderLibrarySkillRoute();
 
     expect(screen.getByText("Loading skill")).toBeTruthy();
-    expect(screen.queryByText("New bb skill")).toBeNull();
+    expect(screen.queryByText("New Opulent skill")).toBeNull();
   });
 
   it("shows a retryable detail error when the skill library fails to load", async () => {
@@ -854,7 +854,7 @@ describe("SkillsLibrary library detail routing", () => {
 
     expect(await screen.findByText("Couldn't load skill.")).toBeTruthy();
     expect(screen.getByRole("button", { name: "Retry" })).toBeTruthy();
-    expect(screen.queryByText("New bb skill")).toBeNull();
+    expect(screen.queryByText("New Opulent skill")).toBeNull();
   });
 
   it("shows not found on an unknown library skill detail route", async () => {
@@ -864,7 +864,7 @@ describe("SkillsLibrary library detail routing", () => {
 
     const notFound = await screen.findByText("Skill not found.");
     expect(notFound.closest("[data-resource-detail-state]")).not.toBeNull();
-    expect(screen.queryByText("New bb skill")).toBeNull();
+    expect(screen.queryByText("New Opulent skill")).toBeNull();
     expect(fetchMock).not.toHaveBeenCalled();
   });
 });
@@ -912,7 +912,7 @@ describe("SkillsLibrary registry detail lifecycle", () => {
       );
 
       let forkButton = await screen.findByRole("button", {
-        name: "Fork Useful skill into a new bb skill",
+        name: "Fork Useful skill into a new Opulent skill",
       });
       expect(screen.queryByRole("tab")).toBeNull();
       const registryListRequests = () =>
@@ -931,7 +931,7 @@ describe("SkillsLibrary registry detail lifecycle", () => {
       ).toBeTruthy();
       fireEvent.click(screen.getByText("go-browse"));
       forkButton = await screen.findByRole("button", {
-        name: "Fork Useful skill into a new bb skill",
+        name: "Fork Useful skill into a new Opulent skill",
       });
       expect(registryListRequests()).toHaveLength(1);
 
@@ -1255,11 +1255,11 @@ describe("RegistrySkillsBrowsePage", () => {
     expect(screen.getAllByText("by owner/repo").length).toBeGreaterThan(0);
     expect(
       screen.getByRole("button", {
-        name: "Fork Alpha into a new bb skill",
+        name: "Fork Alpha into a new Opulent skill",
       }).textContent,
     ).toBe("");
     const zuluCreate = screen.getByRole("button", {
-      name: "Fork Zulu into a new bb skill",
+      name: "Fork Zulu into a new Opulent skill",
     });
     fireEvent.click(zuluCreate);
     expect(onFork).toHaveBeenCalledWith(zulu);
@@ -1455,7 +1455,7 @@ describe("RegistrySkillDetailView reference creation", () => {
     const view = renderDom(<RegistrySkillDetailView {...props} />);
 
     const forkButton = screen.getByRole("button", {
-      name: "Fork Useful skill into a new bb skill",
+      name: "Fork Useful skill into a new Opulent skill",
     });
     expect(forkButton.textContent).toContain("Fork");
     fireEvent.click(forkButton);
@@ -1476,7 +1476,7 @@ describe("RegistrySkillDetailView reference creation", () => {
     );
     fireEvent.click(
       screen.getByRole("button", {
-        name: "Fork Useful skill into a new bb skill",
+        name: "Fork Useful skill into a new Opulent skill",
       }),
     );
     expect(onFork).toHaveBeenCalledTimes(2);
@@ -1498,7 +1498,7 @@ describe("SkillDetailDialogView", () => {
     expect(screen.queryByRole("button", { name: "bb-cli actions" })).toBeNull();
     fireEvent.pointerMove(official);
     expect((await screen.findByRole("tooltip")).textContent).toBe(
-      "Ships with bb",
+      "Ships with Opulent",
     );
   });
 

@@ -90,7 +90,7 @@ export const APP_COMMAND_GROUPS: readonly AppCommandGroup[] = [
       command(
         "settings.openServers",
         "Open server settings",
-        "Open settings to add or manage bb servers.",
+        "Open settings to add or manage Opulent servers.",
       ),
       command(
         "sidebar.toggle",
@@ -147,7 +147,7 @@ export const APP_COMMAND_GROUPS: readonly AppCommandGroup[] = [
       command(
         "logs.openServerDaemon",
         "Open server and daemon logs",
-        "Open the desktop log viewer for the bb server and host daemon.",
+        "Open the desktop log viewer for the Opulent server and host daemon.",
       ),
       command(
         "notifications.open",

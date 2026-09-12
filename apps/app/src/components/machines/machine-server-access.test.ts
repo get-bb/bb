@@ -78,7 +78,7 @@ describe("machine server access readiness", () => {
   it("explains blocked configuration and clears the reason when ready", () => {
     const blocked = status({ providers: [] });
     expect(machineServerAccessBlockedReason(blocked)).toBe(
-      "Configure how machines should connect to this bb server.",
+      "Configure how machines should connect to this Opulent server.",
     );
     expect(machineServerAccessBlockedReason(status())).toBeNull();
   });

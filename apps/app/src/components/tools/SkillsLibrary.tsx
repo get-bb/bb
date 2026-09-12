@@ -573,7 +573,7 @@ export function SkillsLibrary() {
               action={
                 <CreateWithTemplatesButton
                   kind="skill"
-                  label="New bb skill"
+                  label="New Opulent skill"
                   onCreate={handleCreateSkill}
                 />
               }

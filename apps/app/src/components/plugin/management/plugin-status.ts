@@ -49,15 +49,15 @@ function pluginRuntimeRecovery(plugin: PluginListItem): string {
       return "Reload the plugin. If it still fails, remove it and install it again.";
     case "incompatible":
       return plugin.provenance === "builtin"
-        ? "Update bb to load a compatible bundled plugin."
+        ? "Update Opulent to load a compatible bundled plugin."
         : "Install a version compatible with this bb.";
     case "missing":
       return plugin.provenance === "builtin"
-        ? "Restart bb. If the files are still missing, reinstall bb."
+        ? "Restart Opulent. If the files are still missing, reinstall bb."
         : "Remove the plugin, then install it again from its source.";
     case "needs-configuration":
       return plugin.hasSettings
-        ? "Complete the Configuration section; bb reloads the plugin after you save."
+        ? "Complete the Configuration section; Opulent reloads the plugin after you save."
         : "Add the required configuration, then reload the plugin.";
     case "degraded":
       return "Wait a moment, then reload the plugin.";

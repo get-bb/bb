@@ -504,7 +504,7 @@ export function LocalOpenTargetSettingsSection({
     const descriptionText = accessDenied
       ? "Your browser blocked access to bb on this device. Allow local network access for this site in browser settings, then reload bb."
       : accessAvailable
-        ? "bb couldn’t connect to its local editor helper. Make sure the bb desktop app or CLI is running on this device, then retry. If it is already running, a remote browser origin may need to be configured."
+        ? "Opulent couldn’t connect to its local editor helper. Make sure the Opulent desktop app or CLI is running on this device, then retry. If it is already running, a remote browser origin may need to be configured."
         : "Connect this browser to bb on this device so it can discover installed editors. bb only contacts the local helper after you choose Enable; your browser may ask for local network access.";
     const buttonLabel = accessRequestPending
       ? accessAvailable

@@ -136,7 +136,7 @@ export function MachineAccessSettingsContent({
   return (
     <SettingsSection
       title="Machine access"
-      description="Choose how new machines connect to the bb server."
+      description="Choose how new machines connect to the Opulent server."
       action={<MachineAccessMethodPicker machineAccess={machineAccess} />}
       bodyClassName="space-y-3"
     >

@@ -66,7 +66,7 @@ function providerFilterLabel(
   provider: ResourceProviderFilter,
   providerRoster: ProviderRoster,
 ): string {
-  return provider === "bb" ? "bb" : providerLabel(provider, providerRoster);
+  return provider === "bb" ? "Opulent" : providerLabel(provider, providerRoster);
 }
 
 function skillSourceFilterId(skill: SkillSummary): ResourceSkillSourceFilter {
@@ -234,7 +234,7 @@ const SKILLS_BROWSE_DESCRIPTION = (
     >
       skills.sh
     </a>
-    . Install one and every agent you use in bb can run it.
+    . Install one and every agent you use in Opulent can run it.
   </>
 );
 const SKILLS_LIBRARY_DESCRIPTION =
@@ -540,7 +540,7 @@ export function SkillsOverview({
               action={
                 <CreateWithTemplatesButton
                   kind="skill"
-                  label="New bb skill"
+                  label="New Opulent skill"
                   onCreate={onCreateSkill}
                 />
               }
@@ -695,7 +695,7 @@ export function SkillDetailDialogView({
         skill.scope === "bb-builtin"
           ? {
               label: "BB Official",
-              tooltip: "Ships with bb",
+              tooltip: "Ships with Opulent",
               accessibleLabel: `${skill.name} is BB Official`,
             }
           : bundledPluginName !== null

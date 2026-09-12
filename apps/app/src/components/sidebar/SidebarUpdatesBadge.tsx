@@ -75,7 +75,7 @@ export function SidebarUpdatesBadge({ onNavigate }: SidebarUpdatesBadgeProps) {
 
   const updatesRoutePath = getSettingsRoutePath("updates");
   const bbLabel =
-    bbUpdateCount === 1 ? "bb update available" : "bb updates available";
+    bbUpdateCount === 1 ? "Opulent update available" : "Opulent updates available";
   const providerLabel = `${joinNames(
     staleProviders.map((stale) => stale.displayName),
   )} ${staleProviders.length === 1 ? "update" : "updates"} available`;
@@ -93,7 +93,7 @@ export function SidebarUpdatesBadge({ onNavigate }: SidebarUpdatesBadgeProps) {
               className={CHIP_CLASS}
             >
               <Icon name="Download" className="size-3 text-muted-foreground" />
-              bb
+              Opulent
             </Link>
           </TooltipTrigger>
           <TooltipContent side="top">{bbLabel}</TooltipContent>

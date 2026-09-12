@@ -7,10 +7,10 @@ import {
 describe("desktop update feed url", () => {
   it("gives each platform its own feed file inside one release tag", () => {
     expect(createDesktopUpdateFeedUrl("macos")).toBe(
-      "https://github.com/get-bb/bb/releases/download/desktop-latest/desktop-version.json",
+      "https://github.com/OpulentiaAI/bb/releases/download/desktop-latest/desktop-version.json",
     );
     expect(createDesktopUpdateFeedUrl("linux")).toBe(
-      "https://github.com/get-bb/bb/releases/download/desktop-latest/desktop-version-linux.json",
+      "https://github.com/OpulentiaAI/bb/releases/download/desktop-latest/desktop-version-linux.json",
     );
   });
 });

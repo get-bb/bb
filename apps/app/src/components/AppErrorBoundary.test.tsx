@@ -44,8 +44,8 @@ describe("AppErrorBoundary", () => {
       </AppErrorBoundary>,
     );
 
-    expect(container.textContent).toContain("bb hit an error and stopped");
-    expect(container.querySelector("button")?.textContent).toBe("Reload bb");
+    expect(container.textContent).toContain("Opulent hit an error and stopped");
+    expect(container.querySelector("button")?.textContent).toBe("Reload Opulent");
     expect(container.textContent).toContain("render exploded");
     dispose();
   });
@@ -72,7 +72,7 @@ describe("AppErrorBoundary", () => {
       </AppErrorBoundary>,
     );
 
-    expect(container.textContent).toContain("bb hit an error and stopped");
+    expect(container.textContent).toContain("Opulent hit an error and stopped");
     dispose();
   });
 });

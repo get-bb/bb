@@ -87,7 +87,7 @@ function renderLocalView(viewModel: LocalViewModel): string {
   <meta charset="utf-8">
   <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>bb</title>
+  <title>Opulent</title>
   <style>
     :root {
       color-scheme: light dark;

@@ -239,12 +239,12 @@ describe("PluginDetail official catalog lifecycle", () => {
 
     expect(screen.queryByRole("alert")).toBeNull();
     const compatibilityStatus = screen
-      .getByText("Update bb to install this plugin")
+      .getByText("Update Opulent to install this plugin")
       .closest("div[class*='bg-surface-recessed']");
     expect(compatibilityStatus).not.toBeNull();
     if (compatibilityStatus === null) return;
     expect(compatibilityStatus.textContent).toContain(
-      "Update bb to install this plugin",
+      "Update Opulent to install this plugin",
     );
     expect(compatibilityStatus.textContent).toContain(
       "Requires bb 0.20 or newer.",
@@ -330,7 +330,7 @@ describe("PluginDetail official catalog lifecycle", () => {
     await waitFor(() => {
       expect(writeText).toHaveBeenCalledWith("/Users/you/.bb/plugins/github");
     });
-    expect(screen.getByText("Updates with bb")).toBeTruthy();
+    expect(screen.getByText("Updates with Opulent")).toBeTruthy();
     expect(screen.queryByRole("button", { name: "Check now" })).toBeNull();
 
     expect(container.querySelector('[data-icon="Github"]')).not.toBeNull();
@@ -440,7 +440,7 @@ describe("PluginDetail official catalog lifecycle", () => {
 
     expect(screen.getByRole("rowheader", { name: "Installed" })).toBeTruthy();
     expect(screen.getByText("Install date unavailable")).toBeTruthy();
-    expect(screen.queryByText("Updates with bb")).toBeNull();
+    expect(screen.queryByText("Updates with Opulent")).toBeNull();
   });
 
   it.each([
@@ -1284,7 +1284,7 @@ describe("PluginDetail runtime health", () => {
       "Wait a moment, then reload the plugin.",
     );
     expect(alert.textContent).not.toContain("issue-sync");
-    expect(alert.textContent).not.toContain("Restart bb");
+    expect(alert.textContent).not.toContain("Restart Opulent");
     expect(screen.getByRole("button", { name: "Reload" })).toBeTruthy();
   });
 
@@ -1315,12 +1315,12 @@ describe("PluginDetail runtime health", () => {
     [
       "incompatible",
       "This plugin version isn't compatible with your version of bb.",
-      "Update bb to load a compatible bundled plugin.",
+      "Update Opulent to load a compatible bundled plugin.",
     ],
     [
       "missing",
       "The plugin's files are missing.",
-      "Restart bb. If the files are still missing, reinstall bb.",
+      "Restart Opulent. If the files are still missing, reinstall bb.",
     ],
   ] as const)(
     "explains the %s condition and a supported recovery",
@@ -1343,7 +1343,7 @@ describe("PluginDetail runtime health", () => {
     const alert = screen.getByRole("alert");
     expect(alert.textContent).toContain("An API token is required.");
     expect(alert.textContent).toContain(
-      "Complete the Configuration section; bb reloads the plugin after you save.",
+      "Complete the Configuration section; Opulent reloads the plugin after you save.",
     );
     const settingsLink = within(alert).getByRole("link", {
       name: "Open settings",

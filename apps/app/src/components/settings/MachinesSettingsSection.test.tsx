@@ -572,7 +572,7 @@ describe("MachinesSettingsSection", () => {
     focusWithKeyboard(removeItem);
     expect(
       await screen.findByRole("tooltip", {
-        name: "bb's primary machine can't be removed.",
+        name: "Opulent's primary machine can't be removed.",
       }),
     ).toBeDefined();
     fireEvent.click(removeItem);

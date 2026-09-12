@@ -174,7 +174,7 @@ export function CatalogPluginDetailBanner({
     <PluginBannerBar
       tone="warning"
       icon="AlertTriangle"
-      title="Update bb to install this plugin"
+      title="Update Opulent to install this plugin"
       detail={entry.incompatibleReason}
     />
   );
@@ -278,7 +278,7 @@ export function PluginDetail({
   const updatesWithBb = plugin.source.startsWith("builtin:");
   const installedAt = sourceQuery.data?.installedAt ?? null;
   const installedValue = updatesWithBb
-    ? "Updates with bb"
+    ? "Updates with Opulent"
     : installedAt !== null
       ? formatAbsoluteDate(installedAt)
       : sourceQuery.isPending

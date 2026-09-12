@@ -96,7 +96,7 @@ function renderServerUrlDialogHtml(initialUrl: string | null): string {
 </head>
 <body>
   <h1>Set Server URL</h1>
-  <p>Point this app at a bb server. Leave empty to use only This Mac.</p>
+  <p>Point this app at a Opulent server. Leave empty to use only This Mac.</p>
   <form>
     <input name="url" type="text" placeholder="https://example.com:38886" value="${escapeHtmlText(initialUrl ?? "")}" autocomplete="off" spellcheck="false">
     <div data-error></div>

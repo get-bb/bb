@@ -3,6 +3,7 @@ import { existsSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import sharp from "sharp";
+import "./generate-opulent-icons.mjs";
 
 const appDir = dirname(dirname(fileURLToPath(import.meta.url)));
 const publicDir = join(appDir, "public");

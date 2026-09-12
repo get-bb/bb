@@ -596,7 +596,7 @@ export function ChangelogPreviewCard() {
                         variant="ghost"
                         size="icon"
                         className="size-7 text-muted-foreground hover:text-foreground"
-                        aria-label={`Dismiss bb ${entry.version} changelog preview`}
+                        aria-label={`Dismiss Opulent ${entry.version} changelog preview`}
                         onClick={() => {
                           rawStringLocalStorage.setItem(
                             CHANGELOG_DISMISSED_VERSION_STORAGE_KEY,
@@ -668,7 +668,7 @@ export function ChangelogPreviewCard() {
               <button
                 type="button"
                 disabled={!releaseVisible}
-                aria-label={`Open the full bb ${entry.version} changelog`}
+                aria-label={`Open the full Opulent ${entry.version} changelog`}
                 onClick={() =>
                   openUrlInExternalBrowser(
                     `${CHANGELOG_URL}#${entry.version.replaceAll(".", "-")}`,
@@ -711,7 +711,7 @@ export function ChangelogPreviewCard() {
                   You're all caught up
                 </h3>
                 <p className="mt-1.5 text-sm leading-relaxed text-muted-foreground">
-                  We'll show the next bb release here.
+                  We'll show the next Opulent release here.
                 </p>
               </div>
             </div>
@@ -761,7 +761,7 @@ export function BbAppUpdateRows({
   );
   if (isDesktop && desktopInfo === null) {
     return row(
-      <RowName name="bb app" current={null} latest={null} />,
+      <RowName name="Opulent app" current={null} latest={null} />,
       <RowStateControl live state="in-progress" />,
     );
   }
@@ -771,7 +771,7 @@ export function BbAppUpdateRows({
       desktopInfo.pendingVersion ?? desktopInfo.latestVersion;
     const latest = desktopInfo.updateAvailable ? pendingVersion : null;
     const name = (
-      <RowName name="bb app" current={desktopInfo.version} latest={latest} />
+      <RowName name="Opulent app" current={desktopInfo.version} latest={latest} />
     );
 
     if (desktopInfo.updateDownloaded) {
@@ -781,7 +781,7 @@ export function BbAppUpdateRows({
           state="restart-required"
           buttonLeading={<BbLogo className="size-3" />}
           buttonLabel="Relaunch"
-          actionLabel="Relaunch bb to finish updating"
+          actionLabel="Relaunch Opulent to finish updating"
           onClick={() => onRelaunchDesktop?.()}
         />,
       );
@@ -809,14 +809,14 @@ export function BbAppUpdateRows({
 
   if (systemVersion === undefined) {
     return row(
-      <RowName name="bb app" current={null} latest={null} />,
+      <RowName name="Opulent app" current={null} latest={null} />,
       <RowStateControl state="in-progress" />,
     );
   }
 
   const name = (
     <RowName
-      name="bb app"
+      name="Opulent app"
       detail={
         systemVersion.updateAvailable ? (
           <span className="hidden truncate font-mono text-2xs text-muted-foreground sm:inline">
@@ -942,7 +942,7 @@ export function BbDaemonUpdateRow({
           <BbLogo className="size-4" />
         </span>
       }
-      title="bb daemon"
+      title="Opulent daemon"
       state={daemonCaption}
       trailingMeta={null}
       actions={
@@ -1197,7 +1197,7 @@ export function MachineUpdatesFleetSection({
     <SettingsSection
       action={action}
       bodyClassName="border-0 bg-transparent p-0"
-      description="Manage bb and provider CLI updates across all machines."
+      description="Manage Opulent and provider CLI updates across all machines."
       title="Machine updates"
     >
       <div className="space-y-6 pt-1.5">{children}</div>

@@ -1,5 +1,5 @@
 import { cn } from "@bb/shared-ui/lib/utils";
-import bbLogoUrl from "../../../../../assets/bb-logo.svg";
+import bbLogoUrl from "../../../../../assets/opulent-logo.svg";
 
 export function BbLogo({ className = "size-4" }: { className?: string }) {
   return (

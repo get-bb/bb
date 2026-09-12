@@ -54,7 +54,7 @@ import { useQuickCreateProject } from "@/hooks/useQuickCreateProject";
 import { getSettingsProjectRoutePath } from "@/lib/route-paths";
 
 const PROJECTS_SECTION_DESCRIPTION =
-  "Repositories bb can work in. Drag to change the order projects appear in the sidebar.";
+  "Repositories Opulent can work in. Drag to change the order projects appear in the sidebar.";
 
 const restrictDragToVerticalAxis: Modifier = ({ transform }) => ({
   ...transform,

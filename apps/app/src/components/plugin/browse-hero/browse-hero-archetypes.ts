@@ -18,7 +18,7 @@ const ARCHETYPE_SOURCE: readonly Omit<BrowseArchetype, "id">[] = [
   {
     noun: "a live dashboard",
     title: "Live dashboard",
-    hook: "Put the numbers your team actually checks on the bb homepage.",
+    hook: "Put the numbers your team actually checks on the Opulent homepage.",
     capability: "homepageSection",
     icon: "ChartColumn",
     accentToken: "--success",

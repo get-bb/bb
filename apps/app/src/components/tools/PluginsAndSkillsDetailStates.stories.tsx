@@ -261,7 +261,7 @@ export function SkillDetailStates() {
         <Skill
           titleBadge={{
             label: "BB Official",
-            tooltip: "Ships with bb",
+            tooltip: "Ships with Opulent",
           }}
         />
       </State>
@@ -310,7 +310,7 @@ export function SkillDetailStates() {
         <Skill
           headerActions={
             <ResourceInstallControl
-              accessibleLabel="Fork writing-voice into a new bb skill"
+              accessibleLabel="Fork writing-voice into a new Opulent skill"
               label="Fork"
               icon="Fork"
               onAction={noop}
@@ -491,7 +491,7 @@ const BUNDLED_PLUGIN: PluginListItem = {
   source: "builtin:github",
   rootDir: "/managed/plugins/github",
   provenance: "builtin",
-  sourceDisplay: "Ships with bb",
+  sourceDisplay: "Ships with Opulent",
   capabilities: STATIC_CAPABILITIES,
 };
 
@@ -776,7 +776,7 @@ export function PluginDetailStates() {
 
         <State
           name="BB Official · built-in"
-          note="Ships with bb. The badge matches catalog-installed official plugins; the missing install date and ownership menu show that it cannot be uninstalled separately."
+          note="Ships with Opulent. The badge matches catalog-installed official plugins; the missing install date and ownership menu show that it cannot be uninstalled separately."
         >
           <Plugin plugin={BUNDLED_PLUGIN} />
         </State>
@@ -1140,7 +1140,7 @@ export function ResourceControlStates() {
             state="Skill · Fork"
             control={
               <ResourceInstallControl
-                accessibleLabel="Fork example skill into a new bb skill"
+                accessibleLabel="Fork example skill into a new Opulent skill"
                 label="Fork"
                 icon="Fork"
                 onAction={noop}
@@ -1152,7 +1152,7 @@ export function ResourceControlStates() {
             state="Skill · forking"
             control={
               <ResourceInstallControl
-                accessibleLabel="Fork example skill into a new bb skill"
+                accessibleLabel="Fork example skill into a new Opulent skill"
                 label="Fork"
                 icon="Fork"
                 pending
@@ -1176,12 +1176,12 @@ export function ResourceControlStates() {
           <ControlRow
             state="Plugin · BB Official built-in"
             control={<PluginProvenancePill plugin={BUNDLED_PLUGIN} />}
-            meaning="Ships with bb. The same badge communicates publisher; lifecycle differences remain in metadata and actions."
+            meaning="Ships with Opulent. The same badge communicates publisher; lifecycle differences remain in metadata and actions."
           />
           <ControlRow
             state="Skill · BB Official"
             control={
-              <ProvenancePill label="BB Official" tooltip="Ships with bb" />
+              <ProvenancePill label="BB Official" tooltip="Ships with Opulent" />
             }
             meaning="A skill that ships with bb."
           />
@@ -1322,7 +1322,7 @@ export function ResourceControlStates() {
             state="Fork · browse card"
             control={
               <ResourceInstallControl
-                accessibleLabel="Fork example skill into a new bb skill"
+                accessibleLabel="Fork example skill into a new Opulent skill"
                 label="Fork"
                 icon="Fork"
                 presentation="icon"

@@ -601,7 +601,7 @@ export function KeyboardSettingsSection() {
           Reset all
         </Button>
       }
-      description="Click a shortcut, then press its new keys. Changes sync to every bb window."
+      description="Click a shortcut, then press its new keys. Changes sync to every Opulent window."
       title="Keyboard shortcuts"
     >
       <div className="space-y-5">

@@ -49,7 +49,7 @@ function CodeRendererSetting({
   if (automaticProvider === undefined) return null;
   const builtInOption = {
     key: BUILT_IN_REPLACEMENT_PROVIDER,
-    title: "bb (built-in)",
+    title: "Opulent (built-in)",
     description: builtInDescription,
   };
   const options = [

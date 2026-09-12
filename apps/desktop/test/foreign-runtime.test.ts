@@ -74,7 +74,7 @@ afterEach(async () => {
 });
 
 describe("readForeignRuntimeDetails", () => {
-  it("describes the running bb when the runtime file matches the probed server", async () => {
+  it("describes the running Opulent when the runtime file matches the probed server", async () => {
     const dataDir = await createDataDir();
     await writeRuntimeFile({ dataDir });
 

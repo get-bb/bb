@@ -20,7 +20,7 @@ import { usePluginSlots } from "@/lib/plugin-slots";
 
 const BUILT_IN_OPTION = {
   key: BUILT_IN_REPLACEMENT_PROVIDER,
-  title: "bb (built-in)",
+  title: "Opulent (built-in)",
   description: "Projects, sections, and nested threads.",
 } as const;
 

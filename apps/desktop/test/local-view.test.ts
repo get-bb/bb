@@ -28,7 +28,7 @@ const localViewTestCases: LocalViewTestCase[] = [
       kind: "error",
       logText: "Failed to bind port",
       retryable: false,
-      title: "Could not open bb",
+      title: "Could not open Opulent",
     },
   },
   {
@@ -36,7 +36,7 @@ const localViewTestCases: LocalViewTestCase[] = [
     viewModel: {
       kind: "info",
       message:
-        "A bb server is already running on this Mac. Connect via Window ▸ Server.",
+        "A Opulent server is already running on this Mac. Connect via Window ▸ Server.",
       title: "Local server available",
     },
   },
@@ -76,7 +76,7 @@ describe("local desktop views", () => {
         logText:
           "\x1b[2K  \x1b[2m○\x1b[0m  Starting server\r\x1b[2K  \x1b[32m✓\x1b[0m  Server listening\nError: listen EADDRINUSE",
         retryable: false,
-        title: "Could not open bb",
+        title: "Could not open Opulent",
       },
     });
 
@@ -104,7 +104,7 @@ describe("local desktop views", () => {
         kind: "error",
         logText: "",
         retryable: false,
-        title: "Could not open bb",
+        title: "Could not open Opulent",
       },
     });
 

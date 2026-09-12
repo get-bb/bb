@@ -1,13 +1,16 @@
 {
-  "appId": "dev.bb.desktop",
-  "productName": "bb",
+  "appId": "ai.opulent.desktop",
+  "productName": "Opulent",
   "artifactName": "${productName}-${version}-${arch}.${ext}",
   "toolsets": {
     "appimage": "1.0.3"
   },
   "afterPack": "scripts/prepare-native-modules.cjs",
   "asar": true,
-  "asarUnpack": ["dist/bb-app-bridge.mjs", "node_modules/**"],
+  "asarUnpack": [
+    "dist/bb-app-bridge.mjs",
+    "node_modules/**"
+  ],
   "directories": {
     "buildResources": "assets",
     "output": "release"
@@ -19,7 +22,9 @@
     {
       "from": "node_modules/bb-app/server/dist/app-scaffold-template",
       "to": "node_modules/bb-app/server/dist/app-scaffold-template",
-      "filter": ["**/*"]
+      "filter": [
+        "**/*"
+      ]
     },
     "package.json",
     "!**/*.map"
@@ -28,7 +33,7 @@
     {
       "channel": "latest",
       "provider": "generic",
-      "url": "https://github.com/get-bb/bb/releases/download/desktop-latest/"
+      "url": "https://github.com/OpulentiaAI/bb/releases/download/desktop-latest/"
     }
   ],
   "mac": {
@@ -43,19 +48,30 @@
     "target": [
       {
         "target": "dmg",
-        "arch": ["arm64"]
+        "arch": [
+          "arm64"
+        ]
       },
       {
         "target": "zip",
-        "arch": ["arm64"]
+        "arch": [
+          "arm64"
+        ]
       }
     ]
   },
   "linux": {
     "category": "Development",
-    "executableName": "bb",
+    "executableName": "opulent",
     "icon": "assets/icon.png",
-    "target": [{ "target": "AppImage", "arch": ["x64"] }]
+    "target": [
+      {
+        "target": "AppImage",
+        "arch": [
+          "x64"
+        ]
+      }
+    ]
   },
   "dmg": {
     "sign": false
