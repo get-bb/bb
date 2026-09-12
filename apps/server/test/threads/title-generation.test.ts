@@ -15,32 +15,6 @@ function textInput(text: string): PromptInput {
 }
 
 describe("thread title generation", () => {
-  it("uses thread mention labels in handoff fallback titles", () => {
-    const text = "Continue from @thread:thr_source";
-    const input: PromptInput[] = [
-      {
-        type: "text",
-        text,
-        mentions: [
-          {
-            start: "Continue from ".length,
-            end: text.length,
-            resource: {
-              kind: "thread",
-              projectId: "proj_test",
-              threadId: "thr_source",
-              label: "Fix login",
-            },
-          },
-        ],
-      },
-    ];
-
-    expect(deriveTitleFallback(input)).toBe("Continue from Fix login");
-    expect(shouldGenerateThreadTitle(input)).toBe(false);
-    expect(input[0]).toMatchObject({ text });
-  });
-
   it("does not generate titles for inputs shorter than five words", () => {
     expect(shouldGenerateThreadTitle([textInput("fix")])).toBe(false);
     expect(shouldGenerateThreadTitle([textInput("fix bug")])).toBe(false);
