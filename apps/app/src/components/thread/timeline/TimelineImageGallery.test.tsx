@@ -49,7 +49,7 @@ function lightboxImage() {
   return within(screen.getByRole("dialog")).getByRole("img");
 }
 
-it("navigates the loaded page immediately without fetching older history, preserving duplicate URLs", () => {
+it("stops at each end of the loaded page without fetching older history, preserving duplicate URLs", () => {
   const history = vi.spyOn(sdk.threads, "timeline");
   renderTimeline(
     <>
@@ -76,13 +76,21 @@ it("navigates the loaded page immediately without fetching older history, preser
   );
   fireEvent.click(screen.getByRole("img", { name: "Table" }));
   expect(screen.getByRole("status").textContent).toBe("3 / 3");
+  expect(screen.getByRole("button", { name: "Next image" }).hasAttribute("disabled")).toBe(true);
   fireEvent.click(screen.getByRole("button", { name: "Next image" }));
-  expect(lightboxImage().getAttribute("alt")).toBe("Earlier");
   fireEvent.keyDown(window, { key: "ArrowRight" });
+  expect(lightboxImage().getAttribute("alt")).toBe("Table");
+  fireEvent.keyDown(window, { key: "ArrowLeft" });
   expect(lightboxImage().getAttribute("alt")).toBe("Inline");
   fireEvent.keyDown(window, { key: "ArrowLeft" });
   expect(lightboxImage().getAttribute("alt")).toBe("Earlier");
+  expect(screen.getByRole("button", { name: "Previous image" }).hasAttribute("disabled")).toBe(true);
   fireEvent.click(screen.getByRole("button", { name: "Previous image" }));
+  fireEvent.keyDown(window, { key: "ArrowLeft" });
+  expect(lightboxImage().getAttribute("alt")).toBe("Earlier");
+  fireEvent.click(screen.getByRole("button", { name: "Next image" }));
+  expect(lightboxImage().getAttribute("alt")).toBe("Inline");
+  fireEvent.click(screen.getByRole("button", { name: "Next image" }));
   expect(lightboxImage().getAttribute("alt")).toBe("Table");
   expect(history).not.toHaveBeenCalled();
 });
@@ -102,6 +110,8 @@ it("uses rendered footnote order and excludes unused definitions", () => {
   fireEvent.click(screen.getByRole("button", { name: "Next image" }));
   expect(lightboxImage().getAttribute("alt")).toBe("Footnote");
   fireEvent.click(screen.getByRole("button", { name: "Next image" }));
+  expect(lightboxImage().getAttribute("alt")).toBe("Footnote");
+  fireEvent.click(screen.getByRole("button", { name: "Previous image" }));
   expect(lightboxImage().getAttribute("alt")).toBe("Inline");
 });
 

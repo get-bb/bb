@@ -1,8 +1,5 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
-import {
-  ImageLightbox,
-  getWrappedImageIndex,
-} from "@/components/ui/image-lightbox";
+import { ImageLightbox } from "@/components/ui/image-lightbox";
 import { InlineImageGalleryContext } from "@/components/ui/inline-image-gallery-context";
 
 interface GalleryImage {
@@ -141,11 +138,13 @@ export function TimelineImageGallery({ children }: { children: ReactNode }) {
       const updated = reconcileGallery(current, images);
       return reconcileGallery({
         images: updated.images,
-        index: getWrappedImageIndex({
-          currentIndex: updated.index,
-          direction,
-          itemCount: updated.images.length,
-        }),
+        index: Math.max(
+          0,
+          Math.min(
+            updated.images.length - 1,
+            updated.index + (direction === "previous" ? -1 : 1),
+          ),
+        ),
       }, images);
     });
   };
@@ -160,6 +159,8 @@ export function TimelineImageGallery({ children }: { children: ReactNode }) {
         imageAlt={selected?.alt ?? "Image"}
         title="Timeline image preview"
         hasMultipleImages={gallery !== null && gallery.images.length > 1}
+        previousDisabled={gallery?.index === 0}
+        nextDisabled={gallery !== null && gallery.index === gallery.images.length - 1}
         navigationStatus={
           gallery && gallery.images.length > 1
             ? `${gallery.index + 1} / ${gallery.images.length}`
