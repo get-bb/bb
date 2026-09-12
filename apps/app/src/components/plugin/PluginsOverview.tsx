@@ -3,12 +3,6 @@ import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { Button } from "@bb/shared-ui/button";
 import { Icon } from "@bb/shared-ui/icon";
 import {
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from "@bb/shared-ui/tooltip";
-import {
   ResourceInfiniteScrollSentinel,
   useResourceInfiniteItems,
   useResourceViewportPageSize,
@@ -158,30 +152,15 @@ export function PluginsOverview({
 
   const installedActions = (
     <>
-      <TooltipProvider delayDuration={250}>
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <Button
-              asChild
-              variant="outline"
-              size="sm"
-              className="w-8 px-0 sm:w-auto sm:px-3"
-            >
-              <Link to={getPluginsRoutePath()}>
-                <Icon name="Plug02" className="size-4" aria-hidden />
-                <span className="sr-only sm:not-sr-only">Browse marketplace</span>
-              </Link>
-            </Button>
-          </TooltipTrigger>
-          <TooltipContent side="bottom" className="sm:hidden">
-            Browse marketplace
-          </TooltipContent>
-        </Tooltip>
-      </TooltipProvider>
+      <Button asChild variant="outline" size="sm">
+        <Link to={getPluginsRoutePath()}>
+          <Icon name="Plug02" className="size-4" aria-hidden />
+          Browse marketplace
+        </Link>
+      </Button>
       <CreateWithTemplatesButton
         kind="plugin"
         label="New plugin"
-        compactOnMobile
         menuActions={[
           {
             label: "Install from source",
@@ -222,37 +201,43 @@ export function PluginsOverview({
         viewportRef={setInstalledViewport}
         bandClassName={TOOLS_PAGE_BAND_CLASSES}
         toolbar={
-          <ResourceToolbar
-            wrap={false}
-            searchValue={installedQuery}
-            searchPlaceholder="Search..."
-            searchLabel="Search installed plugins"
-            onSearchChange={setInstalledQuery}
-            action={installedActions}
-            controls={
-              <>
-                <ResourceMultiSelectMenu
-                  label="Type"
-                  icon="SlidersHorizontal"
-                  compact
-                  selectedValues={activeTypeFilters}
-                  options={typeFilterOptions}
-                  onChange={setTypeFilters}
-                />
-                <ResourceSortMenu
-                  value="alpha"
-                  direction={installedSortDirection}
-                  compact
-                  options={[{ id: "alpha", label: "Plugin name" }]}
-                  onChange={() =>
-                    setInstalledSortDirection((current) =>
-                      current === "asc" ? "desc" : "asc",
-                    )
-                  }
-                />
-              </>
-            }
-          />
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+            <div className="min-w-0 flex-1">
+              <ResourceToolbar
+                wrap={false}
+                searchValue={installedQuery}
+                searchPlaceholder="Search..."
+                searchLabel="Search installed plugins"
+                onSearchChange={setInstalledQuery}
+                controls={
+                  <>
+                    <ResourceMultiSelectMenu
+                      label="Type"
+                      icon="SlidersHorizontal"
+                      compact
+                      selectedValues={activeTypeFilters}
+                      options={typeFilterOptions}
+                      onChange={setTypeFilters}
+                    />
+                    <ResourceSortMenu
+                      value="alpha"
+                      direction={installedSortDirection}
+                      compact
+                      options={[{ id: "alpha", label: "Plugin name" }]}
+                      onChange={() =>
+                        setInstalledSortDirection((current) =>
+                          current === "asc" ? "desc" : "asc",
+                        )
+                      }
+                    />
+                  </>
+                }
+              />
+            </div>
+            <div className="flex shrink-0 flex-wrap items-center gap-1.5">
+              {installedActions}
+            </div>
+          </div>
         }
       >
         <div className={cn("space-y-3", TOOLS_PAGE_BAND_CLASSES)}>

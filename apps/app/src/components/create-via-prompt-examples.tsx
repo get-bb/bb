@@ -86,7 +86,6 @@ interface CreateWithTemplatesButtonProps {
   kind: CreateViaPromptKind;
   label: string;
   menuActions?: readonly ResourceCreateMenuAction[];
-  compactOnMobile?: boolean;
   onCreate: (prompt?: string) => void;
 }
 
@@ -94,7 +93,6 @@ export function CreateWithTemplatesButton({
   kind,
   label,
   menuActions,
-  compactOnMobile,
   onCreate,
 }: CreateWithTemplatesButtonProps) {
   const { examples } = getCreateExamples(kind);
@@ -119,7 +117,6 @@ export function CreateWithTemplatesButton({
       templates={examples}
       templateGroups={templateGroups}
       menuActions={menuActions}
-      compactOnMobile={compactOnMobile}
       onCreate={onCreate}
     />
   );

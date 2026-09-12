@@ -571,7 +571,6 @@ export interface ResourceCreateTemplateGroup {
 
 export function ResourceCreateButton({
   label,
-  compactOnMobile = false,
   templates,
   templateMenuLabel = "Examples",
   templateGroups,
@@ -579,7 +578,6 @@ export function ResourceCreateButton({
   onCreate,
 }: {
   label: string;
-  compactOnMobile?: boolean;
   templates: readonly ResourceCreateTemplate[];
   templateMenuLabel?: string;
   templateGroups?: readonly ResourceCreateTemplateGroup[];
@@ -589,46 +587,24 @@ export function ResourceCreateButton({
   const groups: readonly ResourceCreateTemplateGroup[] = templateGroups ?? [
     { label: templateMenuLabel, templates },
   ];
-  const createButton = (
-    <Button
-      type="button"
-      size="sm"
-      className={cn(
-        "rounded-r-none",
-        compactOnMobile && "pl-2 pr-0.5 sm:px-3",
-      )}
-      onClick={() => onCreate()}
-    >
-      <Icon name="MessageCirclePlus" className="size-4" aria-hidden />
-      <span className={compactOnMobile ? "sr-only sm:not-sr-only" : undefined}>
-        {label}
-      </span>
-    </Button>
-  );
   return (
     <div className="flex shrink-0 items-stretch">
-      {compactOnMobile ? (
-        <TooltipProvider delayDuration={250}>
-          <Tooltip>
-            <TooltipTrigger asChild>{createButton}</TooltipTrigger>
-            <TooltipContent side="bottom" className="sm:hidden">
-              {label}
-            </TooltipContent>
-          </Tooltip>
-        </TooltipProvider>
-      ) : (
-        createButton
-      )}
+      <Button
+        type="button"
+        size="sm"
+        className="rounded-r-none"
+        onClick={() => onCreate()}
+      >
+        <Icon name="MessageCirclePlus" className="size-4" aria-hidden />
+        {label}
+      </Button>
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
           <Button
             type="button"
             size="sm"
             aria-label={`${label} options`}
-            className={cn(
-              "rounded-l-none px-1.5",
-              compactOnMobile && "pl-0.5 pr-2 sm:px-1.5",
-            )}
+            className="rounded-l-none px-1.5"
           >
             <Icon name="ChevronDown" className="size-4" aria-hidden />
           </Button>
