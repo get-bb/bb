@@ -121,6 +121,7 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
         bullets: [
           "Run an action, or reveal plugin-rendered content above the footer row",
           "Let bb coordinate one open disclosure across every enabled plugin",
+          "Respect user ordering and visibility in Appearance; hidden actions and disclosures remain usable from More",
           "Keep navigation, tabs, data, and controls inside the plugin's disclosure component",
         ],
         apiSymbols: [

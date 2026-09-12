@@ -629,6 +629,8 @@ client wrote first, so a stale window cannot silently clobber a newer value.
 | `sidebar.collapsedEnvironments`   | Collapsed environment ids                           |
 | `sidebar.collapsedThreadSections` | Collapsed thread section ids                        |
 | `sidebar.collapsedMachines`       | Collapsed machine ids                               |
+| `sidebar.footerOrder`             | Footer action order                                 |
+| `sidebar.hiddenFooterItems`       | Footer actions moved into More                      |
 | `sidebar.pluginPanelOrder`        | Navigation entry order                              |
 | `sidebar.visiblePluginPanels`     | Navigation entries shown, or `null` for every entry |
 | `sidebar.navigationProvider`      | Plugin key, `__automatic__`, or `__builtin__`       |
@@ -663,6 +665,25 @@ value. A change on one device reaches every other connected window through the
 
 Sidebar width and open state stay in the browser because they depend on the
 window size.
+
+### Sidebar footer
+
+Settings → Appearance → Sidebar footer lets users reorder and hide built-in and
+registered plugin actions. Right-click an action and choose Hide to move it into
+More. More appears only when registered actions are hidden; they remain usable.
+Hiding an open disclosure closes it; selecting it from More opens it again.
+
+The UI preferences `sidebar.footerOrder` and `sidebar.hiddenFooterItems` contain
+stable IDs: `builtin:settings`, `builtin:report-bug`, and
+`plugin:<encoded pluginId>/<encoded registrationId>` (URI-encoded components).
+Unknown and disabled-plugin IDs are retained across reloads; new actions default
+visible. The existing SDK UI preferences and CLI manage the same values:
+
+```sh
+bb settings ui set sidebar.hiddenFooterItems '["builtin:report-bug"]'
+bb settings ui set sidebar.footerOrder '["builtin:report-bug","builtin:settings"]'
+bb settings ui reset sidebar.hiddenFooterItems
+```
 
 ## Thread splits
 
