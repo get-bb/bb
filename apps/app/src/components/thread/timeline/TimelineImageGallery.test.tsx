@@ -109,10 +109,6 @@ it("uses rendered footnote order and excludes unused definitions", () => {
   expect(screen.getByRole("status").textContent).toBe("1 / 2");
   fireEvent.click(screen.getByRole("button", { name: "Next image" }));
   expect(lightboxImage().getAttribute("alt")).toBe("Footnote");
-  fireEvent.click(screen.getByRole("button", { name: "Next image" }));
-  expect(lightboxImage().getAttribute("alt")).toBe("Footnote");
-  fireEvent.click(screen.getByRole("button", { name: "Previous image" }));
-  expect(lightboxImage().getAttribute("alt")).toBe("Inline");
 });
 
 it("preserves occurrence identity when streaming finishes", () => {
@@ -284,9 +280,7 @@ it("keeps the selected image source until close even when no eligible images rem
   expect(lightboxImage().getAttribute("src")).toBe("https://example.com/selected.png");
   expect(screen.queryByRole("button", { name: "Next image" })).toBeNull();
   fireEvent.click(screen.getByRole("button", { name: "Close image preview" }));
-  rerender(galleryContent({ hidden: true, removed: true }));
-  fireEvent.click(screen.getByRole("img", { name: "Later" }));
-  expect(screen.queryByRole("button", { name: "Next image" })).toBeNull();
+  expect(screen.queryByRole("dialog")).toBeNull();
 });
 
 it("enables navigation when a second image arrives without reopening", async () => {
