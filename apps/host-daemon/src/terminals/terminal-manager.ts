@@ -23,8 +23,17 @@ const DEFAULT_SCROLLBACK_MAX_CHUNKS = 10_000;
 const MAX_OUTPUT_CHUNK_BYTES = 64 * 1024;
 const DEFAULT_OUTPUT_BATCH_DELAY_MS = 4;
 const DEFAULT_TERMINAL_CLOSE_GRACE_PERIOD_MS = 2_000;
-const PRIMARY_DEVICE_ATTRIBUTES_QUERY_PATTERN = /\u001b\[(?:0)?c/g;
+const PRIMARY_DEVICE_ATTRIBUTES_QUERY = "\u001b[c";
+const PRIMARY_DEVICE_ATTRIBUTES_QUERY_WITH_PARAMETER = "\u001b[0c";
 const PRIMARY_DEVICE_ATTRIBUTES_RESPONSE = "\u001b[?1;2c";
+const OSC_BACKGROUND_COLOR_QUERY_BEL = "\u001b]11;?\u0007";
+const OSC_BACKGROUND_COLOR_QUERY_ST = "\u001b]11;?\u001b\\";
+const TERMINAL_CONTROL_QUERIES = [
+  PRIMARY_DEVICE_ATTRIBUTES_QUERY,
+  PRIMARY_DEVICE_ATTRIBUTES_QUERY_WITH_PARAMETER,
+  OSC_BACKGROUND_COLOR_QUERY_BEL,
+  OSC_BACKGROUND_COLOR_QUERY_ST,
+] as const;
 const MAX_PRIMARY_DEVICE_ATTRIBUTES_REPLIES_PER_CHUNK = 8;
 const NODE_PTY_NATIVE_DIRS: readonly string[] = [
   path.join("build", "Release"),
@@ -106,7 +115,7 @@ interface TerminalSession {
   outputBuffers: Buffer[];
   outputBytes: number;
   outputFlushTimeout: ReturnType<typeof setTimeout> | null;
-  pendingPrimaryDeviceAttributesQuery: PendingPrimaryDeviceAttributesQuery;
+  pendingTerminalControlQuery: string;
   pty: TerminalPtyProcess;
   rows: number;
   scrollback: ScrollbackEntry[];
@@ -114,16 +123,10 @@ interface TerminalSession {
   terminalId: string;
 }
 
-type PendingPrimaryDeviceAttributesQuery =
-  | ""
-  | "\u001b"
-  | "\u001b["
-  | "\u001b[0";
-
-interface PrimaryDeviceAttributesQueryResult {
+interface TerminalControlQueryResult {
   output: string;
-  pendingQuery: PendingPrimaryDeviceAttributesQuery;
-  queryCount: number;
+  pendingQuery: string;
+  primaryDeviceAttributesQueryCount: number;
 }
 
 interface SendTerminalErrorArgs {
@@ -407,34 +410,48 @@ function createTerminalOperationCompletion(): TerminalOperationCompletion {
   return { promise, resolve: resolveCompletion };
 }
 
-function consumePrimaryDeviceAttributesQueries(
-  pendingQuery: PendingPrimaryDeviceAttributesQuery,
+function consumeTerminalControlQueries(
+  pendingQuery: string,
   data: string,
-): PrimaryDeviceAttributesQueryResult {
+): TerminalControlQueryResult {
   const input = pendingQuery + data;
-  const nextPendingQuery: PendingPrimaryDeviceAttributesQuery = input.endsWith(
-    "\u001b[0",
-  )
-    ? "\u001b[0"
-    : input.endsWith("\u001b[")
-      ? "\u001b["
-      : input.endsWith("\u001b")
-        ? "\u001b"
-        : "";
-  const completeInput = input.slice(0, input.length - nextPendingQuery.length);
-  let queryCount = 0;
-  const output = completeInput.replace(
-    PRIMARY_DEVICE_ATTRIBUTES_QUERY_PATTERN,
-    () => {
-      queryCount += 1;
-      return "";
-    },
-  );
-  return {
-    output,
-    pendingQuery: nextPendingQuery,
-    queryCount,
-  };
+  let output = "";
+  let offset = 0;
+  let primaryDeviceAttributesQueryCount = 0;
+
+  while (offset < input.length) {
+    const remaining = input.slice(offset);
+    if (remaining.startsWith(PRIMARY_DEVICE_ATTRIBUTES_QUERY_WITH_PARAMETER)) {
+      primaryDeviceAttributesQueryCount += 1;
+      offset += PRIMARY_DEVICE_ATTRIBUTES_QUERY_WITH_PARAMETER.length;
+      continue;
+    }
+    if (remaining.startsWith(PRIMARY_DEVICE_ATTRIBUTES_QUERY)) {
+      primaryDeviceAttributesQueryCount += 1;
+      offset += PRIMARY_DEVICE_ATTRIBUTES_QUERY.length;
+      continue;
+    }
+    if (
+      remaining.startsWith(OSC_BACKGROUND_COLOR_QUERY_BEL) ||
+      remaining.startsWith(OSC_BACKGROUND_COLOR_QUERY_ST)
+    ) {
+      offset += remaining.startsWith(OSC_BACKGROUND_COLOR_QUERY_BEL)
+        ? OSC_BACKGROUND_COLOR_QUERY_BEL.length
+        : OSC_BACKGROUND_COLOR_QUERY_ST.length;
+      continue;
+    }
+    if (TERMINAL_CONTROL_QUERIES.some((query) => query.startsWith(remaining))) {
+      return {
+        output,
+        pendingQuery: remaining,
+        primaryDeviceAttributesQueryCount,
+      };
+    }
+    output += input[offset];
+    offset += 1;
+  }
+
+  return { output, pendingQuery: "", primaryDeviceAttributesQueryCount };
 }
 
 export class TerminalManager {
@@ -557,7 +574,7 @@ export class TerminalManager {
         outputBuffers: [],
         outputBytes: 0,
         outputFlushTimeout: null,
-        pendingPrimaryDeviceAttributesQuery: "",
+        pendingTerminalControlQuery: "",
         pty,
         rows: message.rows,
         scrollback: [],
@@ -795,14 +812,14 @@ export class TerminalManager {
       return;
     }
 
-    const result = consumePrimaryDeviceAttributesQueries(
-      session.pendingPrimaryDeviceAttributesQuery,
+    const result = consumeTerminalControlQueries(
+      session.pendingTerminalControlQuery,
       data,
     );
-    session.pendingPrimaryDeviceAttributesQuery = result.pendingQuery;
-    if (result.queryCount > 0) {
+    session.pendingTerminalControlQuery = result.pendingQuery;
+    if (result.primaryDeviceAttributesQueryCount > 0) {
       const replyCount = Math.min(
-        result.queryCount,
+        result.primaryDeviceAttributesQueryCount,
         MAX_PRIMARY_DEVICE_ATTRIBUTES_REPLIES_PER_CHUNK,
       );
       session.pty.write(PRIMARY_DEVICE_ATTRIBUTES_RESPONSE.repeat(replyCount));
@@ -894,12 +911,12 @@ export class TerminalManager {
     if (this.sessions.get(args.session.terminalId) !== args.session) {
       return;
     }
-    if (args.session.pendingPrimaryDeviceAttributesQuery.length > 0) {
+    if (args.session.pendingTerminalControlQuery.length > 0) {
       this.bufferTerminalOutput(
         args.session,
-        args.session.pendingPrimaryDeviceAttributesQuery,
+        args.session.pendingTerminalControlQuery,
       );
-      args.session.pendingPrimaryDeviceAttributesQuery = "";
+      args.session.pendingTerminalControlQuery = "";
     }
     this.flushTerminalOutput(args.session);
     if (args.session.closeTimeout !== null) {

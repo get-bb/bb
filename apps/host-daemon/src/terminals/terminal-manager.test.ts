@@ -1083,6 +1083,29 @@ describe("TerminalManager", () => {
     });
   });
 
+  it("suppresses background color queries so their replies cannot reach the shell", async () => {
+    const harness = createHarness();
+    const pty = await openTerminal(harness);
+
+    for (const chunk of [
+      "before\u001b]11;?\u0007middle\u001b]11",
+      ";?\u001b",
+      "\\after",
+    ]) {
+      pty.emitData(chunk);
+    }
+    await harness.manager.handleMessage({
+      type: "terminal.attach",
+      requestId: "attach-osc-11",
+      terminalId: "term-1",
+      sinceSeq: 0,
+      tailBytes: 4 * 1024 * 1024,
+    });
+
+    expect(pty.writeCalls).toEqual([]);
+    expect(collectTerminalOutput(harness.messages)).toBe("beforemiddleafter");
+  });
+
   it("answers primary device attribute queries split across output chunks", async () => {
     const harness = createHarness();
     const pty = await openTerminal(harness);
