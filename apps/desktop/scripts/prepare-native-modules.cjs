@@ -260,11 +260,29 @@ function resolveArchName(context) {
 }
 
 async function afterPack(context) {
+  const arch = resolveArchName(context);
+  const platform = context.electronPlatformName ?? process.platform;
+  if (platform !== process.platform || arch !== process.arch) {
+    throw new Error("Packaged npm verification requires a native target host");
+  }
   await preparePackagedNativeModules(context.appOutDir, {
-    arch: resolveArchName(context),
+    arch,
     electronVersion: resolveElectronVersion(),
-    platform: context.electronPlatformName ?? process.platform,
+    platform,
   });
+  const { smokePackagedNpm } = await import("./smoke-packaged-npm.mjs");
+  const productName = context.packager.appInfo.productFilename;
+  const appBinary =
+    platform === "darwin"
+      ? path.join(
+          context.appOutDir,
+          `${productName}.app`,
+          "Contents",
+          "MacOS",
+          productName,
+        )
+      : path.join(context.appOutDir, context.packager.executableName);
+  await smokePackagedNpm(appBinary);
 }
 
 function parseStandaloneArguments(argv) {
