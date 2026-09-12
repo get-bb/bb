@@ -18,7 +18,6 @@ import {
   type BranchesState,
   type ComposerCustomization,
   type ComposerView,
-  type ExperimentalComposerSubmitOptions,
   type ExperimentalAppOverlayRegistration,
   type PluginAppDefinition,
   type PluginAppSetup,
@@ -64,6 +63,7 @@ import {
   type UrlLinkProps,
   type ExperimentalFileLinkProps,
   type ExperimentalFileOpenOptions,
+  type ExperimentalComposerSubmitOptions,
   type ExperimentalAppPanel,
   type ExperimentalFixedTabTargetState,
   type ExperimentalOpenFixedTabOptions,
@@ -176,7 +176,7 @@ export interface ComposerLog {
    * has no submit pipeline of its own, so it records the options and clears the
    * draft — enough to assert what a picker scheduled and that it tidied up.
    */
-  submits: ExperimentalComposerSubmitOptions[];
+  submits: Array<ExperimentalComposerSubmitOptions | undefined>;
 }
 
 interface TestComposerStore {
@@ -1652,10 +1652,10 @@ export function renderSlot<
           throw new Error("This composer is no longer active.");
         }
         if (composerText.trim() === "") {
-          throw new Error("Type a message before queuing it.");
+          throw new Error("Type a message before scheduling it.");
         }
         if (
-          options.experimental_manualQueue !== true &&
+          options !== undefined &&
           (!Number.isFinite(options.sendAt) || options.sendAt <= Date.now())
         ) {
           throw new Error("Pick a time in the future.");

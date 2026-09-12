@@ -744,11 +744,14 @@ export function ThreadDetailPromptArea({
     ? "Stopping thread..."
     : getCompactFollowUpPromptPlaceholder(runtimeDisplayStatus);
   const submitScheduledRef = useRef<
-    (options: ExperimentalComposerSubmitOptions) => Promise<void>
+    (
+      options: ExperimentalComposerSubmitOptions | undefined,
+      pluginId: string,
+    ) => Promise<void>
   >(async () => {});
   const submitScheduledThroughRef = useCallback(
-    (options: ExperimentalComposerSubmitOptions) =>
-      submitScheduledRef.current(options),
+    (options: ExperimentalComposerSubmitOptions | undefined, pluginId: string) =>
+      submitScheduledRef.current(options, pluginId),
     [],
   );
   const normalPluginComposerHost = useMemo<PluginComposerHost>(
@@ -859,7 +862,10 @@ export function ThreadDetailPromptArea({
     runtimeDisplayStatus,
   ]);
   const submitScheduled = useCallback(
-    async (submitOptions: ExperimentalComposerSubmitOptions) => {
+    async (
+      submitOptions: ExperimentalComposerSubmitOptions | undefined,
+      dispatchPluginId: string,
+    ) => {
       if (isDefaultExecutionOptionsLoading) {
         throw new Error("This thread's model options are still loading.");
       }
@@ -878,9 +884,8 @@ export function ThreadDetailPromptArea({
       try {
         await sendMessage.mutateAsync({
           ...request,
-          ...(submitOptions.experimental_manualQueue === true
-            ? { manualQueue: true }
-            : submitOptions),
+          ...(submitOptions ?? {}),
+          dispatchPluginId,
         });
       } catch (scheduleError) {
         if (clearedSubmittedDraft) {

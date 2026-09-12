@@ -101,17 +101,6 @@ describe("describeQueuedMessageWait", () => {
     expect(describeWait({ kind: "time" })).toBe("Scheduled");
   });
 
-  it("names a manual queue row as a draft without a clock", () => {
-    expect(describeWait({ kind: "manual" })).toBe("Draft");
-    expect(
-      queuedMessageCountdownInstant({
-        payload: { kind: "inline" },
-        sendAt: null,
-        waitingOn: { kind: "manual" },
-      }),
-    ).toBeNull();
-  });
-
   it("leads a retry with why it is being retried, then when and which attempt", () => {
     expect(
       describeQueuedMessageWait({
@@ -165,7 +154,6 @@ describe("queuedMessageWaitIcon", () => {
       });
 
     expect(icon({ kind: "time" })).toBe("TimeSchedule");
-    expect(icon({ kind: "manual" })).toBe("EditFile");
     expect(icon({ kind: "turn-starting" })).toBe("TimeSchedule");
     expect(icon({ kind: "provisioning" })).toBe("Folder");
     expect(icon({ kind: "host-offline", hostName: "M4" })).toBe("CloudOff");
@@ -214,7 +202,6 @@ describe("queuedMessageFallbackTitle", () => {
 describe("isQueuedMessageSendNowAllowed", () => {
   it("hides send-now only for the waits a re-attempt cannot clear", () => {
     expect(isQueuedMessageSendNowAllowed({ kind: "time" })).toBe(true);
-    expect(isQueuedMessageSendNowAllowed({ kind: "manual" })).toBe(true);
     expect(
       isQueuedMessageSendNowAllowed({
         kind: "plugin",

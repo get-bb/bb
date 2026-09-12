@@ -192,7 +192,7 @@ export function resolveSubmittedExecutionSources(
 
 export interface NewThreadComposerSubmission extends NewThreadRequest {
   sendAt?: number;
-  manualQueue?: true;
+  dispatchPluginId?: string;
 }
 
 export interface NewThreadComposerProps {
@@ -1323,11 +1323,14 @@ export function NewThreadComposer({
     [currentDraft],
   );
   const submitScheduledRef = useRef<
-    (options: ExperimentalComposerSubmitOptions) => Promise<void>
+    (
+      options: ExperimentalComposerSubmitOptions | undefined,
+      pluginId: string,
+    ) => Promise<void>
   >(async () => {});
   const submitScheduledThroughRef = useCallback(
-    (options: ExperimentalComposerSubmitOptions) =>
-      submitScheduledRef.current(options),
+    (options: ExperimentalComposerSubmitOptions | undefined, pluginId: string) =>
+      submitScheduledRef.current(options, pluginId),
     [],
   );
   const pluginComposerHost = useMemo<PluginComposerHost>(
@@ -1404,6 +1407,7 @@ export function NewThreadComposer({
     async (
       blockedReason: string | null,
       submitOptions: ExperimentalComposerSubmitOptions | null,
+      dispatchPluginId?: string,
     ) => {
       const submittedDraft = promptDraft.getCurrent();
       const input = promptDraftToInput(submittedDraft);
@@ -1442,9 +1446,8 @@ export function NewThreadComposer({
         ),
         environment: submissionEnvironment,
         input,
-        ...(submitOptions?.experimental_manualQueue === true
-          ? { manualQueue: true }
-          : (submitOptions ?? {})),
+        ...(submitOptions ?? {}),
+        ...(dispatchPluginId === undefined ? {} : { dispatchPluginId }),
       };
       isSubmittingRef.current = true;
       setIsSubmitting(true);
@@ -1492,8 +1495,8 @@ export function NewThreadComposer({
     [submitDraft],
   );
   useEffect(() => {
-    submitScheduledRef.current = async (submitOptions) => {
-      await submitDraft(null, submitOptions);
+    submitScheduledRef.current = async (submitOptions, pluginId) => {
+      await submitDraft(null, submitOptions ?? null, pluginId);
     };
   }, [submitDraft]);
 

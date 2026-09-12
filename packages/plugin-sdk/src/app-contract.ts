@@ -1959,22 +1959,18 @@ export interface PluginComposerApi {
    *
    * Experimental: see docs/api_to_audit.md.
    */
-  experimental_submit(
-    options: ExperimentalComposerSubmitOptions,
-  ): Promise<void>;
+  experimental_submit(options?: ExperimentalComposerSubmitOptions): Promise<void>;
 }
 
 /**
  * What `experimental_submit` does differently from pressing Enter.
  *
- * There is deliberately no zero-argument overload and no "submit now" arm: a
- * plugin that wants a draft sent immediately is asking for the affordance the
- * user already has, and handing plugins an unconditional "send this draft"
- * button is a much larger surface than scheduling needs.
+ * A no-argument submission passes through the calling plugin's dispatch hook.
+ * This lets a plugin gate its own submission without inventing a queue state.
  */
-export type ExperimentalComposerSubmitOptions =
-  | { sendAt: number; experimental_manualQueue?: never }
-  | { experimental_manualQueue: true; sendAt?: never };
+export interface ExperimentalComposerSubmitOptions {
+  sendAt: number;
+}
 
 // ---------------------------------------------------------------------------
 // ThreadChat — the host-owned chat component.
@@ -2221,7 +2217,6 @@ export interface NewThreadRequest {
    * created `pending` and its first message is queued as a row until then.
    */
   sendAt?: number;
-  experimental_manualQueue?: boolean;
 }
 
 /**

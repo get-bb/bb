@@ -342,32 +342,6 @@ describe("user message telemetry", () => {
 });
 
 describe("startup queue waits", () => {
-  it("saves a manual queue row without scheduling a drain", async () => {
-    await withTestHarness(async (harness) => {
-      const { thread } = seedProviderThreadFixture({
-        harness,
-        value: 68,
-      });
-
-      await expect(
-        acceptThreadSendRequest(harness.deps, {
-          payload: {
-            input: textInput("keep this draft until I send it"),
-            manualQueue: true,
-            mode: "auto",
-          },
-          thread,
-        }),
-      ).resolves.toMatchObject({
-        delivery: "queued",
-        queuedMessage: { sendAt: null, waitingOn: { kind: "manual" } },
-      });
-      expect(
-        listQueuedThreadCommands(harness, "turn.submit", thread.id),
-      ).toEqual([]);
-    });
-  });
-
   it("steers provisioning input into the first turn in queue order", async () => {
     await withTestHarness(async (harness) => {
       const { environment, thread } = seedProviderThreadFixture({

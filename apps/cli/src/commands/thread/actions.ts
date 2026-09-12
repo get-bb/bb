@@ -77,7 +77,6 @@ interface ThreadTellCommandOptions {
   file?: string[];
   image?: string[];
   sendAt?: string;
-  draft?: boolean;
 }
 
 interface ThreadActionOptions {
@@ -116,7 +115,6 @@ interface PostThreadMessageArgs {
   files?: readonly string[];
   images?: readonly string[];
   sendAt?: number;
-  manualQueue?: true;
 }
 
 // The server's own answer plus the mode we asked for. `sendAt` used to be
@@ -448,7 +446,6 @@ export function registerActionsCommands(
       "Message mode: steer (default), queue, or auto (steer a live turn, else start one)",
     )
     .option("--send-at <when>", SEND_AT_HELP)
-    .option("--draft", "Save as a manual draft; only Send now dispatches it")
     .option("--plan", PLAN_HELP)
     .option(
       "--file <path>",
@@ -465,9 +462,6 @@ export function registerActionsCommands(
     .action(
       action(
         async (id: string, message: string, opts: ThreadTellCommandOptions) => {
-          if (opts.draft && opts.sendAt !== undefined) {
-            throw new Error("--draft and --send-at cannot be used together.");
-          }
           const response = await postThreadMessage({
             getUrl,
             threadId: id,
@@ -484,7 +478,6 @@ export function registerActionsCommands(
             ...(opts.sendAt === undefined
               ? {}
               : { sendAt: parseSendAt(opts.sendAt) }),
-            ...(opts.draft ? { manualQueue: true } : {}),
           });
           if (outputJson(opts, { threadId: id, ...response })) return;
           console.log(describeThreadTellOutcome(id, response));
@@ -625,9 +618,6 @@ async function postThreadMessage(
     ...(args.serviceTier ? { serviceTier: args.serviceTier } : {}),
     ...(args.senderThreadId ? { senderThreadId: args.senderThreadId } : {}),
     ...(args.sendAt === undefined ? {} : { sendAt: args.sendAt }),
-    ...(args.manualQueue === undefined
-      ? {}
-      : { manualQueue: args.manualQueue }),
   });
   return { ...response, mode: args.mode };
 }
@@ -673,8 +663,6 @@ export function describeQueueWait(row: {
       return row.sendAt === null
         ? "scheduled"
         : `scheduled for ${new Date(row.sendAt).toLocaleString()}`;
-    case "manual":
-      return "draft";
     case "thread-busy":
       return "waiting for the current turn to finish";
     case "turn-starting":

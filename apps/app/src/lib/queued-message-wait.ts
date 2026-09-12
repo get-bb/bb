@@ -33,7 +33,6 @@ export function isQueuedMessageSendNowAllowed(
     case "turn-starting":
       return false;
     case "time":
-    case "manual":
     case "plugin":
     case "thread-busy":
       return true;
@@ -66,8 +65,6 @@ export function queuedMessageWaitIcon(args: {
       return "TimeSchedule";
     case "time":
       return "TimeSchedule";
-    case "manual":
-      return "EditFile";
     case "provisioning":
       return "Folder";
     case "host-offline":
@@ -132,8 +129,6 @@ export function describeQueuedMessageWait(
       return args.sendAt === null
         ? "Scheduled"
         : `Scheduled for ${formatScheduledTime({ now: args.now, timestamp: args.sendAt })}`;
-    case "manual":
-      return "Draft";
     case "provisioning":
       return "Waiting for workspace";
     case "host-offline":

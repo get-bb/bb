@@ -318,9 +318,7 @@ const OPTIONAL_SERVER_FIELD_GROUPS: readonly OptionalServerFieldGroup[] = [
       "sendAt is present only when the caller is scheduling the dispatch; omission means attempt the dispatch now, which allocates no queued row at all when nothing blocks it.",
     fields: [
       "createThreadRequestSchema.sendAt",
-      "createThreadRequestSchema.manualQueue",
       "sendMessageRequestSchema.sendAt",
-      "sendMessageRequestSchema.manualQueue",
     ],
   },
   {

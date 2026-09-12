@@ -46,12 +46,12 @@ describe("saving", () => {
     const submits: unknown[] = [];
     await plusMenuItem.run({
       composer: {
-        experimental_submit: async (options: ExperimentalComposerSubmitOptions) => {
+        experimental_submit: async (options?: ExperimentalComposerSubmitOptions) => {
           submits.push(options);
         },
       } as never,
       view: composerView(),
     });
-    expect(submits).toEqual([{ experimental_manualQueue: true }]);
+    expect(submits).toEqual([undefined]);
   });
 });

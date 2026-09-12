@@ -46,7 +46,6 @@ Spawning:
     --section <id>                 Create the thread in a section
     --visibility <visibility>      visible or hidden; a child inherits its parent by default
     --send-at <when>               Dispatch the first message at an ISO 8601 timestamp or a duration from now (30s, 10m, 2h, 7d)
-    --draft                        Save the first message until Send now; cannot combine with --send-at
     --file <path>                  Host-readable absolute or uploaded file path
     --image <path>                 Host-readable absolute or uploaded image path
     --origin-kind <kind>           Create a fork thread
@@ -234,7 +233,6 @@ Messaging:
     --reasoning-level <level>              Reasoning level override
     --plan                                 Send the message as the provider's /plan action
     --send-at <when>                       Dispatch at an ISO 8601 timestamp or a duration from now (30s, 10m, 2h, 7d)
-    --draft                                Save the message until Send now; cannot combine with --send-at
     --file <path>                          Host-readable absolute or uploaded file path
     --image <path>                         Host-readable absolute or uploaded image path
 

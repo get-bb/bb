@@ -1278,12 +1278,12 @@ describe("useComposer", () => {
     await act(async () => {
       await captured!.experimental_submit({ sendAt });
     });
-    expect(submit).toHaveBeenCalledWith({ sendAt });
+    expect(submit).toHaveBeenCalledWith({ sendAt }, "demo");
 
     await act(async () => {
-      await captured!.experimental_submit({ experimental_manualQueue: true });
+      await captured!.experimental_submit();
     });
-    expect(submit).toHaveBeenLastCalledWith({ experimental_manualQueue: true });
+    expect(submit).toHaveBeenLastCalledWith(undefined, "demo");
 
     await expect(
       captured!.experimental_submit({ sendAt: Date.now() - 1 }),

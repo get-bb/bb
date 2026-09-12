@@ -374,9 +374,6 @@ async function runDispatchAttempt(
   // --- 1. core waits, in the order a message meets them -------------------
 
   const sendAt = payload.sendAt ?? null;
-  if (!sendNow && payload.manualQueue === true) {
-    return waitOn({ kind: "manual" }, null);
-  }
   if (!sendNow && sendAt !== null && sendAt > Date.now()) {
     return waitOn({ kind: "time" }, sendAt);
   }

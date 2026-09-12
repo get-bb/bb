@@ -344,7 +344,6 @@ async function createPendingThreadAndAttemptFirstDispatch(
   args: CreateProvisioningThreadArgs & {
     environmentIntent: ThreadProvisionEnvironmentIntent;
     sendAt: number | undefined;
-    manualQueue: boolean | undefined;
   },
 ) {
   const environment =
@@ -387,7 +386,7 @@ async function createPendingThreadAndAttemptFirstDispatch(
       args.request,
       executionPlanArgs,
     );
-    if (args.sendAt !== undefined || args.manualQueue === true) {
+    if (args.sendAt !== undefined) {
       setThreadExecutionOverride(deps.db, {
         threadId: thread.id,
         modelOverride: execution.model,
@@ -428,7 +427,6 @@ async function createPendingThreadAndAttemptFirstDispatch(
           ? { executionInputSources: args.request.executionInputSources }
           : {}),
         ...(args.sendAt !== undefined ? { sendAt: args.sendAt } : {}),
-        ...(args.manualQueue === true ? { manualQueue: true } : {}),
       },
       source: { kind: "inline" },
       queuePayload: { kind: "inline" },
@@ -754,7 +752,6 @@ export async function createThreadFromRequest(
   const thread = await createPendingThreadAndAttemptFirstDispatch(deps, {
     ...createArgs,
     sendAt: request.sendAt,
-    manualQueue: request.manualQueue,
   });
   deps.telemetry.capture({
     name: "thread_created",

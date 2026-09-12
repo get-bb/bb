@@ -25,7 +25,10 @@ export interface PluginComposerHost {
   subscribeDraft(listener: () => void): () => void;
   setDraft(next: PromptDraftState): void;
   focus(): void;
-  submit?(options: ExperimentalComposerSubmitOptions): Promise<void>;
+  submit?(
+    options: ExperimentalComposerSubmitOptions | undefined,
+    pluginId: string,
+  ): Promise<void>;
 }
 
 export function composerScopeIdentity(scope: PluginComposerScope): string {

@@ -2527,10 +2527,10 @@ slots need the same treatment.
 ## `useComposer().experimental_submit` (`@get-bb/plugin-sdk/app`)
 
 **What it does.** Runs the composer's own submit pipeline with the draft that
-is on screen, queueing the result until `sendAt` or as a manual draft instead
-of dispatching it. In a thread composer that is a queued row; in the new-thread
-composer the thread is created `pending` and its first message is the queued
-row, so nothing provisions until it is sent. The point is
+is on screen, queueing the result until `sendAt` instead of dispatching it.
+In a thread composer that is a queued row waiting on the clock; in the
+new-thread composer the thread is created `pending` and its first message is
+the queued row, so nothing provisions until the row comes due. The point is
 that everything the user selected travels with the
 submission — attachments, @-mentions, and for a create the provider, model,
 reasoning level, service tier, permission mode and environment — none of
@@ -2546,11 +2546,12 @@ too, after the host has restored the draft. Sole consumer:
 
 **Audit before stabilizing.**
 
-1. **Options has clock and manual queue arms, but no "submit now" arm.**
-   `sendAt` schedules a time, while `experimental_manualQueue` creates a row
-   with no automatic drain trigger. Confirm this is the final queue-mode shape
-   before stabilizing it; an unconditional "send the user's draft" capability
-   remains a much larger surface.
+1. **Options is a one-field object with no "submit now" arm.** `sendAt` is
+   required, so the method can only schedule. That is deliberate — an
+   unconditional "send the user's draft" capability is a much larger surface
+   than scheduling needs — but confirm the shape before a second option
+   (`mode`, `senderThreadId`, a queue hint) has to be added, because adding one
+   makes `sendAt` optional and re-opens the "submit now" question.
 2. **Two of four scopes are unsupported.** A queued-message editor and a side
    chat have no `submit`, and the route-draft fallback (a plugin surface
    mounted outside any composer) has none either. All three reject with the
@@ -2901,6 +2902,7 @@ returns a credential only while that host is creating.
 Before stabilizing, verify creation cancellation through host removal,
 same-host restoration, serialized removal, plugin callers and UI/CLI parity.
 
+
 ## `app.experimental_icons.register` and `experimental_Icon`
 
 Plugins register inline React artwork during app setup with `{ name, component }`.
@@ -2936,6 +2938,7 @@ components. The existing built-in icon list and artwork remain fixed; new
 plugin app icons use this registration API. The manifest API is unchanged,
 and individual plugins can still declare their own branding SVG assets using
 the existing manifest fields.
+
 
 ## `experimental_ProviderIcon`
 

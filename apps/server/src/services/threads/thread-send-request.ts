@@ -36,7 +36,7 @@ export async function acceptThreadSendRequest(
     source: { kind: "inline" },
     queuePayload: { kind: "inline" },
     origin: null,
-    originPluginId: null,
+    originPluginId: args.payload.dispatchPluginId ?? null,
     startedOnBehalfOf: null,
     trigger: "user",
   });
