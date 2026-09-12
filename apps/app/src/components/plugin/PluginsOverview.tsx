@@ -168,7 +168,7 @@ export function PluginsOverview({
               className="w-8 px-0 sm:w-auto sm:px-3"
             >
               <Link to={getPluginsRoutePath()}>
-                <Icon name="Explore" className="size-4 sm:hidden" aria-hidden />
+                <Icon name="Plug02" className="size-4" aria-hidden />
                 <span className="sr-only sm:not-sr-only">Browse marketplace</span>
               </Link>
             </Button>
