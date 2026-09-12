@@ -333,10 +333,10 @@ function PromptSubmitButton({
         <Icon name="Spinner" className="size-4 animate-spin" />
       ) : (
         <>
+          <Icon name={icon ?? "CornerDownLeft"} className="size-4" />
           {label !== undefined && !isCompact ? (
             <span data-promptbox-submit-label="">{label}</span>
           ) : null}
-          <Icon name={icon ?? "CornerDownLeft"} className="size-4" />
         </>
       )}
     </Button>
