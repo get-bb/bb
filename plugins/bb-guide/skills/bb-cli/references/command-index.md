@@ -238,8 +238,8 @@ configures the machine with optional configured `preset` and `image` names;
 - `bb plugin dev`
 - `bb plugin reload`
 - `bb plugin rpc`
-- `bb plugin rpc list`
-- `bb plugin rpc inspect`
+- `bb plugin rpc list [plugin-id]`
+- `bb plugin rpc inspect <plugin-id> [method]`
 - `bb plugin rpc call`
 - `bb plugin enable`
 - `bb plugin disable`

@@ -137,7 +137,7 @@ Add discoverable CLI surfaces backed by the same SDK query:
 bb plugin rpc list --json
 bb plugin rpc list --method provider-usage.v1.listResources --json
 bb plugin rpc inspect account-pool --json
-bb plugin rpc inspect account-pool --method provider-usage.v1.listResources --json
+bb plugin rpc inspect account-pool provider-usage.v1.listResources --json
 ```
 
 Listing presents identities and method names; inspection includes registration descriptions, method descriptions, and published schemas with field descriptions preserved. JSON output is sufficient for copying or generating local schema definitions. TypeScript generation is outside the initial scope because JSON Schema cannot reconstruct arbitrary validator source.

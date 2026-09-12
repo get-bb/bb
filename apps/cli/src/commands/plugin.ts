@@ -782,24 +782,29 @@ export function registerPluginCommands(
     .command("rpc")
     .description("Inspect discoverable plugin RPC methods");
   rpc
-    .command("list")
+    .command("list [plugin-id]")
     .option("--method <name>", "Filter by exact method name")
     .option("--json", "Output JSON")
     .action(
-      action(async (opts: JsonOutputOptions & { method?: string }) => {
-        const methods = await createCliBbSdk(
-          getUrl(),
-        ).plugins.experimental_discoverRpc({ method: opts.method });
-        if (opts.json) {
-          outputJson(opts, methods);
-          return;
-        }
-        if (methods.length === 0) console.log("No discoverable RPC methods.");
-        for (const method of methods)
-          console.log(
-            `${method.pluginId}  ${method.method}  ${method.methodDescription ?? method.registrationDescription ?? ""}`,
-          );
-      }),
+      action(
+        async (
+          pluginId: string | undefined,
+          opts: JsonOutputOptions & { method?: string },
+        ) => {
+          const methods = await createCliBbSdk(
+            getUrl(),
+          ).plugins.experimental_discoverRpc({ pluginId, method: opts.method });
+          if (opts.json) {
+            outputJson(opts, methods);
+            return;
+          }
+          if (methods.length === 0) console.log("No discoverable RPC methods.");
+          for (const method of methods)
+            console.log(
+              `${method.pluginId}  ${method.method}  ${method.methodDescription ?? method.registrationDescription ?? ""}`,
+            );
+        },
+      ),
     );
   rpc
     .command("call <plugin-id> <method>")
@@ -838,18 +843,18 @@ export function registerPluginCommands(
     );
 
   rpc
-    .command("inspect <plugin-id>")
-    .option("--method <name>", "Filter by exact method name")
+    .command("inspect <plugin-id> [method]")
     .option("--json", "Output JSON")
     .action(
       action(
         async (
           pluginId: string,
-          opts: JsonOutputOptions & { method?: string },
+          method: string | undefined,
+          opts: JsonOutputOptions,
         ) => {
           const methods = await createCliBbSdk(
             getUrl(),
-          ).plugins.experimental_discoverRpc({ pluginId, method: opts.method });
+          ).plugins.experimental_discoverRpc({ pluginId, method });
           if (opts.json) {
             outputJson(opts, methods);
             return;
