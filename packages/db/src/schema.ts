@@ -18,7 +18,6 @@ import type {
   JsonValue,
   EnvironmentStatus,
   FaviconColorPreference,
-  HostType,
   PendingInteractionStatus,
   PermissionMode,
   PromptHistoryScope,
@@ -94,8 +93,37 @@ export const hosts = sqliteTable(
   {
     id: text("id").primaryKey(),
     name: text("name").notNull(),
-    type: text("type").$type<HostType>().notNull(),
+    type: text("type").$type<"persistent" | "ephemeral">().notNull(),
     connectMachineId: text("connect_machine_id"),
+    machineProviderId: text("machine_provider_id"),
+    launchKey: text("launch_key"),
+    inputs: text("machine_inputs", { mode: "json" }).$type<JsonValue>(),
+    attempt: integer("machine_attempt").notNull().default(0),
+    pendingLog: text("pending_log").notNull().default(""),
+    machineOperationId: text("machine_operation_id"),
+    serverAccessProviderId: text("server_access_provider_id"),
+    serverAccessGrantId: text("server_access_grant_id"),
+    resource: text("resource", { mode: "json" }).$type<JsonValue>(),
+    phase: text("phase")
+      .$type<
+        | "creating"
+        | "active"
+        | "suspending"
+        | "suspended"
+        | "resuming"
+        | "removing"
+        | "destroyed"
+      >()
+      .notNull()
+      .default("active"),
+    suspendedAt: integer("suspended_at"),
+    statusMessage: text("status_message"),
+    suspendRetryAt: integer("suspend_retry_at"),
+    removeRetryAt: integer("remove_retry_at"),
+    teardownAttempt: integer("teardown_attempt").notNull().default(0),
+    teardownStatus: text("teardown_status").$type<
+      "running" | "failed" | "removed"
+    >(),
     maxPermissionMode: text("max_permission_mode")
       .$type<PermissionMode>()
       .notNull()
@@ -106,7 +134,12 @@ export const hosts = sqliteTable(
     createdAt: integer("created_at").notNull(),
     updatedAt: integer("updated_at").notNull(),
   },
-  (table) => [index("hosts_last_seen_idx").on(table.lastSeenAt)],
+  (table) => [
+    index("hosts_last_seen_idx").on(table.lastSeenAt),
+    uniqueIndex("hosts_live_launch_key_idx")
+      .on(table.launchKey)
+      .where(sql`${table.destroyedAt} is null`),
+  ],
 );
 
 export const projects = sqliteTable(
@@ -418,6 +451,9 @@ export const projectSources = sqliteTable(
     type: text("type").$type<ProjectSourceType>().notNull(),
     hostId: text("host_id").references(() => hosts.id, { onDelete: "cascade" }),
     path: text("path"),
+    ownsPath: integer("owns_path", { mode: "boolean" })
+      .notNull()
+      .default(false),
     isDefault: integer("is_default", { mode: "boolean" })
       .notNull()
       .default(false),
@@ -593,6 +629,18 @@ export const threads = sqliteTable(
       .on(table.status)
       .where(sql`${table.deletedAt} IS NULL`),
   ],
+);
+
+export const threadPluginMetadata = sqliteTable(
+  "thread_plugin_metadata",
+  {
+    threadId: text("thread_id")
+      .notNull()
+      .references(() => threads.id, { onDelete: "cascade" }),
+    pluginId: text("plugin_id").notNull(),
+    metadataJson: text("metadata_json").notNull(),
+  },
+  (table) => [primaryKey({ columns: [table.threadId, table.pluginId] })],
 );
 
 export const threadTabs = sqliteTable("thread_tabs", {
@@ -938,7 +986,6 @@ export const hostDaemonSessions = sqliteTable(
       .references(() => hosts.id, { onDelete: "cascade" }),
     instanceId: text("instance_id").notNull(),
     hostName: text("host_name").notNull(),
-    hostType: text("host_type").$type<HostType>().notNull(),
     dataDir: text("data_dir").notNull(),
     protocolVersion: integer("protocol_version").notNull(),
     heartbeatIntervalMs: integer("heartbeat_interval_ms").notNull(),
@@ -1063,4 +1110,18 @@ export const pendingInteractions = sqliteTable(
       table.createdAt,
     ),
   ],
+);
+
+export const environmentHookOperations = sqliteTable(
+  "environment_hook_operations",
+  {
+    id: text("id").primaryKey(),
+    operationId: text("operation_id").notNull(),
+    hostId: text("host_id").notNull(),
+    path: text("path").notNull(),
+    kind: text("kind").$type<"setup" | "teardown">().notNull(),
+    startedAt: integer("started_at").notNull(),
+    finishedAt: integer("finished_at"),
+    error: text("error"),
+  },
 );

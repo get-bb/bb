@@ -1,3 +1,4 @@
+import { useSetPluginEnabled } from "@/components/plugin/useSetPluginEnabled";
 import {
   Suspense,
   useCallback,
@@ -39,7 +40,6 @@ import {
 } from "@/hooks/queries/plugin-catalog-queries";
 import {
   removePlugin,
-  setPluginEnabled,
   usePluginList,
   type PluginListItem,
 } from "@/hooks/queries/plugin-settings-queries";
@@ -156,12 +156,13 @@ function PluginDetailToolView({ pluginId }: { pluginId: string }) {
       (plugin) => pluginIsLocalSource(plugin) && plugin.rootDir !== null,
     ),
   });
+  const setEnabled = useSetPluginEnabled();
   const pluginToggle = useMutation({
     meta: { showErrorToast: false },
     mutationFn: async (plugin: PluginListItem) => {
       const action = plugin.enabled ? "disable" : "enable";
       try {
-        await setPluginEnabled(fetch, plugin.id, !plugin.enabled);
+        await setEnabled(plugin.id, !plugin.enabled);
       } catch {
         throw new Error(`Failed to ${action} plugin`);
       }

@@ -970,7 +970,7 @@ The canonical release summary.
     expect(
       providerIcon
         ?.querySelector("[data-provider-logo]")
-        ?.getAttribute("class"),
+        ?.parentElement?.getAttribute("class"),
     ).toContain("text-muted-foreground");
     expect(providerIcon?.classList.contains("flex")).toBe(true);
     expect(providerIcon?.classList.contains("size-3.5")).toBe(true);
@@ -1270,7 +1270,7 @@ The canonical release summary.
             .querySelector(
               `[data-provider-icon="${providerId}"] [data-provider-logo]`,
             )
-            ?.getAttribute("class"),
+            ?.parentElement?.getAttribute("class"),
         ).toContain("text-muted-foreground"),
       );
     }

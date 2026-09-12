@@ -614,7 +614,7 @@ function DetailView({
     overviewEntry !== undefined
       ? automationProjectLabel(overviewEntry.project)
       : route.projectId === PERSONAL_PROJECT_ID
-        ? "Local"
+        ? "Personal"
         : route.projectId;
 
   return (

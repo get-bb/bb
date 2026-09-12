@@ -1,15 +1,10 @@
 import { useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import type { Host, PermissionMode } from "@bb/domain";
+import type { SystemMachineProvider } from "@bb/server-contract";
 import { RETRY_ACTION_ICON } from "@bb/domain/update-state";
 import type { HostPlatform } from "@bb/host-daemon-contract";
 import { Button } from "@bb/shared-ui/button";
-import {
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@bb/shared-ui/dialog";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -29,10 +24,16 @@ import {
   TooltipTrigger,
 } from "@bb/shared-ui/tooltip";
 import { AddMachineDialog } from "@/components/dialogs/AddMachineDialog";
-import { ConfirmDeleteDialog } from "@/components/dialogs/ConfirmDeleteDialog";
 import { appToast } from "@/components/ui/app-toast";
+import { MachineLifecycleActions } from "@/components/machines/MachineLifecycleActions";
+import { MachineRemoveDialog } from "@/components/machines/MachineRemoveDialog";
 import { MachineStatusDot } from "@/components/machines/MachineStatusDot";
+import {
+  machineStatusLabel,
+  machineStatusTone,
+} from "@/components/machines/machine-status";
 import { MachineRenameDialog } from "@/components/settings/MachineRenameDialog";
+import { MachineLabel } from "@/components/machines/MachineLabel";
 import {
   SettingsBadge,
   SettingsRow,
@@ -40,18 +41,20 @@ import {
   SettingsSection,
 } from "@/components/ui/settings-section";
 import {
-  useRemoveHost,
   useRenameHost,
+  useResumeHost,
+  useRetryHostCleanup,
   useRetryHostUpdate,
+  useSuspendHost,
 } from "@/hooks/mutations/host-mutations";
 import { useHosts } from "@/hooks/queries/host-queries";
+import { useSystemMachineProviders } from "@/hooks/queries/machine-provider-queries";
 import { useSidebarNavigation } from "@/hooks/queries/sidebar-navigation-query";
 import { useSystemConfig } from "@/hooks/queries/system-queries";
 import { useHostDaemon } from "@/hooks/useHostDaemon";
 import { getSettingsMachineRoutePath } from "@/lib/route-paths";
 import { PERMISSION_MODE_OPTIONS } from "@/lib/permission-mode-options";
 import { getMutationErrorMessage } from "@/lib/mutation-errors";
-import { formatRelativeTime } from "@/lib/relative-time";
 import {
   formatHostUpdateStatus,
   hostCanRetryUpdate,
@@ -89,10 +92,15 @@ interface MachineRowProps {
   onRename: () => void;
   onRemove: () => void;
   onRetryUpdate: () => void;
+  onSuspend: () => void;
+  onResume: () => void;
+  onRetryCleanup: () => void;
+  lifecycleActionPending: boolean;
   retryUpdatePending: boolean;
+  machineProvider: SystemMachineProvider | null;
 }
 
-function MachineRow({
+export function MachineRowContent({
   host,
   isPrimary,
   isThisMachine,
@@ -103,18 +111,18 @@ function MachineRow({
   onRename,
   onRemove,
   onRetryUpdate,
+  onSuspend,
+  onResume,
+  onRetryCleanup,
+  lifecycleActionPending,
   retryUpdatePending,
+  machineProvider,
 }: MachineRowProps) {
   const navigate = useNavigate();
   const detailPath = getSettingsMachineRoutePath(host.id);
   const permission = PERMISSION_MODE_PRESENTATION[host.maxPermissionMode];
   const projectLabel = `${projectCount} ${projectCount === 1 ? "project" : "projects"}`;
-  const connectionLabel =
-    host.status === "connected"
-      ? "Online"
-      : host.lastSeenAt === null
-        ? "Offline"
-        : `Offline · last seen ${formatRelativeTime({ timestamp: host.lastSeenAt, now })}`;
+  const connectionLabel = machineStatusLabel({ host, now });
   const updateStatus = formatHostUpdateStatus(host);
   const removeItem = (
     <DropdownMenuItem
@@ -139,101 +147,118 @@ function MachineRow({
 
   return (
     <SettingsRow>
-      <div
-        data-machine-row
-        className="group group/machine -mx-2 flex min-w-0 flex-1 cursor-pointer items-center gap-2 rounded-md px-2 py-2 transition-colors hover:bg-state-hover focus-within:bg-state-hover"
-        onClick={(event) => {
-          if (targetsResourceAction(event.target)) return;
-          navigate(detailPath);
-        }}
-      >
-        <Link
-          to={detailPath}
-          aria-label={`Open ${host.name}`}
-          className="flex min-w-0 flex-1 items-center rounded-md outline-none focus-visible:ring-2 focus-visible:ring-ring"
+      <div className="flex min-w-0 flex-1 flex-col gap-2">
+        <div
+          data-machine-row
+          className="group group/machine -mx-2 flex min-w-0 flex-1 cursor-pointer items-center gap-2 rounded-md px-2 py-2 transition-colors hover:bg-state-hover focus-within:bg-state-hover"
+          onClick={(event) => {
+            if (targetsResourceAction(event.target)) return;
+            navigate(detailPath);
+          }}
         >
-          <div className="min-w-0 flex-1 space-y-1">
-            <div className="flex min-w-0 items-center gap-1.5">
-              <span className="min-w-0 truncate text-sm font-medium text-foreground">
-                {host.name}
-              </span>
-              {isThisMachine ? (
-                <SettingsBadge>this machine</SettingsBadge>
-              ) : null}
-              {showPrimaryBadge ? <SettingsBadge>primary</SettingsBadge> : null}
-            </div>
-            <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-0.5 text-xs text-subtle-foreground/75">
-              <span className="inline-flex shrink-0 items-center gap-1.5">
-                <MachineStatusDot connected={host.status === "connected"} />
-                {connectionLabel}
-              </span>
-              {platformLabel === null ? null : (
-                <span className="truncate">{platformLabel}</span>
-              )}
-              <span className="shrink-0">{projectLabel}</span>
-              <span
-                className={cn(
-                  "shrink-0",
-                  permission.tone === "warning" && "text-warning-text",
-                )}
-              >
-                {permission.label}
-              </span>
-              {updateStatus === null ? null : (
-                <span className="min-w-0 text-warning-text">
-                  {updateStatus}
+          <Link
+            to={getSettingsMachineRoutePath(host.id)}
+            aria-label={`Open ${host.name}`}
+            className="flex min-w-0 flex-1 items-center rounded-md outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          >
+            <div className="min-w-0 flex-1 space-y-1">
+              <div className="flex min-w-0 items-center gap-1.5">
+                <MachineLabel
+                  host={host}
+                  machineProvider={machineProvider}
+                  nameClassName="text-sm font-medium text-foreground"
+                />
+                {isThisMachine ? (
+                  <SettingsBadge>this machine</SettingsBadge>
+                ) : null}
+                {showPrimaryBadge ? (
+                  <SettingsBadge>primary</SettingsBadge>
+                ) : null}
+              </div>
+              <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-0.5 text-xs text-subtle-foreground/75">
+                <span className="inline-flex min-w-0 items-center gap-1.5">
+                  <MachineStatusDot tone={machineStatusTone(host)} />
+                  <span className="min-w-0 truncate">{connectionLabel}</span>
                 </span>
-              )}
+                {platformLabel === null ? null : (
+                  <span className="truncate">{platformLabel}</span>
+                )}
+                <span className="shrink-0">{projectLabel}</span>
+                <span
+                  className={cn(
+                    "shrink-0",
+                    permission.tone === "warning" && "text-warning-text",
+                  )}
+                >
+                  {permission.label}
+                </span>
+                {updateStatus === null ? null : (
+                  <span className="min-w-0 text-warning-text">
+                    {updateStatus}
+                  </span>
+                )}
+              </div>
             </div>
-          </div>
-        </Link>
-        <div className="flex shrink-0 items-center gap-1">
-          <TooltipProvider delayDuration={250}>
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="h-7 w-7 shrink-0 data-[state=open]:bg-state-active data-[state=open]:text-foreground"
-                  aria-label={`${host.name} actions`}
-                >
-                  <Icon name="MoreHorizontal" className="size-4" />
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" className="w-max min-w-0">
-                <DropdownMenuItem
-                  className={MACHINE_MENU_ITEM_CLASS}
-                  onSelect={onRename}
-                >
-                  <Icon name="Edit" aria-hidden />
-                  <span className="min-w-0 truncate">Rename</span>
-                </DropdownMenuItem>
-                {hostCanRetryUpdate(host) ? (
+          </Link>
+          <div className="flex shrink-0 items-center gap-1">
+            <TooltipProvider delayDuration={250}>
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-7 w-7 shrink-0 data-[state=open]:bg-state-active data-[state=open]:text-foreground"
+                    aria-label={`${host.name} actions`}
+                  >
+                    <Icon name="MoreHorizontal" className="size-4" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="w-max min-w-0">
                   <DropdownMenuItem
                     className={MACHINE_MENU_ITEM_CLASS}
-                    disabled={retryUpdatePending}
-                    onSelect={onRetryUpdate}
+                    onSelect={onRename}
                   >
-                    <Icon name={RETRY_ACTION_ICON} aria-hidden />
-                    <span className="min-w-0 truncate">
-                      {retryUpdatePending ? "Retrying update…" : "Retry update"}
-                    </span>
+                    <Icon name="Edit" aria-hidden />
+                    <span className="min-w-0 truncate">Rename</span>
                   </DropdownMenuItem>
-                ) : null}
-                {isPrimary ? (
-                  <Tooltip>
-                    <TooltipTrigger asChild>{removeItem}</TooltipTrigger>
-                    <TooltipContent side="left">
-                      {PRIMARY_REMOVE_DISABLED_REASON}
-                    </TooltipContent>
-                  </Tooltip>
-                ) : (
-                  removeItem
-                )}
-              </DropdownMenuContent>
-            </DropdownMenu>
-          </TooltipProvider>
-          <ResourceRowDetailChevron />
+                  {hostCanRetryUpdate(host) ? (
+                    <DropdownMenuItem
+                      className={MACHINE_MENU_ITEM_CLASS}
+                      disabled={retryUpdatePending}
+                      onSelect={onRetryUpdate}
+                    >
+                      <Icon name={RETRY_ACTION_ICON} aria-hidden />
+                      <span className="min-w-0 truncate">
+                        {retryUpdatePending
+                          ? "Retrying update…"
+                          : "Retry update"}
+                      </span>
+                    </DropdownMenuItem>
+                  ) : null}
+                  <MachineLifecycleActions
+                    host={host}
+                    machineProvider={machineProvider}
+                    pending={lifecycleActionPending}
+                    presentation="menu"
+                    onSuspend={onSuspend}
+                    onResume={onResume}
+                    onRetryCleanup={onRetryCleanup}
+                  />
+                  {isPrimary ? (
+                    <Tooltip>
+                      <TooltipTrigger asChild>{removeItem}</TooltipTrigger>
+                      <TooltipContent side="left">
+                        {PRIMARY_REMOVE_DISABLED_REASON}
+                      </TooltipContent>
+                    </Tooltip>
+                  ) : (
+                    removeItem
+                  )}
+                </DropdownMenuContent>
+              </DropdownMenu>
+            </TooltipProvider>
+            <ResourceRowDetailChevron />
+          </div>
         </div>
       </div>
     </SettingsRow>
@@ -242,13 +267,17 @@ function MachineRow({
 
 export function MachinesSettingsSection() {
   const systemConfig = useSystemConfig();
-  const hostsQuery = useHosts();
+  const hostsQuery = useHosts({ includeCreating: true });
+  const { providers: machineProviders } = useSystemMachineProviders();
   const { localDaemonHostId, platform: localDaemonPlatform } = useHostDaemon();
   const sidebarNavigationQuery = useSidebarNavigation();
   const renameHost = useRenameHost();
-  const removeHost = useRemoveHost();
   const retryHostUpdate = useRetryHostUpdate();
+  const suspendHost = useSuspendHost();
+  const resumeHost = useResumeHost();
+  const retryHostCleanup = useRetryHostCleanup();
   const [addDialogOpen, setAddDialogOpen] = useState(false);
+  const [showAllMachines, setShowAllMachines] = useState(false);
   const [renameTarget, setRenameTarget] = useState<Host | null>(null);
   const [removeTarget, setRemoveTarget] = useState<Host | null>(null);
 
@@ -268,8 +297,92 @@ export function MachinesSettingsSection() {
 
   const now = Date.now();
   const primaryHostPlatform = systemConfig.data?.primaryHostPlatform ?? null;
-  const showMachineIdentityBadges = (hosts?.length ?? 0) > 1;
-  const hasMachineRows = hosts !== undefined && hosts.length > 0;
+  const persistentHosts = hosts?.filter((host) => host.type === "persistent");
+  const sandboxHosts = hosts?.filter((host) => host.type === "ephemeral");
+  const visibleHosts =
+    showAllMachines && sandboxHosts !== undefined
+      ? [...(persistentHosts ?? []), ...sandboxHosts]
+      : (persistentHosts ?? []);
+  const showMachineIdentityBadges = (persistentHosts?.length ?? 0) > 1;
+  const hasMachineRows =
+    persistentHosts !== undefined && persistentHosts.length > 0;
+  const machineProviderById = useMemo(
+    () =>
+      new Map(
+        (machineProviders ?? []).map((provider) => [provider.id, provider]),
+      ),
+    [machineProviders],
+  );
+  const renderMachineRows = (rows: readonly Host[]) => (
+    <SettingsRowList>
+      {rows.map((host) => (
+        <MachineRowContent
+          key={host.id}
+          host={host}
+          isPrimary={host.id === serverPrimaryHostId}
+          isThisMachine={
+            showMachineIdentityBadges && host.id === localDaemonHostId
+          }
+          showPrimaryBadge={
+            showMachineIdentityBadges && host.id === serverPrimaryHostId
+          }
+          platformLabel={
+            host.id === localDaemonHostId && localDaemonPlatform !== null
+              ? PLATFORM_LABELS[localDaemonPlatform]
+              : host.id === serverPrimaryHostId && primaryHostPlatform !== null
+                ? PLATFORM_LABELS[primaryHostPlatform]
+                : null
+          }
+          projectCount={projectCountByHostId.get(host.id) ?? 0}
+          now={now}
+          onRename={() => {
+            renameHost.reset();
+            setRenameTarget(host);
+          }}
+          onRemove={() => {
+            setRemoveTarget(host);
+          }}
+          onRetryUpdate={() =>
+            retryHostUpdate.mutate(host.id, {
+              onSuccess: () => {
+                appToast.success(`Update retry requested for ${host.name}`);
+              },
+            })
+          }
+          retryUpdatePending={
+            retryHostUpdate.isPending && retryHostUpdate.variables === host.id
+          }
+          onSuspend={() =>
+            suspendHost.mutate(host.id, {
+              onSuccess: () => appToast.success(`${host.name} suspended`),
+            })
+          }
+          onResume={() =>
+            resumeHost.mutate(host.id, {
+              onSuccess: () => appToast.success(`${host.name} resumed`),
+            })
+          }
+          onRetryCleanup={() =>
+            retryHostCleanup.mutate(host.id, {
+              onSuccess: () =>
+                appToast.success(`Cleanup retried for ${host.name}`),
+            })
+          }
+          lifecycleActionPending={
+            (suspendHost.isPending && suspendHost.variables === host.id) ||
+            (resumeHost.isPending && resumeHost.variables === host.id) ||
+            (retryHostCleanup.isPending &&
+              retryHostCleanup.variables === host.id)
+          }
+          machineProvider={
+            host.machineProviderId === null
+              ? null
+              : (machineProviderById.get(host.machineProviderId) ?? null)
+          }
+        />
+      ))}
+    </SettingsRowList>
+  );
 
   return (
     <>
@@ -290,63 +403,34 @@ export function MachinesSettingsSection() {
       >
         {hosts === undefined ? (
           <p className="text-sm text-muted-foreground">Loading…</p>
-        ) : hosts.length === 0 ? (
+        ) : visibleHosts.length === 0 ? (
           <p className="text-sm text-subtle-foreground">No machines yet.</p>
         ) : (
-          <SettingsRowList>
-            {hosts.map((host) => (
-              <MachineRow
-                key={host.id}
-                host={host}
-                isPrimary={host.id === serverPrimaryHostId}
-                isThisMachine={
-                  showMachineIdentityBadges && host.id === localDaemonHostId
-                }
-                showPrimaryBadge={
-                  showMachineIdentityBadges && host.id === serverPrimaryHostId
-                }
-                platformLabel={
-                  host.id === localDaemonHostId && localDaemonPlatform !== null
-                    ? PLATFORM_LABELS[localDaemonPlatform]
-                    : host.id === serverPrimaryHostId &&
-                        primaryHostPlatform !== null
-                      ? PLATFORM_LABELS[primaryHostPlatform]
-                      : null
-                }
-                projectCount={projectCountByHostId.get(host.id) ?? 0}
-                now={now}
-                onRename={() => {
-                  renameHost.reset();
-                  setRenameTarget(host);
-                }}
-                onRemove={() => {
-                  removeHost.reset();
-                  setRemoveTarget(host);
-                }}
-                onRetryUpdate={() =>
-                  retryHostUpdate.mutate(host.id, {
-                    onSuccess: () => {
-                      appToast.success(
-                        `Update retry requested for ${host.name}`,
-                      );
-                    },
-                  })
-                }
-                retryUpdatePending={
-                  retryHostUpdate.isPending &&
-                  retryHostUpdate.variables === host.id
-                }
-              />
-            ))}
-          </SettingsRowList>
+          renderMachineRows(visibleHosts)
         )}
+        {sandboxHosts !== undefined && sandboxHosts.length > 0 ? (
+          <button
+            type="button"
+            aria-expanded={showAllMachines}
+            onClick={() => setShowAllMachines((previous) => !previous)}
+            className="-ml-1 inline-flex items-center gap-1.5 self-start rounded-md px-1.5 py-0.5 text-xs text-muted-foreground transition-colors hover:bg-state-hover hover:text-foreground"
+          >
+            <Icon
+              name="ChevronDown"
+              className={cn(
+                "size-3.5 transition-transform",
+                showAllMachines && "rotate-180",
+              )}
+              aria-hidden
+            />
+            <span>
+              {showAllMachines ? "Show fewer machines" : "Show all machines"}
+            </span>
+          </button>
+        ) : null}
       </SettingsSection>
 
-      <AddMachineDialog
-        open={addDialogOpen}
-        onOpenChange={setAddDialogOpen}
-        serverUrl={systemConfig.data?.serverUrl ?? null}
-      />
+      <AddMachineDialog open={addDialogOpen} onOpenChange={setAddDialogOpen} />
 
       <MachineRenameDialog
         target={renameTarget}
@@ -370,48 +454,12 @@ export function MachinesSettingsSection() {
         }
       />
 
-      <ConfirmDeleteDialog
-        open={removeTarget !== null}
+      <MachineRemoveDialog
+        target={removeTarget}
         onOpenChange={(open) => {
-          if (!open && !removeHost.isPending) setRemoveTarget(null);
+          if (!open) setRemoveTarget(null);
         }}
-      >
-        {removeTarget ? (
-          <>
-            <DialogHeader>
-              <DialogTitle>Remove {removeTarget.name}?</DialogTitle>
-              <DialogDescription>
-                This revokes {removeTarget.name}'s access to this server.
-                Project checkouts stay on its disk, but its environments become
-                read-only history and it can't run new work until it's paired
-                again.
-              </DialogDescription>
-            </DialogHeader>
-            {removeHost.isError ? (
-              <p className="text-sm text-destructive" role="alert">
-                {getMutationErrorMessage({
-                  error: removeHost.error,
-                  fallbackMessage: `Couldn't remove ${removeTarget.name}.`,
-                })}
-              </p>
-            ) : null}
-            <DialogFooter>
-              <Button
-                type="button"
-                variant="destructive"
-                disabled={removeHost.isPending}
-                onClick={() =>
-                  removeHost.mutate(removeTarget.id, {
-                    onSuccess: () => setRemoveTarget(null),
-                  })
-                }
-              >
-                Remove machine
-              </Button>
-            </DialogFooter>
-          </>
-        ) : null}
-      </ConfirmDeleteDialog>
+      />
     </>
   );
 }

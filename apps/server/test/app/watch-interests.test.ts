@@ -25,7 +25,6 @@ function setup() {
   const hub = new NotificationHub();
   const watchInterests = new WatchInterestCoordinator({ db, hub });
   const host = upsertHost(db, noopNotifier, {
-    type: "persistent",
     name: "test-host",
   });
   const { project } = createProject(db, noopNotifier, {

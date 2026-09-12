@@ -453,6 +453,37 @@ describe("the requested queue drain", () => {
     },
   );
 
+  it("resumes host-offline work without releasing ordinary work paused by Stop", async () => {
+    await withTestHarness(async (harness) => {
+      const { thread, environment } = seedRunnableThread(harness, {
+        hostId: "host-stopped-offline",
+        status: "active",
+      });
+      const ordinary = seedQueuedMessage(harness.deps, {
+        threadId: thread.id,
+        content: textInput("Work queued before Stop"),
+        waitingOn: { kind: "thread-busy" },
+      });
+      await stopThread(harness, thread.id);
+      seedQueuedMessage(harness.deps, {
+        threadId: thread.id,
+        content: textInput("Follow-up waiting for the machine"),
+        waitingOn: { kind: "host-offline", hostName: "Test Host" },
+      });
+      const turnsBefore = turnRequests(harness, thread.id).length;
+
+      await runQueuedMessageDispatch(harness.deps, {
+        kind: "host-connected",
+        hostId: environment.hostId,
+      });
+
+      expect(listQueuedThreadMessages(harness.db, thread.id)).toMatchObject([
+        { id: ordinary.id },
+      ]);
+      expect(turnRequests(harness, thread.id)).toHaveLength(turnsBefore + 1);
+    });
+  });
+
   it.each(["scheduled", "plugin"] as const)(
     "does not dispatch a %s group containing a failed row",
     async (drain) => {

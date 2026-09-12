@@ -412,6 +412,8 @@ async function resolveProviderBadges(
         id: provider.id,
         name: provider.displayName,
         logoUrl: provider.logoUrl,
+        icon: provider.icon ?? null,
+        strings: { iconTint: provider.strings?.iconTint ?? null },
       });
     }
   }
@@ -875,6 +877,8 @@ export function registerHandlers(
                     id: info.providerId,
                     name: info.providerId,
                     logoUrl: null,
+                    icon: null,
+                    strings: { iconTint: null },
                   }),
           };
         }),

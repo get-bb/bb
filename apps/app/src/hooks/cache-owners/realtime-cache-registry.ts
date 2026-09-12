@@ -506,7 +506,7 @@ const HOST_CONNECTION_DIRTY_HANDLERS = [
 
 export const REALTIME_HOST_CHANGE_REGISTRY = {
   "host-connected": {
-    dirty: HOST_CONNECTION_DIRTY_HANDLERS,
+    dirty: [...HOST_CONNECTION_DIRTY_HANDLERS, dirtyAllThreadStorageQueries],
   },
   "host-disconnected": {
     dirty: HOST_CONNECTION_DIRTY_HANDLERS,
@@ -525,6 +525,7 @@ export const REALTIME_SYSTEM_CHANGE_REGISTRY = {
   },
   "plugins-changed": {
     dirty: [
+      dirtySystemConfigQueries,
       dirtyPluginContributionQueries,
       dirtyProjectCommandCatalogQueries,
       dirtyPluginManagementQueries,
@@ -926,12 +927,7 @@ function dirtyThreadStorageQueriesForThread({
   threadId,
 }: ThreadRealtimeDirtyContext): QueryKey[] {
   if (!threadId) {
-    return [
-      allThreadStorageFilesQueryKeyPrefix(),
-      allThreadStorageLocationsQueryKeyPrefix(),
-      allThreadStoragePathsQueryKeyPrefix(),
-      allThreadStorageFilePreviewQueryKeyPrefix(),
-    ];
+    return dirtyAllThreadStorageQueries();
   }
   return [
     threadStorageFilesForThreadQueryKeyPrefix(threadId),
@@ -1120,6 +1116,15 @@ function dirtyThreadStorageQueriesForEnvironment({
     queryKeys.push(threadStorageFilePreviewQueryKeyPrefix(threadId));
   }
   return queryKeys;
+}
+
+function dirtyAllThreadStorageQueries(): QueryKey[] {
+  return [
+    allThreadStorageFilesQueryKeyPrefix(),
+    allThreadStorageLocationsQueryKeyPrefix(),
+    allThreadStoragePathsQueryKeyPrefix(),
+    allThreadStorageFilePreviewQueryKeyPrefix(),
+  ];
 }
 
 function dirtyHostAvailabilityQueries(): QueryKey[] {

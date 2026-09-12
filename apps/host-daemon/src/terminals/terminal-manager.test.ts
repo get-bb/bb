@@ -360,9 +360,11 @@ function shellQuote(value: string): string {
 
 async function openTerminal(
   harness: TerminalManagerHarness,
+  contributedEnv: import("@bb/host-daemon-contract").HostDaemonContributedEnvEntry[] = [],
 ): Promise<FakeTerminalPty> {
   await harness.manager.handleMessage({
     type: "terminal.open",
+    contributedEnv,
     requestId: "open-1",
     terminalId: "term-1",
     threadId: "thr-1",
@@ -424,11 +426,35 @@ describe("TerminalManager", () => {
     ).resolves.toEqual([]);
   });
 
+  it("injects host credentials into a PTY and forwards terminal output as-is", async () => {
+    const harness = createHarness();
+    const pty = await openTerminal(harness, [
+      {
+        name: "GH_TOKEN",
+        value: "terminal-private-token",
+        source: { core: "machine-git" },
+        reason: "Git",
+      },
+    ]);
+    expect(harness.adapter.spawned[0]?.args.env.GH_TOKEN).toBe(
+      "terminal-private-token",
+    );
+    pty.emitData("terminal-private-token");
+    await waitForOutputContaining({
+      messages: harness.messages,
+      text: "terminal-private-token",
+    });
+    expect(collectTerminalOutput(harness.messages)).toContain(
+      "terminal-private-token",
+    );
+  });
+
   it("opens a command PTY through the resolved shell", async () => {
     const harness = createHarness();
 
     await harness.manager.handleMessage({
       type: "terminal.open",
+      contributedEnv: [],
       requestId: "open-command",
       terminalId: "term-command",
       threadId: "thr-1",
@@ -466,6 +492,7 @@ describe("TerminalManager", () => {
 
     await harness.manager.handleMessage({
       type: "terminal.open",
+      contributedEnv: [],
       requestId: "open-host-path",
       terminalId: "term-host-path",
       target: {
@@ -501,6 +528,7 @@ describe("TerminalManager", () => {
 
     await harness.manager.handleMessage({
       type: "terminal.open",
+      contributedEnv: [],
       requestId: "open-host-home",
       terminalId: "term-host-home",
       target: {
@@ -540,6 +568,7 @@ describe("TerminalManager", () => {
 
     const openPromise = harness.manager.handleMessage({
       type: "terminal.open",
+      contributedEnv: [],
       requestId: "open-1",
       terminalId: "term-1",
       threadId: "thr-1",
@@ -602,6 +631,7 @@ describe("TerminalManager", () => {
 
     const openPromise = harness.manager.handleMessage({
       type: "terminal.open",
+      contributedEnv: [],
       requestId: "open-1",
       terminalId: "term-1",
       threadId: "thr-1",
@@ -660,6 +690,7 @@ describe("TerminalManager", () => {
 
     const openPromise = harness.manager.handleMessage({
       type: "terminal.open",
+      contributedEnv: [],
       requestId: "open-1",
       terminalId: "term-1",
       threadId: "thr-1",
@@ -709,6 +740,7 @@ describe("TerminalManager", () => {
 
     const firstOpenPromise = harness.manager.handleMessage({
       type: "terminal.open",
+      contributedEnv: [],
       requestId: "open-1",
       terminalId: "term-1",
       threadId: "thr-1",
@@ -727,6 +759,7 @@ describe("TerminalManager", () => {
 
     const secondOpenPromise = harness.manager.handleMessage({
       type: "terminal.open",
+      contributedEnv: [],
       requestId: "open-2",
       terminalId: "term-1",
       threadId: "thr-1",
@@ -781,6 +814,7 @@ describe("TerminalManager", () => {
 
     const firstOpenPromise = harness.manager.handleMessage({
       type: "terminal.open",
+      contributedEnv: [],
       requestId: "open-1",
       terminalId: "term-1",
       threadId: "thr-1",
@@ -799,6 +833,7 @@ describe("TerminalManager", () => {
 
     const secondOpenPromise = harness.manager.handleMessage({
       type: "terminal.open",
+      contributedEnv: [],
       requestId: "open-2",
       terminalId: "term-1",
       threadId: "thr-1",
@@ -859,6 +894,7 @@ describe("TerminalManager", () => {
 
     await harness.manager.handleMessage({
       type: "terminal.open",
+      contributedEnv: [],
       requestId: "open-stale",
       terminalId: "term-stale",
       threadId: "thr-1",
@@ -1406,6 +1442,7 @@ describe("TerminalManager", () => {
 
     await manager.handleMessage({
       type: "terminal.open",
+      contributedEnv: [],
       requestId: "open-1",
       terminalId: "term-1",
       threadId: "thr-1",
@@ -1464,6 +1501,7 @@ describe("TerminalManager", () => {
 
     await manager.handleMessage({
       type: "terminal.open",
+      contributedEnv: [],
       requestId: "open-real",
       terminalId: "term-real",
       threadId: "thr-real",

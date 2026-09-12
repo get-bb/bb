@@ -5,6 +5,7 @@ import {
   deleteClaimedQueuedThreadMessageBatchInTransaction,
   getQueuedThreadMessage,
   getEnvironment,
+  getHost,
   getThread,
   isOrdinaryTurnEndQueuedMessage,
   isThreadQueueAutoSendPaused,
@@ -117,7 +118,7 @@ interface SendClaimedQueuedMessageForThreadArgs {
 }
 
 export function createAutomaticQueuedMessageGroupEligibility(
-  deps: Pick<AppDeps, "db">,
+  deps: Pick<AppDeps, "db" | "hub">,
   args: { now: number; thread: Thread },
 ): QueuedThreadMessageGroupEligibility {
   const activeTurnId = getActiveTurnId(deps, args.thread.id);
@@ -140,8 +141,21 @@ export function createAutomaticQueuedMessageGroupEligibility(
             args.thread.status === "idle" ||
             (args.thread.status === "active" && activeTurnId !== null)
           );
+        case "host-offline": {
+          const environment =
+            args.thread.environmentId === null
+              ? null
+              : getEnvironment(deps.db, args.thread.environmentId);
+          const host =
+            environment === null ? null : getHost(deps.db, environment.hostId);
+          return (
+            host !== null &&
+            host.destroyedAt === null &&
+            host.phase === "active" &&
+            deps.hub.hasDaemonForHost(host.id)
+          );
+        }
         case "provisioning":
-        case "host-offline":
         case "interaction":
           return false;
       }
@@ -729,7 +743,7 @@ function describeCoreWait(waitingOn: QueuedMessageWaitingOn | null): string {
     case "provisioning":
       return "the thread's workspace is still being prepared";
     case "host-offline":
-      return `the "${waitingOn.hostName}" host is not connected`;
+      return `the "${waitingOn.hostName}" host is not ready`;
     case "interaction":
       return "the thread is waiting for you to answer a pending interaction";
     case "turn-starting":

@@ -1,5 +1,8 @@
+import { installTestPluginRuntime } from "@get-bb/plugin-sdk/testing/app";
 import { configure } from "@testing-library/react";
 import { beforeEach } from "vitest";
+
+if (typeof window !== "undefined") installTestPluginRuntime();
 
 configure({ asyncUtilTimeout: 8_000 });
 

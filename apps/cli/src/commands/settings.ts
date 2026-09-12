@@ -86,7 +86,7 @@ function updateGeneralSetting(
   }
 
   for (const candidate of generalSettingValueCandidates(value)) {
-    const updated = appSettingsSchema.safeParse({
+    const updated = appSettingsSchema.strip().safeParse({
       ...settings,
       [settingKey.data]: candidate,
     });

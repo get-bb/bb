@@ -1,3 +1,4 @@
+import { useSetPluginEnabled } from "@/components/plugin/useSetPluginEnabled";
 import { useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useLocation, useNavigate } from "react-router-dom";
@@ -11,10 +12,7 @@ import {
 import { ProvenancePill } from "@/components/tools/ProvenancePill";
 import { appToast } from "@/components/ui/app-toast.js";
 import { invalidatePluginList } from "@/hooks/cache-owners/plugin-cache-owner";
-import {
-  setPluginEnabled,
-  type PluginListItem,
-} from "@/hooks/queries/plugin-settings-queries";
+import type { PluginListItem } from "@/hooks/queries/plugin-settings-queries";
 import { pluginNeedsAttention } from "@/hooks/usePluginAttention";
 import { cn } from "@bb/shared-ui/lib/utils";
 import {
@@ -82,10 +80,10 @@ export function InstalledPluginRow({
   const navigate = useNavigate();
   const location = useLocation();
   const queryClient = useQueryClient();
+  const setEnabled = useSetPluginEnabled();
   const toggle = useMutation({
     meta: { showErrorToast: false },
-    mutationFn: (enabled: boolean) =>
-      setPluginEnabled(fetch, plugin.id, enabled),
+    mutationFn: (enabled: boolean) => setEnabled(plugin.id, enabled),
     onError: (error, enabled) => {
       appToast.error(
         `${enabled ? "Enabling" : "Disabling"} ${plugin.id} failed`,

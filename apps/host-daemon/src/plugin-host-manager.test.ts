@@ -30,6 +30,8 @@ let hangOnDispose = false;
 export default {
   experimental_apiVersion: 1,
   contract: {
+    environment: { input: anySchema, output: anySchema },
+    secretProbe: { input: anySchema, output: anySchema },
     echo: { input: anySchema, output: anySchema },
     wait: { input: anySchema, output: anySchema },
     crash: { input: anySchema, output: anySchema },
@@ -43,6 +45,35 @@ export default {
   },
   experimental_signals: { changed: { payload: anySchema } },
   handlers: {
+    async secretProbe(input, context) {
+      const secret = process.env.TEST_SECRET ?? null;
+      if (input.chunks) {
+        for (const chunk of input.chunks) {
+          await new Promise((resolve) => process.stderr.write(Buffer.from(chunk), resolve));
+          await new Promise((resolve) => setTimeout(resolve, 10));
+        }
+      }
+      if (input.fail) throw new Error(secret);
+      const payload = { type: secret, true: true, ok: true, nested: [{ text: secret }] };
+      await context.experimental_emitSignal("changed", payload);
+      return payload;
+    },
+    async environment(input, context) {
+      const before = process.env.GATE_VALUE;
+      if (input.id) await context.experimental_emitSignal("changed", { id: input.id, pid: process.pid });
+      await new Promise((resolve) => {
+        if (input.hang) return;
+        const finish = () => {
+          clearTimeout(timer);
+          context.signal.removeEventListener("abort", finish);
+          resolve();
+        };
+        const timer = setTimeout(finish, input.delay ?? 0);
+        context.signal.addEventListener("abort", finish, { once: true });
+        if (context.signal.aborted) finish();
+      });
+      return { before: before ?? null, after: process.env.GATE_VALUE ?? null, token: process.env.GH_TOKEN ?? null };
+    },
     echo(input) { return { input, pid: process.pid }; },
     wait(_input, context) {
       return new Promise((resolve) => {
@@ -104,6 +135,7 @@ export default {
 function callCommand(overrides: Partial<PluginCall> = {}): PluginCall {
   return {
     type: "plugin.host.call",
+    contributedEnv: [],
     pluginId: "fixture",
     generation: "generation-1",
     artifact: {
@@ -166,6 +198,326 @@ describe("PluginHostManager", () => {
       Reflect.get(Object(second.output), "pid"),
     );
     expect(fetchArtifact).toHaveBeenCalledOnce();
+  });
+
+  it("scopes setup env, rotates while idle, and returns worker output as-is", async () => {
+    const manager = await createManager({
+      shellEnv: () => ({ npm_config_user_agent: "test" }),
+    });
+    const contribution = (value: string) => [
+      {
+        name: "GATE_VALUE",
+        value,
+        reason: "Gate",
+        source: { core: "machine-environment" as const },
+      },
+      {
+        name: "GH_TOKEN",
+        value: 'worker-secret\nwith"quotes',
+        reason: "Git",
+        source: { core: "machine-git" as const },
+      },
+    ];
+    const [first, rotated] = [
+      await manager.call(
+        callCommand({
+          method: "environment",
+          input: { delay: 100 },
+          contributedEnv: contribution("first"),
+        }),
+      ),
+      await manager.call(
+        callCommand({
+          method: "environment",
+          input: {},
+          contributedEnv: contribution("rotated"),
+        }),
+      ),
+    ];
+    expect(first.output).toEqual({
+      before: "first",
+      after: "first",
+      token: 'worker-secret\nwith"quotes',
+    });
+    expect(rotated.output).toEqual({
+      before: "rotated",
+      after: "rotated",
+      token: 'worker-secret\nwith"quotes',
+    });
+    expect(
+      (await manager.call(callCommand({ method: "environment", input: {} })))
+        .output,
+    ).toEqual({ before: null, after: null, token: null });
+  });
+
+  describe("environment reuse across active calls", () => {
+    async function fixture() {
+      const onSignal = vi.fn();
+      const onWorkerExit = vi.fn();
+      const manager = await createManager({
+        shellEnv: () => ({ GATE_VALUE: "base" }),
+        onSignal,
+        onWorkerExit,
+      });
+      const command = (id: string, value: string, delay = 0) =>
+        callCommand({
+          callId: id,
+          method: "environment",
+          input: { id, delay },
+          timeoutMs: 15_000,
+          contributedEnv: [
+            {
+              name: "GATE_VALUE",
+              value,
+              reason: "test",
+              source: { core: "machine-environment" },
+            },
+          ],
+        });
+      const cancel = (callId: string) =>
+        manager.cancel({
+          type: "plugin.host.cancel",
+          pluginId: "fixture",
+          generation: "generation-1",
+          callId,
+        });
+      const started = (id: string) =>
+        expect.objectContaining({
+          payload: expect.objectContaining({ id }),
+        });
+      const waitForStart = (id: string) =>
+        vi.waitFor(() => expect(onSignal).toHaveBeenCalledWith(started(id)));
+      return {
+        manager,
+        command,
+        cancel,
+        started,
+        waitForStart,
+        onSignal,
+        onWorkerExit,
+      };
+    }
+
+    it.each(["cancel", "deadline", "same-value"])(
+      "preserves a long running call and its PID after %s",
+      async (mode) => {
+        const {
+          manager,
+          command,
+          cancel,
+          started,
+          waitForStart,
+          onSignal,
+          onWorkerExit,
+        } = await fixture();
+        const initial = await manager.call(callCommand());
+        const running = Promise.allSettled([
+          manager.call(command("a", "first", 6500)),
+        ]);
+        await waitForStart("a");
+        const b = command(
+          "b",
+          mode === "same-value" ? "first" : "second",
+          10_000,
+        );
+        const cancelled = manager
+          .call({
+            ...b,
+            timeoutMs: mode === "deadline" ? 200 : b.timeoutMs,
+          })
+          .catch((error: unknown) => error);
+        await waitForStart("b");
+        if (mode !== "deadline") {
+          expect(cancel("b")).toEqual({ cancelled: true });
+          cancel("b");
+        }
+        const error = await cancelled;
+        if (mode === "deadline")
+          expect(error).toMatchObject({
+            message: expect.stringMatching(/deadline/u),
+          });
+        else expect(error).toMatchObject({ name: "AbortError" });
+        expect(await running).toMatchObject([
+          {
+            status: "fulfilled",
+            value: { output: { before: "first", after: "first" } },
+          },
+        ]);
+        expect(onSignal).toHaveBeenCalledWith(started("b"));
+        expect(
+          (await manager.call(command("c", "third"))).output,
+        ).toMatchObject({ before: "third", after: "third" });
+        expect(
+          (
+            await manager.call(
+              callCommand({ method: "environment", input: {} }),
+            )
+          ).output,
+        ).toMatchObject({ before: "base", after: "base" });
+        expect((await manager.call(callCommand())).output).toEqual(
+          initial.output,
+        );
+        expect(onWorkerExit).not.toHaveBeenCalled();
+      },
+    );
+
+    it("keeps the first values until every overlapping call finishes", async () => {
+      const { manager, command, cancel, waitForStart } = await fixture();
+      const a = manager
+        .call(command("a", "first", 10_000))
+        .catch((error: unknown) => error);
+      await waitForStart("a");
+      const b = manager
+        .call(command("b", "second", 10_000))
+        .catch((error: unknown) => error);
+      await waitForStart("b");
+      cancel("a");
+      await expect(a).resolves.toMatchObject({ name: "AbortError" });
+      await expect(manager.call(command("c", "third"))).resolves.toMatchObject({
+        output: { before: "first", after: "first" },
+      });
+      cancel("b");
+      await expect(b).resolves.toMatchObject({ name: "AbortError" });
+      await expect(manager.call(command("d", "fourth"))).resolves.toMatchObject(
+        {
+          output: { before: "fourth", after: "fourth" },
+        },
+      );
+    });
+
+    it("disposes with overlapping calls and starts a fresh generation", async () => {
+      const { manager, command, waitForStart } = await fixture();
+      const a = manager
+        .call(command("a", "first", 10_000))
+        .catch((error: unknown) => error);
+      await waitForStart("a");
+      const b = manager
+        .call(command("b", "second", 10_000))
+        .catch((error: unknown) => error);
+      await waitForStart("b");
+      await manager.dispose({
+        type: "plugin.host.dispose",
+        pluginId: "fixture",
+        generation: "generation-1",
+      });
+      expect(await a).toBeInstanceOf(Error);
+      expect(await b).toBeInstanceOf(Error);
+      await expect(
+        manager.call({ ...command("c", "third"), generation: "generation-2" }),
+      ).resolves.toMatchObject({ output: { before: "third", after: "third" } });
+    });
+
+    it("still force-kills a started handler that ignores cancellation", async () => {
+      const { manager, command, cancel, waitForStart, onWorkerExit } =
+        await fixture();
+      const initial = await manager.call(callCommand());
+      const hung = manager
+        .call({
+          ...command("hung", "first"),
+          input: { id: "hung", hang: true },
+        })
+        .catch((error: unknown) => error);
+      await waitForStart("hung");
+      cancel("hung");
+      await expect(hung).resolves.toMatchObject({ name: "AbortError" });
+      expect(onWorkerExit).toHaveBeenCalledOnce();
+      expect((await manager.call(callCommand())).output).not.toEqual(
+        initial.output,
+      );
+    });
+  });
+
+  it.each(["type", "true", "changed"])(
+    "preserves worker RPC structure and identifiers when the secret is %s",
+    async (secret) => {
+      const onSignal = vi.fn();
+      const manager = await createManager({ onSignal });
+      const command = callCommand({
+        callId: secret,
+        method: "secretProbe",
+        input: {},
+        contributedEnv: [
+          {
+            name: "TEST_SECRET",
+            value: secret,
+            reason: "Probe",
+            source: { core: "machine-environment" },
+          },
+        ],
+      });
+      const payload = {
+        type: secret,
+        true: true,
+        ok: true,
+        nested: [{ text: secret }],
+      };
+      expect(await manager.call(command)).toEqual({ output: payload });
+      expect(onSignal).toHaveBeenCalledWith({
+        pluginId: "fixture",
+        generation: "generation-1",
+        signal: "changed",
+        payload,
+      });
+      await expect(
+        manager.call({ ...command, input: { fail: true } }),
+      ).rejects.toThrow(secret);
+    },
+  );
+
+  it.each([
+    "first-line\nsecond-line",
+    "first-line\r\nsecond-line",
+    "π-first\nsecond-line",
+  ])("frames worker stderr as-is across byte chunks: %j", async (secret) => {
+    const warn = vi.fn();
+    const manager = await createManager({
+      logger: { debug: vi.fn(), info: vi.fn(), warn },
+    });
+    const command = callCommand({
+      method: "secretProbe",
+      input: {},
+      contributedEnv: [
+        {
+          name: "TEST_SECRET",
+          value: secret,
+          reason: "Probe",
+          source: { core: "machine-environment" },
+        },
+      ],
+    });
+    await manager.call(command);
+    const bytes = Buffer.from(
+      secret.replaceAll("\r\n", "\n").replaceAll("\n", "\r\n") + "\n",
+    );
+    await manager.call({
+      ...command,
+      contributedEnv: [],
+      input: { chunks: [...bytes].map((byte) => [byte]) },
+    });
+    await vi.waitFor(() =>
+      expect(warn).toHaveBeenCalledWith(
+        {
+          pluginId: "fixture",
+          origin: "host",
+          stderr: secret.replaceAll("\r\n", "\n").split("\n")[0],
+        },
+        "Host plugin stderr",
+      ),
+    );
+    const pendingPrefix = Buffer.from(secret.slice(0, 5));
+    await manager.call({
+      ...command,
+      contributedEnv: [],
+      input: { chunks: [[...pendingPrefix]] },
+    });
+    await manager.shutdown();
+    const records = warn.mock.calls.filter(
+      ([, message]) => message === "Host plugin stderr",
+    );
+    expect(records.map(([record]) => record.stderr)).toEqual([
+      ...secret.replaceAll("\r\n", "\n").split("\n"),
+      secret.slice(0, 5),
+    ]);
   });
 
   it("migrates a verified legacy host.js cache entry without downloading", async () => {

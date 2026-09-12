@@ -18,7 +18,10 @@ import {
   requirePublicThread,
   requireNonDestroyedHostWithStatus,
 } from "./lib/entity-lookup.js";
-import { callHostOnlineRpc } from "./hosts/online-rpc.js";
+import {
+  callHostOnlineRpc,
+  callHostOnlineRpcForWork,
+} from "./hosts/online-rpc.js";
 
 interface LeaseEntry {
   lease: ExperimentalDesktopBrowserLease;
@@ -190,7 +193,7 @@ export async function createDesktopBrowserTab(
   input: ExperimentalDesktopBrowserCreateRequest,
 ) {
   authorize(deps, input);
-  const result = await callHostOnlineRpc(deps, {
+  const result = await callHostOnlineRpcForWork(deps, {
     hostId: input.hostId,
     timeoutMs: 15000,
     command: {
@@ -230,7 +233,7 @@ export async function releaseDesktopBrowserControl(
   entry.active = false;
   clearTimeout(entry.timer);
   registry(deps).delete(input.leaseId);
-  await callHostOnlineRpc(deps, {
+  await callHostOnlineRpcForWork(deps, {
     hostId: input.hostId,
     timeoutMs: 10000,
     command: {
@@ -240,6 +243,25 @@ export async function releaseDesktopBrowserControl(
     },
   });
   return { ok: true as const };
+}
+
+async function releaseExpiredDesktopBrowserControl(
+  deps: WorkSessionDeps,
+  input: ExperimentalDesktopBrowserLeaseRequest,
+) {
+  const entry = registry(deps).get(input.leaseId);
+  if (!entry || !sameScope(entry.lease, input)) return;
+  entry.active = false;
+  registry(deps).delete(input.leaseId);
+  await callHostOnlineRpc(deps, {
+    hostId: input.hostId,
+    timeoutMs: 10000,
+    command: {
+      type: "desktop.browser.release_control",
+      ...scopeCommand(input),
+      leaseId: input.leaseId,
+    },
+  });
 }
 
 export async function acquireDesktopBrowserControl(
@@ -256,13 +278,27 @@ export async function acquireDesktopBrowserControl(
     expiresAt: Date.now() + input.ttlMs,
   };
   const timer = setTimeout(() => {
-    void releaseDesktopBrowserControl(deps, lease).catch(() => {});
+    void releaseExpiredDesktopBrowserControl(deps, lease).catch(() => {});
   }, input.ttlMs);
   timer.unref();
   const entry: LeaseEntry = { lease, timer, active: true };
   registry(deps).set(lease.leaseId, entry);
   try {
-    const { tabs } = await listDesktopBrowserTabs(deps, input);
+    const { tabs } = await callHostOnlineRpcForWork(deps, {
+      hostId: input.hostId,
+      timeoutMs: 10000,
+      command: {
+        type: "desktop.browser.list_tabs",
+        ...scopeCommand(input),
+      },
+    });
+    if (tabs.some((tab) => tab.threadId !== input.threadId)) {
+      throw new ApiError(
+        502,
+        "desktop_tab_scope",
+        "Desktop returned tabs outside the requested thread",
+      );
+    }
     const selected = input.tabIds.map((id) =>
       tabs.find((tab) => tab.tabId === id),
     );
@@ -287,7 +323,7 @@ export async function acquireDesktopBrowserControl(
         "desktop_control_expired",
         "Browser control was cancelled while checking tabs",
       );
-    await callHostOnlineRpc(deps, {
+    await callHostOnlineRpcForWork(deps, {
       hostId: input.hostId,
       timeoutMs: 10000,
       command: {
@@ -300,7 +336,7 @@ export async function acquireDesktopBrowserControl(
       },
     });
     if (!entry.active || lease.expiresAt <= Date.now()) {
-      await callHostOnlineRpc(deps, {
+      await callHostOnlineRpcForWork(deps, {
         hostId: input.hostId,
         timeoutMs: 10000,
         command: {
@@ -345,7 +381,7 @@ export async function openDesktopBrowserConnection(
   input: ExperimentalDesktopBrowserLeaseRequest,
 ) {
   const entry = requireLease(deps, input);
-  const result = await callHostOnlineRpc(deps, {
+  const result = await callHostOnlineRpcForWork(deps, {
     hostId: input.hostId,
     timeoutMs: 10000,
     command: {
@@ -365,7 +401,7 @@ export async function desktopBrowserTabAction(
   action: "reveal" | "close",
 ) {
   authorize(deps, input);
-  const result = await callHostOnlineRpc(deps, {
+  const result = await callHostOnlineRpcForWork(deps, {
     hostId: input.hostId,
     timeoutMs: 10000,
     command: {
@@ -386,7 +422,7 @@ export async function captureDesktopBrowserTab(
   input: ExperimentalDesktopBrowserTabRequest,
 ) {
   authorize(deps, input);
-  return callHostOnlineRpc(deps, {
+  return callHostOnlineRpcForWork(deps, {
     hostId: input.hostId,
     timeoutMs: 15000,
     command: {

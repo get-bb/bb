@@ -1,11 +1,14 @@
 import { recheckEnvironmentProvisioning } from "./services/threads/thread-environment-providers.js";
+import { enrolledInstallerScript } from "./services/machines/manual-enrollment-command.js";
+import { getMachineEnrollmentService } from "./services/machines/machine-services.js";
+import { withManualMachineProvider } from "./services/machines/manual-provider.js";
 import { registerDesktopBrowserRoutes } from "./routes/desktop-browsers.js";
+import { INSTALL_MACHINE_SCRIPT_PATH } from "./install-machine-asset.js";
 import { createNodeWebSocket } from "@hono/node-ws";
 import { createHash } from "node:crypto";
 import { readFile, stat } from "node:fs/promises";
 import { performance } from "node:perf_hooks";
 import { extname, join, resolve } from "node:path";
-import { fileURLToPath } from "node:url";
 import { Hono } from "hono";
 import { terminalWebSocketQuerySchema } from "@bb/server-contract";
 import { compress } from "hono/compress";
@@ -38,6 +41,11 @@ import {
   setPluginEnvironmentProviderBridge,
 } from "./services/plugins/plugin-environment-provider-registry.js";
 import { recheckEnvironmentProviderCreations } from "./services/threads/thread-environment-providers.js";
+import {
+  setServerAccessBridge,
+  setServerAccessRecheckHandler,
+} from "./services/plugins/plugin-server-access-registry.js";
+import { setPluginMachineProviderBridge } from "./services/plugins/plugin-machine-provider-registry.js";
 import { invalidateEnvironmentProviderMachineAvailability } from "./services/environments/provider-machine-availability.js";
 import { requestQueuedMessageDispatch } from "./services/threads/queued-message-dispatch.js";
 import { registerInternalEventRoutes } from "./internal/events.js";
@@ -83,7 +91,7 @@ import {
   createPluginCatalogService,
   type PluginCatalogService,
 } from "./services/plugin-catalog/plugin-catalog-service.js";
-import { callHostRetryableOnlineRpc } from "./services/hosts/online-rpc.js";
+import { callHostRetryableOnlineRpcForWork } from "./services/hosts/online-rpc.js";
 import {
   allowedAppOrigins,
   browserRequestProblem,
@@ -153,9 +161,6 @@ const WEB_SOCKET_SHUTDOWN_CODE = 1001;
 const WEB_SOCKET_SHUTDOWN_FORCE_CLOSE_MS = 1_000;
 const WEB_SOCKET_SHUTDOWN_REASON = "server-shutdown";
 const SLOW_API_REQUEST_LOG_THRESHOLD_MS = 1_000;
-const INSTALL_MACHINE_SCRIPT_PATH = fileURLToPath(
-  new URL("./assets/install-machine.sh", import.meta.url),
-);
 const THREAD_EVENT_WAIT_PATH_PATTERN =
   /^\/api\/v1\/threads\/[^/]+\/events\/wait$/u;
 const PLUGIN_APP_ASSET_PATH_PATTERN =
@@ -475,13 +480,35 @@ export function createApp(
     ),
   );
   app.get("/install.sh", async (context) => {
-    const script = await readFile(INSTALL_MACHINE_SCRIPT_PATH);
-    return new Response(script, {
-      headers: {
-        "cache-control": "no-store",
-        "content-type": "text/x-shellscript; charset=utf-8",
+    const script = await readFile(INSTALL_MACHINE_SCRIPT_PATH, "utf8");
+    const credential = context.req.header("X-BB-Enrollment");
+    const bootstrap =
+      credential === undefined
+        ? null
+        : await getMachineEnrollmentService(deps).pendingBootstrapForCredential(
+            credential,
+          );
+    if (credential !== undefined && bootstrap === null) {
+      return new Response(
+        "Enrollment is expired or unavailable. Generate a new command in bb.\n",
+        {
+          status: 403,
+          headers: {
+            "cache-control": "no-store",
+            "content-type": "text/plain",
+          },
+        },
+      );
+    }
+    return new Response(
+      bootstrap === null ? script : enrolledInstallerScript(script, bootstrap),
+      {
+        headers: {
+          "cache-control": "no-store",
+          "content-type": "text/x-shellscript; charset=utf-8",
+        },
       },
-    });
+    );
   });
   app.get("/install/version", async (context) => {
     return context.json({
@@ -558,6 +585,7 @@ export function createApp(
     return next();
   });
   const pluginService = createPluginService({
+    machineEnrollments: getMachineEnrollmentService(deps),
     db: deps.db,
     hub: deps.hub,
     logger: deps.logger,
@@ -572,7 +600,7 @@ export function createApp(
     aiServices: deps.aiServices,
     ensureSharedPortTunnel: (hostId) =>
       deps.sharedPorts.ensureTunnelIdentity(hostId, () =>
-        callHostRetryableOnlineRpc(deps, {
+        callHostRetryableOnlineRpcForWork(deps, {
           command: { type: "connect-tunnel.ensure-identity" },
           hostId,
           timeoutMs: 30_000,
@@ -616,6 +644,16 @@ export function createApp(
   setEnvironmentProvisioningRecheckHandler((threadId) =>
     recheckEnvironmentProvisioning(deps, threadId),
   );
+  setPluginMachineProviderBridge(
+    withManualMachineProvider(
+      pluginService.machineProviders,
+      getMachineEnrollmentService(deps),
+    ),
+  );
+  setServerAccessBridge(pluginService.serverAccessProviders);
+  setServerAccessRecheckHandler(() => {
+    deps.hub.notifySystem(["config-changed"]);
+  });
   setEnvironmentProviderRecheckHandler((pluginId) => {
     invalidateEnvironmentProviderMachineAvailability();
     deps.hub.notifySystem(["config-changed"]);

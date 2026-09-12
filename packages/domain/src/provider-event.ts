@@ -1,3 +1,4 @@
+import { contextSnapshotSchema } from "./context-snapshot.js";
 import { z } from "zod";
 import {
   systemErrorEventDataSchema,
@@ -300,6 +301,7 @@ export type ThreadEventTokenUsageBreakdown = z.infer<
 >;
 
 const threadEventContextWindowUsageSchema = z.object({
+  snapshot: contextSnapshotSchema.optional(),
   usedTokens: z.number().nullable(),
   modelContextWindow: z.number().nullable(),
   estimated: z.boolean(),
@@ -705,6 +707,9 @@ const unscopedProviderEventSchema = z.discriminatedUnion("type", [
           source: z.union([
             z.literal("shell"),
             z.object({ plugin: z.string() }).strict(),
+            z
+              .object({ core: z.enum(["machine-git", "machine-environment"]) })
+              .strict(),
           ]),
           value: z.union([
             z.string(),

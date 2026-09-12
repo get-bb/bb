@@ -1141,7 +1141,9 @@ describe("thread runtime config", () => {
         environmentId: environment.id,
       });
 
-      const pluginContexts: PluginAgentConfigurationContext[] = [];
+      const pluginContexts: Array<
+        Omit<PluginAgentConfigurationContext, "pluginMetadata">
+      > = [];
       setPluginAgentContributions({
         listSkillRootContributions: () => [],
         listAgentTools: () => [],

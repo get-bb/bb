@@ -35,7 +35,10 @@ import {
   requireReadyEnvironment,
 } from "../services/lib/entity-lookup.js";
 import { runLiveCommandAndWait } from "../services/hosts/live-command-wait.js";
-import { callHostRetryableOnlineRpc } from "../services/hosts/online-rpc.js";
+import {
+  callHostRetryableOnlineRpc,
+  callHostRetryableOnlineRpcForWork,
+} from "../services/hosts/online-rpc.js";
 import { requireDaemonFileContentResult } from "../services/hosts/daemon-file-response.js";
 import { generateCommitMessage } from "../services/ai/commit-message.js";
 import { archiveEnvironmentThreads } from "../services/threads/thread-archive.js";
@@ -53,7 +56,10 @@ import {
   requireWorkspaceCommandTarget,
   type WorkspaceCommandTarget,
 } from "../services/environments/workspace-command-target.js";
-import { callEnvironmentWorkspaceStatus } from "../services/environments/workspace-status.js";
+import {
+  callEnvironmentWorkspaceStatus,
+  callEnvironmentWorkspaceStatusForWork,
+} from "../services/environments/workspace-status.js";
 import { assembleThreadPullRequest } from "../services/environments/pull-request.js";
 import {
   requireAvailableWorkspaceDiff,
@@ -145,7 +151,7 @@ async function getPullRequestForWorkspaceTarget(
   deps: AppDeps,
   target: ReturnType<typeof requireWorkspaceCommandTarget>,
 ): Promise<ThreadPullRequest | null> {
-  const result = await callHostRetryableOnlineRpc(deps, {
+  const result = await callHostRetryableOnlineRpcForWork(deps, {
     hostId: target.hostId,
     timeoutMs: COMMAND_TIMEOUT_MS,
     command: {
@@ -641,11 +647,11 @@ export function registerEnvironmentRoutes(app: Hono, deps: AppDeps): void {
           const { workspaceContext } = target;
 
           const [statusResult, diffResult] = await Promise.all([
-            callEnvironmentWorkspaceStatus(deps, {
+            callEnvironmentWorkspaceStatusForWork(deps, {
               environment,
               target,
             }),
-            callHostRetryableOnlineRpc(deps, {
+            callHostRetryableOnlineRpcForWork(deps, {
               hostId: target.hostId,
               timeoutMs: COMMAND_TIMEOUT_MS,
               command: {

@@ -994,13 +994,12 @@ const CONTRIBUTED_ENV = [
     value: { serverPath: "/plugins/auth-proxy/api" },
     source: { plugin: "auth-proxy" },
     reason: "Route provider traffic through the plugin",
-    secret: true,
   },
 ] as const;
 
 describe("host-daemon command schemas", () => {
   it("uses the current host-daemon protocol version", () => {
-    expect(HOST_DAEMON_PROTOCOL_VERSION).toBe(200);
+    expect(HOST_DAEMON_PROTOCOL_VERSION).toBe(207);
     expect(HOST_ARTIFACT_MAX_BYTES).toBe(256 * 1024 * 1024);
   });
 
@@ -1105,11 +1104,9 @@ describe("host-daemon command schemas", () => {
       hostDaemonEnrollRequestSchema.parse({
         hostId: "host_123",
         hostName: "test-host",
-        hostType: "persistent",
       }),
     ).toMatchObject({
       hostId: "host_123",
-      hostType: "persistent",
     });
 
     expect(
@@ -1138,6 +1135,7 @@ describe("host-daemon command schemas", () => {
     expect(() =>
       hostDaemonCommandSchema.parse({
         type: "environment.attach",
+        contributedEnv: [],
         environmentId: "env_123",
         initiator: {
           threadId: "thr_123",
@@ -1155,6 +1153,7 @@ describe("host-daemon command schemas", () => {
     expect(() =>
       hostDaemonCommandSchema.parse({
         type: "environment.attach",
+        contributedEnv: [],
         environmentId: "env_personal",
         initiator: null,
         workspaceProvisionType: "personal",
@@ -1165,6 +1164,7 @@ describe("host-daemon command schemas", () => {
     expect(
       hostDaemonCommandSchema.parse({
         type: "environment.attach",
+        contributedEnv: [],
         environmentId: "env_123",
         initiator: null,
         path: "/tmp/project",
@@ -1172,6 +1172,7 @@ describe("host-daemon command schemas", () => {
       }),
     ).toMatchObject({
       type: "environment.attach",
+      contributedEnv: [],
       path: "/tmp/project",
     });
 
@@ -1673,6 +1674,7 @@ describe("host-daemon command schemas", () => {
     expect(() =>
       hostDaemonCommandSchema.parse({
         type: "environment.attach",
+        contributedEnv: [],
         environmentId: "env_123",
         initiator: null,
         workspaceProvisionType: "managed-worktree",
@@ -1684,6 +1686,7 @@ describe("host-daemon command schemas", () => {
     expect(() =>
       hostDaemonCommandSchema.parse({
         type: "environment.attach",
+        contributedEnv: [],
         environmentId: "env_123",
         initiator: null,
       }),
@@ -1692,6 +1695,7 @@ describe("host-daemon command schemas", () => {
     expect(() =>
       hostDaemonCommandSchema.parse({
         type: "environment.attach",
+        contributedEnv: [],
         environmentId: "env_123",
         initiator: null,
         path: "/tmp/project",
@@ -1702,6 +1706,7 @@ describe("host-daemon command schemas", () => {
     expect(() =>
       hostDaemonCommandSchema.parse({
         type: "environment.attach",
+        contributedEnv: [],
         environmentId: "env_123",
         initiator: null,
         path: "/tmp/project",
@@ -2595,6 +2600,7 @@ describe("host-daemon command schemas", () => {
     expect(() =>
       hostDaemonCommandSchema.parse({
         type: "environment.attach",
+        contributedEnv: [],
         environmentId: "env_123",
         initiator: {
           threadId: "thr_123",
@@ -2624,6 +2630,7 @@ describe("host-daemon command schemas", () => {
     expect(
       hostDaemonCommandSchema.safeParse({
         type: "environment.attach",
+        contributedEnv: [],
         environmentId: "env_123",
         initiator: null,
         path: "/tmp/project",
@@ -2634,6 +2641,7 @@ describe("host-daemon command schemas", () => {
     expect(
       hostDaemonCommandSchema.safeParse({
         type: "environment.attach",
+        contributedEnv: [],
         environmentId: "env_123",
         initiator: null,
         path: "/tmp/project",
@@ -2648,6 +2656,7 @@ describe("host-daemon command schemas", () => {
     expect(
       hostDaemonCommandSchema.safeParse({
         type: "environment.attach",
+        contributedEnv: [],
         environmentId: "env_123",
         initiator: null,
         workspaceProvisionType: "managed-worktree",
@@ -2662,6 +2671,7 @@ describe("host-daemon command schemas", () => {
     expect(
       hostDaemonCommandSchema.safeParse({
         type: "environment.attach",
+        contributedEnv: [],
         environmentId: "env_123",
         initiator: null,
         workspaceProvisionType: "managed-worktree",
@@ -3052,7 +3062,7 @@ describe("host-daemon session schemas", () => {
       hostDaemonEnrollRequestSchema.safeParse({
         hostId: "host_123",
         hostName: "test-host",
-        hostType: "ephemeral",
+        hostType: "persistent",
       }).success,
     ).toBe(false);
     expect(
@@ -3060,7 +3070,7 @@ describe("host-daemon session schemas", () => {
         hostId: "host_123",
         instanceId: "instance_1",
         hostName: "test-host",
-        hostType: "ephemeral",
+        hostType: "persistent",
         hasMachineCredential: true,
         platform: "linux",
         dataDir: "/tmp/bb-data",
@@ -3076,7 +3086,6 @@ describe("host-daemon session schemas", () => {
       hostDaemonSessionOpenRequestSchema.parse({
         hostId: "host_123",
         instanceId: "instance_1",
-        hostType: "persistent",
         hostName: "Michael's MacBook",
         hasMachineCredential: true,
         platform: "darwin",
@@ -3091,7 +3100,6 @@ describe("host-daemon session schemas", () => {
       }),
     ).toMatchObject({
       hostId: "host_123",
-      hostType: "persistent",
       hasMachineCredential: true,
       loadedEnvironments: [],
     });
@@ -3101,7 +3109,6 @@ describe("host-daemon session schemas", () => {
         hostId: "host_123",
         instanceId: "instance_1",
         hostName: "Michael's MacBook",
-        hostType: "persistent",
         hasMachineCredential: false,
         platform: "darwin",
         dataDir: "/tmp/bb-data",
@@ -3127,7 +3134,6 @@ describe("host-daemon session schemas", () => {
         hostId: "host_123",
         instanceId: "instance_1",
         hostName: "Michael's MacBook",
-        hostType: "persistent",
         hasMachineCredential: true,
         platform: "darwin",
         dataDir: "/tmp/bb-data",
@@ -3146,7 +3152,6 @@ describe("host-daemon session schemas", () => {
         hostId: "host_123",
         instanceId: "instance_1",
         hostName: "Michael's MacBook",
-        hostType: "persistent",
         hasMachineCredential: true,
         platform: "darwin",
         dataDir: "/tmp/bb-data",
@@ -3163,7 +3168,6 @@ describe("host-daemon session schemas", () => {
         hostId: "host_123",
         instanceId: "instance_1",
         hostName: "Michael's MacBook",
-        hostType: "persistent",
         hasMachineCredential: true,
         platform: "darwin",
         dataDir: "/tmp/bb-data",
@@ -3176,6 +3180,7 @@ describe("host-daemon session schemas", () => {
     expect(
       hostDaemonSessionOpenResponseSchema.parse({
         sessionId: "session_123",
+        machineEnvironment: { revision: 0, entries: [] },
         heartbeatIntervalMs: 5_000,
         leaseTimeoutMs: 30_000,
         connectShares: {
@@ -3200,6 +3205,7 @@ describe("host-daemon session schemas", () => {
     expect(
       hostDaemonSessionOpenResponseSchema.parse({
         sessionId: "session_default_shares",
+        machineEnvironment: { revision: 0, entries: [] },
         heartbeatIntervalMs: 5_000,
         leaseTimeoutMs: 30_000,
       }).connectShares,
@@ -3855,6 +3861,7 @@ describe("host-daemon session schemas", () => {
     expect(
       hostDaemonServerWsMessageSchema.safeParse({
         type: "terminal.open",
+        contributedEnv: [],
         requestId: "request-1",
         terminalId: "term_123",
         threadId: "thr_123",

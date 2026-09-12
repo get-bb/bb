@@ -2,6 +2,7 @@ import { SourceLoadingSkeleton } from "@/components/code/code-loading-skeletons"
 import {
   type CSSProperties,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -40,6 +41,7 @@ import {
 } from "@/lib/code-overflow-mode";
 import { cn } from "@bb/shared-ui/lib/utils";
 import { SecondaryPanelSelectionActions } from "./SecondaryPanelSelectionActions.js";
+import { useImageTabLightbox } from "./ImageTabLightboxContext.js";
 
 export interface FilePreviewFile {
   cacheKey?: string;
@@ -1042,6 +1044,13 @@ function CsvFilePreview({ file, onSelectionAddToChat }: CsvFilePreviewProps) {
 
 function FilePreviewImage({ url, alt }: FilePreviewImageProps) {
   const [isLightboxOpen, setIsLightboxOpen] = useState(false);
+  const imageTabLightbox = useImageTabLightbox();
+
+  useLayoutEffect(() => {
+    if (imageTabLightbox?.isOpen) {
+      imageTabLightbox.update({ alt, src: url });
+    }
+  }, [alt, imageTabLightbox, url]);
 
   return (
     <div className="pt-4">
@@ -1049,16 +1058,24 @@ function FilePreviewImage({ url, alt }: FilePreviewImageProps) {
         type="button"
         className="block w-full cursor-zoom-in"
         aria-label={`Open ${alt} in full screen preview`}
-        onClick={() => setIsLightboxOpen(true)}
+        onClick={() => {
+          if (imageTabLightbox) {
+            imageTabLightbox.open({ alt, src: url });
+            return;
+          }
+          setIsLightboxOpen(true);
+        }}
       >
         <img src={url} alt={alt} className="mx-auto block h-auto max-w-full" />
       </button>
-      <ImageLightbox
-        title={alt}
-        imageSrc={isLightboxOpen ? url : null}
-        imageAlt={alt}
-        onClose={() => setIsLightboxOpen(false)}
-      />
+      {imageTabLightbox === null ? (
+        <ImageLightbox
+          title={alt}
+          imageSrc={isLightboxOpen ? url : null}
+          imageAlt={alt}
+          onClose={() => setIsLightboxOpen(false)}
+        />
+      ) : null}
     </div>
   );
 }

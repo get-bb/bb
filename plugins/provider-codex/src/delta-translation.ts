@@ -1318,6 +1318,14 @@ export function translateCodexEventToDeltas(
             : {}),
         },
       ];
+    case "warning":
+      return [
+        {
+          kind: "provider.warning",
+          category: "general",
+          summary: handledEvent.params.message,
+        },
+      ];
     case "configWarning":
       return [
         {

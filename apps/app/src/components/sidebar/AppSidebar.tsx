@@ -1,8 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { cn } from "@bb/shared-ui/lib/utils";
 import { THREAD_JUMP_APP_COMMAND_IDS } from "@bb/domain";
-import { Link, useNavigate } from "react-router-dom";
-import { Icon } from "@bb/shared-ui/icon";
+import { useNavigate } from "react-router-dom";
 import { COARSE_POINTER_CHILD_ICON_BUTTON_CLASS } from "@bb/shared-ui/coarse-pointer-sizing";
 import { OverflowFade } from "@/components/ui/overflow-fade.js";
 import {
@@ -10,8 +9,6 @@ import {
   SidebarContent,
   SidebarFooter,
   SidebarMenu,
-  SidebarMenuButton,
-  SidebarMenuItem,
   useCloseMobileSidebar,
   useSidebar,
 } from "@/components/ui/sidebar.js";
@@ -279,53 +276,32 @@ export function AppSidebar({
           onDismiss={pluginSidebarFooter.dismiss}
         />
         <SidebarMenu className="flex-row flex-wrap-reverse items-center gap-1">
-          <SidebarMenuItem className="min-w-0">
-            <SidebarMenuButton
-              asChild
-              aria-label={
-                settingsShortcut
-                  ? `Settings (${settingsShortcut.label})`
-                  : "Settings"
-              }
-              aria-keyshortcuts={settingsShortcut?.ariaKeyshortcuts}
-              tooltip={{
-                children: settingsShortcut
-                  ? `Settings (${settingsShortcut.label})`
-                  : "Settings",
-                hidden: false,
-                side: "top",
-              }}
-              className={SIDEBAR_FOOTER_ACTION_CLASS}
-            >
-              <Link to={settingsRoutePath} onClick={closeOnMobile}>
-                <Icon name="Settings" />
-                <span className="sr-only">Settings</span>
-              </Link>
-            </SidebarMenuButton>
-          </SidebarMenuItem>
           <PluginSidebarFooterItems
             activeDisclosureKey={pluginSidebarFooter.activeKey}
             onDisclosureCommand={pluginSidebarFooter.handleCommand}
             onNavigate={closeOnMobile}
+            builtInActions={[
+              {
+                id: "settings",
+                href: settingsRoutePath,
+                ariaLabel: settingsShortcut
+                  ? `Settings (${settingsShortcut.label})`
+                  : "Settings",
+                ariaKeyShortcuts: settingsShortcut?.ariaKeyshortcuts,
+                onActivate: () => {
+                  closeOnMobile();
+                  void navigate(settingsRoutePath);
+                },
+              },
+              {
+                id: "report-bug",
+                onActivate: () => {
+                  closeOnMobile();
+                  openUrlInExternalBrowser(BUG_REPORT_NEW_ISSUE_URL);
+                },
+              },
+            ]}
           />
-          <SidebarMenuItem className="min-w-0">
-            <SidebarMenuButton
-              className={SIDEBAR_FOOTER_ACTION_CLASS}
-              tooltip={{
-                children: "Report a bug",
-                hidden: false,
-                side: "top",
-              }}
-              aria-label="Report a bug"
-              onClick={() => {
-                closeOnMobile();
-                openUrlInExternalBrowser(BUG_REPORT_NEW_ISSUE_URL);
-              }}
-            >
-              <Icon name="Bug" />
-              <span className="sr-only">Report a bug</span>
-            </SidebarMenuButton>
-          </SidebarMenuItem>
           <li aria-hidden="true" className="min-w-0 flex-1" />
           <SidebarPluginAttentionGlyph
             className={SIDEBAR_FOOTER_ACTION_CLASS}

@@ -884,6 +884,25 @@ async function smokeSdkPackage(tarballPath) {
     cwd: sdkDir,
     label: "bb-app SDK JavaScript import",
   });
+  await runCommand({
+    command: process.execPath,
+    args: [
+      "--input-type=module",
+      "-e",
+      [
+        'import { createRequire } from "node:module";',
+        'import { dirname, join } from "node:path";',
+        'import { execFileSync } from "node:child_process";',
+        "const require = createRequire(import.meta.url);",
+        'const bbRequire = createRequire(require.resolve("bb-app"));',
+        'const npmRoot = dirname(bbRequire.resolve("npm/package.json"));',
+        'const version = execFileSync(process.execPath, [join(npmRoot, "bin/npm-cli.js"), "--version"], { encoding: "utf8", env: { ...process.env, PATH: "" } }).trim();',
+        'if (version !== bbRequire("npm/package.json").version) process.exit(1);',
+      ].join("\n"),
+    ],
+    cwd: sdkDir,
+    label: "shipped npm without Node or npm on PATH",
+  });
   await writeFile(
     join(sdkDir, "sdk-smoke.ts"),
     [

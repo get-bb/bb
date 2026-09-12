@@ -100,6 +100,8 @@ describe("createSideChat rpc", () => {
           visibility: "agent-only",
         },
       ],
+      origin: "plugin",
+      originPluginId: PLUGIN_ID,
     });
   });
 
@@ -187,6 +189,8 @@ describe("createSideChat rpc", () => {
     expect(fork).toHaveBeenCalledWith({
       sourceThreadId: "thr_src",
       visibility: "hidden",
+      origin: "plugin",
+      originPluginId: PLUGIN_ID,
     });
   });
 });

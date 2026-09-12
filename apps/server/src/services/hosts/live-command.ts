@@ -1,3 +1,5 @@
+import { getEnvironment } from "@bb/db";
+import { resolveHostEnvironment } from "./host-environment.js";
 import { randomUUID } from "node:crypto";
 import {
   type HostDaemonCommand,
@@ -18,7 +20,7 @@ import {
 } from "../../internal/command-result-side-effects.js";
 import { handleLiveCommandResultSideEffects } from "../../internal/command-results.js";
 import { NotificationBuffer } from "../lib/notification-buffer.js";
-import { callHostOnlineRpc } from "./online-rpc.js";
+import { callHostOnlineRpc, callHostOnlineRpcForWork } from "./online-rpc.js";
 
 export const LIVE_DAEMON_COMMAND_TIMEOUT_MS = 24 * 60 * 60 * 1000;
 
@@ -225,8 +227,29 @@ export async function runLiveHostCommand<
   const execution =
     args.execution ?? createLiveHostCommandExecution(args.hostId);
   try {
-    const result = await callHostOnlineRpc(deps, {
-      command: args.command,
+    const call =
+      args.command.type === "thread.stop"
+        ? callHostOnlineRpc
+        : callHostOnlineRpcForWork;
+    const sourceCommand: HostDaemonCommand = args.command;
+    const command = {
+      ...args.command,
+      ...(sourceCommand.type === "environment.attach"
+        ? {
+            contributedEnv:
+              sourceCommand.setupScriptTimeoutMs === null
+                ? []
+                : await resolveHostEnvironment(deps, {
+                    hostId: args.hostId,
+                    projectId:
+                      getEnvironment(deps.db, sourceCommand.environmentId)
+                        ?.projectId ?? null,
+                  }),
+          }
+        : {}),
+    };
+    const result = await call(deps, {
+      command,
       hostId: args.hostId,
       timeoutMs: args.timeoutMs,
     });
