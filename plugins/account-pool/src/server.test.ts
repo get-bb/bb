@@ -503,6 +503,7 @@ describe("Account Pool plugin", () => {
     }> = [];
     const modelRequests: string[] = [];
     let responseNumber = 0;
+    let planType: unknown = "pro";
     const futureToken = `header.${Buffer.from(JSON.stringify({ exp: Math.floor(Date.now() / 1_000) + 3_600 })).toString("base64url")}.signature`;
     const upstream = await startUpstream(async (request, response) => {
       const body = (await readRequestBody(request)).toString("utf8");
@@ -528,7 +529,7 @@ describe("Account Pool plugin", () => {
         response.writeHead(200, { "content-type": "application/json" });
         response.end(
           JSON.stringify({
-            plan_type: "pro",
+            plan_type: planType,
             rate_limit: {
               allowed: true,
               limit_reached: false,
@@ -674,6 +675,34 @@ describe("Account Pool plugin", () => {
     expect(accountTable.stdout).toContain("codex");
     expect(accountTable.stdout).toContain("7d=48% 2100-01-01T02:00:00.000Z");
     expect(accountTable.stdout).not.toContain("5h=");
+    const codexAccount = statusSchema
+      .parse(await host.harness.behavior.callRpc("status.get", null))
+      .accounts.find((account) => account.provider === "codex")!;
+    expect(codexAccount.subscriptionType).toBe("pro");
+    for (const [reportedPlan, expectedPlan] of [
+      ["pro", "pro"],
+      ["plus", "plus"],
+      [undefined, "plus"],
+      [null, "plus"],
+      [123, "plus"],
+      ["", "plus"],
+    ]) {
+      planType = reportedPlan;
+      expect(
+        await host.harness.behavior.callRpc("provider-usage.v1.getResource", {
+          resourceId: codexAccount.id,
+          refresh: true,
+        }),
+      ).toMatchObject({
+        usage: {
+          status: "ok",
+          plan: { id: expectedPlan, multiplier: null },
+          planLabel: expectedPlan === "pro" ? "Pro" : "Plus",
+          windows: [expect.objectContaining({ usedPercent: 48 })],
+        },
+      });
+    }
+
     const routed = await resolveCodexToken(host);
     expect(routed.baseUrl).toBe("/api/v1/plugins/account-pool/http/v1");
     await expect(
