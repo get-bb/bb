@@ -185,8 +185,7 @@ describe("ConversationMessageContent streaming split", () => {
     ]);
     expect(markdownRenders).toEqual([
       "Para two.\n\n",
-      "Para three.\n\n",
-      "Para four",
+      "Para three.\n\nPara four",
     ]);
 
     markdownRenders.length = 0;
