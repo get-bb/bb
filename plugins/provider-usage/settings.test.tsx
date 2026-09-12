@@ -60,7 +60,7 @@ it("fetches all providers only in the selected source and keeps grouped accounts
   await waitFor(() =>
     expect(slot.getByLabelText("Reload usage data")).toBeTruthy(),
   );
-  expect(slot.getAllByRole("heading", { name: "Codex" })).toHaveLength(1);
+  expect(slot.getAllByRole("heading", { name: "Codex" })).toHaveLength(2);
   expect(slot.getByText("first@example.com")).toBeTruthy();
   expect(slot.getByText("second@example.com")).toBeTruthy();
   expect(slot.queryByText("local@example.com")).toBeNull();
