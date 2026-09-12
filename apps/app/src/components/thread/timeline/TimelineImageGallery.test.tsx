@@ -135,6 +135,7 @@ it("preserves occurrence identity as streaming images settle into cached blocks"
       timelineRows={[
         conversationRow({
           id: "streaming",
+          sourceSeqEnd: 2,
           text: "![A](https://example.com/a.png)\n\n![B](https://example.com/a.png)\n\n![C](https://example.com/c.png)\nStill streaming",
         }),
       ]}
@@ -151,6 +152,7 @@ it("preserves occurrence identity as streaming images settle into cached blocks"
       timelineRows={[
         conversationRow({
           id: "streaming",
+          sourceSeqEnd: 3,
           text: "![A](https://example.com/a.png)\n\n![B](https://example.com/a.png)\n\n![C](https://example.com/c.png)\nFinished",
         }),
       ]}
