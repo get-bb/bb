@@ -63,9 +63,10 @@ function rect(left: number, width: number): DOMRect {
 function setup(secondarySize = 50) {
   const group = createRef<ImperativePanelGroupHandle>();
   const onResize = vi.fn();
+  const onDragging = vi.fn();
   function Harness() {
     const panel = useRef<ImperativePanelHandle>(null);
-    const { onPointerDownCapture } = usePanelResizeSnap({
+    const hitTargetRef = usePanelResizeSnap({
       axis: "x",
       minFraction: 0.3,
       maxFraction: 0.76,
@@ -73,6 +74,7 @@ function setup(secondarySize = 50) {
         onResize(fraction);
         panel.current?.resize((1 - fraction) * 100);
       },
+      onDragging,
       target: { boundaryIndex: 1, childCount: 2 },
     });
     return (
@@ -86,8 +88,10 @@ function setup(secondarySize = 50) {
         <PanelResizeHandle
           data-panel-resize-snap-handle=""
           data-testid="divider"
-          onPointerDownCapture={(event) => onPointerDownCapture(event.nativeEvent)}
-        />
+          hitAreaMargins={{ coarse: 0, fine: 0 }}
+        >
+          <span ref={hitTargetRef} />
+        </PanelResizeHandle>
         <Panel ref={panel} id="trailing" minSize={24} maxSize={70} defaultSize={secondarySize} data-testid="next" />
       </PanelGroup>
     );
@@ -95,6 +99,11 @@ function setup(secondarySize = 50) {
   const { unmount } = render(<Harness />);
   const previous = screen.getByTestId("previous");
   const divider = screen.getByTestId("divider");
+  Object.defineProperties(divider, {
+    setPointerCapture: { value: vi.fn() },
+    hasPointerCapture: { value: () => true },
+    releasePointerCapture: { value: vi.fn() },
+  });
   const next = screen.getByTestId("next");
   const grid = screen.getByTestId("grid");
   grid.getBoundingClientRect = () => rect(100, 800);
@@ -121,7 +130,7 @@ function setup(secondarySize = 50) {
     expect(Number(previous.style.flexGrow)).toBeCloseTo(leading, 0);
     expect(Number(next.style.flexGrow)).toBeCloseTo(trailing, 0);
   };
-  return { divider, down, expectLayout, grid, group, move, onResize, release, unmount };
+  return { divider, down, expectLayout, grid, group, move, onDragging, onResize, release, unmount };
 }
 
 describe("usePanelResizeSnap", () => {
@@ -190,7 +199,7 @@ describe("usePanelResizeSnap", () => {
     h.expectLayout(52.5, 47.5);
   });
 
-  it.each(["pointerup", "pointercancel", "mouseup", "blur", "buttons"]) ("flushes the last position before %s cleanup", (end) => {
+  it.each(["pointerup", "pointercancel", "mouseup", "blur", "buttons", "lostpointercapture"]) ("flushes the last position before %s cleanup", (end) => {
     const h = setup();
     h.grid.style.setProperty("--panel-collapse-duration", "220ms");
     h.down();
@@ -200,40 +209,41 @@ describe("usePanelResizeSnap", () => {
       expect(h.grid.style.getPropertyValue("--panel-collapse-duration")).toBe("0ms");
     });
     if (end === "buttons") h.move(440, 0);
+    else if (end === "lostpointercapture") fireEvent(h.divider, new PointerEvent("lostpointercapture", { pointerId: 40 }));
     else if (end === "blur") fireEvent.blur(window);
     else if (end === "mouseup") fireEvent.mouseUp(window);
     else if (end === "pointercancel") fireEvent.pointerCancel(window, { pointerId: 40 });
     else h.release();
     h.expectLayout(42.5, 57.5);
     expect(h.onResize).toHaveBeenCalledExactlyOnceWith(0.425);
+    expect(h.onDragging.mock.calls).toEqual([[true], [false]]);
+    expect(h.onResize.mock.invocationCallOrder[0]).toBeLessThan(h.onDragging.mock.invocationCallOrder[1]);
     expect(h.grid.style.getPropertyValue("--panel-collapse-duration")).toBe("220ms");
     advanceFrame();
     expect(h.onResize).toHaveBeenCalledOnce();
   });
 
-  it("blocks competing movement and leave events only during the gesture", () => {
+  it("owns pointer input without starting the library drag session", () => {
     const h = setup();
+    const rawDown = vi.fn();
     const rawMove = vi.fn();
-    const rawLeave = vi.fn();
     document.body.addEventListener("pointermove", rawMove, true);
-    document.body.addEventListener("pointerleave", rawLeave, true);
+    document.body.addEventListener("pointerdown", rawDown, true);
     try {
       h.down();
       h.move(450);
       h.move(440);
-      fireEvent.pointerLeave(document.body, { clientX: 1000, buttons: 1, pointerId: 40 });
       expect(rawMove).not.toHaveBeenCalled();
-      expect(rawLeave).not.toHaveBeenCalled();
+      expect(rawDown).not.toHaveBeenCalled();
+      expect(h.divider.getAttribute("data-resize-handle-state")).not.toBe("drag");
       advanceFrame();
       h.expectLayout(42.5, 57.5);
       h.release();
-      fireEvent.pointerLeave(document.body, { pointerId: 40 });
       h.move(440, 0);
-      expect(rawLeave).toHaveBeenCalledOnce();
       expect(rawMove).toHaveBeenCalledOnce();
     } finally {
       document.body.removeEventListener("pointermove", rawMove, true);
-      document.body.removeEventListener("pointerleave", rawLeave, true);
+      document.body.removeEventListener("pointerdown", rawDown, true);
     }
   });
 

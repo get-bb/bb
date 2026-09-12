@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef } from "react";
 import { useAtomValue, useSetAtom } from "jotai";
 import type { ImperativePanelHandle } from "react-resizable-panels";
 import { useResizeObserver } from "usehooks-ts";
@@ -12,7 +12,6 @@ import {
   THREAD_SECONDARY_PANEL_MIN_SIZE_PERCENT,
 } from "./secondaryPanelSizing";
 
-export type SecondaryPanelDraggingHandler = (isDragging: boolean) => void;
 export type SecondaryPanelWidthChangeHandler = (
   width: number | undefined,
 ) => void;
@@ -22,20 +21,19 @@ type SecondaryPanelResizeHandler = (size: number) => void;
 interface UseSecondaryPanelResizeArgs {
   isSecondaryPanelOpen: boolean;
   onPanelWidthChange: SecondaryPanelWidthChangeHandler;
+  onResizeStart: () => void;
 }
 
 export function useSecondaryPanelResize({
   isSecondaryPanelOpen,
   onPanelWidthChange,
+  onResizeStart,
 }: UseSecondaryPanelResizeArgs) {
-  const [isSecondaryPanelDragging, setIsSecondaryPanelDragging] =
-    useState(false);
   const persistedWidthPercent = useAtomValue(secondaryPanelWidthPercentAtom);
   const setPersistedWidthPercent = useSetAtom(secondaryPanelWidthPercentAtom);
   const setIsResizing = useSetAtom(threadSecondaryPanelResizingAtom);
   const secondaryPanelRef = useRef<HTMLElement>(null!);
   const secondaryResizablePanelRef = useRef<ImperativePanelHandle | null>(null);
-  const isSecondaryPanelDraggingRef = useRef(false);
   const lastSecondaryPanelSizeRef = useRef(persistedWidthPercent);
   const handleSecondaryPanelPointerResize = useCallback(
     (leadingFraction: number) => {
@@ -43,14 +41,23 @@ export function useSecondaryPanelResize({
     },
     [],
   );
-  const {
-    finish: finishSecondaryPanelResizeSnap,
-    onPointerDownCapture: handleSecondaryPanelResizePointerDownCapture,
-  } = usePanelResizeSnap({
+  const handleSecondaryPanelDragging = useCallback(
+    (isDragging: boolean) => {
+      setIsResizing(isDragging);
+      if (isDragging) {
+        onResizeStart();
+      } else if (lastSecondaryPanelSizeRef.current > 0) {
+        setPersistedWidthPercent(lastSecondaryPanelSizeRef.current);
+      }
+    },
+    [onResizeStart, setIsResizing, setPersistedWidthPercent],
+  );
+  const resizeHitTargetRef = usePanelResizeSnap({
     axis: "x",
     minFraction: (100 - THREAD_SECONDARY_PANEL_MAX_SIZE_PERCENT) / 100,
     maxFraction: (100 - THREAD_SECONDARY_PANEL_MIN_SIZE_PERCENT) / 100,
     onResize: handleSecondaryPanelPointerResize,
+    onDragging: handleSecondaryPanelDragging,
     target: { boundaryIndex: 1, childCount: 2 },
   });
 
@@ -85,77 +92,6 @@ export function useSecondaryPanelResize({
     },
   });
 
-  const finishSecondaryPanelDragging = useCallback(() => {
-    isSecondaryPanelDraggingRef.current = false;
-    setIsSecondaryPanelDragging(false);
-    setIsResizing(false);
-
-    if (lastSecondaryPanelSizeRef.current > 0) {
-      setPersistedWidthPercent(lastSecondaryPanelSizeRef.current);
-    }
-  }, [setIsResizing, setPersistedWidthPercent]);
-
-  const handleSecondaryPanelDragging =
-    useCallback<SecondaryPanelDraggingHandler>(
-      (isDragging) => {
-        if (isDragging) {
-          isSecondaryPanelDraggingRef.current = true;
-          setIsSecondaryPanelDragging(true);
-          setIsResizing(true);
-          return;
-        }
-
-        finishSecondaryPanelResizeSnap();
-        finishSecondaryPanelDragging();
-      },
-      [
-        finishSecondaryPanelDragging,
-        finishSecondaryPanelResizeSnap,
-        setIsResizing,
-      ],
-    );
-
-  useEffect(
-    () => () => {
-      if (!isSecondaryPanelDraggingRef.current) {
-        return;
-      }
-      isSecondaryPanelDraggingRef.current = false;
-      setIsResizing(false);
-    },
-    [setIsResizing],
-  );
-
-  useEffect(() => {
-    if (!isSecondaryPanelDragging) {
-      return;
-    }
-
-    window.addEventListener("pointerup", finishSecondaryPanelDragging, true);
-    window.addEventListener("mouseup", finishSecondaryPanelDragging, true);
-    window.addEventListener(
-      "pointercancel",
-      finishSecondaryPanelDragging,
-      true,
-    );
-    window.addEventListener("blur", finishSecondaryPanelDragging);
-
-    return () => {
-      window.removeEventListener(
-        "pointerup",
-        finishSecondaryPanelDragging,
-        true,
-      );
-      window.removeEventListener("mouseup", finishSecondaryPanelDragging, true);
-      window.removeEventListener(
-        "pointercancel",
-        finishSecondaryPanelDragging,
-        true,
-      );
-      window.removeEventListener("blur", finishSecondaryPanelDragging);
-    };
-  }, [finishSecondaryPanelDragging, isSecondaryPanelDragging]);
-
   const handleSecondaryPanelResize = useCallback<SecondaryPanelResizeHandler>(
     (size) => {
       if (size <= 0) {
@@ -172,9 +108,8 @@ export function useSecondaryPanelResize({
   );
 
   return {
-    handleSecondaryPanelDragging,
     handleSecondaryPanelResize,
-    handleSecondaryPanelResizePointerDownCapture,
+    resizeHitTargetRef,
     persistedWidthPercent,
     secondaryPanelRef,
     secondaryResizablePanelRef,

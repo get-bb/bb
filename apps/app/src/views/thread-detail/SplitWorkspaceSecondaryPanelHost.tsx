@@ -37,7 +37,6 @@ import { RIGHT_PANEL_TOGGLE_ICON_NAME } from "@/components/secondary-panel/panel
 import {
   getPanelCollapseTransitionStyle,
   PANEL_COLLAPSE_TRANSITION_CLASS,
-  PANEL_RESIZE_HIT_AREA_MARGINS,
   PANEL_RESIZE_HANDLE_LAYER_CLASS,
   PANEL_RESIZE_HIT_TARGET_CLASS,
 } from "@/components/secondary-panel/panelTransitionTokens";
@@ -158,25 +157,22 @@ export function SplitWorkspaceSecondaryPanelHost({
     },
     [],
   );
-  const {
-    finish: finishEmptyPanelResizeSnap,
-    onPointerDownCapture: handleEmptyPanelResizePointerDownCapture,
-  } = usePanelResizeSnap({
-    axis: "x",
-    minFraction: (100 - THREAD_SECONDARY_PANEL_MAX_SIZE_PERCENT) / 100,
-    maxFraction: (100 - THREAD_SECONDARY_PANEL_MIN_SIZE_PERCENT) / 100,
-    onResize: handleEmptyPanelPointerResize,
-    target: { boundaryIndex: 1, childCount: 2 },
-  });
   const handleEmptyPanelResize = (size: number) => {
     if (size > 0) lastEmptyPanelSizeRef.current = size;
   };
   const handleEmptyPanelDragging = (isDragging: boolean) => {
     if (isDragging) return;
-    finishEmptyPanelResizeSnap();
     if (lastEmptyPanelSizeRef.current <= 0) return;
     setPanelWidthPercent(lastEmptyPanelSizeRef.current);
   };
+  const emptyPanelHitTargetRef = usePanelResizeSnap({
+    axis: "x",
+    minFraction: (100 - THREAD_SECONDARY_PANEL_MAX_SIZE_PERCENT) / 100,
+    maxFraction: (100 - THREAD_SECONDARY_PANEL_MIN_SIZE_PERCENT) / 100,
+    onResize: handleEmptyPanelPointerResize,
+    onDragging: handleEmptyPanelDragging,
+    target: { boundaryIndex: 1, childCount: 2 },
+  });
   const handleEmptyPanelCollapse = () => {
     if (lastEmptyPanelSizeRef.current <= 0) return;
     setIsPanelVisible(false);
@@ -262,14 +258,10 @@ export function SplitWorkspaceSecondaryPanelHost({
               <PanelResizeHandle
                 id="split-workspace-empty-secondary-panel-handle"
                 disabled={!isOpen}
-                onDragging={handleEmptyPanelDragging}
-                onPointerDownCapture={(event) =>
-                  handleEmptyPanelResizePointerDownCapture(event.nativeEvent)
-                }
                 data-panel-resize-snap-handle=""
-                hitAreaMargins={PANEL_RESIZE_HIT_AREA_MARGINS}
+                hitAreaMargins={{ coarse: 0, fine: 0 }}
                 className={cn(
-                  "relative shrink-0 overflow-visible bg-border-seam transition-[width,opacity,background-color] hover:bg-ring/40 data-[resize-handle-state=drag]:bg-ring/40",
+                  "relative shrink-0 overflow-visible bg-border-seam transition-[width,opacity,background-color] hover:bg-ring/40 data-[dragging=true]:bg-ring/40",
                   PANEL_RESIZE_HANDLE_LAYER_CLASS,
                   PANEL_COLLAPSE_TRANSITION_CLASS,
                   isOpen
@@ -280,6 +272,7 @@ export function SplitWorkspaceSecondaryPanelHost({
               >
                 <span
                   aria-hidden
+                  ref={emptyPanelHitTargetRef}
                   data-panel-resize-hit-target=""
                   className={PANEL_RESIZE_HIT_TARGET_CLASS}
                 />

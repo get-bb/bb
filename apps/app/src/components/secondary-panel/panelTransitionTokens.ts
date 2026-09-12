@@ -43,4 +43,4 @@ export const PANEL_RESIZE_HIT_AREA_MARGINS = { coarse: 15, fine: 8 };
 export const PANEL_RESIZE_HANDLE_LAYER_CLASS = "z-[25]";
 
 export const PANEL_RESIZE_HIT_TARGET_CLASS =
-  "absolute inset-y-0 left-1/2 z-10 w-3 -translate-x-1/2 touch-none cursor-col-resize bg-transparent";
+  "absolute inset-y-0 left-1/2 z-10 w-4 -translate-x-1/2 touch-none cursor-col-resize pointer-coarse:w-8 bg-transparent";

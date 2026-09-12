@@ -11,6 +11,7 @@ interface UsePanelResizeSnapArgs {
   minFraction: number;
   maxFraction: number;
   onResize: (leadingFraction: number) => void;
+  onDragging: (isDragging: boolean) => void;
   target: SplitResizeGridTarget;
 }
 
@@ -19,19 +20,16 @@ interface PanelResizeSnapDrag {
   finish: () => void;
 }
 
-export interface PanelResizeSnapController {
-  finish: () => void;
-  onPointerDownCapture: (event: PointerEvent) => void;
-}
-
 export function usePanelResizeSnap({
   axis,
   minFraction,
   maxFraction,
   onResize,
+  onDragging,
   target,
-}: UsePanelResizeSnapArgs): PanelResizeSnapController {
+}: UsePanelResizeSnapArgs) {
   const { boundaryIndex, childCount } = target;
+  const hitTargetRef = useRef<HTMLSpanElement>(null);
   const activeDragRef = useRef<PanelResizeSnapDrag | null>(null);
   const finish = useCallback(() => {
     const activeDrag = activeDragRef.current;
@@ -48,13 +46,18 @@ export function usePanelResizeSnap({
 
   const onPointerDownCapture = useCallback(
     (event: PointerEvent) => {
-      finish();
       const eventTarget = event.target;
       if (!(eventTarget instanceof HTMLElement)) return;
       const divider = eventTarget.closest<HTMLElement>(
         "[data-panel-resize-snap-handle]",
       );
-      if (divider === null) return;
+      if (
+        divider === null ||
+        hitTargetRef.current?.parentElement !== divider ||
+        divider.getAttribute("data-panel-resize-handle-enabled") !== "true" ||
+        event.button !== 0
+      ) return;
+      finish();
       const previous = divider.previousElementSibling;
       const next = divider.nextElementSibling;
       if (
@@ -71,6 +74,9 @@ export function usePanelResizeSnap({
 
       const ownerWindow = divider.ownerDocument.defaultView;
       if (ownerWindow === null) return;
+      event.preventDefault();
+      event.stopPropagation();
+      divider.focus({ preventScroll: true });
       const snapSession = createSplitResizeSnapSession(divider, axis, {
         boundaryIndex,
         childCount,
@@ -86,6 +92,8 @@ export function usePanelResizeSnap({
       );
       grid?.style.setProperty("--panel-collapse-duration", "0ms");
       const pointerId = event.pointerId;
+      divider.setPointerCapture(pointerId);
+      divider.dataset.dragging = "true";
       const pointer = axis === "x" ? event.clientX : event.clientY;
       snapSession.resolve({ end, pointer, start });
 
@@ -126,16 +134,10 @@ export function usePanelResizeSnap({
           frame = ownerWindow.requestAnimationFrame(applyResize);
         }
       };
-      const leave = (leaveEvent: PointerEvent) => {
-        if (leaveEvent.pointerId === pointerId) {
-          leaveEvent.stopPropagation();
-        }
-      };
       const complete = (commit: boolean) => {
         if (finished) return;
         finished = true;
         ownerWindow.removeEventListener("pointermove", move, true);
-        ownerWindow.removeEventListener("pointerleave", leave, true);
         ownerWindow.removeEventListener("pointerup", finishForPointer, true);
         ownerWindow.removeEventListener(
           "pointercancel",
@@ -145,6 +147,11 @@ export function usePanelResizeSnap({
         ownerWindow.removeEventListener("mouseup", finishOnMouseUp, true);
         ownerWindow.removeEventListener("blur", finishOnBlur);
         divider.removeEventListener("keydown", flushResize, true);
+        divider.removeEventListener("lostpointercapture", finishForPointer);
+        delete divider.dataset.dragging;
+        if (divider.hasPointerCapture(pointerId)) {
+          divider.releasePointerCapture(pointerId);
+        }
         snapSession.clear();
         if (
           activeDragRef.current?.finish === commitDrag ||
@@ -158,6 +165,7 @@ export function usePanelResizeSnap({
         } else if (frame !== null) {
           ownerWindow.cancelAnimationFrame(frame);
         }
+        onDragging(false);
         if (grid !== null) {
           if (transitionDuration === "" || transitionDuration === undefined) {
             grid.style.removeProperty("--panel-collapse-duration");
@@ -181,15 +189,21 @@ export function usePanelResizeSnap({
 
       activeDragRef.current = { cancel: cancelDrag, finish: commitDrag };
       ownerWindow.addEventListener("pointermove", move, true);
-      ownerWindow.addEventListener("pointerleave", leave, true);
       ownerWindow.addEventListener("pointerup", finishForPointer, true);
       ownerWindow.addEventListener("pointercancel", finishForPointer, true);
       ownerWindow.addEventListener("mouseup", finishOnMouseUp, true);
       ownerWindow.addEventListener("blur", finishOnBlur);
       divider.addEventListener("keydown", flushResize, true);
+      divider.addEventListener("lostpointercapture", finishForPointer);
+      onDragging(true);
     },
-    [axis, boundaryIndex, childCount, finish, maxFraction, minFraction, onResize],
+    [axis, boundaryIndex, childCount, finish, maxFraction, minFraction, onDragging, onResize],
   );
 
-  return { finish, onPointerDownCapture };
+  useEffect(() => {
+    window.addEventListener("pointerdown", onPointerDownCapture, true);
+    return () => window.removeEventListener("pointerdown", onPointerDownCapture, true);
+  }, [onPointerDownCapture]);
+
+  return hitTargetRef;
 }

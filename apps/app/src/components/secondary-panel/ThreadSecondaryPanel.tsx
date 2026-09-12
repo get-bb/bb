@@ -4,6 +4,7 @@ import {
   type FocusEvent,
   type PointerEvent as ReactPointerEvent,
   type ReactNode,
+  type RefObject,
   type TransitionEvent,
   useCallback,
   useContext,
@@ -27,7 +28,6 @@ import {
 import { cn } from "@bb/shared-ui/lib/utils";
 import {
   PANEL_COLLAPSE_TRANSITION_CLASS,
-  PANEL_RESIZE_HIT_AREA_MARGINS,
   PANEL_RESIZE_HANDLE_LAYER_CLASS,
   PANEL_RESIZE_HIT_TARGET_CLASS,
 } from "./panelTransitionTokens";
@@ -64,7 +64,6 @@ import {
 } from "./git-diff/diffFilesStore";
 import { buildGitDiffIdentity } from "./git-diff/gitDiffPanelHelpers";
 import {
-  type SecondaryPanelDraggingHandler,
   useSecondaryPanelResize,
 } from "./useSecondaryPanelResize";
 import { threadSecondaryPanelResizingAtom } from "./threadSecondaryPanelAtoms";
@@ -284,26 +283,16 @@ function ThreadSecondaryPanelContent({
     handleSecondaryPanelWidthChange,
   } = useResponsiveGitDiffPanelDisplay({ isSecondaryPanelOpen: isOpen });
   const {
-    handleSecondaryPanelDragging: handleResizeDragging,
     handleSecondaryPanelResize,
-    handleSecondaryPanelResizePointerDownCapture,
+    resizeHitTargetRef,
     persistedWidthPercent,
     secondaryPanelRef: panelRef,
     secondaryResizablePanelRef: resizablePanelRef,
   } = useSecondaryPanelResize({
     isSecondaryPanelOpen: isOpen,
     onPanelWidthChange: handleSecondaryPanelWidthChange,
+    onResizeStart: handleSecondaryPanelResizeStart,
   });
-  const handleSecondaryPanelDragging: SecondaryPanelDraggingHandler =
-    useCallback(
-      (isDragging) => {
-        if (isDragging) {
-          handleSecondaryPanelResizeStart();
-        }
-        handleResizeDragging(isDragging);
-      },
-      [handleResizeDragging, handleSecondaryPanelResizeStart],
-    );
   const hasPanelExpandedRef = useRef(false);
   useLayoutEffect(() => {
     hasPanelExpandedRef.current = false;
@@ -1041,8 +1030,7 @@ function ThreadSecondaryPanelContent({
         isOpen={isOpen}
         isConversationCollapsed={isConversationCollapsed}
         matchesSplitDividers={hostLayout !== null}
-        onDragging={handleSecondaryPanelDragging}
-        onPointerDown={handleSecondaryPanelResizePointerDownCapture}
+        hitTargetRef={resizeHitTargetRef}
       />
       <Panel
         ref={resizablePanelRef}
@@ -1165,26 +1153,22 @@ interface SecondaryPanelResizeHandleProps {
   isOpen: boolean;
   isConversationCollapsed: boolean;
   matchesSplitDividers: boolean;
-  onDragging: SecondaryPanelDraggingHandler;
-  onPointerDown: (event: PointerEvent) => void;
+  hitTargetRef: RefObject<HTMLSpanElement | null>;
 }
 
 function SecondaryPanelResizeHandle({
   isOpen,
   isConversationCollapsed,
   matchesSplitDividers,
-  onDragging,
-  onPointerDown,
+  hitTargetRef,
 }: SecondaryPanelResizeHandleProps) {
   const isResizing = useAtomValue(threadSecondaryPanelResizingAtom);
   return (
     <PanelResizeHandle
       id="thread-detail-secondary-panel-handle"
       disabled={!isOpen || isConversationCollapsed}
-      onDragging={onDragging}
-      onPointerDownCapture={(event) => onPointerDown(event.nativeEvent)}
       data-panel-resize-snap-handle=""
-      hitAreaMargins={PANEL_RESIZE_HIT_AREA_MARGINS}
+      hitAreaMargins={{ coarse: 0, fine: 0 }}
       className={cn(
         "group relative shrink-0 overflow-visible transition-[width,opacity,background-color]",
         PANEL_RESIZE_HANDLE_LAYER_CLASS,
@@ -1210,6 +1194,7 @@ function SecondaryPanelResizeHandle({
     >
       <span
         aria-hidden
+        ref={hitTargetRef}
         data-panel-resize-hit-target=""
         className={PANEL_RESIZE_HIT_TARGET_CLASS}
       />
