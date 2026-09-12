@@ -41,7 +41,6 @@ import {
 } from "./environment-picker-value";
 import { selectHosts } from "@/hooks/queries/host-queries";
 import { providerInputsControlRequired } from "./environment-provider-inputs";
-import { MachineLabel } from "@/components/machines/MachineLabel";
 
 interface SelectedEnvironment {
   modeLabel: string;
@@ -619,7 +618,7 @@ function MachineSection({
       <DropdownMenuLabel className="min-w-0 text-muted-foreground">
         <span className="flex items-center gap-1.5">
           <MachineStatusDot connected={connected} />
-          <MachineLabel host={host} iconClassName="size-3" />
+          <span className="min-w-0 truncate">{host.name}</span>
           {isThisMachine ? (
             <span className={MACHINE_BADGE_CLASS_NAME}>this machine</span>
           ) : null}
