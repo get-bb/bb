@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef } from "react";
+import { flushSync } from "react-dom";
 import {
   createSplitResizeSnapSession,
   type SplitResizeAxis,
@@ -132,6 +133,21 @@ export function usePanelResizeSnap({
         ownerWindow.removeEventListener("mouseup", finishOnMouseUp, true);
         ownerWindow.removeEventListener("blur", finishOnBlur);
         snapSession.clear();
+        if (
+          activeDragRef.current?.finish === commitDrag ||
+          activeDragRef.current?.cancel === cancelDrag
+        ) {
+          activeDragRef.current = null;
+        }
+        if (!commit || pendingFraction !== null) {
+          previous.style.flex = previousFlex;
+          next.style.flex = nextFlex;
+          const fraction = pendingFraction;
+          if (commit && fraction !== null) {
+            flushSync(() => onResize(fraction));
+          }
+          previous.getBoundingClientRect();
+        }
         if (grid !== null) {
           if (transitionDuration === "" || transitionDuration === undefined) {
             grid.style.removeProperty("--panel-collapse-duration");
@@ -142,19 +158,6 @@ export function usePanelResizeSnap({
               transitionPriority,
             );
           }
-        }
-        if (
-          activeDragRef.current?.finish === commitDrag ||
-          activeDragRef.current?.cancel === cancelDrag
-        ) {
-          activeDragRef.current = null;
-        }
-        if (!commit || pendingFraction !== null) {
-          previous.style.flex = previousFlex;
-          next.style.flex = nextFlex;
-        }
-        if (commit && pendingFraction !== null) {
-          onResize(pendingFraction);
         }
       };
       const commitDrag = () => complete(true);
