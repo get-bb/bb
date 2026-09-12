@@ -192,7 +192,9 @@ describe("public thread plugin metadata routes", () => {
           ),
         )
         .run();
-      const warn = vi.spyOn(harness.deps.logger, "warn");
+      const warn = vi.fn();
+      const previousLogger = harness.deps.logger;
+      harness.deps.logger = { ...previousLogger, warn };
       try {
         expect(await getMetadata(harness, thread.id, "linear")).toEqual({
           status: 200,
@@ -230,7 +232,7 @@ describe("public thread plugin metadata routes", () => {
         ]);
         expect(JSON.stringify(warn.mock.calls)).not.toContain("sk-live");
       } finally {
-        warn.mockRestore();
+        harness.deps.logger = previousLogger;
       }
     });
   });
