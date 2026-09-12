@@ -1353,7 +1353,7 @@ function HandoffModeHeader({ onBack }: { onBack: () => void }) {
       >
         <Icon name="ChevronLeft" className="size-3.5" aria-hidden />
       </button>
-      <span className="min-w-0 truncate text-xs font-medium text-foreground">
+      <span className="min-w-0 truncate text-xs font-normal text-subtle-foreground">
         Handoff to new thread
       </span>
     </div>
