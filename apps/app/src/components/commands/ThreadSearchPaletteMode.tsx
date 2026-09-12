@@ -28,7 +28,7 @@ import {
   resolveThreadListIndicator,
   type ThreadListIndicatorState,
 } from "@bb/client-core";
-import type { ThreadSearchHighlightRange } from "@bb/server-contract";
+import type { ThreadSearchMatch } from "@bb/server-contract";
 import { usePromptDraftHasInput } from "@/hooks/usePromptDraftStorage";
 import { ThreadStatusGlyph } from "@/components/sidebar/ThreadRow";
 import { useSidebarNavigation } from "@/hooks/queries/sidebar-navigation-query";
@@ -489,7 +489,7 @@ function HighlightedText({
   ranges,
   text,
 }: {
-  ranges: readonly ThreadSearchHighlightRange[];
+  ranges: readonly ThreadSearchMatch["highlightRanges"][number][];
   text: string;
 }) {
   if (ranges.length === 0) return <>{text}</>;

@@ -1,6 +1,5 @@
 import { PERSONAL_PROJECT_ID, type ThreadListEntry } from "@bb/domain";
 import type {
-  ThreadSearchHighlightRange,
   ThreadSearchMatch,
   ThreadSearchResponse,
 } from "@bb/server-contract";
@@ -13,7 +12,7 @@ export interface PaletteThreadSearchRow {
   id: string;
   lifecycle: PaletteThreadLifecycle;
   primaryText: string;
-  highlightRanges: readonly ThreadSearchHighlightRange[];
+  highlightRanges: readonly ThreadSearchMatch["highlightRanges"][number][];
   metadataText: string;
   projectId: string;
   threadId: string;
