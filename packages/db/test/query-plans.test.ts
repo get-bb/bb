@@ -15,6 +15,9 @@ import {
 } from "../src/data/pending-interactions.js";
 import {
   appendDaemonEventsInTransaction,
+  getFirstParentedTimelineBoundarySequence,
+  hasTimelineGroupingContextRowsInRange,
+  listStoredEventRowsInSequenceRange,
   insertEvents,
   listActiveBackgroundTaskCountsByThreadIds,
   listItemEventSpansByItems,
@@ -24,6 +27,7 @@ import {
   listStoredConversationOutlineEventRows,
   listStoredEventRows,
   listStoredEventRowsByParentToolCallIds,
+  listStoredTurnCompletedKeys,
   listTodoSnapshotEventRowsForThread,
   pruneContextWindowUsageEventsBeforeSequence,
   pruneResolvedItemDeltas,
@@ -390,6 +394,80 @@ describe("slow query index plans", () => {
     db.$client.close();
   });
 
+  it("looks up completed turns by thread and turn key", () => {
+    const { db, thread } = setup();
+    insertEvents(
+      db,
+      noopNotifier,
+      ["turn-plan-1", "turn-plan-2", "turn-plan-3"].flatMap((turnId, index) => [
+        {
+          threadId: thread.id,
+          sequence: index * 2 + 1,
+          type: "turn/started" as const,
+          scope: turnScope(turnId),
+          itemId: null,
+          itemKind: null,
+          parentToolCallId: null,
+          data: JSON.stringify({ providerThreadId: "provider-plan" }),
+        },
+        ...(turnId === "turn-plan-2"
+          ? []
+          : [
+              {
+                threadId: thread.id,
+                sequence: index * 2 + 2,
+                type: "turn/completed" as const,
+                scope: turnScope(turnId),
+                itemId: null,
+                itemKind: null,
+                parentToolCallId: null,
+                data: JSON.stringify({
+                  providerThreadId: "provider-plan",
+                  status: "completed",
+                }),
+              },
+            ]),
+      ]),
+    );
+
+    const captured = captureStatements(db, () => {
+      expect(
+        listStoredTurnCompletedKeys(db, {
+          keys: [
+            { threadId: thread.id, turnId: "turn-plan-1" },
+            { threadId: thread.id, turnId: "turn-plan-3" },
+          ],
+        }),
+      ).toEqual([
+        { threadId: thread.id, turnId: "turn-plan-1" },
+        { threadId: thread.id, turnId: "turn-plan-3" },
+      ]);
+    });
+
+    const fullChunkCaptured = captureStatements(db, () => {
+      listStoredTurnCompletedKeys(db, {
+        keys: Array.from({ length: 250 }, (_, index) => ({
+          threadId: thread.id,
+          turnId: `turn-plan-${index + 1}`,
+        })),
+      });
+    });
+
+    expect(captured).toHaveLength(1);
+    expect(fullChunkCaptured).toHaveLength(1);
+    for (const query of [captured[0]!, fullChunkCaptured[0]!]) {
+      const details = queryPlanDetails({ db, ...query });
+      expect(details).toContain("MULTI-INDEX OR");
+      expect(details).toContain(
+        "events_thread_turn_type_item_sequence_idx (thread_id=? AND turn_id=? AND type=?)",
+      );
+      expect(details).not.toContain("turn_id>?");
+      expect(details).not.toMatch(/SCAN events/u);
+    }
+
+    db.$client.close();
+  });
+
   it("loads daemon item lifecycle state through the targeted partial index", () => {
     const { db, logger, thread } = setup();
     const turnId = "turn-lifecycle-plan";
@@ -462,6 +540,101 @@ describe("slow query index plans", () => {
     expect(
       details.match(/events_item_lifecycle_thread_item_sequence_idx/gu),
     ).toHaveLength(2);
+
+    db.$client.close();
+  });
+
+  it("resolves root turn starts for the parented boundary through the turn index", () => {
+    const { db, thread } = setup();
+
+    const captured = captureStatements(db, () => {
+      expect(
+        getFirstParentedTimelineBoundarySequence(db, {
+          maxSeq: 10,
+          sequenceStart: 0,
+          threadId: thread.id,
+        }),
+      ).toBeNull();
+    });
+    const query = captured.find((entry) => entry.sql.includes("root_start"));
+    if (!query) {
+      throw new Error("Expected the parented timeline boundary SQL");
+    }
+    const details = queryPlanDetails({
+      db,
+      params: query.params,
+      sql: query.sql,
+    });
+    expect(details).toMatch(
+      /SEARCH root_start (?:EXISTS )?USING (?:COVERING )?INDEX events_thread_turn_type_item_sequence_idx \(thread_id=\? AND turn_id=\? AND type=\?\)/u,
+    );
+    expect(details).not.toMatch(
+      /SEARCH root_start (?:EXISTS )?USING (?:COVERING )?INDEX events_thread_type_sequence_idx/u,
+    );
+    expect(details).toMatch(
+      /SEARCH events USING (?:COVERING )?INDEX events_delegating_item_lookup_idx/u,
+    );
+    expect(details).toMatch(
+      /SEARCH child USING (?:COVERING )?INDEX events_parent_tool_call_thread_parent_sequence_idx/u,
+    );
+
+    db.$client.close();
+  });
+
+  it("probes appended grouping-context rows through the thread sequence index", () => {
+    const { db, thread } = setup();
+
+    const [query] = captureStatements(db, () => {
+      expect(
+        hasTimelineGroupingContextRowsInRange(db, {
+          afterSequence: 10,
+          threadId: thread.id,
+          throughSequence: 30,
+        }),
+      ).toBe(false);
+    });
+    if (!query) {
+      throw new Error("Expected the grouping-context probe SQL");
+    }
+    const details = queryPlanDetails({
+      db,
+      params: query.params,
+      sql: query.sql,
+    });
+    expect(details).toMatch(
+      /SEARCH events USING INDEX events_thread_sequence_idx \(thread_id=\? AND sequence>\? AND sequence<\?\)/u,
+    );
+    expect(details.split("\n")).toHaveLength(1);
+
+    db.$client.close();
+  });
+
+  it("lists rows in a sequence range through the thread sequence index", () => {
+    const { db, thread } = setup();
+
+    const [query] = captureStatements(db, () => {
+      expect(
+        listStoredEventRowsInSequenceRange(db, {
+          afterSequence: 10,
+          limit: 513,
+          maxInlineOutputChars: 32_000,
+          threadId: thread.id,
+          throughSequence: 30,
+        }),
+      ).toEqual([]);
+    });
+    if (!query) {
+      throw new Error("Expected the sequence-range row listing SQL");
+    }
+    const details = queryPlanDetails({
+      db,
+      params: query.params,
+      sql: query.sql,
+    });
+    expect(details).toMatch(
+      /SEARCH events USING INDEX events_thread_sequence_idx \(thread_id=\? AND sequence>\? AND sequence<\?\)/u,
+    );
+    expect(details).not.toMatch(/USE TEMP B-TREE/u);
 
     db.$client.close();
   });

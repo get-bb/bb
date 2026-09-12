@@ -1,5 +1,7 @@
+import { Buffer } from "node:buffer";
 import { once } from "node:events";
 import { setTimeout as sleep } from "node:timers/promises";
+import { gunzipSync } from "node:zlib";
 import { eq } from "drizzle-orm";
 import {
   closeSession,
@@ -13,6 +15,7 @@ import {
 import { threadScope, turnScope, type ToolCallResponse } from "@bb/domain";
 import {
   groupHostDaemonEvents,
+  hostDaemonEventBatchResponseSchema,
   type HostDaemonEventEnvelope,
 } from "@bb/host-daemon-contract";
 import { describe, expect, it, vi } from "vitest";
@@ -38,18 +41,55 @@ import { setPluginAgentContributions } from "../../src/services/plugins/plugin-a
 import type { PluginAgentToolRecord } from "../../src/services/plugins/plugin-api.js";
 
 async function postEventBatch(args: {
+  acceptEncoding?: string;
   events: HostDaemonEventEnvelope[];
   harness: TestAppHarness;
   sessionId: string;
 }): Promise<Response> {
+  const headers = new Headers(internalAuthHeaders(args.harness));
+  if (args.acceptEncoding !== undefined) {
+    headers.set("accept-encoding", args.acceptEncoding);
+  }
   return args.harness.app.request("/internal/session/events", {
     method: "POST",
-    headers: internalAuthHeaders(args.harness),
+    headers,
     body: JSON.stringify({
       sessionId: args.sessionId,
       eventGroups: groupHostDaemonEvents(args.events),
     }),
   });
+}
+
+function systemErrorEnvelopes(
+  threadId: string,
+  count: number,
+): HostDaemonEventEnvelope[] {
+  return Array.from({ length: count }, (_, index) => ({
+    threadId,
+    event: {
+      type: "system/error",
+      threadId,
+      scope: threadScope(),
+      message: `daemon error ${index}`,
+    },
+  }));
+}
+
+function seedOwnedActiveThread(harness: TestAppHarness) {
+  const { session } = seedHostSession(harness.deps);
+  const { project } = seedProjectWithSource(harness.deps, {
+    hostId: session.hostId,
+  });
+  const environment = seedEnvironment(harness.deps, {
+    hostId: session.hostId,
+    projectId: project.id,
+  });
+  const thread = seedThread(harness.deps, {
+    projectId: project.id,
+    environmentId: environment.id,
+    status: "active",
+  });
+  return { session, thread };
 }
 
 async function postToolCall(args: {
@@ -332,6 +372,114 @@ describe("internal event and tool-call routes", () => {
           .where(eq(events.threadId, thread.id))
           .all(),
       ).toHaveLength(2);
+    });
+  });
+
+  it("returns a small event batch response identity-encoded with Content-Length", async () => {
+    await withTestHarness(async (harness) => {
+      const { session, thread } = seedOwnedActiveThread(harness);
+
+      const response = await postEventBatch({
+        acceptEncoding: "gzip, deflate",
+        harness,
+        sessionId: session.id,
+        events: systemErrorEnvelopes(thread.id, 1),
+      });
+
+      expect(response.status).toBe(200);
+      expect(response.headers.has("content-encoding")).toBe(false);
+      expect(response.headers.get("content-type")).toBe("application/json");
+      const bytes = Buffer.from(await response.arrayBuffer());
+      expect(response.headers.get("content-length")).toBe(String(bytes.length));
+      expect(
+        hostDaemonEventBatchResponseSchema.parse(
+          JSON.parse(bytes.toString("utf8")),
+        ),
+      ).toEqual({
+        acceptedEvents: [{ eventIndex: 0, sequence: 1, threadId: thread.id }],
+        rejectedEvents: [],
+      });
+    });
+  });
+
+  it("serves a small event batch response over HTTP with an exact Content-Length", async () => {
+    await withTestHarness(async (harness) => {
+      const { session, thread } = seedOwnedActiveThread(harness);
+      const server = serve({
+        fetch: harness.app.fetch,
+        hostname: "127.0.0.1",
+        port: 0,
+      });
+      try {
+        if (!server.listening) await once(server, "listening");
+        const address = server.address();
+        if (address === null || typeof address === "string") {
+          throw new Error("Expected a TCP server address");
+        }
+        const headers = new Headers(internalAuthHeaders(harness));
+        headers.set("accept-encoding", "gzip, deflate");
+        const response = await fetch(
+          `http://127.0.0.1:${address.port}/internal/session/events`,
+          {
+            method: "POST",
+            headers,
+            body: JSON.stringify({
+              sessionId: session.id,
+              eventGroups: groupHostDaemonEvents(
+                systemErrorEnvelopes(thread.id, 1),
+              ),
+            }),
+          },
+        );
+
+        expect(response.status).toBe(200);
+        expect(response.headers.has("content-encoding")).toBe(false);
+        expect(response.headers.has("transfer-encoding")).toBe(false);
+        const text = await response.text();
+        expect(response.headers.get("content-length")).toBe(
+          String(Buffer.byteLength(text)),
+        );
+        expect(
+          hostDaemonEventBatchResponseSchema.parse(JSON.parse(text)),
+        ).toEqual({
+          acceptedEvents: [{ eventIndex: 0, sequence: 1, threadId: thread.id }],
+          rejectedEvents: [],
+        });
+      } finally {
+        await new Promise<void>((resolve, reject) => {
+          server.close((error) => (error ? reject(error) : resolve()));
+        });
+      }
+    });
+  });
+
+  it("still compresses a large event batch response", async () => {
+    await withTestHarness(async (harness) => {
+      const { session, thread } = seedOwnedActiveThread(harness);
+
+      const response = await postEventBatch({
+        acceptEncoding: "gzip, deflate",
+        harness,
+        sessionId: session.id,
+        events: systemErrorEnvelopes(thread.id, 40),
+      });
+
+      expect(response.status).toBe(200);
+      expect(response.headers.get("content-encoding")).toBe("gzip");
+      expect(response.headers.get("content-type")).toBe("application/json");
+      const bytes = Buffer.from(await response.arrayBuffer());
+      expect(
+        hostDaemonEventBatchResponseSchema.parse(
+          JSON.parse(gunzipSync(bytes).toString("utf8")),
+        ),
+      ).toEqual({
+        acceptedEvents: Array.from({ length: 40 }, (_, index) => ({
+          eventIndex: index,
+          sequence: index + 1,
+          threadId: thread.id,
+        })),
+        rejectedEvents: [],
+      });
     });
   });
 

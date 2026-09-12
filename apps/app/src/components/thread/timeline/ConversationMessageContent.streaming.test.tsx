@@ -4,7 +4,12 @@ import { cleanup, render } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { RouteNavigationProvider } from "@/components/ui/app-route-anchor";
+import { longResponse } from "@/test/fixtures/bench-stream-markdown/long-response";
 import { ConversationMessageContent } from "./ConversationMessageContent";
+import {
+  repairStreamingMarkdownTail,
+  splitStreamingMarkdown,
+} from "./streaming-markdown-split";
 
 const markdownRenders = vi.hoisted(() => [] as string[]);
 vi.mock("react-markdown", () => ({
@@ -59,8 +64,17 @@ function renderAssistantMessage(text: string, streaming: boolean) {
 
 function documents(container: HTMLElement): string[] {
   return Array.from(
-    container.querySelectorAll<HTMLElement>("[data-markdown-document]"),
-  ).map((node) => node.textContent ?? "");
+    container.querySelectorAll<HTMLElement>("[data-markdown-preview]"),
+    (preview) =>
+      Array.from(
+        preview.querySelectorAll<HTMLElement>("[data-markdown-document]"),
+        (node) => node.textContent ?? "",
+      ).join(""),
+  );
+}
+
+function renderedMarkdownLength(): number {
+  return markdownRenders.reduce((total, source) => total + source.length, 0);
 }
 
 beforeEach(() => {
@@ -98,7 +112,17 @@ describe("ConversationMessageContent streaming split", () => {
 
     markdownRenders.length = 0;
     update("Settled **source.\n\nSecond paragraph.\n\n`live code grows", true);
-    expect(markdownRenders).toEqual(["Second paragraph.\n\n`live code grows`"]);
+    expect(markdownRenders).toEqual([
+      "Second paragraph.\n\n",
+      "`live code grows`",
+    ]);
+
+    markdownRenders.length = 0;
+    update(
+      "Settled **source.\n\nSecond paragraph.\n\n`live code grows more",
+      true,
+    );
+    expect(markdownRenders).toEqual(["`live code grows more`"]);
   });
 
   it("repairs unfinished formatting after ordinary double-colon text", () => {
@@ -156,7 +180,11 @@ describe("ConversationMessageContent streaming split", () => {
 
     markdownRenders.length = 0;
     update("Para one.\n\nPara two.\n\nPara three.", true);
-    expect(markdownRenders).toEqual(["Para two.\n\nPara three."]);
+    expect(markdownRenders).toEqual(["Para two.\n\n", "Para three."]);
+
+    markdownRenders.length = 0;
+    update("Para one.\n\nPara two.\n\nPara three!", true);
+    expect(markdownRenders).toEqual(["Para three!"]);
 
     markdownRenders.length = 0;
     update("Para one.\n\nPara two.\n\nPara three.\n\nPara four", true);
@@ -164,15 +192,59 @@ describe("ConversationMessageContent streaming split", () => {
       "Para one.\n\nPara two.\n\n",
       "Para three.\n\nPara four",
     ]);
+    expect(markdownRenders).toEqual([
+      "Para two.\n\n",
+      "Para three.\n\n",
+      "Para four",
+    ]);
 
     markdownRenders.length = 0;
     update("Para one.\n\nPara two.\n\nPara three.\n\nPara four.", false);
     expect(documents(view.container)).toEqual([
       "Para one.\n\nPara two.\n\nPara three.\n\nPara four.",
     ]);
-    expect(markdownRenders).toEqual([
-      "Para one.\n\nPara two.\n\nPara three.\n\nPara four.",
+    expect(markdownRenders).toEqual(["Para three.\n\n", "Para four."]);
+  });
+
+  it("parses the settled prefix once while a mixed message streams line by line", () => {
+    const text = longResponse.slice(
+      0,
+      longResponse.indexOf("\n\n## 2. Session store"),
+    );
+    const lines = text.split("\n");
+    const { update } = renderAssistantMessage(lines[0] ?? "", true);
+    let liveTailLength = (lines[0] ?? "").length;
+    for (let index = 2; index <= lines.length; index += 1) {
+      const streamed = lines.slice(0, index).join("\n");
+      update(streamed, true);
+      liveTailLength += repairStreamingMarkdownTail(
+        splitStreamingMarkdown(streamed)?.tail ?? streamed,
+      ).length;
+    }
+    update(text, false);
+
+    expect(text.length).toBeGreaterThan(5_000);
+    expect(renderedMarkdownLength() - liveTailLength).toBeLessThanOrEqual(
+      text.length * 2,
+    );
+  });
+
+  it("parses only the former tail on completion and matches a fresh completed render", () => {
+    const streamed =
+      "Intro.\n\n```ts\nconst a = 1;\n```\n\n- one\n- two\n\nMiddle.\n\nTail **live";
+    const completed = `${streamed} text**.`;
+    const { view, update } = renderAssistantMessage(streamed, true);
+    expect(documents(view.container)).toEqual([
+      "Intro.\n\n```ts\nconst a = 1;\n```\n\n- one\n- two\n\n",
+      "Middle.\n\nTail **live**",
     ]);
+
+    markdownRenders.length = 0;
+    update(completed, false);
+    expect(markdownRenders).toEqual(["Middle.\n\n", "Tail **live text**."]);
+
+    const fresh = renderAssistantMessage(completed, false);
+    expect(documents(view.container)).toEqual(documents(fresh.view.container));
   });
 
   it.each([

@@ -14,6 +14,7 @@ import {
   type RetainedEventOutputTarget,
 } from "../retained-event-output.js";
 import { environments, events, maintenanceScanCursors } from "../schema.js";
+import { bumpThreadEventRewriteGeneration } from "./event-rewrite-generation.js";
 import {
   insertPreparedRetainedEventOutput,
   prepareCompletedEventOutputData,
@@ -696,6 +697,7 @@ function migrateNextCompletedEventOutput(
       if (update.changes !== 1) {
         throw new Error(strategy.eventChangedError);
       }
+      bumpThreadEventRewriteGeneration(candidate.thread_id);
       if (retained) {
         insertPreparedRetainedEventOutput(tx, {
           eventId: candidate.id,

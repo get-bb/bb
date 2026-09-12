@@ -1,6 +1,26 @@
+import remend from "remend";
+import { closeUnterminatedMarkdownCodeSpan } from "@bb/client-core";
+
 interface StreamingMarkdownSplit {
   settled: string;
   tail: string;
+}
+
+const STREAMING_MARKDOWN_BYPASS_PATTERN =
+  /^(?:[ \t]*(?:>|[-+*]|\d{1,9}[.)]))*[ \t]*::[a-zA-Z]|`{3}|~{3}/mu;
+
+export function repairStreamingMarkdownTail(tail: string): string {
+  if (STREAMING_MARKDOWN_BYPASS_PATTERN.test(tail)) {
+    return tail;
+  }
+  return remend(closeUnterminatedMarkdownCodeSpan(tail), {
+    linkMode: "text-only",
+    comparisonOperators: false,
+    htmlTags: false,
+    katex: false,
+    setextHeadings: false,
+    singleTilde: false,
+  });
 }
 
 interface OpenFence {

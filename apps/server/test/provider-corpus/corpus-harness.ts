@@ -29,6 +29,8 @@ import type { ThreadTimelinePageRequest } from "../../src/services/threads/timel
 import { resolveProviderPlanCommand } from "../../src/services/providers/provider-plan-command.js";
 import type { ProviderRegistryService } from "../../src/services/providers/provider-registry.js";
 import { previewTimelineResponseOutputs } from "../../src/services/threads/timeline-output-preview.js";
+import { clearStoredEventDecodeCache } from "../../src/services/threads/stored-event-decode-cache.js";
+import { clearTimelineSelectionMemo } from "../../src/services/threads/timeline-selection-memo.js";
 import {
   DEFAULT_MAX_INLINE_OUTPUT_CHARS,
   truncateTimelineResponseOutputs,
@@ -194,6 +196,11 @@ export function buildRouteTimelinePage(
       ? truncated
       : previewTimelineResponseOutputs(truncated),
   };
+}
+
+export function clearCrossBuildTimelineCaches(db: DbConnection): void {
+  clearStoredEventDecodeCache(db);
+  clearTimelineSelectionMemo(db);
 }
 
 export function latestTimelinePage(): ThreadTimelinePageRequest {

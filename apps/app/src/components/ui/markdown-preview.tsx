@@ -83,11 +83,19 @@ import {
 } from "./markdown-prompt-mentions.js";
 import {
   buildMessageDirectiveComponent,
+  EMPTY_MOUNTED_MESSAGE_DIRECTIVES,
+  MESSAGE_DIRECTIVE_MOUNT_LIMIT,
+  MessageDirectiveMountsProvider,
   remarkMessageDirectives,
   type BuildMessageDirectiveComponentArgs,
   type MarkdownMessageDirectives,
   type MountedMessageDirective,
 } from "./markdown-message-directives.js";
+import {
+  createMarkdownPieceCache,
+  resolveMarkdownPieces,
+  type MarkdownPieceRenderConfig,
+} from "./markdown-incremental-pieces.js";
 import { normalizePromptBlockquoteBoundaries } from "./markdown-prompt-blockquote-boundaries.js";
 import { MarkdownMermaidDiagram } from "./markdown-mermaid-diagram.js";
 import type { PromptTextMention } from "@bb/domain";
@@ -112,6 +120,7 @@ interface MarkdownPreviewProps {
   className?: string;
   content: string;
   imagePolicy?: MarkdownImagePolicy;
+  incrementalBlocks?: boolean;
   linkRouting?: MarkdownLinkRouting;
   threadMentions?: MarkdownThreadMentions;
   promptMentions?: MarkdownPromptMentions;
@@ -266,6 +275,7 @@ type MarkdownTableHeadProps = ComponentPropsWithoutRef<"thead"> & ExtraProps;
 type MarkdownTableHeaderProps = ComponentPropsWithoutRef<"th"> & ExtraProps;
 type MarkdownUnorderedListProps = ComponentPropsWithoutRef<"ul"> & ExtraProps;
 type MarkdownRehypePlugins = NonNullable<ReactMarkdownOptions["rehypePlugins"]>;
+type MarkdownRemarkPlugins = NonNullable<ReactMarkdownOptions["remarkPlugins"]>;
 
 const MARKDOWN_TABLE_BREAKOUT_LIMIT_VARIABLE = "--md-table-breakout-max";
 const MARKDOWN_TABLE_BREAKOUT_WIDTH = `max(100%, min(1100px, 100cqw - 2rem, var(${MARKDOWN_TABLE_BREAKOUT_LIMIT_VARIABLE}, 100cqw)))`;
@@ -424,6 +434,7 @@ const areMarkdownPreviewPropsEqual: MarkdownPreviewPropsEqual = (
   previous.className === next.className &&
   previous.content === next.content &&
   (previous.imagePolicy ?? "render") === (next.imagePolicy ?? "render") &&
+  (previous.incrementalBlocks ?? false) === (next.incrementalBlocks ?? false) &&
   previous.urlTransform === next.urlTransform &&
   areMarkdownThreadMentionsEqual({
     next: next.threadMentions,
@@ -690,6 +701,10 @@ function MarkdownCode({
         : null,
     [isBlock, language, codeText],
   );
+  const highlightedMarkup = useMemo(
+    () => (highlightedHtml === null ? null : { __html: highlightedHtml }),
+    [highlightedHtml],
+  );
   if (isBlock) {
     if (language === "mermaid" && imagePolicy === "render") {
       return (
@@ -729,7 +744,7 @@ function MarkdownCode({
               : "overflow-x-auto",
           )}
         >
-          {highlightedHtml === null ? (
+          {highlightedMarkup === null ? (
             <code className="font-mono text-xs" {...props}>
               {codeText}
             </code>
@@ -739,7 +754,7 @@ function MarkdownCode({
                 "font-mono text-xs",
                 language ? `language-${language}` : "",
               )}
-              dangerouslySetInnerHTML={{ __html: highlightedHtml }}
+              dangerouslySetInnerHTML={highlightedMarkup}
               {...props}
             />
           )}
@@ -973,6 +988,16 @@ function resolveMarkdownSourceMedia({
   return colorScheme === preferredTheme ? "all" : "not all";
 }
 
+interface RawThreadIdLabelCandidate {
+  end: number;
+  start: number;
+  threadId: string;
+}
+
+const EMPTY_RAW_THREAD_ID_LABEL_CANDIDATES: readonly RawThreadIdLabelCandidate[] =
+  [];
+const EMPTY_THREAD_IDS: readonly string[] = [];
+
 function buildMarkdownComponents({
   imagePolicy,
   linkRouting,
@@ -983,12 +1008,6 @@ function buildMarkdownComponents({
   promptMentions,
   messageDirectives,
 }: BuildMarkdownComponentsArgs): Components {
-  interface RawThreadIdLabelCandidate {
-    end: number;
-    start: number;
-    threadId: string;
-  }
-
   function flattenMarkdownLinkLabel(node: ReactNode): {
     codeRanges: ReadonlyArray<{ end: number; start: number }>;
     text: string;
@@ -1019,7 +1038,7 @@ function buildMarkdownComponents({
 
   function rawThreadIdLabelCandidates(
     node: ReactNode,
-  ): RawThreadIdLabelCandidate[] {
+  ): readonly RawThreadIdLabelCandidate[] {
     const flattened = flattenMarkdownLinkLabel(node);
     const candidates: RawThreadIdLabelCandidate[] = [];
     let offset = 0;
@@ -1037,7 +1056,9 @@ function buildMarkdownComponents({
       }
       candidates.push({ start, end, threadId: segment.rawThreadId });
     }
-    return candidates;
+    return candidates.length === 0
+      ? EMPTY_RAW_THREAD_ID_LABEL_CANDIDATES
+      : candidates;
   }
 
   function renderLiftedMarkdownLinkLabel(
@@ -1151,12 +1172,15 @@ function buildMarkdownComponents({
     const candidates = useMemo(
       () =>
         threadMentions === undefined
-          ? []
+          ? EMPTY_RAW_THREAD_ID_LABEL_CANDIDATES
           : rawThreadIdLabelCandidates(children),
       [children],
     );
     const candidateThreadIds = useMemo(
-      () => [...new Set(candidates.map((candidate) => candidate.threadId))],
+      () =>
+        candidates.length === 0
+          ? EMPTY_THREAD_IDS
+          : [...new Set(candidates.map((candidate) => candidate.threadId))],
       [candidates],
     );
     const resourceById = useRawThreadMentionResources(candidateThreadIds);
@@ -1557,6 +1581,7 @@ function MarkdownPreviewComponent({
   className,
   content,
   imagePolicy = "render",
+  incrementalBlocks = false,
   linkRouting,
   threadMentions,
   promptMentions,
@@ -1567,6 +1592,9 @@ function MarkdownPreviewComponent({
   const [rewriteLocalhostLinks] = useRewriteLocalhostLinksPreference();
   const [expandedImage, setExpandedImage] =
     useState<ExpandedMarkdownImage | null>(null);
+  const [markdownPieceCache] = useState(createMarkdownPieceCache);
+  const usesIncrementalBlocks =
+    incrementalBlocks && !allowHtml && promptMentions === undefined;
   const localFileRouting = linkRouting?.localFile;
   const localImageRouting = linkRouting?.localImage;
   const normalizeLocalFileLinks =
@@ -1646,10 +1674,9 @@ function MarkdownPreviewComponent({
       messageDirectiveMounts,
     ],
   );
-  const remarkPlugins = useMemo((): NonNullable<
-    ReactMarkdownOptions["remarkPlugins"]
-  > => {
-    const plugins: NonNullable<ReactMarkdownOptions["remarkPlugins"]> = [
+  const hasMessageDirectives = messageDirectiveMounts !== null;
+  const baseRemarkPlugins = useMemo((): MarkdownRemarkPlugins => {
+    const plugins: MarkdownRemarkPlugins = [
       remarkGfm,
       [remarkMath, { singleDollarTextMath: false }],
     ];
@@ -1665,18 +1692,29 @@ function MarkdownPreviewComponent({
     if (promptMentions !== undefined) {
       plugins.push(remarkPromptMentions);
     }
-    if (messageDirectiveMounts !== null) {
+    if (hasMessageDirectives) {
       plugins.push(remarkDirective);
-      plugins.push([
-        remarkMessageDirectives,
-        {
-          mounts: messageDirectiveMounts.mounts,
-          registry: messageDirectiveMounts.registry,
-        },
-      ]);
     }
     return plugins;
-  }, [threadMentions, promptMentions, messageDirectiveMounts]);
+  }, [threadMentions, promptMentions, hasMessageDirectives]);
+  const remarkPlugins = useMemo(
+    (): MarkdownRemarkPlugins =>
+      messageDirectiveMounts === null
+        ? baseRemarkPlugins
+        : [
+            ...baseRemarkPlugins,
+            [
+              remarkMessageDirectives,
+              {
+                indexBase: 0,
+                limit: MESSAGE_DIRECTIVE_MOUNT_LIMIT,
+                mounts: messageDirectiveMounts.mounts,
+                registry: messageDirectiveMounts.registry,
+              },
+            ],
+          ],
+    [baseRemarkPlugins, messageDirectiveMounts],
+  );
   const resolvedUrlTransform = useMemo(
     () =>
       localFileRouting || localImageRouting
@@ -1695,16 +1733,39 @@ function MarkdownPreviewComponent({
     [allowHtml, rehypeKatex],
   );
 
-  const renderedMarkdown = (
-    <ReactMarkdown
-      rehypePlugins={rehypePlugins}
-      remarkPlugins={remarkPlugins}
-      components={markdownComponents}
-      urlTransform={resolvedUrlTransform}
-    >
-      {body}
-    </ReactMarkdown>
+  const markdownPieceRenderConfig = useMemo(
+    (): MarkdownPieceRenderConfig => ({
+      components: markdownComponents,
+      messageDirectiveRegistry: messageDirectiveMounts?.registry ?? null,
+      rehypePlugins,
+      remarkPlugins: baseRemarkPlugins,
+      urlTransform: resolvedUrlTransform,
+    }),
+    [
+      markdownComponents,
+      messageDirectiveMounts,
+      rehypePlugins,
+      baseRemarkPlugins,
+      resolvedUrlTransform,
+    ],
   );
+  const markdownPieces = usesIncrementalBlocks
+    ? resolveMarkdownPieces(markdownPieceCache, markdownPieceRenderConfig, body)
+    : null;
+
+  const renderedMarkdown =
+    markdownPieces === null ? (
+      <ReactMarkdown
+        rehypePlugins={rehypePlugins}
+        remarkPlugins={remarkPlugins}
+        components={markdownComponents}
+        urlTransform={resolvedUrlTransform}
+      >
+        {body}
+      </ReactMarkdown>
+    ) : (
+      markdownPieces.children
+    );
 
   const imageSources = expandedImage?.imageSources ?? [];
   const expandedImageIndex = expandedImage?.index ?? -1;
@@ -1737,13 +1798,21 @@ function MarkdownPreviewComponent({
         {frontmatter !== null ? (
           <MarkdownFrontmatter source={frontmatter} />
         ) : null}
-        {threadMentions === undefined ? (
-          renderedMarkdown
-        ) : (
-          <RawThreadMentionBatchProvider>
-            {renderedMarkdown}
-          </RawThreadMentionBatchProvider>
-        )}
+        <MessageDirectiveMountsProvider
+          mounts={
+            markdownPieces?.mounts ??
+            messageDirectiveMounts?.mounts ??
+            EMPTY_MOUNTED_MESSAGE_DIRECTIVES
+          }
+        >
+          {threadMentions === undefined ? (
+            renderedMarkdown
+          ) : (
+            <RawThreadMentionBatchProvider>
+              {renderedMarkdown}
+            </RawThreadMentionBatchProvider>
+          )}
+        </MessageDirectiveMountsProvider>
       </div>
 
       <ImageLightbox

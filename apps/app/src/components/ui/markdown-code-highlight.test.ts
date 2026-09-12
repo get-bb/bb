@@ -1,6 +1,12 @@
 import { readFileSync } from "node:fs";
-import { describe, expect, it } from "vitest";
+import { highlight } from "sugar-high";
+import { describe, expect, it, vi } from "vitest";
 import { highlightMarkdownCode } from "./markdown-code-highlight.js";
+
+vi.mock("sugar-high", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("sugar-high")>();
+  return { ...actual, highlight: vi.fn(actual.highlight) };
+});
 
 const stylesheet = readFileSync(
   new URL("./markdown-code-highlight.css", import.meta.url),
@@ -98,5 +104,125 @@ describe("highlightMarkdownCode", () => {
     expect(stylesheet).toMatch(
       /\.bb-code-highlight \.sh__line--diff-remove\s*\{[^}]*var\(--diff-removed\)[^}]*\}/u,
     );
+  });
+
+  it("highlights a repeated code block once per language", () => {
+    const code = "# cached note\nconst cached = 1;";
+    vi.mocked(highlight).mockClear();
+
+    const typescript = highlightMarkdownCode({ code, language: "ts" });
+    expect(highlightMarkdownCode({ code, language: "ts" })).toBe(typescript);
+    expect(highlight).toHaveBeenCalledTimes(1);
+
+    const shell = highlightMarkdownCode({ code, language: "sh" });
+    expect(highlight).toHaveBeenCalledTimes(2);
+    expect(tokens(shell)).toContainEqual(["comment", "# cached note"]);
+    expect(tokens(typescript)).not.toContainEqual(["comment", "# cached note"]);
+    expect(highlightMarkdownCode({ code, language: "sh" })).toBe(shell);
+    expect(highlightMarkdownCode({ code, language: null })).not.toBe(shell);
+    expect(highlight).toHaveBeenCalledTimes(3);
+  });
+
+  it("caches a code block up to 128_000 characters and recomputes a longer one", () => {
+    const longest = " ".repeat(128_000);
+    const tooLong = " ".repeat(128_001);
+    vi.mocked(highlight).mockClear();
+
+    const longestHtml = highlightMarkdownCode({
+      code: longest,
+      language: null,
+    });
+    expect(highlightMarkdownCode({ code: longest, language: null })).toBe(
+      longestHtml,
+    );
+    expect(highlight).toHaveBeenCalledTimes(1);
+
+    const tooLongHtml = highlightMarkdownCode({
+      code: tooLong,
+      language: null,
+    });
+    expect(tooLong.length + tooLongHtml.length).toBeLessThan(4_000_000);
+    expect(highlightMarkdownCode({ code: tooLong, language: null })).toBe(
+      tooLongHtml,
+    );
+    expect(highlight).toHaveBeenCalledTimes(3);
+  });
+
+  it("caches a 1000-line code block and recomputes one whose markup exceeds the character budget without evicting others", () => {
+    const thousandLines = "const value = compute(input, { flag: true });\n"
+      .repeat(1000)
+      .trimEnd();
+    const withinBudget = "a+".repeat(26_000);
+    const overBudget = "a+".repeat(28_000);
+    vi.mocked(highlight).mockClear();
+
+    highlightMarkdownCode({ code: thousandLines, language: "ts" });
+    highlightMarkdownCode({ code: thousandLines, language: "ts" });
+    expect(highlight).toHaveBeenCalledTimes(1);
+
+    const withinHtml = highlightMarkdownCode({
+      code: withinBudget,
+      language: "js",
+    });
+    expect(withinBudget.length + withinHtml.length).toBeLessThan(3_900_000);
+    expect(highlight).toHaveBeenCalledTimes(2);
+
+    const overHtml = highlightMarkdownCode({
+      code: overBudget,
+      language: "js",
+    });
+    expect(overHtml.length).toBeGreaterThan(4_050_000);
+    expect(highlightMarkdownCode({ code: overBudget, language: "js" })).toBe(
+      overHtml,
+    );
+    expect(highlight).toHaveBeenCalledTimes(4);
+
+    expect(highlightMarkdownCode({ code: withinBudget, language: "js" })).toBe(
+      withinHtml,
+    );
+    expect(highlight).toHaveBeenCalledTimes(4);
+  });
+
+  it("recomputes the least recently used code block once distinct blocks exceed the character budget", () => {
+    const oldest = "const oldestBudgetEntry = 1;";
+    highlightMarkdownCode({ code: oldest, language: "ts" });
+    vi.mocked(highlight).mockClear();
+    highlightMarkdownCode({ code: oldest, language: "ts" });
+    expect(highlight).not.toHaveBeenCalled();
+
+    const budgetBlock = (index: number) =>
+      `const budget${index} = 0${"+a".repeat(1_500)};`;
+    let distinctChars = 0;
+    for (let index = 0; index < 20; index += 1) {
+      const code = budgetBlock(index);
+      distinctChars +=
+        code.length + highlightMarkdownCode({ code, language: "ts" }).length;
+    }
+    expect(distinctChars).toBeGreaterThan(4_000_000);
+    vi.mocked(highlight).mockClear();
+
+    highlightMarkdownCode({ code: budgetBlock(19), language: "ts" });
+    expect(highlight).not.toHaveBeenCalled();
+    highlightMarkdownCode({ code: oldest, language: "ts" });
+    expect(highlight).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps the 128 most recently used code blocks and recomputes the least recently used one", () => {
+    const countBlock = (index: number) =>
+      `const countEntry${index} = ${index};`;
+    for (let index = 0; index < 129; index += 1) {
+      highlightMarkdownCode({ code: countBlock(index), language: "js" });
+    }
+    vi.mocked(highlight).mockClear();
+
+    highlightMarkdownCode({ code: countBlock(1), language: "js" });
+    highlightMarkdownCode({ code: countBlock(128), language: "js" });
+    expect(highlight).not.toHaveBeenCalled();
+    highlightMarkdownCode({ code: countBlock(0), language: "js" });
+    expect(highlight).toHaveBeenCalledTimes(1);
+    highlightMarkdownCode({ code: countBlock(1), language: "js" });
+    expect(highlight).toHaveBeenCalledTimes(1);
+    highlightMarkdownCode({ code: countBlock(2), language: "js" });
+    expect(highlight).toHaveBeenCalledTimes(2);
   });
 });

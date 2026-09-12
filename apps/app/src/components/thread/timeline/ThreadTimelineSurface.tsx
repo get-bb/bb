@@ -40,6 +40,7 @@ export interface HostConnectionNotice {
 export interface ThreadTimelineSurfaceProps {
   activeThinking: ActiveThinking | null;
   canSpawnChild?: boolean;
+  contextBoundarySeq: number | null;
   threadOriginKind?: ThreadOriginKind | null;
   hasOlderTimelineRows?: boolean;
   hostConnectionNotice?: HostConnectionNotice | null;
@@ -141,6 +142,7 @@ function useTimelineRowsWithPendingStop({
 export function ThreadTimelineSurface({
   activeThinking,
   canSpawnChild,
+  contextBoundarySeq,
   threadOriginKind = null,
   hasOlderTimelineRows = false,
   hostConnectionNotice,
@@ -209,6 +211,7 @@ export function ThreadTimelineSurface({
         {leadingContent}
         {showLoadOlderRows ? (
           <LoadOlderMessages
+            key={`context-boundary:${contextBoundarySeq}`}
             hasOlderTimelineRows={hasOlderTimelineRows}
             isLoadingOlderTimelineRows={isLoadingOlderTimelineRows}
             onLoadOlderRows={onLoadOlderRows}

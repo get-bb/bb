@@ -29,6 +29,11 @@ const THREAD_MENTION_PATTERN = new RegExp(
   "gu",
 );
 const RAW_THREAD_ID_PATTERN = new RegExp(RAW_THREAD_ID_PATTERN_SOURCE, "gu");
+const RAW_THREAD_ID_CANDIDATE_PATTERN = new RegExp(
+  RAW_THREAD_ID_PATTERN_SOURCE,
+  "u",
+);
+const CHARACTER_REFERENCE_PATTERN = /&(?:#\d+|#x[\da-f]+|[a-z][a-z\d]*);/iu;
 const THREAD_MENTION_PREFIX = "@thread";
 const THREAD_MENTION_ID_PATTERN = /^[A-Za-z0-9_-]+$/u;
 
@@ -225,8 +230,31 @@ function isDirectiveMentionEndBoundary(parent: Parent, index: number): boolean {
   return next?.type !== "text" || isMentionEndBoundary(next.value, 0);
 }
 
+function markdownMayContainThreadMention(markdown: string): boolean {
+  if (CHARACTER_REFERENCE_PATTERN.test(markdown)) {
+    return true;
+  }
+  const unescaped = markdown.includes("\\")
+    ? markdown.replaceAll("\\", "")
+    : markdown;
+  return (
+    unescaped.includes(THREAD_MENTION_PREFIX) ||
+    RAW_THREAD_ID_CANDIDATE_PATTERN.test(unescaped)
+  );
+}
+
+interface RemarkThreadMentionsFile {
+  value: unknown;
+}
+
 export function remarkThreadMentions() {
-  return (tree: Nodes): void => {
+  return (tree: Nodes, file: RemarkThreadMentionsFile): void => {
+    if (
+      typeof file.value === "string" &&
+      !markdownMayContainThreadMention(file.value)
+    ) {
+      return;
+    }
     const authoredMarkdownLinkNodes = collectAuthoredMarkdownLinkNodes(tree);
     const phrasingTextContexts = collectPhrasingTextContexts(tree);
     visit(

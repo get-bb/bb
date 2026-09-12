@@ -270,11 +270,12 @@ export {
   insertEvents,
   listActiveBackgroundTaskCountsByThreadIds,
   listContextWindowUsageRows,
-  listCompletedTurnsByThreadIds,
   listEvents,
   listStoredConversationOutlineEventRows,
   listTimelineSegmentAnchorsDescending,
   getFirstParentedTimelineBoundarySequence,
+  hasTimelineGroupingContextRowsInRange,
+  listStoredEventRowsInSequenceRange,
   listTimelineOrderingContext,
   listTimelineInterruptionRows,
   findTimelineWindowBudgetFloorSequence,
@@ -296,6 +297,7 @@ export {
   listStoredTurnInputAcceptedRowsByClientRequestIds,
   listStoredTurnRejectedRowsByClientRequestIds,
   listStoredTurnCompletedRowsByTurnIds,
+  listStoredTurnCompletedKeys,
   listStoredTurnStartedKeys,
   listStoredTurnStartedRowsByTurnIdsUpToSequence,
   getLatestThreadInterruptedReason,
@@ -318,6 +320,10 @@ export {
   pruneThreadEventsBeforeSequence,
 } from "./events.js";
 export {
+  getDatabaseDataVersion,
+  getThreadEventRewriteGeneration,
+} from "./event-rewrite-generation.js";
+export {
   canHydrateRetainedEventOutputRowsWithinDataByteLimit,
   deleteExpiredRetainedEventOutputs,
   hydrateRetainedEventOutputRows,
@@ -339,6 +345,7 @@ export type {
   ScopedItemRef,
   StoredEventRow,
   StoredThreadEventDataRow,
+  StandardTimelineSegmentAnchorRow,
   ThreadClientTurnRequestKey,
   StoredTurnRequestEventRow,
 } from "./events.js";

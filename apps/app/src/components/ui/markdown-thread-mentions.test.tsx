@@ -1,7 +1,9 @@
 // @vitest-environment jsdom
 
+import type { Root, RootContent } from "mdast";
 import { StrictMode, type ReactNode } from "react";
 import { act, cleanup, render, screen, waitFor } from "@testing-library/react";
+import { visit } from "unist-util-visit";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { MemoryRouter } from "react-router-dom";
 import type { PromptTextMention } from "@bb/domain";
@@ -11,12 +13,14 @@ import { RouteNavigationProvider } from "@/components/ui/app-route-anchor";
 import {
   ThreadTitleMentionResourcesProvider,
   ThreadTitleMentions,
+  useRawThreadMentionResources,
 } from "@/components/thread/ThreadTitleMentions";
 import {
   type MarkdownMessageDirectives,
   type MessageDirectiveRegistry,
 } from "@/components/ui/markdown-message-directives";
 import { MarkdownPreview } from "@/components/ui/markdown-preview";
+import { remarkThreadMentions } from "@/components/ui/markdown-thread-mentions";
 import { threadQueryKey } from "@/hooks/queries/query-keys";
 import { sdk } from "@/lib/sdk";
 import { setPreferredTheme } from "@/hooks/useTheme";
@@ -37,6 +41,22 @@ vi.mock("@/lib/sdk", async (importOriginal) => {
       },
     },
   };
+});
+
+vi.mock("@/components/thread/ThreadTitleMentions", async (importOriginal) => {
+  const actual =
+    await importOriginal<
+      typeof import("@/components/thread/ThreadTitleMentions")
+    >();
+  return {
+    ...actual,
+    useRawThreadMentionResources: vi.fn(actual.useRawThreadMentionResources),
+  };
+});
+
+vi.mock("unist-util-visit", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("unist-util-visit")>();
+  return { ...actual, visit: vi.fn(actual.visit) };
 });
 
 function markdownTree(node: ReactNode) {
@@ -967,5 +987,157 @@ describe("MarkdownPreview thread mentions", () => {
     expect(screen.getAllByText("Rebuild comments")).toHaveLength(1);
     expect(container.textContent).toContain("foo@thread:thr_embedded");
     expect(container.textContent).toContain("@thread:thr_continued/path");
+  });
+
+  it.each([
+    ["with thread mentions", { mentions: [], preserveSoftBreaks: true }],
+    ["without thread mentions", undefined],
+  ])(
+    "keeps a formatted link label's raw-id resources stable when trailing prose changes %s",
+    (_label, threadMentions) => {
+      const { wrapper } = createQueryClientTestHarness();
+      const sectionNamesById = new Map<string, string>();
+      const projectNamesById = new Map<string, string>();
+      const threadById = new Map();
+      const renderTree = (content: string) =>
+        markdownTree(
+          <ThreadTitleMentionResourcesProvider
+            sectionNamesById={sectionNamesById}
+            projectNamesById={projectNamesById}
+            threadById={threadById}
+          >
+            <MarkdownPreview
+              content={content}
+              threadMentions={threadMentions}
+            />
+          </ThreadTitleMentionResourcesProvider>,
+        );
+      const link = "Read [the **docs**](https://example.com).";
+      const view = render(renderTree(`${link}\n\nFirst`), { wrapper });
+      const resources = vi.mocked(useRawThreadMentionResources);
+      resources.mockClear();
+
+      view.rerender(renderTree(`${link}\n\nFirst and second`));
+      view.rerender(renderTree(`${link}\n\nFirst, second, and third`));
+
+      expect(resources.mock.calls.length).toBeGreaterThanOrEqual(2);
+      expect(new Set(resources.mock.calls.map(([ids]) => ids)).size).toBe(1);
+      expect(resources.mock.calls[0]?.[0]).toEqual([]);
+      expect(
+        new Set(resources.mock.results.map((result) => result.value)).size,
+      ).toBe(1);
+      expect(
+        screen.getByRole("link", { name: "the docs" }).getAttribute("href"),
+      ).toBe("https://example.com");
+      expect(view.container.textContent).toContain("First, second, and third");
+      expect(sdk.threads.resolveMentions).not.toHaveBeenCalled();
+    },
+  );
+
+  it.each([
+    ["decimal reference", "&#64;thread:thr_child", "@thread:thr_child"],
+    ["named reference", "&commat;thread:thr_child", "@thread:thr_child"],
+    ["hex-encoded raw id", "thr&#x5F;dcwivn5n8w", "thr_dcwivn5n8w"],
+    ["backslash-escaped raw id", String.raw`thr\_dcwivn5n8w`, "thr_dcwivn5n8w"],
+  ])(
+    "renders a thread mention hidden behind a %s like its literal source",
+    (_label, encoded, literal) => {
+      const cachedThreads = [
+        threadResponse(),
+        threadResponse({
+          id: "thr_dcwivn5n8w",
+          projectId: "proj_target",
+          title: "Encoded target",
+          titleFallback: "Encoded target",
+        }),
+      ];
+      const renderedHtml = (
+        content: string,
+        messageDirectives: MarkdownMessageDirectives | undefined,
+      ) => {
+        const view = renderMarkdown(
+          <MarkdownPreview
+            content={`See ${content} now.`}
+            threadMentions={{
+              mentions: [THREAD_MENTION],
+              preserveSoftBreaks: true,
+              resolveLinkHref: resolveThreadLink,
+            }}
+            messageDirectives={messageDirectives}
+          />,
+          cachedThreads,
+        );
+        const html = view.container.innerHTML;
+        expect(view.container.querySelector("a")).not.toBeNull();
+        view.unmount();
+        return html;
+      };
+
+      for (const messageDirectives of [undefined, ACTIVE_MESSAGE_DIRECTIVES]) {
+        expect(renderedHtml(encoded, messageDirectives)).toBe(
+          renderedHtml(literal, messageDirectives),
+        );
+      }
+    },
+  );
+
+  it("renders prose without a thread mention candidate like the walked plugin", () => {
+    const prose =
+      "Plain **bold** prose, `inline code`, [a link](https://example.com), thread:thr_child, thr_short, and THR_DCWIVN5N8W.";
+    const paragraphHtml = (content: string) => {
+      const view = renderMarkdown(
+        <MarkdownPreview
+          content={content}
+          threadMentions={{ mentions: [], preserveSoftBreaks: true }}
+        />,
+      );
+      const html = view.container.querySelector("p")?.outerHTML ?? "";
+      view.unmount();
+      return html;
+    };
+
+    const skipped = paragraphHtml(prose);
+    expect(skipped).toContain("THR_DCWIVN5N8W.");
+    expect(skipped).toBe(
+      paragraphHtml(`${prose}\n\n\`\`\`text\nthr_dcwivn5n8w\n\`\`\``),
+    );
+  });
+
+  it("returns before reading the markdown tree when the source has no thread mention candidate", () => {
+    const transform = remarkThreadMentions();
+    const readChildren = vi.fn((): RootContent[] => []);
+    const tree: Root = {
+      type: "root",
+      get children() {
+        return readChildren();
+      },
+    };
+
+    transform(tree, {
+      value: "Plain **bold** prose with `inline code` and no mentions.",
+    });
+    expect(readChildren).not.toHaveBeenCalled();
+
+    transform(tree, { value: "See thr_dcwivn5n8w now." });
+    expect(readChildren).toHaveBeenCalled();
+  });
+
+  it("skips unist-util-visit walks in MarkdownPreview for a source without a thread mention candidate or message directives", () => {
+    renderMarkdown(
+      <MarkdownPreview
+        content="Plain **bold** prose with `inline code` and no mentions."
+        threadMentions={{ mentions: [], preserveSoftBreaks: true }}
+      />,
+    );
+    expect(visit).not.toHaveBeenCalled();
+    cleanup();
+
+    renderMarkdown(
+      <MarkdownPreview
+        content="See thr_dcwivn5n8w now."
+        threadMentions={{ mentions: [], preserveSoftBreaks: true }}
+      />,
+    );
+    expect(visit).toHaveBeenCalled();
   });
 });

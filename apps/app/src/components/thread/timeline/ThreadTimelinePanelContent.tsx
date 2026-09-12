@@ -98,6 +98,7 @@ export function ThreadTimelinePanelContent({
   return (
     <ThreadTimelineSurface
       activeThinking={resolvedTimeline.activeThinking}
+      contextBoundarySeq={resolvedTimeline.contextBoundarySeq}
       hasOlderTimelineRows={resolvedTimeline.hasOlderTimelineRows}
       isLoadingOlderTimelineRows={resolvedTimeline.isLoadingOlderTimelineRows}
       isThreadTimelinePending={

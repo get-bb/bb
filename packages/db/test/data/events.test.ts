@@ -5,9 +5,14 @@ import {
   LOCAL_SUBAGENT_TASK_TYPE,
   LOCAL_WORKFLOW_TASK_TYPE,
   THREAD_CONTEXT_CLEAR_OPERATION,
+  encodeClientTurnRequestIdNumber,
+  parseStoredThreadEvent,
+  threadEventItemSchema,
+  threadEventTypeValues,
   threadScope,
   turnScope,
   type PromptInput,
+  type ThreadEventItemType,
 } from "@bb/domain";
 import { noopNotifier } from "../../src/notifier.js";
 import type { DbNotifier } from "../../src/notifier.js";
@@ -16,6 +21,8 @@ import {
   appendStoredThreadEvent,
   appendStoredThreadEventInTransaction,
   appendStoredThreadEventsInTransaction,
+  canProduceThreadSearchSegments,
+  copyStoredThreadEventsInTransaction,
   findStoredEventRow,
   findStoredTimelineWindowByteBudgetFloor,
   findTimelineWindowBudgetFloorSequence,
@@ -29,7 +36,6 @@ import {
   getLatestThreadSequence,
   insertEvents,
   listContextWindowUsageRows,
-  listCompletedTurnsByThreadIds,
   listEvents,
   listLatestThreadStateEventRowsByThreadIds,
   listStoredConversationOutlineEventRows,
@@ -41,6 +47,7 @@ import {
   listStoredTimelineWindowEventRows,
   listStoredTurnInputAcceptedRowsByClientRequestIds,
   listStoredTurnRejectedRowsByClientRequestIds,
+  listStoredTurnCompletedKeys,
   MissingStoredTurnStartedError,
   listActiveBackgroundTaskCountsByThreadIds,
   listLatestBackgroundTaskStateRowsByItemIds,
@@ -55,7 +62,11 @@ import {
 } from "../../src/data/events.js";
 import { createEnvironment } from "../../src/data/environments.js";
 import { createProject } from "../../src/data/projects.js";
-import { createThread } from "../../src/data/threads.js";
+import {
+  createThread,
+  searchThreadsWithPendingInteractionState,
+} from "../../src/data/threads.js";
+import type { AppendDaemonEventInput } from "../../src/data/events.js";
 import { upsertHost } from "../../src/data/hosts.js";
 import { createMigratedConnection } from "../helpers/migrated-connection.js";
 
@@ -106,6 +117,131 @@ function createTurnEventFields(args: CreateTurnEventFieldsArgs) {
 function textInput(text: string): PromptInput[] {
   return [{ type: "text", text, mentions: [] }];
 }
+
+function listSearchNeedleThreadIds(
+  db: ReturnType<typeof setup>["db"],
+  query: string,
+): string[] {
+  return searchThreadsWithPendingInteractionState(db, {
+    query,
+    limitPerGroup: 20,
+  }).active.results.map((result) => result.thread.id);
+}
+
+function searchNeedleDaemonEventInputs(
+  threadId: string,
+): AppendDaemonEventInput[] {
+  const turnFields = {
+    ...createTurnEventFields({ turnId: "turn-search" }),
+    environmentId: null,
+    providerThreadId: "provider-search",
+  };
+  return [
+    {
+      threadId,
+      type: "turn/started",
+      ...turnFields,
+      data: JSON.stringify({ providerThreadId: "provider-search" }),
+    },
+    {
+      threadId,
+      type: "client/turn/requested",
+      ...daemonThreadEventFields,
+      data: JSON.stringify({
+        direction: "outbound",
+        requestId: encodeClientTurnRequestIdNumber({ value: 1 }),
+        source: "tell",
+        initiator: "user",
+        senderThreadId: null,
+        input: textInput("userneedle"),
+        target: { kind: "new-turn" },
+        request: { method: "turn/start", params: {} },
+        execution: {
+          model: "gpt-5",
+          serviceTier: "default",
+          reasoningLevel: "medium",
+          permissionMode: "full",
+          source: "client/turn/requested",
+        },
+      }),
+    },
+    {
+      threadId,
+      type: "item/agentMessage/delta",
+      ...turnFields,
+      itemId: "msg-search",
+      data: JSON.stringify({
+        providerThreadId: "provider-search",
+        itemId: "msg-search",
+        delta: "deltaneedle",
+      }),
+    },
+    {
+      threadId,
+      type: "item/completed",
+      ...turnFields,
+      itemId: "msg-search",
+      itemKind: "agentMessage",
+      data: JSON.stringify({
+        providerThreadId: "provider-search",
+        item: {
+          type: "agentMessage",
+          id: "msg-search",
+          text: "assistantneedle",
+        },
+      }),
+    },
+    {
+      threadId,
+      type: "item/completed",
+      ...turnFields,
+      itemId: "cmd-search",
+      itemKind: "commandExecution",
+      data: JSON.stringify({
+        providerThreadId: "provider-search",
+        item: {
+          type: "commandExecution",
+          id: "cmd-search",
+          command: "printf output",
+          cwd: "/tmp/project",
+          status: "completed",
+          approvalStatus: null,
+          aggregatedOutput: "toolneedle",
+        },
+      }),
+    },
+    {
+      threadId,
+      type: "system/manager/user_message",
+      ...daemonThreadEventFields,
+      data: JSON.stringify({ text: "managerneedle" }),
+    },
+  ];
+}
+
+function expectParseableStoredEvents(
+  inputs: readonly AppendDaemonEventInput[],
+): void {
+  for (const input of inputs) {
+    expect(() =>
+      parseStoredThreadEvent({
+        data: JSON.parse(input.data),
+        providerThreadId: input.providerThreadId,
+        scope: input.scope,
+        threadId: input.threadId,
+        type: input.type,
+      }),
+    ).not.toThrow();
+  }
+}
+
+const SEARCH_NEEDLE_EXPECTATIONS = [
+  { query: "userneedle", indexed: true },
+  { query: "deltaneedle", indexed: false },
+  { query: "assistantneedle", indexed: true },
+  { query: "toolneedle", indexed: false },
+  { query: "managerneedle", indexed: true },
+] as const;
 
 function clientTurnRequestData(requestId: string, text: string): string {
   return JSON.stringify({
@@ -984,6 +1120,81 @@ describe("events", () => {
 
     expect(listEvents(db, { threadId: thread.id }).map((event) => event.type))
       .toEqual(["turn/started", "turn/input/accepted", "system/error"]);
+  });
+
+  it("indexes daemon-appended user, assistant and manager messages but not deltas or tool outputs", () => {
+    const { db, thread } = setup();
+    const inputs = searchNeedleDaemonEventInputs(thread.id);
+    expectParseableStoredEvents(inputs);
+
+    db.transaction((tx) => appendDaemonEventsInTransaction(tx, inputs), {
+      behavior: "immediate",
+    });
+
+    expect(listEvents(db, { threadId: thread.id })).toHaveLength(inputs.length);
+    for (const { query, indexed } of SEARCH_NEEDLE_EXPECTATIONS) {
+      expect({
+        query,
+        threadIds: listSearchNeedleThreadIds(db, query),
+      }).toEqual({ query, threadIds: indexed ? [thread.id] : [] });
+    }
+  });
+
+  it("indexes copied user, assistant and manager messages when a fork copies events", () => {
+    const { db, project, thread } = setup();
+    const fork = createThread(db, noopNotifier, {
+      projectId: project.id,
+      providerId: "codex",
+    });
+    const inputs = searchNeedleDaemonEventInputs(thread.id);
+    expectParseableStoredEvents(inputs);
+    insertEvents(
+      db,
+      noopNotifier,
+      inputs.map((input, index) => ({ ...input, sequence: index + 1 })),
+    );
+    for (const { query } of SEARCH_NEEDLE_EXPECTATIONS) {
+      expect(listSearchNeedleThreadIds(db, query)).toEqual([]);
+    }
+
+    db.transaction(
+      (tx) =>
+        copyStoredThreadEventsInTransaction(tx, {
+          rows: listStoredEventRows(db, { threadId: thread.id }),
+          targetEnvironmentId: null,
+          targetThreadId: fork.id,
+        }),
+      { behavior: "immediate" },
+    );
+
+    expect(listEvents(db, { threadId: fork.id })).toHaveLength(inputs.length);
+    for (const { query, indexed } of SEARCH_NEEDLE_EXPECTATIONS) {
+      expect({
+        query,
+        threadIds: listSearchNeedleThreadIds(db, query),
+      }).toEqual({ query, threadIds: indexed ? [fork.id] : [] });
+    }
+  });
+
+  it("gates search-segment parsing to message event types", () => {
+    const itemKinds: (ThreadEventItemType | null)[] = [
+      null,
+      ...threadEventItemSchema.options.map((option) => option.shape.type.value),
+    ];
+    const gatedItemKindsByType = Object.fromEntries(
+      threadEventTypeValues.flatMap((type) => {
+        const gatedItemKinds = itemKinds.filter((itemKind) =>
+          canProduceThreadSearchSegments({ itemKind, type }),
+        );
+        return gatedItemKinds.length === 0 ? [] : [[type, gatedItemKinds]];
+      }),
+    );
+
+    expect(gatedItemKindsByType).toEqual({
+      "client/turn/requested": itemKinds,
+      "item/completed": [null, "agentMessage"],
+      "system/manager/user_message": itemKinds,
+    });
   });
 
   it("stores the provided createdAt timestamp", () => {
@@ -2550,7 +2761,7 @@ describe("events", () => {
     ).toEqual([1]);
   });
 
-  it("lists completed turns for a specific thread set", () => {
+  it("lists only requested turn keys that have a stored turn/completed", () => {
     const { db, project, thread } = setup();
     const otherThread = createThread(db, noopNotifier, {
       projectId: project.id,
@@ -2562,6 +2773,16 @@ describe("events", () => {
         threadId: thread.id,
         sequence: 1,
         scope: turnScope("turn_a"),
+        type: "turn/started",
+        itemId: null,
+        itemKind: null,
+        parentToolCallId: null,
+        data: JSON.stringify({ providerThreadId: "provider_a" }),
+      },
+      {
+        threadId: thread.id,
+        sequence: 2,
+        scope: turnScope("turn_a"),
         type: "turn/completed",
         itemId: null,
         itemKind: null,
@@ -2571,6 +2792,16 @@ describe("events", () => {
           turnId: "turn_a",
           status: "completed",
         }),
+      },
+      {
+        threadId: thread.id,
+        sequence: 3,
+        scope: turnScope("turn_open"),
+        type: "turn/started",
+        itemId: null,
+        itemKind: null,
+        parentToolCallId: null,
+        data: JSON.stringify({ providerThreadId: "provider_a" }),
       },
       {
         threadId: otherThread.id,
@@ -2586,14 +2817,79 @@ describe("events", () => {
           status: "completed",
         }),
       },
-    ]);
-
-    expect(listCompletedTurnsByThreadIds(db, [thread.id])).toEqual([
       {
-        threadId: thread.id,
-        turnId: "turn_a",
+        threadId: otherThread.id,
+        sequence: 2,
+        scope: turnScope("turn_a"),
+        type: "turn/started",
+        itemId: null,
+        itemKind: null,
+        parentToolCallId: null,
+        data: JSON.stringify({ providerThreadId: "provider_b" }),
       },
     ]);
+
+    expect(listStoredTurnCompletedKeys(db, { keys: [] })).toEqual([]);
+    expect(
+      listStoredTurnCompletedKeys(db, {
+        keys: [
+          { threadId: thread.id, turnId: "turn_a" },
+          { threadId: thread.id, turnId: "turn_a" },
+          { threadId: thread.id, turnId: "turn_open" },
+          { threadId: otherThread.id, turnId: "turn_a" },
+          { threadId: "thr_missing", turnId: "turn_b" },
+        ],
+      }),
+    ).toEqual([{ threadId: thread.id, turnId: "turn_a" }]);
+  });
+
+  it("lists stored turn/completed keys across lookup chunks", () => {
+    const { db, thread } = setup();
+    const turnIds = Array.from({ length: 520 }, (_, index) => `turn_${index}`);
+    insertEvents(
+      db,
+      noopNotifier,
+      turnIds.flatMap((turnId, index) => [
+        {
+          threadId: thread.id,
+          sequence: index * 2 + 1,
+          scope: turnScope(turnId),
+          type: "turn/started" as const,
+          ...emptyItemFields,
+          data: JSON.stringify({ providerThreadId: "provider_chunked" }),
+        },
+        ...(index % 3 === 0
+          ? []
+          : [
+              {
+                threadId: thread.id,
+                sequence: index * 2 + 2,
+                scope: turnScope(turnId),
+                type: "turn/completed" as const,
+                ...emptyItemFields,
+                data: JSON.stringify({
+                  providerThreadId: "provider_chunked",
+                  status: "completed",
+                }),
+              },
+            ]),
+      ]),
+    );
+
+    const completedKeys = listStoredTurnCompletedKeys(db, {
+      keys: turnIds.map((turnId) => ({ threadId: thread.id, turnId })),
+    });
+
+    expect(
+      completedKeys
+        .map((key) => key.turnId)
+        .sort((left, right) => left.localeCompare(right)),
+    ).toEqual(
+      turnIds
+        .filter((_, index) => index % 3 !== 0)
+        .sort((left, right) => left.localeCompare(right)),
+    );
+    expect(completedKeys.every((key) => key.threadId === thread.id)).toBe(true);
   });
 
   it("lists active turn and latest provider state for thread interruption", () => {

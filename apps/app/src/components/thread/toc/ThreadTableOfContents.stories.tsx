@@ -111,6 +111,7 @@ export function Default() {
       >
         <ThreadTimelineSurface
           activeThinking={null}
+          contextBoundarySeq={null}
           isThreadTimelinePending={false}
           timelineError={false}
           showOngoingIndicator={false}

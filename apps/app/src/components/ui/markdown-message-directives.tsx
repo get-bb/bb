@@ -216,10 +216,12 @@ function asDirectiveNode(node: unknown): DirectiveNode | null {
 }
 
 export function remarkMessageDirectives(args: {
+  indexBase: number;
+  limit: number;
   mounts: MountedMessageDirective[];
   registry: MessageDirectiveRegistry;
 }) {
-  const { mounts, registry } = args;
+  const { indexBase, limit, mounts, registry } = args;
   return (tree: Nodes, file: RemarkMessageDirectiveFile): void => {
     const markdownSource =
       typeof file.value === "string" ? file.value : String(file.value ?? "");
@@ -246,12 +248,12 @@ export function remarkMessageDirectives(args: {
         name.length === 0 ||
         entry === undefined ||
         entry.status === "collision" ||
-        mounts.length >= MESSAGE_DIRECTIVE_MOUNT_LIMIT
+        mounts.length >= limit
       ) {
         return spliceLiteralDirective(parent, index, directive.type, source);
       }
 
-      const mountIndex = mounts.length;
+      const mountIndex = indexBase + mounts.length;
       mounts.push({
         attributes,
         index: mountIndex,
@@ -265,19 +267,39 @@ export function remarkMessageDirectives(args: {
 }
 
 export interface BuildMessageDirectiveComponentArgs {
-  mounts: readonly MountedMessageDirective[];
   message: PluginMessageDirectiveProps["message"];
   openWorkspaceFile: PluginMessageDirectiveProps["openWorkspaceFile"];
   openThreadPanel: MarkdownMessageDirectiveOpenThreadPanel | null;
 }
 
-export function buildMessageDirectiveComponent({
+export const EMPTY_MOUNTED_MESSAGE_DIRECTIVES: readonly MountedMessageDirective[] =
+  [];
+
+const MessageDirectiveMountsContext = createContext<
+  readonly MountedMessageDirective[]
+>(EMPTY_MOUNTED_MESSAGE_DIRECTIVES);
+
+export function MessageDirectiveMountsProvider({
+  children,
   mounts,
+}: {
+  children: ReactNode;
+  mounts: readonly MountedMessageDirective[];
+}) {
+  return (
+    <MessageDirectiveMountsContext.Provider value={mounts}>
+      {children}
+    </MessageDirectiveMountsContext.Provider>
+  );
+}
+
+export function buildMessageDirectiveComponent({
   message,
   openWorkspaceFile,
   openThreadPanel,
 }: BuildMessageDirectiveComponentArgs): ComponentType<MessageDirectiveElementProps> {
   function MessageDirectiveElement(props: MessageDirectiveElementProps) {
+    const mounts = useContext(MessageDirectiveMountsContext);
     const rawIndex = props["data-directive-index"];
     if (rawIndex === undefined) {
       return null;

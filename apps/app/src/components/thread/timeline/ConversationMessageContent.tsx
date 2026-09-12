@@ -1,5 +1,4 @@
 import { useMemo, useRef, useState, type CSSProperties } from "react";
-import remend from "remend";
 import type {
   TimelineConversationAttachments,
   TimelineRowBase,
@@ -53,7 +52,10 @@ import {
   USER_MESSAGE_CHAR_CAP,
 } from "@bb/client-core";
 import { turnRequestLabel } from "@bb/client-core";
-import { splitStreamingMarkdown } from "./streaming-markdown-split.js";
+import {
+  repairStreamingMarkdownTail,
+  splitStreamingMarkdown,
+} from "./streaming-markdown-split.js";
 import { TurnRequestLabel } from "./TurnRequestLabel.js";
 import {
   MessageActionBar,
@@ -124,8 +126,6 @@ const ASSISTANT_THREAD_MENTIONS: MarkdownThreadMentions = {
 const STREAMING_SETTLED_MARKDOWN_CLASS_NAME = "[&>p:last-child]:mb-2";
 const STREAMING_TAIL_MARKDOWN_CLASS_NAME =
   "[&>h1:first-child]:mt-4 [&>h2:first-child]:mt-4 [&>h3:first-child]:mt-3 [&>h4:first-child]:mt-3 [&>h5:first-child]:mt-2 [&>h6:first-child]:mt-2";
-const STREAMING_MARKDOWN_BYPASS_PATTERN =
-  /^(?:[ \t]*(?:>|[-+*]|\d{1,9}[.)]))*[ \t]*::[a-zA-Z]|`{3}|~{3}/mu;
 
 interface ConversationMessageContentAssistantProps
   extends ConversationMessageContentBaseProps, AssistantMessageRowIdentity {
@@ -494,17 +494,7 @@ function AssistantConversationMessage({
   );
   const liveMarkdown = useMemo(() => {
     const tail = streamingSplit?.tail ?? text;
-    if (!streaming || STREAMING_MARKDOWN_BYPASS_PATTERN.test(tail)) {
-      return tail;
-    }
-    return remend(closeUnterminatedMarkdownCodeSpan(tail), {
-      linkMode: "text-only",
-      comparisonOperators: false,
-      htmlTags: false,
-      katex: false,
-      setextHeadings: false,
-      singleTilde: false,
-    });
+    return streaming ? repairStreamingMarkdownTail(tail) : tail;
   }, [streaming, streamingSplit, text]);
   const linkRouting = useMemo(
     () =>
@@ -589,6 +579,7 @@ function AssistantConversationMessage({
           content={
             streamingSplit === null ? liveMarkdown : streamingSplit.settled
           }
+          incrementalBlocks
           linkRouting={linkRouting}
           messageDirectives={messageDirectives}
           threadMentions={ASSISTANT_THREAD_MENTIONS}
@@ -597,6 +588,7 @@ function AssistantConversationMessage({
           <MarkdownPreview
             className={STREAMING_TAIL_MARKDOWN_CLASS_NAME}
             content={liveMarkdown}
+            incrementalBlocks
             linkRouting={linkRouting}
             messageDirectives={messageDirectives}
             threadMentions={ASSISTANT_THREAD_MENTIONS}

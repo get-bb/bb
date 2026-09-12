@@ -15,8 +15,10 @@ import type {
   ThreadConversationOutlineItem,
   ThreadConversationOutlineResponse,
   SidebarBootstrapResponse,
+  TimelineConversationRow,
   TimelineRow,
 } from "@bb/server-contract";
+import { commandRow } from "@/test/fixtures/thread-timeline-rows";
 
 vi.mock("@/components/ui/bottom-anchored-scroll-body.js", () => ({
   useBottomAnchoredScroll: vi.fn(),
@@ -34,6 +36,7 @@ import {
 } from "@/hooks/queries/query-keys";
 import {
   findActiveItemIds,
+  getTimelineTocItem,
   selectTocRailItems,
   ThreadTableOfContents,
   type TocItem,
@@ -1059,5 +1062,244 @@ describe("ThreadTableOfContents", () => {
       0,
     );
     expect(rowMeasurementCount).toBeLessThanOrEqual(16);
+  });
+});
+
+function requireConversationRow(row: TimelineRow): TimelineConversationRow {
+  if (row.kind !== "conversation") {
+    throw new Error("Expected a conversation row.");
+  }
+  return row;
+}
+
+function withCountedTextReads(
+  row: TimelineRow,
+  onRead: () => void,
+): TimelineConversationRow {
+  const conversationRow = requireConversationRow(row);
+  const { text } = conversationRow;
+  const counted = { ...conversationRow };
+  Object.defineProperty(counted, "text", {
+    enumerable: true,
+    get: () => {
+      onRead();
+      return text;
+    },
+  });
+  return counted;
+}
+
+function placeRowElements(
+  positions: ReadonlyMap<string, { bottom: number; top: number }>,
+): void {
+  for (const [id, position] of positions) {
+    const element =
+      scrollElement.querySelector<HTMLElement>(
+        `[data-timeline-row-id="${id}"]`,
+      ) ?? scrollElement.appendChild(timelineRowElement(id));
+    element.getBoundingClientRect = () => rect(position);
+  }
+}
+
+function setScrolledAwayFromBottom(): void {
+  Object.defineProperties(scrollElement, {
+    clientHeight: { configurable: true, value: 100 },
+    scrollHeight: { configurable: true, value: 1_000 },
+    scrollTop: { configurable: true, value: 400 },
+  });
+  scrollElement.getBoundingClientRect = () => rect({ top: 0, bottom: 100 });
+}
+
+function activeRailTickIndexes(): number[] {
+  return Array.from(
+    document.querySelectorAll<HTMLElement>(
+      "[data-thread-toc] [aria-hidden] > span",
+    ),
+  ).flatMap((tick, index) => (tick.classList.contains("w-5") ? [index] : []));
+}
+
+describe("ThreadTableOfContents timeline item cache", () => {
+  it("returns the cached item for the same row and relabels a changed streaming row", () => {
+    const row = requireConversationRow(userConversationRow(1));
+    const item = getTimelineTocItem(row);
+
+    expect(getTimelineTocItem(row)).toBe(item);
+
+    const streamedRow: TimelineConversationRow = {
+      ...row,
+      sourceSeqEnd: 2,
+      text: "Loaded   after\n client-side navigation, then more",
+    };
+    const streamedItem = getTimelineTocItem(streamedRow);
+
+    expect(streamedItem).not.toBe(item);
+    expect(streamedItem).toEqual({
+      id: row.id,
+      label: "Loaded after client-side navigation, then more",
+      role: "user",
+    });
+    expect(getTimelineTocItem(streamedRow)).toBe(streamedItem);
+  });
+
+  it("keeps the attachment label for an attachment-only message", () => {
+    const row = requireConversationRow(userConversationRow(1));
+
+    expect(
+      getTimelineTocItem({
+        ...row,
+        attachments: {
+          imageUrls: [],
+          localFilePaths: [],
+          localFiles: 0,
+          localImagePaths: ["/tmp/screenshot.png"],
+          localImages: 1,
+          webImages: 0,
+        },
+        text: " \n ",
+      }).label,
+    ).toBe("Image attachment");
+  });
+
+  it("normalizes a message label again only when its row object changes", () => {
+    let textReads = 0;
+    const countRead = () => {
+      textReads += 1;
+    };
+    const conversationRows = [1, 2, 3].map((index) =>
+      withCountedTextReads(userConversationRow(index), countRead),
+    );
+    const view = render(<TocHost timelineRows={conversationRows} />);
+    const readsAfterMount = textReads;
+
+    expect(readsAfterMount).toBe(3);
+
+    view.rerender(
+      <TocHost
+        timelineRows={[
+          ...conversationRows,
+          commandRow({
+            command: "pnpm test",
+            seq: 4,
+            threadId: "thr_toc_test",
+          }),
+        ]}
+      />,
+    );
+
+    expect(textReads).toBe(readsAfterMount);
+
+    const changedRow = withCountedTextReads(
+      {
+        ...requireConversationRow(userConversationRow(3)),
+        sourceSeqEnd: 4,
+        text: "Edited third message",
+      },
+      countRead,
+    );
+    view.rerender(
+      <TocHost
+        timelineRows={[conversationRows[0]!, conversationRows[1]!, changedRow]}
+      />,
+    );
+    openTocPanel();
+
+    expect(textReads).toBe(readsAfterMount + 1);
+    expect(screen.getByText("Edited third message")).not.toBeNull();
+  });
+
+  it("moves the active marker 120 ms after a new user message arrives", () => {
+    vi.useFakeTimers();
+    setScrolledAwayFromBottom();
+    const rows = [1, 2, 3].map((index) => userConversationRow(index));
+    placeRowElements(
+      new Map([
+        ["row_user_1", { top: 0, bottom: 20 }],
+        ["row_user_2", { top: 100, bottom: 120 }],
+        ["row_user_3", { top: 200, bottom: 220 }],
+      ]),
+    );
+    const view = render(<TocHost timelineRows={rows} />);
+    act(() => {
+      vi.runOnlyPendingTimers();
+    });
+
+    expect(activeRailTickIndexes()).toEqual([0]);
+
+    placeRowElements(
+      new Map([
+        ["row_user_1", { top: -90, bottom: -70 }],
+        ["row_user_2", { top: -60, bottom: -40 }],
+        ["row_user_3", { top: -30, bottom: -10 }],
+        ["row_user_4", { top: 10, bottom: 30 }],
+      ]),
+    );
+    view.rerender(<TocHost timelineRows={[...rows, userConversationRow(4)]} />);
+    act(() => {
+      vi.advanceTimersByTime(119);
+    });
+
+    expect(activeRailTickIndexes()).toEqual([0]);
+
+    act(() => {
+      vi.advanceTimersByTime(1);
+    });
+
+    expect(activeRailTickIndexes()).toEqual([3]);
+  });
+
+  it("re-measures the active item 120 ms after an update that only changes work rows", () => {
+    vi.useFakeTimers();
+    setScrolledAwayFromBottom();
+    const rows = [1, 2, 3].map((index) => userConversationRow(index));
+    const workRow = commandRow({
+      command: "pnpm test",
+      output: "running",
+      seq: 2,
+      status: "pending",
+      threadId: "thr_toc_test",
+    });
+    placeRowElements(
+      new Map([
+        ["row_user_1", { top: -200, bottom: -180 }],
+        ["row_user_2", { top: 80, bottom: 120 }],
+        ["row_user_3", { top: 300, bottom: 320 }],
+      ]),
+    );
+    const view = render(
+      <TocHost timelineRows={[rows[0]!, workRow, rows[1]!, rows[2]!]} />,
+    );
+    act(() => {
+      vi.runOnlyPendingTimers();
+    });
+
+    expect(activeRailTickIndexes()).toEqual([1]);
+
+    placeRowElements(
+      new Map([
+        ["row_user_2", { top: 130, bottom: 170 }],
+        ["row_user_3", { top: 350, bottom: 370 }],
+      ]),
+    );
+    view.rerender(
+      <TocHost
+        timelineRows={[
+          rows[0]!,
+          { ...workRow, output: "running\nmore output" },
+          rows[1]!,
+          rows[2]!,
+        ]}
+      />,
+    );
+    act(() => {
+      vi.advanceTimersByTime(119);
+    });
+
+    expect(activeRailTickIndexes()).toEqual([1]);
+
+    act(() => {
+      vi.advanceTimersByTime(1);
+    });
+
+    expect(activeRailTickIndexes()).toEqual([]);
   });
 });

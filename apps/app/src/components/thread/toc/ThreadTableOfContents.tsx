@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type {
   ThreadConversationOutlineItem,
   TimelineConversationAttachments,
+  TimelineConversationRow,
   TimelineRow,
 } from "@bb/server-contract";
 import { useScrollOverflowState } from "@/components/thread/timeline/useScrollOverflowState";
@@ -73,6 +74,20 @@ function toTocLabel({
     attachments.webImages + attachments.localImages,
     attachments.localFiles,
   );
+}
+
+const timelineTocItemsByRow = new WeakMap<TimelineConversationRow, TocItem>();
+
+export function getTimelineTocItem(row: TimelineConversationRow): TocItem {
+  const cachedItem = timelineTocItemsByRow.get(row);
+  if (cachedItem !== undefined) return cachedItem;
+  const item: TocItem = {
+    id: row.id,
+    label: toTocLabel({ attachments: row.attachments, text: row.text }),
+    role: row.role,
+  };
+  timelineTocItemsByRow.set(row, item);
+  return item;
 }
 
 function outlineItemToTocItem(item: ThreadConversationOutlineItem): TocItem {
@@ -255,11 +270,7 @@ function useConversationTocItems({
       partitionTocItems(
         timelineRows
           .filter((row) => row.kind === "conversation")
-          .map((row): TocItem => ({
-            id: row.id,
-            label: toTocLabel({ attachments: row.attachments, text: row.text }),
-            role: row.role,
-          })),
+          .map((row) => getTimelineTocItem(row)),
       ),
     [timelineRows],
   );

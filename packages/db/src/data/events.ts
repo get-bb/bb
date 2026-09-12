@@ -57,6 +57,7 @@ import {
 import { createEventId } from "../ids.js";
 import { COMPLETED_EVENT_OUTPUT_TRUNCATION_THRESHOLD_CHARS } from "../retained-event-output.js";
 import { truncatedEventDataColumn } from "./event-output-truncation.js";
+import { bumpThreadEventRewriteGeneration } from "./event-rewrite-generation.js";
 import { deriveStoredEventItemFieldsFromSource } from "../stored-event-item-fields.js";
 import {
   upsertThreadSearchSegments,
@@ -319,11 +320,6 @@ export interface StoredTurnRequestEventRow {
   type: ThreadEventType;
 }
 
-export interface CompletedStoredTurnRow {
-  threadId: string;
-  turnId: string;
-}
-
 export interface DeleteThreadEventSuffixArgs {
   cutoffSequence: number;
   oldMaxSequence: number;
@@ -369,6 +365,9 @@ export function deleteThreadEventSuffixInTransaction(
       ),
     )
     .run();
+  if (result.changes > 0) {
+    bumpThreadEventRewriteGeneration(args.threadId);
+  }
   return { deletedEventCount: result.changes };
 }
 
@@ -466,6 +465,9 @@ export function insertEvents(
     (tx) => {
       let insertedCount = 0;
       const insertedInputIndexes: number[] = [];
+      const highWaterMarks = getHighWaterMarks(tx, [
+        ...new Set(eventInputs.map((input) => input.threadId)),
+      ]);
       for (const [index, input] of eventInputs.entries()) {
         const createdAt = input.createdAt ?? Date.now();
         const turnId = getThreadEventScopeTurnId(input.scope) ?? null;
@@ -487,6 +489,10 @@ export function insertEvents(
         if (insertResult.inserted) {
           insertedCount += 1;
           insertedInputIndexes.push(index);
+          const highWaterMark = highWaterMarks[input.threadId];
+          if (highWaterMark !== undefined && input.sequence <= highWaterMark) {
+            bumpThreadEventRewriteGeneration(input.threadId);
+          }
           const eventTypes = eventTypesByThreadId.get(input.threadId);
           if (eventTypes) {
             eventTypes.add(input.type);
@@ -666,6 +672,21 @@ function listThreadSearchSegmentsForStoredEventArgs(args: {
   }
 }
 
+export function canProduceThreadSearchSegments(args: {
+  itemKind: ThreadEventItemType | null;
+  type: ThreadEventType;
+}): boolean {
+  switch (args.type) {
+    case "client/turn/requested":
+    case "system/manager/user_message":
+      return true;
+    case "item/completed":
+      return args.itemKind === "agentMessage" || args.itemKind === null;
+    default:
+      return false;
+  }
+}
+
 function listThreadSearchSegmentsForThreadEvent(args: {
   event: ThreadEvent;
   sequence: number;
@@ -812,15 +833,22 @@ export function appendDaemonEventsInTransaction(
       turnId,
       type: input.type,
     });
-    const event = parseDaemonThreadEvent(input);
-    if (event !== null) {
-      upsertThreadSearchSegments(db, {
-        updatedAt: now,
-        segments: listThreadSearchSegmentsForThreadEvent({
-          event,
-          sequence,
-        }),
-      });
+    if (
+      canProduceThreadSearchSegments({
+        itemKind: input.itemKind,
+        type: input.type,
+      })
+    ) {
+      const event = parseDaemonThreadEvent(input);
+      if (event !== null) {
+        upsertThreadSearchSegments(db, {
+          updatedAt: now,
+          segments: listThreadSearchSegmentsForThreadEvent({
+            event,
+            sequence,
+          }),
+        });
+      }
     }
 
     const acceptedEvent: AcceptedDaemonEvent = {
@@ -887,28 +915,35 @@ export function copyStoredThreadEventsInTransaction(
       sourceEventId: row.id,
       targetEventId: insertResult.id,
     });
-    const event = parseDaemonThreadEvent({
-      data: row.data,
-      environmentId: args.targetEnvironmentId,
-      itemId: row.itemId,
-      itemKind: row.itemKind,
-      parentToolCallId: row.parentToolCallId,
-      providerThreadId: row.providerThreadId,
-      scope:
-        row.turnId === null
-          ? { kind: "thread" }
-          : { kind: "turn", turnId: row.turnId },
-      threadId: args.targetThreadId,
-      type: row.type,
-    });
-    if (event !== null) {
-      upsertThreadSearchSegments(db, {
-        updatedAt: now,
-        segments: listThreadSearchSegmentsForThreadEvent({
-          event,
-          sequence,
-        }),
+    if (
+      canProduceThreadSearchSegments({
+        itemKind: row.itemKind,
+        type: row.type,
+      })
+    ) {
+      const event = parseDaemonThreadEvent({
+        data: row.data,
+        environmentId: args.targetEnvironmentId,
+        itemId: row.itemId,
+        itemKind: row.itemKind,
+        parentToolCallId: row.parentToolCallId,
+        providerThreadId: row.providerThreadId,
+        scope:
+          row.turnId === null
+            ? { kind: "thread" }
+            : { kind: "turn", turnId: row.turnId },
+        threadId: args.targetThreadId,
+        type: row.type,
       });
+      if (event !== null) {
+        upsertThreadSearchSegments(db, {
+          updatedAt: now,
+          segments: listThreadSearchSegmentsForThreadEvent({
+            event,
+            sequence,
+          }),
+        });
+      }
     }
     sequence += 1;
   }
@@ -1236,7 +1271,7 @@ export interface ThreadTurnKey {
   turnId: string;
 }
 
-export interface ListStoredTurnStartedKeysArgs {
+export interface ListStoredTurnKeysArgs {
   keys: readonly ThreadTurnKey[];
 }
 
@@ -2374,9 +2409,15 @@ export function listActiveBackgroundTaskCountsByThreadIds(
   );
 }
 
-function listStoredTurnStartedKeysChunk(
+type StoredTurnKeyEventType = Extract<
+  ThreadEventType,
+  "turn/completed" | "turn/started"
+>;
+
+function listStoredTurnKeysOfTypeChunk(
   db: DbQueryConnection,
   keys: readonly ThreadTurnKey[],
+  type: StoredTurnKeyEventType,
 ): ThreadTurnKey[] {
   const turnConditions = keys.map((key) =>
     and(eq(events.threadId, key.threadId), eq(events.turnId, key.turnId)),
@@ -2385,7 +2426,7 @@ function listStoredTurnStartedKeysChunk(
   const rows = db
     .select({ threadId: events.threadId, turnId: events.turnId })
     .from(events)
-    .where(and(eq(events.type, "turn/started"), or(...turnConditions)))
+    .where(and(eq(events.type, type), or(...turnConditions)))
     .all();
 
   return rows.flatMap((row) =>
@@ -2395,15 +2436,16 @@ function listStoredTurnStartedKeysChunk(
   );
 }
 
-export function listStoredTurnStartedKeys(
+function listStoredTurnKeysOfType(
   db: DbQueryConnection,
-  args: ListStoredTurnStartedKeysArgs,
+  keys: readonly ThreadTurnKey[],
+  type: StoredTurnKeyEventType,
 ): ThreadTurnKey[] {
-  if (args.keys.length === 0) {
+  if (keys.length === 0) {
     return [];
   }
 
-  const uniqueKeys = listUniqueThreadTurnKeys(args.keys);
+  const uniqueKeys = listUniqueThreadTurnKeys(keys);
   const rows: ThreadTurnKey[] = [];
   for (
     let offset = 0;
@@ -2411,16 +2453,31 @@ export function listStoredTurnStartedKeys(
     offset += STORED_EVENT_SEQUENCE_LOOKUP_CHUNK_SIZE
   ) {
     rows.push(
-      ...listStoredTurnStartedKeysChunk(
+      ...listStoredTurnKeysOfTypeChunk(
         db,
         uniqueKeys.slice(
           offset,
           offset + STORED_EVENT_SEQUENCE_LOOKUP_CHUNK_SIZE,
         ),
+        type,
       ),
     );
   }
   return rows;
+}
+
+export function listStoredTurnStartedKeys(
+  db: DbQueryConnection,
+  args: ListStoredTurnKeysArgs,
+): ThreadTurnKey[] {
+  return listStoredTurnKeysOfType(db, args.keys, "turn/started");
+}
+
+export function listStoredTurnCompletedKeys(
+  db: DbQueryConnection,
+  args: ListStoredTurnKeysArgs,
+): ThreadTurnKey[] {
+  return listStoredTurnKeysOfType(db, args.keys, "turn/completed");
 }
 
 export function hasStoredTurnStarted(
@@ -2814,6 +2871,13 @@ export function listTimelineInterruptionRows(
     .orderBy(events.sequence).all();
 }
 
+const TIMELINE_ORDERING_CONTEXT_EVENT_TYPES = [
+  "client/turn/requested",
+  "turn/input/accepted",
+  "turn/started",
+  "turn/completed",
+] as const satisfies readonly ThreadEventType[];
+
 export function listTimelineOrderingContext(
   db: DbConnection,
   args: { threadId: string; sequenceStart: number; maxSeq: number },
@@ -2828,8 +2892,56 @@ export function listTimelineOrderingContext(
     initiator: sql<string | null>`json_extract(${events.data}, '$.initiator')`,
   }).from(sql`${events} INDEXED BY events_thread_type_sequence_idx`).where(and(
     eq(events.threadId, args.threadId), gte(events.sequence, args.sequenceStart), lte(events.sequence, args.maxSeq),
-    inArray(events.type, ["client/turn/requested", "turn/input/accepted", "turn/started", "turn/completed"]),
+    inArray(events.type, [...TIMELINE_ORDERING_CONTEXT_EVENT_TYPES]),
   )).orderBy(events.sequence).all();
+}
+
+export function hasTimelineGroupingContextRowsInRange(
+  db: DbConnection,
+  args: { afterSequence: number; threadId: string; throughSequence: number },
+): boolean {
+  const row = db
+    .select({ sequence: sql<number>`${events.sequence}` })
+    .from(sql`${events} INDEXED BY events_thread_sequence_idx`)
+    .where(
+      and(
+        eq(events.threadId, args.threadId),
+        gt(events.sequence, args.afterSequence),
+        lte(events.sequence, args.throughSequence),
+        or(
+          inArray(events.type, [...TIMELINE_ORDERING_CONTEXT_EVENT_TYPES]),
+          isNotNull(events.parentToolCallId),
+        ),
+      ),
+    )
+    .limit(1)
+    .get();
+  return row !== undefined;
+}
+
+export function listStoredEventRowsInSequenceRange(
+  db: DbConnection,
+  args: {
+    afterSequence: number;
+    limit: number;
+    maxInlineOutputChars: InlineOutputCharLimit;
+    threadId: string;
+    throughSequence: number;
+  },
+): StoredEventRow[] {
+  return db
+    .select(storedEventRowSqlFields(args.maxInlineOutputChars))
+    .from(sql`${events} INDEXED BY events_thread_sequence_idx`)
+    .where(
+      and(
+        eq(events.threadId, args.threadId),
+        gt(events.sequence, args.afterSequence),
+        lte(events.sequence, args.throughSequence),
+      ),
+    )
+    .orderBy(events.sequence)
+    .limit(args.limit)
+    .all();
 }
 
 export function getFirstParentedTimelineBoundarySequence(
@@ -2845,7 +2957,7 @@ export function getFirstParentedTimelineBoundarySequence(
         AND parent_tool_call_id IS NULL
         AND sequence >= ${args.sequenceStart} AND sequence <= ${args.maxSeq}
         AND EXISTS (
-          SELECT 1 FROM events AS root_start
+          SELECT 1 FROM events AS root_start INDEXED BY events_thread_turn_type_item_sequence_idx
           WHERE root_start.thread_id = events.thread_id
             AND root_start.turn_id = events.turn_id
             AND root_start.type = 'turn/started'
@@ -3460,40 +3572,6 @@ export function getLastStoredTurnRequestEvent(
   );
 }
 
-export function listCompletedTurnsByThreadIds(
-  db: DbQueryConnection,
-  threadIds: readonly string[],
-): CompletedStoredTurnRow[] {
-  if (threadIds.length === 0) {
-    return [];
-  }
-
-  return db
-    .select({
-      threadId: events.threadId,
-      turnId: events.turnId,
-    })
-    .from(events)
-    .where(
-      and(
-        inArray(events.threadId, [...threadIds]),
-        eq(events.type, "turn/completed"),
-        isNotNull(events.turnId),
-      ),
-    )
-    .all()
-    .flatMap((row) =>
-      row.turnId === null
-        ? []
-        : [
-            {
-              threadId: row.threadId,
-              turnId: row.turnId,
-            },
-          ],
-    );
-}
-
 export function pruneThreadEventsBeforeSequence(
   db: DbConnection,
   args: PruneThreadEventsBeforeSequenceArgs,
@@ -3513,6 +3591,9 @@ export function pruneThreadEventsBeforeSequence(
     )
     .run();
 
+  if (result.changes > 0) {
+    bumpThreadEventRewriteGeneration(args.threadId);
+  }
   return result.changes;
 }
 
@@ -3565,6 +3646,9 @@ function pruneLatestRowsForContextWindowUsageBeforeSequence(
           )`,
   );
 
+  if (result.changes > 0) {
+    bumpThreadEventRewriteGeneration(args.threadId);
+  }
   return result.changes;
 }
 
@@ -3670,6 +3754,9 @@ export function pruneResolvedItemDeltas(
         )`,
   );
 
+  if (result.changes > 0) {
+    bumpThreadEventRewriteGeneration(args.threadId);
+  }
   return result.changes;
 }
 
@@ -3820,5 +3907,8 @@ export function pruneBackgroundTaskProgressEvents(
           )`,
   );
 
+  if (result.changes > 0) {
+    bumpThreadEventRewriteGeneration(args.threadId);
+  }
   return result.changes;
 }
