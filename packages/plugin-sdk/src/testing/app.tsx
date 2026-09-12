@@ -18,6 +18,7 @@ import {
   type BranchesState,
   type ComposerCustomization,
   type ComposerView,
+  type ExperimentalComposerSubmitOptions,
   type ExperimentalAppOverlayRegistration,
   type PluginAppDefinition,
   type PluginAppSetup,
@@ -175,7 +176,7 @@ export interface ComposerLog {
    * has no submit pipeline of its own, so it records the options and clears the
    * draft — enough to assert what a picker scheduled and that it tidied up.
    */
-  submits: Array<{ sendAt: number }>;
+  submits: ExperimentalComposerSubmitOptions[];
 }
 
 interface TestComposerStore {
@@ -1646,17 +1647,20 @@ export function renderSlot<
       focus() {
         composerLog.focusCount += 1;
       },
-      async experimental_submit({ sendAt }) {
+      async experimental_submit(options) {
         if (!composerOwnership.active) {
           throw new Error("This composer is no longer active.");
         }
         if (composerText.trim() === "") {
-          throw new Error("Type a message before scheduling it.");
+          throw new Error("Type a message before queuing it.");
         }
-        if (!Number.isFinite(sendAt) || sendAt <= Date.now()) {
+        if (
+          options.experimental_manualQueue !== true &&
+          (!Number.isFinite(options.sendAt) || options.sendAt <= Date.now())
+        ) {
           throw new Error("Pick a time in the future.");
         }
-        composerLog.submits.push({ sendAt });
+        composerLog.submits.push(options);
         commitComposerText("");
       },
     },

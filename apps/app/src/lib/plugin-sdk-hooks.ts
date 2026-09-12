@@ -828,10 +828,13 @@ export function useComposer(): PluginComposerApi {
       if (hostSubmit === undefined) {
         throw new Error("This composer cannot schedule a submission.");
       }
-      if (!Number.isFinite(options.sendAt) || options.sendAt <= Date.now()) {
+      if (
+        options.experimental_manualQueue !== true &&
+        (!Number.isFinite(options.sendAt) || options.sendAt <= Date.now())
+      ) {
         throw new Error("Pick a time in the future.");
       }
-      await hostSubmit({ sendAt: options.sendAt });
+      await hostSubmit(options);
     },
     [hostSubmit, scopeOwnership],
   );

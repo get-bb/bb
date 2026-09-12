@@ -249,27 +249,17 @@ export function PromptBoxActionsMenu({
           );
         })}
         {pluginItems.length > 0 ? <DropdownMenuSeparator /> : null}
-        {pluginItems.map((contribution, index) => {
-          const contributingPluginCount = new Set(
-            pluginItems.map((candidate) => candidate.pluginId),
-          ).size;
-          const previous = pluginItems[index - 1];
-          const startsPluginGroup =
-            contributingPluginCount >= 2 &&
-            previous?.pluginId !== contribution.pluginId;
-          return (
-            <PluginComposerPlusMenuEntry
-              key={contribution.key}
-              contribution={contribution}
-              showPluginLabel={startsPluginGroup}
-              onSelected={(selection) => {
-                selectedItemRef.current = true;
-                pluginSelectionRef.current = selection;
-                queueMicrotask(() => restorePluginComposerFocus(selection));
-              }}
-            />
-          );
-        })}
+        {pluginItems.map((contribution) => (
+          <PluginComposerPlusMenuEntry
+            key={contribution.key}
+            contribution={contribution}
+            onSelected={(selection) => {
+              selectedItemRef.current = true;
+              pluginSelectionRef.current = selection;
+              queueMicrotask(() => restorePluginComposerFocus(selection));
+            }}
+          />
+        ))}
       </DropdownMenuContent>
     </DropdownMenu>
   );

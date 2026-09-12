@@ -47,6 +47,7 @@ import {
  */
 export const queuedMessageWaitingOnKindValues = [
   "time",
+  "manual",
   "thread-busy",
   "turn-starting",
   "provisioning",
@@ -80,6 +81,7 @@ export const queuedMessageWaitReasonSchema = z
 
 export const queuedMessageWaitingOnSchema = z.discriminatedUnion("kind", [
   z.object({ kind: z.literal("time") }),
+  z.object({ kind: z.literal("manual") }),
   z.object({ kind: z.literal("thread-busy") }),
   z.object({ kind: z.literal("turn-starting") }),
   z.object({ kind: z.literal("provisioning") }),

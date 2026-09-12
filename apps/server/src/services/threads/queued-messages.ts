@@ -754,6 +754,8 @@ function describeCoreWait(waitingOn: QueuedMessageWaitingOn | null): string {
     case "thread-busy":
     case undefined:
       return "the thread is already running a turn";
+    case "manual":
+      return "it is saved as a draft";
   }
 }
 

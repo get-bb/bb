@@ -68,6 +68,7 @@ interface ThreadSpawnCommandOptions {
   sourceSeqEnd?: string;
   visibility?: string;
   sendAt?: string;
+  draft?: boolean;
 }
 
 export function looksLikePath(value: string): boolean {
@@ -385,6 +386,10 @@ export function registerSpawnCommand(
       "JSON value for an --environment-provider that declares inputs (`bb environment providers --json` shows the schema)",
     )
     .option("--send-at <when>", SEND_AT_HELP)
+    .option(
+      "--draft",
+      "Save the first message as a manual draft; only Send now dispatches it",
+    )
     .option("--origin-kind <kind>", "Thread origin: fork")
     .option("--source-thread <id>", "Source thread for a fork")
     .option(
@@ -539,6 +544,9 @@ export function registerSpawnCommand(
         }
         const sendAt =
           opts.sendAt === undefined ? undefined : parseSendAt(opts.sendAt);
+        if (opts.draft && sendAt !== undefined) {
+          throw new Error("--draft and --send-at cannot be used together.");
+        }
         const providerId = opts.provider?.trim();
 
         let thread: Thread;
@@ -568,6 +576,7 @@ export function registerSpawnCommand(
             ...(opts.sourceThread ? { sourceThreadId: opts.sourceThread } : {}),
             ...(sourceSeqEnd !== undefined ? { sourceSeqEnd } : {}),
             ...(sendAt !== undefined ? { sendAt } : {}),
+            ...(opts.draft ? { manualQueue: true } : {}),
           });
         } catch (err: unknown) {
           throw prependErrorContext("Failed to create thread", err);
@@ -578,6 +587,11 @@ export function registerSpawnCommand(
         if (sendAt !== undefined) {
           console.log(
             `First message scheduled for ${new Date(sendAt).toLocaleString()}; the thread stays pending until then.`,
+          );
+        }
+        if (opts.draft) {
+          console.log(
+            "First message saved as a draft; use Send now to start it.",
           );
         }
         // A hidden child reports to its parent too, so the promise follows the

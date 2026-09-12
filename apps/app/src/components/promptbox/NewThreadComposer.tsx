@@ -51,6 +51,7 @@ import { withAppPromptActions } from "@/components/promptbox/PromptBoxActionsMen
 import { buildProviderPromptActionProps } from "@bb/client-core";
 import type { PromptMentionLinkResolver } from "@/components/promptbox/editor/prompt-mention-link";
 import { type PluginComposerHost } from "@/components/plugin/plugin-composer-host";
+import type { ExperimentalComposerSubmitOptions } from "@get-bb/plugin-sdk";
 import { newThreadEnvironmentArgsToSeed } from "@/components/plugin/new-thread-environment-seed";
 import { PluginSlotMount } from "@/components/plugin/PluginSlotMount";
 import { usePluginSlots } from "@/lib/plugin-slots";
@@ -191,6 +192,7 @@ export function resolveSubmittedExecutionSources(
 
 export interface NewThreadComposerSubmission extends NewThreadRequest {
   sendAt?: number;
+  manualQueue?: true;
 }
 
 export interface NewThreadComposerProps {
@@ -444,8 +446,7 @@ export function NewThreadComposer({
 
   const hostsQuery = useHosts();
   const availableHosts = useMemo(
-    () =>
-      selectHosts(hostsQuery.data, "persistent"),
+    () => selectHosts(hostsQuery.data, "persistent"),
     [hostsQuery.data],
   );
   const systemConfigQuery = useSystemConfig();
@@ -1271,10 +1272,11 @@ export function NewThreadComposer({
     [currentDraft],
   );
   const submitScheduledRef = useRef<
-    (options: { sendAt: number }) => Promise<void>
+    (options: ExperimentalComposerSubmitOptions) => Promise<void>
   >(async () => {});
   const submitScheduledThroughRef = useCallback(
-    (options: { sendAt: number }) => submitScheduledRef.current(options),
+    (options: ExperimentalComposerSubmitOptions) =>
+      submitScheduledRef.current(options),
     [],
   );
   const pluginComposerHost = useMemo<PluginComposerHost>(
@@ -1347,7 +1349,10 @@ export function NewThreadComposer({
     submissionEnvironmentUnavailable: submissionEnvironment === null,
   });
   const submitDraft = useCallback(
-    async (blockedReason: string | null, sendAt: number | null) => {
+    async (
+      blockedReason: string | null,
+      submitOptions: ExperimentalComposerSubmitOptions | null,
+    ) => {
       const submittedDraft = promptDraft.getCurrent();
       const input = promptDraftToInput(submittedDraft);
       if (
@@ -1385,7 +1390,9 @@ export function NewThreadComposer({
         ),
         environment: submissionEnvironment,
         input,
-        ...(sendAt === null ? {} : { sendAt }),
+        ...(submitOptions?.experimental_manualQueue === true
+          ? { manualQueue: true }
+          : (submitOptions ?? {})),
       };
       isSubmittingRef.current = true;
       setIsSubmitting(true);
@@ -1433,8 +1440,8 @@ export function NewThreadComposer({
     [submitDraft],
   );
   useEffect(() => {
-    submitScheduledRef.current = async ({ sendAt }) => {
-      await submitDraft(null, sendAt);
+    submitScheduledRef.current = async (submitOptions) => {
+      await submitDraft(null, submitOptions);
     };
   }, [submitDraft]);
 

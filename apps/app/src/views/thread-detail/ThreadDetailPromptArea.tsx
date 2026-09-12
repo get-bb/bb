@@ -33,6 +33,7 @@ import type {
   ThreadTimelineResponse,
   TimelineWorkflowWorkRow,
 } from "@bb/server-contract";
+import type { ExperimentalComposerSubmitOptions } from "@get-bb/plugin-sdk";
 import type { ChildThreadPendingAttention } from "@/hooks/queries/child-thread-pending-interactions";
 import { ThreadPendingInteractionBanner } from "@/components/thread/pending-interactions/ThreadPendingInteractionBanner";
 import {
@@ -743,10 +744,11 @@ export function ThreadDetailPromptArea({
     ? "Stopping thread..."
     : getCompactFollowUpPromptPlaceholder(runtimeDisplayStatus);
   const submitScheduledRef = useRef<
-    (options: { sendAt: number }) => Promise<void>
+    (options: ExperimentalComposerSubmitOptions) => Promise<void>
   >(async () => {});
   const submitScheduledThroughRef = useCallback(
-    (options: { sendAt: number }) => submitScheduledRef.current(options),
+    (options: ExperimentalComposerSubmitOptions) =>
+      submitScheduledRef.current(options),
     [],
   );
   const normalPluginComposerHost = useMemo<PluginComposerHost>(
@@ -857,7 +859,7 @@ export function ThreadDetailPromptArea({
     runtimeDisplayStatus,
   ]);
   const submitScheduled = useCallback(
-    async ({ sendAt }: { sendAt: number }) => {
+    async (submitOptions: ExperimentalComposerSubmitOptions) => {
       if (isDefaultExecutionOptionsLoading) {
         throw new Error("This thread's model options are still loading.");
       }
@@ -874,7 +876,12 @@ export function ThreadDetailPromptArea({
         promptDraft.clearIfCurrentMatches(submittedDraft);
       setBottomAttachmentError(null);
       try {
-        await sendMessage.mutateAsync({ ...request, sendAt });
+        await sendMessage.mutateAsync({
+          ...request,
+          ...(submitOptions.experimental_manualQueue === true
+            ? { manualQueue: true }
+            : submitOptions),
+        });
       } catch (scheduleError) {
         if (clearedSubmittedDraft) {
           promptDraft.restoreIfEmpty(submittedDraft);

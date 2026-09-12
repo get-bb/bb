@@ -381,13 +381,13 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
           "Supply each row's icon, label, and disabled state; bb renders the row itself",
           "Run a callback when someone picks the row",
           "Read and rewrite the draft prompt from that callback",
-          "Send the draft at a time the person picks, through the prompt box's own send — so a scheduled message keeps its attachments, its @-mentions, and on the new-thread screen the agent and environment chosen on screen",
+          "Queue the draft for a chosen time or save it until the person sends it manually, through the prompt box's own send — preserving attachments, @-mentions, and on the new-thread screen the agent and environment chosen on screen",
         ],
         apiSymbols: [
           "ComposerPlusMenuItem",
           "ExperimentalComposerSubmitOptions",
         ],
-        firstParty: ["Send later"],
+        firstParty: ["Drafts", "Send later"],
       },
       {
         id: "provider-picker",

@@ -538,7 +538,7 @@ export function RootComposeView() {
         isForkDraft: forkSeed !== null,
         navigateToThreadAfterCreate,
       });
-      const { sendAt, ...requestFields } = request;
+      const { sendAt, manualQueue, ...requestFields } = request;
       const createRequest =
         forkSeed === null
           ? {
@@ -560,7 +560,13 @@ export function RootComposeView() {
             });
       if (createRequest === null) return;
       const thread = await createThread.mutateAsync(
-        sendAt === undefined ? createRequest : { ...createRequest, sendAt },
+        sendAt === undefined && manualQueue === undefined
+          ? createRequest
+          : {
+              ...createRequest,
+              ...(sendAt === undefined ? {} : { sendAt }),
+              ...(manualQueue === undefined ? {} : { manualQueue }),
+            },
       );
       setLastCreatedThreadId(thread.id);
       setForkSeed(null);

@@ -1972,13 +1972,9 @@ export interface PluginComposerApi {
  * user already has, and handing plugins an unconditional "send this draft"
  * button is a much larger surface than scheduling needs.
  */
-export interface ExperimentalComposerSubmitOptions {
-  /**
-   * Epoch ms the submission should dispatch at. Must be in the future; the
-   * host does not second-guess how far ahead it is.
-   */
-  sendAt: number;
-}
+export type ExperimentalComposerSubmitOptions =
+  | { sendAt: number; experimental_manualQueue?: never }
+  | { experimental_manualQueue: true; sendAt?: never };
 
 // ---------------------------------------------------------------------------
 // ThreadChat — the host-owned chat component.
@@ -2225,6 +2221,7 @@ export interface NewThreadRequest {
    * created `pending` and its first message is queued as a row until then.
    */
   sendAt?: number;
+  experimental_manualQueue?: boolean;
 }
 
 /**

@@ -122,8 +122,16 @@ export const createThreadRequestSchema = z
      * created and creation runs exactly as it did before the queue existed.
      */
     sendAt: z.number().int().nonnegative().optional(),
+    manualQueue: z.literal(true).optional(),
   })
   .superRefine((value, ctx) => {
+    if (value.sendAt !== undefined && value.manualQueue === true) {
+      ctx.addIssue({
+        code: "custom",
+        message: "sendAt and manualQueue cannot both be set",
+        path: ["manualQueue"],
+      });
+    }
     if (value.origin === "plugin" && value.originPluginId === undefined) {
       ctx.addIssue({
         code: "custom",
@@ -191,7 +199,7 @@ export const forkThreadRequestSchema = z
   });
 export type ForkThreadRequest = z.infer<typeof forkThreadRequestSchema>;
 
-const sendMessageRequestBaseSchema = z.object({
+const sendMessageRequestFieldsSchema = z.object({
   input: z.array(promptInputSchema).min(1),
   model: z.string().optional(),
   serviceTier: serviceTierSchema.optional(),
@@ -206,9 +214,16 @@ const sendMessageRequestBaseSchema = z.object({
    * sweep re-attempts it then. Absent ⇒ attempt the dispatch now.
    */
   sendAt: z.number().int().nonnegative().optional(),
+  manualQueue: z.literal(true).optional(),
 });
 
-export const sendMessageRequestSchema = sendMessageRequestBaseSchema;
+export const sendMessageRequestSchema = sendMessageRequestFieldsSchema.refine(
+  (value) => !(value.sendAt !== undefined && value.manualQueue === true),
+  {
+    message: "sendAt and manualQueue cannot both be set",
+    path: ["manualQueue"],
+  },
+);
 export type SendMessageRequest = z.infer<typeof sendMessageRequestSchema>;
 
 /**
@@ -240,8 +255,8 @@ export type SendMessageResponse = z.infer<typeof sendMessageResponseSchema>;
 
 // `sendAt` is deliberately dropped: an edit rewrites a message that has
 // already been dispatched, so there is nothing left to schedule.
-export const editMessageRequestSchema = sendMessageRequestBaseSchema
-  .omit({ mode: true, sendAt: true })
+export const editMessageRequestSchema = sendMessageRequestFieldsSchema
+  .omit({ mode: true, sendAt: true, manualQueue: true })
   .extend({
     operationId: z.string().min(1),
     expectedRequestSequence: z.number().int().nonnegative().optional(),

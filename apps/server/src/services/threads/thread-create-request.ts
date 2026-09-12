@@ -21,6 +21,7 @@ export interface ThreadCreateServiceRequestInput {
    * waiting on the clock.
    */
   sendAt?: CreateThreadRequest["sendAt"];
+  manualQueue?: CreateThreadRequest["manualQueue"];
   input: PromptInput[];
   sectionId?: CreateThreadRequest["sectionId"];
   model?: CreateThreadRequest["model"];

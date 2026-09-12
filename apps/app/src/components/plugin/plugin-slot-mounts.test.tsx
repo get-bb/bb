@@ -1280,10 +1280,15 @@ describe("useComposer", () => {
     });
     expect(submit).toHaveBeenCalledWith({ sendAt });
 
+    await act(async () => {
+      await captured!.experimental_submit({ experimental_manualQueue: true });
+    });
+    expect(submit).toHaveBeenLastCalledWith({ experimental_manualQueue: true });
+
     await expect(
       captured!.experimental_submit({ sendAt: Date.now() - 1 }),
     ).rejects.toThrow(/future/);
-    expect(submit).toHaveBeenCalledTimes(1);
+    expect(submit).toHaveBeenCalledTimes(2);
 
     view.unmount();
     render(
@@ -1294,7 +1299,7 @@ describe("useComposer", () => {
     await expect(captured!.experimental_submit({ sendAt })).rejects.toThrow(
       /cannot schedule/,
     );
-    expect(submit).toHaveBeenCalledTimes(1);
+    expect(submit).toHaveBeenCalledTimes(2);
   });
 });
 

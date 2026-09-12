@@ -4,6 +4,7 @@ import {
   getEnvironment,
   getProjectSourceByHost,
   getThread,
+  setThreadExecutionOverride,
 } from "@bb/db";
 import type {
   ProjectExecutionDefaults,
@@ -340,6 +341,7 @@ async function createPendingThreadAndAttemptFirstDispatch(
   args: CreateProvisioningThreadArgs & {
     environmentIntent: ThreadProvisionEnvironmentIntent;
     sendAt: number | undefined;
+    manualQueue: boolean | undefined;
   },
 ) {
   const environment =
@@ -382,6 +384,13 @@ async function createPendingThreadAndAttemptFirstDispatch(
       args.request,
       executionPlanArgs,
     );
+    if (args.sendAt !== undefined || args.manualQueue === true) {
+      setThreadExecutionOverride(deps.db, {
+        threadId: thread.id,
+        modelOverride: execution.model,
+        reasoningLevelOverride: execution.reasoningLevel,
+      });
+    }
 
     const startContext: PendingThreadStartContext = {
       environmentIntent: args.environmentIntent,
@@ -410,6 +419,7 @@ async function createPendingThreadAndAttemptFirstDispatch(
           ? { executionInputSources: args.request.executionInputSources }
           : {}),
         ...(args.sendAt !== undefined ? { sendAt: args.sendAt } : {}),
+        ...(args.manualQueue === true ? { manualQueue: true } : {}),
       },
       source: { kind: "inline" },
       queuePayload: { kind: "inline" },
@@ -710,6 +720,7 @@ export async function createThreadFromRequest(
   const thread = await createPendingThreadAndAttemptFirstDispatch(deps, {
     ...createArgs,
     sendAt: request.sendAt,
+    manualQueue: request.manualQueue,
   });
   deps.telemetry.capture({
     name: "thread_created",
