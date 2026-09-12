@@ -19,6 +19,7 @@
     "@bb/core-ui": "workspace:*",
     "@bb/desktop-contract": "workspace:*",
     "@bb/domain": "workspace:*",
+    "@bb/fuzzy-match": "workspace:*",
     "@bb/server-contract": "workspace:*",
     "@bb/thread-view": "workspace:*",
     "zod": "^4.3.6"

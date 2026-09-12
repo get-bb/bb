@@ -1538,6 +1538,9 @@ importers:
       '@bb/domain':
         specifier: workspace:*
         version: link:../domain
+      '@bb/fuzzy-match':
+        specifier: workspace:*
+        version: link:../fuzzy-match
       '@bb/server-contract':
         specifier: workspace:*
         version: link:../server-contract
