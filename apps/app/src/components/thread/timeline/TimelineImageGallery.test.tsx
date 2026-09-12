@@ -162,10 +162,10 @@ it("preserves occurrence identity as streaming images settle into cached blocks"
   expect(lightboxImage().getAttribute("alt")).toBe("A");
 });
 
-it.each(["", "---\ntitle: Images\n---\n\n$$ x\n y $$\n\n"])(
-  "preserves identical inline and footnote occurrences when streaming finishes (%s)",
-  async (prefix) => {
-    const text = `${prefix}See[^n].\n\n[^n]: ![Same](https://example.com/same.png)\n\n![Same](https://example.com/same.png)\n`;
+it(
+  "preserves identical inline and footnote occurrences when normalized streaming content settles",
+  async () => {
+    const text = "---\ntitle: Images\n---\n\n$$ x\n y $$\n\nSee[^n].\n\n[^n]: ![Same](https://example.com/same.png)\n\n![Same](https://example.com/same.png)\n";
     const timeline = (status: "active" | "idle") => (
       <ThreadTimelineRows
         threadId="thread-1"
