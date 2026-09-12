@@ -124,7 +124,7 @@ const MODEL_SEARCH_MIN_OPTIONS = 5;
 const MODEL_PICKER_MENU_WIDTH_CLASS_NAME = "w-max min-w-64 max-w-80";
 
 const HANDOFF_DRAWER_TOP_CLASS_NAME =
-  "[&>[data-persistent-drawer-handle]]:w-full [&>[data-persistent-drawer-handle]]:rounded-t-xl [&>[data-persistent-drawer-handle]]:bg-state-active";
+  "[&>[data-persistent-drawer-handle]]:w-full [&>[data-persistent-drawer-handle]]:rounded-t-xl [&>[data-persistent-drawer-handle]]:bg-background";
 
 function splitModelLabelTag(label: string): ModelLabelParts {
   const match = label.match(/^(.*\S)\s*\(([^()]+)\)$/u);
@@ -592,19 +592,9 @@ export function ModelReasoningPicker({
           ),
     [handoff, providerOptions],
   );
-  const handleProviderSelect = useCallback(
-    (providerId: string) => {
-      onSelectedProviderChange?.(providerId);
-      const nextPreviewProviderId =
-        open && providerId !== selectedProviderId ? providerId : null;
-      setPreviewProviderId(nextPreviewProviderId);
-      setSearchQuery("");
-      setActiveIndex(-1);
-    },
-    [onSelectedProviderChange, open, selectedProviderId],
-  );
   const handleHandoffProviderSelect = useCallback(
     (providerId: string) => {
+      setHandoffMode(true);
       setPreviewProviderId(
         providerId === selectedProviderId ? null : providerId,
       );
@@ -616,9 +606,33 @@ export function ModelReasoningPicker({
     },
     [selectedProviderId],
   );
+  const handleProviderSelect = useCallback(
+    (providerId: string) => {
+      if (
+        open &&
+        handoff !== undefined &&
+        providerId !== handoff.sourceProviderId
+      ) {
+        handleHandoffProviderSelect(providerId);
+        return;
+      }
+      onSelectedProviderChange?.(providerId);
+      const nextPreviewProviderId =
+        open && providerId !== selectedProviderId ? providerId : null;
+      setPreviewProviderId(nextPreviewProviderId);
+      setSearchQuery("");
+      setActiveIndex(-1);
+    },
+    [
+      handoff,
+      handleHandoffProviderSelect,
+      onSelectedProviderChange,
+      open,
+      selectedProviderId,
+    ],
+  );
   const startHandoffMode = useCallback(() => {
     const firstProvider = handoffProviderOptions[0];
-    setHandoffMode(true);
     handleHandoffProviderSelect(firstProvider?.value ?? selectedProviderId);
   }, [handleHandoffProviderSelect, handoffProviderOptions, selectedProviderId]);
   const exitHandoffMode = useCallback(() => {
@@ -1297,8 +1311,14 @@ export function ModelReasoningPicker({
 }
 
 function HandoffModeHeader({ onBack }: { onBack: () => void }) {
+  const isCompactViewport = useIsCompactViewport();
   return (
-    <div className="flex shrink-0 items-center gap-1 bg-state-active px-2 pb-1 pt-1.5">
+    <div
+      className={cn(
+        "flex shrink-0 items-center gap-1 px-2 pb-1 pt-1.5",
+        isCompactViewport ? "bg-background" : "bg-surface-recessed",
+      )}
+    >
       <button
         type="button"
         aria-label="Back to model picker"

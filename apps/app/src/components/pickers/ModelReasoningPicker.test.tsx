@@ -670,7 +670,7 @@ describe("ModelReasoningPicker", () => {
     expect(onModelChange).toHaveBeenCalledWith("claude-opus-4-7");
   });
 
-  it("switches the picker into handoff mode without leaving the thread", async () => {
+  it("opens the same handoff flow from provider tabs and the footer", async () => {
     const onSelect = vi.fn();
     const { onSelectedProviderChange, onModelChange, onReasoningChange } =
       renderPicker({ handoff: { sourceProviderId: "codex", onSelect } });
@@ -679,9 +679,7 @@ describe("ModelReasoningPicker", () => {
     });
 
     fireEvent.click(trigger);
-    fireEvent.click(
-      screen.getByRole("button", { name: "Handoff to new thread" }),
-    );
+    fireEvent.click(screen.getByTitle("Claude Code"));
 
     expect(
       screen.getByRole("button", { name: "Back to model picker" }),
