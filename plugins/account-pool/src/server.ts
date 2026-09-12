@@ -185,20 +185,17 @@ export function createAccountPoolPlugin(
             serverPath: "/api/v1/plugins/account-pool/http",
           },
           reason: "Routed through the Account Pooler hub",
-          secret: false,
         },
         {
           name: "ANTHROPIC_AUTH_TOKEN",
           value: token,
           reason: "Account Pooler hub token for this machine",
-          secret: true,
         },
         {
           name: "ENABLE_TOOL_SEARCH",
           value: "true",
           reason:
             "Claude Code turns tool search off behind a custom base URL; the hub forwards tool_reference blocks",
-          secret: false,
         },
       ];
     });
@@ -228,13 +225,11 @@ export function createAccountPoolPlugin(
             serverPath: "/api/v1/plugins/account-pool/http/v1",
           },
           reason: "Routed through the Account Pooler hub",
-          secret: false,
         },
         {
           name: "CODEX_POOL_AUTH_TOKEN",
           value: token,
           reason: "Account Pooler hub token for this machine",
-          secret: true,
         },
       ];
     });
@@ -292,6 +287,7 @@ export function createAccountPoolPlugin(
       "/v1/responses",
       "/v1/images/generations",
       "/v1/images/edits",
+      "/v1/alpha/search",
     ]) {
       bb.http.route(
         "POST",

@@ -39,6 +39,7 @@ import {
 import { PullRequestStatusPill } from "@/components/pull-request/PullRequestStatusPill";
 import { AnimatedBody } from "@/components/promptbox/banner/AnimatedBody";
 import {
+  BannerActionSlot,
   PROMPT_BANNER_ACTION_FILL_CLASS,
   PROMPT_BANNER_ACTION_SEGMENT_CLASS,
   PromptBannerActionButton,
@@ -358,24 +359,6 @@ function ChildThreadsBody({
         </li>
       ))}
     </ul>
-  );
-}
-
-function BannerActionSlot({
-  children,
-  hideInCompact = false,
-}: {
-  children: ReactNode;
-  hideInCompact?: boolean;
-}) {
-  return (
-    <div
-      className="ml-auto flex shrink-0 items-center gap-1.5 pr-2 text-xs text-muted-foreground"
-      data-promptbox-hide-compact={hideInCompact ? "" : undefined}
-      data-promptbox-hide-tiny=""
-    >
-      {children}
-    </div>
   );
 }
 

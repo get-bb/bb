@@ -261,11 +261,15 @@ interface SeededLargeValueBackfillValues {
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
-const migrationJournal = JSON.parse(
-  readFileSync(resolve(__dirname, "../drizzle/meta/_journal.json"), "utf-8"),
-) as { entries: { tag: string; when: number }[] };
 const latestMigrationWhen = Math.max(
-  ...migrationJournal.entries.map((entry) => entry.when),
+  ...(
+    JSON.parse(
+      readFileSync(
+        resolve(__dirname, "../drizzle/meta/_journal.json"),
+        "utf-8",
+      ),
+    ) as { entries: { when: number }[] }
+  ).entries.map((entry) => entry.when),
 );
 
 function restoreWideExperimentsTable(db: DbConnection): void {
@@ -309,7 +313,6 @@ function dropThreadConversationOutlinesTable(db: DbConnection): void {
 }
 
 function dropRewindAddedTables(db: DbConnection): void {
-  db.$client.prepare("DROP TABLE IF EXISTS thread_plugin_metadata").run();
   rewindEnvironmentRowFactsMigration(db);
   rewindEnvironmentProvidersMigration(db);
   dropThreadConversationOutlinesTable(db);
@@ -406,6 +409,8 @@ const branchLocalThreadSearchRowidFtsMigrationWhen = 1781403656071;
 const rowidThreadSearchMigrationHash =
   "025358fe89253aec7f5bd970dc3eb88d0e834f0d58fb9d75329a5d39899340f4";
 const legacyExperimentsMigrationWhen = 1781299832942;
+const environmentProvisioningMigrationWhen = 1789075667774;
+const machineProvidersMigrationWhen = 1789081162875;
 const eventLargeValuesMigrationWhen = 1781403656069;
 const eventLargeValuesRestoreMigrationWhen = 1781557200000;
 const cleanupModeDropMigrationWhen = 1781557300000;
@@ -420,7 +425,6 @@ const pendingInteractionsMigrationWhen = 1783626227375;
 const permissionModesMigrationWhen = 1784311522462;
 const branchLocalThreadTabsMigrationWhen = 1783633750817;
 const eventParentToolCallMigrationWhen = 1787181956957;
-const environmentProvisioningMigrationWhen = 1789075667774;
 const eventParentToolCallPreJsonValidMigrationHash =
   "79d39e7b68d1db8ba02614fe4cc227cc0c154d77c7183f2e37ed2d8475412993";
 const eventLargeValuesPreOptimizationHash =
@@ -526,6 +530,12 @@ const eventLargeValuesMigrationPath = resolve(
   "..",
   "drizzle",
   "0031_mysterious_zaran.sql",
+);
+const machineProvidersMigrationPath = resolve(
+  __dirname,
+  "..",
+  "drizzle",
+  "0117_machine_providers.sql",
 );
 function closeConnection(db: DbConnection): void {
   db.$client.close();
@@ -829,11 +839,79 @@ function rewindEnvironmentRowFactsMigration(db: DbConnection): void {
   }
 }
 
-function rewindEnvironmentProvidersMigration(db: DbConnection): void {
-  rewindEnvironmentProvisioningMigration(db);
+function rewindMachineProvidersMigration(db: DbConnection): void {
+  db.$client.exec("DROP TABLE IF EXISTS thread_plugin_metadata");
   db.$client.exec("DROP TABLE IF EXISTS environment_hook_operations");
+  if (
+    db.$client
+      .prepare<[], TableInfoRow>("PRAGMA table_info(project_sources)")
+      .all()
+      .some((column) => column.name === "owns_path")
+  ) {
+    db.$client.exec("ALTER TABLE project_sources DROP COLUMN owns_path");
+  }
+  db.$client.exec("DROP INDEX IF EXISTS hosts_live_launch_key_idx");
+  for (const column of [
+    "machine_provider_id",
+    "launch_key",
+    "machine_inputs",
+    "machine_attempt",
+    "pending_log",
+    "machine_operation_id",
+    "server_access_provider_id",
+    "server_access_grant_id",
+    "resource",
+    "phase",
+    "suspended_at",
+    "status_message",
+    "suspend_retry_at",
+    "idle_since",
+    "remove_retry_at",
+    "teardown_attempt",
+    "teardown_status",
+  ]) {
+    const columns = db.$client
+      .prepare<[], TableInfoRow>("PRAGMA table_info(hosts)")
+      .all();
+    if (columns.some((entry) => entry.name === column)) {
+      db.$client.exec(`ALTER TABLE hosts DROP COLUMN ${column}`);
+    }
+  }
+  const sessionColumns = db.$client
+    .prepare<[], TableInfoRow>("PRAGMA table_info(host_daemon_sessions)")
+    .all();
+  if (!sessionColumns.some((column) => column.name === "host_type")) {
+    db.$client
+      .prepare(
+        "ALTER TABLE host_daemon_sessions ADD COLUMN host_type text NOT NULL DEFAULT 'persistent'",
+      )
+      .run();
+  }
+  db.$client
+    .prepare<[number]>("DELETE FROM __drizzle_migrations WHERE created_at >= ?")
+    .run(machineProvidersMigrationWhen);
+}
+
+function rewindEnvironmentProvidersMigration(db: DbConnection): void {
+  rewindMachineProvidersMigration(db);
+  rewindEnvironmentProvisioningMigration(db);
+  db.$client.exec("DROP TABLE IF EXISTS machine_workspace_setups");
+  db.$client.exec("DROP TABLE IF EXISTS environment_setup_outcomes");
   db.$client.exec("DROP TABLE IF EXISTS environment_launches");
   db.$client.exec("DROP INDEX IF EXISTS environments_project_host_path_idx");
+  const hostColumns = new Set(
+    db.$client
+      .prepare<[], TableInfoRow>("PRAGMA table_info(hosts)")
+      .all()
+      .map((column) => column.name),
+  );
+  if (!hostColumns.has("type")) {
+    db.$client
+      .prepare(
+        "ALTER TABLE hosts ADD COLUMN type text NOT NULL DEFAULT 'persistent'",
+      )
+      .run();
+  }
   const lifecycleColumns = [
     "environment_provider_plugin_id",
     "canonical_path",
@@ -1619,7 +1697,6 @@ describe("migrate", () => {
       const host = upsertHost(db, noopNotifier, {
         id: "host-retained-output-migration",
         name: "Migration Host",
-        type: "persistent",
       });
       const { project } = createProject(db, noopNotifier, {
         name: "Migration Project",
@@ -1654,9 +1731,10 @@ describe("migrate", () => {
 
       expect(
         db.$client
-          .prepare<[], MigratedEventDataRow>(
-            "SELECT data FROM events WHERE id = 'evt-retained-output-migration'",
-          )
+          .prepare<
+            [],
+            MigratedEventDataRow
+          >("SELECT data FROM events WHERE id = 'evt-retained-output-migration'")
           .get(),
       ).toEqual({ data: eventData });
       expect(
@@ -1681,80 +1759,6 @@ describe("migrate", () => {
         parentColumn: "id",
         parentTable: "events",
       });
-    } finally {
-      closeConnection(db);
-    }
-  });
-
-  it("recreates thread plugin metadata after a populated pre-0117 rewind", () => {
-    const db = createMigratedConnection();
-
-    try {
-      expect(migrationJournal.entries.at(-1)?.tag).toBe(
-        "0117_foamy_puppet_master",
-      );
-      const threadPluginMetadataMigrationWhen = migrationJournal.entries.find(
-        (entry) => entry.tag === "0117_foamy_puppet_master",
-      )?.when;
-      if (threadPluginMetadataMigrationWhen === undefined) {
-        throw new Error("Missing 0117_foamy_puppet_master migration timestamp");
-      }
-      const host = upsertHost(db, noopNotifier, {
-        id: "host-thread-plugin-metadata-rewind",
-        name: "Thread Plugin Metadata Rewind Host",
-        type: "persistent",
-      });
-      const { project } = createProject(db, noopNotifier, {
-        name: "Thread Plugin Metadata Rewind Project",
-        source: {
-          type: "local_path",
-          hostId: host.id,
-          path: "/tmp/thread-plugin-metadata-rewind",
-        },
-      });
-      const thread = createThread(db, noopNotifier, {
-        projectId: project.id,
-        providerId: "codex",
-        title: "rewind-preserved-title",
-      });
-
-      db.$client.prepare("DROP TABLE thread_plugin_metadata").run();
-      db.$client
-        .prepare<DeleteMigrationParameters>(
-          "DELETE FROM __drizzle_migrations WHERE created_at = ?",
-        )
-        .run(threadPluginMetadataMigrationWhen);
-
-      migrate(db);
-
-      expect(
-        db.$client
-          .prepare<[string], { title: string }>(
-            "SELECT title FROM threads WHERE id = ?",
-          )
-          .get(thread.id),
-      ).toEqual({ title: "rewind-preserved-title" });
-      expect(
-        db.$client
-          .prepare<[string], { text: string }>(
-            "SELECT text FROM thread_search_segments WHERE thread_id = ? AND source_kind = 'title'",
-          )
-          .get(thread.id),
-      ).toEqual({ text: "rewind-preserved-title" });
-      expect(
-        db.$client
-          .prepare<[], { count: number }>(
-            "SELECT COUNT(*) AS count FROM thread_plugin_metadata",
-          )
-          .get(),
-      ).toEqual({ count: 0 });
-      expect(
-        db.$client
-          .prepare<[], { pk: number; notnull: number }>(
-            "SELECT pk, \"notnull\" FROM pragma_table_info('thread_plugin_metadata') WHERE name = 'thread_id'",
-          )
-          .get(),
-      ).toEqual({ pk: 1, notnull: 1 });
     } finally {
       closeConnection(db);
     }
@@ -1801,9 +1805,10 @@ describe("migrate", () => {
 
       expect(
         db.$client
-          .prepare<[], { id: string; root: string | null }>(
-            "SELECT id, git_checkout_root AS root FROM plugin_artifacts ORDER BY id",
-          )
+          .prepare<
+            [],
+            { id: string; root: string | null }
+          >("SELECT id, git_checkout_root AS root FROM plugin_artifacts ORDER BY id")
           .all(),
       ).toEqual([
         { id: "collision", root: `/cache/repo/${commit}` },
@@ -1931,14 +1936,18 @@ describe("migrate", () => {
         showDiagnosticEvents: true,
         providerOrder: [],
         defaultProviderId: null,
+        machineServerUrl: null,
+        defaultMachineAccess: null,
+        machineGitCredentialsEnabled: true,
         streamerMode: false,
         managedBranchPrefix: "bb/",
       });
       expect(
         db.$client
-          .prepare<[], { key: string; value: string }>(
-            "SELECT key, value FROM app_settings_values WHERE key LIKE 'codex%' OR key LIKE 'claudeCode%' ORDER BY key",
-          )
+          .prepare<
+            [],
+            { key: string; value: string }
+          >("SELECT key, value FROM app_settings_values WHERE key LIKE 'codex%' OR key LIKE 'claudeCode%' ORDER BY key")
           .all(),
       ).toEqual([
         { key: "claudeCodeMemoryEnabled", value: "true" },
@@ -1952,9 +1961,10 @@ describe("migrate", () => {
       ]);
       expect(
         db.$client
-          .prepare<[], { updatedAt: number }>(
-            "SELECT updated_at AS updatedAt FROM app_settings_values WHERE key = 'showKeyboardHints'",
-          )
+          .prepare<
+            [],
+            { updatedAt: number }
+          >("SELECT updated_at AS updatedAt FROM app_settings_values WHERE key = 'showKeyboardHints'")
           .get(),
       ).toEqual({ updatedAt: 1234 });
     } finally {
@@ -2000,9 +2010,7 @@ describe("migrate", () => {
           .prepare<
             [],
             { pluginId: string; key: string; value: string; updatedAt: number }
-          >(
-            "SELECT plugin_id AS pluginId, key, value, updated_at AS updatedAt FROM plugin_settings ORDER BY plugin_id, key",
-          )
+          >("SELECT plugin_id AS pluginId, key, value, updated_at AS updatedAt FROM plugin_settings ORDER BY plugin_id, key")
           .all(),
       ).toEqual([
         {
@@ -2038,9 +2046,10 @@ describe("migrate", () => {
       ]);
       expect(
         db.$client
-          .prepare<[], { key: string }>(
-            "SELECT key FROM app_settings_values ORDER BY key",
-          )
+          .prepare<
+            [],
+            { key: string }
+          >("SELECT key FROM app_settings_values ORDER BY key")
           .all(),
       ).toEqual([{ key: "showKeyboardHints" }]);
     } finally {
@@ -2109,9 +2118,10 @@ describe("migrate", () => {
 
       expect(
         db.$client
-          .prepare<[], { count: number }>(
-            "SELECT COUNT(*) AS count FROM app_settings_values",
-          )
+          .prepare<
+            [],
+            { count: number }
+          >("SELECT COUNT(*) AS count FROM app_settings_values")
           .get(),
       ).toEqual({ count: 0 });
       expect(getAppSettings(db)).toEqual(defaultAppSettings);
@@ -2187,9 +2197,10 @@ describe("migrate", () => {
 
       expect(
         db.$client
-          .prepare<[], { count: number }>(
-            "SELECT COUNT(*) AS count FROM app_settings_values",
-          )
+          .prepare<
+            [],
+            { count: number }
+          >("SELECT COUNT(*) AS count FROM app_settings_values")
           .get(),
       ).toEqual({ count: 0 });
       expect(getAppSettings(db).steerActiveThreadOnEnter).toBe(true);
@@ -2231,9 +2242,10 @@ describe("migrate", () => {
 
       expect(
         db.$client
-          .prepare<[], { value: string; updatedAt: number }>(
-            "SELECT value, updated_at AS updatedAt FROM app_settings_values WHERE key = 'steerActiveThreadOnEnter'",
-          )
+          .prepare<
+            [],
+            { value: string; updatedAt: number }
+          >("SELECT value, updated_at AS updatedAt FROM app_settings_values WHERE key = 'steerActiveThreadOnEnter'")
           .get(),
       ).toEqual({ value: "true", updatedAt: 1234 });
       expect(getAppSettings(db).steerActiveThreadOnEnter).toBe(true);
@@ -2249,7 +2261,6 @@ describe("migrate", () => {
       migrate(db);
       const host = upsertHost(db, noopNotifier, {
         name: "side-chat-adoption-host",
-        type: "persistent",
       });
       const { project } = createProject(db, noopNotifier, {
         name: "side-chat-adoption-project",
@@ -2294,9 +2305,10 @@ describe("migrate", () => {
       runMigrationFile({ db, migrationPath: sideChatPluginOnlyMigrationPath });
 
       const rows = db.$client
-        .prepare<[], MigratedThreadOriginRow>(
-          "SELECT id, origin_kind AS originKind, origin_plugin_id AS originPluginId, visibility FROM threads",
-        )
+        .prepare<
+          [],
+          MigratedThreadOriginRow
+        >("SELECT id, origin_kind AS originKind, origin_plugin_id AS originPluginId, visibility FROM threads")
         .all();
       const byId = new Map(rows.map((row) => [row.id, row]));
 
@@ -2329,7 +2341,6 @@ describe("migrate", () => {
       migrate(db);
       const host = upsertHost(db, noopNotifier, {
         name: "permission-migration-host",
-        type: "persistent",
       });
       const { project } = createProject(db, noopNotifier, {
         name: "permission-migration-project",
@@ -2469,7 +2480,6 @@ describe("migrate", () => {
           "DELETE FROM __drizzle_migrations WHERE created_at >= ?",
         )
         .run(permissionModesMigrationWhen);
-      db.$client.prepare("DROP TABLE thread_plugin_metadata").run();
       rewindEnvironmentRowFactsMigration(db);
       rewindEnvironmentProvidersMigration(db);
       dropSideChatPluginExperimentColumn(db);
@@ -2877,7 +2887,6 @@ describe("migrate", () => {
           "DELETE FROM __drizzle_migrations WHERE created_at >= ?",
         )
         .run(threadSectionsRepairMigrationWhen);
-      db.$client.prepare("DROP TABLE thread_plugin_metadata").run();
       rewindEnvironmentRowFactsMigration(db);
       rewindEnvironmentProvidersMigration(db);
       dropSideChatPluginExperimentColumn(db);
@@ -2982,7 +2991,6 @@ describe("migrate", () => {
           "DELETE FROM __drizzle_migrations WHERE created_at >= ?",
         )
         .run(threadSectionsRepairMigrationWhen);
-      db.$client.prepare("DROP TABLE thread_plugin_metadata").run();
       rewindEnvironmentRowFactsMigration(db);
       rewindEnvironmentProvidersMigration(db);
       dropSideChatPluginExperimentColumn(db);
@@ -5218,9 +5226,10 @@ describe("migrate", () => {
       expect(readTableNames(db)).not.toContain("marketplaces");
       expect(
         db.$client
-          .prepare<[], { source: string }>(
-            "SELECT source FROM plugins WHERE id = 'third-party'",
-          )
+          .prepare<
+            [],
+            { source: string }
+          >("SELECT source FROM plugins WHERE id = 'third-party'")
           .get(),
       ).toEqual({ source: "git:https://example.test/tasks@main" });
     } finally {
@@ -5290,9 +5299,10 @@ describe("migrate", () => {
       });
       expect(
         db.$client
-          .prepare<[], MigrationCountRow>(
-            "SELECT COUNT(*) AS count FROM plugin_catalog",
-          )
+          .prepare<
+            [],
+            MigrationCountRow
+          >("SELECT COUNT(*) AS count FROM plugin_catalog")
           .get(),
       ).toEqual({ count: 0 });
     } finally {
@@ -5337,16 +5347,18 @@ describe("migrate", () => {
 
       expect(
         db.$client
-          .prepare<[], { name: string }>(
-            "SELECT name FROM plugin_marketplaces ORDER BY name",
-          )
+          .prepare<
+            [],
+            { name: string }
+          >("SELECT name FROM plugin_marketplaces ORDER BY name")
           .all(),
       ).toEqual([{ name: "acme" }, { name: "bb-community" }]);
       expect(
         db.$client
-          .prepare<[], { marketplaceName: string }>(
-            "SELECT marketplace_name AS marketplaceName FROM plugin_marketplace_icons ORDER BY marketplace_name",
-          )
+          .prepare<
+            [],
+            { marketplaceName: string }
+          >("SELECT marketplace_name AS marketplaceName FROM plugin_marketplace_icons ORDER BY marketplace_name")
           .all(),
       ).toEqual([
         { marketplaceName: "acme" },
@@ -5354,9 +5366,10 @@ describe("migrate", () => {
       ]);
       expect(
         db.$client
-          .prepare<[], { id: string; catalogMarketplaceName: string | null }>(
-            "SELECT id, catalog_marketplace_name AS catalogMarketplaceName FROM plugins ORDER BY id",
-          )
+          .prepare<
+            [],
+            { id: string; catalogMarketplaceName: string | null }
+          >("SELECT id, catalog_marketplace_name AS catalogMarketplaceName FROM plugins ORDER BY id")
           .all(),
       ).toEqual([
         { id: "local", catalogMarketplaceName: null },
@@ -5369,9 +5382,7 @@ describe("migrate", () => {
           .prepare<
             [],
             { name: string; etag: string | null; lastModified: string | null }
-          >(
-            "SELECT name, etag, last_modified AS lastModified FROM plugin_marketplaces ORDER BY name",
-          )
+          >("SELECT name, etag, last_modified AS lastModified FROM plugin_marketplaces ORDER BY name")
           .all(),
       ).toEqual([
         {
@@ -5482,7 +5493,6 @@ describe("migrate", () => {
       const host = upsertHost(db, noopNotifier, {
         id: "host-side-chat-visibility",
         name: "Migration Host",
-        type: "persistent",
       });
       const { project } = createProject(db, noopNotifier, {
         name: "Migration Project",
@@ -5551,7 +5561,6 @@ describe("migrate", () => {
       migrate(db);
       const host = upsertHost(db, noopNotifier, {
         name: "event-parent-migration-host",
-        type: "persistent",
       });
       const { project } = createProject(db, noopNotifier, {
         name: "event-parent-migration-project",
@@ -5566,7 +5575,6 @@ describe("migrate", () => {
         providerId: "codex",
       });
 
-      db.$client.prepare("DROP TABLE thread_plugin_metadata").run();
       rewindEnvironmentRowFactsMigration(db);
       rewindEnvironmentProvidersMigration(db);
       dropEventParentToolCallIdColumn(db);
@@ -5663,15 +5671,14 @@ describe("environment providers migration", () => {
   const environmentProvidersMigrationWhen = 1788386943764;
 
   function seedPreProviderEnvironments(db: DbConnection): void {
-    db.$client.prepare("DROP TABLE thread_plugin_metadata").run();
     db.$client.prepare("DROP TABLE ui_preferences").run();
     db.$client.prepare("DROP TABLE retained_event_outputs").run();
     rewindEnvironmentRowFactsMigration(db);
     rewindEnvironmentProvidersMigration(db);
     db.$client
-      .prepare<[number]>(
-        "DELETE FROM __drizzle_migrations WHERE created_at >= ?",
-      )
+      .prepare<
+        [number]
+      >("DELETE FROM __drizzle_migrations WHERE created_at >= ?")
       .run(environmentProvidersMigrationWhen);
     db.$client.exec(`
       INSERT INTO hosts (id, name, type, created_at, updated_at)
@@ -5746,9 +5753,10 @@ describe("environment providers migration", () => {
       seedPreProviderEnvironments(db);
       migrate(db);
       const rows = db.$client
-        .prepare<[], { provider: string; owner: string | null }>(
-          "SELECT DISTINCT environment_provider_id AS provider, environment_provider_plugin_id AS owner FROM environments ORDER BY provider",
-        )
+        .prepare<
+          [],
+          { provider: string; owner: string | null }
+        >("SELECT DISTINCT environment_provider_id AS provider, environment_provider_plugin_id AS owner FROM environments ORDER BY provider")
         .all();
       expect(rows).toEqual([
         { provider: "git-worktree", owner: "environment-git-worktree" },
@@ -5973,9 +5981,10 @@ describe("environment providers migration", () => {
 
       expect(
         db.$client
-          .prepare<[], { id: string; status: string }>(
-            "SELECT id, status FROM environments ORDER BY id",
-          )
+          .prepare<
+            [],
+            { id: string; status: string }
+          >("SELECT id, status FROM environments ORDER BY id")
           .all(),
       ).toEqual([
         { id: "env_default", status: "ready" },
@@ -6032,13 +6041,55 @@ describe("environment providers migration", () => {
   });
 });
 
+describe("machine providers migration", () => {
+  it("backfills server access for machines with a legacy access identity", () => {
+    const db = createConnection(":memory:");
+    try {
+      db.$client.exec(`
+        CREATE TABLE hosts (
+          id text PRIMARY KEY NOT NULL,
+          name text NOT NULL,
+          type text NOT NULL,
+          connect_machine_id text,
+          destroyed_at integer
+        );
+        CREATE TABLE project_sources (id text PRIMARY KEY NOT NULL);
+        CREATE TABLE host_daemon_sessions (
+          id text PRIMARY KEY NOT NULL,
+          host_type text NOT NULL
+        );
+        CREATE TEMP TABLE bb_migration_local_host (id text PRIMARY KEY NOT NULL);
+        INSERT INTO hosts VALUES
+          ('legacy', 'Legacy', 'persistent', 'cloud-machine', NULL),
+          ('direct', 'Direct', 'persistent', NULL, NULL);
+      `);
+
+      runMigrationFile({ db, migrationPath: machineProvidersMigrationPath });
+
+      expect(
+        db.$client
+          .prepare<
+            [],
+            { id: string; providerId: string | null; type: string }
+          >("SELECT id, server_access_provider_id AS providerId, type FROM hosts ORDER BY id")
+          .all(),
+      ).toEqual([
+        { id: "direct", providerId: null, type: "persistent" },
+        { id: "legacy", providerId: "connect", type: "persistent" },
+      ]);
+    } finally {
+      closeConnection(db);
+    }
+  });
+});
+
 describe("environment and thread startup ownership migration", () => {
   it.each(["creating", "cancelled"])(
     "preserves %s allocation checkpoints and keeps attached environment resources authoritative",
     (phase) => {
       const db = createMigratedConnection();
       try {
-        db.$client.prepare("DROP TABLE thread_plugin_metadata").run();
+        rewindMachineProvidersMigration(db);
         rewindEnvironmentProvisioningMigration(db);
         const legacySchema = readFileSync(
           resolve(
@@ -6048,8 +6099,9 @@ describe("environment and thread startup ownership migration", () => {
           "utf8",
         ).split("--> statement-breakpoint")[0]!;
         db.$client.exec(legacySchema);
+        db.$client.exec("DROP TABLE IF EXISTS environment_hook_operations");
         db.$client
-          .prepare<DeleteMigrationParameters>(
+          .prepare<[number]>(
             "DELETE FROM __drizzle_migrations WHERE created_at >= ?",
           )
           .run(environmentProvisioningMigrationWhen);

@@ -78,6 +78,11 @@ const entries = [
     external: ["zod", "zod/*"],
   },
   {
+    source: "src/machine-provider.ts",
+    output: "dist/machine-provider.js",
+    external: ["zod", "zod/*"],
+  },
+  {
     source: "src/internal/composer-customization-validation.ts",
     output: "dist/internal/composer-customization-validation.js",
     external: [],

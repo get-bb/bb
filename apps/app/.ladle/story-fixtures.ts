@@ -15,6 +15,7 @@ import type {
 import type {
   ProjectResponse,
   SystemEnvironmentProvider,
+  SystemMachineProvider,
 } from "@bb/server-contract";
 import { EMPTY_ORDERED_MENTION_SUGGESTIONS } from "@bb/client-core";
 import {
@@ -103,8 +104,10 @@ export function makeAttachmentsConfig(
 }
 
 function storyProviderIcon(providerId: string, glyph: string) {
-  return getProviderIconInfo(providerId, { logoUrl: null, icon: { glyph } })
-    ?.icon;
+  return getProviderIconInfo("agent", providerId, {
+    logoUrl: null,
+    icon: { glyph },
+  })?.icon;
 }
 
 function makeStoryProvider(
@@ -323,8 +326,10 @@ export const STORY_WORKTREE_OPTIONS: readonly ReuseThreadOption[] = [
 export const STORY_ENVIRONMENT_PROVIDERS: readonly SystemEnvironmentProvider[] =
   [
     {
+      machineProviderId: null,
       id: "project-checkout",
       displayName: "Project checkout",
+      description: "Work in this project checkout.",
       icon: "Laptop",
       logoUrl: null,
       pluginId: "environment-project-checkout",
@@ -340,8 +345,10 @@ export const STORY_ENVIRONMENT_PROVIDERS: readonly SystemEnvironmentProvider[] =
       inputs: null,
     },
     {
+      machineProviderId: null,
       id: "git-worktree",
       displayName: "Worktree",
+      description: "Create an isolated Git worktree.",
       icon: "GitBranch",
       logoUrl: null,
       pluginId: "environment-git-worktree",
@@ -357,8 +364,10 @@ export const STORY_ENVIRONMENT_PROVIDERS: readonly SystemEnvironmentProvider[] =
       inputs: null,
     },
     {
+      machineProviderId: null,
       id: "personal-workspace",
       displayName: "Personal workspace",
+      description: "Create a personal directory without a project.",
       icon: "Folder",
       logoUrl: null,
       pluginId: "environment-personal-workspace",
@@ -374,6 +383,20 @@ export const STORY_ENVIRONMENT_PROVIDERS: readonly SystemEnvironmentProvider[] =
       inputs: null,
     },
   ];
+
+export const STORY_MACHINE_PROVIDERS: readonly SystemMachineProvider[] = [
+  {
+    id: "modal-sandbox",
+    displayName: "Modal Sandbox",
+    description: "Run a machine for development.",
+    icon: "Box",
+    logoUrl: null,
+    pluginId: "environment-modal-sandbox",
+    inputs: null,
+    acceptsEmptyInputs: true,
+    supportsSuspend: true,
+  },
+];
 
 export const STORY_PROJECTS: readonly ProjectSelectorOption[] = [
   { id: PROJECT_IDS.bb, name: PROJECT_NAMES.bb },

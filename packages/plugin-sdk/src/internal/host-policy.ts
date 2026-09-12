@@ -24,6 +24,8 @@ import type {
   PluginHookHandler,
   PluginHookName,
   PluginMentionTrigger,
+  PluginMachineProviderDeclaration,
+  ServerAccessProviderDeclaration,
   PluginProviderCapabilities,
   PluginProviderComposerAction,
   PluginProviderDeclaration,
@@ -108,7 +110,6 @@ const pluginProviderEnvEntrySchema = z
       z.object({ serverPath: z.string().startsWith("/") }).strict(),
     ]),
     reason: z.string(),
-    secret: z.boolean(),
   })
   .strict();
 
@@ -2232,6 +2233,7 @@ export function pluginHookAlreadyRegisteredMessage(
 
 export const ENVIRONMENT_PROVIDER_ID_PATTERN = /^[a-z0-9][a-z0-9-]{1,63}$/;
 export const ENVIRONMENT_PROVIDER_DISPLAY_NAME_MAX_CHARS = 80;
+export const ENVIRONMENT_PROVIDER_DESCRIPTION_MAX_CHARS = 200;
 
 export const ENVIRONMENT_PROVIDER_REQUIREMENT_NAMES = [
   "projectCheckout",
@@ -2244,9 +2246,44 @@ export type NormalizedPluginEnvironmentProviderRequirements = {
   [K in (typeof ENVIRONMENT_PROVIDER_REQUIREMENT_NAMES)[number]]: boolean;
 };
 
+export const environmentCompositionSchema = z
+  .object({
+    id: z.string().regex(ENVIRONMENT_PROVIDER_ID_PATTERN),
+    displayName: z
+      .string()
+      .trim()
+      .min(1)
+      .max(ENVIRONMENT_PROVIDER_DISPLAY_NAME_MAX_CHARS),
+    description: z
+      .string()
+      .trim()
+      .min(1)
+      .max(ENVIRONMENT_PROVIDER_DESCRIPTION_MAX_CHARS)
+      .optional()
+      .transform((value) => value ?? null),
+    icon: z
+      .string()
+      .trim()
+      .min(1)
+      .transform((icon) =>
+        isPluginOwnedIconPath(icon)
+          ? validateProviderRelativePath(icon, "Composition icon")
+          : icon,
+      )
+      .optional()
+      .transform((value) => value ?? null),
+    machineProviderId: z.string().regex(ENVIRONMENT_PROVIDER_ID_PATTERN),
+    environmentProviderId: z.string().regex(ENVIRONMENT_PROVIDER_ID_PATTERN),
+  })
+  .strict();
+export type NormalizedPluginEnvironmentComposition = z.infer<
+  typeof environmentCompositionSchema
+>;
+
 export interface NormalizedPluginEnvironmentProvider {
   id: string;
   displayName: string;
+  description: string | null;
   icon: string | null;
   requires: NormalizedPluginEnvironmentProviderRequirements;
   inputs: StandardSchemaV1 | null;
@@ -2286,20 +2323,27 @@ export function validatePluginEnvironmentProviderDeclaration(
       `environment provider "${id}" needs a displayName of 1-${ENVIRONMENT_PROVIDER_DISPLAY_NAME_MAX_CHARS} characters`,
     );
   }
-  const icon =
-    declaration.icon === undefined
-      ? null
-      : z.string().min(1).parse(declaration.icon).trim();
-  if (icon !== null) {
-    if (isPluginOwnedIconPath(icon))
-      validateProviderRelativePath(icon, `"${id}" icon`);
-    else if (!isNamespacedGlyph(icon) && /[/\\]/u.test(icon))
-      throw new Error(
-        `environment provider "${id}" icon must be a glyph, declared icon, or plugin-relative path`,
-      );
-  }
-  if (icon !== null && icon.length === 0) {
-    throw new Error(`environment provider "${id}" declares an empty icon`);
+  const description = z
+    .string()
+    .trim()
+    .min(1)
+    .max(ENVIRONMENT_PROVIDER_DESCRIPTION_MAX_CHARS)
+    .optional()
+    .transform((value) => value ?? null)
+    .parse(declaration.description);
+  const icon = z
+    .string()
+    .trim()
+    .min(1)
+    .optional()
+    .transform((value) => value ?? null)
+    .parse(declaration.icon);
+  if (icon !== null && isPluginOwnedIconPath(icon)) {
+    validateProviderRelativePath(icon, `"${id}" icon`);
+  } else if (icon !== null && !isNamespacedGlyph(icon) && /[/\\]/u.test(icon)) {
+    throw new Error(
+      `environment provider "${id}" icon must be a glyph, declared icon, or plugin-relative path`,
+    );
   }
   const requires = normalizeEnvironmentProviderRequirements(id, declaration);
   const inputs = normalizeEnvironmentProviderInputs(id, declaration);
@@ -2330,6 +2374,7 @@ export function validatePluginEnvironmentProviderDeclaration(
   return {
     id,
     displayName,
+    description,
     icon,
     requires,
     inputs: inputs === null ? null : inputs.schema,
@@ -2419,4 +2464,166 @@ const environmentProviderPolicySchema = z
   })
   .strict();
 
-export const MACHINE_PROVIDER_REQUIREMENT_NAMES = ["gitRemote"] as const;
+export const MACHINE_PROVIDER_DESCRIPTION_MAX_CHARS = 200;
+
+export interface NormalizedPluginMachineProvider {
+  id: string;
+  displayName: string;
+  description: string;
+  icon: string;
+  ephemeral: boolean;
+  inputs: StandardSchemaV1 | null;
+  inputsJsonSchema: JsonValue | null;
+  availability: NonNullable<
+    PluginMachineProviderDeclaration["availability"]
+  > | null;
+  validate: NonNullable<PluginMachineProviderDeclaration["validate"]> | null;
+  reconcileCleanup: PluginMachineProviderDeclaration["reconcileCleanup"];
+  create: PluginMachineProviderDeclaration["create"];
+  suspend: NonNullable<PluginMachineProviderDeclaration["suspend"]> | null;
+  resume: NonNullable<PluginMachineProviderDeclaration["resume"]> | null;
+  remove: PluginMachineProviderDeclaration["remove"];
+}
+
+export function validatePluginMachineProviderDeclaration(
+  declaration: PluginMachineProviderDeclaration,
+): NormalizedPluginMachineProvider {
+  if (typeof declaration !== "object" || declaration === null) {
+    throw new Error("machine provider declaration must be an object");
+  }
+  const id = declaration.id;
+  if (typeof id !== "string" || !ENVIRONMENT_PROVIDER_ID_PATTERN.test(id)) {
+    throw new Error(
+      `invalid machine provider id ${JSON.stringify(id)} — use 2-64 lowercase letters, digits, or "-", starting with a letter or digit`,
+    );
+  }
+  const displayName =
+    typeof declaration.displayName === "string"
+      ? declaration.displayName.trim()
+      : "";
+  if (
+    displayName.length === 0 ||
+    displayName.length > ENVIRONMENT_PROVIDER_DISPLAY_NAME_MAX_CHARS
+  ) {
+    throw new Error(
+      `machine provider "${id}" needs a displayName of 1-${ENVIRONMENT_PROVIDER_DISPLAY_NAME_MAX_CHARS} characters`,
+    );
+  }
+  const description = z
+    .string()
+    .trim()
+    .min(1)
+    .max(MACHINE_PROVIDER_DESCRIPTION_MAX_CHARS)
+    .parse(declaration.description);
+  const icon = z.string().trim().min(1).parse(declaration.icon);
+  if (isPluginOwnedIconPath(icon)) {
+    validateProviderRelativePath(icon, `"${id}" icon`);
+  } else if (!isNamespacedGlyph(icon) && /[/\\]/u.test(icon)) {
+    throw new Error(
+      `machine provider "${id}" icon must be a glyph, declared icon, or plugin-relative path`,
+    );
+  }
+  const ephemeral = z.boolean().default(false).parse(declaration.ephemeral);
+  const inputs = normalizeMachineProviderInputs(id, declaration);
+  if (
+    typeof declaration.create !== "function" ||
+    typeof declaration.reconcileCleanup !== "function" ||
+    typeof declaration.remove !== "function"
+  ) {
+    throw new Error(
+      `machine provider "${id}" must declare create, reconcileCleanup and remove functions`,
+    );
+  }
+  const hasSuspend = typeof declaration.suspend === "function";
+  const hasResume = typeof declaration.resume === "function";
+  if (hasSuspend !== hasResume) {
+    throw new Error(
+      `machine provider "${id}" must declare suspend and resume together`,
+    );
+  }
+  if (
+    declaration.validate !== undefined &&
+    typeof declaration.validate !== "function"
+  ) {
+    throw new Error(
+      `machine provider "${id}" declares a validate that is not a function`,
+    );
+  }
+  if (
+    declaration.availability !== undefined &&
+    typeof declaration.availability !== "function"
+  ) {
+    throw new Error(
+      `machine provider "${id}" declares availability that is not a function`,
+    );
+  }
+
+  return {
+    id,
+    displayName,
+    description,
+    icon,
+    ephemeral,
+    inputs: inputs === null ? null : inputs.schema,
+    inputsJsonSchema: inputs === null ? null : inputs.jsonSchema,
+    availability: declaration.availability ?? null,
+    validate: declaration.validate ?? null,
+    reconcileCleanup: declaration.reconcileCleanup,
+    create: declaration.create,
+    suspend: declaration.suspend ?? null,
+    resume: declaration.resume ?? null,
+    remove: declaration.remove,
+  };
+}
+
+function normalizeMachineProviderInputs(
+  id: string,
+  declaration: PluginMachineProviderDeclaration,
+): { schema: StandardSchemaV1; jsonSchema: JsonValue } | null {
+  const inputs = declaration.inputs;
+  if (inputs === undefined) return null;
+  if (!isStandardSchema(inputs)) {
+    throw new Error(
+      `machine provider "${id}" declares an inputs that is not a Standard Schema v1 validator`,
+    );
+  }
+  let converted: unknown;
+  try {
+    converted = JSON.parse(JSON.stringify(standardSchemaToJsonSchema(inputs)));
+  } catch (error) {
+    throw new Error(
+      `machine provider "${id}" declares an inputs validator that cannot be published as JSON Schema (${error instanceof Error ? error.message : String(error)}) — declare it with zod 4 or a validator exposing toJSONSchema()`,
+    );
+  }
+  const jsonSchema = jsonValueSchema.safeParse(converted);
+  if (!jsonSchema.success) {
+    throw new Error(
+      `machine provider "${id}" declares an inputs schema whose JSON Schema is not JSON-serializable`,
+    );
+  }
+  return { schema: inputs, jsonSchema: jsonSchema.data };
+}
+
+export function validateServerAccessProviderDeclaration(
+  declaration: ServerAccessProviderDeclaration,
+): ServerAccessProviderDeclaration {
+  if (typeof declaration !== "object" || declaration === null)
+    throw new Error("Invalid server access provider declaration");
+  if (
+    typeof declaration.id !== "string" ||
+    !/^[a-z][a-z0-9-]*$/u.test(declaration.id) ||
+    declaration.id === "direct"
+  )
+    throw new Error("Invalid or reserved server access provider id");
+  if (
+    typeof declaration.displayName !== "string" ||
+    !declaration.displayName.trim() ||
+    typeof declaration.description !== "string" ||
+    !declaration.description.trim() ||
+    typeof declaration.availability !== "function" ||
+    typeof declaration.acquire !== "function" ||
+    typeof declaration.release !== "function"
+  )
+    throw new Error("Invalid server access provider declaration");
+  return declaration;
+}

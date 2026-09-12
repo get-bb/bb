@@ -5,6 +5,7 @@ import type { Host } from "@bb/domain";
 import { makeHost } from "@bb/test-helpers/domain-fixtures";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { MachinePickerUI } from "./MachinePicker";
+import type { MachineProviderPresentation } from "@/components/plugin/MachineProviderIcon";
 
 const HOUR_MS = 60 * 60 * 1000;
 
@@ -34,6 +35,7 @@ function renderMachineMenu(overrides?: {
   hosts?: readonly Host[];
   selectedHostId?: string | null;
   onChange?: (hostId: string) => void;
+  machineProviders?: readonly MachineProviderPresentation[];
 }) {
   render(
     <MachinePickerUI
@@ -43,6 +45,7 @@ function renderMachineMenu(overrides?: {
       selectedHostId={overrides?.selectedHostId ?? thisMachine.id}
       onChange={overrides?.onChange ?? vi.fn()}
       modal={false}
+      machineProviders={overrides?.machineProviders}
     />,
   );
   fireEvent.pointerDown(screen.getByRole("button", { name: "Machine" }), {
@@ -101,5 +104,32 @@ describe("MachinePickerUI", () => {
     expect(
       screen.getByRole("button", { name: "Machine" }).textContent,
     ).toContain("MacBook Pro");
+  });
+
+  it("includes provider-made hosts in machine pickers", () => {
+    const modalHost = makeHost({
+      id: "host_modal",
+      name: "Modal sandbox 3f9a",
+      type: "ephemeral",
+      machineProviderId: "modal-sandbox",
+    });
+    renderMachineMenu({
+      hosts: [thisMachine, studio, modalHost],
+      selectedHostId: modalHost.id,
+      machineProviders: [
+        {
+          id: "modal-sandbox",
+          displayName: "Modal Sandbox",
+          icon: "Cloud",
+          logoUrl: null,
+        },
+      ],
+    });
+
+    expect(screen.getAllByText("Modal sandbox 3f9a")).toHaveLength(2);
+    const trigger = screen.getByRole("button", { name: "Machine" });
+    expect(trigger.querySelector('[data-icon="Cloud"]')).not.toBeNull();
+    expect(trigger.querySelector('[data-icon="Laptop"]')).toBeNull();
+    expect(screen.queryByText("Modal Sandbox")).toBeNull();
   });
 });

@@ -28,6 +28,7 @@ import {
   MARKETPLACE_FETCH_TIMEOUT_MS,
   MARKETPLACE_PACKUMENT_MAX_BYTES,
 } from "../plugin-catalog/marketplace-http.js";
+import { installGitDependencies } from "./git-plugin-dependencies.js";
 import { getPluginBuildToolchain } from "./build-toolchain.js";
 import { validatePluginArtifactMeta } from "./app-bundle.js";
 import type { PluginSourceSelection } from "@bb/server-contract";
@@ -122,55 +123,25 @@ interface ManagedPluginArtifactsContext {
   activateManagedUpdate: (args: ActivateManagedUpdateArgs) => Promise<void>;
 }
 
-async function installGitDependencies(args: {
-  rootDir: string;
-  manifest: PluginManifest;
-}): Promise<void> {
-  for (const name of [".npmrc", ".yarnrc", ".yarnrc.yml"]) {
-    await rm(join(args.rootDir, name), { force: true });
-  }
-  await runInstallCommand(
-    "npm",
-    [
-      "install",
-      "--prefix",
-      args.rootDir,
-      "--ignore-scripts",
-      "--omit=dev",
-      "--omit=optional",
-      "--no-audit",
-      "--no-fund",
-    ],
-    {
-      notFoundHint: `"npm" was not found on PATH — installing git plugin "${args.manifest.id}" requires npm`,
-    },
-  );
-}
-
 async function installNpmCandidate(args: {
   stagingPrefix: string;
   registry: string;
   packageName: string;
   candidate: NpmResolvedCandidate;
-  notFoundHint: string;
 }): Promise<void> {
-  await runInstallCommand(
-    "npm",
-    [
-      "install",
-      "--prefix",
-      args.stagingPrefix,
-      "--ignore-scripts",
-      "--omit=optional",
-      "--no-audit",
-      "--no-fund",
-      "--registry",
-      args.registry,
-      "--",
-      `${args.packageName}@${args.candidate.version}`,
-    ],
-    { notFoundHint: args.notFoundHint },
-  );
+  await runInstallCommand("npm", [
+    "install",
+    "--prefix",
+    args.stagingPrefix,
+    "--ignore-scripts",
+    "--omit=optional",
+    "--no-audit",
+    "--no-fund",
+    "--registry",
+    args.registry,
+    "--",
+    `${args.packageName}@${args.candidate.version}`,
+  ]);
 }
 
 export function createListedRegistryNpmResolverRun(listedRegistry: string) {
@@ -259,7 +230,7 @@ export function createManagedPluginArtifacts(
     const kind = sourceKind(args.source);
     const managed = kind === "git" || kind === "npm";
     if (kind === "git") {
-      await installGitDependencies({ rootDir: args.rootDir, manifest });
+      await installGitDependencies(args.rootDir);
     }
     if (manifest.appEntry !== undefined) {
       if (kind === "npm") {
@@ -1026,8 +997,6 @@ export function createManagedPluginArtifacts(
           registry,
           packageName: parsed.name,
           candidate,
-          notFoundHint:
-            '"npm" was not found on PATH — npm: plugin installs require npm',
         });
         await validateInstallDir({
           rootDir: join(
@@ -1468,8 +1437,6 @@ export function createManagedPluginArtifacts(
           registry: args.selectionIntent.registry,
           packageName: args.selectionIntent.packageName,
           candidate: args.candidate,
-          notFoundHint:
-            '"npm" was not found on PATH — npm plugin updates require npm',
         });
         const stagedRoot = join(
           stagingPrefix,

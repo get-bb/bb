@@ -1,3 +1,7 @@
+import {
+  resolveHostEnvironment,
+  mergeHostAndProviderEnvironment,
+} from "../hosts/host-environment.js";
 import { getEnvironment, getHost, getProject } from "@bb/db";
 import type {
   DynamicTool,
@@ -18,7 +22,7 @@ import type {
 import { ApiError } from "../../errors.js";
 import type { AppDeps, LoggedWorkSessionDeps } from "../../types.js";
 import { throwEnvironmentNotReady } from "../lib/lifecycle-api-errors.js";
-import { requireThreadStoragePath } from "./thread-storage.js";
+import { requireLiveThreadStoragePath } from "./thread-storage.js";
 import {
   buildExistingThreadExecutionInput,
   resolveExistingThreadExecutionPlan,
@@ -224,14 +228,20 @@ export async function resolveThreadRuntimeCommandConfig(
     },
     skillIdsByPlugin,
   });
-  const contributedEnv = await resolvePluginProviderEnv({
-    providerId: args.thread.providerId,
-    context: {
-      threadId: args.thread.id,
-      projectId: project.id,
+  const contributedEnv = mergeHostAndProviderEnvironment(
+    await resolveHostEnvironment(deps, {
       hostId: host.id,
-    },
-  });
+      projectId: project.id,
+    }),
+    await resolvePluginProviderEnv({
+      providerId: args.thread.providerId,
+      context: {
+        threadId: args.thread.id,
+        projectId: project.id,
+        hostId: host.id,
+      },
+    }),
+  );
   const injectedSkillSources = resolveSkillCatalog(deps, {
     projectSkillSources,
     sharedSkillSources: sharedSkills.runtimeSources,
@@ -305,7 +315,7 @@ export async function resolveThreadRuntimeCommandConfig(
     );
   }
   const instructions = instructionSections.join("\n\n");
-  const threadStoragePath = await requireThreadStoragePath(deps, {
+  const threadStoragePath = await requireLiveThreadStoragePath(deps, {
     hostId: args.environment.hostId,
     threadId: args.thread.id,
   });

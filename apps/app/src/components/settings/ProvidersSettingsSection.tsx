@@ -109,7 +109,11 @@ function SortableProviderRow({
     }),
     [transform, transition],
   );
-  const ProviderIcon = getProviderIconInfo(provider.id, provider)?.icon;
+  const ProviderIcon = getProviderIconInfo(
+    "agent",
+    provider.id,
+    provider,
+  )?.icon;
   const isDefault =
     generalSettings.defaultProviderId === provider.id ||
     (generalSettings.defaultProviderId === null && index === 0);

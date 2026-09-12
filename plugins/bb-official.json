@@ -137,5 +137,9 @@
   "bb-guide": {
     "category": "memory-and-context",
     "screenshots": []
+  },
+  "environment-modal-sandbox": {
+    "category": "environments",
+    "screenshots": []
   }
 }

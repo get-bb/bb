@@ -210,6 +210,7 @@ function makeEnvironmentSummary({
     environmentName: environment.name,
     hasMultipleMachines,
     hostName: machineName ?? null,
+    hostType: "persistent",
     isProjectless: projectName === undefined,
   });
   const checkoutDisplay =

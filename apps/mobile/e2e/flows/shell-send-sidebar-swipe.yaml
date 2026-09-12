@@ -1,0 +1,49 @@
+appId: app.getbb.mobile
+env:
+  METRO_URL: "http://127.0.0.1:8082"
+  SERVER_URL: "http://127.0.0.1:41999"
+---
+- runFlow: ../subflows/launch-app.yaml
+- runFlow: ../subflows/pair-direct-server.yaml
+- runFlow:
+    file: ../subflows/open-bb-link.yaml
+    env:
+      LINK: "bb://"
+- extendedWaitUntil:
+    visible: ".*Idle thread.*"
+    timeout: 60000
+- tapOn: ".*Idle thread.*"
+- extendedWaitUntil:
+    visible: ".*follow-up.*"
+    timeout: 60000
+- startRecording:
+    path: "../../../../e2e-artifacts/maestro/shell-send-sidebar-swipe/sidebar-send-repro"
+    label: "Sidebar swipe before and after Send"
+- takeScreenshot: sidebar-before-baseline-swipe
+- swipe:
+    start: 10%, 45%
+    end: 85%, 45%
+    duration: 500
+- extendedWaitUntil:
+    visible: ".*Settings.*"
+    timeout: 10000
+- takeScreenshot: sidebar-baseline-open
+- tapOn: ".*Toggle sidebar.*"
+- waitForAnimationToEnd:
+    timeout: 5000
+- tapOn: ".*follow-up.*"
+- waitForAnimationToEnd:
+    timeout: 5000
+- inputText: "reproduce sidebar swipe after send"
+- tapOn: ".*Submit.*"
+- extendedWaitUntil:
+    visible: ".*Response to: reproduce sidebar swipe after send.*"
+    timeout: 90000
+- takeScreenshot: sidebar-after-send-before-swipe
+- swipe:
+    start: 10%, 45%
+    end: 85%, 45%
+    duration: 500
+- takeScreenshot: sidebar-after-send-swipe
+- stopRecording
+- assertVisible: ".*Settings.*"

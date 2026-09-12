@@ -72,7 +72,7 @@ describe("useThreadReadTracking", () => {
 
     expect(markThreadRead.mutate).toHaveBeenCalledTimes(1);
     expect(markThreadRead.mutate).toHaveBeenLastCalledWith(
-      "thr_mobile_restore",
+      expect.objectContaining({ threadId: "thr_mobile_restore" }),
       expect.objectContaining({ onError: expect.any(Function) }),
     );
   });
@@ -94,7 +94,7 @@ describe("useThreadReadTracking", () => {
 
     expect(markThreadRead.mutate).toHaveBeenCalledTimes(1);
     expect(markThreadRead.mutate).toHaveBeenLastCalledWith(
-      "thr_side_chat",
+      expect.objectContaining({ threadId: "thr_side_chat" }),
       expect.objectContaining({ onError: expect.any(Function) }),
     );
 
@@ -206,7 +206,7 @@ describe("useThreadReadTracking", () => {
 
     expect(markThreadRead.mutate).toHaveBeenCalledTimes(1);
     expect(markThreadRead.mutate).toHaveBeenLastCalledWith(
-      "thr_side_chat",
+      expect.objectContaining({ threadId: "thr_side_chat" }),
       expect.objectContaining({ onError: expect.any(Function) }),
     );
   });
@@ -246,5 +246,50 @@ describe("useThreadReadTracking", () => {
     rerender({ lastReadAt: null, visible: true });
 
     expect(markThreadRead.mutate).toHaveBeenCalledTimes(2);
+  });
+
+  it("cancels a pending read when switching threads and retries when reopened", () => {
+    const markThreadRead = makeMarkThreadRead();
+    type ThreadProps = { thread: TestThread };
+    const { rerender } = renderHook(
+      ({ thread }: ThreadProps) =>
+        useThreadReadTracking({ markThreadRead, thread }),
+      {
+        initialProps: {
+          thread: {
+            id: "thr_first",
+            lastReadAt: 10,
+            latestAttentionAt: 20,
+          },
+        },
+      },
+    );
+
+    const firstInput = markThreadRead.mutate.mock.calls[0]?.[0];
+    expect(firstInput?.signal?.aborted).toBe(false);
+
+    rerender({
+      thread: {
+        id: "thr_second",
+        lastReadAt: 20,
+        latestAttentionAt: 20,
+      },
+    });
+
+    expect(firstInput?.signal?.aborted).toBe(true);
+
+    rerender({
+      thread: {
+        id: "thr_first",
+        lastReadAt: 10,
+        latestAttentionAt: 20,
+      },
+    });
+
+    expect(markThreadRead.mutate).toHaveBeenCalledTimes(2);
+    expect(markThreadRead.mutate).toHaveBeenLastCalledWith(
+      expect.objectContaining({ threadId: "thr_first" }),
+      expect.objectContaining({ onError: expect.any(Function) }),
+    );
   });
 });

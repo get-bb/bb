@@ -47,6 +47,7 @@ interface HandleThreadOwnershipChangeArgs {
 
 interface ReleaseUnarchivedChildrenFromArchivedThreadArgs {
   parentThreadId: string;
+  sectionId: string | null;
 }
 
 interface ArchiveThreadAndReleaseChildrenArgs {
@@ -160,6 +161,7 @@ function releaseUnarchivedChildrenFromArchivedThreadInTransaction(
   for (const childThread of childThreads) {
     const updatedThread = updateThread(deps.db, deps.hub, childThread.id, {
       parentThreadId: null,
+      sectionId: args.sectionId,
     });
     if (!updatedThread) {
       continue;
@@ -196,6 +198,7 @@ export function archiveThreadAndReleaseChildren(
         },
         {
           parentThreadId: archivedThread.id,
+          sectionId: archivedThread.sectionId,
         },
       );
 

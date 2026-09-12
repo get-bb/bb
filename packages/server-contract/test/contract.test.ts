@@ -15,6 +15,7 @@ import {
   TERMINAL_DATA_MAX_BYTES,
   TERMINAL_ROWS_MAX,
   createTerminalRequestSchema,
+  createHostJoinCodeRequestSchema,
   createQueuedMessageRequestSchema,
   createProjectSourceRequestSchema,
   createPublicApiClient,
@@ -82,6 +83,14 @@ const OPTIONAL_SERVER_FIELD_GROUPS: readonly OptionalServerFieldGroup[] = [
     fields: [
       "createThreadRequestSchema.environment.hostId",
       "forkThreadRequestSchema.environment.hostId",
+    ],
+  },
+  {
+    reason:
+      "Composed environment providers choose their declared machine provider; concrete providers require an explicit machine selection.",
+    fields: [
+      "createThreadRequestSchema.environment.machine",
+      "forkThreadRequestSchema.environment.machine",
     ],
   },
   {
@@ -279,6 +288,11 @@ const OPTIONAL_SERVER_FIELD_GROUPS: readonly OptionalServerFieldGroup[] = [
     reason:
       "Timeline responses omit context-window usage when the provider did not report it.",
     fields: ["threadTimelineResponseSchema.contextWindowUsage"],
+  },
+  {
+    reason:
+      "Context snapshots are omitted when the latest measurement has no breakdown.",
+    fields: ["threadTimelineResponseSchema.contextWindowUsage.snapshot"],
   },
   {
     reason:
@@ -587,6 +601,16 @@ describe("git branch name contract", () => {
         target: "all",
         mergeBaseBranch: "origin/main lock",
       }).success,
+    ).toBe(false);
+  });
+});
+
+describe("public host contracts", () => {
+  it("accepts an empty join-code request and rejects the deleted host type", () => {
+    expect(createHostJoinCodeRequestSchema.parse({})).toEqual({});
+    expect(
+      createHostJoinCodeRequestSchema.safeParse({ hostType: "ephemeral" })
+        .success,
     ).toBe(false);
   });
 });
@@ -1916,11 +1940,61 @@ describe("server-contract clients", () => {
 });
 
 describe("environment provider contracts", () => {
+  it("requires a machine selection and fills provider inputs with null at the boundary", () => {
+    expect(
+      createThreadRequestSchema.parse({
+        projectId: "proj_123",
+        providerId: "codex",
+        origin: "app",
+        input: [{ type: "text", text: "Ship it" }],
+        environment: {
+          type: "provider",
+          environmentProviderId: "container",
+          machine: { type: "existing", hostId: "host_abc" },
+        },
+      }).environment,
+    ).toEqual({
+      type: "provider",
+      environmentProviderId: "container",
+      machine: { type: "existing", hostId: "host_abc" },
+      inputs: null,
+    });
+    expect(
+      createThreadRequestSchema.parse({
+        projectId: "proj_123",
+        providerId: "codex",
+        origin: "app",
+        input: [{ type: "text", text: "Ship it" }],
+        environment: {
+          type: "provider",
+          environmentProviderId: "container",
+          machine: {
+            type: "new",
+            machineProviderId: "modal-sandbox",
+            inputs: { region: "us-west" },
+          },
+          inputs: { image: "img", cpus: 4 },
+        },
+      }).environment,
+    ).toEqual({
+      type: "provider",
+      environmentProviderId: "container",
+      machine: {
+        type: "new",
+        machineProviderId: "modal-sandbox",
+        inputs: { region: "us-west" },
+      },
+      inputs: { image: "img", cpus: 4 },
+    });
+  });
+
   it("lists provider requirements, input defaults, and availability", () => {
     const base = {
       id: "container",
+      machineProviderId: null,
       displayName: "Container",
-      icon: null,
+      description: "Prepare a workspace for this thread.",
+      icon: "Folder",
       logoUrl: null,
       pluginId: "sandbox",
       acceptsEmptyInputs: false,

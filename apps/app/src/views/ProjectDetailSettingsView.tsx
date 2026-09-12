@@ -51,7 +51,7 @@ import {
   isHostPathMissing,
   useHostPathExistence,
 } from "@/hooks/queries/host-path-queries";
-import { selectPersistentHosts, useHosts } from "@/hooks/queries/host-queries";
+import { selectHosts, useHosts } from "@/hooks/queries/host-queries";
 import { useProjectDefaultExecutionOptions } from "@/hooks/queries/project-default-execution-options-query";
 import { useSidebarNavigation } from "@/hooks/queries/sidebar-navigation-query";
 import { useSystemConfig } from "@/hooks/queries/system-queries";
@@ -231,10 +231,17 @@ export function ProjectDetailSettingsView() {
   const projectSources = project?.sources;
   const sources = useMemo(() => projectSources ?? [], [projectSources]);
   const projectName = project?.name ?? "";
-  const hosts = useMemo(
-    () => selectPersistentHosts(hostsQuery.data),
+  const everyHost = useMemo(
+    () => selectHosts(hostsQuery.data, "all"),
     [hostsQuery.data],
   );
+  const persistentHosts = useMemo(
+    () => selectHosts(hostsQuery.data, "persistent"),
+    [hostsQuery.data],
+  );
+  const [showAllMachines, setShowAllMachines] = useState(false);
+  const hosts = showAllMachines ? everyHost : persistentHosts;
+  const hiddenMachineCount = everyHost.length - persistentHosts.length;
   const primaryHostId = systemConfig.data?.primaryHostId ?? null;
 
   const localSourcePending =
@@ -331,7 +338,10 @@ export function ProjectDetailSettingsView() {
     project.gitRemoteUrl === null
       ? null
       : formatGitRemote(project.gitRemoteUrl);
-  const configuredCount = new Set(sources.map((source) => source.hostId)).size;
+  const configuredHostIds = new Set(sources.map((source) => source.hostId));
+  const configuredCount = hosts.filter((host) =>
+    configuredHostIds.has(host.id),
+  ).length;
   const defaults = defaultsQuery.data ?? null;
   const permissionLabel =
     defaults === null
@@ -444,6 +454,26 @@ export function ProjectDetailSettingsView() {
               })}
             </SettingsRowList>
           )}
+          {hiddenMachineCount > 0 ? (
+            <button
+              type="button"
+              aria-expanded={showAllMachines}
+              onClick={() => setShowAllMachines((previous) => !previous)}
+              className="-ml-1 inline-flex items-center gap-1.5 self-start rounded-md px-1.5 py-0.5 text-xs text-muted-foreground transition-colors hover:bg-state-hover hover:text-foreground"
+            >
+              <Icon
+                name="ChevronDown"
+                className={cn(
+                  "size-3.5 transition-transform",
+                  showAllMachines && "rotate-180",
+                )}
+                aria-hidden
+              />
+              <span>
+                {showAllMachines ? "Show fewer machines" : "Show all machines"}
+              </span>
+            </button>
+          ) : null}
         </SettingsSection>
 
         <SettingsSection

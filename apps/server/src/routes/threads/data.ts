@@ -1,9 +1,12 @@
+import { extractThreadContextWindowUsage } from "@bb/thread-view";
 import { clearTimelineOrderingContextCache } from "../../services/threads/timeline-context-order.js";
 import path from "node:path";
 import {
   getAppSettings,
   getThreadPluginMetadata,
   patchThreadPluginMetadata,
+  getLatestCompletedThreadContextClearSequence,
+  listContextWindowUsageRows,
   getLatestThreadSequence,
   getLatestStoredConversationOutlineSequence,
   listQueuedThreadMessages,
@@ -47,6 +50,7 @@ import {
 import { requireThreadStoragePath } from "../../services/threads/thread-storage.js";
 import { toThreadQueuedMessage } from "../../services/threads/thread-queued-messages.js";
 import {
+  toThreadEventWithMeta,
   buildThreadConversationOutlineProjectionKey,
   buildThreadTimelineWithProfile,
   buildTimelineTurnSummaryDetails,
@@ -345,6 +349,21 @@ export function registerThreadDataRoutes(app: Hono, deps: AppDeps): void {
         ...(payload.remove === undefined ? {} : { remove: payload.remove }),
       }),
     );
+  });
+
+  get(routes.context, (context) => {
+    const thread = requirePublicThread(deps.db, context.req.param("id"));
+    const sequenceStart =
+      getLatestCompletedThreadContextClearSequence(deps.db, {
+        threadId: thread.id,
+      }) ?? 0;
+    const rows = listContextWindowUsageRows(deps.db, {
+      threadId: thread.id,
+      sequenceStart,
+    });
+    return context.json({
+      usage: extractThreadContextWindowUsage(rows.map(toThreadEventWithMeta)),
+    });
   });
 
   get(routes.timeline, (context, query) => {

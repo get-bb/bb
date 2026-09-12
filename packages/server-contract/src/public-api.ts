@@ -1,3 +1,8 @@
+import { type MachineEnvironmentList } from "./api/machine-environment.js";
+import {
+  machineEnvironmentReplaceSchema,
+  type MachineEnvironmentReplace,
+} from "./api/system.js";
 import {
   desktopBrowserHostRequestSchema,
   desktopBrowserScopeSchema,
@@ -75,6 +80,7 @@ import type {
   CopyProjectAttachmentsRequest,
   CreateHostJoinCodeRequest,
   CreateHostJoinCodeResponse,
+  CreateMachineRequest,
   CreateTerminalRequest,
   CreateProjectRequest,
   CreateProjectSourceRequest,
@@ -106,6 +112,9 @@ import type {
   EnvironmentStatusResponse,
   HostDirectoryListing,
   HostDirectoryQuery,
+  HostEnrollmentCommandResponse,
+  HostListQuery,
+  HostActionResponse,
   HostCloneDefaultPathQuery,
   HostCloneDefaultPathResponse,
   HostFileListRequest,
@@ -180,6 +189,7 @@ import type {
   SystemExecutionOptionsResponse,
   SystemEnvironmentProvidersQuery,
   SystemEnvironmentProvidersResponse,
+  SystemMachineProvidersResponse,
   SystemProviderInfo,
   SystemProvidersQuery,
   SystemProviderStatesResponse,
@@ -230,6 +240,7 @@ import type {
   ThreadStoragePathsQuery,
   ThreadTimelineQuery,
   ThreadTimelineResponse,
+  ThreadContextResponse,
   ThreadWithIncludesResponse,
   TimelineTurnSummaryDetailsQuery,
   TimelineTurnSummaryDetailsResponse,
@@ -269,6 +280,7 @@ import {
   restartTerminalRequestSchema,
   createProjectRequestSchema,
   createHostJoinCodeRequestSchema,
+  createMachineRequestSchema,
   createProjectSourceRequestSchema,
   createQueuedMessageRequestSchema,
   queuedMessageListQuerySchema,
@@ -286,6 +298,7 @@ import {
   environmentPathsQuerySchema,
   environmentStatusQuerySchema,
   hostDirectoryQuerySchema,
+  hostListQuerySchema,
   hostCloneDefaultPathQuerySchema,
   hostFileListRequestSchema,
   hostFileReadRequestSchema,
@@ -739,6 +752,14 @@ export const publicApiRoutes = {
   },
 
   hosts: {
+    create: defineRoute({
+      path: "/hosts",
+      method: "post",
+      request: jsonRequest<EmptyInput, CreateMachineRequest>(
+        createMachineRequestSchema,
+      ),
+      response: jsonResponse<Host>({ status: 201 }),
+    }),
     createJoinCode: defineRoute({
       path: "/hosts/join-codes",
       method: "post",
@@ -750,14 +771,22 @@ export const publicApiRoutes = {
     list: defineRoute({
       path: "/hosts",
       method: "get",
-      request: noRequest(),
+      request: optionalQueryRequest<EmptyInput, HostListQuery>(
+        hostListQuerySchema,
+      ),
       response: jsonResponse<Host[]>(),
     }),
     get: defineRoute({
       path: "/hosts/:id",
       method: "get",
       request: noRequest<PathId>(),
-      response: jsonResponse<Host>(),
+      response: jsonResponse<Host & { connectMachineId: string | null }>(),
+    }),
+    enrollmentCommand: defineRoute({
+      path: "/hosts/:id/enrollment-command",
+      method: "get",
+      request: noRequest<PathId>(),
+      response: jsonResponse<HostEnrollmentCommandResponse>(),
     }),
     update: defineRoute({
       path: "/hosts/:id",
@@ -778,6 +807,24 @@ export const publicApiRoutes = {
       method: "post",
       request: noRequest<PathId>(),
       response: jsonResponse<HostRetryUpdateResponse>(),
+    }),
+    suspend: defineRoute({
+      path: "/hosts/:id/suspend",
+      method: "post",
+      request: noRequest<PathId>(),
+      response: jsonResponse<Host, 202>({ status: 202 }),
+    }),
+    resume: defineRoute({
+      path: "/hosts/:id/resume",
+      method: "post",
+      request: noRequest<PathId>(),
+      response: jsonResponse<Host, 202>({ status: 202 }),
+    }),
+    retryCleanup: defineRoute({
+      path: "/hosts/:id/retry-cleanup",
+      method: "post",
+      request: noRequest<PathId>(),
+      response: jsonResponse<HostActionResponse>(),
     }),
     delete: defineRoute({
       path: "/hosts/:id",
@@ -1388,12 +1435,6 @@ export const publicApiRoutes = {
       request: noRequest<PathThreadInteractionId>(),
       response: jsonResponse<PendingInteraction>(),
     }),
-    archive: defineRoute({
-      path: "/threads/:id/archive",
-      method: "post",
-      request: noRequest<PathId>(),
-      response: jsonResponse<{ ok: true }>(),
-    }),
     archiveAll: defineRoute({
       path: "/threads/:id/archive-all",
       method: "post",
@@ -1425,6 +1466,12 @@ export const publicApiRoutes = {
         threadTimelineQuerySchema,
       ),
       response: jsonResponse<ThreadTimelineResponse>(),
+    }),
+    context: defineRoute({
+      path: "/threads/:id/context",
+      method: "get",
+      request: noRequest<PathId>(),
+      response: jsonResponse<ThreadContextResponse>(),
     }),
     conversationOutline: defineRoute({
       path: "/threads/:id/conversation-outline",
@@ -1547,6 +1594,20 @@ export const publicApiRoutes = {
   },
 
   system: {
+    machineEnvironment: defineRoute({
+      path: "/settings/machine-environment",
+      method: "get",
+      request: noRequest(),
+      response: jsonResponse<MachineEnvironmentList>(),
+    }),
+    replaceMachineEnvironment: defineRoute({
+      path: "/settings/machine-environment",
+      method: "put",
+      request: jsonRequest<EmptyInput, MachineEnvironmentReplace>(
+        machineEnvironmentReplaceSchema,
+      ),
+      response: jsonResponse<MachineEnvironmentList>(),
+    }),
     attention: defineRoute({
       path: "/system/attention",
       method: "get",
@@ -1674,6 +1735,12 @@ export const publicApiRoutes = {
         SystemEnvironmentProvidersQuery
       >(systemEnvironmentProvidersQuerySchema),
       response: jsonResponse<SystemEnvironmentProvidersResponse>(),
+    }),
+    machineProviders: defineRoute({
+      path: "/system/machine-providers",
+      method: "get",
+      request: noRequest(),
+      response: jsonResponse<SystemMachineProvidersResponse>(),
     }),
     providers: defineRoute({
       path: "/system/providers",

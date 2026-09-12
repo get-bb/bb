@@ -1,3 +1,4 @@
+import { operationEnvironment } from "./operation-environment.js";
 import { fork, type ChildProcess } from "node:child_process";
 import { existsSync } from "node:fs";
 import { rm } from "node:fs/promises";
@@ -296,6 +297,10 @@ export class PluginHostManager {
             callId: command.callId,
             method: command.method,
             input: command.input,
+            envVars: operationEnvironment(
+              command.contributedEnv,
+              this.options.shellEnv?.() ?? {},
+            ),
           })
         ) {
           worker.pending.delete(command.callId);
@@ -543,7 +548,11 @@ export class PluginHostManager {
     if (child.stderr !== null) {
       observeBoundedStderr(child.stderr, (line) => {
         this.options.logger.warn(
-          { pluginId: worker.pluginId, origin: "host", stderr: line },
+          {
+            pluginId: worker.pluginId,
+            origin: "host",
+            stderr: line,
+          },
           "Host plugin stderr",
         );
       });

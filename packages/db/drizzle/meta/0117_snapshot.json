@@ -1,7 +1,7 @@
 {
   "version": "6",
   "dialect": "sqlite",
-  "id": "d7adac02-b63a-49b0-9ed0-dd6475cdc2e1",
+  "id": "27c10ca3-a2ee-47a9-a994-add8034719a6",
   "prevId": "f6d5efcf-3a42-4db6-9243-08e95d50ebed",
   "tables": {
     "app_settings": {
@@ -447,6 +447,72 @@
           "isUnique": true
         }
       },
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {}
+    },
+    "environment_hook_operations": {
+      "name": "environment_hook_operations",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "operation_id": {
+          "name": "operation_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "host_id": {
+          "name": "host_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "path": {
+          "name": "path",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "kind": {
+          "name": "kind",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "started_at": {
+          "name": "started_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "finished_at": {
+          "name": "finished_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "error": {
+          "name": "error",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        }
+      },
+      "indexes": {},
       "foreignKeys": {},
       "compositePrimaryKeys": {},
       "uniqueConstraints": {},
@@ -1035,13 +1101,6 @@
           "notNull": true,
           "autoincrement": false
         },
-        "host_type": {
-          "name": "host_type",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
         "data_dir": {
           "name": "data_dir",
           "type": "text",
@@ -1192,6 +1251,122 @@
           "notNull": false,
           "autoincrement": false
         },
+        "machine_provider_id": {
+          "name": "machine_provider_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "launch_key": {
+          "name": "launch_key",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "machine_inputs": {
+          "name": "machine_inputs",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "machine_attempt": {
+          "name": "machine_attempt",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": 0
+        },
+        "pending_log": {
+          "name": "pending_log",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "''"
+        },
+        "machine_operation_id": {
+          "name": "machine_operation_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "server_access_provider_id": {
+          "name": "server_access_provider_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "server_access_grant_id": {
+          "name": "server_access_grant_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "resource": {
+          "name": "resource",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "phase": {
+          "name": "phase",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "'active'"
+        },
+        "suspended_at": {
+          "name": "suspended_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "status_message": {
+          "name": "status_message",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "suspend_retry_at": {
+          "name": "suspend_retry_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "remove_retry_at": {
+          "name": "remove_retry_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "teardown_attempt": {
+          "name": "teardown_attempt",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": 0
+        },
+        "teardown_status": {
+          "name": "teardown_status",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
         "max_permission_mode": {
           "name": "max_permission_mode",
           "type": "text",
@@ -1243,6 +1418,14 @@
             "last_seen_at"
           ],
           "isUnique": false
+        },
+        "hosts_live_launch_key_idx": {
+          "name": "hosts_live_launch_key_idx",
+          "columns": [
+            "launch_key"
+          ],
+          "isUnique": true,
+          "where": "\"hosts\".\"destroyed_at\" is null"
         }
       },
       "foreignKeys": {},
@@ -2532,6 +2715,14 @@
           "notNull": false,
           "autoincrement": false
         },
+        "owns_path": {
+          "name": "owns_path",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": false
+        },
         "is_default": {
           "name": "is_default",
           "type": "integer",
@@ -3473,59 +3664,6 @@
         }
       },
       "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
-      "checkConstraints": {}
-    },
-    "thread_plugin_metadata": {
-      "name": "thread_plugin_metadata",
-      "columns": {
-        "thread_id": {
-          "name": "thread_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "plugin_id": {
-          "name": "plugin_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "metadata_json": {
-          "name": "metadata_json",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        }
-      },
-      "indexes": {},
-      "foreignKeys": {
-        "thread_plugin_metadata_thread_id_threads_id_fk": {
-          "name": "thread_plugin_metadata_thread_id_threads_id_fk",
-          "tableFrom": "thread_plugin_metadata",
-          "tableTo": "threads",
-          "columnsFrom": [
-            "thread_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {
-        "thread_plugin_metadata_thread_id_plugin_id_pk": {
-          "columns": [
-            "thread_id",
-            "plugin_id"
-          ],
-          "name": "thread_plugin_metadata_thread_id_plugin_id_pk"
-        }
-      },
       "uniqueConstraints": {},
       "checkConstraints": {}
     },

@@ -132,7 +132,7 @@ export function describeQueuedMessageWait(
     case "provisioning":
       return "Waiting for workspace";
     case "host-offline":
-      return `Waiting for ${args.waitingOn.hostName} to reconnect`;
+      return `Waiting for ${args.waitingOn.hostName} to be ready`;
     case "interaction":
       return "Waiting for your reply";
     case "plugin":

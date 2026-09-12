@@ -10,7 +10,7 @@ type ThreadReadTrackingState = ThreadReadState & Pick<Thread, "id">;
 
 interface MarkThreadReadMutation {
   mutate: (
-    threadId: string,
+    input: { signal?: AbortSignal; threadId: string },
     options?: { onError?: () => void; onSettled?: () => void },
   ) => void;
 }
@@ -32,7 +32,9 @@ export function useThreadReadTracking({
   thread,
 }: UseThreadReadTrackingParams) {
   const failedReadKeysRef = useRef<Set<string>>(new Set());
-  const pendingReadKeysRef = useRef<Set<string>>(new Set());
+  const pendingReadControllersRef = useRef<Map<string, AbortController>>(
+    new Map(),
+  );
   const suppressedManualUnreadKeysRef = useRef<Set<string>>(new Set());
   const previousSnapshotRef = useRef<ReadTrackingSnapshot | null>(null);
   const visibilityRevision = useDocumentVisibilityRevision();
@@ -48,6 +50,16 @@ export function useThreadReadTracking({
       threadId: thread?.id ?? null,
     };
     previousSnapshotRef.current = currentSnapshot;
+
+    if (previousSnapshot?.threadId !== currentSnapshot.threadId) {
+      const previousMarker = previousSnapshot?.threadId
+        ? `${previousSnapshot.threadId}:${previousSnapshot.latestAttentionAt}`
+        : null;
+      if (previousMarker) {
+        pendingReadControllersRef.current.get(previousMarker)?.abort();
+        pendingReadControllersRef.current.delete(previousMarker);
+      }
+    }
 
     if (!isVisible) {
       return;
@@ -68,7 +80,7 @@ export function useThreadReadTracking({
 
     if (threadIsRead) {
       failedReadKeysRef.current.delete(marker);
-      pendingReadKeysRef.current.delete(marker);
+      pendingReadControllersRef.current.delete(marker);
       suppressedManualUnreadKeysRef.current.delete(marker);
       return;
     }
@@ -98,20 +110,24 @@ export function useThreadReadTracking({
     if (!isOpenedThread && !hasNewAttention && !becameVisible && !isRetry) {
       return;
     }
-    if (pendingReadKeysRef.current.has(marker)) {
+    if (pendingReadControllersRef.current.has(marker)) {
       return;
     }
 
     failedReadKeysRef.current.delete(marker);
-    pendingReadKeysRef.current.add(marker);
-    markThreadRead.mutate(thread.id, {
-      onError: () => {
-        pendingReadKeysRef.current.delete(marker);
-        failedReadKeysRef.current.add(marker);
+    const controller = new AbortController();
+    pendingReadControllersRef.current.set(marker, controller);
+    markThreadRead.mutate(
+      { signal: controller.signal, threadId: thread.id },
+      {
+        onError: () => {
+          pendingReadControllersRef.current.delete(marker);
+          failedReadKeysRef.current.add(marker);
+        },
+        onSettled: () => {
+          pendingReadControllersRef.current.delete(marker);
+        },
       },
-      onSettled: () => {
-        pendingReadKeysRef.current.delete(marker);
-      },
-    });
+    );
   }, [isVisible, markThreadRead, thread, visibilityRevision]);
 }

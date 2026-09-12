@@ -47,7 +47,7 @@ describe("offline host follow-ups", () => {
         hostId: host.id,
         projectId: project.id,
         path: "/tmp/offline-followup",
-      });
+        });
       const thread = seedThread(harness.deps, {
         projectId: project.id,
         environmentId: environment.id,

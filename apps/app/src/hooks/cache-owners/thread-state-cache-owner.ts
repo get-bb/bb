@@ -22,12 +22,14 @@ import {
 } from "./mutation-cache-effects";
 import {
   applyToCachedThreadListsAndSidebarNavigation,
+  getCachedSidebarNavigationThreads,
   restoreCachedSidebarNavigation,
   snapshotCachedSidebarNavigation,
   type CachedSidebarNavigationSnapshot,
 } from "./query-cache";
 import {
   getCachedThreadLists,
+  iterateThreadListCacheEntries,
   restoreCachedThreadLists,
   type CachedThreadListSnapshot,
 } from "./thread-list-cache-data";
@@ -66,6 +68,7 @@ interface BeginThreadReadStateTransactionArgs extends ThreadIdCacheArgs {
 }
 
 interface BeginThreadMetadataTransactionArgs extends ThreadIdCacheArgs {
+  parentThreadId?: string | null;
   sectionId?: string | null;
   title?: string | null;
 }
@@ -388,15 +391,53 @@ export function beginThreadReadStateTransaction({
   });
 }
 
+function findThreadMetadataInCache(
+  queryClient: QueryClient,
+  threadId: string,
+): Pick<ThreadWithRuntime, "parentThreadId" | "sectionId"> | undefined {
+  const thread = queryClient.getQueryData<ThreadWithRuntime>(
+    threadQueryKey(threadId),
+  );
+  if (thread) return thread;
+  const sidebarThread = getCachedSidebarNavigationThreads(queryClient).find(
+    (entry) => entry.id === threadId,
+  );
+  if (sidebarThread) return sidebarThread;
+  for (const { data } of getCachedThreadLists(queryClient, {
+    queryKey: threadsQueryKey(),
+  })) {
+    for (const entry of iterateThreadListCacheEntries(data)) {
+      if (entry.id === threadId) return entry;
+    }
+  }
+  return undefined;
+}
+
 export function beginThreadMetadataTransaction({
+  parentThreadId,
   sectionId,
   queryClient,
   threadId,
   title,
 }: BeginThreadMetadataTransactionArgs): Promise<ThreadListMutationTransaction> {
+  if (parentThreadId === null && sectionId === undefined) {
+    const thread = findThreadMetadataInCache(queryClient, threadId);
+    if (thread?.parentThreadId) {
+      const parent = findThreadMetadataInCache(
+        queryClient,
+        thread.parentThreadId,
+      );
+      if (parent) {
+        sectionId = parent.sectionId;
+      } else {
+        parentThreadId = undefined;
+      }
+    }
+  }
   const patch = {
     ...(title !== undefined ? { title } : {}),
     ...(sectionId !== undefined ? { sectionId } : {}),
+    ...(parentThreadId !== undefined ? { parentThreadId } : {}),
   };
   return runOptimisticThreadFieldTransaction({
     applyToLists: (queryClient, threadId) =>

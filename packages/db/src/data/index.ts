@@ -53,6 +53,7 @@ export {
   listProjectSourcesByProjectIds,
   listProjectSourcesByHost,
   getProjectSourceByHost,
+  projectSourceOwnsPath,
   getDefaultProjectSource,
   updateProjectSource,
   deleteProjectSource,
@@ -256,6 +257,7 @@ export {
   findForeignManagedEnvironmentAtHostPath,
   findProviderEnvironmentContainingPath,
   listRetiredLoadedEnvironmentIdsOnHost,
+  markHostEnvironmentsDestroyed,
   recordEnvironmentCurrentBranch,
   recordEnvironmentProviderProvenance,
   updateEnvironmentMetadata,
@@ -266,6 +268,7 @@ export {
   upsertHost,
   getHost,
   getNonDestroyedHost,
+  getNonDestroyedHostByLaunchKey,
   listHosts,
   listNonDestroyedHostsByIds,
   listPublicHosts,
@@ -501,3 +504,4 @@ export {
   shouldCompactDatabase,
   shouldRunIncrementalVacuum,
 } from "./maintenance.js";
+export * from "./machines.js";

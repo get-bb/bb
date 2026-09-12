@@ -88,7 +88,7 @@ import { TimelineDetailScroll } from "./TimelineDetailScroll.js";
 import { Button } from "@bb/shared-ui/button";
 import { AutoHeightContainer } from "../../ui/height-transition.js";
 import { Icon, type IconName } from "@bb/shared-ui/icon";
-import { isIconName, presentationTintStyle } from "./presentation-display.js";
+import { presentationTintStyle } from "./presentation-display.js";
 import { PluginCompactIconMask } from "../../plugin/PluginIcon.js";
 import { usePluginIconUrl } from "@/lib/plugin-logos";
 import {
@@ -1427,7 +1427,7 @@ function leadingIconForWorkRow(
   if (row.kind !== "work") {
     return undefined;
   }
-  return workRowGlyph(row, isIconName);
+  return workRowGlyph(row, (glyph): glyph is string => glyph.length > 0);
 }
 
 export function systemOperationLeadingIcon(
@@ -1662,6 +1662,11 @@ function TimelineExpandableRowView({
       })}
       horizontalPadding={horizontalPadding}
       leadingIcon={leadingIcon}
+      leadingIconFallback={
+        row.kind === "work"
+          ? workRowGlyph(row, (glyph): glyph is never => false)
+          : undefined
+      }
       leadingIconUrl={leadingIconUrl}
       leadingIconStyle={leadingIconStyle}
       autoExpanded={

@@ -126,6 +126,7 @@ interface CanUseToolPolicyCase {
 }
 
 interface ControlledClaudeQuery {
+  getContextUsage: ReturnType<typeof vi.fn>;
   applyFlagSettings: ReturnType<typeof vi.fn>;
   close: ReturnType<typeof vi.fn>;
   emit(message: SDKMessage): void;
@@ -358,6 +359,7 @@ function createControlledClaudeQuery(): ControlledClaudeQuery {
     finish() {
       pushResult({ value: undefined, done: true });
     },
+    getContextUsage: vi.fn().mockResolvedValue(null),
     initializationResult: vi.fn(),
     setModel: vi.fn().mockResolvedValue(undefined),
     setPermissionMode: vi.fn().mockResolvedValue(undefined),
@@ -766,6 +768,113 @@ describe("bridge", () => {
     vi.useRealTimers();
     for (const tempDir of tempDirs.splice(0)) {
       rmSync(tempDir, { recursive: true, force: true });
+    }
+  });
+
+  it("publishes a context snapshot after a turn and invalidates it at compaction", async () => {
+    const bridge = createBridgeJsonRpcTestHarness(handleLine);
+    const queries: ControlledClaudeQuery[] = [];
+    queryMock.mockImplementation(() => {
+      const query = createControlledClaudeQuery();
+      query.getContextUsage.mockResolvedValue({
+        categories: [{ name: "Provider category", tokens: 450 }],
+        totalTokens: 450,
+        rawMaxTokens: 1_000,
+        model: "claude-test",
+        isAutoCompactEnabled: false,
+      });
+      queries.push(query);
+      return query;
+    });
+    const threadId = "thread-context-snapshot";
+    try {
+      bridge.sendRequest(1, "thread/start", {
+        threadId,
+        cwd: "/tmp/worktree",
+        instructionMode: "append",
+        options: {
+          permissionMode: "accept-edits",
+          permissionScope: "workspace",
+          approvalReviewer: "user",
+          permissionEscalation: "ask",
+          instructions: "test",
+          providerOptions: { workflowsEnabled: false },
+        },
+      });
+      await bridge.waitForResponse(1);
+      bridge.sendRequest(
+        2,
+        "turn/start",
+        canonicalTurnParams({
+          threadId,
+          providerThreadId: threadId,
+          input: [{ type: "text", text: "hello" }],
+        }),
+      );
+      await readNextPrompt(getLatestQueryCall());
+      await bridge.waitForResponse(2);
+      queries[0].emit(createSuccessfulResultMessage(threadId));
+      await vi.waitFor(() => {
+        const events = assembleCapturedThreadEvents(
+          bridge.messages,
+          "claude-code",
+        );
+        const snapshots = events.filter(
+          (event) =>
+            event.type === "thread/contextWindowUsage/updated" &&
+            event.contextWindowUsage.snapshot,
+        );
+        expect(snapshots).toMatchObject([
+          {
+            contextWindowUsage: {
+              usedTokens: 450,
+              modelContextWindow: 1_000,
+              estimated: true,
+              snapshot: {
+                providerSessionId: threadId,
+                providerTurnId: null,
+                usedTokens: 450,
+                categories: [
+                  {
+                    label: "Provider category",
+                    kind: "used",
+                    tokens: 450,
+                    entries: [],
+                  },
+                ],
+              },
+            },
+          },
+        ]);
+      });
+      expect(queries[0].getContextUsage).toHaveBeenCalledTimes(1);
+      queries[0].getContextUsage.mockResolvedValue(null);
+      queries[0].emit({
+        type: "system",
+        subtype: "compact_boundary",
+        uuid: "00000000-0000-4000-8000-000000000001",
+        session_id: threadId,
+        compact_metadata: {
+          trigger: "manual",
+          pre_tokens: 450,
+          post_tokens: 100,
+        },
+      });
+      await vi.waitFor(() => {
+        const usageEvents = assembleCapturedThreadEvents(
+          bridge.messages,
+          "claude-code",
+        ).filter((event) => event.type === "thread/contextWindowUsage/updated");
+        expect(usageEvents.at(-1)?.contextWindowUsage).toEqual({
+          usedTokens: null,
+          modelContextWindow: null,
+          estimated: true,
+        });
+        expect(queries[0].getContextUsage).toHaveBeenCalledTimes(2);
+      });
+    } finally {
+      await stopBridgeThread({ bridge, queries, threadId });
+      bridge.restore();
     }
   });
 

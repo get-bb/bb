@@ -14,7 +14,6 @@ import {
 } from "@bb/thread-view";
 import { cn } from "@bb/shared-ui/lib/utils";
 import { Icon } from "@bb/shared-ui/icon";
-import { isIconName } from "./presentation-display.js";
 import { DiffStatsTally } from "@/components/ui/diff-stats-tally.js";
 import { RouteAnchor } from "@/components/ui/app-route-anchor.js";
 import { useSecondTick } from "@/hooks/useSecondTick";
@@ -288,13 +287,6 @@ function renderDecoration(
     }
     case "badge": {
       const badgeClass = badgeToneClass(decoration.tone);
-      if (!isIconName(decoration.glyph)) {
-        return (
-          <span key={index} className={cn(baseClass, badgeClass)}>
-            {decoration.label}
-          </span>
-        );
-      }
       return (
         <span
           key={index}

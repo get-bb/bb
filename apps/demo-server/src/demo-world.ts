@@ -55,6 +55,20 @@ const SYSTEM_CONFIG = systemConfigResponseSchema.parse({
   appearance: defaultAppTheme,
   featureFlags: defaultFeatureFlags,
   serverUrl: "https://demo.invalid",
+  serverAccess: {
+    effectiveUrl: "https://demo.invalid",
+    urlSource: "setting",
+    defaultProviderId: "direct",
+    providers: [
+      {
+        id: "direct",
+        displayName: "Direct URL",
+        description: "Connect machines directly to this server URL.",
+        pluginId: null,
+        availability: null,
+      },
+    ],
+  },
   aiServices: {
     inference: "codex/gpt-5.5",
     inferenceFallback: "codex/gpt-5.5",

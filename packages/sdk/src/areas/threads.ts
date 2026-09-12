@@ -48,6 +48,7 @@ import type {
   ThreadStoragePathListResponse,
   ThreadTabsResponse,
   ThreadTimelineResponse,
+  ThreadContextResponse,
   ThreadWithIncludesResponse,
   TimelineTurnSummaryDetailsResponse,
   ThreadOpenFile,
@@ -175,6 +176,7 @@ export type ThreadInteractionRespondResult = PendingInteraction;
 export type ThreadInteractionCancelResult = PendingInteraction;
 export type ThreadEventsListResult = ThreadEventRow[];
 export type ThreadEventWaitResult = ThreadEventRow | null;
+export type ThreadContextResult = ThreadContextResponse;
 export type ThreadTimelineResult = ThreadTimelineResponse;
 export type ThreadArchiveResult = ThreadArchiveAllResponse;
 export type ThreadOpenResult = ThreadOpenResponse;
@@ -206,7 +208,8 @@ export type ThreadStorageFilesResult = ThreadStorageFileListResponse;
 export type ThreadStorageLocationResult = ThreadStorageLocationResponse;
 export type ThreadStoragePathsResult = ThreadStoragePathListResponse;
 export type ThreadChildSummaryResult = ThreadChildSummaryResponse;
-export type ThreadDefaultExecutionOptionsResult = ResolvedThreadExecutionOptions | null;
+export type ThreadDefaultExecutionOptionsResult =
+  ResolvedThreadExecutionOptions | null;
 export type ThreadConversationOutlineResult = ThreadConversationOutlineResponse;
 export type ThreadTimelineTurnSummaryDetailsResult =
   TimelineTurnSummaryDetailsResponse;
@@ -287,6 +290,7 @@ export interface ThreadRetryArgs {
 }
 
 export interface ThreadActionArgs {
+  signal?: AbortSignal;
   threadId: string;
 }
 
@@ -596,6 +600,7 @@ export interface ThreadsArea {
   spawn(args: ThreadSpawnArgs): Promise<ThreadSpawnResult>;
   stop(args: ThreadActionArgs): Promise<ThreadStopResult>;
   tabs: ThreadTabsArea;
+  context(args: ThreadStatusArgs): Promise<ThreadContextResult>;
   timeline(args: ThreadTimelineArgs): Promise<ThreadTimelineResult>;
   timelineTurnSummaryDetails(
     args: ThreadTimelineTurnSummaryDetailsArgs,
@@ -1185,14 +1190,14 @@ export function createThreadsArea(args: CreateSdkAreaArgs): ThreadsArea {
       return transport.readJson(
         transport.api.v1.threads[":id"].read.$post({
           param: { id: input.threadId },
-        }),
+        }, ...signalRequestArgs(input.signal)),
       );
     },
     async markUnread(input) {
       return transport.readJson(
         transport.api.v1.threads[":id"].unread.$post({
           param: { id: input.threadId },
-        }),
+        }, ...signalRequestArgs(input.signal)),
       );
     },
     async output(input) {
@@ -1332,6 +1337,14 @@ export function createThreadsArea(args: CreateSdkAreaArgs): ThreadsArea {
       return { ok: true };
     },
     tabs,
+    async context(input) {
+      return transport.readJson(
+        transport.api.v1.threads[":id"].context.$get(
+          { param: { id: input.threadId } },
+          ...signalRequestArgs(input.signal),
+        ),
+      );
+    },
     async timeline(input) {
       return transport.readJson(
         transport.api.v1.threads[":id"].timeline.$get(

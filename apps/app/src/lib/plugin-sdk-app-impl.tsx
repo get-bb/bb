@@ -1,3 +1,5 @@
+import { ProviderIcon } from "@/components/plugin/ProviderIcon";
+import { Icon } from "@bb/shared-ui/icon";
 import { useCallback, useMemo } from "react";
 import type { MarkdownProps, PluginSdkApp } from "@get-bb/plugin-sdk";
 import { PluginDiff } from "@/components/plugin/PluginDiff";
@@ -46,6 +48,8 @@ import { useCodeTheme } from "./plugin-code-theme";
 export const pluginSdkAppImplementation = installDeprecatedAliases(
   {
     definePluginApp,
+    experimental_Icon: Icon,
+    experimental_ProviderIcon: ProviderIcon,
     useBbContext,
     useBbNavigate,
     experimental_useAppPanel,
