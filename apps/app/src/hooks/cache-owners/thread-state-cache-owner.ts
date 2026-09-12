@@ -22,12 +22,15 @@ import {
 } from "./mutation-cache-effects";
 import {
   applyToCachedThreadListsAndSidebarNavigation,
+  applyToCachedSidebarNavigationThreads,
+  listSidebarNavigationThreads,
   getCachedSidebarNavigationThreads,
   restoreCachedSidebarNavigation,
   snapshotCachedSidebarNavigation,
   type CachedSidebarNavigationSnapshot,
 } from "./query-cache";
 import {
+  applyToCachedThreadLists,
   getCachedThreadLists,
   iterateThreadListCacheEntries,
   restoreCachedThreadLists,
@@ -365,12 +368,12 @@ export function beginUnpinAndMoveThreadTransaction({
   });
 }
 
-export function beginThreadReadStateTransaction({
+export async function beginThreadReadStateTransaction({
   lastReadAt,
   queryClient,
   threadId,
-}: BeginThreadReadStateTransactionArgs): Promise<ThreadListMutationTransaction> {
-  return runOptimisticThreadFieldTransaction({
+}: BeginThreadReadStateTransactionArgs): Promise<ThreadReadStateTransaction> {
+  const transaction = await runOptimisticThreadFieldTransaction({
     applyToLists: (queryClient, threadId) =>
       applyToCachedThreadListsAndSidebarNavigation(queryClient, (list) =>
         list.map((thread) =>
@@ -388,6 +391,61 @@ export function beginThreadReadStateTransaction({
     }),
     queryClient,
     threadId,
+  });
+  return { ...transaction, lastReadAt };
+}
+
+export interface ThreadReadStateTransaction extends ThreadListMutationTransaction {
+  lastReadAt: number | null;
+}
+
+export function rollbackThreadReadStateTransaction({
+  queryClient,
+  threadId,
+  transaction,
+}: ThreadIdCacheArgs & {
+  transaction: ThreadReadStateTransaction | undefined;
+}): void {
+  if (!transaction) return;
+  const { lastReadAt } = transaction;
+  function restore<
+    T extends Pick<
+      ThreadWithRuntime,
+      "id" | "lastReadAt" | "latestAttentionAt"
+    >,
+  >(
+    current: T,
+    previous:
+      | Pick<ThreadWithRuntime, "lastReadAt" | "latestAttentionAt">
+      | undefined,
+  ): T {
+    return current.id === threadId &&
+      previous &&
+      current.lastReadAt === getOptimisticLastReadAt(previous, lastReadAt)
+      ? { ...current, lastReadAt: previous.lastReadAt }
+      : current;
+  }
+  queryClient.setQueryData<ThreadWithRuntime>(
+    threadQueryKey(threadId),
+    (current) => current && restore(current, transaction.previousThread),
+  );
+  for (const snapshot of transaction.previousThreadLists) {
+    const previous = [...iterateThreadListCacheEntries(snapshot.data)].find(
+      (thread) => thread.id === threadId,
+    );
+    applyToCachedThreadLists(queryClient, {
+      queryKey: snapshot.queryKey,
+      mapper: (list) => list.map((thread) => restore(thread, previous)),
+    });
+  }
+  const previous = transaction.previousSidebarNavigation
+    ? listSidebarNavigationThreads(transaction.previousSidebarNavigation).find(
+        (thread) => thread.id === threadId,
+      )
+    : undefined;
+  applyToCachedSidebarNavigationThreads({
+    queryClient,
+    mapper: (list) => list.map((thread) => restore(thread, previous)),
   });
 }
 

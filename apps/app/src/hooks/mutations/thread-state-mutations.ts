@@ -27,6 +27,8 @@ import {
   rollbackDeleteThreadTransaction,
   rollbackReorderPinnedThreadTransaction,
   rollbackThreadListMutationTransaction,
+  rollbackThreadReadStateTransaction,
+  type ThreadReadStateTransaction,
   settleArchiveThreadsTransaction,
   settleDeleteThreadTransaction,
   settleThreadListMembershipMutation,
@@ -380,16 +382,15 @@ export function useMarkThreadRead() {
       errorMessage: "Failed to mark thread read.",
       showErrorToast: false,
     },
-    mutationFn: (input: ThreadReadMutationInput) =>
-      sdk.threads.markRead(input),
-    onMutate: (input): Promise<ThreadListMutationTransaction> =>
+    mutationFn: (input: ThreadReadMutationInput) => sdk.threads.markRead(input),
+    onMutate: (input): Promise<ThreadReadStateTransaction> =>
       beginThreadReadStateTransaction({
         lastReadAt: Date.now(),
         queryClient,
         threadId: input.threadId,
       }),
     onError: (_error, input, context) => {
-      rollbackThreadListMutationTransaction({
+      rollbackThreadReadStateTransaction({
         queryClient,
         threadId: input.threadId,
         transaction: context,

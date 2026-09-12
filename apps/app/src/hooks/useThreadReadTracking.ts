@@ -9,10 +9,10 @@ import {
 type ThreadReadTrackingState = ThreadReadState & Pick<Thread, "id">;
 
 interface MarkThreadReadMutation {
-  mutate: (
-    input: { signal?: AbortSignal; threadId: string },
-    options?: { onError?: () => void; onSettled?: () => void },
-  ) => void;
+  mutateAsync: (input: {
+    signal?: AbortSignal;
+    threadId: string;
+  }) => Promise<ThreadReadState>;
 }
 
 interface UseThreadReadTrackingParams {
@@ -41,6 +41,13 @@ export function useThreadReadTracking({
   const isVisible = isDocumentVisible();
 
   useEffect(() => {
+    const controllers = pendingReadControllersRef.current;
+    return () => {
+      for (const controller of controllers.values()) controller.abort();
+    };
+  }, []);
+
+  useEffect(() => {
     const previousSnapshot = previousSnapshotRef.current;
     const threadIsRead = thread ? isThreadRead(thread) : null;
     const currentSnapshot: ReadTrackingSnapshot = {
@@ -52,12 +59,8 @@ export function useThreadReadTracking({
     previousSnapshotRef.current = currentSnapshot;
 
     if (previousSnapshot?.threadId !== currentSnapshot.threadId) {
-      const previousMarker = previousSnapshot?.threadId
-        ? `${previousSnapshot.threadId}:${previousSnapshot.latestAttentionAt}`
-        : null;
-      if (previousMarker) {
-        pendingReadControllersRef.current.get(previousMarker)?.abort();
-        pendingReadControllersRef.current.delete(previousMarker);
+      for (const controller of pendingReadControllersRef.current.values()) {
+        controller.abort();
       }
     }
 
@@ -80,7 +83,6 @@ export function useThreadReadTracking({
 
     if (threadIsRead) {
       failedReadKeysRef.current.delete(marker);
-      pendingReadControllersRef.current.delete(marker);
       suppressedManualUnreadKeysRef.current.delete(marker);
       return;
     }
@@ -117,17 +119,15 @@ export function useThreadReadTracking({
     failedReadKeysRef.current.delete(marker);
     const controller = new AbortController();
     pendingReadControllersRef.current.set(marker, controller);
-    markThreadRead.mutate(
-      { signal: controller.signal, threadId: thread.id },
-      {
-        onError: () => {
+    void markThreadRead
+      .mutateAsync({ signal: controller.signal, threadId: thread.id })
+      .catch(() => {
+        failedReadKeysRef.current.add(marker);
+      })
+      .finally(() => {
+        if (pendingReadControllersRef.current.get(marker) === controller) {
           pendingReadControllersRef.current.delete(marker);
-          failedReadKeysRef.current.add(marker);
-        },
-        onSettled: () => {
-          pendingReadControllersRef.current.delete(marker);
-        },
-      },
-    );
+        }
+      });
   }, [isVisible, markThreadRead, thread, visibilityRevision]);
 }
