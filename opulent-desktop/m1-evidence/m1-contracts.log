@@ -1,0 +1,42 @@
+• turbo 2.10.12
+
+   • Packages in scope: @opulent/learning-contracts
+   • Running typecheck, test in 1 packages
+   • Remote caching disabled
+
+//:ensure-native-modules: cache bypass, force executing eab4ea10d6933efb
+@opulent/learning-contracts:typecheck: cache miss, executing 0054faaa0c3a7dff
+@opulent/learning-contracts:typecheck: 
+@opulent/learning-contracts:typecheck: > @opulent/learning-contracts@0.1.0 typecheck /home/daytona/workspace/opulent-bb/packages/opulent-learning
+@opulent/learning-contracts:typecheck: > tsc --noEmit
+@opulent/learning-contracts:typecheck: 
+//:ensure-native-modules: 
+//:ensure-native-modules: > bb@ ensure-native-modules /home/daytona/workspace/opulent-bb
+//:ensure-native-modules: > node scripts/ensure-native-modules.mjs
+//:ensure-native-modules: 
+@opulent/learning-contracts:test: cache miss, executing 94abc9468262e9e5
+@opulent/learning-contracts:test: 
+@opulent/learning-contracts:test: > @opulent/learning-contracts@0.1.0 test /home/daytona/workspace/opulent-bb/packages/opulent-learning
+@opulent/learning-contracts:test: > vitest run --config vitest.config.ts
+@opulent/learning-contracts:test: 
+@opulent/learning-contracts:test: 
+@opulent/learning-contracts:test: [1m[46m RUN [49m[22m [36mv4.1.1 [39m[90m/home/daytona/workspace/opulent-bb/packages/opulent-learning[39m
+@opulent/learning-contracts:test: 
+@opulent/learning-contracts:test:  [32m✓[39m [30m[45m @opulent/learning-contracts [49m[39m src/trajectory/trajectory.test.ts [2m([22m[2m14 tests[22m[2m)[22m[32m 8[2mms[22m[39m
+@opulent/learning-contracts:test:  [32m✓[39m [30m[45m @opulent/learning-contracts [49m[39m src/acp/acp.test.ts [2m([22m[2m13 tests[22m[2m)[22m[32m 6[2mms[22m[39m
+@opulent/learning-contracts:test:  [32m✓[39m [30m[45m @opulent/learning-contracts [49m[39m src/compaction/compaction.test.ts [2m([22m[2m14 tests[22m[2m)[22m[32m 12[2mms[22m[39m
+@opulent/learning-contracts:test:  [32m✓[39m [30m[45m @opulent/learning-contracts [49m[39m src/events/events.test.ts [2m([22m[2m13 tests[22m[2m)[22m[32m 2[2mms[22m[39m
+@opulent/learning-contracts:test:  [32m✓[39m [30m[45m @opulent/learning-contracts [49m[39m src/harbor/harbor.test.ts [2m([22m[2m9 tests[22m[2m)[22m[32m 3[2mms[22m[39m
+@opulent/learning-contracts:test:  [32m✓[39m [30m[45m @opulent/learning-contracts [49m[39m src/envauthor/envauthor.test.ts [2m([22m[2m14 tests[22m[2m)[22m[32m 3[2mms[22m[39m
+@opulent/learning-contracts:test:  [32m✓[39m [30m[45m @opulent/learning-contracts [49m[39m src/providers/providers.test.ts [2m([22m[2m9 tests[22m[2m)[22m[32m 1[2mms[22m[39m
+@opulent/learning-contracts:test: 
+@opulent/learning-contracts:test: [2m Test Files [22m [1m[32m7 passed[39m[22m[90m (7)[39m
+@opulent/learning-contracts:test: [2m      Tests [22m [1m[32m86 passed[39m[22m[90m (86)[39m
+@opulent/learning-contracts:test: [2m   Start at [22m 01:47:12
+@opulent/learning-contracts:test: [2m   Duration [22m 308ms[2m (transform 323ms, setup 0ms, import 422ms, tests 35ms, environment 1ms)[22m
+@opulent/learning-contracts:test: 
+
+ Tasks:    3 successful, 3 total
+Cached:    0 cached, 3 total
+  Time:    1.869s 
+

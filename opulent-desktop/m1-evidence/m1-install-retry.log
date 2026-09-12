@@ -1,0 +1,168 @@
+Scope: all 96 workspace projects
+Lockfile is up to date, resolution step is skipped
+Progress: resolved 1, reused 0, downloaded 0, added 0
+Packages: +2335
+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+Progress: resolved 2335, reused 947, downloaded 0, added 0
+Progress: resolved 2335, reused 2136, downloaded 0, added 0
+Progress: resolved 2335, reused 2151, downloaded 68, added 73
+Progress: resolved 2335, reused 2151, downloaded 151, added 158
+Progress: resolved 2335, reused 2151, downloaded 152, added 158
+Progress: resolved 2335, reused 2151, downloaded 154, added 161
+Progress: resolved 2335, reused 2151, downloaded 155, added 161
+Progress: resolved 2335, reused 2151, downloaded 155, added 162, done
+.../node_modules/@swc/core postinstall$ node postinstall.js
+.../node_modules/msw postinstall$ node -e "import('./config/scripts/postinstall.js').catch(() => void 0)"
+.../node_modules/msw postinstall$ node -e "import('./config/scripts/postinstall.js').catch(() => void 0)"
+.../node_modules/@swc/core postinstall: Done
+.../esbuild@0.25.12/node_modules/esbuild postinstall$ node install.js
+.../node_modules/msw postinstall: Done
+.../node_modules/msw postinstall: Done
+.../esbuild@0.28.1/node_modules/esbuild postinstall$ node install.js
+.../esbuild@0.25.12/node_modules/esbuild postinstall: Done
+.../sharp@0.34.5/node_modules/sharp install$ node install/check.js || npm run build
+.../esbuild@0.28.1/node_modules/esbuild postinstall: Done
+.../node_modules/better-sqlite3 install$ prebuild-install || node-gyp rebuild --release
+.../sharp@0.34.5/node_modules/sharp install: Done
+.../node_modules/workerd postinstall$ node install.js
+.../node_modules/electron postinstall$ node install.js
+.../node_modules/electron-winstaller install$ node ./script/select-7z-arch.js
+.../node_modules/workerd postinstall: Done
+.../node_modules/electron-winstaller install: Selecting 7-Zip for arch x64
+.../node_modules/@parcel/watcher install$ node scripts/build-from-source.js
+.../node_modules/better-sqlite3 install: Done
+.../node_modules/electron-winstaller install: Done
+.../node_modules/@parcel/watcher install: Done
+.../node_modules/node-pty install$ node scripts/prebuild.js || node-gyp rebuild
+.../node_modules/dtrace-provider install$ node-gyp rebuild || node suppress-error.js
+.../node_modules/node-pty install: [32m> Checking prebuilds...[0m
+.../node_modules/node-pty install: Done
+.../node_modules/node-pty postinstall$ node scripts/post-install.js
+.../node_modules/dtrace-provider install: gyp info it worked if it ends with ok
+.../node_modules/dtrace-provider install: gyp info using node-gyp@10.2.0
+.../node_modules/dtrace-provider install: gyp info using node@22.23.2 | linux | x64
+.../node_modules/node-pty postinstall: [32m> Cleaning release folder...[0m
+.../node_modules/node-pty postinstall: [32m> Moving conpty.dll...[0m
+.../node_modules/node-pty postinstall:   SKIPPED (not Windows)
+.../node_modules/node-pty postinstall: Done
+.../node_modules/dtrace-provider install: gyp info find Python using Python version 3.14.4 found at "/usr/local/bin/python3"
+.../node_modules/protobufjs postinstall$ node scripts/postinstall
+.../core-js@3.49.0/node_modules/core-js postinstall$ node -e "try{require('./postinstall')}catch(e){}"
+.../node_modules/dtrace-provider install: gyp http GET https://nodejs.org/download/release/v22.23.2/node-v22.23.2-headers.tar.gz
+.../node_modules/protobufjs postinstall: Done
+.../esbuild@0.18.20/node_modules/esbuild postinstall$ node install.js
+.../node_modules/dtrace-provider install: gyp http 200 https://nodejs.org/download/release/v22.23.2/node-v22.23.2-headers.tar.gz
+.../core-js@3.49.0/node_modules/core-js postinstall: Thank you for using core-js ( https://github.com/zloirock/core-js ) for polyfilling JavaScript standard library!
+.../core-js@3.49.0/node_modules/core-js postinstall: The project needs your help! Please consider supporting core-js:
+.../core-js@3.49.0/node_modules/core-js postinstall: > https://opencollective.com/core-js 
+.../core-js@3.49.0/node_modules/core-js postinstall: > https://patreon.com/zloirock 
+.../core-js@3.49.0/node_modules/core-js postinstall: > https://boosty.to/zloirock 
+.../core-js@3.49.0/node_modules/core-js postinstall: > bitcoin: bc1qlea7544qtsmj2rayg0lthvza9fau63ux0fstcz 
+.../core-js@3.49.0/node_modules/core-js postinstall: I highly recommend reading this: https://github.com/zloirock/core-js/blob/master/docs/2023-02-14-so-whats-next.md 
+.../core-js@3.49.0/node_modules/core-js postinstall: Done
+.../esbuild@0.19.12/node_modules/esbuild postinstall$ node install.js
+.../esbuild@0.18.20/node_modules/esbuild postinstall: Done
+.../node_modules/cbor-extract install$ node-gyp-build-optional-packages
+.../esbuild@0.19.12/node_modules/esbuild postinstall: Done
+.../node_modules/cbor-extract install: Done
+.../node_modules/dtrace-provider install: gyp http GET https://nodejs.org/download/release/v22.23.2/SHASUMS256.txt
+.../node_modules/dtrace-provider install: gyp http 200 https://nodejs.org/download/release/v22.23.2/SHASUMS256.txt
+.../node_modules/dtrace-provider install: gyp info spawn /usr/local/bin/python3
+.../node_modules/dtrace-provider install: gyp info spawn args [
+.../node_modules/dtrace-provider install: gyp info spawn args '/home/daytona/.cache/node/corepack/v1/pnpm/9.15.0/dist/node_modules/node-gyp/gyp/gyp_main.py',
+.../node_modules/dtrace-provider install: gyp info spawn args 'binding.gyp',
+.../node_modules/dtrace-provider install: gyp info spawn args '-f',
+.../node_modules/dtrace-provider install: gyp info spawn args 'make',
+.../node_modules/dtrace-provider install: gyp info spawn args '-I',
+.../node_modules/dtrace-provider install: gyp info spawn args '/home/daytona/workspace/opulent-bb/node_modules/.pnpm/dtrace-provider@0.8.8/node_modules/dtrace-provider/build/config.gypi',
+.../node_modules/dtrace-provider install: gyp info spawn args '-I',
+.../node_modules/dtrace-provider install: gyp info spawn args '/home/daytona/.cache/node/corepack/v1/pnpm/9.15.0/dist/node_modules/node-gyp/addon.gypi',
+.../node_modules/dtrace-provider install: gyp info spawn args '-I',
+.../node_modules/dtrace-provider install: gyp info spawn args '/home/daytona/.cache/node-gyp/22.23.2/include/node/common.gypi',
+.../node_modules/dtrace-provider install: gyp info spawn args '-Dlibrary=shared_library',
+.../node_modules/dtrace-provider install: gyp info spawn args '-Dvisibility=default',
+.../node_modules/dtrace-provider install: gyp info spawn args '-Dnode_root_dir=/home/daytona/.cache/node-gyp/22.23.2',
+.../node_modules/dtrace-provider install: gyp info spawn args '-Dnode_gyp_dir=/home/daytona/.cache/node/corepack/v1/pnpm/9.15.0/dist/node_modules/node-gyp',
+.../node_modules/dtrace-provider install: gyp info spawn args '-Dnode_lib_file=/home/daytona/.cache/node-gyp/22.23.2/<(target_arch)/node.lib',
+.../node_modules/dtrace-provider install: gyp info spawn args '-Dmodule_root_dir=/home/daytona/workspace/opulent-bb/node_modules/.pnpm/dtrace-provider@0.8.8/node_modules/dtrace-provider',
+.../node_modules/dtrace-provider install: gyp info spawn args '-Dnode_engine=v8',
+.../node_modules/dtrace-provider install: gyp info spawn args '--depth=.',
+.../node_modules/dtrace-provider install: gyp info spawn args '--no-parallel',
+.../node_modules/dtrace-provider install: gyp info spawn args '--generator-output',
+.../node_modules/dtrace-provider install: gyp info spawn args 'build',
+.../node_modules/dtrace-provider install: gyp info spawn args '-Goutput_dir=.'
+.../node_modules/dtrace-provider install: gyp info spawn args ]
+.../node_modules/dtrace-provider install: gyp info spawn make
+.../node_modules/dtrace-provider install: gyp info spawn args [ 'BUILDTYPE=Release', '-C', 'build' ]
+.../node_modules/dtrace-provider install: make: Entering directory '/home/daytona/workspace/opulent-bb/node_modules/.pnpm/dtrace-provider@0.8.8/node_modules/dtrace-provider/build'
+.../node_modules/dtrace-provider install:   TOUCH Release/obj.target/DTraceProviderStub.stamp
+.../node_modules/dtrace-provider install: make: Leaving directory '/home/daytona/workspace/opulent-bb/node_modules/.pnpm/dtrace-provider@0.8.8/node_modules/dtrace-provider/build'
+.../node_modules/dtrace-provider install: gyp info ok 
+.../node_modules/dtrace-provider install: Done
+.../node_modules/electron postinstall: Done
+.../node_modules/@google/genai preinstall$ echo 'preinstall: no-op'
+.../node_modules/@google/genai preinstall: preinstall: no-op
+.../node_modules/@google/genai preinstall: Done
+ WARN  Failed to create bin at /home/daytona/workspace/opulent-bb/apps/desktop/node_modules/.bin/bb-app. ENOENT: no such file or directory, open '/home/daytona/workspace/opulent-bb/packages/bb-app/dist/bb-app.js'
+ WARN  Failed to create bin at /home/daytona/workspace/opulent-bb/apps/desktop/node_modules/.bin/bb. ENOENT: no such file or directory, open '/home/daytona/workspace/opulent-bb/packages/bb-app/dist/bb.js'
+ WARN  Failed to create bin at /home/daytona/workspace/opulent-bb/apps/desktop/node_modules/.bin/bb-server. ENOENT: no such file or directory, open '/home/daytona/workspace/opulent-bb/packages/bb-app/dist/bb-server.js'
+ WARN  Failed to create bin at /home/daytona/workspace/opulent-bb/apps/desktop/node_modules/.bin/bb-host-daemon. ENOENT: no such file or directory, open '/home/daytona/workspace/opulent-bb/packages/bb-app/dist/bb-host-daemon.js'
+ WARN  Failed to create bin at /home/daytona/workspace/opulent-bb/apps/server/node_modules/.bin/bb-script-request-dev-restart. ENOENT: no such file or directory, open '/home/daytona/workspace/opulent-bb/packages/scripts/dist/commands/request-dev-restart.js'
+ WARN  Failed to create bin at /home/daytona/workspace/opulent-bb/apps/server/node_modules/.bin/bb-script-archive-codex-tmp-bb-sessions. ENOENT: no such file or directory, open '/home/daytona/workspace/opulent-bb/packages/scripts/dist/commands/archive-codex-tmp-bb-sessions.js'
+ WARN  Failed to create bin at /home/daytona/workspace/opulent-bb/apps/server/node_modules/.bin/bb-script-reset-bb-data. ENOENT: no such file or directory, open '/home/daytona/workspace/opulent-bb/packages/scripts/dist/commands/reset-bb-data.js'
+ WARN  Failed to create bin at /home/daytona/workspace/opulent-bb/apps/server/node_modules/.bin/bb-script-run-cli. ENOENT: no such file or directory, open '/home/daytona/workspace/opulent-bb/packages/scripts/dist/commands/run-cli.js'
+ WARN  Failed to create bin at /home/daytona/workspace/opulent-bb/apps/server/node_modules/.bin/bb-script-seed-perf-db. ENOENT: no such file or directory, open '/home/daytona/workspace/opulent-bb/packages/scripts/dist/commands/seed-perf-db.js'
+ WARN  Failed to create bin at /home/daytona/workspace/opulent-bb/apps/server/node_modules/.bin/bb-script-run-host-daemon. ENOENT: no such file or directory, open '/home/daytona/workspace/opulent-bb/packages/scripts/dist/commands/run-host-daemon.js'
+ WARN  Failed to create bin at /home/daytona/workspace/opulent-bb/apps/host-daemon/node_modules/.bin/bb-script-archive-codex-tmp-bb-sessions. ENOENT: no such file or directory, open '/home/daytona/workspace/opulent-bb/packages/scripts/dist/commands/archive-codex-tmp-bb-sessions.js'
+ WARN  Failed to create bin at /home/daytona/workspace/opulent-bb/apps/host-daemon/node_modules/.bin/bb-script-request-dev-restart. ENOENT: no such file or directory, open '/home/daytona/workspace/opulent-bb/packages/scripts/dist/commands/request-dev-restart.js'
+ WARN  Failed to create bin at /home/daytona/workspace/opulent-bb/apps/host-daemon/node_modules/.bin/bb-script-reset-bb-data. ENOENT: no such file or directory, open '/home/daytona/workspace/opulent-bb/packages/scripts/dist/commands/reset-bb-data.js'
+ WARN  Failed to create bin at /home/daytona/workspace/opulent-bb/apps/host-daemon/node_modules/.bin/bb-script-run-cli. ENOENT: no such file or directory, open '/home/daytona/workspace/opulent-bb/packages/scripts/dist/commands/run-cli.js'
+ WARN  Failed to create bin at /home/daytona/workspace/opulent-bb/apps/host-daemon/node_modules/.bin/bb-script-run-host-daemon. ENOENT: no such file or directory, open '/home/daytona/workspace/opulent-bb/packages/scripts/dist/commands/run-host-daemon.js'
+ WARN  Failed to create bin at /home/daytona/workspace/opulent-bb/apps/host-daemon/node_modules/.bin/bb-script-seed-perf-db. ENOENT: no such file or directory, open '/home/daytona/workspace/opulent-bb/packages/scripts/dist/commands/seed-perf-db.js'
+
+devDependencies:
++ @vitest/coverage-v8 4.1.1
++ cross-env 10.1.0
++ dotenv-cli 11.0.0
++ esbuild 0.28.1
++ http-proxy-3 1.23.3
++ oxfmt 0.64.0
++ oxlint 1.79.0
++ rimraf 6.1.3
++ tsx 4.23.1
++ turbo 2.10.12
++ typescript <- @typescript/typescript6 6.0.2
++ typescript-7 <- typescript 7.0.2
++ vitest 4.1.1
+
+. prepare$ turbo run generate:templates generate:plugin-scaffold generate generate:bb-official-marketplace --filter=@bb/templates --filter=@bb/plugin-build --filter=@bb/server --output-logs=errors-only --summarize=false
+. prepare: Attention:
+. prepare: Turborepo now collects completely anonymous telemetry regarding usage.
+. prepare: This information is used to shape the Turborepo roadmap and prioritize features.
+. prepare: You can learn more, including how to opt-out if you'd not like to participate in this anonymous program, by visiting the following URL:
+. prepare: https://turborepo.dev/docs/telemetry
+. prepare: • turbo 2.10.12
+. prepare:    • Packages in scope: @bb/plugin-build, @bb/server, @bb/templates
+. prepare:    • Running generate:templates, generate:plugin-scaffold, generate, generate:bb-official-marketplace in 3 packages
+. prepare:    • Remote caching disabled
+. prepare:  Tasks:    4 successful, 4 total
+. prepare: Cached:    0 cached, 4 total
+. prepare:   Time:    1.351s 
+. prepare: Done
+ WARN  Failed to create bin at /home/daytona/workspace/opulent-bb/apps/desktop/node_modules/.bin/bb-app. ENOENT: no such file or directory, open '/home/daytona/workspace/opulent-bb/apps/desktop/node_modules/bb-app/dist/bb-app.js'
+ WARN  Failed to create bin at /home/daytona/workspace/opulent-bb/apps/desktop/node_modules/.bin/bb-server. ENOENT: no such file or directory, open '/home/daytona/workspace/opulent-bb/apps/desktop/node_modules/bb-app/dist/bb-server.js'
+ WARN  Failed to create bin at /home/daytona/workspace/opulent-bb/apps/desktop/node_modules/.bin/bb. ENOENT: no such file or directory, open '/home/daytona/workspace/opulent-bb/apps/desktop/node_modules/bb-app/dist/bb.js'
+ WARN  Failed to create bin at /home/daytona/workspace/opulent-bb/apps/desktop/node_modules/.bin/bb-host-daemon. ENOENT: no such file or directory, open '/home/daytona/workspace/opulent-bb/apps/desktop/node_modules/bb-app/dist/bb-host-daemon.js'
+ WARN  Failed to create bin at /home/daytona/workspace/opulent-bb/apps/host-daemon/node_modules/.bin/bb-script-archive-codex-tmp-bb-sessions. ENOENT: no such file or directory, open '/home/daytona/workspace/opulent-bb/apps/host-daemon/node_modules/@bb/scripts/dist/commands/archive-codex-tmp-bb-sessions.js'
+ WARN  Failed to create bin at /home/daytona/workspace/opulent-bb/apps/host-daemon/node_modules/.bin/bb-script-request-dev-restart. ENOENT: no such file or directory, open '/home/daytona/workspace/opulent-bb/apps/host-daemon/node_modules/@bb/scripts/dist/commands/request-dev-restart.js'
+ WARN  Failed to create bin at /home/daytona/workspace/opulent-bb/apps/host-daemon/node_modules/.bin/bb-script-reset-bb-data. ENOENT: no such file or directory, open '/home/daytona/workspace/opulent-bb/apps/host-daemon/node_modules/@bb/scripts/dist/commands/reset-bb-data.js'
+ WARN  Failed to create bin at /home/daytona/workspace/opulent-bb/apps/host-daemon/node_modules/.bin/bb-script-seed-perf-db. ENOENT: no such file or directory, open '/home/daytona/workspace/opulent-bb/apps/host-daemon/node_modules/@bb/scripts/dist/commands/seed-perf-db.js'
+ WARN  Failed to create bin at /home/daytona/workspace/opulent-bb/apps/host-daemon/node_modules/.bin/bb-script-run-cli. ENOENT: no such file or directory, open '/home/daytona/workspace/opulent-bb/apps/host-daemon/node_modules/@bb/scripts/dist/commands/run-cli.js'
+ WARN  Failed to create bin at /home/daytona/workspace/opulent-bb/apps/host-daemon/node_modules/.bin/bb-script-run-host-daemon. ENOENT: no such file or directory, open '/home/daytona/workspace/opulent-bb/apps/host-daemon/node_modules/@bb/scripts/dist/commands/run-host-daemon.js'
+ WARN  Failed to create bin at /home/daytona/workspace/opulent-bb/apps/server/node_modules/.bin/bb-script-archive-codex-tmp-bb-sessions. ENOENT: no such file or directory, open '/home/daytona/workspace/opulent-bb/apps/server/node_modules/@bb/scripts/dist/commands/archive-codex-tmp-bb-sessions.js'
+ WARN  Failed to create bin at /home/daytona/workspace/opulent-bb/apps/server/node_modules/.bin/bb-script-request-dev-restart. ENOENT: no such file or directory, open '/home/daytona/workspace/opulent-bb/apps/server/node_modules/@bb/scripts/dist/commands/request-dev-restart.js'
+ WARN  Failed to create bin at /home/daytona/workspace/opulent-bb/apps/server/node_modules/.bin/bb-script-run-cli. ENOENT: no such file or directory, open '/home/daytona/workspace/opulent-bb/apps/server/node_modules/@bb/scripts/dist/commands/run-cli.js'
+ WARN  Failed to create bin at /home/daytona/workspace/opulent-bb/apps/server/node_modules/.bin/bb-script-reset-bb-data. ENOENT: no such file or directory, open '/home/daytona/workspace/opulent-bb/apps/server/node_modules/@bb/scripts/dist/commands/reset-bb-data.js'
+ WARN  Failed to create bin at /home/daytona/workspace/opulent-bb/apps/server/node_modules/.bin/bb-script-run-host-daemon. ENOENT: no such file or directory, open '/home/daytona/workspace/opulent-bb/apps/server/node_modules/@bb/scripts/dist/commands/run-host-daemon.js'
+ WARN  Failed to create bin at /home/daytona/workspace/opulent-bb/apps/server/node_modules/.bin/bb-script-seed-perf-db. ENOENT: no such file or directory, open '/home/daytona/workspace/opulent-bb/apps/server/node_modules/@bb/scripts/dist/commands/seed-perf-db.js'
+Done in 24.6s

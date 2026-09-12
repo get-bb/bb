@@ -1,0 +1,73 @@
+Scope: all 97 workspace projects
+Progress: resolved 0, reused 1, downloaded 0, added 0
+apps/mobile                              |  WARN  deprecated @react-native-cookies/cookies@6.2.1
+apps/server                              |  WARN  deprecated @hono/node-ws@1.3.0
+Progress: resolved 201, reused 201, downloaded 0, added 0
+apps/app                                 |  WARN  deprecated recharts@2.15.4
+Progress: resolved 691, reused 618, downloaded 0, added 0
+Progress: resolved 1666, reused 1394, downloaded 0, added 0
+Progress: resolved 2522, reused 2264, downloaded 5, added 0
+Progress: resolved 2553, reused 2295, downloaded 5, added 0
+ WARN  19 deprecated subdependencies found: @esbuild-kit/core-utils@3.3.2, @esbuild-kit/esm-loader@2.6.5, @ungap/structured-clone@1.3.0, @xmldom/xmldom@0.8.13, boolean@3.2.0, glob@10.5.0, glob@6.0.4, glob@7.2.3, inflight@1.0.6, lodash.get@4.4.2, lodash.isequal@4.5.0, node-domexception@1.0.0, prebuild-install@7.1.3, rimraf@2.4.5, rimraf@2.6.3, tsconfck@3.1.6, uuid@7.0.3, uuid@8.3.2, uuid@9.0.1
+Progress: resolved 2564, reused 2306, downloaded 5, added 0
+Already up to date
+Progress: resolved 2564, reused 2306, downloaded 5, added 0, done
+ WARN  Failed to create bin at /home/daytona/workspace/opulent-bb/apps/desktop/node_modules/.bin/bb-app. ENOENT: no such file or directory, open '/home/daytona/workspace/opulent-bb/packages/bb-app/dist/bb-app.js'
+ WARN  Failed to create bin at /home/daytona/workspace/opulent-bb/apps/desktop/node_modules/.bin/bb. ENOENT: no such file or directory, open '/home/daytona/workspace/opulent-bb/packages/bb-app/dist/bb.js'
+ WARN  Failed to create bin at /home/daytona/workspace/opulent-bb/apps/desktop/node_modules/.bin/bb-server. ENOENT: no such file or directory, open '/home/daytona/workspace/opulent-bb/packages/bb-app/dist/bb-server.js'
+ WARN  Failed to create bin at /home/daytona/workspace/opulent-bb/apps/desktop/node_modules/.bin/bb-host-daemon. ENOENT: no such file or directory, open '/home/daytona/workspace/opulent-bb/packages/bb-app/dist/bb-host-daemon.js'
+ WARN  Failed to create bin at /home/daytona/workspace/opulent-bb/apps/host-daemon/node_modules/.bin/bb-script-archive-codex-tmp-bb-sessions. ENOENT: no such file or directory, open '/home/daytona/workspace/opulent-bb/packages/scripts/dist/commands/archive-codex-tmp-bb-sessions.js'
+ WARN  Failed to create bin at /home/daytona/workspace/opulent-bb/apps/host-daemon/node_modules/.bin/bb-script-request-dev-restart. ENOENT: no such file or directory, open '/home/daytona/workspace/opulent-bb/packages/scripts/dist/commands/request-dev-restart.js'
+ WARN  Failed to create bin at /home/daytona/workspace/opulent-bb/apps/host-daemon/node_modules/.bin/bb-script-reset-bb-data. ENOENT: no such file or directory, open '/home/daytona/workspace/opulent-bb/packages/scripts/dist/commands/reset-bb-data.js'
+ WARN  Failed to create bin at /home/daytona/workspace/opulent-bb/apps/host-daemon/node_modules/.bin/bb-script-run-cli. ENOENT: no such file or directory, open '/home/daytona/workspace/opulent-bb/packages/scripts/dist/commands/run-cli.js'
+ WARN  Failed to create bin at /home/daytona/workspace/opulent-bb/apps/host-daemon/node_modules/.bin/bb-script-run-host-daemon. ENOENT: no such file or directory, open '/home/daytona/workspace/opulent-bb/packages/scripts/dist/commands/run-host-daemon.js'
+ WARN  Failed to create bin at /home/daytona/workspace/opulent-bb/apps/host-daemon/node_modules/.bin/bb-script-seed-perf-db. ENOENT: no such file or directory, open '/home/daytona/workspace/opulent-bb/packages/scripts/dist/commands/seed-perf-db.js'
+ WARN  Failed to create bin at /home/daytona/workspace/opulent-bb/apps/server/node_modules/.bin/bb-script-archive-codex-tmp-bb-sessions. ENOENT: no such file or directory, open '/home/daytona/workspace/opulent-bb/packages/scripts/dist/commands/archive-codex-tmp-bb-sessions.js'
+ WARN  Failed to create bin at /home/daytona/workspace/opulent-bb/apps/server/node_modules/.bin/bb-script-request-dev-restart. ENOENT: no such file or directory, open '/home/daytona/workspace/opulent-bb/packages/scripts/dist/commands/request-dev-restart.js'
+ WARN  Failed to create bin at /home/daytona/workspace/opulent-bb/apps/server/node_modules/.bin/bb-script-reset-bb-data. ENOENT: no such file or directory, open '/home/daytona/workspace/opulent-bb/packages/scripts/dist/commands/reset-bb-data.js'
+ WARN  Failed to create bin at /home/daytona/workspace/opulent-bb/apps/server/node_modules/.bin/bb-script-run-cli. ENOENT: no such file or directory, open '/home/daytona/workspace/opulent-bb/packages/scripts/dist/commands/run-cli.js'
+ WARN  Failed to create bin at /home/daytona/workspace/opulent-bb/apps/server/node_modules/.bin/bb-script-seed-perf-db. ENOENT: no such file or directory, open '/home/daytona/workspace/opulent-bb/packages/scripts/dist/commands/seed-perf-db.js'
+ WARN  Failed to create bin at /home/daytona/workspace/opulent-bb/apps/server/node_modules/.bin/bb-script-run-host-daemon. ENOENT: no such file or directory, open '/home/daytona/workspace/opulent-bb/packages/scripts/dist/commands/run-host-daemon.js'
+
+ WARN  Issues with peer dependencies found
+apps/app
+└─┬ @ladle/react 5.1.1
+  ├─┬ react-inspector 6.0.2
+  │ └── ✕ unmet peer react@"^16.8.4 || ^17.0.0 || ^18.0.0": found 19.2.4
+  └─┬ vite-tsconfig-paths 5.1.4
+    └─┬ tsconfck 3.1.6
+      └── ✕ unmet peer typescript@^5.0.0: found 6.0.2
+
+apps/connect
+└─┬ better-auth 1.6.23
+  ├── ✕ unmet peer drizzle-orm@^0.45.2: found 0.38.4
+  └─┬ @better-auth/drizzle-adapter 1.6.23
+    └── ✕ unmet peer drizzle-orm@^0.45.2: found 0.38.4
+
+apps/mobile
+├─┬ eas-cli 22.0.0
+│ └─┬ @expo/config 55.0.10
+│   └─┬ @expo/require-utils 55.0.7
+│     └── ✕ unmet peer typescript@"^5.0.0 || ^5.0.0-0": found 6.0.2
+└─┬ expo-quick-actions 6.0.2
+  └─┬ @expo/image-utils 0.8.17
+    └─┬ @expo/require-utils 55.0.8
+      └── ✕ unmet peer typescript@"^5.0.0 || ^5.0.0-0": found 6.0.2
+
+apps/server
+└─┬ better-auth 1.6.23
+  ├── ✕ unmet peer drizzle-orm@^0.45.2: found 0.38.4
+  └─┬ @better-auth/drizzle-adapter 1.6.23
+    └── ✕ unmet peer drizzle-orm@^0.45.2: found 0.38.4
+
+apps/web
+└─┬ better-auth 1.6.23
+  ├── ✕ unmet peer drizzle-orm@^0.45.2: found 0.38.4
+  └─┬ @better-auth/drizzle-adapter 1.6.23
+    └── ✕ unmet peer drizzle-orm@^0.45.2: found 0.38.4
+
+packages/connect-db
+└─┬ vite 8.0.12
+  └── ✕ unmet peer esbuild@"^0.27.0 || ^0.28.0": found 0.19.12
+
+Done in 17.5s

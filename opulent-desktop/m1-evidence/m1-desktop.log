@@ -1,0 +1,11 @@
+@bb/desktop: instance workspace-opulent-bb-4ad65dc66913
+@bb/desktop: data /home/daytona/.bb-dev/workspace-opulent-bb-4ad65dc66913
+@bb/desktop: server http://127.0.0.1:21694
+@bb/desktop: daemon http://127.0.0.1:29694
+@bb/desktop: app (own bb-app runtime — no Vite dev server on http://localhost:13694)
+@bb/desktop: user-data /home/daytona/.bb-dev/workspace-opulent-bb-4ad65dc66913/desktop
+[1m[47m[31mError launching app
+[30mUnable to find Electron app at /home/daytona/workspace/opulent-bb
+
+Cannot find module '/home/daytona/workspace/opulent-bb'
+[0m

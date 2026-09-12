@@ -1,0 +1,6 @@
+Scope: all 97 workspace projects
+/home/daytona/workspace/opulent-bb/packages/opulent-learning:
+ ERR_PNPM_NO_OFFLINE_META  Failed to resolve @typescript/typescript6@>=6.0.2 <7.0.0-0 in package mirror /home/daytona/.cache/pnpm/metadata-v1.3/registry.npmjs.org/@typescript/typescript6.json
+
+This error happened while installing a direct dependency of /home/daytona/workspace/opulent-bb/packages/opulent-learning
+Progress: resolved 0, reused 1, downloaded 0, added 0

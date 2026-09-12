@@ -1,0 +1,58 @@
+! Corepack is about to download https://registry.npmjs.org/pnpm/-/pnpm-9.15.0.tgz
+Scope: all 96 workspace projects
+Lockfile is up to date, resolution step is skipped
+Progress: resolved 1, reused 0, downloaded 0, added 0
+Packages: +2335
+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+   ╭──────────────────────────────────────────────────────────────────╮
+   │                                                                  │
+   │                Update available! 9.15.0 → 12.4.1.                │
+   │   Changelog: https://github.com/pnpm/pnpm/releases/tag/v12.4.1   │
+   │         Run "corepack install -g pnpm@12.4.1" to update.         │
+   │                                                                  │
+   ╰──────────────────────────────────────────────────────────────────╯
+
+Progress: resolved 2335, reused 0, downloaded 52, added 42
+Progress: resolved 2335, reused 0, downloaded 116, added 128
+Progress: resolved 2335, reused 0, downloaded 173, added 186
+Progress: resolved 2335, reused 0, downloaded 182, added 192
+Progress: resolved 2335, reused 0, downloaded 203, added 215
+Progress: resolved 2335, reused 0, downloaded 227, added 231
+Progress: resolved 2335, reused 0, downloaded 248, added 248
+Progress: resolved 2335, reused 0, downloaded 375, added 383
+Progress: resolved 2335, reused 0, downloaded 417, added 418
+Progress: resolved 2335, reused 0, downloaded 455, added 460
+Progress: resolved 2335, reused 0, downloaded 506, added 509
+Progress: resolved 2335, reused 0, downloaded 523, added 526
+Progress: resolved 2335, reused 0, downloaded 676, added 680
+Progress: resolved 2335, reused 0, downloaded 773, added 778
+Progress: resolved 2335, reused 0, downloaded 902, added 909
+Progress: resolved 2335, reused 0, downloaded 984, added 991
+Progress: resolved 2335, reused 0, downloaded 1070, added 1092
+Progress: resolved 2335, reused 0, downloaded 1156, added 1177
+Progress: resolved 2335, reused 0, downloaded 1282, added 1293
+Progress: resolved 2335, reused 0, downloaded 1372, added 1386
+Progress: resolved 2335, reused 0, downloaded 1493, added 1503
+Progress: resolved 2335, reused 0, downloaded 1552, added 1569
+Progress: resolved 2335, reused 0, downloaded 1615, added 1629
+Progress: resolved 2335, reused 0, downloaded 1632, added 1642
+Progress: resolved 2335, reused 0, downloaded 1649, added 1661
+Progress: resolved 2335, reused 0, downloaded 1664, added 1682
+Progress: resolved 2335, reused 0, downloaded 1714, added 1731
+Progress: resolved 2335, reused 0, downloaded 1842, added 1855
+Progress: resolved 2335, reused 0, downloaded 1940, added 1954
+Progress: resolved 2335, reused 0, downloaded 1996, added 2014
+Progress: resolved 2335, reused 0, downloaded 2000, added 2019
+Progress: resolved 2335, reused 0, downloaded 2001, added 2019
+Progress: resolved 2335, reused 0, downloaded 2007, added 2019
+Progress: resolved 2335, reused 0, downloaded 2024, added 2033
+Progress: resolved 2335, reused 0, downloaded 2118, added 2142
+Progress: resolved 2335, reused 0, downloaded 2133, added 2153
+Progress: resolved 2335, reused 0, downloaded 2136, added 2156
+Progress: resolved 2335, reused 0, downloaded 2151, added 2169
+Progress: resolved 2335, reused 0, downloaded 2151, added 2172
+ WARN  GET https://registry.npmjs.org/@anthropic-ai/claude-agent-sdk-linux-arm64/-/claude-agent-sdk-linux-arm64-0.3.245.tgz error (ERR_PNPM_ENOSPC). Will retry in 10 seconds. 2 retries left.
+Progress: resolved 2335, reused 0, downloaded 2151, added 2173
+ WARN  GET https://registry.npmjs.org/tippy.js/-/tippy.js-6.3.7.tgz error (ERR_PNPM_ENOSPC). Will retry in 10 seconds. 2 retries left.
+ WARN  GET https://registry.npmjs.org/@mariozechner/clipboard-linux-x64-musl/-/clipboard-linux-x64-musl-0.3.9.tgz error (ERR_PNPM_ENOSPC). Will retry in 10

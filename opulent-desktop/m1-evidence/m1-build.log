@@ -1,0 +1,306 @@
+• turbo 2.10.12
+
+   • Packages in scope: @bb/app, @bb/desktop, bb-app
+   • Running build in 3 packages
+   • Remote caching disabled
+
+@bb/plugin-build:generate: cache miss, executing bf82f67ef235a698
+@bb/templates:generate:templates: cache hit, replaying logs a941b0a7533f87a4
+@bb/server:generate:bb-official-marketplace: cache hit, replaying logs 905f2247a89841f2
+@bb/templates:generate:templates: 
+@bb/templates:generate:templates: > @bb/templates@0.0.1 generate:templates /home/daytona/workspace/opulent-bb/packages/templates
+@bb/templates:generate:templates: > node ./scripts/generate-templates.mjs
+@bb/server:generate:bb-official-marketplace: 
+@bb/templates:generate:templates: 
+@bb/server:generate:bb-official-marketplace: > @bb/server@0.0.1 generate:bb-official-marketplace /home/daytona/workspace/opulent-bb/apps/server
+@bb/server:generate:bb-official-marketplace: > node --conditions=source --import tsx scripts/generate-bb-official-marketplace.ts
+@bb/server:generate:bb-official-marketplace: 
+@bb/templates:generate:plugin-scaffold: cache hit, replaying logs 714756bd101732ee
+@bb/templates:generate:plugin-scaffold: 
+@bb/templates:generate:plugin-scaffold: > @bb/templates@0.0.1 generate:plugin-scaffold /home/daytona/workspace/opulent-bb/packages/templates
+@bb/templates:generate:plugin-scaffold: > node ./scripts/generate-plugin-scaffold.mjs
+@bb/templates:generate:plugin-scaffold: 
+@bb/sdk:build: cache miss, executing 670362be2f821dae
+@get-bb/plugin-sdk:build:types: cache miss, executing bb522570d72287a1
+@get-bb/plugin-sdk:build:types: 
+@get-bb/plugin-sdk:build:types: > @get-bb/plugin-sdk@0.4.85 build:types /home/daytona/workspace/opulent-bb/packages/plugin-sdk
+@get-bb/plugin-sdk:build:types: > node scripts/build-bundled-dts.mjs
+@get-bb/plugin-sdk:build:types: 
+@bb/plugin-build:generate: 
+@bb/plugin-build:generate: > @bb/plugin-build@0.0.1 generate /home/daytona/workspace/opulent-bb/packages/plugin-build
+@bb/plugin-build:generate: > node ./scripts/generate-plugin-theme.mjs && node ./scripts/generate-runtime-export-manifest.mjs
+@bb/plugin-build:generate: 
+@bb/sdk:build: 
+@bb/sdk:build: > @bb/sdk@0.0.1 build /home/daytona/workspace/opulent-bb/packages/sdk
+@bb/sdk:build: > node ../../scripts/build-package.mjs
+@bb/sdk:build: 
+@bb/plugin-build:generate: plugin-theme.generated.ts up to date
+@bb/plugin-build:generate: wrote /home/daytona/workspace/opulent-bb/packages/plugin-build/src/generated/runtime-export-manifest.generated.ts (react@19.2.4)
+@bb/plugin-build:build: cache miss, executing caf4ca287c78fdbb
+@bb/cli:build: cache miss, executing b95a5d6942abfe40
+@bb/app:build: cache miss, executing 1cc4749f1a5afdaa
+@bb/server:build: cache miss, executing 9c243e5deada2f19
+@bb/sdk:build: @bb/sdk: built 4 entries
+@bb/plugin-build:build: 
+@bb/plugin-build:build: > @bb/plugin-build@0.0.1 build /home/daytona/workspace/opulent-bb/packages/plugin-build
+@bb/plugin-build:build: > node ../../scripts/build-node-entry.mjs src/cli.ts dist/cli.js --clean-dist
+@bb/plugin-build:build: 
+@bb/cli:build: 
+@bb/cli:build: > @bb/cli@0.0.1 build /home/daytona/workspace/opulent-bb/apps/cli
+@bb/cli:build: > node ../../scripts/build-node-entry.mjs src/index.ts dist/index.js --clean-dist --split
+@bb/cli:build: 
+@bb/server:build: 
+@bb/server:build: > @bb/server@0.0.1 build /home/daytona/workspace/opulent-bb/apps/server
+@bb/server:build: > node ../../scripts/build-node-entry.mjs src/index.ts dist/index.js --clean-dist --external ./start-server.js --copy-dir ../../packages/db/drizzle dist/drizzle --copy-dir src/assets dist/assets && node --import tsx scripts/copy-builtin-skills.ts && node ../../scripts/build-node-entry.mjs src/start-server.ts dist/start-server.js && node ../../scripts/build-node-entry.mjs ../../packages/plugin-sdk/src/index.ts dist/plugin-sdk-runtime.js
+@bb/server:build: 
+@bb/app:build: 
+@bb/app:build: > @bb/app@0.0.1 build /home/daytona/workspace/opulent-bb/apps/app
+@bb/app:build: > node scripts/generate-pwa-icons.mjs && vite build --logLevel warn && node ../../scripts/precompress-app-dist.mjs dist
+@bb/app:build: 
+@bb/app:build: 
+@bb/app:build:  WARN  advancedChunks option is deprecated, please use codeSplitting instead.
+@bb/app:build: 
+@get-bb/plugin-sdk:build:types: Wrote bundled-types/bb-plugin-sdk.d.ts
+@get-bb/plugin-sdk:build:types: Wrote bundled-types/bb-plugin-sdk-app.d.ts
+@get-bb/plugin-sdk:build:types: Wrote bundled-types/bb-plugin-sdk-provider-bridge.d.ts
+@get-bb/plugin-sdk:build:types: Wrote bundled-types/bb-plugin-sdk-ai-services.d.ts
+@get-bb/plugin-sdk:build:types: Wrote bundled-types/bb-plugin-sdk-provider-bridge-testing.d.ts
+@get-bb/plugin-sdk:build:types: Wrote bundled-types/bb-plugin-sdk-provider-bridge-acp.d.ts
+@get-bb/plugin-sdk:build:types: Wrote bundled-types/bb-plugin-sdk-host.d.ts
+@get-bb/plugin-sdk:build:types: Wrote bundled-types/bb-plugin-sdk-environment-provider.d.ts
+@get-bb/plugin-sdk:build:types: Wrote bundled-types/bb-plugin-sdk-machine-provider.d.ts
+@get-bb/plugin-sdk:build:types: Wrote bundled-types/bb-plugin-sdk-internal-composer-customization-validation.d.ts
+@get-bb/plugin-sdk:build:types: Wrote bundled-types/bb-plugin-sdk-internal-composer-view.d.ts
+@get-bb/plugin-sdk:build:types: Wrote bundled-types/bb-plugin-sdk-internal-file-navigation-validation.d.ts
+@get-bb/plugin-sdk:build:types: Wrote bundled-types/bb-plugin-sdk-internal-host-policy.d.ts
+@get-bb/plugin-sdk:build:types: Wrote bundled-types/bb-plugin-sdk-internal-plugin-app-collector.d.ts
+@get-bb/plugin-sdk:build:types: Wrote bundled-types/bb-plugin-sdk-testing.d.ts
+@get-bb/plugin-sdk:build:types: Wrote bundled-types/bb-plugin-sdk-testing-app.d.ts
+@get-bb/plugin-sdk:build:types: Wrote bundled-types/bb-plugin-sdk-testing-host.d.ts
+@get-bb/plugin-sdk:build: cache miss, executing e39c2825e60e8070
+@bb/host-daemon:build: cache miss, executing 8fb602ceff2fe935
+@bb/host-daemon:build: 
+@bb/host-daemon:build: > @bb/host-daemon@0.0.1 build /home/daytona/workspace/opulent-bb/apps/host-daemon
+@bb/host-daemon:build: > node ../../scripts/build-node-entry.mjs src/index.ts dist/index.js --clean-dist --external ./start-host-daemon.js && node ../../scripts/build-node-entry.mjs src/start-host-daemon.ts dist/start-host-daemon.js && node ../../scripts/build-node-entry.mjs src/plugin-host-worker.ts dist/plugin-host-worker.js && node ./scripts/build-bundles.mjs
+@bb/host-daemon:build: 
+@get-bb/plugin-sdk:build: 
+@get-bb/plugin-sdk:build: > @get-bb/plugin-sdk@0.4.85 build /home/daytona/workspace/opulent-bb/packages/plugin-sdk
+@get-bb/plugin-sdk:build: > node scripts/build-runtime.mjs
+@get-bb/plugin-sdk:build: 
+@get-bb/plugin-sdk:build: Built 19 @get-bb/plugin-sdk runtime entries.
+bb-plugin-pdf-preview:prepare:bundled: cache miss, executing 678245dff7bc1ca7
+bb-plugin-custom-instructions:prepare:bundled: cache miss, executing 294f2d2d0baa3cab
+bb-plugin-provider-retry:prepare:bundled: cache miss, executing 9a8acc004f9d2296
+bb-plugin-provider-claude-code:prepare:bundled: cache miss, executing 361fbb6a50330b21
+bb-plugin-plugin-api-tester:prepare:bundled: cache miss, executing 2678749c3a8d9fcf
+bb-plugin-github:prepare:bundled: cache miss, executing da1e7f549965d732
+bb-plugin-provider-acp:prepare:bundled: cache miss, executing 9c27ee7e5a5de38c
+bb-plugin-automations:prepare:bundled: cache miss, executing 7c4180cbe266019e
+bb-plugin-provider-acp:prepare:bundled: 
+bb-plugin-provider-acp:prepare:bundled: > bb-plugin-provider-acp@0.1.0 prepare:bundled /home/daytona/workspace/opulent-bb/plugins/provider-acp
+bb-plugin-provider-acp:prepare:bundled: > bb-plugin-build prepare-bundled
+bb-plugin-provider-acp:prepare:bundled: 
+bb-plugin-provider-claude-code:prepare:bundled: 
+bb-plugin-provider-claude-code:prepare:bundled: > bb-plugin-provider-claude-code@0.1.0 prepare:bundled /home/daytona/workspace/opulent-bb/plugins/provider-claude-code
+bb-plugin-provider-claude-code:prepare:bundled: > bb-plugin-build prepare-bundled
+bb-plugin-provider-claude-code:prepare:bundled: 
+bb-plugin-plugin-api-tester:prepare:bundled: 
+bb-plugin-plugin-api-tester:prepare:bundled: > bb-plugin-plugin-api-tester@0.1.0 prepare:bundled /home/daytona/workspace/opulent-bb/plugins/plugin-api-tester
+bb-plugin-plugin-api-tester:prepare:bundled: > bb-plugin-build prepare-bundled
+bb-plugin-plugin-api-tester:prepare:bundled: 
+bb-plugin-custom-instructions:prepare:bundled: 
+bb-plugin-custom-instructions:prepare:bundled: > bb-plugin-custom-instructions@0.1.0 prepare:bundled /home/daytona/workspace/opulent-bb/plugins/custom-instructions
+bb-plugin-custom-instructions:prepare:bundled: > bb-plugin-build prepare-bundled
+bb-plugin-custom-instructions:prepare:bundled: 
+bb-plugin-automations:prepare:bundled: 
+bb-plugin-automations:prepare:bundled: > bb-plugin-automations@0.1.0 prepare:bundled /home/daytona/workspace/opulent-bb/plugins/automations
+bb-plugin-automations:prepare:bundled: > bb-plugin-build prepare-bundled
+bb-plugin-automations:prepare:bundled: 
+bb-plugin-pdf-preview:prepare:bundled: 
+bb-plugin-pdf-preview:prepare:bundled: > bb-plugin-pdf-preview@0.1.0 prepare:bundled /home/daytona/workspace/opulent-bb/plugins/pdf-preview
+bb-plugin-pdf-preview:prepare:bundled: > bb-plugin-build prepare-bundled
+bb-plugin-pdf-preview:prepare:bundled: 
+bb-plugin-github:prepare:bundled: 
+bb-plugin-github:prepare:bundled: > bb-plugin-github@0.2.1 prepare:bundled /home/daytona/workspace/opulent-bb/plugins/github
+bb-plugin-github:prepare:bundled: > bb-plugin-build prepare-bundled
+bb-plugin-github:prepare:bundled: 
+bb-plugin-provider-retry:prepare:bundled: 
+bb-plugin-provider-retry:prepare:bundled: > bb-plugin-provider-retry@0.1.0 prepare:bundled /home/daytona/workspace/opulent-bb/plugins/provider-retry
+bb-plugin-provider-retry:prepare:bundled: > bb-plugin-build prepare-bundled
+bb-plugin-provider-retry:prepare:bundled: 
+@bb/host-daemon:build: daemon: 1303411 bytes
+@bb/host-daemon:build: provider bridge worker: 12826 bytes
+bb-plugin-keep-awake:prepare:bundled: cache miss, executing c0bd8ab93deb82c6
+@bb/host-daemon:build: plugin host worker: 318398 bytes
+bb-plugin-inline-vis:prepare:bundled: cache miss, executing ab63982552a1a40a
+bb-plugin-provider-pi:prepare:bundled: cache miss, executing 0fa12a8f2adf1e14
+bb-plugin-provider-codex:prepare:bundled: cache miss, executing b2a43a73215c86c6
+@bb/host-daemon:build: bb cli: 43599 bytes
+@bb/host-daemon:build: parcel watcher child: 1945 bytes
+bb-plugin-browser-automation:prepare:bundled: cache miss, executing 0a69eb2ddb629842
+bb-plugin-provider-pi:prepare:bundled: 
+bb-plugin-provider-pi:prepare:bundled: > bb-plugin-provider-pi@0.1.0 prepare:bundled /home/daytona/workspace/opulent-bb/plugins/provider-pi
+bb-plugin-provider-pi:prepare:bundled: > bb-plugin-build prepare-bundled
+bb-plugin-provider-pi:prepare:bundled: 
+bb-plugin-keep-awake:prepare:bundled: 
+bb-plugin-keep-awake:prepare:bundled: > bb-plugin-keep-awake@0.1.0 prepare:bundled /home/daytona/workspace/opulent-bb/plugins/keep-awake
+bb-plugin-keep-awake:prepare:bundled: > bb-plugin-build prepare-bundled
+bb-plugin-keep-awake:prepare:bundled: 
+bb-plugin-concurrency-limit:prepare:bundled: cache miss, executing a98c1cc75143cc0e
+bb-plugin-connect:prepare:bundled: cache miss, executing add5ffe9d6d11096
+bb-plugin-inline-vis:prepare:bundled: 
+bb-plugin-inline-vis:prepare:bundled: > bb-plugin-inline-vis@0.1.0 prepare:bundled /home/daytona/workspace/opulent-bb/plugins/inline-vis
+bb-plugin-inline-vis:prepare:bundled: > bb-plugin-build prepare-bundled
+bb-plugin-inline-vis:prepare:bundled: 
+bb-plugin-provider-codex:prepare:bundled: 
+bb-plugin-provider-codex:prepare:bundled: > bb-plugin-provider-codex@0.1.0 prepare:bundled /home/daytona/workspace/opulent-bb/plugins/provider-codex
+bb-plugin-provider-codex:prepare:bundled: > bb-plugin-build prepare-bundled
+bb-plugin-provider-codex:prepare:bundled: 
+bb-plugin-browser-automation:prepare:bundled: 
+bb-plugin-browser-automation:prepare:bundled: > bb-plugin-browser-automation@0.1.0 prepare:bundled /home/daytona/workspace/opulent-bb/plugins/browser-automation
+bb-plugin-browser-automation:prepare:bundled: > bb-plugin-build prepare-bundled
+bb-plugin-browser-automation:prepare:bundled: 
+bb-plugin-ask-user-question:prepare:bundled: cache miss, executing 48eeb0354016e807
+bb-plugin-concurrency-limit:prepare:bundled: 
+bb-plugin-concurrency-limit:prepare:bundled: > bb-plugin-concurrency-limit@0.1.0 prepare:bundled /home/daytona/workspace/opulent-bb/plugins/concurrency-limit
+bb-plugin-concurrency-limit:prepare:bundled: > bb-plugin-build prepare-bundled
+bb-plugin-concurrency-limit:prepare:bundled: 
+bb-plugin-connect:prepare:bundled: 
+bb-plugin-connect:prepare:bundled: > bb-plugin-connect@0.1.0 prepare:bundled /home/daytona/workspace/opulent-bb/plugins/connect
+bb-plugin-connect:prepare:bundled: > bb-plugin-build prepare-bundled
+bb-plugin-connect:prepare:bundled: 
+bb-plugin-secrets:prepare:bundled: cache miss, executing 43e8b8d8c3adb273
+bb-plugin-side-chat:prepare:bundled: cache miss, executing 8c30bd6beecdaa0a
+bb-plugin-ask-user-question:prepare:bundled: 
+bb-plugin-ask-user-question:prepare:bundled: > bb-plugin-ask-user-question@0.1.0 prepare:bundled /home/daytona/workspace/opulent-bb/plugins/ask-user-question
+bb-plugin-ask-user-question:prepare:bundled: > bb-plugin-build prepare-bundled
+bb-plugin-ask-user-question:prepare:bundled: 
+bb-plugin-bb-guide:prepare:bundled: cache miss, executing d97fd58efa72c629
+bb-plugin-secrets:prepare:bundled: 
+bb-plugin-secrets:prepare:bundled: > bb-plugin-secrets@0.1.0 prepare:bundled /home/daytona/workspace/opulent-bb/plugins/secrets
+bb-plugin-secrets:prepare:bundled: > bb-plugin-build prepare-bundled
+bb-plugin-secrets:prepare:bundled: 
+bb-plugin-side-chat:prepare:bundled: 
+bb-plugin-side-chat:prepare:bundled: > bb-plugin-side-chat@0.1.0 prepare:bundled /home/daytona/workspace/opulent-bb/plugins/side-chat
+bb-plugin-side-chat:prepare:bundled: > bb-plugin-build prepare-bundled
+bb-plugin-side-chat:prepare:bundled: 
+bb-plugin-environment-personal-workspace:prepare:bundled: cache miss, executing 76a3d580b97d7348
+bb-plugin-provider-usage:prepare:bundled: cache miss, executing 28a3633a129f6e6a
+bb-plugin-account-pool:prepare:bundled: cache miss, executing df46d541287629d1
+bb-plugin-workflows:prepare:bundled: cache miss, executing 3ffdd28950e69a70
+bb-plugin-bb-guide:prepare:bundled: 
+bb-plugin-bb-guide:prepare:bundled: > bb-plugin-bb-guide@0.1.0 prepare:bundled /home/daytona/workspace/opulent-bb/plugins/bb-guide
+bb-plugin-bb-guide:prepare:bundled: > bb-plugin-build prepare-bundled
+bb-plugin-bb-guide:prepare:bundled: 
+bb-plugin-theme-preview:prepare:bundled: cache miss, executing 6dc59cefd4cfb7ca
+bb-plugin-account-pool:prepare:bundled: 
+bb-plugin-account-pool:prepare:bundled: > bb-plugin-account-pool@0.1.0 prepare:bundled /home/daytona/workspace/opulent-bb/plugins/account-pool
+bb-plugin-account-pool:prepare:bundled: > bb-plugin-build prepare-bundled
+bb-plugin-account-pool:prepare:bundled: 
+bb-plugin-environment-personal-workspace:prepare:bundled: 
+bb-plugin-environment-personal-workspace:prepare:bundled: > bb-plugin-environment-personal-workspace@0.1.0 prepare:bundled /home/daytona/workspace/opulent-bb/plugins/environment-personal-workspace
+bb-plugin-environment-personal-workspace:prepare:bundled: > bb-plugin-build prepare-bundled
+bb-plugin-environment-personal-workspace:prepare:bundled: 
+bb-plugin-provider-usage:prepare:bundled: 
+bb-plugin-provider-usage:prepare:bundled: > bb-plugin-provider-usage@0.1.0 prepare:bundled /home/daytona/workspace/opulent-bb/plugins/provider-usage
+bb-plugin-provider-usage:prepare:bundled: > bb-plugin-build prepare-bundled
+bb-plugin-provider-usage:prepare:bundled: 
+bb-plugin-environment-git-worktree:prepare:bundled: cache miss, executing 282a6c2a9aaed391
+bb-plugin-plugin-api-docs:prepare:bundled: cache miss, executing b554aebfb51ffed5
+bb-plugin-environment-modal-sandbox:prepare:bundled: cache miss, executing 7ed20e44246320c2
+bb-plugin-workflows:prepare:bundled: 
+bb-plugin-workflows:prepare:bundled: > bb-plugin-workflows@0.1.0 prepare:bundled /home/daytona/workspace/opulent-bb/plugins/workflows
+bb-plugin-workflows:prepare:bundled: > bb-plugin-build prepare-bundled
+bb-plugin-workflows:prepare:bundled: 
+bb-plugin-theme-preview:prepare:bundled: 
+bb-plugin-theme-preview:prepare:bundled: > bb-plugin-theme-preview@0.1.0 prepare:bundled /home/daytona/workspace/opulent-bb/plugins/theme-preview
+bb-plugin-theme-preview:prepare:bundled: > bb-plugin-build prepare-bundled
+bb-plugin-theme-preview:prepare:bundled: 
+bb-plugin-plugin-api-docs:prepare:bundled: 
+bb-plugin-plugin-api-docs:prepare:bundled: > bb-plugin-plugin-api-docs@0.1.0 prepare:bundled /home/daytona/workspace/opulent-bb/plugins/plugin-api-docs
+bb-plugin-plugin-api-docs:prepare:bundled: > bb-plugin-build prepare-bundled
+bb-plugin-plugin-api-docs:prepare:bundled: 
+bb-plugin-environment-git-worktree:prepare:bundled: 
+bb-plugin-environment-git-worktree:prepare:bundled: > bb-plugin-environment-git-worktree@0.1.0 prepare:bundled /home/daytona/workspace/opulent-bb/plugins/environment-git-worktree
+bb-plugin-environment-git-worktree:prepare:bundled: > bb-plugin-build prepare-bundled
+bb-plugin-environment-git-worktree:prepare:bundled: 
+bb-plugin-environment-modal-sandbox:prepare:bundled: 
+bb-plugin-environment-modal-sandbox:prepare:bundled: > bb-plugin-environment-modal-sandbox@0.1.0 prepare:bundled /home/daytona/workspace/opulent-bb/plugins/environment-modal-sandbox
+bb-plugin-environment-modal-sandbox:prepare:bundled: > bb-plugin-build prepare-bundled
+bb-plugin-environment-modal-sandbox:prepare:bundled: 
+bb-plugin-memory:prepare:bundled: cache miss, executing 55cb95db6d5fcdb2
+bb-plugin-monaco-editor:prepare:bundled: cache miss, executing 9e0164085efe4005
+bb-plugin-environment-project-checkout:prepare:bundled: cache miss, executing e504c87444872300
+bb-plugin-scheduled-send:prepare:bundled: cache miss, executing 06bbad92a9135677
+bb-plugin-push-notifications:prepare:bundled: cache miss, executing 5e5e8dda950981d1
+bb-plugin-memory:prepare:bundled: 
+bb-plugin-memory:prepare:bundled: > bb-plugin-memory@0.2.0 prepare:bundled /home/daytona/workspace/opulent-bb/plugins/memory
+bb-plugin-memory:prepare:bundled: > bb-plugin-build prepare-bundled
+bb-plugin-memory:prepare:bundled: 
+bb-plugin-monaco-editor:prepare:bundled: 
+bb-plugin-monaco-editor:prepare:bundled: > bb-plugin-monaco-editor@0.1.0 prepare:bundled /home/daytona/workspace/opulent-bb/plugins/monaco-editor
+bb-plugin-monaco-editor:prepare:bundled: > bb-plugin-build prepare-bundled
+bb-plugin-monaco-editor:prepare:bundled: 
+bb-plugin-environment-project-checkout:prepare:bundled: 
+bb-plugin-environment-project-checkout:prepare:bundled: > bb-plugin-environment-project-checkout@0.1.0 prepare:bundled /home/daytona/workspace/opulent-bb/plugins/environment-project-checkout
+bb-plugin-environment-project-checkout:prepare:bundled: > bb-plugin-build prepare-bundled
+bb-plugin-environment-project-checkout:prepare:bundled: 
+bb-plugin-scheduled-send:prepare:bundled: 
+bb-plugin-scheduled-send:prepare:bundled: > bb-plugin-scheduled-send@0.1.0 prepare:bundled /home/daytona/workspace/opulent-bb/plugins/scheduled-send
+bb-plugin-scheduled-send:prepare:bundled: > bb-plugin-build prepare-bundled
+bb-plugin-scheduled-send:prepare:bundled: 
+bb-plugin-push-notifications:prepare:bundled: 
+bb-plugin-push-notifications:prepare:bundled: > bb-plugin-push-notifications@0.1.0 prepare:bundled /home/daytona/workspace/opulent-bb/plugins/push-notifications
+bb-plugin-push-notifications:prepare:bundled: > bb-plugin-build prepare-bundled
+bb-plugin-push-notifications:prepare:bundled: 
+bb-plugin-tasks:prepare:bundled: cache miss, executing 7f8f3643f9788c16
+bb-plugin-simple-notes:prepare:bundled: cache miss, executing ee1bf7a4dbaeba90
+bb-plugin-tasks:prepare:bundled: 
+bb-plugin-tasks:prepare:bundled: > bb-plugin-tasks@0.1.2 prepare:bundled /home/daytona/workspace/opulent-bb/plugins/tasks
+bb-plugin-tasks:prepare:bundled: > bb-plugin-build prepare-bundled
+bb-plugin-tasks:prepare:bundled: 
+bb-plugin-simple-notes:prepare:bundled: 
+bb-plugin-simple-notes:prepare:bundled: > bb-plugin-simple-notes@0.2.2 prepare:bundled /home/daytona/workspace/opulent-bb/plugins/docs
+bb-plugin-simple-notes:prepare:bundled: > bb-plugin-build prepare-bundled
+bb-plugin-simple-notes:prepare:bundled: 
+bb-plugin-monaco-editor:prepare:bundled: monaco: built /home/daytona/workspace/opulent-bb/plugins/.bundled-stage-xS1gLz/dist/monaco (4.56 MB editor + worker)
+@bb/bundled-plugins:build: cache miss, executing c6e37f4bd2869f63
+@bb/bundled-plugins:build: 
+@bb/bundled-plugins:build: > @bb/bundled-plugins@0.0.1 build /home/daytona/workspace/opulent-bb/packages/bundled-plugins
+@bb/bundled-plugins:build: > cd ../.. && node --conditions=source --import tsx packages/bundled-plugins/build.ts
+@bb/bundled-plugins:build: 
+@bb/app:build: [33m[PLUGIN_TIMINGS] Warning:[0m Your build spent significant time in plugins. Here is a breakdown:
+@bb/app:build:   - vite:css (36%)
+@bb/app:build:   - vite:css-post (31%)
+@bb/app:build:   - vite:worker (25%)
+@bb/app:build: See https://rolldown.rs/options/checks#plugintimings for more details.
+@bb/app:build: 
+@bb/app:build: React Compiler cache: 0 hits, 1085 misses
+@bb/app:build: [plugin builtin:vite-reporter] 
+@bb/app:build: (!) Some chunks are larger than 500 kB after minification. Consider:
+@bb/app:build: - Using dynamic import() to code-split the application
+@bb/app:build: - Use build.rolldownOptions.output.codeSplitting to improve chunking: https://rolldown.rs/reference/OutputOptions.codeSplitting
+@bb/app:build: - Adjust chunk size limit for this warning via build.chunkSizeWarningLimit.
+@bb/app:build: [33m[PLUGIN_TIMINGS] Warning:[0m Your build spent significant time in plugins. Here is a breakdown:
+@bb/app:build:   - bb:shared-ui-env-seam (81%)
+@bb/app:build:   - @rolldown/plugin-babel (19%)
+@bb/app:build: See https://rolldown.rs/options/checks#plugintimings for more details.
+@bb/app:build: 
+@bb/app:build: precompressed 444 files (444 br, 444 gzip) in /home/daytona/workspace/opulent-bb/apps/app/dist
+bb-app:build: cache miss, executing 2803cbf72e3671d4
+bb-app:build: 
+bb-app:build: > bb-app@0.43.0 build /home/daytona/workspace/opulent-bb/packages/bb-app
+bb-app:build: > node scripts/build.mjs
+bb-app:build: 
+bb-app:build: bb-app: built package assets
+@bb/desktop:build: cache miss, executing d46fd98b8321eb7c
+@bb/desktop:build: 
+@bb/desktop:build: > @bb/desktop@0.43.0 build /home/daytona/workspace/opulent-bb/apps/desktop
+@bb/desktop:build: > node scripts/build.mjs
+@bb/desktop:build: 
+@bb/desktop:build: @bb/desktop: built Electron entries
+
+ Tasks:    49 successful, 49 total
+Cached:    3 cached, 49 total
+  Time:    1m48.746s 
+

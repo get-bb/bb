@@ -1,0 +1,21 @@
+{
+  "name": "@opulent/desktop-contracts",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Wire contracts for Opulent Desktop: normalized agent events, provider registry, trajectory export, Harbor task emission.",
+  "license": "UNLICENSED",
+  "engines": {
+    "node": ">=22.6"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "node --test --experimental-strip-types packages/acp/acp.test.ts packages/compaction/compaction.test.ts packages/envauthor/envauthor.test.ts packages/events/events.test.ts packages/harbor/harbor.test.ts packages/providers/providers.test.ts packages/trajectory/trajectory.test.ts",
+    "crosscheck": "node --experimental-strip-types scripts/crosscheck-harbor.mjs",
+    "verify": "npm run typecheck && npm test && npm run crosscheck"
+  },
+  "devDependencies": {
+    "typescript": "^5.6.0",
+    "@types/node": "^22.0.0"
+  }
+}
