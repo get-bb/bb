@@ -155,6 +155,17 @@ describe("bb startup module graph", () => {
     }
   }, 30_000);
 
+  it("marks mandatory flags in help without marking optional flags", async () => {
+    const spawn = await runCli("source", ["thread", "spawn", "--help"]);
+    expect(spawn.stdout).toMatch(/--project\b[^\n]*\(required\)/);
+    expect(spawn.stdout).toMatch(/--prompt\b[^\n]*\(required\)/);
+    expect(spawn.stdout).not.toMatch(/--provider[^\n]*\(required\)/);
+
+    const list = await runCli("source", ["thread", "list", "--help"]);
+    expect(list.stdout).toMatch(/--project\b/);
+    expect(list.stdout).not.toMatch(/--project\b[^\n]*\(required\)/);
+  }, 30_000);
+
   it("shows and enforces the thread search result limit", async () => {
     const help = await runCli(
       "source",
