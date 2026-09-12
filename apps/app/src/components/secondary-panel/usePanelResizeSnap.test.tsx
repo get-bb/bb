@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { useLayoutEffect, useState } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { usePanelResizeSnap } from "./usePanelResizeSnap";
 
@@ -44,6 +45,46 @@ function SnapHarness({ onResize }: { onResize: (fraction: number) => void }) {
 afterEach(() => cleanup());
 
 describe("usePanelResizeSnap", () => {
+  it("keeps transitions disabled until React commits the released size", () => {
+    const committedDurations: string[] = [];
+    function CommitHarness() {
+      const [fraction, setFraction] = useState(0.5);
+      useLayoutEffect(() => {
+        if (fraction !== 0.5) {
+          committedDurations.push(
+            screen
+              .getByTestId("grid")
+              .style.getPropertyValue("--panel-collapse-duration"),
+          );
+        }
+      }, [fraction]);
+      return <SnapHarness onResize={setFraction} />;
+    }
+    render(<CommitHarness />);
+    const grid = screen.getByTestId("grid");
+    const previous = screen.getByTestId("previous");
+    const divider = screen.getByTestId("divider");
+    const next = screen.getByTestId("next");
+    grid.getBoundingClientRect = () => rect(100, 800);
+    previous.getBoundingClientRect = () => rect(100, 400);
+    divider.getBoundingClientRect = () => rect(500, 1);
+    next.getBoundingClientRect = () => rect(501, 399);
+    grid.style.setProperty("--panel-collapse-duration", "220ms");
+
+    fireEvent.pointerDown(divider, { clientX: 500, pointerId: 47 });
+    fireEvent.pointerMove(document.body, {
+      buttons: 1,
+      clientX: 700,
+      pointerId: 47,
+    });
+    fireEvent.pointerUp(window, { clientX: 700, pointerId: 47 });
+
+    expect(committedDurations).toEqual(["0ms"]);
+    expect(grid.style.getPropertyValue("--panel-collapse-duration")).toBe(
+      "220ms",
+    );
+  });
+
   it("preserves a newer layout when the pointer is released without a preview", () => {
     const onResize = vi.fn();
     render(<SnapHarness onResize={onResize} />);
