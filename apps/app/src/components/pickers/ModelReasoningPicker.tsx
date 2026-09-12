@@ -1094,14 +1094,10 @@ export function ModelReasoningPicker({
                     if (provider.value === activeProviderId) {
                       return;
                     }
-                    if (handoffMode) {
-                      handleHandoffProviderSelect(provider.value);
-                      return;
-                    }
                     handleProviderSelect(provider.value);
                   }}
                   className={cn(
-                    "relative flex items-center justify-center border-b-2 focus-visible:outline-none",
+                    "flex items-center justify-center border-b-2 focus-visible:outline-none",
                     LIST_HOVER_TRANSITION,
                     COARSE_POINTER_PROVIDER_TAB_SIZE_CLASS,
                     isActive
