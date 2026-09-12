@@ -804,7 +804,14 @@ export function registerThreadDataRoutes(app: Hono, deps: AppDeps): void {
       },
       (result) =>
         createDaemonFileContentResponse(result, {
- headers: query.disposition === "attachment" ? { "content-disposition": buildAttachmentContentDisposition(query.path) } : undefined,
+          headers:
+            query.disposition === "attachment"
+              ? {
+                  "content-disposition": buildAttachmentContentDisposition(
+                    query.path,
+                  ),
+                }
+              : undefined,
           ifNoneMatch: context.req.header("if-none-match"),
         }),
     );
@@ -828,7 +835,14 @@ export function registerThreadDataRoutes(app: Hono, deps: AppDeps): void {
       },
       (result) =>
         createDaemonFileContentResponse(result, {
- headers: query.disposition === "attachment" ? { "content-disposition": buildAttachmentContentDisposition(query.path) } : undefined,
+          headers:
+            query.disposition === "attachment"
+              ? {
+                  "content-disposition": buildAttachmentContentDisposition(
+                    query.path,
+                  ),
+                }
+              : undefined,
           ifNoneMatch: context.req.header("if-none-match"),
         }),
     );
