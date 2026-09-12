@@ -75,7 +75,6 @@ export function TimelineDetailScroll({
           aria-hidden
           className="-mb-px h-px w-full"
         />
-        {}
         <div ref={sticky.contentRef}>
           <TimelineWindowingScrollRootContext.Provider
             value={windowingScrollRoot}

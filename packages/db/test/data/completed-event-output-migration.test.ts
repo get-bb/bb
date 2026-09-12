@@ -8,15 +8,17 @@ import { createProject } from "../../src/data/projects.js";
 import {
   hydrateRetainedEventOutputRows,
   hydrateRetainedEventOutputRowsWithinDataByteLimit,
-  RETAINED_EVENT_OUTPUT_TARGETS,
-  type RetainedEventOutputTarget,
 } from "../../src/data/retained-event-outputs.js";
 import {
-  COMPLETED_EVENT_OUTPUT_RETENTION_MS,
-  COMPLETED_EVENT_OUTPUT_TRUNCATION_THRESHOLD_CHARS,
   migrateNextCompletedEventItemOutput,
   migrateNextLegacyImageGenerationOutput,
 } from "../../src/data/sweeps.js";
+import {
+  COMPLETED_EVENT_OUTPUT_RETENTION_MS,
+  COMPLETED_EVENT_OUTPUT_TRUNCATION_THRESHOLD_CHARS,
+  RETAINED_EVENT_OUTPUT_TARGETS,
+  type RetainedEventOutputTarget,
+} from "../../src/retained-event-output.js";
 import { createThread } from "../../src/data/threads.js";
 import { noopNotifier } from "../../src/notifier.js";
 import {
@@ -30,7 +32,6 @@ function setup() {
   const db = createMigratedConnection();
   const host = upsertHost(db, noopNotifier, {
     name: "completed-output-migration-host",
-    type: "persistent",
   });
   const { project } = createProject(db, noopNotifier, {
     name: "completed-output-migration-project",

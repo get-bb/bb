@@ -44,7 +44,6 @@ interface CodexAppServerRequestArgs<TResult> {
 
 export interface CodexAppServerConnection {
   request<TResult>(args: CodexAppServerRequestArgs<TResult>): Promise<TResult>;
-  notify(method: string, params?: unknown): void;
   kill(): Promise<void>;
   readonly exited: boolean;
 }
@@ -371,13 +370,6 @@ export function createCodexAppServerConnection(
         pending.set(id, entry);
         writeLine({ jsonrpc: "2.0", id, method, params });
       });
-    },
-
-    notify(method, params) {
-      if (finalized || stdinFailure !== null) {
-        return;
-      }
-      writeLine({ jsonrpc: "2.0", method, params });
     },
 
     kill() {

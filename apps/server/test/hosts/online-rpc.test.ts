@@ -4,13 +4,14 @@ import {
   type HostDaemonOnlineRpcRequestMessage,
   type HostDaemonOnlineRpcResult,
 } from "@bb/host-daemon-contract";
-import { hostDaemonSessions } from "@bb/db";
+import { hostDaemonSessions, updateHost } from "@bb/db";
 import { eq } from "drizzle-orm";
 import { describe, expect, it, vi } from "vitest";
 import { ApiError } from "../../src/errors.js";
 import {
   callHostOnlineRpc,
   callHostRetryableOnlineRpc,
+  callHostRetryableOnlineRpcForWork,
 } from "../../src/services/hosts/online-rpc.js";
 import type { NotificationHub } from "../../src/ws/hub.js";
 import {
@@ -75,6 +76,45 @@ function registerDropThenReplaceSocket(args: DropThenReplaceSocketArgs): void {
 }
 
 describe("host online RPC retry semantics", () => {
+  it("classifies suspended hosts before sending read-only RPCs", async () => {
+    await withTestHarness(async (harness) => {
+      const { host } = seedHostSession(harness.deps, {
+        id: "host-online-rpc-suspended-read",
+      });
+      updateHost(harness.db, harness.hub, host.id, {
+        phase: "suspended",
+        suspendedAt: 123,
+      });
+      const request = vi.spyOn(harness.hub, "requestHostOnlineRpc");
+
+      await expect(
+        callHostRetryableOnlineRpc(harness.deps, {
+          hostId: host.id,
+          timeoutMs: 1_000,
+          command: {
+            type: "provider.list_models",
+            providerId: "codex",
+            bridgeLaunch: TRANSPORT_TEST_BRIDGE_LAUNCH,
+          },
+        }),
+      ).rejects.toMatchObject({
+        status: 502,
+        body: {
+          code: "host_unavailable",
+          message: "Host is suspended",
+          details: {
+            reason: "suspended",
+            hostStatus: "disconnected",
+            suspendedAt: 123,
+            destroyedAt: null,
+          },
+          retryable: false,
+        },
+      });
+      expect(request).not.toHaveBeenCalled();
+    });
+  });
+
   it("runs a retryable RPC when the daemon websocket is still registered with a stale lease", async () => {
     await withTestHarness(async (harness) => {
       const { host, session } = seedHostSession(harness.deps, {
@@ -130,7 +170,7 @@ describe("host online RPC retry semantics", () => {
     });
   });
 
-  it("waits briefly for retryable RPCs when the session is active before the daemon websocket registers", async () => {
+  it("waits briefly for retryable work when the session is active before the daemon websocket registers", async () => {
     await withTestHarness(async (harness) => {
       const { host, session } = seedHostSession(harness.deps, {
         id: "host-online-rpc-registration-race",
@@ -160,7 +200,7 @@ describe("host online RPC retry semantics", () => {
       }, 10);
 
       await expect(
-        callHostRetryableOnlineRpc(harness.deps, {
+        callHostRetryableOnlineRpcForWork(harness.deps, {
           hostId: host.id,
           timeoutMs: 1_000,
           command: {
@@ -176,7 +216,7 @@ describe("host online RPC retry semantics", () => {
     });
   });
 
-  it("retries read-only online RPCs when the current websocket session disappears", async () => {
+  it("retries admitted work when the current websocket session disappears", async () => {
     await withTestHarness(async (harness) => {
       const { host, session } = seedHostSession(harness.deps, {
         id: "host-online-rpc-read-retry",
@@ -191,7 +231,7 @@ describe("host online RPC retry semantics", () => {
       });
 
       await expect(
-        callHostRetryableOnlineRpc(harness.deps, {
+        callHostRetryableOnlineRpcForWork(harness.deps, {
           hostId: host.id,
           timeoutMs: 1_000,
           command: {

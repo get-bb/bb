@@ -122,8 +122,6 @@ export interface CorpusStoredEventRow {
 export interface CorpusThread {
   id: string;
   provider: string;
-  reasons: string[];
-  features: Record<string, number | string>;
   thread: CorpusThreadRow;
   eventRows: CorpusStoredEventRow[];
   events: ThreadEventRow[];
@@ -325,8 +323,6 @@ export function loadCorpusThread(threadId: string): CorpusThread {
   return {
     id: meta.thread.id,
     provider: meta.thread.provider_id,
-    reasons: meta.reasons,
-    features: meta.features,
     thread: toCorpusThreadRow(meta.thread),
     eventRows,
     events: eventRows.map((row) => decodeCorpusStoredEventRow(row)),

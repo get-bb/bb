@@ -1,9 +1,12 @@
+import { operationEnvironment } from "./operation-environment.js";
 import {
   runEnvironmentHook,
   cancelEnvironmentHook,
 } from "./command-handlers/environment-hook.js";
 import {
   providerCliInstallEventSchema,
+  type DesktopBrowserCommand,
+  type DesktopBrowserResult,
   type HostDaemonCommand,
   type HostDaemonCommandResult,
   type HostDaemonOnlineRpcCommand,
@@ -11,7 +14,9 @@ import {
   type HostDaemonOnlineRpcResult,
   type HostDaemonSettledCommandType,
   type ProviderCliInstallEvent,
+  type WorkspaceResolutionFailure,
 } from "@bb/host-daemon-contract";
+import type { AgentRuntimeBridgeLaunch } from "@bb/agent-runtime";
 import semver from "semver";
 import {
   ExpectedCommandDispatchError,
@@ -69,7 +74,7 @@ import {
   startThread,
   submitTurn,
 } from "./command-handlers/thread.js";
-import { WorkspaceError } from "@bb/host-workspace";
+import { WorkspaceError, type HostWorkspace } from "@bb/host-workspace";
 import {
   cloneProject,
   inspectProjectPath,
@@ -294,56 +299,117 @@ async function runProviderInstallationOnHost(
   }
 }
 
+async function withRetainedThreadEnvironment<TResult>(
+  command: CommandOf<
+    | "thread.rewind.discard"
+    | "thread.rewind.prepare"
+    | "thread.start"
+    | "turn.submit"
+  >,
+  options: CommandDispatchOptions,
+  work: () => Promise<TResult>,
+): Promise<TResult> {
+  const release =
+    await options.runtimeManager.retainEnvironmentForThreadCommand(
+      command.environmentId,
+      command.threadId,
+    );
+  try {
+    return await work();
+  } finally {
+    release();
+  }
+}
+
+async function forwardDesktopBrowserCommand<
+  TCommand extends DesktopBrowserCommand,
+>(
+  command: TCommand,
+  options: CommandDispatchOptions,
+): Promise<DesktopBrowserResult<TCommand["type"]>> {
+  if (!options.desktopBrowserBroker)
+    throw new Error("Desktop browser broker unavailable");
+  return options.desktopBrowserBroker.request(command);
+}
+
+async function withResolvedBridgeLaunch<TResult>(
+  command: CommandOf<
+    "provider.list_models" | "provider.health" | "provider.usage"
+  >,
+  options: CommandDispatchOptions,
+  call: (args: {
+    providerId: string;
+    bridgeLaunch: AgentRuntimeBridgeLaunch;
+    cwd?: string;
+  }) => Promise<TResult>,
+): Promise<TResult> {
+  const bridgeLaunch = await resolveRuntimeBridgeLaunch(
+    command.bridgeLaunch,
+    options,
+  );
+  return call({
+    providerId: command.providerId,
+    ...(command.cwd !== undefined ? { cwd: command.cwd } : {}),
+    bridgeLaunch,
+  });
+}
+
+async function readAvailableWorkspace<TAvailable extends object>(
+  command: CommandOf<
+    | "workspace.status"
+    | "workspace.diff"
+    | "workspace.diffFiles"
+    | "workspace.diffPatch"
+  >,
+  options: CommandDispatchOptions,
+  read: (workspace: HostWorkspace) => Promise<TAvailable>,
+): Promise<
+  | ({ outcome: "available" } & TAvailable)
+  | { outcome: "unavailable"; failure: WorkspaceResolutionFailure }
+> {
+  const resolution = await resolveWorkspaceForCommand({
+    environmentId: command.environmentId,
+    requireGit: true,
+    runtimeManager: options.runtimeManager,
+    workspaceContext: command.workspaceContext,
+  });
+  if (!resolution.ok) {
+    return { outcome: "unavailable", failure: resolution.failure };
+  }
+  try {
+    return {
+      outcome: "available",
+      ...(await read(resolution.entry.workspace)),
+    };
+  } catch (error) {
+    return {
+      outcome: "unavailable",
+      failure: workspaceResolutionFailureFromError({
+        error,
+        workspacePath: command.workspaceContext.workspacePath,
+      }),
+    };
+  }
+}
+
 const commandHandlers: CommandHandlerMap = {
-  "thread.rewind.discard": async (command, options) => {
-    const release =
-      await options.runtimeManager.retainEnvironmentForThreadCommand(
-        command.environmentId,
-        command.threadId,
-      );
-    try {
-      return await discardThreadRewind(command, options);
-    } finally {
-      release();
-    }
-  },
-  "thread.rewind.prepare": async (command, options) => {
-    const release =
-      await options.runtimeManager.retainEnvironmentForThreadCommand(
-        command.environmentId,
-        command.threadId,
-      );
-    try {
-      return await prepareThreadRewind(command, options);
-    } finally {
-      release();
-    }
-  },
-  "thread.start": async (command, options) => {
-    const release =
-      await options.runtimeManager.retainEnvironmentForThreadCommand(
-        command.environmentId,
-        command.threadId,
-      );
-    try {
-      return await startThread(command, options);
-    } finally {
-      release();
-    }
-  },
-  "turn.submit": async (command, options) => {
-    const release =
-      await options.runtimeManager.retainEnvironmentForThreadCommand(
-        command.environmentId,
-        command.threadId,
-      );
-    try {
+  "thread.rewind.discard": (command, options) =>
+    withRetainedThreadEnvironment(command, options, () =>
+      discardThreadRewind(command, options),
+    ),
+  "thread.rewind.prepare": (command, options) =>
+    withRetainedThreadEnvironment(command, options, () =>
+      prepareThreadRewind(command, options),
+    ),
+  "thread.start": (command, options) =>
+    withRetainedThreadEnvironment(command, options, () =>
+      startThread(command, options),
+    ),
+  "turn.submit": (command, options) =>
+    withRetainedThreadEnvironment(command, options, async () => {
       const entry = await ensureThreadRuntime(command, options);
-      return await submitTurn(command, entry, options);
-    } finally {
-      release();
-    }
-  },
+      return submitTurn(command, entry, options);
+    }),
   "thread.stop": async (command, options) => {
     const released =
       await options.runtimeManager.releaseThreadFromOtherEnvironments({
@@ -426,7 +492,6 @@ const commandHandlers: CommandHandlerMap = {
   },
   "thread.archive": async (command, options) => {
     const entry = await requireResolvedWorkspaceForCommand({
-      dataDir: options.dataDir,
       environmentId: command.environmentId,
       runtimeManager: options.runtimeManager,
       workspaceContext: command.workspaceContext,
@@ -466,7 +531,21 @@ const commandHandlers: CommandHandlerMap = {
     cloneProject({
       dataDir: options.dataDir,
       projectSlug: command.projectSlug,
+      env: operationEnvironment(
+        command.contributedEnv,
+        {
+          ...process.env,
+          ...options.runtimeManager.getShellEnv(),
+        },
+        true,
+      ),
       remoteUrl: command.remoteUrl,
+      onProgress: (text) =>
+        options.emitEnvironmentHookProgress?.({
+          type: "environment.hook.progress",
+          operationId: command.operationId,
+          entry: { type: "output", text, status: null },
+        }),
       ...userExecutableProcessOptions(options.runtimeManager.getShellEnv()),
       ...(command.targetPath !== undefined
         ? { targetPath: command.targetPath }
@@ -475,7 +554,6 @@ const commandHandlers: CommandHandlerMap = {
   "environment.attach.cancel": cancelEnvironmentProvision,
   "workspace.commit": async (command, options) => {
     const entry = await requireResolvedWorkspaceForCommand({
-      dataDir: options.dataDir,
       environmentId: command.environmentId,
       requireGit: true,
       runtimeManager: options.runtimeManager,
@@ -488,42 +566,17 @@ const commandHandlers: CommandHandlerMap = {
   },
   "workspace.pull_request_action": async (command, options) => {
     const entry = await requireResolvedWorkspaceForCommand({
-      dataDir: options.dataDir,
       environmentId: command.environmentId,
       requireGit: true,
       runtimeManager: options.runtimeManager,
       workspaceContext: command.workspaceContext,
     });
-    const cliOptions = userExecutableProcessOptions(
-      options.runtimeManager.getShellEnv(),
+    await entry.workspace.runPullRequestAction(
+      command.operation === "merge"
+        ? { operation: "merge", method: command.method }
+        : { operation: command.operation },
+      userExecutableProcessOptions(options.runtimeManager.getShellEnv()),
     );
-    switch (command.operation) {
-      case "ready":
-        await entry.workspace.runPullRequestAction(
-          { operation: "ready" },
-          cliOptions,
-        );
-        break;
-      case "draft":
-        await entry.workspace.runPullRequestAction(
-          { operation: "draft" },
-          cliOptions,
-        );
-        break;
-      case "merge":
-        await entry.workspace.runPullRequestAction(
-          {
-            operation: "merge",
-            method: command.method,
-          },
-          cliOptions,
-        );
-        break;
-      default: {
-        const _exhaustive: never = command;
-        throw new Error(`Unhandled pull request operation: ${_exhaustive}`);
-      }
-    }
     return {};
   },
 };
@@ -531,61 +584,17 @@ const commandHandlers: CommandHandlerMap = {
 const onlineRpcHandlers: OnlineRpcHandlerMap = {
   "environment.hook.run": runEnvironmentHook,
   "environment.hook.cancel": cancelEnvironmentHook,
-  "desktop.browser.list_instances": async (command, options) => {
-    if (!options.desktopBrowserBroker)
-      throw new Error("Desktop browser broker unavailable");
-    return options.desktopBrowserBroker.request(command);
-  },
-  "desktop.browser.list_tabs": async (command, options) => {
-    if (!options.desktopBrowserBroker)
-      throw new Error("Desktop browser broker unavailable");
-    return options.desktopBrowserBroker.request(command);
-  },
-  "desktop.browser.create_tab": async (command, options) => {
-    if (!options.desktopBrowserBroker)
-      throw new Error("Desktop browser broker unavailable");
-    return options.desktopBrowserBroker.request(command);
-  },
-  "desktop.browser.reveal_tab": async (command, options) => {
-    if (!options.desktopBrowserBroker)
-      throw new Error("Desktop browser broker unavailable");
-    return options.desktopBrowserBroker.request(command);
-  },
-  "desktop.browser.close_tab": async (command, options) => {
-    if (!options.desktopBrowserBroker)
-      throw new Error("Desktop browser broker unavailable");
-    return options.desktopBrowserBroker.request(command);
-  },
-  "desktop.browser.capture_tab": async (command, options) => {
-    if (!options.desktopBrowserBroker)
-      throw new Error("Desktop browser broker unavailable");
-    return options.desktopBrowserBroker.request(command);
-  },
-  "desktop.browser.acquire_control": async (command, options) => {
-    if (!options.desktopBrowserBroker)
-      throw new Error("Desktop browser broker unavailable");
-    return options.desktopBrowserBroker.request(command);
-  },
-  "desktop.browser.open_connection": async (command, options) => {
-    if (!options.desktopBrowserBroker)
-      throw new Error("Desktop browser broker unavailable");
-    return options.desktopBrowserBroker.request(command);
-  },
-  "desktop.browser.release_control": async (command, options) => {
-    if (!options.desktopBrowserBroker)
-      throw new Error("Desktop browser broker unavailable");
-    return options.desktopBrowserBroker.request(command);
-  },
-  "desktop.browser.list_import_sources": async (command, options) => {
-    if (!options.desktopBrowserBroker)
-      throw new Error("Desktop browser broker unavailable");
-    return options.desktopBrowserBroker.request(command);
-  },
-  "desktop.browser.import_cookies": async (command, options) => {
-    if (!options.desktopBrowserBroker)
-      throw new Error("Desktop browser broker unavailable");
-    return options.desktopBrowserBroker.request(command);
-  },
+  "desktop.browser.list_instances": forwardDesktopBrowserCommand,
+  "desktop.browser.list_tabs": forwardDesktopBrowserCommand,
+  "desktop.browser.create_tab": forwardDesktopBrowserCommand,
+  "desktop.browser.reveal_tab": forwardDesktopBrowserCommand,
+  "desktop.browser.close_tab": forwardDesktopBrowserCommand,
+  "desktop.browser.capture_tab": forwardDesktopBrowserCommand,
+  "desktop.browser.acquire_control": forwardDesktopBrowserCommand,
+  "desktop.browser.open_connection": forwardDesktopBrowserCommand,
+  "desktop.browser.release_control": forwardDesktopBrowserCommand,
+  "desktop.browser.list_import_sources": forwardDesktopBrowserCommand,
+  "desktop.browser.import_cookies": forwardDesktopBrowserCommand,
   "connect-tunnel.ensure-identity": async (_command, options) => {
     if (!options.ensureConnectTunnelIdentity) {
       throw new Error("bb connect tunnel identity is unavailable");
@@ -630,39 +639,18 @@ const onlineRpcHandlers: OnlineRpcHandlerMap = {
   "host.read_file": readHostFile,
   "host.read_file_relative": readHostRelativeFile,
   "host.write_file": writeHostFile,
-  "provider.list_models": async (command, options) => {
-    const bridgeLaunch = await resolveRuntimeBridgeLaunch(
-      command.bridgeLaunch,
-      options,
-    );
-    return options.listModels({
-      providerId: command.providerId,
-      ...(command.cwd !== undefined ? { cwd: command.cwd } : {}),
-      bridgeLaunch,
-    });
-  },
-  "provider.health": async (command, options) => {
-    const bridgeLaunch = await resolveRuntimeBridgeLaunch(
-      command.bridgeLaunch,
-      options,
-    );
-    return options.providerHealth({
-      providerId: command.providerId,
-      ...(command.cwd !== undefined ? { cwd: command.cwd } : {}),
-      bridgeLaunch,
-    });
-  },
-  "provider.usage": async (command, options) => {
-    const bridgeLaunch = await resolveRuntimeBridgeLaunch(
-      command.bridgeLaunch,
-      options,
-    );
-    return options.providerUsage({
-      providerId: command.providerId,
-      ...(command.cwd !== undefined ? { cwd: command.cwd } : {}),
-      bridgeLaunch,
-    });
-  },
+  "provider.list_models": (command, options) =>
+    withResolvedBridgeLaunch(command, options, (args) =>
+      options.listModels(args),
+    ),
+  "provider.health": (command, options) =>
+    withResolvedBridgeLaunch(command, options, (args) =>
+      options.providerHealth(args),
+    ),
+  "provider.usage": (command, options) =>
+    withResolvedBridgeLaunch(command, options, (args) =>
+      options.providerUsage(args),
+    ),
   "provider.installation.status": async (command, options) => {
     const bridgeLaunch = await resolveRuntimeBridgeLaunch(
       command.bridgeLaunch,
@@ -678,129 +666,40 @@ const onlineRpcHandlers: OnlineRpcHandlerMap = {
     });
   },
   "provider.installation.run": runProviderInstallationOnHost,
-  "workspace.status": async (command, options) => {
-    const resolution = await resolveWorkspaceForCommand({
-      dataDir: options.dataDir,
-      environmentId: command.environmentId,
-      requireGit: true,
-      runtimeManager: options.runtimeManager,
-      workspaceContext: command.workspaceContext,
-    });
-    if (!resolution.ok) {
-      return { outcome: "unavailable", failure: resolution.failure };
-    }
-    try {
-      return {
-        outcome: "available",
-        workspaceStatus: await resolution.entry.workspace.getStatus({
-          mergeBaseBranch: command.mergeBaseBranch,
-          maxUntrackedLineStatFiles: command.maxUntrackedLineStatFiles,
-          maxUntrackedLineStatBytes: command.maxUntrackedLineStatBytes,
-        }),
-      };
-    } catch (error) {
-      return {
-        outcome: "unavailable",
-        failure: workspaceResolutionFailureFromError({
-          error,
-          workspacePath: command.workspaceContext.workspacePath,
-        }),
-      };
-    }
-  },
-  "workspace.diff": async (command, options) => {
-    const resolution = await resolveWorkspaceForCommand({
-      dataDir: options.dataDir,
-      environmentId: command.environmentId,
-      requireGit: true,
-      runtimeManager: options.runtimeManager,
-      workspaceContext: command.workspaceContext,
-    });
-    if (!resolution.ok) {
-      return { outcome: "unavailable", failure: resolution.failure };
-    }
-    try {
-      return {
-        outcome: "available",
-        diff: await resolution.entry.workspace.getDiff({
-          target: command.target,
-          maxDiffBytes: command.maxDiffBytes,
-          maxFileListBytes: command.maxFileListBytes,
-          maxUntrackedFiles: command.maxUntrackedFiles,
-        }),
-      };
-    } catch (error) {
-      return {
-        outcome: "unavailable",
-        failure: workspaceResolutionFailureFromError({
-          error,
-          workspacePath: command.workspaceContext.workspacePath,
-        }),
-      };
-    }
-  },
-  "workspace.diffFiles": async (command, options) => {
-    const resolution = await resolveWorkspaceForCommand({
-      dataDir: options.dataDir,
-      environmentId: command.environmentId,
-      requireGit: true,
-      runtimeManager: options.runtimeManager,
-      workspaceContext: command.workspaceContext,
-    });
-    if (!resolution.ok) {
-      return { outcome: "unavailable", failure: resolution.failure };
-    }
-    try {
-      return {
-        outcome: "available",
-        ...(await resolution.entry.workspace.diffFiles({
-          target: command.target,
-          maxFiles: command.maxFiles,
-        })),
-      };
-    } catch (error) {
-      return {
-        outcome: "unavailable",
-        failure: workspaceResolutionFailureFromError({
-          error,
-          workspacePath: command.workspaceContext.workspacePath,
-        }),
-      };
-    }
-  },
-  "workspace.diffPatch": async (command, options) => {
-    const resolution = await resolveWorkspaceForCommand({
-      dataDir: options.dataDir,
-      environmentId: command.environmentId,
-      requireGit: true,
-      runtimeManager: options.runtimeManager,
-      workspaceContext: command.workspaceContext,
-    });
-    if (!resolution.ok) {
-      return { outcome: "unavailable", failure: resolution.failure };
-    }
-    try {
-      return {
-        outcome: "available",
-        patches: await resolution.entry.workspace.diffPatch({
-          target: command.target,
-          paths: command.paths,
-          maxBytesPerFile: command.maxBytesPerFile,
-        }),
-      };
-    } catch (error) {
-      return {
-        outcome: "unavailable",
-        failure: workspaceResolutionFailureFromError({
-          error,
-          workspacePath: command.workspaceContext.workspacePath,
-        }),
-      };
-    }
-  },
+  "workspace.status": (command, options) =>
+    readAvailableWorkspace(command, options, async (workspace) => ({
+      workspaceStatus: await workspace.getStatus({
+        mergeBaseBranch: command.mergeBaseBranch,
+        maxUntrackedLineStatFiles: command.maxUntrackedLineStatFiles,
+        maxUntrackedLineStatBytes: command.maxUntrackedLineStatBytes,
+      }),
+    })),
+  "workspace.diff": (command, options) =>
+    readAvailableWorkspace(command, options, async (workspace) => ({
+      diff: await workspace.getDiff({
+        target: command.target,
+        maxDiffBytes: command.maxDiffBytes,
+        maxFileListBytes: command.maxFileListBytes,
+        maxUntrackedFiles: command.maxUntrackedFiles,
+      }),
+    })),
+  "workspace.diffFiles": (command, options) =>
+    readAvailableWorkspace(command, options, (workspace) =>
+      workspace.diffFiles({
+        target: command.target,
+        maxFiles: command.maxFiles,
+      }),
+    ),
+  "workspace.diffPatch": (command, options) =>
+    readAvailableWorkspace(command, options, async (workspace) => ({
+      patches: await workspace.diffPatch({
+        target: command.target,
+        paths: command.paths,
+        maxBytesPerFile: command.maxBytesPerFile,
+      }),
+    })),
   "workspace.pull_request": async (command, options) => {
     const resolution = await resolveWorkspaceForCommand({
-      dataDir: options.dataDir,
       environmentId: command.environmentId,
       requireGit: true,
       runtimeManager: options.runtimeManager,

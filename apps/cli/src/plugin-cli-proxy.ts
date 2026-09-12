@@ -221,12 +221,7 @@ export async function findDisabledPluginForCommand(
   baseUrl: string,
   name: string,
   timeoutMs: number = CONTRIBUTIONS_TIMEOUT_MS,
-): Promise<{
-  id: string;
-  enabled: boolean;
-  status: string | null;
-  statusDetail: string | null;
-} | null> {
+): Promise<string | null> {
   try {
     const response = await cliFetch(`${baseUrl}/api/v1/plugins`, {
       signal: AbortSignal.timeout(timeoutMs),
@@ -235,14 +230,7 @@ export async function findDisabledPluginForCommand(
     const parsed = (await response.json()) as { plugins?: unknown } | null;
     if (!Array.isArray(parsed?.plugins)) return null;
     const match = parsed.plugins.find(
-      (
-        entry,
-      ): entry is {
-        id: string;
-        enabled: boolean;
-        status?: unknown;
-        statusDetail?: unknown;
-      } =>
+      (entry): entry is { id: string } =>
         typeof entry === "object" &&
         entry !== null &&
         (entry as { id?: unknown }).id === name &&
@@ -250,15 +238,7 @@ export async function findDisabledPluginForCommand(
         ((entry as { enabled?: unknown }).enabled === false ||
           (entry as { status?: unknown }).status === "disabled"),
     );
-    return match === undefined
-      ? null
-      : {
-          id: match.id,
-          enabled: match.enabled,
-          status: typeof match.status === "string" ? match.status : null,
-          statusDetail:
-            typeof match.statusDetail === "string" ? match.statusDetail : null,
-        };
+    return match === undefined ? null : match.id;
   } catch {
     return null;
   }

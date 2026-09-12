@@ -1,5 +1,6 @@
 import { commands, type Editor } from "@tiptap/core";
 import type { EditorState, Transaction } from "@tiptap/pm/state";
+import { dispatchPromptEditorTransaction } from "./prompt-editor-transaction";
 
 interface SplitBlockEditorContext {
   extensionManager: {
@@ -21,13 +22,10 @@ export function createPromptParagraphNewlineTransaction(args: {
   }
 
   const transaction = args.state.tr;
-  let nextTransaction: Transaction | null = null;
   const didSplit = commands.splitBlock({ keepMarks: false })({
     state: args.state,
     tr: transaction,
-    dispatch: () => {
-      nextTransaction = transaction;
-    },
+    dispatch: () => {},
     editor: args.editor as Editor,
     commands: null as never,
     can: null as never,
@@ -36,17 +34,12 @@ export function createPromptParagraphNewlineTransaction(args: {
   });
 
   transaction.setStoredMarks([]);
-  return didSplit && transaction.docChanged
-    ? (nextTransaction ?? transaction)
-    : null;
+  return didSplit && transaction.docChanged ? transaction : null;
 }
 
 export function applyPromptParagraphNewline(editor: Editor): boolean {
-  const transaction = createPromptParagraphNewlineTransaction({
-    state: editor.state,
+  return dispatchPromptEditorTransaction(
     editor,
-  });
-  if (transaction === null) return false;
-  editor.view.dispatch(transaction);
-  return true;
+    createPromptParagraphNewlineTransaction({ state: editor.state, editor }),
+  );
 }

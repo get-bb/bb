@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { decodeFrame, encodeFrame, type Frame } from "@bb/tunnel-contract";
-import { machine } from "@bb/connect-db";
+import { machine, sha256Hex } from "@bb/connect-db";
 
 import { cacheKey } from "./cache";
 import { parseClientProtocolVersion } from "./tunnel-do";
@@ -67,6 +67,18 @@ describe("requestForTunnelDo", () => {
     const out = requestForTunnelDo(req, null, "session");
     expect(out.headers.get(GATE_AUTH_HEADER)).toBe("session");
     expect(out.headers.get(GATE_MACHINE_ID_HEADER)).toBeNull();
+  });
+
+  it("replaces forged gate headers with the verified machine identity", () => {
+    const req = new Request("https://sawyer.getbb.app/api/v1/hosts", {
+      headers: {
+        [GATE_AUTH_HEADER]: "session",
+        [GATE_MACHINE_ID_HEADER]: "forged-machine",
+      },
+    });
+    const out = requestForTunnelDo(req, null, "machine", "mch_verified");
+    expect(out.headers.get(GATE_AUTH_HEADER)).toBe("machine");
+    expect(out.headers.get(GATE_MACHINE_ID_HEADER)).toBe("mch_verified");
   });
 });
 
@@ -393,13 +405,7 @@ describe("gate tunnel authentication", () => {
 
   it("authenticates a machine label and passes machineId to its TunnelDO", async () => {
     const credential = "bbcm_machine_secret";
-    const digest = await crypto.subtle.digest(
-      "SHA-256",
-      new TextEncoder().encode(credential),
-    );
-    const hash = [...new Uint8Array(digest)]
-      .map((byte) => byte.toString(16).padStart(2, "0"))
-      .join("");
+    const hash = await sha256Hex(credential);
     mockResolveLabel.mockResolvedValue(
       resolvedMachine({ credentialHash: hash }),
     );
@@ -435,13 +441,7 @@ describe("gate tunnel authentication", () => {
 
   it("dials immediately after a negative resolve and label assignment", async () => {
     const credential = "bbcm_new_machine";
-    const digest = await crypto.subtle.digest(
-      "SHA-256",
-      new TextEncoder().encode(credential),
-    );
-    const hash = [...new Uint8Array(digest)]
-      .map((byte) => byte.toString(16).padStart(2, "0"))
-      .join("");
+    const hash = await sha256Hex(credential);
     mockResolveLabel
       .mockResolvedValueOnce(null)
       .mockResolvedValueOnce(resolvedMachine({ credentialHash: hash }));
@@ -494,13 +494,7 @@ describe("gate tunnel authentication", () => {
 
   it("fresh-resolves from the outset after a cached negative and refuses revoked machines", async () => {
     const credential = "bbcm_stale";
-    const digest = await crypto.subtle.digest(
-      "SHA-256",
-      new TextEncoder().encode(credential),
-    );
-    const hash = [...new Uint8Array(digest)]
-      .map((byte) => byte.toString(16).padStart(2, "0"))
-      .join("");
+    const hash = await sha256Hex(credential);
     mockResolveLabel.mockResolvedValueOnce(null);
     const firstEnv = makeEnv(() => new Response("origin"));
     const stale = await worker.fetch(

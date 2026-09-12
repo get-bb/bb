@@ -1,6 +1,7 @@
 import { and, asc, desc, eq, isNull, or, sql } from "drizzle-orm";
 import type { DbConnection } from "../connection.js";
 import { installedPlugins, pluginArtifacts } from "../schema.js";
+import { likePrefixPattern } from "./sql-like.js";
 
 export interface PluginArtifactRow {
   id: string;
@@ -111,15 +112,21 @@ export function listPendingGitPluginArtifacts(
     .all();
 }
 
+function directoryContentsPattern(
+  directory: string,
+  separator: string,
+): string {
+  return likePrefixPattern(
+    directory.endsWith(separator) ? directory : `${directory}${separator}`,
+  );
+}
+
 export function listPluginArtifactsUnderPath(
   db: DbConnection,
   directory: string,
   separator: string,
 ): PluginArtifactRow[] {
-  const prefix = directory.endsWith(separator)
-    ? directory
-    : `${directory}${separator}`;
-  const pattern = `${prefix.replaceAll("\\", "\\\\").replaceAll("%", "\\%").replaceAll("_", "\\_")}%`;
+  const pattern = directoryContentsPattern(directory, separator);
   return db
     .select()
     .from(pluginArtifacts)
@@ -133,10 +140,7 @@ export function listPluginArtifactsAtOrUnderPath(
   directory: string,
   separator: string,
 ): PluginArtifactRow[] {
-  const prefix = directory.endsWith(separator)
-    ? directory
-    : `${directory}${separator}`;
-  const pattern = `${prefix.replaceAll("\\", "\\\\").replaceAll("%", "\\%").replaceAll("_", "\\_")}%`;
+  const pattern = directoryContentsPattern(directory, separator);
   return db
     .select()
     .from(pluginArtifacts)

@@ -197,7 +197,7 @@ const CODEX_NOTIFICATION_COVERAGE = {
   "turn/moderationMetadata": "noise",
   "turn/plan/updated": "normalized",
   "turn/started": "normalized",
-  warning: "unknown",
+  warning: "normalized",
   "windows/worldWritableWarning": "unknown",
   "windowsSandbox/setupCompleted": "unknown",
 } satisfies Record<CodexServerNotificationMethod, ProviderRawEventCoverage>;
@@ -259,6 +259,22 @@ function describeParsedCodexRawEvent(
       return { kind: "thread/settings/updated", coverage: "noise" };
 
     case "notification":
+      if (
+        event.method === "hook/started" ||
+        event.method === "hook/completed"
+      ) {
+        const run = isRecord(event.params)
+          ? getRecordProperty(event.params, "run")
+          : undefined;
+        const status = run ? getStringProperty(run, "status") : undefined;
+        return {
+          kind: event.method,
+          coverage:
+            status === "running" || status === "completed"
+              ? "noise"
+              : "unknown",
+        };
+      }
       if (
         (event.method === "item/started" ||
           event.method === "item/completed") &&

@@ -190,132 +190,103 @@ const MarkdownTable = Table.extend({
   },
 });
 
-const TaskMention = Node.create({
+function createMentionNode({
+  name,
+  idAttribute,
+  dataAttribute,
+  scheme,
+  className,
+  role,
+  icon,
+}: {
+  name: string;
+  idAttribute: "key" | "threadId";
+  dataAttribute: string;
+  scheme: string;
+  className: string;
+  role?: string;
+  icon?: IconSvgElement;
+}) {
+  return Node.create({
+    name,
+    group: "inline",
+    inline: true,
+    atom: true,
+    selectable: true,
+    addAttributes() {
+      return {
+        [idAttribute]: { default: "" },
+        label: { default: "" },
+      };
+    },
+    parseHTML() {
+      return [
+        {
+          tag: `span[${dataAttribute}]`,
+          getAttrs: (element) => {
+            const id = element.getAttribute(dataAttribute) ?? "";
+            return id
+              ? { [idAttribute]: id, label: element.textContent || id }
+              : false;
+          },
+        },
+        {
+          tag: `a[href^="${scheme}"]`,
+          priority: 100,
+          getAttrs: (element) => {
+            const href = element.getAttribute("href") ?? "";
+            const id = href.slice(scheme.length);
+            return id
+              ? { [idAttribute]: id, label: element.textContent || id }
+              : false;
+          },
+        },
+      ];
+    },
+    renderHTML({ node }) {
+      const id = String(node.attrs[idAttribute]);
+      return [
+        "span",
+        { [dataAttribute]: id, class: className, ...(role ? { role } : {}) },
+        ...(icon ? [mentionIconSpec(icon)] : []),
+        String(node.attrs.label || id),
+      ];
+    },
+    renderText({ node }) {
+      return String(node.attrs.label || node.attrs[idAttribute]);
+    },
+    addStorage() {
+      return {
+        markdown: {
+          serialize(
+            state: { write(value: string): void },
+            node: { attrs: Record<string, string> },
+          ) {
+            const id = node.attrs[idAttribute];
+            state.write(`[${node.attrs.label || id}](${scheme}${id})`);
+          },
+        },
+      };
+    },
+  });
+}
+
+const TaskMention = createMentionNode({
   name: "taskMention",
-  group: "inline",
-  inline: true,
-  atom: true,
-  selectable: true,
-  addAttributes() {
-    return {
-      key: { default: "" },
-      label: { default: "" },
-    };
-  },
-  parseHTML() {
-    return [
-      {
-        tag: "span[data-task-mention]",
-        getAttrs: (element) => {
-          const key = element.getAttribute("data-task-mention") ?? "";
-          return key ? { key, label: element.textContent || key } : false;
-        },
-      },
-      {
-        tag: `a[href^="${MENTION_SCHEME}"]`,
-        priority: 100,
-        getAttrs: (element) => {
-          const href = element.getAttribute("href") ?? "";
-          const key = href.slice(MENTION_SCHEME.length);
-          return key ? { key, label: element.textContent || key } : false;
-        },
-      },
-    ];
-  },
-  renderHTML({ node }) {
-    return [
-      "span",
-      {
-        "data-task-mention": String(node.attrs.key),
-        class: "bb-tasks-mention",
-      },
-      String(node.attrs.label || node.attrs.key),
-    ];
-  },
-  renderText({ node }) {
-    return String(node.attrs.label || node.attrs.key);
-  },
-  addStorage() {
-    return {
-      markdown: {
-        serialize(
-          state: { write(value: string): void },
-          node: { attrs: { key: string; label: string } },
-        ) {
-          state.write(
-            `[${node.attrs.label || node.attrs.key}](${MENTION_SCHEME}${node.attrs.key})`,
-          );
-        },
-      },
-    };
-  },
+  idAttribute: "key",
+  dataAttribute: "data-task-mention",
+  scheme: MENTION_SCHEME,
+  className: "bb-tasks-mention",
 });
 
-const ThreadMention = Node.create({
+const ThreadMention = createMentionNode({
   name: "threadMention",
-  group: "inline",
-  inline: true,
-  atom: true,
-  selectable: true,
-  addAttributes() {
-    return {
-      threadId: { default: "" },
-      label: { default: "" },
-    };
-  },
-  parseHTML() {
-    return [
-      {
-        tag: "span[data-thread-mention]",
-        getAttrs: (element) => {
-          const threadId = element.getAttribute("data-thread-mention") ?? "";
-          return threadId
-            ? { threadId, label: element.textContent || threadId }
-            : false;
-        },
-      },
-      {
-        tag: `a[href^="${THREAD_MENTION_SCHEME}"]`,
-        priority: 100,
-        getAttrs: (element) => {
-          const href = element.getAttribute("href") ?? "";
-          const threadId = href.slice(THREAD_MENTION_SCHEME.length);
-          return threadId
-            ? { threadId, label: element.textContent || threadId }
-            : false;
-        },
-      },
-    ];
-  },
-  renderHTML({ node }) {
-    return [
-      "span",
-      {
-        "data-thread-mention": String(node.attrs.threadId),
-        class: "bb-tasks-mention bb-tasks-thread-mention",
-        role: "link",
-      },
-      mentionIconSpec(BubbleChatIcon),
-      String(node.attrs.label || node.attrs.threadId),
-    ];
-  },
-  renderText({ node }) {
-    return String(node.attrs.label || node.attrs.threadId);
-  },
-  addStorage() {
-    return {
-      markdown: {
-        serialize(
-          state: { write(value: string): void },
-          node: { attrs: { threadId: string; label: string } },
-        ) {
-          state.write(
-            `[${node.attrs.label || node.attrs.threadId}](${THREAD_MENTION_SCHEME}${node.attrs.threadId})`,
-          );
-        },
-      },
-    };
-  },
+  idAttribute: "threadId",
+  dataAttribute: "data-thread-mention",
+  scheme: THREAD_MENTION_SCHEME,
+  className: "bb-tasks-mention bb-tasks-thread-mention",
+  role: "link",
+  icon: BubbleChatIcon,
 });
 
 const TrailingParagraph = Extension.create({

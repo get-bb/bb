@@ -3,7 +3,9 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { eq } from "drizzle-orm";
 import { environments } from "@bb/db";
-import { describe, expect, it } from "vitest";
+import { createDeferredPromise } from "@bb/test-helpers";
+import { describe, expect, it, vi } from "vitest";
+import { hasLiveThreadStartInFlight } from "../../../../apps/server/src/services/threads/thread-lifecycle.js";
 import {
   createHostThread,
   getEnvironment,
@@ -156,58 +158,90 @@ describe.sequential("fake provider smoke reuse integration", () => {
       ).toEqual([]);
     }));
 
-  it("re-attaches a checkout whose row lost its path when the thread is sent to", () =>
-    withHarness(async (harness) => {
-      const project = await createProjectFixture(
-        harness,
-        "Checkout Reattach After Error",
-      );
-      const { environment, thread } = await createReadyThread(harness, {
-        projectId: project.id,
-        workspace: {
-          type: "unmanaged",
-          path: harness.repoDir,
-        },
-      });
+  it.each([false, true])(
+    "re-attaches a checkout whose row lost its path with delayed start acknowledgment: %s",
+    (delayStartAcknowledgment) =>
+      withHarness(async (harness) => {
+        const acknowledgment = createDeferredPromise<void>();
+        const requestRpc = harness.hub.requestHostOnlineRpc.bind(harness.hub);
+        let delayedStart = false;
+        const rpcSpy = vi
+          .spyOn(harness.hub, "requestHostOnlineRpc")
+          .mockImplementation(async (args) => {
+            const response = await requestRpc(args);
+            if (
+              delayStartAcknowledgment &&
+              !delayedStart &&
+              args.message.command.type === "thread.start"
+            ) {
+              delayedStart = true;
+              await acknowledgment.promise;
+            }
+            return response;
+          });
+        try {
+          const project = await createProjectFixture(
+            harness,
+            "Checkout Reattach After Error",
+          );
+          const { environment, thread } = await createReadyThread(harness, {
+            projectId: project.id,
+            workspace: {
+              type: "unmanaged",
+              path: harness.repoDir,
+            },
+          });
 
-      harness.db
-        .update(environments)
-        .set({
-          path: null,
-          status: "error",
-          updatedAt: Date.now(),
-        })
-        .where(eq(environments.id, environment.id))
-        .run();
+          if (delayStartAcknowledgment) {
+            expect(hasLiveThreadStartInFlight(thread.id)).toBe(true);
+          }
+          harness.db
+            .update(environments)
+            .set({
+              path: null,
+              status: "error",
+              updatedAt: Date.now(),
+            })
+            .where(eq(environments.id, environment.id))
+            .run();
 
-      const response = await harness.api.threads[":id"].send.$post({
-        param: { id: thread.id },
-        json: {
-          input: [
-            { type: "text", text: "try checkout reattach", mentions: [] },
-          ],
-          mode: "auto",
-        },
-      });
-      expect(response.status).toBe(200);
-      const readyThread = await waitForThreadStatus(
-        harness.api,
-        thread.id,
-        "idle",
-        TURN_TIMEOUT_MS,
-      );
-      const environmentId = readyThread.environmentId;
-      if (environmentId === null) {
-        throw new Error("Thread lost its environment after the re-attach");
-      }
-      expect(environmentId).not.toBe(environment.id);
-      const reattached = await waitForEnvironmentStatus(
-        harness.api,
-        environmentId,
-        "ready",
-        TURN_TIMEOUT_MS,
-      );
-      expect(reattached.path).toBe(harness.repoDir);
-      expect(reattached.environmentProviderId).toBe("project-checkout");
-    }));
+          const response = await harness.api.threads[":id"].send.$post({
+            param: { id: thread.id },
+            json: {
+              input: [
+                { type: "text", text: "try checkout reattach", mentions: [] },
+              ],
+              mode: "auto",
+            },
+          });
+          expect(response.status).toBe(200);
+          acknowledgment.resolve();
+          const readyThread = await waitForThreadStatus(
+            harness.api,
+            thread.id,
+            "idle",
+            TURN_TIMEOUT_MS,
+          );
+          const environmentId = readyThread.environmentId;
+          if (environmentId === null) {
+            throw new Error("Thread lost its environment after the re-attach");
+          }
+          expect(environmentId).not.toBe(environment.id);
+          const reattached = await waitForEnvironmentStatus(
+            harness.api,
+            environmentId,
+            "ready",
+            TURN_TIMEOUT_MS,
+          );
+          expect(reattached.path).toBe(harness.repoDir);
+          expect(reattached.environmentProviderId).toBe("project-checkout");
+          expect(await getThreadOutput(harness.api, thread.id)).toContain(
+            "try checkout reattach",
+          );
+        } finally {
+          acknowledgment.resolve();
+          rpcSpy.mockRestore();
+        }
+      }),
+  );
 });

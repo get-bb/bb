@@ -83,6 +83,43 @@ machines with no keychain identity (or with `CSC_IDENTITY_AUTO_DISCOVERY=false`,
 as CI sets for workflow-artifact-only builds), artifacts remain unsigned and
 macOS shows the normal Gatekeeper warning on first launch.
 
+For local verification without publishing, use
+`pnpm exec turbo run package --filter=@bb/desktop` on macOS, or
+`pnpm exec turbo run package:linux --filter=@bb/desktop` on Linux.
+
+npm's bundled dependencies are copied through an explicit `files` entry into
+`node_modules/npm/node_modules`, including nested dependency versions. pnpm's
+dependency listing omits this bundled tree, and electron-builder's dependency
+copier excludes nested `node_modules`. `asarUnpack` alone cannot preserve files
+that the collector never selected. The explicit file set enters both ASAR's
+file index and its unpacked resources before signing.
+
+Packaging runs an offline npm smoke check in `afterPack`, before signing or
+publishing. This requires a native target host (macOS arm64 or Linux x64).
+`smoke:packaged` repeats it against the resulting artifact. To run only npm
+verification without opening a desktop window:
+
+```bash
+pnpm exec turbo run smoke:packaged-npm --filter=@bb/desktop
+pnpm exec turbo run smoke:packaged-npm --filter=@bb/desktop -- /absolute/path/to/bb.app/Contents/MacOS/bb
+```
+
+On Linux, the optional argument is the executable inside `linux-unpacked/` or
+an extracted AppImage. The check resolves npm from packaged `bb-app`, audits
+required dependency edges and version ranges in npm's entire bundled tree using
+both CJS and ESM resolution, rejects paths outside packaged resources, imports npm's ESM display
+dependencies, and verifies its version. It then uses bundled Electron and npm
+to pack, install, and update a disposable plugin's dependency from 1.0.0 to
+2.0.0, verifying the lockfile and importing the plugin's ESM entry after each
+install. It uses the plugin install flags, an empty PATH, offline mode, a fresh
+HOME/cache/config, and disabled lifecycle scripts. No system Node/npm or user
+store is used by the child processes. It also hashes ASAR and unpacked resources
+before and after to reject bundle mutations. Fixtures are removed afterward.
+
+The bb-app tarball smoke covers a different packaging pipeline and cannot
+detect Electron artifact omissions. A source build or `npm --version` alone
+does not verify a desktop plugin dependency install.
+
 ### Linux (AppImage, x64)
 
 Linux packaging targets x64 glibc-based distributions. Install `python3`,
@@ -92,9 +129,9 @@ From the repo root, build an unpacked app, an AppImage distribution, or smoke
 test the current packaged output with:
 
 ```bash
-pnpm --filter @bb/desktop run package:linux
-pnpm --filter @bb/desktop run dist:linux
-pnpm --filter @bb/desktop run smoke:packaged
+pnpm exec turbo run package:linux --filter=@bb/desktop
+pnpm exec turbo run desktop:build:linux --filter=@bb/desktop
+pnpm exec turbo run smoke:packaged --filter=@bb/desktop
 ```
 
 Running an AppImage normally requires FUSE and, on some distributions, the

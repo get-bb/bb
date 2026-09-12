@@ -7,7 +7,7 @@ import {
   firstPartyReplayBridge,
   readBridgeRecording,
   rerecordCurrentBridgeLane,
-} from "@bb/provider-bridge-protocol/testing/parity";
+} from "@bb/provider-bridge-protocol/testing";
 import {
   RECORDINGS_ROOT,
   cellKey,

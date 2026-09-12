@@ -21,6 +21,11 @@
       "to": "node_modules/bb-app/server/dist/app-scaffold-template",
       "filter": ["**/*"]
     },
+    {
+      "from": "node_modules/bb-app/node_modules/npm/node_modules",
+      "to": "node_modules/npm/node_modules",
+      "filter": ["**/*"]
+    },
     "package.json",
     "!**/*.map"
   ],

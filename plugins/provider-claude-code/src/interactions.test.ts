@@ -11,20 +11,17 @@ import {
   buildClaudeUserQuestionPayload,
 } from "./interactions.js";
 import {
-  claudePermissionRequestApprovalParamsSchema,
-  claudeUserQuestionRequestParamsSchema,
+  claudeUserQuestionInputSchema,
+  type ClaudePermissionRequestApprovalParams,
+  type ClaudeUserQuestionRequestParams,
 } from "./interactive-contract.js";
 
-function decodeApproval(params: unknown) {
-  return buildClaudeApprovalInteractionPayload(
-    claudePermissionRequestApprovalParamsSchema.parse(params),
-  );
+function decodeApproval(params: ClaudePermissionRequestApprovalParams) {
+  return buildClaudeApprovalInteractionPayload(params);
 }
 
-function decodeUserQuestion(params: unknown) {
-  return buildClaudeUserQuestionPayload(
-    claudeUserQuestionRequestParamsSchema.parse(params),
-  );
+function decodeUserQuestion(params: ClaudeUserQuestionRequestParams) {
+  return buildClaudeUserQuestionPayload(params);
 }
 
 function createClaudeUserQuestionPayload(): UserQuestionPendingInteractionPayload {
@@ -253,24 +250,6 @@ describe("claude-code interactive requests", () => {
     });
   });
 
-  it("rejects malformed Claude permission approval payloads", () => {
-    expect(
-      claudePermissionRequestApprovalParamsSchema.safeParse({
-        threadId: "thr_1",
-        providerThreadId: "claude-session-1",
-        turnId: null,
-        itemId: "toolu_1",
-        toolName: "WebFetch",
-        input: { url: "https://example.com" },
-        reason: "Needs approval",
-        permissions: {
-          network: { enabled: "yes" },
-          fileSystem: null,
-        },
-      }).success,
-    ).toBe(false);
-  });
-
   it("decodes Claude AskUserQuestion requests into user-question interactions", () => {
     expect(
       decodeUserQuestion({
@@ -325,11 +304,7 @@ describe("claude-code interactive requests", () => {
 
   it("rejects Claude AskUserQuestion requests with duplicate prompts", () => {
     expect(
-      claudeUserQuestionRequestParamsSchema.safeParse({
-        threadId: "thr_1",
-        providerThreadId: "claude-session-1",
-        turnId: "turn-question",
-        itemId: "toolu_question",
+      claudeUserQuestionInputSchema.safeParse({
         questions: [
           {
             question: "Which deployment target should I use?",

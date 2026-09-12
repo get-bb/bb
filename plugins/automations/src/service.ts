@@ -55,7 +55,7 @@ import {
   readAutomationScript,
   writeInlineAutomationScript,
 } from "./script-files.js";
-import { executeAgentRun, executeScriptRun } from "./run.js";
+import { errorMessage, executeAgentRun, executeScriptRun } from "./run.js";
 
 type ServiceApi = Pick<BbPluginApi, "realtime" | "log"> & {
   sdk: {
@@ -115,7 +115,6 @@ function computeNextRunAt(
   now: number,
 ): number {
   if (trigger.triggerType === "once") {
-    validateTrigger(trigger, now);
     return trigger.runAt;
   }
   return computeNextScheduledTime({
@@ -179,9 +178,7 @@ async function discardUncommittedScript(args: {
     });
   } catch (error) {
     args.bb.log.warn(
-      `Failed to discard uncommitted script for automation ${args.automationId}: ${
-        error instanceof Error ? error.message : String(error)
-      }`,
+      `Failed to discard uncommitted script for automation ${args.automationId}: ${errorMessage(error)}`,
     );
   }
 }
@@ -345,9 +342,7 @@ async function cleanupSupersededScript(args: {
     }
   } catch (error) {
     args.bb.log.warn(
-      `Failed to remove superseded script for automation ${args.automationId}: ${
-        error instanceof Error ? error.message : String(error)
-      }`,
+      `Failed to remove superseded script for automation ${args.automationId}: ${errorMessage(error)}`,
     );
   }
 }
@@ -428,9 +423,7 @@ async function projectNameById(
     );
   } catch (error) {
     bb.log.warn(
-      `Failed to list projects for automations overview: ${
-        error instanceof Error ? error.message : String(error)
-      }`,
+      `Failed to list projects for automations overview: ${errorMessage(error)}`,
     );
     return new Map();
   }
@@ -454,9 +447,7 @@ async function requireProjectAvailable(
     projectAvailableSchema.parse(await bb.sdk.projects.get({ projectId }));
   } catch (error) {
     throw new Error(
-      `Project ${projectId} is not available: ${
-        error instanceof Error ? error.message : String(error)
-      }`,
+      `Project ${projectId} is not available: ${errorMessage(error)}`,
     );
   }
 }
@@ -607,11 +598,6 @@ export function createAutomationService(args: {
           input.agent.permissionMode !== undefined ||
           input.agent.target?.type === "environment"
         ) {
-          if (currentExecution.mode !== "agent") {
-            throw new Error(
-              "Agent execution options can only update agent automations",
-            );
-          }
           await resolvePermissionMode(
             bb,
             updatedExecution.providerId,
@@ -742,7 +728,7 @@ export function createAutomationService(args: {
           closeAutomationRun(db, {
             runId: run.id,
             status: "failed",
-            error: error instanceof Error ? error.message : String(error),
+            error: errorMessage(error),
             now: Date.now(),
           });
         };
@@ -768,9 +754,7 @@ export function createAutomationService(args: {
           } catch (error) {
             closeFailedRun(error);
             bb.log.error(
-              `Manual automation run ${run.id} failed unexpectedly: ${
-                error instanceof Error ? error.message : String(error)
-              }`,
+              `Manual automation run ${run.id} failed unexpectedly: ${errorMessage(error)}`,
             );
             publishAutomationChange(bb, input.projectId, [
               "automations-changed",

@@ -24,7 +24,6 @@ import type {
   TimelineRow,
 } from "@bb/server-contract";
 import {
-  buildThreadTimeline,
   buildTimelineTurnSummaryDetails as buildTurnDetailsPage,
   buildThreadTimelineWithProfile,
   THREAD_TIMELINE_EVENT_DATA_BYTE_LIMIT,
@@ -51,7 +50,6 @@ function setup(): { db: DbConnection; thread: Thread } {
   migrate(db);
   const host = upsertHost(db, noopNotifier, {
     name: "test-host",
-    type: "persistent",
   });
   const { project } = createProject(db, noopNotifier, {
     name: "test-project",
@@ -1585,22 +1583,22 @@ describe("timeline inline output reads", () => {
       },
     ]);
 
-    const capped = buildThreadTimeline(db, thread, {
+    const capped = buildThreadTimelineWithProfile(db, thread, {
       eventBudget: LARGE_BUDGET,
       includeDiagnosticOperations: false,
       includeNestedRows: false,
       maxInlineOutputChars: 32_000,
       maxSeq: 0,
       page: { kind: "latest", segmentLimit: 20 },
-    });
-    const uncapped = buildThreadTimeline(db, thread, {
+    }).response;
+    const uncapped = buildThreadTimelineWithProfile(db, thread, {
       eventBudget: LARGE_BUDGET,
       includeDiagnosticOperations: false,
       includeNestedRows: false,
       maxInlineOutputChars: null,
       maxSeq: 0,
       page: { kind: "latest", segmentLimit: 20 },
-    });
+    }).response;
 
     const cappedRow = capped.rows.find(
       (row) => row.kind === "work" && row.id.endsWith("big-item"),
@@ -1658,22 +1656,22 @@ describe("timeline retained output reads", () => {
       },
     ]);
 
-    const capped = buildThreadTimeline(db, thread, {
+    const capped = buildThreadTimelineWithProfile(db, thread, {
       eventBudget: LARGE_BUDGET,
       includeDiagnosticOperations: false,
       includeNestedRows: false,
       maxInlineOutputChars: 32_000,
       maxSeq: 500,
       page: { kind: "latest", segmentLimit: 20 },
-    });
-    const uncapped = buildThreadTimeline(db, thread, {
+    }).response;
+    const uncapped = buildThreadTimelineWithProfile(db, thread, {
       eventBudget: LARGE_BUDGET,
       includeDiagnosticOperations: false,
       includeNestedRows: false,
       maxInlineOutputChars: null,
       maxSeq: 500,
       page: { kind: "latest", segmentLimit: 20 },
-    });
+    }).response;
     const cappedRow = capped.rows.find(
       (row) => row.kind === "work" && row.id.endsWith("retained-command"),
     );
@@ -2040,14 +2038,14 @@ describe("turn details for an item that finishes in a later turn", () => {
       }),
     });
     insertEvents(db, noopNotifier, events.slice(storedCount));
-    const unfinishedLatest = buildThreadTimeline(db, thread, {
+    const unfinishedLatest = buildThreadTimelineWithProfile(db, thread, {
       eventBudget: LARGE_BUDGET,
       includeDiagnosticOperations: false,
       includeNestedRows: true,
       maxInlineOutputChars: 32_000,
       maxSeq: 0,
       page: { kind: "latest", segmentLimit: 1 },
-    });
+    }).response;
     const unfinishedOlder = buildNestedPage(
       db,
       thread,

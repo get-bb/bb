@@ -1,16 +1,18 @@
 import { eq } from "drizzle-orm";
 import { describe, expect, it } from "vitest";
 import {
-  createConnection,
-  createQueuedThreadMessageId,
   createEnvironmentId,
-  createEventId,
   createHostDaemonSessionId,
-  createHostId,
   createProjectId,
   createPromptHistoryEntryId,
   createProjectSourceId,
   createThreadId,
+} from "../src/ids.js";
+import {
+  createConnection,
+  createQueuedThreadMessageId,
+  createEventId,
+  createHostId,
   environments,
   events,
   hostDaemonSessions,
@@ -225,7 +227,6 @@ describe("db rebuild schema", () => {
         hostId,
         instanceId: "instance-1",
         hostName: "Local host",
-        hostType: "persistent",
         dataDir: "/tmp/test-data",
         protocolVersion: 1,
         heartbeatIntervalMs: 10_000,
@@ -512,7 +513,6 @@ describe("db rebuild schema", () => {
         hostId,
         instanceId: "instance-1",
         hostName: "Local host",
-        hostType: "persistent",
         dataDir: "/tmp/test-data",
         protocolVersion: 1,
         heartbeatIntervalMs: 10_000,
@@ -770,7 +770,6 @@ describe("db rebuild schema", () => {
           hostId,
           instanceId: "instance",
           hostName: "host",
-          hostType: "persistent",
           protocolVersion: 1,
           heartbeatIntervalMs: 1_000,
           leaseTimeoutMs: 10_000,

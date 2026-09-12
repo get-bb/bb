@@ -9,6 +9,7 @@ import type {
 } from "../../shared/contract.js";
 import { TASK_PRIORITIES, TASK_STATUSES } from "../../shared/contract.js";
 import type { Preset } from "../../shared/contract.js";
+import { errorMessage } from "../../shared/errors.js";
 import { useTasksQuery, useTasksRpc } from "../../shell/data.js";
 import {
   PriorityIcon,
@@ -24,13 +25,7 @@ import {
 } from "../list/lib.js";
 import { DispatchControl } from "./threads.js";
 import { DEFAULT_COLOR } from "../manage/shared.js";
-import {
-  BbProjectLinkPicker,
-  bbProjectLinkStateFor,
-  emptyBbProjectLinkState,
-  resolveBbProjectLink,
-  type BbProjectLinkState,
-} from "../manage/bb-project-link.js";
+import { BbProjectLinkPicker } from "../manage/bb-project-link.js";
 import type { BbProjectOption } from "../../shared/contract.js";
 import { Button } from "@bb/shared-ui/button";
 import {
@@ -289,7 +284,6 @@ function LabelsMenu({
                 </CommandItem>
               </CommandGroup>
             ) : null}
-            {}
             {labelList.length > 0 ? (
               <CommandGroup>
                 {labelList.map((label) => (
@@ -331,15 +325,12 @@ function DispatchTargetMenu({
 }) {
   const rpc = useTasksRpc();
   const [open, setOpen] = useState(false);
-  const [state, setState] = useState<BbProjectLinkState>(
-    emptyBbProjectLinkState,
-  );
+  const [selection, setSelection] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const linkedBbProjectId = project.linkedBbProjectId;
   const linkedName = bbProjects.find(
     (candidate) => candidate.id === linkedBbProjectId,
   )?.name;
-  const resolved = resolveBbProjectLink(state);
 
   const save = async (linkedId: string | null) => {
     if (saving) return;
@@ -351,9 +342,7 @@ function DispatchTargetMenu({
       });
       setOpen(false);
     } catch (saveError) {
-      onError(
-        saveError instanceof Error ? saveError.message : String(saveError),
-      );
+      onError(errorMessage(saveError));
     } finally {
       setSaving(false);
     }
@@ -363,7 +352,7 @@ function DispatchTargetMenu({
     <Popover
       open={open}
       onOpenChange={(next) => {
-        if (next) setState(bbProjectLinkStateFor(linkedBbProjectId));
+        if (next) setSelection(linkedBbProjectId);
         setOpen(next);
       }}
     >
@@ -387,8 +376,8 @@ function DispatchTargetMenu({
       </PopoverTrigger>
       <PopoverContent align="start" className="w-64 p-3">
         <BbProjectLinkPicker
-          state={state}
-          onStateChange={setState}
+          value={selection}
+          onChange={setSelection}
           bbProjects={bbProjects}
           noneLabel={linkedBbProjectId !== null ? "Unlink" : "Not linked"}
         />
@@ -411,7 +400,7 @@ function DispatchTargetMenu({
             size="sm"
             className="h-7"
             disabled={saving}
-            onClick={() => void save(resolved === "" ? null : resolved)}
+            onClick={() => void save(selection)}
           >
             Save
           </Button>

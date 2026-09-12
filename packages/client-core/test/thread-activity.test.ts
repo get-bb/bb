@@ -1,9 +1,11 @@
 import { describe, expect, it } from "vitest";
+import { makeThreadListEntry } from "@bb/test-helpers/domain-fixtures";
 import {
   getCollapsedChildActivity,
   hasThreadListWorkingActivity,
   isUnreadDoneThread,
   resolveThreadListIndicator,
+  threadListIndicatorStateForThread,
   type ThreadListIndicatorState,
 } from "../src/thread/thread-activity.js";
 
@@ -198,6 +200,22 @@ describe("thread-activity", () => {
       ).toBe("unread-error");
     });
 
+    it.each([
+      ["waiting", "unread-success"],
+      ["failed", "queued-failed"],
+    ] as const)(
+      "resolves unread success and %s queued work as %s",
+      (queuedWork, expectedIndicator) => {
+        expect(
+          resolveThreadListIndicator({
+            ...idleIndicatorState,
+            hasUnreadSuccess: true,
+            queuedWork,
+          }),
+        ).toBe(expectedIndicator);
+      },
+    );
+
     it("keeps Plan and Goal independent and applies Plan precedence", () => {
       expect(
         resolveThreadListIndicator({
@@ -250,7 +268,7 @@ describe("thread-activity", () => {
           hasUnsubmittedDraft: true,
           hasUnreadSuccess: true,
         }),
-      ).toBe("draft");
+      ).toBe("unread-success");
       expect(
         resolveThreadListIndicator({
           ...idleIndicatorState,
@@ -293,6 +311,65 @@ describe("thread-activity", () => {
         parentThreadId: null,
       }),
     ).toBe(false);
+  });
+
+  describe("threadListIndicatorStateForThread", () => {
+    it("marks an unread error thread as an unread error, not a success", () => {
+      const thread = makeThreadListEntry({
+        status: "error",
+        latestAttentionAt: 20,
+        lastReadAt: 10,
+      });
+
+      expect(threadListIndicatorStateForThread(thread, false)).toMatchObject({
+        hasUnreadError: true,
+        hasUnreadSuccess: false,
+        hasUnsubmittedDraft: false,
+      });
+    });
+
+    it("marks an unread idle thread as an unread success and passes the draft flag through", () => {
+      const thread = makeThreadListEntry({
+        status: "idle",
+        latestAttentionAt: 20,
+        lastReadAt: 10,
+      });
+
+      expect(threadListIndicatorStateForThread(thread, true)).toMatchObject({
+        hasUnreadError: false,
+        hasUnreadSuccess: true,
+        hasUnsubmittedDraft: true,
+      });
+    });
+
+    it("fills activity flags from the list entry", () => {
+      const thread = makeThreadListEntry({
+        hasPendingInteraction: true,
+        queuedWork: "waiting",
+        activity: {
+          activeWorkflowCount: 1,
+          activeBackgroundAgentCount: 0,
+          activeBackgroundCommandCount: 1,
+          activePlanModeCount: 0,
+          activeGoalCount: 1,
+        },
+        runtime: { displayStatus: "active", hostReconnectGraceExpiresAt: null },
+      });
+
+      expect(threadListIndicatorStateForThread(thread, false)).toEqual({
+        hasPendingInteraction: true,
+        hasUnsubmittedDraft: false,
+        hasUnreadError: false,
+        hasUnreadSuccess: false,
+        isBackgroundAgentActive: false,
+        isBackgroundCommandActive: true,
+        isGoalActive: true,
+        queuedWork: "waiting",
+        isPlanModeActive: false,
+        isRuntimeActive: true,
+        isWorkflowActive: true,
+      });
+    });
   });
 
   describe("getCollapsedChildActivity", () => {

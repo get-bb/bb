@@ -14,6 +14,11 @@
       "types": "./src/locks.ts",
       "default": "./src/locks.ts"
     },
+    "./process-local-lock": {
+      "source": "./src/process-local-lock.ts",
+      "types": "./src/process-local-lock.ts",
+      "default": "./src/process-local-lock.ts"
+    },
     "./progress": {
       "source": "./src/progress.ts",
       "types": "./src/progress.ts",

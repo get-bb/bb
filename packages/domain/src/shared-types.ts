@@ -206,6 +206,16 @@ export const promptInputSchema = z.discriminatedUnion("type", [
 ]);
 export type PromptInput = z.infer<typeof promptInputSchema>;
 
+export function flattenPromptInputGroups(
+  inputGroups: readonly PromptInput[][],
+): PromptInput[] {
+  return inputGroups.flatMap((group, index) =>
+    index === 0
+      ? group
+      : [{ type: "text" as const, text: "\n\n", mentions: [] }, ...group],
+  );
+}
+
 interface PromptCommandSelector {
   trigger: PromptMentionCommandTrigger;
   name: string;

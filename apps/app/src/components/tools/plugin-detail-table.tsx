@@ -138,7 +138,6 @@ export function PluginDetailRow({
         colSpan={hasDetail ? undefined : 2}
       >
         <span className="flex min-w-0 items-center gap-2">
-          {}
           <span className="flex shrink-0">{glyph}</span>
           <span
             className={cn(

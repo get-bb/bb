@@ -1,3 +1,5 @@
+import { createHash } from "node:crypto";
+import type Database from "better-sqlite3";
 import { z } from "zod";
 import {
   isNamespacedGlyph,
@@ -5,6 +7,10 @@ import {
   parseNamespacedGlyph,
 } from "@bb/domain/plugin-icon";
 import { RESERVED_BB_CLI_COMMANDS } from "@bb/domain/plugin-cli";
+import {
+  PLUGIN_INTERACTION_MAX_PAYLOAD_BYTES,
+  PLUGIN_INTERACTION_MAX_TITLE_LENGTH,
+} from "@bb/domain/plugin-interaction-limits";
 import { PROVIDER_FORK_VALUES } from "@bb/domain/provider-fork";
 import {
   jsonValueSchema,
@@ -15,15 +21,24 @@ import {
 } from "@bb/domain";
 import { PLUGIN_CLI_OUTPUT_MAX_BYTES } from "../backend-contract.js";
 import type {
+  PluginAgentToolContext,
   PluginAgentToolPresentation,
+  PluginAgentToolResult,
   PluginAiServiceDeclaration,
   PluginAiServiceKind,
+  PluginCliCommandInfo,
   PluginCliExecutionResult,
   PluginCliOutputLimitError,
+  PluginCliRegistration,
   PluginEnvironmentProviderDeclaration,
   PluginHookHandler,
   PluginHookName,
+  PluginHttpAuthMode,
+  PluginInteractionRequest,
+  PluginMentionProviderRegistration,
   PluginMentionTrigger,
+  PluginMachineProviderDeclaration,
+  ServerAccessProviderDeclaration,
   PluginProviderCapabilities,
   PluginProviderComposerAction,
   PluginProviderDeclaration,
@@ -37,12 +52,16 @@ import type {
   PluginProviderStrings,
   PluginSettingDescriptor,
   PluginSettingDescriptors,
+  PluginSettingValue,
 } from "../backend-contract.js";
 import type { JsonValue } from "../json-value.js";
 import type {
+  PluginRpcError,
   PluginRpcMethodContract,
+  PluginRpcValidationIssue,
   StandardSchemaV1,
   StandardSchemaV1Issue,
+  StandardSchemaV1Result,
 } from "../rpc-contract.js";
 
 /**
@@ -76,7 +95,7 @@ export const RESERVED_AGENT_TOOL_NAMES: readonly string[] = [
 /** JSON values ≤256KB; larger writes are rejected with a clear error. */
 export const KV_VALUE_MAX_BYTES = 256 * 1024;
 
-export const PLUGIN_HTTP_METHODS: ReadonlySet<string> = new Set([
+const PLUGIN_HTTP_METHODS: ReadonlySet<string> = new Set([
   "GET",
   "POST",
   "PUT",
@@ -87,16 +106,16 @@ export const PLUGIN_HTTP_METHODS: ReadonlySet<string> = new Set([
 ]);
 
 // Rpc method names become URL path segments.
-export const RPC_METHOD_PATTERN = /^[a-zA-Z0-9_-]+(?:\.[a-zA-Z0-9_-]+)*$/;
+const RPC_METHOD_PATTERN = /^[a-zA-Z0-9_-]+(?:\.[a-zA-Z0-9_-]+)*$/;
 
 // Service/schedule names appear in status text and plugin_schedules rows.
-export const BACKGROUND_NAME_PATTERN = /^[a-zA-Z0-9_-]+$/;
+const BACKGROUND_NAME_PATTERN = /^[a-zA-Z0-9_-]+$/;
 
 // CLI command names become `bb <name>` invocations.
-export const CLI_COMMAND_NAME_PATTERN = /^[a-z0-9-]+$/;
+const CLI_COMMAND_NAME_PATTERN = /^[a-z0-9-]+$/;
 
 // Agent tool names are shown to (and called by) the model.
-export const AGENT_TOOL_NAME_PATTERN = /^[a-zA-Z0-9_-]+$/;
+const AGENT_TOOL_NAME_PATTERN = /^[a-zA-Z0-9_-]+$/;
 export const PLUGIN_PROVIDER_ENV_NAME_PATTERN = /^[A-Z_][A-Z0-9_]*$/;
 export const PLUGIN_PROVIDER_ENV_MAX_ENTRIES = 32;
 
@@ -108,7 +127,6 @@ const pluginProviderEnvEntrySchema = z
       z.object({ serverPath: z.string().startsWith("/") }).strict(),
     ]),
     reason: z.string(),
-    secret: z.boolean(),
   })
   .strict();
 
@@ -144,16 +162,16 @@ export function validatePluginProviderEnvEntries(
   return parsed.data;
 }
 
-export const PLUGIN_AGENT_STATIC_INSTRUCTIONS_MAX_CHARS = 4096;
+const PLUGIN_AGENT_STATIC_INSTRUCTIONS_MAX_CHARS = 4096;
 /** Status labels ride on every tool-call event and share one timeline row. */
 export const PLUGIN_AGENT_STATUS_LABEL_MAX_CHARS = 80;
-export const PLUGIN_AGENT_SELECTION_MAX_IDS = 256;
-export const PLUGIN_AGENT_DYNAMIC_INSTRUCTIONS_MAX_CHARS = 4096;
-export const PLUGIN_AGENT_TOOL_PARAMETERS_MAX_BYTES = 128 * 1024;
+const PLUGIN_AGENT_SELECTION_MAX_IDS = 256;
+const PLUGIN_AGENT_DYNAMIC_INSTRUCTIONS_MAX_CHARS = 4096;
+const PLUGIN_AGENT_TOOL_PARAMETERS_MAX_BYTES = 128 * 1024;
 
 // Mention provider ids prefix wire item ids ("<providerId>:<itemId>"), so
 // ":" is excluded to keep the split unambiguous.
-export const MENTION_PROVIDER_ID_PATTERN = /^[a-zA-Z0-9_-]+$/;
+const MENTION_PROVIDER_ID_PATTERN = /^[a-zA-Z0-9_-]+$/;
 
 // Agent provider ids are stable public identifiers: thread rows persist them
 // and routes/pickers reference them. 2-64 chars, lowercase.
@@ -381,6 +399,42 @@ export function validateSettingsUpdate(
   return errors;
 }
 
+export function coerceStoredPluginSettingValue(
+  descriptor: PluginSettingDescriptor,
+  value: unknown,
+): PluginSettingValue | undefined {
+  let coerced = value;
+  if (descriptor.type === "number" && typeof coerced === "string") {
+    const legacyNumber = Number(coerced.trim());
+    coerced =
+      coerced.trim().length > 0 && Number.isFinite(legacyNumber)
+        ? legacyNumber
+        : undefined;
+  }
+  if (
+    descriptor.type === "number" &&
+    typeof coerced === "number" &&
+    !Number.isFinite(coerced)
+  ) {
+    coerced = undefined;
+  }
+  const expected =
+    descriptor.type === "boolean"
+      ? "boolean"
+      : descriptor.type === "number"
+        ? "number"
+        : "string";
+  if (typeof coerced !== expected) coerced = undefined;
+  if (
+    descriptor.type === "select" &&
+    typeof coerced === "string" &&
+    !descriptor.options.includes(coerced)
+  ) {
+    coerced = undefined;
+  }
+  return (coerced as PluginSettingValue | undefined) ?? descriptor.default;
+}
+
 export const PLUGIN_MENTION_TRIGGER_VALUES = [
   "@",
   "#",
@@ -402,7 +456,7 @@ export function isPluginMentionTrigger(
   );
 }
 
-export function normalizeMentionProviderTriggers(
+function normalizeMentionProviderTriggers(
   providerId: string,
   triggers: unknown,
 ): readonly PluginMentionTrigger[] {
@@ -1634,7 +1688,7 @@ export function isStandardSchema(value: unknown): value is StandardSchemaV1 {
   );
 }
 
-export function readRpcMethodContract(
+function readRpcMethodContract(
   method: string,
   value: unknown,
 ): PluginRpcMethodContract {
@@ -1665,7 +1719,7 @@ type ZodSchemaLike = {
   toJSONSchema?: z.ZodType["toJSONSchema"];
 };
 
-export function isZodSchemaLike(value: unknown): value is ZodSchemaLike {
+function isZodSchemaLike(value: unknown): value is ZodSchemaLike {
   return (
     typeof value === "object" &&
     value !== null &&
@@ -1684,7 +1738,7 @@ function standardSchemaToJsonSchema(schema: StandardSchemaV1): unknown {
   throw new Error("the validator exposes no JSON Schema conversion");
 }
 
-export function zodSchemaToJsonSchema(schema: ZodSchemaLike): unknown {
+function zodSchemaToJsonSchema(schema: ZodSchemaLike): unknown {
   if (typeof schema.toJSONSchema === "function") {
     return schema.toJSONSchema({ io: "input" });
   }
@@ -1795,7 +1849,7 @@ function forEachJsonSchemaChild(
  * Some providers reject the complete tool list when any one schema contains a
  * recursive `$ref`, so this is a shared production/fake-host boundary rule.
  */
-export function assertNoRecursiveJsonSchemaReferences(
+function assertNoRecursiveJsonSchemaReferences(
   schema: unknown,
   subject: string,
 ): void {
@@ -1886,10 +1940,7 @@ const RENAMED_AGENT_TOOL_FIELDS: ReadonlyMap<string, string> = new Map([
  * a registration built against an older SDK fails a plugin's own unit test
  * with the message bb would give it.
  */
-export function rejectStaleAgentToolFields(
-  toolName: string,
-  tool: object,
-): void {
+function rejectStaleAgentToolFields(toolName: string, tool: object): void {
   const unknownKeys: string[] = [];
   for (const key of Object.keys(tool).sort()) {
     const renamed = RENAMED_AGENT_TOOL_FIELDS.get(key);
@@ -2020,7 +2071,7 @@ export function summarizeStandardIssues(
     .join("; ");
 }
 
-export function summarizeParseIssues(error: unknown): string {
+function summarizeParseIssues(error: unknown): string {
   const issues = (
     error as { issues?: Array<{ path?: PropertyKey[]; message?: string }> }
   )?.issues;
@@ -2186,7 +2237,7 @@ export function providerIconRefusalMessage(
 }
 
 /** `bb.agents.registerTool` refusal for a glyph {@link undeclaredIconProblem} rejects. */
-export function agentToolIconRefusalMessage(
+function agentToolIconRefusalMessage(
   toolName: string,
   problem: string,
 ): string {
@@ -2232,6 +2283,7 @@ export function pluginHookAlreadyRegisteredMessage(
 
 export const ENVIRONMENT_PROVIDER_ID_PATTERN = /^[a-z0-9][a-z0-9-]{1,63}$/;
 export const ENVIRONMENT_PROVIDER_DISPLAY_NAME_MAX_CHARS = 80;
+export const ENVIRONMENT_PROVIDER_DESCRIPTION_MAX_CHARS = 200;
 
 export const ENVIRONMENT_PROVIDER_REQUIREMENT_NAMES = [
   "projectCheckout",
@@ -2244,9 +2296,44 @@ export type NormalizedPluginEnvironmentProviderRequirements = {
   [K in (typeof ENVIRONMENT_PROVIDER_REQUIREMENT_NAMES)[number]]: boolean;
 };
 
+export const environmentCompositionSchema = z
+  .object({
+    id: z.string().regex(ENVIRONMENT_PROVIDER_ID_PATTERN),
+    displayName: z
+      .string()
+      .trim()
+      .min(1)
+      .max(ENVIRONMENT_PROVIDER_DISPLAY_NAME_MAX_CHARS),
+    description: z
+      .string()
+      .trim()
+      .min(1)
+      .max(ENVIRONMENT_PROVIDER_DESCRIPTION_MAX_CHARS)
+      .optional()
+      .transform((value) => value ?? null),
+    icon: z
+      .string()
+      .trim()
+      .min(1)
+      .transform((icon) =>
+        isPluginOwnedIconPath(icon)
+          ? validateProviderRelativePath(icon, "Composition icon")
+          : icon,
+      )
+      .optional()
+      .transform((value) => value ?? null),
+    machineProviderId: z.string().regex(ENVIRONMENT_PROVIDER_ID_PATTERN),
+    environmentProviderId: z.string().regex(ENVIRONMENT_PROVIDER_ID_PATTERN),
+  })
+  .strict();
+export type NormalizedPluginEnvironmentComposition = z.infer<
+  typeof environmentCompositionSchema
+>;
+
 export interface NormalizedPluginEnvironmentProvider {
   id: string;
   displayName: string;
+  description: string | null;
   icon: string | null;
   requires: NormalizedPluginEnvironmentProviderRequirements;
   inputs: StandardSchemaV1 | null;
@@ -2262,16 +2349,19 @@ export interface NormalizedPluginEnvironmentProvider {
   policy: import("../environment-provider.js").PluginEnvironmentProviderPolicy;
 }
 
-export function validatePluginEnvironmentProviderDeclaration(
-  declaration: PluginEnvironmentProviderDeclaration,
-): NormalizedPluginEnvironmentProvider {
+type ProviderNoun = "environment provider" | "machine provider";
+
+function requireProviderIdAndDisplayName(
+  noun: ProviderNoun,
+  declaration: { id: string; displayName: string },
+): { id: string; displayName: string } {
   if (typeof declaration !== "object" || declaration === null) {
-    throw new Error("environment provider declaration must be an object");
+    throw new Error(`${noun} declaration must be an object`);
   }
   const id = declaration.id;
   if (typeof id !== "string" || !ENVIRONMENT_PROVIDER_ID_PATTERN.test(id)) {
     throw new Error(
-      `invalid environment provider id ${JSON.stringify(id)} — use 2-64 lowercase letters, digits, or "-", starting with a letter or digit`,
+      `invalid ${noun} id ${JSON.stringify(id)} — use 2-64 lowercase letters, digits, or "-", starting with a letter or digit`,
     );
   }
   const displayName =
@@ -2283,26 +2373,102 @@ export function validatePluginEnvironmentProviderDeclaration(
     displayName.length > ENVIRONMENT_PROVIDER_DISPLAY_NAME_MAX_CHARS
   ) {
     throw new Error(
-      `environment provider "${id}" needs a displayName of 1-${ENVIRONMENT_PROVIDER_DISPLAY_NAME_MAX_CHARS} characters`,
+      `${noun} "${id}" needs a displayName of 1-${ENVIRONMENT_PROVIDER_DISPLAY_NAME_MAX_CHARS} characters`,
     );
   }
-  const icon =
-    declaration.icon === undefined
-      ? null
-      : z.string().min(1).parse(declaration.icon).trim();
-  if (icon !== null) {
-    if (isPluginOwnedIconPath(icon))
-      validateProviderRelativePath(icon, `"${id}" icon`);
-    else if (!isNamespacedGlyph(icon) && /[/\\]/u.test(icon))
-      throw new Error(
-        `environment provider "${id}" icon must be a glyph, declared icon, or plugin-relative path`,
-      );
+  return { id, displayName };
+}
+
+function assertProviderIconShape(
+  noun: ProviderNoun,
+  id: string,
+  icon: string,
+): void {
+  if (isPluginOwnedIconPath(icon)) {
+    validateProviderRelativePath(icon, `"${id}" icon`);
+  } else if (!isNamespacedGlyph(icon) && /[/\\]/u.test(icon)) {
+    throw new Error(
+      `${noun} "${id}" icon must be a glyph, declared icon, or plugin-relative path`,
+    );
   }
-  if (icon !== null && icon.length === 0) {
-    throw new Error(`environment provider "${id}" declares an empty icon`);
+}
+
+function assertOptionalFunction(
+  noun: ProviderNoun,
+  id: string,
+  value: unknown,
+  phrase: string,
+): void {
+  if (value !== undefined && typeof value !== "function") {
+    throw new Error(
+      `${noun} "${id}" declares ${phrase} that is not a function`,
+    );
+  }
+}
+
+function normalizeProviderInputs(
+  noun: ProviderNoun,
+  id: string,
+  inputs: StandardSchemaV1 | undefined,
+): { schema: StandardSchemaV1; jsonSchema: JsonValue } | null {
+  if (inputs === undefined) {
+    return null;
+  }
+  if (!isStandardSchema(inputs)) {
+    throw new Error(
+      `${noun} "${id}" declares an inputs that is not a Standard Schema v1 validator`,
+    );
+  }
+  let converted: unknown;
+  try {
+    converted = JSON.parse(JSON.stringify(standardSchemaToJsonSchema(inputs)));
+  } catch (error) {
+    throw new Error(
+      `${noun} "${id}" declares an inputs validator that cannot be published as JSON Schema (${
+        error instanceof Error ? error.message : String(error)
+      }) — declare it with zod 4 or a validator exposing toJSONSchema()`,
+    );
+  }
+  const jsonSchema = jsonValueSchema.safeParse(converted);
+  if (!jsonSchema.success) {
+    throw new Error(
+      `${noun} "${id}" declares an inputs schema whose JSON Schema is not JSON-serializable`,
+    );
+  }
+  return { schema: inputs, jsonSchema: jsonSchema.data };
+}
+
+export function validatePluginEnvironmentProviderDeclaration(
+  declaration: PluginEnvironmentProviderDeclaration,
+): NormalizedPluginEnvironmentProvider {
+  const { id, displayName } = requireProviderIdAndDisplayName(
+    "environment provider",
+    declaration,
+  );
+  const description = z
+    .string()
+    .trim()
+    .min(1)
+    .max(ENVIRONMENT_PROVIDER_DESCRIPTION_MAX_CHARS)
+    .optional()
+    .transform((value) => value ?? null)
+    .parse(declaration.description);
+  const icon = z
+    .string()
+    .trim()
+    .min(1)
+    .optional()
+    .transform((value) => value ?? null)
+    .parse(declaration.icon);
+  if (icon !== null) {
+    assertProviderIconShape("environment provider", id, icon);
   }
   const requires = normalizeEnvironmentProviderRequirements(id, declaration);
-  const inputs = normalizeEnvironmentProviderInputs(id, declaration);
+  const inputs = normalizeProviderInputs(
+    "environment provider",
+    id,
+    declaration.inputs,
+  );
   if (
     typeof declaration.create !== "function" ||
     typeof declaration.remove !== "function"
@@ -2311,25 +2477,22 @@ export function validatePluginEnvironmentProviderDeclaration(
       `environment provider "${id}" must declare create and remove functions`,
     );
   }
-  if (
-    declaration.validate !== undefined &&
-    typeof declaration.validate !== "function"
-  ) {
-    throw new Error(
-      `environment provider "${id}" declares a validate that is not a function`,
-    );
-  }
-  if (
-    declaration.availability !== undefined &&
-    typeof declaration.availability !== "function"
-  ) {
-    throw new Error(
-      `environment provider "${id}" declares availability that is not a function`,
-    );
-  }
+  assertOptionalFunction(
+    "environment provider",
+    id,
+    declaration.validate,
+    "a validate",
+  );
+  assertOptionalFunction(
+    "environment provider",
+    id,
+    declaration.availability,
+    "availability",
+  );
   return {
     id,
     displayName,
+    description,
     icon,
     requires,
     inputs: inputs === null ? null : inputs.schema,
@@ -2340,38 +2503,6 @@ export function validatePluginEnvironmentProviderDeclaration(
     remove: declaration.remove,
     policy: environmentProviderPolicySchema.parse(declaration.policy ?? {}),
   };
-}
-
-function normalizeEnvironmentProviderInputs(
-  id: string,
-  declaration: PluginEnvironmentProviderDeclaration,
-): { schema: StandardSchemaV1; jsonSchema: JsonValue } | null {
-  const inputs = declaration.inputs;
-  if (inputs === undefined) {
-    return null;
-  }
-  if (!isStandardSchema(inputs)) {
-    throw new Error(
-      `environment provider "${id}" declares an inputs that is not a Standard Schema v1 validator`,
-    );
-  }
-  let converted: unknown;
-  try {
-    converted = JSON.parse(JSON.stringify(standardSchemaToJsonSchema(inputs)));
-  } catch (error) {
-    throw new Error(
-      `environment provider "${id}" declares an inputs validator that cannot be published as JSON Schema (${
-        error instanceof Error ? error.message : String(error)
-      }) — declare it with zod 4 or a validator exposing toJSONSchema()`,
-    );
-  }
-  const jsonSchema = jsonValueSchema.safeParse(converted);
-  if (!jsonSchema.success) {
-    throw new Error(
-      `environment provider "${id}" declares an inputs schema whose JSON Schema is not JSON-serializable`,
-    );
-  }
-  return { schema: inputs, jsonSchema: jsonSchema.data };
 }
 
 function normalizeEnvironmentProviderRequirements(
@@ -2419,4 +2550,1034 @@ const environmentProviderPolicySchema = z
   })
   .strict();
 
-export const MACHINE_PROVIDER_REQUIREMENT_NAMES = ["gitRemote"] as const;
+export const MACHINE_PROVIDER_DESCRIPTION_MAX_CHARS = 200;
+
+export interface NormalizedPluginMachineProvider {
+  id: string;
+  displayName: string;
+  description: string;
+  icon: string;
+  ephemeral: boolean;
+  inputs: StandardSchemaV1 | null;
+  inputsJsonSchema: JsonValue | null;
+  availability: NonNullable<
+    PluginMachineProviderDeclaration["availability"]
+  > | null;
+  validate: NonNullable<PluginMachineProviderDeclaration["validate"]> | null;
+  reconcileCleanup: PluginMachineProviderDeclaration["reconcileCleanup"];
+  create: PluginMachineProviderDeclaration["create"];
+  suspend: NonNullable<PluginMachineProviderDeclaration["suspend"]> | null;
+  resume: NonNullable<PluginMachineProviderDeclaration["resume"]> | null;
+  remove: PluginMachineProviderDeclaration["remove"];
+}
+
+export function validatePluginMachineProviderDeclaration(
+  declaration: PluginMachineProviderDeclaration,
+): NormalizedPluginMachineProvider {
+  const { id, displayName } = requireProviderIdAndDisplayName(
+    "machine provider",
+    declaration,
+  );
+  const description = z
+    .string()
+    .trim()
+    .min(1)
+    .max(MACHINE_PROVIDER_DESCRIPTION_MAX_CHARS)
+    .parse(declaration.description);
+  const icon = z.string().trim().min(1).parse(declaration.icon);
+  assertProviderIconShape("machine provider", id, icon);
+  const ephemeral = z.boolean().default(false).parse(declaration.ephemeral);
+  const inputs = normalizeProviderInputs(
+    "machine provider",
+    id,
+    declaration.inputs,
+  );
+  if (
+    typeof declaration.create !== "function" ||
+    typeof declaration.reconcileCleanup !== "function" ||
+    typeof declaration.remove !== "function"
+  ) {
+    throw new Error(
+      `machine provider "${id}" must declare create, reconcileCleanup and remove functions`,
+    );
+  }
+  const hasSuspend = typeof declaration.suspend === "function";
+  const hasResume = typeof declaration.resume === "function";
+  if (hasSuspend !== hasResume) {
+    throw new Error(
+      `machine provider "${id}" must declare suspend and resume together`,
+    );
+  }
+  assertOptionalFunction(
+    "machine provider",
+    id,
+    declaration.validate,
+    "a validate",
+  );
+  assertOptionalFunction(
+    "machine provider",
+    id,
+    declaration.availability,
+    "availability",
+  );
+
+  return {
+    id,
+    displayName,
+    description,
+    icon,
+    ephemeral,
+    inputs: inputs === null ? null : inputs.schema,
+    inputsJsonSchema: inputs === null ? null : inputs.jsonSchema,
+    availability: declaration.availability ?? null,
+    validate: declaration.validate ?? null,
+    reconcileCleanup: declaration.reconcileCleanup,
+    create: declaration.create,
+    suspend: declaration.suspend ?? null,
+    resume: declaration.resume ?? null,
+    remove: declaration.remove,
+  };
+}
+
+export function validateServerAccessProviderDeclaration(
+  declaration: ServerAccessProviderDeclaration,
+): ServerAccessProviderDeclaration {
+  if (typeof declaration !== "object" || declaration === null)
+    throw new Error("Invalid server access provider declaration");
+  if (
+    typeof declaration.id !== "string" ||
+    !/^[a-z][a-z0-9-]*$/u.test(declaration.id) ||
+    declaration.id === "direct"
+  )
+    throw new Error("Invalid or reserved server access provider id");
+  if (
+    typeof declaration.displayName !== "string" ||
+    !declaration.displayName.trim() ||
+    typeof declaration.description !== "string" ||
+    !declaration.description.trim() ||
+    typeof declaration.availability !== "function" ||
+    typeof declaration.acquire !== "function" ||
+    typeof declaration.release !== "function"
+  )
+    throw new Error("Invalid server access provider declaration");
+  return declaration;
+}
+
+const LEGACY_UNKNOWN_MIGRATION_HASH = "legacy-unknown";
+
+function migrationStatementHash(statement: string): string {
+  return createHash("sha256").update(statement).digest("hex");
+}
+
+export function runPluginStorageMigrations(
+  database: Database.Database,
+  statements: string[],
+): void {
+  database.exec(
+    "CREATE TABLE IF NOT EXISTS _bb_migrations (id INTEGER PRIMARY KEY, applied_at INTEGER NOT NULL, statement_hash TEXT)",
+  );
+  const migrationColumns = database
+    .prepare<[], { name: string }>("PRAGMA table_info(_bb_migrations)")
+    .all();
+  if (!migrationColumns.some((column) => column.name === "statement_hash")) {
+    database.exec("ALTER TABLE _bb_migrations ADD COLUMN statement_hash TEXT");
+  }
+  const rows = database
+    .prepare<[], { id: number; statement_hash: string | null }>(
+      "SELECT id, statement_hash FROM _bb_migrations ORDER BY id",
+    )
+    .all();
+  const applied = new Map<number, string | null>();
+  for (const row of rows) applied.set(row.id, row.statement_hash);
+  const statementHashes = statements.map(migrationStatementHash);
+  statementHashes.forEach((statementHash, index) => {
+    const recordedHash = applied.get(index);
+    if (
+      recordedHash !== undefined &&
+      recordedHash !== null &&
+      recordedHash !== statementHash
+    ) {
+      throw new Error(
+        `migration ${index} does not match the recorded statement; append a new migration instead of changing or reusing an index`,
+      );
+    }
+  });
+  const adopt = database.prepare(
+    "UPDATE _bb_migrations SET statement_hash = ? WHERE id = ? AND statement_hash IS NULL",
+  );
+  const record = database.prepare(
+    "INSERT INTO _bb_migrations (id, applied_at, statement_hash) VALUES (?, ?, ?)",
+  );
+  database.transaction(() => {
+    for (const row of rows) {
+      if (row.statement_hash !== null) continue;
+      adopt.run(
+        statementHashes[row.id] ?? LEGACY_UNKNOWN_MIGRATION_HASH,
+        row.id,
+      );
+    }
+    statements.forEach((statement, index) => {
+      if (applied.has(index)) return;
+      database.exec(statement);
+      record.run(index, Date.now(), statementHashes[index]);
+    });
+  })();
+}
+
+export function normalizeHttpRouteRegistration(
+  method: string,
+  path: string,
+  handler: unknown,
+  opts: { auth?: PluginHttpAuthMode } | undefined,
+  existingRoutes: readonly { method: string; path: string }[],
+): { method: string; path: string; auth: PluginHttpAuthMode } {
+  const normalizedMethod = String(method).toUpperCase();
+  if (!PLUGIN_HTTP_METHODS.has(normalizedMethod)) {
+    throw new Error(
+      `invalid http method "${String(method)}" — use one of: ${[...PLUGIN_HTTP_METHODS].join(", ")}`,
+    );
+  }
+  if (typeof path !== "string" || !path.startsWith("/")) {
+    throw new Error(
+      `http route path must be a string starting with "/", got ${JSON.stringify(path)}`,
+    );
+  }
+  if (typeof handler !== "function") {
+    throw new Error(
+      `http route handler for ${normalizedMethod} ${path} must be a function`,
+    );
+  }
+  const auth = opts?.auth ?? "local";
+  if (auth !== "local" && auth !== "token" && auth !== "none") {
+    throw new Error(
+      `invalid auth mode "${String(auth)}" for ${normalizedMethod} ${path} — use "local", "token", or "none"`,
+    );
+  }
+  if (
+    existingRoutes.some(
+      (route) => route.method === normalizedMethod && route.path === path,
+    )
+  ) {
+    throw new Error(
+      `http route ${normalizedMethod} ${path} is already registered`,
+    );
+  }
+  return { method: normalizedMethod, path, auth };
+}
+
+export function normalizeWebSocketRouteRegistration(
+  path: string,
+  handler: unknown,
+  opts: { auth?: PluginHttpAuthMode } | undefined,
+  existingRoutes: readonly { path: string }[],
+): { path: string; auth: PluginHttpAuthMode } {
+  if (typeof path !== "string" || !path.startsWith("/")) {
+    throw new Error(
+      `websocket route path must be a string starting with "/", got ${JSON.stringify(path)}`,
+    );
+  }
+  if (typeof handler !== "function") {
+    throw new Error(`websocket route handler for ${path} must be a function`);
+  }
+  const auth = opts?.auth ?? "local";
+  if (auth !== "local" && auth !== "token" && auth !== "none") {
+    throw new Error(
+      `invalid auth mode "${String(auth)}" for websocket ${path} — use "local", "token", or "none"`,
+    );
+  }
+  if (existingRoutes.some((route) => route.path === path)) {
+    throw new Error(`websocket route ${path} is already registered`);
+  }
+  return { path, auth };
+}
+
+type RpcRegistrationRecord = {
+  inputSchema: StandardSchemaV1;
+  outputSchema: StandardSchemaV1;
+  handler: (input: unknown) => unknown;
+};
+
+export function normalizeRpcRegistration(
+  contract: unknown,
+  handlers: unknown,
+  registered: ReadonlyMap<string, unknown>,
+): Array<[string, RpcRegistrationRecord]> {
+  if (
+    typeof contract !== "object" ||
+    contract === null ||
+    Array.isArray(contract)
+  ) {
+    throw new Error("rpc.register contract must be an object");
+  }
+  if (
+    typeof handlers !== "object" ||
+    handlers === null ||
+    Array.isArray(handlers)
+  ) {
+    throw new Error("rpc.register handlers must be an object");
+  }
+  const pending: Array<[string, RpcRegistrationRecord]> = [];
+  const contractEntries = Object.entries(contract);
+  const contractNames = new Set(contractEntries.map(([name]) => name));
+  for (const extraName of Object.keys(handlers)) {
+    if (!contractNames.has(extraName)) {
+      throw new Error(
+        `rpc handler "${extraName}" has no matching contract method`,
+      );
+    }
+  }
+  for (const [name, methodContractValue] of contractEntries) {
+    if (!RPC_METHOD_PATTERN.test(name)) {
+      throw new Error(
+        `invalid rpc method name "${name}" — use dot-separated segments with letters, digits, "-" and "_"`,
+      );
+    }
+    const methodContract = readRpcMethodContract(name, methodContractValue);
+    const handler = Reflect.get(handlers, name);
+    if (typeof handler !== "function") {
+      throw new Error(`rpc method "${name}" must provide a handler function`);
+    }
+    if (registered.has(name)) {
+      throw new Error(`rpc method "${name}" is already registered`);
+    }
+    pending.push([
+      name,
+      {
+        inputSchema: methodContract.input,
+        outputSchema: methodContract.output,
+        handler,
+      },
+    ]);
+  }
+  return pending;
+}
+
+export function normalizeRealtimePayload(
+  channel: string,
+  payload: unknown,
+): unknown {
+  if (typeof channel !== "string" || channel.length === 0) {
+    throw new Error("realtime channel must be a non-empty string");
+  }
+  if (payload === undefined) return null;
+  let json: string | undefined;
+  try {
+    json = JSON.stringify(payload);
+  } catch {
+    json = undefined;
+  }
+  if (json === undefined) {
+    throw new Error(
+      `realtime payload for channel "${channel}" is not JSON-serializable`,
+    );
+  }
+  return JSON.parse(json);
+}
+
+export function validateBackgroundServiceRegistration(
+  name: string,
+  service: { start(signal: AbortSignal): void | Promise<void> },
+  existing: readonly { name: string }[],
+): { name: string; start: (signal: AbortSignal) => void | Promise<void> } {
+  if (typeof name !== "string" || !BACKGROUND_NAME_PATTERN.test(name)) {
+    throw new Error(
+      `invalid service name ${JSON.stringify(name)} — use letters, digits, "-" and "_"`,
+    );
+  }
+  if (existing.some((record) => record.name === name)) {
+    throw new Error(`background service "${name}" is already registered`);
+  }
+  if (typeof service?.start !== "function") {
+    throw new Error(
+      `background service "${name}" must provide a start(signal) function`,
+    );
+  }
+  return { name, start: service.start.bind(service) };
+}
+
+export function validateScheduleRegistration(
+  name: string,
+  cron: string,
+  fn: () => void | Promise<void>,
+  existing: readonly { name: string }[],
+  parseCron: (cron: string) => void,
+): { name: string; cron: string; fn: () => void | Promise<void> } {
+  if (typeof name !== "string" || !BACKGROUND_NAME_PATTERN.test(name)) {
+    throw new Error(
+      `invalid schedule name ${JSON.stringify(name)} — use letters, digits, "-" and "_"`,
+    );
+  }
+  if (existing.some((record) => record.name === name)) {
+    throw new Error(`schedule "${name}" is already registered`);
+  }
+  try {
+    parseCron(String(cron));
+  } catch (error) {
+    throw new Error(
+      `invalid cron ${JSON.stringify(cron)} for schedule "${name}": ${
+        error instanceof Error ? error.message : String(error)
+      }`,
+    );
+  }
+  if (typeof fn !== "function") {
+    throw new Error(`schedule "${name}" must provide a function`);
+  }
+  return { name, cron: String(cron), fn };
+}
+
+export function normalizeCliRegistration(
+  registration: PluginCliRegistration,
+  alreadyRegistered: boolean,
+): {
+  name: string;
+  summary: string;
+  commands: PluginCliCommandInfo[];
+  run: PluginCliRegistration["run"];
+} {
+  if (alreadyRegistered) {
+    throw new Error("cli command is already registered");
+  }
+  const name = registration?.name;
+  if (typeof name !== "string" || !CLI_COMMAND_NAME_PATTERN.test(name)) {
+    throw new Error(
+      `invalid cli command name ${JSON.stringify(name)} — use lowercase letters, digits, and "-"`,
+    );
+  }
+  if (
+    typeof registration.summary !== "string" ||
+    registration.summary.trim().length === 0
+  ) {
+    throw new Error(`cli command "${name}" must provide a summary`);
+  }
+  const commands = registration.commands ?? [];
+  if (!Array.isArray(commands)) {
+    throw new Error(`cli command "${name}" commands must be an array`);
+  }
+  const validatedCommands = commands.map((command, index) => {
+    if (
+      typeof command?.name !== "string" ||
+      !CLI_COMMAND_NAME_PATTERN.test(command.name) ||
+      typeof command.summary !== "string" ||
+      typeof command.usage !== "string"
+    ) {
+      throw new Error(
+        `cli command "${name}" commands[${index}] must be { name: [a-z0-9-]+, summary, usage }`,
+      );
+    }
+    return {
+      name: command.name,
+      summary: command.summary,
+      usage: command.usage,
+    };
+  });
+  if (typeof registration.run !== "function") {
+    throw new Error(
+      `cli command "${name}" must provide a run(argv, ctx) function`,
+    );
+  }
+  return {
+    name,
+    summary: registration.summary,
+    commands: validatedCommands,
+    run: registration.run.bind(registration),
+  };
+}
+
+type AgentToolExecute = (
+  params: unknown,
+  ctx: PluginAgentToolContext,
+) => PluginAgentToolResult | Promise<PluginAgentToolResult>;
+
+type AgentToolParse = (
+  input: unknown,
+) => { ok: true; value: unknown } | { ok: false; error: string };
+
+export function normalizeAgentToolRegistration(args: {
+  pluginId: string;
+  declaredIconNames: ReadonlySet<string>;
+  tool: {
+    name: string;
+    description: string;
+    instructions?: string;
+    presentation?: PluginAgentToolPresentation;
+    parameters: unknown;
+    execute(
+      params: never,
+      ctx: PluginAgentToolContext,
+    ): PluginAgentToolResult | Promise<PluginAgentToolResult>;
+  };
+}): {
+  name: string;
+  description: string;
+  presentation: PluginAgentToolPresentation | null;
+  instructions: string | null;
+  inputSchema: unknown;
+  parse: AgentToolParse;
+  execute: AgentToolExecute;
+} {
+  const { pluginId, declaredIconNames, tool } = args;
+  const name = tool?.name;
+  if (typeof name !== "string" || !AGENT_TOOL_NAME_PATTERN.test(name)) {
+    throw new Error(
+      `invalid tool name ${JSON.stringify(name)} — use letters, digits, "-" and "_"`,
+    );
+  }
+  if (RESERVED_AGENT_TOOL_NAMES.includes(name)) {
+    throw new Error(
+      `tool name "${name}" is a built-in bb tool — pick another name`,
+    );
+  }
+  rejectStaleAgentToolFields(name, tool);
+  if (
+    typeof tool.description !== "string" ||
+    tool.description.trim().length === 0
+  ) {
+    throw new Error(`tool "${name}" must provide a description`);
+  }
+  if (
+    tool.instructions !== undefined &&
+    typeof tool.instructions !== "string"
+  ) {
+    throw new Error(`tool "${name}" instructions must be a string`);
+  }
+  if (
+    typeof tool.instructions === "string" &&
+    tool.instructions.length > PLUGIN_AGENT_STATIC_INSTRUCTIONS_MAX_CHARS
+  ) {
+    throw new Error(
+      `tool "${name}" instructions exceed the ${PLUGIN_AGENT_STATIC_INSTRUCTIONS_MAX_CHARS}-character limit`,
+    );
+  }
+  const presentation = parsePluginAgentToolPresentation(
+    name,
+    tool.presentation,
+  );
+  if (presentation?.icon !== undefined) {
+    const problem = undeclaredIconProblem(
+      pluginId,
+      declaredIconNames,
+      presentation.icon.glyph,
+    );
+    if (problem !== null) {
+      throw new Error(agentToolIconRefusalMessage(name, problem));
+    }
+  }
+  if (typeof tool.execute !== "function") {
+    throw new Error(
+      `tool "${name}" must provide an execute(params, ctx) function`,
+    );
+  }
+  const parameters: unknown = tool.parameters;
+  let inputSchema: unknown;
+  let parse: AgentToolParse;
+  if (isZodSchemaLike(parameters)) {
+    try {
+      inputSchema = zodSchemaToJsonSchema(parameters);
+    } catch (error) {
+      throw new Error(
+        `tool "${name}" parameters look like a zod schema but could not be converted to JSON Schema (${
+          error instanceof Error ? error.message : String(error)
+        }) — use zod 4, or pass a plain JSON-schema object`,
+      );
+    }
+    parse = (input) => {
+      const result = parameters.safeParse(input);
+      if (result.success) return { ok: true, value: result.data };
+      return { ok: false, error: summarizeParseIssues(result.error) };
+    };
+  } else if (
+    typeof parameters === "object" &&
+    parameters !== null &&
+    !Array.isArray(parameters)
+  ) {
+    try {
+      inputSchema = JSON.parse(JSON.stringify(parameters));
+    } catch {
+      throw new Error(
+        `tool "${name}" parameters JSON schema is not JSON-serializable`,
+      );
+    }
+    parse = (input) => ({ ok: true, value: input });
+  } else {
+    throw new Error(
+      `tool "${name}" parameters must be a zod schema or a JSON-schema object`,
+    );
+  }
+  assertNoRecursiveJsonSchemaReferences(
+    inputSchema,
+    `tool "${name}" parameters`,
+  );
+  return {
+    name,
+    description: tool.description,
+    presentation,
+    instructions:
+      tool.instructions !== undefined && tool.instructions.trim().length > 0
+        ? tool.instructions
+        : null,
+    inputSchema,
+    parse,
+    execute: (tool.execute as AgentToolExecute).bind(tool),
+  };
+}
+
+export function normalizeMentionProviderRegistration(
+  provider: PluginMentionProviderRegistration,
+  existing: readonly { id: string }[],
+): {
+  id: string;
+  label: string;
+  triggers: readonly PluginMentionTrigger[];
+  search: PluginMentionProviderRegistration["search"];
+  resolve: PluginMentionProviderRegistration["resolve"];
+} {
+  const id = provider?.id;
+  if (typeof id !== "string" || !MENTION_PROVIDER_ID_PATTERN.test(id)) {
+    throw new Error(
+      `invalid mention provider id ${JSON.stringify(id)} — use letters, digits, "-" and "_"`,
+    );
+  }
+  if (existing.some((record) => record.id === id)) {
+    throw new Error(`mention provider "${id}" is already registered`);
+  }
+  if (
+    typeof provider.label !== "string" ||
+    provider.label.trim().length === 0
+  ) {
+    throw new Error(`mention provider "${id}" must provide a label`);
+  }
+  if (typeof provider.search !== "function") {
+    throw new Error(
+      `mention provider "${id}" must provide a search({ query, projectId, threadId }) function`,
+    );
+  }
+  if (typeof provider.resolve !== "function") {
+    throw new Error(
+      `mention provider "${id}" must provide a resolve(itemId) function`,
+    );
+  }
+  return {
+    id,
+    label: provider.label.trim(),
+    triggers: normalizeMentionProviderTriggers(id, provider.triggers),
+    search: provider.search.bind(provider),
+    resolve: provider.resolve.bind(provider),
+  };
+}
+
+export function normalizeInteractionRequest(
+  request: PluginInteractionRequest,
+): {
+  threadId: string;
+  rendererId: string;
+  title: string;
+  payload: JsonValue;
+  timeoutMs: number;
+} {
+  if (!request || typeof request !== "object") {
+    throw new Error("ui.requestInput requires an options object");
+  }
+  if (typeof request.threadId !== "string" || request.threadId.length === 0) {
+    throw new Error("ui.requestInput threadId must be a non-empty string");
+  }
+  if (
+    typeof request.rendererId !== "string" ||
+    !/^[a-zA-Z0-9_-]+$/.test(request.rendererId)
+  ) {
+    throw new Error(
+      "ui.requestInput rendererId must use letters, digits, '-' or '_'",
+    );
+  }
+  if (
+    typeof request.title !== "string" ||
+    request.title.trim().length === 0 ||
+    request.title.trim().length > PLUGIN_INTERACTION_MAX_TITLE_LENGTH
+  ) {
+    throw new Error(
+      `ui.requestInput title must be 1-${PLUGIN_INTERACTION_MAX_TITLE_LENGTH} characters`,
+    );
+  }
+  let payload: JsonValue;
+  try {
+    const json = JSON.stringify(request.payload);
+    if (json === undefined) throw new Error();
+    if (
+      Buffer.byteLength(json, "utf8") > PLUGIN_INTERACTION_MAX_PAYLOAD_BYTES
+    ) {
+      throw new Error("ui.requestInput payload exceeds 64 KiB");
+    }
+    payload = JSON.parse(json) as JsonValue;
+  } catch (error) {
+    if (error instanceof Error && error.message.includes("64 KiB")) {
+      throw error;
+    }
+    throw new Error("ui.requestInput payload must be JSON-serializable");
+  }
+  const timeoutMs = request.timeoutMs ?? 10 * 60 * 1000;
+  if (
+    !Number.isInteger(timeoutMs) ||
+    timeoutMs <= 0 ||
+    timeoutMs > 60 * 60 * 1000
+  ) {
+    throw new Error("ui.requestInput timeoutMs must be between 1 and 3600000");
+  }
+  return {
+    threadId: request.threadId,
+    rendererId: request.rendererId,
+    title: request.title.trim(),
+    payload,
+    timeoutMs,
+  };
+}
+
+export function validateProviderEnvContribution(
+  label:
+    | "provider environment contribution"
+    | "provider environment health contribution",
+  providerId: string,
+  resolve: unknown,
+  registered: ReadonlyMap<string, unknown>,
+): void {
+  if (typeof providerId !== "string" || providerId.trim().length === 0) {
+    throw new Error(`${label} requires a provider id`);
+  }
+  if (registered.has(providerId)) {
+    throw new Error(`${label} for "${providerId}" is already registered`);
+  }
+  if (typeof resolve !== "function") {
+    throw new Error(`${label} requires a resolver function`);
+  }
+}
+
+function normalizePluginAgentToolParameters(args: {
+  index: number;
+  value: unknown;
+}): Record<string, unknown> {
+  const { index, value } = args;
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    throw new Error(
+      `configure() output.tools[${index}].parameters must be a JSON-schema object`,
+    );
+  }
+  let serialized: string;
+  try {
+    serialized = JSON.stringify(value);
+  } catch {
+    throw new Error(
+      `configure() output.tools[${index}].parameters is not JSON-serializable`,
+    );
+  }
+  if (serialized === undefined) {
+    throw new Error(
+      `configure() output.tools[${index}].parameters is not JSON-serializable`,
+    );
+  }
+  if (
+    Buffer.byteLength(serialized, "utf8") >
+    PLUGIN_AGENT_TOOL_PARAMETERS_MAX_BYTES
+  ) {
+    throw new Error(
+      `configure() output.tools[${index}].parameters exceeds the ${PLUGIN_AGENT_TOOL_PARAMETERS_MAX_BYTES}-byte limit`,
+    );
+  }
+  const parameters = JSON.parse(serialized) as Record<string, unknown>;
+  if (parameters.type !== "object") {
+    throw new Error(
+      `configure() output.tools[${index}].parameters must have root type "object"`,
+    );
+  }
+  assertNoRecursiveJsonSchemaReferences(
+    parameters,
+    `configure() output.tools[${index}].parameters`,
+  );
+  return parameters;
+}
+
+function normalizePluginAgentToolSelections(args: {
+  knownIds: ReadonlySet<string>;
+  pluginId: string;
+  value: unknown;
+}): {
+  toolIds: string[];
+  parameterOverrides: Map<string, Record<string, unknown>>;
+} {
+  if (!Array.isArray(args.value)) {
+    throw new Error("configure() output.tools must be an array");
+  }
+  if (args.value.length > PLUGIN_AGENT_SELECTION_MAX_IDS) {
+    throw new Error(
+      `configure() output.tools exceeds the ${PLUGIN_AGENT_SELECTION_MAX_IDS}-id limit`,
+    );
+  }
+  const toolIds: string[] = [];
+  const parameterOverrides = new Map<string, Record<string, unknown>>();
+  const seen = new Set<string>();
+  for (let index = 0; index < args.value.length; index += 1) {
+    const entry = args.value[index];
+    let name: unknown;
+    let parameters: Record<string, unknown> | null = null;
+    if (typeof entry === "string") {
+      name = entry;
+    } else if (
+      typeof entry === "object" &&
+      entry !== null &&
+      !Array.isArray(entry)
+    ) {
+      const typed = entry as Record<string, unknown>;
+      const unknownKeys = Object.keys(typed)
+        .filter((key) => !["name", "parameters"].includes(key))
+        .sort();
+      if (unknownKeys.length > 0) {
+        throw new Error(
+          `configure() output.tools[${index}] contains unknown field${unknownKeys.length === 1 ? "" : "s"}: ${unknownKeys.join(", ")}`,
+        );
+      }
+      name = typed.name;
+      parameters = normalizePluginAgentToolParameters({
+        index,
+        value: typed.parameters,
+      });
+    } else {
+      throw new Error(
+        `configure() output.tools[${index}] must be a tool name or { name, parameters }`,
+      );
+    }
+    if (typeof name !== "string" || name.length === 0) {
+      throw new Error(
+        `configure() output.tools[${index}] must ${typeof entry === "string" ? "be" : "name"} a non-empty string`,
+      );
+    }
+    if (seen.has(name)) {
+      throw new Error(
+        `configure() output.tools contains duplicate id ${JSON.stringify(name)}`,
+      );
+    }
+    if (!args.knownIds.has(name)) {
+      throw new Error(
+        `configure() selected unknown tool id ${JSON.stringify(name)} owned by plugin ${JSON.stringify(args.pluginId)}`,
+      );
+    }
+    seen.add(name);
+    toolIds.push(name);
+    if (parameters !== null) parameterOverrides.set(name, parameters);
+  }
+  return { toolIds, parameterOverrides };
+}
+
+function normalizePluginAgentSelectionIds(args: {
+  knownIds: ReadonlySet<string>;
+  pluginId: string;
+  value: unknown;
+}): string[] {
+  if (!Array.isArray(args.value)) {
+    throw new Error("configure() output.skills must be an array");
+  }
+  if (args.value.length > PLUGIN_AGENT_SELECTION_MAX_IDS) {
+    throw new Error(
+      `configure() output.skills exceeds the ${PLUGIN_AGENT_SELECTION_MAX_IDS}-id limit`,
+    );
+  }
+  const selected: string[] = [];
+  const seen = new Set<string>();
+  for (let index = 0; index < args.value.length; index += 1) {
+    const id = args.value[index];
+    if (typeof id !== "string" || id.length === 0) {
+      throw new Error(
+        `configure() output.skills[${index}] must be a non-empty string`,
+      );
+    }
+    if (seen.has(id)) {
+      throw new Error(
+        `configure() output.skills contains duplicate id ${JSON.stringify(id)}`,
+      );
+    }
+    if (!args.knownIds.has(id)) {
+      throw new Error(
+        `configure() selected unknown skill id ${JSON.stringify(id)} owned by plugin ${JSON.stringify(args.pluginId)}`,
+      );
+    }
+    seen.add(id);
+    selected.push(id);
+  }
+  return selected;
+}
+
+export function normalizePluginAgentConfiguration(args: {
+  knownSkillIds: ReadonlySet<string>;
+  knownToolIds: ReadonlySet<string>;
+  pluginId: string;
+  value: unknown;
+}): {
+  toolIds: string[];
+  toolParameterOverrides: Map<string, Record<string, unknown>>;
+  skillIds: string[];
+  instructions: string | null;
+} {
+  if (
+    typeof args.value !== "object" ||
+    args.value === null ||
+    Array.isArray(args.value)
+  ) {
+    throw new Error(
+      "configure() must return { tools: string[], skills: string[], instructions?: string }",
+    );
+  }
+  const output = args.value as Record<string, unknown>;
+  const unknownKeys = Object.keys(output)
+    .filter((key) => !["tools", "skills", "instructions"].includes(key))
+    .sort();
+  if (unknownKeys.length > 0) {
+    throw new Error(
+      `configure() output contains unknown field${unknownKeys.length === 1 ? "" : "s"}: ${unknownKeys.join(", ")}`,
+    );
+  }
+  if (
+    output.instructions !== undefined &&
+    typeof output.instructions !== "string"
+  ) {
+    throw new Error("configure() output.instructions must be a string");
+  }
+  const instructions =
+    typeof output.instructions === "string" &&
+    output.instructions.trim().length > 0
+      ? output.instructions.slice(
+          0,
+          PLUGIN_AGENT_DYNAMIC_INSTRUCTIONS_MAX_CHARS,
+        )
+      : null;
+  const toolSelections = normalizePluginAgentToolSelections({
+    knownIds: args.knownToolIds,
+    pluginId: args.pluginId,
+    value: output.tools,
+  });
+  return {
+    toolIds: toolSelections.toolIds,
+    toolParameterOverrides: toolSelections.parameterOverrides,
+    skillIds: normalizePluginAgentSelectionIds({
+      knownIds: args.knownSkillIds,
+      pluginId: args.pluginId,
+      value: output.skills,
+    }),
+    instructions,
+  };
+}
+
+function normalizeRpcIssuePath(
+  path: StandardSchemaV1Issue["path"],
+): Array<string | number> | undefined {
+  if (path === undefined) return undefined;
+  const segments = Array.isArray(path) ? path : [path];
+  const normalized = segments.map((segment) => {
+    const key =
+      typeof segment === "object" && segment !== null
+        ? Reflect.get(segment, "key")
+        : segment;
+    return typeof key === "number" ? key : String(key);
+  });
+  return normalized.length > 0 ? normalized : undefined;
+}
+
+function normalizeRpcIssues(
+  issues: readonly StandardSchemaV1Issue[],
+): PluginRpcValidationIssue[] {
+  return issues.map((issue) => {
+    const path = normalizeRpcIssuePath(issue.path);
+    return {
+      message: issue.message,
+      ...(path !== undefined ? { path } : {}),
+    };
+  });
+}
+
+export async function validateRpcValue(
+  schema: StandardSchemaV1,
+  value: unknown,
+  phase: "input" | "output",
+  fail: (error: PluginRpcError) => never,
+): Promise<unknown> {
+  let result: StandardSchemaV1Result<unknown>;
+  try {
+    result = await schema["~standard"].validate(value);
+  } catch (error) {
+    const detail = error instanceof Error ? error.message : String(error);
+    return fail({
+      code: phase === "input" ? "invalid_input" : "invalid_output",
+      message: `rpc ${phase} validator failed: ${detail}`,
+      issues: [{ message: detail }],
+    });
+  }
+  if (result.issues !== undefined) {
+    return fail({
+      code: phase === "input" ? "invalid_input" : "invalid_output",
+      message: `rpc ${phase} validation failed`,
+      issues: normalizeRpcIssues(result.issues),
+    });
+  }
+  return result.value;
+}
+
+export function normalizeRpcJsonResult(
+  value: unknown,
+  fail: (error: PluginRpcError) => never,
+): JsonValue {
+  const ancestors = new Set<object>();
+
+  function visit(current: unknown, path: string): JsonValue {
+    if (
+      current === null ||
+      typeof current === "string" ||
+      typeof current === "boolean"
+    ) {
+      return current;
+    }
+    if (typeof current === "number") {
+      if (!Number.isFinite(current)) {
+        return fail({
+          code: "non_json_result",
+          message: `rpc result at ${path} contains a non-finite number`,
+        });
+      }
+      return current;
+    }
+    if (typeof current !== "object") {
+      return fail({
+        code: "non_json_result",
+        message: `rpc result at ${path} is not a JSON value (${typeof current})`,
+      });
+    }
+    if (ancestors.has(current)) {
+      return fail({
+        code: "non_json_result",
+        message: `rpc result at ${path} is cyclic`,
+      });
+    }
+    ancestors.add(current);
+    try {
+      if (Array.isArray(current)) {
+        return current.map((item, index) => visit(item, `${path}[${index}]`));
+      }
+      const prototype = Object.getPrototypeOf(current);
+      if (prototype !== Object.prototype && prototype !== null) {
+        return fail({
+          code: "non_json_result",
+          message: `rpc result at ${path} must be a plain JSON object`,
+        });
+      }
+      if (Reflect.ownKeys(current).some((key) => typeof key === "symbol")) {
+        return fail({
+          code: "non_json_result",
+          message: `rpc result at ${path} contains a symbol key`,
+        });
+      }
+      const normalized: Record<string, JsonValue> = {};
+      for (const [key, child] of Object.entries(current)) {
+        normalized[key] = visit(child, `${path}.${key}`);
+      }
+      return normalized;
+    } finally {
+      ancestors.delete(current);
+    }
+  }
+
+  return visit(value, "$result");
+}

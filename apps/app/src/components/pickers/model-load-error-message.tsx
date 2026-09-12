@@ -65,13 +65,5 @@ export function ModelLoadErrorMessage({
     );
   }
 
-  if (error.code === "auth_required") {
-    return (
-      <>
-        Could not load models for {providerLabel}. Authentication is required.
-      </>
-    );
-  }
-
   return formatModelLoadErrorText({ error, providerLabel });
 }

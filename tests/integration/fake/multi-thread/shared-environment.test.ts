@@ -13,11 +13,11 @@ import {
   createReadyReuseThread,
 } from "../../helpers/fixtures.js";
 import { withHarness } from "../../helpers/harness.js";
+import { countTurnEvents } from "../../helpers/thread-diagnostics.js";
 import {
   ACTIVE_TIMEOUT_MS,
   assertEventsBelongToThread,
   CONCURRENT_DELAY_TEXT,
-  countTurnEvents,
   DEFAULT_TIMEOUT_MS,
   TURN_TIMEOUT_MS,
 } from "./shared.js";

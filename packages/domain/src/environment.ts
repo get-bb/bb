@@ -1,10 +1,14 @@
 import { jsonValueSchema } from "./json-value.js";
 import { z } from "zod";
 
-export const environmentMachineSelectionSchema = z.object({
-  type: z.literal("existing"),
-  hostId: z.string().min(1),
-});
+export const environmentMachineSelectionSchema = z.discriminatedUnion("type", [
+  z.object({ type: z.literal("existing"), hostId: z.string().min(1) }),
+  z.object({
+    type: z.literal("new"),
+    machineProviderId: z.string().min(1),
+    inputs: jsonValueSchema.nullable(),
+  }),
+]);
 export type EnvironmentMachineSelection = z.infer<
   typeof environmentMachineSelectionSchema
 >;
@@ -70,7 +74,6 @@ export const environmentLifecycleSchema = z.object({
     })
     .nullable(),
 });
-export type EnvironmentLifecycle = z.infer<typeof environmentLifecycleSchema>;
 
 export const environmentSchema = z.object({
   id: z.string(),

@@ -109,7 +109,6 @@ vi.mock("@/lib/bb-desktop", () => ({
   DEFAULT_DESKTOP_WINDOW_STATE: { isFullScreen: false },
   MACOS_CHROME_CONTROL_AXIS_CLASS: "",
   MACOS_CHROME_CONTROL_NO_DRAG_CLASS: "",
-  MACOS_CHROME_TRAFFIC_LIGHT_AXIS_NUDGE_CLASS: "",
   MACOS_TRAFFIC_LIGHT_RESERVE_OFFSET_CLASS: "",
   MACOS_WINDOW_DRAG_CLASS: "",
   MACOS_WINDOW_NO_DRAG_CLASS: "",
@@ -210,17 +209,22 @@ describe("AppLayout plugin panel header", () => {
     ).toBe(true);
   });
 
-  it("shows the fixed left trigger only while the compact right panel is closed", () => {
+  it("keeps the fixed left trigger above compact panels", () => {
     viewportState.compact = true;
     renderPluginPanelRoute();
 
     const trigger = screen.getByTestId("app-sidebar-trigger-overlay");
-    expect(trigger.style.zIndex).toBe(String(APP_OVERLAY_LAYER.sidebarTrigger));
+    expect(trigger.style.zIndex).toBe(
+      String(APP_OVERLAY_LAYER.compactSidebarTrigger),
+    );
+    expect(Number(trigger.style.zIndex)).toBeGreaterThan(
+      APP_OVERLAY_LAYER.secondaryPanelFullPage,
+    );
     act(() => setCompactSecondaryPanelPresentation("shelf"));
-    expect(screen.queryByTestId("app-sidebar-trigger-overlay")).toBeNull();
+    expect(screen.getByTestId("app-sidebar-trigger-overlay")).toBe(trigger);
 
     act(() => setCompactSecondaryPanelPresentation("full"));
-    expect(screen.queryByTestId("app-sidebar-trigger-overlay")).toBeNull();
+    expect(screen.getByTestId("app-sidebar-trigger-overlay")).toBe(trigger);
 
     act(() => setCompactSecondaryPanelPresentation("closed"));
     expect(screen.getByTestId("app-sidebar-trigger-overlay")).not.toBeNull();

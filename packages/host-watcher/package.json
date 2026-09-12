@@ -17,6 +17,7 @@
   },
   "dependencies": {
     "@bb/domain": "workspace:*",
+    "@bb/process-utils": "workspace:*",
     "@parcel/watcher": "2.5.6"
   },
   "devDependencies": {

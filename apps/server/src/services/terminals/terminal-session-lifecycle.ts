@@ -1,3 +1,5 @@
+import { emitPluginTerminalInput } from "../plugins/plugin-thread-events.js";
+import { resolveHostEnvironment } from "../hosts/host-environment.js";
 import { randomUUID } from "node:crypto";
 import {
   createTerminalSession,
@@ -98,7 +100,6 @@ interface PendingTerminalCloseKey extends PendingRpcKey {
 
 interface PendingTerminalAttachKey extends PendingTerminalRpcKey {
   socket: TerminalClientSocket;
-  threadId: string | null;
 }
 
 interface RejectPendingOpenForTerminalArgs {
@@ -149,7 +150,6 @@ interface AttachBrowserTerminalArgs {
   socket: TerminalClientSocket;
   sinceSeq: number;
   terminalId: string;
-  threadId: string | null;
 }
 
 interface DetachBrowserTerminalArgs {
@@ -161,7 +161,6 @@ interface HandleBrowserTerminalMessageArgs {
   message: TerminalClientMessage;
   socket: TerminalClientSocket;
   terminalId: string;
-  threadId: string | null;
 }
 
 interface SendTerminalInputArgs {
@@ -182,14 +181,12 @@ interface ReadTerminalOutputArgs {
 interface GetRunningBrowserTerminalArgs {
   socket: TerminalClientSocket;
   terminalId: string;
-  threadId: string | null;
 }
 
 interface GetBrowserTerminalSessionArgs {
   reportMissing?: boolean;
   socket: TerminalClientSocket;
   terminalId: string;
-  threadId: string | null;
 }
 
 interface SendTerminalSocketErrorArgs {
@@ -681,6 +678,14 @@ export class TerminalSessionLifecycle {
     const requestId = randomUUID();
     const openMessage: HostDaemonServerWsMessage = {
       type: "terminal.open",
+      contributedEnv: await resolveHostEnvironment(this.options, {
+        hostId: launchTarget.hostId,
+        projectId:
+          launchTarget.environmentId === null
+            ? null
+            : requireEnvironment(this.options.db, launchTarget.environmentId)
+                .projectId,
+      }),
       requestId,
       terminalId: startingSession.id,
       ...(args.threadId !== null ? { threadId: args.threadId } : {}),
@@ -1057,6 +1062,8 @@ export class TerminalSessionLifecycle {
       });
       throw new ApiError(502, "host_disconnected", "Host is not connected");
     }
+    if (args.payload.dataBase64.length > 0)
+      emitPluginTerminalInput(toTerminalSession(session));
     return toTerminalSession(session);
   }
 
@@ -1287,7 +1294,6 @@ export class TerminalSessionLifecycle {
       rpcKey: terminalRpcKey(current.daemonSessionId, current.id, requestId),
       socket: args.socket,
       terminalId: current.id,
-      threadId: args.threadId,
     };
     void this.pendingAttaches
       .claim(pendingAttach)
@@ -1603,6 +1609,8 @@ export class TerminalSessionLifecycle {
       this.disconnectDaemonSessionTerminals({
         daemonSessionId: current.daemonSessionId,
       });
+    } else if (args.message.dataBase64.length > 0) {
+      emitPluginTerminalInput(toTerminalSession(markedInput ?? current));
     }
   }
 
@@ -1677,17 +1685,7 @@ export class TerminalSessionLifecycle {
   private getBrowserTerminalSession(
     args: GetBrowserTerminalSessionArgs,
   ): TerminalSessionRow | null {
-    let current: TerminalSessionRow | null;
-    if (args.threadId === null) {
-      current = getTerminalById(this.options.db, args.terminalId);
-    } else {
-      requirePublicThread(this.options.db, args.threadId);
-      current = getTerminalSession(this.options.db, {
-        kind: "thread",
-        terminalId: args.terminalId,
-        threadId: args.threadId,
-      });
-    }
+    const current = getTerminalById(this.options.db, args.terminalId);
     if (!current) {
       if (args.reportMissing !== false) {
         this.sendTerminalSocketError({
@@ -1803,14 +1801,7 @@ export class TerminalSessionLifecycle {
     pending: PendingTerminalAttachKey,
     message: TerminalReplayMessage,
   ): void {
-    const current =
-      pending.threadId === null
-        ? getTerminalById(this.options.db, pending.terminalId)
-        : getTerminalSession(this.options.db, {
-            kind: "thread",
-            terminalId: pending.terminalId,
-            threadId: pending.threadId,
-          });
+    const current = getTerminalById(this.options.db, pending.terminalId);
     if (!current) {
       this.options.hub.unregisterTerminalClient(
         pending.terminalId,

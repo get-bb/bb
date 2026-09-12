@@ -909,7 +909,7 @@ export function BottomAnchoredScrollBody({
       <TimelineScrollRestoreRowIdContext.Provider
         value={initialScrollRestoreRowId}
       >
-        <div className="grid min-h-0 flex-1 overflow-hidden">
+        <div className="grid min-h-0 flex-1 grid-rows-[minmax(auto,1fr)] overflow-hidden">
           <div
             ref={scrollAreaRef}
             className={cn(

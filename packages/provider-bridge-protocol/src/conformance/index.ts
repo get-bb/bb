@@ -30,7 +30,6 @@ export type {
   ConformanceReport,
   ConformanceSessionFixture,
 };
-export { ConformanceClient } from "./client.js";
 
 export interface RunBridgeConformanceOptions {
   transport: BridgeConformanceTransport;

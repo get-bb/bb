@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import type { TimelineRow } from "@bb/server-contract";
 import { ThreadTimelineRows } from "@/components/thread/timeline";
 import { StoryCard, StoryRow } from "../../../../.ladle/story-card";
+import { explorationRow, type ExplorationStep } from "./streaming-story-rows";
 
 export default {
   title: "thread/timeline/Streaming",
@@ -209,14 +210,6 @@ function RunningCommandStreaming({ restartKey }: { restartKey: number }) {
   );
 }
 
-interface ExplorationStep {
-  callId: string;
-  intent:
-    | { type: "read"; path: string }
-    | { type: "search"; query: string; path: string }
-    | { type: "list_files"; path: string };
-}
-
 const EXPLORATION_STEPS: readonly ExplorationStep[] = [
   {
     callId: "stream_read_assist",
@@ -317,47 +310,14 @@ const EXPLORATION_STEPS: readonly ExplorationStep[] = [
   },
 ];
 
-function exploringRow(step: ExplorationStep, seq: number): TimelineRow {
-  const base = {
-    id: `streaming-exploring:${step.callId}`,
-    threadId: THREAD_ID,
-    turnId: TURN_ID,
-    sourceSeqStart: seq,
-    sourceSeqEnd: seq,
-    startedAt: seq,
-    createdAt: seq,
-    kind: "work" as const,
-    status: "completed" as const,
-    callId: step.callId,
-    cmd: null,
-    completedAt: seq,
-  };
-  switch (step.intent.type) {
-    case "read":
-      return { ...base, workKind: "file-read", path: step.intent.path };
-    case "search":
-      return {
-        ...base,
-        workKind: "search",
-        mode: "content",
-        query: step.intent.query,
-        path: step.intent.path,
-      };
-    case "list_files":
-      return {
-        ...base,
-        workKind: "search",
-        mode: "list",
-        query: "",
-        path: step.intent.path,
-      };
-  }
-}
-
 function ExploringBundleStreaming({ restartKey }: { restartKey: number }) {
   const step = useStreamingTick(EXPLORATION_STEPS.length, 250, restartKey);
   const rows = EXPLORATION_STEPS.slice(0, step).map((stepData, index) =>
-    exploringRow(stepData, index + 1),
+    explorationRow(stepData, index + 1, {
+      idPrefix: "streaming-exploring",
+      threadId: THREAD_ID,
+      turnId: TURN_ID,
+    }),
   );
   return (
     <TimelineStage>

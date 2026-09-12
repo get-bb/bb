@@ -11,6 +11,7 @@ import {
   fullRuntimeOptions,
   waitForRuntimeState,
   waitForThreadAgentMessageText,
+  waitForThreadTurnCompleted,
   withBridgeLaunch,
   type LaunchBoundAgentRuntime,
 } from "./test/runtime-test-harness.js";
@@ -149,6 +150,41 @@ describe("codex process topology", () => {
     });
     return providerThreadId;
   }
+
+  it("keeps a fork checkpoint paired with its session after another thread starts", async () => {
+    const { runtime, events } = createCodexTopologyRuntime();
+    const source = await runtime.startThread({
+      environmentId: "env-1",
+      providerId: "codex",
+      threadId: "source",
+      projectId: "p1",
+      options: fullRuntimeOptions,
+      fork: { sourceProviderThreadId: "historical-session" },
+    });
+    const sibling = await startCodexThread(runtime, "sibling");
+    await runtime.runTurn({
+      clientRequestId: "creq_cdxtpgy328",
+      threadId: "source",
+      input: [promptTextInput({ text: "continue source" })],
+      options: fullRuntimeOptions,
+    });
+    await waitForThreadTurnCompleted({
+      events,
+      providerId: "codex",
+      runtime,
+      threadId: "source",
+    });
+    expect(source.providerThreadId).not.toBe(sibling);
+    expect(
+      events.find((event) => event.type === "turn/completed"),
+    ).toMatchObject({
+      providerThreadId: source.providerThreadId,
+      providerCheckpointId: "turn-fx-1",
+    });
+    expect(runtime.getProviderSession("source")?.providerThreadId).toBe(
+      source.providerThreadId,
+    );
+  });
 
   it("runs N codex threads on one bridge process with one app-server child each, and reaps the children on stop, archive, and bridge retirement", async () => {
     const topology = createCodexTopologyRuntime();

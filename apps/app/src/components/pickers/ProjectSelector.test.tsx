@@ -34,10 +34,13 @@ describe("ProjectSelector", () => {
     const alpha = screen.getByRole("option", { name: "Alpha Web" });
     const bravo = screen.getByRole("option", { name: "Bravo API" });
     const charlie = screen.getByRole("option", { name: "Charlie Docs" });
-    expect(alpha.getAttribute("aria-selected")).toBe("true");
+    expect(screen.queryByRole("option", { selected: true })).toBeNull();
     expect(charlie.getAttribute("aria-selected")).toBe("false");
     expect(charlie.getAttribute("aria-current")).toBe("true");
 
+    fireEvent.keyDown(search, { key: "ArrowDown" });
+
+    expect(alpha.getAttribute("aria-selected")).toBe("true");
     fireEvent.keyDown(search, { key: "ArrowDown" });
 
     expect(bravo.getAttribute("aria-selected")).toBe("true");
@@ -119,10 +122,13 @@ describe("ProjectSelector", () => {
     expect(document.activeElement).toBe(command);
 
     if (command === null) return;
+    expect(screen.queryByRole("option", { selected: true })).toBeNull();
+    fireEvent.keyDown(command, { key: "Enter" });
+    expect(onChange).not.toHaveBeenCalled();
     fireEvent.keyDown(command, { key: "ArrowDown" });
     fireEvent.keyDown(command, { key: "Enter" });
 
-    expect(onChange).toHaveBeenCalledWith("proj_bravo");
+    expect(onChange).toHaveBeenCalledWith("proj_alpha");
   });
 
   it("keeps project actions visible and resets search after closing", () => {
@@ -167,6 +173,7 @@ describe("ProjectSelector", () => {
       }).value,
     ).toBe("");
     expect(screen.getByRole("option", { name: "Alpha Web" })).toBeTruthy();
+    expect(screen.queryByRole("option", { selected: true })).toBeNull();
   });
 
   it("keeps empty-list actions in the project group", () => {
@@ -188,6 +195,7 @@ describe("ProjectSelector", () => {
       "Project",
     );
     expect(groups[0]?.querySelectorAll("[cmdk-item]")).toHaveLength(2);
+    expect(screen.queryByRole("option", { selected: true })).toBeNull();
   });
 
   it("keeps the search fixed while the project results scroll", () => {

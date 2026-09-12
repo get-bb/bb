@@ -12,9 +12,6 @@ const OCTET_STREAM_MIME_TYPE = "application/octet-stream";
 const REVALIDATE_CACHE_CONTROL = "private, no-cache";
 
 type HostReadFileResult = HostDaemonOnlineRpcResultByType["host.read_file"];
-export type DaemonFileContentResult =
-  | Exclude<HostReadFileResult, { notModified: true }>
-  | HostDaemonOnlineRpcResultByType["host.read_file_relative"];
 export type DaemonFileReadResult =
   | HostReadFileResult
   | HostDaemonOnlineRpcResultByType["host.read_file_relative"];
@@ -86,10 +83,8 @@ export function requestMatchesEntityTag(
   if (trimmed === "*") {
     return true;
   }
-  return trimmed
-    .split(",")
-    .map((tag) => tag.trim().replace(/^W\//u, ""))
-    .includes(entityTag);
+  const opaque = (tag: string): string => tag.trim().replace(/^W\//u, "");
+  return trimmed.split(",").map(opaque).includes(opaque(entityTag));
 }
 
 export function requireDaemonFileContentResult(

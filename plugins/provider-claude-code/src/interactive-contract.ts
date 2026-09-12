@@ -25,7 +25,6 @@ export const claudePermissionModeSchema = z.enum([
   "auto",
   "bypassPermissions",
   "plan",
-  "dontAsk",
 ]);
 export type ClaudePermissionMode = z.infer<typeof claudePermissionModeSchema>;
 
@@ -90,24 +89,6 @@ export type ClaudeSuggestedPermissionUpdate = z.infer<
   typeof claudeSuggestedPermissionUpdateSchema
 >;
 
-const claudeNetworkPermissionsInputSchema = z.object({
-  enabled: z.boolean().nullable(),
-});
-
-const claudeFileSystemPermissionsInputSchema = z.object({
-  read: z.array(z.string()),
-  write: z.array(z.string()),
-});
-
-const claudeRequestedPermissionProfileInputSchema = z
-  .object({
-    network: claudeNetworkPermissionsInputSchema.nullable().optional(),
-    fileSystem: claudeFileSystemPermissionsInputSchema.nullable().optional(),
-  })
-  .transform((value): PendingInteractionGrantablePermissionProfile => ({
-    network: value.network ?? null,
-    fileSystem: value.fileSystem ?? null,
-  }));
 interface ClaudePermissionRequestProfileArgs {
   blockedPath: string | undefined;
   suggestions: ClaudeSuggestedPermissionUpdate[] | undefined;
@@ -221,19 +202,16 @@ export function shouldRequestClaudePermissionApproval(
   );
 }
 
-export const claudePermissionRequestApprovalParamsSchema = z.object({
-  threadId: z.string(),
-  providerThreadId: z.string(),
-  turnId: z.string().min(1).nullable(),
-  itemId: z.string(),
-  toolName: z.string(),
-  input: z.record(z.string(), z.unknown()),
-  reason: z.string().nullable(),
-  permissions: claudeRequestedPermissionProfileInputSchema,
-});
-export type ClaudePermissionRequestApprovalParams = z.infer<
-  typeof claudePermissionRequestApprovalParamsSchema
->;
+export interface ClaudePermissionRequestApprovalParams {
+  threadId: string;
+  providerThreadId: string;
+  turnId: string | null;
+  itemId: string;
+  toolName: string;
+  input: Record<string, unknown>;
+  reason: string | null;
+  permissions: PendingInteractionGrantablePermissionProfile;
+}
 
 const claudeUserQuestionOptionSchema = z.object({
   label: z.string().min(1),
@@ -278,16 +256,13 @@ export type ClaudeUserQuestionInput = z.infer<
   typeof claudeUserQuestionInputSchema
 >;
 
-export const claudeUserQuestionRequestParamsSchema = z.object({
-  threadId: z.string(),
-  providerThreadId: z.string(),
-  turnId: z.string().min(1).nullable(),
-  itemId: z.string(),
-  questions: claudeUserQuestionListSchema,
-});
-export type ClaudeUserQuestionRequestParams = z.infer<
-  typeof claudeUserQuestionRequestParamsSchema
->;
+export interface ClaudeUserQuestionRequestParams {
+  threadId: string;
+  providerThreadId: string;
+  turnId: string | null;
+  itemId: string;
+  questions: ClaudeUserQuestion[];
+}
 
 const claudeUserQuestionAnnotationSchema = z.object({
   preview: z.string().optional(),

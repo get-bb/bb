@@ -8,9 +8,7 @@ import {
   applyEnvironmentLifecycleEvent,
   applyEnvironmentLifecycleEventInTransaction,
   createEnvironment,
-  EnvironmentLifecycleEventNotAppliedError,
   getEnvironment,
-  requireEnvironmentLifecycleEventApplied,
   type CreateEnvironmentInput,
 } from "../../src/data/environments.js";
 import {
@@ -27,7 +25,7 @@ import { createMigratedConnection } from "../helpers/migrated-connection.js";
 
 function setup() {
   const db = createMigratedConnection();
-  const host = upsertHost(db, noopNotifier, { type: "persistent",
+  const host = upsertHost(db, noopNotifier, {
     name: "test-host",
   });
   const { project } = createProject(db, noopNotifier, {
@@ -237,43 +235,6 @@ describe("applyEnvironmentLifecycleEvent", () => {
     expect(spy.notifyEnvironment).toHaveBeenCalledExactlyOnceWith(
       environment.id,
       ["status-changed"],
-    );
-  });
-});
-
-describe("requireEnvironmentLifecycleEventApplied", () => {
-  it("returns the updated environment when applied", () => {
-    const { db, seedEnvironment } = setup();
-    const environment = seedEnvironment({ status: "error" });
-
-    const updated = requireEnvironmentLifecycleEventApplied(
-      applyEnvironmentLifecycleEvent(db, noopNotifier, {
-        environmentId: environment.id,
-        event: { type: "provision.requested" },
-      }),
-    );
-    expect(updated.status).toBe("provisioning");
-  });
-
-  it("throws a typed error carrying reason and detail on a no-op", () => {
-    const { db, seedEnvironment } = setup();
-    const environment = seedEnvironment({ status: "ready" });
-
-    const outcome = applyEnvironmentLifecycleEvent(db, noopNotifier, {
-      environmentId: environment.id,
-      event: { type: "provision.succeeded" },
-    });
-    let caught: EnvironmentLifecycleEventNotAppliedError | null = null;
-    try {
-      requireEnvironmentLifecycleEventApplied(outcome);
-    } catch (error) {
-      if (error instanceof EnvironmentLifecycleEventNotAppliedError) {
-        caught = error;
-      }
-    }
-    expect(caught?.reason).toBe("illegal-transition");
-    expect(caught?.detail).toBe(
-      "no transition for provision.succeeded from status ready",
     );
   });
 });

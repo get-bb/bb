@@ -1,8 +1,6 @@
 import { describe, expect, it } from "vitest";
-import {
-  formatArchivedEnvironmentThreadsToastTitle,
-  shouldSuppressPinnedThreadDropPreview,
-} from "./ProjectRow";
+import { formatArchivedEnvironmentThreadsToastTitle } from "./ProjectRow";
+import { shouldSuppressPinnedThreadDropPreview } from "./useRenderedSectionThreadDnd";
 import { PINNED_THREAD_PARENT_KEY } from "./useSectionThreadDnd";
 
 describe("formatArchivedEnvironmentThreadsToastTitle", () => {

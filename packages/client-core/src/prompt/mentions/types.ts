@@ -81,17 +81,15 @@ export function toProviderCommandSuggestion(
   };
 }
 
-export type ComposerCommandSuggestion = ProviderCommandSuggestion;
-
 function compareCommandSuggestionSections(
-  left: ComposerCommandSuggestion,
-  right: ComposerCommandSuggestion,
+  left: ProviderCommandSuggestion,
+  right: ProviderCommandSuggestion,
 ): number {
   return providerCommandSectionRank(left) - providerCommandSectionRank(right);
 }
 
 function commandSuggestionSearchNames(
-  suggestion: ComposerCommandSuggestion,
+  suggestion: ProviderCommandSuggestion,
 ): string[] {
   const name = suggestion.name.toLowerCase();
   if (suggestion.source !== "skill") {
@@ -102,7 +100,7 @@ function commandSuggestionSearchNames(
 }
 
 function commandSuggestionMatchRank(
-  suggestion: ComposerCommandSuggestion,
+  suggestion: ProviderCommandSuggestion,
   normalizedQuery: string,
 ): number {
   const canonicalName = suggestion.name.toLowerCase();
@@ -117,8 +115,8 @@ function commandSuggestionMatchRank(
 }
 
 function compareCommandSuggestions(
-  left: ComposerCommandSuggestion,
-  right: ComposerCommandSuggestion,
+  left: ProviderCommandSuggestion,
+  right: ProviderCommandSuggestion,
   normalizedQuery: string,
 ): number {
   const byMatch =
@@ -130,9 +128,9 @@ function compareCommandSuggestions(
 }
 
 export function orderCommandSuggestions(
-  suggestions: readonly ComposerCommandSuggestion[],
+  suggestions: readonly ProviderCommandSuggestion[],
   query: string,
-): ComposerCommandSuggestion[] {
+): ProviderCommandSuggestion[] {
   const normalizedQuery = query.trim().toLowerCase();
   const ranked = [...suggestions].sort((left, right) =>
     compareCommandSuggestions(left, right, normalizedQuery),
@@ -140,7 +138,7 @@ export function orderCommandSuggestions(
 
   const bySection = new Map<
     ProviderCommandSection,
-    ComposerCommandSuggestion[]
+    ProviderCommandSuggestion[]
   >();
   for (const suggestion of ranked) {
     const section = providerCommandSection(suggestion);
@@ -188,7 +186,7 @@ export type CommandMenuState =
   | { kind: "error" }
   | {
       kind: "results";
-      suggestions: readonly ComposerCommandSuggestion[];
+      suggestions: readonly ProviderCommandSuggestion[];
     };
 
 export type TypeaheadMenuState =

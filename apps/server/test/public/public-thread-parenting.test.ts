@@ -1,4 +1,9 @@
-import { archiveThread, getThread } from "@bb/db";
+import {
+  archiveThread,
+  createThread,
+  createThreadSection,
+  getThread,
+} from "@bb/db";
 import { threadSchema } from "@bb/domain";
 import {
   apiErrorSchema,
@@ -17,9 +22,109 @@ import {
   seedThread,
   seedThreadRuntimeState,
 } from "../helpers/seed.js";
+import { archiveThreadAndReleaseChildren } from "../../src/services/threads/thread-ownership.js";
 import { withTestHarness } from "../helpers/test-app.js";
 
 describe("public thread parenting routes", () => {
+  it.each([
+    { mode: "inherit", parentSection: true },
+    { mode: "inherit", parentSection: false },
+    { mode: "explicit", parentSection: true },
+    { mode: "clear", parentSection: true },
+    { mode: "root", parentSection: true },
+    { mode: "reparent", parentSection: true },
+    { mode: "archive", parentSection: true },
+    { mode: "archive", parentSection: false },
+  ] as const)(
+    "preserves section policy on $mode (parent section: $parentSection)",
+    async ({ mode, parentSection }) => {
+      await withTestHarness(async (harness) => {
+        const { host } = seedHostSession(harness.deps);
+        const { project } = seedProjectWithSource(harness.deps, {
+          hostId: host.id,
+        });
+        const section = createThreadSection(harness.db, harness.deps.hub, {
+          name: "Parent section",
+        }).section;
+        const original = createThreadSection(harness.db, harness.deps.hub, {
+          name: "Child section",
+        }).section;
+        const parent = createThread(harness.db, harness.deps.hub, {
+          projectId: project.id,
+          providerId: "codex",
+          sectionId: parentSection ? section.id : null,
+        });
+        const child = createThread(harness.db, harness.deps.hub, {
+          projectId: project.id,
+          providerId: "codex",
+          parentThreadId: mode === "root" ? null : parent.id,
+          sectionId: original.id,
+        });
+        const nextParent = seedThread(harness.deps, { projectId: project.id });
+        const expectedSectionId =
+          mode === "clear"
+            ? null
+            : ["explicit", "root", "reparent"].includes(mode)
+              ? original.id
+              : parent.sectionId;
+        const expectedParentId = mode === "reparent" ? nextParent.id : null;
+
+        if (mode === "archive") {
+          archiveThreadAndReleaseChildren(harness.deps, {
+            threadId: parent.id,
+          });
+        } else {
+          const response = await harness.app.request(
+            `/api/v1/threads/${child.id}`,
+            {
+              method: "PATCH",
+              headers: { "content-type": "application/json" },
+              body: JSON.stringify({
+                parentThreadId: expectedParentId,
+                ...(mode === "explicit" ? { sectionId: original.id } : {}),
+                ...(mode === "clear" ? { sectionId: null } : {}),
+              }),
+            },
+          );
+          expect(response.status).toBe(200);
+          expect(threadSchema.parse(await readJson(response))).toMatchObject({
+            parentThreadId: expectedParentId,
+            sectionId: expectedSectionId,
+          });
+        }
+        expect(getThread(harness.db, child.id)).toMatchObject({
+          parentThreadId: expectedParentId,
+          sectionId: expectedSectionId,
+          archivedAt: null,
+        });
+      });
+    },
+  );
+
+  it("does not expose the removed parent-only archive endpoint", async () => {
+    await withTestHarness(async (harness) => {
+      const { host } = seedHostSession(harness.deps);
+      const { project } = seedProjectWithSource(harness.deps, {
+        hostId: host.id,
+      });
+      const parent = seedThread(harness.deps, { projectId: project.id });
+      const child = seedThread(harness.deps, {
+        projectId: project.id,
+        parentThreadId: parent.id,
+      });
+      const response = await harness.app.request(
+        `/api/v1/threads/${parent.id}/archive`,
+        { method: "POST" },
+      );
+      expect(response.status).toBe(404);
+      expect(getThread(harness.db, parent.id)?.archivedAt).toBeNull();
+      expect(getThread(harness.db, child.id)).toMatchObject({
+        archivedAt: null,
+        parentThreadId: parent.id,
+      });
+    });
+  });
+
   it("creates a child thread under a parent", async () => {
     await withTestHarness(async (harness) => {
       const { host } = seedHostSession(harness.deps);
@@ -402,42 +507,6 @@ describe("public thread parenting routes", () => {
       const archivedChildThread = getThread(harness.db, childThread.id);
       expect(archivedChildThread?.archivedAt).not.toBeNull();
       expect(archivedChildThread?.parentThreadId).toBe(parentThread.id);
-    });
-  });
-
-  it("archives hidden source-derived forks when archiving a single thread", async () => {
-    await withTestHarness(async (harness) => {
-      const { host } = seedHostSession(harness.deps);
-      const { project } = seedProjectWithSource(harness.deps, {
-        hostId: host.id,
-      });
-      const environment = seedEnvironment(harness.deps, {
-        hostId: host.id,
-        projectId: project.id,
-      });
-      const sourceThread = seedThread(harness.deps, {
-        environmentId: environment.id,
-        projectId: project.id,
-      });
-      const sideChatThread = seedThread(harness.deps, {
-        environmentId: environment.id,
-        originKind: "fork",
-        originPluginId: "side-chat",
-        visibility: "hidden",
-        projectId: project.id,
-        sourceThreadId: sourceThread.id,
-      });
-
-      const response = await harness.app.request(
-        `/api/v1/threads/${sourceThread.id}/archive`,
-        { method: "POST" },
-      );
-
-      expect(response.status).toBe(200);
-      expect(getThread(harness.db, sourceThread.id)?.archivedAt).not.toBeNull();
-      expect(
-        getThread(harness.db, sideChatThread.id)?.archivedAt,
-      ).not.toBeNull();
     });
   });
 

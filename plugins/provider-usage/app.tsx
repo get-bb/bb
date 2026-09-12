@@ -5,16 +5,16 @@ import {
   useMemo,
   useState,
   useSyncExternalStore,
-  type CSSProperties,
   type KeyboardEvent,
 } from "react";
 import {
   definePluginApp,
+  experimental_ProviderIcon as ProviderIcon,
   experimental_useSidebarThreads,
   type ExperimentalSidebarFooterDisclosureProps,
   useBbContext,
 } from "@get-bb/plugin-sdk/app";
-import { ICON_NAMES, Icon, type IconName } from "@bb/shared-ui/icon";
+import { Icon } from "@bb/shared-ui/icon";
 import { Button } from "@bb/shared-ui/button";
 import {
   DropdownMenu,
@@ -23,6 +23,11 @@ import {
   DropdownMenuTrigger,
 } from "@bb/shared-ui/dropdown-menu";
 import { cn } from "@bb/shared-ui/lib/utils";
+import {
+  formatUsageReset,
+  formatUsdCents,
+  usageBarColorClass,
+} from "@bb/shared-ui/lib/usage-format";
 import { LIST_HOVER_TRANSITION } from "@bb/shared-ui/motion";
 import {
   OPTION_BASE_CLASS_NAME,
@@ -134,106 +139,8 @@ function refreshUsage({
   })();
 }
 
-function providerIconStyle(provider: UsageProvider): CSSProperties | undefined {
-  if (provider.iconTint === null) return undefined;
-  return {
-    color:
-      "light-dark(" +
-      provider.iconTint.light +
-      ", " +
-      provider.iconTint.dark +
-      ")",
-  };
-}
-
-function isIconName(value: string): value is IconName {
-  return ICON_NAMES.some((iconName) => iconName === value);
-}
-
-function ProviderMark({
-  provider,
-  className,
-}: {
-  provider: UsageProvider;
-  className: string;
-}) {
-  const tintStyle = providerIconStyle(provider);
-  if (provider.logoUrl !== null) {
-    const image = 'url("' + provider.logoUrl.replace(/["\\]/gu, "\\$&") + '")';
-    return (
-      <span
-        aria-hidden="true"
-        data-provider-logo={provider.logoUrl}
-        className={className + " inline-block shrink-0 bg-current"}
-        style={{
-          ...tintStyle,
-          maskImage: image,
-          WebkitMaskImage: image,
-          maskRepeat: "no-repeat",
-          WebkitMaskRepeat: "no-repeat",
-          maskPosition: "center",
-          WebkitMaskPosition: "center",
-          maskSize: "contain",
-          WebkitMaskSize: "contain",
-        }}
-      />
-    );
-  }
-  const iconName =
-    provider.iconGlyph !== null && isIconName(provider.iconGlyph)
-      ? provider.iconGlyph
-      : "Bot";
-  return (
-    <span aria-hidden="true" style={tintStyle}>
-      <Icon name={iconName} className={className} />
-    </span>
-  );
-}
-
-function barColorClass(usedPercent: number): string {
-  if (usedPercent >= 95) return "bg-destructive";
-  if (usedPercent >= 80) return "bg-warning";
-  return "bg-primary";
-}
-
-function formatReset(resetsAt: string | null): string | null {
-  if (resetsAt === null) return null;
-  const reset = new Date(resetsAt);
-  if (Number.isNaN(reset.getTime())) return null;
-  const diffMs = reset.getTime() - Date.now();
-  if (diffMs <= 0) return "Resetting now";
-  const minutes = Math.round(diffMs / 60_000);
-  if (minutes < 60) return "Resets in " + minutes + " min";
-  const hours = Math.floor(minutes / 60);
-  if (hours < 24) {
-    const remainingMinutes = minutes % 60;
-    return remainingMinutes === 0
-      ? "Resets in " + hours + " hr"
-      : "Resets in " + hours + " hr " + remainingMinutes + " min";
-  }
-  return (
-    "Resets " +
-    reset.toLocaleString(undefined, {
-      weekday: diffMs < 7 * 24 * 60 * 60_000 ? "short" : undefined,
-      month: diffMs < 7 * 24 * 60 * 60_000 ? undefined : "short",
-      day: diffMs < 7 * 24 * 60 * 60_000 ? undefined : "numeric",
-      hour: "numeric",
-      minute: "2-digit",
-    })
-  );
-}
-
-function formatUsdCents(cents: number, alwaysShowCents: boolean): string {
-  return new Intl.NumberFormat(undefined, {
-    style: "currency",
-    currency: "USD",
-    minimumFractionDigits: alwaysShowCents || cents % 100 !== 0 ? 2 : 0,
-    maximumFractionDigits: 2,
-  }).format(cents / 100);
-}
-
 function UsageWindow({ window }: { window: UsageWindowValue }) {
-  const reset = formatReset(window.resetsAt);
+  const reset = formatUsageReset(window.resetsAt);
   const value =
     window.cost === null
       ? Math.round(window.usedPercent) + "% used"
@@ -250,7 +157,9 @@ function UsageWindow({ window }: { window: UsageWindowValue }) {
       </div>
       <div className="h-1.5 overflow-hidden rounded-full bg-sidebar-border">
         <div
-          className={"h-full rounded-full " + barColorClass(window.usedPercent)}
+          className={
+            "h-full rounded-full " + usageBarColorClass(window.usedPercent)
+          }
           style={{
             width: Math.max(2, Math.min(100, window.usedPercent)) + "%",
           }}
@@ -517,7 +426,12 @@ function ProviderUsageStatus({
                   onClick={() => selectProvider(provider.id)}
                   onKeyDown={(event) => handleTabKeyDown(event, index)}
                 >
-                  <ProviderMark provider={provider} className="size-4" />
+                  <ProviderIcon
+                    providerKind="agent"
+                    provider={provider}
+                    fallback="Bot"
+                    className="size-4"
+                  />
                   {tone === null ? null : (
                     <span
                       aria-hidden="true"

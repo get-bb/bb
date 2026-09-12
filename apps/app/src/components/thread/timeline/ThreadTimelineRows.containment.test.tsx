@@ -12,7 +12,6 @@ import {
 import { ThreadTimelineRows } from "./ThreadTimelineRows";
 import {
   estimateTimelineRowIntrinsicBlockSizePx,
-  TOP_LEVEL_TIMELINE_ROW_CLASS_NAME,
   TOP_LEVEL_TIMELINE_ROW_INTRINSIC_SIZE_CLASS_NAME,
 } from "./timeline-row-containment";
 
@@ -105,11 +104,10 @@ describe("ThreadTimelineRows row containment", () => {
       TOP_LEVEL_TIMELINE_ROW_INTRINSIC_SIZE_CLASS_NAME,
     );
     await act(nextAnimationFrame);
-    const armedClassNames = TOP_LEVEL_TIMELINE_ROW_CLASS_NAME.split(" ");
-    expect(armedClassNames).toContain("max-md:[content-visibility:auto]");
-    expect(armedClassNames).toContain(
+    const armedClassNames = [
+      "max-md:[content-visibility:auto]",
       TOP_LEVEL_TIMELINE_ROW_INTRINSIC_SIZE_CLASS_NAME,
-    );
+    ];
     for (const rowId of ["user_1", "turn_1", "assistant_1"]) {
       expect(
         Array.from(rowWrapper(view.container, rowId).classList).sort(),

@@ -202,6 +202,34 @@ export function listEnvironments(
   return paged.all();
 }
 
+export function markHostEnvironmentsDestroyed(
+  db: EnvironmentWriteConnection,
+  notifier: DbNotifier,
+  hostId: string,
+): EnvironmentRow[] {
+  const updated = db
+    .update(environments)
+    .set({
+      path: null,
+      resource: null,
+      retireAt: null,
+      status: "destroyed",
+      teardownMessage: null,
+      teardownStatus: "removed",
+      updatedAt: Date.now(),
+    })
+    .where(eq(environments.hostId, hostId))
+    .returning()
+    .all();
+  for (const environment of updated) {
+    notifier.notifyEnvironment(environment.id, [
+      "metadata-changed",
+      "status-changed",
+    ]);
+  }
+  return updated;
+}
+
 interface EnvironmentMetadataUpdateColumns {
   baseBranch?: string | null;
   branchName?: string | null;
@@ -353,42 +381,6 @@ export function recordEnvironmentCurrentBranch(
   });
 }
 
-export function recordEnvironmentProviderProvenance(
-  db: EnvironmentWriteConnection,
-  notifier: DbNotifier,
-  id: string,
-  input: {
-    environmentProviderId: string;
-    instanceKey: string | null;
-    selection: EnvironmentProviderSelection;
-  },
-) {
-  const existing = getEnvironment(db, id);
-  if (existing === null) return null;
-  const updated = db
-    .update(environments)
-    .set({
-      environmentProviderId: input.environmentProviderId,
-      environmentProviderInstanceKey: input.instanceKey,
-      environmentProviderSelection: input.selection,
-      updatedAt: Date.now(),
-    })
-    .where(eq(environments.id, id))
-    .returning()
-    .get();
-  if (updated === undefined) return null;
-  if (
-    existing.environmentProviderId !== updated.environmentProviderId ||
-    existing.environmentProviderInstanceKey !==
-      updated.environmentProviderInstanceKey ||
-    JSON.stringify(existing.environmentProviderSelection) !==
-      JSON.stringify(updated.environmentProviderSelection)
-  ) {
-    notifier.notifyEnvironment(id, ["metadata-changed"]);
-  }
-  return updated;
-}
-
 export interface RecordProvisionedEnvironmentWorkspaceInput extends DiscoveredWorkspaceProperties {
   baseBranch?: string | null;
   mergeBaseBranch?: string | null;
@@ -433,34 +425,6 @@ export type ApplyEnvironmentLifecycleEventOutcome =
 export interface ApplyEnvironmentLifecycleEventArgs {
   environmentId: string;
   event: EnvironmentLifecycleEvent;
-}
-
-interface EnvironmentLifecycleEventNotAppliedErrorArgs {
-  detail: string;
-  reason: ApplyEnvironmentLifecycleEventNoopReason;
-}
-
-export class EnvironmentLifecycleEventNotAppliedError extends Error {
-  readonly detail: string;
-  readonly reason: ApplyEnvironmentLifecycleEventNoopReason;
-
-  constructor(args: EnvironmentLifecycleEventNotAppliedErrorArgs) {
-    super(
-      `Environment lifecycle event not applied (${args.reason}): ${args.detail}`,
-    );
-    this.name = "EnvironmentLifecycleEventNotAppliedError";
-    this.detail = args.detail;
-    this.reason = args.reason;
-  }
-}
-
-export function requireEnvironmentLifecycleEventApplied(
-  outcome: ApplyEnvironmentLifecycleEventOutcome,
-) {
-  if (!outcome.applied) {
-    throw new EnvironmentLifecycleEventNotAppliedError(outcome);
-  }
-  return outcome.environment;
 }
 
 export function applyEnvironmentLifecycleEventInTransaction(

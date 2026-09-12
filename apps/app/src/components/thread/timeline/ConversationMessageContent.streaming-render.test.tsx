@@ -191,6 +191,40 @@ describe("assistant streaming Markdown rendering", () => {
     ).toBe(`/projects/${mentionedThread.projectId}/threads/thr_mentioned`);
   });
 
+  it("settled code block DOM survives boundary advances", () => {
+    const source = "Intro.\n\n```ts\nconst a = 1;\n```\n\nA.\n\nB";
+    const view = render(assistant(source));
+    const markdownPreviewParagraphs = () =>
+      Array.from(
+        view.container.querySelectorAll("[data-markdown-preview]"),
+        (preview) =>
+          Array.from(preview.querySelectorAll("p"), (p) => p.textContent),
+      );
+    expect(markdownPreviewParagraphs()).toEqual([["Intro."], ["A.", "B"]]);
+    const line = view.container.querySelector("pre code span.sh__line");
+    const code = line?.closest("code");
+    if (!line || !code) {
+      throw new Error("Expected a highlighted settled code block");
+    }
+    const observer = new MutationObserver(() => {});
+    observer.observe(code, {
+      characterData: true,
+      childList: true,
+      subtree: true,
+    });
+
+    view.rerender(assistant(`${source}\n\nC.\n\nD`));
+
+    const mutations = observer.takeRecords();
+    observer.disconnect();
+    expect(markdownPreviewParagraphs()).toEqual([
+      ["Intro.", "A.", "B"],
+      ["C.", "D"],
+    ]);
+    expect(mutations).toHaveLength(0);
+    expect(line.isConnected).toBe(true);
+  });
+
   it("copies original message text while the rendered tail is repaired", async () => {
     const writeText = vi.fn().mockResolvedValue(undefined);
     vi.stubGlobal("navigator", { clipboard: { writeText } });

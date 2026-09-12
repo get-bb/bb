@@ -92,12 +92,6 @@ const CURSOR_BUNDLED_EXECUTABLE: MacBundledExecutableAdapter = {
   toEnv: buildCursorCliEnv,
 };
 
-function jetBrainsBundledExecutable(
-  executable: string,
-): MacBundledExecutableAdapter {
-  return bundledExecutable("Contents", "MacOS", executable);
-}
-
 function bundledExecutable(
   ...relativeExecutablePath: string[]
 ): MacBundledExecutableAdapter {
@@ -106,22 +100,156 @@ function bundledExecutable(
   };
 }
 
+function resourcesAppBinExecutable(
+  executable: string,
+): MacBundledExecutableAdapter {
+  return bundledExecutable("Contents", "Resources", "app", "bin", executable);
+}
+
 const LEGACY_WINDSURF_EXECUTABLE: MacCommandExecutableAdapter = {
-  bundledExecutable: bundledExecutable(
-    "Contents",
-    "Resources",
-    "app",
-    "bin",
-    "windsurf",
-  ),
+  bundledExecutable: resourcesAppBinExecutable("windsurf"),
   executable: "windsurf",
 };
 
-function jetBrainsToolbox(
-  executable: string,
-  ...bundlePrefixes: string[]
-): { bundlePrefixes: string[]; executable: string } {
-  return { bundlePrefixes, executable };
+type MacApplicationLaunchAdapter = Extract<
+  LaunchAdapter["macos"],
+  { openMode: "application" }
+>;
+
+interface VsCodeFamilyCommandsArgs {
+  bundledExecutable: MacBundledExecutableAdapter;
+  executable: string;
+  fallbackExecutables?: MacCommandExecutableAdapter[];
+}
+
+function formatVsCodeRemoteSshArgs(args: BuildMacRemoteSshOpenArgs): string[] {
+  return [
+    "--remote",
+    `ssh-remote+${args.sshAuthority}`,
+    ...(args.lineNumber === null
+      ? [args.path]
+      : [
+          "-g",
+          formatPathWithLineNumber({
+            lineNumber: args.lineNumber,
+            columnNumber: args.columnNumber,
+            path: args.path,
+          }),
+        ]),
+  ];
+}
+
+function vsCodeFamilyCommands(
+  args: VsCodeFamilyCommandsArgs,
+): Pick<
+  MacApplicationLaunchAdapter,
+  "lineOpenCommand" | "pathOpenCommand" | "remoteSshOpenCommand"
+> {
+  const command = {
+    bundledExecutable: args.bundledExecutable,
+    executable: args.executable,
+    ...(args.fallbackExecutables !== undefined
+      ? { fallbackExecutables: args.fallbackExecutables }
+      : {}),
+  };
+  return {
+    lineOpenCommand: {
+      ...command,
+      supportsColumn: true,
+      toArgs: (lineArgs) => ["-g", formatPathWithLineNumber(lineArgs)],
+    },
+    pathOpenCommand: {
+      ...command,
+      toArgs: (path) => [path],
+    },
+    remoteSshOpenCommand: {
+      ...command,
+      capabilities: FULL_FILE_OPEN_CAPABILITIES,
+      toArgs: formatVsCodeRemoteSshArgs,
+    },
+  };
+}
+
+interface JetBrainsEditorAdapterArgs extends Pick<
+  LaunchAdapter,
+  "icon" | "id" | "label"
+> {
+  appName: string;
+  bundleIds: string[];
+  executable: string;
+  toolboxPrefix: string;
+}
+
+function jetBrainsEditorAdapter(
+  args: JetBrainsEditorAdapterArgs,
+): LaunchAdapter {
+  const command = {
+    bundledExecutable: bundledExecutable("Contents", "MacOS", args.executable),
+    executable: args.executable,
+  };
+  return {
+    capabilities: FULL_FILE_OPEN_CAPABILITIES,
+    icon: args.icon,
+    id: args.id,
+    kind: "editor",
+    label: args.label,
+    fileOpenBehavior: "direct",
+    macos: {
+      openMode: "application",
+      appName: args.appName,
+      bundleIds: args.bundleIds,
+      builtIn: false,
+      jetBrainsToolbox: {
+        bundlePrefixes: [args.toolboxPrefix],
+        executable: args.executable,
+      },
+      lineOpenCommand: {
+        ...command,
+        supportsColumn: true,
+        toArgs: formatJetBrainsLineOpenArgs,
+      },
+      pathOpenCommand: {
+        ...command,
+        toArgs: (path) => [path],
+      },
+    },
+  };
+}
+
+function macTerminalAppCommands(
+  appName: "Terminal" | "iTerm",
+): Pick<
+  MacApplicationLaunchAdapter,
+  "localTerminalOpenCommand" | "remoteSshOpenCommand"
+> {
+  return {
+    localTerminalOpenCommand: {
+      executable: "osascript",
+      toArgs: (args) =>
+        buildMacTerminalLocalOpenArgs({
+          appName,
+          columnNumber: args.columnNumber,
+          editorCommand: args.editorCommand,
+          lineNumber: args.lineNumber,
+          path: args.path,
+          pathType: args.pathType,
+          shellPath: args.shellPath,
+        }),
+    },
+    remoteSshOpenCommand: {
+      capabilities: TERMINAL_OPEN_CAPABILITIES,
+      executable: "osascript",
+      requiredExecutables: ["ssh"],
+      toArgs: (args) =>
+        buildMacTerminalRemoteSshOpenArgs({
+          appName,
+          columnNumber: args.columnNumber,
+          lineNumber: args.lineNumber,
+          path: args.path,
+          sshAuthority: args.sshAuthority,
+        }),
+    },
+  };
 }
 
 export const LAUNCH_ADAPTERS: LaunchAdapter[] = [
@@ -138,54 +266,10 @@ export const LAUNCH_ADAPTERS: LaunchAdapter[] = [
       additionalAppNames: ["Code"],
       bundleIds: ["com.microsoft.VSCode"],
       builtIn: false,
-      lineOpenCommand: {
-        bundledExecutable: bundledExecutable(
-          "Contents",
-          "Resources",
-          "app",
-          "bin",
-          "code",
-        ),
+      ...vsCodeFamilyCommands({
+        bundledExecutable: resourcesAppBinExecutable("code"),
         executable: "code",
-        supportsColumn: true,
-        toArgs: (args) => ["-g", formatPathWithLineNumber(args)],
-      },
-      pathOpenCommand: {
-        bundledExecutable: bundledExecutable(
-          "Contents",
-          "Resources",
-          "app",
-          "bin",
-          "code",
-        ),
-        executable: "code",
-        toArgs: (path) => [path],
-      },
-      remoteSshOpenCommand: {
-        bundledExecutable: bundledExecutable(
-          "Contents",
-          "Resources",
-          "app",
-          "bin",
-          "code",
-        ),
-        capabilities: FULL_FILE_OPEN_CAPABILITIES,
-        executable: "code",
-        toArgs: (args) => [
-          "--remote",
-          `ssh-remote+${args.sshAuthority}`,
-          ...(args.lineNumber === null
-            ? [args.path]
-            : [
-                "-g",
-                formatPathWithLineNumber({
-                  lineNumber: args.lineNumber,
-                  columnNumber: args.columnNumber,
-                  path: args.path,
-                }),
-              ]),
-        ],
-      },
+      }),
     },
   },
   {
@@ -201,54 +285,10 @@ export const LAUNCH_ADAPTERS: LaunchAdapter[] = [
       additionalAppNames: ["Code - Insiders"],
       bundleIds: ["com.microsoft.VSCodeInsiders"],
       builtIn: false,
-      lineOpenCommand: {
-        bundledExecutable: bundledExecutable(
-          "Contents",
-          "Resources",
-          "app",
-          "bin",
-          "code",
-        ),
+      ...vsCodeFamilyCommands({
+        bundledExecutable: resourcesAppBinExecutable("code"),
         executable: "code-insiders",
-        supportsColumn: true,
-        toArgs: (args) => ["-g", formatPathWithLineNumber(args)],
-      },
-      pathOpenCommand: {
-        bundledExecutable: bundledExecutable(
-          "Contents",
-          "Resources",
-          "app",
-          "bin",
-          "code",
-        ),
-        executable: "code-insiders",
-        toArgs: (path) => [path],
-      },
-      remoteSshOpenCommand: {
-        bundledExecutable: bundledExecutable(
-          "Contents",
-          "Resources",
-          "app",
-          "bin",
-          "code",
-        ),
-        capabilities: FULL_FILE_OPEN_CAPABILITIES,
-        executable: "code-insiders",
-        toArgs: (args) => [
-          "--remote",
-          `ssh-remote+${args.sshAuthority}`,
-          ...(args.lineNumber === null
-            ? [args.path]
-            : [
-                "-g",
-                formatPathWithLineNumber({
-                  lineNumber: args.lineNumber,
-                  columnNumber: args.columnNumber,
-                  path: args.path,
-                }),
-              ]),
-        ],
-      },
+      }),
     },
   },
   {
@@ -263,36 +303,10 @@ export const LAUNCH_ADAPTERS: LaunchAdapter[] = [
       appName: "Cursor",
       bundleIds: ["com.todesktop.230313mzl4w4u92"],
       builtIn: false,
-      lineOpenCommand: {
+      ...vsCodeFamilyCommands({
         bundledExecutable: CURSOR_BUNDLED_EXECUTABLE,
         executable: "cursor",
-        supportsColumn: true,
-        toArgs: (args) => ["-g", formatPathWithLineNumber(args)],
-      },
-      pathOpenCommand: {
-        bundledExecutable: CURSOR_BUNDLED_EXECUTABLE,
-        executable: "cursor",
-        toArgs: (path) => [path],
-      },
-      remoteSshOpenCommand: {
-        bundledExecutable: CURSOR_BUNDLED_EXECUTABLE,
-        capabilities: FULL_FILE_OPEN_CAPABILITIES,
-        executable: "cursor",
-        toArgs: (args) => [
-          "--remote",
-          `ssh-remote+${args.sshAuthority}`,
-          ...(args.lineNumber === null
-            ? [args.path]
-            : [
-                "-g",
-                formatPathWithLineNumber({
-                  lineNumber: args.lineNumber,
-                  columnNumber: args.columnNumber,
-                  path: args.path,
-                }),
-              ]),
-        ],
-      },
+      }),
     },
   },
   {
@@ -375,57 +389,11 @@ export const LAUNCH_ADAPTERS: LaunchAdapter[] = [
       appName: "Devin",
       bundleIds: ["com.exafunction.windsurf"],
       builtIn: false,
-      lineOpenCommand: {
-        bundledExecutable: bundledExecutable(
-          "Contents",
-          "Resources",
-          "app",
-          "bin",
-          "devin-desktop",
-        ),
+      ...vsCodeFamilyCommands({
+        bundledExecutable: resourcesAppBinExecutable("devin-desktop"),
         executable: "devin-desktop",
         fallbackExecutables: [LEGACY_WINDSURF_EXECUTABLE],
-        supportsColumn: true,
-        toArgs: (args) => ["-g", formatPathWithLineNumber(args)],
-      },
-      pathOpenCommand: {
-        bundledExecutable: bundledExecutable(
-          "Contents",
-          "Resources",
-          "app",
-          "bin",
-          "devin-desktop",
-        ),
-        executable: "devin-desktop",
-        fallbackExecutables: [LEGACY_WINDSURF_EXECUTABLE],
-        toArgs: (path) => [path],
-      },
-      remoteSshOpenCommand: {
-        bundledExecutable: bundledExecutable(
-          "Contents",
-          "Resources",
-          "app",
-          "bin",
-          "devin-desktop",
-        ),
-        capabilities: FULL_FILE_OPEN_CAPABILITIES,
-        executable: "devin-desktop",
-        fallbackExecutables: [LEGACY_WINDSURF_EXECUTABLE],
-        toArgs: (args) => [
-          "--remote",
-          `ssh-remote+${args.sshAuthority}`,
-          ...(args.lineNumber === null
-            ? [args.path]
-            : [
-                "-g",
-                formatPathWithLineNumber({
-                  lineNumber: args.lineNumber,
-                  columnNumber: args.columnNumber,
-                  path: args.path,
-                }),
-              ]),
-        ],
-      },
+      }),
     },
   },
   {
@@ -475,214 +443,78 @@ export const LAUNCH_ADAPTERS: LaunchAdapter[] = [
       builtIn: false,
     },
   },
-  {
-    capabilities: FULL_FILE_OPEN_CAPABILITIES,
+  jetBrainsEditorAdapter({
     icon: { kind: "builtin", name: "intellij" },
     id: "intellij-idea",
-    kind: "editor",
     label: "IntelliJ IDEA",
-    fileOpenBehavior: "direct",
-    macos: {
-      openMode: "application",
-      appName: "IntelliJ IDEA",
-      bundleIds: ["com.jetbrains.intellij", "com.jetbrains.intellij.ce"],
-      builtIn: false,
-      jetBrainsToolbox: jetBrainsToolbox("idea", "intellij idea"),
-      lineOpenCommand: {
-        bundledExecutable: jetBrainsBundledExecutable("idea"),
-        executable: "idea",
-        supportsColumn: true,
-        toArgs: formatJetBrainsLineOpenArgs,
-      },
-      pathOpenCommand: {
-        bundledExecutable: jetBrainsBundledExecutable("idea"),
-        executable: "idea",
-        toArgs: (path) => [path],
-      },
-    },
-  },
-  {
-    capabilities: FULL_FILE_OPEN_CAPABILITIES,
+    appName: "IntelliJ IDEA",
+    bundleIds: ["com.jetbrains.intellij", "com.jetbrains.intellij.ce"],
+    executable: "idea",
+    toolboxPrefix: "intellij idea",
+  }),
+  jetBrainsEditorAdapter({
     icon: { kind: "builtin", name: "pycharm" },
     id: "pycharm",
-    kind: "editor",
     label: "PyCharm",
-    fileOpenBehavior: "direct",
-    macos: {
-      openMode: "application",
-      appName: "PyCharm",
-      bundleIds: ["com.jetbrains.pycharm", "com.jetbrains.pycharm.ce"],
-      builtIn: false,
-      jetBrainsToolbox: jetBrainsToolbox("pycharm", "pycharm"),
-      lineOpenCommand: {
-        bundledExecutable: jetBrainsBundledExecutable("pycharm"),
-        executable: "pycharm",
-        supportsColumn: true,
-        toArgs: formatJetBrainsLineOpenArgs,
-      },
-      pathOpenCommand: {
-        bundledExecutable: jetBrainsBundledExecutable("pycharm"),
-        executable: "pycharm",
-        toArgs: (path) => [path],
-      },
-    },
-  },
-  {
-    capabilities: FULL_FILE_OPEN_CAPABILITIES,
+    appName: "PyCharm",
+    bundleIds: ["com.jetbrains.pycharm", "com.jetbrains.pycharm.ce"],
+    executable: "pycharm",
+    toolboxPrefix: "pycharm",
+  }),
+  jetBrainsEditorAdapter({
     icon: { kind: "builtin", name: "webstorm" },
     id: "webstorm",
-    kind: "editor",
     label: "WebStorm",
-    fileOpenBehavior: "direct",
-    macos: {
-      openMode: "application",
-      appName: "WebStorm",
-      bundleIds: ["com.jetbrains.WebStorm"],
-      builtIn: false,
-      jetBrainsToolbox: jetBrainsToolbox("webstorm", "webstorm"),
-      lineOpenCommand: {
-        bundledExecutable: jetBrainsBundledExecutable("webstorm"),
-        executable: "webstorm",
-        supportsColumn: true,
-        toArgs: formatJetBrainsLineOpenArgs,
-      },
-      pathOpenCommand: {
-        bundledExecutable: jetBrainsBundledExecutable("webstorm"),
-        executable: "webstorm",
-        toArgs: (path) => [path],
-      },
-    },
-  },
-  {
-    capabilities: FULL_FILE_OPEN_CAPABILITIES,
+    appName: "WebStorm",
+    bundleIds: ["com.jetbrains.WebStorm"],
+    executable: "webstorm",
+    toolboxPrefix: "webstorm",
+  }),
+  jetBrainsEditorAdapter({
     icon: { kind: "builtin", name: "goland" },
     id: "goland",
-    kind: "editor",
     label: "GoLand",
-    fileOpenBehavior: "direct",
-    macos: {
-      openMode: "application",
-      appName: "GoLand",
-      bundleIds: ["com.jetbrains.goland"],
-      builtIn: false,
-      jetBrainsToolbox: jetBrainsToolbox("goland", "goland"),
-      lineOpenCommand: {
-        bundledExecutable: jetBrainsBundledExecutable("goland"),
-        executable: "goland",
-        supportsColumn: true,
-        toArgs: formatJetBrainsLineOpenArgs,
-      },
-      pathOpenCommand: {
-        bundledExecutable: jetBrainsBundledExecutable("goland"),
-        executable: "goland",
-        toArgs: (path) => [path],
-      },
-    },
-  },
-  {
-    capabilities: FULL_FILE_OPEN_CAPABILITIES,
+    appName: "GoLand",
+    bundleIds: ["com.jetbrains.goland"],
+    executable: "goland",
+    toolboxPrefix: "goland",
+  }),
+  jetBrainsEditorAdapter({
     icon: { kind: "builtin", name: "rider" },
     id: "rider",
-    kind: "editor",
     label: "Rider",
-    fileOpenBehavior: "direct",
-    macos: {
-      openMode: "application",
-      appName: "Rider",
-      bundleIds: ["com.jetbrains.rider"],
-      builtIn: false,
-      jetBrainsToolbox: jetBrainsToolbox("rider", "rider"),
-      lineOpenCommand: {
-        bundledExecutable: jetBrainsBundledExecutable("rider"),
-        executable: "rider",
-        supportsColumn: true,
-        toArgs: formatJetBrainsLineOpenArgs,
-      },
-      pathOpenCommand: {
-        bundledExecutable: jetBrainsBundledExecutable("rider"),
-        executable: "rider",
-        toArgs: (path) => [path],
-      },
-    },
-  },
-  {
-    capabilities: FULL_FILE_OPEN_CAPABILITIES,
+    appName: "Rider",
+    bundleIds: ["com.jetbrains.rider"],
+    executable: "rider",
+    toolboxPrefix: "rider",
+  }),
+  jetBrainsEditorAdapter({
     icon: { kind: "builtin", name: "rustrover" },
     id: "rustrover",
-    kind: "editor",
     label: "RustRover",
-    fileOpenBehavior: "direct",
-    macos: {
-      openMode: "application",
-      appName: "RustRover",
-      bundleIds: ["com.jetbrains.rustrover"],
-      builtIn: false,
-      jetBrainsToolbox: jetBrainsToolbox("rustrover", "rustrover"),
-      lineOpenCommand: {
-        bundledExecutable: jetBrainsBundledExecutable("rustrover"),
-        executable: "rustrover",
-        supportsColumn: true,
-        toArgs: formatJetBrainsLineOpenArgs,
-      },
-      pathOpenCommand: {
-        bundledExecutable: jetBrainsBundledExecutable("rustrover"),
-        executable: "rustrover",
-        toArgs: (path) => [path],
-      },
-    },
-  },
-  {
-    capabilities: FULL_FILE_OPEN_CAPABILITIES,
+    appName: "RustRover",
+    bundleIds: ["com.jetbrains.rustrover"],
+    executable: "rustrover",
+    toolboxPrefix: "rustrover",
+  }),
+  jetBrainsEditorAdapter({
     icon: { kind: "builtin", name: "phpstorm" },
     id: "phpstorm",
-    kind: "editor",
     label: "PhpStorm",
-    fileOpenBehavior: "direct",
-    macos: {
-      openMode: "application",
-      appName: "PhpStorm",
-      bundleIds: ["com.jetbrains.PhpStorm"],
-      builtIn: false,
-      jetBrainsToolbox: jetBrainsToolbox("phpstorm", "phpstorm"),
-      lineOpenCommand: {
-        bundledExecutable: jetBrainsBundledExecutable("phpstorm"),
-        executable: "phpstorm",
-        supportsColumn: true,
-        toArgs: formatJetBrainsLineOpenArgs,
-      },
-      pathOpenCommand: {
-        bundledExecutable: jetBrainsBundledExecutable("phpstorm"),
-        executable: "phpstorm",
-        toArgs: (path) => [path],
-      },
-    },
-  },
-  {
-    capabilities: FULL_FILE_OPEN_CAPABILITIES,
+    appName: "PhpStorm",
+    bundleIds: ["com.jetbrains.PhpStorm"],
+    executable: "phpstorm",
+    toolboxPrefix: "phpstorm",
+  }),
+  jetBrainsEditorAdapter({
     icon: { kind: "builtin", name: "android-studio" },
     id: "android-studio",
-    kind: "editor",
     label: "Android Studio",
-    fileOpenBehavior: "direct",
-    macos: {
-      openMode: "application",
-      appName: "Android Studio",
-      bundleIds: ["com.google.android.studio"],
-      builtIn: false,
-      jetBrainsToolbox: jetBrainsToolbox("studio", "android studio"),
-      lineOpenCommand: {
-        bundledExecutable: jetBrainsBundledExecutable("studio"),
-        executable: "studio",
-        supportsColumn: true,
-        toArgs: formatJetBrainsLineOpenArgs,
-      },
-      pathOpenCommand: {
-        bundledExecutable: jetBrainsBundledExecutable("studio"),
-        executable: "studio",
-        toArgs: (path) => [path],
-      },
-    },
-  },
+    appName: "Android Studio",
+    bundleIds: ["com.google.android.studio"],
+    executable: "studio",
+    toolboxPrefix: "android studio",
+  }),
   {
     capabilities: FULL_FILE_OPEN_CAPABILITIES,
     icon: { kind: "builtin", name: "antigravity" },
@@ -695,54 +527,10 @@ export const LAUNCH_ADAPTERS: LaunchAdapter[] = [
       appName: "Antigravity",
       bundleIds: ["com.google.antigravity", "com.googlelabs.antigravity"],
       builtIn: false,
-      lineOpenCommand: {
-        bundledExecutable: bundledExecutable(
-          "Contents",
-          "Resources",
-          "app",
-          "bin",
-          "antigravity",
-        ),
+      ...vsCodeFamilyCommands({
+        bundledExecutable: resourcesAppBinExecutable("antigravity"),
         executable: "antigravity",
-        supportsColumn: true,
-        toArgs: (args) => ["-g", formatPathWithLineNumber(args)],
-      },
-      pathOpenCommand: {
-        bundledExecutable: bundledExecutable(
-          "Contents",
-          "Resources",
-          "app",
-          "bin",
-          "antigravity",
-        ),
-        executable: "antigravity",
-        toArgs: (path) => [path],
-      },
-      remoteSshOpenCommand: {
-        bundledExecutable: bundledExecutable(
-          "Contents",
-          "Resources",
-          "app",
-          "bin",
-          "antigravity",
-        ),
-        capabilities: FULL_FILE_OPEN_CAPABILITIES,
-        executable: "antigravity",
-        toArgs: (args) => [
-          "--remote",
-          `ssh-remote+${args.sshAuthority}`,
-          ...(args.lineNumber === null
-            ? [args.path]
-            : [
-                "-g",
-                formatPathWithLineNumber({
-                  lineNumber: args.lineNumber,
-                  columnNumber: args.columnNumber,
-                  path: args.path,
-                }),
-              ]),
-        ],
-      },
+      }),
     },
   },
   {
@@ -794,32 +582,7 @@ export const LAUNCH_ADAPTERS: LaunchAdapter[] = [
       appName: "Terminal",
       bundleIds: ["com.apple.Terminal"],
       builtIn: true,
-      localTerminalOpenCommand: {
-        executable: "osascript",
-        toArgs: (args) =>
-          buildMacTerminalLocalOpenArgs({
-            appName: "Terminal",
-            columnNumber: args.columnNumber,
-            editorCommand: args.editorCommand,
-            lineNumber: args.lineNumber,
-            path: args.path,
-            pathType: args.pathType,
-            shellPath: args.shellPath,
-          }),
-      },
-      remoteSshOpenCommand: {
-        capabilities: TERMINAL_OPEN_CAPABILITIES,
-        executable: "osascript",
-        requiredExecutables: ["ssh"],
-        toArgs: (args) =>
-          buildMacTerminalRemoteSshOpenArgs({
-            appName: "Terminal",
-            columnNumber: args.columnNumber,
-            lineNumber: args.lineNumber,
-            path: args.path,
-            sshAuthority: args.sshAuthority,
-          }),
-      },
+      ...macTerminalAppCommands("Terminal"),
     },
   },
   {
@@ -834,32 +597,7 @@ export const LAUNCH_ADAPTERS: LaunchAdapter[] = [
       appName: "iTerm",
       bundleIds: ["com.googlecode.iterm2"],
       builtIn: false,
-      localTerminalOpenCommand: {
-        executable: "osascript",
-        toArgs: (args) =>
-          buildMacTerminalLocalOpenArgs({
-            appName: "iTerm",
-            columnNumber: args.columnNumber,
-            editorCommand: args.editorCommand,
-            lineNumber: args.lineNumber,
-            path: args.path,
-            pathType: args.pathType,
-            shellPath: args.shellPath,
-          }),
-      },
-      remoteSshOpenCommand: {
-        capabilities: TERMINAL_OPEN_CAPABILITIES,
-        executable: "osascript",
-        requiredExecutables: ["ssh"],
-        toArgs: (args) =>
-          buildMacTerminalRemoteSshOpenArgs({
-            appName: "iTerm",
-            columnNumber: args.columnNumber,
-            lineNumber: args.lineNumber,
-            path: args.path,
-            sshAuthority: args.sshAuthority,
-          }),
-      },
+      ...macTerminalAppCommands("iTerm"),
     },
   },
   {

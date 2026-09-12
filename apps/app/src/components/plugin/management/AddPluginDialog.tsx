@@ -313,7 +313,6 @@ function AddPluginDialogContent({
                 {initial.entryId}
               </span>
             </div>
-            {}
             <p className="overflow-x-auto whitespace-nowrap font-mono text-2xs text-subtle-foreground">
               {initial.source}
             </p>
@@ -340,6 +339,15 @@ function AddPluginDialogContent({
             pending={planQuery.isPending}
             error={planQuery.error}
           />
+        ) : null}
+
+        {install.isError ? (
+          <p
+            role="alert"
+            className="max-h-40 overflow-y-auto whitespace-pre-wrap break-words text-xs text-warning-text"
+          >
+            {pluginAdminErrorMessage(install.error)}
+          </p>
         ) : null}
 
         {install.isPending ? (

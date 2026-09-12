@@ -1,5 +1,5 @@
-import { buildThreadEvent, getThreadEventScopeTurnId } from "@bb/domain";
-import type { ThreadEvent, ThreadEventRow } from "@bb/domain";
+import { getThreadEventScopeTurnId } from "@bb/domain";
+import type { ThreadEvent } from "@bb/domain";
 import { assertNever } from "./assert-never.js";
 
 export function getEventTurnId(decoded: ThreadEvent): string | undefined {
@@ -130,22 +130,4 @@ export interface EventMeta {
   id: string;
   seq: number;
   createdAt: number;
-}
-
-function buildEventMeta(row: ThreadEventRow): EventMeta {
-  return {
-    id: row.id,
-    seq: row.seq,
-    createdAt: row.createdAt,
-  };
-}
-
-export function decodeThreadEventRow(row: ThreadEventRow): {
-  event: ThreadEvent;
-  meta: EventMeta;
-} {
-  return {
-    event: buildThreadEvent(row),
-    meta: buildEventMeta(row),
-  };
 }

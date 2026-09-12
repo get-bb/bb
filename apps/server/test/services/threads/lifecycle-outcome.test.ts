@@ -120,7 +120,6 @@ function setup(status: ThreadStatus): Setup {
   migrate(db);
   const hub = new NotificationHub();
   const host = upsertHost(db, noopNotifier, {
-    type: "persistent",
     id: "host-lifecycle-outcome",
     name: "Lifecycle Outcome Host",
   });
@@ -155,7 +154,6 @@ function connectDaemon(db: DbConnection, hub: NotificationHub, hostId: string) {
     hostId,
     instanceId: `instance-${randomUUID()}`,
     hostName: "Lifecycle Outcome Host",
-    hostType: "persistent",
     dataDir: `/tmp/${hostId}`,
     protocolVersion: 1,
     heartbeatIntervalMs: 5_000,

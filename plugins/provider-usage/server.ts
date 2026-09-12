@@ -97,8 +97,8 @@ function normalizedProvider(
     id: provider.id,
     displayName: provider.displayName,
     logoUrl: provider.logoUrl,
-    iconGlyph: provider.icon?.glyph ?? null,
-    iconTint: normalizedTint(provider.strings?.iconTint),
+    icon: provider.icon ?? null,
+    strings: { iconTint: normalizedTint(provider.strings?.iconTint) },
     signInHint:
       provider.strings?.signInHint ??
       "Sign in to " + provider.displayName + ", then reload usage.",

@@ -55,3 +55,27 @@ export function renderBorderlessTable(
     .map((line) => line.trimEnd())
     .join("\n");
 }
+
+export function printBorderlessTable(
+  options: BorderlessTableOptions,
+  rows: string[][],
+): void {
+  console.log("");
+  console.log(renderBorderlessTable(options, rows));
+  console.log("");
+}
+
+export function columnWidths(
+  rows: string[][],
+  minimums: readonly number[],
+): number[] {
+  return minimums.map((minimum, index) =>
+    Math.max(minimum, ...rows.map((row) => row[index].length)),
+  );
+}
+
+export function truncateCell(value: string, maxWidth: number): string {
+  const singleLine = value.replace(/\s+/gu, " ");
+  if (singleLine.length <= maxWidth) return singleLine;
+  return `${singleLine.slice(0, maxWidth - 1)}…`;
+}

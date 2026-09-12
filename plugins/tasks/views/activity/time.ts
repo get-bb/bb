@@ -58,15 +58,17 @@ export function formatFileSize(sizeBytes: number): string {
   return `${(kb / 1024).toFixed(1)} MB`;
 }
 
-export function useNowTick(intervalMs = 30_000): number {
+const NOW_TICK_INTERVAL_MS = 30_000;
+
+export function useNowTick(): number {
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => {
     const id = setInterval(() => {
       const active = document.activeElement;
       if (active instanceof HTMLElement && active.isContentEditable) return;
       setNow(Date.now());
-    }, intervalMs);
+    }, NOW_TICK_INTERVAL_MS);
     return () => clearInterval(id);
-  }, [intervalMs]);
+  }, []);
   return now;
 }

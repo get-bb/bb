@@ -779,24 +779,6 @@ async function smokePluginHostWorkerBundle(packageDir) {
   }
 }
 
-/**
- * The semantic deltas a `thread/delta` notification batches, or [] for
- * anything else. Bridge-protocol v2 carries no finished timeline events on
- * this wire — the runtime's assembler builds those — so the smoke asserts
- * against the delta grammar directly.
- */
-function threadDeltas(message) {
-  if (
-    !isRecord(message) ||
-    message.method !== "thread/delta" ||
-    !isRecord(message.params) ||
-    !Array.isArray(message.params.deltas)
-  ) {
-    return [];
-  }
-  return message.params.deltas.filter(isRecord);
-}
-
 async function smokeHelpCommands(binDir) {
   await runCommand({
     ...createInstalledBinInvocation(binDir, "bb-app", ["--help"]),
@@ -883,6 +865,25 @@ async function smokeSdkPackage(tarballPath) {
     command: "node",
     cwd: sdkDir,
     label: "bb-app SDK JavaScript import",
+  });
+  await runCommand({
+    command: process.execPath,
+    args: [
+      "--input-type=module",
+      "-e",
+      [
+        'import { createRequire } from "node:module";',
+        'import { dirname, join } from "node:path";',
+        'import { execFileSync } from "node:child_process";',
+        "const require = createRequire(import.meta.url);",
+        'const bbRequire = createRequire(require.resolve("bb-app"));',
+        'const npmRoot = dirname(bbRequire.resolve("npm/package.json"));',
+        'const version = execFileSync(process.execPath, [join(npmRoot, "bin/npm-cli.js"), "--version"], { encoding: "utf8", env: { ...process.env, PATH: "" } }).trim();',
+        'if (version !== bbRequire("npm/package.json").version) process.exit(1);',
+      ].join("\n"),
+    ],
+    cwd: sdkDir,
+    label: "shipped npm without Node or npm on PATH",
   });
   await writeFile(
     join(sdkDir, "sdk-smoke.ts"),

@@ -10,7 +10,6 @@ import { runtimeErrorLogFields } from "../lib/error-log-fields.js";
 import { INFERENCE_POLICY } from "../ai/inference.js";
 
 interface ThreadMetadataInferenceArgs {
-  environmentId: string | null;
   input: PromptInput[];
   provisioningId: string;
   threadId: string;
@@ -54,7 +53,7 @@ export async function inferThreadMetadata(
   if (args.writeTranscript) {
     appendThreadProvisioningEvent(deps, {
       threadId: args.threadId,
-      environmentId: args.environmentId,
+      environmentId: null,
       provisioningId,
       status: "active",
       entries: [
@@ -79,10 +78,12 @@ export async function inferThreadMetadata(
   if (args.writeTranscript) {
     appendThreadProvisioningEvent(deps, {
       threadId: args.threadId,
-      environmentId: args.environmentId,
+      environmentId: null,
       provisioningId,
       status: "active",
-      entries: [metadataCompletedEntry({ outcome, startedAt })],
+      entries: [
+        metadataCompletedEntry({ outcome, startedAt }),
+      ],
     });
   }
 

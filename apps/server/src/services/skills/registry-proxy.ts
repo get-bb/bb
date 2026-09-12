@@ -1,4 +1,5 @@
 import { ApiError } from "../../errors.js";
+import { createAsyncTtlMemo } from "../lib/async-ttl-memo.js";
 import type {
   RegistryPagination,
   RegistryRanking,
@@ -36,16 +37,12 @@ const registryDetailCache = new Map<
   string,
   { detail: RegistrySkillDetail; expiresAt: number }
 >();
-const registryEntryCache = new Map<
-  string,
-  { entry: RegistrySkill; expiresAt: number }
->();
-const registryEntryRequests = new Map<string, Promise<RegistrySkill>>();
-const githubSkillPathCache = new Map<
-  string,
-  { paths: string[]; expiresAt: number }
->();
-const githubSkillPathRequests = new Map<string, Promise<string[] | null>>();
+const registryEntryMemo = createAsyncTtlMemo<string, RegistrySkill>({
+  ttlMs: REGISTRY_ENTRY_CACHE_TTL_MS,
+});
+const githubSkillPathMemo = createAsyncTtlMemo<string, string[]>({
+  ttlMs: GITHUB_SKILL_PATH_CACHE_TTL_MS,
+});
 const githubRepositoryStarsCache = new Map<
   string,
   { stars: number | null; expiresAt: number }
@@ -172,7 +169,7 @@ async function fetchGithubSkillMarkdown(
   const directMatch = candidates.find((candidate) => candidate !== null);
   if (directMatch) return directMatch;
 
-  const repositoryPaths = await fetchGithubSkillPaths(repo);
+  const repositoryPaths = await fetchGithubSkillPaths(repo).catch(() => null);
   if (repositoryPaths === null) return null;
   const normalizedSkillId = skillId.toLowerCase();
   const nestedPath = repositoryPaths
@@ -208,47 +205,32 @@ async function fetchPublicSkillMarkdown(
   }
 }
 
-async function fetchGithubSkillPaths(repo: string): Promise<string[] | null> {
-  const cached = githubSkillPathCache.get(repo);
-  if (cached && cached.expiresAt > Date.now()) return cached.paths;
-
-  const inFlight = githubSkillPathRequests.get(repo);
-  if (inFlight) return inFlight;
-
-  const request = (async () => {
-    try {
-      const response = await registryFetch(
-        `https://api.github.com/repos/${repo}/git/trees/HEAD?recursive=1`,
-        {
-          headers: {
-            accept: "application/vnd.github+json",
-            "user-agent": "bb-skills-registry",
-          },
+function fetchGithubSkillPaths(repo: string): Promise<string[]> {
+  return githubSkillPathMemo.run(repo, async () => {
+    const response = await registryFetch(
+      `https://api.github.com/repos/${repo}/git/trees/HEAD?recursive=1`,
+      {
+        headers: {
+          accept: "application/vnd.github+json",
+          "user-agent": "bb-skills-registry",
         },
+      },
+    );
+    if (!response.ok) {
+      throw new Error(
+        `GitHub tree request failed with HTTP ${response.status}`,
       );
-      if (!response.ok) return null;
-      const body: unknown = await response.json().catch(() => null);
-      if (!isRecord(body) || !Array.isArray(body.tree)) return null;
-      const paths = body.tree.flatMap((entry) =>
-        isRecord(entry) &&
-        entry.type === "blob" &&
-        typeof entry.path === "string"
-          ? [entry.path]
-          : [],
-      );
-      githubSkillPathCache.set(repo, {
-        paths,
-        expiresAt: Date.now() + GITHUB_SKILL_PATH_CACHE_TTL_MS,
-      });
-      return paths;
-    } catch {
-      return null;
-    } finally {
-      githubSkillPathRequests.delete(repo);
     }
-  })();
-  githubSkillPathRequests.set(repo, request);
-  return request;
+    const body: unknown = await response.json().catch(() => null);
+    if (!isRecord(body) || !Array.isArray(body.tree)) {
+      throw new Error("GitHub tree response is malformed");
+    }
+    return body.tree.flatMap((entry) =>
+      isRecord(entry) && entry.type === "blob" && typeof entry.path === "string"
+        ? [entry.path]
+        : [],
+    );
+  });
 }
 
 export async function fetchRegistryRepositoryStars(
@@ -469,14 +451,7 @@ export async function resolveRegistrySkillById(
   id: string,
 ): Promise<RegistrySkill> {
   const { source, skillId } = parseRegistrySkillId(id);
-
-  const cached = registryEntryCache.get(id);
-  if (cached && cached.expiresAt > Date.now()) return cached.entry;
-
-  const inFlight = registryEntryRequests.get(id);
-  if (inFlight) return inFlight;
-
-  const request = (async () => {
+  return registryEntryMemo.run(id, async () => {
     const response = await registryFetch(registrySkillUrl(id));
     if (!response.ok) {
       throw new ApiError(
@@ -498,13 +473,6 @@ export async function resolveRegistrySkillById(
         "Registry skill not found",
       );
     }
-    registryEntryCache.set(id, {
-      entry,
-      expiresAt: Date.now() + REGISTRY_ENTRY_CACHE_TTL_MS,
-    });
     return entry;
-  })();
-  registryEntryRequests.set(id, request);
-  void request.finally(() => registryEntryRequests.delete(id)).catch(() => {});
-  return request;
+  });
 }

@@ -356,7 +356,7 @@ export function ThreadActionsProvider({
   const toggleRead = useCallback(
     (thread: Thread) => {
       if (getThreadReadToggleAction(thread) === "mark_unread") {
-        markUnreadMutate(thread.id, {
+        markUnreadMutate({ threadId: thread.id }, {
           onError: (error) => {
             showMutationErrorToast({
               error,
@@ -366,7 +366,7 @@ export function ThreadActionsProvider({
         });
         return;
       }
-      markReadMutate(thread.id, {
+      markReadMutate({ threadId: thread.id }, {
         onError: (error) => {
           showMutationErrorToast({
             error,

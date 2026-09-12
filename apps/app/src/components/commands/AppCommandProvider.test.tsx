@@ -601,7 +601,6 @@ describe("AppCommandProvider", () => {
         <>
           <Handler command={command} name={command} result={true} />
           <div role="dialog" aria-modal="true" data-state="closed" inert>
-            {}
             <div role="dialog" data-state="open">
               <button type="button">Sidebar entry</button>
             </div>

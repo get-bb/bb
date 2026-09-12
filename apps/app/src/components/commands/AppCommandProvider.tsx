@@ -24,10 +24,10 @@ import {
 import { useSystemConfig } from "@/hooks/queries/system-queries";
 import { getBbDesktopInfo } from "@/lib/bb-desktop";
 import {
-  formatAppShortcut,
-  formatAppShortcutAria,
+  browserPlatform,
   isEditableKeyboardTarget,
   matchesAppCommandContext,
+  presentAppShortcut,
   type AppShortcutPresentation,
 } from "@/lib/app-keybindings";
 
@@ -84,10 +84,6 @@ const EMPTY_CONTEXT: AppCommandContext = {
   webSurface: false,
   macPlatform: false,
 };
-
-function browserPlatform(): string {
-  return typeof navigator === "undefined" ? "" : navigator.platform;
-}
 
 const OPEN_MODAL_SELECTOR = [
   '[aria-modal="true"]:not([inert]):not([inert] *):not([data-state="closed"])',
@@ -381,18 +377,13 @@ export function useAppCommandHandler(
   priority = 0,
   enabled = true,
 ): void {
-  const registerHandler = useContext(AppCommandContextValue)?.registerHandler;
-  const handlerRef = useRef(handler);
-  useLayoutEffect(() => {
-    handlerRef.current = handler;
-  }, [handler]);
-  useEffect(() => {
-    if (!registerHandler || !enabled) return;
-    return registerHandler(command, {
-      handler: (invocation) => handlerRef.current(invocation),
-      priority,
-    });
-  }, [command, enabled, priority, registerHandler]);
+  const commands = useMemo(() => [command], [command]);
+  useIndexedAppCommandHandlers(
+    commands,
+    (_index, invocation) => handler(invocation),
+    priority,
+    enabled,
+  );
 }
 
 export function useIndexedAppCommandHandlers(
@@ -471,11 +462,7 @@ export function useAppCommandShortcut(
   return useMemo(() => {
     const shortcut = value?.getShortcut(command);
     if (!shortcut) return null;
-    const platform = browserPlatform();
-    return {
-      ariaKeyshortcuts: formatAppShortcutAria(shortcut, platform),
-      label: formatAppShortcut(shortcut, platform),
-    };
+    return presentAppShortcut(shortcut, browserPlatform());
   }, [command, value]);
 }
 
@@ -493,10 +480,7 @@ export function useAppCommandShortcuts(
     for (const command of commands) {
       const shortcut = value?.getShortcut(command);
       if (!shortcut) continue;
-      presentations.set(command, {
-        ariaKeyshortcuts: formatAppShortcutAria(shortcut, platform),
-        label: formatAppShortcut(shortcut, platform),
-      });
+      presentations.set(command, presentAppShortcut(shortcut, platform));
     }
     return presentations;
   }, [commands, value]);

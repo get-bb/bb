@@ -4,7 +4,7 @@ import { describe, expect, it } from "vitest";
 
 import { stringifySiteSearch } from "../lib/search-serialization.js";
 import {
-  loadPublicMarketplace,
+  createPublicMarketplaceCache,
   type PublicMarketplaceData,
 } from "./marketplace-data.js";
 import {
@@ -45,7 +45,10 @@ describe("marketplace routes", () => {
       read: async () => ({ schemaVersion: 2, plugins: "invalid" }),
     },
   ])("returns a noindex 503 for a $name", async ({ read }) => {
-    const marketplace = await loadPublicMarketplace(read);
+    const marketplace = await createPublicMarketplaceCache(async (path) => ({
+      etag: path,
+      value: await read(),
+    }))();
     expect(marketplace).toEqual({ status: "unavailable" });
     expect(marketplaceResponseStatus("/marketplace", [marketplace])).toBe(503);
     expect(marketplaceHtmlCacheControl("/marketplace", 503)).toBe("no-store");
@@ -93,11 +96,12 @@ describe("marketplace routes", () => {
   });
 
   it("keeps an empty catalog available", async () => {
-    const marketplace = await loadPublicMarketplace(async (path) =>
-      path.endsWith("stats.json")
+    const marketplace = await createPublicMarketplaceCache(async (path) => ({
+      etag: path,
+      value: path.endsWith("stats.json")
         ? MARKETPLACE_STATS_FIXTURE
         : { ...MARKETPLACE_V2_FIXTURE, plugins: [] },
-    );
+    }))();
     expect(marketplace).toMatchObject({
       status: "available",
       manifest: { plugins: [] },

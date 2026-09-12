@@ -2,8 +2,11 @@ import { mkdir, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { dirname, join, resolve, sep } from "node:path";
 import type { BbPluginApi } from "@get-bb/plugin-sdk";
 import type { Attachment, TasksStore } from "../db";
-
-export const MAX_ATTACHMENT_SIZE_BYTES = 25 * 1024 * 1024;
+import {
+  attachmentDownloadUrl,
+  MAX_ATTACHMENT_SIZE_BYTES,
+} from "../shared/attachments";
+import { errorMessage } from "../shared/errors";
 
 const INLINE_RASTER_MIMES = new Set([
   "image/png",
@@ -83,7 +86,7 @@ function removeAttachmentDescriptionReferences(
   markdown: string,
   attachmentId: string,
 ): string {
-  const url = escapeRegExp(buildAttachmentUrl(attachmentId));
+  const url = escapeRegExp(attachmentDownloadUrl(attachmentId));
   return markdown.replace(new RegExp(`!\\[[^\\]]*\\]\\(${url}\\)`, "g"), "");
 }
 
@@ -137,10 +140,7 @@ export async function removeAttachmentBlobs(
   const failures = removals.flatMap((result, index) => {
     if (result.status === "fulfilled") return [];
     const attachment = attachments[index];
-    const message =
-      result.reason instanceof Error
-        ? result.reason.message
-        : String(result.reason);
+    const message = errorMessage(result.reason);
     bb.log.warn(
       `failed to remove attachment blob ${attachment?.id ?? "unknown"}: ${message}`,
     );
@@ -376,10 +376,6 @@ async function persistAttachment(
   }
 }
 
-export function buildAttachmentUrl(attachmentId: string): string {
-  return `/api/v1/plugins/tasks/http${DOWNLOAD_PATH}?attachmentId=${encodeURIComponent(attachmentId)}`;
-}
-
 export async function saveAttachmentFromBytes(
   store: TasksStore,
   bytes: Uint8Array,
@@ -437,7 +433,7 @@ export async function deleteAttachmentById(
       : undefined);
   const ownerTask = taskId ? store.getTask(taskId) : undefined;
   let nextDescription: string | undefined;
-  if (ownerTask?.description.includes(buildAttachmentUrl(attachment.id))) {
+  if (ownerTask?.description.includes(attachmentDownloadUrl(attachment.id))) {
     if (!options.removeDescriptionReferences) {
       throw new AttachmentReferencedError(attachment);
     }
@@ -515,7 +511,7 @@ export function registerAttachments(
         return context.json(
           {
             attachmentId: attachment.id,
-            url: buildAttachmentUrl(attachment.id),
+            url: attachmentDownloadUrl(attachment.id),
           },
           201,
         );

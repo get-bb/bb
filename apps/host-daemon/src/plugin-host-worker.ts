@@ -1,7 +1,36 @@
+import { z } from "zod";
 import { isAbsolute } from "node:path";
 import { pathToFileURL } from "node:url";
 
 const HOST_WORKER_PROTOCOL_VERSION = 2;
+function createOperationEnvironmentScope(target: NodeJS.ProcessEnv) {
+  let active = 0;
+  let current: Record<string, string> = {};
+  let previous: NodeJS.ProcessEnv = {};
+  return (env: Record<string, string>): (() => void) => {
+    if (active === 0) {
+      current = env;
+      previous = {};
+      for (const [name, value] of Object.entries(env)) {
+        previous[name] = target[name];
+        target[name] = value;
+      }
+    }
+    active += 1;
+    return () => {
+      active -= 1;
+      if (active !== 0) return;
+      for (const name of Object.keys(current)) {
+        if (previous[name] === undefined) delete target[name];
+        else target[name] = previous[name];
+      }
+      current = {};
+      previous = {};
+    };
+  };
+}
+
+const acquireEnvironment = createOperationEnvironmentScope(process.env);
 const RESULT_MAX_BYTES = 8 * 1024 * 1024;
 const DEFAULT_DISPOSE_TIMEOUT_MS = 5_000;
 
@@ -103,6 +132,7 @@ type ParentMessage =
       readonly callId: string;
       readonly method: string;
       readonly input: unknown;
+      readonly envVars: Record<string, string>;
     }
   | { readonly type: "cancel"; readonly callId: string }
   | { readonly type: "dispose" }
@@ -236,11 +266,16 @@ function parseParentMessage(value: unknown): ParentMessage | null {
     typeof value.callId === "string" &&
     typeof value.method === "string"
   ) {
+    const envVars = z
+      .record(z.string().regex(/^[^=\x00]+$/u), z.string())
+      .safeParse(value.envVars ?? {});
+    if (!envVars.success) return null;
     return {
       type: "call",
       callId: value.callId,
       method: value.method,
       input: value.input,
+      envVars: envVars.data,
     };
   }
   return null;
@@ -492,7 +527,10 @@ async function handleCall(
   const controller = new AbortController();
   activeCalls.set(message.callId, controller);
   let contextOpen = true;
+  let releaseEnvironment: (() => void) | undefined;
   try {
+    releaseEnvironment = acquireEnvironment(message.envVars);
+    controller.signal.throwIfAborted();
     const input = await validate(method.input, message.input);
     const result = await handler(input, {
       signal: controller.signal,
@@ -548,6 +586,7 @@ async function handleCall(
   } finally {
     contextOpen = false;
     activeCalls.delete(message.callId);
+    releaseEnvironment?.();
   }
 }
 

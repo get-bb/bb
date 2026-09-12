@@ -9,6 +9,7 @@ import {
   accountPoolConfigSchema,
   accountPoolConfigSetInputSchema,
   type AccountPoolConfigController,
+  type PoolProvider,
 } from "./contracts.js";
 import type {
   ImportedClaudeCredentials,
@@ -39,7 +40,6 @@ export interface AccountPoolPluginOptions {
   codexRefreshUrl?: string;
   codexUsageUrl?: string;
   usageUrl?: string;
-  usageRefreshIntervalMs?: number;
   drainTimeoutMs?: number;
   maxAffinityBindings?: number;
   disposeTimeoutMs?: number;
@@ -115,7 +115,6 @@ export function createAccountPoolPlugin(
       profileUrl: options.oauthProfileUrl,
       importClaudeCredentials: options.importCredentials,
       importCodexCredentials: options.importCodexCredentials,
-      usageRefreshIntervalMs: options.usageRefreshIntervalMs,
       drainTimeoutMs: options.drainTimeoutMs,
       maxAffinityBindings: options.maxAffinityBindings,
       onUpstreamError: (provider, error) =>
@@ -168,6 +167,15 @@ export function createAccountPoolPlugin(
       createRpcHandlers(operations, login, codexLogin, config),
     );
     registerPoolCli(bb, operations, login, codexLogin, config);
+    const proxiedHealth = async (provider: PoolProvider) =>
+      (await operations.isRoutingEnabled(provider)) &&
+      (await operations.hasUsableEnabledAccount(provider))
+        ? {
+            label: "Proxied",
+            statusMessage:
+              "Credentials are provided by the Account Pooler hub.",
+          }
+        : null;
     bb.providers.experimental_contributeEnv("claude-code", async (context) => {
       if (
         !(await operations.isRoutingEnabled("claude")) ||
@@ -185,32 +193,22 @@ export function createAccountPoolPlugin(
             serverPath: "/api/v1/plugins/account-pool/http",
           },
           reason: "Routed through the Account Pooler hub",
-          secret: false,
         },
         {
           name: "ANTHROPIC_AUTH_TOKEN",
           value: token,
           reason: "Account Pooler hub token for this machine",
-          secret: true,
         },
         {
           name: "ENABLE_TOOL_SEARCH",
           value: "true",
           reason:
             "Claude Code turns tool search off behind a custom base URL; the hub forwards tool_reference blocks",
-          secret: false,
         },
       ];
     });
-    bb.providers.experimental_contributeEnvHealth("claude-code", async () =>
-      (await operations.isRoutingEnabled("claude")) &&
-      (await operations.hasUsableEnabledAccount("claude"))
-        ? {
-            label: "Proxied",
-            statusMessage:
-              "Credentials are provided by the Account Pooler hub.",
-          }
-        : null,
+    bb.providers.experimental_contributeEnvHealth("claude-code", () =>
+      proxiedHealth("claude"),
     );
     bb.providers.experimental_contributeEnv("codex", async (context) => {
       if (
@@ -228,25 +226,16 @@ export function createAccountPoolPlugin(
             serverPath: "/api/v1/plugins/account-pool/http/v1",
           },
           reason: "Routed through the Account Pooler hub",
-          secret: false,
         },
         {
           name: "CODEX_POOL_AUTH_TOKEN",
           value: token,
           reason: "Account Pooler hub token for this machine",
-          secret: true,
         },
       ];
     });
-    bb.providers.experimental_contributeEnvHealth("codex", async () =>
-      (await operations.isRoutingEnabled("codex")) &&
-      (await operations.hasUsableEnabledAccount("codex"))
-        ? {
-            label: "Proxied",
-            statusMessage:
-              "Credentials are provided by the Account Pooler hub.",
-          }
-        : null,
+    bb.providers.experimental_contributeEnvHealth("codex", () =>
+      proxiedHealth("codex"),
     );
     bb.onDispose(async () => {
       codexLogin.dispose();
@@ -292,6 +281,7 @@ export function createAccountPoolPlugin(
       "/v1/responses",
       "/v1/images/generations",
       "/v1/images/edits",
+      "/v1/alpha/search",
     ]) {
       bb.http.route(
         "POST",

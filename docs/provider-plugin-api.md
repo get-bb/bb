@@ -86,6 +86,13 @@ bb.providers.register({
 // => { dispose(): void }
 ```
 
+bb keeps each machine's last successful `model/list` answer per
+`models.scope` across daemon reconnects and server restarts, serves it
+immediately, and refreshes it in the background once it is 10 minutes old. A
+stored answer is discarded when the bridge fingerprint changes (plugin bundle
+digest, bridge options, env passthrough). A list that depends on login state,
+CLI version, or environment values is corrected only by the next refresh.
+
 Still experimental on the declaration (see api_to_audit.md):
 `experimental_visibility` (`"installed"` hides the row until the bridge's
 health probe finds the agent), `experimental_bridgeOptions` (immutable JSON

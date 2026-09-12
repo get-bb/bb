@@ -1,11 +1,26 @@
-import { execFileSync } from "node:child_process";
 import { existsSync, mkdtempSync, rmSync } from "node:fs";
 import { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { pathToFileURL } from "node:url";
-import { expect, it } from "vitest";
+import { expect, it, vi } from "vitest";
 import { z } from "zod";
+import { runBbApp } from "../src/launcher.js";
+
+async function captureStdout(run: () => Promise<void>): Promise<string> {
+  const chunks: string[] = [];
+  const write = vi
+    .spyOn(process.stdout, "write")
+    .mockImplementation((chunk) => {
+      chunks.push(typeof chunk === "string" ? chunk : chunk.toString());
+      return true;
+    });
+  try {
+    await run();
+  } finally {
+    write.mockRestore();
+  }
+  return chunks.join("");
+}
 
 it("previews occupied ports without creating data or starting services", async () => {
   const root = mkdtempSync(join(tmpdir(), "bb-start-dryrun-"));
@@ -25,24 +40,17 @@ it("previews occupied ports without creating data or starting services", async (
       String(address.port),
       "--host-daemon-port",
       String(address.port),
+      "--server-bind-host",
+      "127.0.0.1",
     ];
-    const moduleUrl = pathToFileURL(
-      join(import.meta.dirname, "../src/launcher.ts"),
-    ).href;
-    const output = execFileSync(
-      process.execPath,
-      [
-        "--conditions=source",
-        "--import",
-        "tsx",
-        "--input-type=module",
-        "--eval",
-        `import { runBbApp } from ${JSON.stringify(moduleUrl)}; await runBbApp(${JSON.stringify(args)}, {dryRun: true, worktreePolicy: null, beforeServerStart() { throw new Error("Started services"); }});`,
-      ],
-      {
-        encoding: "utf8",
-        env: { ...process.env, BB_SERVER_BIND_HOST: "127.0.0.1" },
-      },
+    const output = await captureStdout(() =>
+      runBbApp(args, {
+        dryRun: true,
+        worktreePolicy: null,
+        beforeServerStart() {
+          throw new Error("Started services");
+        },
+      }),
     );
     const preview = z
       .object({

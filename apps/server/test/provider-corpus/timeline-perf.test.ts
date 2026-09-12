@@ -15,6 +15,7 @@ import { createTestProviderRegistry } from "../helpers/provider-registry.js";
 import {
   buildAllRouteTimelinePages,
   buildRouteTimelinePage,
+  clearCrossBuildTimelineCaches,
   formatMarkdownTable,
   latestTimelinePage,
   loadCorpusThreadIntoDb,
@@ -45,6 +46,7 @@ type ThreadTimelineBuildProfileStage =
 
 const STAGES: readonly ThreadTimelineBuildProfileStage[] = [
   "event-query",
+  "selection-memo-lookup",
   "group-context-query",
   "ordering-context-query",
   "accepted-client-request-context-query",
@@ -201,22 +203,25 @@ function measureCorpusThread(
   const corpusThread = loadCorpusThread(threadId);
   const loaded = loadCorpusThreadIntoDb(corpusThread);
   try {
-    const samples = sample((): InterleavedSample => ({
-      calibrationMs: runCalibrationWorkload(),
-      latest: buildRouteTimelinePage({
+    const samples = sample((): InterleavedSample => {
+      const calibrationMs = runCalibrationWorkload();
+      clearCrossBuildTimelineCaches(loaded.db);
+      const latest = buildRouteTimelinePage({
         db: loaded.db,
         page: latestTimelinePage(),
         registry,
         thread: loaded.thread,
         variant: "default",
-      }),
-      walk: buildAllRouteTimelinePages({
+      });
+      clearCrossBuildTimelineCaches(loaded.db);
+      const walk = buildAllRouteTimelinePages({
         db: loaded.db,
         registry,
         thread: loaded.thread,
         variant: "default",
-      }),
-    }));
+      });
+      return { calibrationMs, latest, walk };
+    });
     const latestSamples = samples.map((entry) => entry.latest);
     const walkSamples = samples.map((entry) => entry.walk);
     const latestStageP50Ms: Record<string, number> = {};
@@ -517,14 +522,15 @@ describe("timeline build micro-benchmark", () => {
       expect(synthetic.eventCount).toBeGreaterThanOrEqual(
         SYNTHETIC_EVENT_COUNT,
       );
-      const samples = sample(() =>
-        buildAllRouteTimelinePages({
+      const samples = sample(() => {
+        clearCrossBuildTimelineCaches(synthetic.db);
+        return buildAllRouteTimelinePages({
           db: synthetic.db,
           registry,
           thread: synthetic.thread,
           variant: "default",
-        }),
-      );
+        });
+      });
       const durations = samples.map((pages) => sumProfileDurations(pages));
       const minimum = Math.min(...durations);
       const last = samples[samples.length - 1];

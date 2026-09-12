@@ -6,6 +6,7 @@ import { Hono } from "hono";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { registerPluginCatalogRoutes } from "../../../src/routes/plugin-catalog.js";
 import { createPluginCatalogService } from "../../../src/services/plugin-catalog/plugin-catalog-service.js";
+import { refreshCuratedMarketplace } from "../../helpers/plugin-catalog.js";
 import { BUNDLED_CURATED_MARKETPLACE } from "../../../src/services/plugin-catalog/curated-marketplace.js";
 import {
   BUILTIN_PLUGINS,
@@ -134,7 +135,7 @@ describe("plugin catalog routes", () => {
           )
         : new Response(VALID_SVG, { status: 200 }),
     );
-    await catalog.refresh(1_000);
+    await refreshCuratedMarketplace(catalog, 1_000);
     const hash = (await catalog.icon("bb-community", "widgets"))?.hash;
     expect(hash).toBeDefined();
 

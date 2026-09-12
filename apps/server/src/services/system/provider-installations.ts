@@ -4,7 +4,7 @@ import type {
 } from "@bb/host-daemon-contract";
 import type { ProviderInfo } from "@bb/domain";
 import { ZodError } from "zod";
-import type { AppDeps } from "../../types.js";
+import type { WorkSessionDeps } from "../../types.js";
 import { COMMAND_TIMEOUT_MS } from "../../constants.js";
 import { ApiError } from "../../errors.js";
 import {
@@ -69,7 +69,7 @@ export async function aggregateProviderInstallations(
 }
 
 export async function getProviderInstallations(
-  deps: AppDeps,
+  deps: WorkSessionDeps,
   args: { hostId: string },
 ): Promise<ProviderCliStatusResponse> {
   const deadline = Date.now() + PROVIDER_INSTALLATION_STATUS_TIMEOUT_MS;
@@ -131,4 +131,30 @@ export async function getProviderInstallations(
       };
     },
   });
+}
+
+const installationTails = new WeakMap<object, Map<string, Promise<void>>>();
+export async function serializeProviderInstallation<T>(
+  deps: WorkSessionDeps,
+  hostId: string,
+  run: () => Promise<T>,
+): Promise<T> {
+  let hosts = installationTails.get(deps.db);
+  if (!hosts) {
+    hosts = new Map();
+    installationTails.set(deps.db, hosts);
+  }
+  const previous = hosts.get(hostId) ?? Promise.resolve();
+  let release: () => void = () => {};
+  const tail = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  hosts.set(hostId, tail);
+  await previous;
+  try {
+    return await run();
+  } finally {
+    release();
+    if (hosts.get(hostId) === tail) hosts.delete(hostId);
+  }
 }
