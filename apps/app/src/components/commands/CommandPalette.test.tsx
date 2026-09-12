@@ -303,7 +303,6 @@ function makeThread(
 }
 
 function renderPalette({
-  onSplit,
   compact = false,
   layout = {
     root: {
@@ -314,7 +313,6 @@ function renderPalette({
     focusedPaneId: "origin",
   },
 }: {
-  onSplit?: () => void;
   compact?: boolean;
   layout?: SplitLayout | null;
 } = {}) {
@@ -335,11 +333,7 @@ function renderPalette({
             <Handler command="terminal.open" />
             <Handler command="composer.focus" />
             <Handler command="browser.reload" />
-            <CommandPalette
-              threadId={null}
-              projectId={null}
-              onSplit={onSplit}
-            />
+            <CommandPalette threadId={null} projectId={null} />
             <LocationProbe />
           </AppCommandProvider>
         </MemoryRouter>
@@ -1381,27 +1375,6 @@ describe("CommandPalette", () => {
     await waitFor(() => expect(testState.calls).toEqual(["panel.toggle"]));
     expect(screen.queryByRole("combobox")).toBeNull();
     expect(document.activeElement).toBe(screen.getByTestId("origin"));
-  });
-
-  it("runs Split as an internal palette action without an app command", async () => {
-    const onSplit = vi.fn();
-    renderPalette({ onSplit });
-    openPalette();
-    await waitFor(() => expect(searchField()).toBeTruthy());
-
-    const splitRow = within(bucketGroup("Actions"))
-      .getAllByRole("option")
-      .find((row) => row.textContent?.includes("Split"));
-    expect(splitRow?.textContent).not.toContain("Window and layout");
-
-    fireEvent.change(searchField(), { target: { value: "split" } });
-    await waitFor(() =>
-      expect(selectedOption()?.textContent).toContain("Split"),
-    );
-    fireEvent.keyDown(searchField(), { key: "Enter" });
-
-    await waitFor(() => expect(onSplit).toHaveBeenCalledOnce());
-    expect(testState.calls).toEqual([]);
   });
 
   it("keeps the default catalog unchanged after running a command", async () => {

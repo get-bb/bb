@@ -76,13 +76,11 @@ function invocationTarget(invocation: {
 export interface CommandPaletteProps {
   threadId: string | null;
   projectId: string | null;
-  onSplit?: () => void;
 }
 
 export function CommandPalette({
   threadId,
   projectId,
-  onSplit,
 }: CommandPaletteProps) {
   const navigate = useNavigate();
   const runner = useAppCommandRunner();
@@ -139,18 +137,6 @@ export function CommandPalette({
         dispatch: runner.dispatch,
         shortcuts,
       }),
-      ...(onSplit === undefined
-        ? []
-        : [
-            {
-              id: "internal:thread.split",
-              bucket: "Actions",
-              group: "Window and layout",
-              title: "Split",
-              shortcut: null,
-              run: onSplit,
-            } satisfies PaletteAction,
-          ]),
       ...buildPluginPaletteActions({
         slots: pluginSlots.commandPaletteActions,
         threadId,
@@ -164,7 +150,6 @@ export function CommandPalette({
       runner.isCommandAvailable,
       shortcuts,
       threadId,
-      onSplit,
       pluginSlots.commandPaletteActions,
     ],
   );
