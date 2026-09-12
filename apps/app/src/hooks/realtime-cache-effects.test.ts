@@ -35,6 +35,9 @@ import {
   threadSearchQueryKey,
   terminalsQueryKey,
   threadStorageFilePreviewQueryKey,
+  threadStorageFilesQueryKey,
+  threadStorageLocationQueryKey,
+  threadStoragePathsQueryKey,
   threadTimelineQueryKey,
   threadTimelineQueryKeyPrefix,
   threadTimelineTurnSummaryDetailsQueryKey,
@@ -145,6 +148,61 @@ function createRealtimeEffectsTestContext(
 }
 
 describe("createRealtimeCacheEffects", () => {
+  it.each(
+    [
+      threadStorageFilesQueryKey("thread-1"),
+      threadStorageLocationQueryKey("thread-1"),
+      threadStoragePathsQueryKey("thread-1"),
+      threadStorageFilePreviewQueryKey("thread-1", "notes.md"),
+    ].map((queryKey) => ({ queryKey })),
+  )(
+    "recovers a failed active $queryKey query when the host reconnects",
+    async ({ queryKey }) => {
+      const { effects, queryClient } = createRealtimeEffectsTestContext();
+      const queryFn = vi
+        .fn<() => Promise<string>>()
+        .mockRejectedValueOnce(new Error("Host is paused."))
+        .mockResolvedValue("loaded");
+      const observer = new QueryObserver(queryClient, {
+        queryKey,
+        queryFn,
+        staleTime: Infinity,
+        refetchOnWindowFocus: false,
+      });
+      const unsubscribe = observer.subscribe(() => {});
+      try {
+        await vi.waitFor(() =>
+          expect(observer.getCurrentResult().isError).toBe(true),
+        );
+
+        effects.handleChanged({
+          type: "changed",
+          entity: "host",
+          id: "host-1",
+          changes: ["host-disconnected"],
+        });
+        expect(queryFn).toHaveBeenCalledTimes(1);
+
+        effects.handleChanged({
+          type: "changed",
+          entity: "host",
+          id: "host-1",
+          changes: ["host-connected"],
+        });
+
+        await vi.waitFor(() =>
+          expect(observer.getCurrentResult().data).toBe("loaded"),
+        );
+        expect(observer.getCurrentResult().isError).toBe(false);
+        expect(queryFn).toHaveBeenCalledTimes(2);
+      } finally {
+        unsubscribe();
+        effects.dispose();
+        queryClient.clear();
+      }
+    },
+  );
+
   it("isolates project workspace caches between selected hosts", () => {
     expect(
       projectPathsQueryKey("project-1", null, "host-a", "src", 8, true, true),

@@ -2177,13 +2177,17 @@ function ThreadDetailViewInternal(props: ThreadRoutePathArgs) {
     [openSecondaryPanelDiffFile, handleOpenTimelinePluginPanel, threadId],
   );
   const metadataStorage = useMemo(
-    () => ({
-      controller: storageBrowserController,
-      filesError: threadStorageFilesError,
-      isFilesLoading: isThreadStorageFilesLoading,
-    }),
+    () =>
+      resolvedThreadEnvironmentHost?.status === "connected"
+        ? {
+            controller: storageBrowserController,
+            filesError: threadStorageFilesError,
+            isFilesLoading: isThreadStorageFilesLoading,
+          }
+        : undefined,
     [
       isThreadStorageFilesLoading,
+      resolvedThreadEnvironmentHost?.status,
       storageBrowserController,
       threadStorageFilesError,
     ],
