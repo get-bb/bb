@@ -4,7 +4,7 @@ Status: **2026-09-05: 2 passed, 1 partial/blocked**. See [the audit](../MAINTENA
 
 ## Setup and entry points
 
-Enable Provider usage and a provider implementing the usage RPC contract. Open its usage card and Settings → Usage.
+Enable Provider usage and a provider implementing the usage RPC contract. Open its usage card and Settings → Installed plugins → Provider usage.
 
 Use the main skill’s isolated targets and evidence rules. A plugin can be present
 in this checkout but disabled in an installation. Enable it only in the test
@@ -21,7 +21,7 @@ SKILL.md. Inspect nested `--help` before selecting flags and IDs.
 - `plugins/provider-claude-code/src/usage-source.ts`
 - `plugins/provider-acp/src/usage-source.ts`
 - `plugins/account-pool/src/usage-source.ts`
-- `apps/app/src/components/settings/UsageLimitsSettingsSection.tsx`
+- `plugins/provider-usage/settings.tsx`
 
 ## Feature recipes
 
@@ -40,20 +40,15 @@ failed attempts and missing prerequisites as unverified results. Restore plugin
 configuration and remove only this run’s fixtures, registrations, and workers.
 External account changes use authorized disposable targets.
 
-## Maintenance notes
+## Contract verification
 
-- Open Settings → Usage limits and the sidebar Provider usage disclosure. Compare core settings usage / sdk.system.usageLimits with plugin getUsage, which wraps per-machine providers and normalizes optional fields; it is not byte-for-byte the core response. Source: `plugins/provider-usage/app.tsx:112`.
-
-## Usage source prototype follow-up (2026-09-11)
-
-- Passed live: pool defaults on both displays, provider tabs and pooled account ordering,
-  matching weekly/model/plan labels, explicit machine selection, and Cursor
-  usage published directly by the ACP provider plugin. Screenshot evidence is in the
-  implementing thread’s `usage-review/explicit-providers.md`.
-- Passed targeted tests: provider ownership filtering, no collection during inventory,
-  removed resources, disconnected hosts, request coalescing, force refresh, empty pools,
-  first-load/stale failures, known identity deduplication, and unknown-identity separation.
-- A new source should be tested with the display plugin disabled. Each provider implementation has no
-  dependency on the display and publishes both source methods from its own registration.
-- Do not deduplicate by email. Filter by selected location before normalizing observations;
-  explicit machine selection must remain available even when that account exists in a pool.
+- Test a source with the display plugin disabled. Each provider implementation
+  publishes both source methods independently of the display.
+- Check empty pools, loading, first-load errors, stale measurements after failed
+  refresh, disconnected hosts, and removed resources on both displays.
+- Verify matching window and plan labels, account order, default pool selection,
+  and explicit machine selection. Do not deduplicate by email; known account
+  identities are deduplicated only within the selected location.
+- The settings page fetches resources for the selected location; the footer
+  fetches only its selected provider tab. Compare shared pool sources through
+  their RPC contract; `bb settings usage` remains the direct host-maintenance view.

@@ -2141,9 +2141,7 @@ controller that can request `open`, `close`, or `toggle`. Those requests go
 through the host's shared active-item coordinator, so opening one plugin's
 disclosure replaces another and a stale scoped `close` cannot dismiss a sibling.
 The existing `app.slots.sidebarFooterAction` remains a compatibility surface and
-renders in the same footer row. User appearance preferences order the items and
-move hidden shortcuts into More; hiding does not disable plugin callbacks or
-programmatic disclosure controls.
+renders in the same footer row.
 
 **Audit before stabilizing.**
 
@@ -2912,6 +2910,7 @@ returns a credential only while that host is creating.
 Before stabilizing, verify creation cancellation through host removal,
 same-host restoration, serialized removal, plugin callers and UI/CLI parity.
 
+
 ## `app.experimental_icons.register` and `experimental_Icon`
 
 Plugins register inline React artwork during app setup with `{ name, component }`.
@@ -2947,6 +2946,7 @@ components. The existing built-in icon list and artwork remain fixed; new
 plugin app icons use this registration API. The manifest API is unchanged,
 and individual plugins can still declare their own branding SVG assets using
 the existing manifest fields.
+
 
 ## `experimental_ProviderIcon`
 
