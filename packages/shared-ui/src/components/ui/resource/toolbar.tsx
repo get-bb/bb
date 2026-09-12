@@ -625,7 +625,10 @@ export function ResourceCreateButton({
             type="button"
             size="sm"
             aria-label={`${label} options`}
-            className="rounded-l-none px-1.5"
+            className={cn(
+              "rounded-l-none px-1.5",
+              compactOnMobile && "w-6 px-0 sm:w-auto sm:px-1.5",
+            )}
           >
             <Icon name="ChevronDown" className="size-4" aria-hidden />
           </Button>
