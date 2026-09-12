@@ -1,6 +1,5 @@
 import { getNonDestroyedHostByLaunchKey } from "@bb/db";
 import { sweepProviderMachine } from "../machines/provider-orchestration.js";
-import { readThreadProvisioningStage } from "./thread-provisioning-context.js";
 import { cancelProviderEnvironmentCreation } from "../environments/environment-engine.js";
 import { getPreparingEnvironment } from "@bb/db";
 import { getThread, type DbTransaction, type EnvironmentRow } from "@bb/db";
@@ -155,7 +154,6 @@ async function startThreadIfEnvironmentReady(
   }
 
   const workspaceReady = ensureWorkspaceReadyEvent(deps, {
-    context: args.context,
     threadId: args.thread.id,
     environmentId: args.environment.id,
     entries: buildCwdBranchEntries({
@@ -164,7 +162,7 @@ async function startThreadIfEnvironmentReady(
       headSha: null,
     }),
   });
-  if (!workspaceReady.reached) {
+  if (!workspaceReady) {
     throw new Error("Thread did not reach workspace-ready provisioning state");
   }
 
@@ -377,7 +375,7 @@ async function advanceThreadProvisioningOnce(
   ) {
     return;
   }
-  if (readThreadProvisioningStage(deps.db, thread.id) === "inactive") {
+  if (thread.status !== "starting") {
     clearThreadProvisionSchedule(thread.id);
     return;
   }

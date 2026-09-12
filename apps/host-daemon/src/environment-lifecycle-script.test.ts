@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
-  buildSetupScriptCommand,
+  buildLifecycleScriptCommand,
   runSetupScript,
   runTeardownScript,
 } from "./environment-lifecycle-script.js";
@@ -45,13 +45,12 @@ describe("core environment scripts", () => {
         env: { PATH: "/usr/bin:/bin" },
         onProgress: (entry) => output.push(entry.text),
       });
-      expect(result).toMatchObject({ ran: true, exitCode: 0 });
+      expect(result).toEqual({ ran: true });
       expect(await readFile(join(workspacePath, "marker"), "utf8")).toBe(
         "complete",
       );
       expect(output).toContain("✓");
       expect(output).toContain("done");
-      expect(result.output).toContain("✓\n");
     },
   );
 
@@ -147,7 +146,9 @@ describe("core environment scripts", () => {
 
   it("reports unsupported POSIX scripts on Windows for each hook", async () => {
     expect(() =>
-      buildSetupScriptCommand({
+      buildLifecycleScriptCommand({
+        kind: "setup",
+        scriptName: ".bb-env-setup.sh",
         platform: "win32",
         scriptPath: ".bb-env-setup.sh",
       }),

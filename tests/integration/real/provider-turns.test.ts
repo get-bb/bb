@@ -1,10 +1,10 @@
 import { describe, expect, it } from "vitest";
 import { getThreadTimeline } from "../helpers/api.js";
+import { countTurnEvents } from "../helpers/thread-diagnostics.js";
+import { timelineHasAssistantConversation } from "../helpers/timeline-response.js";
 import {
-  countTurnEvents,
   createRealThread,
   expectNonEmptyOutput,
-  hasAssistantTimelineMessage,
   REAL_PROVIDER_IDS,
   sendAndWaitForIdle,
   TEST_TIMEOUT_MS,
@@ -43,7 +43,7 @@ describe("real provider turn integration", () => {
           );
 
           const timeline = await getThreadTimeline(harness.api, thread.id);
-          expect(hasAssistantTimelineMessage(timeline)).toBe(true);
+          expect(timelineHasAssistantConversation(timeline)).toBe(true);
 
           const { events, output } = await sendAndWaitForIdle({
             providerId,

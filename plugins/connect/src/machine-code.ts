@@ -16,8 +16,10 @@ export interface MachineCode {
   serverUrl: string;
 }
 
+export type MachineCodeErrorCode = "machine_limit" | "network" | "not_paired";
+
 export class MachineCodeError extends Error {
-  constructor(readonly code: "machine_limit" | "network" | "not_paired") {
+  constructor(readonly code: MachineCodeErrorCode) {
     super(code);
     this.name = "MachineCodeError";
   }

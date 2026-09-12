@@ -1,10 +1,7 @@
 import { withHostCleanup } from "../hosts/cleanup-context.js";
 import { findHostDataDir } from "../lib/entity-lookup.js";
 import { updateThread } from "@bb/db";
-import {
-  assertEnvironmentPathAvailable,
-  withEnvironmentPathAdmission,
-} from "./path-admission.js";
+import { assertEnvironmentPathAvailable } from "./path-admission.js";
 import { saveThreadProvisionContext } from "../threads/thread-startup-store.js";
 import {
   refreshAttachedEnvironmentBranch,
@@ -108,6 +105,8 @@ import {
   type HostDaemonCommandExecutionRecord,
   type HostDaemonCommandForType,
 } from "../../internal/command-result-side-effects.js";
+import { errorMessage } from "../lib/error-log-fields.js";
+import { perDbRegistry } from "../lib/per-db-registry.js";
 
 type Deps = ThreadProvisioningDeps;
 
@@ -155,22 +154,6 @@ const environmentOperations = new WeakMap<
   object,
   Map<string, ActiveOperation>
 >();
-
-function operations(
-  registry: WeakMap<object, Map<string, ActiveOperation>>,
-  db: DbConnection,
-): Map<string, ActiveOperation> {
-  let map = registry.get(db);
-  if (map === undefined) {
-    map = new Map();
-    registry.set(db, map);
-  }
-  return map;
-}
-
-function message(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
-}
 
 function writeEnvironment(
   deps: Pick<Deps, "db" | "hub">,
@@ -491,7 +474,7 @@ async function runCreate(
       return;
     changed = mutateProvisioning(deps, provisioning, ["creating"], (row) => {
       row.status = "error";
-      row.statusMessage = `The "${record.provider.id}" environment provider (plugin "${record.pluginId}") failed: ${message(error)}`;
+      row.statusMessage = `The "${record.provider.id}" environment provider (plugin "${record.pluginId}") failed: ${errorMessage(error)}`;
     });
   } finally {
     if (
@@ -705,7 +688,7 @@ async function runRemove(
     } catch (error) {
       writeEnvironment(deps, environmentId, {
         teardownStatus: "failed",
-        teardownMessage: message(error),
+        teardownMessage: errorMessage(error),
         retireAt: Date.now() + REMOVE_RETRY_MS,
       });
     }
@@ -716,7 +699,7 @@ async function removeEnvironment(
   deps: Deps,
   environmentId: string,
 ): Promise<void> {
-  const map = operations(environmentOperations, deps.db);
+  const map = perDbRegistry(environmentOperations, deps.db);
   const active = map.get(environmentId);
   if (active !== undefined) {
     const row = getEnvironment(deps.db, environmentId);
@@ -842,7 +825,7 @@ export async function sweepProviderLifecycles(deps: Deps): Promise<void> {
       pending.push(
         sweepProviderEnvironment(deps, row.id).catch((error) => {
           deps.logger.warn(
-            { environmentId: row.id, error: message(error) },
+            { environmentId: row.id, error: errorMessage(error) },
             "Environment removal will retry",
           );
         }),
@@ -1514,7 +1497,7 @@ export async function advanceEnvironmentProvisioning(
   if (!args.environmentId) return;
   let environment = getEnvironment(deps.db, args.environmentId);
   if (environment === null) return;
-  const map = operations(environmentOperations, deps.db);
+  const map = perDbRegistry(environmentOperations, deps.db);
   if (
     args.threadId !== undefined &&
     environment.ownerThreadId !== null &&
@@ -1596,7 +1579,7 @@ export async function advanceEnvironmentProvisioning(
         } catch (error) {
           mutateProvisioning(deps, row, ["creating"], (current) => {
             current.status = "error";
-            current.statusMessage = message(error);
+            current.statusMessage = errorMessage(error);
           });
           if (row.ownerThreadId !== null)
             requestEnvironmentProvisioningRecheck(row.ownerThreadId);
@@ -1658,30 +1641,29 @@ export async function advanceEnvironmentProvisioning(
         hostId: target.hostId,
         path: target.path,
       });
-    await withEnvironmentPathAdmission(deps, { ...target, threadId }, () =>
-      deps.db.transaction(
-        (tx) => {
-          if (
-            getThreadProvisionContext(tx, threadId)?.state.provisioningId !==
-            context.state.provisioningId
-          )
-            return;
-          updateThread(tx, deps.hub, threadId, { environmentId: target.id });
-          markProviderEnvironmentAttached(tx, threadId, target.id);
-          context.request.environmentIntent = {
-            type: "reuse",
-            environmentId: target.id,
-          };
-          context.state.environmentId = target.id;
-          saveThreadProvisionContext({
-            replace: false,
-            db: tx,
-            threadId,
-            context,
-          });
-        },
-        { behavior: "immediate" },
-      ),
+    assertEnvironmentPathAvailable(deps, { ...target, threadId });
+    deps.db.transaction(
+      (tx) => {
+        if (
+          getThreadProvisionContext(tx, threadId)?.state.provisioningId !==
+          context.state.provisioningId
+        )
+          return;
+        updateThread(tx, deps.hub, threadId, { environmentId: target.id });
+        markProviderEnvironmentAttached(tx, threadId, target.id);
+        context.request.environmentIntent = {
+          type: "reuse",
+          environmentId: target.id,
+        };
+        context.state.environmentId = target.id;
+        saveThreadProvisionContext({
+          replace: false,
+          db: tx,
+          threadId,
+          context,
+        });
+      },
+      { behavior: "immediate" },
     );
     environment = getEnvironment(deps.db, environment.id);
     if (environment === null || environment.ownerThreadId !== null) return;

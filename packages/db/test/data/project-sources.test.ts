@@ -5,10 +5,8 @@ import { projectSources } from "../../src/schema.js";
 import {
   countProjectSources,
   createProjectSource,
-  getDefaultProjectSource,
   getProjectSourceForProject,
   getProjectSourceByHost,
-  listProjectSources,
   listProjectSourcesByProjectIds,
   updateProjectSource,
   deleteProjectSource,
@@ -72,7 +70,7 @@ describe("project-sources", () => {
       path: "/tmp/code2",
     });
 
-    const sources = listProjectSources(db, project.id);
+    const sources = listProjectSourcesByProjectIds(db, [project.id]);
     expect(sources).toHaveLength(3);
   });
 
@@ -116,7 +114,9 @@ describe("project-sources", () => {
     const secondaryHost = upsertHost(db, noopNotifier, {
       name: "secondary-host",
     });
-    const initialDefault = getDefaultProjectSource(db, project.id);
+    const initialDefault = listProjectSourcesByProjectIds(db, [
+      project.id,
+    ]).find((source) => source.isDefault);
     const source = createProjectSource(db, noopNotifier, {
       projectId: project.id,
       type: "local_path",
@@ -128,9 +128,11 @@ describe("project-sources", () => {
       type: "local_path",
       path: "/tmp/secondary",
     });
-    expect(getDefaultProjectSource(db, project.id)?.id).toBe(
-      initialDefault!.id,
-    );
+    expect(
+      listProjectSourcesByProjectIds(db, [project.id]).find(
+        (source) => source.isDefault,
+      )?.id,
+    ).toBe(initialDefault!.id);
   });
 
   it("returns the source for a specific host", () => {
@@ -197,7 +199,7 @@ describe("project-sources", () => {
         path: "/tmp/duplicate",
       }),
     ).toThrow();
-    expect(listProjectSources(db, project.id)).toHaveLength(1);
+    expect(listProjectSourcesByProjectIds(db, [project.id])).toHaveLength(1);
   });
 
   it("enforces one default source per project at the database boundary", () => {
@@ -223,7 +225,11 @@ describe("project-sources", () => {
         .run(),
     ).toThrow();
 
-    expect(getDefaultProjectSource(db, project.id)?.id).toBeTruthy();
+    expect(
+      listProjectSourcesByProjectIds(db, [project.id]).find(
+        (source) => source.isDefault,
+      )?.id,
+    ).toBeTruthy();
   });
 
   it("updates a project source", () => {
@@ -262,7 +268,7 @@ describe("project-sources", () => {
     });
 
     expect(deleteProjectSource(db, noopNotifier, source.id)).toBe(true);
-    expect(listProjectSources(db, project.id)).toHaveLength(1);
+    expect(listProjectSourcesByProjectIds(db, [project.id])).toHaveLength(1);
     expect(deleteProjectSource(db, noopNotifier, source.id)).toBe(false);
   });
 
@@ -278,8 +284,14 @@ describe("project-sources", () => {
       path: "/tmp/code-2",
     });
 
-    const initialDefault = getDefaultProjectSource(db, project.id)!;
+    const initialDefault = listProjectSourcesByProjectIds(db, [
+      project.id,
+    ]).find((source) => source.isDefault)!;
     expect(deleteProjectSource(db, noopNotifier, initialDefault.id)).toBe(true);
-    expect(getDefaultProjectSource(db, project.id)?.id).toBe(second.id);
+    expect(
+      listProjectSourcesByProjectIds(db, [project.id]).find(
+        (source) => source.isDefault,
+      )?.id,
+    ).toBe(second.id);
   });
 });

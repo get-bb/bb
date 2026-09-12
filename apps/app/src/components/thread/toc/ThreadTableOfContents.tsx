@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type {
   ThreadConversationOutlineItem,
   TimelineConversationAttachments,
+  TimelineConversationRow,
   TimelineRow,
 } from "@bb/server-contract";
 import { useScrollOverflowState } from "@/components/thread/timeline/useScrollOverflowState";
@@ -47,12 +48,11 @@ function toPreviewLabel(text: string): string {
   return text.replace(/\s+/g, " ").trim();
 }
 
-function toAttachmentPreviewLabel(
-  attachments: TimelineConversationAttachments | null,
+function formatAttachmentCountLabel(
+  imageCount: number,
+  fileCount: number,
 ): string {
-  if (!attachments) return "Message";
-  const imageCount = attachments.webImages + attachments.localImages;
-  const totalCount = imageCount + attachments.localFiles;
+  const totalCount = imageCount + fileCount;
   if (totalCount === 0) return "Message";
   if (totalCount === 1) {
     return imageCount === 1 ? "Image attachment" : "File attachment";
@@ -68,27 +68,55 @@ function toTocLabel({
   text: string;
 }): string {
   const textLabel = toPreviewLabel(text);
-  return textLabel || toAttachmentPreviewLabel(attachments);
+  if (textLabel) return textLabel;
+  if (!attachments) return "Message";
+  return formatAttachmentCountLabel(
+    attachments.webImages + attachments.localImages,
+    attachments.localFiles,
+  );
 }
 
-function toAttachmentSummaryLabel(
-  summary: ThreadConversationOutlineItem["attachmentSummary"],
-): string {
-  if (!summary) return "Message";
-  const totalCount = summary.imageCount + summary.fileCount;
-  if (totalCount === 0) return "Message";
-  if (totalCount === 1) {
-    return summary.imageCount === 1 ? "Image attachment" : "File attachment";
-  }
-  return `${totalCount} attachments`;
+const timelineTocItemsByRow = new WeakMap<TimelineConversationRow, TocItem>();
+
+function getTimelineTocItem(row: TimelineConversationRow): TocItem {
+  const cachedItem = timelineTocItemsByRow.get(row);
+  if (cachedItem !== undefined) return cachedItem;
+  const item: TocItem = {
+    id: row.id,
+    label: toTocLabel({ attachments: row.attachments, text: row.text }),
+    role: row.role,
+  };
+  timelineTocItemsByRow.set(row, item);
+  return item;
 }
 
 function outlineItemToTocItem(item: ThreadConversationOutlineItem): TocItem {
+  const summary = item.attachmentSummary;
   return {
     id: item.id,
-    label: item.preview || toAttachmentSummaryLabel(item.attachmentSummary),
+    label:
+      item.preview ||
+      (summary
+        ? formatAttachmentCountLabel(summary.imageCount, summary.fileCount)
+        : "Message"),
     role: item.role,
   };
+}
+
+function partitionTocItems(items: Iterable<TocItem>): {
+  agentItems: TocItem[];
+  userItems: TocItem[];
+} {
+  const userItems: TocItem[] = [];
+  const agentItems: TocItem[] = [];
+  for (const item of items) {
+    if (item.role === "user") {
+      userItems.push(item);
+    } else {
+      agentItems.push(item);
+    }
+  }
+  return { agentItems, userItems };
 }
 
 function mergeLiveTocItems(
@@ -234,38 +262,18 @@ function useConversationTocItems({
 }) {
   const outlineTocItems = useMemo(() => {
     if (!outlineItems || outlineItems.length === 0) return null;
-    const userItems: TocItem[] = [];
-    const agentItems: TocItem[] = [];
-    for (const item of outlineItems) {
-      const tocItem = outlineItemToTocItem(item);
-      if (tocItem.role === "user") {
-        userItems.push(tocItem);
-      } else {
-        agentItems.push(tocItem);
-      }
-    }
-    return { agentItems, userItems };
+    return partitionTocItems(outlineItems.map(outlineItemToTocItem));
   }, [outlineItems]);
 
-  const timelineTocItems = useMemo(() => {
-    const userItems: TocItem[] = [];
-    const agentItems: TocItem[] = [];
-    for (const row of timelineRows) {
-      if (row.kind !== "conversation") continue;
-      const item: TocItem = {
-        id: row.id,
-        label: toTocLabel({ attachments: row.attachments, text: row.text }),
-        role: row.role,
-      };
-      if (row.role === "user") {
-        userItems.push(item);
-      } else {
-        agentItems.push(item);
-      }
-    }
-
-    return { agentItems, userItems };
-  }, [timelineRows]);
+  const timelineTocItems = useMemo(
+    () =>
+      partitionTocItems(
+        timelineRows
+          .filter((row) => row.kind === "conversation")
+          .map((row) => getTimelineTocItem(row)),
+      ),
+    [timelineRows],
+  );
 
   return useMemo(() => {
     if (!outlineTocItems) return timelineTocItems;

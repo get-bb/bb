@@ -23,7 +23,7 @@ import {
   ResourceDetailOverviewSection,
   ResourceDetailPanel,
   ResourceDetailStack,
-} from "@bb/shared-ui/resource-detail";
+} from "@bb/shared-ui/resource-list";
 import { PluginIcon } from "@/components/plugin/PluginIcon";
 import {
   applyPluginSettingsView,
@@ -41,11 +41,10 @@ import { usePluginSlots } from "@/lib/plugin-slots";
 import { getMutationErrorMessage } from "@/lib/mutation-errors";
 import { PluginMachineServerAccessNotice } from "@/components/machines/MachineServerAccessNotice";
 import { invalidateMachineProviders } from "@/hooks/cache-owners/system-cache-effects";
-
-const DROPDOWN_TRIGGER_CLASS =
-  "h-7 w-full justify-between border-border/60 bg-card px-2 text-xs sm:w-44";
-const DROPDOWN_CONTENT_CLASS =
-  "min-w-[var(--radix-dropdown-menu-trigger-width)]";
+import {
+  SETTINGS_DROPDOWN_CONTENT_CLASS,
+  SETTINGS_DROPDOWN_TRIGGER_CLASS,
+} from "@/components/settings/settings-dropdown";
 
 const MULTILINE_MIN_ROWS = 6;
 const MULTILINE_MAX_ROWS = 24;
@@ -88,7 +87,7 @@ function SettingOptionPicker({
         <Button
           variant="outline"
           size="sm"
-          className={DROPDOWN_TRIGGER_CLASS}
+          className={SETTINGS_DROPDOWN_TRIGGER_CLASS}
           aria-label={ariaLabel}
           aria-describedby={ariaDescribedBy}
           aria-invalid={ariaInvalid}
@@ -97,7 +96,10 @@ function SettingOptionPicker({
           <Icon name="ChevronDown" className="size-3.5 text-muted-foreground" />
         </Button>
       </DropdownMenuTrigger>
-      <DropdownMenuContent align="end" className={DROPDOWN_CONTENT_CLASS}>
+      <DropdownMenuContent
+        align="end"
+        className={SETTINGS_DROPDOWN_CONTENT_CLASS}
+      >
         {options.map((option) => (
           <DropdownMenuItem
             key={option.value}

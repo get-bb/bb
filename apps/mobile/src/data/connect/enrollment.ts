@@ -8,6 +8,7 @@ import {
   PROFILE_LABEL_MAX_LENGTH,
   type NewServerProfile,
 } from "@/lib/profiles";
+import { describeError } from "@/lib/describe-error";
 import { mapAuthError } from "@/lib/session";
 
 export interface EnrollmentFailure {
@@ -85,7 +86,7 @@ export function describeEnrollmentError(error: unknown): EnrollmentFailure {
     };
   }
   const kind = mapAuthError(error);
-  const detail = error instanceof Error ? error.message : String(error);
+  const detail = describeError(error);
   if (kind === "network") {
     return {
       code: "network",

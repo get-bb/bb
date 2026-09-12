@@ -16,6 +16,7 @@ import {
   schema,
   server,
   session,
+  sha256Hex,
   user,
 } from "@bb/connect-db";
 
@@ -650,13 +651,7 @@ describe("machine credential presence", () => {
   it("verifies the owning machine and throttles lastSeenAt writes", async () => {
     seedUser("acct-machine");
     const credential = `bbcm_${crypto.randomUUID()}`;
-    const digest = await crypto.subtle.digest(
-      "SHA-256",
-      new TextEncoder().encode(credential),
-    );
-    const credentialHash = [...new Uint8Array(digest)]
-      .map((byte) => byte.toString(16).padStart(2, "0"))
-      .join("");
+    const credentialHash = await sha256Hex(credential);
     db.insert(machine)
       .values({
         id: "machine-presence",

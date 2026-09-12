@@ -56,13 +56,16 @@ import {
   type PluginNavPanelChrome,
 } from "@/lib/plugin-nav-panel-chrome";
 import type { PluginNavPanelSlot } from "@/lib/plugin-slots";
-import { createLocalStorageSyncStorage } from "@/lib/browser-storage";
+import {
+  booleanLocalStorage,
+  createLocalStorageSyncStorage,
+} from "@/lib/browser-storage";
 import {
   BROWSER_SIDEBAR_TRIGGER_INSET_CLASS,
   CHROME_ROW_CLASS,
   getBbDesktopInfo,
+  MACOS_CHROME_CONTROL_AXIS_CLASS,
   MACOS_CHROME_CONTROL_NO_DRAG_CLASS,
-  MACOS_CHROME_TRAFFIC_LIGHT_AXIS_NUDGE_CLASS,
   MACOS_TRAFFIC_LIGHT_RESERVE_OFFSET_CLASS,
   MACOS_WINDOW_DRAG_CLASS,
   shouldReserveMacosTrafficLights,
@@ -135,18 +138,10 @@ const sidebarWidthAtom = atomWithStorage<number>(
 );
 const sidebarLiveWidthAtom = atom<number | null>(null);
 
-const sidebarOpenStorage = createLocalStorageSyncStorage<boolean>({
-  parse: (storedValue, initialValue) => {
-    if (storedValue === "true") return true;
-    if (storedValue === "false") return false;
-    return initialValue;
-  },
-  serialize: (value) => String(value),
-});
 const sidebarOpenAtom = atomWithStorage<boolean>(
   SIDEBAR_OPEN_KEY,
   true,
-  sidebarOpenStorage,
+  booleanLocalStorage,
   { getOnInit: true },
 );
 
@@ -220,7 +215,6 @@ function SidebarTriggerOverlay({
           MACOS_WINDOW_DRAG_CLASS,
         )}
       >
-        {}
         <SidebarTrigger
           className={MACOS_CHROME_CONTROL_NO_DRAG_CLASS}
           {...triggerProps}
@@ -229,7 +223,7 @@ function SidebarTriggerOverlay({
           shortcut={shortcut}
           className={cn(
             "absolute left-full ml-1",
-            MACOS_CHROME_TRAFFIC_LIGHT_AXIS_NUDGE_CLASS,
+            MACOS_CHROME_CONTROL_AXIS_CLASS,
           )}
         />
       </div>
@@ -402,12 +396,8 @@ export function AppLayout({ children }: AppLayoutProps) {
     };
   }, [location.pathname, setResourceRouteLabel]);
   const navigate = useNavigate();
-  const {
-    appRoutePath,
-    settingsRoutePath,
-    toolsBackRoutePath,
-    toolsRoutePath,
-  } = useAppSettingsRouteMemory();
+  const { appRoutePath, settingsRoutePath, toolsBackRoutePath } =
+    useAppSettingsRouteMemory();
   const setRootComposeProjectId = useSetRootComposeProjectId();
   useEffect(
     () =>
@@ -735,7 +725,6 @@ export function AppLayout({ children }: AppLayoutProps) {
                 appRoutePath={appRoutePath}
                 settingsRoutePath={settingsRoutePath}
                 toolsBackRoutePath={toolsBackRoutePath}
-                toolsRoutePath={toolsRoutePath}
               />
               <SidebarInset>
                 <div

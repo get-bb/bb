@@ -143,6 +143,26 @@ export function hasThreadListWorkingActivity(
   );
 }
 
+export function threadListIndicatorStateForThread(
+  thread: ThreadListEntry,
+  hasUnsubmittedDraft: boolean,
+): ThreadListIndicatorState {
+  const unreadDone = isUnreadDoneThread(thread);
+  return {
+    hasPendingInteraction: thread.hasPendingInteraction,
+    hasUnsubmittedDraft,
+    hasUnreadError: unreadDone && thread.status === "error",
+    hasUnreadSuccess: unreadDone && thread.status !== "error",
+    isBackgroundAgentActive: hasActiveBackgroundAgentActivity(thread),
+    isBackgroundCommandActive: hasActiveBackgroundCommandActivity(thread),
+    isGoalActive: hasActiveGoalActivity(thread),
+    queuedWork: thread.queuedWork,
+    isPlanModeActive: hasActivePlanModeActivity(thread),
+    isRuntimeActive: isRuntimeBusyThread(thread),
+    isWorkflowActive: hasActiveWorkflowActivity(thread),
+  };
+}
+
 export function resolveThreadListIndicator(
   state: ThreadListIndicatorState,
 ): ThreadListIndicatorKind {

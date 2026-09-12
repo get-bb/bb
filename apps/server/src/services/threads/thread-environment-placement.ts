@@ -5,9 +5,11 @@ import {
   getThread,
   projectSourceOwnsPath,
   recordEnvironmentCurrentBranch,
+  type DbConnection,
 } from "@bb/db";
 import {
   type Environment,
+  type ProjectSource,
   type ProvisioningTranscriptEntry,
   type Thread,
 } from "@bb/domain";
@@ -61,7 +63,10 @@ import {
   invokeEnvironmentProvider,
   type PluginEnvironmentProviderRecord,
 } from "../plugins/plugin-environment-provider-registry.js";
-import { getMachineProvider } from "../plugins/plugin-machine-provider-registry.js";
+import {
+  getMachineProvider,
+  type PluginMachineProviderRecord,
+} from "../plugins/plugin-machine-provider-registry.js";
 import {
   askMachineLaunch,
   prepareMachineProviderSelection,
@@ -120,6 +125,23 @@ function refuseProviderSelection(
     "invalid_request",
     `The "${environmentProviderId}" environment provider ${detail}`,
   );
+}
+
+function toProviderProjectCheckout(
+  db: DbConnection,
+  args: { checkout: ProjectSource | null; hostId: string; projectId: string },
+): ProviderOperationContext["projectCheckout"] {
+  return args.checkout !== null && isLocalPathProjectSource(args.checkout)
+    ? {
+        path: args.checkout.path,
+        experimental_ownsPath: projectSourceOwnsPath(
+          db,
+          args.projectId,
+          args.hostId,
+          args.checkout.path,
+        ),
+      }
+    : null;
 }
 
 export async function parseProviderInputs(
@@ -286,18 +308,11 @@ export async function validateProviderSelection(
     host === null
       ? null
       : getProjectSourceByHost(deps.db, args.projectId, host.id);
-  const projectCheckout =
-    checkout !== null && isLocalPathProjectSource(checkout)
-      ? {
-          path: checkout.path,
-          experimental_ownsPath: projectSourceOwnsPath(
-            deps.db,
-            project.id,
-            host.id,
-            checkout.path,
-          ),
-        }
-      : null;
+  const projectCheckout = toProviderProjectCheckout(deps.db, {
+    checkout,
+    hostId: host.id,
+    projectId: project.id,
+  });
   if (requires.gitRemote && project.gitRemoteUrl === null) {
     throw new ApiError(
       409,
@@ -604,15 +619,11 @@ export async function resolveProviderOperationContext(
       ? askMachineLaunch(deps, {
           key: thread.id,
           lifetime: "thread",
-          record:
-            getMachineProvider(selection.machine.machineProviderId) ??
-            (() => {
-              throw providerFailure(
-                intent.environmentProviderId,
-                record.pluginId,
-                `needs the "${selection.machine.machineProviderId}" machine provider, which is not registered`,
-              );
-            })(),
+          record: requireRegisteredMachineProvider(
+            intent.environmentProviderId,
+            record.pluginId,
+            selection.machine.machineProviderId,
+          ),
           inputs: selection.machine.inputs,
         })
       : null;
@@ -682,18 +693,11 @@ export async function resolveProviderOperationContext(
       remoteUrl: project.gitRemoteUrl,
     });
   }
-  const projectCheckout =
-    checkout !== null && isLocalPathProjectSource(checkout)
-      ? {
-          path: checkout.path,
-          experimental_ownsPath: projectSourceOwnsPath(
-            deps.db,
-            project.id,
-            host.id,
-            checkout.path,
-          ),
-        }
-      : null;
+  const projectCheckout = toProviderProjectCheckout(deps.db, {
+    checkout,
+    hostId: host.id,
+    projectId: project.id,
+  });
   if (requires.projectCheckout && projectCheckout === null) {
     throw providerFailure(
       intent.environmentProviderId,
@@ -704,22 +708,60 @@ export async function resolveProviderOperationContext(
   intent.machine = selection.machine;
   intent.inputs = selection.inputs;
   intent.selectionResolved = true;
-  const provisionContext = {
-    thread: toThreadResponseFromThread(deps, { thread }),
-    project,
+  return buildProviderOperationContext(deps, {
     host,
-    machine: selection.machine,
-    projectCheckout,
-    gitRemote: requires.gitRemote ? project.gitRemoteUrl : null,
     inputs: selection.inputs,
+    machine: selection.machine,
+    project,
+    projectCheckout,
+    record,
+    thread,
+  });
+}
+
+function buildProviderOperationContext(
+  deps: ThreadProvisioningDeps,
+  args: Pick<
+    ProviderOperationContext,
+    "host" | "inputs" | "machine" | "project" | "projectCheckout"
+  > & { record: PluginEnvironmentProviderRecord; thread: Thread },
+): ProviderOperationContext {
+  return {
+    thread: toThreadResponseFromThread(deps, { thread: args.thread }),
+    project: args.project,
+    host: args.host,
+    machine: args.machine,
+    projectCheckout: args.projectCheckout,
+    gitRemote: args.record.provider.requires.gitRemote
+      ? args.project.gitRemoteUrl
+      : null,
+    inputs: args.inputs,
     suggestedBranchName: buildSuggestedBranchName({
       branchPrefix: getAppSettings(deps.db).managedBranchPrefix,
-      title: thread.title ?? thread.titleFallback,
-      threadId: thread.id,
+      title: args.thread.title ?? args.thread.titleFallback,
+      threadId: args.thread.id,
     }),
-    environment: threadProvisionContextEnvironment(deps, thread.environmentId),
+    environment: threadProvisionContextEnvironment(
+      deps,
+      args.thread.environmentId,
+    ),
   };
-  return provisionContext;
+}
+
+function requireRegisteredMachineProvider(
+  environmentProviderId: string,
+  pluginId: string | null,
+  machineProviderId: string,
+): PluginMachineProviderRecord {
+  const machineRecord = getMachineProvider(machineProviderId);
+  if (machineRecord === undefined) {
+    throw providerFailure(
+      environmentProviderId,
+      pluginId,
+      `needs the "${machineProviderId}" machine provider, which is not registered`,
+    );
+  }
+  return machineRecord;
 }
 
 function machineFailureLog(log: string, message: string): string {
@@ -880,13 +922,11 @@ async function reserveEnvironmentBeforeMachine(
       );
   if (selection.machine.type !== "new")
     throw new Error("Expected a new machine selection");
-  const machineRecord = getMachineProvider(selection.machine.machineProviderId);
-  if (machineRecord === undefined)
-    throw providerFailure(
-      args.intent.environmentProviderId,
-      args.record.pluginId,
-      `needs the "${selection.machine.machineProviderId}" machine provider, which is not registered`,
-    );
+  const machineRecord = requireRegisteredMachineProvider(
+    args.intent.environmentProviderId,
+    args.record.pluginId,
+    selection.machine.machineProviderId,
+  );
   const machineDecision = askMachineLaunch(deps, {
     key: args.thread.id,
     lifetime: "thread",
@@ -915,26 +955,15 @@ async function reserveEnvironmentBeforeMachine(
     context: args.context,
   });
   const project = requirePublicProject(deps.db, args.thread.projectId);
-  const context: ProviderOperationContext = {
-    thread: toThreadResponseFromThread(deps, { thread: args.thread }),
-    project,
+  const context = buildProviderOperationContext(deps, {
     host,
-    machine: selection.machine,
-    projectCheckout: null,
-    gitRemote: args.record.provider.requires.gitRemote
-      ? project.gitRemoteUrl
-      : null,
     inputs: selection.inputs,
-    suggestedBranchName: buildSuggestedBranchName({
-      branchPrefix: getAppSettings(deps.db).managedBranchPrefix,
-      title: args.thread.title ?? args.thread.titleFallback,
-      threadId: args.thread.id,
-    }),
-    environment: threadProvisionContextEnvironment(
-      deps,
-      args.thread.environmentId,
-    ),
-  };
+    machine: selection.machine,
+    project,
+    projectCheckout: null,
+    record: args.record,
+    thread: args.thread,
+  });
   const statusMessage =
     machineDecision.action === "ready"
       ? "Setting up project on machine"

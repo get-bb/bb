@@ -1,11 +1,8 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useEffect } from "react";
 
-import { initAnalytics } from "../landing/analytics";
+import { useInitAnalytics } from "../landing/analytics";
+import { pageMeta, siteHeadLinks } from "../landing/page-head";
 import { SiteFooter, SiteNav } from "../landing/site-chrome";
-import { unfurlMeta } from "../landing/site";
-import interWoff2 from "@fontsource-variable/inter/files/inter-latin-wght-normal.woff2?url";
-import landingCss from "../landing/landing.css?url";
 import blogCss from "../blog/blog.css?url";
 
 const PAGE_TITLE = "Privacy — bb";
@@ -17,30 +14,14 @@ const CONTACT_EMAIL = "sawyer@terragonlabs.com";
 
 export const Route = createFileRoute("/privacy")({
   head: () => ({
-    meta: [
-      { title: PAGE_TITLE },
-      { name: "description", content: PAGE_DESCRIPTION },
-      ...unfurlMeta(PAGE_TITLE, PAGE_DESCRIPTION, "/privacy"),
-    ],
-    links: [
-      {
-        rel: "preload",
-        href: interWoff2,
-        as: "font",
-        type: "font/woff2",
-        crossOrigin: "anonymous",
-      },
-      { rel: "stylesheet", href: landingCss },
-      { rel: "stylesheet", href: blogCss },
-    ],
+    meta: pageMeta(PAGE_TITLE, PAGE_DESCRIPTION, "/privacy"),
+    links: siteHeadLinks(blogCss),
   }),
   component: PrivacyRoute,
 });
 
 function PrivacyRoute() {
-  useEffect(() => {
-    initAnalytics();
-  }, []);
+  useInitAnalytics();
 
   return (
     <div className="wrap">

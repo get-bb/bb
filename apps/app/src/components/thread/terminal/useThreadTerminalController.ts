@@ -80,32 +80,6 @@ type ThreadTerminalTitleChangeHandler = (title: string) => void;
 type TerminalTitleRenameTimeout = number;
 type TerminalCloseMode = "force" | "if-clean";
 
-export function isVisibleTerminalSession({
-  retainedTerminalViewId,
-  session,
-}: {
-  retainedTerminalViewId: string | null;
-  session: TerminalSession;
-}): boolean {
-  return shouldShowRetainedTerminalSession({
-    retainedTerminalId: retainedTerminalViewId,
-    session,
-  });
-}
-
-export function shouldCloseDisconnectedTerminalSession({
-  retainedTerminalViewId,
-  session,
-}: {
-  retainedTerminalViewId: string | null;
-  session: TerminalSession;
-}): boolean {
-  return shouldCloseUnretainedDisconnectedTerminalSession({
-    retainedTerminalId: retainedTerminalViewId,
-    session,
-  });
-}
-
 export function shouldAutoCloseCleanTerminalSession({
   dirtyTerminalIds,
   session,
@@ -292,7 +266,10 @@ export function useThreadTerminalController({
   const visibleSessions = useMemo(
     () =>
       sessions.filter((session) =>
-        isVisibleTerminalSession({ retainedTerminalViewId, session }),
+        shouldShowRetainedTerminalSession({
+          retainedTerminalId: retainedTerminalViewId,
+          session,
+        }),
       ),
     [retainedTerminalViewId, sessions],
   );
@@ -461,8 +438,8 @@ export function useThreadTerminalController({
     }
     for (const session of sessions) {
       if (
-        !shouldCloseDisconnectedTerminalSession({
-          retainedTerminalViewId,
+        !shouldCloseUnretainedDisconnectedTerminalSession({
+          retainedTerminalId: retainedTerminalViewId,
           session,
         }) ||
         closingDisconnectedTerminalIdsRef.current.has(session.id)

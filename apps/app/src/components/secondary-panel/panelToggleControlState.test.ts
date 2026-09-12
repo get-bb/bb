@@ -12,7 +12,6 @@ describe("resolveConversationCollapseControl", () => {
       onToggleConversationCollapse,
     });
 
-    expect(state.action).toBe("enter-full-screen");
     expect(state.label).toBe("Full Screen");
     expect(state.isFullScreen).toBe(false);
     expect(state.iconName).toBe("Maximize2");
@@ -28,7 +27,6 @@ describe("resolveConversationCollapseControl", () => {
       onToggleConversationCollapse,
     });
 
-    expect(state.action).toBe("exit-full-screen");
     expect(state.label).toBe("Exit Full Screen");
     expect(state.isFullScreen).toBe(true);
     expect(state.iconName).toBe("Minimize2");

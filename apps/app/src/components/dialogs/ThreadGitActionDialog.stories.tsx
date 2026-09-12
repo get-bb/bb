@@ -53,7 +53,6 @@ const changedFilesSection: WorkspaceChangedFilesSection = {
 const dirtyGitStatus: ThreadGitStatusDisplay = {
   label: "Dirty",
   summary: "",
-  summaryContent: "",
 };
 
 export function Overview() {

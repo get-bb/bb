@@ -20,13 +20,6 @@ import {
   OPTION_MUTED_CLASS_NAME,
 } from "@bb/shared-ui/option-display";
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@bb/shared-ui/select";
-import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
@@ -35,6 +28,7 @@ import {
   DropdownMenuTrigger,
 } from "@bb/shared-ui/dropdown-menu";
 import type { modalRpcContract } from "./account.js";
+import { errorMessage } from "./error-message.js";
 import type {
   ModalImage,
   ModalLaunchOptions,
@@ -240,9 +234,7 @@ function LaunchOptionsSettings() {
       },
       (failure) => {
         if (active) {
-          setError(
-            failure instanceof Error ? failure.message : String(failure),
-          );
+          setError(errorMessage(failure));
         }
       },
     );
@@ -259,7 +251,7 @@ function LaunchOptionsSettings() {
       setSaved(result);
       setDraft(result);
     } catch (failure) {
-      setError(failure instanceof Error ? failure.message : String(failure));
+      setError(errorMessage(failure));
     } finally {
       setSaving(false);
     }

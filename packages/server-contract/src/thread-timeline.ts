@@ -158,17 +158,8 @@ export const timelineSystemOperationKindSchema = z.enum(
 export type TimelineSystemOperationKind = z.infer<
   typeof timelineSystemOperationKindSchema
 >;
-const timelineGenericSystemOperationKindSchema = z.enum([
-  "generic",
-  "reasoning",
-  "compaction",
-  "context-clear",
-  "thread-provisioning",
-  "thread-interrupted",
-  "provider-unhandled",
-  "warning",
-  "deprecation",
-] as const);
+const timelineGenericSystemOperationKindSchema =
+  timelineSystemOperationKindSchema.exclude(["parent-change"]);
 
 export const timelineParentChangeActionValues = [
   "assign",

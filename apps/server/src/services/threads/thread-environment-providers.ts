@@ -75,10 +75,3 @@ export function cancelAbandonedProviderCreations(
     deps.logger.warn({ threadId, error }, "Machine cancellation failed"),
   );
 }
-
-export function cancelEnvironmentProviderCreation(
-  deps: ThreadProvisioningDeps,
-  args: { threadId: string },
-): void {
-  cancelAbandonedProviderCreations(deps, args.threadId);
-}

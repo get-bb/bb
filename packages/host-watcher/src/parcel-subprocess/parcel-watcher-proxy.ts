@@ -1,3 +1,4 @@
+import { calculateExponentialBackoffDelay } from "@bb/domain";
 import type {
   ParcelAsyncSubscription,
   ParcelWatcherBackend,
@@ -165,10 +166,11 @@ export function createParcelWatcherProxy(
       startChild();
       return;
     }
-    const delay = Math.min(
-      baseRestartDelayMs * 2 ** (consecutiveRestarts - 1),
-      maxRestartDelayMs,
-    );
+    const delay = calculateExponentialBackoffDelay({
+      attempt: consecutiveRestarts,
+      baseDelayMs: baseRestartDelayMs,
+      maxDelayMs: maxRestartDelayMs,
+    });
     consecutiveRestarts += 1;
     log("warn", "Backing off before watcher child respawn", {
       delayMs: delay,

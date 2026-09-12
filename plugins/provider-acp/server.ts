@@ -2,10 +2,11 @@ import type {
   BbPluginApi,
   PluginProviderDeclaration,
 } from "@get-bb/plugin-sdk";
+import type { AcpAgentProbe } from "@get-bb/plugin-sdk/provider-bridge/acp";
 import { z } from "zod";
 import { type AcpAgentDefinition } from "./src/agents.js";
 import { resolveConfiguredAcpAgents } from "./src/configured-agents.js";
-import { acpHostContract, type AcpProbeResult } from "./src/contract.js";
+import { acpHostContract } from "./src/contract.js";
 import { acpProviderDeclaration } from "./src/declaration.js";
 import { applyAcpAgentProbe } from "./src/probe-capabilities.js";
 import {
@@ -165,7 +166,7 @@ export default async function acpProvidersPlugin(
       if (configuredIds.has(shipped.id)) continue;
       const agent = narrowed.get(shipped.id) ?? shipped;
       if ((agent.fork ?? "none") === "none") continue;
-      let probe: AcpProbeResult;
+      let probe: AcpAgentProbe;
       try {
         probe = await host.call(
           "probeAgent",

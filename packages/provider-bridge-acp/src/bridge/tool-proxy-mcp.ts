@@ -32,21 +32,30 @@ interface BuildAcpMcpServerConfigArgs {
   token: string;
 }
 
-interface BridgeRequestBase {
-  threadId: string;
-  token: string;
-}
+export const dynamicToolBridgeRequestSchema = z.discriminatedUnion("kind", [
+  z.object({
+    kind: z.literal("initialized"),
+    threadId: z.string().min(1),
+    token: z.string().min(1),
+    toolCount: z.number().int().nonnegative(),
+  }),
+  z.object({
+    kind: z.literal("toolCall"),
+    arguments: z.record(z.string(), z.unknown()).default({}),
+    callId: z.string().min(1),
+    threadId: z.string().min(1),
+    token: z.string().min(1),
+    tool: z.string().min(1),
+  }),
+]);
 
-type BridgeRequest = BridgeRequestBase & BridgeRequestPayload;
+type BridgeRequest = z.input<typeof dynamicToolBridgeRequestSchema>;
 
-type BridgeRequestPayload =
-  | { kind: "initialized"; toolCount: number }
-  | {
-      kind: "toolCall";
-      arguments: Record<string, unknown>;
-      callId: string;
-      tool: string;
-    };
+type BridgeRequestPayload = BridgeRequest extends infer R
+  ? R extends unknown
+    ? Omit<R, "threadId" | "token">
+    : never
+  : never;
 
 const bridgeToolCallResponseSchema = z.union([
   z.object({

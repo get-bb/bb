@@ -14,6 +14,7 @@ import {
 import {
   type CommandScanRoot,
   discoverSkills,
+  SKILL_FILE_NAME,
   type SkillScanRoot,
 } from "../command-discovery.js";
 import {
@@ -21,8 +22,6 @@ import {
   resolveDeclaredScanRoots,
 } from "./list-commands.js";
 import { writeHostFile } from "./file-write.js";
-
-const SKILL_FILE_NAME = "SKILL.md";
 
 type SkillRootResolution = DeclaredScanRootResolution;
 

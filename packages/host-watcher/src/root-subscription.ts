@@ -10,10 +10,7 @@ import { pathExists } from "./path-exists.js";
 import { isRescanRequiredMessage } from "./watch-recovery.js";
 import { toWatchErrorMessage } from "./watch-error.js";
 
-export type {
-  ParcelWatcherEventBatch,
-  ParcelWatcherSubscribeOptions,
-} from "./parcel-watcher-backend.js";
+export type { ParcelWatcherEventBatch } from "./parcel-watcher-backend.js";
 
 interface RootSubscriptionArgs {
   rootPath: string;

@@ -14,7 +14,6 @@ import type {
   CanUseTool,
   SDKMessage,
   SDKUserMessage,
-  StopHookInput,
 } from "@anthropic-ai/claude-agent-sdk";
 import {
   type JsonValue,
@@ -56,42 +55,10 @@ type BridgeSessionOptions = ReturnType<typeof buildSessionOptions>;
 type BridgeSessionHooks = NonNullable<BridgeSessionOptions["hooks"]>;
 type BridgePreToolUseHooks = NonNullable<BridgeSessionHooks["PreToolUse"]>;
 type BridgePreToolUseHook = BridgePreToolUseHooks[number]["hooks"][number];
-type BridgeStopHooks = NonNullable<BridgeSessionHooks["Stop"]>;
 type BridgeJsonRpcTestHarness = ReturnType<
   typeof createBridgeJsonRpcTestHarness
 >;
 type SdkResultUsage = Extract<SDKMessage, { type: "result" }>["usage"];
-
-async function flushFakeTimerBridgeWork(
-  bridge: BridgeJsonRpcTestHarness,
-): Promise<void> {
-  const flushed = bridge.flushWork();
-  await vi.advanceTimersByTimeAsync(0);
-  await flushed;
-}
-
-async function waitForFakeTimerBridgeResponse(
-  bridge: BridgeJsonRpcTestHarness,
-  id: string | number,
-): Promise<BridgeJsonRpcOutputMessage> {
-  const response = bridge.waitForResponse(id);
-  await vi.advanceTimersByTimeAsync(0);
-  return response;
-}
-
-interface ReadonlyBashHookArgs {
-  command: string;
-  hook: BridgePreToolUseHook;
-}
-
-interface AllowedReadonlyBashCase {
-  command: string;
-  expectedCommand: string;
-}
-
-interface DeniedReadonlyBashCase {
-  command: string;
-}
 
 interface AssistantToolUseMessageArgs {
   parentToolUseId: string | null;
@@ -286,25 +253,6 @@ function getLastCanUseTool(): CanUseTool {
   return latestCall.options.canUseTool;
 }
 
-function invokeReadonlyBashHook(args: ReadonlyBashHookArgs) {
-  return args.hook(
-    {
-      hook_event_name: "PreToolUse",
-      tool_name: "Bash",
-      tool_input: {
-        command: args.command,
-        description: "Permission boundary test",
-      },
-      tool_use_id: "tool-1",
-      session_id: "session-1",
-      transcript_path: "/tmp/transcript.jsonl",
-      cwd: "/tmp/worktree",
-    },
-    "tool-1",
-    { signal: new AbortController().signal },
-  );
-}
-
 function createControlledClaudeQuery(): ControlledClaudeQuery {
   let finishNext: ((result: IteratorResult<SDKMessage>) => void) | undefined;
   let failNext: ((error: Error) => void) | undefined;
@@ -405,19 +353,6 @@ async function invokeBridgeHooks(
     }
   }
   return outputs;
-}
-
-async function invokeStopHooks(
-  matchers: BridgeStopHooks | undefined,
-  input: StopHookInput,
-): Promise<void> {
-  for (const matcher of matchers ?? []) {
-    for (const hook of matcher.hooks) {
-      await hook(input, undefined, {
-        signal: new AbortController().signal,
-      });
-    }
-  }
 }
 
 function createResultUsage(): SdkResultUsage {
@@ -934,7 +869,6 @@ describe("bridge", () => {
         cwd: "/tmp/worktree",
         disallowedTools: ["ExitPlanMode", "NotebookEdit", "Task"],
         instructionMode: "replace",
-        getPermissionEscalation: () => "ask",
         permissionMode: "default",
         permissionScope: "workspace",
       },
@@ -959,7 +893,6 @@ describe("bridge", () => {
         instructionMode: "append",
         reasoningLevel: "ultracode",
         workflowsEnabled: true,
-        getPermissionEscalation: () => "ask",
         permissionMode: "default",
         permissionScope: "workspace",
       },
@@ -983,7 +916,6 @@ describe("bridge", () => {
         instructionMode: "append",
         reasoningLevel: "high",
         workflowsEnabled: true,
-        getPermissionEscalation: () => "ask",
         permissionMode: "default",
         permissionScope: "workspace",
       },
@@ -1007,7 +939,6 @@ describe("bridge", () => {
         cwd: "/tmp/worktree",
         instructionMode: "append",
         reasoningLevel: "xhigh",
-        getPermissionEscalation: () => "ask",
         permissionMode: "default",
         permissionScope: "workspace",
       },
@@ -1029,7 +960,6 @@ describe("bridge", () => {
         memoryEnabled: false,
         cwd: "/tmp/worktree",
         instructionMode: "append",
-        getPermissionEscalation: () => "ask",
         permissionMode: "default",
         permissionScope: "workspace",
       },
@@ -1048,7 +978,6 @@ describe("bridge", () => {
       workflowsEnabled: false,
       cwd: "/tmp/worktree",
       instructionMode: "append",
-      getPermissionEscalation: () => "ask",
       permissionMode: "default",
       permissionScope: "workspace",
     } satisfies Omit<BuildSessionOptionsArgs, "chromeEnabled">;
@@ -1070,7 +999,6 @@ describe("bridge", () => {
         cwd: "/tmp/worktree",
         instructionMode: "append",
         reasoningLevel: "xhigh",
-        getPermissionEscalation: () => "ask",
         permissionMode: "default",
         permissionScope: "workspace",
       },
@@ -1098,7 +1026,6 @@ describe("bridge", () => {
         baseInstructions: "You are a coder.",
         cwd: "/tmp/worktree",
         instructionMode: "append",
-        getPermissionEscalation: () => "ask",
         permissionMode: "default",
         permissionScope: "workspace",
         plugins: [{ type: "local", path: "/tmp/bb-skills" }],
@@ -1120,14 +1047,13 @@ describe("bridge", () => {
         baseInstructions: "You are a coder.",
         cwd: "/tmp/worktree",
         instructionMode: "append",
-        getPermissionEscalation: () => "deny",
-        permissionMode: "dontAsk",
+        permissionMode: "acceptEdits",
         permissionScope: "workspace",
       },
       {},
     );
 
-    expect(options.permissionMode).toBe("dontAsk");
+    expect(options.permissionMode).toBe("acceptEdits");
   });
 
   it("uses a Claude executable discovered from PATH for SDK sessions", () => {
@@ -1139,7 +1065,6 @@ describe("bridge", () => {
         baseInstructions: "You are a coder.",
         cwd: "/tmp/worktree",
         instructionMode: "append",
-        getPermissionEscalation: () => "ask",
         permissionMode: "default",
         permissionScope: "workspace",
       },
@@ -1165,7 +1090,6 @@ describe("bridge", () => {
         baseInstructions: "You are a coder.",
         cwd: "/tmp/worktree",
         instructionMode: "append",
-        getPermissionEscalation: () => "ask",
         permissionMode: "default",
         permissionScope: "workspace",
       },
@@ -1184,7 +1108,6 @@ describe("bridge", () => {
         baseInstructions: "You are a coder.",
         cwd: "/tmp/worktree",
         instructionMode: "append",
-        getPermissionEscalation: () => "ask",
         permissionMode: "default",
         permissionScope: "workspace",
       },
@@ -1206,7 +1129,6 @@ describe("bridge", () => {
         baseInstructions: "You are a coder.",
         cwd: "/tmp/worktree",
         instructionMode: "append",
-        getPermissionEscalation: () => "ask",
         permissionMode: "default",
         permissionScope: "workspace",
       },
@@ -1232,7 +1154,6 @@ describe("bridge", () => {
           baseInstructions: "You are a coder.",
           cwd: "/tmp/worktree",
           instructionMode: "append",
-          getPermissionEscalation: () => "ask",
           permissionMode: "default",
           permissionScope: "workspace",
         },
@@ -1245,43 +1166,41 @@ describe("bridge", () => {
   });
 
   it("configures acceptEdits and auto sessions with the same Claude sandbox", () => {
-    const askOptions = buildSessionOptions(
+    const acceptEditsOptions = buildSessionOptions(
       {
         chromeEnabled: false,
         workflowsEnabled: false,
         baseInstructions: "You are a coder.",
         cwd: "/tmp/worktree",
         instructionMode: "append",
-        getPermissionEscalation: () => "ask",
         permissionMode: "acceptEdits",
         permissionScope: "workspace",
       },
       {},
     );
-    const denyOptions = buildSessionOptions(
+    const autoOptions = buildSessionOptions(
       {
         chromeEnabled: false,
         workflowsEnabled: false,
         baseInstructions: "You are a coder.",
         cwd: "/tmp/worktree",
         instructionMode: "append",
-        getPermissionEscalation: () => "deny",
         permissionMode: "auto",
         permissionScope: "workspace",
       },
       {},
     );
 
-    expect(askOptions.permissionMode).toBe("acceptEdits");
-    expect(askOptions.sandbox).toEqual({
+    expect(acceptEditsOptions.permissionMode).toBe("acceptEdits");
+    expect(acceptEditsOptions.sandbox).toEqual({
       enabled: true,
       failIfUnavailable: false,
       autoAllowBashIfSandboxed: true,
       allowUnsandboxedCommands: true,
       network: { allowLocalBinding: true },
     });
-    expect(denyOptions.permissionMode).toBe("auto");
-    expect(denyOptions.sandbox).toEqual({
+    expect(autoOptions.permissionMode).toBe("auto");
+    expect(autoOptions.sandbox).toEqual({
       enabled: true,
       failIfUnavailable: false,
       autoAllowBashIfSandboxed: true,
@@ -1299,7 +1218,6 @@ describe("bridge", () => {
         baseInstructions: "You are a coder.",
         cwd: "/tmp/worktree",
         instructionMode: "append",
-        getPermissionEscalation: () => "ask",
         permissionMode: "plan",
         permissionScope: "workspace",
       },
@@ -1323,7 +1241,6 @@ describe("bridge", () => {
         baseInstructions: "You are a coder.",
         cwd: "/tmp/worktree",
         instructionMode: "append",
-        getPermissionEscalation: () => "deny",
         permissionMode: "auto",
         permissionScope: "workspace",
       },
@@ -1346,246 +1263,7 @@ describe("bridge", () => {
     });
   });
 
-  it("configures readonly sessions with PreToolUse policy hooks", async () => {
-    const askOptions = buildSessionOptions(
-      {
-        chromeEnabled: false,
-        workflowsEnabled: false,
-        baseInstructions: "You are a coder.",
-        cwd: "/tmp/worktree",
-        instructionMode: "append",
-        getPermissionEscalation: () => "ask",
-        permissionMode: "default",
-        permissionScope: "workspace",
-      },
-      {},
-    );
-    const denyOptions = buildSessionOptions(
-      {
-        chromeEnabled: false,
-        workflowsEnabled: false,
-        baseInstructions: "You are a coder.",
-        cwd: "/tmp/worktree",
-        instructionMode: "append",
-        getPermissionEscalation: () => "deny",
-        permissionMode: "dontAsk",
-        permissionScope: "workspace",
-      },
-      {},
-    );
-
-    const askHook = askOptions.hooks?.PreToolUse?.[0]?.hooks[0];
-    if (!askHook) {
-      throw new Error("Expected readonly ask PreToolUse hook");
-    }
-    const allowedReadonlyBashCases = [
-      { command: "pwd", expectedCommand: "pwd" },
-      { command: "pwd -P", expectedCommand: "pwd -P" },
-      { command: "pwd -L", expectedCommand: "pwd -L" },
-      {
-        command: "git status --short",
-        expectedCommand: "git --no-optional-locks status --short",
-      },
-      {
-        command: "git --no-optional-locks status --short",
-        expectedCommand: "git --no-optional-locks status --short",
-      },
-      {
-        command: "git --no-pager status --short",
-        expectedCommand: "git --no-optional-locks --no-pager status --short",
-      },
-      {
-        command: "git diff --stat main...HEAD",
-        expectedCommand:
-          "git --no-optional-locks diff --no-ext-diff --no-textconv --stat main...HEAD",
-      },
-      {
-        command: "git diff -U3 -- package.json",
-        expectedCommand:
-          "git --no-optional-locks diff --no-ext-diff --no-textconv -U3 -- package.json",
-      },
-      {
-        command: "git diff -- file.txt",
-        expectedCommand:
-          "git --no-optional-locks diff --no-ext-diff --no-textconv -- file.txt",
-      },
-      {
-        command: "git diff -- --no-ext-diff --no-textconv package.json",
-        expectedCommand:
-          "git --no-optional-locks diff --no-ext-diff --no-textconv -- --no-ext-diff --no-textconv package.json",
-      },
-      {
-        command: "git show --stat --oneline -1 HEAD",
-        expectedCommand:
-          "git --no-optional-locks show --no-ext-diff --no-textconv --stat --oneline -1 HEAD",
-      },
-      {
-        command: "git show HEAD -- --no-ext-diff --no-textconv package.json",
-        expectedCommand:
-          "git --no-optional-locks show --no-ext-diff --no-textconv HEAD -- --no-ext-diff --no-textconv package.json",
-      },
-      {
-        command: "git merge-base main HEAD",
-        expectedCommand: "git --no-optional-locks merge-base main HEAD",
-      },
-      {
-        command: "git log --oneline --max-count=1",
-        expectedCommand:
-          "git --no-optional-locks log --no-ext-diff --no-textconv --oneline --max-count=1",
-      },
-      {
-        command: "git log -- --no-ext-diff --no-textconv package.json",
-        expectedCommand:
-          "git --no-optional-locks log --no-ext-diff --no-textconv -- --no-ext-diff --no-textconv package.json",
-      },
-      {
-        command: "git branch --show-current",
-        expectedCommand: "git --no-optional-locks branch --show-current",
-      },
-      {
-        command: "git branch --list bb/probe",
-        expectedCommand: "git --no-optional-locks branch --list bb/probe",
-      },
-      {
-        command: "git branch --merged main",
-        expectedCommand: "git --no-optional-locks branch --merged main",
-      },
-      {
-        command: "git ls-files --modified -- package.json",
-        expectedCommand:
-          "git --no-optional-locks ls-files --modified -- package.json",
-      },
-      {
-        command: "git rev-parse --show-toplevel",
-        expectedCommand: "git --no-optional-locks rev-parse --show-toplevel",
-      },
-      {
-        command: "git grep -n TODO -- package.json",
-        expectedCommand: "git --no-optional-locks grep -n TODO -- package.json",
-      },
-      {
-        command: "git blame -L1,5 package.json",
-        expectedCommand: "git --no-optional-locks blame -L1,5 package.json",
-      },
-    ] satisfies AllowedReadonlyBashCase[];
-    for (const testCase of allowedReadonlyBashCases) {
-      await expect(
-        invokeReadonlyBashHook({
-          command: testCase.command,
-          hook: askHook,
-        }),
-      ).resolves.toMatchObject({
-        hookSpecificOutput: {
-          hookEventName: "PreToolUse",
-          permissionDecision: "allow",
-          updatedInput: {
-            command: testCase.expectedCommand,
-            description: "Permission boundary test",
-          },
-        },
-      });
-    }
-
-    const deniedReadonlyBashCases = [
-      { command: "git add package.json" },
-      { command: "git reset -- package.json" },
-      { command: "git commit -m probe" },
-      { command: "git checkout main" },
-      { command: "git switch main" },
-      { command: "git restore package.json" },
-      { command: "git clean -fd" },
-      { command: "git apply patch.diff" },
-      { command: "git update-index --refresh" },
-      { command: "git stash" },
-      { command: "git fetch origin" },
-      { command: "git pull" },
-      { command: "git push" },
-      { command: "git branch bb-probe" },
-      { command: "git branch --merged main extra" },
-      { command: "git -c core.pager=cat status --short" },
-      { command: "git -C /tmp status" },
-      { command: "git --git-dir=/tmp/repo status" },
-      { command: "git diff -- ../etc/passwd" },
-      { command: "git diff -- /etc/passwd" },
-      { command: "git diff --textconv -- file.txt" },
-      { command: "git show --ext-diff HEAD" },
-      { command: "git grep -n TODO -- /etc/passwd" },
-      { command: "git blame /etc/passwd" },
-      { command: "GIT_DIR=/tmp/repo git status" },
-      { command: "VAR=1 git diff --stat" },
-      { command: "env FOO=bar git status" },
-      { command: "git status --short; cat /tmp/secret" },
-      { command: "git status --short && cat /tmp/secret" },
-      { command: "git status --short | cat" },
-      { command: "git status --short > /tmp/out" },
-      { command: "git status --short $(cat /tmp/secret)" },
-      { command: "git status --short `cat /tmp/secret`" },
-      { command: "git blame --contents /tmp/secret package.json" },
-      { command: "git blame --contents=/tmp/secret package.json" },
-      { command: "git grep -f /tmp/pattern TODO" },
-      { command: "git log --output=/tmp/log" },
-      { command: "git show --output=/tmp/out HEAD" },
-      { command: "pwd package.json" },
-    ] satisfies DeniedReadonlyBashCase[];
-    for (const testCase of deniedReadonlyBashCases) {
-      await expect(
-        invokeReadonlyBashHook({
-          command: testCase.command,
-          hook: askHook,
-        }),
-      ).resolves.toMatchObject({
-        hookSpecificOutput: {
-          hookEventName: "PreToolUse",
-          permissionDecision: "ask",
-        },
-      });
-    }
-
-    await expect(
-      askHook(
-        {
-          hook_event_name: "PreToolUse",
-          tool_name: "Agent",
-          tool_input: {},
-          tool_use_id: "tool-1",
-          session_id: "session-1",
-          transcript_path: "/tmp/transcript.jsonl",
-          cwd: "/tmp/worktree",
-        },
-        "tool-1",
-        { signal: new AbortController().signal },
-      ),
-    ).resolves.toEqual({ continue: true });
-
-    const preToolUseHook = denyOptions.hooks?.PreToolUse?.[0]?.hooks[0];
-    if (!preToolUseHook) {
-      throw new Error("Expected readonly PreToolUse hook");
-    }
-    await expect(
-      preToolUseHook(
-        {
-          hook_event_name: "PreToolUse",
-          tool_name: "Bash",
-          tool_input: {
-            command: "git reset -- package.json",
-          },
-          tool_use_id: "tool-1",
-          session_id: "session-1",
-          transcript_path: "/tmp/transcript.jsonl",
-          cwd: "/tmp/worktree",
-        },
-        "tool-1",
-        { signal: new AbortController().signal },
-      ),
-    ).resolves.toMatchObject({
-      hookSpecificOutput: {
-        hookEventName: "PreToolUse",
-        permissionDecision: "deny",
-      },
-    });
-  });
-
-  describe("readonly Bash canUseTool policy", () => {
+  describe("Bash canUseTool policy", () => {
     const WORKSPACE_AUTO_DENY_POLICY = {
       permissionMode: "auto",
       permissionScope: "workspace",
@@ -1602,7 +1280,7 @@ describe("bridge", () => {
     const policyCases = [
       {
         id: "workspace-sandbox-deny",
-        name: "auto does not use readonly Bash auto-allow",
+        name: "auto workspace sandbox denies out-of-workspace Bash",
         policy: WORKSPACE_AUTO_DENY_POLICY,
         toolName: "Bash",
         blockedPath: "/tmp/project",
@@ -1633,7 +1311,7 @@ describe("bridge", () => {
       },
       {
         id: "full-bypass-allow",
-        name: "full bypass does not rewrite via readonly Bash auto-allow",
+        name: "full bypass allows Bash input unchanged",
         policy: FULL_POLICY,
         toolName: "Bash",
         decisionReason: "This command requires approval",
@@ -1663,8 +1341,8 @@ describe("bridge", () => {
       try {
         const startRequestId = 1;
         const stopRequestId = startRequestId + 1;
-        const threadId = `thread-readonly-bash-policy-${testCase.id}`;
-        const toolUseID = `tool-readonly-policy-${testCase.id}`;
+        const threadId = `thread-bash-policy-${testCase.id}`;
+        const toolUseID = `tool-bash-policy-${testCase.id}`;
         bridge.sendRequest(startRequestId, "thread/start", {
           threadId,
           cwd: "/tmp/worktree",

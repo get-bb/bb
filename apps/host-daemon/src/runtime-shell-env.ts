@@ -319,12 +319,6 @@ function parsePathFromUserShellEnv(stdout: string): string | null {
   return null;
 }
 
-export async function resolveUserShellPath(
-  options: ResolveUserShellPathOptions = {},
-): Promise<string | null> {
-  return resolveUserShellPathWithPrevious(options, null);
-}
-
 async function resolveUserShellPathWithPrevious(
   options: ResolveUserShellPathOptions,
   previousPath: string | null,
@@ -398,14 +392,10 @@ export async function resolveLocalBbExecutablePath(
   return cliEntryPath;
 }
 
-function bbExecutableFileName(): string {
-  return "bb";
-}
-
 export function resolveBbExecutablePathInDirectory(
   bbExecutableDirectory: string,
 ): string {
-  return resolve(bbExecutableDirectory, bbExecutableFileName());
+  return resolve(bbExecutableDirectory, "bb");
 }
 
 export function prepareRuntimeShellEnv(

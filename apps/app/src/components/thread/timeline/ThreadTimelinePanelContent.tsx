@@ -19,7 +19,6 @@ interface ThreadTimelinePanelContentProps {
   isTurnSubmitting?: boolean;
   leadingContent?: ReactNode;
   onMessageAddToChat?: ThreadTimelineSurfaceProps["onMessageAddToChat"];
-  onSendToMainMessage?: ThreadTimelineSurfaceProps["onSendToMainMessage"];
   onSelectionAddToChat?: ThreadTimelineSurfaceProps["onSelectionAddToChat"];
   consumerMessageActions?: ThreadTimelineSurfaceProps["consumerMessageActions"];
   includePluginMessageActions?: ThreadTimelineSurfaceProps["includePluginMessageActions"];
@@ -37,7 +36,6 @@ export function ThreadTimelinePanelContent({
   isTurnSubmitting = false,
   leadingContent,
   onMessageAddToChat,
-  onSendToMainMessage,
   onSelectionAddToChat,
   consumerMessageActions,
   includePluginMessageActions,
@@ -100,6 +98,7 @@ export function ThreadTimelinePanelContent({
   return (
     <ThreadTimelineSurface
       activeThinking={resolvedTimeline.activeThinking}
+      contextBoundarySeq={resolvedTimeline.contextBoundarySeq}
       hasOlderTimelineRows={resolvedTimeline.hasOlderTimelineRows}
       isLoadingOlderTimelineRows={resolvedTimeline.isLoadingOlderTimelineRows}
       isThreadTimelinePending={
@@ -113,7 +112,6 @@ export function ThreadTimelinePanelContent({
       loadingContent={<ThreadTimelinePanelLoadingSkeleton />}
       leadingContent={leadingContent}
       onMessageAddToChat={onMessageAddToChat}
-      onSendToMainMessage={onSendToMainMessage}
       onSelectionAddToChat={onSelectionAddToChat}
       consumerMessageActions={consumerMessageActions}
       includePluginMessageActions={includePluginMessageActions}

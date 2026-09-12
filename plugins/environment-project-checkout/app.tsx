@@ -1,27 +1,18 @@
+import { useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
 import {
-  useDeferredValue,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-  type KeyboardEventHandler,
-  type PointerEventHandler,
-  type RefObject,
-} from "react";
+  BRANCH_PICKER_CONTENT_CLASS_NAME,
+  BranchPickerRow,
+  BranchPickerSearch,
+  BranchPickerSectionHeader,
+} from "@bb/shared-ui/branch-picker-primitives";
 import { Button } from "@bb/shared-ui/button";
 import {
   COARSE_POINTER_COMPACT_ICON_SIZE_CLASS,
   COARSE_POINTER_COMPACT_ICON_SIZE_SHRINK_CLASS,
-  COARSE_POINTER_ICON_SIZE_SHRINK_CLASS,
 } from "@bb/shared-ui/coarse-pointer-sizing";
-import { Icon, type IconName } from "@bb/shared-ui/icon";
-import { Input } from "@bb/shared-ui/input";
+import { Icon } from "@bb/shared-ui/icon";
 import { cn } from "@bb/shared-ui/lib/utils";
-import {
-  MENU_ITEM_LAST_HOVERED_CLASS,
-  MenuHoverProvider,
-  useMenuItemHover,
-} from "@bb/shared-ui/menu-item-hover";
+import { MenuHoverProvider } from "@bb/shared-ui/menu-item-hover";
 import { LIST_HOVER_TRANSITION } from "@bb/shared-ui/motion";
 import {
   OPTION_BASE_CLASS_NAME,
@@ -44,21 +35,11 @@ import { PROJECT_CHECKOUT_ENVIRONMENT_PROVIDER_ID } from "./provider-id.js";
 
 const CREATE_NEW_BRANCH_LABEL = "New branch";
 const BRANCH_LABEL_PREFIXES = [
-  "Start from:",
   "Current:",
   "Checkout:",
   "New branch from:",
-  "Branch from:",
 ] as const;
 const CURRENT_PARENTHESES_LABEL_PREFIX = "Current (";
-const BRANCH_PICKER_ROW_CLASS_NAME =
-  "flex w-full min-w-0 items-center gap-2 rounded-sm px-2 py-[0.3125rem] text-left text-xs outline-none hover:bg-state-hover hover:text-foreground focus-visible:bg-state-hover focus-visible:text-foreground";
-const BRANCH_PICKER_HEADER_BASE_CLASS_NAME =
-  "text-xs font-medium text-muted-foreground";
-const BRANCH_PICKER_HEADER_STICKY_CLASS_NAME =
-  "sticky top-0 z-20 -mx-1 bg-background px-3";
-const BRANCH_PICKER_CONTENT_CLASS_NAME =
-  "flex w-full min-w-0 flex-col overflow-hidden p-0 md:w-max md:max-w-[min(18rem,calc(100vw-2rem))] md:max-h-[calc(100vh-6rem)]";
 
 interface CheckoutInputsValue {
   path: string | null;
@@ -285,146 +266,6 @@ function BranchPickerText({
   );
 }
 
-function BranchPickerSectionHeader({
-  label,
-  subtitle,
-  subtitleTitle,
-  sticky = true,
-}: {
-  label: string;
-  subtitle?: string;
-  subtitleTitle?: string;
-  sticky?: boolean;
-}) {
-  const positionClassName = sticky
-    ? BRANCH_PICKER_HEADER_STICKY_CLASS_NAME
-    : "px-2";
-  if (subtitle) {
-    return (
-      <div
-        className={cn(
-          BRANCH_PICKER_HEADER_BASE_CLASS_NAME,
-          positionClassName,
-          "py-[0.3125rem] pb-1.5",
-        )}
-        title={subtitleTitle ?? subtitle}
-      >
-        <div>{label}</div>
-        <div className="mt-1 text-xs font-normal leading-snug text-muted-foreground">
-          <span className="min-w-0">{subtitle}</span>
-        </div>
-      </div>
-    );
-  }
-  return (
-    <div
-      className={cn(
-        BRANCH_PICKER_HEADER_BASE_CLASS_NAME,
-        positionClassName,
-        "flex h-7 items-center",
-      )}
-    >
-      {label}
-    </div>
-  );
-}
-
-function CheckoutMenuRow({
-  disabled,
-  icon,
-  label,
-  selected,
-  title,
-  onSelect,
-  onPointerEnter: callerPointerEnter,
-  onKeyDown: callerKeyDown,
-}: {
-  disabled?: boolean;
-  icon: IconName;
-  label: string;
-  selected: boolean;
-  title?: string;
-  onSelect(): void;
-  onPointerEnter?: PointerEventHandler<HTMLButtonElement>;
-  onKeyDown?: KeyboardEventHandler<HTMLButtonElement>;
-}) {
-  const { hoverProps } = useMenuItemHover({
-    onPointerEnter: callerPointerEnter,
-    onKeyDown: callerKeyDown,
-  });
-  return (
-    <button
-      type="button"
-      className={cn(
-        BRANCH_PICKER_ROW_CLASS_NAME,
-        LIST_HOVER_TRANSITION,
-        MENU_ITEM_LAST_HOVERED_CLASS,
-        disabled &&
-          "cursor-not-allowed text-muted-foreground opacity-60 hover:bg-transparent hover:text-muted-foreground",
-      )}
-      disabled={disabled}
-      title={title ?? label}
-      onClick={onSelect}
-      {...hoverProps}
-    >
-      <Icon
-        name={icon}
-        className={cn(
-          "text-muted-foreground",
-          COARSE_POINTER_COMPACT_ICON_SIZE_SHRINK_CLASS,
-        )}
-      />
-      <BranchPickerText label={label} className="flex-1" wrap />
-      <Icon
-        name="Check"
-        className={cn(
-          selected ? "opacity-100" : "opacity-0",
-          COARSE_POINTER_ICON_SIZE_SHRINK_CLASS,
-        )}
-      />
-    </button>
-  );
-}
-
-function BranchPickerSearch({
-  inputRef,
-  query,
-  enterSelection,
-  onEnterSelection,
-  onQueryChange,
-}: {
-  inputRef: RefObject<HTMLInputElement | null>;
-  query: string;
-  enterSelection: string | undefined;
-  onEnterSelection(branch: string): void;
-  onQueryChange(query: string): void;
-}) {
-  return (
-    <div className="shrink-0 border-b border-border p-1.5">
-      <div className="relative">
-        <Icon
-          name="Search"
-          className="pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground"
-        />
-        <Input
-          ref={inputRef}
-          aria-label="Search branches"
-          value={query}
-          onChange={(event) => onQueryChange(event.target.value)}
-          onKeyDown={(event) => {
-            if (event.key !== "Enter") return;
-            event.preventDefault();
-            event.stopPropagation();
-            if (enterSelection) onEnterSelection(enterSelection);
-          }}
-          placeholder="Search branches"
-          className="h-8 border-0 bg-transparent pl-8 pr-2 text-xs shadow-none focus-visible:ring-0"
-        />
-      </div>
-    </div>
-  );
-}
-
 function filterBranches(branches: readonly string[], query: string): string[] {
   const normalizedQuery = query.trim().toLowerCase();
   if (normalizedQuery.length === 0) return [...branches];
@@ -487,6 +328,12 @@ function CheckoutInputsControl({
     if (optionsScrollRef.current) optionsScrollRef.current.scrollTop = 0;
   }, [checkoutIntent, query]);
 
+  const selectedBranchName =
+    inputs.branch?.kind === "existing"
+      ? inputs.branch.name
+      : inputs.branch?.kind === "new"
+        ? inputs.branch.baseBranch
+        : null;
   const branchOptions = useMemo(() => {
     const branches =
       hostId === null
@@ -503,13 +350,7 @@ function CheckoutInputsControl({
           : [...branchState.branches];
     const filtered = filterBranches(branches, deferredQuery);
     const selectedBranch =
-      query.trim().length === 0
-        ? inputs.branch?.kind === "existing"
-          ? inputs.branch.name
-          : inputs.branch?.kind === "new"
-            ? inputs.branch.baseBranch
-            : null
-        : null;
+      query.trim().length === 0 ? selectedBranchName : null;
     return orderBranches(filtered, selectedBranch);
   }, [
     hostId,
@@ -517,17 +358,13 @@ function CheckoutInputsControl({
     branchState.remoteBranches,
     checkoutIntent,
     deferredQuery,
-    inputs.branch,
     query,
+    selectedBranchName,
   ]);
+  const currentOptionLabel =
+    hostId === null ? "Default branch" : currentMenuLabel(checkout);
   const showBranchChooser = checkoutIntent !== "current";
   const showOptionsSearch = showBranchChooser && blocker === null;
-  const selectedBranchName =
-    inputs.branch?.kind === "existing"
-      ? inputs.branch.name
-      : inputs.branch?.kind === "new"
-        ? inputs.branch.baseBranch
-        : null;
   const triggerLabel =
     inputs.branch?.kind === "existing"
       ? `Checkout: ${inputs.branch.name}`
@@ -633,6 +470,7 @@ function CheckoutInputsControl({
               }
               onEnterSelection={selectBranchAndClose}
               onQueryChange={setQuery}
+              ariaLabel="Search branches"
             />
           ) : null}
           <div
@@ -641,22 +479,25 @@ function CheckoutInputsControl({
             onWheel={(event) => event.stopPropagation()}
           >
             <BranchPickerSectionHeader label="Start from:" sticky={false} />
-            <CheckoutMenuRow
+            <BranchPickerRow
               icon="GitMerge"
-              label={
-                hostId === null ? "Default branch" : currentMenuLabel(checkout)
-              }
               selected={checkoutIntent === "current"}
+              title={currentOptionLabel}
               onSelect={() => {
                 setCheckoutIntent("current");
                 updateBranch(null);
                 closePicker();
               }}
-            />
-            <CheckoutMenuRow
+            >
+              <BranchPickerText
+                label={currentOptionLabel}
+                className="flex-1"
+                wrap
+              />
+            </BranchPickerRow>
+            <BranchPickerRow
               disabled={blocker !== null}
               icon="Plus"
-              label={CREATE_NEW_BRANCH_LABEL}
               selected={checkoutIntent === "new"}
               title={blocker?.reason ?? CREATE_NEW_BRANCH_LABEL}
               onSelect={() => {
@@ -666,15 +507,22 @@ function CheckoutInputsControl({
                   updateBranch({ kind: "new", baseBranch });
                 }
               }}
-            />
-            <CheckoutMenuRow
+            >
+              <BranchPickerText
+                label={CREATE_NEW_BRANCH_LABEL}
+                className="flex-1"
+                wrap
+              />
+            </BranchPickerRow>
+            <BranchPickerRow
               disabled={blocker !== null}
               icon="GitMerge"
-              label="Checkout"
               selected={checkoutIntent === "checkout"}
               title={blocker?.reason ?? "Checkout an existing branch"}
               onSelect={() => setCheckoutIntent("checkout")}
-            />
+            >
+              <BranchPickerText label="Checkout" className="flex-1" wrap />
+            </BranchPickerRow>
             {showBranchChooser ? (
               <>
                 <div className="my-1 h-px bg-border/60" />
@@ -683,29 +531,39 @@ function CheckoutInputsControl({
                     checkoutIntent === "new" ? "Branch from:" : "Checkout:"
                   }
                   subtitle={blocker?.reason}
-                  subtitleTitle={blocker?.reason}
                 />
                 {blocker === null ? (
                   <>
                     {branchOptions.map((branch) => (
-                      <CheckoutMenuRow
+                      <BranchPickerRow
                         key={branch}
                         icon="GitMerge"
-                        label={branch}
                         selected={branch === selectedBranchName}
                         title={branch}
                         onSelect={() => selectBranchAndClose(branch)}
-                      />
+                      >
+                        <BranchPickerText
+                          label={branch}
+                          className="flex-1"
+                          wrap
+                        />
+                      </BranchPickerRow>
                     ))}
                     {hostId === null &&
                     query.trim() &&
                     !branchOptions.includes(query.trim()) ? (
-                      <CheckoutMenuRow
+                      <BranchPickerRow
                         icon="GitMerge"
-                        label={`Use ${query.trim()}`}
                         selected={false}
+                        title={`Use ${query.trim()}`}
                         onSelect={() => selectBranchAndClose(query.trim())}
-                      />
+                      >
+                        <BranchPickerText
+                          label={`Use ${query.trim()}`}
+                          className="flex-1"
+                          wrap
+                        />
+                      </BranchPickerRow>
                     ) : null}
                     {branchOptions.length === 0 &&
                     !(hostId === null && query.trim()) ? (

@@ -14,8 +14,6 @@ const marketplaceStatsSchema = z.object({
   ),
 });
 
-export type { MarketplaceStats } from "./marketplace-model.js";
-
 export function parseMarketplaceStats(input: unknown): MarketplaceStats {
   const parsed = marketplaceStatsSchema.parse(input);
   return {

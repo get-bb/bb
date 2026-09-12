@@ -36,6 +36,7 @@ import {
   useComposerExtensionController,
 } from "@/components/plugin/ComposerExtensionHost";
 import {
+  DEFAULT_COMPOSER_SCOPE,
   PromptBoxInternal,
   type AttachmentsConfig,
   type HistoryConfig,
@@ -43,6 +44,7 @@ import {
   type PromptBoxHandle,
   type TypeaheadConfig,
 } from "@/components/promptbox/PromptBoxInternal";
+import { usePromptModePermissionDisplay } from "@/components/promptbox/usePromptModePermissionDisplay";
 import { usePromptVoice } from "@/components/promptbox/usePromptVoice";
 import { PermissionModePicker } from "@/components/pickers/PermissionModePicker";
 import {
@@ -56,14 +58,10 @@ import { usePointerCoarse } from "@bb/shared-ui/hooks/use-pointer-coarse";
 import { ThreadTimelineScrollToBottomButton } from "@/views/thread-detail/ThreadTimelineScrollToBottomButton";
 import { useOptionalPaneContext } from "@/views/thread-detail/PaneContext";
 import { ThreadContextWindowIndicator } from "@/components/thread/timeline";
-import { PROMPT_STACK_TRACK_CLASS } from "@/components/promptbox/banner/PromptStackCard";
-import { THREAD_PROMPT_CONTEXT_BANNER_ROW_HEIGHT } from "@/components/promptbox/banner/ThreadPromptContextBanner";
 import {
-  isPlanModePrompt,
-  permissionDisplayForActivePromptMode,
-  permissionDisplayForPromptMode,
-  shouldDisablePermissionPickerForActivePromptMode,
-} from "@bb/client-core";
+  PROMPT_STACK_CARD_ROW_HEIGHT,
+  PROMPT_STACK_TRACK_CLASS,
+} from "@/components/promptbox/banner/PromptStackCard";
 
 type PromptBoxWithScrollAnchorProps = ComponentProps<
   typeof PromptBoxInternal
@@ -115,23 +113,15 @@ function PromptBoxWithScrollAnchor({
 
 const FOLLOW_UP_PROMPT_BOX_DEFAULT_MIN_HEIGHT = 68;
 const FOLLOW_UP_PROMPT_BOX_ELASTIC_TARGET_HEIGHT =
-  FOLLOW_UP_PROMPT_BOX_DEFAULT_MIN_HEIGHT +
-  THREAD_PROMPT_CONTEXT_BANNER_ROW_HEIGHT;
+  FOLLOW_UP_PROMPT_BOX_DEFAULT_MIN_HEIGHT + PROMPT_STACK_CARD_ROW_HEIGHT;
 const COMPOSER_CONTROL_SELECTOR = "button, [role='button'], [aria-haspopup]";
 const COMPOSER_OVERLAY_TRIGGER_SELECTOR = "[aria-haspopup]";
 const OPEN_COMPOSER_OVERLAY_TRIGGER_SELECTOR = `${COMPOSER_OVERLAY_TRIGGER_SELECTOR}[aria-expanded="true"]`;
 const MOBILE_KEYBOARD_VIEWPORT_MIN_DELTA_PX = 80;
 const MOBILE_FOCUS_EXPANSION_FALLBACK_MS = 350;
 const MOBILE_KEYBOARD_DISMISSAL_FALLBACK_MS = 750;
-const DEFAULT_FOLLOW_UP_COMPOSER_SCOPE = {
-  kind: "new-thread",
-  projectId: null,
-} as const;
 
-export type {
-  FollowUpBlockedReason,
-  FollowUpSubmitMode,
-} from "@bb/client-core";
+export type { FollowUpSubmitMode } from "@bb/client-core";
 
 export interface FollowUpComposerProps {
   history: HistoryConfig;
@@ -167,7 +157,6 @@ export interface FollowUpPromptBoxProps {
   contextWindowUsage: ContextWindowUsage | null;
   execution: ExecutionControlsProps;
   permission: ExecutionPermissionConfig;
-  readOnly?: boolean;
   executionReadOnly?: boolean;
   permissionReadOnly?: boolean;
   typeahead: TypeaheadConfig;
@@ -202,7 +191,7 @@ function FollowUpPromptBoxStackOnly({
     pluginComposerScope ?? pluginComposerHost?.scope ?? null;
   const hostDraft = usePluginComposerHostDraft(pluginComposerHost ?? null);
   const composerView = usePluginComposerViewModel({
-    scope: composerScope ?? DEFAULT_FOLLOW_UP_COMPOSER_SCOPE,
+    scope: composerScope ?? DEFAULT_COMPOSER_SCOPE,
     layout: "expanded",
     text: hostDraft?.text ?? "",
     attachmentCount: hostDraft?.attachments.length ?? 0,
@@ -233,13 +222,12 @@ function FollowUpPromptBoxWithComposer({
   id,
   attachments,
   stack,
-  activePromptMode,
+  activePromptMode = null,
   composer,
   environmentSummary,
   contextWindowUsage,
   execution,
   permission,
-  readOnly,
   executionReadOnly,
   permissionReadOnly,
   typeahead,
@@ -267,14 +255,10 @@ function FollowUpPromptBoxWithComposer({
   const isLoadingPendingInteractions =
     submitMode.kind === "blocked" &&
     submitMode.reason === "loading-pending-interactions";
-  const isProvisioning =
-    submitMode.kind === "blocked" && submitMode.reason === "provisioning";
   const isUnavailable =
     submitMode.kind === "blocked" && submitMode.reason === "unavailable";
   const onStopRuntime =
-    submitMode.kind === "queue" || submitMode.kind === "stop-only"
-      ? submitMode.onStop
-      : undefined;
+    submitMode.kind === "queue" ? submitMode.onStop : undefined;
   const canStopRuntime = onStopRuntime !== undefined;
   const attachmentCount = attachments.items?.length ?? 0;
   const composerScope =
@@ -282,7 +266,7 @@ function FollowUpPromptBoxWithComposer({
   const [composerLayout, setComposerLayout] =
     useState<ComposerView["layout"]>("expanded");
   const composerView = usePluginComposerViewModel({
-    scope: composerScope ?? DEFAULT_FOLLOW_UP_COMPOSER_SCOPE,
+    scope: composerScope ?? DEFAULT_COMPOSER_SCOPE,
     layout: composerLayout,
     text: composer.message,
     attachmentCount,
@@ -622,37 +606,22 @@ function FollowUpPromptBoxWithComposer({
   const modifierSubmitHint = (action: "queue" | "steer"): string =>
     onModifierSubmit ? `, ${modifierSubmitShortcutLabel()} to ${action}` : "";
   const executionControlsDisabled =
-    (executionReadOnly ?? readOnly ?? false) || hasPendingInteraction;
+    (executionReadOnly ?? false) || hasPendingInteraction;
   const footerStart = useMemo(
     () => (
       <ExecutionControls {...execution} disabled={executionControlsDisabled} />
     ),
     [execution, executionControlsDisabled],
   );
-  const selectedProviderPlanModeCopy = execution.provider.options?.find(
-    (option) => option.value === execution.provider.selectedId,
-  )?.planModeCopy;
-  const promptModeInput = useMemo(
-    () => ({
-      planModeCopy: selectedProviderPlanModeCopy,
+  const { permissionDisplayOverride, permissionPickerDisabledByPlanMode } =
+    usePromptModePermissionDisplay({
+      execution,
       value: composer.message,
       mentionRanges: composer.mentionRanges,
-    }),
-    [composer.mentionRanges, composer.message, selectedProviderPlanModeCopy],
-  );
-  const permissionDisplayOverride = useMemo(
-    () =>
-      permissionDisplayForActivePromptMode(
-        activePromptMode,
-        selectedProviderPlanModeCopy,
-      ) ?? permissionDisplayForPromptMode(promptModeInput),
-    [activePromptMode, promptModeInput, selectedProviderPlanModeCopy],
-  );
-  const permissionPickerDisabledByPlanMode =
-    shouldDisablePermissionPickerForActivePromptMode(activePromptMode) ||
-    isPlanModePrompt(promptModeInput);
+      activePromptMode,
+    });
   const permissionReadOnlyResolved =
-    (permissionReadOnly ?? readOnly ?? false) || hasPendingInteraction;
+    (permissionReadOnly ?? false) || hasPendingInteraction;
   const permissionPickerDisabled =
     permissionReadOnlyResolved || permissionPickerDisabledByPlanMode;
   const permissionControl = useMemo(
@@ -776,11 +745,9 @@ function FollowUpPromptBoxWithComposer({
                     ? "Loading models..."
                     : isLoadingPendingInteractions
                       ? "Checking pending interactions..."
-                      : isProvisioning
-                        ? "Provisioning..."
-                        : isUnavailable
-                          ? "Unavailable"
-                          : "Submit (Enter)",
+                      : isUnavailable
+                        ? "Unavailable"
+                        : "Submit (Enter)",
           isRunning: canStopRuntime,
         }}
         typeahead={typeahead}

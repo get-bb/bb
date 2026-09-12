@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { SmilePlusIcon } from "@hugeicons/core-free-icons";
 import type { Task } from "../../shared/contract.js";
+import { errorMessage } from "../../shared/errors.js";
 import type { DelegationRpcContract } from "../../delegate/contract.js";
 import { useBbNavigate, useRpc } from "@get-bb/plugin-sdk/app";
 import {
@@ -293,7 +294,7 @@ function TaskDetail({ task }: { task: Task }) {
       });
       if (!result.ok) push(result.error.message);
     } catch (error) {
-      push(error instanceof Error ? error.message : String(error));
+      push(errorMessage(error));
     }
   };
 
@@ -317,7 +318,7 @@ function TaskDetail({ task }: { task: Task }) {
       try {
         await uploadAttachment(file, { taskId: task.id });
       } catch (error) {
-        push(error instanceof Error ? error.message : String(error));
+        push(errorMessage(error));
       }
     }
     attachments.refresh();
@@ -338,7 +339,7 @@ function TaskDetail({ task }: { task: Task }) {
       subtasks.refresh();
       return true;
     } catch (error) {
-      push(error instanceof Error ? error.message : String(error));
+      push(errorMessage(error));
       return false;
     }
   };
@@ -460,7 +461,6 @@ function TaskDetail({ task }: { task: Task }) {
             onCreate={createSubtask}
           />
 
-          {}
           {(threads.data ?? []).length > 0 ? (
             <div className="mt-6">
               <ThreadsSection
@@ -482,9 +482,8 @@ function TaskDetail({ task }: { task: Task }) {
             </div>
           ) : null}
 
-          {}
           <div className="mt-1">
-            <TaskActivity taskId={task.id} taskKey={task.key} />
+            <TaskActivity taskId={task.id} />
           </div>
         </div>
 

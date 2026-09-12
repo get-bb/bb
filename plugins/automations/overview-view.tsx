@@ -47,10 +47,9 @@ import {
   getOneShotLifecycle,
   matchesAutomationStatusFilters,
   oneShotLifecycleAllowsToggle,
+  PERSONAL_PROJECT_ID,
 } from "./lib/format-schedule.js";
 import { AutomationMetadataItem } from "./metadata.js";
-
-const PERSONAL_PROJECT_ID = "proj_personal";
 
 const AUTOMATION_STATUS_FILTER_OPTIONS = [
   { id: "active", label: "Active" },
@@ -155,9 +154,8 @@ function AutomationRowLeading({
 }
 
 export function automationProjectLabel(
-  project: OverviewEntry["project"] | null | undefined,
+  project: OverviewEntry["project"],
 ): string {
-  if (project == null) return "Workspace";
   return project.name;
 }
 
@@ -403,8 +401,7 @@ function automationSearchValues(
     values.push(automationProblemSearchText(automation));
     if (automation.problem === "invalid-stored-data") return values;
   }
-  const status = formatScheduleStatusLabel(automation);
-  if (status !== undefined) values.push(status);
+  values.push(formatScheduleStatusLabel(automation));
   values.push(formatAutomationTrigger(automation.trigger));
   return values;
 }

@@ -7,7 +7,7 @@ import {
   type PromptMentionLinkResolver,
 } from "./editor/prompt-mention-link";
 
-type ComposerEditorLayout = "thread" | "root-compose";
+export type ComposerEditorLayout = "thread" | "root-compose";
 
 const COMPOSER_EDITOR_MAX_HEIGHT_BY_LAYOUT: Record<
   ComposerEditorLayout,
@@ -17,8 +17,8 @@ const COMPOSER_EDITOR_MAX_HEIGHT_BY_LAYOUT: Record<
   "root-compose": "calc(70dvh - 3rem)",
 };
 
-function blurComposerEditor(editor: Editor): void {
-  editor.view.dom.blur();
+export function blurPromptEditor(editor: Editor | null | undefined): void {
+  editor?.view.dom.blur();
   window.getSelection()?.removeAllRanges();
 }
 
@@ -65,7 +65,7 @@ export function ComposerEditorSlot({
             if (event.key !== "Escape") return;
             if (editor === null || editor.isEditable) return;
             event.preventDefault();
-            blurComposerEditor(editor);
+            blurPromptEditor(editor);
           }}
           data-promptbox-editor-content=""
           data-promptbox-compact-content={isCompactLayout ? "" : undefined}

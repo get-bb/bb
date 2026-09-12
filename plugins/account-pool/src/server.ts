@@ -9,6 +9,7 @@ import {
   accountPoolConfigSchema,
   accountPoolConfigSetInputSchema,
   type AccountPoolConfigController,
+  type PoolProvider,
 } from "./contracts.js";
 import type {
   ImportedClaudeCredentials,
@@ -39,7 +40,6 @@ export interface AccountPoolPluginOptions {
   codexRefreshUrl?: string;
   codexUsageUrl?: string;
   usageUrl?: string;
-  usageRefreshIntervalMs?: number;
   drainTimeoutMs?: number;
   maxAffinityBindings?: number;
   disposeTimeoutMs?: number;
@@ -115,7 +115,6 @@ export function createAccountPoolPlugin(
       profileUrl: options.oauthProfileUrl,
       importClaudeCredentials: options.importCredentials,
       importCodexCredentials: options.importCodexCredentials,
-      usageRefreshIntervalMs: options.usageRefreshIntervalMs,
       drainTimeoutMs: options.drainTimeoutMs,
       maxAffinityBindings: options.maxAffinityBindings,
       onUpstreamError: (provider, error) =>
@@ -168,6 +167,15 @@ export function createAccountPoolPlugin(
       createRpcHandlers(operations, login, codexLogin, config),
     );
     registerPoolCli(bb, operations, login, codexLogin, config);
+    const proxiedHealth = async (provider: PoolProvider) =>
+      (await operations.isRoutingEnabled(provider)) &&
+      (await operations.hasUsableEnabledAccount(provider))
+        ? {
+            label: "Proxied",
+            statusMessage:
+              "Credentials are provided by the Account Pooler hub.",
+          }
+        : null;
     bb.providers.experimental_contributeEnv("claude-code", async (context) => {
       if (
         !(await operations.isRoutingEnabled("claude")) ||
@@ -199,15 +207,8 @@ export function createAccountPoolPlugin(
         },
       ];
     });
-    bb.providers.experimental_contributeEnvHealth("claude-code", async () =>
-      (await operations.isRoutingEnabled("claude")) &&
-      (await operations.hasUsableEnabledAccount("claude"))
-        ? {
-            label: "Proxied",
-            statusMessage:
-              "Credentials are provided by the Account Pooler hub.",
-          }
-        : null,
+    bb.providers.experimental_contributeEnvHealth("claude-code", () =>
+      proxiedHealth("claude"),
     );
     bb.providers.experimental_contributeEnv("codex", async (context) => {
       if (
@@ -233,15 +234,8 @@ export function createAccountPoolPlugin(
         },
       ];
     });
-    bb.providers.experimental_contributeEnvHealth("codex", async () =>
-      (await operations.isRoutingEnabled("codex")) &&
-      (await operations.hasUsableEnabledAccount("codex"))
-        ? {
-            label: "Proxied",
-            statusMessage:
-              "Credentials are provided by the Account Pooler hub.",
-          }
-        : null,
+    bb.providers.experimental_contributeEnvHealth("codex", () =>
+      proxiedHealth("codex"),
     );
     bb.onDispose(async () => {
       codexLogin.dispose();

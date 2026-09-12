@@ -12,8 +12,6 @@ import {
 import type { Env } from "./env.js";
 import { resolveDevEmailPasswordEnabled } from "./local-auth.js";
 
-export type Auth = ReturnType<typeof createAuth>;
-
 export function createAuth(env: Env) {
   const db = drizzle(env.DB);
   const appUrl = new URL(env.APP_URL);

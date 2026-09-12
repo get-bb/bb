@@ -1,4 +1,4 @@
-import { parseOptionalInteger } from "../services/lib/validation.js";
+import { parsePaginationQuery } from "../services/lib/validation.js";
 import path from "node:path";
 import {
   countLiveThreadsInEnvironment,
@@ -17,6 +17,7 @@ import {
   type EnvironmentDiffFileQuery,
   type EnvironmentDiffQuery,
   type PublicApiSchema,
+  type PullRequestMergeMethod,
 } from "@bb/server-contract";
 import type { Hono } from "hono";
 import type { AppDeps } from "../types.js";
@@ -165,9 +166,9 @@ async function getPullRequestForWorkspaceTarget(
     : null;
 }
 
-function assertCanMarkPullRequestReady(
+function requirePullRequest(
   pullRequest: ThreadPullRequest | null,
-): void {
+): ThreadPullRequest {
   if (!pullRequest) {
     throw new ApiError(
       409,
@@ -175,36 +176,24 @@ function assertCanMarkPullRequestReady(
       "No pull request found",
     );
   }
+  return pullRequest;
+}
+
+function assertCanMarkPullRequestReady(pullRequest: ThreadPullRequest): void {
   if (pullRequest.state !== "draft") {
     throw new ApiError(409, "invalid_request", "Pull request is not a draft");
   }
 }
 
 function assertCanConvertPullRequestToDraft(
-  pullRequest: ThreadPullRequest | null,
+  pullRequest: ThreadPullRequest,
 ): void {
-  if (!pullRequest) {
-    throw new ApiError(
-      409,
-      "pull_request_unavailable",
-      "No pull request found",
-    );
-  }
   if (pullRequest.state !== "open") {
     throw new ApiError(409, "invalid_request", "Pull request is not open");
   }
 }
 
-function assertCanMergePullRequest(
-  pullRequest: ThreadPullRequest | null,
-): void {
-  if (!pullRequest) {
-    throw new ApiError(
-      409,
-      "pull_request_unavailable",
-      "No pull request found",
-    );
-  }
+function assertCanMergePullRequest(pullRequest: ThreadPullRequest): void {
   if (
     pullRequest.state !== "open" ||
     pullRequest.mergeability.state !== "mergeable"
@@ -215,6 +204,40 @@ function assertCanMergePullRequest(
       "Pull request is not currently mergeable",
     );
   }
+}
+
+async function runPullRequestAction(
+  deps: AppDeps,
+  environment: ReturnType<typeof requireReadyEnvironment>,
+  action:
+    | { operation: "ready" }
+    | { operation: "draft" }
+    | { operation: "merge"; method: PullRequestMergeMethod },
+  assertState: (pullRequest: ThreadPullRequest) => void,
+): Promise<void> {
+  if (!environment.isGitRepo) {
+    throw new ApiError(
+      409,
+      "invalid_request",
+      "Pull request actions require a git environment",
+    );
+  }
+  const target = requireWorkspaceCommandTarget(environment);
+  const pullRequest = await getPullRequestForWorkspaceTarget(deps, target);
+  assertState(requirePullRequest(pullRequest));
+
+  await mapPullRequestActionFailureTo409(() =>
+    runLiveCommandAndWait(deps, {
+      hostId: target.hostId,
+      timeoutMs: COMMAND_TIMEOUT_MS,
+      command: {
+        type: "workspace.pull_request_action",
+        ...action,
+        environmentId: target.environmentId,
+        workspaceContext: target.workspaceContext,
+      },
+    }),
+  );
 }
 
 function resolveDiffFileRef(
@@ -257,14 +280,10 @@ export function registerEnvironmentRoutes(app: Hono, deps: AppDeps): void {
   const routes = publicApiRoutes.environments;
 
   get(routes.list, async (context, query) => {
-    const limit = parseOptionalInteger(query?.limit, "limit");
-    if (limit !== undefined && limit <= 0) {
-      throw new ApiError(400, "invalid_request", "limit must be positive");
-    }
-    const offset = parseOptionalInteger(query?.offset, "offset");
-    if (offset !== undefined && offset < 0) {
-      throw new ApiError(400, "invalid_request", "offset must be non-negative");
-    }
+    const { limit, offset } = parsePaginationQuery({
+      limit: query?.limit,
+      offset: query?.offset,
+    });
     return context.json(
       listEnvironments(deps.db, {
         ...(query?.projectId ? { projectId: query.projectId } : {}),
@@ -415,18 +434,10 @@ export function registerEnvironmentRoutes(app: Hono, deps: AppDeps): void {
   });
 
   get(routes.diff, async (context, query) => {
-    const environment = requireReadyEnvironment(
-      deps.db,
-      context.req.param("id"),
-    );
-    if (!environment.isGitRepo) {
-      return context.json({
-        outcome: "not_applicable",
-        reason: "non_git_environment",
-        message: "Workspace diff is not available for non-git environments",
-      });
+    const target = resolveGitDiffWorkspaceTarget(deps, context.req.param("id"));
+    if (target === null) {
+      return context.json(NON_GIT_DIFF_NOT_APPLICABLE);
     }
-    const target = requireWorkspaceCommandTarget(environment);
     const result = await callHostRetryableOnlineRpc(deps, {
       hostId: target.hostId,
       timeoutMs: COMMAND_TIMEOUT_MS,
@@ -706,31 +717,11 @@ export function registerEnvironmentRoutes(app: Hono, deps: AppDeps): void {
           });
         }
         case "pull_request_ready": {
-          if (!environment.isGitRepo) {
-            throw new ApiError(
-              409,
-              "invalid_request",
-              "Pull request actions require a git environment",
-            );
-          }
-          const target = requireWorkspaceCommandTarget(environment);
-          const pullRequest = await getPullRequestForWorkspaceTarget(
+          await runPullRequestAction(
             deps,
-            target,
-          );
-          assertCanMarkPullRequestReady(pullRequest);
-
-          await mapPullRequestActionFailureTo409(() =>
-            runLiveCommandAndWait(deps, {
-              hostId: target.hostId,
-              timeoutMs: COMMAND_TIMEOUT_MS,
-              command: {
-                type: "workspace.pull_request_action",
-                operation: "ready",
-                environmentId: target.environmentId,
-                workspaceContext: target.workspaceContext,
-              },
-            }),
+            environment,
+            { operation: "ready" },
+            assertCanMarkPullRequestReady,
           );
           return context.json({
             ok: true,
@@ -739,31 +730,11 @@ export function registerEnvironmentRoutes(app: Hono, deps: AppDeps): void {
           });
         }
         case "pull_request_draft": {
-          if (!environment.isGitRepo) {
-            throw new ApiError(
-              409,
-              "invalid_request",
-              "Pull request actions require a git environment",
-            );
-          }
-          const target = requireWorkspaceCommandTarget(environment);
-          const pullRequest = await getPullRequestForWorkspaceTarget(
+          await runPullRequestAction(
             deps,
-            target,
-          );
-          assertCanConvertPullRequestToDraft(pullRequest);
-
-          await mapPullRequestActionFailureTo409(() =>
-            runLiveCommandAndWait(deps, {
-              hostId: target.hostId,
-              timeoutMs: COMMAND_TIMEOUT_MS,
-              command: {
-                type: "workspace.pull_request_action",
-                operation: "draft",
-                environmentId: target.environmentId,
-                workspaceContext: target.workspaceContext,
-              },
-            }),
+            environment,
+            { operation: "draft" },
+            assertCanConvertPullRequestToDraft,
           );
           return context.json({
             ok: true,
@@ -772,32 +743,11 @@ export function registerEnvironmentRoutes(app: Hono, deps: AppDeps): void {
           });
         }
         case "pull_request_merge": {
-          if (!environment.isGitRepo) {
-            throw new ApiError(
-              409,
-              "invalid_request",
-              "Pull request actions require a git environment",
-            );
-          }
-          const target = requireWorkspaceCommandTarget(environment);
-          const pullRequest = await getPullRequestForWorkspaceTarget(
+          await runPullRequestAction(
             deps,
-            target,
-          );
-          assertCanMergePullRequest(pullRequest);
-
-          await mapPullRequestActionFailureTo409(() =>
-            runLiveCommandAndWait(deps, {
-              hostId: target.hostId,
-              timeoutMs: COMMAND_TIMEOUT_MS,
-              command: {
-                type: "workspace.pull_request_action",
-                operation: "merge",
-                method: payload.options.method,
-                environmentId: target.environmentId,
-                workspaceContext: target.workspaceContext,
-              },
-            }),
+            environment,
+            { operation: "merge", method: payload.options.method },
+            assertCanMergePullRequest,
           );
           return context.json({
             ok: true,

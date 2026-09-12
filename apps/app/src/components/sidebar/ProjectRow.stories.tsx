@@ -8,15 +8,12 @@ import {
   makeProject as makeSharedProject,
   makeThreadListEntry,
 } from "../../../.ladle/story-fixtures";
-import { SidebarStickyStack } from "@/components/ui/sidebar.js";
+import { SidebarMenu, SidebarStickyStack } from "@/components/ui/sidebar.js";
 import { ProjectActionsProvider } from "@/components/project/ProjectActionsProvider";
 import { ThreadActionsProvider } from "@/components/thread/ThreadActionsProvider";
 import { ProjectListShell } from "./ProjectList";
-import type { ProjectThreadListState } from "./ProjectRow";
-import {
-  ProjectListProjects,
-  type ProjectListRowModel,
-} from "./ProjectListProjects";
+import { ProjectRow, type ProjectThreadListState } from "./ProjectRow";
+import type { ProjectListRowModel } from "./ProjectListProjects";
 import { compareStandardThreads } from "@bb/client-core";
 import { StoryCard, StoryRow } from "../../../.ladle/story-card";
 
@@ -111,19 +108,26 @@ function InteractiveProjectList({
     [],
   );
   return (
-    <ProjectListProjects
-      status="ready"
-      rows={resolvedRows}
-      progressiveDisclosureEnabled
-      collapsedProjectIds={collapsedProjectIds}
-      collapsedThreadIds={collapsedThreadIds}
-      collapsedEnvironmentIds={collapsedEnvironmentIds}
-      compareThreads={compareStandardThreads}
-      onCreateProjectThread={noop}
-      onToggleProjectCollapsed={onToggleProjectCollapsed}
-      onToggleThreadCollapsed={onToggleThreadCollapsed}
-      onToggleEnvironmentCollapsed={onToggleEnvironmentCollapsed}
-    />
+    <SidebarMenu className="gap-1">
+      {resolvedRows.map((row) => (
+        <ProjectRow
+          key={row.project.id}
+          project={row.project}
+          threadListState={row.threadListState}
+          progressiveDisclosureEnabled
+          isActive={row.isActive}
+          isLocalPathInvalid={row.isLocalPathInvalid}
+          isCollapsed={collapsedProjectIds.has(row.project.id)}
+          collapsedThreadIds={collapsedThreadIds}
+          collapsedEnvironmentIds={collapsedEnvironmentIds}
+          compareThreads={compareStandardThreads}
+          onCreateProjectThread={noop}
+          onToggleProjectCollapsed={onToggleProjectCollapsed}
+          onToggleThreadCollapsed={onToggleThreadCollapsed}
+          onToggleEnvironmentCollapsed={onToggleEnvironmentCollapsed}
+        />
+      ))}
+    </SidebarMenu>
   );
 }
 

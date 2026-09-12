@@ -1,4 +1,5 @@
 import {
+  beginArchiveEnvironmentThreadsTransaction,
   rollbackArchiveThreadsTransaction,
   settleArchiveThreadsTransaction,
   type ArchiveThreadsTransaction,
@@ -14,7 +15,6 @@ import { sdk } from "@/lib/sdk";
 import type { RequestEnvironmentActionMutationRequest } from "./mutation-request-types";
 import { invalidateEnvironmentActionQueries } from "../cache-owners/environment-cache-effects";
 import { applyEnvironmentUpdateResult } from "../cache-owners/environment-workspace-cache-owner";
-import { beginArchiveEnvironmentThreadsTransaction } from "../cache-owners/thread-list-cache-owner";
 type UpdateEnvironmentMutationRequest = {
   id: string;
 } & UpdateEnvironmentRequest;

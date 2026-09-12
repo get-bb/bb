@@ -2,7 +2,6 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { cn } from "@bb/shared-ui/lib/utils";
 import { THREAD_JUMP_APP_COMMAND_IDS } from "@bb/domain";
 import { useNavigate } from "react-router-dom";
-import { COARSE_POINTER_CHILD_ICON_BUTTON_CLASS } from "@bb/shared-ui/coarse-pointer-sizing";
 import { OverflowFade } from "@/components/ui/overflow-fade.js";
 import {
   Sidebar,
@@ -22,15 +21,9 @@ import {
 } from "@/components/plugin/PluginSidebarFooterItems";
 import { SidebarPluginAttentionGlyph } from "./SidebarPluginAttentionGlyph";
 import { SidebarUpdatesBadge } from "./SidebarUpdatesBadge";
-import { SidebarHistoryNavigationControls } from "./SidebarHistoryNavigationControls";
+import { SidebarResizeHandle, SidebarTopReserveRow } from "./SidebarChrome";
+import { SIDEBAR_FOOTER_ACTION_CLASS } from "./sidebarRowClasses";
 import { useQuickCreateProjectController } from "@/hooks/useQuickCreateProject";
-import {
-  CHROME_ROW_CLASS,
-  getBbDesktopInfo,
-  MACOS_CHROME_CONTROL_NO_DRAG_CLASS,
-  MACOS_WINDOW_DRAG_CLASS,
-  shouldUseMacosDesktopChrome,
-} from "@/lib/bb-desktop";
 import { getRootComposeRoutePath, getThreadRoutePath } from "@/lib/route-paths";
 import { usePaneContentSplitDrag } from "./usePaneContentSplitDrag";
 import { openUrlInExternalBrowser } from "@/lib/url-open-routing";
@@ -55,26 +48,18 @@ import { SidebarNavigationRegion } from "./SidebarNavigationRegion";
 const NEW_THREAD_PANE_CONTENT = { kind: "new-thread" } as const;
 
 const BUG_REPORT_NEW_ISSUE_URL = "https://github.com/get-bb/bb/issues/new";
-const SIDEBAR_FOOTER_ACTION_CLASS = cn(
-  COARSE_POINTER_CHILD_ICON_BUTTON_CLASS,
-  "text-muted-foreground hover:text-sidebar-foreground [&>svg]:opacity-80",
-);
 
 interface AppSidebarProps {
   onResizeMouseDown: (event: React.MouseEvent<HTMLDivElement>) => void;
   isResizing: boolean;
-  showTopReserve: boolean;
   settingsRoutePath: string;
-  toolsRoutePath?: string;
   mobileHosted?: { hidden: boolean };
 }
 
 export function AppSidebar({
   onResizeMouseDown,
   isResizing,
-  showTopReserve,
   settingsRoutePath,
-  toolsRoutePath,
   mobileHosted,
 }: AppSidebarProps) {
   const quickCreateProject = useQuickCreateProjectController();
@@ -89,7 +74,6 @@ export function AppSidebar({
   const closeOnMobile = useCloseMobileSidebar();
   const { isCompactViewport, openMobile } = useSidebar();
   const [compactCustomizeMode, setCompactCustomizeMode] = useState(false);
-  const [desktopInfo] = useState(getBbDesktopInfo);
   const [threadShortcutKeysById, setThreadShortcutKeysById] = useState<
     ReadonlyMap<string, SidebarThreadShortcutPresentation>
   >(EMPTY_SIDEBAR_THREAD_SHORTCUT_KEYS);
@@ -97,7 +81,6 @@ export function AppSidebar({
   const threadShortcutTargetsRef = useRef<
     readonly SidebarThreadShortcutTarget[]
   >([]);
-  const usesDesktopChrome = shouldUseMacosDesktopChrome(desktopInfo);
   const threadJumpShortcuts = useAppCommandShortcuts(
     THREAD_JUMP_APP_COMMAND_IDS,
   );
@@ -221,30 +204,12 @@ export function AppSidebar({
 
   const body = (
     <>
-      {showTopReserve ? (
-        <div
-          data-testid="app-sidebar-top-reserve-row"
-          className={cn(
-            CHROME_ROW_CLASS,
-            "shrink-0 justify-end px-2",
-            usesDesktopChrome && MACOS_WINDOW_DRAG_CLASS,
-          )}
-        >
-          <SidebarHistoryNavigationControls
-            onNavigate={closeOnMobile}
-            className={cn(
-              "group-data-[collapsible=icon]:hidden",
-              usesDesktopChrome && MACOS_CHROME_CONTROL_NO_DRAG_CLASS,
-            )}
-          />
-        </div>
-      ) : null}
+      <SidebarTopReserveRow testId="app-sidebar-top-reserve-row" />
       <SidebarNavigationRegion
         compactCustomizeMode={isCompactCustomizeModeActive}
         onCompactCustomizeModeChange={setCompactCustomizeMode}
         onNavigate={closeOnMobile}
         splitEnabled
-        toolsRoutePath={toolsRoutePath}
         newThreadSplit={newThreadSplit}
         onNewChat={handleNewChat}
         onSearchThreads={closeOnMobile}
@@ -310,14 +275,9 @@ export function AppSidebar({
           <SidebarUpdatesBadge onNavigate={closeOnMobile} />
         </SidebarMenu>
       </SidebarFooter>
-      <div
-        data-testid="app-sidebar-resize-handle"
-        className={cn(
-          "absolute -right-1.5 top-0 z-30 hidden h-full w-3 cursor-col-resize md:block",
-          "before:absolute before:inset-y-0 before:left-1/2 before:w-px before:-translate-x-1/2 before:bg-transparent before:transition-colors hover:before:bg-sidebar-border",
-          "group-data-[collapsible=icon]:hidden",
-          isResizing && "before:bg-sidebar-border",
-        )}
+      <SidebarResizeHandle
+        testId="app-sidebar-resize-handle"
+        isResizing={isResizing}
         onMouseDown={onResizeMouseDown}
       />
     </>

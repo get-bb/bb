@@ -367,11 +367,19 @@ export function restorePromptDraftAfterOptionChange({
   return changed ? restoredDraft : null;
 }
 
-export function hasPromptOptionValueChanged<T>(
-  currentValue: T,
-  nextValue: T,
-): boolean {
-  return !Object.is(currentValue, nextValue);
+function useDraftPreservingOptionChange<T>(
+  current: T,
+  setValue: (value: T) => void,
+  snapshot: () => void,
+): (value: T) => void {
+  return useCallback(
+    (value: T) => {
+      if (Object.is(current, value)) return;
+      snapshot();
+      setValue(value);
+    },
+    [current, setValue, snapshot],
+  );
 }
 
 function resolvePanelThreadId(
@@ -780,7 +788,7 @@ export function NewThreadComposer({
           ? pickedProviderMachine.machine
           : null;
       if (
-        !hasPromptOptionValueChanged(environmentSelectionValue, value) &&
+        Object.is(environmentSelectionValue, value) &&
         JSON.stringify(providerMachine) ===
           JSON.stringify(currentProviderMachine)
       ) {
@@ -1489,49 +1497,30 @@ export function NewThreadComposer({
     };
   }, [submitDraft]);
 
-  const handleProviderChange = useCallback(
-    (value: string) => {
-      if (!hasPromptOptionValueChanged(selectedProviderId, value)) return;
-      snapshotDraftBeforeOptionChange();
-      setSelectedProviderId(value);
-    },
-    [
-      selectedProviderId,
-      setSelectedProviderId,
-      snapshotDraftBeforeOptionChange,
-    ],
+  const handleProviderChange = useDraftPreservingOptionChange(
+    selectedProviderId,
+    setSelectedProviderId,
+    snapshotDraftBeforeOptionChange,
   );
-  const handleModelChange = useCallback(
-    (value: string) => {
-      if (!hasPromptOptionValueChanged(selectedModel, value)) return;
-      snapshotDraftBeforeOptionChange();
-      setSelectedModel(value);
-    },
-    [selectedModel, setSelectedModel, snapshotDraftBeforeOptionChange],
+  const handleModelChange = useDraftPreservingOptionChange(
+    selectedModel,
+    setSelectedModel,
+    snapshotDraftBeforeOptionChange,
   );
-  const handleReasoningChange = useCallback(
-    (value: ReasoningLevel) => {
-      if (!hasPromptOptionValueChanged(reasoningLevel, value)) return;
-      snapshotDraftBeforeOptionChange();
-      setReasoningLevel(value);
-    },
-    [reasoningLevel, setReasoningLevel, snapshotDraftBeforeOptionChange],
+  const handleReasoningChange = useDraftPreservingOptionChange(
+    reasoningLevel,
+    setReasoningLevel,
+    snapshotDraftBeforeOptionChange,
   );
-  const handlePermissionChange = useCallback(
-    (value: PermissionMode) => {
-      if (!hasPromptOptionValueChanged(permissionMode, value)) return;
-      snapshotDraftBeforeOptionChange();
-      setPermissionMode(value);
-    },
-    [permissionMode, setPermissionMode, snapshotDraftBeforeOptionChange],
+  const handlePermissionChange = useDraftPreservingOptionChange(
+    permissionMode,
+    setPermissionMode,
+    snapshotDraftBeforeOptionChange,
   );
-  const handleServiceTierChange = useCallback(
-    (value: ServiceTier | undefined) => {
-      if (!hasPromptOptionValueChanged(serviceTier, value)) return;
-      snapshotDraftBeforeOptionChange();
-      setServiceTier(value);
-    },
-    [serviceTier, setServiceTier, snapshotDraftBeforeOptionChange],
+  const handleServiceTierChange = useDraftPreservingOptionChange(
+    serviceTier,
+    setServiceTier,
+    snapshotDraftBeforeOptionChange,
   );
   const handleWorktreeChange = useCallback(
     (environmentId: string) => {
@@ -1600,7 +1589,6 @@ export function NewThreadComposer({
           modeConfig={{
             environment: {
               value: effectiveEnvironmentValue,
-              onChange: changeEnvironment,
               sources: projectSources,
               disabled: locks.environment,
               isLoading: environmentProviders === undefined,
@@ -1719,7 +1707,6 @@ export function NewThreadComposer({
     [
       activeModel,
       attachmentError,
-      changeEnvironment,
       commandSuggestions,
       currentDraft,
       defaultMentionLinkResolver,

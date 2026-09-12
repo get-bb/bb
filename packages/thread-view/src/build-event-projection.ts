@@ -54,9 +54,11 @@ import {
   onExecBegin,
   onExecEnd,
   onExecOutput,
+} from "./tool-activity-projection.js";
+import {
   onWebActivityBegin,
   onWebActivityEnd,
-} from "./tool-activity-projection.js";
+} from "./tool-activity-web-projection.js";
 import {
   finalizeOpenCompactionsForTurn,
   onCompactionBegin,
@@ -120,7 +122,6 @@ interface BuildDetailedProjectionArgs {
   activeThinking: ActiveThinking | null;
   activeWorkflows: EventProjectionWorkflowMessage[];
   activeBackgroundCommands: EventProjectionWorkflowMessage[];
-  contextOnlyToolCallIds?: ReadonlySet<string>;
   events: ThreadEventWithMeta[];
   messages: EventProjectionMessage[];
   turnMessageDetail: BuildEventProjectionOptions["turnMessageDetail"];
@@ -995,19 +996,14 @@ function buildDetailedProjection(
     events: args.events,
     messages: args.messages,
   });
-  const semanticProjection = normalizeEventProjection(
-    {
-      ...projection,
-      state: {
-        activeThinking: args.activeThinking,
-        activeWorkflows: args.activeWorkflows,
-        activeBackgroundCommands: args.activeBackgroundCommands,
-      },
+  const semanticProjection = normalizeEventProjection({
+    ...projection,
+    state: {
+      activeThinking: args.activeThinking,
+      activeWorkflows: args.activeWorkflows,
+      activeBackgroundCommands: args.activeBackgroundCommands,
     },
-    {
-      contextOnlyToolCallIds: args.contextOnlyToolCallIds,
-    },
-  );
+  });
   return applyProjectionTurnMessageDetail(
     semanticProjection,
     args.turnMessageDetail,
@@ -1030,7 +1026,6 @@ function buildFullEventProjection(
     activeThinking: flatProjection.activeThinking,
     activeWorkflows: flatProjection.activeWorkflows,
     activeBackgroundCommands: flatProjection.activeBackgroundCommands,
-    contextOnlyToolCallIds: options.contextOnlyToolCallIds,
     events,
     messages: flatProjection.messages,
     turnMessageDetail: options.turnMessageDetail,
@@ -1065,7 +1060,6 @@ export function buildEventProjectionEntries(
     activeThinking: null,
     activeWorkflows: flatProjection.activeWorkflows,
     activeBackgroundCommands: flatProjection.activeBackgroundCommands,
-    contextOnlyToolCallIds: options.contextOnlyToolCallIds,
     events: orderedEvents,
     messages: flatProjection.messages,
     turnMessageDetail: options.turnMessageDetail,

@@ -81,22 +81,6 @@ export function listQueuedThreadCommands(
     .map((queued) => hostDaemonCommandSchema.parse(queued.command));
 }
 
-export function listQueuedEnvironmentCommands(
-  harness: TestAppHarness,
-  type: HostDaemonCommand["type"],
-  environmentId: string,
-): HostDaemonCommand[] {
-  return pendingHostRpcRequests
-    .filter(
-      (queued) =>
-        isCapturedRpcForHarness(harness, queued) &&
-        queued.command.type === type &&
-        "environmentId" in queued.command &&
-        queued.command.environmentId === environmentId,
-    )
-    .map((queued) => hostDaemonCommandSchema.parse(queued.command));
-}
-
 const pendingHostRpcRequests: QueuedCommand[] = [];
 const testRpcCursorByHost = new Map<string, number>();
 

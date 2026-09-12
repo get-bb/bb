@@ -64,9 +64,9 @@ import {
   queryRequest,
   textResponse,
   type ApiSchemaFromRouteDescriptors,
+  type EmptyInput,
 } from "@bb/hono-typed-routes";
 import type {
-  EmptyInput,
   PathId,
   PathProjectId,
   PathPreviewAndFilePath,

@@ -71,12 +71,10 @@ function createFakeWorkspace(path: string, isGitRepo = true) {
     diffPatch: vi.fn(async () => []),
     getPullRequest: vi.fn(async () => ({ outcome: "none" as const })),
     runPullRequestAction: vi.fn(async () => undefined),
-    listFiles: vi.fn(async () => []),
     commit: vi.fn(async () => ({
       commitSha: "commit-1",
       commitSubject: "commit",
     })),
-    reset: vi.fn(async () => undefined),
     setLocalStateFingerprint(value: GetLocalStateFingerprintResult) {
       localStateFingerprint = value;
     },

@@ -1,7 +1,7 @@
 import type { SystemMachineProvider } from "@bb/server-contract";
 import modalLogoUrl from "../../../../../../plugins/environment-modal-sandbox/modal-logo.svg?url";
-import type { ReactNode } from "react";
 import { StoryCard, StoryRow } from "../../../../.ladle/story-card";
+import { ResponsiveStage } from "./banner-story-stages";
 import { ThreadMachineStatusBanner } from "./ThreadMachineStatus";
 
 export default {
@@ -21,19 +21,6 @@ const modalProvider: SystemMachineProvider = {
   acceptsEmptyInputs: true,
   supportsSuspend: true,
 };
-
-function ResponsiveStage({ children }: { children: ReactNode }) {
-  return (
-    <div className="flex w-full min-w-0 items-start gap-3 overflow-x-auto">
-      <div data-promptbox-shell="" className="min-w-0 flex-1">
-        {children}
-      </div>
-      <div data-promptbox-shell="" className="w-[20rem] shrink-0">
-        {children}
-      </div>
-    </div>
-  );
-}
 
 function PausedMachine({ hostName }: { hostName: string }) {
   return (

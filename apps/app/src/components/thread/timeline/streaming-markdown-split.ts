@@ -1,38 +1,37 @@
+import remend from "remend";
+import { closeUnterminatedMarkdownCodeSpan } from "@bb/client-core";
+import {
+  closesAnyIndentMarkdownFence,
+  isMarkdownListLikeLine,
+  MARKDOWN_INDENTED_CONTINUATION_PATTERN,
+  MARKDOWN_LIST_MARKER_PATTERN,
+  parseAnyIndentMarkdownFenceStart,
+  type MarkdownFence,
+} from "@/components/ui/markdown-prompt-blockquote-boundaries";
+
 interface StreamingMarkdownSplit {
   settled: string;
   tail: string;
 }
 
-interface OpenFence {
-  char: string;
-  length: number;
+const STREAMING_MARKDOWN_BYPASS_PATTERN =
+  /^(?:[ \t]*(?:>|[-+*]|\d{1,9}[.)]))*[ \t]*::[a-zA-Z]|`{3}|~{3}/mu;
+
+export function repairStreamingMarkdownTail(tail: string): string {
+  if (STREAMING_MARKDOWN_BYPASS_PATTERN.test(tail)) {
+    return tail;
+  }
+  return remend(closeUnterminatedMarkdownCodeSpan(tail), {
+    linkMode: "text-only",
+    comparisonOperators: false,
+    htmlTags: false,
+    katex: false,
+    setextHeadings: false,
+    singleTilde: false,
+  });
 }
 
-const FENCE_PATTERN = /^\s*(`{3,}|~{3,})/u;
-const LIST_MARKER_PATTERN = /^\s{0,3}(?:[-*+]|\d{1,9}[.)])(?:\s|$)/u;
-const INDENTED_CONTINUATION_PATTERN = /^(?: {2,}|\t)/u;
 const MATH_DELIMITER = "$$";
-
-function parseFenceOpen(line: string): OpenFence | null {
-  const match = FENCE_PATTERN.exec(line);
-  if (match === null) {
-    return null;
-  }
-  const marker = match[1] ?? "";
-  return { char: marker[0] ?? "`", length: marker.length };
-}
-
-function closesFence(line: string, fence: OpenFence): boolean {
-  const match = FENCE_PATTERN.exec(line);
-  if (match === null) {
-    return false;
-  }
-  const marker = match[1] ?? "";
-  if (marker[0] !== fence.char || marker.length < fence.length) {
-    return false;
-  }
-  return line.slice(match[0].length).trim().length === 0;
-}
 
 function countOccurrences(line: string, needle: string): number {
   let count = 0;
@@ -48,18 +47,12 @@ function isBlankLine(line: string): boolean {
   return line.trim().length === 0;
 }
 
-function isListLike(line: string): boolean {
-  return (
-    LIST_MARKER_PATTERN.test(line) || INDENTED_CONTINUATION_PATTERN.test(line)
-  );
-}
-
 export function splitStreamingMarkdown(
   text: string,
 ): StreamingMarkdownSplit | null {
   const lines = text.split("\n");
   const lastCompleteLineIndex = lines.length - 2;
-  let openFence: OpenFence | null = null;
+  let openFence: MarkdownFence | null = null;
   let mathOpen = false;
   let lastNonBlankLine: string | null = null;
   let boundaryLineIndex = -1;
@@ -67,7 +60,7 @@ export function splitStreamingMarkdown(
   for (let index = 0; index <= lastCompleteLineIndex; index += 1) {
     const line = lines[index] ?? "";
     if (openFence !== null) {
-      if (closesFence(line, openFence)) {
+      if (closesAnyIndentMarkdownFence(line, openFence)) {
         openFence = null;
       }
       lastNonBlankLine = line;
@@ -85,13 +78,13 @@ export function splitStreamingMarkdown(
         continue;
       }
       const nextLine = lines[index + 1] ?? "";
-      if (INDENTED_CONTINUATION_PATTERN.test(nextLine)) {
+      if (MARKDOWN_INDENTED_CONTINUATION_PATTERN.test(nextLine)) {
         continue;
       }
       if (
         lastNonBlankLine !== null &&
-        isListLike(lastNonBlankLine) &&
-        LIST_MARKER_PATTERN.test(nextLine)
+        isMarkdownListLikeLine(lastNonBlankLine) &&
+        MARKDOWN_LIST_MARKER_PATTERN.test(nextLine)
       ) {
         continue;
       }
@@ -102,7 +95,7 @@ export function splitStreamingMarkdown(
       continue;
     }
     lastNonBlankLine = line;
-    const fence = parseFenceOpen(line);
+    const fence = parseAnyIndentMarkdownFenceStart(line);
     if (fence !== null) {
       openFence = fence;
       continue;

@@ -44,7 +44,6 @@ export interface DesktopWindowOpenDevToolsOptions {
 export interface DesktopWindowWebContents extends DesktopContextMenuWebContents {
   id: number;
   openDevTools(options: DesktopWindowOpenDevToolsOptions): void;
-  send(channel: string, payload: unknown): void;
   setWindowOpenHandler(handler: DesktopWindowOpenHandler): void;
   setZoomFactor(factor: number): void;
 }
@@ -52,7 +51,6 @@ export interface DesktopWindowWebContents extends DesktopContextMenuWebContents 
 export interface DesktopBrowserWindow extends StatefulBrowserWindow {
   readonly id: number;
   focus(): void;
-  isFocused(): boolean;
   isMinimized(): boolean;
   loadURL(url: string): Promise<void>;
   maximize(): void;
@@ -106,9 +104,6 @@ export interface DesktopWindowFactory {
   createWindow(args: CreateDesktopWindowArgs): Promise<DesktopBrowserWindow>;
   focusFirstWindow(): boolean;
   hasOpenWindows(): boolean;
-  sendToFocusedWindow(channel: string, payload: unknown): boolean;
-  sendToFirstWindow(channel: string, payload: unknown): boolean;
-  loadUrlInFirstWindow(args: LoadDesktopWindowsUrlArgs): Promise<boolean>;
   loadUrl(args: LoadDesktopWindowsUrlArgs): Promise<void>;
   openDevTools(): void;
   persistOpenWindows(): Promise<void>;
@@ -333,46 +328,6 @@ export function createDesktopWindowFactory(
     return false;
   }
 
-  async function loadUrlInFirstWindow(
-    loadArgs: LoadDesktopWindowsUrlArgs,
-  ): Promise<boolean> {
-    for (const browserWindow of activeWindows.values()) {
-      if (browserWindow.isMinimized()) {
-        browserWindow.restore();
-      }
-      await loadUrlIntoWindow({
-        browserWindow,
-        url: loadArgs.url,
-      });
-      browserWindow.focus();
-      return true;
-    }
-    return false;
-  }
-
-  function sendToFirstWindow(channel: string, payload: unknown): boolean {
-    for (const browserWindow of activeWindows.values()) {
-      if (browserWindow.isMinimized()) {
-        browserWindow.restore();
-      }
-      browserWindow.webContents.send(channel, payload);
-      browserWindow.focus();
-      return true;
-    }
-    return false;
-  }
-
-  function sendToFocusedWindow(channel: string, payload: unknown): boolean {
-    for (const browserWindow of activeWindows.values()) {
-      if (!browserWindow.isFocused()) {
-        continue;
-      }
-      browserWindow.webContents.send(channel, payload);
-      return true;
-    }
-    return sendToFirstWindow(channel, payload);
-  }
-
   function openDevTools(): void {
     for (const browserWindow of activeWindows.values()) {
       browserWindow.webContents.openDevTools({ mode: "detach" });
@@ -397,9 +352,6 @@ export function createDesktopWindowFactory(
     hasOpenWindows() {
       return activeWindows.size > 0;
     },
-    sendToFocusedWindow,
-    sendToFirstWindow,
-    loadUrlInFirstWindow,
     loadUrl,
     openDevTools,
     persistOpenWindows,

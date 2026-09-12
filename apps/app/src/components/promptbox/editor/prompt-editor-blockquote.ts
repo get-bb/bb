@@ -1,6 +1,17 @@
 import type { Editor } from "@tiptap/core";
+import type { ResolvedPos } from "@tiptap/pm/model";
 import type { EditorState, Transaction } from "@tiptap/pm/state";
 import { TextSelection } from "@tiptap/pm/state";
+import { dispatchPromptEditorTransaction } from "./prompt-editor-transaction";
+
+function findBlockquoteDepth($from: ResolvedPos): number | null {
+  for (let depth = $from.depth - 1; depth > 0; depth -= 1) {
+    if ($from.node(depth).type.name === "blockquote") {
+      return depth;
+    }
+  }
+  return null;
+}
 
 export function createInsertParagraphBeforeBlockquoteTransaction(
   state: EditorState,
@@ -13,13 +24,7 @@ export function createInsertParagraphBeforeBlockquoteTransaction(
   if (!paragraphType || $from.parent.type !== paragraphType) return null;
   if ($from.parentOffset !== 0) return null;
 
-  let blockquoteDepth: number | null = null;
-  for (let depth = $from.depth - 1; depth > 0; depth -= 1) {
-    if ($from.node(depth).type.name === "blockquote") {
-      blockquoteDepth = depth;
-      break;
-    }
-  }
+  const blockquoteDepth = findBlockquoteDepth($from);
   if (blockquoteDepth === null) return null;
   if ($from.index(blockquoteDepth) !== 0) return null;
 
@@ -45,13 +50,7 @@ export function createExitTrailingBlockquoteBreakTransaction(
   const nodeBefore = $from.nodeBefore;
   if (!nodeBefore || nodeBefore.type.name !== "hardBreak") return null;
 
-  let blockquoteDepth: number | null = null;
-  for (let depth = $from.depth - 1; depth > 0; depth -= 1) {
-    if ($from.node(depth).type.name === "blockquote") {
-      blockquoteDepth = depth;
-      break;
-    }
-  }
+  const blockquoteDepth = findBlockquoteDepth($from);
   if (blockquoteDepth === null) return null;
 
   if ($from.after($from.depth) !== $from.end(blockquoteDepth)) {
@@ -98,26 +97,22 @@ export function createRemoveEmptyBlockquotesTransaction(
 }
 
 export function exitTrailingBlockquoteBreak(editor: Editor): boolean {
-  const transaction = createExitTrailingBlockquoteBreakTransaction(
-    editor.state,
+  return dispatchPromptEditorTransaction(
+    editor,
+    createExitTrailingBlockquoteBreakTransaction(editor.state),
   );
-  if (transaction === null) return false;
-  editor.view.dispatch(transaction);
-  return true;
 }
 
 export function removeEmptyBlockquotes(editor: Editor): boolean {
-  const transaction = createRemoveEmptyBlockquotesTransaction(editor.state);
-  if (transaction === null) return false;
-  editor.view.dispatch(transaction);
-  return true;
+  return dispatchPromptEditorTransaction(
+    editor,
+    createRemoveEmptyBlockquotesTransaction(editor.state),
+  );
 }
 
 export function insertParagraphBeforeBlockquote(editor: Editor): boolean {
-  const transaction = createInsertParagraphBeforeBlockquoteTransaction(
-    editor.state,
+  return dispatchPromptEditorTransaction(
+    editor,
+    createInsertParagraphBeforeBlockquoteTransaction(editor.state),
   );
-  if (transaction === null) return false;
-  editor.view.dispatch(transaction);
-  return true;
 }

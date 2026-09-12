@@ -676,6 +676,7 @@ function dropMarketplaceCatalogSchema(db: DbConnection): void {
 }
 
 function dropEventToolNameColumn(db: DbConnection): void {
+  db.$client.prepare("DROP TABLE IF EXISTS provider_model_catalogs").run();
   db.$client.prepare("DROP TABLE IF EXISTS ui_preferences").run();
   db.$client.prepare("DROP TABLE IF EXISTS retained_event_outputs").run();
   dropThreadConversationOutlinesTable(db);
@@ -841,6 +842,7 @@ function rewindEnvironmentRowFactsMigration(db: DbConnection): void {
 
 function rewindMachineProvidersMigration(db: DbConnection): void {
   db.$client.exec("DROP TABLE IF EXISTS thread_plugin_metadata");
+  db.$client.exec("DROP TABLE IF EXISTS provider_model_catalogs");
   db.$client.exec("DROP TABLE IF EXISTS environment_hook_operations");
   if (
     db.$client
@@ -1712,6 +1714,7 @@ describe("migrate", () => {
       });
       const eventData = JSON.stringify({ message: "existing event" });
 
+      db.$client.prepare("DROP TABLE provider_model_catalogs").run();
       db.$client.prepare("DROP TABLE ui_preferences").run();
       db.$client.prepare("DROP TABLE retained_event_outputs").run();
       db.$client
@@ -5671,6 +5674,7 @@ describe("environment providers migration", () => {
   const environmentProvidersMigrationWhen = 1788386943764;
 
   function seedPreProviderEnvironments(db: DbConnection): void {
+    db.$client.prepare("DROP TABLE provider_model_catalogs").run();
     db.$client.prepare("DROP TABLE ui_preferences").run();
     db.$client.prepare("DROP TABLE retained_event_outputs").run();
     rewindEnvironmentRowFactsMigration(db);

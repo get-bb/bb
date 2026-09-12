@@ -3,6 +3,7 @@ import { useRealtime, useRpc } from "@get-bb/plugin-sdk/app";
 import type { z } from "zod";
 import { tasksRpcContract, type TasksRpcContract } from "../shared/contract.js";
 import type { Task, TaskPriority, TaskStatus } from "../shared/contract.js";
+import { errorMessage } from "../shared/errors.js";
 import { TASKS_PAGE_MAX_LIMIT, type TaskSort } from "../shared/pagination.js";
 import type { MentionItem } from "../editor/extensions.js";
 import {
@@ -133,7 +134,7 @@ export function useTasksQuery<T>(
         const keepsData = dataDepsKeyRef.current === depsKey;
         setState((current) => ({
           data: keepsData ? current.data : undefined,
-          error: error instanceof Error ? error.message : String(error),
+          error: errorMessage(error),
           isLoading: false,
         }));
       },

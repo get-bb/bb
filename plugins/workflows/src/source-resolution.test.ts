@@ -1,11 +1,11 @@
 import { describe, expect, it, vi } from "vitest";
 import {
-  MAX_WORKFLOW_SOURCE_BYTES,
   resolveConfinedWorkflowPath,
   resolveWorkflowSource,
   workflowReferenceToSourceInput,
   type WorkflowSourceResolverDependencies,
 } from "./source-resolution.js";
+import { MAX_WORKFLOW_SOURCE_BYTES } from "./validation.js";
 
 function dependencies(
   overrides: Partial<WorkflowSourceResolverDependencies> = {},

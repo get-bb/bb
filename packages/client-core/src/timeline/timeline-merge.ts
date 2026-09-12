@@ -317,6 +317,20 @@ function mergeLoadedTimelineOlderCursor(
   return latest.anchorSeq <= current.anchorSeq ? latest : current;
 }
 
+function loadedTimelineStateFromLatest(
+  latestTimeline: ThreadTimelineResponse,
+  surfaceKey: string,
+  rows: TimelineRow[] = latestTimeline.rows,
+): LoadedTimelineState {
+  return {
+    historySnapshot: latestTimeline.timelinePage.historySnapshot,
+    latestWindowEndSequence: latestTimeline.maxSeq,
+    olderCursor: latestTimeline.timelinePage.olderCursor,
+    rows,
+    surfaceKey,
+  };
+}
+
 export function mergeLoadedTimelineWithLatest({
   current,
   latestTimeline,
@@ -327,13 +341,7 @@ export function mergeLoadedTimelineWithLatest({
     current.historySnapshot !== latestTimeline.timelinePage.historySnapshot ||
     !timelineWindowsAreContiguous(current, latestTimeline)
   ) {
-    return buildLoadedTimelineState({
-      historySnapshot: latestTimeline.timelinePage.historySnapshot,
-      latestWindowEndSequence: latestTimeline.maxSeq,
-      latestRows: latestTimeline.rows,
-      olderCursor: latestTimeline.timelinePage.olderCursor,
-      surfaceKey,
-    });
+    return loadedTimelineStateFromLatest(latestTimeline, surfaceKey);
   }
 
   const currentRowsById = new Map(current.rows.map((row) => [row.id, row]));
@@ -354,13 +362,7 @@ export function mergeLoadedTimelineWithLatest({
     loadedRows: current.rows,
   });
   if (!latestMerge.canMerge) {
-    return buildLoadedTimelineState({
-      historySnapshot: latestTimeline.timelinePage.historySnapshot,
-      latestWindowEndSequence: latestTimeline.maxSeq,
-      latestRows: latestTimeline.rows,
-      olderCursor: latestTimeline.timelinePage.olderCursor,
-      surfaceKey,
-    });
+    return loadedTimelineStateFromLatest(latestTimeline, surfaceKey);
   }
 
   return {
@@ -383,13 +385,7 @@ export function recoverLoadedTimelineAfterStaleCursor({
     current.surfaceKey !== surfaceKey ||
     current.historySnapshot !== latestTimeline.timelinePage.historySnapshot
   ) {
-    return buildLoadedTimelineState({
-      historySnapshot: latestTimeline.timelinePage.historySnapshot,
-      latestWindowEndSequence: latestTimeline.maxSeq,
-      latestRows: latestTimeline.rows,
-      olderCursor: latestTimeline.timelinePage.olderCursor,
-      surfaceKey,
-    });
+    return loadedTimelineStateFromLatest(latestTimeline, surfaceKey);
   }
 
   const latestMerge = mergeLatestTimelineRows({
@@ -398,20 +394,12 @@ export function recoverLoadedTimelineAfterStaleCursor({
     loadedRows: current.rows,
   });
   if (!latestMerge.canMerge) {
-    return buildLoadedTimelineState({
-      historySnapshot: latestTimeline.timelinePage.historySnapshot,
-      latestWindowEndSequence: latestTimeline.maxSeq,
-      latestRows: latestTimeline.rows,
-      olderCursor: latestTimeline.timelinePage.olderCursor,
-      surfaceKey,
-    });
+    return loadedTimelineStateFromLatest(latestTimeline, surfaceKey);
   }
 
-  return {
-    historySnapshot: latestTimeline.timelinePage.historySnapshot,
-    latestWindowEndSequence: latestTimeline.maxSeq,
-    olderCursor: latestTimeline.timelinePage.olderCursor,
-    rows: latestMerge.rows,
+  return loadedTimelineStateFromLatest(
+    latestTimeline,
     surfaceKey,
-  };
+    latestMerge.rows,
+  );
 }

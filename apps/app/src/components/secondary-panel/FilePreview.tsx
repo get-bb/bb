@@ -7,7 +7,6 @@ import {
   useRef,
   useState,
 } from "react";
-import type { UrlTransform } from "react-markdown";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { Button } from "@bb/shared-ui/button";
 import { SourceCodeHost } from "@/components/code/SourceCodeHost";
@@ -52,12 +51,12 @@ export interface FilePreviewFile {
 type IframePreviewSandbox = "allow-scripts";
 
 interface IframeFilePreviewTarget {
-  sandbox: IframePreviewSandbox | null;
+  sandbox: IframePreviewSandbox;
   title: string;
   url: string;
 }
 
-type FilePreviewState =
+export type FilePreviewState =
   | { kind: "loading" }
   | { kind: "empty" }
   | { kind: "not-found" }
@@ -76,7 +75,6 @@ type FilePreviewState =
       file: FilePreviewFile;
       lineRange: FilePreviewLineRange | null;
       textPreviewKind: TextFilePreviewKind | null;
-      markdownUrlTransform?: UrlTransform;
     };
 
 interface FilePreviewProps {
@@ -139,7 +137,6 @@ interface FilePreviewPathProps {
 interface MarkdownFilePreviewProps {
   file: FilePreviewFile;
   onSelectionAddToChat?: (text: string) => void;
-  urlTransform?: UrlTransform;
   markdownLinkRouting?: MarkdownLinkRouting;
 }
 
@@ -578,7 +575,6 @@ function FilePreviewBody({
     return (
       <MarkdownFilePreview
         file={state.file}
-        urlTransform={state.markdownUrlTransform}
         markdownLinkRouting={markdownLinkRouting}
         onSelectionAddToChat={onSelectionAddToChat}
       />
@@ -699,7 +695,6 @@ function FilePreviewHeader({
                     }}
                     aria-label="Open in external browser"
                   >
-                    {}
                     <Icon name="Globe" aria-hidden />
                   </Button>
                 </TooltipTrigger>
@@ -896,7 +891,6 @@ function HtmlFilePreviewBody({
 function MarkdownFilePreview({
   file,
   onSelectionAddToChat,
-  urlTransform,
   markdownLinkRouting,
 }: MarkdownFilePreviewProps) {
   return (
@@ -905,7 +899,6 @@ function MarkdownFilePreview({
         <MarkdownPreview
           allowHtml
           content={file.contents}
-          urlTransform={urlTransform}
           linkRouting={markdownLinkRouting}
         />
       </div>
@@ -946,9 +939,7 @@ function CsvFilePreview({ file, onSelectionAddToChat }: CsvFilePreviewProps) {
 
   return (
     <SecondaryPanelSelectionActions onSelectionAddToChat={onSelectionAddToChat}>
-      {}
       <div className="flex min-h-0 flex-auto flex-col bg-surface-raised px-4 py-4">
-        {}
         <div
           ref={scrollRef}
           className="persistent-scrollbar min-h-0 overflow-auto overscroll-contain rounded-md border border-border bg-background"
@@ -1139,7 +1130,7 @@ function IframeFilePreview({ sandbox, title, url }: IframeFilePreviewTarget) {
       <iframe
         title={title}
         src={url}
-        sandbox={sandbox === null ? undefined : sandbox}
+        sandbox={sandbox}
         style={HTML_FILE_PREVIEW_IFRAME_STYLE}
         onLoad={() => setLoadState("loaded")}
         onError={() => setLoadState("error")}

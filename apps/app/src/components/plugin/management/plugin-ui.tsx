@@ -31,8 +31,14 @@ const PLUGIN_INSTALL_COUNT_FORMATTER = new Intl.NumberFormat(undefined, {
   maximumFractionDigits: 1,
 });
 
-export function formatPluginInstallCount(installs: number): string {
-  return PLUGIN_INSTALL_COUNT_FORMATTER.format(installs);
+export function pluginInstallCountPresentation(
+  installs: number | null,
+): { display: string; accessibleLabel: string } | undefined {
+  if (installs === null) return undefined;
+  return {
+    display: PLUGIN_INSTALL_COUNT_FORMATTER.format(installs),
+    accessibleLabel: `${installs.toLocaleString()} ${installs === 1 ? "install" : "installs"}`,
+  };
 }
 
 const PLUGIN_CATEGORY_ACCENT_TOKENS: Record<string, string> = {
@@ -228,6 +234,10 @@ export function formatAbsoluteDate(epochMs: number): string {
     day: "numeric",
     year: "numeric",
   });
+}
+
+export function formatUrlLabel(url: string): string {
+  return url.replace(/^https?:\/\//u, "").replace(/\/+$/u, "");
 }
 
 interface DetailsDisclosureProps {

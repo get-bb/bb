@@ -1,5 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import {
+  connectApiResponse,
   createMachineCodeForServerCredential,
   depsFromEnv,
   lookupMachineCodeForServerCredential,
@@ -25,13 +26,7 @@ export const Route = createFileRoute("/api/connect/machine-code")({
           depsFromEnv(getEnv()),
           credential,
         );
-        if ("status" in result) {
-          return Response.json(
-            { error: result.error },
-            { status: result.status },
-          );
-        }
-        return Response.json(result);
+        return connectApiResponse(result);
       },
     },
   },

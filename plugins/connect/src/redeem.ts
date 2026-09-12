@@ -38,7 +38,7 @@ interface RedeemedCredential {
   handle: string;
 }
 
-type ConnectPairErrorCode =
+export type ConnectPairErrorCode =
   | "invalid_code"
   | "expired_code"
   | "already_used"

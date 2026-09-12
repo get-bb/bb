@@ -5,9 +5,13 @@ import { markEnabledPluginListStale } from "@/hooks/cache-owners/plugin-cache-ow
 import { pluginListQueryKey } from "./query-keys";
 import {
   fetchInstalledPlugins,
-  fetchPluginList,
   removePlugin,
+  toPluginListItem,
 } from "./plugin-settings-queries";
+
+const listPlugins = async (f: typeof fetch) => ({
+  plugins: (await fetchInstalledPlugins(f)).map(toPluginListItem),
+});
 
 function fetchReturning(body: unknown, status = 200): typeof fetch {
   return async () =>
@@ -82,7 +86,7 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-describe("fetchPluginList envelope", () => {
+describe("plugin list envelope", () => {
   it("lets the frontend loader reuse the app plugin list", async () => {
     const plugin = pluginWithBundle("abc");
     const queryClient = new QueryClient();
@@ -141,14 +145,14 @@ describe("fetchPluginList envelope", () => {
   });
 
   it("binds browser fetch before the SDK invokes it", async () => {
-    const result = await fetchPluginList(
+    const result = await listPlugins(
       receiverSensitiveFetch({ plugins: [ROW] }),
     );
     expect(result.plugins).toHaveLength(1);
   });
 
   it("parses the { enabled, plugins } envelope and normalizes updateState", async () => {
-    const result = await fetchPluginList(fetchReturning({ plugins: [ROW] }));
+    const result = await listPlugins(fetchReturning({ plugins: [ROW] }));
     expect(result.plugins).toHaveLength(1);
     const plugin = result.plugins[0];
     expect(plugin?.provenance).toBe("direct");
@@ -163,7 +167,7 @@ describe("fetchPluginList envelope", () => {
   });
 
   it("preserves authoritative source and activity metadata for detail pages", async () => {
-    const result = await fetchPluginList(
+    const result = await listPlugins(
       fetchReturning({
         plugins: [
           {
@@ -205,7 +209,7 @@ describe("fetchPluginList envelope", () => {
   });
 
   it("rejects an envelope missing plugins instead of half-parsing it", async () => {
-    await expect(fetchPluginList(fetchReturning({}))).rejects.toThrow();
+    await expect(listPlugins(fetchReturning({}))).rejects.toThrow();
   });
 
   it("rejects a list containing rows missing server-mandated fields", async () => {
@@ -214,7 +218,7 @@ describe("fetchPluginList envelope", () => {
     const { sourceDisplay, ...noSourceDisplay } = ROW;
     const { isOrphanedBuiltin, ...noOrphanedBuiltin } = ROW;
     await expect(
-      fetchPluginList(
+      listPlugins(
         fetchReturning({
           plugins: [
             noUpdateState,
@@ -234,21 +238,21 @@ describe("fetchPluginList envelope", () => {
       updateState: { lastFailure: { version: "1.7.0" } },
     };
     await expect(
-      fetchPluginList(fetchReturning({ plugins: [partialFailure] })),
+      listPlugins(fetchReturning({ plugins: [partialFailure] })),
     ).rejects.toThrow();
   });
 
   it("returns an empty list only for a successful empty response", async () => {
-    await expect(
-      fetchPluginList(fetchReturning({ plugins: [] })),
-    ).resolves.toEqual({ plugins: [] });
+    await expect(listPlugins(fetchReturning({ plugins: [] }))).resolves.toEqual(
+      { plugins: [] },
+    );
   });
 
   it("rejects malformed, HTTP, and network failures", async () => {
-    await expect(fetchPluginList(fetchReturning(null))).rejects.toThrow();
-    await expect(fetchPluginList(fetchReturning({}, 404))).rejects.toThrow();
+    await expect(listPlugins(fetchReturning(null))).rejects.toThrow();
+    await expect(listPlugins(fetchReturning({}, 404))).rejects.toThrow();
     await expect(
-      fetchPluginList(async () => {
+      listPlugins(async () => {
         throw new TypeError("network unavailable");
       }),
     ).rejects.toThrow("network unavailable");

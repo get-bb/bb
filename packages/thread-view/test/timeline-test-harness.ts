@@ -1,4 +1,5 @@
 import {
+  buildThreadEvent,
   encodeClientTurnRequestIdNumber,
   threadScope,
   turnScope,
@@ -31,9 +32,8 @@ import {
   buildThreadTimelineFromEvents,
   formatThreadTimelineText,
 } from "../src/index.js";
-import { decodeThreadEventRow } from "../src/event-decode.js";
 import { EMPTY_ACCEPTED_CLIENT_REQUEST_CONTEXT } from "../src/accepted-client-request-context.js";
-import { flattenEventProjectionMessagesDeep } from "../src/event-projection-flatten.js";
+import { getProjectionEntryMessages } from "../src/event-projection-flatten.js";
 import { buildEventProjection } from "../src/build-event-projection.js";
 import type { ThreadEventWithMeta } from "../src/build-event-projection.js";
 
@@ -463,6 +463,52 @@ export interface TimelineEventFactory {
     args: WebFetchStartedArgs,
   ): ThreadEventRowOfType<"item/started">;
   warning(args?: WarningArgs): ThreadEventRowOfType<"provider/warning">;
+}
+
+export function decodeThreadEventRow(row: ThreadEventRow): ThreadEventWithMeta {
+  return {
+    event: buildThreadEvent(row),
+    meta: {
+      id: row.id,
+      seq: row.seq,
+      createdAt: row.createdAt,
+    },
+  };
+}
+
+function flattenEventProjectionMessages(
+  projection: EventProjection,
+): EventProjectionMessage[] {
+  const messages: EventProjectionMessage[] = [];
+  for (const entry of projection.entries) {
+    messages.push(...getProjectionEntryMessages(entry));
+  }
+  return messages;
+}
+
+function flattenEventProjectionMessageListDeep(
+  rootMessages: readonly EventProjectionMessage[],
+): EventProjectionMessage[] {
+  const messages: EventProjectionMessage[] = [];
+  for (const message of rootMessages) {
+    messages.push(message);
+    if (message.kind === "delegation") {
+      messages.push(
+        ...flattenEventProjectionMessageListDeep(
+          flattenEventProjectionMessages(message.childProjection),
+        ),
+      );
+    }
+  }
+  return messages;
+}
+
+function flattenEventProjectionMessagesDeep(
+  projection: EventProjection,
+): EventProjectionMessage[] {
+  return flattenEventProjectionMessageListDeep(
+    flattenEventProjectionMessages(projection),
+  );
 }
 
 export function fromRows(rows: ThreadEventRow[]): ThreadEventWithMeta[] {

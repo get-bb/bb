@@ -1,63 +1,27 @@
-import { createConnection, migrate, upsertPluginMarketplace } from "@bb/db";
 import { describe, expect, it } from "vitest";
 import {
   marketplacePublisherLabel,
-  marketplacePublisherLabels,
   pluginPublisherLabel,
 } from "../../../src/services/plugin-catalog/marketplace-publishers.js";
 import { BUNDLED_CURATED_MARKETPLACE } from "../../../src/services/plugin-catalog/curated-marketplace.js";
 
-function connect() {
-  const db = createConnection(":memory:");
-  migrate(db);
-  return db;
-}
-
-function register(
-  db: ReturnType<typeof connect>,
-  name: string,
-  manifestJson: string,
-) {
-  upsertPluginMarketplace(db, {
-    name,
-    sourceKind: "https",
-    manifestUrl: `https://${name}.test/marketplace.json`,
-    sourceGitRef: null,
-    sourceGitCommit: null,
-    manifestJson,
-    statsJson: null,
-    etag: null,
-    lastModified: null,
-    lastSuccessfulRefreshAt: null,
-    lastAttemptedRefreshAt: null,
-    lastError: null,
-  });
+function publisherLabels(
+  marketplaces: Array<{ marketplaceName: string; displayName: string }>,
+): Map<string, string> {
+  return new Map(
+    marketplaces.map((marketplace) => [
+      marketplace.marketplaceName,
+      marketplacePublisherLabel(marketplace),
+    ]),
+  );
 }
 
 describe("marketplace publisher labels", () => {
   it("names each marketplace by its own display name", () => {
-    const db = connect();
-    register(
-      db,
-      "bb-community",
-      JSON.stringify({
-        schemaVersion: 1,
-        name: "bb-community",
-        displayName: "BB Community",
-        plugins: [],
-      }),
-    );
-    register(
-      db,
-      "acme",
-      JSON.stringify({
-        schemaVersion: 1,
-        name: "acme",
-        displayName: "Acme Plugins",
-        plugins: [],
-      }),
-    );
-    const labels = marketplacePublisherLabels(db);
+    const labels = publisherLabels([
+      { marketplaceName: "bb-community", displayName: "BB Community" },
+      { marketplaceName: "acme", displayName: "Acme Plugins" },
+    ]);
 
     expect(
       pluginPublisherLabel({
@@ -78,18 +42,9 @@ describe("marketplace publisher labels", () => {
   });
 
   it("refuses a reserved label to a marketplace that is not BB's", () => {
-    const db = connect();
-    register(
-      db,
-      "acme",
-      JSON.stringify({
-        schemaVersion: 1,
-        name: "acme",
-        displayName: "BB Official",
-        plugins: [],
-      }),
-    );
-    const labels = marketplacePublisherLabels(db);
+    const labels = publisherLabels([
+      { marketplaceName: "acme", displayName: "BB Official" },
+    ]);
 
     expect(
       pluginPublisherLabel({
@@ -113,34 +68,10 @@ describe("marketplace publisher labels", () => {
     ).toBe("BB Community");
   });
 
-  it("keeps a badge when the stored manifest no longer parses", () => {
-    const db = connect();
-    register(db, "acme", "{ not json");
-    const labels = marketplacePublisherLabels(db);
-
-    expect(
-      pluginPublisherLabel({
-        sourceKind: "git",
-        provenance: "catalog",
-        catalogMarketplaceName: "acme",
-        labels,
-      }),
-    ).toBe("acme");
-  });
-
   it("keeps a store-installed bundled plugin on BB Official", () => {
-    const db = connect();
-    register(
-      db,
-      "bb-community",
-      JSON.stringify({
-        schemaVersion: 1,
-        name: "bb-community",
-        displayName: "BB Community",
-        plugins: [],
-      }),
-    );
-    const labels = marketplacePublisherLabels(db);
+    const labels = publisherLabels([
+      { marketplaceName: "bb-community", displayName: "BB Community" },
+    ]);
 
     expect(
       pluginPublisherLabel({
@@ -153,7 +84,7 @@ describe("marketplace publisher labels", () => {
   });
 
   it("badges bundled plugins BB Official and user installs not at all", () => {
-    const labels = marketplacePublisherLabels(connect());
+    const labels = publisherLabels([]);
 
     expect(
       pluginPublisherLabel({

@@ -1,12 +1,8 @@
 import {
   readDefaultBranchRefs,
   type DefaultBranchRelation,
-  type GitProcessOptions,
 } from "bb-environment-provider-host/git";
-
-export type BaseBranchSpec =
-  | { kind: "named"; name: string }
-  | { kind: "default" };
+import type { WorktreeBaseBranch } from "../contract.js";
 
 interface ResolveDefaultWorktreeBaseBranchArgs {
   defaultBranch: string | null;
@@ -32,33 +28,20 @@ export function resolveDefaultWorktreeBaseBranch(
   return args.defaultBranch;
 }
 
-export function resolveManagedDefaultBaseBranchSpec(
-  args: ResolveDefaultWorktreeBaseBranchArgs,
-): BaseBranchSpec {
-  const defaultWorktreeBaseBranch = resolveDefaultWorktreeBaseBranch(args);
-  if (
-    defaultWorktreeBaseBranch &&
-    defaultWorktreeBaseBranch !== args.defaultBranch
-  ) {
-    return { kind: "named", name: defaultWorktreeBaseBranch };
-  }
-
-  return { kind: "default" };
-}
-
 export async function resolveWorktreeBaseBranch(
   sourcePath: string,
-  requested: BaseBranchSpec,
-  options: GitProcessOptions = {},
+  requested: WorktreeBaseBranch,
 ): Promise<string | null> {
   if (requested.kind === "named") {
     return requested.name;
   }
-  const refs = await readDefaultBranchRefs(sourcePath, options);
-  const resolved = resolveManagedDefaultBaseBranchSpec({
+  const refs = await readDefaultBranchRefs(sourcePath);
+  const resolved = resolveDefaultWorktreeBaseBranch({
     defaultBranch: refs.defaultBranch ?? null,
     defaultBranchRelation: refs.defaultBranchRelation ?? null,
     originDefaultBranch: refs.originDefaultBranch ?? null,
   });
-  return resolved.kind === "named" ? resolved.name : null;
+  return resolved && resolved !== (refs.defaultBranch ?? null)
+    ? resolved
+    : null;
 }

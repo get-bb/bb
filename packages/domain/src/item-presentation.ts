@@ -46,9 +46,6 @@ export const threadEventItemPresentationBadgeSchema = z.object({
     .max(THREAD_EVENT_ITEM_PRESENTATION_BADGE_LABEL_MAX_LENGTH),
   tone: z.enum(["neutral", "destructive"]),
 });
-export type ThreadEventItemPresentationBadge = z.infer<
-  typeof threadEventItemPresentationBadgeSchema
->;
 
 export const threadEventItemPresentationSchema = z.object({
   label: threadEventItemPresentationLabelSchema,

@@ -20,7 +20,6 @@
     "generate:test-bridges": "node ./scripts/build-test-bridges.mjs",
     "typecheck": "tsc --noEmit",
     "test": "vitest run --config vitest.config.ts",
-    "test:unit": "vitest run --config vitest.config.ts --exclude '**/integration/**'",
     "test:integration": "vitest run --config vitest.integration.config.ts"
   },
   "dependencies": {

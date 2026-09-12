@@ -6,6 +6,7 @@ import {
   useLayoutEffect,
   useRef,
   useState,
+  type MouseEvent,
   type ReactNode,
 } from "react";
 import { HugeiconsIcon } from "@hugeicons/react";
@@ -53,7 +54,6 @@ export interface SurfaceMapState {
   activeId: string | null;
   setActiveId: (id: string | null) => void;
   expandedId?: string | null;
-  spotlightId?: string | null;
   numberOf: (id: string) => number | null;
   pluginPageHref?: (displayName: string) => string | null;
   onSelect?: (id: string) => void;
@@ -111,15 +111,58 @@ export const SETTINGS_MARKS = [
 ] as const;
 
 function useEngagement(id: string) {
-  const { activeId, expandedId, spotlightId } = useSurfaceMap();
+  const { activeId, expandedId } = useSurfaceMap();
   return {
-    active: activeId === id || expandedId === id || spotlightId === id,
-    outlined:
-      activeId !== null
-        ? activeId === id
-        : expandedId === id || spotlightId === id,
-    dimmed: Boolean(spotlightId) && spotlightId !== id,
+    active: activeId === id || expandedId === id,
+    outlined: activeId !== null ? activeId === id : expandedId === id,
   };
+}
+
+function useAnnotationHover(id: string) {
+  const { setActiveId } = useSurfaceMap();
+  return {
+    onMouseEnter: () => setActiveId(id),
+    onMouseLeave: () => setActiveId(null),
+    onFocus: () => setActiveId(id),
+    onBlur: () => setActiveId(null),
+  };
+}
+
+function selectAnnotation(
+  event: MouseEvent<HTMLAnchorElement>,
+  id: string,
+  onSelect: ((id: string) => void) | undefined,
+  onActivate: (() => void) | undefined,
+) {
+  onActivate?.();
+  if (!onSelect) return;
+  event.preventDefault();
+  event.stopPropagation();
+  onSelect(id);
+}
+
+function PlacedChip({
+  id,
+  active,
+  chip,
+}: {
+  id: string;
+  active: boolean;
+  chip: AnnotationChipPlacement;
+}) {
+  const { numberOf } = useSurfaceMap();
+  return (
+    <span
+      aria-hidden
+      data-guide-badge={id}
+      className={annotationChipClass(
+        active,
+        cn("absolute z-50 ring-2 ring-card", CHIP_PLACEMENT_CLASS[chip]),
+      )}
+    >
+      {numberOf(id)}
+    </span>
+  );
 }
 
 function engagedRingClass(outlined: boolean) {
@@ -145,47 +188,26 @@ function Mark({
   onActivate?: () => void;
   children?: ReactNode;
 }) {
-  const { setActiveId, numberOf, onSelect } = useSurfaceMap();
-  const { active, outlined, dimmed } = useEngagement(id);
+  const { onSelect } = useSurfaceMap();
+  const { active, outlined } = useEngagement(id);
+  const hover = useAnnotationHover(id);
   return (
     <a
       data-guide-region={id}
       href={`#surface-${id}`}
       aria-label={`${label} — jump to details`}
-      onClick={(event) => {
-        onActivate?.();
-        if (!onSelect) return;
-        event.preventDefault();
-        event.stopPropagation();
-        onSelect(id);
-      }}
-      onMouseEnter={() => setActiveId(id)}
-      onMouseLeave={() => setActiveId(null)}
-      onFocus={() => setActiveId(id)}
-      onBlur={() => setActiveId(null)}
+      onClick={(event) => selectAnnotation(event, id, onSelect, onActivate)}
+      {...hover}
       className={cn(
         "relative rounded-md ring-1 ring-inset transition-all",
         FOCUS_RING_CLASS,
         outlined
           ? "bg-surface-selected ring-surface-selected-border"
           : "ring-transparent hover:bg-state-hover",
-        dimmed && "opacity-25",
         className,
       )}
     >
-      {}
-      {showChip ? (
-        <span
-          aria-hidden
-          data-guide-badge={id}
-          className={annotationChipClass(
-            active,
-            cn("absolute z-50 ring-2 ring-card", CHIP_PLACEMENT_CLASS[chip]),
-          )}
-        >
-          {numberOf(id)}
-        </span>
-      ) : null}
+      {showChip ? <PlacedChip id={id} active={active} chip={chip} /> : null}
       {children}
     </a>
   );
@@ -195,8 +217,8 @@ const RELEASE_DEMO_MS = 2400;
 
 function CommandPaletteActionMark({ onRun }: { onRun: () => void }) {
   const id = "command-palette-actions";
-  const { setActiveId } = useSurfaceMap();
-  const { outlined, dimmed } = useEngagement(id);
+  const { outlined } = useEngagement(id);
+  const hover = useAnnotationHover(id);
 
   return (
     <button
@@ -205,15 +227,11 @@ function CommandPaletteActionMark({ onRun }: { onRun: () => void }) {
       role="option"
       aria-selected="true"
       onClick={onRun}
-      onMouseEnter={() => setActiveId(id)}
-      onMouseLeave={() => setActiveId(null)}
-      onFocus={() => setActiveId(id)}
-      onBlur={() => setActiveId(null)}
+      {...hover}
       data-guide-fixture="command-palette-action"
       className={cn(
         "flex w-full cursor-pointer items-center gap-1.5 rounded bg-state-hover px-2 py-1.5 text-left text-foreground ring-1 ring-inset transition-all",
         outlined ? "ring-surface-selected-border" : "ring-transparent",
-        dimmed && "opacity-25",
       )}
     >
       <span>Run release checklist</span>
@@ -237,14 +255,12 @@ function RegionMark({
   showChip?: boolean;
   children: ReactNode;
 }) {
-  const { setActiveId, numberOf, onSelect } = useSurfaceMap();
-  const { active, outlined, dimmed } = useEngagement(id);
+  const { onSelect } = useSurfaceMap();
+  const { active, outlined } = useEngagement(id);
+  const hover = useAnnotationHover(id);
 
   return (
-    <div
-      data-guide-region={id}
-      className={cn("relative", dimmed && "opacity-25", className)}
-    >
+    <div data-guide-region={id} className={cn("relative", className)}>
       <a
         href={`#surface-${id}`}
         aria-label={`${label} — jump to details`}
@@ -256,10 +272,7 @@ function RegionMark({
               }
             : undefined
         }
-        onMouseEnter={() => setActiveId(id)}
-        onMouseLeave={() => setActiveId(null)}
-        onFocus={() => setActiveId(id)}
-        onBlur={() => setActiveId(null)}
+        {...hover}
         className={cn(
           "absolute inset-0 z-[1] rounded-md ring-1 ring-inset transition-all",
           FOCUS_RING_CLASS,
@@ -268,25 +281,14 @@ function RegionMark({
             : "ring-transparent hover:bg-state-hover",
         )}
       >
-        {showChip ? (
-          <span
-            aria-hidden
-            data-guide-badge={id}
-            className={annotationChipClass(
-              active,
-              cn("absolute z-50 ring-2 ring-card", CHIP_PLACEMENT_CLASS[chip]),
-            )}
-          >
-            {numberOf(id)}
-          </span>
-        ) : null}
+        {showChip ? <PlacedChip id={id} active={active} chip={chip} /> : null}
       </a>
       {children}
     </div>
   );
 }
 
-const useBrowserLayoutEffect =
+export const useBrowserLayoutEffect =
   typeof window === "undefined" ? useEffect : useLayoutEffect;
 
 const CHIP_SIZE = 20;
@@ -309,8 +311,9 @@ function MeasuredBadge({
   flush?: boolean;
   onActivate?: () => void;
 }) {
-  const { setActiveId, numberOf, onSelect } = useSurfaceMap();
+  const { numberOf, onSelect } = useSurfaceMap();
   const { active } = useEngagement(id);
+  const hover = useAnnotationHover(id);
   const ref = useRef<HTMLAnchorElement>(null);
   const [position, setPosition] = useState<{
     left: number;
@@ -435,17 +438,8 @@ function MeasuredBadge({
       data-guide-badge-align={align}
       href={`#surface-${id}`}
       aria-label={`${label} — jump to details`}
-      onClick={(event) => {
-        onActivate?.();
-        if (!onSelect) return;
-        event.preventDefault();
-        event.stopPropagation();
-        onSelect(id);
-      }}
-      onMouseEnter={() => setActiveId(id)}
-      onMouseLeave={() => setActiveId(null)}
-      onFocus={() => setActiveId(id)}
-      onBlur={() => setActiveId(null)}
+      onClick={(event) => selectAnnotation(event, id, onSelect, onActivate)}
+      {...hover}
       className={cn("pointer-events-auto absolute z-50", FOCUS_RING_CLASS)}
       style={position ?? undefined}
     >
@@ -917,7 +911,6 @@ export function CommandPaletteWireframe() {
                     </span>
                   </span>
                 </div>
-                {}
                 <MeasuredBadge
                   id="command-palette-actions"
                   label="Plugin actions in bb's quick command palette"
@@ -951,7 +944,6 @@ export function AppShellWireframe() {
 
   return (
     <div className="relative w-full px-10 pb-0 pt-[26px]">
-      {}
       <MeasuredBadge
         id="nav-panel"
         label="Plugin nav panels, above the thread list"
@@ -977,7 +969,6 @@ export function AppShellWireframe() {
         anchor='[data-guide-region="thread-header"]'
         at="above"
       />
-      {}
       <MeasuredBadge
         id="content-scripts"
         label="App-wide plugin scripts, running in the whole window"
@@ -1010,7 +1001,6 @@ function AppShellWireframeBody({
 
   return (
     <WindowFrame className="relative overflow-visible">
-      {}
       <span
         aria-hidden
         data-guide-target="content-scripts"
@@ -1019,7 +1009,6 @@ function AppShellWireframeBody({
           engagedRingClass(contentScripts.outlined),
         )}
       />
-      {}
       <span
         aria-hidden
         data-guide-fixture="sidebar-trigger-overlay"
@@ -1027,18 +1016,14 @@ function AppShellWireframeBody({
       >
         <MiniIcon icon={SidebarLeftIcon} className="size-4" />
       </span>
-      {}
       <div className="flex min-h-[650px] items-stretch">
-        {}
         <div className="flex w-[300px] shrink-0 flex-col border-r border-border-seam bg-sidebar text-sidebar-foreground">
           {anatomy.appSidebar.map((key) => (
             <Fragment key={key}>{SIDEBAR_SECTION_RENDERERS[key]?.()}</Fragment>
           ))}
         </div>
 
-        {}
         <div className="flex min-w-0 flex-1 flex-col">
-          {}
           <div className="flex h-12 items-center gap-2 border-b border-border-hairline px-4">
             <span className="truncate text-foreground">
               Fix flaky checkout tests
@@ -1055,19 +1040,16 @@ function AppShellWireframeBody({
             </Mark>
           </div>
 
-          {}
           <div
             data-guide-fixture="app-window-timeline"
             className="min-h-[510px] flex-1 space-y-7 overflow-hidden px-5 py-6"
           >
-            {}
             <div className="flex justify-end">
               <span className="max-w-[70%] rounded-xl border border-border-seam bg-surface-recessed px-2.5 py-2 leading-snug text-foreground">
                 Fix the flaky checkout tests
               </span>
             </div>
 
-            {}
             <div className="w-[78%] space-y-1">
               <span className="flex items-center gap-1.5 text-foreground">
                 <PluginGlyph className="size-3.5" />
@@ -1087,7 +1069,6 @@ function AppShellWireframeBody({
               </RegionMark>
             </div>
 
-            {}
             <div
               data-guide-fixture="assistant-message"
               onMouseEnter={() => setAssistantMessageHovered(true)}
@@ -1149,7 +1130,6 @@ function AppShellWireframeBody({
                   per test.
                 </p>
               </div>
-              {}
               <div className="flex h-7 items-start">
                 <Mark
                   id="message-actions"
@@ -1174,7 +1154,6 @@ function AppShellWireframeBody({
             </div>
           </div>
 
-          {}
           <div className="space-y-2 border-t border-border-hairline p-4">
             <Mark
               id="pending-interaction"
@@ -1398,7 +1377,6 @@ export function RealComposerAnnotated() {
   const mention = useEngagement("mention-provider");
   return (
     <div className="relative px-7 pb-2 pt-4">
-      {}
       <div className="relative w-full select-none text-xs leading-none text-muted-foreground">
         <div
           data-guide-annotation-layer="composer-controls"
@@ -1437,8 +1415,6 @@ export function RealComposerAnnotated() {
         </div>
         <WindowFrame>
           <div className="flex min-h-[506px] flex-col">
-            {}
-            {}
             <div
               aria-hidden
               className="flex h-11 items-center gap-2 border-b border-border-hairline px-4 text-sm"
@@ -1464,9 +1440,7 @@ export function RealComposerAnnotated() {
               </p>
             </div>
 
-            {}
             <div className="px-4 pb-4">
-              {}
               <div
                 data-guide-target="composer-banners"
                 className={cn(
@@ -1514,7 +1488,6 @@ function StaticEmbeddedComposer() {
   return (
     <div data-guide-fixture="embedded-composer" className="space-y-2">
       <div className="relative flex h-[126px] flex-col rounded-xl border border-border bg-background px-2 pb-2 pt-3 shadow-lift">
-        {}
         {plus.outlined ? (
           <div
             aria-hidden
@@ -1536,7 +1509,6 @@ function StaticEmbeddedComposer() {
           </div>
         ) : null}
 
-        {}
         <div
           data-guide-target="composer-state"
           className={cn(
@@ -1575,7 +1547,6 @@ function StaticEmbeddedComposer() {
           </span>
         </div>
 
-        {}
         <div className="mt-auto flex h-10 items-center gap-1">
           <span
             data-guide-target="composer-plus-menu"
@@ -1632,11 +1603,7 @@ function StaticEmbeddedComposer() {
   );
 }
 
-export function ComposeScreenWireframe({
-  composer,
-}: {
-  composer?: ReactNode;
-} = {}) {
+export function ComposeScreenWireframe() {
   return (
     <div className="relative px-7 pb-2 pt-4">
       <MeasuredBadge
@@ -1646,91 +1613,78 @@ export function ComposeScreenWireframe({
         at="end"
       />
       <div>
-        <ComposeScreenWireframeBody composer={composer} />
+        <WindowFrame>
+          <div className="flex items-center gap-2 border-b border-border-hairline px-3 py-2">
+            <TrafficLights />
+          </div>
+          <div className="flex min-h-[485px] items-stretch">
+            <div className="min-w-0 flex-1 px-6 pb-6 pt-4">
+              <div className="mx-auto w-full max-w-[560px] space-y-2.5">
+                <MockHomeComposer />
+
+                <Mark
+                  id="homepage-section"
+                  label="A plugin homepage section, below the composer"
+                  className="mt-4 block px-3 py-2.5"
+                >
+                  <span className="flex items-center gap-1.5 pb-2 font-medium text-foreground">
+                    <PluginGlyph className="size-3.5" />
+                    Your section
+                  </span>
+                  <span className="grid grid-cols-3 gap-2" aria-hidden>
+                    {["Release 1.4", "Bug triage", "Design QA"].map((card) => (
+                      <span
+                        key={card}
+                        className="space-y-1.5 rounded-md border border-border-hairline bg-surface-raised p-2.5"
+                      >
+                        <span className="block text-foreground">{card}</span>
+                        <span className="block h-1.5 w-4/5 rounded-sm bg-muted/60" />
+                        <span className="block h-1.5 w-3/5 rounded-sm bg-muted/60" />
+                      </span>
+                    ))}
+                  </span>
+                </Mark>
+              </div>
+            </div>
+
+            <div className="w-[210px] shrink-0 border-l border-border-seam bg-sidebar p-2">
+              <span className="block px-1.5 pb-1.5 pt-1 text-xs text-subtle-foreground/75">
+                Actions
+              </span>
+              <span className="flex h-6.5 items-center gap-2 rounded-md px-2">
+                <MiniIcon icon={Search01Icon} className="size-3.5" />
+                Open browser
+              </span>
+              <span className="flex h-6.5 items-center gap-2 rounded-md px-2">
+                <MiniIcon icon={TerminalIcon} className="size-3.5" />
+                Start terminal
+              </span>
+              <Mark
+                id="new-thread-panel"
+                label="A plugin action in the new-thread panel launcher"
+                className="flex h-6.5 items-center gap-2 px-2.5"
+                showChip={false}
+              >
+                <PluginGlyph className="size-3.5" />
+                <span className="text-foreground">Your action</span>
+              </Mark>
+            </div>
+          </div>
+        </WindowFrame>
       </div>
     </div>
-  );
-}
-
-function ComposeScreenWireframeBody({ composer }: { composer?: ReactNode }) {
-  return (
-    <WindowFrame>
-      <div className="flex items-center gap-2 border-b border-border-hairline px-3 py-2">
-        <TrafficLights />
-      </div>
-      {}
-      <div className="flex min-h-[485px] items-stretch">
-        <div className="min-w-0 flex-1 px-6 pb-6 pt-4">
-          <div className="mx-auto w-full max-w-[560px] space-y-2.5">
-            {}
-            {composer ? <div inert>{composer}</div> : <MockHomeComposer />}
-
-            {}
-            <Mark
-              id="homepage-section"
-              label="A plugin homepage section, below the composer"
-              className="mt-4 block px-3 py-2.5"
-            >
-              <span className="flex items-center gap-1.5 pb-2 font-medium text-foreground">
-                <PluginGlyph className="size-3.5" />
-                Your section
-              </span>
-              <span className="grid grid-cols-3 gap-2" aria-hidden>
-                {["Release 1.4", "Bug triage", "Design QA"].map((card) => (
-                  <span
-                    key={card}
-                    className="space-y-1.5 rounded-md border border-border-hairline bg-surface-raised p-2.5"
-                  >
-                    <span className="block text-foreground">{card}</span>
-                    <span className="block h-1.5 w-4/5 rounded-sm bg-muted/60" />
-                    <span className="block h-1.5 w-3/5 rounded-sm bg-muted/60" />
-                  </span>
-                ))}
-              </span>
-            </Mark>
-          </div>
-        </div>
-
-        {}
-        <div className="w-[210px] shrink-0 border-l border-border-seam bg-sidebar p-2">
-          <span className="block px-1.5 pb-1.5 pt-1 text-xs text-subtle-foreground/75">
-            Actions
-          </span>
-          <span className="flex h-6.5 items-center gap-2 rounded-md px-2">
-            <MiniIcon icon={Search01Icon} className="size-3.5" />
-            Open browser
-          </span>
-          <span className="flex h-6.5 items-center gap-2 rounded-md px-2">
-            <MiniIcon icon={TerminalIcon} className="size-3.5" />
-            Start terminal
-          </span>
-          {}
-          <Mark
-            id="new-thread-panel"
-            label="A plugin action in the new-thread panel launcher"
-            className="flex h-6.5 items-center gap-2 px-2.5"
-            showChip={false}
-          >
-            <PluginGlyph className="size-3.5" />
-            <span className="text-foreground">Your action</span>
-          </Mark>
-        </div>
-      </div>
-    </WindowFrame>
   );
 }
 
 export function SettingsWireframe() {
   return (
     <WindowFrame>
-      {}
       <div className="flex items-center gap-2 border-b border-border-hairline px-3 py-2.5">
         <TrafficLights />
         <span className="pl-1 font-medium text-foreground">Settings</span>
       </div>
 
       <div className="mx-auto min-h-[470px] w-full max-w-[520px] space-y-4 px-4 pb-5 pt-4">
-        {}
         <div className="flex items-center gap-3">
           <span className="flex size-9 shrink-0 items-center justify-center">
             <PluginGlyph className="size-5" />
@@ -1745,7 +1699,6 @@ export function SettingsWireframe() {
           </span>
         </div>
 
-        {}
         <div className="space-y-2">
           <span className="block text-subtle-foreground">Configuration</span>
           <Mark
@@ -1816,7 +1769,6 @@ export function SettingsWireframe() {
             </span>
           </Mark>
 
-          {}
           <Mark
             id="settings-section"
             label="A React component you write, under the generated form"
@@ -1841,7 +1793,6 @@ export function SettingsWireframe() {
           </Mark>
         </div>
 
-        {}
         <div className="space-y-2 border-t border-border-hairline pt-4">
           <span className="block text-subtle-foreground">Plugin details</span>
           <span className="flex items-center gap-1 leading-relaxed">
@@ -1865,7 +1816,6 @@ export function ExtensionsPluginPageWireframe() {
         <span className="text-foreground">Plugins</span>
       </div>
       <div className="flex min-h-[470px] flex-col">
-        {}
         <Mark
           id="plugin-status"
           label="The needs-configuration banner bb shows for a plugin that reports it"
@@ -1890,7 +1840,6 @@ export function ExtensionsPluginPageWireframe() {
         </Mark>
 
         <div className="mx-auto w-full max-w-[560px] space-y-4 px-4 pb-5 pt-4">
-          {}
           <div className="flex items-center gap-2.5">
             <PluginGlyph className="size-4" />
             <span className="text-sm font-semibold text-foreground">Hello</span>

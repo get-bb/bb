@@ -6,6 +6,7 @@ import path from "node:path";
 import { monitorEventLoopDelay, performance } from "node:perf_hooks";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
+import { createDebouncedCallbackScheduler } from "@bb/domain";
 import {
   disposeParcelWatcherBackend,
   setParcelWatcherBackend,
@@ -20,7 +21,6 @@ import {
   createParcelWatcherProxy,
   type ChildChannel,
 } from "../src/parcel-subprocess/parcel-watcher-proxy.js";
-import { createDebouncedCallbackScheduler } from "../src/watch-callback-scheduler.js";
 
 const BENCHMARK_ENABLED =
   process.env.BB_WATCHER_ROOT_RECOVERY_BENCHMARK === "1";

@@ -113,11 +113,11 @@ function ProjectRowComponent({
       </SidebarMenuButton>
       {!isCollapsed ? (
         threadListState.status === "loading" ? (
-          <div className="group-data-[collapsible=icon]:hidden">
+          <div>
             <SidebarMenuSkeleton />
           </div>
         ) : projectThreads.length > 0 ? (
-          <div className="space-y-0.5 group-data-[collapsible=icon]:hidden">
+          <div className="space-y-0.5">
             {projectThreads.map((thread) => (
               <ThreadRow key={thread.id} thread={thread} />
             ))}
@@ -662,13 +662,11 @@ function getFixtureSideContents(
 interface InteractiveDiffPanelArgs {
   diffs: readonly InteractiveDiffPanelDiff[];
   initialCollapsed?: ReadonlySet<string>;
-  renderingFileKeys?: ReadonlySet<string>;
 }
 
 function InteractiveDiffPanel({
   diffs,
   initialCollapsed,
-  renderingFileKeys,
 }: InteractiveDiffPanelArgs) {
   const parsed = useMemo(
     () =>
@@ -793,7 +791,6 @@ function InteractiveDiffPanel({
               isCollapsed={collapsedFileKeys.has(fileKey)}
               onToggleCollapsed={() => toggleFileCollapsed(fileKey)}
               stickyHeader
-              isRendering={renderingFileKeys?.has(fileKey) ?? false}
               onRequestFileContents={onRequestFileContents}
             />
           ))}
@@ -875,18 +872,6 @@ export function Overview() {
             fileKey: `multi-${i}`,
             fixture,
           }))}
-        />
-      </StoryRow>
-      <StoryRow
-        label="rendering pending"
-        hint="syntax-highlighting worker hasn't enqueued the larger file yet — body shows a skeleton"
-      >
-        <InteractiveDiffPanel
-          diffs={[
-            { fileKey: "small", fixture: SMALL },
-            { fileKey: "larger", fixture: LARGER },
-          ]}
-          renderingFileKeys={new Set(["larger"])}
         />
       </StoryRow>
     </StoryCard>

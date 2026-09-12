@@ -27,7 +27,7 @@ function primaryHostUnavailableError(): ApiError {
   );
 }
 
-function readPrimaryHostIdFromDataDir(
+export function readPrimaryHostIdFromDataDir(
   args: ReadPrimaryHostIdArgs,
 ): string | null {
   try {
@@ -41,21 +41,12 @@ function readPrimaryHostIdFromDataDir(
   }
 }
 
-function resolveSinglePublicHostId(db: DbConnection): string | null {
-  const hosts = listPublicHosts(db);
-  if (hosts.length !== 1) {
-    return null;
-  }
-  const host = hosts[0];
-  return host?.id ?? null;
-}
-
-function resolveSingleConnectedPublicHostId(
-  deps: PrimaryHostDeps,
+function resolveSinglePublicHostId(
+  db: DbConnection,
+  include: (host: ReturnType<typeof listPublicHosts>[number]) => boolean = () =>
+    true,
 ): string | null {
-  const hosts = listPublicHosts(deps.db).filter((host) =>
-    deps.hub.hasDaemonForHost(host.id),
-  );
+  const hosts = listPublicHosts(db).filter(include);
   if (hosts.length !== 1) {
     return null;
   }
@@ -71,7 +62,9 @@ export function resolvePrimaryHostId(deps: PrimaryHostDeps): string | null {
     configured === null ? null : getHost(deps.db, configured);
   return (
     (configuredHost?.destroyedAt === null ? configuredHost.id : null) ??
-    resolveSingleConnectedPublicHostId(deps) ??
+    resolveSinglePublicHostId(deps.db, (host) =>
+      deps.hub.hasDaemonForHost(host.id),
+    ) ??
     resolveSinglePublicHostId(deps.db)
   );
 }

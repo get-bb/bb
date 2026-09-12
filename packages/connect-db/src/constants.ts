@@ -114,17 +114,14 @@ export type HandleValidationError =
   | "invalid-format"
   | "reserved";
 
-export function validateHandle(handle: string): HandleValidationError | null {
-  if (handle.length < HANDLE_MIN_LENGTH) return "too-short";
-  if (handle.length > HANDLE_MAX_LENGTH) return "too-long";
-  if (handle.includes("--")) return "invalid-format";
-  if (!HANDLE_REGEX.test(handle)) return "invalid-format";
-  if (RESERVED_HANDLES.has(handle)) return "reserved";
+export function validateLabel(label: string): HandleValidationError | null {
+  if (label.length < HANDLE_MIN_LENGTH) return "too-short";
+  if (label.length > HANDLE_MAX_LENGTH) return "too-long";
+  if (label.includes("--")) return "invalid-format";
+  if (!HANDLE_REGEX.test(label)) return "invalid-format";
+  if (RESERVED_HANDLES.has(label)) return "reserved";
   return null;
 }
-
-export const validateLabel = validateHandle;
-export const validateSubdomain = validateHandle;
 
 const SHARE_PORT_TARGET = /^[1-9]\d{0,4}$/;
 

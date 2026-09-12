@@ -1,4 +1,4 @@
-import { and, eq, inArray, isNull, or, sql } from "drizzle-orm";
+import { and, eq, inArray, isNull, or, sql, type SQL } from "drizzle-orm";
 import type { DbConnection, DbTransaction } from "../connection.js";
 import { environments, hosts, threads } from "../schema.js";
 
@@ -30,9 +30,10 @@ export function machineHasLiveThreads(db: Connection, hostId: string): boolean {
   );
 }
 
-export function machineHasLiveThreadLaunch(
+function machineHasThreadLaunchWhere(
   db: Connection,
   hostId: string,
+  threadCondition: SQL | undefined,
 ): boolean {
   return (
     db
@@ -40,15 +41,18 @@ export function machineHasLiveThreadLaunch(
       .from(hosts)
       .innerJoin(threads, eq(hosts.launchKey, threads.id))
       .where(
-        and(
-          eq(hosts.id, hostId),
-          isNull(hosts.destroyedAt),
-          liveThreadCondition,
-        ),
+        and(eq(hosts.id, hostId), isNull(hosts.destroyedAt), threadCondition),
       )
       .limit(1)
       .get() !== undefined
   );
+}
+
+export function machineHasLiveThreadLaunch(
+  db: Connection,
+  hostId: string,
+): boolean {
+  return machineHasThreadLaunchWhere(db, hostId, liveThreadCondition);
 }
 
 export function machineHasPendingThreads(
@@ -128,21 +132,13 @@ export function machineHasStartingThreadLaunch(
   db: Connection,
   hostId: string,
 ): boolean {
-  return (
-    db
-      .select({ id: threads.id })
-      .from(hosts)
-      .innerJoin(threads, eq(hosts.launchKey, threads.id))
-      .where(
-        and(
-          eq(hosts.id, hostId),
-          isNull(hosts.destroyedAt),
-          eq(threads.status, "starting"),
-          isNull(threads.archivedAt),
-          isNull(threads.deletedAt),
-        ),
-      )
-      .limit(1)
-      .get() !== undefined
+  return machineHasThreadLaunchWhere(
+    db,
+    hostId,
+    and(
+      eq(threads.status, "starting"),
+      isNull(threads.archivedAt),
+      isNull(threads.deletedAt),
+    ),
   );
 }

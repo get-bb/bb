@@ -1,20 +1,5 @@
 import { z } from "zod";
-
-const providerToolCallResponseSchema = z.object({
-  success: z.boolean(),
-  contentItems: z.array(
-    z.discriminatedUnion("type", [
-      z.object({
-        type: z.literal("inputText"),
-        text: z.string(),
-      }),
-      z.object({
-        type: z.literal("inputImage"),
-        imageUrl: z.string().min(1),
-      }),
-    ]),
-  ),
-});
+import { toolCallResultSchema } from "../bridge-requests.js";
 
 export interface BridgeToolCallRequest {
   jsonrpc: "2.0";
@@ -109,7 +94,7 @@ export function decodeToolCallResponsePayload(result: unknown): {
   images: BridgeToolCallImage[];
   isError: boolean;
 } {
-  const parsed = providerToolCallResponseSchema.safeParse(result);
+  const parsed = toolCallResultSchema.safeParse(result);
   if (!parsed.success) {
     return {
       content: "Invalid tool call response",

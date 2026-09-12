@@ -1,4 +1,10 @@
-import { lazy, Suspense, type ComponentProps, type ReactNode } from "react";
+import {
+  lazy,
+  Suspense,
+  type ComponentProps,
+  type ComponentType,
+  type ReactNode,
+} from "react";
 import { useAtomValue } from "jotai";
 import { Panel } from "react-resizable-panels";
 import { Skeleton } from "@bb/shared-ui/skeleton";
@@ -12,13 +18,6 @@ import {
 import { secondaryPanelWidthPercentAtom } from "./threadSecondaryPanelAtoms";
 
 type ThreadSecondaryPanelModule = typeof import("./ThreadSecondaryPanel");
-type ThreadSecondaryPanelTabContentModule =
-  typeof import("./ThreadSecondaryPanelTabContent");
-type ThreadTerminalPanelModule =
-  typeof import("@/components/thread/terminal/ThreadTerminalPanel");
-type BrowserTabDeckModule = typeof import("./BrowserTabDeck");
-type NewTabPageModule = typeof import("./NewTabPage");
-type FilePreviewModule = typeof import("./FilePreview");
 type ThreadStorageFileTreeModule = typeof import("./ThreadStorageFileTree");
 
 let threadSecondaryPanelModulePromise: Promise<ThreadSecondaryPanelModule> | null =
@@ -98,6 +97,19 @@ const ThreadStorageFilePreviewTabContentChunk = lazy(() =>
     }),
   ),
 );
+
+function withSuspense<P extends object>(
+  Chunk: ComponentType<P>,
+  fallback: ReactNode,
+) {
+  return function LazySecondaryPanelComponent(props: P) {
+    return (
+      <Suspense fallback={fallback}>
+        <Chunk {...props} />
+      </Suspense>
+    );
+  };
+}
 
 export function SecondaryPanelContentSkeleton() {
   return (
@@ -186,45 +198,22 @@ export function LazyThreadSecondaryPanel({
   );
 }
 
-export function LazyThreadTerminalPanel(
-  props: ComponentProps<ThreadTerminalPanelModule["ThreadTerminalPanel"]>,
-) {
-  return (
-    <Suspense fallback={<SecondaryPanelContentSkeleton />}>
-      <ThreadTerminalPanelChunk {...props} />
-    </Suspense>
-  );
-}
+export const LazyThreadTerminalPanel = withSuspense(
+  ThreadTerminalPanelChunk,
+  <SecondaryPanelContentSkeleton />,
+);
 
-export function LazyBrowserTabDeck(
-  props: ComponentProps<BrowserTabDeckModule["BrowserTabDeck"]>,
-) {
-  return (
-    <Suspense fallback={null}>
-      <BrowserTabDeckChunk {...props} />
-    </Suspense>
-  );
-}
+export const LazyBrowserTabDeck = withSuspense(BrowserTabDeckChunk, null);
 
-export function LazyNewTabPage(
-  props: ComponentProps<NewTabPageModule["NewTabPage"]>,
-) {
-  return (
-    <Suspense fallback={<SecondaryPanelContentSkeleton />}>
-      <NewTabPageChunk {...props} />
-    </Suspense>
-  );
-}
+export const LazyNewTabPage = withSuspense(
+  NewTabPageChunk,
+  <SecondaryPanelContentSkeleton />,
+);
 
-export function LazyFilePreview(
-  props: ComponentProps<FilePreviewModule["FilePreview"]>,
-) {
-  return (
-    <Suspense fallback={<SecondaryPanelContentSkeleton />}>
-      <FilePreviewChunk {...props} />
-    </Suspense>
-  );
-}
+export const LazyFilePreview = withSuspense(
+  FilePreviewChunk,
+  <SecondaryPanelContentSkeleton />,
+);
 
 export function LazyThreadStorageFileTree({
   fallback,
@@ -239,62 +228,27 @@ export function LazyThreadStorageFileTree({
   );
 }
 
-export function LazyWorkspaceFilePreviewTabContent(
-  props: ComponentProps<
-    ThreadSecondaryPanelTabContentModule["WorkspaceFilePreviewTabContent"]
-  >,
-) {
-  return (
-    <Suspense fallback={<SecondaryPanelContentSkeleton />}>
-      <WorkspaceFilePreviewTabContentChunk {...props} />
-    </Suspense>
-  );
-}
+export const LazyWorkspaceFilePreviewTabContent = withSuspense(
+  WorkspaceFilePreviewTabContentChunk,
+  <SecondaryPanelContentSkeleton />,
+);
 
-export function LazyHostFilePreviewTabContent(
-  props: ComponentProps<
-    ThreadSecondaryPanelTabContentModule["HostFilePreviewTabContent"]
-  >,
-) {
-  return (
-    <Suspense fallback={<SecondaryPanelContentSkeleton />}>
-      <HostFilePreviewTabContentChunk {...props} />
-    </Suspense>
-  );
-}
+export const LazyHostFilePreviewTabContent = withSuspense(
+  HostFilePreviewTabContentChunk,
+  <SecondaryPanelContentSkeleton />,
+);
 
-export function LazyHostScopedFilePreviewTabContent(
-  props: ComponentProps<
-    ThreadSecondaryPanelTabContentModule["HostScopedFilePreviewTabContent"]
-  >,
-) {
-  return (
-    <Suspense fallback={<SecondaryPanelContentSkeleton />}>
-      <HostScopedFilePreviewTabContentChunk {...props} />
-    </Suspense>
-  );
-}
+export const LazyHostScopedFilePreviewTabContent = withSuspense(
+  HostScopedFilePreviewTabContentChunk,
+  <SecondaryPanelContentSkeleton />,
+);
 
-export function LazyProjectFilePreviewTabContent(
-  props: ComponentProps<
-    ThreadSecondaryPanelTabContentModule["ProjectFilePreviewTabContent"]
-  >,
-) {
-  return (
-    <Suspense fallback={<SecondaryPanelContentSkeleton />}>
-      <ProjectFilePreviewTabContentChunk {...props} />
-    </Suspense>
-  );
-}
+export const LazyProjectFilePreviewTabContent = withSuspense(
+  ProjectFilePreviewTabContentChunk,
+  <SecondaryPanelContentSkeleton />,
+);
 
-export function LazyThreadStorageFilePreviewTabContent(
-  props: ComponentProps<
-    ThreadSecondaryPanelTabContentModule["ThreadStorageFilePreviewTabContent"]
-  >,
-) {
-  return (
-    <Suspense fallback={<SecondaryPanelContentSkeleton />}>
-      <ThreadStorageFilePreviewTabContentChunk {...props} />
-    </Suspense>
-  );
-}
+export const LazyThreadStorageFilePreviewTabContent = withSuspense(
+  ThreadStorageFilePreviewTabContentChunk,
+  <SecondaryPanelContentSkeleton />,
+);

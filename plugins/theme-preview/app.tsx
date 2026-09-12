@@ -74,7 +74,6 @@ import {
   INFO_PANEL_WIDTH,
   layoutBandForWidth,
   SIDEBAR_WIDTH,
-  surfaceRailWidth,
   type FrameComposition,
   type LayoutBand,
 } from "./responsive-layout";
@@ -170,32 +169,6 @@ function Badge({ children, tone = "outline" }: { children: ReactNode; tone?: Ton
     >
       {children}
     </BbBadge>
-  );
-}
-
-type ButtonVariant = "default" | "secondary" | "outline" | "ghost" | "destructive";
-function Button({ children, variant = "default", size = "md", disabled = false }: { children: ReactNode; variant?: ButtonVariant; size?: "sm" | "md"; disabled?: boolean }) {
-  return (
-    <BbButton asChild variant={variant} size={size === "sm" ? "sm" : "default"}>
-      <span aria-disabled={disabled || undefined} className={cn("pointer-events-none", disabled && "opacity-50")}>{children}</span>
-    </BbButton>
-  );
-}
-
-function Switch({ on }: { on: boolean }) {
-  return <BbSwitch checked={on} tabIndex={-1} aria-hidden className="pointer-events-none" />;
-}
-
-function TextInput({ focused = false, value, placeholder, width = 190 }: { focused?: boolean; value?: string; placeholder?: string; width?: number }) {
-  return (
-    <BbInput
-      readOnly
-      tabIndex={-1}
-      value={value ?? ""}
-      placeholder={placeholder}
-      style={{ width }}
-      className={cn("pointer-events-none", focused && "ring-1 ring-ring")}
-    />
   );
 }
 
@@ -302,7 +275,7 @@ function CodeBlock() {
   );
 }
 
-function Composer({ focused = false, text }: { focused?: boolean; text?: string }) {
+function Composer({ focused = false }: { focused?: boolean }) {
   return (
     <div
       style={{
@@ -312,11 +285,11 @@ function Composer({ focused = false, text }: { focused?: boolean; text?: string 
           : `inset 0 0 0 1px ${v("border")}`,
       }}
     >
-      <div style={{ fontSize: 13.5, color: text ? v("foreground") : v("muted-foreground"), minHeight: 20 }}>{text ?? "Ask for a follow-up."}</div>
+      <div style={{ fontSize: 13.5, color: v("muted-foreground"), minHeight: 20 }}>Ask for a follow-up.</div>
       <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
         <span style={{ fontSize: 12, color: v("muted-foreground") }}>claude-fable-5</span>
         <div style={{ flex: 1 }} />
-        <div style={{ width: 26, height: 26, borderRadius: 8, background: text ? v("primary") : v("muted"), color: text ? v("primary-foreground") : v("muted-foreground"), display: "grid", placeItems: "center", fontSize: 12 }}>↑</div>
+        <div style={{ width: 26, height: 26, borderRadius: 8, background: v("muted"), color: v("muted-foreground"), display: "grid", placeItems: "center", fontSize: 12 }}>↑</div>
       </div>
     </div>
   );
@@ -1071,7 +1044,7 @@ function useDelayedTooltip() {
   };
 }
 
-function OverlaySpecimens({ vertical = false }: { vertical?: boolean }) {
+function OverlaySpecimens() {
   // Tooltip and hover card are hover surfaces, but every launcher should also
   // answer a click — a silent button reads as broken.
   const tooltip = useDelayedTooltip();
@@ -1080,9 +1053,7 @@ function OverlaySpecimens({ vertical = false }: { vertical?: boolean }) {
   return (
     <div
       data-tp-overlay-launchers=""
-      style={vertical
-        ? { display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(88px, 1fr))", gap: 4 }
-        : { display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(96px, 1fr))", gap: 4 }}
+      style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(88px, 1fr))", gap: 4 }}
     >
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
@@ -1291,7 +1262,7 @@ function StageRail() {
       <section data-tp-area="overlays" aria-labelledby="tp-overlays-heading" style={{ minWidth: 0, paddingBottom: space(4) }}>
         <AreaHeading area="overlays" />
         <div style={{ marginTop: space(3) }}>
-          <OverlaySpecimens vertical />
+          <OverlaySpecimens />
         </div>
       </section>
       <section data-tp-area="components" aria-labelledby="tp-components-heading" style={{ minWidth: 0, paddingTop: space(4), borderTop: `1px solid ${v("border-seam", v("border"))}` }}>
@@ -1666,7 +1637,7 @@ function PreviewPage({ subPath }: { subPath: string }) {
   const computed = useComputedTokens(ALL_TOKENS, revision);
   const radii = useResolvedRadii(revision);
   const mobile = layout.band === "mobile";
-  const railWidth = layout.band === "narrow" ? surfaceRailWidth(layout.width) : SURFACE_RAIL_WIDTH;
+  const railWidth = SURFACE_RAIL_WIDTH;
   const contentInset = contentInsetForWidth(layout.width);
   const displayThemeId = pendingSelection?.themeId ?? catalog.activeThemeId;
   const displayThemeName = catalog.themes.find((theme) => theme.id === displayThemeId)?.name ?? "Current theme";
@@ -1745,7 +1716,7 @@ function PreviewPage({ subPath }: { subPath: string }) {
         <section key={area} data-tp-area={area} aria-labelledby={`tp-${area}-heading`} style={{ width: "100%", maxWidth: STUDIO_MAX_WIDTH, margin: "0 auto", boxSizing: "border-box", scrollMarginTop: headerHeight + 12, padding: `${space(5)} ${contentInset}px ${space(3)}` }}>
           <AreaHeading area={area} />
           <div style={{ marginTop: space(3) }}>
-            {area === "overlays" ? <OverlaySpecimens vertical />
+            {area === "overlays" ? <OverlaySpecimens />
               : area === "components" ? <ComponentsSection />
               : <StyleSheetSection computed={computed} radii={radii} />}
           </div>

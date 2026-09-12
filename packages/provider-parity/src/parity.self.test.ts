@@ -12,7 +12,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import {
   compareParity,
   type ParityAllowlistEntry,
-} from "@bb/provider-bridge-protocol/testing/parity";
+} from "@bb/provider-bridge-protocol/testing";
 import {
   RECORDINGS_ROOT,
   ROW_COUNTS_PATH,

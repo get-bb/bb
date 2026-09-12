@@ -12,9 +12,7 @@ export const PROMPT_MENTION_PILL_CLASS = cn(
   "align-baseline",
 );
 
-export function promptMentionIconLabel(
-  resource: PromptMentionResource,
-): string {
+function promptMentionIconLabel(resource: PromptMentionResource): string {
   if (resource.kind === "thread") {
     return "Thread";
   }
@@ -70,7 +68,9 @@ export function promptCommandIconName(command: PromptCommandLike): IconName {
   return "Terminal";
 }
 
-function promptMentionDisplayLabel(resource: PromptMentionResource): string {
+export function promptMentionDisplayLabel(
+  resource: PromptMentionResource,
+): string {
   return `${promptMentionIconLabel(resource)}: ${resource.label}`;
 }
 

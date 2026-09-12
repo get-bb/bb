@@ -1036,8 +1036,9 @@ describe("PluginNewThreadComposer seeding", () => {
     });
 
     await act(async () => {
-      latestPromptBoxProps().modeConfig.environment.onChange(
-        "host:host_1:local",
+      latestPromptBoxProps().modeConfig.environment.onSelectProvider(
+        CHECKOUT_PROVIDER,
+        "host_1",
       );
     });
     await act(async () => {

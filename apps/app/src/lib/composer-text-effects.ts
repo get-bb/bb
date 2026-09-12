@@ -1,5 +1,6 @@
 import { useCallback, useSyncExternalStore } from "react";
 import type { PluginComposerTextEffect } from "@get-bb/plugin-sdk";
+import { createKeyedListeners } from "./keyed-listeners";
 
 type ComposerTextEffectListener = () => void;
 type ComposerTextEffectOwner = string | symbol;
@@ -21,18 +22,7 @@ const snapshotsByStorageKey = new Map<
   string,
   readonly ComposerTextEffectSource[]
 >();
-const listenersByStorageKey = new Map<
-  string,
-  Set<ComposerTextEffectListener>
->();
-
-function notify(storageKey: string): void {
-  const listeners = listenersByStorageKey.get(storageKey);
-  if (!listeners) return;
-  for (const listener of [...listeners]) {
-    listener();
-  }
-}
+const textEffectListeners = createKeyedListeners<string>();
 
 export function getComposerTextEffects(
   storageKey: string | null,
@@ -81,7 +71,7 @@ export function setComposerTextEffect(
   );
   if (next.length === 0) snapshotsByStorageKey.delete(storageKey);
   else snapshotsByStorageKey.set(storageKey, next);
-  notify(storageKey);
+  textEffectListeners.notify(storageKey);
 }
 
 function subscribeComposerTextEffect(
@@ -89,18 +79,7 @@ function subscribeComposerTextEffect(
   listener: ComposerTextEffectListener,
 ): () => void {
   if (storageKey === null) return () => {};
-  let listeners = listenersByStorageKey.get(storageKey);
-  if (!listeners) {
-    listeners = new Set();
-    listenersByStorageKey.set(storageKey, listeners);
-  }
-  listeners.add(listener);
-  return () => {
-    listeners.delete(listener);
-    if (listeners.size === 0) {
-      listenersByStorageKey.delete(storageKey);
-    }
-  };
+  return textEffectListeners.subscribe(storageKey, listener);
 }
 
 export function useComposerTextEffects(

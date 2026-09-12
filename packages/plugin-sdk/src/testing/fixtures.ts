@@ -247,25 +247,7 @@ export function makeMessageDispatchHookContext(
     createdAt: 0,
     updatedAt: 0,
   };
-  const hostDefaults: NonNullable<MessageDispatchHookContext["host"]> = {
-    id: "host-1",
-    name: "Test host",
-    type: "persistent",
-    status: "connected",
-    machineProviderId: null,
-    lifecycle: {
-      phase: "active",
-      suspendedAt: null,
-      message: null,
-      pendingLog: "",
-      teardown: null,
-    },
-    maxPermissionMode: "full",
-    lastSeenAt: null,
-    lastRejectedProtocolVersion: null,
-    createdAt: 0,
-    updatedAt: 0,
-  };
+  const hostDefaults = makeHostResponse();
   const project = { ...context.project, ...overrides.project };
   const host =
     overrides.host === undefined

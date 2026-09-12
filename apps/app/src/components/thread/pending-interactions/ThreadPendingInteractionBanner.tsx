@@ -83,6 +83,19 @@ interface BuildApprovalSubjectInput {
   subject: ApprovalBannerSubject;
 }
 
+interface UseApprovalDecisionSubmissionArgs {
+  fallbackMessage: string;
+  interaction: PendingInteraction;
+  threadId: string;
+}
+
+interface ApprovalDecisionSubmission {
+  errorMessage: string | null;
+  loadingDecision: PendingInteractionApprovalDecision | null;
+  submitDecision: (decision: PendingInteractionApprovalDecision) => void;
+  submitDisabled: boolean;
+}
+
 export function ThreadPendingInteractionBanner(
   props: ThreadPendingInteractionBannerProps,
 ) {
@@ -156,24 +169,20 @@ interface PlanReviewRequestBannerProps {
   threadId: string;
 }
 
-function PlanReviewRequestBanner({
+function useApprovalDecisionSubmission({
+  fallbackMessage,
   interaction,
-  request,
-  sourceThread,
   threadId,
-}: PlanReviewRequestBannerProps) {
+}: UseApprovalDecisionSubmissionArgs): ApprovalDecisionSubmission {
   const resolvePendingInteraction = useResolveThreadPendingInteraction();
   const isResolving = interaction.status === "resolving";
-  const submittedDecision = approvalResolutionDecision(interaction.resolution);
-  const mutationErrorMessage = resolvePendingInteraction.error
+  const errorMessage = resolvePendingInteraction.error
     ? getMutationErrorMessage({
         error: resolvePendingInteraction.error,
-        fallbackMessage: "Failed to resolve plan review",
+        fallbackMessage,
         lifecycleOperation: "resolve_interaction",
       })
     : null;
-  const submitDisabled = resolvePendingInteraction.isPending || isResolving;
-  const { approval } = request;
   const submitDecision = (
     decision: PendingInteractionApprovalDecision,
   ): void => {
@@ -185,20 +194,43 @@ function PlanReviewRequestBanner({
       .mutateAsync({ threadId, interactionId: interaction.id, resolution })
       .catch(() => {});
   };
+  return {
+    errorMessage,
+    loadingDecision: isResolving
+      ? approvalResolutionDecision(interaction.resolution)
+      : null,
+    submitDecision,
+    submitDisabled: resolvePendingInteraction.isPending || isResolving,
+  };
+}
+
+function PlanReviewRequestBanner({
+  interaction,
+  request,
+  sourceThread,
+  threadId,
+}: PlanReviewRequestBannerProps) {
+  const { errorMessage, loadingDecision, submitDecision, submitDisabled } =
+    useApprovalDecisionSubmission({
+      fallbackMessage: "Failed to resolve plan review",
+      interaction,
+      threadId,
+    });
+  const { approval } = request;
   const { plan, planFilePath } = request.review;
   return (
     <PendingInteractionShell
       label="Plan review"
       title={approval.reason ?? "Ready to code?"}
       initiallyExpanded={false}
-      errorMessage={mutationErrorMessage}
+      errorMessage={errorMessage}
       sourceThread={sourceThread}
       testId="plan-review-banner"
       footer={
         <ApprovalDecisionButtons
           decisions={approval.availableDecisions}
           disabled={submitDisabled}
-          loadingDecision={isResolving ? submittedDecision : null}
+          loadingDecision={loadingDecision}
           onDecide={submitDecision}
           subjectKind="plan"
         />
@@ -245,51 +277,30 @@ function ApprovalPendingInteractionBanner({
   sourceThread,
   threadId,
 }: ApprovalPendingInteractionBannerProps) {
-  const resolvePendingInteraction = useResolveThreadPendingInteraction();
-  const isResolving = interaction.status === "resolving";
-  const submittedDecision = approvalResolutionDecision(interaction.resolution);
+  const { errorMessage, loadingDecision, submitDecision, submitDisabled } =
+    useApprovalDecisionSubmission({
+      fallbackMessage: "Failed to resolve pending interaction",
+      interaction,
+      threadId,
+    });
   const view = useMemo(
     () => buildApprovalSubject({ interaction, payload, subject }),
     [interaction, payload, subject],
   );
-  const mutationErrorMessage = resolvePendingInteraction.error
-    ? getMutationErrorMessage({
-        error: resolvePendingInteraction.error,
-        fallbackMessage: "Failed to resolve pending interaction",
-        lifecycleOperation: "resolve_interaction",
-      })
-    : null;
-  const submitDisabled = resolvePendingInteraction.isPending || isResolving;
-
-  const submitDecision = (
-    decision: PendingInteractionApprovalDecision,
-  ): void => {
-    const resolution = buildPendingInteractionApprovalResolution(
-      interaction,
-      decision,
-    );
-    void resolvePendingInteraction
-      .mutateAsync({
-        threadId,
-        interactionId: interaction.id,
-        resolution,
-      })
-      .catch(() => {});
-  };
 
   return (
     <PendingInteractionShell
       label="Approval needed"
       title={view.title}
       initiallyExpanded={false}
-      errorMessage={mutationErrorMessage}
+      errorMessage={errorMessage}
       sourceThread={sourceThread}
       testId="approval-banner"
       footer={
         <ApprovalDecisionButtons
           decisions={payload.availableDecisions}
           disabled={submitDisabled}
-          loadingDecision={isResolving ? submittedDecision : null}
+          loadingDecision={loadingDecision}
           onDecide={submitDecision}
           subjectKind={subject.kind}
         />
@@ -565,25 +576,16 @@ function buildApprovalSubject({
         ) : null,
       };
     }
-    case "file_change": {
-      const detailLines =
-        formatPendingInteractionSubjectDetailLines(interaction);
-      return {
-        title: payload.reason ?? "Do you want to make these changes?",
-        body:
-          detailLines.length > 0 ? (
-            <ApprovalDetailList
-              className="rounded-lg border border-border bg-card px-3 py-2"
-              lines={detailLines}
-            />
-          ) : null,
-      };
-    }
+    case "file_change":
     case "permission_grant": {
       const detailLines =
         formatPendingInteractionSubjectDetailLines(interaction);
       return {
-        title: payload.reason ?? "Do you want to grant this permission?",
+        title:
+          payload.reason ??
+          (subject.kind === "file_change"
+            ? "Do you want to make these changes?"
+            : "Do you want to grant this permission?"),
         body:
           detailLines.length > 0 ? (
             <ApprovalDetailList

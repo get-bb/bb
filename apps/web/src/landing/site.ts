@@ -8,8 +8,6 @@ export const DOWNLOAD_RELEASE_ASSET_BASE_URL =
 
 export type DesktopPlatform = "macos" | "linux";
 
-export const DESKTOP_PLATFORMS: readonly DesktopPlatform[] = ["macos", "linux"];
-
 export const DEFAULT_DESKTOP_PLATFORM: DesktopPlatform = "macos";
 
 export type DesktopDownload = {
@@ -42,14 +40,7 @@ export const DESKTOP_DOWNLOADS: Record<DesktopPlatform, DesktopDownload> = {
 export const SUBSCRIBE_PATH = "/api/subscribe";
 export const CLI_COMMAND = "npx bb-app@latest";
 
-export type CtaPlacement =
-  | "nav"
-  | "hero"
-  | "cli"
-  | "loops"
-  | "local"
-  | "closer"
-  | "footer";
+export type CtaPlacement = "nav" | "hero" | "local" | "closer" | "footer";
 
 export function downloadHref(
   platform: DesktopPlatform,

@@ -165,11 +165,8 @@ export class DemoWorld {
     this.schedule = options.schedule ?? ((fn, ms) => setTimeout(fn, ms));
   }
 
-  onChanged(listener: (message: ThreadChangedMessage) => void): () => void {
+  onChanged(listener: (message: ThreadChangedMessage) => void): void {
     this.listeners.add(listener);
-    return () => {
-      this.listeners.delete(listener);
-    };
   }
 
   socketReply(raw: string): string | null {

@@ -5,11 +5,11 @@ import {
   verticalListSortingStrategy,
 } from "@dnd-kit/sortable";
 import type { SidebarSectionId } from "./sidebarCollapsedAtoms";
-import type { SidebarReorderDndContextProps } from "./useSidebarReorderDnd";
+import type { ReorderDndContextProps } from "@/components/ui/useReorderDnd";
 
 interface SidebarSectionOrderListProps {
   children: (sectionId: SidebarSectionId) => ReactNode;
-  dndContextProps?: SidebarReorderDndContextProps;
+  dndContextProps?: ReorderDndContextProps;
   order: readonly SidebarSectionId[];
   trailing?: ReactNode;
 }

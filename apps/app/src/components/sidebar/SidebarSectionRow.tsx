@@ -135,7 +135,6 @@ function SidebarSectionRowComponent({
   );
   const content = (
     <>
-      {}
       <button
         type="button"
         aria-hidden="true"

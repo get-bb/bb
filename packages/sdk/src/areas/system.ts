@@ -30,7 +30,11 @@ import type {
   UiPreferencesResponse,
 } from "@bb/server-contract";
 import { systemVoiceTranscriptionResponseSchema } from "@bb/server-contract";
-import { signalRequestArgs, type CreateSdkAreaArgs } from "./common.js";
+import {
+  readExecutionOptions,
+  signalRequestArgs,
+  type CreateSdkAreaArgs,
+} from "./common.js";
 
 export interface SystemAttentionArgs {
   signal?: AbortSignal;
@@ -210,18 +214,7 @@ export function createSystemArea(args: CreateSdkAreaArgs): SystemArea {
       );
     },
     async executionOptions(input = {}) {
-      return transport.readJson(
-        transport.api.v1.system["execution-options"].$get(
-          {
-            query: {
-              environmentId: input.environmentId,
-              hostId: input.hostId,
-              providerId: input.providerId,
-            },
-          },
-          ...signalRequestArgs(input.signal),
-        ),
-      );
+      return readExecutionOptions(transport, input);
     },
     async cliSkillsStatus(input = {}) {
       return transport.readJson(

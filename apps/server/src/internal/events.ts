@@ -1,9 +1,10 @@
+import { Buffer } from "node:buffer";
 import { and, desc, eq, gt, lt, sql } from "drizzle-orm";
 import {
   appendDaemonEventsInTransaction,
   deriveStoredEventItemFields,
   getThread,
-  listCompletedTurnsByThreadIds,
+  listStoredTurnCompletedKeys,
   listThreadEnvironmentAssignmentsOnHost,
   MissingStoredTurnStartedError,
   events as storedEvents,
@@ -235,15 +236,11 @@ function resolveProviderIdentifiers(event: HostDaemonEventEnvelope["event"]): {
     case "provider/modelFallback":
     case "provider/rateLimits/updated":
     case "provider.env-resolved":
-      return { providerThreadId: event.providerThreadId };
     case "thread/compacted":
-      return { providerThreadId: event.providerThreadId };
     case "thread/context/cleared":
-      return { providerThreadId: event.providerThreadId };
     case "thread/goal/updated":
     case "thread/goal/cleared":
     case "thread/extensionState/updated":
-      return { providerThreadId: event.providerThreadId };
     case "turn/started":
     case "turn/completed":
     case "turn/input/accepted":
@@ -265,7 +262,6 @@ function resolveProviderIdentifiers(event: HostDaemonEventEnvelope["event"]): {
     case "thread/tokenUsage/updated":
     case "turn/plan/updated":
     case "turn/diff/updated":
-      return { providerThreadId: event.providerThreadId };
     case "provider/error":
     case "provider/unhandled":
       return { providerThreadId: event.providerThreadId };
@@ -630,39 +626,30 @@ function hasThreadAlreadyStartedRun(
 function listCompletedTurnKeysForStartedEvents(
   args: ListCompletedTurnKeysForStartedEventsArgs,
 ): Set<string> {
-  const startedTurnKeys = new Set<string>();
-  const threadIds = new Set<string>();
+  const startedTurnKeys: TurnKeyArgs[] = [];
 
   for (const entry of args.batchEvents) {
     if (entry.event.type !== "turn/started") {
       continue;
     }
-    startedTurnKeys.add(
-      toTurnKey({
-        threadId: entry.threadId,
-        turnId: requireThreadEventScopeTurnId({
-          type: entry.event.type,
-          scope: entry.event.scope,
-        }),
+    startedTurnKeys.push({
+      threadId: entry.threadId,
+      turnId: requireThreadEventScopeTurnId({
+        type: entry.event.type,
+        scope: entry.event.scope,
       }),
-    );
-    threadIds.add(entry.threadId);
+    });
   }
 
-  if (startedTurnKeys.size === 0 || threadIds.size === 0) {
+  if (startedTurnKeys.length === 0) {
     return new Set<string>();
   }
 
-  const completedTurnKeys = new Set<string>();
-  for (const row of listCompletedTurnsByThreadIds(args.db, [...threadIds])) {
-    const turnKey = toTurnKey({
-      threadId: row.threadId,
-      turnId: row.turnId,
-    });
-    if (startedTurnKeys.has(turnKey)) {
-      completedTurnKeys.add(turnKey);
-    }
-  }
+  const completedTurnKeys = new Set(
+    listStoredTurnCompletedKeys(args.db, { keys: startedTurnKeys }).map(
+      toTurnKey,
+    ),
+  );
 
   for (const [index, entry] of args.batchEvents.entries()) {
     if (
@@ -1006,7 +993,7 @@ export function registerInternalEventRoutes(app: Hono, deps: AppDeps): void {
       }
 
       deferEventFollowUpBatch(deps, followUps);
-      return context.json({
+      const response: HostDaemonEventBatchResponse = {
         acceptedEvents: appendResult.acceptedEvents.map(
           (acceptedEvent, acceptedIndex) => {
             const inputIndex = appendResult.insertedInputIndexes[acceptedIndex];
@@ -1027,6 +1014,11 @@ export function registerInternalEventRoutes(app: Hono, deps: AppDeps): void {
           },
         ),
         rejectedEvents,
+      };
+      const body = JSON.stringify(response);
+      return context.body(body, 200, {
+        "content-length": String(Buffer.byteLength(body)),
+        "content-type": "application/json",
       });
     },
   );

@@ -57,7 +57,6 @@ import {
 import {
   usePluginNavPanelChrome,
   type PluginNavPanelChrome,
-  type PluginNavPanelChromeEntry,
 } from "@/lib/plugin-nav-panel-chrome";
 import { cn } from "@bb/shared-ui/lib/utils";
 import type { PluginNavPanelSlot } from "@/lib/plugin-slots";
@@ -144,14 +143,12 @@ function isPluginSidebarNavRow(row: SidebarNavRow): row is PluginSidebarNavRow {
 export function PluginNavSidebarItems(props: {
   builtInEntries?: readonly BuiltInSidebarNavEntry[];
   compactCustomizeMode?: boolean;
-  entries?: readonly PluginNavPanelChromeEntry[];
   leadingOrderKeys?: readonly string[];
   onCompactCustomizeModeChange?: (isCustomizing: boolean) => void;
   onNavigate?: () => void;
   splitEnabled?: boolean;
 }) {
-  const discoveredEntries = usePluginNavPanelChrome();
-  const entries = props.entries ?? discoveredEntries;
+  const entries = usePluginNavPanelChrome();
   const rows = useMemo<SidebarNavRow[]>(
     () => [
       ...(props.builtInEntries ?? []),
@@ -443,7 +440,7 @@ function PluginNavSidebarItemList({
       <div
         ref={containerRef}
         className={cn(
-          "px-2 py-2 group-data-[collapsible=icon]:hidden",
+          "px-2 py-2",
           isCompactViewport ? "flex min-h-0 flex-1 flex-col" : "shrink-0",
         )}
         data-testid="plugin-nav-sidebar-items"
@@ -469,7 +466,7 @@ function PluginNavSidebarItemList({
   return (
     <div
       ref={containerRef}
-      className="relative shrink-0 space-y-0.5 px-2 py-2 group-data-[collapsible=icon]:hidden"
+      className="relative shrink-0 space-y-0.5 px-2 py-2"
       data-testid="plugin-nav-sidebar-items"
       onClickCapture={onClickCapture}
     >
@@ -672,7 +669,6 @@ function SidebarNavigationInlineCustomizeMode({
     <SidebarNavigationCustomizeList
       rows={rows}
       visibleKeys={visibleKeys}
-      surface="sidebar"
       onActivate={(row, event) => {
         onActivate(row, event);
         onExit();
@@ -753,7 +749,6 @@ function SidebarNavigationCustomizeList({
   onDragEnd,
   onVisibleChange,
   rows,
-  surface = "popover",
   visibleKeys,
 }: {
   onActivate: (
@@ -763,7 +758,6 @@ function SidebarNavigationCustomizeList({
   onDragEnd: (activeKey: string, overKey: string) => void;
   onVisibleChange: (key: string, visible: boolean) => void;
   rows: readonly SidebarNavRow[];
-  surface?: "popover" | "sidebar";
   visibleKeys: readonly string[];
 }) {
   const orderedKeys = useMemo(() => rows.map(getPluginNavPanelKey), [rows]);
@@ -804,7 +798,6 @@ function SidebarNavigationCustomizeList({
                 row={row}
                 checked={visibleKeySet.has(key)}
                 reorderDisabled={rows.length < 2}
-                surface={surface}
                 onActivate={(event) => onActivate(row, event)}
                 onCheckedChange={(checked) => onVisibleChange(key, checked)}
               />
@@ -822,14 +815,12 @@ function SortableSidebarNavigationCustomizeItem({
   onCheckedChange,
   reorderDisabled,
   row,
-  surface,
 }: {
   checked: boolean;
   onActivate: (event: ReactMouseEvent<HTMLButtonElement>) => void;
   onCheckedChange: (checked: boolean) => void;
   reorderDisabled: boolean;
   row: SidebarNavRow;
-  surface: "popover" | "sidebar";
 }) {
   const panelKey = getPluginNavPanelKey(row);
   const checkboxId = useId();
@@ -850,12 +841,8 @@ function SortableSidebarNavigationCustomizeItem({
       role="listitem"
       className={cn(
         "group flex min-h-7 items-center rounded-md px-1 text-xs",
-        surface === "sidebar"
-          ? cn(
-              COARSE_POINTER_COMPACT_ROW_HEIGHT_CLASS,
-              "text-sidebar-foreground hover:bg-sidebar-accent focus-within:bg-sidebar-accent",
-            )
-          : "text-popover-foreground hover:bg-state-hover focus-within:bg-state-hover",
+        COARSE_POINTER_COMPACT_ROW_HEIGHT_CLASS,
+        "text-sidebar-foreground hover:bg-sidebar-accent focus-within:bg-sidebar-accent",
       )}
       data-plugin-nav-customize-item={panelKey}
     >
@@ -867,12 +854,8 @@ function SortableSidebarNavigationCustomizeItem({
         aria-label={`Reorder ${row.title}`}
         className={cn(
           "flex size-6 shrink-0 cursor-grab touch-none items-center justify-center rounded-sm text-subtle-foreground/60 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring active:cursor-grabbing",
-          surface === "sidebar"
-            ? cn(
-                COARSE_POINTER_ROW_ACTION_SIZE_CLASS,
-                "hover:text-sidebar-foreground focus-visible:text-sidebar-foreground",
-              )
-            : "hover:text-popover-foreground focus-visible:text-popover-foreground",
+          COARSE_POINTER_ROW_ACTION_SIZE_CLASS,
+          "hover:text-sidebar-foreground focus-visible:text-sidebar-foreground",
         )}
         onClick={(event) => event.stopPropagation()}
         data-plugin-nav-customize-drag-handle={panelKey}
@@ -887,9 +870,7 @@ function SortableSidebarNavigationCustomizeItem({
         disabled={!isPluginSidebarNavRow(row) && row.disabled}
         className={cn(
           "flex min-w-0 flex-1 cursor-pointer items-center gap-2 rounded-sm px-1 text-left outline-none disabled:cursor-default disabled:opacity-50",
-          surface === "sidebar"
-            ? COARSE_POINTER_COMPACT_ROW_HEIGHT_CLASS
-            : "min-h-7",
+          COARSE_POINTER_COMPACT_ROW_HEIGHT_CLASS,
         )}
         onClick={onActivate}
         data-sidebar-navigation-customize-launch={panelKey}
@@ -899,37 +880,24 @@ function SortableSidebarNavigationCustomizeItem({
         </span>
         <span className="min-w-0 flex-1 truncate">{row.title}</span>
       </button>
-      {surface === "sidebar" ? (
-        <label
-          htmlFor={checkboxId}
-          className={cn(
-            COARSE_POINTER_ROW_ACTION_SIZE_CLASS,
-            "flex shrink-0 cursor-pointer items-center justify-center",
-          )}
-          onClick={(event) => event.stopPropagation()}
-        >
-          <Checkbox
-            id={checkboxId}
-            checked={checked}
-            aria-label={`Show ${row.title} in sidebar`}
-            onCheckedChange={(nextChecked) =>
-              onCheckedChange(nextChecked === true)
-            }
-            data-plugin-nav-customize-checkbox={panelKey}
-          />
-        </label>
-      ) : (
+      <label
+        htmlFor={checkboxId}
+        className={cn(
+          COARSE_POINTER_ROW_ACTION_SIZE_CLASS,
+          "flex shrink-0 cursor-pointer items-center justify-center",
+        )}
+        onClick={(event) => event.stopPropagation()}
+      >
         <Checkbox
+          id={checkboxId}
           checked={checked}
           aria-label={`Show ${row.title} in sidebar`}
           onCheckedChange={(nextChecked) =>
             onCheckedChange(nextChecked === true)
           }
-          onClick={(event) => event.stopPropagation()}
           data-plugin-nav-customize-checkbox={panelKey}
-          className="mx-1"
         />
-      )}
+      </label>
     </div>
   );
 }
@@ -944,7 +912,7 @@ const SortableSidebarNavRow = function SortableSidebarNavRow({
     disabled: reorderDisabled,
   });
   return (
-    <SidebarNavRowItem
+    <PluginNavSidebarItem
       {...props}
       row={row}
       dragBindings={dragBindings}
@@ -965,16 +933,6 @@ interface SidebarNavRowItemProps {
   dragBindings?: SidebarSortableDragBindings;
   rowRef?: (element: HTMLElement | null) => void;
   rowStyle?: CSSProperties;
-}
-
-function SidebarNavRowItem({
-  row,
-  splitEnabled,
-  ...props
-}: SidebarNavRowItemProps) {
-  return (
-    <PluginNavSidebarItem {...props} row={row} splitEnabled={splitEnabled} />
-  );
 }
 
 type PluginNavRowMenuSurface = "context" | "dropdown";
