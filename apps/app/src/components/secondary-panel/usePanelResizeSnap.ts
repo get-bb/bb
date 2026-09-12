@@ -71,20 +71,6 @@ export function usePanelResizeSnap({
 
       const ownerWindow = divider.ownerDocument.defaultView;
       if (ownerWindow === null) return;
-      const previousGrow = Number.parseFloat(
-        ownerWindow.getComputedStyle(previous).flexGrow,
-      );
-      const nextGrow = Number.parseFloat(
-        ownerWindow.getComputedStyle(next).flexGrow,
-      );
-      const pairTotal =
-        Number.isFinite(previousGrow) &&
-        Number.isFinite(nextGrow) &&
-        previousGrow + nextGrow > 0
-          ? previousGrow + nextGrow
-          : 1;
-      const previousFlex = previous.style.flex;
-      const nextFlex = next.style.flex;
       const snapSession = createSplitResizeSnapSession(divider, axis, {
         boundaryIndex,
         childCount,
@@ -105,6 +91,17 @@ export function usePanelResizeSnap({
 
       let finished = false;
       let pendingFraction: number | null = null;
+      let frame: number | null = null;
+      const applyResize = () => {
+        frame = null;
+        const fraction = pendingFraction;
+        pendingFraction = null;
+        if (fraction !== null) onResize(fraction);
+      };
+      const flushResize = () => {
+        if (frame !== null) ownerWindow.cancelAnimationFrame(frame);
+        flushSync(applyResize);
+      };
       const move = (moveEvent: PointerEvent) => {
         if (moveEvent.pointerId !== pointerId) return;
         if (moveEvent.buttons === 0) {
@@ -125,8 +122,9 @@ export function usePanelResizeSnap({
           Math.min(maxFraction, result.fraction),
         );
         pendingFraction = fraction;
-        previous.style.flex = `${pairTotal * fraction} 1 0px`;
-        next.style.flex = `${pairTotal * (1 - fraction)} 1 0px`;
+        if (frame === null) {
+          frame = ownerWindow.requestAnimationFrame(applyResize);
+        }
       };
       const leave = (leaveEvent: PointerEvent) => {
         if (leaveEvent.pointerId === pointerId) {
@@ -146,6 +144,7 @@ export function usePanelResizeSnap({
         );
         ownerWindow.removeEventListener("mouseup", finishOnMouseUp, true);
         ownerWindow.removeEventListener("blur", finishOnBlur);
+        divider.removeEventListener("keydown", flushResize, true);
         snapSession.clear();
         if (
           activeDragRef.current?.finish === commitDrag ||
@@ -153,14 +152,11 @@ export function usePanelResizeSnap({
         ) {
           activeDragRef.current = null;
         }
-        if (!commit || pendingFraction !== null) {
-          previous.style.flex = previousFlex;
-          next.style.flex = nextFlex;
-          const fraction = pendingFraction;
-          if (commit && fraction !== null) {
-            flushSync(() => onResize(fraction));
-          }
+        if (commit) {
+          flushResize();
           previous.getBoundingClientRect();
+        } else if (frame !== null) {
+          ownerWindow.cancelAnimationFrame(frame);
         }
         if (grid !== null) {
           if (transitionDuration === "" || transitionDuration === undefined) {
@@ -190,6 +186,7 @@ export function usePanelResizeSnap({
       ownerWindow.addEventListener("pointercancel", finishForPointer, true);
       ownerWindow.addEventListener("mouseup", finishOnMouseUp, true);
       ownerWindow.addEventListener("blur", finishOnBlur);
+      divider.addEventListener("keydown", flushResize, true);
     },
     [axis, boundaryIndex, childCount, finish, maxFraction, minFraction, onResize],
   );
