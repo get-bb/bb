@@ -134,8 +134,9 @@ These settings apply globally to enrolled machines, excluding local hosts. The
 server synchronizes them into the daemon environment on connection and settings
 changes, so background commands and new child processes inherit them. Removing
 an override restores the original daemon value. User values override built-ins;
-agent-provider entries override host values. Reopen existing terminals after a
-change. The server gh login provides GitHub Git/gh authentication and commit
+agent-provider entries override host values. Cached provider runtimes refresh
+before their next operation once active work finishes. Reopen existing terminals
+after a change. The server gh login provides GitHub Git/gh authentication and commit
 identity by default; a user GH_TOKEN replaces it. See Settings → Machines →
 Machine environment, and `bb machine env list` for builtInGit readiness.
 

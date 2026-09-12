@@ -265,6 +265,10 @@ export class RuntimeManager {
   private readonly hostWatcher;
   private readonly provisionWorkspace;
   private baseShellEnv;
+  private readonly runtimeShellEnvironments = new WeakMap<
+    AgentRuntime,
+    NonNullable<AgentRuntimeOptions["shellEnv"]>
+  >();
   private readonly entries = new Map<string, RuntimeEntry>();
   private readonly pendingEntries = new Map<string, Promise<RuntimeEntry>>();
   private readonly pendingCatalogHashes = new Map<string, string>();
@@ -708,6 +712,16 @@ export class RuntimeManager {
     args: EnsureCompatibleEntryArgs,
   ): Promise<RuntimeEntry | null> {
     if (
+      this.runtimeEnvironmentChanged(args.entry.runtime) &&
+      !this.entryHasActiveRuntimeWork(args.entry) &&
+      !this.hasInFlightThreadCommand(args.entry, args.targetThreadId)
+    ) {
+      this.entries.delete(args.entry.environmentId);
+      await this.stopWatchingStatus(args.entry);
+      await args.entry.runtime.shutdown();
+      return null;
+    }
+    if (
       args.skillConfig === null ||
       args.entry.skillCatalogHash === args.skillConfig.catalogHash ||
       (args.entry.skillCatalogHash === null &&
@@ -837,6 +851,13 @@ export class RuntimeManager {
   async ensureProviderMaintenanceRuntime(args: {
     dataDir: string;
   }): Promise<AgentRuntime> {
+    if (
+      this.providerMaintenanceRuntime &&
+      this.providerMaintenanceActiveRequests <= 1 &&
+      this.runtimeEnvironmentChanged(this.providerMaintenanceRuntime)
+    ) {
+      await this.invalidateProviderMaintenanceRuntime();
+    }
     if (this.providerMaintenanceRuntime) {
       return this.providerMaintenanceRuntime;
     }
@@ -1205,6 +1226,7 @@ export class RuntimeManager {
         this.options.onProcessExit?.(info);
       },
     });
+    this.runtimeShellEnvironments.set(runtime, shellEnv);
     return runtime;
   }
 
@@ -1301,6 +1323,7 @@ export class RuntimeManager {
       },
     });
 
+    this.runtimeShellEnvironments.set(runtime, shellEnv);
     return {
       environmentId: args.environmentId,
       runtime,
@@ -1320,6 +1343,13 @@ export class RuntimeManager {
       ...provision,
       ...userExecutableProcessOptions(this.getShellEnv()),
     });
+  }
+
+  private runtimeEnvironmentChanged(runtime: AgentRuntime): boolean {
+    const previous = this.runtimeShellEnvironments.get(runtime);
+    return (
+      previous !== undefined && !shellEnvEquals(previous, this.getShellEnv())
+    );
   }
 
   private async stopWatchingStatus(entry: RuntimeEntry): Promise<void> {

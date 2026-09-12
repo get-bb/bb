@@ -1333,8 +1333,9 @@ The server synchronizes the machine environment into enrolled daemons before
 they accept work, on reconnect, and when settings change. The daemon and its
 new child processes inherit these values, including background git and gh
 commands. Replacement snapshots remove stale overrides and restore the original
-daemon values. This does not alter unrelated OS processes or already-running
-children. Core also resolves the environment for each agent turn, project-source
+daemon values. Cached provider runtimes are recreated with the current
+environment before their next operation once active work has finished. This
+does not alter unrelated OS processes or already-running children. Core also resolves the environment for each agent turn, project-source
 clone, host setup call, and new BB terminal. User variables override built-ins; agent-provider
 contributions override host variables for agent turns. Existing terminals keep
 the environment they started with: open a new terminal after a change. Agent
