@@ -1,3 +1,4 @@
+import { useSetPluginEnabled } from "@/components/plugin/useSetPluginEnabled";
 import { useEffect, useId, useState, type FocusEvent } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { appToast } from "@/components/ui/app-toast.js";
@@ -29,7 +30,6 @@ import {
   invalidatePluginList,
 } from "@/hooks/cache-owners/plugin-cache-owner";
 import {
-  setPluginEnabled,
   updatePluginSettings,
   usePluginList,
   usePluginSettingsView,
@@ -542,10 +542,10 @@ export function PluginSettingsPage({ pluginId }: { pluginId: string }) {
 function PluginSettingsContent({ plugin }: { plugin: PluginListItem }) {
   const queryClient = useQueryClient();
   const { settingsSections } = usePluginSlots();
+  const setEnabled = useSetPluginEnabled();
   const toggle = useMutation({
     meta: { showErrorToast: false },
-    mutationFn: (enabled: boolean) =>
-      setPluginEnabled(fetch, plugin.id, enabled),
+    mutationFn: (enabled: boolean) => setEnabled(plugin.id, enabled),
     onError: (error, enabled) => {
       appToast.error(
         `${enabled ? "Enabling" : "Disabling"} ${plugin.id} failed`,
