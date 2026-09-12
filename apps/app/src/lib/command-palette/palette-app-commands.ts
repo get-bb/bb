@@ -35,6 +35,7 @@ export function buildAppCommandActions(
       if (!args.isCommandAvailable(command, args.target)) continue;
       actions.push({
         id: paletteActionIdForCommand(command),
+        bucket: group.label === "Threads" ? "Threads" : "Actions",
         group: group.label,
         title: metadata.label,
         shortcut: args.shortcuts.get(command) ?? null,

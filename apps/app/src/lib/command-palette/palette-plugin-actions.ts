@@ -1,6 +1,7 @@
 import type { PluginCommandPaletteActionContext } from "@get-bb/plugin-sdk";
 import type { PluginThreadPanelOpenHandler } from "@/components/plugin/plugin-thread-panel-navigation";
 import type { PluginCommandPaletteActionSlot } from "@/lib/plugin-slots";
+import { getPluginDisplayName } from "@/lib/plugin-logos";
 import type { PaletteAction } from "./palette-action";
 
 export interface BuildPluginPaletteActionsArgs {
@@ -53,7 +54,8 @@ export function buildPluginPaletteActions(
     }
     actions.push({
       id: `plugin:${slot.pluginId}/${slot.id}`,
-      group: "Plugins",
+      bucket: "Plugins",
+      group: getPluginDisplayName(slot.pluginId),
       title: slot.title,
       shortcut: null,
       run: () => {
