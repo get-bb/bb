@@ -126,25 +126,6 @@ function archiveThreadWithLifecycleEffects(
   return archivedThread;
 }
 
-export function archiveThreadAndHiddenSourceForks(
-  deps: AppDeps,
-  args: ArchiveThreadWithLifecycleEffectsArgs,
-): Thread | null {
-  const archivedThread = archiveThreadWithLifecycleEffects(deps, args);
-  if (!archivedThread) {
-    return null;
-  }
-  for (const fork of listUnarchivedHiddenSourceThreads(deps.db, {
-    sourceThreadId: archivedThread.id,
-  })) {
-    archiveThreadWithLifecycleEffects(deps, {
-      environment: resolveArchiveThreadEnvironment(deps, { thread: fork }),
-      thread: fork,
-    });
-  }
-  return archivedThread;
-}
-
 export function archiveEnvironmentThreads(
   deps: AppDeps,
   args: ArchiveEnvironmentThreadsArgs,

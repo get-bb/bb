@@ -50,6 +50,8 @@ This index lists every command path that the core CLI registers. Read the task-s
 - `bb project update`
 - `bb project delete`
 
+`bb project show <id>` accepts `proj_personal` to inspect Personal.
+
 ## provider
 
 - `bb provider`
@@ -161,6 +163,7 @@ configures the machine with optional configured `preset` and `image` names;
 - `bb thread retry`
 - `bb thread stop`
 - `bb thread compact`
+- `bb thread context`
 - `bb thread clear`
 - `bb thread cancel-plan`
 - `bb thread clear-goal`

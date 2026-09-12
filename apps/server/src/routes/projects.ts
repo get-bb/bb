@@ -378,7 +378,11 @@ export function registerProjectRoutes(app: Hono, deps: AppDeps): void {
   });
 
   get(routes.get, (context) =>
-    context.json(buildProjectResponses(deps, context.req.param("id"))[0]),
+    context.json(
+      buildProjectResponsesFromRows(deps, [
+        requirePublicProject(deps.db, context.req.param("id")),
+      ])[0],
+    ),
   );
 
   get(routes.defaultExecutionOptions, (context) => {
@@ -559,7 +563,7 @@ export function registerProjectRoutes(app: Hono, deps: AppDeps): void {
 
   get(routes.files, async (context, query) => {
     const projectId = context.req.param("id");
-    requirePublicStandardProject(deps.db, projectId);
+    requirePublicProject(deps.db, projectId);
 
     const limit = parseFileListLimit(query.limit);
 
@@ -588,7 +592,7 @@ export function registerProjectRoutes(app: Hono, deps: AppDeps): void {
 
   get(routes.fileContent, async (context, query) => {
     const projectId = context.req.param("id");
-    requirePublicStandardProject(deps.db, projectId);
+    requirePublicProject(deps.db, projectId);
     const target = resolveProjectWorkspaceTarget(deps, {
       projectId,
       ...(query.environmentId !== undefined
@@ -616,7 +620,7 @@ export function registerProjectRoutes(app: Hono, deps: AppDeps): void {
 
   get(routes.paths, async (context, query) => {
     const projectId = context.req.param("id");
-    requirePublicStandardProject(deps.db, projectId);
+    requirePublicProject(deps.db, projectId);
 
     const limit = parseFileListLimit(query.limit);
 

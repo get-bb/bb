@@ -150,9 +150,17 @@ export type HostDaemonEnrollKeyResponse = z.infer<
   typeof hostDaemonEnrollKeyResponseSchema
 >;
 
+const machineEnvironmentSchema = z
+  .object({
+    revision: z.number().int().nonnegative(),
+    entries: z.array(hostDaemonContributedEnvEntrySchema),
+  })
+  .strict();
+
 export const hostDaemonSessionOpenResponseSchema = z
   .object({
     sessionId: z.string().min(1),
+    machineEnvironment: machineEnvironmentSchema,
     heartbeatIntervalMs: z.number().int().positive(),
     leaseTimeoutMs: z.number().int().positive(),
     watchSet: hostDaemonWatchSetSchema.default({
@@ -574,6 +582,12 @@ const hostDaemonTerminalCloseMessageSchema = z
   .strict();
 
 export const hostDaemonServerWsMessageSchema = z.discriminatedUnion("type", [
+  z
+    .object({
+      type: z.literal("machine-environment.replace"),
+      environment: machineEnvironmentSchema,
+    })
+    .strict(),
   z
     .object({
       type: z.literal("machine.shutdown"),

@@ -151,6 +151,7 @@ describe("createThreadRecord", () => {
             sectionId: sectionResult.section.id,
             input: [],
             origin: "app",
+            pluginMetadata: null,
             projectId: project.id,
             providerId: "codex",
             startedOnBehalfOf: null,

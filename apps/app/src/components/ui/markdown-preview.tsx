@@ -37,7 +37,7 @@ import rehypeSanitize from "rehype-sanitize";
 import remarkBreaks from "remark-breaks";
 import remarkGfm from "remark-gfm";
 import remarkMath from "remark-math";
-import { ImageLightbox } from "./image-lightbox.js";
+import { ImageLightbox, getWrappedImageIndex } from "./image-lightbox.js";
 import { normalizeMathFences } from "./markdown-math-fences.js";
 import {
   markdownMayContainMath,
@@ -141,7 +141,7 @@ interface BuildMarkdownComponentsArgs {
   linkRouting?: MarkdownLinkRouting;
   preferredTheme: Theme;
   rewriteLocalhostLinks: boolean;
-  setExpandedImageUrl: ExpandedImageUrlSetter;
+  setExpandedImage: ExpandedMarkdownImageSetter;
   threadMentions?: MarkdownThreadMentions;
   promptMentions?: ResolvedPromptMentions;
   messageDirectives?: ResolvedMessageDirectiveRender;
@@ -174,7 +174,7 @@ interface ResolvedMarkdownLocalPath {
 interface MarkdownImageRendererArgs {
   alt: ComponentPropsWithoutRef<"img">["alt"];
   imageAttributes: MarkdownImageRenderAttributes;
-  setExpandedImageUrl: ExpandedImageUrlSetter;
+  setExpandedImage: ExpandedMarkdownImageSetter;
   src: ComponentPropsWithoutRef<"img">["src"];
 }
 
@@ -223,7 +223,15 @@ interface AreMarkdownMessageDirectivesEqualArgs {
   previous: MarkdownMessageDirectives | undefined;
 }
 
-type ExpandedImageUrlSetter = Dispatch<SetStateAction<string | null>>;
+interface ExpandedMarkdownImage {
+  imageSources: readonly string[];
+  index: number;
+  url: string;
+}
+
+type ExpandedMarkdownImageSetter = Dispatch<
+  SetStateAction<ExpandedMarkdownImage | null>
+>;
 
 interface SetMarkdownContentWidthVariableArgs {
   element: HTMLElement;
@@ -945,7 +953,7 @@ function MarkdownTableCell({ children }: MarkdownTableCellProps) {
 function renderMarkdownImage({
   alt,
   imageAttributes,
-  setExpandedImageUrl,
+  setExpandedImage,
   src,
 }: MarkdownImageRendererArgs) {
   const imageUrl = typeof src === "string" ? src : "";
@@ -955,9 +963,25 @@ function renderMarkdownImage({
       {...imageAttributes}
       src={imageUrl}
       alt={typeof alt === "string" ? alt : "Image"}
-      className="my-2 max-h-96 max-w-full cursor-zoom-in object-contain"
+      className="my-2 max-h-[max(384px,50vh)] max-w-full cursor-zoom-in object-contain"
       loading="lazy"
-      onClick={() => setExpandedImageUrl(imageUrl)}
+      onClick={(event) => {
+        const markdownElement = event.currentTarget.closest(
+          "[data-markdown-preview]",
+        );
+        const images = Array.from(
+          markdownElement?.querySelectorAll("img") ?? [],
+        );
+        const imageIndex = images.indexOf(event.currentTarget);
+        const imageSources = images.map(
+          (image) => image.getAttribute("src") ?? image.src,
+        );
+        setExpandedImage({
+          imageSources,
+          index: imageIndex,
+          url: event.currentTarget.getAttribute("src") ?? imageUrl,
+        });
+      }}
     />
   );
 }
@@ -992,7 +1016,7 @@ function buildMarkdownComponents({
   linkRouting,
   preferredTheme,
   rewriteLocalhostLinks,
-  setExpandedImageUrl,
+  setExpandedImage,
   threadMentions,
   promptMentions,
   messageDirectives,
@@ -1230,7 +1254,7 @@ function buildMarkdownComponents({
     return renderMarkdownImage({
       alt,
       imageAttributes,
-      setExpandedImageUrl,
+      setExpandedImage,
       src,
     });
   }
@@ -1583,7 +1607,8 @@ function MarkdownPreviewComponent({
 }: MarkdownPreviewProps) {
   const preferredTheme = usePreferredTheme();
   const [rewriteLocalhostLinks] = useRewriteLocalhostLinksPreference();
-  const [expandedImageUrl, setExpandedImageUrl] = useState<string | null>(null);
+  const [expandedImage, setExpandedImage] =
+    useState<ExpandedMarkdownImage | null>(null);
   const localFileRouting = linkRouting?.localFile;
   const localImageRouting = linkRouting?.localImage;
   const normalizeLocalFileLinks =
@@ -1648,7 +1673,7 @@ function MarkdownPreviewComponent({
         linkRouting,
         preferredTheme,
         rewriteLocalhostLinks,
-        setExpandedImageUrl,
+        setExpandedImage,
         threadMentions,
         promptMentions: resolvedPromptMentions,
         messageDirectives:
@@ -1731,6 +1756,25 @@ function MarkdownPreviewComponent({
     </ReactMarkdown>
   );
 
+  const imageSources = expandedImage?.imageSources ?? [];
+  const expandedImageIndex = expandedImage?.index ?? -1;
+  const hasImageNavigation =
+    expandedImageIndex !== -1 && imageSources.length > 1;
+  const stepExpandedImage = (direction: "previous" | "next") => {
+    if (expandedImageIndex === -1) return;
+    const nextIndex = getWrappedImageIndex({
+      currentIndex: expandedImageIndex,
+      direction,
+      itemCount: imageSources.length,
+    });
+    const nextImageSource = imageSources[nextIndex];
+    setExpandedImage(
+      nextImageSource === undefined
+        ? null
+        : { imageSources, index: nextIndex, url: nextImageSource },
+    );
+  };
+
   return (
     <>
       <div
@@ -1753,10 +1797,13 @@ function MarkdownPreviewComponent({
       </div>
 
       <ImageLightbox
-        imageSrc={expandedImageUrl}
+        imageSrc={expandedImage?.url ?? null}
         imageAlt="Expanded image"
         title="Expanded image preview"
-        onClose={() => setExpandedImageUrl(null)}
+        hasMultipleImages={hasImageNavigation}
+        onPrevious={() => stepExpandedImage("previous")}
+        onNext={() => stepExpandedImage("next")}
+        onClose={() => setExpandedImage(null)}
       />
     </>
   );

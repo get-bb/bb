@@ -45,6 +45,8 @@ export const UI_PREFERENCE_KEYS = [
   "sidebar.collapsedEnvironments",
   "sidebar.collapsedThreadSections",
   "sidebar.collapsedMachines",
+  "sidebar.footerOrder",
+  "sidebar.hiddenFooterItems",
   "sidebar.pluginPanelOrder",
   "sidebar.visiblePluginPanels",
   "sidebar.navigationProvider",
@@ -133,6 +135,16 @@ export const uiPreferenceDefinitions = {
     uiPreferenceStringListSchema,
     [],
     "Machine ids whose sidebar rows are collapsed.",
+  ),
+  "sidebar.footerOrder": defineUiPreference(
+    uiPreferenceStringListSchema,
+    [],
+    "Order of built-in and plugin sidebar footer actions.",
+  ),
+  "sidebar.hiddenFooterItems": defineUiPreference(
+    uiPreferenceStringListSchema,
+    [],
+    "Sidebar footer actions moved into the More menu.",
   ),
   "sidebar.pluginPanelOrder": defineUiPreference(
     uiPreferenceStringListSchema,

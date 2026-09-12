@@ -62,6 +62,7 @@ Read the installed declarations for exact current signatures.
 - `ExperimentalProviderModelPickerRouting`
 - `ExperimentalProviderModelPickerValue`
 - `JsonValue`
+- `ReadonlyJsonValue` — deep-readonly JSON, e.g. `context.pluginMetadata` values
 - `MarkdownProps`
 - `NewThreadComposerProps`
 - `NewThreadRequest`
@@ -117,6 +118,8 @@ Read the installed declarations for exact current signatures.
 - `PluginAppSetup`
 - `PluginAppSlots`
 - `PluginBackground`
+- `PluginBbSdk` — `bb.sdk`; thread plugin metadata calls default `pluginId`
+  (see backend-sdk.md)
 - `PluginCli`
 - `PluginCliCommandInfo`
 - `PluginCliContext`

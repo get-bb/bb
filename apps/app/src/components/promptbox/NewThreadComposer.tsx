@@ -444,8 +444,7 @@ export function NewThreadComposer({
 
   const hostsQuery = useHosts();
   const availableHosts = useMemo(
-    () =>
-      selectHosts(hostsQuery.data, "persistent"),
+    () => selectHosts(hostsQuery.data, "persistent"),
     [hostsQuery.data],
   );
   const systemConfigQuery = useSystemConfig();
@@ -498,6 +497,43 @@ export function NewThreadComposer({
       ),
     [isProjectless, registeredEnvironmentProviders],
   );
+  const { providers: projectEnvironmentProviders } =
+    useSystemEnvironmentProviders({ projectId });
+  const projectGitRemoteUrl = currentProject?.gitRemoteUrl;
+  const environmentProvidersByHostId = useMemo(
+    () =>
+      new Map(
+        availableHosts.map((host) => [
+          host.id,
+          (environmentProviders ?? [])
+            .filter(
+              (provider) =>
+                !provider.machineProviderId &&
+                (!(
+                  provider.requires.projectCheckout ||
+                  provider.requires.gitCheckout
+                ) ||
+                  findLocalPathProjectSourceForHost(projectSources, host.id) !==
+                    undefined) &&
+                (!provider.requires.gitRemote || projectGitRemoteUrl != null),
+            )
+            .map((provider) => ({
+              ...provider,
+              availability:
+                projectEnvironmentProviders?.find(
+                  (candidate) => candidate.id === provider.id,
+                )?.machineAvailability[host.id] ?? null,
+            })),
+        ]),
+      ),
+    [
+      availableHosts,
+      environmentProviders,
+      projectEnvironmentProviders,
+      projectGitRemoteUrl,
+      projectSources,
+    ],
+  );
   const { providers: machineProviders } = useSystemMachineProviders();
   const pluginList = usePluginList({ enabled: true });
 
@@ -549,16 +585,20 @@ export function NewThreadComposer({
       const usable = (hostId: string | null): boolean =>
         hostId !== null &&
         knownHostIds.has(hostId) &&
-        (isProjectless ||
-          !provider.requires.projectCheckout ||
-          findLocalPathProjectSourceForHost(projectSources, hostId) !==
-            undefined);
+        (environmentProvidersByHostId
+          .get(hostId)
+          ?.some(
+            (candidate) =>
+              candidate.id === provider.id &&
+              candidate.availability?.status !== "unavailable",
+          ) ??
+          false);
       const picked =
         pickedProviderMachine?.selectionValue === effectiveValue
           ? pickedProviderMachine.machine
           : null;
+      if (picked !== null) return { provider, machine: picked };
       const seeded =
-        picked === null &&
         !seedOverridden &&
         environmentSeed !== null &&
         environmentSeed.selectionValue === effectiveValue
@@ -568,7 +608,7 @@ export function NewThreadComposer({
         selectionScope === "new-thread" && storedMachineId !== ""
           ? { type: "existing", hostId: storedMachineId }
           : null;
-      const candidate = picked ?? seeded ?? remembered;
+      const candidate = seeded ?? remembered;
       if (candidate?.type === "new") return { provider, machine: candidate };
       if (usable(candidate?.hostId ?? null)) {
         return { provider, machine: candidate };
@@ -585,13 +625,12 @@ export function NewThreadComposer({
       seedOverridden,
       environmentSeed,
       environmentProviders,
-      isProjectless,
+      environmentProvidersByHostId,
       knownHostIds,
       pickedProviderMachine,
       selectionScope,
       storedMachineId,
       primaryHostId,
-      projectSources,
     ],
   );
 
@@ -824,6 +863,17 @@ export function NewThreadComposer({
   const providerMachine = providerSelection?.machine ?? null;
   const providerHostId =
     providerMachine?.type === "existing" ? providerMachine.hostId : null;
+  const selectedProviderMachineUnavailable =
+    providerHostId !== null &&
+    !(
+      environmentProvidersByHostId
+        .get(providerHostId)
+        ?.some(
+          (provider) =>
+            provider.id === selectedEnvironmentProvider?.id &&
+            provider.availability?.status !== "unavailable",
+        ) ?? false
+    );
   const selectedMachineProvider =
     providerMachine?.type === "new"
       ? machineProviders?.find(
@@ -1324,10 +1374,11 @@ export function NewThreadComposer({
       supportsServiceTier,
     ],
   );
-  const submissionEnvironment =
-    selectedEnvironment ??
-    (selectionScope === "new-thread" ? seed?.environment : undefined) ??
-    null;
+  const submissionEnvironment = selectedProviderMachineUnavailable
+    ? null
+    : (selectedEnvironment ??
+      (selectionScope === "new-thread" ? seed?.environment : undefined) ??
+      null);
   const submitDisabledReason = resolveNewThreadSubmitDisabledReason({
     environmentProviderInputsBlocker:
       machineProviderInputs.blockedReason ?? environmentProviderInputsBlocker,
@@ -1554,6 +1605,7 @@ export function NewThreadComposer({
               disabled: locks.environment,
               isLoading: environmentProviders === undefined,
               providers: environmentProviders ?? [],
+              providersByHostId: environmentProvidersByHostId,
               selectedProviderHostId: providerHostId,
               inputsControlProviderIds,
               onSelectProvider: handleSelectProvider,
@@ -1673,6 +1725,7 @@ export function NewThreadComposer({
       defaultMentionLinkResolver,
       effectiveEnvironmentValue,
       environmentProviders,
+      environmentProvidersByHostId,
       executionOptionsRouting,
       handleAttachFiles,
       handleEditorFocus,

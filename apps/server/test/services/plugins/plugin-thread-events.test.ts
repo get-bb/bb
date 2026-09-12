@@ -279,6 +279,7 @@ describe("plugin thread lifecycle events", () => {
         environment: { type: "reuse", environmentId: environment.id },
         input: [],
         origin: null,
+        pluginMetadata: null,
         projectId: project.id,
         providerId: "codex",
         startedOnBehalfOf: null,
@@ -325,6 +326,7 @@ describe("plugin thread lifecycle events", () => {
               input: [],
               origin: "plugin",
               originPluginId,
+              pluginMetadata: null,
               projectId: project.id,
               providerId: "codex",
               startedOnBehalfOf: null,
@@ -440,7 +442,7 @@ describe("plugin thread lifecycle events", () => {
       });
 
       const response = await harness.app.request(
-        `/api/v1/threads/${thread.id}/archive`,
+        `/api/v1/threads/${thread.id}/archive-all`,
         { method: "POST" },
       );
 

@@ -1,4 +1,5 @@
 import { startDesktopBrowserBroker } from "./desktop-browser-broker.js";
+import { MachineEnvironment } from "./machine-environment.js";
 import { CommandRouter } from "./command-router.js";
 import { createDaemon, type HostDaemon } from "./daemon.js";
 import {
@@ -211,6 +212,10 @@ interface MaybeInvalidateSessionArgs {
 export async function createHostDaemonApp(
   options: CreateHostDaemonAppOptions,
 ): Promise<HostDaemonApp> {
+  const machineEnvironment = new MachineEnvironment(
+    process.env,
+    options.runtimeShellEnv ?? {},
+  );
   const threadStorageRootPath = await ensureThreadStorageRoot(options.dataDir);
   const dataDirSkillsRootPath = await ensureDataDirSkillsRootPath(
     options.dataDir,
@@ -491,6 +496,8 @@ export async function createHostDaemonApp(
     hostWatcher: options.hostWatcher,
     logger: options.logger,
     shellEnv: options.runtimeShellEnv,
+    applyMachineEnvironment: (shell) =>
+      machineEnvironment.shellEnvironment(shell),
     onEvent: ({ environmentId, event }) => {
       try {
         eventSink.emit({
@@ -825,6 +832,8 @@ export async function createHostDaemonApp(
     }),
     onSelfUpdateInstalled: () => requestDaemonRestart(),
     onMachineShutdown: () => requestMachineShutdown(),
+    onMachineEnvironment: (environment) =>
+      machineEnvironment.replace(environment.entries),
     createWebSocket: options.createWebSocket,
     getActiveThreads: () => runtimeManager.listActiveThreads(),
     getLoadedEnvironments: () => runtimeManager.listLoadedEnvironments(),
@@ -942,6 +951,7 @@ export async function createHostDaemonApp(
       await eventSink.flush();
       await eventSink.dispose();
       await connection.shutdown();
+      machineEnvironment.replace([]);
     },
     onStart: async () => {
       options.logger.info(

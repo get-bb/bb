@@ -7,13 +7,7 @@ function createOperationEnvironmentScope(target: NodeJS.ProcessEnv) {
   let active = 0;
   let current: Record<string, string> = {};
   let previous: NodeJS.ProcessEnv = {};
-  let waiters: Array<() => void> = [];
-  return async (env: Record<string, string>): Promise<() => void> => {
-    const same = () =>
-      Object.keys(current).length === Object.keys(env).length &&
-      Object.entries(env).every(([key, value]) => current[key] === value);
-    while (active > 0 && !same())
-      await new Promise<void>((resolve) => waiters.push(resolve));
+  return (env: Record<string, string>): (() => void) => {
     if (active === 0) {
       current = env;
       previous = {};
@@ -32,9 +26,6 @@ function createOperationEnvironmentScope(target: NodeJS.ProcessEnv) {
       }
       current = {};
       previous = {};
-      const ready = waiters;
-      waiters = [];
-      for (const resolve of ready) resolve();
     };
   };
 }
@@ -536,8 +527,9 @@ async function handleCall(
   const controller = new AbortController();
   activeCalls.set(message.callId, controller);
   let contextOpen = true;
-  const releaseEnvironment = await acquireEnvironment(message.envVars);
+  let releaseEnvironment: (() => void) | undefined;
   try {
+    releaseEnvironment = acquireEnvironment(message.envVars);
     controller.signal.throwIfAborted();
     const input = await validate(method.input, message.input);
     const result = await handler(input, {
@@ -594,7 +586,7 @@ async function handleCall(
   } finally {
     contextOpen = false;
     activeCalls.delete(message.callId);
-    releaseEnvironment();
+    releaseEnvironment?.();
   }
 }
 

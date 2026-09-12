@@ -25,6 +25,7 @@ A project maps to a code repository. All threads belong to a project.
   local CLI machine fallback (normally the primary machine).
 
   bb project show <id>                    Show project details
+    Accepts proj_personal to inspect Personal.
   bb project update <id>                  Update a project
     --name <name>                         New name
 
@@ -47,6 +48,10 @@ Discovery:
   environment selects its owning machine and workspace; otherwise an explicit
   machine selects that machine's project source. Omitting both intentionally
   falls back to the primary machine's project source.
+
+  Personal file access (`paths`, `files`, `content`) requires an explicit
+  --environment <id> belonging to Personal. Personal has no default project
+  source; the selected environment must be ready.
 
 Attachments:
 

@@ -59,6 +59,13 @@ export {
   deleteProjectSource,
 } from "./project-sources.js";
 export {
+  getThreadPluginMetadata,
+  insertThreadPluginMetadata,
+  listThreadPluginMetadataRows,
+  patchThreadPluginMetadata,
+} from "./thread-plugin-metadata.js";
+
+export {
   createThread,
   countLiveThreadsInEnvironment,
   countThreads,

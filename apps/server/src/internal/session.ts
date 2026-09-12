@@ -28,6 +28,7 @@ import { readAttachment } from "../services/projects/attachments.js";
 import { handleHostSessionOpened } from "./session-owner-side-effects.js";
 import { resolveReportedConnectMachineId } from "./hosts.js";
 import type { PluginService } from "../services/plugins/plugin-service.js";
+import { HostEnvironmentSync } from "../services/hosts/host-environment-sync.js";
 
 const sessionOpenCompatibilitySchema = z
   .object({
@@ -53,6 +54,7 @@ export function registerInternalSessionRoutes(
   deps: AppDeps,
   plugins: PluginService,
 ): void {
+  const machineEnvironment = new HostEnvironmentSync(deps);
   const { get } = typedRoutes<HostDaemonInternalSchema>(app, {
     onValidationError: (msg) => new ApiError(400, "invalid_request", msg),
   });
@@ -173,6 +175,7 @@ export function registerInternalSessionRoutes(
         ),
         pluginHostGenerations: plugins.listHostArtifactGenerations(),
         retiredEnvironmentIds,
+        machineEnvironment: await machineEnvironment.snapshot(daemon.hostId),
       },
       201,
     );

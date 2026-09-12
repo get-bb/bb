@@ -3,6 +3,7 @@
 import { act, cleanup, renderHook } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import type {
+  CollisionDetection,
   DragCancelEvent,
   DragOverEvent,
   DragStartEvent,
@@ -16,6 +17,7 @@ import {
 } from "@bb/client-core";
 import {
   collectSectionThreadDndLookup,
+  NEST_HOVER_DELAY_MS,
   SectionThreadProjectionGate,
   useSectionThreadDnd,
 } from "./useSectionThreadDnd";
@@ -186,6 +188,54 @@ describe("useSectionThreadDnd nest projection", () => {
       } as DragCancelEvent),
     );
     expect(result.current?.nestTarget).toBeNull();
+  });
+});
+
+describe("useSectionThreadDnd nest hover delay", () => {
+  const rowRect = {
+    top: 100,
+    left: 0,
+    width: 200,
+    height: 28,
+    right: 200,
+    bottom: 128,
+  };
+  const rowDroppableId = getSidebarThreadRowDroppableId("in-b");
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it("only offers the row as a nest target after the pointer rests on it", () => {
+    vi.useFakeTimers();
+    const { result } = renderSectionThreadDnd();
+    const props = () => result.current!.dndContextProps;
+    const collide = (y: number) =>
+      props().collisionDetection!({
+        active: { id: "dragged" },
+        collisionRect: rowRect,
+        droppableRects: new Map([[rowDroppableId, rowRect]]),
+        droppableContainers: [{ id: rowDroppableId }],
+        pointerCoordinates: { x: 20, y },
+      } as unknown as Parameters<CollisionDetection>[0]).map(({ id }) => id);
+
+    act(() => props().onDragStart?.(dragStart("dragged")));
+    expect(collide(114)).toEqual([]);
+    act(() => vi.advanceTimersByTime(NEST_HOVER_DELAY_MS - 1));
+    expect(collide(114)).toEqual([]);
+    act(() => vi.advanceTimersByTime(1));
+    expect(collide(114)).toEqual([rowDroppableId]);
+
+    expect(collide(140)).toEqual([]);
+    expect(collide(114)).toEqual([]);
+    act(() => vi.advanceTimersByTime(NEST_HOVER_DELAY_MS));
+    expect(collide(114)).toEqual([rowDroppableId]);
+
+    act(() =>
+      props().onDragCancel?.({ active: { id: "dragged" } } as DragCancelEvent),
+    );
+    act(() => props().onDragStart?.(dragStart("dragged")));
+    expect(collide(114)).toEqual([]);
   });
 });
 

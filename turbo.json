@@ -70,7 +70,13 @@
       "cache": false
     },
     "@bb/app#build": {
-      "env": ["NODE_ENV", "VITE_*"],
+      "env": [
+        "NODE_OPTIONS",
+        "NODE_ENV",
+        "BABEL_*",
+        "ENABLE_REACT_COMPILER_TIMINGS",
+        "VITE_*"
+      ],
       "dependsOn": ["topo"],
       "inputs": [
         "$TURBO_DEFAULT$",

@@ -217,3 +217,7 @@ Maintenance interrupts active turns and closes terminals before saving. Submit a
 new continuation turn after restore; interrupted turns are never reported successful.
 
 Resuming a machine restores its provider state without rerunning environment setup.
+
+Personal file access: `bb project paths|files|content proj_personal` requires
+an explicit `--environment <id>` belonging to Personal. Personal has no default
+project source; the selected environment must be ready.

@@ -1752,6 +1752,155 @@ describe("NewThreadComposer environment providers", () => {
     );
   }
 
+  it.each([
+    CHECKOUT_PROVIDER,
+    MANAGED_WORKTREE_SUGAR_PROVIDER,
+    {
+      ...BRANCH_PROVIDER,
+      requires: { ...BRANCH_PROVIDER.requires, projectCheckout: false },
+    },
+  ])(
+    "omits $displayName on machines without this project's checkout",
+    async (provider) => {
+      mocks.environmentProviders = [provider, HOST_PROVIDER];
+      const submitted: NewThreadRequest[] = [];
+      renderUnseeded(
+        (request) => submitted.push(request),
+        "checkout-eligibility",
+        OTHER_PROJECT.id,
+      );
+      await waitFor(() => {
+        const byHost =
+          latestPromptBoxProps().modeConfig.environment.providersByHostId;
+        expect(
+          byHost
+            ?.get("host_1")
+            .map((item: SystemEnvironmentProvider) => item.id),
+        ).toEqual([provider.id, HOST_PROVIDER.id]);
+        expect(
+          byHost
+            ?.get("host_2")
+            .map((item: SystemEnvironmentProvider) => item.id),
+        ).toEqual([HOST_PROVIDER.id]);
+      });
+      await act(async () => {
+        latestPromptBoxProps().modeConfig.environment.onSelectProvider(
+          provider,
+          "host_2",
+        );
+      });
+      expect(latestPromptBoxProps().disabled).toBe(true);
+      expect(
+        latestPromptBoxProps().modeConfig.environment.selectedProviderHostId,
+      ).toBe("host_2");
+      await submit();
+      expect(submitted).toHaveLength(0);
+      await act(async () => {
+        latestPromptBoxProps().modeConfig.environment.onSelectProvider(
+          HOST_PROVIDER,
+          "host_2",
+        );
+      });
+      await submit();
+      expect(submitted[0].environment).toMatchObject({
+        machine: { type: "existing", hostId: "host_2" },
+      });
+    },
+  );
+
+  it("blocks an explicit machine when its checkout disappears and recovers on a valid choice", async () => {
+    const project = {
+      ...PROJECT_WITHOUT_CHECKOUT,
+      sources: [...PROJECT.sources],
+    };
+    mocks.extraProjects = [project];
+    mocks.environmentProviders = [BRANCH_PROVIDER];
+    const onSubmit = vi.fn();
+    const rendered = renderUnseeded(
+      onSubmit,
+      "checkout-disappears",
+      project.id,
+    );
+    await act(async () => {
+      latestPromptBoxProps().modeConfig.environment.onSelectProvider(
+        BRANCH_PROVIDER,
+        "host_2",
+      );
+    });
+    expect(latestPromptBoxProps().disabled).toBe(false);
+    mocks.extraProjects = [{ ...project, sources: [PROJECT.sources[0]] }];
+    rendered.rerender(
+      <MemoryRouter>
+        <LocationProbe />
+        <PluginNewThreadComposer
+          draftKey="checkout-disappears"
+          defaultProjectId={project.id}
+          initialPrompt="run in the sandbox"
+          onSubmit={onSubmit}
+        />
+      </MemoryRouter>,
+    );
+    expect(latestPromptBoxProps().disabled).toBe(true);
+    expect(
+      latestPromptBoxProps().modeConfig.environment.selectedProviderHostId,
+    ).toBe("host_2");
+    await submit();
+    expect(onSubmit).not.toHaveBeenCalled();
+    await act(async () => {
+      latestPromptBoxProps().modeConfig.environment.onSelectProvider(
+        BRANCH_PROVIDER,
+        "host_1",
+      );
+    });
+    await submit();
+    expect(onSubmit).toHaveBeenCalledWith(
+      expect.objectContaining({
+        environment: expect.objectContaining({
+          machine: { type: "existing", hostId: "host_1" },
+        }),
+      }),
+    );
+  });
+
+  it("uses per-machine availability without blocking a pending probe", async () => {
+    const provider = {
+      ...BRANCH_PROVIDER,
+      machineAvailability: {
+        host_1: null,
+        host_2: {
+          status: "unavailable" as const,
+          message: "Checkout is unavailable",
+        },
+      },
+    };
+    mocks.environmentProviders = [provider];
+    const onSubmit = vi.fn();
+    renderUnseeded(onSubmit, "machine-availability");
+    await act(async () => {
+      latestPromptBoxProps().modeConfig.environment.onSelectProvider(
+        provider,
+        "host_2",
+      );
+    });
+    expect(
+      latestPromptBoxProps().modeConfig.environment.providersByHostId.get(
+        "host_2",
+      )[0].availability,
+    ).toEqual(provider.machineAvailability.host_2);
+    expect(latestPromptBoxProps().disabled).toBe(true);
+    await submit();
+    expect(onSubmit).not.toHaveBeenCalled();
+    await act(async () => {
+      latestPromptBoxProps().modeConfig.environment.onSelectProvider(
+        provider,
+        "host_1",
+      );
+    });
+    expect(latestPromptBoxProps().disabled).toBe(false);
+    await submit();
+    expect(onSubmit).toHaveBeenCalledOnce();
+  });
+
   it("updates the access banner for a composed machine without relying on plugin status", async () => {
     const composition: SystemEnvironmentProvider = {
       ...OPTIONAL_INPUTS_PROVIDER,
@@ -2079,7 +2228,8 @@ describe("NewThreadComposer environment providers", () => {
     });
     expect(
       latestPromptBoxProps().modeConfig.environment.selectedProviderHostId,
-    ).toBeNull();
+    ).toBe("host_1");
+    expect(latestPromptBoxProps().disabled).toBe(true);
 
     await act(async () => {
       latestPromptBoxProps().modeConfig.environment.onSelectProvider(

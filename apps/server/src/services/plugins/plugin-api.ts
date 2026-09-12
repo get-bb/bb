@@ -30,6 +30,7 @@ import type {
   PluginAgentConfigurationContext,
   PluginAgentToolContext,
   PluginAgentToolPresentation,
+  PluginBbSdk,
   PluginAgentToolResult,
   PluginAgents,
   PluginBackground,
@@ -117,7 +118,13 @@ import type {
   NormalizedPluginMachineProvider,
   NormalizedPluginProviderDeclaration,
 } from "@get-bb/plugin-sdk/internal/host-policy";
-import type { BbSdk, ThreadForkArgs, ThreadSpawnArgs } from "@bb/sdk";
+import type {
+  BbSdk,
+  ThreadForkArgs,
+  ThreadPluginMetadataArgs,
+  ThreadPluginMetadataUpdateArgs,
+  ThreadSpawnArgs,
+} from "@bb/sdk";
 import { requestEnvironmentProviderRecheck } from "./plugin-environment-provider-registry.js";
 import { requestServerAccessRecheck } from "./plugin-server-access-registry.js";
 import type { ServerLogger } from "../../types.js";
@@ -328,30 +335,48 @@ export type PluginProviderEnvHealthResolver = (
   | null
   | Promise<ExperimentalPluginProviderEnvHealth | null>;
 
-function wrapSdkForPlugin(sdk: BbSdk, pluginId: string): BbSdk {
+function withPluginThreadAttribution<
+  TArgs extends ThreadForkArgs | ThreadSpawnArgs,
+>(args: TArgs, pluginId: string): TArgs {
+  const attribution: Pick<ThreadSpawnArgs, "origin" | "originPluginId"> =
+    args.pluginMetadata !== undefined
+      ? { origin: "plugin", originPluginId: pluginId }
+      : args.origin === undefined || args.origin === "plugin"
+        ? { origin: "plugin", originPluginId: args.originPluginId ?? pluginId }
+        : { origin: args.origin };
+  return { ...args, ...attribution };
+}
+
+function wrapSdkForPlugin(sdk: BbSdk, pluginId: string): PluginBbSdk {
   return {
     ...sdk,
     threads: {
       ...sdk.threads,
-      fork(args: ThreadForkArgs) {
-        const origin = args.origin ?? "plugin";
-        return sdk.threads.fork({
+      async getPluginMetadata(
+        args: Omit<ThreadPluginMetadataArgs, "pluginId"> & {
+          pluginId?: string;
+        },
+      ) {
+        return sdk.threads.getPluginMetadata({
           ...args,
-          origin,
-          ...(origin === "plugin"
-            ? { originPluginId: args.originPluginId ?? pluginId }
-            : {}),
+          pluginId: args.pluginId ?? pluginId,
         });
       },
-      spawn(args: ThreadSpawnArgs) {
-        const origin = args.origin ?? "plugin";
-        return sdk.threads.spawn({
+      async updatePluginMetadata(
+        args: Omit<ThreadPluginMetadataUpdateArgs, "pluginId"> & {
+          pluginId?: string;
+        },
+      ) {
+        return sdk.threads.updatePluginMetadata({
           ...args,
-          origin,
-          ...(origin === "plugin"
-            ? { originPluginId: args.originPluginId ?? pluginId }
-            : {}),
+          pluginId: args.pluginId ?? pluginId,
         });
+      },
+      fork(args: ThreadForkArgs) {
+        return sdk.threads.fork(withPluginThreadAttribution(args, pluginId));
+      },
+      spawn(args: ThreadSpawnArgs) {
+        return sdk.threads.spawn(withPluginThreadAttribution(args, pluginId));
       },
     },
   };
@@ -539,7 +564,7 @@ export function createPluginApi(options: {
   } = options;
   let invalidated = false;
   let activated = false;
-  let wrappedSdk: BbSdk | undefined;
+  let wrappedSdk: PluginBbSdk | undefined;
   let pendingNeedsConfiguration: string | null = null;
   const pendingAgentToolProblems: string[] = [];
   const pendingSharedPorts = new Map<string, readonly number[]>();
@@ -1705,7 +1730,7 @@ export function createPluginApi(options: {
     server,
     hosts,
     experimental_aiServices,
-    get sdk(): BbSdk {
+    get sdk(): PluginBbSdk {
       assertLive();
       const sdk = getSdk();
       if (!sdk) {

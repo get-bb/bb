@@ -1,3 +1,9 @@
+import {
+  prepareProviderEnvironment,
+  resolveProviderOperationContext,
+} from "../../src/services/threads/thread-environment-placement.js";
+import { cancelProviderEnvironmentCreation } from "../../src/services/environments/environment-engine.js";
+import { sweepProviderMachine } from "../../src/services/machines/provider-orchestration.js";
 import { stopThreadForCurrentState } from "../../src/services/threads/thread-lifecycle.js";
 import { createDeferredPromise } from "@bb/test-helpers";
 import { resolveGitCheckoutAvailability } from "../../src/services/environments/provider-availability.js";
@@ -12,6 +18,7 @@ import {
   createProjectSource,
   ensurePersonalProject,
   getEnvironment,
+  getHost,
   getNonDestroyedHostByLaunchKey,
   getPreparingEnvironment,
   getDefaultProjectSource,
@@ -642,6 +649,206 @@ function readyAt(host: { id: string }): TestProviderDecision {
     },
   };
 }
+
+describe("shared machine preparation retention", () => {
+  it.each([
+    ["archive", false],
+    ["delete-project", false],
+    ["archive", true],
+    ["delete-project", true],
+  ] as const)(
+    "retains unfinished work during %s (scheduled: %s)",
+    async (action, scheduled) => {
+      await withTestHarness(async (harness) => {
+        const { host, project, environment } = seedTargetFixture(
+          harness,
+          "shared-machine",
+        );
+        const owner = seedThread(harness.deps, {
+          projectId: project.id,
+          environmentId: environment.id,
+        });
+        const otherProject = seedProjectWithSource(harness.deps, {
+          hostId: host.id,
+        }).project;
+        const remove = vi.fn(async () => ({ status: "removed" as const }));
+        const machine = {
+          pluginId: "cloud",
+          provider: validatePluginMachineProviderDeclaration({
+            id: "test-machine",
+            displayName: "Test machine",
+            description: "Test machine",
+            icon: "Terminal",
+            ephemeral: true,
+            create: async () => {
+              throw new Error("Unexpected machine allocation");
+            },
+            reconcileCleanup: async () => ({ status: "removed" }),
+            remove,
+          }),
+        };
+        setPluginMachineProviderBridge({
+          listMachineProviders: () => [machine],
+          getMachineProvider: (id) =>
+            id === machine.provider.id ? machine : undefined,
+          invokeProvider: async (_pluginId, _label, run) => ({
+            ok: true,
+            value: await run(),
+          }),
+          decisionTimeoutMs: 10000,
+        });
+        updateHost(harness.db, harness.hub, host.id, {
+          type: "ephemeral",
+          machineProviderId: machine.provider.id,
+          launchKey: owner.id,
+          resource: {},
+        });
+        const entered = createDeferredPromise<void>();
+        const release = createDeferredPromise<void>();
+        installTarget({
+          provision: async () => {
+            entered.resolve();
+            await release.promise;
+            return { action: "reject", message: "Setup failed" };
+          },
+        });
+        let nextThreadId: string | null = null;
+        try {
+          const next = await createThreadFromRequest(harness.deps, {
+            projectId: otherProject.id,
+            environment: {
+              type: "provider",
+              environmentProviderId: PROVIDER_ID,
+              machine: { type: "existing", hostId: host.id },
+              inputs: null,
+            },
+            input: textInput("Prepare shared workspace"),
+            providerId: "codex",
+            model: "requested-model",
+            origin: "app",
+            startedOnBehalfOf: null,
+            ...(scheduled ? { sendAt: Date.now() + 60000 } : {}),
+          });
+          nextThreadId = next.id;
+          if (!scheduled) await entered.promise;
+          expect(getThread(harness.db, next.id)).toMatchObject({
+            environmentId: null,
+            status: scheduled ? "pending" : "starting",
+          });
+          const response = await harness.app.request(
+            action === "archive"
+              ? `/api/v1/threads/${owner.id}/archive-all`
+              : `/api/v1/projects/${project.id}`,
+            { method: action === "archive" ? "POST" : "DELETE" },
+          );
+          expect(response.status).toBe(200);
+          await sweepProviderMachine(harness.deps, host.id);
+          expect(remove).not.toHaveBeenCalled();
+          expect(getHost(harness.db, host.id)?.phase).toBe("active");
+          if (scheduled) {
+            const cancelled = await harness.app.request(
+              `/api/v1/threads/${next.id}/archive-all`,
+              { method: "POST" },
+            );
+            expect(cancelled.status).toBe(200);
+          } else {
+            expect(getPreparingEnvironment(harness.db, next.id)?.status).toBe(
+              "creating",
+            );
+            release.resolve();
+            await expect
+              .poll(() => getPreparingEnvironment(harness.db, next.id)?.status)
+              .toBe("error");
+            await advanceThreadProvisioning(harness.deps, {
+              threadId: next.id,
+            });
+            expect(getThread(harness.db, next.id)?.status).toBe("error");
+          }
+          await sweepProviderMachine(harness.deps, host.id);
+          expect(remove).toHaveBeenCalledTimes(1);
+          expect(getHost(harness.db, host.id)?.phase).toBe("destroyed");
+        } finally {
+          release.resolve();
+          if (nextThreadId !== null)
+            await cancelProviderEnvironmentCreation(harness.deps, nextThreadId);
+        }
+      });
+    },
+  );
+
+  it("rechecks removal after resolving a preparation context", async () => {
+    await withTestHarness(async (harness) => {
+      const { host, project } = seedTargetFixture(
+        harness,
+        "removing-before-reservation",
+      );
+      const provision = vi.fn(() => readyAt(host));
+      installTarget({ provision });
+      const record = listEnvironmentProviders()[0];
+      const thread = seedThread(harness.deps, {
+        projectId: project.id,
+        status: "starting",
+      });
+      const context = await resolveProviderOperationContext(
+        harness.deps,
+        thread,
+        {
+          type: "provider",
+          environmentProviderId: PROVIDER_ID,
+          machine: { type: "existing", hostId: host.id },
+          inputs: null,
+          selectionResolved: true,
+        },
+        record,
+      );
+      if (context === null) throw new Error("Missing preparation context");
+      updateHost(harness.db, harness.hub, host.id, { phase: "removing" });
+      expect(() =>
+        prepareProviderEnvironment(harness.deps, record, context),
+      ).toThrow(/remov/i);
+      expect(getPreparingEnvironment(harness.db, thread.id)).toBeNull();
+      expect(provision).not.toHaveBeenCalled();
+    });
+  });
+
+  it("rejects a stale selection when removal wins during validation", async () => {
+    await withTestHarness(async (harness) => {
+      const { host, project } = seedTargetFixture(
+        harness,
+        "removing-after-validation",
+      );
+      const entered = createDeferredPromise<void>();
+      const release = createDeferredPromise<void>();
+      const provision = vi.fn(() => readyAt(host));
+      installTarget({
+        provision,
+        validate: async () => {
+          entered.resolve();
+          await release.promise;
+          return { action: "accept" };
+        },
+      });
+      const creating = createTargetThread(harness, {
+        hostId: host.id,
+        projectId: project.id,
+      });
+      const rejected = expect(creating).rejects.toThrow(/remov/i);
+      try {
+        await entered.promise;
+        updateHost(harness.db, harness.hub, host.id, { phase: "removing" });
+      } finally {
+        release.resolve();
+      }
+      await rejected;
+      expect(provision).not.toHaveBeenCalled();
+      expect(
+        listEnvironments(harness.db, { hostId: host.id }).filter(
+          (row) => row.ownerThreadId !== null,
+        ),
+      ).toEqual([]);
+    });
+  });
+});
 
 describe("environment providers are asked inside provisioning", () => {
   it("refuses placement on a machine being removed", async () => {
@@ -2642,9 +2849,12 @@ describe("a provider-produced environment over its life", () => {
         });
         expect(
           (
-            await harness.app.request(`/api/v1/threads/${thread.id}/archive`, {
-              method: "POST",
-            })
+            await harness.app.request(
+              `/api/v1/threads/${thread.id}/archive-all`,
+              {
+                method: "POST",
+              },
+            )
           ).status,
         ).toBe(200);
         expect(

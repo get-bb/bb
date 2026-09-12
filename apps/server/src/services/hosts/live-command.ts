@@ -1,3 +1,5 @@
+import { getEnvironment } from "@bb/db";
+import { resolveHostEnvironment } from "./host-environment.js";
 import { randomUUID } from "node:crypto";
 import {
   type HostDaemonCommand,
@@ -229,8 +231,25 @@ export async function runLiveHostCommand<
       args.command.type === "thread.stop"
         ? callHostOnlineRpc
         : callHostOnlineRpcForWork;
+    const sourceCommand: HostDaemonCommand = args.command;
+    const command = {
+      ...args.command,
+      ...(sourceCommand.type === "environment.attach"
+        ? {
+            contributedEnv:
+              sourceCommand.setupScriptTimeoutMs === null
+                ? []
+                : await resolveHostEnvironment(deps, {
+                    hostId: args.hostId,
+                    projectId:
+                      getEnvironment(deps.db, sourceCommand.environmentId)
+                        ?.projectId ?? null,
+                  }),
+          }
+        : {}),
+    };
     const result = await call(deps, {
-      command: args.command,
+      command,
       hostId: args.hostId,
       timeoutMs: args.timeoutMs,
     });

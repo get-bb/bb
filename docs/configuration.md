@@ -629,6 +629,8 @@ client wrote first, so a stale window cannot silently clobber a newer value.
 | `sidebar.collapsedEnvironments`   | Collapsed environment ids                           |
 | `sidebar.collapsedThreadSections` | Collapsed thread section ids                        |
 | `sidebar.collapsedMachines`       | Collapsed machine ids                               |
+| `sidebar.footerOrder`             | Footer action order                                 |
+| `sidebar.hiddenFooterItems`       | Footer actions moved into More                      |
 | `sidebar.pluginPanelOrder`        | Navigation entry order                              |
 | `sidebar.visiblePluginPanels`     | Navigation entries shown, or `null` for every entry |
 | `sidebar.navigationProvider`      | Plugin key, `__automatic__`, or `__builtin__`       |
@@ -663,6 +665,25 @@ value. A change on one device reaches every other connected window through the
 
 Sidebar width and open state stay in the browser because they depend on the
 window size.
+
+### Sidebar footer
+
+Settings → Appearance → Sidebar footer lets users reorder and hide built-in and
+registered plugin actions. Right-click an action and choose Hide to move it into
+More. More appears only when registered actions are hidden; they remain usable.
+Hiding an open disclosure closes it; selecting it from More opens it again.
+
+The UI preferences `sidebar.footerOrder` and `sidebar.hiddenFooterItems` contain
+stable IDs: `builtin:settings`, `builtin:report-bug`, and
+`plugin:<encoded pluginId>/<encoded registrationId>` (URI-encoded components).
+Unknown and disabled-plugin IDs are retained across reloads; new actions default
+visible. The existing SDK UI preferences and CLI manage the same values:
+
+```sh
+bb settings ui set sidebar.hiddenFooterItems '["builtin:report-bug"]'
+bb settings ui set sidebar.footerOrder '["builtin:report-bug","builtin:settings"]'
+bb settings ui reset sidebar.hiddenFooterItems
+```
 
 ## Thread splits
 
@@ -1075,9 +1096,12 @@ Installed plugins or with `bb plugin config workflows set <key> <value>`:
 The five settings other than `maxActiveRuns` are snapshotted into each new run.
 Settings changes do not require a plugin reload.
 
-`bb plugin install npm:<package>[@<version|tag|range>]` requires `npm` on PATH
-(packages are installed with `--ignore-scripts`). Git plugins also use npm with
-lifecycle scripts disabled, so they may depend on third-party packages; bb
+`bb plugin install npm:<package>[@<version|tag|range>]` uses BB's shipped npm
+and its running Node runtime; neither executable needs to be on PATH. Packages
+are installed with `--ignore-scripts`. Git plugins also use this npm with
+lifecycle scripts disabled and `--omit=dev --omit=optional`. Plugins may keep
+normal development dependencies in their manifests; npm resolves these but
+does not install them. They may depend on third-party runtime packages; bb
 then builds both their server and frontend bundles. `node_modules` is
 retained, because a dependency can load data files that bundling cannot
 inline. A committed `dist/` is always replaced by the bundles bb builds.
@@ -1289,7 +1313,8 @@ Without an explicit directory, lifecycle commands locate the unique matching hos
 
 Core resolves machine contributions through
 `apps/server/src/services/hosts/host-environment.ts` before dispatching setup and
-teardown hooks. The `environment.hook.run` command carries `contributedEnv`;
+teardown hooks. Ordinary setup uses `environment.attach`; explicit hooks use
+`environment.hook.run`. Both carry transient `contributedEnv` values;
 the daemon applies them to the hook child process. Hook progress and errors are
 forwarded as-is, so contributed values printed by the child remain visible.
 Machine selection and precedence stay in the server
@@ -1304,15 +1329,28 @@ metadata. Existing plaintext settings and private secret files migrate on first
 access; each old secret file is removed only after its encrypted record is saved.
 Historical backups may still contain values stored before migration.
 
-Core resolves the environment for each agent turn, project-source clone, host
-setup call, and new BB terminal. User variables override built-ins; agent-provider
+The server synchronizes the machine environment into enrolled daemons before
+they accept work, on reconnect, and when settings change. The daemon and its
+new child processes inherit these values, including background git and gh
+commands. Replacement snapshots remove stale overrides and restore the original
+daemon values. This does not alter unrelated OS processes or already-running
+children, and does not restart cached provider runtimes. Those runtimes retain
+their launch environment until recreated. Core also resolves the environment for each agent turn, project-source
+clone, host setup call, and new BB terminal. User variables override built-ins; agent-provider
 contributions override host variables for agent turns. Existing terminals keep
 the environment they started with: open a new terminal after a change. Agent
 turns receive refreshed values on their next turn and after resume. Codex rebuilds
 its loaded session from the existing conversation when the environment changes.
 
-Machine environment commands require host-daemon protocol 192, covering machine
-lifecycle and contribution fields for core hooks, host plugins, and terminals.
+Plugin host calls start immediately using the current environment while any calls
+are active in that plugin worker. Changed or removed machine variables take
+effect on the next call after all active calls finish. Continuous overlapping
+calls can keep the previous values until the worker becomes idle.
+
+Ordinary setup variable delivery requires host-daemon protocol 205; immediate
+plugin-call reuse across environment changes requires protocol 206. Daemon-wide
+machine environment synchronization requires protocol 207. Older daemons must
+update before the server accepts their session.
 
 The built-in GitHub row uses `gh auth token --hostname github.com` and `gh api
 --hostname github.com user` on the server host. It supplies `GH_TOKEN`, Git's
@@ -1374,3 +1412,13 @@ silently restores stale state. Open terminals prevent idle suspension.
 Create with `bb machine create --provider modal-sandbox --project PROJECT --json`.
 See [modal-sandboxes](../plugins/environment-modal-sandbox/skills/modal-sandboxes/SKILL.md)
 for prerequisites and lifecycle commands.
+
+## Repository build caches
+
+App production builds persist validated React Compiler transform results at
+`<git-common-dir>/bb-cache/react-compiler`, shared safely across this
+repository's worktrees. Non-Git checkouts use Vite's cache directory. Missing,
+invalid, or corrupt entries are rebuilt; development and compiler diagnostic
+modes bypass the cache. The cache has no user configuration and can be removed
+while no builds are running. See [build performance](build-performance.md) for
+its identity, portability, and verification contract.

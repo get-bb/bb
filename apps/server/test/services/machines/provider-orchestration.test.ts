@@ -7,6 +7,7 @@ import {
   getEnvironment,
   hosts,
   archiveThread,
+  setThreadStartupContext,
   updateHost,
 } from "@bb/db";
 import { createDeferredPromise } from "@bb/test-helpers";
@@ -464,6 +465,40 @@ describe("machine retirement", () => {
         expect(remove).toHaveBeenCalledTimes(machineCount);
       }),
   );
+
+  it("preserves explicit removal of a machine with an unattached pending start", async () =>
+    withTestHarness(async (harness) => {
+      const remove = vi.fn(async () => ({ status: "removed" as const }));
+      installMachineProvider({ ephemeral: true, remove });
+      const { host } = seedHostSession(harness.deps);
+      const { project } = seedProjectWithSource(harness.deps, {
+        hostId: host.id,
+      });
+      const thread = seedThread(harness.deps, {
+        projectId: project.id,
+        status: "pending",
+      });
+      setThreadStartupContext(harness.db, {
+        threadId: thread.id,
+        startupContext: JSON.stringify({
+          kind: "pending",
+          environmentIntent: {
+            type: "provider",
+            machine: { type: "existing", hostId: host.id },
+          },
+        }),
+      });
+      updateHost(harness.db, harness.hub, host.id, {
+        type: "ephemeral",
+        machineProviderId: "test-machine",
+        resource: {},
+      });
+      expect(requestAutomaticMachineRemoval(harness.deps, host.id)).toBe(false);
+      expect(requestMachineRemoval(harness.deps, host.id)).toBe(true);
+      await sweepProviderMachine(harness.deps, host.id);
+      expect(remove).toHaveBeenCalledOnce();
+      expect(getHost(harness.db, host.id)?.phase).toBe("destroyed");
+    }));
 
   it("keeps a persistent machine with no threads", async () =>
     withTestHarness(async (harness) => {

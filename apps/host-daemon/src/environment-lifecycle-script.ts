@@ -4,7 +4,7 @@ import type { HostDaemonContributedEnvEntry } from "@bb/host-daemon-contract";
 import {
   isProcessGroupAlive,
   killProcessGroup,
-  spawnPortablePipedProcess,
+  spawnPortableOutputProcess,
   supportsProcessGroups,
 } from "@bb/process-utils";
 import fs from "node:fs/promises";
@@ -133,7 +133,7 @@ async function runLifecycleScript(
     },
     true,
   );
-  const child = spawnPortablePipedProcess({
+  const child = spawnPortableOutputProcess({
     command: command.command,
     args: command.args,
     cwd: args.workspacePath,

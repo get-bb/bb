@@ -105,6 +105,14 @@ const OPTIONAL_SERVER_FIELD_GROUPS: readonly OptionalServerFieldGroup[] = [
   },
   {
     reason:
+      'pluginMetadata is accepted only when origin is "plugin" (enforced by refinement); omission seeds no plugin namespace.',
+    fields: [
+      "createThreadRequestSchema.pluginMetadata",
+      "forkThreadRequestSchema.pluginMetadata",
+    ],
+  },
+  {
+    reason:
       "Fork creation requires only a source thread; all other fields either select an optional behavior or receive an explicit server-boundary default.",
     fields: [
       "forkThreadRequestSchema.agentContextSeed",
@@ -286,6 +294,11 @@ const OPTIONAL_SERVER_FIELD_GROUPS: readonly OptionalServerFieldGroup[] = [
     reason:
       "Timeline responses omit context-window usage when the provider did not report it.",
     fields: ["threadTimelineResponseSchema.contextWindowUsage"],
+  },
+  {
+    reason:
+      "Context snapshots are omitted when the latest measurement has no breakdown.",
+    fields: ["threadTimelineResponseSchema.contextWindowUsage.snapshot"],
   },
   {
     reason:

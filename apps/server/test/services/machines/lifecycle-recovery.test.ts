@@ -28,11 +28,7 @@ import { setPluginEnvironmentProviderBridge } from "../../../src/services/plugin
 import { callPluginHostRpc } from "../../../src/services/plugins/plugin-host-rpc.js";
 import { callHostOnlineRpcForWork } from "../../../src/services/hosts/online-rpc.js";
 import { createMachineEnrollmentService } from "../../../src/services/machines/enrollments.js";
-import {
-  registerTestHostRpcCapture,
-  reportQueuedCommandSuccess,
-  waitForQueuedCommand,
-} from "../../helpers/commands.js";
+import { registerTestHostRpcCapture } from "../../helpers/commands.js";
 import { readJson } from "../../helpers/json.js";
 import {
   seedHostSession,
@@ -164,10 +160,6 @@ it.each(["active", "suspended"] as const)(
         machineGitCredentialsEnabled: false,
       });
       const target = seedHostSession(harness.deps, { id: "review-removing" });
-      registerTestHostRpcCapture(harness, {
-        hostId: target.host.id,
-        sessionId: target.session.id,
-      });
       const { project } = seedProjectWithSource(harness.deps, {
         hostId: target.host.id,
       });
@@ -183,6 +175,14 @@ it.each(["active", "suspended"] as const)(
           }),
         },
       }).forOwner("test-machine-plugin");
+      const cleanupCall = vi.fn(async () => ({ output: {} }));
+      const registerCleanupCapture = (sessionId: string) =>
+        registerTestHostRpcCapture(harness, {
+          hostId: target.host.id,
+          sessionId,
+          onPluginHostCall: cleanupCall,
+        });
+      registerCleanupCapture(target.session.id);
       const resume = vi.fn(async () => {
         expect(
           await enrollment.prepare({
@@ -190,7 +190,8 @@ it.each(["active", "suspended"] as const)(
             key: "cleanup-machine",
           }),
         ).toMatchObject({ state: "enrolled" });
-        seedSession(harness.deps, target.host.id);
+        const session = seedSession(harness.deps, target.host.id);
+        registerCleanupCapture(session.id);
         await enrollment.waitForConnection({
           enrollmentId: target.host.id,
           timeoutMs: 100,
@@ -278,11 +279,6 @@ it.each(["active", "suspended"] as const)(
         decisionTimeoutMs: 1000,
       });
       expect(requestMachineRemoval(harness.deps, target.host.id)).toBe(true);
-      const sweeping = sweepProviderMachine(harness.deps, target.host.id);
-      const call = await waitForQueuedCommand(
-        harness,
-        ({ command }) => command.type === "plugin.host.call",
-      );
       expect(getHost(harness.db, target.host.id)?.phase).toBe("removing");
       await expect(
         callHostOnlineRpcForWork(harness.deps, {
@@ -297,13 +293,13 @@ it.each(["active", "suspended"] as const)(
           key: "cleanup-machine",
         }),
       ).rejects.toThrow("cancelled");
-      await reportQueuedCommandSuccess(harness, call, { output: {} });
-      await sweeping;
+      await sweepProviderMachine(harness.deps, target.host.id);
       expect(getEnvironment(harness.db, environment.id)).toMatchObject({
         status: "destroyed",
         teardownStatus: "removed",
       });
       expect(getHost(harness.db, target.host.id)?.phase).toBe("destroyed");
+      expect(cleanupCall).toHaveBeenCalledOnce();
       expect(resume).toHaveBeenCalledTimes(phase === "suspended" ? 1 : 0);
       expect(machineRemove).toHaveBeenCalledOnce();
     }),
@@ -389,7 +385,7 @@ it("removes a suspended machine when its last thread is archived with an offline
       listThreadIdsWithHostOfflineQueueWaits(harness.db, target.host.id),
     ).toEqual([thread.id]);
     const response = await harness.app.request(
-      `/api/v1/threads/${thread.id}/archive`,
+      `/api/v1/threads/${thread.id}/archive-all`,
       { method: "POST" },
     );
     expect(response.status).toBe(200);

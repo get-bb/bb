@@ -94,6 +94,7 @@ describe("createServerClient", () => {
         return Response.json(
           {
             sessionId: "session-1",
+            machineEnvironment: { revision: 0, entries: [] },
             heartbeatIntervalMs: 5_000,
             leaseTimeoutMs: 30_000,
           },

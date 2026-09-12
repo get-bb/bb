@@ -21,6 +21,7 @@ import {
   machineHasStartingThreadLaunch,
   machineHasProvisioningEnvironment,
   machineHasLiveThreads,
+  machineHasPendingThreads,
   updateHost,
 } from "@bb/db";
 import { jsonValueSchema, type Host, type JsonValue } from "@bb/domain";
@@ -1158,6 +1159,7 @@ export function requestAutomaticMachineRemoval(
   }
   if (row.type !== "ephemeral") return false;
   if (
+    machineHasPendingThreads(deps.db, hostId) ||
     machineHasLiveThreadLaunch(deps.db, hostId) ||
     machineHasLiveThreads(deps.db, hostId)
   ) {

@@ -23,13 +23,18 @@ async function readValue(): Promise<string> {
     throw new Error(
       "Pipe the value to stdin; environment values are never accepted in command arguments.",
     );
-  let value = "";
+  const chunks: Buffer[] = [];
+  let bytes = 0;
   for await (const chunk of process.stdin) {
-    value += String(chunk);
-    if (Buffer.byteLength(value) > 65536)
+    const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
+    bytes += buffer.byteLength;
+    if (bytes > 65536)
       throw new Error("Environment value exceeds 65536 bytes.");
+    chunks.push(buffer);
   }
-  return value.replace(/\r?\n$/u, "");
+  return Buffer.concat(chunks)
+    .toString("utf8")
+    .replace(/\r?\n$/u, "");
 }
 
 export function registerMachineEnvironmentCommands(

@@ -121,6 +121,7 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
         bullets: [
           "Run an action, or reveal plugin-rendered content above the footer row",
           "Let bb coordinate one open disclosure across every enabled plugin",
+          "Respect user ordering and visibility in Appearance; hidden actions and disclosures remain usable from More",
           "Keep navigation, tabs, data, and controls inside the plugin's disclosure component",
         ],
         apiSymbols: [
@@ -398,10 +399,15 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
           "Appear in the model picker beside bb's built-in providers",
           "Declare what the provider supports, then serve its model list at runtime",
           "Supply a small icon that appears next to its name; React icon overrides require providerKind and providerId",
+          "Publish context snapshots through contextWindow deltas, with provider-defined category IDs and labels. Each category declares used, free, reserved, or deferred accounting; entries are included in its total and may be partial. Snapshots include capture time, session identity, model, totals, and an optional auto-compaction threshold",
           "Receive every message in a thread started with it, through a bridge process the plugin ships",
           "Contribute validated environment variables to any provider for each session and turn",
         ],
         apiSymbols: [
+          "contextSnapshotSchema",
+          "ContextSnapshot",
+          "ContextCategory",
+          "ContextEntry",
           "PluginProviderDeclaration",
           "PluginProviderIconRegistration",
           "ExperimentalPluginProviderEnvContext",
@@ -563,6 +569,7 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
         surfaceIds: [
           "storage",
           "bb-sdk",
+          "thread-plugin-metadata",
           "desktop-browsers",
           "ai-services",
           "host-components",
@@ -942,6 +949,7 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
         bullets: [
           "Create threads, send messages to them, and manage projects",
           "List machines and suspend, resume, or remove provider-managed machines",
+          "Read recorded context usage with sdk.threads.context({ threadId }); usage is null when unavailable, and its snapshot is present only when the latest measurement includes a breakdown",
           "Reach the same operations the [bb CLI](cli) and the bb UI use",
           "Have the threads it creates attributed back to the plugin",
           "Read the server's loopback URL, public app URL, and data directory when it needs server facts",
@@ -959,6 +967,25 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
           "Side chat",
           "Tasks",
           "Workflows",
+        ],
+      },
+      {
+        id: "thread-plugin-metadata",
+        tagline: "Keep plugin data with a thread",
+        title: "Thread plugin metadata",
+        summary:
+          "Stores namespaced plugin JSON for a thread without automatically exposing it to the model. With this, a plugin can:",
+        bullets: [
+          "Seed its namespace when spawning a thread or explicitly when forking one",
+          "Read and atomically patch any namespace allowed by ordinary thread access",
+          "Receive only its own deep-frozen namespace in bb.agents.configure",
+          "Keep up to 256 KiB of JSON per namespace; a patch that would exceed it fails and leaves the namespace unchanged",
+        ],
+        apiSymbols: [
+          "PluginBbSdk",
+          "PluginAgentConfigurationContext",
+          "ReadonlyJsonValue",
+          "BbPluginApi",
         ],
       },
       {
