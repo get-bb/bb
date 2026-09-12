@@ -1,4 +1,4 @@
-import type { ThreadSearchHighlightRange } from "@bb/server-contract";
+import type { ThreadSearchMatch } from "@bb/server-contract";
 
 const THREAD_SEARCH_WINDOW_LEAD_CHARS = 16;
 const THREAD_SEARCH_WINDOW_TAIL_CHARS = 40;
@@ -6,12 +6,12 @@ const THREAD_SEARCH_WINDOW_ELLIPSIS = "…";
 
 export interface WindowPaletteThreadSearchTextArgs {
   text: string;
-  highlightRanges: readonly ThreadSearchHighlightRange[];
+  highlightRanges: readonly ThreadSearchMatch["highlightRanges"][number][];
 }
 
 export interface WindowedPaletteThreadSearchText {
   text: string;
-  highlightRanges: ThreadSearchHighlightRange[];
+  highlightRanges: ThreadSearchMatch["highlightRanges"][number][];
 }
 
 function isHighSurrogate(text: string, index: number): boolean {
@@ -42,9 +42,9 @@ function clampInteger(value: number, maximum: number): number | null {
 
 function normalizeHighlightRanges(
   text: string,
-  ranges: readonly ThreadSearchHighlightRange[],
-): ThreadSearchHighlightRange[] {
-  const normalized: ThreadSearchHighlightRange[] = [];
+  ranges: readonly ThreadSearchMatch["highlightRanges"][number][],
+): ThreadSearchMatch["highlightRanges"][number][] {
+  const normalized: ThreadSearchMatch["highlightRanges"][number][] = [];
 
   for (const range of ranges) {
     let start = clampInteger(range.start, text.length);
@@ -67,7 +67,7 @@ function normalizeHighlightRanges(
     (left, right) => left.start - right.start || left.end - right.end,
   );
 
-  const merged: ThreadSearchHighlightRange[] = [];
+  const merged: ThreadSearchMatch["highlightRanges"][number][] = [];
   for (const range of normalized) {
     const previous = merged.at(-1);
     if (previous !== undefined && range.start < previous.end) {
@@ -144,7 +144,7 @@ export function windowPaletteThreadSearchText({
 
   const prefix = start > 0 ? THREAD_SEARCH_WINDOW_ELLIPSIS : "";
   const suffix = end < text.length ? THREAD_SEARCH_WINDOW_ELLIPSIS : "";
-  const rebasedRanges: ThreadSearchHighlightRange[] = [];
+  const rebasedRanges: ThreadSearchMatch["highlightRanges"][number][] = [];
 
   for (const range of normalizedRanges) {
     const rangeStart = Math.max(range.start, start);
