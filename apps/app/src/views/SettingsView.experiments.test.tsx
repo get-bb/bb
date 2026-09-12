@@ -8,6 +8,7 @@ afterEach(cleanup);
 function renderSection(overrides?: {
   onChangelogPreviewEnabledChange?: (enabled: boolean) => void;
   onMobileAppEnabledChange?: (enabled: boolean) => void;
+  onMultiMachinePickerEnabledChange?: (enabled: boolean) => void;
   onSidebarProgressiveDisclosureEnabledChange?: (enabled: boolean) => void;
   onTimelineWindowingEnabledChange?: (enabled: boolean) => void;
 }) {
@@ -16,12 +17,16 @@ function renderSection(overrides?: {
       changelogPreviewEnabled={false}
       disabled={false}
       mobileAppEnabled={false}
+      multiMachinePickerEnabled={false}
       sidebarProgressiveDisclosureEnabled={false}
       timelineWindowingEnabled={false}
       onChangelogPreviewEnabledChange={
         overrides?.onChangelogPreviewEnabledChange ?? vi.fn()
       }
       onMobileAppEnabledChange={overrides?.onMobileAppEnabledChange ?? vi.fn()}
+      onMultiMachinePickerEnabledChange={
+        overrides?.onMultiMachinePickerEnabledChange ?? vi.fn()
+      }
       onSidebarProgressiveDisclosureEnabledChange={
         overrides?.onSidebarProgressiveDisclosureEnabledChange ?? vi.fn()
       }
@@ -44,6 +49,13 @@ describe("ExperimentsSettingsSection", () => {
     const onChange = vi.fn();
     renderSection({ onMobileAppEnabledChange: onChange });
     fireEvent.click(screen.getByLabelText("Mobile app"));
+    expect(onChange).toHaveBeenCalledWith(true);
+  });
+
+  it("reports multi-machine picker changes", () => {
+    const onChange = vi.fn();
+    renderSection({ onMultiMachinePickerEnabledChange: onChange });
+    fireEvent.click(screen.getByLabelText("Multi-machine picker"));
     expect(onChange).toHaveBeenCalledWith(true);
   });
 
