@@ -99,6 +99,7 @@ import {
 import { sdk } from "@/lib/sdk";
 import {
   buildReuseThreadOptions,
+  resolveHostEnvironmentProvider,
   resolveRootComposeEffectiveEnvironmentValue,
 } from "@/views/root-compose-environment-selection";
 import { resolveRootComposeThreadEnvironment } from "@/views/root-compose-thread-environment";
@@ -812,15 +813,6 @@ export function NewThreadComposer({
       snapshotDraftBeforeOptionChange,
     ],
   );
-  const handleSelectProvider = useCallback(
-    (provider: SystemEnvironmentProvider, hostId: string | null) => {
-      changeEnvironment(
-        encodeProviderValue(provider.id),
-        hostId === null ? null : { type: "existing", hostId },
-      );
-    },
-    [changeEnvironment],
-  );
   const effectiveEnvironmentValue = useMemo(
     () =>
       resolveRootComposeEffectiveEnvironmentValue({
@@ -872,8 +864,35 @@ export function NewThreadComposer({
           (provider) =>
             provider.id === selectedEnvironmentProvider?.id &&
             provider.availability?.status !== "unavailable",
-        ) ?? false
+          ) ?? false
     );
+  const handleSelectProvider = useCallback(
+    (provider: SystemEnvironmentProvider, hostId: string | null) => {
+      changeEnvironment(
+        encodeProviderValue(provider.id),
+        hostId === null ? null : { type: "existing", hostId },
+      );
+    },
+    [changeEnvironment],
+  );
+  const handleSelectHost = useCallback(
+    (hostId: string) => {
+      const provider = resolveHostEnvironmentProvider({
+        currentProvider: selectedEnvironmentProvider ?? null,
+        providers: environmentProvidersByHostId.get(hostId) ?? [],
+      });
+      if (provider === null) return;
+      changeEnvironment(encodeProviderValue(provider.id), {
+        type: "existing",
+        hostId,
+      });
+    },
+    [
+      changeEnvironment,
+      environmentProvidersByHostId,
+      selectedEnvironmentProvider,
+    ],
+  );
   const selectedMachineProvider =
     providerMachine?.type === "new"
       ? machineProviders?.find(
@@ -1609,6 +1628,7 @@ export function NewThreadComposer({
               selectedProviderHostId: providerHostId,
               inputsControlProviderIds,
               onSelectProvider: handleSelectProvider,
+              onSelectHost: handleSelectHost,
               ...(!isProjectless && options.onRequestMachineSetup
                 ? { onRequestMachineSetup: options.onRequestMachineSetup }
                 : {}),
@@ -1735,6 +1755,7 @@ export function NewThreadComposer({
       handleProviderChange,
       handleReasoningChange,
       handleSelectProvider,
+      handleSelectHost,
       handleServiceTierChange,
       handleSubmit,
       handleWorktreeChange,

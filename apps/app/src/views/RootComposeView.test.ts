@@ -43,9 +43,58 @@ import {
 import { makeTerminalSession as makeTerminalSessionFixture } from "@/test/fixtures/terminal-sessions";
 import {
   buildReuseThreadOptions,
+  resolveHostEnvironmentProvider,
   resolveProjectSourceGitDisabledReason,
   resolveRootComposeEffectiveEnvironmentValue,
 } from "./root-compose-environment-selection";
+
+describe("resolveHostEnvironmentProvider", () => {
+  const checkoutProvider = makeProjectProvider("project-checkout");
+  const worktreeProvider = makeProjectProvider("git-worktree");
+
+  it("keeps the tab's current environment option when the host supports it", () => {
+    expect(
+      resolveHostEnvironmentProvider({
+        currentProvider: worktreeProvider,
+        providers: [checkoutProvider, worktreeProvider],
+      }),
+    ).toBe(worktreeProvider);
+  });
+
+  it("falls back to the first usable option when the current one is unavailable", () => {
+    const unavailableWorktree = {
+      ...worktreeProvider,
+      availability: {
+        status: "unavailable" as const,
+        message: "Not installed",
+      },
+    };
+    expect(
+      resolveHostEnvironmentProvider({
+        currentProvider: unavailableWorktree,
+        providers: [checkoutProvider, unavailableWorktree],
+      }),
+    ).toBe(checkoutProvider);
+  });
+
+  it("keeps the current option so selecting an unconfigured host still takes effect", () => {
+    expect(
+      resolveHostEnvironmentProvider({
+        currentProvider: worktreeProvider,
+        providers: [],
+      }),
+    ).toBe(worktreeProvider);
+  });
+
+  it("returns no selection when neither the host nor the tab has a machine option", () => {
+    expect(
+      resolveHostEnvironmentProvider({
+        currentProvider: null,
+        providers: [],
+      }),
+    ).toBeNull();
+  });
+});
 
 describe("root-compose project file routing", () => {
   it("uses a persisted opener host instead of the newly selected context", () => {

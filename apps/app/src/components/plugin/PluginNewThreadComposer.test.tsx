@@ -732,6 +732,50 @@ describe("PluginNewThreadComposer seeding", () => {
     });
   });
 
+  it("selects a host immediately with the tab's current environment option", async () => {
+    const first = render(newThreadElement("proj_1"));
+    await act(async () => {
+      latestPromptBoxProps().modeConfig.environment.onSelectProvider(
+        MANAGED_WORKTREE_SUGAR_PROVIDER,
+        "host_1",
+      );
+    });
+    await act(async () => {
+      latestPromptBoxProps().modeConfig.environment.onSelectHost("host_2");
+    });
+    expect(latestPromptBoxProps().modeConfig.environment.value).toBe(
+      "provider:git-worktree",
+    );
+    expect(
+      latestPromptBoxProps().modeConfig.environment.selectedProviderHostId,
+    ).toBe("host_2");
+
+    first.unmount();
+    render(newThreadElement("proj_1"));
+    await waitFor(() => {
+      expect(latestPromptBoxProps().modeConfig.environment.value).toBe(
+        "provider:git-worktree",
+      );
+      expect(
+        latestPromptBoxProps().modeConfig.environment.selectedProviderHostId,
+      ).toBe("host_2");
+    });
+  });
+
+  it("selects an unconfigured host immediately and blocks submission", async () => {
+    render(newThreadElement("proj_2"));
+    await act(async () => {
+      latestPromptBoxProps().modeConfig.environment.onSelectHost("host_2");
+    });
+    expect(latestPromptBoxProps().modeConfig.environment.value).toBe(
+      "provider:project-checkout",
+    );
+    expect(
+      latestPromptBoxProps().modeConfig.environment.selectedProviderHostId,
+    ).toBe("host_2");
+    expect(latestPromptBoxProps().disabled).toBe(true);
+  });
+
   it.each(["host_deleted", "host_2"])(
     "falls back when remembered machine %s cannot run the project",
     async (hostId) => {
