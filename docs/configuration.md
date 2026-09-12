@@ -1341,8 +1341,9 @@ are active in that plugin worker. Changed or removed machine variables take
 effect on the next call after all active calls finish. Continuous overlapping
 calls can keep the previous values until the worker becomes idle.
 
-Ordinary setup variable delivery requires host-daemon protocol 205. Older
-daemons must update before the server accepts their session.
+Ordinary setup variable delivery requires host-daemon protocol 205; immediate
+plugin-call reuse across environment changes requires protocol 206. Older daemons
+must update before the server accepts their session.
 
 The built-in GitHub row uses `gh auth token --hostname github.com` and `gh api
 --hostname github.com user` on the server host. It supplies `GH_TOKEN`, Git's
