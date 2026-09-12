@@ -57,7 +57,7 @@ const NEW_THREAD_PANE_CONTENT = { kind: "new-thread" } as const;
 const BUG_REPORT_NEW_ISSUE_URL = "https://github.com/get-bb/bb/issues/new";
 const SIDEBAR_FOOTER_ACTION_CLASS = cn(
   COARSE_POINTER_CHILD_ICON_BUTTON_CLASS,
-  "text-muted-foreground hover:text-sidebar-foreground [&>svg]:opacity-80",
+  "text-muted-foreground hover:text-sidebar-foreground [&>[data-icon-root]]:opacity-80",
 );
 
 interface AppSidebarProps {

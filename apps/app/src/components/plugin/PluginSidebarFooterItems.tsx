@@ -46,7 +46,7 @@ import {
 
 const SIDEBAR_FOOTER_ACTION_CLASS = cn(
   COARSE_POINTER_CHILD_ICON_BUTTON_CLASS,
-  "text-muted-foreground hover:text-sidebar-foreground [&>svg]:opacity-80",
+  "text-muted-foreground hover:text-sidebar-foreground [&>[data-icon-root]]:opacity-80",
 );
 
 function footerItemKey(item: PluginSidebarFooterItemSlot): string {
@@ -301,7 +301,7 @@ export function PluginSidebarFooterItems({
                     className={cn(
                       SIDEBAR_FOOTER_ACTION_CLASS,
                       active &&
-                        "bg-sidebar-accent text-sidebar-accent-foreground [&>svg]:opacity-100",
+                        "bg-sidebar-accent text-sidebar-accent-foreground [&>[data-icon-root]]:opacity-100",
                     )}
                     data-testid={
                       item.kind === "plugin"

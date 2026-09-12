@@ -260,6 +260,7 @@ export function Icon({ name, fallback = "Zap", ...props }: IconProps) {
             aria-label={props["aria-label"]}
             role={props["aria-label"] ? "img" : undefined}
             data-icon={resolved}
+            data-icon-root=""
           >
             <CustomIcon className="size-full" />
           </span>
@@ -292,6 +293,7 @@ function BuiltinIcon({
         aria-hidden={ariaHidden}
         aria-label={ariaLabel}
         data-icon={name}
+        data-icon-root=""
       />
     );
   }
@@ -332,6 +334,7 @@ function ExtendedIcon({
       aria-hidden={ariaHidden}
       aria-label={ariaLabel}
       data-icon={name}
+      data-icon-root=""
       data-icon-pending={icon === undefined ? "" : undefined}
     />
   );

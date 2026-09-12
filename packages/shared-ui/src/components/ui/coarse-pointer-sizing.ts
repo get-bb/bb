@@ -28,15 +28,15 @@ export const COARSE_POINTER_CHECK_SLOT_CLASS =
 const HEADER_ICON_BUTTON_BOX_CLASS =
   "h-[28px] w-[28px] rounded-md p-0 max-md:pointer-coarse:h-[36px] max-md:pointer-coarse:w-[36px]";
 
-export const COARSE_POINTER_HEADER_ICON_BUTTON_CLASS = `${HEADER_ICON_BUTTON_BOX_CLASS} [&_svg]:size-[16px] max-md:pointer-coarse:[&_svg]:size-[20px]`;
+export const COARSE_POINTER_HEADER_ICON_BUTTON_CLASS = `${HEADER_ICON_BUTTON_BOX_CLASS} [&_[data-icon-root]]:size-[16px] max-md:pointer-coarse:[&_[data-icon-root]]:size-[20px]`;
 
-export const COARSE_POINTER_HEADER_REDUCED_GLYPH_ICON_BUTTON_CLASS = `${HEADER_ICON_BUTTON_BOX_CLASS} [&_svg]:size-[13px] max-md:pointer-coarse:[&_svg]:size-[16px]`;
+export const COARSE_POINTER_HEADER_REDUCED_GLYPH_ICON_BUTTON_CLASS = `${HEADER_ICON_BUTTON_BOX_CLASS} [&_[data-icon-root]]:size-[13px] max-md:pointer-coarse:[&_[data-icon-root]]:size-[16px]`;
 
 export const COARSE_POINTER_COMPACT_ICON_BUTTON_CLASS =
-  "h-7 w-7 rounded-md p-0 [&_svg]:size-3.5 max-md:pointer-coarse:h-9 max-md:pointer-coarse:w-9 max-md:pointer-coarse:[&_svg]:size-5";
+  "h-7 w-7 rounded-md p-0 [&_[data-icon-root]]:size-3.5 max-md:pointer-coarse:h-9 max-md:pointer-coarse:w-9 max-md:pointer-coarse:[&_[data-icon-root]]:size-5";
 
 export const COARSE_POINTER_CHILD_ICON_BUTTON_CLASS =
-  "h-8 w-8 justify-center p-0 [&>svg]:size-4 max-md:pointer-coarse:h-9 max-md:pointer-coarse:w-9 max-md:pointer-coarse:[&>svg]:size-5";
+  "h-8 w-8 justify-center p-0 [&>[data-icon-root]]:size-4 max-md:pointer-coarse:h-9 max-md:pointer-coarse:w-9 max-md:pointer-coarse:[&>[data-icon-root]]:size-5";
 
 export const COARSE_POINTER_TOOLBAR_ACTION_BUTTON_CLASS =
   "h-7 rounded-md border-border bg-transparent px-2 text-xs font-medium text-foreground shadow-none hover:bg-state-hover hover:text-foreground max-md:pointer-coarse:h-9";

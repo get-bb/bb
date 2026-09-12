@@ -205,7 +205,7 @@ const HTML_FILE_PREVIEW_IFRAME_STYLE = {
 } as CSSProperties;
 const IFRAME_LOADING_INDICATOR_DELAY_MS = 160;
 const FILE_PREVIEW_HEADER_ICON_BUTTON_CLASS =
-  "h-5 w-5 rounded-sm p-0 [&_svg]:size-3 max-md:pointer-coarse:h-9 max-md:pointer-coarse:w-9 max-md:pointer-coarse:[&_svg]:size-5";
+  "h-5 w-5 rounded-sm p-0 [&_[data-icon-root]]:size-3 max-md:pointer-coarse:h-9 max-md:pointer-coarse:w-9 max-md:pointer-coarse:[&_[data-icon-root]]:size-5";
 const FILE_PREVIEW_VIEW_MODE_BUTTON_CLASS =
   "h-5 rounded-sm px-2 text-muted-foreground max-md:pointer-coarse:h-[30px]";
 

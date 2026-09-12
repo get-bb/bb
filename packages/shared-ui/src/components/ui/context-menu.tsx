@@ -109,7 +109,7 @@ const ContextMenuSubTrigger = React.forwardRef<
       <ContextMenuPrimitive.SubTrigger
         ref={ref}
         className={cn(
-          "flex cursor-default select-none items-center gap-2 rounded-sm px-2 py-[0.3125rem] text-xs outline-none focus:bg-state-hover focus:text-foreground data-[state=open]:bg-state-active data-[state=open]:text-foreground [&_svg]:pointer-events-none [&_svg]:size-4 [&_svg]:shrink-0",
+          "flex cursor-default select-none items-center gap-2 rounded-sm px-2 py-[0.3125rem] text-xs outline-none focus:bg-state-hover focus:text-foreground data-[state=open]:bg-state-active data-[state=open]:text-foreground [&_[data-icon-root]]:pointer-events-none [&_[data-icon-root]]:size-4 [&_[data-icon-root]]:shrink-0",
           LIST_HOVER_TRANSITION,
           MENU_ITEM_LAST_HOVERED_CLASS,
           inset && "pl-8",
@@ -187,7 +187,7 @@ const ContextMenuItem = React.forwardRef<
       <ContextMenuPrimitive.Item
         ref={ref}
         className={cn(
-          "relative flex cursor-default select-none items-center gap-2 rounded-sm px-2 py-[0.3125rem] text-xs outline-none focus:bg-state-hover focus:text-foreground data-[disabled]:pointer-events-none data-[disabled]:opacity-50 [&>svg]:size-4 [&>svg]:shrink-0",
+          "relative flex cursor-default select-none items-center gap-2 rounded-sm px-2 py-[0.3125rem] text-xs outline-none focus:bg-state-hover focus:text-foreground data-[disabled]:pointer-events-none data-[disabled]:opacity-50 [&>[data-icon-root]]:size-4 [&>[data-icon-root]]:shrink-0",
           LIST_HOVER_TRANSITION,
           MENU_ITEM_LAST_HOVERED_CLASS,
           inset && "pl-8",

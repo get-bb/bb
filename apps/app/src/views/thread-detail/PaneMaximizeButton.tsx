@@ -26,7 +26,7 @@ const ARRANGEMENT_ACTIONS: ReadonlyArray<{
 ];
 
 const MENU_ITEM_CLASS =
-  "flex w-full cursor-pointer items-center gap-2 rounded-sm px-2 py-1.5 text-left text-xs text-foreground outline-none transition-colors hover:bg-state-hover focus-visible:bg-state-hover focus-visible:outline-none [&>svg]:size-4 [&>svg]:shrink-0";
+  "flex w-full cursor-pointer items-center gap-2 rounded-sm px-2 py-1.5 text-left text-xs text-foreground outline-none transition-colors hover:bg-state-hover focus-visible:bg-state-hover focus-visible:outline-none [&>[data-icon-root]]:size-4 [&>[data-icon-root]]:shrink-0";
 
 const ARRANGEMENT_REGION_CLASS: Record<SplitSide, string> = {
   left: "inset-y-[3px] left-[3px] w-2.5",

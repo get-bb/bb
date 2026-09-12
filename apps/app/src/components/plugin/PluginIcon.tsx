@@ -20,6 +20,7 @@ export function PluginCompactIconMask({
     <span
       aria-hidden="true"
       data-plugin-icon-asset={url}
+      data-icon-root=""
       className={cn("inline-block size-4 shrink-0", className)}
       style={{
         ...style,

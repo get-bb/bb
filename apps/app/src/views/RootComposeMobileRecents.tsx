@@ -398,7 +398,7 @@ function MobileRecentThreadRow({
       </RouteAnchor>
       {hasChildren ? (
         <SidebarChildToggleChevron
-          className="size-11 [&_svg]:size-5"
+          className="size-11 [&_[data-icon-root]]:size-5"
           isCollapsed={isCollapsed}
           expandLabel={`Show threads under ${threadTitle}`}
           collapseLabel={`Hide threads under ${threadTitle}`}
