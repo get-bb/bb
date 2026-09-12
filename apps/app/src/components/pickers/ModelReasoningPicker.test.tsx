@@ -723,7 +723,10 @@ describe("ModelReasoningPicker", () => {
     expect(onSelectedProviderChange).not.toHaveBeenCalled();
     expect(onModelChange).not.toHaveBeenCalled();
     expect(onReasoningChange).not.toHaveBeenCalled();
-    expect(trigger.getAttribute("aria-expanded")).toBe("false");
+    expect(trigger.getAttribute("aria-expanded")).toBe("true");
+    expect(
+      screen.getByRole("button", { name: "Back to model picker" }),
+    ).not.toBeNull();
   });
 
   it.each([

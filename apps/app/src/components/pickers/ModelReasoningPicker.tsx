@@ -270,7 +270,11 @@ export function ModelReasoningPicker({
 
   if (trackedSelectedProviderId !== selectedProviderId) {
     setTrackedSelectedProviderId(selectedProviderId);
-    setHandoffMode(false);
+    setHandoffMode(
+      open &&
+        handoff !== undefined &&
+        selectedProviderId !== handoff.sourceProviderId,
+    );
     setHandoffReasoningLevel(null);
     setPreviewProviderId(null);
     setShowMoreModels(false);
@@ -561,8 +565,7 @@ export function ModelReasoningPicker({
             (isPreviewing ? previewSelection?.reasoningLevel : undefined) ??
             reasoningValue,
         });
-        setOpen(false);
-        resetBrowseState();
+        setMoreModelsOpen(false);
         return;
       }
       onModelChange(model);
@@ -579,7 +582,6 @@ export function ModelReasoningPicker({
       previewSelection,
       previewSelectionBlocked,
       reasoningValue,
-      resetBrowseState,
     ],
   );
 
@@ -657,6 +659,9 @@ export function ModelReasoningPicker({
       if (previewSelectionBlocked) return;
       if (handoffMode) {
         setHandoffReasoningLevel(level);
+        if (!isPreviewing) {
+          onReasoningChange(level);
+        }
         return;
       }
       if (isPreviewing && previewSelection?.selectedModel) {
