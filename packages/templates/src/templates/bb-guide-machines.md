@@ -269,9 +269,11 @@ or import .env rows, then Save variables; Discard changes leaves saved values
 untouched. Saved secrets can be replaced but never revealed. The automatic
 GH_TOKEN row shows server login health; a custom GH_TOKEN overrides it. User variables
 override built-in values for all enrolled machine hosts, excluding local hosts.
-Agent-provider variables win over these host values for agent turns. Changes
-apply to the next turn, setup operation, or newly opened BB terminal; existing
-terminals retain their launch environment. Runtime output is forwarded as-is,
+Agent-provider variables win over these host values for agent turns. The server synchronizes these values into the daemon environment at connection
+and whenever settings change. Background commands and newly launched processes
+inherit them, including git and gh operations. Removing an override restores the
+original daemon value. Existing processes and terminals retain their launch
+environment; agent turns receive refreshed values on their next turn. Runtime output is forwarded as-is,
 so commands and providers can print contributed values.
 
 Plugin host calls start immediately using the current environment while any calls

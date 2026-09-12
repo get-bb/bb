@@ -177,6 +177,9 @@ export interface RuntimeManagerOptions {
   providerInstallationGateTtlMs?: number;
   providerMaintenanceIdleTimeoutMs?: number;
   shellEnv?: AgentRuntimeOptions["shellEnv"];
+  applyMachineEnvironment?: (
+    shell: NonNullable<AgentRuntimeOptions["shellEnv"]>,
+  ) => NonNullable<AgentRuntimeOptions["shellEnv"]>;
   onEvent?: (args: { environmentId: string; event: ThreadEvent }) => void;
   threadStorageRootPath?: string | null;
   onInjectedSkillsChanged?: (args: InjectedSkillsChangedNotification) => void;
@@ -558,7 +561,11 @@ export class RuntimeManager {
   }
 
   getShellEnv(): NonNullable<AgentRuntimeOptions["shellEnv"]> {
-    return { ...this.baseShellEnv };
+    return (
+      this.options.applyMachineEnvironment?.(this.baseShellEnv) ?? {
+        ...this.baseShellEnv,
+      }
+    );
   }
 
   async replaceBaseShellEnv(

@@ -132,6 +132,7 @@ export class ServerConnection {
   private readonly startupTimeoutMs: number;
 
   private session: HostDaemonSessionOpenResponse | null = null;
+  private machineEnvironmentRevision = -1;
   private websocket: ReconnectingWebSocketLike | null = null;
   private heartbeatInterval: ReturnType<typeof setInterval> | null = null;
   private lastHeartbeatAcknowledgedAt: number | null = null;
@@ -348,6 +349,8 @@ export class ServerConnection {
         loadedEnvironments: this.options.getLoadedEnvironments?.() ?? [],
       });
       this.session = session;
+      this.machineEnvironmentRevision = session.machineEnvironment.revision;
+      this.options.onMachineEnvironment?.(session.machineEnvironment);
       return session;
     } catch (error) {
       if (
@@ -593,6 +596,14 @@ export class ServerConnection {
           );
         },
       );
+      return;
+    }
+
+    if (message.data.type === "machine-environment.replace") {
+      if (message.data.environment.revision > this.machineEnvironmentRevision) {
+        this.machineEnvironmentRevision = message.data.environment.revision;
+        this.options.onMachineEnvironment?.(message.data.environment);
+      }
       return;
     }
 
