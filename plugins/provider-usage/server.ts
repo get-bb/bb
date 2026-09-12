@@ -43,12 +43,7 @@ export const providerUsageRpcContract = defineRpcContract({
   },
 });
 
-interface UsageRequest {
-  force: boolean;
-  machineIds: string[] | null;
-  maxAgeMs: number;
-  providerId: string | null;
-}
+type UsageRequest = z.infer<typeof providerUsageRpcContract.getUsage.input>;
 function normalizedTint(
   tint: { light: string; dark: string } | undefined,
 ): { light: string; dark: string } | null {
@@ -93,7 +88,6 @@ function normalizedUsage(
   }
 }
 
-type Host = Awaited<ReturnType<BbPluginApi["sdk"]["hosts"]["list"]>>[number];
 type Provider = Awaited<
   ReturnType<BbPluginApi["sdk"]["providers"]["list"]>
 >[number];

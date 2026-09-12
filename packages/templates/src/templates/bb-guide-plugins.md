@@ -927,10 +927,3 @@ Modal image debugging: `bb modal image build [--json]` prepares the saved image;
 `bb plugin rpc list [plugin-id] [--method <exact-name>] [--json]` lists discoverable methods from running plugins, optionally restricted to one plugin. `bb plugin rpc inspect <plugin-id> [method] [--json]` dumps registration and method descriptions plus input/output JSON Schemas. Copy the relevant schema into your consumer and call the existing plugin RPC endpoint. Discovery is opt-in advertising, not access control; method names may carry versions such as `provider-usage.v1.listResources`.
 
 `bb plugin rpc call <plugin-id> <method> [--input-file <json-path>] [--json]` invokes a method using server-side schema validation. Omitting the input file sends JSON null. Input files avoid putting sensitive values in command arguments.
-
-### Provider usage
-
-Provider Usage is enabled by default and shows usage in its plugin settings page
-and sidebar footer. Right-click its footer shortcut and choose Hide to move it
-into More. Settings → Appearance → Sidebar footer controls order and visibility.
-See the `provider-usage` skill for source discovery.
