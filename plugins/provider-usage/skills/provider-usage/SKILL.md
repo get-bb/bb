@@ -17,7 +17,7 @@ settings page. The `bb settings ui` commands expose the same preferences.
 
 Discover usage-source plugins with
 `bb plugin rpc list --method provider-usage.v1.listResources --json`.
-Inspect schemas with `bb plugin rpc inspect <plugin-id> --method provider-usage.v1.listResources --json`.
+Inspect schemas with `bb plugin rpc inspect <plugin-id> provider-usage.v1.listResources --json`.
 Listing resources is cheap; `provider-usage.v1.getResource` fetches one resource’s
 actual usage, even when `refresh` is false. RPC calls take JSON via `--input-file`.
 The Plugin Guide documents the public RPC APIs.

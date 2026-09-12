@@ -15,7 +15,7 @@ full-size provider groups with email-labeled accounts and fetching only resource
 plugins to publish their usage.
 
 Use `bb plugin rpc list --method provider-usage.v1.listResources --json` to find sources
-and `bb plugin rpc inspect <plugin-id> --method provider-usage.v1.listResources --json`
+and `bb plugin rpc inspect <plugin-id> provider-usage.v1.listResources --json`
 to inspect their published contracts. RPC calls accept JSON through
 `--input-file`. See the Plugin Guide for the contract API.
 
