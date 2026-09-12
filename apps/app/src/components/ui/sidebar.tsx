@@ -11,7 +11,6 @@ import { Icon } from "@bb/shared-ui/icon";
 import {
   Tooltip,
   TooltipContent,
-  TooltipProvider,
   TooltipTrigger,
 } from "@bb/shared-ui/tooltip";
 import { setCompactSidebarDrawerShowing } from "./sidebar-mobile-drawer-visibility.js";
@@ -658,25 +657,23 @@ const SidebarProvider = React.forwardRef<
         <SidebarShowingContext.Provider value={isSidebarShowing}>
           <SidebarWidthContext.Provider value={width}>
             {}
-            <TooltipProvider delayDuration={300} disableHoverableContent>
-              <div
-                style={
-                  {
-                    "--sidebar-width-icon": SIDEBAR_WIDTH_ICON,
-                    ...sidebarMobileWidthStyle,
-                    ...style,
-                  } as React.CSSProperties
-                }
-                className={cn(
-                  "group/sidebar-wrapper flex h-full min-h-0 w-full has-[[data-variant=inset]]:bg-sidebar max-md:overflow-clip",
-                  className,
-                )}
-                ref={ref}
-                {...props}
-              >
-                {children}
-              </div>
-            </TooltipProvider>
+            <div
+              style={
+                {
+                  "--sidebar-width-icon": SIDEBAR_WIDTH_ICON,
+                  ...sidebarMobileWidthStyle,
+                  ...style,
+                } as React.CSSProperties
+              }
+              className={cn(
+                "group/sidebar-wrapper flex h-full min-h-0 w-full has-[[data-variant=inset]]:bg-sidebar max-md:overflow-clip",
+                className,
+              )}
+              ref={ref}
+              {...props}
+            >
+              {children}
+            </div>
           </SidebarWidthContext.Provider>
         </SidebarShowingContext.Provider>
       </SidebarContext.Provider>
@@ -1356,13 +1353,7 @@ const SidebarInset = React.forwardRef<
         return;
       }
 
-      const currentSession = swipeSessionRef.current;
-      if (currentSession !== null) {
-        if (currentSession.kind !== "pointer") {
-          return;
-        }
-        clearSwipeSession();
-      }
+      clearSwipeSession();
 
       const canPreventDefault = isSidebarSwipeEdgeZoneTouch(touch.clientX);
       swipeSessionRef.current = createSidebarInsetSwipeSession({
@@ -1403,15 +1394,16 @@ const SidebarInset = React.forwardRef<
         !isCompactViewport ||
         openMobile ||
         event.pointerType !== "touch" ||
+        !event.isPrimary ||
         event.button !== 0 ||
         event.clientX < SIDEBAR_MOBILE_SWIPE_BROWSER_EDGE_GUARD_PX ||
-        swipeSessionRef.current !== null ||
         !isSidebarInsetSwipeTarget(event.target) ||
         shouldIgnoreSidebarSwipeTarget(event.target)
       ) {
         return;
       }
 
+      clearSwipeSession();
       swipeSessionRef.current = createSidebarInsetSwipeSession({
         kind: "pointer",
         id: event.pointerId,
@@ -1434,7 +1426,13 @@ const SidebarInset = React.forwardRef<
       window.addEventListener("pointercancel", handleSwipeEnd);
       removeSwipeListenersRef.current = removeListeners;
     },
-    [handleSwipeEnd, handleSwipeMove, isCompactViewport, openMobile],
+    [
+      clearSwipeSession,
+      handleSwipeEnd,
+      handleSwipeMove,
+      isCompactViewport,
+      openMobile,
+    ],
   );
 
   React.useEffect(() => {

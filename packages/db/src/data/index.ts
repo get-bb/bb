@@ -53,10 +53,18 @@ export {
   listProjectSourcesByProjectIds,
   listProjectSourcesByHost,
   getProjectSourceByHost,
+  projectSourceOwnsPath,
   getDefaultProjectSource,
   updateProjectSource,
   deleteProjectSource,
 } from "./project-sources.js";
+export {
+  getThreadPluginMetadata,
+  insertThreadPluginMetadata,
+  listThreadPluginMetadataRows,
+  patchThreadPluginMetadata,
+} from "./thread-plugin-metadata.js";
+
 export {
   createThread,
   countLiveThreadsInEnvironment,
@@ -241,6 +249,7 @@ export {
   findForeignManagedEnvironmentAtHostPath,
   findProviderEnvironmentContainingPath,
   listRetiredLoadedEnvironmentIdsOnHost,
+  markHostEnvironmentsDestroyed,
   recordEnvironmentCurrentBranch,
   recordEnvironmentProviderProvenance,
   updateEnvironmentMetadata,
@@ -251,6 +260,7 @@ export {
   upsertHost,
   getHost,
   getNonDestroyedHost,
+  getNonDestroyedHostByLaunchKey,
   listHosts,
   listNonDestroyedHostsByIds,
   listPublicHosts,
@@ -486,3 +496,4 @@ export {
   shouldCompactDatabase,
   shouldRunIncrementalVacuum,
 } from "./maintenance.js";
+export * from "./machines.js";

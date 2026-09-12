@@ -457,6 +457,7 @@ function ToolUseAskCard({ ask }: { ask: PendingInteractionToolUseAsk }) {
         ) : (
           <Icon
             name={presentationIconName(ask) ?? "Terminal"}
+            fallback="Terminal"
             className="size-3.5 shrink-0"
             style={presentationTintStyle(ask)}
           />

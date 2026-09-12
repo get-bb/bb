@@ -1,5 +1,5 @@
-import { and, eq, inArray, isNull } from "drizzle-orm";
-import type { HostChangeKind, HostType, PermissionMode } from "@bb/domain";
+import { and, eq, inArray, isNull, ne } from "drizzle-orm";
+import type { HostChangeKind, JsonValue, PermissionMode } from "@bb/domain";
 import type { DbConnection, DbTransaction } from "../connection.js";
 import type { DbNotifier } from "../notifier.js";
 import { hosts } from "../schema.js";
@@ -11,15 +11,37 @@ export interface UpsertHostInput {
   connectMachineId?: string | null;
   id?: string;
   name: string;
-  type: HostType;
+  type?: "persistent" | "ephemeral";
   destroyedAt?: number | null;
 }
 
 export interface UpdateHostInput {
+  type?: "persistent" | "ephemeral";
+  machineOperationId?: string | null;
+  launchKey?: string | null;
+  inputs?: JsonValue | null;
+  attempt?: number;
+  pendingLog?: string;
   destroyedAt?: number | null;
   lastRejectedProtocolVersion?: number | null;
   maxPermissionMode?: PermissionMode;
   name?: string;
+  machineProviderId?: string | null;
+  phase?:
+    | "creating"
+    | "active"
+    | "suspending"
+    | "suspended"
+    | "resuming"
+    | "removing"
+    | "destroyed";
+  resource?: JsonValue | null;
+  removeRetryAt?: number | null;
+  statusMessage?: string | null;
+  suspendRetryAt?: number | null;
+  suspendedAt?: number | null;
+  teardownAttempt?: number;
+  teardownStatus?: "running" | "failed" | "removed" | null;
 }
 
 function notifyHostMutation(
@@ -67,7 +89,7 @@ export function upsertHost(
     const updated = db
       .update(hosts)
       .set({
-        type: input.type,
+        type: input.type ?? existing.type,
         connectMachineId:
           input.connectMachineId !== undefined
             ? input.connectMachineId
@@ -91,8 +113,17 @@ export function upsertHost(
       .values({
         id,
         name: input.name,
-        type: input.type,
+        type: input.type ?? "persistent",
         connectMachineId: input.connectMachineId ?? null,
+        machineProviderId: null,
+        resource: null,
+        phase: "active",
+        suspendedAt: null,
+        statusMessage: null,
+        suspendRetryAt: null,
+        removeRetryAt: null,
+        teardownAttempt: 0,
+        teardownStatus: null,
         destroyedAt: input.destroyedAt ?? null,
         lastSeenAt: null,
         lastRejectedProtocolVersion: null,
@@ -131,15 +162,36 @@ export function getNonDestroyedHost(db: DbConnection, id: string) {
   );
 }
 
+export function getNonDestroyedHostByLaunchKey(
+  db: HostWriteConnection,
+  launchKey: string,
+) {
+  return (
+    db
+      .select()
+      .from(hosts)
+      .where(and(eq(hosts.launchKey, launchKey), isNull(hosts.destroyedAt)))
+      .get() ?? null
+  );
+}
+
 export function listHosts(db: DbConnection) {
   return db.select().from(hosts).all();
 }
 
-export function listPublicHosts(db: DbConnection) {
+export function listPublicHosts(
+  db: DbConnection,
+  options?: { includeCreating?: boolean },
+) {
   return db
     .select()
     .from(hosts)
-    .where(and(eq(hosts.type, "persistent"), isNull(hosts.destroyedAt)))
+    .where(
+      and(
+        isNull(hosts.destroyedAt),
+        ...(options?.includeCreating ? [] : [ne(hosts.phase, "creating")]),
+      ),
+    )
     .all();
 }
 
@@ -172,6 +224,7 @@ export function updateHost(
   const now = Date.now();
   db.update(hosts)
     .set({
+      ...(input.type !== undefined ? { type: input.type } : {}),
       ...(input.destroyedAt !== undefined
         ? { destroyedAt: input.destroyedAt }
         : {}),
@@ -181,6 +234,38 @@ export function updateHost(
         : {}),
       ...(input.lastRejectedProtocolVersion !== undefined
         ? { lastRejectedProtocolVersion: input.lastRejectedProtocolVersion }
+        : {}),
+      ...(input.machineProviderId !== undefined
+        ? { machineProviderId: input.machineProviderId }
+        : {}),
+      ...(input.machineOperationId !== undefined
+        ? { machineOperationId: input.machineOperationId }
+        : {}),
+      ...(input.launchKey !== undefined ? { launchKey: input.launchKey } : {}),
+      ...(input.inputs !== undefined ? { inputs: input.inputs } : {}),
+      ...(input.attempt !== undefined ? { attempt: input.attempt } : {}),
+      ...(input.pendingLog !== undefined
+        ? { pendingLog: input.pendingLog }
+        : {}),
+      ...(input.phase !== undefined ? { phase: input.phase } : {}),
+      ...(input.resource !== undefined ? { resource: input.resource } : {}),
+      ...(input.removeRetryAt !== undefined
+        ? { removeRetryAt: input.removeRetryAt }
+        : {}),
+      ...(input.suspendedAt !== undefined
+        ? { suspendedAt: input.suspendedAt }
+        : {}),
+      ...(input.statusMessage !== undefined
+        ? { statusMessage: input.statusMessage }
+        : {}),
+      ...(input.suspendRetryAt !== undefined
+        ? { suspendRetryAt: input.suspendRetryAt }
+        : {}),
+      ...(input.teardownAttempt !== undefined
+        ? { teardownAttempt: input.teardownAttempt }
+        : {}),
+      ...(input.teardownStatus !== undefined
+        ? { teardownStatus: input.teardownStatus }
         : {}),
       updatedAt: now,
     })

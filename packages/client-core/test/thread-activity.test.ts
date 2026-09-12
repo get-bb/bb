@@ -198,6 +198,22 @@ describe("thread-activity", () => {
       ).toBe("unread-error");
     });
 
+    it.each([
+      ["waiting", "unread-success"],
+      ["failed", "queued-failed"],
+    ] as const)(
+      "resolves unread success and %s queued work as %s",
+      (queuedWork, expectedIndicator) => {
+        expect(
+          resolveThreadListIndicator({
+            ...idleIndicatorState,
+            hasUnreadSuccess: true,
+            queuedWork,
+          }),
+        ).toBe(expectedIndicator);
+      },
+    );
+
     it("keeps Plan and Goal independent and applies Plan precedence", () => {
       expect(
         resolveThreadListIndicator({
@@ -250,7 +266,7 @@ describe("thread-activity", () => {
           hasUnsubmittedDraft: true,
           hasUnreadSuccess: true,
         }),
-      ).toBe("draft");
+      ).toBe("unread-success");
       expect(
         resolveThreadListIndicator({
           ...idleIndicatorState,

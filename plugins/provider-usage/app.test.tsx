@@ -74,8 +74,10 @@ describe("provider usage footer disclosure", () => {
                       displayName: "Claude Code",
                       logoUrl:
                         "/api/v1/system/providers/claude-code/logo?h=claude",
-                      iconGlyph: null,
-                      iconTint: { light: "#D97757", dark: "#E38A6E" },
+                      icon: null,
+                      strings: {
+                        iconTint: { light: "#D97757", dark: "#E38A6E" },
+                      },
                       signInHint: "Sign in to Claude Code.",
                       expiredHint: "Sign in to Claude Code again.",
                       usage: {
@@ -96,8 +98,8 @@ describe("provider usage footer disclosure", () => {
                       id: "codex",
                       displayName: "Codex",
                       logoUrl: "/api/v1/system/providers/codex/logo?h=codex",
-                      iconGlyph: null,
-                      iconTint: null,
+                      icon: null,
+                      strings: { iconTint: null },
                       signInHint: "Sign in to Codex.",
                       expiredHint: "Sign in to Codex again.",
                       usage: {
@@ -126,8 +128,8 @@ describe("provider usage footer disclosure", () => {
                       id: "codex",
                       displayName: "Codex",
                       logoUrl: "/api/v1/system/providers/codex/logo?h=codex",
-                      iconGlyph: null,
-                      iconTint: null,
+                      icon: null,
+                      strings: { iconTint: null },
                       signInHint: "Sign in to Codex.",
                       expiredHint: "Sign in to Codex again.",
                       usage: {
@@ -157,7 +159,7 @@ describe("provider usage footer disclosure", () => {
             },
           }),
           { status: 200, headers: { "content-type": "application/json" } },
-      ),
+        ),
     );
   }
 

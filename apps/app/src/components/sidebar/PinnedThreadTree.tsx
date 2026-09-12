@@ -1,4 +1,10 @@
-import { memo, useCallback, useMemo, type CSSProperties } from "react";
+import {
+  Fragment,
+  memo,
+  useCallback,
+  useMemo,
+  type CSSProperties,
+} from "react";
 import { DndContext, useDroppable } from "@dnd-kit/core";
 import {
   SortableContext,
@@ -17,7 +23,10 @@ import {
   type UseNeighborReorderSortableArgs,
 } from "./useNeighborReorderSortable";
 import { useChronologicalSectionThreadDnd } from "./SectionThreadDndContext";
-import { PINNED_THREAD_PARENT_KEY } from "./useSectionThreadDnd";
+import {
+  PINNED_THREAD_PARENT_KEY,
+  type SectionThreadDndState,
+} from "./useSectionThreadDnd";
 
 interface PinnedThreadRootReorderCallbacks {
   onSettled: () => void;
@@ -42,16 +51,18 @@ interface SortablePinnedRootItemProps {
   collapsedEnvironmentIds: Set<string>;
   collapsedThreadIds: Set<string>;
   disabled: boolean;
+  displace?: boolean;
   node: ProjectThreadNode;
   onProjectSelect?: () => void;
   onToggleEnvironmentCollapsed: (environmentId: string) => void;
   onToggleThreadCollapsed: (threadId: string) => void;
+  sectionDnd?: SectionThreadDndState | null;
   selectedThreadId?: string;
 }
 
 interface PinnedRootItemProps extends Omit<
   SortablePinnedRootItemProps,
-  "disabled"
+  "disabled" | "displace"
 > {
   consumeClickSuppression?: () => boolean;
   dragBindings?: SidebarSortableDragBindings;
@@ -72,6 +83,7 @@ const PinnedRootItem = memo(function PinnedRootItem({
   onProjectSelect,
   onToggleEnvironmentCollapsed,
   onToggleThreadCollapsed,
+  sectionDnd,
   selectedThreadId,
   sortableRef,
   sortableStyle,
@@ -82,6 +94,7 @@ const PinnedRootItem = memo(function PinnedRootItem({
       node={node}
       depthOffset={0}
       isEnvGrouped={false}
+      sectionDnd={sectionDnd}
       selectedThreadId={selectedThreadId}
       collapsedThreadIds={collapsedThreadIds}
       collapsedEnvironmentIds={collapsedEnvironmentIds}
@@ -99,12 +112,14 @@ const PinnedRootItem = memo(function PinnedRootItem({
 
 const SortablePinnedRootItem = memo(function SortablePinnedRootItem({
   disabled,
+  displace = true,
   node,
   ...props
 }: SortablePinnedRootItemProps) {
   const { dragBindings, setNodeRef, style } = useSidebarSortable({
     id: getPinnedRootNodeId(node),
     disabled,
+    displace,
   });
 
   return (
@@ -175,8 +190,14 @@ export const PinnedThreadTree = memo(function PinnedThreadTree({
   }
 
   if (chronologicalDnd) {
+    const previewBeforeKey =
+      chronologicalDnd.dropPreview?.parentKey === PINNED_THREAD_PARENT_KEY
+        ? chronologicalDnd.dropPreview.beforeItemKey
+        : null;
     const showDropPreview =
-      chronologicalDnd.dragOverParentKey === PINNED_THREAD_PARENT_KEY;
+      chronologicalDnd.dragOverParentKey === PINNED_THREAD_PARENT_KEY &&
+      chronologicalDnd.reorderTarget === null &&
+      previewBeforeKey === null;
     return (
       <div
         ref={setPinnedParentRef}
@@ -189,17 +210,23 @@ export const PinnedThreadTree = memo(function PinnedThreadTree({
           strategy={verticalListSortingStrategy}
         >
           {chronologicalRootNodes.map((node) => (
-            <SortablePinnedRootItem
-              key={getPinnedRootNodeId(node)}
-              node={node}
-              disabled={chronologicalDnd.pinnedReorderPending}
-              selectedThreadId={selectedThreadId}
-              collapsedThreadIds={collapsedThreadIds}
-              collapsedEnvironmentIds={collapsedEnvironmentIds}
-              onProjectSelect={onProjectSelect}
-              onToggleThreadCollapsed={onToggleThreadCollapsed}
-              onToggleEnvironmentCollapsed={onToggleEnvironmentCollapsed}
-            />
+            <Fragment key={getPinnedRootNodeId(node)}>
+              {previewBeforeKey === `thread:${getPinnedRootNodeId(node)}` ? (
+                <DropPreviewRow depth={0} />
+              ) : null}
+              <SortablePinnedRootItem
+                node={node}
+                disabled={chronologicalDnd.pinnedReorderPending}
+                displace={false}
+                sectionDnd={chronologicalDnd}
+                selectedThreadId={selectedThreadId}
+                collapsedThreadIds={collapsedThreadIds}
+                collapsedEnvironmentIds={collapsedEnvironmentIds}
+                onProjectSelect={onProjectSelect}
+                onToggleThreadCollapsed={onToggleThreadCollapsed}
+                onToggleEnvironmentCollapsed={onToggleEnvironmentCollapsed}
+              />
+            </Fragment>
           ))}
         </SortableContext>
         <DropPreviewRow depth={0} visible={showDropPreview} />

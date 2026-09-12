@@ -84,7 +84,7 @@ export function environmentProviderMatchesContext(
       ? listPublicHostsWithStatus(deps)
       : [getNonDestroyedHostWithStatus(deps, query.hostId)];
   return hosts.some((host) => {
-    if (host === null || host.type !== "persistent") return false;
+    if (host === null) return false;
     const requires = record.provider.requires;
     if (requires.projectless !== (project.id === PERSONAL_PROJECT_ID)) {
       return false;

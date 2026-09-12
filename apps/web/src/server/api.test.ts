@@ -20,6 +20,7 @@ import {
   claimHandle,
   createConnectCode,
   createMachineCodeForServerCredential,
+  lookupMachineCodeForServerCredential,
   createServer,
   disconnectServer,
   removeServer,
@@ -542,8 +543,38 @@ describe("server-authenticated machine-code round trip", () => {
     if ("status" in minted) throw new Error(minted.error);
     expect(minted.serverUrl).toBe("https://sawyer-desktop.getbb.app");
 
+    expect(
+      await lookupMachineCodeForServerCredential(
+        deps,
+        serverCredential,
+        minted.code,
+      ),
+    ).toEqual({ consumed: false, machineId: null });
     const redeemed = await redeemMachineCode(deps, minted.code);
     if ("error" in redeemed) throw new Error(redeemed.error);
+    expect(
+      await lookupMachineCodeForServerCredential(
+        deps,
+        serverCredential,
+        minted.code,
+      ),
+    ).toEqual({ consumed: true, machineId: redeemed.machineId });
+    expect(
+      await lookupMachineCodeForServerCredential(deps, "bogus", minted.code),
+    ).toMatchObject({ status: 401 });
+    const other = await createServer(deps, "u1", "sawyer-other");
+    if (!("ok" in other)) throw new Error("server setup failed");
+    db.update(server)
+      .set({ credentialHash: await sha256Hex("bbcred_other") })
+      .where(eq(server.id, other.server.id))
+      .run();
+    expect(
+      await lookupMachineCodeForServerCredential(
+        deps,
+        "bbcred_other",
+        minted.code,
+      ),
+    ).toMatchObject({ status: 404 });
     expect(redeemed.credential.startsWith("bbcm_")).toBe(true);
     expect(redeemed.serverUrl).toBe("https://sawyer-desktop.getbb.app");
     expect(db.select().from(machine).all()).toHaveLength(1);
@@ -558,6 +589,49 @@ describe("server-authenticated machine-code round trip", () => {
       db.select().from(machine).where(eq(machine.id, redeemed.machineId)).get()
         ?.revokedAt,
     ).not.toBeNull();
+    const revokedAt = db.select().from(machine).get()?.revokedAt;
+    for (const token of [serverCredential, "bbcred_other"]) {
+      await expect(
+        revokeMachineForServerCredential(deps, token, redeemed.machineId),
+      ).resolves.toEqual({ ok: true });
+    }
+    expect(db.select().from(machine).get()?.revokedAt).toEqual(revokedAt);
+    await expect(
+      revokeMachineForServerCredential(deps, serverCredential, "missing"),
+    ).resolves.toEqual({ error: "not-found", status: 404 });
+    seedUser("foreign");
+    db.insert(machine)
+      .values({
+        id: "foreign-device",
+        userId: "foreign",
+        credentialHash: "foreign-hash",
+        createdAt: new Date(),
+        revokedAt: new Date(),
+      })
+      .run();
+    await expect(
+      revokeMachineForServerCredential(
+        deps,
+        serverCredential,
+        "foreign-device",
+      ),
+    ).resolves.toEqual({ error: "not-found", status: 404 });
+    for (const token of ["", "bogus"]) {
+      await expect(
+        revokeMachineForServerCredential(deps, token, redeemed.machineId),
+      ).resolves.toEqual({ error: "unauthorized", status: 401 });
+    }
+    db.update(server)
+      .set({ revokedAt: new Date() })
+      .where(eq(server.id, target.server.id))
+      .run();
+    await expect(
+      revokeMachineForServerCredential(
+        deps,
+        serverCredential,
+        redeemed.machineId,
+      ),
+    ).resolves.toEqual({ error: "unauthorized", status: 401 });
     await expect(redeemMachineCode(deps, minted.code)).resolves.toMatchObject({
       error: "already-used",
       status: 409,
@@ -621,6 +695,10 @@ describe("dashboard machine recovery", () => {
     expect(closeTunnel).toHaveBeenCalledWith("lost-laptop:lost-generation");
     expect(closeTunnel).toHaveBeenCalledTimes(1);
     expect((await getAccountState(deps, "u1")).machines).toEqual([]);
+    await expect(revokeMachine(deps, "u1", "machine-owner")).resolves.toEqual({
+      ok: true,
+    });
+    expect(closeTunnel).toHaveBeenCalledTimes(1);
     expect(
       db.select().from(machine).where(eq(machine.id, "machine-owner")).get()
         ?.subdomain,

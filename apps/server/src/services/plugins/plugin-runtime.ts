@@ -1,3 +1,4 @@
+import type { MachineEnrollmentService } from "../machines/machine-services.js";
 import { AsyncLocalStorage } from "node:async_hooks";
 import {
   assertAiServiceRegistrable,
@@ -67,6 +68,7 @@ import type {
 } from "@get-bb/plugin-sdk";
 import type { PluginHookRegistration } from "./plugin-hook-registry.js";
 import type { PluginEnvironmentProviderRecord } from "./plugin-environment-provider-registry.js";
+import type { PluginMachineProviderRecord } from "./plugin-machine-provider-registry.js";
 import {
   isPluginSdkRangeSatisfied,
   pluginSdkRangeProblem,
@@ -273,6 +275,7 @@ interface ServiceInstance {
 }
 
 interface PluginRuntimeContext {
+  machineEnrollments: MachineEnrollmentService | null;
   deps: PluginServiceDeps;
   settingsChanged?: () => void;
   nextCronRunAt: (cron: string, now: number) => number;
@@ -636,6 +639,28 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
     return registrations;
   }
 
+  function listPluginEnvironmentCompositions() {
+    return Array.from(loaded).flatMap(([pluginId, plugin]) =>
+      Array.from(
+        plugin.handle.environmentCompositions.values(),
+        (composition) => {
+          const declared =
+            composition.icon === null
+              ? null
+              : parseNamespacedGlyph(composition.icon);
+          const icon =
+            declared !== null
+              ? brandingAssets.get(pluginId)?.icons.get(declared.name)
+              : readPluginProviderIcon(
+                  plugin.manifest.rootDir,
+                  composition.icon ?? undefined,
+                );
+          return { pluginId, composition, ...(icon == null ? {} : { icon }) };
+        },
+      ),
+    );
+  }
+
   function listPluginEnvironmentProviders(): PluginEnvironmentProviderRecord[] {
     const records: PluginEnvironmentProviderRecord[] = [];
     const seen = new Set<string>();
@@ -667,6 +692,50 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
     id: string,
   ): PluginEnvironmentProviderRecord | undefined {
     return listPluginEnvironmentProviders().find(
+      (record) => record.provider.id === id,
+    );
+  }
+
+  function listPluginServerAccessProviders() {
+    return [...loaded].flatMap(([pluginId, plugin]) =>
+      [...plugin.handle.serverAccessProviders.values()].map((provider) => ({
+        pluginId,
+        provider,
+      })),
+    );
+  }
+
+  function listPluginMachineProviders(): PluginMachineProviderRecord[] {
+    const records: PluginMachineProviderRecord[] = [];
+    const seen = new Set<string>();
+    for (const [pluginId, plugin] of loaded) {
+      for (const provider of plugin.handle.machineProviders.values()) {
+        if (seen.has(provider.id)) {
+          logger.warn(
+            `[plugin:${pluginId}] machine provider "${provider.id}" is already registered by another plugin; ignoring`,
+          );
+          continue;
+        }
+        seen.add(provider.id);
+        const declared =
+          provider.icon === null ? null : parseNamespacedGlyph(provider.icon);
+        const icon =
+          declared !== null
+            ? brandingAssets.get(pluginId)?.icons.get(declared.name)
+            : readPluginProviderIcon(
+                plugin.manifest.rootDir,
+                provider.icon ?? undefined,
+              );
+        records.push({ pluginId, provider, ...(icon == null ? {} : { icon }) });
+      }
+    }
+    return records;
+  }
+
+  function getPluginMachineProvider(
+    id: string,
+  ): PluginMachineProviderRecord | undefined {
+    return listPluginMachineProviders().find(
       (record) => record.provider.id === id,
     );
   }
@@ -1349,6 +1418,13 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
       db: deps.db,
       dataDir: deps.dataDir,
       getSdk: () => boundSdk,
+      getMachineEnrollments: () => {
+        if (!context.machineEnrollments)
+          throw new Error(
+            "Machine enrollment is unavailable in this plugin host",
+          );
+        return context.machineEnrollments.forOwner(row.id);
+      },
       getAppUrl: deps.getAppUrl ?? (() => null),
       getLoopbackBaseUrl: () => boundLoopbackBaseUrl,
       publishSignal: (channel, payload) => {
@@ -1366,8 +1442,17 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
         for (const [pluginId, plugin] of loaded) {
           if (
             pluginId !== row.id &&
-            plugin.handle.environmentProviders.has(id)
+            (plugin.handle.environmentProviders.has(id) ||
+              plugin.handle.environmentCompositions.has(id))
           ) {
+            return pluginId;
+          }
+        }
+        return undefined;
+      },
+      isMachineProviderIdTaken: (id) => {
+        for (const [pluginId, plugin] of loaded) {
+          if (pluginId !== row.id && plugin.handle.machineProviders.has(id)) {
             return pluginId;
           }
         }
@@ -1782,8 +1867,12 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
     invokeWrapped,
     isBuiltinPluginId,
     listPluginHooks,
+    listPluginEnvironmentCompositions,
     listPluginEnvironmentProviders,
     getPluginEnvironmentProvider,
+    listPluginMachineProviders,
+    listPluginServerAccessProviders,
+    getPluginMachineProvider,
     identities,
     isPackagedBuiltinEntry,
     loadAll,

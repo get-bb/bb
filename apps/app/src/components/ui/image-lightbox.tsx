@@ -45,6 +45,7 @@ interface ImageLightboxProps {
   navigationStatus?: string;
   imageAlt: string;
   imageSrc: string | null;
+  isOpen?: boolean;
   onClose: () => void;
   onNext?: () => void;
   onPrevious?: () => void;
@@ -102,11 +103,13 @@ export function ImageLightbox({
   navigationStatus,
   imageAlt,
   imageSrc,
+  isOpen,
   onClose,
   onNext,
   onPrevious,
   title,
 }: ImageLightboxProps) {
+  const isVisible = isOpen ?? imageSrc !== null;
   const panelRef = useRef<HTMLDivElement>(null);
   const closeRef = useRef(onClose);
   useLayoutEffect(() => {
@@ -115,9 +118,9 @@ export function ImageLightbox({
   const requestClose = useCallback(() => closeRef.current(), []);
   const titleId = useId();
   const scopeProps = usePortalScopeProps();
-  useBrowserDimmingOverlay(Boolean(imageSrc));
+  useBrowserDimmingOverlay(isVisible);
   usePersistentOverlayFocus({
-    open: Boolean(imageSrc),
+    open: isVisible,
     panelRef,
     requestClose,
   });
@@ -125,7 +128,7 @@ export function ImageLightbox({
     hasMultipleImages && onPrevious !== undefined && onNext !== undefined;
 
   useEffect(() => {
-    if (!imageSrc) {
+    if (!isVisible) {
       return;
     }
 
@@ -162,9 +165,9 @@ export function ImageLightbox({
 
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [hasNavigation, imageSrc, onClose, onNext, onPrevious]);
+  }, [hasNavigation, isVisible, onClose, onNext, onPrevious]);
 
-  if (!imageSrc) {
+  if (!isVisible) {
     return null;
   }
 
@@ -189,12 +192,23 @@ export function ImageLightbox({
       <h2 id={titleId} className="sr-only">
         {title}
       </h2>
-      <img
-        src={imageSrc}
-        alt={imageAlt}
-        style={IMAGE_TRANSPARENCY_CHECKER_STYLE}
-        className="max-h-[82dvh] max-w-full object-contain"
-      />
+      {imageSrc ? (
+        <img
+          src={imageSrc}
+          alt={imageAlt}
+          style={IMAGE_TRANSPARENCY_CHECKER_STYLE}
+          className="max-h-[82dvh] max-w-full object-contain"
+        />
+      ) : (
+        <div
+          role="status"
+          aria-label="Loading image"
+          className="flex size-32 flex-col items-center justify-center gap-2 rounded-xl bg-black/35 text-sm text-white/60 sm:size-48"
+        >
+          <Icon name="Loading" className="size-5 animate-spin" />
+          <span>Loading image…</span>
+        </div>
+      )}
 
       {hasNavigation ? (
         <>

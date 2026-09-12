@@ -11,7 +11,7 @@
   },
   "engines": {
     "bb": ">=0.0",
-    "bbPluginSdk": ">=0.4.13"
+    "bbPluginSdk": ">=0.4.84"
   },
   "bb": {
     "name": "Automations",

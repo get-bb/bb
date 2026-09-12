@@ -1,3 +1,4 @@
+import { updateHost } from "@bb/db";
 import { describe, expect, it } from "vitest";
 import type { GitHostPullRequest, WorkspaceWorkingTree } from "@bb/domain";
 import type { HostDaemonOnlineRpcResult } from "@bb/host-daemon-contract";
@@ -330,3 +331,25 @@ describe("workspace read caches on the environment routes", () => {
     });
   });
 });
+
+it.each(["suspended", "suspending"] as const)(
+  "does not send passive status or PR RPCs to a %s machine",
+  async (phase) => {
+    await withTestHarness(async (h) => {
+      const { host, environment } = seedGitEnvironment(h, phase);
+      updateHost(h.db, h.hub, host.id, {
+        phase,
+        machineProviderId: "test-paused-provider",
+        suspendedAt: phase === "suspended" ? Date.now() : null,
+      });
+      for (const path of ["status", "pull-request"]) {
+        const response = await h.app.request(
+          `/api/v1/environments/${environment.id}/${path}`,
+        );
+        expect(response.status).not.toBe(404);
+        expect(listQueuedCommands(h, "workspace.status")).toHaveLength(0);
+      expect(listQueuedCommands(h, "workspace.pull_request")).toHaveLength(0);
+      }
+    });
+  },
+);

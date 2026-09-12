@@ -38,6 +38,7 @@ export default async function worktreePlugin(bb: BbPluginApi): Promise<void> {
   bb.experimental_environments.register({
     id: GIT_WORKTREE_ENVIRONMENT_PROVIDER_ID,
     displayName: "Worktree",
+    description: "Create an isolated Git worktree for your changes.",
     icon: "FolderGit",
     requires: { gitCheckout: true },
     inputs: worktreeInputsSchema,

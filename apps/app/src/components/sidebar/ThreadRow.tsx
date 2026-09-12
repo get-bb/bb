@@ -70,6 +70,12 @@ import {
 } from "./sidebarRowClasses";
 import type { ConsumeDragClickSuppression } from "@/components/ui/use-drag-click-suppression";
 import type { SidebarSortableDragBindings } from "./sortableMotion";
+import { useComposedRefs } from "@radix-ui/react-compose-refs";
+import type {
+  SidebarNestTargetState,
+  SidebarReorderPlacement,
+  ThreadRowNestDrop,
+} from "./sidebarThreadRowDroppable";
 import { SidebarChildToggleChevron } from "./SidebarChildToggleChevron";
 import { useSidebarThreadShortcut } from "./sidebarThreadShortcuts";
 import { SplitPaneMiniMap } from "./SplitPaneMiniMap";
@@ -108,6 +114,7 @@ interface ThreadRowBaseOptions {
   isCompact: boolean;
   consumeClickSuppression?: ConsumeDragClickSuppression;
   dragBindings?: SidebarSortableDragBindings;
+  nestDrop?: ThreadRowNestDrop;
 }
 
 export type ThreadRowOptions =
@@ -138,12 +145,29 @@ type ThreadRowClickCaptureHandler = MouseEventHandler<HTMLDivElement>;
 interface ThreadRowContainerArgs {
   children: ReactNode;
   className: string;
+  containerRef: (element: HTMLDivElement | null) => void;
   dragBindings?: SidebarSortableDragBindings;
+  nestTargetState: SidebarNestTargetState | null;
+  reorderPlacement: SidebarReorderPlacement | null;
   onClickCapture?: ThreadRowClickCaptureHandler;
   onSplitDragPointerDown?: PointerEventHandler<HTMLElement>;
   stickyLevel?: number;
   style: CSSProperties;
 }
+
+const NEST_TARGET_STATE_CLASS: Record<SidebarNestTargetState, string> = {
+  valid:
+    "bg-sidebar-accent text-sidebar-accent-foreground ring-1 ring-inset ring-sidebar-ring",
+  blocked: "ring-1 ring-inset ring-destructive/60",
+  unchanged: "ring-1 ring-inset ring-sidebar-border",
+};
+
+const REORDER_PLACEMENT_CLASS: Record<SidebarReorderPlacement, string> = {
+  before:
+    "before:pointer-events-none before:absolute before:inset-x-1 before:-top-px before:h-0.5 before:rounded-full before:bg-sidebar-ring before:content-['']",
+  after:
+    "after:pointer-events-none after:absolute after:inset-x-1 after:-bottom-px after:h-0.5 after:rounded-full after:bg-sidebar-ring after:content-['']",
+};
 
 function ThreadDraftIndicator({
   hideIdleLabel = false,
@@ -225,20 +249,25 @@ function getThreadRowStyle(depth: number): CSSProperties {
 function renderThreadRowContainer({
   children,
   className,
+  containerRef,
   dragBindings,
+  nestTargetState,
   onClickCapture,
   onSplitDragPointerDown,
+  reorderPlacement,
   stickyLevel,
   style,
 }: ThreadRowContainerArgs) {
   if (stickyLevel !== undefined) {
     return (
       <SidebarStickyTier
-        ref={dragBindings?.setActivatorNodeRef}
+        ref={containerRef}
         tier="parent"
         level={stickyLevel}
         className={className}
         style={style}
+        data-sidebar-nest-target={nestTargetState ?? undefined}
+        data-sidebar-reorder-placement={reorderPlacement ?? undefined}
         {...dragBindings?.attributes}
         {...(dragBindings?.listeners ?? {})}
         onClickCapture={onClickCapture}
@@ -251,9 +280,11 @@ function renderThreadRowContainer({
 
   return (
     <div
-      ref={dragBindings?.setActivatorNodeRef}
+      ref={containerRef}
       className={className}
       style={style}
+      data-sidebar-nest-target={nestTargetState ?? undefined}
+      data-sidebar-reorder-placement={reorderPlacement ?? undefined}
       {...dragBindings?.attributes}
       {...(dragBindings?.listeners ?? {})}
       onClickCapture={onClickCapture}
@@ -647,6 +678,12 @@ function ThreadRowComponent({
     ? `Open ${labelTitle} (unsubmitted draft)`
     : `Open ${labelTitle}`;
   const rowDragBindings = options.dragBindings;
+  const nestTargetState = options.nestDrop?.state ?? null;
+  const reorderPlacement = options.nestDrop?.reorderPlacement ?? null;
+  const containerRef = useComposedRefs<HTMLDivElement>(
+    rowDragBindings?.setActivatorNodeRef,
+    options.nestDrop?.setNodeRef,
+  );
   const rowClassName = cn(
     SIDEBAR_HOVER_ACTIONS_ROW_CLASS,
     "group/thread-row",
@@ -664,6 +701,8 @@ function ThreadRowComponent({
       SIDEBAR_ROW_OPEN_IN_SPLIT_STATE_CLASS,
     !showActive && "has-[[data-state=open]]:bg-sidebar-accent",
     rowDragBindings && !rowDragBindings.disabled && "select-none",
+    nestTargetState && NEST_TARGET_STATE_CLASS[nestTargetState],
+    reorderPlacement && REORDER_PLACEMENT_CLASS[reorderPlacement],
   );
   const rowStyle = getThreadRowStyle(options.depth);
   const isActionsOpen = isDropdownActionsOpen || isContextActionsOpen;
@@ -844,7 +883,10 @@ function ThreadRowComponent({
   const row = renderThreadRowContainer({
     children: rowContent,
     className: rowClassName,
+    containerRef,
     dragBindings: rowDragBindings,
+    nestTargetState,
+    reorderPlacement,
     onClickCapture: options.consumeClickSuppression
       ? handleRowClickCapture
       : undefined,

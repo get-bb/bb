@@ -123,6 +123,7 @@ export function SidebarUpdatesBadge({ onNavigate }: SidebarUpdatesBadgeProps) {
                     (candidate) => candidate.id === providerId,
                   );
                   const iconInfo = getProviderIconInfo(
+                    "agent",
                     providerId,
                     provider ?? null,
                   );

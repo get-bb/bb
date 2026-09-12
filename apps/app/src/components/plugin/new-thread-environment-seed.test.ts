@@ -16,8 +16,10 @@ const BRANCH_INPUTS_SCHEMA = {
 
 const ENVIRONMENT_PROVIDERS: SystemEnvironmentProvider[] = [
   {
+    machineProviderId: null,
     id: "branchy",
     displayName: "New branch workspace",
+    description: "Prepare a workspace for this thread.",
     icon: "GitBranch",
     logoUrl: null,
     pluginId: "branchy",
@@ -33,8 +35,10 @@ const ENVIRONMENT_PROVIDERS: SystemEnvironmentProvider[] = [
     inputs: BRANCH_INPUTS_SCHEMA,
   },
   {
+    machineProviderId: null,
     id: "project-checkout",
     displayName: "Project checkout",
+    description: "Prepare a workspace for this thread.",
     icon: "Laptop",
     logoUrl: null,
     pluginId: "environment-project-checkout",
@@ -53,8 +57,10 @@ const ENVIRONMENT_PROVIDERS: SystemEnvironmentProvider[] = [
     },
   },
   {
+    machineProviderId: null,
     id: "git-worktree",
     displayName: "Worktree",
+    description: "Prepare a workspace for this thread.",
     icon: "GitBranch",
     logoUrl: null,
     pluginId: "environment-git-worktree",
@@ -70,8 +76,10 @@ const ENVIRONMENT_PROVIDERS: SystemEnvironmentProvider[] = [
     inputs: BRANCH_INPUTS_SCHEMA,
   },
   {
+    machineProviderId: null,
     id: "personal-workspace",
     displayName: "Personal workspace",
+    description: "Prepare a workspace for this thread.",
     icon: "Folder",
     logoUrl: null,
     pluginId: "environment-personal-workspace",
@@ -87,8 +95,10 @@ const ENVIRONMENT_PROVIDERS: SystemEnvironmentProvider[] = [
     inputs: null,
   },
   {
+    machineProviderId: null,
     id: "container",
     displayName: "Docker container",
+    description: "Prepare a workspace for this thread.",
     icon: "Container",
     logoUrl: null,
     pluginId: "docker-sandbox",
@@ -225,6 +235,20 @@ describe("newThreadEnvironmentArgsToSeed round trip", () => {
       environmentProviderId: "branchy",
       machine: { type: "existing", hostId: "host_1" },
       inputs: { branch: { kind: "named", name: "release" } },
+    };
+    expect(roundTrip(environment)).toEqual(environment);
+  });
+
+  it("a provider on a new machine keeps its inputs verbatim", () => {
+    const environment: CreateThreadEnvironmentArgs = {
+      type: "provider",
+      environmentProviderId: "container",
+      machine: {
+        type: "new",
+        machineProviderId: "container-machine",
+        inputs: { target: "primary" },
+      },
+      inputs: { image: "custom:latest" },
     };
     expect(roundTrip(environment)).toEqual(environment);
   });

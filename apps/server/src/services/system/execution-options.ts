@@ -20,7 +20,11 @@ import { COMMAND_TIMEOUT_MS } from "../../constants.js";
 import { ApiError } from "../../errors.js";
 import { callHostRetryableOnlineRpc } from "../hosts/online-rpc.js";
 import { getHostPermissionCeiling } from "../hosts/permission-ceiling.js";
-import { requireEnvironment } from "../lib/entity-lookup.js";
+import {
+  requireConnectedHostSession,
+  requireEnvironment,
+} from "../lib/entity-lookup.js";
+import { isSuspendedHostUnavailableError } from "../lib/lifecycle-api-errors.js";
 import { createProviderListingBudget } from "../providers/native-roots.js";
 import type {
   ProviderHealthCacheKey,
@@ -212,14 +216,16 @@ async function listInstalledPluginProviderInfos(
         if (!canOmitProviderDiscoveryForError(error)) {
           throw error;
         }
-        deps.logger.warn(
-          {
-            ...expectedFallbackErrorLogFields(error),
-            hostId,
-            providerId: registration.info.id,
-          },
-          "Failed to resolve installed-only provider status",
-        );
+        if (!isSuspendedHostUnavailableError(error)) {
+          deps.logger.warn(
+            {
+              ...expectedFallbackErrorLogFields(error),
+              hostId,
+              providerId: registration.info.id,
+            },
+            "Failed to resolve installed-only provider status",
+          );
+        }
         return null;
       }
     },
@@ -256,6 +262,7 @@ function resolveSystemProviderInfosPlan(
 ): ResolveSystemProviderInfosPlanResult {
   try {
     const hostId = resolveSystemLookupHostId(deps, query);
+    requireConnectedHostSession(deps, hostId);
     return {
       hostId,
       hostLookupError: null,
@@ -269,10 +276,12 @@ function resolveSystemProviderInfosPlan(
     if (!canOmitProviderDiscoveryForError(error)) {
       throw error;
     }
-    deps.logger.warn(
-      expectedFallbackErrorLogFields(error),
-      "Failed to resolve host for provider discovery",
-    );
+    if (!isSuspendedHostUnavailableError(error)) {
+      deps.logger.warn(
+        expectedFallbackErrorLogFields(error),
+        "Failed to resolve host for provider discovery",
+      );
+    }
     return {
       hostId: null,
       hostLookupError: error,

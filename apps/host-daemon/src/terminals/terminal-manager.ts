@@ -1,3 +1,4 @@
+import { operationEnvironment } from "../operation-environment.js";
 import { accessSync, chmodSync, constants, existsSync } from "node:fs";
 import { access, stat } from "node:fs/promises";
 import { createRequire } from "node:module";
@@ -585,10 +586,13 @@ export class TerminalManager {
         args: terminalSpawnArgsForStart(message),
         cols: message.cols,
         cwd: target.cwd,
-        env: buildTerminalEnv({
-          shellEnv: this.options.runtimeManager.getShellEnv(),
-          terminalId: message.terminalId,
-        }),
+        env: operationEnvironment(
+          message.contributedEnv,
+          buildTerminalEnv({
+            shellEnv: this.options.runtimeManager.getShellEnv(),
+            terminalId: message.terminalId,
+          }),
+        ),
         file: shell,
         logger: this.options.logger,
         rows: message.rows,

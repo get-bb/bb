@@ -440,7 +440,7 @@ describe("ProjectRow interactions", () => {
     expectCollapsedActivityAtSidebarEdge("Goal active");
   });
 
-  it("shows an idle draft before unread success for a collapsed project", () => {
+  it("shows unread success before an idle draft for a collapsed project", () => {
     mockDraftThreadIds.current = new Set(["thr_project_draft"]);
     renderProjectRow(
       vi.fn(),
@@ -459,10 +459,10 @@ describe("ProjectRow interactions", () => {
       true,
     );
 
-    expect(
-      screen.getAllByLabelText("Thread has unsubmitted draft"),
-    ).not.toHaveLength(0);
-    expect(screen.queryByLabelText("Unread thread succeeded")).toBeNull();
+    expect(screen.getAllByLabelText("Unread thread succeeded")).not.toHaveLength(
+      0,
+    );
+    expect(screen.queryByLabelText("Thread has unsubmitted draft")).toBeNull();
   });
 
   it("excludes hidden side-chat activity from a collapsed project", () => {

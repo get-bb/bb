@@ -244,6 +244,11 @@ function tier(account: AccountSummary): string {
     (account.kind === "api-key" ? "API key" : "OAuth")
   );
 }
+function secondaryEmail(account: AccountSummary): string | null {
+  return account.email === null || account.email === account.label
+    ? null
+    : account.email;
+}
 function SettingsBadge({ children }: { children: ReactNode }) {
   return (
     <span className="shrink-0 rounded-sm border border-border bg-muted/40 px-1.5 py-0.5 text-2xs leading-none text-subtle-foreground">
@@ -387,6 +392,7 @@ function AccountRow({
 }) {
   const status = statusPresentation(account, threshold);
   const slots = quotaSlots(account);
+  const email = secondaryEmail(account);
   const {
     attributes,
     isDragging,
@@ -435,6 +441,11 @@ function AccountRow({
               <span className="truncate text-sm font-medium text-foreground">
                 {account.label}
               </span>
+              {email === null ? null : (
+                <span className="min-w-0 truncate text-xs text-subtle-foreground/75">
+                  {email}
+                </span>
+              )}
               <SettingsBadge>{tier(account)}</SettingsBadge>
             </div>
             <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-0.5 text-xs text-subtle-foreground/75">
@@ -1633,6 +1644,12 @@ function AccountDialog({
         )}
       </div>
       <dl className="grid grid-cols-[7rem_1fr] gap-x-3 gap-y-2 border-t border-border pt-4 text-sm">
+        {account.email === null ? null : (
+          <>
+            <dt className="text-muted-foreground">Email</dt>
+            <dd className="break-all">{account.email}</dd>
+          </>
+        )}
         <dt className="text-muted-foreground">Kind</dt>
         <dd>
           {account.kind === "oauth"

@@ -164,8 +164,16 @@ export function hosts(now: number): Host[] {
     {
       id: DEMO_HOST_ID,
       name: "demo",
-      status: "connected",
       type: "persistent",
+      status: "connected",
+      machineProviderId: null,
+      lifecycle: {
+        phase: "active",
+        suspendedAt: null,
+        message: null,
+        pendingLog: "",
+        teardown: null,
+      },
       maxPermissionMode: "full",
       lastSeenAt: now,
       lastRejectedProtocolVersion: null,

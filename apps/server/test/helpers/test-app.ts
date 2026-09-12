@@ -7,7 +7,7 @@ import { join } from "node:path";
 import { serve } from "@hono/node-server";
 import type { AddressInfo } from "node:net";
 import { createConnection, getAppSettings, type DbConnection } from "@bb/db";
-import { defaultFeatureFlags, type HostType } from "@bb/domain";
+import { defaultFeatureFlags } from "@bb/domain";
 import { initDb } from "../../src/db.js";
 import { createApp } from "../../src/server.js";
 import { PendingInteractionLifecycle } from "../../src/services/interactions/pending-interactions.js";
@@ -89,29 +89,24 @@ export const testLogger = {
 
 interface TestDaemonKeyParts {
   hostId: string;
-  hostType: HostType;
 }
 
 function encodeTestDaemonKey(args: TestDaemonKeyParts): string {
-  return `${TEST_MACHINE_KEY_PREFIX}:${args.hostType}:${args.hostId}`;
+  return `${TEST_MACHINE_KEY_PREFIX}:${args.hostId}`;
 }
 
 function decodeTestDaemonKey(token: string): TestDaemonKeyParts | null {
   const parts = token.split(":");
-  if (parts.length !== 3 || parts[0] !== TEST_MACHINE_KEY_PREFIX) {
+  if (parts.length !== 2 || parts[0] !== TEST_MACHINE_KEY_PREFIX) {
     return null;
   }
 
-  const hostType = parts[1];
-  const hostId = parts[2];
-  if (hostType !== "persistent" || hostId.length === 0) {
+  const hostId = parts[1];
+  if (hostId.length === 0) {
     return null;
   }
 
-  return {
-    hostId,
-    hostType,
-  };
+  return { hostId };
 }
 
 export function createTestDaemonHostKey(
@@ -119,7 +114,6 @@ export function createTestDaemonHostKey(
 ): string {
   return encodeTestDaemonKey({
     hostId: args.hostId ?? "host-1",
-    hostType: args.hostType ?? "persistent",
   });
 }
 

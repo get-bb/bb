@@ -5,6 +5,7 @@ import {
   countNonDeletedAssignedChildThreads,
   countThreads,
   getEnvironment,
+  getThread,
   getThreadSectionById,
   listThreadMentionRowsByIds,
   listThreadsWithPendingInteractionState,
@@ -413,6 +414,12 @@ export function registerThreadBaseRoutes(app: Hono, deps: AppDeps): void {
         requireThreadSection(deps, sectionId);
       }
       metadataUpdate.sectionId = sectionId;
+    } else if (
+      payload.parentThreadId === null &&
+      thread.parentThreadId !== null
+    ) {
+      metadataUpdate.sectionId =
+        getThread(deps.db, thread.parentThreadId)?.sectionId ?? null;
     }
     if ("parentThreadId" in payload) {
       metadataUpdate.parentThreadId = payload.parentThreadId;

@@ -72,3 +72,5 @@ export type {
 } from "./timeline-view.js";
 export { compactThreadTimelineSummaryEvents } from "./summary-event-compaction.js";
 export type { ThreadEventWithMeta } from "./group-event-projection-turns.js";
+
+export { extractThreadContextWindowUsage } from "./thread-context-window-usage.js";

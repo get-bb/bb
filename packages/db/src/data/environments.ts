@@ -202,6 +202,34 @@ export function listEnvironments(
   return paged.all();
 }
 
+export function markHostEnvironmentsDestroyed(
+  db: EnvironmentWriteConnection,
+  notifier: DbNotifier,
+  hostId: string,
+): EnvironmentRow[] {
+  const updated = db
+    .update(environments)
+    .set({
+      path: null,
+      resource: null,
+      retireAt: null,
+      status: "destroyed",
+      teardownMessage: null,
+      teardownStatus: "removed",
+      updatedAt: Date.now(),
+    })
+    .where(eq(environments.hostId, hostId))
+    .returning()
+    .all();
+  for (const environment of updated) {
+    notifier.notifyEnvironment(environment.id, [
+      "metadata-changed",
+      "status-changed",
+    ]);
+  }
+  return updated;
+}
+
 interface EnvironmentMetadataUpdateColumns {
   baseBranch?: string | null;
   branchName?: string | null;

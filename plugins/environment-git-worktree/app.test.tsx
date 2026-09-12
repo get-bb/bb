@@ -33,7 +33,7 @@ describe("worktree inputs control", () => {
     const onChange = vi.fn();
     renderSlot(inputsSlot(), {
       projectId: "project-1",
-      hostId: "host-a",
+      target: { kind: "existing-host", hostId: "host-a" },
       value: null,
       onChange,
     });
@@ -48,7 +48,7 @@ describe("worktree inputs control", () => {
   it("binds bb's branch picker to the picked machine and project", () => {
     const slot = renderSlot(inputsSlot(), {
       projectId: "project-1",
-      hostId: "host-a",
+      target: { kind: "existing-host", hostId: "host-a" },
       value: { branch: { kind: "named", name: "release" } },
       onChange: vi.fn(),
     });
@@ -65,7 +65,7 @@ describe("worktree inputs control", () => {
     const onChange = vi.fn();
     const slot = renderSlot(inputsSlot(), {
       projectId: "project-1",
-      hostId: "host-a",
+      target: { kind: "existing-host", hostId: "host-a" },
       value: { branch: { kind: "default" } },
       onChange,
     });
@@ -82,7 +82,7 @@ describe("worktree inputs control", () => {
     const onChange = vi.fn();
     const slot = renderSlot(inputsSlot(), {
       projectId: "project-1",
-      hostId: "host-a",
+      target: { kind: "existing-host", hostId: "host-a" },
       value: { branch: { kind: "named", name: "release" } },
       onChange,
     });

@@ -694,6 +694,7 @@ describe("drawer software keyboard inset", () => {
     const visualViewport = {
       height,
       offsetTop: 0,
+      scale: 1,
       addEventListener: (type: string, listener: () => void) => {
         const set = listeners.get(type) ?? new Set<() => void>();
         set.add(listener);
@@ -766,6 +767,51 @@ describe("drawer software keyboard inset", () => {
         viewport.emit("resize");
         for (const frame of frames.splice(0)) frame(0);
       });
+      expect(panel.style.bottom).toBe("");
+      expect(panel.style.getPropertyValue("--bb-drawer-keyboard-inset")).toBe(
+        "",
+      );
+    } finally {
+      viewport.restore();
+    }
+  });
+
+  it("does not treat a zoomed and panned viewport as a keyboard", () => {
+    mockPointerCoarse(true);
+    Object.defineProperty(document.documentElement, "clientHeight", {
+      configurable: true,
+      value: 844,
+    });
+    const viewport = mockVisualViewport(844);
+    const frames: FrameRequestCallback[] = [];
+    vi.spyOn(window, "requestAnimationFrame").mockImplementation((callback) => {
+      frames.push(callback);
+      return frames.length;
+    });
+
+    try {
+      render(
+        <PersistentResponsiveDrawerShell
+          open={true}
+          onOpenChange={() => {}}
+          srLabel="Image preview"
+        >
+          <img src="/preview.png" alt="Preview" />
+        </PersistentResponsiveDrawerShell>,
+      );
+      const panel = document.querySelector<HTMLElement>(
+        "[data-persistent-drawer-content]",
+      ) as HTMLElement;
+
+      act(() => {
+        viewport.visualViewport.height = 422;
+        viewport.visualViewport.offsetTop = 140;
+        viewport.visualViewport.scale = 2;
+        viewport.emit("resize");
+        viewport.emit("scroll");
+        for (const frame of frames.splice(0)) frame(0);
+      });
+
       expect(panel.style.bottom).toBe("");
       expect(panel.style.getPropertyValue("--bb-drawer-keyboard-inset")).toBe(
         "",

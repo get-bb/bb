@@ -157,6 +157,7 @@ describe("resolveNewThreadProjectDefaultsState", () => {
 describe("resolveNewThreadSubmitDisabledReason", () => {
   const readyState = {
     environmentProviderInputsBlocker: null,
+    environmentSetupRequiredReason: null,
     isCopyingAttachments: false,
     isLoadingModels: false,
     isSubmitting: false,
@@ -170,6 +171,18 @@ describe("resolveNewThreadSubmitDisabledReason", () => {
     selectedThreadModel: "gpt-5.6-sol",
     submissionEnvironmentUnavailable: false,
   } satisfies ResolveNewThreadSubmitDisabledReasonArgs;
+
+  it("blocks the send while the selected environment needs setting up", () => {
+    expect(
+      resolveNewThreadSubmitDisabledReason({
+        ...readyState,
+        environmentSetupRequiredReason:
+          "Modal Sandbox is not configured: set tokenId, tokenSecret in the plugin's settings.",
+      }),
+    ).toBe(
+      "Modal Sandbox is not configured: set tokenId, tokenSecret in the plugin's settings.",
+    );
+  });
 
   it.each<
     [
@@ -275,9 +288,11 @@ function makeProjectSource(hostId = "host_1"): ProjectSource {
 
 function makeProjectProvider(id: string): SystemEnvironmentProvider {
   return {
+    machineProviderId: null,
     id,
     displayName: id,
-    icon: null,
+    description: "Prepare a workspace for this thread.",
+    icon: "Folder",
     logoUrl: null,
     pluginId: id,
     acceptsEmptyInputs: true,
@@ -298,9 +313,11 @@ function makeProjectlessProvider(
   projectless: boolean,
 ): SystemEnvironmentProvider {
   return {
+    machineProviderId: null,
     id,
     displayName: id,
-    icon: null,
+    description: "Prepare a workspace for this thread.",
+    icon: "Folder",
     logoUrl: null,
     pluginId: id,
     acceptsEmptyInputs: true,

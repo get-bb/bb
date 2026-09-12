@@ -75,6 +75,8 @@ afterEach(() => {
 function recordTurnFailedAnnouncements(): string[] {
   const announced: string[] = [];
   setPluginThreadEventEmitter({
+    emitThreadEvents: () => {},
+    emitTerminalInput: () => {},
     emitThreadCreated: () => {},
     emitThreadActive: () => {},
     emitThreadIdle: () => {},

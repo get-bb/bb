@@ -28,8 +28,12 @@ vi.mock("@/lib/sdk", () => ({
     hosts: {
       delete: vi.fn(),
       list: vi.fn(),
+      experimental_listProviders: vi.fn(),
       providerCliStatus: vi.fn(),
+      experimental_resume: vi.fn(),
+      experimental_retryCleanup: vi.fn(),
       retryUpdate: vi.fn(),
+      experimental_suspend: vi.fn(),
       update: vi.fn(),
     },
     providers: { list: vi.fn() },
@@ -123,6 +127,7 @@ function renderView() {
 }
 
 function stubSupportingFetches(): void {
+  vi.mocked(sdk.hosts.experimental_listProviders).mockResolvedValue([]);
   vi.mocked(sdk.hosts.providerCliStatus).mockResolvedValue(
     providerCliStatusResponse(),
   );
@@ -195,7 +200,7 @@ describe("MachineSettingsView", () => {
       screen
         .getByRole("heading", { name: /dev-vm/u })
         .querySelector("[data-icon]"),
-    ).toBeNull();
+    ).not.toBeNull();
     expect(
       screen
         .getByRole("heading", { name: "Machine information" })
@@ -357,6 +362,38 @@ describe("MachineSettingsView", () => {
     expect(
       screen.getByText("bb's primary machine can't be removed."),
     ).toBeDefined();
+  });
+
+  it("describes ephemeral compute and snapshot deletion in the danger zone", async () => {
+    vi.mocked(sdk.system.config).mockResolvedValue(systemConfig());
+    vi.mocked(sdk.hosts.list).mockResolvedValue([
+      host({ type: "ephemeral", machineProviderId: "modal-sandbox" }),
+    ]);
+    stubSupportingFetches();
+    vi.mocked(sdk.hosts.experimental_listProviders).mockResolvedValue([
+      {
+        id: "modal-sandbox",
+        displayName: "Modal Sandbox",
+        description: "Run a machine for development.",
+        icon: "Cloud",
+        logoUrl: null,
+        pluginId: "environment-modal-sandbox",
+        inputs: null,
+        acceptsEmptyInputs: true,
+        supportsSuspend: true,
+      },
+    ]);
+    renderView();
+
+    expect(
+      await screen.findByText(
+        "Revokes dev-vm's access to this server. The compute and its saved snapshots are deleted. Its environments remain as read-only history.",
+      ),
+    ).toBeDefined();
+    const heading = await screen.findByRole("heading", { name: "dev-vm" });
+    expect(heading.querySelector('[data-icon="Cloud"]')).not.toBeNull();
+    expect(heading.querySelector('[data-icon="Laptop"]')).toBeNull();
+    expect(screen.queryByText("Modal Sandbox")).toBeNull();
   });
 
   it("shows client-local identity only when several machines need disambiguation", async () => {

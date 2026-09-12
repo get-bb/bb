@@ -1,4 +1,5 @@
 import { startDesktopBrowserBroker } from "./desktop-browser-broker.js";
+import { MachineEnvironment } from "./machine-environment.js";
 import { CommandRouter } from "./command-router.js";
 import { createDaemon, type HostDaemon } from "./daemon.js";
 import {
@@ -47,16 +48,13 @@ import { runtimeErrorLogFields, summarizeError } from "./error-utils.js";
 import { ensureThreadStorageRoot } from "./thread-storage-root.js";
 import type { AgentRuntimeOptions } from "@bb/agent-runtime";
 import { createProtocolSelfUpdater } from "./protocol-self-update.js";
-import {
-  type HostType,
-  type ToolCallRequest,
-  type ToolCallResponse,
-} from "@bb/domain";
+import { type ToolCallRequest, type ToolCallResponse } from "@bb/domain";
 import {
   disposeParcelWatcherBackend,
   type HostWatcher,
 } from "@bb/host-watcher";
 import { PluginHostManager } from "./plugin-host-manager.js";
+import { writeMachineSuspensionMarker } from "./suspension-marker.js";
 
 interface SessionState {
   value: string | null;
@@ -106,15 +104,13 @@ interface CreateHostDaemonAppOptions {
   serverUrl: string;
   hostKey: string;
   bridgeBundleDir?: string;
-  hostType: HostType;
   hostId: string;
   hostName: string;
   instanceId: string;
   appUrl?: string;
   devAppPort?: number;
   logger: HostDaemonLogger;
-  machineCredential?: string;
-  connectMachineId?: string;
+  serverHeaders?: Record<string, string>;
   autoUpdate?: boolean;
   releaseLock: () => Promise<void>;
   localApiConfig: HostDaemonLocalApiConfig | null;
@@ -216,6 +212,10 @@ interface MaybeInvalidateSessionArgs {
 export async function createHostDaemonApp(
   options: CreateHostDaemonAppOptions,
 ): Promise<HostDaemonApp> {
+  const machineEnvironment = new MachineEnvironment(
+    process.env,
+    options.runtimeShellEnv ?? {},
+  );
   const threadStorageRootPath = await ensureThreadStorageRoot(options.dataDir);
   const dataDirSkillsRootPath = await ensureDataDirSkillsRootPath(
     options.dataDir,
@@ -288,7 +288,7 @@ export async function createHostDaemonApp(
     serverUrl: options.serverUrl,
     hostKey: options.hostKey,
     logger: options.logger,
-    machineCredential: options.machineCredential,
+    serverHeaders: options.serverHeaders,
     getSessionId: () => {
       if (!sessionState.value) {
         throw new Error("Server session is not open");
@@ -467,7 +467,7 @@ export async function createHostDaemonApp(
   const connectTunnel = new ConnectTunnelClient({
     serverUrl: options.serverUrl,
     hostName: options.hostName,
-    machineCredential: options.machineCredential,
+    machineCredential: options.serverHeaders?.["x-bb-connect-machine"],
     fetchFn: options.fetchFn,
     logger: options.logger,
     onIdentity: (identity) => {
@@ -496,6 +496,8 @@ export async function createHostDaemonApp(
     hostWatcher: options.hostWatcher,
     logger: options.logger,
     shellEnv: options.runtimeShellEnv,
+    applyMachineEnvironment: (shell) =>
+      machineEnvironment.shellEnvironment(shell),
     onEvent: ({ environmentId, event }) => {
       try {
         eventSink.emit({
@@ -809,18 +811,17 @@ export async function createHostDaemonApp(
   });
 
   let requestDaemonRestart = (): void => undefined;
+  let requestMachineShutdown = async (): Promise<void> => undefined;
   const connection = new ServerConnection({
     serverUrl: options.serverUrl,
     hostKey: options.hostKey,
     hostId: options.hostId,
     hostName: options.hostName,
-    hostType: options.hostType,
     dataDir: options.dataDir,
     instanceId: options.instanceId,
     localApiPort: options.localApiConfig?.port ?? null,
     logger: options.logger,
-    machineCredential: options.machineCredential,
-    connectMachineId: options.connectMachineId,
+    serverHeaders: options.serverHeaders,
     serverClient,
     protocolSelfUpdater: createProtocolSelfUpdater({
       dataDir: options.dataDir,
@@ -830,6 +831,9 @@ export async function createHostDaemonApp(
       serverUrl: options.serverUrl,
     }),
     onSelfUpdateInstalled: () => requestDaemonRestart(),
+    onMachineShutdown: () => requestMachineShutdown(),
+    onMachineEnvironment: (environment) =>
+      machineEnvironment.replace(environment.entries),
     createWebSocket: options.createWebSocket,
     getActiveThreads: () => runtimeManager.listActiveThreads(),
     getLoadedEnvironments: () => runtimeManager.listLoadedEnvironments(),
@@ -947,6 +951,7 @@ export async function createHostDaemonApp(
       await eventSink.flush();
       await eventSink.dispose();
       await connection.shutdown();
+      machineEnvironment.replace([]);
     },
     onStart: async () => {
       options.logger.info(
@@ -960,6 +965,11 @@ export async function createHostDaemonApp(
     void daemon.shutdown("self-update", 0).catch((error) => {
       options.logger.error({ err: error }, "Self-update shutdown failed");
     });
+  };
+  requestMachineShutdown = async () => {
+    await writeMachineSuspensionMarker(options.dataDir);
+    sendServerMessage({ type: "machine.shutdown-ack" });
+    await daemon.shutdown("machine-shutdown", 0);
   };
   connection.setSessionCloseHandler((reason) =>
     daemon.shutdown(`session-close:${reason}`, 0),

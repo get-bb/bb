@@ -17,6 +17,7 @@ import type {
 import { threadScope, turnScope } from "@bb/domain";
 import type {
   HostDaemonActiveThread,
+  HostDaemonContributedEnvEntry,
   HostDaemonEnvironmentChange,
   HostDaemonLoadedEnvironment,
   HostDaemonInjectedSkillSource,
@@ -142,6 +143,7 @@ export interface EnsureEnvironmentArgs {
   environmentId: string;
   injectedSkillSources?: readonly HostDaemonInjectedSkillSource[];
   setupScriptTimeoutMs?: number | null;
+  setupContributedEnv?: readonly HostDaemonContributedEnvEntry[];
   targetThreadId?: string;
   workspacePath?: string;
   provision?: ProvisionWorkspaceArgs;
@@ -175,6 +177,9 @@ export interface RuntimeManagerOptions {
   providerInstallationGateTtlMs?: number;
   providerMaintenanceIdleTimeoutMs?: number;
   shellEnv?: AgentRuntimeOptions["shellEnv"];
+  applyMachineEnvironment?: (
+    shell: NonNullable<AgentRuntimeOptions["shellEnv"]>,
+  ) => NonNullable<AgentRuntimeOptions["shellEnv"]>;
   onEvent?: (args: { environmentId: string; event: ThreadEvent }) => void;
   threadStorageRootPath?: string | null;
   onInjectedSkillsChanged?: (args: InjectedSkillsChangedNotification) => void;
@@ -556,7 +561,11 @@ export class RuntimeManager {
   }
 
   getShellEnv(): NonNullable<AgentRuntimeOptions["shellEnv"]> {
-    return { ...this.baseShellEnv };
+    return (
+      this.options.applyMachineEnvironment?.(this.baseShellEnv) ?? {
+        ...this.baseShellEnv,
+      }
+    );
   }
 
   async replaceBaseShellEnv(
@@ -1216,6 +1225,7 @@ export class RuntimeManager {
       await runSetupScript({
         workspacePath: provision.path,
         timeoutMs: args.setupScriptTimeoutMs,
+        contributedEnv: args.setupContributedEnv,
         shellPath: this.getShellEnv().PATH,
         signal: args.provisionSignal,
         onProgress: provision.onProgress,
