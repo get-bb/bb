@@ -2,7 +2,10 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import type { AgentRuntimeBridgeLaunch } from "@bb/agent-runtime";
 import { flattenPromptInputGroups } from "@bb/domain";
-import { COMPETING_TURN_ERROR_CODE, type HostDaemonCommandResult } from "@bb/host-daemon-contract";
+import {
+  COMPETING_TURN_ERROR_CODE,
+  type HostDaemonCommandResult,
+} from "@bb/host-daemon-contract";
 import type { RuntimeEntry } from "../runtime-manager.js";
 import {
   CommandDispatchError,

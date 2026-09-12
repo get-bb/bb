@@ -1000,7 +1000,7 @@ export async function prepareReadyThreadTurnCommand(
 export function settleThreadStopCommandResult(
   args: SettleThreadStopCommandResultArgs,
 ): CommandResultSideEffectsResult {
-  if (args.report.ok) {
+  if (args.report.ok && args.report.result.activeTurnRetained !== true) {
     settleDanglingBackgroundTasksForStoppedThreadInTransaction(args.deps, {
       threadId: args.command.threadId,
     });

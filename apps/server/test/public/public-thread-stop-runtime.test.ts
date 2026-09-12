@@ -29,7 +29,7 @@ import { withTestHarness } from "../helpers/test-app.js";
 import { applyLoggedThreadLifecycleEvent } from "../../src/services/threads/lifecycle-outcome.js";
 import { runQueuedMessageDispatch } from "../../src/services/threads/queued-message-dispatch.js";
 import {
-  requestActiveRuntimeThreadStopIfNeeded,
+  requestThreadStopForCurrentState,
   stopThreadForCurrentState,
 } from "../../src/services/threads/thread-lifecycle.js";
 
@@ -441,9 +441,9 @@ describe("thread runtime stop", () => {
         threadId: thread.id,
         turnId: "turn-stopped-by-request",
       });
-      requestActiveRuntimeThreadStopIfNeeded(
+      requestThreadStopForCurrentState(
         harness.deps,
-        { id: thread.id, status: "active" },
+        { ...thread, status: "active" },
         { hostId: environment.hostId, id: environment.id },
       );
       const dispatched = await waitForQueuedCommand(
@@ -534,6 +534,97 @@ describe("thread runtime stop", () => {
       const outcome = await settled;
       expect(outcome.ok).toBe(false);
       expect(getThread(harness.db, thread.id)?.status).toBe("stopping");
+    });
+  });
+
+  it("keeps background work running after a retained release and failed interrupt", async () => {
+    await withTestHarness(async (harness) => {
+      const { environment, thread } = seedThreadFixture(harness, {
+        thread: { status: "idle", visibility: "hidden" },
+      });
+      seedTurnStarted(harness.deps, {
+        environmentId: environment.id,
+        providerThreadId: "provider-retained",
+        threadId: thread.id,
+        turnId: "turn-retained",
+      });
+      seedStoredEvent(harness.deps, {
+        threadId: thread.id,
+        environmentId: environment.id,
+        sequence: 2,
+        type: "item/started",
+        scope: turnScope("turn-retained"),
+        providerThreadId: "provider-retained",
+        itemId: "task:retained-command",
+        itemKind: "backgroundTask",
+        data: {
+          providerThreadId: "provider-retained",
+          item: {
+            type: "backgroundTask",
+            id: "task:retained-command",
+            taskType: "local_bash",
+            description: "Running command",
+            status: "pending",
+            taskStatus: "running",
+            skipTranscript: false,
+          },
+        },
+      });
+      const responsePromise = harness.app.request(
+        `/api/v1/threads/${thread.id}/stop`,
+        {
+          method: "POST",
+        },
+      );
+      const release = await waitForQueuedCommand(
+        harness,
+        ({ command }) =>
+          command.type === "thread.stop" &&
+          command.threadId === thread.id &&
+          command.intent === "release",
+      );
+      await reportQueuedCommandSuccess(harness, release, {
+        providerCheckpointId: null,
+        activeTurnRetained: true,
+      });
+      const interrupt = await waitForQueuedCommand(
+        harness,
+        ({ command }) =>
+          command.type === "thread.stop" &&
+          command.threadId === thread.id &&
+          command.intent === "interrupt",
+      );
+      await reportQueuedCommandError(harness, interrupt, {
+        errorCode: "test_interrupt_failure",
+        errorMessage: "Test interrupt failure",
+      });
+      await responsePromise;
+      expect(
+        listEvents(harness.db, { threadId: thread.id }).filter(
+          (event) => event.type === "item/backgroundTask/completed",
+        ),
+      ).toHaveLength(0);
+      expect(getThread(harness.db, thread.id)?.status).toBe("stopping");
+      const retry = harness.app.request(`/api/v1/threads/${thread.id}/stop`, {
+        method: "POST",
+      });
+      const retriedInterrupt = await waitForQueuedCommand(
+        harness,
+        ({ command }) =>
+          command.type === "thread.stop" &&
+          command.threadId === thread.id &&
+          command.intent === "interrupt",
+      );
+      await reportQueuedCommandSuccess(harness, retriedInterrupt, {
+        providerCheckpointId: null,
+      });
+      expect((await retry).status).toBe(200);
+      expect(getThread(harness.db, thread.id)?.status).toBe("idle");
+      expect(
+        listEvents(harness.db, { threadId: thread.id }).filter(
+          (event) => event.type === "item/backgroundTask/completed",
+        ),
+      ).toHaveLength(1);
     });
   });
 
