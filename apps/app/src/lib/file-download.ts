@@ -82,7 +82,12 @@ export function downloadFileForOpenRequest(
 ): boolean {
   const url = buildFileDownloadUrl(args);
   const path = getFileOpenRequestPath(args.request);
-  if (url === null || path === null) return false;
+  if (url === null || path === null) {
+    appToast.error("Download unavailable", {
+      description: "This file location does not support downloads.",
+    });
+    return false;
+  }
 
   const filename = path.split(/[\\/]/u).at(-1) ?? "download";
   void fetch(url)
