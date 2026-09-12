@@ -11,12 +11,12 @@ import {
   type QueuedMessageWaitHolder,
   type ThreadQueuedMessage,
   type ThreadStatus,
+  validatePluginMetadata,
 } from "@bb/domain";
 import {
   DEFAULT_TURN_RETRY_REASON,
   threadTabsResponseSchema,
 } from "@bb/server-contract";
-import { validatePluginMetadata } from "@bb/domain";
 import type {
   CreateQueuedMessageRequest,
   CreateThreadRequest,
@@ -863,29 +863,6 @@ export function createThreadsArea(args: CreateSdkAreaArgs): ThreadsArea {
         ...signalRequestArgs(input.signal),
       ),
     );
-  const getPluginMetadata = (input: ThreadPluginMetadataArgs) =>
-    transport.readJson(
-      transport.api.v1.threads[":id"]["plugin-metadata"].$get(
-        { param: { id: input.threadId }, query: { pluginId: input.pluginId } },
-        ...signalRequestArgs(input.signal),
-      ),
-    );
-  const updatePluginMetadata = (input: ThreadPluginMetadataUpdateArgs) =>
-    transport.readJson(
-      transport.api.v1.threads[":id"]["plugin-metadata"].$patch(
-        {
-          param: { id: input.threadId },
-          json: {
-            pluginId: input.pluginId,
-            ...(input.set === undefined
-              ? {}
-              : { set: validatePluginMetadata(input.set) }),
-            ...(input.remove === undefined ? {} : { remove: input.remove }),
-          },
-        },
-        ...signalRequestArgs(input.signal),
-      ),
-    );
   const events: ThreadEventsArea = {
     async list(input) {
       return transport.readJson(
@@ -1174,8 +1151,34 @@ export function createThreadsArea(args: CreateSdkAreaArgs): ThreadsArea {
       );
     },
     get: getThread,
-    getPluginMetadata,
-    updatePluginMetadata,
+    async getPluginMetadata(input) {
+      return transport.readJson(
+        transport.api.v1.threads[":id"]["plugin-metadata"].$get(
+          {
+            param: { id: input.threadId },
+            query: { pluginId: input.pluginId },
+          },
+          ...signalRequestArgs(input.signal),
+        ),
+      );
+    },
+    async updatePluginMetadata(input) {
+      return transport.readJson(
+        transport.api.v1.threads[":id"]["plugin-metadata"].$patch(
+          {
+            param: { id: input.threadId },
+            json: {
+              pluginId: input.pluginId,
+              ...(input.set === undefined
+                ? {}
+                : { set: validatePluginMetadata(input.set) }),
+              ...(input.remove === undefined ? {} : { remove: input.remove }),
+            },
+          },
+          ...signalRequestArgs(input.signal),
+        ),
+      );
+    },
     queue,
     interactions,
     async list(input) {

@@ -229,6 +229,7 @@ import type {
   QueuedMessageListQuery,
   ThreadQueuedMessageListResponse,
   ThreadResponse,
+  ThreadPluginMetadataQuery,
   ThreadPluginMetadataResponse,
   ThreadSearchQuery,
   ThreadSearchResponse,
@@ -252,6 +253,7 @@ import type {
   UpdateHostPermissionCeilingRequest,
   UpdateProjectRequest,
   UpdateProjectSourceRequest,
+  UpdateThreadPluginMetadataRequest,
   UpdateThreadRequest,
   UpdateQueuedMessageRequest,
   UploadedPromptAttachment,
@@ -1194,19 +1196,17 @@ export const publicApiRoutes = {
       get: defineRoute({
         path: "/threads/:id/plugin-metadata",
         method: "get",
-        request: queryRequest<
-          PathId,
-          import("./api/threads.js").ThreadPluginMetadataQuery
-        >(threadPluginMetadataQuerySchema),
+        request: queryRequest<PathId, ThreadPluginMetadataQuery>(
+          threadPluginMetadataQuerySchema,
+        ),
         response: jsonResponse<ThreadPluginMetadataResponse>(),
       }),
       update: defineRoute({
         path: "/threads/:id/plugin-metadata",
         method: "patch",
-        request: jsonRequest<
-          PathId,
-          import("./api/threads.js").UpdateThreadPluginMetadataRequest
-        >(updateThreadPluginMetadataRequestSchema),
+        request: jsonRequest<PathId, UpdateThreadPluginMetadataRequest>(
+          updateThreadPluginMetadataRequestSchema,
+        ),
         response: jsonResponse<ThreadPluginMetadataResponse>(),
       }),
     },

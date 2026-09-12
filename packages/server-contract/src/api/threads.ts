@@ -5,6 +5,7 @@ import {
   environmentSchema,
   hostSchema,
   jsonValueSchema,
+  pluginIdSchema,
   pluginMetadataSchema,
   pendingInteractionResolutionSchema,
   pendingInteractionSchema,
@@ -147,6 +148,18 @@ export const createThreadRequestSchema = z
         path: ["pluginMetadata"],
       });
     }
+    if (
+      value.pluginMetadata !== undefined &&
+      value.originPluginId !== undefined &&
+      !pluginIdSchema.safeParse(value.originPluginId).success
+    ) {
+      ctx.addIssue({
+        code: "custom",
+        message:
+          "pluginMetadata requires originPluginId to be a valid plugin id",
+        path: ["originPluginId"],
+      });
+    }
     if (value.originKind === null && value.input.length === 0) {
       ctx.addIssue({
         code: "custom",
@@ -203,6 +216,18 @@ export const forkThreadRequestSchema = z
         code: "custom",
         message: 'pluginMetadata requires origin "plugin"',
         path: ["pluginMetadata"],
+      });
+    }
+    if (
+      value.pluginMetadata !== undefined &&
+      value.originPluginId !== undefined &&
+      !pluginIdSchema.safeParse(value.originPluginId).success
+    ) {
+      ctx.addIssue({
+        code: "custom",
+        message:
+          "pluginMetadata requires originPluginId to be a valid plugin id",
+        path: ["originPluginId"],
       });
     }
   });
@@ -494,41 +519,34 @@ export const threadGetQuerySchema = z.object({
 });
 export type ThreadGetQuery = z.infer<typeof threadGetQuerySchema>;
 
-export const threadPluginMetadataResponseSchema = pluginMetadataSchema;
-export type ThreadPluginMetadataResponse = z.infer<
-  typeof threadPluginMetadataResponseSchema
->;
+export type ThreadPluginMetadataResponse = z.infer<typeof pluginMetadataSchema>;
 export const threadPluginMetadataQuerySchema = z
-  .object({ pluginId: z.string().min(1) })
+  .object({ pluginId: pluginIdSchema })
   .strict();
 export type ThreadPluginMetadataQuery = z.infer<
   typeof threadPluginMetadataQuerySchema
 >;
 export const updateThreadPluginMetadataRequestSchema = z
   .object({
-    pluginId: z.string().min(1),
-    set: z.record(z.string(), jsonValueSchema).optional(),
+    pluginId: pluginIdSchema,
+    set: pluginMetadataSchema.optional(),
     remove: z.array(z.string()).optional(),
   })
   .strict()
-  .superRefine((value, ctx) => {
-    if (value.remove && new Set(value.remove).size !== value.remove.length) {
+  .superRefine(({ set, remove }, ctx) => {
+    if (remove && new Set(remove).size !== remove.length) {
       ctx.addIssue({
         code: "custom",
         message: "remove contains duplicate keys",
         path: ["remove"],
       });
     }
-    if (value.set && value.remove) {
-      const overlap = value.remove.filter((key) =>
-        Object.hasOwn(value.set!, key),
-      );
-      if (overlap.length)
-        ctx.addIssue({
-          code: "custom",
-          message: "set and remove overlap",
-          path: ["remove"],
-        });
+    if (set && remove?.some((key) => Object.hasOwn(set, key))) {
+      ctx.addIssue({
+        code: "custom",
+        message: "set and remove overlap",
+        path: ["remove"],
+      });
     }
   });
 export type UpdateThreadPluginMetadataRequest = z.infer<

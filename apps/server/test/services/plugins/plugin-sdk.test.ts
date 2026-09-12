@@ -74,6 +74,39 @@ function requireApi(service: PluginService, pluginId: string): BbPluginApi {
   return api;
 }
 
+function agentConfigurationContext(
+  threadId: string,
+): Parameters<PluginService["resolveAgentConfiguration"]>[0]["context"] {
+  return {
+    thread: {
+      id: threadId,
+      title: null,
+      parentThreadId: null,
+      sourceThreadId: null,
+    },
+    project: {
+      id: "project-configure",
+      kind: "standard",
+      name: "Configure fixture",
+      gitRemoteUrl: null,
+    },
+    environment: {
+      id: "environment-configure",
+      name: null,
+      path: null,
+      branchName: null,
+      workspaceProvisionType: null,
+    },
+    host: { id: "host-configure", name: "Configure host" },
+    provider: {
+      id: "codex",
+      model: "gpt-5",
+      capabilities: { supportsNativeUserQuestion: false },
+    },
+    origin: { kind: null, pluginId: null },
+  };
+}
+
 describe("plugin bb.sdk bind gate", () => {
   let db: DbConnection;
   let workDir: string;
@@ -165,7 +198,16 @@ describe("plugin bb.sdk bind gate", () => {
     service.bindSdk({ baseUrl: "http://127.0.0.1:9" });
     const api = requireApi(service, "metadata-boundary");
     const fetchSpy = vi.spyOn(globalThis, "fetch");
-    const invalidValues: unknown[] = [Number.NaN, { missing: undefined }];
+    const invalidValues: Array<{
+      value: unknown;
+      error: Record<string, unknown>;
+    }> = [
+      {
+        value: Number.NaN,
+        error: { message: "pluginMetadata must be a plain JSON object" },
+      },
+      { value: { missing: undefined }, error: { name: "ZodError" } },
+    ];
     const operations = [
       (pluginMetadata: unknown) =>
         api.sdk.threads.spawn({
@@ -179,11 +221,18 @@ describe("plugin bb.sdk bind gate", () => {
           sourceThreadId: "source-1",
           pluginMetadata,
         } as never),
+      (set: unknown) =>
+        api.sdk.threads.updatePluginMetadata({
+          threadId: "thread-1",
+          set,
+        } as never),
     ];
 
     for (const operation of operations) {
       for (const invalidValue of invalidValues) {
-        await expect(operation(invalidValue)).rejects.toThrow();
+        await expect(operation(invalidValue.value)).rejects.toMatchObject(
+          invalidValue.error,
+        );
       }
     }
     expect(fetchSpy).not.toHaveBeenCalled();
@@ -624,16 +673,41 @@ describe("plugin bb.sdk against a running server", () => {
       await expect(
         api.sdk.threads.updatePluginMetadata({
           threadId: thread.id,
+          set: { toJSON: "data", nested: { toJSON: 1 } },
+        }),
+      ).resolves.toEqual({ toJSON: "data", nested: { toJSON: 1 } });
+      await expect(
+        api.sdk.threads.getPluginMetadata({ threadId: thread.id }),
+      ).resolves.toEqual({ toJSON: "data", nested: { toJSON: 1 } });
+      await expect(
+        api.sdk.threads.updatePluginMetadata({
+          threadId: thread.id,
+          remove: ["toJSON", "nested"],
+        }),
+      ).resolves.toEqual({});
+      await expect(
+        api.sdk.threads.updatePluginMetadata({
+          threadId: thread.id,
           set: { x: 1 },
           remove: ["x"],
         }),
-      ).rejects.toThrow();
+      ).rejects.toMatchObject({
+        name: "BbHttpError",
+        status: 400,
+        code: "invalid_request",
+        message: expect.stringContaining("set and remove overlap"),
+      });
       await expect(
         api.sdk.threads.updatePluginMetadata({
           threadId: thread.id,
           remove: ["x", "x"],
         }),
-      ).rejects.toThrow();
+      ).rejects.toMatchObject({
+        name: "BbHttpError",
+        status: 400,
+        code: "invalid_request",
+        message: expect.stringContaining("remove contains duplicate keys"),
+      });
       const nearLimit = "x".repeat(262_100);
       await expect(
         api.sdk.threads.updatePluginMetadata({
@@ -646,7 +720,11 @@ describe("plugin bb.sdk against a running server", () => {
           threadId: thread.id,
           set: { smallAdditionalValue: "valid" },
         }),
-      ).rejects.toThrow();
+      ).rejects.toMatchObject({
+        name: "BbHttpError",
+        status: 413,
+        code: "invalid_request",
+      });
       await expect(
         api.sdk.threads.getPluginMetadata({ threadId: thread.id }),
       ).resolves.toEqual({ stable: true, nearLimit });
@@ -688,7 +766,11 @@ describe("plugin bb.sdk against a running server", () => {
       markThreadDeleted(server.db, server.deps.hub, { threadId: other.id });
       await expect(
         api.sdk.threads.getPluginMetadata({ threadId: other.id }),
-      ).rejects.toThrow();
+      ).rejects.toMatchObject({
+        name: "BbHttpError",
+        status: 404,
+        code: "thread_not_found",
+      });
     } finally {
       await server.pluginService.stop();
       await rm(workDir, { recursive: true, force: true });
@@ -701,6 +783,14 @@ describe("plugin bb.sdk against a running server", () => {
     const workDir = await mkdtemp(
       join(tmpdir(), "bb-plugin-metadata-configure-"),
     );
+    const observationGlobal = globalThis as typeof globalThis & {
+      __bbMetadataSeen?: Record<string, unknown>[];
+    };
+    const takeObservations = () => {
+      const observations = observationGlobal.__bbMetadataSeen ?? [];
+      delete observationGlobal.__bbMetadataSeen;
+      return observations;
+    };
     try {
       const { host } = seedHostSession(server.deps);
       const { project } = seedProjectWithSource(server.deps, {
@@ -717,19 +807,42 @@ describe("plugin bb.sdk against a running server", () => {
         providerId: "codex",
         status: "active",
       });
-      const seen: Record<string, unknown>[] = [];
+      const context = agentConfigurationContext(thread.id);
       const make = (name: string) =>
         writePlugin(workDir, {
           name: `bb-plugin-${name}`,
-          serverSource: `export default function plugin(bb) { bb.agents.configure((context) => { const first = Object.values(context.pluginMetadata)[0]; globalThis.__bbMetadataSeen = globalThis.__bbMetadataSeen || []; globalThis.__bbMetadataSeen.push({ plugin: "${name}", metadata: context.pluginMetadata, frozen: Object.isFrozen(context.pluginMetadata), nestedFrozen: first === undefined || first === null || typeof first !== "object" || Object.isFrozen(first) }); return { tools: [], skills: [] }; }); }`,
+          serverSource: `
+            function deepFrozen(value) {
+              return value === null || typeof value !== "object" || (Object.isFrozen(value) && Object.values(value).every(deepFrozen));
+            }
+            export default function plugin(bb) {
+              bb.agents.configure((context) => {
+                globalThis.__bbMetadataSeen = globalThis.__bbMetadataSeen || [];
+                globalThis.__bbMetadataSeen.push({ plugin: "${name}", metadata: context.pluginMetadata, deepFrozen: deepFrozen(context.pluginMetadata) });
+                return { tools: [], skills: [] };
+              });
+            }
+          `,
         });
       await server.pluginService.installPath(await make("alpha"));
       await server.pluginService.installPath(await make("beta"));
       await server.pluginService.installPath(await make("gamma"));
+      await server.pluginService.installPath(
+        await writePlugin(workDir, {
+          name: "bb-plugin-delta",
+          serverSource: `export default function plugin() {}`,
+        }),
+      );
+      const alphaMetadata = {
+        alpha: {
+          own: true,
+          levels: { deeper: { items: [{ leaf: "value" }, ["nested"]] } },
+        },
+      };
       insertThreadPluginMetadata(server.db, {
         threadId: thread.id,
         pluginId: "alpha",
-        metadata: { alpha: { own: true } },
+        metadata: alphaMetadata,
       });
       insertThreadPluginMetadata(server.db, {
         threadId: thread.id,
@@ -737,46 +850,22 @@ describe("plugin bb.sdk against a running server", () => {
         metadata: { beta: { own: true } },
       });
       const result = await server.pluginService.resolveAgentConfiguration({
-        context: { pluginMetadata: {}, thread: { id: thread.id } } as never,
+        context,
         skillIdsByPlugin: new Map(),
       });
       expect(result.tools).toEqual([]);
-      const observations =
-        (
-          globalThis as typeof globalThis & {
-            __bbMetadataSeen?: Record<string, unknown>[];
-          }
-        ).__bbMetadataSeen ?? [];
-      seen.push(...observations);
-      expect(seen).toEqual(
-        expect.arrayContaining([
-          expect.objectContaining({
-            plugin: "alpha",
-            metadata: { alpha: { own: true } },
-            frozen: true,
-            nestedFrozen: true,
-          }),
-          expect.objectContaining({
-            plugin: "beta",
-            metadata: { beta: { own: true } },
-            frozen: true,
-            nestedFrozen: true,
-          }),
-          expect.objectContaining({
-            plugin: "gamma",
-            metadata: {},
-            frozen: true,
-            nestedFrozen: true,
-          }),
-        ]),
-      );
-      const activeTurnSnapshot = seen.find(
-        (observation) => observation.plugin === "alpha",
-      )?.metadata;
-      expect(activeTurnSnapshot).toEqual({ alpha: { own: true } });
+      const seen = takeObservations();
+      expect(seen).toEqual([
+        { plugin: "alpha", metadata: alphaMetadata, deepFrozen: true },
+        {
+          plugin: "beta",
+          metadata: { beta: { own: true } },
+          deepFrozen: true,
+        },
+        { plugin: "gamma", metadata: {}, deepFrozen: true },
+      ]);
+      const activeTurnSnapshot = seen[0]?.metadata;
 
-      delete (globalThis as typeof globalThis & { __bbMetadataSeen?: unknown })
-        .__bbMetadataSeen;
       const alphaApi = requireApi(server.pluginService, "alpha");
       await expect(
         alphaApi.sdk.threads.updatePluginMetadata({
@@ -784,71 +873,151 @@ describe("plugin bb.sdk against a running server", () => {
           set: { alpha: { own: false }, updated: true },
         }),
       ).resolves.toEqual({ alpha: { own: false }, updated: true });
-      expect(
-        (globalThis as typeof globalThis & { __bbMetadataSeen?: unknown })
-          .__bbMetadataSeen,
-      ).toBeUndefined();
+      expect(observationGlobal.__bbMetadataSeen).toBeUndefined();
       expect(getThread(server.db, thread.id)?.status).toBe("active");
-      expect(activeTurnSnapshot).toEqual({ alpha: { own: true } });
+      expect(activeTurnSnapshot).toEqual(alphaMetadata);
 
       await server.pluginService.resolveAgentConfiguration({
-        context: { pluginMetadata: {}, thread: { id: thread.id } } as never,
+        context,
         skillIdsByPlugin: new Map(),
       });
-      const afterUpdate =
-        (
-          globalThis as typeof globalThis & {
-            __bbMetadataSeen?: Record<string, unknown>[];
-          }
-        ).__bbMetadataSeen ?? [];
-      expect(afterUpdate).toEqual(
+      expect(takeObservations()).toEqual(
         expect.arrayContaining([
-          expect.objectContaining({
+          {
             plugin: "alpha",
             metadata: { alpha: { own: false }, updated: true },
-            frozen: true,
-            nestedFrozen: true,
-          }),
+            deepFrozen: true,
+          },
         ]),
       );
 
-      server.db.$client
-        .prepare(
-          "UPDATE thread_plugin_metadata SET metadata_json = ? WHERE thread_id = ? AND plugin_id = ?",
-        )
-        .run("not-json", thread.id, "alpha");
+      const secretMarker = "sk-live-SECRET-token-value";
+      const writeCorruptRow = server.db.$client.prepare(
+        "INSERT INTO thread_plugin_metadata (thread_id, plugin_id, metadata_json) VALUES (?, ?, ?) ON CONFLICT (thread_id, plugin_id) DO UPDATE SET metadata_json = excluded.metadata_json",
+      );
+      for (const pluginId of ["alpha", "delta", "not-loaded"]) {
+        writeCorruptRow.run(thread.id, pluginId, secretMarker);
+      }
       const warn = vi.spyOn(server.deps.logger, "warn");
-      delete (globalThis as typeof globalThis & { __bbMetadataSeen?: unknown })
-        .__bbMetadataSeen;
-      await server.pluginService.resolveAgentConfiguration({
-        context: { pluginMetadata: {}, thread: { id: thread.id } } as never,
-        skillIdsByPlugin: new Map(),
-      });
-      const afterCorruption =
-        (
-          globalThis as typeof globalThis & {
-            __bbMetadataSeen?: Record<string, unknown>[];
-          }
-        ).__bbMetadataSeen ?? [];
-      expect(afterCorruption).toEqual(
-        expect.arrayContaining([
-          expect.objectContaining({ plugin: "alpha", metadata: {} }),
-          expect.objectContaining({
+      try {
+        const afterCorruption =
+          await server.pluginService.resolveAgentConfiguration({
+            context,
+            skillIdsByPlugin: new Map(),
+          });
+        expect(afterCorruption).toEqual(result);
+        expect(takeObservations()).toEqual([
+          { plugin: "alpha", metadata: {}, deepFrozen: true },
+          {
             plugin: "beta",
             metadata: { beta: { own: true } },
-            nestedFrozen: true,
-          }),
-          expect.objectContaining({ plugin: "gamma", metadata: {} }),
-        ]),
-      );
-      expect(warn).toHaveBeenCalledWith(
-        expect.stringContaining(
-          `Ignoring corrupt plugin metadata for thread ${thread.id}, plugin alpha`,
-        ),
-      );
+            deepFrozen: true,
+          },
+          { plugin: "gamma", metadata: {}, deepFrozen: true },
+        ]);
+        expect(warn.mock.calls).toEqual([
+          [
+            `Ignoring corrupt plugin metadata for thread ${thread.id}, plugin alpha`,
+          ],
+        ]);
+        expect(JSON.stringify(warn.mock.calls)).not.toContain("sk-live");
+      } finally {
+        warn.mockRestore();
+      }
+
+      await expect(
+        alphaApi.sdk.threads.getPluginMetadata({ threadId: thread.id }),
+      ).resolves.toEqual({});
+      await expect(
+        alphaApi.sdk.threads.updatePluginMetadata({
+          threadId: thread.id,
+          set: { repaired: true },
+        }),
+      ).resolves.toEqual({ repaired: true });
     } finally {
-      delete (globalThis as typeof globalThis & { __bbMetadataSeen?: unknown })
-        .__bbMetadataSeen;
+      delete observationGlobal.__bbMetadataSeen;
+      await server.pluginService.stop();
+      await rm(workDir, { recursive: true, force: true });
+      await server.close();
+    }
+  });
+
+  it("defers a configure provider registered during a pass to the next pass with its stored metadata", async () => {
+    const server = await startTestServer();
+    const workDir = await mkdtemp(
+      join(tmpdir(), "bb-plugin-metadata-late-configure-"),
+    );
+    const lateGlobal = globalThis as typeof globalThis & {
+      __bbLateConfigureSeen?: unknown[];
+      __bbRegisterLateConfigure?: () => void;
+    };
+    try {
+      const { host } = seedHostSession(server.deps);
+      const { project } = seedProjectWithSource(server.deps, {
+        hostId: host.id,
+      });
+      const environment = seedEnvironment(server.deps, {
+        hostId: host.id,
+        projectId: project.id,
+      });
+      const thread = createThread(server.db, server.deps.hub, {
+        projectId: project.id,
+        environmentId: environment.id,
+        providerId: "codex",
+        status: "idle",
+      });
+      await server.pluginService.installPath(
+        await writePlugin(workDir, {
+          name: "bb-plugin-aaa-trigger",
+          serverSource: `
+            export default function plugin(bb) {
+              bb.agents.configure(() => {
+                Promise.resolve().then(() => globalThis.__bbRegisterLateConfigure?.());
+                return { tools: [], skills: [] };
+              });
+            }
+          `,
+        }),
+      );
+      await server.pluginService.installPath(
+        await writePlugin(workDir, {
+          name: "bb-plugin-bbb-late",
+          serverSource: `
+            export default function plugin(bb) {
+              globalThis.__bbRegisterLateConfigure = () => {
+                delete globalThis.__bbRegisterLateConfigure;
+                bb.agents.configure((context) => {
+                  globalThis.__bbLateConfigureSeen = globalThis.__bbLateConfigureSeen || [];
+                  globalThis.__bbLateConfigureSeen.push(context.pluginMetadata);
+                  return { tools: [], skills: [] };
+                });
+              };
+            }
+          `,
+        }),
+      );
+      insertThreadPluginMetadata(server.db, {
+        threadId: thread.id,
+        pluginId: "bbb-late",
+        metadata: { own: true },
+      });
+      const context = agentConfigurationContext(thread.id);
+
+      await server.pluginService.resolveAgentConfiguration({
+        context,
+        skillIdsByPlugin: new Map(),
+      });
+      expect(lateGlobal.__bbRegisterLateConfigure).toBeUndefined();
+      expect(lateGlobal.__bbLateConfigureSeen).toBeUndefined();
+
+      await server.pluginService.resolveAgentConfiguration({
+        context,
+        skillIdsByPlugin: new Map(),
+      });
+      expect(lateGlobal.__bbLateConfigureSeen).toEqual([{ own: true }]);
+    } finally {
+      delete lateGlobal.__bbLateConfigureSeen;
+      delete lateGlobal.__bbRegisterLateConfigure;
       await server.pluginService.stop();
       await rm(workDir, { recursive: true, force: true });
       await server.close();

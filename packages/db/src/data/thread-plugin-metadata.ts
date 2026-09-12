@@ -1,104 +1,129 @@
 import { and, eq, inArray } from "drizzle-orm";
-import type { JsonObject, JsonValue } from "@bb/domain";
-import { validatePluginMetadata } from "@bb/domain";
-import type { DbConnection, DbQueryConnection, DbTransaction } from "../connection.js";
+import {
+  exceedsPluginMetadataLimit,
+  parsePersistedPluginMetadata,
+  type JsonObject,
+} from "@bb/domain";
+import type {
+  DbConnection,
+  DbQueryConnection,
+  DbTransaction,
+} from "../connection.js";
 import { threadPluginMetadata } from "../schema.js";
-
-type WriteConnection = DbConnection | DbTransaction;
-
-export interface ThreadPluginMetadataRecord {
-  threadId: string;
-  pluginId: string;
-  metadata: JsonObject;
-}
 
 export interface ThreadPluginMetadataPatch {
   threadId: string;
   pluginId: string;
-  set?: Record<string, JsonValue>;
-  remove?: string[];
+  set: JsonObject;
+  remove: readonly string[];
 }
 
-function parsePersistedMetadata(value: string): JsonObject {
-  try {
-    return validatePluginMetadata(JSON.parse(value));
-  } catch (error) {
-    throw new Error("invalid persisted thread plugin metadata", { cause: error });
-  }
+export interface ThreadPluginMetadataRead {
+  metadata: JsonObject;
+  corrupt: boolean;
 }
 
-function toRecord(row: typeof threadPluginMetadata.$inferSelect): ThreadPluginMetadataRecord {
-  return { threadId: row.threadId, pluginId: row.pluginId, metadata: parsePersistedMetadata(row.metadataJson) };
+export type ThreadPluginMetadataPatchResult =
+  | { ok: true; metadata: JsonObject; replacedCorrupt: boolean }
+  | { ok: false; reason: "too_large" };
+
+function namespaceWhere(threadId: string, pluginId: string) {
+  return and(
+    eq(threadPluginMetadata.threadId, threadId),
+    eq(threadPluginMetadata.pluginId, pluginId),
+  );
 }
 
-export function getThreadPluginMetadataRow(db: DbQueryConnection, threadId: string, pluginId: string): ThreadPluginMetadataRecord | null {
-  const row = db.select().from(threadPluginMetadata).where(and(eq(threadPluginMetadata.threadId, threadId), eq(threadPluginMetadata.pluginId, pluginId))).get();
-  return row === undefined ? null : toRecord(row);
-}
-
-/** Returns the namespace, using an empty object for an absent namespace. */
-export function getThreadPluginMetadata(db: DbQueryConnection, threadId: string, pluginId: string): JsonObject {
-  return getThreadPluginMetadataRow(db, threadId, pluginId)?.metadata ?? {};
-}
-
-export function listThreadPluginMetadataRows(db: DbQueryConnection, threadId: string): ThreadPluginMetadataRecord[] {
-  return db.select().from(threadPluginMetadata).where(eq(threadPluginMetadata.threadId, threadId)).all().map(toRecord);
-}
-
-export function listThreadPluginMetadata(db: DbQueryConnection, threadId: string): Record<string, JsonObject> {
-  return Object.fromEntries(listThreadPluginMetadataRows(db, threadId).map((row) => [row.pluginId, row.metadata]));
-}
-
-export interface PersistedThreadPluginMetadataRecord {
-  threadId: string;
-  pluginId: string;
-  metadataJson: string;
-}
-
-/** Returns raw rows so callers can isolate corrupt persisted namespaces. */
-export function listPersistedThreadPluginMetadataByThreadIds(
+export function getThreadPluginMetadata(
   db: DbQueryConnection,
-  threadIds: readonly string[],
-): PersistedThreadPluginMetadataRecord[] {
-  if (threadIds.length === 0) return [];
-  return db
-    .select()
+  threadId: string,
+  pluginId: string,
+): ThreadPluginMetadataRead {
+  const row = db
+    .select({ metadataJson: threadPluginMetadata.metadataJson })
     .from(threadPluginMetadata)
-    .where(inArray(threadPluginMetadata.threadId, [...threadIds]))
+    .where(namespaceWhere(threadId, pluginId))
+    .get();
+  if (row === undefined) return { metadata: {}, corrupt: false };
+  const metadata = parsePersistedPluginMetadata(row.metadataJson);
+  return metadata === undefined
+    ? { metadata: {}, corrupt: true }
+    : { metadata, corrupt: false };
+}
+
+export function listThreadPluginMetadataRows(
+  db: DbQueryConnection,
+  threadId: string,
+  pluginIds: readonly string[],
+): Array<{ pluginId: string; metadataJson: string }> {
+  if (pluginIds.length === 0) return [];
+  return db
+    .select({
+      pluginId: threadPluginMetadata.pluginId,
+      metadataJson: threadPluginMetadata.metadataJson,
+    })
+    .from(threadPluginMetadata)
+    .where(
+      and(
+        eq(threadPluginMetadata.threadId, threadId),
+        inArray(threadPluginMetadata.pluginId, [...pluginIds]),
+      ),
+    )
     .all();
 }
 
-export function insertThreadPluginMetadata(db: WriteConnection, input: { threadId: string; pluginId: string; metadata: JsonObject }): ThreadPluginMetadataRecord {
-  const metadata = validatePluginMetadata(input.metadata);
-  db.insert(threadPluginMetadata).values({ threadId: input.threadId, pluginId: input.pluginId, metadataJson: JSON.stringify(metadata) }).run();
-  return { threadId: input.threadId, pluginId: input.pluginId, metadata };
+export function insertThreadPluginMetadata(
+  db: DbConnection | DbTransaction,
+  input: { threadId: string; pluginId: string; metadata: JsonObject },
+): void {
+  db.insert(threadPluginMetadata)
+    .values({
+      threadId: input.threadId,
+      pluginId: input.pluginId,
+      metadataJson: JSON.stringify(input.metadata),
+    })
+    .run();
 }
 
-export function patchThreadPluginMetadata(db: DbConnection, input: ThreadPluginMetadataPatch): JsonObject {
-  return db.transaction((tx) => patchThreadPluginMetadataInTransaction(tx, input), { behavior: "immediate" });
-}
-
-export function patchThreadPluginMetadataInTransaction(db: DbTransaction, input: ThreadPluginMetadataPatch): JsonObject {
-  // Validate the supplied set independently, before reading or mutating the row.
-  const set = input.set === undefined ? {} : validatePluginMetadata(input.set);
-  const remove = input.remove ?? [];
-  if (!Array.isArray(remove) || remove.some((key) => typeof key !== "string")) {
-    throw new Error("metadata remove must be an array of strings");
-  }
-  if (new Set(remove).size !== remove.length) {
-    throw new Error("metadata remove contains duplicate keys");
-  }
-  if (remove.some((key) => Object.hasOwn(set, key))) {
-    throw new Error("metadata set and remove overlap");
-  }
-  const existing = getThreadPluginMetadataRow(db, input.threadId, input.pluginId);
-  const merged: JsonObject = { ...(existing?.metadata ?? {}), ...set };
-  for (const key of remove) delete merged[key];
-  const metadata = validatePluginMetadata(merged);
-  if (Object.keys(metadata).length === 0) {
-    db.delete(threadPluginMetadata).where(and(eq(threadPluginMetadata.threadId, input.threadId), eq(threadPluginMetadata.pluginId, input.pluginId))).run();
-    return {};
-  }
-  db.insert(threadPluginMetadata).values({ threadId: input.threadId, pluginId: input.pluginId, metadataJson: JSON.stringify(metadata) }).onConflictDoUpdate({ target: [threadPluginMetadata.threadId, threadPluginMetadata.pluginId], set: { metadataJson: JSON.stringify(metadata) } }).run();
-  return metadata;
+export function patchThreadPluginMetadata(
+  db: DbConnection,
+  input: ThreadPluginMetadataPatch,
+): ThreadPluginMetadataPatchResult {
+  return db.transaction(
+    (tx) => {
+      const existing = getThreadPluginMetadata(
+        tx,
+        input.threadId,
+        input.pluginId,
+      );
+      const metadata: JsonObject = { ...existing.metadata, ...input.set };
+      for (const key of input.remove) delete metadata[key];
+      if (Object.keys(metadata).length === 0) {
+        tx.delete(threadPluginMetadata)
+          .where(namespaceWhere(input.threadId, input.pluginId))
+          .run();
+        return { ok: true, metadata, replacedCorrupt: existing.corrupt };
+      }
+      const metadataJson = JSON.stringify(metadata);
+      if (exceedsPluginMetadataLimit(metadataJson)) {
+        return { ok: false, reason: "too_large" };
+      }
+      tx.insert(threadPluginMetadata)
+        .values({
+          threadId: input.threadId,
+          pluginId: input.pluginId,
+          metadataJson,
+        })
+        .onConflictDoUpdate({
+          target: [
+            threadPluginMetadata.threadId,
+            threadPluginMetadata.pluginId,
+          ],
+          set: { metadataJson },
+        })
+        .run();
+      return { ok: true, metadata, replacedCorrupt: existing.corrupt };
+    },
+    { behavior: "immediate" },
+  );
 }

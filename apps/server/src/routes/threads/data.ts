@@ -333,22 +333,41 @@ export function registerThreadDataRoutes(app: Hono, deps: AppDeps): void {
   const CONVERSATION_OUTLINE_CACHE_MAX_ENTRIES = 128;
 
   get(routes.pluginMetadata.get, (context, query) => {
-    requirePublicThread(deps.db, context.req.param("id"));
-    return context.json(
-      getThreadPluginMetadata(deps.db, context.req.param("id"), query.pluginId),
+    const thread = requirePublicThread(deps.db, context.req.param("id"));
+    const { metadata, corrupt } = getThreadPluginMetadata(
+      deps.db,
+      thread.id,
+      query.pluginId,
     );
+    if (corrupt) {
+      deps.logger.warn(
+        `Ignoring corrupt plugin metadata for thread ${thread.id}, plugin ${query.pluginId}`,
+      );
+    }
+    return context.json(metadata);
   });
 
   patch(routes.pluginMetadata.update, (context, payload) => {
-    requirePublicThread(deps.db, context.req.param("id"));
-    return context.json(
-      patchThreadPluginMetadata(deps.db, {
-        threadId: context.req.param("id"),
-        pluginId: payload.pluginId,
-        ...(payload.set === undefined ? {} : { set: payload.set }),
-        ...(payload.remove === undefined ? {} : { remove: payload.remove }),
-      }),
-    );
+    const thread = requirePublicThread(deps.db, context.req.param("id"));
+    const result = patchThreadPluginMetadata(deps.db, {
+      threadId: thread.id,
+      pluginId: payload.pluginId,
+      set: payload.set ?? {},
+      remove: payload.remove ?? [],
+    });
+    if (!result.ok) {
+      throw new ApiError(
+        413,
+        "invalid_request",
+        "pluginMetadata exceeds 256 KiB",
+      );
+    }
+    if (result.replacedCorrupt) {
+      deps.logger.warn(
+        `Replaced corrupt plugin metadata for thread ${thread.id}, plugin ${payload.pluginId}`,
+      );
+    }
+    return context.json(result.metadata);
   });
 
   get(routes.context, (context) => {

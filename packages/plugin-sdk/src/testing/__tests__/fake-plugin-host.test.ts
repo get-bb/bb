@@ -1094,25 +1094,85 @@ describe("sdk", () => {
 
     const cyclic: Record<string, unknown> = {};
     cyclic.self = cyclic;
-    expect(() =>
+    await expect(
       bb.sdk.threads.updatePluginMetadata({
         threadId: "thread-1",
         set: cyclic as never,
       }),
-    ).toThrow(/cycle/);
+    ).rejects.toThrow(/cycle/);
+    expect(invoked).toHaveLength(2);
     expect(harness.sdk.callsTo("threads.updatePluginMetadata")).toHaveLength(1);
   });
 
-  it("passes no-metadata fork arguments through unchanged", async () => {
+  it("rejects invalid spawn and fork metadata seeds without recording or sending them", async () => {
+    const invoked: unknown[] = [];
     const { bb, harness } = createFakePluginHost({
+      pluginId: "active-plugin",
+      sdk: {
+        threads: {
+          spawn: async (args) => {
+            invoked.push(args);
+            return { id: "spawned" };
+          },
+          fork: async (args) => {
+            invoked.push(args);
+            return { id: "forked" };
+          },
+        },
+      },
+    });
+    const cyclic: Record<string, unknown> = {};
+    cyclic.self = cyclic;
+
+    await expect(
+      bb.sdk.threads.spawn({
+        projectId: "p1",
+        environment: { type: "project-default" },
+        prompt: "hi",
+        pluginMetadata: cyclic as never,
+      }),
+    ).rejects.toThrow(/cycle/);
+    await expect(
+      bb.sdk.threads.fork({
+        sourceThreadId: "source",
+        pluginMetadata: { blob: "x".repeat(256 * 1024) },
+      }),
+    ).rejects.toThrow(/256 KiB/);
+
+    expect(invoked).toEqual([]);
+    expect(harness.sdk.calls).toEqual([]);
+  });
+
+  it("applies production fork attribution defaults when no metadata is seeded", async () => {
+    const { bb, harness } = createFakePluginHost({
+      pluginId: "active-plugin",
       sdk: { threads: { fork: async () => ({ id: "forked" }) } },
     });
-    const forkArgs = {
-      sourceThreadId: "source",
+
+    await bb.sdk.threads.fork({ sourceThreadId: "default" });
+    await bb.sdk.threads.fork({
+      sourceThreadId: "legacy",
       originPluginId: "legacy-plugin",
-    };
-    await bb.sdk.threads.fork(forkArgs);
-    expect(harness.sdk.callsTo("threads.fork").at(-1)?.[0]).toBe(forkArgs);
+    });
+    await bb.sdk.threads.fork({ sourceThreadId: "sdk", origin: "sdk" });
+
+    expect(harness.sdk.callsTo("threads.fork")).toEqual([
+      [
+        {
+          sourceThreadId: "default",
+          origin: "plugin",
+          originPluginId: "active-plugin",
+        },
+      ],
+      [
+        {
+          sourceThreadId: "legacy",
+          origin: "plugin",
+          originPluginId: "legacy-plugin",
+        },
+      ],
+      [{ sourceThreadId: "sdk", origin: "sdk" }],
+    ]);
   });
 
   it("keeps nested plugin administration available through the backend SDK", async () => {
@@ -1393,35 +1453,93 @@ describe("agent tools", () => {
     ).toThrow("agent configuration is already registered");
   });
 
-  it("defaults, normalizes, and deeply freezes plugin metadata only", async () => {
+  it("hands configure a deep-frozen metadata copy without touching the caller's context", async () => {
+    type NestedMetadata = {
+      level1: { level2: { items: Array<{ count: number }> } };
+    };
     const { bb, harness } = createFakePluginHost();
-    let observed: PluginAgentConfigurationContext | undefined;
-    bb.agents.configure((received) => {
-      observed = received;
-      expect(Object.isFrozen(received.pluginMetadata)).toBe(true);
-      expect(Object.isFrozen(received.pluginMetadata.nested)).toBe(true);
-      expect(() => {
-        (received.pluginMetadata.nested as { count: number }).count = 2;
-      }).toThrow();
-      expect(Object.isFrozen(received.thread)).toBe(false);
-      return { tools: [], skills: [] };
+    bb.agents.registerTool({
+      name: "metadata_tool",
+      description: "metadata_tool",
+      parameters: { type: "object" },
+      execute: () => "ok",
     });
+    let received: PluginAgentConfigurationContext | undefined;
+    let mutationError: unknown;
+    bb.agents.configure((context) => {
+      received = context;
+      try {
+        (
+          context.pluginMetadata as NestedMetadata
+        ).level1.level2.items[0]!.count = 2;
+      } catch (error) {
+        mutationError = error;
+      }
+      return { tools: ["metadata_tool"], skills: [] };
+    });
+    const callerMetadata: NestedMetadata = {
+      level1: { level2: { items: [{ count: 1 }] } },
+    };
     const context = makePluginAgentConfigurationContext({
-      pluginMetadata: { nested: { count: 1 } },
+      pluginMetadata: callerMetadata,
     });
-    await harness.resolveAgentConfiguration(context);
-    expect(observed?.pluginMetadata).toEqual({ nested: { count: 1 } });
+    const callerThread = context.thread;
 
-    const defaults = createFakePluginHost();
-    let defaultMetadata: unknown;
-    defaults.bb.agents.configure((received) => {
-      defaultMetadata = received.pluginMetadata;
+    const resolved = await harness.resolveAgentConfiguration(context);
+
+    expect(resolved.tools.map((tool) => tool.name)).toEqual(["metadata_tool"]);
+    expect(
+      harness.logEntries.filter((entry) =>
+        entry.message.startsWith("agent configure failed"),
+      ),
+    ).toEqual([]);
+    expect(mutationError).toBeInstanceOf(TypeError);
+    expect(received).toBeDefined();
+    const metadata = received!.pluginMetadata as NestedMetadata;
+    expect(metadata).toEqual({
+      level1: { level2: { items: [{ count: 1 }] } },
+    });
+    expect(Object.isFrozen(metadata)).toBe(true);
+    expect(Object.isFrozen(metadata.level1)).toBe(true);
+    expect(Object.isFrozen(metadata.level1.level2)).toBe(true);
+    expect(Object.isFrozen(metadata.level1.level2.items)).toBe(true);
+    expect(Object.isFrozen(metadata.level1.level2.items[0])).toBe(true);
+    expect(Object.isFrozen(received!.thread)).toBe(false);
+    expect(received).not.toBe(context);
+    expect(context.pluginMetadata).toBe(callerMetadata);
+    expect(context.thread).toBe(callerThread);
+    expect(Object.isFrozen(callerMetadata)).toBe(false);
+    expect(Object.isFrozen(callerMetadata.level1.level2.items)).toBe(false);
+    expect(callerMetadata).toEqual({
+      level1: { level2: { items: [{ count: 1 }] } },
+    });
+  });
+
+  it("rejects invalid fixture metadata before configure and defaults absent metadata to {}", async () => {
+    const { bb, harness } = createFakePluginHost();
+    const seen: unknown[] = [];
+    bb.agents.configure((context) => {
+      seen.push(context.pluginMetadata);
       return { tools: [], skills: [] };
     });
-    await defaults.harness.resolveAgentConfiguration(
-      makePluginAgentConfigurationContext(),
+
+    await expect(
+      harness.resolveAgentConfiguration(
+        makePluginAgentConfigurationContext({
+          pluginMetadata: { count: Number.NaN },
+        }),
+      ),
+    ).rejects.toThrow();
+    expect(seen).toEqual([]);
+    expect(harness.logEntries).toEqual([]);
+
+    const { pluginMetadata: _omitted, ...legacyContext } =
+      makePluginAgentConfigurationContext();
+    await harness.resolveAgentConfiguration(
+      legacyContext as PluginAgentConfigurationContext,
     );
-    expect(defaultMetadata).toEqual({});
+    expect(seen).toEqual([{}]);
+    expect(Object.isFrozen(seen[0])).toBe(true);
   });
 
   it("resolves conditional tools, skills, context, and capped instructions without rebuilding registrations", async () => {

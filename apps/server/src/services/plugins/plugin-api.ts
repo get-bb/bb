@@ -335,12 +335,24 @@ export type PluginProviderEnvHealthResolver = (
   | null
   | Promise<ExperimentalPluginProviderEnvHealth | null>;
 
+function withPluginThreadAttribution<
+  TArgs extends ThreadForkArgs | ThreadSpawnArgs,
+>(args: TArgs, pluginId: string): TArgs {
+  const attribution: Pick<ThreadSpawnArgs, "origin" | "originPluginId"> =
+    args.pluginMetadata !== undefined
+      ? { origin: "plugin", originPluginId: pluginId }
+      : args.origin === undefined || args.origin === "plugin"
+        ? { origin: "plugin", originPluginId: args.originPluginId ?? pluginId }
+        : { origin: args.origin };
+  return { ...args, ...attribution };
+}
+
 function wrapSdkForPlugin(sdk: BbSdk, pluginId: string): PluginBbSdk {
   return {
     ...sdk,
     threads: {
       ...sdk.threads,
-      getPluginMetadata(
+      async getPluginMetadata(
         args: Omit<ThreadPluginMetadataArgs, "pluginId"> & {
           pluginId?: string;
         },
@@ -350,7 +362,7 @@ function wrapSdkForPlugin(sdk: BbSdk, pluginId: string): PluginBbSdk {
           pluginId: args.pluginId ?? pluginId,
         });
       },
-      updatePluginMetadata(
+      async updatePluginMetadata(
         args: Omit<ThreadPluginMetadataUpdateArgs, "pluginId"> & {
           pluginId?: string;
         },
@@ -361,40 +373,10 @@ function wrapSdkForPlugin(sdk: BbSdk, pluginId: string): PluginBbSdk {
         });
       },
       fork(args: ThreadForkArgs) {
-        if (args.pluginMetadata !== undefined) {
-          return sdk.threads.fork({
-            ...args,
-            pluginMetadata: args.pluginMetadata,
-            origin: "plugin",
-            originPluginId: pluginId,
-          });
-        }
-        const origin = args.origin ?? "plugin";
-        return sdk.threads.fork({
-          ...args,
-          origin,
-          ...(origin === "plugin"
-            ? { originPluginId: args.originPluginId ?? pluginId }
-            : {}),
-        });
+        return sdk.threads.fork(withPluginThreadAttribution(args, pluginId));
       },
       spawn(args: ThreadSpawnArgs) {
-        if (args.pluginMetadata !== undefined) {
-          return sdk.threads.spawn({
-            ...args,
-            pluginMetadata: args.pluginMetadata,
-            origin: "plugin",
-            originPluginId: pluginId,
-          });
-        }
-        const origin = args.origin ?? "plugin";
-        return sdk.threads.spawn({
-          ...args,
-          origin,
-          ...(origin === "plugin"
-            ? { originPluginId: args.originPluginId ?? pluginId }
-            : {}),
-        });
+        return sdk.threads.spawn(withPluginThreadAttribution(args, pluginId));
       },
     },
   };

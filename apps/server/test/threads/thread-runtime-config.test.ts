@@ -3,7 +3,6 @@ import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import {
-  createThread,
   markThreadDeleted,
   setExperiments,
   setThreadExecutionOverride,
@@ -11,7 +10,6 @@ import {
 import {
   defaultExperiments,
   encodeClientTurnRequestIdNumber,
-  type JsonObject,
 } from "@bb/domain";
 import { validatePluginProviderDeclaration } from "@get-bb/plugin-sdk/internal/host-policy";
 import type { PluginAgentConfigurationContext } from "@get-bb/plugin-sdk";
@@ -48,62 +46,6 @@ import {
 import type { TestAppHarness } from "../helpers/test-app.js";
 import { textInput } from "../helpers/prompt-input.js";
 import { withTestHarness } from "../helpers/test-app.js";
-
-type AgentConfigurationResolver = NonNullable<
-  NonNullable<
-    Parameters<typeof setPluginAgentContributions>[0]
-  >["resolveAgentConfiguration"]
->;
-type AgentConfigurationArgs = Parameters<AgentConfigurationResolver>[0];
-
-function installAgentConfigurationResolver(
-  inspect: (args: AgentConfigurationArgs) => void | Promise<void>,
-): void {
-  setPluginAgentContributions({
-    listSkillRootContributions: () => [],
-    listAgentTools: () => [],
-    listInstructionContributions: () => [],
-    findAgentTool: () => undefined,
-    invokeAgentTool: async () => ({
-      success: false,
-      contentItems: [{ type: "inputText", text: "unused" }],
-    }),
-    resolveMention: async () => ({ ok: false, error: "unused" }),
-    resolveAgentConfiguration: async (args) => {
-      await inspect(args);
-      return {
-        tools: [],
-        selectedSkillIdsByPlugin: new Map(),
-        dynamicInstructions: [],
-      };
-    },
-  });
-}
-
-function seedPluginMetadataThread(
-  harness: TestAppHarness,
-  args: { name: string; value: JsonObject; status?: "idle" },
-) {
-  const hostId = `host-runtime-${args.name}`;
-  const path = `/tmp/runtime-${args.name}`;
-  seedHostSession(harness.deps, { id: hostId });
-  const { project } = seedProjectWithSource(harness.deps, { hostId, path });
-  const environment = seedEnvironment(harness.deps, {
-    hostId,
-    projectId: project.id,
-    path,
-    environmentProviderId: "project-checkout",
-  });
-  const thread = createThread(harness.db, harness.hub, {
-    projectId: project.id,
-    environmentId: environment.id,
-    providerId: "codex",
-    status: args.status,
-    originPluginId: "provider-codex",
-    pluginMetadata: { pluginId: "provider-codex", metadata: args.value },
-  });
-  return { environment, hostId, project, thread };
-}
 
 interface WriteRuntimeSkillArgs {
   name: string;
@@ -1180,94 +1122,6 @@ describe("thread runtime config", () => {
     expect(resolvePermissionEscalation({ initiator: "system" })).toBe("deny");
   });
 
-  it("keeps resolver runtime context metadata-free", async () => {
-    await withTestHarness(async (harness) => {
-      const { environment, thread } = seedPluginMetadataThread(harness, {
-        name: "plugin-metadata",
-        status: "idle",
-        value: { nested: { count: 1 }, marker: "original" },
-      });
-      installAgentConfigurationResolver(({ context }) => {
-        expect(context.pluginMetadata).toEqual({});
-      });
-      try {
-        await resolveThreadRuntimeCommandConfig(harness.deps, {
-          thread,
-          model: "test-model",
-          environment: {
-            hostId: environment.hostId,
-            id: environment.id,
-            path: environment.path,
-            status: environment.status,
-          },
-        });
-      } finally {
-        setPluginAgentContributions(undefined);
-      }
-    });
-  });
-
-  it("configures before first runtime command without serializing plugin metadata", async () => {
-    await withTestHarness(async (harness) => {
-      const marker = "plugin-metadata-command-privacy-marker";
-      const { environment, project, thread } = seedPluginMetadataThread(
-        harness,
-        {
-          name: "command-order",
-          value: { marker },
-        },
-      );
-      seedThreadRuntimeState(harness.deps, {
-        environmentId: environment.id,
-        providerThreadId: "provider-runtime-command-order",
-        threadId: thread.id,
-      });
-      const execution = {
-        model: "gpt-5",
-        permissionMode: "accept-edits",
-        reasoningLevel: "medium",
-        serviceTier: "default",
-        source: "client/turn/requested",
-      } as const;
-      installAgentConfigurationResolver(({ context }) => {
-        expect(context.pluginMetadata).toEqual({});
-      });
-      try {
-        const startCommand = await buildThreadStartCommand(harness.deps, {
-          environment,
-          execution,
-          fork: null,
-          permissionEscalation: "ask",
-          input: textInput("hello"),
-          projectId: project.id,
-          providerId: "codex",
-          requestId: encodeClientTurnRequestIdNumber({ value: 201 }),
-          syncGeneratedTitle: false,
-          thread,
-        });
-        const submitCommand = await prepareTurnSubmitCommandPayload(
-          harness.deps,
-          {
-            environment,
-            execution,
-            permissionEscalation: "ask",
-            input: textInput("continue"),
-            target: { mode: "start" },
-            thread,
-          },
-        );
-
-        for (const command of [startCommand, submitCommand]) {
-          const serialized = JSON.stringify(command);
-          expect(serialized).not.toContain("pluginMetadata");
-          expect(serialized).not.toContain(marker);
-        }
-      } finally {
-        setPluginAgentContributions(undefined);
-      }
-    });
-  });
-
   it("resolves the workspace, storage path, and environment directory dynamic tool", async () => {
     await withTestHarness(async (harness) => {
       const hostId = "host-runtime";
@@ -1287,7 +1141,9 @@ describe("thread runtime config", () => {
         environmentId: environment.id,
       });
 
-      const pluginContexts: PluginAgentConfigurationContext[] = [];
+      const pluginContexts: Array<
+        Omit<PluginAgentConfigurationContext, "pluginMetadata">
+      > = [];
       setPluginAgentContributions({
         listSkillRootContributions: () => [],
         listAgentTools: () => [],

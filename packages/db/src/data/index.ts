@@ -60,17 +60,9 @@ export {
 } from "./project-sources.js";
 export {
   getThreadPluginMetadata,
-  getThreadPluginMetadataRow,
-  listThreadPluginMetadata,
-  listThreadPluginMetadataRows,
-  listPersistedThreadPluginMetadataByThreadIds,
   insertThreadPluginMetadata,
+  listThreadPluginMetadataRows,
   patchThreadPluginMetadata,
-  patchThreadPluginMetadataInTransaction,
-} from "./thread-plugin-metadata.js";
-export type {
-  PersistedThreadPluginMetadataRecord,
-  ThreadPluginMetadataRecord,
 } from "./thread-plugin-metadata.js";
 
 export {

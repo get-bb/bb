@@ -48,7 +48,7 @@ export function listPluginAgentTools(): PluginAgentToolContribution[] {
 }
 
 export async function resolvePluginAgentConfiguration(args: {
-  context: PluginAgentConfigurationContext;
+  context: Omit<PluginAgentConfigurationContext, "pluginMetadata">;
   skillIdsByPlugin: ReadonlyMap<string, readonly string[]>;
 }) {
   const active = contributions;

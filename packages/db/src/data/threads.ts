@@ -15,6 +15,7 @@ import {
   type SQL,
 } from "drizzle-orm";
 import type {
+  JsonObject,
   ReasoningLevel,
   ThreadChangeKind,
   ThreadLifecycleEvent,
@@ -273,7 +274,7 @@ export interface CreateThreadInput {
   sourceThreadId?: string | null;
   originKind?: ThreadOriginKind | null;
   originPluginId?: string | null;
-  pluginMetadata?: { pluginId: string; metadata: import("@bb/domain").JsonObject } | null;
+  pluginMetadata?: { pluginId: string; metadata: JsonObject } | null;
   visibility?: ThreadVisibility;
 }
 
@@ -320,7 +321,11 @@ export function createThread(
         titleFallback: createdThread.titleFallback,
         updatedAt: now,
       });
-      if (input.pluginMetadata !== undefined && input.pluginMetadata !== null) {
+      if (
+        input.pluginMetadata !== undefined &&
+        input.pluginMetadata !== null &&
+        Object.keys(input.pluginMetadata.metadata).length > 0
+      ) {
         insertThreadPluginMetadata(tx, {
           threadId: createdThread.id,
           pluginId: input.pluginMetadata.pluginId,

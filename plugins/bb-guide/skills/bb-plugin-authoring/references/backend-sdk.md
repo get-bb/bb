@@ -72,33 +72,58 @@ const child = await bb.sdk.threads.fork({
 
 `PluginBbSdk` is the plugin-bound SDK type. Its `getPluginMetadata` and
 `updatePluginMetadata` calls default to the current plugin's ID. Pass `pluginId`
-explicitly to read or update another namespace; namespace IDs are not ownership
-or authorization boundaries.
+explicitly to read or update another namespace. It must be a plugin ID:
+lowercase letters, digits, and dashes. Namespace IDs are not ownership or
+authorization boundaries.
 Updates atomically shallow-set and remove top-level keys, preserve `null` as
 data, ignore missing removals, and return the complete resulting object. Each
-normalized namespace is limited to 256 KiB of UTF-8 JSON.
+normalized namespace is limited to 256 KiB of UTF-8 JSON. Seeds and `set`
+values must be plain JSON objects. The SDK rejects invalid input before sending
+any request, including a seed or `set` that is over 256 KiB on its own; raw
+HTTP clients get HTTP 400 for it. A patch whose merged namespace would exceed
+the limit fails with HTTP 413 and leaves the namespace unchanged.
 
 Every `bb.agents.configure` callback receives its plugin's current namespace as
 a deep-frozen snapshot at top-level `context.pluginMetadata`, or `{}` when it
-is absent. Spawn and explicit-fork seeds are available during the first
-configuration pass; updates appear during later passes and do not restart or
-alter a running turn.
+is absent. The snapshot is typed deep-readonly (`ReadonlyJsonValue` values),
+and writing to it throws. Spawn and explicit-fork seeds are available during
+the first configuration pass; updates appear during later passes and do not
+restart or alter a running turn. Readonly values are not assignable where the
+SDK expects `JsonValue` or `JsonObject`, such as a child thread's
+`pluginMetadata` seed. Copy them with `JSON.parse(JSON.stringify(value))`
+first.
+
+Any API client, another plugin, or the thread's own agent can write any
+namespace. Treat values as untrusted input. Validate their shape before using
+them, but a well-formed value is not proof of who wrote it: only let metadata
+enable tools that would be safe even if the thread's own agent had set the
+value. When you put values into the instructions your plugin returns, quote or
+escape them so they read as data, not as directions:
 
 ```ts
-bb.agents.configure((context) => ({
-  tools: context.pluginMetadata.issueKey ? ["review-result"] : [],
-  skills: [],
-}));
+bb.agents.configure((context) => {
+  const { issueKey } = context.pluginMetadata;
+  const hasIssue =
+    typeof issueKey === "string" && /^[A-Z]+-\d+$/u.test(issueKey);
+  return {
+    tools: hasIssue ? ["review-result"] : [],
+    skills: [],
+    ...(hasIssue
+      ? { instructions: `Linked issue key (data): ${JSON.stringify(issueKey)}` }
+      : {}),
+  };
+});
 ```
 
 Metadata uses ordinary thread access rules. Do not store secrets in it or use
 it for authorization. BB does not automatically add it to thread DTOs,
-prompts, provider or host payloads, or model input; a plugin may deliberately
-use selected values in the instructions it returns.
+prompts, provider or host payloads, or model input.
 
 `threads.spawn` takes `prompt` (a string) or `input` (structured prompt
-inputs) — never both. Attribution is auto-filled: `origin: "plugin"` and
-`originPluginId: <your id>` unless you set them. `bb.sdk.threads.send({
+inputs) — never both. `threads.spawn` and `threads.fork` auto-fill attribution:
+`origin: "plugin"` and `originPluginId: <your id>` unless you set them. Seeding
+`pluginMetadata` always attributes the new thread to your plugin, overriding an
+explicit `origin` or `originPluginId`. `bb.sdk.threads.send({
 threadId, mode: "auto", input: [...] })` starts a turn on an idle thread or
 queues/steers a running one.
 

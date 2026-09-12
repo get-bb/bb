@@ -978,13 +978,13 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
           "Seed its namespace when spawning a thread or explicitly when forking one",
           "Read and atomically patch any namespace allowed by ordinary thread access",
           "Receive only its own deep-frozen namespace in bb.agents.configure",
-          "See the Plugin Guide for limits, fork behavior, and security guidance",
+          "Keep up to 256 KiB of JSON per namespace; a patch that would exceed it fails and leaves the namespace unchanged",
         ],
         apiSymbols: [
-          "ThreadSpawnArgs",
-          "ThreadForkArgs",
-          "ThreadsArea",
+          "PluginBbSdk",
           "PluginAgentConfigurationContext",
+          "ReadonlyJsonValue",
+          "BbPluginApi",
         ],
       },
       {

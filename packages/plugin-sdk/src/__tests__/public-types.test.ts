@@ -2,8 +2,11 @@ import { readFile } from "node:fs/promises";
 import { describe, expect, expectTypeOf, it } from "vitest";
 import type {
   BbPluginApi,
+  JsonValue,
+  PluginAgentConfigurationContext,
   PluginEnvironmentProviderDeclaration,
   PluginEnvironments,
+  ReadonlyJsonValue,
 } from "../index.js";
 import type { PluginProviderIconRegistration } from "../app-contract.js";
 
@@ -200,6 +203,28 @@ function rootExportNames(
 describe("backend plugin SDK public surface", () => {
   it("snapshots every BbPluginApi root member", () => {
     expectTypeOf<keyof BbPluginApi>().toEqualTypeOf<ExpectedBbPluginApiKey>();
+  });
+
+  it("types configure plugin metadata as deep-readonly JSON", () => {
+    expectTypeOf<
+      PluginAgentConfigurationContext["pluginMetadata"]
+    >().toEqualTypeOf<{ readonly [key: string]: ReadonlyJsonValue }>();
+    expectTypeOf<ReadonlyJsonValue>().not.toMatchTypeOf<JsonValue>();
+
+    function writeMetadata(context: PluginAgentConfigurationContext): void {
+      // @ts-expect-error configure receives a deep-frozen snapshot
+      context.pluginMetadata.counter = 1;
+      // @ts-expect-error configure receives a deep-frozen snapshot
+      delete context.pluginMetadata.counter;
+    }
+    function borrowNestedValue(
+      context: PluginAgentConfigurationContext,
+    ): JsonValue | undefined {
+      // @ts-expect-error nested snapshot values are read-only too
+      return context.pluginMetadata.nested;
+    }
+    expectTypeOf(writeMetadata).toBeFunction();
+    expectTypeOf(borrowNestedValue).toBeFunction();
   });
 
   it("keeps every backend contract export in the root declaration bundle", async () => {

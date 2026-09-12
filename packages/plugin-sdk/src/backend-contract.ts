@@ -32,7 +32,7 @@ import type {
   ThreadResponse,
   TerminalSession,
 } from "@bb/server-contract";
-import type { JsonObject, JsonValue } from "./json-value.js";
+import type { JsonValue, ReadonlyJsonValue } from "./json-value.js";
 import type {
   PluginRpcContract,
   PluginRpcHandlers,
@@ -1042,8 +1042,13 @@ export interface PluginAgentToolRegistrationBase {
 
 /** Stable, plain-data context resolved by the server for one agent session. */
 export interface PluginAgentConfigurationContext {
-  /** This plugin's namespaced thread metadata, frozen for this configure call. */
-  readonly pluginMetadata: JsonObject;
+  /**
+   * The thread's metadata stored under this plugin's id, or `{}` when absent,
+   * as a deep-frozen snapshot for this configure call. Any API client, another
+   * plugin, or the thread's own agent can write it; treat values as untrusted,
+   * and quote or escape any value you put into returned instructions.
+   */
+  readonly pluginMetadata: { readonly [key: string]: ReadonlyJsonValue };
   thread: {
     id: string;
     title: string | null;
@@ -1839,6 +1844,15 @@ export interface PluginStatusApi {
   needsConfiguration(message: string): void;
 }
 
+/**
+ * The BB SDK bound to one plugin (`bb.sdk`). `threads.getPluginMetadata` and
+ * `threads.updatePluginMetadata` default `pluginId` to that plugin's id. An
+ * explicit `pluginId` must be a plugin id (lowercase letters, digits, and
+ * dashes) or the request fails with HTTP 400. A `pluginMetadata` seed or a
+ * `set` that is over 256 KiB on its own rejects before any request is sent. A
+ * patch whose merged namespace would exceed 256 KiB fails with HTTP 413 and
+ * leaves the namespace unchanged.
+ */
 export type PluginBbSdk = Omit<BbSdk, "threads"> & {
   threads: Omit<
     BbSdk["threads"],
@@ -1923,8 +1937,10 @@ export interface BbPluginApi {
    * server binds it before loading plugins, so it is available from the
    * moment factories run there — but isolated harnesses may not, so prefer
    * using it from handlers, services, and timers for portability.
-   * `threads.spawn` defaults `origin` to "plugin" and `originPluginId` to
-   * this plugin's id so spawned threads are attributed automatically.
+   * `threads.spawn` and `threads.fork` default `origin` to "plugin" and, for
+   * that origin, `originPluginId` to this plugin's id unless you set them.
+   * Seeding `pluginMetadata` always attributes the new thread to this plugin,
+   * overriding an explicit `origin` or `originPluginId`.
    */
   readonly sdk: PluginBbSdk;
   /**
