@@ -269,6 +269,7 @@ function MobileMessageOverflowPopover({
               onClick={() => {
                 if (action.kind === "copy") {
                   void copyToClipboardWithToast(action.copyText ?? "", {
+                    imageUrl: action.copyImageUrl,
                     successMessage: null,
                     errorMessage: "Failed to copy",
                   }).then((didCopy) => {
