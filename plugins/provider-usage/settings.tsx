@@ -215,7 +215,7 @@ function ProviderUsageBlock({
   return (
     <section
       aria-labelledby={headingId}
-      className="space-y-3.5 py-3.5 first:pt-0 last:pb-0"
+      className="space-y-3.5 border-t border-border py-3.5 first:border-t-0 first:pt-0 last:pb-0"
     >
       <div className="flex items-start justify-between gap-2">
         <div className="flex min-w-0 flex-1 items-start gap-2.5">
@@ -279,49 +279,21 @@ function UsageResourceGroup({
 }) {
   return (
     <div className="py-3.5 first:pt-0 last:pb-0">
-      {resources.map((resource, index) => {
-        const key = resource.id;
+      {resources.map((resource) => {
         const email =
           resource.usage?.status === "ok"
             ? (resource.usage.accountEmail ?? resource.accountLabel)
             : resource.accountLabel;
         const usage = resource.usage ?? undefined;
-
-        if (index === 0)
-          return (
-            <ProviderUsageBlock
-              key={key}
-              accountLabel={email ?? undefined}
-              config={config}
-              usage={usage}
-              isLoading={isLoading}
-              isError={isError && usage === undefined}
-            />
-          );
         return (
-          <section
-            key={key}
-            aria-label={email ?? undefined}
-            className="ml-6 space-y-3.5 border-t border-border py-3.5 last:pb-0"
-          >
-            <div className="flex min-w-0 items-start justify-between gap-2">
-              <p
-                className="min-w-0 truncate text-xs text-muted-foreground"
-                title={email ?? undefined}
-              >
-                {email}
-              </p>
-              {usage?.status === "ok" && usage.planLabel ? (
-                <SettingsBadge>{usage.planLabel}</SettingsBadge>
-              ) : null}
-            </div>
-            <ProviderUsageBody
-              config={config}
-              usage={usage}
-              isLoading={isLoading}
-              isError={isError && usage === undefined}
-            />
-          </section>
+          <ProviderUsageBlock
+            key={resource.id}
+            accountLabel={email ?? undefined}
+            config={config}
+            usage={usage}
+            isLoading={isLoading}
+            isError={isError && usage === undefined}
+          />
         );
       })}
     </div>
