@@ -4,7 +4,7 @@ import {
   useQuery,
   useQueryClient,
 } from "@tanstack/react-query";
-import type { QueryKey } from "@tanstack/react-query";
+import type { QueryClient, QueryKey } from "@tanstack/react-query";
 import type {
   PermissionMode,
   ProviderInfo,
@@ -12,7 +12,6 @@ import type {
 } from "@bb/domain";
 import { SYSTEM_EXECUTION_OPTIONS_QUERY_KEY } from "@/hooks/queries/query-keys";
 import { permissionModeValues } from "@bb/domain";
-import { toRecord } from "@bb/core-ui";
 import type {
   SystemCliSkillsStatusResponse,
   SystemExecutionOptionsResponse,
@@ -26,6 +25,7 @@ import type {
   ProviderUsageResponse,
 } from "@bb/host-daemon-contract";
 import { BbHttpError, sdk } from "@/lib/sdk";
+import { isAbortLikeError } from "@/lib/mutation-errors";
 import {
   modelCatalogCacheKey,
   readCachedModelCatalog,
@@ -36,7 +36,10 @@ import {
   readCachedProviderList,
   writeCachedProviderList,
 } from "@/lib/provider-list-cache";
-import { useSystemRealtimeSubscription } from "@/hooks/useRealtimeSubscription";
+import {
+  useHostListRealtimeSubscription,
+  useSystemRealtimeSubscription,
+} from "@/hooks/useRealtimeSubscription";
 import {
   allSystemExecutionOptionsQueryKeyPrefix,
   allSystemProvidersQueryKeyPrefix,
@@ -63,6 +66,13 @@ interface UseSystemExecutionOptionsArgs {
   environmentId?: string;
   hostId?: string;
   providerId?: string;
+}
+
+interface SystemExecutionOptionsQueryArgs {
+  environmentId: string | null;
+  hostId: string | null;
+  providerId: string | null;
+  writeLastKnown: boolean;
 }
 
 interface UseSystemProviderStatesOptions extends QueryOptions {
@@ -159,10 +169,6 @@ export function findCachedProviderInfo(
     }
   }
   return null;
-}
-
-function isAbortLikeError(error: unknown): boolean {
-  return toRecord(error)?.name === "AbortError";
 }
 
 function shouldRetrySystemExecutionOptions(
@@ -276,6 +282,65 @@ export function useSystemProviderInfo({
   );
 }
 
+function systemExecutionOptionsQueryOptions({
+  environmentId,
+  hostId,
+  providerId,
+  writeLastKnown,
+}: SystemExecutionOptionsQueryArgs) {
+  return queryOptions<SystemExecutionOptionsResponse>({
+    queryKey: systemExecutionOptionsQueryKey({
+      environmentId,
+      hostId,
+      providerId,
+    }),
+    queryFn: async ({ signal }) => {
+      const response = await sdk.system.executionOptions({
+        environmentId: environmentId ?? undefined,
+        hostId: hostId ?? undefined,
+        providerId: providerId ?? undefined,
+        signal,
+      });
+      if (writeLastKnown) {
+        writeCachedProviderList(
+          providerListCacheKey({ environmentId, hostId }),
+          response.providers,
+        );
+        if (response.modelLoadError === null) {
+          const catalog = {
+            models: response.models,
+            selectedOnlyModels: response.selectedOnlyModels,
+          };
+          writeCachedModelCatalog(
+            modelCatalogCacheKey({ environmentId, hostId, providerId }),
+            catalog,
+          );
+        }
+      }
+      return response;
+    },
+    staleTime: 60_000,
+    retry: shouldRetrySystemExecutionOptions,
+    retryDelay: SYSTEM_EXECUTION_OPTIONS_RETRY_DELAY_MS,
+  });
+}
+
+export function prefetchSystemExecutionOptions(
+  queryClient: QueryClient,
+  args: { routing: SystemProvidersQuery; providerIds: readonly string[] },
+): void {
+  for (const providerId of args.providerIds) {
+    void queryClient.prefetchQuery(
+      systemExecutionOptionsQueryOptions({
+        environmentId: args.routing.environmentId ?? null,
+        hostId: args.routing.hostId ?? null,
+        providerId,
+        writeLastKnown: false,
+      }),
+    );
+  }
+}
+
 export function useSystemExecutionOptions(
   args: UseSystemExecutionOptionsArgs = {},
 ) {
@@ -284,39 +349,21 @@ export function useSystemExecutionOptions(
   const providerId = args.providerId ?? null;
   const enabled = args.enabled ?? true;
   useSystemRealtimeSubscription({ enabled });
+  useHostListRealtimeSubscription({ enabled });
   const providersCacheKey = providerListCacheKey({ environmentId, hostId });
   const catalogCacheKey = modelCatalogCacheKey({
     environmentId,
     hostId,
     providerId,
   });
-  return useQuery<SystemExecutionOptionsResponse>({
-    queryKey: systemExecutionOptionsQueryKey({
+  return useQuery({
+    ...systemExecutionOptionsQueryOptions({
       environmentId,
       hostId,
       providerId,
+      writeLastKnown: true,
     }),
-    queryFn: async ({ signal }) => {
-      const response = await sdk.system.executionOptions({
-        environmentId: args.environmentId,
-        hostId: args.hostId,
-        providerId: args.providerId,
-        signal,
-      });
-      writeCachedProviderList(providersCacheKey, response.providers);
-      if (response.modelLoadError === null) {
-        const catalog = {
-          models: response.models,
-          selectedOnlyModels: response.selectedOnlyModels,
-        };
-        writeCachedModelCatalog(catalogCacheKey, catalog);
-      }
-      return response;
-    },
     enabled,
-    staleTime: 60_000,
-    retry: shouldRetrySystemExecutionOptions,
-    retryDelay: SYSTEM_EXECUTION_OPTIONS_RETRY_DELAY_MS,
     placeholderData: (previousData, previousQuery) =>
       resolveExecutionOptionsPlaceholder({
         previousData,

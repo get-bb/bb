@@ -1,18 +1,17 @@
 import fs from "node:fs/promises";
 import path from "node:path";
+import { createDebouncedCallbackScheduler } from "@bb/domain";
+import { isPathWithinDirectory } from "@bb/process-utils";
 import {
   RootSubscription,
   type ParcelWatcherEventBatch,
 } from "./root-subscription.js";
-import { createDebouncedCallbackScheduler } from "./watch-callback-scheduler.js";
 import { toWatchErrorMessage } from "./watch-error.js";
 import type {
-  PathChangeEvent,
-  PathChangeCallback,
   PathChangeWatchArgs,
   PathChangeWatchError,
-  PathChangeWatchErrorCallback,
 } from "./watch-path-types.js";
+import { resolveEventPath } from "./watch-specs.js";
 
 const PATH_CHANGE_WATCH_DEBOUNCE_MS = 75;
 const PATH_CHANGE_WATCH_MAX_WAIT_MS = 500;
@@ -37,23 +36,6 @@ function createPathChangeCallbackError(
   };
 }
 
-function isPathWithinTarget(
-  targetPath: string,
-  candidatePath: string,
-): boolean {
-  const relativePath = path.relative(targetPath, candidatePath);
-  return (
-    relativePath.length === 0 ||
-    (!relativePath.startsWith("..") && !path.isAbsolute(relativePath))
-  );
-}
-
-function resolveEventPath(watchedPath: string, eventPath: string): string {
-  return path.isAbsolute(eventPath)
-    ? path.normalize(eventPath)
-    : path.resolve(watchedPath, eventPath);
-}
-
 function collectTouchedTargetPaths(
   targetPath: string,
   events: ParcelWatcherEventBatch,
@@ -61,7 +43,7 @@ function collectTouchedTargetPaths(
   const touchedPaths = new Set<string>();
   for (const event of events) {
     const candidatePath = resolveEventPath(targetPath, event.path);
-    if (isPathWithinTarget(targetPath, candidatePath)) {
+    if (isPathWithinDirectory(targetPath, candidatePath)) {
       touchedPaths.add(candidatePath);
     }
   }
@@ -148,14 +130,6 @@ class PathChangeWatcher {
     this.changeScheduler.schedule();
   }
 }
-
-export type {
-  PathChangeEvent,
-  PathChangeCallback,
-  PathChangeWatchArgs,
-  PathChangeWatchError,
-  PathChangeWatchErrorCallback,
-};
 
 export function watchPathChanges(
   watchedPath: string,

@@ -71,7 +71,6 @@ export function TerminalHostSelector({
       <OptionDisplay
         label="Machine"
         value="Loading…"
-        muted
         className={CONTROL_CLASS_NAME}
       />
     );
@@ -82,7 +81,6 @@ export function TerminalHostSelector({
       <OptionDisplay
         label="Machine"
         value="No machines"
-        muted
         className={CONTROL_CLASS_NAME}
       />
     );
@@ -98,7 +96,6 @@ export function TerminalHostSelector({
       <OptionDisplay
         label="Machine"
         value={selectedHost.name}
-        muted
         className={CONTROL_CLASS_NAME}
       />
     );

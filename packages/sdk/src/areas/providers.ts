@@ -3,7 +3,11 @@ import type {
   SystemProviderInfo,
   SystemProvidersQuery,
 } from "@bb/server-contract";
-import { signalRequestArgs, type CreateSdkAreaArgs } from "./common.js";
+import {
+  readExecutionOptions,
+  signalRequestArgs,
+  type CreateSdkAreaArgs,
+} from "./common.js";
 
 export type ProviderHostRoutingArgs =
   | { environmentId: string; hostId?: never }
@@ -45,18 +49,7 @@ export function createProvidersArea(args: CreateSdkAreaArgs): ProvidersArea {
       );
     },
     async models(input = {}) {
-      return transport.readJson(
-        transport.api.v1.system["execution-options"].$get(
-          {
-            query: {
-              environmentId: input.environmentId,
-              hostId: input.hostId,
-              providerId: input.providerId,
-            },
-          },
-          ...signalRequestArgs(input.signal),
-        ),
-      );
+      return readExecutionOptions(transport, input);
     },
   };
 }

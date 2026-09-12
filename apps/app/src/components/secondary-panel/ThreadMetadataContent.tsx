@@ -72,13 +72,11 @@ import {
   PULL_REQUEST_STATE_DISPLAY,
   getPullRequestAttentionDisplay,
   getPullRequestChecksDisplay,
+  getPullRequestGithubCheckStatus,
   getPullRequestMergeabilityDisplay,
   getPullRequestReviewDisplay,
 } from "@/lib/pull-request-display";
-import {
-  PullRequestGithubCheckIcon,
-  PullRequestStateIcon,
-} from "@/components/pull-request/PullRequestStatusPill";
+import { PullRequestStateIcon } from "@/components/pull-request/PullRequestStatusPill";
 import { GithubFaviconIcon } from "@/components/pull-request/GithubFaviconIcon";
 import { useUrlAnchorClickHandler } from "@/lib/url-open-routing";
 import { ParentThreadPicker } from "@/components/pickers/ParentThreadPicker";
@@ -440,15 +438,7 @@ export function PullRequestRow({ pullRequest }: PullRequestRowProps) {
   const stateDisplay = PULL_REQUEST_STATE_DISPLAY[pullRequest.state];
   const attentionDisplay = getPullRequestAttentionDisplay(pullRequest);
   const checksDisplay = getPullRequestChecksDisplay(pullRequest);
-  const showGithubCheckIcon =
-    (pullRequest.state === "open" || pullRequest.state === "draft") &&
-    (pullRequest.checks.state === "passing" ||
-      pullRequest.checks.state === "failing" ||
-      pullRequest.checks.state === "pending");
-  const canShowChecksStatus =
-    (pullRequest.state === "open" || pullRequest.state === "draft") &&
-    pullRequest.checks.state !== "no_checks" &&
-    pullRequest.checks.state !== "unknown";
+  const checkStatus = getPullRequestGithubCheckStatus(pullRequest);
   const statusDisplay =
     pullRequest.attention === "changes_requested" ||
     pullRequest.attention === "review_requested"
@@ -458,7 +448,7 @@ export function PullRequestRow({ pullRequest }: PullRequestRowProps) {
         ? getPullRequestMergeabilityDisplay(pullRequest)
         : attentionDisplay.label !== stateDisplay.label
           ? attentionDisplay
-          : canShowChecksStatus
+          : checkStatus !== null
             ? checksDisplay
             : null;
   const useNeutralStatusText =
@@ -488,11 +478,7 @@ export function PullRequestRow({ pullRequest }: PullRequestRowProps) {
         aria-label={`Pull request ${pullRequest.number}: ${attentionDisplay.label}`}
         className="flex h-5 max-w-full min-w-0 items-center gap-2 text-xs text-foreground no-underline transition-opacity hover:opacity-80 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
       >
-        {showGithubCheckIcon ? (
-          <PullRequestGithubCheckIcon pullRequest={pullRequest} />
-        ) : (
-          <GithubFaviconIcon />
-        )}
+        <GithubFaviconIcon status={checkStatus} />
         <span className="shrink-0 text-muted-foreground">
           #{pullRequest.number}
         </span>
@@ -510,6 +496,40 @@ export function PullRequestRow({ pullRequest }: PullRequestRowProps) {
         ) : null}
       </a>
     </DetailRow>
+  );
+}
+
+function resolveDisplayedMergeBaseBranch(
+  selectedMergeBaseBranch: string | undefined,
+  workspaceStatus: WorkspaceStatus | undefined,
+): string | undefined {
+  return (
+    selectedMergeBaseBranch ??
+    workspaceStatus?.mergeBase?.mergeBaseBranch ??
+    workspaceStatus?.branch.defaultBranch
+  );
+}
+
+function shouldShowWorkspaceStatus({
+  thread,
+  environment,
+  workspaceStatus,
+  workspaceStatusError,
+  workspaceUnavailable,
+}: Pick<
+  ThreadMetadataContentProps,
+  | "thread"
+  | "environment"
+  | "workspaceStatus"
+  | "workspaceStatusError"
+  | "workspaceUnavailable"
+>): boolean {
+  return (
+    (Boolean(workspaceStatus) ||
+      Boolean(workspaceStatusError) ||
+      Boolean(workspaceUnavailable) ||
+      environment?.status === "destroyed") &&
+    !(thread.archivedAt != null && environment?.managed !== true)
   );
 }
 
@@ -538,11 +558,10 @@ export function MergeBaseRow({
   onMergeBaseBranchSearchQueryChange,
   defaultOpen,
 }: MergeBaseRowProps) {
-  const effectiveMergeBaseBranch =
-    selectedMergeBaseBranch ??
-    workspaceStatus?.mergeBase?.mergeBaseBranch ??
-    workspaceStatus?.branch.defaultBranch;
-  const mergeBaseBranch = effectiveMergeBaseBranch;
+  const mergeBaseBranch = resolveDisplayedMergeBaseBranch(
+    selectedMergeBaseBranch,
+    workspaceStatus,
+  );
   const mergeBaseCandidateGroups = useMemo(
     () =>
       getMergeBaseBranchCandidateGroups({
@@ -560,15 +579,11 @@ export function MergeBaseRow({
   );
   const mergeBaseCandidates = mergeBaseCandidateGroups.options;
   const remoteMergeBaseCandidates = mergeBaseCandidateGroups.remoteOptions;
-  const showBranchComparisonUi = Boolean(
-    effectiveMergeBaseBranch || workspaceStatus?.branch.defaultBranch,
-  );
   const isOnDefaultBranch =
     workspaceStatus?.branch.currentBranch != null &&
     workspaceStatus.branch.currentBranch ===
       workspaceStatus.branch.defaultBranch;
-  const showMergeBase =
-    showBranchComparisonUi && Boolean(mergeBaseBranch) && !isOnDefaultBranch;
+  const showMergeBase = Boolean(mergeBaseBranch) && !isOnDefaultBranch;
   if (!showMergeBase) return null;
   const canRequestMergeBaseOptions =
     mergeBaseBranchOptions === undefined &&
@@ -628,19 +643,23 @@ export function GitStatusRow({
   workspaceUnavailable,
   selectedMergeBaseBranch,
 }: GitStatusRowProps) {
-  const isWorkspaceDeleted = environment?.status === "destroyed";
-  const showWorkspaceStatus =
-    (Boolean(workspaceStatus) ||
-      Boolean(workspaceStatusError) ||
-      Boolean(workspaceUnavailable) ||
-      isWorkspaceDeleted) &&
-    !(thread.archivedAt != null && environment?.managed !== true);
-  if (!showWorkspaceStatus) return null;
+  if (
+    !shouldShowWorkspaceStatus({
+      thread,
+      environment,
+      workspaceStatus,
+      workspaceStatusError,
+      workspaceUnavailable,
+    })
+  ) {
+    return null;
+  }
 
-  const effectiveMergeBaseBranch =
-    selectedMergeBaseBranch ??
-    workspaceStatus?.mergeBase?.mergeBaseBranch ??
-    workspaceStatus?.branch.defaultBranch;
+  const isWorkspaceDeleted = environment?.status === "destroyed";
+  const effectiveMergeBaseBranch = resolveDisplayedMergeBaseBranch(
+    selectedMergeBaseBranch,
+    workspaceStatus,
+  );
   const showBranchComparisonUi = Boolean(
     effectiveMergeBaseBranch || workspaceStatus?.branch.defaultBranch,
   );
@@ -670,7 +689,7 @@ export function GitStatusRow({
           {display.label}
         </span>
         <span className="min-w-0 truncate text-muted-foreground">
-          {display.summaryContent}
+          {display.summary}
         </span>
       </div>
     </DetailRow>
@@ -758,7 +777,6 @@ export function ThreadCommitsRow({
   if (commits.length === 0) return null;
   return (
     <>
-      {}
       <div className="mb-1 mt-3 border-t border-border" aria-hidden />
       <DetailRow
         label="Commits"
@@ -889,7 +907,6 @@ export interface ThreadMetadataContentProps {
 export function hasAnyThreadMetadata(
   {
     thread,
-    parentThreadDisplayName,
     environment,
     environmentProvisioningFailure,
     workspaceStatus,
@@ -899,7 +916,6 @@ export function hasAnyThreadMetadata(
   }: Pick<
     ThreadMetadataContentProps,
     | "thread"
-    | "parentThreadDisplayName"
     | "environment"
     | "environmentProvisioningFailure"
     | "workspaceStatus"
@@ -910,13 +926,13 @@ export function hasAnyThreadMetadata(
   hasForks: boolean,
 ): boolean {
   const parentThreadId = thread.parentThreadId ?? undefined;
-  const isWorkspaceDeleted = environment?.status === "destroyed";
-  const showWorkspaceStatus =
-    (Boolean(workspaceStatus) ||
-      Boolean(workspaceStatusError) ||
-      Boolean(workspaceUnavailable) ||
-      isWorkspaceDeleted) &&
-    !(thread.archivedAt != null && environment?.managed !== true);
+  const showWorkspaceStatus = shouldShowWorkspaceStatus({
+    thread,
+    environment,
+    workspaceStatus,
+    workspaceStatusError,
+    workspaceUnavailable,
+  });
   const branchName = workspaceStatus?.branch.currentBranch ?? null;
   const workspaceChangedFilesSections =
     selectWorkspaceChangedFilesSections(workspaceStatus);
@@ -931,7 +947,6 @@ export function hasAnyThreadMetadata(
     showWorkspaceStatus ||
     showThreadChangedFiles ||
     thread.archivedAt != null ||
-    (parentThreadDisplayName && parentThreadId) ||
     hasForks,
   );
 }

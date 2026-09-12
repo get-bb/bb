@@ -8,8 +8,6 @@ const TAG_PATTERN = /^[a-z0-9]+(?:-[a-z0-9]+)*$/u;
 const GITHUB_LOGIN_PATTERN = /^[A-Za-z0-9](?:-?[A-Za-z0-9]){0,38}$/u;
 const HOST_ICON_PATTERN = /^[A-Za-z][A-Za-z0-9]*$/u;
 const HTTPS_URL_PATTERN = /^[Hh][Tt][Tt][Pp][Ss]:\/\//u;
-const ICON_URL_PATTERN =
-  /^(?:(?![A-Za-z][A-Za-z0-9+.-]*:)|(?=[Hh][Tt][Tt][Pp][Ss]:))[^\s]*\.(?:[Ss][Vv][Gg]|[Pp][Nn][Gg]|[Ww][Ee][Bb][Pp])(?:[?#][^\s]*)?$/u;
 const V2_ICON_URL_PATTERN =
   /^(?!http:)(?:[Hh][Tt][Tt][Pp][Ss]:\/\/)?[^\s]+\.(?:[Ss][Vv][Gg]|[Pp][Nn][Gg]|[Ww][Ee][Bb][Pp])$/u;
 const SCREENSHOT_URL_PATTERN =
@@ -26,22 +24,6 @@ const DATE_TIME_SEPARATOR_PATTERN = /t|\s/iu;
 const TIME_WITH_OFFSET_PATTERN =
   /^(\d\d):(\d\d):(\d\d(?:\.\d+)?)(z|([+-])(\d\d)(?::?(\d\d))?)$/iu;
 
-const SEMVER_NUMBER = String.raw`(?:0|[1-9]\d*|[xX*])`;
-const SEMVER_PRERELEASE = String.raw`(?:-[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?`;
-const SEMVER_BUILD = String.raw`(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?`;
-const SEMVER_VERSION = String.raw`v?${SEMVER_NUMBER}(?:\.${SEMVER_NUMBER}(?:\.${SEMVER_NUMBER})?)?${SEMVER_PRERELEASE}${SEMVER_BUILD}`;
-const SEMVER_COMPARATOR = String.raw`(?:[<>]=?|==?|~>?|\^)?\s*${SEMVER_VERSION}`;
-const SEMVER_SET = String.raw`(?:\*|${SEMVER_VERSION}\s+-\s+${SEMVER_VERSION}|${SEMVER_COMPARATOR}(?:\s+${SEMVER_COMPARATOR})*|)`;
-
-const MARKETPLACE_SEMVER_RANGE_PATTERN = new RegExp(
-  String.raw`^\s*${SEMVER_SET}(?:\s*\|\|\s*${SEMVER_SET})*\s*$`,
-  "u",
-);
-
-const semverRangeSchema = z
-  .string()
-  .min(1)
-  .regex(MARKETPLACE_SEMVER_RANGE_PATTERN);
 const semverRangeV2Schema = z.string().min(1);
 const httpsUrlSchema = z.string().regex(HTTPS_URL_PATTERN);
 const isoDateSchema = z.iso.date();
@@ -76,37 +58,32 @@ const marketplaceScreenshotSchema = z
     "must be an https URL or relative .png, .jpg, .jpeg, or .webp asset",
   );
 
-function marketplaceIconSchema(strict: boolean) {
+function marketplaceIconSchema() {
   const url = z
     .string()
     .min(1)
     .regex(
-      strict ? ICON_URL_PATTERN : V2_ICON_URL_PATTERN,
+      V2_ICON_URL_PATTERN,
       "must be an https URL or relative .svg, .png, or .webp asset",
     );
-  const object = z.object({ url });
-  return z.union([
-    z.string().regex(HOST_ICON_PATTERN),
-    strict ? object.strict() : object,
-  ]);
+  return z.union([z.string().regex(HOST_ICON_PATTERN), z.object({ url })]);
 }
 
-function marketplaceAuthorSchema(strict: boolean) {
-  const object = z.object({
+function marketplaceAuthorSchema() {
+  return z.object({
     name: z.string().min(1),
     github: z.string().regex(GITHUB_LOGIN_PATTERN).optional(),
     url: httpsUrlSchema.optional(),
   });
-  return strict ? object.strict() : object;
 }
 
-function marketplaceNpmSourceSchema(strict: boolean) {
+function marketplaceNpmSourceSchema() {
   const npm = z
     .object({
       package: z
         .string()
         .regex(NPM_PACKAGE_PATTERN, "must be an unambiguous npm package name"),
-      range: (strict ? semverRangeSchema : semverRangeV2Schema).optional(),
+      range: semverRangeV2Schema.optional(),
       tag: z
         .string()
         .regex(/^[A-Za-z][A-Za-z0-9._-]*$/u)
@@ -121,7 +98,7 @@ function marketplaceNpmSourceSchema(strict: boolean) {
   return object.strict();
 }
 
-function marketplaceGitSourceSchema(strict: boolean) {
+function marketplaceGitSourceSchema() {
   const base = {
     url: httpsUrlSchema,
     subdir: z.string().regex(GIT_SUBDIR_PATTERN).optional(),
@@ -134,7 +111,7 @@ function marketplaceGitSourceSchema(strict: boolean) {
   });
   const range = z.object({
     ...base,
-    range: strict ? semverRangeSchema : semverRangeV2Schema,
+    range: semverRangeV2Schema,
     tagPrefix: z.string().max(128).regex(GIT_TAG_PREFIX_PATTERN).optional(),
   });
   const refObject = z.object({ git: ref.strict() }).strict();
@@ -154,36 +131,19 @@ function marketplaceBundledSourceSchema() {
     .strict();
 }
 
-function marketplaceSourceSchema(strict: boolean) {
-  const npm = marketplaceNpmSourceSchema(strict);
-  const git = marketplaceGitSourceSchema(strict);
-  return strict
-    ? z.union([npm, git])
-    : z.union([npm, git, marketplaceBundledSourceSchema()]);
+function marketplaceSourceSchema() {
+  return z.union([
+    marketplaceNpmSourceSchema(),
+    marketplaceGitSourceSchema(),
+    marketplaceBundledSourceSchema(),
+  ]);
 }
 
-const marketplaceEntryIdentityShape = (strict: boolean) => ({
+export const marketplaceEntryV2Schema = z.object({
   id: z.string().regex(NAME_PATTERN),
   displayName: z.string().min(1),
   description: z.string().min(1),
-  icon: marketplaceIconSchema(strict),
-});
-
-const marketplaceEntryMetadataShape = (strict: boolean) => ({
-  tags: z.array(z.string().max(32).regex(TAG_PATTERN)).max(10).optional(),
-  author: marketplaceAuthorSchema(strict),
-  source: marketplaceSourceSchema(strict),
-});
-
-export const marketplaceEntryV1Schema = z
-  .object({
-    ...marketplaceEntryIdentityShape(true),
-    ...marketplaceEntryMetadataShape(true),
-  })
-  .strict();
-
-export const marketplaceEntryV2Schema = z.object({
-  ...marketplaceEntryIdentityShape(false),
+  icon: marketplaceIconSchema(),
   category: pluginCatalogCategoryIdSchema.optional(),
   screenshots: z
     .array(marketplaceScreenshotSchema)
@@ -192,9 +152,9 @@ export const marketplaceEntryV2Schema = z.object({
   overview: z.string().min(1).optional(),
   publishedAt: marketplaceDateTimeSchema.optional(),
   updatedAt: marketplaceDateTimeSchema.optional(),
-  ...marketplaceEntryMetadataShape(false),
+  tags: z.array(z.string().max(32).regex(TAG_PATTERN)).max(10).optional(),
+  author: marketplaceAuthorSchema(),
+  source: marketplaceSourceSchema(),
 });
 
-export type MarketplaceEntryV1 = z.infer<typeof marketplaceEntryV1Schema>;
 export type MarketplaceEntryV2 = z.infer<typeof marketplaceEntryV2Schema>;
-export type MarketplaceEntrySource = MarketplaceEntryV2["source"];

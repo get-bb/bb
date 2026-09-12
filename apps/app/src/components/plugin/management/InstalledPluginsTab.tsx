@@ -130,7 +130,7 @@ export function InstalledPluginRow({
             <ProvenancePill label={plugin.publisherLabel} />
           )
         }
-        status={
+        state={
           runtimeStatus === null ? undefined : (
             <span
               data-testid={`plugin-runtime-status-${plugin.id}`}

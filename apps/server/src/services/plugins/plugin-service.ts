@@ -2,7 +2,6 @@ import { watch } from "node:fs";
 import { readFile, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { homedir } from "node:os";
-import { CronExpressionParser } from "cron-parser";
 import type { Context } from "hono";
 import {
   CUSTOM_THEME_CSS_MAX_LENGTH,
@@ -13,7 +12,6 @@ import {
   isPluginOwnedIconPath,
   parsePersistedPluginMetadata,
   type DeclaredCodeTheme,
-  type DynamicTool,
   type JsonObject,
   type JsonValue,
   type PluginThemeMeta,
@@ -28,21 +26,16 @@ import {
   type ExperimentalPluginProviderEnvContext,
   type ExperimentalPluginProviderEnvHealthContext,
   type PluginRpcError,
-  type PluginRpcErrorCode,
-  type PluginRpcValidationIssue,
-  type StandardSchemaV1,
-  type StandardSchemaV1Issue,
-  type StandardSchemaV1Result,
 } from "@get-bb/plugin-sdk";
 import {
-  assertNoRecursiveJsonSchemaReferences,
   enforcePluginCliOutputLimit,
-  PLUGIN_AGENT_DYNAMIC_INSTRUCTIONS_MAX_CHARS,
-  PLUGIN_AGENT_SELECTION_MAX_IDS,
-  PLUGIN_AGENT_TOOL_PARAMETERS_MAX_BYTES,
+  normalizePluginAgentConfiguration,
+  normalizeRpcJsonResult,
   RESERVED_AGENT_TOOL_NAMES,
   adoptHttpRouteResponse,
   validatePluginProviderEnvEntries,
+  validateRpcValue,
+  validateSettingsUpdate,
 } from "@get-bb/plugin-sdk/internal/host-policy";
 import {
   buildPluginApp,
@@ -54,12 +47,15 @@ import {
   marketplacePublisherLabel,
   pluginPublisherLabel,
 } from "../plugin-catalog/marketplace-publishers.js";
-import { legacyMarketplaceCategory } from "../plugin-catalog/legacy-marketplace-category.js";
 import { deleteSecretFile, readOrCreateSecretFile } from "@bb/secret-storage";
 import {
+  pluginUpdateCheckEntrySchema,
   ROOT_PLUGIN_SOURCE_SELECTION,
+  type InstalledPlugin,
   type PluginCapabilitySummary,
+  type PluginSourceDetail,
   type PluginSourceSelection,
+  type PluginUpdateCheckEntry,
 } from "@bb/server-contract";
 import {
   claimPluginScheduledRun,
@@ -82,13 +78,11 @@ import {
   type PluginMarketplaceRow,
 } from "@bb/db";
 import {
-  BUNDLED_MARKETPLACE_NAME,
-  entryScreenshotUrls,
-  marketplaceEntryCategory,
-  marketplaceEntryCollections,
+  catalogEntryMetadata,
   isBundledMarketplaceEntry,
-  parseBundledMarketplaceManifestJson,
-  parseMarketplaceManifestJson,
+  marketplaceEntryCollections,
+  marketplaceRowIconBase,
+  parseStoredMarketplaceManifest,
   type MarketplaceManifest,
 } from "../plugin-catalog/marketplace-manifest.js";
 import {
@@ -96,7 +90,11 @@ import {
   getLastThreadOutput,
 } from "../threads/thread-data.js";
 import { buildTurnFailedEvent } from "../threads/turn-failed.js";
-import type { PluginBrandingAssetVariant } from "./app-bundle.js";
+import type {
+  PluginBrandingAssetSet,
+  PluginBrandingAssetSnapshot,
+  PluginBrandingAssetVariant,
+} from "./app-bundle.js";
 import { readPluginThemeCodeTheme } from "../system/code-themes.js";
 import {
   npmInstallPrefix,
@@ -125,7 +123,6 @@ import {
   buildPluginSettingsView,
   pluginSecretsDir,
   readPluginSettingsValues,
-  validatePluginSettingsUpdate,
   writePluginSettingsUpdate,
   PluginSettingsValidationError,
   type PluginSettingsView,
@@ -136,27 +133,28 @@ import {
   type InstallContext,
   type RegisterInstalledArgs,
 } from "./managed-plugin-artifacts.js";
-import type { PluginHookProvider } from "./plugin-hook-registry.js";
+import {
+  DEFAULT_PLUGIN_HOOK_TIMEOUT_MS,
+  type PluginHookInvocation,
+  type PluginHookProvider,
+} from "./plugin-hook-registry.js";
 import type { PluginEnvironmentProviderBridge } from "./plugin-environment-provider-registry.js";
 import { createPluginRegistration } from "./plugin-registration.js";
 import { createPluginRuntime, forgetMutableRoot } from "./plugin-runtime.js";
+import { nextCronRunAt, raceTimeout } from "./plugin-time-box.js";
 import { createPluginUpdates } from "./plugin-updates.js";
 
-import { pluginUpdateCheckEntrySchema } from "./plugin-service-internal.js";
 import type {
   LoadedPlugin,
   PluginAgentToolContribution,
   PluginApplyUpdateOutcome,
   PluginInstructionContribution,
-  PluginListEntry,
   PluginMentionProviderContribution,
   PluginMentionResolveResult,
   PluginMentionSearchGroup,
   PluginMentionSearchItem,
   PluginServiceDeps,
-  PluginSourceView,
   PluginThreadEventEmitter,
-  PluginUpdateCheckEntry,
   PluginWireLookup,
   PluginResolvedAgentConfiguration,
   PluginResolvedProviderEnv,
@@ -177,8 +175,8 @@ export interface PluginSkillRootContribution {
 }
 
 export type PluginReloadOutcome =
-  | { ok: true; plugins: PluginListEntry[] }
-  | { ok: false; error: string; plugins: PluginListEntry[] };
+  | { ok: true; plugins: InstalledPlugin[] }
+  | { ok: false; error: string; plugins: InstalledPlugin[] };
 
 export function dispatchPluginSourceWatchChange(
   handleChange: (relativePath: string) => void,
@@ -203,15 +201,15 @@ export interface PluginService {
   start(): Promise<void>;
   stop(): Promise<void>;
   handleUncaughtException(error: unknown): boolean;
-  list(): PluginListEntry[];
+  list(): InstalledPlugin[];
   listThemes(): PluginThemeMeta[];
   readThemeCss(themeId: string): Promise<string | null>;
   readThemeCodeTheme(themeId: string): DeclaredCodeTheme | null;
   install(
     source: string,
     selection: PluginSourceSelection,
-  ): Promise<PluginListEntry>;
-  installOfficialPlugin(name: string): Promise<PluginListEntry>;
+  ): Promise<InstalledPlugin>;
+  installOfficialPlugin(name: string): Promise<InstalledPlugin>;
   installCatalogPlugin(args: {
     marketplace: string;
     entryId: string;
@@ -222,7 +220,7 @@ export interface PluginService {
     expectedGitCommit?: string;
     expectedNpmVersion?: string;
     expectedNpmIntegrity?: string;
-  }): Promise<PluginListEntry>;
+  }): Promise<InstalledPlugin>;
   resolveCatalogNpmSource(args: {
     packageName: string;
     registry?: string;
@@ -232,18 +230,18 @@ export interface PluginService {
     | { outcome: "resolved"; version: string; integrity: string }
     | { outcome: "unavailable"; detail: string }
   >;
-  installPath(path: string): Promise<PluginListEntry>;
+  installPath(path: string): Promise<InstalledPlugin>;
   checkForUpdates(id?: string): Promise<PluginUpdateCheckEntry[]>;
   startPeriodicUpdateChecks(): void;
   stopPeriodicUpdateChecks(): Promise<void>;
   listUpdateResults(): PluginUpdateCheckEntry[];
-  getSource(id: string): Promise<PluginSourceView | undefined>;
+  getSource(id: string): Promise<PluginSourceDetail | undefined>;
   applyUpdate(id: string): Promise<PluginApplyUpdateOutcome>;
   remove(id: string): Promise<boolean>;
   setEnabled(
     id: string,
     enabled: boolean,
-  ): Promise<PluginListEntry | undefined>;
+  ): Promise<InstalledPlugin | undefined>;
   reload(id?: string): Promise<PluginReloadOutcome>;
   getApi(id: string): BbPluginApi | undefined;
   /**
@@ -380,48 +378,9 @@ export interface PluginService {
 const DEFAULT_MENTION_SEARCH_TIMEOUT_MS = 2_000;
 const DEFAULT_MENTION_RESOLVE_TIMEOUT_MS = 10_000;
 const DEFAULT_PROVIDER_ENV_RESOLVE_TIMEOUT_MS = 5_000;
-/**
- * Per-handler decision box. A hook handler is on the dispatch hot path and
- * holds a server-wide lock while it runs, so it must decide in milliseconds;
- * this is the outer bound past which the dispatch fails with the plugin named,
- * not a budget to spend.
- */
-const DEFAULT_PLUGIN_HOOK_TIMEOUT_MS = 10_000;
 const DEFAULT_STABILIZATION_WINDOW_MS = 30_000;
 const DEFAULT_ARTIFACT_RETENTION_MS = 7 * 24 * 60 * 60_000;
 const SCHEDULE_SWEEP_BATCH_SIZE = 100;
-
-function nextCronRunAt(cron: string, now: number): number {
-  return CronExpressionParser.parse(cron, { currentDate: new Date(now) })
-    .next()
-    .getTime();
-}
-
-async function settledWithin(
-  promise: Promise<unknown>,
-  timeoutMs: number,
-): Promise<boolean> {
-  let timer: NodeJS.Timeout | undefined;
-  try {
-    return await Promise.race([
-      promise.then(
-        () => true,
-        () => true,
-      ),
-      new Promise<boolean>((resolvePromise) => {
-        timer = setTimeout(() => resolvePromise(false), timeoutMs);
-        timer.unref?.();
-      }),
-    ]);
-  } finally {
-    if (timer !== undefined) clearTimeout(timer);
-  }
-}
-
-type PluginRpcHandlerErrorCode = Extract<
-  PluginRpcErrorCode,
-  "invalid_input" | "handler_error" | "invalid_output" | "non_json_result"
->;
 
 class PluginRpcBoundaryError extends Error {
   constructor(readonly rpcError: PluginRpcError) {
@@ -430,136 +389,8 @@ class PluginRpcBoundaryError extends Error {
   }
 }
 
-function normalizeRpcIssuePath(
-  path: StandardSchemaV1Issue["path"],
-): Array<string | number> | undefined {
-  if (path === undefined) return undefined;
-  const segments = Array.isArray(path) ? path : [path];
-  const normalized = segments.map((segment) => {
-    const key =
-      typeof segment === "object" && segment !== null
-        ? Reflect.get(segment, "key")
-        : segment;
-    return typeof key === "number" ? key : String(key);
-  });
-  return normalized.length > 0 ? normalized : undefined;
-}
-
-function normalizeRpcIssues(
-  issues: readonly StandardSchemaV1Issue[],
-): PluginRpcValidationIssue[] {
-  return issues.map((issue) => {
-    const path = normalizeRpcIssuePath(issue.path);
-    return {
-      message: issue.message,
-      ...(path !== undefined ? { path } : {}),
-    };
-  });
-}
-
-function rpcBoundaryFailure(
-  code: PluginRpcHandlerErrorCode,
-  message: string,
-  issues?: PluginRpcValidationIssue[],
-): PluginRpcBoundaryError {
-  return new PluginRpcBoundaryError({
-    code,
-    message,
-    ...(issues !== undefined ? { issues } : {}),
-  });
-}
-
-async function validateRpcValue(
-  schema: StandardSchemaV1,
-  value: unknown,
-  phase: "input" | "output",
-): Promise<unknown> {
-  let result: StandardSchemaV1Result<unknown>;
-  try {
-    result = await schema["~standard"].validate(value);
-  } catch (error) {
-    const detail = error instanceof Error ? error.message : String(error);
-    throw rpcBoundaryFailure(
-      phase === "input" ? "invalid_input" : "invalid_output",
-      `rpc ${phase} validator failed: ${detail}`,
-      [{ message: detail }],
-    );
-  }
-  if (result.issues !== undefined) {
-    const issues = normalizeRpcIssues(result.issues);
-    throw rpcBoundaryFailure(
-      phase === "input" ? "invalid_input" : "invalid_output",
-      `rpc ${phase} validation failed`,
-      issues,
-    );
-  }
-  return result.value;
-}
-
-function normalizeRpcJsonResult(value: unknown): JsonValue {
-  const ancestors = new Set<object>();
-
-  function visit(current: unknown, path: string): JsonValue {
-    if (
-      current === null ||
-      typeof current === "string" ||
-      typeof current === "boolean"
-    ) {
-      return current;
-    }
-    if (typeof current === "number") {
-      if (!Number.isFinite(current)) {
-        throw rpcBoundaryFailure(
-          "non_json_result",
-          `rpc result at ${path} contains a non-finite number`,
-        );
-      }
-      return current;
-    }
-    if (typeof current !== "object") {
-      throw rpcBoundaryFailure(
-        "non_json_result",
-        `rpc result at ${path} is not a JSON value (${typeof current})`,
-      );
-    }
-    if (ancestors.has(current)) {
-      throw rpcBoundaryFailure(
-        "non_json_result",
-        `rpc result at ${path} is cyclic`,
-      );
-    }
-    ancestors.add(current);
-    try {
-      if (Array.isArray(current)) {
-        return current.map((item, index) => visit(item, `${path}[${index}]`));
-      }
-      const prototype = Object.getPrototypeOf(current);
-      if (prototype !== Object.prototype && prototype !== null) {
-        throw rpcBoundaryFailure(
-          "non_json_result",
-          `rpc result at ${path} must be a plain JSON object`,
-        );
-      }
-      const symbolKey = Reflect.ownKeys(current).find(
-        (key) => typeof key === "symbol",
-      );
-      if (symbolKey !== undefined) {
-        throw rpcBoundaryFailure(
-          "non_json_result",
-          `rpc result at ${path} contains a symbol key`,
-        );
-      }
-      const normalized: Record<string, JsonValue> = {};
-      for (const [key, child] of Object.entries(current)) {
-        normalized[key] = visit(child, `${path}.${key}`);
-      }
-      return normalized;
-    } finally {
-      ancestors.delete(current);
-    }
-  }
-
-  return visit(value, "$result");
+function throwRpcBoundaryError(error: PluginRpcError): never {
+  throw new PluginRpcBoundaryError(error);
 }
 
 function normalizeAgentToolResult(
@@ -655,221 +486,6 @@ function normalizeMentionSearchItems(
   });
 }
 
-interface NormalizedPluginAgentConfiguration {
-  toolIds: string[];
-  toolParameterOverrides: Map<string, Record<string, unknown>>;
-  skillIds: string[];
-  instructions: string | null;
-}
-
-function normalizePluginAgentToolParameters(args: {
-  index: number;
-  value: unknown;
-}): Record<string, unknown> {
-  const { index, value } = args;
-  if (typeof value !== "object" || value === null || Array.isArray(value)) {
-    throw new Error(
-      `configure() output.tools[${index}].parameters must be a JSON-schema object`,
-    );
-  }
-  let serialized: string;
-  try {
-    serialized = JSON.stringify(value);
-  } catch {
-    throw new Error(
-      `configure() output.tools[${index}].parameters is not JSON-serializable`,
-    );
-  }
-  if (serialized === undefined) {
-    throw new Error(
-      `configure() output.tools[${index}].parameters is not JSON-serializable`,
-    );
-  }
-  if (
-    Buffer.byteLength(serialized, "utf8") >
-    PLUGIN_AGENT_TOOL_PARAMETERS_MAX_BYTES
-  ) {
-    throw new Error(
-      `configure() output.tools[${index}].parameters exceeds the ${PLUGIN_AGENT_TOOL_PARAMETERS_MAX_BYTES}-byte limit`,
-    );
-  }
-  const parameters = JSON.parse(serialized) as Record<string, unknown>;
-  if (parameters.type !== "object") {
-    throw new Error(
-      `configure() output.tools[${index}].parameters must have root type "object"`,
-    );
-  }
-  assertNoRecursiveJsonSchemaReferences(
-    parameters,
-    `configure() output.tools[${index}].parameters`,
-  );
-  return parameters;
-}
-
-function normalizePluginAgentToolSelections(args: {
-  knownIds: ReadonlySet<string>;
-  pluginId: string;
-  value: unknown;
-}): {
-  toolIds: string[];
-  parameterOverrides: Map<string, Record<string, unknown>>;
-} {
-  if (!Array.isArray(args.value)) {
-    throw new Error("configure() output.tools must be an array");
-  }
-  if (args.value.length > PLUGIN_AGENT_SELECTION_MAX_IDS) {
-    throw new Error(
-      `configure() output.tools exceeds the ${PLUGIN_AGENT_SELECTION_MAX_IDS}-id limit`,
-    );
-  }
-  const toolIds: string[] = [];
-  const parameterOverrides = new Map<string, Record<string, unknown>>();
-  const seen = new Set<string>();
-  for (let index = 0; index < args.value.length; index += 1) {
-    const entry = args.value[index];
-    let name: unknown;
-    let parameters: Record<string, unknown> | null = null;
-    if (typeof entry === "string") {
-      name = entry;
-    } else if (
-      typeof entry === "object" &&
-      entry !== null &&
-      !Array.isArray(entry)
-    ) {
-      const typed = entry as Record<string, unknown>;
-      const unknownKeys = Object.keys(typed)
-        .filter((key) => !["name", "parameters"].includes(key))
-        .sort();
-      if (unknownKeys.length > 0) {
-        throw new Error(
-          `configure() output.tools[${index}] contains unknown field${unknownKeys.length === 1 ? "" : "s"}: ${unknownKeys.join(", ")}`,
-        );
-      }
-      name = typed.name;
-      parameters = normalizePluginAgentToolParameters({
-        index,
-        value: typed.parameters,
-      });
-    } else {
-      throw new Error(
-        `configure() output.tools[${index}] must be a tool name or { name, parameters }`,
-      );
-    }
-    if (typeof name !== "string" || name.length === 0) {
-      throw new Error(
-        `configure() output.tools[${index}] must ${typeof entry === "string" ? "be" : "name"} a non-empty string`,
-      );
-    }
-    if (seen.has(name)) {
-      throw new Error(
-        `configure() output.tools contains duplicate id ${JSON.stringify(name)}`,
-      );
-    }
-    if (!args.knownIds.has(name)) {
-      throw new Error(
-        `configure() selected unknown tool id ${JSON.stringify(name)} owned by plugin ${JSON.stringify(args.pluginId)}`,
-      );
-    }
-    seen.add(name);
-    toolIds.push(name);
-    if (parameters !== null) parameterOverrides.set(name, parameters);
-  }
-  return { toolIds, parameterOverrides };
-}
-
-function normalizePluginAgentSelectionIds(args: {
-  knownIds: ReadonlySet<string>;
-  pluginId: string;
-  value: unknown;
-}): string[] {
-  if (!Array.isArray(args.value)) {
-    throw new Error("configure() output.skills must be an array");
-  }
-  if (args.value.length > PLUGIN_AGENT_SELECTION_MAX_IDS) {
-    throw new Error(
-      `configure() output.skills exceeds the ${PLUGIN_AGENT_SELECTION_MAX_IDS}-id limit`,
-    );
-  }
-  const selected: string[] = [];
-  const seen = new Set<string>();
-  for (let index = 0; index < args.value.length; index += 1) {
-    const id = args.value[index];
-    if (typeof id !== "string" || id.length === 0) {
-      throw new Error(
-        `configure() output.skills[${index}] must be a non-empty string`,
-      );
-    }
-    if (seen.has(id)) {
-      throw new Error(
-        `configure() output.skills contains duplicate id ${JSON.stringify(id)}`,
-      );
-    }
-    if (!args.knownIds.has(id)) {
-      throw new Error(
-        `configure() selected unknown skill id ${JSON.stringify(id)} owned by plugin ${JSON.stringify(args.pluginId)}`,
-      );
-    }
-    seen.add(id);
-    selected.push(id);
-  }
-  return selected;
-}
-
-function normalizePluginAgentConfiguration(args: {
-  knownSkillIds: ReadonlySet<string>;
-  knownToolIds: ReadonlySet<string>;
-  pluginId: string;
-  value: unknown;
-}): NormalizedPluginAgentConfiguration {
-  if (
-    typeof args.value !== "object" ||
-    args.value === null ||
-    Array.isArray(args.value)
-  ) {
-    throw new Error(
-      "configure() must return { tools: string[], skills: string[], instructions?: string }",
-    );
-  }
-  const output = args.value as Record<string, unknown>;
-  const unknownKeys = Object.keys(output)
-    .filter((key) => !["tools", "skills", "instructions"].includes(key))
-    .sort();
-  if (unknownKeys.length > 0) {
-    throw new Error(
-      `configure() output contains unknown field${unknownKeys.length === 1 ? "" : "s"}: ${unknownKeys.join(", ")}`,
-    );
-  }
-  if (
-    output.instructions !== undefined &&
-    typeof output.instructions !== "string"
-  ) {
-    throw new Error("configure() output.instructions must be a string");
-  }
-  const instructions =
-    typeof output.instructions === "string" &&
-    output.instructions.trim().length > 0
-      ? output.instructions.slice(
-          0,
-          PLUGIN_AGENT_DYNAMIC_INSTRUCTIONS_MAX_CHARS,
-        )
-      : null;
-  const toolSelections = normalizePluginAgentToolSelections({
-    knownIds: args.knownToolIds,
-    pluginId: args.pluginId,
-    value: output.tools,
-  });
-  return {
-    toolIds: toolSelections.toolIds,
-    toolParameterOverrides: toolSelections.parameterOverrides,
-    skillIds: normalizePluginAgentSelectionIds({
-      knownIds: args.knownSkillIds,
-      pluginId: args.pluginId,
-      value: output.skills,
-    }),
-    instructions,
-  };
-}
-
 const GENERIC_AGENT_TOOL_GLYPH = "Toolbox";
 
 export function createPluginService(deps: PluginServiceDeps): PluginService {
@@ -882,8 +498,6 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
     deps.mentionResolveTimeoutMs ?? DEFAULT_MENTION_RESOLVE_TIMEOUT_MS;
   const providerEnvResolveTimeoutMs =
     deps.providerEnvResolveTimeoutMs ?? DEFAULT_PROVIDER_ENV_RESOLVE_TIMEOUT_MS;
-  const pluginHookTimeoutMs =
-    deps.pluginHookTimeoutMs ?? DEFAULT_PLUGIN_HOOK_TIMEOUT_MS;
   const stabilizationWindowMs =
     deps.stabilizationWindowMs ?? DEFAULT_STABILIZATION_WINDOW_MS;
   const artifactRetentionMs =
@@ -950,9 +564,7 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
   } = createPluginRuntime({
     deps,
     machineEnrollments: deps.machineEnrollments ?? null,
-    nextCronRunAt,
     settingsChanged: notifyPluginsChanged,
-    settledWithin,
   });
 
   let managedValidateInstallDir!: (
@@ -1067,16 +679,61 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
     };
   }
 
-  function toAgentDynamicTool(
+  function findLoadedTheme(
+    themeId: string,
+  ): PluginManifest["themes"][number] | undefined {
+    for (const [pluginId, plugin] of loaded) {
+      const theme = plugin.manifest.themes.find(
+        (entry) => formatPluginThemeId(pluginId, entry.id) === themeId,
+      );
+      if (theme) return theme;
+    }
+    return undefined;
+  }
+
+  function brandingAssetSetFor(id: string): PluginBrandingAssetSet | undefined {
+    return loaded.has(id)
+      ? brandingAssets.get(id)
+      : identities.get(id)?.brandingAssets;
+  }
+
+  function assetPayload(asset: PluginBrandingAssetSnapshot): {
+    bytes: Uint8Array;
+    contentType: string;
+    hash: string;
+  } {
+    return {
+      bytes: asset.bytes,
+      contentType: asset.contentType,
+      hash: asset.hash,
+    };
+  }
+
+  async function invokeIsolated<T>(
+    pluginId: string,
+    label: string,
+    run: () => Promise<T>,
+  ): Promise<PluginHookInvocation<T>> {
+    const outcome = await invokeWrapped(pluginId, label, run);
+    return outcome.ok
+      ? { ok: true, value: outcome.value }
+      : { ok: false, error: outcome.error };
+  }
+
+  function toToolContribution(
     pluginId: string,
     record: PluginAgentToolRecord,
     inputSchema: unknown = record.inputSchema,
-  ): DynamicTool {
+  ): PluginAgentToolContribution {
     return {
-      name: record.name,
-      description: record.description,
-      inputSchema,
-      presentation: resolveAgentToolPresentation(pluginId, record),
+      pluginId,
+      tool: {
+        name: record.name,
+        description: record.description,
+        inputSchema,
+        presentation: resolveAgentToolPresentation(pluginId, record),
+      },
+      instructions: record.instructions,
     };
   }
 
@@ -1168,7 +825,7 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
 
   function updateStateForRow(
     row: InstalledPluginRow,
-  ): PluginListEntry["updateState"] {
+  ): InstalledPlugin["updateState"] {
     let persisted: PluginUpdateCheckEntry | undefined;
     if (row.updateStatusDetail !== null) {
       try {
@@ -1252,7 +909,7 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
     return capabilities;
   }
 
-  function list(): PluginListEntry[] {
+  function list(): InstalledPlugin[] {
     const scheduleRows = listPluginSchedules(deps.db);
     const rows = listInstalledPlugins(deps.db);
     const catalogData = installedCatalogData(rows);
@@ -1265,6 +922,7 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
         const cliRegistration = loadedPlugin?.handle.cli.registration;
         const identity =
           loadedPlugin === undefined ? identities.get(row.id) : undefined;
+        const brandingSet = brandingAssetSetFor(row.id);
         const catalogMetadata = catalogData.metadataByPluginId.get(row.id) ?? {
           screenshots: [],
           collections: [],
@@ -1305,10 +963,7 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
             loadedPlugin?.manifest.branding.icon ??
             identity?.manifest.branding.icon ??
             null,
-          iconUrl:
-            (loadedPlugin !== undefined
-              ? brandingAssets.get(row.id)?.compactIcon?.url
-              : identity?.brandingAssets.compactIcon?.url) ?? null,
+          iconUrl: brandingSet?.compactIcon?.url ?? null,
           status: runtime.status,
           statusDetail: runtime.detail,
           handlerStats: stats
@@ -1339,14 +994,8 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
             loadedPlugin !== undefined &&
             Object.keys(loadedPlugin.handle.settings.descriptors).length > 0,
           app: appBundles.get(row.id)?.state ?? { hasApp: false, bundle: null },
-          logoUrl:
-            (loadedPlugin !== undefined
-              ? brandingAssets.get(row.id)?.logo?.url
-              : identity?.brandingAssets.logo?.url) ?? null,
-          logoDarkUrl:
-            (loadedPlugin !== undefined
-              ? brandingAssets.get(row.id)?.logoDark?.url
-              : identity?.brandingAssets.logoDark?.url) ?? null,
+          logoUrl: brandingSet?.logo?.url ?? null,
+          logoDarkUrl: brandingSet?.logoDark?.url ?? null,
           providerIds:
             loadedPlugin?.handle
               .listProviderDeclarations()
@@ -1355,18 +1004,17 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
           // row referencing "<pluginId>/<name>" resolves while the plugin is
           // disabled and stops resolving only once it is uninstalled.
           icons: Object.fromEntries(
-            [
-              ...((loadedPlugin !== undefined
-                ? brandingAssets.get(row.id)?.icons
-                : identity?.brandingAssets.icons) ?? []),
-            ].map(([name, asset]) => [name, asset.url]),
+            [...(brandingSet?.icons ?? [])].map(([name, asset]) => [
+              name,
+              asset.url,
+            ]),
           ),
         };
       });
   }
 
   type InstalledCatalogMetadata = Pick<
-    PluginListEntry,
+    InstalledPlugin,
     | "categoryId"
     | "category"
     | "screenshots"
@@ -1384,18 +1032,9 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
     }
     let manifest: MarketplaceManifest | null = null;
     try {
-      const location = `stored "${marketplace.name}" marketplace catalog`;
-      manifest =
-        marketplace.name === BUNDLED_MARKETPLACE_NAME
-          ? parseBundledMarketplaceManifestJson(
-              marketplace.manifestJson,
-              location,
-            )
-          : parseMarketplaceManifestJson(
-              marketplace.manifestJson,
-              location,
-              (message) => logger.warn(message),
-            );
+      manifest = parseStoredMarketplaceManifest(marketplace, (message) =>
+        logger.warn(message),
+      );
     } catch (error) {
       logger.warn(
         `failed to read the stored "${marketplace.name}" marketplace catalog: ${error instanceof Error ? error.message : String(error)}`,
@@ -1465,31 +1104,14 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
         const entry = entriesById.get(row.catalogEntryId ?? "");
         if (entry === undefined) continue;
         try {
-          const category = marketplaceEntryCategory(manifest, entry);
-          const legacyCategory =
-            manifest.schemaVersion === 1
-              ? legacyMarketplaceCategory(entry.tags ?? [])
-              : undefined;
           metadataByPluginId.set(row.id, {
-            ...(category === undefined
-              ? legacyCategory === undefined
-                ? {}
-                : { category: legacyCategory }
-              : { categoryId: category.id, category: category.displayName }),
-            screenshots: entryScreenshotUrls(
+            ...catalogEntryMetadata({
+              manifest,
               entry,
-              marketplace.sourceKind === "https"
-                ? { kind: "url", manifestUrl: marketplace.manifestUrl }
-                : { kind: "dir", root: marketplace.manifestUrl },
-              (message) => logger.warn(message),
-            ),
+              base: marketplaceRowIconBase(marketplace),
+              warn: (message) => logger.warn(message),
+            }),
             collections: marketplaceEntryCollections(manifest, entry.id),
-            ...("publishedAt" in entry && typeof entry.publishedAt === "string"
-              ? { publishedAt: entry.publishedAt }
-              : {}),
-            ...("updatedAt" in entry && typeof entry.updatedAt === "string"
-              ? { updatedAt: entry.updatedAt }
-              : {}),
           });
         } catch (error) {
           logger.warn(
@@ -1518,34 +1140,24 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
     },
 
     async readThemeCss(themeId) {
-      for (const [pluginId, plugin] of loaded) {
-        const theme = plugin.manifest.themes.find(
-          (entry) => formatPluginThemeId(pluginId, entry.id) === themeId,
-        );
-        if (!theme) continue;
-        try {
-          const css = await readFile(theme.cssPath, "utf8");
-          return css.length <= CUSTOM_THEME_CSS_MAX_LENGTH ? css : null;
-        } catch {
-          return null;
-        }
+      const theme = findLoadedTheme(themeId);
+      if (!theme) return null;
+      try {
+        const css = await readFile(theme.cssPath, "utf8");
+        return css.length <= CUSTOM_THEME_CSS_MAX_LENGTH ? css : null;
+      } catch {
+        return null;
       }
-      return null;
     },
 
     readThemeCodeTheme(themeId) {
-      for (const [pluginId, plugin] of loaded) {
-        const theme = plugin.manifest.themes.find(
-          (entry) => formatPluginThemeId(pluginId, entry.id) === themeId,
-        );
-        if (!theme) continue;
-        return readPluginThemeCodeTheme(
-          themeId,
-          theme.codeTheme ?? undefined,
-          theme.codeThemePaths,
-        );
-      }
-      return null;
+      const theme = findLoadedTheme(themeId);
+      if (!theme) return null;
+      return readPluginThemeCodeTheme(
+        themeId,
+        theme.codeTheme ?? undefined,
+        theme.codeThemePaths,
+      );
     },
 
     events: {
@@ -1621,26 +1233,16 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
 
     hooks: {
       listHooks: listPluginHooks,
-      invokeHook: async (pluginId, label, run) => {
-        const outcome = await invokeWrapped(pluginId, label, run);
-        return outcome.ok
-          ? { ok: true, value: outcome.value }
-          : { ok: false, error: outcome.error };
-      },
-      decisionTimeoutMs: pluginHookTimeoutMs,
+      invokeHook: invokeIsolated,
+      decisionTimeoutMs: DEFAULT_PLUGIN_HOOK_TIMEOUT_MS,
     },
 
     environmentProviders: {
       listEnvironmentCompositions: listPluginEnvironmentCompositions,
       listEnvironmentProviders: listPluginEnvironmentProviders,
       getEnvironmentProvider: getPluginEnvironmentProvider,
-      invokeProvider: async (pluginId, label, run) => {
-        const outcome = await invokeWrapped(pluginId, label, run);
-        return outcome.ok
-          ? { ok: true, value: outcome.value }
-          : { ok: false, error: outcome.error };
-      },
-      decisionTimeoutMs: pluginHookTimeoutMs,
+      invokeProvider: invokeIsolated,
+      decisionTimeoutMs: DEFAULT_PLUGIN_HOOK_TIMEOUT_MS,
     },
 
     serverAccessProviders: {
@@ -1655,13 +1257,8 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
     machineProviders: {
       listMachineProviders: listPluginMachineProviders,
       getMachineProvider: getPluginMachineProvider,
-      invokeProvider: async (pluginId, label, run) => {
-        const outcome = await invokeWrapped(pluginId, label, run);
-        return outcome.ok
-          ? { ok: true, value: outcome.value }
-          : { ok: false, error: outcome.error };
-      },
-      decisionTimeoutMs: pluginHookTimeoutMs,
+      invokeProvider: invokeIsolated,
+      decisionTimeoutMs: DEFAULT_PLUGIN_HOOK_TIMEOUT_MS,
     },
 
     bindSdk: bindRuntimeSdk,
@@ -1978,9 +1575,7 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
     },
 
     getBrandingAsset(id, variant) {
-      const set = loaded.has(id)
-        ? brandingAssets.get(id)
-        : identities.get(id)?.brandingAssets;
+      const set = brandingAssetSetFor(id);
       const asset =
         variant === "icon"
           ? set?.compactIcon
@@ -1988,24 +1583,13 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
             ? set?.logoDark
             : set?.logo;
       if (!asset) return undefined;
-      return {
-        bytes: asset.bytes,
-        contentType: asset.contentType,
-        hash: asset.hash,
-      };
+      return assetPayload(asset);
     },
 
     getIconAsset(id, name) {
-      const set = loaded.has(id)
-        ? brandingAssets.get(id)
-        : identities.get(id)?.brandingAssets;
-      const asset = set?.icons.get(name);
+      const asset = brandingAssetSetFor(id)?.icons.get(name);
       if (!asset) return undefined;
-      return {
-        bytes: asset.bytes,
-        contentType: asset.contentType,
-        hash: asset.hash,
-      };
+      return assetPayload(asset);
     },
 
     listHostArtifactGenerations() {
@@ -2092,10 +1676,7 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
         pluginId: id,
         descriptors: plugin.handle.settings.descriptors,
       };
-      const errors = validatePluginSettingsUpdate(
-        storeArgs.descriptors,
-        values,
-      );
+      const errors = validateSettingsUpdate(storeArgs.descriptors, values);
       if (errors.length > 0) {
         throw new PluginSettingsValidationError(errors.join("; "));
       }
@@ -2207,14 +1788,16 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
           handler.inputSchema,
           input,
           "input",
+          throwRpcBoundaryError,
         );
         const result = await handler.handler(parsedInput);
         const parsedOutput = await validateRpcValue(
           handler.outputSchema,
           result,
           "output",
+          throwRpcBoundaryError,
         );
-        return normalizeRpcJsonResult(parsedOutput);
+        return normalizeRpcJsonResult(parsedOutput, throwRpcBoundaryError);
       });
       if (outcome.ok) return { ok: true, result: outcome.value };
       if (outcome.cause instanceof PluginRpcBoundaryError) {
@@ -2299,11 +1882,9 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
     },
 
     listAgentTools() {
-      return collectAgentTools().map(({ pluginId, record }) => ({
-        pluginId,
-        tool: toAgentDynamicTool(pluginId, record),
-        instructions: record.instructions,
-      }));
+      return collectAgentTools().map(({ pluginId, record }) =>
+        toToolContribution(pluginId, record),
+      );
     },
 
     async resolveAgentConfiguration({ context, skillIdsByPlugin }) {
@@ -2341,11 +1922,9 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
         );
         if (provider === null) {
           tools.push(
-            ...pluginTools.map(({ record }) => ({
-              pluginId,
-              tool: toAgentDynamicTool(pluginId, record),
-              instructions: record.instructions,
-            })),
+            ...pluginTools.map(({ record }) =>
+              toToolContribution(pluginId, record),
+            ),
           );
           continue;
         }
@@ -2377,15 +1956,13 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
         tools.push(
           ...pluginTools
             .filter(({ record }) => selectedTools.has(record.name))
-            .map(({ record }) => ({
-              pluginId,
-              tool: toAgentDynamicTool(
+            .map(({ record }) =>
+              toToolContribution(
                 pluginId,
                 record,
                 parameterOverrides.get(record.name) ?? record.inputSchema,
               ),
-              instructions: record.instructions,
-            })),
+            ),
         );
         selectedSkillIdsByPlugin.set(pluginId, new Set(outcome.value.skillIds));
         if (outcome.value.instructions !== null) {
@@ -2408,30 +1985,14 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
         const outcome = await invokeWrapped(
           pluginId,
           `provider environment for ${providerId}`,
-          async () => {
-            let timer: NodeJS.Timeout | undefined;
-            try {
-              return await Promise.race([
-                Promise.resolve(resolve(context)).then((value) =>
-                  validatePluginProviderEnvEntries(value),
-                ),
-                new Promise<never>((_resolve, reject) => {
-                  timer = setTimeout(
-                    () =>
-                      reject(
-                        new Error(
-                          `timed out after ${providerEnvResolveTimeoutMs}ms`,
-                        ),
-                      ),
-                    providerEnvResolveTimeoutMs,
-                  );
-                  timer.unref?.();
-                }),
-              ]);
-            } finally {
-              if (timer !== undefined) clearTimeout(timer);
-            }
-          },
+          async () =>
+            raceTimeout(
+              Promise.resolve(resolve(context)).then((value) =>
+                validatePluginProviderEnvEntries(value),
+              ),
+              providerEnvResolveTimeoutMs,
+              `timed out after ${providerEnvResolveTimeoutMs}ms`,
+            ),
         );
         if (!outcome.ok) continue;
         for (const entry of outcome.value) {
@@ -2465,34 +2026,19 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
           pluginId,
           `provider environment health for ${providerId}`,
           async () => {
-            let timer: NodeJS.Timeout | undefined;
-            try {
-              const value = await Promise.race([
-                Promise.resolve(resolve(context)),
-                new Promise<never>((_resolve, reject) => {
-                  timer = setTimeout(
-                    () =>
-                      reject(
-                        new Error(
-                          `timed out after ${providerEnvResolveTimeoutMs}ms`,
-                        ),
-                      ),
-                    providerEnvResolveTimeoutMs,
-                  );
-                  timer.unref?.();
-                }),
-              ]);
-              if (value === null) return null;
-              if (value.label.trim().length === 0) {
-                throw new Error("label must not be empty");
-              }
-              if (value.statusMessage.trim().length === 0) {
-                throw new Error("statusMessage must not be empty");
-              }
-              return value;
-            } finally {
-              if (timer !== undefined) clearTimeout(timer);
+            const value = await raceTimeout(
+              Promise.resolve(resolve(context)),
+              providerEnvResolveTimeoutMs,
+              `timed out after ${providerEnvResolveTimeoutMs}ms`,
+            );
+            if (value === null) return null;
+            if (value.label.trim().length === 0) {
+              throw new Error("label must not be empty");
             }
+            if (value.statusMessage.trim().length === 0) {
+              throw new Error("statusMessage must not be empty");
+            }
+            return value;
           },
         );
         if (outcome.ok && outcome.value !== null) return outcome.value;
@@ -2589,27 +2135,12 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
                       threadId: args.threadId,
                     }))();
                   searchPromise.catch(() => {});
-                  let timer: NodeJS.Timeout | undefined;
-                  try {
-                    const result = await Promise.race([
-                      searchPromise,
-                      new Promise<never>((_, reject) => {
-                        timer = setTimeout(
-                          () =>
-                            reject(
-                              new Error(
-                                `timed out after ${mentionSearchTimeoutMs}ms`,
-                              ),
-                            ),
-                          mentionSearchTimeoutMs,
-                        );
-                        timer.unref?.();
-                      }),
-                    ]);
-                    return normalizeMentionSearchItems(record.id, result);
-                  } finally {
-                    if (timer !== undefined) clearTimeout(timer);
-                  }
+                  const result = await raceTimeout(
+                    searchPromise,
+                    mentionSearchTimeoutMs,
+                    `timed out after ${mentionSearchTimeoutMs}ms`,
+                  );
+                  return normalizeMentionSearchItems(record.id, result);
                 },
               );
               if (!outcome.ok || outcome.value.length === 0) return null;
@@ -2669,25 +2200,11 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
           const resolvePromise = (async () =>
             provider.resolve(providerItemId))();
           resolvePromise.catch(() => {});
-          let timer: NodeJS.Timeout | undefined;
-          let result: unknown;
-          try {
-            result = await Promise.race([
-              resolvePromise,
-              new Promise<never>((_, reject) => {
-                timer = setTimeout(
-                  () =>
-                    reject(
-                      new Error(`timed out after ${mentionResolveTimeoutMs}ms`),
-                    ),
-                  mentionResolveTimeoutMs,
-                );
-                timer.unref?.();
-              }),
-            ]);
-          } finally {
-            if (timer !== undefined) clearTimeout(timer);
-          }
+          const result: unknown = await raceTimeout(
+            resolvePromise,
+            mentionResolveTimeoutMs,
+            `timed out after ${mentionResolveTimeoutMs}ms`,
+          );
           const context = (result as { context?: unknown } | null)?.context;
           if (typeof context !== "string" || context.trim().length === 0) {
             throw new Error(

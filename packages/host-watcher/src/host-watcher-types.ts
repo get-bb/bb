@@ -58,11 +58,6 @@ export interface DataDirSkillsWatchError {
   message: string;
 }
 
-export type HostWatchError =
-  | WorkspaceWatchError
-  | ThreadStorageWatchError
-  | DataDirSkillsWatchError;
-
 export interface ThreadStorageWatchTarget {
   environmentId: string;
   threadId: string;

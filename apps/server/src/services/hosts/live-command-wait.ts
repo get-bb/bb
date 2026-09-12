@@ -6,7 +6,7 @@ import {
 } from "@bb/host-daemon-contract";
 import type { LoggedWorkSessionDeps } from "../../types.js";
 import { ApiError } from "../../errors.js";
-import { roundDurationMs } from "../lib/duration.js";
+import { roundDurationMs } from "@bb/process-utils";
 import { callHostOnlineRpcForWork } from "./online-rpc.js";
 
 interface RunLiveCommandAndWaitArgs<

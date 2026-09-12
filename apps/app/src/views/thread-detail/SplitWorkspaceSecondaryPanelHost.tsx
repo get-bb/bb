@@ -249,14 +249,12 @@ export function SplitWorkspaceSecondaryPanelHost({
               PANEL_COLLAPSE_TRANSITION_CLASS,
             )}
           >
-            {}
             <div className="relative flex h-full min-h-0 min-w-0">
               {children}
             </div>
           </Panel>
           {model === null ? (
             <>
-              {}
               <PanelResizeHandle
                 id="split-workspace-empty-secondary-panel-handle"
                 disabled={!isOpen}

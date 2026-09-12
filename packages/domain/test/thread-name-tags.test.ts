@@ -2,10 +2,8 @@ import { describe, expect, it } from "vitest";
 import { threadScope } from "../src/thread-event-scope.js";
 import type { ThreadEvent } from "../src/provider-event.js";
 import {
-  BB_THREAD_NAME_TAG,
   fromProviderExternalThreadName,
   normalizeProviderThreadNameEvent,
-  tagThreadName,
   toProviderExternalThreadName,
 } from "../src/thread-name-tags.js";
 
@@ -23,10 +21,7 @@ describe("thread name tags", () => {
       threadId: "t1",
       providerThreadId: "p1",
       scope: threadScope(),
-      threadName: tagThreadName({
-        name: "[bb] Literal",
-        tag: BB_THREAD_NAME_TAG,
-      }),
+      threadName: toProviderExternalThreadName("[bb] Literal"),
     } satisfies ThreadEvent;
 
     expect(normalizeProviderThreadNameEvent(event)).toEqual({

@@ -135,7 +135,6 @@ import {
   SidebarHeaderActionsProvider,
   SidebarHeaderControls,
 } from "./SidebarHeaderControls";
-export { TopLevelSidebarSection } from "./TopLevelSidebarSection";
 import {
   useAppCommandRunner,
   useAppCommandShortcut,
@@ -174,11 +173,6 @@ interface ProjectListNewThreadActionProps {
 interface ProjectListSearchThreadsActionProps {
   onSearchThreads?: () => void;
 }
-
-interface ProjectListActionButtonsProps
-  extends
-    ProjectListNewThreadActionProps,
-    ProjectListSearchThreadsActionProps {}
 
 interface ProjectListShellProps {
   children: ReactNode;
@@ -465,7 +459,7 @@ export function ProjectListNavigationLoadingState() {
   return (
     <div
       aria-label="Loading sidebar navigation"
-      className="space-y-1.5 px-2 pt-1 group-data-[collapsible=icon]:hidden"
+      className="space-y-1.5 px-2 pt-1"
     >
       <ProjectListNavigationLoadingRow textWidthClassName="w-2/3" />
       <ProjectListNavigationLoadingRow textWidthClassName="w-1/2" />
@@ -579,24 +573,6 @@ export function ProjectListSearchThreadsAction({
         ) : null}
       </span>
     </Button>
-  );
-}
-
-export function ProjectListActionButtons({
-  splitEnabled = false,
-  newThreadSplit,
-  onNewChat,
-  onSearchThreads,
-}: ProjectListActionButtonsProps) {
-  return (
-    <div className="space-y-1">
-      <ProjectListNewThreadAction
-        splitEnabled={splitEnabled}
-        newThreadSplit={newThreadSplit}
-        onNewChat={onNewChat}
-      />
-      <ProjectListSearchThreadsAction onSearchThreads={onSearchThreads} />
-    </div>
   );
 }
 

@@ -27,6 +27,33 @@ export function createAsyncDeduper<TKey, TValue>(): AsyncDeduper<TKey, TValue> {
   };
 }
 
+export async function runSerialized<TKey, TValue>(
+  locks: {
+    get(key: TKey): Promise<unknown> | undefined;
+    set(key: TKey, value: Promise<unknown>): unknown;
+    delete(key: TKey): unknown;
+  },
+  key: TKey,
+  operation: () => Promise<TValue>,
+): Promise<TValue> {
+  const previous = locks.get(key) ?? Promise.resolve();
+  const current = previous.catch(() => {}).then(operation);
+  locks.set(key, current);
+  try {
+    return await current;
+  } finally {
+    if (locks.get(key) === current) locks.delete(key);
+  }
+}
+
+export function createKeyedLock<TKey>(): <TValue>(
+  key: TKey,
+  operation: () => Promise<TValue>,
+) => Promise<TValue> {
+  const locks = new Map<TKey, Promise<unknown>>();
+  return (key, operation) => runSerialized(locks, key, operation);
+}
+
 export function createAsyncRerunner<TKey>(): AsyncRerunner<TKey> {
   type Task = () => Promise<void>;
   type State = {

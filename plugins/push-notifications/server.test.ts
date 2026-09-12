@@ -1,7 +1,4 @@
-import type {
-  BbPluginApi,
-  PluginThreadEventPayloads,
-} from "@get-bb/plugin-sdk";
+import type { PluginThreadEventPayloads } from "@get-bb/plugin-sdk";
 import {
   createFakePluginHost,
   makeThreadResponse,

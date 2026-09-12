@@ -71,13 +71,10 @@ export interface ScriptedEchoLaunchScript {
   goalClearReportsCleared?: boolean;
   swallowTurnStart?: boolean;
   sessionRestorable?: boolean;
-  warnOnTurn?: boolean;
   toolCallThreadIdHint?: string;
   recoveryThreadIdHint?: string;
   approvalEnforcedBy?: "runtime" | "provider";
   identifyProcess?: boolean;
-  textDeltaChunkSize?: number;
-  stderrChunksOnTurn?: string[];
   failStopForThreadIds?: string[];
   emitIdentityOnSigterm?: boolean;
 }

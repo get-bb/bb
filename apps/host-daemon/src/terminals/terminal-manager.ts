@@ -80,7 +80,6 @@ type TerminalAttachMessage = Extract<
 
 export interface TerminalManagerOptions {
   closeGracePeriodMs?: number;
-  dataDir?: string;
   logger: HostDaemonLogger;
   platform?: NodeJS.Platform;
   ptyAdapter?: TerminalPtyAdapter;
@@ -137,11 +136,6 @@ interface SendTerminalErrorArgs {
 interface CloseTerminalArgs {
   reason: TerminalSessionCloseReason;
   terminalId: string;
-}
-
-interface CloseEnvironmentTerminalsArgs {
-  environmentId: string;
-  reason: TerminalSessionCloseReason;
 }
 
 interface ShutdownTerminalArgs {
@@ -391,14 +385,6 @@ function terminalTitleForStart(
   }
 }
 
-function terminalEnvironmentIdFromOpenMessage(
-  message: TerminalOpenMessage,
-): string | null {
-  return message.target.kind === "workspace"
-    ? message.target.environmentId
-    : null;
-}
-
 async function requireTerminalCwd(cwd: string | null): Promise<string> {
   const resolvedCwd = cwd ?? os.homedir();
   if (!path.isAbsolute(resolvedCwd)) {
@@ -457,10 +443,7 @@ export class TerminalManager {
   private readonly ptyAdapter: TerminalPtyAdapter;
   private readonly resolveShell: ResolveTerminalShell;
   private readonly terminalOperations = new Map<string, Promise<void>>();
-  private readonly openingTerminalEnvironmentIds = new Map<
-    string,
-    string | null
-  >();
+  private readonly openingTerminalIds = new Set<string>();
   private readonly sessions = new Map<string, TerminalSession>();
 
   constructor(private readonly options: TerminalManagerOptions) {
@@ -507,41 +490,12 @@ export class TerminalManager {
     }
   }
 
-  async closeEnvironmentTerminals(
-    args: CloseEnvironmentTerminalsArgs,
-  ): Promise<void> {
-    const terminalIds = new Set<string>();
-    for (const session of this.sessions.values()) {
-      if (session.environmentId === args.environmentId) {
-        terminalIds.add(session.terminalId);
-      }
-    }
-    for (const [terminalId, openingEnvironmentId] of this
-      .openingTerminalEnvironmentIds) {
-      if (openingEnvironmentId === args.environmentId) {
-        terminalIds.add(terminalId);
-      }
-    }
-    await Promise.all(
-      [...terminalIds].map((terminalId) =>
-        this.runTerminalOperation({
-          operation: () =>
-            this.closeTerminal({
-              reason: args.reason,
-              terminalId,
-            }),
-          terminalId,
-        }),
-      ),
-    );
-  }
-
   async shutdownAll(
     reason: TerminalSessionCloseReason = "daemon-disconnect",
   ): Promise<void> {
     const terminalIds = new Set([
       ...this.sessions.keys(),
-      ...this.openingTerminalEnvironmentIds.keys(),
+      ...this.openingTerminalIds,
     ]);
     await Promise.all(
       [...terminalIds].map((terminalId) =>
@@ -574,11 +528,7 @@ export class TerminalManager {
       return;
     }
 
-    const openingEnvironmentId = terminalEnvironmentIdFromOpenMessage(message);
-    this.openingTerminalEnvironmentIds.set(
-      message.terminalId,
-      openingEnvironmentId,
-    );
+    this.openingTerminalIds.add(message.terminalId);
     try {
       const target = await this.resolveTerminalOpenTarget(message);
       const shell = await this.resolveShell();
@@ -666,12 +616,7 @@ export class TerminalManager {
         terminalId: message.terminalId,
       });
     } finally {
-      if (
-        this.openingTerminalEnvironmentIds.get(message.terminalId) ===
-        openingEnvironmentId
-      ) {
-        this.openingTerminalEnvironmentIds.delete(message.terminalId);
-      }
+      this.openingTerminalIds.delete(message.terminalId);
     }
   }
 
@@ -681,7 +626,6 @@ export class TerminalManager {
     switch (message.target.kind) {
       case "workspace": {
         const entry = await requireResolvedWorkspaceForCommand({
-          dataDir: this.options.dataDir,
           environmentId: message.target.environmentId,
           runtimeManager: this.options.runtimeManager,
           workspaceContext: message.target.workspaceContext,

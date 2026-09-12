@@ -47,13 +47,7 @@ const EXIT_MS = 160;
 
 const CARD_RADIUS = 12;
 
-const INSET_STYLE: ViewStyle = { marginHorizontal: 16, marginTop: 8 };
-
-interface ConnectionBannerProps {
-  inset?: boolean;
-}
-
-export function ConnectionBanner({ inset = false }: ConnectionBannerProps) {
+export function ConnectionBanner() {
   const router = useRouter();
   const kind = useConnectionBanner();
   const { activeProfile } = useProfiles();
@@ -120,7 +114,6 @@ export function ConnectionBanner({ inset = false }: ConnectionBannerProps) {
       entering={FadeInUp.duration(ENTER_MS)}
       exiting={FadeOutUp.duration(EXIT_MS)}
       layout={LinearTransition.duration(ENTER_MS)}
-      style={inset ? INSET_STYLE : undefined}
     >
       {reauth ? (
         <Pressable

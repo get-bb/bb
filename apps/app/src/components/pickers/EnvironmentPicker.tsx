@@ -7,7 +7,6 @@ import { findLocalPathProjectSourceForHost } from "@bb/domain";
 import { pluginIconName } from "@/components/plugin/PluginIcon";
 import { Button } from "@bb/shared-ui/button";
 import { Skeleton } from "@bb/shared-ui/skeleton";
-import { useIsCompactViewport } from "@bb/shared-ui/hooks/use-compact-viewport";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -41,6 +40,8 @@ import {
 } from "./environment-picker-value";
 import { selectHosts } from "@/hooks/queries/host-queries";
 import { providerInputsControlRequired } from "./environment-provider-inputs";
+import { MACHINE_BADGE_CLASS_NAME, orderLocalHostFirst } from "./MachinePicker";
+import { PickerLoadingRows } from "./PickerLoadingRows";
 
 interface SelectedEnvironment {
   modeLabel: string;
@@ -361,7 +362,10 @@ export function EnvironmentPickerUI({
         mobileTitle="Environment"
       >
         {isLoading ? (
-          <EnvironmentPickerLoadingRows />
+          <PickerLoadingRows
+            label="Loading environments"
+            rowDataAttribute="data-environment-loading-row"
+          />
         ) : isMachineMenu && availableMachines ? (
           <MachineGroupedEnvironmentOptions
             machines={availableMachines}
@@ -419,38 +423,6 @@ export function EnvironmentPickerUI({
           : null}
       </DropdownMenuContent>
     </DropdownMenu>
-  );
-}
-
-const ENVIRONMENT_LOADING_ROW_WIDTHS = [
-  "w-20",
-  "w-28",
-  "w-24",
-  "w-32",
-] as const;
-
-function EnvironmentPickerLoadingRows() {
-  const isCompactViewport = useIsCompactViewport();
-
-  return (
-    <div role="status" aria-label="Loading environments" className="pb-1">
-      <span className="sr-only">Loading environments</span>
-      {ENVIRONMENT_LOADING_ROW_WIDTHS.map((widthClassName) => (
-        <div
-          key={widthClassName}
-          data-environment-loading-row=""
-          aria-hidden
-          className={cn(
-            "flex items-center rounded-sm px-2",
-            isCompactViewport ? "py-2" : "py-[0.3125rem]",
-          )}
-        >
-          <Skeleton
-            className={cn("h-3 max-w-[75%] rounded-sm", widthClassName)}
-          />
-        </div>
-      ))}
-    </div>
   );
 }
 
@@ -521,9 +493,6 @@ function EnvironmentOptionsSection({
   );
 }
 
-const MACHINE_BADGE_CLASS_NAME =
-  "shrink-0 rounded-sm border border-border bg-muted/40 px-1.5 py-0.5 text-2xs leading-none text-subtle-foreground";
-
 interface MachineGroupedEnvironmentOptionsProps {
   machines: EnvironmentPickerMachines;
   sources: readonly ProjectSource[];
@@ -550,10 +519,9 @@ function MachineGroupedEnvironmentOptions({
   onSelectProvider,
 }: MachineGroupedEnvironmentOptionsProps) {
   const now = Date.now();
-  const orderedHosts = [...machines.hosts].sort(
-    (left, right) =>
-      Number(left.id !== machines.localDaemonHostId) -
-      Number(right.id !== machines.localDaemonHostId),
+  const orderedHosts = orderLocalHostFirst(
+    machines.hosts,
+    machines.localDaemonHostId,
   );
   return (
     <>

@@ -7,7 +7,6 @@ import {
   createFakePluginHost,
   makeThreadResponse,
 } from "@get-bb/plugin-sdk/testing";
-import { readFileSync } from "node:fs";
 import { describe, expect, it, vi } from "vitest";
 import type {
   ModalSandboxClient,
@@ -16,7 +15,8 @@ import type {
 } from "./providers/modal/client.js";
 import { readModalMachineResource } from "./providers/modal/resource.js";
 import { modalLaunchOptionsSchema } from "./launch-options.js";
-import { createModalSandboxPlugin, PROVIDER_ID } from "./server.js";
+import { createModalSandboxPlugin } from "./server.js";
+import { PROVIDER_ID } from "./provider-id.js";
 
 const PLUGIN_ID = "environment-modal-sandbox";
 const HOST_ID = "host_modal";

@@ -317,7 +317,6 @@ export function SecondaryPanelLayout({
 
   const mainContent = (
     <div
-      data-conversation-collapsed={isMainCollapsed}
       inert={isMainCollapsed}
       className={cn(
         "flex min-h-0 min-w-0 flex-1 flex-col transition-opacity",

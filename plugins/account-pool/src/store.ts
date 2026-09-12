@@ -7,6 +7,7 @@ import type { PluginKvStorage } from "@get-bb/plugin-sdk";
 import {
   accountSchema,
   accountSecretSchema,
+  EMPTY_FAMILY_WEEKLY,
   hubTokenSummarySchema,
   providerSchema,
   quotaSchema,
@@ -112,17 +113,7 @@ export class AccountStore {
   }
 
   async setEnabled(id: string, enabled: boolean): Promise<Account | null> {
-    return this.serialized(async () => {
-      const accounts = await this.list();
-      const index = accounts.findIndex((account) => account.id === id);
-      if (index < 0) return null;
-      const current = accounts[index];
-      if (current === undefined) return null;
-      const updated = accountSchema.parse({ ...current, enabled });
-      accounts[index] = updated;
-      await this.kv.set(ACCOUNTS_KEY, accounts);
-      return updated;
-    });
+    return this.update(id, (account) => ({ ...account, enabled }));
   }
 
   async setPriority(id: string, priority: number): Promise<Account | null> {
@@ -188,17 +179,7 @@ export class AccountStore {
     id: string,
     accountUuid: string,
   ): Promise<Account | null> {
-    return this.serialized(async () => {
-      const accounts = await this.list();
-      const index = accounts.findIndex((account) => account.id === id);
-      if (index < 0) return null;
-      const current = accounts[index];
-      if (current === undefined) return null;
-      const updated = accountSchema.parse({ ...current, accountUuid });
-      accounts[index] = updated;
-      await this.kv.set(ACCOUNTS_KEY, accounts);
-      return updated;
-    });
+    return this.update(id, (account) => ({ ...account, accountUuid }));
   }
 
   private async update(
@@ -490,12 +471,12 @@ export class RoutingStore {
     return (await this.kv.get(this.bypassKey(threadId))) === true;
   }
 
-  async isProviderEnabled(provider: "claude" | "codex"): Promise<boolean> {
+  async isProviderEnabled(provider: PoolProvider): Promise<boolean> {
     return (await this.kv.get(`routing.${provider}`)) !== false;
   }
 
   async setProviderEnabled(
-    provider: "claude" | "codex",
+    provider: PoolProvider,
     enabled: boolean,
   ): Promise<void> {
     await this.kv.set(`routing.${provider}`, enabled);
@@ -571,13 +552,7 @@ const EMPTY_QUOTA = {
   sevenDayResetAt: null,
   sevenDayStatus: null,
   representativeClaim: null,
-  familyWeekly: {
-    fable: null,
-    sonnet: null,
-    opus: null,
-    haiku: null,
-    other: null,
-  },
+  familyWeekly: EMPTY_FAMILY_WEEKLY,
   limitWindows: [],
   observedAt: null,
   heldUntil: null,

@@ -1,5 +1,10 @@
-import { BrowserWindow, ipcMain } from "electron";
+import { ipcMain, type BrowserWindow } from "electron";
 import { escapeHtmlText } from "@bb/domain";
+import {
+  createDesktopDialogWindow,
+  DESKTOP_DIALOG_BASE_CSS,
+  showDesktopDialogHtml,
+} from "./desktop-dialog-window.js";
 import {
   BB_DESKTOP_SERVER_URL_DIALOG_CANCEL_CHANNEL,
   BB_DESKTOP_SERVER_URL_DIALOG_SUBMIT_CHANNEL,
@@ -27,30 +32,7 @@ function renderServerUrlDialogHtml(initialUrl: string | null): string {
   <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'">
   <title>Set Server URL</title>
   <style>
-    :root {
-      color-scheme: light dark;
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-    }
-
-    body {
-      background: Canvas;
-      color: CanvasText;
-      margin: 0;
-      padding: 20px;
-    }
-
-    h1 {
-      font-size: 14px;
-      font-weight: 600;
-      margin: 0 0 4px;
-    }
-
-    p {
-      color: color-mix(in srgb, CanvasText 70%, transparent);
-      font-size: 12px;
-      line-height: 1.45;
-      margin: 0 0 12px;
-    }
+${DESKTOP_DIALOG_BASE_CSS}
 
     input {
       background: Field;
@@ -76,15 +58,6 @@ function renderServerUrlDialogHtml(initialUrl: string | null): string {
       gap: 8px;
       justify-content: flex-end;
       margin-top: 12px;
-    }
-
-    button {
-      background: color-mix(in srgb, CanvasText 8%, Canvas);
-      border: 1px solid color-mix(in srgb, CanvasText 22%, transparent);
-      border-radius: 6px;
-      color: CanvasText;
-      font-size: 13px;
-      padding: 5px 14px;
     }
 
     button[type="submit"] {
@@ -122,22 +95,11 @@ export function openServerUrlDialog(
     return openDialog.result;
   }
 
-  const dialogWindow = new BrowserWindow({
-    fullscreenable: false,
+  const dialogWindow = createDesktopDialogWindow({
     height: 208,
-    maximizable: false,
-    minimizable: false,
-    modal: args.parentWindow !== null,
-    parent: args.parentWindow ?? undefined,
-    resizable: false,
-    show: false,
+    parentWindow: args.parentWindow,
+    preloadPath: args.preloadPath,
     title: "Set Server URL",
-    webPreferences: {
-      contextIsolation: true,
-      nodeIntegration: false,
-      preload: args.preloadPath,
-      sandbox: true,
-    },
     width: 440,
   });
 
@@ -197,13 +159,9 @@ export function openServerUrlDialog(
 
   openDialog = { result, window: dialogWindow };
 
-  dialogWindow.once("ready-to-show", () => {
-    dialogWindow.show();
-  });
-  void dialogWindow.loadURL(
-    `data:text/html;charset=utf-8,${encodeURIComponent(
-      renderServerUrlDialogHtml(args.initialUrl),
-    )}`,
+  showDesktopDialogHtml(
+    dialogWindow,
+    renderServerUrlDialogHtml(args.initialUrl),
   );
 
   return result;

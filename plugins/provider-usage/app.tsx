@@ -23,6 +23,11 @@ import {
   DropdownMenuTrigger,
 } from "@bb/shared-ui/dropdown-menu";
 import { cn } from "@bb/shared-ui/lib/utils";
+import {
+  formatUsageReset,
+  formatUsdCents,
+  usageBarColorClass,
+} from "@bb/shared-ui/lib/usage-format";
 import { LIST_HOVER_TRANSITION } from "@bb/shared-ui/motion";
 import {
   OPTION_BASE_CLASS_NAME,
@@ -134,50 +139,8 @@ function refreshUsage({
   })();
 }
 
-function barColorClass(usedPercent: number): string {
-  if (usedPercent >= 95) return "bg-destructive";
-  if (usedPercent >= 80) return "bg-warning";
-  return "bg-primary";
-}
-
-function formatReset(resetsAt: string | null): string | null {
-  if (resetsAt === null) return null;
-  const reset = new Date(resetsAt);
-  if (Number.isNaN(reset.getTime())) return null;
-  const diffMs = reset.getTime() - Date.now();
-  if (diffMs <= 0) return "Resetting now";
-  const minutes = Math.round(diffMs / 60_000);
-  if (minutes < 60) return "Resets in " + minutes + " min";
-  const hours = Math.floor(minutes / 60);
-  if (hours < 24) {
-    const remainingMinutes = minutes % 60;
-    return remainingMinutes === 0
-      ? "Resets in " + hours + " hr"
-      : "Resets in " + hours + " hr " + remainingMinutes + " min";
-  }
-  return (
-    "Resets " +
-    reset.toLocaleString(undefined, {
-      weekday: diffMs < 7 * 24 * 60 * 60_000 ? "short" : undefined,
-      month: diffMs < 7 * 24 * 60 * 60_000 ? undefined : "short",
-      day: diffMs < 7 * 24 * 60 * 60_000 ? undefined : "numeric",
-      hour: "numeric",
-      minute: "2-digit",
-    })
-  );
-}
-
-function formatUsdCents(cents: number, alwaysShowCents: boolean): string {
-  return new Intl.NumberFormat(undefined, {
-    style: "currency",
-    currency: "USD",
-    minimumFractionDigits: alwaysShowCents || cents % 100 !== 0 ? 2 : 0,
-    maximumFractionDigits: 2,
-  }).format(cents / 100);
-}
-
 function UsageWindow({ window }: { window: UsageWindowValue }) {
-  const reset = formatReset(window.resetsAt);
+  const reset = formatUsageReset(window.resetsAt);
   const value =
     window.cost === null
       ? Math.round(window.usedPercent) + "% used"
@@ -194,7 +157,9 @@ function UsageWindow({ window }: { window: UsageWindowValue }) {
       </div>
       <div className="h-1.5 overflow-hidden rounded-full bg-sidebar-border">
         <div
-          className={"h-full rounded-full " + barColorClass(window.usedPercent)}
+          className={
+            "h-full rounded-full " + usageBarColorClass(window.usedPercent)
+          }
           style={{
             width: Math.max(2, Math.min(100, window.usedPercent)) + "%",
           }}

@@ -53,7 +53,6 @@ const codexMissingCliModelLoadError = {
 
 const baseEnvironment: NewThreadEnvironmentConfig = {
   value: `host:${HOST_IDS.local}:local`,
-  onChange: noop,
   sources: STORY_PROJECT_SOURCES,
   host: makeHost({ id: HOST_IDS.local }),
   isLocal: true,
@@ -550,7 +549,6 @@ function ProjectlessThreadRow() {
           environment: {
             ...baseEnvironment,
             value: environmentValue,
-            onChange: setEnvironmentValue,
             machines: {
               hosts: projectlessHosts,
               localDaemonHostId: HOST_IDS.local,

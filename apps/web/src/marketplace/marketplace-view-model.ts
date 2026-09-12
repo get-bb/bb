@@ -255,8 +255,7 @@ export function moreInMarketplaceCategory(
   return sortMarketplaceEntries(categoryEntries, "most-installed", stats);
 }
 
-export function formatInstalls(value: number | undefined): string | null {
-  if (value === undefined) return null;
+export function formatInstalls(value: number): string {
   return new Intl.NumberFormat("en-US", { notation: "compact" }).format(value);
 }
 

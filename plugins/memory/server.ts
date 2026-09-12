@@ -5,22 +5,14 @@ import {
   type PluginCliContext,
 } from "@get-bb/plugin-sdk";
 import { z } from "zod";
+import { isMemoryKind, MEMORY_KINDS, type MemoryKind } from "./memory-kinds.js";
 
 const CATALOG_MAX_CHARS = 3_900;
 const DEFAULT_RESULT_LIMIT = 20;
 const MAX_RESULT_LIMIT = 100;
 const NAME_PATTERN = /^[a-z0-9][a-z0-9._-]{0,79}$/;
 const TAG_PATTERN = /^[a-z0-9][a-z0-9._-]{0,39}$/;
-const MEMORY_KINDS = [
-  "fact",
-  "preference",
-  "decision",
-  "procedure",
-  "episode",
-  "reference",
-] as const;
 
-type MemoryKind = (typeof MEMORY_KINDS)[number];
 type MemoryScope = "global" | "project";
 type ReadScope = MemoryScope | "all";
 type PluginDatabase = ReturnType<BbPluginApi["storage"]["database"]>;
@@ -181,12 +173,6 @@ function parseMemoryRow(row: unknown): MemoryRecord {
     createdAt: Number(row.created_at),
     updatedAt: Number(row.updated_at),
   };
-}
-
-function isMemoryKind(value: unknown): value is MemoryKind {
-  return (
-    typeof value === "string" && MEMORY_KINDS.some((kind) => kind === value)
-  );
 }
 
 function toMemorySummary(memory: MemoryRecord): MemorySummary {
@@ -353,11 +339,8 @@ function requireOption(args: ParsedArgv, name: string): string {
   return value;
 }
 
-function readScope(
-  args: ParsedArgv,
-  defaultScope: ReadScope = "all",
-): ReadScope {
-  const value = option(args, "scope") ?? defaultScope;
+function readScope(args: ParsedArgv): ReadScope {
+  const value = option(args, "scope") ?? "all";
   if (value !== "global" && value !== "project" && value !== "all") {
     throw new CliError("scope must be global, project, or all");
   }
@@ -386,22 +369,21 @@ function writeScope(
 function scopeSql(
   scope: ReadScope,
   projectId: string | undefined,
-  columnPrefix = "m.",
 ): { sql: string; params: string[] } {
   if (scope === "global") {
-    return { sql: `${columnPrefix}scope = 'global'`, params: [] };
+    return { sql: "m.scope = 'global'", params: [] };
   }
   if (scope === "project") {
     if (!projectId)
       throw new CliError("project scope requires a BB project context");
     return {
-      sql: `${columnPrefix}scope = 'project' AND ${columnPrefix}project_id = ?`,
+      sql: "m.scope = 'project' AND m.project_id = ?",
       params: [projectId],
     };
   }
-  if (!projectId) return { sql: `${columnPrefix}scope = 'global'`, params: [] };
+  if (!projectId) return { sql: "m.scope = 'global'", params: [] };
   return {
-    sql: `(${columnPrefix}scope = 'global' OR (${columnPrefix}scope = 'project' AND ${columnPrefix}project_id = ?))`,
+    sql: "(m.scope = 'global' OR (m.scope = 'project' AND m.project_id = ?))",
     params: [projectId],
   };
 }
@@ -896,17 +878,13 @@ export default async function plugin(bb: BbPluginApi) {
       const { id } = input;
       const current = store.getAdmin(id);
       if (!current) throw new Error(`memory "${id}" was not found`);
-      const kindValue = input.kind;
-      if (!isMemoryKind(kindValue)) {
-        throw new Error(`kind must be one of: ${MEMORY_KINDS.join(", ")}`);
-      }
       const memory = store.update(
         id,
         {
           expectedVersion: input.expectedVersion,
           summary: input.summary,
           details: input.details,
-          kind: kindValue,
+          kind: input.kind,
           tags: input.tags,
           importance: input.importance,
           pinned: input.pinned,

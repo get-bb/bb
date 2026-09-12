@@ -17,7 +17,8 @@
   },
   "dependencies": {
     "@bb/domain": "workspace:*",
-    "@bb/process-utils": "workspace:*"
+    "@bb/process-utils": "workspace:*",
+    "bb-environment-provider-host": "workspace:*"
   },
   "devDependencies": {
     "@bb/test-helpers": "workspace:*",

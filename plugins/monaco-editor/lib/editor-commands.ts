@@ -61,7 +61,7 @@ function monacoAction(
   };
 }
 
-function copy(text: string, successMessage: string): Promise<void> {
+export function copy(text: string, successMessage: string): Promise<void> {
   return navigator.clipboard
     .writeText(text)
     .then(() => {

@@ -18,12 +18,13 @@ export {
 export {
   assertValidPluginCompactIconSvg,
   assertValidPluginIconSvg,
-  assertValidPluginLogoSvg,
 } from "./svg-asset.js";
 
-export { resolveManifestPath } from "./plugin-manifest.js";
-
 export {
-  copyPluginRuntime,
-  preparePluginRuntime,
-} from "./prepare-plugin-runtime.js";
+  readPluginPackageJsonFile,
+  resolveManifestAssetFile,
+  resolveManifestEntryFile,
+  resolveManifestPath,
+} from "./plugin-manifest.js";
+
+export { copyPluginRuntime } from "./prepare-plugin-runtime.js";

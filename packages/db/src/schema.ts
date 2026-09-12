@@ -1016,6 +1016,26 @@ export const hostDaemonSessions = sqliteTable(
   ],
 );
 
+export const providerModelCatalogs = sqliteTable(
+  "provider_model_catalogs",
+  {
+    hostId: text("host_id")
+      .notNull()
+      .references(() => hosts.id, { onDelete: "cascade" }),
+    providerId: text("provider_id").notNull(),
+    scopeKey: text("scope_key").notNull(),
+    fingerprint: text("fingerprint").notNull(),
+    modelsJson: text("models_json").notNull(),
+    selectedOnlyModelsJson: text("selected_only_models_json").notNull(),
+    fetchedAt: integer("fetched_at").notNull(),
+  },
+  (table) => [
+    primaryKey({
+      columns: [table.hostId, table.providerId, table.scopeKey],
+    }),
+  ],
+);
+
 export const terminalSessions = sqliteTable(
   "terminal_sessions",
   {

@@ -30,11 +30,15 @@ import { useAppThemeEpoch } from "@/hooks/useAppTheme";
 import { usePreferredTheme } from "@/hooks/useTheme";
 import type { MarkdownPreviewLinkHandler } from "@/components/ui/markdown-link";
 import { openUrlInExternalBrowser } from "@/lib/url-open-routing";
+import { decodeBase64Bytes } from "@/lib/base64-bytes";
 import { useAppNavigationHost } from "@/lib/app-navigation-host";
 import { copyToClipboardWithToast } from "@/lib/clipboard";
 import {
   anchorPointFromMouseEvent,
+  selectionAnchorFromPointerRelease,
   type MessageProseSelection,
+  type SelectionAnchor,
+  type SelectionAnchorPoint,
 } from "@/components/thread/timeline/SelectableMessageProse.js";
 import { TimelineSelectionMenu } from "@/components/thread/timeline/TimelineSelectionMenu.js";
 import { buildTerminalWebSocketUrl } from "./terminal-websocket-url";
@@ -50,7 +54,6 @@ export const TERMINAL_FONT_FAMILY =
   '"JetBrainsMono Nerd Font Mono", "MesloLGS NF", "Symbols Nerd Font Mono", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace';
 export const TERMINAL_UNICODE_VERSION = "11";
 export const TERMINAL_ALLOW_PROPOSED_API = true;
-const TERMINAL_SELECTION_DRAG_DIRECTION_THRESHOLD_PX = 4;
 const TERMINAL_TOUCH_FOCUS_MAX_DURATION_MS = 700;
 const TERMINAL_TOUCH_FOCUS_MOVEMENT_THRESHOLD_PX = 10;
 
@@ -119,12 +122,7 @@ export function loadTerminalWebglRenderer(
   }
 }
 
-interface TerminalSelectionAnchorPoint {
-  x: number;
-  y: number;
-}
-
-interface TerminalTouchPoint extends TerminalSelectionAnchorPoint {
+interface TerminalTouchPoint extends SelectionAnchorPoint {
   identifier: number;
 }
 
@@ -132,7 +130,7 @@ interface TerminalTouchFocusGesture {
   identifier: number;
   maximumMovementPx: number;
   startedAt: number;
-  startPoint: TerminalSelectionAnchorPoint;
+  startPoint: SelectionAnchorPoint;
 }
 
 interface FocusTerminalFromTouchReleaseArgs {
@@ -144,8 +142,8 @@ interface FocusTerminalFromTouchReleaseArgs {
 }
 
 function terminalTouchMovement(
-  startPoint: TerminalSelectionAnchorPoint,
-  currentPoint: TerminalSelectionAnchorPoint,
+  startPoint: SelectionAnchorPoint,
+  currentPoint: SelectionAnchorPoint,
 ): number {
   return Math.hypot(
     currentPoint.x - startPoint.x,
@@ -228,11 +226,6 @@ function terminalTouchPoints(
     x: touch.clientX,
     y: touch.clientY,
   }));
-}
-
-interface TerminalSelectionAnchor {
-  point: TerminalSelectionAnchorPoint;
-  side: "top" | "bottom";
 }
 
 interface HasVisibleTerminalSizeArgs {
@@ -420,15 +413,6 @@ export function forwardTerminalData({
   }
 }
 
-export function decodeTerminalOutputBytes(value: string): Uint8Array {
-  const binary = atob(value);
-  const bytes = new Uint8Array(binary.length);
-  for (let index = 0; index < binary.length; index += 1) {
-    bytes[index] = binary.charCodeAt(index);
-  }
-  return bytes;
-}
-
 function hasVisibleTerminalSize({
   containerElement,
   entries,
@@ -439,32 +423,12 @@ function hasVisibleTerminalSize({
   return width > 0 && height > 0;
 }
 
-function terminalSelectionAnchorFromPointerRelease(
-  startPoint: TerminalSelectionAnchorPoint | null,
-  releaseEvent: Pick<MouseEvent, "clientX" | "clientY">,
-): TerminalSelectionAnchor | null {
-  const releasePoint = anchorPointFromMouseEvent(releaseEvent);
-  if (releasePoint === null) {
-    return null;
-  }
-
-  return {
-    point: releasePoint,
-    side:
-      startPoint !== null &&
-      releasePoint.y - startPoint.y >
-        TERMINAL_SELECTION_DRAG_DIRECTION_THRESHOLD_PX
-        ? "bottom"
-        : "top",
-  };
-}
-
 function buildTerminalSelection({
   anchor,
   containerElement,
   text,
 }: {
-  anchor: TerminalSelectionAnchor | null;
+  anchor: SelectionAnchor | null;
   containerElement: HTMLElement;
   text: string;
 }): MessageProseSelection | null {
@@ -584,7 +548,7 @@ function handleTerminalServerMessage({
       return;
     case "output":
       writeTerminalOutput({
-        data: decodeTerminalOutputBytes(message.chunk.dataBase64),
+        data: decodeBase64Bytes(message.chunk.dataBase64),
         isReplay: replayNextSeq !== null && message.chunk.seq < replayNextSeq,
         replayWriteState,
         terminal,
@@ -635,13 +599,9 @@ export function ThreadTerminalView({
   const terminalRef = useRef<XTermTerminal | null>(null);
   const hoveredTerminalLinkRef = useRef<TerminalLinkTarget | null>(null);
   const pointerIsDownRef = useRef(false);
-  const pointerStartPointRef = useRef<TerminalSelectionAnchorPoint | null>(
-    null,
-  );
+  const pointerStartPointRef = useRef<SelectionAnchorPoint | null>(null);
   const touchFocusGestureRef = useRef<TerminalTouchFocusGesture | null>(null);
-  const lastPointerReleaseAnchorRef = useRef<TerminalSelectionAnchor | null>(
-    null,
-  );
+  const lastPointerReleaseAnchorRef = useRef<SelectionAnchor | null>(null);
   const onSessionChangeRef = useRef<
     ((session: TerminalSession) => void) | undefined
   >(onSessionChange);
@@ -679,7 +639,7 @@ export function ThreadTerminalView({
   onUserInputRef.current = onUserInput;
 
   const reportTerminalSelection = useCallback(
-    (anchor: TerminalSelectionAnchor | null) => {
+    (anchor: SelectionAnchor | null) => {
       const terminal = terminalRef.current;
       const container = containerRef.current;
       if (!terminal || !container) {
@@ -766,17 +726,16 @@ export function ThreadTerminalView({
   const handleTerminalPointerDown = useCallback(
     (event: ReactPointerEvent<HTMLDivElement>) => {
       pointerIsDownRef.current = true;
-      pointerStartPointRef.current =
-        anchorPointFromMouseEvent(event);
+      pointerStartPointRef.current = anchorPointFromMouseEvent(event);
     },
     [],
   );
 
   const handleTerminalPointerRelease = useCallback(
     (event: ReactPointerEvent<HTMLDivElement>) => {
-      const anchor = terminalSelectionAnchorFromPointerRelease(
+      const anchor = selectionAnchorFromPointerRelease(
         pointerStartPointRef.current,
-        event,
+        { clientX: event.clientX, clientY: event.clientY },
       );
       lastPointerReleaseAnchorRef.current = anchor;
       pointerIsDownRef.current = false;

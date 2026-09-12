@@ -1,4 +1,3 @@
-import type { HostDaemonContributedEnvEntry } from "@bb/host-daemon-contract";
 import fs from "node:fs/promises";
 import path from "node:path";
 import {
@@ -73,7 +72,6 @@ export async function cloneProject(args: {
   projectSlug: string;
   remoteUrl: string;
   env?: NodeJS.ProcessEnv;
-  contributedEnv?: readonly HostDaemonContributedEnvEntry[];
   targetPath?: string;
   shellPath?: string;
   onProgress?: (line: string) => void;

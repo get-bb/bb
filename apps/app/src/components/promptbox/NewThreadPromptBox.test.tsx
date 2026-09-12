@@ -63,7 +63,6 @@ describe("ProjectlessMachineSlot", () => {
   }) {
     return {
       value: "provider:personal-workspace",
-      onChange: vi.fn(),
       sources: [],
       host,
       isLocal: true,
@@ -256,7 +255,6 @@ describe("EnvironmentSlot", () => {
   }) {
     return {
       value: overrides.value ?? "provider:personal-workspace",
-      onChange: vi.fn(),
       sources: [],
       host,
       isLocal: true,

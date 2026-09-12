@@ -3,7 +3,6 @@ import {
   LEGACY_CODEX_GOAL_EXTENSION_KIND,
   convertLegacyStoredThreadEvent,
   isLegacyDelegationToolCall,
-  isLegacyThreadEventType,
   upgradeLegacyToolItem,
 } from "../src/legacy-thread-events.js";
 import {
@@ -175,10 +174,6 @@ describe("legacy thread event conversion", () => {
       data: { name: "A thread", providerThreadId: "provider-1" },
     };
     expect(convertLegacyStoredThreadEvent(stored)).toBe(stored);
-    expect(isLegacyThreadEventType("thread/goal/updated")).toBe(true);
-    expect(isLegacyThreadEventType("thread/extensionState/updated")).toBe(
-      false,
-    );
   });
 });
 

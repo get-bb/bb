@@ -1,6 +1,8 @@
 import { toString as cronstrueToString } from "cronstrue";
 import type { AutomationTrigger } from "../src/rpc-types";
 
+export const PERSONAL_PROJECT_ID = "proj_personal";
+
 const SCHEDULE_RUN_FORMATTER = new Intl.DateTimeFormat(undefined, {
   month: "short",
   day: "numeric",

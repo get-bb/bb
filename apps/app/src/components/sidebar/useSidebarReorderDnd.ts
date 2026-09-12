@@ -14,14 +14,10 @@ import {
   subscribeCompactSidebarDrawerShowing,
 } from "@/components/ui/sidebar-mobile-drawer-visibility.js";
 import {
-  reorderCollisionDetection,
   useReorderDnd,
-  type ReorderDndContextProps,
   type UseReorderDndArgs,
   type UseReorderDndResult,
 } from "@/components/ui/useReorderDnd";
-
-export const sidebarReorderCollisionDetection = reorderCollisionDetection;
 
 function setSidebarDraggingCursor(active: boolean): void {
   if (active) {
@@ -32,7 +28,6 @@ function setSidebarDraggingCursor(active: boolean): void {
 }
 
 type UseSidebarReorderDndArgs = Omit<UseReorderDndArgs, "touchSensor">;
-export type SidebarReorderDndContextProps = ReorderDndContextProps;
 
 function shouldInstallSidebarTouchMoveListener(): boolean {
   return (
@@ -84,7 +79,7 @@ export function useSidebarReorderDnd({
   onDragMove,
   onDragOver,
   onDragCancel,
-  collisionDetection = sidebarReorderCollisionDetection,
+  collisionDetection,
 }: UseSidebarReorderDndArgs): UseReorderDndResult {
   const handleDragStart = useCallback(
     (event: DragStartEvent) => {

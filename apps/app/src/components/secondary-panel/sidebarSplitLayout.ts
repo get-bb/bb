@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { arrayMove } from "@bb/client-core";
 import {
   MAX_PANES,
   countPanes,
@@ -19,7 +20,6 @@ import {
 import type { SplitDropTarget } from "@/lib/split-drag";
 import {
   FIXED_PANEL_TABS_IDLE_EXPIRY_MS,
-  createGitDiffFixedPanelTab,
   createThreadInfoFixedPanelTab,
   getFixedPanelTabsStateStorageKey,
 } from "@/lib/fixed-panel-tabs-state";
@@ -28,7 +28,6 @@ const SIDEBAR_SPLIT_LAYOUT_STORAGE_VERSION = 1;
 const SIDEBAR_SPLIT_LAYOUT_STORAGE_PREFIX =
   "bb.thread.secondaryPanelSplitLayout";
 export const SIDEBAR_FIXED_INFO_TAB_ID = createThreadInfoFixedPanelTab().id;
-export const SIDEBAR_FIXED_DIFF_TAB_ID = createGitDiffFixedPanelTab().id;
 
 const SIDEBAR_SPLIT_PLUGIN_ID = "bb-secondary-panel-split";
 const NORMALIZED_SPLIT_SIZE_EPSILON = 1e-9;
@@ -287,13 +286,32 @@ export function isCanonicalSidebarSplitState(
   );
 }
 
+function findSidebarPaneGroup(
+  state: SidebarSplitState,
+  paneId: string,
+): { groupId: string; group: SidebarTabGroup } | null {
+  const pane = findPane(state.layout.root, paneId);
+  const groupId = pane === null ? null : sidebarPaneGroupId(pane);
+  const group = groupId === null ? undefined : state.groups[groupId];
+  return groupId === null || group === undefined ? null : { groupId, group };
+}
+
+function maximizedPaneAfterRemoval(
+  previousMaximizedPaneId: string | null,
+  removedPaneId: string,
+  layout: SplitLayout,
+): string | null {
+  if (countPanes(layout.root) <= 1) return null;
+  return previousMaximizedPaneId === removedPaneId
+    ? layout.focusedPaneId
+    : previousMaximizedPaneId;
+}
+
 export function getSidebarGroupForPane(
   state: SidebarSplitState,
   paneId: string,
 ): SidebarTabGroup | null {
-  const pane = findPane(state.layout.root, paneId);
-  const groupId = pane === null ? null : sidebarPaneGroupId(pane);
-  return groupId === null ? null : (state.groups[groupId] ?? null);
+  return findSidebarPaneGroup(state, paneId)?.group ?? null;
 }
 
 export function selectSidebarTab(
@@ -301,16 +319,11 @@ export function selectSidebarTab(
   paneId: string,
   tabId: string,
 ): SidebarSplitState {
-  const pane = findPane(state.layout.root, paneId);
-  const groupId = pane === null ? null : sidebarPaneGroupId(pane);
-  const group = groupId === null ? undefined : state.groups[groupId];
-  if (
-    groupId === null ||
-    group === undefined ||
-    !group.tabIds.includes(tabId)
-  ) {
+  const paneGroup = findSidebarPaneGroup(state, paneId);
+  if (paneGroup === null || !paneGroup.group.tabIds.includes(tabId)) {
     return state;
   }
+  const { groupId, group } = paneGroup;
   const maximizedPaneId = state.maximizedPaneId === null ? null : paneId;
   if (
     group.activeTabId === tabId &&
@@ -381,24 +394,19 @@ export function reorderSidebarTab(
   activeTabId: string,
   overTabId: string,
 ): SidebarSplitState {
-  const pane = findPane(state.layout.root, paneId);
-  const groupId = pane === null ? null : sidebarPaneGroupId(pane);
-  const group = groupId === null ? undefined : state.groups[groupId];
+  const paneGroup = findSidebarPaneGroup(state, paneId);
   if (
-    groupId === null ||
-    group === undefined ||
-    !group.tabIds.includes(activeTabId) ||
-    !group.tabIds.includes(overTabId) ||
+    paneGroup === null ||
+    !paneGroup.group.tabIds.includes(activeTabId) ||
+    !paneGroup.group.tabIds.includes(overTabId) ||
     activeTabId === overTabId
   ) {
     return state;
   }
+  const { groupId, group } = paneGroup;
   const from = group.tabIds.indexOf(activeTabId);
   const to = group.tabIds.indexOf(overTabId);
-  const tabIds = [...group.tabIds];
-  const [moved] = tabIds.splice(from, 1);
-  if (moved === undefined) return state;
-  tabIds.splice(to, 0, moved);
+  const tabIds = arrayMove(group.tabIds, from, to);
   return {
     ...state,
     groups: { ...state.groups, [groupId]: { ...group, tabIds } },
@@ -412,24 +420,17 @@ export function moveSidebarTab(
   target: SplitDropTarget,
   ids: Pick<SidebarSplitIds, "groupId">,
 ): SidebarSplitState {
-  const sourcePane = findPane(state.layout.root, sourcePaneId);
-  const targetPane = findPane(state.layout.root, target.paneId);
-  if (sourcePane === null || targetPane === null) return state;
-  const sourceGroupId = sidebarPaneGroupId(sourcePane);
-  const targetGroupId = sidebarPaneGroupId(targetPane);
-  const sourceGroup =
-    sourceGroupId === null ? undefined : state.groups[sourceGroupId];
-  const targetGroup =
-    targetGroupId === null ? undefined : state.groups[targetGroupId];
+  const sourcePaneGroup = findSidebarPaneGroup(state, sourcePaneId);
+  const targetPaneGroup = findSidebarPaneGroup(state, target.paneId);
   if (
-    sourceGroupId === null ||
-    targetGroupId === null ||
-    sourceGroup === undefined ||
-    targetGroup === undefined ||
-    !sourceGroup.tabIds.includes(tabId)
+    sourcePaneGroup === null ||
+    targetPaneGroup === null ||
+    !sourcePaneGroup.group.tabIds.includes(tabId)
   ) {
     return state;
   }
+  const { groupId: sourceGroupId, group: sourceGroup } = sourcePaneGroup;
+  const { groupId: targetGroupId, group: targetGroup } = targetPaneGroup;
 
   if (target.zone === "center") {
     if (sourcePaneId === target.paneId) return state;
@@ -519,33 +520,23 @@ function removeEmptySidebarPane(
   paneId: string,
 ): SidebarSplitState {
   if (countPanes(state.layout.root) <= 1) return state;
-  const pane = findPane(state.layout.root, paneId);
-  const closedGroupId = pane === null ? null : sidebarPaneGroupId(pane);
-  const closedGroup =
-    closedGroupId === null ? undefined : state.groups[closedGroupId];
-  if (
-    closedGroupId === null ||
-    closedGroup === undefined ||
-    closedGroup.tabIds.length > 0
-  ) {
+  const closedPaneGroup = findSidebarPaneGroup(state, paneId);
+  if (closedPaneGroup === null || closedPaneGroup.group.tabIds.length > 0) {
     return state;
   }
 
   const groups = { ...state.groups };
-  delete groups[closedGroupId];
+  delete groups[closedPaneGroup.groupId];
   const layout = removePane(state.layout, paneId);
   return {
     ...state,
     groups,
     layout,
-    maximizedPaneId:
-      state.maximizedPaneId === paneId
-        ? countPanes(layout.root) > 1
-          ? layout.focusedPaneId
-          : null
-        : countPanes(layout.root) > 1
-          ? state.maximizedPaneId
-          : null,
+    maximizedPaneId: maximizedPaneAfterRemoval(
+      state.maximizedPaneId,
+      paneId,
+      layout,
+    ),
   };
 }
 
@@ -554,11 +545,9 @@ export function removeSidebarSplit(
   paneId: string,
 ): SidebarSplitState {
   if (countPanes(state.layout.root) <= 1) return state;
-  const pane = findPane(state.layout.root, paneId);
-  const removedGroupId = pane === null ? null : sidebarPaneGroupId(pane);
-  const removedGroup =
-    removedGroupId === null ? undefined : state.groups[removedGroupId];
-  if (removedGroupId === null || removedGroup === undefined) return state;
+  const removedPaneGroup = findSidebarPaneGroup(state, paneId);
+  if (removedPaneGroup === null) return state;
+  const { groupId: removedGroupId, group: removedGroup } = removedPaneGroup;
 
   const removedFocusedPane = state.layout.focusedPaneId === paneId;
   const layout = removePane(state.layout, paneId);
@@ -587,14 +576,11 @@ export function removeSidebarSplit(
     ...state,
     groups,
     layout,
-    maximizedPaneId:
-      state.maximizedPaneId === paneId
-        ? countPanes(layout.root) > 1
-          ? layout.focusedPaneId
-          : null
-        : countPanes(layout.root) > 1
-          ? state.maximizedPaneId
-          : null,
+    maximizedPaneId: maximizedPaneAfterRemoval(
+      state.maximizedPaneId,
+      paneId,
+      layout,
+    ),
   };
 }
 

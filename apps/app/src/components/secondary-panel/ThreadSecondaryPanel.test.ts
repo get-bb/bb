@@ -1,7 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
   getSecondaryPanelChromeStackClassName,
-  getReservedInlinePanelToggleClassName,
   isSecondaryPanelLayoutTransition,
   resolveCollapsedPanelTrafficLightReserveClassName,
 } from "./ThreadSecondaryPanel";
@@ -35,21 +34,6 @@ describe("getSecondaryPanelChromeStackClassName", () => {
     expect(className).toContain("shrink-0");
     expect(className).not.toContain(CHROME_ROW_HEIGHT_CLASS);
     expect(CHROME_ROW_CLASS).toContain(CHROME_ROW_HEIGHT_CLASS);
-  });
-});
-
-describe("getReservedInlinePanelToggleClassName", () => {
-  it("carves the slot out of the window-drag chrome row under macOS desktop chrome", () => {
-    const className = getReservedInlinePanelToggleClassName(true);
-
-    expect(className).toContain("[app-region:no-drag]");
-    expect(className).toContain("[-webkit-app-region:no-drag]");
-  });
-
-  it("leaves the slot untouched off macOS desktop chrome", () => {
-    const className = getReservedInlinePanelToggleClassName(false);
-
-    expect(className).not.toContain("app-region");
   });
 });
 

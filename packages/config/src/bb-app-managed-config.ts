@@ -131,36 +131,6 @@ const customAcpAgentSchema = z
     return modelCli === undefined ? agent : { ...agent, modelCli };
   });
 
-const customAcpAgentsSchema = z
-  .array(customAcpAgentSchema)
-  .superRefine((agents, context) => {
-    const seenProviderIds = new Set<string>();
-    for (const [index, agent] of agents.entries()) {
-      const providerId = formatCustomAcpAgentProviderId(agent.id);
-      if (seenProviderIds.has(providerId)) {
-        context.addIssue({
-          code: "custom",
-          message: `Duplicate custom ACP agent provider id "${providerId}".`,
-          path: [index, "id"],
-        });
-      }
-      seenProviderIds.add(providerId);
-    }
-  });
-
-export const bbAppManagedConfigSchema = z
-  .object({
-    config: bbAppManagedConfigValuesSchema.optional(),
-    customAcpAgents: customAcpAgentsSchema.optional(),
-    customModels: z.array(customProviderModelSchema).optional(),
-    sharedSkillRoots: providerNativeSkillRootsSchema.optional(),
-    serverHeaders: z.record(z.string(), z.string()).optional(),
-    machineCredential: z.string().min(1).optional(),
-    connectMachineId: z.string().min(1).optional(),
-    serverUrl: z.string().min(1).optional(),
-  })
-  .strict();
-
 const bbAppManagedConfigBoundarySchema = z
   .object({
     config: bbAppManagedConfigValuesSchema.optional(),
@@ -185,7 +155,13 @@ export type BbAppManagedConfigValues = z.infer<
 >;
 export type CustomAcpAgent = z.infer<typeof customAcpAgentSchema>;
 export type CustomProviderModel = z.infer<typeof customProviderModelSchema>;
-export type BbAppManagedConfig = z.infer<typeof bbAppManagedConfigSchema>;
+export type BbAppManagedConfig = Omit<
+  z.infer<typeof bbAppManagedConfigBoundarySchema>,
+  "customAcpAgents" | "customModels"
+> & {
+  customAcpAgents?: CustomAcpAgent[];
+  customModels?: CustomProviderModel[];
+};
 export type BbAppManagedEnvConfig = z.infer<typeof bbAppManagedEnvConfigSchema>;
 export type BbAppManagedEnvFile = z.infer<typeof bbAppManagedEnvFileSchema>;
 

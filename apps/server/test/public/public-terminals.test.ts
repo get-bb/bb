@@ -1,4 +1,4 @@
-import { updateMachineEnvironment } from "../../src/services/machines/environment-settings.js";
+import { replaceMachineEnvironment } from "../../src/services/machines/environment-settings.js";
 import * as gitCredentials from "../../src/services/machines/git-credentials.js";
 import { updateHost } from "@bb/db";
 import {
@@ -409,14 +409,13 @@ describe("public terminal routes", () => {
           updateHost(fixture.harness.db, fixture.harness.hub, fixture.host.id, {
             machineProviderId: "manual",
           });
-        await updateMachineEnvironment(
+        await replaceMachineEnvironment(
           fixture.harness.db,
           fixture.harness.config.dataDir,
-          "CUSTOM_TERMINAL",
           {
-            name: "CUSTOM_TERMINAL",
-            value: "terminal-value",
-            note: null,
+            variables: [
+              { name: "CUSTOM_TERMINAL", value: "terminal-value", note: null },
+            ],
           },
         );
         const pending = await startPendingTerminalOpen(fixture);
@@ -775,7 +774,6 @@ describe("public terminal routes", () => {
       socket: browserSocket,
       sinceSeq: 0,
       terminalId: stored.id,
-      threadId: null,
     });
     const attachMessage = await waitForDaemonMessage(fixture.socket);
     expect(attachMessage).toMatchObject({
@@ -815,7 +813,6 @@ describe("public terminal routes", () => {
     fixture.harness.deps.terminalSessions.handleBrowserTerminalMessage({
       socket: browserSocket,
       terminalId: stored.id,
-      threadId: null,
       message: {
         type: "input",
         dataBase64: Buffer.from("pwd\n").toString("base64"),
@@ -2016,7 +2013,6 @@ describe("public terminal routes", () => {
     const secondSocket = createFakeBrowserSocket();
 
     fixture.harness.deps.terminalSessions.attachBrowserTerminal({
-      threadId: fixture.thread.id,
       terminalId: stored.id,
       socket: firstSocket,
       sinceSeq: 0,
@@ -2039,7 +2035,6 @@ describe("public terminal routes", () => {
     });
 
     fixture.harness.deps.terminalSessions.attachBrowserTerminal({
-      threadId: fixture.thread.id,
       terminalId: stored.id,
       socket: secondSocket,
       sinceSeq: 0,
@@ -2063,7 +2058,6 @@ describe("public terminal routes", () => {
     });
 
     fixture.harness.deps.terminalSessions.handleBrowserTerminalMessage({
-      threadId: fixture.thread.id,
       terminalId: stored.id,
       socket: firstSocket,
       message: { type: "resize", cols: 120, rows: 40 },
@@ -2094,7 +2088,6 @@ describe("public terminal routes", () => {
     const browserSocket = createFakeBrowserSocket();
 
     fixture.harness.deps.terminalSessions.attachBrowserTerminal({
-      threadId: fixture.thread.id,
       terminalId: stored.id,
       socket: browserSocket,
       sinceSeq: 0,
@@ -2167,7 +2160,6 @@ describe("public terminal routes", () => {
     });
 
     fixture.harness.deps.terminalSessions.handleBrowserTerminalMessage({
-      threadId: fixture.thread.id,
       terminalId: stored.id,
       socket: browserSocket,
       message: {
@@ -2198,7 +2190,6 @@ describe("public terminal routes", () => {
     );
 
     fixture.harness.deps.terminalSessions.handleBrowserTerminalMessage({
-      threadId: fixture.thread.id,
       terminalId: stored.id,
       socket: browserSocket,
       message: {
@@ -2226,7 +2217,6 @@ describe("public terminal routes", () => {
     );
 
     fixture.harness.deps.terminalSessions.handleBrowserTerminalMessage({
-      threadId: fixture.thread.id,
       terminalId: stored.id,
       socket: browserSocket,
       message: {

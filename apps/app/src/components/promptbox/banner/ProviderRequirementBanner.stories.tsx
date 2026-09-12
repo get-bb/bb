@@ -1,6 +1,6 @@
-import type { ReactNode } from "react";
 import { Button } from "@bb/shared-ui/button";
 import { StoryCard, StoryRow } from "../../../../.ladle/story-card";
+import { ResponsiveStage } from "./banner-story-stages";
 import { ProviderCliVersionBanner } from "./ProviderCliVersionBanner";
 import { ProviderRequirementBanner } from "./ProviderRequirementBanner";
 import {
@@ -14,32 +14,6 @@ export default {
 };
 
 const noop = () => {};
-
-function Stage({
-  children,
-  size,
-}: {
-  children: ReactNode;
-  size: "desktop" | "mobile";
-}) {
-  return (
-    <div
-      data-promptbox-shell=""
-      className={size === "desktop" ? "min-w-0 flex-1" : "w-[20rem] shrink-0"}
-    >
-      {children}
-    </div>
-  );
-}
-
-function ResponsiveStage({ children }: { children: ReactNode }) {
-  return (
-    <div className="flex w-full min-w-0 items-start gap-3 overflow-x-auto">
-      <Stage size="desktop">{children}</Stage>
-      <Stage size="mobile">{children}</Stage>
-    </div>
-  );
-}
 
 function configureAction(displayName: string) {
   return (

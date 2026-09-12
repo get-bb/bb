@@ -4,6 +4,7 @@ import { z } from "zod";
 import type { ResolvedSettings } from "./configuration.js";
 import type { ImageDefinition } from "./image-definition.js";
 import type { ModalSandboxClient } from "./providers/modal/client.js";
+import { errorMessage } from "./error-message.js";
 
 const recordSchema = z.object({
   accountIdentity: z.string(),
@@ -51,9 +52,7 @@ export function debugSandbox(
       });
       return { imageId, logs };
     } catch (error) {
-      throw new Error(
-        `${logs}${error instanceof Error ? error.message : String(error)}`,
-      );
+      throw new Error(`${logs}${errorMessage(error)}`);
     }
   }
   async function owned(sandboxId: string) {

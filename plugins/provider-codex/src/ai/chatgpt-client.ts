@@ -6,14 +6,15 @@ import type {
   ExperimentalAiVoiceTranscribeOutput,
 } from "@get-bb/plugin-sdk/ai-services";
 import type { JsonValue } from "@get-bb/plugin-sdk";
+import type { JsonObject } from "@get-bb/plugin-sdk/provider-bridge";
 import { fetchChatGpt, isCloudflareChallenge } from "./chatgpt-fetch.js";
 import {
   parseJsonValue,
   readCodexAuthCredentials,
+  toJsonObject,
   type CodexAuthCredentials,
   type CodexChatGptAuthCredentials,
   type CodexOpenAiApiKeyCredentials,
-  type JsonObject,
 } from "./codex-auth.js";
 import { AiServiceFailure } from "./failure.js";
 
@@ -143,13 +144,6 @@ interface ResponseTextResult {
 interface CodexStreamFailure {
   code: string | null;
   message: string;
-}
-
-function jsonObject(value: JsonValue): JsonObject | null {
-  if (value === null || typeof value !== "object" || Array.isArray(value)) {
-    return null;
-  }
-  return value;
 }
 
 function optionalString(value: JsonValue | undefined): string | null {
@@ -387,7 +381,7 @@ function extractJsonErrorMessage(value: JsonValue): string | null {
     return null;
   }
 
-  const object = jsonObject(value);
+  const object = toJsonObject(value);
   if (!object) {
     return null;
   }
@@ -461,13 +455,13 @@ function getCodexResponseText(response: JsonObject): string | null {
     return null;
   }
   for (const outputItem of output) {
-    const item = jsonObject(outputItem);
+    const item = toJsonObject(outputItem);
     const content = item ? optionalJsonArray(item.content) : null;
     if (!content) {
       continue;
     }
     for (const contentItem of content) {
-      const contentObject = jsonObject(contentItem);
+      const contentObject = toJsonObject(contentItem);
       if (!contentObject) {
         continue;
       }
@@ -484,7 +478,7 @@ function getCodexResponseText(response: JsonObject): string | null {
 }
 
 function getCodexFailure(response: JsonObject): CodexStreamFailure | null {
-  const error = response.error ? jsonObject(response.error) : null;
+  const error = response.error ? toJsonObject(response.error) : null;
   if (!error) {
     return null;
   }
@@ -510,7 +504,7 @@ function extractTextFromSseEvent(event: JsonObject): ResponseTextResult {
   }
 
   if (type === "response.failed") {
-    const response = event.response ? jsonObject(event.response) : null;
+    const response = event.response ? toJsonObject(event.response) : null;
     return {
       failure: response
         ? (getCodexFailure(response) ?? {
@@ -530,7 +524,7 @@ function extractTextFromSseEvent(event: JsonObject): ResponseTextResult {
   }
 
   if (type === "response.completed" || type === "response.done") {
-    const response = event.response ? jsonObject(event.response) : null;
+    const response = event.response ? toJsonObject(event.response) : null;
     const text = response ? getCodexResponseText(response) : null;
     const failure = response ? getCodexFailure(response) : null;
     return {
@@ -611,7 +605,7 @@ async function readResponseTextFromSse(
           .trim();
         if (eventData && eventData !== "[DONE]") {
           const eventValue = parseSseEventValue(eventData);
-          const event = jsonObject(eventValue);
+          const event = toJsonObject(eventValue);
           if (event) {
             const result = extractTextFromSseEvent(event);
             if (result.failure) {
@@ -663,7 +657,7 @@ function parseStructuredResult(rawText: string): JsonObject {
       "Codex structured output was not valid JSON.",
     );
   }
-  const object = jsonObject(parsed);
+  const object = toJsonObject(parsed);
   if (!object) {
     throw new AiServiceFailure(
       "invalid_response",
@@ -679,7 +673,7 @@ function withStrictObjectSchemas(value: JsonValue): JsonValue {
     return value.map((item) => withStrictObjectSchemas(item));
   }
 
-  const object = jsonObject(value);
+  const object = toJsonObject(value);
   if (!object) {
     return value;
   }
@@ -695,7 +689,9 @@ function withStrictObjectSchemas(value: JsonValue): JsonValue {
     normalized.additionalProperties = false;
   }
   if (normalized.type === "object") {
-    normalized.required = Object.keys(jsonObject(normalized.properties) ?? {});
+    normalized.required = Object.keys(
+      toJsonObject(normalized.properties) ?? {},
+    );
   }
   return normalized;
 }
@@ -852,7 +848,7 @@ function buildTranscriptionFormData(command: VoiceTranscribeCommand): FormData {
 }
 
 function parseTranscriptionText(value: JsonValue): string {
-  const object = jsonObject(value);
+  const object = toJsonObject(value);
   const text = object ? optionalString(object.text) : null;
   if (text === null) {
     throw new AiServiceFailure(

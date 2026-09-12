@@ -9,6 +9,7 @@ import {
   waitFor,
 } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { highlightMarkdownCode } from "./markdown-code-highlight";
 import { MarkdownPreview } from "./markdown-preview";
 import {
   MarkdownLocalFileContextMenuContext,
@@ -89,6 +90,14 @@ function mockResizeObserverDeliveries(): {
       });
     },
   };
+}
+
+function requireElement(container: ParentNode, selector: string): Element {
+  const element = container.querySelector(selector);
+  if (element === null) {
+    throw new Error(`Expected an element matching ${selector}`);
+  }
+  return element;
 }
 
 describe("MarkdownPreview", () => {
@@ -268,6 +277,44 @@ describe("MarkdownPreview", () => {
     );
     expect(container.querySelector("script")).toBeNull();
     expect(container.textContent).toContain("<script>alert(1)</script>");
+  });
+
+  it("keeps highlighted code DOM until the code text changes", () => {
+    const fence = "```ts\nconst a = 1;\n```";
+    const view = render(<MarkdownPreview content={`${fence}\n\nPara one.`} />);
+    const code = requireElement(view.container, "pre code");
+    const line = requireElement(code, "span.sh__line");
+    const observer = new MutationObserver(() => {});
+    observer.observe(code, {
+      characterData: true,
+      childList: true,
+      subtree: true,
+    });
+
+    view.rerender(
+      <MarkdownPreview content={`${fence}\n\nPara one.\n\nPara two.`} />,
+    );
+
+    const mutations = observer.takeRecords();
+    observer.disconnect();
+    expect(view.container.textContent).toContain("Para two.");
+    expect(mutations).toHaveLength(0);
+    expect(line.isConnected).toBe(true);
+
+    view.rerender(
+      <MarkdownPreview
+        content={"```ts\nconst a = 1;\nconst b = 2;\n```\n\nPara one."}
+      />,
+    );
+
+    const expected = document.createElement("code");
+    expected.innerHTML = highlightMarkdownCode({
+      code: "const a = 1;\nconst b = 2;",
+      language: "ts",
+    });
+    expect(requireElement(view.container, "pre code")).toBe(code);
+    expect(code.innerHTML).toBe(expected.innerHTML);
+    expect(code.querySelectorAll("span.sh__line")).toHaveLength(2);
   });
 
   it("renders inline-code Markdown file paths as local file links", () => {

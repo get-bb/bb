@@ -81,15 +81,6 @@ function listThreadsWhere(
   return db.select().from(threads).where(where).all();
 }
 
-function hasThreadWhere(
-  db: ThreadWriteConnection,
-  where: ThreadWhere,
-): boolean {
-  return (
-    db.select({ id: threads.id }).from(threads).where(where).get() !== undefined
-  );
-}
-
 export interface ThreadSearchHighlightRange {
   start: number;
   end: number;
@@ -590,10 +581,6 @@ export interface ListLiveThreadsInEnvironmentArgs {
   environmentId: string;
 }
 
-export interface HasRevivableArchivedThreadInEnvironmentArgs {
-  environmentId: string;
-}
-
 export interface CountNonDeletedAssignedChildThreadsArgs {
   parentThreadId: string;
 }
@@ -615,10 +602,6 @@ export interface MarkThreadDeletedArgs {
   threadId: string;
 }
 
-export interface MarkThreadAttentionRequestedArgs {
-  threadId: string;
-}
-
 export interface ListThreadEnvironmentAssignmentsOnHostArgs {
   hostId: string;
   threadIds: readonly string[];
@@ -635,10 +618,6 @@ export interface ListActiveHostThreadsArgs {
 export interface ThreadEnvironmentAssignmentRow {
   environmentId: string;
   threadId: string;
-}
-
-export interface HasPendingThreadShutdownInEnvironmentArgs {
-  environmentId: string;
 }
 
 interface StatusTransition {
@@ -1320,22 +1299,6 @@ export function listRunningThreads(db: DbQueryConnection): RunningThreadRow[] {
     .map((row) => ({ ...row, hostId: row.hostId ?? null }));
 }
 
-export function listThreads(db: DbConnection, options: ListThreadsOptions) {
-  let query = db
-    .select()
-    .from(threads)
-    .where(and(...buildListThreadsFilters(options)))
-    .orderBy(...buildListThreadsOrderBy(options))
-    .$dynamic();
-  if (options.limit !== undefined) {
-    query = query.limit(options.limit);
-  }
-  if (options.offset !== undefined) {
-    query = query.offset(options.offset);
-  }
-  return query.all();
-}
-
 export function listThreadsWithPendingInteractionState(
   db: DbConnection,
   options: ListThreadsOptions,
@@ -1408,19 +1371,6 @@ export function countLiveThreadsInEnvironment(
     liveThreads(
       eq(threads.environmentId, args.environmentId),
       args.excludeThreadId ? ne(threads.id, args.excludeThreadId) : undefined,
-    ),
-  );
-}
-
-export function hasRevivableArchivedThreadInEnvironment(
-  db: ThreadWriteConnection,
-  args: HasRevivableArchivedThreadInEnvironmentArgs,
-): boolean {
-  return hasThreadWhere(
-    db,
-    nonDeletedThreads(
-      eq(threads.environmentId, args.environmentId),
-      isNotNull(threads.archivedAt),
     ),
   );
 }
@@ -1532,24 +1482,6 @@ export function listActiveHostThreads(
       ),
     )
     .all();
-}
-
-export function hasPendingThreadShutdownInEnvironment(
-  db: DbConnection,
-  args: HasPendingThreadShutdownInEnvironmentArgs,
-): boolean {
-  const row = db
-    .select({ id: threads.id })
-    .from(threads)
-    .where(
-      and(
-        eq(threads.environmentId, args.environmentId),
-        eq(threads.status, "stopping"),
-      ),
-    )
-    .get();
-
-  return row !== undefined;
 }
 
 export function pinThread(
@@ -1890,42 +1822,6 @@ export function getThreadStartupContext(
       .where(eq(threads.id, threadId))
       .get()?.startupContext ?? null
   );
-}
-
-export function markThreadAttentionRequested(
-  db: ThreadWriteConnection,
-  notifier: DbNotifier,
-  args: MarkThreadAttentionRequestedArgs,
-) {
-  const existing = db
-    .select()
-    .from(threads)
-    .where(eq(threads.id, args.threadId))
-    .get();
-  if (!existing) {
-    return null;
-  }
-
-  const now = Date.now();
-  if (now <= existing.latestAttentionAt) {
-    return existing;
-  }
-
-  const updated = db
-    .update(threads)
-    .set({
-      latestAttentionAt: now,
-      updatedAt: now,
-    })
-    .where(eq(threads.id, args.threadId))
-    .returning()
-    .get();
-  if (updated) {
-    notifier.notifyThread(args.threadId, ["read-state-changed"], {
-      projectId: existing.projectId,
-    });
-  }
-  return updated ?? null;
 }
 
 export function deleteThread(

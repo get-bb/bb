@@ -1,5 +1,6 @@
-import type { ChangedMessage, EnvironmentChangeKind } from "@bb/domain";
+import type { EnvironmentChangeKind } from "@bb/domain";
 import type { HostDaemonOnlineRpcResult } from "@bb/host-daemon-contract";
+import type { ServerChangedMessage } from "../../ws/hub.js";
 
 const IGNORED_ENVIRONMENT_CHANGES: ReadonlySet<EnvironmentChangeKind> = new Set(
   ["metadata-changed", "thread-storage-changed"],
@@ -29,7 +30,6 @@ interface EnvironmentReadCacheOptions {
 }
 
 interface EnvironmentReadCacheInvalidation {
-  invalidateAll(): void;
   invalidateEnvironment(environmentId: string): void;
   invalidateHost(hostId: string): void;
 }
@@ -89,11 +89,6 @@ export class EnvironmentReadCache<
     this.dropWhere((_cacheKey, entryHostId) => entryHostId === hostId);
   }
 
-  invalidateAll(): void {
-    this.entries.clear();
-    this.inFlight.clear();
-  }
-
   private dropWhere(
     predicate: (cacheKey: string, hostId: string) => boolean,
   ): void {
@@ -115,7 +110,9 @@ const WORKSPACE_PULL_REQUEST_CACHE_TTL_MS = 10_000;
 
 interface WorkspaceReadCachesDeps {
   hub: {
-    onChangedMessage(listener: (message: ChangedMessage) => void): () => void;
+    onChangedMessage(
+      listener: (message: ServerChangedMessage) => void,
+    ): () => void;
   };
   now?: () => number;
 }
@@ -159,13 +156,7 @@ export class WorkspaceReadCaches {
     }
   }
 
-  private invalidateAll(): void {
-    for (const cache of this.caches) {
-      cache.invalidateAll();
-    }
-  }
-
-  private handleChangedMessage(message: ChangedMessage): void {
+  private handleChangedMessage(message: ServerChangedMessage): void {
     if (message.entity === "environment") {
       const relevant = message.changes.some(
         (change) => !IGNORED_ENVIRONMENT_CHANGES.has(change),
@@ -173,19 +164,17 @@ export class WorkspaceReadCaches {
       if (!relevant) {
         return;
       }
-      if (message.id === undefined) {
-        this.invalidateAll();
-      } else {
-        this.invalidateEnvironment(message.id);
-      }
+      this.invalidateEnvironment(message.id);
       return;
     }
-    if (message.entity === "host") {
-      if (message.id === undefined) {
-        this.invalidateAll();
-      } else {
-        this.invalidateHost(message.id);
-      }
+    if (
+      message.entity === "host" &&
+      message.changes.some(
+        (change) =>
+          change === "host-connected" || change === "host-disconnected",
+      )
+    ) {
+      this.invalidateHost(message.id);
     }
   }
 }

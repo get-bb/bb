@@ -1,5 +1,6 @@
 import { useCallback, useSyncExternalStore } from "react";
 import type { PluginComposerThreadRowStatus } from "@get-bb/plugin-sdk";
+import { createKeyedListeners } from "./keyed-listeners";
 
 type ThreadRowStatusListener = () => void;
 type ThreadRowStatusOwner = string | symbol;
@@ -11,16 +12,11 @@ const statusesByThreadId = new Map<
     { pluginId: string; status: PluginComposerThreadRowStatus }
   >
 >();
-const listenersByThreadId = new Map<string, Set<ThreadRowStatusListener>>();
+const threadRowStatusListeners = createKeyedListeners<string>();
 const groupListeners = new Set<ThreadRowStatusListener>();
 
 function notify(threadId: string): void {
-  const listeners = listenersByThreadId.get(threadId);
-  if (listeners) {
-    for (const listener of [...listeners]) {
-      listener();
-    }
-  }
+  threadRowStatusListeners.notify(threadId);
   for (const listener of [...groupListeners]) {
     listener();
   }
@@ -98,18 +94,7 @@ export function subscribePluginThreadRowStatus(
   threadId: string,
   listener: ThreadRowStatusListener,
 ): () => void {
-  let listeners = listenersByThreadId.get(threadId);
-  if (!listeners) {
-    listeners = new Set();
-    listenersByThreadId.set(threadId, listeners);
-  }
-  listeners.add(listener);
-  return () => {
-    listeners.delete(listener);
-    if (listeners.size === 0) {
-      listenersByThreadId.delete(threadId);
-    }
-  };
+  return threadRowStatusListeners.subscribe(threadId, listener);
 }
 
 function subscribePluginThreadRowStatusGroup(
@@ -150,11 +135,7 @@ export function usePluginThreadRowStatusForThreads(
 
 export function resetPluginThreadRowStatusesForTest(): void {
   statusesByThreadId.clear();
-  for (const listeners of listenersByThreadId.values()) {
-    for (const listener of [...listeners]) {
-      listener();
-    }
-  }
+  threadRowStatusListeners.notifyAll();
   for (const listener of [...groupListeners]) {
     listener();
   }

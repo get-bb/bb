@@ -17,7 +17,7 @@ Every member below ships with the `experimental_` prefix and an entry in
 | Region                                     | Owner today                | After this change |
 | ------------------------------------------ | -------------------------- | ----------------- |
 | Top reserve / window drag row              | host                       | host, always      |
-| Primary actions (New thread, search)       | `ProjectListActionButtons` | host, always      |
+| Primary actions (New thread, search)       | `BuiltInSidebarNavigation` | host, always      |
 | Plugin nav rows (Tools, Docs, Tasks)       | `PluginNavSidebarItems`    | host, always      |
 | **Scrolling thread list**                  | `ProjectList`              | **the plugin**    |
 | Footer (Settings, plugin actions, updates) | host                       | host, always      |

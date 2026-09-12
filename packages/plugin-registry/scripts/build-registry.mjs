@@ -5,13 +5,11 @@
 //   node packages/plugin-registry/scripts/build-registry.mjs [--check]
 //
 // Inputs:
-// - registry.json — the item list (uiItems), npm version pins, and an
-//   (currently empty) override map for swapping a component-src file for a
-//   registry-only flavor.
+// - registry.json — the item list (uiItems).
 // - packages/shared-ui/src/components/ui/*.tsx — component source, verbatim.
 //   @bb/shared-ui is itself the plugin/registry flavor: its portal-scope and
 //   useBrowserDimmingModal leaves are already the no-op/plugin variants (the
-//   app injects its own flavors at build time), so no override is needed.
+//   app injects its own flavors at build time).
 //
 // Every file in an item's transitive @/-import closure becomes its own
 // registry item (named from its basename), referenced via
@@ -37,16 +35,6 @@ const outDir = path.join(packageRoot, "r");
 const config = JSON.parse(
   await readFile(path.join(packageRoot, "registry.json"), "utf8"),
 );
-const overrides = new Map(Object.entries(config.overrides ?? {}));
-const dependencyPins = config.dependencyPins ?? {};
-
-/** shared-ui/src-relative path → absolute source path, honoring overrides. */
-function sourcePathFor(relPath) {
-  const override = overrides.get(relPath);
-  if (override) return path.join(packageRoot, override);
-  return path.join(srcRoot, relPath);
-}
-
 /** Resolve an import specifier from `importerRel` to an app-src-relative path. */
 function resolveLocal(specifier, importerRel) {
   let base;
@@ -67,7 +55,7 @@ function resolveLocal(specifier, importerRel) {
     `${base}/index.ts`,
     `${base}/index.tsx`,
   ]) {
-    if (existsSync(path.join(srcRoot, candidate)) || overrides.has(candidate)) {
+    if (existsSync(path.join(srcRoot, candidate))) {
       return candidate;
     }
   }
@@ -135,7 +123,7 @@ const fileByItem = new Map(); // itemName → relPath
 const queue = [];
 for (const name of config.uiItems) {
   const relPath = `components/ui/${name}.tsx`;
-  if (!existsSync(sourcePathFor(relPath))) {
+  if (!existsSync(path.join(srcRoot, relPath))) {
     throw new Error(`uiItem "${name}" has no source at packages/shared-ui/src/${relPath}`);
   }
   queue.push(relPath);
@@ -155,7 +143,7 @@ while (queue.length > 0) {
   }
   fileByItem.set(itemName, relPath);
 
-  const content = await readFile(sourcePathFor(relPath), "utf8");
+  const content = await readFile(path.join(srcRoot, relPath), "utf8");
   const dependencies = new Set();
   const registryDependencies = new Set();
   for (const spec of importSpecifiersOf(content)) {
@@ -176,11 +164,6 @@ while (queue.length > 0) {
 // ---------------------------------------------------------------------------
 // Emit r/<item>.json + r/index.json.
 // ---------------------------------------------------------------------------
-function pinned(pkg) {
-  const pin = dependencyPins[pkg];
-  return pin ? `${pkg}@${pin}` : pkg;
-}
-
 const generatedFiles = new Map(); // filename → content string
 const indexEntries = [];
 for (const [itemName, relPath] of [...fileByItem.entries()].sort()) {
@@ -194,7 +177,7 @@ for (const [itemName, relPath] of [...fileByItem.entries()].sort()) {
     title: itemName,
     description: `BB ${type.replace("registry:", "")} "${itemName}" — vendored from the BB app's own source (version-matched to this BB release).`,
     ...(dependencies.size > 0
-      ? { dependencies: [...dependencies].sort().map(pinned) }
+      ? { dependencies: [...dependencies].sort() }
       : {}),
     ...(registryDependencies.size > 0
       ? {

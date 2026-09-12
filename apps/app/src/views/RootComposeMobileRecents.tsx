@@ -16,15 +16,9 @@ import { Icon } from "@bb/shared-ui/icon";
 import { OverflowFade } from "@/components/ui/overflow-fade";
 import { getThreadRoutePath, isProjectlessProjectId } from "@/lib/route-paths";
 import {
-  hasActiveBackgroundAgentActivity,
-  hasActiveBackgroundCommandActivity,
-  hasActiveGoalActivity,
-  hasActivePlanModeActivity,
-  hasActiveWorkflowActivity,
   getThreadListIndicatorLabel,
-  isRuntimeBusyThread,
-  isUnreadDoneThread,
   resolveThreadListIndicator,
+  threadListIndicatorStateForThread,
   buildChronologicalThreadList,
   type CollapsedChildActivity,
   type ProjectThreadItem,
@@ -246,21 +240,8 @@ function MobileRecentThreadRow({
   const touchStartedBeyondLink = useRef(false);
   const { providers: environmentProviders } = useSystemEnvironmentProviders();
   const threadTitle = getThreadDisplayTitle(thread);
-  const isUnreadDone = isUnreadDoneThread(thread);
-  const isUnreadError = isUnreadDone && thread.status === "error";
-  const indicatorState: ThreadListIndicatorState = {
-    hasPendingInteraction: thread.hasPendingInteraction,
-    hasUnsubmittedDraft,
-    hasUnreadError: isUnreadError,
-    hasUnreadSuccess: isUnreadDone && !isUnreadError,
-    isBackgroundAgentActive: hasActiveBackgroundAgentActivity(thread),
-    isBackgroundCommandActive: hasActiveBackgroundCommandActivity(thread),
-    isGoalActive: hasActiveGoalActivity(thread),
-    queuedWork: thread.queuedWork,
-    isPlanModeActive: hasActivePlanModeActivity(thread),
-    isRuntimeActive: isRuntimeBusyThread(thread),
-    isWorkflowActive: hasActiveWorkflowActivity(thread),
-  };
+  const indicatorState: ThreadListIndicatorState =
+    threadListIndicatorStateForThread(thread, hasUnsubmittedDraft);
   const hasHiddenChildren = hasChildren && isCollapsed;
   const trailingIndicatorState: ThreadListIndicatorState = hasHiddenChildren
     ? {

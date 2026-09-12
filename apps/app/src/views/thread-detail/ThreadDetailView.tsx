@@ -18,7 +18,6 @@ import {
   type ThreadTimelineEditMessageTarget,
   type ThreadTimelineInlineMessageEditor,
   type ThreadTimelineForkMessageHandler,
-  type ThreadTimelineSendToMainMessageHandler,
   type ThreadTimelineLinkHandler,
   type ThreadTimelineLocalFileLink,
   type ThreadTimelineLocalFileLinkHandler,
@@ -256,6 +255,7 @@ import type {
 } from "@/components/secondary-panel/ThreadSecondaryPanel";
 import { useEnvironmentMergeBase } from "@/components/secondary-panel/git-diff/useEnvironmentMergeBase";
 import { useThreadGitActions } from "./useThreadGitActions";
+import { useSendSideChatMessageToMain } from "./useSendSideChatMessageToMain";
 import { useThreadReadTracking } from "@/hooks/useThreadReadTracking";
 import { useThreadUnreadDividerState } from "./useThreadUnreadDividerState";
 import {
@@ -1196,26 +1196,12 @@ function ThreadDetailViewInternal(props: ThreadRoutePathArgs) {
     },
     [addQuoteToComposer, dismissCompactKeyboard],
   );
-  const sendSideChatMessageToMain =
-    useCallback<ThreadTimelineSendToMainMessageHandler>(
-      (target) => {
-        if (
-          thread?.id === undefined ||
-          !isSideChatThread ||
-          threadSourceThreadId === null ||
-          createQueuedMessage.isPending
-        ) {
-          return;
-        }
-
-        createQueuedMessage.mutate({
-          id: threadSourceThreadId,
-          input: [{ type: "text", text: target.messageText, mentions: [] }],
-          senderThreadId: thread.id,
-        });
-      },
-      [createQueuedMessage, isSideChatThread, thread?.id, threadSourceThreadId],
-    );
+  const sendSideChatMessageToMain = useSendSideChatMessageToMain({
+    createQueuedMessage,
+    isSideChatThread,
+    threadId: thread?.id,
+    threadSourceThreadId,
+  });
   const handleSendToMainMessage =
     isSideChatThread && threadSourceThreadId !== null
       ? sendSideChatMessageToMain

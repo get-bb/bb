@@ -194,7 +194,6 @@ function UpdatePluginDialogContent({
       <>
         <DialogHeader>
           <DialogTitle>
-            {}
             Update {name} to {displayPluginVersion(candidate)}?
           </DialogTitle>
           <DialogDescription>{fromLine}</DialogDescription>
@@ -269,7 +268,6 @@ function UpdatePluginDialogContent({
               bb
             </span>
           </div>
-          {}
           <DetailsDisclosure summary="Details" defaultExpanded>
             <div className="space-y-1.5">
               {state.blockedReasons.length > 0 ? (

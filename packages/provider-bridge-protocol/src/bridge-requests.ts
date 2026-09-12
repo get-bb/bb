@@ -14,6 +14,7 @@ export const toolCallRequestParamsSchema = z
     callId: z.string().min(1),
     tool: z.string().min(1),
     arguments: z.unknown(),
+    providerNativeIds: z.boolean().optional(),
   })
   .passthrough();
 

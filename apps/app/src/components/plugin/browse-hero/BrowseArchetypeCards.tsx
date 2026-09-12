@@ -3,20 +3,17 @@ import { ShowcaseExampleCard } from "@/components/showcase-hero/ShowcaseArchetyp
 import {
   BROWSE_ARCHETYPES,
   UTILITY_EXAMPLES,
-  archetypePrompt,
-  utilityPrompt,
+  briefPrompt,
 } from "./browse-hero-archetypes";
 
 export function BrowseArchetypeCards({
   onCreate,
-  className,
 }: {
   onCreate: (prompt: string) => void;
-  className?: string;
 }) {
   return (
     <TooltipProvider delayDuration={250}>
-      <section className={className}>
+      <section>
         <h3 className="text-xs font-medium text-subtle-foreground">
           Start from an example
         </h3>
@@ -28,7 +25,7 @@ export function BrowseArchetypeCards({
               title={archetype.title}
               description={archetype.hook}
               accentToken={archetype.accentToken}
-              onClick={() => onCreate(archetypePrompt(archetype))}
+              onClick={() => onCreate(briefPrompt(archetype))}
             />
           ))}
         </div>
@@ -42,8 +39,8 @@ export function BrowseArchetypeCards({
               icon={example.icon}
               title={example.label}
               description={example.brief}
-              tooltip={utilityPrompt(example)}
-              onClick={() => onCreate(utilityPrompt(example))}
+              tooltip={briefPrompt(example)}
+              onClick={() => onCreate(briefPrompt(example))}
             />
           ))}
         </div>

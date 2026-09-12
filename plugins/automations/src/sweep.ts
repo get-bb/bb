@@ -12,7 +12,12 @@ import {
 } from "./data.js";
 import { publishAutomationChange } from "./realtime.js";
 import { computeNextScheduledTime } from "./schedule-helpers.js";
-import { executeAgentRun, executeScriptRun } from "./run.js";
+import {
+  errorMessage,
+  executeAgentRun,
+  executeScriptRun,
+  type AgentRunApi,
+} from "./run.js";
 
 const DUE_AUTOMATION_BATCH_SIZE = 100;
 export const SWEEP_INTERVAL_MS = 10_000;
@@ -20,21 +25,8 @@ export const SWEEP_INTERVAL_MS = 10_000;
 const hostListSchema = z.array(
   z.object({ status: z.enum(["connected", "disconnected"]) }).passthrough(),
 );
-type SweepApi = Pick<BbPluginApi, "realtime" | "log"> & {
-  sdk: {
-    hosts: { list(): Promise<unknown> };
-    threads: {
-      get(
-        args: Parameters<BbPluginApi["sdk"]["threads"]["get"]>[0],
-      ): Promise<unknown>;
-      send(
-        args: Parameters<BbPluginApi["sdk"]["threads"]["send"]>[0],
-      ): Promise<unknown>;
-      spawn(
-        args: Parameters<BbPluginApi["sdk"]["threads"]["spawn"]>[0],
-      ): Promise<unknown>;
-    };
-  };
+type SweepApi = AgentRunApi & {
+  sdk: { hosts: { list(): Promise<unknown> } };
 };
 
 function buildScheduleFailureHandler(
@@ -47,7 +39,7 @@ function buildScheduleFailureHandler(
     closeAutomationRun(db, {
       runId: args.run.id,
       status: "failed",
-      error: error instanceof Error ? error.message : String(error),
+      error: errorMessage(error),
       now: Date.now(),
     });
   };
@@ -81,9 +73,7 @@ async function processDueAutomation(
           });
   } catch (error) {
     bb.log.error(
-      `Skipping due automation ${args.automation.id} with invalid stored configuration: ${
-        error instanceof Error ? error.message : String(error)
-      }`,
+      `Skipping due automation ${args.automation.id} with invalid stored configuration: ${errorMessage(error)}`,
     );
     return;
   }
@@ -123,9 +113,7 @@ async function processDueAutomation(
       serverUrl: args.serverUrl,
     }).catch((error: unknown) => {
       bb.log.error(
-        `Detached script automation ${args.automation.id} failed unexpectedly: ${
-          error instanceof Error ? error.message : String(error)
-        }`,
+        `Detached script automation ${args.automation.id} failed unexpectedly: ${errorMessage(error)}`,
       );
     });
   }
@@ -142,9 +130,7 @@ async function hasConnectedHost(
       .some((host) => host.status === "connected");
   } catch (error) {
     bb.log.warn(
-      `Failed to list hosts for automation sweep: ${
-        error instanceof Error ? error.message : String(error)
-      }`,
+      `Failed to list hosts for automation sweep: ${errorMessage(error)}`,
     );
     return false;
   }
@@ -173,9 +159,7 @@ export async function sweepDueAutomations(
       });
     } catch (error) {
       bb.log.error(
-        `Failed to process due automation ${automation.id}: ${
-          error instanceof Error ? error.message : String(error)
-        }`,
+        `Failed to process due automation ${automation.id}: ${errorMessage(error)}`,
       );
     }
   }

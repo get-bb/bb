@@ -9,8 +9,8 @@ import { concurrencyLimitHostContract } from "./contract.js";
 import {
   automaticHostLimit,
   MAX_LIMIT_VALUE,
+  parseLimitValue,
   resolveHostLimit,
-  type HostLimitOverride,
   type LimitConfiguration,
 } from "./limits.js";
 
@@ -135,19 +135,13 @@ function parseLimitArgument(
   automaticKeyword: "auto" | "unlimited",
 ): { ok: true; value: number | null } | { ok: false; message: string } {
   if (raw === automaticKeyword) return { ok: true, value: null };
-  if (!/^\d+$/u.test(raw)) {
-    return {
-      ok: false,
-      message: `Limit must be ${automaticKeyword} or a whole number from 0 to ${MAX_LIMIT_VALUE}`,
-    };
-  }
-  const value = Number(raw);
-  return value <= MAX_LIMIT_VALUE
-    ? { ok: true, value }
-    : {
+  const value = parseLimitValue(raw);
+  return value === null
+    ? {
         ok: false,
         message: `Limit must be ${automaticKeyword} or a whole number from 0 to ${MAX_LIMIT_VALUE}`,
-      };
+      }
+    : { ok: true, value };
 }
 
 function setHostOverride(
@@ -455,7 +449,13 @@ export default async function concurrencyLimitPlugin(
       const unsubscribeHost = bb.sdk.subscribe({
         event: "host:changed",
         callback: (event) => {
-          bb.realtime.publish(CONFIGURATION_CHANGED_CHANNEL, {});
+          if (
+            event.changes.some(
+              (change) =>
+                change === "host-connected" || change === "host-disconnected",
+            )
+          )
+            bb.realtime.publish(CONFIGURATION_CHANGED_CHANNEL, {});
           if (event.changes.includes("host-connected"))
             requestRefresh(event.id);
         },

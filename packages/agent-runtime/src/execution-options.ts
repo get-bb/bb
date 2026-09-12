@@ -1,8 +1,5 @@
 import type { BridgeProtocolAdapter } from "./bridge-protocol-adapter.js";
-import type {
-  AgentRuntimeExecutionOptions,
-  AgentRuntimeSkillRoot,
-} from "./types.js";
+import type { AgentRuntimeExecutionOptions } from "./types.js";
 import type { ProviderExecutionContext } from "./provider-adapter.js";
 import type { RuntimePermissionPolicy } from "@bb/domain";
 
@@ -16,7 +13,6 @@ interface ToProviderExecutionContextArgs {
   envVars: Record<string, string>;
   execOpts: AgentRuntimeExecutionOptions;
   instructions: string | undefined;
-  skillRoots?: readonly AgentRuntimeSkillRoot[];
 }
 
 export function assertProviderSupportsExecutionOptions(
@@ -58,8 +54,5 @@ export function toProviderExecutionContext(
     ...permissionPolicy,
     instructions: args.instructions,
     envVars: args.envVars,
-    ...(args.skillRoots && args.skillRoots.length > 0
-      ? { skillRoots: args.skillRoots }
-      : {}),
   };
 }

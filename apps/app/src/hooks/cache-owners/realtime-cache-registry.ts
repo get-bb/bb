@@ -26,6 +26,7 @@ import {
   updateCachedThreadListStatusState,
 } from "./query-cache";
 import { bumpDiffPatchFreshnessGeneration } from "./environment-diff-patch-cache-owner";
+import { invalidateSystemExecutionOptions } from "./system-cache-effects";
 import {
   getCachedThreadLists,
   iterateThreadListCacheEntries,
@@ -501,15 +502,21 @@ const HOST_CONNECTION_DIRTY_HANDLERS = [
   dirtyHostAvailabilityQueries,
   getProjectListInvalidationQueryKeys,
   dirtySystemProviderQueries,
-  dirtySystemExecutionOptionQueries,
 ] satisfies readonly RealtimeDirtyHandler<HostRealtimeDirtyContext>[];
 
 export const REALTIME_HOST_CHANGE_REGISTRY = {
   "host-connected": {
-    dirty: [...HOST_CONNECTION_DIRTY_HANDLERS, dirtyAllThreadStorageQueries],
+    dirty: [
+      ...HOST_CONNECTION_DIRTY_HANDLERS,
+      dirtyHostSystemExecutionOptionQueries,
+      dirtyAllThreadStorageQueries,
+    ],
   },
   "host-disconnected": {
     dirty: HOST_CONNECTION_DIRTY_HANDLERS,
+  },
+  "provider-model-catalog-changed": {
+    dirty: [dirtyHostSystemExecutionOptionQueries],
   },
 } satisfies HostChangeRegistry;
 
@@ -580,7 +587,9 @@ interface ProjectRealtimeDirtyContext extends RealtimeDirtyContext {
   projectId: string | undefined;
 }
 
-type HostRealtimeDirtyContext = RealtimeDirtyContext;
+interface HostRealtimeDirtyContext extends RealtimeDirtyContext {
+  hostId: string | undefined;
+}
 
 type RealtimeDirtyHandler<Context extends RealtimeDirtyContext> = (
   context: Context,
@@ -1157,6 +1166,14 @@ function dirtySystemProviderQueries(): QueryKey[] {
 
 function dirtySystemExecutionOptionQueries(): QueryKey[] {
   return [allSystemExecutionOptionsQueryKeyPrefix()];
+}
+
+function dirtyHostSystemExecutionOptionQueries({
+  hostId,
+  queryClient,
+}: HostRealtimeDirtyContext): QueryKey[] | void {
+  if (hostId === undefined) return [allSystemExecutionOptionsQueryKeyPrefix()];
+  void invalidateSystemExecutionOptions({ hostId, queryClient });
 }
 
 function dirtyPluginContributionQueries(): QueryKey[] {

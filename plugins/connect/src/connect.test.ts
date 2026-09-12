@@ -562,7 +562,6 @@ describe("ShareRegistry", () => {
     });
 
     await registry.load();
-    expect(registry.isLoaded).toBe(true);
     expect(fakeHost.harness.sdk.callsTo("hosts.get")).toEqual([]);
     expect(fakeHost.harness.sdk.callsTo("system.config")).toEqual([]);
     expect(await registry.list()).toEqual([
@@ -639,7 +638,6 @@ describe("ShareRegistry", () => {
     });
 
     await registry.load();
-    expect(registry.isLoaded).toBe(true);
     expect(ensureIdentity).not.toHaveBeenCalled();
     expect(fakeHost.harness.sdk.callsTo("hosts.get")).toEqual([]);
     expect(await registry.list()).toEqual([
@@ -928,10 +926,8 @@ describe("TunnelSession routing", () => {
     const session = new TunnelSession({
       tunnel: client,
       log: {
-        debug: () => {},
         info: () => {},
         warn: () => {},
-        error: () => {},
       },
       resolveOrigin: (target) => {
         if (target === undefined) {
@@ -1066,10 +1062,8 @@ describe("TunnelSession routing", () => {
     const session = new TunnelSession({
       tunnel: client,
       log: {
-        debug: () => {},
         info: () => {},
         warn: () => {},
-        error: () => {},
       },
       resolveOrigin: () => ({
         kind: "ok",
@@ -1157,10 +1151,8 @@ describe("TunnelSession routing", () => {
     const session = new TunnelSession({
       tunnel: client,
       log: {
-        debug: () => {},
         info: (message) => infoMessages.push(message),
         warn: () => {},
-        error: () => {},
       },
       resolveOrigin: () => ({
         kind: "ok",
@@ -1274,10 +1266,8 @@ describe("TunnelSession routing", () => {
     const session = new TunnelSession({
       tunnel: client,
       log: {
-        debug: () => {},
         info: () => {},
         warn: () => {},
-        error: () => {},
       },
       resolveOrigin: () => ({
         kind: "ok",

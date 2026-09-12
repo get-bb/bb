@@ -76,7 +76,6 @@ function MenuHeading({ label, shortcut }: { label: string; shortcut: string }) {
   return (
     <DropdownMenuLabel className="flex items-center gap-2">
       <span className="flex-1">{label}</span>
-      {}
       <span className="w-3 text-right text-2xs tabular-nums text-subtle-foreground">
         {shortcut}
       </span>

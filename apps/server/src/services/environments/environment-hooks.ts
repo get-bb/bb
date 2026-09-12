@@ -22,7 +22,7 @@ const reports = new WeakMap<
   >
 >();
 
-export function registerEnvironmentProgressReport(
+function registerEnvironmentProgressReport(
   deps: Pick<WorkSessionDeps, "db">,
   args: {
     hostId: string;
@@ -64,7 +64,7 @@ export async function runEnvironmentHook(
     id: string;
     hostId: string;
     path: string;
-    kind: "setup" | "teardown";
+    kind: "teardown";
     resumeOnly: boolean;
     report: PluginEnvironmentProviderProgress;
     signal: AbortSignal;
@@ -76,11 +76,7 @@ export async function runEnvironmentHook(
     .from(environmentHookOperations)
     .where(eq(environmentHookOperations.id, args.id))
     .get();
-  if (existing?.finishedAt != null) {
-    if (existing.error !== null && args.kind === "setup")
-      throw new Error(existing.error);
-    return;
-  }
+  if (existing?.finishedAt != null) return;
   const operationId = args.id;
   if (existing === undefined)
     deps.db
@@ -141,7 +137,6 @@ export async function runEnvironmentHook(
       id: args.id,
       hostId: args.hostId,
     });
-    if (args.kind === "setup") throw error;
     const text = error instanceof Error ? error.message : String(error);
     args.report.log(text);
     deps.logger.warn(

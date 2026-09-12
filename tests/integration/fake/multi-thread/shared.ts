@@ -7,13 +7,6 @@ export const TURN_TIMEOUT_MS = scaleTimeoutMs(15_000);
 export const ACTIVE_TIMEOUT_MS = scaleTimeoutMs(5_000);
 export const CONCURRENT_DELAY_TEXT = "delay:800";
 
-export function countTurnEvents(
-  events: ThreadEventRow[],
-  type: "turn/completed" | "turn/started",
-): number {
-  return events.filter((event) => event.type === type).length;
-}
-
 export function assertEventsBelongToThread(
   events: ThreadEventRow[],
   threadId: string,

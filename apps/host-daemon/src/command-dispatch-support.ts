@@ -1,7 +1,7 @@
 import type { DesktopBrowserBroker } from "./desktop-browser-broker.js";
 import type { AgentRuntimeBridgeLaunch } from "@bb/agent-runtime";
 import type { AvailableModel } from "@bb/domain";
-import type { EventSinkInput } from "./event-sink.js";
+import type { EventSink } from "./event-sink.js";
 import type {
   EnvironmentHookProgressMessage,
   HostDaemonCommand,
@@ -21,7 +21,6 @@ import type {
 import { ensurePluginProcessDataDir } from "@bb/process-utils";
 import type { InteractiveResolveCommandInput } from "./interactive-request-registry.js";
 import { RuntimeManager, type RuntimeEntry } from "./runtime-manager.js";
-import type { TerminalManager } from "./terminals/terminal-manager.js";
 import type { FetchProjectAttachment } from "./project-attachments.js";
 import type { FetchSkillTree } from "./skill-trees.js";
 import type { HostDaemonLogger } from "./logger.js";
@@ -37,12 +36,7 @@ export type CommandOf<TType extends DispatchCommand["type"]> = Extract<
   { type: TType }
 >;
 
-export interface EventSink {
-  emit: (event: EventSinkInput) => void;
-  flush: () => Promise<void>;
-}
-
-export const noopEventSink: EventSink = {
+export const noopEventSink: Pick<EventSink, "emit" | "flush"> = {
   emit: () => undefined,
   flush: async () => undefined,
 };
@@ -58,8 +52,7 @@ export interface CommandDispatchOptions {
   fetchSkillTree?: FetchSkillTree;
   fetchPluginHostArtifact?: FetchPluginHostArtifact;
   runtimeManager: RuntimeManager;
-  terminalManager?: Pick<TerminalManager, "closeEnvironmentTerminals">;
-  eventSink: EventSink;
+  eventSink: Pick<EventSink, "emit" | "flush">;
   listModels: (args: {
     providerId: string;
     bridgeLaunch: AgentRuntimeBridgeLaunch;
@@ -234,7 +227,6 @@ function isMessageOnlySpawnMissingExecutableError(error: unknown): boolean {
 
 export async function requireWorkspaceEnvironment(
   args: {
-    dataDir?: string;
     environmentId: string;
     injectedSkillSources?: readonly HostDaemonInjectedSkillSource[];
     targetThreadId?: string;

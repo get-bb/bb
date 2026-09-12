@@ -83,10 +83,19 @@ import {
 } from "./markdown-prompt-mentions.js";
 import {
   buildMessageDirectiveComponent,
+  EMPTY_MOUNTED_MESSAGE_DIRECTIVES,
+  MESSAGE_DIRECTIVE_MOUNT_LIMIT,
+  MessageDirectiveMountsContext,
   remarkMessageDirectives,
+  type BuildMessageDirectiveComponentArgs,
   type MarkdownMessageDirectives,
   type MountedMessageDirective,
 } from "./markdown-message-directives.js";
+import {
+  createMarkdownPieceCache,
+  resolveMarkdownPieces,
+  type MarkdownPieceRenderConfig,
+} from "./markdown-incremental-pieces.js";
 import { normalizePromptBlockquoteBoundaries } from "./markdown-prompt-blockquote-boundaries.js";
 import { MarkdownMermaidDiagram } from "./markdown-mermaid-diagram.js";
 import type { PromptTextMention } from "@bb/domain";
@@ -111,6 +120,7 @@ interface MarkdownPreviewProps {
   className?: string;
   content: string;
   imagePolicy?: MarkdownImagePolicy;
+  incrementalBlocks?: boolean;
   linkRouting?: MarkdownLinkRouting;
   threadMentions?: MarkdownThreadMentions;
   promptMentions?: MarkdownPromptMentions;
@@ -144,14 +154,7 @@ interface BuildMarkdownComponentsArgs {
   setExpandedImage: ExpandedMarkdownImageSetter;
   threadMentions?: MarkdownThreadMentions;
   promptMentions?: ResolvedPromptMentions;
-  messageDirectives?: ResolvedMessageDirectiveRender;
-}
-
-interface ResolvedMessageDirectiveRender {
-  mounts: readonly MountedMessageDirective[];
-  message: MarkdownMessageDirectives["message"];
-  openWorkspaceFile: MarkdownMessageDirectives["openWorkspaceFile"];
-  openThreadPanel: MarkdownMessageDirectives["openThreadPanel"];
+  messageDirectives?: BuildMessageDirectiveComponentArgs;
 }
 
 interface ResolvedPromptMentions {
@@ -166,8 +169,9 @@ interface BuildLocalAwareUrlTransformArgs {
   localImageRouting: MarkdownLocalImageRouting | undefined;
 }
 
-interface ResolvedMarkdownLocalPath {
-  image: MarkdownPreviewLocalFileLink;
+interface ResolvedMarkdownLocalFileTarget {
+  href: string;
+  link: MarkdownPreviewLocalFileLink;
   sourceKind: "absolute" | "relative";
 }
 
@@ -271,6 +275,7 @@ type MarkdownTableHeadProps = ComponentPropsWithoutRef<"thead"> & ExtraProps;
 type MarkdownTableHeaderProps = ComponentPropsWithoutRef<"th"> & ExtraProps;
 type MarkdownUnorderedListProps = ComponentPropsWithoutRef<"ul"> & ExtraProps;
 type MarkdownRehypePlugins = NonNullable<ReactMarkdownOptions["rehypePlugins"]>;
+type MarkdownRemarkPlugins = NonNullable<ReactMarkdownOptions["remarkPlugins"]>;
 
 const MARKDOWN_TABLE_BREAKOUT_LIMIT_VARIABLE = "--md-table-breakout-max";
 const MARKDOWN_TABLE_BREAKOUT_WIDTH = `max(100%, min(1100px, 100cqw - 2rem, var(${MARKDOWN_TABLE_BREAKOUT_LIMIT_VARIABLE}, 100cqw)))`;
@@ -429,6 +434,7 @@ const areMarkdownPreviewPropsEqual: MarkdownPreviewPropsEqual = (
   previous.className === next.className &&
   previous.content === next.content &&
   (previous.imagePolicy ?? "render") === (next.imagePolicy ?? "render") &&
+  (previous.incrementalBlocks ?? false) === (next.incrementalBlocks ?? false) &&
   previous.urlTransform === next.urlTransform &&
   areMarkdownThreadMentionsEqual({
     next: next.threadMentions,
@@ -460,40 +466,42 @@ function isMarkdownAppRouteHref({ href }: IsMarkdownAppRouteHrefArgs): boolean {
   );
 }
 
-function resolveMarkdownLocalPath(
+function resolveMarkdownLocalFileTarget(
   value: string,
-  absolutePaths: MarkdownAbsoluteLocalFileLinkRouting,
-  relativePaths: MarkdownRelativeLocalFileLinkRouting | undefined,
-): ResolvedMarkdownLocalPath | null {
-  const absolutePath = parseLocalFileHref({
-    absoluteLinks: absolutePaths,
+  absolute: MarkdownAbsoluteLocalFileLinkRouting,
+  relative: MarkdownRelativeLocalFileLinkRouting | undefined,
+): ResolvedMarkdownLocalFileTarget | null {
+  const absoluteLink = parseLocalFileHref({
+    absoluteLinks: absolute,
     href: value,
   });
-  if (absolutePath !== null) {
+  if (absoluteLink !== null) {
     return {
-      image: absolutePath,
+      href: value,
+      link: absoluteLink,
       sourceKind: "absolute",
     };
   }
-  if (relativePaths === undefined) {
+  if (relative === undefined) {
     return null;
   }
 
   const resolvedHref = resolveRelativeLocalFileHref({
     href: value,
-    ...relativePaths,
+    ...relative,
   });
   if (resolvedHref === null) {
     return null;
   }
-  const relativePath = parseLocalFileHref({
-    absoluteLinks: absolutePaths,
+  const relativeLink = parseLocalFileHref({
+    absoluteLinks: absolute,
     href: resolvedHref,
   });
-  return relativePath === null
+  return relativeLink === null
     ? null
     : {
-        image: relativePath,
+        href: resolvedHref,
+        link: relativeLink,
         sourceKind: "relative",
       };
 }
@@ -505,41 +513,25 @@ function buildLocalAwareUrlTransform({
 }: BuildLocalAwareUrlTransformArgs): UrlTransform {
   return (value, key, node) => {
     if (key === "href" && localFileRouting !== undefined) {
-      if (
-        parseLocalFileHref({
-          absoluteLinks: localFileRouting.absoluteLinks,
-          href: value,
-        })
-      ) {
-        return value;
-      }
-
-      if (localFileRouting.relativeLinks !== undefined) {
-        const resolvedHref = resolveRelativeLocalFileHref({
-          href: value,
-          ...localFileRouting.relativeLinks,
-        });
-        if (
-          resolvedHref !== null &&
-          parseLocalFileHref({
-            absoluteLinks: localFileRouting.absoluteLinks,
-            href: resolvedHref,
-          })
-        ) {
-          return resolvedHref;
-        }
+      const localFile = resolveMarkdownLocalFileTarget(
+        value,
+        localFileRouting.absoluteLinks,
+        localFileRouting.relativeLinks,
+      );
+      if (localFile !== null) {
+        return localFile.href;
       }
     }
 
     if (key === "src" && localImageRouting !== undefined) {
-      const localImage = resolveMarkdownLocalPath(
+      const localImage = resolveMarkdownLocalFileTarget(
         value,
         localImageRouting.absolutePaths,
         localImageRouting.relativePaths,
       );
       if (localImage !== null) {
         return localImageRouting.resolveSrc(
-          localImage.image,
+          localImage.link,
           localImage.sourceKind,
         );
       }
@@ -570,32 +562,13 @@ function resolveInlineCodeMarkdownFileHref({
     return null;
   }
 
-  const absoluteLink = parseLocalFileHref({
-    absoluteLinks: localFileRouting.absoluteLinks,
-    href: codeText,
-  });
-  if (absoluteLink !== null) {
-    return hasMarkdownFileExtension(absoluteLink.path) ? codeText : null;
-  }
-
-  if (localFileRouting.relativeLinks === undefined) {
-    return null;
-  }
-
-  const resolvedHref = resolveRelativeLocalFileHref({
-    href: codeText,
-    ...localFileRouting.relativeLinks,
-  });
-  if (resolvedHref === null) {
-    return null;
-  }
-
-  const resolvedLink = parseLocalFileHref({
-    absoluteLinks: localFileRouting.absoluteLinks,
-    href: resolvedHref,
-  });
-  return resolvedLink !== null && hasMarkdownFileExtension(resolvedLink.path)
-    ? resolvedHref
+  const target = resolveMarkdownLocalFileTarget(
+    codeText,
+    localFileRouting.absoluteLinks,
+    localFileRouting.relativeLinks,
+  );
+  return target !== null && hasMarkdownFileExtension(target.link.path)
+    ? target.href
     : null;
 }
 
@@ -728,6 +701,10 @@ function MarkdownCode({
         : null,
     [isBlock, language, codeText],
   );
+  const highlightedMarkup = useMemo(
+    () => (highlightedHtml === null ? null : { __html: highlightedHtml }),
+    [highlightedHtml],
+  );
   if (isBlock) {
     if (language === "mermaid" && imagePolicy === "render") {
       return (
@@ -767,7 +744,7 @@ function MarkdownCode({
               : "overflow-x-auto",
           )}
         >
-          {highlightedHtml === null ? (
+          {highlightedMarkup === null ? (
             <code className="font-mono text-xs" {...props}>
               {codeText}
             </code>
@@ -777,7 +754,7 @@ function MarkdownCode({
                 "font-mono text-xs",
                 language ? `language-${language}` : "",
               )}
-              dangerouslySetInnerHTML={{ __html: highlightedHtml }}
+              dangerouslySetInnerHTML={highlightedMarkup}
               {...props}
             />
           )}
@@ -1011,6 +988,8 @@ function resolveMarkdownSourceMedia({
   return colorScheme === preferredTheme ? "all" : "not all";
 }
 
+const EMPTY_THREAD_IDS: readonly string[] = [];
+
 function buildMarkdownComponents({
   imagePolicy,
   linkRouting,
@@ -1194,7 +1173,10 @@ function buildMarkdownComponents({
       [children],
     );
     const candidateThreadIds = useMemo(
-      () => [...new Set(candidates.map((candidate) => candidate.threadId))],
+      () =>
+        candidates.length === 0
+          ? EMPTY_THREAD_IDS
+          : [...new Set(candidates.map((candidate) => candidate.threadId))],
       [candidates],
     );
     const resourceById = useRawThreadMentionResources(candidateThreadIds);
@@ -1315,12 +1297,8 @@ function buildMarkdownComponents({
   }
 
   if (messageDirectives !== undefined) {
-    components["bb-message-directive"] = buildMessageDirectiveComponent({
-      mounts: messageDirectives.mounts,
-      message: messageDirectives.message,
-      openWorkspaceFile: messageDirectives.openWorkspaceFile,
-      openThreadPanel: messageDirectives.openThreadPanel,
-    });
+    components["bb-message-directive"] =
+      buildMessageDirectiveComponent(messageDirectives);
   }
 
   return components;
@@ -1599,6 +1577,7 @@ function MarkdownPreviewComponent({
   className,
   content,
   imagePolicy = "render",
+  incrementalBlocks = false,
   linkRouting,
   threadMentions,
   promptMentions,
@@ -1609,6 +1588,9 @@ function MarkdownPreviewComponent({
   const [rewriteLocalhostLinks] = useRewriteLocalhostLinksPreference();
   const [expandedImage, setExpandedImage] =
     useState<ExpandedMarkdownImage | null>(null);
+  const [markdownPieceCache] = useState(createMarkdownPieceCache);
+  const usesIncrementalBlocks =
+    incrementalBlocks && !allowHtml && promptMentions === undefined;
   const localFileRouting = linkRouting?.localFile;
   const localImageRouting = linkRouting?.localImage;
   const normalizeLocalFileLinks =
@@ -1676,15 +1658,7 @@ function MarkdownPreviewComponent({
         setExpandedImage,
         threadMentions,
         promptMentions: resolvedPromptMentions,
-        messageDirectives:
-          messageDirectiveMounts === null
-            ? undefined
-            : {
-                mounts: messageDirectiveMounts.mounts,
-                message: messageDirectiveMounts.message,
-                openWorkspaceFile: messageDirectiveMounts.openWorkspaceFile,
-                openThreadPanel: messageDirectiveMounts.openThreadPanel,
-              },
+        messageDirectives: messageDirectiveMounts ?? undefined,
       }),
     [
       linkRouting,
@@ -1696,10 +1670,9 @@ function MarkdownPreviewComponent({
       messageDirectiveMounts,
     ],
   );
-  const remarkPlugins = useMemo((): NonNullable<
-    ReactMarkdownOptions["remarkPlugins"]
-  > => {
-    const plugins: NonNullable<ReactMarkdownOptions["remarkPlugins"]> = [
+  const hasMessageDirectives = messageDirectiveMounts !== null;
+  const baseRemarkPlugins = useMemo((): MarkdownRemarkPlugins => {
+    const plugins: MarkdownRemarkPlugins = [
       remarkGfm,
       [remarkMath, { singleDollarTextMath: false }],
     ];
@@ -1715,18 +1688,29 @@ function MarkdownPreviewComponent({
     if (promptMentions !== undefined) {
       plugins.push(remarkPromptMentions);
     }
-    if (messageDirectiveMounts !== null) {
+    if (hasMessageDirectives) {
       plugins.push(remarkDirective);
-      plugins.push([
-        remarkMessageDirectives,
-        {
-          mounts: messageDirectiveMounts.mounts,
-          registry: messageDirectiveMounts.registry,
-        },
-      ]);
     }
     return plugins;
-  }, [threadMentions, promptMentions, messageDirectiveMounts]);
+  }, [threadMentions, promptMentions, hasMessageDirectives]);
+  const remarkPlugins = useMemo(
+    (): MarkdownRemarkPlugins =>
+      messageDirectiveMounts === null
+        ? baseRemarkPlugins
+        : [
+            ...baseRemarkPlugins,
+            [
+              remarkMessageDirectives,
+              {
+                indexBase: 0,
+                limit: MESSAGE_DIRECTIVE_MOUNT_LIMIT,
+                mounts: messageDirectiveMounts.mounts,
+                registry: messageDirectiveMounts.registry,
+              },
+            ],
+          ],
+    [baseRemarkPlugins, messageDirectiveMounts],
+  );
   const resolvedUrlTransform = useMemo(
     () =>
       localFileRouting || localImageRouting
@@ -1745,16 +1729,39 @@ function MarkdownPreviewComponent({
     [allowHtml, rehypeKatex],
   );
 
-  const renderedMarkdown = (
-    <ReactMarkdown
-      rehypePlugins={rehypePlugins}
-      remarkPlugins={remarkPlugins}
-      components={markdownComponents}
-      urlTransform={resolvedUrlTransform}
-    >
-      {body}
-    </ReactMarkdown>
+  const markdownPieceRenderConfig = useMemo(
+    (): MarkdownPieceRenderConfig => ({
+      components: markdownComponents,
+      messageDirectiveRegistry: messageDirectiveMounts?.registry ?? null,
+      rehypePlugins,
+      remarkPlugins: baseRemarkPlugins,
+      urlTransform: resolvedUrlTransform,
+    }),
+    [
+      markdownComponents,
+      messageDirectiveMounts,
+      rehypePlugins,
+      baseRemarkPlugins,
+      resolvedUrlTransform,
+    ],
   );
+  const markdownPieces = usesIncrementalBlocks
+    ? resolveMarkdownPieces(markdownPieceCache, markdownPieceRenderConfig, body)
+    : null;
+
+  const renderedMarkdown =
+    markdownPieces === null ? (
+      <ReactMarkdown
+        rehypePlugins={rehypePlugins}
+        remarkPlugins={remarkPlugins}
+        components={markdownComponents}
+        urlTransform={resolvedUrlTransform}
+      >
+        {body}
+      </ReactMarkdown>
+    ) : (
+      markdownPieces.children
+    );
 
   const imageSources = expandedImage?.imageSources ?? [];
   const expandedImageIndex = expandedImage?.index ?? -1;
@@ -1787,13 +1794,21 @@ function MarkdownPreviewComponent({
         {frontmatter !== null ? (
           <MarkdownFrontmatter source={frontmatter} />
         ) : null}
-        {threadMentions === undefined ? (
-          renderedMarkdown
-        ) : (
-          <RawThreadMentionBatchProvider>
-            {renderedMarkdown}
-          </RawThreadMentionBatchProvider>
-        )}
+        <MessageDirectiveMountsContext.Provider
+          value={
+            markdownPieces?.mounts ??
+            messageDirectiveMounts?.mounts ??
+            EMPTY_MOUNTED_MESSAGE_DIRECTIVES
+          }
+        >
+          {threadMentions === undefined ? (
+            renderedMarkdown
+          ) : (
+            <RawThreadMentionBatchProvider>
+              {renderedMarkdown}
+            </RawThreadMentionBatchProvider>
+          )}
+        </MessageDirectiveMountsContext.Provider>
       </div>
 
       <ImageLightbox

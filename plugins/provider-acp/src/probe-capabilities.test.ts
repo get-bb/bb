@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { AcpAgentDefinition } from "./agents.js";
-import type { AcpProbeResult } from "./contract.js";
+import type { AcpAgentProbe } from "@get-bb/plugin-sdk/provider-bridge/acp";
 import { applyAcpAgentProbe } from "./probe-capabilities.js";
 
 const agent = (fork?: "none" | "tip"): AcpAgentDefinition => ({
@@ -10,7 +10,7 @@ const agent = (fork?: "none" | "tip"): AcpAgentDefinition => ({
   ...(fork === undefined ? {} : { fork }),
 });
 
-const reachable = (fork: boolean): AcpProbeResult => ({
+const reachable = (fork: boolean): AcpAgentProbe => ({
   reachable: true,
   fork,
 });

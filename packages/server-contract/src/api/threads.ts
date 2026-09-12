@@ -448,9 +448,6 @@ export const threadSearchHighlightRangeSchema = z
   .refine((range) => range.end > range.start, {
     message: "highlight range end must be greater than start",
   });
-export type ThreadSearchHighlightRange = z.infer<
-  typeof threadSearchHighlightRangeSchema
->;
 
 export const threadSearchMatchSchema = z
   .object({
@@ -468,7 +465,6 @@ export const threadSearchResultSchema = z
     matches: z.array(threadSearchMatchSchema),
   })
   .strict();
-export type ThreadSearchResult = z.infer<typeof threadSearchResultSchema>;
 
 export const threadSearchResultGroupSchema = z
   .object({
@@ -476,9 +472,6 @@ export const threadSearchResultGroupSchema = z
     results: z.array(threadSearchResultSchema),
   })
   .strict();
-export type ThreadSearchResultGroup = z.infer<
-  typeof threadSearchResultGroupSchema
->;
 
 export const threadSearchResponseSchema = z
   .object({
@@ -855,7 +848,6 @@ export const threadRunningEntrySchema = z.object({
   /** The machine it runs on; null while no environment has been chosen. */
   hostId: z.string().nullable(),
 });
-export type ThreadRunningEntry = z.infer<typeof threadRunningEntrySchema>;
 
 export const threadRunningResponseSchema = z.array(threadRunningEntrySchema);
 export type ThreadRunningResponse = z.infer<typeof threadRunningResponseSchema>;
@@ -1009,12 +1001,6 @@ export const threadFilesRawQuerySchema = z.object({
   path: z.string().min(1),
 });
 export type ThreadFilesRawQuery = z.infer<typeof threadFilesRawQuerySchema>;
-
-export const timelineTurnSummaryDetailsRequestSchema = z.object({
-  turnId: z.string().min(1),
-  sourceSeqStart: z.number().int().nonnegative(),
-  sourceSeqEnd: z.number().int().nonnegative(),
-});
 
 export const timelineTurnSummaryDetailsResponseSchema = z.object({
   olderCursor: z.string().nullable().optional(),

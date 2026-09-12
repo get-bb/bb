@@ -34,14 +34,10 @@ import { applyLoggedThreadLifecycleEvent } from "./lifecycle-outcome.js";
 
 export type ThreadProvisioningDeps = CommandResultSideEffectsDeps;
 interface EnsureWorkspaceReadyEventArgs {
-  context?: ThreadProvisionContext;
   entries: ProvisioningTranscriptEntry[];
   environmentId: string;
   threadId: string;
 }
-type EnsureWorkspaceReadyEventResult =
-  | { reached: true; appendedSequence: number | null }
-  | { reached: false };
 
 export function loadActiveThreadProvisionContext(
   deps: Pick<AppDeps, "db">,
@@ -56,7 +52,7 @@ export function loadActiveThreadProvisionContext(
 export function ensureWorkspaceReadyEvent(
   deps: Pick<AppDeps, "db" | "hub">,
   args: EnsureWorkspaceReadyEventArgs,
-): EnsureWorkspaceReadyEventResult {
+): boolean {
   return deps.db.transaction(
     (tx) =>
       ensureWorkspaceReadyEventInTransaction({ db: tx, hub: deps.hub }, args),
@@ -67,7 +63,7 @@ export function ensureWorkspaceReadyEvent(
 export function ensureWorkspaceReadyEventInTransaction(
   deps: { db: DbTransaction; hub: DbNotifier },
   args: EnsureWorkspaceReadyEventArgs,
-): EnsureWorkspaceReadyEventResult {
+): boolean {
   const thread = getThread(deps.db, args.threadId);
   const context = getThreadProvisionContext(deps.db, args.threadId);
   if (
@@ -76,12 +72,8 @@ export function ensureWorkspaceReadyEventInTransaction(
     context === null ||
     thread.environmentId !== args.environmentId
   )
-    return { reached: false };
-  if (context.state.workspaceReadyEventSequence !== null)
-    return {
-      reached: true,
-      appendedSequence: context.state.workspaceReadyEventSequence,
-    };
+    return false;
+  if (context.state.workspaceReadyEventSequence !== null) return true;
   const appendedSequence =
     context.state.provisionEventSequence === null
       ? null
@@ -103,7 +95,7 @@ export function ensureWorkspaceReadyEventInTransaction(
     deps.hub.notifyThread(thread.id, ["events-appended"], {
       eventTypes: ["system/thread-provisioning"],
     });
-  return { reached: true, appendedSequence };
+  return true;
 }
 
 interface FailThreadProvisioningArgs {
@@ -201,7 +193,6 @@ export async function ensureThreadProvisionEnvironmentReady(
     if (context.request.environmentIntent.type === "provider") {
       if (!context.request.titleProvided)
         await inferThreadMetadata(deps, {
-          environmentId: null,
           input: context.request.input,
           provisioningId: context.state.provisioningId,
           threadId: thread.id,
@@ -210,7 +201,6 @@ export async function ensureThreadProvisionEnvironmentReady(
     } else {
       if (!context.request.titleProvided) {
         void inferThreadMetadata(deps, {
-          environmentId: null,
           input: context.request.input,
           provisioningId: context.state.provisioningId,
           threadId: thread.id,

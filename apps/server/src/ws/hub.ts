@@ -51,7 +51,14 @@ interface TerminalSocketSendQueue {
   timeout: ReturnType<typeof setTimeout> | null;
 }
 
-type ChangedMessageListener = (message: ChangedMessage) => void;
+export type ServerChangedMessage =
+  | (Extract<
+      ChangedMessage,
+      { entity: "thread" | "project" | "environment" | "host" }
+    > & { id: string })
+  | Extract<ChangedMessage, { entity: "system" }>;
+
+type ChangedMessageListener = (message: ServerChangedMessage) => void;
 
 interface PendingThreadListEventsAppended {
   eventTypes: Set<ThreadEventType>;
@@ -59,7 +66,7 @@ interface PendingThreadListEventsAppended {
   timeout: ReturnType<typeof setTimeout>;
 }
 
-type ThreadChangedMessage = Extract<ChangedMessage, { entity: "thread" }>;
+type ThreadChangedMessage = Extract<ServerChangedMessage, { entity: "thread" }>;
 
 function isThreadListRelevantChange(
   message: Pick<ThreadChangedMessage, "changes" | "metadata">,
@@ -82,42 +89,68 @@ function isThreadListRelevantChange(
   );
 }
 
-function subscriptionKeysForMessage(message: ChangedMessage): string[] {
+function subscriptionKeysForMessage(message: ServerChangedMessage): string[] {
   switch (message.entity) {
     case "thread":
-      return message.id
-        ? [
-            subscriptionKey({ kind: "thread-list" }),
-            subscriptionKey({ kind: "thread-detail", threadId: message.id }),
-          ]
-        : [subscriptionKey({ kind: "thread-list" })];
+      return [
+        subscriptionKey({ kind: "thread-list" }),
+        subscriptionKey({ kind: "thread-detail", threadId: message.id }),
+      ];
     case "project":
-      return message.id
-        ? [
-            subscriptionKey({ kind: "project-list" }),
-            subscriptionKey({ kind: "project-detail", projectId: message.id }),
-          ]
-        : [subscriptionKey({ kind: "project-list" })];
+      return [
+        subscriptionKey({ kind: "project-list" }),
+        subscriptionKey({ kind: "project-detail", projectId: message.id }),
+      ];
     case "environment":
-      return message.id
-        ? [
-            subscriptionKey({ kind: "environment-list" }),
-            subscriptionKey({
-              kind: "environment-detail",
-              environmentId: message.id,
-            }),
-          ]
-        : [subscriptionKey({ kind: "environment-list" })];
+      return [
+        subscriptionKey({ kind: "environment-list" }),
+        subscriptionKey({
+          kind: "environment-detail",
+          environmentId: message.id,
+        }),
+      ];
     case "host":
-      return message.id
-        ? [
-            subscriptionKey({ kind: "host-list" }),
-            subscriptionKey({ kind: "host-detail", hostId: message.id }),
-          ]
-        : [subscriptionKey({ kind: "host-list" })];
+      return [
+        subscriptionKey({ kind: "host-list" }),
+        subscriptionKey({ kind: "host-detail", hostId: message.id }),
+      ];
     case "system":
       return [subscriptionKey({ kind: "system" })];
   }
+}
+
+function serializeServerMessage(message: ServerChangedMessage): string | null {
+  const parseResult = serverMessageSchema.safeParse(message);
+  if (!parseResult.success) {
+    console.error("Skipping invalid realtime broadcast", parseResult.error);
+    return null;
+  }
+  return JSON.stringify(parseResult.data);
+}
+
+type SessionTimers = Map<string, ReturnType<typeof setTimeout>>;
+
+function cancelTimer(timers: SessionTimers, sessionId: string): void {
+  const timeout = timers.get(sessionId);
+  if (!timeout) {
+    return;
+  }
+  clearTimeout(timeout);
+  timers.delete(sessionId);
+}
+
+function scheduleTimer(
+  timers: SessionTimers,
+  sessionId: string,
+  delayMs: number,
+  callback: () => void,
+): void {
+  cancelTimer(timers, sessionId);
+  const timeout = setTimeout(() => {
+    timers.delete(sessionId);
+    callback();
+  }, delayMs);
+  timers.set(sessionId, timeout);
 }
 
 interface ThreadEventWaiter {
@@ -670,12 +703,7 @@ export class NotificationHub implements DbNotifier {
     delayMs: number,
     callback: () => void,
   ): void {
-    this.cancelPendingDaemonDisconnectGrace(sessionId);
-    const timeout = setTimeout(() => {
-      this.pendingDaemonDisconnects.delete(sessionId);
-      callback();
-    }, delayMs);
-    this.pendingDaemonDisconnects.set(sessionId, timeout);
+    scheduleTimer(this.pendingDaemonDisconnects, sessionId, delayMs, callback);
   }
 
   scheduleDaemonActiveWorkDisconnect(
@@ -683,35 +711,17 @@ export class NotificationHub implements DbNotifier {
     delayMs: number,
     callback: () => void,
   ): void {
-    this.cancelPendingDaemonActiveWorkDisconnect(sessionId);
-    const timeout = setTimeout(() => {
-      this.pendingDaemonActiveWorkDisconnects.delete(sessionId);
-      callback();
-    }, delayMs);
-    this.pendingDaemonActiveWorkDisconnects.set(sessionId, timeout);
-  }
-
-  private cancelPendingDaemonDisconnectGrace(sessionId: string): void {
-    const timeout = this.pendingDaemonDisconnects.get(sessionId);
-    if (!timeout) {
-      return;
-    }
-    clearTimeout(timeout);
-    this.pendingDaemonDisconnects.delete(sessionId);
-  }
-
-  private cancelPendingDaemonActiveWorkDisconnect(sessionId: string): void {
-    const timeout = this.pendingDaemonActiveWorkDisconnects.get(sessionId);
-    if (!timeout) {
-      return;
-    }
-    clearTimeout(timeout);
-    this.pendingDaemonActiveWorkDisconnects.delete(sessionId);
+    scheduleTimer(
+      this.pendingDaemonActiveWorkDisconnects,
+      sessionId,
+      delayMs,
+      callback,
+    );
   }
 
   cancelPendingDaemonDisconnect(sessionId: string): void {
-    this.cancelPendingDaemonDisconnectGrace(sessionId);
-    this.cancelPendingDaemonActiveWorkDisconnect(sessionId);
+    cancelTimer(this.pendingDaemonDisconnects, sessionId);
+    cancelTimer(this.pendingDaemonActiveWorkDisconnects, sessionId);
   }
 
   requestHostOnlineRpc(args: {
@@ -826,41 +836,33 @@ export class NotificationHub implements DbNotifier {
     thread: { projectId: string; threadId: string },
     request: { split: ThreadOpenSplit; file: ThreadOpenFile | null },
   ): number {
-    const payload = JSON.stringify(
-      threadOpenSignalSchema.parse({
-        type: "thread-open",
-        projectId: thread.projectId,
-        threadId: thread.threadId,
-        split: request.split,
-        file: request.file,
-      }),
+    return this.broadcastToAllClients(
+      JSON.stringify(
+        threadOpenSignalSchema.parse({
+          type: "thread-open",
+          projectId: thread.projectId,
+          threadId: thread.threadId,
+          split: request.split,
+          file: request.file,
+        }),
+      ),
     );
-    let delivered = 0;
-    for (const socket of this.clientKeysBySocket.keys()) {
-      socket.send(payload);
-      delivered += 1;
-    }
-    return delivered;
   }
 
   notifyThreadPaneAction(
     thread: { projectId: string; threadId: string },
     action: ThreadPaneAction,
   ): number {
-    const payload = JSON.stringify(
-      threadPaneActionSignalSchema.parse({
-        type: "thread-pane-action",
-        projectId: thread.projectId,
-        threadId: thread.threadId,
-        action,
-      }),
+    return this.broadcastToAllClients(
+      JSON.stringify(
+        threadPaneActionSignalSchema.parse({
+          type: "thread-pane-action",
+          projectId: thread.projectId,
+          threadId: thread.threadId,
+          action,
+        }),
+      ),
     );
-    let delivered = 0;
-    for (const socket of this.clientKeysBySocket.keys()) {
-      socket.send(payload);
-      delivered += 1;
-    }
-    return delivered;
   }
 
   notifyPluginSignal(
@@ -868,17 +870,22 @@ export class NotificationHub implements DbNotifier {
     channel: string,
     payload: unknown,
   ): number {
-    const message = JSON.stringify(
-      pluginSignalSchema.parse({
-        type: "plugin-signal",
-        pluginId,
-        channel,
-        payload,
-      }),
+    return this.broadcastToAllClients(
+      JSON.stringify(
+        pluginSignalSchema.parse({
+          type: "plugin-signal",
+          pluginId,
+          channel,
+          payload,
+        }),
+      ),
     );
+  }
+
+  private broadcastToAllClients(payload: string): number {
     let delivered = 0;
     for (const socket of this.clientKeysBySocket.keys()) {
-      socket.send(message);
+      socket.send(payload);
       delivered += 1;
     }
     return delivered;
@@ -1000,12 +1007,10 @@ export class NotificationHub implements DbNotifier {
     threadId: string,
     message: ThreadChangedMessage,
   ): void {
-    const parseResult = serverMessageSchema.safeParse(message);
-    if (!parseResult.success) {
-      console.error("Skipping invalid realtime broadcast", parseResult.error);
+    const payload = serializeServerMessage(message);
+    if (payload === null) {
       return;
     }
-    const payload = JSON.stringify(parseResult.data);
     const detailSockets = this.clientSocketsByKey.get(
       subscriptionKey({ kind: "thread-detail", threadId }),
     );
@@ -1054,15 +1059,11 @@ export class NotificationHub implements DbNotifier {
         : {}),
       changes: ["events-appended"],
     };
-    const parseResult = serverMessageSchema.safeParse(message);
-    if (!parseResult.success) {
-      console.error("Skipping invalid realtime broadcast", parseResult.error);
+    const payload = serializeServerMessage(message);
+    if (payload === null) {
       return;
     }
-    this.notifyThreadListOnlySockets(
-      threadId,
-      JSON.stringify(parseResult.data),
-    );
+    this.notifyThreadListOnlySockets(threadId, payload);
   }
 
   private notifyThreadListOnlySockets(threadId: string, payload: string): void {
@@ -1081,7 +1082,7 @@ export class NotificationHub implements DbNotifier {
     }
   }
 
-  private notifyClients(message: ChangedMessage): void {
+  private notifyClients(message: ServerChangedMessage): void {
     const sockets = new Set<HubSocket>();
     for (const key of subscriptionKeysForMessage(message)) {
       const specificSockets = this.clientSocketsByKey.get(key);
@@ -1093,12 +1094,10 @@ export class NotificationHub implements DbNotifier {
       }
     }
 
-    const parseResult = serverMessageSchema.safeParse(message);
-    if (!parseResult.success) {
-      console.error("Skipping invalid realtime broadcast", parseResult.error);
+    const payload = serializeServerMessage(message);
+    if (payload === null) {
       return;
     }
-    const payload = JSON.stringify(parseResult.data);
     this.notifyClientsByKeySet(sockets, payload);
     this.notifyChangedMessageListeners(message);
   }
@@ -1112,7 +1111,7 @@ export class NotificationHub implements DbNotifier {
     }
   }
 
-  private notifyChangedMessageListeners(message: ChangedMessage): void {
+  private notifyChangedMessageListeners(message: ServerChangedMessage): void {
     for (const listener of this.changedMessageListeners) {
       listener(message);
     }

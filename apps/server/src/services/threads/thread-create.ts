@@ -1,4 +1,4 @@
-import { withEnvironmentPathAdmission } from "../environments/path-admission.js";
+import { assertEnvironmentPathAvailable } from "../environments/path-admission.js";
 import {
   deleteThread,
   getEnvironment,
@@ -29,7 +29,10 @@ import {
   resolveProjectExecutionDefaultsForCreate,
 } from "./project-execution-defaults.js";
 import { validatePromptAttachmentReferences } from "../projects/attachments.js";
-import { resolvePluginMentionContextInputs } from "../plugins/plugin-mentions.js";
+import {
+  appendPluginMentionContext,
+  captureUserMessageSentTelemetry,
+} from "./thread-send.js";
 import {
   attemptDispatch,
   hostIdForEnvironmentIntent,
@@ -349,19 +352,12 @@ async function createPendingThreadAndAttemptFirstDispatch(
     args.environmentId === null
       ? null
       : getEnvironment(deps.db, args.environmentId);
-  const create = () =>
-    createThreadRecord(deps, {
-      request: args.request,
-      environmentId: args.environmentId,
-    });
-  const thread =
-    environment === null
-      ? create()
-      : await withEnvironmentPathAdmission(
-          deps,
-          { ...environment, threadId: null },
-          create,
-        );
+  if (environment !== null)
+    assertEnvironmentPathAvailable(deps, { ...environment, threadId: null });
+  const thread = createThreadRecord(deps, {
+    request: args.request,
+    environmentId: args.environmentId,
+  });
   let execution: Awaited<ReturnType<typeof buildExecutionOptions>>;
   try {
     if (
@@ -510,12 +506,9 @@ export async function createThreadFromRequest(
   }
   const pluginMetadata = resolveCreateThreadPluginMetadata(rawRequestInput);
   const requestInput = { ...rawRequestInput };
-  const pluginMentionContext = await resolvePluginMentionContextInputs(
-    requestInput.input,
-  );
-  if (pluginMentionContext.length > 0) {
-    requestInput.input = [...requestInput.input, ...pluginMentionContext];
-  }
+  requestInput.input = (
+    await appendPluginMentionContext({ input: requestInput.input })
+  ).input;
   assertProjectWorkspaceCompatibility(project, requestInput);
   const originKind = requestInput.originKind ?? null;
   const sourceThreadId =
@@ -756,13 +749,10 @@ export async function createThreadFromRequest(
     (request.startedOnBehalfOf?.initiator ?? "user") === "user" &&
     request.input.length > 0
   ) {
-    deps.telemetry.capture({
-      name: "user_message_sent",
-      properties: {
-        is_child_thread: parentThread !== null,
-        message_source: "thread_create",
-        provider: request.providerId,
-      },
+    captureUserMessageSentTelemetry(deps, {
+      isChildThread: parentThread !== null,
+      messageSource: "thread_create",
+      providerId: request.providerId,
     });
   }
   return thread;

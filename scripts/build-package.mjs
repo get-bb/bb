@@ -38,40 +38,14 @@ function collectExportEntries() {
       {
         entryPoint: path.resolve(packageRoot, exportValue.source),
         executable: false,
-        format: "esm",
         outfile: path.resolve(packageRoot, exportValue.import),
       },
     ];
   });
 }
 
-function collectDefaultEntry() {
-  if (packageJson.exports) {
-    return [];
-  }
-
-  const entryPoint = path.join(packageRoot, "src", "index.ts");
-  if (!existsSync(entryPoint)) {
-    return [];
-  }
-
-  return [
-    {
-      entryPoint,
-      executable: false,
-      format: "esm",
-      outfile: path.join(packageRoot, "dist", "index.js"),
-    },
-  ];
-}
-
 function collectBinEntries() {
-  const rawBinEntries =
-    typeof packageJson.bin === "string"
-      ? [[packageJson.name, packageJson.bin]]
-      : Object.entries(packageJson.bin ?? {});
-
-  return rawBinEntries.flatMap(([, binPath]) => {
+  return Object.entries(packageJson.bin ?? {}).flatMap(([, binPath]) => {
     const sourcePath = sourceFromDistJs(binPath);
     if (!sourcePath) {
       return [];
@@ -86,7 +60,6 @@ function collectBinEntries() {
       {
         entryPoint,
         executable: true,
-        format: "esm",
         outfile: path.resolve(packageRoot, binPath),
       },
     ];
@@ -103,7 +76,6 @@ function dedupeEntries(entries) {
 
 const entries = dedupeEntries([
   ...collectExportEntries(),
-  ...collectDefaultEntry(),
   ...collectBinEntries(),
 ]);
 

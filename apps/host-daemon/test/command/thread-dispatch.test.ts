@@ -884,10 +884,10 @@ describe("thread command dispatch", () => {
       },
     );
 
-    const firstInput = harness.runtimeState.startedInputGroups?.[0]?.[0];
-    const secondInput = harness.runtimeState.startedInputGroups?.[1]?.[0];
+    const firstInput = harness.runtimeState.startedInput?.[0];
+    const secondInput = harness.runtimeState.startedInput?.[2];
     if (firstInput?.type !== "localFile" || secondInput?.type !== "localFile") {
-      throw new Error("Expected staged local file input groups");
+      throw new Error("Expected staged local file inputs");
     }
     const firstPath = firstInput.path;
     const secondPath = secondInput.path;

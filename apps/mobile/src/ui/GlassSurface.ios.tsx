@@ -10,7 +10,7 @@ const AnimatedGlassView = Animated.createAnimatedComponent(GlassView);
 
 let liquidGlass: boolean | null = null;
 
-export function useLiquidGlass(): boolean {
+function useLiquidGlass(): boolean {
   if (liquidGlass === null) {
     liquidGlass = isLiquidGlassAvailable() && isGlassEffectAPIAvailable();
   }

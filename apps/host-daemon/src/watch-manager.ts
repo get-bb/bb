@@ -16,7 +16,6 @@ import type {
   WorkspaceStatusWatchChangeKind,
   WorkspaceWatchError,
 } from "@bb/host-watcher";
-import { reconnectProvisionArgsFromWorkspaceContext } from "./workspace-provision-target.js";
 import { userExecutableProcessOptions } from "./user-executable-env.js";
 
 type StopWatching = () => void | Promise<void>;
@@ -50,7 +49,6 @@ interface RefreshWorkspaceArgs {
 }
 
 export interface WatchManagerOptions {
-  dataDir?: string;
   hostWatcher?: HostWatcher;
   provisionWorkspace?: (
     options: ProvisionWorkspaceArgs,
@@ -228,11 +226,9 @@ export class WatchManager {
     }
 
     try {
-      const workspace = await this.provisionWorkspace(
-        reconnectProvisionArgsFromWorkspaceContext({
-          workspaceContext: target.workspaceContext,
-        }),
-      );
+      const workspace = await this.provisionWorkspace({
+        path: target.workspaceContext.workspacePath,
+      });
       const entry: WorkspaceWatchEntry = {
         stopWatchingStatus: STOP_WATCHING,
         target,
@@ -423,9 +419,7 @@ export class WatchManager {
     if (entry.workspace.isGitRepo) {
       return;
     }
-    const provision = reconnectProvisionArgsFromWorkspaceContext({
-      workspaceContext: entry.target.workspaceContext,
-    });
+    const provision = { path: entry.target.workspaceContext.workspacePath };
     const workspace = await this.refreshWorkspace({
       environmentId: entry.target.environmentId,
       provision,

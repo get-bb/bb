@@ -1,6 +1,5 @@
 import * as Haptics from "expo-haptics";
 import { useCallback, useSyncExternalStore } from "react";
-import { createMMKV } from "react-native-mmkv";
 import {
   createHapticsPreferenceStore,
   resolveHapticCall,
@@ -8,11 +7,12 @@ import {
   type HapticKind,
   type HapticsPreferenceStore,
 } from "./haptics-policy";
+import { getPreferencesStorage } from "../native/preferences-storage";
 
 let store: HapticsPreferenceStore | null = null;
 
 function getHapticsPreferenceStore(): HapticsPreferenceStore {
-  store ??= createHapticsPreferenceStore(createMMKV({ id: "bb.preferences" }));
+  store ??= createHapticsPreferenceStore(getPreferencesStorage());
   return store;
 }
 

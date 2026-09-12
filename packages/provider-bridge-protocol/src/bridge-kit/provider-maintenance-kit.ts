@@ -65,9 +65,11 @@ export function versionFrom(value: string | null): string | null {
 
 export async function readCliVersion(command: string): Promise<string | null> {
   try {
-    const { stdout, stderr } = await execFileAsync(command, ["--version"], {
+    const probe = execFileAsync(command, ["--version"], {
       timeout: CLI_PROBE_TIMEOUT_MS,
     });
+    probe.child.stdin?.end();
+    const { stdout, stderr } = await probe;
     return (
       `${stdout}\n${stderr}`.match(/\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?/u)?.[0] ??
       null

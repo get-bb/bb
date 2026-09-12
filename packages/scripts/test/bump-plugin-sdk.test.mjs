@@ -7,12 +7,12 @@ import {
   rmSync,
   writeFileSync,
 } from "node:fs";
-import { readFile, rename, unlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, describe, expect, it } from "vitest";
 import { bumpPluginSdk } from "../../../scripts/bump-plugin-sdk.mjs";
+import { createRenameFailingFileSystem } from "./atomic-write-helpers.mjs";
 
 const scriptPath = fileURLToPath(
   new URL("../../../scripts/bump-plugin-sdk.mjs", import.meta.url),
@@ -158,25 +158,12 @@ describe("bump-plugin-sdk", () => {
     });
     const originalManifest = readContent(repoRoot, MANIFEST_PATH);
     const originalModule = readContent(repoRoot, VERSION_MODULE_PATH);
-    let renameCalls = 0;
+    const { fileSystem } = createRenameFailingFileSystem(2);
 
     await expect(
       bumpPluginSdk({
         args: ["--patch"],
-        fileSystem: {
-          readFile,
-          rename: async (from, to) => {
-            renameCalls += 1;
-
-            if (renameCalls === 2) {
-              throw new Error("simulated rename failure");
-            }
-
-            await rename(from, to);
-          },
-          unlink,
-          writeFile,
-        },
+        fileSystem,
         log: () => {},
         repoRoot,
       }),

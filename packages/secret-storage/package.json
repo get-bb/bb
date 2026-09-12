@@ -15,9 +15,6 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run --config vitest.config.ts"
   },
-  "dependencies": {
-    "zod": "^4.3.6"
-  },
   "devDependencies": {
     "@bb/tsconfig": "workspace:*",
     "@types/node": "^22.0.0",

@@ -49,15 +49,6 @@ export const CONNECT_PAIRED: ServerAccessStatus = {
   ),
 };
 
-export const CONNECT_PAIRED_WITHOUT_URL: ServerAccessStatus = {
-  ...CONNECT_PAIRED,
-  providers: CONNECT_PAIRED.providers.map((provider) =>
-    provider.id === "connect"
-      ? { ...provider, availability: { status: "available" } }
-      : provider,
-  ),
-};
-
 export const CONNECT_UNAVAILABLE: ServerAccessStatus = {
   ...CONNECT_UNPAIRED,
   providers: CONNECT_UNPAIRED.providers.map((provider) =>
@@ -76,19 +67,6 @@ export const CONNECT_UNAVAILABLE: ServerAccessStatus = {
 export const MANUAL_WITHOUT_URL: ServerAccessStatus = {
   ...CONNECT_UNPAIRED,
   defaultProviderId: "direct",
-};
-
-export const MANUAL_WITH_URL: ServerAccessStatus = {
-  ...CONNECT_UNPAIRED,
-  defaultProviderId: "direct",
-  effectiveUrl: "https://bb.example.com",
-  urlSource: "setting",
-};
-
-export const METHOD_NOT_INSTALLED: ServerAccessStatus = {
-  ...CONNECT_UNPAIRED,
-  providers: [CONNECT_UNPAIRED.providers[1]!],
-  defaultProviderId: "tailscale",
 };
 
 export function machineAccessState(
@@ -146,25 +124,4 @@ export const MANUAL_MACHINE_PROVIDER = machineProvider({
     "Run one command on a machine you already have to connect it to this server.",
   pluginId: "core",
   icon: "Terminal",
-});
-
-export const MODAL_NEEDS_TOKEN_PROVIDER = machineProvider({
-  ...MODAL_MACHINE_PROVIDER,
-});
-
-export const MODAL_UNRENDERABLE_INPUTS_PROVIDER = machineProvider({
-  ...MODAL_MACHINE_PROVIDER,
-  inputs: {
-    type: "object",
-    properties: { region: { type: "string" } },
-    required: ["region"],
-  },
-  acceptsEmptyInputs: false,
-});
-
-export const UNAVAILABLE_MACHINE_PROVIDER = machineProvider({
-  id: "fleet",
-  displayName: "Fleet",
-  description: "Rent a machine from a managed fleet.",
-  icon: "Server",
 });

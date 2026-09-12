@@ -1,26 +1,18 @@
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { fileURLToPath } from "node:url";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { BRIDGE_NOTIFICATION_METHODS } from "@bb/provider-bridge-protocol";
 import { experimental_createBridgeJsonRpcTestHarness as createBridgeJsonRpcTestHarness } from "@get-bb/plugin-sdk/provider-bridge/testing";
 import type { BridgeJsonRpcTestHarness } from "@get-bb/plugin-sdk/provider-bridge/testing";
 import { handleLine } from "./bridge.js";
+import {
+  FULL_ACCESS_SESSION_OPTIONS,
+  stubFakeCodexAppServer,
+} from "./fake-codex-app-server-harness.js";
 
 const THREAD_ID = "thr_codex_recovery_1";
 const PROVIDER_THREAD_ID = "codex-recovery-session";
-
-const fakeAppServerPath = fileURLToPath(
-  new URL("./fake-codex-app-server.mjs", import.meta.url),
-);
-
-const sessionOptions = {
-  permissionMode: "full",
-  permissionScope: "full",
-  approvalReviewer: null,
-  permissionEscalation: null,
-} as const;
 
 const UNAUTHORIZED_TURN = [
   {
@@ -70,11 +62,7 @@ let workspaceDir: string;
 function stubFakeAppServer(script: Record<string, unknown>): void {
   const scriptPath = join(workspaceDir, "fake-codex-script.json");
   writeFileSync(scriptPath, JSON.stringify(script), "utf8");
-  vi.stubEnv("BB_CODEX_BRIDGE_APP_SERVER_COMMAND", process.execPath);
-  vi.stubEnv(
-    "BB_CODEX_BRIDGE_APP_SERVER_ARGS",
-    JSON.stringify([fakeAppServerPath, scriptPath]),
-  );
+  stubFakeCodexAppServer(scriptPath);
 }
 
 function notifications(method: string): unknown[] {
@@ -135,7 +123,7 @@ it("raises authRequired on a terminal 401 and rebuilds the child before the next
     providerThreadId: PROVIDER_THREAD_ID,
     cwd: workspaceDir,
     instructionMode: "append",
-    options: { ...sessionOptions },
+    options: { ...FULL_ACCESS_SESSION_OPTIONS },
   });
   expect((await harness.waitForResponse(1)).error).toBeUndefined();
 
@@ -144,7 +132,7 @@ it("raises authRequired on a terminal 401 and rebuilds the child before the next
     providerThreadId: PROVIDER_THREAD_ID,
     clientRequestId: "creq_cdxrcvry22",
     input: [{ type: "text", text: "first", mentions: [] }],
-    options: { ...sessionOptions },
+    options: { ...FULL_ACCESS_SESSION_OPTIONS },
   });
   expect((await harness.waitForResponse(2)).error).toBeUndefined();
 
@@ -172,7 +160,7 @@ it("raises authRequired on a terminal 401 and rebuilds the child before the next
     providerThreadId: PROVIDER_THREAD_ID,
     clientRequestId: "creq_cdxrcvry23",
     input: [{ type: "text", text: "after reauth", mentions: [] }],
-    options: { ...sessionOptions },
+    options: { ...FULL_ACCESS_SESSION_OPTIONS },
   });
   expect((await harness.waitForResponse(3)).error).toBeUndefined();
 
@@ -208,7 +196,7 @@ it("retries a rename inside the bridge while the rollout is not ready", async ()
     providerThreadId: PROVIDER_THREAD_ID,
     cwd: workspaceDir,
     instructionMode: "append",
-    options: { ...sessionOptions },
+    options: { ...FULL_ACCESS_SESSION_OPTIONS },
   });
   expect((await harness.waitForResponse(1)).error).toBeUndefined();
 
@@ -231,7 +219,7 @@ it("fails a rename with a plain error once the ladder is exhausted", async () =>
     providerThreadId: PROVIDER_THREAD_ID,
     cwd: workspaceDir,
     instructionMode: "append",
-    options: { ...sessionOptions },
+    options: { ...FULL_ACCESS_SESSION_OPTIONS },
   });
   expect((await harness.waitForResponse(1)).error).toBeUndefined();
 

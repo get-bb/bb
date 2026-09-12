@@ -157,7 +157,10 @@ environment pull-request show <id>`. Diff commands require an explicit target
   and `bb provider models <provider-id>`. Both accept `--machine <id-or-name>`
   (alias `--host`) or `--environment <id>` to inspect the machine where work
   will run; the selectors cannot be combined. With neither selector they
-  intentionally inspect the primary machine.
+  intentionally inspect the primary machine. Model lists answer from the
+  machine's last stored list while a background refresh runs, so a list can be
+  hours old. A provider whose refresh keeps failing or timing out keeps
+  answering from its last stored list.
 - Top-level `customModels` in the same `config.json` registers extra picker
   models. Use a provider ID returned by the target host's catalog. Acceptance
   of unlisted models is provider-specific; consult that provider's skill.

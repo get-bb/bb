@@ -34,8 +34,6 @@ interface WorkRowBodyProps {
   workspaceRootPath: string | undefined;
 }
 
-type DetailLine = string | null;
-
 type ImageWorkRow = Extract<
   TimelineViewWorkRow,
   { workKind: "image-view" | "image-generation" }
@@ -67,16 +65,6 @@ interface OutputPreviewNoteArgs {
 interface ResolveImageViewSourceArgs {
   resolveImageViewSrc: ThreadTimelineImageViewSrcResolver | undefined;
   row: ImageWorkRow;
-}
-
-function compactDetailLines(lines: readonly DetailLine[]): string[] {
-  const compactedLines: string[] = [];
-  for (const line of lines) {
-    if (line !== null) {
-      compactedLines.push(line);
-    }
-  }
-  return compactedLines;
 }
 
 function resolveImageViewSource({
@@ -206,9 +194,7 @@ function CommandWorkRowBody({ row }: CommandWorkRowBodyProps) {
     <div className="space-y-1">
       <TerminalOutputBlock
         commandLine={`$ ${row.command}`}
-        metadataLines={compactDetailLines([
-          row.source ? `source: ${row.source}` : null,
-        ])}
+        metadataLines={row.source ? [`source: ${row.source}`] : []}
         output={fullOutput.output}
         exitCode={row.exitCode}
         streaming={row.status === "pending"}

@@ -53,11 +53,6 @@
   --add: oklch(0.4 0.13 163); /* --diff-added */
   --del: oklch(0.4 0.17 28); /* --diff-removed */
   --spark: oklch(0.55 0.14 50); /* --warning-text */
-  /* Product Hunt orange (#FF6154 ≈ oklch(0.68 0.19 27)), pulled down in
-     lightness and chroma. At full saturation it is the only neon on an
-     otherwise achromatic page and reads as a foreign badge; this keeps the
-     hue recognisable while sitting inside the ink ramp. */
-  --ph: oklch(0.58 0.15 32);
   --radius: 0.5rem;
   --font-sans:
     "Inter Variable", "Inter Fallback", Inter, -apple-system,
@@ -92,7 +87,6 @@
   --add: oklch(0.77 0.17 163); /* --diff-added (dark) */
   --del: oklch(0.72 0.19 22); /* --diff-removed (dark) */
   --spark: oklch(0.75 0.16 50); /* --warning-text (dark) */
-  --ph: oklch(0.66 0.14 32);
 }
 
 * {
@@ -477,37 +471,6 @@ code,
   );
 }
 
-/* Hand-drawn accent underline that draws in under the key word. */
-.uline {
-  position: relative;
-  white-space: nowrap;
-}
-
-.uline svg {
-  position: absolute;
-  left: 0;
-  bottom: 0.02em;
-  width: 100%;
-  height: 0.14em;
-  overflow: visible;
-}
-
-.uline path {
-  fill: none;
-  stroke: color-mix(in oklab, var(--accent) 75%, transparent);
-  stroke-width: 6;
-  stroke-linecap: round;
-  stroke-dasharray: 210;
-  stroke-dashoffset: 210;
-  animation: draw-underline 0.7s ease-out 0.55s forwards;
-}
-
-@keyframes draw-underline {
-  to {
-    stroke-dashoffset: 0;
-  }
-}
-
 /* Staggered entrance for hero content — rises in just after the nav, matching
    the app mock's rise so the whole header reads as one entrance. */
 @keyframes fade-up {
@@ -598,17 +561,6 @@ code,
   flex-shrink: 0;
   margin-left: -4px;
   margin-right: -4px;
-}
-
-/* Launch-day variant of the announcement pill: the release-notes pill exactly,
-   with the chip warmed to Product Hunt's orange. The chip is the only thing
-   that changes, so the two read as the same component in the same slot. */
-.ph-callout-label {
-  background: var(--ph);
-}
-
-.ph-callout:hover {
-  border-color: color-mix(in oklab, var(--ph) 45%, var(--bg));
 }
 
 /* Scroll reveal: sections start hidden only once JS marks them pending,
@@ -1237,13 +1189,6 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
 .trow.active {
   background: color-mix(in oklab, var(--ink) 7%, var(--bg));
   color: var(--ink);
-}
-
-.trow-glyph {
-  width: 15px;
-  height: 15px;
-  flex-shrink: 0;
-  color: var(--subtle);
 }
 
 .trow-title {
@@ -1929,10 +1874,6 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
   padding: 1px 5px;
   color: var(--ink);
   white-space: nowrap;
-}
-
-.band-cta {
-  margin-top: 26px;
 }
 
 .band-copy .providers {
@@ -3036,12 +2977,6 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
   .updates-label {
     display: none;
   }
-
-  /* The launch pill keeps its chip. "Today" is the urgency, and without it the
-     line loses the one thing that makes it worth interrupting the hero for. */
-  .ph-callout-label {
-    display: inline;
-  }
 }
 
 /* ── Reduced motion ─────────────────────────────────────────────── */
@@ -3077,11 +3012,6 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
   .nav,
   .hero > * {
     animation: none;
-  }
-
-  .uline path {
-    animation: none;
-    stroke-dashoffset: 0;
   }
 
   .trun {

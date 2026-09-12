@@ -7,6 +7,7 @@ import {
   CatalogEntryIcon,
   CatalogEntryIconChip,
   pluginCatalogCategoryPillStyle,
+  pluginInstallCountPresentation,
 } from "./plugin-ui";
 
 afterEach(cleanup);
@@ -102,4 +103,11 @@ it("uses theme accents for all built-in categories and neutral unknowns", () => 
   expect(unknown.background).toBe(
     "color-mix(in oklch, var(--ink) 8%, var(--canvas))",
   );
+});
+
+it("labels install counts only when the catalog knows them", () => {
+  expect(pluginInstallCountPresentation(null)).toBeUndefined();
+  expect(pluginInstallCountPresentation(1)?.accessibleLabel).toBe("1 install");
+  expect(pluginInstallCountPresentation(2)?.accessibleLabel).toBe("2 installs");
+  expect(pluginInstallCountPresentation(0)?.accessibleLabel).toBe("0 installs");
 });

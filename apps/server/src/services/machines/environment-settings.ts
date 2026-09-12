@@ -6,10 +6,7 @@ import {
 } from "./environment-storage.js";
 import type { HostDaemonContributedEnvEntry } from "@bb/host-daemon-contract";
 
-export {
-  replaceMachineEnvironment,
-  updateMachineEnvironment,
-} from "./environment-storage.js";
+export { replaceMachineEnvironment } from "./environment-storage.js";
 
 export async function resolveUserMachineEnvironment(
   db: DbConnection,
