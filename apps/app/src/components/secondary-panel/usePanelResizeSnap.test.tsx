@@ -117,7 +117,7 @@ function setup(secondarySize = 50) {
     expect(Number(previous.style.flexGrow)).toBeCloseTo(leading, 0);
     expect(Number(next.style.flexGrow)).toBeCloseTo(trailing, 0);
   };
-  return { down, expectLayout, grid, group, move, onResize, previous, next, release, unmount };
+  return { divider, down, expectLayout, grid, group, move, onResize, release, unmount };
 }
 
 describe("usePanelResizeSnap", () => {
@@ -172,6 +172,27 @@ describe("usePanelResizeSnap", () => {
     h.release();
     advanceFrame();
     h.expectLayout(60, 40);
+  });
+
+  it("applies queued pointer input before a newer keyboard resize", () => {
+    const h = setup();
+    h.down();
+    h.move(450);
+    h.move(440);
+    const keyboardResize = () => {
+      const leading = h.group.current?.getLayout()[0] ?? 0;
+      h.group.current?.setLayout([leading + 10, 90 - leading]);
+    };
+    h.divider.addEventListener("keydown", keyboardResize);
+    try {
+      fireEvent.keyDown(h.divider, { key: "ArrowRight" });
+      h.expectLayout(52.5, 47.5);
+      advanceFrame();
+      h.release();
+      h.expectLayout(52.5, 47.5);
+    } finally {
+      h.divider.removeEventListener("keydown", keyboardResize);
+    }
   });
 
   it.each(["pointerup", "pointercancel", "mouseup", "blur", "buttons"]) ("flushes the last position before %s cleanup", (end) => {
