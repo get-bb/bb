@@ -2249,6 +2249,7 @@ describe("connect plugin", () => {
     expect(call?.[1]).toEqual({
       method: "POST",
       headers: { "x-bb-connect-machine": "bbcred_durable" },
+      signal: expect.any(AbortSignal),
     });
     const result = (await harness.callRpc("createMachineCode")) as {
       expiresAt: number;
@@ -2614,6 +2615,7 @@ describe("connect CLI", () => {
     expect(call?.[1]).toEqual({
       method: "POST",
       headers: { "x-bb-connect-machine": "bbcred_live" },
+      signal: expect.any(AbortSignal),
     });
   });
 

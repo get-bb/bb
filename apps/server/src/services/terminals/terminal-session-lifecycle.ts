@@ -1,3 +1,5 @@
+import { emitPluginTerminalInput } from "../plugins/plugin-thread-events.js";
+import { resolveHostEnvironment } from "../hosts/host-environment.js";
 import { randomUUID } from "node:crypto";
 import {
   createTerminalSession,
@@ -681,6 +683,14 @@ export class TerminalSessionLifecycle {
     const requestId = randomUUID();
     const openMessage: HostDaemonServerWsMessage = {
       type: "terminal.open",
+      contributedEnv: await resolveHostEnvironment(this.options, {
+        hostId: launchTarget.hostId,
+        projectId:
+          launchTarget.environmentId === null
+            ? null
+            : requireEnvironment(this.options.db, launchTarget.environmentId)
+                .projectId,
+      }),
       requestId,
       terminalId: startingSession.id,
       ...(args.threadId !== null ? { threadId: args.threadId } : {}),
@@ -1057,6 +1067,8 @@ export class TerminalSessionLifecycle {
       });
       throw new ApiError(502, "host_disconnected", "Host is not connected");
     }
+    if (args.payload.dataBase64.length > 0)
+      emitPluginTerminalInput(toTerminalSession(session));
     return toTerminalSession(session);
   }
 
@@ -1603,6 +1615,8 @@ export class TerminalSessionLifecycle {
       this.disconnectDaemonSessionTerminals({
         daemonSessionId: current.daemonSessionId,
       });
+    } else if (args.message.dataBase64.length > 0) {
+      emitPluginTerminalInput(toTerminalSession(markedInput ?? current));
     }
   }
 

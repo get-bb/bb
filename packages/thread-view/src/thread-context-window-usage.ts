@@ -1,8 +1,9 @@
-import { toPositiveNumber } from "@bb/domain";
+import { toPositiveNumber, type ContextSnapshot } from "@bb/domain";
 import type { ThreadContextWindowUsage } from "@bb/server-contract";
 import type { ThreadEventWithMeta } from "./build-event-projection.js";
 
 interface ThreadContextWindowSignal {
+  snapshot: ContextSnapshot | undefined;
   estimated: boolean;
   modelContextWindow: number | null;
   usedTokens: number | null;
@@ -24,6 +25,7 @@ function decodeContextWindowSignal(
   }
   const { contextWindowUsage } = event;
   return {
+    snapshot: contextWindowUsage.snapshot,
     usedTokens:
       contextWindowUsage.usedTokens === null
         ? null
@@ -50,6 +52,7 @@ function getOrderedContextWindowEvents(
 export function extractThreadContextWindowUsage(
   events: readonly ThreadEventWithMeta[],
 ): ThreadContextWindowUsage | null {
+  let snapshot: ContextSnapshot | undefined;
   let estimated: boolean | undefined;
   let modelContextWindow: number | undefined;
   let usedTokens: number | undefined;
@@ -61,6 +64,7 @@ export function extractThreadContextWindowUsage(
     if (!signal) continue;
 
     if (usedTokens === undefined && !usageIsUnknown) {
+      snapshot = signal.snapshot;
       if (signal.usedTokens === null) {
         usageIsUnknown = true;
         estimated = signal.estimated;
@@ -90,6 +94,11 @@ export function extractThreadContextWindowUsage(
   }
 
   return {
+    ...(snapshot &&
+    snapshot.usedTokens === usedTokens &&
+    snapshot.contextWindowTokens === modelContextWindow
+      ? { snapshot }
+      : {}),
     estimated: estimated ?? false,
     modelContextWindow,
     usedTokens,

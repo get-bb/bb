@@ -165,6 +165,11 @@ export const BUILTIN_PLUGINS = [
 
 export const OFFICIAL_PLUGINS = [
   {
+    name: "environment-modal-sandbox",
+    pluginId: "environment-modal-sandbox",
+    defaultEnabled: true,
+  },
+  {
     name: "browser-automation",
     pluginId: "browser-automation",
     defaultEnabled: false,
@@ -217,19 +222,19 @@ export function builtinPluginSource(name: string): string {
 export function resolveBuiltinPluginRootPathForModuleDir(
   args: ResolveBuiltinPluginRootPathArgs,
 ): string {
-  const packagedCandidate = path.resolve(
-    args.moduleDir,
-    BUILTIN_PLUGINS_DIRECTORY_NAME,
-    args.name,
-  );
-  if (existsSync(packagedCandidate)) return packagedCandidate;
-
   const preparedCandidate = path.resolve(
     args.moduleDir,
     "../../../packages/bundled-plugins/dist",
     args.name,
   );
   if (existsSync(preparedCandidate)) return preparedCandidate;
+
+  const packagedCandidate = path.resolve(
+    args.moduleDir,
+    BUILTIN_PLUGINS_DIRECTORY_NAME,
+    args.name,
+  );
+  if (existsSync(packagedCandidate)) return packagedCandidate;
 
   const builtCheckoutCandidate = path.resolve(
     args.moduleDir,

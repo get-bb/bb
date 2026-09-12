@@ -526,6 +526,38 @@ describe("AutomationOverviewView", () => {
     expect((await screen.findByRole("tooltip")).textContent).toBe("Next run");
   });
 
+  it("shows Personal as project membership and keeps it searchable", async () => {
+    render(
+      <AutomationOverviewView
+        entries={[
+          {
+            ...INSTALLED_AUTOMATIONS[0]!,
+            project: { id: "proj_personal", name: "Personal" },
+          },
+        ]}
+        error={null}
+        onRetry={() => {}}
+        onOpenDetail={() => {}}
+        onEnabledChange={async () => {}}
+        onCreateViaChat={() => {}}
+        activeMode="installed"
+        onModeChange={() => {}}
+      />,
+    );
+    const icon = screen.getByRole("img", { name: "Project: Personal" });
+    expect(icon.querySelector('[data-icon="Folder"]')).not.toBeNull();
+    expect(screen.queryByText("Local")).toBeNull();
+    expect(screen.getByText("Personal")).toBeTruthy();
+    fireEvent.change(screen.getByPlaceholderText("Search automations"), {
+      target: { value: "Personal" },
+    });
+    expect(screen.getByText("Nightly digest")).toBeTruthy();
+    focusWithKeyboard(icon);
+    expect((await screen.findByRole("tooltip")).textContent).toBe(
+      "Project: Personal",
+    );
+  });
+
   it("does not treat a project named Local as the personal project", () => {
     const namedLocalEntry = {
       ...INSTALLED_AUTOMATIONS[0]!,

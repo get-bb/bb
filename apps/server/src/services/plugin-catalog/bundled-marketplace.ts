@@ -19,8 +19,8 @@ export function resolveBundledMarketplaceDirectory(
   baseDirectory = moduleDirectory,
 ): string {
   const candidates = [
-    path.resolve(baseDirectory, "builtin-plugins"),
     path.resolve(baseDirectory, "../../../packages/bundled-plugins/dist"),
+    path.resolve(baseDirectory, "builtin-plugins"),
     path.resolve(
       baseDirectory,
       "../../generated",

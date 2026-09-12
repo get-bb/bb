@@ -27,7 +27,7 @@ import { createMigratedConnection } from "../helpers/migrated-connection.js";
 
 function setup() {
   const db = createMigratedConnection();
-  const host = upsertHost(db, noopNotifier, { type: "persistent",
+  const host = upsertHost(db, noopNotifier, {
     name: "test-host",
   });
   const { project } = createProject(db, noopNotifier, {

@@ -6,12 +6,15 @@ import { CronExpressionParser } from "cron-parser";
 import type { Context } from "hono";
 import {
   CUSTOM_THEME_CSS_MAX_LENGTH,
+  deepFreezePluginMetadata,
   derivePluginId,
   formatPluginThemeId,
   isNamespacedGlyph,
   isPluginOwnedIconPath,
+  parsePersistedPluginMetadata,
   type DeclaredCodeTheme,
   type DynamicTool,
+  type JsonObject,
   type JsonValue,
   type PluginThemeMeta,
   type SystemChangeKind,
@@ -64,11 +67,14 @@ import {
   deleteInstalledPlugin,
   deletePluginSchedules,
   getInstalledPlugin,
+  getThread,
+  getLatestThreadSequence,
   listDuePluginSchedules,
   listInstalledPlugins,
   listPendingGitPluginArtifacts,
   listPluginMarketplaces,
   listPluginSchedules,
+  listThreadPluginMetadataRows,
   markInstalledPluginRemoved,
   recordPluginScheduleResult,
   setInstalledPluginEnabled,
@@ -156,6 +162,7 @@ import type {
   PluginResolvedProviderEnv,
   PluginResolvedProviderEnvHealth,
 } from "./plugin-service-internal.js";
+import type { PluginMachineProviderBridge } from "./plugin-machine-provider-registry.js";
 export type {
   PluginAgentToolContribution,
   PluginMentionResolveResult,
@@ -186,6 +193,8 @@ export interface PluginService {
   /** The hook chain the dispatch pipeline consults; registered in createApp. */
   hooks: PluginHookProvider;
   environmentProviders: PluginEnvironmentProviderBridge;
+  machineProviders: PluginMachineProviderBridge;
+  serverAccessProviders: import("./plugin-server-access-registry.js").ServerAccessBridge;
   /**
    * Bind the in-process BB SDK to the running server. Call once the HTTP
    * listener is up, before start(): bb.sdk throws until this runs.
@@ -332,7 +341,7 @@ export interface PluginService {
   listSkillRootContributions(): PluginSkillRootContribution[];
   listAgentTools(): PluginAgentToolContribution[];
   resolveAgentConfiguration(args: {
-    context: PluginAgentConfigurationContext;
+    context: Omit<PluginAgentConfigurationContext, "pluginMetadata">;
     skillIdsByPlugin: ReadonlyMap<string, readonly string[]>;
   }): Promise<PluginResolvedAgentConfiguration>;
   resolveProviderEnv(args: {
@@ -917,8 +926,12 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
     invokeWrapped,
     isBuiltinPluginId,
     listPluginHooks,
+    listPluginEnvironmentCompositions,
     listPluginEnvironmentProviders,
     getPluginEnvironmentProvider,
+    listPluginMachineProviders,
+    listPluginServerAccessProviders,
+    getPluginMachineProvider,
     isPackagedBuiltinEntry,
     loadAll,
     loaded,
@@ -936,6 +949,7 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
     withPluginOperationLock,
   } = createPluginRuntime({
     deps,
+    machineEnrollments: deps.machineEnrollments ?? null,
     nextCronRunAt,
     settingsChanged: notifyPluginsChanged,
     settledWithin,
@@ -1535,6 +1549,20 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
     },
 
     events: {
+      emitThreadEvents(threadId) {
+        emitThreadEvent("experimental_thread.events", () => {
+          const thread = getThread(deps.db, threadId);
+          return thread === null
+            ? null
+            : {
+                thread: buildThreadDto(thread),
+                sequence: getLatestThreadSequence(deps.db, { threadId }),
+              };
+        });
+      },
+      emitTerminalInput(terminal) {
+        emitThreadEvent("experimental_terminal.input", () => ({ terminal }));
+      },
       emitThreadCreated(thread) {
         emitThreadEvent("thread.created", () => ({
           thread: buildThreadDto(thread),
@@ -1603,8 +1631,30 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
     },
 
     environmentProviders: {
+      listEnvironmentCompositions: listPluginEnvironmentCompositions,
       listEnvironmentProviders: listPluginEnvironmentProviders,
       getEnvironmentProvider: getPluginEnvironmentProvider,
+      invokeProvider: async (pluginId, label, run) => {
+        const outcome = await invokeWrapped(pluginId, label, run);
+        return outcome.ok
+          ? { ok: true, value: outcome.value }
+          : { ok: false, error: outcome.error };
+      },
+      decisionTimeoutMs: pluginHookTimeoutMs,
+    },
+
+    serverAccessProviders: {
+      list: listPluginServerAccessProviders,
+      invoke: async (pluginId, run) => {
+        const outcome = await invokeWrapped(pluginId, "server access", run);
+        if (!outcome.ok) throw new Error("Server access provider failed");
+        return outcome.value;
+      },
+    },
+
+    machineProviders: {
+      listMachineProviders: listPluginMachineProviders,
+      getMachineProvider: getPluginMachineProvider,
       invokeProvider: async (pluginId, label, run) => {
         const outcome = await invokeWrapped(pluginId, label, run);
         return outcome.ok
@@ -2261,14 +2311,34 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
       const tools: PluginAgentToolContribution[] = [];
       const selectedSkillIdsByPlugin = new Map<string, ReadonlySet<string>>();
       const dynamicInstructions: Array<{ pluginId: string; text: string }> = [];
-
-      for (const [pluginId, plugin] of [...loaded.entries()].sort(([a], [b]) =>
-        a.localeCompare(b),
+      const plugins = [...loaded.entries()]
+        .sort(([a], [b]) => a.localeCompare(b))
+        .map(([pluginId, plugin]) => ({
+          pluginId,
+          provider: plugin.handle.agentConfigurationProvider,
+        }));
+      const configuringPluginIds = plugins
+        .filter(({ provider }) => provider !== null)
+        .map(({ pluginId }) => pluginId);
+      const metadataByPluginId = new Map<string, JsonObject>();
+      for (const row of listThreadPluginMetadataRows(
+        deps.db,
+        context.thread.id,
+        configuringPluginIds,
       )) {
+        const metadata = parsePersistedPluginMetadata(row.metadataJson);
+        if (metadata === undefined) {
+          logger.warn(
+            `Ignoring corrupt plugin metadata for thread ${context.thread.id}, plugin ${row.pluginId}`,
+          );
+        }
+        metadataByPluginId.set(row.pluginId, metadata ?? {});
+      }
+
+      for (const { pluginId, provider } of plugins) {
         const pluginTools = allTools.filter(
           (entry) => entry.pluginId === pluginId,
         );
-        const provider = plugin.handle.agentConfigurationProvider;
         if (provider === null) {
           tools.push(
             ...pluginTools.map(({ record }) => ({
@@ -2289,7 +2359,12 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
             knownSkillIds,
             knownToolIds,
             pluginId,
-            value: provider(context),
+            value: provider({
+              ...context,
+              pluginMetadata: deepFreezePluginMetadata(
+                metadataByPluginId.get(pluginId) ?? {},
+              ),
+            }),
           }),
         );
         if (!outcome.ok) {

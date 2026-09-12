@@ -279,7 +279,6 @@ export async function revokeMachine(
       and(eq(labelClaim.kind, "machine"), eq(labelClaim.ownerId, machineId)),
     )
     .get();
-  if (!claim && existing.revokedAt !== null) return { error: "not-found" };
 
   if (claim) {
     try {
@@ -730,6 +729,56 @@ export async function redeemConnectCode(
   };
 }
 
+async function machineIdForCode(userId: string, code: string): Promise<string> {
+  const hash = await sha256Hex(JSON.stringify([userId, code]));
+  return `${hash.slice(0, 8)}-${hash.slice(8, 12)}-${hash.slice(12, 16)}-${hash.slice(16, 20)}-${hash.slice(20, 32)}`;
+}
+
+export async function lookupMachineCodeForServerCredential(
+  deps: Pick<Deps, "db">,
+  credential: string,
+  code: string,
+): Promise<
+  | { consumed: boolean; machineId: string | null }
+  | { error: string; status: number }
+> {
+  const srv = await deps.db
+    .select()
+    .from(server)
+    .where(
+      and(
+        eq(server.credentialHash, await sha256Hex(credential.trim())),
+        isNull(server.revokedAt),
+      ),
+    )
+    .get();
+  if (!credential.trim() || !srv) return { error: "unauthorized", status: 401 };
+  const row = await deps.db
+    .select()
+    .from(connectCode)
+    .where(
+      and(
+        eq(connectCode.code, code.trim().toUpperCase()),
+        eq(connectCode.serverId, srv.id),
+        eq(connectCode.userId, srv.userId),
+        eq(connectCode.purpose, "machine-pair"),
+      ),
+    )
+    .get();
+  if (!row) return { error: "invalid-code", status: 404 };
+  const device = await deps.db
+    .select({ id: machine.id })
+    .from(machine)
+    .where(
+      and(
+        eq(machine.id, await machineIdForCode(row.userId, row.code)),
+        eq(machine.userId, srv.userId),
+      ),
+    )
+    .get();
+  return { consumed: row.consumedAt !== null, machineId: device?.id ?? null };
+}
+
 export async function redeemMachineCode(
   deps: Pick<Deps, "db" | "serverUrlTemplate">,
   code: string,
@@ -777,7 +826,7 @@ export async function redeemMachineCode(
     return { error: "already-used", status: 409 };
 
   const credential = generateToken("bbcm_", 32);
-  const machineId = crypto.randomUUID();
+  const machineId = await machineIdForCode(row.userId, normalized);
   await db
     .insert(machine)
     .values({

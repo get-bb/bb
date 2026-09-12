@@ -10,6 +10,7 @@ import type {
 } from "./src/rpc-types";
 import {
   experimental_PermissionModePicker as PermissionModePicker,
+  experimental_ProviderIcon as ProviderIcon,
   experimental_ProviderModelPicker as ProviderModelPicker,
   type ExperimentalProviderModelPickerRouting,
   type ExperimentalProviderModelPickerValue,
@@ -181,7 +182,7 @@ function automationBodyLabel(execution: AutomationExecution): string {
 
 const SCRIPT_SCROLLBAR_IDLE_DELAY_MS = 600;
 
-function AutomationScriptContent({ content }: { content: string }) {
+export function AutomationScriptContent({ content }: { content: string }) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const scrollbarIdleTimeoutRef = useRef<number | null>(null);
   const [hasMoreBelow, setHasMoreBelow] = useState(false);
@@ -287,10 +288,10 @@ function AutomationEnvironmentVariables({
 function automationEnvironmentLabel(execution: AutomationExecution): string {
   if (execution.mode !== "agent") return "Host";
   const environment = execution.environment;
-  if (environment.type === "reuse") return "Reuse worktree";
+  if (environment.type === "reuse") return "Reuse environment";
   if (environment.type === "project-default") return "Project default";
   if (environment.workspace.type === "managed-worktree") return "New worktree";
-  if (environment.workspace.type === "personal") return "Local";
+  if (environment.workspace.type === "personal") return "Personal workspace";
   return environment.workspace.path == null
     ? "Workspace"
     : formatHomePathForDisplay(environment.workspace.path);
@@ -301,35 +302,45 @@ function automationEnvironmentCompactLabel(
 ): string {
   if (execution.targetThreadId !== undefined) return "Thread";
   const environment = execution.environment;
-  if (environment.type === "reuse") return "Reuse";
+  if (environment.type === "reuse") return "Reuse environment";
   if (environment.type === "project-default") return "Default";
   if (environment.workspace.type === "managed-worktree") return "Worktree";
-  if (environment.workspace.type === "personal") return "Local";
+  if (environment.workspace.type === "personal") return "Personal workspace";
   return environment.workspace.path === null
     ? "Workspace"
     : formatHomePathForDisplay(environment.workspace.path);
 }
 
-function automationEnvironmentIcon(
-  execution: Extract<AutomationExecution, { mode: "agent" }>,
-): IconName {
-  if (execution.targetThreadId !== undefined) return "MessageSquare";
+function AutomationEnvironmentIcon({
+  execution,
+}: {
+  execution: Extract<AutomationExecution, { mode: "agent" }>;
+}) {
+  const className = "size-3.5 shrink-0";
+  if (execution.targetThreadId !== undefined) {
+    return <Icon name="MessageSquare" className={className} aria-hidden />;
+  }
   const environment = execution.environment;
-  if (
-    environment.type === "reuse" ||
-    (environment.type === "host" &&
-      environment.workspace.type === "managed-worktree")
-  ) {
-    return "FolderGit";
+  if (environment.type === "reuse") {
+    return <Icon name="Folder02" className={className} aria-hidden />;
   }
-  if (
-    environment.type === "host" &&
-    (environment.workspace.type === "personal" ||
-      environment.workspace.type === "unmanaged")
-  ) {
-    return "Laptop";
+  if (environment.type === "project-default") {
+    return <Icon name="Folder" className={className} aria-hidden />;
   }
-  return "Folder";
+  const providers = {
+    personal: { id: "personal-workspace", fallback: "Folder" },
+    "managed-worktree": { id: "git-worktree", fallback: "FolderGit" },
+    unmanaged: { id: "project-checkout", fallback: "Laptop" },
+  } as const;
+  const provider = providers[environment.workspace.type];
+  return (
+    <ProviderIcon
+      providerKind="environment"
+      provider={{ id: provider.id }}
+      fallback={provider.fallback}
+      className={className}
+    />
+  );
 }
 
 function formatRunDuration(run: AutomationRunResponse): string | null {
@@ -401,7 +412,7 @@ export function AutomationRunStatusIndicator({
   );
 }
 
-function RunRow({
+export function RunRow({
   run,
   onOpenThread,
 }: {
@@ -499,7 +510,7 @@ function RunRow({
   );
 }
 
-function AgentAutomationDefinition({
+export function AgentAutomationDefinition({
   execution,
   editing,
   personalProject,
@@ -570,13 +581,7 @@ function AgentAutomationDefinition({
               : automationEnvironmentLabel(execution)
           }
           compactValue={automationEnvironmentCompactLabel(execution)}
-          leading={
-            <Icon
-              name={automationEnvironmentIcon(execution)}
-              className="size-3.5 shrink-0"
-              aria-hidden
-            />
-          }
+          leading={<AutomationEnvironmentIcon execution={execution} />}
           muted
         />
       </div>
@@ -702,6 +707,40 @@ function AgentAutomationDefinition({
   );
 }
 
+export function ScriptAutomationDefinition({
+  execution,
+}: {
+  execution: Extract<AutomationExecution, { mode: "script" }>;
+}) {
+  return (
+    <ResourceDetailPanel
+      surface="flat"
+      className="rounded-md border border-border bg-background"
+    >
+      {execution.script ? (
+        <AutomationScriptContent content={execution.script} />
+      ) : (
+        <div className="px-3 py-3 text-xs text-muted-foreground">
+          Script content unavailable.
+        </div>
+      )}
+      <div className="flex min-w-0 flex-wrap items-center gap-x-4 gap-y-1.5 border-t border-border bg-surface-recessed/55 px-3 py-2 text-xs text-muted-foreground">
+        <span className="inline-flex items-center gap-1.5">
+          <Icon name="ComputerTerminal01" className="size-3.5" aria-hidden />
+          {execution.interpreter ?? "bash"}
+        </span>
+        <span className="inline-flex items-center gap-1.5">
+          <Icon name="Clock" className="size-3.5" aria-hidden />
+          {Math.round(execution.timeoutMs / 1000)}s timeout
+        </span>
+        {execution.env ? (
+          <AutomationEnvironmentVariables environment={execution.env} />
+        ) : null}
+      </div>
+    </ResourceDetailPanel>
+  );
+}
+
 export function AutomationDetailView({
   automation,
   projectLabel,
@@ -754,8 +793,10 @@ export function AutomationDetailView({
         <ResourceMeta
           items={[
             <AutomationMetadataItem
-              icon={personalProject ? "Laptop" : "Folder"}
-              iconLabel={personalProject ? "Local project" : "Project"}
+              icon="Folder"
+              iconLabel={
+                personalProject ? `Project: ${projectContextLabel}` : "Project"
+              }
               title={projectContextLabel}
             >
               {projectContextLabel}
@@ -839,35 +880,7 @@ export function AutomationDetailView({
               onUpdate={onUpdateAgent}
             />
           ) : (
-            <ResourceDetailPanel
-              surface="flat"
-              className="rounded-md border border-border bg-background"
-            >
-              {execution.script ? (
-                <AutomationScriptContent content={execution.script} />
-              ) : (
-                <div className="px-3 py-3 text-xs text-muted-foreground">
-                  Script content unavailable.
-                </div>
-              )}
-              <div className="flex min-w-0 flex-wrap items-center gap-x-4 gap-y-1.5 border-t border-border bg-surface-recessed/55 px-3 py-2 text-xs text-muted-foreground">
-                <span className="inline-flex items-center gap-1.5">
-                  <Icon
-                    name="ComputerTerminal01"
-                    className="size-3.5"
-                    aria-hidden
-                  />
-                  {execution.interpreter ?? "bash"}
-                </span>
-                <span className="inline-flex items-center gap-1.5">
-                  <Icon name="Clock" className="size-3.5" aria-hidden />
-                  {Math.round(execution.timeoutMs / 1000)}s timeout
-                </span>
-                {execution.env ? (
-                  <AutomationEnvironmentVariables environment={execution.env} />
-                ) : null}
-              </div>
-            </ResourceDetailPanel>
+            <ScriptAutomationDefinition execution={execution} />
           )}
         </ResourceDefinitionSection>
 

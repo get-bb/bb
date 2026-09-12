@@ -1,5 +1,8 @@
 export type {
   CallerExecutionInputSource,
+  ContextSnapshot,
+  ContextCategory,
+  ContextEntry,
   GitBranchSelection,
   JsonValue,
   PermissionMode,

@@ -11,6 +11,7 @@ import { MemoryRouter } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { InstalledPlugin } from "@bb/server-contract";
 import { createQueryClientTestHarness } from "@/test/queryClientTestHarness";
+import { systemMachineProvidersQueryKey } from "@/hooks/queries/query-keys";
 import {
   resetPluginSlotStoreForTest,
   setPluginSlotRegistrations,
@@ -129,6 +130,39 @@ describe("PluginSettingsForm", () => {
     expect((screen.getByLabelText("Greeting") as HTMLInputElement).value).toBe(
       "hi there",
     );
+  });
+
+  it("refreshes machine providers after a save, so availability catches up", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (_url: string, init?: RequestInit) => {
+        if (init?.method === "PUT") {
+          const body = JSON.parse(String(init.body)) as {
+            values: Record<string, unknown>;
+          };
+          return jsonOk({
+            ...SETTINGS_VIEW,
+            values: { ...SETTINGS_VIEW.values, ...body.values },
+          });
+        }
+        return jsonOk(SETTINGS_VIEW);
+      }),
+    );
+
+    const { queryClient, wrapper } = createQueryClientTestHarness();
+    queryClient.setQueryData(systemMachineProvidersQueryKey(), []);
+    render(<PluginSettingsForm pluginId="demo" />, { wrapper });
+
+    const greeting = await screen.findByLabelText("Greeting");
+    fireEvent.change(greeting, { target: { value: "hi there" } });
+    fireEvent.blur(greeting);
+
+    await vi.waitFor(() => {
+      expect(
+        queryClient.getQueryState(systemMachineProvidersQueryKey())
+          ?.isInvalidated,
+      ).toBe(true);
+    });
   });
 
   it("autosaves a number input on blur and unsets it when cleared", async () => {

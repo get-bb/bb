@@ -31,6 +31,7 @@ describe("environment command dispatch", () => {
     const result = await dispatchCommand(
       {
         type: "environment.attach",
+        contributedEnv: [],
         environmentId: "env-unmanaged",
         initiator: null,
         path: sourcePath,
@@ -60,13 +61,21 @@ describe("environment command dispatch", () => {
     const markerPath = `${sourcePath}/setup-marker`;
     await fs.writeFile(
       `${sourcePath}/.bb-env-setup.sh`,
-      `printf '%s' ready > '${markerPath}'\n`,
+      `printf '%s' \"$SETUP_VALUE\" > '${markerPath}'\n`,
     );
     const emittedEvents: EventSinkInput[] = [];
 
     await dispatchCommand(
       {
         type: "environment.attach",
+        contributedEnv: [
+          {
+            name: "SETUP_VALUE",
+            value: "ready",
+            source: { plugin: "fixture" },
+            reason: "test",
+          },
+        ],
         environmentId: "env-provider-owned",
         initiator: {
           threadId: "thr-provider-owned",
@@ -109,6 +118,7 @@ describe("environment command dispatch", () => {
       dispatchCommand(
         {
           type: "environment.attach",
+          contributedEnv: [],
           environmentId: "env-setup-failure",
           initiator: null,
           path: sourcePath,
@@ -163,6 +173,7 @@ describe("environment command dispatch", () => {
     const provision = dispatchCommand(
       {
         type: "environment.attach",
+        contributedEnv: [],
         environmentId: "env-cancel",
         initiator: null,
         path: "/tmp/cancelled",
@@ -216,6 +227,7 @@ describe("environment command dispatch", () => {
     const provision = dispatchCommand(
       {
         type: "environment.attach",
+        contributedEnv: [],
         environmentId: "env-cancel-no-settle",
         initiator: null,
         path: "/tmp/cancelled-no-settle",
@@ -251,6 +263,7 @@ describe("environment command dispatch", () => {
     await dispatchCommand(
       {
         type: "environment.attach",
+        contributedEnv: [],
         environmentId: "env-stream",
         initiator: {
           threadId: "thr-initiator",
@@ -331,6 +344,7 @@ describe("environment command dispatch", () => {
     await dispatchCommand(
       {
         type: "environment.attach",
+        contributedEnv: [],
         environmentId: "env-batched-progress",
         initiator: {
           threadId: "thr-batched-progress",
@@ -389,6 +403,7 @@ describe("environment command dispatch", () => {
       dispatchCommand(
         {
           type: "environment.attach",
+          contributedEnv: [],
           environmentId: "env-failure",
           initiator: {
             threadId: "thr-failure",
@@ -428,6 +443,7 @@ describe("environment command dispatch", () => {
     await dispatchCommand(
       {
         type: "environment.attach",
+        contributedEnv: [],
         environmentId: "env-idempotent",
         initiator: null,
         path: sourcePath,
@@ -439,6 +455,7 @@ describe("environment command dispatch", () => {
     const result = await dispatchCommand(
       {
         type: "environment.attach",
+        contributedEnv: [],
         environmentId: "env-idempotent",
         initiator: {
           threadId: "thr-second",
@@ -470,4 +487,53 @@ describe("environment command dispatch", () => {
       }),
     ]);
   });
+});
+
+it("cancels setup with contributions even when another attach is waiting", async () => {
+  const sourcePath = await makeTempDir("bb-setup-env-cancel-");
+  const harness = createHarness({ workspacePath: sourcePath });
+  await fs.writeFile(
+    `${sourcePath}/.bb-env-setup.sh`,
+    'printf "%s" "$SETUP_VALUE" > started\nsleep 120\nprintf unsafe > after-cancel\n',
+  );
+  const command = {
+    type: "environment.attach" as const,
+    contributedEnv: [
+      {
+        name: "SETUP_VALUE",
+        value: "configured",
+        source: { plugin: "fixture" },
+        reason: "test",
+      },
+    ],
+    environmentId: "env-setup-cancel",
+    initiator: null,
+    path: sourcePath,
+    setupScriptTimeoutMs: 5000,
+  };
+  const options = harness.dispatchOptions();
+  const first = dispatchCommand(command, options);
+  const second = dispatchCommand(command, options);
+  const settled = Promise.allSettled([first, second]);
+  try {
+    await expect
+      .poll(async () => fs.readFile(`${sourcePath}/started`, "utf8"))
+      .toBe("configured");
+    await dispatchCommand(
+      {
+        type: "environment.attach.cancel",
+        environmentId: command.environmentId,
+      },
+      options,
+    );
+    expect(await settled).toEqual([
+      expect.objectContaining({ status: "rejected" }),
+      expect.objectContaining({ status: "rejected" }),
+    ]);
+    await expect(fs.stat(`${sourcePath}/after-cancel`)).rejects.toThrow();
+    expect(harness.provisions).toHaveLength(0);
+  } finally {
+    await harness.manager.shutdownAll();
+    await settled;
+  }
 });

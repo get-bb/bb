@@ -1,3 +1,11 @@
+import {
+  environmentCompositionSchema,
+  validateServerAccessProviderDeclaration,
+  type NormalizedPluginEnvironmentComposition,
+} from "@get-bb/plugin-sdk/internal/host-policy";
+import { createMachineBootstrapApi } from "../machines/bootstrap.js";
+import type { MachineEnrollments } from "../machines/enrollments.js";
+import { listServerAccessProviders } from "./plugin-server-access-registry.js";
 import { createHash } from "node:crypto";
 import { mkdirSync } from "node:fs";
 import { join } from "node:path";
@@ -6,6 +14,7 @@ import { CronExpressionParser } from "cron-parser";
 import {
   deletePluginKvValue,
   getPluginKvValue,
+  getHost,
   listPluginKvKeys,
   setPluginKvValue,
   type DbConnection,
@@ -21,6 +30,7 @@ import type {
   PluginAgentConfigurationContext,
   PluginAgentToolContext,
   PluginAgentToolPresentation,
+  PluginBbSdk,
   PluginAgentToolResult,
   PluginAgents,
   PluginBackground,
@@ -42,6 +52,7 @@ import type {
   PluginMentionItem,
   PluginMentionSearchContext,
   PluginMentionTrigger,
+  PluginMachines,
   PluginAiServiceDeclaration,
   PluginAiServices,
   PluginProviderDeclaration,
@@ -92,6 +103,7 @@ import {
   pluginHookAlreadyRegisteredMessage,
   storePluginHook,
   validatePluginEnvironmentProviderDeclaration,
+  validatePluginMachineProviderDeclaration,
   providerAlreadyRegisteredMessage,
   providerIconRefusalMessage,
   undeclaredIconProblem,
@@ -103,10 +115,18 @@ import {
 import type {
   AiServiceHostBinding,
   NormalizedPluginEnvironmentProvider,
+  NormalizedPluginMachineProvider,
   NormalizedPluginProviderDeclaration,
 } from "@get-bb/plugin-sdk/internal/host-policy";
-import type { BbSdk, ThreadForkArgs, ThreadSpawnArgs } from "@bb/sdk";
+import type {
+  BbSdk,
+  ThreadForkArgs,
+  ThreadPluginMetadataArgs,
+  ThreadPluginMetadataUpdateArgs,
+  ThreadSpawnArgs,
+} from "@bb/sdk";
 import { requestEnvironmentProviderRecheck } from "./plugin-environment-provider-registry.js";
+import { requestServerAccessRecheck } from "./plugin-server-access-registry.js";
 import type { ServerLogger } from "../../types.js";
 import type { PluginInteractionResult } from "../interactions/pending-interactions.js";
 import { appendPluginLogLine } from "./plugin-log.js";
@@ -249,7 +269,13 @@ export interface PluginApiHandle {
   threadEventHandlers: PluginThreadEventHandlers;
   /** Hook handlers recorded by `bb.experimental_hooks.on`. */
   hooks: PluginHookRecords;
+  environmentCompositions: Map<string, NormalizedPluginEnvironmentComposition>;
   environmentProviders: Map<string, NormalizedPluginEnvironmentProvider>;
+  machineProviders: Map<string, NormalizedPluginMachineProvider>;
+  serverAccessProviders: Map<
+    string,
+    import("@get-bb/plugin-sdk").ServerAccessProviderDeclaration
+  >;
   /** HTTP routes recorded by `bb.http.route`; dropped with the handle. */
   httpRoutes: PluginHttpRouteRecord[];
   websocketRoutes: PluginWebSocketRouteRecord[];
@@ -309,30 +335,48 @@ export type PluginProviderEnvHealthResolver = (
   | null
   | Promise<ExperimentalPluginProviderEnvHealth | null>;
 
-function wrapSdkForPlugin(sdk: BbSdk, pluginId: string): BbSdk {
+function withPluginThreadAttribution<
+  TArgs extends ThreadForkArgs | ThreadSpawnArgs,
+>(args: TArgs, pluginId: string): TArgs {
+  const attribution: Pick<ThreadSpawnArgs, "origin" | "originPluginId"> =
+    args.pluginMetadata !== undefined
+      ? { origin: "plugin", originPluginId: pluginId }
+      : args.origin === undefined || args.origin === "plugin"
+        ? { origin: "plugin", originPluginId: args.originPluginId ?? pluginId }
+        : { origin: args.origin };
+  return { ...args, ...attribution };
+}
+
+function wrapSdkForPlugin(sdk: BbSdk, pluginId: string): PluginBbSdk {
   return {
     ...sdk,
     threads: {
       ...sdk.threads,
-      fork(args: ThreadForkArgs) {
-        const origin = args.origin ?? "plugin";
-        return sdk.threads.fork({
+      async getPluginMetadata(
+        args: Omit<ThreadPluginMetadataArgs, "pluginId"> & {
+          pluginId?: string;
+        },
+      ) {
+        return sdk.threads.getPluginMetadata({
           ...args,
-          origin,
-          ...(origin === "plugin"
-            ? { originPluginId: args.originPluginId ?? pluginId }
-            : {}),
+          pluginId: args.pluginId ?? pluginId,
         });
       },
-      spawn(args: ThreadSpawnArgs) {
-        const origin = args.origin ?? "plugin";
-        return sdk.threads.spawn({
+      async updatePluginMetadata(
+        args: Omit<ThreadPluginMetadataUpdateArgs, "pluginId"> & {
+          pluginId?: string;
+        },
+      ) {
+        return sdk.threads.updatePluginMetadata({
           ...args,
-          origin,
-          ...(origin === "plugin"
-            ? { originPluginId: args.originPluginId ?? pluginId }
-            : {}),
+          pluginId: args.pluginId ?? pluginId,
         });
+      },
+      fork(args: ThreadForkArgs) {
+        return sdk.threads.fork(withPluginThreadAttribution(args, pluginId));
+      },
+      spawn(args: ThreadSpawnArgs) {
+        return sdk.threads.spawn(withPluginThreadAttribution(args, pluginId));
       },
     },
   };
@@ -423,6 +467,7 @@ export function createPluginApi(options: {
   db: DbConnection;
   dataDir: string;
   getSdk: () => BbSdk | undefined;
+  getMachineEnrollments: () => MachineEnrollments;
   getAppUrl: () => string | null;
   getLoopbackBaseUrl: () => string | undefined;
   publishSignal: (channel: string, payload: unknown) => void;
@@ -430,6 +475,7 @@ export function createPluginApi(options: {
   reportNeedsConfiguration: (message: string) => void;
   isAgentToolNameTaken: (name: string) => string | undefined;
   isEnvironmentProviderIdTaken: (id: string) => string | undefined;
+  isMachineProviderIdTaken: (id: string) => string | undefined;
   reportAgentToolProblem: (message: string) => void;
   /**
    * Schedules a re-attempt of every plugin-queued row
@@ -518,7 +564,7 @@ export function createPluginApi(options: {
   } = options;
   let invalidated = false;
   let activated = false;
-  let wrappedSdk: BbSdk | undefined;
+  let wrappedSdk: PluginBbSdk | undefined;
   let pendingNeedsConfiguration: string | null = null;
   const pendingAgentToolProblems: string[] = [];
   const pendingSharedPorts = new Map<string, readonly number[]>();
@@ -529,6 +575,8 @@ export function createPluginApi(options: {
   };
   const databaseHandles: Database.Database[] = [];
   const threadEventHandlers: PluginThreadEventHandlers = {
+    "experimental_thread.events": [],
+    "experimental_terminal.input": [],
     "thread.created": [],
     "thread.active": [],
     "thread.idle": [],
@@ -545,9 +593,18 @@ export function createPluginApi(options: {
   const hooks: PluginHookRecords = {
     "message.dispatch": null,
   };
+  const environmentCompositions = new Map<
+    string,
+    NormalizedPluginEnvironmentComposition
+  >();
   const environmentProviders = new Map<
     string,
     NormalizedPluginEnvironmentProvider
+  >();
+  const machineProviders = new Map<string, NormalizedPluginMachineProvider>();
+  const serverAccessProviders = new Map<
+    string,
+    import("@get-bb/plugin-sdk").ServerAccessProviderDeclaration
   >();
   const httpRoutes: PluginHttpRouteRecord[] = [];
   const websocketRoutes: PluginWebSocketRouteRecord[] = [];
@@ -1515,8 +1572,40 @@ export function createPluginApi(options: {
   };
 
   const experimental_environments: PluginEnvironments = {
-    register(declaration) {
+    register(
+      declaration:
+        | import("@get-bb/plugin-sdk").PluginEnvironmentProviderDeclaration
+        | NormalizedPluginEnvironmentComposition,
+    ) {
       assertLive();
+      if ("machineProviderId" in declaration) {
+        const composition = environmentCompositionSchema.parse(declaration);
+        const problem =
+          composition.icon === null
+            ? null
+            : undeclaredIconProblem(
+                pluginId,
+                declaredIconNames,
+                composition.icon,
+              );
+        if (problem !== null)
+          throw new Error(providerIconRefusalMessage(composition.id, problem));
+        const owner = options.isEnvironmentProviderIdTaken(composition.id);
+        if (owner !== undefined)
+          throw new Error(
+            `environment provider "${composition.id}" is already registered by plugin "${owner}"`,
+          );
+        if (environmentProviders.has(composition.id))
+          throw new Error(
+            "Environment ID is already registered as a concrete provider",
+          );
+        environmentCompositions.set(composition.id, composition);
+        return;
+      }
+      if (environmentCompositions.has(declaration.id))
+        throw new Error(
+          "Environment ID is already registered as a composition",
+        );
       const provider =
         validatePluginEnvironmentProviderDeclaration(declaration);
       const problem =
@@ -1536,6 +1625,72 @@ export function createPluginApi(options: {
     async recheck() {
       assertLive();
       requestEnvironmentProviderRecheck(options.pluginId);
+    },
+  };
+
+  const experimental_serverAccess: import("@get-bb/plugin-sdk").PluginServerAccess =
+    {
+      register(declaration) {
+        assertLive();
+        validateServerAccessProviderDeclaration(declaration);
+        if (
+          serverAccessProviders.has(declaration.id) ||
+          listServerAccessProviders().some(
+            (entry) =>
+              entry.provider.id === declaration.id &&
+              entry.pluginId !== pluginId,
+          )
+        ) {
+          throw new Error(
+            `Server access provider "${declaration.id}" is already registered`,
+          );
+        }
+        serverAccessProviders.set(declaration.id, declaration);
+      },
+      recheck() {
+        assertLive();
+        requestServerAccessRecheck(options.pluginId);
+      },
+    };
+
+  const enrollmentApi: MachineEnrollments = {
+    clearPending(key) {
+      assertLive();
+      options.getMachineEnrollments().clearPending(key);
+    },
+    prepare(request) {
+      assertLive();
+      return options.getMachineEnrollments().prepare(request);
+    },
+    waitForConnection(request) {
+      assertLive();
+      return options.getMachineEnrollments().waitForConnection(request);
+    },
+  };
+  const experimental_machines: PluginMachines = {
+    ...createMachineBootstrapApi(enrollmentApi),
+    async getResource(hostId) {
+      assertLive();
+      return getHost(db, hostId)?.resource ?? null;
+    },
+    register(declaration) {
+      assertLive();
+      const provider = validatePluginMachineProviderDeclaration(declaration);
+      const problem = undeclaredIconProblem(
+        pluginId,
+        declaredIconNames,
+        provider.icon,
+      );
+      if (problem !== null) {
+        throw new Error(providerIconRefusalMessage(provider.id, problem));
+      }
+      const owner = options.isMachineProviderIdTaken(provider.id);
+      if (owner !== undefined) {
+        throw new Error(
+          `machine provider "${provider.id}" is already registered by plugin "${owner}"`,
+        );
+      }
+      machineProviders.set(provider.id, provider);
     },
   };
 
@@ -1569,11 +1724,13 @@ export function createPluginApi(options: {
     events,
     experimental_hooks,
     experimental_environments,
+    experimental_machines,
+    experimental_serverAccess,
     status,
     server,
     hosts,
     experimental_aiServices,
-    get sdk(): BbSdk {
+    get sdk(): PluginBbSdk {
       assertLive();
       const sdk = getSdk();
       if (!sdk) {
@@ -1598,7 +1755,10 @@ export function createPluginApi(options: {
     databaseHandles,
     threadEventHandlers,
     hooks,
+    environmentCompositions,
     environmentProviders,
+    machineProviders,
+    serverAccessProviders,
     httpRoutes,
     websocketRoutes,
     rpcHandlers,

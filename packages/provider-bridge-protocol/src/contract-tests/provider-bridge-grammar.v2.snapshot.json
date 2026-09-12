@@ -17,6 +17,7 @@
     },
     "contextWindow": {
       "kind": "required",
+      "snapshot": "optional",
       "used": "required",
       "size": "optional",
       "estimated": "required",

@@ -4,11 +4,15 @@ import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type {
   ExperimentalPermissionModePickerProps,
+  ExperimentalProviderIconProps,
   ExperimentalProviderModelPickerProps,
 } from "@get-bb/plugin-sdk/app";
 import type { AgentExecutionUpdate, AutomationResponse } from "./rpc-types.js";
 
 vi.mock("@get-bb/plugin-sdk/app", () => ({
+  experimental_ProviderIcon: ({ provider }: ExperimentalProviderIconProps) => (
+    <span data-provider-icon={provider.id} />
+  ),
   experimental_ProviderModelPicker: ({
     onChange,
     routing,

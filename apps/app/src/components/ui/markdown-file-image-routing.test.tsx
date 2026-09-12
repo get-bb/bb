@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { FilePreview } from "@/components/secondary-panel/FilePreview";
 import {
@@ -59,6 +59,43 @@ function renderMarkdownFilePreview({
 }
 
 describe("Markdown file preview image routing", () => {
+  it("cycles images rendered in a Markdown table", () => {
+    render(
+      <FilePreview
+        headerMode="none"
+        path="gallery.md"
+        state={{
+          kind: "ready",
+          file: {
+            contents:
+              "| First | Second |\n| --- | --- |\n| ![one](one.png) | ![two](two.png) |",
+            name: "gallery.md",
+          },
+          lineRange: null,
+          textPreviewKind: "markdown",
+        }}
+      />,
+    );
+
+    const firstImage = screen.getByRole("img", { name: "one" });
+    Object.defineProperty(firstImage, "currentSrc", {
+      configurable: true,
+      value: "https://app.example/one.png",
+    });
+    fireEvent.click(firstImage);
+    fireEvent.click(screen.getByRole("button", { name: "Next image" }));
+
+    expect(
+      screen.getByRole("img", { name: "Expanded image" }).getAttribute("src"),
+    ).toMatch(/two\.png$/u);
+
+    fireEvent.click(screen.getByRole("button", { name: "Previous image" }));
+
+    expect(
+      screen.getByRole("img", { name: "Expanded image" }).getAttribute("src"),
+    ).toMatch(/one\.png$/u);
+  });
+
   it("preserves explicit image routing and file-link handlers", () => {
     const linkRouting: MarkdownLinkRouting = {
       onOpenLink: vi.fn(() => false),

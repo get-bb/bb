@@ -87,6 +87,8 @@ function setup(
     provider: validatePluginEnvironmentProviderDeclaration({
       id: "test-provider",
       displayName: "Test",
+      description: "Prepare a workspace for this thread.",
+      icon: "Folder",
       create: async () => ({
         status: "created",
         path: `/tmp/${thread.id}`,
@@ -410,6 +412,23 @@ describe("core environment orchestration", () => {
       expect(remove).toHaveBeenCalledOnce();
       expect(hooks).not.toHaveBeenCalled();
       expect(fixture.row().claimPath).toBeNull();
+    }));
+
+  it("finalizes a workspace path already claimed by the same launch", async () =>
+    withTestHarness(async (harness) => {
+      const fixture = setup(harness, {
+        create: async (context) => {
+          expect(await context.experimental_claimPath("/tmp/project")).toBe(
+            true,
+          );
+          context.report.log("Checkout prepared");
+          return { status: "created", path: "/tmp/project", ownsPath: false };
+        },
+      });
+      fixture.ask();
+      await fixture.settled();
+      expect(fixture.row().path).toBe("/tmp/project");
+      expect(["provisioning", "ready"]).toContain(fixture.row().status);
     }));
 
   it.each([true, false])(
@@ -749,7 +768,10 @@ describe("core environment orchestration", () => {
       expect(
         await provider.validate({
           ...fixture.context,
-          projectCheckout: { path: "/tmp/project" },
+          projectCheckout: {
+            experimental_ownsPath: false,
+            path: "/tmp/project",
+          },
           inputs: { branch: { kind: "existing", name: "release" } },
         }),
       ).toEqual({
@@ -820,7 +842,7 @@ describe("core environment orchestration", () => {
       });
       const context = {
         ...fixture.context,
-        projectCheckout: { path: "/tmp/project" },
+        projectCheckout: { experimental_ownsPath: false, path: "/tmp/project" },
         inputs: { branch: { kind: "existing", name: "release" } },
       };
       try {

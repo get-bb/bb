@@ -28,6 +28,7 @@ export interface SidebarSortableDragBindings {
 interface UseSidebarSortableArgs {
   id: string;
   disabled: boolean;
+  displace?: boolean;
 }
 
 interface UseSidebarSortableResult {
@@ -40,6 +41,7 @@ interface UseSidebarSortableResult {
 export function useSidebarSortable({
   id,
   disabled,
+  displace = true,
 }: UseSidebarSortableArgs): UseSidebarSortableResult {
   const {
     attributes,
@@ -53,13 +55,13 @@ export function useSidebarSortable({
   } = useSortable({ id, disabled, transition: SIDEBAR_SORTABLE_TRANSITION });
   const style = useMemo<CSSProperties>(
     () => ({
-      transform: CSS.Translate.toString(transform),
-      transition,
+      transform: displace ? CSS.Translate.toString(transform) : undefined,
+      transition: displace ? transition : undefined,
       position: isDragging ? "relative" : undefined,
       zIndex: isDragging ? 100 : undefined,
       opacity: isDragging ? 0.8 : undefined,
     }),
-    [isDragging, transform, transition],
+    [displace, isDragging, transform, transition],
   );
   const dragBindings = useMemo<SidebarSortableDragBindings>(
     () => ({ attributes, disabled, listeners, setActivatorNodeRef }),

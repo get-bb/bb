@@ -1,3 +1,5 @@
+import { MachineEnvironmentSettings } from "@/components/settings/MachineEnvironmentSettings";
+import { MachineAccessSettings } from "@/components/settings/MachineAccessSettings";
 import { useMemo, useRef, useState, type ReactNode } from "react";
 import {
   Navigate,
@@ -49,6 +51,7 @@ import { UsageLimitsSettingsSection } from "@/components/settings/UsageLimitsSet
 import { ProvidersSettingsSection } from "@/components/settings/ProvidersSettingsSection";
 import { CodeRendererSettings } from "@/components/settings/CodeRendererSettings";
 import { SidebarThreadListSetting } from "@/components/settings/SidebarThreadListSetting";
+import { SidebarFooterSettings } from "@/components/settings/SidebarFooterSettings";
 import { SidebarNavigationSetting } from "@/components/settings/SidebarNavigationSetting";
 import { SplitDimmingSetting } from "@/components/settings/SplitDimmingSetting";
 import { useSettingsNavState } from "@/components/settings/settings-nav";
@@ -829,6 +832,7 @@ export function AppearanceSettingsSection({
           onFaviconColorChange={onFaviconColorChange}
         />
         <SplitDimmingSetting />
+        <SidebarFooterSettings />
       </div>
     </SettingsSection>
   );
@@ -1203,7 +1207,26 @@ export function SettingsView() {
   } else if (activeSection === "projects") {
     content = <ProjectsSettingsSection />;
   } else if (activeSection === "machines") {
-    content = <MachinesSettingsSection />;
+    content = (
+      <>
+        <MachinesSettingsSection />
+        <MachineAccessSettings />
+        <details
+          id="advanced-machine-settings"
+          open={location.hash === "#advanced-machine-settings" || undefined}
+          className="group space-y-6"
+        >
+          <summary className="flex w-fit cursor-pointer list-none items-center gap-1.5 text-sm font-medium text-subtle-foreground [&::-webkit-details-marker]:hidden">
+            Advanced settings
+            <Icon
+              name="ChevronRight"
+              className="size-3.5 transition-transform group-open:rotate-90"
+            />
+          </summary>
+          <MachineEnvironmentSettings />
+        </details>
+      </>
+    );
   } else if (activeSection === "updates") {
     content = (
       <UpdatesSettingsSection

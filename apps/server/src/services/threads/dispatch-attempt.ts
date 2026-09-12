@@ -1,3 +1,8 @@
+import { requestQueuedMachineReadiness } from "./queued-message-dispatch.js";
+import {
+  cancelPreparingMachinePause,
+  isMachineWaitingForExecution,
+} from "../machines/lifecycle.js";
 import {
   deleteClaimedQueuedThreadMessageBatchInTransaction,
   getEnvironment,
@@ -59,7 +64,7 @@ import {
   threadForkDescriptorSchema,
   threadProvisionEnvironmentIntentSchema,
 } from "./thread-startup-store.js";
-import { getThreadProvisionContext } from "./thread-startup-store.js";
+import { readThreadProvisionContext } from "./thread-startup-store.js";
 import {
   buildThreadStatusChangeMetadata,
   toThreadResponseFromThread,
@@ -74,7 +79,7 @@ import {
   type SendThreadMessageTransactionPreflight,
 } from "./thread-send.js";
 import type { TurnRequestRetryMarker } from "./thread-events.js";
-import { restoreFailedThreadStartupRequest } from "./thread-provisioning.js";
+import { restoreInterruptedThreadStartupRequest } from "./thread-provisioning.js";
 
 export const pendingThreadStartContextSchema = z.object({
   environmentIntent: threadProvisionEnvironmentIntentSchema,
@@ -109,7 +114,7 @@ export function hostIdForEnvironmentIntent(
   if (intent.type === "reuse") {
     return getEnvironment(deps.db, intent.environmentId)?.hostId ?? null;
   }
-  return intent.machine.hostId;
+  return intent.machine.type === "existing" ? intent.machine.hostId : null;
 }
 
 function toPluginEnvironmentIntent(
@@ -133,7 +138,7 @@ function intendedThreadIntent(
   threadId: string,
 ): PendingThreadStartContext["environmentIntent"] | null {
   return (
-    getThreadProvisionContext(deps.db, threadId)?.request.environmentIntent ??
+    readThreadProvisionContext(deps.db, threadId)?.request.environmentIntent ??
     readPendingThreadStartContext(deps, threadId)?.environmentIntent ??
     null
   );
@@ -286,7 +291,14 @@ async function runDispatchAttempt(
   reattempted: boolean,
 ): Promise<DispatchAttemptOutcome> {
   const { payload, thread } = args;
-  ensureThreadIsWritable(thread);
+  const initialHost = dispatchEnvironmentAndHost(
+    deps,
+    thread.environmentId,
+  ).host;
+  ensureThreadIsWritable(
+    thread,
+    initialHost !== null && isMachineWaitingForExecution(deps, initialHost.id),
+  );
   if (args.trigger === "user" && args.source.kind === "inline") {
     // Reject what can never deliver while the sender is still listening; a
     // drain has nobody to tell, and its rows were validated when they were queued.
@@ -303,20 +315,21 @@ async function runDispatchAttempt(
     targetThread: thread,
   });
 
-  const failedStartupRequest =
-    thread.status === "error" && thread.environmentId === null
-      ? await restoreFailedThreadStartupRequest(deps, thread.id)
+  const interruptedStartupRequest =
+    (thread.status === "error" || thread.status === "idle") &&
+    thread.environmentId === null
+      ? await restoreInterruptedThreadStartupRequest(deps, thread.id)
       : null;
   const firstDispatch =
-    thread.status === "pending" || failedStartupRequest !== null;
+    thread.status === "pending" || interruptedStartupRequest !== null;
   const retryStartContext: PendingThreadStartContext | null =
-    failedStartupRequest === null
+    interruptedStartupRequest === null
       ? null
       : {
-          environmentIntent: failedStartupRequest.environmentIntent,
-          fork: failedStartupRequest.fork,
+          environmentIntent: interruptedStartupRequest.environmentIntent,
+          fork: interruptedStartupRequest.fork,
           startedOnBehalfOf: args.startedOnBehalfOf,
-          titleProvided: failedStartupRequest.titleProvided,
+          titleProvided: interruptedStartupRequest.titleProvided,
         };
   const claimed = args.source.kind === "drain" ? args.source.claimed : null;
   const sendNow = args.source.kind === "drain" && args.source.sendNow;
@@ -365,6 +378,21 @@ async function runDispatchAttempt(
     return waitOn({ kind: "time" }, sendAt);
   }
 
+  const { environment: dispatchEnvironment, host: dispatchHost } =
+    dispatchEnvironmentAndHost(deps, thread.environmentId);
+  if (
+    dispatchHost !== null &&
+    isMachineWaitingForExecution(deps, dispatchHost.id)
+  ) {
+    cancelPreparingMachinePause(deps, dispatchHost.id);
+    const outcome = waitOn(
+      { kind: "host-offline", hostName: dispatchHost.name },
+      null,
+    );
+    requestQueuedMachineReadiness(deps, dispatchHost.id);
+    return outcome;
+  }
+
   if (thread.status === "active" && attempt === "start-turn") {
     if (payload.mode === "start") {
       // `start` asks for a FRESH turn specifically, so a running one is a
@@ -378,8 +406,6 @@ async function runDispatchAttempt(
     return waitOn({ kind: "thread-busy" }, null);
   }
 
-  const { environment: dispatchEnvironment, host: dispatchHost } =
-    dispatchEnvironmentAndHost(deps, thread.environmentId);
   if (
     dispatchEnvironment !== null &&
     goneThreadEnvironmentDetails(dispatchEnvironment) === null &&

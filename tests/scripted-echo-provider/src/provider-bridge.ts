@@ -97,6 +97,8 @@ export const scriptedEchoOptionsSchema = z
     recoveryThreadIdHint: z.string().min(1).optional(),
     approvalEnforcedBy: z.enum(["runtime", "provider"]).optional(),
     identifyProcess: z.boolean().optional(),
+    textDeltaChunkSize: z.number().int().positive().optional(),
+    stderrChunksOnTurn: z.array(z.string()).optional(),
     failStopForThreadIds: z.array(z.string().min(1)).optional(),
     emitIdentityOnSigterm: z.boolean().optional(),
   })
@@ -406,6 +408,26 @@ function clearActiveTurn(session: Session): void {
   session.activeTurn = null;
 }
 
+function splitTextDeltas(
+  text: string,
+  size: number | undefined,
+  key: { providerItemId: string },
+  providerTurnId: string,
+): ThreadDelta[] {
+  if (size === undefined) return [];
+  const deltas: ThreadDelta[] = [];
+  for (let offset = 0; offset < text.length; offset += size) {
+    deltas.push({
+      kind: "item.textDelta",
+      key,
+      channel: "agentMessage",
+      text: text.slice(offset, offset + size),
+      providerTurnId,
+    });
+  }
+  return deltas;
+}
+
 function completeTurn(
   session: Session,
   status: "completed" | "interrupted" | "failed",
@@ -416,6 +438,9 @@ function completeTurn(
     return;
   }
   clearActiveTurn(session);
+  session.options.stderrChunksOnTurn?.forEach((chunk, index) => {
+    setTimeout(() => process.stderr.write(chunk), index * 10);
+  });
   const responseText =
     session.options.identifyProcess === true
       ? `pid:${process.pid}:${text}`
@@ -431,6 +456,12 @@ function completeTurn(
         item: { type: "agentMessage", text: "" },
         providerTurnId: turn.providerTurnId,
       },
+      ...splitTextDeltas(
+        responseText,
+        session.options.textDeltaChunkSize,
+        key,
+        turn.providerTurnId,
+      ),
       {
         kind: "item.close",
         key,

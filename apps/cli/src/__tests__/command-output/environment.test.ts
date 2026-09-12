@@ -108,7 +108,8 @@ describe("bb environment command output", () => {
           {
             id: "git-worktree",
             displayName: "Worktree",
-            icon: null,
+            description: "Prepare a workspace for this thread.",
+            icon: "Folder",
             pluginId: "environment-git-worktree",
             acceptsEmptyInputs: false,
             machineAvailability: {},
@@ -128,7 +129,8 @@ describe("bb environment command output", () => {
           {
             id: "modal-sandbox",
             displayName: "Modal sandbox",
-            icon: null,
+            description: "Prepare a workspace for this thread.",
+            icon: "Folder",
             pluginId: "environment-modal-sandbox",
             acceptsEmptyInputs: true,
             machineAvailability: {},
@@ -193,7 +195,8 @@ describe("bb environment command output", () => {
   it("bb environment providers prints each provider's availability on the chosen machine", async () => {
     const provider = {
       displayName: "Provider",
-      icon: null,
+      description: "Prepare a workspace for this thread.",
+      icon: "Folder",
       pluginId: "plugin",
       acceptsEmptyInputs: true,
       inputs: null,

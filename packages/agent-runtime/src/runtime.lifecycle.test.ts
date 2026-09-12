@@ -244,14 +244,12 @@ describe("createAgentRuntime lifecycle", () => {
           value: "/plugin/bin",
           source: { plugin: "env-test" },
           reason: "Use the plugin toolchain",
-          secret: false,
         },
         {
           name: "AUTH_PROXY_URL",
           value: { serverPath: "/plugins/env-test/auth" },
           source: { plugin: "env-test" },
           reason: "Use the authenticated server proxy",
-          secret: true,
         },
       ] as const;
       const runtime = createScriptedEchoRuntime({
@@ -312,12 +310,12 @@ describe("createAgentRuntime lifecycle", () => {
           {
             name: "AUTH_PROXY_URL",
             source: { plugin: "env-test" },
-            value: { masked: true },
+            value: "http://127.0.0.1:3334/plugins/env-test/auth",
             reason: "Use the authenticated server proxy",
           },
         ]),
       });
-      expect(JSON.stringify(events)).not.toContain("/plugins/env-test/auth");
+      expect(JSON.stringify(events)).toContain("/plugins/env-test/auth");
 
       await runtime.runTurn({
         clientRequestId: "creq_222222224c",
@@ -331,6 +329,82 @@ describe("createAgentRuntime lifecycle", () => {
       ).toHaveLength(1);
 
       await runtime.shutdown();
+    });
+
+    it("reinjects rotated machine credentials on the next turn and resume", async () => {
+      const record = createScriptedEchoRequestRecord();
+      const events: ThreadEvent[] = [];
+      const runtime = createScriptedEchoRuntime({
+        runtime: {
+          workspacePath: tmpDir,
+          env: record.env,
+          onEvent: (event) => events.push(event),
+        },
+      });
+      const credentials = (value: string) => [
+        {
+          name: "GH_TOKEN",
+          value,
+          source: { core: "machine-git" as const },
+          reason: "Server gh login",
+        },
+      ];
+      try {
+        await runtime.startThread({
+          environmentId: "env-1",
+          projectId: "p1",
+          threadId: "git-thread",
+          providerId: "fake",
+          contributedEnv: credentials("first-git-token"),
+          options: fullRuntimeOptions,
+        });
+        await runtime.runTurn({
+          clientRequestId: "creq_222222224c",
+          threadId: "git-thread",
+          input: [promptTextInput({ text: "rotated-git-token" })],
+          contributedEnv: credentials("rotated-git-token"),
+          options: fullRuntimeOptions,
+        });
+        expect(record.last("turn/start")?.params).toMatchObject({
+          options: { envVars: { GH_TOKEN: "rotated-git-token" } },
+        });
+        await waitForThreadAgentMessageText({
+          events,
+          providerId: "fake",
+          runtime,
+          text: "rotated-git-token",
+          threadId: "git-thread",
+        });
+        await runtime.resumeThread({
+          environmentId: "env-1",
+          threadId: "git-resumed",
+          providerId: "fake",
+          providerThreadId: "old-git-thread",
+          contributedEnv: credentials("resumed-git-token"),
+          options: fullRuntimeOptions,
+        });
+        expect(record.last("thread/resume")?.params).toMatchObject({
+          options: { envVars: { GH_TOKEN: "resumed-git-token" } },
+        });
+        expect(JSON.stringify(events)).toContain("first-git-token");
+        expect(JSON.stringify(events)).toContain("resumed-git-token");
+        expect(
+          events.filter((event) => event.type === "provider.env-resolved"),
+        ).toEqual(
+          expect.arrayContaining([
+            expect.objectContaining({
+              entries: expect.arrayContaining([
+                expect.objectContaining({
+                  name: "GH_TOKEN",
+                  value: "rotated-git-token",
+                }),
+              ]),
+            }),
+          ]),
+        );
+      } finally {
+        await runtime.shutdown();
+      }
     });
 
     it("drops unresolved server paths without preventing thread start", async () => {
@@ -356,7 +430,6 @@ describe("createAgentRuntime lifecycle", () => {
             value: { serverPath: "/plugins/env-test/auth" },
             source: { plugin: "env-test" },
             reason: "Use the authenticated server proxy",
-            secret: true,
           },
         ],
         options: fullRuntimeOptions,

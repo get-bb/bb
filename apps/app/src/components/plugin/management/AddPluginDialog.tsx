@@ -342,6 +342,15 @@ function AddPluginDialogContent({
           />
         ) : null}
 
+        {install.isError ? (
+          <p
+            role="alert"
+            className="max-h-40 overflow-y-auto whitespace-pre-wrap break-words text-xs text-warning-text"
+          >
+            {pluginAdminErrorMessage(install.error)}
+          </p>
+        ) : null}
+
         {install.isPending ? (
           <div
             className="h-0.5 overflow-hidden rounded-full bg-border"
