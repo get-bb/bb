@@ -48,9 +48,9 @@ describe("usePanelResizeSnap", () => {
   it("keeps transitions disabled until React commits the released size", () => {
     const committedDurations: string[] = [];
     function CommitHarness() {
-      const [fraction, setFraction] = useState(0.5);
+      const [fraction, setFraction] = useState<number | null>(null);
       useLayoutEffect(() => {
-        if (fraction !== 0.5) {
+        if (fraction !== null) {
           committedDurations.push(
             screen
               .getByTestId("grid")
