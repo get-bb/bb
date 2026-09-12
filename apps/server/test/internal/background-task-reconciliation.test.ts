@@ -1,5 +1,8 @@
 import { closeSession, getThread, listEvents } from "@bb/db";
-import { HOST_DAEMON_PROTOCOL_VERSION } from "@bb/host-daemon-contract";
+import {
+  HOST_DAEMON_PROTOCOL_VERSION,
+  hostDaemonServerWsMessageSchema,
+} from "@bb/host-daemon-contract";
 import { threadScope, turnScope } from "@bb/domain";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { settleDanglingBackgroundTasks } from "../../src/services/threads/background-task-reconciliation.js";
@@ -381,7 +384,16 @@ describe("background-task lifecycle reconciliation triggers", () => {
       });
 
       expect(response.status).toBe(201);
-      expect(previousSocket.messages).toEqual([]);
+      expect(
+        previousSocket.messages.map((message) =>
+          hostDaemonServerWsMessageSchema.parse(JSON.parse(message)),
+        ),
+      ).toEqual([
+        {
+          type: "machine-environment.replace",
+          environment: { revision: expect.any(Number), entries: [] },
+        },
+      ]);
       expect(previousSocket.closed).toEqual([
         { code: 1000, reason: "replaced" },
       ]);
@@ -414,8 +426,16 @@ describe("background-task lifecycle reconciliation triggers", () => {
       });
 
       expect(response.status).toBe(201);
-      expect(previousSocket.messages).toEqual([
-        JSON.stringify({ type: "session-close", reason: "replaced" }),
+      expect(
+        previousSocket.messages.map((message) =>
+          hostDaemonServerWsMessageSchema.parse(JSON.parse(message)),
+        ),
+      ).toEqual([
+        {
+          type: "machine-environment.replace",
+          environment: { revision: expect.any(Number), entries: [] },
+        },
+        { type: "session-close", reason: "replaced" },
       ]);
       expect(previousSocket.closed).toEqual([
         { code: 1000, reason: "replaced" },
