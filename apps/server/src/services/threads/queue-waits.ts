@@ -11,6 +11,7 @@ import {
 import type {
   PromptInput,
   QueuedMessagePayload,
+  QueuedMessagePluginSubmission,
   QueuedMessageSystemNotice,
   QueuedMessageWaitingOn,
   ResolvedThreadExecutionOptions,
@@ -42,6 +43,7 @@ export interface QueuedDispatchMessage {
   execution: ResolvedThreadExecutionOptions;
   senderThreadId: string | null;
   payload: QueuedMessagePayload;
+  pluginSubmission: QueuedMessagePluginSubmission | null;
   /** Non-null only when core is queueing one of its own system notices. */
   systemNotice: QueuedMessageSystemNotice | null;
 }
@@ -100,6 +102,7 @@ export function recordQueuedMessageWait(
           waitingOn: args.waitingOn,
           sendAt: args.sendAt,
           payload: args.message.payload,
+          pluginSubmission: args.message.pluginSubmission,
           systemNotice: args.message.systemNotice,
         }),
       { behavior: "immediate" },

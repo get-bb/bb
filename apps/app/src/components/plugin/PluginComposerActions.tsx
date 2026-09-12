@@ -2,10 +2,7 @@ import { useMemo, useState, type ReactNode } from "react";
 import type { ComposerPlusMenuItem, ComposerView } from "@get-bb/plugin-sdk";
 import { Button } from "@bb/shared-ui/button";
 import { COARSE_POINTER_PROMPT_ICON_ACTION_BUTTON_CLASS } from "@bb/shared-ui/coarse-pointer-sizing";
-import {
-  DropdownMenuItem,
-  DropdownMenuLabel,
-} from "@bb/shared-ui/dropdown-menu";
+import { DropdownMenuItem } from "@bb/shared-ui/dropdown-menu";
 import { Icon } from "@bb/shared-ui/icon";
 import { cn } from "@bb/shared-ui/lib/utils";
 import { Popover, PopoverContent, PopoverTrigger } from "@bb/shared-ui/popover";
@@ -19,7 +16,6 @@ import type {
   ResolvedComposerPlusMenuItem,
 } from "@/lib/plugin-slot-resolvers";
 import { useComposer, useComposerView } from "@/lib/plugin-sdk-hooks";
-import { usePluginDisplayName } from "@/lib/plugin-logos";
 import { useResolvedComposerActions } from "./composer-slot-hooks";
 import { PluginIcon } from "./PluginIcon";
 import { PluginSlotMount } from "./PluginSlotMount";
@@ -249,11 +245,9 @@ function preserveOpenPluginOrder(
 
 export function PluginComposerPlusMenuEntry({
   contribution,
-  showPluginLabel,
   onSelected,
 }: {
   contribution: PluginComposerPlusMenuContribution;
-  showPluginLabel: boolean;
   onSelected(selection: PluginComposerPlusMenuSelection): void;
 }) {
   const { key, pluginId, customizationId, item } = contribution;
@@ -268,7 +262,6 @@ export function PluginComposerPlusMenuEntry({
       <PluginComposerPlusMenuEntryContent
         pluginId={pluginId}
         item={item}
-        showPluginLabel={showPluginLabel}
         onSelected={onSelected}
       />
     </PluginSlotMount>
@@ -278,17 +271,14 @@ export function PluginComposerPlusMenuEntry({
 function PluginComposerPlusMenuEntryContent({
   pluginId,
   item,
-  showPluginLabel,
   onSelected,
 }: {
   pluginId: string;
   item: ComposerPlusMenuItem;
-  showPluginLabel: boolean;
   onSelected(selection: PluginComposerPlusMenuSelection): void;
 }) {
   const composer = useComposer();
   const view = useComposerView();
-  const pluginDisplayName = usePluginDisplayName(pluginId);
   const disabled =
     typeof item.disabled === "function" ? item.disabled(view) : item.disabled;
 
@@ -306,26 +296,19 @@ function PluginComposerPlusMenuEntryContent({
   };
 
   return (
-    <>
-      {showPluginLabel ? (
-        <DropdownMenuLabel className="text-muted-foreground">
-          {pluginDisplayName}
-        </DropdownMenuLabel>
-      ) : null}
-      <DropdownMenuItem
-        disabled={disabled}
-        aria-description={item.description}
-        onSelect={() => {
-          onSelected({
-            restoreComposerFocus: () => composer.focus(),
-            selectedElement: document.activeElement,
-          });
-          void run();
-        }}
-      >
-        <PluginIcon pluginId={pluginId} icon={item.icon ?? null} />
-        {item.label}
-      </DropdownMenuItem>
-    </>
+    <DropdownMenuItem
+      disabled={disabled}
+      aria-description={item.description}
+      onSelect={() => {
+        onSelected({
+          restoreComposerFocus: () => composer.focus(),
+          selectedElement: document.activeElement,
+        });
+        void run();
+      }}
+    >
+      <PluginIcon pluginId={pluginId} icon={item.icon ?? null} />
+      {item.label}
+    </DropdownMenuItem>
   );
 }

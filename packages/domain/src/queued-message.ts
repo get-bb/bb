@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { jsonValueSchema } from "./json-value.js";
 import { pluginIdSchema } from "./plugin-id.js";
 import { clientTurnRequestIdSchema } from "./protocol-ids.js";
 import {
@@ -164,6 +165,14 @@ export const queuedMessagePayloadKindSchema = z.enum(
 );
 export type QueuedMessagePayloadKind = z.infer<
   typeof queuedMessagePayloadKindSchema
+>;
+
+export const queuedMessagePluginSubmissionSchema = z.object({
+  pluginId: pluginIdSchema,
+  data: jsonValueSchema,
+});
+export type QueuedMessagePluginSubmission = z.infer<
+  typeof queuedMessagePluginSubmissionSchema
 >;
 
 export const queuedMessagePayloadSchema = z.discriminatedUnion("kind", [

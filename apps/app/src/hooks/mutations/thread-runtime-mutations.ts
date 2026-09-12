@@ -176,6 +176,7 @@ export function useSendThreadMessage() {
       mode,
       sendAt,
       senderThreadId,
+      pluginSubmission,
       executionInputSources,
     }: SendThreadMessageMutationRequest) => {
       return await sdk.threads.send({
@@ -186,6 +187,7 @@ export function useSendThreadMessage() {
         reasoningLevel,
         permissionMode,
         ...(sendAt === undefined ? {} : { sendAt }),
+        ...(pluginSubmission === undefined ? {} : { pluginSubmission }),
         executionInputSources,
         mode,
         ...(senderThreadId !== undefined ? { senderThreadId } : {}),

@@ -1,0 +1,43 @@
+{
+  "name": "bb-plugin-drafts",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Save a composer draft as a manually sent queued message.",
+  "engines": {
+    "bb": ">=0.0"
+  },
+  "bb": {
+    "name": "Drafts",
+    "description": "Save a composer draft as a manually sent queued message.",
+    "branding": {
+      "icon": "EditFile"
+    },
+    "server": "./server.ts",
+    "app": "./app.tsx"
+  },
+  "keywords": [
+    "bb-plugin"
+  ],
+  "scripts": {
+    "test": "vitest run --config vitest.config.ts",
+    "typecheck": "tsc --noEmit",
+    "prepare:bundled": "bb-plugin-build prepare-bundled"
+  },
+  "dependencies": {
+    "@bb/shared-ui": "workspace:*"
+  },
+  "devDependencies": {
+    "@bb/plugin-build": "workspace:*",
+    "@get-bb/plugin-sdk": "workspace:*",
+    "@testing-library/react": "^16.3.2",
+    "@types/node": "^22.0.0",
+    "@types/react": "^19.0.0",
+    "jsdom": "^29.0.1",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "sonner": "^1.7.4",
+    "typescript": "npm:@typescript/typescript6@^6.0.2",
+    "vitest": "^4.1.1"
+  }
+}

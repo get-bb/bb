@@ -20,6 +20,7 @@ import {
 } from "../../src/services/threads/queued-messages.js";
 import { acceptThreadSendRequest } from "../../src/services/threads/thread-send-request.js";
 import { attemptDispatch } from "../../src/services/threads/dispatch-attempt.js";
+import { runQueuedMessageDispatch } from "../../src/services/threads/queued-message-dispatch.js";
 import { createThreadFromRequest } from "../../src/services/threads/thread-create.js";
 import { applyLoggedThreadLifecycleEvent } from "../../src/services/threads/lifecycle-outcome.js";
 import { toThreadQueuedMessage } from "../../src/services/threads/thread-queued-messages.js";
@@ -196,6 +197,47 @@ async function expectApiError(run: () => Promise<unknown>): Promise<ApiError> {
 }
 
 describe("message.dispatch hook context", () => {
+  it("passes plugin submission data through a new thread's first dispatch", async () => {
+    await withTestHarness(async (harness) => {
+      const seen: unknown[] = [];
+      installHooks({
+        "message.dispatch": [
+          {
+            pluginId: "drafts",
+            handler: (context) => {
+              seen.push(context.experimental_submission);
+              return { action: "proceed" };
+            },
+          },
+        ],
+      });
+      const { host, project } = seedDispatchFixture(
+        harness,
+        "host-new-thread-submission",
+      );
+      const pluginSubmission = {
+        pluginId: "drafts",
+        data: { kind: "draft" },
+      };
+
+      await createThreadFromRequest(harness.deps, {
+        environment: {
+          type: "host",
+          hostId: host.id,
+          workspace: { type: "unmanaged", path: WORKSPACE_PATH },
+        },
+        input: textInput("new thread draft"),
+        origin: "app",
+        pluginSubmission,
+        projectId: project.id,
+        providerId: "codex",
+        startedOnBehalfOf: null,
+      });
+
+      expect(seen).toEqual([pluginSubmission]);
+    });
+  });
+
   it("hands the hook the start intent's host before an environment exists", async () => {
     await withTestHarness(async (harness) => {
       const { host, project } = seedDispatchFixture(harness, "host-intent");
@@ -266,6 +308,7 @@ describe("pending admission races", () => {
           payload: { input: textInput(text), mode: "start" },
           source: { kind: "inline" },
           queuePayload: { kind: "inline" },
+          pluginSubmission: null,
           origin: null,
           originPluginId: null,
           startedOnBehalfOf: null,
@@ -593,6 +636,43 @@ describe("dispatch hooks and the no-hook path", () => {
 });
 
 describe("message.dispatch hooks on the queue drain", () => {
+  it("preserves plugin submission data across a queued re-attempt", async () => {
+    await withTestHarness(async (harness) => {
+      const seen: unknown[] = [];
+      const registry = emptyRegistry();
+      registry["message.dispatch"].push({
+        pluginId: "drafts",
+        handler: (context) => {
+          seen.push(context.experimental_submission);
+          return { action: "wait", reason: "Draft" } as const;
+        },
+      });
+      installHooks(registry);
+      const { thread } = seedRunnableThread(harness, {
+        hostId: "host-plugin-submission",
+        status: "idle",
+      });
+      const pluginSubmission = {
+        pluginId: "drafts",
+        data: { kind: "draft" },
+      };
+
+      await acceptThreadSendRequest(harness.deps, {
+        payload: {
+          input: textInput("queued draft"),
+          mode: "auto",
+          pluginSubmission,
+        },
+        thread,
+      });
+      onlyQueuedRow(harness, thread.id);
+
+      await runQueuedMessageDispatch(harness.deps, { kind: "plugin-recheck" });
+
+      expect(seen).toEqual([pluginSubmission, pluginSubmission]);
+    });
+  });
+
   it("returns the claimed row to the queue instead of consuming it when the pass waits", async () => {
     await withTestHarness(async (harness) => {
       const registry = emptyRegistry();

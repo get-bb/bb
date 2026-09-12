@@ -217,6 +217,7 @@ export function makeMessageDispatchHookContext(
     },
     attempt: "start-turn",
     queuedMessage: null,
+    experimental_submission: null,
     origin: null,
     originPluginId: null,
     startedOnBehalfOf: null,

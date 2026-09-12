@@ -100,6 +100,7 @@ export interface MessageDispatchHookPassRequest {
   parentThreadId: string | null;
   /** The queued row being re-attempted; null for an inline first attempt. */
   queuedMessage: ThreadQueuedMessage | null;
+  pluginSubmission: MessageDispatchHookContext["experimental_submission"];
   /**
    * Commits this admission BEFORE the evaluation lock releases.
    *
@@ -330,6 +331,7 @@ function buildHookContext(
     startedOnBehalfOf: request.startedOnBehalfOf,
     parentThreadId: request.parentThreadId,
     queuedMessage: request.queuedMessage,
+    experimental_submission: request.pluginSubmission,
   };
 }
 

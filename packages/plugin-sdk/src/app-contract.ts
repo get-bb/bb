@@ -1932,7 +1932,7 @@ export interface PluginComposerApi {
   focus(): void;
   /**
    * Submit this composer's draft through the composer's OWN submit pipeline,
-   * queued until `sendAt` instead of dispatched now.
+   * optionally scheduling it or attaching plugin-owned dispatch data.
    *
    * This is a real submission, not a plugin-issued send: the host builds the
    * request exactly as pressing Enter would, so the draft's attachments and
@@ -1942,12 +1942,11 @@ export interface PluginComposerApi {
    * tuple itself, which is why sending from the backend instead would silently
    * run the message with different settings than the ones in front of the user.
    *
-   * In a thread composer the message is queued as a row instead of being
-   * sent or queued for the next idle moment. In the new-thread composer the
-   * thread is created `pending` and its first message becomes the queued row.
-   * Either way the resulting row is core's: the queued card above the
-   * composer, the countdown, Send now and Delete all work with no further
-   * plugin involvement.
+   * `sendAt` queues the submission until that time. `experimental_data` is
+   * opaque JSON delivered to dispatch hooks together with the calling plugin's
+   * id. If a hook queues the submission, bb preserves that envelope with the
+   * queued message for every later dispatch attempt. Core does not interpret
+   * the data.
    *
    * Resolves once the host has accepted the submission and cleared the draft.
    * Rejects when the composer refused to submit — a scope with no submit
@@ -1967,18 +1966,13 @@ export interface PluginComposerApi {
 /**
  * What `experimental_submit` does differently from pressing Enter.
  *
- * There is deliberately no zero-argument overload and no "submit now" arm: a
- * plugin that wants a draft sent immediately is asking for the affordance the
- * user already has, and handing plugins an unconditional "send this draft"
- * button is a much larger surface than scheduling needs.
+ * `experimental_data` is opaque JSON delivered to dispatch hooks. The runtime
+ * associates it with the calling plugin automatically and preserves it with
+ * any queued message the submission becomes.
  */
-export interface ExperimentalComposerSubmitOptions {
-  /**
-   * Epoch ms the submission should dispatch at. Must be in the future; the
-   * host does not second-guess how far ahead it is.
-   */
-  sendAt: number;
-}
+export type ExperimentalComposerSubmitOptions =
+  | { sendAt: number; experimental_data?: JsonValue }
+  | { experimental_data: JsonValue; sendAt?: never };
 
 // ---------------------------------------------------------------------------
 // ThreadChat — the host-owned chat component.

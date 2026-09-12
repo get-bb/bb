@@ -826,14 +826,22 @@ export function useComposer(): PluginComposerApi {
         throw new Error("This composer is no longer active.");
       }
       if (hostSubmit === undefined) {
-        throw new Error("This composer cannot schedule a submission.");
+        throw new Error("This composer cannot submit programmatically.");
       }
-      if (!Number.isFinite(options.sendAt) || options.sendAt <= Date.now()) {
+      if (
+        options.sendAt !== undefined &&
+        (!Number.isFinite(options.sendAt) || options.sendAt <= Date.now())
+      ) {
         throw new Error("Pick a time in the future.");
       }
-      await hostSubmit({ sendAt: options.sendAt });
+      await hostSubmit(
+        options,
+        options.experimental_data === undefined
+          ? undefined
+          : { pluginId, data: options.experimental_data },
+      );
     },
-    [hostSubmit, scopeOwnership],
+    [hostSubmit, pluginId, scopeOwnership],
   );
 
   return useMemo(

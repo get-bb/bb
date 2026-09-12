@@ -40,6 +40,7 @@ const FIRST_PARTY_PLUGINS: Record<string, FirstPartyPlugin> = {
   Automations: { id: "automations", icon: RepeatIcon },
   "Custom instructions": { id: "custom-instructions", icon: Edit04Icon },
   Docs: { id: "simple-notes", icon: File01Icon },
+  Drafts: { id: "drafts", icon: Edit04Icon },
   GitHub: { id: "github", icon: GithubIcon },
   "Inline visualizations": { id: "inline-vis", icon: BrowserIcon },
   "Keep Awake": { id: "keep-awake", icon: Coffee01Icon },

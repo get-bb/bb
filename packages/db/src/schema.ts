@@ -934,6 +934,7 @@ export const queuedThreadMessages = sqliteTable(
       .$type<QueuedMessagePayloadKind>()
       .notNull()
       .default("inline"),
+    pluginSubmission: text("plugin_submission"),
     // Set together, and only on a `retry` row: the ORIGINAL request this row
     // re-submits, which attempt it is (2 is the first retry), and why it is
     // being retried in the retrier's words ("Rate limited").

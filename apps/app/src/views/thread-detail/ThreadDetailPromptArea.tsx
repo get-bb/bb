@@ -30,9 +30,11 @@ import type {
 } from "@bb/domain";
 import type {
   PullRequestMergeMethod,
+  SendMessageRequest,
   ThreadTimelineResponse,
   TimelineWorkflowWorkRow,
 } from "@bb/server-contract";
+import type { ExperimentalComposerSubmitOptions } from "@get-bb/plugin-sdk";
 import type { ChildThreadPendingAttention } from "@/hooks/queries/child-thread-pending-interactions";
 import { ThreadPendingInteractionBanner } from "@/components/thread/pending-interactions/ThreadPendingInteractionBanner";
 import {
@@ -742,11 +744,17 @@ export function ThreadDetailPromptArea({
   const compactPromptPlaceholder = isStopRequested
     ? "Stopping thread..."
     : getCompactFollowUpPromptPlaceholder(runtimeDisplayStatus);
-  const submitScheduledRef = useRef<
-    (options: { sendAt: number }) => Promise<void>
+  const submitProgrammaticallyRef = useRef<
+    (
+      options: ExperimentalComposerSubmitOptions,
+      pluginSubmission: SendMessageRequest["pluginSubmission"],
+    ) => Promise<void>
   >(async () => {});
-  const submitScheduledThroughRef = useCallback(
-    (options: { sendAt: number }) => submitScheduledRef.current(options),
+  const submitProgrammaticallyThroughRef = useCallback(
+    (
+      options: ExperimentalComposerSubmitOptions,
+      pluginSubmission: SendMessageRequest["pluginSubmission"],
+    ) => submitProgrammaticallyRef.current(options, pluginSubmission),
     [],
   );
   const normalPluginComposerHost = useMemo<PluginComposerHost>(
@@ -757,7 +765,7 @@ export function ThreadDetailPromptArea({
       subscribeDraft: promptDraft.subscribe,
       setDraft: promptDraft.setDraft,
       focus: focusBottomPluginComposer,
-      submit: submitScheduledThroughRef,
+      submit: submitProgrammaticallyThroughRef,
     }),
     [
       focusBottomPluginComposer,
@@ -765,7 +773,7 @@ export function ThreadDetailPromptArea({
       promptDraft.setDraft,
       promptDraft.storageKey,
       promptDraft.subscribe,
-      submitScheduledThroughRef,
+      submitProgrammaticallyThroughRef,
       thread.id,
     ],
   );
@@ -856,8 +864,11 @@ export function ThreadDetailPromptArea({
     thread.id,
     runtimeDisplayStatus,
   ]);
-  const submitScheduled = useCallback(
-    async ({ sendAt }: { sendAt: number }) => {
+  const submitProgrammatically = useCallback(
+    async (
+      submitOptions: ExperimentalComposerSubmitOptions,
+      pluginSubmission: SendMessageRequest["pluginSubmission"],
+    ) => {
       if (isDefaultExecutionOptionsLoading) {
         throw new Error("This thread's model options are still loading.");
       }
@@ -868,13 +879,19 @@ export function ThreadDetailPromptArea({
         execution: followUpExecutionSelection,
       });
       if (request === null) {
-        throw new Error("Type a message before scheduling it.");
+        throw new Error("Type a message before submitting it.");
       }
       const clearedSubmittedDraft =
         promptDraft.clearIfCurrentMatches(submittedDraft);
       setBottomAttachmentError(null);
       try {
-        await sendMessage.mutateAsync({ ...request, sendAt });
+        await sendMessage.mutateAsync({
+          ...request,
+          ...(submitOptions.sendAt === undefined
+            ? {}
+            : { sendAt: submitOptions.sendAt }),
+          ...(pluginSubmission === undefined ? {} : { pluginSubmission }),
+        });
       } catch (scheduleError) {
         if (clearedSubmittedDraft) {
           promptDraft.restoreIfEmpty(submittedDraft);
@@ -882,7 +899,7 @@ export function ThreadDetailPromptArea({
         throw new Error(
           getMutationErrorMessage({
             error: scheduleError,
-            fallbackMessage: "Failed to schedule message",
+            fallbackMessage: "Failed to submit message",
             lifecycleOperation: "send_message",
           }),
         );
@@ -898,8 +915,8 @@ export function ThreadDetailPromptArea({
     ],
   );
   useEffect(() => {
-    submitScheduledRef.current = submitScheduled;
-  }, [submitScheduled]);
+    submitProgrammaticallyRef.current = submitProgrammatically;
+  }, [submitProgrammatically]);
 
   const handleModifierSubmit = useCallback(async () => {
     if (!canSubmitModifierShortcut) {

@@ -28,7 +28,10 @@ import type {
   ThreadCreateOrigin,
 } from "@bb/server-contract";
 import { startedOnBehalfOfSchema } from "@bb/server-contract";
-import type { PluginDispatchEnvironmentIntent } from "@get-bb/plugin-sdk";
+import type {
+  MessageDispatchHookContext,
+  PluginDispatchEnvironmentIntent,
+} from "@get-bb/plugin-sdk";
 import { z } from "zod";
 import { ApiError } from "../../errors.js";
 import type { LoggedPendingInteractionWorkSessionDeps } from "../../types.js";
@@ -221,6 +224,7 @@ export interface DispatchAttemptArgs {
   startContext?: PendingThreadStartContext;
   /** What the queued row would carry; `retry` for a re-submitted failed turn. */
   queuePayload: QueuedMessagePayload;
+  pluginSubmission: MessageDispatchHookContext["experimental_submission"];
   /** Retry provenance, when this attempt re-submits a failed turn. */
   retryOf?: TurnRequestRetryMarker;
   origin: ThreadCreateOrigin | null;
@@ -348,6 +352,7 @@ async function runDispatchAttempt(
     execution,
     senderThreadId,
     payload: args.queuePayload,
+    pluginSubmission: args.pluginSubmission,
     systemNotice: null,
   };
 
@@ -509,6 +514,7 @@ async function runDispatchAttempt(
       parentThreadId: thread.parentThreadId,
       queuedMessage:
         claimed?.[0] === undefined ? null : toThreadQueuedMessage(claimed[0]),
+      pluginSubmission: args.pluginSubmission,
       // A first dispatch is the admission a limiter is deciding about, so its
       // `pending → starting` flip is committed here, inside the lock, and the
       // next handler in line sees it. A follow-up has no transition this side of

@@ -264,6 +264,7 @@ describe("builtin plugin reconciliation", () => {
       ["provider-retry", "ArrowReloadHorizontal"],
       ["provider-usage", "ChartColumn"],
       ["push-notifications", "BellDot"],
+      ["drafts", "EditFile"],
       ["scheduled-send", "Calendar"],
       ["secrets", "Lock"],
       ["side-chat", "SideChat"],
@@ -590,6 +591,12 @@ describe("builtin plugin reconciliation", () => {
     );
     expect(scheduledSend).toBeDefined();
     expect(scheduledSend?.defaultEnabled).toBe(true);
+  });
+
+  it("ships Drafts enabled on a fresh database", () => {
+    const drafts = BUILTIN_PLUGINS.find((builtin) => builtin.name === "drafts");
+    expect(drafts).toBeDefined();
+    expect(drafts?.defaultEnabled).toBe(true);
   });
 
   it("ships Provider retry enabled on a fresh database", async () => {

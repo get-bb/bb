@@ -1239,6 +1239,49 @@ function repairBranchLocalQueuedGroupingBeforeInitialThreadSections(
 }
 
 const STAGED_CONNECT_MACHINE_ID_COLUMN = "_bb_connect_machine_id_pending";
+const STAGED_PLUGIN_SUBMISSION_COLUMN = "_bb_plugin_submission_pending";
+
+function stageExistingPluginSubmissionColumn(
+  db: DbConnection,
+  migrationsFolder: string,
+): boolean {
+  if (
+    !tableExists(db, "__drizzle_migrations") ||
+    !tableExists(db, "queued_thread_messages") ||
+    !columnExists(db, "queued_thread_messages", "plugin_submission")
+  ) {
+    return false;
+  }
+  const migration = requireExpectedAppliedMigration(
+    readExpectedAppliedMigrations(migrationsFolder),
+    "0119_steep_galactus",
+  );
+  if (readAppliedMigrationCreatedAts(db).has(migration.createdAt)) {
+    return false;
+  }
+  db.$client.exec(
+    `ALTER TABLE queued_thread_messages RENAME COLUMN plugin_submission TO ${STAGED_PLUGIN_SUBMISSION_COLUMN}`,
+  );
+  return true;
+}
+
+function restoreStagedPluginSubmissionColumn(db: DbConnection): void {
+  if (
+    !columnExists(db, "queued_thread_messages", STAGED_PLUGIN_SUBMISSION_COLUMN)
+  ) {
+    return;
+  }
+  if (!columnExists(db, "queued_thread_messages", "plugin_submission")) {
+    db.$client.exec(
+      `ALTER TABLE queued_thread_messages RENAME COLUMN ${STAGED_PLUGIN_SUBMISSION_COLUMN} TO plugin_submission`,
+    );
+    return;
+  }
+  db.$client.exec(
+    `UPDATE queued_thread_messages SET plugin_submission = ${STAGED_PLUGIN_SUBMISSION_COLUMN};
+     ALTER TABLE queued_thread_messages DROP COLUMN ${STAGED_PLUGIN_SUBMISSION_COLUMN};`,
+  );
+}
 
 function stageExistingConnectMachineIdColumn(
   db: DbConnection,
@@ -1519,10 +1562,15 @@ export function migrate(db: DbConnection, options: MigrateOptions = {}): void {
       db,
       migrationsFolder,
     );
+    const stagedPluginSubmission = stageExistingPluginSubmissionColumn(
+      db,
+      migrationsFolder,
+    );
     try {
       drizzleMigrate(db, { migrationsFolder });
     } finally {
       if (stagedConnectMachineId) restoreStagedConnectMachineIdColumn(db);
+      if (stagedPluginSubmission) restoreStagedPluginSubmissionColumn(db);
     }
     applyReorderedCleanupMigrations(db, migrationsFolder);
     applyQueuedMessageGroupingSchema(db);

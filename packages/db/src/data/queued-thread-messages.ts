@@ -23,6 +23,7 @@ import type {
   PermissionMode,
   PromptInput,
   QueuedMessagePayload,
+  QueuedMessagePluginSubmission,
   QueuedMessageSystemNotice,
   QueuedMessageWaitHolder,
   QueuedMessageWaitingOn,
@@ -64,6 +65,7 @@ export interface CreateQueuedThreadMessageInput {
   waitingOn: QueuedMessageWaitingOn | null;
   sendAt: number | null;
   payload: QueuedMessagePayload;
+  pluginSubmission?: QueuedMessagePluginSubmission | null;
   /** Non-null only for one of core's own system notices. */
   systemNotice: QueuedMessageSystemNotice | null;
 }
@@ -262,9 +264,7 @@ function hasOrdinaryTurnEndWait(row: QueuedThreadMessageRow): boolean {
   if (row.waitingOn === null) return true;
   try {
     const parsed = JSON.parse(row.waitingOn) as { kind?: unknown };
-    return (
-      parsed.kind === "thread-busy" || parsed.kind === "turn-starting"
-    );
+    return parsed.kind === "thread-busy" || parsed.kind === "turn-starting";
   } catch {
     return false;
   }
@@ -441,10 +441,7 @@ function resolveQueuedThreadMessageNeighbor(
     return false;
   }
 
-  const neighbor = getQueuedThreadMessage(
-    db,
-    args.neighborQueuedMessageId,
-  );
+  const neighbor = getQueuedThreadMessage(db, args.neighborQueuedMessageId);
   if (
     !neighbor ||
     neighbor.threadId !== args.threadId ||
@@ -590,6 +587,10 @@ export function createQueuedThreadMessageInTransaction(
       systemNotice:
         input.systemNotice === null ? null : JSON.stringify(input.systemNotice),
       payloadKind: input.payload.kind,
+      pluginSubmission:
+        input.pluginSubmission !== undefined && input.pluginSubmission !== null
+          ? JSON.stringify(input.pluginSubmission)
+          : null,
       retryOfTurnRequestId:
         input.payload.kind === "retry"
           ? input.payload.retryOfTurnRequestId
@@ -780,10 +781,7 @@ export function listIdleThreadsWithQueuedMessages(
           notExists(manuallyStoppedQueuePauseQuery(db, threads.id)),
           isNotNull(queuedThreadMessages.systemNotice),
         ),
-        or(
-          isNull(threads.environmentId),
-          ne(environments.status, "destroyed"),
-        ),
+        or(isNull(threads.environmentId), ne(environments.status, "destroyed")),
         // Only rows an idle thread actually unblocks. A thread whose only
         // queued row is waiting on a clock or a plugin is not a drain
         // candidate, and listing it would re-run the whole send pipeline
@@ -1013,10 +1011,7 @@ export function reorderQueuedThreadMessage({
   try {
     result = db.transaction(
       (tx): ReorderQueuedThreadMessageResult => {
-        const movedQueuedMessage = getQueuedThreadMessage(
-          tx,
-          queuedMessageId,
-        );
+        const movedQueuedMessage = getQueuedThreadMessage(tx, queuedMessageId);
         if (!movedQueuedMessage || movedQueuedMessage.threadId !== threadId) {
           return { kind: "not_found" };
         }
