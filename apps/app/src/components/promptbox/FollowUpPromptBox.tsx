@@ -1,3 +1,4 @@
+import type { IconName } from "@bb/shared-ui/icon";
 import type { FollowUpSubmitMode } from "@bb/client-core";
 import {
   memo,
@@ -131,6 +132,8 @@ export interface FollowUpComposerProps {
   onModifierSubmit: () => void;
   onSubmit: () => void;
   onEscape?: () => void;
+  submitLabel?: string;
+  submitIcon?: IconName;
   submitTitle?: string;
   compactPromptPlaceholder: string;
   promptPlaceholder: string;
@@ -717,6 +720,8 @@ function FollowUpPromptBoxWithComposer({
         heightAnimationKey={isInteractionExpanded ? "expanded" : "compact"}
         mentionMenuPlacement="top"
         submission={{
+          label: composer.submitLabel,
+          icon: composer.submitIcon,
           onStop: onStopRuntime,
           isSubmitting: composer.isFollowUpSubmitting || isStopping,
           disabled:

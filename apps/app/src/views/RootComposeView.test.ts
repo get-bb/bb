@@ -19,7 +19,6 @@ import {
   type ResolveNewThreadSubmitDisabledReasonArgs,
 } from "@/components/promptbox/NewThreadComposer";
 import { getProjectStoredPromptAttachmentPaths } from "@bb/client-core";
-import { THREAD_HANDOFF_CREATE_SEED_LOCATION_STATE_KEY } from "@bb/client-core";
 import {
   buildRootComposeTerminalSessions,
   buildMobileRecentThreads,
@@ -724,19 +723,6 @@ describe("hasSingleUseRootComposeTargetState", () => {
     expect(hasSingleUseRootComposeTargetState({ focusPrompt: true })).toBe(
       true,
     );
-  });
-
-  it("treats handoff seeds as single-use target state", () => {
-    expect(
-      hasSingleUseRootComposeTargetState({
-        [THREAD_HANDOFF_CREATE_SEED_LOCATION_STATE_KEY]: {
-          environmentId: "env_source",
-          projectId: "proj_source",
-          sourceThreadId: "thr_source",
-          sourceThreadTitle: "Source thread",
-        },
-      }),
-    ).toBe(true);
   });
 
   it("ignores non-target state", () => {

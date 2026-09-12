@@ -97,6 +97,17 @@ interface ResolvedProviderPreview {
   supportsServiceTier: boolean;
 }
 
+export interface ModelReasoningPickerHandoffSelection {
+  providerId: string;
+  model: string;
+  reasoningLevel: ReasoningLevel;
+}
+
+export interface ModelReasoningPickerHandoff {
+  sourceProviderId: string;
+  onSelect: (selection: ModelReasoningPickerHandoffSelection) => void;
+}
+
 const FAILED_TO_LOAD_MODELS_LABEL = "Failed to load models";
 const EMPTY_MODEL_OPTIONS: readonly ModelPickerOption[] = [];
 const preserveModelLabel = (displayName: string): string => displayName;
@@ -115,6 +126,9 @@ const REASONING_CYCLE_COMMANDS = [
 
 const MODEL_SEARCH_MIN_OPTIONS = 5;
 const MODEL_PICKER_MENU_WIDTH_CLASS_NAME = "w-max min-w-64 max-w-80";
+
+const HANDOFF_DRAWER_TOP_CLASS_NAME =
+  "[&>[data-persistent-drawer-handle]]:w-full [&>[data-persistent-drawer-handle]]:rounded-t-xl [&>[data-persistent-drawer-handle]]:bg-background";
 
 function splitModelLabelTag(label: string): ModelLabelParts {
   const match = label.match(/^(.*\S)\s*\(([^()]+)\)$/u);
@@ -194,15 +208,7 @@ interface ModelReasoningPickerProps {
   modal?: boolean;
   align?: "start" | "center" | "end";
   disabled?: boolean;
-  footerAction?: ModelReasoningPickerFooterAction;
-}
-
-export interface ModelReasoningPickerFooterAction {
-  label: string;
-  onClick: () => void;
-  disabled?: boolean;
-  title?: string;
-  iconName?: IconName;
+  handoff?: ModelReasoningPickerHandoff;
 }
 
 export function ModelReasoningPicker({
@@ -235,7 +241,7 @@ export function ModelReasoningPicker({
   modal = true,
   align = "start",
   disabled,
-  footerAction,
+  handoff,
 }: ModelReasoningPickerProps) {
   const isCompactViewport = useIsCompactViewport();
   const [open, setOpen] = useState(false);
@@ -260,9 +266,18 @@ export function ModelReasoningPicker({
   const [moreModelsOpen, setMoreModelsOpen] = useState(false);
   const [trackedSelectedProviderId, setTrackedSelectedProviderId] =
     useState(selectedProviderId);
+  const [handoffMode, setHandoffMode] = useState(false);
+  const [handoffReasoningLevel, setHandoffReasoningLevel] =
+    useState<ReasoningLevel | null>(null);
 
   if (trackedSelectedProviderId !== selectedProviderId) {
     setTrackedSelectedProviderId(selectedProviderId);
+    setHandoffMode(
+      open &&
+        handoff !== undefined &&
+        selectedProviderId !== handoff.sourceProviderId,
+    );
+    setHandoffReasoningLevel(null);
     setPreviewProviderId(null);
     setShowMoreModels(false);
     setMoreModelsOpen(false);
@@ -427,6 +442,13 @@ export function ModelReasoningPicker({
   const activeReasoningOptions = isPreviewing
     ? (previewSelection?.reasoningOptions ?? [])
     : reasoningOptions;
+  const activeReasoningValue: ReasoningLevel | "" = handoffMode
+    ? (handoffReasoningLevel ??
+      (isPreviewing ? previewSelection?.reasoningLevel : reasoningValue) ??
+      "")
+    : isPreviewing
+      ? ""
+      : reasoningValue;
   const activeModelLoadError = isPreviewing
     ? (previewQuery.data?.modelLoadError ?? null)
     : (modelLoadError ?? null);
@@ -461,7 +483,8 @@ export function ModelReasoningPicker({
   const isShowingModelError =
     !activeModelIsLoading && !hasActiveModelOptions && activeModelLoadFailed;
   const showProviderTabs =
-    canSwitchProviders &&
+    (handoffMode || canSwitchProviders) &&
+    providerOptions.length > 1 &&
     (!isShowingModelError || activeModelErrorIsProviderSpecific);
 
   const activeBrandPrefix = activeProvider?.brandPrefix;
@@ -512,6 +535,7 @@ export function ModelReasoningPicker({
     activeIndex >= 0 && activeIndex < navRows.length ? activeIndex : -1;
 
   const effectiveShowFastModeToggle =
+    !handoffMode &&
     hasActiveModelOptions &&
     (serviceTierSupportByProvider
       ? (serviceTierSupportByProvider[activeProviderId] ?? false)
@@ -530,6 +554,8 @@ export function ModelReasoningPicker({
       : hasSelectedModel && !modelIsLoading && !selectedModelLoadFailed);
 
   const resetBrowseState = useCallback(() => {
+    setHandoffMode(false);
+    setHandoffReasoningLevel(null);
     setPreviewProviderId(null);
     setShowMoreModels(false);
     setMoreModelsOpen(false);
@@ -552,15 +578,68 @@ export function ModelReasoningPicker({
   const handleModelSelect = useCallback(
     (model: string) => {
       if (previewSelectionBlocked) return;
+      if (handoff !== undefined && handoffMode) {
+        handoff.onSelect({
+          providerId: activeProviderId,
+          model,
+          reasoningLevel:
+            handoffReasoningLevel ??
+            (isPreviewing ? previewSelection?.reasoningLevel : undefined) ??
+            reasoningValue,
+        });
+        setMoreModelsOpen(false);
+        return;
+      }
       onModelChange(model);
       setMoreModelsOpen(false);
       setPreviewProviderId(null);
     },
-    [onModelChange, previewSelectionBlocked],
+    [
+      activeProviderId,
+      handoff,
+      handoffMode,
+      handoffReasoningLevel,
+      isPreviewing,
+      onModelChange,
+      previewSelection,
+      previewSelectionBlocked,
+      reasoningValue,
+    ],
   );
 
+  const handoffProviderOptions = useMemo(
+    () =>
+      handoff === undefined
+        ? providerOptions
+        : providerOptions.filter(
+            (provider) => provider.value !== handoff.sourceProviderId,
+          ),
+    [handoff, providerOptions],
+  );
+  const handleHandoffProviderSelect = useCallback(
+    (providerId: string) => {
+      setHandoffMode(true);
+      setPreviewProviderId(
+        providerId === selectedProviderId ? null : providerId,
+      );
+      setHandoffReasoningLevel(null);
+      setShowMoreModels(false);
+      setMoreModelsOpen(false);
+      setSearchQuery("");
+      setActiveIndex(-1);
+    },
+    [selectedProviderId],
+  );
   const handleProviderSelect = useCallback(
     (providerId: string) => {
+      if (
+        open &&
+        handoff !== undefined &&
+        providerId !== handoff.sourceProviderId
+      ) {
+        handleHandoffProviderSelect(providerId);
+        return;
+      }
       onSelectedProviderChange?.(providerId);
       const nextPreviewProviderId =
         open && providerId !== selectedProviderId ? providerId : null;
@@ -568,7 +647,60 @@ export function ModelReasoningPicker({
       setSearchQuery("");
       setActiveIndex(-1);
     },
-    [onSelectedProviderChange, open, selectedProviderId],
+    [
+      handoff,
+      handleHandoffProviderSelect,
+      onSelectedProviderChange,
+      open,
+      selectedProviderId,
+    ],
+  );
+  const startHandoffMode = useCallback(() => {
+    const firstProvider = handoffProviderOptions[0];
+    handleHandoffProviderSelect(firstProvider?.value ?? selectedProviderId);
+  }, [handleHandoffProviderSelect, handoffProviderOptions, selectedProviderId]);
+  const exitHandoffMode = useCallback(() => {
+    setHandoffMode(false);
+    setHandoffReasoningLevel(null);
+    setPreviewProviderId(null);
+    setSearchQuery("");
+    setActiveIndex(-1);
+  }, []);
+  const returnToSourceProvider = useCallback(() => {
+    if (handoff === undefined) {
+      return;
+    }
+    exitHandoffMode();
+    if (selectedProviderId !== handoff.sourceProviderId) {
+      onSelectedProviderChange?.(handoff.sourceProviderId);
+    }
+  }, [exitHandoffMode, handoff, onSelectedProviderChange, selectedProviderId]);
+
+  const handleReasoningSelect = useCallback(
+    (level: ReasoningLevel) => {
+      if (previewSelectionBlocked) return;
+      if (handoffMode) {
+        setHandoffReasoningLevel(level);
+        if (!isPreviewing) {
+          onReasoningChange(level);
+        }
+        return;
+      }
+      if (isPreviewing && previewSelection?.selectedModel) {
+        onModelChange(previewSelection.selectedModel);
+      }
+      onReasoningChange(level);
+      setPreviewProviderId(null);
+      setMoreModelsOpen(false);
+    },
+    [
+      handoffMode,
+      isPreviewing,
+      previewSelection,
+      onModelChange,
+      onReasoningChange,
+      previewSelectionBlocked,
+    ],
   );
 
   const paneContext = useOptionalPaneContext();
@@ -631,13 +763,22 @@ export function ModelReasoningPicker({
     MODEL_CYCLE_COMMANDS,
     (index, { target }) => {
       if (!ownsCycleChord(target)) return false;
+      const options = handoffMode ? activeModelOptions : modelOptions;
+      const value =
+        handoffMode && isPreviewing
+          ? (previewSelection?.selectedModel ?? "")
+          : modelValue;
       const next =
         index === 0
-          ? nextCycleValue(modelOptions, modelValue)
-          : previousCycleValue(modelOptions, modelValue);
+          ? nextCycleValue(options, value)
+          : previousCycleValue(options, value);
       if (next !== null) {
-        onModelChange(next);
-        setPreviewProviderId(null);
+        if (handoffMode) {
+          handleModelSelect(next);
+        } else {
+          onModelChange(next);
+          setPreviewProviderId(null);
+        }
       }
       return true;
     },
@@ -648,6 +789,16 @@ export function ModelReasoningPicker({
     PROVIDER_CYCLE_COMMANDS,
     (index, { target }) => {
       if (!ownsCycleChord(target)) return false;
+      if (handoffMode) {
+        const next =
+          index === 0
+            ? nextCycleValue(handoffProviderOptions, activeProviderId)
+            : previousCycleValue(handoffProviderOptions, activeProviderId);
+        if (next !== null) {
+          handleHandoffProviderSelect(next);
+        }
+        return true;
+      }
       if (canSwitchProviders && onSelectedProviderChange !== undefined) {
         const next =
           index === 0
@@ -666,39 +817,26 @@ export function ModelReasoningPicker({
     REASONING_CYCLE_COMMANDS,
     (index, { target }) => {
       if (!ownsCycleChord(target)) return false;
+      const value = handoffMode ? activeReasoningValue : reasoningValue;
+      if (value === "") return true;
       const next = cycleReasoningValue(
-        reasoningOptions,
-        reasoningValue,
+        handoffMode ? activeReasoningOptions : reasoningOptions,
+        value,
         index === 0 ? "forward" : "backward",
       );
       if (next !== null) {
-        onReasoningChange(next);
-        setPreviewProviderId(null);
+        if (handoffMode) {
+          handleReasoningSelect(next);
+        } else {
+          onReasoningChange(next);
+          setPreviewProviderId(null);
+        }
       }
       return true;
     },
     50,
     commandShortcutsEnabled,
   );
-  const handleReasoningSelect = useCallback(
-    (level: ReasoningLevel) => {
-      if (previewSelectionBlocked) return;
-      if (isPreviewing && previewSelection?.selectedModel) {
-        onModelChange(previewSelection.selectedModel);
-      }
-      onReasoningChange(level);
-      setPreviewProviderId(null);
-      setMoreModelsOpen(false);
-    },
-    [
-      isPreviewing,
-      previewSelection,
-      onModelChange,
-      onReasoningChange,
-      previewSelectionBlocked,
-    ],
-  );
-
   const handleReasoningArrowKeyDown: KeyboardEventHandler<HTMLElement> = (
     event,
   ) => {
@@ -721,11 +859,8 @@ export function ModelReasoningPicker({
     ) {
       return;
     }
-    const value = isPreviewing
-      ? previewSelection?.reasoningLevel
-      : reasoningValue;
     const index = activeReasoningOptions.findIndex(
-      (option) => option.value === value,
+      (option) => option.value === activeReasoningValue,
     );
     if (index < 0) return;
     event.preventDefault();
@@ -734,16 +869,6 @@ export function ModelReasoningPicker({
       activeReasoningOptions[index + (event.key === "ArrowRight" ? 1 : -1)];
     if (next) handleReasoningSelect(next.value);
   };
-
-  const handleFooterActionClick = useCallback(() => {
-    if (!footerAction || footerAction.disabled) {
-      return;
-    }
-    footerAction.onClick();
-    setOpen(false);
-    setPreviewProviderId(null);
-    setMoreModelsOpen(false);
-  }, [footerAction]);
 
   const handleQueryChange = useCallback((value: string) => {
     setSearchQuery(value);
@@ -923,7 +1048,10 @@ export function ModelReasoningPicker({
       <PopoverTrigger asChild>{trigger}</PopoverTrigger>
       <PopoverContent
         align={align}
-        mobileTitle="Model"
+        mobileTitle={handoffMode ? "Handoff to new thread" : "Model"}
+        mobileClassName={
+          handoffMode ? HANDOFF_DRAWER_TOP_CLASS_NAME : undefined
+        }
         onKeyDown={handleReasoningArrowKeyDown}
         onMobileContentAnimationEnd={handleMobileContentAnimationEnd}
         autoFocusRef={showSearchInput ? searchInputRef : undefined}
@@ -936,26 +1064,37 @@ export function ModelReasoningPicker({
         )}
       >
         <ResetBrowseStateOnContentUnmount onReset={resetBrowseState} />
+        {handoffMode ? <HandoffModeHeader onBack={exitHandoffMode} /> : null}
         {showProviderTabs ? (
           <div
-            className={cn(
-              "flex shrink-0 items-center gap-0.5 border-b border-border px-2.5 pt-1",
-              isCompactViewport ? "bg-background" : "bg-surface-recessed",
-            )}
+            className="flex shrink-0 items-center gap-0.5 border-b border-border bg-background px-2.5 pt-1"
           >
             {providerOptions.map((provider) => {
               const TabIcon = provider.icon;
               const isActive = provider.value === activeProviderId;
+              const isHandoffSource =
+                handoffMode &&
+                handoff !== undefined &&
+                provider.value === handoff.sourceProviderId;
               return (
                 <button
                   key={provider.value}
                   type="button"
-                  title={provider.label}
+                  title={
+                    isHandoffSource
+                      ? `${provider.label} (current thread)`
+                      : provider.label
+                  }
                   onMouseDown={(event) => event.preventDefault()}
                   onClick={() => {
-                    if (provider.value !== activeProviderId) {
-                      handleProviderSelect(provider.value);
+                    if (isHandoffSource) {
+                      returnToSourceProvider();
+                      return;
                     }
+                    if (provider.value === activeProviderId) {
+                      return;
+                    }
+                    handleProviderSelect(provider.value);
                   }}
                   className={cn(
                     "flex items-center justify-center border-b-2 focus-visible:outline-none",
@@ -1114,7 +1253,7 @@ export function ModelReasoningPicker({
                   <ToggleGroup
                     type="single"
                     aria-label="Reasoning"
-                    value={isPreviewing ? "" : reasoningValue}
+                    value={activeReasoningValue}
                     onValueChange={(value) => {
                       const option = activeReasoningOptions.find(
                         (candidate) => candidate.value === value,
@@ -1166,16 +1305,16 @@ export function ModelReasoningPicker({
               </>
             ) : null}
 
-            {footerAction ? (
+            {handoff !== undefined &&
+            !handoffMode &&
+            handoffProviderOptions.length > 0 ? (
               <>
                 <div className="shrink-0 border-t border-border" />
                 <div className="shrink-0 p-1">
                   <MenuActionButton
-                    label={footerAction.label}
-                    iconName={footerAction.iconName ?? "MessageSquarePlus"}
-                    disabled={footerAction.disabled}
-                    title={footerAction.title}
-                    onClick={handleFooterActionClick}
+                    label="Handoff to new thread"
+                    iconName="MessageSquarePlus"
+                    onClick={startHandoffMode}
                   />
                 </div>
               </>
@@ -1184,6 +1323,27 @@ export function ModelReasoningPicker({
         </MenuHoverProvider>
       </PopoverContent>
     </Popover>
+  );
+}
+
+function HandoffModeHeader({ onBack }: { onBack: () => void }) {
+  return (
+    <div className="flex shrink-0 items-center gap-1 bg-background px-2 pb-1 pt-1.5">
+      <button
+        type="button"
+        aria-label="Back to model picker"
+        onClick={onBack}
+        className={cn(
+          "flex size-6 shrink-0 items-center justify-center rounded-sm text-muted-foreground hover:bg-state-hover hover:text-foreground",
+          LIST_HOVER_TRANSITION,
+        )}
+      >
+        <Icon name="ChevronLeft" className="size-3.5" aria-hidden />
+      </button>
+      <span className="min-w-0 truncate text-xs font-normal text-subtle-foreground">
+        Handoff to new thread
+      </span>
+    </div>
   );
 }
 
@@ -1435,14 +1595,10 @@ function MenuRowButton({
 function MenuActionButton({
   label,
   iconName,
-  disabled,
-  title,
   onClick,
 }: {
   label: string;
   iconName: IconName;
-  disabled?: boolean;
-  title?: string;
   onClick: () => void;
 }) {
   const { hoverProps } = useMenuItemHover();
@@ -1450,11 +1606,9 @@ function MenuActionButton({
   return (
     <button
       type="button"
-      disabled={disabled}
-      title={title}
       onClick={onClick}
       className={cn(
-        "relative flex w-full cursor-default select-none items-center gap-2 rounded-sm px-2 text-xs outline-none hover:bg-state-hover hover:text-foreground disabled:pointer-events-none disabled:opacity-50",
+        "relative flex w-full cursor-default select-none items-center gap-2 rounded-sm px-2 text-xs outline-none hover:bg-state-hover hover:text-foreground",
         LIST_HOVER_TRANSITION,
         MENU_ITEM_LAST_HOVERED_CLASS,
         isCompactViewport ? "py-2" : "py-[0.3125rem]",
