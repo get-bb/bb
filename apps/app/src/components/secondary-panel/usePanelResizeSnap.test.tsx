@@ -1,9 +1,41 @@
 // @vitest-environment jsdom
 
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
-import { useLayoutEffect, useState } from "react";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { createRef, useRef } from "react";
+import {
+  Panel,
+  PanelGroup,
+  type ImperativePanelGroupHandle,
+  type ImperativePanelHandle,
+} from "react-resizable-panels";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { usePanelResizeSnap } from "./usePanelResizeSnap";
+
+const frames = new Map<number, FrameRequestCallback>();
+let nextFrameId = 0;
+
+beforeEach(() => {
+  vi.spyOn(window, "requestAnimationFrame").mockImplementation((callback) => {
+    const id = ++nextFrameId;
+    frames.set(id, callback);
+    return id;
+  });
+  vi.spyOn(window, "cancelAnimationFrame").mockImplementation((id) => {
+    frames.delete(id);
+  });
+});
+
+afterEach(() => {
+  cleanup();
+  frames.clear();
+  vi.restoreAllMocks();
+});
+
+function advanceFrame() {
+  const callbacks = [...frames.values()];
+  frames.clear();
+  act(() => callbacks.forEach((callback) => callback(0)));
+}
 
 function rect(left: number, width: number): DOMRect {
   return {
@@ -19,363 +51,186 @@ function rect(left: number, width: number): DOMRect {
   };
 }
 
-function SnapHarness({
-  onResize,
-  minFraction = 0,
-  maxFraction = 1,
-}: {
-  onResize: (fraction: number) => void;
-  minFraction?: number;
-  maxFraction?: number;
-}) {
-  const { onPointerDownCapture } = usePanelResizeSnap({
-    axis: "x",
-    minFraction,
-    maxFraction,
-    onResize,
-    target: { boundaryIndex: 1, childCount: 2 },
-  });
-  return (
-    <div data-split-resize-grid-root="" data-testid="grid">
-      <div data-testid="previous" />
-      <div
-        data-panel-resize-snap-handle=""
-        data-testid="divider"
-        onPointerDownCapture={(event) =>
-          onPointerDownCapture(event.nativeEvent)
-        }
+function setup(secondarySize = 50) {
+  const group = createRef<ImperativePanelGroupHandle>();
+  const onResize = vi.fn();
+  function Harness() {
+    const panel = useRef<ImperativePanelHandle>(null);
+    const { onPointerDownCapture } = usePanelResizeSnap({
+      axis: "x",
+      minFraction: 0.3,
+      maxFraction: 0.76,
+      onResize: (fraction) => {
+        onResize(fraction);
+        panel.current?.resize((1 - fraction) * 100);
+      },
+      target: { boundaryIndex: 1, childCount: 2 },
+    });
+    return (
+      <PanelGroup
+        ref={group}
+        direction="horizontal"
+        data-split-resize-grid-root=""
+        data-testid="grid"
       >
-        <span data-testid="hit-target" />
-      </div>
-      <div data-testid="next" />
-    </div>
-  );
+        <Panel id="leading" minSize={30} defaultSize={100 - secondarySize} data-testid="previous" />
+        <div
+          data-panel-resize-snap-handle=""
+          data-testid="divider"
+          onPointerDownCapture={(event) => onPointerDownCapture(event.nativeEvent)}
+        />
+        <Panel ref={panel} id="trailing" minSize={24} maxSize={70} defaultSize={secondarySize} data-testid="next" />
+      </PanelGroup>
+    );
+  }
+  const { unmount } = render(<Harness />);
+  const previous = screen.getByTestId("previous");
+  const divider = screen.getByTestId("divider");
+  const next = screen.getByTestId("next");
+  const grid = screen.getByTestId("grid");
+  grid.getBoundingClientRect = () => rect(100, 800);
+  previous.getBoundingClientRect = () => rect(100, (group.current?.getLayout()[0] ?? 0) * 8);
+  divider.getBoundingClientRect = () => rect(previous.getBoundingClientRect().right, 0);
+  next.getBoundingClientRect = () => rect(divider.getBoundingClientRect().right, (group.current?.getLayout()[1] ?? 0) * 8);
+  const down = () => fireEvent.pointerDown(divider, {
+    clientX: divider.getBoundingClientRect().left,
+    pointerId: 40,
+  });
+  const move = (clientX: number, buttons = 1) => fireEvent.pointerMove(document.body, {
+    buttons,
+    clientX,
+    pointerId: 40,
+  });
+  const release = () => fireEvent.pointerUp(window, { pointerId: 40 });
+  const expectLayout = (leading: number, trailing: number) => {
+    const layout = group.current?.getLayout();
+    expect(layout?.[0]).toBeCloseTo(leading);
+    expect(layout?.[1]).toBeCloseTo(trailing);
+    expect(Number(previous.style.flexGrow)).toBeCloseTo(leading, 0);
+    expect(Number(next.style.flexGrow)).toBeCloseTo(trailing, 0);
+  };
+  return { down, expectLayout, grid, group, move, onResize, previous, next, release, unmount };
 }
 
-afterEach(() => cleanup());
-
 describe("usePanelResizeSnap", () => {
+  it("updates the panel library once per frame without a separate DOM preview", () => {
+    const h = setup();
+    h.down();
+    h.move(450);
+    h.move(440);
+    h.expectLayout(50, 50);
+    expect(h.onResize).not.toHaveBeenCalled();
+    advanceFrame();
+    h.expectLayout(42.5, 57.5);
+    expect(h.onResize).toHaveBeenCalledExactlyOnceWith(0.425);
+
+    h.move(430);
+    h.move(420);
+    h.move(410);
+    expect(h.onResize).toHaveBeenCalledOnce();
+    advanceFrame();
+    h.expectLayout(38.75, 61.25);
+    expect(h.onResize).toHaveBeenCalledTimes(2);
+    expect(h.onResize).toHaveBeenLastCalledWith(0.3875);
+    h.release();
+    expect(h.onResize).toHaveBeenCalledTimes(2);
+  });
+
   it.each([
-    { initialPercent: 30, pointer: 100, returnPointer: 420, returnedPercent: 40 },
-    { initialPercent: 76, pointer: 900, returnPointer: 628, returnedPercent: 66 },
-  ])("stops at $initialPercent% while dragging and follows the pointer back", ({
-    initialPercent,
-    pointer,
-    returnPointer,
-    returnedPercent,
-  }) => {
-    const onResize = vi.fn();
-    render(
-      <SnapHarness onResize={onResize} minFraction={0.3} maxFraction={0.76} />,
-    );
-    const previous = screen.getByTestId("previous");
-    const divider = screen.getByTestId("divider");
-    const next = screen.getByTestId("next");
-    const start = 100 + initialPercent * 8;
-    screen.getByTestId("grid").getBoundingClientRect = () => rect(100, 800);
-    previous.getBoundingClientRect = () => rect(100, start - 100);
-    divider.getBoundingClientRect = () => rect(start, 1);
-    next.getBoundingClientRect = () => rect(start + 1, 899 - start);
-    previous.style.flex = `${initialPercent} 1 0px`;
-    next.style.flex = `${100 - initialPercent} 1 0px`;
-
-    fireEvent.pointerDown(divider, { clientX: start, pointerId: 48 });
-    fireEvent.pointerMove(document.body, {
-      buttons: 1,
-      clientX: pointer,
-      pointerId: 48,
-    });
-
-    expect(previous.style.flexGrow).toBe(`${initialPercent}`);
-    expect(next.style.flexGrow).toBe(`${100 - initialPercent}`);
-    expect(onResize).not.toHaveBeenCalled();
-
-    fireEvent.pointerMove(document.body, {
-      buttons: 1,
-      clientX: returnPointer,
-      pointerId: 48,
-    });
-    expect(Number(previous.style.flexGrow)).toBeCloseTo(returnedPercent);
-    expect(Number(next.style.flexGrow)).toBeCloseTo(100 - returnedPercent);
-
-    fireEvent.pointerUp(window, { clientX: returnPointer, pointerId: 48 });
-    expect(onResize).toHaveBeenCalledExactlyOnceWith(returnedPercent / 100);
+    { secondary: 70, outside: 100, inside: 420, leading: 40 },
+    { secondary: 24, outside: 1000, inside: 628, leading: 66 },
+  ])("keeps the $secondary% limit and follows the pointer back inside", ({ secondary, outside, inside, leading }) => {
+    const h = setup(secondary);
+    h.down();
+    h.move(outside);
+    advanceFrame();
+    h.expectLayout(100 - secondary, secondary);
+    h.move(inside);
+    advanceFrame();
+    h.expectLayout(leading, 100 - leading);
+    h.release();
+    h.expectLayout(leading, 100 - leading);
   });
 
-  it("keeps transitions disabled until React commits the released size", () => {
-    const committedDurations: string[] = [];
-    function CommitHarness() {
-      const [fraction, setFraction] = useState<number | null>(null);
-      useLayoutEffect(() => {
-        if (fraction !== null) {
-          committedDurations.push(
-            screen
-              .getByTestId("grid")
-              .style.getPropertyValue("--panel-collapse-duration"),
-          );
-        }
-      }, [fraction]);
-      return <SnapHarness onResize={setFraction} />;
+  it.each([false, true])("preserves a keyboard layout after a pointer update: %s", (moveFirst) => {
+    const h = setup();
+    h.down();
+    if (moveFirst) {
+      h.move(450);
+      h.move(440);
+      advanceFrame();
     }
-    render(<CommitHarness />);
-    const grid = screen.getByTestId("grid");
-    const previous = screen.getByTestId("previous");
-    const divider = screen.getByTestId("divider");
-    const next = screen.getByTestId("next");
-    grid.getBoundingClientRect = () => rect(100, 800);
-    previous.getBoundingClientRect = () => rect(100, 400);
-    divider.getBoundingClientRect = () => rect(500, 1);
-    next.getBoundingClientRect = () => rect(501, 399);
-    grid.style.setProperty("--panel-collapse-duration", "220ms");
-
-    fireEvent.pointerDown(divider, { clientX: 500, pointerId: 47 });
-    fireEvent.pointerMove(document.body, {
-      buttons: 1,
-      clientX: 700,
-      pointerId: 47,
-    });
-    fireEvent.pointerUp(window, { clientX: 700, pointerId: 47 });
-
-    expect(committedDurations).toEqual(["0ms"]);
-    expect(grid.style.getPropertyValue("--panel-collapse-duration")).toBe(
-      "220ms",
-    );
+    act(() => h.group.current?.setLayout([60, 40]));
+    h.release();
+    advanceFrame();
+    h.expectLayout(60, 40);
   });
 
-  it("preserves a newer layout when the pointer is released without a preview", () => {
-    const onResize = vi.fn();
-    render(<SnapHarness onResize={onResize} />);
-    const previous = screen.getByTestId("previous");
-    const divider = screen.getByTestId("divider");
-    const next = screen.getByTestId("next");
-    screen.getByTestId("grid").getBoundingClientRect = () => rect(100, 800);
-    previous.getBoundingClientRect = () => rect(100, 400);
-    divider.getBoundingClientRect = () => rect(500, 1);
-    next.getBoundingClientRect = () => rect(501, 399);
-    previous.style.flex = "50 1 0px";
-    next.style.flex = "50 1 0px";
-
-    fireEvent.pointerDown(divider, { clientX: 500, pointerId: 46 });
-    previous.style.flex = "60 1 0px";
-    next.style.flex = "40 1 0px";
-    fireEvent.pointerUp(window, { clientX: 500, pointerId: 46 });
-
-    expect(onResize).not.toHaveBeenCalled();
-    expect(previous.style.flex).toBe("60 1 0px");
-    expect(next.style.flex).toBe("40 1 0px");
+  it.each(["pointerup", "pointercancel", "mouseup", "blur", "buttons"]) ("flushes the last position before %s cleanup", (end) => {
+    const h = setup();
+    h.grid.style.setProperty("--panel-collapse-duration", "220ms");
+    h.down();
+    h.move(450);
+    h.move(440);
+    h.onResize.mockImplementation(() => {
+      expect(h.grid.style.getPropertyValue("--panel-collapse-duration")).toBe("0ms");
+    });
+    if (end === "buttons") h.move(440, 0);
+    else if (end === "blur") fireEvent.blur(window);
+    else if (end === "mouseup") fireEvent.mouseUp(window);
+    else if (end === "pointercancel") fireEvent.pointerCancel(window, { pointerId: 40 });
+    else h.release();
+    h.expectLayout(42.5, 57.5);
+    expect(h.onResize).toHaveBeenCalledExactlyOnceWith(0.425);
+    expect(h.grid.style.getPropertyValue("--panel-collapse-duration")).toBe("220ms");
+    advanceFrame();
+    expect(h.onResize).toHaveBeenCalledOnce();
   });
 
-  it("restores the committed layout before a resize that clamps to the existing limit", () => {
-    const onResize = vi.fn();
-    render(<SnapHarness onResize={onResize} />);
-    const previous = screen.getByTestId("previous");
-    const divider = screen.getByTestId("divider");
-    const next = screen.getByTestId("next");
-    screen.getByTestId("grid").getBoundingClientRect = () => rect(100, 800);
-    previous.getBoundingClientRect = () => rect(100, 240);
-    divider.getBoundingClientRect = () => rect(340, 1);
-    next.getBoundingClientRect = () => rect(341, 559);
-    previous.style.flex = "30 1 0px";
-    next.style.flex = "70 1 0px";
-    onResize.mockImplementation(() => {
-      expect(previous.style.flex).toBe("30 1 0px");
-      expect(next.style.flex).toBe("70 1 0px");
-    });
-
-    fireEvent.pointerDown(divider, { clientX: 340, pointerId: 45 });
-    fireEvent.pointerMove(document.body, {
-      buttons: 1,
-      clientX: 220,
-      pointerId: 45,
-    });
-    expect(previous.style.flex).toBe("15 1 0px");
-    expect(next.style.flex).toBe("85 1 0px");
-
-    fireEvent.pointerUp(window, { clientX: 220, pointerId: 45 });
-
-    expect(onResize).toHaveBeenCalledExactlyOnceWith(0.15);
-    expect(previous.style.flex).toBe("30 1 0px");
-    expect(next.style.flex).toBe("70 1 0px");
-  });
-
-  it("owns pointer movement and leave events until committing at drag end", () => {
-    const onResize = vi.fn();
-    render(<SnapHarness onResize={onResize} />);
-    const grid = screen.getByTestId("grid");
-    const previous = screen.getByTestId("previous");
-    const divider = screen.getByTestId("divider");
-    const hitTarget = screen.getByTestId("hit-target");
-    const next = screen.getByTestId("next");
-    grid.getBoundingClientRect = () => rect(100, 800);
-    previous.getBoundingClientRect = () => rect(100, 370);
-    divider.getBoundingClientRect = () => rect(470, 1);
-    next.getBoundingClientRect = () => rect(471, 429);
-    const rawPanelMove = vi.fn();
-    const rawPanelLeave = vi.fn();
-    document.body.addEventListener("pointermove", rawPanelMove, true);
-    document.body.addEventListener("pointerleave", rawPanelLeave, true);
-
+  it("blocks competing movement and leave events only during the gesture", () => {
+    const h = setup();
+    const rawMove = vi.fn();
+    const rawLeave = vi.fn();
+    document.body.addEventListener("pointermove", rawMove, true);
+    document.body.addEventListener("pointerleave", rawLeave, true);
     try {
-      fireEvent.pointerDown(hitTarget, { clientX: 470, pointerId: 40 });
-      fireEvent.pointerMove(document.body, {
-        buttons: 1,
-        clientX: 450,
-        pointerId: 40,
-      });
-
-      expect(rawPanelMove).not.toHaveBeenCalled();
-      expect(onResize).not.toHaveBeenCalled();
-      expect(previous.style.flex).toBe("0.4375 1 0px");
-      expect(next.style.flex).toBe("0.5625 1 0px");
-
-      fireEvent.pointerLeave(document.body, {
-        buttons: 1,
-        clientX: 1000,
-        pointerId: 40,
-      });
-      expect(rawPanelLeave).not.toHaveBeenCalled();
-      expect(onResize).not.toHaveBeenCalled();
-      expect(previous.style.flex).toBe("0.4375 1 0px");
-      expect(next.style.flex).toBe("0.5625 1 0px");
-
-      fireEvent.pointerUp(window, { clientX: 450, pointerId: 40 });
-      expect(onResize).toHaveBeenCalledOnce();
-      expect(onResize).toHaveBeenLastCalledWith(0.4375);
+      h.down();
+      h.move(450);
+      h.move(440);
+      fireEvent.pointerLeave(document.body, { clientX: 1000, buttons: 1, pointerId: 40 });
+      expect(rawMove).not.toHaveBeenCalled();
+      expect(rawLeave).not.toHaveBeenCalled();
+      advanceFrame();
+      h.expectLayout(42.5, 57.5);
+      h.release();
       fireEvent.pointerLeave(document.body, { pointerId: 40 });
-      expect(rawPanelLeave).toHaveBeenCalledOnce();
+      h.move(440, 0);
+      expect(rawLeave).toHaveBeenCalledOnce();
+      expect(rawMove).toHaveBeenCalledOnce();
     } finally {
-      fireEvent.pointerUp(window, { clientX: 450, pointerId: 40 });
-      document.body.removeEventListener("pointermove", rawPanelMove, true);
-      document.body.removeEventListener("pointerleave", rawPanelLeave, true);
+      document.body.removeEventListener("pointermove", rawMove, true);
+      document.body.removeEventListener("pointerleave", rawLeave, true);
     }
   });
 
-  it("disables panel-size transitions only for the active pointer drag", () => {
-    const onResize = vi.fn();
-    render(<SnapHarness onResize={onResize} />);
-    const grid = screen.getByTestId("grid");
-    const previous = screen.getByTestId("previous");
-    const divider = screen.getByTestId("divider");
-    const hitTarget = screen.getByTestId("hit-target");
-    const next = screen.getByTestId("next");
-    grid.getBoundingClientRect = () => rect(100, 800);
-    previous.getBoundingClientRect = () => rect(100, 370);
-    divider.getBoundingClientRect = () => rect(470, 1);
-    next.getBoundingClientRect = () => rect(471, 429);
-    grid.style.setProperty("--panel-collapse-duration", "220ms");
-
-    fireEvent.pointerDown(hitTarget, { clientX: 470, pointerId: 42 });
-    expect(grid.style.getPropertyValue("--panel-collapse-duration")).toBe(
-      "0ms",
-    );
-
-    fireEvent.pointerUp(window, { clientX: 470, pointerId: 42 });
-    expect(grid.style.getPropertyValue("--panel-collapse-duration")).toBe(
-      "220ms",
-    );
+  it("drops queued updates when the owner unmounts", () => {
+    const h = setup();
+    h.down();
+    h.move(450);
+    h.move(440);
+    h.unmount();
+    advanceFrame();
+    expect(h.onResize).not.toHaveBeenCalled();
   });
 
-  it("releases when the panel library consumes pointerup before the snap handler", () => {
-    const onResize = vi.fn();
-    render(<SnapHarness onResize={onResize} />);
-    const grid = screen.getByTestId("grid");
-    const previous = screen.getByTestId("previous");
-    const divider = screen.getByTestId("divider");
-    const hitTarget = screen.getByTestId("hit-target");
-    const next = screen.getByTestId("next");
-    grid.getBoundingClientRect = () => rect(100, 800);
-    previous.getBoundingClientRect = () => rect(100, 370);
-    divider.getBoundingClientRect = () => rect(470, 1);
-    next.getBoundingClientRect = () => rect(471, 429);
-    grid.style.setProperty("--panel-collapse-duration", "220ms");
-    const consumePointerUp = (event: PointerEvent) =>
-      event.stopImmediatePropagation();
-    window.addEventListener("pointerup", consumePointerUp, true);
-
-    try {
-      fireEvent.pointerDown(hitTarget, { clientX: 470, pointerId: 43 });
-      fireEvent.pointerMove(document.body, {
-        buttons: 1,
-        clientX: 450,
-        pointerId: 43,
-      });
-      fireEvent.pointerUp(document.body, { clientX: 450, pointerId: 43 });
-      fireEvent.mouseUp(window, { clientX: 450 });
-      expect(onResize).toHaveBeenCalledOnce();
-      expect(onResize).toHaveBeenLastCalledWith(0.4375);
-      const resizeCountAfterRelease = onResize.mock.calls.length;
-
-      fireEvent.pointerMove(document.body, {
-        buttons: 0,
-        clientX: 430,
-        pointerId: 43,
-      });
-
-      expect(onResize).toHaveBeenCalledTimes(resizeCountAfterRelease);
-      expect(grid.style.getPropertyValue("--panel-collapse-duration")).toBe(
-        "220ms",
-      );
-    } finally {
-      window.removeEventListener("pointerup", consumePointerUp, true);
-    }
-  });
-
-  it("releases when pointer movement reports that no buttons remain held", () => {
-    const onResize = vi.fn();
-    render(<SnapHarness onResize={onResize} />);
-    const grid = screen.getByTestId("grid");
-    const previous = screen.getByTestId("previous");
-    const divider = screen.getByTestId("divider");
-    const hitTarget = screen.getByTestId("hit-target");
-    const next = screen.getByTestId("next");
-    grid.getBoundingClientRect = () => rect(100, 800);
-    previous.getBoundingClientRect = () => rect(100, 370);
-    divider.getBoundingClientRect = () => rect(470, 1);
-    next.getBoundingClientRect = () => rect(471, 429);
-    grid.style.setProperty("--panel-collapse-duration", "220ms");
-
-    fireEvent.pointerDown(hitTarget, { clientX: 470, pointerId: 44 });
-    fireEvent.pointerMove(document.body, {
-      buttons: 0,
-      clientX: 450,
-      pointerId: 44,
-    });
-
-    expect(onResize).not.toHaveBeenCalled();
-    expect(grid.style.getPropertyValue("--panel-collapse-duration")).toBe(
-      "220ms",
-    );
-  });
-
-  it("bridges a fast outer-panel crossing into the shared two-pane grid", () => {
-    const onResize = vi.fn();
-    render(<SnapHarness onResize={onResize} />);
-    const grid = screen.getByTestId("grid");
-    const previous = screen.getByTestId("previous");
-    const divider = screen.getByTestId("divider");
-    const hitTarget = screen.getByTestId("hit-target");
-    const next = screen.getByTestId("next");
-    grid.getBoundingClientRect = () => rect(100, 800);
-    previous.getBoundingClientRect = () => rect(100, 370);
-    divider.getBoundingClientRect = () => rect(470, 1);
-    next.getBoundingClientRect = () => rect(471, 429);
-
-    fireEvent.pointerDown(hitTarget, { clientX: 470, pointerId: 41 });
-    fireEvent.pointerMove(document.body, {
-      buttons: 1,
-      clientX: 560,
-      pointerId: 41,
-    });
-
-    expect(onResize).not.toHaveBeenCalled();
-    expect(previous.style.flex).toBe("0.5 1 0px");
-    expect(next.style.flex).toBe("0.5 1 0px");
-    expect(
-      document.querySelector("[data-split-resize-snap-guide]"),
-    ).not.toBeNull();
-
-    fireEvent.pointerUp(window, { clientX: 560, pointerId: 41 });
-    expect(onResize).toHaveBeenLastCalledWith(0.5);
+  it("keeps the shared snap guide until the gesture ends", () => {
+    const h = setup(60);
+    h.down();
+    h.move(560);
+    advanceFrame();
+    h.expectLayout(50, 50);
+    expect(document.querySelector("[data-split-resize-snap-guide]")).not.toBeNull();
+    h.release();
     expect(document.querySelector("[data-split-resize-snap-guide]")).toBeNull();
   });
 });
