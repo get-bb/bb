@@ -334,6 +334,12 @@ describe("ProjectRow interactions", () => {
                 pinnedReorderPending={false}
                 pinnedThreads={[]}
                 onReorderPinnedThread={vi.fn()}
+                builtInSections={{
+                  collapsedSectionIds: new Set(),
+                  onToggleCollapsed: vi.fn(),
+                  pinned: { label: "Pinned", content: null },
+                  threads: { label: "Threads" },
+                }}
               />
             </MemoryRouter>
           </QueryClientProvider>
@@ -396,6 +402,12 @@ describe("ProjectRow interactions", () => {
                 pinnedReorderPending={false}
                 pinnedThreads={[]}
                 onReorderPinnedThread={vi.fn()}
+                builtInSections={{
+                  collapsedSectionIds: new Set(),
+                  onToggleCollapsed: vi.fn(),
+                  pinned: { label: "Pinned", content: null },
+                  threads: { label: "Threads" },
+                }}
               />
             </MemoryRouter>
           </QueryClientProvider>

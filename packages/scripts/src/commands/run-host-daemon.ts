@@ -1,10 +1,8 @@
 import { readFile } from "node:fs/promises";
 import { homedir } from "node:os";
-import { dirname, join, resolve } from "node:path";
-import { fileURLToPath } from "node:url";
+import { join } from "node:path";
 import {
   BB_PROD_HOST_DAEMON_PORT,
-  resolveCurrentDevInstanceConfig,
   resolvePortFromEnv,
   resolveRuntimeDataDir,
   resolveRuntimeMode,
@@ -20,14 +18,11 @@ import {
 import { loadHostDaemonEntrypointConfig } from "@bb/config/host-daemon-entrypoint";
 import type { HostDaemonRuntimeEnvironment } from "../lib/host-daemon-runtime.js";
 import { toHostDaemonProcessEnv } from "../lib/host-daemon-runtime.js";
+import { resolveDevHostDaemonPort } from "../lib/dev-restart-utils.js";
 import { pathExists } from "../lib/legacy-dev-data-migration.js";
-import { resolveNodeEnvironment } from "../lib/script-config.js";
 import { runScriptProcess } from "../lib/process-helpers.js";
+import { repoRoot, runMainIfEntrypoint } from "../lib/script-entry.js";
 import { waitForServerHealth } from "../lib/wait-for-server-health.js";
-
-const commandDir = dirname(fileURLToPath(import.meta.url));
-const packageRoot = resolve(commandDir, "..", "..");
-const repoRoot = resolve(packageRoot, "..", "..");
 
 interface HostDaemonProcessCommand {
   args: string[];
@@ -56,7 +51,7 @@ function resolveHostDaemonPort(args: ResolveHostDaemonPortArgs): number {
   return resolvePortFromEnv({
     defaultPort:
       args.mode === "dev"
-        ? resolveCurrentDevInstanceConfig(repoRoot).ports.hostDaemonPort
+        ? resolveDevHostDaemonPort()
         : BB_PROD_HOST_DAEMON_PORT,
     env: process.env,
     name: "BB_HOST_DAEMON_PORT",
@@ -109,7 +104,7 @@ export function resolveHostDaemonRuntimeEnvironment(
       mode,
       repoRoot,
     }),
-    NODE_ENV: resolveNodeEnvironment(mode),
+    NODE_ENV: mode === "dev" ? "development" : "production",
   };
 }
 
@@ -225,14 +220,4 @@ async function main(): Promise<void> {
   });
 }
 
-if (
-  process.argv[1] != null &&
-  resolve(process.argv[1]) === fileURLToPath(import.meta.url)
-) {
-  void main().catch((error) => {
-    const message =
-      error instanceof Error ? (error.stack ?? error.message) : String(error);
-    process.stderr.write(`${message}\n`);
-    process.exitCode = 1;
-  });
-}
+runMainIfEntrypoint(import.meta.url, main);

@@ -118,7 +118,7 @@ export function ThreadGitActionDialogContent({
                     {gitStatusDisplay.label}
                   </span>
                   <span className="min-w-0 truncate text-muted-foreground">
-                    {gitStatusDisplay.summaryContent}
+                    {gitStatusDisplay.summary}
                   </span>
                 </div>
               </DetailRow>

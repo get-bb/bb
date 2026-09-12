@@ -51,55 +51,15 @@ const STUBBED_MODULES = new Map([
   ],
 ]);
 const outDir = path.join(pkgRoot, "bundled-types");
-const outputs = {
-  "bb-plugin-sdk.d.ts": path.join(pkgRoot, "src/index.ts"),
-  "bb-plugin-sdk-app.d.ts": path.join(pkgRoot, "src/app.ts"),
-  "bb-plugin-sdk-provider-bridge.d.ts": path.join(
-    pkgRoot,
-    "src/provider-bridge.ts",
-  ),
-  "bb-plugin-sdk-ai-services.d.ts": path.join(pkgRoot, "src/ai-services.ts"),
-  "bb-plugin-sdk-provider-bridge-testing.d.ts": path.join(
-    pkgRoot,
-    "src/provider-bridge-testing.ts",
-  ),
-  "bb-plugin-sdk-provider-bridge-acp.d.ts": path.join(
-    pkgRoot,
-    "src/provider-bridge-acp.ts",
-  ),
-  "bb-plugin-sdk-host.d.ts": path.join(pkgRoot, "src/host.ts"),
-  "bb-plugin-sdk-environment-provider.d.ts": path.join(
-    pkgRoot,
-    "src/environment-provider.ts",
-  ),
-  "bb-plugin-sdk-machine-provider.d.ts": path.join(
-    pkgRoot,
-    "src/machine-provider.ts",
-  ),
-  "bb-plugin-sdk-internal-composer-customization-validation.d.ts": path.join(
-    pkgRoot,
-    "src/internal/composer-customization-validation.ts",
-  ),
-  "bb-plugin-sdk-internal-composer-view.d.ts": path.join(
-    pkgRoot,
-    "src/internal/composer-view.ts",
-  ),
-  "bb-plugin-sdk-internal-file-navigation-validation.d.ts": path.join(
-    pkgRoot,
-    "src/internal/file-navigation-validation.ts",
-  ),
-  "bb-plugin-sdk-internal-host-policy.d.ts": path.join(
-    pkgRoot,
-    "src/internal/host-policy.ts",
-  ),
-  "bb-plugin-sdk-internal-plugin-app-collector.d.ts": path.join(
-    pkgRoot,
-    "src/internal/plugin-app-collector.ts",
-  ),
-  "bb-plugin-sdk-testing.d.ts": path.join(pkgRoot, "src/testing/index.ts"),
-  "bb-plugin-sdk-testing-app.d.ts": path.join(pkgRoot, "src/testing/app.tsx"),
-  "bb-plugin-sdk-testing-host.d.ts": path.join(pkgRoot, "src/testing/host.ts"),
-};
+const { exports: packageExports } = JSON.parse(
+  readFileSync(path.join(pkgRoot, "package.json"), "utf8"),
+);
+const outputs = Object.fromEntries(
+  Object.values(packageExports).map((entry) => [
+    path.basename(entry.types),
+    path.join(pkgRoot, entry.source),
+  ]),
+);
 
 // Real npm packages the bundle imports from — kept external so they resolve
 // from the scaffold's devDependencies rather than being inlined.

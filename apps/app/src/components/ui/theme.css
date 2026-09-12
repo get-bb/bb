@@ -445,14 +445,6 @@
    * canvas these match an opaque ink-over-canvas mix exactly; on elevated
   * surfaces they composite for real, visible contrast. */
   --state-hover: color-mix(in oklab, var(--ink) 5.9%, transparent);
-  --resource-source-shelf-card-hover-border: color-mix(
-    in oklch,
-    var(--ink) 24%,
-    var(--canvas)
-  );
-  --resource-source-shelf-card-hover-shadow:
-    -1px 2px 0 0 color-mix(in oklab, var(--ink) 8%, transparent),
-    -4px 6px 10px -5px color-mix(in oklab, var(--ink) 10%, transparent);
   --state-active: color-mix(in oklab, var(--ink) 11.8%, transparent);
   --destructive: oklch(0.45 0.19 25.8625);
   --destructive-foreground: oklch(1 0 0);
@@ -597,14 +589,8 @@
   --resource-source-shelf-inset: calc(var(--spacing) * 3);
   --resource-source-shelf-section-gap: calc(var(--spacing) * 2);
   --resource-source-shelf-label-gap: calc(var(--spacing) * 1.5);
-  --resource-source-shelf-item-gap: var(--spacing);
-  --resource-source-shelf-item-width: 31.25%;
-  --resource-source-shelf-card-action-gap: calc(var(--spacing) * 2);
   --resource-source-shelf-action-inline: calc(var(--spacing) * 1.5);
   --resource-source-shelf-action-block: var(--spacing);
-  --resource-source-shelf-fade-ramp: calc(var(--spacing) * 4);
-  --resource-source-shelf-shadow-bleed: calc(var(--spacing) * 5);
-  --resource-source-shelf-shadow-left-bleed: var(--spacing);
   --icon-stroke-width: 1.75;
   /* ANSI 16-color palette (light mode) tuned for readable terminal output. */
   --ansi-0: #000000;
@@ -691,16 +677,6 @@
   /* Interactive-state fills: translucent ink so the same hover/active step
   * reads consistently on canvas, cards, and recessed surfaces alike. */
   --state-hover: color-mix(in oklab, var(--ink) 13.8%, transparent);
-  /* Intentionally close to --input: shadows contribute little on the dark
-   * canvas, so this border carries the card's complete hover signal. */
-  --resource-source-shelf-card-hover-border: color-mix(
-    in oklch,
-    var(--ink) 30%,
-    var(--canvas)
-  );
-  --resource-source-shelf-card-hover-shadow:
-    -1px 2px 0 0 color-mix(in oklab, var(--canvas) 22%, transparent),
-    -4px 6px 10px -5px color-mix(in oklab, var(--canvas) 45%, transparent);
   --state-active: color-mix(in oklab, var(--ink) 22.5%, transparent);
   --destructive: oklch(0.56 0.19 22.1703);
   --destructive-foreground: oklch(1 0 0);
@@ -1004,13 +980,6 @@ body.sidebar-resizing [data-sidebar="panel"] {
   [aria-hidden="true"] .animate-shine-icon {
     animation-play-state: paused;
     will-change: auto;
-  }
-
-  /* Plugin status glyphs are the only visible progress cue. Keep their sweep
-     above the 3:1 graphical-object floor instead of dimming to the generic
-     decorative-icon edge opacity. */
-  .animate-shine-icon-status {
-    --shine-icon-edge-opacity: 0.93;
   }
 
   /*

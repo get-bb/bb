@@ -15,6 +15,12 @@ export interface ResolvedHostLimit {
   readonly mode: "automatic" | "override";
 }
 
+export function parseLimitValue(raw: string): number | null {
+  if (!/^\d+$/u.test(raw)) return null;
+  const value = Number(raw);
+  return value <= MAX_LIMIT_VALUE ? value : null;
+}
+
 export function automaticHostLimit(
   availableParallelism: number | null,
 ): number {

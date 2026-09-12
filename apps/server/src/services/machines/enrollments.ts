@@ -10,7 +10,12 @@ import {
   type DbConnection,
 } from "@bb/db";
 import type { ServerAccessGrant } from "@get-bb/plugin-sdk";
-import type { MachineAuthService } from "../machine-auth.js";
+import {
+  DAEMON_ENROLL_CONFIG_ID,
+  DAEMON_HOST_CONFIG_ID,
+  type MachineAuthService,
+} from "../machine-auth.js";
+import { runSerialized } from "../lib/async-deduper.js";
 
 export interface EnrollmentBootstrap {
   hostId: string;
@@ -64,20 +69,6 @@ export function createMachineEnrollmentService(
   >();
   const locks = new Map<string, Promise<unknown>>();
 
-  async function serialized<T>(
-    key: string,
-    action: () => Promise<T>,
-  ): Promise<T> {
-    const previous = locks.get(key) ?? Promise.resolve();
-    const current = previous.catch(() => {}).then(action);
-    locks.set(key, current);
-    try {
-      return await current;
-    } finally {
-      if (locks.get(key) === current) locks.delete(key);
-    }
-  }
-
   function hasIssuedDaemonCredential(hostId: string): boolean {
     return (
       deps.db
@@ -85,7 +76,7 @@ export function createMachineEnrollmentService(
         .from(authApiKeys)
         .where(
           and(
-            eq(authApiKeys.configId, "daemon-host"),
+            eq(authApiKeys.configId, DAEMON_HOST_CONFIG_ID),
             eq(authApiKeys.enabled, true),
             sql`json_extract(${authApiKeys.metadata}, '$.hostId') = ${hostId}`,
           ),
@@ -107,7 +98,7 @@ export function createMachineEnrollmentService(
         .from(authApiKeys)
         .where(
           and(
-            eq(authApiKeys.configId, "daemon-enroll"),
+            eq(authApiKeys.configId, DAEMON_ENROLL_CONFIG_ID),
             eq(authApiKeys.key, hashedCredential),
             eq(authApiKeys.enabled, true),
             gt(authApiKeys.remaining, 0),
@@ -143,7 +134,7 @@ export function createMachineEnrollmentService(
         if (!request.key.trim())
           throw new Error("Machine enrollment key must not be empty");
         const lockKey = JSON.stringify([owner, request.key]);
-        return serialized(lockKey, async () => {
+        return runSerialized(locks, lockKey, async () => {
           request.signal.throwIfAborted();
           const host = getNonDestroyedHostByLaunchKey(deps.db, request.key);
           if (!host) throw new Error("Machine creation host was not found");

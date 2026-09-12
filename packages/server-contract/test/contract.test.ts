@@ -6,14 +6,16 @@ import type { WorkspaceResolutionFailure } from "@bb/host-daemon-contract";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import ts from "typescript";
-import { gitBranchSelectionSchema } from "@bb/domain";
-import { describe, expect, it } from "vitest";
-import * as contract from "../src/index.js";
 import {
+  gitBranchSelectionSchema,
   TERMINAL_COLS_MAX,
   TERMINAL_DATA_MAX_BASE64_LENGTH,
   TERMINAL_DATA_MAX_BYTES,
   TERMINAL_ROWS_MAX,
+} from "@bb/domain";
+import { describe, expect, it } from "vitest";
+import * as contract from "../src/index.js";
+import {
   createTerminalRequestSchema,
   createHostJoinCodeRequestSchema,
   createQueuedMessageRequestSchema,
@@ -1912,8 +1914,6 @@ describe("server-contract clients", () => {
       threadTimelineResponseSchema: contract.threadTimelineResponseSchema,
       timelineTurnSummaryDetailsQuerySchema:
         contract.timelineTurnSummaryDetailsQuerySchema,
-      timelineTurnSummaryDetailsRequestSchema:
-        contract.timelineTurnSummaryDetailsRequestSchema,
       resolvePendingInteractionRequestSchema:
         contract.resolvePendingInteractionRequestSchema,
       updateEnvironmentRequestSchema: contract.updateEnvironmentRequestSchema,

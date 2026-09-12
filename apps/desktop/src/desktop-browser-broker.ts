@@ -28,15 +28,8 @@ import type {
 } from "./desktop-browser-view.js";
 import type { BrowserImportService } from "./browser-import/browser-import.js";
 
-interface BrokerWindow extends DesktopBrowserHostWindow {
-  focus(): void;
-  show(): void;
-  restore(): void;
-  isMinimized(): boolean;
-}
-
 interface InstanceEntry {
-  window: BrokerWindow;
+  window: DesktopBrowserHostWindow;
   descriptor: DesktopBrowserInstance;
   threads: Set<string>;
 }
@@ -298,7 +291,7 @@ export function createDesktopBrowserBroker(args: {
   }
 
   return {
-    registerWindow(window: BrokerWindow) {
+    registerWindow(window: DesktopBrowserHostWindow) {
       if (instanceForWindow(window.webContents.id)) return;
       const descriptor = {
         instanceId: randomUUID(),

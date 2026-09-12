@@ -11,8 +11,6 @@ import {
 
 import { BB_BRIDGE_MCP_SERVER_NAME } from "../tool-classification.js";
 
-export const BRIDGE_MCP_SERVER_NAME = BB_BRIDGE_MCP_SERVER_NAME;
-
 type BridgeToolCallContent =
   | { type: "text"; text: string }
   | { type: "image"; data: string; mimeType: string };
@@ -32,7 +30,7 @@ export function buildBridgeMcpServer(
 ): McpSdkServerConfigWithInstance {
   const toolsByName = new Map(dynamicTools.map((def) => [def.name, def]));
   const instance = new McpServer(
-    { name: BRIDGE_MCP_SERVER_NAME, version: "1.0.0" },
+    { name: BB_BRIDGE_MCP_SERVER_NAME, version: "1.0.0" },
     { capabilities: { tools: {} } },
   );
   instance.server.setRequestHandler(ListToolsRequestSchema, () => ({
@@ -64,12 +62,12 @@ export function buildBridgeMcpServer(
       ...(result.isError ? { isError: true } : {}),
     };
   });
-  return { type: "sdk", name: BRIDGE_MCP_SERVER_NAME, instance };
+  return { type: "sdk", name: BB_BRIDGE_MCP_SERVER_NAME, instance };
 }
 
 export function getAllowedToolNames(dynamicTools: DynamicTool[]): string[] {
   return dynamicTools.map(
-    (def) => `mcp__${BRIDGE_MCP_SERVER_NAME}__${def.name}`,
+    (def) => `mcp__${BB_BRIDGE_MCP_SERVER_NAME}__${def.name}`,
   );
 }
 

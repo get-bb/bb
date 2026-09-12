@@ -94,7 +94,6 @@ export function ancestorsOf(path: string): string[] {
 export interface FilteredTree {
   nodes: TreeNode[];
   expand: Set<string>;
-  matchCount: number;
 }
 
 export function filterTree(
@@ -103,16 +102,14 @@ export function filterTree(
 ): FilteredTree {
   const needle = query.trim().toLowerCase();
   if (needle === "") {
-    return { nodes: [...nodes], expand: new Set(), matchCount: 0 };
+    return { nodes: [...nodes], expand: new Set() };
   }
 
   const expand = new Set<string>();
-  let matchCount = 0;
 
   const visit = (node: TreeNode): TreeNode | null => {
     if (node.kind === "file") {
       if (!node.path.toLowerCase().includes(needle)) return null;
-      matchCount += 1;
       return node;
     }
     const children = node.children
@@ -126,6 +123,5 @@ export function filterTree(
   return {
     nodes: nodes.map(visit).filter((node): node is TreeNode => node !== null),
     expand,
-    matchCount,
   };
 }

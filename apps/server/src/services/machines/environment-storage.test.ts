@@ -7,7 +7,6 @@ import {
   decryptMachineEnvironment,
   readMachineEnvironment,
   replaceMachineEnvironment,
-  updateMachineEnvironment,
 } from "./environment-storage.js";
 
 let db: ReturnType<typeof createConnection>;
@@ -66,10 +65,8 @@ it("replaces the whole list while retaining unchanged ciphertext", async () => {
 });
 
 it("authenticates ciphertext and its variable name", async () => {
-  await updateMachineEnvironment(db, dataDir, "TOKEN", {
-    name: "TOKEN",
-    value: "private",
-    note: null,
+  await replaceMachineEnvironment(db, dataDir, {
+    variables: [{ name: "TOKEN", value: "private", note: null }],
   });
   const [row] = readMachineEnvironment(db);
   await expect(
@@ -86,18 +83,17 @@ it("authenticates ciphertext and its variable name", async () => {
 });
 
 it("does not replace a missing encryption key or overwrite existing ciphertext", async () => {
-  await updateMachineEnvironment(db, dataDir, "TOKEN", {
-    name: "TOKEN",
-    value: "private",
-    note: null,
+  await replaceMachineEnvironment(db, dataDir, {
+    variables: [{ name: "TOKEN", value: "private", note: null }],
   });
   const before = db.select().from(appSettingsValues).all();
   await rm(join(dataDir, "machine-environment-key"));
   await expect(
-    updateMachineEnvironment(db, dataDir, "OTHER", {
-      name: "OTHER",
-      value: "new",
-      note: null,
+    replaceMachineEnvironment(db, dataDir, {
+      variables: [
+        { name: "TOKEN", value: null, note: null },
+        { name: "OTHER", value: "new", note: null },
+      ],
     }),
   ).rejects.toThrow("encryption key is unavailable");
   expect(db.select().from(appSettingsValues).all()).toEqual(before);
@@ -107,19 +103,15 @@ it("does not replace a missing encryption key or overwrite existing ciphertext",
 });
 
 it("serializes replacement and removal without resurrecting values", async () => {
-  await updateMachineEnvironment(db, dataDir, "TOKEN", {
-    name: "TOKEN",
-    value: "old",
-    note: null,
+  await replaceMachineEnvironment(db, dataDir, {
+    variables: [{ name: "TOKEN", value: "old", note: null }],
   });
   await Promise.all([
     readMachineEnvironment(db),
-    updateMachineEnvironment(db, dataDir, "TOKEN", {
-      name: "TOKEN",
-      value: "new",
-      note: null,
+    replaceMachineEnvironment(db, dataDir, {
+      variables: [{ name: "TOKEN", value: "new", note: null }],
     }),
-    updateMachineEnvironment(db, dataDir, "TOKEN", null),
+    replaceMachineEnvironment(db, dataDir, { variables: [] }),
   ]);
   expect(readMachineEnvironment(db)).toEqual([]);
 });

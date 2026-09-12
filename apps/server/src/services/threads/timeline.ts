@@ -78,7 +78,7 @@ import type {
   StoredEventRow,
 } from "@bb/db";
 import { ApiError } from "../../errors.js";
-import { roundDurationMs } from "../lib/duration.js";
+import { roundDurationMs } from "@bb/process-utils";
 import { runEventLoopWorkSync } from "../system/event-loop-work.js";
 import { parseStoredEvent } from "./thread-data.js";
 import {
@@ -193,7 +193,7 @@ export interface ThreadTimelineBuildProfile {
 }
 
 interface BuildThreadTimelineInternalResult {
-  profile: ThreadTimelineBuildProfile | null;
+  profile: ThreadTimelineBuildProfile;
   response: ThreadTimelineResponse;
 }
 
@@ -209,10 +209,6 @@ interface ThreadTimelineBuildProfileAccumulator {
   returnedSegmentCount: number;
   selectionStrategy: ThreadTimelineEventSelectionStrategy;
   stageTimings: ThreadTimelineBuildProfileStageTiming[];
-}
-
-interface BuildThreadTimelineInternalOptions extends BuildThreadTimelineOptions {
-  includeProfile: boolean;
 }
 
 interface TimelineEventRowSelection {
@@ -242,7 +238,6 @@ interface TimelineWindowParentedRowsArgs extends TimelineWindowRowsArgs {
 }
 
 interface TimelineWindowParentedRowsResult {
-  contextOnlyToolCallIds: Set<string>;
   rows: StoredEventRow[];
 }
 
@@ -534,7 +529,6 @@ function ensureTimelineWindowParentedRows(
     rows = mergeStoredEventRowsById([...rows, ...newChildRows]);
   }
 
-  const contextOnlyToolCallIds = new Set<string>();
   const missingParentToolCallIds = collectStoredParentToolCallIds(rows).filter(
     (parentToolCallId) => !visibleToolCallIds.has(parentToolCallId),
   );
@@ -544,14 +538,8 @@ function ensureTimelineWindowParentedRows(
     threadId: args.threadId,
   });
   const newParentRows = parentRows.filter((row) => !rowIds.has(row.id));
-  for (const row of parentRows) {
-    if (row.itemId !== null && !visibleToolCallIds.has(row.itemId)) {
-      contextOnlyToolCallIds.add(row.itemId);
-    }
-  }
 
   return {
-    contextOnlyToolCallIds,
     rows:
       newParentRows.length > 0
         ? mergeStoredEventRowsById([...newParentRows, ...rows])
@@ -767,7 +755,6 @@ function storedEventRowItemRef(row: StoredEventRow): ScopedItemRef {
 interface SequenceWindowItemRowsArgs extends TimelineWindowRowsArgs {
   beforeSequence: number | undefined;
   maxInlineOutputChars: InlineOutputCharLimit;
-  ownership: "later" | "origin";
   sequenceStart: number;
 }
 
@@ -812,19 +799,8 @@ function ensureSequenceWindowWholeItemRows(
   });
   const itemKeysOwnedByNewerWindow = new Set<string>();
   const itemsStartingBeforeWindow = new Map<string, ScopedItemRef>();
-  const sequenceEnd = args.beforeSequence ?? Infinity;
   for (const span of spans) {
     const key = scopedItemRefKey(span);
-    if (args.ownership === "origin") {
-      const openInLaterWindow =
-        span.completedSeq === null && span.maxSequence >= sequenceEnd;
-      if (span.minSequence < args.sequenceStart || openInLaterWindow) {
-        itemKeysOwnedByNewerWindow.add(key);
-      } else if ((span.completedSeq ?? -1) >= sequenceEnd) {
-        itemsStartingBeforeWindow.set(key, span);
-      }
-      continue;
-    }
     if (
       args.beforeSequence !== undefined &&
       span.maxSequence >= args.beforeSequence
@@ -856,14 +832,7 @@ function ensureSequenceWindowWholeItemRows(
     items: [...itemsStartingBeforeWindow.values()],
     maxInlineOutputChars: args.maxInlineOutputChars,
     threadId: args.threadId,
-  }).filter((row) =>
-    args.ownership === "origin"
-      ? row.sequence >= (args.beforeSequence ?? Infinity)
-      : row.sequence < args.sequenceStart,
-  );
-  if (args.ownership === "origin") {
-    return mergeStoredEventRowsById([...rows, ...backfillRows]);
-  }
+  }).filter((row) => row.sequence < args.sequenceStart);
 
   const completedItemKeys = new Set<string>();
   for (const row of [...rows, ...backfillRows]) {
@@ -976,7 +945,7 @@ function selectStandardTimelineEventRows(
   excludeDiagnosticEvents: boolean,
   maxSeq: number,
   contentCursor: TimelineContentCursor | undefined,
-  profile: ThreadTimelineBuildProfileAccumulator | null,
+  profile: ThreadTimelineBuildProfileAccumulator,
 ): TimelineEventRowSelection {
   const beforeSequence =
     contentCursor?.beforeSequence ??
@@ -1255,14 +1224,10 @@ function createThreadTimelineBuildProfileAccumulator(): ThreadTimelineBuildProfi
 }
 
 function measureThreadTimelineStage<TResult>(
-  profile: ThreadTimelineBuildProfileAccumulator | null,
+  profile: ThreadTimelineBuildProfileAccumulator,
   stage: ThreadTimelineBuildProfileStage,
   fn: () => TResult,
 ): TResult {
-  if (!profile) {
-    return fn();
-  }
-
   const startTime = performance.now();
   const nestedStart = profile.stageTimings.length;
   const result = fn();
@@ -1278,7 +1243,7 @@ function measureThreadTimelineStage<TResult>(
 
 function completeThreadTimelineBuildProfile(
   accumulator: ThreadTimelineBuildProfileAccumulator,
-  options: BuildThreadTimelineInternalOptions,
+  options: BuildThreadTimelineOptions,
 ): ThreadTimelineBuildProfile {
   return {
     compactedEventCount: accumulator.compactedEventCount,
@@ -1306,7 +1271,7 @@ function completeThreadTimelineBuildProfile(
 function buildThreadTimelineInternal(
   db: DbConnection,
   thread: Thread,
-  options: BuildThreadTimelineInternalOptions,
+  options: BuildThreadTimelineOptions,
 ): BuildThreadTimelineInternalResult {
   const snapshot = resolveTimelineSnapshot(
     db,
@@ -1323,9 +1288,7 @@ function buildThreadTimelineInternal(
     options.maxSeq === 0 ? undefined : options.maxSeq,
   );
   const contentCursor = readTimelineContentCursor(options.page);
-  const profile = options.includeProfile
-    ? createThreadTimelineBuildProfileAccumulator()
-    : null;
+  const profile = createThreadTimelineBuildProfileAccumulator();
   const includeNestedRows = options.includeNestedRows ?? false;
   const includeDiagnosticOperations = options.includeDiagnosticOperations;
   const contextBoundarySeq = getLatestCompletedThreadContextClearSequence(db, {
@@ -1357,27 +1320,21 @@ function buildThreadTimelineInternal(
         }
       : storedEventSelection;
   const rawEventRows = eventSelection.rows;
-  if (profile) {
-    profile.eventDataBytes = byteLengthOfStoredEventRows(rawEventRows);
-    profile.eventRowCount = rawEventRows.length;
-    profile.selectionStrategy = eventSelection.strategy;
-  }
+  profile.eventDataBytes = byteLengthOfStoredEventRows(rawEventRows);
+  profile.eventRowCount = rawEventRows.length;
+  profile.selectionStrategy = eventSelection.strategy;
   const decodedRawEvents = measureThreadTimelineStage(
     profile,
     "event-json-decode",
     () => rawEventRows.map((row) => toThreadEventWithMeta(row)),
   );
-  if (profile) {
-    profile.decodedEventCount = decodedRawEvents.length;
-  }
+  profile.decodedEventCount = decodedRawEvents.length;
   const decodedEvents = measureThreadTimelineStage(
     profile,
     "summary-compaction",
     () => compactThreadTimelineSummaryEvents(decodedRawEvents),
   );
-  if (profile) {
-    profile.compactedEventCount = decodedEvents.length;
-  }
+  profile.compactedEventCount = decodedEvents.length;
   const contextWindowUsageRows = measureThreadTimelineStage(
     profile,
     "context-window-query",
@@ -1387,12 +1344,10 @@ function buildThreadTimelineInternal(
         threadId: thread.id,
       }),
   );
-  if (profile) {
-    profile.contextWindowEventDataBytes = byteLengthOfStoredEventRows(
-      contextWindowUsageRows,
-    );
-    profile.contextWindowEventRowCount = contextWindowUsageRows.length;
-  }
+  profile.contextWindowEventDataBytes = byteLengthOfStoredEventRows(
+    contextWindowUsageRows,
+  );
+  profile.contextWindowEventRowCount = contextWindowUsageRows.length;
   const commonProjectionOptions = {
     includeDiagnosticOperations,
     isLatestPage: options.page.kind === "latest",
@@ -1446,9 +1401,7 @@ function buildThreadTimelineInternal(
     decodedRawEvents,
     "available",
   );
-  if (profile) {
-    profile.projectedRowCount = projectedTimelineRows.length;
-  }
+  profile.projectedRowCount = projectedTimelineRows.length;
   const paginatedTimeline = measureThreadTimelineStage(
     profile,
     "pagination-segmentation",
@@ -1466,10 +1419,8 @@ function buildThreadTimelineInternal(
         rows: projectedTimelineRows,
       }),
   );
-  if (profile) {
-    profile.responseRowCount = paginatedTimeline.rows.length;
-    profile.returnedSegmentCount = paginatedTimeline.returnedSegmentCount;
-  }
+  profile.responseRowCount = paginatedTimeline.rows.length;
+  profile.returnedSegmentCount = paginatedTimeline.returnedSegmentCount;
 
   const response: ThreadTimelineResponse = {
     maxSeq: snapshot.maxSeq,
@@ -1507,27 +1458,8 @@ function buildThreadTimelineInternal(
   };
   return {
     response,
-    profile:
-      profile === null
-        ? null
-        : completeThreadTimelineBuildProfile(profile, options),
+    profile: completeThreadTimelineBuildProfile(profile, options),
   };
-}
-
-export function buildThreadTimeline(
-  db: DbConnection,
-  thread: Thread,
-  options: BuildThreadTimelineOptions,
-): ThreadTimelineResponse {
-  return runEventLoopWorkSync(`timeline-build ${thread.id}`, () =>
-    db.transaction(
-      () =>
-        buildThreadTimelineInternal(db, thread, {
-          ...options,
-          includeProfile: false,
-        }).response,
-    ),
-  );
 }
 
 export function buildThreadTimelineWithProfile(
@@ -1535,18 +1467,9 @@ export function buildThreadTimelineWithProfile(
   thread: Thread,
   options: BuildThreadTimelineOptions,
 ): { profile: ThreadTimelineBuildProfile; response: ThreadTimelineResponse } {
-  return runEventLoopWorkSync(`timeline-build ${thread.id}`, () => {
-    const result = db.transaction(() =>
-      buildThreadTimelineInternal(db, thread, {
-        ...options,
-        includeProfile: true,
-      }),
-    );
-    if (result.profile === null) {
-      throw new Error("Profiled timeline build returned no profile");
-    }
-    return { profile: result.profile, response: result.response };
-  });
+  return runEventLoopWorkSync(`timeline-build ${thread.id}`, () =>
+    db.transaction(() => buildThreadTimelineInternal(db, thread, options)),
+  );
 }
 
 interface BuildThreadConversationOutlineOptions {
@@ -1858,7 +1781,6 @@ function buildTimelineTurnSummaryDetailsPage(
   const wholeItemEventRows = ensureSequenceWindowWholeItemRows(db, {
     beforeSequence: detailsWindow.beforeSequence,
     maxInlineOutputChars: detailsInlineOutputLimit,
-    ownership: "later",
     rows: mergeStoredEventRowsById([...requestedTurnStartedRows, ...eventRows]),
     sequenceStart: detailsWindow.sequenceStart,
     threadId: thread.id,

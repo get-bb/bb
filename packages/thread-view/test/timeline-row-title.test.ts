@@ -24,7 +24,6 @@ import {
 import { formatTimelineDecorationText } from "../src/timeline-row-title.js";
 import type {
   TimelineViewDelegationWorkRow,
-  TimelineWorkSummaryKind,
   TimelineWorkSummaryRow,
 } from "../src/timeline-view.js";
 
@@ -379,7 +378,7 @@ function parentChangeSystemRow({
 
 function workSummaryRow(
   children: TimelineViewWorkRow[],
-  kind: TimelineWorkSummaryKind = "step-summary",
+  kind: TimelineWorkSummaryRow["kind"] = "step-summary",
 ): TimelineWorkSummaryRow {
   return {
     ...baseRow("summary-1"),

@@ -1,6 +1,6 @@
 {
   "name": "@get-bb/plugin-sdk",
-  "version": "0.4.86",
+  "version": "0.4.87",
   "homepage": "https://github.com/get-bb/bb#readme",
   "bugs": {
     "url": "https://github.com/get-bb/bb/issues"
@@ -135,7 +135,6 @@
   },
   "devDependencies": {
     "@bb/domain": "workspace:*",
-    "@bb/host-daemon-contract": "workspace:*",
     "@bb/process-utils": "workspace:*",
     "@bb/provider-bridge-acp": "workspace:*",
     "@bb/provider-bridge-protocol": "workspace:*",

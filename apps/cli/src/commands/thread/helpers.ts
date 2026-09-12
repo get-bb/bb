@@ -24,10 +24,6 @@ export const PERMISSION_MODE_HELP =
 export const PLAN_HELP =
   "Send the message as the provider's /plan action so the agent proposes a plan for approval before executing";
 
-export function collectOption(value: string, previous: string[]): string[] {
-  return [...previous, value];
-}
-
 export function buildPromptInputs(args: {
   message: string;
   files?: readonly string[];

@@ -4,17 +4,14 @@ import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import type { WorkspaceChangeStats } from "@bb/domain";
 import { createDeferredPromise } from "@bb/test-helpers";
-import { Workspace } from "../src/workspace.js";
-import { WorkspaceError } from "../src/git.js";
-import { runGit } from "../src/git.js";
-import {
-  withCheckoutMutationLock,
-  withCheckoutMutationLocks,
-} from "../src/checkout-mutation-lock.js";
 import {
   ProcessLocalQueuedLockTimeoutError,
   withProcessLocalQueuedLocks,
-} from "../src/process-local-queued-lock.js";
+} from "bb-environment-provider-host/process-local-lock";
+import { Workspace } from "../src/workspace.js";
+import { WorkspaceError } from "../src/git.js";
+import { runGit } from "../src/git.js";
+import { withCheckoutMutationLock } from "../src/checkout-mutation-lock.js";
 
 const tempDirs: string[] = [];
 
@@ -116,7 +113,8 @@ describe("Workspace", () => {
       "dirty_uncommitted",
     );
 
-    await workspace.reset();
+    await runGit(["reset", "--hard", "HEAD"], { cwd: repoPath });
+    await runGit(["clean", "-fd"], { cwd: repoPath });
     await fs.writeFile(path.join(repoPath, "notes.txt"), "note\n", "utf8");
     const untrackedStatus = await workspace.getStatus();
     expect(untrackedStatus.workingTree.state).toBe("untracked");
@@ -893,7 +891,7 @@ describe("Workspace", () => {
     expect(diff.diff).not.toContain("second");
   });
 
-  it("commits staged work and resets dirty changes", async () => {
+  it("commits staged work", async () => {
     const repoPath = await initRepo();
     const workspace = new Workspace(repoPath);
 
@@ -906,17 +904,6 @@ describe("Workspace", () => {
       await runGit(["rev-parse", "HEAD"], { cwd: repoPath })
     ).stdout.trim();
     expect(commit.commitSha).toBe(head);
-
-    await fs.writeFile(
-      path.join(repoPath, "README.md"),
-      "modified again\n",
-      "utf8",
-    );
-    await fs.writeFile(path.join(repoPath, "temp.txt"), "temporary\n", "utf8");
-    await workspace.reset();
-
-    expect((await workspace.getStatus()).workingTree.state).toBe("clean");
-    await expect(fs.stat(path.join(repoPath, "temp.txt"))).rejects.toThrow();
   });
 
   it("throws a typed no_changes error when there is nothing to commit", async () => {
@@ -951,18 +938,20 @@ describe("Workspace", () => {
     });
     await lockEntered.promise;
 
-    let resetCompleted = false;
-    const reset = workspace.reset().then(() => {
-      resetCompleted = true;
-    });
+    let commitCompleted = false;
+    const commit = workspace
+      .commit({ message: "pending", noVerify: false })
+      .then(() => {
+        commitCompleted = true;
+      });
     await waitForLockContention();
 
-    expect(resetCompleted).toBe(false);
+    expect(commitCompleted).toBe(false);
 
     releaseLock.resolve();
-    await Promise.all([heldLock, reset]);
+    await Promise.all([heldLock, commit]);
 
-    expect(resetCompleted).toBe(true);
+    expect(commitCompleted).toBe(true);
     expect((await workspace.getStatus()).workingTree.state).toBe("clean");
   });
 
@@ -991,42 +980,6 @@ describe("Workspace", () => {
     await primaryLock;
 
     expect(worktreeLockEntered).toBe(true);
-  });
-
-  it("acquires multi-checkout mutation locks in stable order", async () => {
-    const repoPath = await initRepo();
-    const worktreeParent = await makeTempDir("bb-workspace-multi-lock-");
-    const worktreePath = path.join(worktreeParent, "feature");
-    await runGit(["worktree", "add", "-b", "feature", worktreePath, "main"], {
-      cwd: repoPath,
-    });
-
-    const firstLockEntered = createDeferredPromise<void>();
-    const releaseFirstLock = createDeferredPromise<void>();
-    const firstLock = withCheckoutMutationLocks(
-      [repoPath, worktreePath],
-      async () => {
-        firstLockEntered.resolve();
-        await releaseFirstLock.promise;
-      },
-    );
-    await firstLockEntered.promise;
-
-    let secondLockEntered = false;
-    const secondLock = withCheckoutMutationLocks(
-      [worktreePath, repoPath],
-      async () => {
-        secondLockEntered = true;
-      },
-    );
-    await waitForLockContention();
-
-    expect(secondLockEntered).toBe(false);
-
-    releaseFirstLock.resolve();
-    await Promise.all([firstLock, secondLock]);
-
-    expect(secondLockEntered).toBe(true);
   });
 
   it("times out waiters behind a stuck process-local lock", async () => {
@@ -1081,65 +1034,12 @@ describe("Workspace", () => {
     const folder = await makeTempDir("bb-workspace-nongit-");
     const workspace = new Workspace(folder);
 
-    expect(await workspace.isGitRepo).toBe(false);
     expect(await workspace.currentBranch).toBeUndefined();
     await expect(
       workspace.commit({ message: "nope", noVerify: false }),
     ).rejects.toThrow(/not a git repository/u);
     await expect(workspace.getStatus()).rejects.toThrow(WorkspaceError);
   });
-
-  it("lists tracked and untracked files in git repositories", async () => {
-    const repoPath = await initRepo();
-    await fs.writeFile(path.join(repoPath, "notes.txt"), "pending\n", "utf8");
-
-    const workspace = new Workspace(repoPath);
-    const files = await workspace.listFiles();
-
-    expect(files).toEqual(["README.md", "notes.txt"]);
-  });
-
-  it("lists files recursively for non-git directories", async () => {
-    const folder = await makeTempDir("bb-workspace-files-");
-    await fs.mkdir(path.join(folder, "nested"), { recursive: true });
-    await fs.writeFile(
-      path.join(folder, "nested", "notes.txt"),
-      "hello\n",
-      "utf8",
-    );
-    await fs.writeFile(path.join(folder, ".hidden.txt"), "skip\n", "utf8");
-    await fs.mkdir(path.join(folder, "node_modules"), { recursive: true });
-    await fs.writeFile(
-      path.join(folder, "node_modules", "pkg.txt"),
-      "skip\n",
-      "utf8",
-    );
-
-    const workspace = new Workspace(folder);
-    const files = await workspace.listFiles();
-
-    expect(files).toEqual(["nested/notes.txt"]);
-  });
-
-  it("does not overflow the call stack merging a large subdirectory", async () => {
-    const folder = await makeTempDir("bb-workspace-large-files-");
-    const nested = path.join(folder, "many");
-    await fs.mkdir(nested);
-    const fileCount = 150_000;
-    const batchSize = 500;
-    for (let start = 0; start < fileCount; start += batchSize) {
-      const end = Math.min(start + batchSize, fileCount);
-      await Promise.all(
-        Array.from({ length: end - start }, (_, offset) =>
-          fs.writeFile(path.join(nested, `f${start + offset}.txt`), ""),
-        ),
-      );
-    }
-
-    const files = await new Workspace(folder).listFiles();
-
-    expect(files).toHaveLength(fileCount);
-  }, 60_000);
 
   it("returns null when HEAD is unavailable in an empty repository", async () => {
     const repoPath = await makeTempDir("bb-workspace-empty-repo-");

@@ -1,3 +1,4 @@
+import { sleep, waitForChildExit } from "./child-process-helpers.mjs";
 import { appendOutput, formatProcessOutput } from "./smoke-output.mjs";
 import { spawn } from "node:child_process";
 import { createServer } from "node:http";
@@ -289,49 +290,18 @@ async function waitForPreloadReady({ child, preloadReady, stdout, stderr }) {
   });
 }
 
-async function sleep(delayMs) {
-  await new Promise((resolvePromise) => {
-    setTimeout(resolvePromise, delayMs);
-  });
-}
-
-async function waitForProcessExit(child, timeoutMs) {
-  if (child.exitCode !== null || child.signalCode !== null) {
-    return true;
-  }
-
-  return await new Promise((resolvePromise) => {
-    const timeout = setTimeout(() => {
-      cleanup();
-      resolvePromise(false);
-    }, timeoutMs);
-
-    const handleExit = () => {
-      cleanup();
-      resolvePromise(true);
-    };
-
-    const cleanup = () => {
-      clearTimeout(timeout);
-      child.off("exit", handleExit);
-    };
-
-    child.once("exit", handleExit);
-  });
-}
-
 async function stopPackagedApp(child) {
-  if (await waitForProcessExit(child, 0)) {
+  if (await waitForChildExit(child, 0)) {
     return;
   }
 
   child.kill("SIGTERM");
-  if (await waitForProcessExit(child, exitTimeoutMs)) {
+  if (await waitForChildExit(child, exitTimeoutMs)) {
     return;
   }
 
   child.kill("SIGKILL");
-  await waitForProcessExit(child, exitTimeoutMs);
+  await waitForChildExit(child, exitTimeoutMs);
 }
 
 async function smokePackagedApp() {

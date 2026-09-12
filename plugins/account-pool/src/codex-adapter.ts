@@ -1,10 +1,11 @@
 import { z } from "zod";
 import { parseCodexRequestBody } from "./request-body.js";
-import type {
-  AccountQuota,
-  AccountSecret,
-  LimitWindow,
-  LimitWindowSlot,
+import {
+  EMPTY_FAMILY_WEEKLY,
+  type AccountQuota,
+  type AccountSecret,
+  type LimitWindow,
+  type LimitWindowSlot,
 } from "./contracts.js";
 import {
   codexAccessTokenExpiresAt,
@@ -16,14 +17,15 @@ import {
   fetchOAuthRefresh,
   filterRequestHeaders,
   mountedUpstreamUrl,
+  oauthSecretDueForRefresh,
 } from "./provider-adapter.js";
+import { epochMilliseconds } from "./quota.js";
 
 export const CODEX_AUTH_BASE_URL = "https://auth.openai.com";
 export const CODEX_OAUTH_CLIENT_ID = "app_EMoamEEZ73f0CkXaXp7hrann";
 export const DEFAULT_CODEX_REFRESH_URL = `${CODEX_AUTH_BASE_URL}/oauth/token`;
 export const DEFAULT_CODEX_USAGE_URL =
   "https://chatgpt.com/backend-api/wham/usage";
-const REFRESH_WINDOW_MS = 5 * 60 * 1_000;
 const USAGE_REQUEST_TIMEOUT_MS = 15_000;
 const ALLOWED_REQUEST_HEADERS = new Set([
   "accept",
@@ -56,8 +58,7 @@ function numberHeader(headers: Headers, name: string): number | null {
 
 function resetAt(headers: Headers, prefix: string, now: number): number | null {
   const raw = numberHeader(headers, `${prefix}-reset-at`);
-  if (raw !== null && raw > 0)
-    return Math.round(raw < 1_000_000_000_000 ? raw * 1_000 : raw);
+  if (raw !== null && raw > 0) return epochMilliseconds(raw);
   const after = numberHeader(headers, `${prefix}-reset-after-seconds`);
   return after === null ? null : now + Math.round(after * 1_000);
 }
@@ -143,13 +144,7 @@ function withoutClaudeSlots(previous: AccountQuota): AccountQuota {
     sevenDayResetAt: null,
     sevenDayStatus: null,
     representativeClaim: null,
-    familyWeekly: {
-      fable: null,
-      sonnet: null,
-      opus: null,
-      haiku: null,
-      other: null,
-    },
+    familyWeekly: EMPTY_FAMILY_WEEKLY,
   };
 }
 
@@ -210,11 +205,7 @@ function windowFromUsage(
     value.reset_at !== null &&
     value.reset_at !== undefined &&
     Number.isFinite(value.reset_at)
-      ? Math.round(
-          value.reset_at < 1_000_000_000_000
-            ? value.reset_at * 1_000
-            : value.reset_at,
-        )
+      ? epochMilliseconds(value.reset_at)
       : value.reset_after_seconds !== null &&
           value.reset_after_seconds !== undefined &&
           Number.isFinite(value.reset_after_seconds)
@@ -320,15 +311,8 @@ export function createCodexAdapter(options: {
       });
     },
     async refreshSecret(context) {
-      const secret = context.secret;
-      if (
-        secret.kind !== "oauth" ||
-        (!context.forceRefresh &&
-          (secret.expiresAt === null ||
-            secret.expiresAt > context.now() + REFRESH_WINDOW_MS))
-      ) {
-        return { secret, refreshed: false };
-      }
+      const secret = oauthSecretDueForRefresh(context);
+      if (secret === null) return { secret: context.secret, refreshed: false };
       const parsed = refreshResponseSchema.parse(
         JSON.parse(
           await fetchOAuthRefresh(context, options.refreshUrl, {

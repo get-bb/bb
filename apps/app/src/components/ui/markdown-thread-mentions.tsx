@@ -22,6 +22,7 @@ import {
   useThreadMentionResource,
 } from "@/components/thread/ThreadTitleMentions.js";
 import type { TimelineTitleLinkResolver } from "@/components/thread/timeline/TimelineTitleView.js";
+import { replaceTextMatches } from "./markdown-text-matches.js";
 
 const THREAD_MENTION_PATTERN = new RegExp(
   `@thread:([A-Za-z0-9_-]+)|(${RAW_THREAD_ID_PATTERN_SOURCE})`,
@@ -103,11 +104,7 @@ function splitTextNodeOnMentions(
   context: PhrasingTextContext | undefined,
 ): PhrasingContent[] {
   const { value } = node;
-  THREAD_MENTION_PATTERN.lastIndex = 0;
-  const replacements: PhrasingContent[] = [];
-  let cursor = 0;
-  let match: RegExpExecArray | null;
-  while ((match = THREAD_MENTION_PATTERN.exec(value)) !== null) {
+  return replaceTextMatches(node, THREAD_MENTION_PATTERN, (match) => {
     const serializedThreadId = match[1];
     const rawThreadId = match[2];
     const threadId = serializedThreadId ?? rawThreadId;
@@ -127,24 +124,10 @@ function splitTextNodeOnMentions(
         ? isMentionEndBoundary(value, matchEnd)
         : isRawThreadIdEndBoundary(boundaryText ?? value, boundaryEnd))
     ) {
-      continue;
+      return null;
     }
-    if (match.index > cursor) {
-      replacements.push({
-        type: "text",
-        value: value.slice(cursor, match.index),
-      });
-    }
-    replacements.push(threadMentionNode(threadId, rawThreadId !== undefined));
-    cursor = match.index + match[0].length;
-  }
-  if (replacements.length === 0) {
-    return [node];
-  }
-  if (cursor < value.length) {
-    replacements.push({ type: "text", value: value.slice(cursor) });
-  }
-  return replacements;
+    return threadMentionNode(threadId, rawThreadId !== undefined);
+  });
 }
 
 interface ParsedTextDirective {

@@ -218,7 +218,6 @@ function svgTextToDataUrl(contents: string): string | null {
 interface UseGitDiffCardBodyArgs {
   fileDiff: ParsedGitDiffFile;
   changeKind: GitDiffFileChangeKind;
-  isRendering: boolean;
   onRequestFileContents: RequestDiffFileContents | undefined;
   patchText?: string;
 }
@@ -242,7 +241,6 @@ interface GitDiffCardBodyState {
 export function useGitDiffCardBody({
   fileDiff,
   changeKind,
-  isRendering,
   onRequestFileContents,
   patchText,
 }: UseGitDiffCardBodyArgs): GitDiffCardBodyState {
@@ -287,8 +285,7 @@ export function useGitDiffCardBody({
   }, [isBodyVisible]);
   const shouldGateDeletedDiff =
     isDeletedFile && !isImageCard && !isSvgCard && !hasLoadedDeletedDiff;
-  const shouldRenderDiffView =
-    hasBodyEnteredViewport && !isRendering && !shouldGateDeletedDiff;
+  const shouldRenderDiffView = hasBodyEnteredViewport && !shouldGateDeletedDiff;
   const needsContentsToRender = isImageCard || isSvgCard;
   const canExpandContext =
     !needsContentsToRender &&

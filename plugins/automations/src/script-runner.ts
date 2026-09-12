@@ -10,7 +10,6 @@ import {
 import {
   resolveAutomationScriptPath,
   resolveDefaultInterpreter,
-  resolveInterpreterCommand,
   scriptsRoot,
 } from "./script-files.js";
 
@@ -280,7 +279,6 @@ export async function executeStoredScript(args: {
   });
   const interpreter =
     args.interpreter ?? resolveDefaultInterpreter(args.scriptFile);
-  const command = resolveInterpreterCommand(interpreter);
   const bbPath = await resolveBbBinary();
   const warning = bbPath === null ? `${BB_NOT_INJECTED_WARNING}\n` : "";
   const scriptEnv: NodeJS.ProcessEnv = {
@@ -298,7 +296,7 @@ export async function executeStoredScript(args: {
   const cwd = scriptsRoot(args.pluginDataDir);
   await mkdir(cwd, { recursive: true });
   const result = await executeWithProcessGroup({
-    command,
+    command: interpreter,
     scriptPath,
     cwd,
     timeoutMs: Math.min(args.timeoutMs, AUTOMATION_SCRIPT_TIMEOUT_MAX_MS),

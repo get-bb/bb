@@ -270,12 +270,10 @@ function createFakeWorkspace(path: string): HostWorkspace {
     })),
     diffPatch: vi.fn(async () => []),
     getPullRequest: vi.fn(async () => ({ outcome: "none" as const })),
-    listFiles: vi.fn(async () => []),
     commit: vi.fn(async () => ({
       commitSha: "commit-1",
       commitSubject: "commit",
     })),
-    reset: vi.fn(async () => undefined),
     runPullRequestAction: vi.fn(async () => undefined),
   };
 }
@@ -421,9 +419,12 @@ describe("TerminalManager", () => {
         title: "zsh",
       }),
     );
-    await expect(
-      harness.runtimeManager.evictIdleEnvironments(),
-    ).resolves.toEqual([]);
+    expect(harness.runtimeManager.get("env-1")?.terminals.has("term-1")).toBe(
+      true,
+    );
+    await harness.runtimeManager.replaceBaseShellEnv({ BB_BASE_ENV: "2" });
+    expect(harness.runtimeManager.get("env-1")).toBeDefined();
+    expect(harness.runtime.shutdown).not.toHaveBeenCalled();
   });
 
   it("injects host credentials into a PTY and forwards terminal output as-is", async () => {
@@ -481,9 +482,12 @@ describe("TerminalManager", () => {
         title: "pnpm dev",
       }),
     );
-    await expect(
-      harness.runtimeManager.evictIdleEnvironments(),
-    ).resolves.toEqual([]);
+    expect(
+      harness.runtimeManager.get("env-1")?.terminals.has("term-command"),
+    ).toBe(true);
+    await harness.runtimeManager.replaceBaseShellEnv({ BB_BASE_ENV: "2" });
+    expect(harness.runtimeManager.get("env-1")).toBeDefined();
+    expect(harness.runtime.shutdown).not.toHaveBeenCalled();
   });
 
   it("opens a PTY in a host path without an environment", async () => {
@@ -517,9 +521,7 @@ describe("TerminalManager", () => {
         initialCwd: cwd,
       }),
     );
-    await expect(
-      harness.runtimeManager.evictIdleEnvironments(),
-    ).resolves.toEqual([]);
+    expect(harness.runtimeManager.get("env-1")).toBeUndefined();
   });
 
   it("opens a host-path PTY in the home directory when no cwd is provided", async () => {
@@ -551,9 +553,7 @@ describe("TerminalManager", () => {
         initialCwd: expectedCwd,
       }),
     );
-    await expect(
-      harness.runtimeManager.evictIdleEnvironments(),
-    ).resolves.toEqual([]);
+    expect(harness.runtimeManager.get("env-1")).toBeUndefined();
   });
 
   it("closes a terminal after an in-progress open finishes", async () => {
@@ -614,65 +614,6 @@ describe("TerminalManager", () => {
           terminalId: "term-1",
           exitCode: 0,
           closeReason: "user",
-        },
-      ]),
-    );
-  });
-
-  it("closes environment terminals after in-progress opens finish", async () => {
-    const shell = createDeferredPromise<string>();
-    let resolveShellCalls = 0;
-    const harness = createHarnessWithShell({
-      resolveShell: () => {
-        resolveShellCalls += 1;
-        return shell.promise;
-      },
-    });
-
-    const openPromise = harness.manager.handleMessage({
-      type: "terminal.open",
-      contributedEnv: [],
-      requestId: "open-1",
-      terminalId: "term-1",
-      threadId: "thr-1",
-      target: {
-        kind: "workspace",
-        environmentId: "env-1",
-        workspaceContext: {
-          workspacePath: "/tmp/terminal-workspace",
-        },
-      },
-      cols: 100,
-      rows: 30,
-      start: DEFAULT_TERMINAL_START,
-    });
-    await vi.waitFor(() => expect(resolveShellCalls).toBe(1));
-
-    const closePromise = harness.manager.closeEnvironmentTerminals({
-      environmentId: "env-1",
-      reason: "environment-destroyed",
-    });
-    shell.resolve("/bin/zsh");
-    await Promise.all([openPromise, closePromise]);
-
-    const pty = harness.adapter.spawned[0]?.pty;
-    if (!pty) {
-      throw new Error("Expected terminal PTY to spawn");
-    }
-    await vi.waitFor(() => expect(pty.killCalls).toEqual([null]));
-
-    pty.emitExit(0);
-    await vi.waitFor(() =>
-      expect(
-        harness.messages.filter(
-          (message) => message.type === "terminal.exited",
-        ),
-      ).toEqual([
-        {
-          type: "terminal.exited",
-          terminalId: "term-1",
-          exitCode: 0,
-          closeReason: "environment-destroyed",
         },
       ]),
     );
@@ -1298,9 +1239,8 @@ describe("TerminalManager", () => {
         closeReason: "user",
       },
     ]);
-    await expect(
-      harness.runtimeManager.evictIdleEnvironments(),
-    ).resolves.toEqual(["env-1"]);
+    await harness.runtimeManager.replaceBaseShellEnv({ BB_BASE_ENV: "2" });
+    expect(harness.runtimeManager.get("env-1")).toBeUndefined();
     expect(harness.runtime.shutdown).toHaveBeenCalledTimes(1);
   });
 
@@ -1351,9 +1291,8 @@ describe("TerminalManager", () => {
         closeReason: "user",
       },
     ]);
-    await expect(
-      harness.runtimeManager.evictIdleEnvironments(),
-    ).resolves.toEqual(["env-1"]);
+    await harness.runtimeManager.replaceBaseShellEnv({ BB_BASE_ENV: "2" });
+    expect(harness.runtimeManager.get("env-1")).toBeUndefined();
   });
 
   it("kills all terminals on shutdown", async () => {

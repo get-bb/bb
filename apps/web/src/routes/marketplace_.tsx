@@ -1,13 +1,11 @@
-import interWoff2 from "@fontsource-variable/inter/files/inter-latin-wght-normal.woff2?url";
 import {
   createFileRoute,
   Outlet,
   useRouter,
   useRouterState,
 } from "@tanstack/react-router";
-import type { ComponentProps } from "react";
 
-import landingCss from "../landing/landing.css?url";
+import { siteHeadLinks } from "../landing/page-head.js";
 import marketplaceCss from "../marketplace/marketplace.css?url";
 import {
   marketplaceIndexMeta,
@@ -31,17 +29,7 @@ export const Route = createFileRoute("/marketplace_")({
     const notFound = matches.some(
       (candidate) => candidate.status === "notFound",
     );
-    const sharedLinks: Array<ComponentProps<"link">> = [
-      {
-        rel: "preload",
-        href: interWoff2,
-        as: "font",
-        type: "font/woff2",
-        crossOrigin: "anonymous",
-      },
-      { rel: "stylesheet", href: landingCss },
-      { rel: "stylesheet", href: marketplaceCss },
-    ];
+    const sharedLinks = siteHeadLinks(marketplaceCss);
     if (notFound) {
       return {
         meta: [

@@ -67,7 +67,6 @@ export interface ProviderRegistryService {
     value: Promise<boolean>,
   ): void;
   forgetInstalledKey(key: ProviderHealthCacheKey): void;
-  forgetInstalledProvider(providerId: string): void;
   forgetAllInstalled(): void;
   getServerCapabilities(providerId: string): ProviderServerCapabilities | null;
   getSupportedPermissionModes(
@@ -259,55 +258,38 @@ export function createProviderRegistryService(
       if (hostEntries.size === 0) installedByHostId.delete(key.hostId);
     },
 
-    forgetInstalledProvider(providerId) {
-      for (const [hostId, hostEntries] of installedByHostId) {
-        hostEntries.delete(providerId);
-        if (hostEntries.size === 0) installedByHostId.delete(hostId);
-      }
-    },
-
     forgetAllInstalled() {
       installedByHostId.clear();
     },
 
     getServerCapabilities(providerId) {
-      const registration = getRegistration(providerId);
-      if (registration) {
-        return registration.serverCapabilities;
-      }
-      return null;
+      return getRegistration(providerId)?.serverCapabilities ?? null;
     },
 
     getSupportedPermissionModes(providerId) {
-      const registration = getRegistration(providerId);
-      if (registration) {
-        return registration.info.capabilities.permissionModes;
-      }
-      return null;
+      return (
+        getRegistration(providerId)?.info.capabilities.permissionModes ?? null
+      );
     },
 
     supportsFork(providerId) {
-      const registration = getRegistration(providerId);
-      if (registration) {
-        return registration.info.capabilities.supportsFork;
-      }
-      return false;
+      return (
+        getRegistration(providerId)?.info.capabilities.supportsFork ?? false
+      );
     },
 
     supportsSessionRewind(providerId) {
-      const registration = getRegistration(providerId);
-      if (registration) {
-        return registration.info.capabilities.supportsSessionRewind;
-      }
-      return false;
+      return (
+        getRegistration(providerId)?.info.capabilities.supportsSessionRewind ??
+        false
+      );
     },
 
     supportsManualCompaction(providerId) {
-      const registration = getRegistration(providerId);
-      if (registration) {
-        return registration.serverCapabilities.supportsManualCompaction;
-      }
-      return false;
+      return (
+        getRegistration(providerId)?.serverCapabilities
+          .supportsManualCompaction ?? false
+      );
     },
 
     getExtensionKindSchemas(kind) {
@@ -353,21 +335,20 @@ export function createProviderRegistryService(
       if (pluginRegistrations.has(providerId) || settle === null) {
         return;
       }
-      const key = providerId;
       let release!: () => void;
       const registered = new Promise<void>((resolve) => {
         release = resolve;
       });
-      const waiters = providerRegistrationWaiters.get(key) ?? new Set();
+      const waiters = providerRegistrationWaiters.get(providerId) ?? new Set();
       waiters.add(release);
-      providerRegistrationWaiters.set(key, waiters);
+      providerRegistrationWaiters.set(providerId, waiters);
       try {
         await waitUntilSettledOrTimeout(registered);
       } finally {
-        const currentWaiters = providerRegistrationWaiters.get(key);
+        const currentWaiters = providerRegistrationWaiters.get(providerId);
         currentWaiters?.delete(release);
         if (currentWaiters?.size === 0) {
-          providerRegistrationWaiters.delete(key);
+          providerRegistrationWaiters.delete(providerId);
         }
       }
     },

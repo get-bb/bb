@@ -1,3 +1,5 @@
+import { arrayMove } from "../panel/array-move.js";
+
 interface NeighborReorderItem {
   id: string;
 }
@@ -19,27 +21,6 @@ interface ApplyNeighborReorderArgs<Item extends NeighborReorderItem> {
   request: NeighborReorderRequest;
 }
 
-interface MoveItemArgs<Item> {
-  fromIndex: number;
-  items: readonly Item[];
-  toIndex: number;
-}
-
-function moveItem<Item>({
-  fromIndex,
-  items,
-  toIndex,
-}: MoveItemArgs<Item>): Item[] {
-  const result = [...items];
-  const movedItems = result.splice(fromIndex, 1);
-  const movedItem = movedItems[0];
-  if (!movedItem) {
-    return result;
-  }
-  result.splice(toIndex, 0, movedItem);
-  return result;
-}
-
 export function buildNeighborReorderRequest<Item extends NeighborReorderItem>({
   activeId,
   items,
@@ -55,11 +36,7 @@ export function buildNeighborReorderRequest<Item extends NeighborReorderItem>({
     return null;
   }
 
-  const reorderedItems = moveItem({
-    items,
-    fromIndex: oldIndex,
-    toIndex: newIndex,
-  });
+  const reorderedItems = arrayMove(items, oldIndex, newIndex);
   const movedIndex = reorderedItems.findIndex((item) => item.id === activeId);
   if (movedIndex === -1) {
     return null;

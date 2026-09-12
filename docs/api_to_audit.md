@@ -156,8 +156,7 @@ type of `presentation.label`.
   Closing the window: pi stamps `fileRead`/`search` presentation so no live
   row reaches the adapter, then the `legacy-tool-item-backfill` migration
   stamps the old rows, `presentation` becomes required on
-  `item.open`/`item.close`, and the adapter, its tests and
-  `LEGACY_TOOL_ITEM_BACKFILL_MIGRATION` go together.
+  `item.open`/`item.close`, and the adapter and its tests go together.
 
 ## Scheduled removals (next major)
 

@@ -84,6 +84,7 @@ import {
 import {
   buildMessageDirectiveComponent,
   remarkMessageDirectives,
+  type BuildMessageDirectiveComponentArgs,
   type MarkdownMessageDirectives,
   type MountedMessageDirective,
 } from "./markdown-message-directives.js";
@@ -144,14 +145,7 @@ interface BuildMarkdownComponentsArgs {
   setExpandedImage: ExpandedMarkdownImageSetter;
   threadMentions?: MarkdownThreadMentions;
   promptMentions?: ResolvedPromptMentions;
-  messageDirectives?: ResolvedMessageDirectiveRender;
-}
-
-interface ResolvedMessageDirectiveRender {
-  mounts: readonly MountedMessageDirective[];
-  message: MarkdownMessageDirectives["message"];
-  openWorkspaceFile: MarkdownMessageDirectives["openWorkspaceFile"];
-  openThreadPanel: MarkdownMessageDirectives["openThreadPanel"];
+  messageDirectives?: BuildMessageDirectiveComponentArgs;
 }
 
 interface ResolvedPromptMentions {
@@ -166,8 +160,9 @@ interface BuildLocalAwareUrlTransformArgs {
   localImageRouting: MarkdownLocalImageRouting | undefined;
 }
 
-interface ResolvedMarkdownLocalPath {
-  image: MarkdownPreviewLocalFileLink;
+interface ResolvedMarkdownLocalFileTarget {
+  href: string;
+  link: MarkdownPreviewLocalFileLink;
   sourceKind: "absolute" | "relative";
 }
 
@@ -460,40 +455,42 @@ function isMarkdownAppRouteHref({ href }: IsMarkdownAppRouteHrefArgs): boolean {
   );
 }
 
-function resolveMarkdownLocalPath(
+function resolveMarkdownLocalFileTarget(
   value: string,
-  absolutePaths: MarkdownAbsoluteLocalFileLinkRouting,
-  relativePaths: MarkdownRelativeLocalFileLinkRouting | undefined,
-): ResolvedMarkdownLocalPath | null {
-  const absolutePath = parseLocalFileHref({
-    absoluteLinks: absolutePaths,
+  absolute: MarkdownAbsoluteLocalFileLinkRouting,
+  relative: MarkdownRelativeLocalFileLinkRouting | undefined,
+): ResolvedMarkdownLocalFileTarget | null {
+  const absoluteLink = parseLocalFileHref({
+    absoluteLinks: absolute,
     href: value,
   });
-  if (absolutePath !== null) {
+  if (absoluteLink !== null) {
     return {
-      image: absolutePath,
+      href: value,
+      link: absoluteLink,
       sourceKind: "absolute",
     };
   }
-  if (relativePaths === undefined) {
+  if (relative === undefined) {
     return null;
   }
 
   const resolvedHref = resolveRelativeLocalFileHref({
     href: value,
-    ...relativePaths,
+    ...relative,
   });
   if (resolvedHref === null) {
     return null;
   }
-  const relativePath = parseLocalFileHref({
-    absoluteLinks: absolutePaths,
+  const relativeLink = parseLocalFileHref({
+    absoluteLinks: absolute,
     href: resolvedHref,
   });
-  return relativePath === null
+  return relativeLink === null
     ? null
     : {
-        image: relativePath,
+        href: resolvedHref,
+        link: relativeLink,
         sourceKind: "relative",
       };
 }
@@ -505,41 +502,25 @@ function buildLocalAwareUrlTransform({
 }: BuildLocalAwareUrlTransformArgs): UrlTransform {
   return (value, key, node) => {
     if (key === "href" && localFileRouting !== undefined) {
-      if (
-        parseLocalFileHref({
-          absoluteLinks: localFileRouting.absoluteLinks,
-          href: value,
-        })
-      ) {
-        return value;
-      }
-
-      if (localFileRouting.relativeLinks !== undefined) {
-        const resolvedHref = resolveRelativeLocalFileHref({
-          href: value,
-          ...localFileRouting.relativeLinks,
-        });
-        if (
-          resolvedHref !== null &&
-          parseLocalFileHref({
-            absoluteLinks: localFileRouting.absoluteLinks,
-            href: resolvedHref,
-          })
-        ) {
-          return resolvedHref;
-        }
+      const localFile = resolveMarkdownLocalFileTarget(
+        value,
+        localFileRouting.absoluteLinks,
+        localFileRouting.relativeLinks,
+      );
+      if (localFile !== null) {
+        return localFile.href;
       }
     }
 
     if (key === "src" && localImageRouting !== undefined) {
-      const localImage = resolveMarkdownLocalPath(
+      const localImage = resolveMarkdownLocalFileTarget(
         value,
         localImageRouting.absolutePaths,
         localImageRouting.relativePaths,
       );
       if (localImage !== null) {
         return localImageRouting.resolveSrc(
-          localImage.image,
+          localImage.link,
           localImage.sourceKind,
         );
       }
@@ -570,32 +551,13 @@ function resolveInlineCodeMarkdownFileHref({
     return null;
   }
 
-  const absoluteLink = parseLocalFileHref({
-    absoluteLinks: localFileRouting.absoluteLinks,
-    href: codeText,
-  });
-  if (absoluteLink !== null) {
-    return hasMarkdownFileExtension(absoluteLink.path) ? codeText : null;
-  }
-
-  if (localFileRouting.relativeLinks === undefined) {
-    return null;
-  }
-
-  const resolvedHref = resolveRelativeLocalFileHref({
-    href: codeText,
-    ...localFileRouting.relativeLinks,
-  });
-  if (resolvedHref === null) {
-    return null;
-  }
-
-  const resolvedLink = parseLocalFileHref({
-    absoluteLinks: localFileRouting.absoluteLinks,
-    href: resolvedHref,
-  });
-  return resolvedLink !== null && hasMarkdownFileExtension(resolvedLink.path)
-    ? resolvedHref
+  const target = resolveMarkdownLocalFileTarget(
+    codeText,
+    localFileRouting.absoluteLinks,
+    localFileRouting.relativeLinks,
+  );
+  return target !== null && hasMarkdownFileExtension(target.link.path)
+    ? target.href
     : null;
 }
 
@@ -1315,12 +1277,8 @@ function buildMarkdownComponents({
   }
 
   if (messageDirectives !== undefined) {
-    components["bb-message-directive"] = buildMessageDirectiveComponent({
-      mounts: messageDirectives.mounts,
-      message: messageDirectives.message,
-      openWorkspaceFile: messageDirectives.openWorkspaceFile,
-      openThreadPanel: messageDirectives.openThreadPanel,
-    });
+    components["bb-message-directive"] =
+      buildMessageDirectiveComponent(messageDirectives);
   }
 
   return components;
@@ -1676,15 +1634,7 @@ function MarkdownPreviewComponent({
         setExpandedImage,
         threadMentions,
         promptMentions: resolvedPromptMentions,
-        messageDirectives:
-          messageDirectiveMounts === null
-            ? undefined
-            : {
-                mounts: messageDirectiveMounts.mounts,
-                message: messageDirectiveMounts.message,
-                openWorkspaceFile: messageDirectiveMounts.openWorkspaceFile,
-                openThreadPanel: messageDirectiveMounts.openThreadPanel,
-              },
+        messageDirectives: messageDirectiveMounts ?? undefined,
       }),
     [
       linkRouting,

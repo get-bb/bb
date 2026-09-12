@@ -18,6 +18,17 @@ export function resolveStoredPath(homeDir: string, storedPath: string): string {
   return path.resolve(homeDir, storedPath);
 }
 
+export function resolveConfiguredHomeDirectory(
+  homeDir: string,
+  configured: string | undefined,
+  ...defaultSegments: string[]
+): string {
+  const trimmed = configured?.trim();
+  return trimmed
+    ? resolveStoredPath(homeDir, trimmed)
+    : path.join(homeDir, ...defaultSegments);
+}
+
 export function expandConfiguredPath(
   homeDir: string,
   env: AcpNativeRootsEnvironment,

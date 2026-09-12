@@ -235,15 +235,11 @@ function resolveProviderIdentifiers(event: HostDaemonEventEnvelope["event"]): {
     case "provider/modelFallback":
     case "provider/rateLimits/updated":
     case "provider.env-resolved":
-      return { providerThreadId: event.providerThreadId };
     case "thread/compacted":
-      return { providerThreadId: event.providerThreadId };
     case "thread/context/cleared":
-      return { providerThreadId: event.providerThreadId };
     case "thread/goal/updated":
     case "thread/goal/cleared":
     case "thread/extensionState/updated":
-      return { providerThreadId: event.providerThreadId };
     case "turn/started":
     case "turn/completed":
     case "turn/input/accepted":
@@ -265,7 +261,6 @@ function resolveProviderIdentifiers(event: HostDaemonEventEnvelope["event"]): {
     case "thread/tokenUsage/updated":
     case "turn/plan/updated":
     case "turn/diff/updated":
-      return { providerThreadId: event.providerThreadId };
     case "provider/error":
     case "provider/unhandled":
       return { providerThreadId: event.providerThreadId };

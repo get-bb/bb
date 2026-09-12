@@ -129,14 +129,6 @@ export function toPluginListItem(plugin: InstalledPlugin): PluginListItem {
   };
 }
 
-export async function fetchPluginList(
-  fetchImpl: FetchLike,
-  signal?: AbortSignal,
-): Promise<PluginListResult> {
-  const plugins = await fetchInstalledPlugins(fetchImpl, signal);
-  return { plugins: plugins.map(toPluginListItem) };
-}
-
 export async function fetchInstalledPlugins(
   fetchImpl: FetchLike,
   signal?: AbortSignal,

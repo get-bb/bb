@@ -21,13 +21,6 @@ import {
   type PreparedCompletedEventOutputData,
 } from "./retained-event-outputs.js";
 
-export {
-  COMPLETED_EVENT_OUTPUT_RETAINED_HEAD_CHARS,
-  COMPLETED_EVENT_OUTPUT_RETAINED_TAIL_CHARS,
-  COMPLETED_EVENT_OUTPUT_RETENTION_MS,
-  COMPLETED_EVENT_OUTPUT_TRUNCATION_THRESHOLD_CHARS,
-} from "../retained-event-output.js";
-
 export const DESTROYED_ENVIRONMENT_TTL_MS = 7 * 24 * 60 * 60_000;
 
 export const CLOSED_SESSION_ROW_RETENTION_MS = 7 * 24 * 60 * 60_000;

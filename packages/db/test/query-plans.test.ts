@@ -15,7 +15,6 @@ import {
 } from "../src/data/pending-interactions.js";
 import {
   appendDaemonEventsInTransaction,
-  hasParentedEventCrossingSequence,
   insertEvents,
   listActiveBackgroundTaskCountsByThreadIds,
   listItemEventSpansByItems,
@@ -30,13 +29,13 @@ import {
   pruneResolvedItemDeltas,
 } from "../src/data/events.js";
 import {
-  COMPLETED_EVENT_OUTPUT_TRUNCATION_THRESHOLD_CHARS,
   MAX_COMPLETED_EVENT_OUTPUT_MIGRATION_EVENT_DATA_BYTES,
   migrateNextCompletedEventItemOutput,
   migrateNextLegacyImageGenerationOutput,
   pruneClosedSessions,
   pruneDestroyedEnvironments,
 } from "../src/data/sweeps.js";
+import { COMPLETED_EVENT_OUTPUT_TRUNCATION_THRESHOLD_CHARS } from "../src/retained-event-output.js";
 import {
   deleteExpiredRetainedEventOutputs,
   hydrateRetainedEventOutputRows,
@@ -463,35 +462,6 @@ describe("slow query index plans", () => {
     expect(
       details.match(/events_item_lifecycle_thread_item_sequence_idx/gu),
     ).toHaveLength(2);
-
-    db.$client.close();
-  });
-
-  it("resolves parent crossings through the covering delegating-item index", () => {
-    const { db, thread } = setup();
-
-    const captured = captureStatements(db, () => {
-      expect(
-        hasParentedEventCrossingSequence(db, {
-          sequence: 2,
-          threadId: thread.id,
-        }),
-      ).toBe(false);
-    });
-    const query = captured.find((entry) =>
-      entry.sql.includes("parent_event.item_id"),
-    );
-    if (!query) {
-      throw new Error("Expected the parent-crossing lookup SQL");
-    }
-    const details = queryPlanDetails({
-      db,
-      params: query.params,
-      sql: query.sql,
-    });
-    expect(details).toMatch(
-      /SEARCH parent_event .*USING COVERING INDEX events_delegating_item_lookup_idx/u,
-    );
 
     db.$client.close();
   });

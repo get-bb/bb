@@ -33,7 +33,11 @@ import {
   type SystemEnvironmentProvider,
 } from "@bb/server-contract";
 import type { Hono } from "hono";
-import { pluginImageResponse } from "./plugin-image-response.js";
+import {
+  hashedAssetCacheControl,
+  pluginImageResponse,
+} from "./plugin-image-response.js";
+import { effectivePort } from "../browser-request-guard.js";
 import {
   getEnvironmentProvider,
   listEnvironmentCompositions,
@@ -92,11 +96,12 @@ function firstForwardedValue(value: string | undefined): string | undefined {
   return value?.split(",", 1)[0]?.trim() || undefined;
 }
 
-function effectivePort(url: URL): number | null {
-  if (url.port.length > 0) return Number(url.port);
-  if (url.protocol === "http:") return 80;
-  if (url.protocol === "https:") return 443;
-  return null;
+function providerLogoUrl(
+  kind: "environment" | "machine",
+  id: string,
+  hash: string,
+): string {
+  return `/api/v1/system/providers/${encodeURIComponent(`${kind}:${id}`)}/logo?h=${hash}`;
 }
 
 function resolveSystemServerUrl(
@@ -422,7 +427,11 @@ export function registerSystemRoutes(
                 logoUrl:
                   record.icon === undefined
                     ? null
-                    : `/api/v1/system/providers/${encodeURIComponent(`environment:${record.provider.id}`)}/logo?h=${record.icon.hash}`,
+                    : providerLogoUrl(
+                        "environment",
+                        record.provider.id,
+                        record.icon.hash,
+                      ),
                 pluginId: record.pluginId,
                 requires: record.provider.requires,
                 inputs: record.provider.inputsJsonSchema,
@@ -473,7 +482,11 @@ export function registerSystemRoutes(
                         logoUrl:
                           icon === undefined
                             ? null
-                            : `/api/v1/system/providers/${encodeURIComponent("environment:" + composition.id)}/logo?h=${icon.hash}`,
+                            : providerLogoUrl(
+                                "environment",
+                                composition.id,
+                                icon.hash,
+                              ),
                         pluginId,
                         machineProviderId: composition.machineProviderId,
                         environmentProviderId:
@@ -508,7 +521,11 @@ export function registerSystemRoutes(
           logoUrl:
             record.icon === undefined
               ? null
-              : `/api/v1/system/providers/${encodeURIComponent(`machine:${record.provider.id}`)}/logo?h=${record.icon.hash}`,
+              : providerLogoUrl(
+                  "machine",
+                  record.provider.id,
+                  record.icon.hash,
+                ),
           pluginId: record.pluginId,
           inputs: record.provider.inputsJsonSchema,
           acceptsEmptyInputs: await machineProviderAcceptsEmptyInputs(record),
@@ -537,9 +554,7 @@ export function registerSystemRoutes(
       return pluginImageResponse(
         context,
         registration.icon,
-        context.req.query("h") === registration.icon.hash
-          ? "public, max-age=31536000, immutable"
-          : "no-store",
+        hashedAssetCacheControl(context.req.query("h"), registration.icon.hash),
       );
     }
     throw new ApiError(

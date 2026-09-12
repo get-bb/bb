@@ -46,7 +46,7 @@ function knownAppPorts(deps: BrowserRequestGuardDeps): Set<number> {
   return ports;
 }
 
-function effectivePort(url: URL): number | null {
+export function effectivePort(url: URL): number | null {
   if (url.port.length > 0) {
     const port = Number(url.port);
     return Number.isInteger(port) ? port : null;

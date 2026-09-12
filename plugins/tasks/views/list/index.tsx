@@ -4,6 +4,7 @@ import { useProjects } from "../../shell/data.js";
 import { useTasksNavigation } from "../../shell/routes.js";
 import { NewTaskDialog } from "../manage/new-task-dialog.js";
 import { DetailToasts, useDetailToasts } from "../detail/toast.js";
+import { EmptyState } from "../../components/empty-state.js";
 import { Button } from "@bb/shared-ui/button";
 import { DelayedLoading } from "@bb/shared-ui/delayed-loading";
 import { Icon } from "@bb/shared-ui/icon";
@@ -41,33 +42,6 @@ import { TaskRow } from "./row.js";
 interface ListViewProps {
   projectId: string | null;
   activeOnly?: boolean;
-}
-
-function EmptyState({
-  icon,
-  title,
-  description,
-  action,
-}: {
-  icon: Parameters<typeof Icon>[0]["name"];
-  title: string;
-  description?: string;
-  action?: React.ReactNode;
-}) {
-  return (
-    <div className="flex h-full flex-col items-center justify-center gap-3 p-6 text-center">
-      <div className="flex size-10 items-center justify-center rounded-md bg-secondary text-muted-foreground">
-        <Icon name={icon} className="size-5" />
-      </div>
-      <div className="space-y-1">
-        <p className="text-sm font-medium">{title}</p>
-        {description ? (
-          <p className="text-sm text-muted-foreground">{description}</p>
-        ) : null}
-      </div>
-      {action}
-    </div>
-  );
 }
 
 function LoadingRows() {
@@ -273,7 +247,6 @@ export function ListView({ projectId, activeOnly = false }: ListViewProps) {
   } else {
     body = groups.map((group) => (
       <section key={group.status}>
-        {}
         <div
           data-status-group-header={group.status}
           className="sticky top-0 z-20 isolate flex items-center gap-2 border-b border-border-hairline bg-background px-3.5 pb-1.5 pt-2.5 text-sm font-semibold"

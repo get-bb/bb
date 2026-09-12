@@ -363,42 +363,29 @@ function UserConversationMessage({
       }),
     [onOpenLink, onOpenLocalFileLink, threadId, workspaceRootPath],
   );
-  if (initiator === "agent" && senderThreadId !== null) {
-    const body = generatedConversationBodySlice({ initiator, text });
-    const bodyMentions = shiftMentionsToTextRange({
-      mentions,
-      rangeStart: body.startOffset,
-      rangeEnd: body.startOffset + body.text.length,
-    });
-    return (
-      <GeneratedConversationMessage
-        attachmentItems={attachmentItems}
-        originKind={originKind}
-        mentions={bodyMentions}
-        onOpenLink={onOpenLink}
-        onOpenLocalFileLink={onOpenLocalFileLink}
-        projectId={projectId}
-        resolveMentionLink={resolveMentionLink}
-        resolveSegmentLinkHref={resolveSegmentLinkHref}
-        onTitleAction={onTitleAction}
-        sourceKind="agent"
-        sourceName={
-          senderIsPluginSideChat ? "side chat" : (senderThreadTitle ?? "Agent")
+  const generatedSource =
+    initiator === "agent" && senderThreadId !== null
+      ? {
+          sourceKind: "agent" as const,
+          sourceName: senderIsPluginSideChat
+            ? "side chat"
+            : (senderThreadTitle ?? "Agent"),
+          sourceProjectId: senderThreadProjectId,
+          sourceThreadId: senderThreadId,
+          sourceIsPluginSideChat: senderIsPluginSideChat,
+          originKind,
         }
-        sourceProjectId={senderThreadProjectId}
-        sourceThreadId={senderThreadId}
-        sourceIsPluginSideChat={senderIsPluginSideChat}
-        systemMessageKind={systemMessageKind}
-        systemMessageSubject={systemMessageSubject}
-        text={body.text}
-        threadId={threadId}
-        turnRequest={turnRequest}
-        workspaceRootPath={workspaceRootPath}
-      />
-    );
-  }
-
-  if (initiator === "system") {
+      : initiator === "system"
+        ? {
+            sourceKind: "system" as const,
+            sourceName: "BB",
+            sourceProjectId: null,
+            sourceThreadId: null,
+            sourceIsPluginSideChat: false,
+            originKind: null,
+          }
+        : null;
+  if (generatedSource !== null) {
     const body = generatedConversationBodySlice({ initiator, text });
     const bodyMentions = shiftMentionsToTextRange({
       mentions,
@@ -407,8 +394,8 @@ function UserConversationMessage({
     });
     return (
       <GeneratedConversationMessage
+        {...generatedSource}
         attachmentItems={attachmentItems}
-        originKind={null}
         mentions={bodyMentions}
         onOpenLink={onOpenLink}
         onOpenLocalFileLink={onOpenLocalFileLink}
@@ -416,11 +403,6 @@ function UserConversationMessage({
         resolveMentionLink={resolveMentionLink}
         resolveSegmentLinkHref={resolveSegmentLinkHref}
         onTitleAction={onTitleAction}
-        sourceKind="system"
-        sourceName="BB"
-        sourceProjectId={null}
-        sourceThreadId={null}
-        sourceIsPluginSideChat={false}
         systemMessageKind={systemMessageKind}
         systemMessageSubject={systemMessageSubject}
         text={body.text}
@@ -446,7 +428,6 @@ function UserConversationMessage({
             />
           </div>
         ) : null}
-        {}
         <div className="flex w-fit max-w-full flex-col items-end">
           <div className="max-w-full rounded-xl border border-border-seam bg-surface-recessed px-4 py-2.5 text-sm leading-relaxed text-foreground">
             {messageText ? (
@@ -469,7 +450,6 @@ function UserConversationMessage({
               projectId={projectId}
             />
           </div>
-          {}
           <MessageActionBar
             messageText={messageText}
             alignment="end"
@@ -599,7 +579,6 @@ function AssistantConversationMessage({
       )}
       data-message-column=""
     >
-      {}
       <SelectableMessageProse onSelect={onSelectProse}>
         <MarkdownPreview
           className={

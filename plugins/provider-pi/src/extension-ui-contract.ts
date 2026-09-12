@@ -33,17 +33,17 @@ export const piExtensionUiRequestSchema = baseExtensionUiRequestSchema.refine(
   { message: "select requests require a non-empty options list" },
 );
 
-export type PiExtensionUiMethod = z.infer<typeof dialogMethodSchema>;
-
 export type PiExtensionUiRequest = z.infer<typeof piExtensionUiRequestSchema>;
 
 export const piExtensionUiPayloadDataSchema = z.object({
   requestId: z.string().min(1),
-  method: dialogMethodSchema,
-  options: z.array(boundedText(512)).max(PI_EXTENSION_UI_MAX_OPTIONS).optional(),
-  message: boundedText(8192).optional(),
-  placeholder: boundedText(1024).optional(),
-  prefill: boundedText(65536).optional(),
+  ...baseExtensionUiRequestSchema.pick({
+    method: true,
+    options: true,
+    message: true,
+    placeholder: true,
+    prefill: true,
+  }).shape,
 });
 
 export type PiExtensionUiPayloadData = z.infer<

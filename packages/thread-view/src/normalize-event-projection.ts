@@ -1,6 +1,10 @@
 import { getProjectionEntryMessages } from "./event-projection-flatten.js";
 import { isLegacyDelegationToolCall } from "@bb/domain";
-import { getFirstStringField, messageId } from "./format-helpers.js";
+import {
+  getFirstStringField,
+  getMessageStartedAt,
+  messageId,
+} from "./format-helpers.js";
 import type {
   EventProjectionDelegationMessage,
   EventProjectionMessage,
@@ -40,14 +44,6 @@ interface TurnMessageContext {
 }
 
 type SemanticMessageContext = StandaloneMessageContext | TurnMessageContext;
-
-interface NormalizeEventProjectionOptions {
-  contextOnlyToolCallIds?: ReadonlySet<string>;
-}
-
-function getStartedAt(message: MessageTimingSource): number {
-  return message.startedAt ?? message.createdAt;
-}
 
 export function sortEventProjectionMessagesBySource(
   messages: EventProjectionMessage[],
@@ -112,7 +108,7 @@ function maybeStartedAt(
   childBounds: ProjectionMessageBounds | null,
 ): number | undefined {
   if (childBounds) {
-    return Math.min(getStartedAt(message), childBounds.startedAt);
+    return Math.min(getMessageStartedAt(message), childBounds.startedAt);
   }
   return message.startedAt;
 }
@@ -187,7 +183,7 @@ function getProjectionMessageBounds(
   let bounds: ProjectionMessageBounds | null = null;
   for (const entry of projection.entries) {
     for (const message of getProjectionEntryMessages(entry)) {
-      const startedAt = getStartedAt(message);
+      const startedAt = getMessageStartedAt(message);
       bounds = bounds
         ? {
             sourceSeqStart: Math.min(
@@ -276,15 +272,9 @@ class SemanticProjectionBuilder {
     string,
     SemanticMessageContext[]
   >();
-  private readonly contextOnlyToolCallIds: ReadonlySet<string>;
   private readonly rootContexts: SemanticMessageContext[];
 
-  constructor(
-    contexts: SemanticMessageContext[],
-    options: NormalizeEventProjectionOptions = {},
-  ) {
-    this.contextOnlyToolCallIds =
-      options.contextOnlyToolCallIds ?? new Set<string>();
+  constructor(contexts: SemanticMessageContext[]) {
     const referencedParentCallIds = new Set(
       contexts
         .map((context) => context.message.parentToolCallId)
@@ -328,19 +318,8 @@ class SemanticProjectionBuilder {
     );
   }
 
-  private isContextOnlyToolCall(context: SemanticMessageContext): boolean {
-    return (
-      (context.message.kind === "delegation" ||
-        context.message.kind === "tool-call") &&
-      this.contextOnlyToolCallIds.has(context.message.callId)
-    );
-  }
-
   private isRootSuppressedContext(context: SemanticMessageContext): boolean {
-    return (
-      this.isContextOnlyToolCall(context) ||
-      context.message.parentToolCallId !== undefined
-    );
+    return context.message.parentToolCallId !== undefined;
   }
 
   buildRootProjection(): EventProjection {
@@ -430,11 +409,9 @@ class SemanticProjectionBuilder {
 
 export function normalizeEventProjection(
   projection: EventProjection,
-  options: NormalizeEventProjectionOptions = {},
 ): EventProjection {
   const normalizedProjection = new SemanticProjectionBuilder(
     collectProjectionMessageContexts(projection),
-    options,
   ).buildRootProjection();
   return {
     ...normalizedProjection,

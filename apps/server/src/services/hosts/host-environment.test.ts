@@ -12,7 +12,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { expect, it, vi } from "vitest";
 import { resolveHostEnvironment } from "./host-environment.js";
-import { updateMachineEnvironment } from "../machines/environment-settings.js";
+import { replaceMachineEnvironment } from "../machines/environment-settings.js";
 
 it("gives backfilled manual machines user and gh environment without enrollment while excluding the local daemon", async () => {
   const db = createConnection(":memory:");
@@ -37,10 +37,8 @@ it("gives backfilled manual machines user and gh environment without enrollment 
     migrate(db);
     await writeFile(join(dataDir, "host-id"), "local-daemon");
     expect(getHost(db, "legacy-remote")?.machineProviderId).toBe("manual");
-    await updateMachineEnvironment(db, dataDir, "MACHINE_VALUE", {
-      name: "MACHINE_VALUE",
-      value: "configured",
-      note: null,
+    await replaceMachineEnvironment(db, dataDir, {
+      variables: [{ name: "MACHINE_VALUE", value: "configured", note: null }],
     });
     const bin = join(dataDir, "bin");
     await mkdir(bin);
@@ -83,10 +81,11 @@ if [ "$1" = auth ]; then printf 'test-gh-secret\\n'; else printf '{"login":"octo
     });
     expect(disabled.some((row) => row.name === "GH_TOKEN")).toBe(false);
     expect(disabled.some((row) => row.name === "MACHINE_VALUE")).toBe(true);
-    await updateMachineEnvironment(db, dataDir, "GH_TOKEN", {
-      name: "GH_TOKEN",
-      value: "custom-token",
-      note: null,
+    await replaceMachineEnvironment(db, dataDir, {
+      variables: [
+        { name: "MACHINE_VALUE", value: null, note: null },
+        { name: "GH_TOKEN", value: "custom-token", note: null },
+      ],
     });
     const overridden = await resolveHostEnvironment(deps, {
       hostId: "legacy-remote",

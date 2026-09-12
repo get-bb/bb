@@ -1,5 +1,8 @@
 import { WebSocket as NodeWsWebSocket, type RawData } from "ws";
-import { wrapStandardWebsocket } from "./realtime-client.js";
+import {
+  createRealtimeSocketAdapter,
+  wrapStandardWebsocket,
+} from "./realtime-client.js";
 import type { BbRealtimeSocket, BbRealtimeSocketFactory } from "./transport.js";
 
 function decodeWsMessageData(data: RawData): string {
@@ -17,17 +20,7 @@ function decodeWsMessageData(data: RawData): string {
 
 export function wrapNodeWsWebsocket(url: string): BbRealtimeSocket {
   const socket = new NodeWsWebSocket(url);
-  const adapter: BbRealtimeSocket = {
-    close: () => socket.close(),
-    onclose: null,
-    onerror: null,
-    onmessage: null,
-    onopen: null,
-    get readyState() {
-      return socket.readyState;
-    },
-    send: (data) => socket.send(data),
-  };
+  const adapter = createRealtimeSocketAdapter(socket);
   socket.on("open", () => adapter.onopen?.());
   socket.on("message", (data) =>
     adapter.onmessage?.({ data: decodeWsMessageData(data) }),

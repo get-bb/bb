@@ -5,25 +5,21 @@ import { resolveFont } from "@/theme/fonts";
 import { useTheme } from "@/theme/ThemeProvider";
 import { Icon } from "./Icon";
 
-export type ToastId = string | number;
-
 export interface ToastOptions {
   description?: string;
   duration?: number;
   action?: { label: string; onClick: () => void };
-  id?: ToastId;
 }
 
 function show(
-  kind: "success" | "error" | "info" | "warning" | "message" | "loading",
+  kind: "success" | "error" | "info" | "message",
   message: string,
   options?: ToastOptions,
-): ToastId {
+): string | number {
   const data = {
     description: options?.description,
     duration: options?.duration,
     action: options?.action,
-    id: options?.id,
   };
   switch (kind) {
     case "success":
@@ -32,10 +28,6 @@ function show(
       return sonnerToast.error(message, data);
     case "info":
       return sonnerToast.info(message, data);
-    case "warning":
-      return sonnerToast.warning(message, data);
-    case "loading":
-      return sonnerToast.loading(message, data);
     default:
       return sonnerToast(message, data);
   }
@@ -50,11 +42,6 @@ export const toast = {
     show("error", message, options),
   info: (message: string, options?: ToastOptions) =>
     show("info", message, options),
-  warning: (message: string, options?: ToastOptions) =>
-    show("warning", message, options),
-  loading: (message: string, options?: ToastOptions) =>
-    show("loading", message, options),
-  dismiss: (id?: ToastId) => sonnerToast.dismiss(id),
 };
 
 const TOAST_RADIUS = 14;

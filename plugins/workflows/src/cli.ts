@@ -12,6 +12,7 @@ import type {
 import type { WorkflowRunRow } from "./data.js";
 import type { WorkflowSourceInput } from "./source-resolution.js";
 import { parseStoredWorkflowSettings } from "./settings.js";
+import { utf8Prefix } from "./utf8.js";
 import { prepareWorkflowSource } from "./workflow-input.js";
 
 const STATUS_INLINE_RESULT_MAX_BYTES = 8 * 1024;
@@ -145,14 +146,6 @@ function parseStoredJson(value: string, description: string): JsonValue {
   }
 }
 
-function utf8CodePointBytes(value: string): number {
-  const codePoint = value.codePointAt(0)!;
-  if (codePoint <= 0x7f) return 1;
-  if (codePoint <= 0x7ff) return 2;
-  if (codePoint <= 0xffff) return 3;
-  return 4;
-}
-
 function boundedText(
   value: string | null,
   maximumBytes: number,
@@ -160,22 +153,9 @@ function boundedText(
   value: string | null;
   truncated: boolean;
 } {
-  if (value === null) return { value, truncated: false };
-  const characters: string[] = [];
-  let bytes = 0;
-  for (const character of value) {
-    const characterBytes = utf8CodePointBytes(character);
-    if (bytes + characterBytes > maximumBytes) {
-      const prefixBudget = maximumBytes - utf8CodePointBytes("…");
-      while (bytes > prefixBudget) {
-        bytes -= utf8CodePointBytes(characters.pop()!);
-      }
-      return { value: `${characters.join("")}…`, truncated: true };
-    }
-    characters.push(character);
-    bytes += characterBytes;
-  }
-  return { value, truncated: false };
+  return value === null || Buffer.byteLength(value, "utf8") <= maximumBytes
+    ? { value, truncated: false }
+    : { value: `${utf8Prefix(value, maximumBytes - 3)}…`, truncated: true };
 }
 
 function inlineRunResult(run: WorkflowRunRow): {

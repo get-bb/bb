@@ -64,7 +64,6 @@ const ISOLATED_ENVIRONMENTS = new Set(["jsdom", "happy-dom"]);
 
 export interface PartitionOptions {
   aliases?: Record<string, string>;
-  defaultEnvironment?: string;
 }
 
 export interface SharedTestFileGroup {
@@ -163,7 +162,6 @@ export function partitionTestFiles(
   roots: string[],
   options: PartitionOptions = {},
 ): TestFilePartition {
-  const defaultEnvironment = options.defaultEnvironment ?? "node";
   const scan: IsolationScan = {
     pkgDir,
     aliases: options.aliases ?? {},
@@ -191,7 +189,7 @@ export function partitionTestFiles(
         const source = readFileSync(fullPath, "utf8");
         const environment = ENVIRONMENT_DOCBLOCK.exec(source)?.[1] ?? null;
         if (
-          ISOLATED_ENVIRONMENTS.has(environment ?? defaultEnvironment) ||
+          ISOLATED_ENVIRONMENTS.has(environment ?? "node") ||
           requiresIsolation(fullPath, scan)
         ) {
           isolated.add(relative);
@@ -227,7 +225,6 @@ export interface SharedWorkerProjectsArgs {
   include: string[];
   exclude?: string[];
   aliases?: Record<string, string>;
-  defaultEnvironment?: string;
 }
 
 export function sharedWorkerProjects(
@@ -236,9 +233,6 @@ export function sharedWorkerProjects(
   const exclude = args.exclude ?? ["dist/**", "node_modules/**"];
   const options: PartitionOptions = {};
   if (args.aliases !== undefined) options.aliases = args.aliases;
-  if (args.defaultEnvironment !== undefined) {
-    options.defaultEnvironment = args.defaultEnvironment;
-  }
   const partition = partitionTestFiles(
     args.pkgDir,
     args.include.map(globRoot),

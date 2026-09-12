@@ -1,7 +1,6 @@
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { fileURLToPath } from "node:url";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import type { ThreadEvent } from "@bb/domain";
 import {
@@ -11,19 +10,12 @@ import {
 import type { BridgeJsonRpcTestHarness } from "@get-bb/plugin-sdk/provider-bridge/testing";
 
 import { handleLine } from "./bridge.js";
+import {
+  FULL_ACCESS_SESSION_OPTIONS,
+  stubFakeCodexAppServer,
+} from "./fake-codex-app-server-harness.js";
 
 const THREAD_ID = "thr_zero_work_1";
-
-const fakeAppServerPath = fileURLToPath(
-  new URL("./fake-codex-app-server.mjs", import.meta.url),
-);
-
-const sessionOptions = {
-  permissionMode: "full",
-  permissionScope: "full",
-  approvalReviewer: null,
-  permissionEscalation: null,
-} as const;
 
 let harness: BridgeJsonRpcTestHarness;
 let workspaceDir: string;
@@ -49,7 +41,7 @@ async function startSession(): Promise<string> {
     threadId: THREAD_ID,
     cwd: workspaceDir,
     instructionMode: "append",
-    options: { ...sessionOptions },
+    options: { ...FULL_ACCESS_SESSION_OPTIONS },
   });
   const response = await harness.waitForResponse(1);
   const providerThreadId = (
@@ -63,11 +55,7 @@ async function startSession(): Promise<string> {
 
 beforeEach(() => {
   workspaceDir = mkdtempSync(join(tmpdir(), "bb-codex-zero-work-ws-"));
-  vi.stubEnv("BB_CODEX_BRIDGE_APP_SERVER_COMMAND", process.execPath);
-  vi.stubEnv(
-    "BB_CODEX_BRIDGE_APP_SERVER_ARGS",
-    JSON.stringify([fakeAppServerPath]),
-  );
+  stubFakeCodexAppServer();
   harness = createBridgeJsonRpcTestHarness(handleLine);
 });
 
@@ -92,7 +80,7 @@ it("settles a prompt the app-server accepts without any turn activity", async ()
     providerThreadId,
     input: [{ type: "text", text: "/clear", mentions: [] }],
     clientRequestId: "creq_zerwrk2345",
-    options: { ...sessionOptions },
+    options: { ...FULL_ACCESS_SESSION_OPTIONS },
   });
   await harness.waitForResponse(2);
 
@@ -128,7 +116,7 @@ it("preserves the native checkpoint when thread/stop interrupts a turn", async (
     providerThreadId,
     input: [{ type: "text", text: "/wait-for-interrupt", mentions: [] }],
     clientRequestId: "creq_a2b3c4d5e6",
-    options: { ...sessionOptions },
+    options: { ...FULL_ACCESS_SESSION_OPTIONS },
   });
   await harness.waitForResponse(2);
   await waitForEvents((events) =>
@@ -165,7 +153,7 @@ it("lets a turn/started that lands after the turn/start response win the race", 
     providerThreadId,
     input: [{ type: "text", text: "/late-start", mentions: [] }],
     clientRequestId: "creq_atestart23",
-    options: { ...sessionOptions },
+    options: { ...FULL_ACCESS_SESSION_OPTIONS },
   });
   await harness.waitForResponse(2);
 

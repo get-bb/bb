@@ -2,7 +2,7 @@ import {
   MARKETPLACE_V2_SCHEMA_URL,
   type MarketplaceV2Manifest,
 } from "./marketplace-v2.js";
-import type { MarketplaceStats } from "./marketplace-stats.js";
+import type { MarketplaceStats } from "./marketplace-model.js";
 
 export const MARKETPLACE_V2_FIXTURE: MarketplaceV2Manifest = {
   $schema: MARKETPLACE_V2_SCHEMA_URL,

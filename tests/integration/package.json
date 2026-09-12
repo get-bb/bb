@@ -22,14 +22,11 @@
     "@bb/test-helpers": "workspace:*",
     "@hono/node-server": "^1.19.11",
     "drizzle-orm": "^0.38.4",
-    "ws": "^8.19.0",
     "zod": "^4.3.6"
   },
   "devDependencies": {
     "@bb/tsconfig": "workspace:*",
-    "@get-bb/plugin-sdk": "workspace:*",
     "@types/node": "^22.0.0",
-    "@types/ws": "^8.18.1",
     "typescript": "npm:@typescript/typescript6@^6.0.2",
     "typescript-7": "npm:typescript@^7.0.2",
     "vitest": "^4.1.1"

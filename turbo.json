@@ -22,6 +22,7 @@
         "$TURBO_DEFAULT$",
         "$TURBO_ROOT$/CHANGELOG.md",
         "$TURBO_ROOT$/changelog-metadata.ts",
+        "$TURBO_ROOT$/changelog-parser.ts",
         "$TURBO_ROOT$/apps/web/package.json",
         "$TURBO_ROOT$/apps/web/src/**",
         "$TURBO_ROOT$/apps/web/tsconfig.json",
@@ -46,6 +47,7 @@
         "$TURBO_DEFAULT$",
         "$TURBO_ROOT$/CHANGELOG.md",
         "$TURBO_ROOT$/changelog-metadata.ts",
+        "$TURBO_ROOT$/changelog-parser.ts",
         "$TURBO_ROOT$/packages/plugin-api-map/src/anatomy-manifest.json",
         "$TURBO_ROOT$/vitest.shared.ts"
       ]
@@ -57,11 +59,9 @@
       "inputs": [
         "$TURBO_DEFAULT$",
         // wireframes.test.ts asserts fixture fidelity against the real app
-        // source, and maintenance-skill.test.ts reads the repository skill plus
-        // Plugin Guide source; all are inputs to prevent stale cache hits.
+        // source, and plugin-app-layout.test.ts reads the Plugin Guide source;
+        // both are inputs to prevent stale cache hits.
         "$TURBO_ROOT$/apps/app/src/views/thread-detail/ThreadDetailView.tsx",
-        "$TURBO_ROOT$/.agents/skills/plugin-guide-maintenance/**",
-        "$TURBO_ROOT$/.bb/skills/plugin-guide-maintenance/**",
         "$TURBO_ROOT$/plugins/plugin-api-docs/**",
         "$TURBO_ROOT$/vitest.shared.ts"
       ]
@@ -84,6 +84,7 @@
         ".env*",
         "$TURBO_ROOT$/CHANGELOG.md",
         "$TURBO_ROOT$/changelog-metadata.ts",
+        "$TURBO_ROOT$/changelog-parser.ts",
         "$TURBO_ROOT$/package.json",
         "$TURBO_ROOT$/packages/tsconfig/*.json",
         "$TURBO_ROOT$/pnpm-lock.yaml",
@@ -282,10 +283,6 @@
       "cache": false,
       "outputs": []
     },
-    "template:build": {
-      "cache": false,
-      "outputs": []
-    },
     "@bb/app#dev": {
       "dependsOn": ["@bb/templates#generate:templates"],
       "cache": false,
@@ -463,11 +460,19 @@
     },
     "@bb/app#typecheck": {
       "dependsOn": ["topo"],
-      "inputs": ["$TURBO_DEFAULT$", "$TURBO_ROOT$/changelog-metadata.ts"]
+      "inputs": [
+        "$TURBO_DEFAULT$",
+        "$TURBO_ROOT$/changelog-metadata.ts",
+        "$TURBO_ROOT$/changelog-parser.ts"
+      ]
     },
     "@bb/web#typecheck": {
       "dependsOn": ["topo"],
-      "inputs": ["$TURBO_DEFAULT$", "$TURBO_ROOT$/changelog-metadata.ts"]
+      "inputs": [
+        "$TURBO_DEFAULT$",
+        "$TURBO_ROOT$/changelog-metadata.ts",
+        "$TURBO_ROOT$/changelog-parser.ts"
+      ]
     },
     // The packaged CLI (host-daemon/dist/bb) inlines the SDK declaration
     // bundles for `bb plugin types` on vendored-layout plugins; see
@@ -670,18 +675,6 @@
       "outputs": ["dist/test-bridges/**"]
     },
     "@bb/agent-runtime#test": {
-      "dependsOn": [
-        "//#ensure-native-modules",
-        "@bb/agent-runtime#generate:test-bridges",
-        "topo"
-      ],
-      "inputs": [
-        "$TURBO_DEFAULT$",
-        "$TURBO_ROOT$/tests/scripted-echo-provider/src/**",
-        "$TURBO_ROOT$/vitest.shared.ts"
-      ]
-    },
-    "@bb/agent-runtime#test:unit": {
       "dependsOn": [
         "//#ensure-native-modules",
         "@bb/agent-runtime#generate:test-bridges",

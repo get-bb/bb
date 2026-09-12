@@ -1,5 +1,9 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { depsFromEnv, revokeMachineForServerCredential } from "@/server/api";
+import {
+  connectApiResponse,
+  depsFromEnv,
+  revokeMachineForServerCredential,
+} from "@/server/api";
 import { getEnv } from "@/server/env";
 
 export const Route = createFileRoute("/api/connect/revoke-machine")({
@@ -21,13 +25,7 @@ export const Route = createFileRoute("/api/connect/revoke-machine")({
           credential,
           body.machineId,
         );
-        if ("status" in result) {
-          return Response.json(
-            { error: result.error },
-            { status: result.status },
-          );
-        }
-        return Response.json(result);
+        return connectApiResponse(result);
       },
     },
   },

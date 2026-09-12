@@ -12,6 +12,7 @@ import {
   MAX_PER_ACCOUNT,
   schema,
   server,
+  sha256Hex,
   user,
 } from "@bb/connect-db";
 import {
@@ -31,7 +32,6 @@ import {
   revokeMachineForServerCredential,
   revokeMachine,
 } from "./api.js";
-import { sha256Hex } from "./tokens.js";
 
 const MIGRATIONS_DIR = fileURLToPath(
   new URL("../../../../packages/connect-db/migrations", import.meta.url),

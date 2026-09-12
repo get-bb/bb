@@ -366,7 +366,7 @@ describe("installed-state cache", () => {
     expect(registry.lookupInstalled(key)).toBeUndefined();
   });
 
-  it("forgets one host-provider answer, one provider, or all answers", async () => {
+  it("forgets one host-provider answer or all answers", async () => {
     const registry = createProviderRegistryService({});
     registerProvider(registry, "codex", "provider-codex");
     const hostOneCodex = {
@@ -388,10 +388,6 @@ describe("installed-state cache", () => {
     registry.forgetInstalledKey(hostOneCodex);
     expect(registry.lookupInstalled(hostOneCodex)).toBeUndefined();
     expect(await registry.lookupInstalled(hostTwoCodex)).toBe(false);
-    expect(await registry.lookupInstalled(hostOnePi)).toBe(false);
-
-    registry.forgetInstalledProvider("codex");
-    expect(registry.lookupInstalled(hostTwoCodex)).toBeUndefined();
     expect(await registry.lookupInstalled(hostOnePi)).toBe(false);
 
     registry.forgetAllInstalled();

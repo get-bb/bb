@@ -57,5 +57,4 @@ export function Icon({
   );
 }
 
-export { HugeIcon, type IconProps } from "./HugeIcon";
-export { ICON_NAMES, isIconName, type IconName } from "./icon-map";
+export { isIconName, type IconName } from "./icon-map";

@@ -1,6 +1,5 @@
 import {
   type InstructionMode,
-  type PermissionEscalation,
   type ReasoningLevel,
   type RuntimePermissionScope,
 } from "@get-bb/plugin-sdk/provider-bridge";
@@ -8,7 +7,6 @@ import { accessSync, constants, statSync } from "node:fs";
 import { delimiter, join } from "node:path";
 import type { Options, Settings } from "@anthropic-ai/claude-agent-sdk";
 import type { ClaudePermissionMode } from "../interactive-contract.js";
-import { buildReadonlyBashUpdatedInput } from "./readonly-bash-policy.js";
 import type {
   ClaudeMutableFlagSettings,
   ClaudeSdkReasoningEffort,
@@ -22,9 +20,6 @@ export interface BuildSessionOptionsArgs {
   disallowedTools?: readonly string[];
   instructionMode: InstructionMode;
   model?: string;
-  getPermissionEscalation: (
-    context: PermissionEscalationWorkContext,
-  ) => PermissionEscalation | null;
   permissionMode: ClaudePermissionMode;
   permissionScope: RuntimePermissionScope;
   plugins?: Options["plugins"];
@@ -49,17 +44,6 @@ interface ResolveClaudeCodeExecutableArgs {
   env: NodeJS.ProcessEnv;
 }
 
-const READONLY_ALLOWED_TOOLS = new Set([
-  "Agent",
-  "Glob",
-  "Grep",
-  "LS",
-  "Read",
-  "TodoRead",
-]);
-const READONLY_BASH_TOOL_NAME = "Bash";
-const READONLY_ASK_REASON =
-  "bb readonly mode requires approval before using tools that can modify state, run commands, access network, or perform non-read actions.";
 const SUMMARIZED_ADAPTIVE_THINKING = {
   type: "adaptive",
   display: "summarized",
@@ -110,75 +94,6 @@ export function buildReadonlyDenialMessage(): string {
 
 export function buildWorkspaceWriteDenialMessage(): string {
   return "bb's workspace sandbox allows work inside the current workspace only. Stay inside the workspace or explain why extra access is needed.";
-}
-
-function buildReadonlyHooks(
-  params: BuildSessionOptionsArgs,
-): Options["hooks"] | undefined {
-  if (
-    params.permissionMode !== "default" &&
-    params.permissionMode !== "dontAsk"
-  ) {
-    return undefined;
-  }
-
-  const getPermissionEscalation = params.getPermissionEscalation;
-
-  return {
-    PreToolUse: [
-      {
-        hooks: [
-          async (input) => {
-            if (
-              input.hook_event_name !== "PreToolUse" ||
-              READONLY_ALLOWED_TOOLS.has(input.tool_name)
-            ) {
-              return { continue: true };
-            }
-            if (input.tool_name === READONLY_BASH_TOOL_NAME) {
-              const updatedInput = buildReadonlyBashUpdatedInput(
-                input.tool_input,
-              );
-              if (updatedInput) {
-                return {
-                  continue: true,
-                  hookSpecificOutput: {
-                    hookEventName: "PreToolUse",
-                    permissionDecision: "allow",
-                    updatedInput,
-                  },
-                };
-              }
-            }
-
-            const permissionDecision =
-              getPermissionEscalation({
-                ...(input.agent_id !== undefined
-                  ? { agentId: input.agent_id }
-                  : {}),
-                ...(input.prompt_id !== undefined
-                  ? { promptId: input.prompt_id }
-                  : {}),
-                toolUseId: input.tool_use_id,
-              }) === "deny"
-                ? "deny"
-                : "ask";
-            return {
-              continue: true,
-              hookSpecificOutput: {
-                hookEventName: "PreToolUse",
-                permissionDecision,
-                permissionDecisionReason:
-                  permissionDecision === "deny"
-                    ? buildReadonlyDenialMessage()
-                    : READONLY_ASK_REASON,
-              },
-            };
-          },
-        ],
-      },
-    ],
-  };
 }
 
 function usesWorkspaceSandbox(params: BuildSessionOptionsArgs): boolean {
@@ -303,7 +218,6 @@ export function buildSessionOptions(
         };
   const model = params.model;
   const sandbox = buildWorkspaceWriteSandbox(params);
-  const hooks = buildReadonlyHooks(params);
   const additionalDirectories = usesWorkspaceSandbox(params)
     ? (params.additionalWorkspaceWriteRoots ?? [])
     : [];
@@ -328,7 +242,6 @@ export function buildSessionOptions(
     ...(pathToClaudeCodeExecutable ? { pathToClaudeCodeExecutable } : {}),
     ...(params.plugins ? { plugins: params.plugins } : {}),
     ...(sandbox ? { sandbox } : {}),
-    ...(hooks ? { hooks } : {}),
     ...(additionalDirectories.length > 0
       ? { additionalDirectories: [...additionalDirectories] }
       : {}),

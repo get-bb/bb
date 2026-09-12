@@ -9,50 +9,29 @@ import {
 
 const NO_LINK = "__none__";
 
-export interface BbProjectLinkState {
-  selection: string | null;
-}
-
-export function emptyBbProjectLinkState(): BbProjectLinkState {
-  return { selection: null };
-}
-
-export function bbProjectLinkStateFor(
-  linkedBbProjectId: string | null,
-): BbProjectLinkState {
-  return { selection: linkedBbProjectId };
-}
-
-export function resolveBbProjectLink(state: BbProjectLinkState): string {
-  return state.selection ?? "";
-}
-
 export function BbProjectLinkPicker({
-  state,
-  onStateChange,
+  value,
+  onChange,
   bbProjects,
   noneLabel = "Not linked",
 }: {
-  state: BbProjectLinkState;
-  onStateChange: (state: BbProjectLinkState) => void;
+  value: string | null;
+  onChange: (value: string | null) => void;
   bbProjects: readonly BbProjectOption[];
   noneLabel?: string;
 }) {
   const unavailableSelection =
-    state.selection !== null &&
-    !bbProjects.some((project) => project.id === state.selection)
-      ? state.selection
+    value !== null && !bbProjects.some((project) => project.id === value)
+      ? value
       : null;
   return (
     <Select
-      value={state.selection ?? NO_LINK}
-      onValueChange={(value) =>
-        onStateChange({ selection: value === NO_LINK ? null : value })
-      }
+      value={value ?? NO_LINK}
+      onValueChange={(next) => onChange(next === NO_LINK ? null : next)}
     >
       <SelectTrigger aria-label="Linked bb project" className="h-8">
         <SelectValue>
-          {bbProjects.find((project) => project.id === state.selection)?.name ??
+          {bbProjects.find((project) => project.id === value)?.name ??
             unavailableSelection ??
             noneLabel}
         </SelectValue>

@@ -234,10 +234,6 @@ const CACHE_OWNER_QUERY_KEY_IMPORTS: CacheOwnerQueryKeyImportRegistry = {
   ],
   "hooks/cache-owners/thread-tabs-cache-owner.ts": ["threadTabsQueryKey"],
   "hooks/cache-owners/ui-preferences-cache-owner.ts": ["uiPreferencesQueryKey"],
-  "hooks/cache-owners/thread-list-cache-owner.ts": [
-    "threadQueryKey",
-    "threadsQueryKey",
-  ],
   "hooks/cache-owners/thread-runtime-cache-owner.ts": [
     "projectPromptHistoryQueryKey",
     "projectSourceBranchesQueryKeyPrefix",

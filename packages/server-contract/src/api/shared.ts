@@ -8,11 +8,9 @@ import {
   gitBranchSelectionSchema,
   jsonValueSchema,
 } from "@bb/domain";
-import type { GitBranchName } from "@bb/domain";
 
 export {
   BRANCH_LIST_LIMIT_MAX,
-  BRANCH_LIST_QUERY_MAX_LENGTH,
   FILE_LIST_LIMIT_MAX,
   FILE_LIST_QUERY_MAX_LENGTH,
 } from "@bb/domain";
@@ -47,7 +45,6 @@ export const threadContextResponseSchema = z.object({
 export type ThreadContextResponse = z.infer<typeof threadContextResponseSchema>;
 
 export { gitBranchNameSchema };
-export type { GitBranchName };
 
 export const unmanagedBranchSpecSchema = z.discriminatedUnion("kind", [
   z
@@ -144,9 +141,6 @@ export const providerReadyEnvironmentSchema = z.discriminatedUnion("type", [
     ownsPath: z.boolean().default(true),
   }),
 ]);
-export type ProviderReadyEnvironmentArgs = z.infer<
-  typeof providerReadyEnvironmentSchema
->;
 export type ProviderReadyEnvironmentInput = z.input<
   typeof providerReadyEnvironmentSchema
 >;

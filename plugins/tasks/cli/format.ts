@@ -1,4 +1,4 @@
-function oneLine(value: unknown): string {
+export function oneLine(value: unknown): string {
   return String(value ?? "")
     .replace(/[\r\n\t]+/gu, " ")
     .replace(/\s+/gu, " ")

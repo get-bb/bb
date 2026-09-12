@@ -1,3 +1,5 @@
+import { errorMessage } from "../../shared/errors.js";
+
 export interface DescriptionSaveOutcome {
   ok: boolean;
   errorMessage?: string;
@@ -37,7 +39,7 @@ export function createDescriptionSaver(
         options.onError(result.errorMessage);
       }
     } catch (error) {
-      options.onError(error instanceof Error ? error.message : String(error));
+      options.onError(errorMessage(error));
     }
   };
 

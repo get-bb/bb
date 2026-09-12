@@ -262,9 +262,6 @@ const pendingInteractionUserQuestionOptionSchema = z.object({
   label: pendingInteractionUserQuestionOptionLabelSchema,
   description: pendingInteractionUserQuestionOptionDescriptionSchema.optional(),
 });
-export type PendingInteractionUserQuestionOption = z.infer<
-  typeof pendingInteractionUserQuestionOptionSchema
->;
 
 export const pendingInteractionUserQuestionQuestionSchema = z
   .object({

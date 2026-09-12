@@ -291,19 +291,7 @@ export function seedEvent<TType extends ThreadEventType>(
     threadId: args.threadId,
     type: args.type,
   });
-  insertEvents(deps.db, deps.hub, [
-    {
-      createdAt: args.createdAt,
-      threadId: args.threadId,
-      environmentId: args.environmentId ?? null,
-      providerThreadId: args.providerThreadId ?? null,
-      scope: args.scope,
-      sequence: args.sequence,
-      type: args.type,
-      ...deriveStoredEventItemFields(event),
-      data: JSON.stringify(args.data),
-    },
-  ]);
+  seedStoredEvent(deps, { ...args, ...deriveStoredEventItemFields(event) });
 }
 
 export function seedTurnStarted(

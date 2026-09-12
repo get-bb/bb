@@ -10,8 +10,9 @@ import type {
   HostProviderCommand,
   SkillRootKind,
 } from "@bb/host-daemon-contract";
+import { isPathWithinDirectory } from "@bb/process-utils";
 
-const SKILL_FILE_NAME = "SKILL.md";
+export const SKILL_FILE_NAME = "SKILL.md";
 const MARKDOWN_FILE_EXTENSION = ".md";
 const FRONTMATTER_DELIMITER = "---";
 
@@ -307,17 +308,6 @@ async function walkMarkdownTree(args: WalkMarkdownTreeArgs): Promise<void> {
       args.matchedFiles.push(entryPath);
     }
   }
-}
-
-export function isPathWithinDirectory(
-  directoryPath: string,
-  candidatePath: string,
-): boolean {
-  const relativePath = path.relative(directoryPath, candidatePath);
-  return (
-    relativePath === "" ||
-    (!relativePath.startsWith("..") && !path.isAbsolute(relativePath))
-  );
 }
 
 async function resolveRecursiveRootPath(

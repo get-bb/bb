@@ -12,7 +12,6 @@ import type {
 } from "@bb/domain";
 import { SYSTEM_EXECUTION_OPTIONS_QUERY_KEY } from "@/hooks/queries/query-keys";
 import { permissionModeValues } from "@bb/domain";
-import { toRecord } from "@bb/core-ui";
 import type {
   SystemCliSkillsStatusResponse,
   SystemExecutionOptionsResponse,
@@ -26,6 +25,7 @@ import type {
   ProviderUsageResponse,
 } from "@bb/host-daemon-contract";
 import { BbHttpError, sdk } from "@/lib/sdk";
+import { isAbortLikeError } from "@/lib/mutation-errors";
 import {
   modelCatalogCacheKey,
   readCachedModelCatalog,
@@ -159,10 +159,6 @@ export function findCachedProviderInfo(
     }
   }
   return null;
-}
-
-function isAbortLikeError(error: unknown): boolean {
-  return toRecord(error)?.name === "AbortError";
 }
 
 function shouldRetrySystemExecutionOptions(

@@ -863,6 +863,14 @@ export function createThreadsArea(args: CreateSdkAreaArgs): ThreadsArea {
         ...signalRequestArgs(input.signal),
       ),
     );
+  const archiveAll = async (
+    input: ThreadActionArgs,
+  ): Promise<ThreadArchiveAllResult> =>
+    transport.readJson(
+      transport.api.v1.threads[":id"]["archive-all"].$post({
+        param: { id: input.threadId },
+      }),
+    );
   const events: ThreadEventsArea = {
     async list(input) {
       return transport.readJson(
@@ -1068,20 +1076,8 @@ export function createThreadsArea(args: CreateSdkAreaArgs): ThreadsArea {
     },
   };
   return {
-    async archive(input) {
-      return transport.readJson(
-        transport.api.v1.threads[":id"]["archive-all"].$post({
-          param: { id: input.threadId },
-        }),
-      );
-    },
-    async archiveAll(input) {
-      return transport.readJson(
-        transport.api.v1.threads[":id"]["archive-all"].$post({
-          param: { id: input.threadId },
-        }),
-      );
-    },
+    archive: archiveAll,
+    archiveAll,
     async childSummary(input) {
       return transport.readJson(
         transport.api.v1.threads[":id"]["child-summary"].$get(

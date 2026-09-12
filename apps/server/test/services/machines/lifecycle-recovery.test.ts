@@ -12,15 +12,11 @@ import {
   listThreadIdsWithHostOfflineQueueWaits,
   updateHost,
 } from "@bb/db";
-import type { PluginMachineProviderDeclaration } from "@get-bb/plugin-sdk";
-import {
-  validatePluginEnvironmentProviderDeclaration,
-  validatePluginMachineProviderDeclaration,
-} from "@get-bb/plugin-sdk/internal/host-policy";
+import { validatePluginEnvironmentProviderDeclaration } from "@get-bb/plugin-sdk/internal/host-policy";
 import {
   requestMachineRemoval,
   requestMachineSuspension,
-  requestMachineResume,
+  resumeMachine,
   sweepProviderMachine,
 } from "../../../src/services/machines/provider-orchestration.js";
 import { setPluginMachineProviderBridge } from "../../../src/services/plugins/plugin-machine-provider-registry.js";
@@ -30,6 +26,7 @@ import { callHostOnlineRpcForWork } from "../../../src/services/hosts/online-rpc
 import { createMachineEnrollmentService } from "../../../src/services/machines/enrollments.js";
 import { registerTestHostRpcCapture } from "../../helpers/commands.js";
 import { readJson } from "../../helpers/json.js";
+import { installMachineProvider } from "../../helpers/machine-provider.js";
 import {
   seedHostSession,
   seedProjectWithSource,
@@ -38,45 +35,6 @@ import {
   seedSession,
 } from "../../helpers/seed.js";
 import { withTestHarness } from "../../helpers/test-app.js";
-
-function installMachineProvider(
-  overrides: Partial<PluginMachineProviderDeclaration> = {},
-) {
-  const record = {
-    pluginId: "test-machine-plugin",
-    provider: validatePluginMachineProviderDeclaration({
-      id: "test-machine",
-      displayName: "Test machine",
-      description: "Provision a test machine.",
-      icon: "Terminal",
-      create: async ({ key }) => ({
-        status: "created" as const,
-        name: "Created machine",
-        resource: { key },
-      }),
-      reconcileCleanup: async () => ({ status: "removed" as const }),
-      remove: async () => ({ status: "removed" as const }),
-      ...overrides,
-    }),
-  };
-  setPluginMachineProviderBridge({
-    listMachineProviders: () => [record],
-    getMachineProvider: (id) =>
-      id === record.provider.id ? record : undefined,
-    invokeProvider: async (_pluginId, _label, run) => {
-      try {
-        return { ok: true as const, value: await run() };
-      } catch (error) {
-        return {
-          ok: false as const,
-          error: error instanceof Error ? error.message : String(error),
-        };
-      }
-    },
-    decisionTimeoutMs: 10_000,
-  });
-  return record;
-}
 
 afterEach(() => {
   vi.restoreAllMocks();
@@ -115,7 +73,7 @@ it("can resume after a snapshot fails following daemon shutdown", async () =>
     expect(shutdown).toHaveBeenCalledOnce();
     expect(getHost(harness.db, target.host.id)?.phase).toBe("suspended");
     expect(harness.hub.hasDaemonForHost(target.host.id)).toBe(false);
-    await requestMachineResume(harness.deps, target.host.id);
+    await resumeMachine(harness.deps, target.host.id);
     expect(resume).toHaveBeenCalledOnce();
     expect(getHost(harness.db, target.host.id)?.phase).toBe("active");
     expect(harness.hub.hasDaemonForHost(target.host.id)).toBe(true);

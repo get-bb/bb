@@ -2,7 +2,6 @@ import {
   detectGitRepo,
   runGit,
   WorkspaceError,
-  type GitProcessOptions,
 } from "bb-environment-provider-host/git";
 import { tryWithCheckoutMutationLock } from "bb-environment-provider-host/locks";
 import {
@@ -22,7 +21,6 @@ import type { CheckoutBranch, CheckoutInspection } from "../contract.js";
 interface AttachCheckoutArgs {
   path: string;
   branch: CheckoutBranch | null;
-  shellPath?: string | undefined;
   onProgress?: ProgressCallback | undefined;
   signal?: AbortSignal | undefined;
 }
@@ -58,9 +56,8 @@ function checkoutLabel(
 async function assertSwitchable(
   cwd: string,
   branch: CheckoutBranch,
-  options: GitProcessOptions,
 ): Promise<"already-current" | "ready"> {
-  const ref = await getCheckoutRef(cwd, options);
+  const ref = await getCheckoutRef(cwd);
   if (
     (ref.kind === "branch" || ref.kind === "unborn") &&
     ref.branchName === branch.name
@@ -87,7 +84,7 @@ async function assertSwitchable(
       );
   }
   if (branch.kind === "existing") {
-    const branches = await listLocalBranches(cwd, options);
+    const branches = await listLocalBranches(cwd);
     if (!branches.includes(branch.name)) {
       throw new WorkspaceError(
         "checkout_missing_branch",
@@ -95,7 +92,7 @@ async function assertSwitchable(
       );
     }
   }
-  const operation = await getWorkspaceGitOperation(cwd, options);
+  const operation = await getWorkspaceGitOperation(cwd);
   if (operation.kind !== "none" && operation.hasConflicts) {
     throw new WorkspaceError(
       "checkout_conflicts",
@@ -108,7 +105,7 @@ async function assertSwitchable(
       `Cannot checkout branch while ${operation.kind} is in progress`,
     );
   }
-  if (await hasUncommittedChanges(cwd, options)) {
+  if (await hasUncommittedChanges(cwd)) {
     throw new WorkspaceError(
       "checkout_dirty",
       "Cannot checkout branch while the workspace has uncommitted changes",
@@ -121,8 +118,6 @@ async function switchBranch(
   args: AttachCheckoutArgs & { branch: CheckoutBranch },
 ): Promise<void> {
   const { path: cwd, branch, onProgress, signal } = args;
-  const options: GitProcessOptions =
-    args.shellPath === undefined ? {} : { shellPath: args.shellPath };
   const switchArgs =
     branch.kind === "new"
       ? ["switch", "-C", branch.name, branch.baseBranch]
@@ -154,9 +149,7 @@ async function switchBranch(
         });
         waitingCompleted = true;
         startedAt = lockAcquiredAt;
-        if (
-          (await assertSwitchable(cwd, branch, options)) === "already-current"
-        ) {
+        if ((await assertSwitchable(cwd, branch)) === "already-current") {
           alreadyOnTarget = true;
           return;
         }
@@ -170,11 +163,9 @@ async function switchBranch(
         await runGit(switchArgs, {
           cwd,
           ...(signal !== undefined ? { signal } : {}),
-          ...options,
         });
       },
       signal,
-      options,
     );
     if (locked === null) {
       throw new WorkspaceError(
@@ -219,20 +210,17 @@ async function switchBranch(
 
 export async function inspectCheckout(args: {
   path: string;
-  shellPath?: string | undefined;
 }): Promise<CheckoutInspection> {
-  const options: GitProcessOptions =
-    args.shellPath === undefined ? {} : { shellPath: args.shellPath };
   if (!(await pathExists(args.path))) {
     return { isGitRepo: false };
   }
-  if (!(await detectGitRepo(args.path, options))) {
+  if (!(await detectGitRepo(args.path))) {
     return { isGitRepo: false };
   }
   const [checkout, dirty, operation] = await Promise.all([
-    getCheckoutRef(args.path, options),
-    hasUncommittedChanges(args.path, options),
-    getWorkspaceGitOperation(args.path, options),
+    getCheckoutRef(args.path),
+    hasUncommittedChanges(args.path),
+    getWorkspaceGitOperation(args.path),
   ]);
   return {
     isGitRepo: true,
@@ -252,9 +240,7 @@ export async function attachCheckout(
       `Workspace path does not exist: ${args.path}`,
     );
   }
-  const options: GitProcessOptions =
-    args.shellPath === undefined ? {} : { shellPath: args.shellPath };
-  const isGitRepo = await detectGitRepo(args.path, options);
+  const isGitRepo = await detectGitRepo(args.path);
   if (args.branch !== null) {
     if (!isGitRepo) {
       throw new WorkspaceError(
@@ -267,7 +253,7 @@ export async function attachCheckout(
   if (!isGitRepo) {
     return { path: args.path, branchName: null };
   }
-  const ref = await getCheckoutRef(args.path, options);
+  const ref = await getCheckoutRef(args.path);
   return {
     path: args.path,
     branchName:

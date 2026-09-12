@@ -5,7 +5,6 @@ export {
   getPersonalProject,
   getProject,
   getPublicProjectByLocalPathSource,
-  listProjects,
   listPublicProjects,
   markProjectDeleted,
   reorderProject,
@@ -13,18 +12,12 @@ export {
   updateProject,
   deleteProject,
 } from "./projects.js";
-export type {
-  CreateProjectInput,
-  ProjectRow,
-  ReorderProjectResult,
-  UpdateProjectInput,
-} from "./projects.js";
+export type { ProjectRow, ReorderProjectResult } from "./projects.js";
 
 export {
   getThreadConversationOutlineRecord,
   upsertThreadConversationOutlineRecord,
 } from "./thread-conversation-outlines.js";
-export type { ThreadConversationOutlineRecord } from "./thread-conversation-outlines.js";
 
 export {
   createThreadSection,
@@ -54,7 +47,6 @@ export {
   listProjectSourcesByHost,
   getProjectSourceByHost,
   projectSourceOwnsPath,
-  getDefaultProjectSource,
   updateProjectSource,
   deleteProjectSource,
 } from "./project-sources.js";
@@ -76,8 +68,6 @@ export {
   setThreadExecutionOverride,
   getThreadStartupContext,
   setThreadStartupContext,
-  hasPendingThreadShutdownInEnvironment,
-  hasRevivableArchivedThreadInEnvironment,
   listHostThreadIds,
   listActiveHostThreads,
   listActiveVisiblePinnedThreadRootsWithPendingInteractionState,
@@ -88,7 +78,6 @@ export {
   listUnarchivedAssignedChildThreads,
   listUnarchivedHiddenSourceThreads,
   listRunningThreads,
-  listThreads,
   listThreadsWithPendingInteractionState,
   listThreadsWithPendingInteractionStateForProjects,
   pinThread,
@@ -109,15 +98,8 @@ export {
 export type {
   ApplyThreadLifecycleEventArgs,
   ApplyThreadLifecycleEventOutcome,
-  CountThreadsGroupBy,
-  CountThreadsOptions,
-  CountThreadsResult,
   ReorderPinnedThreadResult,
   RunningThreadRow,
-  ThreadSearchHighlightRange,
-  ThreadSearchMatch,
-  ThreadSearchResult,
-  ThreadCountGroupRow,
   ThreadSearchResultGroup,
   ThreadWithPendingInteractionState,
   ThreadExecutionOverride,
@@ -135,7 +117,6 @@ export {
   listStoredUiPreferences,
   overwriteStoredUiPreference,
   replaceStoredUiPreference,
-  type ReplaceUiPreferenceResult,
   type StoredUiPreference,
 } from "./ui-preferences.js";
 export { getExperiments, setExperiments } from "./experiments.js";
@@ -161,7 +142,6 @@ export {
   type PluginGitSelector,
   type PluginProvenance,
   type PluginSourceIntent,
-  type PluginUpdateState,
 } from "./plugins.js";
 export {
   createPluginArtifact,
@@ -251,10 +231,9 @@ export {
   listRetiredLoadedEnvironmentIdsOnHost,
   markHostEnvironmentsDestroyed,
   recordEnvironmentCurrentBranch,
-  recordEnvironmentProviderProvenance,
   updateEnvironmentMetadata,
 } from "./environments.js";
-export type { CreateEnvironmentInput, EnvironmentRow } from "./environments.js";
+export type { EnvironmentRow } from "./environments.js";
 
 export {
   upsertHost,
@@ -265,7 +244,6 @@ export {
   listNonDestroyedHostsByIds,
   listPublicHosts,
   updateHost,
-  deleteHost,
 } from "./hosts.js";
 
 export {
@@ -294,7 +272,6 @@ export {
   listContextWindowUsageRows,
   listCompletedTurnsByThreadIds,
   listEvents,
-  listRecentStoredEventRows,
   listStoredConversationOutlineEventRows,
   listTimelineSegmentAnchorsDescending,
   getFirstParentedTimelineBoundarySequence,
@@ -302,10 +279,6 @@ export {
   listTimelineInterruptionRows,
   findTimelineWindowBudgetFloorSequence,
   findStoredTimelineWindowByteBudgetFloor,
-  getStoredEventRowsByParentToolCallIdsDataBytes,
-  findUnfinishedTurnCoveringSequence,
-  hasParentedEventCrossingSequence,
-  getTimelineSegmentAnchorAtSequence,
   isTimelineCursorSequencePresent,
   listStoredClientTurnRequestIdsInRange,
   listStoredClientTurnRequestRowsByKeys,
@@ -315,7 +288,6 @@ export {
   listStoredBufferedTextDeltaRowsByItems,
   listStoredItemLifecycleRowsByItems,
   scopedItemRefKey,
-  listStoredThreadProvisioningRowsByProvisioningId,
   listStoredTimelineWindowEventRows,
   listStoredTimelineTurnEventRows,
   listStoredTimelineThreadWindowEventRows,
@@ -329,7 +301,6 @@ export {
   getLatestThreadInterruptedReason,
   getLatestStoredRateLimitsEventForProvider,
   getLatestStoredThreadEventOfTypes,
-  getStoredTurnRequestEventByRequestId,
   listLatestThreadStateEventRowsByThreadIds,
   listLatestBackgroundTaskStateRowsByItemIds,
   listLatestOpenBackgroundTaskStateRowsForThread,
@@ -353,12 +324,11 @@ export {
   hydrateRetainedEventOutputRowsWithinDataByteLimit,
   prepareCompletedEventOutputData,
   insertPreparedRetainedEventOutput,
+} from "./retained-event-outputs.js";
+export {
+  COMPLETED_EVENT_OUTPUT_RETENTION_MS,
   RETAINED_EVENT_OUTPUT_TARGETS,
-} from "./retained-event-outputs.js";
-export type {
-  DeleteExpiredRetainedEventOutputsResult,
-  RetainedEventOutputTarget,
-} from "./retained-event-outputs.js";
+} from "../retained-event-output.js";
 export type {
   AcceptedDaemonEvent,
   AppendDaemonEventInput,
@@ -369,7 +339,6 @@ export type {
   ScopedItemRef,
   StoredEventRow,
   StoredThreadEventDataRow,
-  StandardTimelineSegmentAnchorRow,
   ThreadClientTurnRequestKey,
   StoredTurnRequestEventRow,
 } from "./events.js";
@@ -446,22 +415,15 @@ export {
 } from "./queued-thread-messages.js";
 export type {
   ClaimedQueuedThreadMessageRow,
-  ClearQueuedThreadMessageWaitingOnArgs,
-  ListQueuedThreadMessagesForApiArgs,
-  ListQueuedThreadMessagesWaitingOnKindArgs,
   QueuedThreadMessageGroupClaimPolicy,
   QueuedThreadMessageGroupEligibility,
-  QueuedThreadMessagePluginWaitRef,
   QueuedThreadMessageRow,
   ReorderQueuedThreadMessageResult,
-  SetQueuedThreadMessageGroupBoundaryArgs,
   SetQueuedThreadMessageGroupBoundaryResult,
-  SetQueuedThreadMessageWaitingOnArgs,
 } from "./queued-thread-messages.js";
 
 export {
   CLOSED_SESSION_ROW_RETENTION_MS,
-  COMPLETED_EVENT_OUTPUT_RETENTION_MS,
   DEFAULT_CLOSED_SESSION_PRUNE_BATCH_SIZE,
   DEFAULT_DESTROYED_ENVIRONMENT_EVENT_DETACH_BATCH_SIZE,
   DEFAULT_COMPLETED_EVENT_OUTPUT_MIGRATION_SCAN_LIMIT,
@@ -472,11 +434,6 @@ export {
   migrateNextLegacyImageGenerationOutput,
   pruneClosedSessions,
   pruneDestroyedEnvironments,
-} from "./sweeps.js";
-export type {
-  MigrateNextCompletedEventItemOutputArgs,
-  MigrateNextCompletedEventItemOutputResult,
-  MigrateNextLegacyImageGenerationOutputArgs,
 } from "./sweeps.js";
 export {
   compactDatabase,

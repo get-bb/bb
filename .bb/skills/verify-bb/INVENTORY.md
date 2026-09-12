@@ -28,7 +28,6 @@ has been exercised or that every behavior has been understood.
 - `app-route: packages/client-core/src/routes/route-paths.ts: LEGACY_AUTOMATIONS_ROUTE_PATH "/automations"`
 - `app-route: packages/client-core/src/routes/route-paths.ts: LEGACY_AUTOMATION_DETAIL_ROUTE_PATH "/automations/:projectId/:automationId"`
 - `app-route: packages/client-core/src/routes/route-paths.ts: LEGACY_PROJECT_COMPOSE_ROUTE_PATH "/projects/:projectId"`
-- `app-route: packages/client-core/src/routes/route-paths.ts: LEGACY_SKILLS_ROUTE_PATH "/skills"`
 - `app-route: packages/client-core/src/routes/route-paths.ts: LEGACY_TOOLS_AUTOMATIONS_ROUTE_PATH "/tools/automations"`
 - `app-route: packages/client-core/src/routes/route-paths.ts: LEGACY_TOOLS_AUTOMATION_BROWSE_ROUTE_PATH "/tools/automations/browse"`
 - `app-route: packages/client-core/src/routes/route-paths.ts: LEGACY_TOOLS_AUTOMATION_DETAIL_ROUTE_PATH "/tools/automations/:projectId/:automationId"`

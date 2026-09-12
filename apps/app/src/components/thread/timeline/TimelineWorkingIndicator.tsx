@@ -1,4 +1,3 @@
-import { cn } from "@bb/shared-ui/lib/utils";
 import { ExpandableTimelineRow } from "./ExpandableTimelineRow.js";
 import { TimelineReasoningDetail } from "./TimelineReasoningDetail.js";
 import { TimelineStatusIndicator } from "./TimelineStatusIndicator.js";
@@ -8,7 +7,6 @@ interface TimelineWorkingIndicatorProps {
   isThinking?: boolean;
   details?: string;
   reasoningId?: string;
-  className?: string;
 }
 
 export function TimelineWorkingIndicator({
@@ -16,14 +14,13 @@ export function TimelineWorkingIndicator({
   isThinking = false,
   details,
   reasoningId,
-  className,
 }: TimelineWorkingIndicatorProps) {
   const resolvedLabel = label ?? (isThinking ? "Thinking…" : "Working...");
   const hasDetails = (details?.trim().length ?? 0) > 0;
 
   if (isThinking || hasDetails) {
     return (
-      <div className={cn("mt-4", className)}>
+      <div className="mt-4">
         <ExpandableTimelineRow
           reasoningExpansionKey={reasoningId}
           expandable={hasDetails}
@@ -45,7 +42,7 @@ export function TimelineWorkingIndicator({
   return (
     <TimelineStatusIndicator
       label={<span className="animate-shine">{resolvedLabel}</span>}
-      className={cn("mt-4 flex min-h-7 items-center", className)}
+      className="mt-4 flex min-h-7 items-center"
     />
   );
 }

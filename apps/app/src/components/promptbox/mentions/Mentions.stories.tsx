@@ -1,7 +1,6 @@
 import { MentionMenu } from "@/components/promptbox/mentions/MentionMenu";
 import type {
   CommandMenuState,
-  ComposerCommandSuggestion,
   MentionMenuState,
   ProviderCommandSuggestion,
   PromptMentionSuggestion,
@@ -267,7 +266,7 @@ function MentionRow({
 }
 
 function makeCommandResultsState(
-  suggestions: readonly ComposerCommandSuggestion[],
+  suggestions: readonly ProviderCommandSuggestion[],
 ): CommandMenuState {
   return {
     kind: "results",

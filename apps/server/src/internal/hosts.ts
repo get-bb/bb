@@ -85,7 +85,6 @@ export function registerInternalHostRoutes(app: Hono, deps: AppDeps): void {
       const connectMachineId = resolveReportedConnectMachineId(context);
       const token = requireBearerToken(context.req.header("authorization"));
       const enrollment = await deps.machineAuth.enrollHost({
-        allowPublicEnrollment: true,
         hostId: payload.hostId,
         token,
       });

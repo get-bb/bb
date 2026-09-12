@@ -16,8 +16,11 @@ import {
 } from "../api";
 import {
   presetPermissionModeSchema,
+  presetReasoningLevelSchema,
+  presetServiceTierSchema,
   type ThreadsChangedEvent,
 } from "../shared/contract";
+import { errorMessage } from "../shared/errors";
 import { delegationRpcContract } from "./contract";
 
 const MAX_DELEGATED_THREAD_TITLE_LENGTH = 120;
@@ -28,17 +31,8 @@ const presetExecutionSchema = z
   .object({
     providerId: z.string().trim().min(1),
     model: z.string().trim().min(1),
-    reasoningLevel: z.enum([
-      "none",
-      "low",
-      "medium",
-      "high",
-      "xhigh",
-      "ultracode",
-      "max",
-      "ultra",
-    ]),
-    serviceTier: z.enum(["default", "fast"]).nullable(),
+    reasoningLevel: presetReasoningLevelSchema,
+    serviceTier: presetServiceTierSchema.nullable(),
     permissionMode: presetPermissionModeSchema,
   })
   .strict();
@@ -386,9 +380,9 @@ export function handlers(
         }
       } catch (error) {
         bb.log.warn(
-          `Could not read delegated thread ${thread.id} after attach: ${
-            error instanceof Error ? error.message : String(error)
-          }`,
+          `Could not read delegated thread ${thread.id} after attach: ${errorMessage(
+            error,
+          )}`,
         );
       }
 

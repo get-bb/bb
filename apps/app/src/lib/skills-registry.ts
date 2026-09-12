@@ -1,24 +1,15 @@
 import { REGISTRY_ENTRY_BATCH_LIMIT } from "@bb/server-contract";
 import type { SkillSummary } from "@bb/server-contract";
 import type {
-  RegistryPagination,
   RegistryRanking,
   RegistrySkill,
   RegistrySkillDetail,
-  RegistrySkillFile,
   RegistrySkillsPage,
 } from "@bb/server-contract";
 import { RESOURCE_GRID_PAGE_SIZE } from "@bb/shared-ui/resource-pagination";
 import { sdk } from "@/lib/sdk";
 
-export type {
-  RegistryPagination,
-  RegistryRanking,
-  RegistrySkill,
-  RegistrySkillDetail,
-  RegistrySkillFile,
-  RegistrySkillsPage,
-};
+export type { RegistryRanking, RegistrySkill, RegistrySkillDetail };
 
 export const REGISTRY_PAGE_SIZE = RESOURCE_GRID_PAGE_SIZE;
 

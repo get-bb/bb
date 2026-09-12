@@ -1,8 +1,5 @@
 import { describe, expect, it } from "vitest";
-import {
-  marketplaceEntryV1Schema,
-  marketplaceEntryV2Schema,
-} from "../src/plugin-marketplace-entry.js";
+import { marketplaceEntryV2Schema } from "../src/plugin-marketplace-entry.js";
 
 function entry(): Record<string, unknown> {
   return {
@@ -23,18 +20,6 @@ function entry(): Record<string, unknown> {
 }
 
 describe("marketplace entry schemas", () => {
-  it("keeps v1 strict", () => {
-    expect(marketplaceEntryV1Schema.parse(entry())).toEqual(entry());
-    expect(
-      marketplaceEntryV1Schema.safeParse({ ...entry(), category: "utilities" })
-        .success,
-    ).toBe(false);
-    expect(
-      marketplaceEntryV1Schema.safeParse({ ...entry(), overview: "# Notes\n" })
-        .success,
-    ).toBe(false);
-  });
-
   it("accepts a v2 overview text and rejects an empty one", () => {
     expect(
       marketplaceEntryV2Schema.parse({ ...entry(), overview: "# Notes\n" })
@@ -281,13 +266,12 @@ describe("marketplace entry schemas", () => {
     ).toBe(false);
   });
 
-  it("accepts a bundled source only in v2", () => {
+  it("accepts a bundled source in v2", () => {
     const bundled = {
       ...entry(),
       source: { bundled: { plugin: "docs" } },
     };
     expect(marketplaceEntryV2Schema.parse(bundled)).toEqual(bundled);
-    expect(marketplaceEntryV1Schema.safeParse(bundled).success).toBe(false);
     expect(
       marketplaceEntryV2Schema.safeParse({
         ...bundled,

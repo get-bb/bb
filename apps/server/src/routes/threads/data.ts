@@ -315,7 +315,6 @@ export function registerThreadDataRoutes(app: Hono, deps: AppDeps): void {
   deps.hub.onChangedMessage((message) => {
     if (
       message.entity === "thread" &&
-      message.id !== undefined &&
       message.changes.includes("history-rewritten")
     ) {
       clearTimelineOrderingContextCache(deps.db);

@@ -12,6 +12,7 @@ import { atomWithStorage } from "jotai/utils";
 import { atomFamily } from "jotai-family";
 import type { TerminalCreateTarget } from "@bb/server-contract";
 import { createLocalStorageSyncStorage } from "./browser-storage";
+import { hasThreadId } from "./thread-id";
 import { useThreadTabs } from "@/hooks/queries/thread-tabs-query";
 import {
   closeSecondaryPanelTabInState,
@@ -61,10 +62,6 @@ type FixedPanelSecondaryPanelOpener = () => void;
 type FixedPanelSecondaryPanelCloser = () => void;
 type FixedPanelTerminalIdSetter = (terminalId: string | null) => void;
 type FixedPanelTerminalIdRemover = (terminalId: string) => void;
-
-function hasThreadId(threadId: string | null | undefined): threadId is string {
-  return threadId !== null && threadId !== undefined && threadId.length > 0;
-}
 
 function touchFixedPanelTabsState(
   state: FixedPanelTabsState,

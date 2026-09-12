@@ -60,7 +60,6 @@ export const ThreadEnvironmentSummary = memo(function ThreadEnvironmentSummary({
           leading={<Icon name="Folder" className="size-4 shrink-0" />}
           className="h-6 min-w-0 max-w-[10rem] shrink"
           tooltip={`Project: ${projectName}`}
-          muted
         />
       ) : null}
       {environmentHost ? (
@@ -101,7 +100,6 @@ export const ThreadEnvironmentSummary = memo(function ThreadEnvironmentSummary({
             compactValue={environmentCompactLabel}
             className="h-6 min-w-0 shrink px-0"
             tooltip={environmentLabel}
-            muted
           />
         </div>
       ) : null}

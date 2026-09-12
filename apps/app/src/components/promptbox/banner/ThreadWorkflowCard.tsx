@@ -1,12 +1,13 @@
 import { isSettledWorkflowAgentState } from "@bb/domain";
 import type { TimelineWorkflowWorkRow } from "@bb/server-contract";
-import { durationToCompactString } from "@bb/thread-view";
 import { AnimatedBody } from "@/components/promptbox/banner/AnimatedBody";
 import {
+  PROMPT_STACK_CARD_HEADER_BUTTON_CLASS,
   PROMPT_STACK_CARD_ROW_HEIGHT,
   PromptStackCard,
+  PromptStackCardChevron,
 } from "@/components/promptbox/banner/PromptStackCard";
-import { useSecondTick } from "@/hooks/useSecondTick";
+import { LiveDurationText } from "@/components/thread/timeline/LiveDurationText";
 import { WorkflowWorkRowBody } from "@/components/thread/timeline/WorkflowWorkRowBody";
 import {
   activityIconClass,
@@ -15,23 +16,14 @@ import {
   activityTextClass,
 } from "@bb/shared-ui/activity-row-styles";
 import { Icon } from "@bb/shared-ui/icon";
-import { cn } from "@bb/shared-ui/lib/utils";
 import { WorkflowPhaseStrip } from "@bb/shared-ui/workflow-progress";
 
 const BODY_ID = "thread-workflow-card-body";
 const TOGGLE_ID = "thread-workflow-card-toggle";
 const WORKFLOW_HEADER_BUTTON_CLASS = activityRowClass(
   "active",
-  "flex min-h-8 w-full min-w-0 cursor-pointer items-center gap-1.5 rounded-none px-3 py-1.5 text-xs text-foreground transition-colors hover:bg-background/80",
+  PROMPT_STACK_CARD_HEADER_BUTTON_CLASS,
 );
-
-function WorkflowDuration({ startedAt }: { startedAt: number }) {
-  const elapsed = useSecondTick() - startedAt;
-  if (elapsed <= 1_000) {
-    return null;
-  }
-  return <>{durationToCompactString(elapsed)}</>;
-}
 
 function agentProgressLabel(workflow: TimelineWorkflowWorkRow): string | null {
   const agents = workflow.workflow?.agents ?? [];
@@ -104,17 +96,12 @@ export function ThreadWorkflowCard({
                 "shrink-0 text-2xs tabular-nums",
               )}
             >
-              <WorkflowDuration startedAt={workflow.startedAt} />
+              <LiveDurationText startedAt={workflow.startedAt} />
             </span>
           </span>
-          <Icon
-            name="ChevronDown"
-            className={cn(
-              activityIconClass("active"),
-              "size-3.5 shrink-0 transition-transform duration-200",
-              isExpanded && "rotate-180",
-            )}
-            aria-hidden="true"
+          <PromptStackCardChevron
+            isExpanded={isExpanded}
+            className={activityIconClass("active")}
           />
         </button>
       </div>

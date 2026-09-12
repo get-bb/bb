@@ -11,8 +11,6 @@ import { COMMAND_TIMEOUT_MS } from "../../constants.js";
 import { callHostRetryableOnlineRpcForWork } from "../hosts/online-rpc.js";
 import { runLiveHostCommand } from "../hosts/live-command.js";
 import { randomUUID } from "node:crypto";
-import type { PluginEnvironmentProviderProgress } from "@get-bb/plugin-sdk/environment-provider";
-import { registerEnvironmentProgressReport } from "../environments/environment-hooks.js";
 
 export function projectSourceHostConflict(): ApiError {
   return new ApiError(
@@ -73,7 +71,6 @@ export async function cloneProjectSourceOnHost(
     hostId: string;
     remoteUrl: string | null;
     targetPath?: string;
-    report?: PluginEnvironmentProviderProgress;
   },
 ) {
   if (!args.remoteUrl) {
@@ -84,36 +81,21 @@ export async function cloneProjectSourceOnHost(
     );
   }
   const operationId = `project-clone-${randomUUID()}`;
-  const unregister =
-    args.report === undefined
-      ? () => undefined
-      : registerEnvironmentProgressReport(deps, {
-          hostId: args.hostId,
-          operationId,
-          report: args.report,
-        });
-  let resolved;
-  try {
-    resolved = await runLiveHostCommand(deps, {
-      hostId: args.hostId,
-      timeoutMs: 20 * 60 * 1000,
-      command: {
-        type: "project.clone",
-        operationId,
-        contributedEnv: await resolveHostEnvironment(deps, {
-          hostId: args.hostId,
-          projectId: args.projectId,
-        }),
-        remoteUrl: args.remoteUrl,
-        projectSlug: args.projectName,
-        ...(args.targetPath !== undefined
-          ? { targetPath: args.targetPath }
-          : {}),
-      },
-    });
-  } finally {
-    unregister();
-  }
+  const resolved = await runLiveHostCommand(deps, {
+    hostId: args.hostId,
+    timeoutMs: 20 * 60 * 1000,
+    command: {
+      type: "project.clone",
+      operationId,
+      contributedEnv: await resolveHostEnvironment(deps, {
+        hostId: args.hostId,
+        projectId: args.projectId,
+      }),
+      remoteUrl: args.remoteUrl,
+      projectSlug: args.projectName,
+      ...(args.targetPath !== undefined ? { targetPath: args.targetPath } : {}),
+    },
+  });
   return registerProjectSourceOnHost(deps, {
     projectId: args.projectId,
     hostId: args.hostId,
@@ -127,7 +109,6 @@ interface EnsureProjectSourceArgs {
   projectName: string;
   hostId: string;
   remoteUrl: string | null;
-  report?: PluginEnvironmentProviderProgress;
 }
 
 const pendingSetups = new WeakMap<

@@ -80,7 +80,6 @@ describe("machine auth service", () => {
     });
 
     const reenrolled = await harness.machineAuth.enrollHost({
-      allowPublicEnrollment: true,
       hostId,
       token: joinMaterial.key,
     });

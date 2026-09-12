@@ -1,6 +1,6 @@
-import type { ChangedMessage } from "@bb/domain";
 import { createDeferredPromise, type DeferredPromise } from "@bb/test-helpers";
 import { describe, expect, it } from "vitest";
+import type { ServerChangedMessage } from "../../ws/hub.js";
 import {
   EnvironmentReadCache,
   WorkspaceReadCaches,
@@ -33,15 +33,15 @@ function createCounter<T>(values: T[]) {
 }
 
 function createFakeHub() {
-  const listeners = new Set<(message: ChangedMessage) => void>();
+  const listeners = new Set<(message: ServerChangedMessage) => void>();
   return {
-    onChangedMessage(listener: (message: ChangedMessage) => void) {
+    onChangedMessage(listener: (message: ServerChangedMessage) => void) {
       listeners.add(listener);
       return () => {
         listeners.delete(listener);
       };
     },
-    emit(message: ChangedMessage) {
+    emit(message: ServerChangedMessage) {
       for (const listener of listeners) {
         listener(message);
       }

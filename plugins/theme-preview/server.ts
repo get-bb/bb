@@ -145,8 +145,12 @@ export function parseThemeSwatches(css: string): { light: ThemeSwatch | null; da
   return { light: build(declarations.light, "light"), dark: build(declarations.dark, "dark") };
 }
 
+function customThemeCssCandidates(dir: string, id: string): string[] {
+  return [resolve(dir, id, "theme.css"), resolve(dir, `${id}.css`)];
+}
+
 async function readCustomThemeCss(directory: string, id: string, signal?: AbortSignal): Promise<string | null> {
-  for (const candidate of [resolve(directory, id, "theme.css"), resolve(directory, `${id}.css`)]) {
+  for (const candidate of customThemeCssCandidates(directory, id)) {
     try {
       return await readFile(candidate, { encoding: "utf8", signal });
     } catch {
@@ -348,24 +352,30 @@ export async function buildCatalog(
  * A plugin theme id is `plugin:<pluginId>:<themeId>`; its CSS lives in the
  * plugin's install dir at the path the manifest's `bb.themes[]` entry names.
  */
+const PLUGIN_THEME_ID_PATTERN = /^plugin:([^:]+):(.+)$/;
+
+async function pluginThemeCssPath(rootDir: string, localId: string, signal?: AbortSignal): Promise<string | null> {
+  const manifest = JSON.parse(await readFile(resolve(rootDir, "package.json"), { encoding: "utf8", signal })) as {
+    bb?: { themes?: Array<{ id?: string; css?: string }> };
+  };
+  const entry = manifest.bb?.themes?.find((theme) => theme.id === localId);
+  return entry?.css ? resolve(rootDir, entry.css) : null;
+}
+
 async function readPluginThemeCss(
   bb: BbPluginApi,
   themeId: string,
   rootDirs: Map<string, string>,
   signal?: AbortSignal,
 ): Promise<string | null> {
-  const m = /^plugin:([^:]+):(.+)$/.exec(themeId);
+  const m = PLUGIN_THEME_ID_PATTERN.exec(themeId);
   if (!m) return null;
   const [, pluginId, localId] = m;
   const rootDir = rootDirs.get(pluginId);
   if (!rootDir) return null;
   try {
-    const manifest = JSON.parse(await readFile(resolve(rootDir, "package.json"), { encoding: "utf8", signal })) as {
-      bb?: { themes?: Array<{ id?: string; css?: string }> };
-    };
-    const entry = manifest.bb?.themes?.find((theme) => theme.id === localId);
-    if (!entry?.css) return null;
-    return await readFile(resolve(rootDir, entry.css), { encoding: "utf8", signal });
+    const cssPath = await pluginThemeCssPath(rootDir, localId, signal);
+    return cssPath ? await readFile(cssPath, { encoding: "utf8", signal }) : null;
   } catch (error) {
     signal?.throwIfAborted();
     bb.log.warn(`theme-preview: could not read ${themeId}: ${String(error)}`);
@@ -379,23 +389,19 @@ async function activeThemePath(
   rootDirs: Map<string, string>,
   signal?: AbortSignal,
 ) {
-  const pluginMatch = /^plugin:([^:]+):(.+)$/.exec(themeId);
+  const pluginMatch = PLUGIN_THEME_ID_PATTERN.exec(themeId);
   if (pluginMatch) {
     const rootDir = rootDirs.get(pluginMatch[1]);
     if (!rootDir) return null;
     try {
-      const manifest = JSON.parse(await readFile(resolve(rootDir, "package.json"), { encoding: "utf8", signal })) as {
-        bb?: { themes?: Array<{ id?: string; css?: string }> };
-      };
-      const entry = manifest.bb?.themes?.find((theme) => theme.id === pluginMatch[2]);
-      return entry?.css ? resolve(rootDir, entry.css) : null;
+      return await pluginThemeCssPath(rootDir, pluginMatch[2], signal);
     } catch {
       signal?.throwIfAborted();
       return null;
     }
   }
   if (!dir) return null;
-  for (const candidate of [resolve(dir, themeId, "theme.css"), resolve(dir, `${themeId}.css`)]) {
+  for (const candidate of customThemeCssCandidates(dir, themeId)) {
     try {
       signal?.throwIfAborted();
       await stat(candidate);
@@ -443,9 +449,6 @@ export function createCatalogLoader(bb: BbPluginApi) {
     operation: (signal: AbortSignal) => Promise<T>,
   ): Promise<T> => {
     const controller = new AbortController();
-    const warning = setTimeout(() => {
-      bb.log.warn(`theme-preview: ${label} still pending after ${slowWarningMs}ms`);
-    }, slowWarningMs);
     let timeout: ReturnType<typeof setTimeout> | undefined;
     const deadline = new Promise<never>((_resolve, reject) => {
       timeout = setTimeout(() => {
@@ -455,9 +458,8 @@ export function createCatalogLoader(bb: BbPluginApi) {
       }, catalogOperationTimeoutMs);
     });
     try {
-      return await Promise.race([operation(controller.signal), deadline]);
+      return await warnIfSlow(label, () => Promise.race([operation(controller.signal), deadline]));
     } finally {
-      clearTimeout(warning);
       if (timeout) clearTimeout(timeout);
     }
   };
@@ -557,12 +559,7 @@ export function createCatalogLoader(bb: BbPluginApi) {
     return selected;
   };
 
-  return {
-    catalog,
-    setTheme(themeId: string) {
-      return setTheme(themeId);
-    },
-  };
+  return { catalog, setTheme };
 }
 
 export default async function plugin(bb: BbPluginApi) {

@@ -76,7 +76,7 @@ import {
   onDaemonSocketOpen,
   validateDaemonWebSocket,
 } from "./ws/daemon-protocol.js";
-import { roundDurationMs } from "./services/lib/duration.js";
+import { roundDurationMs } from "@bb/process-utils";
 import {
   onTerminalSocketClose,
   onTerminalSocketMessage,
@@ -92,6 +92,7 @@ import {
   type PluginCatalogService,
 } from "./services/plugin-catalog/plugin-catalog-service.js";
 import { callHostRetryableOnlineRpcForWork } from "./services/hosts/online-rpc.js";
+import { requestMatchesEntityTag } from "./services/hosts/daemon-file-response.js";
 import {
   allowedAppOrigins,
   browserRequestProblem,
@@ -241,18 +242,6 @@ async function shellEtag(filePath: string): Promise<string | undefined> {
   }
 }
 
-export function ifNoneMatchSatisfied(
-  ifNoneMatchHeader: string,
-  etag: string,
-): boolean {
-  if (ifNoneMatchHeader.trim() === "*") return true;
-  const opaque = (tag: string): string => tag.trim().replace(/^W\//u, "");
-  const target = opaque(etag);
-  return ifNoneMatchHeader
-    .split(",")
-    .some((candidate) => opaque(candidate) === target);
-}
-
 const STATIC_MIME_TYPES: Record<string, string> = {
   ".html": "text/html",
   ".js": "application/javascript",
@@ -284,8 +273,7 @@ export function registerStaticAppRoutes(app: Hono, staticDir: string): void {
         : undefined;
     if (
       etag !== undefined &&
-      args.ifNoneMatchHeader !== undefined &&
-      ifNoneMatchSatisfied(args.ifNoneMatchHeader, etag)
+      requestMatchesEntityTag(args.ifNoneMatchHeader, etag)
     ) {
       const headers = new Headers();
       headers.set("cache-control", staticCacheControlForPath(args.urlPath));
@@ -710,18 +698,24 @@ export function createApp(
   registerInternalInteractiveRequestRoutes(internalApi, deps);
   app.route("/internal", internalApi);
 
+  const assertBrowserWebSocketAllowed = (
+    context: Parameters<typeof browserRequestProblem>[0],
+  ): void => {
+    const problem = browserRequestProblem(context, deps);
+    if (problem !== null) {
+      throw new ApiError(
+        problem.status,
+        "forbidden_origin",
+        problem.error,
+        false,
+      );
+    }
+  };
+
   app.get(
     "/ws",
     upgradeWebSocket((context) => {
-      const problem = browserRequestProblem(context, deps);
-      if (problem !== null) {
-        throw new ApiError(
-          problem.status,
-          "forbidden_origin",
-          problem.error,
-          false,
-        );
-      }
+      assertBrowserWebSocketAllowed(context);
       return {
         onOpen: (_event, socket) => onClientSocketOpen(deps.hub, socket),
         onMessage: (event, socket) =>
@@ -734,15 +728,7 @@ export function createApp(
   app.get(
     "/ws/terminals/:terminalId",
     upgradeWebSocket((context) => {
-      const problem = browserRequestProblem(context, deps);
-      if (problem !== null) {
-        throw new ApiError(
-          problem.status,
-          "forbidden_origin",
-          problem.error,
-          false,
-        );
-      }
+      assertBrowserWebSocketAllowed(context);
       const terminalId = context.req.param("terminalId");
       const query = terminalWebSocketQuerySchema.safeParse({
         sinceSeq: context.req.query("sinceSeq"),
@@ -760,14 +746,12 @@ export function createApp(
             socket,
             sinceSeq: query.data.sinceSeq,
             terminalId,
-            threadId: null,
           }),
         onMessage: (event, socket) =>
           onTerminalSocketMessage(deps, {
             raw: event.data,
             socket,
             terminalId,
-            threadId: null,
           }),
         onClose: (_event, socket) =>
           onTerminalSocketClose(deps, {
@@ -808,12 +792,10 @@ export function createApp(
     }),
   );
 
-  if (!options?.staticDir) {
-    app.get("/", (context) => context.text("bb server"));
-  }
-
   if (options?.staticDir) {
     registerStaticAppRoutes(app, options.staticDir);
+  } else {
+    app.get("/", (context) => context.text("bb server"));
   }
 
   return {

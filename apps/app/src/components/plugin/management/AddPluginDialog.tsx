@@ -313,7 +313,6 @@ function AddPluginDialogContent({
                 {initial.entryId}
               </span>
             </div>
-            {}
             <p className="overflow-x-auto whitespace-nowrap font-mono text-2xs text-subtle-foreground">
               {initial.source}
             </p>

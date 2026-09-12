@@ -96,12 +96,6 @@ async function findPackageDirectories(rootPath, packageNames) {
   return matches;
 }
 
-async function findNativePackageDirectories(rootPath, packageName) {
-  return (await findPackageDirectories(rootPath, [packageName])).get(
-    packageName,
-  );
-}
-
 async function chmodIfPresent(filePath, mode) {
   try {
     await chmod(filePath, mode);
@@ -321,11 +315,6 @@ async function main() {
 }
 
 module.exports = afterPack;
-module.exports.findNativePackageDirectories = findNativePackageDirectories;
-module.exports.prepareNodePtyPackageDirectory = prepareNodePtyPackageDirectory;
-module.exports.prepareBetterSqlite3PackageDirectory =
-  prepareBetterSqlite3PackageDirectory;
-module.exports.preparePackagedNativeModules = preparePackagedNativeModules;
 module.exports.parseStandaloneArguments = parseStandaloneArguments;
 module.exports.resolveBetterSqlite3PrebuildArguments =
   resolveBetterSqlite3PrebuildArguments;

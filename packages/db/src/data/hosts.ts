@@ -276,18 +276,3 @@ export function updateHost(
   notifyHostMutation(notifier, existing, updated);
   return updated;
 }
-
-export function deleteHost(
-  db: DbConnection,
-  notifier: DbNotifier,
-  hostId: string,
-) {
-  const existing = getHost(db, hostId);
-  if (!existing) {
-    return false;
-  }
-
-  db.delete(hosts).where(eq(hosts.id, hostId)).run();
-  notifier.notifyHost(existing.id, ["host-disconnected"]);
-  return true;
-}

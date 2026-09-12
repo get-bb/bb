@@ -240,20 +240,14 @@ export function remarkMessageDirectives(args: {
         marker,
       );
 
-      if (directive.type !== "leafDirective") {
-        return spliceLiteralDirective(parent, index, directive.type, source);
-      }
-
-      if (name.length === 0) {
-        return spliceLiteralDirective(parent, index, directive.type, source);
-      }
-
       const entry = registry.get(name);
-      if (entry === undefined || entry.status === "collision") {
-        return spliceLiteralDirective(parent, index, directive.type, source);
-      }
-
-      if (mounts.length >= MESSAGE_DIRECTIVE_MOUNT_LIMIT) {
+      if (
+        directive.type !== "leafDirective" ||
+        name.length === 0 ||
+        entry === undefined ||
+        entry.status === "collision" ||
+        mounts.length >= MESSAGE_DIRECTIVE_MOUNT_LIMIT
+      ) {
         return spliceLiteralDirective(parent, index, directive.type, source);
       }
 
@@ -270,7 +264,7 @@ export function remarkMessageDirectives(args: {
   };
 }
 
-interface BuildMessageDirectiveComponentArgs {
+export interface BuildMessageDirectiveComponentArgs {
   mounts: readonly MountedMessageDirective[];
   message: PluginMessageDirectiveProps["message"];
   openWorkspaceFile: PluginMessageDirectiveProps["openWorkspaceFile"];
@@ -294,6 +288,14 @@ export function buildMessageDirectiveComponent({
     }
     const { slot, attributes, source } = mount;
     const Component = slot.component;
+    const element = (
+      <Component
+        attributes={attributes}
+        source={source}
+        message={message}
+        openWorkspaceFile={openWorkspaceFile}
+      />
+    );
     return (
       <PluginSlotMount
         key={`${slot.pluginId}/${slot.id}/${slot.generation}`}
@@ -303,22 +305,12 @@ export function buildMessageDirectiveComponent({
         crashFallback={source}
       >
         {openThreadPanel === null ? (
-          <Component
-            attributes={attributes}
-            source={source}
-            message={message}
-            openWorkspaceFile={openWorkspaceFile}
-          />
+          element
         ) : (
           <PluginThreadPanelNavigationProvider
             openThreadPanel={openThreadPanel}
           >
-            <Component
-              attributes={attributes}
-              source={source}
-              message={message}
-              openWorkspaceFile={openWorkspaceFile}
-            />
+            {element}
           </PluginThreadPanelNavigationProvider>
         )}
       </PluginSlotMount>

@@ -40,7 +40,7 @@ interface FindThreadEventArgs {
   type: ThreadEventType;
 }
 
-function parseStoredEventPayload(
+export function parseStoredEventPayload(
   row: StoredEventPayloadRow,
 ): Record<string, unknown> {
   let data: unknown;

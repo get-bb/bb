@@ -47,6 +47,8 @@ import {
 } from "../environments/environment-engine.js";
 import { hasPendingProjectSourceSetupOnHost } from "../projects/project-source-setup.js";
 import { machineProviderUnavailableReason } from "./provider-availability.js";
+import { errorMessage } from "../lib/error-log-fields.js";
+import { perDbRegistry } from "../lib/per-db-registry.js";
 
 type Deps = ThreadProvisioningDeps;
 type MachineLifecycleDeps = Pick<Deps, "db" | "hub" | "logger">;
@@ -120,18 +122,6 @@ const machineSweepOperations = new WeakMap<
 
 const MACHINE_CREATE_FAILURE_CLEANUP_GRACE_MS = 30_000;
 
-function operations(
-  registry: WeakMap<object, Map<string, ActiveOperation>>,
-  db: Deps["db"],
-): Map<string, ActiveOperation> {
-  let map = registry.get(db);
-  if (map === undefined) {
-    map = new Map();
-    registry.set(db, map);
-  }
-  return map;
-}
-
 function runTrackedOperation(args: {
   map: Map<string, ActiveOperation>;
   key: string;
@@ -149,10 +139,6 @@ function runTrackedOperation(args: {
   });
   args.map.set(args.key, operation);
   return operation;
-}
-
-function errorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
 }
 
 function deleteMachineProjectSources(
@@ -355,7 +341,7 @@ function startCreate(
   host: MachineHostRow,
 ): ActiveOperation {
   const operation = runTrackedOperation({
-    map: operations(createOperations, deps.db),
+    map: perDbRegistry(createOperations, deps.db),
     key: host.id,
     run: (signal) => runCreate(deps, record, host, signal),
   });
@@ -658,36 +644,6 @@ export async function removeCreatingMachine(
   await sweepProviderMachine(deps, host.id);
 }
 
-export async function createMachine(
-  deps: Deps,
-  args: Parameters<typeof submitMachine>[1] & { signal?: AbortSignal },
-): Promise<Host> {
-  let host = await submitMachine(deps, args);
-  for (;;) {
-    args.signal?.throwIfAborted();
-    if (host.lifecycle.phase === "active") return host;
-    if (
-      host.lifecycle.phase === "removing" ||
-      host.lifecycle.phase === "destroyed"
-    ) {
-      throw new ApiError(
-        409,
-        "machine_provider_rejected",
-        host.lifecycle.message ?? "Machine creation cancelled",
-      );
-    }
-    await new Promise<void>((resolve) => setTimeout(resolve, 250));
-    const row = getHost(deps.db, host.id);
-    if (row === null || row.destroyedAt !== null)
-      throw new ApiError(
-        409,
-        "machine_provider_rejected",
-        "Machine creation failed",
-      );
-    host = machineHostResponse(row, deps);
-  }
-}
-
 function lifecycleOwns(
   current: ReturnType<typeof getHost>,
   providerId: string,
@@ -714,16 +670,16 @@ async function suspendMachine(
   coordinateMaintenance = false,
 ): Promise<void> {
   const daemonShutdownTimeoutMs = 30_000;
-  const removing = operations(removeOperations, deps.db).get(hostId);
+  const removing = perDbRegistry(removeOperations, deps.db).get(hostId);
   if (removing !== undefined) {
     await removing.done.catch(() => {});
     return;
   }
-  const resuming = operations(resumeOperations, deps.db).get(hostId);
+  const resuming = perDbRegistry(resumeOperations, deps.db).get(hostId);
   if (resuming !== undefined) {
     await resuming.done.catch(() => {});
   }
-  const suspending = operations(suspendOperations, deps.db).get(hostId);
+  const suspending = perDbRegistry(suspendOperations, deps.db).get(hostId);
   if (suspending !== undefined) {
     if (coordinateMaintenance)
       throw new ApiError(
@@ -754,7 +710,7 @@ async function suspendMachine(
   const resource = row.resource;
   const removalRequested = row.phase === "removing";
   const operation = runTrackedOperation({
-    map: operations(suspendOperations, deps.db),
+    map: perDbRegistry(suspendOperations, deps.db),
     key: hostId,
     run: async (signal) => {
       const run = async () => {
@@ -886,10 +842,7 @@ function assertMachineProvisioningComplete(deps: Deps, hostId: string): void {
   );
 }
 
-export async function requestMachineSuspension(
-  deps: Deps,
-  hostId: string,
-): Promise<void> {
+function requireActiveSuspendableMachine(deps: Deps, hostId: string): void {
   const row = requireSuspendableMachine(deps, hostId);
   if (row.phase !== "active" && row.phase !== "suspending") {
     throw new ApiError(
@@ -899,6 +852,13 @@ export async function requestMachineSuspension(
     );
   }
   assertMachineProvisioningComplete(deps, hostId);
+}
+
+export async function requestMachineSuspension(
+  deps: Deps,
+  hostId: string,
+): Promise<void> {
+  requireActiveSuspendableMachine(deps, hostId);
   await suspendMachine(deps, hostId, true);
   if (listThreadIdsWithHostOfflineQueueWaits(deps.db, hostId).length > 0) {
     requestQueuedMachineReadiness(deps, hostId);
@@ -906,15 +866,7 @@ export async function requestMachineSuspension(
 }
 
 export function startMachineSuspension(deps: Deps, hostId: string): void {
-  const row = requireSuspendableMachine(deps, hostId);
-  if (row.phase !== "active" && row.phase !== "suspending") {
-    throw new ApiError(
-      409,
-      "machine_not_active",
-      "Only an active machine can be suspended",
-    );
-  }
-  assertMachineProvisioningComplete(deps, hostId);
+  requireActiveSuspendableMachine(deps, hostId);
   void requestMachineSuspension(deps, hostId).catch((error: unknown) => {
     deps.logger.warn(
       { hostId, error: errorMessage(error) },
@@ -927,32 +879,10 @@ export async function waitForMachineMaintenance(
   deps: MachineLifecycleDeps,
   hostId: string,
 ): Promise<void> {
-  const suspending = operations(suspendOperations, deps.db).get(hostId);
+  const suspending = perDbRegistry(suspendOperations, deps.db).get(hostId);
   if (suspending !== undefined) {
     await suspending.done;
   }
-}
-
-export async function requestMachineResume(
-  deps: Deps,
-  hostId: string,
-): Promise<void> {
-  await waitForMachineMaintenance(deps, hostId);
-  const row = requireSuspendableMachine(deps, hostId);
-  if (
-    row.phase !== "active" &&
-    row.phase !== "suspended" &&
-    row.phase !== "suspending" &&
-    row.phase !== "resuming"
-  ) {
-    throw new ApiError(
-      409,
-      "machine_not_suspended",
-      "Only an active or suspended machine can be resumed",
-    );
-  }
-  await waitForMachineMaintenance(deps, hostId);
-  await resumeMachine(deps, hostId);
 }
 
 export function startMachineResume(deps: Deps, hostId: string): void {
@@ -981,12 +911,12 @@ export async function resumeMachine(
   deps: WorkSessionDeps,
   hostId: string,
 ): Promise<void> {
-  const removing = operations(removeOperations, deps.db).get(hostId);
+  const removing = perDbRegistry(removeOperations, deps.db).get(hostId);
   if (removing !== undefined) {
     await removing.done.catch(() => {});
     return;
   }
-  const suspending = operations(suspendOperations, deps.db).get(hostId);
+  const suspending = perDbRegistry(suspendOperations, deps.db).get(hostId);
   if (suspending !== undefined) {
     await suspending.done.catch(() => {});
   }
@@ -1031,7 +961,7 @@ async function resumeMachineWithIntent(
   const resume = record.provider.resume;
   const resource = row.resource;
   const operation = runTrackedOperation({
-    map: operations(resumeOperations, deps.db),
+    map: perDbRegistry(resumeOperations, deps.db),
     key: hostId,
     run: async (signal) => {
       updateHost(deps.db, deps.hub, hostId, {
@@ -1192,23 +1122,23 @@ export async function retryMachineCleanup(
 }
 
 async function removeMachine(deps: Deps, hostId: string): Promise<void> {
-  let removing = operations(removeOperations, deps.db).get(hostId);
+  let removing = perDbRegistry(removeOperations, deps.db).get(hostId);
   if (removing !== undefined) {
     await removing.done;
     return;
   }
-  const creating = operations(createOperations, deps.db).get(hostId);
+  const creating = perDbRegistry(createOperations, deps.db).get(hostId);
   if (creating !== undefined) {
     creating.controller.abort();
     await creating.done.catch(() => {});
   }
-  const suspending = operations(suspendOperations, deps.db).get(hostId);
-  const resuming = operations(resumeOperations, deps.db).get(hostId);
+  const suspending = perDbRegistry(suspendOperations, deps.db).get(hostId);
+  const resuming = perDbRegistry(resumeOperations, deps.db).get(hostId);
   await Promise.all([
     suspending?.done.catch(() => {}),
     resuming?.done.catch(() => {}),
   ]);
-  removing = operations(removeOperations, deps.db).get(hostId);
+  removing = perDbRegistry(removeOperations, deps.db).get(hostId);
   if (removing !== undefined) {
     await removing.done;
     return;
@@ -1238,7 +1168,7 @@ async function removeMachine(deps: Deps, hostId: string): Promise<void> {
     statusMessage: creationFailureMessage,
   });
   const operation = runTrackedOperation({
-    map: operations(removeOperations, deps.db),
+    map: perDbRegistry(removeOperations, deps.db),
     key: hostId,
     run: async (signal) => {
       try {
@@ -1334,7 +1264,7 @@ export async function sweepProviderMachine(
     return;
   }
   if (row.phase === "suspending") {
-    const suspending = operations(suspendOperations, deps.db).get(hostId);
+    const suspending = perDbRegistry(suspendOperations, deps.db).get(hostId);
     if (suspending !== undefined) {
       await suspending.done;
       return;
@@ -1350,12 +1280,12 @@ export async function sweepProviderMachine(
     return;
   }
   const now = Date.now();
-  const removing = operations(removeOperations, deps.db).get(hostId);
+  const removing = perDbRegistry(removeOperations, deps.db).get(hostId);
   if (removing !== undefined) {
     await removing.done;
     return;
   }
-  if (operations(resumeOperations, deps.db).has(hostId)) return;
+  if (perDbRegistry(resumeOperations, deps.db).has(hostId)) return;
   if (
     row.phase !== "removing" ||
     row.removeRetryAt === null ||
@@ -1363,8 +1293,8 @@ export async function sweepProviderMachine(
   ) {
     return;
   }
-  const suspending = operations(suspendOperations, deps.db).get(hostId);
-  const resuming = operations(resumeOperations, deps.db).get(hostId);
+  const suspending = perDbRegistry(suspendOperations, deps.db).get(hostId);
+  const resuming = perDbRegistry(resumeOperations, deps.db).get(hostId);
   await Promise.all([
     suspending?.done.catch(() => {}),
     resuming?.done.catch(() => {}),
@@ -1427,7 +1357,7 @@ export async function sweepMachineLifecycles(
     for (const machine of listProviderMachines(deps.db, record.provider.id)) {
       requestAutomaticMachineRemoval(deps, machine.id);
       const sweeping = runTrackedOperation({
-        map: operations(machineSweepOperations, deps.db),
+        map: perDbRegistry(machineSweepOperations, deps.db),
         key: machine.id,
         run: async () => sweepProviderMachine(deps, machine.id),
       }).done;

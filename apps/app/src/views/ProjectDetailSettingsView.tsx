@@ -36,6 +36,7 @@ import {
 import { PageShell } from "@/components/ui/page-shell.js";
 import {
   SettingsBadge,
+  SettingsDetailRow,
   SettingsRow,
   SettingsRowList,
   SettingsSection,
@@ -71,22 +72,6 @@ const CHECKOUTS_DESCRIPTION =
 
 const DEFAULTS_DESCRIPTION =
   "What new threads in this project start with. bb remembers the last options you used here.";
-
-interface DetailRowProps {
-  label: string;
-  children: ReactNode;
-}
-
-function DetailRow({ label, children }: DetailRowProps) {
-  return (
-    <SettingsRow className="flex-col items-stretch gap-1.5 sm:flex-row sm:items-center sm:gap-3">
-      <span className="shrink-0 text-foreground">{label}</span>
-      <div className="flex min-w-0 flex-wrap items-center justify-start gap-2 text-left text-subtle-foreground sm:ml-auto sm:justify-end sm:text-right">
-        {children}
-      </div>
-    </SettingsRow>
-  );
-}
 
 interface CheckoutRowProps {
   host: Host;
@@ -493,25 +478,25 @@ export function ProjectDetailSettingsView() {
             </p>
           ) : (
             <SettingsRowList>
-              <DetailRow label="Provider">
+              <SettingsDetailRow label="Provider">
                 <span>{defaults.providerId}</span>
-              </DetailRow>
-              <DetailRow label="Model">
+              </SettingsDetailRow>
+              <SettingsDetailRow label="Model">
                 <span className="font-mono text-xs">{defaults.model}</span>
-              </DetailRow>
-              <DetailRow label="Permission mode">
+              </SettingsDetailRow>
+              <SettingsDetailRow label="Permission mode">
                 <span>{permissionLabel}</span>
-              </DetailRow>
-              <DetailRow label="Reasoning">
+              </SettingsDetailRow>
+              <SettingsDetailRow label="Reasoning">
                 <span>{defaults.reasoningLevel}</span>
-              </DetailRow>
+              </SettingsDetailRow>
             </SettingsRowList>
           )}
         </SettingsSection>
 
         <SettingsSection title="Project information">
           <SettingsRowList>
-            <DetailRow label="Git remote">
+            <SettingsDetailRow label="Git remote">
               {project.gitRemoteUrl === null ? (
                 <span>None detected</span>
               ) : (
@@ -519,15 +504,15 @@ export function ProjectDetailSettingsView() {
                   {project.gitRemoteUrl}
                 </span>
               )}
-            </DetailRow>
-            <DetailRow label="Project ID">
+            </SettingsDetailRow>
+            <SettingsDetailRow label="Project ID">
               <span className="font-mono text-xs">{project.id}</span>
-            </DetailRow>
-            <DetailRow label="Created">
+            </SettingsDetailRow>
+            <SettingsDetailRow label="Created">
               <span>
                 {formatRelativeTime({ timestamp: project.createdAt, now })}
               </span>
-            </DetailRow>
+            </SettingsDetailRow>
           </SettingsRowList>
         </SettingsSection>
 
