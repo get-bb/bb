@@ -144,6 +144,32 @@ it("preserves occurrence identity when streaming finishes", () => {
   expect(lightboxImage().getAttribute("alt")).toBe("A");
 });
 
+it.each(["", "---\ntitle: Images\n---\n\n$$ x\n y $$\n\n"])(
+  "preserves identical inline and footnote occurrences when streaming finishes (%s)",
+  async (prefix) => {
+    const text = `${prefix}See[^n].\n\n[^n]: ![Same](https://example.com/same.png)\n\n![Same](https://example.com/same.png)\n`;
+    const timeline = (status: "active" | "idle") => (
+      <ThreadTimelineRows
+        threadId="thread-1"
+        threadRuntimeDisplayStatus={status}
+        workspaceRootPath={undefined}
+        timelineRows={[conversationRow({ id: "streaming", text })]}
+      />
+    );
+    const { rerender } = renderTimeline(timeline("active"));
+    fireEvent.click(screen.getAllByRole("img", { name: "Same" })[1]!);
+    expect(screen.getByRole("status").textContent).toBe("2 / 2");
+    rerender(timeline("idle"));
+    await waitFor(() => {
+      expect(screen.getByRole("status").textContent).toBe("1 / 2");
+    });
+    expect(screen.getByRole("button", { name: "Previous image" }).hasAttribute("disabled")).toBe(true);
+    fireEvent.click(screen.getByRole("button", { name: "Next image" }));
+    expect(screen.getByRole("status").textContent).toBe("2 / 2");
+    expect(screen.getByRole("button", { name: "Next image" }).hasAttribute("disabled")).toBe(true);
+  },
+);
+
 it("includes lazy turn details only while expanded, including during the collapse transition", async () => {
   vi.spyOn(sdk.threads, "timelineTurnSummaryDetails").mockResolvedValue({
     rows: [
