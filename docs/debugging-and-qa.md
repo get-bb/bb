@@ -333,6 +333,30 @@ argument. The bridge subprocess receives only its script path. The AppImage
 lifecycle smoke exercises this launch and verifies that its runtime mount
 survives closing the GUI.
 
+## Packaged Desktop npm
+
+Plugin dependency installs and build-tool downloads use the npm shipped with BB,
+running through Electron's Node runtime. npm ships its dependencies inside its
+own `node_modules`; pnpm's dependency listing does not expand that tree, and
+electron-builder's normal dependency copier skips nested `node_modules`.
+The desktop configuration copies that tree through a dedicated file set so it
+is included in the ASAR/unpacked output before signing.
+
+The `afterPack` hook checks npm before signing or publishing, and
+`smoke:packaged` repeats the check before opening the desktop window. It resolves npm
+from the packaged `bb-app`, checks its version, and installs a local dependency
+offline with an empty PATH, a fresh cache, and lifecycle scripts disabled.
+This exercises the final desktop artifact; the bb-app tarball smoke cannot
+detect files omitted by Electron packaging. All fixture data is temporary.
+
+To run just the npm check without opening a window:
+
+```bash
+node --input-type=module -e 'import { smokePackagedNpm } from "./apps/desktop/scripts/smoke-packaged-npm.mjs"; await smokePackagedNpm(process.argv[1]);' /absolute/path/to/bb.app/Contents/MacOS/bb
+```
+
+On Linux, pass the binary in `release/linux-unpacked/`.
+
 ## Prepared Worktree Restarts
 
 `pnpm start` and `pnpm start:worktree` always run Turbo-backed preparation before

@@ -265,6 +265,18 @@ async function afterPack(context) {
     electronVersion: resolveElectronVersion(),
     platform: context.electronPlatformName ?? process.platform,
   });
+  const { smokePackagedNpm } = await import("./smoke-packaged-npm.mjs");
+  const appBinary =
+    context.electronPlatformName === "darwin"
+      ? path.join(
+          context.appOutDir,
+          `${context.packager.appInfo.productFilename}.app`,
+          "Contents",
+          "MacOS",
+          context.packager.appInfo.productFilename,
+        )
+      : path.join(context.appOutDir, context.packager.executableName);
+  await smokePackagedNpm(appBinary);
 }
 
 function parseStandaloneArguments(argv) {
