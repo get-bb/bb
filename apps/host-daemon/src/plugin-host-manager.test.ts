@@ -58,9 +58,20 @@ export default {
       await context.experimental_emitSignal("changed", payload);
       return payload;
     },
-    async environment(input) {
+    async environment(input, context) {
       const before = process.env.GATE_VALUE;
-      await new Promise((resolve) => setTimeout(resolve, input.delay ?? 0));
+      if (input.id) await context.experimental_emitSignal("changed", { id: input.id, pid: process.pid });
+      await new Promise((resolve) => {
+        if (input.hang) return;
+        const finish = () => {
+          clearTimeout(timer);
+          context.signal.removeEventListener("abort", finish);
+          resolve();
+        };
+        const timer = setTimeout(finish, input.delay ?? 0);
+        context.signal.addEventListener("abort", finish, { once: true });
+        if (context.signal.aborted) finish();
+      });
       return { before: before ?? null, after: process.env.GATE_VALUE ?? null, token: process.env.GH_TOKEN ?? null };
     },
     echo(input) { return { input, pid: process.pid }; },
@@ -237,6 +248,211 @@ describe("PluginHostManager", () => {
       (await manager.call(callCommand({ method: "environment", input: {} })))
         .output,
     ).toEqual({ before: null, after: null, token: null });
+  });
+
+  describe("environment wait cancellation", () => {
+    async function fixture() {
+      const onSignal = vi.fn();
+      const onWorkerExit = vi.fn();
+      const manager = await createManager({
+        shellEnv: () => ({ GATE_VALUE: "base" }),
+        onSignal,
+        onWorkerExit,
+      });
+      const command = (id: string, value: string, delay = 0) =>
+        callCommand({
+          callId: id,
+          method: "environment",
+          input: { id, delay },
+          timeoutMs: 15_000,
+          contributedEnv: [
+            {
+              name: "GATE_VALUE",
+              value,
+              reason: "test",
+              source: { core: "machine-environment" },
+            },
+          ],
+        });
+      const cancel = (callId: string) =>
+        manager.cancel({
+          type: "plugin.host.cancel",
+          pluginId: "fixture",
+          generation: "generation-1",
+          callId,
+        });
+      const started = (id: string) =>
+        expect.objectContaining({
+          payload: expect.objectContaining({ id }),
+        });
+      const waitForStart = (id: string) =>
+        vi.waitFor(() => expect(onSignal).toHaveBeenCalledWith(started(id)));
+      return {
+        manager,
+        command,
+        cancel,
+        started,
+        waitForStart,
+        onSignal,
+        onWorkerExit,
+      };
+    }
+
+    it.each(["cancel", "deadline", "same-value"])(
+      "preserves a long running call and its PID after %s",
+      async (mode) => {
+        const {
+          manager,
+          command,
+          cancel,
+          started,
+          waitForStart,
+          onSignal,
+          onWorkerExit,
+        } = await fixture();
+        const initial = await manager.call(callCommand());
+        const running = Promise.allSettled([
+          manager.call(command("a", "first", 6500)),
+        ]);
+        await waitForStart("a");
+        const b = command(
+          "b",
+          mode === "same-value" ? "first" : "second",
+          10_000,
+        );
+        const cancelled = manager
+          .call({
+            ...b,
+            timeoutMs: mode === "deadline" ? 200 : b.timeoutMs,
+          })
+          .catch((error: unknown) => error);
+        if (mode === "same-value") await waitForStart("b");
+        else await new Promise((resolve) => setTimeout(resolve, 100));
+        if (mode !== "deadline") {
+          expect(cancel("b")).toEqual({ cancelled: true });
+          cancel("b");
+        }
+        const error = await cancelled;
+        if (mode === "deadline")
+          expect(error).toMatchObject({
+            message: expect.stringMatching(/deadline/u),
+          });
+        else expect(error).toMatchObject({ name: "AbortError" });
+        expect(await running).toMatchObject([
+          {
+            status: "fulfilled",
+            value: { output: { before: "first", after: "first" } },
+          },
+        ]);
+        if (mode !== "same-value")
+          expect(onSignal).not.toHaveBeenCalledWith(started("b"));
+        expect(
+          (await manager.call(command("c", "third"))).output,
+        ).toMatchObject({ before: "third", after: "third" });
+        expect(
+          (
+            await manager.call(
+              callCommand({ method: "environment", input: {} }),
+            )
+          ).output,
+        ).toMatchObject({ before: "base", after: "base" });
+        expect((await manager.call(callCommand())).output).toEqual(
+          initial.output,
+        );
+        expect(onWorkerExit).not.toHaveBeenCalled();
+      },
+    );
+
+    it("settles a cancelled waiter before release and lets other waiters rotate", async () => {
+      const { manager, command, cancel, waitForStart, onWorkerExit } =
+        await fixture();
+      const a = manager
+        .call(command("a", "first", 10_000))
+        .catch((error: unknown) => error);
+      await waitForStart("a");
+      const b = manager
+        .call(command("b", "second"))
+        .catch((error: unknown) => error);
+      const c = manager
+        .call(command("c", "third"))
+        .catch((error: unknown) => error);
+      await new Promise((resolve) => setTimeout(resolve, 100));
+      cancel("b");
+      await expect(b).resolves.toMatchObject({ name: "AbortError" });
+      expect(cancel("a")).toEqual({ cancelled: true });
+      await expect(a).resolves.toMatchObject({ name: "AbortError" });
+      await expect(c).resolves.toMatchObject({
+        output: { before: "third", after: "third" },
+      });
+      expect(onWorkerExit).not.toHaveBeenCalled();
+    });
+
+    it.each(["cancel-first", "release-first"])(
+      "handles %s with queued calls",
+      async (order) => {
+        const { manager, command, cancel, waitForStart, onWorkerExit } =
+          await fixture();
+        const a = manager
+          .call(command("a", "first", 10_000))
+          .catch((error: unknown) => error);
+        await waitForStart("a");
+        const b = manager
+          .call(command("b", "second", 10_000))
+          .catch((error: unknown) => error);
+        await new Promise((resolve) => setTimeout(resolve, 100));
+        for (const id of order === "cancel-first" ? ["b", "a"] : ["a", "b"])
+          cancel(id);
+        await expect(a).resolves.toMatchObject({ name: "AbortError" });
+        await expect(b).resolves.toMatchObject({ name: "AbortError" });
+        await expect(
+          manager.call(command("c", "third")),
+        ).resolves.toMatchObject({
+          output: { before: "third", after: "third" },
+        });
+        expect(onWorkerExit).not.toHaveBeenCalled();
+      },
+    );
+
+    it("disposes with queued calls and starts a fresh generation", async () => {
+      const { manager, command, waitForStart } = await fixture();
+      const a = manager
+        .call(command("a", "first", 10_000))
+        .catch((error: unknown) => error);
+      await waitForStart("a");
+      const b = manager
+        .call(command("b", "second"))
+        .catch((error: unknown) => error);
+      await new Promise((resolve) => setTimeout(resolve, 100));
+      await manager.dispose({
+        type: "plugin.host.dispose",
+        pluginId: "fixture",
+        generation: "generation-1",
+      });
+      expect(await a).toBeInstanceOf(Error);
+      expect(await b).toBeInstanceOf(Error);
+      await expect(
+        manager.call({ ...command("c", "third"), generation: "generation-2" }),
+      ).resolves.toMatchObject({ output: { before: "third", after: "third" } });
+    });
+
+    it("still force-kills a started handler that ignores cancellation", async () => {
+      const { manager, command, cancel, waitForStart, onWorkerExit } =
+        await fixture();
+      const initial = await manager.call(callCommand());
+      const hung = manager
+        .call({
+          ...command("hung", "first"),
+          input: { id: "hung", hang: true },
+        })
+        .catch((error: unknown) => error);
+      await waitForStart("hung");
+      cancel("hung");
+      await expect(hung).resolves.toMatchObject({ name: "AbortError" });
+      expect(onWorkerExit).toHaveBeenCalledOnce();
+      expect((await manager.call(callCommand())).output).not.toEqual(
+        initial.output,
+      );
+    });
   });
 
   it.each(["type", "true", "changed"])(
