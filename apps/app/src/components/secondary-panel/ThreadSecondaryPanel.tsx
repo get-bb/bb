@@ -63,9 +63,7 @@ import {
   useDiffFilesCollapseControls,
 } from "./git-diff/diffFilesStore";
 import { buildGitDiffIdentity } from "./git-diff/gitDiffPanelHelpers";
-import {
-  useSecondaryPanelResize,
-} from "./useSecondaryPanelResize";
+import { useSecondaryPanelResize } from "./useSecondaryPanelResize";
 import { threadSecondaryPanelResizingAtom } from "./threadSecondaryPanelAtoms";
 import { GitDiffToolbar } from "./GitDiffToolbar";
 import { GitDiffTabContent } from "./ThreadSecondaryPanelTabContent";

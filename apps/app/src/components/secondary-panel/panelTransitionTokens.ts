@@ -38,8 +38,6 @@ export function usePanelCollapseTransitionsReady(
   return !enabled || readyKey === resetKey;
 }
 
-export const PANEL_RESIZE_HIT_AREA_MARGINS = { coarse: 15, fine: 8 };
-
 export const PANEL_RESIZE_HANDLE_LAYER_CLASS = "z-[25]";
 
 export const PANEL_RESIZE_HIT_TARGET_CLASS =

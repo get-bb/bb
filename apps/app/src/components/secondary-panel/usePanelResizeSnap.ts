@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef } from "react";
+import { useEffect, useRef } from "react";
 import { flushSync } from "react-dom";
 import {
   createSplitResizeSnapSession,
@@ -15,11 +15,6 @@ interface UsePanelResizeSnapArgs {
   target: SplitResizeGridTarget;
 }
 
-interface PanelResizeSnapDrag {
-  cancel: () => void;
-  finish: () => void;
-}
-
 export function usePanelResizeSnap({
   axis,
   minFraction,
@@ -30,22 +25,12 @@ export function usePanelResizeSnap({
 }: UsePanelResizeSnapArgs) {
   const { boundaryIndex, childCount } = target;
   const hitTargetRef = useRef<HTMLSpanElement>(null);
-  const activeDragRef = useRef<PanelResizeSnapDrag | null>(null);
-  const finish = useCallback(() => {
-    const activeDrag = activeDragRef.current;
-    activeDragRef.current = null;
-    activeDrag?.finish();
-  }, []);
-  const cancel = useCallback(() => {
-    const activeDrag = activeDragRef.current;
-    activeDragRef.current = null;
-    activeDrag?.cancel();
-  }, []);
+  const activeDragRef = useRef<((commit: boolean) => void) | null>(null);
 
-  useEffect(() => cancel, [cancel]);
+  useEffect(() => () => activeDragRef.current?.(false), []);
 
-  const onPointerDownCapture = useCallback(
-    (event: PointerEvent) => {
+  useEffect(() => {
+    const onPointerDownCapture = (event: PointerEvent) => {
       const eventTarget = event.target;
       if (!(eventTarget instanceof HTMLElement)) return;
       const divider = eventTarget.closest<HTMLElement>(
@@ -57,7 +42,7 @@ export function usePanelResizeSnap({
         divider.getAttribute("data-panel-resize-handle-enabled") !== "true" ||
         event.button !== 0
       ) return;
-      finish();
+      activeDragRef.current?.(true);
       const previous = divider.previousElementSibling;
       const next = divider.nextElementSibling;
       if (
@@ -113,7 +98,7 @@ export function usePanelResizeSnap({
       const move = (moveEvent: PointerEvent) => {
         if (moveEvent.pointerId !== pointerId) return;
         if (moveEvent.buttons === 0) {
-          finish();
+          complete(true);
           return;
         }
         moveEvent.preventDefault();
@@ -144,8 +129,8 @@ export function usePanelResizeSnap({
           finishForPointer,
           true,
         );
-        ownerWindow.removeEventListener("mouseup", finishOnMouseUp, true);
-        ownerWindow.removeEventListener("blur", finishOnBlur);
+        ownerWindow.removeEventListener("mouseup", commitDrag, true);
+        ownerWindow.removeEventListener("blur", commitDrag);
         divider.removeEventListener("keydown", flushResize, true);
         divider.removeEventListener("lostpointercapture", finishForPointer);
         delete divider.dataset.dragging;
@@ -153,10 +138,7 @@ export function usePanelResizeSnap({
           divider.releasePointerCapture(pointerId);
         }
         snapSession.clear();
-        if (
-          activeDragRef.current?.finish === commitDrag ||
-          activeDragRef.current?.cancel === cancelDrag
-        ) {
+        if (activeDragRef.current === complete) {
           activeDragRef.current = null;
         }
         if (commit) {
@@ -179,31 +161,24 @@ export function usePanelResizeSnap({
         }
       };
       const commitDrag = () => complete(true);
-      const cancelDrag = () => complete(false);
       const finishForPointer = (finishEvent: PointerEvent) => {
         if (finishEvent.pointerId !== pointerId) return;
         commitDrag();
       };
-      const finishOnMouseUp = () => commitDrag();
-      const finishOnBlur = () => commitDrag();
-
-      activeDragRef.current = { cancel: cancelDrag, finish: commitDrag };
+      activeDragRef.current = complete;
       ownerWindow.addEventListener("pointermove", move, true);
       ownerWindow.addEventListener("pointerup", finishForPointer, true);
       ownerWindow.addEventListener("pointercancel", finishForPointer, true);
-      ownerWindow.addEventListener("mouseup", finishOnMouseUp, true);
-      ownerWindow.addEventListener("blur", finishOnBlur);
+      ownerWindow.addEventListener("mouseup", commitDrag, true);
+      ownerWindow.addEventListener("blur", commitDrag);
       divider.addEventListener("keydown", flushResize, true);
       divider.addEventListener("lostpointercapture", finishForPointer);
       onDragging(true);
-    },
-    [axis, boundaryIndex, childCount, finish, maxFraction, minFraction, onDragging, onResize],
-  );
+    };
 
-  useEffect(() => {
     window.addEventListener("pointerdown", onPointerDownCapture, true);
     return () => window.removeEventListener("pointerdown", onPointerDownCapture, true);
-  }, [onPointerDownCapture]);
+  }, [axis, boundaryIndex, childCount, maxFraction, minFraction, onDragging, onResize]);
 
   return hitTargetRef;
 }

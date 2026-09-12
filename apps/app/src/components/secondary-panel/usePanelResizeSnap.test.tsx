@@ -47,17 +47,7 @@ function advanceFrame() {
 }
 
 function rect(left: number, width: number): DOMRect {
-  return {
-    bottom: 600,
-    height: 600,
-    left,
-    right: left + width,
-    top: 0,
-    width,
-    x: left,
-    y: 0,
-    toJSON: () => ({}),
-  };
+  return new DOMRect(left, 0, width, 600);
 }
 
 function setup(secondarySize = 50) {
