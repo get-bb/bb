@@ -573,7 +573,9 @@ describe("FilePreview", () => {
         true,
       );
       expect(
-        actionButton.classList.contains("max-md:pointer-coarse:[&_svg]:size-5"),
+        actionButton.classList.contains(
+          "max-md:pointer-coarse:[&_[data-icon-root]]:size-5",
+        ),
       ).toBe(true);
     }
   });

@@ -199,7 +199,7 @@ export const PROJECT_LIST_ACTION_BUTTON_CLASS = cn(
   SIDEBAR_STANDARD_ROW_PADDING_CLASS,
   SIDEBAR_ROW_INTERACTIVE_STATE_CLASS,
   COARSE_POINTER_ROW_HEIGHT_CLASS,
-  "min-w-0 cursor-pointer justify-start overflow-hidden font-normal ring-sidebar-ring focus-visible:ring-2 disabled:cursor-default disabled:opacity-70 max-md:pointer-coarse:[&_svg]:size-5",
+  "min-w-0 cursor-pointer justify-start overflow-hidden font-normal ring-sidebar-ring focus-visible:ring-2 disabled:cursor-default disabled:opacity-70 max-md:pointer-coarse:[&_[data-icon-root]]:size-5",
 );
 
 interface ProjectThreadListStateArgs {

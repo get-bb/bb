@@ -278,10 +278,10 @@ const ACTION_BUTTON_CLASS =
 const HOVER_REVEAL_CLASS =
   "opacity-0 transition-opacity group-hover/message:opacity-100 group-focus-within/message:opacity-100";
 const MOBILE_INLINE_ACTION_CLASS =
-  "max-md:pointer-coarse:size-7 max-md:pointer-coarse:opacity-100 max-md:pointer-coarse:disabled:opacity-40 max-md:pointer-coarse:[&_svg]:size-4";
+  "max-md:pointer-coarse:size-7 max-md:pointer-coarse:opacity-100 max-md:pointer-coarse:disabled:opacity-40 max-md:pointer-coarse:[&_[data-icon-root]]:size-4";
 const MOBILE_OVERFLOW_ACTION_CLASS = "max-md:pointer-coarse:hidden";
 const MOBILE_OVERFLOW_TRIGGER_CLASS =
-  "hidden size-7 cursor-pointer items-center justify-center rounded-md text-muted-foreground hover:text-foreground data-[state=open]:bg-state-active data-[state=open]:text-foreground max-md:pointer-coarse:inline-flex max-md:pointer-coarse:[&_svg]:size-4";
+  "hidden size-7 cursor-pointer items-center justify-center rounded-md text-muted-foreground hover:text-foreground data-[state=open]:bg-state-active data-[state=open]:text-foreground max-md:pointer-coarse:inline-flex max-md:pointer-coarse:[&_[data-icon-root]]:size-4";
 const ACTION_TOOLTIP_SIDE = "bottom";
 const MENU_CONTENT_WIDTH_CLASS = "max-w-[min(16rem,calc(100vw-1rem))]";
 const MOBILE_OVERFLOW_CONTENT_CLASS =

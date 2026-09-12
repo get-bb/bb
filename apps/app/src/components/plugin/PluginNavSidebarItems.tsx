@@ -1212,7 +1212,7 @@ function SidebarNavRowChrome({
               accessory && "pr-18",
               isActive && "bg-sidebar-accent text-sidebar-foreground",
               loading &&
-                "text-sidebar-foreground/55 dark:text-sidebar-foreground/55 [&_svg]:opacity-60",
+                "text-sidebar-foreground/55 dark:text-sidebar-foreground/55 [&_[data-icon-root]]:opacity-60",
             )}
             aria-busy={loading || undefined}
             aria-current={isActive ? "page" : undefined}

@@ -138,6 +138,7 @@ export function ThreadContextWindowCard({
               stroke="currentColor"
               strokeWidth="1"
               aria-hidden="true"
+              data-icon-root=""
               className={cn(
                 "size-3 transition-transform duration-200 ease-out motion-reduce:transition-none",
                 detailsExpanded && "rotate-180",

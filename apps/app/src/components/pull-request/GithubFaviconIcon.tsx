@@ -42,6 +42,7 @@ export function GithubFaviconIcon({
       xmlns="http://www.w3.org/2000/svg"
       aria-hidden="true"
       data-icon="GithubFavicon"
+      data-icon-root=""
       data-pull-request-check-status={status ?? undefined}
       className={cn("size-4 shrink-0", className)}
     >
