@@ -149,6 +149,26 @@ describe("bb settings commands", () => {
     });
   });
 
+  it("enables the multi-machine picker experiment", async () => {
+    const updateExperiments = vi.fn(async ({ json }) => json);
+    stubServerApi({
+      "v1.system.config.$get": vi.fn(async () => ({
+        generalSettings: defaultAppSettings,
+        experiments: defaultExperiments,
+      })),
+      "v1.settings.experiments.$put": updateExperiments,
+    });
+
+    await runCommand(
+      ["settings", "experiment", "multiMachinePicker", "true"],
+      register,
+    );
+
+    expect(updateExperiments).toHaveBeenCalledWith({
+      json: { ...defaultExperiments, multiMachinePicker: true },
+    });
+  });
+
   it("reads usage from a selected machine", async () => {
     const getUsage = vi.fn(async () => ({
       codex: { status: "unauthenticated" },

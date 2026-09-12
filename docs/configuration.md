@@ -917,6 +917,12 @@ timelines and large expanded timeline details retain stable height-preserving
 wrappers while mounting only rows near their active scrollport. Toggle it with
 `bb settings experiment timelineWindowing <true|false>`.
 
+The `multiMachinePicker` experiment is off by default. When enabled, projects
+with at least three machines use a searchable, target-first environment picker,
+and machine-only pickers become searchable when they have more than five
+machines. Toggle it with `bb settings experiment multiMachinePicker
+<true|false>`.
+
 ## Thread Timeline Window
 
 Timeline pages select conversation groups using user-message anchors. The

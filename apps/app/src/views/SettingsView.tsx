@@ -204,10 +204,12 @@ interface ExperimentsSettingsSectionProps {
   disabled: boolean;
   changelogPreviewEnabled: boolean;
   mobileAppEnabled: boolean;
+  multiMachinePickerEnabled: boolean;
   sidebarProgressiveDisclosureEnabled: boolean;
   timelineWindowingEnabled: boolean;
   onChangelogPreviewEnabledChange: (enabled: boolean) => void;
   onMobileAppEnabledChange: (enabled: boolean) => void;
+  onMultiMachinePickerEnabledChange: (enabled: boolean) => void;
   onSidebarProgressiveDisclosureEnabledChange: (enabled: boolean) => void;
   onTimelineWindowingEnabledChange: (enabled: boolean) => void;
 }
@@ -1002,6 +1004,7 @@ export function DebugSettingsSection({
 
 const CHANGELOG_PREVIEW_EXPERIMENT_LABEL = "Changelog preview";
 const MOBILE_APP_EXPERIMENT_LABEL = "Mobile app";
+const MULTI_MACHINE_PICKER_EXPERIMENT_LABEL = "Multi-machine picker";
 const SIDEBAR_PROGRESSIVE_DISCLOSURE_EXPERIMENT_LABEL =
   "Sidebar progressive disclosure";
 const TIMELINE_WINDOWING_EXPERIMENT_LABEL = "Timeline windowing";
@@ -1009,10 +1012,12 @@ export function ExperimentsSettingsSection({
   changelogPreviewEnabled,
   disabled,
   mobileAppEnabled,
+  multiMachinePickerEnabled,
   sidebarProgressiveDisclosureEnabled,
   timelineWindowingEnabled,
   onChangelogPreviewEnabledChange,
   onMobileAppEnabledChange,
+  onMultiMachinePickerEnabledChange,
   onSidebarProgressiveDisclosureEnabledChange,
   onTimelineWindowingEnabledChange,
 }: ExperimentsSettingsSectionProps) {
@@ -1043,6 +1048,18 @@ export function ExperimentsSettingsSection({
             disabled={disabled}
             onCheckedChange={onMobileAppEnabledChange}
             aria-label={MOBILE_APP_EXPERIMENT_LABEL}
+          />
+        </SettingsWithControl>
+
+        <SettingsWithControl
+          label={MULTI_MACHINE_PICKER_EXPERIMENT_LABEL}
+          description="Use searchable, target-first environment and machine pickers when many machines are available."
+        >
+          <Switch
+            checked={multiMachinePickerEnabled}
+            disabled={disabled}
+            onCheckedChange={onMultiMachinePickerEnabledChange}
+            aria-label={MULTI_MACHINE_PICKER_EXPERIMENT_LABEL}
           />
         </SettingsWithControl>
 
@@ -1252,6 +1269,13 @@ export function SettingsView() {
           updateExperimentsMutation.mutate({
             ...experiments,
             mobileApp: enabled,
+          })
+        }
+        multiMachinePickerEnabled={experiments.multiMachinePicker}
+        onMultiMachinePickerEnabledChange={(enabled) =>
+          updateExperimentsMutation.mutate({
+            ...experiments,
+            multiMachinePicker: enabled,
           })
         }
         sidebarProgressiveDisclosureEnabled={

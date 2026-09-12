@@ -363,6 +363,7 @@ function ExperimentsStory() {
       changelogPreviewEnabled={state.experiments.changelogPreview}
       disabled={false}
       mobileAppEnabled={state.experiments.mobileApp}
+      multiMachinePickerEnabled={state.experiments.multiMachinePicker}
       sidebarProgressiveDisclosureEnabled={
         state.experiments.sidebarProgressiveDisclosure
       }
@@ -377,6 +378,12 @@ function ExperimentsStory() {
         state.setExperiments((current) => ({
           ...current,
           mobileApp: enabled,
+        }))
+      }
+      onMultiMachinePickerEnabledChange={(enabled) =>
+        state.setExperiments((current) => ({
+          ...current,
+          multiMachinePicker: enabled,
         }))
       }
       onSidebarProgressiveDisclosureEnabledChange={(enabled) =>
