@@ -1067,10 +1067,7 @@ export function ModelReasoningPicker({
         {handoffMode ? <HandoffModeHeader onBack={exitHandoffMode} /> : null}
         {showProviderTabs ? (
           <div
-            className={cn(
-              "flex shrink-0 items-center gap-0.5 border-b border-border px-2.5 pt-1",
-              isCompactViewport ? "bg-background" : "bg-surface-recessed",
-            )}
+            className="flex shrink-0 items-center gap-0.5 border-b border-border bg-background px-2.5 pt-1"
           >
             {providerOptions.map((provider) => {
               const TabIcon = provider.icon;
@@ -1334,14 +1331,8 @@ export function ModelReasoningPicker({
 }
 
 function HandoffModeHeader({ onBack }: { onBack: () => void }) {
-  const isCompactViewport = useIsCompactViewport();
   return (
-    <div
-      className={cn(
-        "flex shrink-0 items-center gap-1 px-2 pb-1 pt-1.5",
-        isCompactViewport ? "bg-background" : "bg-surface-recessed",
-      )}
-    >
+    <div className="flex shrink-0 items-center gap-1 bg-background px-2 pb-1 pt-1.5">
       <button
         type="button"
         aria-label="Back to model picker"
