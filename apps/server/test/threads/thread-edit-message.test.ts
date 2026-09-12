@@ -1292,6 +1292,96 @@ describe("editThreadMessage", () => {
     });
   });
 
+  it("refuses to rewind through a turn recorded under another thread's provider session", async () => {
+    await withTestHarness(async (harness) => {
+      const { environment, thread } = seedEditableThread(harness, {
+        firstProviderThreadId: "provider-foreign",
+      });
+      const owner = seedThread(harness.deps, {
+        environmentId: environment.id,
+        projectId: thread.projectId,
+        providerId: "codex",
+      });
+      seedStoredEvent(harness.deps, {
+        threadId: owner.id,
+        environmentId: environment.id,
+        providerThreadId: "provider-foreign",
+        createdAt: 1,
+        sequence: 1,
+        type: "thread/identity",
+        scope: threadScope(),
+        data: {},
+      });
+
+      await expect(
+        editThreadMessage(harness.deps, {
+          environment,
+          thread,
+          payload: {
+            operationId: "edit-op-foreign-session",
+            expectedRequestSequence: 7,
+            input: [{ type: "text", text: "Replacement", mentions: [] }],
+          },
+        }),
+      ).rejects.toThrow("recorded under another thread's provider session");
+      expect(
+        listQueuedThreadCommands(harness, "thread.rewind.prepare", thread.id),
+      ).toHaveLength(0);
+      expect(
+        listQueuedThreadCommands(harness, "thread.start", thread.id),
+      ).toHaveLength(0);
+    });
+  });
+
+  it("refuses to rewind through a turn whose session another thread announced in the same millisecond", async () => {
+    await withTestHarness(async (harness) => {
+      const { environment, thread } = seedEditableThread(harness, {
+        firstProviderThreadId: "provider-tied",
+      });
+      const other = seedThread(harness.deps, {
+        environmentId: environment.id,
+        projectId: thread.projectId,
+        providerId: "codex",
+      });
+      for (const [threadId, sequence] of [
+        [thread.id, 100],
+        [other.id, 1],
+      ] as const) {
+        seedStoredEvent(harness.deps, {
+          threadId,
+          environmentId: environment.id,
+          providerThreadId: "provider-tied",
+          createdAt: 1_787_789_348_554,
+          sequence,
+          type: "thread/identity",
+          scope: threadScope(),
+          data: {},
+        });
+      }
+      const eventsBefore = listEvents(harness.db, { threadId: thread.id });
+
+      await expect(
+        editThreadMessage(harness.deps, {
+          environment,
+          thread,
+          payload: {
+            operationId: "edit-op-tied-session",
+            expectedRequestSequence: 7,
+            input: [{ type: "text", text: "Replacement", mentions: [] }],
+          },
+        }),
+      ).rejects.toThrow(
+        "recorded under a provider session another thread announced at the same moment",
+      );
+      expect(
+        listQueuedThreadCommands(harness, "thread.rewind.prepare", thread.id),
+      ).toHaveLength(0);
+      expect(listEvents(harness.db, { threadId: thread.id })).toEqual(
+        eventsBefore,
+      );
+    });
+  });
+
   it.each(["claude-code", "pi"] as const)(
     "rejects a %s rewind through legacy history without a checkpoint",
     async (providerId) => {

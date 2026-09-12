@@ -27,6 +27,12 @@ sendAt?, reason? })`.
 - Use `bb thread clear <id>` on an idle or failed thread to reset its active
   timeline and model context in place while keeping the same BB thread,
   workspace, durable event history, and sticky execution settings.
+- A send that fails with `provider_session_unavailable` means the thread's
+  recorded provider session belongs to another thread (`details.reason:
+  "foreign"`) or was announced by another thread in the same millisecond
+  (`"ambiguous"`). bb refuses to resume it rather than write into another
+  conversation. `bb thread clear <id>` starts a new provider session on the
+  next send and keeps the thread's history.
 - Use `bb thread cancel-plan <id>` to exit an active Plan turn without
   optimistically clearing its banner. Use `bb thread clear-goal <id>` to clear
   a thread's durable active Goal when supported by its provider. Both wait for provider confirmation.

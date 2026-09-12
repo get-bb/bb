@@ -15,6 +15,7 @@ import {
 } from "../src/data/pending-interactions.js";
 import {
   appendDaemonEventsInTransaction,
+  getLastStoredProviderThreadId,
   hasParentedEventCrossingSequence,
   insertEvents,
   listActiveBackgroundTaskCountsByThreadIds,
@@ -236,6 +237,42 @@ function assertEmittedQueryPlanUsesIndex(
 }
 
 describe("slow query index plans", () => {
+  it("resolves a provider session with two indexed lookups regardless of history length", () => {
+    const { db, thread } = setup();
+    try {
+      insertEvents(
+        db,
+        noopNotifier,
+        Array.from({ length: 50 }, (_, index) => ({
+          threadId: thread.id,
+          sequence: index + 1,
+          scope: threadScope(),
+          providerThreadId: "provider-owner-plan",
+          type: "thread/identity" as const,
+          itemId: null,
+          itemKind: null,
+          parentToolCallId: null,
+          data: JSON.stringify({ providerThreadId: "provider-owner-plan" }),
+        })),
+      );
+      const captured = captureStatements(db, () => {
+        expect(getLastStoredProviderThreadId(db, thread.id)).toBe(
+          "provider-owner-plan",
+        );
+      });
+      expect(captured).toHaveLength(2);
+      const [identityQuery, ownerQuery] = captured;
+      expect(queryPlanDetails({ db, ...identityQuery! })).toContain(
+        "USING INDEX events_thread_type_sequence_idx",
+      );
+      expect(queryPlanDetails({ db, ...ownerQuery! })).toContain(
+        "USING INDEX events_provider_identity_idx",
+      );
+    } finally {
+      db.$client.close();
+    }
+  });
+
   it("seeks accepted inputs past each thread's latest interruption", () => {
     const { db, thread } = setup();
     try {

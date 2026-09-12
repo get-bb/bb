@@ -1263,6 +1263,96 @@ describe("fork branch point and inherited history", () => {
     });
   });
 
+  it("refuses to fork a turn recorded under another thread's provider session", async () => {
+    await withTestHarness(async (harness) => {
+      const { environment, sourceThread } = seedConversationForkSource(harness);
+      const owner = seedThread(harness.deps, {
+        environmentId: environment.id,
+        projectId: sourceThread.projectId,
+      });
+      seedEvent(harness.deps, {
+        threadId: owner.id,
+        environmentId: environment.id,
+        providerThreadId: HISTORY_PROVIDER_THREAD_ID,
+        createdAt: 1,
+        sequence: 1,
+        type: "thread/identity",
+        scope: threadScope(),
+        data: {},
+      });
+
+      const anchored = await postFork(harness, {
+        sourceThreadId: sourceThread.id,
+        sourceSeqEnd: 5,
+      });
+      expect(anchored.status).toBe(400);
+      expect(await readJson(anchored)).toMatchObject({
+        code: "fork_source_session_unavailable",
+        message:
+          "Cannot fork at sequence 5: the turn containing it is recorded under another thread's provider session",
+      });
+
+      const tip = await postFork(harness, {
+        sourceThreadId: sourceThread.id,
+      });
+      expect(tip.status).toBe(400);
+      expect(await readJson(tip)).toMatchObject({
+        code: "fork_source_session_unavailable",
+        message:
+          "Cannot fork: the source thread's only provider session belongs to another thread",
+      });
+      expect(listQueuedCommands(harness, "thread.start")).toHaveLength(0);
+    });
+  });
+
+  it("refuses to fork a source whose session another thread announced in the same millisecond", async () => {
+    await withTestHarness(async (harness) => {
+      const { environment, sourceThread } = seedConversationForkSource(harness);
+      const sourceIdentity = listEvents(harness.db, {
+        threadId: sourceThread.id,
+      }).find((event) => event.type === "thread/identity");
+      if (sourceIdentity === undefined) {
+        throw new Error("Expected the source thread's identity event");
+      }
+      const other = seedThread(harness.deps, {
+        environmentId: environment.id,
+        projectId: sourceThread.projectId,
+      });
+      seedEvent(harness.deps, {
+        threadId: other.id,
+        environmentId: environment.id,
+        providerThreadId: HISTORY_PROVIDER_THREAD_ID,
+        createdAt: sourceIdentity.createdAt,
+        sequence: 1,
+        type: "thread/identity",
+        scope: threadScope(),
+        data: {},
+      });
+
+      const anchored = await postFork(harness, {
+        sourceThreadId: sourceThread.id,
+        sourceSeqEnd: 5,
+      });
+      expect(anchored.status).toBe(400);
+      expect(await readJson(anchored)).toMatchObject({
+        code: "fork_source_session_unavailable",
+        message:
+          "Cannot fork at sequence 5: the turn containing it is recorded under a provider session another thread announced at the same moment",
+      });
+
+      const tip = await postFork(harness, {
+        sourceThreadId: sourceThread.id,
+      });
+      expect(tip.status).toBe(400);
+      expect(await readJson(tip)).toMatchObject({
+        code: "fork_source_session_unavailable",
+        message:
+          "Cannot fork: another thread announced the source thread's provider session at the same moment, so bb cannot tell whose it is",
+      });
+      expect(listQueuedCommands(harness, "thread.start")).toHaveLength(0);
+    });
+  });
+
   it("rejects an anchor inside a running turn or before the first turn", async () => {
     await withTestHarness(async (harness) => {
       const { sourceThread } = seedConversationForkSource(harness);

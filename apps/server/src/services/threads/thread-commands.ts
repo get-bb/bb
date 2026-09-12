@@ -24,7 +24,10 @@ import {
   LIVE_DAEMON_COMMAND_TIMEOUT_MS,
   startLiveHostCommand,
 } from "../hosts/live-command.js";
-import { getLastProviderThreadId } from "./thread-events.js";
+import {
+  getLastProviderThreadId,
+  requireDispatchableProviderThreadId,
+} from "./thread-events.js";
 import type { ThreadForkDescriptor } from "./thread-startup-store.js";
 import {
   resolveThreadRuntimeCommandConfig,
@@ -356,7 +359,8 @@ export async function prepareTurnSubmitCommandPayload(
 ): Promise<PreparedTurnSubmitCommandPayload> {
   await deps.providerRegistry.whenRegistrationsSettled();
   const providerThreadId = requireProviderThreadId(
-    args.providerThreadId ?? getLastProviderThreadId(deps, args.thread.id),
+    args.providerThreadId ??
+      requireDispatchableProviderThreadId(deps, args.thread.id),
     args.thread.id,
   );
   const runtimeContext = await resolveThreadRuntimeCommandConfig(deps, {

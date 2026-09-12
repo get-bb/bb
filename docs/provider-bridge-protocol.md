@@ -366,6 +366,12 @@ Three identifier families, three owners:
 | `providerThreadId`                      | the provider                | Its session handle (rollout id, session id). Returned on the `thread/start`/`thread/resume`/`thread/fork` result (required) and echoed by `thread/identity`; never used to scope bb events directly. |
 | turn ids and item ids on `ThreadEvent`s | **the runtime's assembler** | Never the provider, never the bridge.                                                                                                                                                                |
 
+A `providerThreadId` is a durable handle: bb persists it and sends it to a new
+bridge process to resume the session after a restart. It must name exactly one
+provider session among all of that provider's sessions on the host, so never
+mint it from a per-process counter. bb refuses to resume a handle that another
+thread announced first, or announced in the same millisecond.
+
 The central-minting rule is the #1320 lesson made structural: a provider can
 inject arbitrary identifiers on its own wire, but the ids that reach bb's
 persistence are always minted by bb-owned assembler code. Bridges forward

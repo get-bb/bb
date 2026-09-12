@@ -31,6 +31,7 @@ import {
   seedProjectWithSource,
   seedQueuedMessage,
   seedThread,
+  seedThreadIdentity,
   seedThreadRuntimeState,
   seedTurnStarted,
 } from "../helpers/seed.js";
@@ -120,6 +121,10 @@ describe("thread creation with startedOnBehalfOf (seed-without-run)", () => {
       const sourceThread = seedThread(harness.deps, {
         projectId: project.id,
         environmentId: environment.id,
+      });
+      seedThreadIdentity(harness.deps, {
+        threadId: sourceThread.id,
+        providerThreadId: "provider-seed-without-run-source",
       });
       seedTurnStarted(harness.deps, {
         threadId: sourceThread.id,
@@ -569,6 +574,10 @@ describe("thread creation child-thread boundary validation", () => {
     await withChildBoundaryHarness(
       "valid-fork",
       async ({ harness, hostId, path, projectId, sourceThreadId }) => {
+        seedThreadIdentity(harness.deps, {
+          threadId: sourceThreadId,
+          providerThreadId: "provider-valid-fork-source",
+        });
         seedTurnStarted(harness.deps, {
           threadId: sourceThreadId,
           turnId: "turn-valid-fork-source",
@@ -605,6 +614,10 @@ describe("thread creation child-thread boundary validation", () => {
     await withChildBoundaryHarness(
       "empty-native-fork",
       async ({ harness, hostId, path, projectId, sourceThreadId }) => {
+        seedThreadIdentity(harness.deps, {
+          threadId: sourceThreadId,
+          providerThreadId: "provider-parent-session",
+        });
         seedTurnStarted(harness.deps, {
           threadId: sourceThreadId,
           turnId: "turn-parent",
@@ -737,6 +750,10 @@ describe("thread creation child-thread boundary validation", () => {
       "empty-side-chat-preload",
       async ({ harness, hostId, path, projectId, sourceThreadId }) => {
         const capture = installTelemetryCaptureSpy(harness);
+        seedThreadIdentity(harness.deps, {
+          threadId: sourceThreadId,
+          providerThreadId: "provider-parent-session",
+        });
         seedTurnStarted(harness.deps, {
           threadId: sourceThreadId,
           turnId: "turn-parent",
@@ -814,6 +831,10 @@ describe("thread creation child-thread boundary validation", () => {
         projectId: PERSONAL_PROJECT_ID,
         environmentId: environment.id,
       });
+      seedThreadIdentity(harness.deps, {
+        threadId: sourceThread.id,
+        providerThreadId: "provider-personal-side-chat-source",
+      });
       seedTurnStarted(harness.deps, {
         threadId: sourceThread.id,
         turnId: "turn-personal-side-chat-source",
@@ -872,6 +893,11 @@ describe("thread creation child-thread boundary validation", () => {
       const sourceThread = seedThread(harness.deps, {
         environmentId: sourceEnvironment.id,
         projectId: PERSONAL_PROJECT_ID,
+      });
+      seedThreadIdentity(harness.deps, {
+        threadId: sourceThread.id,
+        environmentId: sourceEnvironment.id,
+        providerThreadId: "provider-personal-fork-source",
       });
       seedTurnStarted(harness.deps, {
         environmentId: sourceEnvironment.id,
@@ -965,6 +991,10 @@ describe("thread creation child-thread boundary validation", () => {
     await withChildBoundaryHarness(
       "empty-side-chat-preload-queued-message",
       async ({ harness, hostId, path, projectId, sourceThreadId }) => {
+        seedThreadIdentity(harness.deps, {
+          threadId: sourceThreadId,
+          providerThreadId: "provider-parent-session",
+        });
         seedTurnStarted(harness.deps, {
           threadId: sourceThreadId,
           turnId: "turn-parent",
@@ -1135,6 +1165,10 @@ describe("thread creation child-thread boundary validation", () => {
     await withChildBoundaryHarness(
       "valid-side-chat",
       async ({ harness, hostId, path, projectId, sourceThreadId }) => {
+        seedThreadIdentity(harness.deps, {
+          threadId: sourceThreadId,
+          providerThreadId: "provider-valid-side-chat-source",
+        });
         seedTurnStarted(harness.deps, {
           threadId: sourceThreadId,
           turnId: "turn-valid-side-chat-source",

@@ -776,6 +776,9 @@ export const events = sqliteTable(
         sql`${table.type} IN ('item/started', 'item/completed', 'item/backgroundTask/completed')`,
       ),
     index("events_environment_idx").on(table.environmentId),
+    index("events_provider_identity_idx")
+      .on(table.providerThreadId, table.createdAt)
+      .where(sql`${table.type} = 'thread/identity'`),
     index("events_completed_item_truncation_idx")
       .on(table.itemKind, table.createdAt, table.id)
       .where(sql`${table.type} = 'item/completed'`),
