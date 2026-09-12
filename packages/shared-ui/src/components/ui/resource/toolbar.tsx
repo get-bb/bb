@@ -595,7 +595,7 @@ export function ResourceCreateButton({
       size="sm"
       className={cn(
         "rounded-r-none",
-        compactOnMobile && "w-6 pl-2 pr-0 sm:w-auto sm:px-3",
+        compactOnMobile && "pl-2 pr-0.5 sm:px-3",
       )}
       onClick={() => onCreate()}
     >
@@ -627,7 +627,7 @@ export function ResourceCreateButton({
             aria-label={`${label} options`}
             className={cn(
               "rounded-l-none px-1.5",
-              compactOnMobile && "w-6 pl-0 pr-2 sm:w-auto sm:px-1.5",
+              compactOnMobile && "pl-0.5 pr-2 sm:px-1.5",
             )}
           >
             <Icon name="ChevronDown" className="size-4" aria-hidden />
