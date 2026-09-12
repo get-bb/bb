@@ -701,7 +701,6 @@ export function AppearanceSettingsSection({
       <div className="space-y-5">
         <SidebarThreadListSetting />
         <SidebarNavigationSetting />
-        <SidebarFooterSettings />
         <CodeRendererSettings />
         <SettingsWithControl label="Theme">
           <DropdownMenu>
@@ -833,6 +832,7 @@ export function AppearanceSettingsSection({
           onFaviconColorChange={onFaviconColorChange}
         />
         <SplitDimmingSetting />
+        <SidebarFooterSettings />
       </div>
     </SettingsSection>
   );
