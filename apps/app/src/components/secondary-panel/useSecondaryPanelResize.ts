@@ -7,6 +7,10 @@ import {
   threadSecondaryPanelResizingAtom,
 } from "./threadSecondaryPanelAtoms";
 import { usePanelResizeSnap } from "./usePanelResizeSnap";
+import {
+  THREAD_SECONDARY_PANEL_MAX_SIZE_PERCENT,
+  THREAD_SECONDARY_PANEL_MIN_SIZE_PERCENT,
+} from "./secondaryPanelSizing";
 
 export type SecondaryPanelDraggingHandler = (isDragging: boolean) => void;
 export type SecondaryPanelWidthChangeHandler = (
@@ -44,6 +48,8 @@ export function useSecondaryPanelResize({
     onPointerDownCapture: handleSecondaryPanelResizePointerDownCapture,
   } = usePanelResizeSnap({
     axis: "x",
+    minFraction: (100 - THREAD_SECONDARY_PANEL_MAX_SIZE_PERCENT) / 100,
+    maxFraction: (100 - THREAD_SECONDARY_PANEL_MIN_SIZE_PERCENT) / 100,
     onResize: handleSecondaryPanelPointerResize,
     target: { boundaryIndex: 1, childCount: 2 },
   });

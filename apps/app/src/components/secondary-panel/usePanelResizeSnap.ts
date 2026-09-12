@@ -8,6 +8,8 @@ import {
 
 interface UsePanelResizeSnapArgs {
   axis: SplitResizeAxis;
+  minFraction: number;
+  maxFraction: number;
   onResize: (leadingFraction: number) => void;
   target: SplitResizeGridTarget;
 }
@@ -24,6 +26,8 @@ export interface PanelResizeSnapController {
 
 export function usePanelResizeSnap({
   axis,
+  minFraction,
+  maxFraction,
   onResize,
   target,
 }: UsePanelResizeSnapArgs): PanelResizeSnapController {
@@ -116,9 +120,13 @@ export function usePanelResizeSnap({
           pointer: nextPointer,
           start,
         });
-        pendingFraction = result.fraction;
-        previous.style.flex = `${pairTotal * result.fraction} 1 0px`;
-        next.style.flex = `${pairTotal * (1 - result.fraction)} 1 0px`;
+        const fraction = Math.max(
+          minFraction,
+          Math.min(maxFraction, result.fraction),
+        );
+        pendingFraction = fraction;
+        previous.style.flex = `${pairTotal * fraction} 1 0px`;
+        next.style.flex = `${pairTotal * (1 - fraction)} 1 0px`;
       };
       const complete = (commit: boolean) => {
         if (finished) return;
@@ -176,7 +184,7 @@ export function usePanelResizeSnap({
       ownerWindow.addEventListener("mouseup", finishOnMouseUp, true);
       ownerWindow.addEventListener("blur", finishOnBlur);
     },
-    [axis, boundaryIndex, childCount, finish, onResize],
+    [axis, boundaryIndex, childCount, finish, maxFraction, minFraction, onResize],
   );
 
   return { finish, onPointerDownCapture };

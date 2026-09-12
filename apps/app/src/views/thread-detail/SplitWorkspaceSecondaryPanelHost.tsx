@@ -163,6 +163,8 @@ export function SplitWorkspaceSecondaryPanelHost({
     onPointerDownCapture: handleEmptyPanelResizePointerDownCapture,
   } = usePanelResizeSnap({
     axis: "x",
+    minFraction: (100 - THREAD_SECONDARY_PANEL_MAX_SIZE_PERCENT) / 100,
+    maxFraction: (100 - THREAD_SECONDARY_PANEL_MIN_SIZE_PERCENT) / 100,
     onResize: handleEmptyPanelPointerResize,
     target: { boundaryIndex: 1, childCount: 2 },
   });

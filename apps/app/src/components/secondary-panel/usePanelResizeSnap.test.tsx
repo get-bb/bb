@@ -30,7 +30,8 @@ function SnapHarness({
 }) {
   const { onPointerDownCapture } = usePanelResizeSnap({
     axis: "x",
-    ...{ minFraction, maxFraction },
+    minFraction,
+    maxFraction,
     onResize,
     target: { boundaryIndex: 1, childCount: 2 },
   });
