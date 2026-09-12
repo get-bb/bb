@@ -122,12 +122,14 @@ function SidebarViewItems({ page }: { page: "organize" | "sort" }) {
 export function SidebarHeaderControls({
   label,
   onNewThread,
+  showNewThread = true,
   children,
   open,
   onOpenChange,
 }: {
   label: string;
   onNewThread?: () => void;
+  showNewThread?: boolean;
   children?: ReactNode;
   open?: boolean;
   onOpenChange?: (open: boolean) => void;
@@ -142,12 +144,14 @@ export function SidebarHeaderControls({
   return (
     <SidebarRowControls
       primaryAction={
-        <SidebarControlButton
-          label={`New thread in ${label}`}
-          icon="MessageSquarePlus"
-          onClick={() => onNewThread?.()}
-          disabled={!onNewThread}
-        />
+        showNewThread ? (
+          <SidebarControlButton
+            label={`New thread in ${label}`}
+            icon="MessageSquarePlus"
+            onClick={() => onNewThread?.()}
+            disabled={!onNewThread}
+          />
+        ) : null
       }
     >
       <DropdownMenu open={open} onOpenChange={changeOpen}>
