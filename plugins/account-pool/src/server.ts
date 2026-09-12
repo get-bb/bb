@@ -1,3 +1,4 @@
+import { registerUsageSource } from "./usage-source.js";
 import {
   createUpstreamTransport,
   transportErrorCode,
@@ -163,6 +164,7 @@ export function createAccountPoolPlugin(
         "Add and enable a Claude or Codex account with `bb pool account add`.",
       );
     }
+    registerUsageSource(bb, hub);
     bb.rpc.register(
       accountPoolRpcContract,
       createRpcHandlers(operations, login, codexLogin, config),

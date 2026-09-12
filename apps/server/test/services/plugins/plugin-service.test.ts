@@ -154,8 +154,12 @@ describe("plugin service", () => {
   }
 
   afterEach(async () => {
-    await service.stop();
-    await rm(workDir, { recursive: true, force: true });
+    try {
+      await service.stop();
+      await rm(workDir, { recursive: true, force: true });
+    } finally {
+      vi.restoreAllMocks();
+    }
   });
 
   it("installs a path plugin, runs its factory, and reports running", async () => {

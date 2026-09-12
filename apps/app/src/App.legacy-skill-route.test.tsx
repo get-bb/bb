@@ -77,6 +77,7 @@ describe("legacy resource redirects", () => {
   );
 
   it.each([
+    ["/settings/usage", "/settings/plugins/provider-usage"],
     ["/settings/plugins", "/settings/plugins"],
     ["/extensions?view=installed#catalog", "/plugins?view=installed#catalog"],
     ["/extensions/plugins", "/plugins"],

@@ -6,7 +6,7 @@ import { createInterface } from "node:readline/promises";
 import { setTimeout as sleep } from "node:timers/promises";
 import { Command } from "commander";
 import { z } from "zod";
-import { derivePluginId } from "@bb/domain";
+import { derivePluginId, jsonValueSchema } from "@bb/domain";
 import { pluginCliCall, RESERVED_BB_CLI_COMMANDS } from "@bb/domain/plugin-cli";
 import type {
   InstalledPlugin as PluginEntry,
@@ -777,6 +777,107 @@ export function registerPluginCommands(
     .command("plugin")
     .description("Manage BB plugins")
     .enablePositionalOptions();
+
+  const rpc = plugin
+    .command("rpc")
+    .description("Inspect discoverable plugin RPC methods");
+  rpc
+    .command("list [plugin-id]")
+    .option("--method <name>", "Filter by exact method name")
+    .option("--json", "Output JSON")
+    .action(
+      action(
+        async (
+          pluginId: string | undefined,
+          opts: JsonOutputOptions & { method?: string },
+        ) => {
+          const methods = await createCliBbSdk(
+            getUrl(),
+          ).plugins.experimental_discoverRpc({ pluginId, method: opts.method });
+          if (opts.json) {
+            outputJson(opts, methods);
+            return;
+          }
+          if (methods.length === 0) console.log("No discoverable RPC methods.");
+          for (const method of methods)
+            console.log(
+              `${method.pluginId}  ${method.method}  ${method.methodDescription ?? method.registrationDescription ?? ""}`,
+            );
+        },
+      ),
+    );
+  rpc
+    .command("call <plugin-id> <method>")
+    .description("Call a plugin RPC method with server-side schema validation")
+    .option(
+      "--input-file <path>",
+      "Read JSON input from a file; defaults to null",
+    )
+    .option("--json", "Output JSON")
+    .action(
+      action(
+        async (
+          pluginId: string,
+          method: string,
+          opts: JsonOutputOptions & { inputFile?: string },
+        ) => {
+          const input =
+            opts.inputFile === undefined
+              ? null
+              : jsonValueSchema.parse(
+                  JSON.parse(await readFile(opts.inputFile, "utf8")),
+                );
+          const result = await createCliBbSdk(getUrl()).plugins.callRpc({
+            pluginId,
+            method,
+            input,
+            outputSchema: jsonValueSchema,
+          });
+          if (opts.json) {
+            outputJson(opts, result);
+            return;
+          }
+          console.log(JSON.stringify(result, null, 2));
+        },
+      ),
+    );
+
+  rpc
+    .command("inspect <plugin-id> [method]")
+    .option("--json", "Output JSON")
+    .action(
+      action(
+        async (
+          pluginId: string,
+          method: string | undefined,
+          opts: JsonOutputOptions,
+        ) => {
+          const methods = await createCliBbSdk(
+            getUrl(),
+          ).plugins.experimental_discoverRpc({ pluginId, method });
+          if (opts.json) {
+            outputJson(opts, methods);
+            return;
+          }
+          if (methods.length === 0) console.log("No discoverable RPC methods.");
+          for (const method of methods) {
+            console.log(`${method.pluginId} · ${method.method}`);
+            if (method.registrationDescription !== null)
+              console.log(method.registrationDescription);
+            if (method.methodDescription !== null)
+              console.log(method.methodDescription);
+            console.log(
+              "Input schema:",
+              JSON.stringify(method.inputSchema, null, 2),
+            );
+            console.log(
+              "Output schema:",
+              JSON.stringify(method.outputSchema, null, 2),
+            );
+          }
+        },
+      ),
+    );
 
   plugin
     .command("search <query>")

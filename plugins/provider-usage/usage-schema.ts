@@ -2,8 +2,8 @@ import { z } from "zod/mini";
 
 const nonemptyStringSchema = z.string().check(z.minLength(1));
 const costSchema = z.strictObject({
-  usedUsdCents: z.number().check(z.int(), z.nonnegative()),
-  limitUsdCents: z.number().check(z.int(), z.positive()),
+  usedUsdCents: z.number().check(z.nonnegative()),
+  limitUsdCents: z.number().check(z.positive()),
 });
 
 export const usageWindowSchema = z.strictObject({
@@ -36,6 +36,8 @@ const iconTintSchema = z.strictObject({
 
 export const usageProviderSchema = z.strictObject({
   id: nonemptyStringSchema,
+  providerId: nonemptyStringSchema,
+  accountLabel: z.nullable(nonemptyStringSchema),
   displayName: nonemptyStringSchema,
   logoUrl: z.nullable(nonemptyStringSchema),
   icon: z.nullable(z.strictObject({ glyph: nonemptyStringSchema })),
@@ -78,4 +80,23 @@ export function providerUsageTone(
   );
   if (usedPercent >= 95) return "critical";
   return usedPercent >= 80 ? "warning" : null;
+}
+
+export function selectUsageMachine(
+  machines: UsageMachine[],
+  requestedId: string | null,
+  threadMachineId: string | null,
+): UsageMachine | null {
+  return (
+    machines.find((machine) => machine.id === requestedId) ??
+    machines.find(
+      (machine) =>
+        machine.id.startsWith("source:") &&
+        (machine.error === null || machine.providers.length > 0),
+    ) ??
+    machines.find((machine) => machine.id === threadMachineId) ??
+    machines.find((machine) => machine.status === "connected") ??
+    machines[0] ??
+    null
+  );
 }

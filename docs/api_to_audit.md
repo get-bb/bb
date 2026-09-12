@@ -1,5 +1,13 @@
 # APIs To Audit
 
+## Discoverable RPC
+
+`bb.rpc.register` accepts optional `experimental_discoverable` and `experimental_description` options. Method definitions accept `experimental_description`. Discoverable registration exports wire schemas through Standard JSON Schema; validation-only schemas remain usable without publication. Descriptions are published separately and absent descriptions become null. Discovery advertises methods without changing RPC authorization or dispatch.
+
+`bb.sdk.plugins.experimental_discoverRpc({ pluginId?, method? })` lists published methods from loaded plugins. Methods disappear on unload; callers handle the race between discovery and invocation. The SDK RPC caller accepts an optional abort signal. The fake host exposes `experimental_publishedRpcMethods` on its registration inspection surface.
+
+Before stabilization, audit schema export fidelity (especially refinements and transforms), descriptor size and reference limits, lifecycle races, and cross-plugin copied-schema compatibility. Verify `bb plugin rpc list|inspect` is sufficient to implement a consumer without a shared contract package. Method names carry optional versions; there is no negotiation.
+
 ## `bb.http.experimental_websocket`
 
 **What it does.** Registers an exact-path WebSocket upgrade in the plugin's

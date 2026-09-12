@@ -1422,3 +1422,10 @@ invalid, or corrupt entries are rebuilt; development and compiler diagnostic
 modes bypass the cache. The cache has no user configuration and can be removed
 while no builds are running. See [build performance](build-performance.md) for
 its identity, portability, and verification contract.
+
+## Provider Usage
+
+Provider Usage is enabled by default for newly registered installations; existing
+plugin enable/disable choices are preserved. Its plugin settings page contains
+provider subscription usage. See [Sidebar footer](#sidebar-footer) for ordering
+and hiding its footer shortcut.

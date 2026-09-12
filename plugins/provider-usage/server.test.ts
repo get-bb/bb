@@ -1,262 +1,357 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { expect, it, vi } from "vitest";
 import {
   createFakePluginHost,
-  makeThreadResponse,
+  makeHostResponse,
 } from "@get-bb/plugin-sdk/testing";
 import plugin from "./server.js";
+import { usageListMethod, usageFetchMethod } from "./usage-source-contract.js";
 
-afterEach(() => {
-  vi.useRealTimers();
-});
-
-describe("provider usage backend", () => {
-  it("loads ordered provider usage independently for every machine", async () => {
-    const host = createFakePluginHost({
-      pluginId: "provider-usage",
-      sdk: {
-        hosts: {
-          list: async () => [
-            {
-              id: "host-m4",
-              name: "M4",
-              type: "persistent",
-              status: "connected",
-              maxPermissionMode: "full",
-              lastSeenAt: 1,
-              lastRejectedProtocolVersion: null,
-              createdAt: 1,
-              updatedAt: 1,
-            },
-            {
-              id: "host-intel",
-              name: "Intel",
-              type: "persistent",
-              status: "disconnected",
-              maxPermissionMode: "full",
-              lastSeenAt: 1,
-              lastRejectedProtocolVersion: null,
-              createdAt: 1,
-              updatedAt: 1,
-            },
-          ],
-        },
-        providers: {
-          list: async () => [
-            {
-              id: "claude-code",
-              displayName: "Claude Code",
-              logoUrl: "/api/v1/system/providers/claude-code/logo?h=claude",
-              strings: {
-                signInHint: "Sign in to Claude Code.",
-                expiredHint: "Sign in to Claude Code again.",
-                iconTint: { light: "#D97757", dark: "#E38A6E" },
+it("lists cheaply, fetches only the selected source/provider, preserves failed measurements, and evicts removed resources", async () => {
+  let enabled = true;
+  let failure = false;
+  let hasWork = true;
+  const rpc = vi.fn(async ({ pluginId, method, input }) => {
+    if (method === usageListMethod)
+      return pluginId === "pool"
+        ? {
+            label: "Account Pooler",
+            resources: [
+              {
+                id: "personal",
+                providerId: "codex",
+                label: "personal@example.com",
+                scope: { kind: "shared" },
               },
-            },
-            {
-              id: "codex",
-              displayName: "Codex",
-              logoUrl: "/api/v1/system/providers/codex/logo?h=codex",
-            },
-          ],
-        },
-        system: {
-          usageLimits: async () => ({
-            "claude-code": {
-              status: "ok",
-              accountEmail: "dev@example.com",
-              planLabel: "Max",
-              windows: [
-                {
-                  label: "Five-hour limit",
-                  usedPercent: 82,
-                  resetsAt: "2026-09-02T18:42:00.000Z",
-                },
-              ],
-            },
-            codex: { status: "unauthenticated" },
-          }),
-        },
+              ...(hasWork
+                ? [
+                    {
+                      id: "work",
+                      providerId: "codex",
+                      label: "work@example.com",
+                      scope: { kind: "shared" },
+                    },
+                  ]
+                : []),
+              {
+                id: "claude",
+                providerId: "claude-code",
+                label: "claude@example.com",
+                scope: { kind: "shared" },
+              },
+            ],
+          }
+        : {
+            resources: [
+              {
+                id: "host",
+                providerId: "codex",
+                label: "Codex",
+                scope: { kind: "host", hostId: "host", hostName: "Machine" },
+              },
+            ],
+          };
+    if (failure) throw new Error("Upstream failed");
+    return {
+      observedAt: 123,
+      usage: {
+        status: "ok",
+        accountEmail: `${input.resourceId}@example.com`,
+        planLabel: null,
+        windows: [
+          {
+            id: "week",
+            label: "Weekly",
+            usedPercent: 42,
+            resetsAt: null,
+            model: null,
+            cost: null,
+          },
+        ],
       },
-    });
-    plugin(host.bb);
-
-    await expect(
-      host.harness.behavior.callRpc("getUsage", {
-        force: false,
-        machineIds: null,
-        maxAgeMs: 30 * 60_000,
-      }),
-    ).resolves.toEqual({
+    };
+  });
+  const host = createFakePluginHost({
+    pluginId: "provider-usage",
+    sdk: {
+      system: { config: async () => ({ primaryHostId: null }) },
+      hosts: {
+        list: async () => [
+          makeHostResponse({
+            id: "host",
+            name: "Machine",
+            status: "connected",
+          }),
+        ],
+      },
+      providers: {
+        list: async () => [
+          { id: "codex", displayName: "Codex", logoUrl: "/codex.svg" },
+          {
+            id: "claude-code",
+            displayName: "Claude Code",
+            logoUrl: "/claude.svg",
+          },
+        ],
+      },
+      plugins: {
+        experimental_discoverRpc: async () =>
+          enabled
+            ? [
+                {
+                  pluginId: "pool",
+                  displayName: "Account Pooler",
+                  method: usageListMethod,
+                },
+                {
+                  pluginId: "local",
+                  displayName: "Codex",
+                  method: usageListMethod,
+                },
+              ]
+            : [],
+        callRpc: rpc,
+      },
+    },
+  });
+  plugin(host.bb);
+  const request = {
+    force: false,
+    machineIds: null,
+    providerId: null,
+    maxAgeMs: 60_000,
+  };
+  try {
+    const listed = await host.harness.behavior.callRpc("getUsage", request);
+    expect(listed).toMatchObject({
       machines: [
+        { id: "host" },
         {
-          id: "host-m4",
-          displayName: "M4",
-          status: "connected",
-          error: null,
+          id: "source:pool",
           providers: [
-            {
-              id: "claude-code",
-              displayName: "Claude Code",
-              logoUrl: "/api/v1/system/providers/claude-code/logo?h=claude",
-              icon: null,
-              strings: { iconTint: { light: "#D97757", dark: "#E38A6E" } },
-              signInHint: "Sign in to Claude Code.",
-              expiredHint: "Sign in to Claude Code again.",
-              usage: {
-                status: "ok",
-                accountEmail: "dev@example.com",
-                planLabel: "Max",
-                windows: [
-                  {
-                    label: "Five-hour limit",
-                    usedPercent: 82,
-                    resetsAt: "2026-09-02T18:42:00.000Z",
-                    cost: null,
-                  },
-                ],
-              },
-            },
-            {
-              id: "codex",
-              displayName: "Codex",
-              logoUrl: "/api/v1/system/providers/codex/logo?h=codex",
-              icon: null,
-              strings: { iconTint: null },
-              signInHint: "Sign in to Codex, then reload usage.",
-              expiredHint:
-                "Your Codex session expired. Sign in again, then reload usage.",
-              usage: { status: "unauthenticated" },
-            },
-          ],
-        },
-        {
-          id: "host-intel",
-          displayName: "Intel",
-          status: "disconnected",
-          error: null,
-          providers: [
-            {
-              id: "claude-code",
-              displayName: "Claude Code",
-              logoUrl: "/api/v1/system/providers/claude-code/logo?h=claude",
-              icon: null,
-              strings: { iconTint: { light: "#D97757", dark: "#E38A6E" } },
-              signInHint: "Sign in to Claude Code.",
-              expiredHint: "Sign in to Claude Code again.",
-              usage: null,
-            },
-            {
-              id: "codex",
-              displayName: "Codex",
-              logoUrl: "/api/v1/system/providers/codex/logo?h=codex",
-              icon: null,
-              strings: { iconTint: null },
-              signInHint: "Sign in to Codex, then reload usage.",
-              expiredHint:
-                "Your Codex session expired. Sign in again, then reload usage.",
-              usage: null,
-            },
+            { providerId: "codex", usage: null },
+            { providerId: "codex", usage: null },
+            { providerId: "claude-code", usage: null },
           ],
         },
       ],
     });
-    expect(host.harness.sdk.callsTo("hosts.list")).toEqual([[]]);
-    expect(host.harness.sdk.callsTo("providers.list")).toEqual([
-      [{ hostId: "host-m4", capability: "usage" }],
-      [{ hostId: "host-intel", capability: "usage" }],
+    expect(
+      rpc.mock.calls.every(([args]) => args.method === usageListMethod),
+    ).toBe(true);
+    const target = {
+      ...request,
+      machineIds: ["source:pool"],
+      providerId: "codex",
+    };
+    await host.harness.behavior.callRpc("getUsage", target);
+    expect(
+      rpc.mock.calls
+        .filter(([args]) => args.method === usageFetchMethod)
+        .map(([args]) => [
+          args.pluginId,
+          args.input.resourceId,
+          args.input.refresh,
+        ]),
+    ).toEqual([
+      ["pool", "personal", false],
+      ["pool", "work", false],
     ]);
-    expect(host.harness.sdk.callsTo("system.usageLimits")).toEqual([
-      [{ hostId: "host-m4" }],
-    ]);
-
-    await host.harness.behavior.callRpc("getUsage", {
-      force: false,
-      machineIds: null,
-      maxAgeMs: 30 * 60_000,
-    });
-    expect(host.harness.sdk.callsTo("hosts.list")).toHaveLength(2);
-    expect(host.harness.sdk.callsTo("providers.list")).toHaveLength(2);
-    expect(host.harness.sdk.callsTo("system.usageLimits")).toHaveLength(1);
-
-    await host.harness.behavior.callRpc("getUsage", {
-      force: true,
-      machineIds: null,
-      maxAgeMs: 0,
-    });
-    expect(host.harness.sdk.callsTo("hosts.list")).toHaveLength(3);
-    expect(host.harness.sdk.callsTo("providers.list")).toHaveLength(4);
-    expect(host.harness.sdk.callsTo("system.usageLimits")).toHaveLength(2);
-
-    await host.harness.behavior.callRpc("getUsage", {
-      force: true,
-      machineIds: ["host-m4"],
-      maxAgeMs: 0,
-    });
-    expect(host.harness.sdk.callsTo("providers.list")).toHaveLength(5);
-    expect(host.harness.sdk.callsTo("system.usageLimits")).toHaveLength(3);
-    expect(host.harness.sdk.callsTo("providers.list").at(-1)).toEqual([
-      { hostId: "host-m4", capability: "usage" },
-    ]);
-  });
-
-  it("marks only the affected machine dirty after thread completion", async () => {
-    vi.useFakeTimers();
-    vi.setSystemTime(new Date("2026-09-04T12:00:00.000Z"));
-    const host = createFakePluginHost({
-      pluginId: "provider-usage",
-      sdk: {
-        hosts: {
-          list: async () => [
-            { id: "host-m4", name: "M4", status: "connected" },
-            { id: "host-m5", name: "M5", status: "connected" },
+    await host.harness.behavior.callRpc("getUsage", target);
+    expect(
+      rpc.mock.calls.filter(([args]) => args.method === usageFetchMethod),
+    ).toHaveLength(2);
+    failure = true;
+    expect(
+      await host.harness.behavior.callRpc("getUsage", {
+        ...target,
+        force: true,
+      }),
+    ).toMatchObject({
+      machines: [
+        { id: "host" },
+        {
+          id: "source:pool",
+          error: "Some usage could not be refreshed.",
+          providers: [
+            { usage: { status: "ok" } },
+            { usage: { status: "ok" } },
+            { usage: null },
           ],
         },
-        environments: {
-          get: async () => ({ hostId: "host-m5" }),
-        },
-        providers: {
-          list: async () => [],
-        },
-        system: {
-          usageLimits: async () => ({}),
-        },
-      },
+      ],
     });
-    plugin(host.bb);
+    failure = false;
+    hasWork = false;
+    expect(
+      await host.harness.behavior.callRpc("getUsage", {
+        ...target,
+        force: true,
+      }),
+    ).toMatchObject({
+      machines: [
+        { id: "host" },
+        {
+          id: "source:pool",
+          error: null,
+          providers: [{ id: "pool:personal" }, { id: "pool:claude" }],
+        },
+      ],
+    });
     await host.harness.behavior.callRpc("getUsage", {
-      force: false,
-      machineIds: null,
-      maxAgeMs: 30 * 60_000,
+      ...target,
+      providerId: "claude-code",
     });
-
-    await host.harness.behavior.emitThreadEvent("thread.idle", {
-      thread: makeThreadResponse({ environmentId: "environment-m5" }),
-      lastAssistantText: "done",
-    });
-    await host.harness.behavior.emitThreadEvent("thread.failed", {
-      thread: makeThreadResponse({ environmentId: "environment-m5" }),
-      error: "failed",
-    });
-    expect(host.harness.sdk.callsTo("environments.get")).toEqual([
-      [{ environmentId: "environment-m5" }],
-    ]);
-    expect(host.harness.sdk.callsTo("system.usageLimits")).toEqual([
-      [{ hostId: "host-m4" }],
-      [{ hostId: "host-m5" }],
-    ]);
-
-    vi.setSystemTime(new Date("2026-09-04T12:02:00.000Z"));
+    expect(
+      rpc.mock.calls
+        .filter(([args]) => args.method === usageFetchMethod)
+        .at(-1)?.[0].input.resourceId,
+    ).toBe("claude");
     await host.harness.behavior.callRpc("getUsage", {
-      force: false,
+      ...target,
       machineIds: null,
-      maxAgeMs: 30 * 60_000,
     });
-
-    expect(host.harness.sdk.callsTo("system.usageLimits")).toEqual([
-      [{ hostId: "host-m4" }],
-      [{ hostId: "host-m5" }],
-      [{ hostId: "host-m5" }],
-    ]);
+    expect(
+      rpc.mock.calls
+        .filter(([args]) => args.method === usageFetchMethod)
+        .at(-1)?.[0].pluginId,
+    ).toBe("local");
+    enabled = false;
+    expect(
+      await host.harness.behavior.callRpc("getUsage", request),
+    ).toMatchObject({ machines: [{ id: "host", providers: [] }] });
+  } finally {
     await host.harness.lifecycle.dispose();
+  }
+});
+
+it("keeps an unconfigured shared group without hosts or measurement requests", async () => {
+  const rpc = vi.fn(async () => ({ label: "Account Pooler", resources: [] }));
+  const host = createFakePluginHost({
+    pluginId: "provider-usage",
+    sdk: {
+      system: { config: async () => ({ primaryHostId: null }) },
+      hosts: { list: async () => [] },
+      providers: { list: async () => [] },
+      plugins: {
+        experimental_discoverRpc: async () => [
+          { pluginId: "pool", displayName: "Pool", method: usageListMethod },
+        ],
+        callRpc: rpc,
+      },
+    },
   });
+  plugin(host.bb);
+  try {
+    await expect(
+      host.harness.behavior.callRpc("getUsage", {
+        force: false,
+        machineIds: null,
+        providerId: null,
+        maxAgeMs: 0,
+      }),
+    ).resolves.toEqual({
+      machines: [
+        {
+          id: "source:pool",
+          displayName: "Account Pooler",
+          status: "connected",
+          providers: [],
+          error: null,
+        },
+      ],
+    });
+    expect(rpc).toHaveBeenCalledTimes(1);
+  } finally {
+    await host.harness.lifecycle.dispose();
+  }
+});
+
+it("collapses known account observations per machine, preserves unknown identities, and normalizes display labels", async () => {
+  const { bb, harness } = createFakePluginHost({
+    sdk: {
+      system: { config: async () => ({ primaryHostId: null }) },
+      hosts: {
+        list: async () => [
+          makeHostResponse({ id: "host", status: "connected" }),
+        ],
+      },
+      providers: { list: async () => [] },
+      plugins: {
+        experimental_discoverRpc: async () => [
+          { pluginId: "adapter", displayName: "Adapter" },
+          { pluginId: "custom", displayName: "Custom" },
+        ],
+        callRpc: async ({ pluginId, method }) =>
+          method === usageListMethod
+            ? {
+                resources: [
+                  {
+                    id: "account",
+                    providerId: "codex",
+                    accountKey: null,
+                    label: "same@example.com",
+                    scope: { kind: "host", hostId: "host", hostName: "Host" },
+                  },
+                  {
+                    id: "unknown",
+                    providerId: "other",
+                    accountKey: null,
+                    label: "same@example.com",
+                    scope: { kind: "host", hostId: "host", hostName: "Host" },
+                  },
+                ],
+              }
+            : {
+                accountKey: "issuer:account:1",
+                observedAt: 123,
+                usage: {
+                  status: "ok",
+                  accountEmail: "same@example.com",
+                  planLabel: "max",
+                  plan: { id: "max", multiplier: 20 },
+                  windows: [
+                    {
+                      id: "week",
+                      kind: "weekly",
+                      label: "168 hour window",
+                      model: null,
+                      resetsAt: null,
+                      cost: null,
+                      usedPercent: pluginId === "adapter" ? 42 : 81,
+                    },
+                  ],
+                },
+              },
+      },
+    },
+  });
+  try {
+    plugin(bb);
+    const snapshot = await harness.behavior.callRpc("getUsage", {
+      force: false,
+      machineIds: ["host"],
+      providerId: "codex",
+      maxAgeMs: 0,
+    });
+    expect(snapshot).toMatchObject({
+      machines: [
+        {
+          providers: [
+            {
+              id: "adapter:account",
+              usage: {
+                planLabel: "Max (20x)",
+                windows: [{ label: "Weekly limit", usedPercent: 42 }],
+              },
+            },
+            { id: "adapter:unknown", usage: null },
+            { id: "custom:unknown", usage: null },
+          ],
+        },
+      ],
+    });
+    expect(JSON.stringify(snapshot)).not.toContain("81");
+  } finally {
+    await harness.lifecycle.dispose();
+  }
 });

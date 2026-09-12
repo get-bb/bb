@@ -129,6 +129,13 @@ export class AccountStore {
     return this.update(id, (account) => ({ ...account, priority }));
   }
 
+  async setSubscriptionType(
+    id: string,
+    subscriptionType: string,
+  ): Promise<Account | null> {
+    return this.update(id, (account) => ({ ...account, subscriptionType }));
+  }
+
   async reorder(provider: PoolProvider, accountIds: string[]): Promise<void> {
     return this.serialized(async () => {
       const accounts = await this.list();

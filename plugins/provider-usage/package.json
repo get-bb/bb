@@ -3,14 +3,14 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "Show live agent-provider usage in the bb sidebar footer",
+  "description": "View provider usage in plugin settings and an optional sidebar footer card",
   "engines": {
     "bb": ">=0.0",
-    "bbPluginSdk": ">=0.4.84"
+    "bbPluginSdk": ">=0.4.87"
   },
   "bb": {
     "name": "Provider usage",
-    "description": "Show live agent-provider usage in the bb sidebar footer.",
+    "description": "View provider usage in plugin settings and an optional sidebar footer card.",
     "branding": {
       "icon": "ChartColumn"
     },
