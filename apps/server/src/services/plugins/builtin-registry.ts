@@ -209,10 +209,6 @@ export const BUNDLED_PLUGINS: readonly BundledPluginDefinition[] = [
   ...OFFICIAL_PLUGINS,
 ];
 
-export const BUILTIN_PLUGIN_NAMES = BUILTIN_PLUGINS.map(
-  (plugin) => plugin.name,
-);
-
 const builtinPluginsModuleDir = path.dirname(fileURLToPath(import.meta.url));
 
 export function builtinPluginSource(name: string): string {

@@ -11,11 +11,7 @@ import {
 import { modalLaunchOptions } from "./launch-options.js";
 import { createModalSandboxBackend } from "./providers/modal/backend.js";
 import { registerSandboxBackend } from "./providers/register.js";
-
-export { PROVIDER_ID } from "./provider-id.js";
-function errorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
-}
+import { errorMessage } from "./error-message.js";
 
 function hasErrorCode(error: unknown, code: string): boolean {
   return (

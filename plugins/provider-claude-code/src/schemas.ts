@@ -16,7 +16,6 @@ export const claudeWebSearchArgsSchema = z
     query: z.string().optional(),
   })
   .passthrough();
-export type ClaudeWebSearchArgs = z.infer<typeof claudeWebSearchArgsSchema>;
 
 export const claudeWebFetchArgsSchema = z
   .object({
@@ -24,7 +23,6 @@ export const claudeWebFetchArgsSchema = z
     prompt: z.string().optional(),
   })
   .passthrough();
-export type ClaudeWebFetchArgs = z.infer<typeof claudeWebFetchArgsSchema>;
 
 export const toolUseBlockSchema = z.object({
   type: z.literal("tool_use"),
@@ -294,14 +292,6 @@ export const claudeTaskNotificationMessageSchema = claudeSystemMessageSchema
     skip_transcript: z.boolean().optional(),
   })
   .passthrough();
-
-export const claudeBackgroundTasksChangedMessageSchema =
-  claudeSystemMessageSchema
-    .extend({
-      subtype: z.literal("background_tasks_changed"),
-      tasks: z.array(z.object({ task_id: z.string() }).passthrough()),
-    })
-    .passthrough();
 
 export const claudeWorkflowAgentRecordSchema = z
   .object({

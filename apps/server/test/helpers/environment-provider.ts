@@ -20,6 +20,7 @@ import {
   type PluginEnvironmentProviderRecord,
 } from "../../src/services/plugins/plugin-environment-provider-registry.js";
 import { DEFAULT_ENVIRONMENT_PROVIDER_ID } from "../../src/services/environments/environment-provider-ids.js";
+import { invokePluginInline } from "../../src/services/plugins/plugin-hook-registry.js";
 import { clearAllThreadProvisionSchedules } from "../../src/services/threads/thread-startup-store.js";
 
 export interface FakeEnvironmentProvider {
@@ -100,16 +101,7 @@ export function installDefaultEnvironmentProviders(): void {
     listEnvironmentProviders: () => records,
     getEnvironmentProvider: (id) =>
       records.find((record) => record.provider.id === id),
-    invokeProvider: async (_pluginId, _label, run) => {
-      try {
-        return { ok: true, value: await run() };
-      } catch (error) {
-        return {
-          ok: false,
-          error: error instanceof Error ? error.message : String(error),
-        };
-      }
-    },
+    invokeProvider: (_pluginId, _label, run) => invokePluginInline(run),
     decisionTimeoutMs: 10_000,
   });
 }
@@ -141,16 +133,7 @@ export function installFakeEnvironmentProvider(
   setPluginEnvironmentProviderBridge({
     listEnvironmentProviders: () => [record],
     getEnvironmentProvider: (id) => (id === args.id ? record : undefined),
-    invokeProvider: async (_pluginId, _label, run) => {
-      try {
-        return { ok: true, value: await run() };
-      } catch (error) {
-        return {
-          ok: false,
-          error: error instanceof Error ? error.message : String(error),
-        };
-      }
-    },
+    invokeProvider: (_pluginId, _label, run) => invokePluginInline(run),
     decisionTimeoutMs: 10_000,
   });
   onTestFinished(() => {
@@ -173,8 +156,6 @@ export function installFakeEnvironmentProvider(
   };
 }
 
-export type FakeWorktreeProvider = FakeEnvironmentProvider;
-
 export function installFakeGitWorktreeProvider(
   decide: (
     context: TestEnvironmentProviderContext,
@@ -182,7 +163,7 @@ export function installFakeGitWorktreeProvider(
     action: "wait",
     reason: "Creating worktree…",
   }),
-): FakeWorktreeProvider {
+): FakeEnvironmentProvider {
   return installFakeEnvironmentProvider({
     id: DEFAULT_ENVIRONMENT_PROVIDER_ID.gitWorktree,
     pluginId: "environment-git-worktree",

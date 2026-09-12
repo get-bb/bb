@@ -28,7 +28,6 @@ export const checkoutInputsSchema = z.object({
   path: z.string().min(1).optional(),
   branch: checkoutBranchSelectionSchema.optional(),
 });
-export type CheckoutInputs = z.infer<typeof checkoutInputsSchema>;
 
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);

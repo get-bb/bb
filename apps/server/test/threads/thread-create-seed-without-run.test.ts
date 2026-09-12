@@ -15,7 +15,7 @@ import { describe, expect, it, vi } from "vitest";
 import { ApiError } from "../../src/errors.js";
 import type { TelemetryService } from "../../src/services/system/telemetry.js";
 import { createThreadFromRequest } from "../../src/services/threads/thread-create.js";
-import { resolveExecutionOptions } from "../../src/services/threads/thread-runtime-config.js";
+import { buildExecutionOptions } from "../../src/services/threads/thread-commands.js";
 import { canThreadSpawnChild } from "../../src/services/threads/thread-parent.js";
 import {
   reportQueuedCommandSuccess,
@@ -716,15 +716,10 @@ describe("thread creation child-thread boundary validation", () => {
             sequenceStart: 10,
             serviceTier: "default",
           });
-          const sideChatExecution = await resolveExecutionOptions(
+          const sideChatExecution = await buildExecutionOptions(
             harness.deps,
-            {
-              requestedExecution: {
-                model: "gpt-5",
-                source: "client/turn/requested",
-              },
-              threadId: sideChat.id,
-            },
+            { model: "gpt-5" },
+            { threadId: sideChat.id },
           );
           expect(sideChatExecution.permissionMode).toBe(permissionMode);
         },

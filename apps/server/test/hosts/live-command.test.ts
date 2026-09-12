@@ -7,7 +7,7 @@ import {
 } from "@bb/db";
 import { rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import { updateMachineEnvironment } from "../../src/services/machines/environment-settings.js";
+import { replaceMachineEnvironment } from "../../src/services/machines/environment-settings.js";
 import { buildEnvironmentProvisionCommand } from "../../src/services/threads/thread-create-helpers.js";
 import { describe, expect, it, vi } from "vitest";
 import {
@@ -36,7 +36,6 @@ describe("live host command logging", () => {
         id: "host-live-command-expected-error",
       });
       const onError = vi.fn();
-      const onExpectedError = vi.fn();
 
       startLiveHostCommand(harness.deps, {
         command: {
@@ -48,7 +47,6 @@ describe("live host command logging", () => {
         hostId: host.id,
         timeoutMs: LIVE_DAEMON_COMMAND_TIMEOUT_MS,
         onError,
-        onExpectedError,
       });
 
       const queued = await waitForQueuedCommand(
@@ -72,21 +70,6 @@ describe("live host command logging", () => {
           threadId: "thr-live-command-expected-error",
         }),
         "Expected live host command failure",
-      );
-      expect(onExpectedError).toHaveBeenCalledWith(
-        expect.objectContaining({
-          command: expect.objectContaining({
-            type: "thread.rename",
-            threadId: "thr-live-command-expected-error",
-          }),
-          error: expect.objectContaining({
-            message: "Workspace provisioning was cancelled",
-          }),
-          execution: expect.objectContaining({
-            id: expect.stringMatching(/^rpc_/),
-          }),
-          hostId: host.id,
-        }),
       );
       expect(onError).not.toHaveBeenCalled();
       expect(logger.warn).not.toHaveBeenCalled();
@@ -136,12 +119,9 @@ it("resolves fresh setup values at dispatch without retaining them in the reques
         },
       }));
     for (const value of ["first-secret", "refreshed-secret"]) {
-      await updateMachineEnvironment(
-        harness.db,
-        harness.config.dataDir,
-        "SETUP_VALUE",
-        { name: "SETUP_VALUE", value, note: null },
-      );
+      await replaceMachineEnvironment(harness.db, harness.config.dataDir, {
+        variables: [{ name: "SETUP_VALUE", value, note: null }],
+      });
       await runLiveHostCommand(harness.deps, {
         command,
         hostId: host.id,
@@ -200,12 +180,9 @@ it("fails provisioning if saved setup variables cannot be decrypted", async () =
       hostId: host.id,
       providerOwnsPath: true,
     });
-    await updateMachineEnvironment(
-      harness.db,
-      harness.config.dataDir,
-      "SETUP_VALUE",
-      { name: "SETUP_VALUE", value: "private-value", note: null },
-    );
+    await replaceMachineEnvironment(harness.db, harness.config.dataDir, {
+      variables: [{ name: "SETUP_VALUE", value: "private-value", note: null }],
+    });
     await rm(join(harness.config.dataDir, "machine-environment-key"));
     const request = vi.spyOn(harness.hub, "requestHostOnlineRpc");
     const command = buildEnvironmentProvisionCommand({

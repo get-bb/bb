@@ -74,7 +74,6 @@ export const environmentLifecycleSchema = z.object({
     })
     .nullable(),
 });
-export type EnvironmentLifecycle = z.infer<typeof environmentLifecycleSchema>;
 
 export const environmentSchema = z.object({
   id: z.string(),

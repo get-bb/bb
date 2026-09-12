@@ -9,6 +9,7 @@ import type {
 } from "@bb/domain";
 import os from "node:os";
 import path from "node:path";
+import { pathExists } from "@bb/process-utils";
 import {
   getPullRequestForCurrentBranch,
   runPullRequestActionForCurrentBranch,
@@ -18,7 +19,6 @@ import {
 } from "./git-host.js";
 import {
   createTempDir,
-  detectGitRepo,
   ensureGitRepo,
   getCheckoutRef,
   getCurrentBranch,
@@ -26,7 +26,6 @@ import {
   parseNameStatusSourceEntries,
   parseNumstatEntriesZ,
   parsePorcelainEntries,
-  pathExists,
   readDefaultBranch,
   readMergeBaseRef,
   parsePatchId,
@@ -45,10 +44,7 @@ import {
   WorkspaceError,
 } from "./git.js";
 import fs from "node:fs/promises";
-import {
-  withCheckoutMutationLock,
-  withCheckoutMutationLocks,
-} from "./checkout-mutation-lock.js";
+import { withCheckoutMutationLock } from "./checkout-mutation-lock.js";
 
 export interface DiffOptions {
   target?: WorkspaceDiffTarget;
@@ -198,13 +194,7 @@ type ResolvedTrackedDiffRange = {
   mergeBaseRef: string | null;
 };
 
-type WorkspaceMutationTargets = Workspace[];
 type WorkspaceMutationWork<T> = () => Promise<T>;
-
-interface ListWorkspaceFilesRecursivelyArgs {
-  dir: string;
-  root: string;
-}
 
 const WORKSPACE_STATUS_GIT_TIMEOUT_MS = 15_000;
 const WORKSPACE_STATUS_UNTRACKED_ENRICHMENT_TIMEOUT_MS = 10_000;
@@ -319,32 +309,6 @@ function isMissingHeadRevisionError(stderr: string): boolean {
     stderr.includes("unknown revision or path not in the working tree") ||
     stderr.includes("Needed a single revision")
   );
-}
-
-async function listWorkspaceFilesRecursively(
-  args: ListWorkspaceFilesRecursivelyArgs,
-): Promise<string[]> {
-  const entries = await fs.readdir(args.dir, { withFileTypes: true });
-  const results: string[] = [];
-  for (const entry of entries) {
-    if (entry.name.startsWith(".")) {
-      continue;
-    }
-    if (entry.name === "node_modules") {
-      continue;
-    }
-    const fullPath = path.join(args.dir, entry.name);
-    if (entry.isDirectory()) {
-      const childResults = await listWorkspaceFilesRecursively({
-        dir: fullPath,
-        root: args.root,
-      });
-      for (const childResult of childResults) results.push(childResult);
-      continue;
-    }
-    results.push(path.relative(args.root, fullPath));
-  }
-  return results;
 }
 
 function formatShortstat(args: {
@@ -528,18 +492,6 @@ export class Workspace {
     this.gitProcessOptions = { ...gitProcessOptions };
   }
 
-  static withMutations<T>(
-    workspaces: WorkspaceMutationTargets,
-    work: WorkspaceMutationWork<T>,
-  ): Promise<T> {
-    return withCheckoutMutationLocks(
-      workspaces.map((workspace) => workspace.path),
-      work,
-      undefined,
-      workspaces[0]?.gitProcessOptions,
-    );
-  }
-
   withMutation<T>(work: WorkspaceMutationWork<T>): Promise<T> {
     return withCheckoutMutationLock(
       this.path,
@@ -583,10 +535,6 @@ export class Workspace {
 
   get exists(): Promise<boolean> {
     return pathExists(this.path);
-  }
-
-  get isGitRepo(): Promise<boolean> {
-    return detectGitRepo(this.path, this.gitProcessOptions);
   }
 
   get currentBranch(): Promise<string | undefined> {
@@ -954,30 +902,6 @@ export class Workspace {
     );
   }
 
-  async listFiles(): Promise<string[]> {
-    const gitResult = await this.runGit(
-      ["ls-files", "--cached", "--others", "--exclude-standard"],
-      { allowFailure: true, cwd: this.path },
-    );
-    if (gitResult.exitCode === 0) {
-      return parseNonEmptyLines(gitResult.stdout).sort();
-    }
-    if (
-      gitResult.exitCode === 128 ||
-      gitResult.stderr.includes("not a git repository")
-    ) {
-      const filePaths = await listWorkspaceFilesRecursively({
-        dir: this.path,
-        root: this.path,
-      });
-      return filePaths.sort();
-    }
-    throw new WorkspaceError(
-      "git_command_failed",
-      `git ls-files failed (exit ${gitResult.exitCode}): ${gitResult.stderr.trim()}`,
-    );
-  }
-
   async commit(options: CommitOptions): Promise<CommitResult> {
     await ensureGitRepo(this.path, this.gitProcessOptions);
 
@@ -1005,14 +929,6 @@ export class Workspace {
       ).stdout.trim();
 
       return { commitSha, commitSubject };
-    });
-  }
-
-  async reset(): Promise<void> {
-    await ensureGitRepo(this.path, this.gitProcessOptions);
-    await this.withMutation(async () => {
-      await this.runGit(["reset", "--hard", "HEAD"], { cwd: this.path });
-      await this.runGit(["clean", "-fd"], { cwd: this.path });
     });
   }
 

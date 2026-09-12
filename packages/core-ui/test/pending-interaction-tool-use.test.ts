@@ -73,9 +73,9 @@ describe("describePendingInteractionToolUse", () => {
 
   it("falls back to the present-tense label and omits the optional lines", () => {
     const interaction = toolUseInteraction({ reason: null });
-    expect(
-      formatPendingInteractionSummary({ interaction, surface: "cli" }),
-    ).toBe("Creating issue");
+    expect(formatPendingInteractionSummary({ interaction })).toBe(
+      "Creating issue",
+    );
     expect(formatPendingInteractionSubjectDetailLines(interaction)).toEqual([
       "Tool: mcp__github__create_issue",
     ]);

@@ -24,14 +24,11 @@ import {
   type ReconnectingWebSocketLike,
   type ServerConnectionOptions,
 } from "./server-connection-support.js";
-import { isLikelySystemSuspensionDelay } from "./system-suspension.js";
+import { isLikelySystemSuspensionDelay } from "@bb/process-utils";
 import { normalizeCaughtError, runtimeErrorLogFields } from "./error-utils.js";
 import { ServerResponseError } from "./server-client.js";
 
-export type {
-  CreateReconnectingWebSocket,
-  ServerConnectionOptions,
-} from "./server-connection-support.js";
+export type { CreateReconnectingWebSocket } from "./server-connection-support.js";
 
 interface InvalidServerMessageArgs {
   data: unknown;

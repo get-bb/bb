@@ -89,16 +89,41 @@ function writeRejectedSocket(
   );
 }
 
-function upstreamHeaders(
-  headers: IncomingHttpHeaders,
+function rejectedProxyStatus(
+  request: IncomingMessage,
+  boundPort: number | null,
+): Extract<RejectedSocketStatus, 400 | 403> | null {
+  if (
+    boundPort === null ||
+    isBrowserRequest(request.headers) ||
+    !isProxyLoopbackAuthority(request.headers.host, boundPort)
+  ) {
+    return 403;
+  }
+  if (!isOriginFormTarget(request.url)) {
+    return 400;
+  }
+  return null;
+}
+
+function openUpstreamRequest(
+  request: IncomingMessage,
   target: URL,
   serverHeaders: Record<string, string>,
-): IncomingHttpHeaders {
-  return {
-    ...headers,
-    host: target.host,
-    ...serverHeaders,
-  };
+): http.ClientRequest {
+  const requestFn = target.protocol === "https:" ? https.request : http.request;
+  return requestFn({
+    protocol: target.protocol,
+    hostname: target.hostname,
+    port: target.port,
+    method: request.method,
+    path: request.url,
+    headers: {
+      ...request.headers,
+      host: target.host,
+      ...serverHeaders,
+    },
+  });
 }
 
 function proxyRequest(args: {
@@ -108,43 +133,25 @@ function proxyRequest(args: {
   response: ServerResponse;
   target: URL;
 }): void {
-  if (
-    args.boundPort === null ||
-    isBrowserRequest(args.request.headers) ||
-    !isProxyLoopbackAuthority(args.request.headers.host, args.boundPort)
-  ) {
-    args.response.writeHead(403).end();
-    return;
-  }
-  if (!isOriginFormTarget(args.request.url)) {
-    args.response.writeHead(400).end();
+  const rejectedStatus = rejectedProxyStatus(args.request, args.boundPort);
+  if (rejectedStatus !== null) {
+    args.response.writeHead(rejectedStatus).end();
     return;
   }
 
-  const requestFn =
-    args.target.protocol === "https:" ? https.request : http.request;
-  const upstream = requestFn(
-    {
-      protocol: args.target.protocol,
-      hostname: args.target.hostname,
-      port: args.target.port,
-      method: args.request.method,
-      path: args.request.url,
-      headers: upstreamHeaders(
-        args.request.headers,
-        args.target,
-        args.serverHeaders,
-      ),
-    },
-    (upstreamResponse) => {
-      args.response.writeHead(
-        upstreamResponse.statusCode ?? 502,
-        upstreamResponse.statusMessage,
-        upstreamResponse.headers,
-      );
-      upstreamResponse.pipe(args.response);
-    },
+  const upstream = openUpstreamRequest(
+    args.request,
+    args.target,
+    args.serverHeaders,
   );
+  upstream.once("response", (upstreamResponse) => {
+    args.response.writeHead(
+      upstreamResponse.statusCode ?? 502,
+      upstreamResponse.statusMessage,
+      upstreamResponse.headers,
+    );
+    upstreamResponse.pipe(args.response);
+  });
   upstream.on("error", () => {
     if (!args.response.headersSent) {
       args.response.writeHead(502);
@@ -162,33 +169,17 @@ function proxyUpgrade(args: {
   request: IncomingMessage;
   target: URL;
 }): void {
-  if (
-    args.boundPort === null ||
-    isBrowserRequest(args.request.headers) ||
-    !isProxyLoopbackAuthority(args.request.headers.host, args.boundPort)
-  ) {
-    writeRejectedSocket(args.clientSocket, 403);
-    return;
-  }
-  if (!isOriginFormTarget(args.request.url)) {
-    writeRejectedSocket(args.clientSocket, 400);
+  const rejectedStatus = rejectedProxyStatus(args.request, args.boundPort);
+  if (rejectedStatus !== null) {
+    writeRejectedSocket(args.clientSocket, rejectedStatus);
     return;
   }
 
-  const requestFn =
-    args.target.protocol === "https:" ? https.request : http.request;
-  const upstreamRequest = requestFn({
-    protocol: args.target.protocol,
-    hostname: args.target.hostname,
-    port: args.target.port,
-    method: args.request.method,
-    path: args.request.url,
-    headers: upstreamHeaders(
-      args.request.headers,
-      args.target,
-      args.serverHeaders,
-    ),
-  });
+  const upstreamRequest = openUpstreamRequest(
+    args.request,
+    args.target,
+    args.serverHeaders,
+  );
   upstreamRequest.on("upgrade", (response, upstreamSocket, upstreamHead) => {
     upstreamSocket.on("error", () => upstreamSocket.destroy());
     upstreamSocket.on("close", () => args.clientSocket.destroy());

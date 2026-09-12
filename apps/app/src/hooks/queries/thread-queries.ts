@@ -3,6 +3,7 @@ import {
   useInfiniteQuery,
   useQuery,
   useQueryClient,
+  type NotifyOnChangeProps,
   type QueryClient,
 } from "@tanstack/react-query";
 import { useCallback, useMemo } from "react";
@@ -118,7 +119,11 @@ export function didThreadDetailBootstrapRefreshAfterMount(query: {
   );
 }
 
-type ThreadTimelineQueryOptions = QueryOptions;
+interface ThreadTimelineQueryOptions extends QueryOptions {
+  notifyOnChangeProps?: NotifyOnChangeProps;
+}
+
+type ThreadConversationOutlineQueryOptions = QueryOptions;
 
 type ThreadTimelineTurnSummaryDetailsQueryOptions = QueryOptions;
 
@@ -948,6 +953,9 @@ export function useThreadTimeline(
       });
     },
     enabled,
+    ...(options?.notifyOnChangeProps === undefined
+      ? {}
+      : { notifyOnChangeProps: options.notifyOnChangeProps }),
     refetchOnMount: options?.refetchOnMount ?? true,
     ...(options?.staleTime === undefined
       ? {}
@@ -965,7 +973,7 @@ export function useThreadTimeline(
 
 export function useThreadConversationOutline(
   id: string,
-  options?: ThreadTimelineQueryOptions,
+  options?: ThreadConversationOutlineQueryOptions,
 ) {
   const enabled = (options?.enabled ?? true) && Boolean(id);
   useThreadDetailRealtimeSubscription(id, { enabled });

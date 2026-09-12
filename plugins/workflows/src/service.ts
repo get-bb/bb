@@ -63,6 +63,7 @@ import type {
   WorkflowCapabilities,
   WorkflowReference,
 } from "./types.js";
+import { utf8Prefix } from "./utf8.js";
 import { parseStoredAgentOptions } from "./validation.js";
 import { prepareWorkflowSource } from "./workflow-input.js";
 
@@ -131,19 +132,6 @@ export function isRetryableProviderFailure(error: unknown): boolean {
     /\b(?:econnreset|econnrefused|etimedout|ehostunreach|enetunreach)\b/,
     /(?:connection reset|connection closed|socket hang up|network error)/,
   ].some((pattern) => pattern.test(detail));
-}
-
-function utf8Prefix(text: string, maximumBytes: number): string {
-  if (maximumBytes <= 0) return "";
-  let result = "";
-  let bytes = 0;
-  for (const character of text) {
-    const next = Buffer.byteLength(character, "utf8");
-    if (bytes + next > maximumBytes) break;
-    result += character;
-    bytes += next;
-  }
-  return result;
 }
 
 export function formatWorkflowNotification(

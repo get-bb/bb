@@ -779,24 +779,6 @@ async function smokePluginHostWorkerBundle(packageDir) {
   }
 }
 
-/**
- * The semantic deltas a `thread/delta` notification batches, or [] for
- * anything else. Bridge-protocol v2 carries no finished timeline events on
- * this wire — the runtime's assembler builds those — so the smoke asserts
- * against the delta grammar directly.
- */
-function threadDeltas(message) {
-  if (
-    !isRecord(message) ||
-    message.method !== "thread/delta" ||
-    !isRecord(message.params) ||
-    !Array.isArray(message.params.deltas)
-  ) {
-    return [];
-  }
-  return message.params.deltas.filter(isRecord);
-}
-
 async function smokeHelpCommands(binDir) {
   await runCommand({
     ...createInstalledBinInvocation(binDir, "bb-app", ["--help"]),

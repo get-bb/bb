@@ -7,7 +7,6 @@ import type { AcpNativeRootsResolverArgs } from "./resolver.js";
 
 export { acpProviderDeclaration } from "../declaration.js";
 export { KNOWN_ACP_AGENTS } from "../known-agents.js";
-export type { AcpNativeRootsResolverArgs } from "./resolver.js";
 
 export async function resolveAcpNativeRoots(
   args: AcpNativeRootsResolverArgs & { agentId: string },

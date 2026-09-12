@@ -148,7 +148,7 @@ export function extractAcpToolCallOutputText(
   return rawOutputText.length > 0 ? rawOutputText : undefined;
 }
 
-const commandRawOutputSchema = z
+export const commandRawOutputSchema = z
   .object({
     exitCode: z.number().int().nullable().optional(),
     exit_code: z.number().int().nullable().optional(),

@@ -198,7 +198,6 @@ describe("provider registry", () => {
       expect(provider.capabilities).toMatchObject({
         supportsServiceTier: true,
         supportsFork: true,
-        supportsSessionRewind: false,
         permissionModes: ["accept-edits", "full"],
       });
     }
@@ -313,7 +312,6 @@ describe("provider registry", () => {
       supportsThreadArchive: true,
       supportsThreadRename: true,
       supportsFork: true,
-      supportsSessionRewind: true,
       supportsServiceTier: true,
       permissionModes: ["accept-edits", "auto", "full"],
     });

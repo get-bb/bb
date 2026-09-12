@@ -18,8 +18,8 @@ function renderSection(overrides?: {
   return render(
     <GeneralSettingsSection
       desktopBrowserAvailable={false}
+      generalSettingsDisabled={false}
       managedBranchPrefix={overrides?.managedBranchPrefix ?? "bb/"}
-      managedBranchPrefixDisabled={false}
       navigateToThreadAfterCreate={false}
       onManagedBranchPrefixChange={
         overrides?.onManagedBranchPrefixChange ?? vi.fn()
@@ -34,9 +34,7 @@ function renderSection(overrides?: {
       rewriteLocalhostLinks={false}
       richTextEditing={false}
       steerActiveThreadOnEnter={false}
-      steerActiveThreadOnEnterDisabled={false}
       streamerMode={false}
-      streamerModeDisabled={false}
     />,
   );
 }

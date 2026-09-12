@@ -1,6 +1,5 @@
 import { getProjectSourceByHost, projectSourceOwnsPath } from "@bb/db";
-import { describe, expect, it, vi } from "vitest";
-import { reportEnvironmentHookProgress } from "../../../src/services/environments/environment-hooks.js";
+import { describe, expect, it } from "vitest";
 import { ensureProjectSourceOnHost } from "../../../src/services/projects/project-source-setup.js";
 import {
   listQueuedCommands,
@@ -15,54 +14,6 @@ const remoteUrl = "https://example.test/team/project.git";
 const targetPath = "/private/checkouts/project-id";
 
 describe("automatic project source setup", () => {
-  it("forwards clone progress to the provisioning report", async () => {
-    await withTestHarness(async (harness) => {
-      const source = seedHostSession(harness.deps, { id: "progress-source" });
-      const target = seedHostSession(harness.deps, { id: "progress-target" });
-      const { project } = seedProjectWithSource(harness.deps, {
-        hostId: source.host.id,
-      });
-      const report = { step: vi.fn(), log: vi.fn() };
-      const setup = ensureProjectSourceOnHost(harness.deps, {
-        projectId: project.id,
-        projectName: project.name,
-        hostId: target.host.id,
-        remoteUrl,
-        report,
-      });
-      const defaultPath = await waitForQueuedCommand(
-        harness,
-        ({ command }) => command.type === "project.clone_default_path",
-      );
-      await reportQueuedCommandSuccess(harness, defaultPath, {
-        path: targetPath,
-      });
-      const exists = await waitForQueuedCommand(
-        harness,
-        ({ command }) => command.type === "host.paths_exist",
-      );
-      await reportQueuedCommandSuccess(harness, exists, {
-        existence: { [targetPath]: false },
-      });
-      const clone = await waitForQueuedCommand(
-        harness,
-        ({ command }) => command.type === "project.clone",
-      );
-      if (clone.command.type !== "project.clone") throw new Error("bad clone");
-      reportEnvironmentHookProgress(harness.deps, target.host.id, {
-        type: "environment.hook.progress",
-        operationId: clone.command.operationId,
-        entry: { type: "output", text: "Receiving objects: 50%", status: null },
-      });
-      expect(report.log).toHaveBeenCalledWith("Receiving objects: 50%\n");
-      await reportQueuedCommandSuccess(harness, clone, {
-        path: targetPath,
-        gitRemoteUrl: remoteUrl,
-      });
-      await setup;
-    });
-  });
-
   it.each(["missing", "recovered", "foreign"] as const)(
     "serializes concurrent setup of a %s target",
     async (target) => {

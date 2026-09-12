@@ -8,10 +8,11 @@ import {
   restoreWindowState,
   writePersistedWindowStateEntries,
 } from "../src/window-state.js";
-import type {
-  DisplayWorkArea,
-  PersistedWindowStateEntry,
-  PersistedWindowState,
+import {
+  DEFAULT_WINDOW_STATE,
+  type DisplayWorkArea,
+  type PersistedWindowStateEntry,
+  type PersistedWindowState,
 } from "../src/types.js";
 
 interface TempDir {
@@ -26,17 +27,6 @@ const displayWorkAreas: DisplayWorkArea[] = [
     y: 0,
   },
 ];
-
-const defaultState: PersistedWindowState = {
-  bounds: {
-    height: 900,
-    width: 1280,
-    x: 80,
-    y: 80,
-  },
-  isFullScreen: false,
-  isMaximized: false,
-};
 
 const tempDirs: TempDir[] = [];
 
@@ -71,7 +61,6 @@ describe("window state helpers", () => {
 
     expect(
       restoreWindowState({
-        defaultState,
         displayWorkAreas,
         persistedState,
       }),
@@ -92,11 +81,10 @@ describe("window state helpers", () => {
 
     expect(
       restoreWindowState({
-        defaultState,
         displayWorkAreas,
         persistedState,
       }),
-    ).toEqual(defaultState);
+    ).toEqual(DEFAULT_WINDOW_STATE);
   });
 
   it("requires meaningful overlap with a display work area", () => {

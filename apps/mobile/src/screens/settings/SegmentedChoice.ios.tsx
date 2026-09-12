@@ -6,8 +6,6 @@ export function SegmentedChoice<T extends string>({
   options,
   value,
   onChange,
-  disabled = false,
-  testID,
 }: SegmentedChoiceProps<T>) {
   const selectedIndex = Math.max(
     0,
@@ -17,14 +15,12 @@ export function SegmentedChoice<T extends string>({
     <SegmentedControl
       values={options.map((option) => option.label)}
       selectedIndex={selectedIndex}
-      enabled={!disabled}
       onChange={(event) => {
         const option = options[event.nativeEvent.selectedSegmentIndex];
         if (option === undefined || option.value === value) return;
         haptic("selection");
         onChange(option.value);
       }}
-      testID={testID}
     />
   );
 }

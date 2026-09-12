@@ -7,7 +7,6 @@ import {
   link,
   mkdir,
   mkdtemp,
-  open,
   readFile,
   readdir,
   rename,

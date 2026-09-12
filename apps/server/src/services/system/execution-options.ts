@@ -7,16 +7,12 @@ import type {
 } from "@bb/server-contract";
 import { type CustomProviderModel } from "@bb/config/bb-app-managed-config";
 import {
-  providerModelCatalogDependsOnWorkspace,
   reasoningEffortsForLevels,
   type AvailableModel,
   type ProviderInfo,
 } from "@bb/domain";
 import { getAppSettings } from "@bb/db";
-import { type HostDaemonRetryableOnlineRpcCommand } from "@bb/host-daemon-contract";
-import type { ProviderModelListMemoValue } from "../../lifecycle-dedupers.js";
 import type { LoggedWorkSessionDeps } from "../../types.js";
-import { COMMAND_TIMEOUT_MS } from "../../constants.js";
 import { ApiError } from "../../errors.js";
 import { callHostRetryableOnlineRpc } from "../hosts/online-rpc.js";
 import { getHostPermissionCeiling } from "../hosts/permission-ceiling.js";
@@ -24,18 +20,23 @@ import {
   requireConnectedHostSession,
   requireEnvironment,
 } from "../lib/entity-lookup.js";
+import { expectedFallbackErrorLogFields } from "../lib/error-log-fields.js";
 import { isSuspendedHostUnavailableError } from "../lib/lifecycle-api-errors.js";
-import { createProviderListingBudget } from "../providers/native-roots.js";
+import {
+  createProviderListingBudget,
+  type ProviderListingBudget,
+} from "../providers/native-roots.js";
+import {
+  toProviderModelCatalogFailureCode,
+  type ProviderModelCatalogAccess,
+} from "../providers/provider-model-catalog-store.js";
 import type {
   ProviderHealthCacheKey,
   ProviderRegistryService,
 } from "../providers/provider-registry.js";
 import { getSupportedReasoningLevelsForProvider } from "../threads/thread-reasoning-policy.js";
 import { resolveSystemLookupHostId } from "./host-lookup.js";
-import {
-  requireBridgeLaunchForProviderId,
-  resolveBridgeLaunchForProviderId,
-} from "./provider-bridge-launch.js";
+import { resolveBridgeLaunchForProviderId } from "./provider-bridge-launch.js";
 import { mapProviderMaintenanceRequests } from "./provider-maintenance-concurrency.js";
 
 type SystemExecutionOptionsRequest = SystemExecutionOptionsQuery;
@@ -49,14 +50,6 @@ interface ResolveSystemProviderModelsArgs {
   cwd?: string;
   hostId: string;
   providerId: string;
-}
-
-interface ExpectedFallbackErrorLogFields {
-  errorCode: string;
-  errorDetails?: unknown;
-  errorMessage: string;
-  errorRetryable?: boolean;
-  errorStatus: number;
 }
 
 type ModelListResult = Pick<
@@ -149,23 +142,6 @@ function canOmitProviderDiscoveryForError(error: unknown): error is ApiError {
   );
 }
 
-function expectedFallbackErrorLogFields(
-  error: ApiError,
-): ExpectedFallbackErrorLogFields {
-  const fields: ExpectedFallbackErrorLogFields = {
-    errorCode: error.body.code,
-    errorMessage: error.body.message,
-    errorStatus: error.status,
-  };
-  if (error.body.details !== undefined) {
-    fields.errorDetails = error.body.details;
-  }
-  if (error.body.retryable !== undefined) {
-    fields.errorRetryable = error.body.retryable;
-  }
-  return fields;
-}
-
 async function listInstalledPluginProviderInfos(
   deps: LoggedWorkSessionDeps,
   hostId: string,
@@ -191,24 +167,27 @@ async function listInstalledPluginProviderInfos(
         hostId,
         providerId: registration.info.id,
       };
+      const probe = async (probeBudget: ProviderListingBudget) => {
+        const result = await callHostRetryableOnlineRpc(deps, {
+          hostId,
+          timeoutMs: probeBudget.remainingMs(),
+          command: {
+            type: "provider.health",
+            providerId: registration.info.id,
+            bridgeLaunch,
+          },
+        });
+        return result.supported && result.health.status !== "not_installed";
+      };
       const cached = deps.providerRegistry.lookupInstalled(cacheKey);
       try {
-        const installed =
-          cached ??
-          (async () => {
-            const result = await callHostRetryableOnlineRpc(deps, {
-              hostId,
-              timeoutMs: budget.remainingMs(),
-              command: {
-                type: "provider.health",
-                providerId: registration.info.id,
-                bridgeLaunch,
-              },
-            });
-            return result.supported && result.health.status !== "not_installed";
-          })();
+        const installed = cached ?? probe(budget);
         if (cached === undefined) {
           deps.providerRegistry.rememberInstalled(cacheKey, installed);
+        } else {
+          void deps.providerRegistry.revalidateInstalled(cacheKey, () =>
+            probe(createProviderListingBudget()),
+          );
         }
         return (await installed) ? registration.info : null;
       } catch (error) {
@@ -235,7 +214,7 @@ async function listInstalledPluginProviderInfos(
   );
 }
 
-async function listSystemProviderInfosForHost(
+export async function listSystemProviderInfosForHost(
   deps: LoggedWorkSessionDeps,
   hostId: string,
   capability?: ProviderCapabilityFilter,
@@ -319,9 +298,10 @@ export async function resolveSystemProviderModels(
   }
 
   const result = await loadSystemProviderModels(deps, {
-    ...(args.cwd !== undefined ? { cwd: args.cwd } : {}),
+    cwd: args.cwd ?? null,
     hostId: args.hostId,
     provider,
+    access: { kind: "validation", requiredModel: null },
   });
   const { models, selectedOnlyModels } = appendCustomModels(
     deps.providerRegistry,
@@ -412,9 +392,28 @@ export function appendCustomModels(
   };
 }
 
-export async function resolveSystemExecutionOptions(
+export function resolveSystemExecutionOptions(
   deps: LoggedWorkSessionDeps,
   query: SystemExecutionOptionsRequest,
+): Promise<SystemExecutionOptionsResponse> {
+  return resolveExecutionOptions(deps, query, { kind: "picker" });
+}
+
+export function resolveSystemExecutionOptionsForValidation(
+  deps: LoggedWorkSessionDeps,
+  query: SystemExecutionOptionsRequest,
+  requiredModel: string | null,
+): Promise<SystemExecutionOptionsResponse> {
+  return resolveExecutionOptions(deps, query, {
+    kind: "validation",
+    requiredModel,
+  });
+}
+
+async function resolveExecutionOptions(
+  deps: LoggedWorkSessionDeps,
+  query: SystemExecutionOptionsRequest,
+  access: ProviderModelCatalogAccess,
 ): Promise<SystemExecutionOptionsResponse> {
   if (query.providerId === undefined) {
     await deps.providerRegistry.whenRegistrationsSettled();
@@ -437,9 +436,10 @@ export async function resolveSystemExecutionOptions(
   const earlyModelResultPromise =
     hostId !== null && configuredRequestedProvider
       ? loadSystemProviderModels(deps, {
-          ...(cwd !== undefined ? { cwd } : {}),
+          cwd: cwd ?? null,
           hostId,
           provider: configuredRequestedProvider,
+          access,
         })
       : null;
   let providers: ProviderInfo[];
@@ -511,9 +511,10 @@ export async function resolveSystemExecutionOptions(
     earlyModelResultPromise !== null
       ? await earlyModelResultPromise
       : await loadSystemProviderModels(deps, {
-          ...(cwd !== undefined ? { cwd } : {}),
+          cwd: cwd ?? null,
           hostId,
           provider: modelsProvider,
+          access,
         });
 
   const { models, selectedOnlyModels } = appendCustomModels(
@@ -537,97 +538,35 @@ export async function resolveSystemExecutionOptions(
 
 async function loadSystemProviderModels(
   deps: LoggedWorkSessionDeps,
-  {
-    cwd,
-    hostId,
-    provider,
-  }: {
-    cwd?: string;
+  args: {
+    cwd: string | null;
     hostId: string;
     provider: ProviderInfo;
+    access: ProviderModelCatalogAccess;
   },
 ): Promise<ModelListResult> {
-  if (!provider.available) {
-    return unavailableProviderModelResult(provider.id);
+  if (!args.provider.available) {
+    return unavailableProviderModelResult(args.provider.id);
   }
-  const bridgeLaunch = requireBridgeLaunchForProviderId(deps, provider.id);
-  const command: ProviderListModelsCommand = {
-    type: "provider.list_models",
-    providerId: provider.id,
-    ...(cwd !== undefined &&
-    providerModelCatalogDependsOnWorkspace(
-      provider.capabilities.modelCatalogScope,
-    )
-      ? { cwd }
-      : {}),
-    bridgeLaunch,
-  };
-  try {
-    const { models, selectedOnlyModels } = await listProviderModelsMemoized(
-      deps,
-      { command, hostId },
-    );
+  const result = await deps.lifecycleDedupers.providerModelCatalogs.read(
+    deps,
+    args,
+  );
+  if (result.kind === "catalog") {
     return {
-      models,
-      selectedOnlyModels,
+      models: result.models,
+      selectedOnlyModels: result.selectedOnlyModels,
       modelLoadError: null,
     };
-  } catch (error) {
-    if (
-      !(error instanceof ApiError) ||
-      (error.status !== 502 && error.status !== 504)
-    ) {
-      throw error;
-    }
-    deps.logger.warn(
-      {
-        ...expectedFallbackErrorLogFields(error),
-        hostId,
-        providerId: provider.id,
-      },
-      "Failed to resolve provider models",
-    );
-    const modelLoadError = buildModelLoadError({
-      error,
-      provider,
-    });
-    return {
-      models: listFallbackModelsForLoadError(deps, {
-        code: modelLoadError.code,
-        providerId: provider.id,
-      }),
-      selectedOnlyModels: [],
-      modelLoadError,
-    };
   }
-}
-
-type ProviderListModelsCommand = Extract<
-  HostDaemonRetryableOnlineRpcCommand,
-  { type: "provider.list_models" }
->;
-
-async function listProviderModelsMemoized(
-  deps: LoggedWorkSessionDeps,
-  { command, hostId }: { command: ProviderListModelsCommand; hostId: string },
-): Promise<ProviderModelListMemoValue> {
-  const probe = (): Promise<ProviderModelListMemoValue> =>
-    callHostRetryableOnlineRpc(deps, {
-      hostId,
-      timeoutMs: COMMAND_TIMEOUT_MS,
-      command,
-    });
-  const daemonSessionId = deps.hub.getDaemonSessionIdForHost(hostId);
-  if (daemonSessionId === null) {
-    return probe();
-  }
-  const memoKey = JSON.stringify([
-    hostId,
-    daemonSessionId,
-    deps.providerRegistry.getRegistrationRevision(),
-    command,
-  ]);
-  return deps.lifecycleDedupers.providerModelList.run(memoKey, probe);
+  return {
+    models: listFallbackModelsForLoadError(deps, {
+      code: result.code,
+      providerId: args.provider.id,
+    }),
+    selectedOnlyModels: [],
+    modelLoadError: { providerId: args.provider.id, code: result.code },
+  };
 }
 
 function listFallbackModelsForLoadError(
@@ -658,24 +597,6 @@ function buildModelLoadError({
 }: BuildModelLoadErrorArgs): SystemExecutionOptionsModelLoadError {
   return {
     providerId: provider.id,
-    code: toModelLoadErrorCode(error),
+    code: toProviderModelCatalogFailureCode(error),
   };
-}
-
-function toModelLoadErrorCode(
-  error: ApiError,
-): SystemExecutionOptionsModelLoadErrorCode {
-  if (error.body.code === "command_timeout") {
-    return "timeout";
-  }
-
-  if (error.body.code === "missing_executable") {
-    return "missing_executable";
-  }
-
-  if (error.body.code === "auth_required") {
-    return "auth_required";
-  }
-
-  return "failed";
 }

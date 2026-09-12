@@ -15,7 +15,7 @@ import {
   upsertHost,
 } from "@bb/db";
 import type { DbConnection } from "@bb/db";
-import { buildThreadTimeline } from "../../../src/services/threads/timeline.js";
+import { buildThreadTimelineWithProfile } from "../../../src/services/threads/timeline.js";
 
 const providerThreadId = "provider-root";
 const execution = {
@@ -204,14 +204,14 @@ describe("timeline head state under a budgeted window", () => {
     const { db, thread } = setup();
     seedThreadWithEarlyHeadState(db, thread, 12, 60);
 
-    const unbudgeted = buildThreadTimeline(db, thread, {
+    const unbudgeted = buildThreadTimelineWithProfile(db, thread, {
       ...baseOptions,
       eventBudget: 1_000_000,
-    });
-    const budgeted = buildThreadTimeline(db, thread, {
+    }).response;
+    const budgeted = buildThreadTimelineWithProfile(db, thread, {
       ...baseOptions,
       eventBudget: 100,
-    });
+    }).response;
 
     expect(budgeted.timelinePage.returnedSegmentCount).toBeLessThan(
       unbudgeted.timelinePage.returnedSegmentCount,
@@ -256,10 +256,10 @@ describe("timeline head state under a budgeted window", () => {
     });
     insertEvents(db, noopNotifier, events);
 
-    const budgeted = buildThreadTimeline(db, thread, {
+    const budgeted = buildThreadTimelineWithProfile(db, thread, {
       ...baseOptions,
       eventBudget: 100,
-    });
+    }).response;
     expect(budgeted.pendingTodos).toBeNull();
     expect(budgeted.goal).toBeNull();
     expect(budgeted.activeWorkflows).toHaveLength(0);

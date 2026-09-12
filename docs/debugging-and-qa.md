@@ -195,7 +195,14 @@ Gates under `apps/server/test/provider-corpus/`:
 - `timeline-perf.test.ts` measures the 10 largest threads per provider (latest
   page and full page walk, five builds each, calibrated against a synthetic
   thread built in the same run) and compares with `snapshots/perf-baseline.json`.
-  The CI micro-benchmark in the same file needs no corpus.
+  The CI micro-benchmark in the same file needs no corpus. Each sample clears
+  the decoded-event cache and the latest-page selection memo, so the gate keeps
+  measuring cold builds.
+- `timeline-streaming-memo.test.ts` marks each thread active, appends streaming
+  rows to its latest turn tick by tick (plus one late output delta for the
+  previous root turn), and requires every latest-page build to equal a build on
+  a fresh connection with empty caches. It prints how many builds reused the
+  selection memo and the warm and cold tick build times.
 
 Run them:
 

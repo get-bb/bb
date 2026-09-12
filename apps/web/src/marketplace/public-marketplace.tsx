@@ -238,7 +238,7 @@ function InstallCount({
   if (total === undefined) {
     return <span className="marketplace-card-installs is-new">New</span>;
   }
-  const formatted = formatInstalls(total) ?? total.toLocaleString("en-US");
+  const formatted = formatInstalls(total);
   return (
     <span
       className="marketplace-card-installs"
@@ -998,5 +998,3 @@ export function PublicMarketplaceAuthorPage({
     </div>
   );
 }
-
-export type { MarketplaceIndexState };

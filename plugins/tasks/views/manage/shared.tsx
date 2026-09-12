@@ -1,5 +1,6 @@
 import { Icon } from "@bb/shared-ui/icon";
 import { cn } from "@bb/shared-ui/lib/utils";
+import { errorMessage } from "../../shared/errors.js";
 
 const COLOR_PALETTE = [
   { value: "slateblue", label: "Indigo" },
@@ -16,8 +17,6 @@ const COLOR_PALETTE = [
 
 export const DEFAULT_COLOR = COLOR_PALETTE[0].value;
 
-export const PROJECT_PREFIX_PATTERN = /^[A-Z][A-Z0-9]{0,9}$/;
-
 export function derivePrefix(name: string): string {
   const words = name
     .toUpperCase()
@@ -32,7 +31,7 @@ export function derivePrefix(name: string): string {
 }
 
 export function describeCreateProjectError(error: unknown): string {
-  const message = error instanceof Error ? error.message : String(error);
+  const message = errorMessage(error);
   if (message.includes("UNIQUE") && message.includes("prefix")) {
     return "That prefix is already used by another project.";
   }

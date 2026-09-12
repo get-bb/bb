@@ -10,6 +10,7 @@ import type {
   SandboxPreset,
 } from "../../launch-options.js";
 import { PROVIDER_ID } from "../../provider-id.js";
+import { errorMessage } from "../../error-message.js";
 import {
   readModalMachineResource,
   type ModalMachineResource,
@@ -74,8 +75,19 @@ const MODAL_API_RETRY_LIMIT = 3;
 const MODAL_API_RETRY_MS = 1_000;
 const SNAPSHOT_TIMEOUT_MS = 300_000;
 
-function errorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
+function requireRestorableSnapshot(resource: ModalMachineResource): string {
+  if (
+    resource.sandboxId !== null &&
+    resource.snapshotSandboxId !== resource.sandboxId
+  ) {
+    throw new Error(
+      "Modal compute is missing. Refusing automatic recovery from a potentially stale snapshot.",
+    );
+  }
+  if (resource.snapshotImageId === null) {
+    throw new Error("The Modal sandbox has no restorable snapshot.");
+  }
+  return resource.snapshotImageId;
 }
 
 function resolveLaunchSelection(
@@ -304,17 +316,7 @@ export function createModalSandboxBackend(
       const resolved = await requireSettings();
       const sandbox = await findSandbox(context.resource, resolved);
       if (sandbox === null) {
-        if (
-          context.resource.sandboxId !== null &&
-          context.resource.snapshotSandboxId !== context.resource.sandboxId
-        ) {
-          throw new Error(
-            "Modal compute is missing. Refusing automatic recovery from a potentially stale snapshot.",
-          );
-        }
-        if (context.resource.snapshotImageId === null) {
-          throw new Error("The Modal sandbox has no restorable snapshot.");
-        }
+        requireRestorableSnapshot(context.resource);
         return deletePendingSnapshots(
           context.resource,
           resolved,
@@ -358,29 +360,19 @@ export function createModalSandboxBackend(
       let resource = await deletePendingSnapshots(context.resource, resolved);
       let sandbox = await findSandbox(resource, resolved);
       if (sandbox === null) {
-        if (
-          resource.sandboxId !== null &&
-          resource.snapshotSandboxId !== resource.sandboxId
-        ) {
-          throw new Error(
-            "Modal compute is missing. Refusing automatic recovery from a potentially stale snapshot.",
-          );
-        }
-        if (resource.snapshotImageId === null) {
-          throw new Error("The Modal sandbox has no restorable snapshot.");
-        }
+        const snapshotImageId = requireRestorableSnapshot(resource);
         context.report.step("Restoring the Modal sandbox…");
         sandbox = await clientFor(resolved).create({
           appName: resource.appName,
           name: resource.key,
-          image: { type: "snapshot", imageId: resource.snapshotImageId },
+          image: { type: "snapshot", imageId: snapshotImageId },
           timeoutMs: SANDBOX_LIFETIME_MS,
           cpu: resource.cpu,
           memoryMiB: resource.memoryMiB,
           tags: { bbMachineKey: resource.key },
         });
         context.report.log(
-          `Restored Modal sandbox ${sandbox.sandboxId} from image ${resource.snapshotImageId}\n`,
+          `Restored Modal sandbox ${sandbox.sandboxId} from image ${snapshotImageId}\n`,
         );
       }
       resource = { ...resource, sandboxId: sandbox.sandboxId };

@@ -14,6 +14,7 @@ import {
   type MachineEnvironmentReplace,
   type MachineEnvironmentSet,
 } from "@bb/server-contract";
+import { runSerialized } from "../lib/async-deduper.js";
 
 const prefix = "machineEnvironment:";
 const keyFile = "machine-environment-key";
@@ -27,20 +28,6 @@ const encryptedSchema = z
   .strict();
 type EncryptedVariable = z.infer<typeof encryptedSchema>;
 const locks = new WeakMap<DbConnection, Promise<unknown>>();
-
-async function serialized<T>(
-  db: DbConnection,
-  operation: () => Promise<T>,
-): Promise<T> {
-  const previous = locks.get(db) ?? Promise.resolve();
-  const current = previous.catch(() => {}).then(operation);
-  locks.set(db, current);
-  try {
-    return await current;
-  } finally {
-    if (locks.get(db) === current) locks.delete(db);
-  }
-}
 
 function records(db: DbConnection) {
   return db
@@ -166,22 +153,7 @@ export function replaceMachineEnvironment(
   dataDir: string,
   input: MachineEnvironmentReplace,
 ): Promise<void> {
-  return serialized(db, () => replaceRows(db, dataDir, input.variables));
-}
-
-export function updateMachineEnvironment(
-  db: DbConnection,
-  dataDir: string,
-  name: string,
-  input: MachineEnvironmentSet | null,
-): Promise<void> {
-  name = machineEnvironmentNameSchema.parse(name);
-  return serialized(db, async () => {
-    const variables: MachineEnvironmentReplace["variables"] =
-      readMachineEnvironment(db)
-        .filter((row) => row.name !== name)
-        .map((row) => ({ name: row.name, value: null, note: row.note }));
-    if (input !== null) variables.push({ ...input, name });
-    await replaceRows(db, dataDir, variables);
-  });
+  return runSerialized(locks, db, () =>
+    replaceRows(db, dataDir, input.variables),
+  );
 }

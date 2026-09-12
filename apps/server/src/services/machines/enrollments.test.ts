@@ -156,7 +156,6 @@ describe("machine enrollments", () => {
     const lostResponse = await h.machineAuth.enrollHost({
       token: first.bootstrap.credential,
       hostId: first.hostId,
-      allowPublicEnrollment: true,
     });
     expect(lostResponse).not.toBeNull();
     await h.machineAuth.issueHostEnrollKey({
@@ -176,7 +175,6 @@ describe("machine enrollments", () => {
     const recovered = await h.machineAuth.enrollHost({
       token: retry.bootstrap.credential,
       hostId: retry.hostId,
-      allowPublicEnrollment: true,
     });
     if (!recovered || !lostResponse)
       throw new Error("Expected successful exchanges");

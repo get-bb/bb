@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef } from "react";
 import {
+  createSplitResizeFlexPair,
   createSplitResizeSnapSession,
   type SplitResizeAxis,
   type SplitResizeGridTarget,
@@ -66,20 +67,7 @@ export function usePanelResizeSnap({
 
       const ownerWindow = divider.ownerDocument.defaultView;
       if (ownerWindow === null) return;
-      const previousGrow = Number.parseFloat(
-        ownerWindow.getComputedStyle(previous).flexGrow,
-      );
-      const nextGrow = Number.parseFloat(
-        ownerWindow.getComputedStyle(next).flexGrow,
-      );
-      const pairTotal =
-        Number.isFinite(previousGrow) &&
-        Number.isFinite(nextGrow) &&
-        previousGrow + nextGrow > 0
-          ? previousGrow + nextGrow
-          : 1;
-      const previousFlex = previous.style.flex;
-      const nextFlex = next.style.flex;
+      const pair = createSplitResizeFlexPair(previous, next, ownerWindow);
       const snapSession = createSplitResizeSnapSession(divider, axis, {
         boundaryIndex,
         childCount,
@@ -116,8 +104,7 @@ export function usePanelResizeSnap({
           start,
         });
         pendingFraction = result.fraction;
-        previous.style.flex = `${pairTotal * result.fraction} 1 0px`;
-        next.style.flex = `${pairTotal * (1 - result.fraction)} 1 0px`;
+        pair.apply(result.fraction);
       };
       const complete = (commit: boolean) => {
         if (finished) return;
@@ -154,8 +141,7 @@ export function usePanelResizeSnap({
           return;
         }
         if (!commit) {
-          previous.style.flex = previousFlex;
-          next.style.flex = nextFlex;
+          pair.restore();
         }
       };
       const commitDrag = () => complete(true);

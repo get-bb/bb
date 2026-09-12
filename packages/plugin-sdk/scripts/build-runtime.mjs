@@ -1,4 +1,4 @@
-import { copyFile, mkdir, mkdtemp, rm } from "node:fs/promises";
+import { copyFile, mkdir, mkdtemp, readFile, rm } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { build } from "esbuild";
@@ -21,32 +21,44 @@ const NODE_ESM_REQUIRE_BANNER = [
   "const __dirname = __pathDirname(__filename);",
 ].join("\n");
 
+const ZOD_EXTERNALS = ["zod", "zod/*"];
+
+const EXTERNALS = {
+  "./provider-bridge": ZOD_EXTERNALS,
+  "./ai-services": ZOD_EXTERNALS,
+  "./provider-bridge/testing": ZOD_EXTERNALS,
+  "./provider-bridge/acp": ZOD_EXTERNALS,
+  "./environment-provider": ZOD_EXTERNALS,
+  "./machine-provider": ZOD_EXTERNALS,
+  "./internal/host-policy": ZOD_EXTERNALS,
+  "./testing": [
+    "better-sqlite3",
+    "cron-parser",
+    "hono",
+    "hono/*",
+    "zod",
+    "zod/*",
+  ],
+  "./testing/app": [
+    "@testing-library/react",
+    "@testing-library/react/*",
+    "react",
+    "react/*",
+    "react-dom",
+    "react-dom/*",
+  ],
+};
+
+const { exports: packageExports } = JSON.parse(
+  await readFile(path.join(packageRoot, "package.json"), "utf8"),
+);
+
 const entries = [
-  { source: "src/index.ts", output: "dist/index.js", external: [] },
-  { source: "src/app.ts", output: "dist/app.js", external: [] },
-  // Real code, not a stub: the provider-bridge surface is schemas and pure
-  // helpers, so the published bundle carries them. zod stays external (peer
-  // dependency).
-  {
-    source: "src/provider-bridge.ts",
-    output: "dist/provider-bridge.js",
-    external: ["zod", "zod/*"],
-  },
-  // The AI-services contract: zod schemas shared by a serving plugin's host
-  // entry and the server's caller.
-  {
-    source: "src/ai-services.ts",
-    output: "dist/ai-services.js",
-    external: ["zod", "zod/*"],
-  },
-  // The testing kit: conformance scenarios, the real delta assembler, the
-  // JSON-RPC harness, the calibration normalizer and the recorded-replay
-  // harness. Framework-agnostic, so only zod stays external.
-  {
-    source: "src/provider-bridge-testing.ts",
-    output: "dist/provider-bridge-testing.js",
-    external: ["zod", "zod/*"],
-  },
+  ...Object.entries(packageExports).map(([subpath, entry]) => ({
+    source: entry.source.slice(2),
+    output: entry.import.slice(2),
+    external: EXTERNALS[subpath] ?? [],
+  })),
   // The replay harness spawns two programs beside its own bundle: the
   // provider-bridge bootstrap that runs a bridge module the way the runtime
   // does, and the replay child a bridge spawns in place of its provider.
@@ -62,79 +74,6 @@ const entries = [
   {
     copy: "../provider-bridge-protocol/src/testing/replay-provider-child.mjs",
     output: "dist/replay-provider-child.mjs",
-  },
-  // The ACP kit: the generic Agent Client Protocol bridge a provider plugin
-  // re-exports from its host artifact, plus the dialect hooks. Real code, so
-  // only zod stays external.
-  {
-    source: "src/provider-bridge-acp.ts",
-    output: "dist/provider-bridge-acp.js",
-    external: ["zod", "zod/*"],
-  },
-  { source: "src/host.ts", output: "dist/host.js", external: [] },
-  {
-    source: "src/environment-provider.ts",
-    output: "dist/environment-provider.js",
-    external: ["zod", "zod/*"],
-  },
-  {
-    source: "src/machine-provider.ts",
-    output: "dist/machine-provider.js",
-    external: ["zod", "zod/*"],
-  },
-  {
-    source: "src/internal/composer-customization-validation.ts",
-    output: "dist/internal/composer-customization-validation.js",
-    external: [],
-  },
-  {
-    source: "src/internal/composer-view.ts",
-    output: "dist/internal/composer-view.js",
-    external: [],
-  },
-  {
-    source: "src/internal/file-navigation-validation.ts",
-    output: "dist/internal/file-navigation-validation.js",
-    external: [],
-  },
-  {
-    source: "src/internal/host-policy.ts",
-    output: "dist/internal/host-policy.js",
-    external: ["zod", "zod/*"],
-  },
-  {
-    source: "src/internal/plugin-app-collector.ts",
-    output: "dist/internal/plugin-app-collector.js",
-    external: [],
-  },
-  {
-    source: "src/testing/index.ts",
-    output: "dist/testing/index.js",
-    external: [
-      "better-sqlite3",
-      "cron-parser",
-      "hono",
-      "hono/*",
-      "zod",
-      "zod/*",
-    ],
-  },
-  {
-    source: "src/testing/app.tsx",
-    output: "dist/testing/app.js",
-    external: [
-      "@testing-library/react",
-      "@testing-library/react/*",
-      "react",
-      "react/*",
-      "react-dom",
-      "react-dom/*",
-    ],
-  },
-  {
-    source: "src/testing/host.ts",
-    output: "dist/testing/host.js",
-    external: [],
   },
 ];
 

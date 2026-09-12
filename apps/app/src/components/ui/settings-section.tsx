@@ -91,6 +91,23 @@ export const SettingsRow = forwardRef<HTMLDivElement, SettingsRowProps>(
 );
 SettingsRow.displayName = "SettingsRow";
 
+export function SettingsDetailRow({
+  label,
+  children,
+}: {
+  label: string;
+  children: ReactNode;
+}) {
+  return (
+    <SettingsRow className="flex-col items-stretch gap-1.5 sm:flex-row sm:items-center sm:gap-3">
+      <span className="shrink-0 text-foreground">{label}</span>
+      <div className="flex min-w-0 flex-wrap items-center justify-start gap-2 text-left text-subtle-foreground sm:ml-auto sm:justify-end sm:text-right">
+        {children}
+      </div>
+    </SettingsRow>
+  );
+}
+
 export type SettingsControlPlacement = "inline" | "below";
 
 interface SettingsWithControlProps {

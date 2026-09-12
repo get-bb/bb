@@ -38,9 +38,10 @@ value and only shows whether a key is set.
 The Add machine installer may also store a `machineCredential` and its
 `connectMachineId` beside `serverUrl` in `config.json`. The credential is a
 secret managed by bb connect: do not copy, edit, or commit it. Both fields are
-intentionally omitted from `bb-app config list`. At runtime they are passed to
-the standalone host daemon and its bundled `bb` CLI as
-`BB_CONNECT_MACHINE_CREDENTIAL` and `BB_CONNECT_MACHINE_ID`. These are
+intentionally omitted from `bb-app config list`. At runtime bb-app passes
+`machineCredential` to the standalone host daemon through `BB_SERVER_HEADERS`,
+and the daemon and its bundled `bb` CLI send it to the server as the
+`x-bb-connect-machine` header; `connectMachineId` is only stored. These are
 installer-managed transport details, not user configuration knobs; re-add the
 machine instead of setting them by hand.
 

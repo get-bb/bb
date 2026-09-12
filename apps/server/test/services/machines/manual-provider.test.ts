@@ -49,7 +49,6 @@ it("creates, enrolls, and removes a manual machine by host id", async () => {
     const enrolled = await harness.deps.machineAuth.enrollHost({
       hostId: created.id,
       token: credential!,
-      allowPublicEnrollment: true,
     });
     expect(enrolled).not.toBeNull();
     harness.hub.registerDaemon("manual-session", created.id, {

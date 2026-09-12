@@ -59,14 +59,14 @@ async function tryPluginCommandProxy(
   if (result.outcome === "invalid") return;
   const match = proxy.findPluginCliCommand(result.contributions, candidate);
   if (match === undefined) {
-    const disabled = await proxy.findDisabledPluginForCommand(
+    const disabledId = await proxy.findDisabledPluginForCommand(
       getUrl(),
       candidate,
     );
-    if (disabled !== null) {
+    if (disabledId !== null) {
       console.error(
-        `bb ${candidate} is provided by the "${disabled.id}" plugin, which is disabled — ` +
-          `run \`bb plugin enable ${disabled.id}\` or enable it in Plugins.`,
+        `bb ${candidate} is provided by the "${disabledId}" plugin, which is disabled — ` +
+          `run \`bb plugin enable ${disabledId}\` or enable it in Plugins.`,
       );
       process.exit(1);
     }

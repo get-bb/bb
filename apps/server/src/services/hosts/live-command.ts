@@ -48,7 +48,6 @@ interface StartLiveHostCommandArgs<
   TType extends HostDaemonSettledCommandType,
 > extends RunLiveHostCommandArgs<TType> {
   onError?: LiveHostCommandErrorHandler<TType>;
-  onExpectedError?: LiveHostCommandErrorHandler<TType>;
   onSettled?: () => void | Promise<void>;
 }
 
@@ -321,7 +320,6 @@ export function startLiveHostCommand<
           },
           "Expected live host command failure",
         );
-        args.onExpectedError?.(handlerArgs);
         return;
       }
       args.onError?.(handlerArgs);

@@ -29,7 +29,10 @@ import {
   type AppAssetCompressionCache,
 } from "../services/plugins/app-asset-compression-cache.js";
 import { rankAcceptedAssetEncodings } from "../asset-content-encoding.js";
-import { pluginImageResponse } from "./plugin-image-response.js";
+import {
+  hashedAssetCacheControl,
+  pluginImageResponse,
+} from "./plugin-image-response.js";
 import {
   pluginApplyUpdateRequestSchema,
   pluginInstallRequestSchema,
@@ -171,6 +174,14 @@ async function tokenAuthProblem(
   return null;
 }
 
+function pluginHttpSubPath(context: Context, id: string): string {
+  const prefix = `/api/v1/plugins/${id}/http`;
+  const requestPath = context.req.path;
+  return requestPath.startsWith(prefix)
+    ? requestPath.slice(prefix.length) || "/"
+    : "/";
+}
+
 function notRunningError(
   id: string,
   lookup: Extract<PluginWireLookup<unknown>, { outcome: "not-running" }>,
@@ -308,11 +319,7 @@ export function registerPluginRoutes(
   );
   const upgradePluginWebSocket = upgradeWebSocket?.(async (context) => {
     const id = context.req.param("id");
-    const prefix = `/api/v1/plugins/${id}/http`;
-    const requestPath = context.req.path;
-    const subPath = requestPath.startsWith(prefix)
-      ? requestPath.slice(prefix.length) || "/"
-      : "/";
+    const subPath = pluginHttpSubPath(context, id);
     const lookup = plugins.getWebSocketRoute(id, subPath);
     if (lookup.outcome === "unknown-plugin") {
       throw new ApiError(404, "unknown_plugin", `unknown plugin "${id}"`);
@@ -469,9 +476,7 @@ export function registerPluginRoutes(
     return pluginImageResponse(
       context,
       asset,
-      context.req.query("h") === asset.hash
-        ? "public, max-age=31536000, immutable"
-        : "no-store",
+      hashedAssetCacheControl(context.req.query("h"), asset.hash),
     );
   });
 
@@ -488,9 +493,7 @@ export function registerPluginRoutes(
       return pluginImageResponse(
         context,
         asset,
-        context.req.query("h") === asset.hash
-          ? "public, max-age=31536000, immutable"
-          : "no-store",
+        hashedAssetCacheControl(context.req.query("h"), asset.hash),
       );
     }
     const spec =
@@ -513,10 +516,10 @@ export function registerPluginRoutes(
     } catch {
       return context.json({ ok: false, error: "bundle file missing" }, 404);
     }
-    const cacheControl =
-      context.req.query("h") === asset.hash
-        ? "public, max-age=31536000, immutable"
-        : "no-store";
+    const cacheControl = hashedAssetCacheControl(
+      context.req.query("h"),
+      asset.hash,
+    );
     return appAssetResponse(context, bytes, {
       assetKey: `${context.req.param("id")}:${spec.kind}`,
       cache: appAssetCompressionCache,
@@ -736,11 +739,7 @@ export function registerPluginRoutes(
 
   app.all("/plugins/:id/http/*", async (context) => {
     const id = context.req.param("id");
-    const prefix = `/api/v1/plugins/${id}/http`;
-    const requestPath = context.req.path;
-    const subPath = requestPath.startsWith(prefix)
-      ? requestPath.slice(prefix.length) || "/"
-      : "/";
+    const subPath = pluginHttpSubPath(context, id);
     const lookup = plugins.getHttpRoute(id, context.req.method, subPath);
     if (lookup.outcome === "unknown-plugin") {
       return context.json({ ok: false, error: `unknown plugin "${id}"` }, 404);

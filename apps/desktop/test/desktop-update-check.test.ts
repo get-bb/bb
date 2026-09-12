@@ -2,10 +2,10 @@ import { describe, expect, it, vi } from "vitest";
 import type { BbDesktopVersionFeed } from "@bb/desktop-contract";
 import {
   createDesktopUpdateService,
-  DESKTOP_UPDATE_ACTIVE_MIN_INTERVAL_MS,
   DESKTOP_UPDATE_CHECK_TIMEOUT_MS,
   parseDesktopVersionFeed,
 } from "../src/desktop-update-check.js";
+import { DESKTOP_UPDATE_ACTIVE_MIN_INTERVAL_MS } from "../src/desktop-update-scheduler.js";
 
 const checkedAt = "2026-05-21T00:00:00.000Z";
 
@@ -329,6 +329,7 @@ describe("desktop update service", () => {
       currentVersion: "0.0.1",
       enabled: false,
       feedUrl: "https://example.test/desktop-version.json",
+      logger: { warn() {} },
       platform: "linux",
     });
 

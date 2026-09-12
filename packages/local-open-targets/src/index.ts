@@ -10,7 +10,10 @@ import {
   type WorkspaceOpenTargetIcon,
   type WorkspaceOpenTargetId,
 } from "@bb/host-daemon-contract";
-import { sanitizeInheritedChildProcessEnv } from "@bb/process-utils";
+import {
+  pathExists,
+  sanitizeInheritedChildProcessEnv,
+} from "@bb/process-utils";
 import {
   BASIC_FILE_OPEN_CAPABILITIES,
   FILE_MANAGER_OPEN_CAPABILITIES,
@@ -548,15 +551,6 @@ function getMacApplicationCandidatePaths(
       path.join(directory, `${appName}.app`),
     ),
   );
-}
-
-async function pathExists(candidatePath: string): Promise<boolean> {
-  try {
-    await fs.access(candidatePath);
-    return true;
-  } catch {
-    return false;
-  }
 }
 
 function isWslRuntime(runtime: WorkspaceOpenTargetRuntime): boolean {
@@ -1995,19 +1989,4 @@ export async function openPathInTargetWithRuntime(
     runtime,
   );
   await execInvocation(invocation, runtime);
-}
-
-export async function listWorkspaceOpenTargets(
-  options: ListWorkspaceOpenTargetsOptions = {},
-): Promise<WorkspaceOpenTarget[]> {
-  return listWorkspaceOpenTargetsWithRuntime(
-    createWorkspaceOpenTargetRuntime(),
-    options,
-  );
-}
-
-export async function openPathInTarget(
-  args: OpenPathInTargetArgs,
-): Promise<void> {
-  await openPathInTargetWithRuntime(args, createWorkspaceOpenTargetRuntime());
 }

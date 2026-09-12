@@ -1,8 +1,10 @@
 import { describe, expect, it, vi } from "vitest";
+import { eq } from "drizzle-orm";
 import { isRawThreadId } from "@bb/domain";
 import { createConnection } from "../../src/connection.js";
 import { noopNotifier } from "../../src/notifier.js";
 import type { DbNotifier } from "../../src/notifier.js";
+import { threads } from "../../src/schema.js";
 import {
   createThread,
   countLiveThreadsInEnvironment,
@@ -11,19 +13,16 @@ import {
   getThreadExecutionOverride,
   hasActiveThreadAttention,
   setThreadExecutionOverride,
-  hasPendingThreadShutdownInEnvironment,
   listHostThreadIds,
   listActiveVisiblePinnedThreadRoots,
   listThreadMentionRowsByIds,
   listThreadEnvironmentAssignmentsOnHost,
-  listThreads,
   listThreadsWithPendingInteractionStateForProjects,
   listThreadsWithPendingInteractionState,
   updateThread,
   deleteThread,
   archiveThread,
   markThreadDeleted,
-  markThreadAttentionRequested,
   pinThread,
   reorderPinnedThread,
   unpinThread,
@@ -79,9 +78,10 @@ describe("threads", () => {
       expect(hasActiveThreadAttention(db)).toBe(false);
 
       vi.setSystemTime(2_000);
-      markThreadAttentionRequested(db, noopNotifier, {
-        threadId: thread.id,
-      });
+      db.update(threads)
+        .set({ latestAttentionAt: Date.now() })
+        .where(eq(threads.id, thread.id))
+        .run();
       expect(hasActiveThreadAttention(db)).toBe(true);
 
       updateThread(db, noopNotifier, thread.id, { lastReadAt: 2_000 });
@@ -109,9 +109,10 @@ describe("threads", () => {
         visibility: "hidden",
       });
       vi.setSystemTime(3_000);
-      markThreadAttentionRequested(db, noopNotifier, {
-        threadId: sideChat.id,
-      });
+      db.update(threads)
+        .set({ latestAttentionAt: Date.now() })
+        .where(eq(threads.id, sideChat.id))
+        .run();
       expect(hasActiveThreadAttention(db)).toBe(false);
     } finally {
       vi.useRealTimers();
@@ -190,7 +191,10 @@ describe("threads", () => {
     });
 
     pinThread(db, noopNotifier, { threadId: hidden.id });
-    markThreadAttentionRequested(db, noopNotifier, { threadId: hidden.id });
+    db.update(threads)
+      .set({ latestAttentionAt: Date.now() })
+      .where(eq(threads.id, hidden.id))
+      .run();
     createPendingInteraction(db, {
       payload: "{}",
       providerId: "codex",
@@ -202,15 +206,21 @@ describe("threads", () => {
 
     expect(getThread(db, hidden.id)?.visibility).toBe("hidden");
     expect(
-      listThreads(db, { projectId: project.id, includeHidden: false }).map(
+      listThreadsWithPendingInteractionState(db, {
+        projectId: project.id,
+        includeHidden: false,
+      }).map((thread) => thread.id),
+    ).not.toContain(hidden.id);
+    expect(
+      listThreadsWithPendingInteractionState(db, { projectId: project.id }).map(
         (thread) => thread.id,
       ),
     ).not.toContain(hidden.id);
     expect(
-      listThreads(db, { projectId: project.id }).map((thread) => thread.id),
-    ).not.toContain(hidden.id);
-    expect(
-      listThreads(db, { projectId: project.id, includeHidden: true })
+      listThreadsWithPendingInteractionState(db, {
+        projectId: project.id,
+        includeHidden: true,
+      })
         .map((thread) => thread.id)
         .sort(),
     ).toEqual([hidden.id, visible.id, parent.id].sort());
@@ -369,7 +379,9 @@ describe("threads", () => {
       pinThread(db, noopNotifier, { threadId: third.id });
 
       expect(
-        listThreads(db, { projectId: project.id }).map((thread) => thread.id),
+        listThreadsWithPendingInteractionState(db, {
+          projectId: project.id,
+        }).map((thread) => thread.id),
       ).toEqual([third.id, first.id, fourth.id, second.id]);
     } finally {
       vi.useRealTimers();
@@ -492,7 +504,9 @@ describe("threads", () => {
       projectId: project.id,
       providerId: "codex",
     });
-    expect(listThreads(db, { projectId: project.id })).toHaveLength(2);
+    expect(
+      listThreadsWithPendingInteractionState(db, { projectId: project.id }),
+    ).toHaveLength(2);
   });
 
   it("filters archived threads by section id", () => {
@@ -523,7 +537,7 @@ describe("threads", () => {
     archiveThread(db, noopNotifier, otherArchivedInWork.id);
     archiveThread(db, noopNotifier, archivedInPlay.id);
 
-    const workArchived = listThreads(db, {
+    const workArchived = listThreadsWithPendingInteractionState(db, {
       projectId: project.id,
       archived: true,
       sectionId: workSection.id,
@@ -533,7 +547,7 @@ describe("threads", () => {
     );
 
     expect(
-      listThreads(db, {
+      listThreadsWithPendingInteractionState(db, {
         projectId: project.id,
         archived: true,
         sectionId: playSection.id,
@@ -556,7 +570,7 @@ describe("threads", () => {
     archiveThread(db, noopNotifier, looseArchived.id);
     archiveThread(db, noopNotifier, sectioned.id);
 
-    const unsectionedArchived = listThreads(db, {
+    const unsectionedArchived = listThreadsWithPendingInteractionState(db, {
       projectId: project.id,
       archived: true,
       unsectioned: true,
@@ -581,8 +595,14 @@ describe("threads", () => {
       providerId: "codex",
     });
 
-    expect(listThreads(db, { projectId: project.id })).toHaveLength(1);
-    expect(listThreads(db, { projectId: otherProject.id })).toHaveLength(1);
+    expect(
+      listThreadsWithPendingInteractionState(db, { projectId: project.id }),
+    ).toHaveLength(1);
+    expect(
+      listThreadsWithPendingInteractionState(db, {
+        projectId: otherProject.id,
+      }),
+    ).toHaveLength(1);
   });
 
   it("filters threads by parent thread and archived state", () => {
@@ -603,13 +623,22 @@ describe("threads", () => {
     archiveThread(db, noopNotifier, child.id);
 
     expect(
-      listThreads(db, { projectId: project.id, parentThreadId: parent.id }),
+      listThreadsWithPendingInteractionState(db, {
+        projectId: project.id,
+        parentThreadId: parent.id,
+      }),
     ).toHaveLength(1);
     expect(
-      listThreads(db, { projectId: project.id, archived: true }),
+      listThreadsWithPendingInteractionState(db, {
+        projectId: project.id,
+        archived: true,
+      }),
     ).toHaveLength(1);
     expect(
-      listThreads(db, { projectId: project.id, archived: false }),
+      listThreadsWithPendingInteractionState(db, {
+        projectId: project.id,
+        archived: false,
+      }),
     ).toHaveLength(2);
   });
 
@@ -629,14 +658,14 @@ describe("threads", () => {
       providerId: "codex",
     });
 
-    const childThreads = listThreads(db, {
+    const childThreads = listThreadsWithPendingInteractionState(db, {
       projectId: project.id,
       hasParent: true,
     });
     expect(childThreads).toHaveLength(1);
     expect(childThreads[0]?.id).toBe(child.id);
 
-    const rootThreads = listThreads(db, {
+    const rootThreads = listThreadsWithPendingInteractionState(db, {
       projectId: project.id,
       hasParent: false,
     });
@@ -659,7 +688,7 @@ describe("threads", () => {
       await new Promise((resolve) => setTimeout(resolve, 2));
     }
 
-    const archivedFirstPage = listThreads(db, {
+    const archivedFirstPage = listThreadsWithPendingInteractionState(db, {
       projectId: project.id,
       archived: true,
       limit: 3,
@@ -670,7 +699,7 @@ describe("threads", () => {
       created[2]?.id,
     ]);
 
-    const archivedSecondPage = listThreads(db, {
+    const archivedSecondPage = listThreadsWithPendingInteractionState(db, {
       projectId: project.id,
       archived: true,
       limit: 3,
@@ -990,7 +1019,7 @@ describe("threads", () => {
     });
 
     expect(
-      listThreads(db, {
+      listThreadsWithPendingInteractionState(db, {
         projectId: project.id,
         sectionId: section.id,
         includeHidden: true,
@@ -1152,44 +1181,6 @@ describe("threads", () => {
     }
   });
 
-  it("marks a thread as needing attention without changing read position", () => {
-    vi.useFakeTimers();
-    try {
-      vi.setSystemTime(1_000);
-      const { db, project } = setup();
-      const spy: DbNotifier = {
-        notifyThread: vi.fn(),
-        notifyEnvironment: vi.fn(),
-        notifyHost: vi.fn(),
-        notifyProject: vi.fn(),
-        notifySystem: vi.fn(),
-      };
-      const thread = createThread(db, noopNotifier, {
-        projectId: project.id,
-        providerId: "codex",
-      });
-      updateThread(db, noopNotifier, thread.id, {
-        lastReadAt: thread.latestAttentionAt,
-      });
-
-      vi.setSystemTime(2_000);
-      const updated = markThreadAttentionRequested(db, spy, {
-        threadId: thread.id,
-      });
-
-      expect(updated?.updatedAt).toBe(2_000);
-      expect(updated?.lastReadAt).toBe(1_000);
-      expect(updated?.latestAttentionAt).toBe(2_000);
-      expect(spy.notifyThread).toHaveBeenCalledWith(
-        thread.id,
-        ["read-state-changed"],
-        { projectId: project.id },
-      );
-    } finally {
-      vi.useRealTimers();
-    }
-  });
-
   it("deletes a thread", () => {
     const { db, project } = setup();
     const thread = createThread(db, noopNotifier, {
@@ -1214,7 +1205,9 @@ describe("threads", () => {
 
     expect(deleted?.deletedAt).toBeTypeOf("number");
     expect(getThread(db, thread.id)?.deletedAt).toBeTypeOf("number");
-    expect(listThreads(db, { projectId: project.id })).toHaveLength(0);
+    expect(
+      listThreadsWithPendingInteractionState(db, { projectId: project.id }),
+    ).toHaveLength(0);
   });
 
   it("archives a thread", () => {
@@ -1352,7 +1345,7 @@ describe("threads", () => {
     ]);
   });
 
-  it("lists host thread ids and detects pending shutdowns by environment", () => {
+  it("lists host thread ids only for environments on that host", () => {
     const { db, project, host } = setup();
     const otherHost = upsertHost(db, noopNotifier, {
       name: "other-host",
@@ -1398,16 +1391,6 @@ describe("threads", () => {
       activeThread.id,
       stoppingThread.id,
     ]);
-    expect(
-      hasPendingThreadShutdownInEnvironment(db, {
-        environmentId: environment.id,
-      }),
-    ).toBe(true);
-    expect(
-      hasPendingThreadShutdownInEnvironment(db, {
-        environmentId: otherEnvironment.id,
-      }),
-    ).toBe(false);
   });
 
   it("lists every host thread id including archived, deleted, and destroyed-environment threads", () => {
@@ -1600,13 +1583,15 @@ describe("thread originKind", () => {
     expect(getThread(db, fork.id)).toMatchObject({
       originKind: "fork",
     });
-    const forks = listThreads(db, {
+    const forks = listThreadsWithPendingInteractionState(db, {
       projectId: project.id,
       originKind: "fork",
     });
     expect(forks.map((thread) => thread.id)).toEqual([fork.id]);
 
-    const all = listThreads(db, { projectId: project.id });
+    const all = listThreadsWithPendingInteractionState(db, {
+      projectId: project.id,
+    });
     expect(all.map((thread) => thread.id).sort()).toEqual(
       [parent.id, fork.id].sort(),
     );
@@ -1633,7 +1618,7 @@ describe("thread originKind", () => {
       originPluginId: "some-other-plugin",
     });
 
-    const own = listThreads(db, {
+    const own = listThreadsWithPendingInteractionState(db, {
       projectId: project.id,
       originKind: "fork",
       originPluginId: "side-chat",

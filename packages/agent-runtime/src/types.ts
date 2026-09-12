@@ -123,7 +123,6 @@ export interface StartThreadArgs {
   contributedEnv?: readonly AgentRuntimeContributedEnvEntry[];
   clientRequestId?: ClientTurnRequestId;
   input?: PromptInput[];
-  inputGroups?: PromptInput[][];
   options: AgentRuntimeExecutionOptions;
   instructions?: string;
   dynamicTools?: DynamicTool[];
@@ -186,7 +185,6 @@ export interface ResumeThreadResult {
 export interface RunTurnArgs {
   threadId: string;
   input: PromptInput[];
-  inputGroups?: PromptInput[][];
   clientRequestId: ClientTurnRequestId;
   options: AgentRuntimeExecutionOptions;
   contributedEnv?: readonly AgentRuntimeContributedEnvEntry[];
@@ -197,7 +195,6 @@ export interface SteerTurnArgs {
   threadId: string;
   expectedTurnId: string;
   input: PromptInput[];
-  inputGroups?: PromptInput[][];
   clientRequestId: ClientTurnRequestId;
   options: AgentRuntimeExecutionOptions;
   contributedEnv?: readonly AgentRuntimeContributedEnvEntry[];

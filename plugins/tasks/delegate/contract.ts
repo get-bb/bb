@@ -1,9 +1,7 @@
 import { defineRpcContract } from "@get-bb/plugin-sdk";
 import { z } from "zod";
+import { idSchema } from "../shared/contract";
 
-const ULID_PATTERN = /^[0-7][0-9A-HJKMNP-TV-Z]{25}$/;
-
-const idSchema = z.string().regex(ULID_PATTERN, "must be a ULID");
 const threadIdSchema = z.string().startsWith("thr_");
 
 export const delegationRpcContract = defineRpcContract({

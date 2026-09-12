@@ -22,7 +22,7 @@ import {
   type ShellLoadPhase,
 } from "@/lib/shell";
 import { getShellPreferenceStore } from "@/lib/shell/shell-preference-store";
-import { settingsSectionHref } from "@/screens/shell/hrefs";
+import { firstParam, settingsSectionHref } from "@/screens/shell/hrefs";
 import { useTheme } from "@/theme";
 import { Button, EmptyStatePanel, Spinner, Text } from "@/ui";
 import { Linking } from "react-native";
@@ -31,10 +31,6 @@ import { useShellBridge } from "./useShellBridge";
 const APP_VERSION = String(Constants.expoConfig?.version ?? "0.0.0");
 
 const IDLE_SESSION = { status: "idle" } as const;
-
-function firstParam(value: string | string[] | undefined): string | undefined {
-  return Array.isArray(value) ? value[0] : value;
-}
 
 export function ProfileWebViewScreen() {
   const { tokens } = useTheme();
@@ -226,7 +222,6 @@ export function ProfileWebViewScreen() {
                 Pair again
               </Button>
             ) : null}
-            {}
             <Button
               variant="ghost"
               testID="shell-device-settings"

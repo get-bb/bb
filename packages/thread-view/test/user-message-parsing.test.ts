@@ -2,9 +2,9 @@ import { describe, expect, it } from "vitest";
 import { turnScope, type PromptTextMention } from "@bb/domain";
 import {
   createTimelineEventFactory,
+  decodeThreadEventRow,
   type TimelineEventFactory,
 } from "./timeline-test-harness.js";
-import { decodeThreadEventRow } from "../src/event-decode.js";
 import type { BuildEventProjectionMessagesOptions } from "../src/event-projection-types.js";
 import type { AcceptedClientRequest } from "../src/accepted-client-request-context.js";
 import {

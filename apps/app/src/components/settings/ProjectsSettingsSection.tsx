@@ -1,23 +1,6 @@
-import { useEffect, useMemo, useState, type CSSProperties } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
-import {
-  closestCenter,
-  DndContext,
-  KeyboardSensor,
-  PointerSensor,
-  useSensor,
-  useSensors,
-  type DragEndEvent,
-  type Modifier,
-} from "@dnd-kit/core";
-import {
-  arrayMove,
-  SortableContext,
-  sortableKeyboardCoordinates,
-  useSortable,
-  verticalListSortingStrategy,
-} from "@dnd-kit/sortable";
-import { CSS } from "@dnd-kit/utilities";
+import { arrayMove } from "@dnd-kit/sortable";
 import type { Host } from "@bb/domain";
 import type { ProjectWithThreadsResponse } from "@bb/server-contract";
 import { Button } from "@bb/shared-ui/button";
@@ -40,7 +23,6 @@ import {
 import {
   SettingsBadge,
   SettingsRow,
-  SettingsRowList,
   SettingsSection,
 } from "@/components/ui/settings-section";
 import {
@@ -52,16 +34,13 @@ import { selectHosts, useHosts } from "@/hooks/queries/host-queries";
 import { useSidebarNavigation } from "@/hooks/queries/sidebar-navigation-query";
 import { useQuickCreateProject } from "@/hooks/useQuickCreateProject";
 import { getSettingsProjectRoutePath } from "@/lib/route-paths";
+import {
+  SortableSettingsRowList,
+  useSortableSettingsRow,
+} from "./sortable-settings-rows";
 
 const PROJECTS_SECTION_DESCRIPTION =
   "Repositories bb can work in. Drag to change the order projects appear in the sidebar.";
-
-const restrictDragToVerticalAxis: Modifier = ({ transform }) => ({
-  ...transform,
-  x: 0,
-});
-
-const projectDragModifiers: Modifier[] = [restrictDragToVerticalAxis];
 
 export function formatGitRemote(url: string): string {
   const sshMatch = /^[^@]+@([^:]+):(.+?)(?:\.git)?$/.exec(url);
@@ -149,19 +128,11 @@ function SortableProjectRow({
   onRename,
   onDelete,
 }: SortableProjectRowProps) {
-  const {
-    attributes,
-    isDragging,
-    listeners,
-    setActivatorNodeRef,
-    setNodeRef,
-    transform,
-    transition,
-  } = useSortable({ id: project.id, disabled: dragDisabled });
-  const style = useMemo<CSSProperties>(
-    () => ({ transform: CSS.Translate.toString(transform), transition }),
-    [transform, transition],
-  );
+  const { setNodeRef, style, isDragging, handle } = useSortableSettingsRow({
+    id: project.id,
+    disabled: dragDisabled,
+    label: project.name,
+  });
   const detailPath = getSettingsProjectRoutePath(project.id);
   const remoteLabel =
     project.gitRemoteUrl === null
@@ -180,22 +151,7 @@ function SortableProjectRow({
         isDragging && "relative z-10 rounded-md bg-card opacity-90 shadow-lift",
       )}
     >
-      <Button
-        ref={setActivatorNodeRef}
-        type="button"
-        variant="ghost"
-        size="icon"
-        className={cn(
-          "-ml-2 h-8 w-7 shrink-0 touch-none text-muted-foreground",
-          !dragDisabled && "cursor-grab active:cursor-grabbing",
-        )}
-        disabled={dragDisabled}
-        aria-label={`Reorder ${project.name}`}
-        {...attributes}
-        {...listeners}
-      >
-        <Icon name="DragDropVertical" aria-hidden="true" />
-      </Button>
+      {handle}
       <div
         data-project-row
         className="group -mx-2 flex min-w-0 flex-1 items-start gap-2 rounded-md px-2 py-1.5 transition-colors hover:bg-state-hover focus-within:bg-state-hover"
@@ -297,32 +253,15 @@ export function ProjectsSettingsSection() {
     [hosts],
   );
 
-  const sensors = useSensors(
-    useSensor(PointerSensor, { activationConstraint: { distance: 4 } }),
-    useSensor(KeyboardSensor, {
-      coordinateGetter: sortableKeyboardCoordinates,
-    }),
-  );
   const dragDisabled = reorderProject.isPending || projectIds.length < 2;
 
-  const handleDragEnd = (event: DragEndEvent): void => {
-    if (
-      dragDisabled ||
-      typeof event.active.id !== "string" ||
-      typeof event.over?.id !== "string"
-    ) {
-      return;
-    }
-    const request = buildProjectReorderRequest(
-      projectIds,
-      event.active.id,
-      event.over.id,
-    );
+  const handleReorder = (activeId: string, overId: string): void => {
+    const request = buildProjectReorderRequest(projectIds, activeId, overId);
     if (request === null) return;
     setOptimisticOrder(request.order);
     reorderProject.mutate(
       {
-        id: event.active.id,
+        id: activeId,
         previousProjectId: request.previousProjectId,
         nextProjectId: request.nextProjectId,
       },
@@ -361,39 +300,31 @@ export function ProjectsSettingsSection() {
             repository.
           </p>
         ) : (
-          <DndContext
-            sensors={sensors}
-            collisionDetection={closestCenter}
-            modifiers={projectDragModifiers}
-            onDragEnd={handleDragEnd}
+          <SortableSettingsRowList
+            ids={projectIds}
+            disabled={dragDisabled}
+            onReorder={handleReorder}
           >
-            <SortableContext
-              items={projectIds}
-              strategy={verticalListSortingStrategy}
-            >
-              <SettingsRowList>
-                {projects.map((project) => (
-                  <SortableProjectRow
-                    key={project.id}
-                    project={project}
-                    summary={summarizeMachines(project, hostById)}
-                    dragDisabled={dragDisabled}
-                    onRename={() => {
-                      updateProject.reset();
-                      setRenameTarget({
-                        id: project.id,
-                        currentName: project.name,
-                      });
-                    }}
-                    onDelete={() => {
-                      deleteProject.reset();
-                      setDeleteTarget({ id: project.id, name: project.name });
-                    }}
-                  />
-                ))}
-              </SettingsRowList>
-            </SortableContext>
-          </DndContext>
+            {projects.map((project) => (
+              <SortableProjectRow
+                key={project.id}
+                project={project}
+                summary={summarizeMachines(project, hostById)}
+                dragDisabled={dragDisabled}
+                onRename={() => {
+                  updateProject.reset();
+                  setRenameTarget({
+                    id: project.id,
+                    currentName: project.name,
+                  });
+                }}
+                onDelete={() => {
+                  deleteProject.reset();
+                  setDeleteTarget({ id: project.id, name: project.name });
+                }}
+              />
+            ))}
+          </SortableSettingsRowList>
         )}
       </SettingsSection>
 

@@ -30,7 +30,6 @@ export interface ProfilesContextValue {
   status: ProfileStoreStatus;
   profiles: readonly ServerProfile[];
   activeProfile: ServerProfile | null;
-  loadError: string | null;
   connection: ActiveProfileConnection | null;
   addProfile(input: NewServerProfile): Promise<ServerProfile>;
   updateProfile(id: string, patch: ServerProfilePatch): Promise<ServerProfile>;
@@ -79,7 +78,6 @@ export function ProfilesProvider({ children }: { children: ReactNode }) {
       status: storeState.status,
       profiles: storeState.profiles,
       activeProfile,
-      loadError: storeState.loadError,
       connection,
       addProfile: (input) => store.addProfile(input),
       updateProfile: (id, patch) => store.updateProfile(id, patch),

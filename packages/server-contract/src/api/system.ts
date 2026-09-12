@@ -141,7 +141,6 @@ export const systemAiServiceSchema = z.object({
   kinds: z.array(z.enum(["inference", "voice"])),
   pluginId: z.string().min(1),
 });
-export type SystemAiService = z.infer<typeof systemAiServiceSchema>;
 
 export const systemAiServicesSchema = z.object({
   inference: z.string().min(1),
@@ -149,7 +148,6 @@ export const systemAiServicesSchema = z.object({
   transcription: z.string().min(1),
   services: z.array(systemAiServiceSchema),
 });
-export type SystemAiServices = z.infer<typeof systemAiServicesSchema>;
 
 export const serverAccessStatusSchema = z.object({
   providers: z.array(

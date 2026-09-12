@@ -129,35 +129,24 @@ export function readPluginThemeCodeTheme(
   paths: PluginThemeCodeThemePaths,
 ): DeclaredCodeTheme | null {
   const declared: DeclaredCodeTheme = {};
-  if (paths.dark !== undefined) {
-    const file = readThemeJsonFile(paths.dark);
-    if (file !== null) {
-      declared.dark = {
-        name: formatRegisteredCodeThemeName(sourceId, "dark"),
-        file,
-      };
+  for (const side of ["dark", "light"] as const) {
+    const path = paths[side];
+    const declaredValue = declaration?.[side];
+    if (path !== undefined) {
+      const file = readThemeJsonFile(path);
+      if (file !== null) {
+        declared[side] = {
+          name: formatRegisteredCodeThemeName(sourceId, side),
+          file,
+        };
+      }
+    } else if (
+      declaredValue !== undefined &&
+      !isCodeThemeFilePath(declaredValue)
+    ) {
+      const name = codeThemeNameSchema.safeParse(declaredValue);
+      if (name.success) declared[side] = { name: name.data };
     }
-  } else if (
-    declaration?.dark !== undefined &&
-    !isCodeThemeFilePath(declaration.dark)
-  ) {
-    const name = codeThemeNameSchema.safeParse(declaration.dark);
-    if (name.success) declared.dark = { name: name.data };
-  }
-  if (paths.light !== undefined) {
-    const file = readThemeJsonFile(paths.light);
-    if (file !== null) {
-      declared.light = {
-        name: formatRegisteredCodeThemeName(sourceId, "light"),
-        file,
-      };
-    }
-  } else if (
-    declaration?.light !== undefined &&
-    !isCodeThemeFilePath(declaration.light)
-  ) {
-    const name = codeThemeNameSchema.safeParse(declaration.light);
-    if (name.success) declared.light = { name: name.data };
   }
   return declared.dark || declared.light ? declared : null;
 }

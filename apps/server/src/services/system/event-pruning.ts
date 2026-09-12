@@ -9,7 +9,7 @@ import {
   pruneThreadEventsBeforeSequence,
 } from "@bb/db";
 import type { ThreadEventType } from "@bb/domain";
-import { roundDurationMs } from "../lib/duration.js";
+import { roundDurationMs } from "@bb/process-utils";
 import type { AppDeps } from "../../types.js";
 
 type ThreadEventPruningMode = "active" | "archived" | "idle";

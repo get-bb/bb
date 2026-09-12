@@ -50,7 +50,7 @@ interface ShowcaseHeroCarouselProps {
   scenes: ShowcaseScenes;
   copy: ShowcaseHeroCopy;
   composer: ShowcaseHeroComposerConfig;
-  rail?: readonly IconName[];
+  rail: readonly IconName[];
   initialIndex?: number;
   autoplay?: boolean;
   composerDisabled?: boolean;
@@ -208,7 +208,6 @@ export function ShowcaseHeroCarousel({
         {copy.description}
       </p>
 
-      {}
       <div className="@container relative mt-5 grid w-full max-w-[58rem] grid-cols-1 grid-rows-1">
         <div
           className={cn(

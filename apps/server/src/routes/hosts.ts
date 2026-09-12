@@ -261,6 +261,7 @@ export function registerHostRoutes(
       handleHostRemoved(deps, { hostId, sessionId });
     }
     updateHost(deps.db, deps.hub, hostId, { destroyedAt: Date.now() });
+    deps.lifecycleDedupers.providerModelCatalogs.forgetHost(deps, hostId);
     if (host.connectMachineId !== null) {
       await revokeConnectMachineCredential(
         deps,
@@ -383,6 +384,10 @@ export function registerHostRoutes(
         hostId,
         providerId: payload.provider,
       });
+      deps.lifecycleDedupers.providerModelCatalogs.clearFailure(
+        hostId,
+        payload.provider,
+      );
     }
     return new Response(providerCliInstallEventsToNdjson(result.events), {
       headers: {

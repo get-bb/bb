@@ -178,7 +178,6 @@ export interface RuntimeSession {
     timeoutMs: number,
     signal: AbortSignal,
   ): Promise<RunOutput>;
-  stop(): Promise<void>;
   close(): Promise<void>;
 }
 
@@ -316,7 +315,7 @@ export async function createRuntime(args: {
       return result;
     };
     await run("await browser.listPages()", 30_000, startup);
-    return { run, stop: close, close };
+    return { run, close };
   } catch (error) {
     await close();
     throw error;

@@ -771,7 +771,6 @@ export function InFlightStates() {
           />
         </ResponsivePromptStage>
       </StoryRow>
-      {}
     </StoryCard>
   );
 }

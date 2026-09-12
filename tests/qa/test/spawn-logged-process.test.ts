@@ -50,6 +50,7 @@ interface ProcessKillError extends Error {
 interface SpawnMockState {
   children: ChildProcess[];
   execFileInvocations: ExecFileInvocation[];
+  openFilePidsStdout: string;
   processScanErrorCode: ProcessScanErrorCode | null;
   invocations: SpawnInvocation[];
   tempDirs: string[];
@@ -62,6 +63,7 @@ interface StandaloneStateFixture {
   instanceId?: string | null;
   parentPid?: number | null;
   paths?: {
+    daemonRestartPidPath?: string | null;
     tmpRoot?: string | null;
   };
   server?: {
@@ -79,6 +81,7 @@ function createSpawnMockState(): SpawnMockState {
   return {
     children: [],
     execFileInvocations: [],
+    openFilePidsStdout: "",
     processScanErrorCode: null,
     invocations: [],
     tempDirs: [],
@@ -143,7 +146,8 @@ vi.mock("node:child_process", async (importOriginal) => {
       return child;
     }
 
-    queueMicrotask(() => callbackArg?.(null, "", ""));
+    const stdout = command === "lsof" ? spawnMockState.openFilePidsStdout : "";
+    queueMicrotask(() => callbackArg?.(null, stdout, ""));
     return child;
   }
 
@@ -210,6 +214,7 @@ afterEach(() => {
   }
   spawnMockState.children.length = 0;
   spawnMockState.execFileInvocations.length = 0;
+  spawnMockState.openFilePidsStdout = "";
   spawnMockState.processScanErrorCode = null;
   spawnMockState.invocations.length = 0;
   vi.unstubAllEnvs();
@@ -283,25 +288,6 @@ describe("spawnLoggedProcess", () => {
     expect(
       spawnMockState.invocations[0]?.options.env?.BB_EXTERNAL_URL,
     ).toBeUndefined();
-  });
-
-  it("uses the public tunnel URL as app and external URL when provided", async () => {
-    vi.stubGlobal(
-      "fetch",
-      vi.fn(async () => new Response(null, { status: 200 })),
-    );
-
-    await startQaServer({
-      dataDir: "/tmp/standalone-server-data",
-      logPath: "/tmp/standalone-server.log",
-      port: 4567,
-      publicUrl: "https://standalone-public.example.test",
-    });
-
-    expect(spawnMockState.invocations[0]?.options.env).toMatchObject({
-      BB_APP_URL: "https://standalone-public.example.test",
-      BB_EXTERNAL_URL: "https://standalone-public.example.test",
-    });
   });
 
   it("requests a local host enroll key for standalone host bootstrap", async () => {
@@ -431,5 +417,46 @@ describe("cleanupStandaloneOrphans", () => {
       removedRoots: [tmpRoot],
     });
     expect(existsSync(tmpRoot)).toBe(false);
+  });
+
+  it("kills the restarted daemon and open file holders of a stale standalone root", async () => {
+    const tmpDir = useIsolatedStandaloneTmpDir();
+    const restartPidPath = path.join(tmpDir, "daemon-restart.pid");
+    writeFileSync(restartPidPath, "3333\n", "utf8");
+    const tmpRoot = createStandaloneRoot({
+      name: "bb-standalone-restarted-stale",
+      state: {
+        daemon: { pid: 1111 },
+        parentPid: 4242,
+        paths: { daemonRestartPidPath: restartPidPath },
+        server: { pid: 2222 },
+      },
+      tmpDir,
+    });
+    spawnMockState.openFilePidsStdout = "4444\nnot-a-pid\n0\n";
+    const runningPids = new Set([1111, 2222, 3333, 4444]);
+    vi.spyOn(process, "kill").mockImplementation((pid, signal) => {
+      if (pid === 4242 && signal === 0) {
+        throw createProcessKillError("ESRCH");
+      }
+      if (signal === 0) {
+        if (runningPids.has(pid)) {
+          return true;
+        }
+        throw createProcessKillError("ESRCH");
+      }
+      runningPids.delete(pid);
+      return true;
+    });
+
+    await expect(cleanupStandaloneOrphans()).resolves.toMatchObject({
+      killedPids: [1111, 2222, 3333, 4444],
+      removedRoots: [tmpRoot],
+    });
+    expect(spawnMockState.execFileInvocations).toContainEqual({
+      args: ["-t", "+D", tmpRoot],
+      command: "lsof",
+    });
+    expect(runningPids.size).toBe(0);
   });
 });

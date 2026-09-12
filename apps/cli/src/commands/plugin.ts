@@ -476,12 +476,20 @@ async function confirmPluginAction(
   }
 }
 
+function outputMutationJson(
+  opts: JsonOutputOptions,
+  result: { ok: boolean },
+): boolean {
+  if (!outputJson(opts, result)) return false;
+  if (!result.ok) process.exit(1);
+  return true;
+}
+
 function formatMs(ms: number): string {
   return ms >= 1000 ? `${(ms / 1000).toFixed(1)}s` : `${Math.round(ms)}ms`;
 }
 
-function formatAbsoluteDate(value: string | number | undefined): string {
-  if (value === undefined) return "unknown date";
+function formatAbsoluteDate(value: number): string {
   const date = new Date(value);
   return Number.isFinite(date.getTime()) ? date.toISOString() : String(value);
 }
@@ -1002,26 +1010,11 @@ export function registerPluginCommands(
                 "They can read all local BB data, including other plugins' secrets.",
             );
           }
-          if (!opts.yes) {
-            if (!process.stdin.isTTY) {
-              console.error(
-                "Refusing to install without confirmation — re-run with --yes.",
-              );
-              process.exit(1);
-            }
-            const rl = createInterface({
-              input: process.stdin,
-              output: process.stdout,
-            });
-            const answer = (await rl.question("Install? [y/N] "))
-              .trim()
-              .toLowerCase();
-            rl.close();
-            if (answer !== "y" && answer !== "yes") {
-              console.log("Aborted.");
-              process.exit(1);
-            }
-          }
+          await confirmPluginAction(
+            "Install?",
+            "Refusing to install without confirmation — re-run with --yes.",
+            opts.yes === true,
+          );
           const plugin =
             intent.kind === "source"
               ? await createCliBbSdk(getUrl()).plugins.install({
@@ -1512,11 +1505,7 @@ export function registerPluginCommands(
           !response.plugins?.some((entry) => entry.id === id)
             ? { ok: false as const, error: `unknown plugin "${id}"` }
             : response;
-        if (opts.json) {
-          outputJson(opts, result);
-          if (!result.ok) process.exit(1);
-          return;
-        }
+        if (outputMutationJson(opts, result)) return;
         const reloaded =
           id === undefined
             ? (result.plugins ?? [])
@@ -1545,11 +1534,7 @@ export function registerPluginCommands(
               "POST",
             ),
           );
-          if (opts.json) {
-            outputJson(opts, result);
-            if (!result.ok) process.exit(1);
-            return;
-          }
+          if (outputMutationJson(opts, result)) return;
           if (!result.ok || !result.plugin) exitWithError(result);
           printPlugin(result.plugin);
         }),
@@ -1599,11 +1584,7 @@ export function registerPluginCommands(
             const result = pluginSettingsResultSchema.parse(
               await callPlugins(getUrl(), settingsPath, "GET"),
             );
-            if (opts.json) {
-              outputJson(opts, result);
-              if (!result.ok) process.exit(1);
-              return;
-            }
+            if (outputMutationJson(opts, result)) return;
             if (!result.ok) exitWithError(result);
             printSettings(result);
             return;
@@ -1653,11 +1634,7 @@ export function registerPluginCommands(
               values: { [key]: parsedValue },
             }),
           );
-          if (opts.json) {
-            outputJson(opts, result);
-            if (!result.ok) process.exit(1);
-            return;
-          }
+          if (outputMutationJson(opts, result)) return;
           if (!result.ok) exitWithError(result);
           printSettings(result);
         },
@@ -1682,11 +1659,7 @@ export function registerPluginCommands(
               opts.rotate ? { rotate: true } : {},
             ),
           );
-          if (opts.json) {
-            outputJson(opts, result);
-            if (!result.ok) process.exit(1);
-            return;
-          }
+          if (outputMutationJson(opts, result)) return;
           if (!result.ok || !result.token) exitWithError(result);
           console.log(result.token);
         },
@@ -1754,11 +1727,7 @@ export function registerPluginCommands(
         const result = pluginMutationResponseSchema.parse(
           await callPlugins(getUrl(), `/${encodeURIComponent(id)}`, "DELETE"),
         );
-        if (opts.json) {
-          outputJson(opts, result);
-          if (!result.ok) process.exit(1);
-          return;
-        }
+        if (outputMutationJson(opts, result)) return;
         if (!result.ok) exitWithError(result);
         console.log(`Removed ${id}.`);
       }),

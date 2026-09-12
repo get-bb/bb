@@ -5,11 +5,11 @@ import { describe, expect, it } from "vitest";
 import { createThread } from "@bb/db";
 import { encodeClientTurnRequestIdNumber, type JsonObject } from "@bb/domain";
 import {
+  buildExecutionOptions,
   buildThreadStartCommand,
   prepareTurnSubmitCommandPayload,
 } from "../../src/services/threads/thread-commands.js";
 import { createThreadFromRequest } from "../../src/services/threads/thread-create.js";
-import { resolveExecutionOptions } from "../../src/services/threads/thread-runtime-config.js";
 import { waitForQueuedCommand } from "../helpers/commands.js";
 import { installDefaultEnvironmentProviders } from "../helpers/environment-provider.js";
 import { textInput } from "../helpers/prompt-input.js";
@@ -156,13 +156,11 @@ describe("thread plugin metadata in agent configuration", () => {
         originPluginId: "issue-launcher",
         pluginMetadata: { pluginId: "issue-launcher", metadata: seed },
       });
-      const execution = await resolveExecutionOptions(server.deps, {
-        threadId: thread.id,
-        requestedExecution: {
-          model: "gpt-5",
-          source: "client/turn/requested",
-        },
-      });
+      const execution = await buildExecutionOptions(
+        server.deps,
+        { model: "gpt-5" },
+        { threadId: thread.id },
+      );
 
       const startCommand = await buildThreadStartCommand(server.deps, {
         environment,

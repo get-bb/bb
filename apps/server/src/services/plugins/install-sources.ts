@@ -304,6 +304,10 @@ export function npmInstallPrefix(
   return join(dataDir, "plugins", "npm", ...`${name}@${version}`.split("/"));
 }
 
+export function npmPackageRoot(prefix: string, packageName: string): string {
+  return join(prefix, "node_modules", ...packageName.split("/"));
+}
+
 function resolveInside(
   root: string,
   segments: string[],

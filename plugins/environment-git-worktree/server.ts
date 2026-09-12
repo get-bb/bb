@@ -60,7 +60,6 @@ export default async function worktreePlugin(bb: BbPluginApi): Promise<void> {
               : context.suggestedBranchName,
             baseBranch: context.inputs.branch,
             branchMode: context.rebuild ? "reuse-existing" : "reset",
-            timeoutMs: CREATE_TIMEOUT_MS,
           },
           { hostId, signal: context.signal, timeoutMs: CREATE_TIMEOUT_MS },
         );
@@ -103,7 +102,6 @@ export default async function worktreePlugin(bb: BbPluginApi): Promise<void> {
             operationId,
             pathKey: context.pathKey,
             path: context.path,
-            timeoutMs: REMOVE_TIMEOUT_MS,
           },
           {
             hostId: context.hostId,

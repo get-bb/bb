@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   BROWSE_ARCHETYPES,
-  archetypePrompt,
+  briefPrompt,
 } from "@/components/plugin/browse-hero/browse-hero-archetypes";
 import { getCreateExamples } from "./create-via-prompt-examples";
 
@@ -13,7 +13,7 @@ describe("getCreateExamples", () => {
       BROWSE_ARCHETYPES.map((archetype) => archetype.title),
     );
     for (const [index, example] of examples.entries()) {
-      expect(example.prompt).toBe(archetypePrompt(BROWSE_ARCHETYPES[index]!));
+      expect(example.prompt).toBe(briefPrompt(BROWSE_ARCHETYPES[index]!));
     }
   });
 });

@@ -1,4 +1,4 @@
-import { withEnvironmentPathAdmission } from "../environments/path-admission.js";
+import { assertEnvironmentPathAvailable } from "../environments/path-admission.js";
 import type { EnvironmentRow } from "@bb/db";
 import type { Thread } from "@bb/domain";
 import type { DbConnection } from "@bb/db";
@@ -62,11 +62,11 @@ export async function requireThreadCommandEnvironment(
     if (goneDetails && environment.environmentProviderId === null) {
       throwThreadEnvironmentUnavailable(goneDetails);
     }
-    return withEnvironmentPathAdmission(
-      deps,
-      { ...environment, threadId: args.thread.id },
-      () => environment,
-    );
+    assertEnvironmentPathAvailable(deps, {
+      ...environment,
+      threadId: args.thread.id,
+    });
+    return environment;
   }
 
   throwThreadEnvironmentUnavailable(

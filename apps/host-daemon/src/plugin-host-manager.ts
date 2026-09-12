@@ -19,6 +19,7 @@ import {
 } from "@bb/process-utils";
 import type { HostDaemonLogger } from "./logger.js";
 import { ensureCachedPluginHostArtifact } from "./plugin-host-artifact-cache.js";
+import { runInSerialLane } from "./serial-lane.js";
 
 type PluginHostCallCommand = Extract<
   HostDaemonOnlineRpcCommand,
@@ -50,7 +51,6 @@ interface WorkerState {
   readyAtMs: number | null;
   child: ChildProcess;
   closed: Promise<void>;
-  dataDir: string;
   tempDir: string;
   pending: Map<string, PendingCall>;
   ready: Promise<void>;
@@ -500,7 +500,6 @@ export class PluginHostManager {
       readyAtMs: null,
       child,
       closed,
-      dataDir,
       tempDir,
       pending: new Map(),
       ready,
@@ -1143,20 +1142,7 @@ export class PluginHostManager {
     pluginId: string,
     work: () => Promise<T>,
   ): Promise<T> {
-    const previous =
-      this.workerMutationTails.get(pluginId) ?? Promise.resolve();
-    const next = previous.then(work, work);
-    const tail = next.then(
-      () => undefined,
-      () => undefined,
-    );
-    this.workerMutationTails.set(pluginId, tail);
-    void tail.then(() => {
-      if (this.workerMutationTails.get(pluginId) === tail) {
-        this.workerMutationTails.delete(pluginId);
-      }
-    });
-    return next;
+    return runInSerialLane(this.workerMutationTails, pluginId, work);
   }
 
   private retireGeneration(pluginId: string, generation: string): void {

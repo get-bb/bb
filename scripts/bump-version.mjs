@@ -1,5 +1,8 @@
-import { createUpdatedPackageContent } from "./lib/package-version.mjs";
-import { randomUUID } from "node:crypto";
+import {
+  createUpdatedPackageContent,
+  parsePackageJsonWithVersion,
+  writeFilesAtomically,
+} from "./lib/package-version.mjs";
 import { readFile, rename, unlink, writeFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -26,30 +29,12 @@ const defaultFileSystem = {
   writeFile,
 };
 
-function parsePackageJson({ content, packagePath }) {
-  const packageJson = JSON.parse(content);
-
-  if (
-    typeof packageJson !== "object" ||
-    packageJson === null ||
-    Array.isArray(packageJson)
-  ) {
-    throw new Error(`Invalid package JSON object in ${packagePath}`);
-  }
-
-  if (typeof packageJson.version !== "string") {
-    throw new Error(`Missing string version field in ${packagePath}`);
-  }
-
-  return packageJson;
-}
-
 async function readPackageTarget({ fileSystem, repoRoot, target }) {
   const absolutePath = resolve(repoRoot, target.path);
   const content = await fileSystem.readFile(absolutePath, "utf8");
-  const packageJson = parsePackageJson({
+  const packageJson = parsePackageJsonWithVersion({
     content,
-    packagePath: target.path,
+    path: target.path,
   });
 
   return {
@@ -58,6 +43,14 @@ async function readPackageTarget({ fileSystem, repoRoot, target }) {
     packageJson,
     target,
   };
+}
+
+async function readPackageTargets({ fileSystem, repoRoot }) {
+  return Promise.all(
+    packageTargets.map((target) =>
+      readPackageTarget({ fileSystem, repoRoot, target }),
+    ),
+  );
 }
 
 function findMaxCurrentVersion(packageReads) {
@@ -79,39 +72,13 @@ function createPackageVersionSummary(packageReads) {
     .join(" ");
 }
 
-async function writePackageTargetsAtomically({ fileSystem, updates }) {
-  const preparedUpdates = [];
-  const renamedUpdates = [];
-
-  try {
-    for (const update of updates) {
-      const temporaryPath = resolve(
-        dirname(update.absolutePath),
-        `.tmp-${process.pid}-${randomUUID()}-${update.target.label.replaceAll(
-          "/",
-          "-",
-        )}.json`,
-      );
-
-      await fileSystem.writeFile(temporaryPath, update.nextContent);
-      preparedUpdates.push({ ...update, temporaryPath });
-    }
-
-    for (const update of preparedUpdates) {
-      await fileSystem.rename(update.temporaryPath, update.absolutePath);
-      renamedUpdates.push(update);
-    }
-  } catch (error) {
-    for (const update of [...renamedUpdates].reverse()) {
-      await fileSystem.writeFile(update.absolutePath, update.content);
-    }
-
-    for (const update of preparedUpdates) {
-      await fileSystem.unlink(update.temporaryPath).catch(() => {});
-    }
-
-    throw error;
-  }
+export async function readMaxTargetVersion({
+  repoRoot,
+  fileSystem = defaultFileSystem,
+}) {
+  return findMaxCurrentVersion(
+    await readPackageTargets({ fileSystem, repoRoot }),
+  );
 }
 
 export async function bumpVersion(options) {
@@ -124,11 +91,7 @@ export async function bumpVersion(options) {
     throw new Error(USAGE);
   }
 
-  const packageReads = await Promise.all(
-    packageTargets.map((target) =>
-      readPackageTarget({ fileSystem, repoRoot, target }),
-    ),
-  );
+  const packageReads = await readPackageTargets({ fileSystem, repoRoot });
   const maxCurrentVersion = findMaxCurrentVersion(packageReads);
   const newVersion = resolveVersionArgument({
     argument: args[0],
@@ -151,7 +114,12 @@ export async function bumpVersion(options) {
     }),
   }));
 
-  await writePackageTargetsAtomically({ fileSystem, updates });
+  await writeFilesAtomically({
+    fileSystem,
+    temporarySuffix: (update) =>
+      `${update.target.label.replaceAll("/", "-")}.json`,
+    updates,
+  });
   log(`Bumped: bb-app + @bb/desktop → ${newVersion}`);
 }
 

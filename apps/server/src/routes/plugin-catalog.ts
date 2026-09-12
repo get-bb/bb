@@ -9,10 +9,8 @@ import type {
   PluginCatalogEntrySelector,
   PluginCatalogService,
 } from "../services/plugin-catalog/plugin-catalog-service.js";
-
-function message(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
-}
+import { errorMessage } from "../services/lib/error-log-fields.js";
+import { hashedAssetCacheControl } from "./plugin-image-response.js";
 
 function entrySelector(
   entryId: string | undefined,
@@ -50,10 +48,10 @@ export function registerPluginCatalogRoutes(
     }
     return context.body(new Uint8Array(icon.bytes), 200, {
       "content-type": icon.contentType,
-      "cache-control":
-        context.req.query("h") === icon.hash
-          ? "public, max-age=31536000, immutable"
-          : "no-store",
+      "cache-control": hashedAssetCacheControl(
+        context.req.query("h"),
+        icon.hash,
+      ),
       "content-security-policy":
         "default-src 'none'; style-src 'unsafe-inline'; sandbox",
       "x-content-type-options": "nosniff",
@@ -74,7 +72,7 @@ export function registerPluginCatalogRoutes(
     try {
       return context.json({ plan: await catalog.installPlan(selector) });
     } catch (error) {
-      return context.json({ error: message(error) }, 422);
+      return context.json({ error: errorMessage(error) }, 422);
     }
   });
 
@@ -96,7 +94,7 @@ export function registerPluginCatalogRoutes(
         plugin: await catalog.install(body.data),
       });
     } catch (error) {
-      return context.json({ error: message(error) }, 422);
+      return context.json({ error: errorMessage(error) }, 422);
     }
   });
 
@@ -116,7 +114,7 @@ export function registerPluginCatalogRoutes(
         marketplace: await catalog.addMarketplace(body.data.source),
       });
     } catch (error) {
-      return context.json({ error: message(error) }, 422);
+      return context.json({ error: errorMessage(error) }, 422);
     }
   });
 
@@ -131,7 +129,7 @@ export function registerPluginCatalogRoutes(
         results: await catalog.refreshMarketplaces(body.data),
       });
     } catch (error) {
-      return context.json({ error: message(error) }, 422);
+      return context.json({ error: errorMessage(error) }, 422);
     }
   });
 
@@ -152,7 +150,7 @@ export function registerPluginCatalogRoutes(
         convertedPluginIds: removed.convertedPluginIds,
       });
     } catch (error) {
-      return context.json({ error: message(error) }, 422);
+      return context.json({ error: errorMessage(error) }, 422);
     }
   });
 }

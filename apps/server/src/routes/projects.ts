@@ -569,10 +569,8 @@ export function registerProjectRoutes(app: Hono, deps: AppDeps): void {
 
     const target = resolveProjectWorkspaceTarget(deps, {
       projectId,
-      ...(query.environmentId !== undefined
-        ? { environmentId: query.environmentId }
-        : {}),
-      ...(query.hostId !== undefined ? { hostId: query.hostId } : {}),
+      environmentId: query.environmentId,
+      hostId: query.hostId,
     });
     const result = await callHostRetryableOnlineRpc(deps, {
       hostId: target.hostId,
@@ -595,10 +593,8 @@ export function registerProjectRoutes(app: Hono, deps: AppDeps): void {
     requirePublicProject(deps.db, projectId);
     const target = resolveProjectWorkspaceTarget(deps, {
       projectId,
-      ...(query.environmentId !== undefined
-        ? { environmentId: query.environmentId }
-        : {}),
-      ...(query.hostId !== undefined ? { hostId: query.hostId } : {}),
+      environmentId: query.environmentId,
+      hostId: query.hostId,
     });
     const filePath = parseSafeRelativeRoutePath(query.path);
 
@@ -626,10 +622,8 @@ export function registerProjectRoutes(app: Hono, deps: AppDeps): void {
 
     const target = resolveProjectWorkspaceTarget(deps, {
       projectId,
-      ...(query.environmentId !== undefined
-        ? { environmentId: query.environmentId }
-        : {}),
-      ...(query.hostId !== undefined ? { hostId: query.hostId } : {}),
+      environmentId: query.environmentId,
+      hostId: query.hostId,
     });
     const inclusion = parsePathKindInclusion({
       includeFiles: query.includeFiles,
@@ -664,10 +658,8 @@ export function registerProjectRoutes(app: Hono, deps: AppDeps): void {
 
     const workspace = resolveProjectCommandWorkspace(deps, {
       projectId,
-      ...(query.environmentId !== undefined
-        ? { environmentId: query.environmentId }
-        : {}),
-      ...(query.hostId !== undefined ? { hostId: query.hostId } : {}),
+      environmentId: query.environmentId,
+      hostId: query.hostId,
     });
     const listProviderCommands = async () => {
       if (!providerHasNativeRootSurface(registration)) {
@@ -708,30 +700,31 @@ export function registerProjectRoutes(app: Hono, deps: AppDeps): void {
     );
   });
 
-  get(routes.skills, async (context, query) => {
-    const projectId = context.req.param("id");
+  const requireProjectSkillWorkspace = (
+    projectId: string,
+    environmentId: string | null,
+  ) => {
     requirePublicProject(deps.db, projectId);
-
-    const workspace = resolveProjectCommandWorkspace(deps, {
+    return resolveProjectCommandWorkspace(deps, {
       projectId,
-      ...(query.environmentId !== null
-        ? { environmentId: query.environmentId }
-        : {}),
+      environmentId: environmentId ?? undefined,
     });
+  };
+
+  get(routes.skills, async (context, query) => {
+    const workspace = requireProjectSkillWorkspace(
+      context.req.param("id"),
+      query.environmentId,
+    );
     const skills = await listProjectSkills(deps, { workspace });
     return context.json({ skills });
   });
 
   del(routes.deleteSkill, async (context, payload) => {
-    const projectId = context.req.param("id");
-    requirePublicProject(deps.db, projectId);
-
-    const workspace = resolveProjectCommandWorkspace(deps, {
-      projectId,
-      ...(payload.environmentId !== null
-        ? { environmentId: payload.environmentId }
-        : {}),
-    });
+    const workspace = requireProjectSkillWorkspace(
+      context.req.param("id"),
+      payload.environmentId,
+    );
     const deletedPath = await deleteProjectSkill(deps, {
       skillId: payload.skillId,
       workspace,
@@ -740,15 +733,10 @@ export function registerProjectRoutes(app: Hono, deps: AppDeps): void {
   });
 
   get(routes.skillContent, async (context, query) => {
-    const projectId = context.req.param("id");
-    requirePublicProject(deps.db, projectId);
-
-    const workspace = resolveProjectCommandWorkspace(deps, {
-      projectId,
-      ...(query.environmentId !== null
-        ? { environmentId: query.environmentId }
-        : {}),
-    });
+    const workspace = requireProjectSkillWorkspace(
+      context.req.param("id"),
+      query.environmentId,
+    );
     const content = await readProjectSkill(deps, {
       skillId: query.skillId,
       path: query.path,
@@ -758,15 +746,10 @@ export function registerProjectRoutes(app: Hono, deps: AppDeps): void {
   });
 
   get(routes.skillFiles, async (context, query) => {
-    const projectId = context.req.param("id");
-    requirePublicProject(deps.db, projectId);
-
-    const workspace = resolveProjectCommandWorkspace(deps, {
-      projectId,
-      ...(query.environmentId !== null
-        ? { environmentId: query.environmentId }
-        : {}),
-    });
+    const workspace = requireProjectSkillWorkspace(
+      context.req.param("id"),
+      query.environmentId,
+    );
     return context.json(
       await listProjectSkillFiles(deps, {
         skillId: query.skillId,
@@ -776,15 +759,10 @@ export function registerProjectRoutes(app: Hono, deps: AppDeps): void {
   });
 
   patch(routes.updateSkill, async (context, payload) => {
-    const projectId = context.req.param("id");
-    requirePublicProject(deps.db, projectId);
-
-    const workspace = resolveProjectCommandWorkspace(deps, {
-      projectId,
-      ...(payload.environmentId !== null
-        ? { environmentId: payload.environmentId }
-        : {}),
-    });
+    const workspace = requireProjectSkillWorkspace(
+      context.req.param("id"),
+      payload.environmentId,
+    );
     const result = await writeProjectSkill(deps, {
       skillId: payload.skillId,
       content: payload.content,
@@ -886,16 +864,15 @@ export function registerProjectRoutes(app: Hono, deps: AppDeps): void {
     );
   });
 
-  post(routes.copyAttachments, async (context) => {
+  post(routes.copyAttachments, async (context, payload) => {
     const targetProjectId = context.req.param("id");
     requirePublicProject(deps.db, targetProjectId);
-    const request = await context.req.json();
-    requirePublicProject(deps.db, request.sourceProjectId);
+    requirePublicProject(deps.db, payload.sourceProjectId);
     await copyProjectAttachments(
       deps.config.dataDir,
-      request.sourceProjectId,
+      payload.sourceProjectId,
       targetProjectId,
-      request.paths,
+      payload.paths,
     );
     return context.json({ ok: true as const });
   });

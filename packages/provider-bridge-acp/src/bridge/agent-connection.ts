@@ -2,6 +2,7 @@ import { spawn, type ChildProcess } from "node:child_process";
 import { createInterface } from "node:readline";
 import { experimental_recordProviderChildIo } from "@bb/provider-bridge-protocol/bridge-kit";
 import type { z } from "zod";
+import { ACP_PROTOCOL_VERSION, acpInitializeResultSchema } from "../wire.js";
 
 const STDERR_TAIL_MAX_CHUNKS = 40;
 const CLOSED_STDIN_ERROR_CODES = new Set(["EPIPE", "ERR_STREAM_DESTROYED"]);
@@ -365,4 +366,38 @@ export function createAcpAgentConnection(
       child.kill("SIGTERM");
     },
   };
+}
+
+function acpClientCapabilities(
+  parameterizedModelPicker: boolean,
+  fsAccess: boolean,
+) {
+  return {
+    fs: { readTextFile: fsAccess, writeTextFile: fsAccess },
+    terminal: false,
+    ...(parameterizedModelPicker === true
+      ? { _meta: { parameterizedModelPicker: true } }
+      : {}),
+  };
+}
+
+export function requestAcpInitialize(
+  connection: AcpAgentConnection,
+  {
+    parameterizedModelPicker,
+    fsAccess,
+  }: { parameterizedModelPicker: boolean; fsAccess: boolean },
+) {
+  return connection.request({
+    method: "initialize",
+    params: {
+      protocolVersion: ACP_PROTOCOL_VERSION,
+      clientInfo: { name: "bb", version: "1.0.0" },
+      clientCapabilities: acpClientCapabilities(
+        parameterizedModelPicker,
+        fsAccess,
+      ),
+    },
+    resultSchema: acpInitializeResultSchema,
+  });
 }

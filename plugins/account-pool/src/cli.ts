@@ -9,6 +9,7 @@ import {
   bypassInputSchema,
   codexLoginPollInputSchema,
   loginCompleteInputSchema,
+  modelFamilySchema,
   tokenRotateInputSchema,
   routingSetInputSchema,
   type AccountPoolConfig,
@@ -97,14 +98,6 @@ function formatUtilization(value: number | null): string {
   return value === null ? "-" : `${Math.round(value * 100)}%`;
 }
 
-const MODEL_FAMILIES: ModelFamily[] = [
-  "fable",
-  "sonnet",
-  "opus",
-  "haiku",
-  "other",
-];
-
 function familyLabel(family: ModelFamily): string {
   return family[0]?.toUpperCase() + family.slice(1);
 }
@@ -139,7 +132,7 @@ function formatFamilyQuota(quota: FamilyQuota | null): string {
 
 function formatAccounts(accounts: readonly AccountSummary[]): string {
   if (accounts.length === 0) return "No accounts configured.";
-  const families = MODEL_FAMILIES.filter((family) =>
+  const families = modelFamilySchema.options.filter((family) =>
     accounts.some((account) => account.familyWeekly[family] !== null),
   );
   return [

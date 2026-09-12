@@ -12,7 +12,7 @@ import {
 export function NotificationsSettingsScreen() {
   const { profiles } = useProfiles();
   return (
-    <GroupedScreen scroll testID="notifications-settings-screen">
+    <GroupedScreen testID="notifications-settings-screen">
       {profiles.length === 0 ? (
         <SettingsSection title="Push notifications">
           <SettingsHint title="No servers" message="Add a server first." />

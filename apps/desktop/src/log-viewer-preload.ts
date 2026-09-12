@@ -5,46 +5,21 @@ import {
   LOG_VIEWER_OPEN_LOGS_FOLDER_CHANNEL,
   LOG_VIEWER_SNAPSHOT_CHANNEL,
   type LogViewerApi,
-  type LogViewerAppendEvent,
-  type LogViewerAppendHandler,
   type LogViewerCopyRequest,
   type LogViewerOpenLogsFolderResult,
-  type LogViewerSnapshotEvent,
-  type LogViewerSnapshotHandler,
   type LogViewerUnsubscribe,
 } from "./log-viewer-contract.js";
 
-interface SnapshotListenerArgs {
-  handler: LogViewerSnapshotHandler;
-}
-
-interface AppendListenerArgs {
-  handler: LogViewerAppendHandler;
-}
-
-function onSnapshot(args: SnapshotListenerArgs): LogViewerUnsubscribe {
-  const listener = (
-    _event: IpcRendererEvent,
-    payload: LogViewerSnapshotEvent,
-  ): void => {
-    args.handler(payload);
+function subscribe<T>(
+  channel: string,
+  handler: (payload: T) => void,
+): LogViewerUnsubscribe {
+  const listener = (_event: IpcRendererEvent, payload: T): void => {
+    handler(payload);
   };
-  ipcRenderer.on(LOG_VIEWER_SNAPSHOT_CHANNEL, listener);
+  ipcRenderer.on(channel, listener);
   return () => {
-    ipcRenderer.removeListener(LOG_VIEWER_SNAPSHOT_CHANNEL, listener);
-  };
-}
-
-function onAppend(args: AppendListenerArgs): LogViewerUnsubscribe {
-  const listener = (
-    _event: IpcRendererEvent,
-    payload: LogViewerAppendEvent,
-  ): void => {
-    args.handler(payload);
-  };
-  ipcRenderer.on(LOG_VIEWER_APPEND_CHANNEL, listener);
-  return () => {
-    ipcRenderer.removeListener(LOG_VIEWER_APPEND_CHANNEL, listener);
+    ipcRenderer.removeListener(channel, listener);
   };
 }
 
@@ -53,10 +28,10 @@ const logViewerApi: LogViewerApi = {
     await ipcRenderer.invoke(LOG_VIEWER_COPY_CHANNEL, request);
   },
   onAppend(handler) {
-    return onAppend({ handler });
+    return subscribe(LOG_VIEWER_APPEND_CHANNEL, handler);
   },
   onSnapshot(handler) {
-    return onSnapshot({ handler });
+    return subscribe(LOG_VIEWER_SNAPSHOT_CHANNEL, handler);
   },
   async openLogsFolder(): Promise<LogViewerOpenLogsFolderResult> {
     return ipcRenderer.invoke(LOG_VIEWER_OPEN_LOGS_FOLDER_CHANNEL);
