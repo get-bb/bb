@@ -66,6 +66,10 @@ function useDrawerKeyboardInset(
     let animationFrame: number | null = null;
     const applyInset = () => {
       animationFrame = null;
+      if (visualViewport.scale !== 1) {
+        resetDrawerKeyboardStyles(panel);
+        return;
+      }
       const overlap = measureDrawerKeyboardOverlap({
         layoutViewportHeight: panel.ownerDocument.documentElement.clientHeight,
         visualViewportHeight: visualViewport.height,
