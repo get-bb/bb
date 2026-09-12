@@ -16,7 +16,3 @@ account access. Inspect models on the actual execution host with
 
 Use the core CLI skill for command syntax and official Codex guidance for
 upstream product behavior.
-
-## Discoverable usage
-
-This plugin directly publishes cheap `provider-usage.v1.listResources` inventory and `provider-usage.v1.getResource` measurements for independent usage displays. Fetch takes `{ resourceId, refresh }` and returns actual usage for that resource even when refresh is false; listing never collects quota. Inspect its descriptions and input/output JSON Schemas with `bb plugin rpc inspect provider-codex provider-usage.v1.listResources --json`. The settings Usage limits page discovers these sources; the existing `bb settings usage` command continues to show host-provider maintenance data.
