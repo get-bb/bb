@@ -1965,6 +1965,9 @@ importers:
       typescript-7:
         specifier: npm:typescript@^7.0.2
         version: typescript@7.0.2
+      zod:
+        specifier: 4.3.6
+        version: 4.3.6
 
   packages/host-workspace:
     dependencies:

@@ -1,0 +1,193 @@
+{
+  "node": "v22.19.0",
+  "platform": "linux",
+  "arch": "x64",
+  "results": [
+    {
+      "repetition": 0,
+      "before": {
+        "mode": "unbounded",
+        "batchCount": 100,
+        "startRssBytes": 92778496,
+        "endRssBytes": 127324160,
+        "peakRssBytes": 127324160,
+        "productionMs": 92.355693,
+        "sent": 101,
+        "completed": 1,
+        "producedEvents": 100000,
+        "rssGrowthBytes": 34545664,
+        "deliveredEvents": 100000,
+        "recoveryRequests": 0
+      },
+      "after": {
+        "mode": "bounded",
+        "batchCount": 100,
+        "startRssBytes": 94470144,
+        "endRssBytes": 97124352,
+        "peakRssBytes": 97767424,
+        "productionMs": 7.697615000000013,
+        "sent": 4,
+        "completed": 1,
+        "producedEvents": 100000,
+        "rssGrowthBytes": 2654208,
+        "deliveredEvents": 2000,
+        "recoveryRequests": 1
+      }
+    },
+    {
+      "repetition": 1,
+      "before": {
+        "mode": "unbounded",
+        "batchCount": 100,
+        "startRssBytes": 91197440,
+        "endRssBytes": 125612032,
+        "peakRssBytes": 125612032,
+        "productionMs": 74.03741500000001,
+        "sent": 101,
+        "completed": 1,
+        "producedEvents": 100000,
+        "rssGrowthBytes": 34414592,
+        "deliveredEvents": 100000,
+        "recoveryRequests": 0
+      },
+      "after": {
+        "mode": "bounded",
+        "batchCount": 100,
+        "startRssBytes": 92450816,
+        "endRssBytes": 95379456,
+        "peakRssBytes": 95784960,
+        "productionMs": 11.149594999999977,
+        "sent": 4,
+        "completed": 1,
+        "producedEvents": 100000,
+        "rssGrowthBytes": 2928640,
+        "deliveredEvents": 2000,
+        "recoveryRequests": 1
+      }
+    },
+    {
+      "repetition": 2,
+      "before": {
+        "mode": "unbounded",
+        "batchCount": 100,
+        "startRssBytes": 93327360,
+        "endRssBytes": 127959040,
+        "peakRssBytes": 127959040,
+        "productionMs": 92.120847,
+        "sent": 101,
+        "completed": 1,
+        "producedEvents": 100000,
+        "rssGrowthBytes": 34631680,
+        "deliveredEvents": 100000,
+        "recoveryRequests": 0
+      },
+      "after": {
+        "mode": "bounded",
+        "batchCount": 100,
+        "startRssBytes": 91803648,
+        "endRssBytes": 94924800,
+        "peakRssBytes": 95490048,
+        "productionMs": 7.60649699999999,
+        "sent": 4,
+        "completed": 1,
+        "producedEvents": 100000,
+        "rssGrowthBytes": 3121152,
+        "deliveredEvents": 2000,
+        "recoveryRequests": 1
+      }
+    },
+    {
+      "repetition": 0,
+      "before": {
+        "mode": "unbounded",
+        "batchCount": 500,
+        "startRssBytes": 91930624,
+        "endRssBytes": 298283008,
+        "peakRssBytes": 301731840,
+        "productionMs": 375.526563,
+        "sent": 501,
+        "completed": 1,
+        "producedEvents": 500000,
+        "rssGrowthBytes": 206352384,
+        "deliveredEvents": 500000,
+        "recoveryRequests": 0
+      },
+      "after": {
+        "mode": "bounded",
+        "batchCount": 500,
+        "startRssBytes": 90947584,
+        "endRssBytes": 96616448,
+        "peakRssBytes": 96616448,
+        "productionMs": 10.332256999999998,
+        "sent": 4,
+        "completed": 1,
+        "producedEvents": 500000,
+        "rssGrowthBytes": 5668864,
+        "deliveredEvents": 2000,
+        "recoveryRequests": 1
+      }
+    },
+    {
+      "repetition": 1,
+      "before": {
+        "mode": "unbounded",
+        "batchCount": 500,
+        "startRssBytes": 91500544,
+        "endRssBytes": 297951232,
+        "peakRssBytes": 301400064,
+        "productionMs": 347.691784,
+        "sent": 501,
+        "completed": 1,
+        "producedEvents": 500000,
+        "rssGrowthBytes": 206450688,
+        "deliveredEvents": 500000,
+        "recoveryRequests": 0
+      },
+      "after": {
+        "mode": "bounded",
+        "batchCount": 500,
+        "startRssBytes": 91353088,
+        "endRssBytes": 96874496,
+        "peakRssBytes": 97005568,
+        "productionMs": 10.07864099999999,
+        "sent": 4,
+        "completed": 1,
+        "producedEvents": 500000,
+        "rssGrowthBytes": 5521408,
+        "deliveredEvents": 2000,
+        "recoveryRequests": 1
+      }
+    },
+    {
+      "repetition": 2,
+      "before": {
+        "mode": "unbounded",
+        "batchCount": 500,
+        "startRssBytes": 94863360,
+        "endRssBytes": 299966464,
+        "peakRssBytes": 303443968,
+        "productionMs": 338.06828199999995,
+        "sent": 501,
+        "completed": 1,
+        "producedEvents": 500000,
+        "rssGrowthBytes": 205103104,
+        "deliveredEvents": 500000,
+        "recoveryRequests": 0
+      },
+      "after": {
+        "mode": "bounded",
+        "batchCount": 500,
+        "startRssBytes": 94900224,
+        "endRssBytes": 100663296,
+        "peakRssBytes": 100663296,
+        "productionMs": 10.764838999999995,
+        "sent": 4,
+        "completed": 1,
+        "producedEvents": 500000,
+        "rssGrowthBytes": 5763072,
+        "deliveredEvents": 2000,
+        "recoveryRequests": 1
+      }
+    }
+  ]
+}

@@ -127,6 +127,25 @@ capture, revocation, and connection generations. The default downloads the
 checksum-pinned release; the optional binary path records local provenance.
 No existing BB store or browser profile is used.
 
+## Watcher IPC Backlog
+
+The Parcel watcher subprocess bounds pending file-event messages to a
+conservative 4 MiB serialized-size budget. It releases that budget when Node's
+IPC send callback completes. If another batch would exceed the budget, it
+requests targeted subscription recovery with `File system must be re-scanned:
+watcher IPC backlog exceeded` and suppresses further events for that
+subscription until it is removed. Existing recovery refreshes the affected
+consumer and re-establishes its watch. Normal batches retain their paths,
+types, and order; overload trades detailed events for a conservative refresh.
+
+This bounds BB's outgoing event queue, not Parcel's native directory tree,
+native callback queue, or total process memory. Broad workspace roots can
+still be expensive. The regression suite includes a stalled transport and a
+real watcher subprocess recovering from an oversized 4,000-file rescan:
+`pnpm exec turbo run test typecheck --filter=@bb/host-watcher`.
+See the [verification report](verification/watcher-ipc-backpressure/README.md)
+for the reproducible IPC benchmark, raw measurements, and live-app evidence.
+
 ## Record Provider Bridge Traffic
 
 Export `BB_PROVIDER_BRIDGE_RECORD_DIR` before you start the dev app and every
