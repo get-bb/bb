@@ -6,7 +6,7 @@
   "description": "Routes Claude and Codex API traffic across provider account pools.",
   "engines": {
     "bb": ">=0.0",
-    "bbPluginSdk": ">=0.4.85"
+    "bbPluginSdk": ">=0.4.87"
   },
   "bb": {
     "name": "Account Pooler [Experimental]",
