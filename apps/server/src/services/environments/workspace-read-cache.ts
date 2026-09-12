@@ -167,7 +167,13 @@ export class WorkspaceReadCaches {
       this.invalidateEnvironment(message.id);
       return;
     }
-    if (message.entity === "host") {
+    if (
+      message.entity === "host" &&
+      message.changes.some(
+        (change) =>
+          change === "host-connected" || change === "host-disconnected",
+      )
+    ) {
       this.invalidateHost(message.id);
     }
   }

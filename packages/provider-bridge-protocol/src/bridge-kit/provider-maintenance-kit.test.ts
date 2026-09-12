@@ -1,3 +1,5 @@
+import { chmod, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 import {
@@ -5,10 +7,30 @@ import {
   formatCommand,
   installationVerification,
   npmGlobalInstallSource,
+  readCliVersion,
   versionFrom,
 } from "./provider-maintenance-kit.js";
 
 describe("provider maintenance kit", () => {
+  it.skipIf(process.platform === "win32")(
+    "reads the version of a CLI that keeps reading stdin until EOF",
+    async () => {
+      const dir = await mkdtemp(path.join(tmpdir(), "bb-cli-version-"));
+      try {
+        const executable = path.join(dir, "stdio-server-cli");
+        await writeFile(
+          executable,
+          '#!/bin/sh\ncat >/dev/null\necho "tool 1.2.3"\n',
+        );
+        await chmod(executable, 0o755);
+        expect(await readCliVersion(executable)).toBe("1.2.3");
+      } finally {
+        await rm(dir, { recursive: true, force: true });
+      }
+    },
+    15_000,
+  );
+
   it("compares the numeric core of CLI versions, prerelease below release", () => {
     expect(compareVersions("0.135.9", "0.136.0")).toBeLessThan(0);
     expect(compareVersions("0.136.0-beta.1", "0.136.0")).toBeLessThan(0);

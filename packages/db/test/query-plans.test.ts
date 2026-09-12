@@ -45,6 +45,7 @@ import {
   hydrateRetainedEventOutputRows,
 } from "../src/data/retained-event-outputs.js";
 import { getDatabaseMaintenanceActivity } from "../src/data/maintenance.js";
+import { replaceStoredProviderModelCatalog } from "../src/data/provider-model-catalogs.js";
 import { openSession } from "../src/data/sessions.js";
 import {
   listDueScheduledQueuedThreadMessages,
@@ -1596,6 +1597,48 @@ describe("slow query index plans", () => {
     expect(queryPlanDetails({ db, ...statement! })).toContain(
       "events_thread_turn_type_item_sequence_idx",
     );
+
+    db.$client.close();
+  });
+
+  it("prunes stored provider model catalogs through the primary-key prefix", () => {
+    const { db, host, logger } = setup();
+    const pruneWorkspaceRowsFetchedBefore = 10_000;
+    const isCatalogDelete = (fields: SlowDbQueryLogFields): boolean =>
+      fields.operation === "run" &&
+      fields.sql.startsWith('delete from "provider_model_catalogs"');
+    logger.clear();
+
+    replaceStoredProviderModelCatalog(db, {
+      row: {
+        hostId: host.id,
+        providerId: "acp-pi-acp",
+        scopeKey: "/w/current",
+        fingerprint: "catalog-prune-plan",
+        modelsJson: "[]",
+        selectedOnlyModelsJson: "[]",
+        fetchedAt: 20_000,
+      },
+      pruneWorkspaceRowsFetchedBefore,
+    });
+
+    const prune = findOnlyDebugLog({ logger, predicate: isCatalogDelete });
+    const pruneParams = [
+      host.id,
+      "acp-pi-acp",
+      "",
+      pruneWorkspaceRowsFetchedBefore,
+    ];
+    expect(prune.fields.bindingArgumentCount).toBe(pruneParams.length);
+    const pruneDetails = queryPlanDetails({
+      db,
+      params: pruneParams,
+      sql: prune.fields.sql,
+    });
+    expect(pruneDetails).toMatch(
+      /USING (COVERING )?INDEX sqlite_autoindex_provider_model_catalogs_1 \(host_id=\? AND provider_id=\?\)/u,
+    );
+    expect(pruneDetails).not.toMatch(/SCAN provider_model_catalogs/u);
 
     db.$client.close();
   });

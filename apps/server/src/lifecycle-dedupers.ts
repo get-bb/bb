@@ -1,4 +1,3 @@
-import type { AvailableModel } from "@bb/domain";
 import {
   createAsyncDeduper,
   createAsyncRerunner,
@@ -6,27 +5,24 @@ import {
   type AsyncRerunner,
 } from "./services/lib/async-deduper.js";
 import {
-  createAsyncTtlMemo,
-  type AsyncTtlMemo,
-} from "./services/lib/async-ttl-memo.js";
-
-const PROVIDER_MODEL_LIST_MEMO_TTL_MS = 10 * 60_000;
-
-export interface ProviderModelListMemoValue {
-  models: AvailableModel[];
-  selectedOnlyModels: AvailableModel[];
-}
+  createProviderModelCatalogStore,
+  PROVIDER_MODEL_CATALOG_MEMORY_ENTRY_LIMIT,
+  PROVIDER_MODEL_CATALOG_PUSH_COALESCE_MS,
+  type ProviderModelCatalogStore,
+} from "./services/providers/provider-model-catalog-store.js";
 
 export interface LifecycleDedupers {
-  providerModelList: AsyncTtlMemo<string, ProviderModelListMemoValue>;
+  providerModelCatalogs: ProviderModelCatalogStore;
   queuedMessageDispatch: AsyncDeduper<string, void>;
   threadProvisionAdvance: AsyncRerunner<string>;
 }
 
 export function createLifecycleDedupers(): LifecycleDedupers {
   return {
-    providerModelList: createAsyncTtlMemo<string, ProviderModelListMemoValue>({
-      ttlMs: PROVIDER_MODEL_LIST_MEMO_TTL_MS,
+    providerModelCatalogs: createProviderModelCatalogStore({
+      now: Date.now,
+      pushCoalesceMs: PROVIDER_MODEL_CATALOG_PUSH_COALESCE_MS,
+      memoryEntryLimit: PROVIDER_MODEL_CATALOG_MEMORY_ENTRY_LIMIT,
     }),
     queuedMessageDispatch: createAsyncDeduper<string, void>(),
     threadProvisionAdvance: createAsyncRerunner<string>(),

@@ -13,6 +13,7 @@ import type {
   SystemProvidersQuery,
 } from "@bb/server-contract";
 import type { ReasoningLevel } from "@bb/domain";
+import { useQueryClient } from "@tanstack/react-query";
 import {
   stripModelBrandPrefix,
   type ProviderPickerOption,
@@ -43,7 +44,10 @@ import {
   useMenuItemHover,
 } from "@bb/shared-ui/menu-item-hover";
 import { cn } from "@bb/shared-ui/lib/utils";
-import { useSystemExecutionOptions } from "@/hooks/queries/system-queries";
+import {
+  prefetchSystemExecutionOptions,
+  useSystemExecutionOptions,
+} from "@/hooks/queries/system-queries";
 import { resolveModelCatalogSelection } from "@/hooks/thread-creation-options/model-catalog-selection";
 import { useIsCompactViewport } from "@bb/shared-ui/hooks/use-compact-viewport";
 import {
@@ -284,6 +288,32 @@ export function ModelReasoningPicker({
     hasMultipleProviders &&
     onSelectedProviderChange !== undefined &&
     providerOptions.length > 1;
+  const queryClient = useQueryClient();
+  const prefetchRoutingEnvironmentId = providerRouting?.environmentId;
+  const prefetchRoutingHostId = providerRouting?.hostId;
+  const siblingIdsKey = providerOptions
+    .map((option) => option.value)
+    .filter((id) => id !== selectedProviderId)
+    .join("\0");
+  useEffect(() => {
+    if (!open || !canSwitchProviders || siblingIdsKey.length === 0) {
+      return;
+    }
+    prefetchSystemExecutionOptions(queryClient, {
+      routing: {
+        environmentId: prefetchRoutingEnvironmentId,
+        hostId: prefetchRoutingHostId,
+      },
+      providerIds: siblingIdsKey.split("\0"),
+    });
+  }, [
+    canSwitchProviders,
+    open,
+    prefetchRoutingEnvironmentId,
+    prefetchRoutingHostId,
+    queryClient,
+    siblingIdsKey,
+  ]);
   const hasAlternateSelectionPath =
     modelOptions.length > 0 ||
     (selectedModelLoadErrorMatches && canSwitchProviders);

@@ -247,6 +247,16 @@ export {
 } from "./hosts.js";
 
 export {
+  deleteStoredProviderModelCatalogsForHost,
+  getStoredProviderModelCatalog,
+  replaceStoredProviderModelCatalog,
+} from "./provider-model-catalogs.js";
+export type {
+  ProviderModelCatalogRowKey,
+  StoredProviderModelCatalog,
+} from "./provider-model-catalogs.js";
+
+export {
   appendDaemonEventsInTransaction,
   appendStoredThreadEvent,
   copyStoredThreadEventsInTransaction,

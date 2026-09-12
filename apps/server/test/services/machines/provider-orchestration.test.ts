@@ -5,8 +5,10 @@ import {
   environments,
   getHost,
   getEnvironment,
+  getStoredProviderModelCatalog,
   hosts,
   archiveThread,
+  replaceStoredProviderModelCatalog,
   setThreadStartupContext,
   updateHost,
 } from "@bb/db";
@@ -507,6 +509,34 @@ describe("machine retirement", () => {
       }
       expect(getHost(harness.db, host.id)?.phase).toBe("destroyed");
       expect(remove).toHaveBeenCalledOnce();
+    }));
+
+  it("deletes the removed machine's stored provider model catalogs", async () =>
+    withTestHarness(async (harness) => {
+      installMachineProvider();
+      const { host } = seedHostSession(harness.deps);
+      updateHost(harness.db, harness.hub, host.id, {
+        machineProviderId: "test-machine",
+        resource: { allocation: "cancelled" },
+        phase: "active",
+      });
+      const key = { hostId: host.id, providerId: "codex", scopeKey: "" };
+      replaceStoredProviderModelCatalog(harness.db, {
+        row: {
+          ...key,
+          fingerprint: "fingerprint",
+          modelsJson: "[]",
+          selectedOnlyModelsJson: "[]",
+          fetchedAt: 1,
+        },
+        pruneWorkspaceRowsFetchedBefore: null,
+      });
+
+      expect(requestMachineRemoval(harness.deps, host.id)).toBe(true);
+      await sweepProviderMachine(harness.deps, host.id);
+
+      expect(getHost(harness.db, host.id)?.phase).toBe("destroyed");
+      expect(getStoredProviderModelCatalog(harness.db, key)).toBeNull();
     }));
 
   it("retries failed teardown at removeRetryAt", async () =>

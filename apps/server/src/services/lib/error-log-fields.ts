@@ -8,8 +8,33 @@ interface ProductionErrorLogFields {
   errorStatus?: number;
 }
 
+interface ExpectedFallbackErrorLogFields {
+  errorCode: string;
+  errorDetails?: unknown;
+  errorMessage: string;
+  errorRetryable?: boolean;
+  errorStatus: number;
+}
+
 type LoggableError = unknown;
 type RuntimeErrorLogFields = { err: LoggableError } | ProductionErrorLogFields;
+
+export function expectedFallbackErrorLogFields(
+  error: ApiError,
+): ExpectedFallbackErrorLogFields {
+  const fields: ExpectedFallbackErrorLogFields = {
+    errorCode: error.body.code,
+    errorMessage: error.body.message,
+    errorStatus: error.status,
+  };
+  if (error.body.details !== undefined) {
+    fields.errorDetails = error.body.details;
+  }
+  if (error.body.retryable !== undefined) {
+    fields.errorRetryable = error.body.retryable;
+  }
+  return fields;
+}
 
 export function productionErrorLogFields(
   error: LoggableError,

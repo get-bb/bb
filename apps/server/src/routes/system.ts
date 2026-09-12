@@ -251,6 +251,7 @@ export function registerSystemRoutes(
         "Machine credentials cannot change global environment settings",
       );
     await replaceMachineEnvironment(deps.db, deps.config.dataDir, payload);
+    deps.lifecycleDedupers.providerModelCatalogs.markAllStale();
     deps.hub.notifySystem(["config-changed"]);
     return context.json(
       await machineEnvironmentView(deps.db, deps.config.dataDir),

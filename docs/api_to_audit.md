@@ -1043,7 +1043,9 @@ answers when its provider is a user-installed CLI. The probes:
 `experimental_resolveExecutablePath` (the command's absolute path — the path
 itself when given absolute and executable, else the first `which`/`where`
 hit, null when absent; 5 s), `experimental_readCliVersion` (`<command>
---version`, the first `x.y.z[-pre]` on stdout or stderr; 5 s),
+--version` with stdin closed, so CLIs that start a stdio server on unknown
+flags exit instead of hitting the timeout; the first `x.y.z[-pre]` on stdout
+or stderr; 5 s),
 `experimental_commandOutput` (any command's trimmed stdout+stderr or null on
 failure; 15 s), `experimental_versionFrom` (the first version token in a
 banner), `experimental_npmLatestVersion` (`npm view <package> version`) and
@@ -1838,6 +1840,10 @@ target one enrolled host or an existing environment;
 omitting it uses primary-machine routing. `disabled` renders the same summary
 without opening the picker. Verified catalogs also normalize an empty or stale
 controlled selection; placeholder, failed, and empty catalogs do not.
+Verified data may come from the machine's stored catalog while a background
+refresh runs, or while that provider's refresh keeps failing or timing out, so
+a model newer than the stored list can be normalized away before a refresh
+lands.
 `allowProviderChange={false}` hides provider tabs while retaining model,
 reasoning, and service-tier selection for the controlled provider. Routing
 never implies provider locking: an environment supplies host/workspace context

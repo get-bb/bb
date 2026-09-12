@@ -449,7 +449,13 @@ export default async function concurrencyLimitPlugin(
       const unsubscribeHost = bb.sdk.subscribe({
         event: "host:changed",
         callback: (event) => {
-          bb.realtime.publish(CONFIGURATION_CHANGED_CHANNEL, {});
+          if (
+            event.changes.some(
+              (change) =>
+                change === "host-connected" || change === "host-disconnected",
+            )
+          )
+            bb.realtime.publish(CONFIGURATION_CHANGED_CHANNEL, {});
           if (event.changes.includes("host-connected"))
             requestRefresh(event.id);
         },

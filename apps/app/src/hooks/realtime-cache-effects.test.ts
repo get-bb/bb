@@ -7,14 +7,18 @@ import {
   SYSTEM_CHANGE_KINDS,
   THREAD_CHANGE_KINDS,
 } from "@bb/domain";
+import type { QueryClient } from "@tanstack/react-query";
+import { makeEnvironment } from "@bb/test-helpers/domain-fixtures";
 import { createAppQueryClient } from "@/lib/query-client";
 import {
   archivedThreadsListQueryKey,
   environmentDiffFilesQueryKey,
   environmentDiffPatchQueryKey,
   environmentPullRequestQueryKey,
+  environmentQueryKey,
   environmentWorkStatusQueryKey,
   hostPathExistenceQueryKey,
+  hostsQueryKey,
   projectPathsQueryKey,
   projectCommandsQueryKey,
   projectFilePreviewQueryKey,
@@ -376,6 +380,117 @@ describe("createRealtimeCacheEffects", () => {
     expect(queryClient.getQueryState(executionOptionsKey)?.isInvalidated).toBe(
       true,
     );
+  });
+
+  describe("host-scoped execution options", () => {
+    function seedExecutionOptions(
+      queryClient: QueryClient,
+      primaryHostId: string | null,
+    ) {
+      queryClient.setQueryData(systemConfigQueryKey(), { primaryHostId });
+      for (const [id, hostId] of [
+        ["env-a", "host-a"],
+        ["env-b", "host-b"],
+      ]) {
+        queryClient.setQueryData(
+          environmentQueryKey(id),
+          makeEnvironment({ id, hostId }),
+        );
+      }
+      const keys = Object.entries({
+        hostA: { environmentId: null, hostId: "host-a" },
+        hostB: { environmentId: null, hostId: "host-b" },
+        envHostA: { environmentId: "env-a", hostId: null },
+        envHostB: { environmentId: "env-b", hostId: null },
+        envUnknown: { environmentId: "env-unknown", hostId: null },
+        primary: { environmentId: null, hostId: null },
+      }).map(
+        ([name, routing]) =>
+          [
+            name,
+            systemExecutionOptionsQueryKey({ ...routing, providerId: "codex" }),
+          ] as const,
+      );
+      for (const [, queryKey] of keys) {
+        queryClient.setQueryData(queryKey, {});
+      }
+      return () =>
+        keys
+          .filter(
+            ([, queryKey]) =>
+              queryClient.getQueryState(queryKey)?.isInvalidated,
+          )
+          .map(([name]) => name)
+          .sort();
+    }
+
+    it.each([
+      {
+        id: "host-a",
+        primaryHostId: "host-a",
+        expected: ["envHostA", "envUnknown", "hostA", "primary"],
+      },
+      {
+        id: "host-a",
+        primaryHostId: "host-b",
+        expected: ["envHostA", "envUnknown", "hostA"],
+      },
+      {
+        id: "host-a",
+        primaryHostId: null,
+        expected: ["envHostA", "envUnknown", "hostA", "primary"],
+      },
+      {
+        id: undefined,
+        primaryHostId: "host-b",
+        expected: [
+          "envHostA",
+          "envHostB",
+          "envUnknown",
+          "hostA",
+          "hostB",
+          "primary",
+        ],
+      },
+    ])(
+      "refreshes only matching catalogs on a catalog push from $id while the primary host is $primaryHostId",
+      ({ id, primaryHostId, expected }) => {
+        const { effects, queryClient } = createRealtimeEffectsTestContext();
+        const invalidated = seedExecutionOptions(queryClient, primaryHostId);
+
+        effects.handleChanged({
+          type: "changed",
+          entity: "host",
+          ...(id === undefined ? {} : { id }),
+          changes: ["provider-model-catalog-changed"],
+        });
+
+        expect(invalidated()).toEqual(expected);
+        effects.dispose();
+      },
+    );
+
+    it("refreshes hosts and providers but not catalogs when a host disconnects", () => {
+      const { effects, queryClient } = createRealtimeEffectsTestContext();
+      const invalidated = seedExecutionOptions(queryClient, "host-a");
+      const providersKey = systemProvidersQueryKey({ hostId: "host-a" });
+      queryClient.setQueryData(hostsQueryKey(), []);
+      queryClient.setQueryData(providersKey, []);
+
+      effects.handleChanged({
+        type: "changed",
+        entity: "host",
+        id: "host-a",
+        changes: ["host-disconnected"],
+      });
+
+      expect(queryClient.getQueryState(hostsQueryKey())?.isInvalidated).toBe(
+        true,
+      );
+      expect(queryClient.getQueryState(providersKey)?.isInvalidated).toBe(true);
+      expect(invalidated()).toEqual([]);
+      effects.dispose();
+    });
   });
 
   it("invalidates timelines when config changes provider event visibility", () => {

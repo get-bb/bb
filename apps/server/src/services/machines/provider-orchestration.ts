@@ -1214,6 +1214,7 @@ async function removeMachine(deps: Deps, hostId: string): Promise<void> {
           teardownStatus: "removed",
           statusMessage: creationFailureMessage,
         });
+        deps.lifecycleDedupers.providerModelCatalogs.forgetHost(deps, hostId);
         deps.hub.notifyHost(hostId, ["host-disconnected"]);
       } catch (error) {
         const current = getHost(deps.db, hostId);

@@ -1,4 +1,5 @@
-import { describe, expect, it } from "vitest";
+import { createDeferredPromise } from "@bb/test-helpers";
+import { describe, expect, it, vi } from "vitest";
 import { createProviderRegistryService } from "../../src/services/providers/provider-registry.js";
 import { minimalProviderRegistration } from "../helpers/provider-registry.js";
 
@@ -351,7 +352,7 @@ describe("installed-state cache", () => {
     expect(probes).toBe(1);
   });
 
-  it("drops the answer when the registration revision moves", async () => {
+  it("serves the answer when the registration revision moves and replaces it after exactly one revalidation", async () => {
     const registry = createProviderRegistryService({});
     registerProvider(registry, "codex", "provider-codex");
     const key = {
@@ -359,11 +360,53 @@ describe("installed-state cache", () => {
       providerId: "codex",
     };
     registry.rememberInstalled(key, Promise.resolve(true));
-    expect(await registry.lookupInstalled(key)).toBe(true);
+    const held = createDeferredPromise<boolean>();
+    const probe = vi.fn(() => held.promise);
+    await registry.revalidateInstalled(key, probe);
+    expect(probe).not.toHaveBeenCalled();
 
     registerProvider(registry, "claude-code", "provider-claude-code");
 
-    expect(registry.lookupInstalled(key)).toBeUndefined();
+    expect(await registry.lookupInstalled(key)).toBe(true);
+    const revalidation = registry.revalidateInstalled(key, probe);
+    void registry.revalidateInstalled(key, probe);
+    expect(probe).toHaveBeenCalledTimes(1);
+    held.resolve(false);
+    await revalidation;
+    expect(await registry.lookupInstalled(key)).toBe(false);
+    await registry.revalidateInstalled(key, probe);
+    expect(probe).toHaveBeenCalledTimes(1);
+  });
+
+  it("drops an expired answer when its revalidation fails and never writes a revalidation over a newer answer", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    try {
+      vi.setSystemTime(1_800_000_000_000);
+      const registry = createProviderRegistryService({});
+      const failing = { hostId: "host_1", providerId: "codex" };
+      const replaced = { hostId: "host_1", providerId: "pi" };
+      registry.rememberInstalled(failing, Promise.resolve(true));
+      registry.rememberInstalled(replaced, Promise.resolve(true));
+      vi.setSystemTime(1_800_000_000_000 + 5 * 60_000);
+
+      await registry.revalidateInstalled(failing, () =>
+        Promise.reject(new Error("health failed")),
+      );
+      expect(registry.lookupInstalled(failing)).toBeUndefined();
+
+      const held = createDeferredPromise<boolean>();
+      const revalidation = registry.revalidateInstalled(
+        replaced,
+        () => held.promise,
+      );
+      registry.forgetAllInstalled();
+      registry.rememberInstalled(replaced, Promise.resolve(true));
+      held.resolve(false);
+      await revalidation;
+      expect(await registry.lookupInstalled(replaced)).toBe(true);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("forgets one host-provider answer or all answers", async () => {

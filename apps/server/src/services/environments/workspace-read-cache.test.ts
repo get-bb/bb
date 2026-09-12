@@ -255,6 +255,20 @@ describe("WorkspaceReadCaches", () => {
     expect(await primed.readBoth()).toEqual({ status: 2, pullRequest: 2 });
   });
 
+  it("keeps a host's cached reads when only its provider model catalog changed", async () => {
+    const hub = createFakeHub();
+    const caches = new WorkspaceReadCaches({ hub, now: () => 0 });
+    const primed = await primeBoth(caches);
+
+    hub.emit({
+      type: "changed",
+      entity: "host",
+      id: "host-1",
+      changes: ["provider-model-catalog-changed"],
+    });
+    expect(await primed.readBoth()).toEqual({ status: 1, pullRequest: 1 });
+  });
+
   it("drops both caches when a server-side mutation invalidates the environment or host", async () => {
     const hub = createFakeHub();
     const caches = new WorkspaceReadCaches({ hub, now: () => 0 });
