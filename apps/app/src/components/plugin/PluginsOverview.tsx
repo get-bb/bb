@@ -225,7 +225,8 @@ export function PluginsOverview({
           <ResourceToolbar
             wrap={false}
             searchValue={installedQuery}
-            searchPlaceholder="Search installed plugins"
+            searchPlaceholder="Search..."
+            searchLabel="Search installed plugins"
             onSearchChange={setInstalledQuery}
             action={installedActions}
             controls={
