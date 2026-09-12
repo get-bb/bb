@@ -318,8 +318,15 @@ describe("MarkdownPreview incremental blocks", () => {
     legs.update(content);
 
     const incremental = within(legs.incremental);
-    expect(incremental.getAllByTestId("inline-vis")).toHaveLength(
-      MESSAGE_DIRECTIVE_MOUNT_LIMIT,
+    expect(
+      incremental
+        .getAllByTestId("inline-vis")
+        .map((node) => node.getAttribute("data-file")),
+    ).toEqual(
+      Array.from(
+        { length: MESSAGE_DIRECTIVE_MOUNT_LIMIT },
+        (_, index) => `f${index}.html`,
+      ),
     );
     expect(incremental.getByText('::inline-vis{file="f33.html"}').tagName).toBe(
       "P",

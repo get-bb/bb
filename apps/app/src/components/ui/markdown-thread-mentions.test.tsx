@@ -1014,6 +1014,10 @@ describe("MarkdownPreview thread mentions", () => {
       view.rerender(renderTree(`${link}\n\nFirst and second`));
       view.rerender(renderTree(`${link}\n\nFirst, second, and third`));
 
+      expect(view.container.textContent).toContain("First, second, and third");
+      expect(
+        screen.getByRole("link", { name: "the docs" }).getAttribute("href"),
+      ).toBe("https://example.com");
       expect(resources.mock.calls.length).toBeGreaterThanOrEqual(2);
       expect(new Set(resources.mock.calls.map(([ids]) => ids)).size).toBe(1);
       expect(resources.mock.calls[0]?.[0]).toEqual([]);

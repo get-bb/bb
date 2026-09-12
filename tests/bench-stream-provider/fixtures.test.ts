@@ -27,7 +27,8 @@ it.each(FIXTURE_NAMES)("pins the %s fixture byte for byte", (name) => {
   );
 });
 
-it("rejects unknown fixture names", () => {
+it("lists the fixtures in pin-table order and rejects unknown names", () => {
+  expect(FIXTURE_NAMES).toEqual(Object.keys(FIXTURE_SHA256));
   expect(() => getFixture("missing")).toThrow(
     /Unknown bench fixture "missing"/u,
   );

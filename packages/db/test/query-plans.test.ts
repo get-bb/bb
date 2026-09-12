@@ -568,6 +568,9 @@ describe("slow query index plans", () => {
     expect(details).toMatch(
       /SEARCH root_start (?:EXISTS )?USING (?:COVERING )?INDEX events_thread_turn_type_item_sequence_idx \(thread_id=\? AND turn_id=\? AND type=\?\)/u,
     );
+    expect(details).toMatch(
+      /SEARCH events USING (?:COVERING )?INDEX events_delegating_item_lookup_idx/u,
+    );
 
     db.$client.close();
   });

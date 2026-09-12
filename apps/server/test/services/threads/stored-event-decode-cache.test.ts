@@ -20,6 +20,7 @@ import {
   clearStoredEventDecodeCache,
   decodeStoredEventRowCached,
   readStoredEventDecodeCacheSize,
+  setStoredEventDecodeCacheFreezeForTesting,
   STORED_EVENT_DECODE_CACHE_MAX_DATA_CHARS,
   STORED_EVENT_DECODE_CACHE_MAX_ENTRIES,
 } from "../../../src/services/threads/stored-event-decode-cache.js";
@@ -134,6 +135,19 @@ describe("stored event decode cache", () => {
     expect(() => {
       Object.assign(frozen, { threadId: "mutated" });
     }).toThrow(TypeError);
+
+    setStoredEventDecodeCacheFreezeForTesting(false);
+    try {
+      clearStoredEventDecodeCache(db);
+      const unfrozen = decodeStoredEventRowCached(db, message);
+      expect(Object.isFrozen(unfrozen)).toBe(false);
+      expect(() => {
+        Object.assign(unfrozen, { threadId: "mutated" });
+      }).not.toThrow();
+    } finally {
+      setStoredEventDecodeCacheFreezeForTesting(true);
+      clearStoredEventDecodeCache(db);
+    }
   });
 
   it("keeps entries and data characters under the caps while recent rows still hit", () => {

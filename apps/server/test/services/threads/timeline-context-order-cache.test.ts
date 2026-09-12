@@ -40,6 +40,30 @@ function expectCachedEqualsCold(
   return cached;
 }
 
+function captureStatementSql(db: TestThread["db"], run: () => void): string[] {
+  const captured: string[] = [];
+  const raw = db.$client;
+  const originalPrepare = raw.prepare.bind(raw);
+  Object.defineProperty(raw, "prepare", {
+    configurable: true,
+    writable: true,
+    value: (source: string) => {
+      captured.push(source);
+      return originalPrepare(source);
+    },
+  });
+  try {
+    run();
+  } finally {
+    Object.defineProperty(raw, "prepare", {
+      configurable: true,
+      writable: true,
+      value: originalPrepare,
+    });
+  }
+  return captured;
+}
+
 function turnStarted(turnId: string): RowSpec {
   return { turnId, type: "turn/started" };
 }
@@ -105,7 +129,7 @@ function reasoningDelta(turnId: string): RowSpec {
 }
 
 describe("timeline grouping context cache", () => {
-  it("reuses the context across appended deltas and root tool-call rows", () => {
+  it("reuses the context across appended deltas and root tool-call rows without re-reading it", () => {
     withTestThread((testThread) => {
       appendRows(testThread, [
         turnStarted("turn-1"),
@@ -128,7 +152,12 @@ describe("timeline grouping context cache", () => {
         rootToolCall("call-2", "turn-1", "item/started"),
         rootToolCall("call-2", "turn-1", "item/completed"),
       ]);
-      expect(expectCachedEqualsCold(testThread, maxSeq)).toBe(warm);
+      const statements = captureStatementSql(testThread.db, () => {
+        expect(expectCachedEqualsCold(testThread, maxSeq)).toBe(warm);
+      });
+      expect(statements).toEqual([
+        expect.stringContaining('"parent_tool_call_id" is not null'),
+      ]);
     });
   });
 

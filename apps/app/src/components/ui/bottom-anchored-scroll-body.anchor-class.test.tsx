@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 
 import { cleanup, render } from "@testing-library/react";
+import type { ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { BottomAnchoredScrollBody } from "@/components/ui/bottom-anchored-scroll-body";
 
@@ -25,12 +26,13 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-function renderBody() {
+function renderBody(scrollOverlay?: ReactNode) {
   const view = render(
     <BottomAnchoredScrollBody
       footer={<div>Footer</div>}
       maxWidthClassName="max-w-none"
       scrollAnchorThreadId="thread-a"
+      scrollOverlay={scrollOverlay}
     >
       <div data-timeline-row-id="row-a">row-a</div>
     </BottomAnchoredScrollBody>,
@@ -73,15 +75,24 @@ describe("BottomAnchoredScrollBody scroll-anchor exclusion", () => {
 });
 
 describe("BottomAnchoredScrollBody grid", () => {
-  it("sizes the scroll port grid with one explicit minmax(auto,1fr) row", () => {
+  it("stacks the scroll port and overlay in one explicit minmax(auto,1fr) row", () => {
     vi.stubGlobal("CSS", { supports: () => false });
-    const { container } = renderBody();
-    const grid = container.querySelector(".thread-scrollbar")?.parentElement;
+    const { container } = renderBody(<nav>Overlay</nav>);
+    const scrollPort = container.querySelector(".thread-scrollbar");
+    const overlay = container.querySelector("[data-scroll-overlay]");
+    const grid = scrollPort?.parentElement;
 
+    expect(overlay?.parentElement).toBe(grid);
+    expect(grid?.classList).toContain("grid");
     expect(
       [...(grid?.classList ?? [])].filter((token) =>
         token.startsWith("grid-rows-"),
       ),
     ).toEqual(["grid-rows-[minmax(auto,1fr)]"]);
+    for (const item of [scrollPort, overlay]) {
+      expect([...(item?.classList ?? [])]).toEqual(
+        expect.arrayContaining(["row-start-1", "col-start-1", "min-h-0"]),
+      );
+    }
   });
 });

@@ -291,6 +291,7 @@ describe("prompt directives", () => {
     ["bench_stream doc=long-response chunk=0 interval=30", "chunk"],
     ["bench_stream doc=long-response chunk=24 interval=30 speed=2", "speed"],
     ["bench_stream doc=long-response chunk=24", "interval"],
+    ["bench_stream doc=long-response chunk=24 interval=30 repeat=0", "repeat"],
     ["bench_history seed=1 tools=7", "tools"],
     ["bench_history seed=-1 tools=2", "seed"],
     ["bench_history seed=1 seed=2 tools=2", "duplicate"],

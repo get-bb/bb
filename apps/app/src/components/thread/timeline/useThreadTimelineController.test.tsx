@@ -176,13 +176,19 @@ async function renderControllerWithPendingOlderPage() {
       await olderRequest;
     });
   };
+  const failOlderPage = async (error: BbHttpError) => {
+    olderPage.reject(error);
+    await act(async () => {
+      await expect(olderRequest).rejects.toBe(error);
+    });
+  };
   const publishLatest = (response: ThreadTimelineResponse) => {
     act(() => {
       queryClient.setQueryData(TIMELINE_QUERY_KEY, response);
     });
   };
 
-  return { publishLatest, result, settleOlderPage };
+  return { failOlderPage, publishLatest, result, settleOlderPage };
 }
 
 function makeSameSnapshotRealtimeResponse(): ThreadTimelineResponse {
@@ -511,6 +517,18 @@ describe("useThreadTimelineController", () => {
       expect(result.current.hasOlderTimelineRows).toBe(false);
     },
   );
+
+  it("rejects a failed older page so the caller can offer a retry", async () => {
+    const { failOlderPage, result } =
+      await renderControllerWithPendingOlderPage();
+    expect(result.current.isLoadingOlderTimelineRows).toBe(true);
+
+    await failOlderPage(makeServerError());
+
+    expect(result.current.isLoadingOlderTimelineRows).toBe(false);
+    expect(result.current.hasOlderTimelineRows).toBe(true);
+    expect(rowIds(result.current)).toEqual([newestLoadedRow.id]);
+  });
 
   it("replaces an applied older page when a later realtime update changes the history snapshot", async () => {
     const { publishLatest, result, settleOlderPage } =

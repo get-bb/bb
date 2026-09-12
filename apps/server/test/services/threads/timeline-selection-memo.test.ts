@@ -908,8 +908,9 @@ describe("latest timeline selection memo", () => {
     });
   });
 
-  it("rebuilds when a parented excluded row extends a delegating span past a user request", () => {
+  it("rebuilds and reorders rows when a parented excluded row extends a delegating span past a user request", () => {
     withTestThread((testThread) => {
+      const state = initialState();
       const args = latestArgs("default");
       const boundary = (maxSeq: number) =>
         getTimelineGroupingContext(testThread.coldDb, {
@@ -917,20 +918,39 @@ describe("latest timeline selection memo", () => {
           sequenceStart: 0,
           threadId: testThread.thread.id,
         }).orderingBoundarySequence;
-      const requestSeq = append(testThread, [
-        ...startTurn(initialState()),
+      const rowStarts = (page: BuiltTimelinePage) =>
+        page.response.rows.map((row) => row.sourceSeqStart);
+      const message = (id: string) =>
+        itemRow("item/completed", "turn-1", {
+          id,
+          text: id,
+          type: "agentMessage",
+        });
+      const steerSeq = append(testThread, [
+        ...startTurn(state),
         agentToolCall("item/started", "turn-1", "agent-1"),
-        childCommand("turn-1", "child-1", "agent-1"),
-        userRequest(2, { kind: "new-turn" }, "Queued"),
+        userRequest(2, { kind: "new-turn" }, "Steer"),
       ]);
-      expectWarmEqualsCold(testThread, args, "before");
-      expect(boundary(requestSeq)).toBeNull();
+      const requestSeq = append(testThread, [
+        acceptedInput(2, "turn-1"),
+        message("message-1"),
+        agentToolCall("item/started", "turn-1", "agent-2"),
+        userRequest(3, { kind: "new-turn" }, "Queued"),
+      ]);
+      const beforeSeq = append(testThread, [
+        message("message-2"),
+        completeTurn(state, "turn-1"),
+      ]);
+      const before = expectWarmEqualsCold(testThread, args, "before");
+      expect(boundary(beforeSeq)).toBe(requestSeq);
+      expect(rowStarts(before)).toEqual([1, 4, 5, 8, 7, 9, 10]);
 
       const maxSeq = append(testThread, [
         contextUsage("turn-1", 42, "agent-1"),
       ]);
       const after = expectWarmEqualsCold(testThread, args, "after");
-      expect(boundary(maxSeq)).toBe(requestSeq);
+      expect(boundary(maxSeq)).toBe(steerSeq);
+      expect(rowStarts(after)).toEqual([1, 4, 5, 7, 8, 9, 10]);
       expect(selectionWasReused(after.profile)).toBe(false);
     });
   });

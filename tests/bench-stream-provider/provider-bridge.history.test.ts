@@ -202,6 +202,13 @@ describe("bench_history", () => {
       const [reasoning, ...activities] = completedItems(events);
       const message = activities.pop();
       expect(reasoning?.type).toBe("reasoning");
+      const reasoningDeltas = events.flatMap((event) =>
+        event.type === "item/reasoning/textDelta" &&
+        event.itemId === reasoning?.id
+          ? [event.delta]
+          : [],
+      );
+      expect(reasoning).toMatchObject({ content: [reasoningDeltas.join("")] });
       expect(
         activities
           .map((item) =>
@@ -227,9 +234,11 @@ describe("bench_history", () => {
             expect(item.path.startsWith(`${CWD}/`)).toBe(true);
             break;
           case "search":
+            expect(item.query).not.toBe("");
             expect(item.path?.startsWith(CWD)).toBe(true);
             break;
           case "fileChange":
+            expect(item.changes).toHaveLength(1);
             expect(item.changes[0]?.path.startsWith(`${CWD}/`)).toBe(true);
             break;
           case "webSearch":

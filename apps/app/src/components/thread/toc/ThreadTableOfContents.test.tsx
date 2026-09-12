@@ -1129,6 +1129,14 @@ describe("ThreadTableOfContents timeline item cache", () => {
 
     expect(textReads).toBe(readsAfterMount);
 
+    const streamedRow = withCountedTextReads(
+      {
+        ...userConversationRow(2),
+        sourceSeqEnd: 3,
+        text: "Loaded   after\n client-side navigation, then more",
+      },
+      countRead,
+    );
     const attachmentOnlyRow = withCountedTextReads(
       {
         ...userConversationRow(3),
@@ -1147,16 +1155,17 @@ describe("ThreadTableOfContents timeline item cache", () => {
     );
     view.rerender(
       <TocHost
-        timelineRows={[
-          conversationRows[0]!,
-          conversationRows[1]!,
-          attachmentOnlyRow,
-        ]}
+        timelineRows={[conversationRows[0]!, streamedRow, attachmentOnlyRow]}
       />,
     );
     openTocPanel();
 
-    expect(textReads).toBe(readsAfterMount + 1);
+    expect(textReads).toBe(readsAfterMount + 2);
+    expect(
+      screen.getByText("Loaded after client-side navigation, then more", {
+        normalizer: (text) => text,
+      }),
+    ).not.toBeNull();
     expect(screen.getByText("Image attachment")).not.toBeNull();
   });
 

@@ -22,6 +22,7 @@ import {
   findStoredTimelineWindowByteBudgetFloor,
   findTimelineWindowBudgetFloorSequence,
   getActiveStoredTurnId,
+  getFirstParentedTimelineBoundarySequence,
   getHighWaterMarks,
   getLastStoredProviderThreadId,
   getLatestCompletedThreadContextClearSequence,
@@ -61,7 +62,10 @@ import {
   createThread,
   searchThreadsWithPendingInteractionState,
 } from "../../src/data/threads.js";
-import type { AppendDaemonEventInput } from "../../src/data/events.js";
+import type {
+  AppendDaemonEventInput,
+  InsertEventInput,
+} from "../../src/data/events.js";
 import { upsertHost } from "../../src/data/hosts.js";
 import { createMigratedConnection } from "../helpers/migrated-connection.js";
 
@@ -162,6 +166,17 @@ function searchNeedleDaemonEventInputs(
     },
     {
       threadId,
+      type: "item/agentMessage/delta",
+      ...turnFields,
+      itemId: "msg-search",
+      data: JSON.stringify({
+        providerThreadId: "provider-search",
+        itemId: "msg-search",
+        delta: "deltaneedle",
+      }),
+    },
+    {
+      threadId,
       type: "item/completed",
       ...turnFields,
       itemId: "msg-search",
@@ -172,6 +187,25 @@ function searchNeedleDaemonEventInputs(
           type: "agentMessage",
           id: "msg-search",
           text: "assistantneedle",
+        },
+      }),
+    },
+    {
+      threadId,
+      type: "item/completed",
+      ...turnFields,
+      itemId: "cmd-search",
+      itemKind: "commandExecution",
+      data: JSON.stringify({
+        providerThreadId: "provider-search",
+        item: {
+          type: "commandExecution",
+          id: "cmd-search",
+          command: "printf output",
+          cwd: "/tmp/project",
+          status: "completed",
+          approvalStatus: null,
+          aggregatedOutput: "toolneedle",
         },
       }),
     },
@@ -188,10 +222,16 @@ function expectIndexedNeedles(
   db: ReturnType<typeof setup>["db"],
   threadId: string,
 ): void {
-  for (const query of ["userneedle", "assistantneedle", "managerneedle"]) {
+  for (const [query, indexed] of [
+    ["userneedle", true],
+    ["deltaneedle", false],
+    ["assistantneedle", true],
+    ["toolneedle", false],
+    ["managerneedle", true],
+  ] as const) {
     expect({ query, threadIds: listSearchNeedleThreadIds(db, query) }).toEqual({
       query,
-      threadIds: [threadId],
+      threadIds: indexed ? [threadId] : [],
     });
   }
 }
@@ -1075,17 +1115,27 @@ describe("events", () => {
       .toEqual(["turn/started", "turn/input/accepted", "system/error"]);
   });
 
-  it("indexes daemon-appended user, assistant and manager messages", () => {
+  it("indexes daemon-appended messages without parsing deltas or tool outputs", () => {
     const { db, thread } = setup();
-
-    db.transaction(
-      (tx) =>
-        appendDaemonEventsInTransaction(
-          tx,
-          searchNeedleDaemonEventInputs(thread.id),
-        ),
-      { behavior: "immediate" },
-    );
+    const inputs = searchNeedleDaemonEventInputs(thread.id);
+    const parse = vi.spyOn(JSON, "parse");
+    try {
+      db.transaction((tx) => appendDaemonEventsInTransaction(tx, inputs), {
+        behavior: "immediate",
+      });
+      const parsedData = new Set(parse.mock.calls.map(([text]) => text));
+      expect(
+        inputs
+          .filter((input) => parsedData.has(input.data))
+          .map((input) => input.itemKind ?? input.type),
+      ).toEqual([
+        "client/turn/requested",
+        "agentMessage",
+        "system/manager/user_message",
+      ]);
+    } finally {
+      parse.mockRestore();
+    }
 
     expectIndexedNeedles(db, thread.id);
   });
@@ -1557,6 +1607,114 @@ describe("events", () => {
       { rowId: `${thread.id}:user-seed:2`, sequence: 2 },
     ]);
   });
+
+  it.each<{
+    name: string;
+    overrides?: Record<number, Partial<InsertEventInput>>;
+    range?: { maxSeq?: number; sequenceStart?: number };
+    expected: number | null;
+  }>([
+    { name: "a user request inside a tool call span", expected: 3 },
+    {
+      name: "a delegation span",
+      overrides: { 2: { itemKind: "delegation" } },
+      expected: 3,
+    },
+    {
+      name: "a parent whose turn only starts as a nested turn",
+      overrides: { 1: { parentToolCallId: "call-outer" } },
+      expected: null,
+    },
+    {
+      name: "a parented tool call",
+      overrides: { 2: { parentToolCallId: "call-outer" } },
+      expected: null,
+    },
+    {
+      name: "an agent-initiated request",
+      overrides: {
+        3: {
+          data: JSON.stringify({
+            initiator: "agent",
+            input: textInput("agent message"),
+            target: { kind: "new-turn" },
+          }),
+        },
+      },
+      expected: null,
+    },
+    {
+      name: "a parent before sequenceStart",
+      range: { sequenceStart: 3 },
+      expected: null,
+    },
+    { name: "a child after maxSeq", range: { maxSeq: 3 }, expected: null },
+    {
+      name: "a root turn start after maxSeq",
+      overrides: { 1: { sequence: 5 } },
+      range: { maxSeq: 4 },
+      expected: null,
+    },
+  ])(
+    "finds the parented timeline boundary for $name",
+    ({ overrides = {}, range, expected }) => {
+      const { db, thread } = setup();
+      const rows: InsertEventInput[] = [
+        {
+          threadId: thread.id,
+          sequence: 1,
+          type: "turn/started",
+          ...createTurnEventFields({ turnId: "turn-a" }),
+          data: "{}",
+        },
+        {
+          threadId: thread.id,
+          sequence: 2,
+          type: "item/started",
+          scope: turnScope("turn-a"),
+          itemId: "call-a",
+          itemKind: "toolCall",
+          parentToolCallId: null,
+          data: "{}",
+        },
+        {
+          threadId: thread.id,
+          sequence: 3,
+          type: "client/turn/requested",
+          ...threadEventFields,
+          data: JSON.stringify({
+            initiator: "user",
+            input: textInput("user message"),
+            target: { kind: "new-turn" },
+          }),
+        },
+        {
+          threadId: thread.id,
+          sequence: 4,
+          type: "item/started",
+          scope: turnScope("nested-a"),
+          itemId: "child-a",
+          itemKind: "agentMessage",
+          parentToolCallId: "call-a",
+          data: "{}",
+        },
+      ];
+      insertEvents(
+        db,
+        noopNotifier,
+        rows.map((row) => ({ ...row, ...overrides[row.sequence] })),
+      );
+
+      expect(
+        getFirstParentedTimelineBoundarySequence(db, {
+          maxSeq: 10,
+          sequenceStart: 0,
+          ...range,
+          threadId: thread.id,
+        }),
+      ).toBe(expected);
+    },
+  );
 
   it("loads timeline event windows with sequence bounds and exclusions", () => {
     const { db, thread } = setup();
