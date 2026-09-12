@@ -643,6 +643,16 @@ export interface MessageDispatchHookContext {
    * double-count.
    */
   queuedMessage: ThreadQueuedMessage | null;
+  /**
+   * Opaque JSON supplied by a plugin through the composer's
+   * `experimental_submit`, paired with that plugin's id. Null for ordinary
+   * submissions. Preserved when a submission is queued and delivered again
+   * on later attempts. Core does not interpret the data.
+   */
+  experimental_submission: {
+    pluginId: string;
+    data: JsonValue;
+  } | null;
   /** How the dispatch was requested; null for internal/core-driven sends. */
   origin: ThreadCreateOrigin | null;
   originPluginId: string | null;

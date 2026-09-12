@@ -4,7 +4,6 @@ import {
   getEnvironment,
   getProjectSourceByHost,
   getThread,
-  setThreadExecutionOverride,
 } from "@bb/db";
 import type {
   ProjectExecutionDefaults,
@@ -386,14 +385,6 @@ async function createPendingThreadAndAttemptFirstDispatch(
       args.request,
       executionPlanArgs,
     );
-    if (args.sendAt !== undefined) {
-      setThreadExecutionOverride(deps.db, {
-        threadId: thread.id,
-        modelOverride: execution.model,
-        reasoningLevelOverride: execution.reasoningLevel,
-      });
-    }
-
     const startContext: PendingThreadStartContext = {
       environmentIntent: args.environmentIntent,
       fork: args.fork?.descriptor ?? null,
@@ -430,6 +421,7 @@ async function createPendingThreadAndAttemptFirstDispatch(
       },
       source: { kind: "inline" },
       queuePayload: { kind: "inline" },
+      pluginSubmission: args.request.pluginSubmission ?? null,
       startContext,
       executionDefaults: executionPlanArgs,
       origin: args.request.origin,

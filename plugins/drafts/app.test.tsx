@@ -42,16 +42,18 @@ describe("registration", () => {
 });
 
 describe("saving", () => {
-  it("submits the active composer directly as a manual draft", async () => {
+  it("submits the active composer with draft metadata", async () => {
     const submits: unknown[] = [];
     await plusMenuItem.run({
       composer: {
-        experimental_submit: async (options?: ExperimentalComposerSubmitOptions) => {
+        experimental_submit: async (
+          options: ExperimentalComposerSubmitOptions,
+        ) => {
           submits.push(options);
         },
       } as never,
       view: composerView(),
     });
-    expect(submits).toEqual([undefined]);
+    expect(submits).toEqual([{ experimental_data: { kind: "draft" } }]);
   });
 });

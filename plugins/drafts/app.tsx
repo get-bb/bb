@@ -15,7 +15,9 @@ export default definePluginApp((app) => {
         disabled: (view) => view.draft.isEmpty || view.run.isSubmitting,
         run: async ({ composer, view }) => {
           try {
-            await composer.experimental_submit();
+            await composer.experimental_submit({
+              experimental_data: { kind: "draft" },
+            });
             toast.success("Draft saved");
           } catch (error: unknown) {
             toast.error(error instanceof Error ? error.message : String(error));

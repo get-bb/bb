@@ -1492,6 +1492,7 @@ describe("environment providers are asked inside provisioning", () => {
         payload: { input: textInput("Retry the task"), mode: "start" },
         source: { kind: "inline" },
         queuePayload: { kind: "inline" },
+        pluginSubmission: null,
         origin: null,
         originPluginId: null,
         startedOnBehalfOf: null,

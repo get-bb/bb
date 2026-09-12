@@ -176,7 +176,7 @@ export interface ComposerLog {
    * has no submit pipeline of its own, so it records the options and clears the
    * draft — enough to assert what a picker scheduled and that it tidied up.
    */
-  submits: Array<ExperimentalComposerSubmitOptions | undefined>;
+  submits: ExperimentalComposerSubmitOptions[];
 }
 
 interface TestComposerStore {
@@ -1655,7 +1655,7 @@ export function renderSlot<
           throw new Error("Type a message before scheduling it.");
         }
         if (
-          options !== undefined &&
+          options.sendAt !== undefined &&
           (!Number.isFinite(options.sendAt) || options.sendAt <= Date.now())
         ) {
           throw new Error("Pick a time in the future.");

@@ -821,22 +821,27 @@ export function useComposer(): PluginComposerApi {
 
   const hostSubmit = composerHost?.submit;
   const experimental_submit = useCallback(
-    async (options?: ExperimentalComposerSubmitOptions) => {
+    async (options: ExperimentalComposerSubmitOptions) => {
       if (!scopeOwnership.isActive()) {
         throw new Error("This composer is no longer active.");
       }
       if (hostSubmit === undefined) {
-        throw new Error("This composer cannot schedule a submission.");
+        throw new Error("This composer cannot submit programmatically.");
       }
       if (
-        options !== undefined &&
+        options.sendAt !== undefined &&
         (!Number.isFinite(options.sendAt) || options.sendAt <= Date.now())
       ) {
         throw new Error("Pick a time in the future.");
       }
-      await hostSubmit(options, pluginId);
+      await hostSubmit(
+        options,
+        options.experimental_data === undefined
+          ? undefined
+          : { pluginId, data: options.experimental_data },
+      );
     },
-    [hostSubmit, scopeOwnership],
+    [hostSubmit, pluginId, scopeOwnership],
   );
 
   return useMemo(

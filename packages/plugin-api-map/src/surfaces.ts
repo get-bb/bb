@@ -383,12 +383,13 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
           "Run a callback when someone picks the row",
           "Read and rewrite the draft prompt from that callback",
           "Send the draft at a time the person picks, through the prompt box's own send — so a scheduled message keeps its attachments, its @-mentions, and on the new-thread screen the agent and environment chosen on screen",
+          "Submit the draft with plugin-owned JSON that its dispatch hook can interpret and use to queue the message",
         ],
         apiSymbols: [
           "ComposerPlusMenuItem",
           "ExperimentalComposerSubmitOptions",
         ],
-        firstParty: ["Send later"],
+        firstParty: ["Drafts", "Send later"],
       },
       {
         id: "provider-picker",
@@ -722,6 +723,7 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
         bullets: [
           "Let a dispatch proceed, queue it with a user-visible reason, or refuse it outright",
           "See the thread, project, machine, prompt and resolved execution tuple before the turn runs",
+          "Read plugin-owned JSON attached by experimental_submit, including on queued re-attempts",
           "Hold work until a moment it names, then ask core to re-decide every queued message when its condition changes",
         ],
         apiSymbols: [
@@ -731,7 +733,7 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
           "PluginDispatchEnvironmentIntent",
           "MessageDispatchHookDecision",
         ],
-        firstParty: ["Concurrency limit"],
+        firstParty: ["Concurrency limit", "Drafts"],
         experimental: true,
       },
       {

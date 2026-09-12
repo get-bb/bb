@@ -125,6 +125,9 @@ export const createThreadRequestSchema = z
      * created and creation runs exactly as it did before the queue existed.
      */
     sendAt: z.number().int().nonnegative().optional(),
+    pluginSubmission: z
+      .object({ pluginId: pluginIdSchema, data: jsonValueSchema })
+      .optional(),
   })
   .superRefine((value, ctx) => {
     if (value.origin === "plugin" && value.originPluginId === undefined) {
@@ -242,7 +245,9 @@ const sendMessageRequestFieldsSchema = z.object({
   executionInputSources: existingThreadExecutionInputSourcesSchema.optional(),
   mode: sendMessageModeSchema,
   senderThreadId: z.string().min(1).optional(),
-  dispatchPluginId: pluginIdSchema.optional(),
+  pluginSubmission: z
+    .object({ pluginId: pluginIdSchema, data: jsonValueSchema })
+    .optional(),
   /**
    * Epoch ms at which this message should dispatch. Present ⇒ nothing is sent
    * now; the message is queued as a row waiting on the clock, and the due
@@ -284,7 +289,7 @@ export type SendMessageResponse = z.infer<typeof sendMessageResponseSchema>;
 // `sendAt` is deliberately dropped: an edit rewrites a message that has
 // already been dispatched, so there is nothing left to schedule.
 export const editMessageRequestSchema = sendMessageRequestFieldsSchema
-  .omit({ mode: true, sendAt: true, dispatchPluginId: true })
+  .omit({ mode: true, sendAt: true, pluginSubmission: true })
   .extend({
     operationId: z.string().min(1),
     expectedRequestSequence: z.number().int().nonnegative().optional(),

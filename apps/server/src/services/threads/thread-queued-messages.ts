@@ -1,5 +1,6 @@
 import {
   promptInputSchema,
+  queuedMessagePluginSubmissionSchema,
   queuedMessageWaitingOnSchema,
   threadQueuedMessageSchema,
 } from "@bb/domain";
@@ -8,6 +9,7 @@ import type {
   PromptInput,
   QueuedMessagePayload,
   QueuedMessagePayloadKind,
+  QueuedMessagePluginSubmission,
   QueuedMessageWaitingOn,
   ThreadQueuedMessage,
 } from "@bb/domain";
@@ -23,6 +25,7 @@ interface StoredQueuedThreadMessageRow {
   groupWithNext: boolean;
   model: string;
   payloadKind: QueuedMessagePayloadKind;
+  pluginSubmission: string | null;
   reasoningLevel: string;
   retryAttempt: number | null;
   retryOfTurnRequestId: string | null;
@@ -118,6 +121,35 @@ function toQueuedMessagePayload(
     attempt: row.retryAttempt,
     reason: row.retryReason,
   };
+}
+
+export function parseStoredQueuedThreadMessagePluginSubmission(
+  row: Pick<
+    StoredQueuedThreadMessageRow,
+    "id" | "pluginSubmission" | "threadId"
+  >,
+): QueuedMessagePluginSubmission | null {
+  if (row.pluginSubmission === null) return null;
+  let pluginSubmission: unknown;
+  try {
+    pluginSubmission = JSON.parse(row.pluginSubmission);
+  } catch {
+    throw new ApiError(
+      500,
+      "internal_error",
+      `Stored queued message ${row.id} for thread ${row.threadId} has malformed plugin submission data`,
+    );
+  }
+  const parsed =
+    queuedMessagePluginSubmissionSchema.safeParse(pluginSubmission);
+  if (!parsed.success) {
+    throw new ApiError(
+      500,
+      "internal_error",
+      `Stored queued message ${row.id} for thread ${row.threadId} has malformed plugin submission data`,
+    );
+  }
+  return parsed.data;
 }
 
 export function toThreadQueuedMessage(

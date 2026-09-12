@@ -538,7 +538,7 @@ export function RootComposeView() {
         isForkDraft: forkSeed !== null,
         navigateToThreadAfterCreate,
       });
-      const { sendAt, dispatchPluginId, ...requestFields } = request;
+      const { sendAt, ...requestFields } = request;
       const createRequest =
         forkSeed === null
           ? {
@@ -560,14 +560,11 @@ export function RootComposeView() {
             });
       if (createRequest === null) return;
       const thread = await createThread.mutateAsync(
-        sendAt === undefined && dispatchPluginId === undefined
+        sendAt === undefined
           ? createRequest
           : {
               ...createRequest,
               ...(sendAt === undefined ? {} : { sendAt }),
-              ...(dispatchPluginId === undefined
-                ? {}
-                : { origin: "plugin" as const, originPluginId: dispatchPluginId }),
             },
       );
       setLastCreatedThreadId(thread.id);

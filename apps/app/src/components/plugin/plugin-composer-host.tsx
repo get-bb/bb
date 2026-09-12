@@ -13,6 +13,7 @@ import {
 import type {
   ComposerView,
   ExperimentalComposerSubmitOptions,
+  JsonValue,
   PluginComposerScope,
 } from "@get-bb/plugin-sdk";
 import { isComposerDraftEmpty } from "@get-bb/plugin-sdk/internal/composer-view";
@@ -26,8 +27,8 @@ export interface PluginComposerHost {
   setDraft(next: PromptDraftState): void;
   focus(): void;
   submit?(
-    options: ExperimentalComposerSubmitOptions | undefined,
-    pluginId: string,
+    options: ExperimentalComposerSubmitOptions,
+    pluginSubmission: { pluginId: string; data: JsonValue } | undefined,
   ): Promise<void>;
 }
 
