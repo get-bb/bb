@@ -1083,15 +1083,8 @@ export function ModelReasoningPicker({
                     isActive
                       ? "border-foreground text-foreground"
                       : "border-transparent text-muted-foreground hover:text-foreground",
-                    isHandoffSource && "opacity-40 hover:text-muted-foreground",
                   )}
                 >
-                  {isHandoffSource ? (
-                    <span
-                      aria-hidden
-                      className="pointer-events-none absolute inset-x-1 top-1/2 h-px -rotate-[40deg] bg-current"
-                    />
-                  ) : null}
                   {TabIcon ? (
                     <TabIcon className={COARSE_POINTER_ICON_SIZE_CLASS} />
                   ) : (
