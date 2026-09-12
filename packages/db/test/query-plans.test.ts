@@ -237,31 +237,34 @@ function assertEmittedQueryPlanUsesIndex(
 }
 
 describe("slow query index plans", () => {
-  it("looks up provider thread owners through the identity index", () => {
+  it("resolves a provider session with two indexed lookups regardless of history length", () => {
     const { db, thread } = setup();
     try {
-      insertEvents(db, noopNotifier, [
-        {
+      insertEvents(
+        db,
+        noopNotifier,
+        Array.from({ length: 50 }, (_, index) => ({
           threadId: thread.id,
-          sequence: 1,
+          sequence: index + 1,
           scope: threadScope(),
           providerThreadId: "provider-owner-plan",
-          type: "thread/identity",
+          type: "thread/identity" as const,
           itemId: null,
           itemKind: null,
           parentToolCallId: null,
           data: JSON.stringify({ providerThreadId: "provider-owner-plan" }),
-        },
-      ]);
+        })),
+      );
       const captured = captureStatements(db, () => {
         expect(getLastStoredProviderThreadId(db, thread.id)).toBe(
           "provider-owner-plan",
         );
       });
-      const ownerQuery = captured.find((statement) =>
-        statement.sql.includes('inner join "threads"'),
+      expect(captured).toHaveLength(2);
+      const [identityQuery, ownerQuery] = captured;
+      expect(queryPlanDetails({ db, ...identityQuery! })).toContain(
+        "USING INDEX events_thread_type_sequence_idx",
       );
-      expect(ownerQuery).toBeDefined();
       expect(queryPlanDetails({ db, ...ownerQuery! })).toContain(
         "USING INDEX events_provider_identity_idx",
       );
