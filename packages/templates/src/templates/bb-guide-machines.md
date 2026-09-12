@@ -273,8 +273,8 @@ Agent-provider variables win over these host values for agent turns. The server 
 and whenever settings change. Background commands and newly launched processes
 inherit them, including git and gh operations. Removing an override restores the
 original daemon value. Existing processes and terminals retain their launch
-environment. Cached provider runtimes refresh before their next operation once
-active work has finished. Runtime output is forwarded as-is,
+environment. Environment synchronization does not restart cached provider
+runtimes; they retain their launch environment until recreated. Runtime output is forwarded as-is,
 so commands and providers can print contributed values.
 
 Plugin host calls start immediately using the current environment while any calls
