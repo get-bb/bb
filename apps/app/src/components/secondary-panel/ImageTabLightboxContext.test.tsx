@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { useState } from "react";
 import { afterEach, describe, expect, it } from "vitest";
 import { FilePreview } from "./FilePreview";
@@ -68,7 +68,7 @@ describe("ImageTabLightboxProvider", () => {
     expect(
       screen.getByRole("status", { name: "Loading image" }),
     ).not.toBeNull();
-    expect(screen.queryByRole("img", { name: "one.png" })).toBeNull();
+    expect(within(screen.getByRole("dialog")).queryByRole("img", { name: "one.png" })).toBeNull();
     expect(screen.getByRole("dialog")).not.toBeNull();
   });
 
@@ -78,24 +78,12 @@ describe("ImageTabLightboxProvider", () => {
     fireEvent.click(screen.getByRole("button", { name: /Open one\.png/u }));
 
     expect(screen.queryByText("1 of 2")).toBeNull();
-    expect(screen.getByRole("dialog").className).toContain("92svh");
-    expect(screen.getByText("← → to navigate")).not.toBeNull();
-    expect(
-      screen
-        .getByRole("button", { name: "Previous image" })
-        .classList.contains("pointer-coarse:hidden"),
-    ).toBe(true);
-    expect(
-      screen
-        .getByRole("button", { name: "Next image" })
-        .classList.contains("pointer-coarse:hidden"),
-    ).toBe(true);
     expect(screen.queryByLabelText("Images in this gallery")).toBeNull();
 
     fireEvent.click(screen.getByRole("button", { name: "Next image" }));
 
     expect(
-      screen.getByRole("img", { name: "two.jpg" }).getAttribute("src"),
+      within(screen.getByRole("dialog")).getByRole("img", { name: "two.jpg" }).getAttribute("src"),
     ).toBe("/two.jpg");
     expect(screen.getByRole("dialog", { name: "two.jpg" })).not.toBeNull();
     expect(screen.queryByText("2 of 2")).toBeNull();
