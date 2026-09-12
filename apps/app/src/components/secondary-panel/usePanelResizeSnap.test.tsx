@@ -198,7 +198,7 @@ describe("usePanelResizeSnap", () => {
     expect(next.style.flex).toBe("70 1 0px");
   });
 
-  it("previews pointer movement locally and commits once at drag end", () => {
+  it("owns pointer movement and leave events until committing at drag end", () => {
     const onResize = vi.fn();
     render(<SnapHarness onResize={onResize} />);
     const grid = screen.getByTestId("grid");
@@ -211,7 +211,9 @@ describe("usePanelResizeSnap", () => {
     divider.getBoundingClientRect = () => rect(470, 1);
     next.getBoundingClientRect = () => rect(471, 429);
     const rawPanelMove = vi.fn();
+    const rawPanelLeave = vi.fn();
     document.body.addEventListener("pointermove", rawPanelMove, true);
+    document.body.addEventListener("pointerleave", rawPanelLeave, true);
 
     try {
       fireEvent.pointerDown(hitTarget, { clientX: 470, pointerId: 40 });
@@ -226,12 +228,25 @@ describe("usePanelResizeSnap", () => {
       expect(previous.style.flex).toBe("0.4375 1 0px");
       expect(next.style.flex).toBe("0.5625 1 0px");
 
+      fireEvent.pointerLeave(document.body, {
+        buttons: 1,
+        clientX: 1000,
+        pointerId: 40,
+      });
+      expect(rawPanelLeave).not.toHaveBeenCalled();
+      expect(onResize).not.toHaveBeenCalled();
+      expect(previous.style.flex).toBe("0.4375 1 0px");
+      expect(next.style.flex).toBe("0.5625 1 0px");
+
       fireEvent.pointerUp(window, { clientX: 450, pointerId: 40 });
       expect(onResize).toHaveBeenCalledOnce();
       expect(onResize).toHaveBeenLastCalledWith(0.4375);
+      fireEvent.pointerLeave(document.body, { pointerId: 40 });
+      expect(rawPanelLeave).toHaveBeenCalledOnce();
     } finally {
       fireEvent.pointerUp(window, { clientX: 450, pointerId: 40 });
       document.body.removeEventListener("pointermove", rawPanelMove, true);
+      document.body.removeEventListener("pointerleave", rawPanelLeave, true);
     }
   });
 
