@@ -78,7 +78,7 @@ interface TimelineSelectionMemo {
 }
 
 export const TIMELINE_SELECTION_MEMO_MAX_ENTRIES = 16;
-export const TIMELINE_SELECTION_MEMO_MAX_DATA_CHARS = 16_000_000;
+const TIMELINE_SELECTION_MEMO_MAX_DATA_CHARS = 16_000_000;
 const TIMELINE_SELECTION_MEMO_MAX_APPENDED_ROWS = 512;
 
 const APPENDABLE_EVENT_TYPES: ReadonlySet<ThreadEventType> = new Set([
@@ -102,15 +102,8 @@ export function clearTimelineSelectionMemo(db: DbConnection): void {
   selectionMemos.delete(db);
 }
 
-export function readTimelineSelectionMemoSize(db: DbConnection): {
-  dataChars: number;
-  entryCount: number;
-} {
-  const memo = selectionMemos.get(db);
-  return {
-    dataChars: memo?.dataChars ?? 0,
-    entryCount: memo?.entries.size ?? 0,
-  };
+export function countTimelineSelectionMemoEntries(db: DbConnection): number {
+  return selectionMemos.get(db)?.entries.size ?? 0;
 }
 
 export function countAffordableAnchors(
@@ -118,14 +111,12 @@ export function countAffordableAnchors(
   budgetFloorSequence: number | undefined,
   segmentLimit: number,
 ): number {
-  const maxSegments = Math.min(segmentLimit, anchors.length);
-  if (budgetFloorSequence === undefined) {
-    return maxSegments;
-  }
-  const affordable = anchors.filter(
-    (anchor) => anchor.sequence >= budgetFloorSequence,
-  ).length;
-  return Math.min(maxSegments, affordable);
+  const affordable =
+    budgetFloorSequence === undefined
+      ? anchors.length
+      : anchors.filter((anchor) => anchor.sequence >= budgetFloorSequence)
+          .length;
+  return Math.max(1, Math.min(segmentLimit, affordable));
 }
 
 function getSelectionMemo(db: DbConnection): TimelineSelectionMemo {
@@ -252,13 +243,10 @@ function budgetFloorKeepsWindow(
 ): boolean {
   return (
     (budgetFloor.sequence !== undefined) === entry.budgetFloorDefined &&
-    Math.max(
-      1,
-      countAffordableAnchors(
-        entry.anchors,
-        budgetFloor.sequence,
-        args.page.segmentLimit,
-      ),
+    countAffordableAnchors(
+      entry.anchors,
+      budgetFloor.sequence,
+      args.page.segmentLimit,
     ) === entry.count
   );
 }

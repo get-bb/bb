@@ -49,8 +49,6 @@ real stack with instant `bench_history` turns: an 8-turn thread (`small`), a
 | `--server-profile`                          | Start the server with the Node inspector and record a server CPU profile for the streaming window.                                                                |
 | `--artifact-root <checkout>`                | Run the production artifacts of another checkout (it must have built `@bb/cli` too).                                                                              |
 | `--compare-roots a=<checkout>,b=<checkout>` | Alternate several checkouts per iteration; writes `comparison-<label>.md` against the first.                                                                      |
-| `--inject-css <file>`, `--inject-js <file>` | Experiment: append a stylesheet or an init script.                                                                                                                |
-| `--reduced-motion`                          | Experiment: emulate `prefers-reduced-motion: reduce`.                                                                                                             |
 | `--label`, `--out`, `--cache-dir`           | Output naming and locations.                                                                                                                                      |
 
 ## Scenarios

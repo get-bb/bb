@@ -7,11 +7,15 @@ import {
   writeFileSync,
 } from "node:fs";
 import { join } from "node:path";
+import { setTimeout as sleep } from "node:timers/promises";
+import { z } from "zod";
+import { waitUntil } from "../backend/api.js";
 import { startBackend } from "../backend/backend.js";
 import {
   connectNodeProfiler,
   type NodeProfiler,
 } from "../backend/node-profiler.js";
+import { CdpCommandError } from "../browser/cdp.js";
 import { collectorSource } from "../browser/collector-source.js";
 import {
   readCollectorProgress,
@@ -41,17 +45,12 @@ import {
   parseEmissionLog,
   type EmissionLogEvent,
 } from "../metrics/emission-log.js";
-import { streamPrompt, type Scenario } from "../scenarios.js";
+import { expectedStreamMs, streamPrompt, type Scenario } from "../scenarios.js";
 
 export type ProfileMode = "none" | "cpu" | "trace";
 
 export interface IterationOptions {
   cpuThrottlingRate: number;
-  experiment: {
-    injectCss: string | null;
-    injectJs: string | null;
-    reducedMotion: boolean;
-  };
   serverProfile: boolean;
   fixtureText: string;
   golden: Golden;
@@ -90,6 +89,7 @@ export interface IterationMetrics {
 }
 
 export interface IterationResult {
+  chromeVersion: string;
   iteration: number;
   metrics: IterationMetrics;
   scenario: string;
@@ -105,18 +105,23 @@ const QUIET_WINDOW_MS = 2_000;
 const COMPOSER_SELECTOR = '.ProseMirror[contenteditable="true"]';
 const SCROLL_BODY_SELECTOR = ".thread-scrollbar";
 
+const navigateResponseSchema = z.object({ errorText: z.string().optional() });
+const composerPointSchema = z
+  .object({ x: z.number(), y: z.number() })
+  .nullable();
+const geometrySnapshotSchema = z.object({
+  port: z.tuple([z.number(), z.number(), z.number()]).nullable(),
+  rows: z.array(z.tuple([z.string().nullable(), z.number(), z.number()])),
+  tables: z.array(z.tuple([z.number(), z.number()]).nullable()),
+});
+
 async function sendViaComposer(page: BenchPage, text: string): Promise<void> {
-  const point = await page.evaluate(
-    `(() => { const el = document.querySelector(${JSON.stringify(COMPOSER_SELECTOR)}); if (!el) return null; const r = el.getBoundingClientRect(); return { x: r.left + Math.min(40, r.width / 2), y: r.top + Math.min(12, r.height / 2) }; })()`,
+  const point = composerPointSchema.parse(
+    await page.evaluate(
+      `(() => { const el = document.querySelector(${JSON.stringify(COMPOSER_SELECTOR)}); if (!el) return null; const r = el.getBoundingClientRect(); return { x: r.left + Math.min(40, r.width / 2), y: r.top + Math.min(12, r.height / 2) }; })()`,
+    ),
   );
-  if (
-    point === null ||
-    typeof point !== "object" ||
-    !("x" in point) ||
-    !("y" in point) ||
-    typeof point.x !== "number" ||
-    typeof point.y !== "number"
-  ) {
+  if (point === null) {
     throw new Error("Composer editor not found");
   }
   for (const type of ["mousePressed", "mouseReleased"]) {
@@ -151,10 +156,6 @@ async function readDistanceFromBottom(page: BenchPage): Promise<number | null> {
   return typeof value === "number" ? value : null;
 }
 
-async function sleep(ms: number): Promise<void> {
-  await new Promise((resolve) => setTimeout(resolve, ms));
-}
-
 async function waitForApiQuiet(
   page: BenchPage,
   timeoutMs: number,
@@ -179,37 +180,15 @@ async function waitForApiQuiet(
 }
 
 function geometrySummary(snapshot: string): IterationMetrics["geometry"] {
-  const parsed: unknown = JSON.parse(snapshot);
-  const rows =
-    typeof parsed === "object" &&
-    parsed !== null &&
-    "rows" in parsed &&
-    Array.isArray(parsed.rows)
-      ? parsed.rows
-      : [];
-  const port =
-    typeof parsed === "object" &&
-    parsed !== null &&
-    "port" in parsed &&
-    Array.isArray(parsed.port)
-      ? parsed.port
-      : [];
-  const scrollHeight = typeof port[2] === "number" ? port[2] : -1;
-  const tables =
-    typeof parsed === "object" &&
-    parsed !== null &&
-    "tables" in parsed &&
-    Array.isArray(parsed.tables)
-      ? parsed.tables
-      : [];
-  const sizes = rows.map((row: unknown) =>
-    Array.isArray(row) ? row.slice(1) : row,
+  const { port, rows, tables } = geometrySnapshotSchema.parse(
+    JSON.parse(snapshot),
   );
+  const sizes = rows.map(([, width, height]) => [width, height]);
   return {
     rowCount: rows.length,
-    scrollHeight,
+    scrollHeight: port?.[2] ?? -1,
     sha256: createHash("sha256")
-      .update(JSON.stringify({ port, sizes, tables }))
+      .update(JSON.stringify({ port: port ?? [], sizes, tables }))
       .digest("hex"),
   };
 }
@@ -223,10 +202,6 @@ function readEmission(path: string): EmissionLogEvent[] {
   return lastNewline === -1
     ? []
     : parseEmissionLog(content.slice(0, lastNewline + 1));
-}
-
-function expectedStreamMs(scenario: Scenario, docChars: number): number {
-  return Math.ceil(docChars / scenario.chunkChars) * scenario.intervalMs;
 }
 
 export async function runIteration(
@@ -246,7 +221,6 @@ export async function runIteration(
   mkdirSync(emissionDir, { recursive: true });
   const backend = await startBackend({
     daemonEnv: { BENCH_STREAM_LOG_DIR: emissionDir },
-    logLevel: "warn",
     paths,
     repoRoot: options.repoRoot,
     serverNodeArgs: options.serverProfile ? ["--inspect=127.0.0.1:0"] : [],
@@ -262,24 +236,30 @@ export async function runIteration(
     const page = browser.page;
     await page.setViewport(1440, 900);
     await page.addInitScript(collectorSource);
-    if (options.experiment.injectCss !== null) {
-      await page.addInitScript(
-        `document.addEventListener("DOMContentLoaded", () => { const style = document.createElement("style"); style.dataset.benchExperiment = ""; style.textContent = ${JSON.stringify(options.experiment.injectCss)}; document.head.appendChild(style); });`,
-      );
-    }
-    if (options.experiment.injectJs !== null) {
-      await page.addInitScript(options.experiment.injectJs);
-    }
-    if (options.experiment.reducedMotion) {
-      await page.send("Emulation.setEmulatedMedia", {
-        features: [{ name: "prefers-reduced-motion", value: "reduce" }],
-      });
-    }
     const url = `${backend.serverUrl}/projects/${golden.manifest.projectId}/threads/${threadId}`;
-    await page.navigate(url, { timeoutMs: LOAD_TIMEOUT_MS });
-    await page.waitForFunction(
-      `document.querySelectorAll(${JSON.stringify(MESSAGE_SELECTOR)}).length > 0`,
-      { pollMs: 250, timeoutMs: LOAD_TIMEOUT_MS },
+    const navigation = navigateResponseSchema.parse(
+      await page.send("Page.navigate", { url }),
+    );
+    if (navigation.errorText) {
+      throw new Error(`Navigation to ${url} failed: ${navigation.errorText}`);
+    }
+    await waitUntil(
+      async () => {
+        const rendered = await page
+          .evaluate(
+            `document.querySelectorAll(${JSON.stringify(MESSAGE_SELECTOR)}).length > 0`,
+          )
+          .catch((error: unknown) => {
+            if (error instanceof CdpCommandError) {
+              return false;
+            }
+            throw error;
+          });
+        return rendered === true ? true : null;
+      },
+      `${MESSAGE_SELECTOR} in ${url}`,
+      LOAD_TIMEOUT_MS,
+      250,
     );
     await waitForApiQuiet(page, 60_000);
     if (options.cpuThrottlingRate > 1) {
@@ -289,14 +269,14 @@ export async function runIteration(
     await page.collectGarbage();
     const perfBefore = await page.performanceMetrics();
     const cpuBefore = backend.cpuMs();
-    await page.startNetworkCapture();
+    const stopNetworkCapture = await page.startNetworkCapture();
     await startCollector(page, {
       checkpoints,
       messageSelector: MESSAGE_SELECTOR,
       rootSelector: ROOT_SELECTOR,
     });
     if (options.profile === "cpu") {
-      await page.startCpuProfile({ samplingIntervalUs: 200 });
+      await page.startCpuProfile(200);
     }
     if (options.serverProfile) {
       serverProfiler = await connectNodeProfiler(backend.serverStdioLogPath);
@@ -351,14 +331,14 @@ export async function runIteration(
       );
     }
     await backend.api.waitForThreadStatus(threadId, "idle", 120_000);
-    const hitDeadline = Date.now() + 30_000;
-    while (Date.now() < hitDeadline) {
-      const progress = await readCollectorProgress(page);
-      if (progress.checkpointHits >= progress.checkpoints) {
-        break;
-      }
-      await sleep(200);
-    }
+    await waitUntil(
+      async () => {
+        const progress = await readCollectorProgress(page);
+        return progress.checkpointHits >= progress.checkpoints ? true : null;
+      },
+      "every checkpoint to render",
+      30_000,
+    ).catch(() => undefined);
     await sleep(SETTLE_AFTER_COMPLETE_MS);
     const cpuProfile =
       options.profile === "cpu" ? await page.stopCpuProfile() : null;
@@ -374,7 +354,7 @@ export async function runIteration(
       await page.stopTrace(join(iterationDir, "trace.json"));
     }
     const collected = await stopCollector(page);
-    const capture = page.stopNetworkCapture();
+    const capture = stopNetworkCapture();
     const perfAfter = await page.performanceMetrics();
     await page.collectGarbage();
     const heapAfterGc = (await page.performanceMetrics()).JSHeapUsedSize ?? 0;
@@ -412,18 +392,15 @@ export async function runIteration(
         checkpoints,
         emissionLog: emission,
         fixtureText: options.fixtureText,
-        gate: "newline",
         hits: collected.checkpointHits,
       }),
       cpuProfile:
-        cpuProfile === null
-          ? null
-          : summarizeCpuProfile(cpuProfile, { top: 40 }),
+        cpuProfile === null ? null : summarizeCpuProfile(cpuProfile, 40),
       daemonCpuMs: cpuAfter.daemon - cpuBefore.daemon,
       serverCpuProfile:
         serverCpuProfile === null
           ? null
-          : summarizeCpuProfile(serverCpuProfile, { top: 60 }),
+          : summarizeCpuProfile(serverCpuProfile, 60),
       domMutations: {
         addedNodes: collected.addedNodes,
         removedNodes: collected.removedNodes,
@@ -436,7 +413,7 @@ export async function runIteration(
       },
       frames: summarizeFrames(collected.frames),
       longTasks: summarizeLongTasks(collected.longTasks),
-      loafs: summarizeLoafs(collected.loafs, { top: 15 }),
+      loafs: summarizeLoafs(collected.loafs, 15),
       mainThread: diffPerformanceMetrics(perfBefore, perfAfter),
       network: summarizeNetwork(capture, threadId),
       pinnedToBottom: {
@@ -461,6 +438,7 @@ export async function runIteration(
       windowMs: windowEnd - windowStart,
     };
     return {
+      chromeVersion: await browser.version(),
       iteration: options.iteration,
       metrics,
       scenario: scenario.name,

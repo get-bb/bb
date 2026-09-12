@@ -78,7 +78,7 @@ function toTocLabel({
 
 const timelineTocItemsByRow = new WeakMap<TimelineConversationRow, TocItem>();
 
-export function getTimelineTocItem(row: TimelineConversationRow): TocItem {
+function getTimelineTocItem(row: TimelineConversationRow): TocItem {
   const cachedItem = timelineTocItemsByRow.get(row);
   if (cachedItem !== undefined) return cachedItem;
   const item: TocItem = {

@@ -33,9 +33,10 @@ import {
   seedHostSession,
   seedProjectWithSource,
   seedThread,
+  seedThreadFixture,
   seedThreadRuntimeState,
 } from "../helpers/seed.js";
-import { withTestHarness } from "../helpers/test-app.js";
+import { startTestServer, withTestHarness } from "../helpers/test-app.js";
 import type { TestAppHarness } from "../helpers/test-app.js";
 import { setPluginAgentContributions } from "../../src/services/plugins/plugin-agent-contributions.js";
 import type { PluginAgentToolRecord } from "../../src/services/plugins/plugin-api.js";
@@ -73,23 +74,6 @@ function systemErrorEnvelopes(
       message: `daemon error ${index}`,
     },
   }));
-}
-
-function seedOwnedActiveThread(harness: TestAppHarness) {
-  const { session } = seedHostSession(harness.deps);
-  const { project } = seedProjectWithSource(harness.deps, {
-    hostId: session.hostId,
-  });
-  const environment = seedEnvironment(harness.deps, {
-    hostId: session.hostId,
-    projectId: project.id,
-  });
-  const thread = seedThread(harness.deps, {
-    projectId: project.id,
-    environmentId: environment.id,
-    status: "active",
-  });
-  return { session, thread };
 }
 
 async function postToolCall(args: {
@@ -375,87 +359,52 @@ describe("internal event and tool-call routes", () => {
     });
   });
 
-  it("returns a small event batch response identity-encoded with Content-Length", async () => {
-    await withTestHarness(async (harness) => {
-      const { session, thread } = seedOwnedActiveThread(harness);
-
-      const response = await postEventBatch({
-        acceptEncoding: "gzip, deflate",
-        harness,
-        sessionId: session.id,
-        events: systemErrorEnvelopes(thread.id, 1),
+  it("serves a small event batch response over HTTP with an exact Content-Length", async () => {
+    const server = await startTestServer();
+    try {
+      const { session, thread } = seedThreadFixture(server, {
+        thread: { status: "active" },
       });
+      const headers = new Headers(internalAuthHeaders(server));
+      headers.set("accept-encoding", "gzip, deflate");
+      const response = await fetch(
+        `${server.baseUrl}/internal/session/events`,
+        {
+          method: "POST",
+          headers,
+          body: JSON.stringify({
+            sessionId: session.id,
+            eventGroups: groupHostDaemonEvents(
+              systemErrorEnvelopes(thread.id, 1),
+            ),
+          }),
+        },
+      );
 
       expect(response.status).toBe(200);
       expect(response.headers.has("content-encoding")).toBe(false);
+      expect(response.headers.has("transfer-encoding")).toBe(false);
       expect(response.headers.get("content-type")).toBe("application/json");
-      const bytes = Buffer.from(await response.arrayBuffer());
-      expect(response.headers.get("content-length")).toBe(String(bytes.length));
+      const text = await response.text();
+      expect(response.headers.get("content-length")).toBe(
+        String(Buffer.byteLength(text)),
+      );
       expect(
-        hostDaemonEventBatchResponseSchema.parse(
-          JSON.parse(bytes.toString("utf8")),
-        ),
+        hostDaemonEventBatchResponseSchema.parse(JSON.parse(text)),
       ).toEqual({
         acceptedEvents: [{ eventIndex: 0, sequence: 1, threadId: thread.id }],
         rejectedEvents: [],
       });
-    });
-  });
-
-  it("serves a small event batch response over HTTP with an exact Content-Length", async () => {
-    await withTestHarness(async (harness) => {
-      const { session, thread } = seedOwnedActiveThread(harness);
-      const server = serve({
-        fetch: harness.app.fetch,
-        hostname: "127.0.0.1",
-        port: 0,
-      });
-      try {
-        if (!server.listening) await once(server, "listening");
-        const address = server.address();
-        if (address === null || typeof address === "string") {
-          throw new Error("Expected a TCP server address");
-        }
-        const headers = new Headers(internalAuthHeaders(harness));
-        headers.set("accept-encoding", "gzip, deflate");
-        const response = await fetch(
-          `http://127.0.0.1:${address.port}/internal/session/events`,
-          {
-            method: "POST",
-            headers,
-            body: JSON.stringify({
-              sessionId: session.id,
-              eventGroups: groupHostDaemonEvents(
-                systemErrorEnvelopes(thread.id, 1),
-              ),
-            }),
-          },
-        );
-
-        expect(response.status).toBe(200);
-        expect(response.headers.has("content-encoding")).toBe(false);
-        expect(response.headers.has("transfer-encoding")).toBe(false);
-        const text = await response.text();
-        expect(response.headers.get("content-length")).toBe(
-          String(Buffer.byteLength(text)),
-        );
-        expect(
-          hostDaemonEventBatchResponseSchema.parse(JSON.parse(text)),
-        ).toEqual({
-          acceptedEvents: [{ eventIndex: 0, sequence: 1, threadId: thread.id }],
-          rejectedEvents: [],
-        });
-      } finally {
-        await new Promise<void>((resolve, reject) => {
-          server.close((error) => (error ? reject(error) : resolve()));
-        });
-      }
-    });
+    } finally {
+      await server.close();
+    }
   });
 
   it("still compresses a large event batch response", async () => {
     await withTestHarness(async (harness) => {
-      const { session, thread } = seedOwnedActiveThread(harness);
+      const { session, thread } = seedThreadFixture(harness, {
+        thread: { status: "active" },
+      });
 
       const response = await postEventBatch({
         acceptEncoding: "gzip, deflate",

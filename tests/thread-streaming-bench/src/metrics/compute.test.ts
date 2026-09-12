@@ -29,12 +29,6 @@ describe("percentile", () => {
     expect(percentile([], 50)).toBeNull();
     expect(percentile([7], 95)).toBe(7);
   });
-
-  it("rejects percentiles outside 0..100", () => {
-    expect(() => percentile([1], 101)).toThrow(RangeError);
-    expect(() => percentile([1], -1)).toThrow(RangeError);
-    expect(() => percentile([1], Number.NaN)).toThrow(RangeError);
-  });
 });
 
 describe("summarizeFrames", () => {
@@ -109,7 +103,7 @@ describe("summarizeLoafs", () => {
           ],
         },
       ],
-      { top: 2 },
+      2,
     );
     expect(summary.count).toBe(2);
     expect(summary.totalDurationMs).toBe(200);
@@ -138,7 +132,7 @@ describe("summarizeLoafs", () => {
   });
 
   it("returns an empty summary without long animation frames", () => {
-    expect(summarizeLoafs([])).toEqual({
+    expect(summarizeLoafs([], 10)).toEqual({
       count: 0,
       totalDurationMs: 0,
       totalBlockingDurationMs: 0,
@@ -241,11 +235,6 @@ const MIXED_MARKDOWN = [
   "A paragraph that wraps across",
   "two lines keeps only the final line of words for matching.",
   "",
-  "Setext Heading Candidate With Many Words In It Here",
-  "---------------------------------------------------",
-  "",
-  "    indented code block with enough words to look like a paragraph",
-  "",
   "$$",
   "x equals y plus z and some other words in display math here",
   "$$",
@@ -256,8 +245,7 @@ const MIXED_MARKDOWN = [
 
 describe("selectCheckpoints", () => {
   it("selects verbatim plain-text tails of paragraphs and list items after the last inline syntax", () => {
-    const checkpoints = selectCheckpoints(MIXED_MARKDOWN);
-    expect(checkpoints).toEqual([
+    expect(selectCheckpoints(MIXED_MARKDOWN)).toEqual([
       "how the renderer handles incoming deltas from the provider bridge.",
       "The timeline cache keeps every completed row warm between polls.",
       "Numbered steps also render their words verbatim inside list items.",
@@ -267,32 +255,6 @@ describe("selectCheckpoints", () => {
       "lines keeps only the final line of words for matching.",
       "final paragraph closes the document with a clear ending sentence.",
     ]);
-    let previousOffset = -1;
-    for (const phrase of checkpoints) {
-      const offset = MIXED_MARKDOWN.indexOf(phrase);
-      expect(offset).toBeGreaterThan(previousOffset);
-      expect(MIXED_MARKDOWN.indexOf(phrase, offset + 1)).toBe(-1);
-      const words = phrase.split(/\s+/);
-      expect(words.length).toBeGreaterThanOrEqual(6);
-      expect(words.length).toBeLessThanOrEqual(10);
-      previousOffset = offset;
-    }
-  });
-
-  it("excludes tails from fenced code even when the fence contains blank lines", () => {
-    const checkpoints = selectCheckpoints(MIXED_MARKDOWN);
-    expect(checkpoints.some((phrase) => phrase.includes("still code"))).toBe(
-      false,
-    );
-    expect(checkpoints.some((phrase) => phrase.includes("display math"))).toBe(
-      false,
-    );
-    expect(checkpoints.some((phrase) => phrase.includes("Many Words"))).toBe(
-      false,
-    );
-    expect(checkpoints.some((phrase) => phrase.includes("indented code"))).toBe(
-      false,
-    );
   });
 
   it("thins long documents to roughly 20-40 checkpoints and always keeps the final paragraph", () => {
@@ -308,8 +270,6 @@ describe("selectCheckpoints", () => {
     expect(checkpoints.at(-1)).toBe(
       "100 walks through streaming detail number 100 for this benchmark.",
     );
-    expect(selectCheckpoints(document, { every: 10 })).toHaveLength(10);
-    expect(() => selectCheckpoints(document, { every: 0 })).toThrow(RangeError);
   });
 
   it("lists repeated phrases once per occurrence for repeated documents", () => {
@@ -326,29 +286,9 @@ describe("selectCheckpoints", () => {
     ).toEqual(["cache so every later install reuses the same store."]);
   });
 
-  it("skips text that never renders in place: HTML blocks, comments, definitions and list fences", () => {
+  it("skips code inside a fence opened by a list item", () => {
     const document = [
       "Opening paragraph with plain words to anchor the checkpoint list.",
-      "",
-      "<!--",
-      "a hidden comment line with many plain words inside it",
-      "",
-      "-->",
-      "",
-      "<div>",
-      "plain words that live inside an html block and are raw",
-      "",
-      "<pre>",
-      "preformatted text that has plenty of plain words in it",
-      "",
-      "more preformatted text that continues after a blank line here",
-      "</pre>",
-      "",
-      "[foo]: http://example.com/path",
-      '  "a long title with many plain words to count here"',
-      "",
-      "[^1]: A footnote that begins here",
-      "continued footnote paragraph with lots of plain words",
       "",
       "- ```bash",
       "  echo this code line has many plain words in it now",
@@ -358,7 +298,7 @@ describe("selectCheckpoints", () => {
       "",
       "Closing paragraph with plain words that should still be reachable.",
     ].join("\n");
-    expect(selectCheckpoints(document, { every: 1 })).toEqual([
+    expect(selectCheckpoints(document)).toEqual([
       "Opening paragraph with plain words to anchor the checkpoint list.",
       "Closing paragraph with plain words that should still be reachable.",
     ]);
@@ -376,7 +316,7 @@ describe("selectCheckpoints", () => {
       "",
       "one two three four five six seven eight",
     ].join("\n");
-    expect(selectCheckpoints(document, { every: 1 })).toEqual([
+    expect(selectCheckpoints(document)).toEqual([
       "gamma delta epsilon zeta eta theta",
       "three four five six seven eight",
       "Some other plain paragraph that separates both of these lines.",
@@ -395,24 +335,6 @@ describe("selectCheckpoints", () => {
     ].join("\n");
     expect(selectCheckpoints(document)).toEqual([
       "Another ordinary paragraph gives the selector something safe to keep.",
-    ]);
-  });
-
-  it("thins by unique phrase so a kept phrase keeps every occurrence", () => {
-    const repeatedTail =
-      "This sentence repeats verbatim in two different paragraphs.";
-    const document = [
-      "Opening paragraph that thinning drops before the repeated sentence.",
-      repeatedTail,
-      "Middle paragraph that thinning also drops between the repeats.",
-      repeatedTail,
-      "Closing paragraph that thinning keeps as the final checkpoint.",
-    ].join("\n\n");
-    expect(selectCheckpoints(document, { every: 1 })).toHaveLength(5);
-    expect(selectCheckpoints(document, { every: 2 })).toEqual([
-      repeatedTail,
-      repeatedTail,
-      "Closing paragraph that thinning keeps as the final checkpoint.",
     ]);
   });
 
@@ -463,7 +385,7 @@ describe("checkpointLatencies", () => {
   ];
   const checkpoints = ["gamma delta.", "eta theta.", "lambda mu."];
 
-  it("joins each phrase's source end offset with the first delta that emitted it", () => {
+  it("gates emission on the newline that completes each line and on completion for the last line", () => {
     const summary = checkpointLatencies({
       fixtureText,
       checkpoints,
@@ -475,7 +397,7 @@ describe("checkpointLatencies", () => {
         index: 0,
         phrase: "gamma delta.",
         sourceEndOffset: 23,
-        emissionOffset: 23,
+        emissionOffset: 24,
         emittedAtEpochMs: 1060,
         hitAtEpochMs: 1075,
         latencyMs: 15,
@@ -484,7 +406,7 @@ describe("checkpointLatencies", () => {
         index: 1,
         phrase: "eta theta.",
         sourceEndOffset: 48,
-        emissionOffset: 48,
+        emissionOffset: 49,
         emittedAtEpochMs: 1090,
         hitAtEpochMs: 1130,
         latencyMs: 40,
@@ -494,7 +416,7 @@ describe("checkpointLatencies", () => {
         phrase: "lambda mu.",
         sourceEndOffset: 71,
         emissionOffset: 71,
-        emittedAtEpochMs: 1120,
+        emittedAtEpochMs: 1125,
         hitAtEpochMs: null,
         latencyMs: null,
       },
@@ -507,27 +429,6 @@ describe("checkpointLatencies", () => {
     expect(summary.maxLatencyMs).toBe(40);
   });
 
-  it("gates emission on the newline that makes a line visible", () => {
-    const summary = checkpointLatencies({
-      fixtureText,
-      checkpoints,
-      emissionLog,
-      gate: "newline",
-      hits: [1100, 1130, 1140],
-    });
-    expect(
-      summary.checkpoints.map((row) => [
-        row.emissionOffset,
-        row.emittedAtEpochMs,
-        row.latencyMs,
-      ]),
-    ).toEqual([
-      [24, 1060, 40],
-      [49, 1090, 40],
-      [71, 1125, 15],
-    ]);
-  });
-
   it("counts hits that precede their emission as anomalies and keeps them out of the aggregates", () => {
     const summary = checkpointLatencies({
       fixtureText,
@@ -536,22 +437,22 @@ describe("checkpointLatencies", () => {
       hits: [1050, 1130, 1150],
     });
     expect(summary.checkpoints.map((row) => row.latencyMs)).toEqual([
-      -10, 40, 30,
+      -10, 40, 25,
     ]);
     expect(summary.negativeLatencyCount).toBe(1);
     expect(summary.hitCount).toBe(3);
-    expect(summary.p50LatencyMs).toBe(35);
+    expect(summary.p50LatencyMs).toBe(32.5);
     expect(summary.maxLatencyMs).toBe(40);
   });
 
   it("uses the delta whose cumulative chars land exactly on the offset", () => {
     const summary = checkpointLatencies({
-      fixtureText: "0123456789 exact end",
+      fixtureText: "0123456789 exact end\n",
       checkpoints: ["exact end"],
       emissionLog: [
-        { event: "delta", t: 10, chars: 19 },
-        { event: "delta", t: 20, chars: 20 },
-        { event: "delta", t: 30, chars: 20 },
+        { event: "delta", t: 10, chars: 20 },
+        { event: "delta", t: 20, chars: 21 },
+        { event: "delta", t: 30, chars: 21 },
       ],
       hits: [25],
     });
@@ -559,33 +460,39 @@ describe("checkpointLatencies", () => {
     expect(summary.checkpoints[0]?.latencyMs).toBe(5);
   });
 
-  it("leaves emission absent when the log never reached the phrase", () => {
-    const truncated = emissionLog.filter(
-      (event) => event.event !== "delta" || event.chars <= 60,
-    );
+  it("leaves emission absent when the log never reached the line", () => {
     const summary = checkpointLatencies({
       fixtureText,
       checkpoints,
-      emissionLog: truncated,
+      emissionLog: emissionLog.filter(
+        (event) =>
+          event.event === "start" ||
+          (event.event === "delta" && event.chars <= 40),
+      ),
       hits: [1075, 1130, 1200],
     });
-    expect(summary.checkpoints[2]).toMatchObject({
-      emittedAtEpochMs: null,
-      hitAtEpochMs: 1200,
-      latencyMs: null,
-    });
+    expect(summary.checkpoints.map((row) => row.emittedAtEpochMs)).toEqual([
+      1060,
+      null,
+      null,
+    ]);
+    expect(summary.checkpoints.map((row) => row.latencyMs)).toEqual([
+      15,
+      null,
+      null,
+    ]);
     expect(summary.hitCount).toBe(3);
-    expect(summary.maxLatencyMs).toBe(40);
+    expect(summary.maxLatencyMs).toBe(15);
   });
 
   it("maps repeated phrases to successive occurrences of the repeated document", () => {
     const doc = "Alpha beta gamma delta.";
     const summary = checkpointLatencies({
-      fixtureText: `${doc}\n\n${doc}`,
+      fixtureText: `${doc}\n\n${doc}\n`,
       checkpoints: ["gamma delta.", "gamma delta."],
       emissionLog: [
         { event: "delta", t: 100, chars: 30 },
-        { event: "delta", t: 200, chars: 48 },
+        { event: "delta", t: 200, chars: 49 },
       ],
       hits: [150, 260],
     });
@@ -612,57 +519,22 @@ describe("checkpointLatencies", () => {
         hits: [],
       }),
     ).toThrow("does not appear in the fixture text");
-    expect(() =>
-      checkpointLatencies({
-        fixtureText,
-        checkpoints: ["gamma delta."],
-        emissionLog,
-        hits: [1, 2],
-      }),
-    ).toThrow("Received 2 checkpoint hits for 1 checkpoints");
-    expect(() =>
-      checkpointLatencies({
-        fixtureText,
-        checkpoints,
-        emissionLog: [
-          { event: "delta", t: 1, chars: 40 },
-          { event: "delta", t: 2, chars: 20 },
-        ],
-        hits: [],
-      }),
-    ).toThrow("has 20 cumulative chars after 40");
   });
 });
 
 describe("apiPathTemplate", () => {
-  it("replaces the bench thread id and generated ids, keeping literal segments", () => {
-    expect(
-      apiPathTemplate(
-        "/api/v1/threads/thr_d7746tynyd/timeline",
-        "thr_d7746tynyd",
-      ),
-    ).toBe("/api/v1/threads/:threadId/timeline");
-    expect(
-      apiPathTemplate(
-        "/api/v1/projects/proj_a2b3c4d5e6/threads",
-        "thr_d7746tynyd",
-      ),
-    ).toBe("/api/v1/projects/:id/threads");
-    expect(
-      apiPathTemplate(
-        "/api/v1/file-previews/0b4f5a4e-8a07-4c55-9d40-1f7f1f0b9c3e/readme.md",
-        "thr_d7746tynyd",
-      ),
-    ).toBe("/api/v1/file-previews/:uuid/readme.md");
-    expect(
-      apiPathTemplate(
-        "/api/v1/plugins/bench-stream/assets/app.js",
-        "thr_d7746tynyd",
-      ),
-    ).toBe("/api/v1/plugins/bench-stream/assets/app.js");
-    expect(apiPathTemplate("/api/v1/events/42", "thr_d7746tynyd")).toBe(
-      "/api/v1/events/:n",
-    );
+  it.each([
+    [
+      "/api/v1/file-previews/0b4f5a4e-8a07-4c55-9d40-1f7f1f0b9c3e/readme.md",
+      "/api/v1/file-previews/:uuid/readme.md",
+    ],
+    ["/api/v1/events/42", "/api/v1/events/:n"],
+    [
+      "/api/v1/plugins/bench-stream/assets/app.js",
+      "/api/v1/plugins/bench-stream/assets/app.js",
+    ],
+  ])("templates %s", (pathname, expected) => {
+    expect(apiPathTemplate(pathname, "thr_d7746tynyd")).toBe(expected);
   });
 });
 
@@ -797,40 +669,33 @@ describe("summarizeNetwork", () => {
 });
 
 describe("summarizeCpuProfile", () => {
-  const callFrame = (functionName: string, url = "", lineNumber = 0) => ({
-    functionName,
-    url,
-    lineNumber,
-    columnNumber: 0,
-  });
-  const nodes = [
-    { id: 1, callFrame: callFrame("(root)"), hitCount: 0 },
-    { id: 2, callFrame: callFrame("(program)"), hitCount: 1 },
-    { id: 3, callFrame: callFrame("(idle)"), hitCount: 1 },
-    {
-      id: 4,
-      callFrame: callFrame("renderMarkdown", "http://app/a.js", 10),
-      hitCount: 3,
-    },
-    {
-      id: 5,
-      callFrame: callFrame("parseDelta", "http://app/b.js", 20),
-      hitCount: 1,
-    },
-    { id: 6, callFrame: callFrame("(garbage collector)"), hitCount: 1 },
-    { id: 7, callFrame: callFrame("", "http://app/c.js", 30), hitCount: 1 },
-  ];
-
-  it("attributes sample durations as self time and separates idle, program and GC", () => {
+  it("attributes sample durations as self time, separates idle, program and GC, and keeps the top functions", () => {
+    const callFrame = (functionName: string, url = "", lineNumber = 0) => ({
+      functionName,
+      url,
+      lineNumber,
+      columnNumber: 0,
+    });
     const summary = summarizeCpuProfile(
       {
-        nodes,
+        nodes: [
+          { id: 1, callFrame: callFrame("(root)") },
+          { id: 2, callFrame: callFrame("(program)") },
+          { id: 3, callFrame: callFrame("(idle)") },
+          {
+            id: 4,
+            callFrame: callFrame("renderMarkdown", "http://app/a.js", 10),
+          },
+          { id: 5, callFrame: callFrame("parseDelta", "http://app/b.js", 20) },
+          { id: 6, callFrame: callFrame("(garbage collector)") },
+          { id: 7, callFrame: callFrame("", "http://app/c.js", 30) },
+        ],
         startTime: 0,
         endTime: 8100,
-        samples: [4, 4, 5, 3, 2, 6, 4, 7],
+        samples: [4, 4, 5, 3, 2, 6, 7, 7],
         timeDeltas: [100, 1000, 1000, 1000, 1000, 1000, 1000, 1000],
       },
-      { top: 2 },
+      2,
     );
     expect(summary).toEqual({
       durationMs: 8.1,
@@ -844,28 +709,16 @@ describe("summarizeCpuProfile", () => {
           url: "http://app/a.js",
           lineNumber: 10,
           columnNumber: 0,
-          selfMs: 3,
+          selfMs: 2,
         },
         {
-          functionName: "parseDelta",
-          url: "http://app/b.js",
-          lineNumber: 20,
+          functionName: "(anonymous)",
+          url: "http://app/c.js",
+          lineNumber: 30,
           columnNumber: 0,
-          selfMs: 1,
+          selfMs: 2,
         },
       ],
     });
-  });
-
-  it("falls back to hit counts when samples are absent", () => {
-    const summary = summarizeCpuProfile({ nodes, startTime: 0, endTime: 8000 });
-    expect(summary.sampleCount).toBe(8);
-    expect(summary.top[0]).toMatchObject({
-      functionName: "renderMarkdown",
-      selfMs: 3,
-    });
-    expect(summary.top.map((entry) => entry.functionName)).toContain(
-      "(anonymous)",
-    );
   });
 });

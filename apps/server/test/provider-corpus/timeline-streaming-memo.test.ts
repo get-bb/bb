@@ -14,19 +14,20 @@ import type { Thread, ThreadEventType } from "@bb/domain";
 import { turnScope } from "@bb/domain";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { ProviderRegistryService } from "../../src/services/providers/provider-registry.js";
-import type { ThreadTimelineBuildProfile } from "../../src/services/threads/timeline.js";
+import { clearTimelineOrderingContextCache } from "../../src/services/threads/timeline-context-order.js";
 import { createTestProviderRegistry } from "../helpers/provider-registry.js";
 import {
   TIMELINE_VARIANTS,
   buildRouteTimelinePage,
+  clearCrossBuildTimelineCaches,
   latestTimelinePage,
   loadCorpusThreadIntoDb,
   percentile,
+  selectionWasReused,
 } from "./corpus-harness.js";
 
 const PER_THREAD_TIMEOUT_MS = 5 * 60_000;
 const PROBE_ITEM_ID = "corpus-memo-probe-message";
-const LATE_PROBE_ITEM_ID = "corpus-memo-probe-late-command";
 
 interface TickSpec {
   data: Record<string, unknown>;
@@ -36,80 +37,60 @@ interface TickSpec {
   type: ThreadEventType;
 }
 
+function tickSpec(
+  type: ThreadEventType,
+  data: Record<string, unknown>,
+  overrides: Partial<TickSpec> = {},
+): TickSpec {
+  return {
+    data,
+    itemId: PROBE_ITEM_ID,
+    itemKind: null,
+    target: "latest-root-turn",
+    type,
+    ...overrides,
+  };
+}
+
 const TICKS: readonly TickSpec[] = [
-  {
-    data: { item: { type: "agentMessage", id: PROBE_ITEM_ID, text: "" } },
+  tickSpec(
+    "item/started",
+    { item: { type: "agentMessage", id: PROBE_ITEM_ID, text: "" } },
+    { itemKind: "agentMessage" },
+  ),
+  tickSpec("item/agentMessage/delta", {
     itemId: PROBE_ITEM_ID,
-    itemKind: "agentMessage",
-    target: "latest-root-turn",
-    type: "item/started",
-  },
-  {
-    data: { itemId: PROBE_ITEM_ID, delta: "Streaming probe" },
+    delta: "Streaming probe",
+  }),
+  tickSpec("item/agentMessage/delta", {
     itemId: PROBE_ITEM_ID,
-    itemKind: null,
-    target: "latest-root-turn",
-    type: "item/agentMessage/delta",
-  },
-  {
-    data: { itemId: PROBE_ITEM_ID, delta: " line\n" },
-    itemId: PROBE_ITEM_ID,
-    itemKind: null,
-    target: "latest-root-turn",
-    type: "item/agentMessage/delta",
-  },
-  {
-    data: {
-      contextWindowUsage: {
-        estimated: false,
-        modelContextWindow: 200_000,
-        usedTokens: 1_234,
-      },
+    delta: " line\n",
+  }),
+  tickSpec("thread/contextWindowUsage/updated", {
+    contextWindowUsage: {
+      estimated: false,
+      modelContextWindow: 200_000,
+      usedTokens: 1_234,
     },
+  }),
+  tickSpec("item/agentMessage/delta", {
     itemId: PROBE_ITEM_ID,
-    itemKind: null,
-    target: "latest-root-turn",
-    type: "thread/contextWindowUsage/updated",
-  },
-  {
-    data: { itemId: PROBE_ITEM_ID, delta: "partial" },
+    delta: "partial",
+  }),
+  tickSpec(
+    "item/commandExecution/outputDelta",
+    { itemId: "corpus-memo-probe-late-command", delta: "late output\n" },
+    { itemId: "corpus-memo-probe-late-command", target: "earlier-root-turn" },
+  ),
+  tickSpec("item/agentMessage/delta", {
     itemId: PROBE_ITEM_ID,
-    itemKind: null,
-    target: "latest-root-turn",
-    type: "item/agentMessage/delta",
-  },
-  {
-    data: { itemId: LATE_PROBE_ITEM_ID, delta: "late output\n" },
-    itemId: LATE_PROBE_ITEM_ID,
-    itemKind: null,
-    target: "earlier-root-turn",
-    type: "item/commandExecution/outputDelta",
-  },
-  {
-    data: { itemId: PROBE_ITEM_ID, delta: " after late\n" },
-    itemId: PROBE_ITEM_ID,
-    itemKind: null,
-    target: "latest-root-turn",
-    type: "item/agentMessage/delta",
-  },
+    delta: " after late\n",
+  }),
 ];
 
 interface RootTurn {
   providerThreadId: string | null;
   turnId: string;
-}
-
-function selectionWasReused(profile: ThreadTimelineBuildProfile): boolean {
-  return (
-    profile.stageTimings.some(
-      (timing) => timing.stage === "selection-memo-lookup",
-    ) &&
-    !profile.stageTimings.some(
-      (timing) =>
-        timing.stage === "group-context-query" ||
-        timing.stage === "ordering-context-query",
-    )
-  );
 }
 
 function listLatestRootTurns(db: DbConnection, threadId: string): RootTurn[] {
@@ -187,23 +168,19 @@ describe.skipIf(!available)("provider corpus streaming selection memo", () => {
               },
             ]);
           }
-          for (const variant of TIMELINE_VARIANTS) {
-            const warm = buildRouteTimelinePage({
-              db: loaded.db,
-              page: latestTimelinePage(),
-              registry,
-              thread,
-              variant,
-            });
-            const clone = createConnection(loaded.db.$client.serialize());
-            try {
-              const cold = buildRouteTimelinePage({
-                db: clone,
+          const clone = createConnection(loaded.db.$client.serialize());
+          try {
+            for (const variant of TIMELINE_VARIANTS) {
+              const args = {
                 page: latestTimelinePage(),
                 registry,
                 thread,
                 variant,
-              });
+              };
+              const warm = buildRouteTimelinePage({ ...args, db: loaded.db });
+              clearCrossBuildTimelineCaches(clone);
+              clearTimelineOrderingContextCache(clone);
+              const cold = buildRouteTimelinePage({ ...args, db: clone });
               expect(JSON.stringify(warm.response)).toBe(
                 JSON.stringify(cold.response),
               );
@@ -215,9 +192,9 @@ describe.skipIf(!available)("provider corpus streaming selection memo", () => {
                   coldTickMs.push(cold.profile.totalDurationMs);
                 }
               }
-            } finally {
-              clone.$client.close();
             }
+          } finally {
+            clone.$client.close();
           }
         }
       } finally {

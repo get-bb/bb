@@ -1,6 +1,7 @@
+import { percentile } from "./metrics/compute.js";
 import type { IterationMetrics, IterationResult } from "./run/iteration.js";
 
-export interface RunMetadata {
+interface RunMetadata {
   chromeVersion: string;
   cpuThrottlingRate: number;
   gitRevision: string;
@@ -24,7 +25,7 @@ export interface BenchReport {
   scenarios: ScenarioReport[];
 }
 
-export const HEADLINE_METRICS: readonly {
+const HEADLINE_METRICS: readonly {
   key: string;
   label: string;
   read: (metrics: IterationMetrics) => number | null;
@@ -162,10 +163,7 @@ export const HEADLINE_METRICS: readonly {
   {
     key: "retainedHeapMb",
     label: "JS heap retained after GC",
-    read: (m) =>
-      typeof m.retainedHeapDeltaBytes === "number"
-        ? m.retainedHeapDeltaBytes / 1_048_576
-        : null,
+    read: (m) => m.retainedHeapDeltaBytes / 1_048_576,
     unit: "MB",
   },
   {
@@ -175,17 +173,6 @@ export const HEADLINE_METRICS: readonly {
     unit: "MB",
   },
 ];
-
-function median(values: number[]): number | null {
-  if (values.length === 0) {
-    return null;
-  }
-  const sorted = [...values].sort((left, right) => left - right);
-  const middle = Math.floor(sorted.length / 2);
-  return sorted.length % 2 === 1
-    ? (sorted[middle] ?? null)
-    : ((sorted[middle - 1] ?? 0) + (sorted[middle] ?? 0)) / 2;
-}
 
 export function aggregateIterations(
   iterations: readonly IterationResult[],
@@ -197,7 +184,7 @@ export function aggregateIterations(
       return value === null ? [] : [value];
     });
     aggregate[metric.key] = {
-      median: median(values),
+      median: percentile(values, 50),
       min: values.length === 0 ? null : Math.min(...values),
     };
   }

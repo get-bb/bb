@@ -29,10 +29,6 @@ function isFixtureName(name: string): name is FixtureName {
   return FIXTURE_NAMES.some((candidate) => candidate === name);
 }
 
-export function listFixtureNames(): FixtureName[] {
-  return [...FIXTURE_NAMES];
-}
-
 export function getFixture(name: string): string {
   if (!isFixtureName(name)) {
     throw new Error(
@@ -43,9 +39,5 @@ export function getFixture(name: string): string {
 }
 
 export function streamDocumentText(name: string, repeat: number): string {
-  if (!Number.isInteger(repeat) || repeat < 1) {
-    throw new Error(`repeat must be a positive integer, got ${repeat}`);
-  }
-  const fixture = getFixture(name);
-  return Array.from({ length: repeat }, () => fixture).join("\n\n");
+  return Array(repeat).fill(getFixture(name)).join("\n\n");
 }

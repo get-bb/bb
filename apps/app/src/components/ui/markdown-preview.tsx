@@ -85,7 +85,7 @@ import {
   buildMessageDirectiveComponent,
   EMPTY_MOUNTED_MESSAGE_DIRECTIVES,
   MESSAGE_DIRECTIVE_MOUNT_LIMIT,
-  MessageDirectiveMountsProvider,
+  MessageDirectiveMountsContext,
   remarkMessageDirectives,
   type BuildMessageDirectiveComponentArgs,
   type MarkdownMessageDirectives,
@@ -988,14 +988,6 @@ function resolveMarkdownSourceMedia({
   return colorScheme === preferredTheme ? "all" : "not all";
 }
 
-interface RawThreadIdLabelCandidate {
-  end: number;
-  start: number;
-  threadId: string;
-}
-
-const EMPTY_RAW_THREAD_ID_LABEL_CANDIDATES: readonly RawThreadIdLabelCandidate[] =
-  [];
 const EMPTY_THREAD_IDS: readonly string[] = [];
 
 function buildMarkdownComponents({
@@ -1008,6 +1000,12 @@ function buildMarkdownComponents({
   promptMentions,
   messageDirectives,
 }: BuildMarkdownComponentsArgs): Components {
+  interface RawThreadIdLabelCandidate {
+    end: number;
+    start: number;
+    threadId: string;
+  }
+
   function flattenMarkdownLinkLabel(node: ReactNode): {
     codeRanges: ReadonlyArray<{ end: number; start: number }>;
     text: string;
@@ -1038,7 +1036,7 @@ function buildMarkdownComponents({
 
   function rawThreadIdLabelCandidates(
     node: ReactNode,
-  ): readonly RawThreadIdLabelCandidate[] {
+  ): RawThreadIdLabelCandidate[] {
     const flattened = flattenMarkdownLinkLabel(node);
     const candidates: RawThreadIdLabelCandidate[] = [];
     let offset = 0;
@@ -1056,9 +1054,7 @@ function buildMarkdownComponents({
       }
       candidates.push({ start, end, threadId: segment.rawThreadId });
     }
-    return candidates.length === 0
-      ? EMPTY_RAW_THREAD_ID_LABEL_CANDIDATES
-      : candidates;
+    return candidates;
   }
 
   function renderLiftedMarkdownLinkLabel(
@@ -1172,7 +1168,7 @@ function buildMarkdownComponents({
     const candidates = useMemo(
       () =>
         threadMentions === undefined
-          ? EMPTY_RAW_THREAD_ID_LABEL_CANDIDATES
+          ? []
           : rawThreadIdLabelCandidates(children),
       [children],
     );
@@ -1798,8 +1794,8 @@ function MarkdownPreviewComponent({
         {frontmatter !== null ? (
           <MarkdownFrontmatter source={frontmatter} />
         ) : null}
-        <MessageDirectiveMountsProvider
-          mounts={
+        <MessageDirectiveMountsContext.Provider
+          value={
             markdownPieces?.mounts ??
             messageDirectiveMounts?.mounts ??
             EMPTY_MOUNTED_MESSAGE_DIRECTIVES
@@ -1812,7 +1808,7 @@ function MarkdownPreviewComponent({
               {renderedMarkdown}
             </RawThreadMentionBatchProvider>
           )}
-        </MessageDirectiveMountsProvider>
+        </MessageDirectiveMountsContext.Provider>
       </div>
 
       <ImageLightbox

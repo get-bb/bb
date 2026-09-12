@@ -16,22 +16,16 @@ import { z } from "zod";
 import { startBackend, type BackendPaths } from "../backend/backend.js";
 import { waitUntil } from "../backend/api.js";
 
-export const BENCH_PROVIDER_ID = "bench-stream";
-export const BENCH_MODEL = "bench-stream-model";
+const BENCH_PROVIDER_ID = "bench-stream";
+const BENCH_MODEL = "bench-stream-model";
 
-export interface HistoryProfile {
-  name: string;
-  toolsPerTurn: number;
-  turns: number;
-}
-
-export interface GoldenSpec {
-  historyProfiles: HistoryProfile[];
+interface GoldenSpec {
+  historyProfiles: { name: string; toolsPerTurn: number; turns: number }[];
   seedEvents: number;
   seedThreads: number;
 }
 
-export const DEFAULT_GOLDEN_SPEC: GoldenSpec = {
+const GOLDEN_SPEC: GoldenSpec = {
   historyProfiles: [
     { name: "large", toolsPerTurn: 3, turns: 150 },
     { name: "small", toolsPerTurn: 3, turns: 8 },
@@ -43,27 +37,12 @@ export const DEFAULT_GOLDEN_SPEC: GoldenSpec = {
 
 const manifestSchema = z.object({
   hash: z.string(),
-  hostId: z.string(),
   projectId: z.string(),
-  repoPath: z.string(),
-  spec: z.object({
-    historyProfiles: z.array(
-      z.object({
-        name: z.string(),
-        toolsPerTurn: z.number(),
-        turns: z.number(),
-      }),
-    ),
-    seedEvents: z.number(),
-    seedThreads: z.number(),
-  }),
   threads: z.record(z.string(), z.string()),
 });
 
-export type GoldenManifest = z.infer<typeof manifestSchema>;
-
 export interface Golden {
-  manifest: GoldenManifest;
+  manifest: z.infer<typeof manifestSchema>;
   paths: BackendPaths;
   root: string;
 }
@@ -90,9 +69,9 @@ function hashFiles(root: string, dirs: string[]): string {
   return hash.digest("hex");
 }
 
-export function goldenHash(repoRoot: string, spec: GoldenSpec): string {
+function goldenHash(repoRoot: string): string {
   const hash = createHash("sha256");
-  hash.update(JSON.stringify(spec));
+  hash.update(JSON.stringify(GOLDEN_SPEC));
   hash.update(hashFiles(repoRoot, ["tests/bench-stream-provider/src", "packages/db/drizzle"]));
   hash.update(readFileSync(join(repoRoot, "packages/scripts/src/lib/seed-perf-fixture.ts")));
   return hash.digest("hex").slice(0, 16);
@@ -118,7 +97,7 @@ function createGitRepo(repoDir: string): void {
   git(["commit", "-m", "Initial commit"]);
 }
 
-function seedLargeDatabase(repoRoot: string, spec: GoldenSpec, serverDataDir: string, logsDir: string): void {
+function seedLargeDatabase(repoRoot: string, serverDataDir: string, logsDir: string): void {
   mkdirSync(serverDataDir, { recursive: true });
   const result = spawnSync(
     process.execPath,
@@ -130,9 +109,9 @@ function seedLargeDatabase(repoRoot: string, spec: GoldenSpec, serverDataDir: st
       "--data-dir",
       serverDataDir,
       "--events",
-      String(spec.seedEvents),
+      String(GOLDEN_SPEC.seedEvents),
       "--threads",
-      String(spec.seedThreads),
+      String(GOLDEN_SPEC.seedThreads),
     ],
     {
       cwd: repoRoot,
@@ -159,11 +138,10 @@ interface PrepareGoldenArgs {
   cacheDir: string;
   log: (message: string) => void;
   repoRoot: string;
-  spec: GoldenSpec;
 }
 
 export async function prepareGolden(args: PrepareGoldenArgs): Promise<Golden> {
-  const hash = goldenHash(args.repoRoot, args.spec);
+  const hash = goldenHash(args.repoRoot);
   const root = join(args.cacheDir, `golden-${hash}`);
   const manifestPath = join(root, "manifest.json");
   const paths = goldenPaths(root);
@@ -174,12 +152,11 @@ export async function prepareGolden(args: PrepareGoldenArgs): Promise<Golden> {
   }
   rmSync(root, { force: true, recursive: true });
   mkdirSync(paths.logsDir, { recursive: true });
-  args.log(`seeding ${args.spec.seedThreads} threads / ${args.spec.seedEvents} events into ${paths.serverDataDir}`);
-  seedLargeDatabase(args.repoRoot, args.spec, paths.serverDataDir, paths.logsDir);
+  args.log(`seeding ${GOLDEN_SPEC.seedThreads} threads / ${GOLDEN_SPEC.seedEvents} events into ${paths.serverDataDir}`);
+  seedLargeDatabase(args.repoRoot, paths.serverDataDir, paths.logsDir);
   const repoPath = join(root, "repo");
   createGitRepo(repoPath);
   const backend = await startBackend({
-    logLevel: "warn",
     paths,
     repoRoot: args.repoRoot,
   });
@@ -200,10 +177,10 @@ export async function prepareGolden(args: PrepareGoldenArgs): Promise<Golden> {
       path: repoPath,
     });
     const threads: Record<string, string> = {};
-    const spawned: { profile: HistoryProfile; seedBase: number; threadId: string }[] = [];
-    for (const [profileIndex, profile] of args.spec.historyProfiles.entries()) {
+    const spawned: { profile: GoldenSpec["historyProfiles"][number]; seedBase: number; threadId: string }[] = [];
+    for (const [profileIndex, profile] of GOLDEN_SPEC.historyProfiles.entries()) {
       const seedBase = (profileIndex + 1) * 10_000;
-      const thread = await backend.api.spawnThread({
+      const threadId = await backend.api.spawnThread({
         hostId: backend.hostId,
         model: BENCH_MODEL,
         projectId,
@@ -211,8 +188,8 @@ export async function prepareGolden(args: PrepareGoldenArgs): Promise<Golden> {
         providerId: BENCH_PROVIDER_ID,
         title: `Streaming bench (${profile.name} history)`,
       });
-      await backend.api.waitForThreadStatus(thread.id, "idle", 120_000);
-      spawned.push({ profile, seedBase, threadId: thread.id });
+      await backend.api.waitForThreadStatus(threadId, "idle", 120_000);
+      spawned.push({ profile, seedBase, threadId });
     }
     await Promise.all(
       spawned.map(async ({ profile, seedBase, threadId }) => {
@@ -229,14 +206,7 @@ export async function prepareGolden(args: PrepareGoldenArgs): Promise<Golden> {
         threads[profile.name] = threadId;
       }),
     );
-    const manifest: GoldenManifest = {
-      hash,
-      hostId: backend.hostId,
-      projectId,
-      repoPath,
-      spec: args.spec,
-      threads,
-    };
+    const manifest = { hash, projectId, threads };
     await backend.stop();
     checkpointDatabase(paths.serverDataDir);
     writeFileSync(manifestPath, JSON.stringify(manifest, null, 2));

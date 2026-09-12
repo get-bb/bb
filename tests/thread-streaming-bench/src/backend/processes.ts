@@ -1,6 +1,7 @@
 import { spawn, type ChildProcess } from "node:child_process";
 import { closeSync, openSync, readdirSync, readFileSync } from "node:fs";
 import { createServer } from "node:net";
+import { setTimeout as sleep } from "node:timers/promises";
 
 interface SpawnLoggedArgs {
   args: string[];
@@ -24,42 +25,27 @@ export function spawnLogged(args: SpawnLoggedArgs): ChildProcess {
   }
 }
 
-function isAlive(pid: number): boolean {
+function signalProcessGroup(pid: number, signal: NodeJS.Signals | 0): boolean {
   try {
-    process.kill(pid, 0);
+    process.kill(-pid, signal);
     return true;
   } catch {
     return false;
   }
 }
 
-async function sleep(ms: number): Promise<void> {
-  await new Promise((resolve) => setTimeout(resolve, ms));
-}
-
 export async function stopProcessGroup(
   pid: number | undefined,
   timeoutMs = 10_000,
 ): Promise<void> {
-  if (pid === undefined || !isAlive(pid)) {
+  if (pid === undefined || !signalProcessGroup(pid, "SIGTERM")) {
     return;
   }
-  try {
-    process.kill(-pid, "SIGTERM");
-  } catch {
-    process.kill(pid, "SIGTERM");
-  }
   const deadline = Date.now() + timeoutMs;
-  while (Date.now() < deadline && isAlive(pid)) {
+  while (Date.now() < deadline && signalProcessGroup(pid, 0)) {
     await sleep(100);
   }
-  if (isAlive(pid)) {
-    try {
-      process.kill(-pid, "SIGKILL");
-    } catch {
-      process.kill(pid, "SIGKILL");
-    }
-  }
+  signalProcessGroup(pid, "SIGKILL");
 }
 
 export async function reservePort(): Promise<number> {

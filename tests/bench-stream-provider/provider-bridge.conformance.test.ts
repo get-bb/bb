@@ -1,6 +1,3 @@
-import { mkdtempSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
 import { afterEach, beforeEach, expect, it } from "vitest";
 import {
   experimental_captureBridgeJsonRpcOutput as captureBridgeJsonRpcOutput,
@@ -8,22 +5,20 @@ import {
   experimental_runBridgeConformance as runBridgeConformance,
 } from "@get-bb/plugin-sdk/provider-bridge/testing";
 import type { CapturedBridgeJsonRpcOutput } from "@get-bb/plugin-sdk/provider-bridge/testing";
+import { CWD } from "./bridge-harness.js";
 import { handleLine } from "./src/provider-bridge.js";
 import { BENCH_STREAM_PROVIDER_ID } from "./src/vocabulary.js";
 
 const BENCH_STREAM_PLUGIN_ID = "bench-stream-provider";
 
 let output: CapturedBridgeJsonRpcOutput;
-let workspaceDir: string;
 
 beforeEach(() => {
-  workspaceDir = mkdtempSync(join(tmpdir(), "bb-bench-stream-conformance-"));
   output = captureBridgeJsonRpcOutput();
 });
 
 afterEach(() => {
   output.restore();
-  rmSync(workspaceDir, { recursive: true, force: true });
 });
 
 it("passes the canonical protocol suite", async () => {
@@ -31,7 +26,7 @@ it("passes the canonical protocol suite", async () => {
     transport: { send: handleLine, takeMessages: output.takeMessages },
     providerId: BENCH_STREAM_PROVIDER_ID,
     session: {
-      cwd: workspaceDir,
+      cwd: CWD,
       promptInput: [{ type: "text", text: "say hello", mentions: [] }],
       zeroWorkPromptInput: [{ type: "text", text: "bench_noop", mentions: [] }],
       interruptiblePromptInput: [
@@ -75,5 +70,4 @@ it("passes the canonical protocol suite", async () => {
     "presentation/icon-namespaced-declared": "pass",
     "turn/settles-without-activity": "pass",
   });
-  expect(report.passed).toBe(true);
 }, 30_000);

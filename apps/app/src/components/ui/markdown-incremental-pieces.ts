@@ -20,9 +20,18 @@ import {
   type MountedMessageDirective,
 } from "./markdown-message-directives.js";
 import {
+  BARE_FENCE_PATTERN,
+  TRAILING_CLOSE_PATTERN,
+} from "./markdown-math-fences.js";
+import {
+  closesAnyIndentMarkdownFence,
   isMarkdownFenceClose,
+  isMarkdownListLikeLine,
+  MARKDOWN_LIST_MARKER_PATTERN,
+  parseAnyIndentMarkdownFenceStart,
   parseMarkdownFenceStart,
   trimMarkdownLineCarriageReturn,
+  type MarkdownFence,
 } from "./markdown-prompt-blockquote-boundaries.js";
 
 type MarkdownPluginList = NonNullable<ReactMarkdownOptions["remarkPlugins"]>;
@@ -60,24 +69,16 @@ interface MarkdownPieceEntry {
   tagCounts: ReadonlyMap<string, number>;
 }
 
-interface ResolvedMarkdownPiecesSnapshot {
-  body: string;
-  result: ResolvedMarkdownPieces;
-}
-
 export interface MarkdownPieceCache {
   config: MarkdownPieceRenderConfig | null;
   entries: readonly MarkdownPieceEntry[];
   latchedWholeDocumentPrefix: string | null;
-  resolved: ResolvedMarkdownPiecesSnapshot | null;
+  resolved: { body: string; result: ResolvedMarkdownPieces } | null;
 }
 
 interface MarkdownPieceSummaryTarget {
+  source: string;
   summary: MarkdownPieceSummary;
-}
-
-interface RemarkMarkdownPieceSummaryFile {
-  value: unknown;
 }
 
 interface ParseMarkdownPieceArgs {
@@ -87,21 +88,10 @@ interface ParseMarkdownPieceArgs {
   source: string;
 }
 
-interface MarkdownScannerFence {
-  character: string;
-  length: number;
-}
-
 const MARKDOWN_BLANK_LINE_PATTERN = /^[ \t]*$/u;
 const MARKDOWN_PIECE_START_PATTERN = /^\S/u;
-const MARKDOWN_ANY_INDENT_FENCE_PATTERN = /^\s*(`{3,}|~{3,})/u;
-const MARKDOWN_LIST_MARKER_PATTERN = /^\s{0,3}(?:[-*+]|\d{1,9}[.)])(?:\s|$)/u;
 const MARKDOWN_PIECE_LIST_MARKER_PATTERN = /(?:[-*+]|\d{1,9}[.)])(?:\s|$)/uy;
-const MARKDOWN_INDENTED_CONTINUATION_PATTERN = /^(?: {2,}|\t)/u;
 const MARKDOWN_MATH_FLOW_OPEN_PATTERN = /^ {0,3}\$\$[^$]*$/u;
-const MARKDOWN_MATH_FLOW_BARE_CLOSE_PATTERN = /^ {0,3}\$\$[ \t]*$/u;
-const MARKDOWN_MATH_FLOW_TRAILING_CLOSE_PATTERN =
-  /^(.*?[^$\s])[ \t]*\$\$[ \t]*$/u;
 const MARKDOWN_MATH_FLOW_SEQUENCE_PATTERN = /^ {0,3}(\${2,})/u;
 const MARKDOWN_MATH_FLOW_CLOSE_PATTERN = /^ {0,3}(\${2,})[ \t]*$/u;
 const MARKDOWN_LEADING_WHITESPACE_PATTERN = /^[ \t]/u;
@@ -129,44 +119,9 @@ const EMPTY_MARKDOWN_PIECE_SUMMARY: MarkdownPieceSummary = {
   lastTopLevelType: null,
 };
 
-function isMarkdownScannerBlankLine(line: string): boolean {
-  return MARKDOWN_BLANK_LINE_PATTERN.test(line);
-}
-
-function parseMarkdownScannerFence(line: string): MarkdownScannerFence | null {
-  const marker = MARKDOWN_ANY_INDENT_FENCE_PATTERN.exec(line)?.[1];
-  if (marker === undefined) {
-    return null;
-  }
-  return { character: marker[0]!, length: marker.length };
-}
-
-function closesMarkdownScannerFence(
-  line: string,
-  fence: MarkdownScannerFence,
-): boolean {
-  const match = MARKDOWN_ANY_INDENT_FENCE_PATTERN.exec(line);
-  const marker = match?.[1];
-  if (match === null || marker === undefined) {
-    return false;
-  }
-  return (
-    marker[0] === fence.character &&
-    marker.length >= fence.length &&
-    line.slice(match[0].length).trim().length === 0
-  );
-}
-
-function isMarkdownListLikeLine(line: string): boolean {
-  return (
-    MARKDOWN_LIST_MARKER_PATTERN.test(line) ||
-    MARKDOWN_INDENTED_CONTINUATION_PATTERN.test(line)
-  );
-}
-
 export function findMarkdownPieceCandidates(body: string): readonly number[] {
   const candidates: number[] = [];
-  let fence: MarkdownScannerFence | null = null;
+  let fence: MarkdownFence | null = null;
   let mathOpen = false;
   let previousLineBlank = false;
   let lastNonBlankLine: string | null = null;
@@ -175,16 +130,13 @@ export function findMarkdownPieceCandidates(body: string): readonly number[] {
     const newline = body.indexOf("\n", lineStart);
     const lineEnd = newline === -1 ? body.length : newline;
     const line = trimMarkdownLineCarriageReturn(body.slice(lineStart, lineEnd));
-    const blank = isMarkdownScannerBlankLine(line);
+    const blank = MARKDOWN_BLANK_LINE_PATTERN.test(line);
     if (fence !== null) {
-      if (closesMarkdownScannerFence(line, fence)) {
+      if (closesAnyIndentMarkdownFence(line, fence)) {
         fence = null;
       }
     } else if (mathOpen) {
-      if (
-        MARKDOWN_MATH_FLOW_BARE_CLOSE_PATTERN.test(line) ||
-        MARKDOWN_MATH_FLOW_TRAILING_CLOSE_PATTERN.test(line)
-      ) {
+      if (BARE_FENCE_PATTERN.test(line) || TRAILING_CLOSE_PATTERN.test(line)) {
         mathOpen = false;
       }
     } else if (!blank) {
@@ -199,7 +151,7 @@ export function findMarkdownPieceCandidates(body: string): readonly number[] {
       ) {
         candidates.push(lineStart);
       }
-      fence = parseMarkdownScannerFence(line);
+      fence = parseAnyIndentMarkdownFenceStart(line);
       if (fence === null && MARKDOWN_MATH_FLOW_OPEN_PATTERN.test(line)) {
         mathOpen = true;
       }
@@ -222,10 +174,6 @@ function markdownNodeSource(node: Nodes, source: string): string | null {
   return source.slice(start, end);
 }
 
-function lastMarkdownLine(lines: readonly string[]): string {
-  return lines[lines.length - 1] ?? "";
-}
-
 function isIndentedMarkdownCode(slice: string): boolean {
   return (
     parseMarkdownFenceStart(slice) === null &&
@@ -239,9 +187,7 @@ function isMarkdownCodeOpen(slice: string): boolean {
   if (fence === null) {
     return !isIndentedMarkdownCode(slice);
   }
-  return (
-    lines.length < 2 || !isMarkdownFenceClose(lastMarkdownLine(lines), fence)
-  );
+  return lines.length < 2 || !isMarkdownFenceClose(lines.at(-1) ?? "", fence);
 }
 
 function isMarkdownMathOpen(slice: string): boolean {
@@ -251,7 +197,7 @@ function isMarkdownMathOpen(slice: string): boolean {
     return true;
   }
   const close = MARKDOWN_MATH_FLOW_CLOSE_PATTERN.exec(
-    trimMarkdownLineCarriageReturn(lastMarkdownLine(lines)),
+    trimMarkdownLineCarriageReturn(lines.at(-1) ?? ""),
   );
   return close === null || close[1]!.length < open[1]!.length;
 }
@@ -332,25 +278,17 @@ function endsWithIndentedMarkdownCode(tree: Root, source: string): boolean {
   return slice === null || isIndentedMarkdownCode(slice);
 }
 
-function summarizeMarkdownPiece(
-  tree: Root,
-  source: string,
-): MarkdownPieceSummary {
-  return {
-    endsOpen: markdownLastDescendantChainIsOpen(tree, source),
-    endsWithIndentedCode: endsWithIndentedMarkdownCode(tree, source),
-    hasGlobalConstructs:
-      (source.includes("]:") || source.includes("[^")) &&
-      markdownTreeHasGlobalConstructs(tree),
-    lastTopLevelType: tree.children[tree.children.length - 1]?.type ?? null,
-  };
-}
-
 function remarkMarkdownPieceSummary(target: MarkdownPieceSummaryTarget) {
-  return (tree: Root, file: RemarkMarkdownPieceSummaryFile): void => {
-    const source =
-      typeof file.value === "string" ? file.value : String(file.value ?? "");
-    target.summary = summarizeMarkdownPiece(tree, source);
+  return (tree: Root): void => {
+    const { source } = target;
+    target.summary = {
+      endsOpen: markdownLastDescendantChainIsOpen(tree, source),
+      endsWithIndentedCode: endsWithIndentedMarkdownCode(tree, source),
+      hasGlobalConstructs:
+        (source.includes("]:") || source.includes("[^")) &&
+        markdownTreeHasGlobalConstructs(tree),
+      lastTopLevelType: tree.children[tree.children.length - 1]?.type ?? null,
+    };
   };
 }
 
@@ -400,10 +338,7 @@ function rekeyMarkdownRootChildren(
     }
     return cloneElement(child, { key: `${name}-${documentCount}` });
   });
-  return {
-    children: rekeyed,
-    tagCounts: tagCounts.size === 0 ? EMPTY_MARKDOWN_TAG_COUNTS : tagCounts,
-  };
+  return { children: rekeyed, tagCounts };
 }
 
 function parseMarkdownPiece({
@@ -413,6 +348,7 @@ function parseMarkdownPiece({
   source,
 }: ParseMarkdownPieceArgs): MarkdownPieceEntry {
   const summaryTarget: MarkdownPieceSummaryTarget = {
+    source,
     summary: EMPTY_MARKDOWN_PIECE_SUMMARY,
   };
   const mounts: MountedMessageDirective[] = [];
@@ -490,7 +426,7 @@ function resolveIncrementalMarkdownPieceEntries(
       : undefined;
     const previousMatches =
       previous !== undefined && body.startsWith(previous.source, start);
-    if (previous !== undefined && previousMatches) {
+    if (previousMatches) {
       const previousEnd = start + previous.source.length;
       let previousEndIndex = endIndex;
       while (
@@ -507,9 +443,7 @@ function resolveIncrementalMarkdownPieceEntries(
     }
     let end = candidates[endIndex] ?? body.length;
     let entry =
-      previous !== undefined &&
-      previousMatches &&
-      start + previous.source.length === end
+      previousMatches && start + previous.source.length === end
         ? previous
         : parseMarkdownPiece({
             config,
@@ -571,12 +505,6 @@ function refreshMarkdownElementTree(child: ReactNode): ReactNode {
   return cloneElement(child, props, refreshMarkdownElementTree(children));
 }
 
-function refreshMountedMessageDirective(
-  mount: MountedMessageDirective,
-): MountedMessageDirective {
-  return { ...mount, attributes: { ...mount.attributes } };
-}
-
 function buildResolvedMarkdownPieces(
   entries: readonly MarkdownPieceEntry[],
   previousEntries: readonly MarkdownPieceEntry[],
@@ -595,7 +523,9 @@ function buildResolvedMarkdownPieces(
       }
     }
     for (const mount of entry.mounts) {
-      mounts.push(reused ? refreshMountedMessageDirective(mount) : mount);
+      mounts.push(
+        reused ? { ...mount, attributes: { ...mount.attributes } } : mount,
+      );
     }
   }
   return {

@@ -20,11 +20,6 @@ interface StoredEventDecodeCache {
   previousDataChars: number;
 }
 
-export interface StoredEventDecodeCacheSize {
-  dataChars: number;
-  entryCount: number;
-}
-
 export const STORED_EVENT_DECODE_CACHE_MAX_ENTRIES = 100_000;
 export const STORED_EVENT_DECODE_CACHE_MAX_DATA_CHARS = 8_000_000;
 
@@ -41,9 +36,10 @@ export function clearStoredEventDecodeCache(db: DbConnection): void {
   decodeCaches.delete(db);
 }
 
-export function readStoredEventDecodeCacheSize(
-  db: DbConnection,
-): StoredEventDecodeCacheSize {
+export function readStoredEventDecodeCacheSize(db: DbConnection): {
+  dataChars: number;
+  entryCount: number;
+} {
   const cache = decodeCaches.get(db);
   if (cache === undefined) {
     return { dataChars: 0, entryCount: 0 };

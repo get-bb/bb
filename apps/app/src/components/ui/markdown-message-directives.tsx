@@ -275,23 +275,9 @@ export interface BuildMessageDirectiveComponentArgs {
 export const EMPTY_MOUNTED_MESSAGE_DIRECTIVES: readonly MountedMessageDirective[] =
   [];
 
-const MessageDirectiveMountsContext = createContext<
+export const MessageDirectiveMountsContext = createContext<
   readonly MountedMessageDirective[]
 >(EMPTY_MOUNTED_MESSAGE_DIRECTIVES);
-
-export function MessageDirectiveMountsProvider({
-  children,
-  mounts,
-}: {
-  children: ReactNode;
-  mounts: readonly MountedMessageDirective[];
-}) {
-  return (
-    <MessageDirectiveMountsContext.Provider value={mounts}>
-      {children}
-    </MessageDirectiveMountsContext.Provider>
-  );
-}
 
 export function buildMessageDirectiveComponent({
   message,

@@ -124,10 +124,8 @@ export function getTimelineGroupingContext(
     { context, dataVersion, generation, maxSeq: args.maxSeq },
     ...entries.slice(0, GROUPING_CONTEXT_ENTRIES_PER_KEY - 1),
   ]);
-  while (cache.size > GROUPING_CONTEXT_KEY_LIMIT) {
-    const oldest = cache.keys().next().value;
-    if (oldest === undefined) break;
-    cache.delete(oldest);
+  if (cache.size > GROUPING_CONTEXT_KEY_LIMIT) {
+    cache.delete(cache.keys().next().value!);
   }
   return context;
 }

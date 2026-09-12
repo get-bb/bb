@@ -29,10 +29,6 @@ const THREAD_MENTION_PATTERN = new RegExp(
   "gu",
 );
 const RAW_THREAD_ID_PATTERN = new RegExp(RAW_THREAD_ID_PATTERN_SOURCE, "gu");
-const RAW_THREAD_ID_CANDIDATE_PATTERN = new RegExp(
-  RAW_THREAD_ID_PATTERN_SOURCE,
-  "u",
-);
 const CHARACTER_REFERENCE_PATTERN = /&(?:#\d+|#x[\da-f]+|[a-z][a-z\d]*);/iu;
 const THREAD_MENTION_PREFIX = "@thread";
 const THREAD_MENTION_ID_PATTERN = /^[A-Za-z0-9_-]+$/u;
@@ -239,16 +235,12 @@ function markdownMayContainThreadMention(markdown: string): boolean {
     : markdown;
   return (
     unescaped.includes(THREAD_MENTION_PREFIX) ||
-    RAW_THREAD_ID_CANDIDATE_PATTERN.test(unescaped)
+    unescaped.search(RAW_THREAD_ID_PATTERN) !== -1
   );
 }
 
-interface RemarkThreadMentionsFile {
-  value: unknown;
-}
-
 export function remarkThreadMentions() {
-  return (tree: Nodes, file: RemarkThreadMentionsFile): void => {
+  return (tree: Nodes, file: { value: unknown }): void => {
     if (
       typeof file.value === "string" &&
       !markdownMayContainThreadMention(file.value)

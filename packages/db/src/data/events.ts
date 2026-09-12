@@ -672,7 +672,7 @@ function listThreadSearchSegmentsForStoredEventArgs(args: {
   }
 }
 
-export function canProduceThreadSearchSegments(args: {
+function canProduceThreadSearchSegments(args: {
   itemKind: ThreadEventItemType | null;
   type: ThreadEventType;
 }): boolean {
@@ -722,6 +722,9 @@ function listThreadSearchSegmentsForThreadEvent(args: {
 }
 
 function parseDaemonThreadEvent(input: AppendDaemonEventInput): ThreadEvent | null {
+  if (!canProduceThreadSearchSegments(input)) {
+    return null;
+  }
   let data: unknown;
   try {
     data = JSON.parse(input.data);
@@ -833,22 +836,15 @@ export function appendDaemonEventsInTransaction(
       turnId,
       type: input.type,
     });
-    if (
-      canProduceThreadSearchSegments({
-        itemKind: input.itemKind,
-        type: input.type,
-      })
-    ) {
-      const event = parseDaemonThreadEvent(input);
-      if (event !== null) {
-        upsertThreadSearchSegments(db, {
-          updatedAt: now,
-          segments: listThreadSearchSegmentsForThreadEvent({
-            event,
-            sequence,
-          }),
-        });
-      }
+    const event = parseDaemonThreadEvent(input);
+    if (event !== null) {
+      upsertThreadSearchSegments(db, {
+        updatedAt: now,
+        segments: listThreadSearchSegmentsForThreadEvent({
+          event,
+          sequence,
+        }),
+      });
     }
 
     const acceptedEvent: AcceptedDaemonEvent = {
@@ -915,35 +911,28 @@ export function copyStoredThreadEventsInTransaction(
       sourceEventId: row.id,
       targetEventId: insertResult.id,
     });
-    if (
-      canProduceThreadSearchSegments({
-        itemKind: row.itemKind,
-        type: row.type,
-      })
-    ) {
-      const event = parseDaemonThreadEvent({
-        data: row.data,
-        environmentId: args.targetEnvironmentId,
-        itemId: row.itemId,
-        itemKind: row.itemKind,
-        parentToolCallId: row.parentToolCallId,
-        providerThreadId: row.providerThreadId,
-        scope:
-          row.turnId === null
-            ? { kind: "thread" }
-            : { kind: "turn", turnId: row.turnId },
-        threadId: args.targetThreadId,
-        type: row.type,
+    const event = parseDaemonThreadEvent({
+      data: row.data,
+      environmentId: args.targetEnvironmentId,
+      itemId: row.itemId,
+      itemKind: row.itemKind,
+      parentToolCallId: row.parentToolCallId,
+      providerThreadId: row.providerThreadId,
+      scope:
+        row.turnId === null
+          ? { kind: "thread" }
+          : { kind: "turn", turnId: row.turnId },
+      threadId: args.targetThreadId,
+      type: row.type,
+    });
+    if (event !== null) {
+      upsertThreadSearchSegments(db, {
+        updatedAt: now,
+        segments: listThreadSearchSegmentsForThreadEvent({
+          event,
+          sequence,
+        }),
       });
-      if (event !== null) {
-        upsertThreadSearchSegments(db, {
-          updatedAt: now,
-          segments: listThreadSearchSegmentsForThreadEvent({
-            event,
-            sequence,
-          }),
-        });
-      }
     }
     sequence += 1;
   }

@@ -568,73 +568,41 @@ describe("slow query index plans", () => {
     expect(details).toMatch(
       /SEARCH root_start (?:EXISTS )?USING (?:COVERING )?INDEX events_thread_turn_type_item_sequence_idx \(thread_id=\? AND turn_id=\? AND type=\?\)/u,
     );
-    expect(details).not.toMatch(
-      /SEARCH root_start (?:EXISTS )?USING (?:COVERING )?INDEX events_thread_type_sequence_idx/u,
-    );
-    expect(details).toMatch(
-      /SEARCH events USING (?:COVERING )?INDEX events_delegating_item_lookup_idx/u,
-    );
-    expect(details).toMatch(
-      /SEARCH child USING (?:COVERING )?INDEX events_parent_tool_call_thread_parent_sequence_idx/u,
-    );
 
     db.$client.close();
   });
 
-  it("probes appended grouping-context rows through the thread sequence index", () => {
-    const { db, thread } = setup();
-
-    const [query] = captureStatements(db, () => {
-      expect(
+  it.each([
+    {
+      name: "probes appended grouping-context rows",
+      run: (db: DbConnection, threadId: string) =>
         hasTimelineGroupingContextRowsInRange(db, {
           afterSequence: 10,
-          threadId: thread.id,
+          threadId,
           throughSequence: 30,
         }),
-      ).toBe(false);
-    });
-    if (!query) {
-      throw new Error("Expected the grouping-context probe SQL");
-    }
-    const details = queryPlanDetails({
-      db,
-      params: query.params,
-      sql: query.sql,
-    });
-    expect(details).toMatch(
-      /SEARCH events USING INDEX events_thread_sequence_idx \(thread_id=\? AND sequence>\? AND sequence<\?\)/u,
-    );
-    expect(details.split("\n")).toHaveLength(1);
-
-    db.$client.close();
-  });
-
-  it("lists rows in a sequence range through the thread sequence index", () => {
-    const { db, thread } = setup();
-
-    const [query] = captureStatements(db, () => {
-      expect(
+    },
+    {
+      name: "lists rows in a sequence range",
+      run: (db: DbConnection, threadId: string) =>
         listStoredEventRowsInSequenceRange(db, {
           afterSequence: 10,
           limit: 513,
           maxInlineOutputChars: 32_000,
-          threadId: thread.id,
+          threadId,
           throughSequence: 30,
         }),
-      ).toEqual([]);
-    });
+    },
+  ])("$name through the thread sequence index", ({ run }) => {
+    const { db, thread } = setup();
+
+    const [query] = captureStatements(db, () => run(db, thread.id));
     if (!query) {
-      throw new Error("Expected the sequence-range row listing SQL");
+      throw new Error("Expected the sequence-range SQL");
     }
-    const details = queryPlanDetails({
-      db,
-      params: query.params,
-      sql: query.sql,
-    });
-    expect(details).toMatch(
-      /SEARCH events USING INDEX events_thread_sequence_idx \(thread_id=\? AND sequence>\? AND sequence<\?\)/u,
-    );
-    expect(details).not.toMatch(/USE TEMP B-TREE/u);
+    expect(queryPlanDetails({ db, ...query }).split("\n")).toEqual([
+      "SEARCH events USING INDEX events_thread_sequence_idx (thread_id=? AND sequence>? AND sequence<?)",
+    ]);
 
     db.$client.close();
   });

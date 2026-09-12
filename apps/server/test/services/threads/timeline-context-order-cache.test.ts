@@ -1,118 +1,43 @@
-import fs from "node:fs";
-import os from "node:os";
-import path from "node:path";
 import { describe, expect, it } from "vitest";
 import {
   THREAD_CONTEXT_CLEAR_OPERATION,
-  threadScope,
-  turnScope,
-  type ThreadEventItemType,
   type ThreadEventType,
 } from "@bb/domain";
 import {
-  createConnection,
-  createProject,
-  createThread,
   deleteThreadEventSuffixInTransaction,
   getLatestCompletedThreadContextClearSequence,
   getLatestThreadSequence,
-  insertEvents,
-  migrate,
-  noopNotifier,
   pruneThreadEventsBeforeSequence,
-  upsertHost,
-  type DbConnection,
 } from "@bb/db";
 import {
   clearTimelineOrderingContextCache,
   getTimelineGroupingContext,
 } from "../../../src/services/threads/timeline-context-order.js";
+import {
+  appendRows,
+  createRandom,
+  pick,
+  randomInteger,
+  withTestThread,
+  type Random,
+  type RowSpec,
+  type TestThread,
+} from "../../helpers/timeline-cache-fixture.js";
 
-type EventInput = Parameters<typeof insertEvents>[2][number];
-
-interface TestThread {
-  coldDb: DbConnection;
-  db: DbConnection;
-  dir: string;
-  threadId: string;
-}
-
-interface ContextArgs {
-  maxSeq: number;
-  sequenceStart: number;
-  threadId: string;
-}
-
-interface RowSpec {
-  data?: Record<string, unknown>;
-  itemId?: string | null;
-  itemKind?: ThreadEventItemType | null;
-  parentToolCallId?: string | null;
-  turnId?: string | null;
-  type: ThreadEventType;
-}
-
-type Random = () => number;
-
-const CONTEXT_SQL_MARKERS = ["$.clientRequestId", "root_start"] as const;
 const SEEDS = 20;
 
-let migratedImage: Buffer | null = null;
-
-function readMigratedImage(): Buffer {
-  if (migratedImage === null) {
-    const db = createConnection(":memory:");
-    migrate(db);
-    migratedImage = db.$client.serialize();
-    db.$client.close();
-  }
-  return migratedImage;
-}
-
-function setup(): TestThread {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "bb-context-cache-"));
-  const file = path.join(dir, "bb.db");
-  fs.writeFileSync(file, readMigratedImage());
-  const db = createConnection(file);
-  const host = upsertHost(db, noopNotifier, { name: "context-cache-host" });
-  const { project } = createProject(db, noopNotifier, {
-    name: "context-cache-project",
-    source: { type: "local_path", hostId: host.id, path: "/tmp/context" },
-  });
-  const thread = createThread(db, noopNotifier, {
-    projectId: project.id,
-    providerId: "codex",
-  });
-  return { coldDb: createConnection(file), db, dir, threadId: thread.id };
-}
-
-function teardown(thread: TestThread): void {
-  thread.coldDb.$client.close();
-  thread.db.$client.close();
-  fs.rmSync(thread.dir, { force: true, recursive: true });
-}
-
-function append(
-  { db, threadId }: TestThread,
-  specs: readonly RowSpec[],
-): number {
-  let sequence = getLatestThreadSequence(db, { threadId });
-  const rows: EventInput[] = specs.map((spec) => {
-    sequence += 1;
-    const turnId = spec.turnId ?? null;
-    return {
-      data: JSON.stringify(spec.data ?? {}),
-      itemId: spec.itemId ?? null,
-      itemKind: spec.itemKind ?? null,
-      parentToolCallId: spec.parentToolCallId ?? null,
-      scope: turnId === null ? threadScope() : turnScope(turnId),
-      sequence,
-      threadId,
-      type: spec.type,
-    };
-  });
-  insertEvents(db, noopNotifier, rows);
-  return sequence;
+function expectCachedEqualsCold(
+  testThread: TestThread,
+  maxSeq: number,
+  sequenceStart = 0,
+): ReturnType<typeof getTimelineGroupingContext> {
+  const args = { maxSeq, sequenceStart, threadId: testThread.thread.id };
+  const cached = getTimelineGroupingContext(testThread.db, args);
+  clearTimelineOrderingContextCache(testThread.coldDb);
+  expect(cached, JSON.stringify(args)).toEqual(
+    getTimelineGroupingContext(testThread.coldDb, args),
+  );
+  return cached;
 }
 
 function turnStarted(turnId: string): RowSpec {
@@ -179,55 +104,10 @@ function reasoningDelta(turnId: string): RowSpec {
   };
 }
 
-function coldContext(thread: TestThread, args: ContextArgs) {
-  clearTimelineOrderingContextCache(thread.coldDb);
-  return getTimelineGroupingContext(thread.coldDb, args);
-}
-
-function captureStatementSql(db: DbConnection, run: () => void): string[] {
-  const captured: string[] = [];
-  const raw = db.$client;
-  const originalPrepare = raw.prepare.bind(raw);
-  Object.defineProperty(raw, "prepare", {
-    configurable: true,
-    writable: true,
-    value: (source: string) => {
-      captured.push(source);
-      return originalPrepare(source);
-    },
-  });
-  try {
-    run();
-  } finally {
-    Object.defineProperty(raw, "prepare", {
-      configurable: true,
-      writable: true,
-      value: originalPrepare,
-    });
-  }
-  return captured;
-}
-
-function readsContextSql(statements: readonly string[]): boolean {
-  return statements.some((source) =>
-    CONTEXT_SQL_MARKERS.some((marker) => source.includes(marker)),
-  );
-}
-
-function expectCachedEqualsCold(
-  thread: TestThread,
-  args: ContextArgs,
-): ReturnType<typeof getTimelineGroupingContext> {
-  const cached = getTimelineGroupingContext(thread.db, args);
-  expect(cached).toEqual(coldContext(thread, args));
-  return cached;
-}
-
 describe("timeline grouping context cache", () => {
-  it("reuses the context across appended deltas and root tool-call rows without re-reading it", () => {
-    const thread = setup();
-    try {
-      append(thread, [
+  it("reuses the context across appended deltas and root tool-call rows", () => {
+    withTestThread((testThread) => {
+      appendRows(testThread, [
         turnStarted("turn-1"),
         userRequest("request-1"),
         accepted("request-1", "turn-1"),
@@ -235,33 +115,21 @@ describe("timeline grouping context cache", () => {
         child("call-1", 1),
         userRequest("request-2"),
       ]);
-      const warmMaxSeq = append(thread, [child("call-1", 2)]);
-      const warm = getTimelineGroupingContext(thread.db, {
-        maxSeq: warmMaxSeq,
-        sequenceStart: 0,
-        threadId: thread.threadId,
-      });
+      const warm = expectCachedEqualsCold(
+        testThread,
+        appendRows(testThread, [child("call-1", 2)]),
+      );
       expect(warm.orderingBoundarySequence).toBe(6);
 
-      const maxSeq = append(thread, [
+      const maxSeq = appendRows(testThread, [
         delta("turn-1", "Hello"),
         delta("turn-1", " world"),
         reasoningDelta("turn-1"),
         rootToolCall("call-2", "turn-1", "item/started"),
         rootToolCall("call-2", "turn-1", "item/completed"),
       ]);
-      const args = { maxSeq, sequenceStart: 0, threadId: thread.threadId };
-      let cached: ReturnType<typeof getTimelineGroupingContext> | null = null;
-      const statements = captureStatementSql(thread.db, () => {
-        cached = getTimelineGroupingContext(thread.db, args);
-      });
-      expect(readsContextSql(statements)).toBe(false);
-      expect(statements).toHaveLength(1);
-      expect(cached).toBe(warm);
-      expect(cached).toEqual(coldContext(thread, args));
-    } finally {
-      teardown(thread);
-    }
+      expect(expectCachedEqualsCold(testThread, maxSeq)).toBe(warm);
+    });
   });
 
   it.each([
@@ -318,195 +186,122 @@ describe("timeline grouping context cache", () => {
       after: 4,
     },
   ])("recomputes when $name", (testCase) => {
-    const thread = setup();
-    try {
-      const warmMaxSeq = append(thread, testCase.seed);
-      const warm = expectCachedEqualsCold(thread, {
-        maxSeq: warmMaxSeq,
-        sequenceStart: 0,
-        threadId: thread.threadId,
-      });
+    withTestThread((testThread) => {
+      const warm = expectCachedEqualsCold(
+        testThread,
+        appendRows(testThread, testCase.seed),
+      );
       expect(warm.orderingBoundarySequence).toBe(testCase.before);
 
-      const maxSeq = append(thread, [
+      const maxSeq = appendRows(testThread, [
         delta("turn-1", "before"),
         ...testCase.appended,
         delta("turn-1", "after"),
       ]);
-      const cached = expectCachedEqualsCold(thread, {
-        maxSeq,
-        sequenceStart: 0,
-        threadId: thread.threadId,
-      });
-      expect(cached.orderingBoundarySequence).toBe(testCase.after);
-    } finally {
-      teardown(thread);
-    }
+      expect(
+        expectCachedEqualsCold(testThread, maxSeq).orderingBoundarySequence,
+      ).toBe(testCase.after);
+    });
   });
 
   it("reuses the context when a delegating item id is reused in a later turn", () => {
-    const thread = setup();
-    try {
-      const warmMaxSeq = append(thread, [
-        turnStarted("turn-1"),
-        rootToolCall("call-1", "turn-1", "item/started"),
-        userRequest("request-1"),
-        child("call-1", 1),
-        turnCompleted("turn-1"),
-        turnStarted("turn-2"),
-      ]);
-      const warm = expectCachedEqualsCold(thread, {
-        maxSeq: warmMaxSeq,
-        sequenceStart: 0,
-        threadId: thread.threadId,
-      });
+    withTestThread((testThread) => {
+      const warm = expectCachedEqualsCold(
+        testThread,
+        appendRows(testThread, [
+          turnStarted("turn-1"),
+          rootToolCall("call-1", "turn-1", "item/started"),
+          userRequest("request-1"),
+          child("call-1", 1),
+          turnCompleted("turn-1"),
+          turnStarted("turn-2"),
+        ]),
+      );
       expect(warm.orderingBoundarySequence).toBe(3);
 
-      const reusedMaxSeq = append(thread, [
+      const reusedMaxSeq = appendRows(testThread, [
         rootToolCall("call-1", "turn-2", "item/started"),
         rootToolCall("call-1", "turn-2", "item/completed"),
       ]);
-      const reusedArgs = {
-        maxSeq: reusedMaxSeq,
-        sequenceStart: 0,
-        threadId: thread.threadId,
-      };
-      const statements = captureStatementSql(thread.db, () => {
-        expect(getTimelineGroupingContext(thread.db, reusedArgs)).toBe(warm);
-      });
-      expect(readsContextSql(statements)).toBe(false);
-      expect(getTimelineGroupingContext(thread.db, reusedArgs)).toEqual(
-        coldContext(thread, reusedArgs),
+      expect(expectCachedEqualsCold(testThread, reusedMaxSeq)).toBe(warm);
+      expectCachedEqualsCold(
+        testThread,
+        appendRows(testThread, [userRequest("request-2")]),
       );
-
-      const requestedMaxSeq = append(thread, [userRequest("request-2")]);
-      expectCachedEqualsCold(thread, {
-        maxSeq: requestedMaxSeq,
-        sequenceStart: 0,
-        threadId: thread.threadId,
-      });
-    } finally {
-      teardown(thread);
-    }
+    });
   });
 
-  it("recomputes after a suffix rewrite that leaves only appendable rows in the probed range", () => {
-    const thread = setup();
-    try {
-      const warmMaxSeq = append(thread, [
-        turnStarted("turn-1"),
-        rootToolCall("call-1", "turn-1", "item/started"),
-        userRequest("request-1"),
-        child("call-1", 1),
-      ]);
-      const warm = expectCachedEqualsCold(thread, {
-        maxSeq: warmMaxSeq,
-        sequenceStart: 0,
-        threadId: thread.threadId,
-      });
-      expect(warm.orderingBoundarySequence).toBe(3);
-
-      thread.db.transaction((tx) => {
-        deleteThreadEventSuffixInTransaction(tx, {
-          cutoffSequence: warmMaxSeq,
-          oldMaxSequence: warmMaxSeq,
-          threadId: thread.threadId,
+  it.each([
+    {
+      name: "a suffix rewrite on the same connection",
+      remove: (testThread: TestThread, sequence: number) => {
+        testThread.db.transaction((tx) => {
+          deleteThreadEventSuffixInTransaction(tx, {
+            cutoffSequence: sequence,
+            oldMaxSequence: sequence,
+            threadId: testThread.thread.id,
+          });
         });
-      });
-      const maxSeq = append(thread, [
-        delta("turn-1", "replacement"),
-        delta("turn-1", " text"),
-      ]);
-      const cached = expectCachedEqualsCold(thread, {
-        maxSeq,
-        sequenceStart: 0,
-        threadId: thread.threadId,
-      });
-      expect(cached.orderingBoundarySequence).toBeNull();
-    } finally {
-      teardown(thread);
-    }
-  });
+      },
+    },
+    {
+      name: "another connection deletes a context row",
+      remove: (testThread: TestThread, sequence: number) => {
+        testThread.coldDb.$client
+          .prepare("DELETE FROM events WHERE thread_id = ? AND sequence = ?")
+          .run(testThread.thread.id, sequence);
+      },
+    },
+  ])(
+    "recomputes after $name leaves only appendable rows in the probed range",
+    ({ remove }) => {
+      withTestThread((testThread) => {
+        const warmMaxSeq = appendRows(testThread, [
+          turnStarted("turn-1"),
+          rootToolCall("call-1", "turn-1", "item/started"),
+          userRequest("request-1"),
+          child("call-1", 1),
+        ]);
+        expect(
+          expectCachedEqualsCold(testThread, warmMaxSeq)
+            .orderingBoundarySequence,
+        ).toBe(3);
 
-  it("recomputes after another connection deletes context rows", () => {
-    const thread = setup();
-    const writer = createConnection(path.join(thread.dir, "bb.db"));
-    try {
-      const warmMaxSeq = append(thread, [
-        turnStarted("turn-1"),
-        rootToolCall("call-1", "turn-1", "item/started"),
-        userRequest("request-1"),
-        child("call-1", 1),
-      ]);
-      const warm = expectCachedEqualsCold(thread, {
-        maxSeq: warmMaxSeq,
-        sequenceStart: 0,
-        threadId: thread.threadId,
+        remove(testThread, warmMaxSeq);
+        const maxSeq = appendRows(testThread, [
+          delta("turn-1", "replacement"),
+          delta("turn-1", " text"),
+        ]);
+        expect(
+          expectCachedEqualsCold(testThread, maxSeq).orderingBoundarySequence,
+        ).toBeNull();
       });
-      expect(warm.orderingBoundarySequence).toBe(3);
-
-      writer.$client
-        .prepare("DELETE FROM events WHERE thread_id = ? AND sequence = ?")
-        .run(thread.threadId, warmMaxSeq);
-      const maxSeq = append(thread, [
-        delta("turn-1", "a"),
-        delta("turn-1", "b"),
-      ]);
-      const cached = expectCachedEqualsCold(thread, {
-        maxSeq,
-        sequenceStart: 0,
-        threadId: thread.threadId,
-      });
-      expect(cached.orderingBoundarySequence).toBeNull();
-    } finally {
-      writer.$client.close();
-      teardown(thread);
-    }
-  });
+    },
+  );
 
   it("serves an older snapshot below a cached entry only when no context rows lie between them", () => {
-    const thread = setup();
-    try {
-      const olderMaxSeq = append(thread, [
+    withTestThread((testThread) => {
+      const olderMaxSeq = appendRows(testThread, [
         turnStarted("turn-1"),
         userRequest("request-1"),
         delta("turn-1", "a"),
       ]);
-      append(thread, [delta("turn-1", "b"), delta("turn-1", "c")]);
-      const latestMaxSeq = getLatestThreadSequence(thread.db, {
-        threadId: thread.threadId,
-      });
-      const latest = expectCachedEqualsCold(thread, {
-        maxSeq: latestMaxSeq,
-        sequenceStart: 0,
-        threadId: thread.threadId,
-      });
-
-      const olderArgs = {
-        maxSeq: olderMaxSeq,
-        sequenceStart: 0,
-        threadId: thread.threadId,
-      };
-      const statements = captureStatementSql(thread.db, () => {
-        expect(getTimelineGroupingContext(thread.db, olderArgs)).toBe(latest);
-      });
-      expect(readsContextSql(statements)).toBe(false);
-      expect(getTimelineGroupingContext(thread.db, olderArgs)).toEqual(
-        coldContext(thread, olderArgs),
+      const latest = expectCachedEqualsCold(
+        testThread,
+        appendRows(testThread, [delta("turn-1", "b"), delta("turn-1", "c")]),
       );
+      expect(expectCachedEqualsCold(testThread, olderMaxSeq)).toBe(latest);
 
-      const completedMaxSeq = append(thread, [turnCompleted("turn-1")]);
-      const completed = expectCachedEqualsCold(thread, {
-        maxSeq: completedMaxSeq,
-        sequenceStart: 0,
-        threadId: thread.threadId,
-      });
-      expect(completed.orderingBoundarySequence).toBe(2);
-      const beforeCompletion = expectCachedEqualsCold(thread, olderArgs);
-      expect(beforeCompletion.orderingBoundarySequence).toBeNull();
-    } finally {
-      teardown(thread);
-    }
+      const completedMaxSeq = appendRows(testThread, [turnCompleted("turn-1")]);
+      expect(
+        expectCachedEqualsCold(testThread, completedMaxSeq)
+          .orderingBoundarySequence,
+      ).toBe(2);
+      expect(
+        expectCachedEqualsCold(testThread, olderMaxSeq)
+          .orderingBoundarySequence,
+      ).toBeNull();
+    });
   });
 
   it("matches a cold computation over randomized appends, rewrites and prunes", () => {
@@ -514,28 +309,27 @@ describe("timeline grouping context cache", () => {
     let changedContexts = 0;
     for (let seed = 1; seed <= SEEDS; seed += 1) {
       const random = createRandom(seed);
-      const thread = setup();
-      try {
+      withTestThread((testThread) => {
         let previousBoundary: number | null = null;
         for (let step = 0; step < 40; step += 1) {
-          applyRandomStep(thread, random, step);
-          const latest = getLatestThreadSequence(thread.db, {
-            threadId: thread.threadId,
+          applyRandomStep(testThread, random, step);
+          const latest = getLatestThreadSequence(testThread.db, {
+            threadId: testThread.thread.id,
           });
           const probes = [latest, latest - randomInteger(random, 1, 6), latest];
           for (const maxSeq of probes) {
             if (maxSeq < 0) continue;
             const sequenceStart =
               random() < 0.8
-                ? (getLatestCompletedThreadContextClearSequence(thread.db, {
+                ? (getLatestCompletedThreadContextClearSequence(testThread.db, {
                     atOrBeforeSequence: maxSeq,
-                    threadId: thread.threadId,
+                    threadId: testThread.thread.id,
                   }) ?? 0)
                 : randomInteger(random, 0, Math.max(0, maxSeq));
-            const args = { maxSeq, sequenceStart, threadId: thread.threadId };
-            const cached = getTimelineGroupingContext(thread.db, args);
-            expect(cached, JSON.stringify({ seed, step, args })).toEqual(
-              coldContext(thread, args),
+            const cached = expectCachedEqualsCold(
+              testThread,
+              maxSeq,
+              sequenceStart,
             );
             comparisons += 1;
             if (cached.orderingBoundarySequence !== previousBoundary) {
@@ -544,37 +338,12 @@ describe("timeline grouping context cache", () => {
             }
           }
         }
-      } finally {
-        teardown(thread);
-      }
+      });
     }
     expect(comparisons).toBeGreaterThan(SEEDS * 100);
     expect(changedContexts).toBeGreaterThan(SEEDS * 10);
   }, 60_000);
 });
-
-function createRandom(seed: number): Random {
-  let state = seed >>> 0;
-  return () => {
-    state = (state + 0x6d2b79f5) >>> 0;
-    let value = state;
-    value = Math.imul(value ^ (value >>> 15), value | 1);
-    value ^= value + Math.imul(value ^ (value >>> 7), value | 61);
-    return ((value ^ (value >>> 14)) >>> 0) / 4_294_967_296;
-  };
-}
-
-function randomInteger(random: Random, min: number, max: number): number {
-  return min + Math.floor(random() * (max - min + 1));
-}
-
-function pick<T>(random: Random, values: readonly T[]): T {
-  const value = values[Math.floor(random() * values.length)];
-  if (value === undefined) {
-    throw new Error("Expected a non-empty choice list");
-  }
-  return value;
-}
 
 const RANDOM_TURN_IDS = ["turn-a", "turn-b", "turn-c"] as const;
 const RANDOM_CALL_IDS = ["call-a", "call-b"] as const;
@@ -632,10 +401,9 @@ function randomRow(random: Random): RowSpec {
   };
 }
 
-function applyRandomStep(thread: TestThread, random: Random, step: number) {
-  const latest = getLatestThreadSequence(thread.db, {
-    threadId: thread.threadId,
-  });
+function applyRandomStep(testThread: TestThread, random: Random, step: number) {
+  const threadId = testThread.thread.id;
+  const latest = getLatestThreadSequence(testThread.db, { threadId });
   const choice = random();
   if (step > 3 && choice < 0.08) {
     const cutoffSequence = randomInteger(
@@ -643,27 +411,27 @@ function applyRandomStep(thread: TestThread, random: Random, step: number) {
       Math.max(1, latest - 4),
       latest,
     );
-    thread.db.transaction((tx) => {
+    testThread.db.transaction((tx) => {
       deleteThreadEventSuffixInTransaction(tx, {
         cutoffSequence,
         oldMaxSequence: latest,
-        threadId: thread.threadId,
+        threadId,
       });
     });
     return;
   }
   if (step > 3 && choice < 0.14) {
-    pruneThreadEventsBeforeSequence(thread.db, {
+    pruneThreadEventsBeforeSequence(testThread.db, {
       sequenceCutoff: randomInteger(random, 1, latest),
-      threadId: thread.threadId,
+      threadId,
       types: [pick(random, RANDOM_PRUNED_TYPES)],
     });
     return;
   }
-  const rows: RowSpec[] = [];
-  const count = randomInteger(random, 1, 4);
-  for (let index = 0; index < count; index += 1) {
-    rows.push(randomRow(random));
-  }
-  append(thread, rows);
+  appendRows(
+    testThread,
+    Array.from({ length: randomInteger(random, 1, 4) }, () =>
+      randomRow(random),
+    ),
+  );
 }

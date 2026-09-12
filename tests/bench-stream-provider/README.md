@@ -78,7 +78,7 @@ Streams a fixture at a fixed rate:
 3. One `thread/delta` notification per tick, each holding exactly one
    `item.textDelta` of `chunk` characters (the last may be shorter). Ticks are
    a `setTimeout` chain, `interval` ms apart, starting `interval` ms after the
-   message opens. A chunk never splits a UTF-16 surrogate pair.
+   message opens.
 4. After the last tick, one notification with `item.close` carrying the full
    text and `turn.boundary completed`.
 
@@ -140,7 +140,7 @@ reports it once on stderr, stops logging for that stream, and keeps streaming.
 ## Fixtures
 
 `src/fixtures/index.ts` (exported as `bb-plugin-bench-stream-provider/fixtures`)
-exposes `listFixtureNames()`, `getFixture(name)`, and
+exposes `FIXTURE_NAMES`, `getFixture(name)`, and
 `streamDocumentText(name, repeat)`. Each fixture is an embedded string module,
 so the host artifact needs no filesystem reads.
 
@@ -182,4 +182,4 @@ pnpm exec turbo run typecheck test --filter=bb-plugin-bench-stream-provider
 - `provider-bridge.history.test.ts` runs `bench_history` through the SDK delta
   assembler, checks the Claude Code item shapes, determinism per seed, and the
   limits across 840 seed and tool combinations.
-- `fixtures.test.ts` pins the fixture contents and constructs.
+- `fixtures.test.ts` pins every fixture's SHA-256 and rejects unknown names.

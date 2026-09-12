@@ -1,6 +1,6 @@
 import { existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { createBenchApi, waitUntil, type BenchApi } from "./api.js";
+import { BenchApi, waitUntil } from "./api.js";
 import {
   processTreeCpuMs,
   reservePort,
@@ -17,20 +17,16 @@ export interface BackendPaths {
 
 export interface StartBackendArgs {
   daemonEnv?: Record<string, string>;
-  logLevel: string;
   paths: BackendPaths;
   repoRoot: string;
-  serverEnv?: Record<string, string>;
   serverNodeArgs?: string[];
 }
 
 export interface Backend {
   api: BenchApi;
-  serverStdioLogPath: string;
   cpuMs(): { daemon: number; server: number };
-  daemonPid: number;
   hostId: string;
-  serverPid: number;
+  serverStdioLogPath: string;
   serverUrl: string;
   stop(): Promise<void>;
 }
@@ -69,6 +65,7 @@ export async function startBackend(args: StartBackendArgs): Promise<Backend> {
   const serverPort = await reservePort();
   const daemonPort = await reservePort();
   const serverUrl = `http://127.0.0.1:${serverPort}`;
+  const serverStdioLogPath = join(paths.logsDir, "server-stdio.log");
   const baseEnv = sanitizedParentEnv();
   const server = spawnLogged({
     args: [...(args.serverNodeArgs ?? []), serverEntry],
@@ -76,20 +73,19 @@ export async function startBackend(args: StartBackendArgs): Promise<Backend> {
     cwd: repoRoot,
     env: {
       ...baseEnv,
-      ...args.serverEnv,
       BB_DATA_DIR: paths.serverDataDir,
-      BB_LOG_LEVEL: args.logLevel,
+      BB_LOG_LEVEL: "warn",
       BB_SERVER_PORT: String(serverPort),
       BB_TELEMETRY: "false",
       NODE_ENV: "production",
     },
-    logPath: join(paths.logsDir, "server-stdio.log"),
+    logPath: serverStdioLogPath,
   });
   const serverPid = server.pid;
   if (serverPid === undefined) {
     throw new Error("Server failed to spawn");
   }
-  const api = createBenchApi(serverUrl);
+  const api = new BenchApi(serverUrl);
   let daemonPid: number | undefined;
   const stop = async () => {
     await stopProcessGroup(daemonPid);
@@ -106,7 +102,7 @@ export async function startBackend(args: StartBackendArgs): Promise<Backend> {
       ...args.daemonEnv,
       BB_DATA_DIR: paths.daemonDataDir,
       BB_HOST_DAEMON_PORT: String(daemonPort),
-      BB_LOG_LEVEL: args.logLevel,
+      BB_LOG_LEVEL: "warn",
       BB_SERVER_URL: serverUrl,
       BB_TELEMETRY: "false",
       NODE_ENV: "production",
@@ -124,11 +120,11 @@ export async function startBackend(args: StartBackendArgs): Promise<Backend> {
       env: daemonEnv,
       logPath: join(paths.logsDir, "daemon-stdio.log"),
     });
-    daemonPid = daemon.pid;
-    const resolvedDaemonPid = daemonPid;
-    if (resolvedDaemonPid === undefined) {
+    const spawnedDaemonPid = daemon.pid;
+    if (spawnedDaemonPid === undefined) {
       throw new Error("Host daemon failed to spawn");
     }
+    daemonPid = spawnedDaemonPid;
     const hostId = await waitUntil(
       async () => (await api.listConnectedHostIds())[0] ?? null,
       "bench host daemon connection",
@@ -137,13 +133,11 @@ export async function startBackend(args: StartBackendArgs): Promise<Backend> {
     return {
       api,
       cpuMs: () => ({
-        daemon: processTreeCpuMs(resolvedDaemonPid),
+        daemon: processTreeCpuMs(spawnedDaemonPid),
         server: processTreeCpuMs(serverPid),
       }),
-      daemonPid: resolvedDaemonPid,
       hostId,
-      serverPid,
-      serverStdioLogPath: join(paths.logsDir, "server-stdio.log"),
+      serverStdioLogPath,
       serverUrl,
       stop,
     };

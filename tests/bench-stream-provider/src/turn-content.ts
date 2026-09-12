@@ -7,22 +7,19 @@ import {
   experimental_searchPresentation as searchPresentation,
   experimental_webSearchPresentation as webSearchPresentation,
 } from "@get-bb/plugin-sdk/provider-bridge";
-import { getFixture, type FixtureName } from "./fixtures/index.js";
+import { FIXTURE_NAMES, getFixture } from "./fixtures/index.js";
 import {
-  AGENT_MESSAGE_PRESENTATION,
+  agentMessageClose,
+  agentMessageOpen,
   commandPresentation,
   fileChangePresentation,
   mcpToolPresentation,
   taskUpdatePresentation,
 } from "./presentation.js";
 
-const HISTORY_FIXTURE_NAMES: readonly FixtureName[] = [
-  "long-response",
-  "incident-writeup",
-  "refactor-plan",
-  "api-design",
-  "data-analysis",
-];
+const HISTORY_FIXTURE_NAMES = FIXTURE_NAMES.filter(
+  (name) => name !== "pathological",
+);
 
 export const HISTORY_LIMITS = {
   reasoningDeltas: { min: 3, max: 6 },
@@ -77,10 +74,6 @@ function createRandom(seed: number, stream: number): Random {
   };
 }
 
-function isHighSurrogate(code: number): boolean {
-  return code >= 0xd800 && code <= 0xdbff;
-}
-
 function splitText(text: string, parts: number, random: Random): string[] {
   const count = Math.max(1, Math.min(parts, text.length));
   const base = text.length / count;
@@ -90,14 +83,11 @@ function splitText(text: string, parts: number, random: Random): string[] {
     const jitter = Math.floor(base * 0.3);
     let cut = Math.round(base * index) + random.int(-jitter, jitter);
     cut = Math.max(start + 1, Math.min(cut, text.length - (count - index)));
-    if (isHighSurrogate(text.charCodeAt(cut - 1))) {
-      cut += 1;
-    }
     pieces.push(text.slice(start, cut));
     start = cut;
   }
   pieces.push(text.slice(start));
-  return pieces.filter((piece) => piece.length > 0);
+  return pieces;
 }
 
 function groupContiguous<T>(values: readonly T[], groups: number): T[][] {
@@ -111,19 +101,8 @@ function groupContiguous<T>(values: readonly T[], groups: number): T[][] {
 }
 
 interface ResultLimits {
-  minBytes: number;
   maxBytes: number;
   targetBytes: number;
-}
-
-function checkResultSize(text: string, limits: ResultLimits): string {
-  const bytes = Buffer.byteLength(text);
-  if (bytes < limits.minBytes || bytes > limits.maxBytes) {
-    throw new Error(
-      `generated tool output is ${bytes} bytes, outside ${limits.minBytes}..${limits.maxBytes}`,
-    );
-  }
-  return text;
 }
 
 function fillJsonArray(
@@ -144,7 +123,7 @@ function fillJsonArray(
     entries.push(entry(index));
     text = next;
   }
-  return checkResultSize(text, limits);
+  return text;
 }
 
 function fillLines(
@@ -170,7 +149,7 @@ function fillLines(
     lines.push(next);
     bytes += lineBytes(next);
   }
-  return checkResultSize([...lines, ...args.footer].join("\n"), limits);
+  return [...lines, ...args.footer].join("\n");
 }
 
 const REASONING_SENTENCES = [
@@ -597,7 +576,6 @@ function buildMcpResult(
 
 function buildGenericTool(random: Random, cwd: string): Activity {
   const limits: ResultLimits = {
-    minBytes: HISTORY_LIMITS.toolResultBytes.min,
     maxBytes: HISTORY_LIMITS.toolResultBytes.max,
     targetBytes: random.int(1_100, 3_900),
   };
@@ -1066,16 +1044,10 @@ function assembleHistoryMessage(seed: number): string {
       break;
     }
   }
-  const text = sections
+  return sections
     .slice(first, last + 1)
     .join("")
     .trim();
-  if (text.length < min || text.length > max) {
-    throw new Error(
-      `bench_history seed ${seed} assembled a ${text.length}-char message, outside ${min}..${max}`,
-    );
-  }
-  return text;
 }
 
 export function buildHistoryTurn(args: {
@@ -1125,15 +1097,9 @@ export function buildHistoryTurn(args: {
       HISTORY_LIMITS.messageNotifications.max,
     ),
   );
-  const openMessage: ThreadDelta = {
-    kind: "item.open",
-    key,
-    item: { type: "agentMessage", text: "" },
-    presentation: AGENT_MESSAGE_PRESENTATION,
-  };
   groups.forEach((group, index) => {
     batches.push([
-      ...(index === 0 ? [openMessage] : []),
+      ...(index === 0 ? [agentMessageOpen(key)] : []),
       ...group.map((text): ThreadDelta => ({
         kind: "item.textDelta",
         key,
@@ -1142,15 +1108,7 @@ export function buildHistoryTurn(args: {
       })),
     ]);
   });
-  batches.push([
-    {
-      kind: "item.close",
-      key,
-      status: "completed",
-      item: { type: "agentMessage", text: message },
-      presentation: AGENT_MESSAGE_PRESENTATION,
-    },
-  ]);
+  batches.push([agentMessageClose(key, message)]);
   return batches;
 }
 

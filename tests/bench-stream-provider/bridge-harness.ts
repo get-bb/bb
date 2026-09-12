@@ -6,7 +6,7 @@ import {
   threadDeltaNotificationParamsSchema,
 } from "@get-bb/plugin-sdk/provider-bridge";
 import {
-  experimental_createBridgeDeltaEventCollector as createBridgeDeltaEventCollector,
+  experimental_assembleCapturedThreadEvents as assembleCapturedThreadEvents,
   experimental_createBridgeJsonRpcTestHarness as createBridgeJsonRpcTestHarness,
 } from "@get-bb/plugin-sdk/provider-bridge/testing";
 import type {
@@ -20,6 +20,8 @@ import {
   BENCH_STREAM_PROVIDER_ID,
 } from "./src/vocabulary.js";
 
+export const CWD = "/workspace/bench";
+
 const EXECUTION_OPTIONS: BridgeJsonRpcObject = {
   model: BENCH_STREAM_MODEL_ID,
   reasoningLevel: "medium",
@@ -29,35 +31,24 @@ const EXECUTION_OPTIONS: BridgeJsonRpcObject = {
   permissionEscalation: null,
 };
 
+const CLIENT_REQUEST_ID = "creq_2345678923";
+
 const identityResultSchema = z.object({ providerThreadId: z.string().min(1) });
 
-const CLIENT_REQUEST_ALPHABET = "23456789abcdefghijkmnpqrstuvwxyz";
+let threadCounter = 0;
 
-let clientRequestCounter = 0;
-
-function nextClientRequestId(): string {
-  clientRequestCounter += 1;
-  let remaining = clientRequestCounter;
-  let suffix = "";
-  while (suffix.length < 10) {
-    suffix =
-      CLIENT_REQUEST_ALPHABET[remaining % CLIENT_REQUEST_ALPHABET.length] +
-      suffix;
-    remaining = Math.floor(remaining / CLIENT_REQUEST_ALPHABET.length);
-  }
-  return `creq_${suffix}`;
+export interface BenchThread {
+  threadId: string;
+  providerThreadId: string;
 }
 
-interface DeltaNotification {
-  threadId: string;
-  deltas: ThreadDelta[];
+function textInput(text: string): BridgeJsonRpcObject[] {
+  return [{ type: "text", text, mentions: [] }];
 }
 
 export function createBenchBridgeHarness() {
   const harness = createBridgeJsonRpcTestHarness(handleLine);
-  const collector = createBridgeDeltaEventCollector(BENCH_STREAM_PROVIDER_ID);
   let requestCounter = 0;
-  let taken = 0;
 
   function respond(
     method: string,
@@ -85,87 +76,60 @@ export function createBenchBridgeHarness() {
   }
 
   return {
-    respond,
-    request,
     restore: harness.restore,
-    initialize(): void {
-      request("initialize", {
-        protocolVersion: 2,
-        client: { name: "bench-stream-test", version: "0.0.0" },
-        grammarVersions: [3, 3],
-      });
+    takeMessages: harness.takeMessages,
+    events(
+      messages: readonly BridgeJsonRpcOutputMessage[] = harness.messages,
+    ): ThreadEvent[] {
+      return assembleCapturedThreadEvents(messages, BENCH_STREAM_PROVIDER_ID);
     },
-    startThread(threadId: string, cwd: string): string {
+    startThread(): BenchThread {
+      threadCounter += 1;
+      const threadId = `thr_bench_${threadCounter}`;
       const response = request("thread/start", {
         threadId,
-        cwd,
+        cwd: CWD,
         instructionMode: "append",
         options: EXECUTION_OPTIONS,
       });
-      return identityResultSchema.parse(response.result).providerThreadId;
+      const { providerThreadId } = identityResultSchema.parse(response.result);
+      harness.takeMessages();
+      return { threadId, providerThreadId };
     },
-    resumeThread(args: {
-      threadId: string;
-      providerThreadId: string;
-      cwd: string;
-    }): BridgeJsonRpcOutputMessage {
+    resumeThread(thread: BenchThread): BridgeJsonRpcOutputMessage {
       return request("thread/resume", {
-        threadId: args.threadId,
-        providerThreadId: args.providerThreadId,
-        cwd: args.cwd,
+        ...thread,
+        cwd: CWD,
         instructionMode: "append",
         options: EXECUTION_OPTIONS,
       });
     },
-    startTurn(args: {
-      threadId: string;
-      providerThreadId: string;
-      text: string;
-    }): BridgeJsonRpcOutputMessage {
+    startTurn(thread: BenchThread, text: string): BridgeJsonRpcOutputMessage {
       return request("turn/start", {
-        threadId: args.threadId,
-        providerThreadId: args.providerThreadId,
-        input: [{ type: "text", text: args.text, mentions: [] }],
-        clientRequestId: nextClientRequestId(),
+        ...thread,
+        input: textInput(text),
+        clientRequestId: CLIENT_REQUEST_ID,
         options: EXECUTION_OPTIONS,
       });
     },
-    steerTurn(args: {
-      threadId: string;
-      providerThreadId: string;
-      text: string;
-    }): BridgeJsonRpcOutputMessage {
+    steerTurn(thread: BenchThread, text: string): BridgeJsonRpcOutputMessage {
       return respond("turn/steer", {
-        threadId: args.threadId,
-        providerThreadId: args.providerThreadId,
+        ...thread,
         expectedTurnId: "turn-active",
-        input: [{ type: "text", text: args.text, mentions: [] }],
-        clientRequestId: nextClientRequestId(),
+        input: textInput(text),
+        clientRequestId: CLIENT_REQUEST_ID,
         options: EXECUTION_OPTIONS,
       });
     },
-    stopThread(args: {
-      threadId: string;
-      providerThreadId: string;
-      intent: "interrupt" | "release";
-    }): BridgeJsonRpcOutputMessage {
+    stopThread(
+      thread: BenchThread,
+      intent: "interrupt" | "release",
+    ): BridgeJsonRpcOutputMessage {
       return request("thread/stop", {
-        threadId: args.threadId,
-        providerThreadId: args.providerThreadId,
-        intent: args.intent,
-        activeTurnId: args.intent === "interrupt" ? "turn-active" : null,
+        ...thread,
+        intent,
+        activeTurnId: intent === "interrupt" ? "turn-active" : null,
       });
-    },
-    takeMessages(): BridgeJsonRpcOutputMessage[] {
-      const fresh = harness.messages.slice(taken);
-      taken = harness.messages.length;
-      return fresh;
-    },
-    allMessages(): readonly BridgeJsonRpcOutputMessage[] {
-      return harness.messages;
-    },
-    assemble(messages: readonly BridgeJsonRpcOutputMessage[]): ThreadEvent[] {
-      return messages.flatMap((message) => collector.assembleMessage(message));
     },
   };
 }
@@ -175,13 +139,22 @@ export type BenchBridgeHarness = ReturnType<typeof createBenchBridgeHarness>;
 export function deltaNotifications(
   messages: readonly BridgeJsonRpcOutputMessage[],
   threadId: string,
-): DeltaNotification[] {
+): ThreadDelta[][] {
   return messages
     .filter((message) => message.method === THREAD_DELTA_NOTIFICATION_METHOD)
     .map((message) => threadDeltaNotificationParamsSchema.parse(message.params))
     .filter((notification) => notification.threadId === threadId)
-    .map((notification) => ({
-      threadId: notification.threadId,
-      deltas: notification.deltas,
-    }));
+    .map((notification) => notification.deltas);
+}
+
+export function completedItems(events: readonly ThreadEvent[]) {
+  return events.flatMap((event) =>
+    event.type === "item/completed" ? [event.item] : [],
+  );
+}
+
+export function turnStatuses(events: readonly ThreadEvent[]): string[] {
+  return events.flatMap((event) =>
+    event.type === "turn/completed" ? [event.status] : [],
+  );
 }

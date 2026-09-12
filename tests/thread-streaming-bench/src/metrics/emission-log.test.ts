@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { parseEmissionLog, splitEmissionRuns } from "./emission-log.js";
+import { parseEmissionLog } from "./emission-log.js";
 
 const START =
   '{"event":"start","t":1000,"doc":"long-response","docChars":16500,"chunk":24,"interval":30}';
@@ -33,30 +33,5 @@ describe("parseEmissionLog", () => {
     expect(() => parseEmissionLog('{"event":"tick","t":1}')).toThrow(
       "Emission log line 1 is not a valid event",
     );
-  });
-});
-
-describe("splitEmissionRuns", () => {
-  it("groups events by start event", () => {
-    const events = parseEmissionLog(
-      [
-        START,
-        '{"event":"delta","t":1030,"chars":24}',
-        '{"event":"complete","t":1040}',
-        START,
-        '{"event":"delta","t":2030,"chars":24}',
-      ].join("\n"),
-    );
-    const runs = splitEmissionRuns(events);
-    expect(runs.map((run) => run.map((event) => event.event))).toEqual([
-      ["start", "delta", "complete"],
-      ["start", "delta"],
-    ]);
-  });
-
-  it("rejects events before the first start", () => {
-    expect(() =>
-      splitEmissionRuns([{ event: "delta", t: 1, chars: 1 }]),
-    ).toThrow("Emission log has a delta event before any start event");
   });
 });

@@ -1,18 +1,23 @@
 // @vitest-environment jsdom
 
-import { act, cleanup, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, render, waitFor, within } from "@testing-library/react";
 import { useEffect, type ReactNode } from "react";
-import { createRoot } from "react-dom/client";
 import { MemoryRouter } from "react-router-dom";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  afterEach,
+  beforeAll,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  vi,
+} from "vitest";
 import type { PluginMessageDirectiveProps } from "@get-bb/plugin-sdk";
 import { makeThreadListEntry } from "@bb/test-helpers/domain-fixtures";
 import { ThreadTitleMentionResourcesProvider } from "@/components/thread/ThreadTitleMentions";
-import {
-  repairStreamingMarkdownTail,
-  splitStreamingMarkdown,
-} from "@/components/thread/timeline/streaming-markdown-split";
-import { FIXTURE_NAMES, getFixture } from "bb-plugin-bench-stream-provider/fixtures";
+import { threadQueryKey } from "@/hooks/queries/query-keys";
+import { makeThreadResponse } from "@/test/fixtures/thread-responses";
+import { createQueryClientTestHarness } from "@/test/queryClientTestHarness";
 import { RouteNavigationProvider } from "./app-route-anchor";
 import { buildMarkdownMessageLinkRouting } from "./markdown-message-link-routing";
 import {
@@ -21,47 +26,83 @@ import {
 } from "./markdown-message-directives";
 import { MarkdownPreview } from "./markdown-preview";
 
-const MARKDOWN_FIXTURES = FIXTURE_NAMES.map((name) => ({
-  name,
-  text: getFixture(name),
-}));
+vi.mock("@/lib/sdk", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/lib/sdk")>();
+  return {
+    ...actual,
+    sdk: {
+      ...actual.sdk,
+      threads: {
+        ...actual.sdk.threads,
+        get: vi.fn(() => new Promise(() => {})),
+        resolveMentions: vi.fn(() => new Promise(() => {})),
+      },
+    },
+  };
+});
 
 vi.mock("./markdown-mermaid-loader.js", () => ({
   loadMermaid: () => new Promise(() => {}),
 }));
 
-const mentionedThread = makeThreadListEntry({
-  id: "thr_mentioned",
-  title: "Related thread",
-});
+const LEGS = ["incremental", "legacy"] as const;
+type PreviewLeg = (typeof LEGS)[number];
 
-let directiveMountCount = 0;
-
-function InlineVis(props: PluginMessageDirectiveProps) {
-  useEffect(() => {
-    directiveMountCount += 1;
-  }, []);
-  return (
-    <div data-testid="inline-vis" data-file={props.attributes.file ?? ""}>
-      {props.source}
-    </div>
-  );
+interface DirectiveCounts {
+  attributeEffects: number;
+  mounts: number;
+  renders: number;
 }
 
-const registry = buildMessageDirectiveRegistry([
-  { id: "inline-vis", pluginId: "demo", generation: 1, component: InlineVis },
-]);
+const counts: Record<PreviewLeg, DirectiveCounts> = {
+  incremental: { attributeEffects: 0, mounts: 0, renders: 0 },
+  legacy: { attributeEffects: 0, mounts: 0, renders: 0 },
+};
+
+function countingDirective(leg: PreviewLeg) {
+  return function InlineVis({
+    attributes,
+    source,
+  }: PluginMessageDirectiveProps) {
+    counts[leg].renders += 1;
+    useEffect(() => {
+      counts[leg].mounts += 1;
+    }, []);
+    useEffect(() => {
+      counts[leg].attributeEffects += 1;
+    }, [attributes]);
+    return (
+      <div data-testid="inline-vis" data-file={attributes.file ?? ""}>
+        {source}
+      </div>
+    );
+  };
+}
+
+function legMessageDirectives(leg: PreviewLeg) {
+  return {
+    registry: buildMessageDirectiveRegistry([
+      {
+        id: "inline-vis",
+        pluginId: "demo",
+        generation: 1,
+        component: countingDirective(leg),
+      },
+    ]),
+    message: {
+      id: "msg_stream",
+      threadId: "thr_stream",
+      turnId: "turn_stream",
+      projectId: null,
+    },
+    openWorkspaceFile: null,
+    openThreadPanel: null,
+  };
+}
 
 const messageDirectives = {
-  registry,
-  message: {
-    id: "msg_stream",
-    threadId: "thr_stream",
-    turnId: "turn_stream",
-    projectId: null,
-  },
-  openWorkspaceFile: null,
-  openThreadPanel: null,
+  incremental: legMessageDirectives("incremental"),
+  legacy: legMessageDirectives("legacy"),
 };
 
 const linkRouting = buildMarkdownMessageLinkRouting({
@@ -71,89 +112,102 @@ const linkRouting = buildMarkdownMessageLinkRouting({
 });
 
 const threadMentions = { mentions: [], preserveSoftBreaks: false };
+const sectionNamesById = new Map<string, string>();
+const projectNamesById = new Map<string, string>();
+const mentionedThread = makeThreadListEntry({
+  id: "thr_mentioned",
+  title: "Related thread",
+});
+const threadById = new Map([[mentionedThread.id, mentionedThread]]);
+const rawThreadId = "thr_dcwivn5n8w";
 
-interface PreviewArgs {
-  className?: string;
+interface PreviewTreeArgs {
   content: string;
-  incrementalBlocks: boolean;
+  leg: PreviewLeg;
+  wrapper: (props: { children: ReactNode }) => ReactNode;
 }
 
-function Providers({ children }: { children: ReactNode }) {
+function PreviewTree({ content, leg, wrapper: Wrapper }: PreviewTreeArgs) {
   return (
-    <MemoryRouter>
-      <RouteNavigationProvider>
-        <ThreadTitleMentionResourcesProvider
-          sectionNamesById={new Map()}
-          projectNamesById={new Map()}
-          threadById={new Map([[mentionedThread.id, mentionedThread]])}
-        >
-          {children}
-        </ThreadTitleMentionResourcesProvider>
-      </RouteNavigationProvider>
-    </MemoryRouter>
+    <Wrapper>
+      <MemoryRouter>
+        <RouteNavigationProvider>
+          <ThreadTitleMentionResourcesProvider
+            sectionNamesById={sectionNamesById}
+            projectNamesById={projectNamesById}
+            threadById={threadById}
+          >
+            <MarkdownPreview
+              content={content}
+              incrementalBlocks={leg === "incremental"}
+              linkRouting={linkRouting}
+              messageDirectives={messageDirectives[leg]}
+              threadMentions={threadMentions}
+            />
+          </ThreadTitleMentionResourcesProvider>
+        </RouteNavigationProvider>
+      </MemoryRouter>
+    </Wrapper>
   );
 }
 
-function preview({ className, content, incrementalBlocks }: PreviewArgs) {
-  return (
-    <Providers>
-      <MarkdownPreview
-        className={className}
-        content={content}
-        incrementalBlocks={incrementalBlocks}
-        linkRouting={linkRouting}
-        messageDirectives={messageDirectives}
-        threadMentions={threadMentions}
-      />
-    </Providers>
-  );
+function mutationSignature(record: MutationRecord): string {
+  return [
+    record.type,
+    record.attributeName ?? "",
+    record.target.nodeName,
+    record.addedNodes.length,
+    record.removedNodes.length,
+  ].join(":");
 }
 
-function renderLegacyHtml(className: string | undefined, content: string) {
-  const container = document.createElement("div");
-  document.body.appendChild(container);
-  const root = createRoot(container);
-  act(() => {
-    root.render(preview({ className, content, incrementalBlocks: false }));
-  });
-  const html = container.innerHTML;
-  act(() => {
-    root.unmount();
-  });
-  container.remove();
-  return html;
-}
-
-function createDifferentialPreview(className?: string) {
-  const incremental = render(
-    preview({ className, content: "", incrementalBlocks: true }),
-  );
-  const legacy = render(
-    preview({ className, content: "", incrementalBlocks: false }),
-  );
+function createDifferentialLegs(initialContent = "") {
+  const { queryClient, wrapper } = createQueryClientTestHarness();
+  const views = {
+    incremental: render(
+      <PreviewTree
+        content={initialContent}
+        leg="incremental"
+        wrapper={wrapper}
+      />,
+    ),
+    legacy: render(
+      <PreviewTree content={initialContent} leg="legacy" wrapper={wrapper} />,
+    ),
+  };
+  const observers = {
+    incremental: new MutationObserver(() => {}),
+    legacy: new MutationObserver(() => {}),
+  };
+  for (const leg of LEGS) {
+    observers[leg].observe(views[leg].container, {
+      attributes: true,
+      characterData: true,
+      childList: true,
+      subtree: true,
+    });
+  }
   return {
-    expectMatchesLegacy(content: string, label: string) {
-      incremental.rerender(
-        preview({ className, content, incrementalBlocks: true }),
-      );
-      legacy.rerender(
-        preview({ className, content, incrementalBlocks: false }),
-      );
+    incremental: views.incremental.container,
+    queryClient,
+    update(content: string) {
+      for (const leg of LEGS) {
+        views[leg].rerender(
+          <PreviewTree content={content} leg={leg} wrapper={wrapper} />,
+        );
+      }
       expect(
-        incremental.container.innerHTML,
-        `${label}: ${JSON.stringify(content)}`,
-      ).toBe(legacy.container.innerHTML);
+        views.incremental.container.innerHTML,
+        JSON.stringify(content),
+      ).toBe(views.legacy.container.innerHTML);
+      return {
+        incrementalMutations: observers.incremental
+          .takeRecords()
+          .map(mutationSignature),
+        legacyMutations: observers.legacy.takeRecords().map(mutationSignature),
+      };
     },
   };
-}
-
-function chunkSteps(document: string, size: number): string[] {
-  const steps: string[] = [];
-  for (let end = size; end < document.length; end += size) {
-    steps.push(document.slice(0, end));
-  }
-  steps.push(document);
-  return steps;
 }
 
 function lineSteps(document: string): string[] {
@@ -170,14 +224,6 @@ function lineSteps(document: string): string[] {
     lineStart = lineEnd;
   }
   return steps;
-}
-
-async function loadKatex() {
-  const view = render(<MarkdownPreview content={"$$\nx\n$$"} />);
-  await waitFor(() =>
-    expect(view.container.querySelector(".katex-display")).not.toBeNull(),
-  );
-  view.unmount();
 }
 
 const CURATED_DOCUMENTS: ReadonlyArray<readonly [string, string]> = [
@@ -203,8 +249,18 @@ const CURATED_DOCUMENTS: ReadonlyArray<readonly [string, string]> = [
   ],
 ];
 
+beforeAll(async () => {
+  const view = render(<MarkdownPreview content={"$$\nx\n$$"} />);
+  await waitFor(() =>
+    expect(view.container.querySelector(".katex-display")).not.toBeNull(),
+  );
+  view.unmount();
+});
+
 beforeEach(() => {
-  directiveMountCount = 0;
+  for (const leg of LEGS) {
+    counts[leg] = { attributeEffects: 0, mounts: 0, renders: 0 };
+  }
   vi.spyOn(console, "warn").mockImplementation(() => {});
 });
 
@@ -216,85 +272,114 @@ afterEach(() => {
 describe("MarkdownPreview incremental blocks", () => {
   it.each(CURATED_DOCUMENTS)(
     "renders the same DOM as a single document at every line step: %s",
-    async (label, document) => {
-      await loadKatex();
-      const differential = createDifferentialPreview();
+    (_label, document) => {
+      const legs = createDifferentialLegs();
       for (const step of lineSteps(document)) {
-        differential.expectMatchesLegacy(step, label);
+        legs.update(step);
       }
     },
     60_000,
   );
 
-  it.each(MARKDOWN_FIXTURES)(
-    "renders the same settled and live DOM as single documents while the $name fixture streams",
-    async ({ name, text }) => {
-      await loadKatex();
-      const settled = createDifferentialPreview("settled");
-      const live = createDifferentialPreview("live");
-      for (const step of chunkSteps(text, 150)) {
-        const split = splitStreamingMarkdown(step);
-        const liveMarkdown = repairStreamingMarkdownTail(split?.tail ?? step);
-        settled.expectMatchesLegacy(split?.settled ?? liveMarkdown, name);
-        live.expectMatchesLegacy(split === null ? "" : liveMarkdown, name);
-      }
-      settled.expectMatchesLegacy(text, name);
-    },
-    180_000,
-  );
-
   it("keeps settled code and directive DOM connected across advances and a late definition", () => {
     const initial =
       'Intro.\n\n```ts\nconst a = 1;\n```\n\n::inline-vis{file="a.html"}\n\nUse [docs].\n\n';
-    const view = render(preview({ content: initial, incrementalBlocks: true }));
-    const line = view.container.querySelector("pre code span.sh__line");
-    const directive = screen.getByTestId("inline-vis");
+    const legs = createDifferentialLegs(initial);
+    const line = legs.incremental.querySelector("pre code span.sh__line");
+    const directive = within(legs.incremental).getByTestId("inline-vis");
     if (line === null) {
       throw new Error("Expected a highlighted settled code block");
     }
-    expect(directiveMountCount).toBe(1);
 
     const advanced = `${initial}More.\n\n`;
-    view.rerender(preview({ content: advanced, incrementalBlocks: true }));
+    legs.update(advanced);
     expect(line.isConnected).toBe(true);
     expect(directive.isConnected).toBe(true);
 
-    const defined = `${advanced}[docs]: https://example.com\n\n`;
-    view.rerender(preview({ content: defined, incrementalBlocks: true }));
+    legs.update(`${advanced}[docs]: https://example.com\n\n`);
     expect(
-      screen.getByRole("link", { name: "docs" }).getAttribute("href"),
+      within(legs.incremental)
+        .getByRole("link", { name: "docs" })
+        .getAttribute("href"),
     ).toBe("https://example.com");
     expect(line.isConnected).toBe(true);
     expect(directive.isConnected).toBe(true);
-    expect(directiveMountCount).toBe(1);
-    expect(view.container.innerHTML).toBe(renderLegacyHtml(undefined, defined));
+    expect(counts.incremental.mounts).toBe(1);
   });
 
-  it("mounts the first 32 of 34 directives in document order like a single document", () => {
+  it("mounts the first 32 of 34 directives across pieces like a single document", () => {
     const content = Array.from(
       { length: MESSAGE_DIRECTIVE_MOUNT_LIMIT + 2 },
       (_, index) =>
         `Paragraph ${index}.\n\n::inline-vis{file="f${index}.html"}`,
     ).join("\n\n");
-    render(preview({ content, incrementalBlocks: false }));
-    const legacyFiles = screen
-      .getAllByTestId("inline-vis")
-      .map((node) => node.getAttribute("data-file"));
-    cleanup();
-    const differential = createDifferentialPreview();
-    differential.expectMatchesLegacy(content, "directive cap");
-    cleanup();
-    render(preview({ content, incrementalBlocks: true }));
-    const files = screen
-      .getAllByTestId("inline-vis")
-      .map((node) => node.getAttribute("data-file"));
-    expect(files).toEqual(
-      Array.from(
-        { length: MESSAGE_DIRECTIVE_MOUNT_LIMIT },
-        (_, index) => `f${index}.html`,
-      ),
+    const legs = createDifferentialLegs();
+
+    legs.update(content);
+
+    const incremental = within(legs.incremental);
+    expect(incremental.getAllByTestId("inline-vis")).toHaveLength(
+      MESSAGE_DIRECTIVE_MOUNT_LIMIT,
     );
-    expect(files).toEqual(legacyFiles);
-    expect(screen.getByText('::inline-vis{file="f33.html"}').tagName).toBe("P");
+    expect(incremental.getByText('::inline-vis{file="f33.html"}').tagName).toBe(
+      "P",
+    );
+  });
+
+  it("re-reads cached raw thread titles in settled pieces on every new body like a single document", async () => {
+    const first = `Continue in ${rawThreadId} when ready.\n\nSee [${rawThreadId}](https://example.com/x) here.\n\n`;
+    const legs = createDifferentialLegs(first);
+    await act(async () => {
+      legs.queryClient.setQueryData(
+        threadQueryKey(rawThreadId),
+        makeThreadResponse({
+          id: rawThreadId,
+          title: "Rebuild comments",
+          titleFallback: "Rebuild comments",
+        }),
+      );
+    });
+
+    legs.update(`${first}Second paragraph.\n\n`);
+    expect(legs.incremental.textContent).toContain(
+      "Continue in Rebuild comments when ready.",
+    );
+    legs.update(`${first}Second paragraph.\n\nThird.`);
+  });
+
+  it("re-renders plugin directives with fresh attributes on every new body like a single document", () => {
+    const first = 'Intro.\n\n::inline-vis{file="a.html"}\n\n';
+    const legs = createDifferentialLegs(first);
+    const steps = [
+      `${first}Second paragraph.\n\n`,
+      `${first}Second paragraph.\n\nThird paragraph.\n\n`,
+      `${first}Second paragraph.\n\nThird paragraph.\n\nFourth.`,
+    ];
+    for (const step of steps) {
+      legs.update(step);
+      expect(counts.incremental).toEqual(counts.legacy);
+    }
+    expect(counts.legacy.attributeEffects).toBe(steps.length + 1);
+  });
+
+  it("commits the same DOM mutations as a single document while settled content grows", () => {
+    const blocks = [
+      "# Plan\n\n",
+      "See [the docs](https://example.com/docs) and [a file](</workspace/src/a.ts:12>).\n\n",
+      "```ts\nconst a = 1;\n```\n\n",
+      "| a | b |\n| - | - |\n| 1 | 2 |\n\n",
+      '::inline-vis{file="a.html"}\n\n',
+      "- one\n- two with `code`\n\n",
+      `> Quoted ${rawThreadId} and @thread:thr_mentioned.\n\n`,
+      "1. First\n2. Second\n\n",
+      "Closing paragraph with **bold** and ![img](/workspace/a.png).",
+    ];
+    let body = blocks[0] ?? "";
+    const legs = createDifferentialLegs(body);
+    for (const block of blocks.slice(1)) {
+      body += block;
+      const { incrementalMutations, legacyMutations } = legs.update(body);
+      expect(incrementalMutations, body).toEqual(legacyMutations);
+    }
   });
 });

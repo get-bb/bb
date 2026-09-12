@@ -154,6 +154,9 @@ export interface BuiltTimelinePage {
 
 export interface BuildRouteTimelinePageArgs {
   db: DbConnection;
+  eventBudget?: number;
+  includeDiagnosticOperations?: boolean;
+  maxSeq?: number;
   page: ThreadTimelinePageRequest;
   registry: ProviderRegistryService;
   thread: Thread;
@@ -164,18 +167,18 @@ export function buildRouteTimelinePage(
   args: BuildRouteTimelinePageArgs,
 ): BuiltTimelinePage {
   const includeNestedRows = args.variant === "nested";
-  const maxSeq = getLatestThreadSequence(args.db, {
-    threadId: args.thread.id,
-  });
   const { profile, response } = buildThreadTimelineWithProfile(
     args.db,
     args.thread,
     {
-      eventBudget: defaultFeatureFlags.timelineWindowEventBudget,
-      includeDiagnosticOperations: true,
+      eventBudget:
+        args.eventBudget ?? defaultFeatureFlags.timelineWindowEventBudget,
+      includeDiagnosticOperations: args.includeDiagnosticOperations ?? true,
       includeNestedRows,
       maxInlineOutputChars: DEFAULT_MAX_INLINE_OUTPUT_CHARS,
-      maxSeq,
+      maxSeq:
+        args.maxSeq ??
+        getLatestThreadSequence(args.db, { threadId: args.thread.id }),
       page: args.page,
       providerDisplayName: args.registry.get(args.thread.providerId)?.info
         .displayName,
@@ -201,6 +204,17 @@ export function buildRouteTimelinePage(
 export function clearCrossBuildTimelineCaches(db: DbConnection): void {
   clearStoredEventDecodeCache(db);
   clearTimelineSelectionMemo(db);
+}
+
+export function selectionWasReused(
+  profile: ThreadTimelineBuildProfile,
+): boolean {
+  const stages = new Set(profile.stageTimings.map((timing) => timing.stage));
+  return (
+    stages.has("selection-memo-lookup") &&
+    !stages.has("group-context-query") &&
+    !stages.has("ordering-context-query")
+  );
 }
 
 export function latestTimelinePage(): ThreadTimelinePageRequest {

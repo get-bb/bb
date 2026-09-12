@@ -4,24 +4,14 @@ export function percentile(
   values: readonly number[],
   p: number,
 ): number | null {
-  if (!Number.isFinite(p) || p < 0 || p > 100) {
-    throw new RangeError(`percentile expects p within [0, 100], received ${p}`);
-  }
   if (values.length === 0) {
     return null;
   }
   const sorted = [...values].sort((left, right) => left - right);
   const rank = (p / 100) * (sorted.length - 1);
-  const lowerIndex = Math.floor(rank);
-  const upperIndex = Math.ceil(rank);
-  const lower = sorted[lowerIndex];
-  const upper = sorted[upperIndex];
-  if (lower === undefined || upper === undefined) {
-    throw new Error(
-      `percentile rank ${rank} is outside ${sorted.length} values`,
-    );
-  }
-  return lower + (upper - lower) * (rank - lowerIndex);
+  const lower = sorted[Math.floor(rank)] ?? 0;
+  const upper = sorted[Math.ceil(rank)] ?? 0;
+  return lower + (upper - lower) * (rank - Math.floor(rank));
 }
 
 function maxOrNull(values: readonly number[]): number | null {
@@ -108,9 +98,8 @@ export type LoafSummary = {
 
 export function summarizeLoafs(
   loafs: readonly LoafInput[],
-  options: { top?: number } = {},
+  top: number,
 ): LoafSummary {
-  const top = options.top ?? 10;
   const scripts = new Map<string, LoafScriptSummary>();
   for (const loaf of loafs) {
     for (const script of loaf.scripts) {
@@ -248,24 +237,10 @@ const LEADING_WHITESPACE = /^\s/;
 const FENCE_OPEN = /^\s*(`{3,}|~{3,})/;
 const THEMATIC_BREAK =
   /^ {0,3}(?:(?:-[ \t]*){3,}|(?:\*[ \t]*){3,}|(?:_[ \t]*){3,})$/;
-const SETEXT_UNDERLINE = /^ {0,3}(?:=+|-+)[ \t]*$/;
 const LIST_ITEM = /^\s*(?:[-*+]|\d{1,9}[.)])[ \t]+(\S.*)$/;
 const HEADING = /^ {0,3}#{1,6}(?:[ \t]|$)/;
 const BLOCKQUOTE = /^ {0,3}>/;
 const DISPLAY_MATH = /^\s*\$\$/;
-const INDENTED_CODE = /^(?: {4}|\t)/;
-const HTML_BLOCKS_WITH_END_MARKER: readonly { start: RegExp; end: RegExp }[] = [
-  {
-    start: /^\s*<(?:script|pre|style|textarea)(?=[\s>]|$)/i,
-    end: /<\/(?:script|pre|style|textarea)>/i,
-  },
-  { start: /^\s*<!--/, end: /-->/ },
-  { start: /^\s*<\?/, end: /\?>/ },
-  { start: /^\s*<!\[CDATA\[/, end: /\]\]>/ },
-  { start: /^\s*<![A-Za-z]/, end: />/ },
-];
-const HTML_BLOCK_UNTIL_BLANK = /^\s*<\/?[A-Za-z][A-Za-z0-9-]*(?=[\s/>]|$)/;
-const LINK_DEFINITION = /^ {0,3}\[(?:[^\]\\]|\\.)+\]:/;
 const RENDER_REMOVED = new RegExp(
   [
     String.raw`\]\((?:<[^>\n]*>|[^\s()]*)(?:[ \t]+(?:"[^"\n]*"|'[^'\n]*'|\([^)\n]*\)))?[ \t]*\)`,
@@ -280,11 +255,7 @@ const WORD = /\S+/g;
 type SourceLine = { text: string; start: number };
 type LineKind = "blank" | "boundary" | "list" | "text";
 type CheckpointCandidate = { phrase: string; start: number };
-type OpenBlock =
-  | { kind: "fence"; close: RegExp }
-  | { kind: "math" }
-  | { kind: "endMarker"; end: RegExp }
-  | { kind: "untilBlank" };
+type OpenBlock = { kind: "fence"; close: RegExp } | { kind: "math" };
 type RenderedPiece = { sourceStart: number; textStart: number; length: number };
 type RenderApproximation = { text: string; pieces: RenderedPiece[] };
 
@@ -332,14 +303,8 @@ function listItemContent(line: string): string {
   }
 }
 
-function endsParagraph(kind: LineKind, next: SourceLine | undefined): boolean {
-  if (next === undefined) {
-    return true;
-  }
-  if (kind === "text" && SETEXT_UNDERLINE.test(next.text)) {
-    return false;
-  }
-  return classifyLine(next.text) !== "text";
+function endsParagraph(next: SourceLine | undefined): boolean {
+  return next === undefined || classifyLine(next.text) !== "text";
 }
 
 function blockOpenedBy(
@@ -363,18 +328,6 @@ function blockOpenedBy(
       closedOnSameLine: content.trim().slice(2).endsWith("$$"),
     };
   }
-  for (const html of HTML_BLOCKS_WITH_END_MARKER) {
-    const match = html.start.exec(content);
-    if (match !== null) {
-      return {
-        block: { kind: "endMarker", end: html.end },
-        closedOnSameLine: html.end.test(content.slice(match[0].length)),
-      };
-    }
-  }
-  if (HTML_BLOCK_UNTIL_BLANK.test(content) || LINK_DEFINITION.test(content)) {
-    return { block: { kind: "untilBlank" }, closedOnSameLine: false };
-  }
   return null;
 }
 
@@ -384,10 +337,6 @@ function blockClosedBy(block: OpenBlock, line: string): boolean {
       return block.close.test(line);
     case "math":
       return line.trimEnd().endsWith("$$");
-    case "endMarker":
-      return block.end.test(line);
-    case "untilBlank":
-      return line.trim() === "";
   }
 }
 
@@ -450,10 +399,7 @@ function collectCheckpointCandidates(
     if (kind === "boundary") {
       continue;
     }
-    if (kind === "text" && INDENTED_CODE.test(line.text)) {
-      continue;
-    }
-    if (!endsParagraph(kind, lines[index + 1])) {
+    if (!endsParagraph(lines[index + 1])) {
       continue;
     }
     const contentStart = line.start + line.text.length - content.length;
@@ -516,19 +462,12 @@ function renderedIndexOf(
   return found.textStart + (sourceIndex - found.sourceStart);
 }
 
-export function selectCheckpoints(
-  fixtureText: string,
-  options: { every?: number } = {},
-): string[] {
+export function selectCheckpoints(fixtureText: string): string[] {
   const candidates = collectCheckpointCandidates(fixtureText);
-  const every =
-    options.every ??
-    Math.max(1, Math.ceil(candidates.length / MAX_CHECKPOINTS_BEFORE_THINNING));
-  if (!Number.isInteger(every) || every < 1) {
-    throw new RangeError(
-      `selectCheckpoints every must be a positive integer, received ${every}`,
-    );
-  }
+  const every = Math.max(
+    1,
+    Math.ceil(candidates.length / MAX_CHECKPOINTS_BEFORE_THINNING),
+  );
   const uniqueIndexByPhrase = new Map<string, number>();
   for (const candidate of candidates) {
     if (!uniqueIndexByPhrase.has(candidate.phrase)) {
@@ -611,17 +550,10 @@ export function checkpointLatencies(args: {
   fixtureText: string;
   checkpoints: readonly string[];
   emissionLog: readonly EmissionLogEvent[];
-  gate?: "phrase" | "newline";
   hits: readonly number[];
 }): CheckpointLatencySummary {
-  const gate = args.gate ?? "phrase";
   const completedAt =
     args.emissionLog.find((event) => event.event === "complete")?.t ?? null;
-  if (args.hits.length > args.checkpoints.length) {
-    throw new Error(
-      `Received ${args.hits.length} checkpoint hits for ${args.checkpoints.length} checkpoints`,
-    );
-  }
   const startEvents = args.emissionLog.filter(
     (event) => event.event === "start",
   );
@@ -633,19 +565,6 @@ export function checkpointLatencies(args: {
   const deltas = args.emissionLog.filter(
     (event): event is EmissionDelta => event.event === "delta",
   );
-  for (let index = 1; index < deltas.length; index += 1) {
-    const current = deltas[index];
-    const previous = deltas[index - 1];
-    if (
-      current !== undefined &&
-      previous !== undefined &&
-      current.chars < previous.chars
-    ) {
-      throw new Error(
-        `Emission log delta ${index} has ${current.chars} cumulative chars after ${previous.chars}`,
-      );
-    }
-  }
   const listed = new Map<string, number>();
   const rows = args.checkpoints.map((phrase, index): CheckpointLatency => {
     const occurrence = (listed.get(phrase) ?? 0) + 1;
@@ -657,18 +576,14 @@ export function checkpointLatencies(args: {
       );
     }
     const sourceEndOffset = start + phrase.length;
-    const newlineIndex =
-      gate === "newline"
-        ? args.fixtureText.indexOf("\n", sourceEndOffset)
-        : sourceEndOffset - 1;
+    const newlineIndex = args.fixtureText.indexOf("\n", sourceEndOffset);
     const emissionOffset =
       newlineIndex === -1 ? args.fixtureText.length : newlineIndex + 1;
     const emittedAtEpochMs =
-      gate === "newline" && newlineIndex === -1
+      newlineIndex === -1
         ? completedAt
         : (firstDeltaReaching(deltas, emissionOffset)?.t ?? null);
-    const hitAtEpochMs =
-      index < args.hits.length ? (args.hits[index] ?? null) : null;
+    const hitAtEpochMs = args.hits[index] ?? null;
     return {
       emissionOffset,
       index,
@@ -871,12 +786,11 @@ export type CpuProfileInput = {
       lineNumber: number;
       columnNumber: number;
     };
-    hitCount?: number;
   }[];
   startTime: number;
   endTime: number;
-  samples?: readonly number[];
-  timeDeltas?: readonly number[];
+  samples: readonly number[];
+  timeDeltas: readonly number[];
 };
 
 export type CpuFunctionSelfTime = {
@@ -905,42 +819,26 @@ const SPECIAL_PROFILE_NODES = new Set([
 
 function sampleSelfTimesUs(profile: CpuProfileInput): Map<number, number> {
   const selfTimes = new Map<number, number>();
-  const samples = profile.samples;
-  const deltas = profile.timeDeltas;
-  if (
-    samples !== undefined &&
-    deltas !== undefined &&
-    samples.length === deltas.length
-  ) {
-    let timestamp = profile.startTime;
-    const timestamps = deltas.map((delta) => {
-      timestamp += delta;
-      return timestamp;
-    });
-    for (const [index, nodeId] of samples.entries()) {
-      const current = timestamps[index] ?? profile.endTime;
-      const next = timestamps[index + 1] ?? profile.endTime;
-      selfTimes.set(
-        nodeId,
-        (selfTimes.get(nodeId) ?? 0) + Math.max(0, next - current),
-      );
-    }
-    return selfTimes;
-  }
-  const totalHits = sum(profile.nodes.map((node) => node.hitCount ?? 0));
-  const usPerHit =
-    totalHits === 0 ? 0 : (profile.endTime - profile.startTime) / totalHits;
-  for (const node of profile.nodes) {
-    selfTimes.set(node.id, (node.hitCount ?? 0) * usPerHit);
+  let timestamp = profile.startTime;
+  const timestamps = profile.timeDeltas.map((delta) => {
+    timestamp += delta;
+    return timestamp;
+  });
+  for (const [index, nodeId] of profile.samples.entries()) {
+    const current = timestamps[index] ?? profile.endTime;
+    const next = timestamps[index + 1] ?? profile.endTime;
+    selfTimes.set(
+      nodeId,
+      (selfTimes.get(nodeId) ?? 0) + Math.max(0, next - current),
+    );
   }
   return selfTimes;
 }
 
 export function summarizeCpuProfile(
   profile: CpuProfileInput,
-  options: { top?: number } = {},
+  top: number,
 ): CpuProfileSummary {
-  const top = options.top ?? 20;
   const selfTimes = sampleSelfTimesUs(profile);
   const special = new Map<string, number>();
   const functions = new Map<string, CpuFunctionSelfTime>();
@@ -968,9 +866,7 @@ export function summarizeCpuProfile(
   }
   return {
     durationMs: (profile.endTime - profile.startTime) / 1000,
-    sampleCount:
-      profile.samples?.length ??
-      sum(profile.nodes.map((node) => node.hitCount ?? 0)),
+    sampleCount: profile.samples.length,
     idleMs: (special.get("(idle)") ?? 0) / 1000,
     programMs: (special.get("(program)") ?? 0) / 1000,
     garbageCollectorMs: (special.get("(garbage collector)") ?? 0) / 1000,

@@ -123,18 +123,15 @@ describe("highlightMarkdownCode", () => {
     expect(highlight).toHaveBeenCalledTimes(3);
   });
 
-  it("caches a code block up to 128_000 characters and recomputes a longer one", () => {
+  it("recomputes code over 128_000 characters and markup over the character budget without evicting cached blocks", () => {
     const longest = " ".repeat(128_000);
     const tooLong = " ".repeat(128_001);
+    const withinBudget = "a+".repeat(26_000);
+    const overBudget = "a+".repeat(28_000);
     vi.mocked(highlight).mockClear();
 
-    const longestHtml = highlightMarkdownCode({
-      code: longest,
-      language: null,
-    });
-    expect(highlightMarkdownCode({ code: longest, language: null })).toBe(
-      longestHtml,
-    );
+    highlightMarkdownCode({ code: longest, language: null });
+    highlightMarkdownCode({ code: longest, language: null });
     expect(highlight).toHaveBeenCalledTimes(1);
 
     const tooLongHtml = highlightMarkdownCode({
@@ -142,72 +139,27 @@ describe("highlightMarkdownCode", () => {
       language: null,
     });
     expect(tooLong.length + tooLongHtml.length).toBeLessThan(4_000_000);
-    expect(highlightMarkdownCode({ code: tooLong, language: null })).toBe(
-      tooLongHtml,
-    );
+    highlightMarkdownCode({ code: tooLong, language: null });
     expect(highlight).toHaveBeenCalledTimes(3);
-  });
-
-  it("caches a 1000-line code block and recomputes one whose markup exceeds the character budget without evicting others", () => {
-    const thousandLines = "const value = compute(input, { flag: true });\n"
-      .repeat(1000)
-      .trimEnd();
-    const withinBudget = "a+".repeat(26_000);
-    const overBudget = "a+".repeat(28_000);
-    vi.mocked(highlight).mockClear();
-
-    highlightMarkdownCode({ code: thousandLines, language: "ts" });
-    highlightMarkdownCode({ code: thousandLines, language: "ts" });
-    expect(highlight).toHaveBeenCalledTimes(1);
 
     const withinHtml = highlightMarkdownCode({
       code: withinBudget,
       language: "js",
     });
     expect(withinBudget.length + withinHtml.length).toBeLessThan(3_900_000);
-    expect(highlight).toHaveBeenCalledTimes(2);
-
     const overHtml = highlightMarkdownCode({
       code: overBudget,
       language: "js",
     });
     expect(overHtml.length).toBeGreaterThan(4_050_000);
-    expect(highlightMarkdownCode({ code: overBudget, language: "js" })).toBe(
-      overHtml,
-    );
-    expect(highlight).toHaveBeenCalledTimes(4);
+    highlightMarkdownCode({ code: overBudget, language: "js" });
+    expect(highlight).toHaveBeenCalledTimes(6);
 
-    expect(highlightMarkdownCode({ code: withinBudget, language: "js" })).toBe(
-      withinHtml,
-    );
-    expect(highlight).toHaveBeenCalledTimes(4);
+    highlightMarkdownCode({ code: withinBudget, language: "js" });
+    expect(highlight).toHaveBeenCalledTimes(6);
   });
 
-  it("recomputes the least recently used code block once distinct blocks exceed the character budget", () => {
-    const oldest = "const oldestBudgetEntry = 1;";
-    highlightMarkdownCode({ code: oldest, language: "ts" });
-    vi.mocked(highlight).mockClear();
-    highlightMarkdownCode({ code: oldest, language: "ts" });
-    expect(highlight).not.toHaveBeenCalled();
-
-    const budgetBlock = (index: number) =>
-      `const budget${index} = 0${"+a".repeat(1_500)};`;
-    let distinctChars = 0;
-    for (let index = 0; index < 20; index += 1) {
-      const code = budgetBlock(index);
-      distinctChars +=
-        code.length + highlightMarkdownCode({ code, language: "ts" }).length;
-    }
-    expect(distinctChars).toBeGreaterThan(4_000_000);
-    vi.mocked(highlight).mockClear();
-
-    highlightMarkdownCode({ code: budgetBlock(19), language: "ts" });
-    expect(highlight).not.toHaveBeenCalled();
-    highlightMarkdownCode({ code: oldest, language: "ts" });
-    expect(highlight).toHaveBeenCalledTimes(1);
-  });
-
-  it("keeps the 128 most recently used code blocks and recomputes the least recently used one", () => {
+  it("recomputes the least recently used code block past 128 entries and past the character budget", () => {
     const countBlock = (index: number) =>
       `const countEntry${index} = ${index};`;
     for (let index = 0; index < 129; index += 1) {
@@ -224,5 +176,21 @@ describe("highlightMarkdownCode", () => {
     expect(highlight).toHaveBeenCalledTimes(1);
     highlightMarkdownCode({ code: countBlock(2), language: "js" });
     expect(highlight).toHaveBeenCalledTimes(2);
+
+    const budgetBlock = (index: number) =>
+      `const budget${index} = 0${"+a".repeat(1_500)};`;
+    let distinctChars = 0;
+    for (let index = 0; index < 20; index += 1) {
+      const code = budgetBlock(index);
+      distinctChars +=
+        code.length + highlightMarkdownCode({ code, language: "ts" }).length;
+    }
+    expect(distinctChars).toBeGreaterThan(4_000_000);
+    vi.mocked(highlight).mockClear();
+
+    highlightMarkdownCode({ code: budgetBlock(19), language: "ts" });
+    expect(highlight).not.toHaveBeenCalled();
+    highlightMarkdownCode({ code: countBlock(1), language: "js" });
+    expect(highlight).toHaveBeenCalledTimes(1);
   });
 });

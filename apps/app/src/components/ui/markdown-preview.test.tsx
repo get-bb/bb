@@ -279,7 +279,7 @@ describe("MarkdownPreview", () => {
     expect(container.textContent).toContain("<script>alert(1)</script>");
   });
 
-  it("keeps highlighted code DOM when the document re-renders with unchanged code", () => {
+  it("keeps highlighted code DOM until the code text changes", () => {
     const fence = "```ts\nconst a = 1;\n```";
     const view = render(<MarkdownPreview content={`${fence}\n\nPara one.`} />);
     const code = requireElement(view.container, "pre code");
@@ -300,14 +300,6 @@ describe("MarkdownPreview", () => {
     expect(view.container.textContent).toContain("Para two.");
     expect(mutations).toHaveLength(0);
     expect(line.isConnected).toBe(true);
-    expect(requireElement(view.container, "pre code")).toBe(code);
-  });
-
-  it("updates highlighted code when the code text changes", () => {
-    const view = render(
-      <MarkdownPreview content={"```ts\nconst a = 1;\n```\n\nPara one."} />,
-    );
-    const code = requireElement(view.container, "pre code");
 
     view.rerender(
       <MarkdownPreview

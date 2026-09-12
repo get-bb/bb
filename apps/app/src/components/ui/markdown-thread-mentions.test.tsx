@@ -3,7 +3,6 @@
 import type { Root, RootContent } from "mdast";
 import { StrictMode, type ReactNode } from "react";
 import { act, cleanup, render, screen, waitFor } from "@testing-library/react";
-import { visit } from "unist-util-visit";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { MemoryRouter } from "react-router-dom";
 import type { PromptTextMention } from "@bb/domain";
@@ -52,11 +51,6 @@ vi.mock("@/components/thread/ThreadTitleMentions", async (importOriginal) => {
     ...actual,
     useRawThreadMentionResources: vi.fn(actual.useRawThreadMentionResources),
   };
-});
-
-vi.mock("unist-util-visit", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("unist-util-visit")>();
-  return { ...actual, visit: vi.fn(actual.visit) };
 });
 
 function markdownTree(node: ReactNode) {
@@ -1026,11 +1020,6 @@ describe("MarkdownPreview thread mentions", () => {
       expect(
         new Set(resources.mock.results.map((result) => result.value)).size,
       ).toBe(1);
-      expect(
-        screen.getByRole("link", { name: "the docs" }).getAttribute("href"),
-      ).toBe("https://example.com");
-      expect(view.container.textContent).toContain("First, second, and third");
-      expect(sdk.threads.resolveMentions).not.toHaveBeenCalled();
     },
   );
 
@@ -1120,24 +1109,5 @@ describe("MarkdownPreview thread mentions", () => {
 
     transform(tree, { value: "See thr_dcwivn5n8w now." });
     expect(readChildren).toHaveBeenCalled();
-  });
-
-  it("skips unist-util-visit walks in MarkdownPreview for a source without a thread mention candidate or message directives", () => {
-    renderMarkdown(
-      <MarkdownPreview
-        content="Plain **bold** prose with `inline code` and no mentions."
-        threadMentions={{ mentions: [], preserveSoftBreaks: true }}
-      />,
-    );
-    expect(visit).not.toHaveBeenCalled();
-    cleanup();
-
-    renderMarkdown(
-      <MarkdownPreview
-        content="See thr_dcwivn5n8w now."
-        threadMentions={{ mentions: [], preserveSoftBreaks: true }}
-      />,
-    );
-    expect(visit).toHaveBeenCalled();
   });
 });

@@ -20,7 +20,7 @@ const emissionCompleteSchema = z.object({
   t: z.number(),
 });
 
-export const emissionLogEventSchema = z.discriminatedUnion("event", [
+const emissionLogEventSchema = z.discriminatedUnion("event", [
   emissionStartSchema,
   emissionDeltaSchema,
   emissionCompleteSchema,
@@ -51,24 +51,4 @@ export function parseEmissionLog(jsonl: string): EmissionLogEvent[] {
     events.push(parsed.data);
   }
   return events;
-}
-
-export function splitEmissionRuns(
-  events: readonly EmissionLogEvent[],
-): EmissionLogEvent[][] {
-  const runs: EmissionLogEvent[][] = [];
-  for (const event of events) {
-    if (event.event === "start") {
-      runs.push([event]);
-      continue;
-    }
-    const current = runs.at(-1);
-    if (current === undefined) {
-      throw new Error(
-        `Emission log has a ${event.event} event before any start event`,
-      );
-    }
-    current.push(event);
-  }
-  return runs;
 }

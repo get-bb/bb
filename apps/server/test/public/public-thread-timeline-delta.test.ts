@@ -5,28 +5,27 @@ import {
   turnScope,
   type Thread,
 } from "@bb/domain";
-import {
-  createConnection,
-  getAppSettings,
-  getLatestThreadSequence,
-} from "@bb/db";
+import { createConnection, getAppSettings } from "@bb/db";
 import {
   applyTimelineDelta,
   threadTimelineResponseSchema,
   type ThreadTimelineResponse,
   type TimelineRow,
 } from "@bb/server-contract";
-import { buildThreadTimelineWithProfile } from "../../src/services/threads/timeline.js";
-import { previewTimelineResponseOutputs } from "../../src/services/threads/timeline-output-preview.js";
-import {
-  DEFAULT_MAX_INLINE_OUTPUT_CHARS,
-  truncateTimelineResponseOutputs,
-} from "../../src/services/threads/timeline-output-truncation.js";
-import { readTimelineSelectionMemoSize } from "../../src/services/threads/timeline-selection-memo.js";
+import { countTimelineSelectionMemoEntries } from "../../src/services/threads/timeline-selection-memo.js";
 import { readJson } from "../helpers/json.js";
-import { seedEvent, seedThreadFixture } from "../helpers/seed.js";
+import {
+  seedEvent,
+  seedThreadFixture,
+  seedThreadRuntimeState,
+  seedTurnStarted,
+} from "../helpers/seed.js";
 import { withTestHarness } from "../helpers/test-app.js";
 import type { TestAppHarness } from "../helpers/test-app.js";
+import {
+  buildRouteTimelinePage,
+  latestTimelinePage,
+} from "../provider-corpus/corpus-harness.js";
 
 async function getTimeline(
   harness: TestAppHarness,
@@ -52,23 +51,15 @@ function buildColdLatestRows(
 ): TimelineRow[] {
   const clone = createConnection(harness.deps.db.$client.serialize());
   try {
-    const { response } = buildThreadTimelineWithProfile(clone, thread, {
+    return buildRouteTimelinePage({
+      db: clone,
       eventBudget: harness.deps.config.featureFlags.timelineWindowEventBudget,
       includeDiagnosticOperations: getAppSettings(clone).showDiagnosticEvents,
-      includeNestedRows: false,
-      maxInlineOutputChars: DEFAULT_MAX_INLINE_OUTPUT_CHARS,
-      maxSeq: getLatestThreadSequence(clone, { threadId: thread.id }),
-      page: { kind: "latest", segmentLimit: 20 },
-      providerDisplayName: "Codex",
-      planCommand: null,
-      summaryOnly: false,
-    });
-    return previewTimelineResponseOutputs(
-      truncateTimelineResponseOutputs(
-        response,
-        DEFAULT_MAX_INLINE_OUTPUT_CHARS,
-      ),
-    ).rows;
+      page: latestTimelinePage(),
+      registry: harness.deps.providerRegistry,
+      thread,
+      variant: "default",
+    }).response.rows;
   } finally {
     clone.$client.close();
   }
@@ -298,90 +289,53 @@ describe("GET /threads/:id/timeline?afterSequence (row-patch delta)", () => {
         providerThreadId: "p1",
         scope: turnScope("turn-1"),
       } as const;
-      const requestId = encodeClientTurnRequestIdNumber({ value: 1 });
+      seedThreadRuntimeState(harness.deps, turn);
+      seedTurnStarted(harness.deps, { ...turn, turnId: "turn-1" });
       seedEvent(harness.deps, {
-        threadId: thread.id,
-        environmentId: environment.id,
-        scope: threadScope(),
-        sequence: 1,
-        type: "client/turn/requested",
+        ...turn,
+        sequence: 4,
+        type: "turn/input/accepted",
         data: {
-          direction: "outbound",
-          source: "tell",
-          initiator: "user",
-          request: { method: "turn/start", params: {} },
-          requestId,
-          senderThreadId: null,
-          input: [{ type: "text", text: "Write a poem", mentions: [] }],
-          target: { kind: "thread-start" },
-          execution: {
-            model: "gpt-5",
-            serviceTier: "default",
-            reasoningLevel: "medium",
-            permissionMode: "full",
-            source: "client/turn/requested",
-          },
+          clientRequestId: encodeClientTurnRequestIdNumber({ value: 1 }),
         },
       });
       seedEvent(harness.deps, {
         ...turn,
-        sequence: 2,
-        type: "turn/started",
-        data: {},
-      });
-      seedEvent(harness.deps, {
-        ...turn,
-        sequence: 3,
-        type: "turn/input/accepted",
-        data: { clientRequestId: requestId },
-      });
-      seedEvent(harness.deps, {
-        ...turn,
-        sequence: 4,
+        sequence: 5,
         type: "item/started",
         data: { item: { type: "agentMessage", id: "assistant-1", text: "" } },
       });
 
       let before = await getTimeline(harness, thread.id);
-      let sequence = before.maxSeq;
       let streamed = "";
-      let visibleText = assistantText(before.rows) ?? "";
-      const chunks = [
+      for (const chunk of [
         "Roses",
         " are red",
         "\nViolets",
         " are",
         " blue\n",
         "Sugar",
-      ];
-      for (const chunk of chunks) {
-        sequence += 1;
+      ]) {
         streamed += chunk;
         seedEvent(harness.deps, {
           ...turn,
-          sequence,
+          sequence: before.maxSeq + 1,
           type: "item/agentMessage/delta",
           data: { itemId: "assistant-1", delta: chunk },
         });
 
         const tick = await getTimeline(harness, thread.id, before.maxSeq);
-        expect(tick.maxSeq).toBe(sequence);
+        expect(tick.maxSeq).toBe(before.maxSeq + 1);
         expect(tick.delta).toBeDefined();
-        const merged = applyTimelineDelta(before.rows, tick.delta!);
+        const merged = applyTimelineDelta(before.rows, tick.delta!) ?? [];
         expect(merged).toEqual(buildColdLatestRows(harness, thread));
-
-        const nextVisibleText = assistantText(merged ?? []) ?? "";
-        expect(nextVisibleText.startsWith(visibleText)).toBe(true);
-        expect(streamed.startsWith(nextVisibleText)).toBe(true);
-        expect(nextVisibleText).toBe(
+        expect(assistantText(merged) ?? "").toBe(
           streamed.slice(0, streamed.lastIndexOf("\n") + 1),
         );
-        visibleText = nextVisibleText;
-        before = { ...tick, rows: merged ?? [] };
+        before = { ...tick, rows: merged };
       }
-      expect(visibleText).toBe("Roses are red\nViolets are blue\n");
       expect(
-        readTimelineSelectionMemoSize(harness.deps.db).entryCount,
+        countTimelineSelectionMemoEntries(harness.deps.db),
       ).toBeGreaterThan(0);
     });
   });

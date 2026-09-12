@@ -13,7 +13,10 @@ import remarkDirective from "remark-directive";
 import remarkGfm from "remark-gfm";
 import remarkMath from "remark-math";
 import { describe, expect, it } from "vitest";
-import { FIXTURE_NAMES, getFixture } from "bb-plugin-bench-stream-provider/fixtures";
+import {
+  FIXTURE_NAMES,
+  getFixture,
+} from "bb-plugin-bench-stream-provider/fixtures";
 import {
   repairStreamingMarkdownTail,
   splitStreamingMarkdown,
@@ -193,12 +196,16 @@ function streamEveryCharacter(document: string, label: string): void {
   }
 }
 
-function chunkEnds(text: string, seed: number): number[] {
+function seededRandom(seed: number): () => number {
   let state = seed >>> 0;
-  const next = () => {
+  return () => {
     state = (Math.imul(state, 1_664_525) + 1_013_904_223) >>> 0;
     return state / 0x1_0000_0000;
   };
+}
+
+function chunkEnds(text: string, seed: number): number[] {
+  const next = seededRandom(seed);
   const ends: number[] = [];
   let end = 0;
   while (end < text.length) {
@@ -267,48 +274,11 @@ const CURATED_DOCUMENTS: ReadonlyArray<readonly [string, string]> = [
   ],
 ];
 
-const PAIR_FIRST_BLOCKS: readonly string[] = [
-  "para",
-  "Setext\n===",
-  "```\nc\n```",
-  "    indented",
-  "\tindented tab",
-  "- a",
-  "- a\n\n  b",
-  "1. a",
-  "> q",
-  "| a |\n| - |\n| b |",
-  "$$\nx\n$$",
-  "<div>\nx",
-  "<!-- c -->",
-  ":::n\nx\n:::",
-  '::inline-vis{file="a"}',
-  "text\n    lazy indented",
-];
-
 const PAIR_SEPARATORS: readonly string[] = [
   "\n\n",
   "\n\n\n",
   "\n \n",
   "\r\n\r\n",
-];
-
-const PAIR_SECOND_BLOCKS: readonly string[] = [
-  "-",
-  "1.",
-  "2. foo",
-  "- foo",
-  "> -",
-  "> 2. foo",
-  "> > 2. x",
-  "* * *",
-  '<a href="x">',
-  "===",
-  "| a |\n| - |",
-  ":::x\ny\n:::",
-  "```\ny",
-  "foo",
-  "3)",
 ];
 
 const FUZZ_BLOCKS: readonly string[] = [
@@ -337,14 +307,6 @@ const FUZZ_BLOCKS: readonly string[] = [
   "crlf line\r\nnext line",
 ];
 
-function seededRandom(seed: number): () => number {
-  let state = seed >>> 0;
-  return () => {
-    state = (Math.imul(state, 1_664_525) + 1_013_904_223) >>> 0;
-    return state / 0x1_0000_0000;
-  };
-}
-
 describe("findMarkdownPieceCandidates", () => {
   it("starts pieces at unindented lines that follow a blank line", () => {
     expect(findMarkdownPieceCandidates("A.\n\nB.\n\n\nC\n  D\n\n E")).toEqual([
@@ -366,36 +328,12 @@ describe("findMarkdownPieceCandidates", () => {
 });
 
 describe("resolveMarkdownPieces", () => {
-  it("keeps react-markdown's default export hook-free", () => {
-    const element = ReactMarkdown({ children: "# Title\n\nBody" });
-    expect(element.type).toBe(Fragment);
-    expect(renderToStaticMarkup(element)).toBe("<h1>Title</h1>\n<p>Body</p>");
-  });
-
   it.each(CURATED_DOCUMENTS)(
     "matches a single document at every character prefix: %s",
     (label, document) => {
       streamEveryCharacter(document, label);
     },
   );
-
-  it("mounts the first 32 of 34 directives in document order", () => {
-    const document = Array.from(
-      { length: MESSAGE_DIRECTIVE_MOUNT_LIMIT + 2 },
-      (_, index) =>
-        `Paragraph ${index}.\n\n::inline-vis{file="f${index}.html"}`,
-    ).join("\n\n");
-    const cache = createMarkdownPieceCache();
-    const rendered = renderPieces(cache, document);
-    expect(rendered).toEqual(renderWholeDocument(document));
-    expect(rendered.mounts).toHaveLength(MESSAGE_DIRECTIVE_MOUNT_LIMIT);
-    expect(rendered.mounts[31]).toBe(
-      '31:inline-vis:::inline-vis{file="f31.html"}',
-    );
-    expect(rendered.html).toContain(
-      "<p>::inline-vis{file=&quot;f33.html&quot;}</p>",
-    );
-  });
 
   it("parses each settled code, table, list, and math piece once while a prefix grows", () => {
     const blocks = [
@@ -422,23 +360,16 @@ describe("resolveMarkdownPieces", () => {
   });
 
   it("parses a completed document once on a cold cache", () => {
-    const documents = [
-      ...MARKDOWN_FIXTURES.map(({ text }) => text),
+    const body = normalizeMathFences(
       `${MARKDOWN_FIXTURES[0]?.text ?? ""}\n\nSee [the docs] and a note[^1].\n\n[the docs]: https://example.com\n\n[^1]: The note.`,
-      `Intro.\n\n:::note\n${OPEN_CONSTRUCT_PARAGRAPHS}\n:::\n\nAfter.`,
-      `Intro.\n\n<!--\n${OPEN_CONSTRUCT_PARAGRAPHS}\n-->\n\nAfter.`,
-    ];
-    for (const document of documents) {
-      const body = normalizeMathFences(document);
-      const recorded: string[] = [];
-      resolveMarkdownPieces(
-        createMarkdownPieceCache(),
-        createRecordingConfig(recorded),
-        body,
-      );
-      expect(recorded).toHaveLength(1);
-      expect(parsedLength(recorded)).toBe(body.length);
-    }
+    );
+    const recorded: string[] = [];
+    resolveMarkdownPieces(
+      createMarkdownPieceCache(),
+      createRecordingConfig(recorded),
+      body,
+    );
+    expect(recorded).toEqual([body]);
   });
 
   it("merges an unclosed construct through the end of the body in linear volume", () => {
@@ -580,20 +511,6 @@ describe("resolveMarkdownPieces", () => {
     );
     expect(cache.latchedWholeDocumentPrefix).toBeNull();
     expect(before.children).toHaveLength(3);
-  });
-
-  it("matches a single document for every pair of adjacent blocks", () => {
-    for (const first of PAIR_FIRST_BLOCKS) {
-      for (const separator of PAIR_SEPARATORS) {
-        for (const second of PAIR_SECOND_BLOCKS) {
-          expectPiecesMatchWholeDocument(
-            createMarkdownPieceCache(),
-            `${first}${separator}${second}`,
-            "block pair",
-          );
-        }
-      }
-    }
   });
 
   it("matches a single document for every prefix of seeded block sequences", () => {

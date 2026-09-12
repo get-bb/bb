@@ -1,15 +1,40 @@
 import {
+  type DeltaItemKey,
   type DeltaPresentation,
+  type ThreadDelta,
   experimental_presentationFileName as presentationFileName,
   experimental_presentationTitle as presentationTitle,
   experimental_toolPresentation as toolPresentation,
   experimental_withTitle as withTitle,
 } from "@get-bb/plugin-sdk/provider-bridge";
 
-export const AGENT_MESSAGE_PRESENTATION: DeltaPresentation = {
+const AGENT_MESSAGE_PRESENTATION: DeltaPresentation = {
   label: { pending: "Responding", completed: "Responded" },
   icon: { glyph: "MessageSquare" },
 };
+
+export function agentMessageOpen(key: DeltaItemKey): ThreadDelta {
+  return {
+    kind: "item.open",
+    key,
+    item: { type: "agentMessage", text: "" },
+    presentation: AGENT_MESSAGE_PRESENTATION,
+  };
+}
+
+export function agentMessageClose(
+  key: DeltaItemKey,
+  text: string,
+  status: "completed" | "interrupted" = "completed",
+): ThreadDelta {
+  return {
+    kind: "item.close",
+    key,
+    status,
+    item: { type: "agentMessage", text },
+    presentation: AGENT_MESSAGE_PRESENTATION,
+  };
+}
 
 export function commandPresentation(command: string): DeltaPresentation {
   return withTitle(

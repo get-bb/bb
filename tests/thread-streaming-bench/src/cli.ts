@@ -4,9 +4,8 @@ import { homedir, loadavg } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
-import { getFixture } from "bb-plugin-bench-stream-provider/fixtures";
-import { launchBenchBrowser } from "./browser/driver.js";
-import { DEFAULT_GOLDEN_SPEC, prepareGolden } from "./data/golden.js";
+import { streamDocumentText } from "bb-plugin-bench-stream-provider/fixtures";
+import { prepareGolden } from "./data/golden.js";
 import {
   aggregateIterations,
   renderComparison,
@@ -15,7 +14,7 @@ import {
   type ScenarioReport,
 } from "./report.js";
 import { runIteration, type ProfileMode } from "./run/iteration.js";
-import { findScenario, SCENARIOS, type Scenario } from "./scenarios.js";
+import { findScenario, SCENARIOS } from "./scenarios.js";
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "../../..");
 
@@ -24,7 +23,6 @@ const USAGE = `Usage:
   pnpm --filter @bb/thread-streaming-bench bench run [--scenario default,long] [--iterations 5] [--warmup 1]
       [--throttle 1] [--profile none|cpu|trace] [--label <name>] [--out <dir>] [--cache-dir <dir>]
       [--artifact-root <checkout>] [--compare-roots base=<checkout>,cand=<checkout>] [--server-profile]
-      [--inject-css <file>] [--inject-js <file>] [--reduced-motion]
   pnpm --filter @bb/thread-streaming-bench bench compare <baseline results.json> <candidate results.json>
 
 Scenarios: ${SCENARIOS.map((scenario) => `${scenario.name} (${scenario.description})`).join("; ")}
@@ -42,7 +40,7 @@ function resolveCacheDir(value: string | undefined): string {
   );
 }
 
-function parsePositiveInt(name: string, value: string): number {
+function parseNonNegativeInt(name: string, value: string): number {
   const parsed = Number(value);
   if (!Number.isInteger(parsed) || parsed < 0) {
     throw new Error(
@@ -59,36 +57,20 @@ function parseProfile(value: string): ProfileMode {
   throw new Error(`--profile must be none, cpu or trace, received ${value}`);
 }
 
-function fixtureTextFor(scenario: Scenario): string {
-  const doc = getFixture(scenario.doc);
-  return Array.from({ length: scenario.repeat }, () => doc).join("\n\n");
-}
-
-function gitRevision(): string {
+function gitRevision(cwd: string): string {
   try {
     const revision = execFileSync("git", ["rev-parse", "--short", "HEAD"], {
-      cwd: repoRoot,
+      cwd,
       encoding: "utf8",
     }).trim();
     const dirty =
       execFileSync("git", ["status", "--porcelain"], {
-        cwd: repoRoot,
+        cwd,
         encoding: "utf8",
       }).trim().length > 0;
     return dirty ? `${revision}+dirty` : revision;
   } catch {
     return "unknown";
-  }
-}
-
-async function chromeVersion(cacheDir: string): Promise<string> {
-  const browser = await launchBenchBrowser({
-    userDataDir: join(cacheDir, "chrome-version-probe"),
-  });
-  try {
-    return (await browser.version()).product;
-  } finally {
-    await browser.close();
   }
 }
 
@@ -128,13 +110,6 @@ function parseArtifactRoots(
   return roots;
 }
 
-function interleavedOrder(
-  roots: readonly ArtifactRoot[],
-  index: number,
-): ArtifactRoot[] {
-  return index % 2 === 0 ? [...roots] : [...roots].reverse();
-}
-
 async function runCommand(argv: string[]): Promise<void> {
   const { values } = parseArgs({
     args: argv,
@@ -142,9 +117,6 @@ async function runCommand(argv: string[]): Promise<void> {
       "cache-dir": { type: "string" },
       "artifact-root": { type: "string" },
       "compare-roots": { type: "string" },
-      "inject-css": { type: "string" },
-      "inject-js": { type: "string" },
-      "reduced-motion": { default: false, type: "boolean" },
       "server-profile": { default: false, type: "boolean" },
       iterations: { default: "5", type: "string" },
       label: { default: "run", type: "string" },
@@ -159,9 +131,14 @@ async function runCommand(argv: string[]): Promise<void> {
   const scenarios = values.scenario
     .split(",")
     .map((name) => findScenario(name.trim()));
-  const iterations = parsePositiveInt("--iterations", values.iterations);
-  const warmup = parsePositiveInt("--warmup", values.warmup);
+  const iterations = parseNonNegativeInt("--iterations", values.iterations);
+  const warmup = parseNonNegativeInt("--warmup", values.warmup);
   const cpuThrottlingRate = Number(values.throttle);
+  if (!(cpuThrottlingRate >= 1)) {
+    throw new Error(
+      `--throttle must be a number >= 1, received ${values.throttle}`,
+    );
+  }
   const profile = parseProfile(values.profile);
   const roots = parseArtifactRoots(
     values["compare-roots"],
@@ -173,73 +150,49 @@ async function runCommand(argv: string[]): Promise<void> {
   const outDir = resolve(
     values.out ?? join(cacheDir, "results", `${values.label}-${stamp}`),
   );
-  mkdirSync(outDir, { recursive: true });
-  const golden = await prepareGolden({
-    cacheDir,
-    log,
-    repoRoot,
-    spec: DEFAULT_GOLDEN_SPEC,
-  });
-  const chrome = await chromeVersion(cacheDir);
-  const experiment = {
-    injectCss:
-      values["inject-css"] === undefined
-        ? null
-        : readFileSync(resolve(values["inject-css"]), "utf8"),
-    injectJs:
-      values["inject-js"] === undefined
-        ? null
-        : readFileSync(resolve(values["inject-js"]), "utf8"),
-    reducedMotion: values["reduced-motion"],
-  };
-  const reports = new Map<string, BenchReport>(
-    roots.map((root) => [
-      root.label,
-      {
-        metadata: {
-          chromeVersion: chrome,
-          cpuThrottlingRate,
-          gitRevision: `${gitRevision()} artifacts=${root.path}`,
-          goldenHash: golden.manifest.hash,
-          label: root.label,
-          loadAverage: loadavg(),
-          nodeVersion: process.version,
-          profile: [
-            profile,
-            values["inject-css"] === undefined
-              ? null
-              : `css=${values["inject-css"]}`,
-            values["inject-js"] === undefined
-              ? null
-              : `js=${values["inject-js"]}`,
-            values["reduced-motion"] ? "reduced-motion" : null,
-          ]
-            .filter((part) => part !== null)
-            .join(" "),
-          startedAt: startedAt.toISOString(),
-        },
-        scenarios: [],
+  const golden = await prepareGolden({ cacheDir, log, repoRoot });
+  const runs = roots.map((root) => {
+    const dir = roots.length === 1 ? outDir : join(outDir, root.label);
+    mkdirSync(dir, { recursive: true });
+    const report: BenchReport = {
+      metadata: {
+        chromeVersion: "",
+        cpuThrottlingRate,
+        gitRevision: `${gitRevision(root.path)} artifacts=${root.path}`,
+        goldenHash: golden.manifest.hash,
+        label: root.label,
+        loadAverage: loadavg(),
+        nodeVersion: process.version,
+        profile,
+        startedAt: startedAt.toISOString(),
       },
-    ]),
-  );
+      scenarios: [],
+    };
+    return { dir, report, root };
+  });
   for (const scenario of scenarios) {
-    const fixtureText = fixtureTextFor(scenario);
-    const scenarioReports = new Map<string, ScenarioReport>(
-      roots.map((root) => [
-        root.label,
-        { aggregate: {}, iterations: [], name: scenario.name, warmup: [] },
-      ]),
-    );
+    const fixtureText = streamDocumentText(scenario.doc, scenario.repeat);
+    const scenarioRuns = runs.map((run) => {
+      const scenarioReport: ScenarioReport = {
+        aggregate: {},
+        iterations: [],
+        name: scenario.name,
+        warmup: [],
+      };
+      run.report.scenarios.push(scenarioReport);
+      return { ...run, scenarioReport };
+    });
     for (let index = 0; index < warmup + iterations; index += 1) {
       const isWarmup = index < warmup;
       const iterationNumber = isWarmup ? index : index - warmup;
-      for (const root of interleavedOrder(roots, index)) {
+      const order =
+        index % 2 === 0 ? scenarioRuns : [...scenarioRuns].reverse();
+      for (const { dir, report, root, scenarioReport } of order) {
         log(
           `${scenario.name} [${root.label}]: ${isWarmup ? "warmup" : "iteration"} ${iterationNumber + 1}`,
         );
         const result = await runIteration({
           cpuThrottlingRate,
-          experiment,
           fixtureText,
           golden,
           iteration: iterationNumber,
@@ -254,11 +207,9 @@ async function runCommand(argv: string[]): Promise<void> {
           scenario,
           serverProfile: values["server-profile"],
         });
-        const rootDir = roots.length === 1 ? outDir : join(outDir, root.label);
-        mkdirSync(rootDir, { recursive: true });
         writeFileSync(
           join(
-            rootDir,
+            dir,
             `${scenario.name}-${isWarmup ? "warmup" : "iter"}-${iterationNumber}.json`,
           ),
           JSON.stringify(result, null, 2),
@@ -266,54 +217,30 @@ async function runCommand(argv: string[]): Promise<void> {
         log(
           `  task ${result.metrics.mainThread.taskDurationMs.toFixed(0)} ms, loaf blocking ${result.metrics.loafs.totalBlockingDurationMs.toFixed(0)} ms, commits ${result.metrics.reactCommits}, timeline GETs ${result.metrics.network.timeline.total.count}, server cpu ${result.metrics.serverCpuMs.toFixed(0)} ms, latency p50 ${result.metrics.checkpoints.p50LatencyMs?.toFixed(0) ?? "—"} ms, geometry ${result.metrics.geometry.sha256.slice(0, 12)}, text ${result.metrics.finalText.sha256.slice(0, 12)}`,
         );
-        const scenarioReport = scenarioReports.get(root.label);
-        if (scenarioReport === undefined) {
-          continue;
-        }
-        if (isWarmup) {
-          scenarioReport.warmup.push(result);
-        } else {
-          scenarioReport.iterations.push(result);
-        }
+        report.metadata.chromeVersion = result.chromeVersion;
+        (isWarmup ? scenarioReport.warmup : scenarioReport.iterations).push(
+          result,
+        );
       }
     }
-    for (const root of roots) {
-      const scenarioReport = scenarioReports.get(root.label);
-      const report = reports.get(root.label);
-      if (scenarioReport === undefined || report === undefined) {
-        continue;
-      }
+    for (const { scenarioReport } of scenarioRuns) {
       scenarioReport.aggregate = aggregateIterations(scenarioReport.iterations);
-      report.scenarios.push(scenarioReport);
     }
   }
-  const markdownParts: string[] = [];
-  for (const root of roots) {
-    const report = reports.get(root.label);
-    if (report === undefined) {
-      continue;
-    }
-    const rootDir = roots.length === 1 ? outDir : join(outDir, root.label);
-    mkdirSync(rootDir, { recursive: true });
-    writeFileSync(
-      join(rootDir, "results.json"),
-      JSON.stringify(report, null, 2),
-    );
+  const markdownParts = runs.map(({ dir, report }) => {
+    writeFileSync(join(dir, "results.json"), JSON.stringify(report, null, 2));
     const markdown = renderMarkdownReport(report);
-    writeFileSync(join(rootDir, "summary.md"), markdown);
-    markdownParts.push(markdown);
-  }
-  const baselineReport = reports.get(roots[0]?.label ?? "");
-  if (roots.length > 1 && baselineReport !== undefined) {
-    for (const root of roots.slice(1)) {
-      const candidateReport = reports.get(root.label);
-      if (candidateReport === undefined) {
-        continue;
-      }
-      const comparison = renderComparison(baselineReport, candidateReport);
-      writeFileSync(join(outDir, `comparison-${root.label}.md`), comparison);
-      markdownParts.push(comparison);
-    }
+    writeFileSync(join(dir, "summary.md"), markdown);
+    return markdown;
+  });
+  const [baseline, ...candidates] = runs;
+  for (const candidate of candidates) {
+    const comparison = renderComparison(baseline.report, candidate.report);
+    writeFileSync(
+      join(outDir, `comparison-${candidate.root.label}.md`),
+      comparison,
+    );
+    markdownParts.push(comparison);
   }
   process.stdout.write(`${markdownParts.join("\n\n")}\nResults: ${outDir}\n`);
 }
@@ -330,7 +257,6 @@ async function main(argv: string[]): Promise<void> {
         cacheDir: resolveCacheDir(values["cache-dir"]),
         log,
         repoRoot,
-        spec: DEFAULT_GOLDEN_SPEC,
       });
       return;
     }

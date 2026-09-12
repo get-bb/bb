@@ -21,7 +21,7 @@ import { BbHttpError, sdk } from "@/lib/sdk";
 type TimelineQueryResultProp =
   keyof QueryObserverResult<ThreadTimelineResponse>;
 
-export const TIMELINE_CONTROLLER_PROPS_WITH_ROWS: TimelineQueryResultProp[] = [
+const TIMELINE_CONTROLLER_PROPS_WITH_ROWS: TimelineQueryResultProp[] = [
   "data",
   "error",
   "isLoading",
@@ -58,7 +58,6 @@ export interface UseThreadTimelineControllerResult {
 interface LoadedTimelineTracker {
   latestTimeline: ThreadTimelineResponse | undefined;
   loaded: LoadedTimelineState;
-  surfaceKey: string;
 }
 
 interface ReconcileLoadedTimelineArgs {
@@ -66,10 +65,6 @@ interface ReconcileLoadedTimelineArgs {
   latestTimeline: ThreadTimelineResponse | undefined;
   surfaceKey: string;
 }
-
-type LoadedTimelineUpdate = (
-  current: LoadedTimelineState,
-) => LoadedTimelineState;
 
 function isStaleTimelinePaginationCursorError(error: Error): boolean {
   return (
@@ -143,30 +138,28 @@ export function useThreadTimelineController({
         latestTimeline,
         surfaceKey,
       }),
-      surfaceKey,
     }));
   let loadedTimeline = loadedTimelineTracker.loaded;
   if (
     loadedTimelineTracker.latestTimeline !== latestTimeline ||
-    loadedTimelineTracker.surfaceKey !== surfaceKey
+    loadedTimeline.surfaceKey !== surfaceKey
   ) {
     loadedTimeline = reconcileLoadedTimeline({
       current: loadedTimelineTracker.loaded,
       latestTimeline,
       surfaceKey,
     });
-    setLoadedTimelineTracker({
-      latestTimeline,
-      loaded: loadedTimeline,
-      surfaceKey,
-    });
+    setLoadedTimelineTracker({ latestTimeline, loaded: loadedTimeline });
   }
-  const updateLoadedTimeline = useCallback((update: LoadedTimelineUpdate) => {
-    setLoadedTimelineTracker((current) => {
-      const loaded = update(current.loaded);
-      return loaded === current.loaded ? current : { ...current, loaded };
-    });
-  }, []);
+  const updateLoadedTimeline = useCallback(
+    (update: (current: LoadedTimelineState) => LoadedTimelineState) => {
+      setLoadedTimelineTracker((current) => {
+        const loaded = update(current.loaded);
+        return loaded === current.loaded ? current : { ...current, loaded };
+      });
+    },
+    [],
+  );
   const [isLoadingOlderTimelineRows, setIsLoadingOlderTimelineRows] =
     useState(false);
   const refetchLatestTimeline = latestTimelineQuery.refetch;

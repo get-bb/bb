@@ -11,6 +11,7 @@ import {
   THREAD_DELTA_GRAMMAR_V3,
   THREAD_DELTA_NOTIFICATION_METHOD,
   createBridgeIo,
+  createBridgeLineHandler,
   experimental_defineProviderBridge,
   initializeParamsSchema,
   modelListParamsSchema,
@@ -27,10 +28,11 @@ import {
   turnSteerParamsSchema,
 } from "@get-bb/plugin-sdk/provider-bridge";
 import { randomUUID } from "node:crypto";
+import { z } from "zod";
 import { parseBenchDirective, type BenchDirective } from "./directives.js";
 import { openEmissionLog, type EmissionLog } from "./emission-log.js";
 import { streamDocumentText } from "./fixtures/index.js";
-import { AGENT_MESSAGE_PRESENTATION } from "./presentation.js";
+import { agentMessageClose, agentMessageOpen } from "./presentation.js";
 import { buildHistoryTurn, buildStreamPrelude } from "./turn-content.js";
 import { BENCH_STREAM_MODEL, BENCH_STREAM_MODEL_ID } from "./vocabulary.js";
 
@@ -46,7 +48,7 @@ interface ActiveStream {
   chunk: number;
   interval: number;
   emitted: number;
-  timer: ReturnType<typeof setTimeout> | null;
+  timer: ReturnType<typeof setTimeout> | undefined;
   log: EmissionLog | null;
 }
 
@@ -92,48 +94,18 @@ function echoMessageDeltas(
     prompt.length > 0 ? `Response to: ${prompt}` : "Response complete";
   const key = { providerItemId };
   return [
-    {
-      kind: "item.open",
-      key,
-      item: { type: "agentMessage", text: "" },
-      presentation: AGENT_MESSAGE_PRESENTATION,
-    },
+    agentMessageOpen(key),
     { kind: "item.textDelta", key, channel: "agentMessage", text },
-    {
-      kind: "item.close",
-      key,
-      status: "completed",
-      item: { type: "agentMessage", text },
-      presentation: AGENT_MESSAGE_PRESENTATION,
-    },
+    agentMessageClose(key, text),
   ];
-}
-
-function isHighSurrogate(code: number): boolean {
-  return code >= 0xd800 && code <= 0xdbff;
-}
-
-export function nextChunkEnd(
-  text: string,
-  start: number,
-  chunk: number,
-): number {
-  const end = Math.min(text.length, start + chunk);
-  return end < text.length && isHighSurrogate(text.charCodeAt(end - 1))
-    ? end + 1
-    : end;
 }
 
 function cancelStream(session: Session): ActiveStream | null {
   const stream = session.activeStream;
-  if (stream === null) {
-    return null;
-  }
-  if (stream.timer !== null) {
+  if (stream !== null) {
     clearTimeout(stream.timer);
-    stream.timer = null;
+    session.activeStream = null;
   }
-  session.activeStream = null;
   return stream;
 }
 
@@ -143,26 +115,17 @@ function interruptStream(session: Session): void {
     return;
   }
   emitDeltas(session.threadId, [
-    {
-      kind: "item.close",
-      key: stream.messageKey,
-      status: "interrupted",
-      item: {
-        type: "agentMessage",
-        text: stream.text.slice(0, stream.emitted),
-      },
-      presentation: AGENT_MESSAGE_PRESENTATION,
-    },
+    agentMessageClose(
+      stream.messageKey,
+      stream.text.slice(0, stream.emitted),
+      "interrupted",
+    ),
     { kind: "turn.boundary", status: "interrupted" },
   ]);
 }
 
 function tickStream(session: Session, stream: ActiveStream): void {
-  if (session.activeStream !== stream) {
-    return;
-  }
-  stream.timer = null;
-  const end = nextChunkEnd(stream.text, stream.emitted, stream.chunk);
+  const end = Math.min(stream.text.length, stream.emitted + stream.chunk);
   const text = stream.text.slice(stream.emitted, end);
   stream.emitted = end;
   const emittedAt = Date.now();
@@ -184,13 +147,7 @@ function tickStream(session: Session, stream: ActiveStream): void {
   }
   session.activeStream = null;
   emitDeltas(session.threadId, [
-    {
-      kind: "item.close",
-      key: stream.messageKey,
-      status: "completed",
-      item: { type: "agentMessage", text: stream.text },
-      presentation: AGENT_MESSAGE_PRESENTATION,
-    },
+    agentMessageClose(stream.messageKey, stream.text),
     ...stream.steers.flatMap((steer, index) =>
       echoMessageDeltas(`${stream.idPrefix}-steer-${index + 1}`, steer),
     ),
@@ -214,7 +171,7 @@ function startStream(args: {
     chunk: directive.chunk,
     interval: directive.interval,
     emitted: 0,
-    timer: null,
+    timer: undefined,
     log: openEmissionLog(session.threadId),
   };
   emitDeltas(session.threadId, [
@@ -222,12 +179,7 @@ function startStream(args: {
     ...(directive.prelude
       ? buildStreamPrelude({ cwd: session.cwd, idPrefix: args.idPrefix })
       : []),
-    {
-      kind: "item.open",
-      key: stream.messageKey,
-      item: { type: "agentMessage", text: "" },
-      presentation: AGENT_MESSAGE_PRESENTATION,
-    },
+    agentMessageOpen(stream.messageKey),
   ]);
   session.activeStream = stream;
   stream.log?.append({
@@ -241,73 +193,55 @@ function startStream(args: {
   stream.timer = setTimeout(() => tickStream(session, stream), stream.interval);
 }
 
-function emitHistoryTurn(args: {
-  session: Session;
-  opening: ThreadDelta[];
-  idPrefix: string;
-  directive: Extract<BenchDirective, { kind: "history" }>;
-}): void {
-  const batches = buildHistoryTurn({
-    seed: args.directive.seed,
-    tools: args.directive.tools,
-    cwd: args.session.cwd,
-    idPrefix: args.idPrefix,
-  });
-  batches.forEach((batch, index) => {
-    emitDeltas(args.session.threadId, [
-      ...(index === 0 ? args.opening : []),
-      ...batch,
-      ...(index === batches.length - 1
-        ? [{ kind: "turn.boundary", status: "completed" } satisfies ThreadDelta]
-        : []),
-    ]);
-  });
-}
-
-function emitEchoTurn(args: {
-  session: Session;
-  opening: ThreadDelta[];
-  idPrefix: string;
-  prompt: string;
-}): void {
-  emitDeltas(args.session.threadId, [
-    ...args.opening,
-    ...echoMessageDeltas(`${args.idPrefix}-message`, args.prompt),
-    { kind: "turn.boundary", status: "completed" },
-  ]);
-}
-
 function runTurn(args: {
   session: Session;
   input: readonly PromptInput[];
-  clientRequestId?: ClientTurnRequestId;
+  clientRequestId: ClientTurnRequestId;
 }): void {
   const { session } = args;
   interruptStream(session);
   session.turnCount += 1;
   const idPrefix = `bench-${session.providerThreadId}-t${session.turnCount}`;
-  const accepted: ThreadDelta[] =
-    args.clientRequestId === undefined
-      ? []
-      : [{ kind: "input.accepted", clientRequestId: args.clientRequestId }];
-  const opening: ThreadDelta[] = [...accepted, { kind: "turn.open" }];
+  const accepted: ThreadDelta = {
+    kind: "input.accepted",
+    clientRequestId: args.clientRequestId,
+  };
+  const opening: ThreadDelta[] = [accepted, { kind: "turn.open" }];
   const prompt = promptText(args.input);
   const directive = parseBenchDirective(prompt);
   switch (directive.kind) {
     case "noop":
       emitDeltas(session.threadId, [
-        ...accepted,
+        accepted,
         { kind: "turn.boundary", status: "completed", claimIfIdle: true },
       ]);
       return;
-    case "history":
-      emitHistoryTurn({ session, opening, idPrefix, directive });
+    case "history": {
+      const batches = buildHistoryTurn({
+        seed: directive.seed,
+        tools: directive.tools,
+        cwd: session.cwd,
+        idPrefix,
+      });
+      batches[0].unshift(...opening);
+      batches[batches.length - 1].push({
+        kind: "turn.boundary",
+        status: "completed",
+      });
+      for (const batch of batches) {
+        emitDeltas(session.threadId, batch);
+      }
       return;
+    }
     case "stream":
       startStream({ session, opening, idPrefix, directive });
       return;
     case "echo":
-      emitEchoTurn({ session, opening, idPrefix, prompt });
+      emitDeltas(session.threadId, [
+        ...opening,
+        ...echoMessageDeltas(`${idPrefix}-message`, prompt),
+        { kind: "turn.boundary", status: "completed" },
+      ]);
       return;
     case "invalid":
       emitDeltas(session.threadId, [
@@ -327,42 +261,22 @@ function openSession(args: {
   threadId: string;
   providerThreadId: string;
   cwd: string;
-}): Session {
+}): void {
   const previous = sessions.get(args.threadId);
   if (previous !== undefined) {
     interruptStream(previous);
   }
-  const session: Session = {
-    threadId: args.threadId,
-    providerThreadId: args.providerThreadId,
-    cwd: args.cwd,
-    turnCount: 0,
-    activeStream: null,
-  };
-  sessions.set(args.threadId, session);
+  sessions.set(args.threadId, { ...args, turnCount: 0, activeStream: null });
   notify(BRIDGE_NOTIFICATION_METHODS.threadIdentity, {
     threadId: args.threadId,
     providerThreadId: args.providerThreadId,
   });
   emitDeltas(args.threadId, [{ kind: "session.reset" }]);
-  return session;
 }
 
 function mintProviderThreadId(): string {
   providerThreadCounter += 1;
   return `bench_${instanceNonce}_${providerThreadCounter}`;
-}
-
-function invalidParams(id: JsonRpcId, method: string, issues: unknown): void {
-  io.send({
-    jsonrpc: "2.0",
-    id,
-    error: {
-      code: BRIDGE_JSON_RPC_ERRORS.INVALID_PARAMS,
-      message: `Invalid params for ${method}`,
-      data: issues,
-    },
-  });
 }
 
 function unknownThread(id: JsonRpcId, threadId: string): void {
@@ -405,282 +319,247 @@ const BENCH_HEALTH: ProviderHealthResult = {
 
 type RequestHandler = (id: JsonRpcId, params: unknown) => void;
 
-const handlers: Record<string, RequestHandler> = {
-  [BRIDGE_REQUEST_METHODS.initialize]: (id, params) => {
-    const parsed = initializeParamsSchema.safeParse(params);
-    if (!parsed.success) {
-      invalidParams(id, BRIDGE_REQUEST_METHODS.initialize, parsed.error.issues);
-      return;
-    }
+function route<T>(
+  method: string,
+  schema: z.ZodType<T>,
+  handle: (id: JsonRpcId, params: T) => void,
+): [string, RequestHandler] {
+  return [
+    method,
+    (id, params) => {
+      const parsed = schema.safeParse(params);
+      if (parsed.success) {
+        handle(id, parsed.data);
+        return;
+      }
+      io.send({
+        jsonrpc: "2.0",
+        id,
+        error: {
+          code: BRIDGE_JSON_RPC_ERRORS.INVALID_PARAMS,
+          message: `Invalid params for ${method}`,
+          data: parsed.error.issues,
+        },
+      });
+    },
+  ];
+}
+
+const handlers = new Map<string, RequestHandler>([
+  route(BRIDGE_REQUEST_METHODS.initialize, initializeParamsSchema, (id) => {
     io.sendResult(id, {
       protocolVersion: PROVIDER_BRIDGE_PROTOCOL_VERSION,
       capabilities: {
         grammarVersions: [THREAD_DELTA_GRAMMAR_V3, THREAD_DELTA_GRAMMAR_V3],
         sessionRestore: true,
         threadArchive: true,
-        threadRename: false,
-        threadGoalClear: false,
         fork: "tip",
-        approvalEnforcedBy: "runtime",
-        steerMode: "queue",
-        skills: { configure: false },
       },
     });
-  },
+  }),
 
-  [BRIDGE_REQUEST_METHODS.modelList]: (id, params) => {
-    const parsed = modelListParamsSchema.safeParse(params);
-    if (!parsed.success) {
-      invalidParams(id, BRIDGE_REQUEST_METHODS.modelList, parsed.error.issues);
-      return;
-    }
+  route(BRIDGE_REQUEST_METHODS.modelList, modelListParamsSchema, (id) => {
     io.sendResult(id, {
       models: [{ ...BENCH_STREAM_MODEL, model: BENCH_STREAM_MODEL_ID }],
       selectedOnlyModels: [],
     });
-  },
+  }),
 
-  [BRIDGE_REQUEST_METHODS.providerHealth]: (id, params) => {
-    const parsed = providerMaintenanceParamsSchema.safeParse(params);
-    if (!parsed.success) {
-      invalidParams(
-        id,
-        BRIDGE_REQUEST_METHODS.providerHealth,
-        parsed.error.issues,
-      );
-      return;
-    }
-    io.sendResult(id, BENCH_HEALTH);
-  },
+  route(
+    BRIDGE_REQUEST_METHODS.providerHealth,
+    providerMaintenanceParamsSchema,
+    (id) => {
+      io.sendResult(id, BENCH_HEALTH);
+    },
+  ),
 
-  [BRIDGE_REQUEST_METHODS.threadStart]: (id, params) => {
-    const parsed = threadStartParamsSchema.safeParse(params);
-    if (!parsed.success) {
-      invalidParams(
-        id,
-        BRIDGE_REQUEST_METHODS.threadStart,
-        parsed.error.issues,
-      );
-      return;
-    }
-    const providerThreadId = mintProviderThreadId();
-    const session = openSession({
-      threadId: parsed.data.threadId,
-      providerThreadId,
-      cwd: parsed.data.cwd,
-    });
-    io.sendResult(id, { providerThreadId, sessionRestorable: true });
-    if (parsed.data.input !== undefined && parsed.data.input.length > 0) {
-      runTurn({ session, input: parsed.data.input });
-    }
-  },
+  route(
+    BRIDGE_REQUEST_METHODS.threadStart,
+    threadStartParamsSchema,
+    (id, params) => {
+      const providerThreadId = mintProviderThreadId();
+      openSession({
+        threadId: params.threadId,
+        providerThreadId,
+        cwd: params.cwd,
+      });
+      io.sendResult(id, { providerThreadId, sessionRestorable: true });
+    },
+  ),
 
-  [BRIDGE_REQUEST_METHODS.threadResume]: (id, params) => {
-    const parsed = threadResumeParamsSchema.safeParse(params);
-    if (!parsed.success) {
-      invalidParams(
-        id,
-        BRIDGE_REQUEST_METHODS.threadResume,
-        parsed.error.issues,
-      );
-      return;
-    }
-    if (rejectIfArchived(id, parsed.data.providerThreadId)) {
-      return;
-    }
-    openSession({
-      threadId: parsed.data.threadId,
-      providerThreadId: parsed.data.providerThreadId,
-      cwd: parsed.data.cwd,
-    });
-    io.sendResult(id, {
-      providerThreadId: parsed.data.providerThreadId,
-      sessionRestorable: true,
-    });
-  },
+  route(
+    BRIDGE_REQUEST_METHODS.threadResume,
+    threadResumeParamsSchema,
+    (id, params) => {
+      if (rejectIfArchived(id, params.providerThreadId)) {
+        return;
+      }
+      openSession({
+        threadId: params.threadId,
+        providerThreadId: params.providerThreadId,
+        cwd: params.cwd,
+      });
+      io.sendResult(id, {
+        providerThreadId: params.providerThreadId,
+        sessionRestorable: true,
+      });
+    },
+  ),
 
-  [BRIDGE_REQUEST_METHODS.threadFork]: (id, params) => {
-    const parsed = threadForkParamsSchema.safeParse(params);
-    if (!parsed.success) {
-      invalidParams(id, BRIDGE_REQUEST_METHODS.threadFork, parsed.error.issues);
+  route(
+    BRIDGE_REQUEST_METHODS.threadFork,
+    threadForkParamsSchema,
+    (id, params) => {
+      if (params.sourceProviderCheckpointId !== undefined) {
+        io.sendError(
+          id,
+          BRIDGE_JSON_RPC_ERRORS.FORK_CHECKPOINT_UNSUPPORTED,
+          "The bench stream provider forks only at the tip of a session",
+        );
+        return;
+      }
+      if (rejectIfArchived(id, params.sourceProviderThreadId)) {
+        return;
+      }
+      const providerThreadId = mintProviderThreadId();
+      openSession({
+        threadId: params.threadId,
+        providerThreadId,
+        cwd: params.cwd,
+      });
+      io.sendResult(id, { providerThreadId, sessionRestorable: true });
+    },
+  ),
+
+  route(
+    BRIDGE_REQUEST_METHODS.turnStart,
+    turnStartParamsSchema,
+    (id, params) => {
+      const session = sessions.get(params.threadId);
+      if (session === undefined) {
+        unknownThread(id, params.threadId);
+        return;
+      }
+      if (rejectIfArchived(id, session.providerThreadId)) {
+        return;
+      }
+      io.sendResult(id, {});
+      runTurn({
+        session,
+        input: params.input,
+        clientRequestId: params.clientRequestId,
+      });
+    },
+  ),
+
+  route(
+    BRIDGE_REQUEST_METHODS.turnSteer,
+    turnSteerParamsSchema,
+    (id, params) => {
+      const session = sessions.get(params.threadId);
+      if (session === undefined) {
+        unknownThread(id, params.threadId);
+        return;
+      }
+      const stream = session.activeStream;
+      if (stream === null) {
+        const message = `No active bench turn to steer (expected ${params.expectedTurnId})`;
+        io.sendError(id, BRIDGE_JSON_RPC_ERRORS.NO_ACTIVE_TURN, message, {
+          recovery: {
+            kind: "staleTurn",
+            message,
+            retryable: false,
+          } satisfies ProviderRecoveryHint,
+        });
+        return;
+      }
+      stream.steers.push(promptText(params.input));
+      emitDeltas(session.threadId, [
+        { kind: "input.accepted", clientRequestId: params.clientRequestId },
+      ]);
+      io.sendResult(id, {});
+    },
+  ),
+
+  route(
+    BRIDGE_REQUEST_METHODS.threadStop,
+    threadStopParamsSchema,
+    (id, params) => {
+      const session = sessions.get(params.threadId);
+      if (session !== undefined) {
+        if (params.intent === "interrupt") {
+          interruptStream(session);
+        } else {
+          cancelStream(session);
+        }
+        sessions.delete(params.threadId);
+      }
+      io.sendResult(id, {});
+    },
+  ),
+
+  route(
+    BRIDGE_REQUEST_METHODS.threadDiscard,
+    threadDiscardParamsSchema,
+    (id, params) => {
+      const session = sessions.get(params.threadId);
+      if (session !== undefined) {
+        cancelStream(session);
+        sessions.delete(params.threadId);
+      }
+      archivedProviderThreadIds.delete(params.providerThreadId);
+      io.sendResult(id, {});
+    },
+  ),
+
+  route(
+    BRIDGE_REQUEST_METHODS.threadArchive,
+    threadArchiveParamsSchema,
+    (id, params) => {
+      archivedProviderThreadIds.add(params.providerThreadId);
+      io.sendResult(id, {});
+    },
+  ),
+
+  route(
+    BRIDGE_REQUEST_METHODS.threadUnarchive,
+    threadUnarchiveParamsSchema,
+    (id, params) => {
+      archivedProviderThreadIds.delete(params.providerThreadId);
+      io.sendResult(id, {});
+    },
+  ),
+]);
+
+const requestEnvelopeSchema = z.object({
+  id: z.union([z.string(), z.number()]),
+  method: z.string(),
+  params: z.unknown(),
+});
+
+export const handleLine = createBridgeLineHandler({
+  handleParsedMessage(message) {
+    const envelope = requestEnvelopeSchema.safeParse(message);
+    if (!envelope.success) {
       return;
     }
-    if (parsed.data.sourceProviderCheckpointId !== undefined) {
+    const { id, method, params } = envelope.data;
+    const handler = handlers.get(method);
+    if (handler === undefined) {
       io.sendError(
         id,
-        BRIDGE_JSON_RPC_ERRORS.FORK_CHECKPOINT_UNSUPPORTED,
-        "The bench stream provider forks only at the tip of a session",
+        BRIDGE_JSON_RPC_ERRORS.METHOD_NOT_FOUND,
+        `Method not found: ${method}`,
       );
       return;
     }
-    if (rejectIfArchived(id, parsed.data.sourceProviderThreadId)) {
-      return;
-    }
-    const providerThreadId = mintProviderThreadId();
-    openSession({
-      threadId: parsed.data.threadId,
-      providerThreadId,
-      cwd: parsed.data.cwd,
-    });
-    io.sendResult(id, { providerThreadId, sessionRestorable: true });
-  },
-
-  [BRIDGE_REQUEST_METHODS.turnStart]: (id, params) => {
-    const parsed = turnStartParamsSchema.safeParse(params);
-    if (!parsed.success) {
-      invalidParams(id, BRIDGE_REQUEST_METHODS.turnStart, parsed.error.issues);
-      return;
-    }
-    const session = sessions.get(parsed.data.threadId);
-    if (session === undefined) {
-      unknownThread(id, parsed.data.threadId);
-      return;
-    }
-    if (rejectIfArchived(id, session.providerThreadId)) {
-      return;
-    }
-    io.sendResult(id, {});
-    runTurn({
-      session,
-      input: parsed.data.input,
-      clientRequestId: parsed.data.clientRequestId,
+    runBridgeRequest({
+      request: { id, method, params },
+      sendError: io.sendError,
+      handleRequest: async (request) => handler(request.id, request.params),
     });
   },
-
-  [BRIDGE_REQUEST_METHODS.turnSteer]: (id, params) => {
-    const parsed = turnSteerParamsSchema.safeParse(params);
-    if (!parsed.success) {
-      invalidParams(id, BRIDGE_REQUEST_METHODS.turnSteer, parsed.error.issues);
-      return;
-    }
-    const session = sessions.get(parsed.data.threadId);
-    if (session === undefined) {
-      unknownThread(id, parsed.data.threadId);
-      return;
-    }
-    const stream = session.activeStream;
-    if (stream === null) {
-      const message = `No active bench turn to steer (expected ${parsed.data.expectedTurnId})`;
-      io.sendError(id, BRIDGE_JSON_RPC_ERRORS.NO_ACTIVE_TURN, message, {
-        recovery: {
-          kind: "staleTurn",
-          message,
-          retryable: false,
-        } satisfies ProviderRecoveryHint,
-      });
-      return;
-    }
-    stream.steers.push(promptText(parsed.data.input));
-    emitDeltas(session.threadId, [
-      { kind: "input.accepted", clientRequestId: parsed.data.clientRequestId },
-    ]);
-    io.sendResult(id, {});
-  },
-
-  [BRIDGE_REQUEST_METHODS.threadStop]: (id, params) => {
-    const parsed = threadStopParamsSchema.safeParse(params);
-    if (!parsed.success) {
-      invalidParams(id, BRIDGE_REQUEST_METHODS.threadStop, parsed.error.issues);
-      return;
-    }
-    const session = sessions.get(parsed.data.threadId);
-    if (session !== undefined) {
-      if (parsed.data.intent === "interrupt") {
-        interruptStream(session);
-      } else {
-        cancelStream(session);
-      }
-      sessions.delete(parsed.data.threadId);
-    }
-    io.sendResult(id, {});
-  },
-
-  [BRIDGE_REQUEST_METHODS.threadDiscard]: (id, params) => {
-    const parsed = threadDiscardParamsSchema.safeParse(params);
-    if (!parsed.success) {
-      invalidParams(
-        id,
-        BRIDGE_REQUEST_METHODS.threadDiscard,
-        parsed.error.issues,
-      );
-      return;
-    }
-    const session = sessions.get(parsed.data.threadId);
-    if (session !== undefined) {
-      cancelStream(session);
-      sessions.delete(parsed.data.threadId);
-    }
-    archivedProviderThreadIds.delete(parsed.data.providerThreadId);
-    io.sendResult(id, {});
-  },
-
-  [BRIDGE_REQUEST_METHODS.threadArchive]: (id, params) => {
-    const parsed = threadArchiveParamsSchema.safeParse(params);
-    if (!parsed.success) {
-      invalidParams(
-        id,
-        BRIDGE_REQUEST_METHODS.threadArchive,
-        parsed.error.issues,
-      );
-      return;
-    }
-    archivedProviderThreadIds.add(parsed.data.providerThreadId);
-    io.sendResult(id, {});
-  },
-
-  [BRIDGE_REQUEST_METHODS.threadUnarchive]: (id, params) => {
-    const parsed = threadUnarchiveParamsSchema.safeParse(params);
-    if (!parsed.success) {
-      invalidParams(
-        id,
-        BRIDGE_REQUEST_METHODS.threadUnarchive,
-        parsed.error.issues,
-      );
-      return;
-    }
-    archivedProviderThreadIds.delete(parsed.data.providerThreadId);
-    io.sendResult(id, {});
-  },
-};
-
-export function handleLine(line: string): void {
-  let message: unknown;
-  try {
-    message = JSON.parse(line);
-  } catch {
-    return;
-  }
-  if (
-    typeof message !== "object" ||
-    message === null ||
-    Array.isArray(message)
-  ) {
-    return;
-  }
-  const id: unknown = Reflect.get(message, "id");
-  const method: unknown = Reflect.get(message, "method");
-  if (typeof method !== "string") {
-    return;
-  }
-  if (typeof id !== "string" && typeof id !== "number") {
-    return;
-  }
-  const handler = handlers[method];
-  if (handler === undefined) {
-    io.sendError(
-      id,
-      BRIDGE_JSON_RPC_ERRORS.METHOD_NOT_FOUND,
-      `Method not found: ${method}`,
-    );
-    return;
-  }
-  const params: unknown = Reflect.get(message, "params");
-  runBridgeRequest({
-    request: { id, method, params },
-    sendError: io.sendError,
-    handleRequest: async (request) => handler(request.id, request.params),
-  });
-}
+});
 
 function cancelAllStreams(): void {
   for (const session of sessions.values()) {

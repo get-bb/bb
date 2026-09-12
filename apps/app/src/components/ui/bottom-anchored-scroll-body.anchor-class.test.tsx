@@ -73,34 +73,15 @@ describe("BottomAnchoredScrollBody scroll-anchor exclusion", () => {
 });
 
 describe("BottomAnchoredScrollBody grid", () => {
-  it("stacks the scroll port and overlay in one explicit minmax(auto,1fr) row", () => {
+  it("sizes the scroll port grid with one explicit minmax(auto,1fr) row", () => {
     vi.stubGlobal("CSS", { supports: () => false });
-    const view = render(
-      <BottomAnchoredScrollBody
-        footer={null}
-        maxWidthClassName="max-w-none"
-        scrollAnchorThreadId="thread-a"
-        scrollOverlay={<nav>Overlay</nav>}
-      >
-        <div data-timeline-row-id="row-a">row-a</div>
-      </BottomAnchoredScrollBody>,
-    );
-    const scrollPort = view.container.querySelector(".thread-scrollbar");
-    const overlay = view.container.querySelector("[data-scroll-overlay]");
-    const grid = scrollPort?.parentElement;
-    if (!scrollPort || !overlay || !grid) {
-      throw new Error("Scroll body did not render its grid items");
-    }
+    const { container } = renderBody();
+    const grid = container.querySelector(".thread-scrollbar")?.parentElement;
 
-    expect(overlay.parentElement).toBe(grid);
-    expect(grid.classList).toContain("grid");
     expect(
-      [...grid.classList].filter((token) => token.startsWith("grid-rows-")),
+      [...(grid?.classList ?? [])].filter((token) =>
+        token.startsWith("grid-rows-"),
+      ),
     ).toEqual(["grid-rows-[minmax(auto,1fr)]"]);
-    for (const item of [scrollPort, overlay]) {
-      expect(item.classList).toContain("row-start-1");
-      expect(item.classList).toContain("col-start-1");
-      expect(item.classList).toContain("min-h-0");
-    }
   });
 });

@@ -1,15 +1,16 @@
 import type { DbConnection } from "../connection.js";
 
 const generationsByThreadId = new Map<string, number>();
-let latestGeneration = 0;
 
 export function getThreadEventRewriteGeneration(threadId: string): number {
   return generationsByThreadId.get(threadId) ?? 0;
 }
 
 export function bumpThreadEventRewriteGeneration(threadId: string): void {
-  latestGeneration += 1;
-  generationsByThreadId.set(threadId, latestGeneration);
+  generationsByThreadId.set(
+    threadId,
+    getThreadEventRewriteGeneration(threadId) + 1,
+  );
 }
 
 export function getDatabaseDataVersion(db: DbConnection): number {

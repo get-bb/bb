@@ -193,7 +193,6 @@ export interface ThreadTimelineBuildProfile {
   decodedEventCount: number;
   eventDataBytes: number;
   eventRowCount: number;
-  orderingBoundarySequence: number | null;
   pageKind: ThreadTimelinePageKind;
   projectedRowCount: number;
   responseRowCount: number;
@@ -216,7 +215,6 @@ interface ThreadTimelineBuildProfileAccumulator {
   decodedEventCount: number;
   eventDataBytes: number;
   eventRowCount: number;
-  orderingBoundarySequence: number | null;
   projectedRowCount: number;
   responseRowCount: number;
   returnedSegmentCount: number;
@@ -252,11 +250,12 @@ interface SelectedClientRequestContextRows {
   rejectedRows: StoredEventRow[];
 }
 
-export function toThreadEventWithMeta(
+function withRowMeta(
   row: StoredEventRow,
+  event: ThreadEvent,
 ): ThreadEventWithMeta {
   return {
-    event: parseStoredEvent(row),
+    event,
     meta: {
       id: row.id,
       seq: row.sequence,
@@ -265,18 +264,10 @@ export function toThreadEventWithMeta(
   };
 }
 
-function toCachedThreadEventWithMeta(
-  db: DbConnection,
+export function toThreadEventWithMeta(
   row: StoredEventRow,
 ): ThreadEventWithMeta {
-  return {
-    event: decodeStoredEventRowCached(db, row),
-    meta: {
-      id: row.id,
-      seq: row.sequence,
-      createdAt: row.createdAt,
-    },
-  };
+  return withRowMeta(row, parseStoredEvent(row));
 }
 
 function retainedOutputPreviewsByCallId(
@@ -368,8 +359,8 @@ export function applyRetainedOutputPreviews(
 type StoredEventDecoder = (row: StoredEventRow) => ThreadEvent;
 
 function parseAcceptedInputClientRequestId(
-  decode: StoredEventDecoder,
   row: StoredEventRow,
+  decode: StoredEventDecoder = parseStoredEvent,
 ): ClientTurnRequestId {
   const event = decode(row);
   switch (event.type) {
@@ -381,8 +372,8 @@ function parseAcceptedInputClientRequestId(
 }
 
 function parseRejectedClientRequestId(
-  decode: StoredEventDecoder,
   row: StoredEventRow,
+  decode: StoredEventDecoder = parseStoredEvent,
 ): ClientTurnRequestId {
   const event = decode(row);
   if (event.type !== "client/turn/rejected") {
@@ -392,8 +383,8 @@ function parseRejectedClientRequestId(
 }
 
 function tryReadClientTurnRequestedRequestId(
-  decode: StoredEventDecoder,
   row: StoredEventRow,
+  decode: StoredEventDecoder = parseStoredEvent,
 ): ClientTurnRequestId | null {
   const event = decode(row);
   if (event.type !== "client/turn/requested") {
@@ -430,19 +421,13 @@ function collectSteerClientRequestIdsNeedingContext(
   const clientRequestIds = new Set<ClientTurnRequestId>();
   for (const row of rows) {
     if (row.type === "turn/input/accepted") {
-      const clientRequestId = parseAcceptedInputClientRequestId(
-        parseStoredEvent,
-        row,
-      );
+      const clientRequestId = parseAcceptedInputClientRequestId(row);
       terminalClientRequestIds.add(clientRequestId);
       clientRequestIds.delete(clientRequestId);
       continue;
     }
     if (row.type === "client/turn/rejected") {
-      const clientRequestId = parseRejectedClientRequestId(
-        parseStoredEvent,
-        row,
-      );
+      const clientRequestId = parseRejectedClientRequestId(row);
       terminalClientRequestIds.add(clientRequestId);
       clientRequestIds.delete(clientRequestId);
       continue;
@@ -582,10 +567,7 @@ function minSequenceOfClientRequests(
     if (row.type !== "client/turn/requested") {
       continue;
     }
-    const requestId = tryReadClientTurnRequestedRequestId(
-      parseStoredEvent,
-      row,
-    );
+    const requestId = tryReadClientTurnRequestedRequestId(row);
     if (requestId !== null && clientRequestIds.has(requestId)) {
       minSequence = Math.min(minSequence, row.sequence);
     }
@@ -630,10 +612,7 @@ function partitionAcceptedInputRowsByRequestedTurn(
     if (row.scopeKind !== "turn" || row.turnId === null) {
       throw new Error(`Expected turn-scoped turn/input/accepted row ${row.id}`);
     }
-    const clientRequestId = parseAcceptedInputClientRequestId(
-      parseStoredEvent,
-      row,
-    );
+    const clientRequestId = parseAcceptedInputClientRequestId(row);
     if (row.turnId === args.turnId) {
       requestedTurnRows.push(row);
       continue;
@@ -688,10 +667,7 @@ function filterExactEventRowsForRequestedTurn(
       openToolCallIds.delete(row.itemId);
     }
 
-    const requestId = tryReadClientTurnRequestedRequestId(
-      parseStoredEvent,
-      row,
-    );
+    const requestId = tryReadClientTurnRequestedRequestId(row);
     if (
       requestId !== null &&
       args.acceptedClientRequestIdsForOtherTurns.has(requestId)
@@ -1003,10 +979,7 @@ function selectStandardTimelineEventRows(
           excludeDiagnosticEvents,
         })
       : knownBudgetFloor.sequence;
-  const count = Math.max(
-    1,
-    countAffordableAnchors(anchors, budgetFloor, page.segmentLimit),
-  );
+  const count = countAffordableAnchors(anchors, budgetFloor, page.segmentLimit);
   const oldestAnchor = anchors[count - 1];
   const hasPrefix =
     budgetFloor !== undefined &&
@@ -1049,7 +1022,7 @@ function selectStandardTimelineEventRows(
     ...listTimelineRootWindowTurnIds(db, windowArgs),
     ...rows.flatMap((row) => {
       if (row.type !== "client/turn/requested") return [];
-      const requestId = tryReadClientTurnRequestedRequestId(decode, row);
+      const requestId = tryReadClientTurnRequestedRequestId(row, decode);
       const turnId =
         requestId === null
           ? undefined
@@ -1135,7 +1108,7 @@ function selectStandardTimelineEventRows(
   const existingRequests = new Set(
     [...contextRows, ...rows].flatMap((row) =>
       row.type === "client/turn/requested"
-        ? [tryReadClientTurnRequestedRequestId(decode, row)]
+        ? [tryReadClientTurnRequestedRequestId(row, decode)]
         : [],
     ),
   );
@@ -1143,11 +1116,11 @@ function selectStandardTimelineEventRows(
     .filter((row) => row.type === "turn/input/accepted")
     .filter(
       (row) =>
-        !existingRequests.has(parseAcceptedInputClientRequestId(decode, row)),
+        !existingRequests.has(parseAcceptedInputClientRequestId(row, decode)),
     )
     .map((row) => ({
       threadId: thread.id,
-      requestId: parseAcceptedInputClientRequestId(decode, row),
+      requestId: parseAcceptedInputClientRequestId(row, decode),
     }));
   const requestedRows = listStoredClientTurnRequestRowsByKeys(db, {
     keys: requestKeys,
@@ -1156,15 +1129,15 @@ function selectStandardTimelineEventRows(
   const terminalRequestIds = new Set(
     requestContext.flatMap((row) =>
       row.type === "turn/input/accepted"
-        ? [parseAcceptedInputClientRequestId(decode, row)]
+        ? [parseAcceptedInputClientRequestId(row, decode)]
         : row.type === "client/turn/rejected"
-          ? [parseRejectedClientRequestId(decode, row)]
+          ? [parseRejectedClientRequestId(row, decode)]
           : [],
     ),
   );
   const unresolvedRequests = requestContext.flatMap((row) => {
     if (row.type !== "client/turn/requested") return [];
-    const id = tryReadClientTurnRequestedRequestId(decode, row);
+    const id = tryReadClientTurnRequestedRequestId(row, decode);
     return id === null || terminalRequestIds.has(id) ? [] : [id];
   });
   const terminalContext =
@@ -1248,7 +1221,6 @@ function createThreadTimelineBuildProfileAccumulator(): ThreadTimelineBuildProfi
     decodedEventCount: 0,
     eventDataBytes: 0,
     eventRowCount: 0,
-    orderingBoundarySequence: null,
     projectedRowCount: 0,
     responseRowCount: 0,
     returnedSegmentCount: 0,
@@ -1286,7 +1258,6 @@ function completeThreadTimelineBuildProfile(
     decodedEventCount: accumulator.decodedEventCount,
     eventDataBytes: accumulator.eventDataBytes,
     eventRowCount: accumulator.eventRowCount,
-    orderingBoundarySequence: accumulator.orderingBoundarySequence,
     pageKind: options.page.kind,
     projectedRowCount: accumulator.projectedRowCount,
     responseRowCount: accumulator.responseRowCount,
@@ -1393,12 +1364,14 @@ function buildThreadTimelineInternal(
   const rawEventRows = eventSelection.rows;
   profile.eventDataBytes = byteLengthOfStoredEventRows(rawEventRows);
   profile.eventRowCount = rawEventRows.length;
-  profile.orderingBoundarySequence = eventSelection.orderingBoundarySequence;
   profile.selectionStrategy = eventSelection.strategy;
   const decodedRawEvents = measureThreadTimelineStage(
     profile,
     "event-json-decode",
-    () => rawEventRows.map((row) => toCachedThreadEventWithMeta(db, row)),
+    () =>
+      rawEventRows.map((row) =>
+        withRowMeta(row, decodeStoredEventRowCached(db, row)),
+      ),
   );
   profile.decodedEventCount = decodedRawEvents.length;
   const decodedEvents = measureThreadTimelineStage(
@@ -1433,7 +1406,9 @@ function buildThreadTimelineInternal(
     profile,
     "context-window-json-decode",
     () =>
-      contextWindowUsageRows.map((row) => toCachedThreadEventWithMeta(db, row)),
+      contextWindowUsageRows.map((row) =>
+        withRowMeta(row, decodeStoredEventRowCached(db, row)),
+      ),
   );
   const acceptedClientRequestContext: AcceptedClientRequestContext = {
     acceptedClientRequestEvents: [],

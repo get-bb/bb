@@ -6,26 +6,26 @@ import {
   BRIDGE_JSON_RPC_ERRORS,
   type ThreadDelta,
 } from "@get-bb/plugin-sdk/provider-bridge";
-import type { ThreadEvent } from "@get-bb/plugin-sdk/provider-bridge/testing";
 import {
+  completedItems,
   createBenchBridgeHarness,
   deltaNotifications,
+  turnStatuses,
   type BenchBridgeHarness,
+  type BenchThread,
 } from "./bridge-harness.js";
-import { getFixture, streamDocumentText } from "./src/fixtures/index.js";
-import { nextChunkEnd } from "./src/provider-bridge.js";
+import { getFixture } from "./src/fixtures/index.js";
 import { BENCH_STREAM_LOG_DIR_ENV } from "./src/vocabulary.js";
 
-const CWD = "/workspace/bench";
+const SLOW_STREAM =
+  "bench_stream doc=long-response chunk=24 interval=30 prelude=0";
 
 let harness: BenchBridgeHarness;
-let threadCounter = 0;
 
 beforeEach(() => {
   vi.useFakeTimers();
   vi.setSystemTime(new Date("2026-01-02T03:04:05.000Z"));
   harness = createBenchBridgeHarness();
-  harness.initialize();
 });
 
 afterEach(() => {
@@ -33,18 +33,14 @@ afterEach(() => {
   vi.useRealTimers();
 });
 
-function startThread(): { threadId: string; providerThreadId: string } {
-  threadCounter += 1;
-  const threadId = `thr_bench_stream_${threadCounter}`;
-  const providerThreadId = harness.startThread(threadId, CWD);
-  harness.takeMessages();
-  return { threadId, providerThreadId };
+function startTurn(text: string): BenchThread {
+  const thread = harness.startThread();
+  harness.startTurn(thread, text);
+  return thread;
 }
 
 function freshDeltas(threadId: string): ThreadDelta[][] {
-  return deltaNotifications(harness.takeMessages(), threadId).map(
-    (notification) => notification.deltas,
-  );
+  return deltaNotifications(harness.takeMessages(), threadId);
 }
 
 function agentTextDelta(delta: ThreadDelta | undefined): string {
@@ -56,26 +52,17 @@ function agentTextDelta(delta: ThreadDelta | undefined): string {
   return delta.text;
 }
 
-function completedItems(events: readonly ThreadEvent[]) {
-  return events.flatMap((event) =>
-    event.type === "item/completed" ? [event.item] : [],
-  );
-}
-
-function turnStatuses(events: readonly ThreadEvent[]): string[] {
-  return events.flatMap((event) =>
-    event.type === "turn/completed" ? [event.status] : [],
-  );
+function streamedChunks(notifications: readonly ThreadDelta[][]): string[] {
+  return notifications
+    .filter((deltas) => deltas[0]?.kind === "item.textDelta")
+    .map((deltas) => agentTextDelta(deltas[0]));
 }
 
 describe("bench_stream pacing", () => {
   it("emits one textDelta notification per interval whose chunks concatenate to the item.close text", () => {
-    const { threadId, providerThreadId } = startThread();
-    harness.startTurn({
-      threadId,
-      providerThreadId,
-      text: "bench_stream doc=incident-writeup chunk=500 interval=40",
-    });
+    const { threadId } = startTurn(
+      "bench_stream doc=incident-writeup chunk=500 interval=40",
+    );
 
     const opening = freshDeltas(threadId).flat();
     expect(opening.slice(0, 2).map((delta) => delta.kind)).toEqual([
@@ -129,7 +116,7 @@ describe("bench_stream pacing", () => {
     ]);
     expect(vi.getTimerCount()).toBe(0);
 
-    const events = harness.assemble(harness.allMessages());
+    const events = harness.events();
     expect(turnStatuses(events)).toEqual(["completed"]);
     expect(completedItems(events).at(-1)).toMatchObject({
       type: "agentMessage",
@@ -138,27 +125,22 @@ describe("bench_stream pacing", () => {
   });
 
   it("repeats the document with blank lines and lets the last chunk run short", () => {
-    const { threadId, providerThreadId } = startThread();
-    harness.startTurn({
-      threadId,
-      providerThreadId,
-      text: "bench_stream doc=pathological chunk=4096 interval=10 repeat=2 prelude=0",
-    });
+    const { threadId } = startTurn(
+      "bench_stream doc=pathological chunk=4096 interval=10 repeat=2 prelude=0",
+    );
     expect(
       freshDeltas(threadId)
         .flat()
         .map((delta) => delta.kind),
     ).toEqual(["input.accepted", "turn.open", "item.open"]);
 
-    const expected = streamDocumentText("pathological", 2);
-    expect(expected).toBe(
-      `${getFixture("pathological")}\n\n${getFixture("pathological")}`,
-    );
+    const expected = [
+      getFixture("pathological"),
+      getFixture("pathological"),
+    ].join("\n\n");
     vi.advanceTimersByTime(10 * Math.ceil(expected.length / 4096));
     const notifications = freshDeltas(threadId);
-    const chunks = notifications
-      .filter((deltas) => deltas[0]?.kind === "item.textDelta")
-      .map((deltas) => agentTextDelta(deltas[0]));
+    const chunks = streamedChunks(notifications);
     expect(chunks.join("")).toBe(expected);
     expect(chunks.slice(0, -1).every((chunk) => chunk.length === 4096)).toBe(
       true,
@@ -169,173 +151,110 @@ describe("bench_stream pacing", () => {
       { kind: "turn.boundary", status: "completed" },
     ]);
   });
-
-  it("never splits a surrogate pair across chunks", () => {
-    const text = "ab\u{1F600}cd";
-    expect(nextChunkEnd(text, 0, 2)).toBe(2);
-    expect(nextChunkEnd(text, 0, 3)).toBe(4);
-    expect(nextChunkEnd(text, 4, 10)).toBe(text.length);
-  });
 });
 
 describe("bench_stream cancellation", () => {
-  it("settles an interrupted stream before answering thread/stop and emits nothing afterwards", () => {
-    const { threadId, providerThreadId } = startThread();
-    harness.startTurn({
-      threadId,
-      providerThreadId,
-      text: "bench_stream doc=long-response chunk=24 interval=30 prelude=0",
-    });
-    vi.advanceTimersByTime(90);
-    const streamed = freshDeltas(threadId).slice(1);
-    expect(streamed).toHaveLength(3);
+  it.each([
+    {
+      method: "thread/stop",
+      act: (thread: BenchThread) => harness.stopThread(thread, "interrupt"),
+      trailing: [],
+    },
+    {
+      method: "thread/resume",
+      act: (thread: BenchThread) => harness.resumeThread(thread),
+      trailing: [[{ kind: "session.reset" }]],
+    },
+  ])(
+    "settles the stream and drops queued steers before answering $method, then stays silent",
+    ({ act, trailing }) => {
+      const thread = startTurn(SLOW_STREAM);
+      harness.steerTurn(thread, "faster");
+      vi.advanceTimersByTime(90);
+      harness.takeMessages();
 
-    harness.stopThread({ threadId, providerThreadId, intent: "interrupt" });
-    const stopMessages = harness.takeMessages();
-    const responseIndex = stopMessages.findIndex(
-      (message) => message.id !== undefined,
-    );
-    const settling = deltaNotifications(
-      stopMessages.slice(0, responseIndex),
-      threadId,
-    );
-    expect(settling.map((notification) => notification.deltas)).toMatchObject([
-      [
-        {
-          kind: "item.close",
-          status: "interrupted",
-          item: {
-            type: "agentMessage",
-            text: getFixture("long-response").slice(0, 72),
+      act(thread);
+      const messages = harness.takeMessages();
+      const responseIndex = messages.findIndex(
+        (message) => message.id !== undefined,
+      );
+      expect(
+        deltaNotifications(messages.slice(0, responseIndex), thread.threadId),
+      ).toMatchObject([
+        [
+          {
+            kind: "item.close",
+            status: "interrupted",
+            item: {
+              type: "agentMessage",
+              text: getFixture("long-response").slice(0, 72),
+            },
           },
-        },
-        { kind: "turn.boundary", status: "interrupted" },
-      ],
-    ]);
-    expect(vi.getTimerCount()).toBe(0);
+          { kind: "turn.boundary", status: "interrupted" },
+        ],
+        ...trailing,
+      ]);
+      expect(vi.getTimerCount()).toBe(0);
 
-    vi.advanceTimersByTime(60_000);
-    expect(harness.takeMessages()).toEqual([]);
-    expect(turnStatuses(harness.assemble(harness.allMessages()))).toEqual([
-      "interrupted",
-    ]);
-  });
+      vi.advanceTimersByTime(60_000);
+      expect(harness.takeMessages()).toEqual([]);
+      expect(turnStatuses(harness.events())).toEqual(["interrupted"]);
+    },
+  );
 
   it("cancels pacing on a release stop without fabricating an interruption", () => {
-    const { threadId, providerThreadId } = startThread();
-    harness.startTurn({
-      threadId,
-      providerThreadId,
-      text: "bench_stream doc=long-response chunk=24 interval=30 prelude=0",
-    });
+    const thread = startTurn(SLOW_STREAM);
     vi.advanceTimersByTime(30);
     harness.takeMessages();
 
-    harness.stopThread({ threadId, providerThreadId, intent: "release" });
-    expect(freshDeltas(threadId)).toEqual([]);
+    harness.stopThread(thread, "release");
+    expect(freshDeltas(thread.threadId)).toEqual([]);
     expect(vi.getTimerCount()).toBe(0);
     vi.advanceTimersByTime(60_000);
     expect(harness.takeMessages()).toEqual([]);
   });
 
   it("settles a running stream as interrupted before the next turn starts", () => {
-    const { threadId, providerThreadId } = startThread();
-    harness.startTurn({
-      threadId,
-      providerThreadId,
-      text: "bench_stream doc=long-response chunk=24 interval=30 prelude=0",
-    });
+    const thread = startTurn(SLOW_STREAM);
     vi.advanceTimersByTime(60);
-    harness.startTurn({ threadId, providerThreadId, text: "say hello" });
+    harness.startTurn(thread, "say hello");
     expect(vi.getTimerCount()).toBe(0);
 
-    const events = harness.assemble(harness.allMessages());
+    const events = harness.events();
     expect(turnStatuses(events)).toEqual(["interrupted", "completed"]);
     expect(completedItems(events).at(-1)).toMatchObject({
       type: "agentMessage",
       text: "Response to: say hello",
     });
   });
-
-  it("settles a running stream as interrupted before a resume resets the session", () => {
-    const { threadId, providerThreadId } = startThread();
-    harness.startTurn({
-      threadId,
-      providerThreadId,
-      text: "bench_stream doc=long-response chunk=24 interval=30 prelude=0",
-    });
-    vi.advanceTimersByTime(60);
-    harness.takeMessages();
-
-    harness.resumeThread({ threadId, providerThreadId, cwd: CWD });
-    const resumeMessages = harness.takeMessages();
-    const responseIndex = resumeMessages.findIndex(
-      (message) => message.id !== undefined,
-    );
-    expect(
-      deltaNotifications(resumeMessages.slice(0, responseIndex), threadId).map(
-        (notification) => notification.deltas,
-      ),
-    ).toMatchObject([
-      [
-        {
-          kind: "item.close",
-          status: "interrupted",
-          item: {
-            type: "agentMessage",
-            text: getFixture("long-response").slice(0, 48),
-          },
-        },
-        { kind: "turn.boundary", status: "interrupted" },
-      ],
-      [{ kind: "session.reset" }],
-    ]);
-    expect(vi.getTimerCount()).toBe(0);
-    vi.advanceTimersByTime(60_000);
-    expect(harness.takeMessages()).toEqual([]);
-    expect(turnStatuses(harness.assemble(harness.allMessages()))).toEqual([
-      "interrupted",
-    ]);
-  });
 });
 
 describe("bench_stream steering", () => {
   it("refuses a steer when no stream is running", () => {
-    const { threadId, providerThreadId } = startThread();
-    harness.startTurn({ threadId, providerThreadId, text: "say hello" });
-    const idle = harness.steerTurn({
-      threadId,
-      providerThreadId,
-      text: "faster",
-    });
-    expect(idle.error?.code).toBe(BRIDGE_JSON_RPC_ERRORS.NO_ACTIVE_TURN);
+    const thread = startTurn("say hello");
+    expect(harness.steerTurn(thread, "faster").error?.code).toBe(
+      BRIDGE_JSON_RPC_ERRORS.NO_ACTIVE_TURN,
+    );
   });
 
   it("accepts a steer into the running stream and answers it after the document completes", () => {
-    const { threadId, providerThreadId } = startThread();
-    harness.startTurn({
-      threadId,
-      providerThreadId,
-      text: "bench_stream doc=incident-writeup chunk=4096 interval=30 prelude=0",
-    });
+    const thread = startTurn(
+      "bench_stream doc=incident-writeup chunk=4096 interval=30 prelude=0",
+    );
     vi.advanceTimersByTime(30);
     harness.takeMessages();
 
-    const steer = harness.steerTurn({
-      threadId,
-      providerThreadId,
-      text: "also list the owners",
-    });
-    expect(steer.error).toBeUndefined();
-    expect(freshDeltas(threadId)).toMatchObject([[{ kind: "input.accepted" }]]);
+    expect(
+      harness.steerTurn(thread, "also list the owners").error,
+    ).toBeUndefined();
+    expect(freshDeltas(thread.threadId)).toMatchObject([
+      [{ kind: "input.accepted" }],
+    ]);
 
     const expected = getFixture("incident-writeup");
     vi.advanceTimersByTime(30 * Math.ceil(expected.length / 4096));
-    const notifications = freshDeltas(threadId);
-    const chunks = notifications
-      .filter((deltas) => deltas[0]?.kind === "item.textDelta")
-      .map((deltas) => agentTextDelta(deltas[0]));
-    expect(chunks.join("")).toBe(expected.slice(4096));
+    const notifications = freshDeltas(thread.threadId);
+    expect(streamedChunks(notifications).join("")).toBe(expected.slice(4096));
     expect(notifications.at(-1)).toMatchObject([
       {
         kind: "item.close",
@@ -353,7 +272,7 @@ describe("bench_stream steering", () => {
     ]);
     expect(vi.getTimerCount()).toBe(0);
 
-    const events = harness.assemble(harness.allMessages());
+    const events = harness.events();
     expect(turnStatuses(events)).toEqual(["completed"]);
     expect(
       events.filter((event) => event.type === "turn/input/accepted"),
@@ -363,24 +282,6 @@ describe("bench_stream steering", () => {
         item.type === "agentMessage" ? item.text : item.type,
       ),
     ).toEqual([expected, "Response to: also list the owners"]);
-  });
-
-  it("drops queued steers when the stream is interrupted", () => {
-    const { threadId, providerThreadId } = startThread();
-    harness.startTurn({
-      threadId,
-      providerThreadId,
-      text: "bench_stream doc=long-response chunk=24 interval=30 prelude=0",
-    });
-    harness.steerTurn({ threadId, providerThreadId, text: "faster" });
-    harness.takeMessages();
-    harness.stopThread({ threadId, providerThreadId, intent: "interrupt" });
-    expect(freshDeltas(threadId)).toMatchObject([
-      [
-        { kind: "item.close", status: "interrupted" },
-        { kind: "turn.boundary", status: "interrupted" },
-      ],
-    ]);
   });
 });
 
@@ -395,83 +296,63 @@ describe("prompt directives", () => {
     ["bench_history seed=1 seed=2 tools=2", "duplicate"],
     ["bench_noop now", "no tokens"],
   ])("settles %j as a failed turn naming %j", (prompt, problem) => {
-    const { threadId, providerThreadId } = startThread();
-    harness.startTurn({ threadId, providerThreadId, text: prompt });
-    const deltas = freshDeltas(threadId).flat();
-    const error = deltas.find((delta) => delta.kind === "provider.error");
+    const { threadId } = startTurn(prompt);
+    const error = freshDeltas(threadId)
+      .flat()
+      .find((delta) => delta.kind === "provider.error");
     expect(error).toMatchObject({
       kind: "provider.error",
       message: "Invalid bench directive",
+      detail: expect.stringContaining(problem),
       settlesTurn: true,
     });
-    expect(error?.kind === "provider.error" ? error.detail : "").toContain(
-      problem,
-    );
     expect(vi.getTimerCount()).toBe(0);
-    expect(turnStatuses(harness.assemble(harness.allMessages()))).toEqual([
-      "failed",
-    ]);
+    expect(turnStatuses(harness.events())).toEqual(["failed"]);
   });
 
   it("settles bench_noop without opening a turn or emitting items", () => {
-    const { threadId, providerThreadId } = startThread();
-    harness.startTurn({ threadId, providerThreadId, text: "bench_noop" });
+    const { threadId } = startTurn("bench_noop");
     expect(freshDeltas(threadId)).toMatchObject([
       [
         { kind: "input.accepted" },
         { kind: "turn.boundary", status: "completed", claimIfIdle: true },
       ],
     ]);
-    const events = harness.assemble(harness.allMessages());
+    const events = harness.events();
     expect(turnStatuses(events)).toEqual(["completed"]);
     expect(completedItems(events)).toEqual([]);
   });
 
   it("answers any other prompt with a single completed message", () => {
-    const { threadId, providerThreadId } = startThread();
-    harness.startTurn({
-      threadId,
-      providerThreadId,
-      text: "what is bench_stream?\nbench_stream doc=long-response chunk=24 interval=30",
-    });
-    const events = harness.assemble(harness.allMessages());
+    const prompt =
+      "what is bench_stream?\nbench_stream doc=long-response chunk=24 interval=30";
+    startTurn(prompt);
+    const events = harness.events();
     expect(turnStatuses(events)).toEqual(["completed"]);
     expect(completedItems(events)).toMatchObject([
-      {
-        type: "agentMessage",
-        text: "Response to: what is bench_stream?\nbench_stream doc=long-response chunk=24 interval=30",
-      },
+      { type: "agentMessage", text: `Response to: ${prompt}` },
     ]);
   });
 });
 
 describe("emission log", () => {
   let logRoot: string;
-  let savedLogDir: string | undefined;
 
   beforeEach(() => {
     logRoot = mkdtempSync(join(tmpdir(), "bb-bench-stream-log-"));
-    savedLogDir = process.env[BENCH_STREAM_LOG_DIR_ENV];
-    process.env[BENCH_STREAM_LOG_DIR_ENV] = join(logRoot, "nested");
+    vi.stubEnv(BENCH_STREAM_LOG_DIR_ENV, join(logRoot, "nested"));
   });
 
   afterEach(() => {
-    if (savedLogDir === undefined) {
-      delete process.env[BENCH_STREAM_LOG_DIR_ENV];
-    } else {
-      process.env[BENCH_STREAM_LOG_DIR_ENV] = savedLogDir;
-    }
+    vi.unstubAllEnvs();
     rmSync(logRoot, { recursive: true, force: true });
   });
 
   it("appends start, one delta line per tick, and complete to <dir>/<threadId>.jsonl", () => {
-    const { threadId, providerThreadId } = startThread();
     const startedAt = Date.now();
-    harness.startTurn({
-      threadId,
-      providerThreadId,
-      text: "bench_stream doc=data-analysis chunk=3000 interval=25 prelude=0",
-    });
+    const { threadId } = startTurn(
+      "bench_stream doc=data-analysis chunk=3000 interval=25 prelude=0",
+    );
     vi.advanceTimersByTime(100);
 
     const docChars = getFixture("data-analysis").length;

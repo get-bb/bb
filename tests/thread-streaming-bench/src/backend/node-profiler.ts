@@ -1,6 +1,9 @@
 import { readFileSync } from "node:fs";
 import { CdpConnection } from "../browser/cdp.js";
-import { cpuProfileSchema, type CpuProfile } from "../browser/driver.js";
+import {
+  profilerStopResponseSchema,
+  type CpuProfile,
+} from "../browser/driver.js";
 import { waitUntil } from "./api.js";
 
 const INSPECTOR_URL_PATTERN =
@@ -25,10 +28,7 @@ export async function connectNodeProfiler(
     `inspector URL in ${stdioLogPath}`,
     30_000,
   );
-  const connection = await CdpConnection.connect(url, {
-    commandTimeoutMs: 120_000,
-    timeoutMs: 10_000,
-  });
+  const connection = await CdpConnection.connect(url);
   await connection.send("Profiler.enable");
   return {
     close: () => connection.close(),
@@ -37,15 +37,9 @@ export async function connectNodeProfiler(
       await connection.send("Profiler.start");
     },
     async stop() {
-      const result = await connection.send("Profiler.stop");
-      if (
-        typeof result !== "object" ||
-        result === null ||
-        !("profile" in result)
-      ) {
-        throw new Error("Profiler.stop returned no profile");
-      }
-      return cpuProfileSchema.parse(result.profile);
+      return profilerStopResponseSchema.parse(
+        await connection.send("Profiler.stop"),
+      ).profile;
     },
   };
 }

@@ -1,84 +1,53 @@
-import fs from "node:fs";
-import os from "node:os";
-import path from "node:path";
 import { describe, expect, it } from "vitest";
 import {
   encodeClientTurnRequestIdNumber,
   LOCAL_WORKFLOW_TASK_TYPE,
   THREAD_CONTEXT_CLEAR_OPERATION,
-  threadScope,
-  turnScope,
-  type Thread,
   type ThreadEventItemType,
   type ThreadEventType,
 } from "@bb/domain";
 import {
-  createConnection,
-  createProject,
   createThread,
   deleteThreadEventSuffixInTransaction,
   getLatestThreadSequence,
-  insertEvents,
-  migrate,
   noopNotifier,
   pruneContextWindowUsageEventsBeforeSequence,
   pruneResolvedItemDeltas,
-  upsertHost,
-  type DbConnection,
 } from "@bb/db";
-import type { ThreadTimelineResponse } from "@bb/server-contract";
 import { pruneThreadEventHistory } from "../../../src/services/system/event-pruning.js";
-import { clearStoredEventDecodeCache } from "../../../src/services/threads/stored-event-decode-cache.js";
-import { clearTimelineOrderingContextCache } from "../../../src/services/threads/timeline-context-order.js";
 import {
-  buildThreadTimelineWithProfile,
-  type ThreadTimelineBuildProfile,
-} from "../../../src/services/threads/timeline.js";
+  clearTimelineOrderingContextCache,
+  getTimelineGroupingContext,
+} from "../../../src/services/threads/timeline-context-order.js";
 import type { ThreadTimelinePageRequest } from "../../../src/services/threads/timeline-pagination.js";
-import { previewTimelineResponseOutputs } from "../../../src/services/threads/timeline-output-preview.js";
 import {
-  DEFAULT_MAX_INLINE_OUTPUT_CHARS,
-  truncateTimelineResponseOutputs,
-} from "../../../src/services/threads/timeline-output-truncation.js";
-import {
-  clearTimelineSelectionMemo,
-  readTimelineSelectionMemoSize,
+  countTimelineSelectionMemoEntries,
   TIMELINE_SELECTION_MEMO_MAX_ENTRIES,
 } from "../../../src/services/threads/timeline-selection-memo.js";
-
-type EventInput = Parameters<typeof insertEvents>[2][number];
-type Random = () => number;
-type Variant = "default" | "nested";
-
-interface TestThread {
-  coldDb: DbConnection;
-  db: DbConnection;
-  dir: string;
-  projectId: string;
-  thread: Thread;
-}
-
-interface RowSpec {
-  data: Record<string, unknown>;
-  itemId?: string | null;
-  itemKind?: ThreadEventItemType | null;
-  parentToolCallId?: string | null;
-  providerThreadId?: string | null;
-  turnId?: string | null;
-  type: ThreadEventType;
-}
+import { createTestProviderRegistry } from "../../helpers/provider-registry.js";
+import {
+  appendRows as append,
+  createRandom,
+  PROVIDER_THREAD_ID as providerThreadId,
+  withTestThread,
+  type Random,
+  type RowSpec,
+  type TestThread,
+} from "../../helpers/timeline-cache-fixture.js";
+import {
+  buildRouteTimelinePage,
+  clearCrossBuildTimelineCaches,
+  selectionWasReused,
+  type BuiltTimelinePage,
+  type TimelineVariant,
+} from "../../provider-corpus/corpus-harness.js";
 
 interface BuildArgs {
   eventBudget: number;
   includeDiagnosticOperations: boolean;
-  maxSeq: number | null;
+  maxSeq?: number;
   page: ThreadTimelinePageRequest;
-  variant: Variant;
-}
-
-interface BuiltPage {
-  profile: ThreadTimelineBuildProfile;
-  response: ThreadTimelineResponse;
+  variant: TimelineVariant;
 }
 
 interface ClosedTurn {
@@ -104,7 +73,6 @@ interface SessionState {
 
 const SEEDS = 5;
 const STEPS = 70;
-const providerThreadId = "provider-memo";
 const execution = {
   model: "gpt-5",
   serviceTier: "default",
@@ -112,77 +80,7 @@ const execution = {
   permissionMode: "full",
   source: "client/turn/requested",
 } as const;
-
-let migratedImage: Buffer | null = null;
-
-function readMigratedImage(): Buffer {
-  if (migratedImage === null) {
-    const db = createConnection(":memory:");
-    migrate(db);
-    migratedImage = db.$client.serialize();
-    db.$client.close();
-  }
-  return migratedImage;
-}
-
-function setup(status: Thread["status"] = "active"): TestThread {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "bb-memo-"));
-  const file = path.join(dir, "bb.db");
-  fs.writeFileSync(file, readMigratedImage());
-  const db = createConnection(file);
-  const host = upsertHost(db, noopNotifier, { name: "memo-host" });
-  const { project } = createProject(db, noopNotifier, {
-    name: "memo-project",
-    source: { type: "local_path", hostId: host.id, path: "/tmp/memo" },
-  });
-  const thread = createThread(db, noopNotifier, {
-    projectId: project.id,
-    providerId: "codex",
-    status,
-  });
-  return {
-    coldDb: createConnection(file),
-    db,
-    dir,
-    projectId: project.id,
-    thread,
-  };
-}
-
-function teardown(testThread: TestThread): void {
-  testThread.coldDb.$client.close();
-  testThread.db.$client.close();
-  fs.rmSync(testThread.dir, { force: true, recursive: true });
-}
-
-function append(testThread: TestThread, specs: readonly RowSpec[]): number {
-  let sequence = getLatestThreadSequence(testThread.db, {
-    threadId: testThread.thread.id,
-  });
-  const rows: EventInput[] = specs.map((spec) => {
-    sequence += 1;
-    const turnId = spec.turnId ?? null;
-    return {
-      createdAt: 1_800_000_000_000 + sequence * 1_000,
-      data: JSON.stringify(spec.data),
-      itemId: spec.itemId ?? null,
-      itemKind: spec.itemKind ?? null,
-      parentToolCallId: spec.parentToolCallId ?? null,
-      providerThreadId:
-        spec.providerThreadId === undefined
-          ? turnId === null
-            ? null
-            : providerThreadId
-          : spec.providerThreadId,
-      scope: turnId === null ? threadScope() : turnScope(turnId),
-      sequence,
-      threadId: testThread.thread.id,
-      type: spec.type,
-    };
-  });
-  insertEvents(testThread.db, noopNotifier, rows);
-  return sequence;
-}
+const registry = await createTestProviderRegistry();
 
 function userRequest(
   value: number,
@@ -240,6 +138,109 @@ function deltaRow(
   return { data: { itemId, delta }, itemId, turnId, type };
 }
 
+function messageDelta(turnId: string, itemId: string, delta: string): RowSpec {
+  return deltaRow("item/agentMessage/delta", turnId, itemId, delta);
+}
+
+function messageStarted(turnId: string, id: string): RowSpec {
+  return itemRow("item/started", turnId, {
+    id,
+    text: "",
+    type: "agentMessage",
+  });
+}
+
+function agentToolCall(
+  type: "item/started" | "item/completed",
+  turnId: string,
+  id: string,
+): RowSpec {
+  return itemRow(type, turnId, {
+    arguments: { prompt: "Investigate" },
+    id,
+    ...(type === "item/started"
+      ? { status: "pending" }
+      : { result: "done", status: "completed" }),
+    tool: "Agent",
+    type: "toolCall",
+  });
+}
+
+function childCommand(
+  turnId: string,
+  id: string,
+  parentToolCallId: string,
+): RowSpec {
+  return itemRow(
+    "item/completed",
+    turnId,
+    {
+      aggregatedOutput: "child output\n",
+      approvalStatus: null,
+      command: "echo child",
+      cwd: "/tmp/memo",
+      exitCode: 0,
+      id,
+      status: "completed",
+      type: "commandExecution",
+    },
+    parentToolCallId,
+  );
+}
+
+function workflowTask(id: string, completed: boolean) {
+  return {
+    description: "workflow",
+    id,
+    skipTranscript: false,
+    status: completed ? "completed" : "pending",
+    taskStatus: completed ? "completed" : "running",
+    taskType: LOCAL_WORKFLOW_TASK_TYPE,
+    type: "backgroundTask",
+    workflowName: "workflow",
+  } as const;
+}
+
+function workflowTaskUpdate(id: string, completed: boolean): RowSpec {
+  return {
+    data: { item: workflowTask(id, completed) },
+    itemId: id,
+    itemKind: "backgroundTask",
+    providerThreadId,
+    type: completed
+      ? "item/backgroundTask/completed"
+      : "item/backgroundTask/progress",
+  };
+}
+
+function contextUsage(
+  turnId: string,
+  usedTokens: number,
+  parentToolCallId: string | null = null,
+): RowSpec {
+  return {
+    data: {
+      contextWindowUsage: {
+        estimated: false,
+        modelContextWindow: 200_000,
+        usedTokens,
+      },
+    },
+    parentToolCallId,
+    turnId,
+    type: "thread/contextWindowUsage/updated",
+  };
+}
+
+function completeTurn(
+  state: SessionState,
+  turnId: string,
+  status = "completed",
+): RowSpec {
+  closeTurn(state, turnId);
+  return { data: { status }, turnId, type: "turn/completed" };
+}
+
 function startTurn(state: SessionState): RowSpec[] {
   state.turnCounter += 1;
   state.requestCounter += 1;
@@ -291,8 +292,7 @@ function lateDeltaRows(state: SessionState, random: Random): RowSpec[] {
     ];
   }
   return [
-    deltaRow(
-      "item/agentMessage/delta",
+    messageDelta(
       closed.turnId,
       closed.messageId ?? nextItemId(state, "late-message"),
       random() < 0.5 ? "late line\n" : "late word ",
@@ -300,16 +300,16 @@ function lateDeltaRows(state: SessionState, random: Random): RowSpec[] {
   ];
 }
 
-function earlyDeltaRows(state: SessionState): RowSpec[] {
-  const turnNumber = state.turnCounter + 1;
-  return [
-    deltaRow(
-      "item/agentMessage/delta",
-      `turn-${turnNumber}`,
-      `early-message-${turnNumber}`,
-      "early ",
-    ),
-  ];
+function contextClear(operationId: string): RowSpec {
+  return {
+    data: {
+      operation: THREAD_CONTEXT_CLEAR_OPERATION,
+      operationId,
+      status: "completed",
+      message: "Fresh context",
+    },
+    type: "system/operation",
+  };
 }
 
 function randomSessionRows(state: SessionState, random: Random): RowSpec[] {
@@ -319,21 +319,18 @@ function randomSessionRows(state: SessionState, random: Random): RowSpec[] {
     return lateDeltaRows(state, random);
   }
   if (outOfOrder < 0.08) {
-    return earlyDeltaRows(state);
+    const turnNumber = state.turnCounter + 1;
+    return [
+      messageDelta(
+        `turn-${turnNumber}`,
+        `early-message-${turnNumber}`,
+        "early ",
+      ),
+    ];
   }
   if (turnId === null) {
     if (random() < 0.1) {
-      return [
-        {
-          data: {
-            operation: THREAD_CONTEXT_CLEAR_OPERATION,
-            operationId: `clear-${state.itemCounter}`,
-            status: "completed",
-            message: "Fresh context",
-          },
-          type: "system/operation",
-        },
-      ];
+      return [contextClear(`clear-${state.itemCounter}`)];
     }
     return startTurn(state);
   }
@@ -343,26 +340,13 @@ function randomSessionRows(state: SessionState, random: Random): RowSpec[] {
     if (state.openMessage === null) {
       state.openMessage = { id: nextItemId(state, "message"), text: "" };
       state.lastMessageId = state.openMessage.id;
-      rows.push(
-        itemRow("item/started", turnId, {
-          id: state.openMessage.id,
-          text: "",
-          type: "agentMessage",
-        }),
-      );
+      rows.push(messageStarted(turnId, state.openMessage.id));
     }
     const count = 1 + Math.floor(random() * 3);
     for (let index = 0; index < count; index += 1) {
       const delta = random() < 0.3 ? `line ${index}\n` : `word${index} `;
       state.openMessage.text += delta;
-      rows.push(
-        deltaRow(
-          "item/agentMessage/delta",
-          turnId,
-          state.openMessage.id,
-          delta,
-        ),
-      );
+      rows.push(messageDelta(turnId, state.openMessage.id, delta));
     }
     return rows;
   }
@@ -415,17 +399,20 @@ function randomSessionRows(state: SessionState, random: Random): RowSpec[] {
   }
   if (choice < 0.56) {
     const rows: RowSpec[] = [];
+    const command = {
+      approvalStatus: null,
+      command: "pnpm test",
+      cwd: "/tmp/memo",
+      type: "commandExecution",
+    } as const;
     if (state.openCommandId === null) {
       state.openCommandId = nextItemId(state, "command");
       state.lastCommandId = state.openCommandId;
       rows.push(
         itemRow("item/started", turnId, {
-          approvalStatus: null,
-          command: "pnpm test",
-          cwd: "/tmp/memo",
+          ...command,
           id: state.openCommandId,
           status: "pending",
-          type: "commandExecution",
         }),
       );
     }
@@ -440,14 +427,11 @@ function randomSessionRows(state: SessionState, random: Random): RowSpec[] {
     if (random() < 0.3) {
       rows.push(
         itemRow("item/completed", turnId, {
+          ...command,
           aggregatedOutput: "ok\n",
-          approvalStatus: null,
-          command: "pnpm test",
-          cwd: "/tmp/memo",
           exitCode: 0,
           id: state.openCommandId,
           status: "completed",
-          type: "commandExecution",
         }),
       );
       state.openCommandId = null;
@@ -457,15 +441,7 @@ function randomSessionRows(state: SessionState, random: Random): RowSpec[] {
   if (choice < 0.64) {
     if (state.openToolCallId === null) {
       state.openToolCallId = nextItemId(state, "agent");
-      return [
-        itemRow("item/started", turnId, {
-          arguments: { prompt: "Investigate" },
-          id: state.openToolCallId,
-          status: "pending",
-          tool: "Agent",
-          type: "toolCall",
-        }),
-      ];
+      return [agentToolCall("item/started", turnId, state.openToolCallId)];
     }
     const toolCallId = state.openToolCallId;
     const roll = random();
@@ -480,36 +456,10 @@ function randomSessionRows(state: SessionState, random: Random): RowSpec[] {
       ];
     }
     if (roll < 0.75) {
-      const childId = nextItemId(state, "child");
-      return [
-        itemRow(
-          "item/completed",
-          turnId,
-          {
-            aggregatedOutput: "child output\n",
-            approvalStatus: null,
-            command: "echo child",
-            cwd: "/tmp/memo",
-            exitCode: 0,
-            id: childId,
-            status: "completed",
-            type: "commandExecution",
-          },
-          toolCallId,
-        ),
-      ];
+      return [childCommand(turnId, nextItemId(state, "child"), toolCallId)];
     }
     state.openToolCallId = null;
-    return [
-      itemRow("item/completed", turnId, {
-        arguments: { prompt: "Investigate" },
-        id: toolCallId,
-        result: "done",
-        status: "completed",
-        tool: "Agent",
-        type: "toolCall",
-      }),
-    ];
+    return [agentToolCall("item/completed", turnId, toolCallId)];
   }
   if (choice < 0.7) {
     state.requestCounter += 1;
@@ -525,19 +475,7 @@ function randomSessionRows(state: SessionState, random: Random): RowSpec[] {
   if (choice < 0.8) {
     const roll = random();
     if (roll < 0.4) {
-      return [
-        {
-          data: {
-            contextWindowUsage: {
-              estimated: false,
-              modelContextWindow: 200_000,
-              usedTokens: state.itemCounter * 10,
-            },
-          },
-          turnId,
-          type: "thread/contextWindowUsage/updated",
-        },
-      ];
+      return [contextUsage(turnId, state.itemCounter * 10)];
     }
     if (roll < 0.7) {
       const breakdown = {
@@ -566,49 +504,19 @@ function randomSessionRows(state: SessionState, random: Random): RowSpec[] {
     ];
   }
   if (choice < 0.86) {
-    const taskId = state.openTaskId ?? `task:${nextItemId(state, "wf")}`;
-    const item = {
-      description: "workflow",
-      id: taskId,
-      skipTranscript: false,
-      taskType: LOCAL_WORKFLOW_TASK_TYPE,
-      type: "backgroundTask",
-      workflowName: "workflow",
-    };
     if (state.openTaskId === null) {
-      state.openTaskId = taskId;
+      state.openTaskId = `task:${nextItemId(state, "wf")}`;
       return [
-        itemRow("item/started", turnId, {
-          ...item,
-          status: "pending",
-          taskStatus: "running",
-          type: "backgroundTask",
-        }),
+        itemRow("item/started", turnId, workflowTask(state.openTaskId, false)),
       ];
     }
+    const taskId = state.openTaskId;
     const completed = random() < 0.4;
     if (completed) state.openTaskId = null;
-    return [
-      {
-        data: {
-          item: {
-            ...item,
-            status: completed ? "completed" : "pending",
-            taskStatus: completed ? "completed" : "running",
-          },
-        },
-        itemId: taskId,
-        itemKind: "backgroundTask",
-        providerThreadId,
-        type: completed
-          ? "item/backgroundTask/completed"
-          : "item/backgroundTask/progress",
-      },
-    ];
+    return [workflowTaskUpdate(taskId, completed)];
   }
   if (choice < 0.93) {
-    closeTurn(state, turnId);
-    return [{ data: { status: "completed" }, turnId, type: "turn/completed" }];
+    return [completeTurn(state, turnId)];
   }
   closeTurn(state, turnId);
   return [
@@ -616,87 +524,38 @@ function randomSessionRows(state: SessionState, random: Random): RowSpec[] {
   ];
 }
 
-function buildPage(
-  db: DbConnection,
-  thread: Thread,
-  args: BuildArgs,
-): BuiltPage {
-  const includeNestedRows = args.variant === "nested";
-  const { profile, response } = buildThreadTimelineWithProfile(db, thread, {
-    eventBudget: args.eventBudget,
-    includeDiagnosticOperations: args.includeDiagnosticOperations,
-    includeNestedRows,
-    maxInlineOutputChars: DEFAULT_MAX_INLINE_OUTPUT_CHARS,
-    maxSeq: args.maxSeq ?? getLatestThreadSequence(db, { threadId: thread.id }),
-    page: args.page,
-    providerDisplayName: "Codex",
-    planCommand: null,
-    summaryOnly: false,
-  });
-  const truncated = truncateTimelineResponseOutputs(
-    response,
-    DEFAULT_MAX_INLINE_OUTPUT_CHARS,
-  );
-  return {
-    profile,
-    response: includeNestedRows
-      ? truncated
-      : previewTimelineResponseOutputs(truncated),
-  };
-}
-
-function selectionWasReused(profile: ThreadTimelineBuildProfile): boolean {
-  return (
-    profile.stageTimings.some(
-      (timing) => timing.stage === "selection-memo-lookup",
-    ) &&
-    !profile.stageTimings.some(
-      (timing) =>
-        timing.stage === "group-context-query" ||
-        timing.stage === "ordering-context-query",
-    )
-  );
-}
-
-function buildColdPage(testThread: TestThread, args: BuildArgs): BuiltPage {
-  clearTimelineOrderingContextCache(testThread.coldDb);
-  clearTimelineSelectionMemo(testThread.coldDb);
-  clearStoredEventDecodeCache(testThread.coldDb);
-  const cold = buildPage(testThread.coldDb, testThread.thread, args);
-  expect(selectionWasReused(cold.profile)).toBe(false);
-  return cold;
-}
-
 function expectWarmEqualsCold(
   testThread: TestThread,
   args: BuildArgs,
   label: string,
-): BuiltPage {
-  const warm = buildPage(testThread.db, testThread.thread, args);
-  const cold = buildColdPage(testThread, args);
+): BuiltTimelinePage {
+  const build = (db: TestThread["db"]) =>
+    buildRouteTimelinePage({
+      ...args,
+      db,
+      registry,
+      thread: testThread.thread,
+    });
+  const warm = build(testThread.db);
+  clearCrossBuildTimelineCaches(testThread.coldDb);
+  clearTimelineOrderingContextCache(testThread.coldDb);
+  const cold = build(testThread.coldDb);
+  expect(selectionWasReused(cold.profile)).toBe(false);
   expect(JSON.stringify(warm.response), label).toBe(
     JSON.stringify(cold.response),
   );
-  expect(
-    {
-      eventDataBytes: warm.profile.eventDataBytes,
-      eventRowCount: warm.profile.eventRowCount,
-      orderingBoundarySequence: warm.profile.orderingBoundarySequence,
-      selectionStrategy: warm.profile.selectionStrategy,
-    },
-    label,
-  ).toEqual({
-    eventDataBytes: cold.profile.eventDataBytes,
-    eventRowCount: cold.profile.eventRowCount,
-    orderingBoundarySequence: cold.profile.orderingBoundarySequence,
-    selectionStrategy: cold.profile.selectionStrategy,
+  const profileSummary = ({ profile }: BuiltTimelinePage) => ({
+    eventDataBytes: profile.eventDataBytes,
+    eventRowCount: profile.eventRowCount,
+    selectionStrategy: profile.selectionStrategy,
   });
+  expect(profileSummary(warm), label).toEqual(profileSummary(cold));
   return warm;
 }
 
 function walkOlderPages(
   testThread: TestThread,
-  latest: BuiltPage,
+  latest: BuiltTimelinePage,
   args: BuildArgs,
   label: string,
 ): void {
@@ -719,17 +578,6 @@ function walkOlderPages(
   }
 }
 
-function createRandom(seed: number): Random {
-  let state = seed >>> 0;
-  return () => {
-    state = (state + 0x6d2b79f5) >>> 0;
-    let value = state;
-    value = Math.imul(value ^ (value >>> 15), value | 1);
-    value ^= value + Math.imul(value ^ (value >>> 7), value | 61);
-    return ((value ^ (value >>> 14)) >>> 0) / 4_294_967_296;
-  };
-}
-
 function initialState(): SessionState {
   return {
     closedTurns: [],
@@ -748,13 +596,12 @@ function initialState(): SessionState {
 }
 
 function latestArgs(
-  variant: Variant,
+  variant: TimelineVariant,
   includeDiagnosticOperations = false,
 ): BuildArgs {
   return {
     eventBudget: 20,
     includeDiagnosticOperations,
-    maxSeq: null,
     page: { kind: "latest", segmentLimit: 3 },
     variant,
   };
@@ -763,7 +610,6 @@ function latestArgs(
 const singleSegmentArgs: BuildArgs = {
   eventBudget: 200,
   includeDiagnosticOperations: false,
-  maxSeq: null,
   page: { kind: "latest", segmentLimit: 1 },
   variant: "default",
 };
@@ -785,76 +631,15 @@ function goalRow(threadId: string, objective: string): RowSpec {
 }
 
 function planStepsRow(turnId: string, id: string, step: string): RowSpec {
-  return {
-    data: {
-      providerThreadId,
-      item: {
-        type: "planSteps",
-        id,
-        steps: [
-          { step, status: "active" },
-          { step: `${step} docs`, status: "pending" },
-        ],
-        status: "completed",
-      },
-    },
-    itemId: id,
-    itemKind: "planSteps",
-    turnId,
-    type: "item/completed",
-  };
-}
-
-function seedTwoTurns(
-  testThread: TestThread,
-  turnOneRows: readonly RowSpec[],
-): void {
-  const state = initialState();
-  append(testThread, startTurn(state));
-  append(testThread, turnOneRows);
-  append(testThread, [
-    itemRow("item/started", "turn-1", {
-      id: "message-1",
-      text: "",
-      type: "agentMessage",
-    }),
-    deltaRow("item/agentMessage/delta", "turn-1", "message-1", "one\n"),
-    itemRow("item/completed", "turn-1", {
-      id: "message-1",
-      text: "one\n",
-      type: "agentMessage",
-    }),
-    { data: { status: "completed" }, turnId: "turn-1", type: "turn/completed" },
-  ]);
-  closeTurn(state, "turn-1");
-  append(testThread, startTurn(state));
-  append(testThread, [
-    itemRow("item/started", "turn-2", {
-      id: "message-2",
-      text: "",
-      type: "agentMessage",
-    }),
-    deltaRow("item/agentMessage/delta", "turn-2", "message-2", "two\n"),
-  ]);
-}
-
-function expectLaggingSnapshotRebuilds(
-  testThread: TestThread,
-  rowsPastSnapshot: readonly RowSpec[],
-): BuiltPage {
-  const laggingSeq = append(testThread, [
-    deltaRow("item/agentMessage/delta", "turn-2", "message-2", "three\n"),
-  ]);
-  append(testThread, rowsPastSnapshot);
-  const lagging = expectWarmEqualsCold(
-    testThread,
-    { ...singleSegmentArgs, maxSeq: laggingSeq },
-    "lagging snapshot",
-  );
-  expect(lagging.response.maxSeq).toBe(laggingSeq);
-  expect(selectionWasReused(lagging.profile)).toBe(false);
-  expectWarmEqualsCold(testThread, singleSegmentArgs, "head snapshot");
-  return lagging;
+  return itemRow("item/completed", turnId, {
+    type: "planSteps",
+    id,
+    steps: [
+      { step, status: "active" },
+      { step: `${step} docs`, status: "pending" },
+    ],
+    status: "completed",
+  });
 }
 
 describe("latest timeline selection memo", () => {
@@ -863,9 +648,8 @@ describe("latest timeline selection memo", () => {
     let rebuilt = 0;
     for (let seed = 1; seed <= SEEDS; seed += 1) {
       const random = createRandom(seed);
-      const testThread = setup();
-      const state = initialState();
-      try {
+      withTestThread((testThread) => {
+        const state = initialState();
         for (let step = 0; step < STEPS; step += 1) {
           const roll = random();
           const latest = getLatestThreadSequence(testThread.db, {
@@ -924,53 +708,28 @@ describe("latest timeline selection memo", () => {
             );
           }
         }
-      } finally {
-        teardown(testThread);
-      }
+      });
     }
     expect(reused).toBeGreaterThan(SEEDS * 10);
     expect(rebuilt).toBeGreaterThan(SEEDS * 15);
   }, 120_000);
 
   it("reuses the selection for root deltas and rebuilds for lifecycle rows", () => {
-    const testThread = setup();
-    const state = initialState();
-    try {
-      append(testThread, startTurn(state));
+    withTestThread((testThread) => {
+      const args = latestArgs("default");
       append(testThread, [
-        itemRow("item/started", "turn-1", {
-          id: "message-1",
-          text: "",
-          type: "agentMessage",
-        }),
+        ...startTurn(initialState()),
+        messageStarted("turn-1", "message-1"),
       ]);
-      const cold = expectWarmEqualsCold(
-        testThread,
-        latestArgs("default"),
-        "initial",
-      );
-      expect(selectionWasReused(cold.profile)).toBe(false);
+      const initial = expectWarmEqualsCold(testThread, args, "initial");
+      expect(selectionWasReused(initial.profile)).toBe(false);
 
       append(testThread, [
-        deltaRow("item/agentMessage/delta", "turn-1", "message-1", "Hello"),
-        deltaRow("item/agentMessage/delta", "turn-1", "message-1", " world\n"),
-        {
-          data: {
-            contextWindowUsage: {
-              estimated: false,
-              modelContextWindow: 200_000,
-              usedTokens: 12,
-            },
-          },
-          turnId: "turn-1",
-          type: "thread/contextWindowUsage/updated",
-        },
+        messageDelta("turn-1", "message-1", "Hello"),
+        messageDelta("turn-1", "message-1", " world\n"),
+        contextUsage("turn-1", 12),
       ]);
-      const delta = expectWarmEqualsCold(
-        testThread,
-        latestArgs("default"),
-        "delta",
-      );
+      const delta = expectWarmEqualsCold(testThread, args, "delta");
       expect(selectionWasReused(delta.profile)).toBe(true);
       const nested = expectWarmEqualsCold(
         testThread,
@@ -989,11 +748,7 @@ describe("latest timeline selection memo", () => {
           type: "commandExecution",
         }),
       ]);
-      const lifecycle = expectWarmEqualsCold(
-        testThread,
-        latestArgs("default"),
-        "lifecycle",
-      );
+      const lifecycle = expectWarmEqualsCold(testThread, args, "lifecycle");
       expect(selectionWasReused(lifecycle.profile)).toBe(false);
 
       append(testThread, [
@@ -1004,83 +759,43 @@ describe("latest timeline selection memo", () => {
           "file\n",
         ),
       ]);
-      const outputDelta = expectWarmEqualsCold(
-        testThread,
-        latestArgs("default"),
-        "output delta",
-      );
+      const outputDelta = expectWarmEqualsCold(testThread, args, "output");
       expect(selectionWasReused(outputDelta.profile)).toBe(true);
 
       append(testThread, [
         {
-          data: { itemId: "message-1", delta: "nested" },
-          itemId: "message-1",
+          ...messageDelta("turn-1", "message-1", "nested"),
           parentToolCallId: "agent-1",
-          turnId: "turn-1",
-          type: "item/agentMessage/delta",
         },
       ]);
-      const parented = expectWarmEqualsCold(
-        testThread,
-        latestArgs("default"),
-        "parented delta",
-      );
+      const parented = expectWarmEqualsCold(testThread, args, "parented");
       expect(selectionWasReused(parented.profile)).toBe(false);
-    } finally {
-      teardown(testThread);
-    }
+    });
   });
 
   it("rebuilds when a root delta arrives for an earlier turn outside the latest window", () => {
-    const testThread = setup();
-    const state = initialState();
-    try {
-      append(testThread, startTurn(state));
-      append(testThread, [
-        itemRow("item/started", "turn-1", {
-          id: "message-1",
-          text: "",
-          type: "agentMessage",
-        }),
-        deltaRow("item/agentMessage/delta", "turn-1", "message-1", "old\n"),
-        deltaRow("item/agentMessage/delta", "turn-1", "message-1", "partial"),
-        {
-          data: { status: "interrupted" },
-          turnId: "turn-1",
-          type: "turn/completed",
-        },
-      ]);
-      state.openTurnId = null;
-      append(testThread, startTurn(state));
-      append(testThread, [
-        itemRow("item/started", "turn-2", {
-          id: "message-2",
-          text: "",
-          type: "agentMessage",
-        }),
-      ]);
-      for (let index = 0; index < 40; index += 1) {
-        append(testThread, [
-          deltaRow(
-            "item/agentMessage/delta",
-            "turn-2",
-            "message-2",
-            `w${index}\n`,
-          ),
-        ]);
-      }
+    withTestThread((testThread) => {
+      const state = initialState();
       const args = latestArgs("default");
+      append(testThread, [
+        ...startTurn(state),
+        messageStarted("turn-1", "message-1"),
+        messageDelta("turn-1", "message-1", "old\n"),
+        messageDelta("turn-1", "message-1", "partial"),
+        completeTurn(state, "turn-1", "interrupted"),
+        ...startTurn(state),
+        messageStarted("turn-2", "message-2"),
+        ...Array.from({ length: 40 }, (_, index) =>
+          messageDelta("turn-2", "message-2", `w${index}\n`),
+        ),
+      ]);
       const before = expectWarmEqualsCold(testThread, args, "before");
       expect(before.response.timelinePage.returnedSegmentCount).toBe(1);
-      append(testThread, [
-        deltaRow("item/agentMessage/delta", "turn-2", "message-2", "tick\n"),
-      ]);
+      append(testThread, [messageDelta("turn-2", "message-2", "tick\n")]);
       const tick = expectWarmEqualsCold(testThread, args, "tick");
       expect(selectionWasReused(tick.profile)).toBe(true);
 
-      append(testThread, [
-        deltaRow("item/agentMessage/delta", "turn-1", "message-1", " late\n"),
-      ]);
+      append(testThread, [messageDelta("turn-1", "message-1", " late\n")]);
       const late = expectWarmEqualsCold(testThread, args, "late delta");
       expect(selectionWasReused(late.profile)).toBe(false);
       append(testThread, [
@@ -1097,226 +812,127 @@ describe("latest timeline selection memo", () => {
         "late delta for a fetched turn",
       );
       expect(selectionWasReused(fetchedLate.profile)).toBe(true);
-    } finally {
-      teardown(testThread);
-    }
+    });
   });
 
   it("rebuilds when deltas arrive before their turn/started", () => {
-    const testThread = setup();
-    const state = initialState();
-    try {
-      append(testThread, startTurn(state));
-      append(testThread, [
-        itemRow("item/started", "turn-1", {
-          id: "message-1",
-          text: "",
-          type: "agentMessage",
-        }),
-        deltaRow("item/agentMessage/delta", "turn-1", "message-1", "one\n"),
-      ]);
+    withTestThread((testThread) => {
       const args = latestArgs("default");
-      expectWarmEqualsCold(testThread, args, "initial");
       append(testThread, [
-        deltaRow("item/agentMessage/delta", "turn-1", "message-1", "two\n"),
+        ...startTurn(initialState()),
+        messageStarted("turn-1", "message-1"),
+        messageDelta("turn-1", "message-1", "one\n"),
       ]);
+      expectWarmEqualsCold(testThread, args, "initial");
+      append(testThread, [messageDelta("turn-1", "message-1", "two\n")]);
       const tick = expectWarmEqualsCold(testThread, args, "tick");
       expect(selectionWasReused(tick.profile)).toBe(true);
 
-      append(testThread, [
-        deltaRow("item/agentMessage/delta", "turn-2", "message-9", "early\n"),
-      ]);
+      append(testThread, [messageDelta("turn-2", "message-9", "early\n")]);
       const early = expectWarmEqualsCold(testThread, args, "early delta");
       expect(selectionWasReused(early.profile)).toBe(false);
-      append(testThread, [
-        deltaRow("item/agentMessage/delta", "turn-2", "message-9", "again\n"),
-      ]);
+      append(testThread, [messageDelta("turn-2", "message-9", "again\n")]);
       const earlyAgain = expectWarmEqualsCold(testThread, args, "early again");
       expect(selectionWasReused(earlyAgain.profile)).toBe(false);
 
-      append(testThread, [
-        { data: {}, turnId: "turn-2", type: "turn/started" },
-      ]);
+      append(testThread, [{ turnId: "turn-2", type: "turn/started" }]);
       expectWarmEqualsCold(testThread, args, "late started");
-    } finally {
-      teardown(testThread);
-    }
+    });
   });
 
-  it("rebuilds a snapshot below the latest sequence and reuses at the head", () => {
-    const testThread = setup();
-    const state = initialState();
-    try {
-      append(testThread, startTurn(state));
-      const memoSeq = append(testThread, [
-        itemRow("item/started", "turn-1", {
+  it("rebuilds a snapshot below the head without leaking later head state, and reuses at the head", () => {
+    withTestThread((testThread) => {
+      const state = initialState();
+      append(testThread, [
+        ...startTurn(state),
+        goalRow(testThread.thread.id, "first goal"),
+        planStepsRow("turn-1", "plan-1", "Ship it"),
+        itemRow("item/started", "turn-1", workflowTask("task:wf-1", false)),
+        messageStarted("turn-1", "message-1"),
+        messageDelta("turn-1", "message-1", "one\n"),
+        itemRow("item/completed", "turn-1", {
           id: "message-1",
-          text: "",
+          text: "one\n",
           type: "agentMessage",
         }),
-        deltaRow("item/agentMessage/delta", "turn-1", "message-1", "one\n"),
+        completeTurn(state, "turn-1"),
+        ...startTurn(state),
+        messageStarted("turn-2", "message-2"),
+        messageDelta("turn-2", "message-2", "two\n"),
       ]);
-      expectWarmEqualsCold(testThread, latestArgs("default"), "initial");
+      const initial = expectWarmEqualsCold(
+        testThread,
+        singleSegmentArgs,
+        "initial",
+      );
+      expect({
+        goal: initial.response.goal?.objective,
+        todos: initial.response.pendingTodos?.items.map((item) => item.text),
+        workflows: initial.response.activeWorkflows.map((row) => row.itemId),
+      }).toEqual({
+        goal: "first goal",
+        todos: ["Ship it", "Ship it docs"],
+        workflows: ["task:wf-1"],
+      });
+
+      const laggingSeq = append(testThread, [
+        messageDelta("turn-2", "message-2", "three\n"),
+      ]);
       append(testThread, [
-        deltaRow("item/agentMessage/delta", "turn-1", "message-1", "two\n"),
-        deltaRow("item/agentMessage/delta", "turn-1", "message-1", "three\n"),
-        deltaRow("item/agentMessage/delta", "turn-1", "message-1", "four\n"),
+        goalRow(testThread.thread.id, "second goal"),
+        planStepsRow("turn-2", "plan-2", "Ship again"),
+        workflowTaskUpdate("task:wf-1", true),
       ]);
       const lagging = expectWarmEqualsCold(
         testThread,
-        { ...latestArgs("default"), maxSeq: memoSeq + 1 },
+        { ...singleSegmentArgs, maxSeq: laggingSeq },
         "lagging snapshot",
       );
-      expect(lagging.response.maxSeq).toBe(memoSeq + 1);
       expect(selectionWasReused(lagging.profile)).toBe(false);
-      const latest = expectWarmEqualsCold(
-        testThread,
-        latestArgs("default"),
-        "latest snapshot",
-      );
-      expect(selectionWasReused(latest.profile)).toBe(true);
-    } finally {
-      teardown(testThread);
-    }
-  });
+      expect({
+        activeWorkflows: lagging.response.activeWorkflows,
+        goal: lagging.response.goal,
+        maxSeq: lagging.response.maxSeq,
+        pendingTodos: lagging.response.pendingTodos,
+      }).toEqual({
+        activeWorkflows: [],
+        goal: null,
+        maxSeq: laggingSeq,
+        pendingTodos: null,
+      });
 
-  it("rebuilds a lagging snapshot when a newer goal row lies past it", () => {
-    const testThread = setup();
-    try {
-      seedTwoTurns(testThread, [goalRow(testThread.thread.id, "first goal")]);
-      const initial = expectWarmEqualsCold(
-        testThread,
-        singleSegmentArgs,
-        "initial",
-      );
-      expect(initial.response.goal?.objective).toBe("first goal");
-      const lagging = expectLaggingSnapshotRebuilds(testThread, [
-        goalRow(testThread.thread.id, "second goal"),
-      ]);
-      expect(lagging.response.goal).toBeNull();
-    } finally {
-      teardown(testThread);
-    }
-  });
-
-  it("rebuilds a lagging snapshot when a newer plan snapshot lies past it", () => {
-    const testThread = setup();
-    try {
-      seedTwoTurns(testThread, [planStepsRow("turn-1", "plan-1", "Ship it")]);
-      const initial = expectWarmEqualsCold(
-        testThread,
-        singleSegmentArgs,
-        "initial",
-      );
-      expect(
-        initial.response.pendingTodos?.items.map((item) => item.text),
-      ).toEqual(["Ship it", "Ship it docs"]);
-      const lagging = expectLaggingSnapshotRebuilds(testThread, [
-        planStepsRow("turn-2", "plan-2", "Ship again"),
-      ]);
-      expect(lagging.response.pendingTodos).toBeNull();
-    } finally {
-      teardown(testThread);
-    }
-  });
-
-  it("rebuilds a lagging snapshot when a background task completes past it", () => {
-    const testThread = setup();
-    try {
-      const task = {
-        description: "workflow",
-        id: "task:wf-1",
-        skipTranscript: false,
-        taskType: LOCAL_WORKFLOW_TASK_TYPE,
-        type: "backgroundTask",
-        workflowName: "workflow",
-      } as const;
-      seedTwoTurns(testThread, [
-        itemRow("item/started", "turn-1", {
-          ...task,
-          status: "pending",
-          taskStatus: "running",
-        }),
-      ]);
-      const initial = expectWarmEqualsCold(
-        testThread,
-        singleSegmentArgs,
-        "initial",
-      );
-      expect(
-        initial.response.activeWorkflows.map((workflow) => workflow.itemId),
-      ).toEqual([task.id]);
-      const lagging = expectLaggingSnapshotRebuilds(testThread, [
-        {
-          data: {
-            item: { ...task, status: "completed", taskStatus: "completed" },
-          },
-          itemId: task.id,
-          itemKind: "backgroundTask",
-          providerThreadId,
-          type: "item/backgroundTask/completed",
-        },
-      ]);
-      expect(lagging.response.activeWorkflows).toEqual([]);
-    } finally {
-      teardown(testThread);
-    }
+      expectWarmEqualsCold(testThread, singleSegmentArgs, "head snapshot");
+      append(testThread, [messageDelta("turn-2", "message-2", "four\n")]);
+      const head = expectWarmEqualsCold(testThread, singleSegmentArgs, "head");
+      expect(selectionWasReused(head.profile)).toBe(true);
+    });
   });
 
   it("rebuilds when a parented excluded row extends a delegating span past a user request", () => {
-    const testThread = setup();
-    const state = initialState();
-    try {
-      append(testThread, startTurn(state));
+    withTestThread((testThread) => {
+      const args = latestArgs("default");
+      const boundary = (maxSeq: number) =>
+        getTimelineGroupingContext(testThread.coldDb, {
+          maxSeq,
+          sequenceStart: 0,
+          threadId: testThread.thread.id,
+        }).orderingBoundarySequence;
       const requestSeq = append(testThread, [
-        itemRow("item/started", "turn-1", {
-          arguments: { prompt: "Investigate" },
-          id: "agent-1",
-          status: "pending",
-          tool: "Agent",
-          type: "toolCall",
-        }),
-        itemRow(
-          "item/completed",
-          "turn-1",
-          {
-            aggregatedOutput: "child output\n",
-            approvalStatus: null,
-            command: "echo child",
-            cwd: "/tmp/memo",
-            exitCode: 0,
-            id: "child-1",
-            status: "completed",
-            type: "commandExecution",
-          },
-          "agent-1",
-        ),
+        ...startTurn(initialState()),
+        agentToolCall("item/started", "turn-1", "agent-1"),
+        childCommand("turn-1", "child-1", "agent-1"),
         userRequest(2, { kind: "new-turn" }, "Queued"),
       ]);
-      const args = latestArgs("default");
-      const before = expectWarmEqualsCold(testThread, args, "before");
-      expect(before.profile.orderingBoundarySequence).toBeNull();
+      expectWarmEqualsCold(testThread, args, "before");
+      expect(boundary(requestSeq)).toBeNull();
 
-      append(testThread, [
-        {
-          data: {
-            contextWindowUsage: {
-              estimated: false,
-              modelContextWindow: 200_000,
-              usedTokens: 42,
-            },
-          },
-          parentToolCallId: "agent-1",
-          turnId: "turn-1",
-          type: "thread/contextWindowUsage/updated",
-        },
+      const maxSeq = append(testThread, [
+        contextUsage("turn-1", 42, "agent-1"),
       ]);
       const after = expectWarmEqualsCold(testThread, args, "after");
-      expect(after.profile.orderingBoundarySequence).toBe(requestSeq);
+      expect(boundary(maxSeq)).toBe(requestSeq);
       expect(selectionWasReused(after.profile)).toBe(false);
-    } finally {
-      teardown(testThread);
-    }
+    });
   });
 
   it.each([
@@ -1325,149 +941,44 @@ describe("latest timeline selection memo", () => {
   ] as const)(
     "rebuilds for a delta row whose item kind is $itemKind",
     (testCase) => {
-      const testThread = setup();
-      const state = initialState();
-      try {
-        append(testThread, startTurn(state));
-        const task = {
-          description: "workflow",
-          id: "task:wf-1",
-          skipTranscript: false,
-          taskType: LOCAL_WORKFLOW_TASK_TYPE,
-          workflowName: "workflow",
-        };
-        append(testThread, [
-          itemRow("item/started", "turn-1", {
-            ...task,
-            status: "pending",
-            taskStatus: "running",
-            type: "backgroundTask",
-          }),
-          itemRow("item/started", "turn-1", {
-            arguments: { prompt: "Investigate" },
-            id: "agent-1",
-            status: "pending",
-            tool: "Agent",
-            type: "toolCall",
-          }),
-          {
-            data: {},
-            parentToolCallId: "agent-1",
-            providerThreadId: "provider-child",
-            turnId: "child-turn-1",
-            type: "turn/started",
-          },
-          itemRow(
-            "item/completed",
-            "child-turn-1",
-            {
-              aggregatedOutput: "child output\n",
-              approvalStatus: null,
-              command: "echo child",
-              cwd: "/tmp/memo",
-              exitCode: 0,
-              id: "child-1",
-              status: "completed",
-              type: "commandExecution",
-            },
-            "agent-1",
-          ),
-          itemRow("item/completed", "turn-1", {
-            arguments: { prompt: "Investigate" },
-            id: "agent-1",
-            result: "done",
-            status: "completed",
-            tool: "Agent",
-            type: "toolCall",
-          }),
-          {
-            data: {
-              item: {
-                ...task,
-                status: "completed",
-                taskStatus: "completed",
-                type: "backgroundTask",
-              },
-            },
-            itemId: "task:wf-1",
-            itemKind: "backgroundTask",
-            providerThreadId,
-            type: "item/backgroundTask/completed",
-          },
-          {
-            data: { status: "completed" },
-            turnId: "turn-1",
-            type: "turn/completed",
-          },
-        ]);
-        state.openTurnId = null;
-        append(testThread, startTurn(state));
-        append(testThread, [
-          itemRow("item/started", "turn-2", {
-            id: "message-2",
-            text: "",
-            type: "agentMessage",
-          }),
-        ]);
-        for (let index = 0; index < 30; index += 1) {
-          append(testThread, [
-            deltaRow(
-              "item/agentMessage/delta",
-              "turn-2",
-              "message-2",
-              `w${index}\n`,
-            ),
-          ]);
-        }
+      withTestThread((testThread) => {
         const args = latestArgs("default");
+        append(testThread, [
+          ...startTurn(initialState()),
+          messageStarted("turn-1", "message-1"),
+        ]);
         expectWarmEqualsCold(testThread, args, "before");
         append(testThread, [
           {
             data: { itemId: testCase.itemId, message: "working" },
             itemId: testCase.itemId,
             itemKind: testCase.itemKind,
-            turnId: "turn-2",
+            turnId: "turn-1",
             type: "item/toolCall/progress",
           },
         ]);
         const after = expectWarmEqualsCold(testThread, args, "after");
         expect(selectionWasReused(after.profile)).toBe(false);
-      } finally {
-        teardown(testThread);
-      }
+      });
     },
   );
 
   it("rebuilds when appended deltas move the budget floor past an anchor", () => {
-    const testThread = setup();
-    const state = initialState();
-    try {
-      append(testThread, startTurn(state));
-      append(testThread, [
-        {
-          data: { status: "completed" },
-          turnId: "turn-1",
-          type: "turn/completed",
-        },
-      ]);
-      state.openTurnId = null;
-      append(testThread, startTurn(state));
-      append(testThread, [
-        itemRow("item/started", "turn-2", {
-          id: "message-2",
-          text: "",
-          type: "agentMessage",
-        }),
-      ]);
+    withTestThread((testThread) => {
+      const state = initialState();
       const args = latestArgs("default");
+      append(testThread, [
+        ...startTurn(state),
+        completeTurn(state, "turn-1"),
+        ...startTurn(state),
+        messageStarted("turn-2", "message-2"),
+      ]);
       const before = expectWarmEqualsCold(testThread, args, "before floor");
       expect(before.response.timelinePage.returnedSegmentCount).toBe(2);
 
       let crossed = false;
       for (let index = 0; index < 20 && !crossed; index += 1) {
-        append(testThread, [
-          deltaRow("item/agentMessage/delta", "turn-2", "message-2", "word "),
-        ]);
+        append(testThread, [messageDelta("turn-2", "message-2", "word ")]);
         const page = expectWarmEqualsCold(testThread, args, `delta ${index}`);
         crossed = page.response.timelinePage.returnedSegmentCount === 1;
         if (crossed) {
@@ -1475,156 +986,94 @@ describe("latest timeline selection memo", () => {
         }
       }
       expect(crossed).toBe(true);
-    } finally {
-      teardown(testThread);
-    }
+    });
   });
 
-  it("rebuilds after resolved deltas are pruned", () => {
-    const testThread = setup();
-    const state = initialState();
-    try {
-      append(testThread, startTurn(state));
+  it.each([
+    {
+      name: "resolved deltas are pruned",
+      rewrite: (testThread: TestThread) =>
+        pruneResolvedItemDeltas(testThread.db, {
+          threadId: testThread.thread.id,
+        }),
+    },
+    {
+      name: "another connection deletes a delta",
+      rewrite: (testThread: TestThread, sequence: number) =>
+        testThread.coldDb.$client
+          .prepare("DELETE FROM events WHERE thread_id = ? AND sequence = ?")
+          .run(testThread.thread.id, sequence).changes,
+    },
+  ])("rebuilds after $name", ({ rewrite }) => {
+    withTestThread((testThread) => {
+      const args = latestArgs("nested");
       append(testThread, [
-        itemRow("item/started", "turn-1", {
-          id: "message-1",
-          text: "",
-          type: "agentMessage",
-        }),
-        itemRow("item/started", "turn-1", {
-          id: "message-2",
-          text: "",
-          type: "agentMessage",
-        }),
-        deltaRow("item/agentMessage/delta", "turn-1", "message-1", "one\n"),
-        deltaRow("item/agentMessage/delta", "turn-1", "message-1", "two\n"),
+        ...startTurn(initialState()),
+        messageStarted("turn-1", "message-1"),
+        messageStarted("turn-1", "message-2"),
+        messageDelta("turn-1", "message-1", "one\n"),
+      ]);
+      const deletedSeq = append(testThread, [
+        messageDelta("turn-1", "message-1", "two\n"),
+      ]);
+      append(testThread, [
         itemRow("item/completed", "turn-1", {
           id: "message-1",
           text: "one\ntwo\n",
           type: "agentMessage",
         }),
       ]);
-      const args = latestArgs("nested");
       expectWarmEqualsCold(testThread, args, "completed");
 
-      expect(
-        pruneResolvedItemDeltas(testThread.db, {
-          threadId: testThread.thread.id,
-        }),
-      ).toBe(1);
-      append(testThread, [
-        deltaRow("item/agentMessage/delta", "turn-1", "message-2", "three"),
-      ]);
-      const pruned = expectWarmEqualsCold(testThread, args, "pruned");
-      expect(selectionWasReused(pruned.profile)).toBe(false);
-    } finally {
-      teardown(testThread);
-    }
-  });
-
-  it("rebuilds after another connection rewrites events", () => {
-    const testThread = setup();
-    const writer = createConnection(path.join(testThread.dir, "bb.db"));
-    const state = initialState();
-    try {
-      append(testThread, startTurn(state));
-      append(testThread, [
-        itemRow("item/started", "turn-1", {
-          id: "message-1",
-          text: "",
-          type: "agentMessage",
-        }),
-      ]);
-      const deletedSequence = append(testThread, [
-        deltaRow("item/agentMessage/delta", "turn-1", "message-1", "one\n"),
-      ]);
-      append(testThread, [
-        deltaRow("item/agentMessage/delta", "turn-1", "message-1", "two\n"),
-      ]);
-      const args = latestArgs("nested");
-      expectWarmEqualsCold(testThread, args, "initial");
-
-      writer.$client
-        .prepare("DELETE FROM events WHERE thread_id = ? AND sequence = ?")
-        .run(testThread.thread.id, deletedSequence);
-      append(testThread, [
-        deltaRow("item/agentMessage/delta", "turn-1", "message-1", "three"),
-      ]);
+      expect(rewrite(testThread, deletedSeq)).toBe(1);
+      append(testThread, [messageDelta("turn-1", "message-2", "three")]);
       const rewritten = expectWarmEqualsCold(testThread, args, "rewritten");
       expect(selectionWasReused(rewritten.profile)).toBe(false);
-    } finally {
-      writer.$client.close();
-      teardown(testThread);
-    }
+    });
   });
 
   it("builds cold for idle threads and forgets a thread once it stops being active", () => {
-    const testThread = setup();
-    const state = initialState();
-    try {
-      append(testThread, startTurn(state));
+    withTestThread((testThread) => {
       append(testThread, [
-        itemRow("item/started", "turn-1", {
-          id: "message-1",
-          text: "",
-          type: "agentMessage",
-        }),
+        ...startTurn(initialState()),
+        messageStarted("turn-1", "message-1"),
       ]);
       expectWarmEqualsCold(testThread, latestArgs("default"), "active");
-      expect(readTimelineSelectionMemoSize(testThread.db).entryCount).toBe(1);
+      expect(countTimelineSelectionMemoEntries(testThread.db)).toBe(1);
 
-      const idleThread: Thread = { ...testThread.thread, status: "idle" };
-      const idle: TestThread = { ...testThread, thread: idleThread };
-      append(idle, [
-        deltaRow("item/agentMessage/delta", "turn-1", "message-1", "word"),
-      ]);
+      const idle: TestThread = {
+        ...testThread,
+        thread: { ...testThread.thread, status: "idle" },
+      };
+      append(idle, [messageDelta("turn-1", "message-1", "word")]);
       const page = expectWarmEqualsCold(idle, latestArgs("default"), "idle");
       expect(selectionWasReused(page.profile)).toBe(false);
-      expect(readTimelineSelectionMemoSize(idle.db).entryCount).toBe(0);
-    } finally {
-      teardown(testThread);
-    }
+      expect(countTimelineSelectionMemoEntries(idle.db)).toBe(0);
+    });
   });
 
   it("keeps one entry per thread across a context clear", () => {
-    const testThread = setup();
-    const state = initialState();
-    try {
+    withTestThread((testThread) => {
+      const state = initialState();
       append(testThread, startTurn(state));
       expectWarmEqualsCold(testThread, latestArgs("default"), "first epoch");
       append(testThread, [
-        {
-          data: { status: "completed" },
-          turnId: "turn-1",
-          type: "turn/completed",
-        },
-        {
-          data: {
-            operation: THREAD_CONTEXT_CLEAR_OPERATION,
-            operationId: "clear-1",
-            status: "completed",
-            message: "Fresh context",
-          },
-          type: "system/operation",
-        },
+        completeTurn(state, "turn-1"),
+        contextClear("clear-1"),
+        ...startTurn(state),
       ]);
-      state.openTurnId = null;
-      append(testThread, startTurn(state));
       const second = expectWarmEqualsCold(
         testThread,
         latestArgs("default"),
         "second epoch",
       );
       expect(second.response.contextBoundarySeq).not.toBeNull();
-      expect(readTimelineSelectionMemoSize(testThread.db).entryCount).toBe(1);
-    } finally {
-      teardown(testThread);
-    }
+      expect(countTimelineSelectionMemoEntries(testThread.db)).toBe(1);
+    });
   });
 
   it("bounds the memo to its entry cap across threads", () => {
-    const testThread = setup();
-    try {
+    withTestThread((testThread) => {
       for (
         let index = 0;
         index < TIMELINE_SELECTION_MEMO_MAX_ENTRIES + 4;
@@ -1635,18 +1084,17 @@ describe("latest timeline selection memo", () => {
           providerId: "codex",
           status: "active",
         });
-        const otherThread = { ...testThread, thread };
-        append(otherThread, startTurn(initialState()));
-        buildPage(testThread.db, thread, latestArgs("default"));
-        expect(
-          readTimelineSelectionMemoSize(testThread.db).entryCount,
-        ).toBeLessThanOrEqual(TIMELINE_SELECTION_MEMO_MAX_ENTRIES);
+        append({ db: testThread.db, thread }, startTurn(initialState()));
+        buildRouteTimelinePage({
+          ...latestArgs("default"),
+          db: testThread.db,
+          registry,
+          thread,
+        });
       }
-      expect(readTimelineSelectionMemoSize(testThread.db).entryCount).toBe(
+      expect(countTimelineSelectionMemoEntries(testThread.db)).toBe(
         TIMELINE_SELECTION_MEMO_MAX_ENTRIES,
       );
-    } finally {
-      teardown(testThread);
-    }
+    });
   });
 });
