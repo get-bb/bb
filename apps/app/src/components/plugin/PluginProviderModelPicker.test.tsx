@@ -243,9 +243,6 @@ describe("PluginProviderModelPicker", () => {
       }),
     );
 
-    fireEvent.click(
-      screen.getByRole("button", { name: "Provider, model and reasoning" }),
-    );
     const fastMode = screen.getByRole("switch", { name: "Fast mode" });
     expect(fastMode.getAttribute("aria-checked")).toBe("true");
     fireEvent.click(fastMode);
