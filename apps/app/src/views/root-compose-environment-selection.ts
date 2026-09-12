@@ -35,6 +35,27 @@ interface ResolveProjectlessEnvironmentValueArgs {
   reuseThreadOptionsLoading: boolean;
 }
 
+interface ResolveHostEnvironmentProviderArgs {
+  currentProvider: SystemEnvironmentProvider | null;
+  providers: readonly SystemEnvironmentProvider[];
+}
+
+export function resolveHostEnvironmentProvider({
+  currentProvider,
+  providers,
+}: ResolveHostEnvironmentProviderArgs): SystemEnvironmentProvider | null {
+  const candidates = providers.filter(
+    (provider) =>
+      provider.machineProviderId === null &&
+      provider.availability?.status !== "unavailable",
+  );
+  return (
+    candidates.find((provider) => provider.id === currentProvider?.id) ??
+    candidates[0] ??
+    (currentProvider?.machineProviderId === null ? currentProvider : null)
+  );
+}
+
 export function buildReuseThreadOptions(
   threads: readonly ThreadListEntry[],
   hostNameById: ReadonlyMap<string, string> | null = null,

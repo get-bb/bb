@@ -86,6 +86,7 @@ export interface NewThreadEnvironmentConfig {
   inputsControlProviderIds?: ReadonlySet<string>;
   multiMachinePickerEnabled?: boolean;
   onSelectProvider?: EnvironmentPickerUIProps["onSelectProvider"];
+  onSelectHost?: EnvironmentPickerUIProps["onSelectHost"];
 }
 
 export interface NewThreadWorktreeConfig {
@@ -432,6 +433,7 @@ export function EnvironmentSlot({
         inputsControlProviderIds={environment.inputsControlProviderIds}
         multiMachinePickerEnabled={environment.multiMachinePickerEnabled}
         onSelectProvider={environment.onSelectProvider}
+        onSelectHost={environment.onSelectHost}
         className="shrink-0"
         muted
       />

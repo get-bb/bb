@@ -87,6 +87,7 @@ export interface EnvironmentPickerUIProps {
     provider: SystemEnvironmentProvider,
     hostId: string | null,
   ) => void;
+  onSelectHost?: (hostId: string) => void;
 }
 
 export const PROVIDER_INPUTS_CONTROL_MISSING_REASON =
@@ -181,6 +182,7 @@ export function EnvironmentPickerUI({
   inputsControlProviderIds = NO_INPUTS_CONTROL_PROVIDER_IDS,
   multiMachinePickerEnabled = false,
   onSelectProvider,
+  onSelectHost,
 }: EnvironmentPickerUIProps) {
   const [uncontrolledOpen, setUncontrolledOpen] = useState(
     defaultOpen ?? false,
@@ -446,6 +448,7 @@ export function EnvironmentPickerUI({
                     selectedProviderHostId={selectedProviderHostId}
                     inputsControlProviderIds={inputsControlProviderIds}
                     onPreviewHostChange={setPreviewHostId}
+                    onSelectHost={onSelectHost}
                     onRequestMachineSetup={
                       onRequestMachineSetup ? requestMachineSetup : undefined
                     }
@@ -696,6 +699,7 @@ interface MachineContextualEnvironmentOptionsProps extends MachineGroupedEnviron
   previewHostId: string | null;
   searchQuery: string;
   onPreviewHostChange: (hostId: string) => void;
+  onSelectHost: ((hostId: string) => void) | undefined;
 }
 
 function MachineContextualEnvironmentOptions({
@@ -711,6 +715,7 @@ function MachineContextualEnvironmentOptions({
   selectedProviderHostId,
   inputsControlProviderIds,
   onPreviewHostChange,
+  onSelectHost,
   onRequestMachineSetup,
   onSelectProvider,
 }: MachineContextualEnvironmentOptionsProps) {
@@ -759,7 +764,10 @@ function MachineContextualEnvironmentOptions({
               host={machineHost}
               isThisMachine={machineHost.id === machines.localDaemonHostId}
               active={machineHost.id === activeHost?.id}
-              onSelect={() => onPreviewHostChange(machineHost.id)}
+              onSelect={() => {
+                onPreviewHostChange(machineHost.id);
+                onSelectHost?.(machineHost.id);
+              }}
             />
           ))}
           {filteredHosts.length === 0 ? (

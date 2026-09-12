@@ -589,6 +589,7 @@ describe("EnvironmentPickerUI multi-machine menu", () => {
       provider: SystemEnvironmentProvider,
       hostId: string | null,
     ) => void;
+    onSelectHost?: (hostId: string) => void;
   }) {
     renderPicker(
       <EnvironmentPickerUI
@@ -609,6 +610,7 @@ describe("EnvironmentPickerUI multi-machine menu", () => {
         }
         multiMachinePickerEnabled={overrides?.multiMachinePickerEnabled ?? true}
         onSelectProvider={overrides?.onSelectProvider ?? vi.fn()}
+        onSelectHost={overrides?.onSelectHost}
         modal={false}
       />,
     );
@@ -720,7 +722,8 @@ describe("EnvironmentPickerUI multi-machine menu", () => {
 
   it("shows one active machine's environments and caps the machine section", () => {
     const onSelectProvider = vi.fn();
-    renderMachineMenu({ onSelectProvider });
+    const onSelectHost = vi.fn();
+    renderMachineMenu({ onSelectProvider, onSelectHost });
 
     expect(screen.getByText("Machines")).toBeTruthy();
     expect(screen.getByText("MacBook Pro")).toBeTruthy();
@@ -746,6 +749,7 @@ describe("EnvironmentPickerUI multi-machine menu", () => {
     expect(checkoutItems).toHaveLength(1);
 
     fireEvent.click(screen.getByRole("option", { name: "Mac Studio" }));
+    expect(onSelectHost).toHaveBeenCalledWith(studio.id);
     expect(onSelectProvider).not.toHaveBeenCalled();
     const previewedMachine = screen.getByRole("option", {
       name: "Mac Studio",
