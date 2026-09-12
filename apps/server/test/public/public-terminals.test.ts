@@ -217,12 +217,14 @@ function readBrowserMessages(
   );
 }
 
-function readDaemonMessages(
+function readDaemonOperationMessages(
   socket: FakeDaemonSocket,
 ): HostDaemonServerWsMessage[] {
-  return socket.sentMessages.map((message) =>
-    hostDaemonServerWsMessageSchema.parse(JSON.parse(message)),
-  );
+  return socket.sentMessages
+    .map((message) =>
+      hostDaemonServerWsMessageSchema.parse(JSON.parse(message)),
+    )
+    .filter((message) => message.type !== "machine-environment.replace");
 }
 
 async function waitForDaemonMessage(
@@ -230,9 +232,9 @@ async function waitForDaemonMessage(
   messageIndex = 0,
 ): Promise<HostDaemonServerWsMessage> {
   for (let attempt = 0; attempt < 20; attempt += 1) {
-    const message = socket.sentMessages[messageIndex];
+    const message = readDaemonOperationMessages(socket)[messageIndex];
     if (message !== undefined) {
-      return hostDaemonServerWsMessageSchema.parse(JSON.parse(message));
+      return message;
     }
     await new Promise((resolve) => setTimeout(resolve, 5));
   }
@@ -1278,9 +1280,7 @@ describe("public terminal routes", () => {
       closeReason: "open-timeout",
       status: "exited",
     });
-    const closeMessage = hostDaemonServerWsMessageSchema.parse(
-      JSON.parse(fixture.socket.sentMessages[1] ?? ""),
-    );
+    const closeMessage = readDaemonOperationMessages(fixture.socket)[1];
     expect(closeMessage).toMatchObject({
       type: "terminal.close",
       reason: "open-timeout",
@@ -1680,7 +1680,7 @@ describe("public terminal routes", () => {
     expect(firstReplacement.id).toBe(openMessage.terminalId);
     expect(secondReplacement.id).toBe(openMessage.terminalId);
     expect(
-      readDaemonMessages(fixture.socket).filter(
+      readDaemonOperationMessages(fixture.socket).filter(
         (message) => message.type === "terminal.open",
       ),
     ).toHaveLength(1);
@@ -1733,7 +1733,7 @@ describe("public terminal routes", () => {
       }),
     ).toMatchObject({ status: "running" });
     expect(
-      readDaemonMessages(fixture.socket).filter(
+      readDaemonOperationMessages(fixture.socket).filter(
         (message) => message.type === "terminal.close",
       ),
     ).toEqual([]);
@@ -1958,7 +1958,7 @@ describe("public terminal routes", () => {
         status: "running",
       },
     );
-    expect(fixture.socket.sentMessages).toEqual([]);
+    expect(readDaemonOperationMessages(fixture.socket)).toEqual([]);
 
     const forceResponsePromise = fixture.harness.app.request(
       `/api/v1/terminals/${stored.id}/close`,

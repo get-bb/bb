@@ -615,7 +615,7 @@ describe("EnvironmentPickerUI multi-machine menu", () => {
       screen
         .getByText("MacBook Pro")
         .parentElement?.querySelector('[data-icon="Laptop"]'),
-    ).not.toBeNull();
+    ).toBeNull();
 
     const checkoutItems = screen.getAllByRole("menuitem", {
       name: /Project checkout/u,

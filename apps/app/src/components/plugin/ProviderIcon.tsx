@@ -94,7 +94,10 @@ export function ProviderIcon({
   const CustomIcon = slot?.icon;
   return (
     <span
-      className={cn("inline-flex size-6 shrink-0", className)}
+      className={cn(
+        "inline-flex size-6 min-h-max min-w-max shrink-0 items-center justify-center",
+        className,
+      )}
       style={
         tint != null &&
         isPresentationTintColor(tint.light) &&

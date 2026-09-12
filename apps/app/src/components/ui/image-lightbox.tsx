@@ -39,6 +39,7 @@ interface ImageLightboxProps {
   hasMultipleImages?: boolean;
   imageAlt: string;
   imageSrc: string | null;
+  isOpen?: boolean;
   onClose: () => void;
   onNext?: () => void;
   onPrevious?: () => void;
@@ -95,16 +96,17 @@ export function ImageLightbox({
   hasMultipleImages = false,
   imageAlt,
   imageSrc,
+  isOpen,
   onClose,
   onNext,
   onPrevious,
   title,
 }: ImageLightboxProps) {
+  const isVisible = isOpen ?? imageSrc !== null;
   const hasNavigation =
     hasMultipleImages && onPrevious !== undefined && onNext !== undefined;
-
   useEffect(() => {
-    if (!imageSrc) {
+    if (!isVisible) {
       return;
     }
 
@@ -141,9 +143,9 @@ export function ImageLightbox({
 
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [hasNavigation, imageSrc, onClose, onNext, onPrevious]);
+  }, [hasNavigation, isVisible, onClose, onNext, onPrevious]);
 
-  if (!imageSrc) {
+  if (!isVisible) {
     return null;
   }
 
@@ -151,7 +153,8 @@ export function ImageLightbox({
     <Dialog open={true} onOpenChange={(open) => !open && onClose()}>
       <DialogContent
         aria-describedby={undefined}
-        className="left-0 top-0 flex h-screen w-screen max-w-none translate-x-0 translate-y-0 items-center justify-center border-none bg-transparent p-0 shadow-none data-[state=closed]:slide-out-to-left-0 data-[state=closed]:slide-out-to-top-0 data-[state=open]:slide-in-from-left-0 data-[state=open]:slide-in-from-top-0 sm:rounded-none [&>button]:hidden"
+        hideCloseButton
+        className="left-0 top-0 flex h-[calc(92svh-var(--bb-drawer-keyboard-inset,0px)-2.125rem)] max-h-none w-full max-w-none translate-x-0 translate-y-0 flex-col items-center gap-3 overflow-hidden border-0 bg-transparent p-4 pb-[max(1rem,env(safe-area-inset-bottom))] shadow-none duration-0 data-[state=closed]:animate-none data-[state=open]:animate-none sm:h-full sm:rounded-none sm:p-6 sm:pb-[max(1.5rem,env(safe-area-inset-bottom))]"
         onClick={(event) => {
           if (event.target === event.currentTarget) {
             onClose();
@@ -159,12 +162,47 @@ export function ImageLightbox({
         }}
       >
         <DialogTitle className="sr-only">{title}</DialogTitle>
-        <img
-          src={imageSrc}
-          alt={imageAlt}
-          style={IMAGE_TRANSPARENCY_CHECKER_STYLE}
-          className="max-h-[82vh] max-w-[90vw] rounded object-contain"
-        />
+        <div
+          className="relative flex min-h-0 w-full flex-1 items-center justify-center overflow-hidden"
+          onClick={(event) => {
+            if (event.target === event.currentTarget) {
+              onClose();
+            }
+          }}
+        >
+          {imageSrc ? (
+            <div
+              className="absolute inset-0 flex items-center justify-center"
+              onClick={(event) => {
+                if (event.target === event.currentTarget) {
+                  onClose();
+                }
+              }}
+            >
+              <img
+                src={imageSrc}
+                alt={imageAlt}
+                style={IMAGE_TRANSPARENCY_CHECKER_STYLE}
+                className="max-h-full max-w-[90vw] rounded object-contain"
+              />
+            </div>
+          ) : (
+            <div
+              role="status"
+              aria-label="Loading image"
+              className="flex size-32 flex-col items-center justify-center gap-2 rounded-xl bg-black/35 text-sm text-white/60 sm:size-48"
+            >
+              <Icon name="Loading" className="size-5 animate-spin" />
+              <span>Loading image…</span>
+            </div>
+          )}
+        </div>
+
+        {hasNavigation ? (
+          <div className="shrink-0 rounded-full bg-black/55 px-3 py-1.5 text-xs text-white/80 shadow-sm backdrop-blur-sm pointer-coarse:hidden">
+            ← → to navigate
+          </div>
+        ) : null}
 
         {hasNavigation ? (
           <>
@@ -172,7 +210,7 @@ export function ImageLightbox({
               type="button"
               variant="ghost"
               size="icon"
-              className="absolute left-2 top-1/2 size-9 -translate-y-1/2 rounded-full bg-black/45 text-white hover:bg-black/60 hover:text-white"
+              className="pointer-coarse:hidden absolute left-2 top-1/2 size-9 -translate-y-1/2 rounded-full bg-black/45 text-white hover:bg-black/60 hover:text-white"
               onClick={onPrevious}
               aria-label="Previous image"
             >
@@ -182,7 +220,7 @@ export function ImageLightbox({
               type="button"
               variant="ghost"
               size="icon"
-              className="absolute right-2 top-1/2 size-9 -translate-y-1/2 rounded-full bg-black/45 text-white hover:bg-black/60 hover:text-white"
+              className="pointer-coarse:hidden absolute right-2 top-1/2 size-9 -translate-y-1/2 rounded-full bg-black/45 text-white hover:bg-black/60 hover:text-white"
               onClick={onNext}
               aria-label="Next image"
             >

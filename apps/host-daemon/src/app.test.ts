@@ -1,4 +1,5 @@
 import fs from "node:fs/promises";
+import { execFileSync } from "node:child_process";
 import os from "node:os";
 import path from "node:path";
 import type { AgentRuntime, AgentRuntimeOptions } from "@bb/agent-runtime";
@@ -12,6 +13,7 @@ import {
   hostDaemonEventBatchRequestSchema,
   hostDaemonInteractiveInterruptRequestSchema,
   type HostDaemonInteractiveRequestResponse,
+  type HostDaemonContributedEnvEntry,
 } from "@bb/host-daemon-contract";
 import type { HostWatcher } from "@bb/host-watcher";
 import { createDeferredPromise } from "@bb/test-helpers";
@@ -48,6 +50,7 @@ interface FetchRecorder {
 }
 
 interface CreateFetchRecorderArgs {
+  machineEnvironment?: HostDaemonContributedEnvEntry[];
   inactiveSessionOnFirstEventPost?: boolean;
   interactiveRequestError?: Error;
   interactiveRequestResponse?: HostDaemonInteractiveRequestResponse;
@@ -133,6 +136,10 @@ function createFetchRecorder(
       return Response.json(
         {
           sessionId,
+          machineEnvironment: {
+            revision: 0,
+            entries: args.machineEnvironment ?? [],
+          },
           heartbeatIntervalMs: 30000,
           leaseTimeoutMs: 90000,
           retiredEnvironmentIds: args.retiredEnvironmentIds ?? [],
@@ -413,6 +420,60 @@ async function createAppFixture(
 }
 
 describe("createHostDaemonApp", () => {
+  it("installs machine variables into the daemon and child processes before work, then removes overrides live", async () => {
+    vi.stubEnv("MACHINE_DAEMON_TEST", "original");
+    let socket: ReconnectingWebSocketLike | undefined;
+    const { app } = await createAppFixture(
+      {
+        machineEnvironment: [
+          {
+            name: "MACHINE_DAEMON_TEST",
+            value: "configured",
+            source: { core: "machine-environment" },
+            reason: "test",
+          },
+        ],
+      },
+      {
+        createWebSocket: createOpeningWebSocket((created) => {
+          socket = created;
+        }),
+      },
+    );
+    const readChild = () =>
+      execFileSync(
+        process.execPath,
+        ["-e", "process.stdout.write(process.env.MACHINE_DAEMON_TEST)"],
+        { encoding: "utf8" },
+      );
+    try {
+      await app.daemon.start();
+      expect(process.env.MACHINE_DAEMON_TEST).toBe("configured");
+      expect(readChild()).toBe("configured");
+      await app.runtimeManager.replaceBaseShellEnv({
+        MACHINE_DAEMON_TEST: "stale-shell",
+      });
+      expect(app.runtimeManager.getShellEnv().MACHINE_DAEMON_TEST).toBe(
+        "configured",
+      );
+      if (!socket) throw new Error("Expected daemon socket");
+      socket.onmessage?.({
+        data: JSON.stringify({
+          type: "machine-environment.replace",
+          environment: { revision: 1, entries: [] },
+        }),
+      });
+      expect(process.env.MACHINE_DAEMON_TEST).toBe("original");
+      expect(readChild()).toBe("original");
+      expect(app.runtimeManager.getShellEnv()).not.toHaveProperty(
+        "MACHINE_DAEMON_TEST",
+      );
+    } finally {
+      await app.daemon.shutdown("test", 0);
+      vi.unstubAllEnvs();
+    }
+  });
+
   it("acknowledges machine shutdown, cleans up, and exits", async () => {
     let socket: ReconnectingWebSocketLike | undefined;
     const exitProcess = vi.fn();

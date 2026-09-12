@@ -27,6 +27,9 @@ interface ConnectionFixtureArgs extends CreateServerClientFixtureArgs {
   protocolSelfUpdater?: ProtocolSelfUpdater;
   onSelfUpdateInstalled?: () => void | Promise<void>;
   onMachineShutdown?: () => void | Promise<void>;
+  onMachineEnvironment?: (
+    environment: HostDaemonSessionOpenResponse["machineEnvironment"],
+  ) => void;
   startupTimeoutMs?: number;
 }
 
@@ -48,6 +51,7 @@ function createLogger() {
 function createSession(args: CreateSessionArgs): HostDaemonSessionOpenResponse {
   return {
     heartbeatIntervalMs: args.heartbeatIntervalMs,
+    machineEnvironment: { revision: 0, entries: [] },
     leaseTimeoutMs: args.leaseTimeoutMs,
     retiredEnvironmentIds: [],
     connectShares: { generation: 0, ports: [] },
@@ -181,6 +185,7 @@ function createConnectionFixture(args: ConnectionFixtureArgs = {}) {
     protocolSelfUpdater: args.protocolSelfUpdater,
     onSelfUpdateInstalled: args.onSelfUpdateInstalled,
     onMachineShutdown: args.onMachineShutdown,
+    onMachineEnvironment: args.onMachineEnvironment,
     startupTimeoutMs: args.startupTimeoutMs,
     setSession,
     createWebSocket: webSocket.createWebSocket,
@@ -201,6 +206,46 @@ afterEach(() => {
 });
 
 describe("ServerConnection", () => {
+  it("applies initial and replacement machine environments, ignores stale updates and resets revisions after reconnect", async () => {
+    const onMachineEnvironment = vi.fn();
+    const { connection, webSocket } = createConnectionFixture({
+      onMachineEnvironment,
+      sessionIds: ["first", "second"],
+    });
+    try {
+      await connection.start();
+      expect(onMachineEnvironment).toHaveBeenLastCalledWith({
+        revision: 0,
+        entries: [],
+      });
+      const socket = webSocket.sockets[0];
+      if (!socket) throw new Error("Expected test socket");
+      const send = (revision: number) =>
+        socket.onmessage?.({
+          data: JSON.stringify({
+            type: "machine-environment.replace",
+            environment: { revision, entries: [] },
+          }),
+        });
+      send(3);
+      send(2);
+      expect(onMachineEnvironment).toHaveBeenCalledTimes(2);
+      expect(onMachineEnvironment).toHaveBeenLastCalledWith({
+        revision: 3,
+        entries: [],
+      });
+      socket.reconnect();
+      await vi.waitFor(() => expect(connection.sessionId).toBe("second"));
+      send(1);
+      expect(onMachineEnvironment).toHaveBeenLastCalledWith({
+        revision: 1,
+        entries: [],
+      });
+    } finally {
+      await connection.shutdown();
+    }
+  });
+
   it("dispatches the machine shutdown command", async () => {
     const onMachineShutdown = vi.fn(async () => undefined);
     const { connection, webSocket } = createConnectionFixture({

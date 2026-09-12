@@ -577,6 +577,10 @@ export class NotificationHub implements DbNotifier {
     return [...ports].sort((left, right) => left - right);
   }
 
+  listConnectedHostIds(): string[] {
+    return [...this.daemonSessionIdsByHost.keys()];
+  }
+
   async waitForDaemonForHost(
     hostId: string,
     timeoutMs: number,

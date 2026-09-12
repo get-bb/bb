@@ -349,7 +349,7 @@ export const STORY_ENVIRONMENT_PROVIDERS: readonly SystemEnvironmentProvider[] =
       id: "git-worktree",
       displayName: "Worktree",
       description: "Create an isolated Git worktree.",
-      icon: "GitBranch",
+      icon: "FolderGit",
       logoUrl: null,
       pluginId: "environment-git-worktree",
       acceptsEmptyInputs: true,

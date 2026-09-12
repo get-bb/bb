@@ -1329,8 +1329,14 @@ metadata. Existing plaintext settings and private secret files migrate on first
 access; each old secret file is removed only after its encrypted record is saved.
 Historical backups may still contain values stored before migration.
 
-Core resolves the environment for each agent turn, project-source clone, host
-setup call, and new BB terminal. User variables override built-ins; agent-provider
+The server synchronizes the machine environment into enrolled daemons before
+they accept work, on reconnect, and when settings change. The daemon and its
+new child processes inherit these values, including background git and gh
+commands. Replacement snapshots remove stale overrides and restore the original
+daemon values. This does not alter unrelated OS processes or already-running
+children, and does not restart cached provider runtimes. Those runtimes retain
+their launch environment until recreated. Core also resolves the environment for each agent turn, project-source
+clone, host setup call, and new BB terminal. User variables override built-ins; agent-provider
 contributions override host variables for agent turns. Existing terminals keep
 the environment they started with: open a new terminal after a change. Agent
 turns receive refreshed values on their next turn and after resume. Codex rebuilds
@@ -1342,8 +1348,9 @@ effect on the next call after all active calls finish. Continuous overlapping
 calls can keep the previous values until the worker becomes idle.
 
 Ordinary setup variable delivery requires host-daemon protocol 205; immediate
-plugin-call reuse across environment changes requires protocol 206. Older daemons
-must update before the server accepts their session.
+plugin-call reuse across environment changes requires protocol 206. Daemon-wide
+machine environment synchronization requires protocol 207. Older daemons must
+update before the server accepts their session.
 
 The built-in GitHub row uses `gh auth token --hostname github.com` and `gh api
 --hostname github.com user` on the server host. It supplies `GH_TOKEN`, Git's

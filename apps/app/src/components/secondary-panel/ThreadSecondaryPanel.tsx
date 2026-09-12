@@ -44,6 +44,7 @@ import {
 } from "./panelToggleControlState";
 import { SecondaryPanelHostLayoutContext } from "./SecondaryPanelHostLayoutContext";
 import { SecondaryPanelTabStrip } from "./SecondaryPanelTabStrip";
+import { ImageTabLightboxProvider } from "./ImageTabLightboxContext";
 import type {
   MarketplacePluginDetailPanelTab,
   SecondaryPanelPaneRenderContext,
@@ -713,7 +714,10 @@ function ThreadSecondaryPanelContent({
       activeSurfaceModel?.kind === "terminal" && hasActiveSurfaceTab;
 
     return (
-      <>
+      <ImageTabLightboxProvider
+        activeTabId={activeSurfaceTabId}
+        tabs={surfaceTabs}
+      >
         <div
           className={getSecondaryPanelChromeStackClassName(
             showsSurfaceDiffToolbar,
@@ -886,7 +890,7 @@ function ThreadSecondaryPanelContent({
             </EmptyStatePanel>
           )}
         </div>
-      </>
+      </ImageTabLightboxProvider>
     );
   };
 
