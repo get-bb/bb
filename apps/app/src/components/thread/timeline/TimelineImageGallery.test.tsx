@@ -111,7 +111,7 @@ it("uses rendered footnote order and excludes unused definitions", () => {
   expect(lightboxImage().getAttribute("alt")).toBe("Footnote");
 });
 
-it("preserves occurrence identity when streaming finishes", () => {
+it("preserves occurrence identity as streaming images settle into cached blocks", async () => {
   const { rerender } = renderTimeline(
     <ThreadTimelineRows
       threadId="thread-1"
@@ -130,12 +130,28 @@ it("preserves occurrence identity when streaming finishes", () => {
   rerender(
     <ThreadTimelineRows
       threadId="thread-1"
+      threadRuntimeDisplayStatus="active"
+      workspaceRootPath={undefined}
+      timelineRows={[
+        conversationRow({
+          id: "streaming",
+          text: "![A](https://example.com/a.png)\n\n![B](https://example.com/a.png)\n\n![C](https://example.com/c.png)\nStill streaming",
+        }),
+      ]}
+    />,
+  );
+  await waitFor(() => {
+    expect(screen.getByRole("status").textContent).toBe("2 / 3");
+  });
+  rerender(
+    <ThreadTimelineRows
+      threadId="thread-1"
       threadRuntimeDisplayStatus="idle"
       workspaceRootPath={undefined}
       timelineRows={[
         conversationRow({
           id: "streaming",
-          text: "![A](https://example.com/a.png)\n\n![B](https://example.com/a.png)\nFinished",
+          text: "![A](https://example.com/a.png)\n\n![B](https://example.com/a.png)\n\n![C](https://example.com/c.png)\nFinished",
         }),
       ]}
     />,

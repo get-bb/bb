@@ -262,7 +262,9 @@ interface MarkdownCodeRendererProps extends MarkdownCodeProps {
 }
 type MarkdownHeadingProps = ComponentPropsWithoutRef<"h1"> & ExtraProps;
 type MarkdownHrProps = ComponentPropsWithoutRef<"hr"> & ExtraProps;
-type MarkdownImageProps = ComponentPropsWithoutRef<"img"> & ExtraProps;
+type MarkdownImageProps = ComponentPropsWithoutRef<"img"> & ExtraProps & {
+  "data-markdown-image-offset"?: number;
+};
 type MarkdownImageRenderAttributes = Omit<
   MarkdownImageProps,
   "alt" | "children" | "className" | "node" | "src"
@@ -1238,6 +1240,7 @@ function buildMarkdownComponents({
     alt,
     className: _className,
     node,
+    "data-markdown-image-offset": pieceOffset,
     ...imageAttributes
   }: MarkdownImageProps) {
     if (imagePolicy === "alt-text") {
@@ -1247,13 +1250,14 @@ function buildMarkdownComponents({
         </span>
       );
     }
+    const sourceOffset = pieceOffset ?? node?.position?.start.offset;
     return (
       <MarkdownRenderedImage
         alt={alt}
         sourceOffset={
-          node?.position?.start.offset === undefined
+          sourceOffset === undefined
             ? undefined
-            : imageSourceOffset + node.position.start.offset
+            : imageSourceOffset + sourceOffset
         }
         imageAttributes={imageAttributes}
         setExpandedImage={setExpandedImage}
