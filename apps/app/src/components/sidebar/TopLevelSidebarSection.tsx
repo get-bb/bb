@@ -21,7 +21,6 @@ import {
   SIDEBAR_HOVER_ACTIONS_GAP_CLASS,
   SIDEBAR_HOVER_ACTIONS_MOBILE_ALWAYS_VALUE,
   SIDEBAR_HOVER_ACTIONS_ROW_CLASS,
-  SIDEBAR_HOVER_ACTIONS_STATUS_CLASS,
 } from "@/components/ui/sidebar-hover-actions.js";
 import type { ConsumeDragClickSuppression } from "@/components/ui/use-drag-click-suppression";
 import {
@@ -233,18 +232,7 @@ export function TopLevelSidebarSection({
             )}
             onClick={status || actions ? stopActionsClick : undefined}
           >
-            {status ? (
-              <span
-                className={cn(
-                  "inline-flex shrink-0",
-                  actions &&
-                    !actionsAlwaysVisible &&
-                    SIDEBAR_HOVER_ACTIONS_STATUS_CLASS,
-                )}
-              >
-                {status}
-              </span>
-            ) : null}
+            {status}
             {collapsedActivityIndicator}
             {actions ? (
               <span

@@ -2310,6 +2310,7 @@ function ProjectRowComponent({
           label={project.name}
           status={projectStatus}
           actions={projectActions}
+          actionsAlwaysVisible={isLocalPathInvalid}
           actionsMobileAlways
           actionsOpen={isActionsOpen}
           collapseControl={{
