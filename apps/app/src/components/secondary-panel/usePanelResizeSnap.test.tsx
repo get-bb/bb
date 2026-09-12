@@ -5,6 +5,7 @@ import { createRef, useRef } from "react";
 import {
   Panel,
   PanelGroup,
+  PanelResizeHandle,
   type ImperativePanelGroupHandle,
   type ImperativePanelHandle,
 } from "react-resizable-panels";
@@ -82,7 +83,7 @@ function setup(secondarySize = 50) {
         data-testid="grid"
       >
         <Panel id="leading" minSize={30} defaultSize={100 - secondarySize} data-testid="previous" />
-        <div
+        <PanelResizeHandle
           data-panel-resize-snap-handle=""
           data-testid="divider"
           onPointerDownCapture={(event) => onPointerDownCapture(event.nativeEvent)}
@@ -102,6 +103,9 @@ function setup(secondarySize = 50) {
   next.getBoundingClientRect = () => rect(divider.getBoundingClientRect().right, (group.current?.getLayout()[1] ?? 0) * 8);
   const down = () => fireEvent.pointerDown(divider, {
     clientX: divider.getBoundingClientRect().left,
+    clientY: 100,
+    button: 0,
+    buttons: 1,
     pointerId: 40,
   });
   const move = (clientX: number, buttons = 1) => fireEvent.pointerMove(document.body, {
@@ -179,20 +183,11 @@ describe("usePanelResizeSnap", () => {
     h.down();
     h.move(450);
     h.move(440);
-    const keyboardResize = () => {
-      const leading = h.group.current?.getLayout()[0] ?? 0;
-      h.group.current?.setLayout([leading + 10, 90 - leading]);
-    };
-    h.divider.addEventListener("keydown", keyboardResize);
-    try {
-      fireEvent.keyDown(h.divider, { key: "ArrowRight" });
-      h.expectLayout(52.5, 47.5);
-      advanceFrame();
-      h.release();
-      h.expectLayout(52.5, 47.5);
-    } finally {
-      h.divider.removeEventListener("keydown", keyboardResize);
-    }
+    fireEvent.keyDown(h.divider, { key: "ArrowRight" });
+    h.expectLayout(52.5, 47.5);
+    advanceFrame();
+    h.release();
+    h.expectLayout(52.5, 47.5);
   });
 
   it.each(["pointerup", "pointercancel", "mouseup", "blur", "buttons"]) ("flushes the last position before %s cleanup", (end) => {
