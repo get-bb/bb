@@ -1,19 +1,22 @@
-import { useState, type CSSProperties, type ReactNode } from "react";
-import { AutomationDetailView } from "bb-plugin-automations/detail-view";
+import { useState } from "react";
 import {
-  AutomationOverviewView,
-  type AutomationCollectionMode,
-} from "bb-plugin-automations/overview-view";
+  AgentAutomationDefinition,
+  AutomationScriptContent,
+  ScriptAutomationDefinition,
+  RunRow,
+} from "bb-plugin-automations/detail-view";
+import { OverviewRow } from "bb-plugin-automations/overview-view";
 import type {
   AutomationResponse,
+  AgentEnvironment,
   AutomationRunResponse,
   AutomationsOverviewResponse,
 } from "bb-plugin-automations/rpc-types";
 import { ResourceListState } from "@bb/shared-ui/resource-list";
+import { StoryCard, StoryRow } from "../../../.ladle/story-card";
+import { ModelPickerStoryQueryProvider } from "../../../.ladle/model-picker-query-provider";
 
-export default {
-  title: "Automations",
-};
+export default { title: "Automations" };
 
 const noop = () => {};
 const now = new Date(2027, 0, 15, 9).getTime();
@@ -36,8 +39,8 @@ function automation(
     execution: {
       mode: "agent",
       prompt: `Run ${name.toLowerCase()}.`,
-      providerId: "claude",
-      model: "claude-opus-5",
+      providerId: "claude-code",
+      model: "claude-fable-5",
       reasoningLevel: "medium",
       permissionMode: "auto",
       environment: { type: "host", workspace: { type: "personal" } },
@@ -106,76 +109,6 @@ const OVERVIEW_ENTRIES: AutomationsOverviewResponse["automations"] = [
   },
 ];
 
-function StoryFrame({ children }: { children: ReactNode }) {
-  return (
-    <main className="mx-auto box-border h-[720px] w-full max-w-5xl px-5 py-4">
-      {children}
-    </main>
-  );
-}
-
-function Overview({
-  entries = OVERVIEW_ENTRIES,
-  error = null,
-  initialMode = "installed",
-}: {
-  entries?: AutomationsOverviewResponse["automations"] | null;
-  error?: string | null;
-  initialMode?: AutomationCollectionMode;
-}) {
-  const [mode, setMode] = useState<AutomationCollectionMode>(initialMode);
-  return (
-    <StoryFrame>
-      <AutomationOverviewView
-        entries={entries}
-        error={error}
-        onRetry={noop}
-        onOpenDetail={noop}
-        onEnabledChange={async () => {}}
-        onCreateViaChat={noop}
-        activeMode={mode}
-        onModeChange={setMode}
-      />
-    </StoryFrame>
-  );
-}
-
-export function OverviewPage() {
-  return <Overview />;
-}
-
-export function OverviewStates() {
-  return (
-    <main className="mx-auto w-full max-w-5xl space-y-8 px-5 py-6">
-      {[
-        {
-          label: "Loading",
-          content: <Overview entries={null} />,
-        },
-        {
-          label: "Empty",
-          content: <Overview entries={[]} />,
-        },
-        {
-          label: "Failed",
-          content: <Overview entries={null} error="Connection timed out" />,
-        },
-      ].map(({ label, content }) => (
-        <section key={label} className="space-y-2">
-          <h2 className="text-sm font-medium text-foreground">{label}</h2>
-          <div className="overflow-hidden rounded-md border border-border">
-            {content}
-          </div>
-        </section>
-      ))}
-    </main>
-  );
-}
-
-export function BrowseTemplates() {
-  return <Overview initialMode="browse" />;
-}
-
 const DETAIL_AUTOMATION = automation("nightly-digest", "Nightly digest", {
   trigger: {
     triggerType: "schedule",
@@ -185,8 +118,8 @@ const DETAIL_AUTOMATION = automation("nightly-digest", "Nightly digest", {
   execution: {
     mode: "agent",
     prompt: "Summarize yesterday's commits and open pull requests.",
-    providerId: "claude",
-    model: "claude-opus-5[1m]",
+    providerId: "claude-code",
+    model: "claude-fable-5",
     reasoningLevel: "medium",
     permissionMode: "auto",
     environment: { type: "host", workspace: { type: "personal" } },
@@ -206,13 +139,13 @@ const PROJECT_AUTOMATION: AutomationResponse = {
   execution: {
     mode: "agent",
     prompt: "Summarize yesterday's commits and open pull requests.",
-    providerId: "claude",
-    model: "claude-opus-5[1m]",
+    providerId: "claude-code",
+    model: "claude-fable-5",
     reasoningLevel: "medium",
     permissionMode: "auto",
     environment: {
       type: "host",
-      hostId: "host_local",
+
       workspace: {
         type: "unmanaged",
         path: "/Users/you/Code/bb",
@@ -221,69 +154,6 @@ const PROJECT_AUTOMATION: AutomationResponse = {
     },
   },
 };
-
-const PROVIDER_AUTOMATIONS = [
-  {
-    label: "Claude",
-    value: PROJECT_AUTOMATION,
-  },
-  {
-    label: "Codex",
-    value: automation("codex-digest", "Codex digest", {
-      execution: {
-        mode: "agent",
-        prompt: "Summarize yesterday's commits and open pull requests.",
-        providerId: "codex",
-        model: "gpt-5.6-sol",
-        reasoningLevel: "medium",
-        permissionMode: "auto",
-        environment: { type: "host", workspace: { type: "personal" } },
-      },
-    }),
-  },
-  {
-    label: "Pi",
-    value: automation("pi-digest", "Pi digest", {
-      execution: {
-        mode: "agent",
-        prompt: "Summarize yesterday's commits and open pull requests.",
-        providerId: "pi",
-        model: "pi-model",
-        reasoningLevel: "medium",
-        permissionMode: "auto",
-        environment: { type: "host", workspace: { type: "personal" } },
-      },
-    }),
-  },
-  {
-    label: "Cursor",
-    value: automation("cursor-digest", "Cursor digest", {
-      execution: {
-        mode: "agent",
-        prompt: "Summarize yesterday's commits and open pull requests.",
-        providerId: "acp-cursor",
-        model: "cursor-small",
-        reasoningLevel: "medium",
-        permissionMode: "auto",
-        environment: { type: "host", workspace: { type: "personal" } },
-      },
-    }),
-  },
-  {
-    label: "Unknown provider",
-    value: automation("custom-digest", "Custom-provider digest", {
-      execution: {
-        mode: "agent",
-        prompt: "Summarize yesterday's commits and open pull requests.",
-        providerId: "custom-provider",
-        model: "custom-model-v2",
-        reasoningLevel: "medium",
-        permissionMode: "auto",
-        environment: { type: "host", workspace: { type: "personal" } },
-      },
-    }),
-  },
-] as const;
 
 const SCRIPT_AUTOMATION: AutomationResponse = {
   ...DETAIL_AUTOMATION,
@@ -333,28 +203,6 @@ echo "Reports written to $output_dir"`,
   },
 };
 
-const UNSCHEDULED_AUTOMATION: AutomationResponse = {
-  ...DETAIL_AUTOMATION,
-  id: "unscheduled-digest",
-  name: "Unscheduled digest",
-  nextRunAt: null,
-  lastRunAt: now - 3_600_000,
-  runCount: 1,
-  lastRunStatus: "succeeded",
-};
-
-const COMPLETED_AUTOMATION: AutomationResponse = {
-  ...DETAIL_AUTOMATION,
-  id: "one-time-backfill",
-  name: "One-time backfill",
-  trigger: { triggerType: "once", runAt: now - 86_400_000 },
-  enabled: false,
-  nextRunAt: null,
-  runCount: 1,
-  lastRunAt: now - 86_400_000,
-  lastRunStatus: "succeeded",
-};
-
 function runsFor(
   value: AutomationResponse,
   statuses: readonly AutomationRunResponse["status"][],
@@ -395,218 +243,347 @@ function runsFor(
   });
 }
 
-const PROJECT_RUNS = runsFor(PROJECT_AUTOMATION, [
-  "running",
-  "failed",
-  "succeeded",
-]);
-
-const PAUSED_AUTOMATION: AutomationResponse = {
-  ...DETAIL_AUTOMATION,
-  enabled: false,
-  lastRunAt: now - 3_600_000,
-  runCount: 2,
-  lastRunStatus: "failed",
-};
-
-function AutomationDetail({
-  value = DETAIL_AUTOMATION,
-  projectLabel = "Local",
-  runs = [],
-  loading = false,
-  error = null,
+function PromptVariant({
+  value,
+  editable = false,
+  projectLabel,
 }: {
-  value?: AutomationResponse;
+  value: AutomationResponse;
+  editable?: boolean;
   projectLabel?: string;
-  runs?: readonly AutomationRunResponse[];
-  loading?: boolean;
-  error?: string | null;
 }) {
+  const [execution, setExecution] = useState(value.execution);
+  const [editing, setEditing] = useState(editable);
+  if (execution.mode !== "agent") return null;
   return (
-    <AutomationDetailView
-      automation={value}
-      projectLabel={projectLabel}
-      runsState={{
-        runs,
-        nextCursor: null,
-        loading,
-        loadingMore: false,
-        error,
-        loadMore: noop,
-        retry: noop,
-      }}
-      actionPending={false}
-      editing={false}
-      onToggle={noop}
-      onEdit={noop}
-      onCancelEdit={noop}
-      onUpdateAgent={async () => {}}
-      onRunNow={noop}
-      onDelete={noop}
-      onOpenThread={noop}
-    />
+    <ModelPickerStoryQueryProvider
+      environmentId={
+        execution.environment.type === "reuse"
+          ? execution.environment.environmentId
+          : null
+      }
+    >
+      <div className="w-full max-w-2xl">
+        <AgentAutomationDefinition
+          execution={execution}
+          editing={editing}
+          personalProject={value.projectId === "proj_personal"}
+          projectContextLabel={
+            projectLabel ??
+            (value.projectId === "proj_personal" ? "Personal" : "bb")
+          }
+          pending={false}
+          onCancel={() => setEditing(false)}
+          onUpdate={async (update) => {
+            setExecution({
+              ...execution,
+              ...update,
+              serviceTier: update.serviceTier ?? undefined,
+            });
+            setEditing(false);
+          }}
+        />
+      </div>
+    </ModelPickerStoryQueryProvider>
   );
 }
 
-function DetailState({
-  name,
-  note,
-  children,
-}: {
-  name: string;
-  note: string;
-  children: ReactNode;
-}) {
+export function OverviewRows() {
+  const descriptions: Record<string, { label: string; hint: string }> = {
+    "ci-triage": {
+      label: "Recurring · Personal",
+      hint: "Enabled weekday schedule in the Personal project. Shows the project label and next run.",
+    },
+    release: {
+      label: "Run in progress",
+      hint: "A recurring project automation whose latest run is still running. Shows the activity spinner.",
+    },
+    "pending-reminder": {
+      label: "One-time · pending",
+      hint: "Scheduled once for a future date. Shows One time and the next-run date.",
+    },
+    dependencies: {
+      label: "Paused",
+      hint: "Disabled recurring automation. The switch is off and there is no next-run date.",
+    },
+    "one-shot": {
+      label: "One-time · completed",
+      hint: "Already ran successfully. The row is muted and its switch cannot be enabled again.",
+    },
+    "stale-worktrees": {
+      label: "Last run failed",
+      hint: "The latest run failed, but the recurring schedule remains enabled. Shows the failure indicator.",
+    },
+  };
   return (
-    <section className="grid grid-cols-[var(--story-doc-width)_minmax(0,1fr)] items-start max-[900px]:grid-cols-1">
-      <div className="h-full border-r border-border bg-surface-recessed max-[900px]:border-b max-[900px]:border-r-0">
-        <div className="sticky top-0 px-4 py-4">
-          <h2 className="text-sm font-medium text-foreground">{name}</h2>
-          <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
-            {note}
-          </p>
+    <StoryCard>
+      {OVERVIEW_ENTRIES.map(({ automation: value, project }) => (
+        <StoryRow
+          key={value.id}
+          label={descriptions[value.id]?.label ?? value.name}
+          hint={descriptions[value.id]?.hint}
+        >
+          {"execution" in value ? (
+            <div className="w-full max-w-3xl">
+              <OverviewRow
+                automation={value}
+                project={project}
+                onNavigate={noop}
+                onEnabledChange={async () => {}}
+              />
+            </div>
+          ) : null}
+        </StoryRow>
+      ))}
+      <StoryRow
+        label="Script automation"
+        hint="Uses the script icon instead of the agent calendar icon. The schedule and toggle use the same row layout."
+      >
+        <div className="w-full max-w-3xl">
+          <OverviewRow
+            automation={SCRIPT_AUTOMATION}
+            project={{ id: "proj_personal", name: "Personal" }}
+            onNavigate={noop}
+            onEnabledChange={async () => {}}
+          />
         </div>
-      </div>
-      <div className="min-w-0 px-5 py-5">{children}</div>
-    </section>
+      </StoryRow>
+    </StoryCard>
   );
+}
+
+export function OverviewStates() {
+  const states = [
+    {
+      label: "Fetching automations",
+      hint: "Replaces the list while its first request is pending. The page reveals these four skeleton rows after its loading delay.",
+      state: "loading",
+      message: "Loading automations",
+    },
+    {
+      label: "No automations created",
+      hint: "The request succeeded, but there are no installed automations.",
+      state: "empty",
+      message: "No automations installed.",
+    },
+    {
+      label: "Could not load the list",
+      hint: "The request failed. The page offers Retry; this isolated example does not make a request.",
+      state: "error",
+      message: "Couldn't load automations.",
+    },
+    {
+      label: "No search results",
+      hint: "Automations exist, but none match the entered search text.",
+      state: "empty",
+      message: 'No automations match "release"',
+    },
+    {
+      label: "No filter matches",
+      hint: "Automations exist, but the selected project or status filters exclude all of them.",
+      state: "empty",
+      message: "No automations match these filters.",
+    },
+    {
+      label: "No search and filter matches",
+      hint: "Both a search term and filters are active, and no automation matches both.",
+      state: "empty",
+      message: 'No automations match "release" with these filters.',
+    },
+  ] as const;
+  return (
+    <StoryCard>
+      {states.map(({ label, hint, state, message }) => (
+        <StoryRow key={label} label={label} hint={hint}>
+          <div className="w-full max-w-3xl">
+            <ResourceListState
+              state={state}
+              message={message}
+              onRetry={state === "error" ? noop : undefined}
+            />
+          </div>
+        </StoryRow>
+      ))}
+    </StoryCard>
+  );
+}
+
+function environmentVariant(
+  environment: AgentEnvironment,
+  targetThreadId?: string,
+): AutomationResponse {
+  const value = PROJECT_AUTOMATION;
+  if (value.execution.mode !== "agent") return value;
+  return {
+    ...value,
+    execution: {
+      ...value.execution,
+      environment,
+      ...(targetThreadId === undefined ? {} : { targetThreadId }),
+    },
+  };
 }
 
 export function DetailStates() {
   return (
-    <main
-      className="mx-auto w-full max-w-[72rem] space-y-4 px-5 py-6"
-      style={{ "--story-doc-width": "232px" } as CSSProperties}
-    >
-      <header>
-        <h1 className="text-lg font-semibold text-foreground">
-          Automation detail states
-        </h1>
-        <p className="mt-1 max-w-2xl text-sm text-muted-foreground">
-          An automation page is Definition then Runs. Runs owns its loading,
-          empty, failed, and populated states without moving.
-        </p>
-      </header>
-      <div className="divide-y divide-border overflow-hidden rounded-md border border-border bg-card">
-        <DetailState
-          name="Agent automation"
-          note="A recurring prompt with disabled model and access selectors plus its exact configured project location."
-        >
-          <AutomationDetail
-            value={PROJECT_AUTOMATION}
-            projectLabel="bb"
-            runs={PROJECT_RUNS}
+    <StoryCard>
+      <StoryRow
+        label="Personal workspace prompt"
+        hint="Read-only prompt using a personal workspace. The footer shows its configured workspace and permissions."
+      >
+        <PromptVariant value={DETAIL_AUTOMATION} />
+      </StoryRow>
+      <StoryRow
+        label="Project checkout prompt"
+        hint="Read-only prompt in a project. The footer includes the project name and configured checkout path."
+      >
+        <PromptVariant value={PROJECT_AUTOMATION} />
+      </StoryRow>
+      <StoryRow
+        label="Reuse an environment"
+        hint="An existing environment ID is configured. Shows Reuse environment with the same open-folder icon as core’s reuse selector."
+      >
+        <PromptVariant
+          value={environmentVariant({
+            type: "reuse",
+            environmentId: "env_story_reuse",
+          })}
+        />
+      </StoryRow>
+      <StoryRow
+        label="Create a new worktree"
+        hint="Creates a managed worktree from the default branch. Shows New worktree metadata."
+      >
+        <PromptVariant
+          value={environmentVariant({
+            type: "host",
+            workspace: {
+              type: "managed-worktree",
+              baseBranch: { kind: "default" },
+            },
+          })}
+        />
+      </StoryRow>
+      <StoryRow
+        label="Use project defaults"
+        hint="No explicit workspace is configured. Shows Project default metadata."
+      >
+        <PromptVariant
+          value={environmentVariant({ type: "project-default" })}
+        />
+      </StoryRow>
+      <StoryRow
+        label="Send to an existing thread"
+        hint="The target thread takes precedence over the fallback environment. Shows Existing thread metadata."
+      >
+        <PromptVariant
+          value={environmentVariant(
+            { type: "project-default" },
+            "thr_story_existing",
+          )}
+        />
+      </StoryRow>
+      <StoryRow
+        label="Checkout without a path"
+        hint="An unmanaged workspace with no configured path. Shows the Workspace fallback label."
+      >
+        <PromptVariant
+          value={environmentVariant({
+            type: "host",
+            workspace: { type: "unmanaged", path: null },
+          })}
+        />
+      </StoryRow>
+      <StoryRow
+        label="Long project and path"
+        hint="Exercises truncation when both the project name and checkout path are long."
+      >
+        <PromptVariant
+          projectLabel="Infrastructure and release engineering"
+          value={environmentVariant({
+            type: "host",
+            workspace: {
+              type: "unmanaged",
+              path: "/Users/you/Code/infrastructure-and-release-engineering/services/deployment-orchestrator",
+            },
+          })}
+        />
+      </StoryRow>
+      <StoryRow
+        label="Narrow prompt box"
+        hint="A 320px-wide reused-environment prompt. Exercises compact labels and permission-control sizing."
+      >
+        <div className="w-80 max-w-full">
+          <PromptVariant
+            value={environmentVariant({
+              type: "reuse",
+              environmentId: "env_story_reuse",
+            })}
           />
-        </DetailState>
-        <DetailState
-          name="Script automation"
-          note="The exact stored script that will run, capped with a bottom fade and transient scrollbar. Environment-variable names are available without exposing values."
-        >
-          <AutomationDetail
-            value={SCRIPT_AUTOMATION}
-            runs={runsFor(SCRIPT_AUTOMATION, ["succeeded"])}
+        </div>
+      </StoryRow>
+      <StoryRow
+        label="editing prompt"
+        hint="Change the prompt, model, or permission; Save and Cancel update this example."
+      >
+        <PromptVariant value={PROJECT_AUTOMATION} editable />
+      </StoryRow>
+      <StoryRow
+        label="Short script"
+        hint="A script that fits without scrolling or a bottom fade."
+      >
+        <div className="w-full max-w-2xl rounded-md border border-border">
+          <AutomationScriptContent content={'echo "Reports ready"'} />
+        </div>
+      </StoryRow>
+      <StoryRow
+        label="Script environment variables"
+        hint="A script with two configured variables. Their count sits beside the interpreter and timeout; hover or focus it to see the names."
+      >
+        <div className="w-full max-w-2xl">
+          <ScriptAutomationDefinition
+            execution={{
+              mode: "script",
+              script: 'echo "Preparing report"',
+              interpreter: "bash",
+              timeoutMs: 60000,
+              env: {
+                REPORT_OUTPUT: "/tmp/story-reports",
+                API_TOKEN: "story-only-value",
+              },
+            }}
           />
-        </DetailState>
-        <DetailState
-          name="No next run"
-          note="Enabled and recurring, but nothing is scheduled. The upcoming-run slot says so rather than going blank."
-        >
-          <AutomationDetail
-            value={UNSCHEDULED_AUTOMATION}
-            runs={runsFor(UNSCHEDULED_AUTOMATION, ["succeeded"])}
+        </div>
+      </StoryRow>
+      <StoryRow label="long script" hint="Scroll within the script preview.">
+        <div className="w-full max-w-2xl rounded-md border border-border">
+          <AutomationScriptContent
+            content={
+              SCRIPT_AUTOMATION.execution.mode === "script"
+                ? (SCRIPT_AUTOMATION.execution.script ?? "")
+                : ""
+            }
           />
-        </DetailState>
-        <DetailState
-          name="Completed one-time run"
-          note="A one-shot that already ran. The trigger still says One time and the run itself is in Runs, so the meta row no longer repeats “Completed”."
-        >
-          <AutomationDetail
-            value={COMPLETED_AUTOMATION}
-            runs={runsFor(COMPLETED_AUTOMATION, ["succeeded"])}
-          />
-        </DetailState>
-        <DetailState
-          name="No runs yet"
-          note="The Runs section stays in place and explains itself rather than collapsing."
-        >
-          <AutomationDetail />
-        </DetailState>
-        <DetailState
-          name="Runs loading"
-          note="The definition is usable while history is still arriving."
-        >
-          <AutomationDetail loading />
-        </DetailState>
-        <DetailState
-          name="Runs unavailable"
-          note="Only the run history is unavailable; the definition remains usable, and Retry stays with the affected section."
-        >
-          <AutomationDetail error="Request timed out" />
-        </DetailState>
-        <DetailState
-          name="Paused"
-          note="A disabled automation keeps its full definition and history."
-        >
-          <AutomationDetail
-            value={PAUSED_AUTOMATION}
-            runs={runsFor(PAUSED_AUTOMATION, ["failed", "succeeded"])}
-          />
-        </DetailState>
-        <DetailState
-          name="Route loading"
-          note="Before the automation resolves."
-        >
-          <ResourceListState
-            state="loading"
-            message="Loading automation"
-            layout="detail"
-          />
-        </DetailState>
-        <DetailState
-          name="Route not found"
-          note="The automation was deleted or the id is wrong."
-        >
-          <ResourceListState
-            state="error"
-            message="Automation not found."
-            layout="detail"
-            onRetry={noop}
-          />
-        </DetailState>
-      </div>
-    </main>
+        </div>
+      </StoryRow>
+    </StoryCard>
   );
 }
 
-export function ProviderIdentities() {
+export function RunStates() {
   return (
-    <main
-      className="mx-auto w-full max-w-[72rem] space-y-4 px-5 py-6"
-      style={{ "--story-doc-width": "160px" } as CSSProperties}
-    >
-      <header>
-        <h1 className="text-lg font-semibold text-foreground">
-          Automation provider identities
-        </h1>
-        <p className="mt-1 max-w-2xl text-sm text-muted-foreground">
-          Saved prompt metadata uses the configured provider identity and keeps
-          model context visible.
-        </p>
-      </header>
-      <div className="divide-y divide-border overflow-hidden rounded-md border border-border bg-card">
-        {PROVIDER_AUTOMATIONS.map(({ label, value }) => (
-          <DetailState
-            key={value.id}
-            name={label}
-            note="Production read-only automation detail."
-          >
-            <AutomationDetail
-              value={value}
-              projectLabel={value.projectId === "proj_bb" ? "bb" : "Local"}
-            />
-          </DetailState>
-        ))}
-      </div>
-    </main>
+    <StoryCard>
+      {[PROJECT_AUTOMATION, SCRIPT_AUTOMATION].flatMap((value) =>
+        runsFor(value, ["running", "succeeded", "failed", "skipped"]).map(
+          (run) => (
+            <StoryRow key={run.id} label={`${run.runMode} · ${run.status}`}>
+              <div className="w-full max-w-2xl">
+                <RunRow run={run} onOpenThread={noop} />
+              </div>
+            </StoryRow>
+          ),
+        ),
+      )}
+    </StoryCard>
   );
 }
