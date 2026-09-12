@@ -139,9 +139,7 @@ function renderAppSidebar() {
                       <AppSidebar
                         onResizeMouseDown={() => {}}
                         isResizing={false}
-                        showTopReserve
                         settingsRoutePath="/settings"
-                        toolsRoutePath="/tools"
                       />
                     </SidebarProvider>
                   </ThreadActionsProvider>

@@ -233,15 +233,14 @@ describe("createMobileRealtime", () => {
   });
 
   it("routes thread-open, pane-action, plugin-signal and changed frames leniently", () => {
-    const { factory, realtime } = setup();
+    const invalid: unknown[] = [];
+    const { factory, realtime } = setup({
+      onInvalidMessage: (error) => invalid.push(error),
+    });
     const changed: unknown[] = [];
     const opens: unknown[] = [];
-    const panes: unknown[] = [];
-    const signals: unknown[] = [];
     realtime.onChanged((m) => changed.push(m));
     realtime.onThreadOpen((s) => opens.push(s));
-    realtime.onThreadPaneAction((s) => panes.push(s));
-    realtime.onPluginSignal((s) => signals.push(s));
     realtime.connect();
     const socket = factory.latest();
     socket.open();
@@ -284,7 +283,9 @@ describe("createMobileRealtime", () => {
     );
     socket.receive("not json");
     socket.receive(new ArrayBuffer(2));
+    expect(invalid).toEqual([]);
     socket.receive(JSON.stringify({ type: "changed", entity: "martian" }));
+    expect(invalid).toHaveLength(1);
 
     expect(changed).toEqual([
       {
@@ -302,28 +303,6 @@ describe("createMobileRealtime", () => {
         threadId: "t1",
         split: "replace",
         file: { source: "workspace", path: "src/a.ts", lineNumber: 3 },
-      },
-    ]);
-    expect(realtime.consumePendingOpenFile("t1")).toEqual({
-      source: "workspace",
-      path: "src/a.ts",
-      lineNumber: 3,
-    });
-    expect(realtime.consumePendingOpenFile("t1")).toBeNull();
-    expect(panes).toEqual([
-      {
-        type: "thread-pane-action",
-        projectId: "p1",
-        threadId: "t1",
-        action: "maximize",
-      },
-    ]);
-    expect(signals).toEqual([
-      {
-        type: "plugin-signal",
-        pluginId: "tasks",
-        channel: "updated",
-        payload: { id: 1 },
       },
     ]);
   });
@@ -496,19 +475,6 @@ describe("createMobileRealtime", () => {
       realtime.resume();
       expect(factory.sockets).toHaveLength(3);
     });
-  });
-
-  it("passes per-attempt headers to the socket factory", () => {
-    let n = 0;
-    const { factory, realtime } = setup({
-      headers: () => ({ cookie: `s=${++n}` }),
-    });
-    realtime.connect();
-    expect(factory.latest().options.headers).toEqual({ cookie: "s=1" });
-    factory.latest().drop();
-    vi.advanceTimersByTime(1000);
-    expect(factory.latest().options.headers).toEqual({ cookie: "s=2" });
-    expect(factory.latest().url).toBe("ws://127.0.0.1:20304/ws");
   });
 
   it("dispose closes the socket, drops listeners, and ignores later calls", () => {

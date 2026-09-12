@@ -12,6 +12,7 @@ import {
   removeAttachmentBlobs,
 } from "../attachments";
 import { deliverCommentToLatestAgent } from "../steer";
+import { displayName } from "../shared/display-name";
 import { isSideChatShapedThread } from "../shared/side-chat";
 import {
   tasksRpcContract,
@@ -22,7 +23,6 @@ import {
   type TaskPullRequest,
   type TasksChangedEvent,
   type TasksDomainError,
-  type TaskStatus,
   type CommentsChangedEvent,
   type CommentProvider,
 } from "../shared/contract";
@@ -169,17 +169,6 @@ function taskFailure(error: TasksDomainFailure) {
   return { ok: false as const, error: error.detail };
 }
 
-function statusName(status: TaskStatus): string {
-  return status
-    .split("_")
-    .map((part) => part[0]?.toUpperCase() + part.slice(1))
-    .join(" ");
-}
-
-function priorityName(priority: StoredTask["priority"]): string {
-  return priority[0]?.toUpperCase() + priority.slice(1);
-}
-
 export function publishTasksChanged(
   bb: BbPluginApi,
   taskId: string,
@@ -197,15 +186,8 @@ export function publishProjectsChanged(
   bb.realtime.publish("projects:changed", payload);
 }
 
-export function publishCommentsChanged(
-  bb: BbPluginApi,
-  taskId: string,
-  notifiedCount?: number,
-): void {
-  const payload: CommentsChangedEvent = {
-    taskId,
-    ...(notifiedCount === undefined ? {} : { notifiedCount }),
-  };
+export function publishCommentsChanged(bb: BbPluginApi, taskId: string): void {
+  const payload: CommentsChangedEvent = { taskId };
   bb.realtime.publish("comments:changed", payload);
 }
 
@@ -412,6 +394,8 @@ async function resolveProviderBadges(
         id: provider.id,
         name: provider.displayName,
         logoUrl: provider.logoUrl,
+        icon: provider.icon ?? null,
+        strings: { iconTint: provider.strings?.iconTint ?? null },
       });
     }
   }
@@ -446,20 +430,18 @@ export async function createComment(
   );
 
   if (input.notify) {
-    const delivery = await deliverCommentToLatestAgent(bb, store.tasks, {
+    const notifiedCount = await deliverCommentToLatestAgent(bb, store.tasks, {
       taskId: comment.taskId,
       commentId: comment.id,
       body: comment.body,
       authorName: comment.authorName,
     });
     comment = store.transaction(() =>
-      store.tasks.updateComment(comment.id, {
-        notifiedCount: delivery.notifiedCount,
-      }),
+      store.tasks.updateComment(comment.id, { notifiedCount }),
     );
   }
 
-  publishCommentsChanged(bb, input.taskId, comment.notifiedCount);
+  publishCommentsChanged(bb, input.taskId);
   return comment;
 }
 
@@ -737,12 +719,12 @@ export function registerHandlers(
           const bodies: string[] = [];
           if (updated.status !== current.status) {
             bodies.push(
-              `Status changed to ${statusName(updated.status)} by ${input.authorName}`,
+              `Status changed to ${displayName(updated.status)} by ${input.authorName}`,
             );
           }
           if (updated.priority !== current.priority) {
             bodies.push(
-              `Priority changed to ${priorityName(updated.priority)} by ${input.authorName}`,
+              `Priority changed to ${displayName(updated.priority)} by ${input.authorName}`,
             );
           }
           if (updated.dueDate !== current.dueDate) {
@@ -812,7 +794,7 @@ export function registerHandlers(
         const statusChanged = moved.status !== current.status;
         if (statusChanged) {
           writeSystemComments(store, current.id, input.authorName, [
-            `Status changed to ${statusName(moved.status)} by ${input.authorName}`,
+            `Status changed to ${displayName(moved.status)} by ${input.authorName}`,
           ]);
         }
         return { task: apiTask(store, moved), statusChanged };
@@ -875,6 +857,8 @@ export function registerHandlers(
                     id: info.providerId,
                     name: info.providerId,
                     logoUrl: null,
+                    icon: null,
+                    strings: { iconTint: null },
                   }),
           };
         }),

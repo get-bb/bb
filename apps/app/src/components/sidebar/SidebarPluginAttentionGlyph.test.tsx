@@ -2,6 +2,7 @@
 
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { Provider } from "jotai";
+import { TooltipProvider } from "@bb/shared-ui/tooltip";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { SidebarProvider } from "@/components/ui/sidebar.js";
@@ -35,9 +36,11 @@ function renderGlyph(plugins: PluginListItem[]) {
   return render(
     <Provider>
       <MemoryRouter>
-        <SidebarProvider>
-          <SidebarPluginAttentionGlyph className="footer-action" />
-        </SidebarProvider>
+        <TooltipProvider delayDuration={300} disableHoverableContent>
+          <SidebarProvider>
+            <SidebarPluginAttentionGlyph className="footer-action" />
+          </SidebarProvider>
+        </TooltipProvider>
       </MemoryRouter>
     </Provider>,
   );

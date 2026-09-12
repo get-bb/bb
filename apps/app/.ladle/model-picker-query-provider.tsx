@@ -1,4 +1,5 @@
 import { useMemo, type ReactNode } from "react";
+import { makeSystemConfig } from "../src/test/fixtures/system-config";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import type {
   AvailableModel,
@@ -7,7 +8,11 @@ import type {
   ReasoningLevel,
 } from "@bb/domain";
 import type { SystemExecutionOptionsResponse } from "@bb/server-contract";
-import { systemExecutionOptionsQueryKey } from "../src/hooks/queries/query-keys";
+import {
+  hostsQueryKey,
+  systemConfigQueryKey,
+  systemExecutionOptionsQueryKey,
+} from "../src/hooks/queries/query-keys";
 import type { PickerOption } from "../src/components/pickers/OptionPicker";
 import type { ModelPickerOption } from "../src/components/pickers/model-picker-option";
 import {
@@ -127,7 +132,7 @@ function makeExecutionOptions(
   };
 }
 
-function createStoryQueryClient(): QueryClient {
+function createStoryQueryClient(environmentId: string | null): QueryClient {
   const queryClient = new QueryClient({
     defaultOptions: {
       queries: {
@@ -172,7 +177,7 @@ function createStoryQueryClient(): QueryClient {
   )) {
     queryClient.setQueryData<SystemExecutionOptionsResponse>(
       systemExecutionOptionsQueryKey({
-        environmentId: null,
+        environmentId,
         hostId: null,
         providerId,
       }),
@@ -180,15 +185,23 @@ function createStoryQueryClient(): QueryClient {
     );
   }
 
+  queryClient.setQueryData(hostsQueryKey(), []);
+  queryClient.setQueryData(systemConfigQueryKey(), makeSystemConfig());
+
   return queryClient;
 }
 
 export function ModelPickerStoryQueryProvider({
   children,
+  environmentId = null,
 }: {
   children: ReactNode;
+  environmentId?: string | null;
 }) {
-  const queryClient = useMemo(createStoryQueryClient, []);
+  const queryClient = useMemo(
+    () => createStoryQueryClient(environmentId),
+    [environmentId],
+  );
 
   return (
     <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>

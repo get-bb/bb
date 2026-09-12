@@ -4,6 +4,35 @@ import { registerFirstPartyProviders } from "../helpers/provider-registry.js";
 import { withTestHarness } from "../helpers/test-app.js";
 
 describe("project reads during provider startup", () => {
+  it("reads Personal by id while preserving project mutation restrictions", async () => {
+    await withTestHarness(async (harness) => {
+      const projectPath = "/api/v1/projects/proj_personal";
+      const response = await harness.app.request(projectPath);
+      expect(response.status).toBe(200);
+      expect(await response.json()).toMatchObject({
+        id: "proj_personal",
+        kind: "personal",
+        name: "Personal",
+        sources: [],
+      });
+
+      const rename = await harness.app.request(projectPath, {
+        method: "PATCH",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ name: "Renamed" }),
+      });
+      expect(rename.status).toBe(404);
+      const deletion = await harness.app.request(projectPath, {
+        method: "DELETE",
+      });
+      expect(deletion.status).toBe(409);
+      const missing = await harness.app.request(
+        "/api/v1/projects/proj_missing",
+      );
+      expect(missing.status).toBe(404);
+    });
+  });
+
   it("returns saved defaults before registration and with an unavailable provider", async () => {
     await withTestHarness(
       { seedFirstPartyProviders: false },

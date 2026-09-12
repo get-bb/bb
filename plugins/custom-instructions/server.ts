@@ -10,25 +10,6 @@ const customInstructionsSchema = z
     `Custom instructions must be at most ${MAX_CUSTOM_INSTRUCTIONS_LENGTH} characters`,
   );
 
-function parseInstructionsInput(input: unknown): string {
-  if (typeof input !== "object" || input === null || Array.isArray(input)) {
-    throw new Error("expected { instructions: string }");
-  }
-  const entries = Object.entries(input);
-  if (entries.length !== 1 || entries[0]?.[0] !== "instructions") {
-    throw new Error('expected exactly one field: "instructions"');
-  }
-  const instructions = entries[0][1];
-  if (typeof instructions !== "string") {
-    throw new Error('"instructions" must be a string');
-  }
-  const parsed = customInstructionsSchema.safeParse(instructions);
-  if (!parsed.success) {
-    throw new Error(parsed.error.issues[0]?.message ?? "invalid instructions");
-  }
-  return parsed.data;
-}
-
 export default async function plugin(bb: BbPluginApi) {
   const settings = bb.settings.define({
     instructions: {
@@ -93,10 +74,15 @@ export default async function plugin(bb: BbPluginApi) {
         };
       }
       if (command === "set") {
-        const instructions = parseInstructionsInput({
-          instructions: rest.join(" "),
+        const parsed = customInstructionsSchema.safeParse(rest.join(" "));
+        if (!parsed.success) {
+          throw new Error(
+            parsed.error.issues[0]?.message ?? "invalid instructions",
+          );
+        }
+        const next = await settings.experimental_set({
+          instructions: parsed.data,
         });
-        const next = await settings.experimental_set({ instructions });
         customInstructions = next.instructions;
         return {
           exitCode: 0,

@@ -1,5 +1,3 @@
-import { resolve } from "node:path";
-import { fileURLToPath } from "node:url";
 import { HOST_DAEMON_PROTOCOL_VERSION } from "@bb/host-daemon-contract";
 import { statusResponseSchema } from "@bb/host-daemon-contract/local";
 import {
@@ -9,6 +7,7 @@ import {
 } from "../lib/dev-restart-utils.js";
 import { readRunningPid } from "../lib/pid-file.js";
 import { runScriptProcess } from "../lib/process-helpers.js";
+import { runMainIfEntrypoint } from "../lib/script-entry.js";
 
 type RestartTarget = "both" | "host-daemon" | "server";
 type HostDaemonProtocolCompatibility = "compatible" | "mismatch" | "unknown";
@@ -164,14 +163,4 @@ async function main(argv: string[] = process.argv.slice(2)): Promise<void> {
   }
 }
 
-if (
-  process.argv[1] != null &&
-  resolve(process.argv[1]) === fileURLToPath(import.meta.url)
-) {
-  void main().catch((error) => {
-    const message =
-      error instanceof Error ? (error.stack ?? error.message) : String(error);
-    process.stderr.write(`${message}\n`);
-    process.exitCode = 1;
-  });
-}
+runMainIfEntrypoint(import.meta.url, main);

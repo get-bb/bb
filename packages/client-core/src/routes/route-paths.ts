@@ -36,7 +36,6 @@ export const LEGACY_TOOLS_AUTOMATION_DETAIL_ROUTE_PATH =
   "/tools/automations/:projectId/:automationId";
 export const LEGACY_TOOLS_AUTOMATION_EDIT_ROUTE_PATH =
   "/tools/automations/:projectId/:automationId/edit";
-export const LEGACY_SKILLS_ROUTE_PATH = SKILLS_ROUTE_PATH;
 export const LEGACY_AUTOMATIONS_ROUTE_PATH = "/automations";
 export const LEGACY_AUTOMATION_DETAIL_ROUTE_PATH =
   "/automations/:projectId/:automationId";
@@ -204,7 +203,7 @@ export function getThreadRoutePath(args: ThreadRoutePathArgs): string {
     : `/projects/${args.projectId}/threads/${args.threadId}`;
 }
 
-const baseRoutePatterns: readonly string[] = [
+export const ROUTE_PATTERNS: readonly string[] = [
   APP_ROOT_ROUTE_PATH,
   AUTH_CALLBACK_ROUTE_PATH,
   SETTINGS_ROUTE_PATH,
@@ -233,7 +232,6 @@ const baseRoutePatterns: readonly string[] = [
   LEGACY_TOOLS_AUTOMATION_BROWSE_ROUTE_PATH,
   LEGACY_TOOLS_AUTOMATION_DETAIL_ROUTE_PATH,
   LEGACY_TOOLS_AUTOMATION_EDIT_ROUTE_PATH,
-  LEGACY_SKILLS_ROUTE_PATH,
   LEGACY_AUTOMATIONS_ROUTE_PATH,
   LEGACY_AUTOMATION_DETAIL_ROUTE_PATH,
   AUTOMATIONS_ROUTE_PATH,
@@ -248,8 +246,6 @@ const baseRoutePatterns: readonly string[] = [
   THREAD_DETAIL_ROUTE_PATH,
   PLUGIN_PANEL_ROUTE_PATH,
 ];
-
-export const ROUTE_PATTERNS = baseRoutePatterns;
 
 export function stripRoutePathSuffix(path: string): string {
   const queryIndex = path.indexOf("?");

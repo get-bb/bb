@@ -9,6 +9,16 @@ import type {
 } from "./types.js";
 
 export const MAX_WORKFLOW_SOURCE_BYTES = 512 * 1024;
+export const AGENT_OPTION_KEYS = new Set([
+  "provider",
+  "model",
+  "reasoningLevel",
+  "outputSchema",
+  "schema",
+  "title",
+  "label",
+  "phase",
+]);
 const MAX_SCHEMA_BYTES = 64 * 1024;
 const MAX_SCHEMA_DEPTH = 32;
 const MAX_SCHEMA_NODES = 4_096;
@@ -354,18 +364,8 @@ export function parseAgentOptions(
   }
   if (!isObject(value)) throw new Error("agent options must be an object");
 
-  const allowed = new Set([
-    "provider",
-    "model",
-    "reasoningLevel",
-    "outputSchema",
-    "schema",
-    "title",
-    "label",
-    "phase",
-  ]);
   for (const key of Object.keys(value)) {
-    if (!allowed.has(key))
+    if (!AGENT_OPTION_KEYS.has(key))
       throw new Error(`Unknown agent option ${JSON.stringify(key)}`);
   }
 

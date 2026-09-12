@@ -11,8 +11,9 @@ import { COMMAND_TIMEOUT_MS } from "../constants.js";
 import { ApiError } from "../errors.js";
 import { browserRequestProblem } from "../browser-request-guard.js";
 import type { AppDeps, LoggedWorkSessionDeps } from "../types.js";
+import type { HostDaemonRpcCommand } from "@bb/host-daemon-contract";
 import {
-  callHostOnlineRpc,
+  callHostOnlineRpcForWork,
   callHostRetryableOnlineRpc,
 } from "../services/hosts/online-rpc.js";
 import {
@@ -208,9 +209,32 @@ export function registerFileRoutes(app: Hono, deps: AppDeps): void {
     }
   };
 
-  post(fileRoutes.read, async (context, payload) => {
-    const hostId = resolveHostId(payload.hostId);
+  const runHostFileMutationCommand = <TCommand extends HostDaemonRpcCommand>(
+    hostId: string,
+    command: TCommand,
+  ) =>
+    runHostFileMutation(hostId, () =>
+      callHostOnlineRpcForWork(deps, {
+        hostId,
+        timeoutMs: COMMAND_TIMEOUT_MS,
+        command,
+      }),
+    );
+
+  const withHostFileRoute = async <T>(
+    hostIdInput: string | undefined,
+    run: (hostId: string) => Promise<T>,
+  ): Promise<T> => {
+    const hostId = resolveHostId(hostIdInput);
     try {
+      return await run(hostId);
+    } catch (error) {
+      return remapDaemonFileRouteError(error);
+    }
+  };
+
+  post(fileRoutes.read, (context, payload) =>
+    withHostFileRoute(payload.hostId, async (hostId) => {
       const result = await callHostRetryableOnlineRpc(deps, {
         hostId,
         timeoutMs: COMMAND_TIMEOUT_MS,
@@ -223,43 +247,31 @@ export function registerFileRoutes(app: Hono, deps: AppDeps): void {
         },
       });
       return context.json(requireDaemonFileContentResult(result));
-    } catch (error) {
-      return remapDaemonFileRouteError(error);
-    }
-  });
+    }),
+  );
 
-  post(fileRoutes.write, async (context, payload) => {
-    const hostId = resolveHostId(payload.hostId);
-    try {
-      const result = await runHostFileMutation(hostId, () =>
-        callHostOnlineRpc(deps, {
-          hostId,
-          timeoutMs: COMMAND_TIMEOUT_MS,
-          command: {
-            type: "host.write_file",
-            path: payload.path,
-            content: payload.content,
-            contentEncoding: payload.contentEncoding ?? "utf8",
-            createParents: payload.createParents ?? false,
-            ...(payload.rootPath !== undefined
-              ? { rootPath: payload.rootPath }
-              : {}),
-            ...(payload.expectedSha256 !== undefined
-              ? { expectedSha256: payload.expectedSha256 }
-              : {}),
-            ...(payload.mode !== undefined ? { mode: payload.mode } : {}),
-          },
-        }),
-      );
+  post(fileRoutes.write, (context, payload) =>
+    withHostFileRoute(payload.hostId, async (hostId) => {
+      const result = await runHostFileMutationCommand(hostId, {
+        type: "host.write_file",
+        path: payload.path,
+        content: payload.content,
+        contentEncoding: payload.contentEncoding ?? "utf8",
+        createParents: payload.createParents ?? false,
+        ...(payload.rootPath !== undefined
+          ? { rootPath: payload.rootPath }
+          : {}),
+        ...(payload.expectedSha256 !== undefined
+          ? { expectedSha256: payload.expectedSha256 }
+          : {}),
+        ...(payload.mode !== undefined ? { mode: payload.mode } : {}),
+      });
       return context.json(result);
-    } catch (error) {
-      return remapDaemonFileRouteError(error);
-    }
-  });
+    }),
+  );
 
-  post(fileRoutes.list, async (context, payload) => {
-    const hostId = resolveHostId(payload.hostId);
-    try {
+  post(fileRoutes.list, (context, payload) =>
+    withHostFileRoute(payload.hostId, async (hostId) => {
       const result = await callHostRetryableOnlineRpc(deps, {
         hostId,
         timeoutMs: COMMAND_TIMEOUT_MS,
@@ -277,14 +289,11 @@ export function registerFileRoutes(app: Hono, deps: AppDeps): void {
         },
       });
       return context.json(result);
-    } catch (error) {
-      return remapDaemonFileRouteError(error);
-    }
-  });
+    }),
+  );
 
-  post(fileRoutes.listPaths, async (context, payload) => {
-    const hostId = resolveHostId(payload.hostId);
-    try {
+  post(fileRoutes.listPaths, (context, payload) =>
+    withHostFileRoute(payload.hostId, async (hostId) => {
       const result = await callHostRetryableOnlineRpc(deps, {
         hostId,
         timeoutMs: COMMAND_TIMEOUT_MS,
@@ -304,79 +313,50 @@ export function registerFileRoutes(app: Hono, deps: AppDeps): void {
         },
       });
       return context.json(result);
-    } catch (error) {
-      return remapDaemonFileRouteError(error);
-    }
-  });
+    }),
+  );
 
-  post(fileRoutes.mkdir, async (context, payload) => {
-    const hostId = resolveHostId(payload.hostId);
-    try {
-      const result = await runHostFileMutation(hostId, () =>
-        callHostOnlineRpc(deps, {
-          hostId,
-          timeoutMs: COMMAND_TIMEOUT_MS,
-          command: {
-            type: "host.mkdir",
-            path: payload.path,
-            recursive: payload.recursive ?? false,
-            ...(payload.rootPath !== undefined
-              ? { rootPath: payload.rootPath }
-              : {}),
-          },
-        }),
-      );
+  post(fileRoutes.mkdir, (context, payload) =>
+    withHostFileRoute(payload.hostId, async (hostId) => {
+      const result = await runHostFileMutationCommand(hostId, {
+        type: "host.mkdir",
+        path: payload.path,
+        recursive: payload.recursive ?? false,
+        ...(payload.rootPath !== undefined
+          ? { rootPath: payload.rootPath }
+          : {}),
+      });
       return context.json(result);
-    } catch (error) {
-      return remapDaemonFileRouteError(error);
-    }
-  });
+    }),
+  );
 
-  post(fileRoutes.move, async (context, payload) => {
-    const hostId = resolveHostId(payload.hostId);
-    try {
-      const result = await runHostFileMutation(hostId, () =>
-        callHostOnlineRpc(deps, {
-          hostId,
-          timeoutMs: COMMAND_TIMEOUT_MS,
-          command: {
-            type: "host.move_path",
-            sourcePath: payload.sourcePath,
-            destinationPath: payload.destinationPath,
-            ...(payload.rootPath !== undefined
-              ? { rootPath: payload.rootPath }
-              : {}),
-          },
-        }),
-      );
+  post(fileRoutes.move, (context, payload) =>
+    withHostFileRoute(payload.hostId, async (hostId) => {
+      const result = await runHostFileMutationCommand(hostId, {
+        type: "host.move_path",
+        sourcePath: payload.sourcePath,
+        destinationPath: payload.destinationPath,
+        ...(payload.rootPath !== undefined
+          ? { rootPath: payload.rootPath }
+          : {}),
+      });
       return context.json(result);
-    } catch (error) {
-      return remapDaemonFileRouteError(error);
-    }
-  });
+    }),
+  );
 
-  post(fileRoutes.remove, async (context, payload) => {
-    const hostId = resolveHostId(payload.hostId);
-    try {
-      const result = await runHostFileMutation(hostId, () =>
-        callHostOnlineRpc(deps, {
-          hostId,
-          timeoutMs: COMMAND_TIMEOUT_MS,
-          command: {
-            type: "host.remove_path",
-            path: payload.path,
-            recursive: payload.recursive ?? false,
-            ...(payload.rootPath !== undefined
-              ? { rootPath: payload.rootPath }
-              : {}),
-          },
-        }),
-      );
+  post(fileRoutes.remove, (context, payload) =>
+    withHostFileRoute(payload.hostId, async (hostId) => {
+      const result = await runHostFileMutationCommand(hostId, {
+        type: "host.remove_path",
+        path: payload.path,
+        recursive: payload.recursive ?? false,
+        ...(payload.rootPath !== undefined
+          ? { rootPath: payload.rootPath }
+          : {}),
+      });
       return context.json(result);
-    } catch (error) {
-      return remapDaemonFileRouteError(error);
-    }
-  });
+    }),
+  );
 
   post(fileRoutes.createPreview, (context, payload) => {
     const hostId = resolveHostId(payload.hostId);

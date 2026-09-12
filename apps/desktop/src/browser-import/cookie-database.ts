@@ -35,12 +35,6 @@ export class BrowserImportError extends Error {
   }
 }
 
-export function isBrowserImportError(
-  value: unknown,
-): value is BrowserImportError {
-  return value instanceof BrowserImportError;
-}
-
 export function bareHost(host: string): string {
   return host.startsWith(".") ? host.slice(1) : host;
 }

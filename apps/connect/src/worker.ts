@@ -4,12 +4,12 @@ import {
   handleAppLinkAssociationRequest,
   parseVisitorHost,
   schema,
+  sha256Hex,
 } from "@bb/connect-db";
 import { refreshAccountSessionCookies } from "./account-session.js";
 import { TUNNEL_OFFLINE_HEADER, TunnelDO, type Env } from "./tunnel-do.js";
 import {
   invalidateSessionCookie,
-  sha256Hex,
   parseCookie,
   markMachineSeen,
   resolveLabel,
@@ -205,6 +205,7 @@ export function requestForTunnelDo(
   request: Request,
   target: string | null,
   authKind?: "machine" | "session",
+  machineId?: string,
 ): Request {
   const headers = new Headers(request.headers);
   headers.delete(TUNNEL_TARGET_HEADER);
@@ -217,6 +218,9 @@ export function requestForTunnelDo(
   }
   if (authKind !== undefined) {
     headers.set(GATE_AUTH_HEADER, authKind);
+  }
+  if (machineId !== undefined) {
+    headers.set(GATE_MACHINE_ID_HEADER, machineId);
   }
   return new Request(request, { headers });
 }
@@ -298,7 +302,7 @@ export default {
       resolved.kind === "machine" ? resolved.routingKey : label;
     const stub = env.TUNNEL_DO.get(env.TUNNEL_DO.idFromName(routingKey));
 
-    if (url.pathname === "/__tunnel") {
+    if (isTunnelDial) {
       if (target !== null) return text("bb connect: not found\n", 404);
       const auth = request.headers.get("authorization") ?? "";
       const credential = auth.startsWith("Bearer ") ? auth.slice(7) : "";
@@ -343,13 +347,7 @@ export default {
       url.pathname === "/install/bb-app.tgz";
     if (request.method === "GET" && isPublicInstallPath) {
       if (target !== null) return text("bb connect: not found\n", 404);
-      const headers = new Headers(request.headers);
-      headers.delete(MACHINE_CREDENTIAL_HEADER);
-      headers.delete(TUNNEL_TARGET_HEADER);
-      headers.delete(GATE_AUTH_HEADER);
-      headers.delete(GATE_MACHINE_ID_HEADER);
-      stripCloudDevHeader(headers);
-      return stub.fetch(new Request(request, { headers }));
+      return stub.fetch(requestForTunnelDo(request, null));
     }
 
     const isMachinePath =
@@ -375,15 +373,9 @@ export default {
         return text("bb connect: machine cannot manage hosts\n", 403);
       }
       ctx.waitUntil(markMachineSeen(verified.machineId, db));
-      const headers = new Headers(request.headers);
-      headers.delete(MACHINE_CREDENTIAL_HEADER);
-      headers.delete(TUNNEL_TARGET_HEADER);
-      headers.delete(GATE_AUTH_HEADER);
-      headers.delete(GATE_MACHINE_ID_HEADER);
-      stripCloudDevHeader(headers);
-      headers.set(GATE_AUTH_HEADER, "machine");
-      headers.set(GATE_MACHINE_ID_HEADER, verified.machineId);
-      return stub.fetch(new Request(request, { headers }));
+      return stub.fetch(
+        requestForTunnelDo(request, null, "machine", verified.machineId),
+      );
     }
     if (url.pathname.startsWith("/internal")) {
       return text("bb connect: machine not authorized\n", 403);

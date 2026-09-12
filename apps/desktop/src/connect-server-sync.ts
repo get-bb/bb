@@ -132,14 +132,11 @@ interface CreateConnectServerSyncArgs {
   fetchImpl?: ConnectServerSyncFetch;
   log?: ConnectServerSyncLog;
   now?: () => number;
-  minIntervalMs?: number;
   setIntervalFn?: (handler: () => void, timeout: number) => unknown;
-  clearIntervalFn?: (handle: unknown) => void;
 }
 
 export interface ConnectServerSync {
   start(): void;
-  stop(): void;
   onRuntimeReady(): void;
   onListRequested(): void;
   syncNow(): Promise<void>;
@@ -149,17 +146,10 @@ export function createConnectServerSync(
   args: CreateConnectServerSyncArgs,
 ): ConnectServerSync {
   const intervalMs = CONNECT_SERVER_SYNC_INTERVAL_MS;
-  const minIntervalMs =
-    args.minIntervalMs ?? CONNECT_SERVER_SYNC_MIN_INTERVAL_MS;
   const now = args.now ?? Date.now;
   const setIntervalFn =
     args.setIntervalFn ??
     ((handler: () => void, timeout: number) => setInterval(handler, timeout));
-  const clearIntervalFn =
-    args.clearIntervalFn ??
-    ((handle: unknown) => {
-      clearInterval(handle as ReturnType<typeof setInterval>);
-    });
   const log = args.log;
 
   let timer: unknown = null;
@@ -222,7 +212,7 @@ export function createConnectServerSync(
   }
 
   function onListRequested(): void {
-    if (now() - lastSyncAttemptAt < minIntervalMs) {
+    if (now() - lastSyncAttemptAt < CONNECT_SERVER_SYNC_MIN_INTERVAL_MS) {
       return;
     }
     void syncNow();
@@ -246,17 +236,8 @@ export function createConnectServerSync(
     timer = handle;
   }
 
-  function stop(): void {
-    if (timer === null) {
-      return;
-    }
-    clearIntervalFn(timer);
-    timer = null;
-  }
-
   return {
     start,
-    stop,
     onRuntimeReady,
     onListRequested,
     syncNow,

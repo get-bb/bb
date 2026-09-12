@@ -6,14 +6,16 @@ import type {
   ThreadEvent,
   ThreadEventRow,
 } from "@bb/domain";
-import { decodeThreadEventRow } from "../src/event-decode.js";
 import {
   finalizeOperationMessage,
   interruptOperationMessage,
   parseOperationMessage,
 } from "../src/parse-operation-message.js";
 import type { EventProjectionOperationMessage } from "../src/event-projection-types.js";
-import { createTimelineEventFactory } from "./timeline-test-harness.js";
+import {
+  createTimelineEventFactory,
+  decodeThreadEventRow,
+} from "./timeline-test-harness.js";
 
 const THREAD_ID = "thr_fixauth";
 const THREAD_NAME = "Fix auth bug";

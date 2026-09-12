@@ -1,5 +1,10 @@
+import type { NormalizedPluginEnvironmentComposition } from "@get-bb/plugin-sdk/internal/host-policy";
 import type { NormalizedPluginEnvironmentProvider } from "@get-bb/plugin-sdk/internal/host-policy";
-import type { PluginHookInvocation } from "./plugin-hook-registry.js";
+import {
+  DEFAULT_PLUGIN_HOOK_TIMEOUT_MS,
+  invokeBridgedProvider,
+  type PluginHookInvocation,
+} from "./plugin-hook-registry.js";
 
 export interface PluginEnvironmentProviderRecord {
   pluginId: string;
@@ -7,7 +12,13 @@ export interface PluginEnvironmentProviderRecord {
   icon?: { bytes: Uint8Array; contentType: string; hash: string };
 }
 
+export interface PluginEnvironmentCompositionRecord {
+  pluginId: string;
+  composition: NormalizedPluginEnvironmentComposition;
+  icon?: { bytes: Uint8Array; contentType: string; hash: string };
+}
 export interface PluginEnvironmentProviderBridge {
+  listEnvironmentCompositions?(): PluginEnvironmentCompositionRecord[];
   listEnvironmentProviders(): PluginEnvironmentProviderRecord[];
   getEnvironmentProvider(
     id: string,
@@ -29,6 +40,10 @@ export function setPluginEnvironmentProviderBridge(
   bridge = next;
 }
 
+export function listEnvironmentCompositions(): PluginEnvironmentCompositionRecord[] {
+  return bridge?.listEnvironmentCompositions?.() ?? [];
+}
+
 export function listEnvironmentProviders(): PluginEnvironmentProviderRecord[] {
   return bridge?.listEnvironmentProviders() ?? [];
 }
@@ -44,14 +59,11 @@ export async function invokeEnvironmentProvider<T>(
   label: string,
   run: () => Promise<T>,
 ): Promise<PluginHookInvocation<T>> {
-  if (bridge === undefined) {
-    return { ok: false, error: "plugin runtime is not available" };
-  }
-  return bridge.invokeProvider(record.pluginId, label, run);
+  return invokeBridgedProvider(bridge, record.pluginId, label, run);
 }
 
 export function environmentProviderDecisionTimeoutMs(): number {
-  return bridge?.decisionTimeoutMs ?? 10_000;
+  return bridge?.decisionTimeoutMs ?? DEFAULT_PLUGIN_HOOK_TIMEOUT_MS;
 }
 
 export function setEnvironmentProviderRecheckHandler(

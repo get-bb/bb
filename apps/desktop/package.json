@@ -1,6 +1,6 @@
 {
   "name": "@bb/desktop",
-  "version": "0.42.1",
+  "version": "0.43.1",
   "private": true,
   "description": "macOS and Linux Electron shell for bb",
   "main": "dist/main.js",
@@ -22,6 +22,7 @@
     "prepare-runtime": "pnpm exec turbo run build --filter=bb-app --output-logs=new-only",
     "smoke:appimage-lifecycle": "node scripts/smoke-linux-appimage-lifecycle.mjs",
     "smoke:packaged": "node scripts/smoke-packaged-app.mjs",
+    "smoke:packaged-npm": "node scripts/smoke-packaged-npm.mjs",
     "smoke:browser-cdp": "node scripts/smoke-browser-cdp.mjs",
     "start": "pnpm run package && node scripts/run-packaged-app.mjs",
     "start:linux": "pnpm run package:linux && node scripts/run-packaged-app.mjs",

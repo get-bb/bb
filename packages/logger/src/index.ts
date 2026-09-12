@@ -6,13 +6,10 @@ import { loadLoggerConfig } from "@bb/config/logger";
 
 export type { Logger };
 
-type LoggerTransportMode = "stream" | "worker";
-
 interface CreateLoggerOptions {
   component: string;
   base?: Record<string, unknown>;
   dataDir?: string;
-  transportMode?: LoggerTransportMode;
 }
 
 function sanitizeComponentName(component: string): string {
@@ -41,12 +38,6 @@ export function createLogger(options: CreateLoggerOptions): Logger {
       error: pino.stdSerializers.errWithCause,
     },
   } satisfies pino.LoggerOptions;
-  const transportMode = options.transportMode ?? "worker";
-
-  if (transportMode === "stream") {
-    const destination = pino.destination(join(logDir, `${component}.log`));
-    return pino(loggerOptions, destination);
-  }
 
   const targets: pino.TransportTargetOptions[] = [
     {

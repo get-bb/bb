@@ -36,11 +36,11 @@ export const PRESET_ENVIRONMENT_KINDS = [
   "new-worktree",
 ] as const;
 
-const ULID_PATTERN = /^[0-7][0-9A-HJKMNP-TV-Z]{25}$/;
-const PROJECT_PREFIX_PATTERN = /^[A-Z][A-Z0-9]{0,9}$/;
-const ISO_DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
+export const ULID_PATTERN = /^[0-7][0-9A-HJKMNP-TV-Z]{25}$/;
+export const PROJECT_PREFIX_PATTERN = /^[A-Z][A-Z0-9]{0,9}$/;
+export const ISO_DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
 
-const idSchema = z.string().regex(ULID_PATTERN, "must be a ULID");
+export const idSchema = z.string().regex(ULID_PATTERN, "must be a ULID");
 const nonBlankStringSchema = z.string().trim().min(1, "must not be blank");
 export const presetReasoningLevelSchema = z.enum([
   "none",
@@ -161,6 +161,15 @@ const commentProviderSchema = z
     id: z.string(),
     name: z.string(),
     logoUrl: z.string().nullable(),
+    icon: z.object({ glyph: z.string() }).strict().nullable(),
+    strings: z
+      .object({
+        iconTint: z
+          .object({ light: z.string(), dark: z.string() })
+          .strict()
+          .nullable(),
+      })
+      .strict(),
   })
   .strict();
 
@@ -754,7 +763,6 @@ export interface ProjectsChangedEvent {
 
 export interface CommentsChangedEvent {
   taskId: string;
-  notifiedCount?: number;
 }
 
 export interface ThreadsChangedEvent {

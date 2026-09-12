@@ -1,24 +1,16 @@
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { fileURLToPath } from "node:url";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { experimental_createBridgeJsonRpcTestHarness as createBridgeJsonRpcTestHarness } from "@get-bb/plugin-sdk/provider-bridge/testing";
 import { z } from "zod";
 import { handleLine } from "./bridge.js";
+import {
+  FULL_ACCESS_SESSION_OPTIONS,
+  stubFakeCodexAppServer,
+} from "./fake-codex-app-server-harness.js";
 
 const THREAD_ID = "thr_signature_1";
-
-const fakeAppServerPath = fileURLToPath(
-  new URL("./fake-codex-app-server.mjs", import.meta.url),
-);
-
-const sessionOptions = {
-  permissionMode: "full",
-  permissionScope: "full",
-  approvalReviewer: null,
-  permissionEscalation: null,
-} as const;
 
 const autoAskSessionOptions = {
   permissionMode: "auto",
@@ -41,11 +33,7 @@ beforeEach(() => {
   requestLogPath = join(workspaceDir, "requests.jsonl");
   const scriptPath = join(workspaceDir, "script.json");
   writeFileSync(scriptPath, JSON.stringify({ requestLogPath }));
-  vi.stubEnv("BB_CODEX_BRIDGE_APP_SERVER_COMMAND", process.execPath);
-  vi.stubEnv(
-    "BB_CODEX_BRIDGE_APP_SERVER_ARGS",
-    JSON.stringify([fakeAppServerPath, scriptPath]),
-  );
+  stubFakeCodexAppServer(scriptPath);
   harness = createBridgeJsonRpcTestHarness(handleLine);
 });
 
@@ -68,7 +56,10 @@ it("keeps the constructed session for a turn whose options carry no envVars", as
     threadId: THREAD_ID,
     cwd: workspaceDir,
     instructionMode: "append",
-    options: { ...sessionOptions, envVars: { PATH: "/usr/bin:/bin" } },
+    options: {
+      ...FULL_ACCESS_SESSION_OPTIONS,
+      envVars: { PATH: "/usr/bin:/bin" },
+    },
   });
   const started = await harness.waitForResponse(1);
   const { providerThreadId } = z
@@ -80,7 +71,7 @@ it("keeps the constructed session for a turn whose options carry no envVars", as
     providerThreadId,
     clientRequestId: "creq_signature2",
     input: [{ type: "text", text: "say hello", mentions: [] }],
-    options: { ...sessionOptions },
+    options: { ...FULL_ACCESS_SESSION_OPTIONS },
   });
   const turn = await harness.waitForResponse(2);
 
@@ -133,7 +124,7 @@ it("clears Fast for the next turn without replacing the session", async () => {
     threadId: THREAD_ID,
     cwd: workspaceDir,
     instructionMode: "append",
-    options: { ...sessionOptions, serviceTier: "fast" },
+    options: { ...FULL_ACCESS_SESSION_OPTIONS, serviceTier: "fast" },
   });
   const started = await harness.waitForResponse(1);
   expect(started.error).toBeUndefined();
@@ -148,7 +139,7 @@ it("clears Fast for the next turn without replacing the session", async () => {
       providerThreadId,
       clientRequestId: `creq_tiertestx${id}`,
       input: [{ type: "text", text: "say hello", mentions: [] }],
-      options: { ...sessionOptions, serviceTier },
+      options: { ...FULL_ACCESS_SESSION_OPTIONS, serviceTier },
     });
     expect((await harness.waitForResponse(id)).error).toBeUndefined();
     expect(recordedRequests().at(-1)).toEqual({
@@ -172,7 +163,7 @@ it.each(["start", "resume", "fork"] as const)(
       ...(kind === "fork" ? { sourceProviderThreadId: "provider-fast" } : {}),
       cwd: workspaceDir,
       instructionMode: "append",
-      options: { ...sessionOptions, serviceTier: "default" },
+      options: { ...FULL_ACCESS_SESSION_OPTIONS, serviceTier: "default" },
     });
     expect((await harness.waitForResponse(1)).error).toBeUndefined();
     expect(recordedRequests()).toContainEqual({

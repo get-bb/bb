@@ -12,18 +12,12 @@ export {
   findActiveLatestBundleId,
   findTimelineFrontierRow,
 } from "./timeline-row-title.js";
-export {
-  hasTimelineExplorationIntent,
-  primaryTimelineActivityIntent,
-  timelineRowActivityIntents,
-  type TimelineExplorationWorkRow,
-} from "./timeline-activity-intents.js";
+export { hasTimelineExplorationIntent } from "./timeline-activity-intents.js";
 export {
   activityIntentTitleGlyph,
   workRowGlyph,
   workRowPluginGlyph,
   workRowPresentation,
-  type TimelineWorkRowGlyph,
 } from "./timeline-work-row-glyph.js";
 export {
   capitalize,
@@ -63,7 +57,6 @@ export {
 export type {
   BuildTimelineViewRowsOptions,
   ThreadTimelineViewRow,
-  TimelineImageViewViewWorkRow,
   TimelineQuestionViewWorkRow,
   TimelineViewTurnRow,
   TimelineViewWorkflowWorkRow,
@@ -72,3 +65,5 @@ export type {
 } from "./timeline-view.js";
 export { compactThreadTimelineSummaryEvents } from "./summary-event-compaction.js";
 export type { ThreadEventWithMeta } from "./group-event-projection-turns.js";
+
+export { extractThreadContextWindowUsage } from "./thread-context-window-usage.js";

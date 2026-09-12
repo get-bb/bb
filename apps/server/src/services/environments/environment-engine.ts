@@ -1,9 +1,7 @@
+import { withHostCleanup } from "../hosts/cleanup-context.js";
 import { findHostDataDir } from "../lib/entity-lookup.js";
 import { updateThread } from "@bb/db";
-import {
-  assertEnvironmentPathAvailable,
-  withEnvironmentPathAdmission,
-} from "./path-admission.js";
+import { assertEnvironmentPathAvailable } from "./path-admission.js";
 import { saveThreadProvisionContext } from "../threads/thread-startup-store.js";
 import {
   refreshAttachedEnvironmentBranch,
@@ -107,6 +105,8 @@ import {
   type HostDaemonCommandExecutionRecord,
   type HostDaemonCommandForType,
 } from "../../internal/command-result-side-effects.js";
+import { errorMessage } from "../lib/error-log-fields.js";
+import { perDbRegistry } from "../lib/per-db-registry.js";
 
 type Deps = ThreadProvisioningDeps;
 
@@ -115,7 +115,7 @@ export interface ProviderOperationContext {
   project: Project;
   host: Host;
   machine: EnvironmentMachineSelection;
-  projectCheckout: { path: string } | null;
+  projectCheckout: { path: string; experimental_ownsPath: boolean } | null;
   gitRemote: string | null;
   inputs: JsonValue | null;
   suggestedBranchName: string;
@@ -154,22 +154,6 @@ const environmentOperations = new WeakMap<
   object,
   Map<string, ActiveOperation>
 >();
-
-function operations(
-  registry: WeakMap<object, Map<string, ActiveOperation>>,
-  db: DbConnection,
-): Map<string, ActiveOperation> {
-  let map = registry.get(db);
-  if (map === undefined) {
-    map = new Map();
-    registry.set(db, map);
-  }
-  return map;
-}
-
-function message(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
-}
 
 function writeEnvironment(
   deps: Pick<Deps, "db" | "hub">,
@@ -490,7 +474,7 @@ async function runCreate(
       return;
     changed = mutateProvisioning(deps, provisioning, ["creating"], (row) => {
       row.status = "error";
-      row.statusMessage = `The "${record.provider.id}" environment provider (plugin "${record.pluginId}") failed: ${message(error)}`;
+      row.statusMessage = `The "${record.provider.id}" environment provider (plugin "${record.pluginId}") failed: ${errorMessage(error)}`;
     });
   } finally {
     if (
@@ -642,78 +626,80 @@ async function runRemove(
     throw new Error(
       `Environment provider "${row.environmentProviderId}" is unavailable or belongs to another plugin`,
     );
-  try {
-    if (row.providerOwnsPath && row.hostId !== null && row.path !== null) {
-      await runEnvironmentHook(deps, {
-        id: `environment:${environmentId}:${row.environmentProviderInstanceKey}:teardown`,
-        hostId: row.hostId,
-        path: row.path,
-        kind: "teardown",
-        resumeOnly,
-        report: {
-          step: () => undefined,
-          log: (text) =>
-            deps.logger.warn(
-              { environmentId, text },
-              "Environment teardown hook",
-            ),
-        },
-        signal,
-      });
-    }
-    const invocation = await invokeEnvironmentProvider(
-      record,
-      "environment remove",
-      () =>
-        record.provider.remove({
-          environment:
-            row.ownerThreadId !== null ? null : toEnvironmentResponse(row),
+  await withHostCleanup(deps, row.hostId, async () => {
+    try {
+      if (row.providerOwnsPath && row.hostId !== null && row.path !== null) {
+        await runEnvironmentHook(deps, {
+          id: `environment:${environmentId}:${row.environmentProviderInstanceKey}:teardown`,
           hostId: row.hostId,
           path: row.path,
-          pathKey: row.environmentProviderInstanceKey ?? row.id,
-          resource: row.resource,
-          attempt,
-          report: emptyReporter(),
+          kind: "teardown",
+          resumeOnly,
+          report: {
+            step: () => undefined,
+            log: (text) =>
+              deps.logger.warn(
+                { environmentId, text },
+                "Environment teardown hook",
+              ),
+          },
           signal,
-        }),
-    );
-    if (!invocation.ok) throw new Error(invocation.error);
-    if (invocation.value === null)
-      throw new Error("The environment provider became unavailable.");
-    const result = removeResultSchema.parse(invocation.value);
-    if (result.status === "failed") {
+        });
+      }
+      const invocation = await invokeEnvironmentProvider(
+        record,
+        "environment remove",
+        () =>
+          record.provider.remove({
+            environment:
+              row.ownerThreadId !== null ? null : toEnvironmentResponse(row),
+            hostId: row.hostId,
+            path: row.path,
+            pathKey: row.environmentProviderInstanceKey ?? row.id,
+            resource: row.resource,
+            attempt,
+            report: emptyReporter(),
+            signal,
+          }),
+      );
+      if (!invocation.ok) throw new Error(invocation.error);
+      if (invocation.value === null)
+        throw new Error("The environment provider became unavailable.");
+      const result = removeResultSchema.parse(invocation.value);
+      if (result.status === "failed") {
+        writeEnvironment(deps, environmentId, {
+          teardownStatus: "failed",
+          teardownMessage: result.message,
+          retireAt: Date.now() + REMOVE_RETRY_MS,
+        });
+        return;
+      }
+      writeEnvironment(deps, environmentId, {
+        teardownStatus: "removed",
+        teardownMessage: null,
+        claimPath: null,
+        resource: null,
+        retireAt: null,
+      });
+      applyLoggedEnvironmentLifecycleEvent(deps, {
+        environmentId,
+        event: { type: "destroy.recorded" },
+      });
+    } catch (error) {
       writeEnvironment(deps, environmentId, {
         teardownStatus: "failed",
-        teardownMessage: result.message,
+        teardownMessage: errorMessage(error),
         retireAt: Date.now() + REMOVE_RETRY_MS,
       });
-      return;
     }
-    writeEnvironment(deps, environmentId, {
-      teardownStatus: "removed",
-      teardownMessage: null,
-      claimPath: null,
-      resource: null,
-      retireAt: null,
-    });
-    applyLoggedEnvironmentLifecycleEvent(deps, {
-      environmentId,
-      event: { type: "destroy.recorded" },
-    });
-  } catch (error) {
-    writeEnvironment(deps, environmentId, {
-      teardownStatus: "failed",
-      teardownMessage: message(error),
-      retireAt: Date.now() + REMOVE_RETRY_MS,
-    });
-  }
+  });
 }
 
 async function removeEnvironment(
   deps: Deps,
   environmentId: string,
 ): Promise<void> {
-  const map = operations(environmentOperations, deps.db);
+  const map = perDbRegistry(environmentOperations, deps.db);
   const active = map.get(environmentId);
   if (active !== undefined) {
     const row = getEnvironment(deps.db, environmentId);
@@ -839,7 +825,7 @@ export async function sweepProviderLifecycles(deps: Deps): Promise<void> {
       pending.push(
         sweepProviderEnvironment(deps, row.id).catch((error) => {
           deps.logger.warn(
-            { environmentId: row.id, error: message(error) },
+            { environmentId: row.id, error: errorMessage(error) },
             "Environment removal will retry",
           );
         }),
@@ -918,7 +904,7 @@ interface AdvanceEnvironmentProvisioningArgs {
   threadId?: string;
   creation?: {
     record: PluginEnvironmentProviderRecord;
-    context: ProviderOperationContext;
+    context?: ProviderOperationContext;
   };
   environmentId: string | null | undefined;
   request?: EnvironmentProvisionRequest | null;
@@ -1511,7 +1497,7 @@ export async function advanceEnvironmentProvisioning(
   if (!args.environmentId) return;
   let environment = getEnvironment(deps.db, args.environmentId);
   if (environment === null) return;
-  const map = operations(environmentOperations, deps.db);
+  const map = perDbRegistry(environmentOperations, deps.db);
   if (
     args.threadId !== undefined &&
     environment.ownerThreadId !== null &&
@@ -1577,17 +1563,28 @@ export async function advanceEnvironmentProvisioning(
       map,
       key: row.id,
       run: async (signal) => {
-        const creation =
-          args.creation?.context ??
-          (owner !== null &&
-          context?.request.environmentIntent.type === "provider"
-            ? await resolveProviderOperationContext(
-                deps,
-                owner,
-                context.request.environmentIntent,
-                record,
-              )
-            : null);
+        let creation: ProviderOperationContext | null;
+        try {
+          creation =
+            args.creation?.context ??
+            (owner !== null &&
+            context?.request.environmentIntent.type === "provider"
+              ? await resolveProviderOperationContext(
+                  deps,
+                  owner,
+                  context.request.environmentIntent,
+                  record,
+                )
+              : null);
+        } catch (error) {
+          mutateProvisioning(deps, row, ["creating"], (current) => {
+            current.status = "error";
+            current.statusMessage = errorMessage(error);
+          });
+          if (row.ownerThreadId !== null)
+            requestEnvironmentProvisioningRecheck(row.ownerThreadId);
+          return;
+        }
         if (creation === null) return;
         await runCreate(deps, record, row, creation, signal);
       },
@@ -1644,30 +1641,29 @@ export async function advanceEnvironmentProvisioning(
         hostId: target.hostId,
         path: target.path,
       });
-    await withEnvironmentPathAdmission(deps, { ...target, threadId }, () =>
-      deps.db.transaction(
-        (tx) => {
-          if (
-            getThreadProvisionContext(tx, threadId)?.state.provisioningId !==
-            context.state.provisioningId
-          )
-            return;
-          updateThread(tx, deps.hub, threadId, { environmentId: target.id });
-          markProviderEnvironmentAttached(tx, threadId, target.id);
-          context.request.environmentIntent = {
-            type: "reuse",
-            environmentId: target.id,
-          };
-          context.state.environmentId = target.id;
-          saveThreadProvisionContext({
-            replace: false,
-            db: tx,
-            threadId,
-            context,
-          });
-        },
-        { behavior: "immediate" },
-      ),
+    assertEnvironmentPathAvailable(deps, { ...target, threadId });
+    deps.db.transaction(
+      (tx) => {
+        if (
+          getThreadProvisionContext(tx, threadId)?.state.provisioningId !==
+          context.state.provisioningId
+        )
+          return;
+        updateThread(tx, deps.hub, threadId, { environmentId: target.id });
+        markProviderEnvironmentAttached(tx, threadId, target.id);
+        context.request.environmentIntent = {
+          type: "reuse",
+          environmentId: target.id,
+        };
+        context.state.environmentId = target.id;
+        saveThreadProvisionContext({
+          replace: false,
+          db: tx,
+          threadId,
+          context,
+        });
+      },
+      { behavior: "immediate" },
     );
     environment = getEnvironment(deps.db, environment.id);
     if (environment === null || environment.ownerThreadId !== null) return;

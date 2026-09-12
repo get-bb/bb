@@ -38,7 +38,6 @@ export interface ProfileStore {
   getSnapshot(): ProfileStoreState;
   subscribe(listener: () => void): () => void;
   listProfiles(): readonly ServerProfile[];
-  getActiveProfile(): ServerProfile | null;
   addProfile(input: NewServerProfile): Promise<ServerProfile>;
   updateProfile(id: string, patch: ServerProfilePatch): Promise<ServerProfile>;
   removeProfile(id: string): Promise<void>;
@@ -179,9 +178,6 @@ export function createProfileStore(deps: CreateProfileStoreDeps): ProfileStore {
       };
     },
     listProfiles: () => state.profiles,
-    getActiveProfile: () =>
-      state.profiles.find((p) => p.id === state.activeProfileId) ?? null,
-
     addProfile(input) {
       return mutate(async () => {
         const profile = serverProfileSchema.parse({

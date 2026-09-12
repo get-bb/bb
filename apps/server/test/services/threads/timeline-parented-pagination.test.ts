@@ -16,7 +16,7 @@ import {
 } from "@bb/db";
 import type { DbConnection } from "@bb/db";
 import type { TimelineRow } from "@bb/server-contract";
-import { buildThreadTimeline } from "../../../src/services/threads/timeline.js";
+import { buildThreadTimelineWithProfile } from "../../../src/services/threads/timeline.js";
 
 const providerThreadId = "provider-root";
 
@@ -38,7 +38,6 @@ function setup(): SetupResult {
   migrate(db);
   const host = upsertHost(db, noopNotifier, {
     name: "test-host",
-    type: "persistent",
   });
   const { project } = createProject(db, noopNotifier, {
     name: "test-project",
@@ -333,14 +332,14 @@ describe("thread timeline parented pagination", () => {
     const { db, thread } = setup();
     insertCrossWindowSubagentEvents(db, thread);
 
-    const timeline = buildThreadTimeline(db, thread, {
+    const timeline = buildThreadTimelineWithProfile(db, thread, {
       eventBudget: 1_000_000,
       includeDiagnosticOperations: false,
       includeNestedRows: true,
       maxInlineOutputChars: null,
       maxSeq: 51,
       page: { kind: "latest", segmentLimit: 1 },
-    });
+    }).response;
 
     expect(rowTexts(timeline.rows)).toContain("Newest response.");
     expect(rowTexts(timeline.rows)).not.toContain("SECOND_SUBAGENT_OUTPUT");
@@ -350,15 +349,15 @@ describe("thread timeline parented pagination", () => {
     const { db, thread } = setup();
     insertCrossWindowSubagentEvents(db, thread);
 
-    const latest = buildThreadTimeline(db, thread, {
+    const latest = buildThreadTimelineWithProfile(db, thread, {
       eventBudget: 1_000_000,
       includeDiagnosticOperations: false,
       includeNestedRows: true,
       maxInlineOutputChars: null,
       maxSeq: 51,
       page: { kind: "latest", segmentLimit: 2 },
-    });
-    const timeline = buildThreadTimeline(db, thread, {
+    }).response;
+    const timeline = buildThreadTimelineWithProfile(db, thread, {
       eventBudget: 1_000_000,
       includeDiagnosticOperations: false,
       includeNestedRows: true,
@@ -369,7 +368,7 @@ describe("thread timeline parented pagination", () => {
         beforeCursor: latest.timelinePage.olderCursor!,
         segmentLimit: 1,
       },
-    });
+    }).response;
     const delegation = flattenRows(timeline.rows).find(
       (
         row,

@@ -2,7 +2,6 @@ import { describe, expect, it } from "vitest";
 import {
   createHapticsPreferenceStore,
   HAPTICS_ENABLED_STORAGE_KEY,
-  hapticKindForButton,
   parseHapticsEnabled,
   resolveHapticCall,
   type HapticKind,
@@ -46,14 +45,6 @@ describe("parseHapticsEnabled", () => {
     expect(parseHapticsEnabled("true")).toBe(true);
     expect(parseHapticsEnabled("garbage")).toBe(true);
     expect(parseHapticsEnabled("false")).toBe(false);
-  });
-});
-
-describe("hapticKindForButton", () => {
-  it("treats the bare boolean as a light impact", () => {
-    expect(hapticKindForButton(true)).toBe("impact-light");
-    expect(hapticKindForButton("selection")).toBe("selection");
-    expect(hapticKindForButton("heavy")).toBe("impact-heavy");
   });
 });
 

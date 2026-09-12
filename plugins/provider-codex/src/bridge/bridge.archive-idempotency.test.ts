@@ -1,28 +1,20 @@
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { fileURLToPath } from "node:url";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { experimental_createBridgeJsonRpcTestHarness as createBridgeJsonRpcTestHarness } from "@get-bb/plugin-sdk/provider-bridge/testing";
 import { handleLine } from "./bridge.js";
+import {
+  FULL_ACCESS_SESSION_OPTIONS,
+  stubFakeCodexAppServer,
+} from "./fake-codex-app-server-harness.js";
 
 const THREAD_ID = "thr_archive_idempotency_1";
 const PROVIDER_THREAD_ID = "rollout-archive-idempotency-1";
 
-const fakeAppServerPath = fileURLToPath(
-  new URL("./fake-codex-app-server.mjs", import.meta.url),
-);
-
 let harness: ReturnType<typeof createBridgeJsonRpcTestHarness>;
 let workspaceDir: string;
 let processLogPath: string;
-
-const sessionOptions = {
-  permissionMode: "full",
-  permissionScope: "full",
-  approvalReviewer: null,
-  permissionEscalation: null,
-} as const;
 
 beforeEach(() => {
   workspaceDir = mkdtempSync(join(tmpdir(), "bb-codex-archive-ws-"));
@@ -36,11 +28,7 @@ beforeEach(() => {
       sigtermDelayMs: 250,
     }),
   );
-  vi.stubEnv("BB_CODEX_BRIDGE_APP_SERVER_COMMAND", process.execPath);
-  vi.stubEnv(
-    "BB_CODEX_BRIDGE_APP_SERVER_ARGS",
-    JSON.stringify([fakeAppServerPath, fakeScriptPath]),
-  );
+  stubFakeCodexAppServer(fakeScriptPath);
   harness = createBridgeJsonRpcTestHarness(handleLine);
 });
 
@@ -70,7 +58,7 @@ it("finishes each app-server handoff before acknowledging archive and unarchive"
     providerThreadId: PROVIDER_THREAD_ID,
     cwd: workspaceDir,
     instructionMode: "append",
-    options: sessionOptions,
+    options: FULL_ACCESS_SESSION_OPTIONS,
   });
   expect((await harness.waitForResponse(1)).error).toBeUndefined();
 

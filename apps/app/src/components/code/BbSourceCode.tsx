@@ -12,13 +12,13 @@ import {
 import { File as PierreFile, VirtualizerContext } from "@pierre/diffs/react";
 import type { FileOptions } from "@pierre/diffs/react";
 import {
-  DIFFS_TAG_NAME,
   Virtualizer as PierreVirtualizer,
   type FileContents as PierreFileContents,
   type SelectedLineRange,
   type VirtualFileMetrics,
 } from "@pierre/diffs";
 import { Button } from "@bb/shared-ui/button";
+import { getDiffShadowRoots } from "@/components/git-diff/git-diff-patch-text";
 import { usePierreLineSelectionActions } from "@/components/git-diff/PierreLineSelectionActions.js";
 import { usePreferredTheme } from "@/hooks/useTheme";
 import { useResolvedCodeThemePair } from "@/lib/code-theme";
@@ -64,15 +64,7 @@ const SOURCE_VIRTUAL_FILE_METRICS: VirtualFileMetrics = {
 };
 
 function getTargetRoots(container: HTMLElement): ParentNode[] {
-  const roots: ParentNode[] = [container];
-  for (const pierreContainer of container.querySelectorAll<HTMLElement>(
-    DIFFS_TAG_NAME,
-  )) {
-    if (pierreContainer.shadowRoot !== null) {
-      roots.push(pierreContainer.shadowRoot);
-    }
-  }
-  return roots;
+  return [container, ...getDiffShadowRoots(container)];
 }
 
 function clearTargetLine(container: HTMLElement) {

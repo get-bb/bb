@@ -14,17 +14,9 @@ import {
   deriveConnectBaseUrl,
   type ConnectCredential,
 } from "@bb/connect-client";
+import type { ShareListing } from "./types.js";
 
 export const SHARES_KV_KEY = "shares";
-
-export interface ShareListing {
-  hostId: string;
-  hostName: string;
-  port: number;
-  createdAt: number;
-  url: string;
-  unavailableReason?: string;
-}
 
 const persistedShareSchema = z
   .object({
@@ -608,9 +600,5 @@ export class ShareRegistry {
       };
     }
     await this.options.kv.set(SHARES_KV_KEY, map);
-  }
-
-  get isLoaded(): boolean {
-    return this.loaded;
   }
 }

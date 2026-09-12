@@ -13,7 +13,7 @@ import { useSetAtom } from "jotai";
 import type { ThreadListEntry } from "@bb/domain";
 import type { PluginComposerThreadRowStatus } from "@get-bb/plugin-sdk";
 import { getThreadConversationCollapsedAtom } from "@/components/secondary-panel/threadSecondaryPanelAtoms";
-import { Icon } from "@bb/shared-ui/icon";
+import { Icon, type IconName } from "@bb/shared-ui/icon";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@bb/shared-ui/tooltip";
 import { SidebarStickyTier } from "@/components/ui/sidebar.js";
 import { NavLink } from "react-router-dom";
@@ -50,6 +50,7 @@ import {
   NO_COLLAPSED_CHILD_ACTIVITY,
   resolveThreadListIndicator,
   type CollapsedChildActivity,
+  type ThreadListIndicatorKind,
   type ThreadListIndicatorState,
 } from "@bb/client-core";
 import { getThreadDisplayTitle } from "@/lib/thread-title";
@@ -70,6 +71,12 @@ import {
 } from "./sidebarRowClasses";
 import type { ConsumeDragClickSuppression } from "@/components/ui/use-drag-click-suppression";
 import type { SidebarSortableDragBindings } from "./sortableMotion";
+import { useComposedRefs } from "@radix-ui/react-compose-refs";
+import type {
+  SidebarNestTargetState,
+  SidebarReorderPlacement,
+  ThreadRowNestDrop,
+} from "./sidebarThreadRowDroppable";
 import { SidebarChildToggleChevron } from "./SidebarChildToggleChevron";
 import { useSidebarThreadShortcut } from "./sidebarThreadShortcuts";
 import { SplitPaneMiniMap } from "./SplitPaneMiniMap";
@@ -108,6 +115,7 @@ interface ThreadRowBaseOptions {
   isCompact: boolean;
   consumeClickSuppression?: ConsumeDragClickSuppression;
   dragBindings?: SidebarSortableDragBindings;
+  nestDrop?: ThreadRowNestDrop;
 }
 
 export type ThreadRowOptions =
@@ -138,12 +146,42 @@ type ThreadRowClickCaptureHandler = MouseEventHandler<HTMLDivElement>;
 interface ThreadRowContainerArgs {
   children: ReactNode;
   className: string;
+  containerRef: (element: HTMLDivElement | null) => void;
   dragBindings?: SidebarSortableDragBindings;
+  nestTargetState: SidebarNestTargetState | null;
+  reorderPlacement: SidebarReorderPlacement | null;
   onClickCapture?: ThreadRowClickCaptureHandler;
   onSplitDragPointerDown?: PointerEventHandler<HTMLElement>;
   stickyLevel?: number;
   style: CSSProperties;
 }
+
+const NEST_TARGET_STATE_CLASS: Record<SidebarNestTargetState, string> = {
+  valid:
+    "bg-sidebar-accent text-sidebar-accent-foreground ring-1 ring-inset ring-sidebar-ring",
+  blocked: "ring-1 ring-inset ring-destructive/60",
+  unchanged: "ring-1 ring-inset ring-sidebar-border",
+};
+
+const REORDER_PLACEMENT_CLASS: Record<SidebarReorderPlacement, string> = {
+  before:
+    "before:pointer-events-none before:absolute before:inset-x-1 before:-top-px before:h-0.5 before:rounded-full before:bg-sidebar-ring before:content-['']",
+  after:
+    "after:pointer-events-none after:absolute after:inset-x-1 after:-bottom-px after:h-0.5 after:rounded-full after:bg-sidebar-ring after:content-['']",
+};
+
+const WORKING_ACTIVITY_ICONS = {
+  workflow: "Workflow",
+  "background-agent": "UserRoundPlus",
+  "background-command": "Terminal",
+  "plan-mode": "ListTodo",
+  goal: "Target",
+} satisfies Partial<Record<ThreadListIndicatorKind, IconName>>;
+
+const WAITING_ICONS = {
+  "waiting-for-input": "CircleQuestion",
+  "queued-waiting": "Clock",
+} satisfies Partial<Record<ThreadListIndicatorKind, IconName>>;
 
 function ThreadDraftIndicator({
   hideIdleLabel = false,
@@ -225,24 +263,32 @@ function getThreadRowStyle(depth: number): CSSProperties {
 function renderThreadRowContainer({
   children,
   className,
+  containerRef,
   dragBindings,
+  nestTargetState,
   onClickCapture,
   onSplitDragPointerDown,
+  reorderPlacement,
   stickyLevel,
   style,
 }: ThreadRowContainerArgs) {
+  const containerProps = {
+    className,
+    style,
+    "data-sidebar-nest-target": nestTargetState ?? undefined,
+    "data-sidebar-reorder-placement": reorderPlacement ?? undefined,
+    ...dragBindings?.attributes,
+    ...(dragBindings?.listeners ?? {}),
+    onClickCapture,
+    onPointerDown: onSplitDragPointerDown,
+  };
   if (stickyLevel !== undefined) {
     return (
       <SidebarStickyTier
-        ref={dragBindings?.setActivatorNodeRef}
+        ref={containerRef}
         tier="parent"
         level={stickyLevel}
-        className={className}
-        style={style}
-        {...dragBindings?.attributes}
-        {...(dragBindings?.listeners ?? {})}
-        onClickCapture={onClickCapture}
-        onPointerDown={onSplitDragPointerDown}
+        {...containerProps}
       >
         {children}
       </SidebarStickyTier>
@@ -250,15 +296,7 @@ function renderThreadRowContainer({
   }
 
   return (
-    <div
-      ref={dragBindings?.setActivatorNodeRef}
-      className={className}
-      style={style}
-      {...dragBindings?.attributes}
-      {...(dragBindings?.listeners ?? {})}
-      onClickCapture={onClickCapture}
-      onPointerDown={onSplitDragPointerDown}
-    >
+    <div ref={containerRef} {...containerProps}>
       {children}
     </div>
   );
@@ -307,9 +345,10 @@ export function ThreadStatusGlyph({
         />
       );
     case "waiting-for-input":
+    case "queued-waiting":
       return (
         <Icon
-          name="CircleQuestion"
+          name={WAITING_ICONS[kind]}
           className={cn(
             "text-muted-foreground/75",
             COARSE_POINTER_ICON_SIZE_CLASS,
@@ -320,57 +359,13 @@ export function ThreadStatusGlyph({
     case "working-draft":
       return <ThreadDraftIndicator isWorking />;
     case "workflow":
-      return (
-        <Icon
-          name="Workflow"
-          className={cn(
-            "animate-shine-icon",
-            SIDEBAR_WORKING_STATUS_COLOR_CLASS,
-            COARSE_POINTER_ICON_SIZE_CLASS,
-          )}
-          aria-label={getThreadListIndicatorLabel(kind) ?? undefined}
-        />
-      );
     case "background-agent":
-      return (
-        <Icon
-          name="UserRoundPlus"
-          className={cn(
-            "animate-shine-icon",
-            SIDEBAR_WORKING_STATUS_COLOR_CLASS,
-            COARSE_POINTER_ICON_SIZE_CLASS,
-          )}
-          aria-label={getThreadListIndicatorLabel(kind) ?? undefined}
-        />
-      );
     case "background-command":
-      return (
-        <Icon
-          name="Terminal"
-          className={cn(
-            "animate-shine-icon",
-            SIDEBAR_WORKING_STATUS_COLOR_CLASS,
-            COARSE_POINTER_ICON_SIZE_CLASS,
-          )}
-          aria-label={getThreadListIndicatorLabel(kind) ?? undefined}
-        />
-      );
     case "plan-mode":
-      return (
-        <Icon
-          name="ListTodo"
-          className={cn(
-            "animate-shine-icon",
-            SIDEBAR_WORKING_STATUS_COLOR_CLASS,
-            COARSE_POINTER_ICON_SIZE_CLASS,
-          )}
-          aria-label={getThreadListIndicatorLabel(kind) ?? undefined}
-        />
-      );
     case "goal":
       return (
         <Icon
-          name="Target"
+          name={WORKING_ACTIVITY_ICONS[kind]}
           className={cn(
             "animate-shine-icon",
             SIDEBAR_WORKING_STATUS_COLOR_CLASS,
@@ -386,17 +381,6 @@ export function ThreadStatusGlyph({
           className={cn(
             "animate-spin",
             SIDEBAR_WORKING_STATUS_COLOR_CLASS,
-            COARSE_POINTER_ICON_SIZE_CLASS,
-          )}
-          aria-label={getThreadListIndicatorLabel(kind) ?? undefined}
-        />
-      );
-    case "queued-waiting":
-      return (
-        <Icon
-          name="Clock"
-          className={cn(
-            "text-muted-foreground/75",
             COARSE_POINTER_ICON_SIZE_CLASS,
           )}
           aria-label={getThreadListIndicatorLabel(kind) ?? undefined}
@@ -588,48 +572,30 @@ function ThreadRowComponent({
     parentOptions?.childActivity ?? NO_COLLAPSED_CHILD_ACTIVITY;
   const hasChildren = childCount > 0;
   const hasHiddenChildren = isParentRow && isParentCollapsed && hasChildren;
-  const trailingHasPendingInteraction = hasHiddenChildren
-    ? hasPendingInteraction || childActivity.pending
-    : hasPendingInteraction;
-  const trailingRuntimeBusy = hasHiddenChildren
-    ? threadRuntimeBusy || childActivity.runtimeWorking
-    : threadRuntimeBusy;
-  const trailingIsWorkflowActive = hasHiddenChildren
-    ? threadWorkflowActive || childActivity.workflow
-    : threadWorkflowActive;
-  const trailingBackgroundAgentActive = hasHiddenChildren
-    ? threadBackgroundAgentActive || childActivity.backgroundAgent
-    : threadBackgroundAgentActive;
-  const trailingBackgroundCommandActive = hasHiddenChildren
-    ? threadBackgroundCommandActive || childActivity.backgroundCommand
-    : threadBackgroundCommandActive;
-  const trailingPlanModeActive = hasHiddenChildren
-    ? threadPlanModeActive || childActivity.planMode
-    : threadPlanModeActive;
-  const trailingGoalActive = hasHiddenChildren
-    ? threadGoalActive || childActivity.goal
-    : threadGoalActive;
-  const trailingHasUnreadError = hasHiddenChildren
-    ? threadUnreadError || childActivity.unreadError
-    : threadUnreadError;
-  const trailingHasUnreadSuccess = hasHiddenChildren
-    ? threadUnreadSuccess || childActivity.unread
-    : threadUnreadSuccess;
-  const trailingHasUnsubmittedDraft = hasHiddenChildren
-    ? hasComposerDraft || childActivity.hasUnsubmittedDraft
-    : hasComposerDraft;
   const trailingIndicatorState: ThreadListIndicatorState = {
-    hasPendingInteraction: trailingHasPendingInteraction,
-    hasUnsubmittedDraft: trailingHasUnsubmittedDraft,
-    hasUnreadError: trailingHasUnreadError,
-    hasUnreadSuccess: trailingHasUnreadSuccess,
-    isBackgroundAgentActive: trailingBackgroundAgentActive,
-    isBackgroundCommandActive: trailingBackgroundCommandActive,
-    isGoalActive: trailingGoalActive,
+    hasPendingInteraction:
+      hasPendingInteraction || (hasHiddenChildren && childActivity.pending),
+    hasUnsubmittedDraft:
+      hasComposerDraft ||
+      (hasHiddenChildren && childActivity.hasUnsubmittedDraft),
+    hasUnreadError:
+      threadUnreadError || (hasHiddenChildren && childActivity.unreadError),
+    hasUnreadSuccess:
+      threadUnreadSuccess || (hasHiddenChildren && childActivity.unread),
+    isBackgroundAgentActive:
+      threadBackgroundAgentActive ||
+      (hasHiddenChildren && childActivity.backgroundAgent),
+    isBackgroundCommandActive:
+      threadBackgroundCommandActive ||
+      (hasHiddenChildren && childActivity.backgroundCommand),
+    isGoalActive: threadGoalActive || (hasHiddenChildren && childActivity.goal),
     queuedWork: thread.queuedWork,
-    isPlanModeActive: trailingPlanModeActive,
-    isRuntimeActive: trailingRuntimeBusy,
-    isWorkflowActive: trailingIsWorkflowActive,
+    isPlanModeActive:
+      threadPlanModeActive || (hasHiddenChildren && childActivity.planMode),
+    isRuntimeActive:
+      threadRuntimeBusy || (hasHiddenChildren && childActivity.runtimeWorking),
+    isWorkflowActive:
+      threadWorkflowActive || (hasHiddenChildren && childActivity.workflow),
   };
   const trailingIndicatorResolution = resolveThreadTrailingIndicatorStatus(
     trailingIndicatorState,
@@ -647,6 +613,12 @@ function ThreadRowComponent({
     ? `Open ${labelTitle} (unsubmitted draft)`
     : `Open ${labelTitle}`;
   const rowDragBindings = options.dragBindings;
+  const nestTargetState = options.nestDrop?.state ?? null;
+  const reorderPlacement = options.nestDrop?.reorderPlacement ?? null;
+  const containerRef = useComposedRefs<HTMLDivElement>(
+    rowDragBindings?.setActivatorNodeRef,
+    options.nestDrop?.setNodeRef,
+  );
   const rowClassName = cn(
     SIDEBAR_HOVER_ACTIONS_ROW_CLASS,
     "group/thread-row",
@@ -664,6 +636,8 @@ function ThreadRowComponent({
       SIDEBAR_ROW_OPEN_IN_SPLIT_STATE_CLASS,
     !showActive && "has-[[data-state=open]]:bg-sidebar-accent",
     rowDragBindings && !rowDragBindings.disabled && "select-none",
+    nestTargetState && NEST_TARGET_STATE_CLASS[nestTargetState],
+    reorderPlacement && REORDER_PLACEMENT_CLASS[reorderPlacement],
   );
   const rowStyle = getThreadRowStyle(options.depth);
   const isActionsOpen = isDropdownActionsOpen || isContextActionsOpen;
@@ -844,7 +818,10 @@ function ThreadRowComponent({
   const row = renderThreadRowContainer({
     children: rowContent,
     className: rowClassName,
+    containerRef,
     dragBindings: rowDragBindings,
+    nestTargetState,
+    reorderPlacement,
     onClickCapture: options.consumeClickSuppression
       ? handleRowClickCapture
       : undefined,

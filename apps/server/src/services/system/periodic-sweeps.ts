@@ -1,5 +1,6 @@
 import { sweepProviderLifecycles } from "../environments/environment-engine.js";
-import { and, eq, isNull, inArray } from "drizzle-orm";
+import { and, eq, isNull, isNotNull, inArray } from "drizzle-orm";
+import { sweepMachineLifecycles } from "../machines/provider-orchestration.js";
 import {
   CLOSED_SESSION_ROW_RETENTION_MS,
   compactDatabase,
@@ -41,7 +42,10 @@ import {
   advanceProjectDeletion,
   listProjectsPendingDeletion,
 } from "../projects/project-deletion.js";
-import { hasLiveThreadStartInFlight } from "../threads/thread-lifecycle.js";
+import {
+  finalizeStoppedThread,
+  hasLiveThreadStartInFlight,
+} from "../threads/thread-lifecycle.js";
 import { advanceThreadProvisioning } from "../threads/thread-provisioning.js";
 import {
   runQueuedMessageDispatch,
@@ -87,8 +91,6 @@ interface PeriodicSweepJobState {
 }
 
 type PeriodicSweepJobList = readonly PeriodicSweepJob[];
-let lastDatabaseMaintenanceCheckAt = 0;
-let databaseMaintenanceRunning = false;
 const periodicSweepJobStates = new Map<string, PeriodicSweepJobState>();
 
 function getPeriodicSweepJobState(
@@ -155,21 +157,7 @@ export async function runPeriodicSweepJobs(
 
 export function runDatabaseMaintenanceSweep(
   deps: DatabaseMaintenanceSweepDeps,
-  now: number,
 ): void {
-  if (databaseMaintenanceRunning) {
-    return;
-  }
-
-  if (
-    now - lastDatabaseMaintenanceCheckAt <
-    DATABASE_MAINTENANCE_CHECK_INTERVAL_MS
-  ) {
-    return;
-  }
-
-  lastDatabaseMaintenanceCheckAt = now;
-
   const deferredLegacyTables = listDeferredLegacyTables(deps.db);
   if (deferredLegacyTables.length > 0) {
     const activity = getDatabaseMaintenanceActivity(deps.db);
@@ -181,7 +169,6 @@ export function runDatabaseMaintenanceSweep(
       return;
     }
 
-    databaseMaintenanceRunning = true;
     try {
       const result = dropDeferredLegacyTables(deps.db);
       deps.logger.info(
@@ -193,8 +180,6 @@ export function runDatabaseMaintenanceSweep(
         { err: error },
         "Deferred legacy database table cleanup failed",
       );
-    } finally {
-      databaseMaintenanceRunning = false;
     }
     return;
   }
@@ -215,7 +200,6 @@ export function runDatabaseMaintenanceSweep(
       );
       return;
     }
-    databaseMaintenanceRunning = true;
     try {
       const result = runIncrementalVacuum(deps.db, {
         maxPages: DATABASE_INCREMENTAL_VACUUM_MAX_PAGES,
@@ -223,8 +207,6 @@ export function runDatabaseMaintenanceSweep(
       deps.logger.info({ result }, "Incremental database vacuum completed");
     } catch (error) {
       deps.logger.warn({ err: error }, "Incremental database vacuum failed");
-    } finally {
-      databaseMaintenanceRunning = false;
     }
     return;
   }
@@ -253,14 +235,11 @@ export function runDatabaseMaintenanceSweep(
     return;
   }
 
-  databaseMaintenanceRunning = true;
   try {
     const result = compactDatabase(deps.db);
     deps.logger.info({ result }, "Database compaction completed");
   } catch (error) {
     deps.logger.warn({ err: error }, "Database compaction failed");
-  } finally {
-    databaseMaintenanceRunning = false;
   }
 }
 
@@ -338,6 +317,14 @@ async function runThreadProvisioningOrphanCleanupSweep(
       );
     }
   }
+  const deletedUnattachedThreads = deps.db
+    .select({ id: threads.id })
+    .from(threads)
+    .where(and(isNotNull(threads.deletedAt), isNull(threads.environmentId)))
+    .all();
+  for (const thread of deletedUnattachedThreads) {
+    finalizeStoppedThread(deps, { threadId: thread.id });
+  }
 }
 
 export async function runThreadLifecycleSweep(
@@ -345,6 +332,7 @@ export async function runThreadLifecycleSweep(
 ): Promise<void> {
   await runThreadProvisioningOrphanCleanupSweep(deps);
   await sweepProviderLifecycles(deps);
+  await sweepMachineLifecycles(deps);
 }
 
 async function runMachineAuthPruneSweep(
@@ -480,6 +468,12 @@ const PERIODIC_SWEEP_JOBS: PeriodicSweepJob[] = [
     category: "durable-intent-retry",
     name: "environment-provider-lifecycle",
     run: sweepProviderLifecycles,
+  },
+  {
+    cadenceMs: 0,
+    category: "durable-intent-retry",
+    name: "machine-provider-lifecycle",
+    run: (deps) => sweepMachineLifecycles(deps, { background: true }),
   },
   {
     cadenceMs: 0,

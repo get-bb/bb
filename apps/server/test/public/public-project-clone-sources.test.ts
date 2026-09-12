@@ -1,6 +1,9 @@
+import { replaceMachineEnvironment } from "../../src/services/machines/environment-settings.js";
+import * as gitCredentials from "../../src/services/machines/git-credentials.js";
+import { updateHost } from "@bb/db";
 import { countProjectSources, getProject, setExperiments } from "@bb/db";
 import { defaultExperiments } from "@bb/domain";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
   listQueuedCommands,
   reportQueuedCommandError,
@@ -39,6 +42,67 @@ function cloneSourceRequest(args: {
 }
 
 describe("project clone sources", () => {
+  it("contributes machine credentials to setup clones without persisting them", async () => {
+    const resolve = vi
+      .spyOn(gitCredentials, "resolveGitCredentials")
+      .mockResolvedValue([
+        {
+          name: "GH_TOKEN",
+          value: "clone-secret",
+          source: { core: "machine-git" },
+          reason: "Server gh login",
+        },
+      ]);
+    try {
+      await withTestHarness(async (harness) => {
+        const first = seedHostSession(harness.deps, { id: "host-source" });
+        const machine = seedHostSession(harness.deps, { id: "host-machine" });
+        seedPrimaryHost(harness.deps, first.host.id);
+        updateHost(harness.db, harness.hub, machine.host.id, {
+          machineProviderId: "manual",
+        });
+        const { project } = seedProjectWithSource(harness.deps, {
+          hostId: first.host.id,
+        });
+        await replaceMachineEnvironment(harness.db, harness.config.dataDir, {
+          variables: [
+            { name: "CUSTOM_SETUP", value: "setup-value", note: null },
+          ],
+        });
+        const response = harness.app.fetch(
+          cloneSourceRequest({
+            projectId: project.id,
+            hostId: machine.host.id,
+            remoteUrl: "git@github.com:octocat/private.git",
+          }),
+        );
+        const queued = await waitForQueuedCommand(
+          harness,
+          ({ command }) => command.type === "project.clone",
+        );
+        expect(queued.command).toMatchObject({
+          contributedEnv: [
+            ...(await resolve()),
+            expect.objectContaining({
+              name: "CUSTOM_SETUP",
+              value: "setup-value",
+            }),
+          ],
+        });
+        await reportQueuedCommandSuccess(harness, queued, {
+          path: "/private",
+          gitRemoteUrl: "git@github.com:octocat/private.git",
+        });
+        expect((await response).status).toBe(201);
+        expect(
+          JSON.stringify(getProject(harness.db, project.id)),
+        ).not.toContain("clone-secret");
+      });
+    } finally {
+      resolve.mockRestore();
+    }
+  });
+
   it("rejects an already-sourced host before dispatching clone", async () => {
     await withTestHarness(async (harness) => {
       const { host } = seedHostSession(harness.deps, {
@@ -91,6 +155,8 @@ describe("project clone sources", () => {
       );
       expect(firstCommand.command).toEqual({
         type: "project.clone",
+        operationId: expect.any(String),
+        contributedEnv: [],
         projectSlug: "Clone Me",
         remoteUrl: "ssh://git.example.test/team/repo.git",
       });

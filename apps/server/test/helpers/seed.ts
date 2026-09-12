@@ -82,7 +82,6 @@ export function seedHost(
   } = {},
 ) {
   return upsertHost(deps.db, deps.hub, {
-    type: "persistent",
     ...(args.connectMachineId !== undefined
       ? { connectMachineId: args.connectMachineId }
       : {}),
@@ -112,7 +111,6 @@ export function seedSession(deps: Pick<AppDeps, "db" | "hub">, hostId: string) {
     hostId,
     instanceId: "instance-1",
     hostName: "Test Host",
-    hostType: "persistent",
     dataDir: `/tmp/bb-host-data/${hostId}`,
     protocolVersion: HOST_DAEMON_PROTOCOL_VERSION,
     heartbeatIntervalMs: 5_000,
@@ -293,19 +291,7 @@ export function seedEvent<TType extends ThreadEventType>(
     threadId: args.threadId,
     type: args.type,
   });
-  insertEvents(deps.db, deps.hub, [
-    {
-      createdAt: args.createdAt,
-      threadId: args.threadId,
-      environmentId: args.environmentId ?? null,
-      providerThreadId: args.providerThreadId ?? null,
-      scope: args.scope,
-      sequence: args.sequence,
-      type: args.type,
-      ...deriveStoredEventItemFields(event),
-      data: JSON.stringify(args.data),
-    },
-  ]);
+  seedStoredEvent(deps, { ...args, ...deriveStoredEventItemFields(event) });
 }
 
 export function seedTurnStarted(

@@ -6,6 +6,11 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@bb/shared-ui/tooltip";
 import { cn } from "@bb/shared-ui/lib/utils";
 import { CHROME_SUBTLE_ICON_BUTTON_FOREGROUND_CLASS } from "@bb/shared-ui/chrome-style-tokens";
 import type { WorkspaceCheckoutDisplay } from "@/lib/workspace-checkout-display";
+import {
+  MachineLabel,
+  type MachineLabelHost,
+} from "@/components/machines/MachineLabel";
+import type { MachineProviderPresentation } from "@/components/plugin/MachineProviderIcon";
 
 const CHECKOUT_CHIP_BASE_CLASS_NAME =
   "flex min-w-0 flex-1 items-center gap-1 rounded-md px-1.5 py-0.5 text-xs text-muted-foreground";
@@ -17,6 +22,8 @@ interface ThreadEnvironmentSummaryProps {
   environmentCompactLabel?: string;
   environmentIcon?: IconName;
   environmentTypeLabel?: string;
+  environmentHost?: MachineLabelHost;
+  environmentMachineProvider?: MachineProviderPresentation | null;
   environmentCheckout?: WorkspaceCheckoutDisplay;
   onCreateNewThreadInEnvironment?: () => void;
 }
@@ -27,12 +34,15 @@ export const ThreadEnvironmentSummary = memo(function ThreadEnvironmentSummary({
   environmentCompactLabel,
   environmentIcon,
   environmentTypeLabel,
+  environmentHost,
+  environmentMachineProvider,
   environmentCheckout,
   onCreateNewThreadInEnvironment,
 }: ThreadEnvironmentSummaryProps) {
   if (
     !projectName &&
     !environmentLabel &&
+    !environmentHost &&
     !environmentCheckout &&
     !onCreateNewThreadInEnvironment
   ) {
@@ -50,10 +60,16 @@ export const ThreadEnvironmentSummary = memo(function ThreadEnvironmentSummary({
           leading={<Icon name="Folder" className="size-4 shrink-0" />}
           className="h-6 min-w-0 max-w-[10rem] shrink"
           tooltip={`Project: ${projectName}`}
-          muted
         />
       ) : null}
-      {environmentLabel ? (
+      {environmentHost ? (
+        <MachineLabel
+          host={environmentHost}
+          machineProvider={environmentMachineProvider}
+          className="h-6 w-fit max-w-full shrink px-1 text-xs leading-tight text-muted-foreground"
+          iconClassName="size-4"
+        />
+      ) : environmentLabel ? (
         <div className="inline-flex h-6 w-fit max-w-full min-w-0 shrink items-center justify-start gap-1.5 px-1 text-xs leading-tight text-muted-foreground">
           {environmentIcon && environmentTypeLabel ? (
             <Tooltip>
@@ -84,7 +100,6 @@ export const ThreadEnvironmentSummary = memo(function ThreadEnvironmentSummary({
             compactValue={environmentCompactLabel}
             className="h-6 min-w-0 shrink px-0"
             tooltip={environmentLabel}
-            muted
           />
         </div>
       ) : null}

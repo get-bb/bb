@@ -1,8 +1,6 @@
 import type { ComponentProps, ReactNode } from "react";
 import { Icon, type IconName } from "../icon";
-import { Textarea } from "../textarea";
 import { cn } from "../../../lib/utils";
-import { ResourceTabDescription } from "./toolbar";
 
 export type ResourceDetailSurface = "raised" | "recessed" | "flat";
 
@@ -124,64 +122,6 @@ export function ResourceDetailCollection({
   );
 }
 
-export function ResourceDetailListItem({
-  leading,
-  children,
-  trailing,
-  className,
-}: {
-  leading?: ReactNode;
-  children: ReactNode;
-  trailing?: ReactNode;
-  className?: string;
-}) {
-  return (
-    <div
-      className={cn(
-        "flex min-w-0 items-center gap-3 rounded-sm px-2 py-1.5 text-sm",
-        className,
-      )}
-    >
-      {leading ? <span className="shrink-0">{leading}</span> : null}
-      <div className="min-w-0 flex-1">{children}</div>
-      {trailing ? <span className="shrink-0">{trailing}</span> : null}
-    </div>
-  );
-}
-
-export function ResourceDetailActionRow({
-  label,
-  description,
-  action,
-  className,
-}: {
-  label: ReactNode;
-  description?: ReactNode;
-  action: ReactNode;
-  className?: string;
-}) {
-  return (
-    <div
-      className={cn(
-        "flex min-w-0 items-start justify-between gap-3 text-sm",
-        className,
-      )}
-    >
-      <div className="min-w-0 flex-1">
-        <div className="text-foreground">{label}</div>
-        {description ? (
-          <div className="mt-0.5 min-w-0 break-words text-xs leading-snug text-subtle-foreground/75">
-            {description}
-          </div>
-        ) : null}
-      </div>
-      <div className="flex shrink-0 items-center">{action}</div>
-    </div>
-  );
-}
-
-export const ResourcePropertyList = ResourceDetailPanel;
-
 export function ResourceDetailStack({
   children,
   className,
@@ -201,93 +141,6 @@ export function ResourceDetailStack({
   );
 }
 
-export function ResourceProperty({
-  label,
-  children,
-}: {
-  label: ReactNode;
-  children: ReactNode;
-}) {
-  return (
-    <div className="grid gap-2 px-3 py-3 text-xs sm:grid-cols-[7rem_minmax(0,1fr)]">
-      <div className="font-medium text-muted-foreground">{label}</div>
-      <div className="min-w-0 break-words text-foreground">{children}</div>
-    </div>
-  );
-}
-
-export function ResourcePromptEditor({
-  value,
-  ariaLabel,
-  placeholder,
-  hint,
-  onChange,
-}: {
-  value: string;
-  ariaLabel: string;
-  placeholder?: string;
-  hint?: ReactNode;
-  onChange: (value: string) => void;
-}) {
-  return (
-    <div className="overflow-hidden rounded-xl border border-border bg-background shadow-sm focus-within:border-ring focus-within:ring-1 focus-within:ring-ring">
-      <Textarea
-        value={value}
-        aria-label={ariaLabel}
-        placeholder={placeholder}
-        className="min-h-52 resize-y rounded-none border-0 bg-transparent px-3.5 py-3 text-sm leading-relaxed shadow-none focus-visible:ring-0"
-        onChange={(event) => onChange(event.target.value)}
-      />
-      {hint ? (
-        <div className="flex items-center gap-1.5 bg-surface-recessed/55 px-3 py-2 text-2xs text-muted-foreground">
-          <Icon name="Info" className="size-3.5" aria-hidden />
-          {hint}
-        </div>
-      ) : null}
-    </div>
-  );
-}
-
-export function ResourceSection({
-  label,
-  count,
-  leading,
-  collapsed,
-  onToggle,
-  children,
-}: {
-  label: ReactNode;
-  count: number;
-  leading?: ReactNode;
-  collapsed: boolean;
-  onToggle: () => void;
-  children: ReactNode;
-}) {
-  return (
-    <section className="overflow-hidden rounded-lg border border-border bg-popover text-popover-foreground shadow-sm">
-      <button
-        type="button"
-        onClick={onToggle}
-        aria-expanded={!collapsed}
-        className="flex w-full items-center gap-1.5 bg-surface-recessed px-3 py-1.5 text-xs text-muted-foreground hover:bg-state-hover"
-      >
-        <Icon
-          name="ChevronRight"
-          className={cn(
-            "size-3 shrink-0 text-muted-foreground transition-transform duration-150",
-            !collapsed && "rotate-90",
-          )}
-          aria-hidden
-        />
-        {leading}
-        <span className="font-medium">{label}</span>
-        <span className="text-subtle-foreground">{count}</span>
-      </button>
-      {collapsed ? null : <div className="p-1">{children}</div>}
-    </section>
-  );
-}
-
 export function ResourceSectionTitle({
   className,
   ...props
@@ -300,25 +153,5 @@ export function ResourceSectionTitle({
       )}
       {...props}
     />
-  );
-}
-
-export function ResourceOverview({
-  description,
-  browse,
-  className,
-  children,
-}: {
-  description: ReactNode;
-  browse?: ReactNode;
-  className?: string;
-  children: ReactNode;
-}) {
-  return (
-    <div className={cn("space-y-4", className)}>
-      <ResourceTabDescription>{description}</ResourceTabDescription>
-      {browse}
-      {children}
-    </div>
   );
 }

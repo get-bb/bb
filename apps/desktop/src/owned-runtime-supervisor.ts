@@ -5,7 +5,6 @@ import {
   createNodeVerifiedProcessOps,
   stopVerifiedProcess,
   type VerifiedProcessOps,
-  type WaitForProcessExitArgs,
 } from "@bb/config/verified-process-stop";
 import { z } from "zod";
 
@@ -49,14 +48,11 @@ interface ReadOwnedRuntimePidFileArgs {
 }
 
 interface ReapStaleOwnedRuntimeArgs {
-  processOps?: OwnedRuntimeProcessOps;
+  processOps?: VerifiedProcessOps;
   signal: NodeJS.Signals;
   timeoutMs: number;
   userDataPath: string;
 }
-
-export type OwnedRuntimeProcessOps = VerifiedProcessOps;
-export type { WaitForProcessExitArgs };
 
 interface NoStaleOwnedRuntimePidFileResult {
   kind: "no-pid-file";

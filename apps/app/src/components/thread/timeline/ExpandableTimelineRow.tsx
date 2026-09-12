@@ -15,12 +15,12 @@ import {
   ExpandablePanel,
   getCollapsibleHeaderToneClass,
 } from "../../ui/disclosure.js";
-import { Icon, type IconName } from "@bb/shared-ui/icon";
+import type { IconName } from "@bb/shared-ui/icon";
 import { cn } from "@bb/shared-ui/lib/utils";
 import { useTimelineReasoningExpansion } from "./TimelineReasoningExpansion.js";
-import { PluginCompactIconMask } from "../../plugin/PluginIcon.js";
 import {
   TIMELINE_ROW_HEADER_CONTENT_CLASS_NAME,
+  TimelineLeadingIcon,
   timelineRowHeaderClassName,
   timelineRowHorizontalPaddingClassName,
   type TimelineRowHorizontalPadding,
@@ -43,6 +43,7 @@ interface ExpandableTimelineRowProps {
   expandable?: boolean;
   horizontalPadding?: TimelineRowHorizontalPadding;
   leadingIcon?: IconName;
+  leadingIconFallback?: IconName;
   leadingIconUrl?: string;
   leadingIconStyle?: CSSProperties;
   summaryClassName?: string;
@@ -83,6 +84,7 @@ function ExpandableTimelineRowComponent({
   forceExpanded = false,
   horizontalPadding = "default",
   leadingIcon,
+  leadingIconFallback,
   leadingIconUrl,
   leadingIconStyle,
   onTitleAction,
@@ -203,20 +205,12 @@ function ExpandableTimelineRowComponent({
             summaryClassName,
           )}
         >
-          {leadingIconUrl !== undefined ? (
-            <PluginCompactIconMask
-              url={leadingIconUrl}
-              className="size-3.5 text-muted-foreground"
-              style={leadingIconStyle}
-            />
-          ) : leadingIcon ? (
-            <Icon
-              name={leadingIcon}
-              className="size-3.5 shrink-0 text-muted-foreground"
-              style={leadingIconStyle}
-              aria-hidden
-            />
-          ) : null}
+          <TimelineLeadingIcon
+            icon={leadingIcon}
+            fallback={leadingIconFallback}
+            iconUrl={leadingIconUrl}
+            style={leadingIconStyle}
+          />
           {titleContent ?? (
             <TimelineTitleView
               title={title}

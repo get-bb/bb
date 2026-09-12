@@ -23,8 +23,6 @@
     "app",
     "src",
     "e2e",
-    "index.ts",
-    "App.tsx",
     "expo-env.d.ts",
     "nativewind-env.d.ts",
     "metro.config.js",

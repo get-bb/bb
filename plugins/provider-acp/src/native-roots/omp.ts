@@ -13,9 +13,9 @@ import {
   configuredSkillRoot,
   isPathWithinDirectory,
   readParsedFile,
+  resolveConfiguredHomeDirectory,
   resolveConfiguredPath,
   resolveProjectAncestorDirectories,
-  resolveStoredPath,
   skillsRoot,
   type ResolvedRootOrigin,
 } from "./shared.js";
@@ -44,10 +44,12 @@ function resolvePiAgentDir(
   homeDir: string,
   env: AcpNativeRootsEnvironment,
 ): string {
-  const configured = env.PI_CODING_AGENT_DIR?.trim();
-  return configured
-    ? resolveStoredPath(homeDir, configured)
-    : path.join(homeDir, PI_DIR_NAME, "agent");
+  return resolveConfiguredHomeDirectory(
+    homeDir,
+    env.PI_CODING_AGENT_DIR,
+    PI_DIR_NAME,
+    "agent",
+  );
 }
 
 export function resolveOmpAgentDir(
@@ -65,10 +67,12 @@ export function resolveOmpAgentDir(
   ) {
     return path.join(homeDir, OMP_DIR_NAME, "profiles", profile, "agent");
   }
-  const configured = env.PI_CODING_AGENT_DIR?.trim();
-  return configured
-    ? resolveStoredPath(homeDir, configured)
-    : path.join(homeDir, OMP_DIR_NAME, "agent");
+  return resolveConfiguredHomeDirectory(
+    homeDir,
+    env.PI_CODING_AGENT_DIR,
+    OMP_DIR_NAME,
+    "agent",
+  );
 }
 
 async function resolveOmpConfiguredSkillRoots(

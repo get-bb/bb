@@ -24,7 +24,7 @@ const DIFF_VIEW_STYLE = {
 
 const DEFAULT_DIFF_EXPANSION_LINE_COUNT = 30;
 
-export function BbDiff({
+function BbDiff({
   file,
   patchText,
   fullFileContents,

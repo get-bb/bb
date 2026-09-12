@@ -8,7 +8,6 @@ import {
   PLUGIN_GUIDE_PLUGIN_ID,
   pluginSurfaceAgentClipboardContent,
   pluginSurfaceAgentContext,
-  pluginSurfaceAgentMention,
   SURFACES_BY_ID,
 } from "../src/index";
 
@@ -40,17 +39,6 @@ describe("Plugin Guide agent references", () => {
     expect(reference.clipboard.text).toBe(
       "Build a plugin that uses @Code & diff renderers ",
     );
-  });
-
-  it("uses the stable surface id and concise card label", () => {
-    const surface = SURFACES_BY_ID.get("composer-actions");
-    if (!surface) throw new Error("composer-actions surface missing");
-
-    expect(pluginSurfaceAgentMention(surface)).toEqual({
-      provider: "surface",
-      id: "composer-actions",
-      label: "Inline actions",
-    });
   });
 
   it("resolves only surface identity, SDK symbols, and the authoring guide", () => {

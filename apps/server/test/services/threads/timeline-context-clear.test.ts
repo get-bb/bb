@@ -19,7 +19,7 @@ import {
 } from "@bb/db";
 import {
   buildThreadConversationOutline,
-  buildThreadTimeline,
+  buildThreadTimelineWithProfile,
   THREAD_TIMELINE_EVENT_DATA_BYTE_LIMIT,
 } from "../../../src/services/threads/timeline.js";
 
@@ -28,7 +28,6 @@ function setup(): { db: DbConnection; thread: Thread } {
   migrate(db);
   const host = upsertHost(db, noopNotifier, {
     name: "test-host",
-    type: "persistent",
   });
   const { project } = createProject(db, noopNotifier, {
     name: "test-project",
@@ -81,10 +80,10 @@ describe("timeline context-clear epochs", () => {
         maxInlineOutputChars: null,
         maxSeq: 2,
       };
-      const latest = buildThreadTimeline(db, thread, {
+      const latest = buildThreadTimelineWithProfile(db, thread, {
         ...options,
         page: { kind: "latest", segmentLimit: 20 },
-      });
+      }).response;
       expect(latest.rows).toEqual([
         expect.objectContaining({
           sourceSeqStart: 2,
@@ -95,15 +94,16 @@ describe("timeline context-clear epochs", () => {
         hasOlderRows: false,
         olderCursor: null,
       });
-      expect(() =>
-        buildThreadTimeline(db, thread, {
-          ...options,
-          page: {
-            kind: "older",
-            segmentLimit: 20,
-            beforeCursor: { anchorId: "old-anchor", anchorSeq: 1 },
-          },
-        }),
+      expect(
+        () =>
+          buildThreadTimelineWithProfile(db, thread, {
+            ...options,
+            page: {
+              kind: "older",
+              segmentLimit: 20,
+              beforeCursor: { anchorId: "old-anchor", anchorSeq: 1 },
+            },
+          }).response,
       ).toThrow(/no longer available/);
     } finally {
       db.$client.close();
@@ -192,14 +192,14 @@ describe("timeline context-clear epochs", () => {
       },
     ]);
 
-    const timeline = buildThreadTimeline(db, thread, {
+    const timeline = buildThreadTimelineWithProfile(db, thread, {
       eventBudget: 1_000,
       includeNestedRows: true,
       includeDiagnosticOperations: false,
       maxInlineOutputChars: null,
       maxSeq: 6,
       page: { kind: "latest", segmentLimit: 20 },
-    });
+    }).response;
 
     expect(timeline.contextBoundarySeq).toBe(5);
     expect(
@@ -301,14 +301,14 @@ describe("timeline context-clear epochs", () => {
       },
     ]);
 
-    let page = buildThreadTimeline(db, thread, {
+    let page = buildThreadTimelineWithProfile(db, thread, {
       eventBudget: 1_000,
       includeNestedRows: true,
       includeDiagnosticOperations: false,
       maxInlineOutputChars: null,
       maxSeq: 6,
       page: { kind: "latest", segmentLimit: 1 },
-    });
+    }).response;
     const rowSequences: number[] = [];
 
     for (;;) {
@@ -319,14 +319,14 @@ describe("timeline context-clear epochs", () => {
       const cursor = page.timelinePage.olderCursor;
       if (cursor === null) throw new Error("expected an older cursor");
       expect(cursor.anchorSeq).toBeGreaterThanOrEqual(2);
-      page = buildThreadTimeline(db, thread, {
+      page = buildThreadTimelineWithProfile(db, thread, {
         eventBudget: 1_000,
         includeNestedRows: true,
         includeDiagnosticOperations: false,
         maxInlineOutputChars: null,
         maxSeq: 6,
         page: { kind: "older", segmentLimit: 1, beforeCursor: cursor },
-      });
+      }).response;
     }
 
     expect(rowSequences).toContain(2);

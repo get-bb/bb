@@ -135,7 +135,6 @@ function SidebarSectionRowComponent({
   );
   const content = (
     <>
-      {}
       <button
         type="button"
         aria-hidden="true"
@@ -172,6 +171,11 @@ function SidebarSectionRowComponent({
             : COARSE_POINTER_ROW_ACTION_SIZE_CLASS,
         )}
       >
+        {hasActions && showRollupIndicator ? (
+          <span className="hidden shrink-0 items-center justify-center text-subtle-foreground max-md:pointer-coarse:inline-flex">
+            {renderRollupIndicator()}
+          </span>
+        ) : null}
         {hasActions ? (
           <span
             data-sidebar-hover-actions-open={isActionsOpen ? "true" : undefined}
@@ -182,14 +186,10 @@ function SidebarSectionRowComponent({
               SIDEBAR_HOVER_ACTIONS_CLASS,
               "relative z-10 inline-flex shrink-0 items-center",
               SIDEBAR_HOVER_ACTIONS_GAP_CLASS,
+              isCollapsed && "max-md:pointer-coarse:hidden",
             )}
             onClick={stopActionsClick}
           >
-            {showRollupIndicator ? (
-              <span className="hidden shrink-0 items-center justify-center text-subtle-foreground max-md:pointer-coarse:inline-flex">
-                {renderRollupIndicator()}
-              </span>
-            ) : null}
             <SidebarHeaderControls
               label={`${label} section`}
               onNewThread={onCreateThread}

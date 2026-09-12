@@ -88,7 +88,6 @@ function BrandRow() {
 const SHELL_WIDTH = {
   sm: "max-w-[430px]",
   md: "max-w-[480px]",
-  lg: "max-w-[530px]",
 } as const;
 
 function Shell({

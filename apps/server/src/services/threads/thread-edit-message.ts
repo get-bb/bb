@@ -65,6 +65,13 @@ interface EditableTurn {
   sourceProviderThreadId: string | null;
 }
 
+const TURN_REQUEST_ROW_COLUMNS = {
+  data: events.data,
+  sequence: events.sequence,
+  threadId: events.threadId,
+  type: events.type,
+};
+
 function conflict(message: string): never {
   throw new ApiError(409, "invalid_request", message);
 }
@@ -313,12 +320,7 @@ function resolveEditableTurn(
 
   if (requestSequence !== undefined) {
     const requestRow = db
-      .select({
-        data: events.data,
-        sequence: events.sequence,
-        threadId: events.threadId,
-        type: events.type,
-      })
+      .select(TURN_REQUEST_ROW_COLUMNS)
       .from(events)
       .where(
         and(
@@ -336,12 +338,7 @@ function resolveEditableTurn(
   }
 
   const requestRows = db
-    .select({
-      data: events.data,
-      sequence: events.sequence,
-      threadId: events.threadId,
-      type: events.type,
-    })
+    .select(TURN_REQUEST_ROW_COLUMNS)
     .from(events)
     .where(
       and(

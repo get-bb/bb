@@ -13,6 +13,7 @@ export interface CreateLocalPathProjectSourceInput {
   hostId: string;
   path: string;
   isDefault?: boolean;
+  ownsPath?: boolean;
 }
 
 export type CreateProjectSourceInput = CreateLocalPathProjectSourceInput;
@@ -65,6 +66,7 @@ export function createProjectSource(
         hostId: input.hostId,
         path: input.path,
         isDefault: shouldBeDefault,
+        ownsPath: input.ownsPath ?? false,
         createdAt: now,
         updatedAt: now,
       })
@@ -73,15 +75,6 @@ export function createProjectSource(
   });
   notifier.notifyProject(input.projectId, ["project-sources-changed"]);
   return toProjectSource(row);
-}
-
-export function listProjectSources(db: DbConnection, projectId: string) {
-  return db
-    .select()
-    .from(projectSources)
-    .where(eq(projectSources.projectId, projectId))
-    .all()
-    .map(toProjectSource);
 }
 
 export function listProjectSourcesByProjectIds(
@@ -226,21 +219,6 @@ export function getProjectSourceByHost(
   return source ? toProjectSource(source) : null;
 }
 
-export function getDefaultProjectSource(db: DbConnection, projectId: string) {
-  const source =
-    db
-      .select()
-      .from(projectSources)
-      .where(
-        and(
-          eq(projectSources.projectId, projectId),
-          eq(projectSources.isDefault, true),
-        ),
-      )
-      .get() ?? null;
-  return source ? toProjectSource(source) : null;
-}
-
 export function deleteProjectSource(
   db: DbConnection,
   notifier: DbNotifier,
@@ -285,4 +263,11 @@ export function deleteProjectSource(
 
   notifier.notifyProject(deleted, ["project-sources-changed"]);
   return true;
+}
+
+
+export function projectSourceOwnsPath(db: DbConnection, projectId: string, hostId: string, path: string): boolean {
+  return db.select({ ownsPath: projectSources.ownsPath }).from(projectSources).where(and(
+    eq(projectSources.projectId, projectId), eq(projectSources.hostId, hostId), eq(projectSources.path, path),
+  )).get()?.ownsPath ?? false;
 }

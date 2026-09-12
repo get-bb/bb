@@ -573,7 +573,6 @@ function DiffFileCardRenderedBody({
   const bodyState = useGitDiffCardBody({
     fileDiff: parsedFile,
     changeKind: entry.changeKind,
-    isRendering: false,
     onRequestFileContents,
     patchText,
   });

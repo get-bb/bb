@@ -210,6 +210,7 @@ function makeEnvironmentSummary({
     environmentName: environment.name,
     hasMultipleMachines,
     hostName: machineName ?? null,
+    hostType: "persistent",
     isProjectless: projectName === undefined,
   });
   const checkoutDisplay =
@@ -827,7 +828,8 @@ function Row({
         permission={permission}
         activePromptMode={activePromptMode}
         promptActions={promptActions}
-        readOnly={readOnly}
+        executionReadOnly={readOnly}
+        permissionReadOnly={readOnly}
         typeahead={typeaheadBase}
         collapseResetKey={collapseResetKey}
       />
@@ -892,11 +894,11 @@ export function Overview() {
         />
       </StoryRow>
       <StoryRow
-        label="stop-only"
-        hint="host-reconnecting — composer locked; only Stop available"
+        label="queue: host-reconnecting"
+        hint="host-reconnecting — submit queues; stop button visible"
       >
         <Row
-          submitMode={{ kind: "stop-only", onStop: noop }}
+          submitMode={{ kind: "queue", onStop: noop }}
           threadRuntimeDisplayStatus="host-reconnecting"
           environmentSummary={remoteEnvironmentSummary}
         />
@@ -911,11 +913,11 @@ export function Overview() {
         />
       </StoryRow>
       <StoryRow
-        label="stop-only: starting"
-        hint="environment still spinning up — follow-up locked; only Stop available"
+        label="queue: starting"
+        hint="environment still spinning up — submit queues; stop button visible"
       >
         <Row
-          submitMode={{ kind: "stop-only", onStop: noop }}
+          submitMode={{ kind: "queue", onStop: noop }}
           threadRuntimeDisplayStatus="starting"
           environmentSummary={provisioningEnvironmentSummary}
         />
@@ -1148,7 +1150,7 @@ export function EnvironmentMatrix() {
         hint="runtime loading icon + lifecycle label; no environment-type tooltip yet"
       >
         <Row
-          submitMode={{ kind: "stop-only", onStop: noop }}
+          submitMode={{ kind: "queue", onStop: noop }}
           threadRuntimeDisplayStatus="starting"
           environmentSummary={provisioningEnvironmentSummary}
         />

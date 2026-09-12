@@ -13,12 +13,12 @@ export interface DeferredFirstTurnContext {
   requestSequence: number;
 }
 
-interface PromptWithGroups {
+export interface PromptWithGroups {
   input: PromptInput[];
   inputGroups?: PromptInput[][];
 }
 
-interface GroupedPrompt {
+export interface GroupedPrompt {
   input: PromptInput[];
   inputGroups: PromptInput[][];
 }

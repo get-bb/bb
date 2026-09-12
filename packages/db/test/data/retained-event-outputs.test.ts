@@ -18,7 +18,7 @@ import {
   COMPLETED_EVENT_OUTPUT_RETAINED_TAIL_CHARS,
   COMPLETED_EVENT_OUTPUT_RETENTION_MS,
   COMPLETED_EVENT_OUTPUT_TRUNCATION_THRESHOLD_CHARS,
-} from "../../src/data/sweeps.js";
+} from "../../src/retained-event-output.js";
 import { createThread } from "../../src/data/threads.js";
 import { noopNotifier } from "../../src/notifier.js";
 import { createMigratedConnection } from "../helpers/migrated-connection.js";
@@ -31,7 +31,6 @@ function setup(options: CreateConnectionOptions = {}) {
   const db = createMigratedConnection(options);
   const host = upsertHost(db, noopNotifier, {
     name: "retained-output-host",
-    type: "persistent",
   });
   const { project } = createProject(db, noopNotifier, {
     name: "retained-output-project",

@@ -1,7 +1,5 @@
 import { getProjectSourceByHost } from "@bb/db";
 import { isLocalPathProjectSource, PERSONAL_PROJECT_ID } from "@bb/domain";
-import { z } from "zod";
-import { jsonValueSchema } from "@bb/domain";
 import { COMMAND_TIMEOUT_MS } from "../../constants.js";
 import type { WorkSessionDeps } from "../../types.js";
 import { callHostRetryableOnlineRpc } from "../hosts/online-rpc.js";
@@ -10,6 +8,10 @@ import {
   requirePublicProject,
   listPublicHostsWithStatus,
 } from "../lib/entity-lookup.js";
+import {
+  acceptsEmptyInputs,
+  parseProviderAvailabilityInvocation,
+} from "../lib/provider-availability.js";
 import {
   environmentProviderDecisionTimeoutMs,
   invokeEnvironmentProvider,
@@ -28,49 +30,16 @@ export type EnvironmentProviderAvailabilityResolution =
   | { ok: true; availability: PluginEnvironmentProviderAvailability }
   | { ok: false; message: string };
 
-const availabilitySchema = z.discriminatedUnion("status", [
-  z.object({ status: z.literal("available") }).strict(),
-  z
-    .object({
-      status: z.literal("setup-required"),
-      message: z.string().min(1).max(500),
-    })
-    .strict(),
-  z
-    .object({
-      status: z.literal("unavailable"),
-      message: z.string().min(1).max(500),
-    })
-    .strict(),
-]);
-
-const emptyInputsCache = new WeakMap<
-  PluginEnvironmentProviderRecord["provider"],
-  Promise<boolean>
->();
-
 export function environmentProviderAcceptsEmptyInputs(
   record: PluginEnvironmentProviderRecord,
 ): Promise<boolean> {
-  const cached = emptyInputsCache.get(record.provider);
-  if (cached !== undefined) return cached;
-  const resolved = resolveEmptyInputs(record);
-  emptyInputsCache.set(record.provider, resolved);
-  return resolved;
-}
-
-async function resolveEmptyInputs(
-  record: PluginEnvironmentProviderRecord,
-): Promise<boolean> {
-  const schema = record.provider.inputs;
-  if (schema === null) return true;
-  const invocation = await invokeEnvironmentProvider(
-    record,
-    `"${record.provider.id}" environment provider empty inputs`,
-    async () => schema["~standard"].validate({}),
+  return acceptsEmptyInputs(record.provider, (run) =>
+    invokeEnvironmentProvider(
+      record,
+      `"${record.provider.id}" environment provider empty inputs`,
+      run,
+    ),
   );
-  if (!invocation.ok || invocation.value.issues !== undefined) return false;
-  return jsonValueSchema.safeParse(invocation.value.value).success;
 }
 
 export function environmentProviderMatchesContext(
@@ -84,7 +53,7 @@ export function environmentProviderMatchesContext(
       ? listPublicHostsWithStatus(deps)
       : [getNonDestroyedHostWithStatus(deps, query.hostId)];
   return hosts.some((host) => {
-    if (host === null || host.type !== "persistent") return false;
+    if (host === null) return false;
     const requires = record.provider.requires;
     if (requires.projectless !== (project.id === PERSONAL_PROJECT_ID)) {
       return false;
@@ -105,14 +74,7 @@ export function environmentProviderMatchesContext(
   });
 }
 
-export function resolvePluginEnvironmentProviderAvailability(
-  record: PluginEnvironmentProviderRecord,
-  context: PluginEnvironmentProviderAvailabilityContext,
-): Promise<EnvironmentProviderAvailabilityResolution> {
-  return invokePluginAvailability(record, context);
-}
-
-async function invokePluginAvailability(
+export async function resolvePluginEnvironmentProviderAvailability(
   record: PluginEnvironmentProviderRecord,
   context: PluginEnvironmentProviderAvailabilityContext,
 ): Promise<EnvironmentProviderAvailabilityResolution> {
@@ -129,31 +91,7 @@ async function invokePluginAvailability(
         environmentProviderDecisionTimeoutMs(),
       ),
   );
-  const failure = !invocation.ok
-    ? invocation.error
-    : invocation.value.ok
-      ? null
-      : invocation.value.error;
-  if (failure !== null) {
-    return {
-      ok: false,
-      message: `Plugin "${record.pluginId}" could not determine availability: ${failure}`,
-    };
-  }
-  if (!invocation.ok || !invocation.value.ok) {
-    return {
-      ok: false,
-      message: `Plugin "${record.pluginId}" could not determine availability.`,
-    };
-  }
-  const parsed = availabilitySchema.safeParse(invocation.value.value);
-  if (!parsed.success) {
-    return {
-      ok: false,
-      message: `Plugin "${record.pluginId}" returned an invalid availability result.`,
-    };
-  }
-  return { ok: true, availability: parsed.data };
+  return parseProviderAvailabilityInvocation(record.pluginId, invocation);
 }
 
 const pendingGitInspections = new WeakMap<

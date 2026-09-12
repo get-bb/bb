@@ -203,7 +203,9 @@ binary path, its SHA-256, and timings.
 real Chrome, without starting a BB core or using an existing browser profile.
 It verifies named pages, navigation, clicking, JPEG bytes, serialization,
 independent session cancellation, a synchronous infinite-loop timeout,
-reopening, stop, and preservation of an attached browser and its page state.
+reopening, closing a runtime session (further runs are rejected), and
+preservation of an attached browser and its page state after that session
+closes.
 Both smokes link directly to Chrome and exercise the production launch flags
 without a wrapper. The attachment smoke also launches its separate browser
 fixture with `--no-sandbox` so it works on hosts with restricted user namespaces.

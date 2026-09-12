@@ -9,13 +9,15 @@ import {
   stat,
   writeFile,
 } from "node:fs/promises";
-import { dirname, isAbsolute, join, resolve } from "node:path";
+import { dirname, isAbsolute, join } from "node:path";
 import { createPluginArtifactMeta } from "./plugin-artifact-meta.js";
-import { isRecord, validatePluginBuildManifest } from "./plugin-manifest.js";
 import {
-  installedPluginSdkDirectory,
-  installedPluginSdkExportTarget,
-  pathExists,
+  isRecord,
+  resolveManifestEntryFile,
+  validatePluginBuildManifest,
+} from "./plugin-manifest.js";
+import {
+  describeUnresolvedSdkImport,
   PLUGIN_SDK_PACKAGE_NAME,
 } from "./plugin-sdk-install.js";
 import {
@@ -44,12 +46,10 @@ export const PLUGIN_CLI_OUTPUT_MAX_BYTES = 1024 * 1024;
 export function defineRpcContract(contract) { return contract; }
 ${PLUGIN_SDK_DEFINE_HOST_ENTRY_RUNTIME}`;
 
-const PLUGIN_SDK_HOST_SUBPATH = "./host";
 const PLUGIN_SDK_HOST_FALLBACK_SPECIFIER = "@get-bb/plugin-sdk/host";
 const PLUGIN_SDK_HOST_FALLBACK_EXPORTS: ReadonlySet<string> = new Set([
   "experimental_defineHostEntry",
 ]);
-const PLUGIN_SDK_HOST_FALLBACK_RUNTIME = PLUGIN_SDK_DEFINE_HOST_ENTRY_RUNTIME;
 const PLUGIN_SDK_HOST_FALLBACK_NAMESPACE = "bb-host-sdk-fallback";
 
 function escapeRegex(value: string): string {
@@ -232,30 +232,6 @@ function describeImportedNames(names: readonly string[]): string {
     .join(", ");
 }
 
-async function unresolvedHostSdkError(args: {
-  resolveDir: string;
-  names: readonly string[];
-  esbuildErrors: readonly { text: string }[];
-}): Promise<string> {
-  const need = `a host entry that imports ${describeImportedNames(args.names)} needs`;
-  const packageDir = await installedPluginSdkDirectory(args.resolveDir);
-  if (packageDir === null) {
-    return `"${PLUGIN_SDK_HOST_FALLBACK_SPECIFIER}" is not installed for this plugin (no node_modules/${PLUGIN_SDK_PACKAGE_NAME}); ${need} the SDK as a dependency`;
-  }
-  const target = await installedPluginSdkExportTarget(
-    packageDir,
-    PLUGIN_SDK_HOST_SUBPATH,
-  );
-  if (target === null) {
-    return `"${PLUGIN_SDK_HOST_FALLBACK_SPECIFIER}" is not exported by the ${PLUGIN_SDK_PACKAGE_NAME} installed at ${packageDir}; ${need} an SDK version that ships it`;
-  }
-  const targetPath = resolve(packageDir, target);
-  if (!(await pathExists(targetPath))) {
-    return `"${PLUGIN_SDK_HOST_FALLBACK_SPECIFIER}" is installed for this plugin but its dist is not built: run the SDK build (${targetPath} is missing); ${need} the built SDK`;
-  }
-  return `"${PLUGIN_SDK_HOST_FALLBACK_SPECIFIER}" could not be resolved from ${packageDir}: ${args.esbuildErrors.map((error) => error.text).join("; ")}`;
-}
-
 function privateBbImportError(specifier: string): string {
   return `host entries cannot import private BB workspace package "${specifier}"; use @get-bb/plugin-sdk, Node APIs, or a regular plugin dependency`;
 }
@@ -320,18 +296,7 @@ async function readPluginHostConfig(rootDir: string): Promise<{
   if (host === undefined) {
     throw new Error(`no host entry in ${packageJsonPath}`);
   }
-  if (isAbsolute(host)) {
-    throw new Error(`manifest bb.host must be relative, got "${host}"`);
-  }
-  const hostEntry = resolve(rootDir, host);
-  if (hostEntry !== rootDir && !hostEntry.startsWith(rootDir + "/")) {
-    throw new Error(`manifest bb.host escapes the plugin directory: "${host}"`);
-  }
-  try {
-    await stat(hostEntry);
-  } catch {
-    throw new Error(`manifest bb.host points at a missing file: ${host}`);
-  }
+  const hostEntry = await resolveManifestEntryFile(rootDir, host, "bb.host");
   return {
     hostEntry,
     packageName: manifest.name,
@@ -437,9 +402,10 @@ export async function buildPluginHost(
                 return {
                   errors: [
                     {
-                      text: await unresolvedHostSdkError({
+                      text: await describeUnresolvedSdkImport({
+                        specifier: PLUGIN_SDK_HOST_FALLBACK_SPECIFIER,
                         resolveDir: args.resolveDir,
-                        names: beyondStub,
+                        need: `a host entry that imports ${describeImportedNames(beyondStub)} needs`,
                         esbuildErrors: installed.errors,
                       }),
                     },
@@ -454,7 +420,7 @@ export async function buildPluginHost(
             build.onLoad(
               { filter: /.*/, namespace: PLUGIN_SDK_HOST_FALLBACK_NAMESPACE },
               () => ({
-                contents: PLUGIN_SDK_HOST_FALLBACK_RUNTIME,
+                contents: PLUGIN_SDK_DEFINE_HOST_ENTRY_RUNTIME,
                 loader: "js",
               }),
             );

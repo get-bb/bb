@@ -1,4 +1,8 @@
-import { createUpdatedPackageContent } from "./lib/package-version.mjs";
+import {
+  createUpdatedPackageContent,
+  parsePackageJsonWithVersion,
+  writeFilesAtomically,
+} from "./lib/package-version.mjs";
 // Bumps @get-bb/plugin-sdk in the two files that must always agree:
 //
 //   packages/domain/src/plugin-sdk-version.ts  (PLUGIN_SDK_VERSION)
@@ -14,7 +18,6 @@ import { createUpdatedPackageContent } from "./lib/package-version.mjs";
 // Both files are written atomically: a temp file per target, then renames, with
 // the originals restored if any rename fails. A half-applied bump would leave
 // the repo in the exact inconsistent state this script exists to prevent.
-import { randomUUID } from "node:crypto";
 import { readFile, rename, unlink, writeFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -37,24 +40,6 @@ const VERSION_EXPORT_PATTERN =
 
 const defaultFileSystem = { readFile, rename, unlink, writeFile };
 
-function readManifestVersion({ content, path }) {
-  const packageJson = JSON.parse(content);
-
-  if (
-    typeof packageJson !== "object" ||
-    packageJson === null ||
-    Array.isArray(packageJson)
-  ) {
-    throw new Error(`Invalid package JSON object in ${path}`);
-  }
-
-  if (typeof packageJson.version !== "string") {
-    throw new Error(`Missing string version field in ${path}`);
-  }
-
-  return { packageJson, version: packageJson.version };
-}
-
 function readModuleVersion({ content, path }) {
   const match = VERSION_EXPORT_PATTERN.exec(content);
 
@@ -70,38 +55,6 @@ function writeModuleVersion({ content, newVersion }) {
     VERSION_EXPORT_PATTERN,
     (_match, prefix, _current, suffix) => `${prefix}${newVersion}${suffix}`,
   );
-}
-
-async function writeTargetsAtomically({ fileSystem, updates }) {
-  const preparedUpdates = [];
-  const renamedUpdates = [];
-
-  try {
-    for (const update of updates) {
-      const temporaryPath = resolve(
-        dirname(update.absolutePath),
-        `.tmp-${process.pid}-${randomUUID()}-plugin-sdk-bump`,
-      );
-
-      await fileSystem.writeFile(temporaryPath, update.nextContent);
-      preparedUpdates.push({ ...update, temporaryPath });
-    }
-
-    for (const update of preparedUpdates) {
-      await fileSystem.rename(update.temporaryPath, update.absolutePath);
-      renamedUpdates.push(update);
-    }
-  } catch (error) {
-    for (const update of [...renamedUpdates].reverse()) {
-      await fileSystem.writeFile(update.absolutePath, update.content);
-    }
-
-    for (const update of preparedUpdates) {
-      await fileSystem.unlink(update.temporaryPath).catch(() => {});
-    }
-
-    throw error;
-  }
 }
 
 export async function bumpPluginSdk(options) {
@@ -121,10 +74,11 @@ export async function bumpPluginSdk(options) {
     fileSystem.readFile(moduleAbsolutePath, "utf8"),
   ]);
 
-  const { packageJson, version: manifestVersion } = readManifestVersion({
+  const packageJson = parsePackageJsonWithVersion({
     content: manifestContent,
     path: MANIFEST_PATH,
   });
+  const manifestVersion = packageJson.version;
   const moduleVersion = readModuleVersion({
     content: moduleContent,
     path: VERSION_MODULE_PATH,
@@ -150,8 +104,9 @@ export async function bumpPluginSdk(options) {
     );
   }
 
-  await writeTargetsAtomically({
+  await writeFilesAtomically({
     fileSystem,
+    temporarySuffix: () => "plugin-sdk-bump",
     updates: [
       {
         absolutePath: manifestAbsolutePath,

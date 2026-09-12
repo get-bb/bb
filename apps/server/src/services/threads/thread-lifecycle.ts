@@ -98,7 +98,8 @@ import {
   clearThreadProvisionSchedule,
   getThreadProvisionContext,
 } from "./thread-startup-store.js";
-import { cancelEnvironmentProviderCreation } from "./thread-environment-providers.js";
+import { cancelAbandonedProviderCreations } from "./thread-environment-providers.js";
+import { scheduleThreadProvisioningAdvance } from "./thread-provisioning.js";
 import { isPreStartThreadStatus } from "./thread-status.js";
 import { settleDanglingBackgroundTasksForStoppedThreadInTransaction } from "./background-task-reconciliation.js";
 
@@ -217,7 +218,7 @@ interface RequestThreadStopForCurrentStateThread {
 }
 
 interface RequestPreStartThreadStopResult {
-  abandonedProvider: { environmentProviderId: string } | null;
+  abandonedProvider: boolean;
   cancelHostId: string | null;
   environmentId: string | null;
   finalized: boolean;
@@ -329,7 +330,6 @@ function lifecycleEventForInterruptedThread(
       return { type: "stop.settled" };
     case "host-daemon-restarted":
     case "host-connection-lost":
-      return { type: "run.failed" };
     case "provider-turn-idle":
       return { type: "run.failed" };
     default:
@@ -1132,6 +1132,9 @@ async function requestThreadStartOnce(
           args.thread.id,
           "thread.start.title-sync",
         );
+        if (getThreadProvisionContext(deps.db, args.thread.id) !== null) {
+          scheduleThreadProvisioningAdvance(deps, args.thread.id);
+        }
       });
   }
 }
@@ -1220,7 +1223,7 @@ function requestPreStartThreadStop(
       const currentThread = getThread(tx, thread.id);
       if (!currentThread) {
         return {
-          abandonedProvider: null,
+          abandonedProvider: false,
           cancelHostId: null,
           environmentId: null,
           finalized: true,
@@ -1236,7 +1239,7 @@ function requestPreStartThreadStop(
         !hasProvisioningContext
       ) {
         return {
-          abandonedProvider: null,
+          abandonedProvider: false,
           cancelHostId: null,
           environmentId: currentThread.environmentId,
           finalized: false,
@@ -1252,12 +1255,9 @@ function requestPreStartThreadStop(
       const abandonedContext = hasProvisioningContext
         ? getThreadProvisionContext(deps.db, currentThread.id)
         : null;
-      const abandonedIntent = abandonedContext?.request.environmentIntent;
       const abandonedProvider =
-        abandonedIntent?.type === "provider" &&
-        abandonedContext?.state.environmentId === null
-          ? { environmentProviderId: abandonedIntent.environmentProviderId }
-          : null;
+        abandonedContext?.request.environmentIntent.type === "provider" &&
+        abandonedContext.state.environmentId === null;
       if (hasProvisioningContext) {
         appendProvisioningInterruptedEventInTransaction(txDeps, currentThread);
       }
@@ -1295,11 +1295,8 @@ function requestPreStartThreadStop(
     { behavior: "immediate" },
   );
   notificationBuffer.flushInto(deps.hub);
-  if (result.abandonedProvider !== null) {
-    cancelEnvironmentProviderCreation(deps, {
-      ...result.abandonedProvider,
-      threadId: thread.id,
-    });
+  if (result.abandonedProvider) {
+    cancelAbandonedProviderCreations(deps, thread.id);
   }
 
   if (!result.finalized && result.environmentId && result.cancelHostId) {
@@ -1311,8 +1308,18 @@ function requestPreStartThreadStop(
         "Environment cancellation failed",
       ),
     );
-    return;
   }
+}
+
+function hasLiveThreadRuntime(
+  deps: ThreadLifecycleReadDeps,
+  thread: RequestThreadStopForCurrentStateThread,
+): boolean {
+  return (
+    thread.status === "active" ||
+    hasLiveThreadStartInFlight(thread.id) ||
+    (thread.status === "stopping" && getActiveTurnId(deps, thread.id) !== null)
+  );
 }
 
 export function requestThreadStopForCurrentState(
@@ -1320,11 +1327,7 @@ export function requestThreadStopForCurrentState(
   thread: RequestThreadStopForCurrentStateThread,
   environment: RequestThreadStopForCurrentStateEnvironment | null,
 ): void {
-  const hasLiveRuntime =
-    thread.status === "active" ||
-    hasLiveThreadStartInFlight(thread.id) ||
-    (thread.status === "stopping" && getActiveTurnId(deps, thread.id) !== null);
-  if (hasLiveRuntime) {
+  if (hasLiveThreadRuntime(deps, thread)) {
     if (environment === null) {
       return;
     }
@@ -1350,13 +1353,10 @@ export async function stopThreadForCurrentState(
   deps: RequestThreadStopForCurrentStateDeps,
   thread: RequestThreadStopForCurrentStateThread,
   environment: RequestThreadStopForCurrentStateEnvironment | null,
+  options?: { requireStopped: true },
 ): Promise<void> {
   await revokeThreadDesktopBrowserControl(deps, thread.id);
-  const hasLiveRuntime =
-    thread.status === "active" ||
-    hasLiveThreadStartInFlight(thread.id) ||
-    (thread.status === "stopping" && getActiveTurnId(deps, thread.id) !== null);
-  if (hasLiveRuntime) {
+  if (hasLiveThreadRuntime(deps, thread)) {
     if (environment === null) {
       return;
     }
@@ -1368,6 +1368,7 @@ export async function stopThreadForCurrentState(
     };
     if (markThreadStopRequested(deps, args)) {
       await runAwaitedThreadStopCommand(deps, {
+        requireStopped: options?.requireStopped,
         command: buildThreadStopCommand({ ...args, intent: "interrupt" }),
         hostId: args.hostId,
         threadId: thread.id,
@@ -1421,6 +1422,7 @@ async function runAwaitedThreadStopCommand(
   deps: RequestThreadStopForCurrentStateDeps,
   args: {
     command: ThreadStopCommand;
+    requireStopped?: boolean;
     hostId: string;
     threadId: string;
   },
@@ -1438,6 +1440,7 @@ async function runAwaitedThreadStopCommand(
         { err: error, intent: args.command.intent, threadId: args.threadId },
         "Awaited thread stop command failed",
       );
+      if (args.requireStopped) throw error;
       if (
         args.command.intent === "release" &&
         !isHostUnavailableApiError(error)
@@ -1733,16 +1736,10 @@ export function finalizeStoppedThreadInTransaction(
         reason: pendingInteractionStopReason(interruptionReason),
       },
     );
-    if (
-      !appendedThreadInterruptedEvent &&
-      !hasThreadInterruptedEvent(deps, finalizedThread.id)
-    ) {
-      appendThreadInterruptedEventInTransaction(deps.db, {
-        threadId: finalizedThread.id,
+    if (!appendedThreadInterruptedEvent) {
+      appendThreadInterruptedEventIfMissingInTransaction(deps, {
         reason: interruptionReason,
-      });
-      deps.hub.notifyThread(finalizedThread.id, ["events-appended"], {
-        eventTypes: ["system/thread/interrupted"],
+        threadId: finalizedThread.id,
       });
     }
   }

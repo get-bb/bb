@@ -13,6 +13,7 @@ import {
   schema,
   server,
   session,
+  sha256Hex,
   user,
 } from "@bb/connect-db";
 
@@ -55,16 +56,6 @@ afterEach(() => {
 });
 
 const now = new Date("2026-07-01T12:00:00.000Z");
-
-async function sha256Hex(value: string): Promise<string> {
-  const digest = await crypto.subtle.digest(
-    "SHA-256",
-    new TextEncoder().encode(value),
-  );
-  return [...new Uint8Array(digest)]
-    .map((b) => b.toString(16).padStart(2, "0"))
-    .join("");
-}
 
 function seedUser(id: string): void {
   db.insert(user)

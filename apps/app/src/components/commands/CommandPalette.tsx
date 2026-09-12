@@ -64,16 +64,23 @@ const MODE_BY_ACTION_ID = new Map(
   ]),
 );
 
+function invocationTarget(invocation: {
+  target: EventTarget | null;
+}): EventTarget | null {
+  return (
+    invocation.target ??
+    (typeof document === "undefined" ? null : document.activeElement)
+  );
+}
+
 export interface CommandPaletteProps {
   threadId: string | null;
   projectId: string | null;
-  onSplit?: () => void;
 }
 
 export function CommandPalette({
   threadId,
   projectId,
-  onSplit,
 }: CommandPaletteProps) {
   const navigate = useNavigate();
   const runner = useAppCommandRunner();
@@ -130,18 +137,6 @@ export function CommandPalette({
         dispatch: runner.dispatch,
         shortcuts,
       }),
-      ...(onSplit === undefined
-        ? []
-        : [
-            {
-              id: "internal:thread.split",
-              bucket: "Actions",
-              group: "Window and layout",
-              title: "Split",
-              shortcut: null,
-              run: onSplit,
-            } satisfies PaletteAction,
-          ]),
       ...buildPluginPaletteActions({
         slots: pluginSlots.commandPaletteActions,
         threadId,
@@ -155,7 +150,6 @@ export function CommandPalette({
       runner.isCommandAvailable,
       shortcuts,
       threadId,
-      onSplit,
       pluginSlots.commandPaletteActions,
     ],
   );
@@ -178,9 +172,7 @@ export function CommandPalette({
   );
 
   useAppCommandHandler("palette.open", (invocation) => {
-    const target =
-      invocation.target ??
-      (typeof document === "undefined" ? null : document.activeElement);
+    const target = invocationTarget(invocation);
     prepareOpen(target);
     setActiveModeId(null);
     setOpen(true);
@@ -192,9 +184,7 @@ export function CommandPalette({
     (index, invocation) => {
       const mode = PALETTE_MODES[index];
       if (mode === undefined) return false;
-      const target =
-        invocation.target ??
-        (typeof document === "undefined" ? null : document.activeElement);
+      const target = invocationTarget(invocation);
       prepareOpen(target);
       setActiveModeId(mode.id);
       setOpen(true);
@@ -358,7 +348,6 @@ export function CommandPalette({
                 ? undefined
                 : `${optionIdPrefix}-${activeIndex}`
             }
-            footerKeys={[]}
             inputDescription={PALETTE_INPUT_DESCRIPTION}
             inputLabel={PALETTE_INPUT_LABEL}
             listId={listId}

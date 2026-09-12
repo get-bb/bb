@@ -14,6 +14,7 @@ import {
 } from "@bb/db";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { createPluginCatalogService } from "../../../src/services/plugin-catalog/plugin-catalog-service.js";
+import { refreshCuratedMarketplace } from "../../helpers/plugin-catalog.js";
 import type { MarketplaceFetch } from "../../../src/services/plugin-catalog/marketplace-http.js";
 import type { PluginService } from "../../../src/services/plugins/plugin-service.js";
 
@@ -184,74 +185,81 @@ describe("third-party marketplaces", () => {
     return repo;
   }
 
-  it("adds, refreshes, and removes a git marketplace read from a real checkout", async () => {
-    const repo = await gitMarketplace({
-      name: "acme-plugins",
-      plugins: [entry({ icon: { url: "./icons/notes.svg" } })],
-      icon: VALID_SVG,
-    });
-    const catalog = service({ fetch: marketplaceFetch({}) });
+  describe("git marketplace lifecycle", () => {
+    let repo: string;
 
-    const added = await catalog.addMarketplace(`git:${repo}@main`);
-    expect(added).toMatchObject({
-      name: "acme-plugins",
-      displayName: "Acme Plugins",
-      official: false,
-      sourceKind: "git",
-      source: `git:${repo}@main`,
-      entryCount: 1,
+    beforeEach(async () => {
+      repo = await gitMarketplace({
+        name: "acme-plugins",
+        plugins: [entry({ icon: { url: "./icons/notes.svg" } })],
+        icon: VALID_SVG,
+      });
     });
-    expect(added.resolvedCommit).toMatch(/^[0-9a-f]{40}$/u);
-    expect(installedCatalogEntries).toEqual([]);
-    expect(
-      getPluginMarketplaceIcon(db, "acme-plugins", "notes")?.contentType,
-    ).toBe("image/svg+xml");
-    expect(
-      await rm(join(dataDir, "marketplaces", "staging"), {
-        recursive: true,
-        force: true,
-      }).then(() => true),
-    ).toBe(true);
 
-    await writeFile(
-      join(repo, "marketplace.json"),
-      JSON.stringify(
-        manifest("acme-plugins", [
-          entry({ icon: { url: "./icons/notes.svg" } }),
-          entry({ id: "status", displayName: "Acme Status", icon: "Zap" }),
-        ]),
-      ),
-    );
-    await run("git", ["commit", "-qam", "second"], { cwd: repo });
-    const [refreshed] = await catalog.refreshMarketplaces({
-      name: "acme-plugins",
+    it("adds, refreshes, and removes a git marketplace read from a real checkout", async () => {
+      const catalog = service({ fetch: marketplaceFetch({}) });
+
+      const added = await catalog.addMarketplace(`git:${repo}@main`);
+      expect(added).toMatchObject({
+        name: "acme-plugins",
+        displayName: "Acme Plugins",
+        official: false,
+        sourceKind: "git",
+        source: `git:${repo}@main`,
+        entryCount: 1,
+      });
+      expect(added.resolvedCommit).toMatch(/^[0-9a-f]{40}$/u);
+      expect(installedCatalogEntries).toEqual([]);
+      expect(
+        getPluginMarketplaceIcon(db, "acme-plugins", "notes")?.contentType,
+      ).toBe("image/svg+xml");
+      expect(
+        await rm(join(dataDir, "marketplaces", "staging"), {
+          recursive: true,
+          force: true,
+        }).then(() => true),
+      ).toBe(true);
+
+      await writeFile(
+        join(repo, "marketplace.json"),
+        JSON.stringify(
+          manifest("acme-plugins", [
+            entry({ icon: { url: "./icons/notes.svg" } }),
+            entry({ id: "status", displayName: "Acme Status", icon: "Zap" }),
+          ]),
+        ),
+      );
+      await run("git", ["commit", "-qam", "second"], { cwd: repo });
+      const [refreshed] = await catalog.refreshMarketplaces({
+        name: "acme-plugins",
+      });
+      expect(refreshed).toMatchObject({ name: "acme-plugins", ok: true });
+      expect(refreshed?.marketplace.entryCount).toBe(2);
+      expect(refreshed?.marketplace.resolvedCommit).not.toBe(
+        added.resolvedCommit,
+      );
+
+      const removed = await catalog.removeMarketplace("acme-plugins");
+      expect(removed.convertedPluginIds).toEqual([]);
+      expect(getPluginMarketplace(db, "acme-plugins")).toBeUndefined();
+      expect(
+        getPluginMarketplaceIcon(db, "acme-plugins", "notes"),
+      ).toBeUndefined();
+      expect(catalog.listMarketplaces().map((row) => row.name)).toEqual([
+        "bb-official",
+        "bb-community",
+      ]);
+
+      const readded = await catalog.addMarketplace(`git:${repo}@main`);
+      expect(readded).toMatchObject({
+        name: "acme-plugins",
+        entryCount: 2,
+        resolvedCommit: refreshed?.marketplace.resolvedCommit,
+      });
+      expect(
+        getPluginMarketplaceIcon(db, "acme-plugins", "notes")?.contentType,
+      ).toBe("image/svg+xml");
     });
-    expect(refreshed).toMatchObject({ name: "acme-plugins", ok: true });
-    expect(refreshed?.marketplace.entryCount).toBe(2);
-    expect(refreshed?.marketplace.resolvedCommit).not.toBe(
-      added.resolvedCommit,
-    );
-
-    const removed = await catalog.removeMarketplace("acme-plugins");
-    expect(removed.convertedPluginIds).toEqual([]);
-    expect(getPluginMarketplace(db, "acme-plugins")).toBeUndefined();
-    expect(
-      getPluginMarketplaceIcon(db, "acme-plugins", "notes"),
-    ).toBeUndefined();
-    expect(catalog.listMarketplaces().map((row) => row.name)).toEqual([
-      "bb-official",
-      "bb-community",
-    ]);
-
-    const readded = await catalog.addMarketplace(`git:${repo}@main`);
-    expect(readded).toMatchObject({
-      name: "acme-plugins",
-      entryCount: 2,
-      resolvedCommit: refreshed?.marketplace.resolvedCommit,
-    });
-    expect(
-      getPluginMarketplaceIcon(db, "acme-plugins", "notes")?.contentType,
-    ).toBe("image/svg+xml");
   });
 
   it("removes a checkout left by a prior process crash", async () => {
@@ -373,7 +381,7 @@ describe("third-party marketplaces", () => {
         ]),
       }),
     });
-    await catalog.refresh(1_000);
+    await refreshCuratedMarketplace(catalog, 1_000);
     await catalog.addMarketplace(ACME_URL);
 
     await expect(catalog.install({ entryId: "notes" })).rejects.toThrow(
@@ -445,7 +453,7 @@ describe("third-party marketplaces", () => {
         ]),
       }),
     });
-    await catalog.refresh(1_000);
+    await refreshCuratedMarketplace(catalog, 1_000);
     await catalog.addMarketplace(ACME_URL);
 
     await expect(
@@ -576,7 +584,7 @@ describe("third-party marketplaces", () => {
         },
       ),
     });
-    await catalog.refresh(1_000);
+    await refreshCuratedMarketplace(catalog, 1_000);
     await catalog.addMarketplace(ACME_URL);
 
     const official = getPluginMarketplaceIcon(
@@ -620,7 +628,7 @@ describe("third-party marketplaces", () => {
         return new Response("not found", { status: 404 });
       },
     });
-    await catalog.refresh(1_000);
+    await refreshCuratedMarketplace(catalog, 1_000);
     await catalog.addMarketplace(ACME_URL);
     acmeFails = true;
 
@@ -667,7 +675,7 @@ describe("third-party marketplaces", () => {
         ]),
       }),
     });
-    await catalog.refresh(1_000);
+    await refreshCuratedMarketplace(catalog, 1_000);
     await catalog.addMarketplace(ACME_URL);
 
     const results = await catalog.search("");
@@ -839,7 +847,7 @@ describe("third-party marketplaces", () => {
           ]),
         }),
       });
-      await catalog.refresh(1_000);
+      await refreshCuratedMarketplace(catalog, 1_000);
 
       const plan = await catalog.installPlan({ entryId: "official-notes" });
       expect(plan).toMatchObject({

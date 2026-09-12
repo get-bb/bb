@@ -1,3 +1,4 @@
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 // @vitest-environment jsdom
 
 import type {
@@ -700,6 +701,8 @@ interface RenderPromptAreaOptions {
   thread?: ThreadWithRuntime;
 }
 
+let testQueryClient: QueryClient;
+
 function buildPromptAreaElement({
   activePromptMode = null,
   activeWorkflows = [],
@@ -713,40 +716,42 @@ function buildPromptAreaElement({
   thread = makeThread(),
 }: RenderPromptAreaOptions = {}) {
   return (
-    <ThreadDetailPromptArea
-      activeBackgroundAgentCount={0}
-      activeBackgroundCommands={[]}
-      activePromptMode={activePromptMode}
-      activeWorkflows={activeWorkflows}
-      canUseGitUi={false}
-      childPendingInteractions={childPendingInteractions}
-      childThreadsSection={null}
-      composerFocusRequestNonce={0}
-      contextBannerMergeBase={null}
-      environmentGoneStatus={null}
-      goal={goal}
-      modelFallback={modelFallback}
-      isEnvironmentActionPending={false}
-      onChangedFileClick={vi.fn()}
-      parentThreadSection={null}
-      pendingInteractions={pendingInteractions}
-      pendingInteractionsInitialLoading={pendingInteractionsInitialLoading}
-      queuedMessageCount={queuedMessageCount}
-      pendingTodos={null}
-      projectId="proj_1"
-      pullRequest={null}
-      pullRequestMergeMethod="squash"
-      resolveMentionLink={() => null}
-      sendMessage={{
-        isPending: false,
-        mutateAsync: vi.fn(),
-      }}
-      sentMessageEdit={sentMessageEdit}
-      steerActiveThreadOnEnter={false}
-      thread={thread}
-      workspaceChangedFilesSection={null}
-      workspaceStatusPending={false}
-    />
+    <QueryClientProvider client={testQueryClient}>
+      <ThreadDetailPromptArea
+        activeBackgroundAgentCount={0}
+        activeBackgroundCommands={[]}
+        activePromptMode={activePromptMode}
+        activeWorkflows={activeWorkflows}
+        canUseGitUi={false}
+        childPendingInteractions={childPendingInteractions}
+        childThreadsSection={null}
+        composerFocusRequestNonce={0}
+        contextBannerMergeBase={null}
+        environmentGoneStatus={null}
+        goal={goal}
+        modelFallback={modelFallback}
+        isEnvironmentActionPending={false}
+        onChangedFileClick={vi.fn()}
+        parentThreadSection={null}
+        pendingInteractions={pendingInteractions}
+        pendingInteractionsInitialLoading={pendingInteractionsInitialLoading}
+        queuedMessageCount={queuedMessageCount}
+        pendingTodos={null}
+        projectId="proj_1"
+        pullRequest={null}
+        pullRequestMergeMethod="squash"
+        resolveMentionLink={() => null}
+        sendMessage={{
+          isPending: false,
+          mutateAsync: vi.fn(),
+        }}
+        sentMessageEdit={sentMessageEdit}
+        steerActiveThreadOnEnter={false}
+        thread={thread}
+        workspaceChangedFilesSection={null}
+        workspaceStatusPending={false}
+      />
+    </QueryClientProvider>
   );
 }
 
@@ -755,6 +760,9 @@ function renderPromptArea(options: RenderPromptAreaOptions = {}) {
 }
 
 beforeEach(() => {
+  testQueryClient = new QueryClient({
+    defaultOptions: { queries: { retry: false } },
+  });
   mocks.defaultExecutionOptions = null;
   mocks.pluginComposerHost = null;
   mocks.promptDraft.text = "";

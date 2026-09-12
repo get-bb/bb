@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { useEffect, type ReactNode } from "react";
+import { useContext, useEffect, type ReactNode } from "react";
 import { Provider } from "jotai";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import {
@@ -27,7 +27,10 @@ import type {
   NewThreadRequest,
   PluginEnvironmentProviderInputsProps,
 } from "@get-bb/plugin-sdk";
-import type { SystemEnvironmentProvider } from "@bb/server-contract";
+import type {
+  SystemEnvironmentProvider,
+  SystemMachineProvider,
+} from "@bb/server-contract";
 import {
   NewThreadComposer,
   type NewThreadComposerState,
@@ -43,6 +46,16 @@ import { buildThreadHandoffLocationState } from "@bb/client-core";
 import { makeThreadListEntry } from "@bb/test-helpers/domain-fixtures";
 import { makeProjectWithThreadsResponse } from "@/test/fixtures/projects";
 import { RootComposeView } from "@/views/RootComposeView";
+import { ROOT_COMPOSE_FIXED_PANEL_STATE_ID } from "@/views/RootComposePanelTabContent";
+import { resetFixedPanelTabsStateForTest } from "@/lib/fixed-panel-tabs";
+import {
+  createEmptyFixedPanelTabsState,
+  createTerminalFixedPanelTab,
+  getFixedPanelTabsStateStorageKey,
+  serializeFixedPanelTabsState,
+} from "@/lib/fixed-panel-tabs-state";
+import { PluginDetailPanelContext } from "./plugin-detail-navigation";
+import { openPluginDetailsInWorkspace } from "./plugin-detail-opener";
 import { PluginNewThreadComposer } from "./PluginNewThreadComposer";
 
 const mocks = vi.hoisted(() => ({
@@ -55,13 +68,54 @@ const mocks = vi.hoisted(() => ({
   extraProjects: [] as Array<Record<string, unknown>>,
   promptHistoryQueryOptions: [] as Array<{ enabled?: boolean } | undefined>,
   environmentProviders: [] as unknown[],
+  closeTerminal: vi.fn(),
+  plugins: [] as unknown[],
+  serverAccessReady: true,
+  machineProviders: [] as SystemMachineProvider[],
 }));
+
+vi.mock("@/views/RootComposePanelCommandHandlers", () => ({
+  RootComposePanelCommandHandlers: ({
+    onClose,
+  }: {
+    onClose: () => boolean;
+  }) => {
+    const details = useContext(PluginDetailPanelContext);
+    return (
+      <button
+        data-active-detail={details?.activePluginId ?? ""}
+        onClick={onClose}
+      >
+        Close panel command
+      </button>
+    );
+  },
+}));
+
+vi.mock("@/components/secondary-panel/SecondaryPanelLayout", () => ({
+  SecondaryPanelLayout: ({ main }: { main: ReactNode }) => main,
+}));
+
+vi.mock("@/hooks/queries/thread-terminal-queries", async (importOriginal) => {
+  const actual =
+    await importOriginal<
+      typeof import("@/hooks/queries/thread-terminal-queries")
+    >();
+  return {
+    ...actual,
+    useTerminals: () => ({ data: undefined }),
+    useEnvironmentTerminals: () => ({ data: undefined }),
+    useCloseTerminal: () => ({ mutate: mocks.closeTerminal }),
+    useCloseEnvironmentTerminal: () => ({ mutate: mocks.closeTerminal }),
+  };
+});
 
 vi.mock("@/components/promptbox/NewThreadPromptBox", () => ({
   NewThreadPromptBox: (props: Record<string, any>) => {
     mocks.promptBoxProps.push(props);
     return (
       <div data-testid="new-thread-prompt-box">
+        {props.modeConfig?.banner ?? null}
         {props.modeConfig?.environmentProviderInputsSlot ?? null}
       </div>
     );
@@ -72,6 +126,14 @@ vi.mock("@/hooks/queries/environment-provider-queries", () => ({
   useSystemEnvironmentProviders: () => ({
     providers: mocks.environmentProviders,
   }),
+}));
+
+vi.mock("@/hooks/queries/machine-provider-queries", () => ({
+  useSystemMachineProviders: () => ({ providers: mocks.machineProviders }),
+}));
+
+vi.mock("@/hooks/queries/plugin-settings-queries", () => ({
+  usePluginList: () => ({ data: { plugins: mocks.plugins } }),
 }));
 
 vi.mock("@/lib/sdk", () => ({
@@ -158,7 +220,7 @@ vi.mock("@/hooks/queries/host-queries", () => ({
       { id: "host_2", name: "Other machine" },
     ],
   }),
-  selectPersistentHosts: <T,>(hosts: T[] | undefined) => hosts ?? [],
+  selectHosts: <T,>(hosts: T[] | undefined) => hosts ?? [],
   selectPrimaryHost: (
     hosts: Array<{ id: string }> | undefined,
     primaryHostId: string | null,
@@ -171,7 +233,26 @@ vi.mock("@/hooks/queries/system-queries", () => ({
   useKnownProviderModelCatalogScope: () => undefined,
   useHostProviderCliStatus: () => ({ data: undefined }),
   useSystemConfig: () => ({
-    data: { primaryHostId: "host_1", generalSettings: defaultAppSettings },
+    data: {
+      primaryHostId: "host_1",
+      generalSettings: defaultAppSettings,
+      serverAccess: {
+        providers: [
+          {
+            id: "connect",
+            displayName: "bb connect",
+            description: "Use a private getbb.app address.",
+            pluginId: "connect",
+            availability: mocks.serverAccessReady
+              ? { status: "available", serverUrl: "https://sawyer.getbb.app" }
+              : { status: "setup-required", message: "Pair with bb connect" },
+          },
+        ],
+        defaultProviderId: "connect",
+        effectiveUrl: "https://sawyer.getbb.app",
+        urlSource: null,
+      },
+    },
   }),
   useSystemExecutionOptions: () => ({
     data: {
@@ -402,8 +483,10 @@ const BRANCH_INPUTS_SCHEMA = {
 };
 
 const CHECKOUT_PROVIDER: SystemEnvironmentProvider = {
+  machineProviderId: null,
   id: "project-checkout",
   displayName: "Project checkout",
+  description: "Prepare a workspace for this thread.",
   icon: "Laptop",
   logoUrl: null,
   pluginId: "environment-project-checkout",
@@ -423,8 +506,10 @@ const CHECKOUT_PROVIDER: SystemEnvironmentProvider = {
 };
 
 const PERSONAL_WORKSPACE_PROVIDER: SystemEnvironmentProvider = {
+  machineProviderId: null,
   id: "personal-workspace",
   displayName: "Personal workspace",
+  description: "Prepare a workspace for this thread.",
   icon: "Folder",
   logoUrl: null,
   pluginId: "environment-personal-workspace",
@@ -441,8 +526,10 @@ const PERSONAL_WORKSPACE_PROVIDER: SystemEnvironmentProvider = {
 };
 
 const MANAGED_WORKTREE_SUGAR_PROVIDER: SystemEnvironmentProvider = {
+  machineProviderId: null,
   id: "git-worktree",
   displayName: "Worktree",
+  description: "Prepare a workspace for this thread.",
   icon: "GitBranch",
   logoUrl: null,
   pluginId: "environment-git-worktree",
@@ -555,6 +642,8 @@ async function submit(): Promise<void> {
 
 describe("PluginNewThreadComposer seeding", () => {
   beforeEach(() => {
+    resetFixedPanelTabsStateForTest();
+    mocks.closeTerminal.mockClear();
     mocks.promptBoxProps.length = 0;
     mocks.promptHistoryQueryOptions.length = 0;
     mocks.copyAttachments.mockReset();
@@ -563,6 +652,9 @@ describe("PluginNewThreadComposer seeding", () => {
     mocks.sidebarNavigationSettled = true;
     mocks.sidebarNavigationReplayed = false;
     mocks.extraProjects = [];
+    mocks.plugins = [];
+    mocks.serverAccessReady = true;
+    mocks.machineProviders = [];
     mocks.environmentProviders = [
       CHECKOUT_PROVIDER,
       MANAGED_WORKTREE_SUGAR_PROVIDER,
@@ -945,8 +1037,9 @@ describe("PluginNewThreadComposer seeding", () => {
     });
 
     await act(async () => {
-      latestPromptBoxProps().modeConfig.environment.onChange(
-        "host:host_1:local",
+      latestPromptBoxProps().modeConfig.environment.onSelectProvider(
+        CHECKOUT_PROVIDER,
+        "host_1",
       );
     });
     await act(async () => {
@@ -1116,6 +1209,56 @@ describe("PluginNewThreadComposer seeding", () => {
         (options) => options?.enabled === false,
       ),
     ).toBe(true);
+  });
+
+  it("closes visible plugin details before an underlying terminal", async () => {
+    const terminal = createTerminalFixedPanelTab({
+      terminalId: "terminal-under-details",
+    });
+    const state = createEmptyFixedPanelTabsState({ lastUsedAt: Date.now() });
+    window.localStorage.setItem(
+      getFixedPanelTabsStateStorageKey({
+        threadId: ROOT_COMPOSE_FIXED_PANEL_STATE_ID,
+      }),
+      serializeFixedPanelTabsState({
+        state: {
+          ...state,
+          secondary: {
+            ...state.secondary,
+            tabs: [terminal],
+            activeTabId: terminal.id,
+            isOpen: true,
+          },
+        },
+      }),
+    );
+    window.localStorage.setItem("bb.root-compose.project-id", "proj_1");
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+    const router = createMemoryRouter([
+      { path: "/", element: <RootComposeView /> },
+    ]);
+    render(
+      <Provider>
+        <QueryClientProvider client={queryClient}>
+          <RouterProvider router={router} />
+        </QueryClientProvider>
+      </Provider>,
+    );
+    act(() =>
+      openPluginDetailsInWorkspace({ pluginId: "docs", title: "Docs" }),
+    );
+    const command = screen.getByRole("button", { name: "Close panel command" });
+    expect(command.dataset.activeDetail).toBe("docs");
+    fireEvent.click(command);
+    expect(mocks.closeTerminal).not.toHaveBeenCalled();
+    expect(command.dataset.activeDetail).toBe("");
+    fireEvent.click(command);
+    expect(mocks.closeTerminal).toHaveBeenCalledWith(
+      { mode: "force", terminalId: "terminal-under-details" },
+      expect.anything(),
+    );
   });
 
   it("keeps a seeded fork's exact reuse selection while the sidebar bootstrap settles", async () => {
@@ -1539,8 +1682,10 @@ describe("PluginNewThreadComposer seeding", () => {
 });
 
 const SANDBOX_PROVIDER: SystemEnvironmentProvider = {
+  machineProviderId: null,
   id: "container",
   displayName: "Docker container",
+  description: "Prepare a workspace for this thread.",
   icon: "Container",
   logoUrl: null,
   pluginId: "docker-sandbox",
@@ -1561,8 +1706,10 @@ const SANDBOX_PROVIDER: SystemEnvironmentProvider = {
 };
 
 const OPTIONAL_INPUTS_PROVIDER: SystemEnvironmentProvider = {
+  machineProviderId: null,
   id: "optional-sandbox",
   displayName: "Optional sandbox",
+  description: "Prepare a workspace for this thread.",
   icon: "Container",
   logoUrl: null,
   pluginId: "optional-sandbox",
@@ -1582,8 +1729,10 @@ const OPTIONAL_INPUTS_PROVIDER: SystemEnvironmentProvider = {
 };
 
 const BRANCH_PROVIDER: SystemEnvironmentProvider = {
+  machineProviderId: null,
   id: "branchy",
   displayName: "New branch workspace",
+  description: "Prepare a workspace for this thread.",
   icon: "GitBranch",
   logoUrl: null,
   pluginId: "branchy",
@@ -1600,8 +1749,10 @@ const BRANCH_PROVIDER: SystemEnvironmentProvider = {
 };
 
 const HOST_PROVIDER: SystemEnvironmentProvider = {
+  machineProviderId: null,
   id: "hosted",
   displayName: "Machine sandbox",
+  description: "Prepare a workspace for this thread.",
   icon: "Server",
   logoUrl: null,
   pluginId: "hosted",
@@ -1631,6 +1782,9 @@ describe("NewThreadComposer environment providers", () => {
     mocks.sidebarNavigationSettled = true;
     mocks.sidebarNavigationReplayed = false;
     mocks.extraProjects = [];
+    mocks.plugins = [];
+    mocks.serverAccessReady = true;
+    mocks.machineProviders = [];
     mocks.environmentProviders = [CHECKOUT_PROVIDER];
     resetPluginSlotStoreForTest();
     registerCheckoutInputsControl();
@@ -1665,6 +1819,219 @@ describe("NewThreadComposer environment providers", () => {
     );
   }
 
+  it.each([
+    CHECKOUT_PROVIDER,
+    MANAGED_WORKTREE_SUGAR_PROVIDER,
+    {
+      ...BRANCH_PROVIDER,
+      requires: { ...BRANCH_PROVIDER.requires, projectCheckout: false },
+    },
+  ])(
+    "omits $displayName on machines without this project's checkout",
+    async (provider) => {
+      mocks.environmentProviders = [provider, HOST_PROVIDER];
+      const submitted: NewThreadRequest[] = [];
+      renderUnseeded(
+        (request) => submitted.push(request),
+        "checkout-eligibility",
+        OTHER_PROJECT.id,
+      );
+      await waitFor(() => {
+        const byHost =
+          latestPromptBoxProps().modeConfig.environment.providersByHostId;
+        expect(
+          byHost
+            ?.get("host_1")
+            .map((item: SystemEnvironmentProvider) => item.id),
+        ).toEqual([provider.id, HOST_PROVIDER.id]);
+        expect(
+          byHost
+            ?.get("host_2")
+            .map((item: SystemEnvironmentProvider) => item.id),
+        ).toEqual([HOST_PROVIDER.id]);
+      });
+      await act(async () => {
+        latestPromptBoxProps().modeConfig.environment.onSelectProvider(
+          provider,
+          "host_2",
+        );
+      });
+      expect(latestPromptBoxProps().disabled).toBe(true);
+      expect(
+        latestPromptBoxProps().modeConfig.environment.selectedProviderHostId,
+      ).toBe("host_2");
+      await submit();
+      expect(submitted).toHaveLength(0);
+      await act(async () => {
+        latestPromptBoxProps().modeConfig.environment.onSelectProvider(
+          HOST_PROVIDER,
+          "host_2",
+        );
+      });
+      await submit();
+      expect(submitted[0].environment).toMatchObject({
+        machine: { type: "existing", hostId: "host_2" },
+      });
+    },
+  );
+
+  it("blocks an explicit machine when its checkout disappears and recovers on a valid choice", async () => {
+    const project = {
+      ...PROJECT_WITHOUT_CHECKOUT,
+      sources: [...PROJECT.sources],
+    };
+    mocks.extraProjects = [project];
+    mocks.environmentProviders = [BRANCH_PROVIDER];
+    const onSubmit = vi.fn();
+    const rendered = renderUnseeded(
+      onSubmit,
+      "checkout-disappears",
+      project.id,
+    );
+    await act(async () => {
+      latestPromptBoxProps().modeConfig.environment.onSelectProvider(
+        BRANCH_PROVIDER,
+        "host_2",
+      );
+    });
+    expect(latestPromptBoxProps().disabled).toBe(false);
+    mocks.extraProjects = [{ ...project, sources: [PROJECT.sources[0]] }];
+    rendered.rerender(
+      <MemoryRouter>
+        <LocationProbe />
+        <PluginNewThreadComposer
+          draftKey="checkout-disappears"
+          defaultProjectId={project.id}
+          initialPrompt="run in the sandbox"
+          onSubmit={onSubmit}
+        />
+      </MemoryRouter>,
+    );
+    expect(latestPromptBoxProps().disabled).toBe(true);
+    expect(
+      latestPromptBoxProps().modeConfig.environment.selectedProviderHostId,
+    ).toBe("host_2");
+    await submit();
+    expect(onSubmit).not.toHaveBeenCalled();
+    await act(async () => {
+      latestPromptBoxProps().modeConfig.environment.onSelectProvider(
+        BRANCH_PROVIDER,
+        "host_1",
+      );
+    });
+    await submit();
+    expect(onSubmit).toHaveBeenCalledWith(
+      expect.objectContaining({
+        environment: expect.objectContaining({
+          machine: { type: "existing", hostId: "host_1" },
+        }),
+      }),
+    );
+  });
+
+  it("uses per-machine availability without blocking a pending probe", async () => {
+    const provider = {
+      ...BRANCH_PROVIDER,
+      machineAvailability: {
+        host_1: null,
+        host_2: {
+          status: "unavailable" as const,
+          message: "Checkout is unavailable",
+        },
+      },
+    };
+    mocks.environmentProviders = [provider];
+    const onSubmit = vi.fn();
+    renderUnseeded(onSubmit, "machine-availability");
+    await act(async () => {
+      latestPromptBoxProps().modeConfig.environment.onSelectProvider(
+        provider,
+        "host_2",
+      );
+    });
+    expect(
+      latestPromptBoxProps().modeConfig.environment.providersByHostId.get(
+        "host_2",
+      )[0].availability,
+    ).toEqual(provider.machineAvailability.host_2);
+    expect(latestPromptBoxProps().disabled).toBe(true);
+    await submit();
+    expect(onSubmit).not.toHaveBeenCalled();
+    await act(async () => {
+      latestPromptBoxProps().modeConfig.environment.onSelectProvider(
+        provider,
+        "host_1",
+      );
+    });
+    expect(latestPromptBoxProps().disabled).toBe(false);
+    await submit();
+    expect(onSubmit).toHaveBeenCalledOnce();
+  });
+
+  it("updates the access banner for a composed machine without relying on plugin status", async () => {
+    const composition: SystemEnvironmentProvider = {
+      ...OPTIONAL_INPUTS_PROVIDER,
+      machineProviderId: "qa-machine",
+      machineInputs: null,
+      machineAcceptsEmptyInputs: true,
+    };
+    mocks.environmentProviders = [CHECKOUT_PROVIDER, composition];
+    mocks.machineProviders = [
+      {
+        id: "qa-machine",
+        displayName: "QA machine",
+        description: "Test machine",
+        icon: "Server",
+        logoUrl: null,
+        pluginId: "qa",
+        inputs: null,
+        acceptsEmptyInputs: true,
+        supportsSuspend: false,
+      },
+    ];
+    mocks.serverAccessReady = false;
+    const onSubmit = vi.fn();
+    const rendered = renderUnseeded(onSubmit, "live-access");
+    await act(async () => {
+      latestPromptBoxProps().modeConfig.environment.onSelectProvider(
+        composition,
+        null,
+      );
+    });
+    await screen.findByText("Pair with bb connect");
+    expect(latestPromptBoxProps().disabled).toBe(true);
+    mocks.serverAccessReady = true;
+    rendered.rerender(
+      <MemoryRouter>
+        <LocationProbe />
+        <PluginNewThreadComposer
+          draftKey="live-access"
+          defaultProjectId="proj_1"
+          initialPrompt="run in the sandbox"
+          onSubmit={onSubmit}
+        />
+      </MemoryRouter>,
+    );
+    await waitFor(() =>
+      expect(screen.queryByText("Pair with bb connect")).toBeNull(),
+    );
+    expect(latestPromptBoxProps().disabled).toBe(false);
+    mocks.serverAccessReady = false;
+    rendered.rerender(
+      <MemoryRouter>
+        <LocationProbe />
+        <PluginNewThreadComposer
+          draftKey="live-access"
+          defaultProjectId="proj_1"
+          initialPrompt="run in the sandbox"
+          onSubmit={onSubmit}
+        />
+      </MemoryRouter>,
+    );
+    await screen.findByText("Pair with bb connect");
+    expect(latestPromptBoxProps().disabled).toBe(true);
+  });
+
   it("submits the value the provider's configuration slot produced", async () => {
     mocks.environmentProviders = [CHECKOUT_PROVIDER, SANDBOX_PROVIDER];
     setPluginSlotRegistrations("docker-sandbox", {
@@ -1672,10 +2039,11 @@ describe("NewThreadComposer environment providers", () => {
       environmentProviderInputs: [
         {
           environmentProviderId: "container",
-          component: ({ onChange }) => (
+          component: ({ target, onChange }) => (
             <button
               type="button"
               data-testid="set-provider-config"
+              data-target={JSON.stringify(target)}
               onClick={() =>
                 onChange({ status: "ready", value: { image: "img-chosen" } })
               }
@@ -1707,6 +2075,11 @@ describe("NewThreadComposer environment providers", () => {
       expect(screen.getByTestId("set-provider-config")).toBeTruthy();
     });
     expect(latestPromptBoxProps().disabled).toBe(true);
+    expect(
+      JSON.parse(
+        screen.getByTestId("set-provider-config").getAttribute("data-target")!,
+      ),
+    ).toEqual({ kind: "existing-host", hostId: "host_1" });
     fireEvent.click(screen.getByTestId("set-provider-config"));
     await waitFor(() => {
       expect(latestPromptBoxProps().disabled).toBe(false);
@@ -1835,46 +2208,6 @@ describe("NewThreadComposer environment providers", () => {
     });
   });
 
-  it("submits a provider without interpreting deferred availability", async () => {
-    const setupRequiredProvider: SystemEnvironmentProvider = {
-      ...OPTIONAL_INPUTS_PROVIDER,
-      id: "modal-sandbox",
-      displayName: "Modal sandbox",
-      pluginId: "environment-modal-sandbox",
-      inputs: null,
-      availability: {
-        status: "setup-required",
-        message: "Add Modal credentials",
-      },
-    };
-    mocks.environmentProviders = [CHECKOUT_PROVIDER, setupRequiredProvider];
-    const submitted: NewThreadRequest[] = [];
-    renderUnseeded((request) => {
-      submitted.push(request);
-    }, "provider-setup-required");
-
-    await act(async () => {
-      latestPromptBoxProps().modeConfig.environment.onSelectProvider(
-        setupRequiredProvider,
-        null,
-      );
-    });
-    await waitFor(() => {
-      expect(latestPromptBoxProps().modeConfig.environment.value).toBe(
-        "provider:modal-sandbox",
-      );
-    });
-    await submit();
-
-    expect(submitted).toHaveLength(1);
-    expect(submitted[0]?.environment).toEqual({
-      type: "provider",
-      environmentProviderId: "modal-sandbox",
-      machine: { type: "existing", hostId: "host_1" },
-      inputs: null,
-    });
-  });
-
   it("shows the plugin's blocked reason and prevents submit", async () => {
     mocks.environmentProviders = [CHECKOUT_PROVIDER, SANDBOX_PROVIDER];
     setPluginSlotRegistrations("docker-sandbox", {
@@ -1962,7 +2295,8 @@ describe("NewThreadComposer environment providers", () => {
     });
     expect(
       latestPromptBoxProps().modeConfig.environment.selectedProviderHostId,
-    ).toBeNull();
+    ).toBe("host_1");
+    expect(latestPromptBoxProps().disabled).toBe(true);
 
     await act(async () => {
       latestPromptBoxProps().modeConfig.environment.onSelectProvider(

@@ -1,4 +1,4 @@
-import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -12,11 +12,13 @@ import {
 } from "../../../src/services/plugins/plugin-service.js";
 import {
   SkillTreeRegistry,
-  resolveInjectedSkillSources,
+  resolveProjectSkillSourceFromContent,
   resolveSkillCatalogEntries,
 } from "../../../src/services/skills/injected-skills.js";
-import { buildThreadStartCommand } from "../../../src/services/threads/thread-commands.js";
-import { resolveExecutionOptions } from "../../../src/services/threads/thread-runtime-config.js";
+import {
+  buildExecutionOptions,
+  buildThreadStartCommand,
+} from "../../../src/services/threads/thread-commands.js";
 import { textInput } from "../../helpers/prompt-input.js";
 import {
   seedEnvironment,
@@ -121,27 +123,36 @@ describe("plugin skills tier", () => {
     await rm(workDir, { recursive: true, force: true });
   });
 
-  it("layers plugin skills between user (data-dir/project) skills and builtins", async () => {
+  it("layers plugin skills below data-dir and project skills", async () => {
     const rootDir = await writePlugin(workDir, {
       name: "bb-plugin-skiller",
       skillNames: ["alpha", "beta", "gamma"],
     });
     await service.installPath(rootDir);
 
-    const builtinRoot = join(workDir, "builtin-skills");
-    await writeSkill(builtinRoot, "alpha");
-    await writeSkill(builtinRoot, "builtin-only");
     const dataDir = join(workDir, "data");
     await writeSkill(join(dataDir, "skills"), "beta");
-    const projectRoot = join(workDir, "project-skills");
-    const projectGamma = await writeSkill(projectRoot, "gamma");
+    const projectGamma = await writeSkill(
+      join(workDir, "project-skills"),
+      "gamma",
+    );
+    const projectGammaSource = resolveProjectSkillSourceFromContent(
+      testLogger,
+      {
+        candidatePath: projectGamma,
+        content: await readFile(join(projectGamma, "SKILL.md"), "utf8"),
+        directoryName: "gamma",
+      },
+    );
+    if (projectGammaSource === null) {
+      throw new Error("Expected a project skill source");
+    }
 
     const skillTreeRegistry = new SkillTreeRegistry();
     const entries = resolveSkillCatalogEntries(testLogger, {
-      builtinSkillsRootPath: builtinRoot,
       dataDir,
       pluginSkillRoots: service.listSkillRootContributions(),
-      projectSkillsRootPath: projectRoot,
+      projectSkillSources: [projectGammaSource],
       skillTreeRegistry,
     });
     const sources = entries.map((entry) => entry.runtimeSource);
@@ -149,15 +160,9 @@ describe("plugin skills tier", () => {
 
     const alpha = byName.get("alpha");
     const beta = byName.get("beta");
-    const builtinOnly = byName.get("builtin-only");
     expect(alpha?.kind).toBe("tree");
     expect(beta?.kind).toBe("tree");
-    expect(builtinOnly?.kind).toBe("tree");
-    if (
-      alpha?.kind !== "tree" ||
-      beta?.kind !== "tree" ||
-      builtinOnly?.kind !== "tree"
-    ) {
+    if (alpha?.kind !== "tree" || beta?.kind !== "tree") {
       throw new Error("Expected server-owned tree sources");
     }
     expect(alpha.sourceType).toBe("data-dir");
@@ -170,7 +175,6 @@ describe("plugin skills tier", () => {
       sourceRootPath: projectGamma,
     });
     expect(byName.get("gamma")?.sourceType).toBe("project");
-    expect(builtinOnly.sourceType).toBe("builtin");
     expect(sources).toHaveLength(byName.size);
   });
 
@@ -186,12 +190,11 @@ describe("plugin skills tier", () => {
     expect(service.listSkillRootContributions()).toEqual([
       { pluginId: "relocated", rootPath: join(rootDir, "custom") },
     ]);
-    const sources = resolveInjectedSkillSources(testLogger, {
-      builtinSkillsRootPath: join(workDir, "no-builtins"),
+    const sources = resolveSkillCatalogEntries(testLogger, {
       dataDir: join(workDir, "data"),
       pluginSkillRoots: service.listSkillRootContributions(),
       skillTreeRegistry: new SkillTreeRegistry(),
-    });
+    }).map((entry) => entry.runtimeSource);
     expect(sources.map((source) => source.name)).toEqual(["relocated-skill"]);
   });
 
@@ -203,12 +206,11 @@ describe("plugin skills tier", () => {
     await service.installPath(rootDir);
 
     const resolve = () =>
-      resolveInjectedSkillSources(testLogger, {
-        builtinSkillsRootPath: join(workDir, "no-builtins"),
+      resolveSkillCatalogEntries(testLogger, {
         dataDir: join(workDir, "data"),
         pluginSkillRoots: service.listSkillRootContributions(),
         skillTreeRegistry: new SkillTreeRegistry(),
-      }).map((source) => source.name);
+      }).map((entry) => entry.runtimeSource.name);
 
     expect(resolve()).toEqual(["first-skill"]);
     await writeSkill(join(rootDir, "skills"), "second-skill");
@@ -307,10 +309,11 @@ describe("plugin agent contributions reach thread runtime config", () => {
       environmentId: environment.id,
       providerId: "codex",
     });
-    const execution = await resolveExecutionOptions(harness.deps, {
-      threadId: thread.id,
-      requestedExecution: { model: "gpt-5", source: "client/turn/requested" },
-    });
+    const execution = await buildExecutionOptions(
+      harness.deps,
+      { model: "gpt-5" },
+      { threadId: thread.id },
+    );
     const buildCommand = (requestValue: number) =>
       buildThreadStartCommand(harness.deps, {
         environment,
@@ -351,13 +354,11 @@ describe("plugin agent contributions reach thread runtime config", () => {
               name: "PLUGIN_CONTEXT",
               value: context.threadId + ":" + context.projectId + ":" + context.hostId,
               reason: "Expose resolution context",
-              secret: false,
             },
             {
               name: "SHARED_TOKEN",
               value: "first",
               reason: "First registration wins",
-              secret: true,
             },
           ]);
         }
@@ -372,13 +373,11 @@ describe("plugin agent contributions reach thread runtime config", () => {
               name: "SHARED_TOKEN",
               value: "second",
               reason: "Conflicting registration",
-              secret: true,
             },
             {
               name: "PLUGIN_PROXY_URL",
               value: { serverPath: "/plugins/env-second/proxy" },
               reason: "Use the server auth proxy",
-              secret: false,
             },
           ]);
         }
@@ -403,10 +402,11 @@ describe("plugin agent contributions reach thread runtime config", () => {
       environmentId: environment.id,
       providerId: "codex",
     });
-    const execution = await resolveExecutionOptions(harness.deps, {
-      threadId: thread.id,
-      requestedExecution: { model: "gpt-5", source: "client/turn/requested" },
-    });
+    const execution = await buildExecutionOptions(
+      harness.deps,
+      { model: "gpt-5" },
+      { threadId: thread.id },
+    );
     const command = await buildThreadStartCommand(harness.deps, {
       environment,
       execution,
@@ -425,21 +425,18 @@ describe("plugin agent contributions reach thread runtime config", () => {
         name: "PLUGIN_CONTEXT",
         value: `${thread.id}:${project.id}:${host.id}`,
         reason: "Expose resolution context",
-        secret: false,
         source: { plugin: "env-first" },
       },
       {
         name: "SHARED_TOKEN",
         value: "first",
         reason: "First registration wins",
-        secret: true,
         source: { plugin: "env-first" },
       },
       {
         name: "PLUGIN_PROXY_URL",
         value: { serverPath: "/plugins/env-second/proxy" },
         reason: "Use the server auth proxy",
-        secret: false,
         source: { plugin: "env-second" },
       },
     ]);

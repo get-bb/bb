@@ -31,7 +31,7 @@ import { queueParentSystemMessage } from "../../src/services/threads/parent-syst
 import { acceptThreadSendRequest } from "../../src/services/threads/thread-send-request.js";
 import { handleUpdateEnvironmentDirectoryToolCall } from "../../src/services/threads/thread-environment-directory.js";
 import { applyLoggedThreadLifecycleEvent } from "../../src/services/threads/lifecycle-outcome.js";
-import { resolveExecutionOptions } from "../../src/services/threads/thread-runtime-config.js";
+import { buildExecutionOptions } from "../../src/services/threads/thread-commands.js";
 import { sendThreadMessage } from "../../src/services/threads/thread-send.js";
 import {
   internalAuthHeaders,
@@ -1284,10 +1284,7 @@ describe("service tier execution lifecycle", () => {
           threadEvents.getLastExecutionOptions(harness.deps, thread.id),
         ).toMatchObject({ serviceTier });
         await expect(
-          resolveExecutionOptions(harness.deps, {
-            threadId: thread.id,
-            requestedExecution: { source: "client/turn/requested" },
-          }),
+          buildExecutionOptions(harness.deps, {}, { threadId: thread.id }),
         ).resolves.toMatchObject({ serviceTier });
         expect(
           listQueuedThreadCommands(harness, "turn.submit", thread.id),
@@ -1323,10 +1320,7 @@ describe("service tier execution lifecycle", () => {
         { id: newer.id, serviceTier: "fast" },
       ]);
       await expect(
-        resolveExecutionOptions(harness.deps, {
-          threadId: thread.id,
-          requestedExecution: { source: "client/turn/requested" },
-        }),
+        buildExecutionOptions(harness.deps, {}, { threadId: thread.id }),
       ).resolves.toMatchObject({ serviceTier: "fast" });
       await sendQueuedMessage(harness.deps, {
         claimPolicy: {
@@ -1344,10 +1338,7 @@ describe("service tier execution lifecycle", () => {
         threadEvents.getLastExecutionOptions(harness.deps, thread.id),
       ).toMatchObject({ serviceTier: "default" });
       await expect(
-        resolveExecutionOptions(harness.deps, {
-          threadId: thread.id,
-          requestedExecution: { source: "client/turn/requested" },
-        }),
+        buildExecutionOptions(harness.deps, {}, { threadId: thread.id }),
       ).resolves.toMatchObject({ serviceTier: "default" });
       expect(listQueuedThreadMessages(harness.db, thread.id)).toMatchObject([
         { id: newer.id, serviceTier: "fast" },

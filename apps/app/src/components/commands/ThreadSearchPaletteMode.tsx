@@ -9,11 +9,7 @@ import {
   type KeyboardEvent as ReactKeyboardEvent,
   type ReactNode,
 } from "react";
-import { useAtomValue, useStore } from "jotai";
-import { Button } from "@bb/shared-ui/button";
 import { Icon } from "@bb/shared-ui/icon";
-import { Tooltip, TooltipContent, TooltipTrigger } from "@bb/shared-ui/tooltip";
-import { useIsCompactViewport } from "@bb/shared-ui/hooks/use-compact-viewport";
 import { cn } from "@bb/shared-ui/lib/utils";
 import { CHROME_SECTION_LABEL_CLASS } from "@bb/shared-ui/chrome-style-tokens";
 import {
@@ -42,10 +38,6 @@ import {
   ThreadListEmptyState,
 } from "@/components/thread/ThreadListEmptyState";
 import { getThreadRoutePath } from "@/lib/route-paths";
-import { openThreadInSplit } from "@/lib/split-layout/openThreadInSplit";
-import { splitLayoutAtom } from "@/lib/split-layout/atoms";
-import { countPanes, findPaneByContent, MAX_PANES } from "@/lib/split-layout";
-import { isMacKeyboardPlatform } from "@bb/domain";
 import {
   buildPaletteThreadSearchRows,
   type PaletteThreadSearchRow,
@@ -63,10 +55,7 @@ export function ThreadSearchPaletteMode({
   const optionIdPrefix = useId();
   const inputRef = useRef<HTMLInputElement | null>(null);
   const listRef = useRef<HTMLDivElement | null>(null);
-  const store = useStore();
-  const splitLayout = useAtomValue(splitLayoutAtom);
   const navigate = useRouteNavigate();
-  const isCompact = useIsCompactViewport();
   const [query, setQuery] = useState("");
   const [highlightedIndex, setHighlightedIndex] = useState(0);
   const [now] = useState(() => Date.now());
@@ -128,26 +117,6 @@ export function ThreadSearchPaletteMode({
     !hasLoadError;
   const activeDescendantId =
     activeIndex < 0 ? undefined : `${optionIdPrefix}-${activeIndex}`;
-  const activeRow = result.rows[activeIndex];
-  const splitDisabledReason =
-    splitLayout === null
-      ? "Open a thread first to use split view"
-      : activeRow !== undefined &&
-          findPaneByContent(splitLayout.root, {
-            kind: "thread",
-            projectId: activeRow.projectId,
-            threadId: activeRow.threadId,
-          }) !== null
-        ? "Already open in this workspace"
-        : countPanes(splitLayout.root) >= MAX_PANES
-          ? "Close a split pane first"
-          : null;
-  const canSplit =
-    activeRow !== undefined && !isCompact && splitDisabledReason === null;
-  const splitShortcut = isMacKeyboardPlatform(navigator.platform)
-    ? "⌘↵"
-    : "Ctrl+↵";
-
   const scrollOnNextHighlightRef = useRef(false);
   useEffect(() => {
     if (!scrollOnNextHighlightRef.current) return;
@@ -158,7 +127,7 @@ export function ThreadSearchPaletteMode({
   }, [activeIndex]);
 
   const openRow = useCallback(
-    (row: PaletteThreadSearchRow, split: boolean) => {
+    (row: PaletteThreadSearchRow) => {
       runAfterClose(() => {
         const state =
           row.messageSeq === null
@@ -167,17 +136,6 @@ export function ThreadSearchPaletteMode({
                 searchMessageSeq: row.messageSeq,
                 searchThreadId: row.threadId,
               };
-        if (split) {
-          openThreadInSplit({
-            store,
-            navigate,
-            projectId: row.projectId,
-            threadId: row.threadId,
-            isCompact,
-            state,
-          });
-          return;
-        }
         navigate(
           getThreadRoutePath({
             projectId: row.projectId,
@@ -187,7 +145,7 @@ export function ThreadSearchPaletteMode({
         );
       });
     },
-    [isCompact, navigate, runAfterClose, store],
+    [navigate, runAfterClose],
   );
 
   const handleInputKeyDown = useCallback(
@@ -227,7 +185,7 @@ export function ThreadSearchPaletteMode({
         const row = result.rows[activeIndex];
         if (row === undefined) return;
         event.preventDefault();
-        openRow(row, event.metaKey || event.ctrlKey);
+        openRow(row);
       }
     },
     [activeIndex, onExit, openRow, query.length, result.rows],
@@ -257,49 +215,7 @@ export function ThreadSearchPaletteMode({
   return (
     <PaletteShell
       activeDescendantId={activeDescendantId}
-      accessory={
-        <>
-          {activeRow === undefined || isCompact ? null : (
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="sm"
-                  className="shrink-0 px-2 text-subtle-foreground aria-disabled:opacity-50"
-                  aria-label="Open in split"
-                  aria-disabled={!canSplit}
-                  aria-keyshortcuts={
-                    canSplit ? "Meta+Enter Control+Enter" : undefined
-                  }
-                  onClick={() => {
-                    if (canSplit) openRow(activeRow, true);
-                  }}
-                  onKeyDown={(event) => {
-                    if (event.key !== "Escape") return;
-                    event.preventDefault();
-                    event.stopPropagation();
-                    onExit();
-                  }}
-                >
-                  <Icon name="Columns2" aria-hidden />
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent>
-                {splitDisabledReason ?? `Open in split (${splitShortcut})`}
-              </TooltipContent>
-            </Tooltip>
-          )}
-        </>
-      }
-      footerKeys={
-        canSplit ? [{ keys: [splitShortcut], label: "Open in split" }] : []
-      }
-      inputDescription={
-        canSplit
-          ? presentation.inputDescription
-          : "Use Escape to return to commands."
-      }
+      inputDescription={presentation.inputDescription}
       inputLabel="Search threads"
       inputRef={inputRef}
       listId={listId}
@@ -332,7 +248,7 @@ export function ThreadSearchPaletteMode({
             isActive={index === activeIndex}
             row={row}
             onActivate={() => setHighlightedIndex(index)}
-            onSelect={() => openRow(row, false)}
+            onSelect={() => openRow(row)}
           />
         ))
       ) : showThreadListEmptyState ||

@@ -8,7 +8,7 @@ import { PromptMentionPillNodeView } from "./PromptMentionPillNodeView";
 import { parsePromptEditorMentionAttrs } from "./prompt-editor-serialization";
 import {
   PROMPT_MENTION_PILL_CLASS,
-  promptMentionIconLabel,
+  promptMentionDisplayLabel,
   promptMentionTooltipLabel,
 } from "@/components/promptbox/mentions/prompt-mention-display";
 import { promptMentionClipboardDataAttributes } from "@/components/promptbox/mentions/prompt-mention-clipboard";
@@ -25,8 +25,7 @@ function renderMentionText({ node }: MentionRenderArgs): string {
 }
 
 function renderMentionLabel(attrs: ParsedMentionAttrs): string {
-  if (!attrs) return "@mention";
-  return `${promptMentionIconLabel(attrs.resource)}: ${attrs.resource.label}`;
+  return attrs ? promptMentionDisplayLabel(attrs.resource) : "@mention";
 }
 
 function renderMentionTitle(attrs: ParsedMentionAttrs): string {

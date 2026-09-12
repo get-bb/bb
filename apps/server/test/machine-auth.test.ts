@@ -50,7 +50,6 @@ describe("machine auth service", () => {
 
     const issuedKey = await harness.machineAuth.issueDaemonHostKey({
       hostId: "host_hashed",
-      hostType: "persistent",
     });
 
     const storedKey = harness.db
@@ -71,22 +70,17 @@ describe("machine auth service", () => {
     const hostId = "host_reenroll";
     const olderKey = await harness.machineAuth.issueDaemonHostKey({
       hostId,
-      hostType: "persistent",
     });
     const staleKey = await harness.machineAuth.issueDaemonHostKey({
       hostId,
-      hostType: "persistent",
     });
     const joinMaterial = await harness.machineAuth.issueHostEnrollKey({
       enrollSource: "loopback",
       hostId,
-      hostType: "persistent",
     });
 
     const reenrolled = await harness.machineAuth.enrollHost({
-      allowPublicEnrollment: true,
       hostId,
-      hostType: "persistent",
       token: joinMaterial.key,
     });
 
@@ -105,7 +99,6 @@ describe("machine auth service", () => {
     ).resolves.toMatchObject({
       metadata: {
         hostId,
-        hostType: "persistent",
       },
     });
   });
@@ -115,7 +108,6 @@ describe("machine auth service", () => {
     await harness.machineAuth.issueHostEnrollKey({
       enrollSource: "loopback",
       hostId: "host_expired_key",
-      hostType: "persistent",
     });
 
     const createdKey = harness.db

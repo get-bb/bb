@@ -4,6 +4,8 @@ import { validatePluginEnvironmentProviderDeclaration } from "../internal/host-p
 const declaration = {
   id: "test-provider",
   displayName: "Test provider",
+  description: "Prepare a workspace for this thread.",
+  icon: "Folder",
   create: async () => ({
     status: "created",
     path: "/tmp/test",

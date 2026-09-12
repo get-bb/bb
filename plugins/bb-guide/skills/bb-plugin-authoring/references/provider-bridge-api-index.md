@@ -6,6 +6,16 @@ Read the installed declarations for exact current signatures.
 
 ## `@get-bb/plugin-sdk/provider-bridge`
 
+Context breakdowns are optional snapshots on `contextWindow` deltas:
+
+- `contextSnapshotSchema` validates capture time, provider session/turn identity,
+  model, token totals, compaction threshold, estimate status, and categories.
+- `ContextSnapshot` is the typed snapshot carried through recorded usage events.
+- `ContextCategory` has provider-defined IDs/labels, token counts, entries, and
+  accounting kind `used`, `free`, `reserved`, or `deferred`.
+- `ContextEntry` supplies an ID, label, and token count already included in its
+  parent category. Entries may describe only part of the category total.
+
 - `BRIDGE_INBOUND_REQUEST_METHODS`
 - `BRIDGE_JSON_RPC_ERRORS`
 - `BRIDGE_NOTIFICATION_METHODS`

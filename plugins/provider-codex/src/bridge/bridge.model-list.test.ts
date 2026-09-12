@@ -1,24 +1,16 @@
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { fileURLToPath } from "node:url";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { experimental_createBridgeJsonRpcTestHarness as createBridgeJsonRpcTestHarness } from "@get-bb/plugin-sdk/provider-bridge/testing";
 import { experimental_killAllChildrenForTests, handleLine } from "./bridge.js";
-
-const fakeAppServerPath = fileURLToPath(
-  new URL("./fake-codex-app-server.mjs", import.meta.url),
-);
+import { stubFakeCodexAppServer } from "./fake-codex-app-server-harness.js";
 
 let harness: ReturnType<typeof createBridgeJsonRpcTestHarness>;
 const temporaryDirectories: string[] = [];
 
 beforeEach(() => {
-  vi.stubEnv("BB_CODEX_BRIDGE_APP_SERVER_COMMAND", process.execPath);
-  vi.stubEnv(
-    "BB_CODEX_BRIDGE_APP_SERVER_ARGS",
-    JSON.stringify([fakeAppServerPath]),
-  );
+  stubFakeCodexAppServer();
   harness = createBridgeJsonRpcTestHarness(handleLine);
 });
 
@@ -55,10 +47,7 @@ it("replaces the cached app-server after a model catalog failure", async () => {
       turns: [],
     }),
   );
-  vi.stubEnv(
-    "BB_CODEX_BRIDGE_APP_SERVER_ARGS",
-    JSON.stringify([fakeAppServerPath, scriptPath]),
-  );
+  stubFakeCodexAppServer(scriptPath);
 
   harness.sendRequest(1, "model/list", {});
   const failed = await harness.waitForResponse(1);

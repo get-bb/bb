@@ -1,16 +1,18 @@
 import {
   memo,
   useCallback,
-  useImperativeHandle,
+  useEffect,
   useMemo,
   useRef,
   useState,
   type ReactNode,
-  type Ref,
   type RefObject,
 } from "react";
 import type { Host, ProjectSource, PromptTextMention } from "@bb/domain";
-import type { SystemEnvironmentProvider } from "@bb/server-contract";
+import type {
+  SystemEnvironmentProvider,
+  SystemMachineProvider,
+} from "@bb/server-contract";
 import type { ComposerView } from "@get-bb/plugin-sdk";
 import type { ComposerTextEffectSource } from "@/lib/composer-text-effects";
 import { ComposerBannersSlot } from "@/components/plugin/PluginComposerBanners";
@@ -29,6 +31,7 @@ import {
   type ExecutionPermissionConfig,
 } from "@/components/promptbox/ExecutionControls";
 import {
+  DEFAULT_COMPOSER_SCOPE,
   PromptBoxInternal,
   type AttachmentsConfig,
   type HistoryConfig,
@@ -36,6 +39,7 @@ import {
   type PromptBoxHandle,
   type TypeaheadConfig,
 } from "@/components/promptbox/PromptBoxInternal";
+import { usePromptModePermissionDisplay } from "@/components/promptbox/usePromptModePermissionDisplay";
 import { usePromptVoice } from "@/components/promptbox/usePromptVoice";
 import { useOptionalPaneContext } from "@/views/thread-detail/PaneContext";
 import {
@@ -56,26 +60,18 @@ import {
   type ReuseThreadOption,
 } from "@/components/pickers/ReuseEnvironmentPicker";
 import {
-  selectPersistentHosts,
+  selectHosts,
   selectPrimaryHost,
   useHosts,
 } from "@/hooks/queries/host-queries";
 import { useSystemConfig } from "@/hooks/queries/system-queries";
+import { useSystemMachineProviders } from "@/hooks/queries/machine-provider-queries";
 import { useHostDaemon } from "@/hooks/useHostDaemon";
-import {
-  isPlanModePrompt,
-  permissionDisplayForPromptMode,
-} from "@bb/client-core";
 
 const NEW_THREAD_PROMPT_BOX_MIN_HEIGHT = 80;
-const DEFAULT_NEW_THREAD_COMPOSER_SCOPE = {
-  kind: "new-thread",
-  projectId: null,
-} as const;
 
 export interface NewThreadEnvironmentConfig {
   value: string;
-  onChange: (value: string) => void;
   sources: readonly ProjectSource[];
   host: EnvironmentPickerUIProps["host"];
   isLocal: EnvironmentPickerUIProps["isLocal"];
@@ -85,6 +81,7 @@ export interface NewThreadEnvironmentConfig {
   isLoading?: boolean;
   providers?: readonly SystemEnvironmentProvider[];
   providersByHostId?: EnvironmentPickerUIProps["providersByHostId"];
+  machineProviders?: readonly SystemMachineProvider[];
   selectedProviderHostId?: string | null;
   inputsControlProviderIds?: ReadonlySet<string>;
   onSelectProvider?: EnvironmentPickerUIProps["onSelectProvider"];
@@ -113,6 +110,7 @@ export interface NewThreadModeConfig {
   worktree: NewThreadWorktreeConfig;
   permission: ExecutionPermissionConfig;
   environmentProviderInputsSlot?: ReactNode;
+  machineProviderInputsSlot?: ReactNode;
   banner?: ReactNode;
   header?: ReactNode;
 }
@@ -124,7 +122,7 @@ interface NewThreadPromptBoxUIProps {
   mentionRanges: readonly PromptTextMention[];
   onChange: (value: string, mentionRanges: PromptTextMention[]) => void;
   onSubmit: () => void;
-  promptBoxRef?: Ref<PromptBoxHandle>;
+  focusRequest?: string;
   isSubmitting: boolean;
   disabled: boolean;
   disabledReason?: string;
@@ -157,7 +155,7 @@ export const NewThreadPromptBoxUI = memo(function NewThreadPromptBoxUI({
   mentionRanges,
   onChange,
   onSubmit,
-  promptBoxRef: externalPromptBoxRef,
+  focusRequest,
   isSubmitting,
   disabled,
   disabledReason,
@@ -175,36 +173,21 @@ export const NewThreadPromptBoxUI = memo(function NewThreadPromptBoxUI({
   execution,
 }: NewThreadPromptBoxUIProps) {
   const promptBoxRef = useRef<PromptBoxHandle>(null);
+  useEffect(() => {
+    if (focusRequest === undefined) return;
+    promptBoxRef.current?.focusEnd();
+  }, [focusRequest]);
   const isFocusedPane = useOptionalPaneContext()?.isFocused ?? true;
   const focusDefault = useCallback(() => {
     promptBoxRef.current?.focusEnd();
     return promptBoxRef.current !== null;
   }, []);
-  useImperativeHandle(
-    externalPromptBoxRef,
-    () => ({
-      captureHeightForLayoutChange: () => {
-        promptBoxRef.current?.captureHeightForLayoutChange();
-      },
-      focusEnd: () => {
-        promptBoxRef.current?.focusEnd();
-      },
-      insertTextAtCursor: (text) => {
-        promptBoxRef.current?.insertTextAtCursor(text);
-      },
-      getTextBeforeCursor: () => promptBoxRef.current?.getTextBeforeCursor(),
-      playVoiceCompletionTransition: () =>
-        promptBoxRef.current?.playVoiceCompletionTransition() ??
-        Promise.resolve(),
-    }),
-    [],
-  );
   const voice = usePromptVoice(promptBoxRef);
   const attachmentCount = attachments.items?.length ?? 0;
   const [composerLayout, setComposerLayout] =
     useState<ComposerView["layout"]>("expanded");
   const composerView = usePluginComposerViewModel({
-    scope: pluginComposerHost?.scope ?? DEFAULT_NEW_THREAD_COMPOSER_SCOPE,
+    scope: pluginComposerHost?.scope ?? DEFAULT_COMPOSER_SCOPE,
     layout: composerLayout,
     text: value,
     attachmentCount,
@@ -254,7 +237,7 @@ export const NewThreadPromptBoxUI = memo(function NewThreadPromptBoxUI({
 
 interface DefaultNewThreadComposerProps extends Omit<
   NewThreadPromptBoxUIProps,
-  "promptBoxRef" | "pluginComposerHost"
+  "pluginComposerHost"
 > {
   promptBoxRef: RefObject<PromptBoxHandle | null>;
   voice: ReturnType<typeof usePromptVoice>;
@@ -288,22 +271,13 @@ const DefaultNewThreadComposer = memo(function DefaultNewThreadComposer({
   const isProjectlessPrompt = project?.value === null;
   const placeholder =
     placeholderOverride ?? getNewThreadPromptPlaceholder(isProjectlessPrompt);
-  const selectedProviderPlanModeCopy = execution.provider.options?.find(
-    (option) => option.value === execution.provider.selectedId,
-  )?.planModeCopy;
-  const promptModeInput = useMemo(
-    () => ({
-      planModeCopy: selectedProviderPlanModeCopy,
+  const { permissionDisplayOverride, permissionPickerDisabledByPlanMode } =
+    usePromptModePermissionDisplay({
+      execution,
       value,
       mentionRanges,
-    }),
-    [selectedProviderPlanModeCopy, mentionRanges, value],
-  );
-  const permissionDisplayOverride = useMemo(
-    () => permissionDisplayForPromptMode(promptModeInput),
-    [promptModeInput],
-  );
-  const permissionPickerDisabledByPlanMode = isPlanModePrompt(promptModeInput);
+      activePromptMode: null,
+    });
   const submitTitle = isSubmitting
     ? "Submitting..."
     : execution.model.isLoading
@@ -353,7 +327,6 @@ const DefaultNewThreadComposer = memo(function DefaultNewThreadComposer({
         header={modeConfig.header}
         footerStart={<ExecutionControls {...execution} />}
       />
-      {}
       <div className="mt-1 flex select-none items-center justify-between gap-2 px-3.5">
         <div className="flex min-w-0 flex-1 items-center gap-1">
           {project ? (
@@ -376,6 +349,7 @@ const DefaultNewThreadComposer = memo(function DefaultNewThreadComposer({
             environmentProviderInputsSlot={
               modeConfig.environmentProviderInputsSlot
             }
+            machineProviderInputsSlot={modeConfig.machineProviderInputsSlot}
           />
         </div>
         <div className="flex shrink-0 items-center gap-2">
@@ -399,6 +373,7 @@ interface EnvironmentSlotProps {
   environment: NewThreadEnvironmentConfig;
   worktree: NewThreadWorktreeConfig;
   environmentProviderInputsSlot?: ReactNode;
+  machineProviderInputsSlot?: ReactNode;
 }
 
 export function EnvironmentSlot({
@@ -406,6 +381,7 @@ export function EnvironmentSlot({
   environment,
   worktree,
   environmentProviderInputsSlot,
+  machineProviderInputsSlot,
 }: EnvironmentSlotProps) {
   const providers = (environment.providers ?? []).filter(
     (provider) => provider.requires.projectless === projectless,
@@ -427,6 +403,7 @@ export function EnvironmentSlot({
     environment.isLoading ||
     providers.length > 1 ||
     showReuseEnvironmentPicker ||
+    selectedProvider?.machineInputs != null ||
     environmentPickerOpen;
   if (!showEnvironmentPicker) {
     return <ProjectlessMachineSlot environment={environment} />;
@@ -465,6 +442,10 @@ export function EnvironmentSlot({
           disabled={worktree.disabled}
         />
       ) : null}
+      {selectedProvider?.machineInputs !== undefined &&
+      selectedProvider.machineInputs !== null
+        ? machineProviderInputsSlot
+        : null}
       {selectedProvider !== undefined && selectedProvider.inputs !== null
         ? environmentProviderInputsSlot
         : null}
@@ -480,10 +461,17 @@ export function ProjectlessMachineSlot({
   environment,
 }: ProjectlessMachineSlotProps) {
   const machines = environment.machines ?? null;
-  const availableHosts = useMemo(
-    () => selectPersistentHosts(machines?.hosts),
-    [machines?.hosts],
-  );
+  const selectedProviderHostId = environment.selectedProviderHostId ?? null;
+  const availableHosts = useMemo(() => {
+    const selectable = selectHosts(machines?.hosts, "persistent");
+    const selected = machines?.hosts.find(
+      (candidate) => candidate.id === selectedProviderHostId,
+    );
+    return selected === undefined ||
+      selectable.some((candidate) => candidate.id === selected.id)
+      ? selectable
+      : [...selectable, selected];
+  }, [machines?.hosts, selectedProviderHostId]);
   const parsedEnvironment = useMemo(
     () => parseEnvironmentValue(environment.value),
     [environment.value],
@@ -506,7 +494,11 @@ export function ProjectlessMachineSlot({
     },
     [handleSelectProvider, selectedProvider],
   );
-  if (!machines || availableHosts.length <= 1) {
+  if (
+    selectedProvider?.machineProviderId ||
+    !machines ||
+    availableHosts.length <= 1
+  ) {
     return null;
   }
   return (
@@ -523,6 +515,7 @@ export function ProjectlessMachineSlot({
       disabled={environment.disabled}
       className="shrink-0"
       muted
+      machineProviders={environment.machineProviders}
     />
   );
 }
@@ -532,14 +525,9 @@ type NewThreadConnectedEnvironmentConfig = Omit<
   "host" | "isLocal" | "machines"
 >;
 
-interface NewThreadConnectedModeConfig {
+type NewThreadConnectedModeConfig = Omit<NewThreadModeConfig, "environment"> & {
   environment: NewThreadConnectedEnvironmentConfig;
-  worktree: NewThreadWorktreeConfig;
-  permission: ExecutionPermissionConfig;
-  environmentProviderInputsSlot?: ReactNode;
-  banner?: ReactNode;
-  header?: ReactNode;
-}
+};
 
 export interface NewThreadPromptBoxProps extends Omit<
   NewThreadPromptBoxUIProps,
@@ -554,8 +542,12 @@ export function NewThreadPromptBox({
 }: NewThreadPromptBoxProps) {
   const { data: hosts } = useHosts();
   const systemConfigQuery = useSystemConfig();
+  const { providers: machineProviders } = useSystemMachineProviders();
   const primaryHostId = systemConfigQuery.data?.primaryHostId ?? null;
-  const availableHosts = useMemo(() => selectPersistentHosts(hosts), [hosts]);
+  const availableHosts = useMemo(
+    () => selectHosts(hosts, "persistent"),
+    [hosts],
+  );
   const primaryHost = useMemo(
     () => selectPrimaryHost(availableHosts, primaryHostId),
     [availableHosts, primaryHostId],
@@ -586,24 +578,24 @@ export function NewThreadPromptBox({
   const uiEnvironment = useMemo(
     () => ({
       ...threadConfig.environment,
+      machineProviders:
+        threadConfig.environment.machineProviders ?? machineProviders,
       host: selectedHost,
       isLocal: isLocalHost,
       machines,
     }),
-    [threadConfig.environment, selectedHost, isLocalHost, machines],
+    [
+      threadConfig.environment,
+      machineProviders,
+      selectedHost,
+      isLocalHost,
+      machines,
+    ],
   );
   return (
     <NewThreadPromptBoxUI
       {...rest}
-      modeConfig={{
-        environment: uiEnvironment,
-        worktree: threadConfig.worktree,
-        permission: threadConfig.permission,
-        environmentProviderInputsSlot:
-          threadConfig.environmentProviderInputsSlot,
-        banner: threadConfig.banner,
-        header: threadConfig.header,
-      }}
+      modeConfig={{ ...threadConfig, environment: uiEnvironment }}
     />
   );
 }

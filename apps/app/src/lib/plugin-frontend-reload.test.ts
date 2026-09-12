@@ -308,7 +308,11 @@ describe("reconcilePluginFrontends", () => {
             null,
             createElement(Route, {
               path: PLUGIN_PANEL_ROUTE_PATH,
-              element: createElement(PluginPanelView),
+              element: createElement(PluginPanelView, {
+                pluginId: "hello",
+                panelPath: "panel",
+                subPath: "notes/today.md",
+              }),
             }),
           ),
         ),

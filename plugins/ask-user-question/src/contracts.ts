@@ -11,7 +11,6 @@ export {
   interactionPayloadSchema,
   interactionResponseSchema,
   type InteractionAnswer,
-  type InteractionOption,
   type InteractionPayload,
   type InteractionQuestion,
   type InteractionResponse,

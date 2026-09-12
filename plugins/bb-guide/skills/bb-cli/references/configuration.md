@@ -101,3 +101,46 @@ to warm Turbo while a live instance serves its existing files, then prepare the
 stable serving checkout before launch. See `docs/debugging-and-qa.md` and
 `bb guide environments`. These source-maintenance commands are separate from
 installed `bb` commands and `.bb-env-setup.sh`.
+
+## Machine access and isolated data
+
+Machine access `machineServerUrl` is the URL reachable by machines; unset uses
+`BB_EXTERNAL_URL`. `defaultMachineAccess` selects an access provider; unset
+uses the first registered access provider, or direct when none are registered.
+Inspect effective values
+with `bb settings show --json` and change them with `bb settings general`.
+`BB_DATA_DIR` selects isolated enrollment state. Local machine lifecycle commands
+treat it as an ownership assertion and refuse the default BB installation; see
+thread-creation.md and docs/configuration.md for the directory constraints.
+
+Machine enrollment v2 stores private `serverHeaders` in machine `config.json`.
+The launcher transports these through `BB_SERVER_HEADERS` (JSON string map) for
+all server requests. Do not print these headers; they can contain access tokens.
+
+## Machine environment
+
+Repository setup receives freshly resolved machine variables on each dispatch,
+including recovery. Values are sent transiently to the setup process and are
+not stored in provisioning requests. Existing attached paths skip setup.
+
+Use `bb machine env list --json` for variables and built-in gh health.
+`bb machine env set NAME [--note text] --json` reads the value from
+stdin and removes one trailing newline; never pass secrets in argv. Runtime
+output is forwarded as-is, so commands and providers can print contributed
+values. `bb machine env unset NAME --json` removes an override. All values are
+encrypted in the database and omitted from settings responses.
+
+These settings apply globally to enrolled machines, excluding local hosts. The
+server synchronizes them into the daemon environment on connection and settings
+changes, so background commands and new child processes inherit them. Removing
+an override restores the original daemon value. User values override built-ins;
+agent-provider entries override host values. Environment synchronization does
+not restart cached provider runtimes; they retain their launch environment until
+recreated. Reopen existing terminals after a change. The server gh login provides GitHub Git/gh authentication and commit
+identity by default; a user GH_TOKEN replaces it. See Settings → Machines →
+Machine environment, and `bb machine env list` for builtInGit readiness.
+
+Plugin host calls start immediately using the current environment while any calls
+are active in that plugin worker. Changed or removed machine variables take
+effect on the next call after all active calls finish. Continuous overlapping
+calls can keep the previous values until the worker becomes idle.

@@ -9,6 +9,7 @@ import {
   profile,
   server,
   session,
+  sha256Hex,
 } from "@bb/connect-db";
 
 const LABEL_TTL_MS = 15_000;
@@ -267,16 +268,6 @@ export async function verifySessionCookie(
 
 const machineLastSeenWrites = new Map<string, number>();
 export const MACHINE_LAST_SEEN_WRITE_INTERVAL_MS = 60_000;
-
-export async function sha256Hex(value: string): Promise<string> {
-  const digest = await crypto.subtle.digest(
-    "SHA-256",
-    new TextEncoder().encode(value),
-  );
-  return [...new Uint8Array(digest)]
-    .map((b) => b.toString(16).padStart(2, "0"))
-    .join("");
-}
 
 export async function verifyMachineCredential(
   credential: string,

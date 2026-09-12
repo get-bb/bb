@@ -8,7 +8,7 @@ export const PALETTE_MODES: readonly PaletteModeRegistration[] = [
     chip: { icon: "Search", label: "Threads" },
     placeholder: "Search title, project, or message…",
     inputDescription:
-      "Use Command-Enter or Control-Enter to open the selected thread in a split. Use Escape to return to commands.",
+      "Use Escape to return to commands.",
     View: ThreadSearchPaletteMode,
   },
 ];

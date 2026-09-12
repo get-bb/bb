@@ -52,7 +52,6 @@ interface WritePersistedWindowStateEntriesArgs {
 }
 
 interface RestoreWindowStateArgs {
-  defaultState?: PersistedWindowState;
   displayWorkAreas: DisplayWorkArea[];
   persistedState: PersistedWindowState | null;
 }
@@ -162,9 +161,8 @@ export function hasVisibleArea(args: HasVisibleAreaArgs): boolean {
 export function restoreWindowState(
   args: RestoreWindowStateArgs,
 ): PersistedWindowState {
-  const defaultState = args.defaultState ?? DEFAULT_WINDOW_STATE;
   if (args.persistedState === null) {
-    return defaultState;
+    return DEFAULT_WINDOW_STATE;
   }
 
   if (
@@ -173,7 +171,7 @@ export function restoreWindowState(
       displayWorkAreas: args.displayWorkAreas,
     })
   ) {
-    return defaultState;
+    return DEFAULT_WINDOW_STATE;
   }
 
   return args.persistedState;

@@ -55,6 +55,20 @@ const SYSTEM_CONFIG = systemConfigResponseSchema.parse({
   appearance: defaultAppTheme,
   featureFlags: defaultFeatureFlags,
   serverUrl: "https://demo.invalid",
+  serverAccess: {
+    effectiveUrl: "https://demo.invalid",
+    urlSource: "setting",
+    defaultProviderId: "direct",
+    providers: [
+      {
+        id: "direct",
+        displayName: "Direct URL",
+        description: "Connect machines directly to this server URL.",
+        pluginId: null,
+        availability: null,
+      },
+    ],
+  },
   aiServices: {
     inference: "codex/gpt-5.5",
     inferenceFallback: "codex/gpt-5.5",
@@ -151,11 +165,8 @@ export class DemoWorld {
     this.schedule = options.schedule ?? ((fn, ms) => setTimeout(fn, ms));
   }
 
-  onChanged(listener: (message: ThreadChangedMessage) => void): () => void {
+  onChanged(listener: (message: ThreadChangedMessage) => void): void {
     this.listeners.add(listener);
-    return () => {
-      this.listeners.delete(listener);
-    };
   }
 
   socketReply(raw: string): string | null {

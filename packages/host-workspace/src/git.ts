@@ -10,6 +10,7 @@ import type {
 } from "@bb/domain";
 import {
   killProcessGroup,
+  pathExists,
   sanitizeInheritedChildProcessEnv,
   supportsProcessGroups,
 } from "@bb/process-utils";
@@ -38,6 +39,7 @@ export interface RunGitOptions extends GitProcessOptions {
   signal?: AbortSignal;
   maxBufferBytes?: number;
   allowTruncatedStdout?: boolean;
+  onStderr?: (chunk: string) => void;
 }
 
 interface ResolveGitProcessEnvArgs {
@@ -273,7 +275,7 @@ export async function runGit(
     throw createGitCommandCancelledError(args, options.signal.reason);
   }
   try {
-    const result = await execFileAsync("git", args, {
+    const processOptions = {
       cwd: options.cwd,
       encoding: "utf8",
       env: resolveGitProcessEnv({
@@ -283,7 +285,29 @@ export async function runGit(
       maxBuffer: options.maxBufferBytes ?? DEFAULT_BUFFER_BYTES,
       signal: options.signal,
       timeout: options.timeoutMs,
-    });
+    } as const;
+    const stderrListener = options.onStderr;
+    const result =
+      stderrListener === undefined
+        ? await execFileAsync("git", args, processOptions)
+        : await new Promise<{ stdout: string; stderr: string }>(
+            (resolve, reject) => {
+              const child = execFile(
+                "git",
+                args,
+                processOptions,
+                (error, stdout, stderr) => {
+                  if (error) {
+                    error.stdout = stdout;
+                    error.stderr = stderr;
+                    reject(error);
+                  } else resolve({ stdout, stderr });
+                },
+              );
+              child.stderr?.setEncoding("utf8");
+              child.stderr?.on("data", stderrListener);
+            },
+          );
     return {
       stdout: result.stdout,
       stderr: result.stderr,
@@ -573,15 +597,6 @@ export function parsePatchId(line: string | undefined): string | undefined {
   return patchId || undefined;
 }
 
-export async function pathExists(targetPath: string): Promise<boolean> {
-  try {
-    await fs.access(targetPath);
-    return true;
-  } catch {
-    return false;
-  }
-}
-
 async function findWorkspaceGitOperationMarker(
   gitDir: string,
 ): Promise<WorkspaceGitOperationMarker | undefined> {
@@ -659,22 +674,6 @@ export async function ensureGitRepo(
     "not_git_repo",
     `Path is not a git repository: ${cwd}`,
   );
-}
-
-type GitRepositoryState = "not_git" | "no_commits" | "has_commits";
-
-export async function readGitRepositoryState(
-  cwd: string,
-  options: GitTimeoutOptions = {},
-): Promise<GitRepositoryState> {
-  if (!(await detectGitSource(cwd, options))) {
-    return "not_git";
-  }
-  const result = await runGit(["rev-list", "--all", "--max-count=1"], {
-    cwd,
-    ...options,
-  });
-  return trimOutput(result.stdout).length > 0 ? "has_commits" : "no_commits";
 }
 
 async function readHeadSha(
@@ -1049,33 +1048,14 @@ export async function readDefaultBranch(
   options: GitTimeoutOptions = {},
 ): Promise<string | undefined> {
   await ensureGitRepo(cwd, options);
-
-  const originHead = await runGit(
-    ["symbolic-ref", "--quiet", "refs/remotes/origin/HEAD"],
-    { cwd, ...options, allowFailure: true },
+  const originHeadBranch = await readOriginHeadBranchName(cwd, options);
+  if (originHeadBranch !== undefined) {
+    return originHeadBranch;
+  }
+  return resolvePreferredLocalDefaultBranch(
+    await readLocalBranches(cwd, options),
+    undefined,
   );
-  const remoteHead = trimOutput(originHead.stdout);
-  if (remoteHead.startsWith("refs/remotes/origin/")) {
-    return remoteHead.replace("refs/remotes/origin/", "");
-  }
-
-  const branches = await runGit(
-    ["for-each-ref", "--format=%(refname:short)", "refs/heads"],
-    { cwd, ...options },
-  );
-  const localBranches = branches.stdout
-    .split("\n")
-    .map((value) => value.trim())
-    .filter(Boolean);
-
-  if (localBranches.includes("main")) {
-    return "main";
-  }
-  if (localBranches.includes("master")) {
-    return "master";
-  }
-
-  return localBranches[0];
 }
 
 async function readLocalBranches(
@@ -1510,14 +1490,7 @@ export async function listBranches(
   options: GitProcessOptions = {},
 ): Promise<string[]> {
   await ensureGitRepo(cwd, options);
-  const result = await runGit(
-    ["for-each-ref", "--format=%(refname:short)", "refs/heads"],
-    { cwd, ...options },
-  );
-  return result.stdout
-    .split("\n")
-    .map((branch) => branch.trim())
-    .filter(Boolean);
+  return readLocalBranches(cwd, options);
 }
 
 export async function listRemoteBranches(

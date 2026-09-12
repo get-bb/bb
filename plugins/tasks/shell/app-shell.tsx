@@ -16,6 +16,7 @@ import { DetailView } from "../views/detail/index.js";
 import { NewTaskDialog } from "../views/manage/new-task-dialog.js";
 import { NewProjectDialog } from "../views/manage/new-project-dialog.js";
 import { ManagePanel } from "../views/manage/manage-panel.js";
+import { EmptyState } from "../components/empty-state.js";
 import { Button } from "@bb/shared-ui/button";
 import { Icon } from "@bb/shared-ui/icon";
 import { TasksRefreshProvider } from "./refresh.js";
@@ -36,27 +37,6 @@ function hasOpenOverlay(): boolean {
     document.querySelector(
       '[role="dialog"], [role="menu"], [role="listbox"]',
     ) !== null
-  );
-}
-
-function NoProjectsEmptyState({ onNewProject }: { onNewProject: () => void }) {
-  return (
-    <div className="flex h-full flex-col items-center justify-center gap-3 p-6 text-center">
-      <div className="flex size-10 items-center justify-center rounded-md bg-secondary text-muted-foreground">
-        <Icon name="ListTodo" className="size-5" />
-      </div>
-      <div className="space-y-1">
-        <p className="text-sm font-medium">No projects yet</p>
-        <p className="text-sm text-muted-foreground">
-          Create a project to start tracking tasks and dispatching work to
-          agents.
-        </p>
-      </div>
-      <Button size="sm" onClick={onNewProject}>
-        <Icon name="Plus" className="size-3.5" />
-        New project
-      </Button>
-    </div>
   );
 }
 
@@ -183,8 +163,16 @@ function TasksAppShellContent({ subPath }: PluginNavPanelProps) {
         />
         <div className="min-h-0 flex-1 overflow-auto">
           {noProjects && route.kind !== "task" && route.kind !== "manage" ? (
-            <NoProjectsEmptyState
-              onNewProject={() => setNewProjectOpen(true)}
+            <EmptyState
+              icon="ListTodo"
+              title="No projects yet"
+              description="Create a project to start tracking tasks and dispatching work to agents."
+              action={
+                <Button size="sm" onClick={() => setNewProjectOpen(true)}>
+                  <Icon name="Plus" className="size-3.5" />
+                  New project
+                </Button>
+              }
             />
           ) : (
             <RouteOutlet route={route} boardUsable={boardUsable} />

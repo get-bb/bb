@@ -9,6 +9,7 @@ import {
 import { useCallback, useMemo, useRef } from "react";
 import { Linking, Platform, Share } from "react-native";
 import type { WebView, WebViewMessageEvent } from "react-native-webview";
+import { describeError } from "@/lib/describe-error";
 import { haptic } from "@/lib/haptics";
 import { buildBridgeSharePayload, isExternallyOpenable } from "@/lib/shell";
 import { updateAppBadgeCount } from "@/notifications/AppBadgeSync";
@@ -86,7 +87,7 @@ export function useShellBridge(
             } catch (error) {
               respond(message.id, {
                 ok: false,
-                error: error instanceof Error ? error.message : String(error),
+                error: describeError(error),
               });
             }
           }

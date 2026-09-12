@@ -1,20 +1,17 @@
 import { ArrowRight01Icon, Mail01Icon } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { createFileRoute } from "@tanstack/react-router";
-import { useEffect } from "react";
 
 import { POSTS } from "../blog/posts";
 import { PostHeader, PostLede } from "../blog/post-body";
-import { initAnalytics } from "../landing/analytics";
+import { useInitAnalytics } from "../landing/analytics";
 import {
-  EmailSignup,
   focusSubscribeEmail,
   SUBSCRIBE_EMAIL_ID,
+  SubscribeSection,
 } from "../landing/cta";
+import { pageMeta, siteHeadLinks } from "../landing/page-head";
 import { SiteFooter, SiteNav } from "../landing/site-chrome";
-import { unfurlMeta } from "../landing/site";
-import interWoff2 from "@fontsource-variable/inter/files/inter-latin-wght-normal.woff2?url";
-import landingCss from "../landing/landing.css?url";
 import blogCss from "../blog/blog.css?url";
 
 const PAGE_TITLE = "Blog — bb";
@@ -22,30 +19,14 @@ const PAGE_DESCRIPTION = "Notes on building the IDE that builds itself.";
 
 export const Route = createFileRoute("/blog")({
   head: () => ({
-    meta: [
-      { title: PAGE_TITLE },
-      { name: "description", content: PAGE_DESCRIPTION },
-      ...unfurlMeta(PAGE_TITLE, PAGE_DESCRIPTION, "/blog"),
-    ],
-    links: [
-      {
-        rel: "preload",
-        href: interWoff2,
-        as: "font",
-        type: "font/woff2",
-        crossOrigin: "anonymous",
-      },
-      { rel: "stylesheet", href: landingCss },
-      { rel: "stylesheet", href: blogCss },
-    ],
+    meta: pageMeta(PAGE_TITLE, PAGE_DESCRIPTION, "/blog"),
+    links: siteHeadLinks(blogCss),
   }),
   component: BlogIndexRoute,
 });
 
 function BlogIndexRoute() {
-  useEffect(() => {
-    initAnalytics();
-  }, []);
+  useInitAnalytics();
 
   return (
     <div className="wrap">
@@ -87,11 +68,10 @@ function BlogIndexRoute() {
         ))}
       </div>
 
-      <section className="subscribe" id="subscribe">
-        <h2 className="subscribe-title">Stay in the loop.</h2>
-        <p>Get new posts in your inbox. No spam.</p>
-        <EmailSignup placement="footer" />
-      </section>
+      <SubscribeSection
+        id="subscribe"
+        blurb="Get new posts in your inbox. No spam."
+      />
 
       <SiteFooter />
     </div>

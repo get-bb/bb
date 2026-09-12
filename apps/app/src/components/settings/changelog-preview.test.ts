@@ -1,9 +1,9 @@
 import { describe, expect, it } from "vitest";
+import { parseChangelog } from "../../../../../changelog-parser";
 import {
   CHANGELOG_ENTRIES,
   LATEST_CHANGELOG_ENTRY,
   RELEASE_META,
-  parseChangelogEntries,
 } from "./changelog-preview";
 
 const SAMPLE = `# Changelog
@@ -29,9 +29,9 @@ Turn on **Edit messages** in Settings → Experiments.
 - Tidied \`bb status\` output.
 `;
 
-describe("parseChangelogEntries", () => {
+describe("parseChangelog", () => {
   it("keeps a release's sections out of its version list", () => {
-    const entries = parseChangelogEntries(SAMPLE);
+    const entries = parseChangelog(SAMPLE);
 
     expect(entries.map((entry) => entry.version)).toEqual(["0.37.0", "0.36.0"]);
     expect(entries[0].sections.map((section) => section.title)).toEqual([
@@ -41,7 +41,7 @@ describe("parseChangelogEntries", () => {
   });
 
   it("keeps the website's paragraphs and lists in their release sections", () => {
-    const [latest] = parseChangelogEntries(SAMPLE);
+    const [latest] = parseChangelog(SAMPLE);
 
     expect(latest.lede).toEqual([
       {
@@ -68,7 +68,7 @@ describe("parseChangelogEntries", () => {
   });
 
   it("keeps release-level bullets when there are no sections", () => {
-    const [, previous] = parseChangelogEntries(SAMPLE);
+    const [, previous] = parseChangelog(SAMPLE);
 
     expect(previous.sections).toEqual([]);
     expect(previous.lede).toEqual([
@@ -77,6 +77,30 @@ describe("parseChangelogEntries", () => {
         items: [
           "Fixed a [crash](https://example.test) on launch.",
           "Tidied `bb status` output.",
+        ],
+      },
+    ]);
+  });
+
+  it("joins wrapped paragraph lines and indented bullet continuations", () => {
+    const [entry] = parseChangelog(`## 0.0.30
+
+This release introduces multi-machine workflows.
+It also adds more ways to customize bb.
+
+- bb Connect lets you securely access bb from other devices
+  and share previews from any enrolled machine.
+`);
+
+    expect(entry.lede).toEqual([
+      {
+        kind: "paragraph",
+        text: "This release introduces multi-machine workflows. It also adds more ways to customize bb.",
+      },
+      {
+        kind: "list",
+        items: [
+          "bb Connect lets you securely access bb from other devices and share previews from any enrolled machine.",
         ],
       },
     ]);

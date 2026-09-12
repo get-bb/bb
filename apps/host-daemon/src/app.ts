@@ -1,4 +1,5 @@
 import { startDesktopBrowserBroker } from "./desktop-browser-broker.js";
+import { MachineEnvironment } from "./machine-environment.js";
 import { CommandRouter } from "./command-router.js";
 import { createDaemon, type HostDaemon } from "./daemon.js";
 import {
@@ -24,10 +25,7 @@ import {
 } from "./runtime-manager.js";
 import { WatchManager } from "./watch-manager.js";
 import { ConnectTunnelClient } from "./connect-tunnel/index.js";
-import {
-  TerminalManager,
-  type TerminalManagerOptions,
-} from "./terminals/terminal-manager.js";
+import { TerminalManager } from "./terminals/terminal-manager.js";
 import {
   createServerClient,
   ServerResponseError,
@@ -45,18 +43,14 @@ import {
 } from "./server-connection.js";
 import { runtimeErrorLogFields, summarizeError } from "./error-utils.js";
 import { ensureThreadStorageRoot } from "./thread-storage-root.js";
-import type { AgentRuntimeOptions } from "@bb/agent-runtime";
+import type { AgentRuntime, AgentRuntimeOptions } from "@bb/agent-runtime";
 import { createProtocolSelfUpdater } from "./protocol-self-update.js";
-import {
-  type HostType,
-  type ToolCallRequest,
-  type ToolCallResponse,
-} from "@bb/domain";
 import {
   disposeParcelWatcherBackend,
   type HostWatcher,
 } from "@bb/host-watcher";
 import { PluginHostManager } from "./plugin-host-manager.js";
+import { writeMachineSuspensionMarker } from "./suspension-marker.js";
 
 interface SessionState {
   value: string | null;
@@ -106,15 +100,13 @@ interface CreateHostDaemonAppOptions {
   serverUrl: string;
   hostKey: string;
   bridgeBundleDir?: string;
-  hostType: HostType;
   hostId: string;
   hostName: string;
   instanceId: string;
   appUrl?: string;
   devAppPort?: number;
   logger: HostDaemonLogger;
-  machineCredential?: string;
-  connectMachineId?: string;
+  serverHeaders?: Record<string, string>;
   autoUpdate?: boolean;
   releaseLock: () => Promise<void>;
   localApiConfig: HostDaemonLocalApiConfig | null;
@@ -126,7 +118,6 @@ interface CreateHostDaemonAppOptions {
   >;
   nowMs?: () => number;
   hostWatcher?: HostWatcher;
-  onToolCall?: (request: ToolCallRequest) => Promise<ToolCallResponse>;
   fetchFn?: FetchFn;
   createWebSocket?: CreateReconnectingWebSocket;
   closeMachineAuthProxy?: () => Promise<void>;
@@ -216,6 +207,10 @@ interface MaybeInvalidateSessionArgs {
 export async function createHostDaemonApp(
   options: CreateHostDaemonAppOptions,
 ): Promise<HostDaemonApp> {
+  const machineEnvironment = new MachineEnvironment(
+    process.env,
+    options.runtimeShellEnv ?? {},
+  );
   const threadStorageRootPath = await ensureThreadStorageRoot(options.dataDir);
   const dataDirSkillsRootPath = await ensureDataDirSkillsRootPath(
     options.dataDir,
@@ -276,11 +271,7 @@ export async function createHostDaemonApp(
     }
   }
 
-  async function flushThreadEventsBeforeInteractiveRegistration(): Promise<void> {
-    await eventSink.flush();
-  }
-
-  async function flushThreadEventsBeforeToolCall(): Promise<void> {
+  async function flushThreadEvents(): Promise<void> {
     await eventSink.flush();
   }
 
@@ -288,15 +279,14 @@ export async function createHostDaemonApp(
     serverUrl: options.serverUrl,
     hostKey: options.hostKey,
     logger: options.logger,
-    machineCredential: options.machineCredential,
+    serverHeaders: options.serverHeaders,
     getSessionId: () => {
       if (!sessionState.value) {
         throw new Error("Server session is not open");
       }
       return sessionState.value;
     },
-    beforeInteractiveRequestRegistrationAttempt:
-      flushThreadEventsBeforeInteractiveRegistration,
+    beforeInteractiveRequestRegistrationAttempt: flushThreadEvents,
     fetchFn: options.fetchFn,
   });
 
@@ -412,8 +402,13 @@ export async function createHostDaemonApp(
   });
 
   let sendServerMessage = (_message: HostDaemonDaemonWsMessage) => false;
+  function logHostWatchError(fields: Record<string, string>): void {
+    options.logger.warn(
+      fields,
+      "Host filesystem watch error (live updates for this path may be stale until it recovers)",
+    );
+  }
   watchManager = new WatchManager({
-    dataDir: options.dataDir,
     hostWatcher: options.hostWatcher,
     refreshWorkspace: (args) =>
       runtimeManager.refreshEnvironmentWorkspace(args),
@@ -427,14 +422,11 @@ export async function createHostDaemonApp(
       });
     },
     onThreadStorageWatchError: ({ error }) => {
-      options.logger.warn(
-        {
-          watchSource: "thread-storage",
-          rootPath: error.rootPath,
-          watchError: error.message,
-        },
-        "Host filesystem watch error (live updates for this path may be stale until it recovers)",
-      );
+      logHostWatchError({
+        watchSource: "thread-storage",
+        rootPath: error.rootPath,
+        watchError: error.message,
+      });
     },
     onWorkspaceStatusChanged: ({ environmentId, changeKinds }) => {
       for (const change of changeKinds) {
@@ -453,21 +445,18 @@ export async function createHostDaemonApp(
       });
     },
     onWorkspaceStatusWatchError: ({ error }) => {
-      options.logger.warn(
-        {
-          watchSource: "workspace-status",
-          environmentId: error.environmentId,
-          rootPath: error.rootPath,
-          watchError: error.message,
-        },
-        "Host filesystem watch error (live updates for this path may be stale until it recovers)",
-      );
+      logHostWatchError({
+        watchSource: "workspace-status",
+        environmentId: error.environmentId,
+        rootPath: error.rootPath,
+        watchError: error.message,
+      });
     },
   });
   const connectTunnel = new ConnectTunnelClient({
     serverUrl: options.serverUrl,
     hostName: options.hostName,
-    machineCredential: options.machineCredential,
+    machineCredential: options.serverHeaders?.["x-bb-connect-machine"],
     fetchFn: options.fetchFn,
     logger: options.logger,
     onIdentity: (identity) => {
@@ -496,6 +485,8 @@ export async function createHostDaemonApp(
     hostWatcher: options.hostWatcher,
     logger: options.logger,
     shellEnv: options.runtimeShellEnv,
+    applyMachineEnvironment: (shell) =>
+      machineEnvironment.shellEnvironment(shell),
     onEvent: ({ environmentId, event }) => {
       try {
         eventSink.emit({
@@ -527,48 +518,34 @@ export async function createHostDaemonApp(
       );
     },
     onDataDirSkillsWatchError: ({ error }) => {
-      options.logger.warn(
-        {
-          watchSource: "data-dir-skills",
-          rootPath: error.rootPath,
-          watchError: error.message,
-        },
-        "Host filesystem watch error (live updates for this path may be stale until it recovers)",
-      );
+      logHostWatchError({
+        watchSource: "data-dir-skills",
+        rootPath: error.rootPath,
+        watchError: error.message,
+      });
     },
-    onWorkspaceStatusChanged: ({ environmentId, changeKinds }) => {
-      for (const change of changeKinds) {
-        sendServerMessage({
-          type: "environment-change",
-          environmentId,
-          change,
+    onToolCall: async (request) => {
+      try {
+        await flushThreadEvents();
+        return await runSessionRequest({
+          source: "callTool",
+          request: () => serverClient.callTool(request),
         });
+      } catch (error) {
+        options.logger.error(
+          {
+            tool: request.tool,
+            threadId: request.threadId,
+            providerThreadId: request.providerThreadId,
+            turnId: request.turnId,
+            callId: request.callId,
+            err: error,
+          },
+          "Failed to forward dynamic tool call to server",
+        );
+        throw error;
       }
     },
-    onToolCall:
-      options.onToolCall ??
-      (async (request) => {
-        try {
-          await flushThreadEventsBeforeToolCall();
-          return await runSessionRequest({
-            source: "callTool",
-            request: () => serverClient.callTool(request),
-          });
-        } catch (error) {
-          options.logger.error(
-            {
-              tool: request.tool,
-              threadId: request.threadId,
-              providerThreadId: request.providerThreadId,
-              turnId: request.turnId,
-              callId: request.callId,
-              err: error,
-            },
-            "Failed to forward dynamic tool call to server",
-          );
-          throw error;
-        }
-      }),
     onInteractiveRequest: async (request) => {
       try {
         return await interactiveRequestRegistry.registerAndWait(request);
@@ -681,6 +658,15 @@ export async function createHostDaemonApp(
       throw error;
     }
   };
+  const withMaintenanceRuntime = async <TResult>(
+    request: (runtime: AgentRuntime) => Promise<TResult>,
+  ): Promise<TResult> => {
+    await refreshRuntimeShellEnv();
+    return runtimeManager.withProviderMaintenanceRuntime(
+      { dataDir: options.dataDir },
+      request,
+    );
+  };
   const idleProviderSessionReaper = startIdleProviderSessionReaper({
     logger: options.logger,
     nowMs: Date.now,
@@ -697,13 +683,10 @@ export async function createHostDaemonApp(
       };
     },
   });
-  let sendTerminalMessage: TerminalManagerOptions["sendMessage"] = (message) =>
-    sendServerMessage(message);
   const terminalManager = new TerminalManager({
-    dataDir: options.dataDir,
     logger: options.logger,
     runtimeManager,
-    sendMessage: (message) => sendTerminalMessage(message),
+    sendMessage: (message) => sendServerMessage(message),
   });
   const pluginHostManager = new PluginHostManager({
     dataDir: options.dataDir,
@@ -756,42 +739,20 @@ export async function createHostDaemonApp(
         request: () => serverClient.fetchPluginHostArtifact(args),
       }),
     runtimeManager,
-    terminalManager,
-    listModels: async (args) => {
-      await refreshRuntimeShellEnv();
-      return runtimeManager.withProviderMaintenanceRuntime(
-        { dataDir: options.dataDir },
-        (runtime) => runtime.listModels(args),
-      );
-    },
-    providerHealth: async (args) => {
-      await refreshRuntimeShellEnv();
-      return runtimeManager.withProviderMaintenanceRuntime(
-        { dataDir: options.dataDir },
-        (runtime) => runtime.providerHealth(args),
-      );
-    },
-    providerUsage: async (args) => {
-      await refreshRuntimeShellEnv();
-      return runtimeManager.withProviderMaintenanceRuntime(
-        { dataDir: options.dataDir },
-        (runtime) => runtime.providerUsage(args),
-      );
-    },
-    providerInstallationStatus: async (args) => {
-      await refreshRuntimeShellEnv();
-      return runtimeManager.withProviderMaintenanceRuntime(
-        { dataDir: options.dataDir },
-        (runtime) => runtime.providerInstallationStatus(args),
-      );
-    },
-    providerInstallationRun: async (args) => {
-      await refreshRuntimeShellEnv();
-      return runtimeManager.withProviderMaintenanceRuntime(
-        { dataDir: options.dataDir },
-        (runtime) => runtime.providerInstallationRun(args),
-      );
-    },
+    listModels: (args) =>
+      withMaintenanceRuntime((runtime) => runtime.listModels(args)),
+    providerHealth: (args) =>
+      withMaintenanceRuntime((runtime) => runtime.providerHealth(args)),
+    providerUsage: (args) =>
+      withMaintenanceRuntime((runtime) => runtime.providerUsage(args)),
+    providerInstallationStatus: (args) =>
+      withMaintenanceRuntime((runtime) =>
+        runtime.providerInstallationStatus(args),
+      ),
+    providerInstallationRun: (args) =>
+      withMaintenanceRuntime((runtime) =>
+        runtime.providerInstallationRun(args),
+      ),
     refreshShellEnv: async () => {
       await refreshRuntimeShellEnv();
     },
@@ -802,25 +763,21 @@ export async function createHostDaemonApp(
     pluginHostManager,
     threadStorageRootPath,
     logger: options.logger,
-    eventSink: {
-      emit: (event) => eventSink.emit(event),
-      flush: () => eventSink.flush(),
-    },
+    eventSink,
   });
 
   let requestDaemonRestart = (): void => undefined;
+  let requestMachineShutdown = async (): Promise<void> => undefined;
   const connection = new ServerConnection({
     serverUrl: options.serverUrl,
     hostKey: options.hostKey,
     hostId: options.hostId,
     hostName: options.hostName,
-    hostType: options.hostType,
     dataDir: options.dataDir,
     instanceId: options.instanceId,
     localApiPort: options.localApiConfig?.port ?? null,
     logger: options.logger,
-    machineCredential: options.machineCredential,
-    connectMachineId: options.connectMachineId,
+    serverHeaders: options.serverHeaders,
     serverClient,
     protocolSelfUpdater: createProtocolSelfUpdater({
       dataDir: options.dataDir,
@@ -830,6 +787,9 @@ export async function createHostDaemonApp(
       serverUrl: options.serverUrl,
     }),
     onSelfUpdateInstalled: () => requestDaemonRestart(),
+    onMachineShutdown: () => requestMachineShutdown(),
+    onMachineEnvironment: (environment) =>
+      machineEnvironment.replace(environment.entries),
     createWebSocket: options.createWebSocket,
     getActiveThreads: () => runtimeManager.listActiveThreads(),
     getLoadedEnvironments: () => runtimeManager.listLoadedEnvironments(),
@@ -947,6 +907,7 @@ export async function createHostDaemonApp(
       await eventSink.flush();
       await eventSink.dispose();
       await connection.shutdown();
+      machineEnvironment.replace([]);
     },
     onStart: async () => {
       options.logger.info(
@@ -960,6 +921,11 @@ export async function createHostDaemonApp(
     void daemon.shutdown("self-update", 0).catch((error) => {
       options.logger.error({ err: error }, "Self-update shutdown failed");
     });
+  };
+  requestMachineShutdown = async () => {
+    await writeMachineSuspensionMarker(options.dataDir);
+    sendServerMessage({ type: "machine.shutdown-ack" });
+    await daemon.shutdown("machine-shutdown", 0);
   };
   connection.setSessionCloseHandler((reason) =>
     daemon.shutdown(`session-close:${reason}`, 0),

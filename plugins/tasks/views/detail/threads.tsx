@@ -1,15 +1,12 @@
 import { useState } from "react";
-import {
-  UrlLink as UrlLink,
-  useBbNavigate,
-  useRpc,
-} from "@get-bb/plugin-sdk/app";
+import { UrlLink, useBbNavigate, useRpc } from "@get-bb/plugin-sdk/app";
 import type { DelegationRpcContract } from "../../delegate/contract.js";
 import type {
   Preset,
   TaskPullRequest,
   TaskThread,
 } from "../../shared/contract.js";
+import { errorMessage } from "../../shared/errors.js";
 import {
   PR_STATE_META,
   THREAD_STATUS_META,
@@ -169,7 +166,7 @@ export function DispatchControl({
     try {
       await rpc.call("delegate", { taskId, presetId });
     } catch (error) {
-      onError(error instanceof Error ? error.message : String(error));
+      onError(errorMessage(error));
     } finally {
       setDispatching(false);
     }
@@ -293,7 +290,7 @@ export function ThreadsSection({
     try {
       await onDetach(thread);
     } catch (error) {
-      onError(error instanceof Error ? error.message : String(error));
+      onError(errorMessage(error));
     } finally {
       setPending((current) => {
         const next = new Set(current);

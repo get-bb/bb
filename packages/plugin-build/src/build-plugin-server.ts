@@ -1,19 +1,14 @@
-import {
-  mkdir,
-  mkdtemp,
-  readFile,
-  rename,
-  rm,
-  stat,
-  writeFile,
-} from "node:fs/promises";
-import { isAbsolute, join, resolve } from "node:path";
+import { mkdir, mkdtemp, rename, rm, writeFile } from "node:fs/promises";
+import { join } from "node:path";
 import { createPluginArtifactMeta } from "./plugin-artifact-meta.js";
-import { isRecord, validatePluginBuildManifest } from "./plugin-manifest.js";
 import {
-  installedPluginSdkDirectory,
-  installedPluginSdkExportTarget,
-  pathExists,
+  isRecord,
+  readPluginPackageJsonFile,
+  resolveManifestEntryFile,
+  validatePluginBuildManifest,
+} from "./plugin-manifest.js";
+import {
+  describeUnresolvedSdkImport,
   PLUGIN_SDK_PACKAGE_NAME,
 } from "./plugin-sdk-install.js";
 import {
@@ -21,12 +16,10 @@ import {
   type PluginBuildToolchain,
 } from "./toolchain.js";
 
-const PLUGIN_SDK_SPECIFIER = "@get-bb/plugin-sdk";
-
 const LEGACY_PLUGIN_SDK_SPECIFIER = "@bb/plugin-sdk";
 
 export const PLUGIN_SERVER_EXTERNALS: readonly string[] = [
-  PLUGIN_SDK_SPECIFIER,
+  PLUGIN_SDK_PACKAGE_NAME,
   LEGACY_PLUGIN_SDK_SPECIFIER,
   "better-sqlite3",
 ];
@@ -34,28 +27,6 @@ export const PLUGIN_SERVER_EXTERNALS: readonly string[] = [
 const PLUGIN_SDK_ROOT_FILTER = /^@get-bb\/plugin-sdk$|^@bb\/plugin-sdk$/;
 const PLUGIN_SDK_SUBPATH_FILTER = /^@get-bb\/plugin-sdk\//;
 const PLUGIN_SDK_SUBPATH_RESOLVE_MARK = "bb-server-sdk-subpath";
-
-async function unresolvedSdkSubpathError(args: {
-  specifier: string;
-  resolveDir: string;
-  esbuildErrors: readonly { text: string }[];
-}): Promise<string> {
-  const need = `a server entry's "${args.specifier}" import is bundled from the plugin's own SDK install (bb serves only the bare "${PLUGIN_SDK_SPECIFIER}" at load time), so the plugin needs`;
-  const packageDir = await installedPluginSdkDirectory(args.resolveDir);
-  if (packageDir === null) {
-    return `"${args.specifier}" is not installed for this plugin (no node_modules/${PLUGIN_SDK_PACKAGE_NAME}); ${need} the SDK as a dependency`;
-  }
-  const subpath = `.${args.specifier.slice(PLUGIN_SDK_PACKAGE_NAME.length)}`;
-  const target = await installedPluginSdkExportTarget(packageDir, subpath);
-  if (target === null) {
-    return `"${args.specifier}" is not exported by the ${PLUGIN_SDK_PACKAGE_NAME} installed at ${packageDir}; ${need} an SDK version that ships it`;
-  }
-  const targetPath = resolve(packageDir, target);
-  if (!(await pathExists(targetPath))) {
-    return `"${args.specifier}" is installed for this plugin but its dist is not built: run the SDK build (${targetPath} is missing); ${need} the built SDK`;
-  }
-  return `"${args.specifier}" could not be resolved from ${packageDir}: ${args.esbuildErrors.map((error) => error.text).join("; ")}`;
-}
 
 interface PluginServerConfig {
   serverEntry: string;
@@ -67,18 +38,7 @@ async function readPluginServerConfig(
   rootDir: string,
 ): Promise<PluginServerConfig> {
   const packageJsonPath = join(rootDir, "package.json");
-  let raw: string;
-  try {
-    raw = await readFile(packageJsonPath, "utf8");
-  } catch {
-    throw new Error(`no readable package.json at ${packageJsonPath}`);
-  }
-  let json: unknown;
-  try {
-    json = JSON.parse(raw);
-  } catch {
-    throw new Error(`package.json is not valid JSON at ${packageJsonPath}`);
-  }
+  const json = await readPluginPackageJsonFile(packageJsonPath);
   if (!isRecord(json) || !isRecord(json.bb) || json.bb.server === undefined) {
     throw new Error(
       `no server entry: ${packageJsonPath} has no "bb": { "server": "./server.ts" } field`,
@@ -89,21 +49,11 @@ async function readPluginServerConfig(
     rootDir,
     packageJsonPath,
   );
-  const server = manifest.bb.server;
-  if (isAbsolute(server)) {
-    throw new Error(`manifest bb.server must be relative, got "${server}"`);
-  }
-  const serverEntry = resolve(rootDir, server);
-  if (serverEntry !== rootDir && !serverEntry.startsWith(rootDir + "/")) {
-    throw new Error(
-      `manifest bb.server escapes the plugin directory: "${server}"`,
-    );
-  }
-  try {
-    await stat(serverEntry);
-  } catch {
-    throw new Error(`manifest bb.server points at a missing file: ${server}`);
-  }
+  const serverEntry = await resolveManifestEntryFile(
+    rootDir,
+    manifest.bb.server,
+    "bb.server",
+  );
   return {
     serverEntry,
     packageName: manifest.name,
@@ -176,9 +126,10 @@ export async function buildPluginServer(
                 return {
                   errors: [
                     {
-                      text: await unresolvedSdkSubpathError({
+                      text: await describeUnresolvedSdkImport({
                         specifier: args.path,
                         resolveDir: args.resolveDir,
+                        need: `a server entry's "${args.path}" import is bundled from the plugin's own SDK install (bb serves only the bare "${PLUGIN_SDK_PACKAGE_NAME}" at load time), so the plugin needs`,
                         esbuildErrors: installed.errors,
                       }),
                     },

@@ -319,7 +319,7 @@ describe("threadDetailPromptSubmission", () => {
     }
   });
 
-  it("keeps stopping and pending interactions blocked before starting stop-only mode", () => {
+  it("keeps stopping and pending interactions blocked before offering queue mode while starting", () => {
     const onStop = () => undefined;
     expect(
       buildFollowUpSubmitMode({
