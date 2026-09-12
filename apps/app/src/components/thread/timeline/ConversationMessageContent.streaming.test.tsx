@@ -4,7 +4,7 @@ import { cleanup, render } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { RouteNavigationProvider } from "@/components/ui/app-route-anchor";
-import { longResponse } from "@/test/fixtures/bench-stream-markdown/long-response";
+import { getFixture } from "bb-plugin-bench-stream-provider/fixtures";
 import { ConversationMessageContent } from "./ConversationMessageContent";
 import {
   repairStreamingMarkdownTail,
@@ -207,6 +207,7 @@ describe("ConversationMessageContent streaming split", () => {
   });
 
   it("parses the settled prefix once while a mixed message streams line by line", () => {
+    const longResponse = getFixture("long-response");
     const text = longResponse.slice(
       0,
       longResponse.indexOf("\n\n## 2. Session store"),

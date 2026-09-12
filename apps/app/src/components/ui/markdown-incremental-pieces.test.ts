@@ -13,7 +13,7 @@ import remarkDirective from "remark-directive";
 import remarkGfm from "remark-gfm";
 import remarkMath from "remark-math";
 import { describe, expect, it } from "vitest";
-import { BENCH_STREAM_MARKDOWN_FIXTURES } from "@/test/fixtures/bench-stream-markdown/index";
+import { FIXTURE_NAMES, getFixture } from "bb-plugin-bench-stream-provider/fixtures";
 import {
   repairStreamingMarkdownTail,
   splitStreamingMarkdown,
@@ -33,6 +33,11 @@ import {
   type MountedMessageDirective,
 } from "./markdown-message-directives";
 import { remarkThreadMentions } from "./markdown-thread-mentions";
+
+const MARKDOWN_FIXTURES = FIXTURE_NAMES.map((name) => ({
+  name,
+  text: getFixture(name),
+}));
 
 interface RenderedMarkdownDocument {
   html: string;
@@ -418,8 +423,8 @@ describe("resolveMarkdownPieces", () => {
 
   it("parses a completed document once on a cold cache", () => {
     const documents = [
-      ...BENCH_STREAM_MARKDOWN_FIXTURES.map(({ text }) => text),
-      `${BENCH_STREAM_MARKDOWN_FIXTURES[0]?.text ?? ""}\n\nSee [the docs] and a note[^1].\n\n[the docs]: https://example.com\n\n[^1]: The note.`,
+      ...MARKDOWN_FIXTURES.map(({ text }) => text),
+      `${MARKDOWN_FIXTURES[0]?.text ?? ""}\n\nSee [the docs] and a note[^1].\n\n[the docs]: https://example.com\n\n[^1]: The note.`,
       `Intro.\n\n:::note\n${OPEN_CONSTRUCT_PARAGRAPHS}\n:::\n\nAfter.`,
       `Intro.\n\n<!--\n${OPEN_CONSTRUCT_PARAGRAPHS}\n-->\n\nAfter.`,
     ];
@@ -482,7 +487,7 @@ describe("resolveMarkdownPieces", () => {
   });
 
   it("keeps the settled parse volume near the message length while fixtures stream in chunks", () => {
-    for (const { name, text } of BENCH_STREAM_MARKDOWN_FIXTURES) {
+    for (const { name, text } of MARKDOWN_FIXTURES) {
       const recorded: string[] = [];
       const recordingConfig = createRecordingConfig(recorded);
       const cache = createMarkdownPieceCache();
@@ -610,7 +615,7 @@ describe("resolveMarkdownPieces", () => {
     }
   }, 60_000);
 
-  it.each(BENCH_STREAM_MARKDOWN_FIXTURES)(
+  it.each(MARKDOWN_FIXTURES)(
     "matches single documents for every streamed chunk of the $name fixture",
     ({ name, text }) => {
       const settledCache = createMarkdownPieceCache();

@@ -348,6 +348,9 @@ importers:
       bb-plugin-automations:
         specifier: workspace:*
         version: link:../../plugins/automations
+      bb-plugin-bench-stream-provider:
+        specifier: workspace:*
+        version: link:../../tests/bench-stream-provider
       cacache:
         specifier: ^20.0.4
         version: 20.0.4

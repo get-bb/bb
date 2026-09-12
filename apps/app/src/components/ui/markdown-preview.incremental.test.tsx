@@ -12,7 +12,7 @@ import {
   repairStreamingMarkdownTail,
   splitStreamingMarkdown,
 } from "@/components/thread/timeline/streaming-markdown-split";
-import { BENCH_STREAM_MARKDOWN_FIXTURES } from "@/test/fixtures/bench-stream-markdown/index";
+import { FIXTURE_NAMES, getFixture } from "bb-plugin-bench-stream-provider/fixtures";
 import { RouteNavigationProvider } from "./app-route-anchor";
 import { buildMarkdownMessageLinkRouting } from "./markdown-message-link-routing";
 import {
@@ -20,6 +20,11 @@ import {
   MESSAGE_DIRECTIVE_MOUNT_LIMIT,
 } from "./markdown-message-directives";
 import { MarkdownPreview } from "./markdown-preview";
+
+const MARKDOWN_FIXTURES = FIXTURE_NAMES.map((name) => ({
+  name,
+  text: getFixture(name),
+}));
 
 vi.mock("./markdown-mermaid-loader.js", () => ({
   loadMermaid: () => new Promise(() => {}),
@@ -221,7 +226,7 @@ describe("MarkdownPreview incremental blocks", () => {
     60_000,
   );
 
-  it.each(BENCH_STREAM_MARKDOWN_FIXTURES)(
+  it.each(MARKDOWN_FIXTURES)(
     "renders the same settled and live DOM as single documents while the $name fixture streams",
     async ({ name, text }) => {
       await loadKatex();
