@@ -21,6 +21,7 @@ import {
   SIDEBAR_HOVER_ACTIONS_GAP_CLASS,
   SIDEBAR_HOVER_ACTIONS_MOBILE_ALWAYS_VALUE,
   SIDEBAR_HOVER_ACTIONS_ROW_CLASS,
+  SIDEBAR_HOVER_ACTIONS_STATUS_CLASS,
 } from "@/components/ui/sidebar-hover-actions.js";
 import type { ConsumeDragClickSuppression } from "@/components/ui/use-drag-click-suppression";
 import {
@@ -98,6 +99,7 @@ export function TopLevelSidebarSection({
   );
   const pluginStatus = usePluginThreadRowStatusForThreads(collapsedThreads);
   const showCollapsedActivity =
+    !status &&
     collapseControl?.isCollapsed === true &&
     (collapsedSplitIndicator.miniMap !== null ||
       collapsedActivity !== undefined ||
@@ -110,7 +112,6 @@ export function TopLevelSidebarSection({
         "pointer-events-none absolute right-0 top-1/2 z-20 inline-flex -translate-y-1/2 items-center justify-center text-subtle-foreground max-md:static max-md:shrink-0 max-md:translate-y-0",
         COARSE_POINTER_ROW_ACTION_SIZE_CLASS,
         actions && SIDEBAR_HOVER_ACTIONS_FADE_CLASS,
-        status && "max-md:pointer-coarse:empty:hidden",
       )}
     >
       {collapsedSplitIndicator.miniMap ? (
@@ -232,7 +233,18 @@ export function TopLevelSidebarSection({
             )}
             onClick={status || actions ? stopActionsClick : undefined}
           >
-            {status}
+            {status ? (
+              <span
+                className={cn(
+                  "inline-flex shrink-0",
+                  actions &&
+                    !actionsAlwaysVisible &&
+                    SIDEBAR_HOVER_ACTIONS_STATUS_CLASS,
+                )}
+              >
+                {status}
+              </span>
+            ) : null}
             {collapsedActivityIndicator}
             {actions ? (
               <span

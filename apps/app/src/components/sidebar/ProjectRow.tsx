@@ -2289,6 +2289,7 @@ function ProjectRowComponent({
   const projectActions = (
     <SidebarHeaderControls
       label={project.name}
+      showNewThread={!isLocalPathInvalid}
       onNewThread={onCreateProjectThread ? handleCreateThread : undefined}
       onOpenChange={setIsDropdownActionsOpen}
     >

@@ -296,6 +296,20 @@
     transition-duration: 0ms;
   }
 
+  .bb-sidebar-hover-actions-status {
+    position: absolute;
+    right: 0;
+  }
+
+  .bb-sidebar-hover-actions-row:is(:hover, :has(:focus-visible))
+    .bb-sidebar-hover-actions-status,
+  .bb-sidebar-hover-actions-row:has(
+      .bb-sidebar-hover-actions[data-sidebar-hover-actions-open="true"]
+    )
+    .bb-sidebar-hover-actions-status {
+    position: relative;
+  }
+
   .bb-sidebar-hover-actions-row:is(:hover, :has(:focus-visible))
     .bb-sidebar-hover-actions-fade,
   .bb-sidebar-hover-actions-fade[data-sidebar-hover-actions-open="true"] {
@@ -303,6 +317,10 @@
   }
 
   @media (max-width: 767px) and (pointer: coarse) {
+    .bb-sidebar-hover-actions-status {
+      position: relative;
+    }
+
     /* The overlay is hidden on coarse phones, so no room is reserved. */
     .bb-sidebar-hover-actions-row .bb-sidebar-hover-actions-inset {
       padding-right: 0;
