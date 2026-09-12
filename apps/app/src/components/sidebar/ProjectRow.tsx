@@ -2309,7 +2309,9 @@ function ProjectRowComponent({
         <TopLevelSidebarSection
           label={project.name}
           status={projectStatus}
-          actions={projectActions}
+          actions={
+            isLocalPathInvalid && isCollapsed ? undefined : projectActions
+          }
           actionsAlwaysVisible={isLocalPathInvalid}
           actionsMobileAlways
           actionsOpen={isActionsOpen}
