@@ -619,6 +619,7 @@ function AssistantConversationMessage({
           <MarkdownPreview
             className={STREAMING_TAIL_MARKDOWN_CLASS_NAME}
             content={liveMarkdown}
+            sourcePrefix={streamingSplit.settled}
             linkRouting={linkRouting}
             messageDirectives={messageDirectives}
             threadMentions={ASSISTANT_THREAD_MENTIONS}

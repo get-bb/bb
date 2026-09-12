@@ -111,6 +111,7 @@ interface MarkdownPreviewProps {
   allowHtml?: boolean;
   className?: string;
   content: string;
+  sourcePrefix?: string;
   imagePolicy?: MarkdownImagePolicy;
   linkRouting?: MarkdownLinkRouting;
   threadMentions?: MarkdownThreadMentions;
@@ -139,6 +140,7 @@ interface IsMarkdownAppRouteHrefArgs {
 
 interface BuildMarkdownComponentsArgs {
   imagePolicy: MarkdownImagePolicy;
+  imageSourceOffset: number;
   linkRouting?: MarkdownLinkRouting;
   preferredTheme: Theme;
   rewriteLocalhostLinks: boolean;
@@ -174,6 +176,7 @@ interface ResolvedMarkdownLocalPath {
 
 interface MarkdownImageRendererArgs {
   alt: ComponentPropsWithoutRef<"img">["alt"];
+  sourceOffset: number | undefined;
   imageAttributes: MarkdownImageRenderAttributes;
   setExpandedImage: ExpandedMarkdownImageSetter;
   src: ComponentPropsWithoutRef<"img">["src"];
@@ -429,6 +432,7 @@ const areMarkdownPreviewPropsEqual: MarkdownPreviewPropsEqual = (
   (previous.allowHtml ?? false) === (next.allowHtml ?? false) &&
   previous.className === next.className &&
   previous.content === next.content &&
+  (previous.sourcePrefix ?? "") === (next.sourcePrefix ?? "") &&
   (previous.imagePolicy ?? "render") === (next.imagePolicy ?? "render") &&
   previous.urlTransform === next.urlTransform &&
   areMarkdownThreadMentionsEqual({
@@ -953,6 +957,7 @@ function MarkdownTableCell({ children }: MarkdownTableCellProps) {
 
 function MarkdownRenderedImage({
   alt,
+  sourceOffset,
   imageAttributes,
   setExpandedImage,
   src,
@@ -968,6 +973,7 @@ function MarkdownRenderedImage({
       className="my-2 max-h-[max(384px,50vh)] max-w-full cursor-zoom-in object-contain"
       loading="lazy"
       data-markdown-image=""
+      data-markdown-image-offset={sourceOffset}
       onClick={(event) => {
         if (openGallery) {
           openGallery(event.currentTarget);
@@ -1020,6 +1026,7 @@ function resolveMarkdownSourceMedia({
 
 function buildMarkdownComponents({
   imagePolicy,
+  imageSourceOffset,
   linkRouting,
   preferredTheme,
   rewriteLocalhostLinks,
@@ -1248,7 +1255,7 @@ function buildMarkdownComponents({
     src,
     alt,
     className: _className,
-    node: _node,
+    node,
     ...imageAttributes
   }: MarkdownImageProps) {
     if (imagePolicy === "alt-text") {
@@ -1261,6 +1268,11 @@ function buildMarkdownComponents({
     return (
       <MarkdownRenderedImage
         alt={alt}
+        sourceOffset={
+          node?.position?.start.offset === undefined
+            ? undefined
+            : imageSourceOffset + node.position.start.offset
+        }
         imageAttributes={imageAttributes}
         setExpandedImage={setExpandedImage}
         src={src}
@@ -1607,6 +1619,7 @@ function MarkdownPreviewComponent({
   allowHtml = false,
   className,
   content,
+  sourcePrefix = "",
   imagePolicy = "render",
   linkRouting,
   threadMentions,
@@ -1622,6 +1635,12 @@ function MarkdownPreviewComponent({
   const localImageRouting = linkRouting?.localImage;
   const normalizeLocalFileLinks =
     localFileRouting !== undefined || localImageRouting !== undefined;
+  const imageSourceOffset = useMemo(() => {
+    const prefix = normalizeLocalFileLinks
+      ? normalizeLocalFileMarkdownLinks(sourcePrefix)
+      : sourcePrefix;
+    return normalizeMathFences(splitMarkdownFrontmatter(prefix).body).length;
+  }, [sourcePrefix, normalizeLocalFileLinks]);
   const promptMentionSubstitution = useMemo(
     () =>
       promptMentions
@@ -1679,6 +1698,7 @@ function MarkdownPreviewComponent({
     () =>
       buildMarkdownComponents({
         imagePolicy,
+        imageSourceOffset,
         linkRouting,
         preferredTheme,
         rewriteLocalhostLinks,
@@ -1698,6 +1718,7 @@ function MarkdownPreviewComponent({
     [
       linkRouting,
       imagePolicy,
+      imageSourceOffset,
       preferredTheme,
       rewriteLocalhostLinks,
       threadMentions,

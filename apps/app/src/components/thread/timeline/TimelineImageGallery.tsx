@@ -68,8 +68,9 @@ export function TimelineImageGallery({ children }: { children: ReactNode }) {
     ) ?? []) {
       const identity = JSON.stringify([
         image.closest("[data-timeline-row-id]")?.getAttribute("data-timeline-row-id"),
-        image.getAttribute("src"),
-        image.alt,
+        image.getAttribute("data-markdown-image-offset") ?? [
+          image.getAttribute("src"), image.alt,
+        ],
       ]);
       const occurrence = occurrences.get(identity) ?? 0;
       occurrences.set(identity, occurrence + 1);
@@ -118,6 +119,7 @@ export function TimelineImageGallery({ children }: { children: ReactNode }) {
       attributeFilter: [
         "src", "srcset", "alt", "hidden", "inert", "aria-hidden",
         "data-image-gallery-clipped", "data-timeline-row-id",
+        "data-markdown-image-offset",
       ],
     });
     timeline.addEventListener("load", scheduleRefresh, true);

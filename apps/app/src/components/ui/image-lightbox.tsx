@@ -220,7 +220,7 @@ export function ImageLightbox({
             type="button"
             variant="ghost"
             size="icon"
-            className="absolute left-[max(0.5rem,env(safe-area-inset-left))] top-1/2 size-11 -translate-y-1/2 rounded-full bg-black/45 text-white hover:bg-black/60 hover:text-white"
+            className="absolute left-[max(0.5rem,env(safe-area-inset-left))] top-1/2 size-11 -translate-y-1/2 rounded-full bg-black/45 text-white hover:bg-black/60 hover:text-white disabled:pointer-events-auto"
             onClick={onPrevious}
             disabled={previousDisabled}
             aria-label="Previous image"
@@ -231,7 +231,7 @@ export function ImageLightbox({
             type="button"
             variant="ghost"
             size="icon"
-            className="absolute right-[max(0.5rem,env(safe-area-inset-right))] top-1/2 size-11 -translate-y-1/2 rounded-full bg-black/45 text-white hover:bg-black/60 hover:text-white"
+            className="absolute right-[max(0.5rem,env(safe-area-inset-right))] top-1/2 size-11 -translate-y-1/2 rounded-full bg-black/45 text-white hover:bg-black/60 hover:text-white disabled:pointer-events-auto"
             onClick={onNext}
             disabled={nextDisabled}
             aria-label="Next image"
