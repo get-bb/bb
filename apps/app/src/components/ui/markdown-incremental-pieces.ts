@@ -11,7 +11,6 @@ import ReactMarkdown, {
   type UrlTransform,
 } from "react-markdown";
 import type { Nodes, Root } from "mdast";
-import type { Root as HastRoot } from "hast";
 import { EXIT, visit } from "unist-util-visit";
 import {
   EMPTY_MOUNTED_MESSAGE_DIRECTIVES,
@@ -370,19 +369,20 @@ function parseMarkdownPiece({
       },
     ]);
   }
+  remarkPlugins.push(() => (tree: Root) => {
+    visit(tree, "image", (node) => {
+      if (node.position?.start.offset === undefined) return;
+      node.data ??= {};
+      node.data.hProperties = {
+        ...node.data.hProperties,
+        "data-markdown-image-offset": sourceOffset + node.position.start.offset,
+      };
+    });
+  });
   const element = ReactMarkdown({
     children: source,
     components: config.components,
-    rehypePlugins: [
-      ...config.rehypePlugins,
-      () => (tree: HastRoot) => {
-        visit(tree, "element", (node) => {
-          if (node.tagName === "img" && node.position?.start.offset !== undefined) {
-            node.properties["data-markdown-image-offset"] = sourceOffset + node.position.start.offset;
-          }
-        });
-      },
-    ],
+    rehypePlugins: config.rehypePlugins,
     remarkPlugins,
     urlTransform: config.urlTransform,
   });
