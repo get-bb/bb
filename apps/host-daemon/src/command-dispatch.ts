@@ -366,7 +366,7 @@ const commandHandlers: CommandHandlerMap = {
       if (command.intent === "release") {
         if (entry.runtime.getActiveTurnId(command.threadId) !== null) {
           await options.eventSink.flush();
-          return { providerCheckpointId };
+          return { providerCheckpointId, activeTurnRetained: true };
         }
       } else {
         await entry.runtime.waitForActiveTurn(command.threadId, {

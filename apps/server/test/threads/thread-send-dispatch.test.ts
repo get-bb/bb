@@ -1432,3 +1432,141 @@ describe("service tier execution lifecycle", () => {
     });
   });
 });
+
+describe("competing turn refusals", () => {
+  const competingTurnMessage = (threadId: string) =>
+    `Refusing to start a competing turn for thread "${threadId}" while another turn is active or starting`;
+
+  async function sendStartFromIdle(
+    harness: TestAppHarness,
+    fixture: IdleThreadFixture,
+  ) {
+    await sendThreadMessage(harness.deps, {
+      environment: fixture.environment,
+      payload: {
+        input: textInput("send while the daemon runs a turn"),
+        mode: "start",
+        model: "gpt-5",
+        permissionMode: "full",
+        reasoningLevel: "medium",
+        serviceTier: "default",
+      },
+      thread: fixture.thread,
+      trigger: "user",
+    });
+    expect(getThread(harness.db, fixture.thread.id)?.status).toBe("active");
+    const queued = await waitForQueuedCommand(
+      harness,
+      (candidate) =>
+        candidate.command.type === "turn.submit" &&
+        candidate.command.threadId === fixture.thread.id,
+    );
+    if (queued.command.type !== "turn.submit") {
+      throw new Error("Expected a turn.submit command");
+    }
+    return { queued, requestId: queued.command.requestId };
+  }
+
+  it("keeps the thread active when the daemon refuses a competing turn while a root turn is running", async () => {
+    await withTestHarness(async (harness) => {
+      const fixture = seedProviderThreadFixture({
+        harness,
+        status: "idle",
+        value: 61,
+      });
+      const { queued, requestId } = await sendStartFromIdle(harness, fixture);
+      seedTurnStarted(harness.deps, {
+        environmentId: fixture.environment.id,
+        providerThreadId: "provider-send-dispatch-61",
+        threadId: fixture.thread.id,
+        turnId: "turn-unrequested",
+      });
+
+      await reportQueuedCommandError(harness, queued, {
+        errorCode: "competing_turn",
+        errorMessage: competingTurnMessage(fixture.thread.id),
+      });
+
+      const events = listEvents(harness.db, { threadId: fixture.thread.id });
+      const rejection = events.find(
+        (event) => event.type === "client/turn/rejected",
+      );
+      expect(JSON.parse(rejection?.data ?? "{}")).toEqual({
+        requestId,
+        reason: "competing_turn",
+        message: competingTurnMessage(fixture.thread.id),
+      });
+      expect(events.some((event) => event.type === "system/error")).toBe(false);
+      expect(getThread(harness.db, fixture.thread.id)?.status).toBe("active");
+
+      const completed = await harness.app.request("/internal/session/events", {
+        method: "POST",
+        headers: internalAuthHeaders(harness),
+        body: JSON.stringify({
+          sessionId: fixture.sessionId,
+          eventGroups: groupHostDaemonEvents([
+            {
+              threadId: fixture.thread.id,
+              event: {
+                type: "turn/completed",
+                threadId: fixture.thread.id,
+                providerThreadId: "provider-send-dispatch-61",
+                scope: turnScope("turn-unrequested"),
+                status: "completed",
+              },
+            },
+          ]),
+        }),
+      });
+      expect(completed.status, await completed.clone().text()).toBe(200);
+      expect(getThread(harness.db, fixture.thread.id)?.status).toBe("idle");
+    });
+  });
+
+  it("fails the run when a competing-turn refusal arrives without a running root turn", async () => {
+    await withTestHarness(async (harness) => {
+      const fixture = seedProviderThreadFixture({
+        harness,
+        status: "idle",
+        value: 62,
+      });
+      const { queued } = await sendStartFromIdle(harness, fixture);
+
+      await reportQueuedCommandError(harness, queued, {
+        errorCode: "competing_turn",
+        errorMessage: competingTurnMessage(fixture.thread.id),
+      });
+
+      const events = listEvents(harness.db, { threadId: fixture.thread.id });
+      expect(
+        events.some((event) => event.type === "client/turn/rejected"),
+      ).toBe(true);
+      expect(events.some((event) => event.type === "system/error")).toBe(true);
+      expect(getThread(harness.db, fixture.thread.id)?.status).toBe("error");
+    });
+  });
+
+  it("still fails the run for other refusals while a root turn is stored", async () => {
+    await withTestHarness(async (harness) => {
+      const fixture = seedProviderThreadFixture({
+        harness,
+        status: "idle",
+        value: 63,
+      });
+      const { queued } = await sendStartFromIdle(harness, fixture);
+      seedTurnStarted(harness.deps, {
+        environmentId: fixture.environment.id,
+        providerThreadId: "provider-send-dispatch-63",
+        threadId: fixture.thread.id,
+        turnId: "turn-unrequested",
+      });
+
+      await reportQueuedCommandError(harness, queued, {
+        errorCode: "provider_rpc_error",
+        errorMessage: "Provider rejected the turn",
+      });
+
+      expect(getThread(harness.db, fixture.thread.id)?.status).toBe("error");
+    });
+  });
+});

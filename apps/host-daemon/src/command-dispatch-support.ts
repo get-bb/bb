@@ -1,17 +1,21 @@
 import type { DesktopBrowserBroker } from "./desktop-browser-broker.js";
-import type { AgentRuntimeBridgeLaunch } from "@bb/agent-runtime";
+import {
+  CompetingTurnError,
+  type AgentRuntimeBridgeLaunch,
+} from "@bb/agent-runtime";
 import type { AvailableModel } from "@bb/domain";
 import type { EventSinkInput } from "./event-sink.js";
-import type {
-  EnvironmentHookProgressMessage,
-  HostDaemonCommand,
-  ProviderHealthResult,
-  ProviderUsageResult,
-  HostDaemonBridgeLaunch,
-  HostDaemonInjectedSkillSource,
-  HostDaemonOnlineRpcCommand,
-  HostDaemonConnectTunnelIdentity,
-  WorkspaceContext,
+import {
+  COMPETING_TURN_ERROR_CODE,
+  type EnvironmentHookProgressMessage,
+  type HostDaemonCommand,
+  type ProviderHealthResult,
+  type ProviderUsageResult,
+  type HostDaemonBridgeLaunch,
+  type HostDaemonInjectedSkillSource,
+  type HostDaemonOnlineRpcCommand,
+  type HostDaemonConnectTunnelIdentity,
+  type WorkspaceContext,
 } from "@bb/host-daemon-contract";
 import type {
   ProviderInstallationCommand,
@@ -190,6 +194,9 @@ export async function resolveRuntimeBridgeLaunch(
 export function getErrorCode(error: unknown): string {
   if (error instanceof CommandDispatchError) {
     return error.code;
+  }
+  if (error instanceof CompetingTurnError) {
+    return COMPETING_TURN_ERROR_CODE;
   }
   if (isStructuredSpawnMissingExecutableError(error)) {
     return "missing_executable";
