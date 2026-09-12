@@ -49,7 +49,7 @@ import type {
 const CHEVRON_SCROLL_STEP_PX = 140;
 
 const TAB_STRIP_SCROLL_BUTTON_CLASS =
-  "h-7 w-5 rounded-md p-0 [&_svg]:size-3.5 max-md:pointer-coarse:h-9 max-md:pointer-coarse:w-9 max-md:pointer-coarse:[&_svg]:size-5";
+  "h-7 w-5 rounded-md p-0 [&_[data-icon-root]]:size-3.5 max-md:pointer-coarse:h-9 max-md:pointer-coarse:w-9 max-md:pointer-coarse:[&_[data-icon-root]]:size-5";
 
 const EDGE_EPSILON_PX = 1;
 

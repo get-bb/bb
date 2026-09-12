@@ -296,7 +296,7 @@ export function PluginSidebarFooterItems({
                     className={cn(
                       SIDEBAR_FOOTER_ACTION_CLASS,
                       active &&
-                        "bg-sidebar-accent text-sidebar-accent-foreground [&>svg]:opacity-100",
+                        "bg-sidebar-accent text-sidebar-accent-foreground [&>[data-icon-root]]:opacity-100",
                     )}
                     data-testid={
                       item.kind === "plugin"

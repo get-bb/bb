@@ -241,7 +241,7 @@ const DropdownMenuItem = React.forwardRef<
           aria-disabled={disabled || undefined}
           aria-checked={ariaChecked}
           className={cn(
-            "relative flex w-full cursor-default select-none items-center gap-2 rounded-sm px-2 py-2 text-left text-xs outline-none transition-colors focus:bg-state-hover focus:text-foreground active:bg-state-active active:text-foreground data-[disabled]:pointer-events-none data-[disabled]:opacity-50 [&>svg]:size-4 [&>svg]:shrink-0",
+            "relative flex w-full cursor-default select-none items-center gap-2 rounded-sm px-2 py-2 text-left text-xs outline-none transition-colors focus:bg-state-hover focus:text-foreground active:bg-state-active active:text-foreground data-[disabled]:pointer-events-none data-[disabled]:opacity-50 [&>[data-icon-root]]:size-4 [&>[data-icon-root]]:shrink-0",
             inset && "pl-8",
             variant === "destructive" && MENU_ITEM_DESTRUCTIVE_TOUCH_CLASS,
             className,
@@ -267,7 +267,7 @@ const DropdownMenuItem = React.forwardRef<
       <DropdownMenuPrimitive.Item
         ref={ref}
         className={cn(
-          "relative flex cursor-default select-none items-center gap-2 rounded-sm px-2 py-[0.3125rem] text-xs outline-none data-[disabled]:pointer-events-none data-[disabled]:opacity-50 [&>svg]:size-4 [&>svg]:shrink-0",
+          "relative flex cursor-default select-none items-center gap-2 rounded-sm px-2 py-[0.3125rem] text-xs outline-none data-[disabled]:pointer-events-none data-[disabled]:opacity-50 [&>[data-icon-root]]:size-4 [&>[data-icon-root]]:shrink-0",
           LIST_HOVER_TRANSITION,
           variant === "destructive"
             ? MENU_ITEM_DESTRUCTIVE_STATE_CLASS
@@ -573,7 +573,7 @@ const DropdownMenuSubTrigger = React.forwardRef<
       <DropdownMenuPrimitive.SubTrigger
         ref={ref}
         className={cn(
-          "flex cursor-default gap-2 select-none items-center rounded-sm px-2 py-[0.3125rem] text-xs outline-none focus:bg-state-hover focus:text-foreground data-[state=open]:bg-state-active data-[state=open]:text-foreground [&_svg]:pointer-events-none [&_svg]:size-4 [&_svg]:shrink-0",
+          "flex cursor-default gap-2 select-none items-center rounded-sm px-2 py-[0.3125rem] text-xs outline-none focus:bg-state-hover focus:text-foreground data-[state=open]:bg-state-active data-[state=open]:text-foreground [&_[data-icon-root]]:pointer-events-none [&_[data-icon-root]]:size-4 [&_[data-icon-root]]:shrink-0",
           LIST_HOVER_TRANSITION,
           MENU_ITEM_LAST_HOVERED_CLASS,
           inset && "pl-8",
