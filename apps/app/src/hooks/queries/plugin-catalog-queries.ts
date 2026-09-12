@@ -11,7 +11,8 @@ import type {
   PluginSourceDetail as SdkPluginSourceDetail,
   PluginUpdateCheckEntry,
 } from "@bb/server-contract";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { invalidatePluginList } from "../cache-owners/plugin-cache-owner";
 import { createPluginsClient } from "./plugin-client";
 import { toEpochMs } from "./plugin-settings-queries";
 import {
@@ -19,6 +20,7 @@ import {
   pluginCatalogSearchQueryKey,
   pluginMarketplacesQueryKey,
   pluginSourceQueryKey,
+  pluginUpdateCheckQueryKey,
 } from "./query-keys";
 
 type FetchLike = typeof fetch;
@@ -185,6 +187,25 @@ export async function checkPluginUpdates(
     args.id === undefined ? {} : { pluginId: args.id },
   );
   return results.map(toUpdatesEntry);
+}
+
+export function usePluginUpdateCheck(options: { enabled: boolean }) {
+  const queryClient = useQueryClient();
+  return useQuery({
+    queryKey: pluginUpdateCheckQueryKey(),
+    queryFn: async () => {
+      try {
+        return await checkPluginUpdates(fetch);
+      } finally {
+        await invalidatePluginList({ queryClient });
+      }
+    },
+    enabled: options.enabled,
+    staleTime: 0,
+    refetchOnWindowFocus: false,
+    refetchOnReconnect: false,
+    retry: false,
+  });
 }
 
 export interface PluginUpdateResult {

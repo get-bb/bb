@@ -30,7 +30,6 @@ import {
   type AddPluginInitial,
 } from "@/components/plugin/management/AddPluginDialog";
 import { BrowsePluginsTab } from "@/components/plugin/management/BrowsePluginsTab";
-import { CheckPluginUpdatesButton } from "@/components/plugin/management/CheckPluginUpdatesButton";
 import { InstalledPluginsTab } from "@/components/plugin/management/InstalledPluginsTab";
 import { PluginAuthorPage } from "@/components/plugin/management/PluginAuthorPage";
 import {
@@ -39,6 +38,7 @@ import {
 } from "@/components/plugin/plugin-provenance";
 import { PLUGINS_INSTALLED_DESCRIPTION } from "@/components/plugin/plugins-collection-copy";
 import { usePluginList } from "@/hooks/queries/plugin-settings-queries";
+import { usePluginUpdateCheck } from "@/hooks/queries/plugin-catalog-queries";
 import {
   getPluginDetailRoutePath,
   getPluginsRoutePath,
@@ -61,6 +61,9 @@ export function PluginsOverview({
   );
   const activeMode =
     mode ?? (searchParams.get("view") === "installed" ? "installed" : "browse");
+  const updateCheck = usePluginUpdateCheck({
+    enabled: activeMode === "installed" && plugins.length > 0,
+  });
   const authorKey = searchParams.get("author");
   const [installedQuery, setInstalledQuery] = useState("");
   const [installedViewport, setInstalledViewport] =
@@ -246,13 +249,19 @@ export function PluginsOverview({
                     )
                   }
                 />
-                {plugins.length > 0 ? <CheckPluginUpdatesButton /> : null}
               </>
             }
           />
         }
       >
         <div className={cn("space-y-3", TOOLS_PAGE_BAND_CLASSES)}>
+          {updateCheck.isError && !listQuery.isError && plugins.length > 0 ? (
+            <ResourceListState
+              state="error"
+              message="Couldn't check for plugin updates."
+              onRetry={() => void updateCheck.refetch()}
+            />
+          ) : null}
           {listQuery.isError ? (
             <ResourceListState
               state="error"

@@ -125,7 +125,10 @@ const DOCS_CATALOG_ENTRY = {
   installed: true,
 };
 
-function installFetch(plugins: readonly unknown[] = [AUTOMATIONS_PLUGIN]) {
+function installFetch(
+  plugins: readonly unknown[] = [AUTOMATIONS_PLUGIN],
+  checkUpdates = async () => responseJson({ results: [] }),
+) {
   vi.stubGlobal(
     "fetch",
     vi.fn(async (input: RequestInfo | URL) => {
@@ -141,6 +144,9 @@ function installFetch(plugins: readonly unknown[] = [AUTOMATIONS_PLUGIN]) {
       }
       if (url.pathname === "/api/v1/plugins") {
         return responseJson({ plugins });
+      }
+      if (url.pathname === "/api/v1/plugins/updates/check") {
+        return checkUpdates();
       }
       if (url.pathname === "/api/v1/plugin-catalog") {
         return responseJson({
@@ -198,8 +204,105 @@ afterEach(() => {
 });
 
 describe("PluginsOverview", () => {
+  it("checks updates on Installed entry, shares pending checks, and refreshes update signals", async () => {
+    const plugins = [
+      {
+        ...AUTOMATIONS_PLUGIN,
+        source: "npm:automations@0.1.0",
+        provenance: "direct",
+        updateState: {},
+      },
+    ];
+    let finishCheck: (response: Response) => void = () => {};
+    const pending = new Promise<Response>((resolve) => {
+      finishCheck = resolve;
+    });
+    const checkUpdates = vi
+      .fn(async () => responseJson({ results: [] }))
+      .mockImplementationOnce(() => pending);
+    installFetch(plugins, checkUpdates);
+    const { wrapper: QueryClientWrapper, queryClient } =
+      createQueryClientTestHarness();
+    render(
+      <MemoryRouter initialEntries={["/plugins?view=installed"]}>
+        <QueryClientWrapper>
+          <PluginsOverview />
+          <SwitchViewButton view="browse" />
+          <SwitchViewButton view="installed" />
+        </QueryClientWrapper>
+      </MemoryRouter>,
+    );
+
+    await screen.findByText("Automations");
+    await waitFor(() => expect(checkUpdates).toHaveBeenCalledTimes(1));
+    expect(screen.queryByTestId("check-plugin-updates")).toBeNull();
+    fireEvent.click(screen.getByText("switch-to-browse"));
+    await screen.findByText("GitHub");
+    fireEvent.click(screen.getByText("switch-to-installed"));
+    await screen.findByText("Automations");
+    expect(checkUpdates).toHaveBeenCalledTimes(1);
+
+    plugins[0]!.updateState = { availableVersion: "0.2.0" };
+    finishCheck(responseJson({ results: [] }));
+    await screen.findByTestId("plugin-update-signal-automations");
+    await waitFor(() => expect(queryClient.isFetching()).toBe(0));
+    act(() => focusManager.setFocused(false));
+    act(() => focusManager.setFocused(true));
+    await waitFor(() => expect(queryClient.isFetching()).toBe(0));
+    expect(checkUpdates).toHaveBeenCalledTimes(1);
+
+    fireEvent.click(screen.getByText("switch-to-browse"));
+    await screen.findByText("GitHub");
+    fireEvent.click(screen.getByText("switch-to-installed"));
+    await waitFor(() => expect(checkUpdates).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(queryClient.isFetching()).toBe(0));
+  });
+
+  it("keeps installed plugins visible when the automatic check fails and allows retry", async () => {
+    const checkUpdates = vi
+      .fn()
+      .mockResolvedValueOnce(responseJson({ error: "offline" }, 422))
+      .mockImplementation(async () => responseJson({ results: [] }));
+    installFetch([AUTOMATIONS_PLUGIN], checkUpdates);
+    const { wrapper: QueryClientWrapper } = createQueryClientTestHarness();
+    render(
+      <MemoryRouter initialEntries={["/settings/plugins"]}>
+        <QueryClientWrapper>
+          <PluginsOverview mode="installed" />
+        </QueryClientWrapper>
+      </MemoryRouter>,
+    );
+
+    await screen.findByText("Couldn't check for plugin updates.");
+    expect(screen.getByText("Automations")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Retry" }));
+    await waitFor(() => {
+      expect(checkUpdates).toHaveBeenCalledTimes(2);
+      expect(
+        screen.queryByText("Couldn't check for plugin updates."),
+      ).toBeNull();
+    });
+  });
+
+  it("does not check updates for an empty Installed page", async () => {
+    const checkUpdates = vi.fn(async () => responseJson({ results: [] }));
+    installFetch([], checkUpdates);
+    const { wrapper: QueryClientWrapper } = createQueryClientTestHarness();
+    render(
+      <MemoryRouter initialEntries={["/settings/plugins"]}>
+        <QueryClientWrapper>
+          <PluginsOverview mode="installed" />
+        </QueryClientWrapper>
+      </MemoryRouter>,
+    );
+
+    await screen.findByText(/^No plugins installed\./);
+    expect(checkUpdates).not.toHaveBeenCalled();
+  });
+
   it("opens on Browse and renders it before Installed", async () => {
-    installFetch();
+    const checkUpdates = vi.fn(async () => responseJson({ results: [] }));
+    installFetch([AUTOMATIONS_PLUGIN], checkUpdates);
     const { wrapper: QueryClientWrapper } = createQueryClientTestHarness();
     render(
       <MemoryRouter initialEntries={["/plugins"]}>
@@ -210,6 +313,7 @@ describe("PluginsOverview", () => {
     );
 
     expect(await screen.findByText("GitHub")).toBeTruthy();
+    expect(checkUpdates).not.toHaveBeenCalled();
     expect(screen.queryByRole("tab", { name: "Browse" })).toBeNull();
     expect(screen.queryByRole("tab", { name: /Installed/ })).toBeNull();
     expect(

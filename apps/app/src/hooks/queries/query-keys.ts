@@ -70,6 +70,7 @@ const PROJECT_SKILLS_QUERY_KEY = "projectSkills";
 export const SKILL_CONTENT_QUERY_KEY = "skillContent";
 export const SKILL_FILES_QUERY_KEY = "skillFiles";
 const PLUGIN_LIST_QUERY_KEY = "plugin-list";
+const PLUGIN_UPDATE_CHECK_QUERY_KEY = "plugin-update-check";
 const PLUGIN_SETTINGS_VIEW_QUERY_KEY = "plugin-settings-view";
 const PLUGIN_CONTRIBUTIONS_QUERY_KEY = "plugin-contributions";
 const PLUGIN_SDK_SETTINGS_QUERY_KEY = "plugin-settings";
@@ -1180,6 +1181,10 @@ export function pluginListQueryKey(enabled: boolean) {
 
 export function allPluginListQueryKeyPrefix() {
   return [PLUGIN_LIST_QUERY_KEY] as const;
+}
+
+export function pluginUpdateCheckQueryKey() {
+  return [PLUGIN_UPDATE_CHECK_QUERY_KEY] as const;
 }
 
 export function pluginSettingsViewQueryKey(pluginId: string) {
