@@ -193,6 +193,26 @@ const machineSources: readonly ProjectSource[] = [
   makeSource("src_remote", HOST_IDS.remote, "/home/michael/bb"),
 ];
 
+const offlineBuildHost = makeHost({
+  id: "host_build",
+  name: "Build server",
+  status: "disconnected",
+  lastSeenAt: Date.now() - 2 * 60 * 60 * 1000,
+});
+const unconfiguredOfficeHost = makeHost({
+  id: "host_office",
+  name: "Office Mac Studio",
+});
+const contextualMachineHosts = [
+  ...machineHosts,
+  offlineBuildHost,
+  unconfiguredOfficeHost,
+];
+const contextualMachineSources: readonly ProjectSource[] = [
+  ...machineSources,
+  makeSource("src_build", offlineBuildHost.id, "/srv/bb"),
+];
+
 export function MachineMenu() {
   return (
     <StoryCard>
@@ -220,6 +240,62 @@ export function MachineMenu() {
   );
 }
 
+export function OfflineMachine() {
+  return (
+    <StoryCard>
+      <StoryRow
+        label="offline machine"
+        hint="configured for the project but currently disconnected"
+      >
+        <EnvironmentPickerUI
+          value="provider:project-checkout"
+          sources={contextualMachineSources}
+          host={offlineBuildHost}
+          isLocal={false}
+          providers={STORY_ENVIRONMENT_PROVIDERS}
+          selectedProviderHostId={offlineBuildHost.id}
+          onSelectProvider={noop}
+          multiMachinePickerEnabled
+          machines={{
+            hosts: contextualMachineHosts,
+            localDaemonHostId: HOST_IDS.local,
+            primaryHostId: HOST_IDS.local,
+          }}
+          defaultOpen
+          modal={false}
+        />
+      </StoryRow>
+    </StoryCard>
+  );
+}
+
+export function MachineNeedsSetup() {
+  return (
+    <StoryCard>
+      <StoryRow
+        label="machine needs setup"
+        hint="connected, but this project has no source on the machine"
+      >
+        <EnvironmentPickerUI
+          value=""
+          sources={contextualMachineSources}
+          host={unconfiguredOfficeHost}
+          isLocal={false}
+          machines={{
+            hosts: contextualMachineHosts,
+            localDaemonHostId: HOST_IDS.local,
+            primaryHostId: HOST_IDS.local,
+          }}
+          onRequestMachineSetup={noop}
+          multiMachinePickerEnabled
+          defaultOpen
+          modal={false}
+        />
+      </StoryRow>
+    </StoryCard>
+  );
+}
+
 export function ManyMachines() {
   const hosts = Array.from({ length: 12 }, (_, index) =>
     makeHost({ id: `host_scroll_${index}`, name: `Machine ${index + 1}` }),
@@ -234,6 +310,7 @@ export function ManyMachines() {
       isLocal={false}
       providers={STORY_ENVIRONMENT_PROVIDERS}
       onSelectProvider={noop}
+      multiMachinePickerEnabled
       machines={{
         hosts,
         localDaemonHostId: null,

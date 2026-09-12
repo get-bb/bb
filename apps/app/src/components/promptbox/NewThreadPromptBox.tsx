@@ -84,6 +84,7 @@ export interface NewThreadEnvironmentConfig {
   machineProviders?: readonly SystemMachineProvider[];
   selectedProviderHostId?: string | null;
   inputsControlProviderIds?: ReadonlySet<string>;
+  multiMachinePickerEnabled?: boolean;
   onSelectProvider?: EnvironmentPickerUIProps["onSelectProvider"];
 }
 
@@ -429,6 +430,7 @@ export function EnvironmentSlot({
         providersByHostId={environment.providersByHostId}
         selectedProviderHostId={environment.selectedProviderHostId}
         inputsControlProviderIds={environment.inputsControlProviderIds}
+        multiMachinePickerEnabled={environment.multiMachinePickerEnabled}
         onSelectProvider={environment.onSelectProvider}
         className="shrink-0"
         muted
@@ -516,13 +518,14 @@ export function ProjectlessMachineSlot({
       className="shrink-0"
       muted
       machineProviders={environment.machineProviders}
+      multiMachinePickerEnabled={environment.multiMachinePickerEnabled}
     />
   );
 }
 
 type NewThreadConnectedEnvironmentConfig = Omit<
   NewThreadEnvironmentConfig,
-  "host" | "isLocal" | "machines"
+  "host" | "isLocal" | "machines" | "multiMachinePickerEnabled"
 >;
 
 type NewThreadConnectedModeConfig = Omit<NewThreadModeConfig, "environment"> & {
@@ -544,6 +547,8 @@ export function NewThreadPromptBox({
   const systemConfigQuery = useSystemConfig();
   const { providers: machineProviders } = useSystemMachineProviders();
   const primaryHostId = systemConfigQuery.data?.primaryHostId ?? null;
+  const multiMachinePickerEnabled =
+    systemConfigQuery.data?.experiments.multiMachinePicker ?? false;
   const availableHosts = useMemo(
     () => selectHosts(hosts, "persistent"),
     [hosts],
@@ -583,6 +588,7 @@ export function NewThreadPromptBox({
       host: selectedHost,
       isLocal: isLocalHost,
       machines,
+      multiMachinePickerEnabled,
     }),
     [
       threadConfig.environment,
@@ -590,6 +596,7 @@ export function NewThreadPromptBox({
       selectedHost,
       isLocalHost,
       machines,
+      multiMachinePickerEnabled,
     ],
   );
   return (

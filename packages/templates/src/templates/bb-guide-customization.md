@@ -154,6 +154,11 @@ The default-off `timelineWindowing` experiment mounts only nearby rows in long
 timelines and large expanded timeline details. Enable it with
 `bb settings experiment timelineWindowing true`.
 
+The default-off `multiMachinePicker` experiment uses a searchable, target-first
+environment picker for projects with at least three machines and adds search to
+machine-only pickers with more than five machines. Enable it with
+`bb settings experiment multiMachinePicker true`.
+
 Thread timeline pages select complete conversation groups using
 `BB_FF_TIMELINE_WINDOW_EVENT_BUDGET` (default 1500) as a selection budget.
 Oversized groups paginate their contents with stable summary identities.

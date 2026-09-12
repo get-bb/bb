@@ -139,6 +139,14 @@ every window and client sees the same value.
 - It keeps stable timeline wrappers while mounting only rows near the active
   main or nested detail scrollport.
 
+## Multi-machine picker
+
+- The `multiMachinePicker` experiment defaults to false.
+- Enable it with `bb settings experiment multiMachinePicker true`.
+- Projects with at least three machines use a searchable, target-first
+  environment picker. Machine-only pickers add search when they contain more
+  than five machines.
+
 Machine access: `bb settings general machineServerUrl https://bb.example.com`
 sets the server URL reachable by machines. Set `null` to use BB_EXTERNAL_URL.
 `bb settings general defaultMachineAccess direct` selects direct access;
