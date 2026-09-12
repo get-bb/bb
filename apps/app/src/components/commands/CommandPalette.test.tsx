@@ -934,7 +934,7 @@ describe("CommandPalette", () => {
   it("shows active recents in update order with project metadata and follow-up status", async () => {
     modeState.activeRecents = [
       makeThread("older", { updatedAt: Date.now() - 100 }),
-      makeThread("newer", { updatedAt: Date.now() }),
+      makeThread("newer", { updatedAt: Date.now(), lastReadAt: Date.now() }),
     ];
     modeState.threadDraftIds.add("newer");
     modeState.searchResponse = {
